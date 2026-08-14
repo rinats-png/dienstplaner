@@ -63,32 +63,34 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Stand am 14.08.2026: `CENTRIC_ADMIN` und `CENTRIC_PFEFFER` sind gesetzt
+### Stand am 14.08.2026: nur `CENTRIC_ADMIN` ist gesetzt
 
-Die übrigen fehlen — sie brauchen Zugangsdaten von außen und lassen sich
-nicht erzeugen.
+### Zwei Fallen in der Netlify-Schnittstelle
 
-### Eine Falle in der Netlify-Schnittstelle
+Sie haben mich mehrere Anläufe gekostet und sind der Grund, warum frühere
+Fassungen dieser Datei zweimal etwas Falsches behaupteten — erst, die
+Variablen seien gesetzt, dann, sie ließen sich nicht setzen.
 
-Sie hat mich zwei Anläufe gekostet und ist der Grund, warum in einer
-früheren Fassung dieser Datei stand, die Variablen seien gesetzt.
-
-**`manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer
+**Erstens: `manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer
 engeren Auswahl — etwa `["functions", "runtime"]`, was sachlich richtig
 wäre — meldet der Aufruf `Environment variable upserted` und legt nichts
 an. Die Erfolgsmeldung trägt nicht.
 
-Nachgestellt mit einer Wegwerf-Variablen: mit `["all"]` erscheint sie beim
-Auslesen sofort samt Zeitstempel, mit eingeschränkten Scopes nie. Wer über
-die Schnittstelle setzt, prüft danach durch Auslesen — nicht anhand der
-Rückmeldung.
+**Zweitens: Als *secret* angelegte Variablen erscheinen in `getAllEnvVars`
+überhaupt nicht.** Nicht mit verdecktem Wert, sondern gar nicht. Wer nur
+liest, hält sie für nicht vorhanden. Nachgewiesen über den Löschbefehl: Er
+fand `CENTRIC_PFEFFER` und entfernte ihn — die Variable war also da,
+obwohl das Auslesen sie nie zeigte.
 
-Über die Oberfläche gibt es das Problem nicht.
+Zusammen ergibt das eine unangenehme Lage: Über die Schnittstelle gesetzte
+Geheimnisse lassen sich nicht durch Auslesen bestätigen. **Geheimnisse
+gehören deshalb über die Oberfläche gesetzt**, wo beides sichtbar ist.
 
-Die Anwendung **läuft auch ohne die restlichen Variablen**. Was fehlt:
+Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 
 | Fehlt | Folge |
 |---|---|
+| `CENTRIC_PFEFFER` | Zugangscodes liegen als ungesalzenes SHA-256 im Speicher. `neuHash()` gibt ohne Pfeffer `null` zurück, `ablageSchluessel()` fällt auf `altHash()` zurück. **Vor Schritt 5.0 setzen.** |
 | `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
 | `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
@@ -97,13 +99,25 @@ Die Anwendung **läuft auch ohne die restlichen Variablen**. Was fehlt:
 
 | Variable | Als *secret*? | Wert | Stand |
 |---|---|---|---|
-| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | gesetzt |
+| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | fehlt, siehe unten |
 | `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` | gesetzt, siehe unten |
 | `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` | fehlt |
 | `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen | fehlt |
 | `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` | fehlt |
 | `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto | fehlt |
 | `CENTRIC_ABSENDER` | nein | siehe unten | fehlt |
+
+**`CENTRIC_PFEFFER` ist bewusst leer gelassen.** Ich hatte ihn gesetzt und
+wieder gelöscht: Über die Schnittstelle ließ sich nicht bestätigen, dass er
+angekommen war, und ein Pfeffer in ungewissem Zustand ist die schlechteste
+Lage von allen — er lässt sich später nicht mehr folgenlos ändern. Ein
+eindeutiges „nicht gesetzt" ist mehr wert als ein unsicheres „vielleicht".
+
+Er gehört über die **Oberfläche** gesetzt, mit einem frisch erzeugten Wert,
+als *secret*, und zwar **bevor** der erste Zugangscode entsteht — also vor
+Schritt 5.0. Danach nie wieder ändern: `umschluesseln()` in
+`netlify/lib/codes.mjs` schlüsselt jeden Code beim nächsten Anmelden auf den
+neuen Hashwert um, und ohne denselben Pfeffer gilt danach keiner mehr.
 
 **`CENTRIC_ADMIN` ist ein Wegwerfschlüssel und muss es bleiben.** Er wurde
 in einer Arbeitssitzung erzeugt und steht damit in deren Verlauf. Für seinen
@@ -183,6 +197,9 @@ bleibt lesbar — mit einem Hinweis, wie alt er ist.
 ## Schritt 5 — Unmittelbar nach dem ersten erfolgreichen Deploy
 
 ### 5.0 Betreiberzugang, Demobetriebe und einen leeren Testbetrieb anlegen
+
+**Vorher `CENTRIC_PFEFFER` setzen** (Schritt 2). Danach entstehen Codes, und
+ab dann ist der Pfeffer nicht mehr folgenlos zu ändern.
 
     CENTRIC_ADMIN='<Wert aus den Umgebungsvariablen>' \
       werkzeug/zugaenge-anlegen.sh
