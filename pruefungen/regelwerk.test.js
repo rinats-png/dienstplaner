@@ -17,6 +17,7 @@ import {
   alterAm, schutzBefunde,
   urlaubshinweisFaellig,
   addDays, dow, montag,
+  letzterSonntag, uhrsprung, uhrversatz, dauerAm, bruttoAm,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -303,5 +304,72 @@ describe("Urlaubshinweis im Jahreslauf", () => {
 
   it("formuliert den Einzelfall im Singular", () => {
     expect(urlaubshinweisFaellig(1, "2026-11-02", null).text).toContain("1 Urlaubstag verfällt");
+  });
+});
+
+/* ==========================================================================
+   SOMMERZEIT
+
+   Zweimal im Jahr hat der Tag nicht vierundzwanzig Stunden. Gerechnet wurde
+   bis hierher stur mit der Uhrzeit — beide Male falsch.
+   ========================================================================== */
+describe("Sommerzeit", () => {
+  const N = { start: "22:00", ende: "06:00", pause: 45 };
+  const F = { start: "06:00", ende: "14:00", pause: 30 };
+
+  it("findet den letzten Sonntag im Monat", () => {
+    expect(letzterSonntag(2026, 3)).toBe("2026-03-29");
+    expect(letzterSonntag(2026, 10)).toBe("2026-10-25");
+    expect(letzterSonntag(2027, 3)).toBe("2027-03-28");
+    expect(letzterSonntag(2027, 10)).toBe("2027-10-31");
+    /* 2028 endet der März auf einem Freitag — der letzte Sonntag ist der 26. */
+    expect(letzterSonntag(2028, 3)).toBe("2028-03-26");
+  });
+
+  it("kennt die Richtung des Sprungs", () => {
+    expect(uhrsprung("2026-03-29")).toBe(-60);
+    expect(uhrsprung("2026-10-25")).toBe(60);
+    expect(uhrsprung("2026-03-28")).toBe(0);
+    expect(uhrsprung("2026-08-14")).toBe(0);
+  });
+
+  it("rechnet den Nachtdienst über die Frühjahrsumstellung mit sieben Stunden", () => {
+    /* 28.03. 22:00 bis 29.03. 06:00 — die Uhr springt um zwei auf drei. */
+    expect(dauer(N)).toBe(7.25);
+    expect(dauerAm("2026-03-28", N)).toBe(6.25);
+  });
+
+  it("rechnet ihn über die Herbstumstellung mit neun", () => {
+    expect(dauerAm("2026-10-24", N)).toBe(8.25);
+  });
+
+  it("lässt alle anderen Nächte unberührt", () => {
+    expect(dauerAm("2026-03-27", N)).toBe(dauer(N));
+    expect(dauerAm("2026-08-14", N)).toBe(dauer(N));
+    /* Der Umstellungstag selbst ohne Nachtdienst: ein Frühdienst am
+       Sonntagmorgen liegt nach dem Sprung und ist normal lang. */
+    expect(dauerAm("2026-03-29", F)).toBe(dauer(F));
+  });
+
+  it("rechnet die Ruhezeit über die Umstellung richtig", () => {
+    /* Spätdienst bis 22:00 am 28.03., Frühdienst ab 06:00 am 29.03.:
+       auf der Uhr acht Stunden, in Wirklichkeit sieben. */
+    const S = { start: "14:00", ende: "22:00", pause: 30 };
+    expect(ruhezeitStunden("2026-03-28", S, F)).toBe(7);
+    /* Im Oktober umgekehrt. */
+    expect(ruhezeitStunden("2026-10-24", S, F)).toBe(9);
+    expect(ruhezeitStunden("2026-08-14", S, F)).toBe(8);
+  });
+
+  it("zählt den Sprung nur, wenn er echt im Fenster liegt", () => {
+    /* Ein Dienst, der genau um 02:00 endet, ist noch nicht betroffen. */
+    const bisZwei = { start: "22:00", ende: "02:00", pause: 0 };
+    expect(dauerAm("2026-03-28", bisZwei)).toBe(dauer(bisZwei));
+    /* Einer, der um 02:00 beginnt, auch nicht. */
+    const abZwei = { start: "02:00", ende: "10:00", pause: 0 };
+    expect(dauerAm("2026-03-29", abZwei)).toBe(dauer(abZwei));
+    /* Einer, der ihn umschließt, schon. */
+    const drueber = { start: "01:00", ende: "09:00", pause: 0 };
+    expect(dauerAm("2026-03-29", drueber)).toBe(dauer(drueber) - 1);
   });
 });

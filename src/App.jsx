@@ -4,6 +4,7 @@ import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migratio
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, brutto, fenster,
+  dauerAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
   schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
@@ -1505,7 +1506,11 @@ function pruefen(m, von, bis) {
       }
       for (let i = 1; i < reihe.length; i++) {
         const [, e1] = fenster(reihe[i - 1].d, reihe[i - 1].da); const [s2] = fenster(reihe[i].d, reihe[i].da);
-        const ruhe = (s2 - e1) / 60;
+        /* Über die Zeitumstellung hinweg ist die Ruhezeit eine Stunde kürzer
+           oder länger, als die Uhr zeigt. Im März wurden aus elf Stunden auf
+           dem Plan zehn in Wirklichkeit — ein Verstoß gegen § 5 Abs. 1 ArbZG,
+           den die Prüfung nicht sah. */
+        const ruhe = (s2 - e1 + uhrversatz(e1, s2)) / 60;
         if (ruhe < m.einstellungen.ruhezeit && reihe[i].d >= von && reihe[i].d <= bis)
           push({ art: "ruhezeit", schwere: ruhe < 8 ? "danger" : "warn", datum: reihe[i].d, ref: p.id, personId: p.id,
             titel: `Ruhezeit unterschritten — ${p.nachname}`,
@@ -1959,11 +1964,15 @@ const einschr = (p) => p.einschraenkungen || {};
 /* ------------------------------ Ist-Erfassung ---------------------------- */
 /** Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante. */
 function istDauer(m, p, d, da) {
+  /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
+     ein Nachtdienst sieben oder neun Stunden, nicht acht. Diese Stelle ist
+     der Engpass für alle geleisteten Stunden — Stundenkonto, Lohnausgabe,
+     Ausgleichszeitraum, Belastung hängen daran. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
-  if (!e || !e.bestaetigt) return { std: dauer(da), erfasst: false, abweichung: 0 };
+  if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
   const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
-  const std = dauer(roh);
-  return { std, erfasst: true, abweichung: Math.round((std - dauer(da)) * 100) / 100 };
+  const std = dauerAm(d, roh);
+  return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
 }
 const offeneErfassung = (m, p, bis) => {
   const out = [];
@@ -8741,6 +8750,32 @@ function Pruefung({ sitz, ym, oeffneTag }) {
     <div>
       <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}>
         Prüfung · {MON[mo - 1]} {y}</H1>
+
+      {/* --- Zeitumstellung ---
+          Zwei Tage im Jahr, an denen die gerechneten Stunden von der Uhr
+          abweichen. Wer das nicht weiß, sucht den Fehler in der Anwendung. */}
+      {(() => {
+        const tage = [];
+        for (let d = von; d <= bis; d = addDays(d, 1)) if (uhrsprung(d)) tage.push(d);
+        if (!tage.length) return null;
+        const t = tage[0];
+        const rueck = uhrsprung(t) > 0;
+        return (
+          <Card style={{ marginBottom: 20, borderLeft: `3px solid ${C.violet}` }}>
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 640, marginBottom: 5 }}>
+                Zeitumstellung am {fDatum(t)} — dieser Tag hat {rueck ? 25 : 23} Stunden</div>
+              <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, maxWidth: "72ch" }}>
+                Die Uhr springt in der Nacht {rueck ? "von drei auf zwei zurück" : "von zwei auf drei vor"}.
+                Ein Nachtdienst von {rueck ? "22 bis 6 Uhr dauert in dieser Nacht neun Stunden statt acht"
+                  : "22 bis 6 Uhr dauert in dieser Nacht sieben Stunden statt acht"} — so wird er
+                auch gerechnet, im Stundenkonto wie in der Ruhezeitprüfung.
+                {rueck ? " Zuschläge für Nachtarbeit fallen entsprechend für eine Stunde mehr an."
+                  : " Wer knapp über der Ruhezeit geplant ist, reißt sie in dieser Nacht."}
+              </div>
+            </div>
+          </Card>);
+      })()}
 
       {/* --- § 3 Arbeitszeitgesetz --- */}
       <Card style={{ marginBottom: 20, borderLeft: `3px solid ${ausgleich.length ? C.danger : C.ok}` }}>

@@ -61,6 +61,90 @@ export function fenster(datum, d) {
 }
 
 /* --------------------------------------------------------------------------
+   SOMMERZEIT
+
+   Zweimal im Jahr hat der Tag nicht vierundzwanzig Stunden. In der Nacht
+   zum letzten Sonntag im März springt die Uhr um zwei auf drei — der Tag
+   hat dreiundzwanzig Stunden. Im Oktober zurück von drei auf zwei —
+   fünfundzwanzig.
+
+   Für einen Nachtdienst von 22 bis 6 Uhr heißt das: Er dauert in dieser
+   einen Nacht sieben Stunden, nicht acht. Im Oktober neun. Gerechnet wurde
+   bis hierher stur mit der Uhrzeit, also beide Male mit acht.
+
+   Das ist keine Kleinigkeit. Ein Pflegeheim mit fünf Nachtwachen zahlt im
+   Oktober jedes Jahr fünf Stunden zu wenig und im März fünf zu viel. Und
+   die Ruhezeit nach § 5 ArbZG wird an derselben Stelle falsch gerechnet:
+   In der Märznacht liegt zwischen Dienstende und Dienstbeginn eine Stunde
+   weniger, als die Uhr zeigt.
+
+   Die Umstellung gilt europaweit einheitlich um 01:00 UTC, in
+   mitteleuropäischer Zeit also um 02:00 Ortszeit (März) beziehungsweise
+   03:00 (Oktober). Gerechnet wird hier auf der Ortszeitachse, deshalb liegt
+   der Sprungpunkt in beiden Fällen bei 02:00 der Ortszeit vor dem Sprung.
+   -------------------------------------------------------------------------- */
+
+/** Der letzte Sonntag eines Monats, als ISO-Tag. */
+export function letzterSonntag(jahr, monat) {
+  const d = new Date(jahr, monat, 0);              // letzter Tag des Monats
+  d.setDate(d.getDate() - ((d.getDay() + 7) % 7)); // zurück auf Sonntag
+  return iso(d);
+}
+
+/**
+ * Springt an diesem Tag die Uhr? Gibt die Minuten zurück, die dem Tag
+ * fehlen (−60 im März) oder die er zusätzlich hat (+60 im Oktober), sonst 0.
+ */
+export function uhrsprung(datum) {
+  const jahr = Number(String(datum).slice(0, 4));
+  if (datum === letzterSonntag(jahr, 3)) return -60;
+  if (datum === letzterSonntag(jahr, 10)) return 60;
+  return 0;
+}
+
+/**
+ * Wie viele Minuten die Uhr zwischen zwei Punkten der Ortszeitachse
+ * gesprungen ist. Beide Werte sind Minuten seit 2000-01-01 00:00 Ortszeit,
+ * wie sie fenster() liefert.
+ *
+ * Wirkliche Dauer = (bis − von) + uhrversatz(von, bis).
+ */
+export function uhrversatz(von, bis) {
+  if (!(bis > von)) return 0;
+  let summe = 0;
+  const ersterTag = Math.floor(von / 1440);
+  const letzterTag = Math.floor((bis - 1) / 1440);
+  for (let t = ersterTag; t <= letzterTag; t++) {
+    const tag = addDays("2000-01-01", t);
+    const sprung = uhrsprung(tag);
+    if (!sprung) continue;
+    /* Der Sprungpunkt liegt bei 02:00 Ortszeit vor dem Sprung. Er zählt
+       nur, wenn er echt zwischen den beiden Punkten liegt — ein Dienst,
+       der genau um 02:00 endet, ist noch nicht betroffen. */
+    const punkt = t * 1440 + 120;
+    if (punkt > von && punkt < bis) summe += sprung;
+  }
+  return summe;
+}
+
+/**
+ * Bezahlte Stunden eines Dienstes an einem bestimmten Tag — mit der
+ * Sommerzeit. Für alle Tage außer zweien im Jahr dasselbe wie dauer().
+ */
+export function dauerAm(datum, d) {
+  const [von, bis] = fenster(datum, d);
+  const versatz = uhrversatz(von, bis);
+  if (!versatz) return dauer(d);
+  return Math.round((dauer(d) + versatz / 60) * 100) / 100;
+}
+
+/** Anwesenheit an einem bestimmten Tag, ohne Pausenabzug, mit Sommerzeit. */
+export function bruttoAm(datum, d) {
+  const [von, bis] = fenster(datum, d);
+  return (bis - von + uhrversatz(von, bis)) / 60;
+}
+
+/* --------------------------------------------------------------------------
    § 4 ArbZG — RUHEPAUSEN
 
    Mehr als sechs Stunden: dreißig Minuten. Mehr als neun: fünfundvierzig.
@@ -96,7 +180,11 @@ export function pauseGenuegt(d) {
 export function ruhezeitStunden(datumDavor, dienstDavor, dienstDanach, tageSpaeter = 1) {
   const [, ende] = fenster(datumDavor, dienstDavor);
   const [start] = fenster(addDays(datumDavor, tageSpaeter), dienstDanach);
-  return (start - ende) / 60;
+  /* In der Nacht der Zeitumstellung ist die Ruhezeit eine Stunde kürzer
+     oder länger, als die Uhr zeigt. Im März ist das der Fall, in dem elf
+     Stunden auf dem Plan zehn in Wirklichkeit sind — und damit ein Verstoß
+     gegen § 5 Abs. 1 ArbZG, den der Plan nicht zeigte. */
+  return (start - ende + uhrversatz(ende, start)) / 60;
 }
 
 export function ruhezeitVerletzt(einstellungen, datumDavor, dienstDavor, dienstDanach, tageSpaeter = 1) {
