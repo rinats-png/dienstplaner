@@ -12258,6 +12258,134 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
    wieder herauskommen. Diese Ansicht beantwortet die Frage nach der
    Abhängigkeit vom Anbieter — bevor sie im Vertragsgespräch gestellt wird.
    ========================================================================== */
+/* ==========================================================================
+   SICHERUNG AUSSER HAUS
+
+   Die Datenmitnahme gibt CSV-Dateien aus. Gut zum Weiterverarbeiten,
+   ungeeignet als Sicherung: Sie läuft im Browser, sie braucht einen
+   Menschen, der daran denkt, und sie gibt nicht alles her.
+
+   Eine Sicherung, die im selben Haus liegt wie das Original, ist keine.
+   Für eine außer Haus braucht es zwei Dinge: eine vollständige Datei und
+   einen Weg, sie ohne Browser zu holen.
+
+   Der Sicherungsschlüssel darf genau eines — lesen. Er kann nichts ändern,
+   nichts löschen und sich nicht anmelden. Damit lässt sich ein nächtliches
+   Skript einrichten, ohne einen Zugang aus der Hand zu geben, der den
+   Betrieb umschreiben könnte.
+   ========================================================================== */
+function SicherungAusserHaus({ sitz, melde }) {
+  const [schluessel, setSchluessel] = useState([]);
+  const [neu, setNeu] = useState(null);
+  const [tage, setTage] = useState(90);
+  const [laeuft, setLaeuft] = useState(false);
+  const darfEs = darf(sitz, "org.edit");
+
+  const laden = useCallback(() => {
+    if (!darfEs) return;
+    SP.schluesselListe().then(setSchluessel).catch(() => {});
+  }, [darfEs]);
+  useEffect(() => { laden(); }, [laden]);
+
+  if (!darfEs) return null;
+
+  const ausgeben = async () => {
+    setLaeuft(true);
+    try {
+      const d = await SP.vollausgabe();
+      const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      if (lade(`centric-vollausgabe-${marke}.json`, JSON.stringify(d, null, 2),
+        "application/json;charset=utf-8")) melde("Vollausgabe heruntergeladen.");
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const anlegen = async () => {
+    setLaeuft(true);
+    try {
+      const d = await SP.schluesselAnlegen(tage);
+      setNeu(d);
+      laden();
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const befehl = (k) => `curl -sS -H "Authorization: Bearer ${k}" \\\n  `
+    + `${window.location.origin}/api/vollausgabe \\\n  `
+    + `-o centric-$(date +%F).json`;
+
+  return (
+    <Card style={{ marginTop: 18 }}>
+      <CardHead right={<Lab>{schluessel.filter((k) => !k.abgelaufen).length} gültig</Lab>}>
+        Sicherung außer Haus</CardHead>
+      <div style={{ padding: 22 }}>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px", maxWidth: "72ch" }}>
+          Eine Sicherung, die im selben Haus liegt wie das Original, ist keine.
+          Die Vollausgabe enthält den kompletten Bestand in einer Datei — alles,
+          woraus sich der Betrieb wiederherstellen lässt.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+          <Btn kind="primary" disabled={laeuft} onClick={ausgeben}>
+            {laeuft ? "Läuft …" : "Vollausgabe herunterladen"}</Btn>
+        </div>
+
+        <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 18 }}>
+          <Lab style={{ marginBottom: 8 }}>Ohne Browser — für ein nächtliches Skript</Lab>
+          <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+            Ein Sicherungsschlüssel darf ausschließlich lesen. Er kann nichts
+            ändern, nichts löschen und sich nicht anmelden. Er erscheint genau
+            einmal — danach ist nur noch der Hashwert gespeichert.
+          </p>
+
+          {neu && (
+            <div style={{ padding: "14px 16px", borderRadius: 10, marginBottom: 16,
+              background: C.okLight, border: `1px solid ${C.ok}44` }}>
+              <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 8 }}>
+                Schlüssel angelegt — gültig bis {fDatum(neu.gueltigBis.slice(0, 10))}</div>
+              <code style={{ display: "block", fontFamily: "ui-monospace, monospace",
+                fontSize: 12.5, wordBreak: "break-all", background: C.flaeche,
+                padding: "9px 11px", borderRadius: 7, marginBottom: 10 }}>{neu.schluessel}</code>
+              <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 8 }}>
+                Jetzt notieren. Er wird nicht wieder angezeigt.</div>
+              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 7,
+                background: C.sidebar, color: "#DCE6EA", fontSize: 12,
+                overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
+              <div style={{ marginTop: 10 }}>
+                <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
+            </div>)}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
+            marginBottom: 16 }}>
+            <Field label="Gültig für Tage" hint="Höchstens ein Jahr.">
+              <Inp type="number" min={1} max={365} value={tage} style={{ width: 110 }}
+                onChange={(e) => setTage(Number(e.target.value))} /></Field>
+            <Btn disabled={laeuft} onClick={anlegen}>Schlüssel anlegen</Btn>
+          </div>
+
+          {schluessel.length > 0 && (<div>
+            {schluessel.map((k) => (
+              <div key={k.kennung} className="karte" style={{ display: "flex", gap: 12,
+                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap" }}>
+                <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>
+                  {k.kennung}…</code>
+                <span style={{ fontSize: 12.5, color: C.dim, flex: 1, minWidth: 160 }}>
+                  angelegt {fDatum(String(k.angelegt).slice(0, 10))}</span>
+                <Pill size="sm" tone={k.abgelaufen ? "danger" : "ok"}>
+                  {k.abgelaufen ? "abgelaufen" : `bis ${fDatum(k.gueltigBis.slice(0, 10))}`}</Pill>
+                <Btn size="sm" kind="danger" onClick={async () => {
+                  if (!window.confirm("Der Schlüssel wird sofort ungültig. Ein Skript, "
+                    + "das ihn benutzt, sichert danach nichts mehr.")) return;
+                  try { await SP.schluesselWiderrufen(k.kennung); melde("Widerrufen."); laden(); }
+                  catch (e) { melde(String(e.message || e)); }
+                }}>Widerrufen</Btn>
+              </div>))}
+          </div>)}
+        </div>
+      </div>
+    </Card>);
+}
+
 function Datenmitnahme({ sitz, akt }) {
   const m = sitz.mandant;
   const tabellen = useMemo(() => vollExport(m), [m]);
@@ -12294,6 +12422,8 @@ function Datenmitnahme({ sitz, akt }) {
             <Btn size="sm" disabled={!t.length} onClick={() => akt.exportTabelle(k, t)}>Einzeln</Btn>
           </div>))}
       </Card>
+
+      <SicherungAusserHaus sitz={sitz} melde={akt.melde} />
 
       <Card style={{ marginTop: 18, padding: 22 }}>
         <Lab style={{ marginBottom: 11 }}>Was das bedeutet</Lab>
@@ -17663,6 +17793,9 @@ function AppInnen() {
     const jetzt = () => new Date().toLocaleString("de-DE");
 
     return {
+      /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
+         Server reden, brauchen sie — bisher hatte nur AppInnen sie. */
+      melde,
       /* --- Anmeldung --- */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
       abmelden: () => { setDb((s) => ({ ...s, session: null })); setView("meine"); setDetail(null); },

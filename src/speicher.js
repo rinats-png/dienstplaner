@@ -211,6 +211,36 @@ async function jetztSchreiben(beimSchliessen) {
   }
 }
 
+/* ------------------------ Sicherung außer Haus --------------------------- */
+
+/** Den vollständigen Bestand als eine Datei holen. */
+export async function vollausgabe() {
+  const { status, daten } = await ruf("vollausgabe");
+  if (status !== 200) throw new Error(daten?.fehler || "Ausgabe fehlgeschlagen.");
+  return daten;
+}
+
+/** Einen Sicherungsschlüssel anlegen. Er erscheint genau einmal. */
+export async function schluesselAnlegen(tage) {
+  const { status, daten } = await ruf("sicherungsschluessel",
+    { method: "POST", body: JSON.stringify({ tage }) });
+  if (status !== 200) throw new Error(daten?.fehler || "Anlegen fehlgeschlagen.");
+  return daten;
+}
+
+export async function schluesselListe() {
+  const { status, daten } = await ruf("sicherungsschluessel");
+  if (status !== 200) throw new Error(daten?.fehler || "Abruf fehlgeschlagen.");
+  return daten.schluessel || [];
+}
+
+export async function schluesselWiderrufen(kennung) {
+  const { status, daten } = await ruf("sicherungsschluessel",
+    { method: "DELETE", body: JSON.stringify({ kennung }) });
+  if (status !== 200) throw new Error(daten?.fehler || "Widerruf fehlgeschlagen.");
+  return daten;
+}
+
 /** Vor dem Schließen des Fensters noch Ausstehendes wegschreiben. */
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", (e) => {

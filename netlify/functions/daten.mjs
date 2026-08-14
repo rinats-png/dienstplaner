@@ -118,6 +118,17 @@ async function sitzung(req) {
   const kopf = req.headers.get("authorization") || "";
   const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
   if (!token) return null;
+
+  /* Ein Sicherungsschlüssel ist keine Sitzung: Er läuft nicht ab, weil
+     jemand eine halbe Stunde nichts tut, und er wird nirgends verlängert.
+     Er darf ausschließlich lesen — das prüft der Endpunkt selbst über
+     nurSicherung. */
+  const sk = await sitzungen().get(`sk:${hash(token)}`, { type: "json" }).catch(() => null);
+  if (sk) {
+    if (sk.bis < Date.now()) { await sitzungen().delete(`sk:${hash(token)}`); return null; }
+    return { ...sk, nurSicherung: true };
+  }
+
   const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
   if (!s) return null;
   const jetzt = Date.now();
@@ -428,6 +439,24 @@ export default async (req, context) => {
     const s = await sitzung(req);
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
 
+    /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
+
+       Der erste Entwurf verließ sich darauf, dass jeder Endpunkt selbst auf
+       nurSicherung prüft. Die Prüfung hat das sofort widerlegt: Der Schlüssel
+       trägt die Rolle „leitung", und PUT /bestand fragt nur nach der Rolle —
+       ein Schlüssel, der ausdrücklich nur lesen sollte, konnte den ganzen
+       Betrieb überschreiben.
+
+       Deshalb hier eine Positivliste statt Einzelprüfungen: Was nicht
+       ausdrücklich erlaubt ist, ist verboten. Wer eine Einzelprüfung
+       vergisst, verliert damit nichts. */
+    if (s.nurSicherung && !(pfad === "vollausgabe" && req.method === "GET")) {
+      await protokoll("sicherungsschluessel", kennung(req, s), "abgewiesen",
+        `${req.method} ${pfad}`);
+      return antwort({ fehler: "Dieser Schlüssel darf ausschließlich die Vollausgabe lesen.",
+        text: "Für alles andere braucht es einen Zugangscode." }, 403);
+    }
+
 
     /* ------------------------------ Lesen ---------------------------- */
     /* Was hinausgeht, hängt an der Rolle. Eine Pflegekraft bekommt den Plan,
@@ -609,6 +638,95 @@ export default async (req, context) => {
       const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
       if (token) await sitzungen().delete(`t:${hash(token)}`);
       return antwort({ ok: true });
+    }
+
+    /* ------------------------- Vollausgabe --------------------------
+       Die Datenmitnahme in der Oberfläche gibt CSV-Dateien aus — gut zum
+       Weiterverarbeiten, ungeeignet als Sicherung: Sie läuft im Browser, sie
+       braucht einen Menschen, und sie gibt nicht alles her.
+
+       Für eine Sicherung außer Haus braucht es einen Weg, der ohne Browser
+       auskommt. Ein nächtliches Skript auf einem eigenen Server holt sich
+       damit den vollständigen Bestand als eine Datei.
+
+       Zwei Wege hinein: eine angemeldete Sitzung der Organisationsleitung —
+       oder ein Sicherungsschlüssel, der nur das hier darf.               */
+    if (pfad === "vollausgabe" && req.method === "GET") {
+      if (s.rolle !== "leitung" && !s.nurSicherung)
+        return antwort({ fehler: "Nur die Organisationsleitung darf den ganzen Bestand ausgeben.",
+          text: absageText(s.rolle) }, 403);
+      const bv = await bremse("lesen", kennung(req, s));
+      if (!bv.frei) return zuVielAntwort(bv.wartet);
+      const mit = await bestandLesen(store, s.bestand);
+      if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      await protokoll("vollausgabe", kennung(req, s), "erfolg", s.nurSicherung ? "Schlüssel" : "Sitzung");
+      const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      return antwort({
+        centric: "vollausgabe",
+        fassung: 1,
+        erzeugt: new Date().toISOString(),
+        raum: s.bestand,
+        stand: mit.stand,
+        bestand: mit.bestand,
+      }, 200, { "content-disposition": `attachment; filename="centric-${s.bestand}-${marke}.json"` });
+    }
+
+    /* --------------------- Sicherungsschlüssel ----------------------
+       Ein Schlüssel, der genau eines darf: den Bestand lesen. Er kann
+       nichts ändern, nichts löschen und sich nicht anmelden. Damit lässt
+       sich eine Sicherung einrichten, ohne einen Zugang aus der Hand zu
+       geben, der den Betrieb umschreiben könnte.
+
+       Er wird genau einmal gezeigt. Gespeichert ist nur der Hashwert —
+       genau wie bei den Zugangscodes.                                  */
+    if (pfad === "sicherungsschluessel" && req.method === "POST") {
+      if (s.rolle !== "leitung" || s.nurSicherung)
+        return antwort({ fehler: "Nur die Organisationsleitung darf Sicherungsschlüssel anlegen." }, 403);
+      const { tage } = await req.json().catch(() => ({}));
+      /* Ein Schlüssel ohne Ablauf ist ein Schlüssel, der irgendwann in
+         einem alten Skript vergessen wird. Höchstens ein Jahr. */
+      const gueltig = Math.min(365, Math.max(1, Number(tage) || 90));
+      const roh = randomBytes(24).toString("base64url");
+      const bis = Date.now() + gueltig * 86400000;
+      await sitzungen().setJSON(`sk:${hash(roh)}`, {
+        bestand: s.bestand, rolle: "leitung", nurSicherung: true,
+        name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
+        angelegt: new Date().toISOString(), bis,
+      });
+      await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`);
+      return antwort({ ok: true, schluessel: roh, gueltigBis: new Date(bis).toISOString(),
+        tage: gueltig,
+        hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen." });
+    }
+
+    if (pfad === "sicherungsschluessel" && req.method === "GET") {
+      if (s.rolle !== "leitung" || s.nurSicherung)
+        return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
+      const { blobs } = await sitzungen().list({ prefix: "sk:" }).catch(() => ({ blobs: [] }));
+      const liste = [];
+      for (const b of blobs) {
+        const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
+        if (!k || k.bestand !== s.bestand) continue;
+        liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
+          gueltigBis: new Date(k.bis).toISOString(), abgelaufen: k.bis < Date.now() });
+      }
+      return antwort({ schluessel: liste.sort((a, b) => (a.angelegt < b.angelegt ? 1 : -1)) });
+    }
+
+    if (pfad === "sicherungsschluessel" && req.method === "DELETE") {
+      if (s.rolle !== "leitung" || s.nurSicherung)
+        return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
+      const { kennung: kz } = await req.json().catch(() => ({}));
+      if (!kz) return antwort({ fehler: "Keine Kennung angegeben." }, 400);
+      const { blobs } = await sitzungen().list({ prefix: `sk:${kz}` }).catch(() => ({ blobs: [] }));
+      let weg = 0;
+      for (const b of blobs) {
+        const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
+        if (!k || k.bestand !== s.bestand) continue;
+        await sitzungen().delete(b.key); weg++;
+      }
+      await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg));
+      return antwort({ ok: true, widerrufen: weg });
     }
 
     /* -------------------------- Sicherungskopien --------------------- */
