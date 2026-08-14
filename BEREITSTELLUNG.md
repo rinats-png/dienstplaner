@@ -23,9 +23,20 @@ Site.
 
 ## Schritt 1 — Das Projekt mit dem Git-Vorrat verbinden
 
-Die Site wurde bisher **nie mit einem Git-Vorrat verbunden**; Stände kamen
-von Hand. Das ist der Grund, warum das Repository am Anfang dieses Reviews
-leer aussah, obwohl die Anwendung lief.
+Die Site ist **nicht mit einem Git-Vorrat verbunden**. Das ist keine
+Vermutung mehr: Der veröffentlichte Stand trägt
+
+    "commit_ref": null
+    "commit_url": null
+    "committer": null
+    "title": "Deploy triggered by upload"
+    "deploy_source": "api"
+
+Jeder bisherige Stand kam als Upload. Das erklärt auch, warum das
+Repository am Anfang dieses Reviews leer aussah, obwohl die Anwendung lief.
+
+Der derzeit veröffentlichte Stand ist vom **10. August 2026** — also von
+vor dieser gesamten Arbeit.
 
 Solange das so bleibt, muss jede Änderung von Hand hochgeladen werden — und
 niemand kann später nachvollziehen, welcher Stand gerade läuft.
@@ -151,6 +162,24 @@ Verwalterkonten, Sicherung außer Haus, Bremse.
 
 ---
 
+## Schritt 3a — Eine Altlast, die dabei verschwindet
+
+Auf der Site sind **sieben** Funktionen veröffentlicht, im Vorrat stehen
+**sechs**. Die überzählige heißt `schutz` und läuft noch auf der alten
+Laufzeitschnittstelle (`runtimeAPIVersion: 1`, alle anderen auf 2).
+
+Im Git-Verlauf dieses Vorrats hat es eine Datei `netlify/functions/schutz*`
+**nie** gegeben — `netlify/lib/schutz.mjs` ist eine Bibliothek, keine
+Funktion. Sie stammt also aus einem Upload, dessen Quelltext nirgends mehr
+liegt.
+
+Eine erreichbare Serverfunktion, zu der es keinen Quelltext gibt, lässt sich
+weder prüfen noch nachvollziehen. Mit dem ersten Deploy aus Git verschwindet
+sie von selbst. Wer vorher wissen will, was sie tat: Netlify-Oberfläche →
+*Functions* → `schutz` → Logs.
+
+---
+
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
 **Migration 7 → 8.** Bestehende Betriebe werden beim ersten Öffnen
@@ -245,10 +274,19 @@ Organisationsrichtlinie, keine Störung:
     netlify-mcp.netlify.app:443      gateway answered 403 to CONNECT
 
 Der Netlify-Connector läuft über eine andere Strecke und funktioniert —
-darüber stammen die Angaben zu den Umgebungsvariablen oben. Sein
-Bereitstellungsbefehl lädt den Quelltext aber über `netlify-mcp.netlify.app`
-hoch, und dieser Host ist gesperrt. Ein Deploy von hier aus ist deshalb auf
-keinem Weg möglich.
+darüber stammen die Angaben zu den Umgebungsvariablen und zum
+veröffentlichten Stand. Sein Bereitstellungsbefehl lädt den Quelltext aber
+über `netlify-mcp.netlify.app` hoch, und dieser Host ist gesperrt. Der
+Versuch bricht entsprechend ab:
+
+    Starting deployment process...
+    Uploading your project...
+    Error: Failed to deploy site: 403 Forbidden
+
+Das 403 kommt vom Egress-Gateway beim Verbindungsaufbau, noch vor jedem
+TLS-Austausch mit Netlify — es ist also keine Frage von Zugangsdaten oder
+Berechtigungen im Netlify-Konto. Ein Deploy von hier aus ist auf keinem Weg
+möglich.
 
 Die Schritte oben sind so geschrieben, dass sie ohne Rückfragen abzuarbeiten
 sind.
