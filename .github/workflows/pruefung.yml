@@ -71,6 +71,14 @@ jobs:
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
       # Betrieb geschafft hätte.
+      # Benannte Verwalterkonten statt eines Geheimnisses für alle.
+      - name: Verwalterkonten
+        run: npm run pruefung:verwalter
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.8
+
       - name: Sicherung außer Haus
         run: npm run pruefung:sicherung
         env:
