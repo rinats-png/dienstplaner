@@ -583,6 +583,24 @@ function nachtAnteil(d) {
   return Math.round(sum / 60 * 100) / 100;
 }
 
+/**
+ * Nachtstunden an einem bestimmten Tag — mit der Sommerzeit.
+ *
+ * Der Sprungpunkt liegt um 02:00 Ortszeit und damit immer innerhalb des
+ * Nachtfensters. Wer in der Oktobernacht arbeitet, leistet eine
+ * Nachtstunde mehr; im März eine weniger. Das wirkt unmittelbar auf den
+ * Zuschlag nach § 6 Abs. 5 ArbZG.
+ *
+ * Die Schwellenprüfungen („ist das ein Nachtdienst?") benutzen weiterhin
+ * die datumsfreie Fassung — eine Dienstart ist an jedem Tag dieselbe.
+ */
+function nachtAnteilAm(datum, d) {
+  const [von, bis] = fenster(datum, d);
+  const versatz = uhrversatz(von, bis);
+  if (!versatz) return nachtAnteil(d);
+  return Math.max(0, Math.round((nachtAnteil(d) + versatz / 60) * 100) / 100);
+}
+
 /* ------------------------------- Rollenwerk ------------------------------- */
 const ROLLEN = [
   { id: "betreiber", label: "Betreiber", kurz: "BE", farbe: "#1B1E23", berechnet: false, extern: true,
@@ -1334,7 +1352,7 @@ function istStunden(m, p, ym) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
-      const na = nachtAnteil(da); nacht += na; dienste++; if (na >= 2) naechte++;
+      const na = nachtAnteilAm(d, da); nacht += na; dienste++; if (na >= 2) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
@@ -2240,7 +2258,7 @@ function zuschlagStunden(m, p, ym) {
       if (!da) continue;
       const gearbeitet = istDauer(m, p, d, da).std;
       r.gesamt += gearbeitet;
-      r.nacht += nachtAnteil(da);
+      r.nacht += nachtAnteilAm(d, da);
       for (const teil of tagesanteile(d, da)) {
         const std = teil.minuten / 60;
         const w = dow(teil.datum);
@@ -8729,7 +8747,7 @@ function NichtGespeichert({ lage, melde, aufGeloest }) {
     </div>);
 }
 
-function Pruefung({ sitz, ym, oeffneTag }) {
+function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
   const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
@@ -8748,7 +8766,16 @@ function Pruefung({ sitz, ym, oeffneTag }) {
 
   return (
     <div>
-      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}>
+      {/* Die Prüfung zeigte einen Monat, ließ ihn aber nicht wechseln — wer
+          den nächsten sehen wollte, musste über den Monatsplan gehen. */}
+      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}
+        right={setYm ? (<div style={{ display: "flex", gap: 9 }} className="noprint">
+          <Btn onClick={() => { const d = new Date(y, mo - 2, 1);
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück">‹</Btn>
+          <Btn onClick={() => setYm(heute().slice(0, 7))}>Heute</Btn>
+          <Btn onClick={() => { const d = new Date(y, mo, 1);
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor">›</Btn>
+        </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
 
       {/* --- Zeitumstellung ---
@@ -18922,7 +18949,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "jahr" && <Jahresansicht sitz={sitz} ym={ym} oeffnePerson={setPerson} />}
             {aktiveView === "buch" && <Dienstbuch sitz={sitz} akt={akt} />}
             {aktiveView === "abrechnung" && <Abrechnungsdaten sitz={sitz} ym={ym} akt={akt} />}
-            {aktiveView === "pruef" && <Pruefung sitz={sitz} ym={ym} oeffneTag={setTag} />}
+            {aktiveView === "pruef" && <Pruefung sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} />}
             {aktiveView === "betrieb" && <Betrieb sitz={sitz} akt={akt} />}
           </>)}
           </main>
