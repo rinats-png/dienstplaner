@@ -425,6 +425,9 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   animation:uhr 5s linear forwards;}
 @keyframes uhr{from{transform:rotate(0deg); opacity:1;} to{transform:rotate(360deg); opacity:.25;}}
 @keyframes pulsieren{0%,100%{opacity:.55;} 50%{opacity:1;}}
+/* Ladegerüst: ein ruhiges Pulsieren statt eines Drehrads */
+.pulsiert{animation:pulsieren 1.6s ease-in-out infinite;}
+@media (max-width: 1024px){ .nur-breit{display:none !important;} }
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.01ms !important; animation-iteration-count:1 !important;
     transition-duration:.01ms !important;}
@@ -492,6 +495,20 @@ const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate(
 const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
 const dow = (s) => (pISO(s).getDay() + 6) % 7;
+
+/* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
+
+   Fronleichnam gilt in Sachsen und Thüringen nur in bestimmten Gemeinden,
+   Mariä Himmelfahrt in Bayern nur in überwiegend katholischen, und das
+   Friedensfest allein in Augsburg. Wer dort plant, merkt einen Fehler erst,
+   wenn die Zuschläge falsch abgerechnet sind — deshalb ein sichtbarer
+   Hinweis statt einer stillen Annahme. */
+const GEMEINDE_FEIERTAGE = {
+  BY: "In Bayern hängen Mariä Himmelfahrt und das Augsburger Friedensfest von der Gemeinde ab.",
+  SN: "In Sachsen gilt Fronleichnam nur in bestimmten Gemeinden.",
+  TH: "In Thüringen gilt Fronleichnam nur in bestimmten Gemeinden.",
+};
+const gemeindeHinweis = (land) => GEMEINDE_FEIERTAGE[land] || null;
 const between = (a, b) => Math.round((pISO(b) - pISO(a)) / 86400000);
 const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
 const montag = (s) => addDays(s, -dow(s));
@@ -4076,9 +4093,54 @@ function Balken({ ist, soll, tone }) {
     <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3, transition: "width .4s cubic-bezier(.4,0,.2,1)" }} /></div>;
 }
 function Sheet({ open, onClose, titel, children, width = 700 }) {
+  const blatt = useRef(null);
+  const vorher = useRef(null);
+
+  /* Fokus führen.
+
+     Vorher blieb der Tastaturfokus hinter dem Blatt: Wer mit der Tastatur
+     arbeitet, tabbte durch die verdeckte Seite. Drei Dinge fehlten — Fokus
+     beim Öffnen hinein, Fokus darin halten, beim Schließen zurück zum
+     auslösenden Element. Escape schließt jetzt ebenfalls. */
+  useEffect(() => {
+    if (!open) return undefined;
+    vorher.current = document.activeElement;
+    const knoten = blatt.current;
+    if (!knoten) return undefined;
+
+    const fokussierbar = () => Array.from(knoten.querySelectorAll(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]),'
+      + ' select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      .filter((el) => el.offsetParent !== null);
+
+    const erste = fokussierbar()[0];
+    if (erste) erste.focus();
+    else knoten.focus();
+
+    const taste = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const liste = fokussierbar();
+      if (!liste.length) return;
+      const ersteE = liste[0], letzteE = liste[liste.length - 1];
+      if (e.shiftKey && document.activeElement === ersteE) { e.preventDefault(); letzteE.focus(); }
+      else if (!e.shiftKey && document.activeElement === letzteE) { e.preventDefault(); ersteE.focus(); }
+    };
+    knoten.addEventListener("keydown", taste);
+    return () => {
+      knoten.removeEventListener("keydown", taste);
+      /* Zurück zu dem, was das Blatt geöffnet hat — sonst landet der Fokus
+         am Seitenanfang und man sucht sich zurück. */
+      const z = vorher.current;
+      if (z && typeof z.focus === "function" && document.contains(z)) z.focus();
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (<div className="sheet-back" onClick={onClose}>
-    <div className="blatt" onClick={(e) => e.stopPropagation()} style={{ maxWidth: width }}>
+    <div className="blatt" ref={blatt} tabIndex={-1} role="dialog" aria-modal="true"
+      aria-label={typeof titel === "string" ? titel : undefined}
+      onClick={(e) => e.stopPropagation()} style={{ maxWidth: width }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px",
         borderBottom: `1px solid ${C.lineSoft}` }}>
         <div style={{ fontSize: 18, fontWeight: 650, letterSpacing: "-.02em" }}>{titel}</div>
@@ -16916,7 +16978,10 @@ function Betrieb({ sitz, akt }) {
             {BRANCHEN.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
           <Field label="Bezeichnung der Einheiten" hint="Wirkt in der gesamten Oberfläche.">
             <Inp value={m.einheitLabel} onChange={(e) => akt.setzeFeld("einheitLabel", e.target.value)} /></Field>
-          <Field label="Bundesland" hint="Bestimmt die gesetzlichen Feiertage.">
+          <Field label="Bundesland"
+            hint={gemeindeHinweis(m.bundesland)
+              ? `Bestimmt die gesetzlichen Feiertage. ${gemeindeHinweis(m.bundesland)} Bitte für euren Ort prüfen.`
+              : "Bestimmt die gesetzlichen Feiertage."}>
             <Sel value={m.bundesland} onChange={(e) => akt.setzeFeld("bundesland", e.target.value)}>
               {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
         </div>
@@ -18722,8 +18787,32 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         </Card></div></div></>);
   }
 
-  if (!db) return <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center",
-    justifyContent: "center", fontFamily: FONT, fontSize: 15, color: C.dim }}>CENTRIC wird geladen …</div>;
+  /* Gerüst statt Satz.
+
+     Zwischen Anmeldung und fertiger Oberfläche stand „CENTRIC wird geladen …"
+     in der Bildmitte. Bei mehreren Megabyte über Mobilfunk sind das mehrere
+     Sekunden ohne Fortschritt. Ein Umriss dessen, was gleich kommt, lässt
+     dieselbe Wartezeit kürzer wirken und zeigt zugleich, dass etwas
+     passiert. */
+  if (!db) return (<><style>{bauStyles()}</style>
+    <div className="sw-root" style={{ display: "flex", minHeight: "100vh" }}>
+      <div style={{ width: 252, background: C.sidebar, flexShrink: 0 }} className="nur-breit" />
+      <div style={{ flex: 1, padding: "28px 32px" }}>
+        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: 8,
+          background: C.flaecheStill, marginBottom: 12 }} />
+        <div className="pulsiert" style={{ width: 320, height: 16, borderRadius: 6,
+          background: C.flaecheStill, marginBottom: 30 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 12, marginBottom: 26 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: 12,
+              background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />))}
+        </div>
+        <div className="pulsiert" style={{ height: 240, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+        <div className="nurLeser" role="status" aria-live="polite">CENTRIC wird geladen</div>
+      </div>
+    </div></>);
   if (!db.session) return (<><style>{bauStyles()}</style><Anmeldung db={db} onLogin={akt.anmelden} /></>);
   if (!sitz) return (<><style>{bauStyles()}</style><Anmeldung db={db} onLogin={akt.anmelden} /></>);
 

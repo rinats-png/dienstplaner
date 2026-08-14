@@ -104,8 +104,14 @@ function Preise({ onZurueck, onStarten, F }) {
   const jePerson = personen ? (gesamt / personen) : 0;
 
   /* Vergleich: was eine Kopfpauschale kosten würde. Bewusst am unteren
-     Rand des Marktes gerechnet, damit der Vergleich nicht schmeichelt. */
-  const kopfpauschale = Math.max(169, standorte * 169 + personen * 0.9);
+     Rand des Marktes gerechnet, damit der Vergleich nicht schmeichelt.
+
+     Vergleichende Werbung ist zulässig, wenn sie nachprüfbar ist. Die
+     Annahme steht deshalb jetzt auch auf dem Bildschirm, nicht nur hier
+     im Quelltext — siehe Fußnote unter dem Rechner. */
+  const VERGLEICH = { grund: 169, jePerson: 0.9, stand: "August 2026" };
+  const kopfpauschale = Math.max(VERGLEICH.grund,
+    standorte * VERGLEICH.grund + personen * VERGLEICH.jePerson);
   const ersparnis = Math.max(0, Math.round((kopfpauschale - gesamt) * 12));
 
   const Zahl = ({ wert, einheit, gross }) => (
@@ -211,6 +217,16 @@ function Preise({ onZurueck, onStarten, F }) {
               Der Unterschied macht rund{" "}
               <b style={{ fontVariantNumeric: "tabular-nums" }}>
                 {ersparnis.toLocaleString("de-DE")} €</b> im Jahr aus.
+              {/* Vergleichende Werbung ist zulässig, wenn sie nachprüfbar
+                  ist. Die Annahme gehört deshalb auf den Bildschirm, nicht
+                  nur in den Quelltext. */}
+              <div style={{ fontSize: 12, color: F.dim, marginTop: 10, lineHeight: 1.5 }}>
+                Verglichen mit einer Kopfpauschale von {VERGLEICH.grund} € je Standort
+                zuzüglich {VERGLEICH.jePerson.toLocaleString("de-DE",
+                  { minimumFractionDigits: 2 })} € je Person und Monat — eine Annahme am
+                unteren Rand des Marktes, Stand {VERGLEICH.stand}. Was du tatsächlich
+                zahlst, hängt vom Angebot deines Anbieters ab.
+              </div>
             </div>)}
         </div>
       </div>
