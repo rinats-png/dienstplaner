@@ -461,6 +461,13 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
    sind, und alles daneben wird ruhiger statt gedrängter. */
 @media (max-width: 560px){
   main.bereich{padding:12px 10px 88px;}
+  /* Die Kopfleiste schob das Dokument auf 769px auf einem 390px breiten
+     Gerät — gemessen, nicht geschätzt. Die Werkzeuge rechts sind auf dem
+     Telefon ohnehin zweitrangig; die Suche bleibt, der Rest tritt ab. */
+  .kopfleiste{padding-left:8px; padding-right:8px; gap:8px;}
+  .kopfleiste .kopf-werkzeuge{display:none !important;}
+  .suchknopf kbd{display:none;}
+  .suchknopf{min-width:0; flex:1 1 auto;}
   /* Vierundvierzig Pixel sind die Untergrenze für eine Fläche, die mit dem
      Daumen getroffen werden soll. */
   .planzelle{min-height:44px !important;}
@@ -488,6 +495,9 @@ const between = (a, b) => Math.round((pISO(b) - pISO(a)) / 86400000);
 const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
 const montag = (s) => addDays(s, -dow(s));
 const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+/* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
+   und „Donnerstag" liest sich im Dienst schneller als „Do". */
+const DOW_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const heute = () => iso(new Date());
 const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
@@ -4056,10 +4066,45 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
    ANMELDUNG — bestimmt die Zugriffstiefe
    ========================================================================== */
 function Anmeldung({ db, onLogin }) {
-  const [mid, setMid] = useState(db.mandanten[0].id);
-  const m = db.mandanten.find((x) => x.id === mid);
-  const proRolle = ROLLEN.filter((r) => r.id !== "betreiber").map((r) => ({
-    r, person: m.personen.find((p) => p.rolle === r.id && p.status === "aktiv") }));
+  /* Die gewählte Kennung wird einmal beim ersten Rendern festgelegt. Ändert
+     sich der Bestand danach — weil der Server einen gefilterten Ausschnitt
+     nachliefert oder ein frisch angelegter Raum noch keine Betriebe hat —,
+     zeigte mid auf einen Betrieb, den es nicht mehr gibt. `find` gab dann
+     undefined zurück und die nächste Zeile brach mit „Cannot read
+     properties of undefined (reading 'personen')" ab.
+
+     Statt darauf zu vertrauen, dass die Kennung passt, wird sie gegen den
+     aktuellen Bestand geprüft und notfalls auf den ersten Betrieb
+     zurückgeführt. */
+  const betriebe = Array.isArray(db.mandanten) ? db.mandanten : [];
+  const [mid, setMid] = useState(betriebe.length ? betriebe[0].id : null);
+  const m = betriebe.find((x) => x.id === mid) || betriebe[0] || null;
+  const proRolle = m && Array.isArray(m.personen)
+    ? ROLLEN.filter((r) => r.id !== "betreiber").map((r) => ({
+      r, person: m.personen.find((p) => p.rolle === r.id && p.status === "aktiv") }))
+    : [];
+
+  /* Ohne Betrieb gibt es keine Rollenauswahl. Das trifft einen Zugang, der
+     auf einen leeren Raum zeigt — vorher endete das im Fehlerbildschirm. */
+  if (!m) {
+    return (
+      <div className="sw-root">
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+          justifyContent: "center", padding: "5vh 20px" }}>
+          <Card style={{ padding: 30, maxWidth: 460, textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+              <Logo size={64} />
+            </div>
+            <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>
+              Dieser Zugang hat noch keinen Betrieb</div>
+            <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>
+              Der Datenraum ist angelegt, aber noch leer. Die Organisationsleitung
+              richtet den Betrieb ein — danach funktioniert dieser Zugang.</p>
+            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+          </Card>
+        </div>
+      </div>);
+  }
 
   return (
     <div className="sw-root">
@@ -6980,7 +7025,99 @@ function Tagesfazit({ lage, onTag }) {
     </div>);
 }
 
-function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
+/* --------------------------------------------------------------------------
+   WOCHENLISTE — der Monatsplan auf dem Telefon
+
+   Das Raster hat eine Mindestbreite von 1040 Pixeln. Auf 390 Pixeln bleibt
+   davon ein Ausschnitt von drei Tagen, und mit einunddreißig Spalten lässt
+   sich daran nichts retten — es braucht eine andere Form, keine kleinere.
+
+   Deshalb eine Liste: sieben Tage untereinander, je Tag die Dienste mit
+   ihrem Besetzungsstand. Dieselben Zahlen wie im Raster, dieselbe Prüfung,
+   nur senkrecht statt waagerecht. Antippen öffnet den Tag.
+   -------------------------------------------------------------------------- */
+function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
+  const m = sitz.mandant;
+  const [y, mo] = ym.split("-").map(Number);
+  const n = dim_(y, mo - 1);
+  const d0 = heute();
+  const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
+
+  /* Die Woche, die den heutigen Tag enthält — sonst die erste des Monats. */
+  const startTag = d0.slice(0, 7) === ym ? Math.max(1, pISO(d0).getDate() - 3) : 1;
+  const [ab, setAb] = useState(startTag);
+  useEffect(() => { setAb(d0.slice(0, 7) === ym ? Math.max(1, pISO(d0).getDate() - 3) : 1); }, [ym]);
+
+  const tage = [];
+  for (let i = ab; i < ab + 7 && i <= n; i++) tage.push(`${ym}-${pad(i)}`);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 10, marginBottom: 12 }}>
+        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}>‹ davor</Btn>
+        <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
+          {pISO(tage[0]).getDate()}. – {pISO(tage[tage.length - 1]).getDate()}. {MON[mo - 1]}</span>
+        <Btn size="sm" onClick={() => setAb(Math.min(n - 6 > 0 ? n - 6 : 1, ab + 7))}
+          disabled={ab + 7 > n}>danach ›</Btn>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {tage.map((d) => {
+          const fei = feiertag(d, m.bundesland);
+          const we = dow(d) >= 5;
+          const t = lage.tage.find((x) => x.datum === d);
+          const istHeute = d === d0;
+          return (
+            <Card key={d} onClick={() => oeffneTag(d)}
+              style={{ padding: 0, overflow: "hidden", cursor: "pointer",
+                borderLeft: `3px solid ${t ? (t.stufe === 2 ? C.danger : C.warn) : istHeute ? C.accent : "transparent"}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
+                background: istHeute ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent" }}>
+                <span style={{ fontSize: 19, fontWeight: 700, ...NUM,
+                  color: istHeute ? C.accent : C.text }}>{pISO(d).getDate()}.</span>
+                <span style={{ fontSize: 13.5, color: C.dim }}>{DOW_LANG[dow(d)]}</span>
+                {fei && <Pill size="sm" tone="warn">{fei}</Pill>}
+                {istHeute && <Pill size="sm" tone="accent">heute</Pill>}
+                <span style={{ flex: 1 }} />
+                {t && <span style={{ fontSize: 12, fontWeight: 700,
+                  color: t.stufe === 2 ? C.danger : C.warn }}>{t.text}</span>}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {m.dienstarten.map((da) => {
+                  const b = (bes[d] || {})[da.id];
+                  if (!b) return null;
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
+                  return (
+                    <div key={da.id} style={{ display: "flex", alignItems: "center", gap: 11,
+                      padding: "9px 14px", borderTop: `1px solid ${C.lineSoft}`, minHeight: 44 }}>
+                      <Zelle da={da} size={26} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5 }}>{da.name}</div>
+                        <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0, minWidth: 62 }}>
+                        <div style={{ fontSize: 14, ...NUM }}>
+                          <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
+                          <span style={{ color: C.dimmer, fontSize: 11.5 }}>/{b.soll}</span></div>
+                        <div style={{ width: 58, height: 3, borderRadius: 2, background: C.lineSoft,
+                          overflow: "hidden", marginLeft: "auto", marginTop: 3 }}>
+                          <div style={{ width: `${anteil}%`, height: "100%",
+                            background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
+                      </div>
+                      {b.qualFehlt && <span title="Fachkraftquote nicht erfüllt"
+                        style={{ width: 7, height: 7, borderRadius: 4, background: C.danger, flexShrink: 0 }} />}
+                    </div>);
+                })}
+              </div>
+            </Card>);
+        })}
+      </div>
+    </div>);
+}
+
+function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
   const [suche, setSuche] = useState("");
   const [filterDienst, setFilterDienst] = useState("");
   const [nurKnapp, setNurKnapp] = useState(false);
@@ -7009,6 +7146,10 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
 
       <Tagesfazit lage={lage} onTag={oeffneTag} />
+
+      {/* Auf dem Telefon tritt die Liste an die Stelle des Rasters. Kein
+          geschrumpftes Raster, sondern eine eigene Form. */}
+      {schmal ? <Wochenliste sitz={sitz} ym={ym} oeffneTag={oeffneTag} bes={bes} lage={lage} /> : <>
 
       <Filterleiste suche={suche} setSuche={setSuche} platzhalter={`${m.einheitLabel} oder Dienstart …`}
         rechts={<>
@@ -7127,6 +7268,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
             <span style={{ fontSize: 13, color: C.dim, ...NUM }}>{d.name} · {d.start}–{d.ende} · {n1(dauer(d))} h</span>
           </div>))}
       </div>
+      </>}
     </div>);
 }
 
@@ -16968,7 +17110,7 @@ const NAV_BETREIBER = [
  * Jeder Bereich hat Unterreiter — die Kopfzeile bleibt lesbar, nichts ist versteckt.
  */
 const BEREICHE = [
-  { id: "heute", label: "Heute", views: [
+  { id: "heute", label: "Im Dienst", views: [
     ["start", "Start", null],
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
@@ -16977,7 +17119,7 @@ const BEREICHE = [
     ["lage", "Lagebild", "plan.view.unit"],
     ["zeitachse", "Zeitachse", "plan.view.unit"],
   ]},
-  { id: "planung", label: "Planung", views: [
+  { id: "planung", label: "Planen", views: [
     ["plan", "Monatsplan", "plan.view.all"],
     ["einsatz", "Personaleinsatz", "plan.view.unit"],
     ["jahr", "Jahresansicht", "plan.view.unit"],
@@ -16986,7 +17128,7 @@ const BEREICHE = [
     ["sonder", "Sondereinsätze", "plan.view.unit"],
     ["folge", "Schichtfolge", "pattern.edit"],
   ]},
-  { id: "anliegen", label: "Anliegen", views: [
+  { id: "anliegen", label: "Zu entscheiden", views: [
     ["notrufe", "Notrufe", "plan.view.unit"],
     ["offene", "Offene Schichten", null],
     ["antraege", "Anträge", "req.approve.unit"],
@@ -16995,7 +17137,7 @@ const BEREICHE = [
     ["aushang", "Schwarzes Brett", null],
     ["buch", "Dienstbuch", "plan.view.unit"],
   ]},
-  { id: "team", label: "Team", views: [
+  { id: "team", label: "Wer mitfährt", views: [
     ["personal", "Personal", "staff.view"],
     ["quals", "Qualifikationen", "staff.view"],
     ["nachweise", "Nachweise", "staff.view"],
@@ -17003,7 +17145,7 @@ const BEREICHE = [
     ["verteilung", "Verteilung", "staff.view"],
     ["mittel", "Betriebsmittel", "plan.view.unit"],
   ]},
-  { id: "auswertung", label: "Auswertung", views: [
+  { id: "auswertung", label: "Nachsehen", views: [
     ["pruef", "Prüfung", "plan.view.all"],
     ["belastung", "Belastung", "plan.view.unit"],
     ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
@@ -18450,8 +18592,9 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const aktBereich = bereiche.find((b) => b.views.some(([id]) => id === aktiveView)) || bereiche[0];
   const r = istBetreiber ? ROLLEN[0] : rolle(sitz.person.rolle);
   const ungelesen = istBetreiber ? 0 : (sitz.mandant.nachrichten || []).filter((n) => n.personId === sitz.person.id && !n.gelesen).length;
-  /* Nur diese Ansichten sind für das Telefon ausgelegt. */
-  const MOBIL = ["meine"];
+  /* Für das Telefon ausgelegt. Der Monatsplan kam hinzu, seit er dort als
+     Tagesliste statt als Raster erscheint — siehe Wochenliste. */
+  const MOBIL = ["meine", "plan"];
   const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
   const tabs = istBetreiber
     ? [["mandanten", "Mandanten", "▤"], ["rechnungen", "Rechnungen", "€"],
@@ -18561,13 +18704,9 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
             <div style={{ flex: 1 }} />
 
-            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
-              title="Zeilenhöhe und Abstände umschalten">
-              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
-            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
-              title="Seitenleiste ausblenden für maximale Breite">
-              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
-
+            {/* Auf dem Telefon treten diese Werkzeuge ab — sie schoben die
+                Kopfleiste über die Gerätebreite hinaus. Das Postfach bleibt,
+                weil dort Mitteilungen zum Dienst ankommen. */}
             {!istBetreiber && (
               <button onClick={() => setPostfach(true)} className="btn btn-sm btn-quiet"
                 title="Mitteilungen" aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
@@ -18578,12 +18717,20 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
                   fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {ungelesen}</span>}
               </button>)}
+            <div className="kopf-werkzeuge" style={{ display: "contents" }}>
+            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
+              title="Zeilenhöhe und Abstände umschalten">
+              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
+            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
+              title="Seitenleiste ausblenden für maximale Breite">
+              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
             {!istBetreiber && <Btn size="sm" kind="quiet" onClick={akt.zurueck}
               title="Letzte Änderung zurücknehmen">Rückgängig</Btn>}
             {!istBetreiber && <Btn size="sm" kind="quiet"
               onClick={() => akt.setzeKontrastmodus(!sitz.person.kontrastmodus)}
               title="Größere Schrift und maximaler Kontrast">
               {sitz.person.kontrastmodus ? "Feldmodus aus" : "Feldmodus"}</Btn>}
+            </div>
             {nurMitarbeiter && rechnerAnsicht && (
               <Btn size="sm" kind="quiet" onClick={() => setRechnerAnsicht(false)}>Telefonansicht</Btn>)}
           </header>
@@ -18636,7 +18783,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           ) : (<>
             {aktiveView === "meine" && <MeineSchichten sitz={sitz} akt={akt} ym={ym} />}
             {aktiveView === "lage" && <Lagebild sitz={sitz} oeffneTag={setTag} akt={akt} />}
-            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} />}
+            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} schmal={schmal} />}
             {aktiveView === "einsatz" && <Einsatzplan sitz={sitz} ym={ym} setYm={setYm} akt={akt} oeffnePerson={setPerson} />}
             {aktiveView === "folge" && <Schichtfolge sitz={sitz} akt={akt} />}
             {aktiveView === "dienste" && <Dienstarten sitz={sitz} akt={akt} />}
