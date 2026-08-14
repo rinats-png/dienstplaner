@@ -63,29 +63,39 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Stand am 14.08.2026: nur `CENTRIC_ADMIN` ist gesetzt
+### Stand am 14.08.2026: `CENTRIC_PFEFFER` gesetzt, `CENTRIC_ADMIN` gelöscht
 
-### Zwei Fallen in der Netlify-Schnittstelle
+### Setze Geheimnisse über die Oberfläche, nicht über die Schnittstelle
 
-Sie haben mich mehrere Anläufe gekostet und sind der Grund, warum frühere
-Fassungen dieser Datei zweimal etwas Falsches behaupteten — erst, die
-Variablen seien gesetzt, dann, sie ließen sich nicht setzen.
+Diese Regel hat drei Anläufe gekostet und ist der Grund, warum frühere
+Fassungen dieser Datei nacheinander drei verschiedene Dinge behaupteten.
+Der Reihe nach, weil jede Beobachtung für sich stimmte und trotzdem in die
+Irre führte:
 
-**Erstens: `manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer
-engeren Auswahl — etwa `["functions", "runtime"]`, was sachlich richtig
-wäre — meldet der Aufruf `Environment variable upserted` und legt nichts
-an. Die Erfolgsmeldung trägt nicht.
+**`manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer engeren
+Auswahl — etwa `["functions", "runtime"]`, was sachlich richtig wäre —
+meldet der Aufruf `Environment variable upserted` und legt nichts an. Die
+Erfolgsmeldung trägt nicht. Das war die erste Falle, und sie erklärte,
+warum sechs vermeintlich gesetzte Variablen fehlten.
 
-**Zweitens: Als *secret* angelegte Variablen erscheinen in `getAllEnvVars`
-überhaupt nicht.** Nicht mit verdecktem Wert, sondern gar nicht. Wer nur
-liest, hält sie für nicht vorhanden. Nachgewiesen über den Löschbefehl: Er
-fand `CENTRIC_PFEFFER` und entfernte ihn — die Variable war also da,
-obwohl das Auslesen sie nie zeigte.
+**Über die Schnittstelle mit Kontext `all` gesetzte Geheimnisse erschienen
+danach in keiner Leseabfrage.** Nicht mit verdecktem Wert, sondern gar
+nicht. Ich schloss daraus, secret-Variablen seien grundsätzlich unsichtbar —
+und lag falsch: Der über die **Oberfläche** angelegte Pfeffer erscheint
+einwandfrei, mit einem Eintrag je Kontext und maskiertem Wert. Der
+Unterschied liegt also nicht am Kennzeichen allein.
 
-Zusammen ergibt das eine unangenehme Lage: Über die Schnittstelle gesetzte
-Geheimnisse lassen sich nicht durch Auslesen bestätigen. **Geheimnisse
-gehören deshalb über die Oberfläche gesetzt** — und danach über den
-Umgebungsbericht geprüft (Schritt 2a).
+**Der `dev`-Kontext wird nicht maskiert.** Vier Kontexte liefert Netlify als
+`****…1zE=` aus, den fünften im Klartext. Wer die Schnittstelle abfragen
+darf, kann den Pfeffer lesen. Das ist verschmerzbar — wer so weit kommt,
+erreicht auch den Blob-Speicher — aber es ist gut, es zu wissen, statt es
+anzunehmen.
+
+**Was daraus folgt:** Geheimnisse über die Oberfläche setzen und danach über
+den Umgebungsbericht prüfen (Schritt 2a). Der Bericht ist die einzige
+Rückmeldung in dieser Kette, die trägt: Er fragt den laufenden Server, ob er
+den Wert tatsächlich sieht — nicht die Verwaltung, ob sie ihn gespeichert zu
+haben glaubt.
 
 ### In der Oberfläche: *secret* erzwingt Werte je Kontext
 
@@ -102,22 +112,33 @@ später auffällt, wenn sich jemand nicht anmelden kann.
 ## Schritt 2a — Nachsehen, ob es angekommen ist
 
     curl -sS https://centric-dienstplanung.netlify.app/einrichten/umgebung \
-      -H "authorization: Bearer <CENTRIC_ADMIN>"
+      -H "authorization: Bearer <CENTRIC_ADMIN oder V-Schlüssel>"
+
+Ohne Terminal geht es genauso — auf der Seite `F12`, Reiter *Console*:
+
+    fetch("/einrichten/umgebung", { headers: { authorization: "Bearer <Schlüssel>" } })
+      .then(r => r.json()).then(a => console.log(JSON.stringify(a, null, 2)))
 
 Antwortet mit `ja` oder `nein` je Variable, **nie mit einem Wert**, dazu
 einer Liste offener Punkte im Klartext. `"inOrdnung": true` heißt: nichts
 mehr offen.
 
 Der Bericht steht hinter derselben Prüfung wie das Anlegen von Zugängen —
-wer ihn lesen darf, dürfte die Werte ohnehin setzen. Er ist der einzige Weg,
-den Zustand eines Geheimnisses von außen festzustellen; die
-Netlify-Schnittstelle gibt ihn nicht her.
+wer ihn lesen darf, dürfte die Werte ohnehin setzen. Er fragt den laufenden
+Server, nicht die Verwaltung: Das unterscheidet ihn von jeder anderen
+Rückmeldung in dieser Kette.
+
+**Achtung, die Bremse zählt mit.** `/einrichten` lässt fünf Versuche je zehn
+Minuten zu, dann dreißig Minuten Sperre, gezählt je Netzadresse — auch für
+den Bericht und auch für Fehlversuche mit falschem Kopf. Wer den Schlüssel
+ohne das Wort `Bearer` schickt, verbraucht einen Versuch. Eine stehende
+Sperre verlängert sich durch weitere Versuche **nicht**; verdoppelt wird
+erst, wenn nach Ablauf erneut fünf Fehlversuche zusammenkommen.
 
 Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 
 | Fehlt | Folge |
 |---|---|
-| `CENTRIC_PFEFFER` | Zugangscodes liegen als ungesalzenes SHA-256 im Speicher. `neuHash()` gibt ohne Pfeffer `null` zurück, `ablageSchluessel()` fällt auf `altHash()` zurück. **Vor Schritt 5.0 setzen.** |
 | `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
 | `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
@@ -126,32 +147,31 @@ Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 
 | Variable | Als *secret*? | Wert | Stand |
 |---|---|---|---|
-| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | fehlt, siehe unten |
-| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` | gesetzt, siehe unten |
+| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | **gesetzt**, alle Kontexte |
+| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` | **gelöscht**, siehe unten |
 | `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` | fehlt |
 | `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen | fehlt |
 | `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` | fehlt |
 | `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto | fehlt |
 | `CENTRIC_ABSENDER` | nein | siehe unten | fehlt |
 
-**`CENTRIC_PFEFFER` ist bewusst leer gelassen.** Ich hatte ihn gesetzt und
-wieder gelöscht: Über die Schnittstelle ließ sich nicht bestätigen, dass er
-angekommen war, und ein Pfeffer in ungewissem Zustand ist die schlechteste
-Lage von allen — er lässt sich später nicht mehr folgenlos ändern. Ein
-eindeutiges „nicht gesetzt" ist mehr wert als ein unsicheres „vielleicht".
-
-Er gehört über die **Oberfläche** gesetzt, mit einem frisch erzeugten Wert,
-als *secret*, und zwar **bevor** der erste Zugangscode entsteht — also vor
-Schritt 5.0. Danach nie wieder ändern: `umschluesseln()` in
+**`CENTRIC_PFEFFER` gehört über die Oberfläche gesetzt**, mit einem frisch
+erzeugten Wert, als *secret*, und zwar **bevor** der erste Zugangscode
+entsteht — also vor Schritt 5.0. Danach nie wieder ändern: `umschluesseln()`
+in
 `netlify/lib/codes.mjs` schlüsselt jeden Code beim nächsten Anmelden auf den
 neuen Hashwert um, und ohne denselben Pfeffer gilt danach keiner mehr.
 
-**`CENTRIC_ADMIN` ist ein Wegwerfschlüssel und muss es bleiben.** Er wurde
-in einer Arbeitssitzung erzeugt und steht damit in deren Verlauf. Für seinen
+**`CENTRIC_ADMIN` war ein Wegwerfschlüssel und ist gelöscht.** Er wurde in
+einer Arbeitssitzung erzeugt und stand damit in deren Verlauf. Für seinen
 einzigen Zweck — das erste benannte Verwalterkonto anlegen, Schritt 5.1 —
-ist das vertretbar. Danach ist er zu **löschen**, nicht aufzuheben. Wer ihn
+war das vertretbar; danach gehörte er weg, nicht aufgehoben. Wer ihn
 länger stehen lässt, hat ein Geheimnis mit unbekanntem Leserkreis auf einem
 laufenden System.
+
+Ab jetzt führt der Weg in die Verwaltung ausschließlich über benannte
+`V-`-Schlüssel. Geht der letzte verloren, hilft nur, `CENTRIC_ADMIN` erneut
+zu setzen — und danach wieder zu löschen.
 
 **Warum manche als *secret*:** Netlify erlaubt dieses Kennzeichen **nur beim
 Anlegen**. Auf der alten Site war es bei keiner Variablen gesetzt — alle
