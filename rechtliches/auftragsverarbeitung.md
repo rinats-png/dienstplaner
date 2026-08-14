@@ -122,11 +122,22 @@ Anlage 2 nennt Ort und Grundlage je Unterauftragsverarbeiter.
 (2) Grundlage sind die Standardvertragsklauseln der Kommission
 (Durchführungsbeschluss (EU) 2021/914) nebst ergänzenden Maßnahmen.
 
-(3) **Ausdrücklicher Hinweis.** Der Bestand liegt derzeit in der Region
-`us-east-1` der Vereinigten Staaten. Verlangt der Verantwortliche eine
-Verarbeitung ausschließlich innerhalb der EU, ist der Vertrag in der
-vorliegenden Fassung dafür **nicht geeignet**. Der Auftragsverarbeiter weist
-darauf vor Vertragsschluss hin.
+(3) **Ausdrücklicher Hinweis zum jetzigen Stand.** Der Bestand liegt derzeit
+in der Region `us-east-1` der Vereinigten Staaten. Verlangt der
+Verantwortliche eine Verarbeitung ausschließlich innerhalb der EU, ist der
+Vertrag in der vorliegenden Fassung dafür **nicht geeignet**. Der
+Auftragsverarbeiter weist darauf vor Vertragsschluss hin.
+
+(4) **Geplanter Wechsel nach Deutschland.** Vor der Aufnahme des
+kostenpflichtigen Betriebs mit echten Beschäftigtendaten wird die
+Verarbeitung auf einen Anbieter mit Rechenzentrum in Deutschland verlegt.
+Solange dieser Wechsel nicht vollzogen und in Anlage 2 nachgeführt ist, gilt
+Absatz 3 unverändert. Ein geplanter Wechsel ist kein Erfüllungsstand: Was
+hier steht, beschreibt den Zustand, nicht die Absicht.
+
+(5) Nach dem Wechsel entfällt für die Speicherung der Beschäftigtendaten die
+Übermittlung in ein Drittland. Der Versand von Systemnachrichten per E-Mail
+ist gesondert zu bewerten; siehe Anlage 2.
 
 ## § 8 Unterstützung des Verantwortlichen
 
@@ -240,6 +251,9 @@ sind über die dort genannten Zertifizierungen nachgewiesen.
 - Beschäftigte ohne Planungsrolle erhalten die Daten anderer Personen nur
   in dem Umfang, der für den Dienstplan erforderlich ist.
 - Betriebsratszugänge sind auf Lesen beschränkt.
+- Verwaltungszugänge des Anbieters sind benannte Konten mit eigenem
+  Schlüssel, einzeln widerrufbar; jede Handlung steht mit Namen im
+  Protokoll. Gesperrte Konten bleiben als Beleg erhalten.
 - Betreiberdaten (Tarife, Rechnungen, Protokoll) werden Kundenrollen
   serverseitig gar nicht erst übermittelt.
 
@@ -264,6 +278,10 @@ sind über die dort genannten Zertifizierungen nachgewiesen.
 
 - Sicherungen werden vor gefährlichen Vorgängen automatisch angelegt und
   lassen sich jederzeit manuell anlegen.
+- Der vollständige Bestand lässt sich als eine Datei ausgeben — über die
+  Oberfläche oder über einen Sicherungsschlüssel, der ausschließlich lesen
+  darf, ablaufen kann und einzeln widerrufbar ist. Damit ist eine Sicherung
+  außerhalb der Anwendung ohne Zutun des Anbieters möglich.
 - Vorgehalten werden die zwanzig jüngsten Sicherungen sowie je Tag die
   jüngste der älteren.
 - Wiederherstellung aus einer Sicherung ist ohne Zutun des Anbieters
@@ -303,15 +321,18 @@ aufzubewahren ist.
 
 Ehrlich benannt, damit der Verantwortliche sie kennt:
 
-- **Kein Speicherort in der EU.** Siehe § 7 Abs. 3.
+- **Kein Speicherort in der EU.** Siehe § 7 Abs. 3. Der Wechsel auf ein
+  Rechenzentrum in Deutschland ist vorgesehen, aber nicht vollzogen. Bis
+  dahin bleibt dieser Punkt offen — ein Vorhaben ist keine Maßnahme.
 - **Keine Zwei-Faktor-Authentisierung.** Der Zugang beruht auf einem Code.
 - **Keine zertifizierte Prüfung** (ISO 27001, TISAX oder vergleichbar) des
   Auftragsverarbeiters selbst; nur seine Unterauftragsverarbeiter sind
   zertifiziert.
-- **Kein automatisierter Auslagerungsort** für Sicherungen außerhalb des
-  Speichers des Hosting-Anbieters.
-- **Keine namentlichen Betreiberkonten** mit eigener Anmeldung; der
-  Betreiberzugang läuft über ein gemeinsames Geheimnis.
+- **Kein automatisierter Auslagerungsort.** Die Vollausgabe macht eine
+  Sicherung außer Haus möglich; sie einzurichten und zu überwachen bleibt
+  Sache des Verantwortlichen.
+- **Zwei-Faktor-Authentisierung fehlt weiterhin**, auch für die benannten
+  Verwalterkonten.
 
 ---
 
@@ -330,7 +351,25 @@ Ehrlich benannt, damit der Verantwortliche sie kennt:
 Der Versand erfolgt nur an Adressen, die im betroffenen Betrieb hinterlegt
 sind; ein Versand an beliebige Adressen ist serverseitig unterbunden.
 
-**Vor dem Einsatz mit echten Daten zu erledigen**
+**Geplanter Wechsel nach Deutschland**
+
+Vor dem kostenpflichtigen Betrieb soll die Verarbeitung auf ein
+Rechenzentrum in Deutschland umziehen. Was dabei zu tun ist:
+
+| Schritt | Wirkung |
+|---|---|
+| Anbieter mit Standort Deutschland wählen und AV-Vertrag schließen | Ersetzt Netlify als Unterauftragsverarbeiter für Auslieferung, Ausführung und Speicherung |
+| Diese Anlage 2 nachführen | Sonst beschreibt der Vertrag einen Zustand, den es nicht mehr gibt |
+| § 7 dieses Vertrags anpassen | Die Absätze 3 bis 5 werden gegenstandslos, sobald der Wechsel vollzogen ist |
+| Datenschutzerklärung anpassen | Dort steht derzeit `us-east-1` |
+| E-Mail-Versand gesondert entscheiden | Resend sitzt in den USA. Entweder ein Anbieter in der EU oder die Standardvertragsklauseln bleiben für diesen Teil bestehen |
+| Bestehende Bestände umziehen und die alten löschen | Ein Umzug ohne Löschung verdoppelt nur den Speicherort |
+
+Was CENTRIC dafür mitbringt: `GET /api/vollausgabe` gibt den vollständigen
+Bestand als eine Datei aus (siehe Anlage 1, Abschnitt 4). Der Umzug ist
+damit ein Ausgeben, Einspielen und Löschen — kein Sonderfall.
+
+**Solange der Wechsel nicht vollzogen ist, zu erledigen**
 
 1. Standardvertragsklauseln mit Netlify abschließen und ablegen
    (`[BEISPIEL-AVV-NETLIFY]`).
@@ -338,4 +377,3 @@ sind; ein Versand an beliebige Adressen ist serverseitig unterbunden.
    (`[BEISPIEL-AVV-RESEND]`).
 3. Für beide je eine Übermittlungs-Folgenabschätzung (Transfer Impact
    Assessment) erstellen.
-4. Prüfen, ob ein Speicherort in der EU angeboten wird, und ihn wählen.

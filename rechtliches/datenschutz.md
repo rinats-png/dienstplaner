@@ -114,6 +114,14 @@ Grundlage sind Standardvertragsklauseln nach Artikel 46 Abs. 2 lit. c DSGVO.
 verarbeiten muss, ist das derzeit nicht geeignet.** Wir sagen das offen,
 statt es im Kleingedruckten zu verstecken.
 
+### Was sich ändern soll
+
+Bevor CENTRIC kostenpflichtig mit echten Personaldaten läuft, ziehen wir auf
+ein Rechenzentrum in Deutschland um. Dieser Abschnitt wird dann ersetzt.
+
+Bis dahin gilt, was oben steht — nicht, was geplant ist. Ein Vorhaben ist
+kein Zustand, und eine Datenschutzerklärung beschreibt den Zustand.
+
 ## Wie lange gespeichert wird
 
 | Was | Wie lange |

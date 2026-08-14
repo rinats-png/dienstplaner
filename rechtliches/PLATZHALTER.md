@@ -66,9 +66,17 @@ technischen und organisatorischen Maßnahmen. Was dort steht, muss stimmen —
 eine Beschreibung, die den tatsächlichen Zustand übertrifft, ist schlimmer
 als gar keine.
 
-**Unterauftragsverarbeiter.** Netlify und Resend verarbeiten Daten
-außerhalb der EU. Die Standardvertragsklauseln müssen mit beiden geschlossen
-und dokumentiert sein, bevor ein Kunde echte Personaldaten einspielt.
+**Unterauftragsverarbeiter und Speicherort.** Netlify und Resend verarbeiten
+Daten außerhalb der EU. Solange das so ist, müssen die
+Standardvertragsklauseln mit beiden geschlossen und dokumentiert sein, bevor
+ein Kunde echte Personaldaten einspielt.
+
+Geplant ist ein Umzug auf ein Rechenzentrum in Deutschland vor dem
+kostenpflichtigen Betrieb. Die Schrittfolge steht in Anlage 2 des
+AV-Vertrags. Wichtig dabei: Die Texte beschreiben durchgehend den Zustand,
+nicht das Vorhaben. Wer sie vor dem Umzug veröffentlicht, veröffentlicht
+richtigerweise „liegt in den USA" — und ändert sie am Tag des Umzugs, nicht
+davor.
 
 **Widerrufsrecht.** Die AGB gehen davon aus, dass ausschließlich an
 Unternehmer verkauft wird. Sobald ein Verbraucher Kunde werden kann, kommt
