@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import * as SP from "./speicher.js";
+import "./schrift.css";
+import { C } from "./farben.js";
 
 /* ==========================================================================
    EINSTIEG
@@ -24,9 +26,12 @@ const ROLLENTEXT = {
   betriebsrat: "Nur lesen: Verteilung, Prüfung, Protokoll",
   kunde: "Eigener Datenraum zum freien Ausprobieren",
 };
-const F = { bg: "#D9E4E8", karte: "#FFFFFF", text: "#071317", dim: "#3D4E55",
-  line: "#BCCDD4", lineStark: "#9DB3BC", accent: "#017070", accentHell: "#DFF0F0",
-  danger: "#4E0401", ok: "#0E6B45" };
+/* Die Anmeldeseite nimmt dieselbe Palette wie die Anwendung. Vorher stand
+   hier eine eigene Kopie — beim Aufhellen des Grundes behielt die
+   Anmeldung deshalb den alten Ton, während dahinter schon der neue galt. */
+const F = { bg: C.bg, karte: C.flaeche, text: C.text, dim: C.dim,
+  line: C.line, lineStark: C.lineStark, accent: C.accent, accentHell: C.accentLight,
+  danger: C.danger, ok: C.ok };
 
 function Marke({ size = 38 }) {
   return (

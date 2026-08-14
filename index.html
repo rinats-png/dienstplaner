@@ -18,9 +18,10 @@
          Systemthema. Die Anwendung setzt diese Angabe selbst um, wenn jemand
          ausdrücklich auf Dunkel stellt. -->
     <meta name="theme-color" content="#D9E4E8" />
-    <!-- Verhindert, dass der Browser Eingabefelder und Bildlaufleisten
-         eigenmächtig dunkel färbt -->
-    <meta name="color-scheme" content="light" />
+    <!-- Beide Themen zulassen: Sonst bleiben Datumsauswahl, Auswahlfelder
+         und Bildlaufleisten im Dunkelmodus hell. Welches Thema gilt,
+         entscheidet die Anwendung über data-thema am Wurzelelement. -->
+    <meta name="color-scheme" content="light dark" />
 
     <!-- Apple kennt das Manifest nur teilweise und braucht eigene Angaben -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -34,8 +35,6 @@
     <meta property="og:image" content="/vorschau.png" />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="preconnect" href="https://rsms.me/" />
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
   </head>
   <body>
     <div id="root"></div>

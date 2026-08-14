@@ -127,11 +127,19 @@ export function bestandFuerRolle(bestand, sitzung) {
 
   const kopie = { ...bestand };
 
-  /* Betreiberdaten haben in keiner Kundenantwort etwas verloren: Umsätze,
-     Rechnungen, Tarife und das Protokoll aller Mandanten. */
-  delete kopie.betreiber;
-  delete kopie.rechnungen;
-  delete kopie.tarife;
+  /* Kaufmännisches nur für Rollen, die es sehen dürfen.
+
+     Die Organisationsleitung hat billing.view — sie soll die Kosten ihres
+     Betriebs einsehen können, und dafür braucht die Rechnungsansicht auch
+     die Angaben des Anbieters. Planung, Schichtverantwortung, Beschäftigte
+     und Betriebsrat haben mit Rechnungen nichts zu tun. */
+  if (!darf(rolle, "billing.view")) {
+    delete kopie.betreiber;
+    delete kopie.rechnungen;
+    delete kopie.tarife;
+  }
+  /* Das Protokoll über alle Mandanten hinweg gehört niemandem außer dem
+     Betreiber — das betriebseigene Protokoll steht im Mandanten. */
   delete kopie.protokoll;
 
   const eigener = eigenerMandant(bestand, sitzung);

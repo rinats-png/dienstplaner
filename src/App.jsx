@@ -1,4 +1,4 @@
-import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 
 /* ==========================================================================
@@ -154,94 +154,25 @@ class Fehlerauffang extends Component {
    Branchenneutral für jeden Betrieb im durchgehenden Schichtbetrieb.
    ========================================================================== */
 
-const C = {
-  /* ------------------------------------------------------------------
-     Sea Salt als Grundfläche, dazu die Farben aus derselben Sammlung.
-
-     Zwei Dinge mussten angepasst werden, sonst wäre es unlesbar:
-
-     Erstens trägt keine der bunten Farben als Text. Traditional Turquoise
-     erreicht auf Sea Salt 2,48:1, Orange Grove 1,97:1 — nötig sind 4,5:1.
-     Für Text und Flächen gelten deshalb abgedunkelte Varianten desselben
-     Farbtons; die Originale leben als Zierde und Hover weiter, wo keine
-     Schrift darauf steht.
-
-     Zweitens ist Sea Salt selbst nicht weiß. Eine weiße Karte hebt sich
-     davon nur mit 1,3:1 ab — das reicht nicht als alleiniges Mittel.
-     Karten brauchen hier einen sichtbaren Rand.
-     ------------------------------------------------------------------ */
-  bg: "#D9E4E8",              // Sea Salt
-  flaeche: "#FFFFFF",
-  flaecheStill: "#E7EFF2",    // zwischen Grund und Karte
-  sidebar: "#071317",         // Midnight Edition
-  sidebarTief: "#001619",     // Blue Charcoal
-
-  text: "#071317",            // 14,55:1
-  dim: "#3D4E55", dimmer: "#3D4E55", aus: "#5B6B72",
-
-  line: "#BCCDD4", lineSoft: "#CBDAE0", lineStark: "#9DB3BC",
-
-  /* Akzent: Traditional Turquoise, abgedunkelt bis es trägt */
-  accent: "#017070",          // 4,56:1 · weißer Text darauf 5,91:1
-  /* Traditional Turquoise erreicht auf Sea Salt nur 2,48:1 — zu wenig selbst
-     für Zierde (3:1). Der Hover-Ton ist deshalb eine Spur dunkler. Das
-     Original lebt auf der Seitenleiste weiter, wo es 5,87:1 erreicht. */
-  accentHi: "#028E8E",        // 3,08:1 auf Grund
-  accentOrig: "#02A0A0",      // Traditional Turquoise — nur auf Dunkel
-  accentDeep: "#023441",      // Natural Indigo
-  accentLight: "#DFF0F0",
-  accentGlanz: "#50E8F4",     // Fluorescent Blue — Glanzlicht auf Dunkel
-
-  ok: "#0E6B45",              // 5,05:1 — Grün fehlt in der Vorlage, abgeleitet
-  warn: "#955410",            // Orange Grove, abgedunkelt · 4,56:1
-  danger: "#4E0401",          // Dark Maroon · 12,08:1
-  violet: "#316C81",          // Vintage Aqua, abgedunkelt · 4,51:1
-
-  okLight: "#DFEFE7", warnLight: "#FFE0C0", dangerLight: "#F6DEDC",
-};
-
-/* --------------------------------------------------------------------------
-   DUNKELMODUS
-   Wer um drei Uhr nachts auf den Plan schaut, wird von einer hellen Fläche
-   geblendet. Das ist kein Luxus, sondern der häufigste Fall im Schichtdienst.
-
-   Die Palette ist keine Umkehrung der hellen — Farben verhalten sich auf
-   Dunkel anders. Gesättigte Töne wirken greller, deshalb sind Akzent und
-   Statusfarben aufgehellt und leicht entsättigt. Alle Textfarben tragen
-   mindestens 4,9:1, die meisten deutlich mehr.
-   -------------------------------------------------------------------------- */
-const C_DUNKEL = {
-  bg: "#0B1418", flaeche: "#121E23", flaecheStill: "#18262C",
-  sidebar: "#070F12", sidebarTief: "#040A0C",
-
-  text: "#E8EFF1",            // 16,01:1
-  dim: "#9FB2B9", dimmer: "#9FB2B9", aus: "#7A8D95",
-
-  line: "#243238", lineSoft: "#1B282E", lineStark: "#33454C",
-
-  accent: "#3FBFBF",          // 8,35:1 — heller als im Hellmodus, sonst zu schwach
-  accentHi: "#5FD6D6", accentOrig: "#5FD6D6",
-  accentDeep: "#7FE0E0", accentGlanz: "#50E8F4",
-  accentLight: "#13292C",     // gedämpfte Fläche statt heller
-
-  ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
-  okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",
-};
-
-/* Umschalten ohne Umbau: Statt tausend Verwendungsstellen zu ändern, werden
-   die Werte in C ausgetauscht. Wer C.text liest, bekommt danach den dunklen
-   Wert — die Anwendung merkt davon nichts. Ein Zähler in der Oberfläche
-   erzwingt den Neuaufbau. */
-const C_HELL = { ...C };
+import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
+
+/* Die Palette zusätzlich als CSS-Variablen ausgeben.
+   Zwei Gründe: Erstens erreichen Variablen Stellen, an die ein
+   JavaScript-Objekt nicht kommt — Bildlaufleisten, Auswahlfelder, die
+   Datumsauswahl des Browsers. Zweitens wechselt das Thema damit ohne
+   Neuaufbau der Oberfläche; eine memoisierte Komponente behält sonst die
+   Farben des alten Themas. */
 function themaSetzen(dunkel) {
   _dunkel = !!dunkel;
   Object.assign(C, dunkel ? C_DUNKEL : C_HELL);
   if (typeof document !== "undefined") {
-    document.documentElement.style.colorScheme = dunkel ? "dark" : "light";
+    const wurzel = document.documentElement;
+    wurzel.style.colorScheme = dunkel ? "dark" : "light";
+    wurzel.setAttribute("data-thema", dunkel ? "dunkel" : "hell");
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.sidebar : C_HELL.sidebar);
+    if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.bg : C_HELL.bg);
   }
 }
 
@@ -263,6 +194,7 @@ const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" 
 /** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
 const bauStyles = () => `
 :root{
+  ${alsVariablen(C_HELL)}
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
@@ -271,6 +203,8 @@ const bauStyles = () => `
   --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
   --sidebar-breite: 252px;
 }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -514,6 +448,27 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   main.bereich{padding:16px 14px 96px;}
 }
 @media (min-width: 1025px){ .nur-schmal{display:none !important;} }
+
+/* Der Umbruchpunkt, der fehlte.
+
+   Bis hierher gab es genau einen bei 1024px — für eine Anwendung, die den
+   Beschäftigten ausdrücklich eine Telefonansicht verspricht, endete die
+   Anpassung also dort, wo sie erst anfangen müsste. Zwischen 320 und 480
+   Pixeln passierte nichts mehr.
+
+   Ein Raster mit einunddreißig Spalten lässt sich auf dieser Breite nicht
+   retten. Es bekommt stattdessen Tippflächen, die mit dem Daumen zu treffen
+   sind, und alles daneben wird ruhiger statt gedrängter. */
+@media (max-width: 560px){
+  main.bereich{padding:12px 10px 88px;}
+  /* Vierundvierzig Pixel sind die Untergrenze für eine Fläche, die mit dem
+     Daumen getroffen werden soll. */
+  .planzelle{min-height:44px !important;}
+  .seg button{padding:8px 13px;}
+  /* Unter sechzehn Pixeln zoomt iOS beim Antippen in das Feld hinein */
+  .inp,.sel,textarea{font-size:16px !important;}
+  .karte{border-radius:10px;}
+}
 
 @media print{
   .seitenleiste,.kopfleiste,.noprint,.toast{display:none !important;}
@@ -3984,14 +3939,42 @@ const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, 
 const Inp = (p) => <input {...p} className={`inp ${p.className || ""}`} />;
 const Sel = ({ children, ...p }) => <select {...p} className={`sel ${p.className || ""}`}>{children}</select>;
 
-const Field = ({ label, hint, children, style }) => (
-  <label style={{ display: "block", ...style }}>
-    <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: C.dim,
-      marginBottom: 6 }}>{label}</span>
-    {children}
-    {hint && <span style={{ display: "block", fontSize: 12, color: C.dim, marginTop: 5,
-      lineHeight: 1.45 }}>{hint}</span>}
-  </label>);
+/**
+ * Beschriftetes Eingabefeld.
+ *
+ * Das umschließende label verknüpfte Beschriftung und Feld bereits — daran
+ * war nichts falsch. Zwei Dinge fehlten trotzdem:
+ *
+ * Der Hinweistext stand nur daneben, ohne Verbindung zum Feld. Ein
+ * Bildschirmleser las ihn nicht mit, obwohl er oft die eigentliche
+ * Erklärung trägt.
+ *
+ * Und die Verknüpfung war nur mittelbar. Sobald ein Feld in einer
+ * Überlagerung landet oder mehrere Bedienelemente in einer Beschriftung
+ * stehen, trägt sie nicht mehr. Die ausdrückliche Zuordnung über id hält
+ * in beiden Fällen.
+ */
+const Field = ({ label, hint, children, style }) => {
+  const eigen = useId();
+  const istElement = React.isValidElement(children);
+  const feldId = istElement ? (children.props.id || eigen) : undefined;
+  const hinweisId = hint ? `${eigen}-hinweis` : undefined;
+  const feld = istElement
+    ? React.cloneElement(children, {
+      id: feldId,
+      "aria-describedby": [children.props["aria-describedby"], hinweisId]
+        .filter(Boolean).join(" ") || undefined,
+    })
+    : children;
+  return (
+    <div style={{ display: "block", ...style }}>
+      <label htmlFor={feldId} style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+        color: C.dim, marginBottom: 6 }}>{label}</label>
+      {feld}
+      {hint && <span id={hinweisId} style={{ display: "block", fontSize: 12, color: C.dim,
+        marginTop: 5, lineHeight: 1.45 }}>{hint}</span>}
+    </div>);
+};
 
 const Seg = ({ value, onChange, options }) => (
   <div className="seg" role="tablist">
@@ -6917,6 +6900,86 @@ function Lagebild({ sitz, oeffneTag, akt }) {
 }
 
 /* ============================== MONATSPLAN =============================== */
+/* --------------------------------------------------------------------------
+   MONATSLAGE
+
+   Die Frage einer Planerin lautet nicht „wie sieht der Monat aus", sondern
+   „wo muss ich ran". Bis hierher musste sie dafür rund fünfhundert Zellen
+   absuchen — die Antwort stand im Raster, aber nirgends als Antwort.
+
+   Ausgewertet wird, was ohnehin schon berechnet ist: besetzung() läuft für
+   jeden Tag des Monats. Hier wird daraus nur eine Rangfolge.
+   -------------------------------------------------------------------------- */
+function monatsLage(m, tage, bes) {
+  const treffer = [];
+  for (const d of tage) {
+    const je = bes[d] || {};
+    let stufe = 0;
+    const gruende = [];
+    for (const [dienstId, b] of Object.entries(je)) {
+      const da = m.dienstarten.find((x) => x.id === dienstId);
+      const name = da ? da.kurz || da.name : dienstId;
+      if (b.status === "danger") {
+        stufe = 2;
+        gruende.push(`${name} ${b.anzahl - b.soll}`);
+      } else if (b.status === "warn") {
+        stufe = Math.max(stufe, 1);
+        gruende.push(`${name} ${b.anzahl - b.soll}`);
+      }
+      /* Eine fehlende Fachkraft wiegt schwerer als eine fehlende Kraft:
+         Die Quote ist in der Pflege nachweispflichtig. */
+      if (b.qualFehlt) { stufe = 2; gruende.push(`${name} Quote`); }
+    }
+    if (stufe) treffer.push({ datum: d, stufe, text: gruende.slice(0, 2).join(" · ") });
+  }
+  return {
+    tage: treffer,
+    dringend: treffer.filter((x) => x.stufe === 2).length,
+    knapp: treffer.filter((x) => x.stufe === 1).length,
+  };
+}
+
+/**
+ * Die Antwort über dem Raster. Wer nichts weiter tun muss, hat den Monat
+ * hier bereits verstanden und kann die Ansicht schließen.
+ */
+function Tagesfazit({ lage, onTag }) {
+  if (!lage.tage.length) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+        background: C.okLight, borderLeft: `3px solid ${C.ok}`, borderRadius: "0 6px 6px 0",
+        marginBottom: 16 }}>
+        <span style={{ fontSize: 14.5 }}>
+          <b>Der Monat ist durchgehend besetzt.</b> Keine Unterschreitung, keine offene Quote.</span>
+      </div>);
+  }
+  const satz = lage.dringend && lage.knapp
+    ? `${lage.dringend} Tag${lage.dringend > 1 ? "e sind" : " ist"} unterbesetzt, ${lage.knapp} weitere${lage.knapp > 1 ? "" : "r"} knapp.`
+    : lage.dringend
+      ? `${lage.dringend} Tag${lage.dringend > 1 ? "e brauchen" : " braucht"} Aufmerksamkeit.`
+      : `${lage.knapp} Tag${lage.knapp > 1 ? "e sind" : " ist"} knapp besetzt.`;
+  return (
+    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      padding: "13px 16px", background: lage.dringend ? C.dangerLight : C.warnLight,
+      borderLeft: `3px solid ${lage.dringend ? C.danger : C.warn}`, borderRadius: "0 6px 6px 0",
+      marginBottom: 16 }}>
+      <span style={{ fontSize: 14.5, flex: "1 1 220px" }}><b>{satz}</b></span>
+      {lage.tage.slice(0, 8).map((t) => (
+        <button key={t.datum} type="button" onClick={() => onTag(t.datum)}
+          title={`${fLang(t.datum)} · ${t.text}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.flaeche,
+            border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 11px", fontSize: 12.5,
+            fontFamily: "inherit", color: C.text, cursor: "pointer", ...NUM }}>
+          <span style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+            background: t.stufe === 2 ? C.danger : C.warn }} />
+          {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
+          <span style={{ color: C.dimmer }}>{t.text}</span>
+        </button>))}
+      {lage.tage.length > 8 && (
+        <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
+    </div>);
+}
+
 function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
   const [suche, setSuche] = useState("");
   const [filterDienst, setFilterDienst] = useState("");
@@ -6929,6 +6992,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
   const d0 = heute();
   const bes = useMemo(() => Object.fromEntries(tage.map((d) => [d, besetzung(m, d)])), [m, ym]);
   const shift = (k) => { const d = new Date(y, mo - 1 + k, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); };
+  const lage = useMemo(() => monatsLage(m, tage, bes), [m, ym, bes]);
 
   return (
     <div>
@@ -6944,6 +7008,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
 
+      <Tagesfazit lage={lage} onTag={oeffneTag} />
+
       <Filterleiste suche={suche} setSuche={setSuche} platzhalter={`${m.einheitLabel} oder Dienstart …`}
         rechts={<>
           <Sel value={filterDienst} onChange={(ev) => setFilterDienst(ev.target.value)} style={{ minWidth: 150 }}>
@@ -6958,7 +7024,22 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
 
       <Card style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
-          <thead><tr>
+          <thead>
+            {/* Eine Zeile, die den ganzen Monat beantwortet: Höhe des Strichs
+                ist die Dringlichkeit. Wer nur hier hinsieht, weiß Bescheid. */}
+            <tr className="noprint">
+              <th style={{ position: "sticky", left: 0, zIndex: 2, background: C.flaeche, textAlign: "left",
+                padding: "10px 20px 4px", minWidth: 160 }}><Lab>Aufmerksamkeit</Lab></th>
+              {tage.map((d) => { const t = lage.tage.find((x) => x.datum === d);
+                return (<th key={d} onClick={() => oeffneTag(d)} title={t ? `${fLang(d)} · ${t.text}` : fLang(d)}
+                  style={{ padding: "10px 0 4px", cursor: "pointer", verticalAlign: "bottom" }}>
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", height: 18 }}>
+                    <span style={{ width: "58%", borderRadius: 2,
+                      height: t ? (t.stufe === 2 ? 16 : 9) : 3,
+                      background: t ? (t.stufe === 2 ? C.danger : C.warn) : C.line,
+                      opacity: t ? 1 : .55 }} /></div></th>); })}
+            </tr>
+            <tr>
             <th style={{ position: "sticky", left: 0, zIndex: 2, background: C.flaeche, textAlign: "left",
               padding: "15px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 160 }}><Lab>{m.einheitLabel}</Lab></th>
             {tage.map((d) => { const fei = feiertag(d, m.bundesland), we = dow(d) >= 5;
@@ -6967,8 +7048,13 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
               return (<th key={d} onClick={() => oeffneTag(d)} title={fei || fLang(d)}
                 style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 33, cursor: "pointer",
                   opacity: blass ? .3 : 1,
-                  background: d === d0 ? "rgba(43,52,64,.075)" : fei ? C.dangerLight : we ? "rgba(20,20,25,.03)" : "transparent" }}>
-                <div style={{ fontSize: 10.5, color: fei ? C.danger : we ? C.dim : C.dimmer, fontWeight: 500 }}>{DOW[dow(d)]}</div>
+                  /* Nur noch der Kalender: Wochenende und Feiertag teilen sich
+                     denselben stillen Ton. Vorher trug ein Feiertag C.dangerLight
+                     — dieselbe Farbe wie eine Unterbesetzung, was beides
+                     ununterscheidbar machte. */
+                  background: d === d0 ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent",
+                  boxShadow: d === d0 ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
+                <div style={{ fontSize: 10.5, color: fei ? C.warn : we ? C.dim : C.dimmer, fontWeight: fei ? 700 : 500 }}>{fei ? "Fei" : DOW[dow(d)]}</div>
                 <div style={{ fontSize: 13, color: d === d0 ? C.accent : C.text, fontWeight: d === d0 ? 700 : 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
               </th>); })}
           </tr></thead>
@@ -6989,8 +7075,13 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
                   const fehlt = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && abwesenheitAm(m, p.id, d)).length;
                   return (<td key={d} onClick={() => oeffneTag(d)} style={{ padding: "6px 2px", textAlign: "center",
                     borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
-                    background: d === d0 ? "rgba(43,52,64,.035)" : dow(d) >= 5 ? "rgba(20,20,25,.02)" : "transparent" }}>
-                    <Planzelle da={da} unten={fehlt > 0 ? `−${fehlt}` : null}
+                    background: d === d0 ? C.accentLight
+                      : (dow(d) >= 5 || feiertag(d, m.bundesland)) ? C.flaecheStill : "transparent" }}>
+                    {/* Vorher stand hier „−2". Das liest sich wie eine
+                        Unterbesetzung, gemeint sind aber Abwesende — und ob
+                        der Dienst dadurch unterbesetzt ist, sagen erst die
+                        Besetzungszeilen weiter unten. */}
+                    <Planzelle da={da} unten={fehlt > 0 ? `${fehlt} ab` : null}
                       aktiv={d === d0} title={`${fLang(d)}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`} />
                   </td>); })}
               </tr>))}
@@ -7005,12 +7096,26 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
                       <div style={{ fontSize: 11, color: C.dimmer }}>{da.ort}</div></div></div></td>
                 {tage.map((d) => { const b = bes[d][da.id];
                   const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
-                  return (<td key={d} onClick={() => oeffneTag(d)} title={`${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Qualifikation fehlt" : ""}`}
-                    style={{ textAlign: "center", padding: "8px 0", cursor: "pointer",
-                      background: b.status === "danger" ? C.dangerLight : b.status === "warn" ? C.warnLight : "rgba(20,20,25,.02)",
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const kalender = dow(d) >= 5 || feiertag(d, m.bundesland);
+                  return (<td key={d} onClick={() => oeffneTag(d)} title={`${fLang(d)} · ${da.name} · ${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`}
+                    style={{ textAlign: "center", padding: "5px 1px", cursor: "pointer",
+                      /* Fläche trägt den Kalender, nicht den Zustand. Der
+                         Zustand steht in Zahl und Füllstand — „3/4" sagt, wie
+                         weit es fehlt, eine rote Fläche sagt nur, dass etwas
+                         fehlt. */
+                      background: d === d0 ? C.accentLight : kalender ? C.flaecheStill : "transparent",
                       borderTop: i === 0 ? `2px solid ${C.line}` : `1px solid ${C.lineSoft}` }}>
-                    <span style={{ fontSize: 12.5, color: col, fontWeight: b.status === "ok" ? 500 : 700, ...NUM }}>{b.anzahl}</span>
-                    <span style={{ fontSize: 10, color: C.dimmer, ...NUM }}>/{b.soll}</span></td>); })}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                      <div style={{ fontSize: 11.5, lineHeight: 1.1, ...NUM }}>
+                        <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
+                        <span style={{ color: C.dimmer, fontSize: 9.5 }}>/{b.soll}</span></div>
+                      <div style={{ width: "72%", height: 3, borderRadius: 2, background: C.lineSoft, overflow: "hidden" }}>
+                        <div style={{ width: `${anteil}%`, height: "100%",
+                          background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
+                      {b.qualFehlt && <div title="Fachkraftquote nicht erfüllt"
+                        style={{ width: 5, height: 5, borderRadius: 3, background: C.danger }} />}
+                    </div></td>); })}
               </tr>))}
           </tbody>
         </table>
@@ -8965,25 +9070,68 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
                     {n1(jahresIst)} von {n1(jahresSoll)} h · {sgn(jahresIst - jahresSoll)} h · Urlaub {url.genommen}/{url.anspruch}</span>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {/* Zwölf Blöcke statt 365 Härchen.
+
+                    Vorher wurde je Tag ein Balken von fünf Pixeln gezeichnet,
+                    und der Unterschied zwischen Dienst und Abwesenheit lief
+                    allein über die Deckkraft — der schwächste Kanal, den es
+                    gibt, und bei dieser Breite praktisch unsichtbar.
+
+                    Die Überschrift verspricht Belastungsvergleiche. Vergleichen
+                    heißt: zwischen Personen. Dafür braucht es eine Größe je
+                    Monat, die man quer lesen kann, kein Tagesdetail. Das
+                    Tagesdetail steht weiterhin im Titel jedes Blocks. */}
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "flex-end" }}>
                   {monate.map((mo) => {
+                    const ymm = `${jahr}-${pad(mo + 1)}`;
+                    const ist = istStunden(m, p, ymm).gesamt;
+                    const soll = sollStunden(m, p, ymm);
+                    const quote = soll > 0 ? ist / soll : 0;
                     const tage = dim_(jahr, mo);
+                    let abwTage = 0, urlaubTage = 0;
+                    for (let i = 1; i <= tage; i++) {
+                      const t = personTag(m, p, `${jahr}-${pad(mo + 1)}-${pad(i)}`);
+                      if (t.abwesenheit) { abwTage++; if (t.abwesenheit.art === "urlaub") urlaubTage++; }
+                    }
+                    /* Gezeigt wird die Abweichung vom Soll, nicht die
+                       Auslastung selbst.
+
+                       Der erste Entwurf füllte den Block proportional zur
+                       Auslastung — bei Werten um hundert Prozent sahen dann
+                       alle Monate gleich aus, und genau der Unterschied
+                       zwischen 98 und 106 Prozent ist die Information, um
+                       die es geht. Jetzt liegt die Nulllinie in der Mitte:
+                       nach oben Mehrarbeit, nach unten Unterdeckung. Ein
+                       Ausschlag von fünf Prozent ist damit sichtbar. */
+                    const abw = quote - 1;
+                    const ueber = abw >= 0;
+                    /* Zwanzig Prozent Abweichung füllen die halbe Höhe aus. */
+                    const balken = soll > 0
+                      ? Math.max(2, Math.min(16, Math.round(Math.abs(abw) / 0.2 * 16))) : 0;
+                    const ton = abw > 0.15 ? C.danger : abw > 0.08 ? C.warn
+                      : abw < -0.15 ? C.violet : C.accent;
+                    const prozent = soll > 0 ? Math.round(quote * 100) : 0;
                     return (
-                      <div key={mo}>
-                        <div style={{ fontSize: 9.5, color: C.dimmer, marginBottom: 3, textAlign: "center" }}>{MON[mo].slice(0, 3)}</div>
-                        <div style={{ display: "flex", gap: 1 }}>
-                          {Array.from({ length: tage }, (_, i) => {
-                            const d = `${jahr}-${pad(mo + 1)}-${pad(i + 1)}`;
-                            const t = personTag(m, p, d);
-                            const da = map[t.dienstId];
-                            const fei = feiertagFuer(m, d, p);
-                            const farbe = t.abwesenheit ? abwArt(t.abwesenheit.art).farbe
-                              : da ? da.farbe : fei ? C.danger : null;
-                            return <div key={i} title={`${fKurz(d)} · ${t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : fei || "frei"}`}
-                              style={{ width: 5, height: 15, borderRadius: 1.5,
-                                background: farbe ? `${farbe}${t.abwesenheit ? "66" : "CC"}` : "rgba(20,20,25,.06)" }} />;
-                          })}
+                      <div key={mo} title={`${MON[mo]} ${jahr} · ${n1(ist)} von ${n1(soll)} h`
+                        + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)")
+                        + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
+                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 3,
+                          position: "relative", overflow: "hidden" }}>
+                          {/* Die Nulllinie: hundert Prozent des Monatssolls */}
+                          <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,
+                            background: C.lineStark, opacity: .8 }} />
+                          {soll > 0 && (
+                            <span style={{ position: "absolute", left: 4, right: 4,
+                              ...(ueber ? { bottom: 18 } : { top: 19 }),
+                              height: balken, background: ton,
+                              opacity: ton === C.accent ? .6 : .95, borderRadius: 1 }} />)}
+                          {abwTage > 0 && (
+                            <span title={`${abwTage} Tage abwesend`} style={{ position: "absolute", top: 0, left: 0,
+                              height: 3, width: `${Math.min(100, Math.round(abwTage / tage * 100))}%`,
+                              background: C.ok }} />)}
                         </div>
+                        <span style={{ fontSize: 9, color: C.dimmer, ...NUM }}>{MON[mo].slice(0, 3)}</span>
                       </div>);
                   })}
                 </div>
@@ -8991,15 +9139,24 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           })}
         </div>
       </Card>
-      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 16 }}>
-        {m.dienstarten.map((d) => (
-          <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: `${d.farbe}CC` }} />
-            <span style={{ fontSize: 12.5, color: C.dim }}>{d.name}</span></div>))}
-        {ABW.slice(0, 3).map((a) => (
-          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: `${a.farbe}66` }} />
-            <span style={{ fontSize: 12.5, color: C.dim }}>{a.label}</span></div>))}
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.accent, opacity: .6 }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>im Rahmen</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.warn }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>über Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.danger }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>deutlich über Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.violet }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>unter Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 3, borderRadius: 2, background: C.ok }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>Abwesenheit</span></div>
+        <span style={{ fontSize: 12.5, color: C.dimmer }}>
+          Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</span>
       </div>
     </div>);
 }
