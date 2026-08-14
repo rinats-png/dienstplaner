@@ -448,6 +448,9 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 /* Ladegerüst: ein ruhiges Pulsieren statt eines Drehrads */
 .pulsiert{animation:pulsieren 1.6s ease-in-out infinite;}
 @media (max-width: 1024px){ .nur-breit{display:none !important;} }
+/* Zweispaltige Ansichten stapeln, sobald es eng wird — sonst quetscht sich
+   die schmale Spalte auf einen unbrauchbaren Streifen. */
+@media (max-width: 900px){ .zweispaltig{grid-template-columns:1fr !important;} }
 /* Rechtstexte: auf dem Telefon steht die Auswahl über dem Text, nicht daneben */
 @media (max-width: 900px){ .rechtsraster{grid-template-columns:1fr !important; gap:16px !important;}
   .rechtsraster > nav{flex-direction:row !important; position:static !important; overflow-x:auto;} }
@@ -4254,7 +4257,12 @@ const Seg = ({ value, onChange, options }) => (
 const H1 = ({ children, rubrik, sub, right, style }) => (
   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between",
     gap: 24, flexWrap: "wrap", marginBottom: 32, ...style }}>
-    <div style={{ minWidth: 0, flex: 1 }}>
+    {/* `flex: 1` mit minWidth 0 klang richtig und war es nicht: Die Knöpfe
+        rechts tragen flexShrink 0, also gaben sie nicht nach — bei 390
+        Pixeln blieb für die Überschrift ein Streifen von sechzig Pixeln, und
+        der Untertitel brach Wort für Wort um. Mit einer Mindestbreite als
+        Basis rutscht die rechte Gruppe stattdessen in die nächste Zeile. */}
+    <div style={{ minWidth: 0, flex: "1 1 300px" }}>
       {rubrik && <Rubrik style={{ marginBottom: 10 }}>{rubrik}</Rubrik>}
       <h1 className="titel">{children}</h1>
       {sub && <p className="untertitel">{sub}</p>}
@@ -6442,13 +6450,18 @@ function AntraegeGeteilt({ sitz, akt }) {
   return (
     <div>
       <H1 rubrik="Anliegen"
-        sub="Links die Anträge, rechts die Kapazität. Bei Auswahl eines Antrags werden die betroffenen Wochen hervorgehoben — so ist vor der Entscheidung sichtbar, was sie auslöst."
+        sub="Erst die Anträge, daneben die Kapazität. Bei Auswahl eines Antrags werden die betroffenen Wochen hervorgehoben — so ist vor der Entscheidung sichtbar, was sie auslöst."
         right={<Seg value={reiter} onChange={setReiter}
           options={[{ id: "einzeln", label: "Einzelanträge" }, { id: "runde", label: "Jahresurlaubsrunde" }]} />}>
         Anträge</H1>
 
       {reiter === "runde" ? <Urlaubsrunde sitz={sitz} akt={akt} /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(300px,1fr)", gap: 18,
+        /* Zwei Spalten brauchen Platz. Bei 390 Pixeln blieb für die rechte
+           Spalte ein Streifen von sechzig Pixeln übrig, und die linke wurde
+           so schmal, dass der Untertitel Wort für Wort umbrach. Unterhalb
+           von 900 Pixeln stehen sie deshalb untereinander. */
+        <div className="zweispaltig" style={{ display: "grid",
+          gridTemplateColumns: "minmax(0,1.25fr) minmax(300px,1fr)", gap: 18,
           alignItems: "start" }}>
 
           {/* ------------------------- Liste ------------------------- */}
@@ -12607,6 +12620,9 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen"
     : stunde < 18 ? "Guten Tag" : "Guten Abend";
+  /* Ohne Vornamen wurde daraus „Guten Tag, ." — bei einem frisch angelegten
+     Betrieb steht dort noch nichts. Der Satz ohne Anrede ist der bessere. */
+  const anrede = (p.vorname || "").trim();
 
   /* Die drei wichtigsten Sachen — nach Dringlichkeit und Tragweite geordnet. */
   const oben = useMemo(() => {
@@ -12673,7 +12689,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
       <div style={{ marginBottom: 40 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 className="titel" style={{ marginTop: 12 }}>
-          {gruss}, <b>{p.vorname}</b>.
+          {anrede ? <>{gruss}, <b>{anrede}</b>.</> : <>{gruss}.</>}
         </h1>
         <p className="untertitel">
           {oben.length === 0
@@ -16233,7 +16249,9 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
       <div style={{ marginBottom: 22 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", margin: "8px 0 0", lineHeight: 1.12 }}>
-          {gruss},<br /><b style={{ fontWeight: 700 }}>{p.vorname}</b>.
+          {(p.vorname || "").trim()
+            ? <>{gruss},<br /><b style={{ fontWeight: 700 }}>{p.vorname.trim()}</b>.</>
+            : <>{gruss}.</>}
         </h1>
       </div>
 
@@ -19395,7 +19413,18 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const ungelesen = istBetreiber ? 0 : (sitz.mandant.nachrichten || []).filter((n) => n.personId === sitz.person.id && !n.gelesen).length;
   /* Für das Telefon ausgelegt. Der Monatsplan kam hinzu, seit er dort als
      Tagesliste statt als Raster erscheint — siehe Wochenliste. */
-  const MOBIL = ["meine", "plan"];
+  /* Welche Ansichten auf dem Telefon ohne Vorbehalt taugen.
+
+     „antraege" und „lage" standen hier nicht drin, obwohl die Leiste am
+     unteren Rand beide anbietet: Wer sie antippte, landete auf einer Seite
+     mit dem Hinweis „Für Tablet und Rechner ausgelegt". Die Leiste lud also
+     irgendwohin ein, wo die Anwendung dann abriet.
+
+     Beide arbeiten mit Karten, nicht mit breiten Tabellen, und laufen bei
+     390 Pixeln ohne waagerechten Überlauf. Und beide sind genau das, was
+     eine Schichtverantwortliche abends vom Sofa aus braucht: einen Antrag
+     entscheiden und sehen, ob morgen jemand fehlt. */
+  const MOBIL = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
   const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
   const tabs = istBetreiber
     ? [["mandanten", "Mandanten", "▤"], ["rechnungen", "Rechnungen", "€"],
