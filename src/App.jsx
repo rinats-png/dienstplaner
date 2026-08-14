@@ -8901,6 +8901,121 @@ function zelleBedienbar(aufAuswahl, name, ersteZelle = false) {
   };
 }
 
+/* ==========================================================================
+   KONFLIKT
+
+   Der alte Text stammte aus der Zeit ohne Server: „Echter
+   Mehrbenutzerbetrieb setzt einen Server voraus — diese Prüfung erkennt den
+   Konflikt, sie löst ihn nicht auf." Beides stimmt so nicht mehr. Der
+   Server führt getrennte Monate längst zusammen; hierher kommt nur noch,
+   wer wirklich denselben Monat bearbeitet hat wie jemand anderes.
+
+   Angeboten wurde trotzdem nur „Neu laden" — also: die eigene Arbeit
+   wegwerfen. Für jemanden, der gerade zwei Stunden geplant hat, ist das
+   keine Wahl, sondern eine Mitteilung.
+
+   Jetzt stehen drei Wege da, und alle drei sagen, was sie kosten:
+
+     Neu laden          — meine Änderungen sind weg
+     Meinen Stand nehmen — die Arbeit der anderen Person in diesen Monaten
+                           ist weg
+     Als Datei sichern   — nichts ist weg, aber auch nichts gespeichert
+
+   Welcher richtig ist, weiß nur, wer beide Seiten kennt. Deshalb steht
+   dabei, wer wann gespeichert hat und welche Monate betroffen sind.
+   ========================================================================== */
+function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
+  const rahmen = useRef(null);
+  useEffect(() => {
+    const f = (e) => { if (e.key === "Escape") onSchliessen(); };
+    window.addEventListener("keydown", f);
+    if (rahmen.current) rahmen.current.focus();
+    return () => window.removeEventListener("keydown", f);
+  }, [onSchliessen]);
+
+  const monate = Array.isArray(lage && lage.monate) ? lage.monate : [];
+  const kern = !!(lage && lage.kernBetroffen);
+  const wer = (lage && lage.durch) || "jemand anderes";
+  const wann = lage && lage.zeit ? new Date(lage.zeit) : null;
+
+  const sichern = () => {
+    const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    if (lade(`centric-mein-stand-${marke}.json`, JSON.stringify(lage.meiner ?? null, null, 2),
+      "application/json;charset=utf-8")) melde("Als Datei gesichert.");
+  };
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Gleichzeitig bearbeitet"
+      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+        backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 20 }}>
+      <div ref={rahmen} tabIndex={-1} className="blatt"
+        style={{ maxWidth: 560, padding: 28, outline: "none" }}>
+        <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>
+          {kern
+            ? "Die Stammdaten wurden gleichzeitig geändert"
+            : monate.length === 1
+              ? `${monate[0]} wurde gleichzeitig bearbeitet`
+              : monate.length > 1
+                ? `${monate.length} Monate wurden gleichzeitig bearbeitet`
+                : "Gleichzeitig bearbeitet"}
+        </div>
+
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px" }}>
+          {wer} hat gespeichert
+          {wann && `, während du gearbeitet hast — zuletzt um ${
+            wann.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`}.
+          Arbeit in verschiedenen Monaten führt CENTRIC von selbst zusammen;
+          hier überschneidet sie sich wirklich.
+        </p>
+
+        {monate.length > 0 && (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>
+            {monate.map((mo) => <Pill key={mo} tone="warn" size="sm">{mo}</Pill>)}
+          </div>)}
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 6 }}>
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Neu laden</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
+              Speichern sind weg.</div>
+            <Btn size="sm" kind="primary" onClick={() => window.location.reload()}>
+              Neu laden</Btn>
+          </div>
+
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Meinen Stand nehmen</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Dein Stand wird gespeichert. Was {wer}
+              {monate.length ? ` in ${monate.join(", ")}` : ""} geändert hat, ist
+              danach weg — bitte vorher kurz Rücksprache halten.</div>
+            <Btn size="sm" kind="danger" onClick={() => {
+              if (window.confirm(`Die Änderungen von ${wer}`
+                + `${monate.length ? ` in ${monate.join(", ")}` : ""} werden überschrieben. `
+                + "Das lässt sich nicht rückgängig machen.")) onUebernehmen();
+            }}>Meinen Stand übernehmen</Btn>
+          </div>
+
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Erst einmal sichern</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Legt deinen Stand als Datei ab. Nichts geht verloren, gespeichert
+              ist damit aber auch nichts.</div>
+            <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <Btn kind="quiet" onClick={onSchliessen}>Später entscheiden</Btn>
+        </div>
+      </div>
+    </div>);
+}
+
 function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
@@ -17673,7 +17788,7 @@ function AppInnen() {
             const pp = mm && mm.personen.find((x) => x.id === db.session.personId);
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
-      onKonflikt: (d) => setKonflikt(d),
+      onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
       onFehler: (lage) => setNichtGespeichert(lage),
     });
   }, [db]);
@@ -19419,23 +19534,17 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         </nav>)}
 
       {konflikt && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)", backdropFilter: "blur(6px)",
-          zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div className="blatt" style={{ maxWidth: 480, padding: 26 }}>
-            <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>Bestand von anderer Stelle geändert</div>
-            <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
-              Der gespeicherte Bestand wurde in einem anderen Fenster fortgeschrieben. Um Datenverlust
-              zu vermeiden, wurde nicht gespeichert. Lade neu und trage die Änderung erneut ein.
-              <br /><br />
-              <b>Echter Mehrbenutzerbetrieb setzt einen Server voraus</b> — diese Prüfung erkennt den Konflikt,
-              sie löst ihn nicht auf.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <Btn kind="quiet" onClick={() => setKonflikt(false)}>Weiterarbeiten</Btn>
-              <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>
-            </div>
-          </div>
-        </div>)}
+        <Konfliktfenster lage={konflikt} melde={melde}
+          onSchliessen={() => setKonflikt(false)}
+          onUebernehmen={() => {
+            /* Denselben Stand noch einmal schicken. speicher.js hat den
+               ETag aus der Absage bereits übernommen, der zweite Versuch
+               läuft also gegen den aktuellen Stand und geht durch. */
+            SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
+              onFehler: (l) => setNichtGespeichert(l) });
+            setKonflikt(false);
+            melde("Dein Stand wurde übernommen.");
+          }} />)}
 
       {hinweis && (
         <div className="toast" role="status" aria-live="polite">
