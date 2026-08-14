@@ -165,6 +165,12 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
+import {
+  fristen as loeschFristen, vorschau as loeschVorschau,
+  raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
+  berichtstext as loeschBericht, PLANDATEN_MINDEST,
+} from "./aufbewahrung.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 
@@ -1400,6 +1406,62 @@ function nachtJahr(m, p, jahr) {
     return { stunden: Math.round(h * 10) / 10, anzahl: n };
   });
 }
+/* ==========================================================================
+   RECHTSGRUNDLAGE JE BEFUNDART
+
+   Ein Befund sagte bisher, *was* nicht stimmt, aber nie, *woraus* das folgt.
+   Für die Planung macht das den Unterschied zwischen einer Meinung der
+   Software und einer Vorschrift: „Ruhezeit unterschritten" lässt sich
+   wegklicken, „§ 5 Abs. 1 ArbZG" nicht.
+
+   Die Angabe ist bewusst knapp — Paragraf und Gesetz, dazu ein Halbsatz,
+   was dort steht. Wer mehr braucht, findet den Volltext bei
+   gesetze-im-internet.de; ihn hier einzubetten wäre Ballast und würde beim
+   nächsten Änderungsgesetz falsch.
+
+   Die Schutzvorschriften fehlen in dieser Tabelle mit Absicht: Bei ihnen
+   liefert schutzBefunde() in src/regelwerk.js die Fundstelle je Befund mit,
+   weil sie dort je nach Merkmal verschieden ist.
+   ========================================================================== */
+const RECHTSQUELLE = {
+  ruhezeit: { norm: "§ 5 Abs. 1 ArbZG",
+    satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
+  pause: { norm: "§ 4 ArbZG",
+    satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
+  folge: { norm: "§ 11 Abs. 1 ArbZG, § 3 ArbZG",
+    satz: "Mindestens 15 beschäftigungsfreie Sonntage im Jahr; die Höchstarbeitszeit gilt fortlaufend." },
+  nachtfolge: { norm: "§ 6 Abs. 1 ArbZG",
+    satz: "Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen." },
+  abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
+    satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
+  ueberlappung: { norm: "§ 7 BUrlG",
+    satz: "Ein Zeitraum kann nicht zugleich Urlaub und eine andere Abwesenheit sein." },
+  urlaub: { norm: "§ 7 Abs. 1 BUrlG",
+    satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
+  nachweis: { norm: "§ 12 ArbSchG",
+    satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
+  sperre: { norm: "§ 34a GewO",
+    satz: "Bewachungstätigkeit setzt den Sachkundenachweis voraus — ohne ihn ist der Einsatz unzulässig." },
+  qualifikation: { norm: "§ 5 ArbSchG",
+    satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
+  fachkraft: { norm: "§ 113 SGB XI, Landesheimpersonalverordnung",
+    satz: "Die Fachkraftquote je Dienst richtet sich nach Landesrecht; der hinterlegte Wert ist die betriebliche Vorgabe." },
+  besetzung: { norm: "§ 3 Abs. 1 ArbSchG",
+    satz: "Unterbesetzung ist eine Gefährdung und zu dokumentieren, wenn sie sich nicht vermeiden lässt." },
+  einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
+    satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
+  ausgleich: { norm: "§ 3 Satz 2 ArbZG",
+    satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
+};
+
+/** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
+function rechtsquelle(b) {
+  if (!b) return null;
+  if (b.art === "schutz")
+    return { norm: String(b.titel || "").split(" — ")[0], satz: null };
+  return RECHTSQUELLE[b.art] || null;
+}
+
 function pruefen(m, von, bis) {
   return memo(m, `pr|${von}|${bis}`, () => {
     const out = []; const push = (o) => out.push({ id: `${o.art}|${o.datum}|${o.ref || ""}`, ...o });
@@ -2387,18 +2449,21 @@ function datenauskunft(m, personId) {
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
-  z.push("", `Aufbewahrungsfrist nach Austritt: ${m.einstellungen.aufbewahrungMonate || 24} Monate.`);
+  /* Artikel 15 Abs. 1 lit. d DSGVO verlangt die Dauer der Speicherung —
+     und zwar alle drei, nicht nur die für Stammdaten. */
+  const fr = loeschFristen(m);
+  z.push("", "AUFBEWAHRUNG");
+  z.push(`  Plan-, Zeit- und Stempeldaten: ${fr.plandatenMonate} Monate`);
+  z.push(`  Stammdaten nach Austritt: ${fr.stammdatenMonate} Monate, danach Anonymisierung`);
+  z.push(`  Abwesenheitsgründe: ${fr.gruendeMonate} Monate`);
+  if (fr.zuletztGeraeumt) z.push(`  Letzter Löschlauf: ${fDatum(fr.zuletztGeraeumt)}`);
   return z.join("\n");
 }
-/** Wessen Daten dürfen nach Ablauf der Frist anonymisiert werden? */
-function anonymisierbar(m) {
-  const frist = m.einstellungen.aufbewahrungMonate || 24;
-  return m.personen.filter((p) => {
-    if (!p.austritt || p.anonym) return false;
-    const d = pISO(p.austritt); d.setMonth(d.getMonth() + frist);
-    return iso(d) <= heute();
-  });
-}
+/* Wer zur Anonymisierung fällig ist, rechnet jetzt src/aufbewahrung.js —
+   zusammen mit den beiden anderen Fristen und mit Prüfungen dahinter. Die
+   alte Fassung hier las einstellungen.aufbewahrungMonate; die Fristen liegen
+   seit Migration 5 → 6 unter m.aufbewahrung, und beide Werte liefen
+   auseinander, ohne dass es auffiel. */
 
 /* --------------------------- Konflikterkennung --------------------------- */
 /**
@@ -8369,6 +8434,155 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
 }
 
 /* ================================ PRÜFUNG ================================ */
+/* ==========================================================================
+   TESTABLAUF
+
+   Ein selbst angelegter Betrieb läuft nach 30 Tagen ab, und der Server weist
+   danach jede Anmeldung ab — nachgelesen in netlify/functions/daten.mjs. Der
+   Kunde erfuhr davon nichts: Der Ablauf stand nur in der Betreiberkonsole.
+   Am einunddreißigsten Tag stand jemand mit einem eingerichteten Betrieb vor
+   einer Anmeldung, die ihn nicht mehr kannte.
+
+   Diese Leiste zählt die Tage rückwärts, ab vierzehn Tagen vor Schluss. Sie
+   sagt, was bleibt und was passiert, und sie hört mit dem Ablauf nicht auf —
+   danach ist sie am wichtigsten.
+   ========================================================================== */
+function Testablauf({ mandant, darfEinrichten }) {
+  const m = mandant || {};
+  const ende = m.laeuftAb || (m.status === "test" ? m.stichtag : null);
+  if (!ende || m.status === "aktiv") return null;
+
+  const tag = String(ende).slice(0, 10);
+  const rest = Math.ceil((pISO(tag).getTime() - pISO(heute()).getTime()) / 86400000);
+  /* Vorher nicht stören. Zwei Wochen sind genug, um zu entscheiden, und
+     wenig genug, dass die Leiste nicht zum Hintergrundrauschen wird. */
+  if (rest > 14) return null;
+
+  const abgelaufen = rest <= 0;
+  const ton = abgelaufen || rest <= 3 ? "danger" : "warn";
+  const grund = ton === "danger" ? C.dangerLight : C.warnLight;
+  const rand = ton === "danger" ? C.danger : C.warn;
+
+  return (
+    <div role="status" style={{ padding: "14px 18px", borderRadius: 12, marginBottom: 20,
+      background: grund, border: `1px solid ${rand}33`,
+      display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 260 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 640, marginBottom: 5 }}>
+          {abgelaufen
+            ? `Der Testzeitraum ist am ${fDatum(tag)} abgelaufen`
+            : rest === 1 ? "Der Testzeitraum endet morgen"
+              : `Noch ${rest} Tage im Testzeitraum`}
+        </div>
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+          {abgelaufen
+            ? "Die Zugänge werden abgewiesen, sobald die Sitzung endet. Der Betrieb "
+              + "bleibt vollständig erhalten und ist sofort wieder da, wenn der Zugang "
+              + "verlängert wird — es geht nichts verloren."
+            : `Bis zum ${fDatum(tag)} ist alles unverändert nutzbar. Danach werden die `
+              + "Zugänge abgewiesen; der Betrieb bleibt gespeichert. "
+              + (darfEinrichten
+                ? "Vorher lohnt eine Datenmitnahme — dann liegt der Stand auch außerhalb."
+                : "Die Organisationsleitung kann verlängern.")}
+        </div>
+      </div>
+      {darfEinrichten && (
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <Btn size="sm" kind="primary" onClick={() => {
+            window.location.href = hilfeVerweis({
+              betreff: `CENTRIC verlängern — ${m.name || ""}`,
+              betrieb: m.name, zusatz: `Der Testzeitraum endet am ${tag}. Wir möchten verlängern.` });
+          }}>Verlängern</Btn>
+        </div>)}
+    </div>);
+}
+
+/* ==========================================================================
+   HILFE UND KONTAKT
+
+   Bis hierher endete jede Frage, die das Handbuch nicht beantwortet, im
+   Nichts: keine Adresse, keine Nummer, kein Hinweis, wohin man sich wendet.
+   Für eine Software, die nachts im Schichtdienst läuft, ist das die
+   auffälligste Lücke — dort ist niemand, den man kurz fragen kann.
+
+   Der Verweis nimmt Betrieb, Rolle und Ansicht mit. Das spart die erste
+   Rückfrage, die sonst immer aus denselben vier Fragen besteht.
+   ========================================================================== */
+function Hilfe({ sitz, gehZu }) {
+  const m = sitz.mandant || {};
+  const rollenName = sitz.rolle === "betreiber"
+    ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
+
+  const Weg = ({ titel, text, knopf, aufKlick, href }) => (
+    <div className="karte" style={{ padding: "16px 18px", display: "flex", gap: 16,
+      alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
+        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
+      </div>
+      {href
+        ? <a href={href} style={{ textDecoration: "none" }}>
+            <Btn size="sm" kind="primary">{knopf}</Btn></a>
+        : <Btn size="sm" onClick={aufKlick}>{knopf}</Btn>}
+    </div>);
+
+  return (
+    <div>
+      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns.">
+        Hilfe</H1>
+
+      {KONTAKT_UNGESETZT && (
+        <div style={{ padding: "12px 16px", borderRadius: 10, marginBottom: 18,
+          background: C.warnLight, border: `1px solid ${C.warn}33`, fontSize: 13, lineHeight: 1.55 }}>
+          <strong style={{ fontWeight: 640 }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
+          Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
+          Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
+          rechtliches/PLATZHALTER.md.
+        </div>)}
+
+      <Card style={{ marginBottom: 18 }}>
+        <CardHead>Selbst nachsehen</CardHead>
+        <div style={{ padding: 18 }}>
+          <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")}
+            text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
+          <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")}
+            text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
+          <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")}
+            text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
+        <div style={{ padding: 18 }}>
+          <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
+              rolle: rollenName, ansicht: "Hilfe",
+              zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
+            text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
+          <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
+            href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
+              zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
+            text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
+          <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
+            text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
+          <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
+              zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
+            text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.lineSoft}`,
+            fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+            E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
+            {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
+              style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
+          </div>
+        </div>
+      </Card>
+    </div>);
+}
+
 function Pruefung({ sitz, ym, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
@@ -8454,7 +8668,20 @@ function Pruefung({ sitz, ym, oeffneTag }) {
                 <div style={{ fontSize: 11.5, color: C.dimmer }}>{DOW[dow(b.datum)]}</div></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div></div>
+                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
+                {(() => {
+                  /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
+                     Meinung der Software; mit ihr ist er eine Vorschrift. */
+                  const q = rechtsquelle(b);
+                  if (!q || !q.norm) return null;
+                  return (
+                    <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5,
+                      display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ padding: "1px 7px", borderRadius: 5, background: C.flaecheStill,
+                        color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
+                      {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                    </div>);
+                })()}</div>
             </div>))}
       </Card>
     </div>);
@@ -9216,28 +9443,87 @@ function Eskalation({ sitz, datum, dienstId, akt, onClose }) {
 function Datenschutz({ sitz, akt }) {
   const m = sitz.mandant;
   const [pid, setPid] = useState("");
-  const kandidaten = anonymisierbar(m);
+  /* Vorschau und Ausführung rechnen mit demselben Code. Was hier steht, ist
+     genau das, was der Knopf tut — keine zweite Zählung, die abweichen kann. */
+  const v = useMemo(() => loeschVorschau(m, heute()), [m]);
+  const f = v.stichtage.fristen;
+
+  const FristFeld = ({ schluessel, label, hint, wert }) => (
+    <Field label={label} hint={hint}>
+      <Inp type="number" min="1" value={wert}
+        onChange={(e) => akt.setzeAufbewahrung(schluessel, Number(e.target.value))} />
+    </Field>);
+
+  const Posten = ({ zahl, was, ab }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0",
+      borderBottom: `1px solid ${C.lineSoft}` }}>
+      <span style={{ fontSize: 15, fontWeight: 640, minWidth: 44, textAlign: "right",
+        color: zahl ? C.text : C.dimmer, ...NUM }}>{zahl}</span>
+      <span style={{ fontSize: 13.5, flex: 1 }}>{was}</span>
+      <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>vor {fDatum(ab)}</span>
+    </div>);
+
   return (
     <Card>
-      <CardHead>Datenschutz</CardHead>
+      <CardHead right={<Lab>{f.zuletztGeraeumt
+        ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
       <div style={{ padding: 22, display: "grid", gap: 18 }}>
-        <Field label="Aufbewahrungsfrist nach Austritt in Monaten"
-          hint="Danach dürfen Name und Kontaktdaten anonymisiert werden. Planungsdaten bleiben als Statistik erhalten.">
-          <Inp type="number" value={m.einstellungen.aufbewahrungMonate || 24}
-            onChange={(e) => akt.setzeEinstellung("aufbewahrungMonate", Number(e.target.value))} /></Field>
+
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+          Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
+          sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
+          und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
+          <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
+            label="Plandaten in Monaten"
+            hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
+          <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
+            label="Stammdaten nach Austritt"
+            hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
+          <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
+            label="Abwesenheitsgründe in Monaten"
+            hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
+        </div>
+
+        {v.warnung && (
+          <div style={{ padding: "12px 15px", borderRadius: 10, background: C.dangerLight,
+            border: `1px solid ${C.danger}33`, fontSize: 13, lineHeight: 1.55 }}>
+            {v.warnung}</div>)}
 
         <div>
-          <Lab style={{ marginBottom: 8 }}>Zur Anonymisierung fällig · {kandidaten.length}</Lab>
-          {kandidaten.length === 0
-            ? <div style={{ fontSize: 13, color: C.dimmer }}>Keine Datensätze über der Frist.</div>
-            : kandidaten.map((p) => (
+          <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
+          {v.gesamt === 0
+            ? <div style={{ fontSize: 13, color: C.dimmer }}>
+                Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
+            : (<div>
+              {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
+                was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
+              {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
+                was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
+              {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
+                was="Änderungsvermerke werden gelöscht" />}
+              {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
+                was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
+                <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
+              </div>
+            </div>)}
+        </div>
+
+        {v.personen.length > 0 && (
+          <div>
+            <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
+            {v.personen.map((p) => (
               <div key={p.id} className="karte" style={{ display: "flex", alignItems: "center", gap: 12,
                 padding: "10px 13px", marginBottom: 7 }}>
                 <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
                 <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
                 <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
               </div>))}
-        </div>
+          </div>)}
 
         <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 8 }}>Datenauskunft nach Artikel 15</Lab>
@@ -17428,6 +17714,7 @@ const BEREICHE = [
     ["start", "Start", null],
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
+    ["hilfe", "Hilfe", null],
     ["uebergabe", "Übergabe", "PAKET:uebergabe"],
     ["meine", "Meine Schichten", "SCHICHT"],
     ["lage", "Lagebild", "plan.view.unit"],
@@ -17472,6 +17759,11 @@ const BEREICHE = [
     ["dienste", "Dienstarten", "org.edit"],
     ["einstellungen", "Einstellungen", null],
     ["mitnahme", "Datenmitnahme", "org.edit"],
+    /* Die Datenschutzansicht gab es als Baustein seit langem — sie war nur
+       nirgends eingehängt und damit für niemanden erreichbar. Aufgefallen
+       beim Einbau des Löschlaufs: Die Tour verweist auf „Verwaltung →
+       Datenschutz", und dort war nichts. */
+    ["datenschutz", "Datenschutz", "org.edit"],
     /* Ohne Recht davor: Impressum und Datenschutzerklärung stehen jeder
        Rolle zu, auch der Aushilfe mit dem Mitarbeiterzugang. */
     ["rechtliches", "Rechtliches", null],
@@ -17888,6 +18180,10 @@ function AppInnen() {
       setzeBranche: (b) => mUpd((m) => { const br = BRANCHEN.find((x) => x[0] === b);
         return { ...m, branche: b, einheitLabel: br ? br[2] : m.einheitLabel }; }, "Branche gewechselt"),
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
+      /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
+         sie gehören zum Löschkonzept, nicht zum Regelwerk. */
+      setzeAufbewahrung: (k, v) => mUpd((m) => ({ ...m,
+        aufbewahrung: { ...loeschFristen(m), [k]: Math.max(1, Number(v) || 1) } }), null),
       setzeEinheit: (id, k, v) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === id ? { ...e, [k]: v } : e) }), null),
       neueEinheit: () => mUpd((m) => ({ ...m, einheiten: [...m.einheiten, { id: uid("e"),
         name: `${m.einheitLabel} ${m.einheiten.length + 1}`, versatz: m.einheiten.length % m.zyklus.wochen,
@@ -18934,9 +19230,29 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         if (!window.confirm("Name und Kontaktdaten werden unwiderruflich ersetzt. Planungsdaten bleiben als Statistik erhalten.")) return m;
         melde("Datensatz anonymisiert.");
         return { ...m, personen: m.personen.map((p) => p.id === pid
-          ? { ...p, vorname: "anonymisiert", nachname: `Person ${p.id.slice(-4)}`, email: "", anonym: true } : p),
+          ? { ...anonymPerson(p), anonymSeit: heute() } : p),
           nachrichten: (m.nachrichten || []).filter((n) => n.personId !== pid) };
       }, "Datensatz anonymisiert"),
+
+      /* Der Löschlauf über alle drei Fristen. Bis hierher standen die
+         Fristen im Bestand und taten nichts — Artikel 17 DSGVO verlangt
+         die Löschung, nicht die Absicht dazu. */
+      loeschlauf: () => {
+        const s2 = ref.current;
+        const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        const vor = loeschVorschau(m0, heute());
+        if (vor.gesamt === 0) { melde("Nichts fällig — alle Fristen eingehalten."); return; }
+        if (!window.confirm(
+          `${loeschBericht(vor)}\n\nDas lässt sich nicht rückgängig machen. `
+          + "Bei Zweifel vorher eine Sicherung anlegen.")) return;
+        let text = "";
+        mUpd((m) => {
+          const { mandant, bericht } = loeschlaufAusfuehren(m, heute());
+          text = loeschBericht(bericht);
+          return mandant;
+        }, `Löschlauf: ${loeschBericht(vor)}`);
+        melde(text || "Löschlauf ausgeführt.");
+      },
       datenauskunft: (pid) => {
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         const p = m.personen.find((x) => x.id === pid);
@@ -19239,6 +19555,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
           <main className="bereich" id="inhalt" tabIndex={-1}
             aria-label={`Ansicht ${aktiveView}`}>
+          {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
               <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>Für Tablet und Rechner ausgelegt</div>
@@ -19295,6 +19612,11 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "handbuch" && <Handbuch sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "offene" && <OffeneSchichten sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "einstellungen" && <Einstellungen sitz={sitz} akt={akt} gehZu={setView} />}
+            {aktiveView === "hilfe" && <Hilfe sitz={sitz} gehZu={setView} />}
+            {aktiveView === "datenschutz" && <div>
+              <H1 sub="Aufbewahrungsfristen, Löschlauf und Auskunft nach Artikel 15. Was hier steht, ist nachgerechnet — die Vorschau benutzt denselben Code wie die Ausführung.">
+                Datenschutz</H1>
+              <Datenschutz sitz={sitz} akt={akt} /></div>}
             {aktiveView === "rechtliches" && <div>
               <H1 sub="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung. Änderungen an diesen Texten geschehen an einer Stelle — im Ordner rechtliches/ — und erscheinen hier.">
                 Rechtliches</H1>

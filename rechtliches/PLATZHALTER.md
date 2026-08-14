@@ -73,3 +73,18 @@ und dokumentiert sein, bevor ein Kunde echte Personaldaten einspielt.
 **Widerrufsrecht.** Die AGB gehen davon aus, dass ausschließlich an
 Unternehmer verkauft wird. Sobald ein Verbraucher Kunde werden kann, kommt
 eine Widerrufsbelehrung hinzu, und die Haftungsklauseln sind zu prüfen.
+
+## Umgebungsvariablen
+
+Zwei Angaben gehören nicht in den Quelltext, weil sie sich ändern können,
+ohne dass jemand die Anwendung neu baut. Sie werden beim Bauen gesetzt —
+bei Netlify unter *Site configuration → Environment variables*:
+
+| Variable | Wirkung |
+|---|---|
+| `VITE_KONTAKT_MAIL` | Adresse im Hilfebereich, im Hinweis zum Testablauf und in Fehlermeldungen. Ohne sie zeigt die Anwendung `kontakt@example.org` und weist im Hilfebereich sichtbar darauf hin. |
+| `VITE_KONTAKT_TELEFON` | Optional. Ohne Wert erscheint die Telefonzeile gar nicht. |
+| `VITE_KONTAKT_ZEITEN` | Optional. Erreichbarkeit als Klartext. |
+
+Die Adresse sollte dieselbe sein wie `[BEISPIEL-EMAIL]` im Impressum —
+sonst steht im Impressum eine andere Anlaufstelle als in der Anwendung.
