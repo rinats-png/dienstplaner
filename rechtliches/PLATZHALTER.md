@@ -76,8 +76,8 @@ eine Widerrufsbelehrung hinzu, und die Haftungsklauseln sind zu prüfen.
 
 ## Umgebungsvariablen
 
-Zwei Angaben gehören nicht in den Quelltext, weil sie sich ändern können,
-ohne dass jemand die Anwendung neu baut. Sie werden beim Bauen gesetzt —
+Die Kontaktangaben gehören nicht in den Quelltext, weil sie sich ändern
+können, ohne dass jemand die Anwendung neu baut. Sie werden beim Bauen gesetzt —
 bei Netlify unter *Site configuration → Environment variables*:
 
 | Variable | Wirkung |

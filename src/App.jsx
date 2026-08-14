@@ -1428,10 +1428,15 @@ const RECHTSQUELLE = {
     satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
   pause: { norm: "§ 4 ArbZG",
     satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
-  folge: { norm: "§ 11 Abs. 1 ArbZG, § 3 ArbZG",
-    satz: "Mindestens 15 beschäftigungsfreie Sonntage im Jahr; die Höchstarbeitszeit gilt fortlaufend." },
-  nachtfolge: { norm: "§ 6 Abs. 1 ArbZG",
-    satz: "Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen." },
+  /* Die Zahl zulässiger Dienste in Folge steht in keinem Gesetz. Sie kommt
+     aus dem Tarifvertrag, der Betriebsvereinbarung oder der eigenen
+     Festlegung — hier ist sie eine betriebliche Grenze, und das muss dabei
+     stehen. Sonst behauptet die Anwendung ein Gesetz, das es nicht gibt.
+     Die gesetzliche Anknüpfung nebenan ist echt, aber eine andere Frage. */
+  folge: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Das Arbeitszeitgesetz begrenzt die Dienstfolge nicht unmittelbar. Gesetzlich gebunden ist der Sonntag: § 11 Abs. 1 ArbZG verlangt mindestens 15 beschäftigungsfreie Sonntage im Jahr." },
+  nachtfolge: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Anknüpfung ist § 6 Abs. 1 ArbZG: Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen. Die Zahl selbst legt der Betrieb fest." },
   abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
     satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
   ueberlappung: { norm: "§ 7 BUrlG",
@@ -1444,10 +1449,12 @@ const RECHTSQUELLE = {
     satz: "Bewachungstätigkeit setzt den Sachkundenachweis voraus — ohne ihn ist der Einsatz unzulässig." },
   qualifikation: { norm: "§ 5 ArbSchG",
     satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
-  fachkraft: { norm: "§ 113 SGB XI, Landesheimpersonalverordnung",
-    satz: "Die Fachkraftquote je Dienst richtet sich nach Landesrecht; der hinterlegte Wert ist die betriebliche Vorgabe." },
-  besetzung: { norm: "§ 3 Abs. 1 ArbSchG",
-    satz: "Unterbesetzung ist eine Gefährdung und zu dokumentieren, wenn sie sich nicht vermeiden lässt." },
+  fachkraft: { norm: "Landesheimpersonalverordnung",
+    satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." },
+  besetzung: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Die Mindestbesetzung legt der Betrieb fest. Bleibt sie dauerhaft unerreicht, ist das nach § 5 ArbSchG als Gefährdung zu beurteilen." },
+  urlaubsgrenze: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Wie viele gleichzeitig Urlaub haben dürfen, legt der Betrieb fest." },
   einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
     satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
   ausgleich: { norm: "§ 3 Satz 2 ArbZG",
@@ -8677,7 +8684,9 @@ function Pruefung({ sitz, ym, oeffneTag }) {
                   return (
                     <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5,
                       display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <span style={{ padding: "1px 7px", borderRadius: 5, background: C.flaecheStill,
+                      <span style={{ padding: "1px 7px", borderRadius: 5,
+                        background: q.betrieblich ? "transparent" : C.flaecheStill,
+                        border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
                         color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
                       {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
                     </div>);
@@ -12199,496 +12208,30 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
    die wichtigste.
    ========================================================================== */
 
-const HANDBUCH = [
-  /* ------------------------------------------------------------------ */
-  {
-    id: "start", titel: "Bevor es losgeht", dauer: "5 Minuten",
-    einleitung: "Was du bereithalten solltest, damit die Einrichtung in einem Zug durchläuft.",
-    abschnitte: [
-      {
-        titel: "Was du brauchst",
-        text: "Die Einrichtung dauert je nach Betriebsgröße ein bis drei Stunden. Wer diese vier Dinge bereitliegen hat, ist in einem Zug durch.",
-        schritte: [
-          "Eine Liste aller Beschäftigten mit Name, Funktion und Wochenstunden — am besten als Tabelle aus der Lohnbuchhaltung.",
-          "Den aktuellen Dienstplan, egal ob Excel, Papier oder Wandkalender. Er wird nicht eingelesen, aber du brauchst ihn zum Vergleichen.",
-          "Die Antwort auf die Frage: Nach welchem Modell wird gearbeitet? Vier Gruppen im Wechsel? Fünf? Feste Schichten?",
-          "Wer darf was? Wer plant, wer vertritt, wer sieht nur den eigenen Plan.",
-        ],
-        merke: "Die Liste der Beschäftigten ist der einzige Punkt, der wirklich Zeit kostet. Alles andere ist in Minuten erledigt.",
-      },
-      {
-        titel: "Wie CENTRIC den Plan berechnet",
-        text: "Das ist der wichtigste Unterschied zu anderen Programmen — und wer ihn versteht, versteht alles Weitere.",
-        schritte: [
-          "Andere Programme rollen einen Plan aus: Für jeden Tag und jede Person wird ein Eintrag gespeichert. Ein Jahr für achtzig Personen sind fast dreißigtausend Einträge.",
-          "CENTRIC speichert stattdessen die Regel: den Zyklus und den Startpunkt jeder Gruppe. Daraus wird jeder Tag berechnet — vorwärts wie rückwärts, ohne Grenze.",
-          "Gespeichert werden nur die Abweichungen von der Regel: wer einspringt, wer tauscht, wer fehlt.",
-        ],
-        merke: "Deshalb gibt es keine Jahresgrenze und keine Massenänderung, wenn das Modell wechselt. Du änderst die Regel, und der ganze Plan folgt.",
-      },
-    ],
-  },
+/* Der Inhalt liegt in src/handbuch-inhalt.js und wird erst geholt, wenn
+   jemand ihn braucht — siehe dort. */
+let _handbuch = null;
+let _handbuchLaeuft = null;
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "betrieb", titel: "Schritt 1 — Den Betrieb einrichten", dauer: "15 Minuten",
-    ziel: "betrieb",
-    einleitung: "Standorte, Arbeitszeitregeln und Dienstarten. Alles Weitere rechnet mit diesen Werten.",
-    abschnitte: [
-      {
-        titel: "Standorte anlegen",
-        text: "Jeder Standort hat ein eigenes Bundesland. Das ist keine Formalie: Feiertage unterscheiden sich, und ein Feiertagszuschlag hängt daran.",
-        schritte: [
-          "Verwaltung → Betrieb öffnen.",
-          "Für jeden Standort Bezeichnung, Bundesland und Umkreis in Metern eintragen.",
-          "Der Umkreis gilt für die Standortprüfung beim Einstempeln. 200 Meter sind ein guter Anfang — bei großen Werksgeländen mehr.",
-        ],
-        pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert. Stimmt das nicht, ist das Bundesland falsch.",
-        merke: "Betriebe mit mehreren Standorten in verschiedenen Bundesländern legen jeden einzeln an — sonst rechnet CENTRIC mit den falschen Feiertagen.",
-      },
-      {
-        titel: "Arbeitszeitregeln festlegen",
-        text: "Die Werte, gegen die jede Prüfung läuft. Sie stammen aus dem Arbeitszeitgesetz und dem Tarif- oder Arbeitsvertrag.",
-        schritte: [
-          "Wochenarbeitszeit: die vertragliche Regelarbeitszeit einer Vollzeitkraft.",
-          "Ruhezeit zwischen zwei Diensten: gesetzlich elf Stunden, in Pflege und Klinik unter Bedingungen zehn.",
-          "Höchstzahl Dienste in Folge: üblich sechs, in manchen Modellen sieben.",
-          "Ausgleichsgrenze für das Stundenkonto: ab wann wird gewarnt. Vierzig Stunden sind verbreitet.",
-        ],
-        pruefen: "Prüfung öffnen. Erscheinen dort auf einmal Hunderte Befunde, ist ein Wert zu streng gesetzt.",
-        merke: "Diese Werte lieber einmal mit dem Betriebsrat abstimmen als später alle Befunde erklären.",
-      },
-      {
-        titel: "Dienstarten anlegen",
-        text: "Früh, Spät, Nacht — oder was auch immer bei euch gefahren wird. Jede Dienstart braucht Zeiten, eine Farbe und eine Mindestbesetzung.",
-        schritte: [
-          "Verwaltung → Betrieb → Dienstarten.",
-          "Name, Kürzel, Beginn und Ende eintragen. Über Mitternacht laufende Dienste werden automatisch erkannt.",
-          "Dienstform wählen: Regeldienst, Bereitschaftsdienst, Rufbereitschaft oder geteilter Dienst.",
-          "Mindestbesetzung je Wochentag — getrennt für Montag bis Donnerstag, Freitag, Samstag und Sonntag.",
-          "Erforderliche Qualifikationen zuordnen, falls ein Dienst ohne bestimmte Kräfte nicht laufen darf.",
-        ],
-        pruefen: "Lagebild öffnen. Jede Dienstart zeigt eine Zahl wie 8/10 — eingeteilt gegen gefordert. Steht dort 8/0, fehlt die Mindestbesetzung.",
-        merke: "Die Dienstform ist wichtiger, als sie aussieht: Rufbereitschaft unterbricht die Ruhezeit nicht, Bereitschaftsdienst zählt nur anteilig aufs Konto.",
-      },
-    ],
-  },
+/** Holt den Handbuchinhalt. Mehrfache Aufrufe teilen sich ein Versprechen. */
+function handbuchLaden() {
+  if (_handbuch) return Promise.resolve(_handbuch);
+  if (!_handbuchLaeuft) {
+    _handbuchLaeuft = import("./handbuch-inhalt.js")
+      .then((mod) => { _handbuch = mod.HANDBUCH; return _handbuch; })
+      .catch((e) => { _handbuchLaeuft = null; throw e; });
+  }
+  return _handbuchLaeuft;
+}
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "personal", titel: "Schritt 2 — Personal anlegen", dauer: "20 bis 60 Minuten",
-    ziel: "personal",
-    einleitung: "Der einzige Schritt, der wirklich Zeit kostet. Es gibt zwei Wege.",
-    abschnitte: [
-      {
-        titel: "Liste einlesen",
-        text: "Der schnellere Weg, wenn eine Tabelle vorliegt.",
-        schritte: [
-          "Team → Personal → Importieren.",
-          "Die Tabelle aus Excel kopieren und in das Feld einfügen. Komma, Semikolon und Tabulator werden erkannt.",
-          "Spalten zuordnen: Vorname, Nachname, Funktion, Wochenstunden, Einheit.",
-          "Die Vorschau zeigt jede Zeile mit Befund. Fehlerhafte Zeilen werden benannt, nicht stillschweigend übersprungen.",
-          "Erst wenn die Vorschau stimmt, auf Übernehmen.",
-        ],
-        pruefen: "Die Personalliste zeigt danach die erwartete Anzahl. Fehlt jemand, stand in der Zeile ein unbekannter Einheitenname.",
-        merke: "Personalnummern gleich mit einlesen, wenn vorhanden. Sie werden für die Lohnausgabe gebraucht und lassen sich später nur einzeln nachtragen.",
-      },
-      {
-        titel: "Einzeln anlegen",
-        text: "Für kleine Betriebe oder Nachzügler.",
-        schritte: [
-          "Team → Personal → Person hinzufügen.",
-          "Name, Funktion, Einheit und Wochenstunden eintragen.",
-          "Eintrittsdatum setzen — davor erscheint die Person in keinem Plan.",
-          "Bei Teilzeit die tatsächlichen Wochenstunden eintragen; CENTRIC verteilt die Dienste entsprechend.",
-        ],
-        pruefen: "Die Person erscheint im Monatsplan ab dem Eintrittsdatum mit Diensten.",
-      },
-      {
-        titel: "Zugangsarten vergeben",
-        text: "Wer darf was sehen und ändern. Anders als bei vielen Anbietern kostet das nichts extra — gerechnet wird je Standort, nicht je Kopf.",
-        schritte: [
-          "In der Personalliste steht je Zeile ein Auswahlfeld für die Zugangsart.",
-          "Organisationsleitung: alles. Genau eine je Betrieb, kostenfrei.",
-          "Planung: Schichtfolge, Monatsplan, Freigabe, alle Anträge. Sitzt im Geschäftszimmer und fährt keine Schicht.",
-          "Schichtverantwortung: nur die eigene Einheit, fährt selbst mit.",
-          "Beschäftigte: eigener Plan, Anträge, Zeiterfassung.",
-          "Betriebsrat: rein lesend, kostenfrei.",
-        ],
-        pruefen: "Die geänderte Zugangsart erscheint sofort in der Liste, und die betroffene Person sieht beim nächsten Anmelden die neuen Ansichten.",
-        merke: "Im Zweifel weniger Rechte vergeben. Nachträglich erweitern ist leicht, entziehen ist unangenehm. Kosten spielen dabei keine Rolle — wer jemanden zur Planung befördert, zahlt keinen Aufpreis.",
-      },
-    ],
-  },
+/** Welche Kapitel gelten für diesen Betrieb? */
+const handbuchKapitel = (alle, m) => (alle || []).filter((k) =>
+  !k.merkmale || !m || k.merkmale.some((x) => kann(m, x)));
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "quals", titel: "Schritt 3 — Qualifikationen", dauer: "20 Minuten",
-    ziel: "quals",
-    einleitung: "Wer darf was. Grundlage für Besetzungsprüfung und Ersatzsuche.",
-    abschnitte: [
-      {
-        titel: "Qualifikationen anlegen",
-        text: "Sachkunde, Schichtleitung, Erste Hilfe, Fachweiterbildungen — was in eurem Betrieb zählt.",
-        schritte: [
-          "Team → Qualifikationen → Hinzufügen.",
-          "Bezeichnung und Kürzel eintragen.",
-          "Gültigkeitsdauer festlegen: unbefristet oder in Monaten. Erste Hilfe läuft üblicherweise nach 24 Monaten ab.",
-          "Nachweispflicht setzen, wenn ein Dokument vorliegen muss.",
-          "Zwei besondere Schalter: „zählt als Fachkraft\" für die Quote in Pflege und Klinik, „gesetzlich zwingend\" für Qualifikationen wie die Sachkunde nach § 34a.",
-        ],
-        pruefen: "Bei einer Qualifikation mit Ablauf erscheint in der Personalakte ein Feld für das Ablaufdatum.",
-        merke: "„Gesetzlich zwingend\" wirkt hart: Ohne diese Qualifikation ist gar kein Einsatz zulässig, unabhängig vom Dienst. Nur dort setzen, wo es wirklich so ist.",
-      },
-      {
-        titel: "Personen zuordnen",
-        text: "Ohne Zuordnung kann CENTRIC nicht erkennen, ob ein Dienst fachlich gedeckt ist.",
-        schritte: [
-          "Personalakte öffnen → Qualifikationen.",
-          "Zutreffende auswählen und bei befristeten das Ablaufdatum eintragen.",
-          "Bei vielen Personen ist der Weg über die Qualifikationsmatrix schneller: Team → Qualifikationen → Matrix.",
-        ],
-        pruefen: "Die Matrix zeigt je Einheit und Qualifikation, wie viele Personen sie haben. Rot bedeutet: hängt an einer einzigen Person.",
-        merke: "Die Engpassanzeige der Matrix ist eine der nützlichsten Ansichten überhaupt — sie zeigt, wo ein einziger Ausfall den Betrieb lahmlegt.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "folge", titel: "Schritt 4 — Schichtfolge festlegen", dauer: "15 Minuten",
-    ziel: "folge",
-    einleitung: "Das Herzstück. Aus Zyklus und Startpunkt entsteht der ganze Plan.",
-    abschnitte: [
-      {
-        titel: "Modell wählen",
-        text: "Neun geprüfte Modelle stehen bereit, jedes mit gerechneten Kennzahlen.",
-        schritte: [
-          "Planung → Schichtfolge → Einrichtungsassistent.",
-          "Die Liste zeigt je Modell: Wochenstunden, Anzahl Gruppen, längste Dienstserie.",
-          "Ein Klick öffnet die Vorschau mit dem tatsächlichen Zyklus.",
-          "Wenn keines passt: eigenen Zyklus bauen — Dienstart antippen, dann auf Tage klicken. Oder die Dienstart direkt auf einen Tag ziehen.",
-        ],
-        pruefen: "Die Kennzahl „Wochenstunden\" muss zur vertraglichen Arbeitszeit passen. Weicht sie um mehr als eine Stunde ab, entstehen dauerhaft Plus- oder Minusstunden.",
-        merke: "Die Zahlen sind gerechnet, nicht geschätzt. Ein Modell mit 42 Stunden bei 40 Stunden Vertrag erzeugt zwei Plusstunden je Woche — je Person, jede Woche.",
-      },
-      {
-        titel: "Gruppen und Startpunkte",
-        text: "Jede Gruppe startet an einer anderen Stelle des Zyklus. Der Versatz bestimmt, wer wann arbeitet.",
-        schritte: [
-          "Anzahl Gruppen festlegen — meist gibt das Modell sie vor.",
-          "Den Versatz je Gruppe prüfen. Bei gleichmäßigem Versatz deckt jede Gruppe reihum jede Dienstart ab.",
-          "Ankerdatum setzen: der Tag, an dem Gruppe 1 am Zyklusanfang steht.",
-        ],
-        pruefen: "Im Monatsplan durchlaufen alle Gruppen dieselbe Abfolge, nur zeitversetzt. Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht, stimmt der Versatz nicht.",
-        merke: "Das Ankerdatum lässt sich später ändern, verschiebt dann aber den gesamten Plan. Vor der ersten Freigabe klären.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "plan", titel: "Schritt 5 — Prüfen und freigeben", dauer: "20 Minuten",
-    ziel: "plan",
-    einleitung: "Vor der Freigabe alle kritischen Befunde klären. Danach ist der Plan verbindlich.",
-    abschnitte: [
-      {
-        titel: "Die Prüfung lesen",
-        text: "CENTRIC prüft laufend gegen Arbeitszeitgesetz, Mindestbesetzung und Qualifikationen.",
-        schritte: [
-          "Auswertung → Prüfung öffnen.",
-          "Rote Befunde sind kritisch: Ruhezeitverstoß, Unterbesetzung, fehlende Pflichtqualifikation.",
-          "Gelbe sind Hinweise: hohes Stundenkonto, viele Dienste in Folge, ablaufender Nachweis.",
-          "Jeder Befund nennt Person, Datum und Grund. Ein Klick führt zum betroffenen Tag.",
-        ],
-        pruefen: "Nach dem Beheben verschwindet der Befund sofort — die Prüfung rechnet bei jeder Änderung neu.",
-        merke: "Gelbe Befunde müssen nicht verschwinden. Rote sollten es, bevor freigegeben wird.",
-      },
-      {
-        titel: "Lücken schließen",
-        text: "Wenn ein Dienst unterbesetzt ist.",
-        schritte: [
-          "Lagebild öffnen oder den Tag im Monatsplan anklicken.",
-          "Bei der unterbesetzten Dienstart auf „Besetzen\".",
-          "CENTRIC schlägt Personen vor, geordnet nach Eignung. Wer nicht kann, steht unten mit Begründung.",
-          "Der Knopf „warum?\" zeigt, weshalb jemand oben steht: Stundenkonto unter dem Mittel, Wunschdienst hinterlegt, lange nicht eingesprungen.",
-          "Vor dem Eintragen zeigt CENTRIC die Folgen: Ruhezeit, Wochenstunden, nächste Dienste.",
-        ],
-        pruefen: "Die Zahl im Lagebild steigt von 8/10 auf 9/10.",
-        merke: "Wer abwesend ist, kann nicht eingeteilt werden — CENTRIC lehnt das ab statt es stillschweigend anzunehmen.",
-      },
-      {
-        titel: "Freigeben",
-        text: "Mit der Freigabe wird der Monat verbindlich.",
-        schritte: [
-          "Planung → Monatsplan → Freigeben.",
-          "Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
-          "Der Planstandvergleich zeigt, was sich seit der Freigabe geändert hat.",
-        ],
-        pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
-        merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt. Danach zählt jede Änderung in die Planungssicherheit.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "betrieb2", titel: "Der laufende Betrieb", dauer: "täglich",
-    ziel: "start",
-    einleitung: "Was nach der Einrichtung jeden Tag passiert.",
-    abschnitte: [
-      {
-        titel: "Krankmeldung und Ersatz",
-        text: "Der häufigste Vorgang überhaupt — und der eigentliche Prüfstein.",
-        schritte: [
-          "Auf jeder Ansicht oben: Krankmeldung erfassen.",
-          "Person und Zeitraum wählen. CENTRIC zeigt sofort alle entstehenden Lücken.",
-          "Je Lücke Ersatz suchen. Wer möglich ist, steht oben; wer nicht, unten mit Grund.",
-          "Findet sich niemand: erweiterte Anfrage an mehrere Personen gleichzeitig.",
-          "Bleibt es unbesetzt: dokumentierte Unterschreitung mit Begründung — nachweisbar für Prüfungen.",
-        ],
-        pruefen: "Die betroffenen Personen erhalten eine Mitteilung, sichtbar im Postfach.",
-      },
-      {
-        titel: "Offene Schichten ausschreiben",
-        text: "Statt zehn Leute anzurufen: die Lücke sichtbar machen und warten, wer sich meldet.",
-        schritte: [
-          "Anliegen → Offene Schichten.",
-          "Oben stehen die Lücken der nächsten vierzehn Tage, die noch nicht ausgeschrieben sind.",
-          "Auf „Ausschreiben\" — CENTRIC zeigt vorher, wie viele Personen die Schicht überhaupt übernehmen dürfen.",
-          "Ein Satz zum Grund erhöht die Bereitschaft spürbar: „Krankmeldung, kurzfristig\".",
-          "Unterrichtet wird nur, wer sie auch nehmen darf — Ruhezeit, Qualifikation und Abwesenheit sind vorher geprüft.",
-          "Meldungen erscheinen nach Eignung geordnet, mit Begründung. Ein Griff auf „Einteilen\".",
-        ],
-        pruefen: "Nach dem Ausschreiben meldet CENTRIC, wie viele Personen unterrichtet wurden. Steht dort null, darf niemand — dann hilft nur die gezielte Ersatzsuche.",
-        merke: "Die Reihenfolge der Meldungen richtet sich nicht danach, wer zuerst kam. Sonst gewinnt, wer am häufigsten aufs Telefon schaut. Stattdessen zählen Stundenkonto, Auslastung und wie oft jemand zuletzt eingesprungen ist.",
-      },
-      {
-        titel: "Anträge entscheiden",
-        text: "Urlaub, Tausch, Schulung — mit Blick auf die Folgen.",
-        schritte: [
-          "Anliegen → Anträge öffnen.",
-          "Links die Liste, rechts die Kapazität der nächsten acht Wochen.",
-          "Beim Markieren eines Antrags färben sich die betroffenen Wochen. Rot heißt: diese Woche kippt erst dadurch.",
-          "Mehrere auswählen zeigt die Wirkung aller zusammen.",
-          "Tastatur: J und K blättern, G genehmigt, A lehnt ab, Leertaste wählt aus.",
-        ],
-        pruefen: "Unter dem markierten Antrag stehen Urlaubsrest, Stundenkonto und Auslastung der Person.",
-        merke: "Wer täglich vierzig Anträge entscheidet, sollte die Tastatur nutzen. Das ist der Unterschied zwischen zwanzig Minuten und fünf.",
-      },
-      {
-        titel: "Checklisten an Schichten",
-        text: "Was zu einem Dienst gehört, aber nicht im Plan steht: Rundgang, Schlüsselübergabe, Betäubungsmittelschrank.",
-        schritte: [
-          "Verwaltung → Betrieb → Dienstarten → gewünschte Dienstart öffnen.",
-          "Auf „Vorlage übernehmen\" — je nach Branchenpaket erscheinen passende Punkte zum Anpassen.",
-          "Je Punkt festlegen: Zeitpunkt (Beginn, laufend, Ende oder feste Uhrzeit) und ob er Pflicht ist.",
-          "Beschäftigte sehen die Liste unter Heute, sobald sie im Dienst sind.",
-        ],
-        merke: "Ein gesetzter Haken lässt sich nicht zurücknehmen, und wer nachträglich abhakt, erzeugt einen Eintrag mit dem Vermerk „nachgetragen\". Eine rückwirkend änderbare Dokumentation wäre als Nachweis wertlos — und genau dafür wird sie gebraucht.",
-      },
-      {
-        titel: "Schneller tippen als klicken",
-        text: "Die Suche oben versteht ganze Sätze, nicht nur einzelne Begriffe.",
-        schritte: [
-          "Suchfeld öffnen und schreiben, was gemeint ist: „Müller krank morgen\".",
-          "CENTRIC zeigt, was es verstanden hat, bevor etwas geschieht.",
-          "Auch möglich: „Urlaub Schmidt 14.3. bis 20.3.\", „wer kann Freitag Nachtdienst\", „Lagebild morgen\".",
-          "Bei mehreren gleichen Namen wird nachgefragt statt geraten.",
-        ],
-        merke: "Die Zeile führt nie selbst etwas aus. Sie öffnet die passende Ansicht mit vorausgefüllten Feldern — entscheiden tut ein Mensch. Das ist Absicht: ein Dienstplan braucht Vorhersagbarkeit, kein Raten.",
-      },
-      {
-        titel: "Zeiten und Zuschläge",
-        text: "Was tatsächlich gearbeitet wurde.",
-        schritte: [
-          "Beschäftigte bestätigen ihre Zeiten in der Telefonansicht — „wie geplant\" oder mit Abweichung.",
-          "Auswertung → Abrechnungsdaten zeigt Zuschläge tagesgenau zerlegt.",
-          "Lohnausgabe erzeugt eine CSV-Datei nach DATEV-Schema, je Person und Lohnart.",
-        ],
-        pruefen: "Die Summe je Lohnart stimmt mit der Zuschlagsübersicht überein.",
-        merke: "CENTRIC rechnet Stunden, keine Beträge. Stundensätze und Steuerfreibeträge gehören in die Lohnabrechnung.",
-      },
-      {
-        titel: "Belastbarkeit im Blick behalten",
-        text: "Die Frage vor dem Anruf, nicht danach.",
-        schritte: [
-          "Auswertung → Belastbarkeit.",
-          "Je Woche und Dienst: wie viele gleichzeitige Ausfälle verträgt die schwächste Schicht.",
-          "Null bedeutet: der nächste Krankheitsfall führt zur Unterbesetzung.",
-          "Darunter vier Ausfallszenarien von fünf bis dreißig Prozent.",
-        ],
-        merke: "Diese Ansicht einmal die Woche öffnen. Sie zeigt Probleme, bevor sie eintreten.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "beschaeftigte", titel: "Für Beschäftigte", dauer: "5 Minuten",
-    einleitung: "Was die Belegschaft auf dem Telefon sieht. Diesen Teil ausdrucken und aushängen.",
-    abschnitte: [
-      {
-        titel: "Die vier Reiter",
-        text: "Beschäftigte landen automatisch in der Telefonansicht, unabhängig vom Gerät.",
-        schritte: [
-          "Heute: der Dienst des Tages mit großem Knopf zum Ein- und Ausstempeln.",
-          "Mein Plan: kommende Dienste als Liste oder Monatsansicht. Tippen öffnet Tausch, Antrag und Wunsch.",
-          "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
-          "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
-        ],
-        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert wird nur, ob jemand am Einsatzort war — keine Koordinate, kein Verlauf, keine Dauerortung.",
-      },
-      {
-        titel: "Häufige Fragen",
-        text: "Was in der Einführung immer gefragt wird.",
-        schritte: [
-          "„Wann arbeite ich?\" — Reiter Heute, ganz oben.",
-          "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
-          "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
-          "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur ob du beim Stempeln am Einsatzort warst.",
-        ],
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "pflege", titel: "Besonderheiten Pflege und Klinik", dauer: "10 Minuten",
-    nurWenn: (m) => kann(m, "fachkraftquote") || kann(m, "uebergabe"),
-    einleitung: "Was in diesen Branchen zusätzlich gilt.",
-    abschnitte: [
-      {
-        titel: "Fachkraftquote",
-        text: "Der Mindestanteil examinierter Kräfte je Dienst — als Anteil geführt, nicht als feste Zahl.",
-        schritte: [
-          "Bei der Qualifikation den Schalter „zählt als Fachkraft\" setzen.",
-          "Bei jeder Dienstart den Mindestanteil wählen: 40 Prozent tagsüber, 50 Prozent nachts sind verbreitet.",
-          "Die Prüfung meldet Unterschreitungen als kritischen Befund.",
-        ],
-        merke: "Eine feste Zahl wäre bei wechselnder Besetzungsstärke ohne Aussage. Zwei Fachkräfte bei vier Personen sind etwas anderes als zwei bei zehn.",
-      },
-      {
-        titel: "Schichtübergabe",
-        text: "Ein eigener, dokumentationspflichtiger Vorgang.",
-        schritte: [
-          "Heute → Übergabe.",
-          "Vier Felder: Lage und Besonderheiten (Pflicht), offene Aufgaben, besondere Vorkommnisse, Material.",
-          "Nach dem Abschließen nicht mehr änderbar — Ergänzungen werden mit Zeitstempel angehängt.",
-          "Fehlende Übergaben der letzten drei Tage stehen oben als Schnellzugriff.",
-        ],
-        merke: "Die Unveränderbarkeit ist Absicht. Eine nachträglich geänderte Übergabe wäre als Nachweis wertlos.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "hartesperre") || kann(m, "posten"),
-    einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
-    abschnitte: [
-      {
-        titel: "Sachkunde nach § 34a",
-        text: "Gesetzlich zwingend — ohne sie ist kein Einsatz zulässig.",
-        schritte: [
-          "Bei der Qualifikation den Schalter „gesetzlich zwingend\" setzen.",
-          "CENTRIC sperrt daraufhin jeden Einsatz ohne diese Qualifikation, unabhängig von der Dienstart.",
-          "Auch die Ersatzsuche schließt betroffene Personen aus, mit Begründung.",
-        ],
-        merke: "Anders als eine normale Mindestqualifikation gilt die harte Sperre für alle Dienste. Das entspricht der Rechtslage.",
-      },
-      {
-        titel: "Außenposten",
-        text: "Objekte, die aus dem laufenden Dienst heraus besetzt werden.",
-        schritte: [
-          "Dienstart anlegen und „Außenposten\" setzen.",
-          "Quelldienst wählen — aus welchem Dienst die Besetzung kommt.",
-          "CENTRIC verteilt die Posten reihum, damit nicht immer dieselben dort stehen.",
-        ],
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "probleme", titel: "Wenn etwas nicht stimmt", dauer: "Nachschlagen",
-    einleitung: "Die Fälle, die in der Einführung am häufigsten auftreten.",
-    abschnitte: [
-      {
-        titel: "Der Plan sieht falsch aus",
-        text: "Meist liegt es an einem von drei Dingen.",
-        schritte: [
-          "Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht? → Versatz prüfen unter Schichtfolge.",
-          "Fängt der Zyklus am falschen Tag an? → Ankerdatum prüfen.",
-          "Fehlen einzelne Personen? → Eintrittsdatum und Einheitenzuordnung prüfen.",
-        ],
-      },
-      {
-        titel: "Hunderte Befunde auf einmal",
-        text: "Fast immer ein zu streng gesetzter Wert.",
-        schritte: [
-          "Ruhezeit auf zwölf Stunden gesetzt, obwohl elf gelten? → Verwaltung, Betrieb.",
-          "Wochenstunden des Modells passen nicht zum Vertrag? → Schichtfolge, Kennzahlen prüfen.",
-          "Mindestbesetzung höher als die Gruppenstärke? → Dienstarten prüfen.",
-        ],
-      },
-      {
-        titel: "Jemand kann nicht eingeteilt werden",
-        text: "Die Ersatzliste nennt immer den Grund.",
-        schritte: [
-          "Ruhezeit — der Dienst läge zu dicht am vorherigen.",
-          "Abwesend — Urlaub, krank oder Schulung.",
-          "Qualifikation fehlt oder ist abgelaufen.",
-          "Einsatzeinschränkung — keine Nacht, kein Alleindienst, Wiedereingliederung.",
-        ],
-        merke: "Steht dort nichts, ist die Person schlicht schon eingeteilt.",
-      },
-      {
-        titel: "Zwei Personen haben gleichzeitig gespeichert",
-        text: "CENTRIC überschreibt nicht stillschweigend.",
-        schritte: [
-          "Es erscheint ein Hinweis mit Name und Zeit der anderen Speicherung.",
-          "Der fremde Stand bleibt erhalten. Die eigene Änderung noch einmal vornehmen.",
-        ],
-        merke: "Ohne diesen Schutz würde bei zwei gleichzeitig arbeitenden Planern still Arbeit verloren gehen.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "daten", titel: "Daten und Datenschutz", dauer: "5 Minuten",
-    ziel: "mitnahme",
-    einleitung: "Was gespeichert wird, wie lange, und wie man wieder herauskommt.",
-    abschnitte: [
-      {
-        titel: "Datenmitnahme",
-        text: "Jederzeit vollständig, in offenem Format, ohne Gebühr.",
-        schritte: [
-          "Verwaltung → Datenmitnahme.",
-          "Sieben Tabellen als CSV: Personalstamm, Dienstplan, Abwesenheiten, Zeiten, Anträge, Qualifikationen, Protokoll.",
-          "Der Dienstplan wird Tag für Tag ausgeschrieben — so lässt er sich in jedes andere System einlesen.",
-        ],
-        merke: "Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört an den Anfang eines Vertrags, nicht ans Ende.",
-      },
-      {
-        titel: "Auskunft und Löschung",
-        text: "Rechte nach der Datenschutz-Grundverordnung.",
-        schritte: [
-          "Verwaltung → Datenschutz → Auskunft nach Artikel 15 für eine einzelne Person erzeugen.",
-          "Aufbewahrungsdauer einstellen — nach Ablauf werden alte Daten anonymisiert.",
-          "Das Änderungsprotokoll hält fest, wer wann was geändert hat.",
-        ],
-      },
-    ],
-  },
-];
 
 /** Alle Abschnitte flach, für die Suche. */
-const handbuchAbschnitte = (m) => HANDBUCH
-  .filter((k) => !k.nurWenn || (m && k.nurWenn(m)))
+/** Alle Abschnitte flach, für die Suche. */
+const handbuchAbschnitte = (alle, m) => handbuchKapitel(alle, m)
   .flatMap((k) => k.abschnitte.map((a) => ({ ...a, kapitel: k.titel, kapitelId: k.id, ziel: k.ziel })));
 
 /* ==========================================================================
@@ -12699,20 +12242,58 @@ const handbuchAbschnitte = (m) => HANDBUCH
    ========================================================================== */
 function Handbuch({ sitz, akt, gehZu }) {
   const m = sitz.mandant;
-  const kapitel = useMemo(() => HANDBUCH.filter((k) => !k.nurWenn || k.nurWenn(m)), [m]);
-  const [offen, setOffen] = useState(kapitel[0] ? kapitel[0].id : null);
+  /* Der Inhalt wird erst beim Öffnen geholt. Bis dahin steht hier ein
+     Gerüst — kein Drehrad und kein leerer Bildschirm. */
+  const [alle, setAlle] = useState(_handbuch);
+  const [ladefehler, setLadefehler] = useState(null);
+  useEffect(() => {
+    if (alle) return;
+    let weg = false;
+    handbuchLaden().then((h) => { if (!weg) setAlle(h); })
+      .catch(() => { if (!weg) setLadefehler(true); });
+    return () => { weg = true; };
+  }, [alle]);
+
+  const kapitel = useMemo(() => handbuchKapitel(alle, m), [alle, m]);
+  const [offen, setOffen] = useState(null);
   const [suche, setSuche] = useState("");
   const gelesen = (sitz.person.handbuch || []);
 
   const treffer = useMemo(() => {
     const s = suche.trim().toLowerCase();
     if (s.length < 2) return null;
-    return handbuchAbschnitte(m).filter((a) =>
+    return handbuchAbschnitte(alle, m).filter((a) =>
       `${a.titel} ${a.text} ${(a.schritte || []).join(" ")} ${a.merke || ""} ${a.kapitel}`
         .toLowerCase().includes(s));
-  }, [suche, m]);
+  }, [suche, alle, m]);
 
-  const k = kapitel.find((x) => x.id === offen);
+  if (ladefehler) return (
+    <div>
+      <H1>Handbuch</H1>
+      <Card style={{ padding: 24 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>
+          Das Handbuch ließ sich nicht nachladen</div>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px" }}>
+          Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung
+          abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen.</p>
+        <Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
+          .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>
+      </Card>
+    </div>);
+
+  if (!alle) return (
+    <div>
+      <H1 sub="Wird geholt …">Handbuch</H1>
+      <div style={{ display: "grid", gridTemplateColumns: "230px 1fr", gap: 26 }}>
+        <div className="pulsiert" style={{ height: 300, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+        <div className="pulsiert" style={{ height: 420, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+      </div>
+      <div className="nurLeser" role="status" aria-live="polite">Handbuch wird geladen</div>
+    </div>);
+
+  const k = kapitel.find((x) => x.id === offen) || kapitel[0];
   const anteil = Math.round((gelesen.length /
     Math.max(1, kapitel.reduce((a, x) => a + x.abschnitte.length, 0))) * 100);
 
@@ -12858,8 +12439,8 @@ function Handbuch({ sitz, akt, gehZu }) {
 }
 
 /** Handbuch als druckbare Seite — zum Mitgeben nach der Einrichtung. */
-function handbuchDruck(m) {
-  const kapitel = HANDBUCH.filter((k) => !k.nurWenn || k.nurWenn(m));
+function handbuchDruck(m, alle) {
+  const kapitel = handbuchKapitel(alle, m);
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const teile = [];
   teile.push(`<div class="deckel">
@@ -13588,524 +13169,41 @@ const neuerCheckpunkt = (text, zeitpunkt) => ({
    einen und überfordert die anderen.
    ========================================================================== */
 
-const TOUR = {
-  /* ---------------------------------------------------------------- */
-  leitung: {
-    titel: "Betrieb einrichten und führen",
-    dauer: "25 bis 40 Minuten",
-    einleitung: "Du richtest den Betrieb ein und trägst die Verantwortung für Regelwerk, Personal und Freigaben. Diese Tour führt vom leeren Bestand bis zum laufenden Plan.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "CENTRIC rechnet Dienstpläne, statt sie zu verwalten. Du hinterlegst eine Schichtfolge, und daraus entsteht jeder Tag — vorwärts wie rückwärts, ohne Jahresgrenze. Gespeichert wird nur, was von der Regel abweicht.",
-          merke: "Diese Tour lässt sich jederzeit schließen und unter Einstellungen wieder starten." },
-        { titel: "Die Seitenleiste", ziel: "start",
-          text: "Links stehen sechs Bereiche: Heute, Planung, Anliegen, Team, Auswertung, Verwaltung. Die Zahlen daneben zeigen, wo etwas auf dich wartet.",
-          tun: "Fahre einmal über alle sechs Bereiche.",
-          pruefen: "Bei „Anliegen\" steht eine Zahl, wenn Anträge offen sind." },
-        { titel: "Die Startseite", ziel: "start",
-          text: "Oben vier Kennzahlen: offene Schichten, wartende Freigaben, Abwesenheiten heute, Lücken der nächsten sieben Tage. Darunter höchstens drei Karten mit dem, was heute zu tun ist.",
-          merke: "Die Karten sind nach Dringlichkeit sortiert. Wer nur die oberste abarbeitet, hat das Wichtigste erledigt." },
-        { titel: "Suche und Tastatur", ziel: null,
-          text: "Oben rechts die Suche. Sie findet Personen, Dienstarten und Ansichten.",
-          tun: "Tippe einen Nachnamen ein.",
-          merke: "Die Eingabezeile versteht auch Sätze: „Müller krank morgen\" öffnet die Krankmeldung mit gefüllten Feldern." },
-      ]},
-      { name: "Betrieb einrichten", ziel: "betrieb", punkte: [
-        { titel: "Standorte anlegen", ziel: "betrieb",
-          text: "Jeder Standort hat ein eigenes Bundesland. Das ist keine Formalie — Feiertage unterscheiden sich, und Feiertagszuschläge hängen daran.",
-          tun: "Lege für jeden Standort Bezeichnung, Bundesland und Umkreis an.",
-          pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert.",
-          merke: "Der Umkreis gilt für die Standortprüfung beim Einstempeln. 200 Meter sind ein guter Anfang." },
-        { titel: "Wochenarbeitszeit", ziel: "betrieb",
-          text: "Die vertragliche Regelarbeitszeit einer Vollzeitkraft. Aus ihr errechnet CENTRIC die Sollstunden jedes Monats.",
-          tun: "Trage die Wochenarbeitszeit ein.",
-          pruefen: "Im Stundenkonto einer Vollzeitkraft steht ein Sollwert, der zur Wochenarbeitszeit passt.",
-          merke: "Weicht der Wert vom Schichtmodell ab, entstehen dauerhaft Plus- oder Minusstunden. Beides muss zusammenpassen." },
-        { titel: "Ruhezeit", ziel: "betrieb",
-          text: "Gesetzlich elf Stunden zwischen zwei Diensten. In Pflege, Klinik und Gaststätten sind unter Bedingungen zehn zulässig.",
-          tun: "Setze den Wert auf das, was bei euch gilt.",
-          pruefen: "Die Prüfung meldet keine Ruhezeitverstöße, wo bisher keine waren.",
-          merke: "Zu streng gesetzt erzeugt Hunderte Befunde, die niemand mehr liest. Lieber einmal mit dem Betriebsrat abstimmen." },
-        { titel: "Dienste in Folge", ziel: "betrieb",
-          text: "Wie viele Dienste hintereinander zulässig sind. Üblich sechs, in manchen Modellen sieben.",
-          tun: "Trage die Höchstzahl ein.",
-          pruefen: "Die Prüfung meldet lange Dienstserien als Hinweis." },
-        { titel: "Ausgleichsgrenze", ziel: "betrieb",
-          text: "Ab welchem Stand des Stundenkontos gewarnt wird. Vierzig Stunden sind verbreitet.",
-          merke: "Diese Grenze ist ein Hinweis, keine Sperre. Wer sie überschreitet, wird nicht gehindert — nur sichtbar." },
-        { titel: "Dienstarten anlegen", ziel: "betrieb",
-          text: "Früh, Spät, Nacht — oder was bei euch gefahren wird. Name, Kürzel, Beginn, Ende, Farbe.",
-          tun: "Lege jede Dienstart an. Über Mitternacht laufende Dienste werden erkannt.",
-          pruefen: "Im Lagebild erscheint jede Dienstart mit einer Besetzungszahl." },
-        { titel: "Dienstform wählen", ziel: "betrieb",
-          text: "Regeldienst zählt voll, Bereitschaftsdienst zu 60 Prozent, Rufbereitschaft zu 12,5 Prozent. Der geteilte Dienst hat zwei Abschnitte.",
-          merke: "Rufbereitschaft unterbricht die Ruhezeit nicht — deshalb ist die Dienstform wichtiger, als sie aussieht." },
-        { titel: "Mindestbesetzung", ziel: "betrieb",
-          text: "Je Dienstart und Wochentag getrennt: Montag bis Donnerstag, Freitag, Samstag, Sonntag.",
-          tun: "Trage die Mindestbesetzung ein.",
-          pruefen: "Das Lagebild zeigt Zahlen wie 8/10 — eingeteilt gegen gefordert.",
-          merke: "Höher als die Gruppenstärke gesetzt, meldet die Prüfung dauerhaft Unterbesetzung." },
-        { titel: "Erforderliche Qualifikationen", ziel: "betrieb",
-          text: "Wenn ein Dienst ohne bestimmte Kräfte nicht laufen darf, hinterlege sie hier mit Mindestzahl.",
-          pruefen: "Die Prüfung meldet fehlende Qualifikationen getrennt von fehlenden Personen." },
-      ]},
-      { name: "Personal", ziel: "personal", punkte: [
-        { titel: "Liste einlesen", ziel: "personal",
-          text: "Der schnellere Weg. Tabelle aus Excel kopieren, einfügen, fertig — die Spalten werden erkannt, auch ohne brauchbare Überschriften.",
-          tun: "Team → Personal → Importieren, Tabelle einfügen, Vorschau prüfen.",
-          pruefen: "Die Vorschau zeigt „sicher\", „ähnlich\" oder „aus dem Inhalt\" je Spalte. Bei „aus dem Inhalt\" nachsehen.",
-          merke: "Personalnummern gleich mit einlesen — sie werden für die Lohnausgabe gebraucht." },
-        { titel: "Einzeln anlegen", ziel: "personal",
-          text: "Für kleine Betriebe oder Nachzügler.",
-          tun: "Person hinzufügen, Name, Funktion, Einheit, Wochenstunden, Eintrittsdatum.",
-          pruefen: "Die Person erscheint im Monatsplan ab dem Eintrittsdatum." },
-        { titel: "Teilzeit", ziel: "personal",
-          text: "Bei Teilzeit die tatsächlichen Wochenstunden eintragen. CENTRIC verteilt die Dienste entsprechend und rechnet die Sollstunden anteilig.",
-          pruefen: "Das Stundenkonto einer Teilzeitkraft zeigt ein niedrigeres Soll." },
-        { titel: "Einsatzeinschränkungen", ziel: "personal",
-          text: "Keine Nachtdienste, kein Alleindienst, Höchstzahl Dienste je Woche, Wiedereingliederung mit Stufenplan.",
-          merke: "Diese Angaben sind sensibel. Sie erscheinen in der Ersatzsuche nur als Grund, nie als Diagnose." },
-        { titel: "Zugangsarten vergeben", ziel: "personal",
-          text: "Organisationsleitung, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat.",
-          tun: "Vergib je Person die Zugangsart.",
-          pruefen: "Die Person sieht beim nächsten Anmelden die neuen Ansichten.",
-          merke: "Zugänge kosten nichts extra — gerechnet wird je Standort. Wer jemanden zur Planung befördert, zahlt keinen Aufpreis." },
-        { titel: "Springer kennzeichnen", ziel: "personal",
-          text: "Wer als Springer geführt wird, erscheint in der Ersatzsuche weiter oben und bekommt bei offenen Schichten Vorrang.",
-          merke: "Springer sind für kurzfristige Ausfälle da. Wer regelmäßig im Plan steht, ist keiner." },
-        { titel: "Austritt eintragen", ziel: "personal",
-          text: "Statt zu löschen: Austrittsdatum setzen. Die Person verschwindet ab dann aus dem Plan, bleibt aber in Auswertung und Nachweis erhalten.",
-          merke: "Löschen zerstört die Nachvollziehbarkeit vergangener Monate." },
-      ]},
-      { name: "Qualifikationen", ziel: "quals", punkte: [
-        { titel: "Qualifikationen anlegen", ziel: "quals",
-          text: "Sachkunde, Schichtleitung, Erste Hilfe, Fachweiterbildungen.",
-          tun: "Bezeichnung, Kürzel und Gültigkeitsdauer eintragen.",
-          pruefen: "Bei befristeten Qualifikationen erscheint in der Personalakte ein Feld für das Ablaufdatum." },
-        { titel: "Fachkraft-Kennzeichen", ziel: "quals",
-          text: "Wer als Fachkraft zählt, geht in die Fachkraftquote ein — den Mindestanteil examinierter Kräfte je Dienst.",
-          merke: "Nur setzen, wo es fachlich stimmt. Eine falsch gesetzte Fachkraft verfälscht die ganze Quote." },
-        { titel: "Gesetzlich zwingend", ziel: "quals",
-          text: "Der härteste Schalter. Ohne diese Qualifikation ist gar kein Einsatz zulässig — unabhängig von der Dienstart.",
-          merke: "Für die Sachkunde nach § 34a im Bewachungsgewerbe richtig. Für „wäre gut zu haben\" falsch." },
-        { titel: "Personen zuordnen", ziel: "quals",
-          text: "Ohne Zuordnung kann CENTRIC nicht erkennen, ob ein Dienst fachlich gedeckt ist.",
-          tun: "Nutze die Matrix: Team → Qualifikationen → Matrix. Dort geht es schneller als einzeln.",
-          pruefen: "Die Matrix zeigt je Einheit, wie viele Personen eine Qualifikation haben." },
-        { titel: "Engpässe erkennen", ziel: "quals",
-          text: "Rot in der Matrix heißt: Diese Qualifikation hängt an einer einzigen Person.",
-          merke: "Eine der nützlichsten Ansichten überhaupt — sie zeigt, wo ein einziger Ausfall den Betrieb lahmlegt." },
-        { titel: "Nachweise", ziel: "nachweise",
-          text: "Ablaufende Qualifikationen erscheinen rechtzeitig. Läuft ein Nachweis ab, zählt die Qualifikation nicht mehr für die Besetzung.",
-          pruefen: "Team → Nachweise zeigt, was in den nächsten Monaten ausläuft." },
-      ]},
-      { name: "Schichtfolge", ziel: "folge", punkte: [
-        { titel: "Das Grundprinzip", ziel: "folge",
-          text: "Statt jeden Tag einzeln zu planen, hinterlegst du einen Zyklus und den Startpunkt jeder Gruppe. Daraus wird jeder Tag berechnet.",
-          merke: "Deshalb gibt es keine Jahresgrenze und keine Massenänderung, wenn das Modell wechselt." },
-        { titel: "Modell wählen", ziel: "folge",
-          text: "Neun geprüfte Modelle mit gerechneten Kennzahlen: Wochenstunden, Anzahl Gruppen, längste Dienstserie.",
-          tun: "Planung → Schichtfolge → Einrichtungsassistent, Modell auswählen.",
-          pruefen: "Die Vorschau zeigt den tatsächlichen Zyklus.",
-          merke: "Die Wochenstunden müssen zur vertraglichen Arbeitszeit passen. Zwei Stunden Abweichung sind zwei Plusstunden je Woche, je Person." },
-        { titel: "Eigenen Zyklus bauen", ziel: "folge",
-          text: "Wenn keines passt: Dienstart antippen, dann auf die Tage klicken. Oder die Dienstart direkt auf einen Tag ziehen.",
-          pruefen: "Die Kennzahlen unter dem Zyklus rechnen sich sofort neu." },
-        { titel: "Gruppen und Versatz", ziel: "folge",
-          text: "Jede Gruppe startet an einer anderen Stelle des Zyklus.",
-          tun: "Prüfe den Versatz je Gruppe.",
-          pruefen: "Im Monatsplan durchlaufen alle Gruppen dieselbe Abfolge, nur zeitversetzt.",
-          merke: "Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht, stimmt der Versatz nicht." },
-        { titel: "Ankerdatum", ziel: "folge",
-          text: "Der Tag, an dem Gruppe 1 am Zyklusanfang steht.",
-          merke: "Lässt sich später ändern, verschiebt dann aber den ganzen Plan. Vor der ersten Freigabe klären." },
-      ]},
-      { name: "Prüfen und freigeben", ziel: "plan", punkte: [
-        { titel: "Die Prüfung lesen", ziel: "pruef",
-          text: "Rot ist kritisch: Ruhezeitverstoß, Unterbesetzung, fehlende Pflichtqualifikation. Gelb ist ein Hinweis.",
-          tun: "Auswertung → Prüfung öffnen und die roten Befunde durchgehen.",
-          pruefen: "Nach dem Beheben verschwindet der Befund sofort — die Prüfung rechnet bei jeder Änderung neu." },
-        { titel: "Lücken schließen", ziel: "lage",
-          text: "Bei einer unterbesetzten Dienstart auf „Besetzen\". CENTRIC schlägt Personen vor, geordnet nach Eignung.",
-          tun: "Öffne einen Vorschlag und drücke „warum?\".",
-          merke: "Wer nicht kann, steht unten mit Begründung. Das ist wichtiger als die Liste selbst — es erklärt sich vor dem Betriebsrat." },
-        { titel: "Freigeben", ziel: "plan",
-          text: "Mit der Freigabe wird der Monat verbindlich. Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
-          pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
-          merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt." },
-        { titel: "Planstandvergleich", ziel: "plan",
-          text: "Zeigt, was sich seit der Freigabe geändert hat — und mit welchem Vorlauf.",
-          merke: "Kurzfristige Änderungen sind der häufigste Streitpunkt mit dem Betriebsrat. Diese Ansicht beendet Diskussionen." },
-      ]},
-      { name: "Der laufende Betrieb", punkte: [
-        { titel: "Krankmeldung", ziel: "lage",
-          text: "Der häufigste Vorgang. Person und Zeitraum wählen — CENTRIC zeigt sofort alle entstehenden Lücken.",
-          tun: "Erfasse eine Krankmeldung und schließe die Lücke.",
-          pruefen: "Die Betroffenen erhalten eine Mitteilung." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Statt zehn Leute anzurufen: die Lücke ausschreiben. Wer sich meldet, darf auch — geprüft ist vorher.",
-          tun: "Schreibe eine Lücke aus.",
-          pruefen: "CENTRIC meldet, wie viele Personen unterrichtet wurden. Steht dort null, darf niemand." },
-        { titel: "Anträge entscheiden", ziel: "antraege",
-          text: "Links die Liste, rechts die Kapazität der nächsten acht Wochen. Rot heißt: diese Woche kippt erst durch diesen Antrag.",
-          merke: "Mit der Tastatur geht es viel schneller: J und K blättern, G genehmigt, A lehnt ab." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Je Woche und Dienst: wie viele gleichzeitige Ausfälle die schwächste Schicht verträgt.",
-          merke: "Einmal die Woche öffnen. Diese Ansicht zeigt Probleme, bevor sie eintreten." },
-        { titel: "Verteilungsgerechtigkeit", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage — wer trägt wie viel.",
-          merke: "Die Zahl, nach der der Betriebsrat als Erstes fragt." },
-        { titel: "Zeiterfassung", ziel: "abrechnung",
-          text: "Beschäftigte bestätigen ihre Zeiten. Abweichungen laufen bei dir auf.",
-          pruefen: "Offene Bestätigungen erscheinen als Karte auf der Startseite." },
-        { titel: "Lohnausgabe", ziel: "abrechnung",
-          text: "Eine Datei statt sechs Mails: Alle Stunden und Zuschläge je Person und Lohnart, fertig für die Lohnbuchhaltung.",
-          merke: "CENTRIC rechnet Stunden, keine Beträge. Stundensätze gehören in die Lohnabrechnung." },
-      ]},
-      { name: "Verwaltung", punkte: [
-        { titel: "Datenmitnahme", ziel: "mitnahme",
-          text: "Sieben Tabellen als CSV, jederzeit, ohne Gebühr. Der Dienstplan wird Tag für Tag ausgeschrieben.",
-          merke: "Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört an den Anfang." },
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour, Datenschutz und Sicherungen.",
-          tun: "Sieh dir die Einstellungen einmal an.",
-          merke: "Dort startest du diese Tour auch wieder, wenn du etwas nachschlagen willst." },
-        { titel: "Das Handbuch", ziel: "handbuch",
-          text: "Zehn Kapitel mit Suche, Fortschritt und Druckausgabe. Was diese Tour zeigt, steht dort zum Nachlesen.",
-          merke: "Die Druckfassung ist zum Mitgeben gedacht — mit Deckblatt und deinem Betriebsnamen." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst jetzt einen Betrieb einrichten, Personal anlegen, eine Schichtfolge festlegen, Lücken schließen und Anträge entscheiden. Alles Weitere findest du im Handbuch.",
-          merke: "Diese Tour lässt sich jederzeit unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
+/* Der Inhalt liegt in src/tour-inhalt.js und wird erst geholt, wenn ihn
+   jemand braucht — siehe dort. */
+let _tour = null;
+let _tourLaeuft = null;
 
-  /* ---------------------------------------------------------------- */
-  planer: {
-    titel: "Planen, prüfen, freigeben",
-    dauer: "20 bis 30 Minuten",
-    einleitung: "Du führst den Plan. Diese Tour zeigt den täglichen Ablauf: Lücken erkennen, Ersatz finden, Anträge entscheiden, freigeben.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "CENTRIC rechnet den Plan aus einer Schichtfolge. Du änderst nicht den Plan, sondern trägst Abweichungen ein — Einsprünge, Tausche, Ausfälle.",
-          merke: "Diese Tour lässt sich jederzeit schließen und unter Einstellungen wieder starten." },
-        { titel: "Die Startseite", ziel: "start",
-          text: "Vier Kennzahlen oben, darunter höchstens drei Karten mit dem, was heute zu tun ist — nach Dringlichkeit sortiert.",
-          tun: "Lies die oberste Karte." },
-        { titel: "Das Lagebild", ziel: "lage",
-          text: "Der Tag auf einen Blick: je Dienstart eingeteilt gegen gefordert, mit Namen.",
-          pruefen: "Zahlen wie 8/10 bedeuten acht eingeteilt, zehn gefordert." },
-        { titel: "Die Eingabezeile", ziel: null,
-          text: "Statt drei Menüs: „Müller krank morgen\" tippen. Die Krankmeldung öffnet sich mit gefüllten Feldern.",
-          tun: "Probiere es mit einem Namen aus deinem Betrieb." },
-      ]},
-      { name: "Der Monatsplan", ziel: "plan", punkte: [
-        { titel: "Aufbau", ziel: "plan",
-          text: "Zeilen sind Personen, Spalten Tage. Farben zeigen die Dienstart, gestrichelte Zellen sind frei.",
-          merke: "Was aus der Schichtfolge kommt, ist ruhig dargestellt. Abweichungen sind hervorgehoben." },
-        { titel: "Einen Dienst ändern", ziel: "plan",
-          text: "Zelle antippen, Dienstart wählen. CENTRIC zeigt vorher die Folgen: Ruhezeit, Wochenstunden, nächste Dienste.",
-          pruefen: "Die Zelle ist danach als Abweichung markiert.",
-          merke: "Die Regel bleibt unangetastet — du legst eine Ausnahme darüber." },
-        { titel: "Mehrere auf einmal", ziel: "plan",
-          text: "Mit gedrückter Maustaste über mehrere Zellen ziehen, dann die Dienstart wählen.",
-          merke: "Bei mehr als zehn Zellen fragt CENTRIC nach — versehentliches Ziehen ist der häufigste Fehler." },
-        { titel: "Filtern", ziel: "plan",
-          text: "Nach Einheit, Dienstart, Qualifikation oder Person. Der Filter wirkt auch auf Prüfung und Auswertung.",
-          tun: "Filtere auf eine einzelne Einheit." },
-        { titel: "Freigeben", ziel: "plan",
-          text: "Ab der Freigabe ist der Monat verbindlich und jede Änderung löst eine Mitteilung aus.",
-          pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name." },
-      ]},
-      { name: "Lücken schließen", punkte: [
-        { titel: "Krankmeldung erfassen", ziel: "lage",
-          text: "Person und Zeitraum wählen. CENTRIC zeigt sofort alle betroffenen Dienste.",
-          tun: "Erfasse eine Krankmeldung.",
-          pruefen: "Die betroffenen Dienste erscheinen im Lagebild als unterbesetzt." },
-        { titel: "Ersatz suchen", ziel: "lage",
-          text: "Bei der Lücke auf „Besetzen\". Wer möglich ist, steht oben; wer nicht, unten mit Grund.",
-          tun: "Öffne die Ersatzliste." },
-        { titel: "Die Begründung lesen", ziel: "lage",
-          text: "Der Knopf „warum?\" zeigt, weshalb jemand oben steht: Stundenkonto unter dem Mittel, Wunschdienst hinterlegt, lange nicht eingesprungen.",
-          merke: "Das ist der Teil, der vor dem Betriebsrat zählt. Eine Reihenfolge ohne Begründung ist Willkür." },
-        { titel: "Die Folgen prüfen", ziel: "lage",
-          text: "Vor dem Eintragen zeigt CENTRIC, was der Einsatz auslöst — Ruhezeit, Wochenstunden, nächste Dienste.",
-          merke: "Wer abwesend ist, kann nicht eingeteilt werden. CENTRIC lehnt das ab, statt es stillschweigend anzunehmen." },
-        { titel: "Erweiterte Anfrage", ziel: "lage",
-          text: "Findet sich niemand: Anfrage an mehrere Personen gleichzeitig. Wer zuerst zusagt, bekommt den Dienst.",
-          pruefen: "Die Angefragten erhalten eine Mitteilung." },
-        { titel: "Offene Schichten ausschreiben", ziel: "offene",
-          text: "Die Lücke sichtbar machen, statt herumzutelefonieren. Unterrichtet wird nur, wer sie auch nehmen darf.",
-          tun: "Schreibe eine Lücke aus.",
-          merke: "Die Meldungen erscheinen nach Eignung geordnet — nicht danach, wer zuerst kam." },
-        { titel: "Unbesetzt lassen", ziel: "lage",
-          text: "Bleibt eine Lücke: dokumentierte Unterschreitung mit Begründung.",
-          merke: "Nachweisbar für Prüfungen. Besser eine begründete Lücke als ein geschönter Plan." },
-      ]},
-      { name: "Anliegen", ziel: "antraege", punkte: [
-        { titel: "Die Antragsansicht", ziel: "antraege",
-          text: "Links die Liste, rechts das Kapazitätsraster der nächsten acht Wochen.",
-          pruefen: "Beim Markieren eines Antrags färben sich die betroffenen Wochen." },
-        { titel: "Kapazität lesen", ziel: "antraege",
-          text: "Rot heißt: diese Woche kippt erst durch diesen Antrag. Gelb: es wird eng.",
-          merke: "Mehrere auswählen zeigt die Wirkung aller zusammen — wichtig bei der Urlaubsrunde." },
-        { titel: "Mit der Tastatur", ziel: "antraege",
-          text: "J und K blättern, G genehmigt, A lehnt ab, Leertaste wählt aus.",
-          merke: "Bei vierzig Anträgen ist das der Unterschied zwischen zwanzig Minuten und fünf." },
-        { titel: "Mehrstufige Genehmigung", ziel: "antraege",
-          text: "Manche Anträge brauchen zwei Freigaben. Dann steht dort „Stufe 1 von 2\" und „Mitzeichnen\".",
-          merke: "Erst mit der letzten Stufe wird der Antrag umgesetzt." },
-        { titel: "Tauschbörse", ziel: "boerse",
-          text: "Beschäftigte bieten Dienste an und suchen Tausche. Du bestätigst — oder lässt es laufen.",
-          merke: "Ein bestätigter Tausch erzeugt zwei Abweichungen, keine Änderung an der Schichtfolge." },
-        { titel: "Wunschdienste", ziel: "wuensche",
-          text: "Wer Wünsche hinterlegt, erscheint bei passenden Diensten weiter oben in der Ersatzsuche.",
-          merke: "Wünsche sind kein Anspruch. Sie verschieben nur die Reihenfolge." },
-      ]},
-      { name: "Auswertung", punkte: [
-        { titel: "Die Prüfung", ziel: "pruef",
-          text: "Rot ist kritisch, gelb ein Hinweis. Jeder Befund nennt Person, Datum und Grund.",
-          tun: "Öffne die Prüfung und klicke einen Befund an." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele gleichzeitige Ausfälle jede Woche verträgt. Null heißt: der nächste Krankheitsfall reißt ein Loch.",
-          merke: "Einmal die Woche öffnen — das ist die Ansicht, die Überraschungen verhindert." },
-        { titel: "Ausfallszenarien", ziel: "belastbarkeit",
-          text: "Vier Stufen von fünf bis dreißig Prozent. Zeigt, ab wann der Betrieb kippt.",
-          merke: "Nützlich für das Gespräch über Personalbedarf — mit Zahlen statt Gefühl." },
-        { titel: "Verteilung", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage je Person.",
-          merke: "Die Zahl, nach der der Betriebsrat als Erstes fragt." },
-        { titel: "Planungssicherheit", ziel: "planstand",
-          text: "Wie oft der freigegebene Plan noch geändert wurde und mit welchem Vorlauf.",
-          merke: "Eine niedrige Zahl ist ein besseres Verkaufsargument als jede Zusage." },
-        { titel: "Zeiterfassung", ziel: "abrechnung",
-          text: "Was bestätigt ist, was abweicht, was offen bleibt.",
-          pruefen: "Offene Bestätigungen erscheinen als Karte auf der Startseite." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour.",
-          tun: "Sieh dir an, was du einstellen kannst." },
-        { titel: "Das Handbuch", ziel: "handbuch",
-          text: "Zum Nachschlagen, mit Suche und Druckausgabe." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst jetzt Lücken schließen, Ersatz begründet auswählen, Anträge mit Blick auf die Folgen entscheiden und den Plan freigeben.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
+/** Holt den Tourinhalt. Mehrfache Aufrufe teilen sich ein Versprechen. */
+function tourLaden() {
+  if (_tour) return Promise.resolve(_tour);
+  if (!_tourLaeuft) {
+    _tourLaeuft = import("./tour-inhalt.js")
+      .then((mod) => { _tour = mod.TOUR; return _tour; })
+      .catch((e) => { _tourLaeuft = null; throw e; });
+  }
+  return _tourLaeuft;
+}
 
-  /* ---------------------------------------------------------------- */
-  subplaner: {
-    titel: "Die eigene Einheit führen",
-    dauer: "12 bis 18 Minuten",
-    einleitung: "Du führst deine Einheit und fährst selbst mit. Diese Tour zeigt, was du ändern darfst — und wo die Grenze liegt.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "Du siehst und änderst deine Einheit. Der übrige Betrieb bleibt sichtbar, aber unveränderlich.",
-          merke: "Diese Tour lässt sich unter Einstellungen erneut starten." },
-        { titel: "Deine Grenze", ziel: "start",
-          text: "Was außerhalb deiner Einheit liegt, ist ausgegraut. Ein Versuch dort meldet, warum es nicht geht.",
-          merke: "Das ist Absicht: Wer alles ändern darf, trägt auch die Verantwortung für alles." },
-        { titel: "Du fährst mit", ziel: "meine",
-          text: "Anders als die Planung stehst du selbst im Plan. Unter „Meine Schichten\" siehst du deine Dienste.",
-          pruefen: "Dort steht dein nächster Dienst mit Datum und Zeit." },
-      ]},
-      { name: "Alltag", punkte: [
-        { titel: "Das Lagebild", ziel: "lage",
-          text: "Der Tag deiner Einheit: eingeteilt gegen gefordert.",
-          tun: "Öffne das Lagebild und sieh dir heute an." },
-        { titel: "Krankmeldung", ziel: "lage",
-          text: "Für Personen deiner Einheit erfassbar. Die Lücken erscheinen sofort.",
-          tun: "Erfasse eine Krankmeldung." },
-        { titel: "Ersatz suchen", ziel: "lage",
-          text: "Vorschläge nach Eignung, mit Begründung. Der Knopf „warum?\" erklärt die Reihenfolge.",
-          merke: "Wer nicht kann, steht unten mit Grund — Ruhezeit, Qualifikation, Abwesenheit." },
-        { titel: "Über die Einheit hinaus", ziel: "lage",
-          text: "Findet sich in deiner Einheit niemand, kannst du eine Anfrage an die Planung stellen.",
-          pruefen: "Die Anfrage erscheint bei der Planung unter Anliegen." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Lücken deiner Einheit ausschreiben, statt herumzutelefonieren.",
-          merke: "Unterrichtet wird nur, wer die Schicht auch übernehmen darf." },
-        { titel: "Schichtübergabe", ziel: "uebergabe",
-          text: "Lage, offene Aufgaben, Vorkommnisse, Material. Nach dem Abschließen unveränderlich.",
-          merke: "Die Unveränderbarkeit ist Absicht — eine nachträglich geänderte Übergabe wäre als Nachweis wertlos." },
-      ]},
-      { name: "Anliegen und Auswertung", punkte: [
-        { titel: "Anträge deiner Einheit", ziel: "antraege",
-          text: "Du siehst die Anträge deiner Leute und kannst mitzeichnen.",
-          merke: "Bei mehrstufiger Genehmigung bist du oft Stufe 1, die Planung Stufe 2." },
-        { titel: "Zeiten bestätigen", ziel: "abrechnung",
-          text: "Was deine Leute erfasst haben, läuft bei dir auf.",
-          pruefen: "Offene Bestätigungen erscheinen auf der Startseite." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele Ausfälle deine Einheit verträgt.",
-          merke: "Steht dort null, ruf lieber vorher bei der Planung an als hinterher." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst deine Einheit führen: Ausfälle erfassen, Ersatz finden, übergeben und Zeiten bestätigen.",
-          merke: "Alles Weitere steht im Handbuch." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  mitarbeiter: {
-    titel: "Deine Dienste auf dem Telefon",
-    dauer: "5 bis 8 Minuten",
-    einleitung: "Kurz und praktisch: wann du arbeitest, wie du Anträge stellst und Zeiten bestätigst.",
-    kapitel: [
-      { name: "Das Wichtigste", punkte: [
-        { titel: "Wann arbeite ich?", ziel: "heute",
-          text: "Der Reiter „Heute\" zeigt ganz oben deinen Dienst — mit Zeit, Ort und Dauer.",
-          tun: "Sieh nach, wann dein nächster Dienst ist.",
-          pruefen: "Steht dort „frei\", hast du heute keinen Dienst." },
-        { titel: "Ein- und ausstempeln", ziel: "heute",
-          text: "Der große Knopf auf der Startseite. Beim Stempeln wird einmalig geprüft, ob du am Einsatzort bist.",
-          merke: "Gespeichert wird nur, ob du dort warst — keine Koordinate, kein Verlauf, keine Dauerortung." },
-        { titel: "Mein Plan", ziel: "meinplan",
-          text: "Kommende Dienste als Liste oder Monatsansicht. Filter für nur Dienste, nur frei, Nachtdienste, Wochenende.",
-          tun: "Wechsle einmal zwischen Liste und Monat." },
-      ]},
-      { name: "Anliegen", punkte: [
-        { titel: "Urlaub beantragen", ziel: "anliegen",
-          text: "Zeitraum wählen, absenden. Du siehst sofort deinen Urlaubsrest.",
-          pruefen: "Der Antrag erscheint mit Stand „offen\"." },
-        { titel: "Krank melden", ziel: "anliegen",
-          text: "Zeitraum eintragen. Die Planung wird sofort unterrichtet.",
-          merke: "Die Krankmeldung ersetzt nicht die Meldung an deinen Betrieb — sie ergänzt sie." },
-        { titel: "Tauschen", ziel: "meinplan",
-          text: "Dienst antippen, Tausch suchen. Dein Gesuch sehen alle, die den Dienst übernehmen dürfen.",
-          pruefen: "Meldet sich jemand, bekommst du eine Mitteilung." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Dienste, die du zusätzlich übernehmen kannst. Hier steht nur, was du auch wirklich darfst.",
-          merke: "Ruhezeit, Qualifikation und deine Abwesenheiten sind bereits geprüft." },
-        { titel: "Wunschdienste", ziel: "mehr",
-          text: "Hinterlege, welche Dienste dir lieber sind. Das verschiebt die Reihenfolge bei der Ersatzsuche.",
-          merke: "Ein Wunsch ist kein Anspruch — aber er wird berücksichtigt." },
-      ]},
-      { name: "Zeiten und Konto", punkte: [
-        { titel: "Zeiten bestätigen", ziel: "anliegen",
-          text: "Nach dem Dienst: „wie geplant\" oder mit Abweichung.",
-          pruefen: "Bestätigte Zeiten verschwinden aus der Liste." },
-        { titel: "Stundenkonto", ziel: "anliegen",
-          text: "Dein Stand mit Verlauf über sechs Monate.",
-          merke: "Minus heißt nicht Schulden — es gleicht sich über den Zyklus aus." },
-        { titel: "Nachweise", ziel: "mehr",
-          text: "Deine Qualifikationen und wann sie ablaufen.",
-          pruefen: "Läuft etwas bald ab, erscheint ein Hinweis." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Benachrichtigungen", ziel: "mehr",
-          text: "Unter Mehr stellst du ein, worüber du unterrichtet wirst — per E-Mail oder auf dem Gerät.",
-          tun: "Schalte Mitteilungen auf diesem Gerät ein.",
-          merke: "Ohne sie erfährst du von Änderungen erst beim nächsten Öffnen." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du weißt jetzt, wann du arbeitest, wie du Anträge stellst, tauschst und Zeiten bestätigst.",
-          merke: "Die Tour lässt sich unter Mehr erneut starten." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  betriebsrat: {
-    titel: "Prüfen und mitbestimmen",
-    dauer: "10 bis 15 Minuten",
-    einleitung: "Du hast lesenden Zugriff auf alles, was für die Mitbestimmung nötig ist. Diese Tour zeigt, wo die Zahlen stehen.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "Dein Zugang ist rein lesend. Du kannst nichts ändern — und niemand kann behaupten, du hättest.",
-          merke: "Der Betriebsratszugang ist kostenfrei. Das ist Absicht: Mitbestimmung darf nicht am Preis scheitern." },
-        { titel: "Was du siehst", ziel: "start",
-          text: "Plan, Prüfung, Verteilung, Planungssicherheit, Protokoll. Nicht sichtbar: Krankheitsgründe und persönliche Notizen.",
-          merke: "Diese Trennung ist bewusst — Mitbestimmung braucht Zahlen, keine Diagnosen." },
-      ]},
-      { name: "Die Zahlen", punkte: [
-        { titel: "Verteilungsgerechtigkeit", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage je Person — mit Abweichung vom Mittel.",
-          tun: "Sieh dir an, wer über dem Mittel liegt.",
-          merke: "Die wichtigste Ansicht für dich. Ungleiche Verteilung ist der häufigste Streitpunkt." },
-        { titel: "Die Prüfung", ziel: "pruef",
-          text: "Alle Befunde gegen Arbeitszeitgesetz, Mindestbesetzung und Qualifikationen.",
-          pruefen: "Rote Befunde sind kritisch, gelbe Hinweise." },
-        { titel: "Planungssicherheit", ziel: "planstand",
-          text: "Wie oft der freigegebene Plan geändert wurde und mit welchem Vorlauf.",
-          merke: "Kurzfristige Änderungen sind mitbestimmungspflichtig. Hier stehen sie mit Datum." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele Ausfälle jede Woche verträgt. Null bedeutet dauerhafte Unterbesetzung.",
-          merke: "Nützlich für das Gespräch über Personalbedarf — mit Zahlen statt Behauptungen." },
-        { titel: "Das Protokoll", ziel: "buch",
-          text: "Wer hat wann was geändert.",
-          merke: "Nachvollziehbarkeit ist die Grundlage jeder Mitbestimmung." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du weißt jetzt, wo Verteilung, Prüfbefunde, Planungssicherheit und Protokoll stehen.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  betreiber: {
-    titel: "Mandanten und Abrechnung",
-    dauer: "10 bis 15 Minuten",
-    einleitung: "Du führst die Betreiberkonsole: Mandanten anlegen, Zugänge vergeben, Rechnungen erzeugen.",
-    kapitel: [
-      { name: "Mandanten", punkte: [
-        { titel: "Die Übersicht", ziel: "mandanten",
-          text: "Alle Betriebe mit Standorten, Personenzahl, Tarif und Monatspreis.",
-          merke: "Du siehst Kennzahlen, keine Personendaten. Kein Name, kein Dienstplan — das gehört den Betrieben." },
-        { titel: "Mandant anlegen", ziel: "mandanten",
-          text: "Name, Branche, Anschrift, Ansprechpartner. CENTRIC erzeugt daraufhin die Zugänge.",
-          pruefen: "Die Zugangscodes erscheinen unmittelbar nach dem Anlegen — notiere sie, sie sind später nicht wiederherstellbar." },
-        { titel: "Leerer Bestand", ziel: "mandanten",
-          text: "Ein neu angelegter Mandant startet ohne Daten. Kein Beispielpersonal, keine erfundenen Dienstpläne.",
-          merke: "Bei den Demozugängen ist das anders — dort steht ein vollständiger Beispielbetrieb." },
-        { titel: "Zugänge nachträglich", ziel: "mandanten",
-          text: "Weitere Zugänge lassen sich jederzeit erzeugen, etwa wenn die Planung wechselt.",
-          pruefen: "Der neue Code erscheint in der Liste des Mandanten." },
-        { titel: "Geänderte Anmeldungen", ziel: "mandanten",
-          text: "Wenn jemand seine Anmeldeadresse ändert, erscheint das hier mit Datum.",
-          merke: "So merkst du, wenn ein Zugang den Besitzer wechselt." },
-      ]},
-      { name: "Abrechnung", punkte: [
-        { titel: "Das Preismodell", ziel: "rechner",
-          text: "Gerechnet wird je Standort, nicht je Kopf. Wer einstellt, zahlt nicht mehr.",
-          merke: "Der Punkt, an dem du gegen Anbieter mit Kopfpauschale gewinnst — bei mehreren Standorten deutlich." },
-        { titel: "Tarife pflegen", ziel: "tarife",
-          text: "Preis je Standort und die Personengrenze, ab der ein Standort in den nächsten Tarif steigt.",
-          merke: "Größere Standorte steigen automatisch auf. Ein Betrieb zahlt für die Zentrale mehr als für eine Außenstelle." },
-        { titel: "Rechnungen", ziel: "rechnungen",
-          text: "Je Standort eine Zeile, Mengenstaffel und Branchenpakete getrennt ausgewiesen.",
-          pruefen: "Ein unterjährig begonnener Vertrag wird tagesgenau anteilig berechnet." },
-        { titel: "Branchenpakete", ziel: "pakete",
-          text: "Sicherheit, Pflege, Klinik, Industrie. Jedes schaltet Funktionen und Begriffe frei.",
-          merke: "Pakete werden je Betrieb berechnet, nicht je Standort." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst Mandanten anlegen, Zugänge vergeben und Rechnungen erzeugen.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
-};
+/**
+ * Lädt den Tourinhalt und gibt ihn zurück, sobald er da ist.
+ * Vorher null — der Aufrufer stellt so lange nichts dar.
+ */
+function useTour(gebraucht = true) {
+  const [t, setT] = useState(_tour);
+  useEffect(() => {
+    if (!gebraucht || t) return;
+    let weg = false;
+    tourLaden().then((x) => { if (!weg) setT(x); }).catch(() => {});
+    return () => { weg = true; };
+  }, [gebraucht, t]);
+  return t;
+}
 
 /** Alle Punkte einer Rolle flach — für Fortschritt und Navigation. */
-function tourPunkte(rolleId) {
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
+function tourPunkte(tour, rolleId) {
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
+  if (!t) return [];
   const out = [];
   t.kapitel.forEach((k, ki) => k.punkte.forEach((p, pi) =>
     out.push({ ...p, kapitel: k.name, kapitelIdx: ki, punktIdx: pi,
@@ -14114,8 +13212,8 @@ function tourPunkte(rolleId) {
 }
 
 /** Wie weit ist jemand? */
-function tourStand(person, rolleId) {
-  const alle = tourPunkte(rolleId);
+function tourStand(person, rolleId, tour) {
+  const alle = tourPunkte(tour, rolleId);
   const gesehen = (person.tour || {}).gesehen || [];
   const idx = Math.min(alle.length - 1, Math.max(0, (person.tour || {}).schritt || 0));
   return { alle, gesehen, idx, gesamt: alle.length,
@@ -14139,10 +13237,13 @@ const tourStartet = (person, rolleId) => {
 function TourLeiste({ sitz, akt, gehZu }) {
   const p = sitz.person;
   const rolleId = sitz.rolle === "betreiber" ? "betreiber" : (p.rolle || "mitarbeiter");
-  const st = tourStand(p, rolleId);
+  /* Die Leiste erscheint erst, wenn der Inhalt da ist. Ein leerer Streifen
+     am unteren Rand wäre schlimmer als eine halbe Sekunde ohne ihn. */
+  const tour = useTour(true);
+  const st = tourStand(p, rolleId, tour);
   const punkt = st.alle[st.idx];
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
-  if (!punkt) return null;
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
+  if (!tour || !punkt || !t) return null;
 
   const weiter = () => {
     if (st.idx >= st.gesamt - 1) { akt.tourBeenden(); return; }
@@ -14231,8 +13332,9 @@ function Einstellungen({ sitz, akt, gehZu }) {
   const p = sitz.person || { id: "betreiber", rolle: "betreiber", vorname: "", nachname: "" };
   const m = sitz.mandant;
   const rolleId = sitz.rolle === "betreiber" ? "betreiber" : (p.rolle || "mitarbeiter");
-  const st = tourStand(p, rolleId);
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
+  const tour = useTour(true);
+  const st = tourStand(p, rolleId, tour);
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
   const [gespeichert, setGespeichert] = useState(null);
   const melde = (was) => { setGespeichert(was); setTimeout(() => setGespeichert(null), 2200); };
   /* Eine schlichte Rückmeldung am oberen Rand — die Anwendung hat dafür
@@ -14340,8 +13442,10 @@ function Einstellungen({ sitz, akt, gehZu }) {
         </Zeile>
       </Card>
 
-      {/* ------------------------ Geführte Tour ------------------------ */}
-      <Card style={{ marginBottom: 20 }}>
+      {/* ------------------------ Geführte Tour ------------------------
+          Der Inhalt kommt nachgeladen. Bis er da ist, bleibt die Karte weg —
+          eine Karte mit leeren Feldern sieht aus wie ein Fehler. */}
+      {t && (<Card style={{ marginBottom: 20 }}>
         <CardHead right={st.anteil > 0 ? <Lab>{st.anteil} % durch</Lab> : null}>
           Geführte Tour</CardHead>
         <Zeile titel={t.titel}
@@ -14366,7 +13470,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
             text="Du hast die Tour vollständig durchlaufen. Sie lässt sich jederzeit erneut starten.">
             <Pill size="sm" tone="ok">fertig</Pill>
           </Zeile>)}
-      </Card>
+      </Card>)}
 
       {/* ------------------- Kalender und Weckzeiten ------------------- */}
       {sitz.mandant && sitz.person && sitz.person.imSchichtdienst !== false && (
@@ -18851,12 +17955,20 @@ function AppInnen() {
         p.id === sitz.person.id ? { ...p, handbuch: (p.handbuch || []).includes(schluessel)
           ? (p.handbuch || []).filter((x) => x !== schluessel)
           : [...(p.handbuch || []), schluessel] } : p) }), null),
-      druckeHandbuch: () => {
+      druckeHandbuch: async () => {
+        /* Das Fenster zuerst öffnen: Ein window.open nach einem await gilt
+           dem Browser nicht mehr als Folge des Klicks und wird geblockt. */
         const w = window.open("", "_blank");
         if (!w) return melde("Der Druck wurde vom Browser blockiert.");
-        w.document.write(handbuchDruck(sitz.mandant));
-        w.document.close();
-        setTimeout(() => { try { w.print(); } catch (e) { /* still */ } }, 400);
+        try {
+          const alle = await handbuchLaden();
+          w.document.write(handbuchDruck(sitz.mandant, alle));
+          w.document.close();
+          setTimeout(() => { try { w.print(); } catch (e) { /* still */ } }, 400);
+        } catch {
+          w.close();
+          melde("Der Handbuchinhalt ließ sich nicht laden. Bitte erneut versuchen.");
+        }
       },
 
       /* --- Einführung --- */
