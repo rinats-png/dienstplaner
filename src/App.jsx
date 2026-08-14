@@ -164,6 +164,7 @@ class Fehlerauffang extends Component {
    ========================================================================== */
 
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
+import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 
@@ -436,6 +437,9 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 /* Ladegerüst: ein ruhiges Pulsieren statt eines Drehrads */
 .pulsiert{animation:pulsieren 1.6s ease-in-out infinite;}
 @media (max-width: 1024px){ .nur-breit{display:none !important;} }
+/* Rechtstexte: auf dem Telefon steht die Auswahl über dem Text, nicht daneben */
+@media (max-width: 900px){ .rechtsraster{grid-template-columns:1fr !important; gap:16px !important;}
+  .rechtsraster > nav{flex-direction:row !important; position:static !important; overflow-x:auto;} }
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.01ms !important; animation-iteration-count:1 !important;
     transition-duration:.01ms !important;}
@@ -4236,6 +4240,10 @@ function Anmeldung({ db, onLogin }) {
   const betriebe = Array.isArray(db.mandanten) ? db.mandanten : [];
   const [mid, setMid] = useState(betriebe.length ? betriebe[0].id : null);
   const m = betriebe.find((x) => x.id === mid) || betriebe[0] || null;
+  /* Impressum und Datenschutzerklärung müssen ohne Anmeldung erreichbar
+     sein — „ständig verfügbar" nach § 5 DDG heißt: auch für jemanden, der
+     noch gar keinen Zugang hat. */
+  const [recht, setRecht] = useState(null);
   const proRolle = m && Array.isArray(m.personen)
     ? ROLLEN.filter((r) => r.id !== "betreiber").map((r) => ({
       r, person: m.personen.find((p) => p.rolle === r.id && p.status === "aktiv") }))
@@ -4260,6 +4268,8 @@ function Anmeldung({ db, onLogin }) {
             <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
           </Card>
         </div>
+        <RechtLeiste onOeffnen={setRecht} style={{ paddingBottom: 26 }} />
+        {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
       </div>);
   }
 
@@ -4320,8 +4330,11 @@ function Anmeldung({ db, onLogin }) {
             Vorführfassung. Die Anmeldung ersetzt hier das Kennwortverfahren —
             die Zugriffstiefe ergibt sich in beiden Fällen aus Rolle und Geltungsbereich.
           </div>
+
+          <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 18 }} />
         </div>
       </div>
+      {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
     </div>);
 }
 
@@ -17459,6 +17472,9 @@ const BEREICHE = [
     ["dienste", "Dienstarten", "org.edit"],
     ["einstellungen", "Einstellungen", null],
     ["mitnahme", "Datenmitnahme", "org.edit"],
+    /* Ohne Recht davor: Impressum und Datenschutzerklärung stehen jeder
+       Rolle zu, auch der Aushilfe mit dem Mitarbeiterzugang. */
+    ["rechtliches", "Rechtliches", null],
   ]},
 ];
 const NAV_KUNDE = BEREICHE.flatMap((b) => b.views);
@@ -19279,6 +19295,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "handbuch" && <Handbuch sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "offene" && <OffeneSchichten sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "einstellungen" && <Einstellungen sitz={sitz} akt={akt} gehZu={setView} />}
+            {aktiveView === "rechtliches" && <div>
+              <H1 sub="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung. Änderungen an diesen Texten geschehen an einer Stelle — im Ordner rechtliches/ — und erscheinen hier.">
+                Rechtliches</H1>
+              <Rechtliches /></div>}
             {aktiveView === "selbstplan" && <Selbstplanung sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "notrufe" && <Notrufe sitz={sitz} akt={akt} />}
             {aktiveView === "belastung" && <Belastung sitz={sitz} akt={akt} gehZu={setView} />}

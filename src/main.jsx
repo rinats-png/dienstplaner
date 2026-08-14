@@ -4,6 +4,7 @@ import App from "./App.jsx";
 import * as SP from "./speicher.js";
 import "./schrift.css";
 import { C } from "./farben.js";
+import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 
 /* ==========================================================================
    EINSTIEG
@@ -537,6 +538,15 @@ function Einstieg() {
   const [selbst, setSelbst] = useState(false);
   const [preise, setPreise] = useState(false);
   const [merken, setMerken] = useState(SP.wirdGemerkt());
+  /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
+     ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
+     steht jemand, der die Anwendung noch gar nicht betreten hat. */
+  const [recht, setRecht] = useState(null);
+  const fuss = <>
+    <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 40, paddingTop: 22,
+      borderTop: `1px solid ${F.line}` }} />
+    {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
+  </>;
 
   useEffect(() => { if (!an) SP.demos().then(setDemos).catch(() => setDemos([])); }, [an]);
 
@@ -565,6 +575,7 @@ function Einstieg() {
         </div>
         <Preise F={F} onZurueck={() => setPreise(false)}
           onStarten={() => { setPreise(false); setSelbst(true); }} />
+        {fuss}
       </div>
     </div>);
 
@@ -582,6 +593,7 @@ function Einstieg() {
         </div>
         <SelbstStarten F={F} onZurueck={() => setSelbst(false)}
           onFertig={(code) => { setSelbst(false); setMitCode(true); setCode(code); }} />
+        {fuss}
       </div>
     </div>);
 
@@ -784,6 +796,8 @@ function Einstieg() {
               Betreiberkonsole
             </button>
           </div>)}
+
+        {fuss}
       </div>
     </div>);
 }
