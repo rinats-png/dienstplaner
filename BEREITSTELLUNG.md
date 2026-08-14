@@ -4,7 +4,9 @@ Was zu tun ist, um den aktuellen Stand auf
 `centric-dienstplanung.netlify.app` zu bringen — in der Reihenfolge, in der
 es zu tun ist.
 
-Projekt-Kennung: `85b13fe5-fbea-474e-9ecd-43fb5b50d2af`
+Projekt-Kennung: `7515ca04-74ea-4f6b-b268-33c466aafbb2`
+(die alte Site wurde am 14.08.2026 gelöscht und neu angelegt — mit ihr auch
+der gesamte Blob-Speicher: alle Betriebe, Zugänge und Sicherungen)
 
 ---
 
@@ -23,25 +25,9 @@ Site.
 
 ## Schritt 1 — Das Projekt mit dem Git-Vorrat verbinden
 
-Die Site ist **nicht mit einem Git-Vorrat verbunden**. Das ist keine
-Vermutung mehr: Der veröffentlichte Stand trägt
-
-    "commit_ref": null
-    "commit_url": null
-    "committer": null
-    "title": "Deploy triggered by upload"
-    "deploy_source": "api"
-
-Jeder bisherige Stand kam als Upload. Das erklärt auch, warum das
-Repository am Anfang dieses Reviews leer aussah, obwohl die Anwendung lief.
-
-Der derzeit veröffentlichte Stand ist vom **10. August 2026** — also von
-vor dieser gesamten Arbeit.
-
-Solange das so bleibt, muss jede Änderung von Hand hochgeladen werden — und
-niemand kann später nachvollziehen, welcher Stand gerade läuft.
-
-In der Netlify-Oberfläche:
+Die Site ist neu angelegt und trägt noch keinen Stand. Sie muss mit dem
+Vorrat verbunden werden — das ist der einzige Schritt, der über die
+Oberfläche geht:
 
     Site configuration → Build & deploy → Continuous deployment
     → Link repository → GitHub → rinats-png/dienstplaner
@@ -56,80 +42,55 @@ eingetragen werden:
 | Functions directory | `netlify/functions` | Vorgabe |
 | Node-Fassung | 24 | Vorgabe von Netlify |
 
-Produktionszweig: **`main`**.
+Produktionszweig: **`main`**. Der Zweig trägt den geprüften Stand bereits —
+das Zusammenführen ist erledigt.
 
----
+Mit dem Verbinden baut Netlify sofort. Ab da löst jeder Push nach `main`
+einen Bau aus, und zu jedem veröffentlichten Stand gehört ein Commit.
+
+### Warum das der bessere Weg ist als ein Upload
+
+Die vorige Site lief über Uploads: `commit_ref: null`, `committer: null`,
+`deploy_source: "api"`. Niemand konnte sagen, welcher Quelltext läuft. So
+war auch eine Funktion namens `schutz` auf der Site, die es im Vorrat nie
+gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 ## Schritt 2 — Umgebungsvariablen setzen
 
 `Site configuration → Environment variables`
 
-### Was am 14.08.2026 tatsächlich gesetzt war
+### Was bereits gesetzt ist
 
-Ausgelesen über die Netlify-Schnittstelle. Werte stehen hier bewusst nicht.
+Beim Anlegen der neuen Site gesetzt. Werte stehen hier nicht — sie stehen in
+der Netlify-Oberfläche.
 
-| Variable | Zustand |
-|---|---|
-| `CENTRIC_ADMIN` | gesetzt |
-| `RESEND_API_KEY` | gesetzt (vier Kontexte einzeln) |
-| `CENTRIC_ABSENDER` | gesetzt — **aber auf `onboarding@resend.dev`** |
-| `VAPID_PUBLIC`, `VAPID_KONTAKT` | gesetzt |
-| `CENTRIC_PFEFFER` | **fehlt** |
-| `VAPID_PRIVATE` | **fehlt** |
-| `VITE_KONTAKT_MAIL` | **fehlt** |
+| Variable | Art | Wofür |
+|---|---|---|
+| `CENTRIC_PFEFFER` | geheim | Serverseitiges Geheimnis für die Zugangscodes. Ohne ihn lägen sie als ungesalzenes SHA-256 im Speicher. **Nie ändern** — jeder umgeschlüsselte Code würde ungültig. Auf der neuen Site war das gefahrlos zu setzen, weil es noch keinen Bestand gibt. |
+| `VAPID_PUBLIC` / `VAPID_PRIVATE` | öffentlich / geheim | Frisches Paar für Push-Mitteilungen. Auf der alten Site fehlte der private Teil — Mitteilungen konnten nie versendet werden. |
+| `VAPID_KONTAKT` | öffentlich | Ansprechadresse im Push-Protokoll. |
+| `CENTRIC_ADMIN` | **nicht geheim, mit Absicht** | Ursprungsschlüssel. Er wird **einmal** gebraucht (Schritt 5.1) und danach gelöscht. Er steht bewusst lesbar in der Oberfläche, damit er ohne Umweg zur Hand ist; seine Lebensdauer sind Minuten. |
+| `RESEND_API_KEY` | geheim | Übernommen von der alten Site. |
+| `CENTRIC_ABSENDER` | öffentlich | Übernommen — **steht weiter auf `onboarding@resend.dev`**, siehe unten. |
 
-### Die drei fehlenden, nach Gewicht
+Die geheimen Variablen sind als *secret* angelegt. Netlify erlaubt dieses
+Kennzeichen **nur beim Anlegen**; auf der alten Site standen alle Werte über
+die Schnittstelle im Klartext lesbar, `RESEND_API_KEY` eingeschlossen. Das
+ist jetzt nicht mehr so.
 
-**`CENTRIC_PFEFFER` — fehlt.** Ohne ihn liegen die Zugangscodes als reines,
-ungesalzenes SHA-256 im Blob-Speicher. Wer an den Speicher käme, könnte die
-Codes mit einer Wortliste zurückrechnen; das Alphabet hat sechsundzwanzig
-Zeichen und drei Blöcke à vier. Mit Pfeffer ist es ein HMAC, und der Speicher
-allein nützt nichts mehr.
-
-Ein starker Zufallswert, mindestens 32 Zeichen:
-
-    openssl rand -base64 32
-
-**Einmal setzen und nie wieder ändern.** Beim nächsten Anmelden schlüsselt
-`umschluesseln()` in `netlify/lib/codes.mjs` jeden Code auf den neuen
-Hashwert um; alte Codes gelten dabei weiter. Wird der Pfeffer später
-entfernt oder ersetzt, gilt kein umgeschlüsselter Code mehr — es gibt keinen
-Weg zurück.
-
-Ich habe ihn bewusst **nicht** selbst gesetzt: Es ist eine Einbahnstraße auf
-einem laufenden System, und ich kann von hier aus nicht nachsehen, ob danach
-noch jemand hineinkommt.
-
-**`VAPID_PRIVATE` — fehlt.** Damit lassen sich keine Push-Mitteilungen
-versenden. Der öffentliche Schlüssel ist da, der private nicht — ein Paar
-gehört zusammen. Neu erzeugen (`npx web-push generate-vapid-keys`) und
-**beide** setzen; ein neuer öffentlicher Schlüssel macht bestehende
-Anmeldungen ungültig, was hier folgenlos ist, weil nie eine funktioniert hat.
+### Was noch fehlt
 
 **`CENTRIC_ABSENDER` steht auf `onboarding@resend.dev`.** Das ist die
 Sandbox-Adresse von Resend: Sie stellt ausschließlich an die Adresse des
 Resend-Kontos zu. Jede Nachricht an einen Kunden — Zugangscodes aus dem
 Selbststart zuerst — geht ins Leere, ohne dass jemand etwas merkt. Vor dem
 Echtbetrieb eine eigene Domain bei Resend verifizieren und hier eintragen.
+Diesen Wert kann nur jemand setzen, der die Domain besitzt.
 
-### Sollte gesetzt sein
-
-| Variable | Wirkung, wenn sie fehlt |
-|---|---|
-| `VITE_KONTAKT_MAIL` | Der Hilfebereich zeigt `kontakt@example.org` und weist sichtbar darauf hin, dass die Adresse noch nicht gesetzt ist. Dieselbe Adresse gehört ins Impressum. |
-| `VITE_KONTAKT_TELEFON` | Die Telefonzeile erscheint gar nicht. Optional. |
-| `VITE_KONTAKT_ZEITEN` | Erreichbarkeit als Klartext. Optional. |
-
-### Noch etwas, das auffiel
-
-Alle Variablen stehen mit `is_secret: false` in der Schnittstelle — ihre
-Werte lassen sich also über die API im Klartext lesen, `RESEND_API_KEY` und
-`CENTRIC_ADMIN` eingeschlossen. Netlify erlaubt das Geheimhaltungskennzeichen
-**nur beim Anlegen**, nicht nachträglich. Wer es will, muss die Variable
-löschen und mit *Contains secret values* neu anlegen.
-
-Für `CENTRIC_ADMIN` erledigt sich das ohnehin, sobald Schritt 5.1 gelaufen
-ist und die Variable entfernt wird.
+**`VITE_KONTAKT_MAIL` fehlt.** Der Hilfebereich zeigt `kontakt@example.org`
+und weist sichtbar darauf hin, dass die Adresse noch nicht gesetzt ist.
+Dieselbe Adresse gehört ins Impressum. Optional dazu
+`VITE_KONTAKT_TELEFON` und `VITE_KONTAKT_ZEITEN`.
 
 ### Optional, härtet die Fehlversuchsbremse
 
@@ -143,62 +104,25 @@ deploy site".
 
 ---
 
-## Schritt 3 — Zusammenführen und veröffentlichen
+## Schritt 3 — Erledigt: der Stand liegt auf `main`
 
-Der geprüfte Stand liegt auf `claude/code-review-ui-ux-hj56cu`
-(Pull Request #1). Nach dem Zusammenführen nach `main` baut Netlify von
-selbst.
+Die dreißig Commits aus Pull Request #1 sind nach `main` zusammengeführt
+und gepusht. Die Pipeline (`.github/workflows/pruefung.yml`) lief auf dem
+Kopf grün und deckt ab: Linter, Typen, Regelwerk, Aufbewahrung,
+Tarifvorlagen, Zugangscodes, Scherben, Rechtetabellen, Bauen,
+Rechteprüfung, Verwalterkonten, Sicherung außer Haus, Bremse.
 
-    git checkout main
-    git merge --no-ff claude/code-review-ui-ux-hj56cu
-    git push origin main
-
-Oder über die Oberfläche von GitHub: Pull Request #1 → *Merge pull request*.
-
-Die Pipeline (`.github/workflows/pruefung.yml`) läuft bei jedem Push und
-deckt ab: Linter, Typen, Regelwerk, Aufbewahrung, Tarifvorlagen,
-Zugangscodes, Scherben, Rechtetabellen, Bauen, Rechteprüfung,
-Verwalterkonten, Sicherung außer Haus, Bremse.
-
----
-
-## Schritt 3a — Eine Altlast, die dabei verschwindet
-
-Auf der Site sind **sieben** Funktionen veröffentlicht, im Vorrat stehen
-**sechs**. Die überzählige heißt `schutz` und läuft noch auf der alten
-Laufzeitschnittstelle (`runtimeAPIVersion: 1`, alle anderen auf 2).
-
-Im Git-Verlauf dieses Vorrats hat es eine Datei `netlify/functions/schutz*`
-**nie** gegeben — `netlify/lib/schutz.mjs` ist eine Bibliothek, keine
-Funktion. Sie stammt also aus einem Upload, dessen Quelltext nirgends mehr
-liegt.
-
-Eine erreichbare Serverfunktion, zu der es keinen Quelltext gibt, lässt sich
-weder prüfen noch nachvollziehen. Mit dem ersten Deploy aus Git verschwindet
-sie von selbst. Wer vorher wissen will, was sie tat: Netlify-Oberfläche →
-*Functions* → `schutz` → Logs.
-
----
+Nach dem Verbinden aus Schritt 1 baut Netlify genau diesen Stand.
 
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
-**Migration 7 → 8.** Bestehende Betriebe werden beim ersten Öffnen
-hochgezogen. Die Stufe ergänzt drei Dinge, die dem Selbststart fehlten:
-
-- die Rechtematrix (ohne sie stürzte „Verwaltung → Betrieb" ab)
-- `sollWochenstunden` neben `wochenstunden` (dieselbe Größe unter zwei
-  Namen; das Feld „Vertragliche Wochenarbeitszeit" blieb sonst leer)
-- `maxUrlaubJeEinheit` (ohne den Wert prüfte die Urlaubsregel nie etwas)
-
-Sie **löscht nichts** und überschreibt nichts Vorhandenes. Der Ablauf ist in
-`pruefungen/` abgedeckt.
+**Keine Migration.** Mit der alten Site ist auch ihr Blob-Speicher gelöscht
+worden — es gibt keinen Altbestand, der hochzuziehen wäre. Die Anwendung
+startet auf Fassung 8.
 
 **Dienstarbeiter.** Beim ersten Aufruf richtet sich der Offlinebetrieb ein.
-Wer die alte Fassung im Browser hatte, bekommt die neue beim nächsten Laden
-— `skipWaiting` und `clients.claim` sorgen dafür, dass keine alte Fassung
-hängen bleibt.
-
----
+Danach startet die Anwendung auch ohne Netz, und der zuletzt geladene Plan
+bleibt lesbar — mit einem Hinweis, wie alt er ist.
 
 ## Schritt 5 — Unmittelbar nach dem ersten erfolgreichen Deploy
 
@@ -213,14 +137,15 @@ Der zurückgegebene Schlüssel erscheint **genau einmal**. Danach kann
 `CENTRIC_ADMIN` aus den Umgebungsvariablen entfernt werden — ab dann ist
 jede Handlung einer Person zuzuordnen und einzeln widerrufbar.
 
-### 5.2 Die alten Testzugänge zurückziehen
+### 5.2 Die alten Testzugänge — erledigt
 
-Die fünf Zugangscodes aus der Testrunde
-(`TTN3-…`, `DMDV-…`, `VHHX-…`, `KAGN-…`, `LQCG-…`) standen im Klartext in
-einem Chatverlauf. Sie sind damit als kompromittiert zu behandeln,
-unabhängig davon, was mit ihnen geschehen ist.
+Die fünf Zugangscodes aus der Testrunde standen im Klartext in einem
+Chatverlauf und waren damit als kompromittiert zu behandeln. Mit dem
+Löschen der alten Site ist ihr Speicher verschwunden; sie gelten nirgends
+mehr.
 
-Als Organisationsleitung angemeldet:
+Wer künftig einen Zugang zurückziehen muss: als Organisationsleitung
+angemeldet
 
     POST /api/zugang-sperren     { "alle": true }
 
