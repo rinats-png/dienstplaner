@@ -13846,6 +13846,34 @@ function tourStand(person, rolleId, tour) {
     unterdrueckt: !!(person.tour || {}).nichtMehr };
 }
 
+/**
+ * Die Kapitel einer Tour mit ihrem Fortschritt.
+ *
+ * Vierundvierzig Schritte am Stück sind keine Führung, sondern eine
+ * Zumutung — „Schritt 17 von 44" entmutigt mehr, als es leitet. Die Tour
+ * ist längst in Kapitel geteilt; sichtbar war das nur als kleine
+ * Überschrift über dem laufenden Schritt.
+ *
+ * @returns {Array<{name, idx, von, bis, anzahl, gesehen, fertig}>}
+ */
+function tourKapitel(tour, rolleId, gesehen = []) {
+  const alle = tourPunkte(tour, rolleId);
+  const gesetzt = new Set(gesehen);
+  const aus = [];
+  alle.forEach((punkt, i) => {
+    let k = aus[aus.length - 1];
+    if (!k || k.idx !== punkt.kapitelIdx) {
+      k = { name: punkt.kapitel, idx: punkt.kapitelIdx, von: i, bis: i,
+        anzahl: 0, gesehen: 0, fertig: false };
+      aus.push(k);
+    }
+    k.bis = i; k.anzahl++;
+    if (gesetzt.has(punkt.id)) k.gesehen++;
+  });
+  for (const k of aus) k.fertig = k.anzahl > 0 && k.gesehen >= k.anzahl;
+  return aus;
+}
+
 /** Soll die Tour beim Anmelden von selbst starten? */
 const tourStartet = (person, rolleId) => {
   const t = person.tour || {};
@@ -13869,6 +13897,14 @@ function TourLeiste({ sitz, akt, gehZu }) {
   const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
   if (!tour || !punkt || !t) return null;
 
+  const kapitel = tourKapitel(tour, rolleId, st.gesehen);
+  const jetzt = kapitel.find((k) => st.idx >= k.von && st.idx <= k.bis) || kapitel[0];
+  const imKapitel = jetzt ? st.idx - jetzt.von + 1 : 1;
+  /* Steht der nächste Schritt in einem anderen Kapitel? Dann ist hier ein
+     natürlicher Halt — und der gehört angeboten, statt stillschweigend
+     weiterzulaufen. */
+  const amKapitelende = !!jetzt && st.idx === jetzt.bis && st.idx < st.gesamt - 1;
+
   const weiter = () => {
     if (st.idx >= st.gesamt - 1) { akt.tourBeenden(); return; }
     const n = st.alle[st.idx + 1];
@@ -13876,6 +13912,12 @@ function TourLeiste({ sitz, akt, gehZu }) {
     if (n.ziel) gehZu(n.ziel);
   };
   const zurueck = () => { if (st.idx > 0) akt.tourSchritt(st.idx - 1, null); };
+  const springe = (ziel) => {
+    const n = st.alle[ziel];
+    if (!n) return;
+    akt.tourSchritt(ziel, null);
+    if (n.ziel) gehZu(n.ziel);
+  };
 
   return (
     <div role="dialog" aria-label="Geführte Tour"
@@ -13896,8 +13938,32 @@ function TourLeiste({ sitz, akt, gehZu }) {
             flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em",
               textTransform: "uppercase", color: C.accent }}>{punkt.kapitel}</span>
+            {/* Der Bezug im Kapitel trägt, der aufs Ganze entmutigt: „3 von 6"
+                ist zu schaffen, „17 von 44" nicht. */}
             <span style={{ fontSize: 11.5, color: C.dim, ...NUM }}>
-              Schritt {st.idx + 1} von {st.gesamt}</span>
+              Schritt {imKapitel} von {jetzt ? jetzt.anzahl : st.gesamt}</span>
+            <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
+              · Kapitel {(jetzt ? jetzt.idx : 0) + 1} von {kapitel.length}</span>
+          </div>
+
+          {/* Kapitel als Sprungmarken. Wer den Betrieb schon eingerichtet
+              hat, muss die Einrichtung nicht noch einmal durchklicken. */}
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 12 }}>
+            {kapitel.map((k) => {
+              const hier = jetzt && k.idx === jetzt.idx;
+              return (
+                <button key={k.idx} type="button" onClick={() => springe(k.von)}
+                  aria-current={hier ? "step" : undefined}
+                  title={`${k.name} — ${k.gesehen} von ${k.anzahl} gesehen`}
+                  style={{ padding: "3px 9px", borderRadius: 999, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.5,
+                    border: `1px solid ${hier ? C.accent : C.lineSoft}`,
+                    background: hier ? C.accentLight : "transparent",
+                    color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,
+                    fontWeight: hier ? 620 : 500 }}>
+                  {k.fertig && !hier ? "✓ " : ""}{k.name}
+                </button>);
+            })}
           </div>
 
           <h3 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em",
@@ -13930,10 +13996,19 @@ function TourLeiste({ sitz, akt, gehZu }) {
             <Btn size="sm" kind="primary" onClick={weiter} style={{ flex: 1 }}>
               {st.idx >= st.gesamt - 1 ? "Fertig" : "Weiter"}</Btn>
           </div>
+          {/* Am Kapitelende ausdrücklich anbieten aufzuhören. Wer weiß, dass
+              hier ein Halt ist, hört seltener mittendrin auf — und findet
+              beim nächsten Mal wieder hinein. */}
+          {amKapitelende && (
+            <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.45,
+              padding: "8px 10px", borderRadius: 8, background: C.okLight }}>
+              Ende von „{jetzt.name}". Guter Punkt für eine Pause — beim
+              nächsten Mal geht es hier weiter.
+            </div>)}
           <button onClick={() => akt.tourSchliessen(false)}
             style={{ border: "none", background: "transparent", color: C.dim, fontFamily: "inherit",
               fontSize: 13, cursor: "pointer", padding: "4px 0", textAlign: "left" }}>
-            Später fortsetzen</button>
+            {amKapitelende ? "Für heute genug" : "Später fortsetzen"}</button>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5,
             color: C.dim, cursor: "pointer" }}>
             <input type="checkbox" onChange={(e) => { if (e.target.checked) akt.tourSchliessen(true); }}
@@ -14094,6 +14169,27 @@ function Einstellungen({ sitz, akt, gehZu }) {
             text="Du hast die Tour vollständig durchlaufen. Sie lässt sich jederzeit erneut starten.">
             <Pill size="sm" tone="ok">fertig</Pill>
           </Zeile>)}
+
+        {/* Kapitelweise einsteigen. Vierundvierzig Schritte am Stück macht
+            niemand; ein Kapitel von sechs schon. */}
+        <div style={{ padding: "16px var(--pad-x) 20px" }}>
+          <Lab style={{ marginBottom: 9 }}>Kapitel</Lab>
+          <div style={{ display: "grid", gap: 7 }}>
+            {tourKapitel(tour, rolleId, st.gesehen).map((k) => (
+              <div key={k.idx} style={{ display: "flex", gap: 12, alignItems: "center",
+                padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.lineSoft}`,
+                flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160,
+                  color: k.fertig ? C.dim : C.text }}>
+                  {k.fertig ? "✓ " : ""}{k.name}</span>
+                <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
+                  {k.gesehen} von {k.anzahl}</span>
+                <Btn size="sm" kind={k.fertig ? "plain" : "quiet"}
+                  onClick={() => { akt.tourAbKapitel(k.von); melde(`„${k.name}" gestartet.`); }}>
+                  {k.gesehen ? "Erneut" : "Starten"}</Btn>
+              </div>))}
+          </div>
+        </div>
       </Card>)}
 
       {/* ------------------- Kalender und Weckzeiten ------------------- */}
@@ -17772,22 +17868,6 @@ function AppInnen() {
 
   useEffect(() => { ref.current = db; }, [db]);
 
-  /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
-     abgeschlossen oder abgeschaltet. */
-  const tourGeprueft = useRef(false);
-  useEffect(() => {
-    if (!db || tourGeprueft.current) return;
-    const s2 = db.session;
-    if (!s2 || !s2.personId) return;
-    const mm = db.mandanten.find((x) => x.id === s2.mandantId);
-    const pp = mm && mm.personen.find((x) => x.id === s2.personId);
-    if (!pp) return;
-    tourGeprueft.current = true;
-    if (tourStartet(pp, pp.rolle || "mitarbeiter"))
-      setDb((d) => ({ ...d, mandanten: d.mandanten.map((x) => x.id !== mm.id ? x
-        : { ...x, personen: x.personen.map((y) => y.id !== pp.id ? y
-          : { ...y, tour: { ...(y.tour || {}), offen: true, schritt: 0 } }) }) }));
-  }, [db]);
 
   /* Offene Zustellungen abarbeiten. Läuft nach dem Speichern, gebündelt und
      ohne die Bedienung aufzuhalten. Was nicht hinausgeht, bleibt offen und
@@ -17851,6 +17931,30 @@ function AppInnen() {
     if (!p) return null;
     return { rolle: "kunde", db, mandant: m, person: p };
   }, [db]);
+
+  /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
+     abgeschlossen oder abgeschaltet.
+
+     Vorher las diese Stelle db.session.personId und suchte Betrieb und
+     Person selbst zusammen. Bei einem selbst angelegten Betrieb wird die
+     erste Person aber erst beim Anmelden erzeugt; in dem Rendern, in dem
+     die Sitzung stand, gab es sie noch nicht — der Merker war da schon
+     gesetzt, und die Tour startete nie. Genau dort, wo sie am nötigsten
+     ist: beim allerersten Öffnen eines leeren Betriebs.
+
+     Jetzt hängt sie an `sitz`. Das ist dieselbe aufgelöste Sitzung, die
+     auch die Oberfläche benutzt — gibt es sie, gibt es die Person. */
+  const tourGeprueft = useRef(false);
+  useEffect(() => {
+    if (tourGeprueft.current) return;
+    if (!sitz || !sitz.person || !sitz.mandant) return;
+    const pp = sitz.person, mm = sitz.mandant;
+    tourGeprueft.current = true;
+    if (tourStartet(pp, pp.rolle || "mitarbeiter"))
+      setDb((d) => ({ ...d, mandanten: d.mandanten.map((x) => x.id !== mm.id ? x
+        : { ...x, personen: x.personen.map((y) => y.id !== pp.id ? y
+          : { ...y, tour: { ...(y.tour || {}), offen: true, schritt: 0 } }) }) }));
+  }, [sitz]);
 
   /* --- Urlaubshinweise auslösen ---
 
@@ -18038,6 +18142,11 @@ function AppInnen() {
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
       /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
          sie gehören zum Löschkonzept, nicht zum Regelwerk. */
+      /* Direkt in ein Kapitel springen — die Tour öffnet sich dort. */
+      tourAbKapitel: (index) => mUpd((m) => ({ ...m,
+        personen: m.personen.map((p) => (p.id === sitz.person.id
+          ? { ...p, tour: { ...(p.tour || {}), offen: true, schritt: index, fertig: false } }
+          : p)) }), null),
       tarifwerkAnwenden: (id) => {
         const s2 = ref.current;
         const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
@@ -19528,7 +19637,21 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "betrieb" && <Betrieb sitz={sitz} akt={akt} />}
           </>)}
           </main>
-            {sitz.person && (sitz.person.tour || {}).offen && (
+            {/* Offen ist die Tour, wenn sie ausdrücklich offen steht — oder
+                wenn sie noch nie lief und nicht abbestellt wurde.
+
+                Der zweite Fall stand vorher nur in einem Effekt, der den
+                Zustand erst wegschreiben musste. Bei einem selbst angelegten
+                Betrieb entsteht die erste Person aber im selben Zug wie die
+                Anmeldung, und der Effekt kam dabei zu spät: Die Tour startete
+                genau dort nie, wo sie am nötigsten ist — beim allerersten
+                Öffnen eines leeren Betriebs. Nachgestellt und bestätigt.
+
+                Die Frage wird deshalb beim Darstellen gestellt, nicht in
+                einem Effekt daneben. Der Effekt schreibt den Zustand
+                weiterhin fest, sobald er einmal zustande gekommen ist. */}
+            {sitz.person && ((sitz.person.tour || {}).offen
+              || tourStartet(sitz.person, sitz.person.rolle || "mitarbeiter")) && (
               <TourLeiste sitz={sitz} akt={akt} gehZu={setView} />)}
         </div>
       </div>
