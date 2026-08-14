@@ -16978,12 +16978,15 @@ function AppInnen() {
     zustellLauf.current = true;
     (async () => {
       try {
+        /* Es geht nur noch die Kennung der Person hinaus, nicht deren
+           Adresse. Der Server schlägt sie im eigenen Betrieb nach — über
+           diesen Weg lässt sich damit niemand Betriebsfremdes anschreiben. */
         const auftraege = offen.slice(0, 100).map((n) => {
           const p = m.personen.find((x) => x.id === n.personId);
-          const mt = p ? mailText(m, n, p) : null;
-          return { id: n.id, mail: n.wege.mail, push: n.wege.push,
+          const mt = p && n.wege.mail ? mailText(m, n, p) : null;
+          return { id: n.id, personId: n.personId,
             betreff: mt ? mt.betreff : null, text: mt ? mt.text : null,
-            titel: n.titel, kurz: n.text, ziel: n.ziel };
+            titel: n.wege.push ? n.titel : null, kurz: n.text, ziel: n.ziel };
         });
         const { ergebnis } = await SP.zustellen(auftraege);
         if (ergebnis && ergebnis.length) {

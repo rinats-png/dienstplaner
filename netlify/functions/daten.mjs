@@ -1,6 +1,8 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
+  SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -81,6 +83,79 @@ export default async (req, context) => {
       await protokoll("einrichten", kennung(req, sB), "erfolg",
         `${erzeugt.length} Zugänge für ${ziel}`);
       return antwort({ ok: true, zugaenge: erzeugt });
+    }
+
+    /* ------------------------ Einen Zugang sperren -------------------- */
+    /* Bis hierher gab es drei Stellen, die Zugänge anlegen, und keine, die
+       einen zurückzieht. Wer den Betrieb verließ, behielt seinen Code —
+       und mit ihm den Plan. Für personenbezogene Daten ist das kein
+       Schönheitsfehler, sondern ein fehlendes Löschkonzept.
+
+       Gesperrt wird über den Code selbst oder über seine Prüfsumme. Der
+       Eintrag bleibt als Grabstein stehen: So kann derselbe Code nicht
+       durch Zufall ein zweites Mal vergeben werden. */
+    if (pfad === "zugang-sperren" && req.method === "POST") {
+      const sB = await sitzung(req);
+      const darfSperren = sB && (sB.rolle === "betreiber" || sB.rolle === "leitung");
+      if (!darfSperren) {
+        await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Sperrung ohne Recht");
+        return antwort({ fehler: "Nur die Organisationsleitung darf Zugänge zurückziehen." }, 403);
+      }
+      const kS = kennung(req, sB);
+      const bS = await bremse("zugaenge", kS);
+      if (!bS.frei) { await protokoll("zugaenge", kS, "gebremst", bS.grund);
+        return zuVielAntwort(bS.wartet); }
+
+      const { code, pruefsumme, alleDesBetriebs } = await req.json();
+      const konten = (await store.get("konten", { type: "json" })) || {};
+      const ziele = [];
+
+      if (code) ziele.push(hash(code));
+      if (pruefsumme) ziele.push(String(pruefsumme));
+      /* Notausgang: alle Zugänge eines Betriebs auf einmal. Gedacht für den
+         Fall, dass Codes in falsche Hände geraten sind. Der eigene Zugang
+         bleibt bestehen, sonst sperrt man sich selbst aus. */
+      if (alleDesBetriebs) {
+        const eigenerHash = sB.konto || null;
+        for (const [h, k] of Object.entries(konten)) {
+          if (k.bestand === sB.bestand && k.rolle !== "betreiber" && h !== eigenerHash) ziele.push(h);
+        }
+      }
+      if (!ziele.length) return antwort({ fehler: "Kein Zugang angegeben." }, 400);
+
+      let gesperrt = 0;
+      for (const h of ziele) {
+        const k = konten[h];
+        if (!k) continue;
+        /* Nur im eigenen Betrieb — die Leitung eines Hauses darf nicht die
+           Zugänge eines anderen abschalten. */
+        if (sB.rolle !== "betreiber" && k.bestand !== sB.bestand) continue;
+        if (k.gesperrt) continue;
+        konten[h] = { ...k, gesperrt: true,
+          gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
+        gesperrt++;
+      }
+      if (gesperrt) await store.setJSON("konten", konten);
+
+      /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
+         noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
+      let beendet = 0;
+      const gesperrteHashes = new Set(ziele);
+      try {
+        const { blobs } = await sitzungen().list();
+        for (const b of blobs) {
+          const sit = await sitzungen().get(b.key, { type: "json" });
+          if (!sit || sit.bestand !== sB.bestand) continue;
+          /* Sitzungen aus der Zeit vor dieser Änderung tragen keine
+             Kontokennung. Sie laufen binnen zwölf Stunden von selbst ab. */
+          if (!sit.konto || !gesperrteHashes.has(sit.konto)) continue;
+          await sitzungen().delete(b.key);
+          beendet++;
+        }
+      } catch { /* Sitzungen laufen ohnehin nach spätestens zwölf Stunden ab */ }
+
+      await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen beendet`);
+      return antwort({ ok: true, gesperrt, sitzungenBeendet: beendet });
     }
 
     /* --------------- Bestand für einen anderen Raum schreiben --------- */
@@ -166,6 +241,23 @@ export default async (req, context) => {
             ? { hinweis: `Noch ${b.uebrig} Versuche, dann ist der Zugang kurz gesperrt.` } : {}) }, 401);
       }
 
+      /* Gesperrt? Ein zurückgezogener Zugang bleibt als Eintrag stehen,
+         damit derselbe Code nicht später erneut vergeben wird. */
+      if (eintrag.gesperrt) {
+        await protokoll("anmelden", k, "abgewiesen", "gesperrt");
+        return antwort({ fehler: "Dieser Zugang wurde zurückgezogen.",
+          text: "Bitte wende dich an die Organisationsleitung." }, 403);
+      }
+
+      /* Abgelaufen? Selbst angelegte Testbetriebe tragen ein Enddatum. Bis
+         hierher wurde es geschrieben und nie gelesen — der Testzeitraum war
+         damit unbegrenzt. */
+      if (eintrag.laeuftAb && new Date(eintrag.laeuftAb).getTime() < Date.now()) {
+        await protokoll("anmelden", k, "abgewiesen", "abgelaufen");
+        return antwort({ fehler: "Der Testzeitraum ist abgelaufen.",
+          text: "Melde dich bei uns, wenn du weitermachen möchtest — die Daten sind noch da." }, 403);
+      }
+
       const token = randomBytes(32).toString("base64url");
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
          soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein. */
@@ -174,6 +266,9 @@ export default async (req, context) => {
       await sitzungen().setJSON(`t:${hash(token)}`, {
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
+           beim Sperren aller Zugänge der eigene aussparen. */
+        konto: hash(zugangscode),
         seit: Date.now(), bis: Date.now() + dauer,
       });
       await entlasten("anmelden", k);
@@ -190,20 +285,34 @@ export default async (req, context) => {
     const schluessel = `bestand:${s.bestand}`;
 
     /* ------------------------------ Lesen ---------------------------- */
+    /* Was hinausgeht, hängt an der Rolle. Eine Pflegekraft bekommt den Plan,
+       aber nicht die Anschriften und Krankheitsgründe ihrer Kolleginnen —
+       siehe lib/rechte.mjs. */
     if (pfad === "bestand" && req.method === "GET") {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       const mit = await store.getWithMetadata(schluessel, { type: "json" });
       if (!mit) return antwort({ bestand: null, etag: null,
-        rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name });
-      return antwort({ bestand: mit.data, etag: mit.etag,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
+        schreiben: schreibumfang(s.rolle) });
+      return antwort({ bestand: bestandFuerRolle(mit.data, s), etag: mit.etag,
+        rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
+        schreiben: schreibumfang(s.rolle),
         geaendert: mit.metadata?.zeit || null, durch: mit.metadata?.durch || null });
     }
 
     /* ----------------------------- Schreiben ------------------------- */
     if (pfad === "bestand" && req.method === "PUT") {
       const ks = kennung(req, s);
+
+      /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
+         soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
+        return antwort({ fehler: "Keine Schreibberechtigung.",
+          text: absageText(s.rolle) }, 403);
+      }
+
       const bs = await bremse("schreiben", ks);
       if (!bs.frei) return zuVielAntwort(bs.wartet);
       const { bestand, etag, durch } = await req.json();
@@ -216,14 +325,24 @@ export default async (req, context) => {
         await protokoll("schreiben", ks, "konflikt");
         return antwort({ fehler: "konflikt",
           text: "Jemand anderes hat inzwischen gespeichert.",
-          bestand: jetzt.data, etag: jetzt.etag,
+          bestand: bestandFuerRolle(jetzt.data, s), etag: jetzt.etag,
           durch: jetzt.metadata?.durch || null, zeit: jetzt.metadata?.zeit || null }, 409); }
 
-      await store.setJSON(schluessel, bestand,
+      /* Die entscheidende Zeile: Grundlage ist der gespeicherte Stand, nicht
+         der übermittelte. Eine eingeschränkte Rolle kann damit nichts
+         überschreiben, was sie beim Lesen gar nicht bekommen hat. */
+      const zuSchreiben = zusammenfuehren(jetzt ? jetzt.data : null, bestand, s);
+      if (!zuSchreiben) {
+        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
+        return antwort({ fehler: "Keine Schreibberechtigung.",
+          text: absageText(s.rolle) }, 403);
+      }
+
+      await store.setJSON(schluessel, zuSchreiben,
         { metadata: { zeit: new Date().toISOString(), durch: durch || s.name || "unbekannt" } });
       const neu = await store.getMetadata(schluessel);
       await protokoll("schreiben", ks, "erfolg",
-        `${Math.round(JSON.stringify(bestand).length / 1024)} KB`);
+        `${Math.round(JSON.stringify(zuSchreiben).length / 1024)} KB · ${s.rolle}`);
       return antwort({ ok: true, etag: neu?.etag || null });
     }
 

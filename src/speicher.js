@@ -113,7 +113,10 @@ export async function lies() {
   const { status, daten } = await ruf("bestand");
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
-  zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb, name: daten.name };
+  /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
+     Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
+  zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
+    name: daten.name, schreiben: daten.schreiben || "voll" };
   return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch };
 }
 
@@ -135,11 +138,15 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, sofort } = {}) {
   return Promise.resolve();
 }
 
-async function jetztSchreiben() {
+async function jetztSchreiben(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   try {
+    /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
+       Ohne das bricht der Browser sie ab, und die letzte Änderung ist
+       verloren — genau in dem Moment, in dem niemand mehr hinsieht. */
     const { status, daten } = await ruf("bestand", { method: "PUT",
+      ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: auftrag.bestand, etag, durch: auftrag.durch }) });
     if (status === 409) {
       etag = daten.etag;
@@ -156,9 +163,19 @@ async function jetztSchreiben() {
 
 /** Vor dem Schließen des Fensters noch Ausstehendes wegschreiben. */
 if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => { if (offen) jetztSchreiben(); });
+  window.addEventListener("beforeunload", (e) => {
+    if (!offen) return;
+    jetztSchreiben(true);
+    /* Zusätzlich nachfragen: keepalive ist zuverlässig, aber nicht
+       garantiert. Bei einem Monatsplan wiegt eine Rückfrage leichter als
+       eine verlorene Stunde Arbeit. */
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  /* Der verlässlichere Zeitpunkt auf dem Telefon: Wegwischen der Anwendung
+     löst kein beforeunload aus, wohl aber visibilitychange. */
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && offen) jetztSchreiben();
+    if (document.visibilityState === "hidden" && offen) jetztSchreiben(true);
   });
 }
 
@@ -224,21 +241,22 @@ export async function pushEinschalten(personId) {
   const anmeldung = vorhanden || await reg.pushManager.subscribe({
     userVisibleOnly: true, applicationServerKey: b64(vapid) });
 
+  /* Die Person kommt aus der Sitzung des Servers, nicht von hier — sonst
+     ließe sich die Anmeldung einer Kollegin überschreiben. */
   const a = await fetch("/zustellung/anmelden", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ anmeldung: anmeldung.toJSON(), personId }) });
+    body: JSON.stringify({ anmeldung: anmeldung.toJSON() }) });
   if (!a.ok) throw new Error("Die Anmeldung konnte nicht gespeichert werden.");
   return anmeldung.toJSON();
 }
 
-export async function pushAusschalten(personId) {
+export async function pushAusschalten() {
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();
     if (s) await s.unsubscribe();
   } catch { /* egal */ }
   try {
-    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf(),
-      body: JSON.stringify({ personId }) });
+    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf() });
   } catch { /* egal */ }
 }
 
@@ -259,6 +277,22 @@ export async function zugaengeErzeugen(bestand, eintraege) {
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Zugänge konnten nicht erzeugt werden.");
   return d.zugaenge;
+}
+
+/**
+ * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
+ * Codes ließen sich anlegen, aber nie wieder abschalten.
+ *
+ * Entweder den Code selbst übergeben, seine Prüfsumme, oder mit
+ * alleDesBetriebs sämtliche Zugänge des Betriebs auf einmal — der eigene
+ * bleibt dabei bestehen.
+ */
+export async function zugangSperren({ code, pruefsumme, alleDesBetriebs } = {}) {
+  const a = await fetch("/api/zugang-sperren", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ code, pruefsumme, alleDesBetriebs: !!alleDesBetriebs }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.fehler || "Der Zugang konnte nicht gesperrt werden.");
+  return d;
 }
 
 export async function bestandAnlegen(bestand, inhalt) {
