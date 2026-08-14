@@ -25,7 +25,7 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
-  if (!["", "verwalter"].includes(pfad))
+  if (!["", "verwalter", "umgebung"].includes(pfad))
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
@@ -96,6 +96,65 @@ export default async (req) => {
     }
     return antwort({ fehler: "Nur GET, POST oder DELETE." }, 405);
   }
+
+  /* ---------------------------- Umgebungsbericht ---------------------
+     Ob eine Umgebungsvariable gesetzt ist, war von außen nicht
+     feststellbar. Bei Netlify kommt hinzu, dass als *secret* angelegte
+     Variablen auch über die Verwaltungsschnittstelle nicht mehr
+     erscheinen — wer sie setzt, kann es anschließend nirgends nachsehen.
+     Das hat schon einmal dazu geführt, dass eine Anwendung ohne Pfeffer
+     lief, ohne dass es jemandem auffiel.
+
+     Deshalb hier: ja oder nein, nie der Wert. Der Bericht steht hinter
+     derselben Prüfung wie das Anlegen von Zugängen; wer ihn lesen darf,
+     dürfte die Werte ohnehin setzen.                                   */
+  if (pfad === "umgebung") {
+    if (req.method !== "GET") return antwort({ fehler: "Nur GET." }, 405);
+
+    const gesetzt = (n) => !!(process.env[n] || "").trim();
+    const absender = (process.env.CENTRIC_ABSENDER || "").trim();
+    /* Resends Sandbox-Adresse stellt ausschließlich an den Kontoinhaber
+       zu. Sie ist gesetzt und funktioniert — nur eben nicht für Kunden. */
+    const sandbox = /@resend\.dev$/i.test(absender);
+
+    const warnungen = [];
+    if (!gesetzt("CENTRIC_PFEFFER"))
+      warnungen.push("CENTRIC_PFEFFER fehlt. Zugangscodes liegen als ungesalzenes "
+        + "SHA-256 im Speicher. Jetzt setzen — nach dem ersten Code geht es nicht "
+        + "mehr folgenlos.");
+    if (gesetzt("CENTRIC_ADMIN"))
+      warnungen.push("CENTRIC_ADMIN ist noch gesetzt. Nach dem Anlegen des ersten "
+        + "benannten Verwalterkontos gehört der Ursprungsschlüssel gelöscht.");
+    if (!gesetzt("RESEND_API_KEY"))
+      warnungen.push("RESEND_API_KEY fehlt. Es geht keine E-Mail hinaus.");
+    else if (sandbox || !absender)
+      warnungen.push("CENTRIC_ABSENDER steht auf der Sandbox-Adresse von Resend. "
+        + "Nachrichten erreichen nur den Kontoinhaber, alle übrigen verschwinden "
+        + "ohne Fehlermeldung.");
+    if (gesetzt("VAPID_PUBLIC") !== gesetzt("VAPID_PRIVATE"))
+      warnungen.push("Vom VAPID-Paar ist nur eine Hälfte gesetzt. So lässt sich "
+        + "keine Push-Mitteilung versenden.");
+
+    return antwort({
+      gepr: new Date().toISOString(),
+      region: process.env.AWS_REGION || null,
+      umgebung: {
+        pfeffer: gesetzt("CENTRIC_PFEFFER"),
+        ursprungsschluessel: gesetzt("CENTRIC_ADMIN"),
+        mailversand: gesetzt("RESEND_API_KEY"),
+        absender: absender || null,
+        absenderIstSandbox: sandbox,
+        pushOeffentlich: gesetzt("VAPID_PUBLIC"),
+        pushPrivat: gesetzt("VAPID_PRIVATE"),
+        bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
+      },
+      verwalterkonten: await verwalterAktiv(s0),
+      warnungen,
+      /* Ein leeres `warnungen` ist die einzige Aussage, die zählt. */
+      inOrdnung: warnungen.length === 0,
+    });
+  }
+
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);
 
   // Zugangscode in gut vorlesbarer Form: vier Blöcke, keine verwechselbaren Zeichen

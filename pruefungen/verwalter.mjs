@@ -84,5 +84,39 @@ const li2 = await (await ruf("/verwalter", "GET", { verwaltung: URSPRUNG })).jso
 const jetzt = (li2.verwalter || []).find((v) => v.kennung === meins.kennung);
 pruef("gesperrtes Konto bleibt als Beleg stehen", !!jetzt && jetzt.gesperrt === true);
 
+/* --- Der Umgebungsbericht: ja oder nein, nie der Wert ---
+
+   Er ist der einzige Weg, von außen festzustellen, ob eine Variable
+   gesetzt ist. Netlify liefert als *secret* angelegte Variablen selbst
+   über die Verwaltungsschnittstelle nicht mehr aus — ohne diesen Bericht
+   liefe eine Anwendung ohne Pfeffer, ohne dass es jemandem auffiele.
+
+   Zwei Dinge müssen halten: dass er ohne Schlüssel nicht herausgeht, und
+   dass in ihm kein einziger Wert steht.                                */
+const uOhne = await fetch(`${BASIS}/einrichten/umgebung`, {
+  headers: { "x-forwarded-for": HERKUNFT } });
+pruef("Umgebungsbericht ohne Schlüssel abgewiesen", uOhne.status === 401,
+  `Status ${uOhne.status}`);
+
+const uAntwort = await ruf("/umgebung", "GET", { verwaltung: URSPRUNG });
+const u = await uAntwort.json();
+pruef("Umgebungsbericht mit Schlüssel", uAntwort.status === 200, u.fehler || "");
+pruef("meldet den Ursprungsschlüssel als gesetzt", u.umgebung?.ursprungsschluessel === true);
+pruef("Pfeffer wird als ja oder nein gemeldet",
+  typeof u.umgebung?.pfeffer === "boolean", String(u.umgebung?.pfeffer));
+
+/* Der Ursprungsschlüssel steht in der Umgebung. Taucht er im Bericht auf,
+   wäre der Bericht selbst das Leck, das er aufdecken soll. */
+pruef("Bericht enthält keinen einzigen Wert",
+  !JSON.stringify(u).includes(URSPRUNG));
+pruef("offene Punkte werden benannt", Array.isArray(u.warnungen));
+pruef("gesetzter Ursprungsschlüssel wird angemahnt",
+  (u.warnungen || []).some((w) => w.includes("CENTRIC_ADMIN")));
+pruef("inOrdnung trägt das Ergebnis",
+  u.inOrdnung === ((u.warnungen || []).length === 0), String(u.inOrdnung));
+
+const uPost = await ruf("/umgebung", "POST", { verwaltung: URSPRUNG });
+pruef("Umgebungsbericht nur per GET", uPost.status === 405, `Status ${uPost.status}`);
+
 console.log(`\n${ok} von ${ok + fehl} Prüfungen bestanden.`);
 process.exit(fehl ? 1 : 0);

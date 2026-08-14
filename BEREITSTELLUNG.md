@@ -84,7 +84,34 @@ obwohl das Auslesen sie nie zeigte.
 
 Zusammen ergibt das eine unangenehme Lage: Über die Schnittstelle gesetzte
 Geheimnisse lassen sich nicht durch Auslesen bestätigen. **Geheimnisse
-gehören deshalb über die Oberfläche gesetzt**, wo beides sichtbar ist.
+gehören deshalb über die Oberfläche gesetzt** — und danach über den
+Umgebungsbericht geprüft (Schritt 2a).
+
+### In der Oberfläche: *secret* erzwingt Werte je Kontext
+
+Wer **Contains secret values** ankreuzt, kann **Same value for all deploy
+contexts** nicht mehr wählen — Netlify verlangt dann vier einzelne Felder:
+Production, Deploy Previews, Branch deploys, Local development.
+
+**Überall denselben Wert eintragen.** Netlify Blobs gehören der Site, nicht
+dem einzelnen Deploy: Ein Branch-Deploy schreibt in denselben Speicher wie
+die Produktion. Stünde dort ein anderer Pfeffer, gälte ein über die Vorschau
+angelegter Code in der Produktion nicht mehr — ein Fehler, der erst Wochen
+später auffällt, wenn sich jemand nicht anmelden kann.
+
+## Schritt 2a — Nachsehen, ob es angekommen ist
+
+    curl -sS https://centric-dienstplanung.netlify.app/einrichten/umgebung \
+      -H "authorization: Bearer <CENTRIC_ADMIN>"
+
+Antwortet mit `ja` oder `nein` je Variable, **nie mit einem Wert**, dazu
+einer Liste offener Punkte im Klartext. `"inOrdnung": true` heißt: nichts
+mehr offen.
+
+Der Bericht steht hinter derselben Prüfung wie das Anlegen von Zugängen —
+wer ihn lesen darf, dürfte die Werte ohnehin setzen. Er ist der einzige Weg,
+den Zustand eines Geheimnisses von außen festzustellen; die
+Netlify-Schnittstelle gibt ihn nicht her.
 
 Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 
@@ -198,8 +225,9 @@ bleibt lesbar — mit einem Hinweis, wie alt er ist.
 
 ### 5.0 Betreiberzugang, Demobetriebe und einen leeren Testbetrieb anlegen
 
-**Vorher `CENTRIC_PFEFFER` setzen** (Schritt 2). Danach entstehen Codes, und
-ab dann ist der Pfeffer nicht mehr folgenlos zu ändern.
+**Vorher `CENTRIC_PFEFFER` setzen** (Schritt 2) **und mit Schritt 2a
+nachsehen, dass er wirklich da ist.** Danach entstehen Codes, und ab dann
+ist der Pfeffer nicht mehr folgenlos zu ändern.
 
     CENTRIC_ADMIN='<Wert aus den Umgebungsvariablen>' \
       werkzeug/zugaenge-anlegen.sh
