@@ -63,36 +63,54 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Stand: es ist **keine einzige** Variable gesetzt
+### Stand am 14.08.2026: `CENTRIC_ADMIN` und `CENTRIC_PFEFFER` sind gesetzt
 
-Nachgeprüft am 14.08.2026: `getAllEnvVars` gibt eine leere Liste zurück.
+Die übrigen fehlen — sie brauchen Zugangsdaten von außen und lassen sich
+nicht erzeugen.
 
-Meine frühere Erklärung dafür — die Schreibvorgänge kämen nicht an — war
-falsch. Ich habe es mit einer Wegwerf-Variablen nachgestellt: Anlegen,
-Auslesen, Löschen, und das Auslesen zeigte sie einwandfrei samt Zeitstempel.
-Schnittstelle und Site arbeiten also richtig; die Liste ist schlicht leer.
+### Eine Falle in der Netlify-Schnittstelle
 
-Die Anwendung **läuft trotzdem**. Was ohne die Variablen fehlt:
+Sie hat mich zwei Anläufe gekostet und ist der Grund, warum in einer
+früheren Fassung dieser Datei stand, die Variablen seien gesetzt.
+
+**`manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer
+engeren Auswahl — etwa `["functions", "runtime"]`, was sachlich richtig
+wäre — meldet der Aufruf `Environment variable upserted` und legt nichts
+an. Die Erfolgsmeldung trägt nicht.
+
+Nachgestellt mit einer Wegwerf-Variablen: mit `["all"]` erscheint sie beim
+Auslesen sofort samt Zeitstempel, mit eingeschränkten Scopes nie. Wer über
+die Schnittstelle setzt, prüft danach durch Auslesen — nicht anhand der
+Rückmeldung.
+
+Über die Oberfläche gibt es das Problem nicht.
+
+Die Anwendung **läuft auch ohne die restlichen Variablen**. Was fehlt:
 
 | Fehlt | Folge |
 |---|---|
-| `CENTRIC_ADMIN` | Kein Betreiberzugang. `/einrichten` antwortet mit dem Hinweis, dass noch kein Verwalterzugang besteht. Schritt 5.1 ist bis dahin nicht möglich. |
-| `CENTRIC_PFEFFER` | Zugangscodes liegen als ungesalzenes SHA-256 im Speicher. `neuHash()` gibt ohne Pfeffer `null` zurück, `ablageSchluessel()` fällt auf `altHash()` zurück. |
 | `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
 | `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
 
 `Site configuration → Environment variables → Add a variable`
 
-| Variable | Als *secret*? | Wert |
-|---|---|---|
-| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` |
-| `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` |
-| `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen |
-| `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` |
-| `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto |
-| `CENTRIC_ABSENDER` | nein | siehe unten |
-| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` |
+| Variable | Als *secret*? | Wert | Stand |
+|---|---|---|---|
+| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | gesetzt |
+| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` | gesetzt, siehe unten |
+| `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` | fehlt |
+| `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen | fehlt |
+| `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` | fehlt |
+| `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto | fehlt |
+| `CENTRIC_ABSENDER` | nein | siehe unten | fehlt |
+
+**`CENTRIC_ADMIN` ist ein Wegwerfschlüssel und muss es bleiben.** Er wurde
+in einer Arbeitssitzung erzeugt und steht damit in deren Verlauf. Für seinen
+einzigen Zweck — das erste benannte Verwalterkonto anlegen, Schritt 5.1 —
+ist das vertretbar. Danach ist er zu **löschen**, nicht aufzuheben. Wer ihn
+länger stehen lässt, hat ein Geheimnis mit unbekanntem Leserkreis auf einem
+laufenden System.
 
 **Warum manche als *secret*:** Netlify erlaubt dieses Kennzeichen **nur beim
 Anlegen**. Auf der alten Site war es bei keiner Variablen gesetzt — alle
@@ -163,6 +181,40 @@ Danach startet die Anwendung auch ohne Netz, und der zuletzt geladene Plan
 bleibt lesbar — mit einem Hinweis, wie alt er ist.
 
 ## Schritt 5 — Unmittelbar nach dem ersten erfolgreichen Deploy
+
+### 5.0 Betreiberzugang, Demobetriebe und einen leeren Testbetrieb anlegen
+
+    CENTRIC_ADMIN='<Wert aus den Umgebungsvariablen>' \
+      werkzeug/zugaenge-anlegen.sh
+
+Das Skript legt in einem Zug an und schreibt alle Codes in eine Datei mit
+Rechten `600` — jeder erscheint genau einmal:
+
+| Was | Wie | Wodurch |
+|---|---|---|
+| Betreiberkonsole | Code, Rolle `betreiber` | `/einrichten` |
+| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite | `/einrichten`, `demo: true` |
+| Ein leerer Testbetrieb | eigener Raum, 30 Tage | `/starten` |
+
+**Warum der Testbetrieb über `/starten` läuft.** Nur dieser Weg legt den
+Betrieb mit `baueLeerenBetrieb()` an — kein Beispielpersonal, keine
+erfundenen Dienstpläne, nur Name, Branche und Bundesland. Ein über
+`/einrichten` angelegter Code zeigt auf einen Raum, den die Anwendung beim
+ersten Öffnen mit den drei Beispielmandanten aus `startbestand()` füllt.
+Für einen Testzugang „ohne Demodaten" ist das genau das Falsche.
+
+**Warum der Demoraum `demo-schau` heißen muss.** `/api/demo` lässt einen
+Zugang ohne Code nur durch, wenn sein Raum mit `demo-` beginnt. Der Raumname
+trägt die Absicht; ein versehentlich als Demo gekennzeichneter Zugang auf
+einen echten Betrieb wäre sonst öffentlich lesbar.
+
+**Die drei Demobetriebe sind öffentlich beschreibbar.** Sie stehen ohne Code
+offen, und für Demositzungen gibt es keine Schreibsperre — wer sie öffnet,
+kann Personal löschen und Pläne ändern, und der nächste Besucher sieht das.
+Für eine Vorführung ist das hinnehmbar, für eine öffentlich verlinkte Seite
+nicht. Wer das ändern will, braucht eine Schreibsperre für Sitzungen mit
+`demo: true` in `netlify/functions/daten.mjs` — dieselbe Stelle, an der
+`nurSicherung` schon so behandelt wird.
 
 ### 5.1 Ein benanntes Verwalterkonto anlegen
 
