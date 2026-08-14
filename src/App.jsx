@@ -5,7 +5,7 @@ import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, brutto, fenster,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, urlaubshinweisFaellig, istNachtdienst,
+  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN,
 } from "./regelwerk.js";
@@ -1220,9 +1220,17 @@ function zyklusLaenge(m) {
 }
 function einheitDienst(m, eid, d) {
   const e = m.einheiten.find((x) => x.id === eid); if (!e || e.pool) return null;
+  /* zyklusLaenge() fängt einen fehlenden Tagesplan ab und rechnet dann mit
+     wochen × 7 — hier stand der Zugriff ungeschützt daneben. Ein Betrieb
+     ohne zyklus.tage ließ damit die gesamte Personalakte abstürzen
+     („Cannot read properties of undefined"), und mit ihr jede Ansicht, die
+     Stunden über ein Jahr rechnet. Ein frisch angelegter Betrieb ist genau
+     dieser Fall, solange die Schichtfolge noch nicht steht. */
+  const tage = (m.zyklus && m.zyklus.tage) || null;
+  if (!tage || !tage.length) return null;
   const len = zyklusLaenge(m);
   const i = (((between(m.anker, d) + versatzTageVon(e)) % len) + len) % len;
-  const id = m.zyklus.tage[i];
+  const id = tage[i];
   return id && id !== "-" ? id : null;
 }
 /** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
@@ -1535,6 +1543,35 @@ function pruefen(m, von, bis) {
             titel: `Überlappende Abwesenheiten — ${p.nachname}`,
             text: `${abwArt(l[i].art).label} und ${abwArt(l[j].art).label} überschneiden sich` });
     }
+    /* --- Besondere Personengruppen ---
+
+       Jugendliche, Schwangere und Stillende, schwerbehinderte Menschen. Drei
+       Fälle, in denen ein Plan unzulässig ist, der für alle anderen in
+       Ordnung wäre — und alle drei sind in Pflege und Sicherheit alltäglich.
+
+       Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
+       werden sie nur auf den Plan angewendet. */
+    for (const p of m.personen) {
+      if (!imDienst(p, von) && !imDienst(p, bis)) continue;
+      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
+         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+      const alterHeute = alterAm(p.geburtstag, bis);
+      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+
+      for (let d = von; d <= bis; d = addDays(d, 1)) {
+        const t = personTag(m, p, d);
+        if (t.abwesenheit || !t.dienstId) continue;
+        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        if (!da) continue;
+        for (const b of schutzBefunde(p, da, d)) {
+          push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
+            ref: `${p.id}|${b.regel}`, personId: p.id,
+            titel: `${b.regel} — ${p.nachname}`,
+            text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
+        }
+      }
+    }
+
     for (let d = von; d <= bis; d = addDays(d, 1)) for (const e of m.einheiten) {
       const n = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && (abwesenheitAm(m, p.id, d) || {}).art === "urlaub").length;
       if (n > m.einstellungen.maxUrlaubJeEinheit)
@@ -8132,6 +8169,41 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* --- Schutzvorschriften ---
+
+                Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
+                ein Plan für diese Person unzulässig ist. Sie sind bewusst
+                sparsam gehalten: Ein Geburtsdatum, zwei Merkmale — mehr
+                braucht es nicht, und mehr gehört auch nicht erfasst. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Geburtsdatum"
+                hint="Nur für den Jugendarbeitsschutz. Bleibt leer, wenn nicht nötig.">
+                <Inp type="date" value={p.geburtstag || ""}
+                  onChange={(e) => akt.setzePerson(p.id, "geburtstag", e.target.value || null)} /></Field>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9, justifyContent: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                  <Schalter an={!!p.mutterschutz}
+                    onChange={() => akt.setzePerson(p.id, "mutterschutz", !p.mutterschutz)} />
+                  <span style={{ fontSize: 13.5 }}>Mutterschutz</span></label>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                  <Schalter an={!!p.schwerbehindert}
+                    onChange={() => akt.setzePerson(p.id, "schwerbehindert", !p.schwerbehindert)} />
+                  <span style={{ fontSize: 13.5 }}>Schwerbehinderung</span></label>
+              </div>
+            </div>
+            {(p.mutterschutz || p.schwerbehindert
+              || (alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18)) && (
+              <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55,
+                background: C.accentLight, padding: "10px 13px", borderRadius: 8 }}>
+                {alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18
+                  && "Unter 18: keine Nachtarbeit, höchstens acht Stunden täglich (JArbSchG). "}
+                {p.mutterschutz
+                  && "Mutterschutz: Nacht- und Sonntagsarbeit nur mit Einwilligung und Genehmigung (MuSchG). "}
+                {p.schwerbehindert
+                  && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
+                Die Prüfung meldet Verstöße unter „Schutzvorschriften".
+              </div>)}
+
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
               <div>
                 <Lab style={{ marginBottom: 8 }}>Arbeitstage</Lab>
@@ -8158,19 +8230,34 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <Lab style={{ marginBottom: 11 }}>Stundenkonto über zwölf Monate</Lab>
       <Card style={{ padding: 22, marginBottom: 22 }}>
         {(() => {
+          /* Hier stand kv.punkte[11].konto und kv.richtung — kontoVerlauf()
+             liefert aber eine schlichte Liste, und deren Einträge heißen kto,
+             nicht konto. Der Zugriff auf das nicht vorhandene punkte warf
+             „Cannot read properties of undefined (reading '11')" und riss die
+             gesamte Personalakte mit: Die Ansicht ist nie aufgegangen.
+
+             Richtung und Trend werden jetzt aus der Liste gerechnet, statt
+             sie von der Funktion zu erwarten. */
           const kv = kontoVerlauf(m, p, ym, 12);
           const g = m.einstellungen.ausgleichGrenze || 40;
+          const letzter = kv.length ? kv[kv.length - 1].kto : 0;
+          const erster = kv.length ? kv[0].kto : 0;
+          const trend = Math.round((letzter - erster) * 10) / 10;
+          /* Unterhalb von fünf Stunden über zwölf Monate ist das Rauschen,
+             keine Entwicklung. */
+          const richtung = Math.abs(trend) < 5 ? "stabil" : trend > 0 ? "steigend" : "fallend";
           return (<>
             <div style={{ display: "flex", gap: 22, marginBottom: 18, flexWrap: "wrap", alignItems: "baseline" }}>
               <div><Lab>Aktuell</Lab><div style={{ fontSize: 26, fontWeight: 650, ...NUM,
-                color: Math.abs(kv.punkte[11].konto) > g ? C.warn : C.text }}>
-                {sgn(kv.punkte[11].konto)} h</div></div>
+                color: Math.abs(letzter) > g ? C.warn : C.text }}>
+                {sgn(letzter)} h</div></div>
               <div><Lab>Entwicklung</Lab><div style={{ fontSize: 15, fontWeight: 600, marginTop: 5,
-                color: kv.richtung === "stabil" ? C.ok : kv.richtung === "steigend" ? C.warn : C.accent }}>
-                {kv.richtung === "stabil" ? "stabil" : kv.richtung === "steigend"
-                  ? `steigend, ${sgn(kv.trend)} h im Jahr` : `fallend, ${sgn(kv.trend)} h im Jahr`}</div></div>
+                color: richtung === "stabil" ? C.ok : richtung === "steigend" ? C.warn : C.accent }}>
+                {richtung === "stabil" ? "stabil" : richtung === "steigend"
+                  ? `steigend, ${sgn(trend)} h in zwölf Monaten`
+                  : `fallend, ${sgn(trend)} h in zwölf Monaten`}</div></div>
             </div>
-            <LinienDiagramm daten={kv.punkte.map((x) => ({ label: x.label, y: x.konto }))}
+            <LinienDiagramm daten={kv.map((x) => ({ label: x.label, y: x.kto }))}
               farbe={C.accent} einheit=" h" />
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
               Das grüne Band ist der Bereich innerhalb der Ausgleichsgrenze von {n1(g)} h. Die Frage ist
@@ -8276,7 +8363,7 @@ function Pruefung({ sitz, ym, oeffneTag }) {
   const [f, setF] = useState("alle");
   const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
-    ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"]];
+    ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
   const krit = befunde.filter((b) => b.schwere === "danger").length;
 
@@ -8288,7 +8375,7 @@ function Pruefung({ sitz, ym, oeffneTag }) {
 
   return (
     <div>
-      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten und gleichzeitige Urlaube.`}>
+      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}>
         Prüfung · {MON[mo - 1]} {y}</H1>
 
       {/* --- § 3 Arbeitszeitgesetz --- */}
@@ -12565,6 +12652,18 @@ const ZUSTELLARTEN = {
     text: "Ein Dienst ist unbesetzt und steht zur Bewerbung offen." },
   tauschAngebot: { titel: "Tauschangebot", mail: false, push: true, dringend: false,
     text: "Jemand bietet einen Tausch an, der zu deinem Plan passt." },
+  /* Der Hinweis, ohne den Urlaub gar nicht verfällt.
+
+     Nach EuGH C-684/16 und BAG 9 AZR 541/15 verfällt Urlaub nur, wenn der
+     Arbeitgeber rechtzeitig und ausdrücklich darauf hingewiesen hat. Ohne
+     Hinweis wird er übertragen und häuft sich an — mit allem, was das für
+     Rückstellungen und ausscheidende Beschäftigte bedeutet.
+
+     Die Mitteilung ist damit kein Service, sondern die Erfüllung einer
+     Pflicht. Deshalb geht sie über E-Mail hinaus und bleibt im Postfach
+     nachweisbar stehen. */
+  urlaubVerfaellt: { titel: "Resturlaub verfällt", mail: true, push: false, dringend: false,
+    text: "Nicht genommener Urlaub verfällt zum Jahresende, wenn er nicht eingeplant wird." },
   nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: true, push: false, dringend: false,
     text: "Eine Qualifikation verliert demnächst ihre Gültigkeit." },
   zeitFehlt: { titel: "Zeiten offen", mail: false, push: true, dringend: false,
@@ -12616,6 +12715,28 @@ function baueMitteilung(m, personId, art, titel, text, ziel) {
     wege: { mail: w.mail ? p.email : null, push: w.push ? p.pushSchluessel : null },
     zugestellt: { mail: null, push: null },
   };
+}
+
+/* --------------------------------------------------------------------------
+   URLAUBSHINWEIS
+
+   Sammelt, für wen ein Hinweis fällig ist. Die Regel selbst steht in
+   src/regelwerk.js und ist dort geprüft; hier wird sie auf die Urlaubskonten
+   angewendet.
+
+   Ausgelöst wird höchstens einmal je Person und Jahr — festgehalten wird das
+   an der Person selbst, damit es auch nach einem Gerätewechsel gilt.
+   -------------------------------------------------------------------------- */
+function urlaubshinweiseFaellig(m, stichtag) {
+  const jahr = Number(String(stichtag).slice(0, 4));
+  const aus = [];
+  for (const p of aktive(m, stichtag)) {
+    const konto = urlaubskonto(m, p, jahr);
+    const offen = Math.max(0, (konto.anspruch || 0) - (konto.genommen || 0));
+    const h = urlaubshinweisFaellig(offen, stichtag, p.urlaubshinweis || null);
+    if (h.faellig) aus.push({ person: p, ...h });
+  }
+  return aus;
 }
 
 /** Alle Mitteilungen, für die noch etwas hinausgehen muss. */
@@ -17569,6 +17690,48 @@ function AppInnen() {
     if (!p) return null;
     return { rolle: "kunde", db, mandant: m, person: p };
   }, [db]);
+
+  /* --- Urlaubshinweise auslösen ---
+
+     Läuft einmal je Sitzung, nicht bei jeder Änderung. Der Hinweis ist eine
+     Pflicht des Arbeitgebers, keine Erinnerung für die Belegschaft: Ohne ihn
+     verfällt der Urlaub gar nicht erst, und er häuft sich über Jahre an.
+
+     Festgehalten wird das Datum an der Person — so wird niemand zweimal im
+     selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel. */
+  const urlaubsLauf = useRef(false);
+  useEffect(() => {
+    if (!db || !sitz || sitz.rolle === "betreiber" || urlaubsLauf.current) return;
+    if (!darf(sitz, "req.approve.unit") && !darf(sitz, "org.edit")) return;
+    const m = sitz.mandant;
+    let faellig = [];
+    try { faellig = urlaubshinweiseFaellig(m, heute()); }
+    catch (e) { return; }
+    if (!faellig.length) return;
+    urlaubsLauf.current = true;
+
+    setDb((s2) => {
+      if (!s2) return s2;
+      const mm = s2.mandanten.find((x) => x.id === m.id);
+      if (!mm) return s2;
+      const neueNachrichten = faellig.map((f) => baueMitteilung(mm, f.person.id, "urlaubVerfaellt",
+        `${f.offen} ${f.offen === 1 ? "Urlaubstag" : "Urlaubstage"} verfallen zum Jahresende`,
+        `${f.text} Übertragung ins nächste Jahr ist nur bei dringenden betrieblichen oder `
+        + `persönlichen Gründen möglich, dann bis zum ${fKurz(f.uebertragBis)}. `
+        + "Bitte plane deinen Urlaub rechtzeitig ein.",
+        "meine")).filter(Boolean);
+      if (!neueNachrichten.length) return s2;
+      const heuteIso = heute();
+      return { ...s2, mandanten: s2.mandanten.map((x) => x.id !== mm.id ? x : {
+        ...x,
+        nachrichten: [...(x.nachrichten || []), ...neueNachrichten],
+        personen: x.personen.map((pp) => faellig.some((f) => f.person.id === pp.id)
+          ? { ...pp, urlaubshinweis: heuteIso } : pp),
+      }) };
+    });
+    melde(`${faellig.length} ${faellig.length === 1 ? "Hinweis" : "Hinweise"} zum Resturlaub verschickt.`);
+  }, [db, sitz]);
+
 
   const [themaZaehler, setThemaZaehler] = useState(0);
 

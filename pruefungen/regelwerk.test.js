@@ -242,3 +242,66 @@ describe("Datumsgrundlagen", () => {
     expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
   });
 });
+
+/* ==========================================================================
+   Zusammenspiel — die Regeln so, wie die Anwendung sie benutzt
+   ========================================================================== */
+
+describe("Schutzvorschriften am Plan", () => {
+  const jugendlich = { geburtstag: "2010-03-01", nachname: "Jung" };
+  const erwachsen = { geburtstag: "1985-03-01", nachname: "Alt" };
+
+  it("meldet für Jugendliche den Nachtdienst als harten Verstoß", () => {
+    const b = schutzBefunde(jugendlich, N, "2026-08-04");
+    const hart = b.filter((x) => x.hart);
+    expect(hart.length).toBeGreaterThan(0);
+    expect(hart[0].regel).toMatch(/JArbSchG/);
+  });
+
+  it("meldet für Jugendliche auch den langen Dienst", () => {
+    const b = schutzBefunde(jugendlich, LANG, "2026-08-04");
+    expect(b.some((x) => x.regel === "JArbSchG § 8" && x.hart)).toBe(true);
+  });
+
+  it("lässt den Frühdienst für Jugendliche zu", () => {
+    /* Früh ab 06:00 ist die Grenze — nicht davor. */
+    expect(schutzBefunde(jugendlich, F, "2026-08-04")).toHaveLength(0);
+  });
+
+  it("wird am 18. Geburtstag still", () => {
+    /* Wer am Diensttag 18 ist, fällt nicht mehr unter das JArbSchG. */
+    const p = { geburtstag: "2008-08-04", nachname: "Grenzfall" };
+    expect(alterAm(p.geburtstag, "2026-08-04")).toBe(18);
+    expect(schutzBefunde(p, N, "2026-08-04")).toHaveLength(0);
+  });
+
+  it("prüft ohne Geburtsdatum nichts Altersbezogenes", () => {
+    expect(schutzBefunde({ nachname: "Ohne" }, N, "2026-08-04")).toHaveLength(0);
+  });
+
+  it("lässt Erwachsene ohne Merkmal in Ruhe", () => {
+    expect(schutzBefunde(erwachsen, N, "2026-08-04")).toHaveLength(0);
+    expect(schutzBefunde(erwachsen, LANG, "2026-08-04")).toHaveLength(0);
+  });
+});
+
+describe("Urlaubshinweis im Jahreslauf", () => {
+  it("schweigt das ganze Jahr über und meldet sich im Oktober", () => {
+    const monate = ["01", "05", "09"].map((mm) =>
+      urlaubshinweisFaellig(6, `2026-${mm}-15`, null).faellig);
+    expect(monate).toEqual([false, false, false]);
+    expect(urlaubshinweisFaellig(6, "2026-10-01", null).faellig).toBe(true);
+    expect(urlaubshinweisFaellig(6, "2026-12-20", null).faellig).toBe(true);
+  });
+
+  it("nennt beide Fristen — Verfall und mögliche Übertragung", () => {
+    const h = urlaubshinweisFaellig(3, "2026-11-02", null);
+    expect(h.verfaelltAm).toBe("2026-12-31");
+    expect(h.uebertragBis).toBe("2027-03-31");
+    expect(h.text).toContain("3 Urlaubstage");
+  });
+
+  it("formuliert den Einzelfall im Singular", () => {
+    expect(urlaubshinweisFaellig(1, "2026-11-02", null).text).toContain("1 Urlaubstag verfällt");
+  });
+});

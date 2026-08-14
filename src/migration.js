@@ -21,7 +21,7 @@
    Browser mit altem Zwischenspeicher die Arbeit aller anderen.
    ========================================================================== */
 
-export const VERSION = 6;
+export const VERSION = 7;
 
 /**
  * Eine Stufe je Eintrag. Der Schlüssel ist die Version, aus der gehoben
@@ -54,6 +54,37 @@ const STUFEN = {
         zuletztGeraeumt: null,
       },
     })),
+  }),
+
+  /* 6 → 7: zyklus.tage sicherstellen.
+
+     Über zwanzig Stellen greifen auf m.zyklus.tage zu, die meisten ohne
+     Prüfung — nur zyklusLaenge() fing den Fall ab. Fehlte das Feld, stürzte
+     die Personalakte ab („Cannot read properties of undefined"), und mit ihr
+     jede Ansicht, die Stunden über ein Jahr rechnet.
+
+     Statt zwanzig Zugriffe einzeln abzusichern, wird die Form garantiert:
+     eine Liste mit wochen × 7 Einträgen, gefüllt mit „-" für dienstfrei. */
+  6: (b) => ({
+    ...b,
+    version: 7,
+    mandanten: (b.mandanten || []).map((m) => {
+      const wochen = (m.zyklus && m.zyklus.wochen) || 3;
+      const laenge = wochen * 7;
+      const vorhanden = Array.isArray(m.zyklus && m.zyklus.tage) ? m.zyklus.tage : [];
+      return {
+        ...m,
+        zyklus: {
+          wochen,
+          vorlage: (m.zyklus && m.zyklus.vorlage) || null,
+          /* Vorhandene Einträge behalten, fehlende auffüllen. Ein zu langer
+             Zyklus wird nicht gekürzt — lieber mitschleppen als verlieren. */
+          tage: vorhanden.length >= laenge
+            ? vorhanden
+            : Array.from({ length: laenge }, (_, i) => vorhanden[i] ?? "-"),
+        },
+      };
+    }),
   }),
 };
 

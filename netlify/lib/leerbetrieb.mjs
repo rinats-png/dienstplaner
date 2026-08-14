@@ -18,7 +18,7 @@
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
-export const VERSION = 6;
+export const VERSION = 7;
 
 /* Wie die Einheit im jeweiligen Gewerbe heißt. Das prägt die halbe
    Oberfläche: „Wohnbereich 1" gegen „Schichtgruppe 1". */
@@ -120,7 +120,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     kontakt: email ? String(email).trim() : "",
     anschrift: "",
     anker: ankerMontag(jetzt),
-    zyklus: { wochen: 3, tage: new Array(21).fill(null), vorlage: null },
+    zyklus: { wochen: 3, tage: new Array(21).fill("-"), vorlage: null },
     /* Leer heißt leer: keine Person, kein Dienst im Zyklus, kein Antrag. */
     personen: [],
     abwesenheiten: [],
