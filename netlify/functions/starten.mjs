@@ -4,6 +4,7 @@ import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
+import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -87,7 +88,7 @@ export default async (req) => {
 
     /* Der Raum darf noch nicht belegt sein — bei fünf Zufallszeichen
        praktisch ausgeschlossen, aber geprüft wird trotzdem. */
-    if (await store().getMetadata(`bestand:${raum}`))
+    if (await raumBelegt(store(), raum))
       return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
 
     /* Den Betrieb anlegen, bevor die Zugänge entstehen.
@@ -99,9 +100,7 @@ export default async (req) => {
     const leer = baueLeerenBetrieb({
       name, branche: br, email, land: bl, raum, laeuftAb: laeuftAb.toISOString(),
     });
-    await store().setJSON(`bestand:${raum}`, leer, {
-      metadata: { zeit: jetzt.toISOString(), durch: "Selbststart" },
-    });
+    await bestandSchreiben(store(), raum, leer, { durch: "Selbststart" });
 
     /* Zugänge erzeugen */
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";

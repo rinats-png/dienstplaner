@@ -6,16 +6,20 @@ import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln } from "../lib/konten.mjs";
+import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
-   Ein Schlüssel je Betrieb. Der Client lädt den vollständigen Bestand,
-   rechnet lokal und schreibt ihn zurück — genau wie bisher, nur serverseitig.
 
-   Konfliktschutz über ETag: Wer gegen einen veralteten Stand schreibt,
-   bekommt eine Absage und den aktuellen Stand zurück. Ohne das würde bei
-   zwei gleichzeitig arbeitenden Planern stillschweigend Arbeit verloren
-   gehen — der häufigste und ärgerlichste Fehler in Mehrbenutzersystemen.
+   Der Betrieb liegt als Kern plus Monatsscherben (siehe lib/bestand.mjs).
+   Für die Oberfläche ändert sich dadurch nichts — sie bekommt und schickt
+   weiterhin einen vollständigen Bestand.
+
+   Konfliktschutz je Monat statt auf das Ganze: Zwei Planer, die an
+   verschiedenen Monaten arbeiten, stören einander nicht mehr. Vorher verlor
+   einer von beiden seine Arbeit, obwohl sie sich nie in die Quere kamen —
+   bei einer Anwendung, deren Kern die gemeinsame Monatsplanung ist, traf
+   das den Normalfall statt der Ausnahme.
    ========================================================================== */
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
@@ -271,10 +275,9 @@ export default async (req, context) => {
       }
       const { bestand: ziel, inhalt } = await req.json();
       if (!ziel || !inhalt) return antwort({ fehler: "Unvollständig." }, 400);
-      const vorhanden = await store.getMetadata(`bestand:${ziel}`);
-      if (vorhanden) return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
-      await store.setJSON(`bestand:${ziel}`, inhalt,
-        { metadata: { zeit: new Date().toISOString(), durch: "Betreiber" } });
+      if (await raumBelegt(store, ziel))
+        return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
+      await bestandSchreiben(store, ziel, inhalt, { durch: "Betreiber" });
       return antwort({ ok: true });
     }
 
@@ -394,6 +397,8 @@ export default async (req, context) => {
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
            beim Sperren aller Zugänge der eigene aussparen. */
         konto: fund.schluessel,
+        /* Für die einheitsgenaue Schreibprüfung der Schichtverantwortung. */
+        einheit: eintrag.einheit ?? eintrag.gruppe ?? null,
         seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
       });
       /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
@@ -423,7 +428,6 @@ export default async (req, context) => {
     const s = await sitzung(req);
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
 
-    const schluessel = `bestand:${s.bestand}`;
 
     /* ------------------------------ Lesen ---------------------------- */
     /* Was hinausgeht, hängt an der Rolle. Eine Pflegekraft bekommt den Plan,
@@ -432,14 +436,14 @@ export default async (req, context) => {
     if (pfad === "bestand" && req.method === "GET") {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
-      const mit = await store.getWithMetadata(schluessel, { type: "json" });
+      const mit = await bestandLesen(store, s.bestand);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        schreiben: schreibumfang(s.rolle) });
-      return antwort({ bestand: bestandFuerRolle(mit.data, s), etag: mit.etag,
+        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
+      return antwort({ bestand: bestandFuerRolle(mit.bestand, s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        schreiben: schreibumfang(s.rolle),
-        geaendert: mit.metadata?.zeit || null, durch: mit.metadata?.durch || null });
+        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle),
+        geaendert: mit.zeit, durch: mit.durch });
     }
 
     /* ----------------------------- Schreiben ------------------------- */
@@ -460,23 +464,21 @@ export default async (req, context) => {
       if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
 
-      // Optimistische Sperre: nur schreiben, wenn der Stand unverändert ist
-      const jetzt = await store.getWithMetadata(schluessel, { type: "json" });
-      if (jetzt && etag && jetzt.etag !== etag) {
-        await protokoll("schreiben", ks, "konflikt");
-        return antwort({ fehler: "konflikt",
-          text: "Jemand anderes hat inzwischen gespeichert.",
-          bestand: bestandFuerRolle(jetzt.data, s), etag: jetzt.etag,
-          durch: jetzt.metadata?.durch || null, zeit: jetzt.metadata?.zeit || null }, 409); }
+      const jetzt = await bestandLesen(store, s.bestand);
 
-      /* Die entscheidende Zeile: Grundlage ist der gespeicherte Stand, nicht
-         der übermittelte. Eine eingeschränkte Rolle kann damit nichts
-         überschreiben, was sie beim Lesen gar nicht bekommen hat. */
-      const zuSchreiben = zusammenfuehren(jetzt ? jetzt.data : null, bestand, s);
+      /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
+         eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
+         Lesen gar nicht bekommen hat. */
+      const zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
       if (!zuSchreiben) {
         await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
+      }
+      if (zuSchreiben.verweigert) {
+        await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert);
+        return antwort({ fehler: "Keine Schreibberechtigung.",
+          text: zuSchreiben.verweigert }, 403);
       }
 
       /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
@@ -494,10 +496,10 @@ export default async (req, context) => {
          zu löschen —, aber vorher gesichert. Eine Sicherung, die niemand
          angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah. */
       if (jetzt) {
-        const schrumpf = schrumpfung(jetzt.data, zuSchreiben);
+        const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
         if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
           const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-          await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.data,
+          await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
             { metadata: { zeit: new Date().toISOString(),
               durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
               automatisch: "ja" } }).catch(() => {});
@@ -506,12 +508,34 @@ export default async (req, context) => {
         }
       }
 
-      await store.setJSON(schluessel, zuSchreiben,
-        { metadata: { zeit: new Date().toISOString(), durch: durch || s.name || "unbekannt" } });
-      const neu = await store.getMetadata(schluessel);
+      /* Geschrieben wird je Monat. Zwei Planer, die an verschiedenen Monaten
+         arbeiten, kollidieren dadurch nicht mehr — und wenn sie es doch tun,
+         sagt die Absage, welcher Monat betroffen ist. */
+      const erg = await bestandSchreiben(store, s.bestand, zuSchreiben, {
+        erwarteterStand: etag ?? null,
+        durch: durch || s.name || "unbekannt",
+      });
+
+      if (!erg.ok) {
+        await protokoll("schreiben", ks, "konflikt",
+          (erg.monate || []).join(", ") || "unbestimmt");
+        const monate = erg.monate || [];
+        return antwort({ fehler: "konflikt",
+          text: erg.kernBetroffen
+            ? "Jemand anderes hat inzwischen die Stammdaten geändert."
+            : monate.length
+              ? `Jemand anderes hat inzwischen ${monate.length > 1 ? "dieselben Monate" : "denselben Monat"} bearbeitet: ${monate.join(", ")}.`
+              : "Jemand anderes hat inzwischen gespeichert.",
+          monate, kernBetroffen: !!erg.kernBetroffen,
+          bestand: bestandFuerRolle(erg.bestand, s), etag: erg.stand,
+          durch: erg.durch, zeit: erg.zeit }, 409);
+      }
+
       await protokoll("schreiben", ks, "erfolg",
-        `${Math.round(JSON.stringify(zuSchreiben).length / 1024)} KB · ${s.rolle}`);
-      return antwort({ ok: true, etag: neu?.etag || null });
+        `${erg.geschrieben} Stücke · ${s.rolle}`
+        + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""));
+      return antwort({ ok: true, etag: erg.stand,
+        zusammengefuehrt: erg.zusammengefuehrt || null });
     }
 
     /* ------------------------------ Stempeln ------------------------- */
@@ -538,9 +562,9 @@ export default async (req, context) => {
       if (s.person === null || s.person === undefined)
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
 
-      const mit = await store.getWithMetadata(schluessel, { type: "json" });
+      const mit = await bestandLesen(store, s.bestand);
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const bestand = mit.data;
+      const bestand = mit.bestand;
       const i = Number(s.betrieb);
       const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
         ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
@@ -572,12 +596,11 @@ export default async (req, context) => {
       const neuerBestand = { ...bestand,
         mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
 
-      await store.setJSON(schluessel, neuerBestand,
-        { metadata: { zeit: jetzt.toISOString(), durch: s.name || "Stempeluhr" } });
-      const meta = await store.getMetadata(schluessel);
-      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`);
+      const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
+        erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
+      await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`);
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, etag: meta?.etag || null });
+        geprueft: urteil.geprueft, etag: ergSt.stand || null });
     }
 
     /* ------------------------------ Abmelden ------------------------- */
@@ -590,10 +613,10 @@ export default async (req, context) => {
 
     /* -------------------------- Sicherungskopien --------------------- */
     if (pfad === "sicherung" && req.method === "POST") {
-      const mit = await store.getWithMetadata(schluessel, { type: "json" });
+      const mit = await bestandLesen(store, s.bestand);
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.data,
+      await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.bestand,
         { metadata: { zeit: new Date().toISOString(), durch: s.name } });
       await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
@@ -637,7 +660,8 @@ export default async (req, context) => {
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
       /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-      const jetztStand = await store.get(schluessel, { type: "json" });
+      const jetztGelesen = await bestandLesen(store, s.bestand);
+      const jetztStand = jetztGelesen ? jetztGelesen.bestand : null;
       if (jetztStand) {
         const m2 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
         await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztStand,
@@ -646,12 +670,10 @@ export default async (req, context) => {
           .catch(() => {});
       }
 
-      await store.setJSON(schluessel, alt2,
-        { metadata: { zeit: new Date().toISOString(),
-          durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` } });
-      const meta = await store.getMetadata(schluessel);
+      const ergW = await bestandSchreiben(store, s.bestand, alt2, {
+        durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
       await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`);
-      return antwort({ ok: true, etag: meta?.etag || null, marke });
+      return antwort({ ok: true, etag: ergW.stand, marke });
     }
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);

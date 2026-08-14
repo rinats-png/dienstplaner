@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bestandLesen } from "../lib/bestand.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -43,7 +44,8 @@ async function sitzung(req) {
 async function adressbuch(s) {
   const karte = new Map();
   try {
-    const bestand = await store().get(`bestand:${s.bestand}`, { type: "json" });
+    const gelesen = await bestandLesen(store(), s.bestand);
+    const bestand = gelesen && gelesen.bestand;
     if (!bestand || !Array.isArray(bestand.mandanten)) return karte;
     const i = Number(s.betrieb);
     const m = Number.isInteger(i) && bestand.mandanten[i]

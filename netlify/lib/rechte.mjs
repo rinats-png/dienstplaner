@@ -56,12 +56,15 @@ export function darf(rolle, recht) {
    -------------------------------------------------------------------------- */
 
 export const SCHREIBEN_VOLL = "voll";
+export const SCHREIBEN_EINHEIT = "einheit";
 export const SCHREIBEN_EIGENES = "eigenes";
 export const SCHREIBEN_NEIN = "nein";
 
 export function schreibumfang(rolle) {
   if (rolle === "leitung" || rolle === "planer" || rolle === "kunde") return SCHREIBEN_VOLL;
-  if (rolle === "subplaner") return SCHREIBEN_VOLL;
+  /* Die Rolle heißt „nur der eigene Wohnbereich" — bis hierher galt das nur
+     in der Oberfläche, der Server ließ betriebsweit schreiben. */
+  if (rolle === "subplaner") return SCHREIBEN_EINHEIT;
   if (rolle === "mitarbeiter") return SCHREIBEN_EIGENES;
   return SCHREIBEN_NEIN;
 }
@@ -192,11 +195,60 @@ export function eigenerMandant(bestand, sitzung) {
    Fehler — der Überschuss wird schlicht verworfen.
    -------------------------------------------------------------------------- */
 
+/* Felder, die bestandFuerRolle je nach Rolle entfernt. Was beim Lesen nicht
+   mitkommt, darf beim Schreiben nicht verschwinden — sonst löscht jeder
+   Speichervorgang genau das, was die Rolle nie zu Gesicht bekam.
+
+   Das war ein echter Fehler: Seit der Einführung der Leseschicht entfernte
+   jeder Schreibvorgang der Leitung das betriebsweite Protokoll, weil es in
+   ihrer Antwort nicht enthalten war. Aufgefallen ist es erst, als die
+   Zerlegung nach Monaten daraus Scheinkonflikte machte — zwei Planer
+   „änderten" beide den Kern, obwohl keiner ihn angefasst hatte. */
+const GEFILTERTE_FELDER = ["betreiber", "rechnungen", "tarife", "protokoll"];
+
+function verlorenesZurueck(gespeichert, uebermittelt) {
+  if (!gespeichert || typeof gespeichert !== "object") return uebermittelt;
+  if (!uebermittelt || typeof uebermittelt !== "object") return uebermittelt;
+  const aus = { ...uebermittelt };
+  for (const feld of GEFILTERTE_FELDER) {
+    if (!(feld in uebermittelt) && feld in gespeichert) aus[feld] = gespeichert[feld];
+  }
+  /* Dasselbe je Betrieb: mitarbeiter und betriebsrat bekommen protokoll und
+     aenderungen nicht — die dürfen ihnen nicht abhandenkommen. */
+  if (Array.isArray(aus.mandanten) && Array.isArray(gespeichert.mandanten)) {
+    aus.mandanten = aus.mandanten.map((m) => {
+      if (!m || !m.id) return m;
+      const alt = gespeichert.mandanten.find((x) => x && x.id === m.id);
+      if (!alt) return m;
+      const zusammen = { ...m };
+      for (const feld of ["protokoll", "aenderungen"]) {
+        if (!(feld in m) && feld in alt) zusammen[feld] = alt[feld];
+      }
+      return zusammen;
+    });
+    /* Betriebe, die der Rolle nicht ausgeliefert wurden, bleiben bestehen. */
+    for (const alt of gespeichert.mandanten) {
+      if (alt && alt.id && !aus.mandanten.some((m) => m && m.id === alt.id))
+        aus.mandanten.push(alt);
+    }
+  }
+  return aus;
+}
+
 export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;
-  if (umfang === SCHREIBEN_VOLL) return uebermittelt;
+  if (umfang === SCHREIBEN_VOLL) return verlorenesZurueck(gespeichert, uebermittelt);
+
+  if (umfang === SCHREIBEN_EINHEIT) {
+    const alt = eigenerMandant(gespeichert, sitzung);
+    const neu = eigenerMandant(uebermittelt, sitzung);
+    if (!alt || !neu) return uebermittelt;
+    const urteil = einheitDarf(alt, neu, sitzung);
+    if (!urteil.ok) return { verweigert: urteil.grund };
+    return verlorenesZurueck(gespeichert, uebermittelt);
+  }
 
   /* Ab hier: eingeschränktes Schreiben. Ohne gespeicherten Stand gibt es
      nichts, worauf sich zusammenführen ließe. */
@@ -247,8 +299,119 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
   return neu;
 }
 
+/* --------------------------------------------------------------------------
+   SCHREIBEN NUR IN DER EIGENEN EINHEIT
+
+   Die Schichtverantwortung darf Einsätze ihres Wohnbereichs ändern, sonst
+   nichts. Geprüft wird nicht die Absicht, sondern das Ergebnis: Welche
+   Personen sind von der Änderung betroffen, und gehören die alle zur
+   eigenen Einheit?
+
+   Das ist genauer als eine Prüfung des Vorhabens und kommt ohne Vertrauen
+   in die Oberfläche aus.
+   -------------------------------------------------------------------------- */
+
+/** Welcher Einheit gehört die Person an diesem Tag an? */
+function einheitAm(person, datum) {
+  const liste = (person.zugehoerigkeit || [])
+    .filter((z) => !z.ab || z.ab <= datum)
+    .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
+  return liste.length ? liste[liste.length - 1].einheitId : (person.bereich || null);
+}
+
+/* Felder, deren Schlüssel die Form "personId|JJJJ-MM-TT" tragen. */
+const TAGESFELDER = ["abweichungen", "erfassung", "einstempeln"];
+
+/**
+ * Welche Personen sind von der Änderung betroffen?
+ * Vergleicht die tagesbezogenen Felder Schlüssel für Schlüssel.
+ */
+function betroffenePersonen(alt, neu) {
+  const aus = new Set();
+  for (const feld of TAGESFELDER) {
+    const a = (alt || {})[feld] || {};
+    const b = (neu || {})[feld] || {};
+    const alle = new Set([...Object.keys(a), ...Object.keys(b)]);
+    for (const k of alle) {
+      if (JSON.stringify(a[k]) === JSON.stringify(b[k])) continue;
+      const pid = String(k).split("|")[0];
+      if (pid) aus.add(pid);
+    }
+  }
+  return aus;
+}
+
+/** Was außerhalb der Tagesfelder geändert wurde. */
+function andereFelderGeaendert(alt, neu) {
+  const aus = [];
+  const alle = new Set([...Object.keys(alt || {}), ...Object.keys(neu || {})]);
+  for (const feld of alle) {
+    if (TAGESFELDER.includes(feld)) continue;
+    if (JSON.stringify((alt || {})[feld]) !== JSON.stringify((neu || {})[feld])) aus.push(feld);
+  }
+  return aus;
+}
+
+/* Was die Schichtverantwortung außerhalb der Tagesfelder anfassen darf:
+   Anliegen und Übergaben ihres Bereichs. Personal, Dienstarten,
+   Schichtfolge und Regelwerk gehören der Leitung. */
+const EINHEIT_FELDER = ["anfragen", "nachrichten", "dienstbuch", "einspruenge",
+  "unterschreitungen", "aenderungen", "protokoll"];
+
+/**
+ * Prüft, ob eine einheitsgebundene Rolle diese Änderung vornehmen darf.
+ * @returns { ok: true } oder { ok: false, grund }
+ */
+export function einheitDarf(altM, neuM, sitzung) {
+  if (!altM) return { ok: true };   // frischer Betrieb, nichts zu schützen
+
+  /* Die Einheit steht an der Person, nicht am Zugangscode.
+
+     Erst wurde sie aus dem Konto gelesen — das war falsch gedacht: Der Code
+     wird einmal ausgegeben, die Zuordnung ändert sich mit jeder Versetzung.
+     Maßgeblich ist, wo die Person heute steht. */
+  const ich = (altM.personen || []).find((p) => String(p.id) === String(sitzung.person));
+  const eigene = sitzung.einheit
+    || (ich && ich.bereich && ich.bereich !== "ALLE" ? ich.bereich : null)
+    || (ich ? einheitAm(ich, new Date().toISOString().slice(0, 10)) : null);
+
+  if (ich && ich.bereich === "ALLE") return { ok: true };
+  if (!eigene)
+    return { ok: false,
+      grund: "Diesem Zugang ist kein Bereich zugeordnet. Bitte die Leitung ansprechen." };
+
+  const fremdeFelder = andereFelderGeaendert(altM, neuM)
+    .filter((f) => !EINHEIT_FELDER.includes(f));
+  if (fremdeFelder.length)
+    return { ok: false,
+      grund: `Änderungen an ${fremdeFelder.slice(0, 3).join(", ")} sind der Leitung vorbehalten.` };
+
+  const personen = new Map((altM.personen || []).map((p) => [String(p.id), p]));
+  for (const pid of betroffenePersonen(altM, neuM)) {
+    const person = personen.get(pid);
+    if (!person) return { ok: false, grund: "Eine geänderte Person gehört nicht zum Betrieb." };
+    /* Die Einheit wird zum betroffenen Tag geprüft, nicht zu heute — eine
+       Versetzung darf rückwirkende Einträge nicht plötzlich erlauben. */
+    const tage = [...TAGESFELDER].flatMap((feld) => {
+      const a = (altM || {})[feld] || {}, b = (neuM || {})[feld] || {};
+      return [...new Set([...Object.keys(a), ...Object.keys(b)])]
+        .filter((k) => String(k).split("|")[0] === pid
+          && JSON.stringify(a[k]) !== JSON.stringify(b[k]))
+        .map((k) => String(k).split("|")[1]);
+    }).filter(Boolean);
+    for (const tag of tage) {
+      if (einheitAm(person, tag) !== eigene)
+        return { ok: false,
+          grund: `${person.nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.` };
+    }
+  }
+  return { ok: true };
+}
+
 /** Klartext für die Absage — der Aufrufer soll wissen, woran es lag. */
 export function absageText(rolle) {
+  if (rolle === "subplaner")
+    return "Über diesen Zugang lässt sich nur der eigene Bereich ändern.";
   if (rolle === "betriebsrat")
     return "Der Betriebsratszugang ist ein reiner Prüfzugang. Änderungen sind darüber nicht möglich.";
   if (rolle === "mitarbeiter")

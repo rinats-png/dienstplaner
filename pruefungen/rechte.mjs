@@ -193,13 +193,7 @@ pruef("Freie Adresse im Rumpf wird abgewiesen", z.x2 && z.x2.mail === "abgewiese
 pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   `x3=${JSON.stringify(z.x3)}`);
 
-const durch = ergebnisse.filter((r) => r.ok).length;
-console.log(`\n${durch} von ${ergebnisse.length} Prüfungen bestanden.`);
-if (durch !== ergebnisse.length) {
-  console.log("Fehlgeschlagen:");
-  for (const r of ergebnisse.filter((x) => !x.ok)) console.log(`  - ${r.name} (${r.detail})`);
-  process.exit(1);
-}
+
 
 /* --- S1: Die Stempeluhr entscheidet auf dem Server --- */
 {
@@ -247,6 +241,107 @@ if (durch !== ergebnisse.length) {
     `zeit=${amOrt.zeit}`);
 }
 
-const bestanden2 = ergebnisse.filter((r) => r.ok).length;
-console.log(`\nInsgesamt ${bestanden2} von ${ergebnisse.length} Prüfungen bestanden.`);
-if (bestanden2 !== ergebnisse.length) process.exit(1);
+
+/* ==========================================================================
+   M1 — Monatsscherben am laufenden Dienst
+   ========================================================================== */
+{
+  const raumBasis = { version: 6, stand: 1,
+    session: { mandantId: "m1", personId: "p1", rolle: "kunde" },
+    mandanten: [{ id: "m1", name: "Scherbentest", einheitLabel: "Wohnbereich",
+      einheiten: [{ id: "e1", name: "WB 1" }, { id: "e2", name: "WB 2" }],
+      dienstarten: [{ id: "F", kurz: "F" }, { id: "S", kurz: "S" }],
+      personen: [
+        { id: "p1", nachname: "Kern", rolle: "subplaner",
+          zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] },
+        { id: "p2", nachname: "Vogt", rolle: "mitarbeiter",
+          zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] },
+      ],
+      abweichungen: {}, erfassung: {}, einstempeln: {},
+      anfragen: [], nachrichten: [] }] };
+
+  const tS1 = await anmelden(await zugang("leitung", null));
+  const w = await schreib(tS1, raumBasis, null);
+  pruef("Ein Bestand lässt sich zerlegt schreiben", w.status === 200, `Status ${w.status}`);
+
+  const gelesen = await lies(tS1);
+  pruef("Zerlegt geschrieben, vollständig gelesen",
+    gelesen.status === 200 && gelesen.bestand.mandanten[0].personen.length === 2);
+  pruef("Der Stand ist eine fortlaufende Zahl",
+    /^\d+$/.test(String(gelesen.etag)), `etag=${gelesen.etag}`);
+
+  /* --- Zwei Planer, zwei Monate: keine Kollision mehr --- */
+  const standVorher = gelesen.etag;
+  const planerA = JSON.parse(JSON.stringify(gelesen.bestand));
+  planerA.mandanten[0].abweichungen["p1|2026-08-10"] = "F";
+  const planerB = JSON.parse(JSON.stringify(gelesen.bestand));
+  planerB.mandanten[0].abweichungen["p2|2026-09-15"] = "S";
+
+  const wA = await schreib(tS1, planerA, standVorher);
+  pruef("Planer A schreibt den August", wA.status === 200, `Status ${wA.status}`);
+
+  /* Planer B schickt denselben, inzwischen veralteten Stand mit. */
+  const wB = await schreib(tS1, planerB, standVorher);
+  pruef("Planer B schreibt den September gegen einen veralteten Stand",
+    wB.status === 200,
+    wB.status === 200 ? "" : `Status ${wB.status} · Streit: ${JSON.stringify(wB.monate)}`
+      + ` · Kern betroffen: ${wB.kernBetroffen}`);
+
+  const danach2 = await lies(tS1);
+  const abw = danach2.bestand.mandanten[0].abweichungen;
+  pruef("Beide Eintragungen sind erhalten",
+    abw["p1|2026-08-10"] === "F" && abw["p2|2026-09-15"] === "S",
+    JSON.stringify(abw));
+
+  /* --- Derselbe Monat bleibt ein Konflikt, mit Angabe des Monats --- */
+  const standJetzt = danach2.etag;
+  const c1 = JSON.parse(JSON.stringify(danach2.bestand));
+  c1.mandanten[0].abweichungen["p1|2026-10-05"] = "F";
+  await schreib(tS1, c1, standJetzt);
+  const c2 = JSON.parse(JSON.stringify(danach2.bestand));
+  c2.mandanten[0].abweichungen["p2|2026-10-06"] = "S";
+  const wKonflikt = await schreib(tS1, c2, standJetzt);
+  pruef("Derselbe Monat gibt weiterhin einen Konflikt",
+    wKonflikt.status === 409, `Status ${wKonflikt.status}`);
+  pruef("Die Konfliktmeldung nennt den Monat",
+    Array.isArray(wKonflikt.monate) && wKonflikt.monate.includes("2026-10"),
+    JSON.stringify(wKonflikt.monate));
+}
+
+/* --- S4: Die Schichtverantwortung schreibt nur den eigenen Bereich --- */
+{
+  const tSub = await anmelden(await zugang("subplaner", "p1"));
+  const r = await lies(tSub);
+  pruef("Schichtverantwortung darf lesen", r.status === 200, `Status ${r.status}`);
+
+  /* Eigener Bereich: p1 gehört zu e1 */
+  const eigen = JSON.parse(JSON.stringify(r.bestand));
+  eigen.mandanten[0].abweichungen["p1|2026-11-03"] = "F";
+  const wEigen = await schreib(tSub, eigen, r.etag);
+  pruef("Im eigenen Bereich darf sie planen", wEigen.status === 200,
+    `Status ${wEigen.status} ${wEigen.text || ""}`);
+
+  /* Fremder Bereich: p2 gehört zu e2 */
+  const r2b = await lies(tSub);
+  const fremd = JSON.parse(JSON.stringify(r2b.bestand));
+  fremd.mandanten[0].abweichungen["p2|2026-11-04"] = "S";
+  const wFremd = await schreib(tSub, fremd, r2b.etag);
+  pruef("Im fremden Bereich nicht", wFremd.status === 403,
+    `Status ${wFremd.status} — ${wFremd.text || ""}`);
+
+  /* Stammdaten sind der Leitung vorbehalten */
+  const r3 = await lies(tSub);
+  const stamm = JSON.parse(JSON.stringify(r3.bestand));
+  stamm.mandanten[0].dienstarten.push({ id: "N", kurz: "N" });
+  const wStamm = await schreib(tSub, stamm, r3.etag);
+  pruef("Dienstarten darf sie nicht anlegen", wStamm.status === 403,
+    `Status ${wStamm.status} — ${wStamm.text || ""}`);
+}
+
+const bestanden = ergebnisse.filter((r) => r.ok).length;
+console.log(`\n${bestanden} von ${ergebnisse.length} Prüfungen bestanden.`);
+if (bestanden !== ergebnisse.length) {
+  console.log("Fehlgeschlagen:");
+  for (const r of ergebnisse.filter((x) => !x.ok)) console.log(`  - ${r.name} (${r.detail})`);
+  process.exit(1);
+}
