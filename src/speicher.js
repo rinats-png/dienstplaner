@@ -138,16 +138,62 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, sofort } = {}) {
   return Promise.resolve();
 }
 
+/* Der letzte Schreibversuch, der nicht durchkam.
+
+   Vorher wurde er weggeworfen: Bei einer abgelaufenen Sitzung kehrte
+   jetztSchreiben() wortlos zurück, und die Arbeit war fort. Das trifft
+   nicht selten — eine Sitzung endet nach dreißig Minuten Untätigkeit. Wer
+   den Monatsplan offen stehen lässt, telefoniert, dann eine Schicht
+   umträgt, hatte ohne diesen Zwischenspeicher nichts mehr davon.
+
+   Er liegt im Arbeitsspeicher, nicht im Browser-Speicher. Ein Bestand kann
+   mehrere Megabyte groß sein, und localStorage ist auf fünf begrenzt —
+   ein halb geschriebener Bestand dort wäre schlimmer als keiner. */
+let gescheitert = null;
+
+/** Gibt es Arbeit, die nicht durchkam? */
+export const ausstehend = () => (gescheitert ? { ...gescheitert.lage } : null);
+
+/** Nimmt den letzten gescheiterten Versuch noch einmal auf. */
+export async function nochmalSchreiben() {
+  if (!gescheitert) return { ok: true, nichts: true };
+  const a = gescheitert;
+  gescheitert = null;
+  offen = a.auftrag;
+  await jetztSchreiben();
+  return { ok: !gescheitert };
+}
+
+/** Der ausstehende Bestand, um ihn notfalls als Datei zu sichern. */
+export const ausstehenderBestand = () => (gescheitert ? gescheitert.auftrag.bestand : null);
+
+/** Verwirft ihn — nur auf ausdrückliche Ansage. */
+export const ausstehendVerwerfen = () => { gescheitert = null; };
+
+/** Woran lag es? Danach richtet sich, was zu tun ist. */
+function fehlerart(e, status) {
+  if (e && e.message === "nicht-angemeldet") return "abgemeldet";
+  if (status === 403) return "keinRecht";
+  if (status === 413) return "zuGross";
+  if (status && status >= 500) return "server";
+  if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
+    return "netz";
+  return "unbekannt";
+}
+
 async function jetztSchreiben(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
+  let status = null;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
        verloren — genau in dem Moment, in dem niemand mehr hinsieht. */
-    const { status, daten } = await ruf("bestand", { method: "PUT",
+    const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: auftrag.bestand, etag, durch: auftrag.durch }) });
+    status = antwort.status;
+    const daten = antwort.daten;
     if (status === 409) {
       etag = daten.etag;
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
@@ -155,9 +201,13 @@ async function jetztSchreiben(beimSchliessen) {
     }
     if (status !== 200) throw new Error(daten?.fehler || "Speichern fehlgeschlagen.");
     etag = daten.etag;
+    gescheitert = null;
   } catch (e) {
-    if (e.message === "nicht-angemeldet") return;
-    if (auftrag.onFehler) auftrag.onFehler(e);
+    const art = fehlerart(e, status);
+    /* Der Auftrag bleibt liegen, damit er sich wiederholen lässt. */
+    gescheitert = { auftrag, lage: { art, text: String(e && e.message || e), status,
+      zeit: new Date().toISOString() } };
+    if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   }
 }
 

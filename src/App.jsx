@@ -8590,6 +8590,136 @@ function Hilfe({ sitz, gehZu }) {
     </div>);
 }
 
+/* ==========================================================================
+   NICHT GESPEICHERT
+
+   Bisher stand hier eine Zeile: `melde("Nicht gespeichert: " + e.message)`.
+   Ein Hinweis, der nach drei Sekunden verschwindet, und darin der rohe
+   Text vom Server — „Failed to fetch" etwa. Wer gerade einen Monat geplant
+   hat, konnte daraus weder ablesen, was verloren ist, noch was zu tun
+   wäre. Und der schlimmste Fall meldete sich gar nicht: Bei abgelaufener
+   Sitzung kehrte der Schreibvorgang wortlos zurück.
+
+   Diese Leiste bleibt stehen, bis es geklärt ist. Sie sagt je nach Lage
+   etwas anderes, weil je nach Lage etwas anderes zu tun ist — und sie
+   bietet immer den Ausweg an, der nichts voraussetzt: die Arbeit als Datei
+   sichern.
+   ========================================================================== */
+const SPEICHERLAGE = {
+  abgemeldet: {
+    titel: "Die Sitzung ist abgelaufen — die letzten Änderungen sind noch nicht gespeichert",
+    text: "Nach dreißig Minuten ohne Eingabe endet die Sitzung. Gib den Zugangscode "
+      + "hier ein: Die Anwendung meldet sich an und schickt die Arbeit sofort hinterher. "
+      + "Bitte diesen Reiter dabei offen lassen — die Änderungen liegen nur hier.",
+    neuAnmelden: true,
+  },
+  netz: {
+    titel: "Keine Verbindung — die letzten Änderungen sind noch nicht gespeichert",
+    text: "Die Anwendung erreicht den Server nicht. Das kann am Netz hier liegen oder "
+      + "am Server. Die Arbeit ist nicht verloren, solange dieser Reiter offen bleibt.",
+    nochmal: true,
+  },
+  server: {
+    titel: "Der Server konnte nicht speichern",
+    text: "Ein Fehler auf der Gegenseite. Ein zweiter Versuch hilft oft; hilft er nicht, "
+      + "sichere die Arbeit als Datei und melde dich bei uns.",
+    nochmal: true, hilfe: true,
+  },
+  keinRecht: {
+    titel: "Diese Änderung ist mit deiner Rolle nicht zulässig",
+    text: "Der Server hat sie abgewiesen. Was du siehst, ist noch dein Stand — "
+      + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
+    neuladen: true,
+  },
+  zuGross: {
+    titel: "Der Bestand ist zu groß geworden",
+    text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "
+      + "und melde dich bei uns — das lässt sich lösen, aber nicht von hier aus.",
+    hilfe: true,
+  },
+  unbekannt: {
+    titel: "Die letzten Änderungen sind nicht gespeichert",
+    text: "Woran es lag, ist von hier aus nicht zu erkennen. Ein zweiter Versuch ist "
+      + "der erste Schritt; hilft er nicht, sichere die Arbeit als Datei.",
+    nochmal: true, hilfe: true,
+  },
+};
+
+function NichtGespeichert({ lage, melde, aufGeloest }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [code, setCode] = useState("");
+  if (!lage) return null;
+  const l = SPEICHERLAGE[lage.art] || SPEICHERLAGE.unbekannt;
+
+  const nochmal = async () => {
+    setLaeuft(true);
+    try {
+      const erg = await SP.nochmalSchreiben();
+      if (erg.ok) { aufGeloest(); melde("Gespeichert."); }
+      else melde("Es hat wieder nicht geklappt.");
+    } catch { melde("Es hat wieder nicht geklappt."); }
+    finally { setLaeuft(false); }
+  };
+
+  /* Anmelden muss in diesem Reiter geschehen, nicht in einem zweiten.
+
+     Bei einer 401 verwirft speicher.js den Zugangsschlüssel — richtig, denn
+     er ist tot. Nur: Ein neues Fenster legt seinen Schlüssel dort ab, wo
+     dieser Reiter ihn nicht sieht. Der Rat „melde dich nebenan an und komm
+     zurück" führte deshalb geradewegs in dieselbe Meldung. */
+  const anmeldenUndSenden = async () => {
+    const c = code.trim().toUpperCase();
+    if (!c) return;
+    setLaeuft(true);
+    try {
+      await SP.anmelden(c, SP.wirdGemerkt());
+      const erg = await SP.nochmalSchreiben();
+      if (erg.ok) { aufGeloest(); melde("Angemeldet und gespeichert."); }
+      else melde("Angemeldet — das Speichern hat trotzdem nicht geklappt.");
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const sichern = () => {
+    const b = SP.ausstehenderBestand();
+    if (!b) return melde("Es liegt nichts mehr aus.");
+    const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    if (lade(`centric-ungespeichert-${marke}.json`, JSON.stringify(b, null, 2),
+      "application/json;charset=utf-8"))
+      melde("Als Datei gesichert.");
+  };
+
+  return (
+    <div role="alert" style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+      background: C.dangerLight, border: `1px solid ${C.danger}44` }}>
+      <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
+      <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+        {l.text}</p>
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+        {l.nochmal && <Btn kind="primary" size="sm" disabled={laeuft} onClick={nochmal}>
+          {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
+        {l.neuAnmelden && (<>
+          <Inp value={code} onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") anmeldenUndSenden(); }}
+            placeholder="Zugangscode" aria-label="Zugangscode"
+            style={{ width: 190, textTransform: "uppercase", letterSpacing: ".05em" }} />
+          <Btn kind="primary" size="sm" disabled={laeuft || !code.trim()} onClick={anmeldenUndSenden}>
+            {laeuft ? "Läuft …" : "Anmelden und senden"}</Btn>
+        </>)}
+        {/* Der Ausweg, der nichts voraussetzt — kein Netz, keine Sitzung,
+            kein Recht. Er funktioniert immer. */}
+        <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
+        {l.neuladen && <Btn size="sm" kind="quiet"
+          onClick={() => window.location.reload()}>Seite neu laden</Btn>}
+        {l.hilfe && <a href={hilfeVerweis({ betreff: "CENTRIC — Speichern schlägt fehl",
+          zusatz: `Lage: ${lage.art}\nMeldung: ${lage.text}\nZeit: ${lage.zeit}` })}
+          style={{ fontSize: 13, color: C.accent }}>Uns schreiben</a>}
+        <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
+          {lage.text}</span>
+      </div>
+    </div>);
+}
+
 function Pruefung({ sitz, ym, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
@@ -16890,6 +17020,9 @@ function AppInnen() {
   const [eskal, setEskal] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
+  /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
+     verschwindet — bei ungespeicherter Arbeit ist das die falsche Form. */
+  const [nichtGespeichert, setNichtGespeichert] = useState(null);
   const [schnell, setSchnell] = useState(null);
   const [wizard, setWizard] = useState(false);
   const [verfDlg, setVerfDlg] = useState(null);
@@ -17087,7 +17220,7 @@ function AppInnen() {
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
       onKonflikt: (d) => setKonflikt(d),
-      onFehler: (e) => melde(`Nicht gespeichert: ${e.message}`),
+      onFehler: (lage) => setNichtGespeichert(lage),
     });
   }, [db]);
 
@@ -18668,6 +18801,8 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <main className="bereich" id="inhalt" tabIndex={-1}
             aria-label={`Ansicht ${aktiveView}`}>
           {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
+          <NichtGespeichert lage={nichtGespeichert} melde={melde}
+            aufGeloest={() => setNichtGespeichert(null)} />
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
               <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>Für Tablet und Rechner ausgelegt</div>
