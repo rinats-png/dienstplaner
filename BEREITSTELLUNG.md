@@ -59,24 +59,52 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Was bereits gesetzt ist
+### Achtung: die Variablen sind **nicht** gesetzt
 
-Beim Anlegen der neuen Site gesetzt. Werte stehen hier nicht — sie stehen in
-der Netlify-Oberfläche.
+Ich habe sie über die Netlify-Schnittstelle zu setzen versucht. Jeder
+Schreibvorgang meldete `Environment variable upserted` — das anschließende
+Auslesen liefert aber durchgehend eine leere Liste:
 
-| Variable | Art | Wofür |
+    manage-env-vars → getAllEnvVars → []
+
+Bei der alten Site gab derselbe Aufruf die vollständige Liste zurück. Die
+Schreibvorgänge sind also nicht angekommen, und die Erfolgsmeldung trägt
+nicht. **Bitte alles unten von Hand eintragen** — ich kann nicht behaupten,
+dass etwas gesetzt ist, was ich nicht wiederfinde.
+
+`Site configuration → Environment variables → Add a variable`
+
+| Variable | Als *secret*? | Wert |
 |---|---|---|
-| `CENTRIC_PFEFFER` | geheim | Serverseitiges Geheimnis für die Zugangscodes. Ohne ihn lägen sie als ungesalzenes SHA-256 im Speicher. **Nie ändern** — jeder umgeschlüsselte Code würde ungültig. Auf der neuen Site war das gefahrlos zu setzen, weil es noch keinen Bestand gibt. |
-| `VAPID_PUBLIC` / `VAPID_PRIVATE` | öffentlich / geheim | Frisches Paar für Push-Mitteilungen. Auf der alten Site fehlte der private Teil — Mitteilungen konnten nie versendet werden. |
-| `VAPID_KONTAKT` | öffentlich | Ansprechadresse im Push-Protokoll. |
-| `CENTRIC_ADMIN` | **nicht geheim, mit Absicht** | Ursprungsschlüssel. Er wird **einmal** gebraucht (Schritt 5.1) und danach gelöscht. Er steht bewusst lesbar in der Oberfläche, damit er ohne Umweg zur Hand ist; seine Lebensdauer sind Minuten. |
-| `RESEND_API_KEY` | geheim | Übernommen von der alten Site. |
-| `CENTRIC_ABSENDER` | öffentlich | Übernommen — **steht weiter auf `onboarding@resend.dev`**, siehe unten. |
+| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` |
+| `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` |
+| `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen |
+| `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` |
+| `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto |
+| `CENTRIC_ABSENDER` | nein | siehe unten |
+| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` |
 
-Die geheimen Variablen sind als *secret* angelegt. Netlify erlaubt dieses
-Kennzeichen **nur beim Anlegen**; auf der alten Site standen alle Werte über
-die Schnittstelle im Klartext lesbar, `RESEND_API_KEY` eingeschlossen. Das
-ist jetzt nicht mehr so.
+**Warum manche als *secret*:** Netlify erlaubt dieses Kennzeichen **nur beim
+Anlegen**. Auf der alten Site war es bei keiner Variablen gesetzt — alle
+Werte standen über die Schnittstelle im Klartext lesbar, der
+Resend-Schlüssel eingeschlossen. Das ist die einzige Gelegenheit, das anders
+zu machen.
+
+**Warum `CENTRIC_ADMIN` nicht:** Er wird genau einmal gebraucht, um das
+erste benannte Verwalterkonto anzulegen (Schritt 5.1), und danach gelöscht.
+Für diese Minuten ist lesbar in der eigenen Oberfläche das Richtige.
+
+**Zu `CENTRIC_PFEFFER`:** Ohne ihn liegen die Zugangscodes als ungesalzenes
+SHA-256 im Speicher — bei drei Blöcken aus einem Alphabet von
+sechsundzwanzig Zeichen ist das mit einer Wortliste zurückrechenbar. Einmal
+setzen und **nie wieder ändern**: `umschluesseln()` in
+`netlify/lib/codes.mjs` schlüsselt jeden Code beim nächsten Anmelden auf den
+neuen Hashwert um, und ohne denselben Pfeffer gilt danach keiner mehr. Jetzt
+ist der richtige Zeitpunkt — die Site hat noch keinen Bestand.
+
+**Zu VAPID:** Auf der alten Site war nur der öffentliche Teil gesetzt.
+Push-Mitteilungen konnten damit nie versendet werden, ohne dass es auffiel.
+Ein Paar erzeugen und **beide** eintragen.
 
 ### Was noch fehlt
 
