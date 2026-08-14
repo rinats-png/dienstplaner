@@ -360,7 +360,7 @@ const EINHEIT_FELDER = ["anfragen", "nachrichten", "dienstbuch", "einspruenge",
 
 /**
  * Prüft, ob eine einheitsgebundene Rolle diese Änderung vornehmen darf.
- * @returns { ok: true } oder { ok: false, grund }
+ * @returns {{ok: boolean, grund?: string}}
  */
 export function einheitDarf(altM, neuM, sitzung) {
   if (!altM) return { ok: true };   // frischer Betrieb, nichts zu schützen

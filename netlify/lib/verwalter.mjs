@@ -50,7 +50,8 @@ export function neuerSchluessel() {
  *   ein benanntes Verwalterkonto — dann steht sein Name im Protokoll
  *   der Ursprungsschlüssel CENTRIC_ADMIN — solange er gesetzt ist
  *
- * @returns {{ art, name, schluessel }} oder null
+ * @returns {Promise<{art: string, name: string, kennung: string,
+ *   email: (string|null)}|null>}
  */
 export async function verwalterPruefen(store, roh) {
   if (!roh) return null;

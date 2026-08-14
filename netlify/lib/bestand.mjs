@@ -50,7 +50,7 @@ const VERMERKE = 10;
 
 /**
  * Holt den vollständigen Bestand.
- * @returns { bestand, stand, zeit, durch } oder null
+ * @returns {Promise<object|null>} — { bestand, stand, zeit, durch } oder null
  */
 export async function bestandLesen(store, raum) {
   const kernMit = await store.getWithMetadata(kernSchluessel(raum), { type: "json" })
@@ -108,8 +108,9 @@ export const monatAusKennung = (id) => (String(id).split("::")[1] || id);
  *
  * @param erwarteterStand Der Stand, den die Oberfläche beim Laden bekam.
  *   Fehlt er, wird ohne Abgleich geschrieben (erster Schreibvorgang).
- * @returns { ok: true, stand, geschrieben, zusammengefuehrt }
- *       oder { ok: false, grund: "konflikt", streit, bestand, stand, zeit, durch }
+ * @returns {Promise<object>} — bei Erfolg { ok: true, stand, geschrieben,
+ *   zusammengefuehrt }, sonst { ok: false, grund: "konflikt", streit,
+ *   bestand, stand, zeit, durch }
  */
 export async function bestandSchreiben(store, raum, neuerBestand, {
   erwarteterStand = null, durch = "unbekannt",

@@ -25,7 +25,7 @@ export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return 
 export const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
 /** Montag ist 0 — im deutschen Arbeitsrecht beginnt die Woche dort. */
 export const dow = (s) => (pISO(s).getDay() + 6) % 7;
-export const between = (a, b) => Math.round((pISO(b) - pISO(a)) / 86400000);
+export const between = (a, b) => Math.round((pISO(b).getTime() - pISO(a).getTime()) / 86400000);
 export const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
 export const montag = (s) => addDays(s, -dow(s));
 export const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -226,14 +226,15 @@ export function werktage(von, bis) {
 /**
  * Prüft § 3 ArbZG über einen gleitenden Zeitraum.
  *
- * @param stundenAmTag  (datum) => Stunden — was an diesem Tag gearbeitet wurde
- * @param bis           letzter Tag des Zeitraums
- * @param opt.wochen    Länge des Ausgleichszeitraums (Vorgabe 24)
- * @param opt.grenze    zulässiger Durchschnitt je Werktag (Vorgabe 8)
+ * @param {(datum: string) => number} stundenAmTag  was an diesem Tag gearbeitet wurde
+ * @param {string} bis   letzter Tag des Zeitraums
+ * @param {object} [opt]
+ * @param {number} [opt.wochen]  Länge des Ausgleichszeitraums (Vorgabe 24)
+ * @param {number} [opt.grenze]  zulässiger Durchschnitt je Werktag (Vorgabe 8)
  *
- * @returns {
- *   von, bis, werktage, stunden, zulaessig, durchschnitt,
- *   eingehalten, ueberhang
+ * @returns {{von: string, bis: string, werktage: number, stunden: number,
+ *   zulaessig: number, durchschnitt: number, eingehalten: boolean,
+ *   ueberhang: number}}
  * }
  */
 export function ausgleichszeitraum(stundenAmTag, bis, opt = {}) {

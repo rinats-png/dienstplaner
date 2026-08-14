@@ -1,0 +1,39 @@
+{
+  "//": [
+    "Typprüfung ohne TypeScript.",
+    "",
+    "Der Rechenkern trägt rechtliche Folgen: Ruhezeiten, Ausgleichszeitraum,",
+    "Löschfristen, Tarifwerte. Ein vertippter Feldname fällt dort nicht auf,",
+    "solange niemand genau diesen Fall durchspielt — und die Prüfungen decken",
+    "viel ab, aber nicht jede Verwechslung.",
+    "",
+    "Geprüft werden deshalb die reinen Module und die Serverbausteine. App.jsx",
+    "bleibt außen vor: achtzehntausend Zeilen, gewachsen ohne Typangaben, und",
+    "eine Prüfung mit tausend Meldungen liest am Ende niemand mehr. Wer eine",
+    "Ansicht herauslöst, kann sie hier einzeln aufnehmen."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node", "vite/client"],
+    "maxNodeModuleJsDepth": 0
+  },
+  "include": [
+    "src/regelwerk.js",
+    "src/aufbewahrung.js",
+    "src/tarifwerke.js",
+    "src/migration.js",
+    "src/farben.js",
+    "src/kontakt.js",
+    "netlify/lib/*.mjs"
+  ]
+}

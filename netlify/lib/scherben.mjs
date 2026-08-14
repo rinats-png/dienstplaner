@@ -45,8 +45,10 @@ export const kernSchluessel = (raum) => `kern:${raum}`;
 /**
  * Zerlegt einen vollständigen Bestand.
  *
- * @returns { kern, scherben } — scherben ist eine Map von Monat auf
- *   { mandantId, monat, felder: { abweichungen, erfassung, einstempeln } }
+ * scherben ist eine Map von Monat auf
+ * { mandantId, monat, felder: { abweichungen, erfassung, einstempeln } }
+ *
+ * @returns {{kern: object, scherben: Map<string, object>}}
  */
 export function zerlegen(bestand) {
   const scherben = new Map();
@@ -165,7 +167,7 @@ export function unterschiede(a, b) {
  * dort automatisch zu mischen hieße raten, und beim Dienstplan ist Raten
  * die schlechteste aller Möglichkeiten.
  *
- * @returns { ok: true, bestand } oder { ok: false, streit: [Kennungen] }
+ * @returns {{ok: boolean, bestand?: object, streit?: Array<string>}}
  */
 export function zusammenfuehrenNachMonat(basis, meins, fremdes) {
   const zBasis = zerlegen(basis);

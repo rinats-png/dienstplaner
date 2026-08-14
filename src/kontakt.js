@@ -37,8 +37,12 @@ export const KONTAKT_UNGESETZT = HILFE_MAIL === "kontakt@example.org";
  * Angehängt wird, was für eine Antwort gebraucht wird — Betrieb, Rolle,
  * Ansicht, Fassung. Ohne diese Angaben besteht die erste Rückfrage immer
  * aus denselben vier Fragen.
+ *
+ * @param {{betreff?: string, betrieb?: string, rolle?: string,
+ *   ansicht?: string, zusatz?: string}} [o]
  */
-export function hilfeVerweis({ betreff, betrieb, rolle, ansicht, zusatz } = {}) {
+export function hilfeVerweis(o = {}) {
+  const { betreff, betrieb, rolle, ansicht, zusatz } = o;
   const zeilen = [];
   if (zusatz) zeilen.push(zusatz, "");
   zeilen.push("— Angaben zur Rückfrage —");

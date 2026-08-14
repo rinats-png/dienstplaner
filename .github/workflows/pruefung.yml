@@ -28,6 +28,12 @@ jobs:
       - name: Linter
         run: npm run lint
 
+      # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
+      # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
+      # Folgen hat. App.jsx bleibt außen vor.
+      - name: Typen
+        run: npm run pruefung:typen
+
       # Der Regelkern: Ruhezeiten, Ausgleichszeitraum, Schutzvorschriften.
       # Läuft ohne Server in Millisekunden.
       - name: Regelwerk

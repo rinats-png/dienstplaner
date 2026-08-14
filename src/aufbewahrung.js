@@ -100,15 +100,14 @@ export function stichtage(m, heuteIso) {
 /**
  * Was wäre heute fällig? Verändert nichts.
  *
- * @returns {{
- *   stichtage: object,
- *   personen: Array,      Zur Anonymisierung fällige Personen
- *   plandaten: object,    Anzahl je Feld
- *   gruende: number,      Freitexte, die entfallen
- *   aenderungen: number,
- *   gesamt: number,       Summe aller Eingriffe
- *   warnung: string|null
- * }}
+ * personen   zur Anonymisierung fällige Personen
+ * plandaten  Anzahl je Feld
+ * gruende    Freitexte, die entfallen
+ * gesamt     Summe aller Eingriffe
+ *
+ * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
+ *   planSumme: number, aenderungen: number, gruende: number, gesamt: number,
+ *   warnung: (string|null)}}
  */
 export function vorschau(m, heuteIso) {
   const st = stichtage(m, heuteIso);
@@ -192,8 +191,10 @@ export function anonymisiere(p) {
 /**
  * Führt den Löschlauf aus.
  *
- * @returns {{ mandant: object, bericht: object }} — der Bericht hat dieselbe
- *   Gestalt wie die Vorschau, damit die Oberfläche beides gleich darstellt.
+ * Der Bericht hat dieselbe Gestalt wie die Vorschau, damit die Oberfläche
+ * beides gleich darstellt.
+ *
+ * @returns {{mandant: object, bericht: object}}
  */
 export function raeumen(m, heuteIso) {
   const plan = vorschau(m, heuteIso);
