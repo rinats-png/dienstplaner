@@ -33,6 +33,54 @@ const antwort = (daten, status = 200, kopf = {}) =>
       "cache-control": "no-store", ...kopf },
   });
 
+/* --------------------------------------------------------------------------
+   ORTSPRÜFUNG
+
+   Dieselbe Rechnung wie bisher im Browser — nur an einer Stelle, an der sie
+   niemand umschreiben kann. Gespeichert wird weiterhin nur das Urteil, nie
+   die Koordinate: Der Betrieb muss wissen, ob jemand am Einsatzort war,
+   nicht wo er sich aufhält.
+   -------------------------------------------------------------------------- */
+function abstandMeter(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const bogen = (g) => (g * Math.PI) / 180;
+  const dLat = bogen(lat2 - lat1);
+  const dLon = bogen(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(bogen(lat1)) * Math.cos(bogen(lat2)) * Math.sin(dLon / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+/** Welche Einheit hat die Person an diesem Tag? */
+function einheitAm(person, datum) {
+  const liste = (person.zugehoerigkeit || [])
+    .filter((z) => !z.ab || z.ab <= datum)
+    .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
+  return liste.length ? liste[liste.length - 1].einheitId : null;
+}
+
+function ortPruefen(m, person, datum, lat, lon) {
+  if (typeof lat !== "number" || typeof lon !== "number"
+      || !Number.isFinite(lat) || !Number.isFinite(lon))
+    return { geprueft: false, innerhalb: null, text: "Ohne Standortfreigabe erfasst" };
+
+  const eid = einheitAm(person, datum);
+  const einheit = (m.einheiten || []).find((x) => x.id === eid);
+  const st = einheit && (m.standorte || []).find((x) => x.id === einheit.standortId);
+  if (!st || typeof st.lat !== "number" || typeof st.lon !== "number")
+    return { geprueft: false, innerhalb: null, text: "Kein Standort hinterlegt" };
+
+  const d = abstandMeter(lat, lon, st.lat, st.lon);
+  const radius = st.radius || 200;
+  return {
+    geprueft: true,
+    innerhalb: d <= radius,
+    abstand: d,
+    text: d <= radius ? `Am Einsatzort (${d} m)`
+      : `Abweichend, ${d > 1500 ? `${(d / 1000).toFixed(1)} km` : `${d} m`} entfernt`,
+  };
+}
+
 /** Prüft den Sitzungsschlüssel aus dem Kopf und gibt die Sitzung zurück. */
 async function sitzung(req) {
   const kopf = req.headers.get("authorization") || "";
@@ -415,6 +463,72 @@ export default async (req, context) => {
       await protokoll("schreiben", ks, "erfolg",
         `${Math.round(JSON.stringify(zuSchreiben).length / 1024)} KB · ${s.rolle}`);
       return antwort({ ok: true, etag: neu?.etag || null });
+    }
+
+    /* ------------------------------ Stempeln ------------------------- */
+    /* Bis hierher meldete der Browser die Koordinaten, rechnete den Abstand
+       und entschied selbst `innerhalb: true` — dieses Urteil wurde als
+       Tatsache gespeichert. Wer die Anwendung umging oder dem Browser andere
+       Koordinaten unterschob, stempelte sich von überall am Einsatzort ein.
+       Für eine Zeiterfassung, die im Streitfall etwas belegen soll, war das
+       wertlos.
+
+       Jetzt kommen nur die Rohkoordinaten herein. Der Standort, der Radius
+       und die Entscheidung liegen hier; die Zeit ebenfalls, denn eine
+       gestellte Uhr im Gerät ist genauso leicht zu ändern. */
+    if (pfad === "stempeln" && req.method === "POST") {
+      const kSt = kennung(req, s);
+      const bSt = await bremse("schreiben", kSt);
+      if (!bSt.frei) return zuVielAntwort(bSt.wartet);
+
+      const { datum, art, lat, lon } = await req.json();
+      if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
+        return antwort({ fehler: "Kein gültiges Datum." }, 400);
+      if (art !== "start" && art !== "ende")
+        return antwort({ fehler: "Nur start oder ende." }, 400);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+
+      const mit = await store.getWithMetadata(schluessel, { type: "json" });
+      if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      const bestand = mit.data;
+      const i = Number(s.betrieb);
+      const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
+        ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
+      if (!m) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+
+      const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
+      if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
+
+      /* Die eigene Zeit, nicht die des Geräts. */
+      const jetzt = new Date();
+      const zeit = jetzt.toLocaleTimeString("de-DE", {
+        hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+
+      const urteil = ortPruefen(m, person, datum, lat, lon);
+
+      const k = `${person.id}|${datum}`;
+      const alt = (m.einstempeln || {})[k] || {};
+      const neu = art === "start"
+        ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
+            geprueftStart: urteil.geprueft }
+        : { ...alt, ende: zeit, ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
+            geprueftEnde: urteil.geprueft };
+
+      let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
+      if (art === "ende") {
+        neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
+          [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+      }
+      const neuerBestand = { ...bestand,
+        mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
+
+      await store.setJSON(schluessel, neuerBestand,
+        { metadata: { zeit: jetzt.toISOString(), durch: s.name || "Stempeluhr" } });
+      const meta = await store.getMetadata(schluessel);
+      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`);
+      return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
+        geprueft: urteil.geprueft, etag: meta?.etag || null });
     }
 
     /* ------------------------------ Abmelden ------------------------- */

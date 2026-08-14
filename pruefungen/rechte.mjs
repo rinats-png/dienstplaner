@@ -200,3 +200,53 @@ if (durch !== ergebnisse.length) {
   for (const r of ergebnisse.filter((x) => !x.ok)) console.log(`  - ${r.name} (${r.detail})`);
   process.exit(1);
 }
+
+/* --- S1: Die Stempeluhr entscheidet auf dem Server --- */
+{
+  const tS = await anmelden(await zugang("mitarbeiter", 0));
+  /* Standort für den Wohnbereich hinterlegen (als Leitung) */
+  const rL2 = await lies(tL);
+  const bb = JSON.parse(JSON.stringify(rL2.bestand));
+  bb.mandanten[0].standorte = [{ id: "st1", name: "Haupthaus",
+    lat: 50.1109, lon: 8.6821, radius: 150 }];
+  bb.mandanten[0].einheiten = [{ id: "e1", name: "Wohnbereich 1", standortId: "st1" }];
+  bb.mandanten[0].personen = bb.mandanten[0].personen.map((p) => p.id === 0
+    ? { ...p, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] } : p);
+  await schreib(tL, bb, rL2.etag);
+
+  const stempel = async (art, lat, lon) => {
+    const a = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
+      headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
+      body: JSON.stringify({ datum: "2026-08-14", art, lat, lon }) });
+    return { status: a.status, ...(await a.json()) };
+  };
+
+  const amOrt = await stempel("start", 50.1110, 8.6822);
+  pruef("Am Einsatzort wird als innerhalb erkannt",
+    amOrt.status === 200 && amOrt.innerhalb === true && amOrt.geprueft === true,
+    JSON.stringify({ innerhalb: amOrt.innerhalb, ort: amOrt.ort }));
+
+  const weitWeg = await stempel("ende", 52.5200, 13.4050);   // Berlin
+  pruef("Weit entfernt wird als abweichend erkannt",
+    weitWeg.status === 200 && weitWeg.innerhalb === false,
+    JSON.stringify({ innerhalb: weitWeg.innerhalb, ort: weitWeg.ort }));
+
+  /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
+  const gelogen = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
+    headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
+    body: JSON.stringify({ datum: "2026-08-15", art: "start",
+      lat: 52.5200, lon: 13.4050, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
+  const gelogenD = await gelogen.json();
+  pruef("Ein mitgeschicktes Urteil wird ignoriert",
+    gelogenD.innerhalb === false,
+    `innerhalb=${gelogenD.innerhalb} trotz innerhalb:true im Rumpf`);
+
+  /* Und die Zeit kommt vom Server, nicht vom Gerät. */
+  pruef("Die Uhrzeit stammt vom Server",
+    typeof amOrt.zeit === "string" && /^\d{2}:\d{2}$/.test(amOrt.zeit),
+    `zeit=${amOrt.zeit}`);
+}
+
+const bestanden2 = ergebnisse.filter((r) => r.ok).length;
+console.log(`\nInsgesamt ${bestanden2} von ${ergebnisse.length} Prüfungen bestanden.`);
+if (bestanden2 !== ergebnisse.length) process.exit(1);

@@ -280,6 +280,22 @@ export async function zugaengeErzeugen(bestand, eintraege) {
 }
 
 /**
+ * Ein- oder ausstempeln.
+ *
+ * Es gehen nur die Rohkoordinaten hinaus. Standort, Radius, Uhrzeit und das
+ * Urteil liegen auf dem Server — im Browser wäre alles davon manipulierbar,
+ * und eine Zeiterfassung, die sich manipulieren lässt, belegt nichts.
+ */
+export async function stempeln(datum, art, koord) {
+  const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, art,
+      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
+  return d;
+}
+
+/**
  * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
  * Codes ließen sich anlegen, aber nie wieder abschalten.
  *

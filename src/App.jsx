@@ -18327,23 +18327,35 @@ function AppInnen() {
           melde("Benachrichtigung gesendet.");
         } catch (e) { melde("Benachrichtigung nicht möglich."); }
       },
-      /* --- Stempeluhr mit einmaliger Standortprüfung --- */
-      stempeln: (pid, datum, art, koord) => mUpd((m) => {
-        const p = m.personen.find((x) => x.id === pid); if (!p) return m;
-        const pr = stempelPruefen(m, p, datum, koord);
-        const jetzt = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-        const k = `${pid}|${datum}`;
-        const alt = (m.einstempeln || {})[k] || {};
-        const neu = art === "start"
-          ? { start: jetzt, ortStart: pr.text, innerhalbStart: pr.innerhalb }
-          : { ...alt, ende: jetzt, ortEnde: pr.text, innerhalbEnde: pr.innerhalb };
-        melde(art === "start" ? `Eingestempelt ${jetzt} · ${pr.text}` : `Ausgestempelt ${jetzt} · ${pr.text}`);
-        let next = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-        // Ausstempeln bestätigt zugleich die Zeit
-        if (art === "ende") next = { ...next, erfassung: { ...(next.erfassung || {}),
-          [k]: { start: neu.start, ende: jetzt, bestaetigt: true, grund: "" } } };
-        return next;
-      }, null),
+      /* --- Stempeluhr: der Server entscheidet ---
+
+         Vorher rechnete der Browser den Abstand zum Einsatzort und schrieb
+         sein eigenes Urteil in den Bestand. Jetzt gehen nur die
+         Rohkoordinaten hinaus; Standort, Radius, Uhrzeit und Bewertung
+         liegen auf dem Server, und von dort kommt das Ergebnis zurück. */
+      stempeln: async (pid, datum, art, koord) => {
+        try {
+          const erg = await SP.stempeln(datum, art, koord);
+          /* Den zurückgemeldeten Stand lokal nachziehen, damit die Ansicht
+             sofort stimmt — geschrieben hat ihn bereits der Server. */
+          upd((s2) => {
+            const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
+            if (!m) return s2;
+            const k = `${pid}|${datum}`;
+            const alt = (m.einstempeln || {})[k] || {};
+            const neu = art === "start"
+              ? { start: erg.zeit, ortStart: erg.ort, innerhalbStart: erg.innerhalb }
+              : { ...alt, ende: erg.zeit, ortEnde: erg.ort, innerhalbEnde: erg.innerhalb };
+            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
+            if (art === "ende") mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+              [k]: { start: neu.start, ende: erg.zeit, bestaetigt: true, grund: "" } } };
+            return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
+          });
+          melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}`);
+        } catch (e) {
+          melde(e.message || "Das Stempeln hat nicht geklappt.");
+        }
+      },
       setzeVerfuegbarkeit: (pid, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === pid ? { ...p, verfuegbarkeit: v } : p) }), "Verfügbarkeit gespeichert"),
       oeffneVerfuegbarkeit: (pid) => setVerfDlg(pid || sitz.person.id),
