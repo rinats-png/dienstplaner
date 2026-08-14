@@ -16,9 +16,11 @@
    Grundwerten. Kein Personal, kein Plan, kein Antrag.
    ========================================================================== */
 
+import { MATRIX } from "./rechte.mjs";
+
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
-export const VERSION = 7;
+export const VERSION = 8;
 
 /* Wie die Einheit im jeweiligen Gewerbe heißt. Das prägt die halbe
    Oberfläche: „Wohnbereich 1" gegen „Schichtgruppe 1". */
@@ -144,6 +146,15 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     standorte: [{ id: "st1", name: `${String(name).trim()}`, land: land || "HE",
       lat: undefined, lon: undefined, radius: 200 }],
     einheiten,
+
+    /* Die Rechtematrix fehlte hier — und damit jedem selbst angelegten
+       Betrieb. Die Betriebsansicht liest m.matrix[rolle] ungeprüft und
+       stürzte ab, sobald jemand sie öffnete: „Cannot read properties of
+       undefined (reading 'leitung')". Der Server war davon nicht betroffen,
+       er hat seine eigene Matrix — aber die halbe Verwaltung war
+       unerreichbar. */
+    matrix: JSON.parse(JSON.stringify(MATRIX)),
+
     dienstarten: DIENSTARTEN.map((d) => ({ ...d,
       faktor: 1, posten: false, quelle: null, ruhezeitNeutral: false, rufbereitschaft: false,
       mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 }, mindestQual: {} })),
@@ -153,6 +164,18 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
        Arbeitszeitgesetzes, damit die Prüfung von Anfang an etwas prüft. */
     einstellungen: {
       wochenstunden: 40,
+      /* Dieselbe Größe unter zwei Namen: Die Oberfläche liest fast überall
+         sollWochenstunden, angelegt wurde nur wochenstunden. Folge: Das Feld
+         „Vertragliche Wochenarbeitszeit" blieb leer, und jeder Vergleich fiel
+         auf die eingebaute Vierzig zurück — auch bei einem Betrieb, der auf
+         38,5 stand. Beide werden geschrieben und gemeinsam gepflegt. */
+      sollWochenstunden: 40,
+      /* Ohne Obergrenze prüft die Urlaubsregel nichts: `n > undefined` ist
+         immer falsch. Zwei gleichzeitige Urlaube je Einheit sind ein
+         brauchbarer Startwert. */
+      maxUrlaubJeEinheit: 2,
+      ausgleichGrenze: 40,
+      ausgleichFristMonate: 6,
       ruhezeit: 11,
       maxFolge: 6,
       maxNachtFolge: 4,

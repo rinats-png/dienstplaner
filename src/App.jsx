@@ -168,6 +168,10 @@ import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
 import {
+  vorlagenFuer as tarifVorlagen, tarifwerk, anwenden as tarifAnwenden,
+  FELDNAME as TARIF_FELD, wertText as tarifWert,
+} from "./tarifwerke.js";
+import {
   fristen as loeschFristen, vorschau as loeschVorschau,
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
   berichtstext as loeschBericht, PLANDATEN_MINDEST,
@@ -577,9 +581,42 @@ function feiertage(y, land) {
 const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
 
 /* ------------------------------ Zeitrechnung ------------------------------ */
-function nachtAnteil(d) {
+/* Das Nachtfenster ist nicht überall dasselbe.
+
+   § 2 Abs. 3 ArbZG nennt 23 bis 6 Uhr — das war hier fest verdrahtet, an
+   siebzehn Stellen und einmal sogar als Beschriftung „Nachtanteil 23–06
+   Uhr". § 7 Abs. 5 TVöD zieht die Grenze bei 21 Uhr, ebenso die AVR. Für
+   einen Frühdienst ändert das nichts, für einen Spätdienst bis 22 Uhr alles:
+   Unter dem Tarifvertrag sind das zwei Stunden Nachtarbeit mit Zuschlag,
+   nach dem Gesetz keine.
+
+   Die Vorgabe bleibt das Gesetz. Wer ein Tarifwerk anwendet, bekommt dessen
+   Fenster — siehe src/tarifwerke.js. */
+const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
+
+const nachtFenster = (einst) => ({
+  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
+  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
+});
+
+/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
+const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
+
+/**
+ * Nachtstunden eines Dienstes.
+ *
+ * @param d      Dienstart mit start und ende
+ * @param einst  Einstellungen des Betriebs; ohne sie gilt das Gesetz
+ */
+function nachtAnteil(d, einst) {
+  const f = nachtFenster(einst);
+  const von = toMin(f.von), bis = toMin(f.bis);
   const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
-  let sum = 0; for (const [a, b] of [[0, 360], [1380, 1800]]) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
+  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
+     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
+  const fenster = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
+  let sum = 0;
+  for (const [a, b] of fenster) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
   return Math.round(sum / 60 * 100) / 100;
 }
 
@@ -594,11 +631,11 @@ function nachtAnteil(d) {
  * Die Schwellenprüfungen („ist das ein Nachtdienst?") benutzen weiterhin
  * die datumsfreie Fassung — eine Dienstart ist an jedem Tag dieselbe.
  */
-function nachtAnteilAm(datum, d) {
+function nachtAnteilAm(datum, d, einst) {
   const [von, bis] = fenster(datum, d);
   const versatz = uhrversatz(von, bis);
-  if (!versatz) return nachtAnteil(d);
-  return Math.max(0, Math.round((nachtAnteil(d) + versatz / 60) * 100) / 100);
+  if (!versatz) return nachtAnteil(d, einst);
+  return Math.max(0, Math.round((nachtAnteil(d, einst) + versatz / 60) * 100) / 100);
 }
 
 /* ------------------------------- Rollenwerk ------------------------------- */
@@ -807,7 +844,9 @@ function baueMandant(cfg, seed) {
   if ((cfg.pakete || []).some((p) => p === "pflege" || p === "klinik"))
     for (const d of dienstarten) {
       if (d.posten) continue;
-      d.fachkraftQuote = nachtAnteil(d) >= 2 ? 0.5 : 0.4;   // nachts höherer Anteil
+      /* Ohne Betrieb gilt hier die gesetzliche Nachtzeit. Die Quote ist ein
+         Startwert und wird unter Verwaltung nachgezogen. */
+      d.fachkraftQuote = nachtAnteil(d) >= 2 ? 0.5 : 0.4;
     }
 
   if (cfg.rufbereitschaft) dienstarten.push({ id: "RB", name: "Rufbereitschaft", kurz: "RB",
@@ -1352,7 +1391,8 @@ function istStunden(m, p, ym) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
-      const na = nachtAnteilAm(d, da); nacht += na; dienste++; if (na >= 2) naechte++;
+      const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
+      if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
@@ -1540,7 +1580,7 @@ function pruefen(m, von, bis) {
         if (t.dienstId) {
           if (!lauf) ab = d; lauf++;
           const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          nl = da && nachtAnteil(da) >= 2 ? nl + 1 : 0;
+          nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
           if (lauf === m.einstellungen.maxFolge + 1 && d >= von && d <= bis)
             push({ art: "folge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
               titel: `${lauf} Dienste in Folge — ${p.nachname}`, text: `Serie ab ${fKurz(ab)}, Grenzwert ${m.einstellungen.maxFolge}` });
@@ -1561,7 +1601,7 @@ function pruefen(m, von, bis) {
         if (!t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        if (ein.keineNacht && nachtAnteil(da) >= 2)
+        if (ein.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
           push({ art: "einschraenkung", schwere: "danger", datum: d, ref: p.id, personId: p.id,
             titel: `Nachtdienst trotz Einschränkung — ${p.nachname}`,
             text: `${da.name} eingeteilt, obwohl keine Nachtdienste zugelassen sind` });
@@ -1702,7 +1742,8 @@ function simulation(m) {
       const c = t[i], nx = t[(i + 1) % len], pv = t[(i - 1 + len) % len];
       if (c && c !== "-") {
         lauf++; maxFolge = Math.max(maxFolge, lauf);
-        if (map[c] && nachtAnteil(map[c]) >= 2) { nl++; maxNacht = Math.max(maxNacht, nl); } else nl = 0;
+        if (map[c] && nachtAnteil(map[c], m.einstellungen) >= nachtschwelle(m.einstellungen)) {
+          nl++; maxNacht = Math.max(maxNacht, nl); } else nl = 0;
         if ((!pv || pv === "-") && (!nx || nx === "-")) einzel++;
         if (nx && nx !== "-" && map[c] && map[nx]) {
           const [, e1] = fenster("2024-01-01", map[c]); const [s2] = fenster("2024-01-02", map[nx]);
@@ -2013,7 +2054,8 @@ function hindernisse(m, p, d, da) {
   const e = einschr(p);
   if (!imDienst(p, d)) g.push("nicht im Bestand");
   if (abwesenheitAm(m, p.id, d)) g.push(`abwesend (${abwArt(abwesenheitAm(m, p.id, d).art).label})`);
-  if (e.keineNacht && nachtAnteil(da) >= 2) g.push("keine Nachtdienste zugelassen");
+  if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
+    g.push("keine Nachtdienste zugelassen");
   if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
   // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
   if (kann(m, "hartesperre") && da.form !== "ruf") {
@@ -2122,7 +2164,8 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
       if (p.teilzeit && p.teilzeit.aktiv) { punkte -= 6; gruende.push("Teilzeit"); }
     }
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
-    if (nachtAnteil(da) >= 2 && nj > nachtMittel + 3) { punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
+    if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
+      punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -2163,7 +2206,7 @@ function verteilung(m, von, bis) {
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
         dienste++;
-        const w = dow(d), nacht = nachtAnteil(da) >= 2;
+        const w = dow(d), nacht = nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
         if (nacht) naechte++;
         if (nacht && (w === 4 || w === 5)) weNacht++;
         if (w >= 5) wochenenden++;
@@ -2258,7 +2301,7 @@ function zuschlagStunden(m, p, ym) {
       if (!da) continue;
       const gearbeitet = istDauer(m, p, d, da).std;
       r.gesamt += gearbeitet;
-      r.nacht += nachtAnteilAm(d, da);
+      r.nacht += nachtAnteilAm(d, da, m.einstellungen);
       for (const teil of tagesanteile(d, da)) {
         const std = teil.minuten / 60;
         const w = dow(teil.datum);
@@ -4794,6 +4837,10 @@ function ModellVorschau({ modell, tage = 28, gruppe = 0 }) {
 }
 
 function Assistent2({ sitz, akt, onClose }) {
+  /* Der Einrichtungsassistent zeigt Nachtanteile, bevor der Betrieb steht.
+     Er nimmt das Fenster des laufenden Betriebs — sonst zeigte er 23 Uhr,
+     während die Prüfung danach mit 21 rechnet. */
+  const einst = (sitz.mandant || {}).einstellungen;
   const m = sitz.mandant;
   const [schritt, setSchritt] = useState(0);
   const [branche, setBranche] = useState(m.branche || "sonstiges");
@@ -5063,7 +5110,7 @@ function Assistent2({ sitz, akt, onClose }) {
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: C.dim, ...NUM }}>
                     {n1(dauer(d))} h</td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, ...NUM,
-                    color: nachtAnteil(d) > 0 ? C.violet : C.dimmer }}>{n1(nachtAnteil(d))} h</td>
+                    color: nachtAnteil(d, einst) > 0 ? C.violet : C.dimmer }}>{n1(nachtAnteil(d, einst))} h</td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
                     <Inp type="number" min={0} value={d.mindest.mo_do} style={{ width: 62 }}
                       onChange={(e) => setDienste(dienste.map((x, k) => k === i
@@ -7044,7 +7091,8 @@ function MeineSchichten({ sitz, akt, ym }) {
                   {t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : "frei"}</div>
                 {da && <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende} · {n1(dauer(da))} h · {da.ort}</div>}
               </div>
-              {da && nachtAnteil(da) >= 2 && <Pill size="sm" tone="violet">Nacht</Pill>}
+              {da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen)
+                && <Pill size="sm" tone="violet">Nacht</Pill>}
               {t.quelle === "abweichung" && <Pill size="sm" tone="warn">geändert</Pill>}
             </div>);
         })}</div>
@@ -7674,7 +7722,7 @@ function Tagesdetail({ sitz, datum, onClose, akt }) {
         <div>
           <div style={{ fontSize: 18, fontWeight: 620 }}>{e.da.name}</div>
           <div style={{ fontSize: 13, color: C.dimmer, marginTop: 4, ...NUM }}>
-            {e.da.start}–{e.da.ende} · {n1(dauer(e.da))} h{e.da.pause ? ` (${e.da.pause} min Pause)` : ""} · {n1(nachtAnteil(e.da))} h Nachtanteil · {e.da.ort}</div>
+            {e.da.start}–{e.da.ende} · {n1(dauer(e.da))} h{e.da.pause ? ` (${e.da.pause} min Pause)` : ""} · {n1(nachtAnteil(e.da, m.einstellungen))} h Nachtanteil · {e.da.ort}</div>
           {e.qual.length > 0 && <div style={{ display: "flex", gap: 7, marginTop: 11, flexWrap: "wrap" }}>
             {e.qual.map((q) => { const qn = m.qualifikationen.find((x) => x.id === q.qid);
               return <Pill key={q.qid} size="sm" tone={q.ok ? "ok" : "danger"}>{qn ? qn.kurz : q.qid} {q.ist}/{q.noetig}</Pill>; })}</div>}
@@ -7888,7 +7936,7 @@ function Dienstarten({ sitz, akt }) {
                   <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 3, ...NUM }}>
                     {d.start}–{d.ende} · {n1(dauer(d))} h{d.pause ? ` · ${d.pause} min Pause` : ""}</div>
                   <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
-                    {n1(nachtAnteil(d))} h Nachtanteil · {d.ort || "ohne Ort"}</div>
+                    {n1(nachtAnteil(d, m.einstellungen))} h Nachtanteil · {d.ort || "ohne Ort"}</div>
                 </div>
                 {d.posten && <Pill size="sm" tone="ok">Posten</Pill>}
               </div>
@@ -7927,8 +7975,10 @@ function Dienstarten({ sitz, akt }) {
           <div className="karte" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
             <div><Lab>Dauer</Lab><div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>{n1(dauer(f))} h</div></div>
             <div><Lab>Brutto</Lab><div style={{ fontSize: 19, fontWeight: 650, color: C.dim, ...NUM }}>{n1(brutto(f))} h</div></div>
-            <div><Lab>Nachtanteil 23–06 Uhr</Lab>
-              <div style={{ fontSize: 19, fontWeight: 650, color: nachtAnteil(f) > 0 ? C.violet : C.dimmer, ...NUM }}>{n1(nachtAnteil(f))} h</div></div>
+            <div><Lab>Nachtanteil {nachtFenster(m.einstellungen).von.slice(0, 2)}–{nachtFenster(m.einstellungen).bis.slice(0, 2)} Uhr</Lab>
+              <div style={{ fontSize: 19, fontWeight: 650,
+                color: nachtAnteil(f, m.einstellungen) > 0 ? C.violet : C.dimmer, ...NUM }}>
+                {n1(nachtAnteil(f, m.einstellungen))} h</div></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Bewertung auf das Stundenkonto"
@@ -15933,7 +15983,7 @@ function MPlan({ sitz, akt, oeffnen }) {
       const da = x.t.dienstId && map[x.t.dienstId];
       if (schnell === "dienst") return !!x.t.dienstId;
       if (schnell === "frei") return !x.t.dienstId;
-      if (schnell === "nacht") return da && nachtAnteil(da) >= 2;
+      if (schnell === "nacht") return da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
       if (schnell === "we") return dow(x.d) >= 5;
       return x.t.dienstId || x.t.abwesenheit;
     });
@@ -16046,8 +16096,8 @@ function MPlan({ sitz, akt, oeffnen }) {
                 <div style={{ fontSize: 15.5, color: C.dim, marginTop: 4, ...NUM }}>
                   {da.start} – {da.ende} · {n1(dauer(da))} h</div>
                 {da.ort && <div style={{ fontSize: 13.5, color: C.dimmer, marginTop: 4 }}>{da.ort}</div>}
-                {nachtAnteil(da) > 0 && <div style={{ fontSize: 13, color: C.violet, marginTop: 8, ...NUM }}>
-                  davon {n1(nachtAnteil(da))} h Nachtarbeit</div>}
+                {nachtAnteil(da, m.einstellungen) > 0 && <div style={{ fontSize: 13, color: C.violet, marginTop: 8, ...NUM }}>
+                  davon {n1(nachtAnteil(da, m.einstellungen))} h Nachtarbeit</div>}
               </MKarte>)}
             {da && (
               <div style={{ display: "grid", gap: 10 }}>
@@ -16857,6 +16907,112 @@ function MWuensche({ sitz, akt }) {
 }
 
 /* ================================ BETRIEB ================================ */
+/* ==========================================================================
+   TARIFWERK
+
+   Ein neuer Betrieb startete mit vierzig Wochenstunden und der gesetzlichen
+   Nachtzeit ab 23 Uhr. In der Pflege stimmt beides fast nie: Der TVöD-P
+   kennt 38,5 Stunden und zieht die Nachtgrenze bei 21 Uhr. Wer das nicht
+   nachträgt, sammelt ein Jahr lang Minusstunden, die es nicht gibt, und
+   zahlt Spätdiensten bis 22 Uhr keinen Nachtzuschlag.
+
+   Die Vorlage ändert das Regelwerk, nicht den Betrieb: Personal,
+   Dienstarten und Einheiten bleiben unberührt. Was sie ändert, steht
+   vorher da — mit dem alten und dem neuen Wert nebeneinander.
+   ========================================================================== */
+function Tarifwerk({ sitz, akt }) {
+  const m = sitz.mandant;
+  const [gewaehlt, setGewaehlt] = useState(null);
+  const vorlagen = useMemo(() => tarifVorlagen(m.branche), [m.branche]);
+  const t = gewaehlt ? tarifwerk(gewaehlt) : null;
+  const vorschau = useMemo(
+    () => (t ? tarifAnwenden(m, t.id, heute()) : null), [m, t]);
+  const aktuell = m.tarifwerk || null;
+
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={aktuell
+        ? <Lab>{aktuell.name} · Stand {aktuell.stand}</Lab>
+        : <Lab>keines hinterlegt</Lab>}>Tarifwerk</CardHead>
+      <div style={{ padding: 22 }}>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px", maxWidth: "72ch" }}>
+          Eine Vorlage setzt Wochenarbeitszeit, Urlaub, Zusatzurlaub, das
+          Nachtfenster und die Zuschlagssätze. Entgelttabellen enthält sie
+          bewusst nicht — CENTRIC gibt Stunden je Zuschlagsart aus, den Betrag
+          rechnet die Lohnstelle. Personal, Dienstarten und Einheiten bleiben
+          unberührt.
+        </p>
+
+        {aktuell && (
+          <div style={{ padding: "11px 14px", borderRadius: 9, marginBottom: 16,
+            background: C.flaecheStill, fontSize: 13, color: C.dim, lineHeight: 1.55 }}>
+            Angewendet am {fDatum(aktuell.angewendet)} · Stand der Werte {aktuell.stand} ·{" "}
+            <a href={aktuell.quelle} target="_blank" rel="noreferrer"
+              style={{ color: C.accent }}>Fundstelle</a>
+          </div>)}
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+          {vorlagen.map((v) => (
+            <div key={v.id} className="karte"
+              style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start",
+                flexWrap: "wrap",
+                borderColor: gewaehlt === v.id ? C.accent : undefined }}>
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 620, display: "flex", gap: 8,
+                  alignItems: "center", flexWrap: "wrap" }}>
+                  {v.name}
+                  {aktuell && aktuell.id === v.id && <Pill size="sm" tone="ok">aktiv</Pill>}
+                  {v.branchen.includes(m.branche) && <Pill size="sm" tone="accent">passt zur Branche</Pill>}
+                </div>
+                <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
+                  {v.beschreibung}</div>
+                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5 }}>
+                  {v.grundlage} · Stand {v.stand}</div>
+              </div>
+              <Btn size="sm" kind={gewaehlt === v.id ? "primary" : "plain"}
+                onClick={() => setGewaehlt(gewaehlt === v.id ? null : v.id)}>
+                {gewaehlt === v.id ? "Vorschau schließen" : "Vorschau"}</Btn>
+            </div>))}
+        </div>
+
+        {t && vorschau && (
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 18 }}>
+            <Lab style={{ marginBottom: 10 }}>
+              Was sich ändert · {vorschau.geaendert.length}</Lab>
+            {vorschau.geaendert.length === 0
+              ? <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 14 }}>
+                  Nichts. Der Betrieb steht bereits auf diesen Werten.</div>
+              : (<div style={{ marginBottom: 16 }}>
+                {vorschau.geaendert.map((g) => (
+                  <div key={g.feld} style={{ display: "flex", gap: 12, alignItems: "baseline",
+                    padding: "7px 0", borderBottom: `1px solid ${C.lineSoft}`, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13.5, flex: 1, minWidth: 200 }}>
+                      {TARIF_FELD[g.feld] || g.feld}</span>
+                    <span style={{ fontSize: 13, color: C.dimmer, ...NUM }}>{tarifWert(g.von)}</span>
+                    <span style={{ fontSize: 13, color: C.dimmer }}>→</span>
+                    <span style={{ fontSize: 13, fontWeight: 620, ...NUM }}>{tarifWert(g.nach)}</span>
+                  </div>))}
+              </div>)}
+
+            <Lab style={{ marginBottom: 8 }}>Was die Vorlage nicht kann</Lab>
+            <ul style={{ margin: "0 0 18px", paddingLeft: 20, fontSize: 13,
+              color: C.dim, lineHeight: 1.6 }}>
+              {t.hinweise.map((h, i) => <li key={i} style={{ marginBottom: 5 }}>{h}</li>)}
+            </ul>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <Btn kind="primary" disabled={vorschau.geaendert.length === 0}
+                onClick={() => { akt.tarifwerkAnwenden(t.id); setGewaehlt(null); }}>
+                {t.name} anwenden</Btn>
+              <Btn kind="quiet" onClick={() => setGewaehlt(null)}>Abbrechen</Btn>
+              <a href={t.quelle} target="_blank" rel="noreferrer"
+                style={{ fontSize: 13, color: C.accent }}>Fundstelle ansehen</a>
+            </div>
+          </div>)}
+      </div>
+    </Card>);
+}
+
 function Betrieb({ sitz, akt }) {
   const m = sitz.mandant;
   const [tests, setTests] = useState(null);
@@ -16868,6 +17024,8 @@ function Betrieb({ sitz, akt }) {
   return (
     <div>
       <H1 sub="Stammdaten, Einheiten, Qualifikationen, Regelwerk und Rechte.">Betrieb</H1>
+
+      <Tarifwerk sitz={sitz} akt={akt} />
 
       <Card style={{ marginBottom: 20 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
@@ -16960,7 +17118,7 @@ function Betrieb({ sitz, akt }) {
                     <div style={{ fontSize: 13.5 }}>{label}</div>
                     <div style={{ fontSize: 11, color: C.dimmer, ...NUM }}>{id}</div></td>
                   {ROLLEN.filter((r) => !r.extern).map((r) => {
-                    const an = (m.matrix[r.id] || []).includes(id), fest = r.id === "leitung";
+                    const an = ((m.matrix || MATRIX_STD)[r.id] || []).includes(id), fest = r.id === "leitung";
                     return (<td key={r.id} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "center" }}>
                       <button onClick={() => !fest && akt.toggleRecht(r.id, id)} 
                         title={fest ? "Die Organisationsleitung hat immer alle Rechte." : ""}
@@ -17585,6 +17743,20 @@ function AppInnen() {
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
       /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
          sie gehören zum Löschkonzept, nicht zum Regelwerk. */
+      tarifwerkAnwenden: (id) => {
+        const s2 = ref.current;
+        const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        const vor = tarifAnwenden(m0, id, heute());
+        if (!vor.geaendert.length) return melde("Es ändert sich nichts.");
+        if (!window.confirm(
+          `${vor.geaendert.length} Werte im Regelwerk werden gesetzt. `
+          + "Personal, Dienstarten und Einheiten bleiben unberührt.\n\n"
+          + "Bereits gerechnete Stunden ändern sich rückwirkend, weil Nachtfenster "
+          + "und Wochenarbeitszeit in jede Auswertung eingehen.")) return;
+        mUpd((m) => tarifAnwenden(m, id, heute()).mandant,
+          `Tarifwerk angewendet: ${(tarifwerk(id) || {}).name || id}`);
+        melde(`${(tarifwerk(id) || {}).name || id} angewendet.`);
+      },
       setzeAufbewahrung: (k, v) => mUpd((m) => ({ ...m,
         aufbewahrung: { ...loeschFristen(m), [k]: Math.max(1, Number(v) || 1) } }), null),
       setzeEinheit: (id, k, v) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === id ? { ...e, [k]: v } : e) }), null),
@@ -17603,8 +17775,11 @@ function AppInnen() {
         personen: m.personen.map((p) => ({ ...p, qualifikationen: p.qualifikationen.filter((x) => x !== id) })),
         dienstarten: m.dienstarten.map((d) => { const mq = { ...d.mindestQual }; delete mq[id]; return { ...d, mindestQual: mq }; }) }), "Qualifikation gelöscht"),
       toggleRecht: (r, recht) => mUpd((m) => {
-        const cur = m.matrix[r] || [];
-        return { ...m, matrix: { ...m.matrix, [r]: cur.includes(recht) ? cur.filter((x) => x !== recht) : [...cur, recht] } };
+        /* Ohne eigene Matrix gilt die Vorgabe — der erste Klick macht sie
+           zur betrieblichen Matrix, statt auf undefined zu greifen. */
+        const basis = m.matrix || JSON.parse(JSON.stringify(MATRIX_STD));
+        const cur = basis[r] || [];
+        return { ...m, matrix: { ...basis, [r]: cur.includes(recht) ? cur.filter((x) => x !== recht) : [...cur, recht] } };
       }, "Rechtematrix geändert"),
       matrixZuruecksetzen: () => mUpd((m) => ({ ...m, matrix: JSON.parse(JSON.stringify(MATRIX_STD)) }), "Rechtematrix zurückgesetzt"),
 

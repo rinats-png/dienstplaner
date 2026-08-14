@@ -21,7 +21,7 @@
    Browser mit altem Zwischenspeicher die Arbeit aller anderen.
    ========================================================================== */
 
-export const VERSION = 7;
+export const VERSION = 8;
 
 /**
  * Eine Stufe je Eintrag. Der Schlüssel ist die Version, aus der gehoben
@@ -82,6 +82,42 @@ const STUFEN = {
           tage: vorhanden.length >= laenge
             ? vorhanden
             : Array.from({ length: laenge }, (_, i) => vorhanden[i] ?? "-"),
+        },
+      };
+    }),
+  }),
+
+  /* 7 → 8: Rechtematrix sicherstellen.
+
+     Selbst angelegte Betriebe kamen ohne m.matrix auf die Welt —
+     baueLeerenBetrieb() legte sie nicht an. Die Betriebsansicht liest
+     m.matrix[rolle] ungeprüft und stürzte ab, sobald jemand „Verwaltung →
+     Betrieb" öffnete. Betroffen war jeder Betrieb aus dem Selbststart.
+
+     Die Werte stammen aus derselben Tabelle, die der Server benutzt; eine
+     abweichende Matrix eines bestehenden Betriebs bleibt unangetastet. */
+  7: (b) => ({
+    ...b,
+    version: 8,
+    mandanten: (b.mandanten || []).map((m) => {
+      if (!m || typeof m !== "object") return m;
+      const e = m.einstellungen || {};
+      return {
+        ...m,
+        /* null heißt: die Oberfläche nimmt MATRIX_STD. Eine bestehende,
+           betrieblich angepasste Matrix bleibt unangetastet. */
+        matrix: (m.matrix && typeof m.matrix === "object" && Object.keys(m.matrix).length)
+          ? m.matrix : null,
+        einstellungen: {
+          ...e,
+          /* Zwei Namen für dieselbe Größe. Die Oberfläche liest
+             sollWochenstunden, der Selbststart legte nur wochenstunden an —
+             das Feld blieb leer und jeder Vergleich fiel auf 40 zurück. */
+          sollWochenstunden: e.sollWochenstunden ?? e.wochenstunden ?? 40,
+          wochenstunden: e.wochenstunden ?? e.sollWochenstunden ?? 40,
+          /* Ohne Obergrenze prüft die Urlaubsregel nichts: `n > undefined`
+             ist immer falsch. */
+          maxUrlaubJeEinheit: e.maxUrlaubJeEinheit ?? 2,
         },
       };
     }),
