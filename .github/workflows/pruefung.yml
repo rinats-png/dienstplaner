@@ -33,6 +33,11 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
+      # Der Löschlauf nach Artikel 17 DSGVO. Ein Fehler hier löscht zu viel
+      # oder zu wenig — beides ist nicht zurückzunehmen.
+      - name: Aufbewahrung
+        run: npm run pruefung:aufbewahrung
+
       # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
       - name: Zugangscodes
         run: npm run pruefung:codes
