@@ -1,0 +1,97 @@
+# Läuft bei jedem Push und jedem Pull Request.
+#
+# Bis August 2026 gab es keine Automatisierung: Ein Rechtefehler wäre
+# unbemerkt live gegangen, und ein undefinierter Bezeichner ebenso — der
+# Linter fand beim ersten Lauf fünf davon.
+name: Prüfung
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Findet undefinierte Bezeichner und Verstöße gegen die Hook-Regeln.
+      - name: Linter
+        run: npm run lint
+
+      # Typprüfung ohne TypeScript. Deckt die reinen Kernmodule und die
+      # Serverbausteine ab — dort, wo ein vertippter Feldname rechtliche
+      # Folgen hat. App.jsx bleibt außen vor.
+      - name: Typen
+        run: npm run pruefung:typen
+
+      # Der Regelkern: Ruhezeiten, Ausgleichszeitraum, Schutzvorschriften.
+      # Läuft ohne Server in Millisekunden.
+      - name: Regelwerk
+        run: npm run pruefung:regeln
+
+      # Der Löschlauf nach Artikel 17 DSGVO. Ein Fehler hier löscht zu viel
+      # oder zu wenig — beides ist nicht zurückzunehmen.
+      - name: Aufbewahrung
+        run: npm run pruefung:aufbewahrung
+
+      # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
+      - name: Zugangscodes
+        run: npm run pruefung:codes
+
+      # Zerlegung in Monatsscherben und das Zusammenführen.
+      - name: Scherben
+        run: npm run pruefung:scherben
+
+      # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
+      - name: Rechtetabellen vergleichen
+        run: npm run pruefung:matrix
+
+      - name: Übersetzen
+        run: npm run build
+
+      # Die serverseitigen Prüfungen brauchen einen laufenden Dienst.
+      - name: Server starten
+        run: |
+          CENTRIC_ADMIN=ci-geheim npx vite --port 5173 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173/ >/dev/null && break
+            sleep 1
+          done
+
+      - name: Rechteprüfung
+        run: npm run pruefung:rechte
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_ADMIN: ci-geheim
+
+      # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
+      # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
+      # Betrieb geschafft hätte.
+      # Benannte Verwalterkonten statt eines Geheimnisses für alle.
+      - name: Verwalterkonten
+        run: npm run pruefung:verwalter
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.8
+
+      - name: Sicherung außer Haus
+        run: npm run pruefung:sicherung
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_HERKUNFT: 10.9.9.9
+
+      - name: Bremse
+        run: npm run pruefung:bremse
+        env:
+          CENTRIC_BASIS: http://localhost:5173

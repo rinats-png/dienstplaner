@@ -44,7 +44,12 @@ async function ruf(pfad, opt = {}) {
   let d = null;
   try { d = await a.json(); } catch { /* leere Antwort */ }
   if (a.status === 401) { abmelden(true); throw new Error("nicht-angemeldet"); }
-  return { status: a.status, daten: d };
+  /* Der Dienstarbeiter kennzeichnet eine Antwort, die aus seinem Speicher
+     kommt. Ohne dieses Kennzeichen sähe ein drei Tage alter Plan aus wie
+     der aktuelle — und das wäre schlimmer als gar keiner. */
+  const ausSpeicher = a.headers.get("x-centric-offline") === "ja";
+  return { status: a.status, daten: d, ausSpeicher,
+    geholt: a.headers.get("x-centric-geholt") || null };
 }
 
 /* ------------------------------ Anmeldung -------------------------------- */
@@ -100,6 +105,9 @@ export async function demoOeffnen(id, merken) {
 
 export function abmelden(still = false) {
   if (!still && token) ruf("abmelden", { method: "POST" }).catch(() => {});
+  /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
+     gehört nicht dem nächsten Menschen an diesem Gerät. */
+  offlineDatenLoeschen();
   token = null; etag = null; name = null; zugang = null;
   try {
     sessionStorage.removeItem(SCHLUESSEL);
@@ -110,11 +118,15 @@ export function abmelden(still = false) {
 
 /* ------------------------------- Lesen ----------------------------------- */
 export async function lies() {
-  const { status, daten } = await ruf("bestand");
+  const { status, daten, ausSpeicher, geholt } = await ruf("bestand");
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
-  zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb, name: daten.name };
-  return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch };
+  /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
+     Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
+  zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
+    name: daten.name, schreiben: daten.schreiben || "voll" };
+  return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch,
+    ausSpeicher: !!ausSpeicher, geholt };
 }
 
 /* ------------------------------ Schreiben -------------------------------- */
@@ -135,12 +147,62 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, sofort } = {}) {
   return Promise.resolve();
 }
 
-async function jetztSchreiben() {
+/* Der letzte Schreibversuch, der nicht durchkam.
+
+   Vorher wurde er weggeworfen: Bei einer abgelaufenen Sitzung kehrte
+   jetztSchreiben() wortlos zurück, und die Arbeit war fort. Das trifft
+   nicht selten — eine Sitzung endet nach dreißig Minuten Untätigkeit. Wer
+   den Monatsplan offen stehen lässt, telefoniert, dann eine Schicht
+   umträgt, hatte ohne diesen Zwischenspeicher nichts mehr davon.
+
+   Er liegt im Arbeitsspeicher, nicht im Browser-Speicher. Ein Bestand kann
+   mehrere Megabyte groß sein, und localStorage ist auf fünf begrenzt —
+   ein halb geschriebener Bestand dort wäre schlimmer als keiner. */
+let gescheitert = null;
+
+/** Gibt es Arbeit, die nicht durchkam? */
+export const ausstehend = () => (gescheitert ? { ...gescheitert.lage } : null);
+
+/** Nimmt den letzten gescheiterten Versuch noch einmal auf. */
+export async function nochmalSchreiben() {
+  if (!gescheitert) return { ok: true, nichts: true };
+  const a = gescheitert;
+  gescheitert = null;
+  offen = a.auftrag;
+  await jetztSchreiben();
+  return { ok: !gescheitert };
+}
+
+/** Der ausstehende Bestand, um ihn notfalls als Datei zu sichern. */
+export const ausstehenderBestand = () => (gescheitert ? gescheitert.auftrag.bestand : null);
+
+/** Verwirft ihn — nur auf ausdrückliche Ansage. */
+export const ausstehendVerwerfen = () => { gescheitert = null; };
+
+/** Woran lag es? Danach richtet sich, was zu tun ist. */
+function fehlerart(e, status) {
+  if (e && e.message === "nicht-angemeldet") return "abgemeldet";
+  if (status === 403) return "keinRecht";
+  if (status === 413) return "zuGross";
+  if (status && status >= 500) return "server";
+  if (e && (e.name === "TypeError" || /fetch|network|Failed to fetch/i.test(String(e.message))))
+    return "netz";
+  return "unbekannt";
+}
+
+async function jetztSchreiben(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
+  let status = null;
   try {
-    const { status, daten } = await ruf("bestand", { method: "PUT",
+    /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
+       Ohne das bricht der Browser sie ab, und die letzte Änderung ist
+       verloren — genau in dem Moment, in dem niemand mehr hinsieht. */
+    const antwort = await ruf("bestand", { method: "PUT",
+      ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: auftrag.bestand, etag, durch: auftrag.durch }) });
+    status = antwort.status;
+    const daten = antwort.daten;
     if (status === 409) {
       etag = daten.etag;
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
@@ -148,17 +210,61 @@ async function jetztSchreiben() {
     }
     if (status !== 200) throw new Error(daten?.fehler || "Speichern fehlgeschlagen.");
     etag = daten.etag;
+    gescheitert = null;
   } catch (e) {
-    if (e.message === "nicht-angemeldet") return;
-    if (auftrag.onFehler) auftrag.onFehler(e);
+    const art = fehlerart(e, status);
+    /* Der Auftrag bleibt liegen, damit er sich wiederholen lässt. */
+    gescheitert = { auftrag, lage: { art, text: String(e && e.message || e), status,
+      zeit: new Date().toISOString() } };
+    if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
   }
+}
+
+/* ------------------------ Sicherung außer Haus --------------------------- */
+
+/** Den vollständigen Bestand als eine Datei holen. */
+export async function vollausgabe() {
+  const { status, daten } = await ruf("vollausgabe");
+  if (status !== 200) throw new Error(daten?.fehler || "Ausgabe fehlgeschlagen.");
+  return daten;
+}
+
+/** Einen Sicherungsschlüssel anlegen. Er erscheint genau einmal. */
+export async function schluesselAnlegen(tage) {
+  const { status, daten } = await ruf("sicherungsschluessel",
+    { method: "POST", body: JSON.stringify({ tage }) });
+  if (status !== 200) throw new Error(daten?.fehler || "Anlegen fehlgeschlagen.");
+  return daten;
+}
+
+export async function schluesselListe() {
+  const { status, daten } = await ruf("sicherungsschluessel");
+  if (status !== 200) throw new Error(daten?.fehler || "Abruf fehlgeschlagen.");
+  return daten.schluessel || [];
+}
+
+export async function schluesselWiderrufen(kennung) {
+  const { status, daten } = await ruf("sicherungsschluessel",
+    { method: "DELETE", body: JSON.stringify({ kennung }) });
+  if (status !== 200) throw new Error(daten?.fehler || "Widerruf fehlgeschlagen.");
+  return daten;
 }
 
 /** Vor dem Schließen des Fensters noch Ausstehendes wegschreiben. */
 if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => { if (offen) jetztSchreiben(); });
+  window.addEventListener("beforeunload", (e) => {
+    if (!offen) return;
+    jetztSchreiben(true);
+    /* Zusätzlich nachfragen: keepalive ist zuverlässig, aber nicht
+       garantiert. Bei einem Monatsplan wiegt eine Rückfrage leichter als
+       eine verlorene Stunde Arbeit. */
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  /* Der verlässlichere Zeitpunkt auf dem Telefon: Wegwischen der Anwendung
+     löst kein beforeunload aus, wohl aber visibilitychange. */
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && offen) jetztSchreiben();
+    if (document.visibilityState === "hidden" && offen) jetztSchreiben(true);
   });
 }
 
@@ -224,21 +330,54 @@ export async function pushEinschalten(personId) {
   const anmeldung = vorhanden || await reg.pushManager.subscribe({
     userVisibleOnly: true, applicationServerKey: b64(vapid) });
 
+  /* Die Person kommt aus der Sitzung des Servers, nicht von hier — sonst
+     ließe sich die Anmeldung einer Kollegin überschreiben. */
   const a = await fetch("/zustellung/anmelden", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ anmeldung: anmeldung.toJSON(), personId }) });
+    body: JSON.stringify({ anmeldung: anmeldung.toJSON() }) });
   if (!a.ok) throw new Error("Die Anmeldung konnte nicht gespeichert werden.");
   return anmeldung.toJSON();
 }
 
-export async function pushAusschalten(personId) {
+export async function pushAusschalten() {
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const s = reg && await reg.pushManager.getSubscription();
     if (s) await s.unsubscribe();
   } catch { /* egal */ }
   try {
-    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf(),
-      body: JSON.stringify({ personId }) });
+    await fetch("/zustellung/abmelden", { method: "POST", headers: kopf() });
+  } catch { /* egal */ }
+}
+
+/* --------------------------------------------------------------------------
+   OFFLINEBETRIEB
+
+   Der Dienstarbeiter wurde bisher nur registriert, wenn jemand
+   Benachrichtigungen einschaltete. Ohne Netz zeigte die Anwendung die
+   Fehlerseite des Browsers — im Kellergeschoss, im Parkhaus, im Funkloch.
+
+   Er wird deshalb jetzt immer eingerichtet, still und ohne Nachfrage. Er
+   fragt nichts ab und zeigt nichts an; er sorgt nur dafür, dass die
+   Anwendung startet und der letzte Stand lesbar bleibt.
+   -------------------------------------------------------------------------- */
+export async function offlineEinrichten() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
+  try {
+    await navigator.serviceWorker.register("/sw.js");
+    return true;
+  } catch { return false; }
+}
+
+/** Beim Abmelden: den gespeicherten Bestand wegräumen. */
+export async function offlineDatenLoeschen() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const ziel = (reg && (reg.active || reg.waiting)) || navigator.serviceWorker.controller;
+    if (ziel) ziel.postMessage({ art: "daten-loeschen" });
+    /* Zusätzlich unmittelbar — der Dienstarbeiter kann gerade neu starten,
+       und Personaldaten sollen dabei nicht liegen bleiben. */
+    if (typeof caches !== "undefined")
+      for (const n of await caches.keys()) if (n.startsWith("centric-daten-")) await caches.delete(n);
   } catch { /* egal */ }
 }
 
@@ -259,6 +398,38 @@ export async function zugaengeErzeugen(bestand, eintraege) {
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Zugänge konnten nicht erzeugt werden.");
   return d.zugaenge;
+}
+
+/**
+ * Ein- oder ausstempeln.
+ *
+ * Es gehen nur die Rohkoordinaten hinaus. Standort, Radius, Uhrzeit und das
+ * Urteil liegen auf dem Server — im Browser wäre alles davon manipulierbar,
+ * und eine Zeiterfassung, die sich manipulieren lässt, belegt nichts.
+ */
+export async function stempeln(datum, art, koord) {
+  const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, art,
+      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
+  return d;
+}
+
+/**
+ * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
+ * Codes ließen sich anlegen, aber nie wieder abschalten.
+ *
+ * Entweder den Code selbst übergeben, seine Prüfsumme, oder mit
+ * alleDesBetriebs sämtliche Zugänge des Betriebs auf einmal — der eigene
+ * bleibt dabei bestehen.
+ */
+export async function zugangSperren({ code, pruefsumme, alleDesBetriebs } = {}) {
+  const a = await fetch("/api/zugang-sperren", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ code, pruefsumme, alleDesBetriebs: !!alleDesBetriebs }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.fehler || "Der Zugang konnte nicht gesperrt werden.");
+  return d;
 }
 
 export async function bestandAnlegen(bestand, inhalt) {

@@ -6,17 +6,39 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "pruefung:rechte": "node pruefungen/rechte.mjs",
+    "pruefung:bremse": "node pruefungen/bremse.mjs",
+    "pruefung:sicherung": "node pruefungen/sicherung.mjs",
+    "pruefung:verwalter": "node pruefungen/verwalter.mjs",
+    "pruefung": "npm run lint && npm run pruefung:typen && npm run pruefung:regeln && npm run pruefung:aufbewahrung && npm run pruefung:tarife && npm run pruefung:codes && npm run pruefung:scherben && npm run pruefung:matrix && npm run pruefung:rechte && npm run pruefung:sicherung && npm run pruefung:verwalter && npm run pruefung:bremse",
+    "pruefung:codes": "node pruefungen/codes.mjs",
+    "lint": "eslint .",
+    "pruefung:matrix": "node pruefungen/matrix.mjs",
+    "pruefung:scherben": "node pruefungen/scherben.mjs",
+    "pruefung:typen": "tsc -p jsconfig.json",
+    "pruefung:regeln": "vitest run pruefungen/regelwerk.test.js",
+    "pruefung:aufbewahrung": "vitest run pruefungen/aufbewahrung.test.js",
+    "pruefung:tarife": "vitest run pruefungen/tarifwerke.test.js"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@netlify/blobs": "^8.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@netlify/vite-plugin": "^2.0.0",
+    "@types/node": "^26.2.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7"
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.14.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.7",
+    "vitest": "^4.1.10"
   }
 }

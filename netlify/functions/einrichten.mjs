@@ -1,6 +1,10 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { ablageSchluessel } from "../lib/codes.mjs";
+import { kontoSchreiben } from "../lib/konten.mjs";
+import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
+  from "../lib/verwalter.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -19,7 +23,11 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
   { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
 export default async (req) => {
-  if (req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
+  const url = new URL(req.url);
+  const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
+  if (!["", "verwalter"].includes(pfad))
+    return antwort({ fehler: "Unbekannter Pfad." }, 404);
+  if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
   /* Fünf Versuche in zehn Minuten, danach eine Stunde Sperre. Wer das
      Verwaltungskennwort raten will, braucht mit dieser Bremse länger als
@@ -29,19 +37,65 @@ export default async (req) => {
   if (!b.frei) { await protokoll("einrichten", k, "gebremst", b.grund);
     return zuVielAntwort(b.wartet); }
 
-  const geheim = process.env.CENTRIC_ADMIN;
-  if (!geheim) return antwort({ fehler: "CENTRIC_ADMIN ist nicht gesetzt. "
-    + "In den Netlify-Einstellungen unter Umgebungsvariablen hinterlegen." }, 500);
+  const s0 = store();
 
   let body;
-  try { body = await req.json(); } catch { return antwort({ fehler: "Ungültiger Text." }, 400); }
-  const { verwaltung, name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
-  if (verwaltung !== geheim) {
+  try { body = req.method === "GET" ? {} : await req.json(); } catch { body = {}; }
+  const { name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
+  /* Der Schlüssel darf im Rumpf stehen (wie bisher) oder im Kopf. GET kennt
+     keinen Rumpf — ohne den Kopf ließe sich die Liste gar nicht abrufen. */
+  const kopfSchluessel = (req.headers.get("authorization") || "").startsWith("Bearer ")
+    ? req.headers.get("authorization").slice(7) : null;
+  const verwaltung = body.verwaltung || kopfSchluessel;
+
+  /* Wer ist das? Entweder ein benanntes Verwalterkonto oder der
+     Ursprungsschlüssel aus der Umgebung. Beides wird zeitkonstant
+     verglichen — vorher brach !== beim ersten abweichenden Zeichen ab. */
+  const wer = await verwalterPruefen(s0, verwaltung);
+  if (!wer) {
     await new Promise((r) => setTimeout(r, 400));
-    await protokoll("einrichten", k, "abgewiesen");
-    return antwort({ fehler: "Verwaltungskennwort stimmt nicht." }, 401);
+    await protokoll("einrichten", k, "abgewiesen", pfad || "zugang");
+    /* Ohne jeden Schlüssel steht die Anwendung noch vor der Einrichtung —
+       das ist ein anderer Fall als ein falscher Schlüssel und verdient
+       einen anderen Satz. */
+    if (!process.env.CENTRIC_ADMIN && (await verwalterAktiv(s0)) === 0)
+      return antwort({ fehler: "Es gibt noch keinen Verwalterzugang. "
+        + "CENTRIC_ADMIN in den Umgebungsvariablen setzen und damit das erste "
+        + "benannte Konto anlegen." }, 500);
+    return antwort({ fehler: "Verwaltungsschlüssel stimmt nicht." }, 401);
   }
   await entlasten("einrichten", k);
+
+  /* ---------------------------- Verwalterkonten ----------------------
+     Ein Geheimnis für alle lässt sich weder entziehen noch zuordnen.
+     Benannte Konten lösen beides: eigener Schlüssel je Person, einzeln
+     widerrufbar, mit Namen im Protokoll.                              */
+  if (pfad === "verwalter") {
+    if (req.method === "GET")
+      return antwort({ verwalter: await verwalterListe(s0), ich: wer.name });
+
+    if (req.method === "POST") {
+      if (!body.neuerName || String(body.neuerName).trim().length < 2)
+        return antwort({ fehler: "Bitte einen Namen angeben." }, 400);
+      const erg = await verwalterAnlegen(s0, {
+        name: body.neuerName, email: body.email, tage: body.tage, durch: wer.name });
+      await protokoll("verwalter", k, "angelegt", `${body.neuerName} durch ${wer.name}`);
+      return antwort({ ok: true, ...erg, name: String(body.neuerName).trim(),
+        hinweis: "Dieser Schlüssel erscheint genau einmal. Gespeichert ist nur seine "
+          + "Prüfsumme." });
+    }
+
+    if (req.method === "DELETE") {
+      if (!body.kennung) return antwort({ fehler: "Keine Kennung angegeben." }, 400);
+      if (body.kennung === wer.kennung)
+        return antwort({ fehler: "Der eigene Zugang lässt sich nicht sperren. "
+          + "Sonst steht am Ende niemand mehr bereit." }, 400);
+      const n = await verwalterSperren(s0, body.kennung);
+      await protokoll("verwalter", k, "gesperrt", `${body.kennung} durch ${wer.name}`);
+      return antwort({ ok: true, gesperrt: n });
+    }
+    return antwort({ fehler: "Nur GET, POST oder DELETE." }, 405);
+  }
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);
 
   // Zugangscode in gut vorlesbarer Form: vier Blöcke, keine verwechselbaren Zeichen
@@ -49,9 +103,8 @@ export default async (req) => {
   const block = () => Array.from(randomBytes(4)).map((b) => alphabet[b % alphabet.length]).join("");
   const code = `${block()}-${block()}-${block()}`;
 
-  const s = store();
-  const konten = (await s.get("konten", { type: "json" })) || {};
-  konten[hash(code)] = { name, bestand,
+  const s = s0;
+  const konto = { name, bestand,
     rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
     betrieb: betrieb ?? 0,         // Index des Betriebs im Bestand
@@ -59,14 +112,19 @@ export default async (req) => {
     /* Als Demozugang gekennzeichnete Konten erscheinen auf der Anmeldeseite
        und lassen sich ohne Code öffnen. Alle übrigen bleiben geschützt. */
     demo: !!demo, gruppe: gruppe || null,
-    id: demo ? `d${Object.keys(konten).length + 1}` : null,
+    /* Kennung aus dem Code selbst statt aus der Anzahl — die Anzahl war
+       unter Nebenläufigkeit nicht eindeutig. */
+    id: demo ? `d${ablageSchluessel(code).slice(-8)}` : null,
     angelegt: new Date().toISOString() };
-  await s.setJSON("konten", konten);
+  await kontoSchreiben(s, ablageSchluessel(code), konto);
 
-  await protokoll("einrichten", k, "erfolg", `${rolle || "kunde"} · ${bestand}`);
+  /* Wer es war, steht jetzt im Protokoll — nicht mehr nur ein Hashwert
+     der Netzadresse. */
+  await protokoll("einrichten", k, "erfolg",
+    `${rolle || "kunde"} · ${bestand} · durch ${wer.name}`);
   return antwort({ ok: true, zugangscode: code, name, bestand,
     hinweis: "Diesen Code sicher weitergeben. Er wird nur als Prüfsumme gespeichert "
       + "und lässt sich nicht wiederherstellen." });
 };
 
-export const config = { path: "/einrichten" };
+export const config = { path: ["/einrichten", "/einrichten/*"] };

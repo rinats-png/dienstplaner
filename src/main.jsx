@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import * as SP from "./speicher.js";
+import "./schrift.css";
+import { C } from "./farben.js";
+import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 
 /* ==========================================================================
    EINSTIEG
@@ -24,9 +27,12 @@ const ROLLENTEXT = {
   betriebsrat: "Nur lesen: Verteilung, Prüfung, Protokoll",
   kunde: "Eigener Datenraum zum freien Ausprobieren",
 };
-const F = { bg: "#D9E4E8", karte: "#FFFFFF", text: "#071317", dim: "#3D4E55",
-  line: "#BCCDD4", lineStark: "#9DB3BC", accent: "#017070", accentHell: "#DFF0F0",
-  danger: "#4E0401", ok: "#0E6B45" };
+/* Die Anmeldeseite nimmt dieselbe Palette wie die Anwendung. Vorher stand
+   hier eine eigene Kopie — beim Aufhellen des Grundes behielt die
+   Anmeldung deshalb den alten Ton, während dahinter schon der neue galt. */
+const F = { bg: C.bg, karte: C.flaeche, text: C.text, dim: C.dim,
+  line: C.line, lineStark: C.lineStark, accent: C.accent, accentHell: C.accentLight,
+  danger: C.danger, ok: C.ok };
 
 function Marke({ size = 38 }) {
   return (
@@ -99,8 +105,14 @@ function Preise({ onZurueck, onStarten, F }) {
   const jePerson = personen ? (gesamt / personen) : 0;
 
   /* Vergleich: was eine Kopfpauschale kosten würde. Bewusst am unteren
-     Rand des Marktes gerechnet, damit der Vergleich nicht schmeichelt. */
-  const kopfpauschale = Math.max(169, standorte * 169 + personen * 0.9);
+     Rand des Marktes gerechnet, damit der Vergleich nicht schmeichelt.
+
+     Vergleichende Werbung ist zulässig, wenn sie nachprüfbar ist. Die
+     Annahme steht deshalb jetzt auch auf dem Bildschirm, nicht nur hier
+     im Quelltext — siehe Fußnote unter dem Rechner. */
+  const VERGLEICH = { grund: 169, jePerson: 0.9, stand: "August 2026" };
+  const kopfpauschale = Math.max(VERGLEICH.grund,
+    standorte * VERGLEICH.grund + personen * VERGLEICH.jePerson);
   const ersparnis = Math.max(0, Math.round((kopfpauschale - gesamt) * 12));
 
   const Zahl = ({ wert, einheit, gross }) => (
@@ -206,6 +218,16 @@ function Preise({ onZurueck, onStarten, F }) {
               Der Unterschied macht rund{" "}
               <b style={{ fontVariantNumeric: "tabular-nums" }}>
                 {ersparnis.toLocaleString("de-DE")} €</b> im Jahr aus.
+              {/* Vergleichende Werbung ist zulässig, wenn sie nachprüfbar
+                  ist. Die Annahme gehört deshalb auf den Bildschirm, nicht
+                  nur in den Quelltext. */}
+              <div style={{ fontSize: 12, color: F.dim, marginTop: 10, lineHeight: 1.5 }}>
+                Verglichen mit einer Kopfpauschale von {VERGLEICH.grund} € je Standort
+                zuzüglich {VERGLEICH.jePerson.toLocaleString("de-DE",
+                  { minimumFractionDigits: 2 })} € je Person und Monat — eine Annahme am
+                unteren Rand des Marktes, Stand {VERGLEICH.stand}. Was du tatsächlich
+                zahlst, hängt vom Angebot deines Anbieters ab.
+              </div>
             </div>)}
         </div>
       </div>
@@ -516,6 +538,15 @@ function Einstieg() {
   const [selbst, setSelbst] = useState(false);
   const [preise, setPreise] = useState(false);
   const [merken, setMerken] = useState(SP.wirdGemerkt());
+  /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
+     ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
+     steht jemand, der die Anwendung noch gar nicht betreten hat. */
+  const [recht, setRecht] = useState(null);
+  const fuss = <>
+    <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 40, paddingTop: 22,
+      borderTop: `1px solid ${F.line}` }} />
+    {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
+  </>;
 
   useEffect(() => { if (!an) SP.demos().then(setDemos).catch(() => setDemos([])); }, [an]);
 
@@ -544,6 +575,7 @@ function Einstieg() {
         </div>
         <Preise F={F} onZurueck={() => setPreise(false)}
           onStarten={() => { setPreise(false); setSelbst(true); }} />
+        {fuss}
       </div>
     </div>);
 
@@ -561,6 +593,7 @@ function Einstieg() {
         </div>
         <SelbstStarten F={F} onZurueck={() => setSelbst(false)}
           onFertig={(code) => { setSelbst(false); setMitCode(true); setCode(code); }} />
+        {fuss}
       </div>
     </div>);
 
@@ -763,9 +796,22 @@ function Einstieg() {
               Betreiberkonsole
             </button>
           </div>)}
+
+        {fuss}
       </div>
     </div>);
 }
+
+/* Der Dienstarbeiter wird hier eingerichtet, nicht erst nach der Anmeldung.
+
+   Zuerst stand er in AppInnen — also hinter der Anmeldung. Damit war die
+   Schale genau dann nicht gespeichert, wenn sie gebraucht wird: beim ersten
+   Öffnen ohne Netz. Wer die Anwendung einmal besucht hat, soll sie danach
+   auch im Keller starten können.
+
+   Er fragt nichts ab und zeigt nichts an. Schlägt die Einrichtung fehl —
+   privater Modus, alter Browser —, ändert sich für die Anwendung nichts. */
+SP.offlineEinrichten();
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode><Einstieg /></React.StrictMode>);

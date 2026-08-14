@@ -1,5 +1,15 @@
-import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
+import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
+import {
+  pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
+  dauer, brutto, fenster,
+  dauerAm, uhrversatz, uhrsprung,
+  ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
+  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  pausePflicht, pauseGenuegt,
+  HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN,
+} from "./regelwerk.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -154,94 +164,36 @@ class Fehlerauffang extends Component {
    Branchenneutral für jeden Betrieb im durchgehenden Schichtbetrieb.
    ========================================================================== */
 
-const C = {
-  /* ------------------------------------------------------------------
-     Sea Salt als Grundfläche, dazu die Farben aus derselben Sammlung.
-
-     Zwei Dinge mussten angepasst werden, sonst wäre es unlesbar:
-
-     Erstens trägt keine der bunten Farben als Text. Traditional Turquoise
-     erreicht auf Sea Salt 2,48:1, Orange Grove 1,97:1 — nötig sind 4,5:1.
-     Für Text und Flächen gelten deshalb abgedunkelte Varianten desselben
-     Farbtons; die Originale leben als Zierde und Hover weiter, wo keine
-     Schrift darauf steht.
-
-     Zweitens ist Sea Salt selbst nicht weiß. Eine weiße Karte hebt sich
-     davon nur mit 1,3:1 ab — das reicht nicht als alleiniges Mittel.
-     Karten brauchen hier einen sichtbaren Rand.
-     ------------------------------------------------------------------ */
-  bg: "#D9E4E8",              // Sea Salt
-  flaeche: "#FFFFFF",
-  flaecheStill: "#E7EFF2",    // zwischen Grund und Karte
-  sidebar: "#071317",         // Midnight Edition
-  sidebarTief: "#001619",     // Blue Charcoal
-
-  text: "#071317",            // 14,55:1
-  dim: "#3D4E55", dimmer: "#3D4E55", aus: "#5B6B72",
-
-  line: "#BCCDD4", lineSoft: "#CBDAE0", lineStark: "#9DB3BC",
-
-  /* Akzent: Traditional Turquoise, abgedunkelt bis es trägt */
-  accent: "#017070",          // 4,56:1 · weißer Text darauf 5,91:1
-  /* Traditional Turquoise erreicht auf Sea Salt nur 2,48:1 — zu wenig selbst
-     für Zierde (3:1). Der Hover-Ton ist deshalb eine Spur dunkler. Das
-     Original lebt auf der Seitenleiste weiter, wo es 5,87:1 erreicht. */
-  accentHi: "#028E8E",        // 3,08:1 auf Grund
-  accentOrig: "#02A0A0",      // Traditional Turquoise — nur auf Dunkel
-  accentDeep: "#023441",      // Natural Indigo
-  accentLight: "#DFF0F0",
-  accentGlanz: "#50E8F4",     // Fluorescent Blue — Glanzlicht auf Dunkel
-
-  ok: "#0E6B45",              // 5,05:1 — Grün fehlt in der Vorlage, abgeleitet
-  warn: "#955410",            // Orange Grove, abgedunkelt · 4,56:1
-  danger: "#4E0401",          // Dark Maroon · 12,08:1
-  violet: "#316C81",          // Vintage Aqua, abgedunkelt · 4,51:1
-
-  okLight: "#DFEFE7", warnLight: "#FFE0C0", dangerLight: "#F6DEDC",
-};
-
-/* --------------------------------------------------------------------------
-   DUNKELMODUS
-   Wer um drei Uhr nachts auf den Plan schaut, wird von einer hellen Fläche
-   geblendet. Das ist kein Luxus, sondern der häufigste Fall im Schichtdienst.
-
-   Die Palette ist keine Umkehrung der hellen — Farben verhalten sich auf
-   Dunkel anders. Gesättigte Töne wirken greller, deshalb sind Akzent und
-   Statusfarben aufgehellt und leicht entsättigt. Alle Textfarben tragen
-   mindestens 4,9:1, die meisten deutlich mehr.
-   -------------------------------------------------------------------------- */
-const C_DUNKEL = {
-  bg: "#0B1418", flaeche: "#121E23", flaecheStill: "#18262C",
-  sidebar: "#070F12", sidebarTief: "#040A0C",
-
-  text: "#E8EFF1",            // 16,01:1
-  dim: "#9FB2B9", dimmer: "#9FB2B9", aus: "#7A8D95",
-
-  line: "#243238", lineSoft: "#1B282E", lineStark: "#33454C",
-
-  accent: "#3FBFBF",          // 8,35:1 — heller als im Hellmodus, sonst zu schwach
-  accentHi: "#5FD6D6", accentOrig: "#5FD6D6",
-  accentDeep: "#7FE0E0", accentGlanz: "#50E8F4",
-  accentLight: "#13292C",     // gedämpfte Fläche statt heller
-
-  ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
-  okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",
-};
-
-/* Umschalten ohne Umbau: Statt tausend Verwendungsstellen zu ändern, werden
-   die Werte in C ausgetauscht. Wer C.text liest, bekommt danach den dunklen
-   Wert — die Anwendung merkt davon nichts. Ein Zähler in der Oberfläche
-   erzwingt den Neuaufbau. */
-const C_HELL = { ...C };
+import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
+import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
+import {
+  vorlagenFuer as tarifVorlagen, tarifwerk, anwenden as tarifAnwenden,
+  FELDNAME as TARIF_FELD, wertText as tarifWert,
+} from "./tarifwerke.js";
+import {
+  fristen as loeschFristen, vorschau as loeschVorschau,
+  raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
+  berichtstext as loeschBericht, PLANDATEN_MINDEST,
+} from "./aufbewahrung.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
+
+/* Die Palette zusätzlich als CSS-Variablen ausgeben.
+   Zwei Gründe: Erstens erreichen Variablen Stellen, an die ein
+   JavaScript-Objekt nicht kommt — Bildlaufleisten, Auswahlfelder, die
+   Datumsauswahl des Browsers. Zweitens wechselt das Thema damit ohne
+   Neuaufbau der Oberfläche; eine memoisierte Komponente behält sonst die
+   Farben des alten Themas. */
 function themaSetzen(dunkel) {
   _dunkel = !!dunkel;
   Object.assign(C, dunkel ? C_DUNKEL : C_HELL);
   if (typeof document !== "undefined") {
-    document.documentElement.style.colorScheme = dunkel ? "dark" : "light";
+    const wurzel = document.documentElement;
+    wurzel.style.colorScheme = dunkel ? "dark" : "light";
+    wurzel.setAttribute("data-thema", dunkel ? "dunkel" : "hell");
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.sidebar : C_HELL.sidebar);
+    if (meta) meta.setAttribute("content", dunkel ? C_DUNKEL.bg : C_HELL.bg);
   }
 }
 
@@ -263,6 +215,7 @@ const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" 
 /** Globale Gestaltung. Hover- und Glaseffekte brauchen echtes CSS. */
 const bauStyles = () => `
 :root{
+  ${alsVariablen(C_HELL)}
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
@@ -271,6 +224,8 @@ const bauStyles = () => `
   --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
   --sidebar-breite: 252px;
 }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -490,6 +445,15 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   animation:uhr 5s linear forwards;}
 @keyframes uhr{from{transform:rotate(0deg); opacity:1;} to{transform:rotate(360deg); opacity:.25;}}
 @keyframes pulsieren{0%,100%{opacity:.55;} 50%{opacity:1;}}
+/* Ladegerüst: ein ruhiges Pulsieren statt eines Drehrads */
+.pulsiert{animation:pulsieren 1.6s ease-in-out infinite;}
+@media (max-width: 1024px){ .nur-breit{display:none !important;} }
+/* Zweispaltige Ansichten stapeln, sobald es eng wird — sonst quetscht sich
+   die schmale Spalte auf einen unbrauchbaren Streifen. */
+@media (max-width: 900px){ .zweispaltig{grid-template-columns:1fr !important;} }
+/* Rechtstexte: auf dem Telefon steht die Auswahl über dem Text, nicht daneben */
+@media (max-width: 900px){ .rechtsraster{grid-template-columns:1fr !important; gap:16px !important;}
+  .rechtsraster > nav{flex-direction:row !important; position:static !important; overflow-x:auto;} }
 @media (prefers-reduced-motion: reduce){
   *{animation-duration:.01ms !important; animation-iteration-count:1 !important;
     transition-duration:.01ms !important;}
@@ -515,6 +479,34 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 }
 @media (min-width: 1025px){ .nur-schmal{display:none !important;} }
 
+/* Der Umbruchpunkt, der fehlte.
+
+   Bis hierher gab es genau einen bei 1024px — für eine Anwendung, die den
+   Beschäftigten ausdrücklich eine Telefonansicht verspricht, endete die
+   Anpassung also dort, wo sie erst anfangen müsste. Zwischen 320 und 480
+   Pixeln passierte nichts mehr.
+
+   Ein Raster mit einunddreißig Spalten lässt sich auf dieser Breite nicht
+   retten. Es bekommt stattdessen Tippflächen, die mit dem Daumen zu treffen
+   sind, und alles daneben wird ruhiger statt gedrängter. */
+@media (max-width: 560px){
+  main.bereich{padding:12px 10px 88px;}
+  /* Die Kopfleiste schob das Dokument auf 769px auf einem 390px breiten
+     Gerät — gemessen, nicht geschätzt. Die Werkzeuge rechts sind auf dem
+     Telefon ohnehin zweitrangig; die Suche bleibt, der Rest tritt ab. */
+  .kopfleiste{padding-left:8px; padding-right:8px; gap:8px;}
+  .kopfleiste .kopf-werkzeuge{display:none !important;}
+  .suchknopf kbd{display:none;}
+  .suchknopf{min-width:0; flex:1 1 auto;}
+  /* Vierundvierzig Pixel sind die Untergrenze für eine Fläche, die mit dem
+     Daumen getroffen werden soll. */
+  .planzelle{min-height:44px !important;}
+  .seg button{padding:8px 13px;}
+  /* Unter sechzehn Pixeln zoomt iOS beim Antippen in das Feld hinein */
+  .inp,.sel,textarea{font-size:16px !important;}
+  .karte{border-radius:10px;}
+}
+
 @media print{
   .seitenleiste,.kopfleiste,.noprint,.toast{display:none !important;}
   .inhalt{margin-left:0;}
@@ -524,15 +516,26 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 `;
 
 /* --------------------------------- Datum --------------------------------- */
-const pad = (n) => String(n).padStart(2, "0");
-const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
-const dow = (s) => (pISO(s).getDay() + 6) % 7;
-const between = (a, b) => Math.round((pISO(b) - pISO(a)) / 86400000);
-const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
-const montag = (s) => addDays(s, -dow(s));
+/* Diese Grundlagen stehen jetzt in src/regelwerk.js — dort, wo auch die
+   Regeln liegen, die auf ihnen aufbauen, und wo sie geprüft werden. */
+
+/* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
+
+   Fronleichnam gilt in Sachsen und Thüringen nur in bestimmten Gemeinden,
+   Mariä Himmelfahrt in Bayern nur in überwiegend katholischen, und das
+   Friedensfest allein in Augsburg. Wer dort plant, merkt einen Fehler erst,
+   wenn die Zuschläge falsch abgerechnet sind — deshalb ein sichtbarer
+   Hinweis statt einer stillen Annahme. */
+const GEMEINDE_FEIERTAGE = {
+  BY: "In Bayern hängen Mariä Himmelfahrt und das Augsburger Friedensfest von der Gemeinde ab.",
+  SN: "In Sachsen gilt Fronleichnam nur in bestimmten Gemeinden.",
+  TH: "In Thüringen gilt Fronleichnam nur in bestimmten Gemeinden.",
+};
+const gemeindeHinweis = (land) => GEMEINDE_FEIERTAGE[land] || null;
 const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+/* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
+   und „Donnerstag" liest sich im Dienst schneller als „Do". */
+const DOW_LANG = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 const heute = () => iso(new Date());
 const fLang = (s) => { const d = pISO(s); return `${DOW[dow(s)]}, ${d.getDate()}. ${MON[d.getMonth()]} ${d.getFullYear()}`; };
@@ -581,18 +584,61 @@ function feiertage(y, land) {
 const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
 
 /* ------------------------------ Zeitrechnung ------------------------------ */
-const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-function dauer(d) { let x = toMin(d.ende) - toMin(d.start); if (x <= 0) x += 1440; return Math.round((x / 60 - (d.pause || 0) / 60) * 100) / 100; }
-function brutto(d) { let x = toMin(d.ende) - toMin(d.start); if (x <= 0) x += 1440; return x / 60; }
-function nachtAnteil(d) {
+/* Das Nachtfenster ist nicht überall dasselbe.
+
+   § 2 Abs. 3 ArbZG nennt 23 bis 6 Uhr — das war hier fest verdrahtet, an
+   siebzehn Stellen und einmal sogar als Beschriftung „Nachtanteil 23–06
+   Uhr". § 7 Abs. 5 TVöD zieht die Grenze bei 21 Uhr, ebenso die AVR. Für
+   einen Frühdienst ändert das nichts, für einen Spätdienst bis 22 Uhr alles:
+   Unter dem Tarifvertrag sind das zwei Stunden Nachtarbeit mit Zuschlag,
+   nach dem Gesetz keine.
+
+   Die Vorgabe bleibt das Gesetz. Wer ein Tarifwerk anwendet, bekommt dessen
+   Fenster — siehe src/tarifwerke.js. */
+const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
+
+const nachtFenster = (einst) => ({
+  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
+  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
+});
+
+/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
+const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
+
+/**
+ * Nachtstunden eines Dienstes.
+ *
+ * @param d      Dienstart mit start und ende
+ * @param einst  Einstellungen des Betriebs; ohne sie gilt das Gesetz
+ */
+function nachtAnteil(d, einst) {
+  const f = nachtFenster(einst);
+  const von = toMin(f.von), bis = toMin(f.bis);
   const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
-  let sum = 0; for (const [a, b] of [[0, 360], [1380, 1800]]) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
+  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
+     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
+  const fenster = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
+  let sum = 0;
+  for (const [a, b] of fenster) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
   return Math.round(sum / 60 * 100) / 100;
 }
-function fenster(datum, d) {
-  const base = between("2000-01-01", datum) * 1440;
-  const s = base + toMin(d.start); let e = base + toMin(d.ende); if (e <= s) e += 1440;
-  return [s, e];
+
+/**
+ * Nachtstunden an einem bestimmten Tag — mit der Sommerzeit.
+ *
+ * Der Sprungpunkt liegt um 02:00 Ortszeit und damit immer innerhalb des
+ * Nachtfensters. Wer in der Oktobernacht arbeitet, leistet eine
+ * Nachtstunde mehr; im März eine weniger. Das wirkt unmittelbar auf den
+ * Zuschlag nach § 6 Abs. 5 ArbZG.
+ *
+ * Die Schwellenprüfungen („ist das ein Nachtdienst?") benutzen weiterhin
+ * die datumsfreie Fassung — eine Dienstart ist an jedem Tag dieselbe.
+ */
+function nachtAnteilAm(datum, d, einst) {
+  const [von, bis] = fenster(datum, d);
+  const versatz = uhrversatz(von, bis);
+  if (!versatz) return nachtAnteil(d, einst);
+  return Math.max(0, Math.round((nachtAnteil(d, einst) + versatz / 60) * 100) / 100);
 }
 
 /* ------------------------------- Rollenwerk ------------------------------- */
@@ -611,6 +657,32 @@ const ROLLEN = [
     text: "Rein lesender Prüfzugang auf Pläne und Protokoll. Kostenfrei." },
 ];
 const rolle = (id) => ROLLEN.find((r) => r.id === id) || ROLLEN[4];
+
+/**
+ * Mehrzahl der Einheitsbezeichnung.
+ *
+ * Vorher stand an elf Stellen `${mehrzahl(m.einheitLabel)}`. Für „Schichtgruppe"
+ * ergibt das „Schichtgruppen" und stimmt — für „Wohnbereich" kommt
+ * „Wohnbereichn" heraus, und für „Station" „Stationn". Die deutsche
+ * Mehrzahl hängt am Wortende, nicht an einem angehängten n.
+ */
+function mehrzahl(wort) {
+  const w = String(wort || "").trim();
+  if (!w) return "";
+  if (/e$/.test(w)) return `${w}n`;        // Schichtgruppe → Schichtgruppen
+  if (/(ich|eich|bereich)$/.test(w)) return `${w}e`;  // Wohnbereich → Wohnbereiche
+  if (/(ion|tion)$/.test(w)) return `${w}en`;         // Station → Stationen
+  if (/(er|el|en)$/.test(w)) return w;     // Revier → Revier (unverändert häufig)
+  return `${w}e`;                          // Trupp → Truppe, Team → Teame … zumindest lesbar
+}
+
+/* Für den Namen der ersten Person eines frisch angelegten Betriebs. Kein
+   erfundener Name — eine Funktionsbezeichnung, die man überschreibt. */
+const ROLLENBEZEICHNUNG = {
+  leitung: "Organisationsleitung", planer: "Planung",
+  subplaner: "Schichtverantwortung", mitarbeiter: "Beschäftigte",
+  betriebsrat: "Betriebsrat",
+};
 
 const RECHTE_GRUPPEN = [
   ["Planung", [["plan.view.own","Eigenen Plan sehen"],["plan.view.unit","Plan der eigenen Einheit sehen"],
@@ -775,7 +847,9 @@ function baueMandant(cfg, seed) {
   if ((cfg.pakete || []).some((p) => p === "pflege" || p === "klinik"))
     for (const d of dienstarten) {
       if (d.posten) continue;
-      d.fachkraftQuote = nachtAnteil(d) >= 2 ? 0.5 : 0.4;   // nachts höherer Anteil
+      /* Ohne Betrieb gilt hier die gesetzliche Nachtzeit. Die Quote ist ein
+         Startwert und wird unter Verwaltung nachgezogen. */
+      d.fachkraftQuote = nachtAnteil(d) >= 2 ? 0.5 : 0.4;
     }
 
   if (cfg.rufbereitschaft) dienstarten.push({ id: "RB", name: "Rufbereitschaft", kurz: "RB",
@@ -990,7 +1064,7 @@ function startbestand() {
       mindest: { F: { mo_do: 5, fr: 5, sa: 4, so: 3 }, S: { mo_do: 5, fr: 5, sa: 4, so: 3 }, N: { mo_do: 4, fr: 4, sa: 3, so: 3 } },
       mindestQual: { F: { q1: 2 }, S: { q1: 2 }, N: { q1: 2 } }, posten: null }, 9876),
   ];
-  return { version: 5, stand: 0, tarife: JSON.parse(JSON.stringify(TARIFE_STD)), mandanten, rechnungen: [], protokoll: [],
+  return { version: BESTAND_VERSION, stand: 0, tarife: JSON.parse(JSON.stringify(TARIFE_STD)), mandanten, rechnungen: [], protokoll: [],
     betreiber: { firma: "CENTRIC Software", anschrift: "Musterweg 1\n64839 Münster", ustId: "DE000000000",
       iban: "DE00 0000 0000 0000 0000 00", steuersatz: 19, zahlungsziel: 14 },
     session: null };
@@ -1217,9 +1291,17 @@ function zyklusLaenge(m) {
 }
 function einheitDienst(m, eid, d) {
   const e = m.einheiten.find((x) => x.id === eid); if (!e || e.pool) return null;
+  /* zyklusLaenge() fängt einen fehlenden Tagesplan ab und rechnet dann mit
+     wochen × 7 — hier stand der Zugriff ungeschützt daneben. Ein Betrieb
+     ohne zyklus.tage ließ damit die gesamte Personalakte abstürzen
+     („Cannot read properties of undefined"), und mit ihr jede Ansicht, die
+     Stunden über ein Jahr rechnet. Ein frisch angelegter Betrieb ist genau
+     dieser Fall, solange die Schichtfolge noch nicht steht. */
+  const tage = (m.zyklus && m.zyklus.tage) || null;
+  if (!tage || !tage.length) return null;
   const len = zyklusLaenge(m);
   const i = (((between(m.anker, d) + versatzTageVon(e)) % len) + len) % len;
-  const id = m.zyklus.tage[i];
+  const id = tage[i];
   return id && id !== "-" ? id : null;
 }
 /** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
@@ -1312,12 +1394,50 @@ function istStunden(m, p, ym) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
-      const na = nachtAnteil(da); nacht += na; dienste++; if (na >= 2) naechte++;
+      const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
+      if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
   });
 }
+/* --------------------------------------------------------------------------
+   § 3 ArbZG — AUSGLEICHSZEITRAUM
+
+   Die Lücke, die der Prüfung fehlte: Acht Stunden werktäglich, verlängerbar
+   auf zehn, wenn im Durchschnitt von 24 Wochen acht nicht überschritten
+   werden. Bis hierher prüfte die Anwendung die Tagesgrenze und ein
+   Stundenkonto gegen eine frei gesetzte Schwelle — beides sagt nichts über
+   den gesetzlichen Ausgleich. Ein Plan konnte Woche für Woche zulässig
+   aussehen und den Zeitraum trotzdem reißen.
+
+   Gerechnet wird über die tatsächlich geleisteten Stunden je Tag; die Regel
+   selbst steht in src/regelwerk.js und ist dort geprüft.
+   -------------------------------------------------------------------------- */
+function ausgleichPruefen(m, p, bis) {
+  return memo(m, `ausgl|${p.id}|${bis}`, () => {
+    const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
+    const stundenAmTag = (d) => {
+      const t = personTag(m, p, d);
+      if (t.abwesenheit || !t.dienstId) return 0;
+      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      if (!da) return 0;
+      return istDauer(m, p, d, da).std;
+    };
+    return ausgleichszeitraum(stundenAmTag, bis, { wochen, grenze: DURCHSCHNITT_TAG });
+  });
+}
+
+/** Alle Personen, deren Ausgleichszeitraum gerissen ist. */
+function ausgleichVerstoesse(m, bis) {
+  const aus = [];
+  for (const p of aktive(m, bis)) {
+    const e = ausgleichPruefen(m, p, bis);
+    if (!e.eingehalten) aus.push({ person: p, ...e });
+  }
+  return aus.sort((a, b) => b.ueberhang - a.ueberhang);
+}
+
 function urlaubskonto(m, p, jahr) {
   return memo(m, `url|${p.id}|${jahr}`, () => {
     let genommen = 0; const zeilen = [];
@@ -1348,6 +1468,69 @@ function nachtJahr(m, p, jahr) {
     return { stunden: Math.round(h * 10) / 10, anzahl: n };
   });
 }
+/* ==========================================================================
+   RECHTSGRUNDLAGE JE BEFUNDART
+
+   Ein Befund sagte bisher, *was* nicht stimmt, aber nie, *woraus* das folgt.
+   Für die Planung macht das den Unterschied zwischen einer Meinung der
+   Software und einer Vorschrift: „Ruhezeit unterschritten" lässt sich
+   wegklicken, „§ 5 Abs. 1 ArbZG" nicht.
+
+   Die Angabe ist bewusst knapp — Paragraf und Gesetz, dazu ein Halbsatz,
+   was dort steht. Wer mehr braucht, findet den Volltext bei
+   gesetze-im-internet.de; ihn hier einzubetten wäre Ballast und würde beim
+   nächsten Änderungsgesetz falsch.
+
+   Die Schutzvorschriften fehlen in dieser Tabelle mit Absicht: Bei ihnen
+   liefert schutzBefunde() in src/regelwerk.js die Fundstelle je Befund mit,
+   weil sie dort je nach Merkmal verschieden ist.
+   ========================================================================== */
+const RECHTSQUELLE = {
+  ruhezeit: { norm: "§ 5 Abs. 1 ArbZG",
+    satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
+  pause: { norm: "§ 4 ArbZG",
+    satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
+  /* Die Zahl zulässiger Dienste in Folge steht in keinem Gesetz. Sie kommt
+     aus dem Tarifvertrag, der Betriebsvereinbarung oder der eigenen
+     Festlegung — hier ist sie eine betriebliche Grenze, und das muss dabei
+     stehen. Sonst behauptet die Anwendung ein Gesetz, das es nicht gibt.
+     Die gesetzliche Anknüpfung nebenan ist echt, aber eine andere Frage. */
+  folge: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Das Arbeitszeitgesetz begrenzt die Dienstfolge nicht unmittelbar. Gesetzlich gebunden ist der Sonntag: § 11 Abs. 1 ArbZG verlangt mindestens 15 beschäftigungsfreie Sonntage im Jahr." },
+  nachtfolge: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Anknüpfung ist § 6 Abs. 1 ArbZG: Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen. Die Zahl selbst legt der Betrieb fest." },
+  abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
+    satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
+  ueberlappung: { norm: "§ 7 BUrlG",
+    satz: "Ein Zeitraum kann nicht zugleich Urlaub und eine andere Abwesenheit sein." },
+  urlaub: { norm: "§ 7 Abs. 1 BUrlG",
+    satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
+  nachweis: { norm: "§ 12 ArbSchG",
+    satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
+  sperre: { norm: "§ 34a GewO",
+    satz: "Bewachungstätigkeit setzt den Sachkundenachweis voraus — ohne ihn ist der Einsatz unzulässig." },
+  qualifikation: { norm: "§ 5 ArbSchG",
+    satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
+  fachkraft: { norm: "Landesheimpersonalverordnung",
+    satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." },
+  besetzung: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Die Mindestbesetzung legt der Betrieb fest. Bleibt sie dauerhaft unerreicht, ist das nach § 5 ArbSchG als Gefährdung zu beurteilen." },
+  urlaubsgrenze: { norm: "Betriebliche Grenze", betrieblich: true,
+    satz: "Wie viele gleichzeitig Urlaub haben dürfen, legt der Betrieb fest." },
+  einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
+    satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
+  ausgleich: { norm: "§ 3 Satz 2 ArbZG",
+    satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
+};
+
+/** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
+function rechtsquelle(b) {
+  if (!b) return null;
+  if (b.art === "schutz")
+    return { norm: String(b.titel || "").split(" — ")[0], satz: null };
+  return RECHTSQUELLE[b.art] || null;
+}
+
 function pruefen(m, von, bis) {
   return memo(m, `pr|${von}|${bis}`, () => {
     const out = []; const push = (o) => out.push({ id: `${o.art}|${o.datum}|${o.ref || ""}`, ...o });
@@ -1384,7 +1567,11 @@ function pruefen(m, von, bis) {
       }
       for (let i = 1; i < reihe.length; i++) {
         const [, e1] = fenster(reihe[i - 1].d, reihe[i - 1].da); const [s2] = fenster(reihe[i].d, reihe[i].da);
-        const ruhe = (s2 - e1) / 60;
+        /* Über die Zeitumstellung hinweg ist die Ruhezeit eine Stunde kürzer
+           oder länger, als die Uhr zeigt. Im März wurden aus elf Stunden auf
+           dem Plan zehn in Wirklichkeit — ein Verstoß gegen § 5 Abs. 1 ArbZG,
+           den die Prüfung nicht sah. */
+        const ruhe = (s2 - e1 + uhrversatz(e1, s2)) / 60;
         if (ruhe < m.einstellungen.ruhezeit && reihe[i].d >= von && reihe[i].d <= bis)
           push({ art: "ruhezeit", schwere: ruhe < 8 ? "danger" : "warn", datum: reihe[i].d, ref: p.id, personId: p.id,
             titel: `Ruhezeit unterschritten — ${p.nachname}`,
@@ -1396,7 +1583,7 @@ function pruefen(m, von, bis) {
         if (t.dienstId) {
           if (!lauf) ab = d; lauf++;
           const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          nl = da && nachtAnteil(da) >= 2 ? nl + 1 : 0;
+          nl = da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) ? nl + 1 : 0;
           if (lauf === m.einstellungen.maxFolge + 1 && d >= von && d <= bis)
             push({ art: "folge", schwere: "warn", datum: d, ref: p.id, personId: p.id,
               titel: `${lauf} Dienste in Folge — ${p.nachname}`, text: `Serie ab ${fKurz(ab)}, Grenzwert ${m.einstellungen.maxFolge}` });
@@ -1417,7 +1604,7 @@ function pruefen(m, von, bis) {
         if (!t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        if (ein.keineNacht && nachtAnteil(da) >= 2)
+        if (ein.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
           push({ art: "einschraenkung", schwere: "danger", datum: d, ref: p.id, personId: p.id,
             titel: `Nachtdienst trotz Einschränkung — ${p.nachname}`,
             text: `${da.name} eingeteilt, obwohl keine Nachtdienste zugelassen sind` });
@@ -1495,6 +1682,35 @@ function pruefen(m, von, bis) {
             titel: `Überlappende Abwesenheiten — ${p.nachname}`,
             text: `${abwArt(l[i].art).label} und ${abwArt(l[j].art).label} überschneiden sich` });
     }
+    /* --- Besondere Personengruppen ---
+
+       Jugendliche, Schwangere und Stillende, schwerbehinderte Menschen. Drei
+       Fälle, in denen ein Plan unzulässig ist, der für alle anderen in
+       Ordnung wäre — und alle drei sind in Pflege und Sicherheit alltäglich.
+
+       Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
+       werden sie nur auf den Plan angewendet. */
+    for (const p of m.personen) {
+      if (!imDienst(p, von) && !imDienst(p, bis)) continue;
+      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
+         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+      const alterHeute = alterAm(p.geburtstag, bis);
+      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+
+      for (let d = von; d <= bis; d = addDays(d, 1)) {
+        const t = personTag(m, p, d);
+        if (t.abwesenheit || !t.dienstId) continue;
+        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        if (!da) continue;
+        for (const b of schutzBefunde(p, da, d)) {
+          push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
+            ref: `${p.id}|${b.regel}`, personId: p.id,
+            titel: `${b.regel} — ${p.nachname}`,
+            text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
+        }
+      }
+    }
+
     for (let d = von; d <= bis; d = addDays(d, 1)) for (const e of m.einheiten) {
       const n = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && (abwesenheitAm(m, p.id, d) || {}).art === "urlaub").length;
       if (n > m.einstellungen.maxUrlaubJeEinheit)
@@ -1529,7 +1745,8 @@ function simulation(m) {
       const c = t[i], nx = t[(i + 1) % len], pv = t[(i - 1 + len) % len];
       if (c && c !== "-") {
         lauf++; maxFolge = Math.max(maxFolge, lauf);
-        if (map[c] && nachtAnteil(map[c]) >= 2) { nl++; maxNacht = Math.max(maxNacht, nl); } else nl = 0;
+        if (map[c] && nachtAnteil(map[c], m.einstellungen) >= nachtschwelle(m.einstellungen)) {
+          nl++; maxNacht = Math.max(maxNacht, nl); } else nl = 0;
         if ((!pv || pv === "-") && (!nx || nx === "-")) einzel++;
         if (nx && nx !== "-" && map[c] && map[nx]) {
           const [, e1] = fenster("2024-01-01", map[c]); const [s2] = fenster("2024-01-02", map[nx]);
@@ -1809,11 +2026,15 @@ const einschr = (p) => p.einschraenkungen || {};
 /* ------------------------------ Ist-Erfassung ---------------------------- */
 /** Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante. */
 function istDauer(m, p, d, da) {
+  /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
+     ein Nachtdienst sieben oder neun Stunden, nicht acht. Diese Stelle ist
+     der Engpass für alle geleisteten Stunden — Stundenkonto, Lohnausgabe,
+     Ausgleichszeitraum, Belastung hängen daran. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
-  if (!e || !e.bestaetigt) return { std: dauer(da), erfasst: false, abweichung: 0 };
+  if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
   const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
-  const std = dauer(roh);
-  return { std, erfasst: true, abweichung: Math.round((std - dauer(da)) * 100) / 100 };
+  const std = dauerAm(d, roh);
+  return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
 }
 const offeneErfassung = (m, p, bis) => {
   const out = [];
@@ -1836,7 +2057,8 @@ function hindernisse(m, p, d, da) {
   const e = einschr(p);
   if (!imDienst(p, d)) g.push("nicht im Bestand");
   if (abwesenheitAm(m, p.id, d)) g.push(`abwesend (${abwArt(abwesenheitAm(m, p.id, d).art).label})`);
-  if (e.keineNacht && nachtAnteil(da) >= 2) g.push("keine Nachtdienste zugelassen");
+  if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
+    g.push("keine Nachtdienste zugelassen");
   if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
   // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
   if (kann(m, "hartesperre") && da.form !== "ruf") {
@@ -1945,7 +2167,8 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
       if (p.teilzeit && p.teilzeit.aktiv) { punkte -= 6; gruende.push("Teilzeit"); }
     }
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
-    if (nachtAnteil(da) >= 2 && nj > nachtMittel + 3) { punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
+    if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
+      punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -1986,7 +2209,7 @@ function verteilung(m, von, bis) {
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
         dienste++;
-        const w = dow(d), nacht = nachtAnteil(da) >= 2;
+        const w = dow(d), nacht = nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
         if (nacht) naechte++;
         if (nacht && (w === 4 || w === 5)) weNacht++;
         if (w >= 5) wochenenden++;
@@ -2081,7 +2304,7 @@ function zuschlagStunden(m, p, ym) {
       if (!da) continue;
       const gearbeitet = istDauer(m, p, d, da).std;
       r.gesamt += gearbeitet;
-      r.nacht += nachtAnteil(da);
+      r.nacht += nachtAnteilAm(d, da, m.einstellungen);
       for (const teil of tagesanteile(d, da)) {
         const std = teil.minuten / 60;
         const w = dow(teil.datum);
@@ -2306,18 +2529,21 @@ function datenauskunft(m, personId) {
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
-  z.push("", `Aufbewahrungsfrist nach Austritt: ${m.einstellungen.aufbewahrungMonate || 24} Monate.`);
+  /* Artikel 15 Abs. 1 lit. d DSGVO verlangt die Dauer der Speicherung —
+     und zwar alle drei, nicht nur die für Stammdaten. */
+  const fr = loeschFristen(m);
+  z.push("", "AUFBEWAHRUNG");
+  z.push(`  Plan-, Zeit- und Stempeldaten: ${fr.plandatenMonate} Monate`);
+  z.push(`  Stammdaten nach Austritt: ${fr.stammdatenMonate} Monate, danach Anonymisierung`);
+  z.push(`  Abwesenheitsgründe: ${fr.gruendeMonate} Monate`);
+  if (fr.zuletztGeraeumt) z.push(`  Letzter Löschlauf: ${fDatum(fr.zuletztGeraeumt)}`);
   return z.join("\n");
 }
-/** Wessen Daten dürfen nach Ablauf der Frist anonymisiert werden? */
-function anonymisierbar(m) {
-  const frist = m.einstellungen.aufbewahrungMonate || 24;
-  return m.personen.filter((p) => {
-    if (!p.austritt || p.anonym) return false;
-    const d = pISO(p.austritt); d.setMonth(d.getMonth() + frist);
-    return iso(d) <= heute();
-  });
-}
+/* Wer zur Anonymisierung fällig ist, rechnet jetzt src/aufbewahrung.js —
+   zusammen mit den beiden anderen Fristen und mit Prüfungen dahinter. Die
+   alte Fassung hier las einstellungen.aufbewahrungMonate; die Fristen liegen
+   seit Migration 5 → 6 unter m.aufbewahrung, und beide Werte liefen
+   auseinander, ohne dass es auffiel. */
 
 /* --------------------------- Konflikterkennung --------------------------- */
 /**
@@ -2497,7 +2723,7 @@ function importZuordnen(kopf, zeilen) {
     const p = proben(idx);
     if (p.length < 3) return null;
     const anteil = (f) => p.filter(f).length / p.length;
-    if (anteil((x) => /^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
+    if (anteil((x) => /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
       return "datum";
     if (anteil((x) => /@/.test(x) && /\./.test(x)) > .7) return "email";
     if (anteil((x) => /^\d{1,2}([.,]\d{1,2})?$/.test(x)) > .7) {
@@ -3984,14 +4210,42 @@ const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, 
 const Inp = (p) => <input {...p} className={`inp ${p.className || ""}`} />;
 const Sel = ({ children, ...p }) => <select {...p} className={`sel ${p.className || ""}`}>{children}</select>;
 
-const Field = ({ label, hint, children, style }) => (
-  <label style={{ display: "block", ...style }}>
-    <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: C.dim,
-      marginBottom: 6 }}>{label}</span>
-    {children}
-    {hint && <span style={{ display: "block", fontSize: 12, color: C.dim, marginTop: 5,
-      lineHeight: 1.45 }}>{hint}</span>}
-  </label>);
+/**
+ * Beschriftetes Eingabefeld.
+ *
+ * Das umschließende label verknüpfte Beschriftung und Feld bereits — daran
+ * war nichts falsch. Zwei Dinge fehlten trotzdem:
+ *
+ * Der Hinweistext stand nur daneben, ohne Verbindung zum Feld. Ein
+ * Bildschirmleser las ihn nicht mit, obwohl er oft die eigentliche
+ * Erklärung trägt.
+ *
+ * Und die Verknüpfung war nur mittelbar. Sobald ein Feld in einer
+ * Überlagerung landet oder mehrere Bedienelemente in einer Beschriftung
+ * stehen, trägt sie nicht mehr. Die ausdrückliche Zuordnung über id hält
+ * in beiden Fällen.
+ */
+const Field = ({ label, hint, children, style }) => {
+  const eigen = useId();
+  const istElement = React.isValidElement(children);
+  const feldId = istElement ? (children.props.id || eigen) : undefined;
+  const hinweisId = hint ? `${eigen}-hinweis` : undefined;
+  const feld = istElement
+    ? React.cloneElement(children, {
+      id: feldId,
+      "aria-describedby": [children.props["aria-describedby"], hinweisId]
+        .filter(Boolean).join(" ") || undefined,
+    })
+    : children;
+  return (
+    <div style={{ display: "block", ...style }}>
+      <label htmlFor={feldId} style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+        color: C.dim, marginBottom: 6 }}>{label}</label>
+      {feld}
+      {hint && <span id={hinweisId} style={{ display: "block", fontSize: 12, color: C.dim,
+        marginTop: 5, lineHeight: 1.45 }}>{hint}</span>}
+    </div>);
+};
 
 const Seg = ({ value, onChange, options }) => (
   <div className="seg" role="tablist">
@@ -4003,7 +4257,12 @@ const Seg = ({ value, onChange, options }) => (
 const H1 = ({ children, rubrik, sub, right, style }) => (
   <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between",
     gap: 24, flexWrap: "wrap", marginBottom: 32, ...style }}>
-    <div style={{ minWidth: 0, flex: 1 }}>
+    {/* `flex: 1` mit minWidth 0 klang richtig und war es nicht: Die Knöpfe
+        rechts tragen flexShrink 0, also gaben sie nicht nach — bei 390
+        Pixeln blieb für die Überschrift ein Streifen von sechzig Pixeln, und
+        der Untertitel brach Wort für Wort um. Mit einer Mindestbreite als
+        Basis rutscht die rechte Gruppe stattdessen in die nächste Zeile. */}
+    <div style={{ minWidth: 0, flex: "1 1 300px" }}>
       {rubrik && <Rubrik style={{ marginBottom: 10 }}>{rubrik}</Rubrik>}
       <h1 className="titel">{children}</h1>
       {sub && <p className="untertitel">{sub}</p>}
@@ -4056,9 +4315,54 @@ function Balken({ ist, soll, tone }) {
     <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3, transition: "width .4s cubic-bezier(.4,0,.2,1)" }} /></div>;
 }
 function Sheet({ open, onClose, titel, children, width = 700 }) {
+  const blatt = useRef(null);
+  const vorher = useRef(null);
+
+  /* Fokus führen.
+
+     Vorher blieb der Tastaturfokus hinter dem Blatt: Wer mit der Tastatur
+     arbeitet, tabbte durch die verdeckte Seite. Drei Dinge fehlten — Fokus
+     beim Öffnen hinein, Fokus darin halten, beim Schließen zurück zum
+     auslösenden Element. Escape schließt jetzt ebenfalls. */
+  useEffect(() => {
+    if (!open) return undefined;
+    vorher.current = document.activeElement;
+    const knoten = blatt.current;
+    if (!knoten) return undefined;
+
+    const fokussierbar = () => Array.from(knoten.querySelectorAll(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]),'
+      + ' select:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      .filter((el) => el.offsetParent !== null);
+
+    const erste = fokussierbar()[0];
+    if (erste) erste.focus();
+    else knoten.focus();
+
+    const taste = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const liste = fokussierbar();
+      if (!liste.length) return;
+      const ersteE = liste[0], letzteE = liste[liste.length - 1];
+      if (e.shiftKey && document.activeElement === ersteE) { e.preventDefault(); letzteE.focus(); }
+      else if (!e.shiftKey && document.activeElement === letzteE) { e.preventDefault(); ersteE.focus(); }
+    };
+    knoten.addEventListener("keydown", taste);
+    return () => {
+      knoten.removeEventListener("keydown", taste);
+      /* Zurück zu dem, was das Blatt geöffnet hat — sonst landet der Fokus
+         am Seitenanfang und man sucht sich zurück. */
+      const z = vorher.current;
+      if (z && typeof z.focus === "function" && document.contains(z)) z.focus();
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
   return (<div className="sheet-back" onClick={onClose}>
-    <div className="blatt" onClick={(e) => e.stopPropagation()} style={{ maxWidth: width }}>
+    <div className="blatt" ref={blatt} tabIndex={-1} role="dialog" aria-modal="true"
+      aria-label={typeof titel === "string" ? titel : undefined}
+      onClick={(e) => e.stopPropagation()} style={{ maxWidth: width }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px",
         borderBottom: `1px solid ${C.lineSoft}` }}>
         <div style={{ fontSize: 18, fontWeight: 650, letterSpacing: "-.02em" }}>{titel}</div>
@@ -4073,10 +4377,51 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
    ANMELDUNG — bestimmt die Zugriffstiefe
    ========================================================================== */
 function Anmeldung({ db, onLogin }) {
-  const [mid, setMid] = useState(db.mandanten[0].id);
-  const m = db.mandanten.find((x) => x.id === mid);
-  const proRolle = ROLLEN.filter((r) => r.id !== "betreiber").map((r) => ({
-    r, person: m.personen.find((p) => p.rolle === r.id && p.status === "aktiv") }));
+  /* Die gewählte Kennung wird einmal beim ersten Rendern festgelegt. Ändert
+     sich der Bestand danach — weil der Server einen gefilterten Ausschnitt
+     nachliefert oder ein frisch angelegter Raum noch keine Betriebe hat —,
+     zeigte mid auf einen Betrieb, den es nicht mehr gibt. `find` gab dann
+     undefined zurück und die nächste Zeile brach mit „Cannot read
+     properties of undefined (reading 'personen')" ab.
+
+     Statt darauf zu vertrauen, dass die Kennung passt, wird sie gegen den
+     aktuellen Bestand geprüft und notfalls auf den ersten Betrieb
+     zurückgeführt. */
+  const betriebe = Array.isArray(db.mandanten) ? db.mandanten : [];
+  const [mid, setMid] = useState(betriebe.length ? betriebe[0].id : null);
+  const m = betriebe.find((x) => x.id === mid) || betriebe[0] || null;
+  /* Impressum und Datenschutzerklärung müssen ohne Anmeldung erreichbar
+     sein — „ständig verfügbar" nach § 5 DDG heißt: auch für jemanden, der
+     noch gar keinen Zugang hat. */
+  const [recht, setRecht] = useState(null);
+  const proRolle = m && Array.isArray(m.personen)
+    ? ROLLEN.filter((r) => r.id !== "betreiber").map((r) => ({
+      r, person: m.personen.find((p) => p.rolle === r.id && p.status === "aktiv") }))
+    : [];
+
+  /* Ohne Betrieb gibt es keine Rollenauswahl. Das trifft einen Zugang, der
+     auf einen leeren Raum zeigt — vorher endete das im Fehlerbildschirm. */
+  if (!m) {
+    return (
+      <div className="sw-root">
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center",
+          justifyContent: "center", padding: "5vh 20px" }}>
+          <Card style={{ padding: 30, maxWidth: 460, textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+              <Logo size={64} />
+            </div>
+            <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>
+              Dieser Zugang hat noch keinen Betrieb</div>
+            <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>
+              Der Datenraum ist angelegt, aber noch leer. Die Organisationsleitung
+              richtet den Betrieb ein — danach funktioniert dieser Zugang.</p>
+            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+          </Card>
+        </div>
+        <RechtLeiste onOeffnen={setRecht} style={{ paddingBottom: 26 }} />
+        {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
+      </div>);
+  }
 
   return (
     <div className="sw-root">
@@ -4135,8 +4480,11 @@ function Anmeldung({ db, onLogin }) {
             Vorführfassung. Die Anmeldung ersetzt hier das Kennwortverfahren —
             die Zugriffstiefe ergibt sich in beiden Fällen aus Rolle und Geltungsbereich.
           </div>
+
+          <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 18 }} />
         </div>
       </div>
+      {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
     </div>);
 }
 
@@ -4497,6 +4845,10 @@ function ModellVorschau({ modell, tage = 28, gruppe = 0 }) {
 }
 
 function Assistent2({ sitz, akt, onClose }) {
+  /* Der Einrichtungsassistent zeigt Nachtanteile, bevor der Betrieb steht.
+     Er nimmt das Fenster des laufenden Betriebs — sonst zeigte er 23 Uhr,
+     während die Prüfung danach mit 21 rechnet. */
+  const einst = (sitz.mandant || {}).einstellungen;
   const m = sitz.mandant;
   const [schritt, setSchritt] = useState(0);
   const [branche, setBranche] = useState(m.branche || "sonstiges");
@@ -4766,7 +5118,7 @@ function Assistent2({ sitz, akt, onClose }) {
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: C.dim, ...NUM }}>
                     {n1(dauer(d))} h</td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, ...NUM,
-                    color: nachtAnteil(d) > 0 ? C.violet : C.dimmer }}>{n1(nachtAnteil(d))} h</td>
+                    color: nachtAnteil(d, einst) > 0 ? C.violet : C.dimmer }}>{n1(nachtAnteil(d, einst))} h</td>
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
                     <Inp type="number" min={0} value={d.mindest.mo_do} style={{ width: 62 }}
                       onChange={(e) => setDienste(dienste.map((x, k) => k === i
@@ -5330,7 +5682,7 @@ const ABLAUF = [
     warum: "Das ist die eigentliche Planung. Der Einrichtungsassistent führt durch die Auswahl und zeigt bei jedem Modell die gerechneten Kennzahlen.",
     fertig: (m) => m.zyklus && m.zyklus.tage && m.zyklus.tage.some((t) => t && t !== "-")
       && m.einheiten.filter((e) => !e.pool).length >= 2,
-    stand: (m) => `${m.zyklus.tage.length} Zyklustage · ${m.einheiten.filter((e) => !e.pool).length} ${m.einheitLabel}n`,
+    stand: (m) => `${m.zyklus.tage.length} Zyklustage · ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)}`,
   },
   {
     id: "pruefen", titel: "Plan prüfen und freigeben", rolle: "planer", ziel: "plan",
@@ -6098,13 +6450,18 @@ function AntraegeGeteilt({ sitz, akt }) {
   return (
     <div>
       <H1 rubrik="Anliegen"
-        sub="Links die Anträge, rechts die Kapazität. Bei Auswahl eines Antrags werden die betroffenen Wochen hervorgehoben — so ist vor der Entscheidung sichtbar, was sie auslöst."
+        sub="Erst die Anträge, daneben die Kapazität. Bei Auswahl eines Antrags werden die betroffenen Wochen hervorgehoben — so ist vor der Entscheidung sichtbar, was sie auslöst."
         right={<Seg value={reiter} onChange={setReiter}
           options={[{ id: "einzeln", label: "Einzelanträge" }, { id: "runde", label: "Jahresurlaubsrunde" }]} />}>
         Anträge</H1>
 
       {reiter === "runde" ? <Urlaubsrunde sitz={sitz} akt={akt} /> : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.25fr) minmax(300px,1fr)", gap: 18,
+        /* Zwei Spalten brauchen Platz. Bei 390 Pixeln blieb für die rechte
+           Spalte ein Streifen von sechzig Pixeln übrig, und die linke wurde
+           so schmal, dass der Untertitel Wort für Wort umbrach. Unterhalb
+           von 900 Pixeln stehen sie deshalb untereinander. */
+        <div className="zweispaltig" style={{ display: "grid",
+          gridTemplateColumns: "minmax(0,1.25fr) minmax(300px,1fr)", gap: 18,
           alignItems: "start" }}>
 
           {/* ------------------------- Liste ------------------------- */}
@@ -6747,7 +7104,8 @@ function MeineSchichten({ sitz, akt, ym }) {
                   {t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : "frei"}</div>
                 {da && <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende} · {n1(dauer(da))} h · {da.ort}</div>}
               </div>
-              {da && nachtAnteil(da) >= 2 && <Pill size="sm" tone="violet">Nacht</Pill>}
+              {da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen)
+                && <Pill size="sm" tone="violet">Nacht</Pill>}
               {t.quelle === "abweichung" && <Pill size="sm" tone="warn">geändert</Pill>}
             </div>);
         })}</div>
@@ -6870,7 +7228,7 @@ function Lagebild({ sitz, oeffneTag, akt }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 20, marginBottom: 20 }}>
         <KpiRow min={150}>
-          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${m.einheitLabel}n`} />
+          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
           <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
@@ -6917,7 +7275,179 @@ function Lagebild({ sitz, oeffneTag, akt }) {
 }
 
 /* ============================== MONATSPLAN =============================== */
-function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
+/* --------------------------------------------------------------------------
+   MONATSLAGE
+
+   Die Frage einer Planerin lautet nicht „wie sieht der Monat aus", sondern
+   „wo muss ich ran". Bis hierher musste sie dafür rund fünfhundert Zellen
+   absuchen — die Antwort stand im Raster, aber nirgends als Antwort.
+
+   Ausgewertet wird, was ohnehin schon berechnet ist: besetzung() läuft für
+   jeden Tag des Monats. Hier wird daraus nur eine Rangfolge.
+   -------------------------------------------------------------------------- */
+function monatsLage(m, tage, bes) {
+  const treffer = [];
+  for (const d of tage) {
+    const je = bes[d] || {};
+    let stufe = 0;
+    const gruende = [];
+    for (const [dienstId, b] of Object.entries(je)) {
+      const da = m.dienstarten.find((x) => x.id === dienstId);
+      const name = da ? da.kurz || da.name : dienstId;
+      if (b.status === "danger") {
+        stufe = 2;
+        gruende.push(`${name} ${b.anzahl - b.soll}`);
+      } else if (b.status === "warn") {
+        stufe = Math.max(stufe, 1);
+        gruende.push(`${name} ${b.anzahl - b.soll}`);
+      }
+      /* Eine fehlende Fachkraft wiegt schwerer als eine fehlende Kraft:
+         Die Quote ist in der Pflege nachweispflichtig. */
+      if (b.qualFehlt) { stufe = 2; gruende.push(`${name} Quote`); }
+    }
+    if (stufe) treffer.push({ datum: d, stufe, text: gruende.slice(0, 2).join(" · ") });
+  }
+  return {
+    tage: treffer,
+    dringend: treffer.filter((x) => x.stufe === 2).length,
+    knapp: treffer.filter((x) => x.stufe === 1).length,
+  };
+}
+
+/**
+ * Die Antwort über dem Raster. Wer nichts weiter tun muss, hat den Monat
+ * hier bereits verstanden und kann die Ansicht schließen.
+ */
+function Tagesfazit({ lage, onTag }) {
+  if (!lage.tage.length) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+        background: C.okLight, borderLeft: `3px solid ${C.ok}`, borderRadius: "0 6px 6px 0",
+        marginBottom: 16 }}>
+        <span style={{ fontSize: 14.5 }}>
+          <b>Der Monat ist durchgehend besetzt.</b> Keine Unterschreitung, keine offene Quote.</span>
+      </div>);
+  }
+  const satz = lage.dringend && lage.knapp
+    ? `${lage.dringend} Tag${lage.dringend > 1 ? "e sind" : " ist"} unterbesetzt, ${lage.knapp} weitere${lage.knapp > 1 ? "" : "r"} knapp.`
+    : lage.dringend
+      ? `${lage.dringend} Tag${lage.dringend > 1 ? "e brauchen" : " braucht"} Aufmerksamkeit.`
+      : `${lage.knapp} Tag${lage.knapp > 1 ? "e sind" : " ist"} knapp besetzt.`;
+  return (
+    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      padding: "13px 16px", background: lage.dringend ? C.dangerLight : C.warnLight,
+      borderLeft: `3px solid ${lage.dringend ? C.danger : C.warn}`, borderRadius: "0 6px 6px 0",
+      marginBottom: 16 }}>
+      <span style={{ fontSize: 14.5, flex: "1 1 220px" }}><b>{satz}</b></span>
+      {lage.tage.slice(0, 8).map((t) => (
+        <button key={t.datum} type="button" onClick={() => onTag(t.datum)}
+          title={`${fLang(t.datum)} · ${t.text}`}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.flaeche,
+            border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 11px", fontSize: 12.5,
+            fontFamily: "inherit", color: C.text, cursor: "pointer", ...NUM }}>
+          <span style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+            background: t.stufe === 2 ? C.danger : C.warn }} />
+          {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
+          <span style={{ color: C.dimmer }}>{t.text}</span>
+        </button>))}
+      {lage.tage.length > 8 && (
+        <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
+    </div>);
+}
+
+/* --------------------------------------------------------------------------
+   WOCHENLISTE — der Monatsplan auf dem Telefon
+
+   Das Raster hat eine Mindestbreite von 1040 Pixeln. Auf 390 Pixeln bleibt
+   davon ein Ausschnitt von drei Tagen, und mit einunddreißig Spalten lässt
+   sich daran nichts retten — es braucht eine andere Form, keine kleinere.
+
+   Deshalb eine Liste: sieben Tage untereinander, je Tag die Dienste mit
+   ihrem Besetzungsstand. Dieselben Zahlen wie im Raster, dieselbe Prüfung,
+   nur senkrecht statt waagerecht. Antippen öffnet den Tag.
+   -------------------------------------------------------------------------- */
+function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
+  const m = sitz.mandant;
+  const [y, mo] = ym.split("-").map(Number);
+  const n = dim_(y, mo - 1);
+  const d0 = heute();
+  const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
+
+  /* Die Woche, die den heutigen Tag enthält — sonst die erste des Monats. */
+  const startTag = d0.slice(0, 7) === ym ? Math.max(1, pISO(d0).getDate() - 3) : 1;
+  const [ab, setAb] = useState(startTag);
+  useEffect(() => { setAb(d0.slice(0, 7) === ym ? Math.max(1, pISO(d0).getDate() - 3) : 1); }, [ym]);
+
+  const tage = [];
+  for (let i = ab; i < ab + 7 && i <= n; i++) tage.push(`${ym}-${pad(i)}`);
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 10, marginBottom: 12 }}>
+        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}>‹ davor</Btn>
+        <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
+          {pISO(tage[0]).getDate()}. – {pISO(tage[tage.length - 1]).getDate()}. {MON[mo - 1]}</span>
+        <Btn size="sm" onClick={() => setAb(Math.min(n - 6 > 0 ? n - 6 : 1, ab + 7))}
+          disabled={ab + 7 > n}>danach ›</Btn>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {tage.map((d) => {
+          const fei = feiertag(d, m.bundesland);
+          const we = dow(d) >= 5;
+          const t = lage.tage.find((x) => x.datum === d);
+          const istHeute = d === d0;
+          return (
+            <Card key={d} onClick={() => oeffneTag(d)}
+              style={{ padding: 0, overflow: "hidden", cursor: "pointer",
+                borderLeft: `3px solid ${t ? (t.stufe === 2 ? C.danger : C.warn) : istHeute ? C.accent : "transparent"}` }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
+                background: istHeute ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent" }}>
+                <span style={{ fontSize: 19, fontWeight: 700, ...NUM,
+                  color: istHeute ? C.accent : C.text }}>{pISO(d).getDate()}.</span>
+                <span style={{ fontSize: 13.5, color: C.dim }}>{DOW_LANG[dow(d)]}</span>
+                {fei && <Pill size="sm" tone="warn">{fei}</Pill>}
+                {istHeute && <Pill size="sm" tone="accent">heute</Pill>}
+                <span style={{ flex: 1 }} />
+                {t && <span style={{ fontSize: 12, fontWeight: 700,
+                  color: t.stufe === 2 ? C.danger : C.warn }}>{t.text}</span>}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {m.dienstarten.map((da) => {
+                  const b = (bes[d] || {})[da.id];
+                  if (!b) return null;
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
+                  return (
+                    <div key={da.id} style={{ display: "flex", alignItems: "center", gap: 11,
+                      padding: "9px 14px", borderTop: `1px solid ${C.lineSoft}`, minHeight: 44 }}>
+                      <Zelle da={da} size={26} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5 }}>{da.name}</div>
+                        <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flexShrink: 0, minWidth: 62 }}>
+                        <div style={{ fontSize: 14, ...NUM }}>
+                          <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
+                          <span style={{ color: C.dimmer, fontSize: 11.5 }}>/{b.soll}</span></div>
+                        <div style={{ width: 58, height: 3, borderRadius: 2, background: C.lineSoft,
+                          overflow: "hidden", marginLeft: "auto", marginTop: 3 }}>
+                          <div style={{ width: `${anteil}%`, height: "100%",
+                            background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
+                      </div>
+                      {b.qualFehlt && <span title="Fachkraftquote nicht erfüllt"
+                        style={{ width: 7, height: 7, borderRadius: 4, background: C.danger, flexShrink: 0 }} />}
+                    </div>);
+                })}
+              </div>
+            </Card>);
+        })}
+      </div>
+    </div>);
+}
+
+function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
   const [suche, setSuche] = useState("");
   const [filterDienst, setFilterDienst] = useState("");
   const [nurKnapp, setNurKnapp] = useState(false);
@@ -6929,10 +7459,11 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
   const d0 = heute();
   const bes = useMemo(() => Object.fromEntries(tage.map((d) => [d, besetzung(m, d)])), [m, ym]);
   const shift = (k) => { const d = new Date(y, mo - 1 + k, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); };
+  const lage = useMemo(() => monatsLage(m, tage, bes), [m, ym, bes]);
 
   return (
     <div>
-      <H1 sub={`${m.name} · ${m.einheiten.length} ${m.einheitLabel}n`}
+      <H1 sub={`${m.name} · ${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`}
         right={<div style={{ display: "flex", gap: 9 }} className="noprint">
           {darf(sitz, "plan.view.unit") && <Btn onClick={() => akt.aushangPDF(ym, sitz.person.bereich !== "ALLE"
             ? sitz.person.bereich : (sitz.mandant.einheiten.find((x) => !x.pool) || {}).id)}>Aushang</Btn>}
@@ -6943,6 +7474,12 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
           <Btn onClick={() => shift(1)}>›</Btn></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
+
+      <Tagesfazit lage={lage} onTag={oeffneTag} />
+
+      {/* Auf dem Telefon tritt die Liste an die Stelle des Rasters. Kein
+          geschrumpftes Raster, sondern eine eigene Form. */}
+      {schmal ? <Wochenliste sitz={sitz} ym={ym} oeffneTag={oeffneTag} bes={bes} lage={lage} /> : <>
 
       <Filterleiste suche={suche} setSuche={setSuche} platzhalter={`${m.einheitLabel} oder Dienstart …`}
         rechts={<>
@@ -6957,18 +7494,43 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
         </>} />
 
       <Card style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
-          <thead><tr>
+        <table role="grid" aria-label="Monatsplan — mit den Pfeiltasten bewegen, Eingabetaste öffnet den Tag"
+          style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
+          <thead>
+            {/* Eine Zeile, die den ganzen Monat beantwortet: Höhe des Strichs
+                ist die Dringlichkeit. Wer nur hier hinsieht, weiß Bescheid. */}
+            <tr className="noprint">
+              <th style={{ position: "sticky", left: 0, zIndex: 2, background: C.flaeche, textAlign: "left",
+                padding: "10px 20px 4px", minWidth: 160 }}><Lab>Aufmerksamkeit</Lab></th>
+              {tage.map((d) => { const t = lage.tage.find((x) => x.datum === d);
+                return (<th key={d}
+                  {...zelleBedienbar(() => oeffneTag(d),
+                    `Aufmerksamkeit · ${fLang(d)}${t ? ` · ${t.text}` : " · unauffällig"}`, d === tage[0])}
+                  style={{ padding: "10px 0 4px", cursor: "pointer", verticalAlign: "bottom" }}>
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", height: 18 }}>
+                    <span style={{ width: "58%", borderRadius: 2,
+                      height: t ? (t.stufe === 2 ? 16 : 9) : 3,
+                      background: t ? (t.stufe === 2 ? C.danger : C.warn) : C.line,
+                      opacity: t ? 1 : .55 }} /></div></th>); })}
+            </tr>
+            <tr>
             <th style={{ position: "sticky", left: 0, zIndex: 2, background: C.flaeche, textAlign: "left",
               padding: "15px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 160 }}><Lab>{m.einheitLabel}</Lab></th>
             {tage.map((d) => { const fei = feiertag(d, m.bundesland), we = dow(d) >= 5;
               const eng = Object.values(bes[d]).some((x) => x.status !== "ok");
               const blass = nurKnapp && !eng;
-              return (<th key={d} onClick={() => oeffneTag(d)} title={fei || fLang(d)}
+              return (<th key={d}
+                {...zelleBedienbar(() => oeffneTag(d),
+                  `Tag · ${fLang(d)}${fei ? ` · ${fei}` : ""}${eng ? " · Engpass" : ""}`)}
                 style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 33, cursor: "pointer",
                   opacity: blass ? .3 : 1,
-                  background: d === d0 ? "rgba(43,52,64,.075)" : fei ? C.dangerLight : we ? "rgba(20,20,25,.03)" : "transparent" }}>
-                <div style={{ fontSize: 10.5, color: fei ? C.danger : we ? C.dim : C.dimmer, fontWeight: 500 }}>{DOW[dow(d)]}</div>
+                  /* Nur noch der Kalender: Wochenende und Feiertag teilen sich
+                     denselben stillen Ton. Vorher trug ein Feiertag C.dangerLight
+                     — dieselbe Farbe wie eine Unterbesetzung, was beides
+                     ununterscheidbar machte. */
+                  background: d === d0 ? C.accentLight : (fei || we) ? C.flaecheStill : "transparent",
+                  boxShadow: d === d0 ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
+                <div style={{ fontSize: 10.5, color: fei ? C.warn : we ? C.dim : C.dimmer, fontWeight: fei ? 700 : 500 }}>{fei ? "Fei" : DOW[dow(d)]}</div>
                 <div style={{ fontSize: 13, color: d === d0 ? C.accent : C.text, fontWeight: d === d0 ? 700 : 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
               </th>); })}
           </tr></thead>
@@ -6987,11 +7549,18 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
                 {tage.map((d) => {
                   const da = map[einheitDienst(m, e.id, d)];
                   const fehlt = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && abwesenheitAm(m, p.id, d)).length;
-                  return (<td key={d} onClick={() => oeffneTag(d)} style={{ padding: "6px 2px", textAlign: "center",
+                  return (<td key={d}
+                    {...zelleBedienbar(() => oeffneTag(d),
+                      `${fLang(d)} · ${e.name}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`)}
+                    style={{ padding: "6px 2px", textAlign: "center",
                     borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
-                    background: d === d0 ? "rgba(43,52,64,.035)" : dow(d) >= 5 ? "rgba(20,20,25,.02)" : "transparent" }}>
-                    <Planzelle da={da} unten={fehlt > 0 ? `−${fehlt}` : null}
-                      aktiv={d === d0} title={`${fLang(d)}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`} />
+                    background: d === d0 ? C.accentLight
+                      : (dow(d) >= 5 || feiertag(d, m.bundesland)) ? C.flaecheStill : "transparent" }}>
+                    {/* Vorher stand hier „−2". Das liest sich wie eine
+                        Unterbesetzung, gemeint sind aber Abwesende — und ob
+                        der Dienst dadurch unterbesetzt ist, sagen erst die
+                        Besetzungszeilen weiter unten. */}
+                    <Planzelle da={da} unten={fehlt > 0 ? `${fehlt} ab` : null} aktiv={d === d0} />
                   </td>); })}
               </tr>))}
             {m.dienstarten.filter((da) => (!filterDienst || da.id === filterDienst)
@@ -7005,12 +7574,28 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
                       <div style={{ fontSize: 11, color: C.dimmer }}>{da.ort}</div></div></div></td>
                 {tage.map((d) => { const b = bes[d][da.id];
                   const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
-                  return (<td key={d} onClick={() => oeffneTag(d)} title={`${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Qualifikation fehlt" : ""}`}
-                    style={{ textAlign: "center", padding: "8px 0", cursor: "pointer",
-                      background: b.status === "danger" ? C.dangerLight : b.status === "warn" ? C.warnLight : "rgba(20,20,25,.02)",
+                  const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
+                  const kalender = dow(d) >= 5 || feiertag(d, m.bundesland);
+                  return (<td key={d}
+                    {...zelleBedienbar(() => oeffneTag(d),
+                      `${fLang(d)} · ${da.name} · ${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
+                    style={{ textAlign: "center", padding: "5px 1px", cursor: "pointer",
+                      /* Fläche trägt den Kalender, nicht den Zustand. Der
+                         Zustand steht in Zahl und Füllstand — „3/4" sagt, wie
+                         weit es fehlt, eine rote Fläche sagt nur, dass etwas
+                         fehlt. */
+                      background: d === d0 ? C.accentLight : kalender ? C.flaecheStill : "transparent",
                       borderTop: i === 0 ? `2px solid ${C.line}` : `1px solid ${C.lineSoft}` }}>
-                    <span style={{ fontSize: 12.5, color: col, fontWeight: b.status === "ok" ? 500 : 700, ...NUM }}>{b.anzahl}</span>
-                    <span style={{ fontSize: 10, color: C.dimmer, ...NUM }}>/{b.soll}</span></td>); })}
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                      <div style={{ fontSize: 11.5, lineHeight: 1.1, ...NUM }}>
+                        <span style={{ color: col, fontWeight: b.status === "ok" ? 500 : 700 }}>{b.anzahl}</span>
+                        <span style={{ color: C.dimmer, fontSize: 9.5 }}>/{b.soll}</span></div>
+                      <div style={{ width: "72%", height: 3, borderRadius: 2, background: C.lineSoft, overflow: "hidden" }}>
+                        <div style={{ width: `${anteil}%`, height: "100%",
+                          background: b.status === "ok" ? C.ok : b.status === "warn" ? C.warn : C.danger }} /></div>
+                      {b.qualFehlt && <div title="Fachkraftquote nicht erfüllt"
+                        style={{ width: 5, height: 5, borderRadius: 3, background: C.danger }} />}
+                    </div></td>); })}
               </tr>))}
           </tbody>
         </table>
@@ -7022,6 +7607,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt }) {
             <span style={{ fontSize: 13, color: C.dim, ...NUM }}>{d.name} · {d.start}–{d.ende} · {n1(dauer(d))} h</span>
           </div>))}
       </div>
+      </>}
     </div>);
 }
 
@@ -7149,7 +7735,7 @@ function Tagesdetail({ sitz, datum, onClose, akt }) {
         <div>
           <div style={{ fontSize: 18, fontWeight: 620 }}>{e.da.name}</div>
           <div style={{ fontSize: 13, color: C.dimmer, marginTop: 4, ...NUM }}>
-            {e.da.start}–{e.da.ende} · {n1(dauer(e.da))} h{e.da.pause ? ` (${e.da.pause} min Pause)` : ""} · {n1(nachtAnteil(e.da))} h Nachtanteil · {e.da.ort}</div>
+            {e.da.start}–{e.da.ende} · {n1(dauer(e.da))} h{e.da.pause ? ` (${e.da.pause} min Pause)` : ""} · {n1(nachtAnteil(e.da, m.einstellungen))} h Nachtanteil · {e.da.ort}</div>
           {e.qual.length > 0 && <div style={{ display: "flex", gap: 7, marginTop: 11, flexWrap: "wrap" }}>
             {e.qual.map((q) => { const qn = m.qualifikationen.find((x) => x.id === q.qid);
               return <Pill key={q.qid} size="sm" tone={q.ok ? "ok" : "danger"}>{qn ? qn.kurz : q.qid} {q.ist}/{q.noetig}</Pill>; })}</div>}
@@ -7235,7 +7821,7 @@ function Schichtfolge({ sitz, akt }) {
 
   return (
     <div>
-      <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${m.einheitLabel}n mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
+      <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)} mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
         right={editierbar && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
 
       <KpiRow>
@@ -7302,7 +7888,7 @@ function Schichtfolge({ sitz, akt }) {
                 </div>
                 <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, lineHeight: 1.45 }}>{v.text}</div>
                 <div style={{ fontSize: 12, color: C.dimmer, marginTop: 7, ...NUM }}>
-                  {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {m.einheitLabel}n</div>
+                  {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {mehrzahl(m.einheitLabel)}</div>
               </div>))}
             {m.einheiten.length !== m.zyklus.wochen && (
               <div style={{ padding: 14, borderRadius: 12, background: C.warnLight, color: C.warn, fontSize: 13, marginBottom: 14, lineHeight: 1.45 }}>
@@ -7363,7 +7949,7 @@ function Dienstarten({ sitz, akt }) {
                   <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 3, ...NUM }}>
                     {d.start}–{d.ende} · {n1(dauer(d))} h{d.pause ? ` · ${d.pause} min Pause` : ""}</div>
                   <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
-                    {n1(nachtAnteil(d))} h Nachtanteil · {d.ort || "ohne Ort"}</div>
+                    {n1(nachtAnteil(d, m.einstellungen))} h Nachtanteil · {d.ort || "ohne Ort"}</div>
                 </div>
                 {d.posten && <Pill size="sm" tone="ok">Posten</Pill>}
               </div>
@@ -7402,8 +7988,10 @@ function Dienstarten({ sitz, akt }) {
           <div className="karte" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
             <div><Lab>Dauer</Lab><div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>{n1(dauer(f))} h</div></div>
             <div><Lab>Brutto</Lab><div style={{ fontSize: 19, fontWeight: 650, color: C.dim, ...NUM }}>{n1(brutto(f))} h</div></div>
-            <div><Lab>Nachtanteil 23–06 Uhr</Lab>
-              <div style={{ fontSize: 19, fontWeight: 650, color: nachtAnteil(f) > 0 ? C.violet : C.dimmer, ...NUM }}>{n1(nachtAnteil(f))} h</div></div>
+            <div><Lab>Nachtanteil {nachtFenster(m.einstellungen).von.slice(0, 2)}–{nachtFenster(m.einstellungen).bis.slice(0, 2)} Uhr</Lab>
+              <div style={{ fontSize: 19, fontWeight: 650,
+                color: nachtAnteil(f, m.einstellungen) > 0 ? C.violet : C.dimmer, ...NUM }}>
+                {n1(nachtAnteil(f, m.einstellungen))} h</div></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Bewertung auf das Stundenkonto"
@@ -7765,6 +8353,41 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* --- Schutzvorschriften ---
+
+                Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
+                ein Plan für diese Person unzulässig ist. Sie sind bewusst
+                sparsam gehalten: Ein Geburtsdatum, zwei Merkmale — mehr
+                braucht es nicht, und mehr gehört auch nicht erfasst. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Geburtsdatum"
+                hint="Nur für den Jugendarbeitsschutz. Bleibt leer, wenn nicht nötig.">
+                <Inp type="date" value={p.geburtstag || ""}
+                  onChange={(e) => akt.setzePerson(p.id, "geburtstag", e.target.value || null)} /></Field>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9, justifyContent: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                  <Schalter an={!!p.mutterschutz}
+                    onChange={() => akt.setzePerson(p.id, "mutterschutz", !p.mutterschutz)} />
+                  <span style={{ fontSize: 13.5 }}>Mutterschutz</span></label>
+                <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
+                  <Schalter an={!!p.schwerbehindert}
+                    onChange={() => akt.setzePerson(p.id, "schwerbehindert", !p.schwerbehindert)} />
+                  <span style={{ fontSize: 13.5 }}>Schwerbehinderung</span></label>
+              </div>
+            </div>
+            {(p.mutterschutz || p.schwerbehindert
+              || (alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18)) && (
+              <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55,
+                background: C.accentLight, padding: "10px 13px", borderRadius: 8 }}>
+                {alterAm(p.geburtstag, heute()) !== null && alterAm(p.geburtstag, heute()) < 18
+                  && "Unter 18: keine Nachtarbeit, höchstens acht Stunden täglich (JArbSchG). "}
+                {p.mutterschutz
+                  && "Mutterschutz: Nacht- und Sonntagsarbeit nur mit Einwilligung und Genehmigung (MuSchG). "}
+                {p.schwerbehindert
+                  && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
+                Die Prüfung meldet Verstöße unter „Schutzvorschriften".
+              </div>)}
+
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
               <div>
                 <Lab style={{ marginBottom: 8 }}>Arbeitstage</Lab>
@@ -7791,19 +8414,34 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <Lab style={{ marginBottom: 11 }}>Stundenkonto über zwölf Monate</Lab>
       <Card style={{ padding: 22, marginBottom: 22 }}>
         {(() => {
+          /* Hier stand kv.punkte[11].konto und kv.richtung — kontoVerlauf()
+             liefert aber eine schlichte Liste, und deren Einträge heißen kto,
+             nicht konto. Der Zugriff auf das nicht vorhandene punkte warf
+             „Cannot read properties of undefined (reading '11')" und riss die
+             gesamte Personalakte mit: Die Ansicht ist nie aufgegangen.
+
+             Richtung und Trend werden jetzt aus der Liste gerechnet, statt
+             sie von der Funktion zu erwarten. */
           const kv = kontoVerlauf(m, p, ym, 12);
           const g = m.einstellungen.ausgleichGrenze || 40;
+          const letzter = kv.length ? kv[kv.length - 1].kto : 0;
+          const erster = kv.length ? kv[0].kto : 0;
+          const trend = Math.round((letzter - erster) * 10) / 10;
+          /* Unterhalb von fünf Stunden über zwölf Monate ist das Rauschen,
+             keine Entwicklung. */
+          const richtung = Math.abs(trend) < 5 ? "stabil" : trend > 0 ? "steigend" : "fallend";
           return (<>
             <div style={{ display: "flex", gap: 22, marginBottom: 18, flexWrap: "wrap", alignItems: "baseline" }}>
               <div><Lab>Aktuell</Lab><div style={{ fontSize: 26, fontWeight: 650, ...NUM,
-                color: Math.abs(kv.punkte[11].konto) > g ? C.warn : C.text }}>
-                {sgn(kv.punkte[11].konto)} h</div></div>
+                color: Math.abs(letzter) > g ? C.warn : C.text }}>
+                {sgn(letzter)} h</div></div>
               <div><Lab>Entwicklung</Lab><div style={{ fontSize: 15, fontWeight: 600, marginTop: 5,
-                color: kv.richtung === "stabil" ? C.ok : kv.richtung === "steigend" ? C.warn : C.accent }}>
-                {kv.richtung === "stabil" ? "stabil" : kv.richtung === "steigend"
-                  ? `steigend, ${sgn(kv.trend)} h im Jahr` : `fallend, ${sgn(kv.trend)} h im Jahr`}</div></div>
+                color: richtung === "stabil" ? C.ok : richtung === "steigend" ? C.warn : C.accent }}>
+                {richtung === "stabil" ? "stabil" : richtung === "steigend"
+                  ? `steigend, ${sgn(trend)} h in zwölf Monaten`
+                  : `fallend, ${sgn(trend)} h in zwölf Monaten`}</div></div>
             </div>
-            <LinienDiagramm daten={kv.punkte.map((x) => ({ label: x.label, y: x.konto }))}
+            <LinienDiagramm daten={kv.map((x) => ({ label: x.label, y: x.kto }))}
               farbe={C.accent} einheit=" h" />
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
               Das grüne Band ist der Bereich innerhalb der Ausgleichsgrenze von {n1(g)} h. Die Frage ist
@@ -7902,21 +8540,626 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
 }
 
 /* ================================ PRÜFUNG ================================ */
-function Pruefung({ sitz, ym, oeffneTag }) {
+/* ==========================================================================
+   TESTABLAUF
+
+   Ein selbst angelegter Betrieb läuft nach 30 Tagen ab, und der Server weist
+   danach jede Anmeldung ab — nachgelesen in netlify/functions/daten.mjs. Der
+   Kunde erfuhr davon nichts: Der Ablauf stand nur in der Betreiberkonsole.
+   Am einunddreißigsten Tag stand jemand mit einem eingerichteten Betrieb vor
+   einer Anmeldung, die ihn nicht mehr kannte.
+
+   Diese Leiste zählt die Tage rückwärts, ab vierzehn Tagen vor Schluss. Sie
+   sagt, was bleibt und was passiert, und sie hört mit dem Ablauf nicht auf —
+   danach ist sie am wichtigsten.
+   ========================================================================== */
+function Testablauf({ mandant, darfEinrichten }) {
+  const m = mandant || {};
+  const ende = m.laeuftAb || (m.status === "test" ? m.stichtag : null);
+  if (!ende || m.status === "aktiv") return null;
+
+  const tag = String(ende).slice(0, 10);
+  const rest = Math.ceil((pISO(tag).getTime() - pISO(heute()).getTime()) / 86400000);
+  /* Vorher nicht stören. Zwei Wochen sind genug, um zu entscheiden, und
+     wenig genug, dass die Leiste nicht zum Hintergrundrauschen wird. */
+  if (rest > 14) return null;
+
+  const abgelaufen = rest <= 0;
+  const ton = abgelaufen || rest <= 3 ? "danger" : "warn";
+  const grund = ton === "danger" ? C.dangerLight : C.warnLight;
+  const rand = ton === "danger" ? C.danger : C.warn;
+
+  return (
+    <div role="status" style={{ padding: "14px 18px", borderRadius: 12, marginBottom: 20,
+      background: grund, border: `1px solid ${rand}33`,
+      display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 260 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 640, marginBottom: 5 }}>
+          {abgelaufen
+            ? `Der Testzeitraum ist am ${fDatum(tag)} abgelaufen`
+            : rest === 1 ? "Der Testzeitraum endet morgen"
+              : `Noch ${rest} Tage im Testzeitraum`}
+        </div>
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+          {abgelaufen
+            ? "Die Zugänge werden abgewiesen, sobald die Sitzung endet. Der Betrieb "
+              + "bleibt vollständig erhalten und ist sofort wieder da, wenn der Zugang "
+              + "verlängert wird — es geht nichts verloren."
+            : `Bis zum ${fDatum(tag)} ist alles unverändert nutzbar. Danach werden die `
+              + "Zugänge abgewiesen; der Betrieb bleibt gespeichert. "
+              + (darfEinrichten
+                ? "Vorher lohnt eine Datenmitnahme — dann liegt der Stand auch außerhalb."
+                : "Die Organisationsleitung kann verlängern.")}
+        </div>
+      </div>
+      {darfEinrichten && (
+        <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+          <Btn size="sm" kind="primary" onClick={() => {
+            window.location.href = hilfeVerweis({
+              betreff: `CENTRIC verlängern — ${m.name || ""}`,
+              betrieb: m.name, zusatz: `Der Testzeitraum endet am ${tag}. Wir möchten verlängern.` });
+          }}>Verlängern</Btn>
+        </div>)}
+    </div>);
+}
+
+/* ==========================================================================
+   HILFE UND KONTAKT
+
+   Bis hierher endete jede Frage, die das Handbuch nicht beantwortet, im
+   Nichts: keine Adresse, keine Nummer, kein Hinweis, wohin man sich wendet.
+   Für eine Software, die nachts im Schichtdienst läuft, ist das die
+   auffälligste Lücke — dort ist niemand, den man kurz fragen kann.
+
+   Der Verweis nimmt Betrieb, Rolle und Ansicht mit. Das spart die erste
+   Rückfrage, die sonst immer aus denselben vier Fragen besteht.
+   ========================================================================== */
+function Hilfe({ sitz, gehZu }) {
+  const m = sitz.mandant || {};
+  const rollenName = sitz.rolle === "betreiber"
+    ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
+
+  const Weg = ({ titel, text, knopf, aufKlick, href }) => (
+    <div className="karte" style={{ padding: "16px 18px", display: "flex", gap: 16,
+      alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
+        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
+      </div>
+      {href
+        ? <a href={href} style={{ textDecoration: "none" }}>
+            <Btn size="sm" kind="primary">{knopf}</Btn></a>
+        : <Btn size="sm" onClick={aufKlick}>{knopf}</Btn>}
+    </div>);
+
+  return (
+    <div>
+      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns.">
+        Hilfe</H1>
+
+      {KONTAKT_UNGESETZT && (
+        <div style={{ padding: "12px 16px", borderRadius: 10, marginBottom: 18,
+          background: C.warnLight, border: `1px solid ${C.warn}33`, fontSize: 13, lineHeight: 1.55 }}>
+          <strong style={{ fontWeight: 640 }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
+          Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
+          Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
+          rechtliches/PLATZHALTER.md.
+        </div>)}
+
+      <Card style={{ marginBottom: 18 }}>
+        <CardHead>Selbst nachsehen</CardHead>
+        <div style={{ padding: 18 }}>
+          <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")}
+            text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
+          <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")}
+            text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
+          <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")}
+            text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
+        </div>
+      </Card>
+
+      <Card>
+        <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
+        <div style={{ padding: 18 }}>
+          <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
+              rolle: rollenName, ansicht: "Hilfe",
+              zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
+            text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
+          <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
+            href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
+              zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
+            text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
+          <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
+            text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
+          <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
+            href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
+              zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
+            text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
+
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.lineSoft}`,
+            fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+            E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
+            {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
+              style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
+          </div>
+        </div>
+      </Card>
+    </div>);
+}
+
+/* ==========================================================================
+   NICHT GESPEICHERT
+
+   Bisher stand hier eine Zeile: `melde("Nicht gespeichert: " + e.message)`.
+   Ein Hinweis, der nach drei Sekunden verschwindet, und darin der rohe
+   Text vom Server — „Failed to fetch" etwa. Wer gerade einen Monat geplant
+   hat, konnte daraus weder ablesen, was verloren ist, noch was zu tun
+   wäre. Und der schlimmste Fall meldete sich gar nicht: Bei abgelaufener
+   Sitzung kehrte der Schreibvorgang wortlos zurück.
+
+   Diese Leiste bleibt stehen, bis es geklärt ist. Sie sagt je nach Lage
+   etwas anderes, weil je nach Lage etwas anderes zu tun ist — und sie
+   bietet immer den Ausweg an, der nichts voraussetzt: die Arbeit als Datei
+   sichern.
+   ========================================================================== */
+const SPEICHERLAGE = {
+  abgemeldet: {
+    titel: "Die Sitzung ist abgelaufen — die letzten Änderungen sind noch nicht gespeichert",
+    text: "Nach dreißig Minuten ohne Eingabe endet die Sitzung. Gib den Zugangscode "
+      + "hier ein: Die Anwendung meldet sich an und schickt die Arbeit sofort hinterher. "
+      + "Bitte diesen Reiter dabei offen lassen — die Änderungen liegen nur hier.",
+    neuAnmelden: true,
+  },
+  netz: {
+    titel: "Keine Verbindung — die letzten Änderungen sind noch nicht gespeichert",
+    text: "Die Anwendung erreicht den Server nicht. Das kann am Netz hier liegen oder "
+      + "am Server. Die Arbeit ist nicht verloren, solange dieser Reiter offen bleibt.",
+    nochmal: true,
+  },
+  server: {
+    titel: "Der Server konnte nicht speichern",
+    text: "Ein Fehler auf der Gegenseite. Ein zweiter Versuch hilft oft; hilft er nicht, "
+      + "sichere die Arbeit als Datei und melde dich bei uns.",
+    nochmal: true, hilfe: true,
+  },
+  keinRecht: {
+    titel: "Diese Änderung ist mit deiner Rolle nicht zulässig",
+    text: "Der Server hat sie abgewiesen. Was du siehst, ist noch dein Stand — "
+      + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
+    neuladen: true,
+  },
+  zuGross: {
+    titel: "Der Bestand ist zu groß geworden",
+    text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "
+      + "und melde dich bei uns — das lässt sich lösen, aber nicht von hier aus.",
+    hilfe: true,
+  },
+  unbekannt: {
+    titel: "Die letzten Änderungen sind nicht gespeichert",
+    text: "Woran es lag, ist von hier aus nicht zu erkennen. Ein zweiter Versuch ist "
+      + "der erste Schritt; hilft er nicht, sichere die Arbeit als Datei.",
+    nochmal: true, hilfe: true,
+  },
+};
+
+function NichtGespeichert({ lage, melde, aufGeloest }) {
+  const [laeuft, setLaeuft] = useState(false);
+  const [code, setCode] = useState("");
+  if (!lage) return null;
+  const l = SPEICHERLAGE[lage.art] || SPEICHERLAGE.unbekannt;
+
+  const nochmal = async () => {
+    setLaeuft(true);
+    try {
+      const erg = await SP.nochmalSchreiben();
+      if (erg.ok) { aufGeloest(); melde("Gespeichert."); }
+      else melde("Es hat wieder nicht geklappt.");
+    } catch { melde("Es hat wieder nicht geklappt."); }
+    finally { setLaeuft(false); }
+  };
+
+  /* Anmelden muss in diesem Reiter geschehen, nicht in einem zweiten.
+
+     Bei einer 401 verwirft speicher.js den Zugangsschlüssel — richtig, denn
+     er ist tot. Nur: Ein neues Fenster legt seinen Schlüssel dort ab, wo
+     dieser Reiter ihn nicht sieht. Der Rat „melde dich nebenan an und komm
+     zurück" führte deshalb geradewegs in dieselbe Meldung. */
+  const anmeldenUndSenden = async () => {
+    const c = code.trim().toUpperCase();
+    if (!c) return;
+    setLaeuft(true);
+    try {
+      await SP.anmelden(c, SP.wirdGemerkt());
+      const erg = await SP.nochmalSchreiben();
+      if (erg.ok) { aufGeloest(); melde("Angemeldet und gespeichert."); }
+      else melde("Angemeldet — das Speichern hat trotzdem nicht geklappt.");
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const sichern = () => {
+    const b = SP.ausstehenderBestand();
+    if (!b) return melde("Es liegt nichts mehr aus.");
+    const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    if (lade(`centric-ungespeichert-${marke}.json`, JSON.stringify(b, null, 2),
+      "application/json;charset=utf-8"))
+      melde("Als Datei gesichert.");
+  };
+
+  return (
+    <div role="alert" style={{ padding: "16px 20px", borderRadius: 12, marginBottom: 20,
+      background: C.dangerLight, border: `1px solid ${C.danger}44` }}>
+      <div style={{ fontSize: 15, fontWeight: 650, marginBottom: 6 }}>{l.titel}</div>
+      <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+        {l.text}</p>
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", alignItems: "center" }}>
+        {l.nochmal && <Btn kind="primary" size="sm" disabled={laeuft} onClick={nochmal}>
+          {laeuft ? "Wird gesendet …" : "Noch einmal senden"}</Btn>}
+        {l.neuAnmelden && (<>
+          <Inp value={code} onChange={(e) => setCode(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") anmeldenUndSenden(); }}
+            placeholder="Zugangscode" aria-label="Zugangscode"
+            style={{ width: 190, textTransform: "uppercase", letterSpacing: ".05em" }} />
+          <Btn kind="primary" size="sm" disabled={laeuft || !code.trim()} onClick={anmeldenUndSenden}>
+            {laeuft ? "Läuft …" : "Anmelden und senden"}</Btn>
+        </>)}
+        {/* Der Ausweg, der nichts voraussetzt — kein Netz, keine Sitzung,
+            kein Recht. Er funktioniert immer. */}
+        <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
+        {l.neuladen && <Btn size="sm" kind="quiet"
+          onClick={() => window.location.reload()}>Seite neu laden</Btn>}
+        {l.hilfe && <a href={hilfeVerweis({ betreff: "CENTRIC — Speichern schlägt fehl",
+          zusatz: `Lage: ${lage.art}\nMeldung: ${lage.text}\nZeit: ${lage.zeit}` })}
+          style={{ fontSize: 13, color: C.accent }}>Uns schreiben</a>}
+        <span style={{ fontSize: 11.5, color: C.dimmer, marginLeft: "auto", ...NUM }}>
+          {lage.text}</span>
+      </div>
+    </div>);
+}
+
+/* ==========================================================================
+   TASTATURBEDIENUNG FÜR RASTER
+
+   Die Zellen des Monatsplans waren <td onClick>. Mit der Maus einwandfrei,
+   mit der Tastatur überhaupt nicht: kein Tabulatorziel, kein Name für die
+   Sprachausgabe, keine Möglichkeit, einen Tag zu öffnen, ohne zu zeigen.
+
+   Das trifft nicht nur Menschen mit Behinderung. Wer einen Monat
+   durchgeht, ist mit den Pfeiltasten schneller als mit dem Zeiger — und in
+   der Leitstelle liegt oft gar keine Maus.
+
+   Die Umsetzung folgt dem üblichen Muster für Raster: Genau eine Zelle
+   liegt im Tabulatorlauf, die Pfeiltasten bewegen den Fokus, Pos1 und Ende
+   springen an den Rand der Zeile, Bild auf und ab an den Rand der Spalte.
+   Damit kostet das Raster einen Tabulatorschritt statt dreihundert.
+
+   Bewusst über die Tabellenstruktur des Browsers gelöst statt über einen
+   Zustand in React: Die Zeilen werden an mehreren Stellen aus
+   verschiedenen Quellen erzeugt, und jede Zählung nebenher wäre eine
+   zweite Wahrheit, die irgendwann von der ersten abweicht.
+   ========================================================================== */
+
+/** Alle bedienbaren Zellen eines Rasters in Dokumentreihenfolge. */
+const rasterZellen = (el) => (el ? Array.from(el.querySelectorAll("[data-zelle]")) : []);
+
+/** Position einer Zelle: Zeile und Spalte aus der Tabelle des Browsers. */
+function zellenOrt(zelle) {
+  const zeile = zelle.closest("tr");
+  if (!zeile) return null;
+  const tabelle = zeile.closest("table");
+  if (!tabelle) return null;
+  const zeilen = Array.from(tabelle.querySelectorAll("tr"))
+    .filter((r) => r.querySelector("[data-zelle]"));
+  const zi = zeilen.indexOf(zeile);
+  const spalten = Array.from(zeile.querySelectorAll("[data-zelle]"));
+  return { zeilen, zi, spalten, si: spalten.indexOf(zelle) };
+}
+
+/** Verschiebt den Fokus im Raster. Gibt zurück, ob die Taste verbraucht wurde. */
+function rasterTaste(e) {
+  const zelle = e.target.closest("[data-zelle]");
+  if (!zelle) return false;
+  const ort = zellenOrt(zelle);
+  if (!ort) return false;
+
+  const springe = (el) => {
+    if (!el) return;
+    /* Genau eine Zelle bleibt im Tabulatorlauf — die zuletzt besuchte. */
+    for (const z of rasterZellen(el.closest("table"))) z.tabIndex = -1;
+    el.tabIndex = 0;
+    el.focus();
+    e.preventDefault();
+  };
+  const inZeile = (zi, si) => {
+    const z = ort.zeilen[zi];
+    if (!z) return null;
+    const sp = Array.from(z.querySelectorAll("[data-zelle]"));
+    return sp[Math.min(si, sp.length - 1)] || null;
+  };
+
+  switch (e.key) {
+    case "ArrowRight": springe(ort.spalten[ort.si + 1]); return true;
+    case "ArrowLeft": springe(ort.spalten[ort.si - 1]); return true;
+    case "ArrowDown": springe(inZeile(ort.zi + 1, ort.si)); return true;
+    case "ArrowUp": springe(inZeile(ort.zi - 1, ort.si)); return true;
+    case "Home": springe(ort.spalten[0]); return true;
+    case "End": springe(ort.spalten[ort.spalten.length - 1]); return true;
+    case "PageUp": springe(inZeile(0, ort.si)); return true;
+    case "PageDown": springe(inZeile(ort.zeilen.length - 1, ort.si)); return true;
+    default: return false;
+  }
+}
+
+/**
+ * Die Eigenschaften einer bedienbaren Rasterzelle.
+ *
+ * @param aufAuswahl Was beim Öffnen geschieht — Klick, Eingabetaste, Leertaste
+ * @param name       Was die Sprachausgabe vorliest
+ * @param ersteZelle Nur die erste Zelle liegt anfangs im Tabulatorlauf
+ */
+function zelleBedienbar(aufAuswahl, name, ersteZelle = false) {
+  return {
+    "data-zelle": "ja",
+    role: "gridcell",
+    tabIndex: ersteZelle ? 0 : -1,
+    "aria-label": name,
+    title: name,
+    onClick: aufAuswahl,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); aufAuswahl(); return; }
+      rasterTaste(e);
+    },
+  };
+}
+
+/* ==========================================================================
+   KONFLIKT
+
+   Der alte Text stammte aus der Zeit ohne Server: „Echter
+   Mehrbenutzerbetrieb setzt einen Server voraus — diese Prüfung erkennt den
+   Konflikt, sie löst ihn nicht auf." Beides stimmt so nicht mehr. Der
+   Server führt getrennte Monate längst zusammen; hierher kommt nur noch,
+   wer wirklich denselben Monat bearbeitet hat wie jemand anderes.
+
+   Angeboten wurde trotzdem nur „Neu laden" — also: die eigene Arbeit
+   wegwerfen. Für jemanden, der gerade zwei Stunden geplant hat, ist das
+   keine Wahl, sondern eine Mitteilung.
+
+   Jetzt stehen drei Wege da, und alle drei sagen, was sie kosten:
+
+     Neu laden          — meine Änderungen sind weg
+     Meinen Stand nehmen — die Arbeit der anderen Person in diesen Monaten
+                           ist weg
+     Als Datei sichern   — nichts ist weg, aber auch nichts gespeichert
+
+   Welcher richtig ist, weiß nur, wer beide Seiten kennt. Deshalb steht
+   dabei, wer wann gespeichert hat und welche Monate betroffen sind.
+   ========================================================================== */
+function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
+  const rahmen = useRef(null);
+  useEffect(() => {
+    const f = (e) => { if (e.key === "Escape") onSchliessen(); };
+    window.addEventListener("keydown", f);
+    if (rahmen.current) rahmen.current.focus();
+    return () => window.removeEventListener("keydown", f);
+  }, [onSchliessen]);
+
+  const monate = Array.isArray(lage && lage.monate) ? lage.monate : [];
+  const kern = !!(lage && lage.kernBetroffen);
+  const wer = (lage && lage.durch) || "jemand anderes";
+  const wann = lage && lage.zeit ? new Date(lage.zeit) : null;
+
+  const sichern = () => {
+    const marke = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    if (lade(`centric-mein-stand-${marke}.json`, JSON.stringify(lage.meiner ?? null, null, 2),
+      "application/json;charset=utf-8")) melde("Als Datei gesichert.");
+  };
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Gleichzeitig bearbeitet"
+      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+        backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 20 }}>
+      <div ref={rahmen} tabIndex={-1} className="blatt"
+        style={{ maxWidth: 560, padding: 28, outline: "none" }}>
+        <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>
+          {kern
+            ? "Die Stammdaten wurden gleichzeitig geändert"
+            : monate.length === 1
+              ? `${monate[0]} wurde gleichzeitig bearbeitet`
+              : monate.length > 1
+                ? `${monate.length} Monate wurden gleichzeitig bearbeitet`
+                : "Gleichzeitig bearbeitet"}
+        </div>
+
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px" }}>
+          {wer} hat gespeichert
+          {wann && `, während du gearbeitet hast — zuletzt um ${
+            wann.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`}.
+          Arbeit in verschiedenen Monaten führt CENTRIC von selbst zusammen;
+          hier überschneidet sie sich wirklich.
+        </p>
+
+        {monate.length > 0 && (
+          <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>
+            {monate.map((mo) => <Pill key={mo} tone="warn" size="sm">{mo}</Pill>)}
+          </div>)}
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 6 }}>
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Neu laden</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Du siehst den Stand von {wer}. Deine Änderungen seit dem letzten
+              Speichern sind weg.</div>
+            <Btn size="sm" kind="primary" onClick={() => window.location.reload()}>
+              Neu laden</Btn>
+          </div>
+
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Meinen Stand nehmen</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Dein Stand wird gespeichert. Was {wer}
+              {monate.length ? ` in ${monate.join(", ")}` : ""} geändert hat, ist
+              danach weg — bitte vorher kurz Rücksprache halten.</div>
+            <Btn size="sm" kind="danger" onClick={() => {
+              if (window.confirm(`Die Änderungen von ${wer}`
+                + `${monate.length ? ` in ${monate.join(", ")}` : ""} werden überschrieben. `
+                + "Das lässt sich nicht rückgängig machen.")) onUebernehmen();
+            }}>Meinen Stand übernehmen</Btn>
+          </div>
+
+          <div className="karte" style={{ padding: "13px 15px" }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 3 }}>
+              Erst einmal sichern</div>
+            <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginBottom: 10 }}>
+              Legt deinen Stand als Datei ab. Nichts geht verloren, gespeichert
+              ist damit aber auch nichts.</div>
+            <Btn size="sm" onClick={sichern}>Als Datei sichern</Btn>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <Btn kind="quiet" onClick={onSchliessen}>Später entscheiden</Btn>
+        </div>
+      </div>
+    </div>);
+}
+
+/* ==========================================================================
+   OHNE NETZ
+
+   Der Dienstarbeiter hält den zuletzt geladenen Plan bereit. Das ist genau
+   dann nützlich, wenn es zählt — Kellergeschoss, Parkhaus, Funkloch — und
+   genau dann gefährlich, wenn niemand merkt, dass der Stand alt ist.
+
+   Deshalb diese Leiste. Sie sagt beides: dass die Verbindung fehlt und wie
+   alt das ist, was auf dem Bildschirm steht.
+   ========================================================================== */
+function Offlineleiste({ lage }) {
+  if (!lage) return null;
+  const geholt = lage.geholt ? new Date(lage.geholt) : null;
+  const minuten = geholt ? Math.round((Date.now() - geholt.getTime()) / 60000) : null;
+  const alter = minuten === null ? null
+    : minuten < 2 ? "gerade eben"
+      : minuten < 60 ? `vor ${minuten} Minuten`
+        : minuten < 1440 ? `vor ${Math.round(minuten / 60)} Stunden`
+          : `vor ${Math.round(minuten / 1440)} Tagen`;
+
+  return (
+    <div role="status" style={{ padding: "12px 18px", borderRadius: 12, marginBottom: 20,
+      background: C.warnLight, border: `1px solid ${C.warn}33`,
+      display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>
+      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: 260 }}>
+        Der Plan ist lesbar, aber Änderungen lassen sich nicht speichern.
+        {alter ? ` Der angezeigte Stand wurde ${alter} geholt.` : ""}
+        {" "}Sobald die Verbindung zurück ist, verschwindet dieser Hinweis.
+      </span>
+    </div>);
+}
+
+function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
   const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
   const [f, setF] = useState("alle");
   const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
-    ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"]];
+    ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
   const krit = befunde.filter((b) => b.schwere === "danger").length;
 
+  /* § 3 ArbZG wird über den Monat hinaus geprüft — der Ausgleichszeitraum
+     ist gleitend und reicht weit zurück. Deshalb steht er über den
+     Monatsbefunden, nicht zwischen ihnen. */
+  const ausgleich = useMemo(() => ausgleichVerstoesse(m, bis), [m, ym]);
+  const ausgleichWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
+
   return (
     <div>
-      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten und gleichzeitige Urlaube.`}>
+      {/* Die Prüfung zeigte einen Monat, ließ ihn aber nicht wechseln — wer
+          den nächsten sehen wollte, musste über den Monatsplan gehen. */}
+      <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}
+        right={setYm ? (<div style={{ display: "flex", gap: 9 }} className="noprint">
+          <Btn onClick={() => { const d = new Date(y, mo - 2, 1);
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück">‹</Btn>
+          <Btn onClick={() => setYm(heute().slice(0, 7))}>Heute</Btn>
+          <Btn onClick={() => { const d = new Date(y, mo, 1);
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor">›</Btn>
+        </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
+
+      {/* --- Zeitumstellung ---
+          Zwei Tage im Jahr, an denen die gerechneten Stunden von der Uhr
+          abweichen. Wer das nicht weiß, sucht den Fehler in der Anwendung. */}
+      {(() => {
+        const tage = [];
+        for (let d = von; d <= bis; d = addDays(d, 1)) if (uhrsprung(d)) tage.push(d);
+        if (!tage.length) return null;
+        const t = tage[0];
+        const rueck = uhrsprung(t) > 0;
+        return (
+          <Card style={{ marginBottom: 20, borderLeft: `3px solid ${C.violet}` }}>
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 640, marginBottom: 5 }}>
+                Zeitumstellung am {fDatum(t)} — dieser Tag hat {rueck ? 25 : 23} Stunden</div>
+              <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, maxWidth: "72ch" }}>
+                Die Uhr springt in der Nacht {rueck ? "von drei auf zwei zurück" : "von zwei auf drei vor"}.
+                Ein Nachtdienst von {rueck ? "22 bis 6 Uhr dauert in dieser Nacht neun Stunden statt acht"
+                  : "22 bis 6 Uhr dauert in dieser Nacht sieben Stunden statt acht"} — so wird er
+                auch gerechnet, im Stundenkonto wie in der Ruhezeitprüfung.
+                {rueck ? " Zuschläge für Nachtarbeit fallen entsprechend für eine Stunde mehr an."
+                  : " Wer knapp über der Ruhezeit geplant ist, reißt sie in dieser Nacht."}
+              </div>
+            </div>
+          </Card>);
+      })()}
+
+      {/* --- § 3 Arbeitszeitgesetz --- */}
+      <Card style={{ marginBottom: 20, borderLeft: `3px solid ${ausgleich.length ? C.danger : C.ok}` }}>
+        <div style={{ padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+            gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 650 }}>
+              Ausgleichszeitraum nach § 3 Arbeitszeitgesetz</div>
+            <Pill tone={ausgleich.length ? "danger" : "ok"} size="sm">
+              {ausgleich.length ? `${ausgleich.length} überschritten` : "eingehalten"}</Pill>
+          </div>
+          <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "68ch" }}>
+            Acht Stunden werktäglich, verlängerbar auf zehn — sofern im Durchschnitt
+            von {ausgleichWochen} Wochen acht Stunden je Werktag nicht überschritten werden.
+            Der Durchschnitt ist der Kern der Vorschrift: Ein Plan kann Woche für Woche
+            zulässig aussehen und den Zeitraum trotzdem reißen. Gerechnet wird gleitend
+            bis zum {fKurz(bis)}, Sonntage zählen nicht als Werktage.
+          </p>
+          {ausgleich.length === 0
+            ? <div style={{ fontSize: 13.5, color: C.dim }}>
+                Alle Beschäftigten liegen im Durchschnitt bei höchstens {DURCHSCHNITT_TAG} Stunden
+                je Werktag.</div>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                {ausgleich.slice(0, 12).map((v) => (
+                  <div key={v.person.id} style={{ display: "flex", alignItems: "center", gap: 14,
+                    flexWrap: "wrap", padding: "9px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+                    <div style={{ minWidth: 170, fontSize: 14 }}>
+                      {v.person.nachname}, {v.person.vorname}</div>
+                    <div style={{ fontSize: 13, color: C.dim, ...NUM }}>
+                      {n1(v.stunden)} von {n1(v.zulaessig)} h auf {v.werktage} Werktage</div>
+                    <div style={{ fontSize: 13, ...NUM }}>
+                      <b style={{ color: C.danger }}>{n1(v.durchschnitt)} h</b>
+                      <span style={{ color: C.dimmer }}> je Werktag</span></div>
+                    <span style={{ flex: 1 }} />
+                    <Pill tone="danger" size="sm">{n1(v.ueberhang)} h abzubauen</Pill>
+                  </div>))}
+                {ausgleich.length > 12 && (
+                  <div style={{ fontSize: 13, color: C.dim, paddingTop: 8 }}>
+                    und {ausgleich.length - 12} weitere.</div>)}
+              </div>}
+        </div>
+      </Card>
       <KpiRow min={200}>
         <Kpi label="Befunde" value={befunde.length} tone={befunde.length ? "warn" : "ok"} />
         <Kpi label="Kritisch" value={krit} tone={krit ? "danger" : "ok"} sub="sofort klären" />
@@ -7939,7 +9182,22 @@ function Pruefung({ sitz, ym, oeffneTag }) {
                 <div style={{ fontSize: 11.5, color: C.dimmer }}>{DOW[dow(b.datum)]}</div></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div></div>
+                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
+                {(() => {
+                  /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
+                     Meinung der Software; mit ihr ist er eine Vorschrift. */
+                  const q = rechtsquelle(b);
+                  if (!q || !q.norm) return null;
+                  return (
+                    <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5,
+                      display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <span style={{ padding: "1px 7px", borderRadius: 5,
+                        background: q.betrieblich ? "transparent" : C.flaecheStill,
+                        border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
+                        color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
+                      {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                    </div>);
+                })()}</div>
             </div>))}
       </Card>
     </div>);
@@ -8606,9 +9864,15 @@ function AusgleichPlanen({ sitz, personId, akt, onClose }) {
   const m = sitz.mandant;
   const p = m.personen.find((x) => x.id === personId);
   const ym = heute().slice(0, 7);
+  /* Hooks vor dem vorzeitigen Aussteigen.
+
+     Vorher stand `if (!p) return null;` über dem useMemo. Fehlt die Person
+     bei einem Rendern und ist beim nächsten da, ändert sich die Zahl der
+     Hooks — React bricht dann mit „Rendered more hooks than during the
+     previous render" ab. Der Linter hat es gefunden. */
+  const tage = useMemo(() => p ? ausgleichTage(m, p, heute(), 12) : [], [m, p, personId]);
   if (!p) return null;
   const a = ausgleichBedarf(m, p, ym);
-  const tage = useMemo(() => ausgleichTage(m, p, heute(), 12), [m, personId]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   return (
     <Sheet open onClose={onClose} titel={`Freizeitausgleich · ${p.vorname} ${p.nachname}`} width={620}>
@@ -8695,28 +9959,87 @@ function Eskalation({ sitz, datum, dienstId, akt, onClose }) {
 function Datenschutz({ sitz, akt }) {
   const m = sitz.mandant;
   const [pid, setPid] = useState("");
-  const kandidaten = anonymisierbar(m);
+  /* Vorschau und Ausführung rechnen mit demselben Code. Was hier steht, ist
+     genau das, was der Knopf tut — keine zweite Zählung, die abweichen kann. */
+  const v = useMemo(() => loeschVorschau(m, heute()), [m]);
+  const f = v.stichtage.fristen;
+
+  const FristFeld = ({ schluessel, label, hint, wert }) => (
+    <Field label={label} hint={hint}>
+      <Inp type="number" min="1" value={wert}
+        onChange={(e) => akt.setzeAufbewahrung(schluessel, Number(e.target.value))} />
+    </Field>);
+
+  const Posten = ({ zahl, was, ab }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0",
+      borderBottom: `1px solid ${C.lineSoft}` }}>
+      <span style={{ fontSize: 15, fontWeight: 640, minWidth: 44, textAlign: "right",
+        color: zahl ? C.text : C.dimmer, ...NUM }}>{zahl}</span>
+      <span style={{ fontSize: 13.5, flex: 1 }}>{was}</span>
+      <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>vor {fDatum(ab)}</span>
+    </div>);
+
   return (
     <Card>
-      <CardHead>Datenschutz</CardHead>
+      <CardHead right={<Lab>{f.zuletztGeraeumt
+        ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
       <div style={{ padding: 22, display: "grid", gap: 18 }}>
-        <Field label="Aufbewahrungsfrist nach Austritt in Monaten"
-          hint="Danach dürfen Name und Kontaktdaten anonymisiert werden. Planungsdaten bleiben als Statistik erhalten.">
-          <Inp type="number" value={m.einstellungen.aufbewahrungMonate || 24}
-            onChange={(e) => akt.setzeEinstellung("aufbewahrungMonate", Number(e.target.value))} /></Field>
+
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+          Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
+          sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
+          und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
+          <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
+            label="Plandaten in Monaten"
+            hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
+          <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
+            label="Stammdaten nach Austritt"
+            hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
+          <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
+            label="Abwesenheitsgründe in Monaten"
+            hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
+        </div>
+
+        {v.warnung && (
+          <div style={{ padding: "12px 15px", borderRadius: 10, background: C.dangerLight,
+            border: `1px solid ${C.danger}33`, fontSize: 13, lineHeight: 1.55 }}>
+            {v.warnung}</div>)}
 
         <div>
-          <Lab style={{ marginBottom: 8 }}>Zur Anonymisierung fällig · {kandidaten.length}</Lab>
-          {kandidaten.length === 0
-            ? <div style={{ fontSize: 13, color: C.dimmer }}>Keine Datensätze über der Frist.</div>
-            : kandidaten.map((p) => (
+          <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
+          {v.gesamt === 0
+            ? <div style={{ fontSize: 13, color: C.dimmer }}>
+                Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
+            : (<div>
+              {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
+                was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
+              {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
+                was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
+              {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
+                was="Änderungsvermerke werden gelöscht" />}
+              {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
+                was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
+                <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
+              </div>
+            </div>)}
+        </div>
+
+        {v.personen.length > 0 && (
+          <div>
+            <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
+            {v.personen.map((p) => (
               <div key={p.id} className="karte" style={{ display: "flex", alignItems: "center", gap: 12,
                 padding: "10px 13px", marginBottom: 7 }}>
                 <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
                 <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
                 <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
               </div>))}
-        </div>
+          </div>)}
 
         <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 8 }}>Datenauskunft nach Artikel 15</Lab>
@@ -8965,25 +10288,68 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
                     {n1(jahresIst)} von {n1(jahresSoll)} h · {sgn(jahresIst - jahresSoll)} h · Urlaub {url.genommen}/{url.anspruch}</span>
                 </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {/* Zwölf Blöcke statt 365 Härchen.
+
+                    Vorher wurde je Tag ein Balken von fünf Pixeln gezeichnet,
+                    und der Unterschied zwischen Dienst und Abwesenheit lief
+                    allein über die Deckkraft — der schwächste Kanal, den es
+                    gibt, und bei dieser Breite praktisch unsichtbar.
+
+                    Die Überschrift verspricht Belastungsvergleiche. Vergleichen
+                    heißt: zwischen Personen. Dafür braucht es eine Größe je
+                    Monat, die man quer lesen kann, kein Tagesdetail. Das
+                    Tagesdetail steht weiterhin im Titel jedes Blocks. */}
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "flex-end" }}>
                   {monate.map((mo) => {
+                    const ymm = `${jahr}-${pad(mo + 1)}`;
+                    const ist = istStunden(m, p, ymm).gesamt;
+                    const soll = sollStunden(m, p, ymm);
+                    const quote = soll > 0 ? ist / soll : 0;
                     const tage = dim_(jahr, mo);
+                    let abwTage = 0, urlaubTage = 0;
+                    for (let i = 1; i <= tage; i++) {
+                      const t = personTag(m, p, `${jahr}-${pad(mo + 1)}-${pad(i)}`);
+                      if (t.abwesenheit) { abwTage++; if (t.abwesenheit.art === "urlaub") urlaubTage++; }
+                    }
+                    /* Gezeigt wird die Abweichung vom Soll, nicht die
+                       Auslastung selbst.
+
+                       Der erste Entwurf füllte den Block proportional zur
+                       Auslastung — bei Werten um hundert Prozent sahen dann
+                       alle Monate gleich aus, und genau der Unterschied
+                       zwischen 98 und 106 Prozent ist die Information, um
+                       die es geht. Jetzt liegt die Nulllinie in der Mitte:
+                       nach oben Mehrarbeit, nach unten Unterdeckung. Ein
+                       Ausschlag von fünf Prozent ist damit sichtbar. */
+                    const abw = quote - 1;
+                    const ueber = abw >= 0;
+                    /* Zwanzig Prozent Abweichung füllen die halbe Höhe aus. */
+                    const balken = soll > 0
+                      ? Math.max(2, Math.min(16, Math.round(Math.abs(abw) / 0.2 * 16))) : 0;
+                    const ton = abw > 0.15 ? C.danger : abw > 0.08 ? C.warn
+                      : abw < -0.15 ? C.violet : C.accent;
+                    const prozent = soll > 0 ? Math.round(quote * 100) : 0;
                     return (
-                      <div key={mo}>
-                        <div style={{ fontSize: 9.5, color: C.dimmer, marginBottom: 3, textAlign: "center" }}>{MON[mo].slice(0, 3)}</div>
-                        <div style={{ display: "flex", gap: 1 }}>
-                          {Array.from({ length: tage }, (_, i) => {
-                            const d = `${jahr}-${pad(mo + 1)}-${pad(i + 1)}`;
-                            const t = personTag(m, p, d);
-                            const da = map[t.dienstId];
-                            const fei = feiertagFuer(m, d, p);
-                            const farbe = t.abwesenheit ? abwArt(t.abwesenheit.art).farbe
-                              : da ? da.farbe : fei ? C.danger : null;
-                            return <div key={i} title={`${fKurz(d)} · ${t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : fei || "frei"}`}
-                              style={{ width: 5, height: 15, borderRadius: 1.5,
-                                background: farbe ? `${farbe}${t.abwesenheit ? "66" : "CC"}` : "rgba(20,20,25,.06)" }} />;
-                          })}
+                      <div key={mo} title={`${MON[mo]} ${jahr} · ${n1(ist)} von ${n1(soll)} h`
+                        + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)")
+                        + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
+                        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
+                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 3,
+                          position: "relative", overflow: "hidden" }}>
+                          {/* Die Nulllinie: hundert Prozent des Monatssolls */}
+                          <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,
+                            background: C.lineStark, opacity: .8 }} />
+                          {soll > 0 && (
+                            <span style={{ position: "absolute", left: 4, right: 4,
+                              ...(ueber ? { bottom: 18 } : { top: 19 }),
+                              height: balken, background: ton,
+                              opacity: ton === C.accent ? .6 : .95, borderRadius: 1 }} />)}
+                          {abwTage > 0 && (
+                            <span title={`${abwTage} Tage abwesend`} style={{ position: "absolute", top: 0, left: 0,
+                              height: 3, width: `${Math.min(100, Math.round(abwTage / tage * 100))}%`,
+                              background: C.ok }} />)}
                         </div>
+                        <span style={{ fontSize: 9, color: C.dimmer, ...NUM }}>{MON[mo].slice(0, 3)}</span>
                       </div>);
                   })}
                 </div>
@@ -8991,15 +10357,24 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           })}
         </div>
       </Card>
-      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 16 }}>
-        {m.dienstarten.map((d) => (
-          <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: `${d.farbe}CC` }} />
-            <span style={{ fontSize: 12.5, color: C.dim }}>{d.name}</span></div>))}
-        {ABW.slice(0, 3).map((a) => (
-          <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <span style={{ width: 12, height: 12, borderRadius: 3, background: `${a.farbe}66` }} />
-            <span style={{ fontSize: 12.5, color: C.dim }}>{a.label}</span></div>))}
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.accent, opacity: .6 }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>im Rahmen</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.warn }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>über Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.danger }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>deutlich über Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.violet }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>unter Soll</span></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ width: 12, height: 3, borderRadius: 2, background: C.ok }} />
+          <span style={{ fontSize: 12.5, color: C.dim }}>Abwesenheit</span></div>
+        <span style={{ fontSize: 12.5, color: C.dimmer }}>
+          Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</span>
       </div>
     </div>);
 }
@@ -9372,13 +10747,16 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
   const meineDa = meinDienst && meinDienst.dienstId ? map[meinDienst.dienstId] : null;
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen" : stunde < 18 ? "Guten Tag" : "Guten Abend";
+  /* Ohne Vornamen wurde daraus „Guten Morgen, ." — bei einem frisch
+     angelegten Betrieb ist der Name noch leer. Dann grüßt es ohne Anrede. */
+  const anrede = (p.vorname || "").trim();
 
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 style={{ fontSize: 38, fontWeight: 300, letterSpacing: "-.04em", margin: "10px 0 0", lineHeight: 1.08 }}>
-          {gruss}, <b style={{ fontWeight: 700 }}>{p.vorname}</b>.
+          {anrede ? <>{gruss}, <b style={{ fontWeight: 700 }}>{anrede}</b>.</> : <>{gruss}.</>}
         </h1>
         <p style={{ fontSize: 16.5, color: C.dim, margin: "12px 0 0", maxWidth: 640, lineHeight: 1.5 }}>
           {aufgaben.length === 0
@@ -10415,7 +11793,7 @@ function Einarbeitung({ sitz, akt }) {
           {f.personId && f.mentorId && einheitAm(m.personen.find((p) => p.id === f.personId), heute())
             !== einheitAm(m.personen.find((p) => p.id === f.mentorId), heute()) && (
             <div style={{ padding: 13, borderRadius: 11, background: C.warnLight, color: C.warn, fontSize: 13 }}>
-              Beide gehören verschiedenen {m.einheitLabel}n an. Sie werden dadurch kaum gemeinsam Dienst haben.
+              Beide gehören verschiedenen {mehrzahl(m.einheitLabel)} an. Sie werden dadurch kaum gemeinsam Dienst haben.
             </div>)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Von"><Inp type="date" value={f.von} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
@@ -10619,7 +11997,7 @@ function Mehrfach({ sitz, akt, onClose }) {
                 {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
           : <Field label="Art der Abwesenheit">
               <Sel value={abwArtId} onChange={(e) => setAbwArtId(e.target.value)}>
-                {ABW_ARTEN.filter((a) => a.id !== "krank").map((a) => (
+                {ABW.filter((a) => a.id !== "krank").map((a) => (
                   <option key={a.id} value={a.id}>{a.label}</option>))}</Sel></Field>}
       </div>
 
@@ -11041,6 +12419,134 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
    wieder herauskommen. Diese Ansicht beantwortet die Frage nach der
    Abhängigkeit vom Anbieter — bevor sie im Vertragsgespräch gestellt wird.
    ========================================================================== */
+/* ==========================================================================
+   SICHERUNG AUSSER HAUS
+
+   Die Datenmitnahme gibt CSV-Dateien aus. Gut zum Weiterverarbeiten,
+   ungeeignet als Sicherung: Sie läuft im Browser, sie braucht einen
+   Menschen, der daran denkt, und sie gibt nicht alles her.
+
+   Eine Sicherung, die im selben Haus liegt wie das Original, ist keine.
+   Für eine außer Haus braucht es zwei Dinge: eine vollständige Datei und
+   einen Weg, sie ohne Browser zu holen.
+
+   Der Sicherungsschlüssel darf genau eines — lesen. Er kann nichts ändern,
+   nichts löschen und sich nicht anmelden. Damit lässt sich ein nächtliches
+   Skript einrichten, ohne einen Zugang aus der Hand zu geben, der den
+   Betrieb umschreiben könnte.
+   ========================================================================== */
+function SicherungAusserHaus({ sitz, melde }) {
+  const [schluessel, setSchluessel] = useState([]);
+  const [neu, setNeu] = useState(null);
+  const [tage, setTage] = useState(90);
+  const [laeuft, setLaeuft] = useState(false);
+  const darfEs = darf(sitz, "org.edit");
+
+  const laden = useCallback(() => {
+    if (!darfEs) return;
+    SP.schluesselListe().then(setSchluessel).catch(() => {});
+  }, [darfEs]);
+  useEffect(() => { laden(); }, [laden]);
+
+  if (!darfEs) return null;
+
+  const ausgeben = async () => {
+    setLaeuft(true);
+    try {
+      const d = await SP.vollausgabe();
+      const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      if (lade(`centric-vollausgabe-${marke}.json`, JSON.stringify(d, null, 2),
+        "application/json;charset=utf-8")) melde("Vollausgabe heruntergeladen.");
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const anlegen = async () => {
+    setLaeuft(true);
+    try {
+      const d = await SP.schluesselAnlegen(tage);
+      setNeu(d);
+      laden();
+    } catch (e) { melde(String(e.message || e)); }
+    finally { setLaeuft(false); }
+  };
+
+  const befehl = (k) => `curl -sS -H "Authorization: Bearer ${k}" \\\n  `
+    + `${window.location.origin}/api/vollausgabe \\\n  `
+    + `-o centric-$(date +%F).json`;
+
+  return (
+    <Card style={{ marginTop: 18 }}>
+      <CardHead right={<Lab>{schluessel.filter((k) => !k.abgelaufen).length} gültig</Lab>}>
+        Sicherung außer Haus</CardHead>
+      <div style={{ padding: 22 }}>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px", maxWidth: "72ch" }}>
+          Eine Sicherung, die im selben Haus liegt wie das Original, ist keine.
+          Die Vollausgabe enthält den kompletten Bestand in einer Datei — alles,
+          woraus sich der Betrieb wiederherstellen lässt.
+        </p>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+          <Btn kind="primary" disabled={laeuft} onClick={ausgeben}>
+            {laeuft ? "Läuft …" : "Vollausgabe herunterladen"}</Btn>
+        </div>
+
+        <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 18 }}>
+          <Lab style={{ marginBottom: 8 }}>Ohne Browser — für ein nächtliches Skript</Lab>
+          <p style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "72ch" }}>
+            Ein Sicherungsschlüssel darf ausschließlich lesen. Er kann nichts
+            ändern, nichts löschen und sich nicht anmelden. Er erscheint genau
+            einmal — danach ist nur noch der Hashwert gespeichert.
+          </p>
+
+          {neu && (
+            <div style={{ padding: "14px 16px", borderRadius: 10, marginBottom: 16,
+              background: C.okLight, border: `1px solid ${C.ok}44` }}>
+              <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 8 }}>
+                Schlüssel angelegt — gültig bis {fDatum(neu.gueltigBis.slice(0, 10))}</div>
+              <code style={{ display: "block", fontFamily: "ui-monospace, monospace",
+                fontSize: 12.5, wordBreak: "break-all", background: C.flaeche,
+                padding: "9px 11px", borderRadius: 7, marginBottom: 10 }}>{neu.schluessel}</code>
+              <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 8 }}>
+                Jetzt notieren. Er wird nicht wieder angezeigt.</div>
+              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 7,
+                background: C.sidebar, color: "#DCE6EA", fontSize: 12,
+                overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
+              <div style={{ marginTop: 10 }}>
+                <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
+            </div>)}
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end",
+            marginBottom: 16 }}>
+            <Field label="Gültig für Tage" hint="Höchstens ein Jahr.">
+              <Inp type="number" min={1} max={365} value={tage} style={{ width: 110 }}
+                onChange={(e) => setTage(Number(e.target.value))} /></Field>
+            <Btn disabled={laeuft} onClick={anlegen}>Schlüssel anlegen</Btn>
+          </div>
+
+          {schluessel.length > 0 && (<div>
+            {schluessel.map((k) => (
+              <div key={k.kennung} className="karte" style={{ display: "flex", gap: 12,
+                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap" }}>
+                <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>
+                  {k.kennung}…</code>
+                <span style={{ fontSize: 12.5, color: C.dim, flex: 1, minWidth: 160 }}>
+                  angelegt {fDatum(String(k.angelegt).slice(0, 10))}</span>
+                <Pill size="sm" tone={k.abgelaufen ? "danger" : "ok"}>
+                  {k.abgelaufen ? "abgelaufen" : `bis ${fDatum(k.gueltigBis.slice(0, 10))}`}</Pill>
+                <Btn size="sm" kind="danger" onClick={async () => {
+                  if (!window.confirm("Der Schlüssel wird sofort ungültig. Ein Skript, "
+                    + "das ihn benutzt, sichert danach nichts mehr.")) return;
+                  try { await SP.schluesselWiderrufen(k.kennung); melde("Widerrufen."); laden(); }
+                  catch (e) { melde(String(e.message || e)); }
+                }}>Widerrufen</Btn>
+              </div>))}
+          </div>)}
+        </div>
+      </div>
+    </Card>);
+}
+
 function Datenmitnahme({ sitz, akt }) {
   const m = sitz.mandant;
   const tabellen = useMemo(() => vollExport(m), [m]);
@@ -11078,6 +12584,8 @@ function Datenmitnahme({ sitz, akt }) {
           </div>))}
       </Card>
 
+      <SicherungAusserHaus sitz={sitz} melde={akt.melde} />
+
       <Card style={{ marginTop: 18, padding: 22 }}>
         <Lab style={{ marginBottom: 11 }}>Was das bedeutet</Lab>
         <Haken punkte={[
@@ -11112,6 +12620,9 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen"
     : stunde < 18 ? "Guten Tag" : "Guten Abend";
+  /* Ohne Vornamen wurde daraus „Guten Tag, ." — bei einem frisch angelegten
+     Betrieb steht dort noch nichts. Der Satz ohne Anrede ist der bessere. */
+  const anrede = (p.vorname || "").trim();
 
   /* Die drei wichtigsten Sachen — nach Dringlichkeit und Tragweite geordnet. */
   const oben = useMemo(() => {
@@ -11178,7 +12689,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
       <div style={{ marginBottom: 40 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 className="titel" style={{ marginTop: 12 }}>
-          {gruss}, <b>{p.vorname}</b>.
+          {anrede ? <>{gruss}, <b>{anrede}</b>.</> : <>{gruss}.</>}
         </h1>
         <p className="untertitel">
           {oben.length === 0
@@ -11306,7 +12817,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
       {darf(sitz, "plan.view.unit") && (
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Die Lage in Zahlen</h2>
-          <p className="abschnitt-sub">Stand heute, über alle {m.einheitLabel}n.</p>
+          <p className="abschnitt-sub">Stand heute, über alle {mehrzahl(m.einheitLabel)}.</p>
           <KpiRow min={200}>
             {(() => {
               const bes = besetzung(m, d0);
@@ -11337,496 +12848,30 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
    die wichtigste.
    ========================================================================== */
 
-const HANDBUCH = [
-  /* ------------------------------------------------------------------ */
-  {
-    id: "start", titel: "Bevor es losgeht", dauer: "5 Minuten",
-    einleitung: "Was du bereithalten solltest, damit die Einrichtung in einem Zug durchläuft.",
-    abschnitte: [
-      {
-        titel: "Was du brauchst",
-        text: "Die Einrichtung dauert je nach Betriebsgröße ein bis drei Stunden. Wer diese vier Dinge bereitliegen hat, ist in einem Zug durch.",
-        schritte: [
-          "Eine Liste aller Beschäftigten mit Name, Funktion und Wochenstunden — am besten als Tabelle aus der Lohnbuchhaltung.",
-          "Den aktuellen Dienstplan, egal ob Excel, Papier oder Wandkalender. Er wird nicht eingelesen, aber du brauchst ihn zum Vergleichen.",
-          "Die Antwort auf die Frage: Nach welchem Modell wird gearbeitet? Vier Gruppen im Wechsel? Fünf? Feste Schichten?",
-          "Wer darf was? Wer plant, wer vertritt, wer sieht nur den eigenen Plan.",
-        ],
-        merke: "Die Liste der Beschäftigten ist der einzige Punkt, der wirklich Zeit kostet. Alles andere ist in Minuten erledigt.",
-      },
-      {
-        titel: "Wie CENTRIC den Plan berechnet",
-        text: "Das ist der wichtigste Unterschied zu anderen Programmen — und wer ihn versteht, versteht alles Weitere.",
-        schritte: [
-          "Andere Programme rollen einen Plan aus: Für jeden Tag und jede Person wird ein Eintrag gespeichert. Ein Jahr für achtzig Personen sind fast dreißigtausend Einträge.",
-          "CENTRIC speichert stattdessen die Regel: den Zyklus und den Startpunkt jeder Gruppe. Daraus wird jeder Tag berechnet — vorwärts wie rückwärts, ohne Grenze.",
-          "Gespeichert werden nur die Abweichungen von der Regel: wer einspringt, wer tauscht, wer fehlt.",
-        ],
-        merke: "Deshalb gibt es keine Jahresgrenze und keine Massenänderung, wenn das Modell wechselt. Du änderst die Regel, und der ganze Plan folgt.",
-      },
-    ],
-  },
+/* Der Inhalt liegt in src/handbuch-inhalt.js und wird erst geholt, wenn
+   jemand ihn braucht — siehe dort. */
+let _handbuch = null;
+let _handbuchLaeuft = null;
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "betrieb", titel: "Schritt 1 — Den Betrieb einrichten", dauer: "15 Minuten",
-    ziel: "betrieb",
-    einleitung: "Standorte, Arbeitszeitregeln und Dienstarten. Alles Weitere rechnet mit diesen Werten.",
-    abschnitte: [
-      {
-        titel: "Standorte anlegen",
-        text: "Jeder Standort hat ein eigenes Bundesland. Das ist keine Formalie: Feiertage unterscheiden sich, und ein Feiertagszuschlag hängt daran.",
-        schritte: [
-          "Verwaltung → Betrieb öffnen.",
-          "Für jeden Standort Bezeichnung, Bundesland und Umkreis in Metern eintragen.",
-          "Der Umkreis gilt für die Standortprüfung beim Einstempeln. 200 Meter sind ein guter Anfang — bei großen Werksgeländen mehr.",
-        ],
-        pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert. Stimmt das nicht, ist das Bundesland falsch.",
-        merke: "Betriebe mit mehreren Standorten in verschiedenen Bundesländern legen jeden einzeln an — sonst rechnet CENTRIC mit den falschen Feiertagen.",
-      },
-      {
-        titel: "Arbeitszeitregeln festlegen",
-        text: "Die Werte, gegen die jede Prüfung läuft. Sie stammen aus dem Arbeitszeitgesetz und dem Tarif- oder Arbeitsvertrag.",
-        schritte: [
-          "Wochenarbeitszeit: die vertragliche Regelarbeitszeit einer Vollzeitkraft.",
-          "Ruhezeit zwischen zwei Diensten: gesetzlich elf Stunden, in Pflege und Klinik unter Bedingungen zehn.",
-          "Höchstzahl Dienste in Folge: üblich sechs, in manchen Modellen sieben.",
-          "Ausgleichsgrenze für das Stundenkonto: ab wann wird gewarnt. Vierzig Stunden sind verbreitet.",
-        ],
-        pruefen: "Prüfung öffnen. Erscheinen dort auf einmal Hunderte Befunde, ist ein Wert zu streng gesetzt.",
-        merke: "Diese Werte lieber einmal mit dem Betriebsrat abstimmen als später alle Befunde erklären.",
-      },
-      {
-        titel: "Dienstarten anlegen",
-        text: "Früh, Spät, Nacht — oder was auch immer bei euch gefahren wird. Jede Dienstart braucht Zeiten, eine Farbe und eine Mindestbesetzung.",
-        schritte: [
-          "Verwaltung → Betrieb → Dienstarten.",
-          "Name, Kürzel, Beginn und Ende eintragen. Über Mitternacht laufende Dienste werden automatisch erkannt.",
-          "Dienstform wählen: Regeldienst, Bereitschaftsdienst, Rufbereitschaft oder geteilter Dienst.",
-          "Mindestbesetzung je Wochentag — getrennt für Montag bis Donnerstag, Freitag, Samstag und Sonntag.",
-          "Erforderliche Qualifikationen zuordnen, falls ein Dienst ohne bestimmte Kräfte nicht laufen darf.",
-        ],
-        pruefen: "Lagebild öffnen. Jede Dienstart zeigt eine Zahl wie 8/10 — eingeteilt gegen gefordert. Steht dort 8/0, fehlt die Mindestbesetzung.",
-        merke: "Die Dienstform ist wichtiger, als sie aussieht: Rufbereitschaft unterbricht die Ruhezeit nicht, Bereitschaftsdienst zählt nur anteilig aufs Konto.",
-      },
-    ],
-  },
+/** Holt den Handbuchinhalt. Mehrfache Aufrufe teilen sich ein Versprechen. */
+function handbuchLaden() {
+  if (_handbuch) return Promise.resolve(_handbuch);
+  if (!_handbuchLaeuft) {
+    _handbuchLaeuft = import("./handbuch-inhalt.js")
+      .then((mod) => { _handbuch = mod.HANDBUCH; return _handbuch; })
+      .catch((e) => { _handbuchLaeuft = null; throw e; });
+  }
+  return _handbuchLaeuft;
+}
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "personal", titel: "Schritt 2 — Personal anlegen", dauer: "20 bis 60 Minuten",
-    ziel: "personal",
-    einleitung: "Der einzige Schritt, der wirklich Zeit kostet. Es gibt zwei Wege.",
-    abschnitte: [
-      {
-        titel: "Liste einlesen",
-        text: "Der schnellere Weg, wenn eine Tabelle vorliegt.",
-        schritte: [
-          "Team → Personal → Importieren.",
-          "Die Tabelle aus Excel kopieren und in das Feld einfügen. Komma, Semikolon und Tabulator werden erkannt.",
-          "Spalten zuordnen: Vorname, Nachname, Funktion, Wochenstunden, Einheit.",
-          "Die Vorschau zeigt jede Zeile mit Befund. Fehlerhafte Zeilen werden benannt, nicht stillschweigend übersprungen.",
-          "Erst wenn die Vorschau stimmt, auf Übernehmen.",
-        ],
-        pruefen: "Die Personalliste zeigt danach die erwartete Anzahl. Fehlt jemand, stand in der Zeile ein unbekannter Einheitenname.",
-        merke: "Personalnummern gleich mit einlesen, wenn vorhanden. Sie werden für die Lohnausgabe gebraucht und lassen sich später nur einzeln nachtragen.",
-      },
-      {
-        titel: "Einzeln anlegen",
-        text: "Für kleine Betriebe oder Nachzügler.",
-        schritte: [
-          "Team → Personal → Person hinzufügen.",
-          "Name, Funktion, Einheit und Wochenstunden eintragen.",
-          "Eintrittsdatum setzen — davor erscheint die Person in keinem Plan.",
-          "Bei Teilzeit die tatsächlichen Wochenstunden eintragen; CENTRIC verteilt die Dienste entsprechend.",
-        ],
-        pruefen: "Die Person erscheint im Monatsplan ab dem Eintrittsdatum mit Diensten.",
-      },
-      {
-        titel: "Zugangsarten vergeben",
-        text: "Wer darf was sehen und ändern. Anders als bei vielen Anbietern kostet das nichts extra — gerechnet wird je Standort, nicht je Kopf.",
-        schritte: [
-          "In der Personalliste steht je Zeile ein Auswahlfeld für die Zugangsart.",
-          "Organisationsleitung: alles. Genau eine je Betrieb, kostenfrei.",
-          "Planung: Schichtfolge, Monatsplan, Freigabe, alle Anträge. Sitzt im Geschäftszimmer und fährt keine Schicht.",
-          "Schichtverantwortung: nur die eigene Einheit, fährt selbst mit.",
-          "Beschäftigte: eigener Plan, Anträge, Zeiterfassung.",
-          "Betriebsrat: rein lesend, kostenfrei.",
-        ],
-        pruefen: "Die geänderte Zugangsart erscheint sofort in der Liste, und die betroffene Person sieht beim nächsten Anmelden die neuen Ansichten.",
-        merke: "Im Zweifel weniger Rechte vergeben. Nachträglich erweitern ist leicht, entziehen ist unangenehm. Kosten spielen dabei keine Rolle — wer jemanden zur Planung befördert, zahlt keinen Aufpreis.",
-      },
-    ],
-  },
+/** Welche Kapitel gelten für diesen Betrieb? */
+const handbuchKapitel = (alle, m) => (alle || []).filter((k) =>
+  !k.merkmale || !m || k.merkmale.some((x) => kann(m, x)));
 
-  /* ------------------------------------------------------------------ */
-  {
-    id: "quals", titel: "Schritt 3 — Qualifikationen", dauer: "20 Minuten",
-    ziel: "quals",
-    einleitung: "Wer darf was. Grundlage für Besetzungsprüfung und Ersatzsuche.",
-    abschnitte: [
-      {
-        titel: "Qualifikationen anlegen",
-        text: "Sachkunde, Schichtleitung, Erste Hilfe, Fachweiterbildungen — was in eurem Betrieb zählt.",
-        schritte: [
-          "Team → Qualifikationen → Hinzufügen.",
-          "Bezeichnung und Kürzel eintragen.",
-          "Gültigkeitsdauer festlegen: unbefristet oder in Monaten. Erste Hilfe läuft üblicherweise nach 24 Monaten ab.",
-          "Nachweispflicht setzen, wenn ein Dokument vorliegen muss.",
-          "Zwei besondere Schalter: „zählt als Fachkraft\" für die Quote in Pflege und Klinik, „gesetzlich zwingend\" für Qualifikationen wie die Sachkunde nach § 34a.",
-        ],
-        pruefen: "Bei einer Qualifikation mit Ablauf erscheint in der Personalakte ein Feld für das Ablaufdatum.",
-        merke: "„Gesetzlich zwingend\" wirkt hart: Ohne diese Qualifikation ist gar kein Einsatz zulässig, unabhängig vom Dienst. Nur dort setzen, wo es wirklich so ist.",
-      },
-      {
-        titel: "Personen zuordnen",
-        text: "Ohne Zuordnung kann CENTRIC nicht erkennen, ob ein Dienst fachlich gedeckt ist.",
-        schritte: [
-          "Personalakte öffnen → Qualifikationen.",
-          "Zutreffende auswählen und bei befristeten das Ablaufdatum eintragen.",
-          "Bei vielen Personen ist der Weg über die Qualifikationsmatrix schneller: Team → Qualifikationen → Matrix.",
-        ],
-        pruefen: "Die Matrix zeigt je Einheit und Qualifikation, wie viele Personen sie haben. Rot bedeutet: hängt an einer einzigen Person.",
-        merke: "Die Engpassanzeige der Matrix ist eine der nützlichsten Ansichten überhaupt — sie zeigt, wo ein einziger Ausfall den Betrieb lahmlegt.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "folge", titel: "Schritt 4 — Schichtfolge festlegen", dauer: "15 Minuten",
-    ziel: "folge",
-    einleitung: "Das Herzstück. Aus Zyklus und Startpunkt entsteht der ganze Plan.",
-    abschnitte: [
-      {
-        titel: "Modell wählen",
-        text: "Neun geprüfte Modelle stehen bereit, jedes mit gerechneten Kennzahlen.",
-        schritte: [
-          "Planung → Schichtfolge → Einrichtungsassistent.",
-          "Die Liste zeigt je Modell: Wochenstunden, Anzahl Gruppen, längste Dienstserie.",
-          "Ein Klick öffnet die Vorschau mit dem tatsächlichen Zyklus.",
-          "Wenn keines passt: eigenen Zyklus bauen — Dienstart antippen, dann auf Tage klicken. Oder die Dienstart direkt auf einen Tag ziehen.",
-        ],
-        pruefen: "Die Kennzahl „Wochenstunden\" muss zur vertraglichen Arbeitszeit passen. Weicht sie um mehr als eine Stunde ab, entstehen dauerhaft Plus- oder Minusstunden.",
-        merke: "Die Zahlen sind gerechnet, nicht geschätzt. Ein Modell mit 42 Stunden bei 40 Stunden Vertrag erzeugt zwei Plusstunden je Woche — je Person, jede Woche.",
-      },
-      {
-        titel: "Gruppen und Startpunkte",
-        text: "Jede Gruppe startet an einer anderen Stelle des Zyklus. Der Versatz bestimmt, wer wann arbeitet.",
-        schritte: [
-          "Anzahl Gruppen festlegen — meist gibt das Modell sie vor.",
-          "Den Versatz je Gruppe prüfen. Bei gleichmäßigem Versatz deckt jede Gruppe reihum jede Dienstart ab.",
-          "Ankerdatum setzen: der Tag, an dem Gruppe 1 am Zyklusanfang steht.",
-        ],
-        pruefen: "Im Monatsplan durchlaufen alle Gruppen dieselbe Abfolge, nur zeitversetzt. Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht, stimmt der Versatz nicht.",
-        merke: "Das Ankerdatum lässt sich später ändern, verschiebt dann aber den gesamten Plan. Vor der ersten Freigabe klären.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "plan", titel: "Schritt 5 — Prüfen und freigeben", dauer: "20 Minuten",
-    ziel: "plan",
-    einleitung: "Vor der Freigabe alle kritischen Befunde klären. Danach ist der Plan verbindlich.",
-    abschnitte: [
-      {
-        titel: "Die Prüfung lesen",
-        text: "CENTRIC prüft laufend gegen Arbeitszeitgesetz, Mindestbesetzung und Qualifikationen.",
-        schritte: [
-          "Auswertung → Prüfung öffnen.",
-          "Rote Befunde sind kritisch: Ruhezeitverstoß, Unterbesetzung, fehlende Pflichtqualifikation.",
-          "Gelbe sind Hinweise: hohes Stundenkonto, viele Dienste in Folge, ablaufender Nachweis.",
-          "Jeder Befund nennt Person, Datum und Grund. Ein Klick führt zum betroffenen Tag.",
-        ],
-        pruefen: "Nach dem Beheben verschwindet der Befund sofort — die Prüfung rechnet bei jeder Änderung neu.",
-        merke: "Gelbe Befunde müssen nicht verschwinden. Rote sollten es, bevor freigegeben wird.",
-      },
-      {
-        titel: "Lücken schließen",
-        text: "Wenn ein Dienst unterbesetzt ist.",
-        schritte: [
-          "Lagebild öffnen oder den Tag im Monatsplan anklicken.",
-          "Bei der unterbesetzten Dienstart auf „Besetzen\".",
-          "CENTRIC schlägt Personen vor, geordnet nach Eignung. Wer nicht kann, steht unten mit Begründung.",
-          "Der Knopf „warum?\" zeigt, weshalb jemand oben steht: Stundenkonto unter dem Mittel, Wunschdienst hinterlegt, lange nicht eingesprungen.",
-          "Vor dem Eintragen zeigt CENTRIC die Folgen: Ruhezeit, Wochenstunden, nächste Dienste.",
-        ],
-        pruefen: "Die Zahl im Lagebild steigt von 8/10 auf 9/10.",
-        merke: "Wer abwesend ist, kann nicht eingeteilt werden — CENTRIC lehnt das ab statt es stillschweigend anzunehmen.",
-      },
-      {
-        titel: "Freigeben",
-        text: "Mit der Freigabe wird der Monat verbindlich.",
-        schritte: [
-          "Planung → Monatsplan → Freigeben.",
-          "Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
-          "Der Planstandvergleich zeigt, was sich seit der Freigabe geändert hat.",
-        ],
-        pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
-        merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt. Danach zählt jede Änderung in die Planungssicherheit.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "betrieb2", titel: "Der laufende Betrieb", dauer: "täglich",
-    ziel: "start",
-    einleitung: "Was nach der Einrichtung jeden Tag passiert.",
-    abschnitte: [
-      {
-        titel: "Krankmeldung und Ersatz",
-        text: "Der häufigste Vorgang überhaupt — und der eigentliche Prüfstein.",
-        schritte: [
-          "Auf jeder Ansicht oben: Krankmeldung erfassen.",
-          "Person und Zeitraum wählen. CENTRIC zeigt sofort alle entstehenden Lücken.",
-          "Je Lücke Ersatz suchen. Wer möglich ist, steht oben; wer nicht, unten mit Grund.",
-          "Findet sich niemand: erweiterte Anfrage an mehrere Personen gleichzeitig.",
-          "Bleibt es unbesetzt: dokumentierte Unterschreitung mit Begründung — nachweisbar für Prüfungen.",
-        ],
-        pruefen: "Die betroffenen Personen erhalten eine Mitteilung, sichtbar im Postfach.",
-      },
-      {
-        titel: "Offene Schichten ausschreiben",
-        text: "Statt zehn Leute anzurufen: die Lücke sichtbar machen und warten, wer sich meldet.",
-        schritte: [
-          "Anliegen → Offene Schichten.",
-          "Oben stehen die Lücken der nächsten vierzehn Tage, die noch nicht ausgeschrieben sind.",
-          "Auf „Ausschreiben\" — CENTRIC zeigt vorher, wie viele Personen die Schicht überhaupt übernehmen dürfen.",
-          "Ein Satz zum Grund erhöht die Bereitschaft spürbar: „Krankmeldung, kurzfristig\".",
-          "Unterrichtet wird nur, wer sie auch nehmen darf — Ruhezeit, Qualifikation und Abwesenheit sind vorher geprüft.",
-          "Meldungen erscheinen nach Eignung geordnet, mit Begründung. Ein Griff auf „Einteilen\".",
-        ],
-        pruefen: "Nach dem Ausschreiben meldet CENTRIC, wie viele Personen unterrichtet wurden. Steht dort null, darf niemand — dann hilft nur die gezielte Ersatzsuche.",
-        merke: "Die Reihenfolge der Meldungen richtet sich nicht danach, wer zuerst kam. Sonst gewinnt, wer am häufigsten aufs Telefon schaut. Stattdessen zählen Stundenkonto, Auslastung und wie oft jemand zuletzt eingesprungen ist.",
-      },
-      {
-        titel: "Anträge entscheiden",
-        text: "Urlaub, Tausch, Schulung — mit Blick auf die Folgen.",
-        schritte: [
-          "Anliegen → Anträge öffnen.",
-          "Links die Liste, rechts die Kapazität der nächsten acht Wochen.",
-          "Beim Markieren eines Antrags färben sich die betroffenen Wochen. Rot heißt: diese Woche kippt erst dadurch.",
-          "Mehrere auswählen zeigt die Wirkung aller zusammen.",
-          "Tastatur: J und K blättern, G genehmigt, A lehnt ab, Leertaste wählt aus.",
-        ],
-        pruefen: "Unter dem markierten Antrag stehen Urlaubsrest, Stundenkonto und Auslastung der Person.",
-        merke: "Wer täglich vierzig Anträge entscheidet, sollte die Tastatur nutzen. Das ist der Unterschied zwischen zwanzig Minuten und fünf.",
-      },
-      {
-        titel: "Checklisten an Schichten",
-        text: "Was zu einem Dienst gehört, aber nicht im Plan steht: Rundgang, Schlüsselübergabe, Betäubungsmittelschrank.",
-        schritte: [
-          "Verwaltung → Betrieb → Dienstarten → gewünschte Dienstart öffnen.",
-          "Auf „Vorlage übernehmen\" — je nach Branchenpaket erscheinen passende Punkte zum Anpassen.",
-          "Je Punkt festlegen: Zeitpunkt (Beginn, laufend, Ende oder feste Uhrzeit) und ob er Pflicht ist.",
-          "Beschäftigte sehen die Liste unter Heute, sobald sie im Dienst sind.",
-        ],
-        merke: "Ein gesetzter Haken lässt sich nicht zurücknehmen, und wer nachträglich abhakt, erzeugt einen Eintrag mit dem Vermerk „nachgetragen\". Eine rückwirkend änderbare Dokumentation wäre als Nachweis wertlos — und genau dafür wird sie gebraucht.",
-      },
-      {
-        titel: "Schneller tippen als klicken",
-        text: "Die Suche oben versteht ganze Sätze, nicht nur einzelne Begriffe.",
-        schritte: [
-          "Suchfeld öffnen und schreiben, was gemeint ist: „Müller krank morgen\".",
-          "CENTRIC zeigt, was es verstanden hat, bevor etwas geschieht.",
-          "Auch möglich: „Urlaub Schmidt 14.3. bis 20.3.\", „wer kann Freitag Nachtdienst\", „Lagebild morgen\".",
-          "Bei mehreren gleichen Namen wird nachgefragt statt geraten.",
-        ],
-        merke: "Die Zeile führt nie selbst etwas aus. Sie öffnet die passende Ansicht mit vorausgefüllten Feldern — entscheiden tut ein Mensch. Das ist Absicht: ein Dienstplan braucht Vorhersagbarkeit, kein Raten.",
-      },
-      {
-        titel: "Zeiten und Zuschläge",
-        text: "Was tatsächlich gearbeitet wurde.",
-        schritte: [
-          "Beschäftigte bestätigen ihre Zeiten in der Telefonansicht — „wie geplant\" oder mit Abweichung.",
-          "Auswertung → Abrechnungsdaten zeigt Zuschläge tagesgenau zerlegt.",
-          "Lohnausgabe erzeugt eine CSV-Datei nach DATEV-Schema, je Person und Lohnart.",
-        ],
-        pruefen: "Die Summe je Lohnart stimmt mit der Zuschlagsübersicht überein.",
-        merke: "CENTRIC rechnet Stunden, keine Beträge. Stundensätze und Steuerfreibeträge gehören in die Lohnabrechnung.",
-      },
-      {
-        titel: "Belastbarkeit im Blick behalten",
-        text: "Die Frage vor dem Anruf, nicht danach.",
-        schritte: [
-          "Auswertung → Belastbarkeit.",
-          "Je Woche und Dienst: wie viele gleichzeitige Ausfälle verträgt die schwächste Schicht.",
-          "Null bedeutet: der nächste Krankheitsfall führt zur Unterbesetzung.",
-          "Darunter vier Ausfallszenarien von fünf bis dreißig Prozent.",
-        ],
-        merke: "Diese Ansicht einmal die Woche öffnen. Sie zeigt Probleme, bevor sie eintreten.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "beschaeftigte", titel: "Für Beschäftigte", dauer: "5 Minuten",
-    einleitung: "Was die Belegschaft auf dem Telefon sieht. Diesen Teil ausdrucken und aushängen.",
-    abschnitte: [
-      {
-        titel: "Die vier Reiter",
-        text: "Beschäftigte landen automatisch in der Telefonansicht, unabhängig vom Gerät.",
-        schritte: [
-          "Heute: der Dienst des Tages mit großem Knopf zum Ein- und Ausstempeln.",
-          "Mein Plan: kommende Dienste als Liste oder Monatsansicht. Tippen öffnet Tausch, Antrag und Wunsch.",
-          "Anliegen: Anträge, Krankmeldung, Tauschbörse, Stundenkonto.",
-          "Mehr: Verfügbarkeit, Wunschdienste, Nachweise, Schwarzes Brett, Feldmodus.",
-        ],
-        merke: "Beim Stempeln wird der Standort einmalig geprüft. Gespeichert wird nur, ob jemand am Einsatzort war — keine Koordinate, kein Verlauf, keine Dauerortung.",
-      },
-      {
-        titel: "Häufige Fragen",
-        text: "Was in der Einführung immer gefragt wird.",
-        schritte: [
-          "„Wann arbeite ich?\" — Reiter Heute, ganz oben.",
-          "„Wie viele Urlaubstage habe ich noch?\" — Mehr, oben in den Kennzahlen.",
-          "„Kann ich tauschen?\" — Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.",
-          "„Warum steht mein Konto im Minus?\" — Anliegen, Stundenkonto, mit Verlauf über sechs Monate.",
-          "„Sieht der Chef, wo ich bin?\" — Nein. Nur ob du beim Stempeln am Einsatzort warst.",
-        ],
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "pflege", titel: "Besonderheiten Pflege und Klinik", dauer: "10 Minuten",
-    nurWenn: (m) => kann(m, "fachkraftquote") || kann(m, "uebergabe"),
-    einleitung: "Was in diesen Branchen zusätzlich gilt.",
-    abschnitte: [
-      {
-        titel: "Fachkraftquote",
-        text: "Der Mindestanteil examinierter Kräfte je Dienst — als Anteil geführt, nicht als feste Zahl.",
-        schritte: [
-          "Bei der Qualifikation den Schalter „zählt als Fachkraft\" setzen.",
-          "Bei jeder Dienstart den Mindestanteil wählen: 40 Prozent tagsüber, 50 Prozent nachts sind verbreitet.",
-          "Die Prüfung meldet Unterschreitungen als kritischen Befund.",
-        ],
-        merke: "Eine feste Zahl wäre bei wechselnder Besetzungsstärke ohne Aussage. Zwei Fachkräfte bei vier Personen sind etwas anderes als zwei bei zehn.",
-      },
-      {
-        titel: "Schichtübergabe",
-        text: "Ein eigener, dokumentationspflichtiger Vorgang.",
-        schritte: [
-          "Heute → Übergabe.",
-          "Vier Felder: Lage und Besonderheiten (Pflicht), offene Aufgaben, besondere Vorkommnisse, Material.",
-          "Nach dem Abschließen nicht mehr änderbar — Ergänzungen werden mit Zeitstempel angehängt.",
-          "Fehlende Übergaben der letzten drei Tage stehen oben als Schnellzugriff.",
-        ],
-        merke: "Die Unveränderbarkeit ist Absicht. Eine nachträglich geänderte Übergabe wäre als Nachweis wertlos.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "hartesperre") || kann(m, "posten"),
-    einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
-    abschnitte: [
-      {
-        titel: "Sachkunde nach § 34a",
-        text: "Gesetzlich zwingend — ohne sie ist kein Einsatz zulässig.",
-        schritte: [
-          "Bei der Qualifikation den Schalter „gesetzlich zwingend\" setzen.",
-          "CENTRIC sperrt daraufhin jeden Einsatz ohne diese Qualifikation, unabhängig von der Dienstart.",
-          "Auch die Ersatzsuche schließt betroffene Personen aus, mit Begründung.",
-        ],
-        merke: "Anders als eine normale Mindestqualifikation gilt die harte Sperre für alle Dienste. Das entspricht der Rechtslage.",
-      },
-      {
-        titel: "Außenposten",
-        text: "Objekte, die aus dem laufenden Dienst heraus besetzt werden.",
-        schritte: [
-          "Dienstart anlegen und „Außenposten\" setzen.",
-          "Quelldienst wählen — aus welchem Dienst die Besetzung kommt.",
-          "CENTRIC verteilt die Posten reihum, damit nicht immer dieselben dort stehen.",
-        ],
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "probleme", titel: "Wenn etwas nicht stimmt", dauer: "Nachschlagen",
-    einleitung: "Die Fälle, die in der Einführung am häufigsten auftreten.",
-    abschnitte: [
-      {
-        titel: "Der Plan sieht falsch aus",
-        text: "Meist liegt es an einem von drei Dingen.",
-        schritte: [
-          "Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht? → Versatz prüfen unter Schichtfolge.",
-          "Fängt der Zyklus am falschen Tag an? → Ankerdatum prüfen.",
-          "Fehlen einzelne Personen? → Eintrittsdatum und Einheitenzuordnung prüfen.",
-        ],
-      },
-      {
-        titel: "Hunderte Befunde auf einmal",
-        text: "Fast immer ein zu streng gesetzter Wert.",
-        schritte: [
-          "Ruhezeit auf zwölf Stunden gesetzt, obwohl elf gelten? → Verwaltung, Betrieb.",
-          "Wochenstunden des Modells passen nicht zum Vertrag? → Schichtfolge, Kennzahlen prüfen.",
-          "Mindestbesetzung höher als die Gruppenstärke? → Dienstarten prüfen.",
-        ],
-      },
-      {
-        titel: "Jemand kann nicht eingeteilt werden",
-        text: "Die Ersatzliste nennt immer den Grund.",
-        schritte: [
-          "Ruhezeit — der Dienst läge zu dicht am vorherigen.",
-          "Abwesend — Urlaub, krank oder Schulung.",
-          "Qualifikation fehlt oder ist abgelaufen.",
-          "Einsatzeinschränkung — keine Nacht, kein Alleindienst, Wiedereingliederung.",
-        ],
-        merke: "Steht dort nichts, ist die Person schlicht schon eingeteilt.",
-      },
-      {
-        titel: "Zwei Personen haben gleichzeitig gespeichert",
-        text: "CENTRIC überschreibt nicht stillschweigend.",
-        schritte: [
-          "Es erscheint ein Hinweis mit Name und Zeit der anderen Speicherung.",
-          "Der fremde Stand bleibt erhalten. Die eigene Änderung noch einmal vornehmen.",
-        ],
-        merke: "Ohne diesen Schutz würde bei zwei gleichzeitig arbeitenden Planern still Arbeit verloren gehen.",
-      },
-    ],
-  },
-
-  /* ------------------------------------------------------------------ */
-  {
-    id: "daten", titel: "Daten und Datenschutz", dauer: "5 Minuten",
-    ziel: "mitnahme",
-    einleitung: "Was gespeichert wird, wie lange, und wie man wieder herauskommt.",
-    abschnitte: [
-      {
-        titel: "Datenmitnahme",
-        text: "Jederzeit vollständig, in offenem Format, ohne Gebühr.",
-        schritte: [
-          "Verwaltung → Datenmitnahme.",
-          "Sieben Tabellen als CSV: Personalstamm, Dienstplan, Abwesenheiten, Zeiten, Anträge, Qualifikationen, Protokoll.",
-          "Der Dienstplan wird Tag für Tag ausgeschrieben — so lässt er sich in jedes andere System einlesen.",
-        ],
-        merke: "Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört an den Anfang eines Vertrags, nicht ans Ende.",
-      },
-      {
-        titel: "Auskunft und Löschung",
-        text: "Rechte nach der Datenschutz-Grundverordnung.",
-        schritte: [
-          "Verwaltung → Datenschutz → Auskunft nach Artikel 15 für eine einzelne Person erzeugen.",
-          "Aufbewahrungsdauer einstellen — nach Ablauf werden alte Daten anonymisiert.",
-          "Das Änderungsprotokoll hält fest, wer wann was geändert hat.",
-        ],
-      },
-    ],
-  },
-];
 
 /** Alle Abschnitte flach, für die Suche. */
-const handbuchAbschnitte = (m) => HANDBUCH
-  .filter((k) => !k.nurWenn || (m && k.nurWenn(m)))
+/** Alle Abschnitte flach, für die Suche. */
+const handbuchAbschnitte = (alle, m) => handbuchKapitel(alle, m)
   .flatMap((k) => k.abschnitte.map((a) => ({ ...a, kapitel: k.titel, kapitelId: k.id, ziel: k.ziel })));
 
 /* ==========================================================================
@@ -11837,20 +12882,58 @@ const handbuchAbschnitte = (m) => HANDBUCH
    ========================================================================== */
 function Handbuch({ sitz, akt, gehZu }) {
   const m = sitz.mandant;
-  const kapitel = useMemo(() => HANDBUCH.filter((k) => !k.nurWenn || k.nurWenn(m)), [m]);
-  const [offen, setOffen] = useState(kapitel[0] ? kapitel[0].id : null);
+  /* Der Inhalt wird erst beim Öffnen geholt. Bis dahin steht hier ein
+     Gerüst — kein Drehrad und kein leerer Bildschirm. */
+  const [alle, setAlle] = useState(_handbuch);
+  const [ladefehler, setLadefehler] = useState(null);
+  useEffect(() => {
+    if (alle) return;
+    let weg = false;
+    handbuchLaden().then((h) => { if (!weg) setAlle(h); })
+      .catch(() => { if (!weg) setLadefehler(true); });
+    return () => { weg = true; };
+  }, [alle]);
+
+  const kapitel = useMemo(() => handbuchKapitel(alle, m), [alle, m]);
+  const [offen, setOffen] = useState(null);
   const [suche, setSuche] = useState("");
   const gelesen = (sitz.person.handbuch || []);
 
   const treffer = useMemo(() => {
     const s = suche.trim().toLowerCase();
     if (s.length < 2) return null;
-    return handbuchAbschnitte(m).filter((a) =>
+    return handbuchAbschnitte(alle, m).filter((a) =>
       `${a.titel} ${a.text} ${(a.schritte || []).join(" ")} ${a.merke || ""} ${a.kapitel}`
         .toLowerCase().includes(s));
-  }, [suche, m]);
+  }, [suche, alle, m]);
 
-  const k = kapitel.find((x) => x.id === offen);
+  if (ladefehler) return (
+    <div>
+      <H1>Handbuch</H1>
+      <Card style={{ padding: 24 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>
+          Das Handbuch ließ sich nicht nachladen</div>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px" }}>
+          Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung
+          abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen.</p>
+        <Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
+          .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>
+      </Card>
+    </div>);
+
+  if (!alle) return (
+    <div>
+      <H1 sub="Wird geholt …">Handbuch</H1>
+      <div style={{ display: "grid", gridTemplateColumns: "230px 1fr", gap: 26 }}>
+        <div className="pulsiert" style={{ height: 300, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+        <div className="pulsiert" style={{ height: 420, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+      </div>
+      <div className="nurLeser" role="status" aria-live="polite">Handbuch wird geladen</div>
+    </div>);
+
+  const k = kapitel.find((x) => x.id === offen) || kapitel[0];
   const anteil = Math.round((gelesen.length /
     Math.max(1, kapitel.reduce((a, x) => a + x.abschnitte.length, 0))) * 100);
 
@@ -11996,8 +13079,8 @@ function Handbuch({ sitz, akt, gehZu }) {
 }
 
 /** Handbuch als druckbare Seite — zum Mitgeben nach der Einrichtung. */
-function handbuchDruck(m) {
-  const kapitel = HANDBUCH.filter((k) => !k.nurWenn || k.nurWenn(m));
+function handbuchDruck(m, alle) {
+  const kapitel = handbuchKapitel(alle, m);
   const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const teile = [];
   teile.push(`<div class="deckel">
@@ -12089,6 +13172,18 @@ const ZUSTELLARTEN = {
     text: "Ein Dienst ist unbesetzt und steht zur Bewerbung offen." },
   tauschAngebot: { titel: "Tauschangebot", mail: false, push: true, dringend: false,
     text: "Jemand bietet einen Tausch an, der zu deinem Plan passt." },
+  /* Der Hinweis, ohne den Urlaub gar nicht verfällt.
+
+     Nach EuGH C-684/16 und BAG 9 AZR 541/15 verfällt Urlaub nur, wenn der
+     Arbeitgeber rechtzeitig und ausdrücklich darauf hingewiesen hat. Ohne
+     Hinweis wird er übertragen und häuft sich an — mit allem, was das für
+     Rückstellungen und ausscheidende Beschäftigte bedeutet.
+
+     Die Mitteilung ist damit kein Service, sondern die Erfüllung einer
+     Pflicht. Deshalb geht sie über E-Mail hinaus und bleibt im Postfach
+     nachweisbar stehen. */
+  urlaubVerfaellt: { titel: "Resturlaub verfällt", mail: true, push: false, dringend: false,
+    text: "Nicht genommener Urlaub verfällt zum Jahresende, wenn er nicht eingeplant wird." },
   nachweisLaeuftAb: { titel: "Nachweis läuft ab", mail: true, push: false, dringend: false,
     text: "Eine Qualifikation verliert demnächst ihre Gültigkeit." },
   zeitFehlt: { titel: "Zeiten offen", mail: false, push: true, dringend: false,
@@ -12140,6 +13235,28 @@ function baueMitteilung(m, personId, art, titel, text, ziel) {
     wege: { mail: w.mail ? p.email : null, push: w.push ? p.pushSchluessel : null },
     zugestellt: { mail: null, push: null },
   };
+}
+
+/* --------------------------------------------------------------------------
+   URLAUBSHINWEIS
+
+   Sammelt, für wen ein Hinweis fällig ist. Die Regel selbst steht in
+   src/regelwerk.js und ist dort geprüft; hier wird sie auf die Urlaubskonten
+   angewendet.
+
+   Ausgelöst wird höchstens einmal je Person und Jahr — festgehalten wird das
+   an der Person selbst, damit es auch nach einem Gerätewechsel gilt.
+   -------------------------------------------------------------------------- */
+function urlaubshinweiseFaellig(m, stichtag) {
+  const jahr = Number(String(stichtag).slice(0, 4));
+  const aus = [];
+  for (const p of aktive(m, stichtag)) {
+    const konto = urlaubskonto(m, p, jahr);
+    const offen = Math.max(0, (konto.anspruch || 0) - (konto.genommen || 0));
+    const h = urlaubshinweisFaellig(offen, stichtag, p.urlaubshinweis || null);
+    if (h.faellig) aus.push({ person: p, ...h });
+  }
+  return aus;
 }
 
 /** Alle Mitteilungen, für die noch etwas hinausgehen muss. */
@@ -12692,524 +13809,41 @@ const neuerCheckpunkt = (text, zeitpunkt) => ({
    einen und überfordert die anderen.
    ========================================================================== */
 
-const TOUR = {
-  /* ---------------------------------------------------------------- */
-  leitung: {
-    titel: "Betrieb einrichten und führen",
-    dauer: "25 bis 40 Minuten",
-    einleitung: "Du richtest den Betrieb ein und trägst die Verantwortung für Regelwerk, Personal und Freigaben. Diese Tour führt vom leeren Bestand bis zum laufenden Plan.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "CENTRIC rechnet Dienstpläne, statt sie zu verwalten. Du hinterlegst eine Schichtfolge, und daraus entsteht jeder Tag — vorwärts wie rückwärts, ohne Jahresgrenze. Gespeichert wird nur, was von der Regel abweicht.",
-          merke: "Diese Tour lässt sich jederzeit schließen und unter Einstellungen wieder starten." },
-        { titel: "Die Seitenleiste", ziel: "start",
-          text: "Links stehen sechs Bereiche: Heute, Planung, Anliegen, Team, Auswertung, Verwaltung. Die Zahlen daneben zeigen, wo etwas auf dich wartet.",
-          tun: "Fahre einmal über alle sechs Bereiche.",
-          pruefen: "Bei „Anliegen\" steht eine Zahl, wenn Anträge offen sind." },
-        { titel: "Die Startseite", ziel: "start",
-          text: "Oben vier Kennzahlen: offene Schichten, wartende Freigaben, Abwesenheiten heute, Lücken der nächsten sieben Tage. Darunter höchstens drei Karten mit dem, was heute zu tun ist.",
-          merke: "Die Karten sind nach Dringlichkeit sortiert. Wer nur die oberste abarbeitet, hat das Wichtigste erledigt." },
-        { titel: "Suche und Tastatur", ziel: null,
-          text: "Oben rechts die Suche. Sie findet Personen, Dienstarten und Ansichten.",
-          tun: "Tippe einen Nachnamen ein.",
-          merke: "Die Eingabezeile versteht auch Sätze: „Müller krank morgen\" öffnet die Krankmeldung mit gefüllten Feldern." },
-      ]},
-      { name: "Betrieb einrichten", ziel: "betrieb", punkte: [
-        { titel: "Standorte anlegen", ziel: "betrieb",
-          text: "Jeder Standort hat ein eigenes Bundesland. Das ist keine Formalie — Feiertage unterscheiden sich, und Feiertagszuschläge hängen daran.",
-          tun: "Lege für jeden Standort Bezeichnung, Bundesland und Umkreis an.",
-          pruefen: "Im Monatsplan sind die Feiertage deines Bundeslandes rot markiert.",
-          merke: "Der Umkreis gilt für die Standortprüfung beim Einstempeln. 200 Meter sind ein guter Anfang." },
-        { titel: "Wochenarbeitszeit", ziel: "betrieb",
-          text: "Die vertragliche Regelarbeitszeit einer Vollzeitkraft. Aus ihr errechnet CENTRIC die Sollstunden jedes Monats.",
-          tun: "Trage die Wochenarbeitszeit ein.",
-          pruefen: "Im Stundenkonto einer Vollzeitkraft steht ein Sollwert, der zur Wochenarbeitszeit passt.",
-          merke: "Weicht der Wert vom Schichtmodell ab, entstehen dauerhaft Plus- oder Minusstunden. Beides muss zusammenpassen." },
-        { titel: "Ruhezeit", ziel: "betrieb",
-          text: "Gesetzlich elf Stunden zwischen zwei Diensten. In Pflege, Klinik und Gaststätten sind unter Bedingungen zehn zulässig.",
-          tun: "Setze den Wert auf das, was bei euch gilt.",
-          pruefen: "Die Prüfung meldet keine Ruhezeitverstöße, wo bisher keine waren.",
-          merke: "Zu streng gesetzt erzeugt Hunderte Befunde, die niemand mehr liest. Lieber einmal mit dem Betriebsrat abstimmen." },
-        { titel: "Dienste in Folge", ziel: "betrieb",
-          text: "Wie viele Dienste hintereinander zulässig sind. Üblich sechs, in manchen Modellen sieben.",
-          tun: "Trage die Höchstzahl ein.",
-          pruefen: "Die Prüfung meldet lange Dienstserien als Hinweis." },
-        { titel: "Ausgleichsgrenze", ziel: "betrieb",
-          text: "Ab welchem Stand des Stundenkontos gewarnt wird. Vierzig Stunden sind verbreitet.",
-          merke: "Diese Grenze ist ein Hinweis, keine Sperre. Wer sie überschreitet, wird nicht gehindert — nur sichtbar." },
-        { titel: "Dienstarten anlegen", ziel: "betrieb",
-          text: "Früh, Spät, Nacht — oder was bei euch gefahren wird. Name, Kürzel, Beginn, Ende, Farbe.",
-          tun: "Lege jede Dienstart an. Über Mitternacht laufende Dienste werden erkannt.",
-          pruefen: "Im Lagebild erscheint jede Dienstart mit einer Besetzungszahl." },
-        { titel: "Dienstform wählen", ziel: "betrieb",
-          text: "Regeldienst zählt voll, Bereitschaftsdienst zu 60 Prozent, Rufbereitschaft zu 12,5 Prozent. Der geteilte Dienst hat zwei Abschnitte.",
-          merke: "Rufbereitschaft unterbricht die Ruhezeit nicht — deshalb ist die Dienstform wichtiger, als sie aussieht." },
-        { titel: "Mindestbesetzung", ziel: "betrieb",
-          text: "Je Dienstart und Wochentag getrennt: Montag bis Donnerstag, Freitag, Samstag, Sonntag.",
-          tun: "Trage die Mindestbesetzung ein.",
-          pruefen: "Das Lagebild zeigt Zahlen wie 8/10 — eingeteilt gegen gefordert.",
-          merke: "Höher als die Gruppenstärke gesetzt, meldet die Prüfung dauerhaft Unterbesetzung." },
-        { titel: "Erforderliche Qualifikationen", ziel: "betrieb",
-          text: "Wenn ein Dienst ohne bestimmte Kräfte nicht laufen darf, hinterlege sie hier mit Mindestzahl.",
-          pruefen: "Die Prüfung meldet fehlende Qualifikationen getrennt von fehlenden Personen." },
-      ]},
-      { name: "Personal", ziel: "personal", punkte: [
-        { titel: "Liste einlesen", ziel: "personal",
-          text: "Der schnellere Weg. Tabelle aus Excel kopieren, einfügen, fertig — die Spalten werden erkannt, auch ohne brauchbare Überschriften.",
-          tun: "Team → Personal → Importieren, Tabelle einfügen, Vorschau prüfen.",
-          pruefen: "Die Vorschau zeigt „sicher\", „ähnlich\" oder „aus dem Inhalt\" je Spalte. Bei „aus dem Inhalt\" nachsehen.",
-          merke: "Personalnummern gleich mit einlesen — sie werden für die Lohnausgabe gebraucht." },
-        { titel: "Einzeln anlegen", ziel: "personal",
-          text: "Für kleine Betriebe oder Nachzügler.",
-          tun: "Person hinzufügen, Name, Funktion, Einheit, Wochenstunden, Eintrittsdatum.",
-          pruefen: "Die Person erscheint im Monatsplan ab dem Eintrittsdatum." },
-        { titel: "Teilzeit", ziel: "personal",
-          text: "Bei Teilzeit die tatsächlichen Wochenstunden eintragen. CENTRIC verteilt die Dienste entsprechend und rechnet die Sollstunden anteilig.",
-          pruefen: "Das Stundenkonto einer Teilzeitkraft zeigt ein niedrigeres Soll." },
-        { titel: "Einsatzeinschränkungen", ziel: "personal",
-          text: "Keine Nachtdienste, kein Alleindienst, Höchstzahl Dienste je Woche, Wiedereingliederung mit Stufenplan.",
-          merke: "Diese Angaben sind sensibel. Sie erscheinen in der Ersatzsuche nur als Grund, nie als Diagnose." },
-        { titel: "Zugangsarten vergeben", ziel: "personal",
-          text: "Organisationsleitung, Planung, Schichtverantwortung, Beschäftigte, Betriebsrat.",
-          tun: "Vergib je Person die Zugangsart.",
-          pruefen: "Die Person sieht beim nächsten Anmelden die neuen Ansichten.",
-          merke: "Zugänge kosten nichts extra — gerechnet wird je Standort. Wer jemanden zur Planung befördert, zahlt keinen Aufpreis." },
-        { titel: "Springer kennzeichnen", ziel: "personal",
-          text: "Wer als Springer geführt wird, erscheint in der Ersatzsuche weiter oben und bekommt bei offenen Schichten Vorrang.",
-          merke: "Springer sind für kurzfristige Ausfälle da. Wer regelmäßig im Plan steht, ist keiner." },
-        { titel: "Austritt eintragen", ziel: "personal",
-          text: "Statt zu löschen: Austrittsdatum setzen. Die Person verschwindet ab dann aus dem Plan, bleibt aber in Auswertung und Nachweis erhalten.",
-          merke: "Löschen zerstört die Nachvollziehbarkeit vergangener Monate." },
-      ]},
-      { name: "Qualifikationen", ziel: "quals", punkte: [
-        { titel: "Qualifikationen anlegen", ziel: "quals",
-          text: "Sachkunde, Schichtleitung, Erste Hilfe, Fachweiterbildungen.",
-          tun: "Bezeichnung, Kürzel und Gültigkeitsdauer eintragen.",
-          pruefen: "Bei befristeten Qualifikationen erscheint in der Personalakte ein Feld für das Ablaufdatum." },
-        { titel: "Fachkraft-Kennzeichen", ziel: "quals",
-          text: "Wer als Fachkraft zählt, geht in die Fachkraftquote ein — den Mindestanteil examinierter Kräfte je Dienst.",
-          merke: "Nur setzen, wo es fachlich stimmt. Eine falsch gesetzte Fachkraft verfälscht die ganze Quote." },
-        { titel: "Gesetzlich zwingend", ziel: "quals",
-          text: "Der härteste Schalter. Ohne diese Qualifikation ist gar kein Einsatz zulässig — unabhängig von der Dienstart.",
-          merke: "Für die Sachkunde nach § 34a im Bewachungsgewerbe richtig. Für „wäre gut zu haben\" falsch." },
-        { titel: "Personen zuordnen", ziel: "quals",
-          text: "Ohne Zuordnung kann CENTRIC nicht erkennen, ob ein Dienst fachlich gedeckt ist.",
-          tun: "Nutze die Matrix: Team → Qualifikationen → Matrix. Dort geht es schneller als einzeln.",
-          pruefen: "Die Matrix zeigt je Einheit, wie viele Personen eine Qualifikation haben." },
-        { titel: "Engpässe erkennen", ziel: "quals",
-          text: "Rot in der Matrix heißt: Diese Qualifikation hängt an einer einzigen Person.",
-          merke: "Eine der nützlichsten Ansichten überhaupt — sie zeigt, wo ein einziger Ausfall den Betrieb lahmlegt." },
-        { titel: "Nachweise", ziel: "nachweise",
-          text: "Ablaufende Qualifikationen erscheinen rechtzeitig. Läuft ein Nachweis ab, zählt die Qualifikation nicht mehr für die Besetzung.",
-          pruefen: "Team → Nachweise zeigt, was in den nächsten Monaten ausläuft." },
-      ]},
-      { name: "Schichtfolge", ziel: "folge", punkte: [
-        { titel: "Das Grundprinzip", ziel: "folge",
-          text: "Statt jeden Tag einzeln zu planen, hinterlegst du einen Zyklus und den Startpunkt jeder Gruppe. Daraus wird jeder Tag berechnet.",
-          merke: "Deshalb gibt es keine Jahresgrenze und keine Massenänderung, wenn das Modell wechselt." },
-        { titel: "Modell wählen", ziel: "folge",
-          text: "Neun geprüfte Modelle mit gerechneten Kennzahlen: Wochenstunden, Anzahl Gruppen, längste Dienstserie.",
-          tun: "Planung → Schichtfolge → Einrichtungsassistent, Modell auswählen.",
-          pruefen: "Die Vorschau zeigt den tatsächlichen Zyklus.",
-          merke: "Die Wochenstunden müssen zur vertraglichen Arbeitszeit passen. Zwei Stunden Abweichung sind zwei Plusstunden je Woche, je Person." },
-        { titel: "Eigenen Zyklus bauen", ziel: "folge",
-          text: "Wenn keines passt: Dienstart antippen, dann auf die Tage klicken. Oder die Dienstart direkt auf einen Tag ziehen.",
-          pruefen: "Die Kennzahlen unter dem Zyklus rechnen sich sofort neu." },
-        { titel: "Gruppen und Versatz", ziel: "folge",
-          text: "Jede Gruppe startet an einer anderen Stelle des Zyklus.",
-          tun: "Prüfe den Versatz je Gruppe.",
-          pruefen: "Im Monatsplan durchlaufen alle Gruppen dieselbe Abfolge, nur zeitversetzt.",
-          merke: "Arbeiten zwei Gruppen gleichzeitig dieselbe Schicht, stimmt der Versatz nicht." },
-        { titel: "Ankerdatum", ziel: "folge",
-          text: "Der Tag, an dem Gruppe 1 am Zyklusanfang steht.",
-          merke: "Lässt sich später ändern, verschiebt dann aber den ganzen Plan. Vor der ersten Freigabe klären." },
-      ]},
-      { name: "Prüfen und freigeben", ziel: "plan", punkte: [
-        { titel: "Die Prüfung lesen", ziel: "pruef",
-          text: "Rot ist kritisch: Ruhezeitverstoß, Unterbesetzung, fehlende Pflichtqualifikation. Gelb ist ein Hinweis.",
-          tun: "Auswertung → Prüfung öffnen und die roten Befunde durchgehen.",
-          pruefen: "Nach dem Beheben verschwindet der Befund sofort — die Prüfung rechnet bei jeder Änderung neu." },
-        { titel: "Lücken schließen", ziel: "lage",
-          text: "Bei einer unterbesetzten Dienstart auf „Besetzen\". CENTRIC schlägt Personen vor, geordnet nach Eignung.",
-          tun: "Öffne einen Vorschlag und drücke „warum?\".",
-          merke: "Wer nicht kann, steht unten mit Begründung. Das ist wichtiger als die Liste selbst — es erklärt sich vor dem Betriebsrat." },
-        { titel: "Freigeben", ziel: "plan",
-          text: "Mit der Freigabe wird der Monat verbindlich. Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
-          pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
-          merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt." },
-        { titel: "Planstandvergleich", ziel: "plan",
-          text: "Zeigt, was sich seit der Freigabe geändert hat — und mit welchem Vorlauf.",
-          merke: "Kurzfristige Änderungen sind der häufigste Streitpunkt mit dem Betriebsrat. Diese Ansicht beendet Diskussionen." },
-      ]},
-      { name: "Der laufende Betrieb", punkte: [
-        { titel: "Krankmeldung", ziel: "lage",
-          text: "Der häufigste Vorgang. Person und Zeitraum wählen — CENTRIC zeigt sofort alle entstehenden Lücken.",
-          tun: "Erfasse eine Krankmeldung und schließe die Lücke.",
-          pruefen: "Die Betroffenen erhalten eine Mitteilung." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Statt zehn Leute anzurufen: die Lücke ausschreiben. Wer sich meldet, darf auch — geprüft ist vorher.",
-          tun: "Schreibe eine Lücke aus.",
-          pruefen: "CENTRIC meldet, wie viele Personen unterrichtet wurden. Steht dort null, darf niemand." },
-        { titel: "Anträge entscheiden", ziel: "antraege",
-          text: "Links die Liste, rechts die Kapazität der nächsten acht Wochen. Rot heißt: diese Woche kippt erst durch diesen Antrag.",
-          merke: "Mit der Tastatur geht es viel schneller: J und K blättern, G genehmigt, A lehnt ab." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Je Woche und Dienst: wie viele gleichzeitige Ausfälle die schwächste Schicht verträgt.",
-          merke: "Einmal die Woche öffnen. Diese Ansicht zeigt Probleme, bevor sie eintreten." },
-        { titel: "Verteilungsgerechtigkeit", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage — wer trägt wie viel.",
-          merke: "Die Zahl, nach der der Betriebsrat als Erstes fragt." },
-        { titel: "Zeiterfassung", ziel: "abrechnung",
-          text: "Beschäftigte bestätigen ihre Zeiten. Abweichungen laufen bei dir auf.",
-          pruefen: "Offene Bestätigungen erscheinen als Karte auf der Startseite." },
-        { titel: "Lohnausgabe", ziel: "abrechnung",
-          text: "Eine Datei statt sechs Mails: Alle Stunden und Zuschläge je Person und Lohnart, fertig für die Lohnbuchhaltung.",
-          merke: "CENTRIC rechnet Stunden, keine Beträge. Stundensätze gehören in die Lohnabrechnung." },
-      ]},
-      { name: "Verwaltung", punkte: [
-        { titel: "Datenmitnahme", ziel: "mitnahme",
-          text: "Sieben Tabellen als CSV, jederzeit, ohne Gebühr. Der Dienstplan wird Tag für Tag ausgeschrieben.",
-          merke: "Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört an den Anfang." },
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour, Datenschutz und Sicherungen.",
-          tun: "Sieh dir die Einstellungen einmal an.",
-          merke: "Dort startest du diese Tour auch wieder, wenn du etwas nachschlagen willst." },
-        { titel: "Das Handbuch", ziel: "handbuch",
-          text: "Zehn Kapitel mit Suche, Fortschritt und Druckausgabe. Was diese Tour zeigt, steht dort zum Nachlesen.",
-          merke: "Die Druckfassung ist zum Mitgeben gedacht — mit Deckblatt und deinem Betriebsnamen." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst jetzt einen Betrieb einrichten, Personal anlegen, eine Schichtfolge festlegen, Lücken schließen und Anträge entscheiden. Alles Weitere findest du im Handbuch.",
-          merke: "Diese Tour lässt sich jederzeit unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
+/* Der Inhalt liegt in src/tour-inhalt.js und wird erst geholt, wenn ihn
+   jemand braucht — siehe dort. */
+let _tour = null;
+let _tourLaeuft = null;
 
-  /* ---------------------------------------------------------------- */
-  planer: {
-    titel: "Planen, prüfen, freigeben",
-    dauer: "20 bis 30 Minuten",
-    einleitung: "Du führst den Plan. Diese Tour zeigt den täglichen Ablauf: Lücken erkennen, Ersatz finden, Anträge entscheiden, freigeben.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "CENTRIC rechnet den Plan aus einer Schichtfolge. Du änderst nicht den Plan, sondern trägst Abweichungen ein — Einsprünge, Tausche, Ausfälle.",
-          merke: "Diese Tour lässt sich jederzeit schließen und unter Einstellungen wieder starten." },
-        { titel: "Die Startseite", ziel: "start",
-          text: "Vier Kennzahlen oben, darunter höchstens drei Karten mit dem, was heute zu tun ist — nach Dringlichkeit sortiert.",
-          tun: "Lies die oberste Karte." },
-        { titel: "Das Lagebild", ziel: "lage",
-          text: "Der Tag auf einen Blick: je Dienstart eingeteilt gegen gefordert, mit Namen.",
-          pruefen: "Zahlen wie 8/10 bedeuten acht eingeteilt, zehn gefordert." },
-        { titel: "Die Eingabezeile", ziel: null,
-          text: "Statt drei Menüs: „Müller krank morgen\" tippen. Die Krankmeldung öffnet sich mit gefüllten Feldern.",
-          tun: "Probiere es mit einem Namen aus deinem Betrieb." },
-      ]},
-      { name: "Der Monatsplan", ziel: "plan", punkte: [
-        { titel: "Aufbau", ziel: "plan",
-          text: "Zeilen sind Personen, Spalten Tage. Farben zeigen die Dienstart, gestrichelte Zellen sind frei.",
-          merke: "Was aus der Schichtfolge kommt, ist ruhig dargestellt. Abweichungen sind hervorgehoben." },
-        { titel: "Einen Dienst ändern", ziel: "plan",
-          text: "Zelle antippen, Dienstart wählen. CENTRIC zeigt vorher die Folgen: Ruhezeit, Wochenstunden, nächste Dienste.",
-          pruefen: "Die Zelle ist danach als Abweichung markiert.",
-          merke: "Die Regel bleibt unangetastet — du legst eine Ausnahme darüber." },
-        { titel: "Mehrere auf einmal", ziel: "plan",
-          text: "Mit gedrückter Maustaste über mehrere Zellen ziehen, dann die Dienstart wählen.",
-          merke: "Bei mehr als zehn Zellen fragt CENTRIC nach — versehentliches Ziehen ist der häufigste Fehler." },
-        { titel: "Filtern", ziel: "plan",
-          text: "Nach Einheit, Dienstart, Qualifikation oder Person. Der Filter wirkt auch auf Prüfung und Auswertung.",
-          tun: "Filtere auf eine einzelne Einheit." },
-        { titel: "Freigeben", ziel: "plan",
-          text: "Ab der Freigabe ist der Monat verbindlich und jede Änderung löst eine Mitteilung aus.",
-          pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name." },
-      ]},
-      { name: "Lücken schließen", punkte: [
-        { titel: "Krankmeldung erfassen", ziel: "lage",
-          text: "Person und Zeitraum wählen. CENTRIC zeigt sofort alle betroffenen Dienste.",
-          tun: "Erfasse eine Krankmeldung.",
-          pruefen: "Die betroffenen Dienste erscheinen im Lagebild als unterbesetzt." },
-        { titel: "Ersatz suchen", ziel: "lage",
-          text: "Bei der Lücke auf „Besetzen\". Wer möglich ist, steht oben; wer nicht, unten mit Grund.",
-          tun: "Öffne die Ersatzliste." },
-        { titel: "Die Begründung lesen", ziel: "lage",
-          text: "Der Knopf „warum?\" zeigt, weshalb jemand oben steht: Stundenkonto unter dem Mittel, Wunschdienst hinterlegt, lange nicht eingesprungen.",
-          merke: "Das ist der Teil, der vor dem Betriebsrat zählt. Eine Reihenfolge ohne Begründung ist Willkür." },
-        { titel: "Die Folgen prüfen", ziel: "lage",
-          text: "Vor dem Eintragen zeigt CENTRIC, was der Einsatz auslöst — Ruhezeit, Wochenstunden, nächste Dienste.",
-          merke: "Wer abwesend ist, kann nicht eingeteilt werden. CENTRIC lehnt das ab, statt es stillschweigend anzunehmen." },
-        { titel: "Erweiterte Anfrage", ziel: "lage",
-          text: "Findet sich niemand: Anfrage an mehrere Personen gleichzeitig. Wer zuerst zusagt, bekommt den Dienst.",
-          pruefen: "Die Angefragten erhalten eine Mitteilung." },
-        { titel: "Offene Schichten ausschreiben", ziel: "offene",
-          text: "Die Lücke sichtbar machen, statt herumzutelefonieren. Unterrichtet wird nur, wer sie auch nehmen darf.",
-          tun: "Schreibe eine Lücke aus.",
-          merke: "Die Meldungen erscheinen nach Eignung geordnet — nicht danach, wer zuerst kam." },
-        { titel: "Unbesetzt lassen", ziel: "lage",
-          text: "Bleibt eine Lücke: dokumentierte Unterschreitung mit Begründung.",
-          merke: "Nachweisbar für Prüfungen. Besser eine begründete Lücke als ein geschönter Plan." },
-      ]},
-      { name: "Anliegen", ziel: "antraege", punkte: [
-        { titel: "Die Antragsansicht", ziel: "antraege",
-          text: "Links die Liste, rechts das Kapazitätsraster der nächsten acht Wochen.",
-          pruefen: "Beim Markieren eines Antrags färben sich die betroffenen Wochen." },
-        { titel: "Kapazität lesen", ziel: "antraege",
-          text: "Rot heißt: diese Woche kippt erst durch diesen Antrag. Gelb: es wird eng.",
-          merke: "Mehrere auswählen zeigt die Wirkung aller zusammen — wichtig bei der Urlaubsrunde." },
-        { titel: "Mit der Tastatur", ziel: "antraege",
-          text: "J und K blättern, G genehmigt, A lehnt ab, Leertaste wählt aus.",
-          merke: "Bei vierzig Anträgen ist das der Unterschied zwischen zwanzig Minuten und fünf." },
-        { titel: "Mehrstufige Genehmigung", ziel: "antraege",
-          text: "Manche Anträge brauchen zwei Freigaben. Dann steht dort „Stufe 1 von 2\" und „Mitzeichnen\".",
-          merke: "Erst mit der letzten Stufe wird der Antrag umgesetzt." },
-        { titel: "Tauschbörse", ziel: "boerse",
-          text: "Beschäftigte bieten Dienste an und suchen Tausche. Du bestätigst — oder lässt es laufen.",
-          merke: "Ein bestätigter Tausch erzeugt zwei Abweichungen, keine Änderung an der Schichtfolge." },
-        { titel: "Wunschdienste", ziel: "wuensche",
-          text: "Wer Wünsche hinterlegt, erscheint bei passenden Diensten weiter oben in der Ersatzsuche.",
-          merke: "Wünsche sind kein Anspruch. Sie verschieben nur die Reihenfolge." },
-      ]},
-      { name: "Auswertung", punkte: [
-        { titel: "Die Prüfung", ziel: "pruef",
-          text: "Rot ist kritisch, gelb ein Hinweis. Jeder Befund nennt Person, Datum und Grund.",
-          tun: "Öffne die Prüfung und klicke einen Befund an." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele gleichzeitige Ausfälle jede Woche verträgt. Null heißt: der nächste Krankheitsfall reißt ein Loch.",
-          merke: "Einmal die Woche öffnen — das ist die Ansicht, die Überraschungen verhindert." },
-        { titel: "Ausfallszenarien", ziel: "belastbarkeit",
-          text: "Vier Stufen von fünf bis dreißig Prozent. Zeigt, ab wann der Betrieb kippt.",
-          merke: "Nützlich für das Gespräch über Personalbedarf — mit Zahlen statt Gefühl." },
-        { titel: "Verteilung", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage je Person.",
-          merke: "Die Zahl, nach der der Betriebsrat als Erstes fragt." },
-        { titel: "Planungssicherheit", ziel: "planstand",
-          text: "Wie oft der freigegebene Plan noch geändert wurde und mit welchem Vorlauf.",
-          merke: "Eine niedrige Zahl ist ein besseres Verkaufsargument als jede Zusage." },
-        { titel: "Zeiterfassung", ziel: "abrechnung",
-          text: "Was bestätigt ist, was abweicht, was offen bleibt.",
-          pruefen: "Offene Bestätigungen erscheinen als Karte auf der Startseite." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour.",
-          tun: "Sieh dir an, was du einstellen kannst." },
-        { titel: "Das Handbuch", ziel: "handbuch",
-          text: "Zum Nachschlagen, mit Suche und Druckausgabe." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst jetzt Lücken schließen, Ersatz begründet auswählen, Anträge mit Blick auf die Folgen entscheiden und den Plan freigeben.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
+/** Holt den Tourinhalt. Mehrfache Aufrufe teilen sich ein Versprechen. */
+function tourLaden() {
+  if (_tour) return Promise.resolve(_tour);
+  if (!_tourLaeuft) {
+    _tourLaeuft = import("./tour-inhalt.js")
+      .then((mod) => { _tour = mod.TOUR; return _tour; })
+      .catch((e) => { _tourLaeuft = null; throw e; });
+  }
+  return _tourLaeuft;
+}
 
-  /* ---------------------------------------------------------------- */
-  subplaner: {
-    titel: "Die eigene Einheit führen",
-    dauer: "12 bis 18 Minuten",
-    einleitung: "Du führst deine Einheit und fährst selbst mit. Diese Tour zeigt, was du ändern darfst — und wo die Grenze liegt.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "Du siehst und änderst deine Einheit. Der übrige Betrieb bleibt sichtbar, aber unveränderlich.",
-          merke: "Diese Tour lässt sich unter Einstellungen erneut starten." },
-        { titel: "Deine Grenze", ziel: "start",
-          text: "Was außerhalb deiner Einheit liegt, ist ausgegraut. Ein Versuch dort meldet, warum es nicht geht.",
-          merke: "Das ist Absicht: Wer alles ändern darf, trägt auch die Verantwortung für alles." },
-        { titel: "Du fährst mit", ziel: "meine",
-          text: "Anders als die Planung stehst du selbst im Plan. Unter „Meine Schichten\" siehst du deine Dienste.",
-          pruefen: "Dort steht dein nächster Dienst mit Datum und Zeit." },
-      ]},
-      { name: "Alltag", punkte: [
-        { titel: "Das Lagebild", ziel: "lage",
-          text: "Der Tag deiner Einheit: eingeteilt gegen gefordert.",
-          tun: "Öffne das Lagebild und sieh dir heute an." },
-        { titel: "Krankmeldung", ziel: "lage",
-          text: "Für Personen deiner Einheit erfassbar. Die Lücken erscheinen sofort.",
-          tun: "Erfasse eine Krankmeldung." },
-        { titel: "Ersatz suchen", ziel: "lage",
-          text: "Vorschläge nach Eignung, mit Begründung. Der Knopf „warum?\" erklärt die Reihenfolge.",
-          merke: "Wer nicht kann, steht unten mit Grund — Ruhezeit, Qualifikation, Abwesenheit." },
-        { titel: "Über die Einheit hinaus", ziel: "lage",
-          text: "Findet sich in deiner Einheit niemand, kannst du eine Anfrage an die Planung stellen.",
-          pruefen: "Die Anfrage erscheint bei der Planung unter Anliegen." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Lücken deiner Einheit ausschreiben, statt herumzutelefonieren.",
-          merke: "Unterrichtet wird nur, wer die Schicht auch übernehmen darf." },
-        { titel: "Schichtübergabe", ziel: "uebergabe",
-          text: "Lage, offene Aufgaben, Vorkommnisse, Material. Nach dem Abschließen unveränderlich.",
-          merke: "Die Unveränderbarkeit ist Absicht — eine nachträglich geänderte Übergabe wäre als Nachweis wertlos." },
-      ]},
-      { name: "Anliegen und Auswertung", punkte: [
-        { titel: "Anträge deiner Einheit", ziel: "antraege",
-          text: "Du siehst die Anträge deiner Leute und kannst mitzeichnen.",
-          merke: "Bei mehrstufiger Genehmigung bist du oft Stufe 1, die Planung Stufe 2." },
-        { titel: "Zeiten bestätigen", ziel: "abrechnung",
-          text: "Was deine Leute erfasst haben, läuft bei dir auf.",
-          pruefen: "Offene Bestätigungen erscheinen auf der Startseite." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele Ausfälle deine Einheit verträgt.",
-          merke: "Steht dort null, ruf lieber vorher bei der Planung an als hinterher." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst deine Einheit führen: Ausfälle erfassen, Ersatz finden, übergeben und Zeiten bestätigen.",
-          merke: "Alles Weitere steht im Handbuch." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  mitarbeiter: {
-    titel: "Deine Dienste auf dem Telefon",
-    dauer: "5 bis 8 Minuten",
-    einleitung: "Kurz und praktisch: wann du arbeitest, wie du Anträge stellst und Zeiten bestätigst.",
-    kapitel: [
-      { name: "Das Wichtigste", punkte: [
-        { titel: "Wann arbeite ich?", ziel: "heute",
-          text: "Der Reiter „Heute\" zeigt ganz oben deinen Dienst — mit Zeit, Ort und Dauer.",
-          tun: "Sieh nach, wann dein nächster Dienst ist.",
-          pruefen: "Steht dort „frei\", hast du heute keinen Dienst." },
-        { titel: "Ein- und ausstempeln", ziel: "heute",
-          text: "Der große Knopf auf der Startseite. Beim Stempeln wird einmalig geprüft, ob du am Einsatzort bist.",
-          merke: "Gespeichert wird nur, ob du dort warst — keine Koordinate, kein Verlauf, keine Dauerortung." },
-        { titel: "Mein Plan", ziel: "meinplan",
-          text: "Kommende Dienste als Liste oder Monatsansicht. Filter für nur Dienste, nur frei, Nachtdienste, Wochenende.",
-          tun: "Wechsle einmal zwischen Liste und Monat." },
-      ]},
-      { name: "Anliegen", punkte: [
-        { titel: "Urlaub beantragen", ziel: "anliegen",
-          text: "Zeitraum wählen, absenden. Du siehst sofort deinen Urlaubsrest.",
-          pruefen: "Der Antrag erscheint mit Stand „offen\"." },
-        { titel: "Krank melden", ziel: "anliegen",
-          text: "Zeitraum eintragen. Die Planung wird sofort unterrichtet.",
-          merke: "Die Krankmeldung ersetzt nicht die Meldung an deinen Betrieb — sie ergänzt sie." },
-        { titel: "Tauschen", ziel: "meinplan",
-          text: "Dienst antippen, Tausch suchen. Dein Gesuch sehen alle, die den Dienst übernehmen dürfen.",
-          pruefen: "Meldet sich jemand, bekommst du eine Mitteilung." },
-        { titel: "Offene Schichten", ziel: "offene",
-          text: "Dienste, die du zusätzlich übernehmen kannst. Hier steht nur, was du auch wirklich darfst.",
-          merke: "Ruhezeit, Qualifikation und deine Abwesenheiten sind bereits geprüft." },
-        { titel: "Wunschdienste", ziel: "mehr",
-          text: "Hinterlege, welche Dienste dir lieber sind. Das verschiebt die Reihenfolge bei der Ersatzsuche.",
-          merke: "Ein Wunsch ist kein Anspruch — aber er wird berücksichtigt." },
-      ]},
-      { name: "Zeiten und Konto", punkte: [
-        { titel: "Zeiten bestätigen", ziel: "anliegen",
-          text: "Nach dem Dienst: „wie geplant\" oder mit Abweichung.",
-          pruefen: "Bestätigte Zeiten verschwinden aus der Liste." },
-        { titel: "Stundenkonto", ziel: "anliegen",
-          text: "Dein Stand mit Verlauf über sechs Monate.",
-          merke: "Minus heißt nicht Schulden — es gleicht sich über den Zyklus aus." },
-        { titel: "Nachweise", ziel: "mehr",
-          text: "Deine Qualifikationen und wann sie ablaufen.",
-          pruefen: "Läuft etwas bald ab, erscheint ein Hinweis." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Benachrichtigungen", ziel: "mehr",
-          text: "Unter Mehr stellst du ein, worüber du unterrichtet wirst — per E-Mail oder auf dem Gerät.",
-          tun: "Schalte Mitteilungen auf diesem Gerät ein.",
-          merke: "Ohne sie erfährst du von Änderungen erst beim nächsten Öffnen." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du weißt jetzt, wann du arbeitest, wie du Anträge stellst, tauschst und Zeiten bestätigst.",
-          merke: "Die Tour lässt sich unter Mehr erneut starten." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  betriebsrat: {
-    titel: "Prüfen und mitbestimmen",
-    dauer: "10 bis 15 Minuten",
-    einleitung: "Du hast lesenden Zugriff auf alles, was für die Mitbestimmung nötig ist. Diese Tour zeigt, wo die Zahlen stehen.",
-    kapitel: [
-      { name: "Ankommen", punkte: [
-        { titel: "Willkommen", ziel: null,
-          text: "Dein Zugang ist rein lesend. Du kannst nichts ändern — und niemand kann behaupten, du hättest.",
-          merke: "Der Betriebsratszugang ist kostenfrei. Das ist Absicht: Mitbestimmung darf nicht am Preis scheitern." },
-        { titel: "Was du siehst", ziel: "start",
-          text: "Plan, Prüfung, Verteilung, Planungssicherheit, Protokoll. Nicht sichtbar: Krankheitsgründe und persönliche Notizen.",
-          merke: "Diese Trennung ist bewusst — Mitbestimmung braucht Zahlen, keine Diagnosen." },
-      ]},
-      { name: "Die Zahlen", punkte: [
-        { titel: "Verteilungsgerechtigkeit", ziel: "verteilung",
-          text: "Wochenenden, Nachtdienste, Feiertage je Person — mit Abweichung vom Mittel.",
-          tun: "Sieh dir an, wer über dem Mittel liegt.",
-          merke: "Die wichtigste Ansicht für dich. Ungleiche Verteilung ist der häufigste Streitpunkt." },
-        { titel: "Die Prüfung", ziel: "pruef",
-          text: "Alle Befunde gegen Arbeitszeitgesetz, Mindestbesetzung und Qualifikationen.",
-          pruefen: "Rote Befunde sind kritisch, gelbe Hinweise." },
-        { titel: "Planungssicherheit", ziel: "planstand",
-          text: "Wie oft der freigegebene Plan geändert wurde und mit welchem Vorlauf.",
-          merke: "Kurzfristige Änderungen sind mitbestimmungspflichtig. Hier stehen sie mit Datum." },
-        { titel: "Belastbarkeit", ziel: "belastbarkeit",
-          text: "Wie viele Ausfälle jede Woche verträgt. Null bedeutet dauerhafte Unterbesetzung.",
-          merke: "Nützlich für das Gespräch über Personalbedarf — mit Zahlen statt Behauptungen." },
-        { titel: "Das Protokoll", ziel: "buch",
-          text: "Wer hat wann was geändert.",
-          merke: "Nachvollziehbarkeit ist die Grundlage jeder Mitbestimmung." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du weißt jetzt, wo Verteilung, Prüfbefunde, Planungssicherheit und Protokoll stehen.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
-
-  /* ---------------------------------------------------------------- */
-  betreiber: {
-    titel: "Mandanten und Abrechnung",
-    dauer: "10 bis 15 Minuten",
-    einleitung: "Du führst die Betreiberkonsole: Mandanten anlegen, Zugänge vergeben, Rechnungen erzeugen.",
-    kapitel: [
-      { name: "Mandanten", punkte: [
-        { titel: "Die Übersicht", ziel: "mandanten",
-          text: "Alle Betriebe mit Standorten, Personenzahl, Tarif und Monatspreis.",
-          merke: "Du siehst Kennzahlen, keine Personendaten. Kein Name, kein Dienstplan — das gehört den Betrieben." },
-        { titel: "Mandant anlegen", ziel: "mandanten",
-          text: "Name, Branche, Anschrift, Ansprechpartner. CENTRIC erzeugt daraufhin die Zugänge.",
-          pruefen: "Die Zugangscodes erscheinen unmittelbar nach dem Anlegen — notiere sie, sie sind später nicht wiederherstellbar." },
-        { titel: "Leerer Bestand", ziel: "mandanten",
-          text: "Ein neu angelegter Mandant startet ohne Daten. Kein Beispielpersonal, keine erfundenen Dienstpläne.",
-          merke: "Bei den Demozugängen ist das anders — dort steht ein vollständiger Beispielbetrieb." },
-        { titel: "Zugänge nachträglich", ziel: "mandanten",
-          text: "Weitere Zugänge lassen sich jederzeit erzeugen, etwa wenn die Planung wechselt.",
-          pruefen: "Der neue Code erscheint in der Liste des Mandanten." },
-        { titel: "Geänderte Anmeldungen", ziel: "mandanten",
-          text: "Wenn jemand seine Anmeldeadresse ändert, erscheint das hier mit Datum.",
-          merke: "So merkst du, wenn ein Zugang den Besitzer wechselt." },
-      ]},
-      { name: "Abrechnung", punkte: [
-        { titel: "Das Preismodell", ziel: "rechner",
-          text: "Gerechnet wird je Standort, nicht je Kopf. Wer einstellt, zahlt nicht mehr.",
-          merke: "Der Punkt, an dem du gegen Anbieter mit Kopfpauschale gewinnst — bei mehreren Standorten deutlich." },
-        { titel: "Tarife pflegen", ziel: "tarife",
-          text: "Preis je Standort und die Personengrenze, ab der ein Standort in den nächsten Tarif steigt.",
-          merke: "Größere Standorte steigen automatisch auf. Ein Betrieb zahlt für die Zentrale mehr als für eine Außenstelle." },
-        { titel: "Rechnungen", ziel: "rechnungen",
-          text: "Je Standort eine Zeile, Mengenstaffel und Branchenpakete getrennt ausgewiesen.",
-          pruefen: "Ein unterjährig begonnener Vertrag wird tagesgenau anteilig berechnet." },
-        { titel: "Branchenpakete", ziel: "pakete",
-          text: "Sicherheit, Pflege, Klinik, Industrie. Jedes schaltet Funktionen und Begriffe frei.",
-          merke: "Pakete werden je Betrieb berechnet, nicht je Standort." },
-      ]},
-      { name: "Zum Schluss", punkte: [
-        { titel: "Einstellungen", ziel: "einstellungen",
-          text: "Darstellung, Benachrichtigungen, diese Tour." },
-        { titel: "Geschafft", ziel: null,
-          text: "Du kannst Mandanten anlegen, Zugänge vergeben und Rechnungen erzeugen.",
-          merke: "Die Tour lässt sich unter Einstellungen erneut starten." },
-      ]},
-    ],
-  },
-};
+/**
+ * Lädt den Tourinhalt und gibt ihn zurück, sobald er da ist.
+ * Vorher null — der Aufrufer stellt so lange nichts dar.
+ */
+function useTour(gebraucht = true) {
+  const [t, setT] = useState(_tour);
+  useEffect(() => {
+    if (!gebraucht || t) return;
+    let weg = false;
+    tourLaden().then((x) => { if (!weg) setT(x); }).catch(() => {});
+    return () => { weg = true; };
+  }, [gebraucht, t]);
+  return t;
+}
 
 /** Alle Punkte einer Rolle flach — für Fortschritt und Navigation. */
-function tourPunkte(rolleId) {
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
+function tourPunkte(tour, rolleId) {
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
+  if (!t) return [];
   const out = [];
   t.kapitel.forEach((k, ki) => k.punkte.forEach((p, pi) =>
     out.push({ ...p, kapitel: k.name, kapitelIdx: ki, punktIdx: pi,
@@ -13218,14 +13852,42 @@ function tourPunkte(rolleId) {
 }
 
 /** Wie weit ist jemand? */
-function tourStand(person, rolleId) {
-  const alle = tourPunkte(rolleId);
+function tourStand(person, rolleId, tour) {
+  const alle = tourPunkte(tour, rolleId);
   const gesehen = (person.tour || {}).gesehen || [];
   const idx = Math.min(alle.length - 1, Math.max(0, (person.tour || {}).schritt || 0));
   return { alle, gesehen, idx, gesamt: alle.length,
     anteil: alle.length ? Math.round((gesehen.length / alle.length) * 100) : 0,
     fertig: !!(person.tour || {}).fertig,
     unterdrueckt: !!(person.tour || {}).nichtMehr };
+}
+
+/**
+ * Die Kapitel einer Tour mit ihrem Fortschritt.
+ *
+ * Vierundvierzig Schritte am Stück sind keine Führung, sondern eine
+ * Zumutung — „Schritt 17 von 44" entmutigt mehr, als es leitet. Die Tour
+ * ist längst in Kapitel geteilt; sichtbar war das nur als kleine
+ * Überschrift über dem laufenden Schritt.
+ *
+ * @returns {Array<{name, idx, von, bis, anzahl, gesehen, fertig}>}
+ */
+function tourKapitel(tour, rolleId, gesehen = []) {
+  const alle = tourPunkte(tour, rolleId);
+  const gesetzt = new Set(gesehen);
+  const aus = [];
+  alle.forEach((punkt, i) => {
+    let k = aus[aus.length - 1];
+    if (!k || k.idx !== punkt.kapitelIdx) {
+      k = { name: punkt.kapitel, idx: punkt.kapitelIdx, von: i, bis: i,
+        anzahl: 0, gesehen: 0, fertig: false };
+      aus.push(k);
+    }
+    k.bis = i; k.anzahl++;
+    if (gesetzt.has(punkt.id)) k.gesehen++;
+  });
+  for (const k of aus) k.fertig = k.anzahl > 0 && k.gesehen >= k.anzahl;
+  return aus;
 }
 
 /** Soll die Tour beim Anmelden von selbst starten? */
@@ -13243,10 +13905,21 @@ const tourStartet = (person, rolleId) => {
 function TourLeiste({ sitz, akt, gehZu }) {
   const p = sitz.person;
   const rolleId = sitz.rolle === "betreiber" ? "betreiber" : (p.rolle || "mitarbeiter");
-  const st = tourStand(p, rolleId);
+  /* Die Leiste erscheint erst, wenn der Inhalt da ist. Ein leerer Streifen
+     am unteren Rand wäre schlimmer als eine halbe Sekunde ohne ihn. */
+  const tour = useTour(true);
+  const st = tourStand(p, rolleId, tour);
   const punkt = st.alle[st.idx];
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
-  if (!punkt) return null;
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
+  if (!tour || !punkt || !t) return null;
+
+  const kapitel = tourKapitel(tour, rolleId, st.gesehen);
+  const jetzt = kapitel.find((k) => st.idx >= k.von && st.idx <= k.bis) || kapitel[0];
+  const imKapitel = jetzt ? st.idx - jetzt.von + 1 : 1;
+  /* Steht der nächste Schritt in einem anderen Kapitel? Dann ist hier ein
+     natürlicher Halt — und der gehört angeboten, statt stillschweigend
+     weiterzulaufen. */
+  const amKapitelende = !!jetzt && st.idx === jetzt.bis && st.idx < st.gesamt - 1;
 
   const weiter = () => {
     if (st.idx >= st.gesamt - 1) { akt.tourBeenden(); return; }
@@ -13255,6 +13928,12 @@ function TourLeiste({ sitz, akt, gehZu }) {
     if (n.ziel) gehZu(n.ziel);
   };
   const zurueck = () => { if (st.idx > 0) akt.tourSchritt(st.idx - 1, null); };
+  const springe = (ziel) => {
+    const n = st.alle[ziel];
+    if (!n) return;
+    akt.tourSchritt(ziel, null);
+    if (n.ziel) gehZu(n.ziel);
+  };
 
   return (
     <div role="dialog" aria-label="Geführte Tour"
@@ -13275,8 +13954,32 @@ function TourLeiste({ sitz, akt, gehZu }) {
             flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".1em",
               textTransform: "uppercase", color: C.accent }}>{punkt.kapitel}</span>
+            {/* Der Bezug im Kapitel trägt, der aufs Ganze entmutigt: „3 von 6"
+                ist zu schaffen, „17 von 44" nicht. */}
             <span style={{ fontSize: 11.5, color: C.dim, ...NUM }}>
-              Schritt {st.idx + 1} von {st.gesamt}</span>
+              Schritt {imKapitel} von {jetzt ? jetzt.anzahl : st.gesamt}</span>
+            <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
+              · Kapitel {(jetzt ? jetzt.idx : 0) + 1} von {kapitel.length}</span>
+          </div>
+
+          {/* Kapitel als Sprungmarken. Wer den Betrieb schon eingerichtet
+              hat, muss die Einrichtung nicht noch einmal durchklicken. */}
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 12 }}>
+            {kapitel.map((k) => {
+              const hier = jetzt && k.idx === jetzt.idx;
+              return (
+                <button key={k.idx} type="button" onClick={() => springe(k.von)}
+                  aria-current={hier ? "step" : undefined}
+                  title={`${k.name} — ${k.gesehen} von ${k.anzahl} gesehen`}
+                  style={{ padding: "3px 9px", borderRadius: 999, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11.5, lineHeight: 1.5,
+                    border: `1px solid ${hier ? C.accent : C.lineSoft}`,
+                    background: hier ? C.accentLight : "transparent",
+                    color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,
+                    fontWeight: hier ? 620 : 500 }}>
+                  {k.fertig && !hier ? "✓ " : ""}{k.name}
+                </button>);
+            })}
           </div>
 
           <h3 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em",
@@ -13309,10 +14012,19 @@ function TourLeiste({ sitz, akt, gehZu }) {
             <Btn size="sm" kind="primary" onClick={weiter} style={{ flex: 1 }}>
               {st.idx >= st.gesamt - 1 ? "Fertig" : "Weiter"}</Btn>
           </div>
+          {/* Am Kapitelende ausdrücklich anbieten aufzuhören. Wer weiß, dass
+              hier ein Halt ist, hört seltener mittendrin auf — und findet
+              beim nächsten Mal wieder hinein. */}
+          {amKapitelende && (
+            <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.45,
+              padding: "8px 10px", borderRadius: 8, background: C.okLight }}>
+              Ende von „{jetzt.name}". Guter Punkt für eine Pause — beim
+              nächsten Mal geht es hier weiter.
+            </div>)}
           <button onClick={() => akt.tourSchliessen(false)}
             style={{ border: "none", background: "transparent", color: C.dim, fontFamily: "inherit",
               fontSize: 13, cursor: "pointer", padding: "4px 0", textAlign: "left" }}>
-            Später fortsetzen</button>
+            {amKapitelende ? "Für heute genug" : "Später fortsetzen"}</button>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5,
             color: C.dim, cursor: "pointer" }}>
             <input type="checkbox" onChange={(e) => { if (e.target.checked) akt.tourSchliessen(true); }}
@@ -13335,8 +14047,9 @@ function Einstellungen({ sitz, akt, gehZu }) {
   const p = sitz.person || { id: "betreiber", rolle: "betreiber", vorname: "", nachname: "" };
   const m = sitz.mandant;
   const rolleId = sitz.rolle === "betreiber" ? "betreiber" : (p.rolle || "mitarbeiter");
-  const st = tourStand(p, rolleId);
-  const t = TOUR[rolleId] || TOUR.mitarbeiter;
+  const tour = useTour(true);
+  const st = tourStand(p, rolleId, tour);
+  const t = (tour || {})[rolleId] || (tour || {}).mitarbeiter;
   const [gespeichert, setGespeichert] = useState(null);
   const melde = (was) => { setGespeichert(was); setTimeout(() => setGespeichert(null), 2200); };
   /* Eine schlichte Rückmeldung am oberen Rand — die Anwendung hat dafür
@@ -13444,8 +14157,10 @@ function Einstellungen({ sitz, akt, gehZu }) {
         </Zeile>
       </Card>
 
-      {/* ------------------------ Geführte Tour ------------------------ */}
-      <Card style={{ marginBottom: 20 }}>
+      {/* ------------------------ Geführte Tour ------------------------
+          Der Inhalt kommt nachgeladen. Bis er da ist, bleibt die Karte weg —
+          eine Karte mit leeren Feldern sieht aus wie ein Fehler. */}
+      {t && (<Card style={{ marginBottom: 20 }}>
         <CardHead right={st.anteil > 0 ? <Lab>{st.anteil} % durch</Lab> : null}>
           Geführte Tour</CardHead>
         <Zeile titel={t.titel}
@@ -13470,7 +14185,28 @@ function Einstellungen({ sitz, akt, gehZu }) {
             text="Du hast die Tour vollständig durchlaufen. Sie lässt sich jederzeit erneut starten.">
             <Pill size="sm" tone="ok">fertig</Pill>
           </Zeile>)}
-      </Card>
+
+        {/* Kapitelweise einsteigen. Vierundvierzig Schritte am Stück macht
+            niemand; ein Kapitel von sechs schon. */}
+        <div style={{ padding: "16px var(--pad-x) 20px" }}>
+          <Lab style={{ marginBottom: 9 }}>Kapitel</Lab>
+          <div style={{ display: "grid", gap: 7 }}>
+            {tourKapitel(tour, rolleId, st.gesehen).map((k) => (
+              <div key={k.idx} style={{ display: "flex", gap: 12, alignItems: "center",
+                padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.lineSoft}`,
+                flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160,
+                  color: k.fertig ? C.dim : C.text }}>
+                  {k.fertig ? "✓ " : ""}{k.name}</span>
+                <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
+                  {k.gesehen} von {k.anzahl}</span>
+                <Btn size="sm" kind={k.fertig ? "plain" : "quiet"}
+                  onClick={() => { akt.tourAbKapitel(k.von); melde(`„${k.name}" gestartet.`); }}>
+                  {k.gesehen ? "Erneut" : "Starten"}</Btn>
+              </div>))}
+          </div>
+        </div>
+      </Card>)}
 
       {/* ------------------- Kalender und Weckzeiten ------------------- */}
       {sitz.mandant && sitz.person && sitz.person.imSchichtdienst !== false && (
@@ -13993,7 +14729,7 @@ function kalenderTermine(m, personId, tage) {
     /* Abwesenheit hat Vorrang — sie überschreibt den Dienst. */
     const abw = abwesenheitAm(m, p.id, d);
     if (abw) {
-      const art = ABWESENHEIT[abw.art] || { label: abw.art };
+      const art = abwArt(abw.art);
       out.push({ id: `abw-${abw.id}-${d}`, datum: d, bis: addDays(d, 1),
         ganztags: true, titel: art.label,
         /* Kein Grund, keine Notiz — ein abonnierter Kalender liegt am Ende
@@ -15513,7 +16249,9 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
       <div style={{ marginBottom: 22 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", margin: "8px 0 0", lineHeight: 1.12 }}>
-          {gruss},<br /><b style={{ fontWeight: 700 }}>{p.vorname}</b>.
+          {(p.vorname || "").trim()
+            ? <>{gruss},<br /><b style={{ fontWeight: 700 }}>{p.vorname.trim()}</b>.</>
+            : <>{gruss}.</>}
         </h1>
       </div>
 
@@ -15637,7 +16375,7 @@ function MPlan({ sitz, akt, oeffnen }) {
       const da = x.t.dienstId && map[x.t.dienstId];
       if (schnell === "dienst") return !!x.t.dienstId;
       if (schnell === "frei") return !x.t.dienstId;
-      if (schnell === "nacht") return da && nachtAnteil(da) >= 2;
+      if (schnell === "nacht") return da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen);
       if (schnell === "we") return dow(x.d) >= 5;
       return x.t.dienstId || x.t.abwesenheit;
     });
@@ -15750,8 +16488,8 @@ function MPlan({ sitz, akt, oeffnen }) {
                 <div style={{ fontSize: 15.5, color: C.dim, marginTop: 4, ...NUM }}>
                   {da.start} – {da.ende} · {n1(dauer(da))} h</div>
                 {da.ort && <div style={{ fontSize: 13.5, color: C.dimmer, marginTop: 4 }}>{da.ort}</div>}
-                {nachtAnteil(da) > 0 && <div style={{ fontSize: 13, color: C.violet, marginTop: 8, ...NUM }}>
-                  davon {n1(nachtAnteil(da))} h Nachtarbeit</div>}
+                {nachtAnteil(da, m.einstellungen) > 0 && <div style={{ fontSize: 13, color: C.violet, marginTop: 8, ...NUM }}>
+                  davon {n1(nachtAnteil(da, m.einstellungen))} h Nachtarbeit</div>}
               </MKarte>)}
             {da && (
               <div style={{ display: "grid", gap: 10 }}>
@@ -15966,23 +16704,23 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
               rechts={st.vollstaendig ? "✓" : `${st.fertig}/${st.gesamt}`}
               unten={st.vollstaendig ? "alles erledigt"
                 : `noch ${st.pflichtGesamt - st.pflichtFertig} Pflichtpunkte`}
-              onClick={() => setBlatt("checkliste")} />);
+              onClick={() => oeffnen("checkliste")} />);
         })()}
         {laufendeRunde(m) && (
           <MZeile links="Selbstplanung"
             rechts={selbstplanStand(m, laufendeRunde(m), p.id).eingetragen || undefined}
             unten={`Bis ${fKurz(laufendeRunde(m).schliesst)} deine Dienste wählen`}
-            onClick={() => setBlatt("selbstplan")} />)}
+            onClick={() => oeffnen("selbstplan")} />)}
         <MZeile links="Offene Schichten"
           rechts={meineOffenenSchichten(m, p.id).length || undefined}
           unten={meineOffenenSchichten(m, p.id).length
             ? "Dienste, die du übernehmen kannst" : "gerade nichts frei"}
-          onClick={() => setBlatt("offene")} />
+          onClick={() => oeffnen("offene")} />
         <MZeile links="Hilfe anfordern"
           unten="Notruf an die Schichtverantwortung"
-          onClick={() => setBlatt("notruf")} />
+          onClick={() => oeffnen("notruf")} />
         <MZeile links="Benachrichtigungen" unten="E-Mail und Gerät einstellen"
-          onClick={() => setBlatt("melden")} />
+          onClick={() => oeffnen("melden")} />
         <MZeile links="Mitteilungen" unten={ungelesen ? `${ungelesen} ungelesen` : "keine neuen"}
           rechts={ungelesen > 0 ? <Pill size="sm" tone="danger">{ungelesen}</Pill> : null}
           onClick={() => oeffnen("post")} />
@@ -16491,7 +17229,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
-                {ABW_ARTEN.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
+                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
               onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>
@@ -16561,6 +17299,112 @@ function MWuensche({ sitz, akt }) {
 }
 
 /* ================================ BETRIEB ================================ */
+/* ==========================================================================
+   TARIFWERK
+
+   Ein neuer Betrieb startete mit vierzig Wochenstunden und der gesetzlichen
+   Nachtzeit ab 23 Uhr. In der Pflege stimmt beides fast nie: Der TVöD-P
+   kennt 38,5 Stunden und zieht die Nachtgrenze bei 21 Uhr. Wer das nicht
+   nachträgt, sammelt ein Jahr lang Minusstunden, die es nicht gibt, und
+   zahlt Spätdiensten bis 22 Uhr keinen Nachtzuschlag.
+
+   Die Vorlage ändert das Regelwerk, nicht den Betrieb: Personal,
+   Dienstarten und Einheiten bleiben unberührt. Was sie ändert, steht
+   vorher da — mit dem alten und dem neuen Wert nebeneinander.
+   ========================================================================== */
+function Tarifwerk({ sitz, akt }) {
+  const m = sitz.mandant;
+  const [gewaehlt, setGewaehlt] = useState(null);
+  const vorlagen = useMemo(() => tarifVorlagen(m.branche), [m.branche]);
+  const t = gewaehlt ? tarifwerk(gewaehlt) : null;
+  const vorschau = useMemo(
+    () => (t ? tarifAnwenden(m, t.id, heute()) : null), [m, t]);
+  const aktuell = m.tarifwerk || null;
+
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={aktuell
+        ? <Lab>{aktuell.name} · Stand {aktuell.stand}</Lab>
+        : <Lab>keines hinterlegt</Lab>}>Tarifwerk</CardHead>
+      <div style={{ padding: 22 }}>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px", maxWidth: "72ch" }}>
+          Eine Vorlage setzt Wochenarbeitszeit, Urlaub, Zusatzurlaub, das
+          Nachtfenster und die Zuschlagssätze. Entgelttabellen enthält sie
+          bewusst nicht — CENTRIC gibt Stunden je Zuschlagsart aus, den Betrag
+          rechnet die Lohnstelle. Personal, Dienstarten und Einheiten bleiben
+          unberührt.
+        </p>
+
+        {aktuell && (
+          <div style={{ padding: "11px 14px", borderRadius: 9, marginBottom: 16,
+            background: C.flaecheStill, fontSize: 13, color: C.dim, lineHeight: 1.55 }}>
+            Angewendet am {fDatum(aktuell.angewendet)} · Stand der Werte {aktuell.stand} ·{" "}
+            <a href={aktuell.quelle} target="_blank" rel="noreferrer"
+              style={{ color: C.accent }}>Fundstelle</a>
+          </div>)}
+
+        <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+          {vorlagen.map((v) => (
+            <div key={v.id} className="karte"
+              style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start",
+                flexWrap: "wrap",
+                borderColor: gewaehlt === v.id ? C.accent : undefined }}>
+              <div style={{ flex: 1, minWidth: 240 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 620, display: "flex", gap: 8,
+                  alignItems: "center", flexWrap: "wrap" }}>
+                  {v.name}
+                  {aktuell && aktuell.id === v.id && <Pill size="sm" tone="ok">aktiv</Pill>}
+                  {v.branchen.includes(m.branche) && <Pill size="sm" tone="accent">passt zur Branche</Pill>}
+                </div>
+                <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
+                  {v.beschreibung}</div>
+                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5 }}>
+                  {v.grundlage} · Stand {v.stand}</div>
+              </div>
+              <Btn size="sm" kind={gewaehlt === v.id ? "primary" : "plain"}
+                onClick={() => setGewaehlt(gewaehlt === v.id ? null : v.id)}>
+                {gewaehlt === v.id ? "Vorschau schließen" : "Vorschau"}</Btn>
+            </div>))}
+        </div>
+
+        {t && vorschau && (
+          <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 18 }}>
+            <Lab style={{ marginBottom: 10 }}>
+              Was sich ändert · {vorschau.geaendert.length}</Lab>
+            {vorschau.geaendert.length === 0
+              ? <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 14 }}>
+                  Nichts. Der Betrieb steht bereits auf diesen Werten.</div>
+              : (<div style={{ marginBottom: 16 }}>
+                {vorschau.geaendert.map((g) => (
+                  <div key={g.feld} style={{ display: "flex", gap: 12, alignItems: "baseline",
+                    padding: "7px 0", borderBottom: `1px solid ${C.lineSoft}`, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13.5, flex: 1, minWidth: 200 }}>
+                      {TARIF_FELD[g.feld] || g.feld}</span>
+                    <span style={{ fontSize: 13, color: C.dimmer, ...NUM }}>{tarifWert(g.von)}</span>
+                    <span style={{ fontSize: 13, color: C.dimmer }}>→</span>
+                    <span style={{ fontSize: 13, fontWeight: 620, ...NUM }}>{tarifWert(g.nach)}</span>
+                  </div>))}
+              </div>)}
+
+            <Lab style={{ marginBottom: 8 }}>Was die Vorlage nicht kann</Lab>
+            <ul style={{ margin: "0 0 18px", paddingLeft: 20, fontSize: 13,
+              color: C.dim, lineHeight: 1.6 }}>
+              {t.hinweise.map((h, i) => <li key={i} style={{ marginBottom: 5 }}>{h}</li>)}
+            </ul>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <Btn kind="primary" disabled={vorschau.geaendert.length === 0}
+                onClick={() => { akt.tarifwerkAnwenden(t.id); setGewaehlt(null); }}>
+                {t.name} anwenden</Btn>
+              <Btn kind="quiet" onClick={() => setGewaehlt(null)}>Abbrechen</Btn>
+              <a href={t.quelle} target="_blank" rel="noreferrer"
+                style={{ fontSize: 13, color: C.accent }}>Fundstelle ansehen</a>
+            </div>
+          </div>)}
+      </div>
+    </Card>);
+}
+
 function Betrieb({ sitz, akt }) {
   const m = sitz.mandant;
   const [tests, setTests] = useState(null);
@@ -16573,6 +17417,8 @@ function Betrieb({ sitz, akt }) {
     <div>
       <H1 sub="Stammdaten, Einheiten, Qualifikationen, Regelwerk und Rechte.">Betrieb</H1>
 
+      <Tarifwerk sitz={sitz} akt={akt} />
+
       <Card style={{ marginBottom: 20 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
         <div style={{ padding: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 15 }}>
@@ -16581,7 +17427,10 @@ function Betrieb({ sitz, akt }) {
             {BRANCHEN.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
           <Field label="Bezeichnung der Einheiten" hint="Wirkt in der gesamten Oberfläche.">
             <Inp value={m.einheitLabel} onChange={(e) => akt.setzeFeld("einheitLabel", e.target.value)} /></Field>
-          <Field label="Bundesland" hint="Bestimmt die gesetzlichen Feiertage.">
+          <Field label="Bundesland"
+            hint={gemeindeHinweis(m.bundesland)
+              ? `Bestimmt die gesetzlichen Feiertage. ${gemeindeHinweis(m.bundesland)} Bitte für euren Ort prüfen.`
+              : "Bestimmt die gesetzlichen Feiertage."}>
             <Sel value={m.bundesland} onChange={(e) => akt.setzeFeld("bundesland", e.target.value)}>
               {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
         </div>
@@ -16589,7 +17438,7 @@ function Betrieb({ sitz, akt }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 20 }}>
         <Card>
-          <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{m.einheitLabel}n</CardHead>
+          <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{mehrzahl(m.einheitLabel)}</CardHead>
           <div style={{ padding: 22 }}>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
@@ -16661,7 +17510,7 @@ function Betrieb({ sitz, akt }) {
                     <div style={{ fontSize: 13.5 }}>{label}</div>
                     <div style={{ fontSize: 11, color: C.dimmer, ...NUM }}>{id}</div></td>
                   {ROLLEN.filter((r) => !r.extern).map((r) => {
-                    const an = (m.matrix[r.id] || []).includes(id), fest = r.id === "leitung";
+                    const an = ((m.matrix || MATRIX_STD)[r.id] || []).includes(id), fest = r.id === "leitung";
                     return (<td key={r.id} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "center" }}>
                       <button onClick={() => !fest && akt.toggleRecht(r.id, id)} 
                         title={fest ? "Die Organisationsleitung hat immer alle Rechte." : ""}
@@ -16811,16 +17660,17 @@ const NAV_BETREIBER = [
  * Jeder Bereich hat Unterreiter — die Kopfzeile bleibt lesbar, nichts ist versteckt.
  */
 const BEREICHE = [
-  { id: "heute", label: "Heute", views: [
+  { id: "heute", label: "Im Dienst", views: [
     ["start", "Start", null],
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
+    ["hilfe", "Hilfe", null],
     ["uebergabe", "Übergabe", "PAKET:uebergabe"],
     ["meine", "Meine Schichten", "SCHICHT"],
     ["lage", "Lagebild", "plan.view.unit"],
     ["zeitachse", "Zeitachse", "plan.view.unit"],
   ]},
-  { id: "planung", label: "Planung", views: [
+  { id: "planung", label: "Planen", views: [
     ["plan", "Monatsplan", "plan.view.all"],
     ["einsatz", "Personaleinsatz", "plan.view.unit"],
     ["jahr", "Jahresansicht", "plan.view.unit"],
@@ -16829,7 +17679,7 @@ const BEREICHE = [
     ["sonder", "Sondereinsätze", "plan.view.unit"],
     ["folge", "Schichtfolge", "pattern.edit"],
   ]},
-  { id: "anliegen", label: "Anliegen", views: [
+  { id: "anliegen", label: "Zu entscheiden", views: [
     ["notrufe", "Notrufe", "plan.view.unit"],
     ["offene", "Offene Schichten", null],
     ["antraege", "Anträge", "req.approve.unit"],
@@ -16838,7 +17688,7 @@ const BEREICHE = [
     ["aushang", "Schwarzes Brett", null],
     ["buch", "Dienstbuch", "plan.view.unit"],
   ]},
-  { id: "team", label: "Team", views: [
+  { id: "team", label: "Wer mitfährt", views: [
     ["personal", "Personal", "staff.view"],
     ["quals", "Qualifikationen", "staff.view"],
     ["nachweise", "Nachweise", "staff.view"],
@@ -16846,7 +17696,7 @@ const BEREICHE = [
     ["verteilung", "Verteilung", "staff.view"],
     ["mittel", "Betriebsmittel", "plan.view.unit"],
   ]},
-  { id: "auswertung", label: "Auswertung", views: [
+  { id: "auswertung", label: "Nachsehen", views: [
     ["pruef", "Prüfung", "plan.view.all"],
     ["belastung", "Belastung", "plan.view.unit"],
     ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
@@ -16859,6 +17709,14 @@ const BEREICHE = [
     ["dienste", "Dienstarten", "org.edit"],
     ["einstellungen", "Einstellungen", null],
     ["mitnahme", "Datenmitnahme", "org.edit"],
+    /* Die Datenschutzansicht gab es als Baustein seit langem — sie war nur
+       nirgends eingehängt und damit für niemanden erreichbar. Aufgefallen
+       beim Einbau des Löschlaufs: Die Tour verweist auf „Verwaltung →
+       Datenschutz", und dort war nichts. */
+    ["datenschutz", "Datenschutz", "org.edit"],
+    /* Ohne Recht davor: Impressum und Datenschutzerklärung stehen jeder
+       Rolle zu, auch der Aushilfe mit dem Mitarbeiterzugang. */
+    ["rechtliches", "Rechtliches", null],
   ]},
 ];
 const NAV_KUNDE = BEREICHE.flatMap((b) => b.views);
@@ -16878,6 +17736,12 @@ function AppInnen() {
   const [eskal, setEskal] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
+  /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
+     verschwindet — bei ungespeicherter Arbeit ist das die falsche Form. */
+  const [nichtGespeichert, setNichtGespeichert] = useState(null);
+  /* Kommt der angezeigte Plan aus dem Speicher des Dienstarbeiters? Dann
+     muss das dranstehen — samt Alter. */
+  const [offline, setOffline] = useState(null);
   const [schnell, setSchnell] = useState(null);
   const [wizard, setWizard] = useState(false);
   const [verfDlg, setVerfDlg] = useState(null);
@@ -16913,6 +17777,16 @@ function AppInnen() {
   }, []);
 
   useEffect(() => {
+    const wieder = () => { setOffline(null); };
+    const weg = () => setOffline((o) => o || { geholt: null });
+    window.addEventListener("online", wieder);
+    window.addEventListener("offline", weg);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) weg();
+    return () => { window.removeEventListener("online", wieder);
+      window.removeEventListener("offline", weg); };
+  }, []);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 820px)");
     const f = () => setSchmal(mq.matches);
     f(); mq.addEventListener ? mq.addEventListener("change", f) : mq.addListener(f);
@@ -16924,8 +17798,30 @@ function AppInnen() {
   useEffect(() => { (async () => {
     if (!SP.angemeldet()) { setLaedt(false); return; }
     try {
-      const { bestand, zugang } = await SP.lies();
-      let b = bestand && bestand.version === 5 ? bestand : startbestand();
+      const { bestand, zugang, ausSpeicher, geholt } = await SP.lies();
+      if (ausSpeicher) setOffline({ geholt });
+
+      /* Migration statt Wegwerfen. Ein Bestand aus einer älteren Fassung
+         wird schrittweise hochgezogen; einer aus einer neueren bleibt
+         unangetastet und die Anwendung sagt, was zu tun ist. Vorher wurde
+         beides gleich behandelt: durch Beispieldaten ersetzt. */
+      let b;
+      if (!bestand) {
+        b = startbestand();
+      } else {
+        const erg = migriere(bestand);
+        if (!erg.ok) {
+          setLadefehler(migrationstext(erg));
+          setLaedt(false);
+          return;
+        }
+        b = erg.bestand;
+        if (erg.schritte > 0) {
+          /* Sofort zurückschreiben, damit die Migration nicht bei jedem
+             Öffnen erneut läuft — und damit ein Fehler darin früh auffällt. */
+          SP.schreib(b, { durch: "Migration", sofort: true });
+        }
+      }
       /* Der Zugangscode bestimmt die Rolle. Ein Demozugang landet damit
          unmittelbar dort, wo er hingehört — ohne Rollenauswahl. */
       if (zugang && zugang.rolle && zugang.rolle !== "kunde" && !b.session) {
@@ -16934,7 +17830,50 @@ function AppInnen() {
           const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
           if (mand) {
             const kand = mand.personen.filter((p) => p.rolle === zugang.rolle && imDienst(p, heute()));
-            const p = zugang.person != null ? mand.personen[zugang.person] : kand[0];
+            let p = zugang.person != null ? mand.personen[zugang.person] : kand[0];
+
+            /* Ein frisch angelegter Betrieb hat noch keine Person — und ohne
+               Person gibt es keine Sitzung, also auch keinen Weg hinein. Der
+               Selbststart endete damit auf einer Rollenauswahl ohne Auswahl.
+
+               Die erste Person ist die, die den Zugangscode in der Hand hält.
+               Sie wird hier angelegt, mit der Rolle aus dem Code und Zugriff
+               auf alle Einheiten. Umbenennen lässt sich sie unter Personal. */
+            if (!p && !mand.personen.length) {
+              const ersteEinheit = (mand.einheiten || [])[0];
+              p = {
+                id: uid("p"),
+                vorname: "",
+                nachname: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
+                funktion: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
+                email: mand.kontakt || "",
+                zugehoerigkeit: ersteEinheit
+                  ? [{ ab: mand.seit || heute(), einheitId: ersteEinheit.id }] : [],
+                eintritt: mand.seit || heute(),
+                austritt: null,
+                wochenstunden: (mand.einstellungen || {}).wochenstunden || 40,
+                urlaubsanspruch: (mand.einstellungen || {}).urlaubsanspruch || 30,
+                urlaubsuebertrag: 0,
+                stundenuebertrag: 0,
+                qualifikationen: [],
+                teilzeit: null,
+                springer: false,
+                einschraenkungen: {},
+                rolle: zugang.rolle,
+                rolleSeit: heute(),
+                rolleVerlauf: [],
+                /* Alle Einheiten: Wer den Betrieb einrichtet, muss überall
+                   hinsehen können. */
+                bereich: "ALLE",
+                status: "aktiv",
+                /* Die Leitung fährt nicht zwangsläufig selbst Schicht — das
+                   entscheidet sie später unter Personal. */
+                imSchichtdienst: false,
+              };
+              const mitPerson = { ...mand, personen: [p] };
+              b = { ...b, mandanten: b.mandanten.map((x) => x.id === mand.id ? mitPerson : x) };
+            }
+
             if (p) b = { ...b, session: { rolle: "kunde", mandantId: mand.id, personId: p.id } };
           }
         }
@@ -16947,22 +17886,6 @@ function AppInnen() {
 
   useEffect(() => { ref.current = db; }, [db]);
 
-  /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
-     abgeschlossen oder abgeschaltet. */
-  const tourGeprueft = useRef(false);
-  useEffect(() => {
-    if (!db || tourGeprueft.current) return;
-    const s2 = db.session;
-    if (!s2 || !s2.personId) return;
-    const mm = db.mandanten.find((x) => x.id === s2.mandantId);
-    const pp = mm && mm.personen.find((x) => x.id === s2.personId);
-    if (!pp) return;
-    tourGeprueft.current = true;
-    if (tourStartet(pp, pp.rolle || "mitarbeiter"))
-      setDb((d) => ({ ...d, mandanten: d.mandanten.map((x) => x.id !== mm.id ? x
-        : { ...x, personen: x.personen.map((y) => y.id !== pp.id ? y
-          : { ...y, tour: { ...(y.tour || {}), offen: true, schritt: 0 } }) }) }));
-  }, [db]);
 
   /* Offene Zustellungen abarbeiten. Läuft nach dem Speichern, gebündelt und
      ohne die Bedienung aufzuhalten. Was nicht hinausgeht, bleibt offen und
@@ -16978,12 +17901,15 @@ function AppInnen() {
     zustellLauf.current = true;
     (async () => {
       try {
+        /* Es geht nur noch die Kennung der Person hinaus, nicht deren
+           Adresse. Der Server schlägt sie im eigenen Betrieb nach — über
+           diesen Weg lässt sich damit niemand Betriebsfremdes anschreiben. */
         const auftraege = offen.slice(0, 100).map((n) => {
           const p = m.personen.find((x) => x.id === n.personId);
-          const mt = p ? mailText(m, n, p) : null;
-          return { id: n.id, mail: n.wege.mail, push: n.wege.push,
+          const mt = p && n.wege.mail ? mailText(m, n, p) : null;
+          return { id: n.id, personId: n.personId,
             betreff: mt ? mt.betreff : null, text: mt ? mt.text : null,
-            titel: n.titel, kurz: n.text, ziel: n.ziel };
+            titel: n.wege.push ? n.titel : null, kurz: n.text, ziel: n.ziel };
         });
         const { ergebnis } = await SP.zustellen(auftraege);
         if (ergebnis && ergebnis.length) {
@@ -17007,8 +17933,8 @@ function AppInnen() {
             const pp = mm && mm.personen.find((x) => x.id === db.session.personId);
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
-      onKonflikt: (d) => setKonflikt(d),
-      onFehler: (e) => melde(`Nicht gespeichert: ${e.message}`),
+      onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
+      onFehler: (lage) => setNichtGespeichert(lage),
     });
   }, [db]);
 
@@ -17023,6 +17949,72 @@ function AppInnen() {
     if (!p) return null;
     return { rolle: "kunde", db, mandant: m, person: p };
   }, [db]);
+
+  /* Beim ersten Anmelden startet die Tour von selbst — außer sie wurde
+     abgeschlossen oder abgeschaltet.
+
+     Vorher las diese Stelle db.session.personId und suchte Betrieb und
+     Person selbst zusammen. Bei einem selbst angelegten Betrieb wird die
+     erste Person aber erst beim Anmelden erzeugt; in dem Rendern, in dem
+     die Sitzung stand, gab es sie noch nicht — der Merker war da schon
+     gesetzt, und die Tour startete nie. Genau dort, wo sie am nötigsten
+     ist: beim allerersten Öffnen eines leeren Betriebs.
+
+     Jetzt hängt sie an `sitz`. Das ist dieselbe aufgelöste Sitzung, die
+     auch die Oberfläche benutzt — gibt es sie, gibt es die Person. */
+  const tourGeprueft = useRef(false);
+  useEffect(() => {
+    if (tourGeprueft.current) return;
+    if (!sitz || !sitz.person || !sitz.mandant) return;
+    const pp = sitz.person, mm = sitz.mandant;
+    tourGeprueft.current = true;
+    if (tourStartet(pp, pp.rolle || "mitarbeiter"))
+      setDb((d) => ({ ...d, mandanten: d.mandanten.map((x) => x.id !== mm.id ? x
+        : { ...x, personen: x.personen.map((y) => y.id !== pp.id ? y
+          : { ...y, tour: { ...(y.tour || {}), offen: true, schritt: 0 } }) }) }));
+  }, [sitz]);
+
+  /* --- Urlaubshinweise auslösen ---
+
+     Läuft einmal je Sitzung, nicht bei jeder Änderung. Der Hinweis ist eine
+     Pflicht des Arbeitgebers, keine Erinnerung für die Belegschaft: Ohne ihn
+     verfällt der Urlaub gar nicht erst, und er häuft sich über Jahre an.
+
+     Festgehalten wird das Datum an der Person — so wird niemand zweimal im
+     selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel. */
+  const urlaubsLauf = useRef(false);
+  useEffect(() => {
+    if (!db || !sitz || sitz.rolle === "betreiber" || urlaubsLauf.current) return;
+    if (!darf(sitz, "req.approve.unit") && !darf(sitz, "org.edit")) return;
+    const m = sitz.mandant;
+    let faellig = [];
+    try { faellig = urlaubshinweiseFaellig(m, heute()); }
+    catch (e) { return; }
+    if (!faellig.length) return;
+    urlaubsLauf.current = true;
+
+    setDb((s2) => {
+      if (!s2) return s2;
+      const mm = s2.mandanten.find((x) => x.id === m.id);
+      if (!mm) return s2;
+      const neueNachrichten = faellig.map((f) => baueMitteilung(mm, f.person.id, "urlaubVerfaellt",
+        `${f.offen} ${f.offen === 1 ? "Urlaubstag" : "Urlaubstage"} verfallen zum Jahresende`,
+        `${f.text} Übertragung ins nächste Jahr ist nur bei dringenden betrieblichen oder `
+        + `persönlichen Gründen möglich, dann bis zum ${fKurz(f.uebertragBis)}. `
+        + "Bitte plane deinen Urlaub rechtzeitig ein.",
+        "meine")).filter(Boolean);
+      if (!neueNachrichten.length) return s2;
+      const heuteIso = heute();
+      return { ...s2, mandanten: s2.mandanten.map((x) => x.id !== mm.id ? x : {
+        ...x,
+        nachrichten: [...(x.nachrichten || []), ...neueNachrichten],
+        personen: x.personen.map((pp) => faellig.some((f) => f.person.id === pp.id)
+          ? { ...pp, urlaubshinweis: heuteIso } : pp),
+      }) };
+    });
+    melde(`${faellig.length} ${faellig.length === 1 ? "Hinweis" : "Hinweise"} zum Resturlaub verschickt.`);
+  }, [db, sitz]);
+
 
   const [themaZaehler, setThemaZaehler] = useState(0);
 
@@ -17055,7 +18047,22 @@ function AppInnen() {
 
 
   const akt = useMemo(() => {
-    const upd = (fn) => setDb((s) => { if (!s) return s; verlauf.current = [s, ...verlauf.current].slice(0, 20);
+    /* Rückgängig-Tiefe an der Bestandsgröße ausrichten.
+
+       Zwanzig vollständige Kopien sind bei einem Betrieb von fünf Megabyte
+       hundert Megabyte im Reiter — auf einem älteren Diensttelefon der
+       Grund, warum die Anwendung „einfach zuklappt". Bei kleinen Beständen
+       bleibt es bei zwanzig, bei großen schrumpft die Tiefe. */
+    const verlaufTiefe = (s) => {
+      try {
+        const kb = JSON.stringify(s).length / 1024;
+        if (kb < 400) return 20;
+        if (kb < 1500) return 10;
+        if (kb < 4000) return 5;
+        return 3;
+      } catch { return 5; }
+    };
+    const upd = (fn) => setDb((s) => { if (!s) return s; verlauf.current = [s, ...verlauf.current].slice(0, verlaufTiefe(s));
       const next = fn(s); return next === s ? s : { ...next, stand: (s.stand || 0) + 1 }; });
     /** Ändert den aktuellen Mandanten und schreibt einen Protokolleintrag. */
     const mUpd = (fn, text) => upd((s) => {
@@ -17070,6 +18077,9 @@ function AppInnen() {
     const jetzt = () => new Date().toLocaleString("de-DE");
 
     return {
+      /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
+         Server reden, brauchen sie — bisher hatte nur AppInnen sie. */
+      melde,
       /* --- Anmeldung --- */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
       abmelden: () => { setDb((s) => ({ ...s, session: null })); setView("meine"); setDetail(null); },
@@ -17096,7 +18106,7 @@ function AppInnen() {
       setzeTarifGrenze: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, grenzen: { ...t.grenzen, [k]: v } } : t) })),
       neuerMandant: (f) => upd((s) => {
         const m = baueAusAnlage(f);
-        melde(`${m.name} angelegt · ${m.einheiten.filter((e) => !e.pool).length} ${f.einheitLabel}n, ${m.dienstarten.length} Dienstarten.`);
+        melde(`${m.name} angelegt · ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(f.einheitLabel)}, ${m.dienstarten.length} Dienstarten.`);
         return bLog({ ...s, mandanten: [...s.mandanten, m] },
           `Mandant „${m.name}" eingerichtet: ${m.einheiten.filter((e) => !e.pool).length} Einheiten`);
       }),
@@ -17148,6 +18158,29 @@ function AppInnen() {
       setzeBranche: (b) => mUpd((m) => { const br = BRANCHEN.find((x) => x[0] === b);
         return { ...m, branche: b, einheitLabel: br ? br[2] : m.einheitLabel }; }, "Branche gewechselt"),
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
+      /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
+         sie gehören zum Löschkonzept, nicht zum Regelwerk. */
+      /* Direkt in ein Kapitel springen — die Tour öffnet sich dort. */
+      tourAbKapitel: (index) => mUpd((m) => ({ ...m,
+        personen: m.personen.map((p) => (p.id === sitz.person.id
+          ? { ...p, tour: { ...(p.tour || {}), offen: true, schritt: index, fertig: false } }
+          : p)) }), null),
+      tarifwerkAnwenden: (id) => {
+        const s2 = ref.current;
+        const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        const vor = tarifAnwenden(m0, id, heute());
+        if (!vor.geaendert.length) return melde("Es ändert sich nichts.");
+        if (!window.confirm(
+          `${vor.geaendert.length} Werte im Regelwerk werden gesetzt. `
+          + "Personal, Dienstarten und Einheiten bleiben unberührt.\n\n"
+          + "Bereits gerechnete Stunden ändern sich rückwirkend, weil Nachtfenster "
+          + "und Wochenarbeitszeit in jede Auswertung eingehen.")) return;
+        mUpd((m) => tarifAnwenden(m, id, heute()).mandant,
+          `Tarifwerk angewendet: ${(tarifwerk(id) || {}).name || id}`);
+        melde(`${(tarifwerk(id) || {}).name || id} angewendet.`);
+      },
+      setzeAufbewahrung: (k, v) => mUpd((m) => ({ ...m,
+        aufbewahrung: { ...loeschFristen(m), [k]: Math.max(1, Number(v) || 1) } }), null),
       setzeEinheit: (id, k, v) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === id ? { ...e, [k]: v } : e) }), null),
       neueEinheit: () => mUpd((m) => ({ ...m, einheiten: [...m.einheiten, { id: uid("e"),
         name: `${m.einheitLabel} ${m.einheiten.length + 1}`, versatz: m.einheiten.length % m.zyklus.wochen,
@@ -17164,8 +18197,11 @@ function AppInnen() {
         personen: m.personen.map((p) => ({ ...p, qualifikationen: p.qualifikationen.filter((x) => x !== id) })),
         dienstarten: m.dienstarten.map((d) => { const mq = { ...d.mindestQual }; delete mq[id]; return { ...d, mindestQual: mq }; }) }), "Qualifikation gelöscht"),
       toggleRecht: (r, recht) => mUpd((m) => {
-        const cur = m.matrix[r] || [];
-        return { ...m, matrix: { ...m.matrix, [r]: cur.includes(recht) ? cur.filter((x) => x !== recht) : [...cur, recht] } };
+        /* Ohne eigene Matrix gilt die Vorgabe — der erste Klick macht sie
+           zur betrieblichen Matrix, statt auf undefined zu greifen. */
+        const basis = m.matrix || JSON.parse(JSON.stringify(MATRIX_STD));
+        const cur = basis[r] || [];
+        return { ...m, matrix: { ...basis, [r]: cur.includes(recht) ? cur.filter((x) => x !== recht) : [...cur, recht] } };
       }, "Rechtematrix geändert"),
       matrixZuruecksetzen: () => mUpd((m) => ({ ...m, matrix: JSON.parse(JSON.stringify(MATRIX_STD)) }), "Rechtematrix zurückgesetzt"),
 
@@ -17815,12 +18851,20 @@ function AppInnen() {
         p.id === sitz.person.id ? { ...p, handbuch: (p.handbuch || []).includes(schluessel)
           ? (p.handbuch || []).filter((x) => x !== schluessel)
           : [...(p.handbuch || []), schluessel] } : p) }), null),
-      druckeHandbuch: () => {
+      druckeHandbuch: async () => {
+        /* Das Fenster zuerst öffnen: Ein window.open nach einem await gilt
+           dem Browser nicht mehr als Folge des Klicks und wird geblockt. */
         const w = window.open("", "_blank");
         if (!w) return melde("Der Druck wurde vom Browser blockiert.");
-        w.document.write(handbuchDruck(sitz.mandant));
-        w.document.close();
-        setTimeout(() => { try { w.print(); } catch (e) { /* still */ } }, 400);
+        try {
+          const alle = await handbuchLaden();
+          w.document.write(handbuchDruck(sitz.mandant, alle));
+          w.document.close();
+          setTimeout(() => { try { w.print(); } catch (e) { /* still */ } }, 400);
+        } catch {
+          w.close();
+          melde("Der Handbuchinhalt ließ sich nicht laden. Bitte erneut versuchen.");
+        }
       },
 
       /* --- Einführung --- */
@@ -17931,23 +18975,35 @@ function AppInnen() {
           melde("Benachrichtigung gesendet.");
         } catch (e) { melde("Benachrichtigung nicht möglich."); }
       },
-      /* --- Stempeluhr mit einmaliger Standortprüfung --- */
-      stempeln: (pid, datum, art, koord) => mUpd((m) => {
-        const p = m.personen.find((x) => x.id === pid); if (!p) return m;
-        const pr = stempelPruefen(m, p, datum, koord);
-        const jetzt = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-        const k = `${pid}|${datum}`;
-        const alt = (m.einstempeln || {})[k] || {};
-        const neu = art === "start"
-          ? { start: jetzt, ortStart: pr.text, innerhalbStart: pr.innerhalb }
-          : { ...alt, ende: jetzt, ortEnde: pr.text, innerhalbEnde: pr.innerhalb };
-        melde(art === "start" ? `Eingestempelt ${jetzt} · ${pr.text}` : `Ausgestempelt ${jetzt} · ${pr.text}`);
-        let next = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-        // Ausstempeln bestätigt zugleich die Zeit
-        if (art === "ende") next = { ...next, erfassung: { ...(next.erfassung || {}),
-          [k]: { start: neu.start, ende: jetzt, bestaetigt: true, grund: "" } } };
-        return next;
-      }, null),
+      /* --- Stempeluhr: der Server entscheidet ---
+
+         Vorher rechnete der Browser den Abstand zum Einsatzort und schrieb
+         sein eigenes Urteil in den Bestand. Jetzt gehen nur die
+         Rohkoordinaten hinaus; Standort, Radius, Uhrzeit und Bewertung
+         liegen auf dem Server, und von dort kommt das Ergebnis zurück. */
+      stempeln: async (pid, datum, art, koord) => {
+        try {
+          const erg = await SP.stempeln(datum, art, koord);
+          /* Den zurückgemeldeten Stand lokal nachziehen, damit die Ansicht
+             sofort stimmt — geschrieben hat ihn bereits der Server. */
+          upd((s2) => {
+            const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
+            if (!m) return s2;
+            const k = `${pid}|${datum}`;
+            const alt = (m.einstempeln || {})[k] || {};
+            const neu = art === "start"
+              ? { start: erg.zeit, ortStart: erg.ort, innerhalbStart: erg.innerhalb }
+              : { ...alt, ende: erg.zeit, ortEnde: erg.ort, innerhalbEnde: erg.innerhalb };
+            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
+            if (art === "ende") mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+              [k]: { start: neu.start, ende: erg.zeit, bestaetigt: true, grund: "" } } };
+            return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
+          });
+          melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}`);
+        } catch (e) {
+          melde(e.message || "Das Stempeln hat nicht geklappt.");
+        }
+      },
       setzeVerfuegbarkeit: (pid, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === pid ? { ...p, verfuegbarkeit: v } : p) }), "Verfügbarkeit gespeichert"),
       oeffneVerfuegbarkeit: (pid) => setVerfDlg(pid || sitz.person.id),
@@ -18182,9 +19238,29 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         if (!window.confirm("Name und Kontaktdaten werden unwiderruflich ersetzt. Planungsdaten bleiben als Statistik erhalten.")) return m;
         melde("Datensatz anonymisiert.");
         return { ...m, personen: m.personen.map((p) => p.id === pid
-          ? { ...p, vorname: "anonymisiert", nachname: `Person ${p.id.slice(-4)}`, email: "", anonym: true } : p),
+          ? { ...anonymPerson(p), anonymSeit: heute() } : p),
           nachrichten: (m.nachrichten || []).filter((n) => n.personId !== pid) };
       }, "Datensatz anonymisiert"),
+
+      /* Der Löschlauf über alle drei Fristen. Bis hierher standen die
+         Fristen im Bestand und taten nichts — Artikel 17 DSGVO verlangt
+         die Löschung, nicht die Absicht dazu. */
+      loeschlauf: () => {
+        const s2 = ref.current;
+        const m0 = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        const vor = loeschVorschau(m0, heute());
+        if (vor.gesamt === 0) { melde("Nichts fällig — alle Fristen eingehalten."); return; }
+        if (!window.confirm(
+          `${loeschBericht(vor)}\n\nDas lässt sich nicht rückgängig machen. `
+          + "Bei Zweifel vorher eine Sicherung anlegen.")) return;
+        let text = "";
+        mUpd((m) => {
+          const { mandant, bericht } = loeschlaufAusfuehren(m, heute());
+          text = loeschBericht(bericht);
+          return mandant;
+        }, `Löschlauf: ${loeschBericht(vor)}`);
+        melde(text || "Löschlauf ausgeführt.");
+      },
       datenauskunft: (pid) => {
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         const p = m.personen.find((x) => x.id === pid);
@@ -18272,8 +19348,53 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
     return { zaehler: z, zaehlerWarn: w };
   }, [sitz]);
 
-  if (!db) return <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center",
-    justifyContent: "center", fontFamily: FONT, fontSize: 15, color: C.dim }}>CENTRIC wird geladen …</div>;
+  /* Ladefehler wurden bisher in einen Zustand geschrieben, den niemand
+     rendert — sie verschwanden stumm, und die Anwendung blieb beim
+     Ladehinweis stehen. Jetzt sind sie sichtbar; die Migration braucht das,
+     weil ihre wichtigste Antwort lautet „nichts angefasst, bitte neu laden". */
+  if (ladefehler) {
+    const f = typeof ladefehler === "string"
+      ? { titel: "Die Daten lassen sich nicht laden", text: ladefehler, neuladen: true }
+      : ladefehler;
+    return (<><style>{bauStyles()}</style>
+      <div className="sw-root"><div style={{ minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center", padding: "5vh 20px" }}>
+        <Card style={{ padding: 30, maxWidth: 520 }}>
+          <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
+          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+            {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
+            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+          </div>
+        </Card></div></div></>);
+  }
+
+  /* Gerüst statt Satz.
+
+     Zwischen Anmeldung und fertiger Oberfläche stand „CENTRIC wird geladen …"
+     in der Bildmitte. Bei mehreren Megabyte über Mobilfunk sind das mehrere
+     Sekunden ohne Fortschritt. Ein Umriss dessen, was gleich kommt, lässt
+     dieselbe Wartezeit kürzer wirken und zeigt zugleich, dass etwas
+     passiert. */
+  if (!db) return (<><style>{bauStyles()}</style>
+    <div className="sw-root" style={{ display: "flex", minHeight: "100vh" }}>
+      <div style={{ width: 252, background: C.sidebar, flexShrink: 0 }} className="nur-breit" />
+      <div style={{ flex: 1, padding: "28px 32px" }}>
+        <div className="pulsiert" style={{ width: 220, height: 34, borderRadius: 8,
+          background: C.flaecheStill, marginBottom: 12 }} />
+        <div className="pulsiert" style={{ width: 320, height: 16, borderRadius: 6,
+          background: C.flaecheStill, marginBottom: 30 }} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gap: 12, marginBottom: 26 }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="pulsiert" style={{ height: 92, borderRadius: 12,
+              background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />))}
+        </div>
+        <div className="pulsiert" style={{ height: 240, borderRadius: 12,
+          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+        <div className="nurLeser" role="status" aria-live="polite">CENTRIC wird geladen</div>
+      </div>
+    </div></>);
   if (!db.session) return (<><style>{bauStyles()}</style><Anmeldung db={db} onLogin={akt.anmelden} /></>);
   if (!sitz) return (<><style>{bauStyles()}</style><Anmeldung db={db} onLogin={akt.anmelden} /></>);
 
@@ -18290,8 +19411,20 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const aktBereich = bereiche.find((b) => b.views.some(([id]) => id === aktiveView)) || bereiche[0];
   const r = istBetreiber ? ROLLEN[0] : rolle(sitz.person.rolle);
   const ungelesen = istBetreiber ? 0 : (sitz.mandant.nachrichten || []).filter((n) => n.personId === sitz.person.id && !n.gelesen).length;
-  /* Nur diese Ansichten sind für das Telefon ausgelegt. */
-  const MOBIL = ["meine"];
+  /* Für das Telefon ausgelegt. Der Monatsplan kam hinzu, seit er dort als
+     Tagesliste statt als Raster erscheint — siehe Wochenliste. */
+  /* Welche Ansichten auf dem Telefon ohne Vorbehalt taugen.
+
+     „antraege" und „lage" standen hier nicht drin, obwohl die Leiste am
+     unteren Rand beide anbietet: Wer sie antippte, landete auf einer Seite
+     mit dem Hinweis „Für Tablet und Rechner ausgelegt". Die Leiste lud also
+     irgendwohin ein, wo die Anwendung dann abriet.
+
+     Beide arbeiten mit Karten, nicht mit breiten Tabellen, und laufen bei
+     390 Pixeln ohne waagerechten Überlauf. Und beide sind genau das, was
+     eine Schichtverantwortliche abends vom Sofa aus braucht: einen Antrag
+     entscheiden und sehen, ob morgen jemand fehlt. */
+  const MOBIL = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
   const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
   const tabs = istBetreiber
     ? [["mandanten", "Mandanten", "▤"], ["rechnungen", "Rechnungen", "€"],
@@ -18401,13 +19534,9 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
             <div style={{ flex: 1 }} />
 
-            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
-              title="Zeilenhöhe und Abstände umschalten">
-              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
-            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
-              title="Seitenleiste ausblenden für maximale Breite">
-              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
-
+            {/* Auf dem Telefon treten diese Werkzeuge ab — sie schoben die
+                Kopfleiste über die Gerätebreite hinaus. Das Postfach bleibt,
+                weil dort Mitteilungen zum Dienst ankommen. */}
             {!istBetreiber && (
               <button onClick={() => setPostfach(true)} className="btn btn-sm btn-quiet"
                 title="Mitteilungen" aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
@@ -18418,12 +19547,20 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
                   fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {ungelesen}</span>}
               </button>)}
+            <div className="kopf-werkzeuge" style={{ display: "contents" }}>
+            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
+              title="Zeilenhöhe und Abstände umschalten">
+              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
+            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
+              title="Seitenleiste ausblenden für maximale Breite">
+              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
             {!istBetreiber && <Btn size="sm" kind="quiet" onClick={akt.zurueck}
               title="Letzte Änderung zurücknehmen">Rückgängig</Btn>}
             {!istBetreiber && <Btn size="sm" kind="quiet"
               onClick={() => akt.setzeKontrastmodus(!sitz.person.kontrastmodus)}
               title="Größere Schrift und maximaler Kontrast">
               {sitz.person.kontrastmodus ? "Feldmodus aus" : "Feldmodus"}</Btn>}
+            </div>
             {nurMitarbeiter && rechnerAnsicht && (
               <Btn size="sm" kind="quiet" onClick={() => setRechnerAnsicht(false)}>Telefonansicht</Btn>)}
           </header>
@@ -18437,6 +19574,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
           <main className="bereich" id="inhalt" tabIndex={-1}
             aria-label={`Ansicht ${aktiveView}`}>
+          {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
+          <Offlineleiste lage={offline} />
+          <NichtGespeichert lage={nichtGespeichert} melde={melde}
+            aufGeloest={() => setNichtGespeichert(null)} />
           {schmal && !mobilOk && (
             <Card style={{ padding: 20, marginBottom: 20, background: C.warnLight }}>
               <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>Für Tablet und Rechner ausgelegt</div>
@@ -18476,7 +19617,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           ) : (<>
             {aktiveView === "meine" && <MeineSchichten sitz={sitz} akt={akt} ym={ym} />}
             {aktiveView === "lage" && <Lagebild sitz={sitz} oeffneTag={setTag} akt={akt} />}
-            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} />}
+            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} schmal={schmal} />}
             {aktiveView === "einsatz" && <Einsatzplan sitz={sitz} ym={ym} setYm={setYm} akt={akt} oeffnePerson={setPerson} />}
             {aktiveView === "folge" && <Schichtfolge sitz={sitz} akt={akt} />}
             {aktiveView === "dienste" && <Dienstarten sitz={sitz} akt={akt} />}
@@ -18493,6 +19634,15 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "handbuch" && <Handbuch sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "offene" && <OffeneSchichten sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "einstellungen" && <Einstellungen sitz={sitz} akt={akt} gehZu={setView} />}
+            {aktiveView === "hilfe" && <Hilfe sitz={sitz} gehZu={setView} />}
+            {aktiveView === "datenschutz" && <div>
+              <H1 sub="Aufbewahrungsfristen, Löschlauf und Auskunft nach Artikel 15. Was hier steht, ist nachgerechnet — die Vorschau benutzt denselben Code wie die Ausführung.">
+                Datenschutz</H1>
+              <Datenschutz sitz={sitz} akt={akt} /></div>}
+            {aktiveView === "rechtliches" && <div>
+              <H1 sub="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung. Änderungen an diesen Texten geschehen an einer Stelle — im Ordner rechtliches/ — und erscheinen hier.">
+                Rechtliches</H1>
+              <Rechtliches /></div>}
             {aktiveView === "selbstplan" && <Selbstplanung sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "notrufe" && <Notrufe sitz={sitz} akt={akt} />}
             {aktiveView === "belastung" && <Belastung sitz={sitz} akt={akt} gehZu={setView} />}
@@ -18512,11 +19662,25 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "jahr" && <Jahresansicht sitz={sitz} ym={ym} oeffnePerson={setPerson} />}
             {aktiveView === "buch" && <Dienstbuch sitz={sitz} akt={akt} />}
             {aktiveView === "abrechnung" && <Abrechnungsdaten sitz={sitz} ym={ym} akt={akt} />}
-            {aktiveView === "pruef" && <Pruefung sitz={sitz} ym={ym} oeffneTag={setTag} />}
+            {aktiveView === "pruef" && <Pruefung sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} />}
             {aktiveView === "betrieb" && <Betrieb sitz={sitz} akt={akt} />}
           </>)}
           </main>
-            {sitz.person && (sitz.person.tour || {}).offen && (
+            {/* Offen ist die Tour, wenn sie ausdrücklich offen steht — oder
+                wenn sie noch nie lief und nicht abbestellt wurde.
+
+                Der zweite Fall stand vorher nur in einem Effekt, der den
+                Zustand erst wegschreiben musste. Bei einem selbst angelegten
+                Betrieb entsteht die erste Person aber im selben Zug wie die
+                Anmeldung, und der Effekt kam dabei zu spät: Die Tour startete
+                genau dort nie, wo sie am nötigsten ist — beim allerersten
+                Öffnen eines leeren Betriebs. Nachgestellt und bestätigt.
+
+                Die Frage wird deshalb beim Darstellen gestellt, nicht in
+                einem Effekt daneben. Der Effekt schreibt den Zustand
+                weiterhin fest, sobald er einmal zustande gekommen ist. */}
+            {sitz.person && ((sitz.person.tour || {}).offen
+              || tourStartet(sitz.person, sitz.person.rolle || "mitarbeiter")) && (
               <TourLeiste sitz={sitz} akt={akt} gehZu={setView} />)}
         </div>
       </div>
@@ -18570,23 +19734,17 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         </nav>)}
 
       {konflikt && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)", backdropFilter: "blur(6px)",
-          zIndex: 90, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div className="blatt" style={{ maxWidth: 480, padding: 26 }}>
-            <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>Bestand von anderer Stelle geändert</div>
-            <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
-              Der gespeicherte Bestand wurde in einem anderen Fenster fortgeschrieben. Um Datenverlust
-              zu vermeiden, wurde nicht gespeichert. Lade neu und trage die Änderung erneut ein.
-              <br /><br />
-              <b>Echter Mehrbenutzerbetrieb setzt einen Server voraus</b> — diese Prüfung erkennt den Konflikt,
-              sie löst ihn nicht auf.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <Btn kind="quiet" onClick={() => setKonflikt(false)}>Weiterarbeiten</Btn>
-              <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>
-            </div>
-          </div>
-        </div>)}
+        <Konfliktfenster lage={konflikt} melde={melde}
+          onSchliessen={() => setKonflikt(false)}
+          onUebernehmen={() => {
+            /* Denselben Stand noch einmal schicken. speicher.js hat den
+               ETag aus der Absage bereits übernommen, der zweite Versuch
+               läuft also gegen den aktuellen Stand und geht durch. */
+            SP.schreib(ref.current, { durch: "Übernahme nach Konflikt", sofort: true,
+              onFehler: (l) => setNichtGespeichert(l) });
+            setKonflikt(false);
+            melde("Dein Stand wurde übernommen.");
+          }} />)}
 
       {hinweis && (
         <div className="toast" role="status" aria-live="polite">
