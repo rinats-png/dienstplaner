@@ -9016,6 +9016,39 @@ function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
     </div>);
 }
 
+/* ==========================================================================
+   OHNE NETZ
+
+   Der Dienstarbeiter hält den zuletzt geladenen Plan bereit. Das ist genau
+   dann nützlich, wenn es zählt — Kellergeschoss, Parkhaus, Funkloch — und
+   genau dann gefährlich, wenn niemand merkt, dass der Stand alt ist.
+
+   Deshalb diese Leiste. Sie sagt beides: dass die Verbindung fehlt und wie
+   alt das ist, was auf dem Bildschirm steht.
+   ========================================================================== */
+function Offlineleiste({ lage }) {
+  if (!lage) return null;
+  const geholt = lage.geholt ? new Date(lage.geholt) : null;
+  const minuten = geholt ? Math.round((Date.now() - geholt.getTime()) / 60000) : null;
+  const alter = minuten === null ? null
+    : minuten < 2 ? "gerade eben"
+      : minuten < 60 ? `vor ${minuten} Minuten`
+        : minuten < 1440 ? `vor ${Math.round(minuten / 60)} Stunden`
+          : `vor ${Math.round(minuten / 1440)} Tagen`;
+
+  return (
+    <div role="status" style={{ padding: "12px 18px", borderRadius: 12, marginBottom: 20,
+      background: C.warnLight, border: `1px solid ${C.warn}33`,
+      display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
+      <span style={{ fontSize: 14, fontWeight: 640 }}>Keine Verbindung</span>
+      <span style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, flex: 1, minWidth: 260 }}>
+        Der Plan ist lesbar, aber Änderungen lassen sich nicht speichern.
+        {alter ? ` Der angezeigte Stand wurde ${alter} geholt.` : ""}
+        {" "}Sobald die Verbindung zurück ist, verschwindet dieser Hinweis.
+      </span>
+    </div>);
+}
+
 function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const m = sitz.mandant;
   const [y, mo] = ym.split("-").map(Number);
@@ -17592,6 +17625,9 @@ function AppInnen() {
   /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
      verschwindet — bei ungespeicherter Arbeit ist das die falsche Form. */
   const [nichtGespeichert, setNichtGespeichert] = useState(null);
+  /* Kommt der angezeigte Plan aus dem Speicher des Dienstarbeiters? Dann
+     muss das dranstehen — samt Alter. */
+  const [offline, setOffline] = useState(null);
   const [schnell, setSchnell] = useState(null);
   const [wizard, setWizard] = useState(false);
   const [verfDlg, setVerfDlg] = useState(null);
@@ -17627,6 +17663,16 @@ function AppInnen() {
   }, []);
 
   useEffect(() => {
+    const wieder = () => { setOffline(null); };
+    const weg = () => setOffline((o) => o || { geholt: null });
+    window.addEventListener("online", wieder);
+    window.addEventListener("offline", weg);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) weg();
+    return () => { window.removeEventListener("online", wieder);
+      window.removeEventListener("offline", weg); };
+  }, []);
+
+  useEffect(() => {
     const mq = window.matchMedia("(max-width: 820px)");
     const f = () => setSchmal(mq.matches);
     f(); mq.addEventListener ? mq.addEventListener("change", f) : mq.addListener(f);
@@ -17638,7 +17684,8 @@ function AppInnen() {
   useEffect(() => { (async () => {
     if (!SP.angemeldet()) { setLaedt(false); return; }
     try {
-      const { bestand, zugang } = await SP.lies();
+      const { bestand, zugang, ausSpeicher, geholt } = await SP.lies();
+      if (ausSpeicher) setOffline({ geholt });
 
       /* Migration statt Wegwerfen. Ein Bestand aus einer älteren Fassung
          wird schrittweise hochgezogen; einer aus einer neueren bleibt
@@ -19390,6 +19437,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <main className="bereich" id="inhalt" tabIndex={-1}
             aria-label={`Ansicht ${aktiveView}`}>
           {!istBetreiber && <Testablauf mandant={sitz.mandant} darfEinrichten={darf(sitz, "org.edit")} />}
+          <Offlineleiste lage={offline} />
           <NichtGespeichert lage={nichtGespeichert} melde={melde}
             aufGeloest={() => setNichtGespeichert(null)} />
           {schmal && !mobilOk && (

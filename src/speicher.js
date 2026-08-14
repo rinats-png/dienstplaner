@@ -44,7 +44,12 @@ async function ruf(pfad, opt = {}) {
   let d = null;
   try { d = await a.json(); } catch { /* leere Antwort */ }
   if (a.status === 401) { abmelden(true); throw new Error("nicht-angemeldet"); }
-  return { status: a.status, daten: d };
+  /* Der Dienstarbeiter kennzeichnet eine Antwort, die aus seinem Speicher
+     kommt. Ohne dieses Kennzeichen sähe ein drei Tage alter Plan aus wie
+     der aktuelle — und das wäre schlimmer als gar keiner. */
+  const ausSpeicher = a.headers.get("x-centric-offline") === "ja";
+  return { status: a.status, daten: d, ausSpeicher,
+    geholt: a.headers.get("x-centric-geholt") || null };
 }
 
 /* ------------------------------ Anmeldung -------------------------------- */
@@ -100,6 +105,9 @@ export async function demoOeffnen(id, merken) {
 
 export function abmelden(still = false) {
   if (!still && token) ruf("abmelden", { method: "POST" }).catch(() => {});
+  /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
+     gehört nicht dem nächsten Menschen an diesem Gerät. */
+  offlineDatenLoeschen();
   token = null; etag = null; name = null; zugang = null;
   try {
     sessionStorage.removeItem(SCHLUESSEL);
@@ -110,14 +118,15 @@ export function abmelden(still = false) {
 
 /* ------------------------------- Lesen ----------------------------------- */
 export async function lies() {
-  const { status, daten } = await ruf("bestand");
+  const { status, daten, ausSpeicher, geholt } = await ruf("bestand");
   if (status !== 200) throw new Error(daten?.fehler || "Laden fehlgeschlagen.");
   etag = daten.etag;
   /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
      Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
   zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
     name: daten.name, schreiben: daten.schreiben || "voll" };
-  return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch };
+  return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch,
+    ausSpeicher: !!ausSpeicher, geholt };
 }
 
 /* ------------------------------ Schreiben -------------------------------- */
@@ -337,6 +346,38 @@ export async function pushAusschalten() {
   } catch { /* egal */ }
   try {
     await fetch("/zustellung/abmelden", { method: "POST", headers: kopf() });
+  } catch { /* egal */ }
+}
+
+/* --------------------------------------------------------------------------
+   OFFLINEBETRIEB
+
+   Der Dienstarbeiter wurde bisher nur registriert, wenn jemand
+   Benachrichtigungen einschaltete. Ohne Netz zeigte die Anwendung die
+   Fehlerseite des Browsers — im Kellergeschoss, im Parkhaus, im Funkloch.
+
+   Er wird deshalb jetzt immer eingerichtet, still und ohne Nachfrage. Er
+   fragt nichts ab und zeigt nichts an; er sorgt nur dafür, dass die
+   Anwendung startet und der letzte Stand lesbar bleibt.
+   -------------------------------------------------------------------------- */
+export async function offlineEinrichten() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
+  try {
+    await navigator.serviceWorker.register("/sw.js");
+    return true;
+  } catch { return false; }
+}
+
+/** Beim Abmelden: den gespeicherten Bestand wegräumen. */
+export async function offlineDatenLoeschen() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const ziel = (reg && (reg.active || reg.waiting)) || navigator.serviceWorker.controller;
+    if (ziel) ziel.postMessage({ art: "daten-loeschen" });
+    /* Zusätzlich unmittelbar — der Dienstarbeiter kann gerade neu starten,
+       und Personaldaten sollen dabei nicht liegen bleiben. */
+    if (typeof caches !== "undefined")
+      for (const n of await caches.keys()) if (n.startsWith("centric-daten-")) await caches.delete(n);
   } catch { /* egal */ }
 }
 

@@ -802,5 +802,16 @@ function Einstieg() {
     </div>);
 }
 
+/* Der Dienstarbeiter wird hier eingerichtet, nicht erst nach der Anmeldung.
+
+   Zuerst stand er in AppInnen — also hinter der Anmeldung. Damit war die
+   Schale genau dann nicht gespeichert, wenn sie gebraucht wird: beim ersten
+   Öffnen ohne Netz. Wer die Anwendung einmal besucht hat, soll sie danach
+   auch im Keller starten können.
+
+   Er fragt nichts ab und zeigt nichts an. Schlägt die Einrichtung fehl —
+   privater Modus, alter Browser —, ändert sich für die Anwendung nichts. */
+SP.offlineEinrichten();
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode><Einstieg /></React.StrictMode>);
