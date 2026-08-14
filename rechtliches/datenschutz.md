@@ -107,7 +107,8 @@ Betriebsrat ist er nach § 87 Abs. 1 Nr. 6 BetrVG mitbestimmungspflichtig.
 ## Wo die Daten liegen
 
 Gehostet wird bei Netlify. Die Datenspeicher stehen in der Region
-us-east-1. Netlify verarbeitet Daten damit auch in den Vereinigten Staaten;
+us-east-2 (Ohio), die Serverfunktionen laufen ebenda. Netlify verarbeitet
+Daten damit auch in den Vereinigten Staaten;
 Grundlage sind Standardvertragsklauseln nach Artikel 46 Abs. 2 lit. c DSGVO.
 
 **Für einen Betrieb, der ausschließlich in der Europäischen Union
