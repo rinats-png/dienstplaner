@@ -1,6 +1,14 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
+import {
+  pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
+  dauer, brutto, fenster,
+  ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
+  schutzBefunde, urlaubshinweisFaellig, istNachtdienst,
+  pausePflicht, pauseGenuegt,
+  HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN,
+} from "./regelwerk.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -490,11 +498,8 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 `;
 
 /* --------------------------------- Datum --------------------------------- */
-const pad = (n) => String(n).padStart(2, "0");
-const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
-const dow = (s) => (pISO(s).getDay() + 6) % 7;
+/* Diese Grundlagen stehen jetzt in src/regelwerk.js — dort, wo auch die
+   Regeln liegen, die auf ihnen aufbauen, und wo sie geprüft werden. */
 
 /* Bundesländer, in denen Feiertage von der Gemeinde abhängen.
 
@@ -509,9 +514,6 @@ const GEMEINDE_FEIERTAGE = {
   TH: "In Thüringen gilt Fronleichnam nur in bestimmten Gemeinden.",
 };
 const gemeindeHinweis = (land) => GEMEINDE_FEIERTAGE[land] || null;
-const between = (a, b) => Math.round((pISO(b) - pISO(a)) / 86400000);
-const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
-const montag = (s) => addDays(s, -dow(s));
 const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 /* Ausgeschrieben für die Tagesliste auf dem Telefon — dort ist Platz,
    und „Donnerstag" liest sich im Dienst schneller als „Do". */
@@ -564,18 +566,10 @@ function feiertage(y, land) {
 const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
 
 /* ------------------------------ Zeitrechnung ------------------------------ */
-const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-function dauer(d) { let x = toMin(d.ende) - toMin(d.start); if (x <= 0) x += 1440; return Math.round((x / 60 - (d.pause || 0) / 60) * 100) / 100; }
-function brutto(d) { let x = toMin(d.ende) - toMin(d.start); if (x <= 0) x += 1440; return x / 60; }
 function nachtAnteil(d) {
   const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
   let sum = 0; for (const [a, b] of [[0, 360], [1380, 1800]]) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
   return Math.round(sum / 60 * 100) / 100;
-}
-function fenster(datum, d) {
-  const base = between("2000-01-01", datum) * 1440;
-  const s = base + toMin(d.start); let e = base + toMin(d.ende); if (e <= s) e += 1440;
-  return [s, e];
 }
 
 /* ------------------------------- Rollenwerk ------------------------------- */
@@ -1327,6 +1321,43 @@ function istStunden(m, p, ym) {
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
   });
 }
+/* --------------------------------------------------------------------------
+   § 3 ArbZG — AUSGLEICHSZEITRAUM
+
+   Die Lücke, die der Prüfung fehlte: Acht Stunden werktäglich, verlängerbar
+   auf zehn, wenn im Durchschnitt von 24 Wochen acht nicht überschritten
+   werden. Bis hierher prüfte die Anwendung die Tagesgrenze und ein
+   Stundenkonto gegen eine frei gesetzte Schwelle — beides sagt nichts über
+   den gesetzlichen Ausgleich. Ein Plan konnte Woche für Woche zulässig
+   aussehen und den Zeitraum trotzdem reißen.
+
+   Gerechnet wird über die tatsächlich geleisteten Stunden je Tag; die Regel
+   selbst steht in src/regelwerk.js und ist dort geprüft.
+   -------------------------------------------------------------------------- */
+function ausgleichPruefen(m, p, bis) {
+  return memo(m, `ausgl|${p.id}|${bis}`, () => {
+    const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
+    const stundenAmTag = (d) => {
+      const t = personTag(m, p, d);
+      if (t.abwesenheit || !t.dienstId) return 0;
+      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      if (!da) return 0;
+      return istDauer(m, p, d, da).std;
+    };
+    return ausgleichszeitraum(stundenAmTag, bis, { wochen, grenze: DURCHSCHNITT_TAG });
+  });
+}
+
+/** Alle Personen, deren Ausgleichszeitraum gerissen ist. */
+function ausgleichVerstoesse(m, bis) {
+  const aus = [];
+  for (const p of aktive(m, bis)) {
+    const e = ausgleichPruefen(m, p, bis);
+    if (!e.eingehalten) aus.push({ person: p, ...e });
+  }
+  return aus.sort((a, b) => b.ueberhang - a.ueberhang);
+}
+
 function urlaubskonto(m, p, jahr) {
   return memo(m, `url|${p.id}|${jahr}`, () => {
     let genommen = 0; const zeilen = [];
@@ -8249,10 +8280,58 @@ function Pruefung({ sitz, ym, oeffneTag }) {
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
   const krit = befunde.filter((b) => b.schwere === "danger").length;
 
+  /* § 3 ArbZG wird über den Monat hinaus geprüft — der Ausgleichszeitraum
+     ist gleitend und reicht weit zurück. Deshalb steht er über den
+     Monatsbefunden, nicht zwischen ihnen. */
+  const ausgleich = useMemo(() => ausgleichVerstoesse(m, bis), [m, ym]);
+  const ausgleichWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
+
   return (
     <div>
       <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten und gleichzeitige Urlaube.`}>
         Prüfung · {MON[mo - 1]} {y}</H1>
+
+      {/* --- § 3 Arbeitszeitgesetz --- */}
+      <Card style={{ marginBottom: 20, borderLeft: `3px solid ${ausgleich.length ? C.danger : C.ok}` }}>
+        <div style={{ padding: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
+            gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
+            <div style={{ fontSize: 15.5, fontWeight: 650 }}>
+              Ausgleichszeitraum nach § 3 Arbeitszeitgesetz</div>
+            <Pill tone={ausgleich.length ? "danger" : "ok"} size="sm">
+              {ausgleich.length ? `${ausgleich.length} überschritten` : "eingehalten"}</Pill>
+          </div>
+          <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "68ch" }}>
+            Acht Stunden werktäglich, verlängerbar auf zehn — sofern im Durchschnitt
+            von {ausgleichWochen} Wochen acht Stunden je Werktag nicht überschritten werden.
+            Der Durchschnitt ist der Kern der Vorschrift: Ein Plan kann Woche für Woche
+            zulässig aussehen und den Zeitraum trotzdem reißen. Gerechnet wird gleitend
+            bis zum {fKurz(bis)}, Sonntage zählen nicht als Werktage.
+          </p>
+          {ausgleich.length === 0
+            ? <div style={{ fontSize: 13.5, color: C.dim }}>
+                Alle Beschäftigten liegen im Durchschnitt bei höchstens {DURCHSCHNITT_TAG} Stunden
+                je Werktag.</div>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                {ausgleich.slice(0, 12).map((v) => (
+                  <div key={v.person.id} style={{ display: "flex", alignItems: "center", gap: 14,
+                    flexWrap: "wrap", padding: "9px 0", borderTop: `1px solid ${C.lineSoft}` }}>
+                    <div style={{ minWidth: 170, fontSize: 14 }}>
+                      {v.person.nachname}, {v.person.vorname}</div>
+                    <div style={{ fontSize: 13, color: C.dim, ...NUM }}>
+                      {n1(v.stunden)} von {n1(v.zulaessig)} h auf {v.werktage} Werktage</div>
+                    <div style={{ fontSize: 13, ...NUM }}>
+                      <b style={{ color: C.danger }}>{n1(v.durchschnitt)} h</b>
+                      <span style={{ color: C.dimmer }}> je Werktag</span></div>
+                    <span style={{ flex: 1 }} />
+                    <Pill tone="danger" size="sm">{n1(v.ueberhang)} h abzubauen</Pill>
+                  </div>))}
+                {ausgleich.length > 12 && (
+                  <div style={{ fontSize: 13, color: C.dim, paddingTop: 8 }}>
+                    und {ausgleich.length - 12} weitere.</div>)}
+              </div>}
+        </div>
+      </Card>
       <KpiRow min={200}>
         <Kpi label="Befunde" value={befunde.length} tone={befunde.length ? "warn" : "ok"} />
         <Kpi label="Kritisch" value={krit} tone={krit ? "danger" : "ok"} sub="sofort klären" />

@@ -28,9 +28,18 @@ jobs:
       - name: Linter
         run: npm run lint
 
+      # Der Regelkern: Ruhezeiten, Ausgleichszeitraum, Schutzvorschriften.
+      # Läuft ohne Server in Millisekunden.
+      - name: Regelwerk
+        run: npm run pruefung:regeln
+
       # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
       - name: Zugangscodes
         run: npm run pruefung:codes
+
+      # Zerlegung in Monatsscherben und das Zusammenführen.
+      - name: Scherben
+        run: npm run pruefung:scherben
 
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
