@@ -23,16 +23,23 @@ Site.
 
 ---
 
-## Schritt 1 — Das Projekt mit dem Git-Vorrat verbinden
+## Schritt 1 — Erledigt: das Projekt hängt am Git-Vorrat
 
-Die Site ist neu angelegt und trägt noch keinen Stand. Sie muss mit dem
-Vorrat verbunden werden — das ist der einzige Schritt, der über die
-Oberfläche geht:
+Nachgeprüft am 14.08.2026. Der veröffentlichte Stand trägt
+
+    commit_ref f1419e2e7a2f5fa8ede97e7e9cf50e6f0484b1df
+    branch     main
+    state      ready
+    framework  vite
+    functions  6 (daten, einrichten, kalender, lage, starten, zustellung)
+
+Der Commit ist der Kopf von `main`. Damit ist zum ersten Mal belegbar,
+welcher Quelltext läuft. Die Verbindung ging über die Oberfläche:
 
     Site configuration → Build & deploy → Continuous deployment
     → Link repository → GitHub → rinats-png/dienstplaner
 
-Die Bauangaben kommen aus `netlify.toml` und müssen **nicht** von Hand
+Die Bauangaben kamen aus `netlify.toml` und mussten **nicht** von Hand
 eingetragen werden:
 
 | Angabe | Wert | Herkunft |
@@ -42,11 +49,8 @@ eingetragen werden:
 | Functions directory | `netlify/functions` | Vorgabe |
 | Node-Fassung | 24 | Vorgabe von Netlify |
 
-Produktionszweig: **`main`**. Der Zweig trägt den geprüften Stand bereits —
-das Zusammenführen ist erledigt.
-
-Mit dem Verbinden baut Netlify sofort. Ab da löst jeder Push nach `main`
-einen Bau aus, und zu jedem veröffentlichten Stand gehört ein Commit.
+Produktionszweig: **`main`**. Ab jetzt löst jeder Push nach `main` einen
+Bau aus, und zu jedem veröffentlichten Stand gehört ein Commit.
 
 ### Warum das der bessere Weg ist als ein Upload
 
@@ -59,18 +63,24 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Achtung: die Variablen sind **nicht** gesetzt
+### Stand: es ist **keine einzige** Variable gesetzt
 
-Ich habe sie über die Netlify-Schnittstelle zu setzen versucht. Jeder
-Schreibvorgang meldete `Environment variable upserted` — das anschließende
-Auslesen liefert aber durchgehend eine leere Liste:
+Nachgeprüft am 14.08.2026: `getAllEnvVars` gibt eine leere Liste zurück.
 
-    manage-env-vars → getAllEnvVars → []
+Meine frühere Erklärung dafür — die Schreibvorgänge kämen nicht an — war
+falsch. Ich habe es mit einer Wegwerf-Variablen nachgestellt: Anlegen,
+Auslesen, Löschen, und das Auslesen zeigte sie einwandfrei samt Zeitstempel.
+Schnittstelle und Site arbeiten also richtig; die Liste ist schlicht leer.
 
-Bei der alten Site gab derselbe Aufruf die vollständige Liste zurück. Die
-Schreibvorgänge sind also nicht angekommen, und die Erfolgsmeldung trägt
-nicht. **Bitte alles unten von Hand eintragen** — ich kann nicht behaupten,
-dass etwas gesetzt ist, was ich nicht wiederfinde.
+Die Anwendung **läuft trotzdem**. Was ohne die Variablen fehlt:
+
+| Fehlt | Folge |
+|---|---|
+| `CENTRIC_ADMIN` | Kein Betreiberzugang. `/einrichten` antwortet mit dem Hinweis, dass noch kein Verwalterzugang besteht. Schritt 5.1 ist bis dahin nicht möglich. |
+| `CENTRIC_PFEFFER` | Zugangscodes liegen als ungesalzenes SHA-256 im Speicher. `neuHash()` gibt ohne Pfeffer `null` zurück, `ablageSchluessel()` fällt auf `altHash()` zurück. |
+| `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
+| `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
+| `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
 
 `Site configuration → Environment variables → Add a variable`
 
@@ -200,7 +210,7 @@ Das ist keine technische Liste, und sie lässt sich nicht durch ein Deploy
 erledigen.
 
 1. **Umzug nach Deutschland vollziehen.** Der Bestand liegt derzeit in
-   `us-east-1`. Die Schrittfolge steht in Anlage 2 des AV-Vertrags
+   `us-east-2` (Ohio). Die Schrittfolge steht in Anlage 2 des AV-Vertrags
    (`rechtliches/auftragsverarbeitung.md`). Die Rechtstexte werden **am Tag
    des Umzugs** nachgeführt, nicht vorher — sie beschreiben den Zustand,
    nicht das Vorhaben.
@@ -212,6 +222,13 @@ erledigen.
    vor allem Zeiterfassung und Standortprüfung beim Stempeln.
 5. **AV-Vertrag mit jedem Kunden schließen**, bevor dieser echte
    Beschäftigtendaten einspielt.
+6. **Entscheiden, ob der Vorrat öffentlich bleiben soll.**
+   `rinats-png/dienstplaner` steht auf `visibility: public`. Ein Geheimnis
+   liegt nicht darin — alle Werte kommen aus der Umgebung, und die
+   Geheimnisprüfung des Deploys hat achtundsechzig Dateien ohne Fund
+   durchgesehen. Öffentlich ist aber auch die Sicherheitsarchitektur
+   lesbar: Bremsschwellen, Sitzungsdauern, Rechtetabellen. Das ist eine
+   Entscheidung, keine Panne — sie sollte nur bewusst getroffen sein.
 
 ---
 
@@ -242,4 +259,5 @@ Berechtigungen im Netlify-Konto. Ein Deploy von hier aus ist auf keinem Weg
 möglich.
 
 Die Schritte oben sind so geschrieben, dass sie ohne Rückfragen abzuarbeiten
-sind.
+sind. Schritt 1 ist auf diesem Weg erledigt worden und nachgeprüft; Schritt 2
+steht noch aus.

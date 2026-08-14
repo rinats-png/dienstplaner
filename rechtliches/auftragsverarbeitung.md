@@ -123,7 +123,8 @@ Anlage 2 nennt Ort und Grundlage je Unterauftragsverarbeiter.
 (Durchführungsbeschluss (EU) 2021/914) nebst ergänzenden Maßnahmen.
 
 (3) **Ausdrücklicher Hinweis zum jetzigen Stand.** Der Bestand liegt derzeit
-in der Region `us-east-1` der Vereinigten Staaten. Verlangt der
+in der Region `us-east-2` (Ohio) der Vereinigten Staaten; dort werden auch
+die Serverfunktionen ausgeführt. Verlangt der
 Verantwortliche eine Verarbeitung ausschließlich innerhalb der EU, ist der
 Vertrag in der vorliegenden Fassung dafür **nicht geeignet**. Der
 Auftragsverarbeiter weist darauf vor Vertragsschluss hin.
@@ -340,7 +341,7 @@ Ehrlich benannt, damit der Verantwortliche sie kennt:
 
 | Unternehmen | Leistung | Ort der Verarbeitung | Grundlage |
 |---|---|---|---|
-| Netlify, Inc., 512 2nd Street, San Francisco, CA 94107, USA | Auslieferung der Anwendung, Ausführung der Serverfunktionen, Speicherung des Datenbestands | USA, Region `us-east-1` | Standardvertragsklauseln (EU) 2021/914, Module 2 und 3 |
+| Netlify, Inc., 512 2nd Street, San Francisco, CA 94107, USA | Auslieferung der Anwendung, Ausführung der Serverfunktionen, Speicherung des Datenbestands | USA, Region `us-east-2` (Ohio) | Standardvertragsklauseln (EU) 2021/914, Module 2 und 3 |
 | Resend, Inc., USA | Versand von Systemnachrichten per E-Mail (Zugangscodes, Hinweise) | USA | Standardvertragsklauseln (EU) 2021/914 |
 
 **Übermittelte Daten je Empfänger**
@@ -361,7 +362,7 @@ Rechenzentrum in Deutschland umziehen. Was dabei zu tun ist:
 | Anbieter mit Standort Deutschland wählen und AV-Vertrag schließen | Ersetzt Netlify als Unterauftragsverarbeiter für Auslieferung, Ausführung und Speicherung |
 | Diese Anlage 2 nachführen | Sonst beschreibt der Vertrag einen Zustand, den es nicht mehr gibt |
 | § 7 dieses Vertrags anpassen | Die Absätze 3 bis 5 werden gegenstandslos, sobald der Wechsel vollzogen ist |
-| Datenschutzerklärung anpassen | Dort steht derzeit `us-east-1` |
+| Datenschutzerklärung anpassen | Dort steht derzeit `us-east-2` |
 | E-Mail-Versand gesondert entscheiden | Resend sitzt in den USA. Entweder ein Anbieter in der EU oder die Standardvertragsklauseln bleiben für diesen Teil bestehen |
 | Bestehende Bestände umziehen und die alten löschen | Ein Umzug ohne Löschung verdoppelt nur den Speicherort |
 
