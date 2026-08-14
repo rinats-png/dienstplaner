@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
+import { ablageSchluessel } from "../lib/codes.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -109,7 +110,7 @@ export default async (req) => {
     const zugaenge = [];
     for (const rolle of alle) {
       const code = `${block()}-${block()}-${block()}`;
-      konten[hash(code)] = {
+      konten[ablageSchluessel(code)] = {
         name: String(name).trim(), bestand: raum, rolle,
         person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
         selbstAngelegt: true, laeuftAb: laeuftAb.toISOString(),

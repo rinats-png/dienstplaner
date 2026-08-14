@@ -142,7 +142,13 @@ export default async (req) => {
       if (!personId) return antwort({ fehler: "Keine Person." }, 400);
       /* Ein bestehendes Geheimnis wird ungültig — so lässt sich ein Verweis
          zurückziehen, der versehentlich weitergegeben wurde. */
-      if (alt) await store().delete(`feed:${hash(alt)}`).catch(() => {});
+      /* Beide Schlüssel löschen. Vorher blieb feeddaten: liegen — nicht
+         mehr abrufbar, aber gespeichert, was dem Zweck eines Widerrufs
+         widerspricht. */
+      if (alt) {
+        await store().delete(`feed:${hash(alt)}`).catch(() => {});
+        await store().delete(`feeddaten:${hash(alt)}`).catch(() => {});
+      }
       const geheim = randomBytes(24).toString("base64url");
       await store().setJSON(`feed:${hash(geheim)}`, {
         bestand: s.bestand, personId, seit: new Date().toISOString() });
@@ -168,6 +174,11 @@ export default async (req) => {
     if (pfad === "loeschen" && req.method === "POST") {
       const { geheim } = await req.json();
       if (geheim) {
+        /* Prüfen, ob der Verweis zum eigenen Betrieb gehört — wie es
+           „daten" weiter oben bereits richtig macht. */
+        const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });
+        if (eintrag && eintrag.bestand !== s.bestand)
+          return antwort({ fehler: "Unbekannter Verweis." }, 404);
         await store().delete(`feed:${hash(geheim)}`).catch(() => {});
         await store().delete(`feeddaten:${hash(geheim)}`).catch(() => {});
       }

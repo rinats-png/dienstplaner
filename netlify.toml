@@ -25,3 +25,14 @@
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    # Seit die Schrift im eigenen Haus liegt, braucht die Anwendung nichts
+    # Fremdes mehr. Damit lässt sich die Regel eng ziehen: Sie ist die letzte
+    # Verteidigungslinie, falls doch einmal fremdes Skript in die Seite gelangt.
+    #
+    # 'unsafe-inline' bei style-src ist nötig, solange die Gestaltung über
+    # Inline-Stile läuft (rund 2.100 Stellen). Für Skripte gilt es nicht —
+    # dort ist die Regel scharf.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'self'; object-src 'none'"
+    # Ortung, Kamera und Mikrofon braucht nur die Stempeluhr — und die nur
+    # von der eigenen Seite aus.
+    Permissions-Policy = "geolocation=(self), camera=(), microphone=(), payment=(), usb=()"

@@ -1,5 +1,5 @@
 import { getStore } from "@netlify/blobs";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 /* ==========================================================================
    SCHUTZ UND PROTOKOLL
@@ -37,6 +37,131 @@ const kurz = (s) => createHash("sha256").update(String(s)).digest("hex").slice(0
    ein einzelner Betrieb verträgt mehr Fehlversuche als eine einzelne
    Adresse, und der Dienst insgesamt mehr als ein Betrieb.
    -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   ZÄHLEN OHNE ZÄHLER
+
+   Ein Blob je Versuch, benannt mit Zufall. Gezählt wird durch Auflisten des
+   Präfixes. Das kostet einen Listenaufruf statt eines Lesevorgangs und ist
+   dafür unter Nebenläufigkeit korrekt — was bei einer Bremse der ganze Zweck
+   ist.
+
+   Aufgeräumt wird beiläufig: Einträge tragen ihr Zählfenster im Namen, und
+   alte Fenster werden beim Entlasten und gelegentlich beim Zählen entfernt.
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   PROZESSLOKALE SPERRE
+
+   Der Blob-Weg kann einen gleichzeitigen Schwarm nicht begrenzen — gemessen
+   kamen mit Zählen-dann-Schreiben 55 von 60 parallelen Versuchen durch, mit
+   Schreiben-dann-Zählen 49. Das ist keine Frage des Schlüssellayouts,
+   sondern der fehlenden atomaren Operation.
+
+   Was ohne Fremddienst hilft: Innerhalb eines Prozesses ist JavaScript
+   einfädig. Ein Zähler im Speicher wird also nicht zerrissen, und ein
+   Anfragebündel landet in der Praxis auf wenigen Instanzen. Das ersetzt
+   keinen echten Zähler, senkt den Schlupf aber deutlich und kostet nichts.
+
+   Bewusst kein Ersatz für atomarZaehlen(): Wer mehrere Instanzen hat,
+   braucht den Fremddienst. Diese Sperre ist die Untergrenze, nicht das Ziel.
+   -------------------------------------------------------------------------- */
+const lokal = new Map();
+
+function lokalZaehlen(schluessel, fensterSekunden) {
+  const jetzt = Date.now();
+  const eintrag = lokal.get(schluessel);
+  if (!eintrag || eintrag.bis < jetzt) {
+    lokal.set(schluessel, { n: 1, bis: jetzt + fensterSekunden * 1000 });
+    /* Beiläufig aufräumen, damit die Karte nicht wächst. */
+    if (lokal.size > 500) {
+      for (const [k, v] of lokal) if (v.bis < jetzt) lokal.delete(k);
+    }
+    return 1;
+  }
+  eintrag.n++;
+  return eintrag.n;
+}
+
+/* --------------------------------------------------------------------------
+   ATOMARER ZÄHLER, WENN VORHANDEN
+
+   Netlify Blobs kennt kein bedingtes Schreiben — SetOptions trägt nur
+   metadata. Damit lässt sich darauf kein Zähler bauen, der einem parallelen
+   Schwarm standhält; gemessen kamen 55 von 60 gleichzeitigen Versuchen
+   durch, obwohl die Grenze bei 8 liegt.
+
+   Wer die Lücke schließen will, hinterlegt einen Redis-Dienst mit
+   HTTP-Schnittstelle (Upstash und Vergleichbare, kostenfreie Stufe genügt):
+
+     REDIS_REST_URL    https://<kennung>.upstash.io
+     REDIS_REST_TOKEN  <Token>
+
+   Dann läuft das Zählen über INCR und ist verlässlich. Fehlen die Angaben,
+   greift der Blob-Weg — schwächer, aber betriebsfähig. Ein Ausfall des
+   Dienstes bremst die Anwendung nicht: Wir fallen still zurück.
+   -------------------------------------------------------------------------- */
+async function atomarZaehlen(schluessel, fensterSekunden) {
+  const url = process.env.REDIS_REST_URL;
+  const token = process.env.REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  try {
+    const basis = String(url).replace(/\/+$/, "");
+    const k = encodeURIComponent(`centric:takt:${schluessel}`);
+    /* Ein Aufruf für beides: hochzählen und Ablauf setzen. */
+    const a = await fetch(`${basis}/pipeline`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify([["INCR", k], ["EXPIRE", k, String(fensterSekunden * 2)]]),
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!a.ok) return null;
+    const d = await a.json();
+    const n = Array.isArray(d) && d[0] && Number(d[0].result);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    /* Zeitüberschreitung oder Ausfall: lieber der schwächere Weg als keiner. */
+    return null;
+  }
+}
+
+/** Wie viele Versuche liegen unter diesem Präfix? */
+async function versucheZaehlen(s, praefix) {
+  try {
+    const { blobs } = await s.list({ prefix: `v:${praefix}:` });
+    return blobs.length;
+  } catch { return 0; }
+}
+
+/** Einen Versuch vermerken. Der Zufall im Namen verhindert Kollisionen. */
+async function versuchVermerken(s, praefix) {
+  const marke = `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
+  try { await s.setJSON(`v:${praefix}:${marke}`, 1); } catch { /* siehe unten */ }
+}
+
+/* Alte Fenster wegräumen. Die Schlüssel tragen ihr Fenster im Namen, also
+   lässt sich das ohne Zeitstempel entscheiden. Beiläufig statt per Zeitplan:
+   ein eigener Ablauf wäre Aufwand ohne Gewinn. */
+async function alteFensterRaeumen(s, art, fensterJetzt) {
+  try {
+    const { blobs } = await s.list({ prefix: `v:${art}:` });
+    for (const b of blobs) {
+      /* v:<art>:<kennung>:<fenster>:<marke> — das Fenster ist das
+         vorletzte Glied. */
+      const teile = b.key.split(":");
+      const f = Number(teile[teile.length - 2]);
+      if (Number.isFinite(f) && f < fensterJetzt - 1) await s.delete(b.key).catch(() => {});
+    }
+  } catch { /* egal */ }
+}
+
+/** Alle Versuche unter einem Präfix entfernen. */
+async function versucheLoeschen(s, praefix) {
+  try {
+    const { blobs } = await s.list({ prefix: `v:${praefix}:` });
+    for (const b of blobs) await s.delete(b.key).catch(() => {});
+  } catch { /* egal */ }
+}
 
 /** Grenzen je Endpunkt: wie viele Versuche in wie vielen Sekunden. */
 export const GRENZEN = {
@@ -103,24 +228,53 @@ export async function bremse(art, kennung, ziel) {
     if (w) {
       if (w.ziel && ziel) {
         const zk = `${art}:ziel:${ziel}:${Math.floor(jetzt / w.ziel.fenster)}`;
-        const zs = (await s.get(zk, { type: "json" })) || { n: 0 };
-        if (zs.n >= w.ziel.versuche)
+        if (await versucheZaehlen(s, zk) >= w.ziel.versuche)
           return { frei: false, wartet: w.ziel.fenster - (jetzt % w.ziel.fenster),
             grund: "ungewöhnlich viele Versuche für diesen Betrieb", dimension: "ziel" };
-        await s.setJSON(zk, { n: zs.n + 1 });
+        await versuchVermerken(s, zk);
       }
       if (w.gesamt) {
         const gk = `${art}:gesamt:${Math.floor(jetzt / w.gesamt.fenster)}`;
-        const gs = (await s.get(gk, { type: "json" })) || { n: 0 };
-        if (gs.n >= w.gesamt.versuche)
+        if (await versucheZaehlen(s, gk) >= w.gesamt.versuche)
           return { frei: false, wartet: w.gesamt.fenster - (jetzt % w.gesamt.fenster),
             grund: "ungewöhnlich hohes Aufkommen", dimension: "gesamt" };
-        await s.setJSON(gk, { n: gs.n + 1 });
+        await versuchVermerken(s, gk);
       }
     }
 
-    const stand = (await s.get(schluessel, { type: "json" })) || { n: 0 };
-    if (stand.n >= g.versuche) {
+    /* Ein Schlüssel je Versuch statt eines Zählers.
+
+       Vorher wurde gelesen, geprüft und zurückgeschrieben — drei Schritte
+       ohne Atomarität. Hundert gleichzeitige Anfragen lasen alle n = 0,
+       kamen alle durch und schrieben alle n = 1. Die Bremse griff gegen
+       sequenzielles Vertippen und war gegen einen parallelen Angriff
+       wirkungslos, auch beim Verwaltungskennwort.
+
+       Netlify Blobs kennt kein atomares Hochzählen. Ein eigener Schlüssel
+       je Versuch braucht keins: Jeder Schreibvorgang ist unabhängig, und
+       gezählt wird durch Auflisten. Zwei parallele Anfragen erzeugen zwei
+       Einträge — nicht einen. */
+    /* Erst vermerken, dann zählen — nicht umgekehrt.
+
+       Zählt man zuerst, sehen alle gleichzeitig eintreffenden Anfragen
+       denselben Stand und kommen alle durch; gemessen kamen so 55 von 60
+       parallelen Versuchen bis zur Prüfung. Vermerkt jede Anfrage zuerst
+       ihren eigenen Versuch, sieht sie beim Zählen mindestens sich selbst
+       und alles, was bereits gelandet ist. Der Schlupf schrumpft damit auf
+       die Schreiblaufzeit statt auf die gesamte Anfragedauer.
+
+       Restlücke: Ein wirklich gleichzeitiger Schwarm kann sich noch
+       gegenseitig übersehen. Wer das dicht haben will, hinterlegt einen
+       atomaren Zähler — siehe atomarZaehlen() unten. */
+    await versuchVermerken(s, schluessel);
+    /* Drei Quellen, absteigend nach Verlässlichkeit. Genommen wird der
+       höchste Wert: Wer auf irgendeinem Weg über der Grenze liegt, ist
+       über der Grenze. */
+    const lokalN = lokalZaehlen(schluessel, g.fenster);
+    const atomarN = await atomarZaehlen(schluessel, g.fenster);
+    const blobN = atomarN === null ? await versucheZaehlen(s, schluessel) : 0;
+    const stand = { n: Math.max(lokalN, atomarN ?? 0, blobN) };
+    if (stand.n > g.versuche) {
       /* Steigende Sperre: Wer wiederholt anrennt, wartet jedes Mal doppelt
          so lange. Für einen ehrlichen Nutzer, der sich einmal vertippt,
          ändert sich nichts — für einen Angreifer wird jeder weitere Anlauf
@@ -135,8 +289,9 @@ export async function bremse(art, kennung, ziel) {
         { n: Math.min(stufe + 1, 12), zuletzt: jetzt });
       return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe };
     }
-    await s.setJSON(schluessel, { n: stand.n + 1 });
-    return { frei: true, uebrig: g.versuche - stand.n - 1 };
+    /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
+    if (Math.random() < 0.02) alteFensterRaeumen(s, art, fenster).catch(() => {});
+    return { frei: true, uebrig: Math.max(0, g.versuche - stand.n) };
   } catch (e) {
     /* Fällt der Zähler aus, wird durchgelassen. Eine kaputte Bremse darf
        den Betrieb nicht anhalten — Verfügbarkeit vor Schutz, solange die
@@ -153,7 +308,7 @@ export async function entlasten(art, kennung) {
   const jetzt = Math.floor(Date.now() / 1000);
   const fenster = Math.floor(jetzt / g.fenster);
   try {
-    await takt().delete(`${art}:${kennung}:${fenster}`);
+    await versucheLoeschen(takt(), `${art}:${kennung}:${fenster}`);
     await takt().delete(`sperre:${art}:${kennung}`);
     /* Auch die Steigerungsstufe zurücksetzen — wer sich erfolgreich
        anmeldet, hat sich offenbar nur vertippt. */

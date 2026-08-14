@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { ablageSchluessel, gleich } from "../lib/codes.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -36,7 +37,9 @@ export default async (req) => {
   let body;
   try { body = await req.json(); } catch { return antwort({ fehler: "Ungültiger Text." }, 400); }
   const { verwaltung, name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
-  if (verwaltung !== geheim) {
+  /* Gleichlanger Vergleich. Vorher brach !== beim ersten abweichenden
+     Zeichen ab — die korrekte Hilfsfunktion lag ungenutzt in daten.mjs. */
+  if (!gleich(verwaltung, geheim)) {
     await new Promise((r) => setTimeout(r, 400));
     await protokoll("einrichten", k, "abgewiesen");
     return antwort({ fehler: "Verwaltungskennwort stimmt nicht." }, 401);
@@ -51,7 +54,7 @@ export default async (req) => {
 
   const s = store();
   const konten = (await s.get("konten", { type: "json" })) || {};
-  konten[hash(code)] = { name, bestand,
+  konten[ablageSchluessel(code)] = { name, bestand,
     rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
     betrieb: betrieb ?? 0,         // Index des Betriebs im Bestand

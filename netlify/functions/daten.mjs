@@ -4,6 +4,7 @@ import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/sch
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
+import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -39,7 +40,25 @@ async function sitzung(req) {
   if (!token) return null;
   const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
   if (!s) return null;
-  if (s.bis < Date.now()) { await sitzungen().delete(`t:${hash(token)}`); return null; }
+  const jetzt = Date.now();
+  if (s.bis < jetzt) { await sitzungen().delete(`t:${hash(token)}`); return null; }
+
+  /* Untätigkeit beendet die Sitzung, nicht erst die Frist.
+
+     Zwölf Stunden sind für ein eigenes Telefon richtig und für den
+     Stationsrechner, den sich eine ganze Schicht teilt, zu lang. Wer eine
+     halbe Stunde nichts tut, ist weg — wer arbeitet, bleibt, weil jeder
+     Zugriff die Uhr neu stellt. */
+  const RUHE = 30 * 60 * 1000;
+  if (s.zuletzt && jetzt - s.zuletzt > RUHE) {
+    await sitzungen().delete(`t:${hash(token)}`);
+    return null;
+  }
+  /* Nicht bei jedem Zugriff schreiben — ein Planer klickt sich durch einen
+     Monat, das wären hunderte Schreibvorgänge. Einmal je Minute genügt. */
+  if (!s.zuletzt || jetzt - s.zuletzt > 60 * 1000) {
+    sitzungen().setJSON(`t:${hash(token)}`, { ...s, zuletzt: jetzt }).catch(() => {});
+  }
   return s;
 }
 
@@ -74,7 +93,7 @@ export default async (req, context) => {
       const erzeugt = [];
       for (const e of eintraege) {
         const code = `${block()}-${block()}-${block()}`;
-        konten[hash(code)] = { name: e.name || ziel, bestand: ziel,
+        konten[ablageSchluessel(code)] = { name: e.name || ziel, bestand: ziel,
           rolle: e.rolle || "kunde", person: e.personId || null, betrieb: 0,
           demo: false, gruppe: null, hinweis: null,
           angelegt: new Date().toISOString() };
@@ -111,7 +130,8 @@ export default async (req, context) => {
       const konten = (await store.get("konten", { type: "json" })) || {};
       const ziele = [];
 
-      if (code) ziele.push(hash(code));
+      /* Beide Schlüssel — ein Konto kann noch unter dem alten liegen. */
+      if (code) { ziele.push(ablageSchluessel(code)); ziele.push(altHash(code)); }
       if (pruefsumme) ziele.push(String(pruefsumme));
       /* Notausgang: alle Zugänge eines Betriebs auf einmal. Gedacht für den
          Fall, dass Codes in falsche Hände geraten sind. Der eigene Zugang
@@ -178,6 +198,10 @@ export default async (req, context) => {
 
     /* ------------------------- Demozugänge auflisten ----------------- */
     if (pfad === "demos" && req.method === "GET") {
+      /* Auch das Auflisten wird gebremst — sonst ist es ein ungedeckelter
+         Aufruf, der bei jedem Treffer den kompletten Kontenbestand liest. */
+      const bDemo = await bremse("demo", kennung(req, null));
+      if (!bDemo.frei) return zuVielAntwort(bDemo.wartet);
       const konten = (await store.get("konten", { type: "json" })) || {};
       const liste = Object.values(konten)
         .filter((k) => k.demo && k.id && k.rolle !== "betreiber")
@@ -195,6 +219,14 @@ export default async (req, context) => {
       const konten = (await store.get("konten", { type: "json" })) || {};
       const eintrag = Object.values(konten).find((k) => k.demo && k.id === id);
       if (!eintrag) return antwort({ fehler: "Unbekannter Demozugang." }, 404);
+      /* Ein Demozugang darf nur in einen Demoraum führen. Die Liste ist
+         öffentlich und der Zugang braucht keinen Code — zeigte einer davon
+         versehentlich auf einen echten Betrieb, wäre dieser öffentlich.
+         Der Raumname trägt die Absicht, nicht nur ein Merkmal im Konto. */
+      if (!String(eintrag.bestand || "").startsWith("demo-")) {
+        await protokoll("demo", kd, "abgewiesen", `kein Demoraum: ${eintrag.bestand}`);
+        return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
+      }
       /* Ein Demozugang darf niemals Betreiberrechte tragen. Die Liste der
          Demozugänge ist öffentlich — wäre die Betreiberrolle darunter,
          könnte jeder Datenräume anlegen und Zugangscodes erzeugen. */
@@ -205,7 +237,7 @@ export default async (req, context) => {
       await sitzungen().setJSON(`t:${hash(token)}`, {
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
-        demo: true, seit: Date.now(), bis: Date.now() + dauer,
+        demo: true, seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
       });
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
@@ -221,7 +253,8 @@ export default async (req, context) => {
          verteilter Angriff auf einen bestimmten Betrieb erkennen, auch
          wenn er von hundert Adressen kommt. */
       const kontenV = (await store.get("konten", { type: "json" })) || {};
-      const eintragV = zugangscode ? kontenV[hash(zugangscode)] : null;
+      const fund = findeKonto(kontenV, zugangscode);
+      const eintragV = fund.eintrag;
       const zielRaum = eintragV ? eintragV.bestand : null;
       const b = await bremse("anmelden", k, zielRaum);
       if (!b.frei) { await protokoll("anmelden", k, "gebremst",
@@ -269,9 +302,19 @@ export default async (req, context) => {
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
            beim Sperren aller Zugänge der eigene aussparen. */
-        konto: hash(zugangscode),
-        seit: Date.now(), bis: Date.now() + dauer,
+        konto: fund.schluessel,
+        seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
       });
+      /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
+         umschlüsseln. So wandert der Bestand ohne Sammelvorgang hinüber —
+         jeder Code beim ersten Anmelden nach der Umstellung. */
+      if (fund.umschluesseln) {
+        try {
+          if (umschluesseln(konten, zugangscode, fund.schluessel))
+            await store.setJSON("konten", konten);
+        } catch { /* Umschlüsseln darf keine Anmeldung scheitern lassen */ }
+      }
+
       await entlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
