@@ -7433,7 +7433,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
         </>} />
 
       <Card style={{ overflowX: "auto" }}>
-        <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
+        <table role="grid" aria-label="Monatsplan — mit den Pfeiltasten bewegen, Eingabetaste öffnet den Tag"
+          style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040 }}>
           <thead>
             {/* Eine Zeile, die den ganzen Monat beantwortet: Höhe des Strichs
                 ist die Dringlichkeit. Wer nur hier hinsieht, weiß Bescheid. */}
@@ -7441,7 +7442,9 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
               <th style={{ position: "sticky", left: 0, zIndex: 2, background: C.flaeche, textAlign: "left",
                 padding: "10px 20px 4px", minWidth: 160 }}><Lab>Aufmerksamkeit</Lab></th>
               {tage.map((d) => { const t = lage.tage.find((x) => x.datum === d);
-                return (<th key={d} onClick={() => oeffneTag(d)} title={t ? `${fLang(d)} · ${t.text}` : fLang(d)}
+                return (<th key={d}
+                  {...zelleBedienbar(() => oeffneTag(d),
+                    `Aufmerksamkeit · ${fLang(d)}${t ? ` · ${t.text}` : " · unauffällig"}`, d === tage[0])}
                   style={{ padding: "10px 0 4px", cursor: "pointer", verticalAlign: "bottom" }}>
                   <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", height: 18 }}>
                     <span style={{ width: "58%", borderRadius: 2,
@@ -7455,7 +7458,9 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
             {tage.map((d) => { const fei = feiertag(d, m.bundesland), we = dow(d) >= 5;
               const eng = Object.values(bes[d]).some((x) => x.status !== "ok");
               const blass = nurKnapp && !eng;
-              return (<th key={d} onClick={() => oeffneTag(d)} title={fei || fLang(d)}
+              return (<th key={d}
+                {...zelleBedienbar(() => oeffneTag(d),
+                  `Tag · ${fLang(d)}${fei ? ` · ${fei}` : ""}${eng ? " · Engpass" : ""}`)}
                 style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 33, cursor: "pointer",
                   opacity: blass ? .3 : 1,
                   /* Nur noch der Kalender: Wochenende und Feiertag teilen sich
@@ -7483,7 +7488,10 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
                 {tage.map((d) => {
                   const da = map[einheitDienst(m, e.id, d)];
                   const fehlt = aktive(m, d).filter((p) => einheitAm(p, d) === e.id && abwesenheitAm(m, p.id, d)).length;
-                  return (<td key={d} onClick={() => oeffneTag(d)} style={{ padding: "6px 2px", textAlign: "center",
+                  return (<td key={d}
+                    {...zelleBedienbar(() => oeffneTag(d),
+                      `${fLang(d)} · ${e.name}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`)}
+                    style={{ padding: "6px 2px", textAlign: "center",
                     borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                     background: d === d0 ? C.accentLight
                       : (dow(d) >= 5 || feiertag(d, m.bundesland)) ? C.flaecheStill : "transparent" }}>
@@ -7491,8 +7499,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
                         Unterbesetzung, gemeint sind aber Abwesende — und ob
                         der Dienst dadurch unterbesetzt ist, sagen erst die
                         Besetzungszeilen weiter unten. */}
-                    <Planzelle da={da} unten={fehlt > 0 ? `${fehlt} ab` : null}
-                      aktiv={d === d0} title={`${fLang(d)}${da ? ` · ${da.name}` : " · frei"}${fehlt > 0 ? ` · ${fehlt} abwesend` : ""}`} />
+                    <Planzelle da={da} unten={fehlt > 0 ? `${fehlt} ab` : null} aktiv={d === d0} />
                   </td>); })}
               </tr>))}
             {m.dienstarten.filter((da) => (!filterDienst || da.id === filterDienst)
@@ -7508,7 +7515,9 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
                   const col = b.status === "ok" ? C.dim : b.status === "warn" ? C.warn : C.danger;
                   const anteil = Math.min(100, Math.round((b.anzahl / Math.max(1, b.soll)) * 100));
                   const kalender = dow(d) >= 5 || feiertag(d, m.bundesland);
-                  return (<td key={d} onClick={() => oeffneTag(d)} title={`${fLang(d)} · ${da.name} · ${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`}
+                  return (<td key={d}
+                    {...zelleBedienbar(() => oeffneTag(d),
+                      `${fLang(d)} · ${da.name} · ${b.anzahl} von ${b.soll}${b.qualFehlt ? " · Fachkraftquote nicht erfüllt" : ""}`)}
                     style={{ textAlign: "center", padding: "5px 1px", cursor: "pointer",
                       /* Fläche trägt den Kalender, nicht den Zustand. Der
                          Zustand steht in Zahl und Füllstand — „3/4" sagt, wie
@@ -8745,6 +8754,101 @@ function NichtGespeichert({ lage, melde, aufGeloest }) {
           {lage.text}</span>
       </div>
     </div>);
+}
+
+/* ==========================================================================
+   TASTATURBEDIENUNG FÜR RASTER
+
+   Die Zellen des Monatsplans waren <td onClick>. Mit der Maus einwandfrei,
+   mit der Tastatur überhaupt nicht: kein Tabulatorziel, kein Name für die
+   Sprachausgabe, keine Möglichkeit, einen Tag zu öffnen, ohne zu zeigen.
+
+   Das trifft nicht nur Menschen mit Behinderung. Wer einen Monat
+   durchgeht, ist mit den Pfeiltasten schneller als mit dem Zeiger — und in
+   der Leitstelle liegt oft gar keine Maus.
+
+   Die Umsetzung folgt dem üblichen Muster für Raster: Genau eine Zelle
+   liegt im Tabulatorlauf, die Pfeiltasten bewegen den Fokus, Pos1 und Ende
+   springen an den Rand der Zeile, Bild auf und ab an den Rand der Spalte.
+   Damit kostet das Raster einen Tabulatorschritt statt dreihundert.
+
+   Bewusst über die Tabellenstruktur des Browsers gelöst statt über einen
+   Zustand in React: Die Zeilen werden an mehreren Stellen aus
+   verschiedenen Quellen erzeugt, und jede Zählung nebenher wäre eine
+   zweite Wahrheit, die irgendwann von der ersten abweicht.
+   ========================================================================== */
+
+/** Alle bedienbaren Zellen eines Rasters in Dokumentreihenfolge. */
+const rasterZellen = (el) => (el ? Array.from(el.querySelectorAll("[data-zelle]")) : []);
+
+/** Position einer Zelle: Zeile und Spalte aus der Tabelle des Browsers. */
+function zellenOrt(zelle) {
+  const zeile = zelle.closest("tr");
+  if (!zeile) return null;
+  const tabelle = zeile.closest("table");
+  if (!tabelle) return null;
+  const zeilen = Array.from(tabelle.querySelectorAll("tr"))
+    .filter((r) => r.querySelector("[data-zelle]"));
+  const zi = zeilen.indexOf(zeile);
+  const spalten = Array.from(zeile.querySelectorAll("[data-zelle]"));
+  return { zeilen, zi, spalten, si: spalten.indexOf(zelle) };
+}
+
+/** Verschiebt den Fokus im Raster. Gibt zurück, ob die Taste verbraucht wurde. */
+function rasterTaste(e) {
+  const zelle = e.target.closest("[data-zelle]");
+  if (!zelle) return false;
+  const ort = zellenOrt(zelle);
+  if (!ort) return false;
+
+  const springe = (el) => {
+    if (!el) return;
+    /* Genau eine Zelle bleibt im Tabulatorlauf — die zuletzt besuchte. */
+    for (const z of rasterZellen(el.closest("table"))) z.tabIndex = -1;
+    el.tabIndex = 0;
+    el.focus();
+    e.preventDefault();
+  };
+  const inZeile = (zi, si) => {
+    const z = ort.zeilen[zi];
+    if (!z) return null;
+    const sp = Array.from(z.querySelectorAll("[data-zelle]"));
+    return sp[Math.min(si, sp.length - 1)] || null;
+  };
+
+  switch (e.key) {
+    case "ArrowRight": springe(ort.spalten[ort.si + 1]); return true;
+    case "ArrowLeft": springe(ort.spalten[ort.si - 1]); return true;
+    case "ArrowDown": springe(inZeile(ort.zi + 1, ort.si)); return true;
+    case "ArrowUp": springe(inZeile(ort.zi - 1, ort.si)); return true;
+    case "Home": springe(ort.spalten[0]); return true;
+    case "End": springe(ort.spalten[ort.spalten.length - 1]); return true;
+    case "PageUp": springe(inZeile(0, ort.si)); return true;
+    case "PageDown": springe(inZeile(ort.zeilen.length - 1, ort.si)); return true;
+    default: return false;
+  }
+}
+
+/**
+ * Die Eigenschaften einer bedienbaren Rasterzelle.
+ *
+ * @param aufAuswahl Was beim Öffnen geschieht — Klick, Eingabetaste, Leertaste
+ * @param name       Was die Sprachausgabe vorliest
+ * @param ersteZelle Nur die erste Zelle liegt anfangs im Tabulatorlauf
+ */
+function zelleBedienbar(aufAuswahl, name, ersteZelle = false) {
+  return {
+    "data-zelle": "ja",
+    role: "gridcell",
+    tabIndex: ersteZelle ? 0 : -1,
+    "aria-label": name,
+    title: name,
+    onClick: aufAuswahl,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); aufAuswahl(); return; }
+      rasterTaste(e);
+    },
+  };
 }
 
 function Pruefung({ sitz, ym, setYm, oeffneTag }) {
