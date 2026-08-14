@@ -1,0 +1,60 @@
+# Läuft bei jedem Push und jedem Pull Request.
+#
+# Bis August 2026 gab es keine Automatisierung: Ein Rechtefehler wäre
+# unbemerkt live gegangen, und ein undefinierter Bezeichner ebenso — der
+# Linter fand beim ersten Lauf fünf davon.
+name: Prüfung
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Findet undefinierte Bezeichner und Verstöße gegen die Hook-Regeln.
+      - name: Linter
+        run: npm run lint
+
+      # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
+      - name: Zugangscodes
+        run: npm run pruefung:codes
+
+      # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
+      - name: Rechtetabellen vergleichen
+        run: npm run pruefung:matrix
+
+      - name: Übersetzen
+        run: npm run build
+
+      # Die serverseitigen Prüfungen brauchen einen laufenden Dienst.
+      - name: Server starten
+        run: |
+          CENTRIC_ADMIN=ci-geheim npx vite --port 5173 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173/ >/dev/null && break
+            sleep 1
+          done
+
+      - name: Rechteprüfung
+        run: npm run pruefung:rechte
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_ADMIN: ci-geheim
+
+      - name: Bremse
+        run: npm run pruefung:bremse
+        env:
+          CENTRIC_BASIS: http://localhost:5173

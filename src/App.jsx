@@ -2489,7 +2489,7 @@ function importZuordnen(kopf, zeilen) {
     const p = proben(idx);
     if (p.length < 3) return null;
     const anteil = (f) => p.filter(f).length / p.length;
-    if (anteil((x) => /^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
+    if (anteil((x) => /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
       return "datum";
     if (anteil((x) => /@/.test(x) && /\./.test(x)) > .7) return "email";
     if (anteil((x) => /^\d{1,2}([.,]\d{1,2})?$/.test(x)) > .7) {
@@ -8880,9 +8880,15 @@ function AusgleichPlanen({ sitz, personId, akt, onClose }) {
   const m = sitz.mandant;
   const p = m.personen.find((x) => x.id === personId);
   const ym = heute().slice(0, 7);
+  /* Hooks vor dem vorzeitigen Aussteigen.
+
+     Vorher stand `if (!p) return null;` über dem useMemo. Fehlt die Person
+     bei einem Rendern und ist beim nächsten da, ändert sich die Zahl der
+     Hooks — React bricht dann mit „Rendered more hooks than during the
+     previous render" ab. Der Linter hat es gefunden. */
+  const tage = useMemo(() => p ? ausgleichTage(m, p, heute(), 12) : [], [m, p, personId]);
   if (!p) return null;
   const a = ausgleichBedarf(m, p, ym);
-  const tage = useMemo(() => ausgleichTage(m, p, heute(), 12), [m, personId]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   return (
     <Sheet open onClose={onClose} titel={`Freizeitausgleich · ${p.vorname} ${p.nachname}`} width={620}>
@@ -10948,7 +10954,7 @@ function Mehrfach({ sitz, akt, onClose }) {
                 {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
           : <Field label="Art der Abwesenheit">
               <Sel value={abwArtId} onChange={(e) => setAbwArtId(e.target.value)}>
-                {ABW_ARTEN.filter((a) => a.id !== "krank").map((a) => (
+                {ABW.filter((a) => a.id !== "krank").map((a) => (
                   <option key={a.id} value={a.id}>{a.label}</option>))}</Sel></Field>}
       </div>
 
@@ -14322,7 +14328,7 @@ function kalenderTermine(m, personId, tage) {
     /* Abwesenheit hat Vorrang — sie überschreibt den Dienst. */
     const abw = abwesenheitAm(m, p.id, d);
     if (abw) {
-      const art = ABWESENHEIT[abw.art] || { label: abw.art };
+      const art = abwArt(abw.art);
       out.push({ id: `abw-${abw.id}-${d}`, datum: d, bis: addDays(d, 1),
         ganztags: true, titel: art.label,
         /* Kein Grund, keine Notiz — ein abonnierter Kalender liegt am Ende
@@ -16295,23 +16301,23 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
               rechts={st.vollstaendig ? "✓" : `${st.fertig}/${st.gesamt}`}
               unten={st.vollstaendig ? "alles erledigt"
                 : `noch ${st.pflichtGesamt - st.pflichtFertig} Pflichtpunkte`}
-              onClick={() => setBlatt("checkliste")} />);
+              onClick={() => oeffnen("checkliste")} />);
         })()}
         {laufendeRunde(m) && (
           <MZeile links="Selbstplanung"
             rechts={selbstplanStand(m, laufendeRunde(m), p.id).eingetragen || undefined}
             unten={`Bis ${fKurz(laufendeRunde(m).schliesst)} deine Dienste wählen`}
-            onClick={() => setBlatt("selbstplan")} />)}
+            onClick={() => oeffnen("selbstplan")} />)}
         <MZeile links="Offene Schichten"
           rechts={meineOffenenSchichten(m, p.id).length || undefined}
           unten={meineOffenenSchichten(m, p.id).length
             ? "Dienste, die du übernehmen kannst" : "gerade nichts frei"}
-          onClick={() => setBlatt("offene")} />
+          onClick={() => oeffnen("offene")} />
         <MZeile links="Hilfe anfordern"
           unten="Notruf an die Schichtverantwortung"
-          onClick={() => setBlatt("notruf")} />
+          onClick={() => oeffnen("notruf")} />
         <MZeile links="Benachrichtigungen" unten="E-Mail und Gerät einstellen"
-          onClick={() => setBlatt("melden")} />
+          onClick={() => oeffnen("melden")} />
         <MZeile links="Mitteilungen" unten={ungelesen ? `${ungelesen} ungelesen` : "keine neuen"}
           rechts={ungelesen > 0 ? <Pill size="sm" tone="danger">{ungelesen}</Pill> : null}
           onClick={() => oeffnen("post")} />
@@ -16820,7 +16826,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
-                {ABW_ARTEN.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
+                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
               onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>
@@ -17451,7 +17457,22 @@ function AppInnen() {
 
 
   const akt = useMemo(() => {
-    const upd = (fn) => setDb((s) => { if (!s) return s; verlauf.current = [s, ...verlauf.current].slice(0, 20);
+    /* Rückgängig-Tiefe an der Bestandsgröße ausrichten.
+
+       Zwanzig vollständige Kopien sind bei einem Betrieb von fünf Megabyte
+       hundert Megabyte im Reiter — auf einem älteren Diensttelefon der
+       Grund, warum die Anwendung „einfach zuklappt". Bei kleinen Beständen
+       bleibt es bei zwanzig, bei großen schrumpft die Tiefe. */
+    const verlaufTiefe = (s) => {
+      try {
+        const kb = JSON.stringify(s).length / 1024;
+        if (kb < 400) return 20;
+        if (kb < 1500) return 10;
+        if (kb < 4000) return 5;
+        return 3;
+      } catch { return 5; }
+    };
+    const upd = (fn) => setDb((s) => { if (!s) return s; verlauf.current = [s, ...verlauf.current].slice(0, verlaufTiefe(s));
       const next = fn(s); return next === s ? s : { ...next, stand: (s.stand || 0) + 1 }; });
     /** Ändert den aktuellen Mandanten und schreibt einen Protokolleintrag. */
     const mUpd = (fn, text) => upd((s) => {

@@ -2271,7 +2271,7 @@ function importZuordnen(kopf, zeilen) {
     const p = proben(idx);
     if (p.length < 3) return null;
     const anteil = (f) => p.filter(f).length / p.length;
-    if (anteil((x) => /^\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
+    if (anteil((x) => /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$|^\d{4}-\d{2}-\d{2}$/.test(x)) > .7)
       return "datum";
     if (anteil((x) => /@/.test(x) && /\./.test(x)) > .7) return "email";
     if (anteil((x) => /^\d{1,2}([.,]\d{1,2})?$/.test(x)) > .7) {
@@ -5247,7 +5247,7 @@ function kalenderTermine(m, personId, tage) {
     /* Abwesenheit hat Vorrang — sie überschreibt den Dienst. */
     const abw = abwesenheitAm(m, p.id, d);
     if (abw) {
-      const art = ABWESENHEIT[abw.art] || { label: abw.art };
+      const art = abwArt(abw.art);
       out.push({ id: `abw-${abw.id}-${d}`, datum: d, bis: addDays(d, 1),
         ganztags: true, titel: art.label,
         /* Kein Grund, keine Notiz — ein abonnierter Kalender liegt am Ende

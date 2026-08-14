@@ -5,6 +5,7 @@ import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
+import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln } from "../lib/konten.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -81,6 +82,33 @@ function ortPruefen(m, person, datum, lat, lon) {
   };
 }
 
+/* --------------------------------------------------------------------------
+   SICHERUNGEN AUSDÜNNEN
+
+   Es gab keine Obergrenze und kein Aufräumen: Jede angeforderte Sicherung
+   legte eine vollständige Kopie an, für immer. Bei einem Betrieb von
+   mehreren Megabyte wächst das schnell in Bereiche, die Geld kosten.
+
+   Behalten werden die zwanzig jüngsten und je Tag die jüngste der älteren.
+   Das hält den jüngsten Verlauf dicht und die Vergangenheit schlank.
+   -------------------------------------------------------------------------- */
+async function sicherungenAusduennen(store, raum) {
+  try {
+    const { blobs } = await store.list({ prefix: `sicherung:${raum}:` });
+    const marken = blobs.map((b) => ({ key: b.key, marke: b.key.split(":").pop() }))
+      .sort((a, b) => b.marke.localeCompare(a.marke));
+    const behalten = new Set(marken.slice(0, 20).map((x) => x.key));
+    const tageGesehen = new Set();
+    for (const m of marken.slice(20)) {
+      const tag = String(m.marke).slice(0, 10);
+      if (!tageGesehen.has(tag)) { tageGesehen.add(tag); behalten.add(m.key); }
+    }
+    for (const m of marken) {
+      if (!behalten.has(m.key)) await store.delete(m.key).catch(() => {});
+    }
+  } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
+}
+
 /** Prüft den Sitzungsschlüssel aus dem Kopf und gibt die Sitzung zurück. */
 async function sitzung(req) {
   const kopf = req.headers.get("authorization") || "";
@@ -137,17 +165,18 @@ export default async (req, context) => {
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
-      const konten = (await store.get("konten", { type: "json" })) || {};
       const erzeugt = [];
       for (const e of eintraege) {
         const code = `${block()}-${block()}-${block()}`;
-        konten[ablageSchluessel(code)] = { name: e.name || ziel, bestand: ziel,
+        /* Ein Schlüssel je Konto: Zwei gleichzeitige Anlagen stören
+           einander nicht mehr, und kein ausgelieferter Code geht verloren. */
+        await kontoSchreiben(store, ablageSchluessel(code), {
+          name: e.name || ziel, bestand: ziel,
           rolle: e.rolle || "kunde", person: e.personId || null, betrieb: 0,
           demo: false, gruppe: null, hinweis: null,
-          angelegt: new Date().toISOString() };
+          angelegt: new Date().toISOString() });
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
       }
-      await store.setJSON("konten", konten);
       await protokoll("einrichten", kennung(req, sB), "erfolg",
         `${erzeugt.length} Zugänge für ${ziel}`);
       return antwort({ ok: true, zugaenge: erzeugt });
@@ -175,7 +204,7 @@ export default async (req, context) => {
         return zuVielAntwort(bS.wartet); }
 
       const { code, pruefsumme, alleDesBetriebs } = await req.json();
-      const konten = (await store.get("konten", { type: "json" })) || {};
+      const konten = await alleKonten(store);
       const ziele = [];
 
       /* Beide Schlüssel — ein Konto kann noch unter dem alten liegen. */
@@ -204,7 +233,12 @@ export default async (req, context) => {
           gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
         gesperrt++;
       }
-      if (gesperrt) await store.setJSON("konten", konten);
+      /* Einzeln zurückschreiben — der Sammelblob wird nicht mehr gepflegt. */
+      if (gesperrt) {
+        for (const h of ziele) {
+          if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
+        }
+      }
 
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
@@ -250,7 +284,7 @@ export default async (req, context) => {
          Aufruf, der bei jedem Treffer den kompletten Kontenbestand liest. */
       const bDemo = await bremse("demo", kennung(req, null));
       if (!bDemo.frei) return zuVielAntwort(bDemo.wartet);
-      const konten = (await store.get("konten", { type: "json" })) || {};
+      const konten = await alleKonten(store);
       const liste = Object.values(konten)
         .filter((k) => k.demo && k.id && k.rolle !== "betreiber")
         .map((k) => ({ id: k.id, name: k.name, rolle: k.rolle, gruppe: k.gruppe,
@@ -264,7 +298,7 @@ export default async (req, context) => {
       const bd = await bremse("demo", kd);
       if (!bd.frei) return zuVielAntwort(bd.wartet);
       const { id } = await req.json();
-      const konten = (await store.get("konten", { type: "json" })) || {};
+      const konten = await alleKonten(store);
       const eintrag = Object.values(konten).find((k) => k.demo && k.id === id);
       if (!eintrag) return antwort({ fehler: "Unbekannter Demozugang." }, 404);
       /* Ein Demozugang darf nur in einen Demoraum führen. Die Liste ist
@@ -300,9 +334,19 @@ export default async (req, context) => {
          Code abgeleitet, ohne ihn preiszugeben — so lässt sich ein
          verteilter Angriff auf einen bestimmten Betrieb erkennen, auch
          wenn er von hundert Adressen kommt. */
-      const kontenV = (await store.get("konten", { type: "json" })) || {};
-      const fund = findeKonto(kontenV, zugangscode);
-      const eintragV = fund.eintrag;
+      /* Gezielt lesen statt den ganzen Bestand: zwei Zugriffe auf einen
+         Schlüssel, nicht ein Blob mit allen Konten des Dienstes. */
+      const neuS = ablageSchluessel(zugangscode);
+      const altS = altHash(zugangscode || "");
+      let eintragV = zugangscode ? await kontoLesen(store, neuS) : null;
+      let fundSchluessel = eintragV ? neuS : null;
+      let mussUmschluesseln = false;
+      if (!eintragV && zugangscode && altS !== neuS) {
+        eintragV = await kontoLesen(store, altS);
+        if (eintragV) { fundSchluessel = altS; mussUmschluesseln = true; }
+      }
+      const fund = { eintrag: eintragV, schluessel: fundSchluessel,
+        umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
       const b = await bremse("anmelden", k, zielRaum);
       if (!b.frei) { await protokoll("anmelden", k, "gebremst",
@@ -311,7 +355,6 @@ export default async (req, context) => {
       if (!zugangscode || String(zugangscode).length < 6)
         return antwort({ fehler: "Zugangscode fehlt oder ist zu kurz." }, 400);
 
-      const konten = kontenV;
       const eintrag = eintragV;
       if (!eintrag) {
         // Gleichlange Antwortzeit, damit sich gültige und ungültige Codes
@@ -356,12 +399,18 @@ export default async (req, context) => {
       /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
          umschlüsseln. So wandert der Bestand ohne Sammelvorgang hinüber —
          jeder Code beim ersten Anmelden nach der Umstellung. */
-      if (fund.umschluesseln) {
-        try {
-          if (umschluesseln(konten, zugangscode, fund.schluessel))
-            await store.setJSON("konten", konten);
-        } catch { /* Umschlüsseln darf keine Anmeldung scheitern lassen */ }
-      }
+      try {
+        if (fund.umschluesseln) {
+          /* Unter dem neuen Schlüssel ablegen, den alten stehen lassen —
+             löschen könnte einen parallel laufenden Zugriff treffen. Er
+             wird beim nächsten Sperren mit erfasst. */
+          await kontoSchreiben(store, ablageSchluessel(zugangscode),
+            { ...eintrag, umgeschluesselt: new Date().toISOString() });
+        } else {
+          /* Aus dem Sammelblob auf einen Einzelschlüssel heben. */
+          await kontoVereinzeln(store, fund.schluessel);
+        }
+      } catch { /* darf keine Anmeldung scheitern lassen */ }
 
       await entlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
@@ -546,11 +595,63 @@ export default async (req, context) => {
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.data,
         { metadata: { zeit: new Date().toISOString(), durch: s.name } });
+      await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
     }
     if (pfad === "sicherungen" && req.method === "GET") {
       const { blobs } = await store.list({ prefix: `sicherung:${s.bestand}:` });
-      return antwort({ sicherungen: blobs.map((b) => b.key.split(":").pop()).sort().reverse() });
+      const liste = [];
+      for (const b of blobs) {
+        const meta = await store.getMetadata(b.key).catch(() => null);
+        liste.push({ marke: b.key.split(":").pop(),
+          zeit: meta?.metadata?.zeit || null,
+          durch: meta?.metadata?.durch || null,
+          automatisch: meta?.metadata?.automatisch === "ja" });
+      }
+      return antwort({ sicherungen: liste.sort((a, b) => b.marke.localeCompare(a.marke)) });
+    }
+
+    /* --------------------------- Wiederherstellen -------------------- */
+    /* Eine Sicherung, die sich nicht einspielen lässt, ist Speicherverbrauch
+       mit gutem Gewissen. Bis hierher listete „sicherungen" nur Zeitmarken;
+       einen Weg zurück gab es nicht.
+
+       Vor dem Einspielen wird der jetzige Stand gesichert — sonst tauscht
+       man einen Verlust gegen den nächsten. */
+    if (pfad === "wiederherstellen" && req.method === "POST") {
+      if (schreibumfang(s.rolle) !== "voll")
+        return antwort({ fehler: "Nur die Planung darf wiederherstellen.",
+          text: absageText(s.rolle) }, 403);
+      const kW = kennung(req, s);
+      const bW = await bremse("schreiben", kW);
+      if (!bW.frei) return zuVielAntwort(bW.wartet);
+
+      const { marke } = await req.json();
+      if (!marke || !/^[\d-]{10,25}$/.test(String(marke)))
+        return antwort({ fehler: "Keine gültige Marke." }, 400);
+
+      const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
+      if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
+      const form = pruefeGestalt(alt2);
+      if (!form.ok)
+        return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
+
+      /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
+      const jetztStand = await store.get(schluessel, { type: "json" });
+      if (jetztStand) {
+        const m2 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+        await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztStand,
+          { metadata: { zeit: new Date().toISOString(),
+            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+          .catch(() => {});
+      }
+
+      await store.setJSON(schluessel, alt2,
+        { metadata: { zeit: new Date().toISOString(),
+          durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` } });
+      const meta = await store.getMetadata(schluessel);
+      await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`);
+      return antwort({ ok: true, etag: meta?.etag || null, marke });
     }
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);

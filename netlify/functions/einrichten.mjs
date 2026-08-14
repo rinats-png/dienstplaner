@@ -2,6 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel, gleich } from "../lib/codes.mjs";
+import { kontoSchreiben } from "../lib/konten.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -53,8 +54,7 @@ export default async (req) => {
   const code = `${block()}-${block()}-${block()}`;
 
   const s = store();
-  const konten = (await s.get("konten", { type: "json" })) || {};
-  konten[ablageSchluessel(code)] = { name, bestand,
+  const konto = { name, bestand,
     rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
     betrieb: betrieb ?? 0,         // Index des Betriebs im Bestand
@@ -62,9 +62,11 @@ export default async (req) => {
     /* Als Demozugang gekennzeichnete Konten erscheinen auf der Anmeldeseite
        und lassen sich ohne Code öffnen. Alle übrigen bleiben geschützt. */
     demo: !!demo, gruppe: gruppe || null,
-    id: demo ? `d${Object.keys(konten).length + 1}` : null,
+    /* Kennung aus dem Code selbst statt aus der Anzahl — die Anzahl war
+       unter Nebenläufigkeit nicht eindeutig. */
+    id: demo ? `d${ablageSchluessel(code).slice(-8)}` : null,
     angelegt: new Date().toISOString() };
-  await s.setJSON("konten", konten);
+  await kontoSchreiben(s, ablageSchluessel(code), konto);
 
   await protokoll("einrichten", k, "erfolg", `${rolle || "kunde"} · ${bestand}`);
   return antwort({ ok: true, zugangscode: code, name, bestand,

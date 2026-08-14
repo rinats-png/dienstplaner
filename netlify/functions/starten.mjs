@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
+import { kontoSchreiben } from "../lib/konten.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -106,19 +107,17 @@ export default async (req) => {
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
     const block = () => Array.from(randomBytes(4))
       .map((x) => alphabet[x % alphabet.length]).join("");
-    const konten = (await store().get("konten", { type: "json" })) || {};
     const zugaenge = [];
     for (const rolle of alle) {
       const code = `${block()}-${block()}-${block()}`;
-      konten[ablageSchluessel(code)] = {
+      await kontoSchreiben(store(), ablageSchluessel(code), {
         name: String(name).trim(), bestand: raum, rolle,
         person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
         selbstAngelegt: true, laeuftAb: laeuftAb.toISOString(),
         angelegt: jetzt.toISOString(),
-      };
+      });
       zugaenge.push({ rolle, code });
     }
-    await store().setJSON("konten", konten);
 
     /* Vermerk für die Betreiberkonsole — ohne Zugangscodes. */
     const liste = (await store().get("selbststarts", { type: "json" })) || [];

@@ -344,11 +344,17 @@ export async function protokoll(art, kennung, ausgang, zusatz) {
       ...(zusatz ? { zusatz } : {}) };
     /* Eine Datei je Tag und Art — das hält die Einträge klein und macht
        das Aufräumen zu einem Löschvorgang statt einer Suche. */
-    const schluessel = `${tag}/${art}`;
-    const bisher = (await spur().get(schluessel, { type: "json" })) || [];
-    bisher.push(zeile);
-    /* Deckel: bei einem Ansturm sollen die Kosten nicht mitwachsen. */
-    await spur().setJSON(schluessel, bisher.slice(-2000));
+    /* Ein Blob je Eintrag statt eines Arrays je Tag.
+
+       Vorher wurde das Tagesarray gelesen, ergänzt und zurückgeschrieben —
+       zwei gleichzeitige Anfragen, ein verlorener Eintrag. Ein Protokoll,
+       das ausgerechnet bei einem Ansturm Einträge verliert, ist dann am
+       unzuverlässigsten, wenn man es braucht.
+
+       Der Zufall im Namen verhindert Kollisionen; sortiert wird beim Lesen
+       über die Zeit im Eintrag. */
+    const marke = `${jetzt.getTime().toString(36)}${randomBytes(5).toString("hex")}`;
+    await spur().setJSON(`${tag}/${art}/${marke}`, zeile);
   } catch { /* Protokollieren darf nie eine Anfrage scheitern lassen */ }
 }
 
@@ -358,10 +364,20 @@ export async function spurLesen(tage) {
   const heute = new Date();
   for (let i = 0; i < (tage || 7); i++) {
     const d = new Date(heute.getTime() - i * 86400000).toISOString().slice(0, 10);
-    for (const art of ["anmelden", "demo", "einrichten", "schreiben", "zustellen", "fehler"]) {
+    for (const art of ["anmelden", "demo", "einrichten", "schreiben", "zustellen",
+      "zugaenge", "starten", "fehler"]) {
       try {
+        /* Altbestand: ein Array je Tag und Art. */
         const z = await spur().get(`${d}/${art}`, { type: "json" });
-        if (z) out.push(...z);
+        if (Array.isArray(z)) out.push(...z);
+      } catch { /* nicht vorhanden */ }
+      try {
+        const { blobs } = await spur().list({ prefix: `${d}/${art}/` });
+        /* Deckel je Tag und Art, damit ein Ansturm die Konsole nicht sprengt. */
+        for (const b of blobs.slice(0, 2000)) {
+          const z = await spur().get(b.key, { type: "json" });
+          if (z) out.push(z);
+        }
       } catch { /* nicht vorhanden */ }
     }
   }
