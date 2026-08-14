@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   SCHREIBEN_NEIN } from "../lib/rechte.mjs";
+import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -336,6 +337,33 @@ export default async (req, context) => {
         await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
+      }
+
+      /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
+         fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
+         ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
+      const form = pruefeGestalt(zuSchreiben);
+      if (!form.ok) {
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`);
+        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+          text: `${form.grund} Es wurde nichts geändert — bitte lade die Seite neu `
+            + "und versuch es erneut.", feld: form.feld || null }, 422);
+      }
+
+      /* Auffälliger Verlust wird nicht abgelehnt — es gibt gute Gründe, viel
+         zu löschen —, aber vorher gesichert. Eine Sicherung, die niemand
+         angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah. */
+      if (jetzt) {
+        const schrumpf = schrumpfung(jetzt.data, zuSchreiben);
+        if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
+          const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+          await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.data,
+            { metadata: { zeit: new Date().toISOString(),
+              durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
+              automatisch: "ja" } }).catch(() => {});
+          await protokoll("schreiben", ks, "gesichert",
+            `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`);
+        }
       }
 
       await store.setJSON(schluessel, zuSchreiben,

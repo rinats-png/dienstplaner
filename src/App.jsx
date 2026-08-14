@@ -1,5 +1,6 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
+import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -577,6 +578,32 @@ const ROLLEN = [
 ];
 const rolle = (id) => ROLLEN.find((r) => r.id === id) || ROLLEN[4];
 
+/**
+ * Mehrzahl der Einheitsbezeichnung.
+ *
+ * Vorher stand an elf Stellen `${mehrzahl(m.einheitLabel)}`. Für „Schichtgruppe"
+ * ergibt das „Schichtgruppen" und stimmt — für „Wohnbereich" kommt
+ * „Wohnbereichn" heraus, und für „Station" „Stationn". Die deutsche
+ * Mehrzahl hängt am Wortende, nicht an einem angehängten n.
+ */
+function mehrzahl(wort) {
+  const w = String(wort || "").trim();
+  if (!w) return "";
+  if (/e$/.test(w)) return `${w}n`;        // Schichtgruppe → Schichtgruppen
+  if (/(ich|eich|bereich)$/.test(w)) return `${w}e`;  // Wohnbereich → Wohnbereiche
+  if (/(ion|tion)$/.test(w)) return `${w}en`;         // Station → Stationen
+  if (/(er|el|en)$/.test(w)) return w;     // Revier → Revier (unverändert häufig)
+  return `${w}e`;                          // Trupp → Truppe, Team → Teame … zumindest lesbar
+}
+
+/* Für den Namen der ersten Person eines frisch angelegten Betriebs. Kein
+   erfundener Name — eine Funktionsbezeichnung, die man überschreibt. */
+const ROLLENBEZEICHNUNG = {
+  leitung: "Organisationsleitung", planer: "Planung",
+  subplaner: "Schichtverantwortung", mitarbeiter: "Beschäftigte",
+  betriebsrat: "Betriebsrat",
+};
+
 const RECHTE_GRUPPEN = [
   ["Planung", [["plan.view.own","Eigenen Plan sehen"],["plan.view.unit","Plan der eigenen Einheit sehen"],
     ["plan.view.all","Pläne aller Einheiten sehen"],["plan.edit.unit","Einsätze der eigenen Einheit ändern"],
@@ -955,7 +982,7 @@ function startbestand() {
       mindest: { F: { mo_do: 5, fr: 5, sa: 4, so: 3 }, S: { mo_do: 5, fr: 5, sa: 4, so: 3 }, N: { mo_do: 4, fr: 4, sa: 3, so: 3 } },
       mindestQual: { F: { q1: 2 }, S: { q1: 2 }, N: { q1: 2 } }, posten: null }, 9876),
   ];
-  return { version: 5, stand: 0, tarife: JSON.parse(JSON.stringify(TARIFE_STD)), mandanten, rechnungen: [], protokoll: [],
+  return { version: BESTAND_VERSION, stand: 0, tarife: JSON.parse(JSON.stringify(TARIFE_STD)), mandanten, rechnungen: [], protokoll: [],
     betreiber: { firma: "CENTRIC Software", anschrift: "Musterweg 1\n64839 Münster", ustId: "DE000000000",
       iban: "DE00 0000 0000 0000 0000 00", steuersatz: 19, zahlungsziel: 14 },
     session: null };
@@ -5358,7 +5385,7 @@ const ABLAUF = [
     warum: "Das ist die eigentliche Planung. Der Einrichtungsassistent führt durch die Auswahl und zeigt bei jedem Modell die gerechneten Kennzahlen.",
     fertig: (m) => m.zyklus && m.zyklus.tage && m.zyklus.tage.some((t) => t && t !== "-")
       && m.einheiten.filter((e) => !e.pool).length >= 2,
-    stand: (m) => `${m.zyklus.tage.length} Zyklustage · ${m.einheiten.filter((e) => !e.pool).length} ${m.einheitLabel}n`,
+    stand: (m) => `${m.zyklus.tage.length} Zyklustage · ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)}`,
   },
   {
     id: "pruefen", titel: "Plan prüfen und freigeben", rolle: "planer", ziel: "plan",
@@ -6898,7 +6925,7 @@ function Lagebild({ sitz, oeffneTag, akt }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 20, marginBottom: 20 }}>
         <KpiRow min={150}>
-          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${m.einheitLabel}n`} />
+          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
           <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
@@ -7133,7 +7160,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
 
   return (
     <div>
-      <H1 sub={`${m.name} · ${m.einheiten.length} ${m.einheitLabel}n`}
+      <H1 sub={`${m.name} · ${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`}
         right={<div style={{ display: "flex", gap: 9 }} className="noprint">
           {darf(sitz, "plan.view.unit") && <Btn onClick={() => akt.aushangPDF(ym, sitz.person.bereich !== "ALLE"
             ? sitz.person.bereich : (sitz.mandant.einheiten.find((x) => !x.pool) || {}).id)}>Aushang</Btn>}
@@ -7482,7 +7509,7 @@ function Schichtfolge({ sitz, akt }) {
 
   return (
     <div>
-      <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${m.einheitLabel}n mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
+      <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)} mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
         right={editierbar && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
 
       <KpiRow>
@@ -7549,7 +7576,7 @@ function Schichtfolge({ sitz, akt }) {
                 </div>
                 <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, lineHeight: 1.45 }}>{v.text}</div>
                 <div style={{ fontSize: 12, color: C.dimmer, marginTop: 7, ...NUM }}>
-                  {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {m.einheitLabel}n</div>
+                  {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {mehrzahl(m.einheitLabel)}</div>
               </div>))}
             {m.einheiten.length !== m.zyklus.wochen && (
               <div style={{ padding: 14, borderRadius: 12, background: C.warnLight, color: C.warn, fontSize: 13, marginBottom: 14, lineHeight: 1.45 }}>
@@ -9671,13 +9698,16 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
   const meineDa = meinDienst && meinDienst.dienstId ? map[meinDienst.dienstId] : null;
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen" : stunde < 18 ? "Guten Tag" : "Guten Abend";
+  /* Ohne Vornamen wurde daraus „Guten Morgen, ." — bei einem frisch
+     angelegten Betrieb ist der Name noch leer. Dann grüßt es ohne Anrede. */
+  const anrede = (p.vorname || "").trim();
 
   return (
     <div>
       <div style={{ marginBottom: 28 }}>
         <Rubrik>{fLang(d0)}</Rubrik>
         <h1 style={{ fontSize: 38, fontWeight: 300, letterSpacing: "-.04em", margin: "10px 0 0", lineHeight: 1.08 }}>
-          {gruss}, <b style={{ fontWeight: 700 }}>{p.vorname}</b>.
+          {anrede ? <>{gruss}, <b style={{ fontWeight: 700 }}>{anrede}</b>.</> : <>{gruss}.</>}
         </h1>
         <p style={{ fontSize: 16.5, color: C.dim, margin: "12px 0 0", maxWidth: 640, lineHeight: 1.5 }}>
           {aufgaben.length === 0
@@ -10714,7 +10744,7 @@ function Einarbeitung({ sitz, akt }) {
           {f.personId && f.mentorId && einheitAm(m.personen.find((p) => p.id === f.personId), heute())
             !== einheitAm(m.personen.find((p) => p.id === f.mentorId), heute()) && (
             <div style={{ padding: 13, borderRadius: 11, background: C.warnLight, color: C.warn, fontSize: 13 }}>
-              Beide gehören verschiedenen {m.einheitLabel}n an. Sie werden dadurch kaum gemeinsam Dienst haben.
+              Beide gehören verschiedenen {mehrzahl(m.einheitLabel)} an. Sie werden dadurch kaum gemeinsam Dienst haben.
             </div>)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Von"><Inp type="date" value={f.von} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
@@ -11605,7 +11635,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
       {darf(sitz, "plan.view.unit") && (
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Die Lage in Zahlen</h2>
-          <p className="abschnitt-sub">Stand heute, über alle {m.einheitLabel}n.</p>
+          <p className="abschnitt-sub">Stand heute, über alle {mehrzahl(m.einheitLabel)}.</p>
           <KpiRow min={200}>
             {(() => {
               const bes = besetzung(m, d0);
@@ -16888,7 +16918,7 @@ function Betrieb({ sitz, akt }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 20 }}>
         <Card>
-          <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{m.einheitLabel}n</CardHead>
+          <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{mehrzahl(m.einheitLabel)}</CardHead>
           <div style={{ padding: 22 }}>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
@@ -17224,7 +17254,28 @@ function AppInnen() {
     if (!SP.angemeldet()) { setLaedt(false); return; }
     try {
       const { bestand, zugang } = await SP.lies();
-      let b = bestand && bestand.version === 5 ? bestand : startbestand();
+
+      /* Migration statt Wegwerfen. Ein Bestand aus einer älteren Fassung
+         wird schrittweise hochgezogen; einer aus einer neueren bleibt
+         unangetastet und die Anwendung sagt, was zu tun ist. Vorher wurde
+         beides gleich behandelt: durch Beispieldaten ersetzt. */
+      let b;
+      if (!bestand) {
+        b = startbestand();
+      } else {
+        const erg = migriere(bestand);
+        if (!erg.ok) {
+          setLadefehler(migrationstext(erg));
+          setLaedt(false);
+          return;
+        }
+        b = erg.bestand;
+        if (erg.schritte > 0) {
+          /* Sofort zurückschreiben, damit die Migration nicht bei jedem
+             Öffnen erneut läuft — und damit ein Fehler darin früh auffällt. */
+          SP.schreib(b, { durch: "Migration", sofort: true });
+        }
+      }
       /* Der Zugangscode bestimmt die Rolle. Ein Demozugang landet damit
          unmittelbar dort, wo er hingehört — ohne Rollenauswahl. */
       if (zugang && zugang.rolle && zugang.rolle !== "kunde" && !b.session) {
@@ -17233,7 +17284,50 @@ function AppInnen() {
           const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
           if (mand) {
             const kand = mand.personen.filter((p) => p.rolle === zugang.rolle && imDienst(p, heute()));
-            const p = zugang.person != null ? mand.personen[zugang.person] : kand[0];
+            let p = zugang.person != null ? mand.personen[zugang.person] : kand[0];
+
+            /* Ein frisch angelegter Betrieb hat noch keine Person — und ohne
+               Person gibt es keine Sitzung, also auch keinen Weg hinein. Der
+               Selbststart endete damit auf einer Rollenauswahl ohne Auswahl.
+
+               Die erste Person ist die, die den Zugangscode in der Hand hält.
+               Sie wird hier angelegt, mit der Rolle aus dem Code und Zugriff
+               auf alle Einheiten. Umbenennen lässt sich sie unter Personal. */
+            if (!p && !mand.personen.length) {
+              const ersteEinheit = (mand.einheiten || [])[0];
+              p = {
+                id: uid("p"),
+                vorname: "",
+                nachname: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
+                funktion: ROLLENBEZEICHNUNG[zugang.rolle] || "Leitung",
+                email: mand.kontakt || "",
+                zugehoerigkeit: ersteEinheit
+                  ? [{ ab: mand.seit || heute(), einheitId: ersteEinheit.id }] : [],
+                eintritt: mand.seit || heute(),
+                austritt: null,
+                wochenstunden: (mand.einstellungen || {}).wochenstunden || 40,
+                urlaubsanspruch: (mand.einstellungen || {}).urlaubsanspruch || 30,
+                urlaubsuebertrag: 0,
+                stundenuebertrag: 0,
+                qualifikationen: [],
+                teilzeit: null,
+                springer: false,
+                einschraenkungen: {},
+                rolle: zugang.rolle,
+                rolleSeit: heute(),
+                rolleVerlauf: [],
+                /* Alle Einheiten: Wer den Betrieb einrichtet, muss überall
+                   hinsehen können. */
+                bereich: "ALLE",
+                status: "aktiv",
+                /* Die Leitung fährt nicht zwangsläufig selbst Schicht — das
+                   entscheidet sie später unter Personal. */
+                imSchichtdienst: false,
+              };
+              const mitPerson = { ...mand, personen: [p] };
+              b = { ...b, mandanten: b.mandanten.map((x) => x.id === mand.id ? mitPerson : x) };
+            }
+
             if (p) b = { ...b, session: { rolle: "kunde", mandantId: mand.id, personId: p.id } };
           }
         }
@@ -17398,7 +17492,7 @@ function AppInnen() {
       setzeTarifGrenze: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, grenzen: { ...t.grenzen, [k]: v } } : t) })),
       neuerMandant: (f) => upd((s) => {
         const m = baueAusAnlage(f);
-        melde(`${m.name} angelegt · ${m.einheiten.filter((e) => !e.pool).length} ${f.einheitLabel}n, ${m.dienstarten.length} Dienstarten.`);
+        melde(`${m.name} angelegt · ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(f.einheitLabel)}, ${m.dienstarten.length} Dienstarten.`);
         return bLog({ ...s, mandanten: [...s.mandanten, m] },
           `Mandant „${m.name}" eingerichtet: ${m.einheiten.filter((e) => !e.pool).length} Einheiten`);
       }),
@@ -18573,6 +18667,27 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
     } catch (e) { /* Zähler sind Beiwerk — ein Fehler darf die Ansicht nicht verhindern */ }
     return { zaehler: z, zaehlerWarn: w };
   }, [sitz]);
+
+  /* Ladefehler wurden bisher in einen Zustand geschrieben, den niemand
+     rendert — sie verschwanden stumm, und die Anwendung blieb beim
+     Ladehinweis stehen. Jetzt sind sie sichtbar; die Migration braucht das,
+     weil ihre wichtigste Antwort lautet „nichts angefasst, bitte neu laden". */
+  if (ladefehler) {
+    const f = typeof ladefehler === "string"
+      ? { titel: "Die Daten lassen sich nicht laden", text: ladefehler, neuladen: true }
+      : ladefehler;
+    return (<><style>{bauStyles()}</style>
+      <div className="sw-root"><div style={{ minHeight: "100vh", display: "flex",
+        alignItems: "center", justifyContent: "center", padding: "5vh 20px" }}>
+        <Card style={{ padding: 30, maxWidth: 520 }}>
+          <div style={{ fontSize: 19, fontWeight: 650, marginBottom: 10 }}>{f.titel}</div>
+          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
+          <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+            {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
+            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+          </div>
+        </Card></div></div></>);
+  }
 
   if (!db) return <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center",
     justifyContent: "center", fontFamily: FONT, fontSize: 15, color: C.dim }}>CENTRIC wird geladen …</div>;

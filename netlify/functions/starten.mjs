@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -56,7 +57,7 @@ export default async (req) => {
       return zuVielAntwort(b.wartet);
     }
 
-    const { name, branche, email, rollen } = await req.json();
+    const { name, branche, email, rollen, land } = await req.json();
     if (!name || String(name).trim().length < 3)
       return antwort({ fehler: "Bitte einen Betriebsnamen mit mindestens drei Zeichen." }, 400);
     if (String(name).length > 80)
@@ -66,6 +67,11 @@ export default async (req) => {
 
     const erlaubteBranchen = ["sicherheit", "pflege", "klinik", "industrie", "sonstige"];
     const br = erlaubteBranchen.includes(branche) ? branche : "sonstige";
+    /* Das Bundesland entscheidet über die Feiertage — falsch geraten ist
+       schlechter als nachgefragt, deshalb Hessen als Vorgabe und änderbar. */
+    const LAENDER = ["BW", "BY", "BE", "BB", "HB", "HH", "HE", "MV", "NI",
+      "NW", "RP", "SL", "SN", "ST", "SH", "TH"];
+    const bl = LAENDER.includes(land) ? land : "HE";
 
     /* Welche Zugänge? Leitung und Planung immer, weitere auf Wunsch. */
     const erlaubteRollen = ["subplaner", "mitarbeiter", "betriebsrat"];
@@ -81,6 +87,19 @@ export default async (req) => {
        praktisch ausgeschlossen, aber geprüft wird trotzdem. */
     if (await store().getMetadata(`bestand:${raum}`))
       return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
+
+    /* Den Betrieb anlegen, bevor die Zugänge entstehen.
+
+       Vorher fehlte dieser Schritt, und die Anwendung erzeugte beim ersten
+       Öffnen ihre Beispieldaten — der Interessent landete in einem
+       erfundenen Wachdienst statt im eigenen Haus. Name und Branche waren
+       damit verloren. */
+    const leer = baueLeerenBetrieb({
+      name, branche: br, email, land: bl, raum, laeuftAb: laeuftAb.toISOString(),
+    });
+    await store().setJSON(`bestand:${raum}`, leer, {
+      metadata: { zeit: jetzt.toISOString(), durch: "Selbststart" },
+    });
 
     /* Zugänge erzeugen */
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
