@@ -63,7 +63,12 @@ gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
 
 `Site configuration → Environment variables`
 
-### Stand am 14.08.2026: `CENTRIC_PFEFFER` gesetzt, `CENTRIC_ADMIN` gelöscht
+### Stand am 14.08.2026
+
+`CENTRIC_PFEFFER` gesetzt (alle Kontexte, ein Wert). `CENTRIC_ADMIN`
+gelöscht — der Weg in die Verwaltung führt ausschließlich über den
+benannten `V-`-Schlüssel des Kontos „Rinat Schmidt". Geht der verloren,
+hilft nur der Wiederherstellungsweg aus Schritt 5.1.
 
 ### Setze Geheimnisse über die Oberfläche, nicht über die Schnittstelle
 
@@ -291,6 +296,28 @@ nicht. Wer das ändern will, braucht eine Schreibsperre für Sitzungen mit
 Der zurückgegebene Schlüssel erscheint **genau einmal**. Danach kann
 `CENTRIC_ADMIN` aus den Umgebungsvariablen entfernt werden — ab dann ist
 jede Handlung einer Person zuzuordnen und einzeln widerrufbar.
+
+**Erst sichern, dann prüfen, dann löschen — in dieser Reihenfolge.** Beim
+ersten Durchgang ging der Schlüssel verloren, weil zuerst gelöscht und
+danach geprüft wurde; das kostete einen kompletten Wiederherstellungsweg
+(`CENTRIC_ADMIN` neu setzen, Bau abwarten, Konto neu anlegen, wieder
+löschen).
+
+**Der Schlüssel hat vier Blöcke.** `V-XXXXX-XXXXX-XXXXX-XXXXX`,
+fünfundzwanzig Zeichen. Beim Markieren mit der Maus fehlt leicht der erste
+oder letzte Block, und ein abgeschnittener Schlüssel gibt dieselbe Antwort
+wie ein falscher: `401`. Sicherer ist der Weg über die Zwischenablage:
+
+    const v = await (await fetch("/einrichten/verwalter", { method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer <CENTRIC_ADMIN>" },
+      body: JSON.stringify({ neuerName: "<Name>", email: "<E-Mail>", tage: 365 }) })).json();
+    await navigator.clipboard.writeText(v.schluessel);
+    console.log("Laenge:", v.schluessel.length);   // muss 25 sein
+
+**Nach dem Löschen von `CENTRIC_ADMIN` einen Bau anstoßen.** Netlify friert
+die Umgebung beim Deploy ein; ohne neuen Bau lesen die laufenden Funktionen
+den gelöschten Wert weiter. Erst danach ist der Wegwerfschlüssel wirklich
+wertlos.
 
 ### 5.2 Die alten Testzugänge — erledigt
 
