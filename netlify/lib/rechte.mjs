@@ -58,6 +58,7 @@ export function darf(rolle, recht) {
 export const SCHREIBEN_VOLL = "voll";
 export const SCHREIBEN_EINHEIT = "einheit";
 export const SCHREIBEN_EIGENES = "eigenes";
+export const SCHREIBEN_BETREIBER = "betreiber";
 export const SCHREIBEN_NEIN = "nein";
 
 export function schreibumfang(rolle) {
@@ -66,6 +67,17 @@ export function schreibumfang(rolle) {
      in der Oberfläche, der Server ließ betriebsweit schreiben. */
   if (rolle === "subplaner") return SCHREIBEN_EINHEIT;
   if (rolle === "mitarbeiter") return SCHREIBEN_EIGENES;
+  /* Der Betreiber fiel bis hierher auf SCHREIBEN_NEIN durch. Die
+     Betreiberkonsole zeigte damit Felder, die sich bedienen ließen und die
+     der Server jedes Mal abwies: Tarif ändern, Status setzen, Rechnung
+     stellen, Mandant anlegen — jedes Mal „Diese Änderung ist mit deiner
+     Rolle nicht zulässig". Die ganze Konsole war eine Anzeige.
+
+     Er bekommt einen eigenen Umfang statt SCHREIBEN_VOLL, weil das
+     Gegenteil ebenso falsch wäre: Wer Software verkauft, hat in den
+     Dienstplänen und Personalakten seiner Kunden nichts zu suchen. Das ist
+     keine Vorsicht, sondern die Zusage aus § 3 des AV-Vertrags. */
+  if (rolle === "betreiber") return SCHREIBEN_BETREIBER;
   return SCHREIBEN_NEIN;
 }
 
@@ -78,6 +90,41 @@ const EIGENE_FELDER = ["anfragen", "erfassung", "nachrichten", "wuensche",
 /* Felder des Gesamtbestands, die jede Rolle setzen darf: der Zählerstand
    und die Sitzungsmarke der Oberfläche. */
 const BESTAND_FELDER = ["stand", "session", "version"];
+
+/* Was dem Betreiber gehört: sein eigener Firmenstamm, die Tarifliste, der
+   Rechnungsausgang, sein Protokoll. Nichts davon steht in einem Betrieb. */
+const BETREIBER_FELDER = ["betreiber", "tarife", "rechnungen", "protokoll",
+  "pakete", "adressaenderungen", "selbststarts"];
+
+/* Und was er an einem Betrieb ändern darf: alles Kaufmännische, nichts
+   Betriebliches.
+
+   Die Grenze verläuft nicht willkürlich. Links davon steht, was im Vertrag
+   zwischen ihm und dem Kunden geregelt ist — Preis, Laufzeit, Status,
+   Rechnungsanschrift. Rechts davon steht, was dem Kunden gehört: Personal,
+   Dienstarten, Schichtfolge, Pläne, Abwesenheiten, Nachrichten. Auf die
+   rechte Seite kommt der Betreiber über diesen Weg nicht, auch wenn seine
+   Oberfläche sie mitschickt. */
+const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
+  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel"];
+
+/* Und die Gegenrichtung: Was ein Betrieb an sich selbst *nicht* ändern darf.
+
+   Die Organisationsleitung hat billing.view und bekommt deshalb Tarif,
+   Status und Preisgestaltung ausgeliefert — sie soll die eigenen Kosten
+   einsehen können. Unter SCHREIBEN_VOLL durfte sie bis hierher alles
+   zurückschreiben, was sie bekommen hat. Ein Kunde konnte sich damit auf
+   „Testphase" setzen, sich einen Sonderpreis von null geben oder die
+   kostenlose Zeit um ein Jahr verlängern — ein Aufruf genügte.
+
+   Das ist keine Änderung an seinem Betrieb, sondern am Vertrag. Verträge
+   ändert der Betreiber.
+
+   Name, Anschrift und Ansprechpartner stehen bewusst nicht hier: Die darf
+   ein Betrieb pflegen, sie kosten nichts. */
+const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
+  "testTage", "rabattGrund", "preisgestaltung", "pakete"];
 
 /* --------------------------------------------------------------------------
    LESEN — was verlässt den Server?
@@ -224,6 +271,13 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
       for (const feld of ["protokoll", "aenderungen"]) {
         if (!(feld in m) && feld in alt) zusammen[feld] = alt[feld];
       }
+      /* Vertragsfelder gehen immer auf den gespeicherten Stand zurück —
+         nicht nur, wenn sie fehlen. Ein Betrieb bekommt sie zu sehen, aber
+         ändern darf sie nur der Betreiber, und der nimmt diesen Weg nicht. */
+      for (const feld of VERTRAGSFELDER) {
+        if (feld in alt) zusammen[feld] = alt[feld];
+        else delete zusammen[feld];
+      }
       return zusammen;
     });
     /* Betriebe, die der Rolle nicht ausgeliefert wurden, bleiben bestehen. */
@@ -248,6 +302,39 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     const urteil = einheitDarf(alt, neu, sitzung);
     if (!urteil.ok) return { verweigert: urteil.grund };
     return verlorenesZurueck(gespeichert, uebermittelt);
+  }
+
+  /* --------------------------- Der Betreiber ---------------------------
+     Seine eigenen Felder ganz, an jedem Betrieb nur das Kaufmännische.
+
+     Anlegen und Löschen eines Betriebs gehören ausdrücklich dazu: Ein neu
+     angelegter Mandant wird vollständig übernommen — er stammt aus der
+     Betreiberkonsole und hat noch keinen Inhalt, den man schützen müsste.
+     Ein Betrieb, den die Oberfläche nicht mehr mitschickt, verschwindet.  */
+  if (umfang === SCHREIBEN_BETREIBER) {
+    if (!gespeichert || typeof gespeichert !== "object") return uebermittelt;
+    if (!uebermittelt || typeof uebermittelt !== "object") return null;
+
+    const aus = { ...gespeichert };
+    for (const feld of [...BESTAND_FELDER, ...BETREIBER_FELDER]) {
+      if (Object.prototype.hasOwnProperty.call(uebermittelt, feld)) aus[feld] = uebermittelt[feld];
+    }
+
+    const alteNachId = new Map((gespeichert.mandanten || [])
+      .filter(Boolean).map((m) => [m.id, m]));
+    aus.mandanten = (Array.isArray(uebermittelt.mandanten) ? uebermittelt.mandanten : [])
+      .filter(Boolean)
+      .map((geschickt) => {
+        const alt = alteNachId.get(geschickt.id);
+        if (!alt) return geschickt;               // neu angelegt
+        const zusammen = { ...alt };
+        for (const feld of KAUFMAENNISCHE_FELDER) {
+          if (Object.prototype.hasOwnProperty.call(geschickt, feld))
+            zusammen[feld] = geschickt[feld];
+        }
+        return zusammen;                          // alles Übrige bleibt, wie es war
+      });
+    return aus;
   }
 
   /* Ab hier: eingeschränktes Schreiben. Ohne gespeicherten Stand gibt es
