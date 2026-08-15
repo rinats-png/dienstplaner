@@ -85,6 +85,16 @@ jobs:
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.8
 
+      # Ein Demozugang steht ohne Code offen. Das Zurückziehen muss deshalb
+      # sofort wirken — es wirkte nicht: Die Sperre stand im Datensatz und
+      # wurde auf den beiden Demopfaden nicht gelesen.
+      - name: Demozugänge
+        run: npm run pruefung:demo
+        env:
+          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.7
+
       - name: Sicherung außer Haus
         run: npm run pruefung:sicherung
         env:

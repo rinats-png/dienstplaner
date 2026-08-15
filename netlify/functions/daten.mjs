@@ -299,8 +299,14 @@ export default async (req, context) => {
       const bDemo = await bremse("demo", kennung(req, null));
       if (!bDemo.frei) return zuVielAntwort(bDemo.wartet);
       const konten = await alleKonten(store);
+      /* `gesperrt` gehört hierher wie überall sonst. Es fehlte, und damit war
+         das Zurückziehen eines Demozugangs wirkungslos: Er blieb in der
+         öffentlichen Liste stehen und ließ sich weiter öffnen. Beim Anmelden
+         und bei den Verwalterkonten wurde die Sperre geprüft, auf den beiden
+         Demopfaden nicht — eine Sperre, die nur an drei von vier Türen
+         gilt, ist keine. */
       const liste = Object.values(konten)
-        .filter((k) => k.demo && k.id && k.rolle !== "betreiber")
+        .filter((k) => k.demo && k.id && k.rolle !== "betreiber" && !k.gesperrt)
         .map((k) => ({ id: k.id, name: k.name, rolle: k.rolle, gruppe: k.gruppe,
           bestand: k.bestand, hinweis: k.hinweis }));
       return antwort({ demos: liste }, 200, { "cache-control": "public, max-age=60" });
@@ -315,6 +321,13 @@ export default async (req, context) => {
       const konten = await alleKonten(store);
       const eintrag = Object.values(konten).find((k) => k.demo && k.id === id);
       if (!eintrag) return antwort({ fehler: "Unbekannter Demozugang." }, 404);
+      /* Ein zurückgezogener Zugang bleibt zurückgezogen — auch wenn seine
+         Kennung noch jemand kennt. Die Liste verschweigt ihn zwar, aber sie
+         ist nicht die Sicherung; diese Prüfung ist es. */
+      if (eintrag.gesperrt) {
+        await protokoll("demo", kd, "abgewiesen", "gesperrter Demozugang");
+        return antwort({ fehler: "Dieser Zugang steht nicht mehr bereit." }, 403);
+      }
       /* Ein Demozugang darf nur in einen Demoraum führen. Die Liste ist
          öffentlich und der Zugang braucht keinen Code — zeigte einer davon
          versehentlich auf einen echten Betrieb, wäre dieser öffentlich.
