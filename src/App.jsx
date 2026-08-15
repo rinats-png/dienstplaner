@@ -167,6 +167,8 @@ class Fehlerauffang extends Component {
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
+import { vergebbareRollen, rollennamen as eigeneRollennamen }
+  from "../netlify/lib/rollenvergabe.mjs";
 import {
   vorlagenFuer as tarifVorlagen, tarifwerk, anwenden as tarifAnwenden,
   FELDNAME as TARIF_FELD, wertText as tarifWert,
@@ -8209,10 +8211,25 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
                 </div></td>
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13, color: e ? e.farbe : C.dimmer }}>{e ? e.name : "—"}</td>
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                {darf(sitz, "roles.assign") ? (
-                  <Sel value={p.rolle} onChange={(ev) => akt.setzeRolle(p.id, ev.target.value)} style={{ width: 180 }}>
-                    {ROLLEN.filter((x) => !x.extern).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Sel>
-                ) : <Pill size="sm">{r.label}</Pill>}
+                {/* Angeboten wird nur, was diese Rolle auch vergeben darf —
+                    und nur an Personen, deren jetzige Rolle im eigenen
+                    Bereich liegt. Der Server prüft dasselbe noch einmal;
+                    hier steht es, damit niemand eine Auswahl trifft, die
+                    danach mit einer Fehlermeldung zurückkommt. */}
+                {(() => {
+                  const meine = vergebbareRollen(sitz.rolle === "kunde" ? "leitung" : sitz.rolle);
+                  const darfIch = meine.includes(p.rolle) || !meine.length ? meine : [];
+                  return darfIch.length ? (
+                    <Sel value={p.rolle} onChange={(ev) => akt.setzeRolle(p.id, ev.target.value)} style={{ width: 180 }}>
+                      {ROLLEN.filter((x) => darfIch.includes(x.id))
+                        .map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Sel>
+                  ) : (<>
+                    <Pill size="sm">{r.label}</Pill>
+                    {meine.length > 0 && (
+                      <div style={{ fontSize: 11, color: C.dimmer, marginTop: 4 }}>
+                        Diese Rolle liegt nicht unterhalb deiner eigenen.</div>)}
+                  </>);
+                })()}
                 <div style={{ fontSize: 11, color: C.dimmer, marginTop: 4, ...NUM }}>
                   {r.berechnet ? (preisWirkung(p.rolle) === 0 ? "im Tarif enthalten" : `${eur(preisWirkung(p.rolle))} je Monat`) : "kostenfrei"}</div></td>
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
