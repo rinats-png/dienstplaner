@@ -198,9 +198,15 @@ async function jetztSchreiben(beimSchliessen) {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
        verloren — genau in dem Moment, in dem niemand mehr hinsieht. */
+    /* Die eigene Sitzung bleibt hier. Sie ist kein Betriebswissen, sondern
+       der Zustand eines Browsers: wer gerade angemeldet ist. Mitgeschickt
+       landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
+       jeden — samt der Kennung einer echten Person. Beim nächsten Laden
+       entsteht sie ohnehin neu aus dem Zugangscode. */
+    const hinaus = { ...auftrag.bestand, session: null };
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
-      body: JSON.stringify({ bestand: auftrag.bestand, etag, durch: auftrag.durch }) });
+      body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
     if (status === 409) {

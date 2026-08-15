@@ -17823,8 +17823,23 @@ function AppInnen() {
         }
       }
       /* Der Zugangscode bestimmt die Rolle. Ein Demozugang landet damit
-         unmittelbar dort, wo er hingehört — ohne Rollenauswahl. */
-      if (zugang && zugang.rolle && zugang.rolle !== "kunde" && !b.session) {
+         unmittelbar dort, wo er hingehört — ohne Rollenauswahl.
+
+         Hier stand `&& !b.session`, und das kehrte die Aussage um: Lag im
+         Betrieb schon eine Sitzung, gewann sie gegen den Zugangscode.
+         `session` ist aber ein Feld des Bestands und für jede Rolle
+         beschreibbar — die Sitzung *irgendeines* Besuchers wurde damit für
+         alle folgenden verbindlich.
+
+         Sichtbar wurde es an den Demobetrieben: Wer einen davon öffnete,
+         hinterließ dort seine Person. Der Betreiber meldete sich danach
+         mit seinem Code an, bekam die fremde Sitzung untergeschoben und
+         landete als Pflegekraft im Monatsplan — ohne Schreibrecht, weil
+         sein Token in Wahrheit „betreiber" trug. Die Betreiberkonsole war
+         auf diesem Weg nicht mehr erreichbar.
+
+         Der Code in der Hand entscheidet, nicht der Rückstand im Speicher. */
+      if (zugang && zugang.rolle && zugang.rolle !== "kunde") {
         if (zugang.rolle === "betreiber") b = { ...b, session: { rolle: "betreiber" } };
         else {
           const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
