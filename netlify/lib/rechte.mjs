@@ -14,6 +14,8 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
+import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
+
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
 const ALLE_RECHTE = [
@@ -289,11 +291,35 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
   return aus;
 }
 
+/* Wer Rollen vergibt, tut das über den gewöhnlichen Schreibweg: Die
+   Oberfläche schickt den Betrieb mit geänderter `rolle` an einer Person.
+   Der Server muss die Änderung deshalb selbst finden.
+
+   Eine generische Kundenrolle zählt als Leitung — sie hat denselben
+   Schreibumfang und soll darum auch dieselbe Vergabehöhe haben, nicht
+   mehr. */
+function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
+  const rolle = sitzung.rolle === "kunde" ? "leitung" : sitzung.rolle;
+  if (!RANG[rolle]) return { ok: true, grund: null };
+  const alt = eigenerMandant(gespeichert, sitzung);
+  const neu = eigenerMandant(uebermittelt, sitzung);
+  /* Ohne beide Seiten gibt es keinen Wechsel zu erkennen — ein neu
+     angelegter Betrieb bringt sein Personal mit und wird anderswo
+     geprüft. */
+  if (!alt || !neu) return { ok: true, grund: null };
+  return pruefeRollenwechsel(alt.personen, neu.personen, rolle);
+}
+
 export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;
-  if (umfang === SCHREIBEN_VOLL) return verlorenesZurueck(gespeichert, uebermittelt);
+
+  if (umfang === SCHREIBEN_VOLL) {
+    const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
+    if (!rw.ok) return { verweigert: rw.grund };
+    return verlorenesZurueck(gespeichert, uebermittelt);
+  }
 
   if (umfang === SCHREIBEN_EINHEIT) {
     const alt = eigenerMandant(gespeichert, sitzung);
@@ -301,6 +327,8 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     if (!alt || !neu) return uebermittelt;
     const urteil = einheitDarf(alt, neu, sitzung);
     if (!urteil.ok) return { verweigert: urteil.grund };
+    const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
+    if (!rw.ok) return { verweigert: rw.grund };
     return verlorenesZurueck(gespeichert, uebermittelt);
   }
 

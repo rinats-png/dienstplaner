@@ -244,6 +244,75 @@ describe("Der frisch angelegte Mandant kann arbeiten", () => {
   });
 });
 
+/* ==========================================================================
+   Rollenvergabe über den Schreibweg
+
+   Die Auswahlliste in der Oberfläche zeigt nur erlaubte Rollen. Das ist
+   Bedienkomfort. Hier wird geprüft, was passiert, wenn jemand die Anfrage
+   selbst stellt — der Weg, auf dem eine Planung sich zur Leitung machen
+   würde.
+   ========================================================================== */
+
+describe("Rollenwechsel beim Speichern", () => {
+  const mitPersonal = (personen) => ({
+    version: 8, stand: 3, mandanten: [{ ...betrieb(), id: "m2", personen }],
+  });
+  const PERSONAL = [
+    { id: "p1", rolle: "leitung" },
+    { id: "p2", rolle: "planer" },
+    { id: "p3", rolle: "mitarbeiter" },
+  ];
+  const PLANUNG = { rolle: "planer", mandantId: "m2", person: "p2" };
+  const LEIT = { rolle: "leitung", mandantId: "m2", person: "p1" };
+
+  it("die Planung befördert zur Schichtverantwortung", () => {
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p3" ? { ...p, rolle: "subplaner" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, PLANUNG);
+    expect(e.verweigert).toBeUndefined();
+    expect(e.mandanten[0].personen.find((p) => p.id === "p3").rolle).toBe("subplaner");
+  });
+
+  it("aber nicht zur Planung", () => {
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p3" ? { ...p, rolle: "planer" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, PLANUNG);
+    expect(e.verweigert).toMatch(/unterhalb/);
+  });
+
+  it("und setzt die Leitung nicht herab", () => {
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p1" ? { ...p, rolle: "mitarbeiter" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, PLANUNG);
+    expect(e.verweigert).toBeTruthy();
+  });
+
+  it("die Leitung befördert zur Planung", () => {
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p3" ? { ...p, rolle: "planer" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, LEIT);
+    expect(e.verweigert).toBeUndefined();
+  });
+
+  it("ernennt aber keine zweite Leitung", () => {
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p2" ? { ...p, rolle: "leitung" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, LEIT);
+    expect(e.verweigert).toBeTruthy();
+  });
+
+  it("ein Zugang mit generischer Kundenrolle zählt als Leitung", () => {
+    /* Sonst wäre er die offene Hintertür: derselbe Schreibumfang, aber
+       ohne Vergabegrenze. */
+    const neu = mitPersonal(PERSONAL.map((p) => (p.id === "p2" ? { ...p, rolle: "leitung" } : p)));
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, { rolle: "kunde", mandantId: "m2" });
+    expect(e.verweigert).toBeTruthy();
+  });
+
+  it("wer nichts an Rollen ändert, wird nicht behindert", () => {
+    const neu = mitPersonal(PERSONAL);
+    neu.mandanten[0].abweichungen = { "p3|2026-08-09": "F" };
+    const e = zusammenfuehren(mitPersonal(PERSONAL), neu, PLANUNG);
+    expect(e.verweigert).toBeUndefined();
+    expect(e.mandanten[0].abweichungen["p3|2026-08-09"]).toBe("F");
+  });
+});
+
 describe("Randfälle", () => {
   it("ohne gespeicherten Stand wird der übermittelte genommen", () => {
     /* Der allererste Schreibvorgang in einen leeren Raum. Gäbe es hier
