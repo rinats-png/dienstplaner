@@ -304,6 +304,25 @@ describe("Rollenwechsel beim Speichern", () => {
     expect(e.verweigert).toBeTruthy();
   });
 
+  it("der leere Betrieb legt seine erste Leitung an", () => {
+    /* Der Selbststart. Beim ersten Anmelden hat der Betrieb niemanden, und
+       die Anwendung legt die Person an, die den Code in der Hand hält —
+       mit dessen Rolle. Ohne diese Ausnahme scheiterte genau das an der
+       Regel „niemand vergibt die eigene Rolle", und der Betrieb kam nie
+       über den ersten Bildschirm hinaus. Im Sichttest: 403. */
+    const leer = mitPersonal([]);
+    const erste = mitPersonal([{ id: "p1", rolle: "leitung" }]);
+    const e = zusammenfuehren(leer, erste, LEIT);
+    expect(e.verweigert).toBeUndefined();
+    expect(e.mandanten[0].personen[0].rolle).toBe("leitung");
+  });
+
+  it("aber die zweite nicht mehr", () => {
+    const eine = mitPersonal([{ id: "p1", rolle: "leitung" }]);
+    const zwei = mitPersonal([{ id: "p1", rolle: "leitung" }, { id: "p2", rolle: "leitung" }]);
+    expect(zusammenfuehren(eine, zwei, LEIT).verweigert).toBeTruthy();
+  });
+
   it("wer nichts an Rollen ändert, wird nicht behindert", () => {
     const neu = mitPersonal(PERSONAL);
     neu.mandanten[0].abweichungen = { "p3|2026-08-09": "F" };

@@ -76,18 +76,66 @@ describe("Wer zustimmen muss", () => {
 });
 
 describe("Der Hinweistext", () => {
-  it("nennt beide Zahlen, wenn die Staffel greift", () => {
+  it("nennt Änderung und Endbetrag", () => {
     const t = hinweistext(folgen(1, 2, 89));
-    expect(t).toMatch(/1 auf 2 Standorte/);
-    expect(t).toMatch(/Mengenstaffel/);
-    expect(t).toMatch(/82\.77/);
-    expect(t).toMatch(/165\.54/);
+    expect(t).toMatch(/zweiten Standort/);
+    expect(t).toMatch(/\+76,54 €/);
+    expect(t).toMatch(/165,54 €/);
   });
 
-  it("spricht die Staffel nicht an, wenn sie nicht greift", () => {
-    const t = hinweistext(folgen(3, 4, 89));
-    expect(t).not.toMatch(/Mengenstaffel/);
-    expect(t).toMatch(/78\.32/);
+  it("schreibt Beträge deutsch, mit Komma", () => {
+    /* Im Fenster stand daneben „89,00 €" aus der Oberfläche und hier
+       „89.00 €" aus dem Kern. Zwei Schreibweisen in einem Satz sehen aus
+       wie ein Fehler, weil sie einer sind. */
+    expect(hinweistext(folgen(3, 4, 89))).toMatch(/78,32 €/);
+    expect(hinweistext(folgen(3, 4, 89))).not.toMatch(/\d\.\d\d €/);
+  });
+
+  it("überlässt die Staffel dem Kasten daneben", () => {
+    /* Sie stand zweimal untereinander im selben Fenster. */
+    expect(hinweistext(folgen(1, 2, 89))).not.toMatch(/Mengenstaffel/);
+  });
+
+  it("ab drei Standorten zählt er sie", () => {
+    expect(hinweistext(folgen(2, 3, 89))).toMatch(/von 2 auf 3 Standorte/);
+  });
+});
+
+describe("Der Weg vom Antrag zur Entscheidung", () => {
+  /* Der Antrag trägt die Zahlen von damals mit sich. Sie später neu zu
+     rechnen wäre falsch: Zwischen Antrag und Entscheidung kann ein
+     weiterer Standort dazugekommen sein, und dann bestätigte die Leitung
+     eine Zahl, die dem Antragsteller nie gezeigt wurde. */
+  it("die Zahlen im Antrag bleiben die des Antragstellers", () => {
+    const beimStellen = folgen(1, 2, 89);
+    const eingefroren = {
+      vorher: beimStellen.vorher.netto, nachher: beimStellen.nachher.netto,
+      mehr: beimStellen.mehr, neueStaffel: beimStellen.neueStaffel,
+    };
+
+    /* Inzwischen legt jemand anders einen dritten an. */
+    const spaeter = folgen(2, 3, 89);
+    expect(spaeter.nachher.netto).not.toBe(eingefroren.nachher);
+
+    /* Der Antrag zeigt weiterhin, was beim Stellen galt. */
+    expect(eingefroren.vorher).toBe(89);
+    expect(eingefroren.nachher).toBe(165.54);
+    expect(eingefroren.mehr).toBe(76.54);
+  });
+
+  it("wer beantragen darf, darf nicht selbst entscheiden", () => {
+    /* Sonst wäre der Antrag eine Formalie: stellen, bestätigen, fertig. */
+    expect(zustimmung("planer")).toBe("anfragen");
+    expect(zustimmung("leitung")).toBe("bestaetigen");
+    expect(zustimmung("planer")).not.toBe(zustimmung("leitung"));
+  });
+
+  it("ohne Kostenfolge braucht es keine Rückfrage", () => {
+    /* Ein Fenster, das nur „ja" kennt, erzieht dazu, es ungelesen
+       wegzuklicken — und dann wird auch das gelesen, das es verdient. */
+    const ohne = folgen(2, 2, 89);
+    expect(ohne.mehr).toBe(0);
+    expect(ohne.neueStaffel).toBe(false);
   });
 });
 

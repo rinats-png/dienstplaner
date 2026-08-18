@@ -95,18 +95,26 @@ export function zustimmung(rolle) {
   return "nein";
 }
 
-/** Der Satz, der im Bestätigungsfenster steht. */
+/** Beträge deutsch: Komma, zwei Stellen. */
+const betrag = (n, waehrung) => `${Number(n).toFixed(2).replace(".", ",")} ${waehrung}`;
+
+/**
+ * Der Satz, der im Bestätigungsfenster steht.
+ *
+ * Die Mengenstaffel kommt hier bewusst *nicht* vor: Das Fenster zeigt sie
+ * ohnehin in einem eigenen Kasten, und beim ersten Sichttest stand sie
+ * zweimal untereinander. Zweimal dasselbe zu lesen erzieht dazu, das
+ * zweite Mal nicht mehr zu lesen.
+ */
 export function hinweistext(f, waehrung = "€") {
   const teile = [];
-  teile.push(`Der Betrieb wächst von ${f.vorher.anzahl} auf ${f.nachher.anzahl} Standorte.`);
-  if (f.neueStaffel)
-    teile.push(`Damit greift die Mengenstaffel „${f.nachher.staffel.label}" — `
-      + `der Preis je Standort sinkt von ${f.vorher.einzel.toFixed(2)} ${waehrung} `
-      + `auf ${f.nachher.einzel.toFixed(2)} ${waehrung}.`);
+  teile.push(f.nachher.anzahl === 2
+    ? "Der Betrieb bekommt einen zweiten Standort."
+    : `Der Betrieb wächst von ${f.vorher.anzahl} auf ${f.nachher.anzahl} Standorte.`);
   teile.push(f.mehr === 0
     ? "Die monatliche Grundgebühr bleibt unverändert."
     : `Die monatliche Grundgebühr ändert sich um ${f.mehr > 0 ? "+" : "−"}`
-      + `${Math.abs(f.mehr).toFixed(2)} ${waehrung} auf ${f.nachher.netto.toFixed(2)} ${waehrung}.`);
+      + `${betrag(Math.abs(f.mehr), waehrung)} auf ${betrag(f.nachher.netto, waehrung)}.`);
   return teile.join(" ");
 }
 

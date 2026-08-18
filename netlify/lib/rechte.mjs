@@ -109,7 +109,11 @@ const BETREIBER_FELDER = ["betreiber", "tarife", "rechnungen", "protokoll",
    Oberfläche sie mitschickt. */
 const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
   "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete",
-  "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel"];
+  "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel",
+  /* Die Rollenbezeichnungen darf auch der Betreiber setzen — beim
+     Einrichten eines Hauses ist er derjenige, der weiß, ob dort
+     Stationsleitung oder Wohnbereichsleitung gesagt wird. */
+  "rollennamen"];
 
 /* Und die Gegenrichtung: Was ein Betrieb an sich selbst *nicht* ändern darf.
 
@@ -307,6 +311,21 @@ function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
      angelegter Betrieb bringt sein Personal mit und wird anderswo
      geprüft. */
   if (!alt || !neu) return { ok: true, grund: null };
+
+  /* Der leere Betrieb ist der Sonderfall, an dem die Regel sonst zerbricht.
+
+     Ein selbst gestarteter Betrieb hat beim ersten Anmelden niemanden. Die
+     Anwendung legt dann die Person an, die den Zugangscode in der Hand
+     hält — mit der Rolle aus dem Code, also in aller Regel „leitung". Nach
+     der Regel „niemand vergibt die eigene Rolle" wäre genau das verboten,
+     und der Betrieb käme nie über den ersten Bildschirm hinaus. Beim
+     Sichttest lief er prompt in „Keine Schreibberechtigung".
+
+     Wo niemand ist, ist auch niemand zu schützen: Die erste Person darf
+     die Rolle ihres Codes tragen. Ab der zweiten greift der Rang. */
+  if (!Array.isArray(alt.personen) || alt.personen.length === 0)
+    return { ok: true, grund: null };
+
   return pruefeRollenwechsel(alt.personen, neu.personen, rolle);
 }
 

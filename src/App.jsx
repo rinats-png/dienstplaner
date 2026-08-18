@@ -167,8 +167,13 @@ class Fehlerauffang extends Component {
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
-import { vergebbareRollen, rollennamen as eigeneRollennamen }
+import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
+import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
+  from "./preisgestaltung.js";
+import { folgen as standortfolgen, zustimmung as standortzustimmung,
+  hinweistext as standorthinweis, jeStandort as aufstellungJeStandort }
+  from "./standorte.js";
 import {
   vorlagenFuer as tarifVorlagen, tarifwerk, anwenden as tarifAnwenden,
   FELDNAME as TARIF_FELD, wertText as tarifWert,
@@ -685,6 +690,29 @@ const ROLLENBEZEICHNUNG = {
   subplaner: "Schichtverantwortung", mitarbeiter: "Beschäftigte",
   betriebsrat: "Betriebsrat",
 };
+
+/* Die Vorgabenamen, wie sie in der Rollenliste stehen — Grundlage für die
+   eigenen Bezeichnungen eines Betriebs. */
+const ROLLEN_VORGABE = Object.fromEntries(ROLLEN.filter((r) => !r.extern)
+  .map((r) => [r.id, r.label]));
+
+/**
+ * Wie heißt diese Rolle in diesem Betrieb?
+ *
+ * „Sub-Planer" heißt in der Klinik Stationsleitung, im Wachdienst
+ * Objektleiter, in der Pflege Wohnbereichsleitung. Die Rolle bleibt
+ * dieselbe, ihr Name nicht — und ein Haus, das seine eigenen Begriffe
+ * nicht wiederfindet, misstraut der Rechteverteilung, die daran hängt.
+ *
+ * Umbenannt wird ausschließlich die Anzeige. Die Kennung `subplaner` und
+ * alles, was daran hängt — Rechtematrix, Vergaberang, Preisberechnung —
+ * rührt sich nicht.
+ */
+function rollenName(m, id) {
+  const eigen = ((m && m.rollennamen) || {})[id];
+  const s = String(eigen || "").trim();
+  return s || ROLLEN_VORGABE[id] || rolle(id).label;
+}
 
 const RECHTE_GRUPPEN = [
   ["Planung", [["plan.view.own","Eigenen Plan sehen"],["plan.view.unit","Plan der eigenen Einheit sehen"],
@@ -1810,13 +1838,25 @@ function preis(db, m) {
   // Branchenpakete werden je Betrieb berechnet, nicht je Standort
   const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
   const summePakete = pakete.reduce((a, p) => a + (p.aufpreis || 0), 0);
-  const gesamt = Math.round((summeStandorte + summePakete) * 100) / 100;
+  const tarifwert = Math.round((summeStandorte + summePakete) * 100) / 100;
+
+  /* Was der Betreiber vereinbart hat, gilt vor dem, was die Tabelle rechnet.
+     Sonderpreis, Rabatt, kostenlose Zeit, ausgesetzter Monat — die
+     Reihenfolge steht in preisgestaltung.js und ist dort begründet.
+
+     `rabattGrund` wirkt hierüber zum ersten Mal. Das Feld stand seit jeher
+     im Datensatz und war in der Konsole bedienbar; gelesen hat es niemand.
+     Wer es auf zwanzig Prozent stellte, bekam dieselbe Rechnung wie vorher. */
+  const g = monatspreis(m, tarifwert, heute().slice(0, 7), heute());
+  const gesamt = g.netto;
+
   const zahlt = stat(m.status).zahlt;
   const personen = aktiv.length;
   const t = zeilen.length ? zeilen.reduce((a, z) =>
     (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
   return { t, zeilen, standorte: zeilen.length, st, pakete, summeStandorte, summePakete,
-    gesamt, zahlt, wirksam: zahlt ? gesamt : 0, personen,
+    gesamt, tarifwert, gestaltung: g,
+    zahlt, wirksam: zahlt ? gesamt : 0, personen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0,
     ueberEinheiten: m.einheiten.length > t.grenzen.einheiten,
     ueberPersonen: personen > t.grenzen.personen };
@@ -1981,20 +2021,39 @@ function baueRechnung(db, m, monatISO) {
   const p = preisAnteilig(db, m, monatISO);
   const nr = `${monatISO.replace("-", "")}-${m.id.slice(-4).toUpperCase()}`;
   const positionen = [];
-  /* Je Standort eine Zeile — der Kunde sieht, wofür er zahlt. */
-  for (const z of p.zeilen) {
+  const g = p.gestaltung || {};
+
+  if (g.herkunft === "sonderpreis") {
+    /* Bei einer individuellen Vereinbarung sind die Standortzeilen
+       irreführend: Sie summieren sich auf einen Betrag, der nicht in
+       Rechnung gestellt wird. Stattdessen eine Zeile mit dem, was
+       vereinbart wurde — und darunter, wofür sie gilt. */
+    positionen.push({ text: g.text, menge: "monatlich",
+      einzel: eur(g.netto), betrag: eur(Math.round(g.netto * p.anteil * 100) / 100) });
     positionen.push({
-      text: `${z.standort.name} · Tarif ${z.tarif.name}`,
-      menge: `${zahl(z.personen)} Personen`,
-      einzel: eur(z.einzel),
-      betrag: eur(Math.round(z.netto * p.anteil * 100) / 100) });
+      text: `Umfasst ${zahl(p.standorte)} ${p.standorte === 1 ? "Standort" : "Standorte"} `
+        + `und ${zahl(p.personen)} ${p.personen === 1 ? "Person" : "Personen"}`,
+      menge: "", einzel: "", betrag: "" });
+  } else {
+    /* Je Standort eine Zeile — der Kunde sieht, wofür er zahlt. */
+    for (const z of p.zeilen) {
+      positionen.push({
+        text: `${z.standort.name} · Tarif ${z.tarif.name}`,
+        menge: `${zahl(z.personen)} Personen`,
+        einzel: eur(z.einzel),
+        betrag: eur(Math.round(z.netto * p.anteil * 100) / 100) });
+    }
+    if (p.st.rabatt > 0)
+      positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
+        betrag: `−${Math.round(p.st.rabatt * 100)} %` });
+    for (const pk of p.pakete)
+      positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
+        betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+    if (g.rabatt > 0)
+      positionen.push({ text: "Vereinbarter Nachlass", menge: "", einzel: "",
+        betrag: `−${Math.round(g.rabatt * 100)} %` });
   }
-  if (p.st.rabatt > 0)
-    positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
-      betrag: `−${Math.round(p.st.rabatt * 100)} %` });
-  for (const pk of p.pakete)
-    positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
-      betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+
   if (p.anteil < 1)
     positionen.push({ text: `Anteilig ${p.tage} von ${p.gesamtTage} Tagen`, menge: "",
       einzel: "", betrag: "" });
@@ -2265,9 +2324,18 @@ function preisAnteilig(db, m, ym) {
     gesamt: 0, wirksam: 0 };
   const genutzt = between(start, ende) + 1;
   const anteil = Math.min(1, genutzt / tage);
-  return { ...p, anteil, tage: genutzt, gesamtTage: tage,
-    gesamt: Math.round(p.gesamt * anteil * 100) / 100,
-    wirksam: Math.round(p.wirksam * anteil * 100) / 100 };
+
+  /* Die Vereinbarung wird für *diesen* Monat neu befragt, nicht aus preis()
+     übernommen. Ein Betrieb kann im August kostenlos sein und im September
+     zahlen — der Rechnungslauf im Oktober darf dann nicht die Augustlage
+     verwenden. */
+  const g = monatspreis(m, p.tarifwert, ym, heute());
+  const grund = g.netto;
+  const zahlt = p.zahlt && !g.frei && !g.ausgesetzt;
+
+  return { ...p, anteil, tage: genutzt, gesamtTage: tage, gestaltung: g,
+    gesamt: Math.round(grund * anteil * 100) / 100,
+    wirksam: zahlt ? Math.round(grund * anteil * 100) / 100 : 0 };
 }
 
 /* ==========================================================================
@@ -2499,7 +2567,7 @@ function datenauskunft(m, personId) {
   z.push(`Datenauskunft · ${m.name}`, `Erstellt am ${fDatum(heute())}`, "");
   z.push("STAMMDATEN");
   z.push(`Name: ${p.vorname} ${p.nachname}`, `E-Mail: ${p.email || "—"}`, `Funktion: ${p.funktion}`,
-    `Zugangsart: ${rolle(p.rolle).label}`, `Eintritt: ${fDatum(p.eintritt)}`,
+    `Zugangsart: ${rollenName(m, p.rolle)}`, `Eintritt: ${fDatum(p.eintritt)}`,
     `Austritt: ${p.austritt ? fDatum(p.austritt) : "—"}`,
     `Wochenstunden: ${n1(p.wochenstunden)}`, `Urlaubsanspruch: ${p.urlaubsanspruch} Tage`);
   z.push("", "ZUGEHÖRIGKEIT");
@@ -6710,6 +6778,269 @@ function BetreiberMandanten({ db, akt, oeffne }) {
     </div>);
 }
 
+/* ==========================================================================
+   PREISGESTALTUNG — was jenseits der drei Tarifstufen vereinbart wurde
+
+   Drei Dinge, die verschieden genug sind, um getrennt zu bleiben: ein
+   fester Betrag statt der Tarifrechnung, eine befristet kostenlose Zeit,
+   und einzelne Monate, in denen nicht abgerechnet wird.
+
+   Alle drei greifen sofort und wirken auf jede künftige Rechnung. Deshalb
+   steht neben jedem Feld, was es bedeutet — und deshalb zeigt der Kopf
+   dieser Karte immer, was der Tarif ergeben hätte.
+   ========================================================================== */
+/**
+ * Der Monatsletzte, n Monate nach dem angegebenen Tag.
+ *
+ * „Ein Monat kostenlos" endet nicht am 14. September, sondern am 30. Ein
+ * halber Abrechnungsmonat ist eine Rechnung, die niemand erklären kann.
+ */
+function monatsende(isoTag, n) {
+  const [j, mo] = String(isoTag).slice(0, 10).split("-").map(Number);
+  const ziel = new Date(Date.UTC(j, mo - 1 + n + 1, 0));   // Tag 0 = letzter des Vormonats
+  return ziel.toISOString().slice(0, 10);
+}
+
+/* ==========================================================================
+   STANDORTE, GESPIEGELT
+
+   Der Betreiber verkauft je Standort. Wenn ein Betrieb einen anlegt,
+   ändert sich seine Rechnung — und bis hierher merkte das niemand außer
+   dem Betrieb selbst. Diese Karte zeigt, was dort steht: Aufstellung je
+   Standort, gebuchter gegen nötigen Tarif, und ob ein Antrag offen liegt.
+
+   Es bleiben Zahlen. Keine Namen, keine Dienstpläne — der Betreiber
+   verkauft Software, er führt den Betrieb nicht.
+   ========================================================================== */
+function StandorteSpiegel({ m, p }) {
+  const aufstellung = aufstellungJeStandort(m, heute());
+  const offen = (m.standortantraege || []).filter((a) => a.status === "offen");
+  const entschieden = (m.standortantraege || []).filter((a) => a.status !== "offen").slice(-3);
+
+  /* Der gebuchte Tarif gilt als Untergrenze; ein zu großer Standort steigt
+     von selbst auf. Weicht beides ab, zahlt der Kunde bereits mehr, als
+     sein gebuchter Tarif vermuten lässt — das gehört sichtbar. */
+  const aufstieg = p.zeilen.filter((z) => z.tarif.id !== m.tarif);
+
+  return (
+    <Card>
+      <CardHead right={<Lab>{zahl(p.standorte)} × {eur(p.zeilen[0] ? p.zeilen[0].einzel : 0)}</Lab>}>
+        Standorte</CardHead>
+
+      {offen.length > 0 && (
+        <div style={{ margin: "16px 22px 0", background: "rgba(214,158,74,.12)",
+          borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.warn, marginBottom: 4 }}>
+            {offen.length === 1 ? "Ein Standortantrag liegt offen" : `${offen.length} Standortanträge liegen offen`}
+          </div>
+          {offen.map((a) => (
+            <div key={a.id} style={{ fontSize: 12.5, color: C.dim }}>
+              {a.name} · beantragt von {a.durchName} am {fDatum(a.gestellt)} ·
+              {" "}{a.mehr > 0 ? "+" : "−"}{eur(Math.abs(a.mehr))} monatlich
+            </div>))}
+          <div style={{ fontSize: 12, color: C.dimmer, marginTop: 6 }}>
+            Entschieden wird im Betrieb, von der Organisationsleitung.
+          </div>
+        </div>)}
+
+      <div style={{ padding: 22, display: "grid", gap: 10 }}>
+        {aufstellung.map((a) => {
+          const zeile = p.zeilen.find((z) => z.standort.id === a.standort.id);
+          return (
+            <div key={a.standort.id} style={{ display: "flex", alignItems: "center", gap: 12,
+              background: C.bg, borderRadius: 10, padding: "12px 14px", flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 550 }}>{a.standort.name}</div>
+                <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
+                  {zahl(a.einheiten)} {mehrzahl(m.einheitLabel)} · {zahl(a.personen)} Personen
+                  {a.standort.bundesland ? ` · ${a.standort.bundesland}` : ""}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                {Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
+                  <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
+              </div>
+              <span style={{ fontSize: 12, color: C.dimmer, width: 90, textAlign: "right" }}>
+                {zeile ? zeile.tarif.name : "—"}</span>
+              <span style={{ fontSize: 13.5, width: 84, textAlign: "right", ...NUM }}>
+                {zeile ? eur(zeile.netto) : "—"}</span>
+            </div>);
+        })}
+
+        {aufstieg.length > 0 && (
+          <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+            {aufstieg.length === 1
+              ? `Ein Standort ist über den gebuchten Tarif hinausgewachsen und wird höher berechnet.`
+              : `${aufstieg.length} Standorte sind über den gebuchten Tarif hinausgewachsen.`}
+            {" "}Ein Gespräch über die Tarifstufe wäre fällig.
+          </div>)}
+
+        {entschieden.length > 0 && (
+          <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
+            <Lab style={{ marginBottom: 8 }}>Zuletzt entschieden</Lab>
+            {entschieden.map((a) => (
+              <div key={a.id} style={{ fontSize: 12.5, color: C.dimmer }}>
+                {a.name} — {a.status === "bestaetigt" ? "bestätigt" : "abgelehnt"} von
+                {" "}{a.entschiedenVon} am {fDatum(a.entschieden)}
+              </div>))}
+          </div>)}
+      </div>
+    </Card>);
+}
+
+function Preisgestaltung({ m, p, akt }) {
+  const g = gestaltung(m);
+  const [von, setVon] = useState("");
+  const [bis, setBis] = useState("");
+  const [grund, setGrund] = useState("");
+
+  const sonder = !!g.sonderpreis;
+
+  return (
+    <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
+      <Card>
+        <CardHead right={<Lab>{p.gestaltung.herkunft === "sonderpreis" ? "individuell" : "nach Tarif"}</Lab>}>
+          Preisgestaltung</CardHead>
+        <div style={{ padding: 22, display: "grid", gap: 18 }}>
+
+          {/* ---------------------------- Sonderpreis ------------------- */}
+          <div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input type="checkbox" checked={sonder}
+                onChange={(e) => akt.setzeGestaltung(m.id, "sonderpreis",
+                  e.target.checked ? { betrag: p.tarifwert, bezeichnung: "" } : null)} />
+              <span style={{ fontSize: 14, fontWeight: 550 }}>Fester Monatspreis statt Tarifrechnung</span>
+            </label>
+            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 6, marginLeft: 26 }}>
+              Ersetzt Standortpreise, Mengenstaffel und Pakete. Der Tarifwert
+              bleibt zum Vergleich sichtbar.
+            </div>
+            {sonder && (
+              <div style={{ marginLeft: 26, marginTop: 12, display: "grid", gap: 11 }}>
+                <Field label="Netto je Monat in Euro">
+                  <Inp type="number" min={0} step="0.01" value={g.sonderpreis.betrag}
+                    onChange={(e) => akt.setzeGestaltung(m.id, "sonderpreis",
+                      { ...g.sonderpreis, betrag: Math.max(0, Number(e.target.value)) })} /></Field>
+                <Field label="Bezeichnung auf der Rechnung"
+                  hint="Erscheint als Positionstext. Leer lassen für die Vorgabe.">
+                  <Inp value={g.sonderpreis.bezeichnung === "Individuelle Vereinbarung" ? "" : g.sonderpreis.bezeichnung}
+                    placeholder="Rahmenvertrag 2026"
+                    onChange={(e) => akt.setzeGestaltung(m.id, "sonderpreis",
+                      { ...g.sonderpreis, bezeichnung: e.target.value })} /></Field>
+                <div style={{ fontSize: 12.5, color: p.gestaltung.abweichung < 0 ? C.ok : C.warn, ...NUM }}>
+                  {p.gestaltung.abweichung === 0 ? "Entspricht dem Tarif."
+                    : p.gestaltung.abweichung < 0
+                      ? `${eur(Math.abs(p.gestaltung.abweichung))} günstiger als der Tarif.`
+                      : `${eur(p.gestaltung.abweichung)} über dem Tarif.`}
+                </div>
+              </div>)}
+          </div>
+
+          {/* ------------------------------ Rabatt ---------------------- */}
+          <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
+            <Field label="Nachlass in Prozent"
+              hint="Wirkt auf den Sonderpreis, wenn einer gesetzt ist — sonst auf die Tarifrechnung.">
+              <Inp type="number" min={0} max={100} value={Math.round((m.rabattGrund || 0) * 100)}
+                onChange={(e) => akt.setzeMandantFeld(m.id, "rabattGrund",
+                  Math.min(100, Math.max(0, Number(e.target.value))) / 100)} /></Field>
+          </div>
+
+          {/* -------------------------- Kostenlose Zeit ----------------- */}
+          <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}`, display: "grid", gap: 11 }}>
+            <Field label="Kostenlos bis einschließlich"
+              hint="Frei wählbar. Bis dahin entsteht keine Rechnung; danach gilt wieder, was oben steht.">
+              <Inp type="date" value={g.freiBis || ""}
+                onChange={(e) => akt.setzeGestaltung(m.id, "freiBis", e.target.value || null)} /></Field>
+            {g.freiBis && (<>
+              <Field label="Grund">
+                <Inp value={g.freiGrund} placeholder="Einführungsphase"
+                  onChange={(e) => akt.setzeGestaltung(m.id, "freiGrund", e.target.value)} /></Field>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[1, 3, 6].map((n) => (
+                  <Btn key={n} size="sm" onClick={() => akt.setzeGestaltung(m.id, "freiBis",
+                    monatsende(heute(), n))}>{n} {n === 1 ? "Monat" : "Monate"} ab heute</Btn>))}
+                <Btn size="sm" kind="danger" onClick={() => akt.setzeGestaltung(m.id, "freiBis", null)}>
+                  Aufheben</Btn>
+              </div>
+            </>)}
+            {!g.freiBis && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {[1, 3, 6].map((n) => (
+                  <Btn key={n} size="sm" onClick={() => akt.setzeGestaltung(m.id, "freiBis",
+                    monatsende(heute(), n))}>{n} {n === 1 ? "Monat" : "Monate"} kostenlos</Btn>))}
+              </div>)}
+          </div>
+
+          {/* ---------------------------- Aussetzungen ------------------ */}
+          <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
+            <Lab style={{ marginBottom: 10 }}>Zahlung aussetzen</Lab>
+            <div style={{ fontSize: 12.5, color: C.dimmer, marginBottom: 12 }}>
+              Ganze Monate, in denen nicht abgerechnet wird. Der Vertrag läuft
+              weiter — der Betrieb bleibt nutzbar, es entsteht nur keine Rechnung.
+            </div>
+            {g.aussetzungen.length > 0 && (
+              <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                {g.aussetzungen.map((a, i) => (
+                  <div key={`${a.von}-${i}`} style={{ display: "flex", alignItems: "center", gap: 10,
+                    background: C.bg, borderRadius: 10, padding: "10px 12px" }}>
+                    <span style={{ fontSize: 13, ...NUM }}>
+                      {a.von}{a.bis !== a.von ? ` – ${a.bis}` : ""}</span>
+                    <span style={{ fontSize: 12, color: C.dimmer }}>
+                      {monateZwischen(a.von, a.bis)} {monateZwischen(a.von, a.bis) === 1 ? "Monat" : "Monate"}
+                      {a.grund ? ` · ${a.grund}` : ""}</span>
+                    <span style={{ flex: 1 }} />
+                    <Btn size="sm" kind="danger" onClick={() => akt.aussetzungWeg(m.id, i)}>Zurücknehmen</Btn>
+                  </div>))}
+              </div>)}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <Field label="Von (JJJJ-MM)">
+                <Inp type="month" value={von} onChange={(e) => setVon(e.target.value)} /></Field>
+              <Field label="Bis (leer = ein Monat)">
+                <Inp type="month" value={bis} onChange={(e) => setBis(e.target.value)} /></Field>
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "flex-end" }}>
+              <Field label="Grund" style={{ flex: 1 }}>
+                <Inp value={grund} placeholder="Umbau, Saisonpause …"
+                  onChange={(e) => setGrund(e.target.value)} /></Field>
+              <Btn kind="primary" disabled={!von}
+                onClick={() => { akt.aussetzungHinzu(m.id, von, bis, grund);
+                  setVon(""); setBis(""); setGrund(""); }}>Aussetzen</Btn>
+            </div>
+          </div>
+
+          <div style={{ paddingTop: 14, borderTop: `1px solid ${C.lineSoft}`,
+            fontSize: 12.5, color: C.dim }}>{lagetext(m, heute())}</div>
+        </div>
+      </Card>
+
+      {/* ---------------------- Rollenbezeichnungen ----------------------
+          Beim Einrichten eines Hauses weiß der Betreiber, ob dort
+          Stationsleitung oder Wohnbereichsleitung gesagt wird. Später
+          pflegt der Betrieb es selbst.                                    */}
+      <Card>
+        <CardHead right={Object.keys(m.rollennamen || {}).length > 0
+          ? <Btn size="sm" onClick={() => akt.setzeMandantFeld(m.id, "rollennamen", undefined)}>
+            Auf Vorgabe</Btn>
+          : null}>Rollenbezeichnungen</CardHead>
+        <div style={{ padding: "14px 22px 0", fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
+          Nur die Anzeige im Betrieb. Rechte, Vergaberang und Preisberechnung
+          hängen an der Kennung darunter und bleiben unberührt.
+        </div>
+        <div style={{ padding: 22, display: "grid", gap: 12 }}>
+          {ROLLEN.filter((r) => !r.extern).map((r) => (
+            <Field key={r.id} label={ROLLEN_VORGABE[r.id]} hint={r.id}>
+              <Inp value={(m.rollennamen || {})[r.id] || ""} placeholder={ROLLEN_VORGABE[r.id]}
+                onChange={(e) => {
+                  const wert = e.target.value.trim();
+                  const alt = { ...(m.rollennamen || {}) };
+                  if (wert) alt[r.id] = wert; else delete alt[r.id];
+                  akt.setzeMandantFeld(m.id, "rollennamen", alt);
+                }} /></Field>))}
+        </div>
+      </Card>
+    </div>);
+}
+
 function BetreiberDetail({ db, akt, mandantId, zurueck }) {
   const m = db.mandanten.find((x) => x.id === mandantId);
   if (!m) return null;
@@ -6794,20 +7125,38 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
             <div style={{ marginTop: 16, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.ok, marginBottom: 11 }}>
                 <span>Mengenstaffel ({p.st.label})</span><span style={NUM}>−{Math.round(p.st.rabatt * 100)} %</span></div>
+              {/* Weicht die Vereinbarung vom Tarif ab, steht beides da.
+                  Nur den Endbetrag zu zeigen hieße, in einem Jahr nicht mehr
+                  zu wissen, ob der Preis günstig war. */}
+              {p.gestaltung.herkunft === "sonderpreis" && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5,
+                  color: C.dimmer, marginBottom: 9 }}>
+                  <span>Nach Tarif wären es</span>
+                  <span style={{ ...NUM, textDecoration: "line-through" }}>{eur(p.tarifwert)}</span></div>)}
+              {p.gestaltung.rabatt > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5,
+                  color: C.ok, marginBottom: 9 }}>
+                  <span>Vereinbarter Nachlass</span>
+                  <span style={NUM}>−{Math.round(p.gestaltung.rabatt * 100)} %</span></div>)}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ fontSize: 15 }}>Netto monatlich</span>
                 <span style={{ fontSize: 26, fontWeight: 650, ...NUM }}>{eur(p.gesamt)}</span></div>
+              <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 6 }}>{p.gestaltung.text}</div>
               {!p.zahlt && <div style={{ marginTop: 11 }}><Pill tone="warn">Status „{stat(m.status).label}" — wird nicht berechnet</Pill></div>}
+              {(p.gestaltung.frei || p.gestaltung.ausgesetzt) && (
+                <div style={{ marginTop: 11 }}><Pill tone="warn">
+                  Für diesen Monat entsteht keine Rechnung</Pill></div>)}
             </div>
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}`, display: "grid", gap: 13 }}>
-              <Field label="Rabatt auf die Grundgebühr in Prozent">
-                <Inp type="number" min={0} max={50} value={Math.round((m.rabattGrund || 0) * 100)}
-                  onChange={(e) => akt.setzeMandantFeld(m.id, "rabattGrund", Math.min(50, Math.max(0, Number(e.target.value))) / 100)} /></Field>
               <Field label="Rechnungsanschrift"><textarea className="inp" rows={3} value={m.anschrift || ""}
                 onChange={(e) => akt.setzeMandantFeld(m.id, "anschrift", e.target.value)} /></Field>
             </div>
           </div>
         </Card>
+
+        <StandorteSpiegel m={m} p={p} />
+
+        <Preisgestaltung m={m} p={p} akt={akt} />
 
         <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
           <Card>
@@ -8222,9 +8571,9 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
                   return darfIch.length ? (
                     <Sel value={p.rolle} onChange={(ev) => akt.setzeRolle(p.id, ev.target.value)} style={{ width: 180 }}>
                       {ROLLEN.filter((x) => darfIch.includes(x.id))
-                        .map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Sel>
+                        .map((x) => <option key={x.id} value={x.id}>{rollenName(m, x.id)}</option>)}</Sel>
                   ) : (<>
-                    <Pill size="sm">{r.label}</Pill>
+                    <Pill size="sm">{rollenName(m, p.rolle)}</Pill>
                     {meine.length > 0 && (
                       <div style={{ fontSize: 11, color: C.dimmer, marginTop: 4 }}>
                         Diese Rolle liegt nicht unterhalb deiner eigenen.</div>)}
@@ -8279,7 +8628,7 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
           </div>
           <Field label="Zugangsart" hint={`${rolle(f.rolle).text} — ${rolle(f.rolle).berechnet && preisWirkung(f.rolle) > 0 ? `kostet ${eur(preisWirkung(f.rolle))} je Monat` : "ohne Zusatzkosten"}.`}>
             <Sel value={f.rolle} onChange={(e) => setF({ ...f, rolle: e.target.value })}>
-              {ROLLEN.filter((x) => !x.extern).map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</Sel></Field>
+              {ROLLEN.filter((x) => !x.extern).map((x) => <option key={x.id} value={x.id}>{rollenName(m, x.id)}</option>)}</Sel></Field>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={() => setNeu(false)}>Abbrechen</Btn>
             <Btn kind="primary" onClick={() => { if (f.vorname && f.nachname) { akt.neuePerson(f); setNeu(false); setF({ ...f, vorname: "", nachname: "" }); } }}>Hinzufügen</Btn>
@@ -8321,7 +8670,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         {(m.standorte || []).length > 1 && <Pill>{((m.standorte || []).find((x) => x.id === (e || {}).standortId) || {}).name || "—"}</Pill>}
         {p.springer && <Pill tone="violet">Springer</Pill>}
         {p.teilzeit && p.teilzeit.aktiv && <Pill>Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
-        <Pill tone="violet">{rolle(p.rolle).label}</Pill><Pill>{n1(p.wochenstunden)} h/Woche</Pill>
+        <Pill tone="violet">{rollenName(m, p.rolle)}</Pill><Pill>{n1(p.wochenstunden)} h/Woche</Pill>
         {p.austritt && <Pill tone="danger">ausgetreten {fKurz(p.austritt)}</Pill>}
       </div>
 
@@ -8954,6 +9303,36 @@ function zelleBedienbar(aufAuswahl, name, ersteZelle = false) {
    Welcher richtig ist, weiß nur, wer beide Seiten kennt. Deshalb steht
    dabei, wer wann gespeichert hat und welche Monate betroffen sind.
    ========================================================================== */
+/**
+ * Ein einfaches Fenster für Rückfragen.
+ *
+ * Das Konfliktfenster darunter hatte seinen Rahmen bisher selbst gebaut.
+ * Ein zweites Fenster mit eigenem Rahmen hätte zwei Fenster ergeben, die
+ * beinahe gleich aussehen — und beinahe ist bei einem Dialog schlimmer als
+ * anders. Escape schließt, der Rahmen bekommt den Tastaturfokus.
+ */
+function Fenster({ titel, breit = 520, onClose, children }) {
+  const rahmen = useRef(null);
+  useEffect(() => {
+    const f = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", f);
+    if (rahmen.current) rahmen.current.focus();
+    return () => window.removeEventListener("keydown", f);
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={titel}
+      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+        backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 20 }}>
+      <div ref={rahmen} tabIndex={-1} className="blatt"
+        style={{ maxWidth: breit, width: "100%", outline: "none" }}>
+        <div style={{ padding: "24px 24px 0", fontSize: 18, fontWeight: 650 }}>{titel}</div>
+        {children}
+      </div>
+    </div>);
+}
+
 function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
   const rahmen = useRef(null);
   useEffect(() => {
@@ -17422,12 +17801,232 @@ function Tarifwerk({ sitz, akt }) {
     </Card>);
 }
 
+/* ==========================================================================
+   STANDORTE
+
+   Ein Standort ist keine Adresse, sondern eine Preisposition: Die
+   Grundgebühr fällt je Standort an, darauf greift eine Mengenstaffel. Wer
+   einen anlegt, ändert den Vertrag.
+
+   Bis hierher gab es dafür überhaupt keine Bedienung — die Aktionen lagen
+   im Quelltext, aufgerufen hat sie niemand. Standorte ließen sich nur beim
+   Anlegen des Betriebs setzen, danach nie wieder.
+
+   Wer was darf, steht in standorte.js und nicht hier:
+     Betreiber  legt an, ohne zu fragen
+     Leitung    legt an und bestätigt die Kostenfolge selbst
+     Planung    stellt einen Antrag, den die Leitung entscheidet
+
+   Die Planung darf dabei *alle* Standorte bearbeiten — sie ist die
+   übergeordnete Planungsrolle und soll nicht an einer Ortsgrenze
+   haltmachen. Nur das Anlegen kostet Geld, und nur dafür braucht es die
+   Leitung.
+   ========================================================================== */
+function Standorte({ sitz, akt }) {
+  const m = sitz.mandant;
+  const p = preis(sitz.db, m);
+  const meine = sitz.person.rolle;
+  const weg = standortzustimmung(meine);
+
+  const [name, setName] = useState("");
+  const [land, setLand] = useState(m.bundesland);
+  const [frage, setFrage] = useState(null);      // { name, land, f }
+
+  const liste = m.standorte || [];
+  const jeStandort = p.t.jeStandort;
+
+  const anlegenVersuchen = () => {
+    const n = name.trim();
+    if (n.length < 2) return;
+    const f = standortfolgen(liste.length, liste.length + 1, jeStandort);
+    /* Ohne Kostenfolge keine Rückfrage. Ein Dialog, der nur „ja" als
+       Antwort kennt, erzieht dazu, ihn ungelesen wegzuklicken — und dann
+       wird auch der gelesen, der es verdient hätte. */
+    if (weg === "frei" || f.mehr === 0) { akt.standortAnlegen(n, land); setName(""); return; }
+    setFrage({ name: n, land, f });
+  };
+
+  const aufstellung = aufstellungJeStandort(m, heute());
+
+  return (<>
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone="accent">{eur(p.summeStandorte)} / Monat</Pill>}>
+        Standorte</CardHead>
+      <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
+        Standorte arbeiten unabhängig: eigene Einheiten, eigene Besetzung, oft
+        eigenes Bundesland und damit eigene Feiertage. Die Grundgebühr fällt je
+        Standort an — ab dem zweiten greift die Mengenstaffel.
+      </div>
+
+      <div style={{ padding: 22, display: "grid", gap: 10 }}>
+        {liste.map((st) => {
+          const a = aufstellung.find((x) => x.standort.id === st.id);
+          const einheiten = m.einheiten.filter((e) => (e.standortId || liste[0].id) === st.id);
+          return (
+            <div key={st.id} style={{ border: `1px solid ${C.lineSoft}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
+                <Field label="Name">
+                  <Inp value={st.name} onChange={(e) => akt.setzeStandort(st.id, "name", e.target.value)} /></Field>
+                <Field label="Bundesland" hint="Bestimmt die Feiertage dieses Standorts.">
+                  <Sel value={st.bundesland || m.bundesland}
+                    onChange={(e) => akt.setzeStandort(st.id, "bundesland", e.target.value)}>
+                    {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
+                  {zahl(einheiten.length)} {mehrzahl(m.einheitLabel)} · {zahl(a ? a.personen : 0)} Personen
+                </span>
+                {a && Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
+                  <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
+                <span style={{ flex: 1 }} />
+                {liste.length > 1 && (
+                  <Btn size="sm" kind="danger" onClick={() => akt.loescheStandort(st.id)}>Entfernen</Btn>)}
+              </div>
+            </div>);
+        })}
+
+        {weg !== "nein" && (
+          <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 16, marginTop: 6 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <Field label="Neuer Standort" style={{ flex: "1 1 220px" }}>
+                <Inp value={name} placeholder="Niederlassung Hannover"
+                  onChange={(e) => setName(e.target.value)} /></Field>
+              <Field label="Bundesland" style={{ flex: "0 1 190px" }}>
+                <Sel value={land} onChange={(e) => setLand(e.target.value)}>
+                  {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
+              <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegenVersuchen}>
+                {weg === "anfragen" ? "Anlegen beantragen" : "Anlegen"}</Btn>
+            </div>
+            {weg === "anfragen" && (
+              <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+                Ein weiterer Standort ändert die monatliche Gebühr. Die
+                Entscheidung trifft die {rollenName(m, "leitung")}.
+              </div>)}
+          </div>)}
+      </div>
+    </Card>
+
+    {frage && (
+      <Tarifsprung m={m} f={frage.f} weg={weg} onAbbruch={() => setFrage(null)}
+        onJa={() => {
+          if (weg === "anfragen") akt.standortAntrag(frage.name, frage.land, frage.f);
+          else akt.standortAnlegen(frage.name, frage.land);
+          setFrage(null); setName("");
+        }} />)}
+  </>);
+}
+
+/**
+ * Das Fenster, das den Preissprung zeigt.
+ *
+ * Es nennt beide Zahlen: Beim Sprung in die nächste Staffel sinkt der
+ * Preis *je Standort*, die Summe steigt trotzdem. Wer nur die Summe sieht,
+ * hält die Rechnung für falsch.
+ */
+function Tarifsprung({ m, f, weg, onJa, onAbbruch, onNein, antrag }) {
+  return (
+    <Fenster titel={antrag ? "Standort beantragt" : "Das ändert die monatliche Gebühr"}
+      onClose={onAbbruch} breit={560}>
+      <div style={{ padding: 24 }}>
+        {antrag && (
+          <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 16 }}>
+            {antrag.durchName} hat am {fDatum(antrag.gestellt)} den Standort
+            <strong style={{ color: C.text }}> {antrag.name}</strong> beantragt.
+          </div>)}
+
+        <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 18 }}>
+          <span style={{ fontSize: 30, fontWeight: 300, ...NUM, color: C.dimmer }}>
+            {eur(f.vorher.netto)}</span>
+          <span style={{ fontSize: 18, color: C.dimmer }}>→</span>
+          <span style={{ fontSize: 34, fontWeight: 650, ...NUM }}>{eur(f.nachher.netto)}</span>
+          <Pill tone={f.mehr > 0 ? "warn" : "ok"}>
+            {f.mehr > 0 ? "+" : "−"}{eur(Math.abs(f.mehr))}</Pill>
+        </div>
+
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, marginBottom: 18 }}>
+          {standorthinweis(f)}
+        </div>
+
+        {f.neueStaffel && (
+          <div style={{ background: C.accentLight, borderRadius: 10, padding: "12px 14px",
+            fontSize: 12.5, color: C.accentDeep, marginBottom: 18 }}>
+            Die Mengenstaffel greift: {f.vorher.staffel.label} → {f.nachher.staffel.label}.
+            Der Preis je Standort sinkt von {eur(f.vorher.einzel)} auf {eur(f.nachher.einzel)}.
+          </div>)}
+
+        {/* Beim Antrag drei Wege, nicht zwei. „Später" und „Ablehnen" auf
+            dieselbe Fläche zu legen wäre eine Falle: Wer das Fenster
+            wegklickt, hat nicht entschieden. */}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+          {antrag && <Btn onClick={onAbbruch}>Später</Btn>}
+          <Btn kind={antrag ? "danger" : "plain"} onClick={antrag ? onNein : onAbbruch}>
+            {antrag ? "Ablehnen" : "Abbrechen"}</Btn>
+          <Btn kind="primary" onClick={onJa}>
+            {antrag ? "Bestätigen und anlegen"
+              : weg === "anfragen" ? "Antrag stellen" : "Verstanden, anlegen"}</Btn>
+        </div>
+      </div>
+    </Fenster>);
+}
+
+/**
+ * Offene Standortanträge, der Leitung beim Anmelden vorgelegt.
+ *
+ * Der Weg ist bewusst zweistufig: Die Planung darf Standorte führen und
+ * alle bearbeiten, aber nicht allein einen anlegen — das ändert die
+ * monatliche Gebühr. Sie stellt einen Antrag, und die Leitung sieht
+ * dasselbe Fenster mit denselben Zahlen. Wer entscheidet, soll sehen, was
+ * der andere gesehen hat.
+ *
+ * Zurückgestellt wird je Sitzung, nicht dauerhaft: Beim nächsten Anmelden
+ * liegt der Antrag wieder vor. Ein Antrag, den man einmal wegklicken kann,
+ * ist ein Antrag, der nie entschieden wird.
+ */
+function Standortantraege({ sitz, akt }) {
+  const [zurueck, setZurueck] = useState([]);
+  if (!sitz || !sitz.mandant || sitz.person.rolle !== "leitung") return null;
+
+  const offen = (sitz.mandant.standortantraege || [])
+    .filter((a) => a.status === "offen" && !zurueck.includes(a.id));
+  if (!offen.length) return null;
+  const a = offen[0];
+
+  /* Der Antrag trägt die Zahlen von damals mit sich. Sie neu zu rechnen
+     wäre falsch: Zwischen Antrag und Entscheidung kann ein anderer
+     Standort dazugekommen sein, und dann bestätigte die Leitung eine Zahl,
+     die dem Antragsteller nie gezeigt wurde. */
+  const f = {
+    vorher: { netto: a.vorher, anzahl: a.anzahlVorher, einzel: a.vorherEinzel,
+      staffel: { label: a.vorherStaffel } },
+    nachher: { netto: a.nachher, anzahl: a.anzahlNachher, einzel: a.nachherEinzel,
+      staffel: { label: a.nachherStaffel } },
+    mehr: a.mehr, neueStaffel: a.neueStaffel,
+  };
+
+  return (
+    <Tarifsprung m={sitz.mandant} f={f} weg="bestaetigen" antrag={a}
+      onJa={() => akt.standortAntragEntscheiden(a.id, true)}
+      onNein={() => akt.standortAntragEntscheiden(a.id, false)}
+      onAbbruch={() => setZurueck((z) => [...z, a.id])} />);
+}
+
 function Betrieb({ sitz, akt }) {
   const m = sitz.mandant;
   const [tests, setTests] = useState(null);
   const [laeuftTest, setLaeuftTest] = useState(false);
-  if (!darf(sitz, "org.edit"))
+
+  /* Die Planung bekommt kein leeres Blatt mehr. Sie darf Standorte führen
+     und die Rollen benennen — beides braucht sie täglich; alles Übrige
+     bleibt der Leitung. */
+  if (!darf(sitz, "org.edit")) {
+    if (sitz.person.rolle === "planer")
+      return (
+        <div>
+          <H1 sub="Standorte und Bezeichnungen. Stammdaten und Regelwerk führt die Organisationsleitung.">Betrieb</H1>
+          <Standorte sitz={sitz} akt={akt} />
+        </div>);
     return <Card><Leer titel="Kein Zugriff" text="Die Betriebsverwaltung ist der Organisationsleitung vorbehalten." /></Card>;
+  }
   const p = preis(sitz.db, m);
 
   return (
@@ -17435,6 +18034,8 @@ function Betrieb({ sitz, akt }) {
       <H1 sub="Stammdaten, Einheiten, Qualifikationen, Regelwerk und Rechte.">Betrieb</H1>
 
       <Tarifwerk sitz={sitz} akt={akt} />
+
+      <Standorte sitz={sitz} akt={akt} />
 
       <Card style={{ marginBottom: 20 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
@@ -17505,11 +18106,39 @@ function Betrieb({ sitz, akt }) {
         </Card>
       </div>
 
+      {/* ------------------------ Eigene Rollennamen ---------------------
+          Umbenannt wird die Anzeige, nie die Kennung. Die Rechtematrix,
+          der Vergaberang und die Preisberechnung hängen an `subplaner` und
+          bleiben davon unberührt — sichtbar an der Kennung, die unter
+          jedem Feld stehen bleibt.                                        */}
+      {/* Leitung und Planung dürfen umbenennen — beide arbeiten täglich mit
+          den Begriffen. Die Schichtverantwortung nicht: Sie führt eine
+          Einheit, nicht die Sprache des Hauses. */}
+      {["leitung", "planer"].includes(sitz.person.rolle) && (
+        <Card style={{ marginTop: 20 }}>
+          <CardHead right={Object.keys(m.rollennamen || {}).length > 0
+            ? <Btn size="sm" onClick={() => akt.rollennamenZuruecksetzen()}>Auf Vorgabe zurücksetzen</Btn>
+            : null}>Eigene Rollenbezeichnungen</CardHead>
+          <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
+            Wie heißen diese Rollen bei euch? In der Klinik ist die
+            Schichtverantwortung eine Stationsleitung, in der Pflege eine
+            Wohnbereichsleitung. Geändert wird nur, was auf dem Bildschirm
+            steht — Rechte und Kosten bleiben, wie sie sind.
+          </div>
+          <div style={{ padding: 22, display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
+            {ROLLEN.filter((r) => !r.extern).map((r) => (
+              <Field key={r.id} label={ROLLEN_VORGABE[r.id]} hint={r.id}>
+                <Inp value={(m.rollennamen || {})[r.id] || ""} placeholder={ROLLEN_VORGABE[r.id]}
+                  onChange={(e) => akt.setzeRollenname(r.id, e.target.value)} /></Field>))}
+          </div>
+        </Card>)}
+
       <Card style={{ marginTop: 20, overflowX: "auto" }}>
         <CardHead right={<Btn size="sm" onClick={akt.matrixZuruecksetzen}>Auf Standard zurücksetzen</Btn>}>Rollen und Rechte</CardHead>
         <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
           Eine Rolle allein ist keine Berechtigung. Erst Rolle plus Geltungsbereich ergibt eine:
-          <span style={{ color: C.text }}> Sub-Planer für {m.einheiten[0] ? m.einheiten[0].name : "eine Einheit"}</span> darf dort ändern und sonst nirgends.
+          <span style={{ color: C.text }}> {rollenName(m, "subplaner")} für {m.einheiten[0] ? m.einheiten[0].name : "eine Einheit"}</span> darf dort ändern und sonst nirgends.
         </div>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 780, marginTop: 16 }}>
           <thead><tr>
@@ -18133,6 +18762,43 @@ function AppInnen() {
         `${s.mandanten.find((x) => x.id === id).name}: Tarifwechsel`)),
       setzeMandantFeld: (id, k, v) => upd((s) => ({ ...s, mandanten: s.mandanten.map((x) => x.id === id ? { ...x, [k]: v } : x) })),
       setzeBetreiber: (k, v) => upd((s) => ({ ...s, betreiber: { ...s.betreiber, [k]: v } })),
+
+      /* --------------------------- Preisgestaltung ---------------------
+         Alles, was jenseits der drei Tarifstufen vereinbart wurde. Die
+         Änderungen werden protokolliert, weil sie Geld betreffen — wer
+         einem Betrieb einen Sonderpreis gibt, soll das später erklären
+         können.                                                          */
+      setzeGestaltung: (id, k, v) => upd((s) => {
+        const m = s.mandanten.find((x) => x.id === id);
+        if (!m) return s;
+        const alt = m.preisgestaltung || {};
+        return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === id
+          ? { ...x, preisgestaltung: { ...alt, [k]: v } } : x)) },
+        `Preisgestaltung ${m.name}: ${k} gesetzt`);
+      }),
+      aussetzungHinzu: (id, von, bis, grund) => upd((s) => {
+        const m = s.mandanten.find((x) => x.id === id);
+        if (!m) return s;
+        if (!/^\d{4}-\d{2}$/.test(von || "")) { melde("Bitte einen Monat als JJJJ-MM angeben."); return s; }
+        const b = /^\d{4}-\d{2}$/.test(bis || "") ? bis : von;
+        if (b < von) { melde("Das Ende liegt vor dem Anfang."); return s; }
+        const alt = m.preisgestaltung || {};
+        const liste = [...(alt.aussetzungen || []), { von, bis: b, grund: grund || "" }]
+          .sort((x, y) => (x.von < y.von ? -1 : 1));
+        melde(`Zahlung ausgesetzt: ${von} bis ${b}.`);
+        return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === id
+          ? { ...x, preisgestaltung: { ...alt, aussetzungen: liste } } : x)) },
+        `Zahlung ausgesetzt für ${m.name}: ${von} bis ${b}`);
+      }),
+      aussetzungWeg: (id, i) => upd((s) => {
+        const m = s.mandanten.find((x) => x.id === id);
+        if (!m) return s;
+        const alt = m.preisgestaltung || {};
+        const liste = (alt.aussetzungen || []).filter((_, k) => k !== i);
+        return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === id
+          ? { ...x, preisgestaltung: { ...alt, aussetzungen: liste } } : x)) },
+        `Aussetzung zurückgenommen bei ${m.name}`);
+      }),
       setzeTarifFeld: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, [k]: v } : t) })),
 
       setzeTarifGrenze: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, grenzen: { ...t.grenzen, [k]: v } } : t) })),
@@ -18157,6 +18823,15 @@ function AppInnen() {
       }),
       rechnungStellen: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);
+        /* Eine Rechnung über null Euro ist keine Freundlichkeit, sondern ein
+           Beleg, den jemand ablegen, prüfen und zehn Jahre aufbewahren muss. */
+        const f = rechnungFaellig(m, ym);
+        if (!f.faellig) {
+          melde(f.grund === "ausgesetzt"
+            ? "Für diesen Monat ist die Zahlung ausgesetzt — keine Rechnung."
+            : "Dieser Monat ist kostenlos vereinbart — keine Rechnung.");
+          return s;
+        }
         const rg = baueRechnung(s, m, ym);
         if (s.rechnungen.some((r) => r.nummer === rg.nummer)) { melde("Für diesen Zeitraum liegt bereits eine Rechnung vor."); return s; }
         melde(`Rechnung ${rg.nummer} erzeugt.`);
@@ -18164,14 +18839,26 @@ function AppInnen() {
       }),
       rechnungslauf: (monat) => upd((s) => {
         const neu = [];
+        let uebersprungen = 0;
         for (const m of s.mandanten) {
           if (!stat(m.status).zahlt) continue;
+          const f = rechnungFaellig(m, monat);
+          if (!f.faellig) { uebersprungen++; continue; }
           const rg = baueRechnung(s, m, monat);
           if (s.rechnungen.some((r) => r.nummer === rg.nummer)) continue;
           neu.push(rg);
         }
-        melde(neu.length ? `${neu.length} Rechnungen erzeugt.` : "Keine neuen Rechnungen — bereits vorhanden.");
-        return bLog({ ...s, rechnungen: [...neu, ...s.rechnungen] }, `Rechnungslauf ${monat}: ${neu.length} Rechnungen`);
+        /* Übersprungene werden genannt, nicht verschwiegen. Ein Lauf, der
+           still weniger Rechnungen erzeugt als erwartet, ist der Anfang
+           eines langen Suchtages. */
+        const nachsatz = uebersprungen
+          ? ` · ${uebersprungen} ${uebersprungen === 1 ? "Betrieb" : "Betriebe"} ausgesetzt oder kostenlos`
+          : "";
+        melde(neu.length
+          ? `${neu.length} Rechnungen erzeugt.${nachsatz}`
+          : `Keine neuen Rechnungen.${nachsatz}`);
+        return bLog({ ...s, rechnungen: [...neu, ...s.rechnungen] },
+          `Rechnungslauf ${monat}: ${neu.length} Rechnungen${nachsatz}`);
       }),
       rechnungenLeeren: () => upd((s) => { melde("Rechnungsausgang geleert."); return { ...s, rechnungen: [] }; }),
       rechnungPDF: (rg) => {
@@ -18236,6 +18923,22 @@ function AppInnen() {
         return { ...m, matrix: { ...basis, [r]: cur.includes(recht) ? cur.filter((x) => x !== recht) : [...cur, recht] } };
       }, "Rechtematrix geändert"),
       matrixZuruecksetzen: () => mUpd((m) => ({ ...m, matrix: JSON.parse(JSON.stringify(MATRIX_STD)) }), "Rechtematrix zurückgesetzt"),
+
+      /* --------------------- Eigene Rollenbezeichnungen ----------------
+         Nur die Anzeige. Ein leerer Name setzt auf die Vorgabe zurück,
+         statt eine leere Marke im Plan stehen zu lassen.                 */
+      setzeRollenname: (id, name) => mUpd((m) => {
+        const urteil = nameGueltig(name);
+        if (!urteil.ok) { melde(urteil.grund); return m; }
+        const alt = { ...(m.rollennamen || {}) };
+        if (urteil.wert) alt[id] = urteil.wert; else delete alt[id];
+        return { ...m, rollennamen: alt };
+      }, "Rollenbezeichnung geändert"),
+      rollennamenZuruecksetzen: () => mUpd((m) => {
+        const ohne = { ...m };
+        delete ohne.rollennamen;
+        return ohne;
+      }, "Rollenbezeichnungen auf Vorgabe zurückgesetzt"),
 
       /* --- Plan --- */
       setzeAbweichung: (pid, d, dienstId) => mUpd((m) => {
@@ -18439,6 +19142,51 @@ function AppInnen() {
       }) }), null),
       neuerStandort: () => mUpd((m) => ({ ...m, standorte: [...(m.standorte || []),
         { id: uid("st"), name: `Standort ${(m.standorte || []).length + 1}`, bundesland: m.bundesland }] }), "Standort angelegt"),
+
+      /* ------------------------------ Standorte ------------------------
+         Anlegen ist eine Vertragsänderung, kein Verwaltungsvorgang. Wer
+         sie auslöst, hängt an der Rolle — siehe zustimmung() in
+         standorte.js.                                                    */
+      standortAnlegen: (name, bundesland) => mUpd((m) => ({
+        ...m,
+        standorte: [...(m.standorte || []),
+          { id: uid("st"), name: String(name).trim(), bundesland: bundesland || m.bundesland }],
+      }), `Standort „${String(name).trim()}" angelegt`),
+
+      standortAntrag: (name, bundesland, f) => mUpd((m) => {
+        const antrag = {
+          id: uid("sa"), name: String(name).trim(), bundesland: bundesland || m.bundesland,
+          durchId: sitz.person.id, durchName: `${sitz.person.vorname} ${sitz.person.nachname}`.trim(),
+          gestellt: heute(),
+          vorher: f.vorher.netto, nachher: f.nachher.netto, mehr: f.mehr,
+          neueStaffel: f.neueStaffel,
+          vorherStaffel: f.vorher.staffel.label, nachherStaffel: f.nachher.staffel.label,
+          vorherEinzel: f.vorher.einzel, nachherEinzel: f.nachher.einzel,
+          anzahlVorher: f.vorher.anzahl, anzahlNachher: f.nachher.anzahl,
+          status: "offen",
+        };
+        melde("Antrag gestellt. Die Organisationsleitung entscheidet.");
+        return { ...m, standortantraege: [...(m.standortantraege || []), antrag] };
+      }, "Standort beantragt"),
+
+      /* Die Leitung entscheidet. Ein abgelehnter Antrag verschwindet nicht,
+         sondern bleibt als Beleg stehen — sonst fragt die Planung in zwei
+         Wochen erneut und niemand weiß mehr, dass es schon einmal
+         verneint wurde. */
+      standortAntragEntscheiden: (id, ja) => mUpd((m) => {
+        const a = (m.standortantraege || []).find((x) => x.id === id);
+        if (!a || a.status !== "offen") return m;
+        const vermerkt = (m.standortantraege || []).map((x) => (x.id === id
+          ? { ...x, status: ja ? "bestaetigt" : "abgelehnt",
+            entschieden: heute(),
+            entschiedenVon: `${sitz.person.vorname} ${sitz.person.nachname}`.trim() }
+          : x));
+        melde(ja ? `Standort „${a.name}" angelegt.` : `Antrag für „${a.name}" abgelehnt.`);
+        if (!ja) return { ...m, standortantraege: vermerkt };
+        return { ...m, standortantraege: vermerkt,
+          standorte: [...(m.standorte || []),
+            { id: uid("st"), name: a.name, bundesland: a.bundesland || m.bundesland }] };
+      }, "Standortantrag entschieden"),
       setzeStandort: (id, k, v) => mUpd((m) => ({ ...m, standorte: (m.standorte || []).map((s2) => s2.id === id ? { ...s2, [k]: v } : s2) }), null),
       loescheStandort: (id) => mUpd((m) => {
         const n = m.einheiten.filter((e) => e.standortId === id).length;
@@ -19764,6 +20512,11 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
             <span className="glyph" style={{ color: C.danger }}>✚</span>Krank</button>}
         </nav>)}
+
+      {/* Offene Standortanträge legen sich der Leitung beim Anmelden vor.
+          Nicht als Zeile in einer Liste, die man übersieht — ein Antrag,
+          der Geld kostet, gehört vor die Arbeit, nicht daneben. */}
+      <Standortantraege sitz={sitz} akt={akt} />
 
       {konflikt && (
         <Konfliktfenster lage={konflikt} melde={melde}
