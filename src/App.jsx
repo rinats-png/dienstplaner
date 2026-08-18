@@ -18714,7 +18714,10 @@ function AppInnen() {
   const [vorbelegung, setVorbelegung] = useState(null);
   const [laedt, setLaedt] = useState(true);
   const [ladefehler, setLadefehler] = useState(null);
-  const [angemeldetStand, setAngemeldetStand] = useState(0);
+  /* Zähler, der das Laden erneut anstößt. Seit das Abmelden die Seite neu
+     lädt, wird er nur noch beim Anmelden hochgezählt — er bleibt, weil das
+     Laden weiterhin an ihm hängt. */
+  const [angemeldetStand] = useState(0);
   const [dicht, setDicht] = useState(false);
   const [fokus, setFokus] = useState(false);
   const [seiteOffen, setSeiteOffen] = useState(false);
@@ -19050,10 +19053,26 @@ function AppInnen() {
       /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
          Server reden, brauchen sie — bisher hatte nur AppInnen sie. */
       melde,
-      /* --- Anmeldung --- */
+      /* --- Anmeldung ---------------------------------------------------
+         `abmelden` löschte bis hierher nur `db.session` — ein Feld des
+         Bestands. Der Zugang selbst blieb bestehen: Token in
+         sessionStorage, Token in localStorage, gültige Sitzung auf dem
+         Server. Wer auf das Ausschaltzeichen in der Seitenleiste drückte,
+         landete deshalb auf der Rollenauswahl der Vorführfassung — dem
+         alten Anmeldebildschirm — und war in Wahrheit weiter angemeldet.
+         Ein Klick auf eine Rolle führte ohne Code zurück hinein.
+
+         Das ist an einem geteilten Stationsrechner genau der Fall, für
+         den es den Knopf gibt. Abmelden heißt jetzt abmelden: Token weg,
+         Offlinespeicher weg, Seite neu.
+
+         Das Neuladen ist nicht Bequemlichkeit, sondern nötig. Ohne es
+         bleibt die äußere Hülle in main.jsx bei „angemeldet" stehen,
+         während der Bestand hier schon null ist — sichtbar als
+         Ladeskelett, das nie fertig wird. */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
-      abmelden: () => { setDb((s) => ({ ...s, session: null })); setView("meine"); setDetail(null); },
-      verbindungTrennen: () => { SP.abmelden(); setDb(null); setAngemeldetStand((n) => n + 1); },
+      abmelden: () => { SP.abmelden(); window.location.reload(); },
+      verbindungTrennen: () => { SP.abmelden(); window.location.reload(); },
       zurueck: () => { if (!verlauf.current.length) return melde("Nichts rückgängig zu machen.");
         const [l, ...r] = verlauf.current; verlauf.current = r; setDb(l); melde("Rückgängig gemacht."); },
 
