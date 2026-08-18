@@ -3037,6 +3037,23 @@ function auslastung(m, p, ym) {
   });
 }
 
+/**
+ * Dieselbe Auslastung, einmal für den ganzen Betrieb statt je Person — die
+ * Zahl, die eine Planung sonst erst in der Belastungsansicht zusammensuchen
+ * musste, obwohl sie im Monatsplan als Erstes gebraucht wird.
+ */
+function teamAuslastung(m, ym, bezugstag) {
+  const leute = aktive(m, bezugstag).filter((p) => p.imSchichtdienst !== false);
+  let ist = 0, soll = 0, ueber = 0, unter = 0;
+  for (const p of leute) {
+    const au = auslastung(m, p, ym);
+    ist += au.ist; soll += au.soll;
+    if (au.stand === "hoch" || au.stand === "erhoeht") ueber++;
+    else if (au.stand === "niedrig") unter++;
+  }
+  return { personen: leute.length, ist, soll, pct: soll > 0 ? Math.round((ist / soll) * 100) : 0, ueber, unter };
+}
+
 /* --------------------------- Was ist heute zu tun ------------------------ */
 /**
  * Der Einstieg für jede Rolle: nicht was alles existiert, sondern was ansteht.
@@ -7706,6 +7723,27 @@ function Tagesfazit({ lage, onTag }) {
     </div>);
 }
 
+/**
+ * Team-Auslastung auf einen Blick, über dem Raster statt erst in der
+ * Belastungsansicht: wie voll der Monat für den Betrieb insgesamt ist, und
+ * wie viele Personen darin einzeln über- oder unterplant sind.
+ */
+function TeamAuslastungLeiste({ ta }) {
+  if (!ta.personen) return null;
+  const teile = [`Team-Auslastung ${ta.pct} %`];
+  if (ta.ueber) teile.push(`${ta.ueber} überplant`);
+  if (ta.unter) teile.push(`${ta.unter} unterausgelastet`);
+  return (
+    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+      padding: "13px 16px", background: C.flaecheStill, borderRadius: 6, marginBottom: 12, fontSize: 13.5 }}>
+      <span style={{ width: 90, height: 6, borderRadius: 3, background: C.line, overflow: "hidden", flexShrink: 0 }}>
+        <span style={{ display: "block", height: "100%", width: `${Math.min(100, ta.pct)}%`,
+          background: ta.pct > 105 ? C.warn : ta.pct < 85 ? C.dim : C.ok }} /></span>
+      <b style={{ ...NUM }}>{teile.join(" · ")}</b>
+      <span style={{ color: C.dimmer }}>{ta.personen} Personen im Schichtdienst</span>
+    </div>);
+}
+
 /* --------------------------------------------------------------------------
    WOCHENLISTE — der Monatsplan auf dem Telefon
 
@@ -7811,6 +7849,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
   const bes = useMemo(() => Object.fromEntries(tage.map((d) => [d, besetzung(m, d)])), [m, ym]);
   const shift = (k) => { const d = new Date(y, mo - 1 + k, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); };
   const lage = useMemo(() => monatsLage(m, tage, bes), [m, ym, bes]);
+  const ta = useMemo(() => teamAuslastung(m, ym, tage[0]), [m, ym]);
 
   return (
     <div>
@@ -7825,6 +7864,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
           <Btn onClick={() => shift(1)}>›</Btn></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
+
+      <TeamAuslastungLeiste ta={ta} />
 
       <Tagesfazit lage={lage} onTag={oeffneTag} />
 
