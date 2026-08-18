@@ -837,8 +837,82 @@ const VORLAGEN = [
     tage: ["N","-","-","F","S","S","S","-","N","N","N","N","-","-","F","F","F","S","-","F","F","S","S","S","-","F","N","N"] },
 ];
 
-/* Gesättigte Farben sind ausschließlich für Dienstarten und Einheiten reserviert. */
-const PALETTE = ["#2C5A8A","#5B4A87","#2C6B63","#9A4A22","#96335C","#4A6B2E","#2A5C77","#8A5518"];
+/* --------------------------------------------------------------------------
+   FARBWAHL
+
+   Dreißig statt acht — die Farbe einer Dienstart, Einheit oder
+   Qualifikation stand bis hierher fest, sobald sie angelegt wurde:
+   PALETTE[i % PALETTE.length]. Wer bei acht Wohnbereichen anlangte, sah
+   dieselbe Farbe zweimal, ohne sie ändern zu können.
+
+   Alle dreißig sind bewusst so dunkel und zurückgenommen wie die
+   ursprünglichen acht — dieselbe Farbe steht mitunter als Schrift auf
+   hellem Grund (`color: e.farbe`), nicht nur als Fläche. Ein Farbton, der
+   dort nicht trägt, gehört nicht in die Liste. Die ersten acht bleiben an
+   erster Stelle: bestehende Daten zeigen auf ihren Index in diesem Array,
+   eine andere Reihenfolge würde jede Zuordnung verschieben.
+   -------------------------------------------------------------------------- */
+const PALETTE = [
+  "#2C5A8A", "#5B4A87", "#2C6B63", "#9A4A22", "#96335C", "#4A6B2E", "#2A5C77", "#8A5518",
+  "#7A3B8A", "#1E6B8C", "#6B4423", "#8A2A3D", "#3D7A5C", "#5C5C8A", "#A0522D", "#2E7D6B",
+  "#7A5C2A", "#4A3B7A", "#8A6D2A", "#2A4A6B", "#6B2A4A", "#3D8A6B", "#8A4A6B", "#4A6B8A",
+  "#6B8A2A", "#8A3D2A", "#2A6B5C", "#6B4A8A", "#8A2A6B", "#4A8A6B",
+];
+const PALETTE_NAMEN = [
+  "Blau", "Violett", "Petrol", "Terrakotta", "Beere", "Oliv", "Stahlblau", "Bernstein",
+  "Magenta", "Türkisblau", "Braun", "Weinrot", "Smaragd", "Indigo", "Sienna", "Jade",
+  "Ocker", "Tiefviolett", "Senf", "Marineblau", "Bordeaux", "Minze", "Pflaume", "Taubenblau",
+  "Limette", "Ziegel", "Tanne", "Amethyst", "Fuchsia", "Salbei",
+];
+
+/**
+ * Der Farbwähler — überall dieselbe Fläche mit denselben dreißig Kacheln,
+ * egal ob für eine Dienstart, eine Einheit oder eine Qualifikation. Eine
+ * einzige Stelle, die weiß, wie viele Farben es gibt und wie sie heißen.
+ */
+function Farbwahl({ wert, onChange }) {
+  return (
+    <div role="group" aria-label="Farbe wählen"
+      style={{ display: "flex", gap: 7, flexWrap: "wrap", paddingTop: 4, maxWidth: 320 }}>
+      {PALETTE.map((c, i) => (
+        <button key={c} type="button" onClick={() => onChange(c)}
+          aria-pressed={wert === c} title={PALETTE_NAMEN[i] || c}
+          style={{ width: 25, height: 25, borderRadius: 8, background: c, cursor: "pointer",
+            border: wert === c ? "3px solid #fff" : "1px solid rgba(0,0,0,.12)",
+            boxShadow: wert === c ? `0 0 0 2px ${c}` : "none" }} />))}
+    </div>);
+}
+
+/**
+ * Derselbe Farbwähler, hinter einem Punkt versteckt — für Listen, in denen
+ * ein dauerhaft offenes Raster aus dreißig Kacheln pro Zeile die eigentliche
+ * Liste erschlagen würde. Ein Klick auf den Punkt öffnet die Auswahl, ein
+ * Klick daneben schließt sie wieder.
+ */
+function Farbpunkt({ wert, onChange, titel = "Farbe ändern" }) {
+  const [offen, setOffen] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!offen) return;
+    const schliessen = (e) => { if (box.current && !box.current.contains(e.target)) setOffen(false); };
+    document.addEventListener("mousedown", schliessen);
+    return () => document.removeEventListener("mousedown", schliessen);
+  }, [offen]);
+
+  return (
+    <div ref={box} style={{ position: "relative", flexShrink: 0 }}>
+      <button type="button" onClick={() => setOffen((o) => !o)} title={titel}
+        aria-label={titel} aria-expanded={offen}
+        style={{ width: 18, height: 18, borderRadius: 9, background: wert, cursor: "pointer",
+          border: `1px solid ${C.lineStark}`, padding: 0 }} />
+      {offen && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 20,
+          background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 10,
+          padding: 10, boxShadow: "0 10px 28px -10px rgba(7,19,23,.28)" }}>
+          <Farbwahl wert={wert} onChange={(c) => { onChange(c); setOffen(false); }} />
+        </div>)}
+    </div>);
+}
 
 /* ------------------------------ Startbestand ------------------------------ */
 const VN = ["Anna","Mehmet","Sabine","Jonas","Katrin","Tobias","Elif","Markus","Julia","Piotr","Nadine","Sven","Maria","Kevin","Ines","Lars","Hanna","Ali","Britta","Dennis","Yvonne","Ruben","Steffi","Malte","Olga","Timo","Carla","Nils","Fatma","Ronja","Bastian","Leonie","Erdal","Miriam","Kai","Sonja","Dominik","Vera","Hakan","Josefine"];
@@ -8367,12 +8441,7 @@ function Dienstarten({ sitz, akt }) {
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 13 }}>
             <Field label="Ort oder Objekt"><Inp value={f.ort} onChange={(e) => setF({ ...f, ort: e.target.value })} /></Field>
             <Field label="Farbe">
-              <div style={{ display: "flex", gap: 7, flexWrap: "wrap", paddingTop: 4 }}>
-                {PALETTE.map((c) => (
-                  <button key={c} onClick={() => setF({ ...f, farbe: c })} 
-                    style={{ width: 27, height: 27, borderRadius: 9, background: c, border: f.farbe === c ? "3px solid #fff" : "none",
-                      boxShadow: f.farbe === c ? `0 0 0 2px ${c}` : "none", cursor: "pointer" }} />))}
-              </div></Field>
+              <Farbwahl wert={f.farbe} onChange={(c) => setF({ ...f, farbe: c })} /></Field>
           </div>
           <div className="karte" style={{ padding: 16 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
@@ -18157,7 +18226,8 @@ function Betrieb({ sitz, akt }) {
           <div style={{ padding: 22 }}>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
-                <span style={{ width: 9, height: 9, borderRadius: 5, background: e.farbe, flexShrink: 0 }} />
+                <Farbpunkt wert={e.farbe} onChange={(c) => akt.setzeEinheit(e.id, "farbe", c)}
+                  titel={`Farbe von ${e.name}`} />
                 <Inp value={e.name} onChange={(ev) => akt.setzeEinheit(e.id, "name", ev.target.value)} style={{ flex: 1 }} />
                 <span style={{ fontSize: 12.5, color: C.dimmer, width: 64, ...NUM }}>
                   {aktive(m, heute()).filter((x) => einheitAm(x, heute()) === e.id).length} Pers.</span>
@@ -18171,6 +18241,8 @@ function Betrieb({ sitz, akt }) {
           <div style={{ padding: 22 }}>
             {m.qualifikationen.map((q) => (
               <div key={q.id} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 11 }}>
+                <Farbpunkt wert={q.farbe} onChange={(c) => akt.setzeQual(q.id, "farbe", c)}
+                  titel={`Farbe von ${q.name}`} />
                 <Inp value={q.name} onChange={(e) => akt.setzeQual(q.id, "name", e.target.value)} style={{ flex: 1 }} />
                 <Inp value={q.kurz} maxLength={4} onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
                 <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)}>×</Btn>
