@@ -4372,6 +4372,63 @@ function Kpi({ label, value, unit, tone = "text", sub }) {
 const KpiRow = ({ children, min = 190 }) => (
   <Card style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit,minmax(${min}px,1fr))`, overflow: "hidden" }}>{children}</Card>);
 
+/**
+ * Zwischenüberschrift für lange Verwaltungsseiten.
+ *
+ * Die Betriebsseite reihte ein Dutzend gleich gewichteter weißer Karten
+ * aneinander — Tarifwerk, Standorte, Stammdaten, Einheiten, Regelwerk,
+ * Rechte, Protokoll. Wer sie kennt, findet sich zurecht; wer sie zum
+ * ersten Mal sieht, hat keinen Einstieg, weil nichts sagt, was
+ * zusammengehört und wo man anfängt.
+ *
+ * Die Überschrift trennt nicht nur optisch: Sie benennt den Zweck einer
+ * Gruppe, damit man ganze Abschnitte überspringen kann, statt jede Karte
+ * einzeln zu lesen.
+ */
+const Abschnitt = ({ children, sub, erste }) => (
+  <div style={{ marginTop: erste ? 0 : 38, marginBottom: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".09em",
+        textTransform: "uppercase", color: C.dim, margin: 0, flexShrink: 0 }}>{children}</h2>
+      <span style={{ flex: 1, height: 1, background: C.lineSoft }} />
+    </div>
+    {sub && <p style={{ fontSize: 13, color: C.dimmer, lineHeight: 1.5,
+      margin: "7px 0 0", maxWidth: 680 }}>{sub}</p>}
+  </div>);
+
+/**
+ * Vorher → Nachher, mit dem Unterschied daneben.
+ *
+ * Der Aufbau stammt aus dem Fenster, das den Preissprung beim Anlegen
+ * eines Standorts zeigt: alte Zahl klein und blass, neue Zahl groß, die
+ * Differenz als eigene Pille. Er hat sich dort bewährt, weil er die
+ * Rechnung zeigt statt nur ihr Ergebnis — wer den Sprung nachvollziehen
+ * kann, hält ihn nicht für einen Fehler.
+ *
+ * Herausgezogen, weil dasselbe überall dort gebraucht wird, wo eine
+ * Eingabe etwas verändert, das man nicht an der Eingabe sieht: eine
+ * Regelgrenze, die die Zahl der Befunde verschiebt; eine Wochenstundenzahl,
+ * die das Stundenkonto umschreibt. Bisher zeigte die Oberfläche in solchen
+ * Fällen nur das Feld und überließ die Folge der nächsten Prüfung.
+ *
+ * @param {object}  p
+ * @param {string}  p.vorher     Ausgangswert, fertig formatiert
+ * @param {string}  p.nachher    neuer Wert, fertig formatiert
+ * @param {string} [p.differenz] der Unterschied, fertig formatiert
+ * @param {string} [p.ton]       Farbe der Differenzpille
+ * @param {string} [p.einheit]   steht klein hinter der neuen Zahl
+ */
+function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = true }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+      <span style={{ fontSize: gross ? 30 : 20, fontWeight: 300, color: C.dimmer, ...NUM }}>{vorher}</span>
+      <span style={{ fontSize: gross ? 18 : 14, color: C.dimmer }} aria-label="wird zu">→</span>
+      <span style={{ fontSize: gross ? 34 : 23, fontWeight: 650, ...NUM }}>{nachher}</span>
+      {einheit && <span style={{ fontSize: 13.5, color: C.dimmer }}>{einheit}</span>}
+      {differenz && <Pill tone={ton}>{differenz}</Pill>}
+    </div>);
+}
+
 function Pill({ children, tone = "neutral", size }) {
   const t = { neutral: ["rgba(20,20,25,.06)", C.dim], ok: [C.okLight, C.ok],
     warn: ["rgba(179,91,0,.12)", C.warn], danger: ["rgba(211,36,56,.11)", C.danger],
@@ -4525,12 +4582,37 @@ function Anmeldung({ db, onLogin }) {
             </p>
           </div>
 
+          {/* --------------------------------------------------------------
+              Dieser Bildschirm ist nicht die Anmeldung.
+
+              Er sieht ihr aber zum Verwechseln ähnlich: Wer sich mit einem
+              echten Zugangscode angemeldet hat, landet hier — und steht vor
+              etwas, das erneut „anmelden" sagt. Beim Durchspielen war
+              zweimal unklar, ob die erste Anmeldung fehlgeschlagen war.
+
+              Der Unterschied stand bisher als graue Fußnote unter den
+              Karten. Er gehört darüber, weil er die Frage beantwortet, die
+              man beim Ansehen hat, nicht die, die man danach noch hat. */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 18px",
+            marginBottom: 22, background: C.warnLight, borderLeft: `3px solid ${C.warn}`,
+            borderRadius: "0 8px 8px 0" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 4 }}>
+                Vorführfassung — du bist bereits angemeldet.</div>
+              <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>
+                Hier wird nur die Sicht gewechselt: Jede Rolle zeigt dieselben
+                Daten in der Tiefe, die ihr zusteht. Im Echtbetrieb entfällt
+                dieser Schritt — dort bestimmt der Zugangscode die Rolle.
+              </div>
+            </div>
+          </div>
+
           <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }} onClick={() => onLogin({ rolle: "betreiber" })}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
               <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 17, fontWeight: 600 }}>Als Betreiber anmelden</div>
+                <div style={{ fontSize: 17, fontWeight: 600 }}>Zur Betreiberkonsole</div>
                 <div style={{ fontSize: 13.5, color: C.dim, marginTop: 3 }}>
                   Mandanten, Tarife, Zugangszahlen und Rechnungen. Ohne Einsicht in Namen oder Pläne.
                 </div>
@@ -4541,7 +4623,7 @@ function Anmeldung({ db, onLogin }) {
 
           <Card style={{ padding: 26 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 18 }}>
-              <div style={{ fontSize: 15.5, fontWeight: 600 }}>Als Beschäftigte anmelden</div>
+              <div style={{ fontSize: 15.5, fontWeight: 600 }}>Sicht einer Rolle im Betrieb</div>
               <Sel value={mid} onChange={(e) => setMid(e.target.value)} style={{ width: 280 }}>
                 {db.mandanten.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
               </Sel>
@@ -4563,9 +4645,12 @@ function Anmeldung({ db, onLogin }) {
             </div>
           </Card>
 
+          {/* Der frühere Hinweis stand hier unten und ist nach oben gewandert,
+              wo er gebraucht wird. Was bleibt, ist die eine Zusicherung, die
+              man erst danach braucht. */}
           <div style={{ textAlign: "center", fontSize: 12.5, color: C.dimmer, marginTop: 22, lineHeight: 1.5 }}>
-            Vorführfassung. Die Anmeldung ersetzt hier das Kennwortverfahren —
-            die Zugriffstiefe ergibt sich in beiden Fällen aus Rolle und Geltungsbereich.
+            Die Zugriffstiefe ergibt sich in der Vorführung wie im Echtbetrieb
+            aus Rolle und Geltungsbereich — nichts daran ist nachgestellt.
           </div>
 
           <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 18 }} />
@@ -14327,17 +14412,34 @@ function tourKapitel(tour, rolleId, gesehen = []) {
   return aus;
 }
 
-/** Soll die Tour beim Anmelden von selbst starten? */
+/**
+ * Soll die Tour beim Anmelden von selbst starten?
+ *
+ * `zurueckgestellt` musste dazukommen: Der Selbststart hing allein daran,
+ * ob schon ein Schritt gesehen wurde. Wer die Tour wegklickte, ohne je
+ * „Weiter" gedrückt zu haben — der häufigste Fall —, bekam sie beim
+ * nächsten Ansichtswechsel wieder vorgesetzt. Ein Wegklicken, das nicht
+ * hält, erzieht dazu, gar nicht mehr hinzusehen.
+ */
 const tourStartet = (person, rolleId) => {
   const t = person.tour || {};
-  if (t.nichtMehr || t.fertig) return false;
+  if (t.nichtMehr || t.fertig || t.zurueckgestellt) return false;
   return !(t.gesehen || []).length;
 };
 
 /* ==========================================================================
    TOUR-OBERFLÄCHE
+
    Ein Streifen am unteren Rand, kein Vollbild. Wer die Anwendung dabei
    bedienen kann, behält mehr als jemand, der nur Text liest.
+
+   Zwei Größen, weil eine nicht reicht. Ausgeklappt nahm die Tour über die
+   volle Breite rund ein Viertel der Bildschirmhöhe und stand damit in
+   jeder Ansicht im Weg — auch dann, wenn gerade gar nicht gelernt, sondern
+   gearbeitet wurde. Sie ist deshalb erstens eine schwebende Karte
+   geworden statt einer angedockten Leiste, und zweitens einklappbar auf
+   eine Zeile: Kapitel, Fortschritt, Weiter. Der Faden bleibt sichtbar,
+   der Platz bleibt beim Inhalt.
    ========================================================================== */
 function TourLeiste({ sitz, akt, gehZu }) {
   const p = sitz.person;
@@ -14372,18 +14474,57 @@ function TourLeiste({ sitz, akt, gehZu }) {
     if (n.ziel) gehZu(n.ziel);
   };
 
+  const eingeklappt = !!(p.tour || {}).eingeklappt;
+
+  /* Gemeinsamer Rahmen beider Größen: eine schwebende Karte über dem
+     Inhalt, nicht die volle Breite des Fensters. */
+  const rahmen = {
+    position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 900,
+    maxWidth: eingeklappt ? 560 : 940, margin: "0 auto",
+    background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: 14,
+    overflow: "hidden", boxShadow: "0 14px 40px -14px rgba(7,19,23,.28)",
+  };
+
+  /* ---------------------------- Eingeklappt ---------------------------
+     Eine Zeile. Sie beantwortet nur noch, wo man steht und wie es
+     weitergeht — alles Übrige ist einen Klick entfernt. */
+  if (eingeklappt) {
+    return (
+      <div role="dialog" aria-label="Geführte Tour, eingeklappt" style={rahmen}>
+        <div style={{ height: 3, background: C.bg }}>
+          <div style={{ width: `${((st.idx + 1) / st.gesamt) * 100}%`, height: "100%",
+            background: C.accent, transition: "width .25s" }} /></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px 10px 16px" }}>
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: ".1em",
+              textTransform: "uppercase", color: C.accent, whiteSpace: "nowrap",
+              overflow: "hidden", textOverflow: "ellipsis" }}>{punkt.kapitel}</span>
+            <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 2,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {punkt.titel}</span>
+          </span>
+          <span style={{ fontSize: 11.5, color: C.dimmer, flexShrink: 0, ...NUM }}>
+            {st.idx + 1}/{st.gesamt}</span>
+          <Btn size="sm" onClick={() => akt.tourEinklappen(false)}>Aufklappen</Btn>
+          <Btn size="sm" kind="primary" onClick={weiter}>
+            {st.idx >= st.gesamt - 1 ? "Fertig" : "Weiter"}</Btn>
+          <button type="button" onClick={() => akt.tourSchliessen(false)} aria-label="Tour schließen"
+            title="Tour schließen — unter Einstellungen fortsetzbar"
+            style={{ border: "none", background: "transparent", color: C.dim, cursor: "pointer",
+              fontFamily: "inherit", fontSize: 17, lineHeight: 1, padding: "6px 8px", flexShrink: 0 }}>×</button>
+        </div>
+      </div>);
+  }
+
   return (
-    <div role="dialog" aria-label="Geführte Tour"
-      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 900,
-        background: C.flaeche, borderTop: `1px solid ${C.lineStark}`,
-        boxShadow: "0 -8px 32px -12px rgba(7,19,23,.18)" }}>
+    <div role="dialog" aria-label="Geführte Tour" style={rahmen}>
 
       {/* Fortschritt als dünner Balken ganz oben */}
       <div style={{ height: 3, background: C.bg }}>
         <div style={{ width: `${((st.idx + 1) / st.gesamt) * 100}%`, height: "100%",
           background: C.accent, transition: "width .25s" }} /></div>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "18px 24px 20px",
+      <div style={{ padding: "16px 20px 18px",
         display: "flex", gap: 22, alignItems: "flex-start", flexWrap: "wrap" }}>
 
         <div style={{ flex: 1, minWidth: 260 }}>
@@ -14449,6 +14590,9 @@ function TourLeiste({ sitz, akt, gehZu }) {
             <Btn size="sm" kind="primary" onClick={weiter} style={{ flex: 1 }}>
               {st.idx >= st.gesamt - 1 ? "Fertig" : "Weiter"}</Btn>
           </div>
+          {/* Einklappen steht vor dem Schließen: Wer nur Platz braucht,
+              soll nicht den Faden verlieren müssen. */}
+          <Btn size="sm" onClick={() => akt.tourEinklappen(true)}>Einklappen</Btn>
           {/* Am Kapitelende ausdrücklich anbieten aufzuhören. Wer weiß, dass
               hier ein Halt ist, hört seltener mittendrin auf — und findet
               beim nächsten Mal wieder hinein. */}
@@ -17957,6 +18101,99 @@ function Standorte({ sitz, akt }) {
   </>);
 }
 
+/* --------------------------------------------------------------------------
+   REGELWERK
+
+   Fünf Zahlenfelder, und jede davon verschiebt, was die Prüfung als
+   Verstoß meldet. Sichtbar war davon nichts: Wer die Mindestruhezeit von
+   elf auf zehn Stunden setzte, sah ein Feld mit einer neuen Zahl darin —
+   dass damit im laufenden Monat vier Befunde verschwanden, stand nur in
+   einer anderen Ansicht, die man dafür aufsuchen musste.
+
+   Deshalb steht unter den Feldern jetzt die Folge: wie viele Befunde die
+   Prüfung mit den Werten von vorhin meldete und wie viele mit den
+   jetzigen. Es ist dieselbe Rechnung wie in der Prüfungsansicht, nur
+   zweimal ausgeführt — einmal mit dem Ausgangsstand.
+
+   Weniger Befunde sind ausdrücklich kein Erfolg: Eine gelockerte Grenze
+   beseitigt keinen einzigen Dienst, sie hört nur auf, ihn zu melden. Der
+   Ton der Anzeige folgt deshalb der Richtung der Grenze, nicht der
+   Richtung der Zahl.
+   -------------------------------------------------------------------------- */
+const REGELFELDER = [
+  ["ruhezeit", "Mindestruhezeit zwischen Diensten in Stunden", "strenger_ist_hoeher"],
+  ["maxFolge", "Höchstzahl Dienste in Folge", "strenger_ist_niedriger"],
+  ["maxNachtFolge", "Höchstzahl Nachtdienste in Folge", "strenger_ist_niedriger"],
+  ["maxUrlaubJeEinheit", null, "strenger_ist_niedriger"],
+  ["sollWochenstunden", "Vertragliche Wochenarbeitszeit", null],
+];
+
+/** Die Befundarten, die unmittelbar an einer Regelgrenze hängen. */
+const REGELBEFUNDE = ["ruhezeit", "folge", "nachtfolge", "urlaub"];
+
+function Regelwerk({ m, akt }) {
+  const ym = heute().slice(0, 7);
+  const [y, mo] = ym.split("-").map(Number);
+  const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
+
+  /* Der Ausgangsstand wird einmal festgehalten, beim Öffnen der Seite.
+     Ihn bei jeder Änderung nachzuziehen hieße, dass der Vergleich immer
+     null ergibt — dann zeigte die Anzeige nie etwas an. */
+  const ausgang = useRef(m.einstellungen);
+  /* Beim laufenden Stand auf dem Mandanten selbst prüfen, nicht auf einer
+     Kopie: Die Zwischenergebnisse hängen am Objekt, und eine Kopie wirft
+     sie alle weg. Nur der Vergleichsstand braucht eine. */
+  const zaehle = (einst) => (einst === m.einstellungen
+    ? pruefen(m, von, bis)
+    : pruefen({ ...m, einstellungen: einst }, von, bis))
+    .filter((b) => REGELBEFUNDE.includes(b.art)).length;
+
+  const jetzt = useMemo(() => zaehle(m.einstellungen), [m, ym]);
+  const vorher = useMemo(() => zaehle(ausgang.current), [m, ym]);
+
+  /* Strenger geworden oder lockerer? Nicht an der Zahl der Befunde
+     abzulesen, sondern an der Grenze selbst. */
+  const richtung = REGELFELDER.reduce((acc, [k, , art]) => {
+    if (!art || acc) return acc;
+    const a = Number(ausgang.current[k]), b = Number(m.einstellungen[k]);
+    if (a === b) return acc;
+    const strenger = art === "strenger_ist_hoeher" ? b > a : b < a;
+    return strenger ? "strenger" : "lockerer";
+  }, null);
+
+  return (
+    <Card>
+      <CardHead>Regelwerk</CardHead>
+      <div style={{ padding: 22, display: "grid", gap: 14 }}>
+        {REGELFELDER.map(([k, l]) => (
+          <Field key={k} label={l || `Gleichzeitige Urlaube je ${m.einheitLabel}`}>
+            <Inp type="number" step="0.5" value={m.einstellungen[k]}
+              onChange={(e) => akt.setzeEinstellung(k, Number(e.target.value))} /></Field>))}
+
+        <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 16, marginTop: 2 }}>
+          <Lab style={{ marginBottom: 9 }}>Was das für {MON[mo - 1]} bedeutet</Lab>
+          {jetzt === vorher ? (
+            <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55 }}>
+              {jetzt === 0
+                ? "Die Prüfung meldet keinen Verstoß gegen diese Grenzen."
+                : `Die Prüfung meldet ${zahl(jetzt)} Befund${jetzt > 1 ? "e" : ""} zu Ruhezeit, Dienst- und Nachtfolgen.`}
+            </div>
+          ) : (<>
+            <Sprung gross={false} vorher={zahl(vorher)} nachher={zahl(jetzt)}
+              einheit={`Befund${jetzt === 1 ? "" : "e"}`}
+              ton={richtung === "lockerer" ? "warn" : "ok"}
+              differenz={`${jetzt > vorher ? "+" : "−"}${zahl(Math.abs(jetzt - vorher))}`} />
+            <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55, marginTop: 10, maxWidth: 520 }}>
+              {richtung === "lockerer"
+                ? "Die Grenze ist gelockert. An den geplanten Diensten ändert das nichts — sie werden nur nicht mehr gemeldet."
+                : "Die Grenze ist verschärft. Die zusätzlichen Befunde bestehen seit jeher; sie fielen bisher unter die alte Grenze."}
+            </div>
+          </>)}
+        </div>
+      </div>
+    </Card>);
+}
+
 /**
  * Das Fenster, das den Preissprung zeigt.
  *
@@ -17975,13 +18212,10 @@ function Tarifsprung({ m, f, weg, onJa, onAbbruch, onNein, antrag }) {
             <strong style={{ color: C.text }}> {antrag.name}</strong> beantragt.
           </div>)}
 
-        <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 18 }}>
-          <span style={{ fontSize: 30, fontWeight: 300, ...NUM, color: C.dimmer }}>
-            {eur(f.vorher.netto)}</span>
-          <span style={{ fontSize: 18, color: C.dimmer }}>→</span>
-          <span style={{ fontSize: 34, fontWeight: 650, ...NUM }}>{eur(f.nachher.netto)}</span>
-          <Pill tone={f.mehr > 0 ? "warn" : "ok"}>
-            {f.mehr > 0 ? "+" : "−"}{eur(Math.abs(f.mehr))}</Pill>
+        <div style={{ marginBottom: 18 }}>
+          <Sprung vorher={eur(f.vorher.netto)} nachher={eur(f.nachher.netto)}
+            ton={f.mehr > 0 ? "warn" : "ok"}
+            differenz={`${f.mehr > 0 ? "+" : "−"}${eur(Math.abs(f.mehr))}`} />
         </div>
 
         <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, marginBottom: 18 }}>
@@ -18074,9 +18308,19 @@ function Betrieb({ sitz, akt }) {
     <div>
       <H1 sub="Stammdaten, Einheiten, Qualifikationen, Regelwerk und Rechte.">Betrieb</H1>
 
+      {/* Die Reihenfolge folgt jetzt der Häufigkeit, nicht der
+          Entstehungsgeschichte: Was den Vertrag betrifft, steht oben und
+          wird selten angefasst; die tägliche Struktur in der Mitte; die
+          Werkzeuge zuletzt. */}
+      <Abschnitt erste sub="Bindet den Betrieb an Tarif, Standorte und Preis. Änderungen hier wirken auf die Abrechnung.">
+        Vertrag und Standorte</Abschnitt>
+
       <Tarifwerk sitz={sitz} akt={akt} />
 
       <Standorte sitz={sitz} akt={akt} />
+
+      <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
+        Stammdaten</Abschnitt>
 
       <Card style={{ marginBottom: 20 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
@@ -18094,6 +18338,9 @@ function Betrieb({ sitz, akt }) {
               {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
         </div>
       </Card>
+
+      <Abschnitt sub={`Woraus der Betrieb besteht und welche Grenzen für die Planung gelten. Das Regelwerk ist die Grundlage jeder Prüfung — was hier steht, meldet die Prüfung später als Verstoß.`}>
+        Struktur und Regelwerk</Abschnitt>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 20 }}>
         <Card>
@@ -18126,26 +18373,12 @@ function Betrieb({ sitz, akt }) {
           </div>
         </Card>
 
-        <Card>
-          <CardHead>Regelwerk</CardHead>
-          <div style={{ padding: 22, display: "grid", gap: 14 }}>
-            {[["ruhezeit", "Mindestruhezeit zwischen Diensten in Stunden"], ["maxFolge", "Höchstzahl Dienste in Folge"],
-              ["maxNachtFolge", "Höchstzahl Nachtdienste in Folge"], ["maxUrlaubJeEinheit", `Gleichzeitige Urlaube je ${m.einheitLabel}`],
-              ["sollWochenstunden", "Vertragliche Wochenarbeitszeit"]].map(([k, l]) => (
-              <Field key={k} label={l}><Inp type="number" step="0.5" value={m.einstellungen[k]}
-                onChange={(e) => akt.setzeEinstellung(k, Number(e.target.value))} /></Field>))}
-          </div>
-        </Card>
+        <Regelwerk m={m} akt={akt} />
 
-        <Card>
-          <CardHead>Daten</CardHead>
-          <div style={{ padding: 22, display: "grid", gap: 11 }}>
-            <Btn onClick={akt.exportCSV}>Monatsplan als CSV</Btn>
-            <Btn onClick={() => window.print()}>Drucken</Btn>
-            <Btn onClick={akt.exportJSON}>Sicherung exportieren</Btn>
-          </div>
-        </Card>
       </div>
+
+      <Abschnitt sub="Wer was darf und wie die Rollen bei euch heißen. Beides ändert nichts an den Daten — nur daran, wer sie sieht und wie sie genannt werden.">
+        Rechte und Sprache</Abschnitt>
 
       {/* ------------------------ Eigene Rollennamen ---------------------
           Umbenannt wird die Anzeige, nie die Kennung. Die Rechtematrix,
@@ -18156,7 +18389,7 @@ function Betrieb({ sitz, akt }) {
           den Begriffen. Die Schichtverantwortung nicht: Sie führt eine
           Einheit, nicht die Sprache des Hauses. */}
       {["leitung", "planer"].includes(sitz.person.rolle) && (
-        <Card style={{ marginTop: 20 }}>
+        <Card>
           <CardHead right={Object.keys(m.rollennamen || {}).length > 0
             ? <Btn size="sm" onClick={() => akt.rollennamenZuruecksetzen()}>Auf Vorgabe zurücksetzen</Btn>
             : null}>Eigene Rollenbezeichnungen</CardHead>
@@ -18184,9 +18417,21 @@ function Betrieb({ sitz, akt }) {
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 780, marginTop: 16 }}>
           <thead><tr>
             <th style={{ textAlign: "left", padding: "13px 22px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 290 }}><Lab>Berechtigung</Lab></th>
-            {ROLLEN.filter((r) => !r.extern).map((r) => (
-              <th key={r.id} style={{ padding: "13px 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 86 }}>
-                <Lab style={{ color: r.farbe, textAlign: "center" }}>{r.kurz}</Lab></th>))}
+            {/* Über jeder Spalte steht, wie viele Rechte diese Rolle trägt.
+                Ohne diese Zahl musste man die ganze Spalte gegen den
+                Kontrast durchzählen, um „was darf eine Schichtverantwortung
+                eigentlich" zu beantworten — die häufigste Frage an diese
+                Tabelle, und die einzige, die sie nicht beantwortete. */}
+            {ROLLEN.filter((r) => !r.extern).map((r) => {
+              const hat = (m.matrix || MATRIX_STD)[r.id] || [];
+              const zahl = r.id === "leitung" ? ALLE_RECHTE.length : hat.length;
+              return (
+                <th key={r.id} style={{ padding: "13px 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 86 }}>
+                  <Lab style={{ color: r.farbe, textAlign: "center", fontWeight: 700 }}>{r.kurz}</Lab>
+                  <div title={`${rollenName(m, r.id)} — ${zahl} von ${ALLE_RECHTE.length} Rechten`}
+                    style={{ fontSize: 11, color: C.dimmer, textAlign: "center", marginTop: 3, ...NUM }}>
+                    {zahl}/{ALLE_RECHTE.length}</div>
+                </th>); })}
           </tr></thead>
           <tbody>{RECHTE_GRUPPEN.map(([g, items]) => (
             <Fragment key={g}>
@@ -18199,18 +18444,41 @@ function Betrieb({ sitz, akt }) {
                   {ROLLEN.filter((r) => !r.extern).map((r) => {
                     const an = ((m.matrix || MATRIX_STD)[r.id] || []).includes(id), fest = r.id === "leitung";
                     return (<td key={r.id} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "center" }}>
-                      <button onClick={() => !fest && akt.toggleRecht(r.id, id)} 
-                        title={fest ? "Die Organisationsleitung hat immer alle Rechte." : ""}
-                        style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer", border: "none",
-                          background: an ? `${r.farbe}1C` : C.bg, color: an ? r.farbe : "transparent",
-                          fontSize: 13, fontWeight: 700, opacity: fest ? .6 : 1 }}>✓</button></td>);
+                      {/* Gesetzt: gefüllte Fläche in der Rollenfarbe mit
+                          weißem Haken. Nicht gesetzt: ein leerer Ring, kein
+                          durchsichtiger Haken auf grauem Grund — der war bei
+                          flüchtigem Blick von einem gesetzten kaum zu
+                          unterscheiden, und genau das ist bei einer
+                          Rechtetabelle der teuerste Lesefehler. */}
+                      <button onClick={() => !fest && akt.toggleRecht(r.id, id)}
+                        aria-pressed={an}
+                        aria-label={`${label} — ${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
+                        title={fest ? "Die Organisationsleitung hat immer alle Rechte."
+                          : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
+                        style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                          border: an ? "none" : `1.5px solid ${C.line}`,
+                          background: an ? r.farbe : "transparent", color: an ? "#fff" : "transparent",
+                          fontSize: 13, fontWeight: 700, opacity: fest ? .55 : 1 }}>✓</button></td>);
                   })}
                 </tr>))}
             </Fragment>))}</tbody>
         </table>
       </Card>
 
-      <Card style={{ marginTop: 20 }}>
+      <Abschnitt sub="Ausgabe, Prüfung und Nachweis. Nichts hiervon verändert den Betrieb — es liest ihn nur aus.">
+        Werkzeuge und Nachweis</Abschnitt>
+
+      <Card style={{ marginBottom: 20 }}>
+        <CardHead>Daten</CardHead>
+        <div style={{ padding: 22, display: "flex", gap: 11, flexWrap: "wrap" }}>
+          <Btn onClick={akt.exportCSV}>Monatsplan als CSV</Btn>
+          <Btn onClick={() => window.print()}>Drucken</Btn>
+          <Btn onClick={akt.exportJSON}>Sicherung exportieren</Btn>
+        </div>
+      </Card>
+
+      <Card>
         <CardHead right={<Btn size="sm" kind="primary" disabled={laeuftTest}
           onClick={async () => { setLaeuftTest(true);
             try { const f = await selbsttestLaden(); setTests(f()); }
@@ -19504,10 +19772,15 @@ function AppInnen() {
         "Mandant angelegt"),
 
       /* --- Tour und Einstellungen --- */
+      /* Wer die Tour ausdrücklich startet, hebt damit auch das frühere
+         Wegklicken und Einklappen auf — sonst öffnete sich eine Tour, die
+         man gerade angefordert hat, sofort wieder einzeilig. */
       tourStarten: (vonVorn) => mUpd((m) => ({ ...m, personen: m.personen.map((x) =>
         x.id === sitz.person.id ? { ...x, tour: vonVorn
-          ? { schritt: 0, gesehen: [], fertig: false, nichtMehr: false, offen: true }
-          : { ...(x.tour || {}), offen: true, fertig: false } } : x) }), null),
+          ? { schritt: 0, gesehen: [], fertig: false, nichtMehr: false, offen: true,
+              zurueckgestellt: false, eingeklappt: false }
+          : { ...(x.tour || {}), offen: true, fertig: false,
+              zurueckgestellt: false, eingeklappt: false } } : x) }), null),
       tourSchritt: (idx, gesehenId) => mUpd((m) => ({ ...m, personen: m.personen.map((x) => {
         if (x.id !== sitz.person.id) return x;
         const t = x.tour || {};
@@ -19517,15 +19790,27 @@ function AppInnen() {
       }) }), null),
       /* Schließen unterscheidet zwei Fälle: „später fortsetzen" merkt sich die
          Stelle, „nicht mehr anzeigen" schaltet den Selbststart ab. Beides ist
-         reversibel — unter Einstellungen. */
+         reversibel — unter Einstellungen.
+         `zurueckgestellt` hält das Wegklicken über den Ansichtswechsel
+         hinweg: ohne das startete die Tour sofort wieder, solange noch kein
+         Schritt gesehen war. */
       tourSchliessen: (fuerImmer) => mUpd((m) => ({ ...m, personen: m.personen.map((x) =>
         x.id === sitz.person.id ? { ...x, tour: { ...(x.tour || {}), offen: false,
-          ...(fuerImmer ? { nichtMehr: true } : {}) } } : x) }), null),
+          zurueckgestellt: true, ...(fuerImmer ? { nichtMehr: true } : {}) } } : x) }), null),
+      /* Eingeklappt heißt: weiterhin da, aber einzeilig. Der Zustand gehört
+         zur Person, nicht in eine Sitzungsvariable — sonst steht die Tour
+         nach jedem Neuladen wieder in voller Höhe im Bild. */
+      tourEinklappen: (an) => mUpd((m) => ({ ...m, personen: m.personen.map((x) =>
+        x.id === sitz.person.id ? { ...x, tour: { ...(x.tour || {}), eingeklappt: !!an } } : x) }), null),
       tourBeenden: () => mUpd((m) => ({ ...m, personen: m.personen.map((x) =>
         x.id === sitz.person.id ? { ...x, tour: { ...(x.tour || {}), offen: false,
           fertig: true, schritt: 0 } } : x) }), null),
+      /* Der Schalter verspricht „startet beim Öffnen von selbst". Wird er
+         wieder eingeschaltet, muss deshalb auch ein früheres Wegklicken
+         fallen — sonst bliebe das Versprechen ohne Wirkung. */
       setzeTourAnzeige: (an) => mUpd((m) => ({ ...m, personen: m.personen.map((x) =>
-        x.id === sitz.person.id ? { ...x, tour: { ...(x.tour || {}), nichtMehr: !an } } : x) }), null),
+        x.id === sitz.person.id ? { ...x, tour: { ...(x.tour || {}), nichtMehr: !an,
+          ...(an ? { zurueckgestellt: false } : {}) } } : x) }), null),
 
       /* Persönliche Vorliebe — nicht zu verwechseln mit setzeEinstellung,
          das betriebsweite Festlegungen ändert. */
