@@ -673,6 +673,13 @@ const rolle = (id) => ROLLEN.find((r) => r.id === id) || ROLLEN[4];
  * „Wohnbereichn" heraus, und für „Station" „Stationn". Die deutsche
  * Mehrzahl hängt am Wortende, nicht an einem angehängten n.
  */
+/**
+ * Ein- oder Mehrzahl, je nach Anzahl. Seit die Ansichten nach Standort
+ * gefiltert werden, steht häufig eine Eins davor — und „1 Wohnbereiche"
+ * liest sich wie ein Fehler, weil es einer ist.
+ */
+const anzahlWort = (n, wort) => `${zahl(n)} ${n === 1 ? wort : mehrzahl(wort)}`;
+
 function mehrzahl(wort) {
   const w = String(wort || "").trim();
   if (!w) return "";
@@ -3042,8 +3049,9 @@ function auslastung(m, p, ym) {
  * Zahl, die eine Planung sonst erst in der Belastungsansicht zusammensuchen
  * musste, obwohl sie im Monatsplan als Erstes gebraucht wird.
  */
-function teamAuslastung(m, ym, bezugstag) {
-  const leute = aktive(m, bezugstag).filter((p) => p.imSchichtdienst !== false);
+function teamAuslastung(m, ym, bezugstag, standortId) {
+  const leute = aktive(m, bezugstag).filter((p) => p.imSchichtdienst !== false
+    && personAmStandort(m, p, standortId, bezugstag));
   let ist = 0, soll = 0, ueber = 0, unter = 0;
   for (const p of leute) {
     const au = auslastung(m, p, ym);
@@ -4395,6 +4403,96 @@ const Abschnitt = ({ children, sub, erste }) => (
     {sub && <p style={{ fontSize: 13, color: C.dimmer, lineHeight: 1.5,
       margin: "7px 0 0", maxWidth: 680 }}>{sub}</p>}
   </div>);
+
+/* --------------------------------------------------------------------------
+   STANDORTWAHL
+
+   Ein Betrieb mit mehreren Standorten sah bis hierher überall aus wie
+   einer: Die Personalliste führte alle Häuser untereinander, der
+   Monatsplan reihte alle Einheiten aneinander, und wer für Hannover
+   plante, musste Frankfurt mitlesen.
+
+   Die Zugehörigkeit lag längst vor — eine Einheit steht an einem
+   Standort, eine Person gehört zu einer Einheit. Gefehlt hat nur der
+   Schalter, der daraus eine Auswahl macht.
+
+   Sichtbar wird er erst ab dem zweiten Standort. Ein Betrieb mit einem
+   Haus soll nicht eine Auswahl bedienen müssen, die nur eine Möglichkeit
+   kennt.
+   -------------------------------------------------------------------------- */
+const ALLE_STANDORTE = "alle";
+
+/** Hat dieser Betrieb überhaupt mehr als einen Standort? */
+const mehrereStandorte = (m) => (((m && m.standorte) || []).length > 1);
+
+/**
+ * Die Einheiten eines Standorts.
+ *
+ * Einheiten ohne `standortId` gehören zum ersten Standort — so war es
+ * schon in der Preisberechnung und in `jeStandort()` festgelegt, und zwei
+ * verschiedene Antworten auf dieselbe Frage wären schlimmer als eine
+ * unvollkommene.
+ */
+function einheitenAmStandort(m, standortId) {
+  const alle = (m && m.einheiten) || [];
+  if (!standortId || standortId === ALLE_STANDORTE) return alle;
+  const erster = (((m && m.standorte) || [])[0] || {}).id;
+  return alle.filter((e) => (e.standortId || erster) === standortId);
+}
+
+/** Gehört diese Person am Stichtag zum gewählten Standort? */
+function personAmStandort(m, p, standortId, datum) {
+  if (!standortId || standortId === ALLE_STANDORTE) return true;
+  const ids = new Set(einheitenAmStandort(m, standortId).map((e) => e.id));
+  return ids.has(einheitAm(p, datum));
+}
+
+/** Die Auswahl selbst. Gibt `null` zurück, wenn es nichts zu wählen gibt. */
+function Standortwahl({ m, wert, setWert, breit = 220 }) {
+  if (!mehrereStandorte(m)) return null;
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      <span style={{ fontSize: 12.5, color: C.dim, whiteSpace: "nowrap" }}>Standort</span>
+      <Sel value={wert} onChange={(e) => setWert(e.target.value)} style={{ minWidth: breit }}>
+        <option value={ALLE_STANDORTE}>Alle Standorte</option>
+        {(m.standorte || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </Sel>
+    </label>);
+}
+
+/**
+ * Die Aufstellung über alle Standorte — Personen und Einheiten je Haus.
+ *
+ * Steht dort, wo „Alle Standorte" gewählt ist: Wer den Überblick behält,
+ * soll auch sehen, woraus er besteht. Ein Klick wechselt in den Standort.
+ */
+function Standortleiste({ m, wert, setWert }) {
+  const d0 = heute();
+  const zeilen = useMemo(() => aufstellungJeStandort(m, d0), [m, d0]);
+  if (!mehrereStandorte(m)) return null;
+  return (
+    <div className="noprint" style={{ display: "grid", gap: 10, marginBottom: 20,
+      gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
+      {zeilen.map((z) => {
+        const hier = wert === z.standort.id;
+        return (
+          <button key={z.standort.id} type="button"
+            onClick={() => setWert(hier ? ALLE_STANDORTE : z.standort.id)}
+            aria-pressed={hier}
+            style={{ textAlign: "left", padding: "13px 15px", borderRadius: 10, cursor: "pointer",
+              fontFamily: "inherit", color: C.text,
+              border: `1px solid ${hier ? C.accent : C.lineSoft}`,
+              background: hier ? C.accentLight : C.flaeche }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap",
+              overflow: "hidden", textOverflow: "ellipsis" }}>{z.standort.name}</div>
+            <div style={{ fontSize: 12, color: C.dim, marginTop: 4, ...NUM }}>
+              {z.personen === 1 ? "1 Person" : `${zahl(z.personen)} Personen`}
+              {" · "}{anzahlWort(z.einheiten, m.einheitLabel)}
+            </div>
+          </button>);
+      })}
+    </div>);
+}
 
 /**
  * Vorher → Nachher, mit dem Unterschied daneben.
@@ -5988,7 +6086,7 @@ const EINFUEHRUNG = {
     { titel: "Betrieb einrichten", ziel: "betrieb",
       text: "Standorte mit eigenem Bundesland, vertragliche Wochenarbeitszeit, Ruhezeit und Höchstzahl der Dienste in Folge. Diese Werte sind die Grundlage jeder Prüfung — Feiertage und Sollstunden richten sich danach." },
     { titel: "Personal anlegen", ziel: "personal",
-      text: "Zwei Wege: eine Liste aus Tabellenkalkulation einlesen oder Personen einzeln anlegen. Danach vergibst du je Person eine Zugangsart. Sie bestimmt Rechte und wirkt unmittelbar auf die monatlichen Kosten — Betriebsrat und Organisationsleitung sind kostenfrei." },
+      text: "Zwei Wege: eine Liste aus Tabellenkalkulation einlesen oder Personen einzeln anlegen. Danach vergibst du je Person eine Zugangsart. Sie bestimmt, was jemand sehen und ändern darf." },
     { titel: "Qualifikationen zuordnen", ziel: "quals",
       text: "Wer darf was. Qualifikationen mit Ablaufdatum brauchen einen Nachweis; läuft er ab, zählt die Qualifikation nicht mehr für die Besetzung. Die Matrix zeigt zudem, wo eine Qualifikation an einer einzigen Person hängt." },
     { titel: "Danach übernimmt die Planung", ziel: null,
@@ -7921,7 +8019,8 @@ function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
     </div>);
 }
 
-function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
+function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
+  standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
   const [suche, setSuche] = useState("");
   const [filterDienst, setFilterDienst] = useState("");
   const [nurKnapp, setNurKnapp] = useState(false);
@@ -7934,14 +8033,21 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
   const bes = useMemo(() => Object.fromEntries(tage.map((d) => [d, besetzung(m, d)])), [m, ym]);
   const shift = (k) => { const d = new Date(y, mo - 1 + k, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); };
   const lage = useMemo(() => monatsLage(m, tage, bes), [m, ym, bes]);
-  const ta = useMemo(() => teamAuslastung(m, ym, tage[0]), [m, ym]);
+  const ta = useMemo(() => teamAuslastung(m, ym, tage[0], standortId), [m, ym, standortId]);
+  /* Nur die Einheiten des gewählten Standorts erscheinen im Raster. Die
+     Besetzungszeilen darunter bleiben, wie sie sind — eine Dienstart ist
+     eine Eigenschaft des Betriebs, nicht eines Hauses. */
+  const einheiten = einheitenAmStandort(m, standortId);
+  const stName = standortId === ALLE_STANDORTE ? null
+    : ((m.standorte || []).find((s) => s.id === standortId) || {}).name;
 
   return (
     <div>
-      <H1 sub={`${m.name} · ${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`}
-        right={<div style={{ display: "flex", gap: 9 }} className="noprint">
+      <H1 sub={`${stName || m.name} · ${anzahlWort(einheiten.length, m.einheitLabel)}`}
+        right={<div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }} className="noprint">
+          <Standortwahl m={m} wert={standortId} setWert={setStandortId} breit={180} />
           {darf(sitz, "plan.view.unit") && <Btn onClick={() => akt.aushangPDF(ym, sitz.person.bereich !== "ALLE"
-            ? sitz.person.bereich : (sitz.mandant.einheiten.find((x) => !x.pool) || {}).id)}>Aushang</Btn>}
+            ? sitz.person.bereich : (einheiten.find((x) => !x.pool) || {}).id)}>Aushang</Btn>}
           {darf(sitz, "plan.edit.unit") && <Btn onClick={akt.oeffneMehrfach}>Mehrfach ändern</Btn>}
           {darf(sitz, "pattern.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
           {darf(sitz, "plan.edit.all") && <Btn kind="primary" onClick={akt.oeffneAssistent}>Planungsassistent</Btn>}
@@ -7949,6 +8055,9 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
           <Btn onClick={() => shift(1)}>›</Btn></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
+
+      {standortId === ALLE_STANDORTE && (
+        <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}
 
       <TeamAuslastungLeiste ta={ta} />
 
@@ -8012,7 +8121,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal }) {
               </th>); })}
           </tr></thead>
           <tbody>
-            {m.einheiten.filter((e) => !suche.trim()
+            {einheiten.filter((e) => !suche.trim()
               || e.name.toLowerCase().includes(suche.trim().toLowerCase())).map((e) => (
               <tr key={e.id} className="row">
                 <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "11px 20px",
@@ -8598,7 +8707,7 @@ function Antraege({ sitz, akt }) {
 }
 
 /* ================================ PERSONAL =============================== */
-function Personal({ sitz, ym, akt, oeffnePerson }) {
+function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, setStandortId = () => {} }) {
   const m = sitz.mandant;
   const [q, setQ] = useState(""), [such, setSuch] = useState(""), [filter, setFilter] = useState("alle"), [neu, setNeu] = useState(false);
   useEffect(() => { const t = setTimeout(() => setSuch(q), 200); return () => clearTimeout(t); }, [q]);
@@ -8607,11 +8716,22 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
   const [f, setF] = useState({ vorname: "", nachname: "", funktion: "Fachkraft", einheitId: m.einheiten[0].id,
     wochenstunden: m.einstellungen.sollWochenstunden, urlaubsanspruch: 30, eintritt: d0, rolle: "mitarbeiter" });
 
+  /* Die Einheiten des gewählten Standorts. Sie tragen zweierlei: die
+     Auswahlknöpfe darunter und die Frage, wer überhaupt in der Liste steht. */
+  const einheiten = einheitenAmStandort(m, standortId);
+  /* Ein Standortwechsel macht eine Einheitenauswahl von vorhin ungültig —
+     sonst zeigte die Liste nichts an, ohne dass ersichtlich wäre, warum. */
+  useEffect(() => {
+    if (filter !== "alle" && filter !== "aus" && !einheiten.some((e) => e.id === filter))
+      setFilter("alle");
+  }, [standortId]);
+
   const zeilen = useMemo(() => m.personen
     .filter((p) => imDienst(p, d0) || p.austritt)
+    .filter((p) => personAmStandort(m, p, standortId, d0))
     .filter((p) => filter === "alle" ? true : filter === "aus" ? !!p.austritt : einheitAm(p, d0) === filter)
     .filter((p) => such ? `${p.vorname} ${p.nachname}`.toLowerCase().includes(such.toLowerCase()) : true)
-    .map((p) => ({ p, url: urlaubskonto(m, p, jahr), kto: stundenkonto(m, p, ym), nacht: nachtJahr(m, p, jahr) })), [m, filter, such, ym]);
+    .map((p) => ({ p, url: urlaubskonto(m, p, jahr), kto: stundenkonto(m, p, ym), nacht: nachtJahr(m, p, jahr) })), [m, filter, such, ym, standortId]);
 
   /* Zugangsarten kosten nichts mehr — gerechnet wird je Standort.
      Das ist für Betriebe der wichtigste Unterschied: Wer jemanden zur
@@ -8620,10 +8740,24 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
 
   return (
     <div>
-      <H1 sub={`${m.personen.filter((p) => imDienst(p, d0)).length} Personen im Bestand. Jede vergebene Zugangsart wirkt unmittelbar auf die monatlichen Kosten des Betriebs.`}
-        right={darf(sitz, "staff.edit") && <div style={{ display: "flex", gap: 10 }}>
-          <Btn onClick={akt.oeffneImport}>Importieren</Btn>
-          <Btn kind="primary" onClick={() => setNeu(true)}>Person hinzufügen</Btn></div>}>Personal</H1>
+      {/* Hier stand „Jede vergebene Zugangsart wirkt unmittelbar auf die
+          monatlichen Kosten des Betriebs." Das stimmte einmal und stimmt
+          seit der Umstellung auf den Standortpreis nicht mehr — zwei
+          Zeilen tiefer steht `preisWirkung = () => 0`. Eine Oberfläche,
+          die Kosten androht, die es nicht gibt, kostet Vertrauen. */}
+      <H1 sub={`${zahl(m.personen.filter((p) => imDienst(p, d0)).length)} Personen im Bestand.`
+        + (mehrereStandorte(m) && standortId !== ALLE_STANDORTE
+          ? ` Angezeigt wird ${((m.standorte || []).find((s) => s.id === standortId) || {}).name}.` : "")}
+        right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <Standortwahl m={m} wert={standortId} setWert={setStandortId} />
+          {darf(sitz, "staff.edit") && <>
+            <Btn onClick={akt.oeffneImport}>Importieren</Btn>
+            <Btn kind="primary" onClick={() => setNeu(true)}>Person hinzufügen</Btn></>}</div>}>Personal</H1>
+
+      {/* Ohne gewählten Standort steht hier, woraus der Betrieb besteht —
+          und ein Klick führt hinein. */}
+      {standortId === ALLE_STANDORTE && (
+        <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}
 
       {darf(sitz, "staff.edit") && m.personen.filter((p) => imDienst(p, d0)).length <= 1 && (
         <Card style={{ padding: 28, marginBottom: 22 }}>
@@ -8656,14 +8790,14 @@ function Personal({ sitz, ym, akt, oeffnePerson }) {
           </div>
           <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 18, lineHeight: 1.5 }}>
             Die Zugangsart wird in der Liste unten je Person vergeben — sie bestimmt, was jemand sehen
-            und ändern darf, und wirkt unmittelbar auf die monatlichen Kosten.
+            und ändern darf.
           </div>
         </Card>)}
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
         <Inp value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name suchen" style={{ width: 210 }} />
         <Seg value={filter} onChange={setFilter} options={[{ id: "alle", label: "Alle" },
-          ...m.einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name })),
+          ...einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name })),
           { id: "aus", label: "Ausgetreten" }]} />
       </div>
 
@@ -18681,6 +18815,10 @@ function AppInnen() {
   const [db, setDb] = useState(null);
   const [view, setView] = useState("start");
   const [ym, setYm] = useState(heute().slice(0, 7));
+  /* Der gewählte Standort gilt über die Ansichten hinweg. Wer in der
+     Personalliste Hannover einstellt und in den Monatsplan wechselt, will
+     dort nicht wieder alle Häuser sehen. */
+  const [standortId, setStandortId] = useState(ALLE_STANDORTE);
   const [tag, setTag] = useState(null);
   const [person, setPerson] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -20742,12 +20880,14 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           ) : (<>
             {aktiveView === "meine" && <MeineSchichten sitz={sitz} akt={akt} ym={ym} />}
             {aktiveView === "lage" && <Lagebild sitz={sitz} oeffneTag={setTag} akt={akt} />}
-            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} schmal={schmal} />}
+            {aktiveView === "plan" && <Monatsplan sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} akt={akt} schmal={schmal}
+              standortId={standortId} setStandortId={setStandortId} />}
             {aktiveView === "einsatz" && <Einsatzplan sitz={sitz} ym={ym} setYm={setYm} akt={akt} oeffnePerson={setPerson} />}
             {aktiveView === "folge" && <Schichtfolge sitz={sitz} akt={akt} />}
             {aktiveView === "dienste" && <Dienstarten sitz={sitz} akt={akt} />}
             {aktiveView === "antraege" && <AntraegeGeteilt sitz={sitz} akt={akt} />}
-            {aktiveView === "personal" && <Personal sitz={sitz} ym={ym} akt={akt} oeffnePerson={setPerson} />}
+            {aktiveView === "personal" && <Personal sitz={sitz} ym={ym} akt={akt} oeffnePerson={setPerson}
+              standortId={standortId} setStandortId={setStandortId} />}
             {aktiveView === "planstand" && <div><H1 rubrik="Planung"
               sub="Jede Änderung nach der Freigabe im Vergleich zum damaligen Stand. Beantwortet die häufigste Frage im Schichtbetrieb.">
               Planstand · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
