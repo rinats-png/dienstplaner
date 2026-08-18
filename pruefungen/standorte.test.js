@@ -1,145 +1,86 @@
 /* ==========================================================================
-   STANDORTE UND IHRE KOSTENFOLGE
+   STANDORTE — Zuordnung und Zuschlag
 
-   Ein Standort mehr ist eine Vertragsänderung. Geprüft wird, dass die
-   Rechnung dazu stimmt — und dass der Hinweis nicht nur „teurer" sagt,
-   sondern die Zahl nennt, die auf der nächsten Rechnung steht.
+   Ein Standort kostet nichts mehr, solange er zum Kontingent seiner Stufe
+   gehört. Geprüft wird, dass der Zuschlag korrekt gestaffelt ist, dass die
+   größten Standorte automatisch die kostenlosen sind, und dass die
+   Zuordnung von Person zu Standort weiterhin stimmt.
    ========================================================================== */
 
 import { describe, it, expect } from "vitest";
-import { staffel, stufe, folgen, zustimmung, hinweistext, jeStandort, standortAm }
+import { STANDORT_BAENDER, standortZuschlag, standortzuschlaege, jeStandort, standortAm }
   from "../src/standorte.js";
 
-describe("Mengenstaffel", () => {
-  it("greift ab dem zweiten Standort", () => {
-    expect(staffel(1).rabatt).toBe(0);
-    expect(staffel(2).rabatt).toBeCloseTo(0.07);
-    expect(staffel(4).rabatt).toBeCloseTo(0.12);
-    expect(staffel(30).rabatt).toBeCloseTo(0.34);
+describe("Der Zuschlag für einen einzelnen Standort", () => {
+  it("bleibt unter der Schwelle kostenlos", () => {
+    expect(standortZuschlag(0)).toBe(0);
+    expect(standortZuschlag(14)).toBe(0);
   });
 
-  it("null oder unsinnige Zahlen gelten als ein Standort", () => {
-    expect(stufe(0, 89).anzahl).toBe(1);
-    expect(stufe(-3, 89).anzahl).toBe(1);
-    expect(stufe(NaN, 89).anzahl).toBe(1);
+  it("greift ab fünfzehn Personen", () => {
+    expect(standortZuschlag(15)).toBeGreaterThan(0);
+    expect(standortZuschlag(40)).toBe(standortZuschlag(15));
+  });
+
+  it("steigt mit der Größe, in Stufen", () => {
+    expect(standortZuschlag(80)).toBeGreaterThan(standortZuschlag(40));
+    expect(standortZuschlag(150)).toBeGreaterThan(standortZuschlag(80));
+    expect(standortZuschlag(500)).toBeGreaterThan(standortZuschlag(150));
+  });
+
+  it("negative oder unsinnige Werte gelten als null Personen", () => {
+    expect(standortZuschlag(-5)).toBe(0);
+    expect(standortZuschlag(NaN)).toBe(0);
+  });
+
+  it("die Bänder sind lückenlos und aufsteigend sortiert", () => {
+    for (let i = 1; i < STANDORT_BAENDER.length; i++)
+      expect(STANDORT_BAENDER[i].bis).toBeGreaterThan(STANDORT_BAENDER[i - 1].bis);
   });
 });
 
-describe("Was ein Standort mehr kostet", () => {
-  it("ein Standort, voller Preis", () => {
-    expect(stufe(1, 89).netto).toBe(89);
+describe("Zuschläge über mehrere Standorte", () => {
+  it("ohne Standorte gibt es nichts zu zahlen", () => {
+    const z = standortzuschlaege([], 1);
+    expect(z.posten).toEqual([]);
+    expect(z.summe).toBe(0);
   });
 
-  it("zwei Standorte, sieben Prozent auf jeden", () => {
-    const s = stufe(2, 89);
-    expect(s.einzel).toBe(82.77);
-    expect(s.netto).toBe(165.54);
+  it("innerhalb des Kontingents ist jeder Standort kostenlos, egal wie groß", () => {
+    const z = standortzuschlaege([400], 1);
+    expect(z.posten).toEqual([]);
+    expect(z.summe).toBe(0);
   });
 
-  it("der Sprung von eins auf zwei", () => {
-    const f = folgen(1, 2, 89);
-    expect(f.neueStaffel).toBe(true);
-    expect(f.mehr).toBe(76.54);
-    /* Weniger als der volle zweite Standort — genau das soll der Hinweis
-       sagen, sonst wirkt die Zahl falsch. */
-    expect(f.mehr).toBeLessThan(89);
+  it("die größten Standorte zählen automatisch zum Kontingent", () => {
+    /* Drei Standorte, ein Platz im Kontingent: Der größte (70) bleibt
+       kostenlos, die beiden kleineren lösen einen Zuschlag aus. */
+    const z = standortzuschlaege([25, 70, 10], 1);
+    expect(z.posten.map((p) => p.personen).sort((a, b) => a - b)).toEqual([10, 25]);
+    expect(z.summe).toBe(standortZuschlag(25) + standortZuschlag(10));
   });
 
-  it("der Sprung innerhalb einer Stufe", () => {
-    const f = folgen(3, 4, 89);
-    expect(f.neueStaffel).toBe(false);
-    expect(f.mehr).toBe(78.32);
+  it("ein Betrieb, der an einem Ort wächst, zahlt dafür nie mehr", () => {
+    /* Der Kern der Preisumstellung: Personenzahl am einzigen Standort
+       bewegt den Preis nicht, solange er im Kontingent bleibt. */
+    for (const n of [10, 25, 45, 90, 200, 400])
+      expect(standortzuschlaege([n], 1).summe).toBe(0);
   });
 
-  it("beim Sprung in die nächste Stufe sinkt der Einzelpreis", () => {
-    const f = folgen(5, 6, 89);
-    expect(f.neueStaffel).toBe(true);
-    expect(f.nachher.einzel).toBeLessThan(f.vorher.einzel);
-    expect(f.mehr).toBeGreaterThan(0);   // die Summe steigt trotzdem
+  it("ein zweiter, großer Standort löst einen Zuschlag aus", () => {
+    const einer = standortzuschlaege([60], 1).summe;
+    const zwei = standortzuschlaege([60, 45], 1).summe;
+    expect(einer).toBe(0);
+    expect(zwei).toBeGreaterThan(0);
+    expect(zwei).toBe(standortZuschlag(45));
+  });
+
+  it("ein zweiter, kleiner Standort bleibt trotzdem kostenlos", () => {
+    expect(standortzuschlaege([60, 8], 1).summe).toBe(0);
   });
 });
 
-describe("Wer zustimmen muss", () => {
-  it("der Betreiber niemandem", () => {
-    expect(zustimmung("betreiber")).toBe("frei");
-  });
-  it("die Leitung sich selbst", () => {
-    expect(zustimmung("leitung")).toBe("bestaetigen");
-  });
-  it("die Planung der Leitung", () => {
-    expect(zustimmung("planer")).toBe("anfragen");
-  });
-  it("alle übrigen dürfen nicht", () => {
-    expect(zustimmung("subplaner")).toBe("nein");
-    expect(zustimmung("mitarbeiter")).toBe("nein");
-  });
-});
-
-describe("Der Hinweistext", () => {
-  it("nennt Änderung und Endbetrag", () => {
-    const t = hinweistext(folgen(1, 2, 89));
-    expect(t).toMatch(/zweiten Standort/);
-    expect(t).toMatch(/\+76,54 €/);
-    expect(t).toMatch(/165,54 €/);
-  });
-
-  it("schreibt Beträge deutsch, mit Komma", () => {
-    /* Im Fenster stand daneben „89,00 €" aus der Oberfläche und hier
-       „89.00 €" aus dem Kern. Zwei Schreibweisen in einem Satz sehen aus
-       wie ein Fehler, weil sie einer sind. */
-    expect(hinweistext(folgen(3, 4, 89))).toMatch(/78,32 €/);
-    expect(hinweistext(folgen(3, 4, 89))).not.toMatch(/\d\.\d\d €/);
-  });
-
-  it("überlässt die Staffel dem Kasten daneben", () => {
-    /* Sie stand zweimal untereinander im selben Fenster. */
-    expect(hinweistext(folgen(1, 2, 89))).not.toMatch(/Mengenstaffel/);
-  });
-
-  it("ab drei Standorten zählt er sie", () => {
-    expect(hinweistext(folgen(2, 3, 89))).toMatch(/von 2 auf 3 Standorte/);
-  });
-});
-
-describe("Der Weg vom Antrag zur Entscheidung", () => {
-  /* Der Antrag trägt die Zahlen von damals mit sich. Sie später neu zu
-     rechnen wäre falsch: Zwischen Antrag und Entscheidung kann ein
-     weiterer Standort dazugekommen sein, und dann bestätigte die Leitung
-     eine Zahl, die dem Antragsteller nie gezeigt wurde. */
-  it("die Zahlen im Antrag bleiben die des Antragstellers", () => {
-    const beimStellen = folgen(1, 2, 89);
-    const eingefroren = {
-      vorher: beimStellen.vorher.netto, nachher: beimStellen.nachher.netto,
-      mehr: beimStellen.mehr, neueStaffel: beimStellen.neueStaffel,
-    };
-
-    /* Inzwischen legt jemand anders einen dritten an. */
-    const spaeter = folgen(2, 3, 89);
-    expect(spaeter.nachher.netto).not.toBe(eingefroren.nachher);
-
-    /* Der Antrag zeigt weiterhin, was beim Stellen galt. */
-    expect(eingefroren.vorher).toBe(89);
-    expect(eingefroren.nachher).toBe(165.54);
-    expect(eingefroren.mehr).toBe(76.54);
-  });
-
-  it("wer beantragen darf, darf nicht selbst entscheiden", () => {
-    /* Sonst wäre der Antrag eine Formalie: stellen, bestätigen, fertig. */
-    expect(zustimmung("planer")).toBe("anfragen");
-    expect(zustimmung("leitung")).toBe("bestaetigen");
-    expect(zustimmung("planer")).not.toBe(zustimmung("leitung"));
-  });
-
-  it("ohne Kostenfolge braucht es keine Rückfrage", () => {
-    /* Ein Fenster, das nur „ja" kennt, erzieht dazu, es ungelesen
-       wegzuklicken — und dann wird auch das gelesen, das es verdient. */
-    const ohne = folgen(2, 2, 89);
-    expect(ohne.mehr).toBe(0);
-    expect(ohne.neueStaffel).toBe(false);
-  });
-});
-
-describe("Aufstellung je Standort", () => {
+describe("Zuordnung", () => {
   const m = {
     name: "Nordwacht",
     standorte: [{ id: "s1", name: "Frankfurt" }, { id: "s2", name: "Hannover" }],

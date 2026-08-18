@@ -73,47 +73,71 @@ function Marke({ size = 38 }) {
    Der Rechner steht vor der Tabelle. Eine Zahl ohne den eigenen Fall
    dahinter sagt niemandem etwas.
    ========================================================================== */
+/**
+ * Preisrechner für die öffentliche Seite.
+ *
+ * Bewusst dieselben drei Größen wie im Betreiber-Rechenkern
+ * (`STUFEN`, `ZUSATZ_PLANER`, `STANDORT_BAENDER` in App.jsx bzw.
+ * src/standorte.js) — eine zweite, abweichende Rechnung an dieser Stelle
+ * wäre ein Preisversprechen, das die Anwendung selbst nicht einhält.
+ *
+ * Die vorige Fassung ließ „Beschäftigte" und „Standorte" eingeben und
+ * multiplizierte daraus einen Preis je Standort mit Mengenstaffel. Das
+ * bestrafte genau das, wofür CENTRIC gedacht ist: mehr Personal, mehr
+ * Einsatzorte. Hier zählt nur, was ein Betrieb selbst entscheidet — wie
+ * viele Personen zentral mitplanen, wie viele eigenständige, große
+ * Standorte er führt.
+ */
 function Preise({ onZurueck, onStarten, F }) {
-  const [personen, setPersonen] = useState(60);
-  const [standorte, setStandorte] = useState(2);
-  const [paket, setPaket] = useState(true);
+  const [planer, setPlaner] = useState(1);
+  const [standorte, setStandorte] = useState([25]);
 
-  const TARIFE = [
-    { id: "basis", name: "Basis", preis: 89, bis: 30,
+  const STUFEN = [
+    { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
       was: ["Dienstplanung mit Rotationsmodellen", "Anträge und Tauschbörse",
         "Kalender-Feed und Weckzeiten", "Mobile Ansicht", "Datenmitnahme jederzeit"] },
-    { id: "pro", name: "Professional", preis: 159, bis: 150, pakete: 1,
-      was: ["Alles aus Basis", "Ein Branchenpaket enthalten", "Qualifikationen mit Ablauf",
-        "Arbeitszeitprüfung und Belastungsanalyse", "Selbstplanung durch die Belegschaft",
-        "Lohnausgabe für die Lohnbuchhaltung"] },
-    { id: "ent", name: "Enterprise", preis: 239, bis: null, pakete: 2,
-      was: ["Alles aus Professional", "Zwei Branchenpakete enthalten",
-        "Beliebig viele Personen je Standort", "Leistungsnachweis für Auftraggeber",
-        "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"] },
+    { id: "pro", name: "Business", grund: 159, planerInklusive: 3, standorteInklusive: 2,
+      was: ["Alles aus Basis", "Qualifikationen mit Ablauf", "Arbeitszeitprüfung",
+        "Belastbarkeitsanalyse", "Lohnausgabe für die Lohnbuchhaltung"] },
+    { id: "ent", name: "Enterprise", grund: 279, planerInklusive: 8, standorteInklusive: 4,
+      was: ["Alles aus Business", "Zwei Branchenpakete enthalten",
+        "Leistungsnachweis für Auftraggeber", "Auftragsverarbeitung nach Artikel 28",
+        "Bevorzugter Rückruf"] },
   ];
-  const STAFFEL = [[1, 0, "ein Standort"], [2, .07, "2 Standorte"], [5, .12, "3 – 5"],
-    [10, .20, "6 – 10"], [25, .27, "11 – 25"], [1e6, .34, "ab 26"]];
-  const PAUSCHALE = 49;
+  const STANDORT_BAENDER = [
+    { bis: 14, zuschlag: 0, label: "bis 14 Personen" },
+    { bis: 40, zuschlag: 29, label: "15 – 40 Personen" },
+    { bis: 80, zuschlag: 49, label: "41 – 80 Personen" },
+    { bis: 150, zuschlag: 79, label: "81 – 150 Personen" },
+    { bis: Infinity, zuschlag: 119, label: "über 150 Personen" },
+  ];
+  const ZUSATZ_PLANER = 25;
+  const KONTAKT_AB_PLANER = 16;
+  const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
 
-  const jeStandort = Math.ceil(personen / Math.max(1, standorte));
-  const tarif = TARIFE.find((t) => t.bis === null || jeStandort <= t.bis);
-  const st = STAFFEL.find(([bis]) => standorte <= bis);
-  const netto = Math.round(tarif.preis * (1 - st[1]) * 100) / 100;
-  const standortSumme = Math.round(netto * standorte * 100) / 100;
-  const paketAufpreis = paket && !tarif.pakete ? 89 : 0;
-  const gesamt = Math.round((standortSumme + PAUSCHALE + paketAufpreis) * 100) / 100;
-  const jePerson = personen ? (gesamt / personen) : 0;
+  const standortZuschlag = (n) =>
+    (STANDORT_BAENDER.find((b) => n <= b.bis) || STANDORT_BAENDER[STANDORT_BAENDER.length - 1]).zuschlag;
 
-  /* Vergleich: was eine Kopfpauschale kosten würde. Bewusst am unteren
-     Rand des Marktes gerechnet, damit der Vergleich nicht schmeichelt.
+  const rechne = (stufe) => {
+    const zusatzPlaner = Math.max(0, planer - stufe.planerInklusive);
+    const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
+    const sortiert = [...standorte].sort((a, b) => b - a);
+    const zuschlagspflichtig = sortiert.slice(stufe.standorteInklusive);
+    const posten = zuschlagspflichtig.map((n) => ({ personen: n, zuschlag: standortZuschlag(n) }));
+    const summeStandorte = posten.reduce((a, p) => a + p.zuschlag, 0);
+    const gesamt = stufe.grund + summePlaner + summeStandorte;
+    const kontaktEmpfohlen = planer > KONTAKT_AB_PLANER || posten.length > KONTAKT_AB_ZUSCHLAGSSTANDORTE;
+    return { stufe, zusatzPlaner, summePlaner, posten, summeStandorte, gesamt, kontaktEmpfohlen };
+  };
 
-     Vergleichende Werbung ist zulässig, wenn sie nachprüfbar ist. Die
-     Annahme steht deshalb jetzt auch auf dem Bildschirm, nicht nur hier
-     im Quelltext — siehe Fußnote unter dem Rechner. */
-  const VERGLEICH = { grund: 169, jePerson: 0.9, stand: "August 2026" };
-  const kopfpauschale = Math.max(VERGLEICH.grund,
-    standorte * VERGLEICH.grund + personen * VERGLEICH.jePerson);
-  const ersparnis = Math.max(0, Math.round((kopfpauschale - gesamt) * 12));
+  const alle = STUFEN.map(rechne);
+  /* Die kleinste Stufe, die das gewählte Planer-Kontingent ohne Aufpreis
+     trägt — vorausgewählt, weil sie die ehrlichste Antwort auf „was
+     brauche ich" ist. Wer weniger zahlen will, wählt bewusst darunter. */
+  const passend = alle.find((a) => planer <= a.stufe.planerInklusive) || alle[alle.length - 1];
+
+  const aendereStandort = (i, wert) =>
+    setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
 
   const Zahl = ({ wert, einheit, gross }) => (
     <span style={{ fontVariantNumeric: "tabular-nums" }}>
@@ -129,8 +153,9 @@ function Preise({ onZurueck, onStarten, F }) {
         Was CENTRIC kostet</h1>
       <p style={{ fontSize: 15.5, color: F.dim, lineHeight: 1.6, margin: "0 0 8px",
         maxWidth: 560 }}>
-        Gerechnet wird je Standort, nicht je Kopf. <b style={{ color: F.text }}>Wer einstellt,
-        zahlt nicht mehr</b> — solange der Standort in seiner Größenklasse bleibt.
+        Bezahlt wird, wer plant. <b style={{ color: F.text }}>Wer geplant wird, kostet
+        nichts</b> — Beschäftigte, Sub-Planer, Betriebsrat und Standorte innerhalb des
+        Kontingents sind unbegrenzt und kostenfrei.
       </p>
       <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 32px",
         maxWidth: 560 }}>
@@ -149,107 +174,102 @@ function Preise({ onZurueck, onStarten, F }) {
           <div>
             <label style={{ display: "flex", justifyContent: "space-between",
               fontSize: 14, marginBottom: 10 }}>
-              <span>Beschäftigte insgesamt</span>
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>{personen}</b></label>
-            <input type="range" min={5} max={500} step={5} value={personen}
-              onChange={(e) => setPersonen(Number(e.target.value))}
+              <span>Planer-Zugänge</span>
+              <b style={{ fontVariantNumeric: "tabular-nums" }}>{planer}</b></label>
+            <input type="range" min={1} max={20} step={1} value={planer}
+              onChange={(e) => setPlaner(Number(e.target.value))}
               style={{ width: "100%", accentColor: F.accent, height: 28 }} />
+            <div style={{ fontSize: 12.5, color: F.dim, marginTop: 8, lineHeight: 1.5 }}>
+              Wer zentral mitplant — nicht wer geplant wird. Die meisten kleinen und
+              mittleren Betriebe kommen mit einem aus.
+            </div>
           </div>
           <div>
             <label style={{ display: "flex", justifyContent: "space-between",
               fontSize: 14, marginBottom: 10 }}>
-              <span>Standorte</span>
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>{standorte}</b></label>
-            <input type="range" min={1} max={30} step={1} value={standorte}
-              onChange={(e) => setStandorte(Number(e.target.value))}
-              style={{ width: "100%", accentColor: F.accent, height: 28 }} />
+              <span>Standorte</span></label>
+            <div style={{ display: "grid", gap: 8 }}>
+              {standorte.map((n, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input type="number" min={0} value={n}
+                    onChange={(e) => aendereStandort(i, Number(e.target.value))}
+                    style={{ width: 76, padding: "8px 10px", borderRadius: 8,
+                      border: `1px solid ${F.line}`, fontFamily: "inherit", fontSize: 14 }} />
+                  <span style={{ fontSize: 13, color: F.dim }}>Personen</span>
+                  <span style={{ flex: 1 }} />
+                  {standorte.length > 1 && (
+                    <button onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}
+                      style={{ border: "none", background: "transparent", color: F.dim,
+                        fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>Entfernen</button>)}
+                </div>))}
+              <button onClick={() => setStandorte((s) => [...s, 15])}
+                style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8,
+                  border: `1px solid ${F.line}`, background: "transparent", color: F.text,
+                  fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
+                Standort hinzufügen</button>
+            </div>
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer",
-            fontSize: 14 }}>
-            <input type="checkbox" checked={paket} onChange={(e) => setPaket(e.target.checked)}
-              style={{ width: 18, height: 18, accentColor: F.accent }} />
-            Branchenpaket (Pflege, Sicherheit, Klinik oder Produktion)
-          </label>
         </div>
 
         <div style={{ borderTop: `1px solid ${F.line}`, paddingTop: 20 }}>
           <div style={{ display: "grid", gap: 9, fontSize: 14, marginBottom: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: F.dim }}>
-                {standorte} × {tarif.name} ({jeStandort} Personen je Standort)
-                {st[1] > 0 ? ` · −${Math.round(st[1] * 100)} %` : ""}</span>
+              <span style={{ color: F.dim }}>Grundgebühr {passend.stufe.name}</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {standortSumme.toFixed(2)} €</span>
+                {passend.stufe.grund.toFixed(2)} €</span>
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: F.dim }}>Betriebspauschale</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {PAUSCHALE.toFixed(2)} €</span>
-            </div>
-            {paketAufpreis > 0 && (
+            {passend.zusatzPlaner > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>Branchenpaket</span>
+                <span style={{ color: F.dim }}>
+                  {passend.zusatzPlaner} zusätzliche{passend.zusatzPlaner === 1 ? "r" : ""} Planer</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                  {paketAufpreis.toFixed(2)} €</span>
+                  {passend.summePlaner.toFixed(2)} €</span>
               </div>)}
-            {paket && tarif.pakete > 0 && (
+            {passend.posten.length > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>Branchenpaket</span>
-                <span style={{ color: F.ok, fontWeight: 600 }}>im Tarif enthalten</span>
+                <span style={{ color: F.dim }}>
+                  {passend.posten.length} Standort{passend.posten.length === 1 ? "" : "e"} über dem Kontingent</span>
+                <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {passend.summeStandorte.toFixed(2)} €</span>
               </div>)}
           </div>
 
-          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between",
-            flexWrap: "wrap", gap: 14 }}>
-            <Zahl wert={gesamt.toFixed(2).replace(".", ",") + " €"} einheit="im Monat" gross />
-            <span style={{ fontSize: 14, color: F.dim }}>
-              das sind <b style={{ color: F.text, fontVariantNumeric: "tabular-nums" }}>
-              {jePerson.toFixed(2).replace(".", ",")} €</b> je Person
-            </span>
-          </div>
-
-          {ersparnis > 0 && (
-            <div style={{ marginTop: 18, padding: "14px 16px", borderRadius: 11,
-              background: "#F0FDF4", border: "1px solid #BBF7D0", fontSize: 13.5,
-              lineHeight: 1.55 }}>
-              Bei einem Anbieter mit Kopfpauschale läge das etwa bei{" "}
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>
-                {Math.round(kopfpauschale)} €</b> im Monat.
-              Der Unterschied macht rund{" "}
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>
-                {ersparnis.toLocaleString("de-DE")} €</b> im Jahr aus.
-              {/* Vergleichende Werbung ist zulässig, wenn sie nachprüfbar
-                  ist. Die Annahme gehört deshalb auf den Bildschirm, nicht
-                  nur in den Quelltext. */}
-              <div style={{ fontSize: 12, color: F.dim, marginTop: 10, lineHeight: 1.5 }}>
-                Verglichen mit einer Kopfpauschale von {VERGLEICH.grund} € je Standort
-                zuzüglich {VERGLEICH.jePerson.toLocaleString("de-DE",
-                  { minimumFractionDigits: 2 })} € je Person und Monat — eine Annahme am
-                unteren Rand des Marktes, Stand {VERGLEICH.stand}. Was du tatsächlich
-                zahlst, hängt vom Angebot deines Anbieters ab.
-              </div>
+          {passend.kontaktEmpfohlen ? (
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Sprich uns an</div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between",
+              flexWrap: "wrap", gap: 14 }}>
+              <Zahl wert={passend.gesamt.toFixed(2).replace(".", ",") + " €"} einheit="im Monat" gross />
             </div>)}
+
+          <div style={{ marginTop: 14, fontSize: 13, color: F.dim, lineHeight: 1.5 }}>
+            {passend.stufe.name} enthält {passend.stufe.planerInklusive} Planer-Zugang
+            {passend.stufe.planerInklusive === 1 ? "" : "e"} und {passend.stufe.standorteInklusive} Standort
+            {passend.stufe.standorteInklusive === 1 ? "" : "e"} beliebiger Größe. Beschäftigte, Sub-Planer und
+            Betriebsrat sind unbegrenzt und immer kostenfrei — ihre Zahl ändert diesen Preis nicht.
+          </div>
         </div>
       </div>
 
-      {/* ------------------------- Die Tarife -------------------------- */}
+      {/* ------------------------- Die Stufen -------------------------- */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))",
         gap: 16, marginBottom: 36 }}>
-        {TARIFE.map((t) => {
-          const an = t.id === tarif.id;
+        {alle.map((a) => {
+          const an = a.stufe.id === passend.stufe.id;
           return (
-            <div key={t.id} style={{ padding: 24, borderRadius: 16,
+            <div key={a.stufe.id} style={{ padding: 24, borderRadius: 16,
               border: `1px solid ${an ? F.accent : F.line}`,
               background: an ? F.accentHell : F.karte }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
                 textTransform: "uppercase", color: an ? F.accent : F.dim,
-                marginBottom: 12 }}>{t.name}</div>
-              <Zahl wert={t.preis + " €"} einheit="je Standort" />
+                marginBottom: 12 }}>{a.stufe.name}</div>
+              <Zahl wert={a.stufe.grund + " €"} einheit="/ Monat" />
               <div style={{ fontSize: 13, color: F.dim, marginTop: 8, marginBottom: 18 }}>
-                {t.bis ? `bis ${t.bis} Personen je Standort` : "beliebig viele Personen"}
+                {a.stufe.planerInklusive} Planer-Zugang{a.stufe.planerInklusive === 1 ? "" : "e"},
+                {" "}{a.stufe.standorteInklusive} Standort{a.stufe.standorteInklusive === 1 ? "" : "e"} inklusive
               </div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 9 }}>
-                {t.was.map((w, i) => (
+                {a.stufe.was.map((w, i) => (
                   <li key={i} style={{ display: "flex", gap: 9, fontSize: 13.5,
                     lineHeight: 1.5 }}>
                     <span style={{ color: F.accent, flexShrink: 0 }}>✓</span>
@@ -260,23 +280,24 @@ function Preise({ onZurueck, onStarten, F }) {
         })}
       </div>
 
-      {/* ------------------------- Die Staffel ------------------------- */}
+      {/* ------------------------- Der Zuschlag -------------------------- */}
       <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
         padding: 24, marginBottom: 36 }}>
-        <div style={{ fontSize: 16, fontWeight: 640, marginBottom: 8 }}>Mengenstaffel</div>
+        <div style={{ fontSize: 16, fontWeight: 640, marginBottom: 8 }}>Standortzuschlag</div>
         <div style={{ fontSize: 13.5, color: F.dim, lineHeight: 1.6, marginBottom: 18 }}>
-          Der Nachlass gilt auf jeden Standort, nicht nur auf einen. Wer viele
-          Standorte führt, hat den höheren Verwaltungsaufwand ohnehin.
+          Gilt nur für Standorte über dem Kontingent der Stufe — die größten zählen
+          automatisch dazu, unabhängig von ihrer Größe. Ein Betrieb, der an einem Ort
+          wächst, zahlt dafür nie mehr; erst ein weiterer, eigenständiger Standort ab
+          fünfzehn Personen macht einen Unterschied.
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          {STAFFEL.map(([bis, rab, label], i) => (
-            <div key={i} style={{ flex: "1 1 110px", padding: "13px 15px", borderRadius: 11,
-              border: `1px solid ${st === STAFFEL[i] ? F.accent : F.line}`,
-              background: st === STAFFEL[i] ? F.accentHell : "transparent" }}>
-              <div style={{ fontSize: 12.5, color: F.dim }}>{label}</div>
+          {STANDORT_BAENDER.map((b, i) => (
+            <div key={i} style={{ flex: "1 1 130px", padding: "13px 15px", borderRadius: 11,
+              border: `1px solid ${F.line}` }}>
+              <div style={{ fontSize: 12.5, color: F.dim }}>{b.label}</div>
               <div style={{ fontSize: 19, fontWeight: 600, marginTop: 4,
                 fontVariantNumeric: "tabular-nums",
-                color: rab ? F.accent : F.dim }}>{rab ? `−${Math.round(rab * 100)} %` : "—"}</div>
+                color: b.zuschlag ? F.accent : F.dim }}>{b.zuschlag ? `+${b.zuschlag} €` : "kostenlos"}</div>
             </div>))}
         </div>
       </div>
@@ -285,8 +306,8 @@ function Preise({ onZurueck, onStarten, F }) {
       <div style={{ display: "grid", gap: 16, marginBottom: 36 }}>
         {[["Der Betriebsrat zahlt nichts",
           "Ein lesender Zugang für die Mitbestimmung ist kostenfrei. Mitbestimmung darf nicht am Preis scheitern."],
-          ["Zugänge kosten nichts extra",
-            "Ob fünf oder fünfhundert Menschen die App nutzen, ändert am Preis nichts. Gerechnet wird je Standort."],
+          ["Wer geplant wird, kostet nichts",
+            "Beschäftigte und Sub-Planer sind unbegrenzt und kostenfrei — ob fünf oder fünfhundert, das ändert am Preis nichts."],
           ["Datenmitnahme jederzeit",
             "Sieben Tabellen als CSV, ohne Gebühr, ohne Kündigungsfrist. Eine Dienstplanung ist betriebskritisch — die Frage, wie man wieder herauskommt, gehört an den Anfang."],
           ["30 Tage testen",

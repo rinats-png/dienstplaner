@@ -171,8 +171,7 @@ import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
   from "./preisgestaltung.js";
-import { folgen as standortfolgen, zustimmung as standortzustimmung,
-  hinweistext as standorthinweis, jeStandort as aufstellungJeStandort }
+import { jeStandort as aufstellungJeStandort, standortzuschlaege, standortZuschlag, STANDORT_BAENDER }
   from "./standorte.js";
 import {
   vorlagenFuer as tarifVorlagen, tarifwerk, anwenden as tarifAnwenden,
@@ -752,57 +751,61 @@ const STATUS = [
 const stat = (id) => STATUS.find((s) => s.id === id) || STATUS[0];
 
 /* --------------------------------------------------------------------------
-   PREISMODELL — je Standort, nicht je Kopf
-   Wer einstellt, zahlt nicht mehr. Das ist für Betriebe planbar und für uns
-   der Punkt, an dem wir gegen Anbieter mit Kopfpauschale gewinnen: ein
-   Pflegedienst mit fünf Touren oder ein Wachdienst mit acht Objekten zahlt
-   dort das Drei- bis Vierfache.
+   PREISMODELL — bezahlt wird, wer plant
 
-   Gestaffelt wird nach der Größe des einzelnen Standorts, nicht des Betriebs —
-   sonst zahlt eine kleine Außenstelle so viel wie die Zentrale.
+   Wer geplant wird, kostet nichts: Mitarbeiter, Sub-Planer, Betriebsrat,
+   Standorte und Einheiten sind in jeder Stufe unbegrenzt enthalten. Das
+   war nicht immer so — zwei frühere Fassungen rechneten einen Kopfpreis
+   und einen Preis je Standort, und beide bestraften genau das, wofür
+   CENTRIC gedacht ist: mehr Personal, mehr Einsatzorte, mehr Betrieb.
+
+   In die Rechnung geht nur, was ein Betrieb selbst entscheidet:
+
+   Wie viele Personen planen zentral mit? — ein Planer-Zugang ist je
+   Stufe enthalten, jeder weitere kostet eine Pauschale. Das ist eine
+   Organisationsentscheidung, kein Nebeneffekt des Geschäfts — niemand
+   stellt einen Planer ein, weil ein Patient dazukommt.
+
+   Wie viele eigenständige, große Standorte betreibt er? — die größten
+   Standorte bis zum Kontingent der Stufe sind kostenlos, unabhängig von
+   ihrer Größe. Ein Betrieb, der an einem Ort wächst, zahlt dafür nie
+   mehr. Erst ein WEITERER Standort ab vierzehn Personen — siehe
+   `standorte.js` — macht einen Unterschied, und der ist gestaffelt nach
+   dessen eigener Größe.
+
+   Welche Funktionstiefe braucht er? — das unterscheidet die Stufen
+   zusätzlich, wie schon in der vorigen Fassung.
    -------------------------------------------------------------------------- */
-/* Die Betriebspauschale deckt, was unabhängig von der Größe anfällt:
-   Einrichtung, Betreuung, Sicherungen, Bereitschaft. Ein Betrieb mit
-   achtzehn Personen kostet dieselbe Aufmerksamkeit wie einer mit
-   dreihundert — ohne Pauschale zahlen die Großen die Kleinen mit. */
-const BETRIEBSPAUSCHALE = 49;
-
-const TARIFE_STD = [
-  { id: "basis", name: "Basis", jeStandort: 89, bisPersonen: 30,
-    grenzen: { einheiten: 3, personen: 60 },
+const STUFEN = [
+  { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
     paketeFrei: 0,
     leistungen: ["Dienstplanung mit Rotationsmodellen", "Anträge und Tauschbörse",
       "Kalender-Feed und Weckzeiten", "Mobile Ansicht", "Datenmitnahme jederzeit"] },
-  { id: "pro", name: "Professional", jeStandort: 159, bisPersonen: 150,
-    grenzen: { einheiten: 15, personen: 400 },
+  { id: "pro", name: "Business", grund: 159, planerInklusive: 3, standorteInklusive: 2,
+    paketeFrei: 0,
     leistungen: ["Alles aus Basis", "Qualifikationen mit Ablauf", "Arbeitszeitprüfung",
       "Belastbarkeitsanalyse", "Lohnausgabe — ein Klick zur Lohnbuchhaltung"] },
-  { id: "enterprise", name: "Enterprise", jeStandort: 239, bisPersonen: null,
-    grenzen: { einheiten: 200, personen: 100000 },
+  { id: "enterprise", name: "Enterprise", grund: 279, planerInklusive: 8, standorteInklusive: 4,
     paketeFrei: 2,
-    leistungen: ["Alles aus Professional", "Zwei Branchenpakete enthalten",
-      "Beliebig viele Personen je Standort", "Leistungsnachweis für Auftraggeber",
-      "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"] },
+    leistungen: ["Alles aus Business", "Zwei Branchenpakete enthalten",
+      "Leistungsnachweis für Auftraggeber", "Auftragsverarbeitung nach Artikel 28",
+      "Bevorzugter Rückruf"] },
 ];
+const stufeVon = (id) => STUFEN.find((s) => s.id === id) || STUFEN[0];
 
-/* Mengenstaffel über die Zahl der Standorte. Wer viele Standorte führt, hat
-   den höheren Verwaltungsaufwand ohnehin — und ist bei uns am besten aufgehoben. */
-const STAFFEL = [
-  { von: 1, bis: 1, rabatt: 0, label: "ein Standort" },
-  /* Ab dem zweiten Standort greift die Staffel — das ist die Größe, in der
-     gegen Einzelplatzlösungen verglichen wird. */
-  { von: 2, bis: 2, rabatt: .07, label: "2 Standorte" },
-  { von: 3, bis: 5, rabatt: .12, label: "3 – 5 Standorte" },
-  { von: 6, bis: 10, rabatt: .20, label: "6 – 10 Standorte" },
-  { von: 11, bis: 25, rabatt: .27, label: "11 – 25 Standorte" },
-  { von: 26, bis: 1e6, rabatt: .34, label: "ab 26 Standorten" },
-];
-const staffel = (n) => STAFFEL.find((s) => n >= s.von && n <= s.bis) || STAFFEL[0];
+/* Ein Zugang über die eigene Planung hinaus ist eine bewusste Entscheidung
+   — anders als Einstellen oder ein neuer Einsatzort trifft ein Betrieb sie
+   absichtlich, und sie darf im Rang nur die Leitung treffen (RANG.leitung
+   > RANG.planer in rollenvergabe.mjs). Deshalb braucht es dafür keine
+   eigene Bestätigung mehr, wie es sie für Standorte einmal gab — die
+   Rollenvergabe sperrt das bereits an der Quelle. */
+const ZUSATZ_PLANER = 25;
 
-/** Welcher Tarif trägt einen Standort dieser Größe? */
-const tarifFuer = (personenJeStandort) =>
-  TARIFE_STD.find((t) => t.bisPersonen === null || personenJeStandort <= t.bisPersonen)
-  || TARIFE_STD[TARIFE_STD.length - 1];
+/* Jenseits der Enterprise-Kapazität rechnet die Formel zwar weiter, aber
+   ein Betrieb dieser Größe soll nicht allein vor einem Formular stehen.
+   Ab hier zeigt die Oberfläche „Sprich uns an" statt einer Zahl. */
+const KONTAKT_AB_PLANER = 16;
+const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
 
 const BRANCHEN = [
   ["sicherheit", "Sicherheitsdienst", "Schichtgruppe"], ["pflege", "Pflege", "Wohnbereich"],
@@ -1101,7 +1104,7 @@ function startbestand() {
       mindest: { F: { mo_do: 5, fr: 5, sa: 4, so: 3 }, S: { mo_do: 5, fr: 5, sa: 4, so: 3 }, N: { mo_do: 4, fr: 4, sa: 3, so: 3 } },
       mindestQual: { F: { q1: 2 }, S: { q1: 2 }, N: { q1: 2 } }, posten: null }, 9876),
   ];
-  return { version: BESTAND_VERSION, stand: 0, tarife: JSON.parse(JSON.stringify(TARIFE_STD)), mandanten, rechnungen: [], protokoll: [],
+  return { version: BESTAND_VERSION, stand: 0, tarife: JSON.parse(JSON.stringify(STUFEN)), mandanten, rechnungen: [], protokoll: [],
     betreiber: { firma: "CENTRIC Software", anschrift: "Musterweg 1\n64839 Münster", ustId: "DE000000000",
       iban: "DE00 0000 0000 0000 0000 00", steuersatz: 19, zahlungsziel: 14 },
     session: null };
@@ -1821,52 +1824,59 @@ function zugaenge(m) {
   return z;
 }
 /**
- * Monatspreis eines Mandanten. Gerechnet wird je Standort — wer einstellt,
- * zahlt nicht mehr. Jeder Standort bekommt den Tarif, der zu seiner Größe
- * passt; ein kleiner Außenposten kostet nicht so viel wie die Zentrale.
+ * Zahl der Planer-Zugänge im laufenden Personalbestand. Die Leitung zählt
+ * nicht mit — sie ist in jeder Stufe kostenfrei enthalten, wie der
+ * Betriebsrat.
+ */
+function planerZugaenge(m) {
+  return aktive(m, heute()).filter((p) => p.rolle === "planer").length;
+}
+
+/**
+ * Monatspreis eines Mandanten.
+ *
+ * Drei Bausteine: die Grundgebühr der gebuchten Stufe, ein Aufpreis je
+ * Planer-Zugang über deren Kontingent, ein Aufpreis je Standort über
+ * deren Kontingent — gestaffelt nach der Größe dieses einzelnen
+ * zusätzlichen Standorts, nicht nach der Personenzahl des Betriebs.
+ * Näher begründet in `standorte.js`.
  */
 function preis(db, m) {
+  const st = stufeVon(m.tarif);
+  const gewaehlt = (db.tarife || []).find((x) => x.id === m.tarif) || st;
+
+  const planerGesamt = planerZugaenge(m);
+  const zusatzPlaner = Math.max(0, planerGesamt - gewaehlt.planerInklusive);
+  const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
+
   const standorte = (m.standorte || []).length ? m.standorte : [{ id: "s1", name: m.name }];
-  const aktiv = aktive(m, heute());
-  const zeilen = standorte.map((st) => {
-    // Personen dieses Standorts über ihre Einheit
-    const einheiten = m.einheiten.filter((e) => (e.standortId || standorte[0].id) === st.id);
-    const ids = new Set(einheiten.map((e) => e.id));
-    const n = aktiv.filter((p) => ids.has(einheitAm(p, heute()))).length;
-    const gewaehlt = db.tarife.find((x) => x.id === m.tarif);
-    // Der gebuchte Tarif gilt als Untergrenze; größere Standorte steigen auf
-    const noetig = tarifFuer(n);
-    const t = (gewaehlt && gewaehlt.jeStandort >= noetig.jeStandort) ? gewaehlt : noetig;
-    return { standort: st, personen: n, tarif: t, einzel: t.jeStandort };
-  });
-  const st = staffel(zeilen.length);
-  for (const z of zeilen) z.netto = Math.round(z.einzel * (1 - st.rabatt) * 100) / 100;
-  const summeStandorte = Math.round(zeilen.reduce((a, z) => a + z.netto, 0) * 100) / 100;
+  const heuteD = heute();
+  const standortPersonen = aufstellungJeStandort(m, heuteD).map((z) => z.personen);
+  const zuschlaege = standortzuschlaege(standortPersonen, gewaehlt.standorteInklusive);
+  const summeStandorte = zuschlaege.summe;
+
   // Branchenpakete werden je Betrieb berechnet, nicht je Standort
   const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
   const summePakete = pakete.reduce((a, p) => a + (p.aufpreis || 0), 0);
-  const tarifwert = Math.round((summeStandorte + summePakete) * 100) / 100;
+  const tarifwert = Math.round((gewaehlt.grund + summePlaner + summeStandorte + summePakete) * 100) / 100;
 
   /* Was der Betreiber vereinbart hat, gilt vor dem, was die Tabelle rechnet.
      Sonderpreis, Rabatt, kostenlose Zeit, ausgesetzter Monat — die
-     Reihenfolge steht in preisgestaltung.js und ist dort begründet.
-
-     `rabattGrund` wirkt hierüber zum ersten Mal. Das Feld stand seit jeher
-     im Datensatz und war in der Konsole bedienbar; gelesen hat es niemand.
-     Wer es auf zwanzig Prozent stellte, bekam dieselbe Rechnung wie vorher. */
-  const g = monatspreis(m, tarifwert, heute().slice(0, 7), heute());
+     Reihenfolge steht in preisgestaltung.js und ist dort begründet. */
+  const g = monatspreis(m, tarifwert, heuteD.slice(0, 7), heuteD);
   const gesamt = g.netto;
 
   const zahlt = stat(m.status).zahlt;
-  const personen = aktiv.length;
-  const t = zeilen.length ? zeilen.reduce((a, z) =>
-    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
-  return { t, zeilen, standorte: zeilen.length, st, pakete, summeStandorte, summePakete,
-    gesamt, tarifwert, gestaltung: g,
-    zahlt, wirksam: zahlt ? gesamt : 0, personen,
-    jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0,
-    ueberEinheiten: m.einheiten.length > t.grenzen.einheiten,
-    ueberPersonen: personen > t.grenzen.personen };
+  const personen = aktive(m, heuteD).length;
+  /* Jenseits dieser Größe rechnet die Formel zwar weiter, aber die
+     Oberfläche zeigt statt einer Zahl „Sprich uns an" — siehe STUFEN. */
+  const kontaktEmpfohlen = planerGesamt > KONTAKT_AB_PLANER
+    || zuschlaege.posten.length > KONTAKT_AB_ZUSCHLAGSSTANDORTE;
+  return { t: gewaehlt, stufe: st, planerGesamt, zusatzPlaner, summePlaner,
+    standorte: standorte.length, standortzuschlaege: zuschlaege, summeStandorte,
+    pakete, summePakete, grund: gewaehlt.grund, gesamt, tarifwert, gestaltung: g,
+    zahlt, wirksam: zahlt ? gesamt : 0, personen, kontaktEmpfohlen,
+    jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0 };
 }
 /** Datenschutz: die Betreibersicht enthält ausschließlich Zahlen. */
 /**
@@ -2031,8 +2041,8 @@ function baueRechnung(db, m, monatISO) {
   const g = p.gestaltung || {};
 
   if (g.herkunft === "sonderpreis") {
-    /* Bei einer individuellen Vereinbarung sind die Standortzeilen
-       irreführend: Sie summieren sich auf einen Betrag, der nicht in
+    /* Bei einer individuellen Vereinbarung ist die Aufschlüsselung
+       irreführend: Sie summiert sich auf einen Betrag, der nicht in
        Rechnung gestellt wird. Stattdessen eine Zeile mit dem, was
        vereinbart wurde — und darunter, wofür sie gilt. */
     positionen.push({ text: g.text, menge: "monatlich",
@@ -2042,17 +2052,22 @@ function baueRechnung(db, m, monatISO) {
         + `und ${zahl(p.personen)} ${p.personen === 1 ? "Person" : "Personen"}`,
       menge: "", einzel: "", betrag: "" });
   } else {
-    /* Je Standort eine Zeile — der Kunde sieht, wofür er zahlt. */
-    for (const z of p.zeilen) {
-      positionen.push({
-        text: `${z.standort.name} · Tarif ${z.tarif.name}`,
-        menge: `${zahl(z.personen)} Personen`,
-        einzel: eur(z.einzel),
-        betrag: eur(Math.round(z.netto * p.anteil * 100) / 100) });
-    }
-    if (p.st.rabatt > 0)
-      positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
-        betrag: `−${Math.round(p.st.rabatt * 100)} %` });
+    positionen.push({ text: `Grundgebühr ${p.stufe.name}`,
+      menge: `${zahl(p.stufe.planerInklusive)} Planer, ${zahl(p.stufe.standorteInklusive)} Standort${p.stufe.standorteInklusive === 1 ? "" : "e"} inklusive`,
+      einzel: eur(p.grund), betrag: eur(Math.round(p.grund * p.anteil * 100) / 100) });
+    if (p.zusatzPlaner > 0)
+      positionen.push({ text: `${zahl(p.zusatzPlaner)} zusätzliche${p.zusatzPlaner === 1 ? "r" : ""} Planer-Zugang${p.zusatzPlaner === 1 ? "" : "änge"}`,
+        menge: "", einzel: eur(ZUSATZ_PLANER),
+        betrag: eur(Math.round(p.summePlaner * p.anteil * 100) / 100) });
+    /* Je zuschlagspflichtigem Standort eine Zeile — der Kunde sieht, wofür
+       er zahlt. Die kostenlosen, im Kontingent enthaltenen Standorte
+       tauchen bewusst nicht auf: Eine Zeile mit dem Betrag „0,00 €" liest
+       sich wie ein Fehler in der Abrechnung, nicht wie eine Vergünstigung. */
+    for (const posten of p.standortzuschlaege.posten)
+      positionen.push({ text: "Standort über dem Kontingent",
+        menge: `${zahl(posten.personen)} Personen`,
+        einzel: eur(posten.zuschlag),
+        betrag: eur(Math.round(posten.zuschlag * p.anteil * 100) / 100) });
     for (const pk of p.pakete)
       positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
         betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
@@ -5650,14 +5665,6 @@ function MandantAnlegen({ db, akt, onClose }) {
   const SCHRITTE = ["Betrieb", "Standorte", "Schichtmodell", "Regelwerk", "Abschluss"];
   const setz = (k, v) => setF((x) => ({ ...x, [k]: v }));
 
-  // Vorschau der Kosten: was zahlt der Kunde bei welcher Größe?
-  const kosten = (mitarbeiter) => {
-    const p = tarif.preis;
-    const zahlend = mitarbeiter + 2;
-    const st = staffel(zahlend);
-    return tarif.grund + (2 * p.planer + mitarbeiter * p.mitarbeiter) * (1 - st.rabatt);
-  };
-
   const fertig = () => { akt.neuerMandant(f); onClose(); };
 
   return (
@@ -5848,16 +5855,14 @@ function MandantAnlegen({ db, akt, onClose }) {
             </div>
             <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.lineSoft}` }}>
               <Lab style={{ marginBottom: 9 }}>Was der Betrieb zahlen wird</Lab>
-              <div style={{ display: "flex", gap: 22, flexWrap: "wrap" }}>
-                {[20, 50, 100, 250].map((n) => (
-                  <div key={n}>
-                    <div style={{ fontSize: 11.5, color: C.dimmer }}>bei {n} Beschäftigten</div>
-                    <div style={{ fontSize: 17, fontWeight: 650, marginTop: 3, ...NUM }}>{eur0(kosten(n))}</div>
-                  </div>))}
+              <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM }}>
+                {eur0(tarif.grund)} <span style={{ fontSize: 14, color: C.dimmer, fontWeight: 500 }}>/ Monat</span>
               </div>
-              <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 11, lineHeight: 1.5 }}>
-                Grundgebühr {eur0(tarif.grund)} zuzüglich Zugänge, Mengenstaffel bereits berücksichtigt.
-                Betriebsrat und Organisationsleitung sind kostenfrei.
+              <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 9, lineHeight: 1.6, maxWidth: 480 }}>
+                Enthält {zahl(tarif.planerInklusive)} Planer-Zugang{tarif.planerInklusive === 1 ? "" : "e"} und
+                {" "}{zahl(tarif.standorteInklusive)} Standort{tarif.standorteInklusive === 1 ? "" : "e"} beliebiger Größe.
+                Mitarbeiter, Sub-Planer, Betriebsrat und Organisationsleitung sind unbegrenzt und kostenfrei —
+                die Zahl der Beschäftigten ändert diesen Preis nicht.
               </div>
             </div>
           </Card>
@@ -6262,375 +6267,151 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
 
 /* ==========================================================================
    MANDANTENRECHNER
-   Aus der Zahl der Beschäftigten wird ein Vorschlag für die Zugangsverteilung
-   und daraus der monatliche Preis. Die Empfehlung ist ein Erfahrungswert und
-   wird als solcher gekennzeichnet — nur die Betriebsratsgröße folgt einer
-   gesetzlichen Regel.
+   Wie viele Planer-Zugänge, wie viele große Standorte — daraus ergibt sich
+   der monatliche Preis. Die Zahl der Beschäftigten geht nicht mehr ein.
    ========================================================================== */
 
 /**
- * Größe des Betriebsrats nach § 9 Betriebsverfassungsgesetz.
- * Der Zugang ist kostenfrei, die Zahl aber für die Planung des Betreibers
- * relevant — deshalb wird sie korrekt ausgewiesen statt geschätzt.
+ * Monatspreis für eine frei gewählte Struktur — dieselbe Rechnung wie
+ * `preis(db, m)`, nur ohne einen echten Mandanten dahinter. Für den
+ * Mandantenrechner, in dem der Betreiber eine Größe durchspielt, bevor
+ * es sie überhaupt gibt.
  */
-const BR_STAFFEL = [
-  [5, 20, 1], [21, 50, 3], [51, 100, 5], [101, 200, 7], [201, 400, 9],
-  [401, 700, 11], [701, 1000, 13], [1001, 1500, 15], [1501, 2000, 17],
-  [2001, 2500, 19], [2501, 3000, 21], [3001, 3500, 23], [3501, 4000, 25],
-  [4001, 4500, 27], [4501, 5000, 29], [5001, 6000, 31], [6001, 7000, 33],
-  [7001, 9000, 35],
-];
-/**
- * Über 9.000 Beschäftigten wächst der Betriebsrat je angefangene weitere
- * 3.000 um zwei Mitglieder — die Staffel endet also nicht, sie wird zur Formel.
- */
-const betriebsratGroesse = (n) => {
-  if (n < 5) return 0;
-  const t = BR_STAFFEL.find(([von, bis]) => n >= von && n <= bis);
-  if (t) return t[2];
-  return 35 + Math.ceil((n - 9000) / 3000) * 2;
-};
-
-/**
- * Vorschlag für die Zugangsverteilung.
- *
- * Grundlagen:
- *   Organisationsleitung — genau eine, kostenfrei
- *   Planer              — Geschäftszimmer, etwa eine Person je 120 Beschäftigte,
- *                          ab 250 zusätzlich eine Vertretung
- *   Sub-Planer          — die Schichtverantwortlichen, eine je Einheit,
- *                          ab acht Einheiten zusätzlich eine Vertretung
- *   Betriebsrat         — nach § 9 BetrVG, kostenfrei
- *   Mitarbeiter         — alle Übrigen im Schichtdienst
- */
-function zugangsvorschlag(beschaeftigte, einheiten, brWaehlen = true) {
-  // beschaeftigte = Gesamtbelegschaft einschließlich Leitung und Planung
-  const n = Math.max(0, Math.round(beschaeftigte));
-  const e = Math.max(1, Math.round(einheiten));
-  const leitung = n > 0 ? 1 : 0;
-  const planer = n === 0 ? 0 : n <= 40 ? 1 : Math.ceil(n / 120) + (n > 250 ? 1 : 0);
-  const subplaner = n === 0 ? 0 : Math.min(n, e + (e >= 8 ? 1 : 0));
-  const betriebsrat = brWaehlen ? Math.min(betriebsratGroesse(n), n) : 0;
-  // n ist die Gesamtbelegschaft. Leitung und Planer sitzen im Geschäftszimmer,
-  // Sub-Planer fahren mit — alle Übrigen erhalten einen Mitarbeiterzugang.
-  const mitarbeiter = Math.max(0, n - leitung - planer - subplaner);
-  return { leitung, planer, subplaner, mitarbeiter, betriebsrat,
-    gesamt: leitung + planer + subplaner + mitarbeiter,
-    begruendung: {
-      leitung: "Eine Organisationsleitung je Betrieb — kostenfrei.",
-      planer: n <= 40 ? "Bei dieser Größe genügt eine Person im Geschäftszimmer."
-        : n > 250 ? "Etwa eine Person je 120 Beschäftigte, zuzüglich einer Vertretung."
-        : "Etwa eine Person je 120 Beschäftigte.",
-      subplaner: e >= 8 ? `Eine Schichtverantwortung je ${e} Einheiten, zuzüglich einer Vertretung.`
-        : `Eine Schichtverantwortung je Einheit.`,
-      betriebsrat: n < 5 ? "Unter fünf Beschäftigten ist kein Betriebsrat wählbar."
-        : `${betriebsratGroesse(n)} Mitglieder nach § 9 Betriebsverfassungsgesetz — Zugang kostenfrei.`,
-      mitarbeiter: "Alle Übrigen der Belegschaft.",
-    } };
+function preisFuer(stufe, planerGesamt, standortPersonen) {
+  const zusatzPlaner = Math.max(0, planerGesamt - stufe.planerInklusive);
+  const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
+  const zuschlaege = standortzuschlaege(standortPersonen, stufe.standorteInklusive);
+  const gesamt = Math.round((stufe.grund + summePlaner + zuschlaege.summe) * 100) / 100;
+  const kontaktEmpfohlen = planerGesamt > KONTAKT_AB_PLANER
+    || zuschlaege.posten.length > KONTAKT_AB_ZUSCHLAGSSTANDORTE;
+  return { stufe, planerGesamt, zusatzPlaner, summePlaner, zuschlaege, gesamt, kontaktEmpfohlen };
 }
 
-/**
- * Monatspreis für eine gegebene Struktur. Gerechnet wird je Standort — die
- * Zugangsverteilung wirkt nicht mehr auf den Preis, sondern nur noch darauf,
- * wie der Betrieb organisiert ist.
- */
-function preisFuer(tarif, v, standorte = 1) {
-  const st = staffel(standorte);
-  const jeStandort = Math.round(v.gesamt / Math.max(1, standorte));
-  // Der gebuchte Tarif gilt als Untergrenze; größere Standorte steigen auf
-  const noetig = tarifFuer(jeStandort);
-  const t = tarif.jeStandort >= noetig.jeStandort ? tarif : noetig;
-  const einzel = t.jeStandort;
-  const netto = Math.round(einzel * (1 - st.rabatt) * 100) / 100;
-  const standortSumme = Math.round(netto * standorte * 100) / 100;
-  /* Die Betriebspauschale fällt einmal an, unabhängig von der Größe —
-     Einrichtung, Betreuung und Bereitschaft skalieren nicht mit der
-     Personenzahl. */
-  const gesamt = Math.round((standortSumme + BETRIEBSPAUSCHALE) * 100) / 100;
-  return { tarif: t, gebucht: tarif, st, standorte, jeStandort, einzel, netto,
-    standortSumme, pauschale: BETRIEBSPAUSCHALE, gesamt,
-    aufstieg: t.id !== tarif.id,
-    jePerson: v.gesamt > 0 ? Math.round((gesamt / v.gesamt) * 100) / 100 : 0,
-    passt: t.grenzen.personen >= v.gesamt };
-}
-
-/* ------------------------------- Die Ansicht ----------------------------- */
+/* ------------------------------- Die Ansicht -----------------------------
+   Die vorige Fassung ließ Beschäftigte und Einheiten eingeben und rechnete
+   daraus einen Preis je Standort mit Mengenstaffel. Im neuen Modell ist
+   das keine Vereinfachung mehr, sondern eine falsche Grundannahme: Die
+   Zahl der Beschäftigten bestimmt den Preis nicht. Was ihn bestimmt, ist
+   eine Organisationsentscheidung — wie viele Planer-Zugänge, wie viele
+   große Standorte — und genau die lässt sich hier durchspielen. */
 function Mandantenrechner({ db }) {
-  const [n, setN] = useState(80);
-  const [e, setE] = useState(4);
-  const [eingabe, setEingabe] = useState("");
-  const [br, setBr] = useState(true);
-  const [eigen, setEigen] = useState(null);      // manuell übersteuerte Verteilung
+  const [stufeId, setStufeId] = useState("pro");
+  const [planer, setPlaner] = useState(1);
+  const [standorte, setStandorte] = useState([25]);
 
-  const vorschlag = useMemo(() => zugangsvorschlag(n, e, br), [n, e, br]);
-  const v = eigen || vorschlag;
-  const preise = db.tarife.map((t) => preisFuer(t, v, e));
-  const passende = preise.filter((p) => p.passt);
-  const ueberGrenze = passende.length === 0;
-  // Über der größten Tarifgrenze wird der größte Tarif als Grundlage genommen
-  // und ausdrücklich als Richtwert gekennzeichnet.
-  const guenstigster = (passende.length ? passende : [preise.reduce((a, b) =>
-    (a.tarif.grenzen.personen > b.tarif.grenzen.personen ? a : b))])
-    .sort((a, b) => a.gesamt - b.gesamt)[0];
-  const kurve = useMemo(() => {
-    const punkte = [];
-    for (const anzahl of [10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 20000]) {
-      const vv = zugangsvorschlag(anzahl, Math.max(2, Math.round(anzahl / 20)), br);
-      const alle = db.tarife.map((t) => preisFuer(t, vv));
-      const beste = (alle.filter((p) => p.passt).length ? alle.filter((p) => p.passt) : alle)
-        .sort((a, b) => a.gesamt - b.gesamt)[0];
-      if (beste) punkte.push({ label: anzahl >= 1000 ? `${anzahl / 1000}k` : String(anzahl),
-        y: Math.round(beste.gesamt / vv.gesamt * 100) / 100 });
-    }
-    return punkte;
-  }, [db, br]);
+  const stufe = stufeVon(stufeId);
+  const p = useMemo(() => preisFuer(stufe, planer, standorte), [stufeId, planer, standorte]);
+  const alle = useMemo(() => db.tarife.map((t) => preisFuer(t, planer, standorte)), [db, planer, standorte]);
 
-  const setzeEigen = (k, wert) => setEigen({ ...v, [k]: Math.max(0, wert),
-    gesamt: ROLLEN.filter((r) => r.berechnet).reduce((a, r) =>
-      a + (r.id === k ? Math.max(0, wert) : (v[r.id] || 0)), 0) });
+  const aendereStandort = (i, wert) => setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
 
   return (
     <div>
       <H1 rubrik="Betreiber"
-        sub="Aus der Zahl der Beschäftigten ergibt sich ein Vorschlag für die Zugangsverteilung und daraus der Monatspreis. Die Empfehlung ist ein Erfahrungswert — nur die Betriebsratsgröße folgt einer gesetzlichen Regel."
-        right={eigen && <Btn kind="quiet" onClick={() => setEigen(null)}>Vorschlag wiederherstellen</Btn>}>
-        Mandantenrechner</H1>
+        sub="Wie viele Planer-Zugänge braucht der Betrieb, und wie groß sind seine einzelnen Standorte? Das allein bestimmt den Preis — die Zahl der Beschäftigten nicht mehr."
+        >Mandantenrechner</H1>
 
       {/* Eingaben */}
       <Card style={{ padding: 26, marginBottom: 20 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 26 }}>
           <div>
-            <Lab style={{ marginBottom: 9 }}>Beschäftigte insgesamt</Lab>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.04em", ...NUM }}>{zahl(n)}</span>
-              <span style={{ fontSize: 14, color: C.dimmer }}>Personen</span>
-            </div>
-            {/* Der Regler arbeitet logarithmisch, damit von 1 bis 20.000 alles
-                mit gleicher Feinheit erreichbar bleibt. */}
-            <input type="range" min={0} max={1000} value={Math.round(Math.log10(Math.max(1, n)) / Math.log10(20000) * 1000)}
-              style={{ width: "100%" }}
-              onChange={(ev) => {
-                const p = Number(ev.target.value) / 1000;
-                const roh = Math.pow(20000, p);
-                const stufe = roh < 50 ? 1 : roh < 200 ? 5 : roh < 1000 ? 10 : roh < 5000 ? 50 : 100;
-                setN(Math.max(1, Math.round(roh / stufe) * stufe)); setEigen(null);
-              }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-              {[25, 100, 500, 2000, 10000].map((x) => (
-                <Btn key={x} size="sm" kind={n === x ? "primary" : "plain"}
-                  onClick={() => { setN(x); setEigen(null); }}>{zahl(x)}</Btn>))}
-              <Inp type="number" min={1} placeholder="frei" value={eingabe} style={{ width: 104 }}
-                onChange={(ev) => {
-                  setEingabe(ev.target.value);
-                  const w = Number(ev.target.value);
-                  if (w >= 1) { setN(Math.round(w)); setEigen(null); }
-                }} />
+            <Lab style={{ marginBottom: 9 }}>Stufe</Lab>
+            <Seg value={stufeId} onChange={setStufeId}
+              options={STUFEN.map((s) => ({ id: s.id, label: s.name }))} />
+            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
+              {zahl(stufe.planerInklusive)} Planer-Zugang{stufe.planerInklusive === 1 ? "" : "e"} und
+              {" "}{zahl(stufe.standorteInklusive)} Standort{stufe.standorteInklusive === 1 ? "" : "e"} beliebiger
+              Größe sind enthalten.
             </div>
           </div>
           <div>
-            <Lab style={{ marginBottom: 9 }}>Einheiten oder Schichtgruppen</Lab>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.04em", ...NUM }}>{e}</span>
-              <span style={{ fontSize: 14, color: C.dimmer }}>Gruppen</span>
-            </div>
-            <input type="range" min={1} max={40} value={Math.min(40, e)} style={{ width: "100%" }}
-              onChange={(ev) => { setE(Number(ev.target.value)); setEigen(null); }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
-              <Inp type="number" min={1} value={e} style={{ width: 96 }}
-                onChange={(ev) => { const w = Number(ev.target.value); if (w >= 1) { setE(Math.round(w)); setEigen(null); } }} />
-              <span style={{ fontSize: 12.5, color: C.dimmer }}>frei eingebbar</span>
+            <Lab style={{ marginBottom: 9 }}>Planer-Zugänge</Lab>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => Math.max(0, n - 1))}>−</Btn>
+              <span style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.04em", minWidth: 60,
+                textAlign: "center", ...NUM }}>{planer}</span>
+              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => n + 1)}>+</Btn>
             </div>
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
-              Ergibt sich aus dem Schichtmodell: vier bei 4x4, fünf beim 5-Schicht-Modell,
-              acht bis elf bei Stufenmodellen. Große Betriebe führen häufig mehrere Standorte
-              mit eigenen Gruppen.
+              Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und
+              Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei.
             </div>
           </div>
           <div>
-            <Lab style={{ marginBottom: 9 }}>Betriebsrat</Lab>
-            <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", marginBottom: 12 }}>
-              <Schalter an={br} onChange={() => { setBr(!br); setEigen(null); }} />
-              <span style={{ fontSize: 14.5 }}>{br ? "vorhanden" : "nicht vorhanden"}</span>
-            </label>
-            <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-              {n < 5 ? "Unter fünf Beschäftigten ist kein Betriebsrat wählbar."
-                : `Bei ${n} Beschäftigten sind es ${betriebsratGroesse(n)} Mitglieder nach § 9 BetrVG. Der Zugang ist kostenfrei.`}
+            <Lab style={{ marginBottom: 9 }}>Standorte</Lab>
+            <div style={{ display: "grid", gap: 8 }}>
+              {standorte.map((n, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Inp type="number" min={0} value={n} style={{ width: 90 }}
+                    onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
+                  <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
+                  <span style={{ flex: 1 }} />
+                  {standorte.length > 1 && (
+                    <Btn size="sm" kind="quiet"
+                      onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
+                </div>))}
+              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Vorschlag */}
-      <Card style={{ marginBottom: 20 }}>
-        <CardHead right={<Lab>{eigen ? "eigene Verteilung" : "Vorschlag"}</Lab>}>Zugangsverteilung</CardHead>
-        {ROLLEN.filter((r) => !r.extern).map((r) => {
-          const anzahl = v[r.id] || 0;
-          const preis = 0;   // Zugänge kosten im Standortmodell nichts
-          return (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 16, padding: "15px 22px",
-              borderBottom: `1px solid ${C.lineSoft}`, flexWrap: "wrap" }}>
-              <span style={{ width: 34, height: 34, borderRadius: 12, flexShrink: 0, display: "flex",
-                alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700,
-                background: `${r.farbe}18`, color: r.farbe }}>{r.kurz}</span>
-              <div style={{ flex: 1, minWidth: 190 }}>
-                <div style={{ fontSize: 14.5, fontWeight: 600 }}>{r.label}</div>
-                <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 3, lineHeight: 1.45 }}>
-                  {vorschlag.begruendung[r.id]}</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-                <Btn size="sm" kind="quiet" onClick={() => setzeEigen(r.id, anzahl - 1)}>−</Btn>
-                <span style={{ fontSize: 21, fontWeight: 650, minWidth: 44, textAlign: "center", ...NUM }}>
-                  {anzahl}</span>
-                <Btn size="sm" kind="quiet" onClick={() => setzeEigen(r.id, anzahl + 1)}>+</Btn>
-              </div>
-              <div style={{ minWidth: 130, textAlign: "right" }}>
-                <div style={{ fontSize: 13, color: C.dim }}>ohne Aufpreis</div>
-              </div>
-            </div>);
-        })}
-        <div style={{ padding: "14px 22px", display: "flex", justifyContent: "space-between",
-          fontSize: 13.5, color: C.dim, flexWrap: "wrap", gap: 10 }}>
-          <span>{zahl(v.gesamt)} Zugänge insgesamt — alle im Standortpreis enthalten</span>
-          <span>Mengenstaffel {preise[0].st.label} · {Math.round(preise[0].st.rabatt * 100)} % Nachlass</span>
-        </div>
-      </Card>
-
-      {/* Tarifvergleich */}
-      {ueberGrenze && (
+      {p.kontaktEmpfohlen && (
         <Card style={{ padding: 22, marginBottom: 16, background: C.warnLight }}>
           <div style={{ fontSize: 15.5, fontWeight: 650, color: C.warn, marginBottom: 8 }}>
-            Über der größten Tarifgrenze</div>
+            Sprich uns an</div>
           <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.6, maxWidth: 720 }}>
-            Mit {zahl(v.gesamt)} Zugängen liegt dieser Betrieb über der Grenze von
-            {" "}{zahl(Math.max(...db.tarife.map((t) => t.grenzen.personen)))} Personen im größten Tarif.
-            Die Zahl unten ist eine <b>Hochrechnung nach den Enterprise-Sätzen</b> — ein Betrieb dieser
-            Größe bekommt ein eigenes Angebot mit verhandelter Grundgebühr, eigenem Betriebssystem
-            und Auftragsverarbeitung.
-          </div>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
-            Als Verhandlungsgrundlage taugt der Wert trotzdem: Er zeigt, was die reine Mengenrechnung
-            ergäbe, bevor über Grundgebühr und Leistungsumfang gesprochen wird.
+            Mit {zahl(p.planerGesamt)} Planer-Zugängen und {zahl(p.zuschlaege.posten.length)} zuschlagspflichtigen
+            Standorten liegt dieser Betrieb über der Größe, für die eine automatische Formel noch die
+            richtige Antwort ist. Die Zahl unten ist eine <b>Hochrechnung</b> — ein Betrieb dieser Größe
+            bekommt ein eigenes Angebot mit verhandelter Grundgebühr.
           </div>
         </Card>)}
 
       <Lab style={{ marginBottom: 12 }}>Was es monatlich kostet</Lab>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(250px,1fr))", gap: 14 }}>
-        {preise.map((p) => {
-          const best = guenstigster && p.tarif.id === guenstigster.tarif.id;
+        {alle.map((a) => {
+          const best = a.stufe.id === stufe.id;
           return (
-            <Card key={p.tarif.id} glanz={best}
-              style={{ padding: 24, opacity: p.passt ? 1 : .5,
-                outline: best ? `2px solid ${C.ok}` : "none" }}>
+            <Card key={a.stufe.id} glanz={best}
+              style={{ padding: 24, outline: best ? `2px solid ${C.accent}` : "none" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <Rubrik>{p.tarif.name}</Rubrik>
-                {best && !ueberGrenze && <Pill size="sm" tone="ok">günstigster</Pill>}
-                {best && ueberGrenze && <Pill size="sm" tone="warn">Hochrechnung</Pill>}
-                {!p.passt && !best && <Pill size="sm" tone="danger">zu klein</Pill>}
+                <Rubrik>{a.stufe.name}</Rubrik>
+                {a.kontaktEmpfohlen && <Pill size="sm" tone="warn">Sprich uns an</Pill>}
               </div>
               <div style={{ fontSize: 34, fontWeight: 300, letterSpacing: "-.04em", ...NUM }}>
-                {eur0(p.gesamt)}</div>
+                {a.kontaktEmpfohlen ? "—" : eur0(a.gesamt)}</div>
               <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>je Monat, netto</div>
               <div style={{ marginTop: 18, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}`,
                 display: "grid", gap: 7, fontSize: 13 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>Je Standort</span>
-                  <span style={NUM}>{eur(p.einzel)}</span></div>
+                  <span style={{ color: C.dimmer }}>Grundgebühr</span>
+                  <span style={NUM}>{eur(a.stufe.grund)}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: C.dimmer }}>{zahl(p.standorte)} {p.standorte === 1 ? "Standort" : "Standorte"}{p.st.rabatt > 0 ? ` · −${Math.round(p.st.rabatt * 100)} %` : ""}</span>
-                  <span style={NUM}>{eur(Math.round(p.netto * p.standorte * 100) / 100)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600 }}>
-                  <span>je Person</span><span style={NUM}>{eur(p.jePerson)}</span></div>
+                  <span style={{ color: C.dimmer }}>{zahl(a.zusatzPlaner)} zusätzliche{a.zusatzPlaner === 1 ? "r" : ""} Planer</span>
+                  <span style={NUM}>{eur(a.summePlaner)}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: C.dimmer }}>{zahl(a.zuschlaege.posten.length)} zuschlagspflichtige Standorte</span>
+                  <span style={NUM}>{eur(a.zuschlaege.summe)}</span></div>
               </div>
-              {!p.passt && (
-                <div style={{ fontSize: 12.5, color: best ? C.warn : C.danger, marginTop: 12, lineHeight: 1.45 }}>
-                  {best ? `Über der Grenze von ${zahl(p.tarif.grenzen.personen)} Personen — Richtwert für ein eigenes Angebot.`
-                    : `Grenze bei ${zahl(p.tarif.grenzen.personen)} Personen — für diesen Betrieb zu klein.`}
-                </div>)}
               <div style={{ fontSize: 12, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
-                {p.tarif.leistungen.slice(0, 3).join(" · ")}
+                {a.stufe.leistungen.slice(0, 3).join(" · ")}
               </div>
             </Card>);
         })}
       </div>
 
-      {/* Aufstellung und Kurve */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 18, marginTop: 20 }}>
-        {guenstigster && (
-          <Card>
-            <CardHead right={<Lab>{guenstigster.tarif.name}{ueberGrenze ? " · Richtwert" : ""}</Lab>}>
-              Aufstellung</CardHead>
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.lineSoft}`,
-              fontSize: 13.5, color: C.dim, lineHeight: 1.55 }}>
-              {zahl(e)} {e === 1 ? "Standort" : "Standorte"} mit im Schnitt {zahl(guenstigster.jeStandort)} Personen
-              {guenstigster.aufstieg
-                ? ` — dafür ist mindestens ${guenstigster.tarif.name} nötig.`
-                : "."}
-            </div>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
-              <thead><tr>{["Standort", "Personen", "Tarif", "Betrag"].map((h, i2) => (
-                <th key={i2} style={{ textAlign: i2 ? "right" : "left", padding: "11px 20px",
-                  borderBottom: `1px solid ${C.lineSoft}` }}><Lab>{h}</Lab></th>))}</tr></thead>
-              <tbody>
-                {Array.from({ length: Math.min(guenstigster.standorte, 12) }, (_, i2) => (
-                  <tr key={i2}>
-                    <td style={{ padding: "10px 20px", borderBottom: `1px solid ${C.lineSoft}`,
-                      fontSize: 13.5 }}>Standort {i2 + 1}</td>
-                    <td style={{ padding: "10px 20px", borderBottom: `1px solid ${C.lineSoft}`,
-                      textAlign: "right", fontSize: 13.5, ...NUM }}>{zahl(guenstigster.jeStandort)}</td>
-                    <td style={{ padding: "10px 20px", borderBottom: `1px solid ${C.lineSoft}`,
-                      textAlign: "right", fontSize: 13, color: C.dim }}>{guenstigster.tarif.name}</td>
-                    <td style={{ padding: "10px 20px", borderBottom: `1px solid ${C.lineSoft}`,
-                      textAlign: "right", fontSize: 13.5, fontWeight: 600, ...NUM }}>
-                      {eur(guenstigster.netto)}</td>
-                  </tr>))}
-                {guenstigster.standorte > 12 && (
-                  <tr><td colSpan={4} style={{ padding: "10px 20px", fontSize: 13, color: C.dim,
-                    borderBottom: `1px solid ${C.lineSoft}` }}>
-                    … und {zahl(guenstigster.standorte - 12)} weitere zum selben Satz</td></tr>)}
-                {guenstigster.st.rabatt > 0 && (
-                  <tr>
-                    <td colSpan={3} style={{ padding: "12px 20px", fontSize: 13.5, color: C.ok }}>
-                      Mengenstaffel {guenstigster.st.label} — bereits abgezogen</td>
-                    <td style={{ padding: "12px 20px", textAlign: "right", fontSize: 13.5,
-                      color: C.ok, ...NUM }}>−{Math.round(guenstigster.st.rabatt * 100)} %</td>
-                  </tr>)}
-                <tr style={{ background: C.bg }}>
-                  <td colSpan={3} style={{ padding: "14px 20px", fontSize: 15, fontWeight: 650 }}>
-                    {ueberGrenze ? "Richtwert monatlich netto" : "Monatlich netto"}</td>
-                  <td style={{ padding: "14px 20px", textAlign: "right", fontSize: 17, fontWeight: 650, ...NUM }}>
-                    {eur(guenstigster.gesamt)}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div style={{ padding: "14px 20px", fontSize: 12.5, color: C.dimmer, lineHeight: 1.55 }}>
-              Zuzüglich Umsatzsteuer. Die Mengenstaffel von {Math.round(guenstigster.st.rabatt * 100)} %
-              ist bereits abgezogen. Organisationsleitung und Betriebsrat sind in jedem Tarif kostenfrei.
-            </div>
-          </Card>)}
-
-        <Card style={{ padding: 24 }}>
-          <CardHead style={{ padding: 0, border: "none", marginBottom: 16 }}
-            right={<Lab>günstigster Tarif</Lab>}>Preis je Person nach Betriebsgröße</CardHead>
-          <LinienDiagramm daten={kurve} farbe={C.ok} nulllinie={false} einheit=" €" hoehe={150} />
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55 }}>
-            Mit der Betriebsgröße sinkt der Preis je Person — durch die Mengenstaffel und weil sich
-            Grundgebühr und Planungszugänge auf mehr Schultern verteilen.
-          </div>
-        </Card>
-      </div>
-
       <Card style={{ marginTop: 20, padding: 22 }}>
-        <Lab style={{ marginBottom: 11 }}>Wie der Vorschlag zustande kommt</Lab>
+        <Lab style={{ marginBottom: 11 }}>Wie sich der Preis zusammensetzt</Lab>
         <Haken punkte={[
-          "Organisationsleitung: genau eine je Betrieb, kostenfrei.",
-          "Planer sitzen im Geschäftszimmer und fahren keine Schicht — etwa eine Person je 120 Beschäftigte, ab 250 zusätzlich eine Vertretung.",
-          "Sub-Planer sind die Schichtverantwortlichen und arbeiten mit — eine je Einheit, ab acht Einheiten zusätzlich eine Vertretung.",
-          "Betriebsratsgröße nach § 9 Betriebsverfassungsgesetz, Zugang kostenfrei.",
-          "Alle Übrigen erhalten einen Mitarbeiterzugang.",
+          "Die Grundgebühr enthält eine Zahl Planer-Zugänge und eine Zahl Standorte beliebiger Größe — je nach Stufe.",
+          "Ein weiterer Planer-Zugang kostet eine feste Pauschale, unabhängig von der Betriebsgröße.",
+          "Ein weiterer Standort kostet nur, wenn er über das Kontingent hinausgeht — und dann nach seiner eigenen Größe, nicht nach der des ganzen Betriebs.",
+          "Mitarbeiter, Sub-Planer, Betriebsrat und Organisationsleitung sind in jeder Stufe unbegrenzt und kostenfrei.",
         ]} />
         <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55 }}>
-          Die Werte für Planer und Sub-Planer sind Erfahrungswerte, keine Norm. Sie lassen sich oben
-          mit den Plus- und Minus-Schaltflächen überschreiben — die Kosten rechnen sofort mit.
+          Zuzüglich Umsatzsteuer. Die Bänder für Standortzuschläge stehen in
+          {" "}<code>src/standorte.js</code>, die Stufen in <code>STUFEN</code> hier.
         </div>
       </Card>
     </div>);
@@ -6895,18 +6676,19 @@ function BetreiberMandanten({ db, akt, oeffne }) {
   const [form, setForm] = useState({ name: "", branche: "sicherheit", tarif: "pro", kontakt: "", anschrift: "" });
   const sichten = db.mandanten.map((m) => betreiberSicht(db, m));
   const mrr = sichten.reduce((a, s) => a + s.preis.wirksam, 0);
-  const zug = sichten.reduce((a, s) => a + (s.preis.personen || 0), 0);
+  const zusatzPlaner = sichten.reduce((a, s) => a + (s.preis.zusatzPlaner || 0), 0);
+  const zuschlagsstandorte = sichten.reduce((a, s) => a + (s.preis.standortzuschlaege.posten.length || 0), 0);
 
   return (
     <div>
-      <H1 sub="Je Kunde ein Mandant und ein Hauptzugang. Alles Weitere verwaltet der Kunde selbst — die Zugangszahlen und damit die Kosten schreiben sich dabei von allein fort."
+      <H1 sub="Je Kunde ein Mandant und eine Stufe. Was den Preis bewegt, entscheidet der Kunde selbst — ein zusätzlicher Planer-Zugang oder ein Standort über dem Kontingent."
         right={<Btn kind="primary" onClick={() => setNeu(true)}>Mandant anlegen</Btn>}>Mandanten</H1>
 
       <KpiRow>
         <Kpi label="Wiederkehrender Umsatz" value={eur0(mrr)} unit="/ Monat" tone="accent"
           sub={`${sichten.filter((s) => s.preis.zahlt).length} von ${sichten.length} zahlend`} />
-        <Kpi label="Vergebene Zugänge" value={zahl(zug)} sub="kostenpflichtig, über alle Mandanten" />
-        <Kpi label="Erlös je Zugang" value={zug ? eur(mrr / zug) : eur(0)} sub="Mischkalkulation" />
+        <Kpi label="Zusatz-Planer" value={zahl(zusatzPlaner)} sub="über alle Mandanten hinweg" />
+        <Kpi label="Zuschlagspflichtige Standorte" value={zahl(zuschlagsstandorte)} sub="über dem jeweiligen Kontingent" />
         <Kpi label="Jahreswert" value={eur0(mrr * 12)} sub="bei unverändertem Bestand" />
       </KpiRow>
 
@@ -6938,6 +6720,7 @@ function BetreiberMandanten({ db, akt, oeffne }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(128px,1fr))", gap: 14, marginTop: 20 }}>
                 {ROLLEN.filter((r) => !r.extern).map((r) => {
                   const z = s.zugaenge[r.id] || 0;
+                  const planerZeile = r.id === "planer";
                   return (
                     <div key={r.id} className="karte" style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
@@ -6948,20 +6731,26 @@ function BetreiberMandanten({ db, akt, oeffne }) {
                       <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
                         <span style={{ fontSize: 22, fontWeight: 650, ...NUM }}>{z}</span>
                         <span style={{ fontSize: 11, color: C.dimmer, ...NUM }}>
-                          {"inkl."}</span>
+                          {planerZeile
+                            ? (s.preis.zusatzPlaner > 0 ? `${s.preis.zusatzPlaner} zusätzlich` : "im Kontingent")
+                            : "kostenfrei"}</span>
                       </div>
                     </div>);
                 })}
                 <div className="karte" style={{ padding: "12px 14px" }}>
-                  <div style={{ fontSize: 11.5, color: C.dim, marginBottom: 7 }}>Einheiten</div>
-                  <div style={{ fontSize: 22, fontWeight: 650, color: s.preis.ueberEinheiten ? C.danger : C.text, ...NUM }}>
-                    {s.einheiten}<span style={{ fontSize: 12, color: C.dimmer, fontWeight: 400 }}>/{s.preis.t.grenzen.einheiten}</span></div>
+                  <div style={{ fontSize: 11.5, color: C.dim, marginBottom: 7 }}>Standorte</div>
+                  <div style={{ fontSize: 22, fontWeight: 650,
+                    color: s.preis.standortzuschlaege.posten.length ? C.warn : C.text, ...NUM }}>
+                    {s.standorte}<span style={{ fontSize: 12, color: C.dimmer, fontWeight: 400 }}>
+                      /{s.preis.stufe.standorteInklusive} inkl.</span></div>
                 </div>
                 <div className="karte" style={{ padding: "12px 14px", background: "rgba(43,52,64,.06)" }}>
                   <div style={{ fontSize: 11.5, color: C.dim, marginBottom: 7 }}>Monatspreis</div>
                   <div style={{ fontSize: 20, fontWeight: 650, color: s.preis.zahlt ? C.accent : C.dimmer, ...NUM }}>{eur(s.preis.gesamt)}</div>
                   <div style={{ fontSize: 10.5, color: C.dimmer, marginTop: 3, ...NUM }}>
-                    Staffel −{Math.round(s.preis.st.rabatt * 100)} % · {eur(s.preis.jeKopf)}/Zugang</div>
+                    {eur(s.preis.grund)} Grund
+                    {s.preis.summePlaner > 0 ? ` + ${eur(s.preis.summePlaner)} Planer` : ""}
+                    {s.preis.summeStandorte > 0 ? ` + ${eur(s.preis.summeStandorte)} Standort` : ""}</div>
                 </div>
               </div>
             </Card>);
@@ -7004,48 +6793,33 @@ function monatsende(isoTag, n) {
 /* ==========================================================================
    STANDORTE, GESPIEGELT
 
-   Der Betreiber verkauft je Standort. Wenn ein Betrieb einen anlegt,
-   ändert sich seine Rechnung — und bis hierher merkte das niemand außer
-   dem Betrieb selbst. Diese Karte zeigt, was dort steht: Aufstellung je
-   Standort, gebuchter gegen nötigen Tarif, und ob ein Antrag offen liegt.
+   Standorte kosten nichts mehr, solange sie zum Kontingent der Stufe
+   gehören — das Anlegen ist deshalb keine Vertragsänderung mehr, über die
+   der Betreiber informiert werden müsste. Was noch zählt: welche
+   Standorte über das Kontingent hinausgewachsen sind und was sie kosten.
 
    Es bleiben Zahlen. Keine Namen, keine Dienstpläne — der Betreiber
    verkauft Software, er führt den Betrieb nicht.
    ========================================================================== */
 function StandorteSpiegel({ m, p }) {
   const aufstellung = aufstellungJeStandort(m, heute());
-  const offen = (m.standortantraege || []).filter((a) => a.status === "offen");
-  const entschieden = (m.standortantraege || []).filter((a) => a.status !== "offen").slice(-3);
-
-  /* Der gebuchte Tarif gilt als Untergrenze; ein zu großer Standort steigt
-     von selbst auf. Weicht beides ab, zahlt der Kunde bereits mehr, als
-     sein gebuchter Tarif vermuten lässt — das gehört sichtbar. */
-  const aufstieg = p.zeilen.filter((z) => z.tarif.id !== m.tarif);
+  const nachGroesse = [...aufstellung].sort((a, b) => b.personen - a.personen);
 
   return (
     <Card>
-      <CardHead right={<Lab>{zahl(p.standorte)} × {eur(p.zeilen[0] ? p.zeilen[0].einzel : 0)}</Lab>}>
+      <CardHead right={<Lab>
+        {p.summeStandorte > 0 ? `+${eur(p.summeStandorte)} / Monat` : "kostenlos enthalten"}</Lab>}>
         Standorte</CardHead>
 
-      {offen.length > 0 && (
-        <div style={{ margin: "16px 22px 0", background: "rgba(214,158,74,.12)",
-          borderRadius: 10, padding: "12px 14px" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: C.warn, marginBottom: 4 }}>
-            {offen.length === 1 ? "Ein Standortantrag liegt offen" : `${offen.length} Standortanträge liegen offen`}
-          </div>
-          {offen.map((a) => (
-            <div key={a.id} style={{ fontSize: 12.5, color: C.dim }}>
-              {a.name} · beantragt von {a.durchName} am {fDatum(a.gestellt)} ·
-              {" "}{a.mehr > 0 ? "+" : "−"}{eur(Math.abs(a.mehr))} monatlich
-            </div>))}
-          <div style={{ fontSize: 12, color: C.dimmer, marginTop: 6 }}>
-            Entschieden wird im Betrieb, von der Organisationsleitung.
-          </div>
-        </div>)}
+      <div style={{ padding: "0 22px 4px", fontSize: 12.5, color: C.dimmer }}>
+        {zahl(p.stufe.standorteInklusive)} der größten Standorte sind in {p.stufe.name} enthalten.
+      </div>
 
       <div style={{ padding: 22, display: "grid", gap: 10 }}>
         {aufstellung.map((a) => {
-          const zeile = p.zeilen.find((z) => z.standort.id === a.standort.id);
+          const rang = nachGroesse.findIndex((x) => x.standort.id === a.standort.id);
+          const inklusive = rang > -1 && rang < p.stufe.standorteInklusive;
+          const zuschlag = inklusive ? 0 : standortZuschlag(a.personen);
           return (
             <div key={a.standort.id} style={{ display: "flex", alignItems: "center", gap: 12,
               background: C.bg, borderRadius: 10, padding: "12px 14px", flexWrap: "wrap" }}>
@@ -7060,30 +6834,11 @@ function StandorteSpiegel({ m, p }) {
                 {Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
                   <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
               </div>
-              <span style={{ fontSize: 12, color: C.dimmer, width: 90, textAlign: "right" }}>
-                {zeile ? zeile.tarif.name : "—"}</span>
-              <span style={{ fontSize: 13.5, width: 84, textAlign: "right", ...NUM }}>
-                {zeile ? eur(zeile.netto) : "—"}</span>
+              <span style={{ fontSize: 13, width: 110, textAlign: "right",
+                color: zuschlag > 0 ? C.warn : C.dimmer, fontWeight: zuschlag > 0 ? 600 : 400, ...NUM }}>
+                {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)}` : "unter Schwelle"}</span>
             </div>);
         })}
-
-        {aufstieg.length > 0 && (
-          <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
-            {aufstieg.length === 1
-              ? `Ein Standort ist über den gebuchten Tarif hinausgewachsen und wird höher berechnet.`
-              : `${aufstieg.length} Standorte sind über den gebuchten Tarif hinausgewachsen.`}
-            {" "}Ein Gespräch über die Tarifstufe wäre fällig.
-          </div>)}
-
-        {entschieden.length > 0 && (
-          <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
-            <Lab style={{ marginBottom: 8 }}>Zuletzt entschieden</Lab>
-            {entschieden.map((a) => (
-              <div key={a.id} style={{ fontSize: 12.5, color: C.dimmer }}>
-                {a.name} — {a.status === "bestaetigt" ? "bestätigt" : "abgelehnt"} von
-                {" "}{a.entschiedenVon} am {fDatum(a.entschieden)}
-              </div>))}
-          </div>)}
       </div>
     </Card>);
 }
@@ -7302,17 +7057,31 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
         <Card>
           <CardHead>Aktuelle Abrechnung</CardHead>
           <div style={{ padding: 22 }}>
-            {p.zeilen.map((l) => (
-              <div key={l.standort.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
-                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,
-                  color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 700 }}>◉</span>
-                <span style={{ fontSize: 13.5, color: C.dim, flex: 1, minWidth: 0 }}>
-                  {l.standort.name}
-                  <span style={{ color: C.dimmer, ...NUM }}> · {zahl(l.personen)} Personen</span></span>
-                <span style={{ fontSize: 12.5, color: C.dimmer, width: 88, textAlign: "right" }}>
-                  {l.tarif.name}</span>
-                <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(l.netto)}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+              <span style={{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,
+                color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700 }}>◉</span>
+              <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Grundgebühr {p.stufe.name}</span>
+              <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(p.grund)}</span>
+            </div>
+            {p.zusatzPlaner > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
+                  color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700 }}>+</span>
+                <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>
+                  {zahl(p.zusatzPlaner)} zusätzliche{p.zusatzPlaner === 1 ? "r" : ""} Planer</span>
+                <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(p.summePlaner)}</span>
+              </div>)}
+            {p.standortzuschlaege.posten.map((posten, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
+                <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
+                  color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700 }}>+</span>
+                <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>
+                  Standort über dem Kontingent
+                  <span style={{ color: C.dimmer, ...NUM }}> · {zahl(posten.personen)} Personen</span></span>
+                <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(posten.zuschlag)}</span>
               </div>))}
             {p.pakete.map((pk) => (
               <div key={pk.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
@@ -7323,8 +7092,6 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
                 <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(pk.aufpreis)}</span>
               </div>))}
             <div style={{ marginTop: 16, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: C.ok, marginBottom: 11 }}>
-                <span>Mengenstaffel ({p.st.label})</span><span style={NUM}>−{Math.round(p.st.rabatt * 100)} %</span></div>
               {/* Weicht die Vereinbarung vom Tarif ab, steht beides da.
                   Nur den Endbetrag zu zeigen hieße, in einem Jahr nicht mehr
                   zu wissen, ob der Preis günstig war. */}
@@ -7362,14 +7129,16 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
           <Card>
             <CardHead>Kontingente</CardHead>
             <div style={{ padding: 22 }}>
-              {[["Einheiten", s.einheiten, p.t.grenzen.einheiten], ["Personen", p.personen, p.t.grenzen.personen]].map(([l, ist, max]) => {
-                const pct = Math.min(100, (ist / max) * 100);
-                const col = pct > 90 ? C.danger : pct > 70 ? C.warn : C.ok;
+              {[["Planer-Zugänge", p.planerGesamt, p.stufe.planerInklusive],
+                ["Standorte", s.standorte, p.stufe.standorteInklusive]].map(([l, ist, inkl]) => {
+                const zusatz = Math.max(0, ist - inkl);
+                const pct = Math.min(100, (Math.min(ist, inkl) / Math.max(1, inkl)) * 100);
                 return (<div key={l} style={{ marginBottom: 18 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, marginBottom: 8 }}>
                     <span style={{ color: C.dim }}>{l}</span>
-                    <span style={{ color: col, fontWeight: 600, ...NUM }}>{zahl(ist)} / {zahl(max)}</span></div>
-                  <Balken ist={ist} soll={max} tone={pct > 90 ? "danger" : pct > 70 ? "warn" : "ok"} />
+                    <span style={{ color: zusatz > 0 ? C.warn : C.ok, fontWeight: 600, ...NUM }}>
+                      {zahl(ist)} / {zahl(inkl)} inkl.{zusatz > 0 ? ` · ${zahl(zusatz)} zusätzlich` : ""}</span></div>
+                  <Balken ist={Math.min(ist, inkl)} soll={inkl} tone={zusatz > 0 ? "warn" : "ok"} />
                 </div>);
               })}
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
@@ -7467,27 +7236,23 @@ function BetreiberRechnungen({ db, akt }) {
 function BetreiberTarife({ db, akt }) {
   return (
     <div>
-      <H1 sub="Grundgebühr und Preis je Zugangsart. Die Mengenstaffel greift auf die Summe aller kostenpflichtigen Zugänge eines Mandanten.">Tarife</H1>
+      <H1 sub="Grundgebühr, enthaltenes Kontingent und Funktionstiefe je Stufe. Zusatz-Planer und der Standortzuschlag gelten stufenübergreifend — sie stehen unten.">Tarife</H1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 18 }}>
         {db.tarife.map((t) => (
           <Card key={t.id} hover>
             <CardHead>{t.name}</CardHead>
             <div style={{ padding: 22, display: "grid", gap: 13 }}>
-              <Field label="Preis je Standort und Monat"
-                hint="Zugänge kosten nichts extra — das ist der Unterschied zur Kopfpauschale.">
-                <Inp type="number" step="1" value={t.jeStandort}
-                  onChange={(e) => akt.setzeTarifFeld(t.id, "jeStandort", Number(e.target.value))} /></Field>
-              <Field label="Gilt bis zu wie vielen Personen je Standort?"
-                hint="Größere Standorte steigen automatisch in den nächsten Tarif. Leer lassen für unbegrenzt.">
-                <Inp type="number" value={t.bisPersonen === null ? "" : t.bisPersonen}
-                  placeholder="unbegrenzt"
-                  onChange={(e) => akt.setzeTarifFeld(t.id, "bisPersonen",
-                    e.target.value === "" ? null : Number(e.target.value))} /></Field>
+              <Field label="Grundgebühr je Monat"
+                hint="Enthält das Kontingent unten. Mitarbeiter, Sub-Planer und Betriebsrat sind unbegrenzt und stets kostenfrei.">
+                <Inp type="number" step="1" value={t.grund}
+                  onChange={(e) => akt.setzeTarifFeld(t.id, "grund", Number(e.target.value))} /></Field>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <Field label="Einheiten"><Inp type="number" value={t.grenzen.einheiten}
-                  onChange={(e) => akt.setzeTarifGrenze(t.id, "einheiten", Number(e.target.value))} /></Field>
-                <Field label="Personen"><Inp type="number" value={t.grenzen.personen}
-                  onChange={(e) => akt.setzeTarifGrenze(t.id, "personen", Number(e.target.value))} /></Field>
+                <Field label="Planer inklusive">
+                  <Inp type="number" min={0} value={t.planerInklusive}
+                    onChange={(e) => akt.setzeTarifFeld(t.id, "planerInklusive", Number(e.target.value))} /></Field>
+                <Field label="Standorte inklusive" hint="Die größten zählen automatisch dazu.">
+                  <Inp type="number" min={0} value={t.standorteInklusive}
+                    onChange={(e) => akt.setzeTarifFeld(t.id, "standorteInklusive", Number(e.target.value))} /></Field>
               </div>
               <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
                 <Lab style={{ marginBottom: 8 }}>Enthalten</Lab>
@@ -7498,13 +7263,22 @@ function BetreiberTarife({ db, akt }) {
           </Card>))}
       </div>
       <Card style={{ marginTop: 18 }}>
-        <CardHead>Mengenstaffel</CardHead>
-        <div style={{ padding: 22, display: "flex", gap: 12, flexWrap: "wrap" }}>
-          {STAFFEL.map((s) => (
-            <div key={s.label} className="karte" style={{ padding: "14px 18px", minWidth: 130 }}>
-              <div style={{ fontSize: 12, color: C.dimmer, ...NUM }}>{s.label} Zugänge</div>
-              <div style={{ fontSize: 21, fontWeight: 650, color: s.rabatt ? C.ok : C.dim, ...NUM }}>−{Math.round(s.rabatt * 100)} %</div>
+        <CardHead>Zusatz-Planer und Standortzuschlag</CardHead>
+        <div style={{ padding: 22, display: "flex", gap: 24, flexWrap: "wrap" }}>
+          <div className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
+            <div style={{ fontSize: 12, color: C.dimmer }}>je zusätzlichem Planer</div>
+            <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(ZUSATZ_PLANER)}</div>
+          </div>
+          {STANDORT_BAENDER.filter((b) => b.zuschlag > 0).map((b) => (
+            <div key={b.label} className="karte" style={{ padding: "14px 18px", minWidth: 170 }}>
+              <div style={{ fontSize: 12, color: C.dimmer, ...NUM }}>Standort, {b.label}</div>
+              <div style={{ fontSize: 21, fontWeight: 650, ...NUM }}>{eur(b.zuschlag)}</div>
             </div>))}
+        </div>
+        <div style={{ padding: "0 22px 22px", fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
+          Gilt nur für Standorte über dem Kontingent einer Stufe — die größten zählen
+          immer zum Kontingent, unabhängig von ihrer Größe. Werte stehen in
+          {" "}<code>src/standorte.js</code> und <code>ZUSATZ_PLANER</code> in App.jsx.
         </div>
       </Card>
     </div>);
@@ -18123,64 +17897,65 @@ function Tarifwerk({ sitz, akt }) {
 /* ==========================================================================
    STANDORTE
 
-   Ein Standort ist keine Adresse, sondern eine Preisposition: Die
-   Grundgebühr fällt je Standort an, darauf greift eine Mengenstaffel. Wer
-   einen anlegt, ändert den Vertrag.
+   Ein Standort war einmal eine Preisposition: Die Grundgebühr fiel je
+   Standort an, wer einen anlegte, änderte den Vertrag — und musste dafür,
+   je nach Rolle, entweder selbst bestätigen oder einen Antrag stellen,
+   den die Leitung entschied.
 
-   Bis hierher gab es dafür überhaupt keine Bedienung — die Aktionen lagen
-   im Quelltext, aufgerufen hat sie niemand. Standorte ließen sich nur beim
-   Anlegen des Betriebs setzen, danach nie wieder.
+   Das galt für einen mobilen Pflegedienst mit vielen kleinen Einsatzorten
+   genauso wie für eine Zentrale mit einer großen Filiale — und traf damit
+   den falschen Betrieb. Ein Standort kostet jetzt nichts, solange er zum
+   Kontingent der gebuchten Stufe gehört; die größten zählen automatisch
+   dazu. Anlegen ist deshalb keine Vertragsänderung mehr, sondern eine
+   Frage der Struktur — offen für jeden, der die Seite erreicht.
 
-   Wer was darf, steht in standorte.js und nicht hier:
-     Betreiber  legt an, ohne zu fragen
-     Leitung    legt an und bestätigt die Kostenfolge selbst
-     Planung    stellt einen Antrag, den die Leitung entscheidet
-
-   Die Planung darf dabei *alle* Standorte bearbeiten — sie ist die
-   übergeordnete Planungsrolle und soll nicht an einer Ortsgrenze
-   haltmachen. Nur das Anlegen kostet Geld, und nur dafür braucht es die
-   Leitung.
+   Was einen Zuschlag auslösen kann, ist nicht das Anlegen, sondern das
+   Wachsen: ein Standort jenseits des Kontingents, der über die Schwelle
+   in `standorte.js` hinauswächst. Das zeigt diese Seite an, ohne
+   irgendetwas zu blockieren — es gibt nichts mehr zu bestätigen.
    ========================================================================== */
 function Standorte({ sitz, akt }) {
   const m = sitz.mandant;
   const p = preis(sitz.db, m);
-  const meine = sitz.person.rolle;
-  const weg = standortzustimmung(meine);
 
   const [name, setName] = useState("");
   const [land, setLand] = useState(m.bundesland);
-  const [frage, setFrage] = useState(null);      // { name, land, f }
 
   const liste = m.standorte || [];
-  const jeStandort = p.t.jeStandort;
+  const aufstellung = aufstellungJeStandort(m, heute());
+  /* Die größten Standorte sind die kostenlosen — dieselbe Sortierung wie
+     in preis(), damit die Seite genau das anzeigt, was die Rechnung meint. */
+  const nachGroesse = [...aufstellung].sort((a, b) => b.personen - a.personen);
 
-  const anlegenVersuchen = () => {
+  const anlegen = () => {
     const n = name.trim();
     if (n.length < 2) return;
-    const f = standortfolgen(liste.length, liste.length + 1, jeStandort);
-    /* Ohne Kostenfolge keine Rückfrage. Ein Dialog, der nur „ja" als
-       Antwort kennt, erzieht dazu, ihn ungelesen wegzuklicken — und dann
-       wird auch der gelesen, der es verdient hätte. */
-    if (weg === "frei" || f.mehr === 0) { akt.standortAnlegen(n, land); setName(""); return; }
-    setFrage({ name: n, land, f });
+    akt.standortAnlegen(n, land);
+    setName("");
   };
 
-  const aufstellung = aufstellungJeStandort(m, heute());
-
-  return (<>
+  return (
     <Card style={{ marginBottom: 20 }}>
-      <CardHead right={<Pill tone="accent">{eur(p.summeStandorte)} / Monat</Pill>}>
+      <CardHead right={p.summeStandorte > 0
+        ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
+        : <Pill tone="ok">kostenlos enthalten</Pill>}>
         Standorte</CardHead>
       <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
         Standorte arbeiten unabhängig: eigene Einheiten, eigene Besetzung, oft
-        eigenes Bundesland und damit eigene Feiertage. Die Grundgebühr fällt je
-        Standort an — ab dem zweiten greift die Mengenstaffel.
+        eigenes Bundesland und damit eigene Feiertage. Anlegen kostet nichts —
+        {" "}{zahl(p.stufe.standorteInklusive)} der größten Standorte sind in der
+        Stufe {p.stufe.name} enthalten, unabhängig von ihrer Größe. Ein
+        zusätzlicher, kleinerer Standort kostet erst ab {zahl(STANDORT_BAENDER[0].bis + 1)} Personen —
+        siehe die Aufstellung unten.
       </div>
 
       <div style={{ padding: 22, display: "grid", gap: 10 }}>
         {liste.map((st) => {
           const a = aufstellung.find((x) => x.standort.id === st.id);
           const einheiten = m.einheiten.filter((e) => (e.standortId || liste[0].id) === st.id);
+          const rang = nachGroesse.findIndex((x) => x.standort.id === st.id);
+          const inklusive = rang > -1 && rang < p.stufe.standorteInklusive;
+          const zuschlag = inklusive ? 0 : standortZuschlag(a ? a.personen : 0);
           return (
             <div key={st.id} style={{ border: `1px solid ${C.lineSoft}`, borderRadius: 12, padding: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
@@ -18197,6 +17972,8 @@ function Standorte({ sitz, akt }) {
                 </span>
                 {a && Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
                   <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
+                <Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
+                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>
                 <span style={{ flex: 1 }} />
                 {liste.length > 1 && (
                   <Btn size="sm" kind="danger" onClick={() => akt.loescheStandort(st.id)}>Entfernen</Btn>)}
@@ -18204,35 +17981,24 @@ function Standorte({ sitz, akt }) {
             </div>);
         })}
 
-        {weg !== "nein" && (
-          <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 16, marginTop: 6 }}>
-            <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-              <Field label="Neuer Standort" style={{ flex: "1 1 220px" }}>
-                <Inp value={name} placeholder="Niederlassung Hannover"
-                  onChange={(e) => setName(e.target.value)} /></Field>
-              <Field label="Bundesland" style={{ flex: "0 1 190px" }}>
-                <Sel value={land} onChange={(e) => setLand(e.target.value)}>
-                  {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
-              <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegenVersuchen}>
-                {weg === "anfragen" ? "Anlegen beantragen" : "Anlegen"}</Btn>
-            </div>
-            {weg === "anfragen" && (
-              <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
-                Ein weiterer Standort ändert die monatliche Gebühr. Die
-                Entscheidung trifft die {rollenName(m, "leitung")}.
-              </div>)}
-          </div>)}
+        <div style={{ borderTop: `1px solid ${C.lineSoft}`, paddingTop: 16, marginTop: 6 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <Field label="Neuer Standort" style={{ flex: "1 1 220px" }}>
+              <Inp value={name} placeholder="Niederlassung Hannover"
+                onChange={(e) => setName(e.target.value)} /></Field>
+            <Field label="Bundesland" style={{ flex: "0 1 190px" }}>
+              <Sel value={land} onChange={(e) => setLand(e.target.value)}>
+                {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
+            <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegen}>Anlegen</Btn>
+          </div>
+          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+            Ein neuer Standort ist leer und kostet nichts. Erst wenn Personal
+            zugeordnet wird und er über die Schwelle wächst, entsteht ein
+            Zuschlag — sichtbar oben an der jeweiligen Karte.
+          </div>
+        </div>
       </div>
-    </Card>
-
-    {frage && (
-      <Tarifsprung m={m} f={frage.f} weg={weg} onAbbruch={() => setFrage(null)}
-        onJa={() => {
-          if (weg === "anfragen") akt.standortAntrag(frage.name, frage.land, frage.f);
-          else akt.standortAnlegen(frage.name, frage.land);
-          setFrage(null); setName("");
-        }} />)}
-  </>);
+    </Card>);
 }
 
 /* --------------------------------------------------------------------------
@@ -18326,97 +18092,6 @@ function Regelwerk({ m, akt }) {
         </div>
       </div>
     </Card>);
-}
-
-/**
- * Das Fenster, das den Preissprung zeigt.
- *
- * Es nennt beide Zahlen: Beim Sprung in die nächste Staffel sinkt der
- * Preis *je Standort*, die Summe steigt trotzdem. Wer nur die Summe sieht,
- * hält die Rechnung für falsch.
- */
-function Tarifsprung({ m, f, weg, onJa, onAbbruch, onNein, antrag }) {
-  return (
-    <Fenster titel={antrag ? "Standort beantragt" : "Das ändert die monatliche Gebühr"}
-      onClose={onAbbruch} breit={560}>
-      <div style={{ padding: 24 }}>
-        {antrag && (
-          <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 16 }}>
-            {antrag.durchName} hat am {fDatum(antrag.gestellt)} den Standort
-            <strong style={{ color: C.text }}> {antrag.name}</strong> beantragt.
-          </div>)}
-
-        <div style={{ marginBottom: 18 }}>
-          <Sprung vorher={eur(f.vorher.netto)} nachher={eur(f.nachher.netto)}
-            ton={f.mehr > 0 ? "warn" : "ok"}
-            differenz={`${f.mehr > 0 ? "+" : "−"}${eur(Math.abs(f.mehr))}`} />
-        </div>
-
-        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, marginBottom: 18 }}>
-          {standorthinweis(f)}
-        </div>
-
-        {f.neueStaffel && (
-          <div style={{ background: C.accentLight, borderRadius: 10, padding: "12px 14px",
-            fontSize: 12.5, color: C.accentDeep, marginBottom: 18 }}>
-            Die Mengenstaffel greift: {f.vorher.staffel.label} → {f.nachher.staffel.label}.
-            Der Preis je Standort sinkt von {eur(f.vorher.einzel)} auf {eur(f.nachher.einzel)}.
-          </div>)}
-
-        {/* Beim Antrag drei Wege, nicht zwei. „Später" und „Ablehnen" auf
-            dieselbe Fläche zu legen wäre eine Falle: Wer das Fenster
-            wegklickt, hat nicht entschieden. */}
-        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          {antrag && <Btn onClick={onAbbruch}>Später</Btn>}
-          <Btn kind={antrag ? "danger" : "plain"} onClick={antrag ? onNein : onAbbruch}>
-            {antrag ? "Ablehnen" : "Abbrechen"}</Btn>
-          <Btn kind="primary" onClick={onJa}>
-            {antrag ? "Bestätigen und anlegen"
-              : weg === "anfragen" ? "Antrag stellen" : "Verstanden, anlegen"}</Btn>
-        </div>
-      </div>
-    </Fenster>);
-}
-
-/**
- * Offene Standortanträge, der Leitung beim Anmelden vorgelegt.
- *
- * Der Weg ist bewusst zweistufig: Die Planung darf Standorte führen und
- * alle bearbeiten, aber nicht allein einen anlegen — das ändert die
- * monatliche Gebühr. Sie stellt einen Antrag, und die Leitung sieht
- * dasselbe Fenster mit denselben Zahlen. Wer entscheidet, soll sehen, was
- * der andere gesehen hat.
- *
- * Zurückgestellt wird je Sitzung, nicht dauerhaft: Beim nächsten Anmelden
- * liegt der Antrag wieder vor. Ein Antrag, den man einmal wegklicken kann,
- * ist ein Antrag, der nie entschieden wird.
- */
-function Standortantraege({ sitz, akt }) {
-  const [zurueck, setZurueck] = useState([]);
-  if (!sitz || !sitz.mandant || sitz.person.rolle !== "leitung") return null;
-
-  const offen = (sitz.mandant.standortantraege || [])
-    .filter((a) => a.status === "offen" && !zurueck.includes(a.id));
-  if (!offen.length) return null;
-  const a = offen[0];
-
-  /* Der Antrag trägt die Zahlen von damals mit sich. Sie neu zu rechnen
-     wäre falsch: Zwischen Antrag und Entscheidung kann ein anderer
-     Standort dazugekommen sein, und dann bestätigte die Leitung eine Zahl,
-     die dem Antragsteller nie gezeigt wurde. */
-  const f = {
-    vorher: { netto: a.vorher, anzahl: a.anzahlVorher, einzel: a.vorherEinzel,
-      staffel: { label: a.vorherStaffel } },
-    nachher: { netto: a.nachher, anzahl: a.anzahlNachher, einzel: a.nachherEinzel,
-      staffel: { label: a.nachherStaffel } },
-    mehr: a.mehr, neueStaffel: a.neueStaffel,
-  };
-
-  return (
-    <Tarifsprung m={sitz.mandant} f={f} weg="bestaetigen" antrag={a}
-      onJa={() => akt.standortAntragEntscheiden(a.id, true)}
-      onNein={() => akt.standortAntragEntscheiden(a.id, false)}
-      onAbbruch={() => setZurueck((z) => [...z, a.id])} />);
 }
 
 function Betrieb({ sitz, akt }) {
@@ -19266,8 +18941,6 @@ function AppInnen() {
         `Aussetzung zurückgenommen bei ${m.name}`);
       }),
       setzeTarifFeld: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, [k]: v } : t) })),
-
-      setzeTarifGrenze: (id, k, v) => upd((s) => ({ ...s, tarife: s.tarife.map((t) => t.id === id ? { ...t, grenzen: { ...t.grenzen, [k]: v } } : t) })),
       neuerMandant: (f) => upd((s) => {
         const m = baueAusAnlage(f);
         melde(`${m.name} angelegt · ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(f.einheitLabel)}, ${m.dienstarten.length} Dienstarten.`);
@@ -19606,53 +19279,16 @@ function AppInnen() {
         const w = p.teilzeit.wochentage || [];
         return { ...p, teilzeit: { ...p.teilzeit, wochentage: w.includes(i) ? w.filter((x) => x !== i) : [...w, i].sort() } };
       }) }), null),
-      neuerStandort: () => mUpd((m) => ({ ...m, standorte: [...(m.standorte || []),
-        { id: uid("st"), name: `Standort ${(m.standorte || []).length + 1}`, bundesland: m.bundesland }] }), "Standort angelegt"),
-
       /* ------------------------------ Standorte ------------------------
-         Anlegen ist eine Vertragsänderung, kein Verwaltungsvorgang. Wer
-         sie auslöst, hängt an der Rolle — siehe zustimmung() in
-         standorte.js.                                                    */
+         Anlegen ist ein Verwaltungsvorgang, keine Vertragsänderung mehr —
+         ein neuer Standort ist leer und kostet nichts. Was zählt, ist,
+         ob er später über die Schwelle in standorte.js hinauswächst;
+         das zeigt die Standorte-Seite an, ohne etwas zu blockieren. */
       standortAnlegen: (name, bundesland) => mUpd((m) => ({
         ...m,
         standorte: [...(m.standorte || []),
           { id: uid("st"), name: String(name).trim(), bundesland: bundesland || m.bundesland }],
       }), `Standort „${String(name).trim()}" angelegt`),
-
-      standortAntrag: (name, bundesland, f) => mUpd((m) => {
-        const antrag = {
-          id: uid("sa"), name: String(name).trim(), bundesland: bundesland || m.bundesland,
-          durchId: sitz.person.id, durchName: `${sitz.person.vorname} ${sitz.person.nachname}`.trim(),
-          gestellt: heute(),
-          vorher: f.vorher.netto, nachher: f.nachher.netto, mehr: f.mehr,
-          neueStaffel: f.neueStaffel,
-          vorherStaffel: f.vorher.staffel.label, nachherStaffel: f.nachher.staffel.label,
-          vorherEinzel: f.vorher.einzel, nachherEinzel: f.nachher.einzel,
-          anzahlVorher: f.vorher.anzahl, anzahlNachher: f.nachher.anzahl,
-          status: "offen",
-        };
-        melde("Antrag gestellt. Die Organisationsleitung entscheidet.");
-        return { ...m, standortantraege: [...(m.standortantraege || []), antrag] };
-      }, "Standort beantragt"),
-
-      /* Die Leitung entscheidet. Ein abgelehnter Antrag verschwindet nicht,
-         sondern bleibt als Beleg stehen — sonst fragt die Planung in zwei
-         Wochen erneut und niemand weiß mehr, dass es schon einmal
-         verneint wurde. */
-      standortAntragEntscheiden: (id, ja) => mUpd((m) => {
-        const a = (m.standortantraege || []).find((x) => x.id === id);
-        if (!a || a.status !== "offen") return m;
-        const vermerkt = (m.standortantraege || []).map((x) => (x.id === id
-          ? { ...x, status: ja ? "bestaetigt" : "abgelehnt",
-            entschieden: heute(),
-            entschiedenVon: `${sitz.person.vorname} ${sitz.person.nachname}`.trim() }
-          : x));
-        melde(ja ? `Standort „${a.name}" angelegt.` : `Antrag für „${a.name}" abgelehnt.`);
-        if (!ja) return { ...m, standortantraege: vermerkt };
-        return { ...m, standortantraege: vermerkt,
-          standorte: [...(m.standorte || []),
-            { id: uid("st"), name: a.name, bundesland: a.bundesland || m.bundesland }] };
-      }, "Standortantrag entschieden"),
       setzeStandort: (id, k, v) => mUpd((m) => ({ ...m, standorte: (m.standorte || []).map((s2) => s2.id === id ? { ...s2, [k]: v } : s2) }), null),
       loescheStandort: (id) => mUpd((m) => {
         const n = m.einheiten.filter((e) => e.standortId === id).length;
@@ -20997,11 +20633,6 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
             <span className="glyph" style={{ color: C.danger }}>✚</span>Krank</button>}
         </nav>)}
-
-      {/* Offene Standortanträge legen sich der Leitung beim Anmelden vor.
-          Nicht als Zeile in einer Liste, die man übersieht — ein Antrag,
-          der Geld kostet, gehört vor die Arbeit, nicht daneben. */}
-      <Standortantraege sitz={sitz} akt={akt} />
 
       {konflikt && (
         <Konfliktfenster lage={konflikt} melde={melde}
