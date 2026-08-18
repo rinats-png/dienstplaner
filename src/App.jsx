@@ -433,6 +433,25 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 /* Blätter und Überlagerungen */
 .blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:0 20px 48px rgba(17,24,39,.18);
   border:1px solid ${C.line};}
+/* Der Rücken hinter einem Blatt.
+
+   Diese Regel fehlte, und zwar für alle achtundzwanzig Dialoge der
+   Anwendung zugleich. Ohne sie war der Rücken ein gewöhnlicher Block im
+   Textfluss: keine feste Lage, keine Ebene, keine Abdunklung. Das Blatt
+   landete am linken Seitenrand — also unter der festen Seitenleiste, die
+   es zur Hälfte verdeckte. Auf breiten Bildschirmen fiel das am stärksten
+   auf, weil der Inhalt daneben mittig steht und der Dialog nicht.
+
+   „margin:auto" auf dem Blatt statt „align-items:center" ist Absicht: Ein
+   Dialog, der höher ist als das Fenster, wird bei zentrierter Ausrichtung
+   oben abgeschnitten, und der abgeschnittene Teil ist nicht erreichbar.
+   So zentriert er, solange Platz ist, und lässt sonst scrollen. */
+.sheet-back{position:fixed; inset:0; z-index:90; display:flex; justify-content:center;
+  background:rgba(20,20,28,.32); backdrop-filter:blur(6px);
+  padding:24px; overflow-y:auto; overscroll-behavior:contain;
+  animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
+.sheet-back > .blatt{width:100%; margin:auto; outline:none;}
+@keyframes blattauf{from{opacity:0;} to{opacity:1;}}
 .zeile-hover:hover{background:${C.bg};}
 
 /* Meldungsstreifen mit Rücknahme */
@@ -465,6 +484,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
     transition-duration:.01ms !important;}
   .toast-uhr i{animation:none; opacity:.5;}
   .toast{animation:none;}
+  .sheet-back{animation:none;}
   *{scroll-behavior:auto !important;}
 }
 
@@ -511,6 +531,10 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   /* Unter sechzehn Pixeln zoomt iOS beim Antippen in das Feld hinein */
   .inp,.sel,textarea{font-size:16px !important;}
   .karte{border-radius:10px;}
+  /* Auf dem Telefon zählt jeder Millimeter Breite: der Rand um ein Blatt
+     schrumpft, das Blatt selbst nimmt die volle Breite. */
+  .sheet-back{padding:10px;}
+  .sheet-back > .blatt{border-radius:12px;}
 }
 
 @media print{
@@ -3963,10 +3987,11 @@ function offeneUebergaben(m, tage = 3) {
   return out;
 }
 
-/* --------------------------- DATEV-Ausgabe ------------------------------- */
+/* --------------------------- Lohnausgabe --------------------------------- */
 /**
- * Lohnarten nach dem üblichen DATEV-Schema. Die Zuordnung ist einstellbar,
- * weil jeder Betrieb eigene Lohnartennummern führt.
+ * Übliche Lohnartennummern als Startwerte. Sie sind keine Vorgabe von DATEV,
+ * sondern in deutschen Lohnbüros verbreitete Hausnummern — jeder Betrieb
+ * führt seinen eigenen Lohnartenschlüssel, deshalb sind sie einstellbar.
  */
 const LOHNARTEN_STD = {
   grund: { nr: "1000", text: "Gehalt" },
@@ -4017,13 +4042,82 @@ function datevSaetze(m, ym) {
   }
   return zeilen;
 }
+/**
+ * Ein Feld f\u00FCr die Trennzeichendatei.
+ *
+ * Die Lohnartenbezeichnungen sind je Betrieb frei benennbar. Ein Semikolon
+ * darin \u2014 \u201EZuschlag Nacht; steuerfrei" \u2014 schob bisher alle folgenden Spalten
+ * um eins nach rechts, und zwar lautlos: Die Datei lie\u00DF sich \u00F6ffnen, nur die
+ * Stunden standen in der Spalte des Abrechnungsmonats.
+ */
+const csvFeld = (v) => {
+  const s = String(v == null ? "" : v);
+  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/**
+ * Die Lohnausgabe als Trennzeichendatei.
+ *
+ * Kein amtliches DATEV-Importformat \u2014 die gibt es (LODAS und Lohn und Gehalt),
+ * beide mit vorgeschriebenem Kopfsatz und fester Feldfolge. Diese Datei ist
+ * eine schlichte, klar benannte Spaltenliste, wie sie ein Lohnb\u00FCro in seinen
+ * Import einliest oder in die eigene Maske \u00FCbernimmt. Sie ist bewusst so
+ * gehalten, dass ein Mensch sie lesen und pr\u00FCfen kann, bevor er sie weitergibt.
+ *
+ * Byte-Reihenfolge-Marke und CRLF stehen davor, damit Excel Umlaute nicht
+ * zerlegt \u2014 ohne beides wird aus M\u00FCller ein M\u00C3\u00BCller.
+ */
 function datevCSV(m, ym) {
-  const z = datevSaetze(m, ym);
-  const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung", "Stunden", "Abrechnungsmonat"];
+  /* Feste Reihenfolge: Personalnummer, dann Lohnart. Vorher kam die Reihenfolge
+     aus der Personalliste \u2014 zwei Ausgaben desselben Monats konnten sich
+     unterscheiden, ohne dass sich eine Zahl ge\u00E4ndert hatte. */
+  const z = datevSaetze(m, ym).slice().sort((a, b) =>
+    String(a.personalnummer).localeCompare(String(b.personalnummer), "de", { numeric: true })
+    || String(a.lohnart).localeCompare(String(b.lohnart), "de", { numeric: true }));
+  const [jahr, monat] = ym.split("-");
+  const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung",
+    "Stunden", "Monat", "Jahr"];
   const zeilen = [kopf.join(";")];
   for (const x of z) zeilen.push([x.personalnummer, x.nachname, x.vorname, x.lohnart,
-    x.bezeichnung, n2(x.stunden), x.monat].join(";"));
+    x.bezeichnung, n2(x.stunden), monat, jahr].map(csvFeld).join(";"));
   return "\uFEFF" + zeilen.join("\r\n");
+}
+
+/**
+ * Dieselben Zahlen als lesbares Blatt \u2014 zum Gegenlesen, bevor die Datei das
+ * Haus verl\u00E4sst. Eine Trennzeichendatei pr\u00FCft niemand gern am Bildschirm.
+ */
+function lohnausgabeText(m, ym) {
+  const z = datevSaetze(m, ym);
+  const [jahr, monat] = ym.split("-");
+  const jeLohnart = {};
+  for (const x of z) {
+    if (!jeLohnart[x.lohnart]) jeLohnart[x.lohnart] = { nr: x.lohnart, text: x.bezeichnung, stunden: 0, personen: new Set() };
+    jeLohnart[x.lohnart].stunden += x.stunden;
+    jeLohnart[x.lohnart].personen.add(x.personalnummer);
+  }
+  const summen = Object.values(jeLohnart).sort((a, b) =>
+    String(a.nr).localeCompare(String(b.nr), "de", { numeric: true }));
+  const breite = (s, n) => String(s).padEnd(n).slice(0, n);
+  return [
+    `Lohnausgabe ${m.name}`,
+    `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
+    `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    "",
+    "Summen je Lohnart",
+    "\u2014".repeat(58),
+    `${breite("Lohnart", 10)}${breite("Bezeichnung", 32)}${"Personen".padStart(9)}${"Stunden".padStart(11)}`,
+    ...summen.map((l) => `${breite(l.nr, 10)}${breite(l.text, 32)}`
+      + `${String(l.personen.size).padStart(9)}${n2(l.stunden).padStart(11)}`),
+    "\u2014".repeat(58),
+    `${breite("", 42)}${String(new Set(z.map((x) => x.personalnummer)).size).padStart(9)}`
+      + `${n2(z.reduce((a, x) => a + x.stunden, 0)).padStart(11)}`,
+    "",
+    `${zahl(z.length)} Lohnartens\u00E4tze f\u00FCr ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
+    "",
+    "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundens\u00E4tze,",
+    "Tarifgruppen und Steuerfreibetr\u00E4ge geh\u00F6ren in die Lohnabrechnung.",
+  ].join("\n");
 }
 
 /* ==========================================================================
@@ -4080,6 +4174,52 @@ function belastbarkeit(m, wochen = 8) {
       stufe: schwaechste ? schwaechste.stufe : "robust" });
   }
   return out;
+}
+
+/* Die Schwellen, ab denen eine Woche robust, knapp oder ohne Reserve heißt.
+   Sie standen bisher nur als Zahlenvergleich im Code — auf dem Bildschirm
+   erschien das Urteil, nie sein Maßstab. Wer „knapp" liest, soll erfahren
+   können, ab wann etwas so heißt. */
+const RESERVE_STUFEN = [
+  { id: "robust", ab: 3, text: "drei oder mehr gleichzeitige Ausfälle verkraftbar" },
+  { id: "knapp", ab: 1, text: "ein bis zwei gleichzeitige Ausfälle verkraftbar" },
+  { id: "ohne Reserve", ab: 0, text: "kein einziger Ausfall mehr verkraftbar" },
+];
+
+/**
+ * Der Befund als Satz.
+ *
+ * Die Auswertung zeigte Balken, Zahlen und drei Farben — aber nie das
+ * Ergebnis in Worten. Wer die Seite öffnet, will zuerst wissen, ob etwas
+ * zu tun ist, und erst dann, woran man das sieht.
+ */
+function belastbarkeitSatz(bl, grenze) {
+  const kritisch = bl.filter((w) => w.stufe === "ohne Reserve");
+  const knapp = bl.filter((w) => w.stufe === "knapp");
+  const anteil = grenze ? `${Math.round(grenze.anteil * 100)} %` : "über 30 %";
+  if (kritisch.length) {
+    const w = kritisch[0];
+    const d = w.schwaechste;
+    return { ton: "danger",
+      satz: `Ab der Woche vom ${fKurz(w.von)} verkraftet ${d ? d.da.name : "ein Dienst"} keinen `
+        + `einzigen Ausfall mehr — die nächste Krankmeldung führt dort zur Unterbesetzung.`,
+      dazu: `Betroffen sind ${anzahlWort(kritisch.length, "Woche")}. Der Plan reißt rechnerisch, `
+        + `sobald ${anteil} der Belegschaft gleichzeitig ausfällt.` };
+  }
+  if (knapp.length) {
+    const w = knapp[0];
+    const d = w.schwaechste;
+    const n = d ? d.min : 1;
+    return { ton: "warn",
+      satz: `Keine Woche steht ganz ohne Reserve da, aber ab dem ${fKurz(w.von)} wird es eng: `
+        + `${d ? d.da.name : "ein Dienst"} verkraftet dort nur noch `
+        + `${n === 1 ? "einen einzigen Ausfall" : `${zahl(n)} gleichzeitige Ausfälle`}.`,
+      dazu: `${anzahlWort(knapp.length, "Woche")} mit dünner Decke. Der Plan reißt rechnerisch, `
+        + `sobald ${anteil} der Belegschaft gleichzeitig ausfällt.` };
+  }
+  return { ton: "ok",
+    satz: `Alle geprüften Wochen verkraften mindestens drei gleichzeitige Ausfälle.`,
+    dazu: `Der Plan reißt rechnerisch erst, wenn ${anteil} der Belegschaft gleichzeitig ausfällt.` };
 }
 
 /**
@@ -10558,12 +10698,16 @@ function Datenschutz({ sitz, akt }) {
 
 
 /**
- * Lohnausgabe nach DATEV-Schema. Bewusst als Stunden je Lohnart — Entgelte
- * gehören in die Lohnabrechnung, nicht in die Dienstplanung.
+ * Lohnausgabe für die Lohnbuchhaltung. Bewusst als Stunden je Lohnart —
+ * Entgelte gehören in die Lohnabrechnung, nicht in die Dienstplanung.
  */
 function Lohnausgabe({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const saetze = useMemo(() => datevSaetze(m, ym), [m, ym]);
+  /* Ohne Personalnummer trägt die Ausgabe die interne Kennung — für einen
+     Import wertlos, und im Zweifel merkt es erst das Lohnbüro. */
+  const ohneNummer = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`)
+    && !p.personalnummer), [m, ym]);
   const nachLohnart = useMemo(() => {
     const g = {};
     for (const z of saetze) {
@@ -10581,26 +10725,68 @@ function Lohnausgabe({ sitz, ym, akt }) {
         <Kpi label="Betroffene Personen" value={new Set(saetze.map((z) => z.personalnummer)).size} />
       </KpiRow>
 
+      {ohneNummer.length > 0 && (
+        <Card style={{ marginTop: 18, borderLeft: `3px solid ${C.warn}`, background: C.warnLight }}>
+          <div style={{ padding: "16px 20px", fontSize: 13.5, lineHeight: 1.6 }}>
+            <b>{zahl(ohneNummer.length)} {ohneNummer.length === 1 ? "Person" : "Personen"} ohne
+            Personalnummer.</b>{" "}
+            Für sie trägt die Ausgabe die interne Kennung — ein Lohnbüro kann damit nichts
+            zuordnen. Die Personalnummer steht in der Personalakte unter Stammdaten.
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7 }}>
+              {ohneNummer.slice(0, 8).map((p) => `${p.nachname}, ${p.vorname}`).join(" · ")}
+              {ohneNummer.length > 8 ? ` … und ${zahl(ohneNummer.length - 8)} weitere` : ""}
+            </div>
+          </div>
+        </Card>)}
+
       <Card style={{ marginTop: 18 }}>
-        <CardHead right={<Btn kind="primary" onClick={() => akt.exportDATEV(ym)}>
-          Als CSV ausgeben</Btn>}>Summen je Lohnart</CardHead>
-        <table className="raster">
-          <thead><tr>{["Lohnart", "Bezeichnung", "Personen", "Stunden"].map((h, i) => (
-            <th key={i} style={{ textAlign: i >= 2 ? "right" : "left" }}>{h}</th>))}</tr></thead>
-          <tbody>
-            {nachLohnart.map((l) => (
-              <tr key={l.nr}>
-                <td style={NUM}>{l.nr}</td>
-                <td>{l.text}</td>
-                <td style={{ textAlign: "right", ...NUM }}>{l.personen}</td>
-                <td style={{ textAlign: "right", fontWeight: 600, ...NUM }}>{n2(l.stunden)}</td>
-              </tr>))}
-          </tbody>
-        </table>
-        <div style={{ padding: "14px 20px", fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
-          Die Datei enthält je Person und Lohnart eine Zeile mit Stunden. Entgelte werden bewusst
-          nicht berechnet — Stundensätze, Tarifgruppen und Steuerfreibeträge gehören in die
-          Lohnabrechnung. Die Lohnartennummern lassen sich je Betrieb anpassen.
+        <CardHead right={<div style={{ display: "flex", gap: 9 }}>
+          <Btn size="sm" onClick={() => akt.exportLohnBlatt(ym)}>Blatt zum Gegenlesen</Btn>
+          <Btn size="sm" kind="primary" onClick={() => akt.exportDATEV(ym)}>Als CSV ausgeben</Btn>
+        </div>}>Summen je Lohnart</CardHead>
+        {nachLohnart.length === 0 ? (
+          <div style={{ padding: "18px 20px", fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+            Für diesen Monat fällt nichts an, was auf eine eigene Lohnart gehört. Zuschläge
+            entstehen aus Nacht-, Sonntags-, Feiertags- und Samstagsstunden, Mehrarbeit aus
+            einem Stundenkonto im Plus. Solange der Monat nicht geplant ist, bleibt die
+            Aufstellung leer.
+          </div>) : (
+          <table className="raster">
+            <thead><tr>{["Lohnart", "Bezeichnung", "Personen", "Stunden"].map((h, i) => (
+              <th key={i} style={{ textAlign: i >= 2 ? "right" : "left" }}>{h}</th>))}</tr></thead>
+            <tbody>
+              {nachLohnart.map((l) => (
+                <tr key={l.nr}>
+                  <td style={NUM}>{l.nr}</td>
+                  <td>{l.text}</td>
+                  <td style={{ textAlign: "right", ...NUM }}>{l.personen}</td>
+                  <td style={{ textAlign: "right", fontWeight: 600, ...NUM }}>{n2(l.stunden)}</td>
+                </tr>))}
+            </tbody>
+            <tfoot><tr>
+              <td colSpan={2} style={{ fontWeight: 650 }}>Summe</td>
+              <td style={{ textAlign: "right", ...NUM }}>
+                {new Set(saetze.map((z) => z.personalnummer)).size}</td>
+              <td style={{ textAlign: "right", fontWeight: 700, ...NUM }}>
+                {n2(saetze.reduce((a, z) => a + z.stunden, 0))}</td>
+            </tr></tfoot>
+          </table>)}
+        <div style={{ padding: "14px 20px", fontSize: 12.5, color: C.dim, lineHeight: 1.6 }}>
+          <b style={{ color: C.text }}>Die CSV-Datei</b> enthält je Person und Lohnart eine Zeile
+          mit Stunden, sortiert nach Personalnummer. Sie ist kein amtliches DATEV-Importformat —
+          davon gibt es zwei (LODAS sowie Lohn und Gehalt), beide mit vorgeschriebenem Kopfsatz.
+          Diese Datei ist eine klar benannte Spaltenliste, wie sie ein Lohnbüro einliest oder
+          übernimmt. Vor dem ersten Lauf einmal mit der Lohnbuchhaltung abstimmen, welche
+          Lohnartennummern dort geführt werden — sie lassen sich je Betrieb anpassen.
+          <div style={{ marginTop: 8 }}>
+            <b style={{ color: C.text }}>Das Blatt zum Gegenlesen</b> enthält dieselben Zahlen als
+            lesbare Aufstellung mit Gesamtsumme — gedacht für den Blick darauf, bevor die Datei
+            das Haus verlässt.
+          </div>
+          <div style={{ marginTop: 8 }}>
+            Entgelte werden bewusst nicht berechnet: Stundensätze, Tarifgruppen und
+            Steuerfreibeträge gehören in die Lohnabrechnung.
+          </div>
         </div>
       </Card>
     </div>);
@@ -12802,31 +12988,78 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
   const farbe = (stufe) => stufe === "robust" ? C.ok : stufe === "knapp" ? C.warn : C.danger;
   const flaeche = (stufe) => stufe === "robust" ? C.okLight : stufe === "knapp" ? C.warnLight : C.dangerLight;
 
+  const befund = belastbarkeitSatz(bl, grenze);
+
   return (
     <div>
       <H1 rubrik="Auswertung"
-        sub="Wie viele Ausfälle verträgt welche Woche? Gerechnet wird echte Reserve: eingeteilter Überhang plus alle, die tatsächlich einspringen dürften — ohne Ruhezeitverstoß, ohne fehlende Qualifikation."
+        sub="Eine Frage: Wie viele Krankmeldungen hält der Plan noch aus, bevor eine Schicht unterbesetzt ist? Gezählt wird nur, wer wirklich einspringen dürfte — ohne Ruhezeitverstoß und mit der geforderten Qualifikation."
         right={<Seg value={String(wochen)} onChange={(v) => setWochen(Number(v))}
           options={[{ id: "4", label: "4 Wochen" }, { id: "8", label: "8 Wochen" },
             { id: "13", label: "Quartal" }]} />}>
         Belastbarkeit</H1>
 
+      {/* Der Befund in Worten, bevor die erste Zahl kommt. */}
+      <Card style={{ marginBottom: 18, borderLeft: `3px solid ${
+        befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok}`,
+        background: befund.ton === "danger" ? C.dangerLight
+          : befund.ton === "warn" ? C.warnLight : C.okLight }}>
+        <div style={{ padding: "18px 22px" }}>
+          <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.5,
+            color: befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok }}>
+            {befund.satz}</div>
+          <div style={{ fontSize: 13, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
+            {befund.dazu}</div>
+        </div>
+      </Card>
+
       <KpiRow min={180}>
         <Kpi label="Wochen ohne Reserve" value={kritisch.length}
           tone={kritisch.length ? "danger" : "ok"}
-          sub={kritisch.length ? `ab ${fKurz(kritisch[0].von)}` : "alle Wochen tragen"} />
+          sub={kritisch.length
+            ? `ab ${fKurz(kritisch[0].von)} — dort ist kein Ausfall mehr auffangbar`
+            : "keine Woche steht ohne Reserve da"} />
         <Kpi label="Knappe Wochen" value={knapp.length} tone={knapp.length ? "warn" : "text"}
-          sub="ein einziger Ausfall genügt" />
-        <Kpi label="Belastungsgrenze" value={grenze ? `${Math.round(grenze.anteil * 100)} %` : "über 30 %"}
+          sub="höchstens zwei gleichzeitige Ausfälle auffangbar" />
+        <Kpi label="Belastungsgrenze" value={grenze ? `${Math.round(grenze.anteil * 100)}` : "über 30"}
+          unit="% der Belegschaft"
           tone={grenze && grenze.anteil <= 0.1 ? "danger" : grenze && grenze.anteil <= 0.2 ? "warn" : "ok"}
-          sub="Ausfall, ab dem der Plan reißt" />
+          sub="fallen so viele gleichzeitig aus, reißt der Plan" />
       </KpiRow>
 
       {/* ------------------------ Wochenbild ------------------------ */}
       <Card style={{ marginTop: 20 }}>
         <CardHead right={<Lab>Reserve je Woche</Lab>}>Wo bricht es zuerst</CardHead>
+
+        {/* Was die Zahlen bedeuten, steht vor den Zahlen — nicht als Fußnote
+            darunter, wo es erst gelesen wird, wenn man schon geraten hat. */}
+        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.lineSoft}`,
+          fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+          Jeder Balken ist eine Dienstart. Die Zahl darin sagt, wie viele Personen
+          in dieser Woche <b style={{ color: C.text }}>gleichzeitig ausfallen dürften</b>,
+          bevor die schwächste Schicht der Woche unterbesetzt ist.
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 12 }}>
+            {RESERVE_STUFEN.map((s) => (
+              <span key={s.id} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5 }}>
+                <span style={{ width: 26, height: 16, borderRadius: 4, flexShrink: 0,
+                  background: `${farbe(s.id)}1C`, borderBottom: `2px solid ${farbe(s.id)}` }} />
+                <b style={{ color: farbe(s.id), fontWeight: 650 }}>{s.id}</b>
+                <span style={{ color: C.dimmer }}>· {s.text}</span>
+              </span>))}
+          </div>
+        </div>
+
         <div style={{ padding: 18 }}>
-          {bl.map((w) => (
+          {/* Ohne Mindestbesetzung gibt es nichts zu tragen — dann stünden hier
+              acht leere Zeilen mit dem Urteil „robust", was schlicht falsch
+              klingt. Besser sagen, woran es liegt. */}
+          {bl.every((w) => !w.zeilen.length) && (
+            <div style={{ padding: "18px 12px", fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
+              Für keine Dienstart ist eine Mindestbesetzung hinterlegt — ohne sie lässt sich
+              nicht sagen, ab wann eine Schicht unterbesetzt ist. Die Mindestbesetzung je
+              Wochentag steht unter <b style={{ color: C.text }}>Dienstarten</b>.
+            </div>)}
+          {bl.map((w) => w.zeilen.length === 0 ? null : (
             <div key={w.kw} onClick={() => setGewaehlt(gewaehlt === w.kw ? null : w.kw)}
               style={{ marginBottom: 6, borderRadius: 10, cursor: "pointer",
                 background: gewaehlt === w.kw ? flaeche(w.stufe) : "transparent",
@@ -12836,7 +13069,8 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
                   ab {fKurz(w.von)}</span>
                 <div style={{ flex: 1, display: "flex", gap: 3 }}>
                   {w.zeilen.map((z) => (
-                    <div key={z.da.id} title={`${z.da.name}: trägt ${z.min} Ausfälle`}
+                    <div key={z.da.id}
+                      title={`${z.da.name}: verkraftet ${z.min} gleichzeitige Ausfälle in der schwächsten Schicht dieser Woche`}
                       style={{ flex: 1, height: 26, borderRadius: 6, display: "flex", alignItems: "center",
                         justifyContent: "center", fontSize: 11, fontWeight: 650,
                         background: `${farbe(z.stufe)}1C`, color: farbe(z.stufe),
@@ -12850,14 +13084,15 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
               {gewaehlt === w.kw && (
                 <div style={{ padding: "4px 12px 14px" }}>
                   <table className="raster" style={{ background: C.flaeche, borderRadius: 8 }}>
-                    <thead><tr>{["Dienst", "trägt mindestens", "im Schnitt", "schwächster Tag"].map((h, i) => (
+                    <thead><tr>{["Dienst", "verkraftet am schwächsten Tag", "im Wochenschnitt",
+                      "schwächster Tag"].map((h, i) => (
                       <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>
                     <tbody>
                       {w.zeilen.slice().sort((a, b) => a.min - b.min).map((z) => (
                         <tr key={z.da.id}>
                           <td><Zelle da={z.da} size={22} /> <span style={{ marginLeft: 8 }}>{z.da.name}</span></td>
                           <td style={{ textAlign: "right", fontWeight: 650, color: farbe(z.stufe), ...NUM }}>
-                            {z.min} Ausfälle</td>
+                            {zahl(z.min)} {z.min === 1 ? "Ausfall" : "Ausfälle"}</td>
                           <td style={{ textAlign: "right", color: C.dim, ...NUM }}>{n1(z.schnitt)}</td>
                           <td style={{ textAlign: "right", ...NUM }}>
                             {z.minTag ? (
@@ -12870,14 +13105,21 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
             </div>))}
         </div>
         <div style={{ padding: "0 20px 18px", fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
-          Die Zahl im Balken ist die Anzahl gleichzeitiger Ausfälle, die dieser Dienst in der
-          schwächsten Schicht der Woche verkraftet. Null bedeutet: der nächste Krankheitsfall
-          führt zur Unterbesetzung.
+          Die Zahl setzt sich aus zwei Teilen zusammen: den bereits über der Mindestbesetzung
+          eingeteilten Personen und allen, die kurzfristig einspringen dürften. Wer wegen
+          Ruhezeit, fehlender Qualifikation oder eigener Abwesenheit nicht einspringen darf,
+          zählt nicht mit — deshalb steht hier oft eine kleinere Zahl, als die Personalliste
+          vermuten lässt. Eine Woche anklicken zeigt die Dienste einzeln.
         </div>
       </Card>
 
       {/* ---------------------- Ausfallszenarien --------------------- */}
-      <Lab style={{ margin: "24px 0 12px" }}>Was passiert bei einer Krankheitswelle</Lab>
+      <Lab style={{ margin: "24px 0 6px" }}>Was passiert bei einer Krankheitswelle</Lab>
+      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 12, maxWidth: 760 }}>
+        Vier Durchrechnungen für die nächsten vierzehn Tage: Was bricht, wenn 5, 10, 20 oder
+        30 Prozent der Belegschaft gleichzeitig krank werden? „Hält" heißt, dass keine Schicht
+        ganz unbesetzt bliebe und kaum neue Regelverstöße entstünden.
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
         {szenarien.map((s) => (
           <Card key={s.anteil} style={{ padding: 20,
@@ -12889,7 +13131,8 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
             </div>
             <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", ...NUM,
               color: s.haltbar ? C.text : C.danger }}>+{s.neu}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>zusätzliche Befunde</div>
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
+              zusätzliche Regelverstöße gegenüber heute</div>
             <div style={{ marginTop: 16, paddingTop: 13, borderTop: `1px solid ${C.lineSoft}`,
               display: "grid", gap: 6, fontSize: 12.5 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -15623,14 +15866,33 @@ const offeneNotrufe = (m) => (m.notrufe || [])
    ========================================================================== */
 
 function auftraggeberBericht(m, von, bis, einheitId) {
+  /* Die Vorkommnisse kamen hier nie an.
+
+     Übergaben liegen als Liste vor, je Tag und Dienstart. Diese Auswertung
+     griff sie über einen Schlüssel `datum|einheitId` ab, den es in den Daten
+     nie gab, und verlangte zusätzlich ein Feld `abgeschlossen`, das an keiner
+     Stelle geschrieben wird. Beides zusammen hieß: Der Nachweis meldete
+     ausnahmslos „keine besonderen Vorkommnisse" — gleichgültig, wie viel im
+     Betrieb tatsächlich dokumentiert war. */
   const zeilen = [];
-  for (let d = von; d <= bis; d = addDays(d, 1)) {
-    const u = (m.uebergaben || {})[`${d}|${einheitId}`];
-    if (!u || !u.abgeschlossen) continue;
-    /* Nur Lage und Vorkommnisse — offene Aufgaben und Material sind intern. */
-    zeilen.push({ datum: d, dienst: u.dienstId,
-      lage: u.lage || "", vorkommnis: u.vorkommnis || "" });
+  for (const u of (m.uebergaben || [])) {
+    if (!u || !u.datum || u.datum < von || u.datum > bis) continue;
+    if (!u.vorkommnis) continue;
+    /* Eine Übergabe gehört zu der Einheit, aus der jemand an der übergebenen
+       Schicht beteiligt war. Näheres gibt das Modell nicht her — Übergaben
+       hängen an der Dienstart, nicht an der Einheit. */
+    if (einheitId && (u.personen || []).length) {
+      const dabei = u.personen.some((pid) => {
+        const p = m.personen.find((x) => x.id === pid);
+        return p && einheitAm(p, u.datum) === einheitId;
+      });
+      if (!dabei) continue;
+    }
+    const da = m.dienstarten.find((x) => x.id === u.dienstId);
+    /* Nur das Vorkommnis — Lage, offene Aufgaben und Material sind intern. */
+    zeilen.push({ datum: u.datum, dienst: da ? da.name : "", vorkommnis: u.vorkommnis });
   }
+  zeilen.sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0));
   const besetzt = [];
   for (let d = von; d <= bis; d = addDays(d, 1)) {
     const bes = besetzung(m, d);
@@ -15960,12 +16222,18 @@ function Auftraggeberbericht({ sitz, akt }) {
   const [von, setVon] = useState(addDays(heute(), -30));
   const [bis, setBis] = useState(heute());
   const [einheit, setEinheit] = useState(m.einheiten[0] ? m.einheiten[0].id : "");
+  const [anmerkung, setAnmerkung] = useState("");
   const b = useMemo(() => einheit ? auftraggeberBericht(m, von, bis, einheit) : null,
     [m, von, bis, einheit]);
   const e = m.einheiten.find((x) => x.id === einheit);
+  /* Wie viele Übergaben es im Zeitraum überhaupt gibt — die Antwort auf
+     „warum steht hier nichts". */
+  const uebergabenImZeitraum = (m.uebergaben || [])
+    .filter((u) => u && u.datum >= von && u.datum <= bis).length;
 
   const alsText = () => {
     if (!b) return "";
+    const anm = anmerkung.trim();
     return [
       `Leistungsnachweis ${m.name}`,
       e ? `${m.einheitLabel || "Einheit"}: ${e.name}` : "",
@@ -15975,18 +16243,23 @@ function Auftraggeberbericht({ sitz, akt }) {
         (b.quote !== null ? ` (${b.quote} %)` : ""),
       "",
       ...(b.eintraege.length ? ["Besondere Vorkommnisse:", ""] : ["Keine besonderen Vorkommnisse."]),
-      ...b.eintraege.filter((z) => z.vorkommnis)
-        .map((z) => `${fKurz(z.datum)}  ${z.vorkommnis}`),
+      ...b.eintraege.map((z) => `${fKurz(z.datum)}${z.dienst ? `  ${z.dienst}` : ""}  ${z.vorkommnis}`),
+      /* Die Anmerkung steht unter eigener Überschrift, nicht zwischen den
+         Vorkommnissen. Ein Nachweis verliert seinen Wert, sobald sich
+         Erfasstes und nachträglich Geschriebenes nicht mehr unterscheiden
+         lassen. */
+      ...(anm ? ["", "Anmerkung des Betriebs (nachträglich erfasst):", "", anm] : []),
       "",
       "———",
       "Erstellt mit CENTRIC. Personenbezogene Angaben sind nicht enthalten.",
+      "Vorkommnisse stammen aus den Schichtübergaben des Zeitraums.",
     ].filter((x) => x !== null).join("\n");
   };
 
   return (
     <div>
       <H1 rubrik="Auswertung"
-        sub="Ein Nachweis für den Auftraggeber: Besetzung und Vorkommnisse. Ohne Namen, ohne interne Aufgaben, ohne Krankmeldungen — ein Auftraggeber bekommt Nachweis, keine Personalakte.">
+        sub="Ein Blatt zum Weitergeben an den Auftraggeber: Wie zuverlässig war die Besetzung im Zeitraum, und was ist vorgefallen? Ohne Namen, ohne interne Aufgaben, ohne Krankmeldungen — ein Auftraggeber bekommt Nachweis, keine Personalakte.">
         Leistungsnachweis</H1>
 
       <Card style={{ marginBottom: 22 }}>
@@ -16010,7 +16283,7 @@ function Auftraggeberbericht({ sitz, akt }) {
             ["Vollständig besetzt", `${zahl(b.vollstaendig)}`, `von ${zahl(b.tage)} Tagen`],
             ["Deckungsquote", b.quote === null ? "—" : `${b.quote} %`,
               b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken"],
-            ["Vorkommnisse", zahl(b.eintraege.filter((z) => z.vorkommnis).length), "dokumentiert"]]
+            ["Vorkommnisse", zahl(b.eintraege.length), "aus den Übergaben"]]
             .map(([label, wert, sub]) => (
             <Card key={label} style={{ padding: "20px 22px" }}>
               <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
@@ -16019,6 +16292,41 @@ function Auftraggeberbericht({ sitz, akt }) {
               {sub && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>{sub}</div>}
             </Card>))}
         </div>
+
+        {/* Woher die Vorkommnisse kommen — und was zu tun ist, wenn keine
+            da sind. Ohne diesen Hinweis wirkt ein leerer Nachweis wie ein
+            Fehler der Anwendung. */}
+        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${C.accent}` }}>
+          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
+            <b style={{ color: C.text }}>Der Nachweis wird nicht geschrieben, sondern abgeleitet.</b>{" "}
+            Die Besetzungszahlen kommen aus dem Plan, die Vorkommnisse ausschließlich aus dem
+            Feld „Vorkommnis" der abgeschlossenen Schichtübergaben. Das ist Absicht: Was einem
+            Auftraggeber als Nachweis vorgelegt wird, soll niemand nachträglich hineinschreiben
+            können.
+            <div style={{ marginTop: 10 }}>
+              {uebergabenImZeitraum === 0
+                ? <>Im gewählten Zeitraum ist <b style={{ color: C.text }}>keine einzige Übergabe</b> erfasst —
+                    deshalb steht hier nichts. Erfasst werden sie unter <b style={{ color: C.text }}>Übergabe</b>.</>
+                : <>Im Zeitraum sind {anzahlWort(uebergabenImZeitraum, "Übergabe")} erfasst,
+                    davon {zahl(b.eintraege.length)} mit einem Vorkommnis.</>}
+            </div>
+          </div>
+        </Card>
+
+        {/* Freie Anmerkung — bewusst getrennt, bewusst nicht gespeichert. */}
+        <Card style={{ marginBottom: 22 }}>
+          <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
+          <div style={{ padding: "16px var(--pad-x) 20px" }}>
+            <textarea className="inp" rows={3} value={anmerkung}
+              placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
+              onChange={(ev) => setAnmerkung(ev.target.value)} />
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
+              Erscheint im Nachweis unter eigener Überschrift und ausdrücklich als nachträglich
+              erfasst — getrennt von den Vorkommnissen aus den Übergaben. Sie wird nicht
+              gespeichert, sondern gilt nur für dieses eine Blatt.
+            </div>
+          </div>
+        </Card>
 
         <Card style={{ marginBottom: 22 }}>
           <CardHead right={<div style={{ display: "flex", gap: 9 }}>
@@ -16038,10 +16346,17 @@ function Auftraggeberbericht({ sitz, akt }) {
             color: C.text }}>{alsText()}</pre>
         </Card>
 
-        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, maxWidth: 620 }}>
+        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, maxWidth: 660 }}>
           Nicht enthalten sind Namen, Stundenkonten, Krankmeldungen und die internen
           Felder der Übergabe. Wer einem Auftraggeber mehr geben will, sollte es
           bewusst tun — nicht, weil eine Ausgabe es versehentlich mitliefert.
+          <div style={{ marginTop: 10 }}>
+            Zur Einordnung der Zahlen: Besetzung und Deckungsquote gelten für den
+            gesamten Betrieb, nicht für die oben gewählte {m.einheitLabel || "Einheit"} —
+            die Mindestbesetzung ist je Dienstart hinterlegt, nicht je{" "}
+            {m.einheitLabel || "Einheit"}. Die Auswahl oben grenzt die Vorkommnisse ein,
+            nicht die Besetzungszahlen.
+          </div>
         </div>
       </>)}
     </div>);
@@ -19445,9 +19760,15 @@ function AppInnen() {
       exportDATEV: (ym) => {
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
-        if (lade(`datev_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
+        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
           melde(`${z} Lohnartensätze ausgegeben.`);
-        else setAusgabe({ titel: "DATEV-Ausgabe", inhalt });
+        else setAusgabe({ titel: "Lohnausgabe", inhalt });
+      },
+      exportLohnBlatt: (ym) => {
+        const inhalt = lohnausgabeText(sitz.mandant, ym);
+        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.txt`,
+          inhalt, "text/plain;charset=utf-8")) melde("Blatt zum Gegenlesen heruntergeladen.");
+        else setAusgabe({ titel: "Lohnausgabe zum Gegenlesen", inhalt });
       },
       /* --- Checklisten --- */
       hakeAb: (personId, datum, dienstId, punktId, notiz) => mUpd((m) => {

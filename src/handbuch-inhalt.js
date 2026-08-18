@@ -321,7 +321,9 @@ export const HANDBUCH = [
         schritte: [
           "Beschäftigte bestätigen ihre Zeiten in der Telefonansicht — „wie geplant\" oder mit Abweichung.",
           "Auswertung → Abrechnungsdaten zeigt Zuschläge tagesgenau zerlegt.",
-          "Lohnausgabe erzeugt eine CSV-Datei nach DATEV-Schema, je Person und Lohnart.",
+          "Lohnausgabe erzeugt eine CSV-Datei mit Stunden je Person und Lohnart — kein amtliches "
+            + "DATEV-Importformat, sondern eine Spaltenliste zum Einlesen oder Übernehmen. "
+            + "Die Lohnartennummern vorher mit der Lohnbuchhaltung abstimmen.",
         ],
         pruefen: "Die Summe je Lohnart stimmt mit der Zuschlagsübersicht überein.",
         merke: "CENTRIC rechnet Stunden, keine Beträge. Stundensätze und Steuerfreibeträge gehören in die Lohnabrechnung.",
