@@ -184,7 +184,7 @@ h1.titel b{font-weight:680;}
 .pille-ok{background:${C.okLight}; color:${C.ok}; border-color:#BBF7D0;}
 .pille-warn{background:${C.warnLight}; color:${C.warn}; border-color:#FEF08A;}
 .pille-danger{background:${C.dangerLight}; color:${C.danger}; border-color:#FECACA;}
-.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#99F6E4;}
+.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#9FC2AC;}
 
 /* Rundes Namenszeichen — ersetzt Fotos, die wir nicht haben */
 .avatar{width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex;
@@ -7485,7 +7485,7 @@ function selbsttest() {
   /* Hell ist die Vorgabe — nicht das Systemthema. Ein Betriebsprogramm soll
      bei jedem gleich aussehen. */
   ok("C traegt die hellen Werte", C_HELL.bg, C.bg);
-  ok("Die helle Grundflaeche ist Sea Salt", "#D9E4E8", C_HELL.bg);
+  ok("Die helle Grundflaeche ist Fog", "#F7F8F6", C_HELL.bg);
   ok("Hell und Dunkel sind verschieden", true, C_HELL.bg !== C_DUNKEL.bg);
   ok("Die helle Flaeche ist wirklich hell", true, kon(C_HELL.bg, "#000000") > 10);
   ok("Die dunkle Flaeche ist wirklich dunkel", true, kon(C_DUNKEL.bg, "#FFFFFF") > 10);

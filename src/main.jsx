@@ -34,24 +34,27 @@ const F = { bg: C.bg, karte: C.flaeche, text: C.text, dim: C.dim,
   line: C.line, lineStark: C.lineStark, accent: C.accent, accentHell: C.accentLight,
   danger: C.danger, ok: C.ok };
 
+/* Dieselben Farben wie in Logo() aus App.jsx (dort als MARKE), hier direkt
+   aus C statt nochmals als eigene Kopie — genau die Dopplung, die diese
+   Datei laut Kommentar oben eigentlich schon los sein sollte. */
 function Marke({ size = 38 }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true"
       style={{ display: "block", flexShrink: 0 }}>
       <defs>
         <linearGradient id="mg" x1="55%" y1="0%" x2="100%" y2="70%">
-          <stop offset="0%" stopColor="#023441" /><stop offset="100%" stopColor="#017070" />
+          <stop offset="0%" stopColor={C.sidebar} /><stop offset="100%" stopColor={C.accent} />
         </linearGradient>
         <clipPath id="mc1"><rect x="6" y="8" width="88" height="26" rx="13" /></clipPath>
       </defs>
       <g clipPath="url(#mc1)">
-        <rect x="6" y="8" width="88" height="26" rx="13" fill="#023441" />
+        <rect x="6" y="8" width="88" height="26" rx="13" fill={C.sidebar} />
         <path d="M52 8 C74 8 66 34 94 34 L94 8 Z" fill="url(#mg)" />
       </g>
-      <rect x="6" y="37" width="88" height="26" rx="13" fill="#02A0A0" />
-      <rect x="6" y="66" width="88" height="26" rx="13" fill="#023441" />
+      <rect x="6" y="37" width="88" height="26" rx="13" fill={C.marke} />
+      <rect x="6" y="66" width="88" height="26" rx="13" fill={C.sidebar} />
       <path d="M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C13 69 13 78 20 82"
-        stroke="#023441" strokeWidth="1.9" fill="none" strokeLinecap="round" opacity=".92" />
+        stroke={C.sidebar} strokeWidth="1.9" fill="none" strokeLinecap="round" opacity=".92" />
     </svg>);
 }
 

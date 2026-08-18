@@ -18,10 +18,10 @@ import {
    scharf bleibt und die Farben aus dem Farbschema kommen.
    ========================================================================== */
 const MARKE = {
-  dunkel: "#023441",       // tiefes Teal — trägt die Bildmarke
-  dunkelHell: "#017070",
-  limette: "#02A0A0",      // helles Teal als Glanzlicht statt Limette
-  creme: "#D9E4E8",
+  dunkel: "#16171C",       // Covert Black — trägt die Bildmarke
+  dunkelHell: "#2F4A38",   // Tannengrün, als Glanz auf dem oberen Balken
+  limette: "#C9D2C6",      // Fog als Glanzlicht statt Limette
+  creme: "#DEE3D9",
 };
 
 function Logo({ size = 40, wortmarke = false, hell = false }) {
@@ -371,7 +371,7 @@ h1.titel b{font-weight:680;}
 .pille-ok{background:${C.okLight}; color:${C.ok}; border-color:#BBF7D0;}
 .pille-warn{background:${C.warnLight}; color:${C.warn}; border-color:#FEF08A;}
 .pille-danger{background:${C.dangerLight}; color:${C.danger}; border-color:#FECACA;}
-.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#99F6E4;}
+.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#9FC2AC;}
 
 /* Rundes Namenszeichen — ersetzt Fotos, die wir nicht haben */
 .avatar{width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex;
