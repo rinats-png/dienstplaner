@@ -5,6 +5,8 @@ import * as SP from "./speicher.js";
 import "./schrift.css";
 import { C } from "./farben.js";
 import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import { Marke } from "./marke.jsx";
+import Startbild from "./startbild.jsx";
 
 /* ==========================================================================
    EINSTIEG
@@ -34,29 +36,28 @@ const F = { bg: C.bg, karte: C.flaeche, text: C.text, dim: C.dim,
   line: C.line, lineStark: C.lineStark, accent: C.accent, accentHell: C.accentLight,
   danger: C.danger, ok: C.ok };
 
-/* Dieselben Farben wie in Logo() aus App.jsx (dort als MARKE), hier direkt
-   aus C statt nochmals als eigene Kopie — genau die Dopplung, die diese
-   Datei laut Kommentar oben eigentlich schon los sein sollte. */
-function Marke({ size = 38 }) {
-  return (
-    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true"
-      style={{ display: "block", flexShrink: 0 }}>
-      <defs>
-        <linearGradient id="mg" x1="55%" y1="0%" x2="100%" y2="70%">
-          <stop offset="0%" stopColor={C.sidebar} /><stop offset="100%" stopColor={C.accent} />
-        </linearGradient>
-        <clipPath id="mc1"><rect x="6" y="8" width="88" height="26" rx="13" /></clipPath>
-      </defs>
-      <g clipPath="url(#mc1)">
-        <rect x="6" y="8" width="88" height="26" rx="13" fill={C.sidebar} />
-        <path d="M52 8 C74 8 66 34 94 34 L94 8 Z" fill="url(#mg)" />
-      </g>
-      <rect x="6" y="37" width="88" height="26" rx="13" fill={C.marke} />
-      <rect x="6" y="66" width="88" height="26" rx="13" fill={C.sidebar} />
-      <path d="M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C13 69 13 78 20 82"
-        stroke={C.sidebar} strokeWidth="1.9" fill="none" strokeLinecap="round" opacity=".92" />
-    </svg>);
-}
+/* ==========================================================================
+   WAS WÄHREND DER STARTSEQUENZ GELADEN WIRD
+
+   Die Aufrufe stehen hier, beim Auswerten des Moduls — nicht in einem
+   Effekt. Die Startsequenz ist kein Ladebalken, der auf Antworten wartet;
+   sie ist das Zeitfenster, in dem die Antworten eintreffen sollen. Stünde
+   der Aufruf im Effekt, liefe er erst nach dem ersten Bild und das Fenster
+   wäre verschenkt.
+
+   Notwendig sind zwei Dinge: die Demozugänge, ohne die die Anmeldung eine
+   Lücke zeigt, wo Kacheln erscheinen sollen — und die Schriften, denn
+   läuft die Anmeldung vorher an, springt die Schrift sichtbar um. Wer
+   bereits angemeldet ist, braucht die Demoliste nicht; den Bestand holt
+   sich App selbst.
+   ========================================================================== */
+const schriftenBereit = (() => {
+  try {
+    return document.fonts ? document.fonts.ready.then(() => {}, () => {}) : Promise.resolve();
+  } catch { return Promise.resolve(); }
+})();
+const demosBereit = SP.angemeldet() ? Promise.resolve([]) : SP.demos().catch(() => []);
+const startBereit = Promise.all([schriftenBereit, demosBereit]);
 
 
 /* ==========================================================================
@@ -552,6 +553,8 @@ function Einstieg() {
     } catch { /* egal */ }
   }, []);
   const [an, setAn] = useState(SP.angemeldet());
+  /* Solange dies falsch ist, liegt die Startsequenz über der Seite. */
+  const [gestartet, setGestartet] = useState(false);
   const [code, setCode] = useState("");
   const [fehler, setFehler] = useState(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -572,7 +575,10 @@ function Einstieg() {
     {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
   </>;
 
-  useEffect(() => { if (!an) SP.demos().then(setDemos).catch(() => setDemos([])); }, [an]);
+  /* Der Aufruf läuft längst — hier wird nur noch sein Ergebnis abgeholt.
+     Ein zweiter SP.demos() an dieser Stelle wäre eine zweite Anfrage und
+     träfe zudem später ein als die Sequenz, die auf ihn wartet. */
+  useEffect(() => { if (!an) demosBereit.then(setDemos, () => setDemos([])); }, [an]);
 
   const oeffne = (versprechen) => {
     setLaeuft(true); setFehler(null);
@@ -583,6 +589,10 @@ function Einstieg() {
   const senden = () => { if (code.trim() && !laeuft)
     oeffne(SP.anmelden(code.trim().toUpperCase(), merken)); };
 
+  /* Die Seite wird gebaut, während die Startsequenz noch darüberliegt.
+     Sie ist damit fertig, sobald die Sequenz hochfährt — der Sinn der
+     Übung: die zwei Sekunden gehören der Marke, nicht dem Warten. */
+  const seite = (() => {
   if (an) return <App />;
 
   if (preise) return (
@@ -824,6 +834,19 @@ function Einstieg() {
         {fuss}
       </div>
     </div>);
+  })();
+
+  /* Nur die Deckkraft wird geblendet, ausdrücklich kein transform: Ein
+     transformierter Vorfahr wird zum Bezugsrahmen für alles Feste darin —
+     Seitenleiste und Dialoge der Anwendung säßen dann falsch. Deckkraft
+     erzeugt einen Stapelkontext, aber keinen solchen Bezugsrahmen. */
+  return (<>
+    <div style={{ opacity: gestartet ? 1 : 0,
+      transition: "opacity .34s cubic-bezier(.22,1,.36,1)" }}>{seite}</div>
+    {!gestartet && (
+      <Startbild bereit={startBereit}
+        onFertig={() => setGestartet(true)} />)}
+  </>);
 }
 
 /* Der Dienstarbeiter wird hier eingerichtet, nicht erst nach der Anmeldung.
