@@ -30,7 +30,15 @@
              Personaldaten und wird beim Abmelden gelöscht.
    ========================================================================== */
 
-const FASSUNG = "v3";
+/* Die Fassungsnummer ist der einzige Hebel, mit dem sich ein festsitzender
+   Zwischenspeicher lösen lässt. Der Browser holt sich diese Datei neu, wenn
+   sich ihr Inhalt ändert — und beim Aktivieren wirft der Dienstarbeiter dann
+   jeden Speicher weg, der nicht auf die neue Fassung lautet.
+
+   v3 → v4, weil ein Telefon eine Fassung zeigte, die älter war als alles in
+   diesem Verlauf. Wer eine neue Fassung veröffentlicht und alte Bestände
+   verdächtigt, zählt hier hoch. */
+const FASSUNG = "v4";
 const SCHALE = `centric-schale-${FASSUNG}`;
 const DATEN = `centric-daten-${FASSUNG}`;
 

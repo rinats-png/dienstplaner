@@ -14,59 +14,60 @@
 
 const C = {
   /* ------------------------------------------------------------------
-     Zweiter Anlauf nach einer ausführlichen Farbprüfung (32 Entwürfe
-     verglichen, dann auf ausdrücklichen Wunsch verworfen und durch
-     diesen ersetzt — „Option 45"): Fog als blasses Salbeigrün trägt
-     nur noch die Bildmarke, nicht mehr Text oder Flächen. Die
-     Seitenleiste ist Covert Black, ein fast farbloses Nahezu-Schwarz.
-     Einziger Akzent im ganzen System: ein gedecktes Tannengrün, das
-     sonst nirgends vorkommt — dadurch bleibt „diese Farbe = eine
-     Handlung" immer eindeutig.
+     Sea Salt als Grundfläche, dazu die Farben aus derselben Sammlung.
 
-     Zwei Dinge mussten wie beim Vorgänger-Schema angepasst werden:
+     Zwei Dinge mussten angepasst werden, sonst wäre es unlesbar:
 
-     Erstens trägt das rohe Tannengrün als Fläche zwar problemlos Text
-     (9,14:1 auf dem Grund), Fog dagegen nicht — als Fläche oder Text
-     bliebe es zu blass (1,46:1 auf dem Grund). Fog lebt deshalb nur an
-     einer Stelle in echter Stärke: der Bildmarke vor „CENTRIC", die
-     keine eigene Textfarbe sein muss.
+     Erstens trägt keine der bunten Farben als Text. Traditional Turquoise
+     erreicht auf Sea Salt 2,48:1, Orange Grove 1,97:1 — nötig sind 4,5:1.
+     Für Text und Flächen gelten deshalb abgedunkelte Varianten desselben
+     Farbtons; die Originale leben als Zierde und Hover weiter, wo keine
+     Schrift darauf steht.
 
-     Zweitens ist der neue, fog-getönte Grund fast weiß. Eine weiße
-     Karte hebt sich davon nur mit 1,07:1 ab — das reicht nicht als
-     alleiniges Mittel. Karten brauchen weiterhin einen sichtbaren Rand.
+     Zweitens ist Sea Salt selbst nicht weiß. Eine weiße Karte hebt sich
+     davon nur mit 1,3:1 ab — das reicht nicht als alleiniges Mittel.
+     Karten brauchen hier einen sichtbaren Rand.
      ------------------------------------------------------------------ */
-  bg: "#F7F8F6",               // Fog, stark aufgehellt
+  /* Der Grund war Sea Salt in voller Sättigung (#D9E4E8). Eine weiße Karte
+     hob sich davon nur mit 1,3:1 ab — die Folge war, dass jedes Element
+     einen Rand brauchte und dadurch gleich laut wurde.
+
+     Jetzt liegt der Inhalt auf Papier, und der Ton ist auf einen Hauch
+     zurückgenommen. Die Hierarchie kommt aus der dunklen Seitenleiste und
+     aus der Typografie, nicht mehr aus Rändern um jedes Kästchen. Sea Salt
+     lebt in flaecheStill und in den Zwischenflächen weiter. */
+  bg: "#D9E4E8",              // Sea Salt, voll — der Grund aus der Vorlage
   flaeche: "#FFFFFF",
-  flaecheStill: "#F1F3EE",    // zwischen Grund und Karte
-  sidebar: "#16171C",         // Covert Black
+  flaecheStill: "#E7EEF1",    // zwischen Grund und Karte
+  sidebar: "#071317",         // Midnight Edition
   sidebarTief: "#001619",     // Blue Charcoal
 
-  text: "#16171C",            // 16,80:1
-  dim: "#4C4D52", dimmer: "#4C4D52", aus: "#6B6C70",
+  text: "#071317",            // 14,55:1
+  dim: "#3D4E55", dimmer: "#3D4E55", aus: "#5B6B72",
 
-  line: "#CDD4C9", lineSoft: "#DEE3D9", lineStark: "#AFB8A9",
+  line: "#BCCDD4", lineSoft: "#CBDAE0", lineStark: "#9DB3BC",
 
-  /* Akzent: ein gedecktes Tannengrün, im ganzen System sonst nirgends
-     verwendet — trägt bereits ungedimmt als Text und als Fläche. */
-  accent: "#2F4A38",           // 9,14:1 · weißer Text darauf 9,73:1
-  accentHi: "#3E6350",         // 6,35:1 auf Grund — Hover, eine Spur heller
-  /* Der Grund ist fast weiß, nicht weiß. Fog selbst trägt darauf nicht
-     (1,46:1) — es gehört auf die Seitenleiste, und nur dorthin, wo es
-     11,52:1 erreicht. */
-  accentOrig: "#C9D2C6",       // Fog, unverdünnt — nur auf Dunkel
-  accentDeep: "#1E3226",       // 12,81:1 auf Grund, 13,64:1 mit weißem Text
-  accentLight: "#DCE5DD",
-  accentGlanz: "#C9D2C6",      // Fog — Glanzlicht auf Dunkel, 11,52:1
+  /* Akzent: Traditional Turquoise, abgedunkelt bis es trägt */
+  accent: "#017070",          // 4,56:1 · weißer Text darauf 5,91:1
+  /* Traditional Turquoise erreicht auf Sea Salt nur 2,48:1 — zu wenig selbst
+     für Zierde (3:1). Der Hover-Ton ist deshalb eine Spur dunkler. Das
+     Original lebt auf der Seitenleiste weiter, wo es 5,87:1 erreicht. */
+  accentHi: "#028E8E",        // 3,08:1 auf Grund
+  accentOrig: "#02A0A0",      // Traditional Turquoise — nur auf Dunkel
+  accentDeep: "#023441",      // Natural Indigo
+  accentLight: "#DFF0F0",
+  accentGlanz: "#50E8F4",     // Fluorescent Blue — Glanzlicht auf Dunkel
 
-  /* Nur für die Bildmarke: das rohe, unverdünnte Fog. Trägt keinen Text,
-     muss also nicht die 4,5:1-Schwelle erreichen — nur gegen die dunkle
-     Seitenleiste sichtbar sein (11,52:1). */
-  marke: "#C9D2C6",
+  /* Nur für die Bildmarke: der mittlere Balken. Er trägt keinen Text,
+     muss also nicht 4,5:1 erreichen — auf der Seitenleiste kommt er auf
+     5,82:1, auf dem Grund auf 2,51:1 als Zierde zwischen zwei dunklen
+     Balken. */
+  marke: "#02A0A0",           // Traditional Turquoise
 
-  ok: "#146C46",               // 6,04:1
-  warn: "#9A4200",             // 6,25:1
-  danger: "#7A2320",           // 9,44:1
-  violet: "#316C81",           // unverändert — eigenständige Kennzahlfarbe, kein Akzent
+  ok: "#0E6B45",              // 5,05:1 — Grün fehlt in der Vorlage, abgeleitet
+  warn: "#955410",            // Orange Grove, abgedunkelt · 4,56:1
+  danger: "#4E0401",          // Dark Maroon · 12,08:1
+  violet: "#316C81",          // Vintage Aqua, abgedunkelt · 4,51:1
 
   okLight: "#DFEFE7", warnLight: "#FFE0C0", dangerLight: "#F6DEDC",
 };
@@ -83,19 +84,18 @@ const C = {
    -------------------------------------------------------------------------- */
 const C_DUNKEL = {
   bg: "#0B1418", flaeche: "#121E23", flaecheStill: "#18262C",
-  sidebar: "#0C0D10", sidebarTief: "#050506",
+  sidebar: "#070F12", sidebarTief: "#040A0C",
 
   text: "#E8EFF1",            // 16,01:1
   dim: "#9FB2B9", dimmer: "#9FB2B9", aus: "#7A8D95",
 
   line: "#243238", lineSoft: "#1B282E", lineStark: "#33454C",
 
-  accent: "#6FBF98",           // 8,50:1 — heller als im Hellmodus, sonst zu schwach
-  accentHi: "#8FD4B2", accentOrig: "#B9D4C1",
-  accentDeep: "#A6E6C4", accentGlanz: "#C9D2C6",   // Fog trägt unverändert auf Dunkel
-  accentLight: "#12261C",     // gedämpfte Fläche statt heller
-
-  marke: "#C9D2C6",            // Fog — bleibt in beiden Erscheinungsbildern gleich
+  accent: "#3FBFBF",          // 8,35:1 — heller als im Hellmodus, sonst zu schwach
+  accentHi: "#5FD6D6", accentOrig: "#5FD6D6",
+  accentDeep: "#7FE0E0", accentGlanz: "#50E8F4",
+  marke: "#02A0A0",           // in beiden Erscheinungsbildern derselbe Ton
+  accentLight: "#13292C",     // gedämpfte Fläche statt heller
 
   ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
   okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",

@@ -18,10 +18,10 @@ import {
    scharf bleibt und die Farben aus dem Farbschema kommen.
    ========================================================================== */
 const MARKE = {
-  dunkel: "#16171C",       // Covert Black — trägt die Bildmarke
-  dunkelHell: "#2F4A38",   // Tannengrün, als Glanz auf dem oberen Balken
-  limette: "#C9D2C6",      // Fog als Glanzlicht statt Limette
-  creme: "#DEE3D9",
+  dunkel: "#023441",       // tiefes Teal — trägt die Bildmarke
+  dunkelHell: "#017070",   // Traditional Turquoise, als Glanz auf dem oberen Balken
+  limette: "#02A0A0",      // helles Teal als Glanzlicht statt Limette
+  creme: "#D9E4E8",
 };
 
 function Logo({ size = 40, wortmarke = false, hell = false }) {
