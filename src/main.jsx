@@ -555,6 +555,9 @@ function Einstieg() {
   const [an, setAn] = useState(SP.angemeldet());
   /* Solange dies falsch ist, liegt die Startsequenz über der Seite. */
   const [gestartet, setGestartet] = useState(false);
+  /* Die Dauer der Markenreise, gesetzt sobald sie beginnt — zugleich das
+     Zeichen, dass die Seite darunter aufblenden darf. */
+  const [enthuellung, setEnthuellung] = useState(null);
   const [code, setCode] = useState("");
   const [fehler, setFehler] = useState(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -600,7 +603,7 @@ function Einstieg() {
       fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
       <div style={{ width: "min(760px, 100%)", margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke />
+          <Marke data-marke-ziel="" />
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
             <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
@@ -618,7 +621,7 @@ function Einstieg() {
       fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
       <div style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke />
+          <Marke data-marke-ziel="" />
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
             <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
@@ -644,7 +647,7 @@ function Einstieg() {
       <div style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke />
+          <Marke data-marke-ziel="" />
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
             <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
@@ -839,12 +842,20 @@ function Einstieg() {
   /* Nur die Deckkraft wird geblendet, ausdrücklich kein transform: Ein
      transformierter Vorfahr wird zum Bezugsrahmen für alles Feste darin —
      Seitenleiste und Dialoge der Anwendung säßen dann falsch. Deckkraft
-     erzeugt einen Stapelkontext, aber keinen solchen Bezugsrahmen. */
+     erzeugt einen Stapelkontext, aber keinen solchen Bezugsrahmen.
+
+     Aufgeblendet wird, sobald die Marke ihre Reise antritt — nicht erst am
+     Ende. Sie soll auf einer fertigen Seite ankommen und sich dort auf die
+     Marke des Seitenkopfs legen, statt über eine leere Fläche zu fliegen,
+     die hinterher aufpoppt. */
+  const reise = enthuellung || 1200;
   return (<>
-    <div style={{ opacity: gestartet ? 1 : 0,
-      transition: "opacity .34s cubic-bezier(.22,1,.36,1)" }}>{seite}</div>
+    <div style={{ opacity: enthuellung ? 1 : 0,
+      transition: `opacity ${Math.round(reise * 0.45)}ms cubic-bezier(.33,0,.67,1)`
+        + ` ${Math.round(reise * 0.15)}ms` }}>{seite}</div>
     {!gestartet && (
       <Startbild bereit={startBereit}
+        onAbgang={setEnthuellung}
         onFertig={() => setGestartet(true)} />)}
   </>);
 }

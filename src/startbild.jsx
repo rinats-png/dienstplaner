@@ -25,25 +25,30 @@ import React, { useEffect, useRef, useState } from "react";
 import { C, C_HELL, C_DUNKEL } from "./farben.js";
 import { Marke, markeAufCanvas } from "./marke.jsx";
 
-/* Alle Zeiten in Millisekunden ab dem ersten Bild. */
+/* Alle Zeiten in Millisekunden ab dem ersten Bild.
+
+   Gegenüber der ersten Fassung ist alles gedehnt: Das Zusammensetzen läuft
+   über 2,7 statt 2,0 Sekunden, die Reise zur Kopfposition über 1,2 statt
+   0,44 Sekunden. Die erste Fassung schob die Marke in 0,44 s um eine volle
+   Bildhöhe nach oben — das war kein Weg, das war ein Verschwinden. */
 const T = {
-  auf: 160,           // Bildpunkte werden auf dem Ring sichtbar
-  wanderVon: 120,     // frühester Start einer Wanderung
-  wanderBis: 560,     // spätester Start
-  flug: 720,          // Dauer je Bildpunkt
-  ruhe: 1280,         // ab hier steht alles still  (wanderBis + flug)
-  blendeVon: 1340,    // Kreuzblende Canvas → Vektor
-  blendeBis: 1560,
-  wortVon: 1560, wortBis: 1840,
-  zaesur: 2000,       // Ende der vorgegebenen 2,0 Sekunden
-  fahrt: 440,         // Hochfahren, danach ist die Anmeldung frei
-  hinweisAb: 2600,    // erst ab hier ein Ladehinweis
-  aufgeben: 8000,     // danach gilt der Start als gescheitert
+  auf: 220,           // Bildpunkte werden auf dem Ring sichtbar
+  wanderVon: 180,     // frühester Start einer Wanderung
+  wanderBis: 780,     // spätester Start
+  flug: 980,          // Dauer je Bildpunkt
+  ruhe: 1760,         // ab hier steht alles still  (wanderBis + flug)
+  blendeVon: 1840,    // Kreuzblende Canvas → Vektor
+  blendeBis: 2140,
+  wortVon: 2140, wortBis: 2500,
+  zaesur: 2700,       // Ende des Zusammensetzens, die Marke steht fertig
+  fahrt: 1200,        // Reise auf die Kopfposition
+  hinweisAb: 3300,    // erst ab hier ein Ladehinweis
+  aufgeben: 9000,     // danach gilt der Start als gescheitert
 };
 
 /* Reduzierte Bewegung: keine Wanderung, nur Aufblenden. Das Zeitfenster
    fürs Laden bleibt dasselbe, verkürzt wird nur, was sich bewegt. */
-const T_RUHIG = { auf: 180, halten: 400, fahrt: 180 };
+const T_RUHIG = { auf: 180, halten: 400, fahrt: 260 };
 
 /** Kubische Bezierkurve als Funktion, Newton auf der x-Komponente. */
 function bez(x1, y1, x2, y2) {
@@ -71,8 +76,13 @@ function bez(x1, y1, x2, y2) {
    Ankommen ab. */
 const eWander = bez(0.55, 0.02, 0.20, 1);
 const eBlende = bez(0.33, 0, 0.67, 1);
-const eFahrt = bez(0.22, 1, 0.36, 1);
 const eAuf = bez(0.4, 0, 1, 1);
+/* Die Reise auf die Kopfposition beginnt aus dem Stand und endet im
+   Stand. Ein reines Ease-out (.22,1,.36,1) startet mit Höchsttempo — auf
+   einem langen Weg liest sich das als Wegschießen, nicht als Bewegen.
+   Diese S-Kurve läuft weich an und bremst weich aus. */
+const eReise = bez(0.45, 0.05, 0.25, 1);
+const eFahrt = bez(0.22, 1, 0.36, 1);   // kurze Wege: Wortmarke, Blenden
 const spanne = (a, b, x) => (x <= a ? 0 : x >= b ? 1 : (x - a) / (b - a));
 
 const ruhigGewuenscht = () => {
@@ -95,10 +105,13 @@ const paletteJetzt = () => {
  * @param {Promise<any>} [p.bereit]  Was vorliegen muss, bevor hochgefahren
  *   wird. Die Animation wartet nie auf dieses Versprechen — sie hält
  *   danach an, falls es noch offen ist.
+ * @param {(dauer: number) => void} [p.onAbgang]  Die Reise zur Kopfposition
+ *   beginnt. Die Seite darunter blendet ab hier auf, damit die Marke am
+ *   Ende auf einer fertigen Seite ankommt statt auf einer leeren Fläche.
  * @param {(lage: {ohneVerbindung: boolean}) => void} p.onFertig
  *   Wird genau einmal gerufen, wenn die Anmeldung frei ist.
  */
-export default function Startbild({ bereit, onFertig }) {
+export default function Startbild({ bereit, onAbgang, onFertig }) {
   /* Bei reduzierter Bewegung gibt es das Canvas gar nicht erst. Es nur
      leer zu lassen wäre kein Unterschied für das Auge, aber ein Element,
      das Speicher und eine Ebene kostet, ohne je etwas zu zeigen. */
@@ -107,13 +120,17 @@ export default function Startbild({ bereit, onFertig }) {
   const [ohneVerbindung, setOhneVerbindung] = useState(false);
 
   const huelle = useRef(null);
+  const grundRef = useRef(null);
   const leinwand = useRef(null);
+  const buehne = useRef(null);
   const markeRef = useRef(null);
   const wortRef = useRef(null);
-  /* Beide Referenzen, weil der Ablauf in einer Schleife läuft, die sonst
-     den Zustand zum Zeitpunkt ihres Aufbaus sähe. */
+  /* Referenzen, weil der Ablauf in einer Schleife läuft, die sonst den
+     Zustand zum Zeitpunkt ihres Aufbaus sähe. */
   const fertigRef = useRef(onFertig);
   fertigRef.current = onFertig;
+  const abgangRef = useRef(onAbgang);
+  abgangRef.current = onAbgang;
   const ohneVerbindungRef = useRef(false);
   ohneVerbindungRef.current = ohneVerbindung;
 
@@ -135,20 +152,37 @@ export default function Startbild({ bereit, onFertig }) {
     const SCHRITT = 3;          // Abtastraster
     let punkte = [], B = 0, H = 0, mx = 0, my = 0, ctx = null;
 
-    const bauen = () => {
-      const cv = leinwand.current;
-      if (!cv) return;
-      const r = cv.getBoundingClientRect();
+    /** Die Marke an eine Stelle setzen — linke obere Ecke und Breite. */
+    const stelleBuehne = (links, oben, breite) => {
+      const el = buehne.current;
+      if (!el) return;
+      el.style.left = `${links}px`;
+      el.style.top = `${oben}px`;
+      el.style.width = `${breite}px`;
+    };
+
+    /* Gemessen wird an der Hülle, nicht am Canvas: Bei reduzierter Bewegung
+       gibt es kein Canvas, und ab 2,14 s ist es aus dem Baum genommen —
+       die Bühne braucht ihre Maße aber bis zum Schluss. */
+    const masse = () => {
+      const h = huelle.current;
+      const r = h ? h.getBoundingClientRect() : { width: 0, height: 0 };
       B = Math.max(1, Math.round(r.width));
       H = Math.max(1, Math.round(r.height));
+      mx = B / 2;
+      my = H / 2 - 66;
+      stelleBuehne(mx - GROESSE / 2, my - GROESSE / 2, GROESSE);
+    };
+
+    const bauen = () => {
+      masse();
+      const cv = leinwand.current;
+      if (!cv) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       cv.width = B * dpr; cv.height = H * dpr;
       ctx = cv.getContext("2d", { alpha: true });
       if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      mx = B / 2;
-      my = H / 2 - 66;
 
       const off = document.createElement("canvas");
       off.width = GROESSE; off.height = GROESSE;
@@ -199,6 +233,8 @@ export default function Startbild({ bereit, onFertig }) {
       });
     };
 
+    /* Die Bühne braucht ihre Maße in jedem Fall — auch ohne Bildpunktfeld. */
+    masse();
     if (!ruhig) bauen();
 
     const zeichne = (t) => {
@@ -270,25 +306,69 @@ export default function Startbild({ bereit, onFertig }) {
       bild = requestAnimationFrame(schritt);
     };
 
-    /* Das Hochfahren: die Hülle fährt als Ganzes nach oben und gibt frei,
-       was darunter längst steht. Ein Weg nach oben statt eines Aufblendens,
-       weil die Anmeldung dadurch anzukommen scheint statt zu erscheinen. */
+    /* Die Reise auf die Kopfposition.
+
+       Das Ziel wird aus der Seite gemessen, die darunter längst steht: Die
+       Bildmarke im Seitenkopf trägt data-marke-ziel. Am Ende der Reise
+       liegt die Marke der Sequenz deckungsgleich auf ihr — deshalb ist beim
+       Entfernen der Hülle kein Sprung zu sehen.
+
+       Findet sich kein Ziel — etwa in der Anwendung, wo die Marke im
+       Seitenkopf hell auf dunklem Grund sitzt und ein Landen einen
+       Farbsprung ergäbe —, rückt die Marke ein Stück nach oben, verkleinert
+       sich und blendet an Ort und Stelle aus. Kein Wegschießen. */
     function abgang() {
       if (beendet) return;
       beendet = true;
+
+      masse();
+      const vonL = mx - GROESSE / 2, vonO = my - GROESSE / 2, vonB = GROESSE;
+
+      /* Bei reduzierter Bewegung wird nicht gereist. Die Marke bleibt, wo
+         sie ist, und blendet aus — Bewegung ist genau das, was hier
+         abbestellt wurde. */
+      let ziel = null;
+      if (!ruhig) {
+        try {
+          const z = document.querySelector("[data-marke-ziel]");
+          if (z) {
+            const r = z.getBoundingClientRect();
+            if (r.width > 4 && r.height > 4) ziel = r;
+          }
+        } catch { /* ohne Ziel eben ausblenden */ }
+      }
+
+      const nachL = ziel ? ziel.left : ruhig ? vonL : vonL + (GROESSE - 84) / 2;
+      const nachO = ziel ? ziel.top : ruhig ? vonO : Math.max(24, vonO - 96);
+      const nachB = ziel ? ziel.width : ruhig ? vonB : 84;
+
       const dauer = ruhig ? T_RUHIG.fahrt : T.fahrt;
+      abgangRef.current?.(dauer);
       const start = performance.now();
-      const el = huelle.current;
-      const fahrt = (jetzt) => {
-        const f = eFahrt(spanne(0, dauer, jetzt - start));
-        if (el) {
-          el.style.transform = `translateY(${-f * 100}%)`;
-          el.style.opacity = String(1 - f * 0.15);
-        }
-        if (f < 1) { bild = requestAnimationFrame(fahrt); return; }
+
+      const reise = (jetzt) => {
+        const p = spanne(0, dauer, jetzt - start);
+        const f = eReise(p);
+        stelleBuehne(vonL + (nachL - vonL) * f, vonO + (nachO - vonO) * f,
+          vonB + (nachB - vonB) * f);
+
+        /* Der Grund weicht früher als die Marke ankommt, damit sie die
+           letzten Zehntel über der fertigen Seite fliegt statt über einer
+           leeren Fläche. */
+        if (grundRef.current)
+          grundRef.current.style.opacity = String(1 - eFahrt(spanne(0, 0.62, p)));
+        /* Die Wortmarke geht: Im Seitenkopf steht „CENTRIC" bereits neben
+           der Bildmarke, nicht darunter. Zwei davon wären eine zu viel. */
+        if (wortRef.current)
+          wortRef.current.style.opacity = String(1 - spanne(0, 0.4, p));
+        /* Ohne Ziel bleibt nichts, worauf die Marke sich legen könnte. */
+        if (!ziel && markeRef.current)
+          markeRef.current.style.opacity = String(1 - eFahrt(spanne(0.35, 1, p)));
+
+        if (p < 1) { bild = requestAnimationFrame(reise); return; }
         fertigRef.current({ ohneVerbindung: ohneVerbindungRef.current });
       };
-      bild = requestAnimationFrame(fahrt);
+      bild = requestAnimationFrame(reise);
     }
 
     bild = requestAnimationFrame(schritt);
@@ -308,24 +388,30 @@ export default function Startbild({ bereit, onFertig }) {
     };
   }, [bereit]);
 
-  const grund = C.bg;
   return (
+    /* Die Hülle selbst bleibt durchsichtig und unbewegt. Der Grund ist ein
+       eigenes Blatt darin, damit er weichen kann, während die Marke noch
+       unterwegs ist — fiele die Deckkraft der Hülle, verschwände die Marke
+       gleich mit. */
     <div ref={huelle} role="status" aria-busy="true"
       aria-label="CENTRIC wird gestartet"
-      style={{ position: "fixed", inset: 0, zIndex: 9000, background: grund,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        willChange: "transform, opacity" }}>
+      style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "none" }}>
+
+      <div ref={grundRef}
+        style={{ position: "absolute", inset: 0, background: C.bg, willChange: "opacity" }} />
 
       {!ohneCanvas && (
         <canvas ref={leinwand} aria-hidden="true"
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%",
             display: "block" }} />)}
 
-      <div style={{ position: "absolute", left: "50%", top: "50%",
-        transform: "translate(-50%, calc(-50% - 66px))", textAlign: "center",
-        pointerEvents: "none" }}>
+      {/* Linke obere Ecke und Breite werden je Bild gesetzt — kein
+          transform, damit die Marke am Ziel pixelgenau auf der Marke des
+          Seitenkopfs liegt statt eine halbe Bildpunktbreite daneben. */}
+      <div ref={buehne}
+        style={{ position: "absolute", left: 0, top: 0, width: 132, textAlign: "center" }}>
         <div ref={markeRef} style={{ opacity: 0, willChange: "opacity" }}>
-          <Marke size={132} id="start" style={{ margin: "0 auto" }} />
+          <Marke size={132} id="start" style={{ width: "100%", height: "auto" }} />
         </div>
         <div ref={wortRef} aria-hidden="true"
           style={{ opacity: 0, marginTop: 11, fontSize: 19, fontWeight: 800,
@@ -335,7 +421,7 @@ export default function Startbild({ bereit, onFertig }) {
         </div>
       </div>
 
-      {/* Erst ab 2,6 s. Wer nach einer halben Sekunde einen Spinner zeigt,
+      {/* Erst ab 3,3 s. Wer nach einer halben Sekunde einen Spinner zeigt,
           macht schnelle Starts nervös. */}
       {hinweis && (
         <div style={{ position: "absolute", left: 0, right: 0, top: "calc(50% + 96px)",

@@ -30,11 +30,15 @@ const LINIE = "M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C
  * `id` trennt die Farbverlaufs- und Beschneidungsnamen. Ohne das teilen
  * sich mehrere Marken auf einer Seite dieselbe `<defs>`-Kennung, und die
  * zweite zeigt den Verlauf der ersten.
+ *
+ * Übrige Eigenschaften gehen an das SVG. Die Startsequenz hängt darüber
+ * `data-marke-ziel` an die Marke im Seitenkopf und misst deren Rechteck —
+ * dort landet sie am Ende ihrer Reise.
  */
-export function Marke({ size = 38, id = "m", style }) {
+export function Marke({ size = 38, id = "m", style, ...rest }) {
   return (
     <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true"
-      style={{ display: "block", flexShrink: 0, ...style }}>
+      {...rest} style={{ display: "block", flexShrink: 0, ...style }}>
       <defs>
         <linearGradient id={`${id}g`} x1="55%" y1="0%" x2="100%" y2="70%">
           <stop offset="0%" stopColor={C.sidebar} /><stop offset="100%" stopColor={C.accent} />
