@@ -2,9 +2,12 @@ import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
-import { ablageSchluessel } from "../lib/codes.mjs";
-import { kontoSchreiben } from "../lib/konten.mjs";
+import { kontoSchreiben, mailSchluessel, mailNormieren, findeKontoMail }
+  from "../lib/konten.mjs";
+import { passwortAblegen, pruefeRegel } from "../lib/passwoerter.mjs";
+import { sendeMail, anwendungsAdresse } from "../lib/post.mjs";
 import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { sitzungAnlegen } from "../lib/sitzungen.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -12,6 +15,18 @@ import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
    Ein Interessent legt sich einen Testbetrieb an, ohne dass jemand mitwirken
    muss. Das ist der einzige Weg, wie CENTRIC verkauft werden kann, während
    der Betreiber im Schichtdienst ist.
+
+   Seit dem Umbau auf Einladungen entsteht dabei genau ein Zugang: die
+   Organisationsleitung, mit Adresse und Passwort. Vorher entstanden bis zu
+   sechs Rollencodes ohne Personenbezug — alle Planer teilten sich einen
+   Code, und das Protokoll kannte keinen Urheber. Wer weitere Zugänge
+   braucht, lädt aus der Anwendung heraus ein; wer keine Adresse hat,
+   bekommt dort einen Code je Person.
+
+   Der Vertrag zur Auftragsverarbeitung wird beim Anlegen angenommen —
+   Fassung, Zeitpunkt und Herkunft stehen am Konto und am Bestand. Ohne
+   Zustimmung entsteht kein Betrieb: Das Versprechen der Website lautet
+   „vor dem ersten Datensatz", und der erste Datensatz entsteht hier.
 
    Drei Vorkehrungen, ohne die das nicht verantwortbar wäre:
 
@@ -28,6 +43,11 @@ import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
+
+/* Die Fassung des Vertrags zur Auftragsverarbeitung, der beim Anlegen
+   angenommen wird. Ändert sich der Vertrag, ändert sich diese Kennung —
+   und am Konto steht, welche Fassung wann angenommen wurde. */
+const AVV_FASSUNG = "2026-08";
 
 const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
@@ -60,13 +80,20 @@ export default async (req) => {
       return zuVielAntwort(b.wartet);
     }
 
-    const { name, branche, email, rollen, land } = await req.json();
+    const { name, branche, email, passwort, land, avv, ansprech } = await req.json();
     if (!name || String(name).trim().length < 3)
       return antwort({ fehler: "Bitte einen Betriebsnamen mit mindestens drei Zeichen." }, 400);
     if (String(name).length > 80)
       return antwort({ fehler: "Der Name ist zu lang." }, 400);
-    if (email && !String(email).includes("@"))
-      return antwort({ fehler: "Das sieht nicht nach einer E-Mail-Adresse aus." }, 400);
+    const mail = mailNormieren(email);
+    if (!mail || !mail.includes("@") || mail.length > 254)
+      return antwort({ fehler: "Bitte eine E-Mail-Adresse — sie ist dein Zugang." }, 400);
+    /* Der örtliche Adressteil und der Betriebsname sind das Erste, was
+       jemand rät — beides darf nicht im Passwort stecken. */
+    const regel = pruefeRegel(passwort, [name, mail.split("@")[0]]);
+    if (!regel.ok) return antwort({ fehler: regel.grund }, 400);
+    if (avv !== true)
+      return antwort({ fehler: "Ohne den Vertrag zur Auftragsverarbeitung geht es nicht — er schützt die Daten deiner Beschäftigten." }, 400);
 
     const erlaubteBranchen = ["sicherheit", "pflege", "klinik", "industrie", "sonstige"];
     const br = erlaubteBranchen.includes(branche) ? branche : "sonstige";
@@ -76,11 +103,13 @@ export default async (req) => {
       "NW", "RP", "SL", "SN", "ST", "SH", "TH"];
     const bl = LAENDER.includes(land) ? land : "HE";
 
-    /* Welche Zugänge? Leitung und Planung immer, weitere auf Wunsch. */
-    const erlaubteRollen = ["subplaner", "mitarbeiter", "betriebsrat"];
-    const zusatz = Array.isArray(rollen)
-      ? rollen.filter((r) => erlaubteRollen.includes(r)).slice(0, 3) : [];
-    const alle = ["leitung", "planer", ...zusatz];
+    /* Ist die Adresse schon vergeben? Dann führt der Weg über die
+       Anmeldung, nicht über eine zweite Anlage. Die Bremse oben begrenzt,
+       wie schnell sich das zum Adressprüfer machen lässt. */
+    const belegt = await findeKontoMail(store(), mail);
+    if (belegt.eintrag)
+      return antwort({ fehler: "Für diese Adresse besteht bereits ein Zugang.",
+        text: `Melde dich an — oder fordere über „Passwort vergessen" einen Link an.` }, 409);
 
     const raum = raumName(name);
     const jetzt = new Date();
@@ -97,40 +126,61 @@ export default async (req) => {
        Öffnen ihre Beispieldaten — der Interessent landete in einem
        erfundenen Wachdienst statt im eigenen Haus. Name und Branche waren
        damit verloren. */
+    const avvVermerk = { fassung: AVV_FASSUNG, zeit: jetzt.toISOString(), herkunft: k };
     const leer = baueLeerenBetrieb({
-      name, branche: br, email, land: bl, raum, laeuftAb: laeuftAb.toISOString(),
+      name, branche: br, email: mail, land: bl, raum, laeuftAb: laeuftAb.toISOString(),
+      avv: avvVermerk,
     });
     await bestandSchreiben(store(), raum, leer, { durch: "Selbststart" });
 
-    /* Zugänge erzeugen */
-    const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
-    const block = () => Array.from(randomBytes(4))
-      .map((x) => alphabet[x % alphabet.length]).join("");
-    const zugaenge = [];
-    for (const rolle of alle) {
-      const code = `${block()}-${block()}-${block()}`;
-      await kontoSchreiben(store(), ablageSchluessel(code), {
-        name: String(name).trim(), bestand: raum, rolle,
-        person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
-        selbstAngelegt: true, laeuftAb: laeuftAb.toISOString(),
-        angelegt: jetzt.toISOString(),
-      });
-      zugaenge.push({ rolle, code });
-    }
+    /* Ein Zugang: die Organisationsleitung, mit Adresse und Passwort.
+       Alles Weitere entsteht in der Anwendung — als Einladung, wo eine
+       Adresse da ist, als Code je Person, wo keine ist. */
+    const kontoKey = mailSchluessel(mail);
+    await kontoSchreiben(store(), kontoKey, {
+      name: String(name).trim(), ansprech: ansprech ? String(ansprech).trim().slice(0, 80) : null,
+      email: mail, passwort: await passwortAblegen(passwort),
+      bestand: raum, rolle: "leitung",
+      person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
+      status: "aktiv", einladungNr: 0, avv: avvVermerk,
+      selbstAngelegt: true, laeuftAb: laeuftAb.toISOString(),
+      angelegt: jetzt.toISOString(),
+    });
+
+    /* Die Sitzung entsteht sofort — es gibt nichts abzuschreiben und
+       keinen Umweg über ein Codefeld. Gleiche Gestalt wie bei der
+       Anmeldung in daten.mjs, damit die Anwendung nichts unterscheiden
+       muss. */
+    const { token, gueltigBis } = await sitzungAnlegen({
+      bestand: raum, name: String(name).trim(), rolle: "leitung",
+      person: null, betrieb: 0, konto: kontoKey, einheit: null,
+    });
+
+    /* Die Begrüßung nach draußen — im Trockenlauf bleibt sie im Haus. */
+    await sendeMail(mail, `${String(name).trim()} steht bereit`,
+      [`Dein Betrieb ist angelegt. Anmeldung mit dieser Adresse unter`,
+       anwendungsAdresse(), "",
+       `Der Testzeitraum läuft ${TESTTAGE} Tage. Der Vertrag zur`,
+       `Auftragsverarbeitung (Fassung ${AVV_FASSUNG}) ist angenommen und`,
+       `steht in der Anwendung unter „Rechtliches" zum Abruf.`].join("\n"));
 
     /* Vermerk für die Betreiberkonsole — ohne Zugangscodes. */
     const liste = (await store().get("selbststarts", { type: "json" })) || [];
     liste.unshift({
-      raum, name: String(name).trim(), branche: br,
-      email: email ? String(email).trim() : null,
-      zugaenge: alle.length, angelegt: jetzt.toISOString(),
+      raum, name: String(name).trim(), branche: br, email: mail,
+      zugaenge: 1, angelegt: jetzt.toISOString(),
       laeuftAb: laeuftAb.toISOString(), herkunft: k,
+      /* Für die Liste, die man abends durchgeht: Wie weit ist derjenige
+         gekommen? 0 = angelegt, dann zählt daten.mjs beim Schreiben hoch. */
+      stufe: 0, zuletzt: jetzt.toISOString(), nachgefasst: {},
     });
     await store().setJSON("selbststarts", liste.slice(0, 500));
 
-    await protokoll("starten", k, "erfolg", `${br} · ${alle.length} Zugänge`);
+    await protokoll("starten", k, "erfolg", `${br} · Leitungszugang mit Adresse`);
 
-    return antwort({ ok: true, raum, zugaenge, branche: br,
+    return antwort({ ok: true, token, raum, name: String(name).trim(),
+      rolle: "leitung", person: null, betrieb: 0, hinweis: null,
+      gueltigBis, branche: br,
       laeuftAb: laeuftAb.toISOString(), testtage: TESTTAGE });
   } catch (e) {
     return antwort({ fehler: "Das hat nicht geklappt. Versuch es noch einmal." }, 500);

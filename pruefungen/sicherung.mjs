@@ -22,19 +22,22 @@ let ok = 0, fehl = 0;
 const pruef = (t, b, z) => { if (b) { ok++; console.log("  BESTANDEN ", t, z ? "— " + z : ""); }
   else { fehl++; console.log("  FEHLT     ", t, z ? "— " + z : ""); } };
 
-let code = CODE;
-if (!code) {
-  const st = await (await fetch(`${BASIS}/starten`, { method: "POST",
+/* Seit dem Umbau auf Einladungen liefert der Selbststart eine Sitzung
+   statt einer Codeliste — der Umweg über das Codefeld entfällt. Mit
+   CENTRIC_CODE lässt sich weiterhin ein bestehender Zugang prüfen. */
+let an;
+if (CODE) {
+  an = await (await fetch(`${BASIS}/api/anmelden`, { method: "POST",
+    headers: { "content-type": "application/json", 'x-forwarded-for': HERKUNFT },
+    body: JSON.stringify({ zugangscode: CODE }) })).json();
+} else {
+  const kennung = Math.random().toString(36).slice(2, 8);
+  an = await (await fetch(`${BASIS}/starten`, { method: "POST",
     headers: { "content-type": "application/json", "x-forwarded-for": HERKUNFT },
     body: JSON.stringify({ name: "Sicherungsprüfung", branche: "pflege",
-      email: "pruefung@example.org", land: "HE" }) })).json();
-  if (!st.ok) { console.error("Betrieb ließ sich nicht anlegen:", st); process.exit(1); }
-  code = st.zugaenge.find((z) => z.rolle === "leitung").code;
+      email: `pruefung-${kennung}@example.org`, land: "HE", avv: true,
+      passwort: "sicherung pruefung dienstag " + kennung }) })).json();
 }
-
-const an = await (await fetch(`${BASIS}/api/anmelden`, { method: "POST",
-  headers: { "content-type": "application/json", 'x-forwarded-for': HERKUNFT },
-  body: JSON.stringify({ zugangscode: code }) })).json();
 if (!an.token) { console.error("Anmeldung fehlgeschlagen:", an); process.exit(1); }
 const kopf = { authorization: `Bearer ${an.token}`, "content-type": "application/json",
   'x-forwarded-for': HERKUNFT };

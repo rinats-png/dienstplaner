@@ -343,14 +343,15 @@ function Preise({ onZurueck, onStarten, F }) {
     </div>);
 }
 
-function SelbstStarten({ onZurueck, onFertig, F }) {
+function SelbstStarten({ onZurueck, onAngemeldet, onRecht, F }) {
   const [name, setName] = useState("");
   const [branche, setBranche] = useState("");
   const [email, setEmail] = useState("");
-  const [rollen, setRollen] = useState(["subplaner", "mitarbeiter"]);
+  const [ansprech, setAnsprech] = useState("");
+  const [passwort, setPasswort] = useState("");
+  const [avv, setAvv] = useState(false);
   const [laeuft, setLaeuft] = useState(false);
   const [fehler, setFehler] = useState(null);
-  const [fertig, setFertig] = useState(null);
 
   const BRANCHEN = [
     ["sicherheit", "Sicherheitsdienst", "Objektschutz, Sachkunde nach § 34a, Wachbuch"],
@@ -362,75 +363,20 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
   const ROLLENNAMEN = { leitung: "Organisationsleitung", planer: "Planung",
     subplaner: "Schichtverantwortung", mitarbeiter: "Beschäftigte", betriebsrat: "Betriebsrat" };
 
+  const vollstaendig = name.trim() && branche && email.includes("@")
+    && passwort.length >= 12 && avv;
   const starten = async () => {
-    if (!name.trim() || !branche || laeuft) return;
+    if (!vollstaendig || laeuft) return;
     setLaeuft(true); setFehler(null);
     try {
-      const a = await fetch("/starten", { method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), branche, email: email.trim(), rollen }) });
-      const d = await a.json();
-      if (!a.ok) throw new Error(d.text || d.fehler || "Das hat nicht geklappt.");
-      setFertig(d);
-    } catch (e) { setFehler(e.message); }
-    finally { setLaeuft(false); }
+      /* Die Antwort trägt die Sitzung — es gibt keine Codes mehr
+         abzuschreiben, der Betrieb öffnet sich direkt. */
+      const d = await SP.selbstStarten({ name: name.trim(), branche,
+        email: email.trim(), passwort, avv: true,
+        ansprech: ansprech.trim() || undefined }, false);
+      onAngemeldet(d);
+    } catch (e) { setFehler(e.message); setLaeuft(false); }
   };
-
-  if (fertig) return (
-    <div>
-      <div style={{ padding: "22px 24px", borderRadius: 14, background: "#F0FDF4",
-        border: "1px solid #BBF7D0", marginBottom: 24 }}>
-        <div style={{ fontSize: 19, fontWeight: 640, marginBottom: 7 }}>
-          {name.trim()} steht bereit</div>
-        <div style={{ fontSize: 14.5, color: F.dim, lineHeight: 1.6 }}>
-          Der Betrieb ist leer — kein Beispielpersonal, keine erfundenen Dienstpläne.
-          Beim ersten Öffnen führt dich eine Tour durch alles Nötige.
-        </div>
-      </div>
-
-      <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
-        padding: 24, marginBottom: 20 }}>
-        <div style={{ fontSize: 13.5, color: F.danger, lineHeight: 1.55, marginBottom: 18,
-          fontWeight: 550 }}>
-          Notier dir die Codes jetzt. Sie werden nur als Prüfsumme gespeichert
-          und lassen sich nicht wiederherstellen.
-        </div>
-        {fertig.zugaenge.map((z, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 14,
-            padding: "13px 0", borderTop: i ? `1px solid ${F.line}` : "none" }}>
-            <span style={{ flex: 1, fontSize: 14.5, fontWeight: 550 }}>
-              {ROLLENNAMEN[z.rolle] || z.rolle}</span>
-            <code style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".07em",
-              padding: "8px 13px", borderRadius: 8, background: F.bg,
-              border: `1px solid ${F.line}`, fontVariantNumeric: "tabular-nums" }}>{z.code}</code>
-          </div>))}
-        <button onClick={() => {
-          const txt = [`CENTRIC — Zugänge für ${name.trim()}`, "",
-            ...fertig.zugaenge.map((z) => `${(ROLLENNAMEN[z.rolle] || z.rolle).padEnd(24)} ${z.code}`),
-            "", "https://centric-dienstplanung.netlify.app",
-            `Testzeitraum: ${fertig.testtage} Tage.`].join("\n");
-          const b = new Blob([txt], { type: "text/plain;charset=utf-8" });
-          const u = URL.createObjectURL(b);
-          const a = document.createElement("a");
-          a.href = u; a.download = `centric-zugaenge.txt`; a.click();
-          setTimeout(() => URL.revokeObjectURL(u), 1000);
-        }} style={{ marginTop: 18, padding: "11px 18px", borderRadius: 10,
-          border: `1px solid ${F.line}`, background: "transparent", color: F.text,
-          fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-          Als Datei sichern</button>
-      </div>
-
-      <div style={{ fontSize: 13, color: F.dim, lineHeight: 1.6, marginBottom: 22 }}>
-        Der Testzeitraum läuft {fertig.testtage} Tage. Danach melden wir uns —
-        oder du meldest dich, wenn es passt.
-      </div>
-
-      <button onClick={() => onFertig(fertig.zugaenge[0].code)}
-        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 12,
-          border: "none", background: F.accent, color: "#fff", fontFamily: "inherit",
-          cursor: "pointer" }}>
-        Mit der Organisationsleitung anmelden</button>
-    </div>);
 
   return (
     <div>
@@ -486,48 +432,73 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
 
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 9 }}>Welche Zugänge brauchst du?</label>
-          <div style={{ fontSize: 12.5, color: F.dim, marginBottom: 11, lineHeight: 1.5 }}>
-            Organisationsleitung und Planung entstehen immer. Weitere kannst du
-            gleich mitnehmen, um die anderen Blickwinkel zu sehen.
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {[["subplaner", "Schichtverantwortung"], ["mitarbeiter", "Beschäftigte"],
-              ["betriebsrat", "Betriebsrat"]].map(([id, label]) => (
-              <label key={id} style={{ display: "flex", alignItems: "center", gap: 11,
-                padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                border: `1px solid ${rollen.includes(id) ? F.accent : F.line}`,
-                background: rollen.includes(id) ? F.accentHell : "transparent" }}>
-                <input type="checkbox" checked={rollen.includes(id)}
-                  onChange={(e) => setRollen(e.target.checked
-                    ? [...rollen, id] : rollen.filter((x) => x !== id))}
-                  style={{ width: 17, height: 17, accentColor: F.accent }} />
-                <span style={{ fontSize: 14 }}>{label}</span>
-              </label>))}
+            color: F.dim, marginBottom: 7 }}>Deine E-Mail-Adresse</label>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email" placeholder="sie ist dein Zugang"
+            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+              border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              background: F.bg, color: F.text }} />
+          <div style={{ fontSize: 12, color: F.dim, marginTop: 6, lineHeight: 1.5 }}>
+            Damit meldest du dich an — und darüber läuft „Passwort vergessen".
+            Weitere Zugänge legst du später in der Anwendung an: als Einladung
+            per E-Mail oder als Code für Kräfte ohne Adresse.
           </div>
         </div>
 
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 7 }}>E-Mail (freiwillig)</label>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-            placeholder="damit wir dich erreichen können"
+            color: F.dim, marginBottom: 7 }}>Dein Name (freiwillig)</label>
+          <input value={ansprech} onChange={(e) => setAnsprech(e.target.value)}
+            autoComplete="name" placeholder="wie wir dich ansprechen dürfen"
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
               border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
               background: F.bg, color: F.text }} />
         </div>
+
+        <div>
+          <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+            color: F.dim, marginBottom: 7 }}>Passwort</label>
+          <input type="password" value={passwort} onChange={(e) => setPasswort(e.target.value)}
+            autoComplete="new-password"
+            placeholder="mindestens 12 Zeichen — gern eine Wortfolge"
+            style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+              border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              background: F.bg, color: F.text }} />
+          <div style={{ fontSize: 12, color: F.dim, marginTop: 6, lineHeight: 1.5 }}>
+            Keine Pflicht zu Ziffern oder Sonderzeichen. Drei ehrliche Wörter
+            mit Leerzeichen sind stärker als Sommer2026!
+          </div>
+        </div>
+
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 11,
+          padding: "12px 14px", borderRadius: 10, cursor: "pointer",
+          border: `1px solid ${avv ? F.accent : F.line}`,
+          background: avv ? F.accentHell : "transparent" }}>
+          <input type="checkbox" checked={avv} onChange={(e) => setAvv(e.target.checked)}
+            style={{ width: 17, height: 17, marginTop: 2, accentColor: F.accent, flexShrink: 0 }} />
+          <span style={{ fontSize: 13.5, lineHeight: 1.5 }}>
+            Ich habe den{" "}
+            <button type="button" onClick={(e) => { e.preventDefault(); onRecht && onRecht("avv"); }}
+              style={{ border: "none", background: "transparent", color: F.accent, padding: 0,
+                fontFamily: "inherit", fontSize: "inherit", cursor: "pointer",
+                textDecoration: "underline" }}>
+              Vertrag zur Auftragsverarbeitung</button>{" "}
+            gelesen und stimme zu. Ohne ihn dürfen keine Personaldaten
+            verarbeitet werden — deshalb geht es nicht ohne.
+          </span>
+        </label>
 
         {fehler && (
           <div role="alert" style={{ padding: "13px 16px", borderRadius: 10,
             background: "#FEF2F2", color: F.danger, fontSize: 13.5, lineHeight: 1.5 }}>
             {fehler}</div>)}
 
-        <button onClick={starten} disabled={!name.trim() || !branche || laeuft}
+        <button onClick={starten} disabled={!vollstaendig || laeuft}
           style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 12,
             border: "none", fontFamily: "inherit",
-            cursor: name.trim() && branche && !laeuft ? "pointer" : "default",
-            background: name.trim() && branche && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
-          {laeuft ? "Wird angelegt …" : "Betrieb anlegen"}</button>
+            cursor: vollstaendig && !laeuft ? "pointer" : "default",
+            background: vollstaendig && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
+          {laeuft ? "Wird angelegt …" : "Betrieb anlegen und öffnen"}</button>
 
         <div style={{ fontSize: 12, color: F.dim, textAlign: "center", lineHeight: 1.5 }}>
           Kostenlos · Keine Zahlungsdaten · 30 Tage Testzeitraum
@@ -539,6 +510,72 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
           fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "18px 0 0" }}>
         Zurück
       </button>
+    </div>);
+}
+
+/* ==========================================================================
+   PASSWORT SETZEN — der Bildschirm hinter Einladungs- und Zurücksetzlink
+
+   Der einzige Weg zu diesem Formular ist der Link aus der Nachricht.
+   Zwei Felder, damit ein Tippfehler nicht im ersten Passwort landet;
+   nach dem Setzen ist man angemeldet — kein zweiter Anlauf über die
+   Anmeldemaske.
+   ========================================================================== */
+function PasswortSetzen({ link, F, onAngemeldet }) {
+  const [pw1, setPw1] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [laeuft, setLaeuft] = useState(false);
+  const [fehler, setFehler] = useState(null);
+  const einladung = link.zweck === "einladung";
+  const bereit = pw1.length >= 12 && pw1 === pw2;
+
+  const setzen = async () => {
+    if (!bereit || laeuft) return;
+    setLaeuft(true); setFehler(null);
+    try { onAngemeldet(await SP.linkEinloesen(link.zweck, link.token, pw1, false)); }
+    catch (e) { setFehler(e.message); setLaeuft(false); }
+  };
+
+  const feld = (wert, setze, beschriftung, fokus) => (
+    <div>
+      <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+        color: F.dim, marginBottom: 7 }}>{beschriftung}</label>
+      <input type="password" value={wert} autoFocus={fokus}
+        autoComplete="new-password"
+        onChange={(e) => setze(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && setzen()}
+        style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+          border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
+          background: F.bg, color: F.text }} />
+    </div>);
+
+  return (
+    <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 16,
+      padding: 32, maxWidth: 430 }}>
+      <h1 style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 10px" }}>
+        {einladung ? "Willkommen bei CENTRIC" : "Neues Passwort"}</h1>
+      <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 24px" }}>
+        {einladung
+          ? "Leg dein Passwort fest — danach bist du direkt angemeldet."
+          : "Leg ein neues Passwort fest. Alle laufenden Sitzungen deines Zugangs werden dabei beendet."}
+      </p>
+      <div style={{ display: "grid", gap: 16 }}>
+        {feld(pw1, setPw1, "Passwort — mindestens 12 Zeichen, gern eine Wortfolge", true)}
+        {feld(pw2, setPw2, "Noch einmal, gegen Tippfehler")}
+      </div>
+      {pw2 && pw1 !== pw2 && (
+        <div style={{ fontSize: 12.5, color: F.dim, marginTop: 8 }}>
+          Die beiden Eingaben unterscheiden sich noch.</div>)}
+      {fehler && (
+        <div role="alert" style={{ display: "flex", gap: 8, marginTop: 12, fontSize: 13,
+          color: F.danger, lineHeight: 1.45 }}>
+          <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>)}
+      <button onClick={setzen} disabled={!bereit || laeuft}
+        style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
+          borderRadius: 12, border: "none", fontFamily: "inherit",
+          cursor: bereit && !laeuft ? "pointer" : "default",
+          background: bereit && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
+        {laeuft ? "Wird gesetzt …" : einladung ? "Passwort setzen und anmelden" : "Passwort ändern"}</button>
     </div>);
 }
 
@@ -563,11 +600,38 @@ function Einstieg() {
   const [laeuft, setLaeuft] = useState(false);
   const [begruessung, setBegruessung] = useState(null);
   const [demos, setDemos] = useState(null);
-  const [mitCode, setMitCode] = useState(false);
+  const [mitCode, setMitCode] = useState(() => {
+    try { return window.location.hash === "#anmelden"; } catch { return false; }
+  });
   const [betreiber, setBetreiber] = useState(false);
-  const [selbst, setSelbst] = useState(false);
+  const [selbst, setSelbst] = useState(() => {
+    try { return window.location.hash === "#testen"; } catch { return false; }
+  });
   const [preise, setPreise] = useState(false);
   const [merken, setMerken] = useState(SP.wirdGemerkt());
+  /* Anmeldung mit Adresse ist der erste Weg, der Code bleibt der zweite. */
+  const [modus, setModus] = useState("email");
+  const [emailA, setEmailA] = useState("");
+  const [passwortA, setPasswortA] = useState("");
+  const [vergessen, setVergessen] = useState(false);
+  const [vergessenText, setVergessenText] = useState(null);
+  /* Ein Einladungs- oder Zurücksetzlink im Anker öffnet direkt das
+     Passwort-Setzen — und nur der Link tut das: Die Bekanntheit einer
+     Adresse öffnet nie ein Passwortfeld. */
+  const [link, setLink] = useState(() => {
+    try {
+      const h = window.location.hash || "";
+      let m = h.match(/^#einladung=([A-Za-z0-9_-]{20,})$/);
+      if (m) return { zweck: "einladung", token: m[1] };
+      m = h.match(/^#passwort=([A-Za-z0-9_-]{20,})$/);
+      if (m) return { zweck: "passwort", token: m[1] };
+    } catch { /* egal */ }
+    return null;
+  });
+  useEffect(() => {
+    /* Das Token gehört nicht in den Verlauf. */
+    if (link) { try { history.replaceState(null, "", window.location.pathname); } catch { /* egal */ } }
+  }, [link]);
   /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
      ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
      steht jemand, der die Anwendung noch gar nicht betreten hat. */
@@ -591,12 +655,50 @@ function Einstieg() {
   };
   const senden = () => { if (code.trim() && !laeuft)
     oeffne(SP.anmelden(code.trim().toUpperCase(), merken)); };
+  const sendenEmail = () => { if (emailA.includes("@") && passwortA && !laeuft)
+    oeffne(SP.anmeldenMitPasswort(emailA.trim(), passwortA, merken)); };
+  const anfordern = async () => {
+    if (!emailA.includes("@") || laeuft) return;
+    setLaeuft(true); setFehler(null);
+    try { const d = await SP.linkAnfordern(emailA.trim());
+      setVergessenText(d.text || "Falls zu dieser Adresse ein Zugang besteht, ist eine Nachricht unterwegs."); }
+    catch (e) { setFehler(e.message); }
+    finally { setLaeuft(false); }
+  };
 
   /* Die Seite wird gebaut, während die Startsequenz noch darüberliegt.
      Sie ist damit fertig, sobald die Sequenz hochfährt — der Sinn der
      Übung: die zwei Sekunden gehören der Marke, nicht dem Warten. */
   const seite = (() => {
   if (an) return <App />;
+
+  if (link) return (
+    <div style={{ minHeight: "100vh", background: F.bg, padding: "5vh 20px 8vh",
+      fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
+      <div style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
+          <Marke data-marke-ziel="" />
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
+            <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
+              Dienstplanung im Schichtbetrieb</div>
+          </div>
+        </div>
+        {begruessung ? (
+          <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 16,
+            padding: "48px 32px", textAlign: "center" }}>
+            <div style={{ fontSize: 30, color: F.ok, marginBottom: 14 }}>✓</div>
+            <div style={{ fontSize: 19, fontWeight: 640, marginBottom: 7 }}>{begruessung.name}</div>
+            <div style={{ fontSize: 14.5, color: F.dim }}>
+              {ROLLENNAME[begruessung.rolle] || begruessung.rolle} — wird geöffnet …</div>
+          </div>
+        ) : (
+          <PasswortSetzen link={link} F={F}
+            onAngemeldet={(d) => { setBegruessung(d); setTimeout(() => setAn(true), 800); }} />
+        )}
+        {fuss}
+      </div>
+    </div>);
 
   if (preise) return (
     <div style={{ minHeight: "100vh", background: F.bg, padding: "5vh 20px 8vh",
@@ -628,8 +730,9 @@ function Einstieg() {
               Dienstplanung im Schichtbetrieb</div>
           </div>
         </div>
-        <SelbstStarten F={F} onZurueck={() => setSelbst(false)}
-          onFertig={(code) => { setSelbst(false); setMitCode(true); setCode(code); }} />
+        <SelbstStarten F={F} onZurueck={() => setSelbst(false)} onRecht={setRecht}
+          onAngemeldet={(d) => { setSelbst(false);
+            setBegruessung(d); setTimeout(() => setAn(true), 800); }} />
         {fuss}
       </div>
     </div>);
@@ -751,7 +854,7 @@ function Einstieg() {
             <button onClick={() => { setMitCode(true); setBetreiber(false); }}
               style={{ border: "none", background: "transparent", color: F.accent, fontFamily: "inherit",
                 fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0" }}>
-              Ich habe einen Zugangscode
+              Ich habe einen Zugang
             </button>
           </>) : (<>
 
@@ -760,32 +863,127 @@ function Einstieg() {
               padding: 32, maxWidth: 430 }}>
               <h1 style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 10px" }}>
                 {betreiber ? "Betreiberkonsole" : "Anmelden"}</h1>
-              <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 24px" }}>
+              <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 20px" }}>
                 {betreiber
                   ? "Für die Verwaltung von Mandanten, Zugängen und Rechnungen. Die Sitzung läuft nach zwei Stunden ab."
-                  : "Der Zugangscode wurde dir von deinem Betrieb mitgeteilt. Er gilt zwölf Stunden."}
+                  : modus === "email" && !vergessen
+                    ? "Mit der Adresse, unter der du eingeladen wurdest oder gestartet bist."
+                    : modus === "email"
+                      ? "Wir schicken dir einen Link zum Setzen eines neuen Passworts."
+                      : "Der Zugangscode wurde dir von deinem Betrieb mitgeteilt. Er gilt zwölf Stunden."}
               </p>
-              <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-                color: F.dim, marginBottom: 7 }}>Zugangscode</label>
-              <input id="code" value={code} autoFocus autoCapitalize="characters"
-                autoComplete="one-time-code" inputMode="text"
-                onChange={(e) => setCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === "Enter" && senden()}
-                placeholder="XXXX-XXXX-XXXX"
-                style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
-                  border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit",
-                  letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
-                  background: F.bg, color: F.text }} />
-              {fehler && (
-                <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
-                  color: F.danger, lineHeight: 1.45 }}>
-                  <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>)}
-              <button onClick={senden} disabled={!code.trim() || laeuft}
-                style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
-                  borderRadius: 12, border: "none", fontFamily: "inherit",
-                  cursor: code.trim() && !laeuft ? "pointer" : "default",
-                  background: code.trim() && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
-                {laeuft ? "Wird geprüft …" : "Anmelden"}</button>
+
+              {/* Zwei gleichwertige Wege: Adresse für die verwaltenden
+                  Zugänge, Code für Kräfte ohne Adresse. Der Betreiber
+                  bleibt beim Code — sein Zugang entsteht nicht durch
+                  Einladung. */}
+              {!betreiber && (
+                <div role="tablist" aria-label="Anmeldeweg" style={{ display: "flex", gap: 0,
+                  border: `1px solid ${F.line}`, borderRadius: 10, overflow: "hidden",
+                  marginBottom: 20 }}>
+                  {[["email", "Mit E-Mail"], ["code", "Mit Zugangscode"]].map(([id, label]) => (
+                    <button key={id} role="tab" aria-selected={modus === id}
+                      onClick={() => { setModus(id); setFehler(null); setVergessen(false);
+                        setVergessenText(null); }}
+                      style={{ flex: 1, padding: "10px 8px", fontSize: 13.5, fontWeight: 600,
+                        border: "none", fontFamily: "inherit", cursor: "pointer",
+                        background: modus === id ? F.accentHell : "transparent",
+                        color: modus === id ? F.accent : F.dim }}>
+                      {label}</button>))}
+                </div>)}
+
+              {(betreiber || modus === "code") ? (<>
+                <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+                  color: F.dim, marginBottom: 7 }}>Zugangscode</label>
+                <input id="code" value={code} autoFocus autoCapitalize="characters"
+                  autoComplete="one-time-code" inputMode="text"
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => e.key === "Enter" && senden()}
+                  placeholder="XXXX-XXXX-XXXX"
+                  style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
+                    border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit",
+                    letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
+                    background: F.bg, color: F.text }} />
+                {fehler && (
+                  <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
+                    color: F.danger, lineHeight: 1.45 }}>
+                    <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>)}
+                <button onClick={senden} disabled={!code.trim() || laeuft}
+                  style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
+                    borderRadius: 12, border: "none", fontFamily: "inherit",
+                    cursor: code.trim() && !laeuft ? "pointer" : "default",
+                    background: code.trim() && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
+                  {laeuft ? "Wird geprüft …" : "Anmelden"}</button>
+              </>) : vergessen ? (<>
+                <label htmlFor="emailA" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+                  color: F.dim, marginBottom: 7 }}>E-Mail-Adresse</label>
+                <input id="emailA" type="email" value={emailA} autoFocus autoComplete="email"
+                  onChange={(e) => setEmailA(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && anfordern()}
+                  style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+                    border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
+                    background: F.bg, color: F.text }} />
+                {vergessenText ? (
+                  <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 10,
+                    background: F.accentHell, color: F.text, fontSize: 13.5, lineHeight: 1.55 }}>
+                    {vergessenText}</div>
+                ) : fehler ? (
+                  <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
+                    color: F.danger, lineHeight: 1.45 }}>
+                    <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>
+                ) : null}
+                <button onClick={anfordern} disabled={!emailA.includes("@") || laeuft || !!vergessenText}
+                  style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
+                    borderRadius: 12, border: "none", fontFamily: "inherit",
+                    cursor: emailA.includes("@") && !laeuft && !vergessenText ? "pointer" : "default",
+                    background: emailA.includes("@") && !laeuft && !vergessenText
+                      ? F.accent : F.lineStark, color: "#fff" }}>
+                  {laeuft ? "Wird gesendet …" : "Link anfordern"}</button>
+                <button onClick={() => { setVergessen(false); setVergessenText(null); setFehler(null); }}
+                  style={{ border: "none", background: "transparent", color: F.accent,
+                    fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                    padding: "14px 0 0" }}>
+                  Zurück zur Anmeldung</button>
+              </>) : (<>
+                <div style={{ display: "grid", gap: 14 }}>
+                  <div>
+                    <label htmlFor="emailA" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+                      color: F.dim, marginBottom: 7 }}>E-Mail-Adresse</label>
+                    <input id="emailA" type="email" value={emailA} autoFocus autoComplete="email"
+                      onChange={(e) => setEmailA(e.target.value)}
+                      style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+                        border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
+                        background: F.bg, color: F.text }} />
+                  </div>
+                  <div>
+                    <label htmlFor="passwortA" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+                      color: F.dim, marginBottom: 7 }}>Passwort</label>
+                    <input id="passwortA" type="password" value={passwortA}
+                      autoComplete="current-password"
+                      onChange={(e) => setPasswortA(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendenEmail()}
+                      style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
+                        border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit",
+                        boxSizing: "border-box", background: F.bg, color: F.text }} />
+                  </div>
+                </div>
+                {fehler && (
+                  <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
+                    color: F.danger, lineHeight: 1.45 }}>
+                    <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>)}
+                <button onClick={sendenEmail} disabled={!emailA.includes("@") || !passwortA || laeuft}
+                  style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
+                    borderRadius: 12, border: "none", fontFamily: "inherit",
+                    cursor: emailA.includes("@") && passwortA && !laeuft ? "pointer" : "default",
+                    background: emailA.includes("@") && passwortA && !laeuft
+                      ? F.accent : F.lineStark, color: "#fff" }}>
+                  {laeuft ? "Wird geprüft …" : "Anmelden"}</button>
+                <button onClick={() => { setVergessen(true); setFehler(null); }}
+                  style={{ border: "none", background: "transparent", color: F.accent,
+                    fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
+                    padding: "14px 0 0" }}>
+                  Passwort vergessen?</button>
+              </>)}
 
               {/* Ohne dieses Häkchen endet der Zugang mit dem Schließen des
                   Fensters. Das ist die richtige Voreinstellung: An einem

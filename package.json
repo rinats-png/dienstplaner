@@ -11,7 +11,7 @@
     "pruefung:bremse": "node pruefungen/bremse.mjs",
     "pruefung:sicherung": "node pruefungen/sicherung.mjs",
     "pruefung:verwalter": "node pruefungen/verwalter.mjs",
-    "pruefung": "npm run lint && npm run pruefung:typen && npm run pruefung:regeln && npm run pruefung:aufbewahrung && npm run pruefung:tarife && npm run pruefung:codes && npm run pruefung:scherben && npm run pruefung:matrix && npm run pruefung:betreiber && npm run pruefung:rollen && npm run pruefung:standorte && npm run pruefung:rechte && npm run pruefung:sicherung && npm run pruefung:verwalter && npm run pruefung:demo && npm run pruefung:bremse",
+    "pruefung": "npm run lint && npm run pruefung:typen && npm run pruefung:regeln && npm run pruefung:aufbewahrung && npm run pruefung:tarife && npm run pruefung:codes && npm run pruefung:scherben && npm run pruefung:matrix && npm run pruefung:betreiber && npm run pruefung:rollen && npm run pruefung:standorte && npm run pruefung:passwoerter && npm run pruefung:fortschritt && npm run pruefung:einladungstoken && npm run pruefung:rechte && npm run pruefung:sicherung && npm run pruefung:verwalter && npm run pruefung:demo && npm run pruefung:bremse && npm run pruefung:einladungen",
     "pruefung:codes": "node pruefungen/codes.mjs",
     "lint": "eslint .",
     "pruefung:matrix": "node pruefungen/matrix.mjs",
@@ -23,7 +23,11 @@
     "pruefung:demo": "node pruefungen/demozugang.mjs",
     "pruefung:betreiber": "vitest run pruefungen/rechte-betreiber.test.js",
     "pruefung:rollen": "vitest run pruefungen/rollenvergabe.test.js",
-    "pruefung:standorte": "vitest run pruefungen/standorte.test.js"
+    "pruefung:standorte": "vitest run pruefungen/standorte.test.js",
+    "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
+    "pruefung:fortschritt": "vitest run pruefungen/fortschritt.test.js",
+    "pruefung:einladungstoken": "vitest run pruefungen/einladungstoken.test.js",
+    "pruefung:einladungen": "node pruefungen/einladungskette.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

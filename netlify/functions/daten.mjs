@@ -5,7 +5,12 @@ import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
-import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln } from "../lib/konten.mjs";
+import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln,
+  findeKontoMail } from "../lib/konten.mjs";
+import { passwortPruefen } from "../lib/passwoerter.mjs";
+import { darfVergeben } from "../lib/rollenvergabe.mjs";
+import { selbststartVermerken } from "../lib/fortschritt.mjs";
+import { sitzungsSpeicher, sitzungLesen } from "../lib/sitzungen.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 
 /* ==========================================================================
@@ -23,7 +28,7 @@ import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
    ========================================================================== */
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
-const sitzungen = () => getStore({ name: "centric-sitzungen", consistency: "strong" });
+const sitzungen = sitzungsSpeicher;
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const gleich = (a, b) => {
@@ -113,45 +118,10 @@ async function sicherungenAusduennen(store, raum) {
   } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
 }
 
-/** Prüft den Sitzungsschlüssel aus dem Kopf und gibt die Sitzung zurück. */
-async function sitzung(req) {
-  const kopf = req.headers.get("authorization") || "";
-  const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
-  if (!token) return null;
-
-  /* Ein Sicherungsschlüssel ist keine Sitzung: Er läuft nicht ab, weil
-     jemand eine halbe Stunde nichts tut, und er wird nirgends verlängert.
-     Er darf ausschließlich lesen — das prüft der Endpunkt selbst über
-     nurSicherung. */
-  const sk = await sitzungen().get(`sk:${hash(token)}`, { type: "json" }).catch(() => null);
-  if (sk) {
-    if (sk.bis < Date.now()) { await sitzungen().delete(`sk:${hash(token)}`); return null; }
-    return { ...sk, nurSicherung: true };
-  }
-
-  const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
-  if (!s) return null;
-  const jetzt = Date.now();
-  if (s.bis < jetzt) { await sitzungen().delete(`t:${hash(token)}`); return null; }
-
-  /* Untätigkeit beendet die Sitzung, nicht erst die Frist.
-
-     Zwölf Stunden sind für ein eigenes Telefon richtig und für den
-     Stationsrechner, den sich eine ganze Schicht teilt, zu lang. Wer eine
-     halbe Stunde nichts tut, ist weg — wer arbeitet, bleibt, weil jeder
-     Zugriff die Uhr neu stellt. */
-  const RUHE = 30 * 60 * 1000;
-  if (s.zuletzt && jetzt - s.zuletzt > RUHE) {
-    await sitzungen().delete(`t:${hash(token)}`);
-    return null;
-  }
-  /* Nicht bei jedem Zugriff schreiben — ein Planer klickt sich durch einen
-     Monat, das wären hunderte Schreibvorgänge. Einmal je Minute genügt. */
-  if (!s.zuletzt || jetzt - s.zuletzt > 60 * 1000) {
-    sitzungen().setJSON(`t:${hash(token)}`, { ...s, zuletzt: jetzt }).catch(() => {});
-  }
-  return s;
-}
+/* Sitzungen liest und schreibt jetzt lib/sitzungen.mjs — Einladungen
+   und Zurücksetzen brauchen dieselbe Logik, und zwei Kopien wären
+   zwei Wahrheiten. */
+const sitzung = (req) => sitzungLesen(req);
 
 export default async (req, context) => {
   const url = new URL(req.url);
@@ -164,18 +134,38 @@ export default async (req, context) => {
        Prüfsumme abgelegt werden können — im Browser wäre das sinnlos. */
     if (pfad === "zugaenge" && req.method === "POST") {
       const sB = await sitzung(req);
-      if (!sB || sB.rolle !== "betreiber") {
-        await protokoll("zugaenge", kennung(req, null), "abgewiesen", "keine Betreibersitzung");
-        return antwort({ fehler: "Nur für den Betreiber." }, 403);
+      /* Neben dem Betreiber jetzt auch Leitung und Planung — aber nur im
+         eigenen Betrieb, nur für Rollen unterhalb der eigenen und nur je
+         Person. Das ist der Weg für Kräfte ohne E-Mail-Adresse: Der Code
+         wird ausgedruckt übergeben und lässt sich hier in zwei Klicks neu
+         ausstellen — der Handywechsel ist dann eine Sache des Betriebs,
+         kein Anruf beim Hersteller. */
+      const darfAnlegen = sB && (sB.rolle === "betreiber"
+        || sB.rolle === "leitung" || sB.rolle === "planer");
+      if (!darfAnlegen) {
+        await protokoll("zugaenge", kennung(req, null), "abgewiesen", "ohne Recht");
+        return antwort({ fehler: "Zugänge legt die Organisationsleitung oder die Planung an." }, 403);
       }
       const kZ = kennung(req, sB);
       const bZ = await bremse("zugaenge", kZ);
       if (!bZ.frei) { await protokoll("zugaenge", kZ, "gebremst", bZ.grund);
         return zuVielAntwort(bZ.wartet); }
-      const { bestand: ziel, eintraege } = await req.json();
+      const { bestand: zielW, eintraege } = await req.json();
+      /* Leitung und Planung arbeiten immer im eigenen Betrieb — der steht
+         in der Sitzung. Was der Klient schickt, ist dort ohne Belang. */
+      const ziel = sB.rolle === "betreiber" ? zielW : sB.bestand;
       if (!ziel || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
+      if (sB.rolle !== "betreiber") {
+        for (const e of eintraege) {
+          if (!e.personId)
+            return antwort({ fehler: "Ein Code gehört zu einer Person — ohne Personenbezug bleibt das Protokoll ohne Urheber." }, 400);
+          const urteil = darfVergeben(sB.rolle, e.rolle || "mitarbeiter", null);
+          if (!urteil.ok)
+            return antwort({ fehler: urteil.grund }, 403);
+        }
+      }
 
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
@@ -192,9 +182,41 @@ export default async (req, context) => {
           angelegt: new Date().toISOString() });
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
       }
+      /* Neu ausstellen heißt entwerten: Trägt ein Eintrag `ersetzen`,
+         werden alle bisherigen Codes derselben Person gesperrt und ihre
+         Sitzungen beendet. Ein alter Code auf einem verlorenen Telefon
+         bleibt sonst ein gültiger Schlüssel zum Dienstplan. */
+      const zuErsetzen = eintraege.filter((e) => e.ersetzen && e.personId);
+      let entwertet = 0;
+      if (zuErsetzen.length) {
+        const alle = await alleKonten(store);
+        const neueHashes = new Set(erzeugt.map((z) => ablageSchluessel(z.code)));
+        const gesperrteH = new Set();
+        for (const [h, konto] of Object.entries(alle)) {
+          if (!konto || konto.bestand !== ziel || konto.gesperrt || konto.verweis) continue;
+          if (neueHashes.has(h)) continue;
+          if (!zuErsetzen.some((e) => String(e.personId) === String(konto.person))) continue;
+          await kontoSchreiben(store, h, { ...konto, gesperrt: true,
+            gesperrtAm: new Date().toISOString(),
+            gesperrtDurch: `${sB.name || sB.rolle} · neu ausgestellt` });
+          gesperrteH.add(h); entwertet++;
+        }
+        if (gesperrteH.size) {
+          try {
+            const { blobs } = await sitzungen().list();
+            for (const b of blobs) {
+              const sit = await sitzungen().get(b.key, { type: "json" });
+              if (sit && sit.konto && gesperrteH.has(sit.konto))
+                await sitzungen().delete(b.key);
+            }
+          } catch { /* Sitzungen laufen ohnehin ab */ }
+        }
+      }
+
       await protokoll("einrichten", kennung(req, sB), "erfolg",
-        `${erzeugt.length} Zugänge für ${ziel}`);
-      return antwort({ ok: true, zugaenge: erzeugt });
+        `${erzeugt.length} Zugänge für ${ziel}`
+        + (entwertet ? ` · ${entwertet} entwertet` : ""));
+      return antwort({ ok: true, zugaenge: erzeugt, entwertet });
     }
 
     /* ------------------------ Einen Zugang sperren -------------------- */
@@ -356,7 +378,76 @@ export default async (req, context) => {
     /* ---------------------------- Anmelden --------------------------- */
     if (pfad === "anmelden" && req.method === "POST") {
       const k = kennung(req, null);
-      const { zugangscode } = await req.json();
+      const { zugangscode, email, passwort } = await req.json();
+
+      /* ---- Weg A: Adresse und Passwort ----------------------------------
+         Für die Zugänge, die einen Betrieb führen. Die Antwort auf alles
+         Ungültige ist ein und dieselbe: Ob die Adresse unbekannt ist, das
+         Passwort falsch oder noch keines gesetzt, sieht von außen gleich
+         aus — sonst wäre die Anmeldung ein Adressprüfer. Wer den Link
+         braucht, fordert ihn unter „Passwort vergessen" an; dort wird für
+         Konten ohne Passwort still die Einladung erneuert. */
+      if (!zugangscode && (email !== undefined || passwort !== undefined)) {
+        const fundM = await findeKontoMail(store, email);
+        const zielM = fundM.eintrag ? fundM.eintrag.bestand : null;
+        const bM = await bremse("anmelden", k, zielM);
+        if (!bM.frei) { await protokoll("anmelden", k, "gebremst",
+          `${bM.grund}${bM.dimension ? ` (${bM.dimension})` : ""}`);
+          return zuVielAntwort(bM.wartet); }
+        if (!email || !String(email).includes("@") || !passwort)
+          return antwort({ fehler: "E-Mail und Passwort gehören zusammen." }, 400);
+
+        const abgewiesen = async (grund) => {
+          /* Gleichlange Antwortzeit — ein unbekanntes Konto rechnet kein
+             scrypt, also wird die Zeit hier angeglichen. */
+          await new Promise((r) => setTimeout(r, 240));
+          await protokoll("anmelden", k, "abgewiesen", grund);
+          return antwort({ fehler: "E-Mail oder Passwort stimmt nicht.",
+            text: `Noch kein Passwort gesetzt? Unter „Passwort vergessen" kommt der Link.`,
+            ...(bM.uebrig !== undefined && bM.uebrig <= 3
+              ? { hinweis: `Noch ${bM.uebrig} Versuche, dann ist der Zugang kurz gesperrt.` } : {}) }, 401);
+        };
+        if (!fundM.eintrag || !fundM.eintrag.passwort) return abgewiesen("adresse");
+        if (!(await passwortPruefen(passwort, fundM.eintrag.passwort)))
+          return abgewiesen("passwort");
+
+        const e = fundM.eintrag;
+        if (e.gesperrt) {
+          await protokoll("anmelden", k, "abgewiesen", "gesperrt");
+          return antwort({ fehler: "Dieser Zugang wurde zurückgezogen.",
+            text: "Bitte wende dich an die Organisationsleitung." }, 403);
+        }
+        if (e.laeuftAb && new Date(e.laeuftAb).getTime() < Date.now()) {
+          await protokoll("anmelden", k, "abgewiesen", "abgelaufen");
+          return antwort({ fehler: "Der Testzeitraum ist abgelaufen.",
+            text: "Melde dich bei uns, wenn du weitermachen möchtest — die Daten sind noch da." }, 403);
+        }
+
+        const tokenM = randomBytes(32).toString("base64url");
+        const dauerM = 1000 * 60 * 60 * 12;
+        await sitzungen().setJSON(`t:${hash(tokenM)}`, {
+          bestand: e.bestand, name: e.name, rolle: e.rolle || "kunde",
+          person: e.person ?? null, betrieb: e.betrieb ?? 0,
+          konto: fundM.schluessel,
+          einheit: e.einheit ?? e.gruppe ?? null,
+          seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauerM,
+        });
+        /* Über den alten Adressschlüssel gefunden und ein Pfeffer ist da:
+           still auf den geschlüsselten heben — dasselbe Muster wie bei den
+           Codes. */
+        try {
+          if (fundM.umschluesseln) await kontoSchreiben(store, fundM.schluessel,
+            { ...e, umgeschluesselt: new Date().toISOString() });
+        } catch { /* darf keine Anmeldung scheitern lassen */ }
+
+        await entlasten("anmelden", k);
+        await protokoll("anmelden", k, "erfolg", `${e.rolle} · mit Adresse`);
+        return antwort({ token: tokenM, name: e.name, rolle: e.rolle || "kunde",
+          person: e.person ?? null, betrieb: e.betrieb ?? 0,
+          hinweis: e.hinweis || null, gueltigBis: Date.now() + dauerM });
+      }
+
+      /* ---- Weg B: Zugangscode, unverändert ------------------------------ */
       /* Das Ziel ist der Betrieb, auf den der Code zeigt. Es wird aus dem
          Code abgeleitet, ohne ihn preiszugeben — so lässt sich ein
          verteilter Angriff auf einen bestimmten Betrieb erkennen, auch
@@ -576,6 +667,9 @@ export default async (req, context) => {
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
         + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""));
+      /* Für die Betreiberliste: Wie weit ist ein Testbetrieb gekommen?
+         Beobachtung, kein Bestand — ein Fehler bleibt folgenlos. */
+      await selbststartVermerken(store, s.bestand, zuSchreiben);
       return antwort({ ok: true, etag: erg.stand,
         zusammengefuehrt: erg.zusammengefuehrt || null });
     }

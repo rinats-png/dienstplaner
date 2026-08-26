@@ -94,7 +94,7 @@ function ankerMontag(jetzt) {
  * @param {string} [o.raum]    Raumname, wird zur Betriebskennung
  * @param {string} [o.laeuftAb] Ende des Testzeitraums
  */
-export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }) {
+export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb, avv }) {
   const jetzt = new Date();
   const br = EINHEIT_LABEL[branche] ? branche : "sonstige";
   const label = EINHEIT_LABEL[br];
@@ -203,6 +203,10 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
   return {
     version: VERSION,
     stand: 0,
+    /* Wann welche Fassung des Vertrags zur Auftragsverarbeitung angenommen
+       wurde. Steht am Bestand, nicht nur am Konto: Der Bestand ist es, den
+       der Vertrag schützt. */
+    avv: avv || null,
     /* Keine Tarifliste, keine Rechnungen, keine Betreiberangaben: Die
        gehören dem Betreiber und werden für Kunden ohnehin gefiltert. */
     tarife: [],

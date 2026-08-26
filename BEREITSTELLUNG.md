@@ -144,7 +144,7 @@ Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 
 | Fehlt | Folge |
 |---|---|
-| `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
+| `RESEND_API_KEY` | Kein Mailversand (Trockenlauf). Der Selbststart funktioniert weiter, weil die Sitzung direkt entsteht — aber Einladungen und „Passwort vergessen“ erreichen niemanden. Für den Echtbetrieb Pflicht. |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
 | `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
 
@@ -159,6 +159,8 @@ Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
 | `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` | fehlt |
 | `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto | fehlt |
 | `CENTRIC_ABSENDER` | nein | siehe unten | fehlt |
+| `CENTRIC_BASIS` | nein | die öffentliche Adresse der Anwendung — steht in den Links der Einladungs- und Zurücksetznachrichten; ohne sie gilt die Netlify-Adresse | fehlt |
+| `CENTRIC_PRUEFLINK` | nein, **nur Prüfumgebungen** | `ja` — dann stehen Einladungs- und Zurücksetzlinks im Trockenlauf in der Antwort, damit `pruefung:einladungen` die Kette durchlaufen kann. In einer echten Auslieferung niemals setzen. | fehlt |
 
 **`CENTRIC_PFEFFER` gehört über die Oberfläche gesetzt**, mit einem frisch
 erzeugten Wert, als *secret*, und zwar **bevor** der erste Zugangscode

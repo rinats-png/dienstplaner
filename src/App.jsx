@@ -166,6 +166,7 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import ZugangsPflege from "./zugaenge.jsx";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
@@ -8741,6 +8742,12 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
           und ein Klick führt hinein. */}
       {standortId === ALLE_STANDORTE && (
         <Standortleiste m={m} wert={standortId} setWert={setStandortId} />)}
+
+      {/* Zugänge verwaltet der Betrieb selbst: Einladung, wo eine Adresse
+          ist, Code je Person, wo keine ist. Nur für die Rollen, die auch
+          einladen dürfen — der Server prüft dasselbe noch einmal. */}
+      {["leitung", "planer"].includes(sitz.rolle) && (
+        <ZugangsPflege m={m} sitz={sitz} />)}
 
       {darf(sitz, "staff.edit") && m.personen.filter((p) => imDienst(p, d0)).length <= 1 && (
         <Card style={{ padding: 28, marginBottom: 22 }}>

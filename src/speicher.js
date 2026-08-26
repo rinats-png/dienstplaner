@@ -82,6 +82,88 @@ export async function anmelden(zugangscode, merken) {
   return d;
 }
 
+/** Anmeldung mit Adresse und Passwort — der Weg für die verwaltenden
+    Zugänge. Gleiches Ergebnis wie die Anmeldung mit Code. */
+export async function anmeldenMitPasswort(email, passwort, merken) {
+  const a = await fetch("/api/anmelden", { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, passwort }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.text ? `${d.fehler} ${d.text}` : (d.fehler || "Anmeldung fehlgeschlagen."));
+  token = d.token; name = d.name;
+  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis };
+  tokenAblegen(token, merken);
+  return d;
+}
+
+/** Selbst starten: legt den Betrieb an und meldet sofort an —
+    es gibt keine Codes mehr abzuschreiben. */
+export async function selbstStarten(daten, merken) {
+  const a = await fetch("/starten", { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(daten) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.text ? `${d.fehler} ${d.text}` : (d.fehler || "Das hat nicht geklappt."));
+  token = d.token; name = d.name;
+  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
+  tokenAblegen(token, merken);
+  return d;
+}
+
+/** Einen Einladungs- oder Zurücksetzlink einlösen: Passwort setzen,
+    angemeldet zurückkommen. `zweck` ist "einladung" oder "passwort". */
+export async function linkEinloesen(zweck, linkToken, passwort, merken) {
+  const pfad = zweck === "passwort" ? "/zuruecksetzen/einloesen" : "/einladungen/einloesen";
+  const a = await fetch(pfad, { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: linkToken, passwort }) });
+  const d = await a.json();
+  if (!a.ok) throw new Error(d.text ? `${d.fehler} ${d.text}` : (d.fehler || "Der Link ist nicht mehr gültig."));
+  token = d.token; name = d.name;
+  zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
+  tokenAblegen(token, merken);
+  return d;
+}
+
+/** „Passwort vergessen" — die Antwort ist immer dieselbe. */
+export async function linkAnfordern(email) {
+  const a = await fetch("/zuruecksetzen/anfordern", { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email }) });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok) throw new Error(d.fehler || "Das hat nicht geklappt. Versuch es gleich noch einmal.");
+  return d;
+}
+
+/** Eine Person einladen — Leitung und Planung, nur eigener Betrieb. */
+export async function einladen({ email, rolle, name: personName, personId }) {
+  const a = await fetch("/einladungen/erstellen", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ email, rolle, name: personName, personId }) });
+  const d = await a.json().catch(() => ({}));
+  if (a.status === 401) { abmelden(true); throw new Error("nicht-angemeldet"); }
+  if (!a.ok) throw new Error(d.text
+    ? `${d.fehler} ${d.text}` : (d.fehler || "Einladen fehlgeschlagen."));
+  return d;
+}
+
+/** Codes je Person ausstellen oder neu ausstellen (entwertet die alten).
+    Den Betrieb kennt der Server aus der Sitzung. */
+export async function codesAusstellen(eintraege) {
+  const { status, daten } = await ruf("zugaenge", { method: "POST",
+    body: JSON.stringify({ eintraege }) });
+  if (status !== 200) throw new Error(daten?.fehler || "Ausstellen fehlgeschlagen.");
+  return daten;
+}
+
+/** Die Zugänge des eigenen Betriebs — für die Personalliste. */
+export async function zugangsUebersicht() {
+  const a = await fetch("/einladungen/uebersicht", { headers: kopf() });
+  const d = await a.json().catch(() => ({}));
+  if (a.status === 401) { abmelden(true); throw new Error("nicht-angemeldet"); }
+  if (!a.ok) throw new Error(d.fehler || "Übersicht nicht verfügbar.");
+  return d.zugaenge || [];
+}
+
 /** Liste der Demozugänge — ohne Anmeldung abrufbar. */
 export async function demos() {
   try {
