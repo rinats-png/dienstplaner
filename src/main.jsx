@@ -7,6 +7,7 @@ import { C } from "./farben.js";
 import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { Marke } from "./marke.jsx";
 import Startbild from "./startbild.jsx";
+import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, PAKETE, preisFuer, passendeStufe } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
@@ -450,7 +451,7 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
         <button onClick={() => {
           const txt = [`CENTRIC — Zugänge für ${name.trim()}`, "",
             ...fertig.zugaenge.map((z) => `${(ROLLENNAMEN[z.rolle] || z.rolle).padEnd(24)} ${z.code}`),
-            "", "https://centric-dienstplanung.netlify.app",
+            "", ANWENDUNG_URL,
             `Testzeitraum: ${fertig.testtage} Tage.`].join("\n");
           const b = new Blob([txt], { type: "text/plain;charset=utf-8" });
           const u = URL.createObjectURL(b);
