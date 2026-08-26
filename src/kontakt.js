@@ -33,6 +33,28 @@ export const HILFE_ZEITEN = ausUmgebung("VITE_KONTAKT_ZEITEN")
 export const KONTAKT_UNGESETZT = HILFE_MAIL === "kontakt@example.org";
 
 /**
+ * Wo die Anwendung selbst wohnt.
+ *
+ * Geht in alles ein, was die Anwendung an Menschen hinausgibt und was
+ * später wieder hierher führen soll: die Zeile „Öffnen: …" unter jeder
+ * Benachrichtigung, die Zugangsliste zum Ausdrucken. Sie stand an vier
+ * Stellen als Zeichenkette — und damit an vier Stellen falsch, sobald die
+ * Adresse sich ändert.
+ *
+ * Website und Anwendung sind zwei getrennte Auslieferungen unter zwei
+ * Adressen. Die Website ist die vordere Tür und verweist hierher; diese
+ * Konstante ist der Rückweg. Wer sie mit der Adresse der Website
+ * verwechselt, schickt Beschäftigte aus einer Benachrichtigung heraus auf
+ * eine Verkaufsseite statt in ihren Dienstplan.
+ *
+ * VITE_ANWENDUNG_URL übersteuert; der Serverteil liest dieselbe Angabe
+ * aus CENTRIC_BASIS (netlify/lib/post.mjs). Beide gehören in die
+ * Umgebungsvariablen der Auslieferung, nicht in den Quelltext.
+ */
+export const ANWENDUNG_URL = (ausUmgebung("VITE_ANWENDUNG_URL")
+  || "https://centric-app.netlify.app").replace(/\/+$/, "");
+
+/**
  * Baut einen mailto-Verweis mit vorbereitetem Betreff und Rumpf.
  * Angehängt wird, was für eine Antwort gebraucht wird — Betrieb, Rolle,
  * Ansicht, Fassung. Ohne diese Angaben besteht die erste Rückfrage immer
