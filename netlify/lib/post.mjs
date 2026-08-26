@@ -35,4 +35,5 @@ export async function sendeMail(an, betreff, text) {
 /** Die Adresse, unter der die Anwendung erreichbar ist — für Links in
     Nachrichten. Im Trockenlauf und örtlich genügt die Vorgabe. */
 export const anwendungsAdresse = () =>
-  process.env.CENTRIC_BASIS || "https://centric-dienstplanung.netlify.app";
+  (process.env.CENTRIC_BASIS || "https://centric-app.netlify.app")
+    .replace(/\/+$/, "");
