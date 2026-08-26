@@ -166,6 +166,7 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import Ringregler from "./ringregler.jsx";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
@@ -6519,6 +6520,17 @@ function Mandantenrechner({ db }) {
 
   const aendereStandort = (i, wert) => setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
 
+  /* Die beiden Standort-Ringe fassen die Liste zu ihren zwei Kennzahlen
+     zusammen: wie viele, und wie groß. Ungleiche Standorte bleiben in der
+     Liste darunter möglich — sie ändern den Preis, weil jeder Standort
+     über dem Kontingent nach seiner eigenen Größe eingestuft wird. */
+  const gleichGross = standorte.every((n) => n === standorte[0]);
+  const leitgroesse = standorte.length ? Math.max(...standorte) : 25;
+  const setzeAnzahl = (n) => setStandorte((s) => (n <= s.length
+    ? s.slice(0, n)
+    : [...s, ...Array(n - s.length).fill(s.length ? s[s.length - 1] : 25)]));
+  const setzeGroesse = (g) => setStandorte((s) => s.map(() => g));
+
   return (
     <div>
       <H1 rubrik="Betreiber"
@@ -6538,36 +6550,44 @@ function Mandantenrechner({ db }) {
               Größe sind enthalten.
             </div>
           </div>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Planer-Zugänge</Lab>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => Math.max(0, n - 1))}>−</Btn>
-              <span style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.04em", minWidth: 60,
-                textAlign: "center", ...NUM }}>{planer}</span>
-              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => n + 1)}>+</Btn>
-            </div>
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
-              Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und
-              Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei.
-            </div>
-          </div>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Standorte</Lab>
-            <div style={{ display: "grid", gap: 8 }}>
-              {standorte.map((n, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Inp type="number" min={0} value={n} style={{ width: 90 }}
-                    onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
-                  <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
-                  <span style={{ flex: 1 }} />
-                  {standorte.length > 1 && (
-                    <Btn size="sm" kind="quiet"
-                      onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
-                </div>))}
-              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>
-            </div>
-          </div>
+          {/* Ringe statt Zählwerk und Zahlenfeldern — dieselbe Darstellung
+              wie im Preisrechner der Website. Der Ring zeigt Wert und Skala
+              in einem Bild, und jede Raste ist einzeln antippbar. */}
+          <Ringregler
+            beschriftung="Planer-Zugänge" einheit="Zugänge" groesse={190}
+            min={0} max={20} schritt={1} wert={planer} onChange={setPlaner}
+            hinweis="Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei." />
+          <Ringregler
+            beschriftung="Standorte" einheit="Standorte" groesse={190}
+            min={1} max={30} schritt={1} wert={standorte.length} onChange={setzeAnzahl}
+            hinweis="Eigenständige Einsatzorte. Nur was über dem Kontingent der Stufe liegt, kostet einen Zuschlag." />
+          <Ringregler
+            beschriftung="Personen je Standort" einheit="Personen" groesse={190}
+            min={5} max={300} schritt={5} wert={leitgroesse} onChange={setzeGroesse}
+            hinweis={gleichGross
+              ? "Nur für die Einstufung der zuschlagspflichtigen Standorte — die Zahl der Beschäftigten selbst kostet nichts."
+              : "Die Standorte unten sind unterschiedlich groß; der Ring zeigt den größten. Wer ihn bewegt, setzt alle auf dieselbe Größe."} />
         </div>
+
+        <details style={{ marginTop: 22 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: C.dimmer, padding: "6px 0" }}>
+            Standorte einzeln angeben</summary>
+          <div style={{ display: "grid", gap: 8, marginTop: 12, maxWidth: 420 }}>
+            {standorte.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Inp type="number" min={0} value={n} style={{ width: 90 }}
+                  aria-label={`Personen an Standort ${i + 1}`}
+                  onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
+                <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
+                <span style={{ flex: 1 }} />
+                {standorte.length > 1 && (
+                  <Btn size="sm" kind="quiet"
+                    onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
+              </div>))}
+            {standorte.length < 30 && (
+              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>)}
+          </div>
+        </details>
       </Card>
 
       {p.kontaktEmpfohlen && (

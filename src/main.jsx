@@ -7,6 +7,7 @@ import { C } from "./farben.js";
 import { RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import { Marke } from "./marke.jsx";
 import Startbild from "./startbild.jsx";
+import Ringregler from "./ringregler.jsx";
 
 /* ==========================================================================
    EINSTIEG
@@ -143,6 +144,20 @@ function Preise({ onZurueck, onStarten, F }) {
   const aendereStandort = (i, wert) =>
     setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
 
+  /* Die beiden Standort-Ringe fassen die Liste zu ihren zwei Kennzahlen
+     zusammen: wie viele Standorte, und wie groß. Die Liste selbst bleibt
+     darunter erreichbar — ein Betrieb mit einer großen Zentrale und drei
+     kleinen Außenstellen zahlt nicht dasselbe wie einer mit vier gleich
+     großen Häusern, und genau das soll der Rechner weiter abbilden. Der
+     Ring zeigt in diesem Fall den größten Standort und sagt darunter,
+     dass die Liste abweicht. */
+  const gleichGross = standorte.every((n) => n === standorte[0]);
+  const leitgroesse = standorte.length ? Math.max(...standorte) : 25;
+  const setzeAnzahl = (n) => setStandorte((s) => (n <= s.length
+    ? s.slice(0, n)
+    : [...s, ...Array(n - s.length).fill(s.length ? s[s.length - 1] : 25)]));
+  const setzeGroesse = (g) => setStandorte((s) => s.map(() => g));
+
   const Zahl = ({ wert, einheit, gross }) => (
     <span style={{ fontVariantNumeric: "tabular-nums" }}>
       <span style={{ fontSize: gross ? 40 : 22, fontWeight: 300,
@@ -174,46 +189,59 @@ function Preise({ onZurueck, onStarten, F }) {
           textTransform: "uppercase", color: F.accent, marginBottom: 20 }}>
           Dein Preis</div>
 
-        <div style={{ display: "grid", gap: 22, marginBottom: 24 }}>
-          <div>
-            <label style={{ display: "flex", justifyContent: "space-between",
-              fontSize: 14, marginBottom: 10 }}>
-              <span>Planer-Zugänge</span>
-              <b style={{ fontVariantNumeric: "tabular-nums" }}>{planer}</b></label>
-            <input type="range" min={1} max={20} step={1} value={planer}
-              onChange={(e) => setPlaner(Number(e.target.value))}
-              style={{ width: "100%", accentColor: F.accent, height: 28 }} />
-            <div style={{ fontSize: 12.5, color: F.dim, marginTop: 8, lineHeight: 1.5 }}>
-              Wer zentral mitplant — nicht wer geplant wird. Die meisten kleinen und
-              mittleren Betriebe kommen mit einem aus.
-            </div>
-          </div>
-          <div>
-            <label style={{ display: "flex", justifyContent: "space-between",
-              fontSize: 14, marginBottom: 10 }}>
-              <span>Standorte</span></label>
-            <div style={{ display: "grid", gap: 8 }}>
-              {standorte.map((n, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input type="number" min={0} value={n}
-                    onChange={(e) => aendereStandort(i, Number(e.target.value))}
-                    style={{ width: 76, padding: "8px 10px", borderRadius: 8,
-                      border: `1px solid ${F.line}`, fontFamily: "inherit", fontSize: 14 }} />
-                  <span style={{ fontSize: 13, color: F.dim }}>Personen</span>
-                  <span style={{ flex: 1 }} />
-                  {standorte.length > 1 && (
-                    <button onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}
-                      style={{ border: "none", background: "transparent", color: F.dim,
-                        fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>Entfernen</button>)}
-                </div>))}
+        {/* Drei Ringe statt Schieber und Zahlenfelder — dieselbe Darstellung
+            wie im Preisrechner der Website. Ein Ring zeigt Wert und Skala in
+            einem Bild; auf dem Telefon ist jede Raste einzeln antippbar,
+            was ein waagerechter Schieber neben dem Daumen nicht leistet. */}
+        <div style={{ display: "grid", gap: 26, marginBottom: 24,
+          gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))" }}>
+          <Ringregler
+            beschriftung="Planer-Zugänge" einheit="Zugänge"
+            min={1} max={20} schritt={1} wert={planer} onChange={setPlaner}
+            hinweis="Wer zentral mitplant — nicht wer geplant wird. Die meisten kleinen und mittleren Betriebe kommen mit einem aus." />
+          <Ringregler
+            beschriftung="Standorte" einheit="Standorte"
+            min={1} max={30} schritt={1} wert={standorte.length} onChange={setzeAnzahl}
+            hinweis="Eigenständige Einsatzorte mit eigenem Plan. Innerhalb des Kontingents kosten sie nichts." />
+          <Ringregler
+            beschriftung="Personen je Standort" einheit="Personen"
+            min={5} max={300} schritt={5} wert={leitgroesse} onChange={setzeGroesse}
+            hinweis={gleichGross
+              ? "Nur für die Einstufung der Standorte über dem Kontingent — die Zahl der Beschäftigten selbst kostet nichts."
+              : "Die Standorte unten sind unterschiedlich groß; der Ring zeigt den größten. Wer ihn bewegt, setzt alle auf dieselbe Größe."} />
+        </div>
+
+        {/* Ungleiche Standorte bleiben möglich — sie ändern den Preis, weil
+            jeder Standort über dem Kontingent nach seiner eigenen Größe
+            eingestuft wird. Deshalb liegt die Liste weiter bereit, nur
+            zusammengeklappt statt vorneweg. */}
+        <details style={{ marginBottom: 24 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13.5, color: F.dim,
+            padding: "6px 0" }}>
+            Standorte einzeln angeben</summary>
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {standorte.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input type="number" min={0} value={n}
+                  aria-label={`Personen an Standort ${i + 1}`}
+                  onChange={(e) => aendereStandort(i, Number(e.target.value))}
+                  style={{ width: 76, padding: "8px 10px", borderRadius: 8,
+                    border: `1px solid ${F.line}`, fontFamily: "inherit", fontSize: 14 }} />
+                <span style={{ fontSize: 13, color: F.dim }}>Personen</span>
+                <span style={{ flex: 1 }} />
+                {standorte.length > 1 && (
+                  <button onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}
+                    style={{ border: "none", background: "transparent", color: F.dim,
+                      fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>Entfernen</button>)}
+              </div>))}
+            {standorte.length < 30 && (
               <button onClick={() => setStandorte((s) => [...s, 15])}
                 style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8,
                   border: `1px solid ${F.line}`, background: "transparent", color: F.text,
                   fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
-                Standort hinzufügen</button>
-            </div>
+                Standort hinzufügen</button>)}
           </div>
-        </div>
+        </details>
 
         <div style={{ borderTop: `1px solid ${F.line}`, paddingTop: 20 }}>
           <div style={{ display: "grid", gap: 9, fontSize: 14, marginBottom: 18 }}>
