@@ -170,7 +170,8 @@ import ZugangsPflege from "./zugaenge.jsx";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
   PAKETE, paketVon, paketkosten, preisFuer } from "./stufen.js";
-import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
+import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
+  ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
@@ -14006,7 +14007,7 @@ function mailText(m, n, p) {
   ].join("\n");
   return {
     betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || "https://centric-dienstplanung.netlify.app"), fuss].join("\n"),
+    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
   };
 }
 
@@ -15382,7 +15383,7 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
           <Btn onClick={() => {
             const txt = [`CENTRIC — Zugänge für ${ergebnis.mandant.name}`, "",
               ...ergebnis.codes.map((c) => `${c.label.padEnd(24)} ${c.code}`),
-              "", "https://centric-dienstplanung.netlify.app",
+              "", ANWENDUNG_URL,
               "Der Code gilt zwölf Stunden je Anmeldung.",
               "Beim ersten Öffnen startet die geführte Tour."].join("\\n");
             const b = new Blob([txt], { type: "text/plain;charset=utf-8" });

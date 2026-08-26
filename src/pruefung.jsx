@@ -7,6 +7,7 @@ import React from "react";
    ========================================================================== */
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
+import { ANWENDUNG_URL } from "./kontakt.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -4062,7 +4063,7 @@ function mailText(m, n, p) {
   ].join("\n");
   return {
     betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || "https://centric-dienstplanung.netlify.app"), fuss].join("\n"),
+    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
   };
 }
 

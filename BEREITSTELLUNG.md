@@ -1,12 +1,47 @@
 # Bereitstellung
 
-Was zu tun ist, um den aktuellen Stand auf
-`centric-dienstplanung.netlify.app` zu bringen — in der Reihenfolge, in der
-es zu tun ist.
+Was zu tun ist, um den aktuellen Stand auf `centric-app.netlify.app` zu
+bringen — in der Reihenfolge, in der es zu tun ist.
 
 Projekt-Kennung: `7515ca04-74ea-4f6b-b268-33c466aafbb2`
 (die alte Site wurde am 14.08.2026 gelöscht und neu angelegt — mit ihr auch
 der gesamte Blob-Speicher: alle Betriebe, Zugänge und Sicherungen)
+
+---
+
+## Zwei Adressen, zwei Auslieferungen
+
+Website und Anwendung sind getrennte Netlify-Projekte aus getrennten
+Repos. Das ist keine Umständlichkeit, sondern Absicht: Die
+`netlify.toml` dieser Anwendung fängt mit `/* → /index.html` alles ab,
+was keine Funktion ist. Eine statische Website davor hieße, ab dem
+ersten Tag gegen die Reihenfolge dieser Regeln zu arbeiten — und jede
+neue Funktion wäre eine neue Gelegenheit, eine Website-Seite zu
+verschatten.
+
+| | Netlify-Projekt | Rolle | Quelle |
+|---|---|---|---|
+| Website | `centric-dienstplanung` | die vordere Tür | `rinats-png/claude`, Ordner `website` |
+| Anwendung | `centric-app` | dahinter | dieses Repo |
+
+Die Website verweist in jedem Seitenkopf hierher („Anmelden", „Testen").
+Der Rückweg — die Zeile „Öffnen: …" unter jeder Benachrichtigung, die
+Zugangsliste zum Ausdrucken, später die Einladungslinks — steht an genau
+zwei Stellen im Quelltext und wird von der Umgebung übersteuert:
+
+| Variable | Wirkt auf | Vorgabe |
+|---|---|---|
+| `VITE_ANWENDUNG_URL` | Oberfläche (`src/kontakt.js`) | `https://centric-app.netlify.app` |
+| `CENTRIC_BASIS` | Server, Einladungs- und Rücksetzlinks (`netlify/lib/post.mjs`) | dieselbe Adresse |
+
+Beide gehören in die Umgebungsvariablen der Auslieferung, damit ein Umzug
+auf die eigene Domain kein Commit ist. **Sie zeigen nie auf die Website** —
+sonst landet jemand aus einer Dienstplan-Benachrichtigung auf einer
+Verkaufsseite statt in seinem Plan.
+
+Die Website führt ihre Adressen spiegelbildlich in `website/build.py`:
+`APP` für den Weg hierher, `WEBSITE` für sitemap.xml und robots.txt,
+übersteuerbar über `CENTRIC_APP` und `CENTRIC_WEBSITE`.
 
 ---
 
@@ -116,7 +151,7 @@ später auffällt, wenn sich jemand nicht anmelden kann.
 
 ## Schritt 2a — Nachsehen, ob es angekommen ist
 
-    curl -sS https://centric-dienstplanung.netlify.app/einrichten/umgebung \
+    curl -sS https://centric-app.netlify.app/einrichten/umgebung \
       -H "authorization: Bearer <CENTRIC_ADMIN oder V-Schlüssel>"
 
 Ohne Terminal geht es genauso — auf der Seite `F12`, Reiter *Console*:
@@ -290,7 +325,7 @@ nicht. Wer das ändern will, braucht eine Schreibsperre für Sitzungen mit
 
 ### 5.1 Ein benanntes Verwalterkonto anlegen
 
-    curl -X POST https://centric-dienstplanung.netlify.app/einrichten/verwalter \
+    curl -X POST https://centric-app.netlify.app/einrichten/verwalter \
       -H "content-type: application/json" \
       -H "authorization: Bearer <CENTRIC_ADMIN>" \
       -d '{"neuerName":"<Vor- und Nachname>","email":"<E-Mail>","tage":365}'
@@ -342,7 +377,7 @@ Als Organisationsleitung unter **Verwaltung → Datenmitnahme**:
 Sicherungsschlüssel anlegen, dann auf einem eigenen Rechner täglich
 
     curl -sS -H "Authorization: Bearer <Schlüssel>" \
-      https://centric-dienstplanung.netlify.app/api/vollausgabe \
+      https://centric-app.netlify.app/api/vollausgabe \
       -o centric-$(date +%F).json
 
 Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
@@ -386,7 +421,7 @@ Organisationsrichtlinie, keine Störung:
 
     api.netlify.com:443              gateway answered 403 to CONNECT
     app.netlify.com:443              gateway answered 403 to CONNECT
-    centric-dienstplanung.netlify.app:443   gateway answered 403 to CONNECT
+    centric-app.netlify.app:443   gateway answered 403 to CONNECT
     netlify-mcp.netlify.app:443      gateway answered 403 to CONNECT
 
 Der Netlify-Connector läuft über eine andere Strecke und funktioniert —
