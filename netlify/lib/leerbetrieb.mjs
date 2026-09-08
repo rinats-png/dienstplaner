@@ -49,29 +49,99 @@ const QUOTE = { pflege: { tag: 0.40, nacht: 0.50 }, klinik: { tag: 0.50, nacht: 
 
 /* Qualifikationen, die im jeweiligen Gewerbe fast immer gebraucht werden.
    Angelegt, aber keiner Person zugeordnet — es gibt ja noch keine. */
+/* ==========================================================================
+   QUALIFIKATIONSKATALOG JE BRANCHE
+
+   Jeder Eintrag nennt seine Rechtsgrundlage — oder sagt ausdrücklich, dass
+   es keine gibt. Das ist der Unterschied, an dem ein Compliance-Werkzeug
+   hängt: „Pflegefachkraft" folgt aus dem PflBG und ist nicht verhandelbar,
+   „Erste Hilfe alle zwei Jahre" ist eine betriebliche Festlegung, die je
+   nach Gefährdungsbeurteilung anders ausfallen darf.
+
+   Zwei Dinge sind hier bewusst nicht als bundesweite Pflicht verdrahtet:
+
+   Die Sachkundeprüfung nach § 34a GewO gilt nicht für jede
+   Bewachungstätigkeit. Für einen großen Teil — etwa Bewachung im
+   Objektschutz ohne die in § 34a Abs. 1a genannten Tätigkeiten — genügt die
+   Unterrichtung. Beides steht deshalb getrennt im Katalog, und nur die
+   Unterrichtung ist vorbelegt. Wer Türsteher, Citystreife oder
+   Ladendetektive einsetzt, schaltet die Sachkunde selbst scharf.
+
+   Und der Masernschutz nach § 20 IfSG wird als Status geführt, nicht als
+   Gesundheitsangabe: Ob der Nachweis vorliegt, darf der Betrieb wissen; die
+   Impfdaten selbst gehen ihn nichts an.
+   ========================================================================== */
 const QUALIFIKATIONEN = {
   pflege: [
-    { id: "q1", name: "Pflegefachkraft", kurz: "PFK", monate: null, pflicht: true, fachkraft: true },
-    { id: "q2", name: "Betreuungskraft § 43b", kurz: "BK", monate: null, pflicht: false, fachkraft: false },
-    { id: "q3", name: "Erste Hilfe", kurz: "EH", monate: 24, pflicht: true, fachkraft: false },
-    { id: "q4", name: "Hygieneschulung", kurz: "HYG", monate: 12, pflicht: true, fachkraft: false },
+    { id: "q1", name: "Pflegefachkraft", kurz: "PFK", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
+      grundlage: "§§ 1, 4 PflBG — Erlaubnis zum Führen der Berufsbezeichnung" },
+    { id: "q2", name: "Betreuungskraft § 43b", kurz: "BK", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "§ 43b SGB XI" },
+    { id: "q3", name: "Pflegeassistenz", kurz: "PA", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Landesrecht — Bezeichnung und Umfang sind je Bundesland verschieden" },
+    /* Kein bundesweit vorgeschriebenes Intervall. Der Wert ist eine
+       verbreitete betriebliche Praxis, kein Gesetz. */
+    { id: "q4", name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Betrieblich — Umfang nach Gefährdungsbeurteilung (§ 5 ArbSchG, DGUV Vorschrift 1)" },
+    { id: "q5", name: "Hygieneunterweisung", kurz: "HYG", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§ 23 IfSG in Verbindung mit dem Hygieneplan der Einrichtung" },
+    { id: "q6", name: "Masernschutz — Status", kurz: "MSG", gueltigMonate: null, nachweisPflicht: true, fachkraft: false,
+      nurStatus: true,
+      grundlage: "§ 20 Abs. 8, 9 IfSG — nur das Vorliegen erfassen, keine Impfdaten" },
   ],
   klinik: [
-    { id: "q1", name: "Pflegefachkraft", kurz: "PFK", monate: null, pflicht: true, fachkraft: true },
-    { id: "q2", name: "Erste Hilfe", kurz: "EH", monate: 24, pflicht: true, fachkraft: false },
-    { id: "q3", name: "Hygieneschulung", kurz: "HYG", monate: 12, pflicht: true, fachkraft: false },
+    { id: "q1", name: "Pflegefachkraft", kurz: "PFK", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
+      grundlage: "§§ 1, 4 PflBG" },
+    { id: "q2", name: "Approbation", kurz: "APP", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
+      grundlage: "§ 2 Bundesärzteordnung; Berufserlaubnis nach Landesrecht" },
+    { id: "q3", name: "Facharztanerkennung", kurz: "FA", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Weiterbildungsordnung der zuständigen Landesärztekammer" },
+    { id: "q4", name: "Fachweiterbildung Intensiv/Anästhesie", kurz: "FWI", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Landesrecht und Vorgaben der Einrichtung — keine bundesweit einheitliche Pflicht" },
+    { id: "q5", name: "Geräteeinweisung Medizinprodukte", kurz: "MPG", gueltigMonate: 24, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§§ 4, 10 MPBetreibV — je Gerät und Tätigkeit" },
+    { id: "q6", name: "Hygieneunterweisung", kurz: "HYG", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§ 23 IfSG, Hygieneplan des Krankenhauses" },
+    { id: "q7", name: "Masernschutz — Status", kurz: "MSG", gueltigMonate: null, nachweisPflicht: true, fachkraft: false,
+      nurStatus: true, grundlage: "§ 20 Abs. 8, 9 IfSG — nur das Vorliegen erfassen" },
+    { id: "q8", name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
   ],
   sicherheit: [
-    { id: "q1", name: "Sachkunde § 34a GewO", kurz: "SK", monate: null, pflicht: true, fachkraft: true },
-    { id: "q2", name: "Erste Hilfe", kurz: "EH", monate: 24, pflicht: true, fachkraft: false },
-    { id: "q3", name: "Führungszeugnis", kurz: "FZ", monate: 36, pflicht: true, fachkraft: false },
+    /* Vorbelegt ist die Unterrichtung, nicht die Sachkunde — siehe oben. */
+    { id: "q1", name: "Unterrichtung § 34a GewO", kurz: "UNT", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
+      grundlage: "§ 34a Abs. 1a GewO, §§ 4 ff. BewachV — genügt für die meisten Bewachungstätigkeiten" },
+    { id: "q2", name: "Sachkundeprüfung § 34a GewO", kurz: "SK", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "§ 34a Abs. 1a Satz 2 GewO — nur für die dort genannten Tätigkeiten, etwa Kontrollgänge im "
+        + "öffentlichen Verkehrsraum, Schutz vor Ladendieben und Bewachung im Einlassbereich" },
+    { id: "q3", name: "Zuverlässigkeit geprüft — Status", kurz: "ZUV", gueltigMonate: 60, nachweisPflicht: true, fachkraft: false,
+      nurStatus: true,
+      grundlage: "§ 34a Abs. 1 Satz 3 GewO, § 8 BewachV — Regelüberprüfung durch die Behörde" },
+    { id: "q4", name: "Waffenrechtliche Erlaubnis", kurz: "WAF", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
+      grundlage: "§§ 10, 28 WaffG, § 10 AWaffV — nur bei tatsächlich bewaffnetem Einsatz, "
+        + "kein allgemeiner Qualifikationsnachweis des Gewerbes" },
+    { id: "q5", name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
   ],
   industrie: [
-    { id: "q1", name: "Erste Hilfe", kurz: "EH", monate: 24, pflicht: true, fachkraft: false },
-    { id: "q2", name: "Brandschutzhelfer", kurz: "BSH", monate: 36, pflicht: false, fachkraft: false },
+    { id: "q1", name: "Unterweisung Arbeitsschutz", kurz: "UAS", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§ 12 ArbSchG, § 4 DGUV Vorschrift 1 — jährlich, arbeitsplatzbezogen" },
+    { id: "q2", name: "Maschinen- und Anlagenunterweisung", kurz: "MAU", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§ 12 BetrSichV — je Arbeitsmittel" },
+    { id: "q3", name: "Befähigte Person", kurz: "BEF", gueltigMonate: null, nachweisPflicht: false, fachkraft: true,
+      grundlage: "§ 2 Abs. 6 BetrSichV, TRBS 1203 — je konkreter Prüfaufgabe" },
+    { id: "q4", name: "Flurförderzeug (Staplerschein)", kurz: "STA", gueltigMonate: 12, nachweisPflicht: false, fachkraft: false,
+      grundlage: "DGUV Vorschrift 68, DGUV Grundsatz 308-001" },
+    { id: "q5", name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
+    { id: "q6", name: "Brandschutzhelfer", kurz: "BSH", gueltigMonate: 36, nachweisPflicht: false, fachkraft: false,
+      grundlage: "§ 10 ArbSchG, ASR A2.2" },
   ],
   sonstige: [
-    { id: "q1", name: "Erste Hilfe", kurz: "EH", monate: 24, pflicht: true, fachkraft: false },
+    { id: "q1", name: "Unterweisung Arbeitsschutz", kurz: "UAS", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
+      grundlage: "§ 12 ArbSchG — vor Aufnahme der Tätigkeit und danach regelmäßig" },
+    { id: "q2", name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
+      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
   ],
 };
 

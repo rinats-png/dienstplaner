@@ -38,6 +38,21 @@
    Nicht angefasst wird alles, was nach § 147 AO oder § 257 HGB aufzubewahren
    ist. Das betrifft in dieser Anwendung nur Rechnungen, und die liegen beim
    Betreiber, nicht im Betrieb.
+
+   ---------------------------------------------------------------------------
+   Warum die Untergrenze zwei Jahre bleibt, obwohl zwei Vorschriften greifen
+
+   Neben § 16 Abs. 2 ArbZG verlangt § 17 Abs. 1 MiLoG für die Branchen des
+   § 2a SchwarzArbG — darunter Bewachungsgewerbe, Gaststätten, Bau, Logistik
+   und Fleischwirtschaft — Beginn, Ende und Dauer der täglichen Arbeitszeit
+   aufzuzeichnen und diese Aufzeichnungen nach § 17 Abs. 1 Satz 2 ebenfalls
+   mindestens zwei Jahre bereitzuhalten.
+
+   Beide Fristen sind gleich lang, deshalb ändert sich an der Untergrenze
+   nichts. Sie stehen hier trotzdem beide, weil sie verschiedene Betriebe
+   treffen: Ein Sicherheitsdienst unterliegt § 17 MiLoG für die gesamte
+   Arbeitszeit, nicht nur für die Stunden über acht. Wer die Aufbewahrung
+   kürzer stellen will, muss wissen, welche der beiden ihn bindet.
    ========================================================================== */
 
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
@@ -146,7 +161,11 @@ export function vorschau(m, heuteIso) {
   const warnung = st.fristen.plandatenMonate < PLANDATEN_MINDEST
     ? `Die Frist für Plandaten steht auf ${st.fristen.plandatenMonate} Monaten. `
       + "§ 16 Abs. 2 Arbeitszeitgesetz verlangt mindestens zwei Jahre für die "
-      + "Aufzeichnung der über acht Stunden hinausgehenden Arbeitszeit."
+      + "Aufzeichnung der über acht Stunden hinausgehenden Arbeitszeit. "
+      + "In den Branchen des § 2a Schwarzarbeitsbekämpfungsgesetz — darunter "
+      + "das Bewachungsgewerbe — kommt § 17 Abs. 1 Mindestlohngesetz hinzu: "
+      + "dort sind Beginn, Ende und Dauer der gesamten täglichen Arbeitszeit "
+      + "aufzuzeichnen und ebenfalls zwei Jahre bereitzuhalten."
     : null;
 
   return {

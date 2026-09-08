@@ -345,6 +345,166 @@ export function istNachtdienst(d) {
 }
 
 /* --------------------------------------------------------------------------
+   § 6 Abs. 3 ArbZG — ARBEITSMEDIZINISCHE UNTERSUCHUNG
+
+   Nachtarbeitnehmer haben das Recht, sich vor Beginn der Beschäftigung und
+   danach in regelmäßigen Zeitabständen von nicht weniger als drei Jahren
+   arbeitsmedizinisch untersuchen zu lassen. Nach Vollendung des
+   fünfzigsten Lebensjahres steht ihnen die Untersuchung jährlich zu.
+
+   Zwei Dinge, die hier bewusst nicht getan werden:
+
+   Es ist ein Anspruch der Beschäftigten, keine Pflicht — wer nicht will,
+   muss nicht. Der Befund ist deshalb ein Hinweis an den Betrieb, dass das
+   Angebot fällig ist, und niemals eine Einsatzsperre.
+
+   Und wer Nachtarbeitnehmer ist, steht in § 2 Abs. 5: wer Nachtarbeit in
+   Wechselschicht leistet oder an mindestens 48 Tagen im Kalenderjahr. Die
+   zweite Hälfte lässt sich zählen, die erste nicht — deshalb genügt hier
+   die gezählte Schwelle, und der Kommentar sagt, warum das die
+   vorsichtigere Richtung ist: Wer in Wechselschicht fährt, kommt fast
+   immer auch über 48 Tage.
+   -------------------------------------------------------------------------- */
+
+export const NACHT_TAGE_SCHWELLE = 48;     // § 2 Abs. 5 Nr. 2
+export const VORSORGE_MONATE = 36;         // § 6 Abs. 3 Satz 1
+export const VORSORGE_MONATE_AB_50 = 12;   // § 6 Abs. 3 Satz 2
+
+/**
+ * Ist die arbeitsmedizinische Untersuchung fällig?
+ *
+ * @param {object} p
+ * @param {number} p.nachtTage      Nachtdienste im laufenden Kalenderjahr
+ * @param {number|null} p.alter     Alter am Stichtag, null wenn unbekannt
+ * @param {string|null} p.letzte    Datum der letzten Untersuchung, ISO
+ * @param {string} p.stichtag       Bezugstag, ISO
+ */
+export function vorsorgeFaellig({ nachtTage, alter, letzte, stichtag }) {
+  if (!Number.isFinite(nachtTage) || nachtTage < NACHT_TAGE_SCHWELLE)
+    return { nachtarbeitnehmer: false, faellig: false };
+
+  const abstand = alter !== null && alter >= 50 ? VORSORGE_MONATE_AB_50 : VORSORGE_MONATE;
+
+  /* Ohne jede Untersuchung ist das Angebot schon vor Beginn der
+     Beschäftigung fällig — deshalb hier kein "unbekannt, also gut". */
+  if (!letzte) return { nachtarbeitnehmer: true, faellig: true, abstand, letzte: null, faellig_am: null };
+
+  const [jy, jm, jd] = String(letzte).split("-").map(Number);
+  const f = new Date(jy, (jm - 1) + abstand, jd);
+  const faelligAm = iso(f);
+  return { nachtarbeitnehmer: true, faellig: stichtag >= faelligAm, abstand, letzte, faellig_am: faelligAm };
+}
+
+/* --------------------------------------------------------------------------
+   § 11 ArbZG — SONN- UND FEIERTAGSRUHE
+
+   Zwei getrennte Vorschriften, die gern verwechselt werden.
+
+   Absatz 1: Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei
+   bleiben. Das ist eine Jahresbilanz je Person, kein Ereignis an einem
+   einzelnen Tag — sie lässt sich erst beurteilen, wenn man das ganze Jahr
+   ansieht, und deshalb rechnet die Funktion auch mit dem noch offenen Rest
+   des Jahres.
+
+   Absatz 3: Wer an einem Sonntag arbeitet, muss einen Ersatzruhetag
+   innerhalb eines den Beschäftigungstag einschließenden Zeitraums von zwei
+   Wochen haben. Bei Feiertagsarbeit an einem Werktag sind es acht Wochen.
+
+   Der Ersatzruhetag ist ein ganzer freier Tag — kein Tag mit einem kurzen
+   Dienst, und auch kein Tag, der ohnehin schon als Ersatz für einen anderen
+   Sonntag verbraucht ist. Das zweite ist der Grund, warum hier zugeordnet
+   und nicht bloß gezählt wird: Bei zwei Sonntagen in Folge und nur einem
+   freien Tag dazwischen wäre eine Zählung zufrieden, die Vorschrift nicht.
+   -------------------------------------------------------------------------- */
+
+export const FREIE_SONNTAGE_MIN = 15;       // § 11 Abs. 1
+export const ERSATZ_TAGE_SONNTAG = 14;      // § 11 Abs. 3 Satz 1
+export const ERSATZ_TAGE_FEIERTAG = 56;     // § 11 Abs. 3 Satz 2
+
+/**
+ * Ordnet jedem Sonn- und Feiertagsdienst einen Ersatzruhetag zu.
+ *
+ * `hatDienst(datum)` sagt, ob an dem Tag gearbeitet wird; `istFeiertag`
+ * ebenso. Beide bekommen ISO-Tage. Zurück kommt eine Liste der Tage, für
+ * die kein freier Tag mehr übrig war.
+ *
+ * Zugeordnet wird gierig und vom frühesten Anspruch aus: Wer den engeren
+ * Zeitraum hat — der Sonntag mit zwei Wochen —, greift zuerst zu. Andernfalls
+ * verbraucht ein Feiertag mit acht Wochen Spielraum den einen freien Tag,
+ * den der Sonntag daneben zwingend gebraucht hätte.
+ */
+export function ersatzruhetage(hatDienst, istFeiertag, von, bis) {
+  const anspruch = [];
+  for (let d = von; d <= bis; d = addDays(d, 1)) {
+    if (!hatDienst(d)) continue;
+    const sonntag = dow(d) === 6;
+    const feiertag = istFeiertag(d);
+    if (!sonntag && !feiertag) continue;
+    /* Ein Feiertag, der auf einen Sonntag fällt, ist ein Sonntag — die
+       kürzere Frist gilt. */
+    anspruch.push({ datum: d, art: sonntag ? "sonntag" : "feiertag",
+      frist: sonntag ? ERSATZ_TAGE_SONNTAG : ERSATZ_TAGE_FEIERTAG });
+  }
+  anspruch.sort((a, b) => (a.frist - b.frist) || (a.datum < b.datum ? -1 : 1));
+
+  const belegt = new Set();
+  const offen = [];
+  for (const a of anspruch) {
+    /* „Innerhalb eines den Beschäftigungstag einschließenden Zeitraums von
+       zwei Wochen." Der Zeitraum ist nicht um den Tag zentriert — er darf
+       beliebig liegen, solange er beide Tage enthält. Ein Zeitraum von n
+       Tagen, der Tag und Ersatztag umfasst, existiert genau dann, wenn ihr
+       Abstand höchstens n − 1 beträgt. Beim Sonntag also dreizehn Tage in
+       jede Richtung, nicht sechs.
+
+       Gesucht wird vom Tag aus nach außen, und bei gleichem Abstand zuerst
+       nach hinten: Ein Ruhetag nach dem gearbeiteten Sonntag ist der
+       naheliegende Fall, und er lässt die früheren Tage für ältere
+       Ansprüche frei. */
+    const weite = a.frist - 1;
+    let gefunden = null;
+    for (let abstand = 1; abstand <= weite && !gefunden; abstand++) {
+      for (const k of [abstand, -abstand]) {
+        const t = addDays(a.datum, k);
+        if (belegt.has(t) || hatDienst(t)) continue;
+        if (dow(t) === 6) continue;        // ein Sonntag ist kein Ersatz für einen Sonntag
+        gefunden = t; break;
+      }
+    }
+    if (gefunden) belegt.add(gefunden);
+    else offen.push(a);
+  }
+  return { offen, belegt: [...belegt].sort() };
+}
+
+/**
+ * Die Jahresbilanz nach § 11 Abs. 1.
+ *
+ * Gezählt werden die Sonntage des Kalenderjahres ohne Dienst. Solange das
+ * Jahr läuft, zählen die noch nicht verplanten Sonntage als frei mit —
+ * sonst meldete die Prüfung im Januar für jeden einen Verstoß.
+ */
+export function freieSonntage(hatDienst, jahr, bisDatum = null) {
+  let frei = 0, gearbeitet = 0, offen = 0;
+  for (let d = `${jahr}-01-01`; d <= `${jahr}-12-31`; d = addDays(d, 1)) {
+    if (dow(d) !== 6) continue;
+    if (bisDatum && d > bisDatum) { offen++; continue; }
+    if (hatDienst(d)) gearbeitet++; else frei++;
+  }
+  const moeglich = frei + offen;
+  return {
+    frei, gearbeitet, offen,
+    moeglich,
+    /* Nur wenn selbst alle offenen Sonntage frei bleiben die Zahl nicht mehr
+       erreichen, steht der Verstoß fest. Vorher ist es eine Warnung wert,
+       aber keine Feststellung. */
+    verletzt: moeglich < FREIE_SONNTAGE_MIN,
+    knapp: moeglich >= FREIE_SONNTAGE_MIN && frei < FREIE_SONNTAGE_MIN,
+    noetig: FREIE_SONNTAGE_MIN,
+  };
+}
+
+/* --------------------------------------------------------------------------
    BESONDERE PERSONENGRUPPEN
 
    Drei Fälle, in denen die Software einen Plan verhindern muss, der sonst

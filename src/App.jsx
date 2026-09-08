@@ -4,11 +4,12 @@ import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migratio
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, brutto, fenster,
-  dauerAm, uhrversatz, uhrsprung,
+  dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
   schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
-  HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN,
+  vorsorgeFaellig, ersatzruhetage, freieSonntage,
+  HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, FREIE_SONNTAGE_MIN,
 } from "./regelwerk.js";
 
 /* ==========================================================================
@@ -1566,6 +1567,30 @@ function ausgleichPruefen(m, p, bis) {
   });
 }
 
+/* --------------------------------------------------------------------------
+   § 2 Abs. 5 ArbZG — WER NACHTARBEITNEHMER IST
+
+   Nicht jeder, der einmal nachts arbeitet. Nachtarbeitnehmer ist, wer
+   Nachtarbeit in Wechselschicht leistet oder sonst an mindestens 48 Tagen
+   im Kalenderjahr. Gezählt wird deshalb über das ganze Jahr, nicht über den
+   angesehenen Monat — und zwar mit istNachtdienst aus dem Regelwerk, das
+   die Nachtzeit von 23 bis 6 Uhr und die Zwei-Stunden-Grenze des § 2 Abs. 4
+   kennt. Die betriebliche Nachtschwelle aus den Einstellungen ist etwas
+   anderes und gilt hier ausdrücklich nicht.
+   -------------------------------------------------------------------------- */
+function nachtTageImJahr(m, p, jahr) {
+  return memo(m, `nt|${p.id}|${jahr}`, () => {
+    let n = 0;
+    for (let d = `${jahr}-01-01`; d <= `${jahr}-12-31`; d = addDays(d, 1)) {
+      const t = personTag(m, p, d);
+      if (t.abwesenheit || !t.dienstId) continue;
+      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      if (da && da.form !== "ruf" && istNachtdienst(da)) n++;
+    }
+    return n;
+  });
+}
+
 /** Alle Personen, deren Ausgleichszeitraum gerissen ist. */
 function ausgleichVerstoesse(m, bis) {
   const aus = [];
@@ -1659,6 +1684,14 @@ const RECHTSQUELLE = {
     satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
   ausgleich: { norm: "§ 3 Satz 2 ArbZG",
     satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
+  tagesgrenze: { norm: "§ 3 Satz 1 und 2 ArbZG",
+    satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
+  ersatzruhe: { norm: "§ 11 Abs. 3 ArbZG",
+    satz: "Für Sonntagsarbeit ist ein Ersatzruhetag innerhalb von zwei Wochen zu gewähren, für Feiertagsarbeit an einem Werktag innerhalb von acht Wochen." },
+  sonntagsfrei: { norm: "§ 11 Abs. 1 ArbZG",
+    satz: "Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei bleiben." },
+  vorsorge: { norm: "§ 6 Abs. 3 ArbZG",
+    satz: "Nachtarbeitnehmer haben das Recht, sich arbeitsmedizinisch untersuchen zu lassen — regelmäßig nach höchstens drei Jahren, nach dem fünfzigsten Lebensjahr jährlich." },
 };
 
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
@@ -1734,6 +1767,114 @@ function pruefen(m, von, bis) {
         const a = m.abweichungen[`${p.id}|${d}`], w = abwesenheitAm(m, p.id, d);
         if (a && a !== "-" && w) push({ art: "abwesend", schwere: "danger", datum: d, ref: p.id, personId: p.id,
           titel: `Dienst trotz ${abwArt(w.art).label} — ${p.nachname}`, text: `Eingetragen: ${a}. Abwesend bis ${fKurz(w.bis)}` });
+      }
+
+      /* --- § 4 ArbZG Ruhepausen und § 3 ArbZG Tagesgrenze ---
+
+         Beide Regeln standen in regelwerk.js und waren dort geprüft, wurden
+         aber nie auf einen Plan angewendet: In App.jsx hingen sie als tote
+         Importe. Ein Dienst über zehn Stunden und ein Dienst ohne
+         ausreichende Pause liefen deshalb ohne Befund durch. */
+      for (let d = von; d <= bis; d = addDays(d, 1)) {
+        const t = personTag(m, p, d);
+        if (t.abwesenheit || !t.dienstId) continue;
+        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        if (!da || da.form === "ruf") continue;
+
+        /* Gegen die tatsächlich erfassten Zeiten, wo sie bestätigt sind —
+           sonst gegen den Plan. Die Pause ist Teil der Dienstart, weil sie
+           nach § 4 Satz 1 im Voraus feststehen muss. */
+        const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
+        const ist = e && e.bestaetigt
+          ? { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 }
+          : da;
+
+        if (!pauseGenuegt(ist)) {
+          const anwesend = bruttoAm(d, ist);
+          const noetig = pausePflicht(anwesend - (ist.pause || 0) / 60);
+          push({ art: "pause", schwere: "danger", datum: d, ref: `${p.id}|pause`, personId: p.id,
+            titel: `Ruhepause zu kurz — ${p.nachname}`,
+            text: `${da.name}: ${ist.pause || 0} min eingetragen, nötig sind ${noetig} min bei ${n1(anwesend)} h Anwesenheit` });
+        }
+
+        const std = istDauer(m, p, d, da).std;
+        if (tagesgrenzeVerletzt(std)) {
+          push({ art: "tagesgrenze", schwere: "danger", datum: d, ref: `${p.id}|tag`, personId: p.id,
+            titel: `Über zehn Stunden — ${p.nachname}`,
+            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich lässt § 3 auch mit Ausgleich nicht zu.` });
+        }
+      }
+
+      /* --- § 11 ArbZG Sonn- und Feiertagsruhe ---
+
+         Zwei Vorschriften, die vorher beide fehlten. Der Ersatzruhetag wird
+         zugeordnet, nicht gezählt: Ein einzelner freier Tag zwischen zwei
+         gearbeiteten Sonntagen deckt nur einen von beiden.
+
+         Gesucht wird über den geprüften Zeitraum hinaus, weil der Ersatztag
+         davor oder danach liegen darf. Beurteilt wird nur, was vollständig
+         im betrachteten Fenster liegt — für einen Anspruch am Rand ist die
+         Antwort schlicht noch nicht bekannt, und eine Meldung „kein
+         Ersatzruhetag" wäre dort schlicht falsch. */
+      const ARBEITET = new Map();
+      const arbeitet = (d) => {
+        if (ARBEITET.has(d)) return ARBEITET.get(d);
+        const t = personTag(m, p, d);
+        const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
+        const v = !t.abwesenheit && !!da && da.form !== "ruf";
+        ARBEITET.set(d, v);
+        return v;
+      };
+      const istFei = (d) => !!feiertagFuer(m, d, p);
+      const RAND = 56;                       // die längere Frist, § 11 Abs. 3 Satz 2
+      const weitVon = addDays(von, -RAND), weitBis = addDays(bis, RAND);
+      const er = ersatzruhetage(arbeitet, istFei, weitVon, weitBis);
+      for (const o of er.offen) {
+        if (o.datum < von || o.datum > bis) continue;
+        /* Nur melden, wenn das ganze Fenster betrachtet wurde. */
+        if (addDays(o.datum, -(o.frist - 1)) < weitVon) continue;
+        if (addDays(o.datum, o.frist - 1) > weitBis) continue;
+        push({ art: "ersatzruhe", schwere: "warn", datum: o.datum, ref: `${p.id}|er`, personId: p.id,
+          titel: `Ersatzruhetag fehlt — ${p.nachname}`,
+          text: o.art === "sonntag"
+            ? `Dienst am Sonntag, ${fKurz(o.datum)}. Innerhalb von zwei Wochen steht kein freier Werktag zur Verfügung.`
+            : `Dienst am Feiertag, ${fKurz(o.datum)}. Innerhalb von acht Wochen steht kein freier Werktag zur Verfügung.` });
+      }
+
+      /* Die Jahresbilanz nach Absatz 1 ist kein Tagesereignis. Sie hängt am
+         letzten Sonntag des geprüften Zeitraums, damit sie überhaupt
+         irgendwo erscheint — und sie meldet erst dann einen Verstoß, wenn
+         selbst alle noch offenen Sonntage die fünfzehn nicht mehr retten. */
+      let letzterSo = null;
+      for (let d = von; d <= bis; d = addDays(d, 1)) if (dow(d) === 6) letzterSo = d;
+      if (letzterSo) {
+        const jahr = Number(letzterSo.slice(0, 4));
+        const fs = freieSonntage(arbeitet, jahr, letzterSo);
+        if (fs.verletzt || fs.knapp)
+          push({ art: "sonntagsfrei", schwere: fs.verletzt ? "danger" : "warn",
+            datum: letzterSo, ref: `${p.id}|so${jahr}`, personId: p.id,
+            titel: `Freie Sonntage ${fs.verletzt ? "unterschritten" : "knapp"} — ${p.nachname}`,
+            text: fs.verletzt
+              ? `${fs.frei} frei, ${fs.gearbeitet} gearbeitet. Selbst mit allen ${fs.offen} noch offenen Sonntagen sind ${FREIE_SONNTAGE_MIN} nicht mehr erreichbar.`
+              : `${fs.frei} von ${FREIE_SONNTAGE_MIN} bisher frei, ${fs.offen} Sonntage stehen noch offen.` });
+
+        /* --- § 6 Abs. 3 ArbZG: die arbeitsmedizinische Untersuchung ---
+
+           Ein Anspruch der Beschäftigten, keine Pflicht. Der Befund sagt dem
+           Betrieb, dass das Angebot fällig ist — er sperrt nie einen Einsatz,
+           denn wer nicht untersucht werden will, muss nicht. */
+        const vs = vorsorgeFaellig({
+          nachtTage: nachtTageImJahr(m, p, jahr),
+          alter: alterAm(p.geburtstag, letzterSo),
+          letzte: p.nachtvorsorge || null,
+          stichtag: letzterSo,
+        });
+        if (vs.nachtarbeitnehmer && vs.faellig)
+          push({ art: "vorsorge", schwere: "warn", datum: letzterSo, ref: `${p.id}|vs${jahr}`, personId: p.id,
+            titel: `Arbeitsmedizinische Untersuchung anzubieten — ${p.nachname}`,
+            text: vs.letzte
+              ? `Zuletzt am ${fKurz(vs.letzte)}, fällig seit ${fKurz(vs.faellig_am)} (Abstand ${vs.abstand} Monate).`
+              : `Noch keine Untersuchung hinterlegt. Der Anspruch besteht schon vor Beginn der Nachtarbeit.` });
       }
       // Personenbezogene Einschränkungen
       const ein = p.einschraenkungen || {};
@@ -6023,9 +6164,26 @@ function MandantAnlegen({ db, akt, onClose }) {
                   Nachweis</label>
                 <Btn size="sm" kind="danger"
                   onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))}>×</Btn>
+                {/* Die Rechtsgrundlage steht über die volle Breite unter der
+                    Zeile. Sie ist der Unterschied zwischen „das Gesetz
+                    verlangt es" und „so haben wir das festgelegt" — und
+                    genau den muss man bei einer Prüfung belegen können. */}
+                <div style={{ gridColumn: "1 / -1", marginTop: -4, marginBottom: 4 }}>
+                  <Inp value={q.grundlage || ""}
+                    placeholder="Rechtsgrundlage — z. B. § 23 IfSG, oder: betrieblich nach Gefährdungsbeurteilung"
+                    onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i
+                      ? { ...x, grundlage: e.target.value } : x))}
+                    style={{ fontSize: 12.5 }} />
+                </div>
               </div>))}
             <Btn size="sm" onClick={() => setz("qualifikationen", [...f.qualifikationen,
-              { name: "", kurz: "", gueltigMonate: null, nachweisPflicht: false }])}>Qualifikation hinzufügen</Btn>
+              { name: "", kurz: "", gueltigMonate: null, nachweisPflicht: false, grundlage: "" }])}>Qualifikation hinzufügen</Btn>
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12, lineHeight: 1.55 }}>
+              Ein Nachweis mit Ablauf sperrt den Einsatz nicht von selbst. Wer eine
+              Qualifikation als gesetzlich zwingend führen will — etwa die Sachkunde nach
+              § 34a GewO für die Tätigkeiten, die sie verlangen —, setzt das unter
+              Qualifikationen als harte Sperre.
+            </div>
           </Card>
 
           <Lab style={{ marginBottom: 11 }}>Zuschlagsregeln</Lab>

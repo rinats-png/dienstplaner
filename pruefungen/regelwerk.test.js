@@ -18,6 +18,8 @@ import {
   urlaubshinweisFaellig,
   addDays, dow, montag,
   letzterSonntag, uhrsprung, uhrversatz, dauerAm, bruttoAm,
+  vorsorgeFaellig, ersatzruhetage, freieSonntage,
+  FREIE_SONNTAGE_MIN,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -371,5 +373,157 @@ describe("Sommerzeit", () => {
     /* Einer, der ihn umschließt, schon. */
     const drueber = { start: "01:00", ende: "09:00", pause: 0 };
     expect(dauerAm("2026-03-29", drueber)).toBe(dauer(drueber) - 1);
+  });
+});
+
+describe("§ 6 Abs. 3 ArbZG — arbeitsmedizinische Untersuchung", () => {
+  const basis = { nachtTage: 60, alter: 34, letzte: "2024-01-15", stichtag: "2026-09-08" };
+
+  it("wer selten nachts arbeitet, ist kein Nachtarbeitnehmer", () => {
+    const r = vorsorgeFaellig({ ...basis, nachtTage: 47 });
+    expect(r.nachtarbeitnehmer).toBe(false);
+    expect(r.faellig).toBe(false);
+  });
+
+  it("ab 48 Nachtdiensten im Jahr greift die Vorschrift", () => {
+    expect(vorsorgeFaellig({ ...basis, nachtTage: 48 }).nachtarbeitnehmer).toBe(true);
+  });
+
+  it("unter fünfzig gilt der Abstand von drei Jahren", () => {
+    const r = vorsorgeFaellig({ ...basis, letzte: "2024-01-15" });
+    expect(r.abstand).toBe(36);
+    expect(r.faellig_am).toBe("2027-01-15");
+    expect(r.faellig).toBe(false);
+  });
+
+  it("ab fünfzig jährlich — dieselbe Untersuchung ist dann längst fällig", () => {
+    const r = vorsorgeFaellig({ ...basis, alter: 52, letzte: "2024-01-15" });
+    expect(r.abstand).toBe(12);
+    expect(r.faellig_am).toBe("2025-01-15");
+    expect(r.faellig).toBe(true);
+  });
+
+  it("ohne jede Untersuchung ist das Angebot sofort fällig", () => {
+    expect(vorsorgeFaellig({ ...basis, letzte: null }).faellig).toBe(true);
+  });
+
+  it("unbekanntes Alter wird als unter fünfzig behandelt, nicht als Fehler", () => {
+    expect(vorsorgeFaellig({ ...basis, alter: null }).abstand).toBe(36);
+  });
+});
+
+describe("§ 11 Abs. 3 ArbZG — Ersatzruhetag", () => {
+  const keinFeiertag = () => false;
+
+  it("ein Sonntagsdienst mit freien Tagen daneben ist ausgeglichen", () => {
+    /* 2026-09-06 ist ein Sonntag. */
+    const dienst = (d) => d === "2026-09-06";
+    const r = ersatzruhetage(dienst, keinFeiertag, "2026-08-30", "2026-09-13");
+    expect(r.offen).toEqual([]);
+    expect(r.belegt.length).toBe(1);
+  });
+
+  it("ohne freien Tag im Zeitraum bleibt der Anspruch offen", () => {
+    const r = ersatzruhetage(() => true, keinFeiertag, "2026-08-30", "2026-09-13");
+    expect(r.offen.length).toBeGreaterThan(0);
+    expect(r.offen[0].art).toBe("sonntag");
+  });
+
+  it("ein freier Tag deckt nicht zwei Sonntage", () => {
+    /* Der Zeitraum enthält genau zwei Sonntage — 06. und 13.09.2026 — und
+       dazwischen einen einzigen freien Tag. */
+    const frei = "2026-09-09";
+    const dienst = (d) => d !== frei;
+    const r = ersatzruhetage(dienst, keinFeiertag, "2026-09-01", "2026-09-15");
+    expect(r.belegt).toEqual([frei]);
+    expect(r.offen.length).toBe(1);
+  });
+
+  it("ein Sonntag ist kein Ersatzruhetag für einen Sonntag", () => {
+    /* Gearbeitet wird am Sonntag, dem 06.09. Der einzige freie Tag im
+       ganzen Zeitraum ist der Folgesonntag — und der zählt nach
+       § 11 Abs. 3 nicht als Ersatzruhetag. */
+    const dienst = (d) => d !== "2026-09-13";
+    const r = ersatzruhetage(dienst, keinFeiertag, "2026-09-06", "2026-09-12");
+    expect(r.belegt).toEqual([]);
+    expect(r.offen.map((x) => x.datum)).toEqual(["2026-09-06"]);
+  });
+
+  it("der Feiertag hat acht Wochen statt zwei", () => {
+    /* Ein Feiertag am Donnerstag, der einzige freie Tag liegt zwanzig Tage
+       später. An Sonntagen wird nicht gearbeitet, damit kein zweiter
+       Anspruch um denselben freien Tag konkurriert. */
+    const feiertag = "2026-09-03";
+    const frei = addDays(feiertag, 20);
+    const dienst = (d) => d !== frei && dow(d) !== 6;
+    const r = ersatzruhetage(dienst, (d) => d === feiertag, feiertag, addDays(feiertag, 30));
+    expect(r.offen).toEqual([]);
+    expect(r.belegt).toEqual([frei]);
+  });
+
+  it("derselbe Abstand reicht für einen Sonntag nicht", () => {
+    /* Gleiche Lage, nur ist der Anspruch jetzt ein Sonntag: zwanzig Tage
+       liegen außerhalb der zwei Wochen. */
+    const sonntag = "2026-09-06";
+    const frei = addDays(sonntag, 20);
+    const dienst = (d) => d !== frei;
+    const r = ersatzruhetage(dienst, keinFeiertag, sonntag, sonntag);
+    expect(r.offen.map((x) => x.datum)).toEqual([sonntag]);
+  });
+
+  it("dreizehn Tage danach genügen, vierzehn nicht mehr", () => {
+    const sonntag = "2026-09-06";
+    const genau = (n) => {
+      const frei = addDays(sonntag, n);
+      return ersatzruhetage((d) => d !== frei, keinFeiertag, sonntag, sonntag).offen.length;
+    };
+    expect(genau(13)).toBe(0);
+    expect(genau(14)).toBe(1);
+  });
+
+  it("der engere Anspruch greift zuerst zu", () => {
+    /* Sonntag und Feiertag, aber nur ein freier Tag — und der liegt so, dass
+       beide ihn erreichen. Der Sonntag muss ihn bekommen, sonst reißt die
+       kürzere Frist. */
+    const sonntag = "2026-09-06";
+    const feiertag = "2026-09-03";
+    const frei = "2026-09-10";
+    const dienst = (d) => d !== frei;
+    const r = ersatzruhetage(dienst, (d) => d === feiertag, "2026-09-01", "2026-09-15");
+    expect(r.belegt).toEqual([frei]);
+    const offenArten = r.offen.map((x) => x.art);
+    expect(offenArten).toContain("feiertag");
+    expect(r.offen.some((x) => x.datum === sonntag)).toBe(false);
+  });
+});
+
+describe("§ 11 Abs. 1 ArbZG — fünfzehn freie Sonntage", () => {
+  it("verlangt fünfzehn", () => {
+    expect(FREIE_SONNTAGE_MIN).toBe(15);
+  });
+
+  it("wer nie sonntags arbeitet, hält die Zahl mühelos", () => {
+    const r = freieSonntage(() => false, 2026);
+    expect(r.verletzt).toBe(false);
+    expect(r.frei).toBeGreaterThanOrEqual(52);
+  });
+
+  it("wer jeden Sonntag arbeitet, verletzt sie", () => {
+    const r = freieSonntage(() => true, 2026);
+    expect(r.gearbeitet).toBeGreaterThanOrEqual(52);
+    expect(r.verletzt).toBe(true);
+  });
+
+  it("im laufenden Jahr zählen die offenen Sonntage noch mit", () => {
+    /* Bis Ende Januar jeden Sonntag gearbeitet — das ist noch kein Verstoß,
+       der Rest des Jahres steht ja offen. */
+    const r = freieSonntage(() => true, 2026, "2026-01-31");
+    expect(r.verletzt).toBe(false);
+    expect(r.offen).toBeGreaterThan(40);
+  });
+
+  it("ist der Rest des Jahres zu kurz, steht der Verstoß fest", () => {
+    const r = freieSonntage(() => true, 2026, "2026-11-30");
+    expect(r.verletzt).toBe(true);
   });
 });
