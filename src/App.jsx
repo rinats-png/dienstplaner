@@ -9,6 +9,7 @@ import {
   schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
+  verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
   HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, FREIE_SONNTAGE_MIN,
 } from "./regelwerk.js";
 
@@ -1668,6 +1669,8 @@ const RECHTSQUELLE = {
     satz: "Für Sonntagsarbeit ist ein Ersatzruhetag innerhalb von zwei Wochen zu gewähren, für Feiertagsarbeit an einem Werktag innerhalb von acht Wochen." },
   sonntagsfrei: { norm: "§ 11 Abs. 1 ArbZG",
     satz: "Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei bleiben." },
+  regelsatz: { norm: "Konfiguration", betrieblich: true,
+    satz: "Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt." },
   vorsorge: { norm: "§ 6 Abs. 3 ArbZG",
     satz: "Nachtarbeitnehmer haben das Recht, sich arbeitsmedizinisch untersuchen zu lassen — regelmäßig nach höchstens drei Jahren, nach dem fünfzigsten Lebensjahr jährlich." },
 };
@@ -1677,6 +1680,13 @@ function rechtsquelle(b) {
   if (!b) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
+  /* Bei einer Sperre steht die Grundlage an der Qualifikation, nicht in
+     der festen Tabelle — was dort gilt, hat der Betrieb hinterlegt, und
+     es ist je nach Land, Tarif und Tätigkeit ein anderes. */
+  if (b.quelle) {
+    const e = EBENEN[b.ebene] || EBENEN.betrieb;
+    return { norm: b.quelle, satz: e.satz, betrieblich: !e.gesetzlich };
+  }
   return RECHTSQUELLE[b.art] || null;
 }
 
@@ -1910,9 +1920,18 @@ function pruefen(m, von, bis) {
           break;
         }
       }
-      // Harte Sperre: eine gesetzlich zwingende Qualifikation gilt für jeden
-      // Dienst, nicht nur dort, wo sie als Mindestbesetzung genannt ist.
-      // Beispiel: ohne Sachkunde nach § 34a GewO ist kein Wachdienst zulässig.
+      /* Harte Sperre: eine zwingende Qualifikation gilt für jeden Dienst,
+         nicht nur dort, wo sie als Mindestbesetzung genannt ist.
+
+         Der Wortlaut folgt jetzt der Ebene. Vorher stand unter jeder Sperre
+         „Der Einsatz ist unzulässig" — auch dann, wenn dahinter nur eine
+         betriebliche Festlegung stand. Eine Anwendung, die Gesetzeskraft
+         behauptet, wo keine ist, richtet mehr Schaden an als eine, die
+         schweigt.
+
+         Und Landesrecht wirkt nur dort, wo es gilt: Eine Anforderung, die
+         Nordrhein-Westfalen stellt, sperrt keinen Dienst am bayerischen
+         Standort desselben Betriebs. */
       if (kann(m, "hartesperre")) {
         for (const q of m.qualifikationen) {
           if (!q.harteSperre) continue;
@@ -1922,12 +1941,20 @@ function pruefen(m, von, bis) {
             const da2 = m.dienstarten.find((x) => x.id === t2.dienstId);
             if (!da2 || da2.form === "ruf") continue;
             if (qualGueltig(m, p, q.id)) continue;
+            const v = verbindlichkeit(q, { land: landFuerEinheit(m, einheitAm(p, d)) });
+            if (!v.sperrt) continue;
             const st = nachweisStand(m, p, q.id);
-            push({ art: "sperre", schwere: "danger", datum: d, ref: `${p.id}|${q.id}`, personId: p.id,
+            const woher = st.stand === "abgelaufen"
+              ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig.`
+              : `${q.name} liegt nicht vor.`;
+            push({ art: "sperre", schwere: v.gesetzlich ? "danger" : "warn",
+              datum: d, ref: `${p.id}|${q.id}`, personId: p.id,
               titel: `Einsatz ohne ${q.name} — ${p.nachname}`,
-              text: st.stand === "abgelaufen"
-                ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig. Der Einsatz am ${fKurz(d)} ist unzulässig.`
-                : `${q.name} liegt nicht vor. Der Einsatz am ${fKurz(d)} ist unzulässig.` });
+              text: `${woher} Der Einsatz am ${fKurz(d)} ist ${v.wort}`
+                + (v.gesetzlich ? "." : ` — ${v.label}, kein gesetzliches Verbot.`),
+              /* Die Fundstelle kommt aus der Qualifikation selbst, nicht aus
+                 der festen Tabelle: Was hier gilt, hat der Betrieb hinterlegt. */
+              quelle: q.grundlage || null, ebene: v.ebene });
             break;
           }
         }
@@ -1965,6 +1992,23 @@ function pruefen(m, von, bis) {
             titel: `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
         }
+      }
+    }
+
+    /* --- Die Regeln selbst, nicht der Plan ---
+
+       Eine Sperre ohne Grundlage ist keine Rechtsdurchsetzung, sondern eine
+       Behauptung. Und eine tätigkeitsabhängige Anforderung, die pauschal
+       jeden Dienst sperrt, ist genau der Fehler, den § 34a GewO nicht
+       hergibt — dort unterscheidet das Gesetz nach Tätigkeiten, und wer das
+       einebnet, sperrt Menschen von Diensten aus, die sie ausüben dürfen.
+
+       Der Befund hängt am ersten Tag des Zeitraums: Er gilt für den Betrieb,
+       nicht für einen Tag. */
+    for (const q of m.qualifikationen) {
+      for (const mangel of regelMaengel(q)) {
+        push({ art: "regelsatz", schwere: mangel.schwere, datum: von, ref: `q|${q.id}|${mangel.art}`,
+          titel: `Regel prüfen: ${q.name}`, text: mangel.text });
       }
     }
 
@@ -6138,12 +6182,28 @@ function MandantAnlegen({ db, akt, onClose }) {
                     Zeile. Sie ist der Unterschied zwischen „das Gesetz
                     verlangt es" und „so haben wir das festgelegt" — und
                     genau den muss man bei einer Prüfung belegen können. */}
-                <div style={{ gridColumn: "1 / -1", marginTop: -4, marginBottom: 4 }}>
+                <div style={{ gridColumn: "1 / -1", marginTop: -4, marginBottom: 4,
+                  display: "grid", gridTemplateColumns: "1fr 190px 190px", gap: 8 }}>
                   <Inp value={q.grundlage || ""}
                     placeholder="Rechtsgrundlage — z. B. § 23 IfSG, oder: betrieblich nach Gefährdungsbeurteilung"
                     onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i
                       ? { ...x, grundlage: e.target.value } : x))}
                     style={{ fontSize: 12.5 }} />
+                  {/* Ebene und Bezug sind unabhängig voneinander. § 34a GewO
+                      ist Bundesrecht und gilt trotzdem nur für bestimmte
+                      Tätigkeiten — „gesetzlich" und „für alle" ist nicht
+                      dasselbe, und die Anwendung darf beides nicht
+                      verwechseln. */}
+                  <Sel value={q.ebene || "betrieb"} style={{ fontSize: 12.5 }}
+                    onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i
+                      ? { ...x, ebene: e.target.value } : x))}>
+                    {Object.entries(EBENEN).map(([k, v]) =>
+                      <option key={k} value={k}>{v.label}</option>)}</Sel>
+                  <Sel value={q.bezug || "person"} style={{ fontSize: 12.5 }}
+                    onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i
+                      ? { ...x, bezug: e.target.value } : x))}>
+                    {Object.entries(BEZUEGE).map(([k, v]) =>
+                      <option key={k} value={k}>hängt {v.label}</option>)}</Sel>
                 </div>
               </div>))}
             <Btn size="sm" onClick={() => setz("qualifikationen", [...f.qualifikationen,

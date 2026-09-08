@@ -345,6 +345,127 @@ export function istNachtdienst(d) {
 }
 
 /* --------------------------------------------------------------------------
+   WOHER EINE ANFORDERUNG KOMMT — UND WOFÜR SIE GILT
+
+   Bis hierher stand die Rechtsgrundlage einer Qualifikation als Fließtext
+   im Datensatz. Für einen Menschen lesbar, für die Anwendung nicht: Sie
+   formulierte jede harte Sperre gleich — „Der Einsatz ist unzulässig" —,
+   ganz gleich, ob dahinter das Pflegeberufegesetz stand oder eine
+   betriebliche Festlegung aus der Gefährdungsbeurteilung. Das ist genau
+   die Anmaßung, vor der ein Compliance-Werkzeug sich hüten muss: Es darf
+   keine Gesetzeskraft behaupten, die ihm niemand gesagt hat.
+
+   Zwei Merkmale, und sie sind ausdrücklich unabhängig voneinander:
+
+   EBENE — woher die Anforderung stammt. Bundesrecht gilt überall gleich,
+   Landesrecht nur in den genannten Ländern, Tarif- und Dienstvereinbarungen
+   binden den Betrieb, aber sind kein Gesetz, und eine betriebliche
+   Festlegung ist die eigene Entscheidung des Arbeitgebers.
+
+   BEZUG — woran die Anforderung hängt. An der Person, an einer bestimmten
+   Tätigkeit oder an einer bestimmten Einrichtung.
+
+   Dass beides getrennt sein muss, zeigt § 34a GewO: Die Sachkundeprüfung
+   ist Bundesrecht und gilt trotzdem nicht für jeden Wachmann, sondern nur
+   für die dort genannten Tätigkeiten. „Bundesrecht" und „gilt für alle"
+   sind eben nicht dasselbe. Dasselbe in der Pflege: Die Fachweiterbildung
+   Intensiv ist keine bundeseinheitliche Pflicht, sondern hängt an Land,
+   Einrichtung und Funktion.
+
+   Ohne Angabe gilt „betrieblich". Das ist die vorsichtige Richtung: Wer
+   nichts hinterlegt hat, bekommt keine Gesetzesbehauptung geschenkt.
+   -------------------------------------------------------------------------- */
+
+export const EBENEN = {
+  bund: { label: "Bundesrecht", kurz: "Bund", gesetzlich: true,
+    wort: "unzulässig", satz: "Gilt bundesweit gleich." },
+  land: { label: "Landesrecht", kurz: "Land", gesetzlich: true,
+    wort: "unzulässig", satz: "Gilt nur in den genannten Bundesländern." },
+  tarif: { label: "Tarif oder Dienstvereinbarung", kurz: "Tarif", gesetzlich: false,
+    wort: "nicht vereinbarungsgemäß", satz: "Bindet den Betrieb, ist aber kein Gesetz." },
+  betrieb: { label: "Betriebliche Festlegung", kurz: "Betrieb", gesetzlich: false,
+    wort: "gegen die betriebliche Vorgabe", satz: "Eigene Entscheidung des Arbeitgebers." },
+};
+
+export const BEZUEGE = {
+  person: { label: "an der Person", satz: "Gilt für die Person unabhängig vom Dienst." },
+  taetigkeit: { label: "an der Tätigkeit", satz: "Gilt nur für bestimmte Tätigkeiten." },
+  einrichtung: { label: "an der Einrichtung", satz: "Gilt nur in bestimmten Einrichtungen." },
+};
+
+/**
+ * Wie verbindlich ist diese Qualifikation hier und heute?
+ *
+ * @param {object} q          Die Qualifikation aus dem Bestand
+ * @param {object} [kontext]
+ * @param {string} [kontext.land]  Bundesland des Einsatzorts, zweistellig
+ */
+export function verbindlichkeit(q, kontext = {}) {
+  const ebene = q && EBENEN[q.ebene] ? q.ebene : "betrieb";
+  const def = EBENEN[ebene];
+  const bezug = q && BEZUEGE[q.bezug] ? q.bezug : "person";
+  const laender = Array.isArray(q && q.laender) ? q.laender.filter(Boolean) : [];
+
+  /* Landesrecht ohne Länderangabe bindet überall — das ist keine gute
+     Konfiguration, aber die sichere Auslegung wäre hier die falsche: Wer
+     Landesrecht einträgt und kein Land nennt, meint in aller Regel „mein
+     Betrieb". Gemeldet wird der Mangel trotzdem, siehe unten. */
+  const giltHier = ebene !== "land" || laender.length === 0
+    || (!!kontext.land && laender.includes(kontext.land));
+
+  return {
+    ebene, bezug, laender, giltHier,
+    label: def.label, kurz: def.kurz, gesetzlich: def.gesetzlich, wort: def.wort,
+    /* Eine Sperre wirkt nur, wo die Anforderung überhaupt gilt. */
+    sperrt: !!(q && q.harteSperre) && giltHier,
+  };
+}
+
+/**
+ * Mängel in der Konfiguration einer Qualifikation.
+ *
+ * Nicht der Plan wird geprüft, sondern die Regel selbst. Eine Sperre ohne
+ * Rechtsgrundlage ist keine Rechtsdurchsetzung, sondern eine Behauptung —
+ * und eine tätigkeitsabhängige Anforderung, die pauschal jeden Dienst
+ * sperrt, ist genau der Fehler, den § 34a GewO nicht hergibt.
+ */
+export function regelMaengel(q) {
+  const aus = [];
+  const v = verbindlichkeit(q);
+  const name = (q && q.name) || "Qualifikation";
+
+  if (q && q.harteSperre && !String(q.grundlage || "").trim())
+    aus.push({ art: "ohneGrundlage", schwere: "warn", qualId: q.id,
+      text: `${name} sperrt den Einsatz, nennt aber keine Grundlage. `
+        + "Wer einen Dienst verhindert, sollte sagen können, worauf er sich stützt." });
+
+  if (q && q.harteSperre && !v.gesetzlich)
+    aus.push({ art: "sperreOhneGesetz", schwere: "info", qualId: q.id,
+      /* Nicht kleinschreiben: „betriebliche festlegung" las sich wie ein
+         Tippfehler. Der Klartext der Ebene ist ein Substantiv. */
+      text: `${name} ist hinterlegt als: ${v.label}. Die Anforderung sperrt trotzdem den Einsatz. `
+        + "Das ist zulässig, wird aber als betriebliche Vorgabe ausgewiesen, nicht als gesetzliches Verbot." });
+
+  if (q && q.harteSperre && v.bezug === "taetigkeit")
+    aus.push({ art: "pauschaleSperre", schwere: "warn", qualId: q.id,
+      text: `${name} hängt an der Tätigkeit, sperrt aber jeden Dienst. `
+        + "Wo das Recht nach Tätigkeiten unterscheidet — etwa § 34a GewO —, gehört die Anforderung "
+        + "an die betreffenden Dienstarten statt an alle." });
+
+  if (q && q.ebene === "land" && !v.laender.length)
+    aus.push({ art: "landOhneLand", schwere: "warn", qualId: q.id,
+      text: `${name} ist als Landesrecht hinterlegt, nennt aber kein Bundesland. `
+        + "Sie wirkt deshalb an allen Standorten gleich." });
+
+  if (q && q.gueltigMonate && q.intervallBetrieblich && v.gesetzlich)
+    aus.push({ art: "intervallBetrieblich", schwere: "info", qualId: q.id,
+      text: `Die Pflicht zu ${name} folgt aus dem Gesetz, die Wiederholung alle `
+        + `${q.gueltigMonate} Monate ist eine betriebliche Festlegung.` });
+
+  return aus;
+}
+
+/* --------------------------------------------------------------------------
    § 6 Abs. 3 ArbZG — ARBEITSMEDIZINISCHE UNTERSUCHUNG
 
    Nachtarbeitnehmer haben das Recht, sich vor Beginn der Beschäftigung und

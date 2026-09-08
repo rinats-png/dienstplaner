@@ -20,6 +20,7 @@ import {
   letzterSonntag, uhrsprung, uhrversatz, dauerAm, bruttoAm,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   FREIE_SONNTAGE_MIN,
+  verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -525,5 +526,95 @@ describe("§ 11 Abs. 1 ArbZG — fünfzehn freie Sonntage", () => {
   it("ist der Rest des Jahres zu kurz, steht der Verstoß fest", () => {
     const r = freieSonntage(() => true, 2026, "2026-11-30");
     expect(r.verletzt).toBe(true);
+  });
+});
+
+describe("Verbindlichkeit einer Anforderung", () => {
+  it("ohne Angabe gilt betrieblich, nicht gesetzlich", () => {
+    /* Die vorsichtige Richtung: Wer nichts hinterlegt, bekommt keine
+       Gesetzesbehauptung geschenkt. */
+    const v = verbindlichkeit({ name: "Irgendwas" });
+    expect(v.ebene).toBe("betrieb");
+    expect(v.gesetzlich).toBe(false);
+  });
+
+  it("eine unbekannte Ebene fällt ebenfalls auf betrieblich zurück", () => {
+    expect(verbindlichkeit({ ebene: "eu-verordnung" }).ebene).toBe("betrieb");
+  });
+
+  it("Bundesrecht ist gesetzlich und gilt überall", () => {
+    const v = verbindlichkeit({ ebene: "bund" }, { land: "BY" });
+    expect(v.gesetzlich).toBe(true);
+    expect(v.giltHier).toBe(true);
+  });
+
+  it("Tarif bindet, ist aber kein Gesetz", () => {
+    const v = verbindlichkeit({ ebene: "tarif" });
+    expect(v.gesetzlich).toBe(false);
+    expect(v.wort).not.toBe("unzulässig");
+  });
+
+  it("Landesrecht greift nur im genannten Land", () => {
+    const q = { ebene: "land", laender: ["NW", "HE"], harteSperre: true };
+    expect(verbindlichkeit(q, { land: "NW" }).giltHier).toBe(true);
+    expect(verbindlichkeit(q, { land: "BY" }).giltHier).toBe(false);
+  });
+
+  it("und eine Sperre wirkt dort nicht, wo die Anforderung nicht gilt", () => {
+    const q = { ebene: "land", laender: ["NW"], harteSperre: true };
+    expect(verbindlichkeit(q, { land: "NW" }).sperrt).toBe(true);
+    expect(verbindlichkeit(q, { land: "BY" }).sperrt).toBe(false);
+  });
+
+  it("Ebene und Bezug sind unabhängig — § 34a ist Bundesrecht und trotzdem tätigkeitsbezogen", () => {
+    const v = verbindlichkeit({ ebene: "bund", bezug: "taetigkeit" });
+    expect(v.gesetzlich).toBe(true);
+    expect(v.bezug).toBe("taetigkeit");
+  });
+
+  it("jede Ebene und jeder Bezug hat einen Klartext", () => {
+    for (const k of Object.keys(EBENEN)) expect(EBENEN[k].label.length).toBeGreaterThan(3);
+    for (const k of Object.keys(BEZUEGE)) expect(BEZUEGE[k].label.length).toBeGreaterThan(3);
+  });
+});
+
+describe("Mängel in der Regel selbst", () => {
+  const arten = (q) => regelMaengel(q).map((x) => x.art);
+
+  it("eine Sperre ohne Grundlage wird gemeldet", () => {
+    expect(arten({ name: "X", harteSperre: true, ebene: "bund" })).toContain("ohneGrundlage");
+  });
+
+  it("eine saubere Bundesregel hat keinen Mangel", () => {
+    expect(arten({ name: "Pflegefachkraft", harteSperre: true, ebene: "bund",
+      bezug: "person", grundlage: "§ 4 PflBG" })).toEqual([]);
+  });
+
+  it("eine betriebliche Sperre wird als solche ausgewiesen, nicht verboten", () => {
+    const a = regelMaengel({ name: "Erste Hilfe", harteSperre: true, ebene: "betrieb",
+      grundlage: "Gefährdungsbeurteilung" });
+    expect(a.map((x) => x.art)).toContain("sperreOhneGesetz");
+    expect(a.find((x) => x.art === "sperreOhneGesetz").schwere).toBe("info");
+  });
+
+  it("eine tätigkeitsbezogene Anforderung, die jeden Dienst sperrt, ist der § 34a-Fehler", () => {
+    const a = arten({ name: "Sachkunde § 34a GewO", harteSperre: true, ebene: "bund",
+      bezug: "taetigkeit", grundlage: "§ 34a Abs. 1a GewO" });
+    expect(a).toContain("pauschaleSperre");
+  });
+
+  it("Landesrecht ohne Bundesland wird gemeldet", () => {
+    expect(arten({ name: "Pflegeassistenz", ebene: "land", grundlage: "Landesrecht" }))
+      .toContain("landOhneLand");
+  });
+
+  it("Landesrecht mit Bundesland nicht", () => {
+    expect(arten({ name: "Pflegeassistenz", ebene: "land", laender: ["NW"], grundlage: "Landesrecht" }))
+      .not.toContain("landOhneLand");
+  });
+
+  it("ein betrieblich gewähltes Intervall unter einer gesetzlichen Pflicht wird benannt", () => {
+    expect(arten({ name: "Hygieneunterweisung", ebene: "bund", grundlage: "§ 23 IfSG",
+      gueltigMonate: 12, intervallBetrieblich: true })).toContain("intervallBetrieblich");
   });
 });
