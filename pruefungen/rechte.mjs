@@ -336,6 +336,72 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   const wStamm = await schreib(tSub, stamm, r3.etag);
   pruef("Dienstarten darf sie nicht anlegen", wStamm.status === 403,
     `Status ${wStamm.status} — ${wStamm.text || ""}`);
+
+  /* Anträge fremder Bereiche entscheidet die Leitung. */
+  const rL4 = await lies(tL);
+  const bL4 = JSON.parse(JSON.stringify(rL4.bestand));
+  bL4.mandanten[0].anfragen = [...(bL4.mandanten[0].anfragen || []),
+    { id: "s4-fremd", personId: "p2", art: "urlaub", von: "2026-11-20", bis: "2026-11-20", status: "offen" },
+    { id: "s4-eigen", personId: "p1", art: "urlaub", von: "2026-11-21", bis: "2026-11-21", status: "offen" }];
+  await schreib(tL, bL4, rL4.etag);
+  const r4 = await lies(tSub);
+  const g = JSON.parse(JSON.stringify(r4.bestand));
+  g.mandanten[0].anfragen = g.mandanten[0].anfragen.map((a) => a.id === "s4-fremd" ? { ...a, status: "genehmigt" } : a);
+  const wFremdA = await schreib(tSub, g, r4.etag);
+  pruef("Einen Antrag aus dem fremden Bereich darf sie nicht entscheiden", wFremdA.status === 403,
+    `Status ${wFremdA.status} — ${wFremdA.text || ""}`);
+  const r5 = await lies(tSub);
+  const h = JSON.parse(JSON.stringify(r5.bestand));
+  h.mandanten[0].anfragen = h.mandanten[0].anfragen.map((a) => a.id === "s4-eigen" ? { ...a, status: "genehmigt" } : a);
+  const wEigenA = await schreib(tSub, h, r5.etag);
+  pruef("Einen Antrag aus dem eigenen Bereich schon", wEigenA.status === 200,
+    `Status ${wEigenA.status} — ${wEigenA.text || ""}`);
+}
+
+/* --- S5: Beschäftigte schreiben nur ihre eigenen Einträge ---
+
+   Bis September 2026 nahm der Server die „eigenen Felder" im Ganzen an —
+   ein Beschäftigten-Token konnte die Zeiterfassung jeder anderen Person
+   überschreiben und fremde Anträge mit Status „genehmigt" anlegen. */
+{
+  const tM0 = await anmelden(await zugang("mitarbeiter", 0));
+  const r = await lies(tM0);
+  const b = JSON.parse(JSON.stringify(r.bestand));
+  const m = b.mandanten[0];
+  m.erfassung = { ...(m.erfassung || {}), "1|2026-12-01": { von: "06:00", bis: "23:00" },
+    "0|2026-12-01": { von: "06:00", bis: "14:00" } };
+  m.anfragen = [...(m.anfragen || []),
+    { id: "s5-fremd", personId: 1, art: "urlaub", von: "2026-12-02", bis: "2026-12-02", status: "genehmigt" },
+    { id: "s5-eigen", personId: 0, art: "urlaub", von: "2026-12-03", bis: "2026-12-03", status: "genehmigt" }];
+  m.wuensche = [...(m.wuensche || []), { id: "s5-w1", personId: 1, datum: "2026-12-04", art: "moechte" },
+    { id: "s5-w0", personId: 0, datum: "2026-12-04", art: "moechte" }];
+  const w = await schreib(tM0, b, r.etag);
+  pruef("Beschäftigte dürfen ihre eigenen Einträge schreiben", w.status === 200, `Status ${w.status}`);
+
+  const n = (await lies(tL)).bestand.mandanten[0];
+  pruef("Eigene Zeiterfassung ist gespeichert", !!(n.erfassung || {})["0|2026-12-01"]);
+  pruef("Fremde Zeiterfassung ist nicht gespeichert", !(n.erfassung || {})["1|2026-12-01"]);
+  pruef("Fremder Antrag ist verworfen", !(n.anfragen || []).some((a) => a.id === "s5-fremd"));
+  const eigen = (n.anfragen || []).find((a) => a.id === "s5-eigen");
+  pruef("Eigener Antrag ist angelegt", !!eigen);
+  pruef("… aber nicht selbst genehmigt", eigen && eigen.status === "offen", eigen && eigen.status);
+  pruef("Eigener Wunsch gespeichert, fremder nicht",
+    (n.wuensche || []).some((x) => x.id === "s5-w0") && !(n.wuensche || []).some((x) => x.id === "s5-w1"));
+
+  /* Bewerbung auf eine offene Schicht muss weiterhin ankommen. */
+  const rL = await lies(tL);
+  const bL = JSON.parse(JSON.stringify(rL.bestand));
+  bL.mandanten[0].ausschreibungen = [{ id: "s5-as", datum: "2026-12-10", dienstId: "F", status: "offen", bewerbungen: [] }];
+  await schreib(tL, bL, rL.etag);
+  const r2 = await lies(tM0);
+  const b2 = JSON.parse(JSON.stringify(r2.bestand));
+  b2.mandanten[0].ausschreibungen = b2.mandanten[0].ausschreibungen.map((a) => a.id !== "s5-as" ? a
+    : { ...a, status: "vergeben", bewerbungen: [{ personId: 0, zeit: "x" }, { personId: 1, zeit: "y" }] });
+  const w2 = await schreib(tM0, b2, r2.etag);
+  const as = ((await lies(tL)).bestand.mandanten[0].ausschreibungen || []).find((a) => a.id === "s5-as");
+  pruef("Eigene Bewerbung kommt an", w2.status === 200 && as && as.bewerbungen.some((x) => x.personId === 0));
+  pruef("Fremde Bewerbung und Status der Ausschreibung nicht",
+    as && !as.bewerbungen.some((x) => x.personId === 1) && as.status === "offen", as && as.status);
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

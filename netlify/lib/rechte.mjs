@@ -84,10 +84,112 @@ export function schreibumfang(rolle) {
 }
 
 /* Was eine beschäftigte Person am Betrieb ändern darf: ihre eigenen
-   Anliegen. Alles andere — Personal, Dienstarten, Schichtfolge, Freigaben —
-   bleibt unberührt, auch wenn es mitgeschickt wird. */
-const EIGENE_FELDER = ["anfragen", "erfassung", "nachrichten", "wuensche",
-  "einspruenge", "urlaubsrunde"];
+   Anliegen in den Feldern anfragen, erfassung, nachrichten, wuensche,
+   einspruenge, urlaubsrunde und ausschreibungen. Alles andere — Personal,
+   Dienstarten, Schichtfolge, Freigaben — bleibt unberührt, auch wenn es
+   mitgeschickt wird.
+
+   Diese Felder wurden bisher im Ganzen übernommen, sobald sie mitgeschickt
+   waren. Damit konnte ein Beschäftigten-Token per API die Zeiterfassung
+   jeder anderen Person überschreiben, fremde Anträge anlegen — auch gleich
+   mit Status „genehmigt" — und fremde Wünsche und Nachrichten verändern.
+   Die Oberfläche bot das nie an; der Server verließ sich darauf.
+
+   Jetzt entscheidet die Person am Eintrag: Eigenes wird übernommen,
+   Fremdes bleibt, wie es gespeichert war. Dazu die wenigen Stellen, an
+   denen Beschäftigte fremde Einträge berühren dürfen — weil die Abläufe
+   das brauchen: die Meldung auf ein fremdes Tauschgesuch, die Bewerbung
+   auf eine ausgeschriebene Schicht, die Mitteilung an die Gegenseite.
+
+   Und einen Antrag entscheidet nie, wer ihn stellt: Der Status eines
+   eigenen Antrags darf nur „offen" oder „zurueckgezogen" werden. */
+const eigenerEintrag = (e, ich) => e && String(e.personId) === String(ich);
+const eigenerSchluessel = (k, ich) => String(k).split("|")[0] === String(ich);
+const ANTRAGSTATUS_SELBST = ["offen", "zurueckgezogen"];
+const NACHRICHT_AN_FREMDE = ["tauschAngebot"];
+
+/** Objekt mit Schlüsseln „personId|Datum": nur die eigenen wandern hinein. */
+function eigeneSchluessel(alt, neu, ich) {
+  const aus = {};
+  for (const [k, v] of Object.entries(alt || {})) if (!eigenerSchluessel(k, ich)) aus[k] = v;
+  for (const [k, v] of Object.entries(neu || {})) if (eigenerSchluessel(k, ich)) aus[k] = v;
+  return aus;
+}
+
+/** Liste mit personId: eigene Einträge aus dem Neuen, fremde aus dem Alten. */
+function eigeneEintraege(alt, neu, ich) {
+  const fremde = (Array.isArray(alt) ? alt : []).filter((e) => !eigenerEintrag(e, ich));
+  const eigene = (Array.isArray(neu) ? neu : []).filter((e) => eigenerEintrag(e, ich));
+  return [...fremde, ...eigene];
+}
+
+function anfragenZusammen(alt, neu, ich) {
+  const alteNachId = new Map((Array.isArray(alt) ? alt : []).filter(Boolean).map((a) => [a.id, a]));
+  const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
+  const aus = [];
+  for (const a of neueNachId.values()) {
+    const vorher = alteNachId.get(a.id);
+    if (eigenerEintrag(a, ich)) {
+      /* Eigener Antrag: anlegen, ändern, zurückziehen — aber nicht entscheiden. */
+      const status = ANTRAGSTATUS_SELBST.includes(a.status) ? a.status
+        : (vorher ? vorher.status : "offen");
+      aus.push(vorher
+        ? { ...a, status, freigaben: vorher.freigaben, entschieden: vorher.entschieden,
+            durch: vorher.durch, antwort: vorher.antwort }
+        : { ...a, status, freigaben: undefined, entschieden: undefined, durch: undefined, antwort: undefined });
+    } else if (vorher) {
+      /* Fremder Antrag: nur die eigene Meldung als Interessent kommt durch. */
+      const alteI = (vorher.interessenten || []).filter((x) => String(x) !== String(ich));
+      const meineI = (a.interessenten || []).filter((x) => String(x) === String(ich));
+      aus.push({ ...vorher, interessenten: [...alteI, ...meineI] });
+    }
+    /* Neuer fremder Antrag: verworfen. */
+  }
+  /* Fremde Anträge, die nicht mehr mitgeschickt wurden, bleiben. */
+  for (const v of alteNachId.values())
+    if (!neueNachId.has(v.id) && !eigenerEintrag(v, ich)) aus.push(v);
+  return aus;
+}
+
+function nachrichtenZusammen(alt, neu, ich) {
+  const alteIds = new Set((Array.isArray(alt) ? alt : []).filter(Boolean).map((n) => n.id));
+  const fremdeAlt = (Array.isArray(alt) ? alt : []).filter((n) => n && !eigenerEintrag(n, ich));
+  const eigene = (Array.isArray(neu) ? neu : []).filter((n) => eigenerEintrag(n, ich));
+  const neueAnFremde = (Array.isArray(neu) ? neu : []).filter((n) => n && !eigenerEintrag(n, ich)
+    && !alteIds.has(n.id) && NACHRICHT_AN_FREMDE.includes(n.art));
+  return [...fremdeAlt, ...neueAnFremde, ...eigene];
+}
+
+function ausschreibungenZusammen(alt, neu, ich) {
+  const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((a) => [a.id, a]));
+  return (Array.isArray(alt) ? alt : []).map((a) => {
+    const g = a && neueNachId.get(a.id);
+    if (!g) return a;
+    const fremdeB = (a.bewerbungen || []).filter((b) => !eigenerEintrag(b, ich));
+    const meineB = (g.bewerbungen || []).filter((b) => eigenerEintrag(b, ich));
+    return { ...a, bewerbungen: [...fremdeB, ...meineB] };
+  });
+}
+
+function urlaubsrundeZusammen(alt, neu, ich) {
+  if (!alt || typeof alt !== "object") return alt;
+  const w = neu && typeof neu === "object" ? neu.wuensche : undefined;
+  return { ...alt, wuensche: eigeneEintraege(alt.wuensche, w, ich) };
+}
+
+/** Die eigenen Felder einer beschäftigten Person, personenbezogen gefiltert. */
+export function eigenesZusammen(alt, geschickt, ich) {
+  const hat = (f) => Object.prototype.hasOwnProperty.call(geschickt, f);
+  const aus = {};
+  if (hat("erfassung")) aus.erfassung = eigeneSchluessel(alt.erfassung, geschickt.erfassung, ich);
+  if (hat("wuensche")) aus.wuensche = eigeneEintraege(alt.wuensche, geschickt.wuensche, ich);
+  if (hat("einspruenge")) aus.einspruenge = eigeneEintraege(alt.einspruenge, geschickt.einspruenge, ich);
+  if (hat("anfragen")) aus.anfragen = anfragenZusammen(alt.anfragen, geschickt.anfragen, ich);
+  if (hat("nachrichten")) aus.nachrichten = nachrichtenZusammen(alt.nachrichten, geschickt.nachrichten, ich);
+  if (hat("ausschreibungen")) aus.ausschreibungen = ausschreibungenZusammen(alt.ausschreibungen, geschickt.ausschreibungen, ich);
+  if (hat("urlaubsrunde")) aus.urlaubsrunde = urlaubsrundeZusammen(alt.urlaubsrunde, geschickt.urlaubsrunde, ich);
+  return aus;
+}
 
 /* Felder des Gesamtbestands, die jede Rolle setzen darf: der Zählerstand
    und die Sitzungsmarke der Oberfläche. */
@@ -405,10 +507,7 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     : null;
   if (!geschickt) return neu;
 
-  const zusammen = { ...alt };
-  for (const feld of EIGENE_FELDER) {
-    if (Object.prototype.hasOwnProperty.call(geschickt, feld)) zusammen[feld] = geschickt[feld];
-  }
+  const zusammen = { ...alt, ...eigenesZusammen(alt, geschickt, sitzung.person) };
 
   /* Die eigene Person darf sich selbst pflegen — Telefonnummer, Wünsche,
      Mitteilungseinstellungen. Fremde Personen bleiben unberührt. */
@@ -537,6 +636,26 @@ export function einheitDarf(altM, neuM, sitzung) {
       if (einheitAm(person, tag) !== eigene)
         return { ok: false,
           grund: `${person.nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.` };
+    }
+  }
+
+  /* Anträge und Einsprünge tragen eine Person, keinen Tagesschlüssel.
+     Bisher gingen sie im Ganzen durch — die Schichtverantwortung konnte
+     damit per API den Urlaubsantrag einer Person aus einem fremden
+     Bereich genehmigen. Die Oberfläche zeigte den Knopf nie; der Server
+     muss es trotzdem prüfen. Geändert oder neu: nur im eigenen Bereich,
+     zum Tag des Antrags. */
+  for (const feld of ["anfragen", "einspruenge"]) {
+    const alt = new Map(((altM || {})[feld] || []).filter(Boolean).map((a) => [a.id, a]));
+    for (const a of ((neuM || {})[feld] || []).filter(Boolean)) {
+      const vorher = alt.get(a.id);
+      if (vorher && JSON.stringify(vorher) === JSON.stringify(a)) continue;
+      const person = personen.get(String(a.personId));
+      if (!person) return { ok: false, grund: "Eine geänderte Person gehört nicht zum Betrieb." };
+      const tag = a.von || a.datum || new Date().toISOString().slice(0, 10);
+      if (einheitAm(person, tag) !== eigene)
+        return { ok: false,
+          grund: `${person.nachname || "Diese Person"} gehört nicht zu deinem Bereich — der Antrag ist Sache der Leitung.` };
     }
   }
   return { ok: true };

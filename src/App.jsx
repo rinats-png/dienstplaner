@@ -12792,8 +12792,15 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
   const meine = (m.wuensche || []).filter((w) => w.personId === p.id && w.datum.startsWith(monat));
   const shift = (d) => { const x = new Date(y, mo - 1 + d, 1); setMonat(`${x.getFullYear()}-${pad(x.getMonth() + 1)}`); };
 
-  return (
-    <Sheet open onClose={onClose} titel={`Wunschdienste · ${p.vorname} ${p.nachname}`} width={640}>
+  /* Zweimal im Einsatz: als Blatt über einer anderen Ansicht — mit
+     onClose — und als eigene Navigationsansicht, ohne. In der zweiten Lage
+     rendete die Komponente trotzdem ein Blatt, dessen „Fertig" und Escape
+     ein undefined riefen. Es ließ sich nicht schließen und verdeckte die
+     Seitenleiste; wer den Menüpunkt hatte, saß danach fest. Die Leitung
+     bemerkte es nicht, weil sie ihn nicht sieht. Ohne onClose ist es jetzt
+     eine Seite. */
+  const titel = `Wunschdienste · ${p.vorname} ${p.nachname}`;
+  const kern = (<>
       <div style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
         Tippe einen Tag an: einmal für <b>möchte arbeiten</b>, zweimal für <b>lieber nicht</b>, dreimal zum Löschen.
         Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.
@@ -12843,10 +12850,18 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
           {meine.length} Wünsche in diesem Monat</span>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 22 }}>
-        <Btn kind="primary" onClick={onClose}>Fertig</Btn>
-      </div>
-    </Sheet>);
+      {onClose && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 22 }}>
+          <Btn kind="primary" onClick={onClose}>Fertig</Btn>
+        </div>)}
+  </>);
+
+  if (onClose) return <Sheet open onClose={onClose} titel={titel} width={640}>{kern}</Sheet>;
+  return (
+    <div>
+      <H1 sub="Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.">{titel}</H1>
+      <Card style={{ padding: 22, maxWidth: 680 }}>{kern}</Card>
+    </div>);
 }
 
 /* ================================ NOTIZEN ============================== */
@@ -19185,10 +19200,18 @@ function AppInnen() {
 
   /* Bestand vom Server holen. Ist noch keiner da, wird der Beispielbetrieb
      angelegt — so ist ein frisch eingerichteter Zugang sofort benutzbar. */
-  useEffect(() => { (async () => {
+  /* Der Ladevorgang ist abbrechbar. Läuft der Effekt ein zweites Mal
+     (React.StrictMode tut das in der Entwicklung; eine spätere Änderung
+     der Abhängigkeiten täte es überall), setzte bisher jeder der beiden
+     Läufe seinen Bestand — der zweite überschrieb dabei alles, was
+     zwischendurch schon geschah, etwa den Start der Tour. Sichtbar wurde
+     es als grundloser PUT mit unverändertem Inhalt kurz nach der
+     Anmeldung. Jetzt zählt nur der jüngste Lauf. */
+  useEffect(() => { let lebt = true; (async () => {
     if (!SP.angemeldet()) { setLaedt(false); return; }
     try {
       const { bestand, zugang, ausSpeicher, geholt } = await SP.lies();
+      if (!lebt) return;
       if (ausSpeicher) setOffline({ geholt });
 
       /* Migration statt Wegwerfen. Ein Bestand aus einer älteren Fassung
@@ -19235,7 +19258,29 @@ function AppInnen() {
           const mand = b.mandanten[zugang.betrieb || 0] || b.mandanten[0];
           if (mand) {
             const kand = mand.personen.filter((p) => p.rolle === zugang.rolle && imDienst(p, heute()));
-            let p = zugang.person != null ? mand.personen[zugang.person] : kand[0];
+            /* `zugang.person` war hier ein Array-Index. Die Betreiberkonsole
+               hinterlegt beim Ausstellen eines Codes aber die Kennung der
+               Person — „p1", nicht 1. `mand.personen["p1"]` ist undefined,
+               es entstand keine Sitzung, und jede Beschäftigte mit einem
+               personengebundenen Code landete auf dem Rollenwähler der
+               Vorführfassung. Nur Codes ohne Person oder mit numerischem
+               Index kamen durch.
+
+               Aufgelöst wird jetzt zuerst über die Kennung, dann über den
+               Index. Und ein gesetzter Wert, der auf niemanden passt, fällt
+               nicht mehr auf den ersten Kandidaten zurück — das meldete
+               jemanden als eine andere Person an. Er führt zu keiner
+               Sitzung und zu einer klaren Meldung. */
+            let p = null;
+            if (zugang.person == null) p = kand[0];
+            else {
+              p = mand.personen.find((x) => x.id === zugang.person)
+                || (Number.isInteger(zugang.person) ? mand.personen[zugang.person] : null)
+                || null;
+              if (!p && mand.personen.length)
+                setLadefehler(`Der Zugangscode gehört zu einer Person, die es in „${mand.name}" nicht mehr gibt. `
+                  + "Bitte einen neuen Code ausstellen lassen.");
+            }
 
             /* Ein frisch angelegter Betrieb hat noch keine Person — und ohne
                Person gibt es keine Sitzung, also auch keinen Weg hinein. Der
@@ -19285,9 +19330,9 @@ function AppInnen() {
       }
       setDb(b);
     } catch (e) {
-      if (String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));
-    } finally { setLaedt(false); }
-  })(); }, [angemeldetStand]);
+      if (lebt && String(e.message) !== "nicht-angemeldet") setLadefehler(String(e.message));
+    } finally { if (lebt) setLaedt(false); }
+  })(); return () => { lebt = false; }; }, [angemeldetStand]);
 
   useEffect(() => { ref.current = db; }, [db]);
 
@@ -19331,7 +19376,43 @@ function AppInnen() {
 
   /* Zurückschreiben, verzögert gebündelt. Bei einem Konflikt wird nicht
      stillschweigend überschrieben — die Person erfährt davon. */
-  useEffect(() => { if (!db) return; if (erst.current) { erst.current = false; return; }
+  /* Zwei Sicherungen vor dem Schreiben.
+
+     Erstens: Nicht schreiben, wenn sich nichts geändert hat. Der Effekt
+     hängt am Objekt, nicht am Inhalt — ein setDb mit gleichem Inhalt löste
+     bisher einen vollen PUT aus. Beim Betriebsrat wurde daraus ein 403 des
+     Servers und ein Dialog „Diese Änderung ist mit deiner Rolle nicht
+     zulässig", der die Seitenleiste verdeckte — für eine Änderung, die es
+     nie gab. Verglichen wird der Inhalt ohne den Stand, denn den zählt der
+     Server selbst hoch.
+
+     Zweitens: Wer nur lesen darf, schreibt nie von selbst. Ein Betriebsrat
+     kann in der Oberfläche nichts ändern; ein automatischer Schreibversuch
+     wäre in jedem Fall abgewiesen und würde ihm nur die Sperre einbringen. */
+  /* Verglichen wird ohne `stand` und ohne `session`: Den Stand zählt der
+     Server, die Sitzung ist Zustand dieses Reiters und geht nie hinaus.
+     Beim Anmelden wird der Bestand zweimal gesetzt — erst ohne, dann mit
+     Sitzung. Zählte die Sitzung mit, unterschieden sich die beiden, und
+     genau dieser Unterschied war der grundlose PUT nach jeder Anmeldung. */
+  /* Die Schlüssel werden sortiert: Zwei Bestände gleichen Inhalts, deren
+     Objekte nur in anderer Reihenfolge aufgebaut wurden (etwa weil die
+     Sitzung einmal fehlt und einmal in der Mitte steht), sind sonst als
+     Text verschieden — und lösten so den nächsten grundlosen PUT aus. */
+  const abbildVon = (d) => {
+    const { stand, session, ...rest } = d; // eslint-disable-line no-unused-vars
+    return JSON.stringify(rest, (k, v) => v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v).sort().map((s) => [s, v[s]])) : v);
+  };
+  const zuletztGeschrieben = useRef(null);
+  useEffect(() => { if (!db) return; if (erst.current) { erst.current = false; zuletztGeschrieben.current = abbildVon(db); return; }
+    const abbild = abbildVon(db);
+    if (abbild === zuletztGeschrieben.current) return;
+    if (db.session && db.session.personId) {
+      const mm = db.mandanten.find((x) => x.id === db.session.mandantId);
+      const pp = mm && mm.personen.find((x) => x.id === db.session.personId);
+      if (pp && pp.rolle === "betriebsrat") return;
+    }
+    zuletztGeschrieben.current = abbild;
     SP.schreib(db, {
       durch: db.session && db.session.personId
         ? (() => { const mm = db.mandanten.find((x) => x.id === db.session.mandantId);
@@ -19475,10 +19556,14 @@ function AppInnen() {
       return { ...s, mandanten: s.mandanten.map((m) => {
         if (m.id !== mid) return m;
         const next = fn(m);
-        return text ? { ...next, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...next.protokoll].slice(0, 200) } : next;
+        /* Beschäftigte bekommen das Protokoll vom Server nicht mit (siehe
+           bestandFuerRolle). Ohne den Rückfall auf die leere Liste brach
+           hier jede Änderung einer beschäftigten Person — „next.protokoll
+           is not iterable" — und am Telefon ging kein Antrag mehr hinaus. */
+        return text ? { ...next, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...(next.protokoll || [])].slice(0, 200) } : next;
       }) };
     });
-    const bLog = (s, text) => ({ ...s, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...s.protokoll].slice(0, 300) });
+    const bLog = (s, text) => ({ ...s, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...(s.protokoll || [])].slice(0, 300) });
     const jetzt = () => new Date().toLocaleString("de-DE");
 
     return {
