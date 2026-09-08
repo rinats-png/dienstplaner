@@ -167,7 +167,11 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis } from "./kontakt.js";
+import Ringregler from "./ringregler.jsx";
+import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
+  PAKETE, paketVon, paketkosten, preisFuer } from "./stufen.js";
+import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
+  ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
@@ -801,36 +805,10 @@ const stat = (id) => STATUS.find((s) => s.id === id) || STATUS[0];
    Welche Funktionstiefe braucht er? — das unterscheidet die Stufen
    zusätzlich, wie schon in der vorigen Fassung.
    -------------------------------------------------------------------------- */
-const STUFEN = [
-  { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
-    paketeFrei: 0,
-    leistungen: ["Dienstplanung mit Rotationsmodellen", "Anträge und Tauschbörse",
-      "Kalender-Feed und Weckzeiten", "Mobile Ansicht", "Datenmitnahme jederzeit"] },
-  { id: "pro", name: "Business", grund: 159, planerInklusive: 3, standorteInklusive: 2,
-    paketeFrei: 0,
-    leistungen: ["Alles aus Basis", "Qualifikationen mit Ablauf", "Arbeitszeitprüfung",
-      "Belastbarkeitsanalyse", "Lohnausgabe — ein Klick zur Lohnbuchhaltung"] },
-  { id: "enterprise", name: "Enterprise", grund: 279, planerInklusive: 8, standorteInklusive: 4,
-    paketeFrei: 2,
-    leistungen: ["Alles aus Business", "Zwei Branchenpakete enthalten",
-      "Leistungsnachweis für Auftraggeber", "Auftragsverarbeitung nach Artikel 28",
-      "Bevorzugter Rückruf"] },
-];
-const stufeVon = (id) => STUFEN.find((s) => s.id === id) || STUFEN[0];
-
-/* Ein Zugang über die eigene Planung hinaus ist eine bewusste Entscheidung
-   — anders als Einstellen oder ein neuer Einsatzort trifft ein Betrieb sie
-   absichtlich, und sie darf im Rang nur die Leitung treffen (RANG.leitung
-   > RANG.planer in rollenvergabe.mjs). Deshalb braucht es dafür keine
-   eigene Bestätigung mehr, wie es sie für Standorte einmal gab — die
-   Rollenvergabe sperrt das bereits an der Quelle. */
-const ZUSATZ_PLANER = 25;
-
-/* Jenseits der Enterprise-Kapazität rechnet die Formel zwar weiter, aber
-   ein Betrieb dieser Größe soll nicht allein vor einem Formular stehen.
-   Ab hier zeigt die Oberfläche „Sprich uns an" statt einer Zahl. */
-const KONTAKT_AB_PLANER = 16;
-const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
+/* Die Zahlen selbst stehen in stufen.js — gemeinsam mit dem öffentlichen
+   Rechner in main.jsx, der sie vorher als eigene Kopie führte. Eine
+   zweite Preisliste driftet, und was driftet, ist am Ende ein
+   Preisversprechen, das die Anwendung nicht einhält. */
 
 const BRANCHEN = [
   ["sicherheit", "Sicherheitsdienst", "Schichtgruppe"], ["pflege", "Pflege", "Wohnbereich"],
@@ -2094,9 +2072,13 @@ function preis(db, m) {
   const zuschlaege = standortzuschlaege(standortPersonen, gewaehlt.standorteInklusive);
   const summeStandorte = zuschlaege.summe;
 
-  // Branchenpakete werden je Betrieb berechnet, nicht je Standort
-  const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
-  const summePakete = pakete.reduce((a, p) => a + (p.aufpreis || 0), 0);
+  /* Branchenpakete werden je Betrieb berechnet, nicht je Standort — und
+     die in der Stufe enthaltenen sind frei. Enterprise trägt zwei; das
+     stand bisher nur in `paketeFrei` und im Leistungstext der Karte, die
+     Rechnung stellte sie trotzdem in Rechnung. */
+  const paketkosten_ = paketkosten(m.pakete || [], gewaehlt.paketeFrei || 0);
+  const pakete = paketkosten_.gewaehlt;
+  const summePakete = paketkosten_.summe;
   const tarifwert = Math.round((gewaehlt.grund + summePlaner + summeStandorte + summePakete) * 100) / 100;
 
   /* Was der Betreiber vereinbart hat, gilt vor dem, was die Tabelle rechnet.
@@ -2113,7 +2095,8 @@ function preis(db, m) {
     || zuschlaege.posten.length > KONTAKT_AB_ZUSCHLAGSSTANDORTE;
   return { t: gewaehlt, stufe: st, planerGesamt, zusatzPlaner, summePlaner,
     standorte: standorte.length, standortzuschlaege: zuschlaege, summeStandorte,
-    pakete, summePakete, grund: gewaehlt.grund, gesamt, tarifwert, gestaltung: g,
+    pakete, paketeFrei: paketkosten_.frei, paketeZahlend: paketkosten_.zahlend,
+    summePakete, grund: gewaehlt.grund, gesamt, tarifwert, gestaltung: g,
     zahlt, wirksam: zahlt ? gesamt : 0, personen, kontaktEmpfohlen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0 };
 }
@@ -2307,9 +2290,15 @@ function baueRechnung(db, m, monatISO) {
         menge: `${zahl(posten.personen)} Personen`,
         einzel: eur(posten.zuschlag),
         betrag: eur(Math.round(posten.zuschlag * p.anteil * 100) / 100) });
-    for (const pk of p.pakete)
-      positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
-        betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+    /* Die in der Stufe enthaltenen Pakete stehen mit auf der Rechnung,
+       aber mit null — sonst fragt jemand, wo sein Paket geblieben ist. */
+    for (const pk of p.pakete) {
+      const frei = (p.paketeFrei || []).some((x) => x.id === pk.id);
+      positionen.push({
+        text: `Branchenpaket ${pk.name}${frei ? " (in der Stufe enthalten)" : ""}`,
+        menge: "", einzel: eur(frei ? 0 : pk.aufpreis),
+        betrag: eur(frei ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+    }
     if (g.rabatt > 0)
       positionen.push({ text: "Vereinbarter Nachlass", menge: "", einzel: "",
         betrag: `−${Math.round(g.rabatt * 100)} %` });
@@ -3971,29 +3960,10 @@ function antragUmsetzen(m, a) {
    freigeschaltet — der Rechenkern bleibt für alle derselbe.
    ========================================================================== */
 
-/**
- * Pakete bestimmen, welche Ansichten und Regeln ein Betrieb sieht.
- * Bewusst grob geschnitten: fünf Pakete statt fünfzig einzelner Schalter.
- */
-const PAKETE = [
-  { id: "kern", name: "Kernplattform", pflicht: true,
-    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export"] },
-  { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, Standortprüfung beim Stempeln.",
-    merkmale: ["posten", "wachbuch", "hartesperre", "geofence", "objektbericht"] },
-  { id: "pflege", name: "Pflege", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
-    merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
-  { id: "klinik", name: "Klinik", aufpreis: 129,
-    beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
-    merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
-  { id: "industrie", name: "Industrie und Anlagen", aufpreis: 59,
-    beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
-    merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
-];
+/* PAKETE und paketVon stehen in stufen.js, neben der Preisliste — die
+   Pakete tragen einen Aufpreis, also gehören sie dorthin, wo gerechnet
+   wird. Bewusst grob geschnitten: fünf Pakete statt fünfzig Schalter. */
 
-const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
 const kann = (m, merkmal) => {
   const aktiv = ["kern", ...(m.pakete || [])];
@@ -6643,21 +6613,10 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
    der monatliche Preis. Die Zahl der Beschäftigten geht nicht mehr ein.
    ========================================================================== */
 
-/**
- * Monatspreis für eine frei gewählte Struktur — dieselbe Rechnung wie
- * `preis(db, m)`, nur ohne einen echten Mandanten dahinter. Für den
- * Mandantenrechner, in dem der Betreiber eine Größe durchspielt, bevor
- * es sie überhaupt gibt.
- */
-function preisFuer(stufe, planerGesamt, standortPersonen) {
-  const zusatzPlaner = Math.max(0, planerGesamt - stufe.planerInklusive);
-  const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
-  const zuschlaege = standortzuschlaege(standortPersonen, stufe.standorteInklusive);
-  const gesamt = Math.round((stufe.grund + summePlaner + zuschlaege.summe) * 100) / 100;
-  const kontaktEmpfohlen = planerGesamt > KONTAKT_AB_PLANER
-    || zuschlaege.posten.length > KONTAKT_AB_ZUSCHLAGSSTANDORTE;
-  return { stufe, planerGesamt, zusatzPlaner, summePlaner, zuschlaege, gesamt, kontaktEmpfohlen };
-}
+/* `preisFuer` steht in stufen.js: dieselbe Rechnung wie `preis(db, m)`,
+   nur ohne einen echten Mandanten dahinter — für den Mandantenrechner,
+   in dem der Betreiber eine Größe durchspielt, bevor es sie gibt, und
+   für den öffentlichen Rechner vor der Anmeldung. */
 
 /* ------------------------------- Die Ansicht -----------------------------
    Die vorige Fassung ließ Beschäftigte und Einheiten eingeben und rechnete
@@ -6676,6 +6635,17 @@ function Mandantenrechner({ db }) {
   const alle = useMemo(() => db.tarife.map((t) => preisFuer(t, planer, standorte)), [db, planer, standorte]);
 
   const aendereStandort = (i, wert) => setStandorte((s) => s.map((x, ix) => ix === i ? Math.max(0, wert) : x));
+
+  /* Die beiden Standort-Ringe fassen die Liste zu ihren zwei Kennzahlen
+     zusammen: wie viele, und wie groß. Ungleiche Standorte bleiben in der
+     Liste darunter möglich — sie ändern den Preis, weil jeder Standort
+     über dem Kontingent nach seiner eigenen Größe eingestuft wird. */
+  const gleichGross = standorte.every((n) => n === standorte[0]);
+  const leitgroesse = standorte.length ? Math.max(...standorte) : 25;
+  const setzeAnzahl = (n) => setStandorte((s) => (n <= s.length
+    ? s.slice(0, n)
+    : [...s, ...Array(n - s.length).fill(s.length ? s[s.length - 1] : 25)]));
+  const setzeGroesse = (g) => setStandorte((s) => s.map(() => g));
 
   return (
     <div>
@@ -6696,36 +6666,44 @@ function Mandantenrechner({ db }) {
               Größe sind enthalten.
             </div>
           </div>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Planer-Zugänge</Lab>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => Math.max(0, n - 1))}>−</Btn>
-              <span style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.04em", minWidth: 60,
-                textAlign: "center", ...NUM }}>{planer}</span>
-              <Btn size="sm" kind="quiet" onClick={() => setPlaner((n) => n + 1)}>+</Btn>
-            </div>
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 10, lineHeight: 1.5 }}>
-              Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und
-              Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei.
-            </div>
-          </div>
-          <div>
-            <Lab style={{ marginBottom: 9 }}>Standorte</Lab>
-            <div style={{ display: "grid", gap: 8 }}>
-              {standorte.map((n, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Inp type="number" min={0} value={n} style={{ width: 90 }}
-                    onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
-                  <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
-                  <span style={{ flex: 1 }} />
-                  {standorte.length > 1 && (
-                    <Btn size="sm" kind="quiet"
-                      onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
-                </div>))}
-              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>
-            </div>
-          </div>
+          {/* Ringe statt Zählwerk und Zahlenfeldern — dieselbe Darstellung
+              wie im Preisrechner der Website. Der Ring zeigt Wert und Skala
+              in einem Bild, und jede Raste ist einzeln antippbar. */}
+          <Ringregler
+            beschriftung="Planer-Zugänge" einheit="Zugänge" groesse={190}
+            min={0} max={20} schritt={1} wert={planer} onChange={setPlaner}
+            hinweis="Wer zentral mitplant, nicht wer geplant wird. Sub-Planer, Mitarbeiter und Betriebsrat zählen hier nicht mit — sie sind unbegrenzt kostenfrei." />
+          <Ringregler
+            beschriftung="Standorte" einheit="Standorte" groesse={190}
+            min={1} max={30} schritt={1} wert={standorte.length} onChange={setzeAnzahl}
+            hinweis="Eigenständige Einsatzorte. Nur was über dem Kontingent der Stufe liegt, kostet einen Zuschlag." />
+          <Ringregler
+            beschriftung="Personen je Standort" einheit="Personen" groesse={190}
+            min={5} max={300} schritt={5} wert={leitgroesse} onChange={setzeGroesse}
+            hinweis={gleichGross
+              ? "Nur für die Einstufung der zuschlagspflichtigen Standorte — die Zahl der Beschäftigten selbst kostet nichts."
+              : "Die Standorte unten sind unterschiedlich groß; der Ring zeigt den größten. Wer ihn bewegt, setzt alle auf dieselbe Größe."} />
         </div>
+
+        <details style={{ marginTop: 22 }}>
+          <summary style={{ cursor: "pointer", fontSize: 13, color: C.dimmer, padding: "6px 0" }}>
+            Standorte einzeln angeben</summary>
+          <div style={{ display: "grid", gap: 8, marginTop: 12, maxWidth: 420 }}>
+            {standorte.map((n, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Inp type="number" min={0} value={n} style={{ width: 90 }}
+                  aria-label={`Personen an Standort ${i + 1}`}
+                  onChange={(ev) => aendereStandort(i, Number(ev.target.value))} />
+                <span style={{ fontSize: 12.5, color: C.dimmer }}>Personen</span>
+                <span style={{ flex: 1 }} />
+                {standorte.length > 1 && (
+                  <Btn size="sm" kind="quiet"
+                    onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}>Entfernen</Btn>)}
+              </div>))}
+            {standorte.length < 30 && (
+              <Btn size="sm" onClick={() => setStandorte((s) => [...s, 15])}>Standort hinzufügen</Btn>)}
+          </div>
+        </details>
       </Card>
 
       {p.kontaktEmpfohlen && (
@@ -14180,7 +14158,7 @@ function mailText(m, n, p) {
   ].join("\n");
   return {
     betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || "https://centric-dienstplanung.netlify.app"), fuss].join("\n"),
+    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
   };
 }
 
@@ -15556,7 +15534,7 @@ function MandantNeuAnlegen({ db, akt, onFertig }) {
           <Btn onClick={() => {
             const txt = [`CENTRIC — Zugänge für ${ergebnis.mandant.name}`, "",
               ...ergebnis.codes.map((c) => `${c.label.padEnd(24)} ${c.code}`),
-              "", "https://centric-dienstplanung.netlify.app",
+              "", ANWENDUNG_URL,
               "Der Code gilt zwölf Stunden je Anmeldung.",
               "Beim ersten Öffnen startet die geführte Tour."].join("\\n");
             const b = new Blob([txt], { type: "text/plain;charset=utf-8" });
