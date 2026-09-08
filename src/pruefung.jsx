@@ -8,6 +8,11 @@ import React from "react";
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
 import { ANWENDUNG_URL } from "./kontakt.js";
+/* Diese Datei trägt an vielen Stellen eigene Kopien aus App.jsx. Die
+   Verbindlichkeit einer Anforderung gehört ausdrücklich nicht dazu: Eine
+   zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
+   genau der Fehler, den das Merkmal verhindern soll. */
+import { verbindlichkeit } from "./regelwerk.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -531,7 +536,15 @@ function baueMandant(cfg, seed) {
     gueltigMonate: q[2] === undefined ? null : q[2],
     nachweisPflicht: !!q[3],
     fachkraft: !!q[4],            // zählt für die Fachkraftquote
-    harteSperre: !!q[5] }));      // ohne sie ist keine Einteilung möglich
+    harteSperre: !!q[5],          // ohne sie ist keine Einteilung möglich
+    /* Ebene und Bezug: Wer eine Einteilung verhindert, muss sagen können,
+       worauf er sich stützt. In den Vorführdaten ist die einzige harte
+       Sperre die Sachkunde nach § 34a GewO — Bundesrecht, aber nur für
+       bestimmte Tätigkeiten. Alles Übrige ist eine betriebliche Festlegung
+       und wird auch so ausgewiesen. */
+    ebene: q[6] || (q[5] ? "bund" : "betrieb"),
+    bezug: q[7] || (q[5] ? "taetigkeit" : "person"),
+    grundlage: q[8] || (q[5] ? "§ 34a Abs. 1a GewO" : "Betriebliche Festlegung") }));
 
   const dienstarten = [
     { id: "F", name: "Frühdienst", kurz: "F", start: v.zeiten.F[0], ende: v.zeiten.F[1], pause: 0, farbe: "#1D4ED8",
@@ -1241,10 +1254,12 @@ function pruefen(m, von, bis) {
           break;
         }
       }
-      // Harte Sperre: eine gesetzlich zwingende Qualifikation gilt für jeden
-      // Dienst, nicht nur dort, wo sie als Mindestbesetzung genannt ist.
-      // Beispiel: ohne Sachkunde nach § 34a GewO ist kein Wachdienst zulässig.
-      if (kann(m, "hartesperre")) {
+      /* Harte Sperre: eine zwingende Qualifikation gilt für jeden Dienst,
+         nicht nur dort, wo sie als Mindestbesetzung genannt ist.
+
+         Der Wortlaut folgt der Ebene, und ob die Sperre überhaupt greift,
+         entscheidet sperreWirkt: Gesetzliches im Kern, Eigenes im Paket. */
+      {
         for (const q of m.qualifikationen) {
           if (!q.harteSperre) continue;
           for (let d = von; d <= bis; d = addDays(d, 1)) {
@@ -1253,12 +1268,18 @@ function pruefen(m, von, bis) {
             const da2 = m.dienstarten.find((x) => x.id === t2.dienstId);
             if (!da2 || da2.form === "ruf") continue;
             if (qualGueltig(m, p, q.id)) continue;
+            const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
+            if (!v) continue;
             const st = nachweisStand(m, p, q.id);
-            push({ art: "sperre", schwere: "danger", datum: d, ref: `${p.id}|${q.id}`, personId: p.id,
+            const woher = st.stand === "abgelaufen"
+              ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig.`
+              : `${q.name} liegt nicht vor.`;
+            push({ art: "sperre", schwere: v.gesetzlich ? "danger" : "warn",
+              datum: d, ref: `${p.id}|${q.id}`, personId: p.id,
               titel: `Einsatz ohne ${q.name} — ${p.nachname}`,
-              text: st.stand === "abgelaufen"
-                ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig. Der Einsatz am ${fKurz(d)} ist unzulässig.`
-                : `${q.name} liegt nicht vor. Der Einsatz am ${fKurz(d)} ist unzulässig.` });
+              text: `${woher} Der Einsatz am ${fKurz(d)} ist ${v.wort}`
+                + (v.gesetzlich ? "." : ` — ${v.label}, kein gesetzliches Verbot.`),
+              quelle: q.grundlage || null, ebene: v.ebene });
             break;
           }
         }
@@ -1614,10 +1635,13 @@ function hindernisse(m, p, d, da) {
   if (e.keineNacht && nachtAnteil(da) >= 2) g.push("keine Nachtdienste zugelassen");
   if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
   // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
-  if (kann(m, "hartesperre") && da.form !== "ruf") {
+  if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
-      if (!q.harteSperre) continue;
-      if (!qualGueltig(m, p, q.id)) g.push(`${q.name} fehlt oder ist abgelaufen — gesetzlich zwingend`);
+      /* Der Grund nennt die Ebene. Vorher stand unter jeder Sperre
+         „gesetzlich zwingend" — auch unter einer Betriebsvereinbarung. */
+      const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
+      if (!v || qualGueltig(m, p, q.id)) continue;
+      g.push(`${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`);
     }
   }
   const tz = p.teilzeit;
@@ -2449,6 +2473,24 @@ function nachweisStand(m, p, qualId) {
     ablauf: n.ablauf, tage, qual: q, datei: n.datei };
 }
 /** Zählt eine Qualifikation für die Besetzung nur, wenn der Nachweis gültig ist. */
+/**
+ * Wirkt die harte Sperre dieser Qualifikation hier — und aus welchem Grund?
+ *
+ * Gesetzliche Sperren (Bundes- und Landesrecht) gehören in den Kern: Wer
+ * ohne die vorbehaltene Qualifikation eingeteilt ist, muss das erfahren,
+ * unabhängig von der gebuchten Stufe. Eigene Vorgaben — Tarif, Betriebs-
+ * oder Dienstvereinbarung — durchzusetzen ist dagegen das Merkmal, für das
+ * bezahlt wird.
+ *
+ * Zurück kommt die Verbindlichkeit, wenn die Sperre greift, sonst null.
+ */
+function sperreWirkt(m, q, land) {
+  if (!q || !q.harteSperre) return null;
+  const v = verbindlichkeit(q, { land });
+  if (!v.sperrt) return null;
+  return kann(m, v.gesetzlich ? "sperreGesetz" : "sperreEigen") ? v : null;
+}
+
 function qualGueltig(m, p, qualId) {
   if (!p.qualifikationen.includes(qualId)) return false;
   const s = nachweisStand(m, p, qualId);
@@ -2983,10 +3025,10 @@ function antragUmsetzen(m, a) {
 const PAKETE = [
   { id: "kern", name: "Kernplattform", pflicht: true,
     beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export"] },
+    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
   { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
     beschreibung: "Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, Standortprüfung beim Stempeln.",
-    merkmale: ["posten", "wachbuch", "hartesperre", "geofence", "objektbericht"] },
+    merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
   { id: "pflege", name: "Pflege", aufpreis: 89,
     beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
     merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
@@ -3856,7 +3898,7 @@ const HANDBUCH = [
   /* ------------------------------------------------------------------ */
   {
     id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "hartesperre") || kann(m, "posten"),
+    nurWenn: (m) => kann(m, "sperreEigen") || kann(m, "posten"),
     einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
     abschnitte: [
       {
@@ -6959,15 +7001,32 @@ function selbsttest() {
   ok("Schichtlagen werden erkannt", true, (() => {
     const lagen = m.dienstarten.map((d2) => schichtlage(d2)).filter(Boolean);
     return lagen.every((l2) => ["frueh", "spaet", "nacht"].includes(l2)); })());
-  /* Bewusst keine Sperre — sonst wird umgangen und nichts mehr sichtbar */
+  /* Bewusst keine Sperre — sonst wird umgangen und nichts mehr sichtbar.
+
+     Verglichen wurde früher die Zahl der Hindernisse vor und nach neun
+     zusätzlichen Nachtdiensten, mit der Erwartung: unverändert. Das konnte
+     nicht aufgehen. Neun Dienste hintereinander sind eine Dienstserie, und
+     die zu melden ist eine eigene, richtige Regel — gemessen wurde „7
+     Dienste in Folge davor". Je nach Wochentag von heute kam die Ruhezeit
+     dazu. Die Zusicherung prüfte damit nicht, was der Satz darüber sagt,
+     und schlug still fehl, weil dieser Selbsttest in keinem automatischen
+     Durchgang mitlief.
+
+     Geprüft wird jetzt die Aussage selbst: Unter den Hindernissen darf
+     keines stehen, das sich auf die Belastung beruft. Dass andere
+     entstehen, ist richtig und kein Widerspruch. */
   ok("Die Ermuedung sperrt nichts", true, (() => {
     const da = m.dienstarten[0];
-    const vorher = hindernisse(m, erP, addDays(heute(), 3), da).length;
     const abw = { ...m.abweichungen };
     const nacht = m.dienstarten.find((d2) => schichtlage(d2) === "nacht") || da;
     for (let i2 = 1; i2 <= 9; i2++) abw[`${erP.id}|${addDays(heute(), -i2)}`] = nacht.id;
-    return hindernisse({ ...m, abweichungen: abw }, erP, addDays(heute(), 3), da).length
-      === vorher; })());
+    const belastet = { ...m, abweichungen: abw };
+    /* Erst sicherstellen, dass die Belastung überhaupt gestiegen ist —
+       sonst prüfte die Zusicherung eine Lage, die es gar nicht gibt. */
+    const e3 = ermuedung(belastet, erP.id, 28);
+    if (!(e3.punkte > er28.punkte || e3.stufe !== er28.stufe)) return false;
+    return !hindernisse(belastet, erP, addDays(heute(), 3), da)
+      .some((h) => /ermüd|ermued|belast/i.test(h)); })());
 
   /* --- Reihenfolge nach Dienstalter --- */
   ok("Alle Reihenfolgearten sind erklaert", true,
@@ -7322,7 +7381,8 @@ function selbsttest() {
   /* --- Branchenpakete --- */
   ok("Kernpaket ist Pflicht", true, PAKETE.find((p) => p.id === "kern").pflicht);
   ok("Jedes Paket nennt Merkmale", true, PAKETE.every((p) => p.merkmale.length > 0));
-  ok("Sicherheitsbetrieb hat harte Sperre", true, kann(db.mandanten[0], "hartesperre"));
+  ok("Sicherheitsbetrieb setzt eigene Vorgaben durch", true, kann(db.mandanten[0], "sperreEigen"));
+  ok("Jeder Betrieb setzt gesetzliche Sperren durch", true, kann(db.mandanten[1], "sperreGesetz"));
   ok("Sicherheitsbetrieb hat keine Fachkraftquote", false, kann(db.mandanten[0], "fachkraftquote"));
   ok("Pflegebetrieb hat Fachkraftquote", true, kann(db.mandanten[1], "fachkraftquote"));
   ok("Pflegebetrieb hat Uebergabe", true, kann(db.mandanten[1], "uebergabe"));
@@ -7351,9 +7411,11 @@ function selbsttest() {
     i === 5 ? { ...p, qualifikationen: p.qualifikationen.filter((q) => q !== "q1") } : p) };
   ok("Fehlende Pflichtqualifikation sperrt", true,
     pruefen(mOhne, heute(), addDays(heute(), 27)).some((x) => x.art === "sperre"));
+  /* Der Grund nennt jetzt die Ebene statt pauschal „gesetzlich zwingend" —
+     unter einer Betriebsvereinbarung wäre das eine falsche Behauptung. */
   ok("Sperre erscheint als Hindernis", true,
     hindernisse(mOhne, mOhne.personen[5], heute(), mOhne.dienstarten[0])
-      .some((h) => h.includes("zwingend")));
+      .some((h) => /Bundesrecht|Landesrecht|Tarif|Betriebliche Festlegung/.test(h)));
 
   /* --- Dienstformen --- */
   ok("Rufbereitschaft ist ruhezeitneutral", true, dienstform("ruf").ruhezeitNeutral);
@@ -7486,7 +7548,7 @@ function selbsttest() {
   /* Hell ist die Vorgabe — nicht das Systemthema. Ein Betriebsprogramm soll
      bei jedem gleich aussehen. */
   ok("C traegt die hellen Werte", C_HELL.bg, C.bg);
-  ok("Die helle Grundflaeche ist Fog", "#F7F8F6", C_HELL.bg);
+  ok("Die helle Grundflaeche ist Sea Salt", "#D9E4E8", C_HELL.bg);
   ok("Hell und Dunkel sind verschieden", true, C_HELL.bg !== C_DUNKEL.bg);
   ok("Die helle Flaeche ist wirklich hell", true, kon(C_HELL.bg, "#000000") > 10);
   ok("Die dunkle Flaeche ist wirklich dunkel", true, kon(C_DUNKEL.bg, "#FFFFFF") > 10);

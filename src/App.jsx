@@ -946,7 +946,15 @@ function baueMandant(cfg, seed) {
     gueltigMonate: q[2] === undefined ? null : q[2],
     nachweisPflicht: !!q[3],
     fachkraft: !!q[4],            // zählt für die Fachkraftquote
-    harteSperre: !!q[5] }));      // ohne sie ist keine Einteilung möglich
+    harteSperre: !!q[5],          // ohne sie ist keine Einteilung möglich
+    /* Ebene und Bezug: Wer eine Einteilung verhindert, muss sagen können,
+       worauf er sich stützt. In den Vorführdaten ist die einzige harte
+       Sperre die Sachkunde nach § 34a GewO — Bundesrecht, aber nur für
+       bestimmte Tätigkeiten. Alles Übrige ist eine betriebliche Festlegung
+       und wird auch so ausgewiesen. */
+    ebene: q[6] || (q[5] ? "bund" : "betrieb"),
+    bezug: q[7] || (q[5] ? "taetigkeit" : "person"),
+    grundlage: q[8] || (q[5] ? "§ 34a Abs. 1a GewO" : "Betriebliche Festlegung") }));
 
   const dienstarten = [
     { id: "F", name: "Frühdienst", kurz: "F", start: v.zeiten.F[0], ende: v.zeiten.F[1], pause: 0, farbe: "#1D4ED8",
@@ -1649,8 +1657,15 @@ const RECHTSQUELLE = {
     satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
   nachweis: { norm: "§ 12 ArbSchG",
     satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
-  sperre: { norm: "§ 34a GewO",
-    satz: "Bewachungstätigkeit setzt den Sachkundenachweis voraus — ohne ihn ist der Einsatz unzulässig." },
+  /* Hier stand: „Bewachungstätigkeit setzt den Sachkundenachweis voraus."
+     Das stimmt so nicht — § 34a Abs. 1a GewO verlangt die Sachkunde nur für
+     bestimmte Tätigkeiten, für die übrigen genügt die Unterrichtung. Der
+     Satz erschien zudem unter jeder Sperre, auch unter einer betrieblichen.
+     Er greift jetzt nur noch, wenn die Qualifikation gar keine Grundlage
+     nennt — und sagt dann genau das. */
+  sperre: { norm: "Keine Grundlage hinterlegt", betrieblich: true,
+    satz: "Zu dieser Anforderung ist keine Rechtsgrundlage erfasst. Worauf sie sich stützt, "
+      + "steht unter Betrieb → Qualifikationen." },
   qualifikation: { norm: "§ 5 ArbSchG",
     satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
   fachkraft: { norm: "Landesheimpersonalverordnung",
@@ -1932,7 +1947,7 @@ function pruefen(m, von, bis) {
          Und Landesrecht wirkt nur dort, wo es gilt: Eine Anforderung, die
          Nordrhein-Westfalen stellt, sperrt keinen Dienst am bayerischen
          Standort desselben Betriebs. */
-      if (kann(m, "hartesperre")) {
+      {
         for (const q of m.qualifikationen) {
           if (!q.harteSperre) continue;
           for (let d = von; d <= bis; d = addDays(d, 1)) {
@@ -1941,8 +1956,8 @@ function pruefen(m, von, bis) {
             const da2 = m.dienstarten.find((x) => x.id === t2.dienstId);
             if (!da2 || da2.form === "ruf") continue;
             if (qualGueltig(m, p, q.id)) continue;
-            const v = verbindlichkeit(q, { land: landFuerEinheit(m, einheitAm(p, d)) });
-            if (!v.sperrt) continue;
+            const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
+            if (!v) continue;
             const st = nachweisStand(m, p, q.id);
             const woher = st.stand === "abgelaufen"
               ? `${q.name} ist seit ${fKurz(st.ablauf)} ungültig.`
@@ -2416,10 +2431,13 @@ function hindernisse(m, p, d, da) {
     g.push("keine Nachtdienste zugelassen");
   if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
   // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
-  if (kann(m, "hartesperre") && da.form !== "ruf") {
+  if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
-      if (!q.harteSperre) continue;
-      if (!qualGueltig(m, p, q.id)) g.push(`${q.name} fehlt oder ist abgelaufen — gesetzlich zwingend`);
+      /* Der Grund nennt die Ebene. Vorher stand unter jeder Sperre
+         „gesetzlich zwingend" — auch unter einer Betriebsvereinbarung. */
+      const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
+      if (!v || qualGueltig(m, p, q.id)) continue;
+      g.push(`${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`);
     }
   }
   const tz = p.teilzeit;
@@ -3264,6 +3282,24 @@ function nachweisStand(m, p, qualId) {
     ablauf: n.ablauf, tage, qual: q, datei: n.datei };
 }
 /** Zählt eine Qualifikation für die Besetzung nur, wenn der Nachweis gültig ist. */
+/**
+ * Wirkt die harte Sperre dieser Qualifikation hier — und aus welchem Grund?
+ *
+ * Gesetzliche Sperren (Bundes- und Landesrecht) gehören in den Kern: Wer
+ * ohne die vorbehaltene Qualifikation eingeteilt ist, muss das erfahren,
+ * unabhängig von der gebuchten Stufe. Eigene Vorgaben — Tarif, Betriebs-
+ * oder Dienstvereinbarung — durchzusetzen ist dagegen das Merkmal, für das
+ * bezahlt wird.
+ *
+ * Zurück kommt die Verbindlichkeit, wenn die Sperre greift, sonst null.
+ */
+function sperreWirkt(m, q, land) {
+  if (!q || !q.harteSperre) return null;
+  const v = verbindlichkeit(q, { land });
+  if (!v.sperrt) return null;
+  return kann(m, v.gesetzlich ? "sperreGesetz" : "sperreEigen") ? v : null;
+}
+
 function qualGueltig(m, p, qualId) {
   if (!p.qualifikationen.includes(qualId)) return false;
   const s = nachweisStand(m, p, qualId);

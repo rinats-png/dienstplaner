@@ -405,7 +405,7 @@ export const HANDBUCH = [
   /* ------------------------------------------------------------------ */
   {
     id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    merkmale: ["hartesperre", "posten"],
+    merkmale: ["sperreEigen", "posten"],
     einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
     abschnitte: [
       {

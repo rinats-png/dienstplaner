@@ -73,12 +73,24 @@ export const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
    Liste liest.
    ========================================================================== */
 export const PAKETE = [
+  /* „sperreGesetz" steht bewusst im Kern und nicht in einem Zusatzpaket.
+
+     Das gesetzliche Minimum ist kein Mehrwert, den man verkauft — es ist die
+     Voraussetzung dafür, dass eine Dienstplanung ihren Zweck erfüllt. Eine
+     Anwendung, die erkennt, dass jemand ohne die nach § 4 PflBG vorbehaltene
+     Qualifikation eingeteilt ist, und schweigt, weil der Betrieb die kleinere
+     Stufe gebucht hat, wäre nach einem Vorfall nicht zu verteidigen.
+
+     Verkauft wird, was darüber liegt: eigene Regeln durchsetzen. Das ist
+     „sperreEigen" und bleibt im Paket. */
   { id: "kern", name: "Kernplattform", pflicht: true,
-    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen.",
-    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export"] },
+    beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen. "
+      + "Gesetzlich zwingende Qualifikationen sperren den Einsatz in jeder Stufe.",
+    merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
   { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Sachkundenachweis mit harter Sperre, Wachbuch, Standortprüfung beim Stempeln.",
-    merkmale: ["posten", "wachbuch", "hartesperre", "geofence", "objektbericht"] },
+    beschreibung: "Objektbezogene Posten, Wachbuch, Standortprüfung beim Stempeln, "
+      + "und eigene Vorgaben als harte Sperre durchsetzen.",
+    merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
   { id: "pflege", name: "Pflege", aufpreis: 89,
     beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
     merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
