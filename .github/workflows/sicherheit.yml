@@ -1,0 +1,70 @@
+# Sicherheitsschranke — läuft bei jedem Push und Pull Request, getrennt
+# von der fachlichen Prüfung, damit ein Befund hier als das sichtbar wird,
+# was er ist: ein Grund, nicht auszuliefern.
+#
+# Drei Schritte:
+#   Abhängigkeiten — bekannte Schwachstellen ab „hoch" brechen den Lauf.
+#   Geheimnisse    — kein Schlüssel, kein Token, kein Kennwort im Verlauf.
+#   Muster         — Aufrufe, die in dieser Anwendung nie vorkommen dürfen.
+name: Sicherheit
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  abhaengigkeiten:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # Nur die Laufzeitabhängigkeiten zählen als Ausschluss. Werkzeuge der
+      # Entwicklung werden gemeldet, halten aber nicht auf.
+      - name: Bekannte Schwachstellen (Laufzeit)
+        run: npm audit --omit=dev --audit-level=high
+      - name: Bekannte Schwachstellen (Entwicklung, nur Hinweis)
+        run: npm audit --audit-level=high || true
+
+  geheimnisse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Geheimnisse im Verlauf
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  muster:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      # Was es in dieser Anwendung nicht geben darf. Die Liste ist kurz und
+      # bewusst hart: Jeder Treffer bricht den Lauf.
+      - name: Verbotene Muster
+        run: |
+          set -e
+          fehl=0
+          pruefe() {
+            if grep -rnE "$1" src netlify --include=*.js --include=*.jsx --include=*.mjs; then
+              echo "::error::$2"; fehl=1
+            fi
+          }
+          pruefe "dangerouslySetInnerHTML|\.innerHTML\s*=|\beval\(|new Function\(" "Roh-HTML oder eval im Quelltext"
+          pruefe "Access-Control-Allow-Origin[^\n]*\*" "CORS pauschal geöffnet"
+          pruefe "rejectUnauthorized:\s*false|NODE_TLS_REJECT_UNAUTHORIZED" "TLS-Prüfung abgeschaltet"
+          pruefe "CENTRIC_PFEFFER\s*=\s*[\"']|RESEND_API_KEY\s*=\s*[\"']|REDIS_REST_TOKEN\s*=\s*[\"']" "Geheimnis im Quelltext"
+          if [ -e .env ] || [ -e .env.production ]; then echo "::error::.env im Arbeitsverzeichnis"; fehl=1; fi
+          exit $fehl

@@ -99,8 +99,23 @@ export async function demoOeffnen(id, merken) {
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
-  tokenAblegen(token, merken);
+  /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
+     gemerkt. Wer Datenräume anlegen und Zugänge sperren kann, soll das
+     Häkchen gar nicht erst wirksam setzen können — ein liegen gelassener
+     Rechner wäre sonst ein offener Betreiberzugang. */
+  tokenAblegen(token, merken && d.rolle !== "betreiber");
   return d;
+}
+
+/**
+ * Einen Datenraum endgültig löschen — Betreiber, mit frischer Anmeldung.
+ * Der Name muss noch einmal übergeben werden; der Server prüft ihn.
+ */
+export async function raumLoeschen(raum) {
+  const { status, daten } = await ruf("raum-loeschen", { method: "POST",
+    body: JSON.stringify({ bestand: raum, bestaetigung: raum }) });
+  if (status !== 200) throw new Error(daten?.text || daten?.fehler || "Löschen fehlgeschlagen.");
+  return daten;
 }
 
 export function abmelden(still = false) {

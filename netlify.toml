@@ -24,6 +24,10 @@
   [headers.values]
     X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
+    # Einmal über HTTPS gesehen, spricht der Browser diese Adresse ein Jahr
+    # lang nie wieder unverschlüsselt an — auch nicht, wenn jemand im WLAN
+    # einen Verweis auf http:// unterschiebt.
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
     Referrer-Policy = "strict-origin-when-cross-origin"
     # Seit die Schrift im eigenen Haus liegt, braucht die Anwendung nichts
     # Fremdes mehr. Damit lässt sich die Regel eng ziehen: Sie ist die letzte

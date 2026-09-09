@@ -73,6 +73,7 @@ jobs:
         env:
           CENTRIC_BASIS: http://localhost:5173
           CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.9
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

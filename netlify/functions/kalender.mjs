@@ -128,7 +128,10 @@ export default async (req) => {
         "content-type": "text/calendar; charset=utf-8",
         "content-disposition": `inline; filename="dienstplan.ics"`,
         /* Kurz zwischenspeichern: Kalender fragen oft, der Plan ändert sich selten. */
-        "cache-control": "public, max-age=1800",
+        /* private: Der Verweis trägt ein Geheimnis, und der Inhalt ist ein
+           persönlicher Dienstplan — ein gemeinsamer Zwischenspeicher hat
+           damit nichts zu tun. */
+        "cache-control": "private, max-age=1800",
       } });
     }
 

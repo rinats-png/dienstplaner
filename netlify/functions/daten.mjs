@@ -2,7 +2,7 @@ import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
-  SCHREIBEN_NEIN } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln } from "../lib/konten.mjs";
@@ -35,8 +35,54 @@ const antwort = (daten, status = 200, kopf = {}) =>
   new Response(JSON.stringify(daten), {
     status,
     headers: { "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store", ...kopf },
+      "cache-control": "no-store", "x-content-type-options": "nosniff", ...kopf },
   });
+
+/* --------------------------------------------------------------------------
+   DER RUMPF EINER ANFRAGE
+
+   Bisher las jeder Endpunkt seinen Rumpf selbst mit req.json(). Zwei Dinge
+   fehlten dabei: eine Obergrenze — ein absichtlich riesiger Rumpf lief
+   bis in den Parser — und eine saubere Antwort auf kaputtes JSON, das als
+   „Serverfehler" (500) endete, obwohl es ein Fehler des Aufrufers ist.
+
+   Sechs Megabyte sind mehr als jeder Betrieb, den die Anwendung je
+   gespeichert hat, und weniger als das, was die Plattform ohnehin
+   abschneidet. Wer darüber liegt, bekommt 413 und den Rat, zu zerlegen.
+   -------------------------------------------------------------------------- */
+const RUMPF_MAX = 6 * 1024 * 1024;
+
+async function rumpfLesen(req) {
+  const laenge = Number(req.headers.get("content-length") || 0);
+  if (laenge > RUMPF_MAX)
+    return { ok: false, antwort: antwort({ fehler: "Anfrage zu groß.",
+      text: "Der Bestand ist größer als sechs Megabyte. Bitte alte Monate auslagern." }, 413) };
+  let text;
+  try { text = await req.text(); } catch { text = ""; }
+  if (text.length > RUMPF_MAX)
+    return { ok: false, antwort: antwort({ fehler: "Anfrage zu groß." }, 413) };
+  if (!text.trim()) return { ok: true, daten: {} };
+  try {
+    const daten = JSON.parse(text);
+    if (!daten || typeof daten !== "object")
+      return { ok: false, antwort: antwort({ fehler: "Der Rumpf muss ein JSON-Objekt sein." }, 400) };
+    return { ok: true, daten };
+  } catch {
+    return { ok: false, antwort: antwort({ fehler: "Der Rumpf ist kein gültiges JSON." }, 400) };
+  }
+}
+
+/* Eine frische Anmeldung für Schritte, die sich nicht zurücknehmen lassen.
+
+   Ein entwendetes Sitzungsmerkmal — vom liegen gelassenen Rechner, aus
+   einem Browserprofil — soll damit nicht auch noch Zugänge sperren oder
+   einen ganzen Datenraum löschen können. Wer den Code hat, meldet sich
+   neu an; wer ihn nicht hat, kommt hier nicht weiter. */
+const FRISCH = 20 * 60 * 1000;
+const frisch = (s) => !!(s && s.seit && Date.now() - s.seit < FRISCH);
+const neuAnmelden = () => antwort({ fehler: "Bitte neu anmelden.",
+  text: "Für diesen Schritt muss die Anmeldung jünger als zwanzig Minuten sein.",
+  neuAnmelden: true }, 403);
 
 /* --------------------------------------------------------------------------
    ORTSPRÜFUNG
@@ -158,6 +204,14 @@ export default async (req, context) => {
   const pfad = url.pathname.replace(/^\/(api|\.netlify\/functions\/daten)\/?/, "");
   const store = laden();
 
+  /* Der Rumpf wird genau einmal gelesen, begrenzt und geprüft. */
+  let rumpf = {};
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const gelesen = await rumpfLesen(req);
+    if (!gelesen.ok) return gelesen.antwort;
+    rumpf = gelesen.daten;
+  }
+
   try {
     /* ------------------ Zugänge für einen Mandanten ------------------ */
     /* Nur der Betreiber darf das. Die Codes entstehen hier, damit sie als
@@ -172,10 +226,16 @@ export default async (req, context) => {
       const bZ = await bremse("zugaenge", kZ);
       if (!bZ.frei) { await protokoll("zugaenge", kZ, "gebremst", bZ.grund);
         return zuVielAntwort(bZ.wartet); }
-      const { bestand: ziel, eintraege } = await req.json();
+      const { bestand: ziel, eintraege } = rumpf;
       if (!ziel || !Array.isArray(eintraege) || !eintraege.length)
         return antwort({ fehler: "Unvollständig." }, 400);
       if (eintraege.length > 20) return antwort({ fehler: "Zu viele auf einmal." }, 400);
+      /* Beschäftigte und Schichtverantwortung ohne Person könnten nichts
+         schreiben — siehe einrichten.mjs. */
+      const ohnePerson = eintraege.find((e) => e && (e.rolle === "mitarbeiter" || e.rolle === "subplaner")
+        && (e.personId === null || e.personId === undefined || e.personId === ""));
+      if (ohnePerson)
+        return antwort({ fehler: `Ein Zugang der Rolle „${ohnePerson.rolle}" braucht eine Person.` }, 400);
 
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
@@ -197,6 +257,81 @@ export default async (req, context) => {
       return antwort({ ok: true, zugaenge: erzeugt });
     }
 
+    /* ------------------------ Einen Datenraum löschen ------------------
+       Das Löschkonzept: „Gelöscht" heißt gelöscht. Bis hierher nahm die
+       Betreiberkonsole einen Betrieb nur aus ihrer Liste; der Datenraum
+       mit Personal, Plänen, Sicherungen und Zugangscodes blieb im Speicher
+       liegen — unerreichbar, aber vorhanden. Für personenbezogene Daten
+       ist das kein Zustand, den man einem Auftragsverarbeitungsvertrag
+       vorlegen möchte.
+
+       Drei Sicherungen: nur der Betreiber, nur mit frischer Anmeldung,
+       nur mit wiederholtem Raumnamen. Der eigene Raum lässt sich nicht
+       löschen — sonst sägt sich der Betreiber den Ast ab.              */
+    if (pfad === "raum-loeschen" && req.method === "POST") {
+      const sB = await sitzung(req);
+      if (!sB || sB.rolle !== "betreiber") {
+        await protokoll("loeschen", kennung(req, null), "abgewiesen", "Raumlöschung ohne Recht");
+        return antwort({ fehler: "Nur für den Betreiber." }, 403);
+      }
+      if (!frisch(sB)) return neuAnmelden();
+      const kR = kennung(req, sB);
+      const bR = await bremse("zugaenge", kR);
+      if (!bR.frei) { await protokoll("loeschen", kR, "gebremst", bR.grund);
+        return zuVielAntwort(bR.wartet); }
+
+      const { bestand: raum, bestaetigung } = rumpf;
+      if (!raum || typeof raum !== "string" || !/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raum))
+        return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+      if (bestaetigung !== raum)
+        return antwort({ fehler: "Zur Bestätigung den Raumnamen wiederholen." }, 400);
+      if (raum === sB.bestand)
+        return antwort({ fehler: "Der eigene Datenraum lässt sich nicht löschen." }, 400);
+
+      let geloescht = 0;
+      const weg = async (key) => { await store.delete(key).catch(() => {}); geloescht++; };
+      /* Der alte Ganzbestand, der Kern der Zerlegung, dann die Scherben. */
+      await weg(`bestand:${raum}`);
+      await weg(`kern:${raum}`);
+      for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`]) {
+        const { blobs } = await store.list({ prefix: praefix }).catch(() => ({ blobs: [] }));
+        for (const b of blobs) await weg(b.key);
+      }
+      /* Zugangscodes des Raums — einzeln abgelegte und die im Sammelblob. */
+      const konten = await alleKonten(store);
+      const zuLoeschen = Object.entries(konten).filter(([, k]) => k && k.bestand === raum).map(([schl]) => schl);
+      for (const schl of zuLoeschen) await weg(`konto:${schl}`);
+      if (zuLoeschen.length) {
+        try {
+          const sammel = await store.get("konten", { type: "json" });
+          if (sammel && zuLoeschen.some((k) => k in sammel)) {
+            for (const k of zuLoeschen) delete sammel[k];
+            await store.setJSON("konten", sammel);
+          }
+        } catch { /* kein Sammelblob */ }
+      }
+      /* Offene Sitzungen und Kalenderabonnements des Raums. */
+      try {
+        const { blobs } = await sitzungen().list({ prefix: "t:" });
+        for (const b of blobs) {
+          const sx = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
+          if (sx && sx.bestand === raum) { await sitzungen().delete(b.key).catch(() => {}); geloescht++; }
+        }
+      } catch { /* egal */ }
+      try {
+        const { blobs } = await store.list({ prefix: "feed:" });
+        for (const b of blobs) {
+          const f = await store.get(b.key, { type: "json" }).catch(() => null);
+          if (f && f.bestand === raum) {
+            await weg(b.key);
+            await weg(`feeddaten:${b.key.slice("feed:".length)}`);
+          }
+        }
+      } catch { /* egal */ }
+      await protokoll("loeschen", kR, "erfolg", `${raum}: ${geloescht} Einträge`);
+      return antwort({ ok: true, raum, geloescht });
+    }
+
     /* ------------------------ Einen Zugang sperren -------------------- */
     /* Bis hierher gab es drei Stellen, die Zugänge anlegen, und keine, die
        einen zurückzieht. Wer den Betrieb verließ, behielt seinen Code —
@@ -213,12 +348,13 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Sperrung ohne Recht");
         return antwort({ fehler: "Nur die Organisationsleitung darf Zugänge zurückziehen." }, 403);
       }
+      if (!frisch(sB)) return neuAnmelden();
       const kS = kennung(req, sB);
       const bS = await bremse("zugaenge", kS);
       if (!bS.frei) { await protokoll("zugaenge", kS, "gebremst", bS.grund);
         return zuVielAntwort(bS.wartet); }
 
-      const { code, pruefsumme, alleDesBetriebs } = await req.json();
+      const { code, pruefsumme, alleDesBetriebs } = rumpf;
       const konten = await alleKonten(store);
       const ziele = [];
 
@@ -284,7 +420,7 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
-      const { bestand: ziel, inhalt } = await req.json();
+      const { bestand: ziel, inhalt } = rumpf;
       if (!ziel || !inhalt) return antwort({ fehler: "Unvollständig." }, 400);
       if (await raumBelegt(store, ziel))
         return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
@@ -317,7 +453,7 @@ export default async (req, context) => {
       const kd = kennung(req, null);
       const bd = await bremse("demo", kd);
       if (!bd.frei) return zuVielAntwort(bd.wartet);
-      const { id } = await req.json();
+      const { id } = rumpf;
       const konten = await alleKonten(store);
       const eintrag = Object.values(konten).find((k) => k.demo && k.id === id);
       if (!eintrag) return antwort({ fehler: "Unbekannter Demozugang." }, 404);
@@ -356,7 +492,7 @@ export default async (req, context) => {
     /* ---------------------------- Anmelden --------------------------- */
     if (pfad === "anmelden" && req.method === "POST") {
       const k = kennung(req, null);
-      const { zugangscode } = await req.json();
+      const { zugangscode } = rumpf;
       /* Das Ziel ist der Betrieb, auf den der Code zeigt. Es wird aus dem
          Code abgeleitet, ohne ihn preiszugeben — so lässt sich ein
          verteilter Angriff auf einen bestimmten Betrieb erkennen, auch
@@ -449,8 +585,20 @@ export default async (req, context) => {
     }
 
     /* ------------------------- Ab hier angemeldet -------------------- */
-    const s = await sitzung(req);
-    if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
+    const s0 = await sitzung(req);
+    if (!s0) return antwort({ fehler: "Nicht angemeldet." }, 401);
+
+    /* Der Bestand wird je Anfrage höchstens einmal gelesen. Die Rolle der
+       Sitzung ergibt sich aus der Person im Betrieb (siehe wirksameRolle),
+       und dafür braucht es ihn schon, bevor ein Endpunkt ihn selbst holt. */
+    let bestandGelesen;
+    const bestandJetzt = async () => {
+      if (bestandGelesen === undefined) bestandGelesen = await bestandLesen(store, s0.bestand);
+      return bestandGelesen;
+    };
+    const s = (s0.nurSicherung || s0.rolle === "betreiber"
+      || s0.person === null || s0.person === undefined) ? s0
+      : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };
 
     /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
 
@@ -478,7 +626,7 @@ export default async (req, context) => {
     if (pfad === "bestand" && req.method === "GET") {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
-      const mit = await bestandLesen(store, s.bestand);
+      const mit = await bestandJetzt();
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
@@ -502,11 +650,11 @@ export default async (req, context) => {
 
       const bs = await bremse("schreiben", ks);
       if (!bs.frei) return zuVielAntwort(bs.wartet);
-      const { bestand, etag, durch } = await req.json();
+      const { bestand, etag, durch } = rumpf;
       if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
 
-      const jetzt = await bestandLesen(store, s.bestand);
+      const jetzt = await bestandJetzt();
 
       /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
          eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
@@ -596,7 +744,7 @@ export default async (req, context) => {
       const bSt = await bremse("schreiben", kSt);
       if (!bSt.frei) return zuVielAntwort(bSt.wartet);
 
-      const { datum, art, lat, lon } = await req.json();
+      const { datum, art, lat, lon } = rumpf;
       if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
         return antwort({ fehler: "Kein gültiges Datum." }, 400);
       if (art !== "start" && art !== "ende")
@@ -604,7 +752,7 @@ export default async (req, context) => {
       if (s.person === null || s.person === undefined)
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
 
-      const mit = await bestandLesen(store, s.bestand);
+      const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
       const bestand = mit.bestand;
       const i = Number(s.betrieb);
@@ -670,7 +818,7 @@ export default async (req, context) => {
           text: absageText(s.rolle) }, 403);
       const bv = await bremse("lesen", kennung(req, s));
       if (!bv.frei) return zuVielAntwort(bv.wartet);
-      const mit = await bestandLesen(store, s.bestand);
+      const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
       await protokoll("vollausgabe", kennung(req, s), "erfolg", s.nurSicherung ? "Schlüssel" : "Sitzung");
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
@@ -695,7 +843,8 @@ export default async (req, context) => {
     if (pfad === "sicherungsschluessel" && req.method === "POST") {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung darf Sicherungsschlüssel anlegen." }, 403);
-      const { tage } = await req.json().catch(() => ({}));
+      if (!frisch(s)) return neuAnmelden();
+      const { tage } = rumpf;
       /* Ein Schlüssel ohne Ablauf ist ein Schlüssel, der irgendwann in
          einem alten Skript vergessen wird. Höchstens ein Jahr. */
       const gueltig = Math.min(365, Math.max(1, Number(tage) || 90));
@@ -729,7 +878,7 @@ export default async (req, context) => {
     if (pfad === "sicherungsschluessel" && req.method === "DELETE") {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
-      const { kennung: kz } = await req.json().catch(() => ({}));
+      const { kennung: kz } = rumpf;
       if (!kz) return antwort({ fehler: "Keine Kennung angegeben." }, 400);
       const { blobs } = await sitzungen().list({ prefix: `sk:${kz}` }).catch(() => ({ blobs: [] }));
       let weg = 0;
@@ -744,7 +893,7 @@ export default async (req, context) => {
 
     /* -------------------------- Sicherungskopien --------------------- */
     if (pfad === "sicherung" && req.method === "POST") {
-      const mit = await bestandLesen(store, s.bestand);
+      const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.bestand,
@@ -776,11 +925,12 @@ export default async (req, context) => {
       if (schreibumfang(s.rolle) !== "voll")
         return antwort({ fehler: "Nur die Planung darf wiederherstellen.",
           text: absageText(s.rolle) }, 403);
+      if (!frisch(s)) return neuAnmelden();
       const kW = kennung(req, s);
       const bW = await bremse("schreiben", kW);
       if (!bW.frei) return zuVielAntwort(bW.wartet);
 
-      const { marke } = await req.json();
+      const { marke } = rumpf;
       if (!marke || !/^[\d-]{10,25}$/.test(String(marke)))
         return antwort({ fehler: "Keine gültige Marke." }, 400);
 
@@ -791,7 +941,7 @@ export default async (req, context) => {
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
       /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-      const jetztGelesen = await bestandLesen(store, s.bestand);
+      const jetztGelesen = await bestandJetzt();
       const jetztStand = jetztGelesen ? jetztGelesen.bestand : null;
       if (jetztStand) {
         const m2 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");

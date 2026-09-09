@@ -17,11 +17,15 @@
 const BASIS = process.env.CENTRIC_BASIS || "http://localhost:5173";
 const GEHEIM = process.env.CENTRIC_ADMIN || "testgeheim";
 const RAUM = "probe2";
+/* Herkunftsadresse für die Bremse — wie in den anderen Prüfläufen. Ohne
+   sie zählen alle Läufe von einem Rechner auf dieselbe Kennung. */
+const HERKUNFT = process.env.CENTRIC_HERKUNFT || null;
+const herkunft = () => (HERKUNFT ? { "x-forwarded-for": HERKUNFT } : {});
 
 /** Legt einen Zugang an und gibt den Code zurück. */
 async function zugang(rolle, person) {
   const a = await fetch(`${BASIS}/einrichten`, { method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...herkunft() },
     body: JSON.stringify({ verwaltung: GEHEIM, name: "Probebetrieb", bestand: RAUM,
       rolle, person, betrieb: 0 }) });
   const d = await a.json();
@@ -29,15 +33,17 @@ async function zugang(rolle, person) {
   return d.zugangscode;
 }
 
+/* Die Rolle kommt aus der Person im Betrieb (siehe wirksameRolle) — der
+   Betriebsratscode gehört deshalb zu Person 2, die dort Betriebsrat ist. */
 const CODES = {
   leitung: await zugang("leitung", null),
-  betriebsrat: await zugang("betriebsrat", 0),
+  betriebsrat: await zugang("betriebsrat", 2),
   mitarbeiter: await zugang("mitarbeiter", 0),
 };
 
 const anmelden = async (code) => {
   const a = await fetch(`${BASIS}/api/anmelden`, { method: "POST",
-    headers: { "content-type": "application/json" }, body: JSON.stringify({ zugangscode: code }) });
+    headers: { "content-type": "application/json", ...herkunft() }, body: JSON.stringify({ zugangscode: code }) });
   const d = await a.json();
   if (!d.token) throw new Error(`Anmeldung fehlgeschlagen: ${JSON.stringify(d)}`);
   return d.token;
@@ -76,6 +82,8 @@ const start = {
       { id: 1, vorname: "Miriam", nachname: "Vogt", rolle: "mitarbeiter", bereich: "e1",
         email: "miriam@probe.de", anschrift: "Lindenallee 3", geburtstag: "1990-11-17",
         notfallkontakt: "Schwester 0171-9999", wochenstunden: 30 },
+      { id: 2, vorname: "Britta", nachname: "Rat", rolle: "betriebsrat", bereich: "e1",
+        email: "britta@probe.de", wochenstunden: 20 },
     ],
     abwesenheiten: [
       { id: "a1", personId: 1, art: "krank", von: "2026-08-10", bis: "2026-08-14",
@@ -402,6 +410,101 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Eigene Bewerbung kommt an", w2.status === 200 && as && as.bewerbungen.some((x) => x.personId === 0));
   pruef("Fremde Bewerbung und Status der Ausschreibung nicht",
     as && !as.bewerbungen.some((x) => x.personId === 1) && as.status === "offen", as && as.status);
+}
+
+/* --- S6: Die Person bestimmt die Rolle, nicht der Code --- */
+{
+  /* p2 ist im Betrieb „mitarbeiter" (Fixture aus S3). Ein Code „leitung"
+     für sie gibt trotzdem nur den Umfang einer Beschäftigten. */
+  const tX = await anmelden(await zugang("leitung", "p2"));
+  const rX = await lies(tX);
+  pruef(`Code „leitung" für eine beschäftigte Person: Rolle kommt aus dem Betrieb`,
+    rX.rolle === "mitarbeiter" && rX.schreiben === "eigenes", `rolle=${rX.rolle} schreiben=${rX.schreiben}`);
+  pruef("… und sieht keine privaten Felder anderer",
+    !(rX.bestand.mandanten[0].personen.find((p) => p.id === "p1") || {}).anschrift);
+  const bX = JSON.parse(JSON.stringify(rX.bestand));
+  bX.mandanten[0].dienstarten = [...(bX.mandanten[0].dienstarten || []), { id: "S6", kurz: "S6" }];
+  const wX = await schreib(tX, bX, rX.etag);
+  const nachX = (await lies(tL)).bestand.mandanten[0].dienstarten || [];
+  pruef("… und kann keine Dienstart anlegen", !nachX.some((d) => d.id === "S6"), `Status ${wX.status}`);
+  const vX = await fetch(`${BASIS}/api/vollausgabe`, { headers: { authorization: `Bearer ${tX}` } });
+  pruef("… und keine Vollausgabe ziehen", vX.status === 403, `Status ${vX.status}`);
+
+  /* Ein Code ohne Person bleibt bei der Rolle des Codes. */
+  const rL = await lies(tL);
+  pruef(`Code „leitung" ohne Person bleibt Leitung`, rL.rolle === "leitung" && rL.schreiben === "voll");
+}
+
+/* --- S7: Beschäftigten-Codes brauchen eine Person --- */
+{
+  for (const rolle of ["mitarbeiter", "subplaner"]) {
+    const a = await fetch(`${BASIS}/einrichten`, { method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ verwaltung: GEHEIM, name: "Probebetrieb", bestand: RAUM, rolle, person: null, betrieb: 0 }) });
+    const d = await a.json();
+    pruef(`Code „${rolle}" ohne Person wird nicht ausgestellt`, a.status === 400 && !d.zugangscode, `Status ${a.status}`);
+  }
+}
+
+/* --- S8: Negativprüfungen aus der Sicherheitscheckliste ---
+
+   Token-Manipulation, abgemeldete Sitzung, Rollen gegen Betreiber- und
+   Leitungsendpunkte, Rumpfgrenzen, Löschkonzept. Jede geschlossene Lücke
+   bekommt hier ihren Regressionstest. */
+{
+  const kopf = (t) => ({ authorization: `Bearer ${t}`, "content-type": "application/json" });
+  const post = (pf, t, body) => fetch(`${BASIS}/api/${pf}`, { method: "POST", headers: kopf(t), body });
+
+  const schrott = await fetch(`${BASIS}/api/bestand`, { headers: kopf("a".repeat(43)) });
+  pruef("Erfundenes Sitzungsmerkmal wird abgewiesen", schrott.status === 401, `Status ${schrott.status}`);
+
+  /* Ein früherer Block zieht alle Codes des Betriebs zurück — hier
+     deshalb ein frischer. */
+  const codeM8 = await zugang("mitarbeiter", 0);
+  const tAb = await anmelden(codeM8);
+  await post("abmelden", tAb, "{}");
+  const nachAb = await fetch(`${BASIS}/api/bestand`, { headers: kopf(tAb) });
+  pruef("Nach dem Abmelden ist das Merkmal wertlos", nachAb.status === 401, `Status ${nachAb.status}`);
+
+  const tM8 = await anmelden(codeM8);
+  for (const [pf, body] of [["zugaenge", '{"bestand":"x","eintraege":[{"rolle":"leitung"}]}'],
+    ["bestand-anlegen", '{"bestand":"x","inhalt":{"mandanten":[]}}'],
+    ["raum-loeschen", '{"bestand":"probe2","bestaetigung":"probe2"}'],
+    ["wiederherstellen", '{"marke":"2026-01-01-00-00-00"}'],
+    ["sicherungsschluessel", '{"tage":30}'],
+    ["zugang-sperren", '{"alleDesBetriebs":true}']]) {
+    const a = await post(pf, tM8, body);
+    pruef(`Beschäftigte gegen /api/${pf}: abgewiesen`, a.status === 403, `Status ${a.status}`);
+  }
+  const tL8 = tL;
+  for (const pf of ["zugaenge", "bestand-anlegen", "raum-loeschen"]) {
+    const a = await post(pf, tL8, '{"bestand":"probe2","bestaetigung":"probe2","eintraege":[],"inhalt":{}}');
+    pruef(`Leitung gegen Betreiberendpunkt /api/${pf}: abgewiesen`, a.status === 403, `Status ${a.status}`);
+  }
+
+  const kaputt = await post("bestand", tL8, "{ dies ist kein json");
+  pruef("Kaputtes JSON gibt 400, keinen Serverfehler", kaputt.status === 400, `Status ${kaputt.status}`);
+  const riesig = await fetch(`${BASIS}/api/bestand`, { method: "PUT", headers: kopf(tL8),
+    body: JSON.stringify({ bestand: { notiz: "x".repeat(6 * 1024 * 1024 + 10) }, etag: null }) });
+  pruef("Ein Rumpf über sechs Megabyte gibt 413", riesig.status === 413, `Status ${riesig.status}`);
+
+  /* Löschkonzept: Ein Betreiber löscht einen Raum vollständig. */
+  const tBetr = await anmelden(await zugang("betreiber", null));
+  const raum = `probe-loesch-${Date.now().toString(36)}`;
+  const anlegen = await post("bestand-anlegen", tBetr, JSON.stringify({ bestand: raum,
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m1", name: "Wegwerf", personen: [], dienstarten: [], einheiten: [] }] } }));
+  pruef("Betreiber legt einen Wegwerfraum an", anlegen.status === 200, `Status ${anlegen.status}`);
+  const ohne = await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum }));
+  pruef("Löschen ohne wiederholten Namen wird abgewiesen", ohne.status === 400, `Status ${ohne.status}`);
+  const eigen = await post("raum-loeschen", tBetr, JSON.stringify({ bestand: "probe2", bestaetigung: "probe2" }));
+  pruef("Der eigene Raum lässt sich nicht löschen", eigen.status === 400, `Status ${eigen.status}`);
+  const weg = await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum, bestaetigung: raum }));
+  const wegD = await weg.json().catch(() => ({}));
+  pruef("Wegwerfraum gelöscht", weg.status === 200 && wegD.geloescht >= 1, `Status ${weg.status}, ${wegD.geloescht} Einträge`);
+  const wieder = await post("bestand-anlegen", tBetr, JSON.stringify({ bestand: raum,
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m1", name: "Wegwerf", personen: [], dienstarten: [], einheiten: [] }] } }));
+  pruef("Danach ist der Raum frei", wieder.status === 200, `Status ${wieder.status}`);
+  await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum, bestaetigung: raum }));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
