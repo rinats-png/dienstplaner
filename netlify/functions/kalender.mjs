@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, kennung, zuVielAntwort } from "../lib/schutz.mjs";
+import { bremse, kennung, herkunftErlaubt, zuVielAntwort } from "../lib/schutz.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -105,6 +105,10 @@ function baueICS(name, betrieb, termine) {
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/(kalender)\/?/, "");
+
+  /* Zustandsändernde Anfragen nur von der eigenen Seite (siehe schutz.mjs). */
+  if (!herkunftErlaubt(req))
+    return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
 
   try {
     /* ------------------- Feed abrufen (ohne Anmeldung) ---------------- */

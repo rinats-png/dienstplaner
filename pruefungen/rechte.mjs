@@ -446,6 +446,10 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   }
 }
 
+/* Ein Betreiberzugang, den sich S8 und S9 teilen — jeder weitere
+   Zugang zählt gegen die Bremse. */
+let tBetreiber = null;
+
 /* --- S8: Negativprüfungen aus der Sicherheitscheckliste ---
 
    Token-Manipulation, abgemeldete Sitzung, Rollen gegen Betreiber- und
@@ -490,6 +494,7 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
 
   /* Löschkonzept: Ein Betreiber löscht einen Raum vollständig. */
   const tBetr = await anmelden(await zugang("betreiber", null));
+  tBetreiber = tBetr;
   const raum = `probe-loesch-${Date.now().toString(36)}`;
   const anlegen = await post("bestand-anlegen", tBetr, JSON.stringify({ bestand: raum,
     inhalt: { version: 5, stand: 1, mandanten: [{ id: "m1", name: "Wegwerf", personen: [], dienstarten: [], einheiten: [] }] } }));
@@ -505,6 +510,65 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
     inhalt: { version: 5, stand: 1, mandanten: [{ id: "m1", name: "Wegwerf", personen: [], dienstarten: [], einheiten: [] }] } }));
   pruef("Danach ist der Raum frei", wieder.status === 200, `Status ${wieder.status}`);
   await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum, bestaetigung: raum }));
+}
+
+/* --- S9: Herkunft, Grenzen, Protokoll ---
+
+   Aus dem Master-Handbuch: Origin-Prüfung für zustandsändernde Anfragen
+   (CSRF), harte Obergrenzen gegen Datenwucher, und ein Protokoll, das
+   beantwortet, wer etwas getan hat. */
+{
+  const kopf = (t, mehr = {}) => ({ authorization: `Bearer ${t}`,
+    "content-type": "application/json", ...herkunft(), ...mehr });
+  const tL9 = await anmelden(CODES.leitung);
+  const r9 = await lies(tL9);
+
+  const fremd = await fetch(`${BASIS}/api/bestand`, { method: "PUT",
+    headers: kopf(tL9, { origin: "https://boeser-nachbar.example" }),
+    body: JSON.stringify({ bestand: r9.bestand, etag: r9.etag, durch: "Test" }) });
+  pruef("Schreiben mit fremdem Origin wird abgewiesen", fremd.status === 403, `Status ${fremd.status}`);
+
+  const eigenerOrigin = new URL(BASIS).origin;
+  const eigen = await fetch(`${BASIS}/api/bestand`, { method: "PUT",
+    headers: kopf(tL9, { origin: eigenerOrigin }),
+    body: JSON.stringify({ bestand: r9.bestand, etag: r9.etag, durch: "Test" }) });
+  pruef("Schreiben mit eigenem Origin geht durch", eigen.status === 200, `Status ${eigen.status}`);
+
+  const lesenFremd = await fetch(`${BASIS}/api/bestand`,
+    { headers: kopf(tL9, { origin: "https://boeser-nachbar.example" }) });
+  pruef("Lesen bleibt vom Origin unberührt", lesenFremd.status === 200, `Status ${lesenFremd.status}`);
+
+  /* Obergrenzen: ein uferloses Feld und eine uferlose Liste. */
+  const r10 = await lies(tL9);
+  const lang = JSON.parse(JSON.stringify(r10.bestand));
+  lang.mandanten[0].notizen = "x".repeat(150_000);
+  const wLang = await schreib(tL9, lang, r10.etag);
+  pruef("Ein Feld mit 150.000 Zeichen wird abgewiesen", wLang.status === 422, `Status ${wLang.status}`);
+
+  const r11 = await lies(tL9);
+  const viele = JSON.parse(JSON.stringify(r11.bestand));
+  viele.mandanten[0].dienstarten = Array.from({ length: 501 },
+    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }));
+  const wViele = await schreib(tL9, viele, r11.etag);
+  pruef("501 Dienstarten werden abgewiesen", wViele.status === 422, `Status ${wViele.status}`);
+
+  const r12 = await lies(tL9);
+  const knapp = JSON.parse(JSON.stringify(r12.bestand));
+  knapp.mandanten[0].notizen = "x".repeat(50_000);
+  const wKnapp = await schreib(tL9, knapp, r12.etag);
+  pruef("Ein Feld unter der Grenze geht durch", wKnapp.status === 200, `Status ${wKnapp.status}`);
+
+  /* Protokoll: Wer war es, auf welchem Weg? */
+  const tBetr9 = tBetreiber;
+  const lage = await fetch(`${BASIS}/lage?tage=1`, { headers: kopf(tBetr9) })
+    .then((a) => a.json()).catch(() => ({}));
+  const schreibzeilen = (lage.letzte || []).filter((z) => z.art === "schreiben");
+  pruef("Das Protokoll führt Schreibvorgänge", schreibzeilen.length > 0, `${schreibzeilen.length} Zeilen`);
+  pruef("… mit Rolle und Weg", schreibzeilen.some((z) => z.rolle && z.weg === "bestand"),
+    JSON.stringify(schreibzeilen[0] || {}).slice(0, 160));
+  pruef("… und ohne Zugangscode oder Merkmal im Klartext",
+    !JSON.stringify(lage.letzte || []).includes(tL9)
+    && !JSON.stringify(lage.letzte || []).includes(CODES.leitung));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

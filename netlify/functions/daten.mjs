@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
+  protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
@@ -203,6 +204,13 @@ export default async (req, context) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/(api|\.netlify\/functions\/daten)\/?/, "");
   const store = laden();
+
+  /* Zweite Linie gegen fremd ausgelöste Schreibvorgänge (siehe schutz.mjs). */
+  if (!herkunftErlaubt(req)) {
+    await protokoll("fehler", kennung(req, null), "abgewiesen", "fremde Herkunft",
+      { weg: pfad, verfahren: req.method, herkunft: herkunft(req) });
+    return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
+  }
 
   /* Der Rumpf wird genau einmal gelesen, begrenzt und geprüft. */
   let rumpf = {};
@@ -600,6 +608,11 @@ export default async (req, context) => {
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };
 
+    /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
+       beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
+    const wer = { rolle: s.rolle, person: s.person, weg: pfad,
+      verfahren: req.method, herkunft: herkunft(req) };
+
     /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
 
        Der erste Entwurf verließ sich darauf, dass jeder Endpunkt selbst auf
@@ -613,7 +626,7 @@ export default async (req, context) => {
        vergisst, verliert damit nichts. */
     if (s.nurSicherung && !(pfad === "vollausgabe" && req.method === "GET")) {
       await protokoll("sicherungsschluessel", kennung(req, s), "abgewiesen",
-        `${req.method} ${pfad}`);
+        `${req.method} ${pfad}`, wer);
       return antwort({ fehler: "Dieser Schlüssel darf ausschließlich die Vollausgabe lesen.",
         text: "Für alles andere braucht es einen Zugangscode." }, 403);
     }
@@ -643,7 +656,7 @@ export default async (req, context) => {
       /* Erst die Rolle, dann alles andere. Wer gar nicht schreiben darf,
          soll auch keine Bremse und keinen Konfliktvergleich auslösen. */
       if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
-        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
+        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
       }
@@ -661,12 +674,12 @@ export default async (req, context) => {
          Lesen gar nicht bekommen hat. */
       const zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
       if (!zuSchreiben) {
-        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`);
+        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: absageText(s.rolle) }, 403);
       }
       if (zuSchreiben.verweigert) {
-        await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert);
+        await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: zuSchreiben.verweigert }, 403);
       }
@@ -676,7 +689,7 @@ export default async (req, context) => {
          ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
       const form = pruefeGestalt(zuSchreiben);
       if (!form.ok) {
-        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`);
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
         return antwort({ fehler: "Der Stand sieht unvollständig aus.",
           text: `${form.grund} Es wurde nichts geändert — bitte lade die Seite neu `
             + "und versuch es erneut.", feld: form.feld || null }, 422);
@@ -694,7 +707,7 @@ export default async (req, context) => {
               durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
               automatisch: "ja" } }).catch(() => {});
           await protokoll("schreiben", ks, "gesichert",
-            `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`);
+            `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
         }
       }
 
@@ -708,7 +721,7 @@ export default async (req, context) => {
 
       if (!erg.ok) {
         await protokoll("schreiben", ks, "konflikt",
-          (erg.monate || []).join(", ") || "unbestimmt");
+          (erg.monate || []).join(", ") || "unbestimmt", wer);
         const monate = erg.monate || [];
         return antwort({ fehler: "konflikt",
           text: erg.kernBetroffen
@@ -723,7 +736,7 @@ export default async (req, context) => {
 
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
-        + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""));
+        + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
       return antwort({ ok: true, etag: erg.stand,
         zusammengefuehrt: erg.zusammengefuehrt || null });
     }
@@ -788,7 +801,7 @@ export default async (req, context) => {
 
       const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
         erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
-      await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`);
+      await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`, wer);
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, etag: ergSt.stand || null });
     }
@@ -855,7 +868,7 @@ export default async (req, context) => {
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
         angelegt: new Date().toISOString(), bis,
       });
-      await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`);
+      await protokoll("sicherungsschluessel", kennung(req, s), "erfolg", `${gueltig} Tage`, wer);
       return antwort({ ok: true, schluessel: roh, gueltigBis: new Date(bis).toISOString(),
         tage: gueltig,
         hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen." });
@@ -887,7 +900,7 @@ export default async (req, context) => {
         if (!k || k.bestand !== s.bestand) continue;
         await sitzungen().delete(b.key); weg++;
       }
-      await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg));
+      await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg), wer);
       return antwort({ ok: true, widerrufen: weg });
     }
 
@@ -953,7 +966,7 @@ export default async (req, context) => {
 
       const ergW = await bestandSchreiben(store, s.bestand, alt2, {
         durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
-      await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`);
+      await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
       return antwort({ ok: true, etag: ergW.stand, marke });
     }
 

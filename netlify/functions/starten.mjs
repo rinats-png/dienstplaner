@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
@@ -48,6 +48,10 @@ function raumName(name) {
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/(starten)\/?/, "");
+
+  /* Zustandsändernde Anfragen nur von der eigenen Seite (siehe schutz.mjs). */
+  if (!herkunftErlaubt(req))
+    return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
 
   try {
     if (pfad !== "" && pfad !== "neu") return antwort({ fehler: "Unbekannter Pfad." }, 404);

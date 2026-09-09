@@ -194,9 +194,47 @@ export const WEITERE = {
  */
 export function kennung(req, sitzung) {
   if (sitzung && sitzung.bestand) return `s:${kurz(sitzung.bestand)}`;
+  return `a:${kurz(herkunft(req))}`;
+}
+
+/** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte. */
+export function herkunft(req) {
   const adresse = req.headers.get("x-nf-client-connection-ip")
     || req.headers.get("x-forwarded-for") || "unbekannt";
-  return `a:${kurz(String(adresse).split(",")[0].trim())}`;
+  return String(adresse).split(",")[0].trim();
+}
+
+/* --------------------------------------------------------------------------
+   HERKUNFT EINER SCHREIBENDEN ANFRAGE
+
+   Die Anwendung führt ihr Sitzungsmerkmal im Kopf `authorization`, nicht in
+   einem Cookie. Ein fremdes Blatt kann damit keine Anfrage in fremdem Namen
+   auslösen — der Browser schickt den Kopf nicht mit, und ohne ihn ist die
+   Anfrage nicht angemeldet. Klassischer CSRF ist hier also bereits durch die
+   Bauweise ausgeschlossen.
+
+   Trotzdem eine zweite Linie: Kommt eine zustandsändernde Anfrage mit einem
+   `Origin`, der nicht zu dieser Seite gehört, wird sie abgewiesen. Das kostet
+   nichts und fängt den Fall ab, in dem eines Tages doch ein Cookie oder ein
+   Merkmal im Speicher des Browsers dazukommt.
+
+   Fehlt der Kopf ganz, wird durchgelassen: So rufen Skripte, Sicherungsläufe
+   und Prüfungen an, und die sollen weiter arbeiten können.
+   -------------------------------------------------------------------------- */
+export function herkunftErlaubt(req) {
+  const methode = (req.method || "GET").toUpperCase();
+  if (methode === "GET" || methode === "HEAD" || methode === "OPTIONS") return true;
+  const roh = req.headers.get("origin");
+  if (!roh || roh === "null") return true;          // kein Browserblatt
+  let fremd;
+  try { fremd = new URL(roh).host; } catch { return false; }
+  const eigen = new Set();
+  try { eigen.add(new URL(req.url).host); } catch { /* ohne */ }
+  for (const kopf of ["host", "x-forwarded-host"]) {
+    const w = req.headers.get(kopf);
+    if (w) eigen.add(String(w).split(",")[0].trim());
+  }
+  return eigen.has(fremd);
 }
 
 /**
@@ -336,12 +374,39 @@ export const zuVielAntwort = (wartet) => new Response(JSON.stringify({
 
 const SPUR_TAGE = 30;
 
-export async function protokoll(art, kennung, ausgang, zusatz) {
+/**
+ * Ein Eintrag ins Protokoll.
+ *
+ * `wer` ist neu und beantwortet die Frage, die ein Protokoll beantworten
+ * muss: Wer hat das getan? Bis hierher stand dort nur die Kennung — und
+ * die ist bei einer angemeldeten Sitzung der Betrieb, nicht die Person.
+ * Bei einem Streit über eine Änderung ließ sich damit sagen, aus welchem
+ * Betrieb sie kam, aber nicht von wem.
+ *
+ * Was hineingehört: Rolle, Personenkennung, Weg und Verfahren, und die
+ * Herkunft als Kürzel. Was nicht: Namen, Adressen, Zugangscodes,
+ * Sitzungsmerkmale, Planinhalte. Die Personenkennung ist betriebsintern
+ * („p7") und für sich genommen keine Angabe über einen Menschen.
+ *
+ * @param {string} art
+ * @param {string} kennung
+ * @param {string} ausgang
+ * @param {string} [zusatz]
+ * @param {{rolle?: string, person?: (string|number|null), weg?: string,
+ *          verfahren?: string, herkunft?: string}} [wer]
+ */
+export async function protokoll(art, kennung, ausgang, zusatz, wer) {
   try {
     const jetzt = new Date();
     const tag = jetzt.toISOString().slice(0, 10);
     const zeile = { zeit: jetzt.toISOString(), art, kennung, ausgang,
-      ...(zusatz ? { zusatz } : {}) };
+      ...(zusatz ? { zusatz } : {}),
+      ...(wer && wer.rolle ? { rolle: wer.rolle } : {}),
+      ...(wer && wer.person !== undefined && wer.person !== null
+        ? { person: String(wer.person).slice(0, 40) } : {}),
+      ...(wer && wer.weg ? { weg: String(wer.weg).slice(0, 60) } : {}),
+      ...(wer && wer.verfahren ? { verfahren: wer.verfahren } : {}),
+      ...(wer && wer.herkunft ? { herkunft: kurz(wer.herkunft) } : {}) };
     /* Eine Datei je Tag und Art — das hält die Einträge klein und macht
        das Aufräumen zu einem Löschvorgang statt einer Suche. */
     /* Ein Blob je Eintrag statt eines Arrays je Tag.

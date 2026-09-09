@@ -1,6 +1,6 @@
 import { getStore } from "@netlify/blobs";
 import { createHash } from "node:crypto";
-import { bremse, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 
 /* ==========================================================================
@@ -107,6 +107,10 @@ async function sendePush(anmeldung, titel, text, ziel) {
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/(zustellung)\/?/, "");
+
+  /* Zustandsändernde Anfragen nur von der eigenen Seite (siehe schutz.mjs). */
+  if (!herkunftErlaubt(req))
+    return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
 
   try {
     /* Öffentlicher Schlüssel für die Push-Anmeldung im Browser */

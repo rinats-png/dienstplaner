@@ -4661,6 +4661,42 @@ const Feldfehler = ({ text }) => text ? (
 /* ==========================================================================
    UI-BAUSTEINE
    ========================================================================== */
+
+/**
+ * Ein Element, das keine Schaltfläche ist, aber wie eine funktioniert.
+ *
+ * Die Anwendung hat rund vierzig davon: Planzellen, Zeilen einer Liste,
+ * Karten der Telefonansicht. Mit der Maus einwandfrei — mit der Tastatur
+ * unerreichbar, und für eine Vorlesesoftware unsichtbar, weil ein `div`
+ * nichts darüber sagt, dass man es drücken kann.
+ *
+ * Ein echtes `<button>` wäre der saubere Weg, scheitert aber an der
+ * Gestaltung: Die Zellen tragen Raster, Seitenverhältnisse und
+ * Verschachtelungen, die ein Knopf nicht mitmacht. Deshalb die
+ * Ersatzteile, die dieselbe Wirkung haben: Rolle, Fokus, Leer- und
+ * Eingabetaste.
+ *
+ * @param {Function} onClick was beim Drücken geschieht
+ * @param {string} [label] Beschriftung für Vorlesesoftware, wenn der
+ *   sichtbare Inhalt allein nicht trägt (etwa eine Zahl in einer Zelle)
+ */
+function klickbar(onClick, label) {
+  if (!onClick) return {};
+  return {
+    onClick,
+    role: "button",
+    tabIndex: 0,
+    ...(label ? { "aria-label": label } : {}),
+    onKeyDown: (e) => {
+      if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      /* Die Leertaste rollt sonst die Seite weiter, während man drückt. */
+      e.preventDefault();
+      e.stopPropagation();
+      onClick(e);
+    },
+  };
+}
+
 const Card = ({ children, style, hover, glanz, className = "", ...p }) => (
   <div {...p} className={`karte ${hover ? "karte-hover" : ""} ${className}`}
     style={style}>{children}</div>);
@@ -4987,6 +5023,11 @@ function Balken({ ist, soll, tone }) {
   return <div style={{ height: 5, background: "rgba(20,20,25,.08)", borderRadius: 3, overflow: "hidden" }}>
     <div style={{ width: `${pct}%`, height: "100%", background: col, borderRadius: 3, transition: "width .4s cubic-bezier(.4,0,.2,1)" }} /></div>;
 }
+/* Welche Blätter gerade offen sind, in der Reihenfolge des Öffnens.
+   Escape schließt immer nur das oberste — sonst räumt ein Tastendruck
+   gleich zwei Ebenen ab. */
+const blattStapel = [];
+
 function Sheet({ open, onClose, titel, children, width = 700 }) {
   const blatt = useRef(null);
   const vorher = useRef(null);
@@ -5012,6 +5053,25 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
     if (erste) erste.focus();
     else knoten.focus();
 
+    /* Escape auch dann, wenn der Fokus nicht im Blatt liegt.
+
+       Der Griff hing bisher am Blatt selbst. Wer daneben klickte — auf den
+       abgedunkelten Hintergrund, auf eine Stelle ohne Fokus — hatte den
+       Fokus am `body`, und Escape lief ins Leere. Man saß in einem Blatt
+       fest, das sich mit der Tastatur nicht mehr schließen ließ.
+
+       Deshalb zusätzlich am Dokument, aber nur für das oberste Blatt. */
+    const kennung = {};
+    blattStapel.push(kennung);
+    const escAmDokument = (e) => {
+      if (e.key !== "Escape") return;
+      if (blattStapel[blattStapel.length - 1] !== kennung) return;
+      if (knoten.contains(document.activeElement)) return;   // erledigt der Griff unten
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("keydown", escAmDokument);
+
     const taste = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
       if (e.key !== "Tab") return;
@@ -5024,6 +5084,9 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
     knoten.addEventListener("keydown", taste);
     return () => {
       knoten.removeEventListener("keydown", taste);
+      document.removeEventListener("keydown", escAmDokument);
+      const i = blattStapel.indexOf(kennung);
+      if (i >= 0) blattStapel.splice(i, 1);
       /* Zurück zu dem, was das Blatt geöffnet hat — sonst landet der Fokus
          am Seitenanfang und man sucht sich zurück. */
       const z = vorher.current;
@@ -17372,13 +17435,13 @@ const M_TABS = [
 
 /* ------------------------------- Bausteine ------------------------------- */
 const MKarte = ({ children, onClick, ton, style }) => (
-  <div onClick={onClick} style={{ background: C.flaeche,
+  <div {...klickbar(onClick)} style={{ background: C.flaeche,
     border: `1px solid ${ton === "danger" ? "#FECACA" : ton === "warn" ? "#FDE68A" : C.line}`,
     borderRadius: 14, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
     boxShadow: "var(--schatten)", ...style }}>{children}</div>);
 
 const MZeile = ({ links, rechts, unten, onClick, ton }) => (
-  <div onClick={onClick} style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 4px",
+  <div {...klickbar(onClick)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "15px 4px",
     minHeight: 46, cursor: onClick ? "pointer" : "default", borderBottom: `1px solid ${C.lineSoft}` }}>
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{ fontSize: 15.5, fontWeight: 500,
@@ -18473,7 +18536,9 @@ function MWuensche({ sitz, akt }) {
         const da = t.dienstId && map[t.dienstId];
         const vergangen = d < heute();
         return (
-          <div key={d} onClick={() => !vergangen && akt.setzeWunsch(ich.id, d)}
+          <div key={d}
+            {...(vergangen ? {} : klickbar(() => akt.setzeWunsch(ich.id, d),
+              `${fLang(d)}${w ? `, ${w.art === "moechte" ? "möchte arbeiten" : "lieber nicht"}` : ""}`))}
             style={{ aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column",
               alignItems: "center", justifyContent: "center", gap: 1, opacity: vergangen ? .4 : 1,
               background: w ? (w.art === "moechte" ? C.okLight : C.warnLight)
@@ -20004,8 +20069,23 @@ function AppInnen() {
       loescheAbwesenheit: (aid) => mUpd((m) => ({ ...m, abwesenheiten: m.abwesenheiten.filter((a) => a.id !== aid) }), "Abwesenheit gelöscht"),
 
       /* --- Anträge --- */
-      stelleAntrag: (a) => { mUpd((m) => ({ ...m, anfragen: [{ id: uid("r"), personId: sitz.person.id, status: "offen",
-        erstellt: jetzt(), antwort: "", ...a }, ...m.anfragen] }), "Antrag gestellt"); melde("Antrag abgesendet."); },
+      /* Zweimal derselbe Antrag ist keiner.
+
+         Ein Doppelklick auf „Antrag stellen" — auf dem Telefon im Bus,
+         bei stockender Verbindung der Normalfall — legte zwei offene
+         Anträge derselben Person für denselben Zeitraum an. Die Planung
+         sah doppelt, genehmigte einmal und ließ den zweiten stehen.
+
+         Gefunden wird über Person, Art und Zeitraum, nicht über die
+         Kennung: Die ist bei jedem Klick eine neue. */
+      stelleAntrag: (a) => {
+        const schonDa = (sitz.mandant.anfragen || []).some((x) => x.personId === sitz.person.id
+          && x.status === "offen" && (x.typ || "abwesenheit") === (a.typ || "abwesenheit")
+          && x.art === a.art && x.von === a.von && x.bis === a.bis);
+        if (schonDa) { melde("Dieser Antrag liegt bereits offen vor."); return; }
+        mUpd((m) => ({ ...m, anfragen: [{ id: uid("r"), personId: sitz.person.id, status: "offen",
+          erstellt: jetzt(), antwort: "", ...a }, ...m.anfragen] }), "Antrag gestellt");
+        melde("Antrag abgesendet."); },
       zieheAntragZurueck: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.filter((a) => a.id !== id) }), "Antrag zurückgezogen"),
       beantworteEinsatz: (id, ja) => mUpd((m) => {
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;

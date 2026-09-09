@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, entlasten, kennung, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
+import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
+  protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
@@ -29,6 +30,10 @@ export default async (req) => {
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
+  /* Zustandsändernde Anfragen nur von der eigenen Seite (siehe schutz.mjs). */
+  if (!herkunftErlaubt(req))
+    return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
+
   /* Fünf Versuche in zehn Minuten, danach eine Stunde Sperre. Wer das
      Verwaltungskennwort raten will, braucht mit dieser Bremse länger als
      ein Menschenleben. */
@@ -43,14 +48,6 @@ export default async (req) => {
   try { body = req.method === "GET" ? {} : await req.json(); } catch { body = {}; }
   const { name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
 
-  /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
-     Person gehört — ein Code dieser Rollen ohne Person kann deshalb nichts
-     und sieht in der Oberfläche eine Rollenauswahl statt eines Menschen.
-     Solche Codes entstehen gar nicht erst. */
-  if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
-      && (person === null || person === undefined || person === ""))
-    return antwort({ fehler: `Ein Zugang der Rolle „${rolle}" braucht eine Person. `
-      + "Bitte die Kennung der Person aus dem Betrieb angeben." }, 400);
   /* Der Schlüssel darf im Rumpf stehen (wie bisher) oder im Kopf. GET kennt
      keinen Rumpf — ohne den Kopf ließe sich die Liste gar nicht abrufen. */
   const kopfSchluessel = (req.headers.get("authorization") || "").startsWith("Bearer ")
@@ -74,6 +71,20 @@ export default async (req) => {
     return antwort({ fehler: "Verwaltungsschlüssel stimmt nicht." }, 401);
   }
   await entlasten("einrichten", k);
+
+  /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
+     Person gehört — ein Code dieser Rollen ohne Person kann deshalb nichts
+     und sieht in der Oberfläche eine Rollenauswahl statt eines Menschen.
+     Solche Codes entstehen gar nicht erst.
+
+     Diese Prüfung steht bewusst hinter dem Verwaltungsschlüssel und hinter
+     dem Entlasten: Wer sich ausgewiesen hat und dann einen fachlichen
+     Fehler macht, soll dafür nicht in die Bremse gegen das Erraten des
+     Schlüssels laufen. */
+  if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
+      && (person === null || person === undefined || person === ""))
+    return antwort({ fehler: `Ein Zugang der Rolle „${rolle}" braucht eine Person. `
+      + "Bitte die Kennung der Person aus dem Betrieb angeben." }, 400);
 
   /* ---------------------------- Verwalterkonten ----------------------
      Ein Geheimnis für alle lässt sich weder entziehen noch zuordnen.
