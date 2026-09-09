@@ -48,6 +48,14 @@ jobs:
       - name: Untergrenzen
         run: npm run pruefung:ppugv
 
+      # PPP-RL: Minuten je Patient und Woche, Mindesterfüllung.
+      - name: Psychiatrie-Personalvorgaben
+        run: npm run pruefung:ppprl
+
+      # Lenk- und Ruhezeiten: die Ausnahmen sind die Fallstricke.
+      - name: Lenkzeiten
+        run: npm run pruefung:fahrzeit
+
       # Der Löschlauf nach Artikel 17 DSGVO. Ein Fehler hier löscht zu viel
       # oder zu wenig — beides ist nicht zurückzunehmen.
       - name: Aufbewahrung

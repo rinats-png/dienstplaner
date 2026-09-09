@@ -19,6 +19,45 @@
    DATUM UND ZEIT
    -------------------------------------------------------------------------- */
 
+/* --------------------------------------------------------------------------
+   REGELSTAND
+
+   Ein Compliance-Werkzeug, das ein Urteil fällt, muss sagen können, nach
+   welchem Stand es gerechnet hat. „Die Ruhezeit war zu kurz" ist eine
+   Behauptung; „nach ArbZG in der Fassung, die diese Anwendung im September
+   2026 kannte, war die Ruhezeit zu kurz" ist eine nachprüfbare Aussage.
+
+   Deshalb trägt jede Entscheidung, die festgehalten wird — eine Änderung am
+   Plan, ein Prüfbefund, ein Nachweis nach außen — diese Kennung mit. Ändert
+   sich eine Vorschrift, wird die Version hochgezählt; alte Einträge behalten
+   ihre und bleiben damit erklärbar.
+
+   Die Fassung ist bewusst grob (Jahr und Monat): Sie soll sagen, welchen
+   Rechtsstand die Anwendung kannte, nicht welchen Zeichenstand ihr Quelltext
+   hatte. Wer es genauer braucht, findet im Protokoll den Zeitpunkt.
+   -------------------------------------------------------------------------- */
+export const REGELSTAND = {
+  version: "2026.09",
+  stand: "2026-09-09",
+  /* Was in dieser Fassung geprüft wird — die Liste ist der Umfang, zu dem
+     sich die Anwendung bekennt, nicht eine Liste gelesener Gesetze. */
+  quellen: [
+    "ArbZG §§ 3–6, 9, 11, 16",
+    "ArbSchG § 3 Abs. 2 (BAG 1 ABR 22/21)",
+    "BUrlG §§ 3, 7",
+    "JArbSchG §§ 8, 14, 16–17",
+    "MuSchG §§ 3–6",
+    "MiLoG § 17",
+    "PflBG §§ 1, 4",
+    "PpUGV (Fassung vom 09.11.2020)",
+    "GewO § 34a, BewachV",
+    "MPBetreibV §§ 4, 10 · BetrSichV § 12",
+  ],
+};
+
+/** Kurzform für Einträge, die den Stand mitführen. */
+export const regelstandKennung = () => REGELSTAND.version;
+
 export const pad = (n) => String(n).padStart(2, "0");
 export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
@@ -856,4 +895,74 @@ export function fehlendeKompetenzen(kompetenzen, nachweise, dienstId, datum, mit
         + (k.grundlage ? ` — ${k.grundlage}` : "") });
   }
   return aus;
+}
+
+/* --------------------------------------------------------------------------
+   VORBEHALTENE AUFGABEN — § 4 PflBG
+
+   Manche Tätigkeiten darf nur ausüben, wer eine bestimmte Berufserlaubnis
+   hat. § 4 PflBG nennt drei: die Erhebung und Feststellung des individuellen
+   Pflegebedarfs, die Organisation und Steuerung des Pflegeprozesses sowie
+   die Analyse, Evaluation und Sicherung der Qualität der Pflege. Sie sind
+   Pflegefachpersonen vorbehalten — nicht „möglichst", sondern ausschließlich.
+
+   Der Unterschied zur Fachkraftquote: Die Quote ist ein Anteil („mindestens
+   die Hälfte"). Eine vorbehaltene Aufgabe ist eine Anwesenheit („mindestens
+   eine, die es darf"). Eine Schicht mit vier Hilfskräften und einer Quote
+   von null erfüllt keine Quote — aber sie kann trotzdem rechtswidrig sein,
+   weil niemand da ist, der die Pflegeplanung verantworten darf.
+
+   Deshalb ein eigenes Objekt: eine Aufgabe, die an Dienstarten hängt und
+   eine Qualifikation verlangt. Die Anwendung prüft je Schicht, ob jemand da
+   ist, der sie ausüben darf — und sagt, wenn nicht.
+
+   Weil § 4 PflBG nur für die Pflege gilt und andere Gewerbe eigene
+   Vorbehalte kennen (§ 34a GewO für bestimmte Bewachungstätigkeiten,
+   Schaltberechtigung im Energiebereich), ist die Aufgabe allgemein
+   modelliert und trägt ihre Grundlage selbst.
+   -------------------------------------------------------------------------- */
+
+/** Die Aufgaben aus § 4 Abs. 2 PflBG, als Vorschlag für Pflege und Klinik. */
+export const AUFGABEN_PFLBG = [
+  { name: "Pflegebedarf erheben und feststellen",
+    grundlage: "§ 4 Abs. 2 Nr. 1 PflBG — Erhebung und Feststellung des individuellen "
+      + "Pflegebedarfs, Planung der Pflege",
+    vorbehalten: true },
+  { name: "Pflegeprozess organisieren und steuern",
+    grundlage: "§ 4 Abs. 2 Nr. 2 PflBG — Organisation, Gestaltung und Steuerung des "
+      + "Pflegeprozesses",
+    vorbehalten: true },
+  { name: "Pflegequalität analysieren und sichern",
+    grundlage: "§ 4 Abs. 2 Nr. 3 PflBG — Analyse, Evaluation, Sicherung und Entwicklung "
+      + "der Qualität der Pflege",
+    vorbehalten: true },
+];
+
+/**
+ * Ist die Aufgabe in dieser Schicht abgedeckt?
+ *
+ * @param {object} aufgabe            { name, qualifikationId, mindestens, grundlage }
+ * @param {Array} personenImDienst    wer in dieser Schicht arbeitet
+ * @param {Function} hatQualifikation (person, qualId) => boolean
+ * @returns {{gedeckt: boolean, ist: number, noetig: number, text: string,
+ *   offen?: boolean}}
+ */
+export function aufgabeGedeckt(aufgabe, personenImDienst, hatQualifikation) {
+  const noetig = Math.max(1, Number(aufgabe && aufgabe.mindestens) || 1);
+  const qid = aufgabe && aufgabe.qualifikationId;
+  if (!qid)
+    return { gedeckt: true, ist: 0, noetig, offen: true,
+      text: `${(aufgabe && aufgabe.name) || "Diese Aufgabe"} nennt keine Qualifikation. `
+        + "Ohne sie lässt sich nicht prüfen, wer sie ausüben darf." };
+
+  const ist = (personenImDienst || []).filter((p) => hatQualifikation(p, qid)).length;
+  const gedeckt = ist >= noetig;
+  return {
+    gedeckt, ist, noetig,
+    text: gedeckt
+      ? `${aufgabe.name}: ${ist} von ${noetig} nötigen im Dienst.`
+      : `${aufgabe.name}: niemand im Dienst, der sie ausüben darf`
+        + (noetig > 1 ? ` (${ist} von ${noetig})` : "")
+        + (aufgabe.grundlage ? ` — ${aufgabe.grundlage}` : ""),
+  };
 }

@@ -91,6 +91,10 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     kompetenzen: [],
     /* Belegung je Einheit, Tag und Schicht — Grundlage der PpUGV-Prüfung. */
     belegung: {},
+    /* Vorbehaltene Tätigkeiten — § 4 PflBG und dergleichen. */
+    aufgaben: [],
+    /* Lenk- und Ruhezeiten des Fahrpersonals, aus dem Kontrollgerät. */
+    fahrzeiten: {},
     unterschreitungen: [],
     dienstbuch: [],
     erfassung: {},

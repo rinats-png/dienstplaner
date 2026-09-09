@@ -12,7 +12,7 @@ import {
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
   HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, FREIE_SONNTAGE_MIN,
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
-  fehlendeKompetenzen,
+  fehlendeKompetenzen, REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "./regelwerk.js";
 
 /* ==========================================================================
@@ -181,6 +181,10 @@ import { branchenListe, brancheVon, qualifikationenFuer, einheitLabel as branche
   from "../netlify/lib/branchen.mjs";
 import { BEREICHE as PPUGV_BEREICHE, bereichVon as ppugvBereich, pruefeSchicht as ppugvPruefen,
   monatslage as ppugvMonatslage } from "./ppugv.js";
+import { pruefeWoche as fahrzeitWoche, wochentage as fahrWochentage,
+  GRENZEN as FAHR_GRENZEN } from "./fahrzeit.js";
+import { BEREICHE as PPP_BEREICHE, ARTEN as PPP_ARTEN, BERUFSGRUPPEN as PPP_GRUPPEN,
+  pruefeWoche as pppPruefen, MINDESTERFUELLUNG as PPP_MINDEST } from "./ppprl.js";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
   from "./preisgestaltung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege, standortZuschlag, STANDORT_BAENDER }
@@ -1150,6 +1154,9 @@ function baueMandant(cfg, seed) {
     betriebsmittel: [],      // Schlüssel, Fahrzeuge, Geräte, Dienstkleidung
     kompetenzen: [],         // was jemand an einer bestimmten Sache darf
     belegung: {},            // "einheitId|datum|schicht" -> { patienten }
+    aufgaben: [],            // vorbehaltene Tätigkeiten, § 4 PflBG und dergleichen
+    fahrzeiten: {},          // "personId|datum" -> { lenkzeit, unterbrechungen[], ruhezeitDavor, kennzeichen }
+    therapie: {},            // "einheitId|wocheMontag" -> { patienten, minuten{ gruppe: min } }
     aushang: [],             // Schwarzes Brett für alle
     einstempeln: {},         // "personId|datum" -> { start, ende, ortStart, ortEnde, abstand }
     notizen: {},             // "tag|JJJJ-MM-TT" oder "person|<id>" -> [{ id, text, von, zeit }]
@@ -1736,6 +1743,19 @@ function pruefen(m, von, bis) {
           const qn = m.qualifikationen.find((x) => x.id === q.qid);
           push({ art: "qualifikation", schwere: "danger", datum: d, ref: `${k}|${q.qid}`,
             titel: `${e.da.name}: ${qn ? qn.name : q.qid} fehlt`, text: `${q.ist} von ${q.noetig} erforderlich` });
+        }
+
+        /* Vorbehaltene Aufgaben — anders als die Quote eine Anwesenheit.
+
+           Eine Schicht kann jede Quote erfüllen und trotzdem rechtswidrig
+           sein, weil niemand da ist, der die Pflegeplanung verantworten
+           darf (§ 4 PflBG). Geprüft wird je Dienstart, an der die Aufgabe
+           hängt. */
+        for (const a of (m.aufgaben || []).filter((x) => (x.dienstarten || []).includes(k))) {
+          const u = aufgabeGedeckt(a, e.personen, (p, qid) => qualGueltig(m, p, qid));
+          if (u.gedeckt) continue;
+          push({ art: "aufgabe", schwere: u.offen ? "warn" : "danger", datum: d, ref: `${k}|${a.id}`,
+            titel: `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
         }
       }
     }
@@ -3045,9 +3065,12 @@ function teilzeitProfil(m, p) {
 /* ------------------------------ Bewertungsfaktor ------------------------- */
 /**
  * Rufbereitschaft wird nicht voll als Arbeitszeit gewertet.
- * Der Faktor einer Dienstart bestimmt, wie viel auf das Konto fließt.
+ *
+ * Woher der Faktor kommt, entscheidet anrechnungsfaktor(): ein gesetzter
+ * Wert der Dienstart, sonst der erfasste Einsatzanteil, sonst der Vorschlag
+ * der Dienstform.
  */
-const gewertet = (da, std) => Math.round(std * (da.faktor === undefined ? 1 : da.faktor) * 100) / 100;
+const gewertet = (da, std) => Math.round(std * anrechnungsfaktor(da) * 100) / 100;
 
 /* ------------------------------- Personalimport -------------------------- */
 const IMPORT_SPALTEN = ["nachname", "vorname", "einheit", "funktion", "wochenstunden",
@@ -4198,15 +4221,108 @@ function fachkraftLage(m, datum, dienstId) {
  */
 const DIENSTFORMEN = [
   { id: "regel", name: "Regeldienst", faktor: 1, ruhezeitNeutral: false,
+    aufenthalt: "arbeitsplatz",
     hinweis: "Volle Arbeitszeit, unterbricht die Ruhezeit." },
   { id: "bereitschaft", name: "Bereitschaftsdienst", faktor: 0.6, ruhezeitNeutral: false,
-    hinweis: "Anwesenheit am Arbeitsplatz. Zählt als Arbeitszeit, wird anteilig auf das Konto gerechnet." },
+    aufenthalt: "arbeitsplatz", abrufMinuten: 0,
+    hinweis: "Anwesenheit am Arbeitsplatz oder an einer vom Betrieb bestimmten Stelle. "
+      + "Arbeitszeit im Sinne des ArbZG, auf dem Konto anteilig." },
   { id: "ruf", name: "Rufbereitschaft", faktor: 0.125, ruhezeitNeutral: true,
-    hinweis: "Erreichbarkeit von zu Hause. Unterbricht die Ruhezeit nicht, solange kein Einsatz erfolgt." },
+    aufenthalt: "frei", abrufMinuten: 30,
+    hinweis: "Aufenthalt frei wählbar, nur Erreichbarkeit geschuldet. Unterbricht die "
+      + "Ruhezeit nicht, solange kein Einsatz erfolgt." },
   { id: "geteilt", name: "Geteilter Dienst", faktor: 1, ruhezeitNeutral: false, geteilt: true,
+    aufenthalt: "arbeitsplatz",
     hinweis: "Zwei Abschnitte mit Unterbrechung. Die Pause dazwischen ist keine Arbeitszeit." },
 ];
+
+/* --------------------------------------------------------------------------
+   AUFENTHALTSBINDUNG
+
+   Ob eine Bereitschaft als Arbeitszeit zählt, entscheidet nicht ihr Name,
+   sondern wie eng sie bindet. Der EuGH stellt darauf ab, wie stark die
+   Möglichkeit eingeschränkt ist, die freie Zeit zu gestalten — eine
+   Rufbereitschaft mit acht Minuten Abrufzeit ist in der Sache
+   Bereitschaftsdienst, auch wenn sie anders heißt (EuGH C-580/19,
+   C-344/19, jeweils vom 09.03.2021).
+
+   Die Anwendung entscheidet das nicht selbst. Sie erfasst die drei Größen,
+   auf die es ankommt — wo man sich aufhalten muss, in welcher Zeit man da
+   sein muss, wie viel davon erfahrungsgemäß Einsatz ist — und sagt, wenn
+   die Angaben nicht zur gewählten Form passen. Die Bewertung bleibt beim
+   Betrieb und seinem Tarifvertrag.
+   -------------------------------------------------------------------------- */
+const AUFENTHALT = [
+  { id: "arbeitsplatz", name: "Am Arbeitsplatz",
+    text: "Anwesenheit im Betrieb oder an einer vom Betrieb bestimmten Stelle." },
+  { id: "naehe", name: "In erreichbarer Nähe",
+    text: "Aufenthalt in einem vom Betrieb vorgegebenen Umkreis." },
+  { id: "frei", name: "Frei wählbar",
+    text: "Nur Erreichbarkeit geschuldet, der Ort ist Sache der Person." },
+];
+const aufenthaltVon = (id) => AUFENTHALT.find((x) => x.id === id) || AUFENTHALT[0];
+
+/**
+ * Passt die Ausgestaltung zur gewählten Dienstform?
+ *
+ * Kein Urteil, ein Hinweis: Die Anwendung kennt weder den Tarifvertrag noch
+ * die tatsächliche Belastung. Sie merkt nur an, wo die Angaben in eine
+ * andere Richtung zeigen als die Form.
+ */
+function bereitschaftHinweise(da) {
+  const aus = [];
+  if (!da || (da.form !== "ruf" && da.form !== "bereitschaft")) return aus;
+  const abruf = Number(da.abrufMinuten);
+  const anteil = Number(da.einsatzAnteil);
+
+  if (da.form === "ruf" && da.aufenthalt === "arbeitsplatz")
+    aus.push({ schwere: "warn",
+      text: "Als Rufbereitschaft geführt, verlangt aber Anwesenheit am Arbeitsplatz. "
+        + "Wer den Ort nicht wählen kann, leistet Bereitschaftsdienst — und der ist "
+        + "in voller Länge Arbeitszeit." });
+
+  if (da.form === "ruf" && Number.isFinite(abruf) && abruf > 0 && abruf <= 20)
+    aus.push({ schwere: "warn",
+      text: `Abrufzeit ${abruf} Minuten. Der EuGH sieht eine so kurze Frist als so `
+        + "einschneidend an, dass die Zeit in der Regel als Arbeitszeit zählt "
+        + "(EuGH C-580/19). Die Einstufung als Rufbereitschaft gehört geprüft." });
+
+  if (da.form === "ruf" && Number.isFinite(anteil) && anteil >= 0.3)
+    aus.push({ schwere: "warn",
+      text: `Erfahrungsgemäß ${Math.round(anteil * 100)} Prozent Einsatz. Bei dieser Dichte `
+        + "ist die Erholungswirkung dahin; Tarifverträge sehen dann meist eine höhere "
+        + "Bewertung oder Bereitschaftsdienst vor." });
+
+  if (da.form === "bereitschaft" && da.aufenthalt === "frei")
+    aus.push({ schwere: "info",
+      text: "Als Bereitschaftsdienst geführt, der Aufenthalt ist aber frei wählbar. "
+        + "Das ist der Sache nach Rufbereitschaft — prüfe die Form." });
+
+  if ((da.form === "ruf" || da.form === "bereitschaft") && !Number.isFinite(abruf))
+    aus.push({ schwere: "info",
+      text: "Keine Abrufzeit hinterlegt. Sie ist die Größe, an der die "
+        + "arbeitszeitrechtliche Bewertung hängt — ohne sie lässt sich die Form nicht belegen." });
+
+  return aus;
+}
 const dienstform = (id) => DIENSTFORMEN.find((x) => x.id === id) || DIENSTFORMEN[0];
+
+/**
+ * Womit wird diese Dienstart auf das Konto gerechnet?
+ *
+ * Der Betrieb kann einen Faktor setzen. Ist stattdessen ein Einsatzanteil
+ * erfasst — wie viel der Bereitschaft erfahrungsgemäß Einsatz ist —, ist
+ * das die ehrlichere Zahl: Sie stammt aus der Beobachtung und nicht aus
+ * einer Verhandlung. Sie greift nur, wenn kein eigener Faktor gesetzt ist.
+ */
+function anrechnungsfaktor(da) {
+  if (!da) return 1;
+  if (da.faktor !== undefined && da.faktor !== null) return da.faktor;
+  const anteil = Number(da.einsatzAnteil);
+  if ((da.form === "ruf" || da.form === "bereitschaft") && Number.isFinite(anteil) && anteil > 0)
+    return Math.min(1, anteil);
+  return dienstform(da.form).faktor;
+}
 
 /** Dauer eines geteilten Dienstes: beide Abschnitte ohne die Lücke dazwischen. */
 function geteilteDauer(da) {
@@ -8903,6 +9019,7 @@ function Dienstarten({ sitz, akt }) {
   const editierbar = darf(sitz, "shift.edit");
   const leer = { name: "", kurz: "", start: "08:00", ende: "16:00", pause: 0, farbe: PALETTE[0], ort: "",
     posten: false, quelle: null, form: "regel", fachkraftQuote: null, zweiterAbschnitt: null,
+    aufenthalt: null, abrufMinuten: null, einsatzAnteil: null,
     mindest: { mo_do: 1, fr: 1, sa: 1, so: 1 }, mindestQual: {} };
   const [f, setF] = useState(leer);
   const oeffnen = (d) => { setBearbeitet(d ? d.id : "neu"); setF(d ? JSON.parse(JSON.stringify(d)) : { ...leer, kurz: "" }); };
@@ -8985,6 +9102,63 @@ function Dienstarten({ sitz, akt }) {
                   <option value="">Betriebsvorgabe</option>
                   {(m.standorte || []).map((st) => <option key={st.id} value={st.id}>{st.name}</option>)}</Sel></Field>)}
           </div>
+
+          {/* Die Dienstform stand im Quelltext, aber in keiner Maske.
+
+              DIENSTFORMEN kennt seit jeher Bereitschaftsdienst,
+              Rufbereitschaft und geteilten Dienst mit ihrer je eigenen
+              Anrechnung — nur ließ sich keine davon einstellen. Die Formen
+              entstanden allein beim Aufbau der Vorführdaten; ein echter
+              Betrieb konnte eine Rufbereitschaft anlegen, sie aber nicht als
+              solche kennzeichnen, und rechnete sie damit voll auf die
+              Konten. */}
+          <Field label="Art des Dienstes"
+            hint={dienstform(f.form).hinweis}>
+            <Sel value={f.form || "regel"} onChange={(e) => setF({ ...f, form: e.target.value,
+              /* Die Vorschläge der Form übernehmen, solange nichts Eigenes
+                 eingetragen ist. */
+              faktor: f.faktor === undefined || f.faktor === null || f.faktor === dienstform(f.form).faktor
+                ? dienstform(e.target.value).faktor : f.faktor,
+              ruhezeitNeutral: dienstform(e.target.value).ruhezeitNeutral,
+              rufbereitschaft: e.target.value === "ruf",
+              aufenthalt: f.aufenthalt || dienstform(e.target.value).aufenthalt || null })}>
+              {DIENSTFORMEN.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
+
+          {/* --- Bereitschaft: wie eng bindet sie? ---
+
+              Ob eine Bereitschaft als Arbeitszeit zählt, entscheidet nicht
+              ihr Name, sondern die Bindung. Diese drei Angaben sind die,
+              nach denen im Streitfall gefragt wird. */}
+          {(f.form === "ruf" || f.form === "bereitschaft") && (
+            <div className="karte" style={{ padding: 16 }}>
+              <Lab style={{ marginBottom: 12 }}>Ausgestaltung der Bereitschaft</Lab>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 13 }}>
+                <Field label="Aufenthalt" hint={aufenthaltVon(f.aufenthalt).text}>
+                  <Sel value={f.aufenthalt || dienstform(f.form).aufenthalt || "frei"}
+                    onChange={(e) => setF({ ...f, aufenthalt: e.target.value })}>
+                    {AUFENTHALT.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Sel></Field>
+                <Field label="Abrufzeit in Minuten"
+                  hint="In welcher Zeit muss jemand am Einsatzort sein?">
+                  <Inp type="number" min={0} step={5}
+                    value={f.abrufMinuten === undefined || f.abrufMinuten === null ? "" : f.abrufMinuten}
+                    onChange={(e) => setF({ ...f,
+                      abrufMinuten: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
+                <Field label="Einsatzanteil"
+                  hint="Wie viel der Bereitschaft ist erfahrungsgemäß tatsächlich Einsatz? 0,2 sind 20 Prozent.">
+                  <Inp type="number" min={0} max={1} step="0.05"
+                    value={f.einsatzAnteil === undefined || f.einsatzAnteil === null ? "" : f.einsatzAnteil}
+                    onChange={(e) => setF({ ...f,
+                      einsatzAnteil: e.target.value === "" ? null : Number(e.target.value) })} /></Field>
+              </div>
+              {bereitschaftHinweise(f).map((h, i) => (
+                <div key={i} style={{ marginTop: 11, fontSize: 12.5, lineHeight: 1.55,
+                  color: h.schwere === "warn" ? C.warn : C.dim }}>{h.text}</div>))}
+              <div style={{ marginTop: 12, fontSize: 12, color: C.dimmer, lineHeight: 1.55 }}>
+                Die Anwendung stuft nicht selbst ein — sie kennt weder den Tarifvertrag noch
+                die tatsächliche Belastung. Sie hält fest, was für die Einstufung zählt, und
+                sagt, wo die Angaben in eine andere Richtung zeigen als die gewählte Form.
+              </div>
+            </div>)}
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 13 }}>
             <Field label="Ort oder Objekt"><Inp value={f.ort} onChange={(e) => setF({ ...f, ort: e.target.value })} /></Field>
             <Field label="Farbe">
@@ -10115,7 +10289,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const [f, setF] = useState("alle");
   const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
-    ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
+    ["aufgabe", "Vorbehaltene Aufgaben"], ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
   const krit = befunde.filter((b) => b.schwere === "danger").length;
 
@@ -10138,6 +10312,19 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
             setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor">›</Btn>
         </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
+
+      {/* Nach welchem Stand geurteilt wurde.
+
+          Ein Befund ohne Regelstand ist eine Behauptung. Bei einer Prüfung
+          durch die Aufsicht ist die erste Frage, wonach gerechnet wurde —
+          und die zweite, ob das damals schon so galt. Beides steht hier. */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap",
+        margin: "0 0 18px", fontSize: 12.5, color: C.dim }}>
+        <Pill size="sm">Regelstand {REGELSTAND.version}</Pill>
+        <span>Geprüft nach {REGELSTAND.quellen.slice(0, 4).join(" · ")}
+          {REGELSTAND.quellen.length > 4 ? ` und ${REGELSTAND.quellen.length - 4} weiteren` : ""}.
+          Jede Planänderung wird mit diesem Stand festgehalten.</span>
+      </div>
 
       {/* --- Zeitumstellung ---
           Zwei Tage im Jahr, an denen die gerechneten Stunden von der Uhr
@@ -12803,12 +12990,294 @@ const KOMPETENZ_ARTEN = [
    Und sie nennt bei jedem Urteil den Paragrafen und die Fassung. Wer eine
    Meldung abgibt, muss sagen können, wonach gerechnet wurde.
    ========================================================================== */
+/* ==========================================================================
+   LENK- UND RUHEZEITEN
+
+   Für Fahrpersonal gilt eine zweite, strengere Ordnung als das
+   Arbeitszeitgesetz. Die Rechnung steht in fahrzeit.js und ist dort
+   geprüft; hier wird erfasst und gezeigt.
+
+   Was diese Ansicht bewusst nicht tut: aus dem Dienstplan eine Lenkzeit
+   ableiten. Der Tachograf zeichnet auf, was gefahren wurde; ein Dienst von
+   acht Stunden sagt nichts darüber, wie viel davon am Steuer war. Wo nichts
+   erfasst ist, steht „nicht erfasst" — nicht „null Stunden".
+   ========================================================================== */
+function Lenkzeiten({ sitz, akt }) {
+  const m = sitz.mandant;
+  const darfPflegen = darf(sitz, "plan.edit.unit");
+  const [woche, setWoche] = useState(montag(heute()));
+  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)), [m, woche]);
+  const [personId, setPersonId] = useState((fahrer[0] || {}).id || "");
+  const person = fahrer.find((p) => p.id === personId) || fahrer[0] || null;
+  const tage = useMemo(() => fahrWochentage(woche), [woche]);
+
+  const eintrag = (d) => (m.fahrzeiten || {})[`${person ? person.id : ""}|${d}`] || {};
+
+  const lage = useMemo(() => {
+    if (!person) return null;
+    const vorwoche = fahrWochentage(addDays(woche, -7))
+      .map((d) => Number(((m.fahrzeiten || {})[`${person.id}|${d}`] || {}).lenkzeit))
+      .filter((x) => Number.isFinite(x));
+    return fahrzeitWoche(
+      tage.map((d) => ({ datum: d, ...eintrag(d) })),
+      vorwoche.length ? vorwoche.reduce((a, b) => a + b, 0) : null);
+  }, [m, person, woche, tage]);
+
+  const setz = (d, feld, wert) => akt.setzeFahrzeit(person.id, d, feld, wert);
+
+  return (
+    <div>
+      <H1 rubrik="Auswertung"
+        sub="Lenkzeit, Unterbrechung und Ruhezeit nach der Verordnung (EG) 561/2006 und der FPersV. Erfasst wird, was der Tachograf aufgezeichnet hat — aus dem Dienstplan lässt sich keine Lenkzeit ableiten."
+        right={(<div style={{ display: "flex", gap: 9 }} className="noprint">
+          <Btn onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+          <Btn onClick={() => setWoche(montag(heute()))}>Diese Woche</Btn>
+          <Btn onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+        </div>)}>
+        Lenkzeiten · {fKurz(woche)} bis {fKurz(addDays(woche, 6))}</H1>
+
+      <Card style={{ marginBottom: 22 }}>
+        <div style={{ padding: "20px var(--pad-x)", maxWidth: 420 }}>
+          <Field label="Fahrerin oder Fahrer">
+            <Sel value={person ? person.id : ""} onChange={(e) => setPersonId(e.target.value)}>
+              {fahrer.map((p) => (
+                <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>))}</Sel></Field>
+        </div>
+      </Card>
+
+      {!person ? (
+        <Card><Leer titel="Niemand im Bestand"
+          text="Für diese Woche ist keine Person im Dienst." /></Card>
+      ) : (<>
+        <KpiRow min={190}>
+          <Kpi label="Lenkzeit der Woche" value={`${n1(lage.summe / 60)} h`}
+            tone={lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : "ok"}
+            sub={`höchstens ${FAHR_GRENZEN.wocheLenkzeit / 60} h`} />
+          <Kpi label="Verlängerte Tage" value={lage.verlaengerungen}
+            tone={lage.verlaengerungen > FAHR_GRENZEN.tagVerlaengerungenJeWoche ? "danger" : "ok"}
+            sub={`höchstens ${FAHR_GRENZEN.tagVerlaengerungenJeWoche} auf zehn Stunden`} />
+          <Kpi label="Verkürzte Ruhezeiten" value={lage.verkuerzungen}
+            tone={lage.verkuerzungen > FAHR_GRENZEN.verkuerzungenJeWoche ? "danger" : "ok"}
+            sub={`höchstens ${FAHR_GRENZEN.verkuerzungenJeWoche} auf neun Stunden`} />
+          <Kpi label="Nicht erfasst" value={lage.fehlend}
+            tone={lage.fehlend ? "warn" : "ok"} sub="Tage ohne Aufzeichnung" />
+        </KpiRow>
+
+        {lage.befunde.length > 0 && (
+          <Card style={{ marginTop: 22, borderColor: C.danger }}>
+            <CardHead>Wochenbefunde</CardHead>
+            {lage.befunde.map((b, i) => (
+              <div key={i} style={{ padding: "12px 22px", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+                <div style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.dim,
+                  lineHeight: 1.55 }}>{b.text}</div>
+                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 4 }}>{b.regel}</div>
+              </div>))}
+          </Card>)}
+
+        <Card style={{ marginTop: 22 }}>
+          <CardHead right={<Lab>Minuten, wie vom Kontrollgerät gelesen</Lab>}>Die Woche</CardHead>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ textAlign: "left", color: C.dim }}>
+                {["Tag", "Kennzeichen", "Lenkzeit", "Unterbrechungen", "Ruhe davor", "Urteil"].map((h) => (
+                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
+              </tr></thead>
+              <tbody>
+                {tage.map((d, i) => {
+                  const e = eintrag(d);
+                  const r = lage.tage[i];
+                  const ton = r.urteil === "rot" ? C.danger : r.urteil === "grau" ? C.dimmer : C.ok;
+                  return (
+                    <tr key={d} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
+                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>
+                        {DOW[dow(d)]} {fKurz(d)}</td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp style={{ width: 110, padding: "6px 8px" }} disabled={!darfPflegen}
+                          value={e.kennzeichen || ""} placeholder="—"
+                          onChange={(ev) => setz(d, "kennzeichen", ev.target.value)}
+                          aria-label={`Kennzeichen am ${d}`} /></td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp type="number" min="0" step="5" style={{ width: 84, padding: "6px 8px" }}
+                          disabled={!darfPflegen}
+                          value={e.lenkzeit ?? ""} placeholder="—"
+                          onChange={(ev) => setz(d, "lenkzeit", ev.target.value)}
+                          aria-label={`Lenkzeit in Minuten am ${d}`} /></td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp style={{ width: 120, padding: "6px 8px" }} disabled={!darfPflegen}
+                          value={(e.unterbrechungen || []).join(", ")} placeholder="45 oder 15, 30"
+                          onChange={(ev) => setz(d, "unterbrechungen", ev.target.value)}
+                          aria-label={`Unterbrechungen in Minuten am ${d}`} /></td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp type="number" min="0" step="15" style={{ width: 84, padding: "6px 8px" }}
+                          disabled={!darfPflegen}
+                          value={e.ruhezeitDavor ?? ""} placeholder="—"
+                          onChange={(ev) => setz(d, "ruhezeitDavor", ev.target.value)}
+                          aria-label={`Ruhezeit vor dem Dienst am ${d}`} /></td>
+                      <td style={{ padding: "8px 14px", minWidth: 240 }}>
+                        <div style={{ color: ton, fontWeight: 600, fontSize: 12.5 }}>
+                          {r.urteil === "rot" ? "unzulässig"
+                            : r.urteil === "grau" ? "nicht erfasst" : "zulässig"}</div>
+                        {r.befunde.map((b, j) => (
+                          <div key={j} style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.45,
+                            color: b.schwere === "danger" ? C.danger : C.dimmer }}>{b.text}</div>))}
+                      </td>
+                    </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
+          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
+            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+            Täglich neun Stunden am Steuer, höchstens zweimal je Woche zehn (Art. 6 Abs. 1).
+            56 Stunden je Woche, 90 in zwei aufeinanderfolgenden Wochen (Art. 6 Abs. 2, 3).
+            Nach viereinhalb Stunden 45 Minuten Unterbrechung — teilbar in 15 und danach
+            30 Minuten, nicht umgekehrt (Art. 7). Elf Stunden tägliche Ruhe, dreimal
+            zwischen zwei Wochenruhezeiten neun (Art. 8).
+            <div style={{ marginTop: 10 }}>
+              Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im
+              Streitfall gilt die Aufzeichnung des Tachografen.
+            </div>
+          </div>
+        </Card>
+      </>)}
+    </div>);
+}
+
+/* --------------------------------------------------------------------------
+   PPP-RL — therapeutisches Personal je Woche
+
+   Steht in derselben Ansicht wie die PpUGV, weil beide dieselbe Frage
+   beantworten: Ist genug Personal da, um behandeln zu dürfen? Gerechnet
+   wird anders — nicht Köpfe je Schicht, sondern Minuten je Patient und
+   Woche, aufgeteilt auf Berufsgruppen.
+   -------------------------------------------------------------------------- */
+function Therapieminuten({ sitz, akt, einheit }) {
+  const m = sitz.mandant;
+  const darfPflegen = darf(sitz, "plan.edit.unit");
+  const [woche, setWoche] = useState(montag(heute()));
+  const e = (m.therapie || {})[`${einheit.id}|${woche}`] || {};
+
+  const lage = useMemo(() => pppPruefen({
+    bereich: einheit.pppBereich || null, art: einheit.pppArt || "vollstationaer",
+    datum: woche, patienten: e.patienten === undefined ? null : e.patienten,
+    minuten: e.minuten || {},
+  }), [einheit, e, woche]);
+
+  const ton = lage.urteil === "rot" ? "danger" : lage.urteil === "gelb" ? "warn"
+    : lage.urteil === "grau" ? undefined : "ok";
+
+  return (
+    <div>
+      <Card style={{ marginBottom: 22 }}>
+        <div style={{ padding: "20px var(--pad-x)", display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 16 }}>
+          <Field label="Behandlungsbereich">
+            <Sel value={einheit.pppBereich || ""} disabled={!darf(sitz, "org.edit")}
+              onChange={(ev) => akt.setzeEinheitPpp(einheit.id, ev.target.value || null, einheit.pppArt)}>
+              <option value="">— kein Bereich der PPP-RL —</option>
+              {PPP_BEREICHE.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</Sel></Field>
+          <Field label="Behandlungsart">
+            <Sel value={einheit.pppArt || "vollstationaer"} disabled={!darf(sitz, "org.edit")}
+              onChange={(ev) => akt.setzeEinheitPpp(einheit.id, einheit.pppBereich, ev.target.value)}>
+              {PPP_ARTEN.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Sel></Field>
+          <Field label="Woche">
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+              <span style={{ fontSize: 13, ...NUM }}>{fKurz(woche)}–{fKurz(addDays(woche, 6))}</span>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+            </div>
+          </Field>
+          <Field label="Patientinnen und Patienten"
+            hint="Belegung im Wochenmittel. Leer heißt: nicht erhoben.">
+            <Inp type="number" min="0" step="0.5" disabled={!darfPflegen}
+              value={e.patienten ?? ""} placeholder="—"
+              onChange={(ev) => akt.setzeTherapie(einheit.id, woche, "patienten", ev.target.value)} /></Field>
+        </div>
+      </Card>
+
+      {!einheit.pppBereich ? (
+        <Card><Leer titel="Kein Bereich der PPP-RL hinterlegt"
+          text="Die Richtlinie gilt für die stationäre Psychiatrie, die Kinder- und Jugendpsychiatrie und die Psychosomatik. Wähle oben den Bereich, dann wird geprüft." /></Card>
+      ) : (<>
+        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${ton === "danger" ? C.danger
+          : ton === "warn" ? C.warn : C.accent}` }}>
+          <div style={{ padding: "18px 22px" }}>
+            <Pill size="sm" tone={ton}>
+              {lage.urteil === "rot" ? "unter der Mindesterfüllung"
+                : lage.urteil === "gelb" ? "unter der Vorgabe"
+                : lage.urteil === "grau" ? "nicht bewertbar" : "erfüllt"}</Pill>
+            <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10, lineHeight: 1.6 }}>{lage.text}</div>
+            {lage.luecken && lage.luecken.length > 0 && (
+              <div style={{ fontSize: 12.5, color: C.warn, marginTop: 8 }}>
+                Nicht erfasst: {lage.luecken.join(", ")}.</div>)}
+          </div>
+        </Card>
+
+        <Card>
+          <CardHead right={<Lab>Minuten in dieser Woche</Lab>}>Berufsgruppen</CardHead>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ textAlign: "left", color: C.dim }}>
+                {["Berufsgruppe", "Soll", "Ist", "Erfüllung"].map((h) => (
+                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600 }}>{h}</th>))}
+              </tr></thead>
+              <tbody>
+                {(lage.zeilen || PPP_GRUPPEN.map((g) => ({ gruppe: g, soll: 0, ist: null, quote: null })))
+                  .map((z) => {
+                  const farbe = z.quote === null ? C.dimmer
+                    : z.quote >= 1 ? C.ok : z.quote >= PPP_MINDEST ? C.warn : C.danger;
+                  return (
+                    <tr key={z.gruppe.id} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
+                      <td style={{ padding: "8px 14px" }}>{z.gruppe.name}</td>
+                      <td style={{ padding: "8px 14px", ...NUM }}>{z.soll ? zahl(z.soll) : "—"}</td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp type="number" min="0" style={{ width: 96, padding: "6px 8px" }}
+                          disabled={!darfPflegen}
+                          value={(e.minuten || {})[z.gruppe.id] ?? ""} placeholder="—"
+                          onChange={(ev) => akt.setzeTherapie(einheit.id, woche, z.gruppe.id, ev.target.value)}
+                          aria-label={`Minuten ${z.gruppe.name} in der Woche ab ${woche}`} /></td>
+                      <td style={{ padding: "8px 14px", color: farbe, fontWeight: 600, ...NUM }}>
+                        {z.quote === null ? "nicht erfasst" : `${Math.round(z.quote * 100)} %`}</td>
+                    </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
+          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
+            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+            Die PPP-RL gibt Minuten je Patientin und Woche vor, getrennt nach
+            Berufsgruppen. Unter {Math.round(PPP_MINDEST * 100)} Prozent Erfüllung drohen
+            Vergütungsabschläge; dazwischen liegt der Bereich, in dem die Vorgabe verfehlt,
+            die Mindesterfüllung aber gehalten ist.
+            <div style={{ marginTop: 10 }}>
+              Grundlage: {lage.richtwerte ? lage.richtwerte.fassung : "—"}
+              {lage.richtwerte && lage.richtwerte.eigen ? " · von der Einrichtung angepasst" : ""}.
+              Das Nachweisverfahren gegenüber den Kassen wurde zum 1. Januar 2026 umgestellt
+              und läuft jährlich über eine eigene Spezifikation — was hier entsteht, ist die
+              Grundlage dafür, nicht die Meldung selbst.
+            </div>
+          </div>
+        </Card>
+      </>)}
+    </div>);
+}
+
 function Untergrenzen({ sitz, akt, ym }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "plan.edit.unit");
   const einheiten = (m.einheiten || []).filter((e) => !e.pool);
   const [einheitId, setEinheitId] = useState((einheiten[0] || {}).id || "");
   const einheit = einheiten.find((e) => e.id === einheitId) || null;
+  /* Zwei Vorgaben, eine Ansicht: die PpUGV rechnet je Schicht, die PPP-RL je
+     Woche. Welche gilt, hängt am Bereich der Einheit — beide anzubieten ist
+     ehrlicher, als eine zu verstecken. */
+  const [reiter, setReiter] = useState("ppugv");
   const tage = useMemo(() => {
     const [y, mo] = ym.split("-").map(Number);
     return Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
@@ -12869,7 +13338,17 @@ function Untergrenzen({ sitz, akt, ym }) {
         </div>
       </Card>
 
-      {!bereich ? (
+      <div className="reiterreihe" style={{ margin: "0 0 20px" }}>
+        {[["ppugv", "Pflegepersonaluntergrenzen"], ["ppprl", "PPP-RL Psychiatrie"]].map(([id, l]) => (
+          <Btn key={id} size="sm" kind={reiter === id ? "primary" : "plain"}
+            aria-pressed={reiter === id} onClick={() => setReiter(id)}>{l}</Btn>))}
+      </div>
+
+      {reiter === "ppprl" && (einheit
+        ? <Therapieminuten sitz={sitz} akt={akt} einheit={einheit} />
+        : <Card><Leer titel="Keine Einheit gewählt" text="Wähle oben eine Einheit." /></Card>)}
+
+      {reiter === "ppugv" && (!bereich ? (
         <Card><Leer titel="Kein pflegesensitiver Bereich hinterlegt"
           text="Die PpUGV gilt für bestimmte Krankenhausbereiche — Intensivmedizin, Geriatrie, Kardiologie und weitere. Wähle oben den Bereich dieser Einheit, dann wird geprüft." /></Card>
       ) : (<>
@@ -12942,7 +13421,7 @@ function Untergrenzen({ sitz, akt, ym }) {
             </div>
           </div>
         </Card>
-      </>)}
+      </>))}
     </div>);
 }
 
@@ -12951,6 +13430,7 @@ function Kompetenzen({ sitz, akt }) {
   const darfPflegen = darf(sitz, "staff.edit");
   const [neu, setNeu] = useState(null);
   const [offen, setOffen] = useState(null);
+  const [aufgabe, setAufgabe] = useState(null);
   const lage = useMemo(() => kompetenzLage(m), [m]);
   const liste = m.kompetenzen || [];
   const mittel = m.betriebsmittel || [];
@@ -13054,6 +13534,95 @@ function Kompetenzen({ sitz, akt }) {
               </div>);
           })}
         </Card>)}
+
+      {/* --- Vorbehaltene Aufgaben ---
+
+          Sie stehen hier, weil sie dieselbe Frage beantworten wie eine
+          Kompetenz — wer darf was —, nur eine Ebene höher: nicht an einem
+          Gerät, sondern kraft Berufserlaubnis. */}
+      <Card style={{ marginTop: 22 }}>
+        <CardHead right={darfPflegen && !(m.aufgaben || []).length
+          ? <Btn size="sm" onClick={akt.legeAufgabenVor}>Die drei aus § 4 PflBG anlegen</Btn>
+          : <Lab>{zahl((m.aufgaben || []).length)} angelegt</Lab>}>
+          Vorbehaltene Aufgaben</CardHead>
+        <div style={{ padding: "0 22px 6px", fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+          Manche Tätigkeiten darf nur ausüben, wer eine bestimmte Berufserlaubnis hat.
+          Anders als die Fachkraftquote — ein Anteil — ist das eine Anwesenheit:
+          mindestens eine Person im Dienst, die es darf. Eine Schicht kann jede Quote
+          erfüllen und trotzdem rechtswidrig sein, weil niemand da ist, der die
+          Pflegeplanung verantworten darf.
+        </div>
+        {!(m.aufgaben || []).length ? (
+          <div style={{ padding: "14px 22px 22px", fontSize: 13, color: C.dimmer }}>
+            Noch keine hinterlegt.
+          </div>
+        ) : (m.aufgaben || []).map((a, i) => {
+          const q = m.qualifikationen.find((x) => x.id === a.qualifikationId);
+          return (
+            <div key={a.id} className="row" style={{ display: "flex", alignItems: "center", gap: 14,
+              padding: "13px 22px", flexWrap: "wrap",
+              borderTop: `1px solid ${C.lineSoft}`, marginTop: i === 0 ? 10 : 0 }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 600 }}>{a.name}</div>
+                <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 3, lineHeight: 1.5 }}>
+                  {a.grundlage || "Ohne Grundlage"}</div>
+              </div>
+              {q ? <Pill size="sm" tone="ok">{q.kurz || q.name}</Pill>
+                : <Pill size="sm" tone="warn">keine Qualifikation</Pill>}
+              {a.mindestens > 1 && <Pill size="sm">mindestens {a.mindestens}</Pill>}
+              <Pill size="sm" tone={(a.dienstarten || []).length ? undefined : "warn"}>
+                {(a.dienstarten || []).length
+                  ? `geprüft bei ${a.dienstarten.map((id) =>
+                      (m.dienstarten.find((d) => d.id === id) || {}).kurz || id).join(", ")}`
+                  : "keinem Dienst zugeordnet"}</Pill>
+              {darfPflegen && (
+                <Btn size="sm" onClick={() => setAufgabe({ ...a })}>Bearbeiten</Btn>)}
+            </div>);
+        })}
+      </Card>
+
+      {aufgabe && (
+        <Sheet open onClose={() => setAufgabe(null)} width={600} titel="Vorbehaltene Aufgabe">
+          <div style={{ display: "grid", gap: 16 }}>
+            <Field label="Aufgabe">
+              <Inp value={aufgabe.name} onChange={(e) => setAufgabe({ ...aufgabe, name: e.target.value })} /></Field>
+            <Field label="Grundlage" hint="Woraus folgt der Vorbehalt?">
+              <Inp value={aufgabe.grundlage || ""}
+                onChange={(e) => setAufgabe({ ...aufgabe, grundlage: e.target.value })} /></Field>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 13 }}>
+              <Field label="Wer darf sie ausüben?"
+                hint="Ohne Qualifikation lässt sich nicht prüfen, ob jemand im Dienst ist, der es darf.">
+                <Sel value={aufgabe.qualifikationId || ""}
+                  onChange={(e) => setAufgabe({ ...aufgabe, qualifikationId: e.target.value || null })}>
+                  <option value="">— keine —</option>
+                  {m.qualifikationen.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}</Sel></Field>
+              <Field label="Mindestens" hint="Wie viele müssen im Dienst sein?">
+                <Inp type="number" min={1} value={aufgabe.mindestens || 1}
+                  onChange={(e) => setAufgabe({ ...aufgabe, mindestens: Number(e.target.value) })} /></Field>
+            </div>
+            <div>
+              <Lab style={{ marginBottom: 9 }}>Bei diesen Diensten geprüft</Lab>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {m.dienstarten.map((d) => {
+                  const an = (aufgabe.dienstarten || []).includes(d.id);
+                  return (
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                      onClick={() => setAufgabe({ ...aufgabe, dienstarten: an
+                        ? aufgabe.dienstarten.filter((x) => x !== d.id)
+                        : [...(aufgabe.dienstarten || []), d.id] })}>
+                      {an ? "✓ " : ""}{d.name}</Btn>);
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "space-between", marginTop: 6 }}>
+              <Btn kind="danger" onClick={() => { akt.loescheAufgabe(aufgabe.id); setAufgabe(null); }}>Löschen</Btn>
+              <div style={{ display: "flex", gap: 10 }}>
+                <Btn kind="quiet" onClick={() => setAufgabe(null)}>Abbrechen</Btn>
+                <Btn kind="primary" onClick={() => { akt.speichereAufgabe(aufgabe); setAufgabe(null); }}>Speichern</Btn>
+              </div>
+            </div>
+          </div>
+        </Sheet>)}
 
       {neu && (
         <Sheet open onClose={() => setNeu(null)} width={620}
@@ -19608,7 +20177,8 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     freigaben: {}, nachrichten: [], aenderungen: [], erfassung: {}, einspruenge: [],
     zuschlaege: (f.zuschlaege || []).map((z, i) => ({ id: `z${i + 1}`, ...z })),
     urlaubsrunde: null, unterschreitungen: [], dienstbuch: [], stand: 0,
-    betriebsmittel: [], kompetenzen: [], belegung: {}, aushang: [], einstempeln: {},
+    betriebsmittel: [], kompetenzen: [], belegung: {}, aufgaben: [], fahrzeiten: {},
+    therapie: {}, aushang: [], einstempeln: {},
     wuensche: [], tagesnotizen: {}, planstaende: {},
   };
   return m;
@@ -19690,6 +20260,7 @@ const BEREICHE = [
   { id: "auswertung", label: "Nachsehen", views: [
     ["pruef", "Prüfung", "plan.view.all"],
     ["untergrenzen", "Untergrenzen", "plan.view.unit"],
+    ["lenkzeiten", "Lenkzeiten", "plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
     ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
@@ -20399,7 +20970,7 @@ function AppInnen() {
         if (vorher !== nachher) {
           const vl = vorlauf(d);
           next = { ...next, aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: vorher || "-",
-            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE"), vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
+            nach: nachher || "-", zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vl }, ...(next.aenderungen || [])].slice(0, 800) };
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
@@ -20449,7 +21020,7 @@ function AppInnen() {
           abweichungen: { ...m.abweichungen, [`${pid}|${d}`]: dienstId },
           einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE") }, ...(m.einspruenge || [])].slice(0, 500),
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
-            zeit: new Date().toLocaleString("de-DE"), vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
+            zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
             `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine"), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
@@ -21036,7 +21607,7 @@ function AppInnen() {
         return { ...m,
           abweichungen: { ...m.abweichungen, [`${personId}|${a.datum}`]: a.dienstId },
           aenderungen: [{ id: uid("c"), personId, datum: a.datum, von: "-", nach: a.dienstId,
-            zeit: jetzt, vorlauf: vorlauf(a.datum) }, ...(m.aenderungen || [])].slice(0, 800),
+            zeit: jetzt, regelstand: REGELSTAND.version, vorlauf: vorlauf(a.datum) }, ...(m.aenderungen || [])].slice(0, 800),
           ausschreibungen: m.ausschreibungen.map((x) => x.id !== asId ? x
             : { ...x, status: "vergeben", vergebenAn: personId, vergebenZeit: jetzt }),
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
@@ -21149,7 +21720,7 @@ function AppInnen() {
             const nachher = ab[k] !== undefined ? ab[k] : plan;
             if ((vorher || "-") !== (nachher || "-"))
               aend.push({ id: uid("c"), personId: pid, datum: d, von: vorher || "-", nach: nachher || "-",
-                zeit: jetzt, vorlauf: vorlauf(d) });
+                zeit: jetzt, regelstand: REGELSTAND.version, vorlauf: vorlauf(d) });
           }
         }
         melde(`${aend.length} Einträge geändert.`);
@@ -21244,6 +21815,95 @@ function AppInnen() {
           : { qualId: qid, ablauf, datei };
         return { ...p, qualNachweise: [...liste, eintrag] };
       }) }), "Nachweis gespeichert"),
+      /* --- Lenk- und Ruhezeiten ---
+
+         Ein leeres Feld löscht den Wert, statt ihn auf null zu setzen: Was
+         nicht erfasst ist, darf nicht als „null Minuten gefahren" gelten.
+         Die Unterbrechungen kommen als Text („15, 30") und werden zu einer
+         Liste — die Reihenfolge zählt, weil das Gesetz sie vorschreibt. */
+      setzeFahrzeit: (pid, datum, feld, wert) => mUpd((m) => {
+        const k = `${pid}|${datum}`;
+        const alt = (m.fahrzeiten || {})[k] || {};
+        const neu = { ...alt };
+        if (feld === "unterbrechungen") {
+          const liste = String(wert).split(/[^0-9]+/).map(Number).filter((n) => n > 0);
+          if (liste.length) neu.unterbrechungen = liste; else delete neu.unterbrechungen;
+        } else if (feld === "kennzeichen") {
+          const t = String(wert).trim();
+          if (t) neu.kennzeichen = t.slice(0, 20); else delete neu.kennzeichen;
+        } else {
+          const roh = String(wert).trim();
+          if (roh === "") delete neu[feld];
+          else {
+            const n = Number(roh);
+            if (!Number.isFinite(n) || n < 0) return m;
+            neu[feld] = Math.round(n);
+          }
+        }
+        const alle = { ...(m.fahrzeiten || {}) };
+        if (Object.keys(neu).length) alle[k] = neu; else delete alle[k];
+        return { ...m, fahrzeiten: alle };
+      }, null),
+
+      /* --- PPP-RL: therapeutisches Personal je Woche --- */
+      setzeTherapie: (einheitId, woche, feld, wert) => mUpd((m) => {
+        const k = `${einheitId}|${woche}`;
+        const alt = (m.therapie || {})[k] || {};
+        const neu = { ...alt, minuten: { ...(alt.minuten || {}) } };
+        const roh = String(wert).trim();
+        const zahl = roh === "" ? null : Number(roh);
+        if (roh !== "" && (!Number.isFinite(zahl) || zahl < 0)) return m;
+        if (feld === "patienten") {
+          if (roh === "") delete neu.patienten; else neu.patienten = Math.round(zahl * 10) / 10;
+        } else if (roh === "") delete neu.minuten[feld];
+        else neu.minuten[feld] = Math.round(zahl);
+        if (!Object.keys(neu.minuten).length) delete neu.minuten;
+        const alle = { ...(m.therapie || {}) };
+        if (Object.keys(neu).length) alle[k] = neu; else delete alle[k];
+        return { ...m, therapie: alle };
+      }, null),
+
+      setzeEinheitPpp: (einheitId, bereich, art) => mUpd((m) => ({ ...m,
+        einheiten: m.einheiten.map((e) => (e.id === einheitId
+          ? { ...e, pppBereich: bereich, pppArt: art || e.pppArt || "vollstationaer" } : e)),
+      }), "Behandlungsbereich gesetzt"),
+
+      /* --- Vorbehaltene Aufgaben ---
+
+         Anders als eine Quote ist das eine Anwesenheit: mindestens eine
+         Person im Dienst, die sie ausüben darf. Der Vorschlag aus § 4 PflBG
+         wird beim Anlegen mit der Fachkraftqualifikation des Betriebs
+         verknüpft — steht keine bereit, bleibt das Feld offen und die
+         Prüfung sagt das, statt stillschweigend „gedeckt" zu melden. */
+      legeAufgabenVor: () => mUpd((m) => {
+        const fk = m.qualifikationen.find((q) => q.fachkraft);
+        const vorhanden = new Set((m.aufgaben || []).map((a) => a.name));
+        const neue = AUFGABEN_PFLBG.filter((a) => !vorhanden.has(a.name)).map((a) => ({
+          id: uid("af"), name: a.name, grundlage: a.grundlage, vorbehalten: true,
+          qualifikationId: fk ? fk.id : null, mindestens: 1, dienstarten: [],
+        }));
+        if (!neue.length) return m;
+        return { ...m, aufgaben: [...(m.aufgaben || []), ...neue] };
+      }, "Vorbehaltene Aufgaben angelegt"),
+
+      speichereAufgabe: (a) => mUpd((m) => {
+        const rein = {
+          id: a.id || uid("af"),
+          name: String(a.name || "").trim(),
+          grundlage: String(a.grundlage || "").trim(),
+          vorbehalten: a.vorbehalten !== false,
+          qualifikationId: a.qualifikationId || null,
+          mindestens: Math.max(1, Number(a.mindestens) || 1),
+          dienstarten: a.dienstarten || [],
+        };
+        const liste = m.aufgaben || [];
+        return { ...m, aufgaben: liste.some((x) => x.id === rein.id)
+          ? liste.map((x) => (x.id === rein.id ? rein : x)) : [...liste, rein] };
+      }, "Aufgabe gespeichert"),
+
+      loescheAufgabe: (id) => mUpd((m) => ({ ...m,
+        aufgaben: (m.aufgaben || []).filter((x) => x.id !== id) }), "Aufgabe gelöscht"),
+
       /* --- Pflegepersonaluntergrenzen ---
 
          Die Belegung ist eine Zahl je Einheit, Tag und Schicht. Ein leeres
@@ -21389,7 +22049,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       oeffneWizard: () => setWizard(true),
       anfrageVermerken: (d, dienstId, weg) => mUpd((m) => ({ ...m,
         aenderungen: [{ id: uid("c"), personId: null, datum: d, von: "-", nach: `Anfrage ${weg}`,
-          zeit: new Date().toLocaleString("de-DE"), vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800) }),
+          zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800) }),
         `Dienstanfrage für ${fKurz(d)} versandt`),
 
       /* --- Tauschbörse --- */
@@ -21934,6 +22594,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "quals" && <Qualifikationsmatrix sitz={sitz} akt={akt} />}
             {aktiveView === "kompetenzen" && <Kompetenzen sitz={sitz} akt={akt} />}
             {aktiveView === "untergrenzen" && <Untergrenzen sitz={sitz} akt={akt} ym={ym} />}
+            {aktiveView === "lenkzeiten" && <Lenkzeiten sitz={sitz} akt={akt} />}
             {aktiveView === "einarbeitung" && <Einarbeitung sitz={sitz} akt={akt} />}
             {aktiveView === "bereitschaft" && <Bereitschaft sitz={sitz} akt={akt} oeffneTag={setTag} />}
             {aktiveView === "ablauf" && <Ablaufansicht sitz={sitz} akt={akt} gehZu={setView} />}

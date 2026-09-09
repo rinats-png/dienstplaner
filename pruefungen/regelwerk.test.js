@@ -22,7 +22,7 @@ import {
   FREIE_SONNTAGE_MIN,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
-  fehlendeKompetenzen,
+  fehlendeKompetenzen, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -738,5 +738,50 @@ describe("Kompetenz als Einsatzsperre", () => {
   it("ohne Kompetenzen im Betrieb ändert sich nichts", () => {
     expect(fehlendeKompetenzen([], [], "N", heute, name)).toEqual([]);
     expect(fehlendeKompetenzen(undefined, undefined, "N", heute, name)).toEqual([]);
+  });
+});
+
+describe("Vorbehaltene Aufgaben", () => {
+  const hat = (p, q) => (p.qualifikationen || []).includes(q);
+  const fach = { id: "p1", qualifikationen: ["pfk"] };
+  const hilf = { id: "p2", qualifikationen: [] };
+  const aufgabe = { name: "Pflegeprozess steuern", qualifikationId: "pfk",
+    grundlage: "§ 4 Abs. 2 Nr. 2 PflBG" };
+
+  it("gedeckt, wenn jemand da ist, der sie ausüben darf", () => {
+    const r = aufgabeGedeckt(aufgabe, [fach, hilf, hilf], hat);
+    expect(r.gedeckt).toBe(true);
+    expect(r.ist).toBe(1);
+  });
+
+  it("nicht gedeckt, wenn nur Hilfskräfte im Dienst sind", () => {
+    const r = aufgabeGedeckt(aufgabe, [hilf, hilf, hilf], hat);
+    expect(r.gedeckt).toBe(false);
+    expect(r.text).toContain("niemand im Dienst");
+    expect(r.text).toContain("§ 4 Abs. 2 Nr. 2 PflBG");
+  });
+
+  it("eine leere Schicht deckt nichts", () => {
+    expect(aufgabeGedeckt(aufgabe, [], hat).gedeckt).toBe(false);
+  });
+
+  it("mehr als eine kann verlangt werden", () => {
+    const zwei = { ...aufgabe, mindestens: 2 };
+    expect(aufgabeGedeckt(zwei, [fach], hat).gedeckt).toBe(false);
+    expect(aufgabeGedeckt(zwei, [fach, fach], hat).gedeckt).toBe(true);
+  });
+
+  it("ohne Qualifikation wird nicht behauptet, es sei gedeckt", () => {
+    const r = aufgabeGedeckt({ name: "Irgendwas" }, [], hat);
+    expect(r.offen).toBe(true);
+    expect(r.text).toContain("nennt keine Qualifikation");
+  });
+
+  it("die drei Aufgaben aus § 4 PflBG stehen bereit", () => {
+    expect(AUFGABEN_PFLBG.length).toBe(3);
+    for (const a of AUFGABEN_PFLBG) {
+      expect(a.grundlage).toContain("§ 4 Abs. 2");
+      expect(a.vorbehalten).toBe(true);
+    }
   });
 });
