@@ -57,6 +57,36 @@ export function darf(rolle, recht) {
    warum es diese Datei überhaupt braucht.
    -------------------------------------------------------------------------- */
 
+/* Die Rollen, die eine Person im Betrieb tragen kann. */
+const KUNDENROLLEN = ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"];
+
+/**
+ * Die Rolle, die für diese Sitzung tatsächlich gilt.
+ *
+ * Bis September 2026 entschied die Rolle am Zugangscode. Ein Code
+ * „leitung", ausgestellt für eine Person, die im Betrieb Schichtverant-
+ * wortung hat, gab dem Server Vollschreibrecht — während die Oberfläche
+ * derselben Person die Ansicht der Schichtverantwortung zeigte, weil sie
+ * sich nach der Person richtet. Umgekehrt genauso. Zwei Wahrheiten für
+ * eine Sitzung sind eine zu viel.
+ *
+ * Jetzt zählt die Person: Ist der Code an eine gebunden und steht sie im
+ * Betrieb, gilt ihre dort eingetragene Rolle. Der Code ist der Schlüssel,
+ * die Personalliste sagt, wer jemand ist — und die pflegt die Leitung,
+ * nicht der Betreiber. Der Betreiber selbst, ein Sicherungsschlüssel und
+ * Codes ohne Person bleiben, wie sie sind.
+ */
+export function wirksameRolle(sitzung, bestand) {
+  if (!sitzung) return null;
+  if (sitzung.nurSicherung || sitzung.rolle === "betreiber") return sitzung.rolle;
+  if (sitzung.person === null || sitzung.person === undefined) return sitzung.rolle;
+  const m = eigenerMandant(bestand, sitzung);
+  const p = m && Array.isArray(m.personen)
+    ? m.personen.find((x) => x && String(x.id) === String(sitzung.person)) : null;
+  if (!p || !KUNDENROLLEN.includes(p.rolle)) return sitzung.rolle;
+  return p.rolle;
+}
+
 export const SCHREIBEN_VOLL = "voll";
 export const SCHREIBEN_EINHEIT = "einheit";
 export const SCHREIBEN_EIGENES = "eigenes";

@@ -42,6 +42,15 @@ export default async (req) => {
   let body;
   try { body = req.method === "GET" ? {} : await req.json(); } catch { body = {}; }
   const { name, bestand, rolle, person, betrieb, hinweis, demo, gruppe } = body || {};
+
+  /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
+     Person gehört — ein Code dieser Rollen ohne Person kann deshalb nichts
+     und sieht in der Oberfläche eine Rollenauswahl statt eines Menschen.
+     Solche Codes entstehen gar nicht erst. */
+  if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
+      && (person === null || person === undefined || person === ""))
+    return antwort({ fehler: `Ein Zugang der Rolle „${rolle}" braucht eine Person. `
+      + "Bitte die Kennung der Person aus dem Betrieb angeben." }, 400);
   /* Der Schlüssel darf im Rumpf stehen (wie bisher) oder im Kopf. GET kennt
      keinen Rumpf — ohne den Kopf ließe sich die Liste gar nicht abrufen. */
   const kopfSchluessel = (req.headers.get("authorization") || "").startsWith("Bearer ")

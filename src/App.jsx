@@ -1005,6 +1005,7 @@ function baueMandant(cfg, seed) {
       // Ablaufdaten: einige laufen absichtlich bald ab, damit die Prüfung greift
       const qNachweise = qs.map((qid, k) => {
         const q = quals.find((x) => x.id === qid);
+        if (q && q.nurStatus) return { qualId: qid, ablauf: null, datei: null, vorhanden: i % 11 !== 4 };
         if (!q || !q.gueltigMonate) return { qualId: qid, ablauf: null, datei: null };
         const tage = Math.round(q.gueltigMonate * 30.44);
         const rest = (i % 9 === 0 && k === 0) ? 20 : (i % 7 === 0 && k === 1) ? -12 : Math.floor(r() * tage);
@@ -3275,6 +3276,16 @@ function nachweisStand(m, p, qualId) {
   const n = (p.qualNachweise || []).find((x) => x.qualId === qualId);
   const q = m.qualifikationen.find((x) => x.id === qualId);
   if (!q) return { stand: "unbekannt" };
+  /* Nur-Status-Nachweise (etwa der Masernschutz nach § 20 IfSG): Erfasst
+     wird allein, ob er vorliegt — kein Datum, keine Datei, kein Grund. Das
+     ist keine Bequemlichkeit, sondern Datenschutz: Mehr darf der Betrieb
+     dazu gar nicht festhalten. Bisher galt so eine Qualifikation als
+     „unbefristet gültig", sobald sie an der Person stand — ohne dass je
+     jemand bestätigt hatte, dass der Nachweis vorliegt. */
+  if (q.nurStatus) {
+    if (n && n.vorhanden) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true, nurStatus: true };
+    return { stand: "fehlt", ablauf: null, qual: q, nurStatus: true };
+  }
   if (!q.gueltigMonate) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true };
   if (!n || !n.ablauf) return { stand: "fehlt", ablauf: null, qual: q };
   const tage = between(heute(), n.ablauf);
@@ -6197,7 +6208,7 @@ function MandantAnlegen({ db, akt, onClose }) {
           <Lab style={{ marginBottom: 11 }}>Qualifikationen</Lab>
           <Card style={{ padding: 18, marginBottom: 20 }}>
             {f.qualifikationen.map((q, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 90px 130px auto auto", gap: 11,
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "2fr 90px 130px auto auto auto", gap: 11,
                 alignItems: "center", marginBottom: 10 }}>
                 <Inp value={q.name} placeholder="Bezeichnung"
                   onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i ? { ...x, name: e.target.value } : x))} />
@@ -6212,6 +6223,15 @@ function MandantAnlegen({ db, akt, onClose }) {
                   <input type="checkbox" checked={q.nachweisPflicht}
                     onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i ? { ...x, nachweisPflicht: e.target.checked } : x))} />
                   Nachweis</label>
+                {/* „Nur Status": Es wird allein erfasst, ob der Nachweis
+                    vorliegt — ohne Datum und Datei. Für Gesundheitsdaten
+                    wie den Masernschutz ist das die einzige zulässige Form. */}
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.dim }}
+                  title="Nur erfassen, ob der Nachweis vorliegt — ohne Datum, Datei oder Grund. Für Gesundheitsdaten (z. B. Masernschutz) die einzige zulässige Form.">
+                  <input type="checkbox" checked={!!q.nurStatus}
+                    onChange={(e) => setz("qualifikationen", f.qualifikationen.map((x, k) => k === i
+                      ? { ...x, nurStatus: e.target.checked, ...(e.target.checked ? { gueltigMonate: null } : {}) } : x))} />
+                  nur Status</label>
                 <Btn size="sm" kind="danger"
                   onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))}>×</Btn>
                 {/* Die Rechtsgrundlage steht über die volle Breite unter der
@@ -11954,12 +11974,15 @@ function Nachweise({ sitz, akt }) {
                 <Pill size="sm" tone={tone}>
                   {x.stand === "abgelaufen" ? `abgelaufen ${fKurz(x.ablauf)}`
                     : x.stand === "laeuft_ab" ? `noch ${x.tage} Tage`
-                    : x.stand === "fehlt" ? "nicht hinterlegt"
+                    : x.stand === "fehlt" ? (x.nurStatus ? "nicht bestätigt" : "nicht hinterlegt")
+                    : x.nurStatus ? "liegt vor"
                     : x.unbefristet ? "unbefristet" : `bis ${fKurz(x.ablauf)}`}</Pill>
                 {x.datei && <Pill size="sm">Datei hinterlegt</Pill>}
+                {x.nurStatus && <Pill size="sm">nur Status</Pill>}
                 {darf(sitz, "staff.edit") && (
                   <Btn size="sm" onClick={() => akt.oeffneNachweis(x.person.id, x.qual.id)}>
-                    {x.stand === "gueltig" && x.unbefristet ? "Ansehen" : "Erneuern"}</Btn>)}
+                    {x.nurStatus ? (x.stand === "gueltig" ? "Ändern" : "Bestätigen")
+                      : x.stand === "gueltig" && x.unbefristet ? "Ansehen" : "Erneuern"}</Btn>)}
               </div>);
           })}
       </Card>
@@ -11974,7 +11997,31 @@ function NachweisPflege({ sitz, akt, personId, qualId, onClose }) {
   const [ablauf, setAblauf] = useState(st && st.ablauf ? st.ablauf
     : q && q.gueltigMonate ? addDays(heute(), Math.round(q.gueltigMonate * 30.44)) : "");
   const [datei, setDatei] = useState(st && st.datei ? st.datei : "");
+  const [vorhanden, setVorhanden] = useState(!!(st && st.stand === "gueltig" && st.nurStatus));
   if (!p || !q) return null;
+
+  /* Nur der Status: liegt vor oder nicht. Keine Frist, keine Fundstelle —
+     mehr darf zu diesem Nachweis nicht festgehalten werden. */
+  if (q.nurStatus) {
+    return (
+      <Sheet open onClose={onClose} titel={`${q.name} · ${p.vorname} ${p.nachname}`} width={520}>
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55 }}>
+            Für diesen Nachweis wird nur erfasst, ob er vorliegt. Datum, Datei oder Grund
+            gehören nicht in die Dienstplanung{q.grundlage ? ` (${q.grundlage})` : ""}.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn kind={vorhanden ? "ok" : "plain"} onClick={() => setVorhanden(true)}>Liegt vor</Btn>
+            <Btn kind={!vorhanden ? "danger" : "plain"} onClick={() => setVorhanden(false)}>Liegt nicht vor</Btn>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+            <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
+            <Btn kind="primary" onClick={() => { akt.setzeNachweis(personId, qualId, null, null, vorhanden); onClose(); }}>
+              Speichern</Btn>
+          </div>
+        </div>
+      </Sheet>);
+  }
 
   return (
     <Sheet open onClose={onClose} titel={`${q.name} · ${p.vorname} ${p.nachname}`} width={520}>
@@ -16145,14 +16192,28 @@ function auftraggeberBericht(m, von, bis, einheitId) {
     const bes = besetzung(m, d);
     const summe = Object.values(bes).reduce((a, b) => a + b.anzahl, 0);
     const soll = Object.values(bes).reduce((a, b) => a + b.soll, 0);
-    besetzt.push({ datum: d, ist: summe, soll, gedeckt: soll === 0 || summe >= soll });
+    /* Was davon aus der gewählten Einheit kam. Die Mindestbesetzung ist je
+       Dienstart hinterlegt, nicht je Einheit — ein Soll für die Einheit
+       gibt es also nicht. Gezählt wird, was sich ehrlich zählen lässt:
+       Dienste aus dieser Einheit, und Tage, an denen sie nicht auf dem
+       Plan stand. */
+    const ausEinheit = einheitId
+      ? Object.values(bes).reduce((a, b) => a + b.personen.filter((p) => einheitAm(p, d) === einheitId).length, 0)
+      : summe;
+    besetzt.push({ datum: d, ist: summe, soll, gedeckt: soll === 0 || summe >= soll, ausEinheit });
   }
+  const mehrereEinheiten = (m.einheiten || []).length > 1;
   return {
     von, bis,
     tage: besetzt.length,
     vollstaendig: besetzt.filter((b) => b.gedeckt).length,
     quote: besetzt.length
       ? Math.round((besetzt.filter((b) => b.gedeckt).length / besetzt.length) * 100) : null,
+    /* Die Besetzungsquote gilt für den Betrieb; sie ist nur dann die Quote
+       der Einheit, wenn es keine andere gibt. Der Bericht sagt das dazu. */
+    betriebsweit: !!einheitId && mehrereEinheiten,
+    diensteEinheit: besetzt.reduce((a, b) => a + b.ausEinheit, 0),
+    tageOhneEinheit: einheitId ? besetzt.filter((b) => b.ausEinheit === 0).length : 0,
     eintraege: zeilen,
     /* Bewusst nicht enthalten: Namen, Krankmeldungen, Stundenkonten,
        interne Aufgaben. Ein Auftraggeber bekommt Nachweis, keine Personalakte. */
@@ -16487,7 +16548,10 @@ function Auftraggeberbericht({ sitz, akt }) {
       `Zeitraum: ${fLang(b.von)} bis ${fLang(b.bis)}`,
       "",
       `Besetzung vollständig an ${b.vollstaendig} von ${b.tage} Tagen` +
-        (b.quote !== null ? ` (${b.quote} %)` : ""),
+        (b.quote !== null ? ` (${b.quote} %)` : "") +
+        (b.betriebsweit ? " — Betrieb gesamt; die Mindestbesetzung ist je Dienstart hinterlegt, nicht je Einheit" : ""),
+      `Dienste aus ${e ? e.name : "der Einheit"}: ${b.diensteEinheit}` +
+        (b.tageOhneEinheit ? ` · ${b.tageOhneEinheit} Tage ohne Dienst aus dieser Einheit` : ""),
       "",
       ...(b.eintraege.length ? ["Besondere Vorkommnisse:", ""] : ["Keine besonderen Vorkommnisse."]),
       ...b.eintraege.map((z) => `${fKurz(z.datum)}${z.dienst ? `  ${z.dienst}` : ""}  ${z.vorkommnis}`),
@@ -16527,9 +16591,13 @@ function Auftraggeberbericht({ sitz, akt }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
           gap: 16, marginBottom: 22 }}>
           {[["Zeitraum", `${zahl(b.tage)} Tage`, ""],
-            ["Vollständig besetzt", `${zahl(b.vollstaendig)}`, `von ${zahl(b.tage)} Tagen`],
+            ["Vollständig besetzt", `${zahl(b.vollstaendig)}`,
+              `von ${zahl(b.tage)} Tagen${b.betriebsweit ? " · Betrieb gesamt" : ""}`],
             ["Deckungsquote", b.quote === null ? "—" : `${b.quote} %`,
-              b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken"],
+              (b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken")
+                + (b.betriebsweit ? " · Mindestbesetzung gilt je Dienstart, nicht je Einheit" : "")],
+            [`Dienste aus ${e ? e.name : "der Einheit"}`, zahl(b.diensteEinheit),
+              b.tageOhneEinheit ? `${zahl(b.tageOhneEinheit)} Tage ohne Dienst aus dieser Einheit` : "an jedem Tag im Dienst"],
             ["Vorkommnisse", zahl(b.eintraege.length), "aus den Übergaben"]]
             .map(([label, wert, sub]) => (
             <Card key={label} style={{ padding: "20px 22px" }}>
@@ -18296,6 +18364,8 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                   <div style={{ fontSize: 13, color: C.dim, marginTop: 4 }}>
                     {s.stand === "abgelaufen" ? `abgelaufen am ${fDatum(s.ablauf)}`
                       : s.stand === "laeuft_ab" ? `läuft in ${s.tage} Tagen ab`
+                      : s.stand === "fehlt" ? (s.nurStatus ? "noch nicht bestätigt" : "nicht hinterlegt")
+                      : s.nurStatus ? "liegt vor"
                       : s.unbefristet ? "unbefristet gültig" : `gültig bis ${fDatum(s.ablauf)}`}</div>
                 </div>
                 <Pill size="sm" tone={tone}>{s.stand === "gueltig" ? "gültig" : s.stand === "laeuft_ab" ? "bald" : "abgelaufen"}</Pill>
@@ -19661,6 +19731,14 @@ function AppInnen() {
         if (window.prompt(`Löscht Mandant, Einheiten, Personal und Pläne unwiderruflich.\nZur Bestätigung den Namen eingeben:\n\n${m.name}`) !== m.name) {
           melde("Löschung abgebrochen."); return s; }
         melde(`${m.name} gelöscht.`); setDetail(null);
+        /* Der Datenraum auf dem Server geht mit — Bestand, Monatsscherben,
+           Sicherungen, Zugangscodes und offene Sitzungen. Vorher verschwand
+           der Betrieb nur aus der Konsole; die Daten lagen weiter im
+           Speicher, ohne dass jemand sie je wieder erreicht hätte. Das
+           Löschkonzept verlangt, dass „gelöscht" auch gelöscht heißt. */
+        if (m.raum) SP.raumLoeschen(m.raum)
+          .then((r) => melde(`Datenraum „${m.raum}" gelöscht (${r.geloescht} Einträge).`))
+          .catch((e) => melde(`Datenraum nicht gelöscht: ${e.message}`));
         return bLog({ ...s, mandanten: s.mandanten.filter((x) => x.id !== id),
           rechnungen: s.rechnungen.filter((r) => r.mandantId !== id) }, `Mandant „${m.name}" gelöscht`);
       }),
@@ -20617,10 +20695,15 @@ function AppInnen() {
         p.id === pid ? { ...p, verfuegbarkeit: v } : p) }), "Verfügbarkeit gespeichert"),
       oeffneVerfuegbarkeit: (pid) => setVerfDlg(pid || sitz.person.id),
       oeffneNachweis: (pid, qid) => setNwDlg({ pid, qid }),
-      setzeNachweis: (pid, qid, ablauf, datei) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => {
+      setzeNachweis: (pid, qid, ablauf, datei, vorhanden) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => {
         if (p.id !== pid) return p;
         const liste = (p.qualNachweise || []).filter((x) => x.qualId !== qid);
-        return { ...p, qualNachweise: [...liste, { qualId: qid, ablauf, datei }] };
+        /* Ein Nur-Status-Nachweis trägt nur „vorhanden" — nie Datum oder Datei. */
+        const q = m.qualifikationen.find((x) => x.id === qid);
+        const eintrag = q && q.nurStatus
+          ? { qualId: qid, ablauf: null, datei: null, vorhanden: !!vorhanden }
+          : { qualId: qid, ablauf, datei };
+        return { ...p, qualNachweise: [...liste, eintrag] };
       }) }), "Nachweis gespeichert"),
       setzeKontrastmodus: (an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === sitz.person.id ? { ...p, kontrastmodus: an } : p) }), null),
