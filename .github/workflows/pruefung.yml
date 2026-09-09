@@ -39,6 +39,10 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
+      # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
+      - name: Branchenprofile
+        run: npm run pruefung:branchen
+
       # Der Löschlauf nach Artikel 17 DSGVO. Ein Fehler hier löscht zu viel
       # oder zu wenig — beides ist nicht zurückzunehmen.
       - name: Aufbewahrung

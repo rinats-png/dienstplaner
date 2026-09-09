@@ -91,13 +91,13 @@ export const PAKETE = [
     beschreibung: "Objektbezogene Posten, Wachbuch, Standortprüfung beim Stempeln, "
       + "und eigene Vorgaben als harte Sperre durchsetzen.",
     merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
-  { id: "pflege", name: "Pflege", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Wohnbereichsplanung, Betreuungskräfte nach § 43b.",
+  { id: "pflege", name: "Pflege und Rettungsdienst", aufpreis: 89,
+    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Bereichs- und Wachabteilungsplanung, Betreuungskräfte nach § 43b.",
     merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
   { id: "klinik", name: "Klinik", aufpreis: 129,
     beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
     merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
-  { id: "industrie", name: "Industrie und Anlagen", aufpreis: 59,
+  { id: "industrie", name: "Industrie, Technik und Anlagen", aufpreis: 59,
     beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
     merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
 ];

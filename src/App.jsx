@@ -175,6 +175,8 @@ import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerwei
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
+import { branchenListe, brancheVon, qualifikationenFuer, einheitLabel as brancheEinheit }
+  from "../netlify/lib/branchen.mjs";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
   from "./preisgestaltung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege, standortZuschlag, STANDORT_BAENDER }
@@ -811,13 +813,12 @@ const stat = (id) => STATUS.find((s) => s.id === id) || STATUS[0];
    zweite Preisliste driftet, und was driftet, ist am Ende ein
    Preisversprechen, das die Anwendung nicht einhält. */
 
-const BRANCHEN = [
-  ["sicherheit", "Sicherheitsdienst", "Schichtgruppe"], ["pflege", "Pflege", "Wohnbereich"],
-  ["klinik", "Klinik", "Station"], ["produktion", "Produktion", "Schichtgruppe"],
-  ["logistik", "Logistik", "Team"], ["leitstelle", "Leitstelle", "Wachschicht"],
-  ["gastronomie", "Gastronomie", "Team"], ["handel", "Handel", "Filialteam"],
-  ["rettung", "Rettungsdienst", "Wachabteilung"], ["sonstiges", "Sonstiges", "Einheit"],
-];
+/* Die Branchenliste stand hier als eigene Tabelle und lief gegen den
+   Server auseinander: Die Oberfläche bot zehn Branchen an, der Server
+   kannte fünf Kataloge, und „Produktion" traf den vorhandenen Katalog
+   „industrie" wegen der abweichenden Kennung nie. Jetzt liest beides
+   dieselbe Quelle. */
+const BRANCHEN = branchenListe();
 
 const ABW = [
   { id: "urlaub", label: "Urlaub", kurz: "U", farbe: "#2E6B4F", urlaub: true, bezahlt: true, rang: 3 },
@@ -1234,7 +1235,7 @@ const MODELLE = [
     id: "zwei-woechentlich", name: "2-Schicht, wöchentlich wechselnd",
     kurz: "Früh und Spät im Wochenwechsel, Wochenende frei",
     beschreibung: "Der einfachste Fall: zwei Gruppen tauschen jede Woche zwischen Früh- und Spätdienst. Kein Nachtdienst, keine Wochenendarbeit.",
-    branchen: ["produktion", "handel", "logistik", "gastronomie", "sonstiges"],
+    branchen: ["produktion", "handel", "logistik", "gastronomie", "sonstiges", "reinigung"],
     gruppen: 2, versatzTage: 7, vollkonti: false, dienste: ["F", "S"],
     tage: ["F","F","F","F","F","-","-","S","S","S","S","S","-","-"],
     kennzahlen: { wochenstunden: 40, serie: 5, nachtserie: 0, besetzung: "1 Gruppe je Dienst" },
@@ -1277,7 +1278,7 @@ const MODELLE = [
     id: "panama", name: "Panama, 2-2-3 mit 12-Stunden-Diensten",
     kurz: "Zwei an, zwei frei, drei an — jedes zweite Wochenende ganz frei",
     beschreibung: "Vier Gruppen, zwölfstündige Tag- und Nachtdienste. Zwei Gruppen sind täglich im Einsatz. Jede Gruppe hat jedes zweite Wochenende vollständig frei.",
-    branchen: ["produktion", "sicherheit", "leitstelle", "rettung", "sonstiges"],
+    branchen: ["produktion", "sicherheit", "leitstelle", "rettung", "sonstiges", "feuerwehr"],
     gruppen: 4, versatzTage: 7, vollkonti: true, dienste: ["T12", "N12"],
     tage: ["T12","T12","-","-","T12","T12","T12","-","-","T12","T12","-","-","-",
            "N12","N12","-","-","N12","N12","N12","-","-","N12","N12","-","-","-"],
@@ -1289,7 +1290,7 @@ const MODELLE = [
     id: "fuenf-schicht", name: "5-Schicht Vollkonti, 9,75 Stunden",
     kurz: "Fünf Gruppen, keine Einzeldienste, viele freie Wochenenden",
     beschreibung: "Fünf Gruppen mit leicht verlängerten Diensten. Höchstens vier Dienste und vier Nächte am Stück, keine isolierten Diensttage.",
-    branchen: ["sicherheit", "behoerde", "leitstelle", "klinik", "rettung", "sonstiges"],
+    branchen: ["sicherheit", "behoerde", "leitstelle", "klinik", "rettung", "sonstiges", "feuerwehr"],
     gruppen: 5, versatzTage: 7, vollkonti: true, dienste: ["F9", "S9", "N9"],
     tage: ["-","N9","N9","N9","N9","-","-","-","S9","S9","S9","-","N9","N9",
            "N9","-","-","-","S9","S9","S9","S9","-","-","F9","F9","-","-",
@@ -1302,7 +1303,7 @@ const MODELLE = [
     id: "stufe-8", name: "Stufenmodell F F S S N N frei frei",
     kurz: "Acht Gruppen im Tagesversatz, immer zwei je Dienst",
     beschreibung: "Jede Gruppe startet einen Tag später als die vorherige. Dadurch sind an jedem Tag genau zwei Gruppen je Dienstart im Einsatz — die Besetzung ist besonders gleichmäßig.",
-    branchen: ["pflege", "klinik", "rettung", "leitstelle", "sonstiges"],
+    branchen: ["pflege", "klinik", "rettung", "leitstelle", "sonstiges", "feuerwehr"],
     gruppen: 8, versatzTage: 1, vollkonti: true, dienste: ["F", "S", "N"],
     tage: ["F","F","S","S","N","N","-","-"],
     kennzahlen: { wochenstunden: 42, serie: 6, nachtserie: 2, besetzung: "2 Gruppen je Dienst" },
@@ -1324,7 +1325,7 @@ const MODELLE = [
     id: "24-72", name: "24-Stunden-Dienst mit 72 Stunden frei",
     kurz: "Ein voller Tag Dienst, drei Tage frei",
     beschreibung: "Vier Gruppen im Tagesversatz. Klassisch bei Feuerwehr und Rettungsdienst, wo erhebliche Teile Bereitschaft sind.",
-    branchen: ["rettung", "sicherheit", "behoerde", "sonstiges"],
+    branchen: ["rettung", "sicherheit", "behoerde", "sonstiges", "feuerwehr"],
     gruppen: 4, versatzTage: 1, vollkonti: true, dienste: ["V24"],
     tage: ["V24","-","-","-"],
     kennzahlen: { wochenstunden: 42, serie: 1, nachtserie: 0, besetzung: "1 Gruppe je Dienst" },
@@ -5756,7 +5757,9 @@ function Assistent2({ sitz, akt, onClose }) {
             {BRANCHEN.map(([id, name, label]) => {
               const an = branche === id && !eigeneBranche;
               return (
-                <div key={id} onClick={() => { setBranche(id); setEigeneBranche(""); setEinheitLabel(label); }}
+                <div key={id}
+                  {...klickbar(() => { setBranche(id); setEigeneBranche(""); setEinheitLabel(label); })}
+                  aria-pressed={an}
                   className="karte" style={{ padding: 15, cursor: "pointer",
                     outline: an ? `2px solid ${C.accent}` : "none" }}>
                   <div style={{ fontSize: 14.5, fontWeight: 600 }}>{name}</div>
@@ -6128,11 +6131,11 @@ function MandantAnlegen({ db, akt, onClose }) {
     standorte: [{ name: "Hauptstandort", land: "HE", radius: 200 }],
     wochenstunden: 40, ruhezeit: 11, maxFolge: 6, ausgleichGrenze: 40,
     modellId: "vier-x-vier-entzerrt", gruppen: 4,
-    dienstarten: [], qualifikationen: [
-      { name: "Fachkraft", kurz: "FK", gueltigMonate: null, nachweisPflicht: false },
-      { name: "Schichtleitung", kurz: "SL", gueltigMonate: null, nachweisPflicht: false },
-      { name: "Erste Hilfe", kurz: "EH", gueltigMonate: 24, nachweisPflicht: true },
-    ],
+    /* Der Katalog der Branche statt dreier Allgemeinplätze. Er trägt
+       Rechtsgrundlage, Ebene und Bezug schon mit — wer ihn übernimmt,
+       hat eine belegte Qualifikationsliste statt einer Sammlung von
+       Wörtern. */
+    dienstarten: [], qualifikationen: qualifikationenFuer("sicherheit"),
     zuschlaege: [
       { name: "Nachtarbeit", art: "nacht", prozent: 25, aktiv: true },
       { name: "Sonntagsarbeit", art: "sonntag", prozent: 50, aktiv: true },
@@ -6159,9 +6162,18 @@ function MandantAnlegen({ db, akt, onClose }) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Branche" hint="Bestimmt die Vorschläge für Modell und Bezeichnungen.">
               <Sel value={f.branche} onChange={(e) => {
-                const b = BRANCHEN.find((x) => x[0] === e.target.value);
-                setF((x) => ({ ...x, branche: e.target.value, einheitLabel: b ? b[2] : x.einheitLabel,
-                  modellId: (modellFuerBranche(e.target.value)[0] || MODELLE[0]).id }));
+                const neueBranche = e.target.value;
+                setF((x) => {
+                  /* Den Katalog nur austauschen, solange er unangetastet der
+                     der bisherigen Branche ist. Wer eigene Zeilen eingetragen
+                     hat, verliert sie beim Umschalten nicht. */
+                  const bisher = qualifikationenFuer(x.branche).map((q) => q.name).join("|");
+                  const jetzt = (x.qualifikationen || []).map((q) => q.name).join("|");
+                  return { ...x, branche: neueBranche,
+                    einheitLabel: brancheEinheit(neueBranche),
+                    qualifikationen: bisher === jetzt ? qualifikationenFuer(neueBranche) : x.qualifikationen,
+                    modellId: (modellFuerBranche(neueBranche)[0] || MODELLE[0]).id };
+                });
               }}>{BRANCHEN.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
             <Field label="Wie heißen die Einheiten?" hint="Erscheint überall in der Anwendung.">
               <Inp value={f.einheitLabel} onChange={(e) => setz("einheitLabel", e.target.value)} /></Field>
@@ -17278,8 +17290,9 @@ function Selbststarts({ db, akt }) {
   useEffect(() => { laden(tage); }, [tage]);
 
   const liste = (stand && stand.selbststarts) || [];
-  const BRANCHEN = { sicherheit: "Sicherheitsdienst", pflege: "Pflege",
-    klinik: "Klinik", industrie: "Produktion", sonstige: "Sonstige" };
+  /* Nicht noch eine Tabelle: der Name kommt aus dem Branchenprofil, und
+     alte Kennungen führt brancheVon selbst zurück. */
+  const brancheName = (id) => brancheVon(id).name;
 
   /* Wie alt ist der Vorgang, und wie lange läuft der Test noch? */
   const tageSeit = (iso) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -17356,7 +17369,7 @@ function Selbststarts({ db, akt }) {
                           <Pill size="sm" tone="warn">noch {rest} Tage</Pill>)}
                       </div>
                       <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>
-                        {BRANCHEN[s.branche] || s.branche} · {zahl(s.zugaenge)} Zugänge ·
+                        {brancheName(s.branche)} · {zahl(s.zugaenge)} Zugänge ·
                         {" "}{alt === 0 ? "heute" : alt === 1 ? "gestern" : `vor ${alt} Tagen`}
                       </div>
                       {s.email ? (
@@ -19100,8 +19113,12 @@ function Betrieb({ sitz, akt }) {
 function baueAusAnlage(f) {
 const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length - 1];
   const mo = MODELLE.find((x) => x.id === f.modellId) || MODELLE[0];
+  /* Grundlage, Ebene, Bezug und die Statuskennzeichen wandern mit. Ohne
+     sie wäre der Katalog beim Anlegen wieder auf Namen zusammengeschrumpft,
+     und die Anwendung hätte keine Rechtsquelle mehr zu nennen. */
   const quals = (f.qualifikationen || []).filter((q) => q.name && q.name.trim())
-    .map((q, i) => ({ id: `q${i + 1}`, name: q.name.trim(), kurz: (q.kurz || q.name.slice(0, 2)).toUpperCase(),
+    .map((q, i) => ({ ...q, id: `q${i + 1}`, name: q.name.trim(),
+      kurz: (q.kurz || q.name.slice(0, 2)).toUpperCase(),
       farbe: PALETTE[i % PALETTE.length], gueltigMonate: q.gueltigMonate ?? null,
       nachweisPflicht: !!q.nachweisPflicht }));
   const standorte = (f.standorte || [{ name: "Hauptstandort", land: "HE" }])
@@ -19860,8 +19877,8 @@ function AppInnen() {
 
       /* --- Betrieb --- */
       setzeFeld: (k, v) => mUpd((m) => ({ ...m, [k]: v }), null),
-      setzeBranche: (b) => mUpd((m) => { const br = BRANCHEN.find((x) => x[0] === b);
-        return { ...m, branche: b, einheitLabel: br ? br[2] : m.einheitLabel }; }, "Branche gewechselt"),
+      setzeBranche: (b) => mUpd((m) => ({ ...m, branche: b, einheitLabel: brancheEinheit(b) }),
+        "Branche gewechselt"),
       setzeEinstellung: (k, v) => mUpd((m) => ({ ...m, einstellungen: { ...m.einstellungen, [k]: v } }), null),
       /* Aufbewahrungsfristen liegen je Betrieb, nicht in den Einstellungen —
          sie gehören zum Löschkonzept, nicht zum Regelwerk. */

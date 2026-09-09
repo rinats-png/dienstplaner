@@ -21,7 +21,7 @@
    Browser mit altem Zwischenspeicher die Arbeit aller anderen.
    ========================================================================== */
 
-export const VERSION = 8;
+export const VERSION = 9;
 
 /**
  * Eine Stufe je Eintrag. Der Schlüssel ist die Version, aus der gehoben
@@ -122,6 +122,39 @@ const STUFEN = {
       };
     }),
   }),
+
+  /* --- 8 → 9: Branchenkennungen vereinheitlichen -----------------------
+
+     Die Branche stand an drei Stellen: eine Liste in der Oberfläche, eine
+     Tabelle im Server, ein Katalog daneben. Sie sind auseinandergelaufen —
+     der Server legte einen Industriebetrieb unter „industrie" an, die
+     Oberfläche kannte nur „produktion" und zeigte im Auswahlfeld nichts an;
+     „sonstige" und „sonstiges" gab es beide.
+
+     Hier wandern die alten Kennungen auf die heutigen. Die Einheits-
+     bezeichnung bleibt, wie sie ist: Wer seinen Wohnbereich „Etage" nennt,
+     soll ihn nach einer Migration nicht anders vorfinden. */
+  8: (b) => {
+    const NEU = { industrie: "produktion", sonstige: "sonstiges",
+      pflegeheim: "pflege", krankenhaus: "klinik", security: "sicherheit" };
+    return {
+      ...b,
+      version: 9,
+      mandanten: (b.mandanten || []).map((m) => {
+        if (!m || typeof m !== "object") return m;
+        const neu = NEU[m.branche];
+        if (!neu) return m;
+        return {
+          ...m,
+          branche: neu,
+          /* Das Branchenpaket trägt dieselbe Kennung wie die Branche —
+             außer bei „produktion", das weiterhin auf „industrie" bucht. */
+          pakete: Array.isArray(m.pakete)
+            ? m.pakete.map((x) => (x === "sonstige" ? "sonstiges" : x)) : m.pakete,
+        };
+      }),
+    };
+  },
 };
 
 /** Was ist mit diesem Bestand? Ohne ihn zu verändern. */

@@ -17,160 +17,17 @@
    ========================================================================== */
 
 import { MATRIX } from "./rechte.mjs";
+import { brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer, quoteFuer, paketFuer }
+  from "./branchen.mjs";
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
-export const VERSION = 8;
+export const VERSION = 9;
 
-/* Wie die Einheit im jeweiligen Gewerbe heißt. Das prägt die halbe
-   Oberfläche: „Wohnbereich 1" gegen „Schichtgruppe 1". */
-const EINHEIT_LABEL = {
-  pflege: "Wohnbereich",
-  klinik: "Station",
-  sicherheit: "Schichtgruppe",
-  industrie: "Schichtgruppe",
-  sonstige: "Schichtgruppe",
-};
-
-/* Drei Dienste im Achtstundenrhythmus — der Normalfall im durchgehenden
-   Schichtbetrieb und ein Ausgangspunkt, der sich ändern lässt. */
-const DIENSTARTEN = [
-  { id: "F", name: "Frühdienst", kurz: "F", start: "06:00", ende: "14:00",
-    pause: 30, farbe: "#3C7C8C", ort: "" },
-  { id: "S", name: "Spätdienst", kurz: "S", start: "14:00", ende: "22:00",
-    pause: 30, farbe: "#A8621B", ort: "" },
-  { id: "N", name: "Nachtdienst", kurz: "N", start: "22:00", ende: "06:00",
-    pause: 45, farbe: "#43507E", ort: "" },
-];
-
-/* Fachkraftquote je Dienst — nur in Pflege und Klinik geprüft. Die Werte
-   sind Vorschläge am unteren Rand des Üblichen, keine Vorgaben. */
-const QUOTE = { pflege: { tag: 0.40, nacht: 0.50 }, klinik: { tag: 0.50, nacht: 0.50 } };
-
-/* Qualifikationen, die im jeweiligen Gewerbe fast immer gebraucht werden.
-   Angelegt, aber keiner Person zugeordnet — es gibt ja noch keine. */
-/* ==========================================================================
-   QUALIFIKATIONSKATALOG JE BRANCHE
-
-   Jeder Eintrag nennt seine Rechtsgrundlage — oder sagt ausdrücklich, dass
-   es keine gibt. Das ist der Unterschied, an dem ein Compliance-Werkzeug
-   hängt: „Pflegefachkraft" folgt aus dem PflBG und ist nicht verhandelbar,
-   „Erste Hilfe alle zwei Jahre" ist eine betriebliche Festlegung, die je
-   nach Gefährdungsbeurteilung anders ausfallen darf.
-
-   Zwei Dinge sind hier bewusst nicht als bundesweite Pflicht verdrahtet:
-
-   Die Sachkundeprüfung nach § 34a GewO gilt nicht für jede
-   Bewachungstätigkeit. Für einen großen Teil — etwa Bewachung im
-   Objektschutz ohne die in § 34a Abs. 1a genannten Tätigkeiten — genügt die
-   Unterrichtung. Beides steht deshalb getrennt im Katalog, und nur die
-   Unterrichtung ist vorbelegt. Wer Türsteher, Citystreife oder
-   Ladendetektive einsetzt, schaltet die Sachkunde selbst scharf.
-
-   Und der Masernschutz nach § 20 IfSG wird als Status geführt, nicht als
-   Gesundheitsangabe: Ob der Nachweis vorliegt, darf der Betrieb wissen; die
-   Impfdaten selbst gehen ihn nichts an.
-   ========================================================================== */
-const QUALIFIKATIONEN = {
-  pflege: [
-    { id: "q1", name: "Pflegefachkraft", kurz: "PFK",
-      ebene: "bund", bezug: "person", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
-      grundlage: "§§ 1, 4 PflBG — Erlaubnis zum Führen der Berufsbezeichnung" },
-    { id: "q2", name: "Betreuungskraft § 43b", kurz: "BK",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "§ 43b SGB XI" },
-    { id: "q3", name: "Pflegeassistenz", kurz: "PA",
-      ebene: "land", bezug: "person", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Landesrecht — Bezeichnung und Umfang sind je Bundesland verschieden" },
-    /* Kein bundesweit vorgeschriebenes Intervall. Der Wert ist eine
-       verbreitete betriebliche Praxis, kein Gesetz. */
-    { id: "q4", name: "Erste Hilfe", kurz: "EH",
-      ebene: "betrieb", bezug: "person", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Betrieblich — Umfang nach Gefährdungsbeurteilung (§ 5 ArbSchG, DGUV Vorschrift 1)" },
-    { id: "q5", name: "Hygieneunterweisung", kurz: "HYG",
-      ebene: "bund", bezug: "einrichtung", intervallBetrieblich: true, gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§ 23 IfSG in Verbindung mit dem Hygieneplan der Einrichtung" },
-    { id: "q6", name: "Masernschutz — Status", kurz: "MSG",
-      ebene: "bund", bezug: "einrichtung", gueltigMonate: null, nachweisPflicht: true, fachkraft: false,
-      nurStatus: true,
-      grundlage: "§ 20 Abs. 8, 9 IfSG — nur das Vorliegen erfassen, keine Impfdaten" },
-  ],
-  klinik: [
-    { id: "q1", name: "Pflegefachkraft", kurz: "PFK",
-      ebene: "bund", bezug: "person", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
-      grundlage: "§§ 1, 4 PflBG" },
-    { id: "q2", name: "Approbation", kurz: "APP",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
-      grundlage: "§ 2 Bundesärzteordnung; Berufserlaubnis nach Landesrecht" },
-    { id: "q3", name: "Facharztanerkennung", kurz: "FA",
-      ebene: "land", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Weiterbildungsordnung der zuständigen Landesärztekammer" },
-    { id: "q4", name: "Fachweiterbildung Intensiv/Anästhesie", kurz: "FWI",
-      ebene: "land", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Landesrecht und Vorgaben der Einrichtung — keine bundesweit einheitliche Pflicht" },
-    { id: "q5", name: "Geräteeinweisung Medizinprodukte", kurz: "MPG",
-      ebene: "bund", bezug: "taetigkeit", intervallBetrieblich: true, gueltigMonate: 24, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§§ 4, 10 MPBetreibV — je Gerät und Tätigkeit" },
-    { id: "q6", name: "Hygieneunterweisung", kurz: "HYG",
-      ebene: "bund", bezug: "einrichtung", intervallBetrieblich: true, gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§ 23 IfSG, Hygieneplan des Krankenhauses" },
-    { id: "q7", name: "Masernschutz — Status", kurz: "MSG",
-      ebene: "bund", bezug: "einrichtung", gueltigMonate: null, nachweisPflicht: true, fachkraft: false,
-      nurStatus: true, grundlage: "§ 20 Abs. 8, 9 IfSG — nur das Vorliegen erfassen" },
-    { id: "q8", name: "Erste Hilfe", kurz: "EH",
-      ebene: "betrieb", bezug: "person", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
-  ],
-  sicherheit: [
-    /* Vorbelegt ist die Unterrichtung, nicht die Sachkunde — siehe oben. */
-    { id: "q1", name: "Unterrichtung § 34a GewO", kurz: "UNT",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: true, fachkraft: true,
-      grundlage: "§ 34a Abs. 1a GewO, §§ 4 ff. BewachV — genügt für die meisten Bewachungstätigkeiten" },
-    { id: "q2", name: "Sachkundeprüfung § 34a GewO", kurz: "SK",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "§ 34a Abs. 1a Satz 2 GewO — nur für die dort genannten Tätigkeiten, etwa Kontrollgänge im "
-        + "öffentlichen Verkehrsraum, Schutz vor Ladendieben und Bewachung im Einlassbereich" },
-    { id: "q3", name: "Zuverlässigkeit geprüft — Status", kurz: "ZUV",
-      ebene: "bund", bezug: "person", gueltigMonate: 60, nachweisPflicht: true, fachkraft: false,
-      nurStatus: true,
-      grundlage: "§ 34a Abs. 1 Satz 3 GewO, § 8 BewachV — Regelüberprüfung durch die Behörde" },
-    { id: "q4", name: "Waffenrechtliche Erlaubnis", kurz: "WAF",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: false,
-      grundlage: "§§ 10, 28 WaffG, § 10 AWaffV — nur bei tatsächlich bewaffnetem Einsatz, "
-        + "kein allgemeiner Qualifikationsnachweis des Gewerbes" },
-    { id: "q5", name: "Erste Hilfe", kurz: "EH",
-      ebene: "betrieb", bezug: "person", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
-  ],
-  industrie: [
-    { id: "q1", name: "Unterweisung Arbeitsschutz", kurz: "UAS",
-      ebene: "bund", bezug: "person", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§ 12 ArbSchG, § 4 DGUV Vorschrift 1 — jährlich, arbeitsplatzbezogen" },
-    { id: "q2", name: "Maschinen- und Anlagenunterweisung", kurz: "MAU",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§ 12 BetrSichV — je Arbeitsmittel" },
-    { id: "q3", name: "Befähigte Person", kurz: "BEF",
-      ebene: "bund", bezug: "taetigkeit", gueltigMonate: null, nachweisPflicht: false, fachkraft: true,
-      grundlage: "§ 2 Abs. 6 BetrSichV, TRBS 1203 — je konkreter Prüfaufgabe" },
-    { id: "q4", name: "Flurförderzeug (Staplerschein)", kurz: "STA",
-      ebene: "betrieb", bezug: "taetigkeit", gueltigMonate: 12, nachweisPflicht: false, fachkraft: false,
-      grundlage: "DGUV Vorschrift 68, DGUV Grundsatz 308-001" },
-    { id: "q5", name: "Erste Hilfe", kurz: "EH",
-      ebene: "betrieb", bezug: "person", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
-    { id: "q6", name: "Brandschutzhelfer", kurz: "BSH",
-      ebene: "bund", bezug: "einrichtung", intervallBetrieblich: true, gueltigMonate: 36, nachweisPflicht: false, fachkraft: false,
-      grundlage: "§ 10 ArbSchG, ASR A2.2" },
-  ],
-  sonstige: [
-    { id: "q1", name: "Unterweisung Arbeitsschutz", kurz: "UAS",
-      ebene: "bund", bezug: "person", gueltigMonate: 12, nachweisPflicht: true, fachkraft: false,
-      grundlage: "§ 12 ArbSchG — vor Aufnahme der Tätigkeit und danach regelmäßig" },
-    { id: "q2", name: "Erste Hilfe", kurz: "EH",
-      ebene: "betrieb", bezug: "person", gueltigMonate: 24, nachweisPflicht: false, fachkraft: false,
-      grundlage: "Betrieblich — nach Gefährdungsbeurteilung" },
-  ],
-};
+/* Einheitsbezeichnung, Dienstarten, Fachkraftquote und
+   Qualifikationskatalog stehen seit September 2026 gesammelt in
+   branchen.mjs — eine Branche ist dort ein Datensatz, keine über drei
+   Dateien verteilte Tabelle. Die Oberfläche liest dieselbe Quelle. */
 
 /** Montag der laufenden Woche — Ankerpunkt für die Schichtfolge. */
 function ankerMontag(jetzt) {
@@ -193,8 +50,9 @@ function ankerMontag(jetzt) {
  */
 export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }) {
   const jetzt = new Date();
-  const br = EINHEIT_LABEL[branche] ? branche : "sonstige";
-  const label = EINHEIT_LABEL[br];
+  const profil = brancheVon(branche);
+  const br = profil.id;
+  const label = einheitLabel(br);
   const mandantId = raum || `m-${jetzt.getTime()}`;
 
   const einheiten = [{
@@ -252,10 +110,10 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
        unerreichbar. */
     matrix: JSON.parse(JSON.stringify(MATRIX)),
 
-    dienstarten: DIENSTARTEN.map((d) => ({ ...d,
+    dienstarten: dienstartenFuer(br).map((d) => ({ ...d,
       faktor: 1, posten: false, quelle: null, ruhezeitNeutral: false, rufbereitschaft: false,
       mindest: { mo_do: 0, fr: 0, sa: 0, so: 0 }, mindestQual: {} })),
-    qualifikationen: (QUALIFIKATIONEN[br] || QUALIFIKATIONEN.sonstige).map((q) => ({ ...q })),
+    qualifikationen: qualifikationenFuer(br),
 
     /* Gesetzliche Grundwerte. Bewusst die Mindestanforderungen des
        Arbeitszeitgesetzes, damit die Prüfung von Anfang an etwas prüft. */
@@ -281,8 +139,8 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       ausgleichWochen: 24,
       maxTagesstunden: 10,
       pausen: { ab6h: 30, ab9h: 45 },
-      quote: QUOTE[br] || null,
-      pakete: br === "sonstige" ? [] : [br],
+      quote: quoteFuer(br),
+      pakete: paketFuer(br) ? [paketFuer(br)] : [],
     },
 
     /* Aufbewahrung — siehe src/migration.js, Stufe 5 → 6. */
