@@ -64,16 +64,29 @@ Auslieferung. Was davon hier zutrifft:
 | **Waisen** | Es gibt keine. Personen werden nie gelöscht, sondern tragen ein Austrittsdatum; der Löschlauf nach Art. 17 DSGVO anonymisiert sie, statt sie aus der Liste zu nehmen. Ein gelöschter Betrieb nimmt seinen ganzen Datenraum mit. |
 | **Transaktionen** | Kein Mehrschritt-Schreiben: Ein Bestand wird als Kern und Monatsscherben abgelegt, der Zeiger auf den neuen Stand wird zuletzt gesetzt. Bricht etwas dazwischen ab, gilt weiter der alte Stand. |
 | **Pagination** | Bewusst anders: Die Anwendung arbeitet offline-fähig auf dem ganzen Betrieb. Statt Seitenweise gibt es die Zerlegung in Monatsscherben — geschrieben wird nur der geänderte Monat, und zwei Planer an verschiedenen Monaten stören einander nicht. |
-| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Klickbare Zellen und Zeilen der Telefonansicht sind Schaltflächen mit Fokus, Enter und Leertaste. |
-| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Wunschzellen tragen eine Beschriftung mit Datum und Zustand. |
-| **Kontrast** | Eigene Palette; zusätzlich ein Feldmodus mit größerer Schrift und maximalem Kontrast für die Arbeit draußen. Zustände werden nie allein über Farbe gezeigt, sondern zusätzlich über Wort und Zeichen. |
+| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Jede klickbare Zelle, Karte und Zeile ist eine Schaltfläche mit Fokus, Enter und Leertaste (`klickbar()`); liegt darin ein eigenes Bedienelement, gehört der Tastendruck ihm. Der Monatsplan ist ein `role="grid"` mit Pfeiltastensteuerung. Ein Tastaturlauf über 90 Sprünge fand keine Falle und keinen Halt ohne sichtbaren Fokus. |
+| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`, die Befehlssuche ist eine `combobox` mit `listbox` und `aria-activedescendant`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Jede Fläche ohne eigenen Text trägt eine Beschriftung — Planzelle, Balken, Kalendertag, Fortschrittspunkt. |
+| **Kontrast** | Gemessen statt geschätzt: `npm run pruefung:kontrast` rechnet die relative Leuchtkraft nach WCAG 2.1 nach und prüft jede Paarung, die tatsächlich vorkommt, in beiden Paletten — 4,5:1 für Text, 3:1 für Bedienelemente. Die erste Messung fand fünf Verstöße, darunter weiße Schrift auf Türkis mit 2,23:1 auf jeder Hauptschaltfläche im Dunkelmodus. Dazu ein Feldmodus mit größerer Schrift für die Arbeit draußen; Zustände werden nie allein über Farbe gezeigt. |
 | **Dateiuploads** | Es gibt keine. Nachweise werden als Fundstelle geführt — damit entfallen MIME-Prüfung, Pfadwanderung und Schadsoftware im Speicher als Angriffsfläche. |
-| **CI/CD** | Zwei Läufe: `Prüfung` (Lint, Typen, Regelwerk, Aufbewahrung, Codes, Scherben, Rechtetabellen, Build, Rechte, Verwalter, Demo, Sicherung, Bremse) und `Sicherheit` (Audit, Secret-Scan, verbotene Muster). Ein roter Lauf blockiert. |
+| **CI/CD** | Zwei Läufe: `Prüfung` (Lint, Typen, Regelwerk, Kontrast, Branchenprofile, Untergrenzen, Aufbewahrung, Codes, Scherben, Rechtetabellen, Build, Rechte, Verwalter, Demo, Sicherung, Bremse) und `Sicherheit` (Audit, Secret-Scan, verbotene Muster). Ein roter Lauf blockiert. |
 
-Offen aus diesem Handbuch: rund dreißig weitere klickbare Zellen der
-Schreibtischansicht (Monatsplan, Listen) sind noch keine Schaltflächen;
-ein Durchgang mit einer Vorlesesoftware und eine Messung der
-Kontrastwerte nach WCAG AA stehen aus.
+### Wie der Durchgang mit Vorlesesoftware gefahren wurde
+
+Ein echter Lauf mit NVDA oder VoiceOver ist hier nicht möglich. Gefahren
+wurde stattdessen die Frage, die eine Vorlesesoftware an jedes Element
+stellt: Was bist du, und wie heißt du? Über alle 37 Ansichten der
+Schreibtisch- und 47 der Telefonansicht wurde gemessen, welche Flächen
+sich klickbar geben, ohne eine Rolle zu tragen, welche Bedienelemente
+keinen Namen haben, welche Felder ohne Beschriftung stehen und ob die
+Überschriftenfolge Stufen überspringt.
+
+Der erste Lauf fand vierzehn echte Mängel: die vier Felder je
+Zuschlagsregel standen ohne jede Beschriftung nebeneinander, der
+Startpunkt je Wohnbereich, der Dienstartfilter, das Datum des
+Dienstbuchs und die Startansicht waren namenlos, und sieben Tageskarten
+der Telefonansicht waren keine Schaltflächen. Alle behoben. Was bleibt,
+ist eine Karte auf der Startseite, die dieselbe Sache tut wie die
+Schaltfläche in ihr — mit der Tastatur erreichbar, für die Maus bequem.
 
 ## Was bewusst anders ist als in der Liste
 

@@ -39,6 +39,12 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
+      # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
+      # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
+      # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
+      - name: Kontrast
+        run: npm run pruefung:kontrast
+
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen

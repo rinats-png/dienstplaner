@@ -317,7 +317,7 @@ body{margin:0;}
   border-radius:var(--r); padding:7px 12px; cursor:pointer; font-family:inherit;
   font-size:13px; color:${C.dim}; min-width:210px; transition:border-color .14s;
 }
-.suchknopf:hover{border-color:${C.lineStark};}
+.suchknopf:hover{border-color:${C.steuer};}
 .suchknopf kbd{margin-left:auto; font-size:10.5px; font-family:inherit; padding:2px 6px;
   border-radius:5px; background:#fff; border:1px solid ${C.line}; color:${C.dim};}
 
@@ -354,12 +354,12 @@ h1.titel b{font-weight:680;}
   border-radius:10px; border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
   transition:background .14s, border-color .14s, color .14s; white-space:nowrap; line-height:1.2;
 }
-.btn:hover{background:${C.bg}; border-color:${C.lineStark};}
+.btn:hover{background:${C.bg}; border-color:${C.steuer};}
 .btn:active{transform:translateY(.5px);}
 .btn:disabled{opacity:.45; cursor:not-allowed; transform:none;}
 .btn:focus-visible{outline:2px solid ${C.accent}; outline-offset:2px;}
-.btn-primary{background:${C.accent}; border-color:${C.accent}; color:#fff;}
-.btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi};}
+.btn-primary{background:${C.accent}; border-color:${C.accent}; color:${C.aufAkzent};}
+.btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi}; color:${C.aufAkzent};}
 .btn-quiet{background:transparent; border-color:transparent; color:${C.dim};}
 .btn-quiet:hover{background:${C.bg}; color:${C.text};}
 .btn-danger{background:#fff; border-color:${C.danger}; color:${C.danger};}
@@ -373,7 +373,7 @@ h1.titel b{font-weight:680;}
   background:${C.flaeche}; color:${C.text}; font-size:13.5px; font-family:inherit;
   transition:border-color .14s, box-shadow .14s;
 }
-.inp:hover,.sel:hover{border-color:${C.lineStark};}
+.inp:hover,.sel:hover{border-color:${C.steuer};}
 .inp:focus,.sel:focus,textarea.inp:focus{outline:none; border-color:${C.accent};
   box-shadow:0 0 0 3px ${C.accentLight};}
 .inp::placeholder{color:${C.dim}; opacity:.72;}
@@ -421,7 +421,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
   font-family:inherit; font-size:13px; font-weight:550; color:${C.dim};
   padding:8px 16px; border-radius:999px; white-space:nowrap; flex-shrink:0;
   transition:background .14s, color .14s, border-color .14s;}
-.seg button:hover{border-color:${C.lineStark};}
+.seg button:hover{border-color:${C.steuer};}
 .seg button.on{background:${C.accentLight}; color:${C.accent}; border-color:${C.accent}; font-weight:620;}
 
 .reiterreihe{display:flex; gap:7px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:5px;
@@ -435,7 +435,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 .hakenliste li::before{content:"✓"; color:${C.ok}; font-weight:700; flex-shrink:0;}
 
 .schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
-  position:relative; transition:background .18s; flex-shrink:0; background:${C.lineStark};}
+  position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
   background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
@@ -4886,6 +4886,14 @@ function klickbar(onClick, label) {
     ...(label ? { "aria-label": label } : {}),
     onKeyDown: (e) => {
       if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      /* Manche dieser Flächen tragen ein eigenes Bedienelement in sich — ein
+         Kästchen in der Antragsliste, eine Schaltfläche auf einer Karte.
+         Tastendrücke steigen auf: Ohne diese Abfrage schluckte die Zeile die
+         Leertaste, und das Kästchen ließe sich nicht mehr mit der Tastatur
+         setzen. Wer das nächstgelegene bedienbare Element ist, entscheidet. */
+      const eigen = e.target.closest
+        && e.target.closest("button, a[href], input, select, textarea, [tabindex]");
+      if (eigen && eigen !== e.currentTarget) return;
       /* Die Leertaste rollt sonst die Seite weiter, während man drückt. */
       e.preventDefault();
       e.stopPropagation();
@@ -4906,7 +4914,7 @@ const Lab = ({ children, style }) => (<div style={{ fontSize: 12, fontWeight: 50
 const Rubrik = ({ children, style }) => (<div className="rubrik" style={style}>{children}</div>);
 const Schalter = ({ an, onChange }) => (
   <button type="button" className={`schalter${an ? " on" : ""}`} onClick={onChange}
-    style={{ background: an ? C.ok : C.lineStark }} aria-pressed={an}><i /></button>);
+    style={{ background: an ? C.ok : C.steuer }} aria-pressed={an}><i /></button>);
 const Haken = ({ punkte }) => (
   <ul className="hakenliste">{punkte.map((p, i) => <li key={i}>{p}</li>)}</ul>);
 const Fussleiste = ({ children }) => <div className="fussleiste noprint">{children}</div>;
@@ -4919,7 +4927,10 @@ const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, r
     {setSuche && (
       <div className="suchfeld">
         <span className="lupe">⌕</span>
-        <input className="inp" value={suche} placeholder={platzhalter}
+        {/* Ein Platzhalter verschwindet, sobald etwas im Feld steht — er
+            ist deshalb keine Beschriftung (WCAG 3.3.2). Beides zu setzen
+            kostet nichts und trägt auch dann noch. */}
+        <input className="inp" value={suche} placeholder={platzhalter} aria-label={platzhalter}
           onChange={(e) => setSuche(e.target.value)} />
       </div>)}
     {children}
@@ -4928,11 +4939,14 @@ const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, r
   </div>);
 /** Verdichtete Planzelle: Dienst und Person in einem Block statt zwei Zeilen. */
 const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
+  /* Die leere Zelle trägt keinen Text. Ohne eigene Beschriftung meldet eine
+     Vorlesesoftware nur „Schaltfläche" und lässt offen, wofür. */
   if (!da) return (
-    <div onClick={onClick} title={title} className="planzelle"
+    <div {...klickbar(onClick, title || "Freie Zelle besetzen")} title={title} className="planzelle"
       style={{ background: C.bg, cursor: onClick ? "pointer" : "default", minHeight: 34 }} />);
   return (
-    <div onClick={onClick} title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
+    <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
+      title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
       style={{ background: `${da.farbe}1C`, color: da.farbe, cursor: onClick ? "pointer" : "default",
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
@@ -5396,7 +5410,8 @@ function Anmeldung({ db, onLogin }) {
             </div>
           </div>
 
-          <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }} onClick={() => onLogin({ rolle: "betreiber" })}>
+          <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }}
+            {...klickbar(() => onLogin({ rolle: "betreiber" }), "Zur Betreiberkonsole")}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
               <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
@@ -5419,7 +5434,9 @@ function Anmeldung({ db, onLogin }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 }}>
               {proRolle.map(({ r, person }) => person && (
-                <div key={r.id} className="karte" onClick={() => onLogin({ rolle: "kunde", mandantId: m.id, personId: person.id })}
+                <div key={r.id} className="karte"
+                  {...klickbar(() => onLogin({ rolle: "kunde", mandantId: m.id, personId: person.id }),
+                    `Als ${r.label} anmelden: ${person.vorname} ${person.nachname}`)}
                   style={{ padding: 16, cursor: "pointer", transition: "transform .2s, box-shadow .2s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 26px rgba(16,16,24,.12)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
@@ -5684,7 +5701,10 @@ function BalkenDiagramm({ daten, hoehe = 150, wert = "y", label = "label", einhe
           const farbe = farbeVon ? farbeVon(d) : C.accent;
           return (
             <div key={i} onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
-              onClick={() => klick && klick(d)}
+              /* Ein Balken hat keinen sichtbaren Text — der Wert steht nur im
+                 Hinweisfenster, das beim Überfahren erscheint. */
+              {...klickbar(klick ? () => klick(d) : null, `${d[label]}: ${n1(d[wert])}${einheit}`)}
+              title={`${d[label]} · ${n1(d[wert])}${einheit}`}
               style={{ flex: 1, height: `${h}%`, background: farbe, borderRadius: "5px 5px 2px 2px",
                 opacity: aktiv === null || aktiv === i ? 1 : .45, transition: "opacity .15s",
                 cursor: klick ? "pointer" : "default", position: "relative", minWidth: 4 }}>
@@ -5996,7 +6016,8 @@ function Assistent2({ sitz, akt, onClose }) {
               <div key={mo.id}>
                 {!eigeneBranche && i === vorschlaege.length && vorschlaege.length > 0 && (
                   <Lab style={{ margin: "20px 0 12px" }}>Weitere Modelle</Lab>)}
-                <div onClick={() => modellWaehlen(mo)} className="karte"
+                <div {...klickbar(() => modellWaehlen(mo), `Modell wählen: ${mo.name}`)} className="karte"
+                  aria-pressed={an}
                   style={{ padding: 18, marginBottom: 12, cursor: "pointer",
                     outline: an ? `2px solid ${C.accent}` : "none", opacity: passend ? 1 : .82 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -6033,7 +6054,7 @@ function Assistent2({ sitz, akt, onClose }) {
                 </div>
               </div>);
           })}
-          <div onClick={freiStarten} className="karte"
+          <div {...klickbar(freiStarten)} className="karte" aria-pressed={modellId === "frei"}
             style={{ padding: 18, cursor: "pointer", outline: modellId === "frei" ? `2px solid ${C.accent}` : "none" }}>
             <div style={{ fontSize: 15.5, fontWeight: 650 }}>Eigenes Modell aufbauen</div>
             <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>
@@ -6131,7 +6152,8 @@ function Assistent2({ sitz, akt, onClose }) {
                     <div style={{ fontSize: 9.5, color: C.dimmer, marginBottom: 3 }}>{DOW[i % 7]}</div>
                     <Ablage id={`zt:${i}`} nimmt={(l) => l.art === "dienstart"}
                       ablegen={(l) => setzeTag(i, l.dienstId)} style={{ borderRadius: 12 }}>
-                      <div onClick={() => setzeTag(i, pinsel)} 
+                      <div {...klickbar(() => setzeTag(i, pinsel),
+                        `Tag ${i + 1}: ${d ? d.name : "frei"} — mit dem gewählten Dienst belegen`)}
                         style={{ width: 34, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 700, ...NUM,
                           display: "flex", alignItems: "center", justifyContent: "center",
                           background: d ? `${d.farbe}22` : C.bg, color: d ? d.farbe : C.dimmer }}>
@@ -6433,7 +6455,9 @@ function MandantAnlegen({ db, akt, onClose }) {
                 const r = modellPruefen(mo);
                 const an = f.modellId === mo.id;
                 return (
-                  <div key={mo.id} onClick={() => setF((x) => ({ ...x, modellId: mo.id, gruppen: mo.gruppen }))}
+                  <div key={mo.id} aria-pressed={an}
+                    {...klickbar(() => setF((x) => ({ ...x, modellId: mo.id, gruppen: mo.gruppen })),
+                      `Modell wählen: ${mo.name}`)}
                     className="karte" style={{ padding: 16, cursor: "pointer",
                       outline: an ? `2px solid ${C.accent}` : "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
@@ -6547,15 +6571,17 @@ function MandantAnlegen({ db, akt, onClose }) {
           <Card style={{ padding: 18 }}>
             {f.zuschlaege.map((z, i) => (
               <div key={i} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-                <input type="checkbox" checked={z.aktiv}
+                <input type="checkbox" checked={z.aktiv} aria-label={`Zuschlag ${z.name} berücksichtigen`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, aktiv: e.target.checked } : x))} />
                 <Inp value={z.name} style={{ flex: 1, minWidth: 150 }}
+                  aria-label={`Bezeichnung des Zuschlags (${z.name})`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, name: e.target.value } : x))} />
-                <Sel value={z.art} style={{ width: 150 }}
+                <Sel value={z.art} style={{ width: 150 }} aria-label={`Anlass des Zuschlags ${z.name}`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, art: e.target.value } : x))}>
                   {[["nacht", "Nachtarbeit"], ["sonntag", "Sonntag"], ["feiertag", "Feiertag"], ["samstag", "Samstag"]]
                     .map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
                 <Inp type="number" value={z.prozent} style={{ width: 92 }}
+                  aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, prozent: Number(e.target.value) } : x))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
                 <Btn size="sm" kind="danger" onClick={() => setz("zuschlaege", f.zuschlaege.filter((_, k) => k !== i))}>×</Btn>
@@ -6736,7 +6762,9 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
           const f = ROLLE_FARBE[st.rolle];
           return (
             <Fragment key={st.id}>
-              <div onClick={() => setOffen(offen === st.id ? null : st.id)}
+              <div {...klickbar(() => setOffen(offen === st.id ? null : st.id),
+                `${st.titel} — ${st.ok ? "erledigt" : "offen"}`)}
+                aria-expanded={offen === st.id}
                 style={{ minWidth: kompakt ? 132 : 168, padding: kompakt ? "12px 13px" : "15px 16px",
                   borderRadius: 16, cursor: "pointer", position: "relative",
                   background: st.ok ? C.okLight : aktuell ? `${f}12` : C.bg,
@@ -6908,7 +6936,9 @@ function Einfuehrung({ sitz, akt, gehZu, onClose }) {
         {/* Fortschrittsbalken aus Punkten */}
         <div style={{ display: "flex", gap: 5, marginBottom: 24 }}>
           {schritte.map((_, k) => (
-            <div key={k} onClick={() => { setI(k); akt.einfuehrungSchritt(k); }}
+            <div key={k} aria-current={k === i ? "step" : undefined}
+              {...klickbar(() => { setI(k); akt.einfuehrungSchritt(k); },
+                `Schritt ${k + 1} von ${schritte.length}: ${schritte[k].titel}`)}
               style={{ flex: 1, height: 4, borderRadius: 2, cursor: "pointer",
                 background: k <= i ? C.accentDeep : C.line, transition: "background .25s" }} />))}
         </div>
@@ -7289,7 +7319,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                   const amZeiger = i === zeiger;
                   const tage = between(a.von, a.bis) + 1;
                   return (
-                    <div key={a.id} onClick={() => setZeiger(i)}
+                    <div key={a.id} {...klickbar(() => setZeiger(i))}
                       style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
                         borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                         background: amZeiger ? C.accentLight : anGewaehlt ? C.bg : "transparent",
@@ -8264,8 +8294,8 @@ function Lagebild({ sitz, oeffneTag, akt }) {
             const e = m.einheiten.find((x) => einheitDienst(m, x.id, d0) === (d.posten ? d.quelle : d.id));
             return (
               <div key={d.id} className={b.diff < 0 || b.qualFehlt ? "row" : ""}
-                onClick={() => (b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0)}
+                {...klickbar(() => (b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich)
+                  ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0))}
                 style={{ padding: "20px 22px", cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
                   <Zelle da={d} size={24} />
@@ -8304,8 +8334,9 @@ function Lagebild({ sitz, oeffneTag, akt }) {
               Keine Befunde. Besetzung, Qualifikationen, Ruhezeiten und Urlaubsgrenzen sind eingehalten.</div>}
             {kommend.slice(0, 40).map((b, i) => (
               <div key={b.id + i} className="row"
-                onClick={() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum)}
+                {...klickbar(() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
+                  ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum),
+                  `${fKurz(b.datum)}: ${b.titel}`)}
                 style={{ display: "flex", gap: 12, padding: "12px 22px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}` }}>
                 <span style={{ width: 4, borderRadius: 2, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
                 <span style={{ fontSize: 12.5, color: C.dimmer, minWidth: 52, ...NUM }}>{fKurz(b.datum)}</span>
@@ -8482,7 +8513,8 @@ function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
           const t = lage.tage.find((x) => x.datum === d);
           const istHeute = d === d0;
           return (
-            <Card key={d} onClick={() => oeffneTag(d)}
+            <Card key={d} {...klickbar(() => oeffneTag(d),
+              `${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}
               style={{ padding: 0, overflow: "hidden", cursor: "pointer",
                 borderLeft: `3px solid ${t ? (t.stufe === 2 ? C.danger : C.warn) : istHeute ? C.accent : "transparent"}` }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
@@ -8580,7 +8612,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
 
       <Filterleiste suche={suche} setSuche={setSuche} platzhalter={`${m.einheitLabel} oder Dienstart …`}
         rechts={<>
-          <Sel value={filterDienst} onChange={(ev) => setFilterDienst(ev.target.value)} style={{ minWidth: 150 }}>
+          <Sel value={filterDienst} aria-label="Nach Dienstart filtern"
+            onChange={(ev) => setFilterDienst(ev.target.value)} style={{ minWidth: 150 }}>
             <option value="">alle Dienstarten</option>
             {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel>
           <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
@@ -8774,12 +8807,16 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
           <tbody>{leute.map((p) => {
             const ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym), diff = ist.gesamt - soll;
             return (<tr key={p.id} className="row">
-              <td onClick={() => oeffnePerson(p.id)} style={{ position: "sticky", left: 0, background: C.flaeche,
+              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                style={{ position: "sticky", left: 0, background: C.flaeche,
                 zIndex: 1, padding: "8px 20px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>{p.nachname}, {p.vorname}</div>
                 <div style={{ fontSize: 11.5, color: C.dimmer }}>{p.funktion} · {rolle(p.rolle).kurz}</div></td>
               {tage.map((d) => { const t = personTag(m, p, d);
-                return (<td key={d} onClick={() => klick(p, d)} style={{ padding: "4px 1px", textAlign: "center",
+                return (<td key={d}
+                  {...klickbar(editierbar ? () => klick(p, d) : null,
+                    `${p.nachname}, ${p.vorname} am ${fKurz(d)}: ${map[t.dienstId] ? map[t.dienstId].name : "frei"}`)}
+                  style={{ padding: "4px 1px", textAlign: "center",
                   borderBottom: `1px solid ${C.lineSoft}`, cursor: editierbar ? "pointer" : "default",
                   background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? "rgba(43,52,64,.05)" : "transparent" }}>
                   <div style={{ display: "flex", justifyContent: "center" }}>
@@ -8963,7 +9000,8 @@ function Schichtfolge({ sitz, akt }) {
                 return (<tr key={w}>
                   <td style={{ paddingRight: 14, fontSize: 13, color: C.dimmer, ...NUM }}>{pad(w + 1)}</td>
                   {woche.map((id, di) => (<td key={di} style={{ padding: 4, textAlign: "center" }}>
-                    <div onClick={() => editierbar && akt.setzeZyklusTag(w * 7 + di, pinsel)}
+                    <div {...klickbar(editierbar ? () => akt.setzeZyklusTag(w * 7 + di, pinsel) : null,
+                      `Woche ${w + 1}, ${DOW[di]}: ${map[id] ? map[id].name : "frei"} — mit dem gewählten Dienst belegen`)}
                       style={{ display: "inline-block", cursor: editierbar ? "pointer" : "default" }}>
                       <Zelle da={map[id]} size={38} /></div></td>))}
                   <td style={{ paddingLeft: 18, fontSize: 13, color: std > 0 ? C.text : C.dimmer, ...NUM }}>{n1(std)} h</td>
@@ -8997,6 +9035,7 @@ function Schichtfolge({ sitz, akt }) {
                 <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe }} />
                 <span style={{ fontSize: 13.5, flex: 1 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
+                  aria-label={`Startpunkt im Zyklus für ${e.name}`}
                   onChange={(ev) => akt.setzeVersatz(e.id, Number(ev.target.value))} style={{ width: 210 }}>
                   {m.zyklus.tage.map((t2, i) => {
                     const dd = map[t2];
@@ -9335,7 +9374,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
             Beides lässt sich jederzeit ergänzen.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
-            <div className="karte" onClick={akt.oeffneImport}
+            <div className="karte" {...klickbar(akt.oeffneImport, "Liste einlesen")}
               style={{ padding: 20, cursor: "pointer" }}>
               <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 6 }}>Liste einlesen</div>
               <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
@@ -9343,7 +9382,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
               </div>
               <span className="btn btn-sm btn-primary">Importieren</span>
             </div>
-            <div className="karte" onClick={() => setNeu(true)}
+            <div className="karte" {...klickbar(() => setNeu(true), "Person einzeln anlegen")}
               style={{ padding: 20, cursor: "pointer" }}>
               <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 6 }}>Einzeln anlegen</div>
               <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
@@ -9373,7 +9412,8 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
             const e = m.einheiten.find((x) => x.id === einheitAm(p, d0));
             const r = rolle(p.rolle);
             return (<tr key={p.id} className="row">
-              <td onClick={() => oeffnePerson(p.id)} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
+              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Avatar person={p} style={{ opacity: p.austritt ? .45 : 1 }} />
                   <div style={{ minWidth: 0 }}>
@@ -10406,7 +10446,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         {gez.length === 0
           ? <Leer titel="Keine Befunde" text="Der Monat erfüllt in dieser Kategorie alle hinterlegten Regeln." />
           : gez.map((b, i) => (
-            <div key={b.id + i} className="row" onClick={() => oeffneTag(b.datum)}
+            <div key={b.id + i} className="row" {...klickbar(() => oeffneTag(b.datum))}
               style={{ display: "flex", gap: 15, padding: "15px 22px", cursor: "pointer",
                 borderBottom: i < gez.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
               <span style={{ width: 5, borderRadius: 3, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
@@ -11043,15 +11083,24 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
           <div style={{ padding: 22 }}>
             {(m.zuschlaege || []).map((z) => (
               <div key={z.id} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 11, flexWrap: "wrap" }}>
+                {/* Vier Felder nebeneinander, ohne eine einzige Beschriftung:
+                    Für das Auge trägt die Zeile ihren Namen im ersten Feld,
+                    einer Vorlesesoftware sagt sie nur „Kontrollkästchen,
+                    Eingabefeld, Auswahlfeld, Zahlenfeld". Jedes Feld nennt
+                    deshalb die Regel, zu der es gehört. */}
                 <input type="checkbox" checked={z.aktiv} disabled={!darf(sitz, "org.edit")}
+                  aria-label={`Zuschlag ${z.name} berücksichtigen`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "aktiv", e.target.checked)} />
                 <Inp value={z.name} disabled={!darf(sitz, "org.edit")} style={{ flex: 1, minWidth: 160 }}
+                  aria-label={`Bezeichnung des Zuschlags (${z.name})`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "name", e.target.value)} />
                 <Sel value={z.art} disabled={!darf(sitz, "org.edit")} style={{ width: 150 }}
+                  aria-label={`Anlass des Zuschlags ${z.name}`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "art", e.target.value)}>
                   {[["nacht", "Nachtarbeit"], ["sonntag", "Sonntag"], ["feiertag", "Feiertag"], ["samstag", "Samstag"]]
                     .map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
                 <Inp type="number" value={z.prozent} disabled={!darf(sitz, "org.edit")} style={{ width: 96 }}
+                  aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "prozent", Number(e.target.value))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
                 {darf(sitz, "org.edit") && <Btn size="sm" kind="danger" onClick={() => akt.loescheZuschlag(z.id)}>×</Btn>}
@@ -11559,7 +11608,8 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
             const url = urlaubskonto(m, p, jahr);
             return (
               <div key={p.id} style={{ marginBottom: 18 }}>
-                <div onClick={() => oeffnePerson(p.id)} style={{ display: "flex", alignItems: "baseline",
+                <div {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                  style={{ display: "flex", alignItems: "baseline",
                   gap: 12, marginBottom: 7, cursor: "pointer", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{p.nachname}, {p.vorname}</span>
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
@@ -11671,7 +11721,8 @@ function Dienstbuch({ sitz, akt }) {
   return (
     <div>
       <H1 sub="Was die nächste Schicht wissen muss. Ersetzt den Zettel am Wachtisch und bleibt nachvollziehbar."
-        right={<Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 180 }} />}>
+        right={<Inp type="date" value={datum} aria-label="Tag des Dienstbuchs"
+          onChange={(e) => setDatum(e.target.value)} style={{ width: 180 }} />}>
         Dienstbuch</H1>
 
       {darfSchreiben && (
@@ -11680,11 +11731,12 @@ function Dienstbuch({ sitz, akt }) {
           <div style={{ padding: 22, display: "grid", gap: 13 }}>
             <div style={{ display: "flex", gap: 8 }}>
               {arten.map(([id, l]) => (
-                <button key={id} onClick={() => setArt(id)} className="btn btn-sm"
+                <button key={id} onClick={() => setArt(id)} className="btn btn-sm" aria-pressed={art === id}
                   style={{ background: art === id ? "rgba(43,52,64,.10)" : C.bg,
                     color: art === id ? C.text : C.dim, fontWeight: 600 }}>{l}</button>))}
             </div>
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
+              aria-label="Eintrag ins Dienstbuch"
               placeholder="Kurz und sachlich. Keine Gesundheitsdaten, keine Bewertungen von Personen." />
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <Btn kind="primary" disabled={!text.trim()}
@@ -11826,7 +11878,9 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
         {moeglich.slice(0, 8).map((x, i) => {
           const an = gewaehlt && gewaehlt.id === x.person.id;
           return (
-            <div key={x.person.id} onClick={() => setGewaehlt(an ? null : x.person)}
+            <div key={x.person.id} aria-pressed={an}
+              {...klickbar(() => setGewaehlt(an ? null : x.person),
+                `${x.person.nachname}, ${x.person.vorname} — Vorschlag ${i + 1}`)}
               className="karte" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 13px",
                 marginBottom: 7, cursor: "pointer", outline: an ? `2px solid ${C.accent}` : "none" }}>
               <span style={{ width: 25, height: 25, borderRadius: 9, flexShrink: 0, display: "flex",
@@ -12069,7 +12123,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
               <div style={{ width: `${es.anteil}%`, height: "100%", background: C.ok, transition: "width .4s" }} />
             </div>
             {es.schritte.map((x) => (
-              <div key={x.id} onClick={() => !x.erledigt && gehZu(x.ziel)}
+              <div key={x.id} {...klickbar(x.erledigt ? null : () => gehZu(x.ziel))}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 0",
                   cursor: x.erledigt ? "default" : "pointer", opacity: x.erledigt ? .5 : 1,
                   borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -12110,7 +12164,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
           </Card>
         : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 14 }}>
             {aufgaben.map((a, i) => (
-              <Card key={i} hover onClick={() => gehZu(a.ziel)}
+              <Card key={i} hover {...klickbar(() => gehZu(a.ziel))}
                 style={{ padding: 20, cursor: "pointer", position: "relative", overflow: "hidden" }}>
                 {a.dringend && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
                   background: C.danger }} />}
@@ -12425,7 +12479,8 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
     const breite = 100 / Math.max(1, spalten);
     const namen = s.personen.slice(0, 3).map((p) => p.nachname).join(", ");
     return (
-      <div onClick={() => oeffneTag(tag)}
+      <div {...klickbar(() => oeffneTag(tag),
+        `${s.da.name} ${s.da.start}–${s.da.ende}, ${s.anzahl} von ${s.soll} besetzt${namen ? ` · ${namen}` : ""}`)}
         title={`${s.da.name} ${s.da.start}–${s.da.ende} · ${s.anzahl} von ${s.soll}${namen ? ` · ${namen}` : ""}`}
         style={{ position: "absolute", top: oben, height: hoehe,
           left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,
@@ -12528,7 +12583,8 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
                         <div key={k} style={{ position: "absolute", left: `${(k / 12) * 100}%`,
                           top: 0, bottom: 0, width: 1, background: C.lineSoft }} />))}
                       {z.da ? (
-                        <div onClick={() => oeffneTag(datum)}
+                        <div {...klickbar(() => oeffneTag(datum),
+                          `${fKurz(datum)}: ${z.da.name} ${z.da.start}–${z.da.ende}`)}
                           title={`${z.da.name} ${z.da.start}–${z.da.ende}`}
                           style={{ position: "absolute", left: `${links}%`, width: `${breite}%`,
                             top: 6, bottom: 6, borderRadius: 9, cursor: "pointer",
@@ -12578,7 +12634,8 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
               const eng = eintrag && knapp(eintrag.b);
               const aus = nurKnapp && !eng;
               return (
-                <div key={d} onClick={() => oeffneTag(d)} style={{ flex: 1, textAlign: "center",
+                <div key={d} {...klickbar(() => oeffneTag(d), `${fKurz(d)} öffnen`)}
+                  style={{ flex: 1, textAlign: "center",
                   cursor: "pointer", opacity: aus ? .3 : 1, padding: "0 3px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: dow(d) >= 5 ? C.dim : C.text }}>
                     {DOW[dow(d)]}</div>
@@ -12868,7 +12925,15 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${C.lineSoft}`, display: "flex",
           alignItems: "center", gap: 13 }}>
           <span style={{ fontSize: 17, color: C.dimmer }}>⌕</span>
+          {/* Die Trefferliste wird mit Pfeiltasten bedient, nicht mit der
+              Tabulatortaste. Für eine Vorlesesoftware ist das nur dann
+              nachvollziehbar, wenn Feld und Liste als zusammengehörig
+              ausgezeichnet sind: Das Feld nennt die Liste, die Liste nennt
+              die gerade hervorgehobene Zeile. */}
           <input ref={feld} value={q} onChange={(e) => setQ(e.target.value)}
+            role="combobox" aria-expanded={treffer.length > 0} aria-controls="suchtreffer"
+            aria-autocomplete="list" aria-label="Ansicht, Person, Datum oder Aktion suchen"
+            aria-activedescendant={treffer.length ? `suchtreffer-${i}` : undefined}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") { e.preventDefault(); setI(Math.min(treffer.length - 1, i + 1)); }
               else if (e.key === "ArrowUp") { e.preventDefault(); setI(Math.max(0, i - 1)); }
@@ -12881,13 +12946,15 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
           <kbd style={{ fontSize: 11, color: C.dimmer, background: C.lineSoft,
             padding: "3px 7px", borderRadius: 6, ...NUM }}>Esc</kbd>
         </div>
-        <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
+        <div id="suchtreffer" role="listbox" aria-label="Treffer"
+          style={{ maxHeight: "52vh", overflowY: "auto" }}>
           {treffer.length === 0
             ? <div style={{ padding: 30, textAlign: "center", color: C.dimmer, fontSize: 14 }}>
                 Nichts gefunden. Suche nach einer Ansicht, einem Nachnamen oder einem Datum wie 16.9.
               </div>
             : treffer.map((t, k) => (
-              <div key={k} onMouseEnter={() => setI(k)} onClick={() => waehlen(t)}
+              <div key={k} id={`suchtreffer-${k}`} role="option" aria-selected={i === k}
+                onMouseEnter={() => setI(k)} onClick={() => waehlen(t)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 22px", cursor: "pointer",
                   background: i === k ? "rgba(43,44,37,.07)" : "transparent" }}>
                 <span style={{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,
@@ -13883,7 +13950,7 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
         {plan.tage.map((t, i) => {
           const fei = feiertag(t.datum, m.bundesland);
           return (
-            <div key={t.datum} className="row" onClick={() => oeffneTag(t.datum)}
+            <div key={t.datum} className="row" {...klickbar(() => oeffneTag(t.datum), `${fKurz(t.datum)} öffnen`)}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "13px 22px", cursor: "pointer",
                 borderBottom: i < plan.tage.length - 1 ? `1px solid ${C.lineSoft}` : "none",
                 background: t.datum === heute() ? "rgba(43,44,37,.045)" : undefined, flexWrap: "wrap" }}>
@@ -14249,7 +14316,7 @@ function Pakete({ db, akt }) {
         <Card>
           <CardHead>Betriebe</CardHead>
           {db.mandanten.map((x) => (
-            <div key={x.id} onClick={() => setGewaehlt(x.id)}
+            <div key={x.id} aria-pressed={x.id === gewaehlt} {...klickbar(() => setGewaehlt(x.id), x.name)}
               style={{ padding: "12px 16px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}`,
                 background: x.id === gewaehlt ? C.accentLight : "transparent",
                 borderLeft: x.id === gewaehlt ? `3px solid ${C.accent}` : "3px solid transparent" }}>
@@ -14438,7 +14505,8 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
               Wochentag steht unter <b style={{ color: C.text }}>Dienstarten</b>.
             </div>)}
           {bl.map((w) => w.zeilen.length === 0 ? null : (
-            <div key={w.kw} onClick={() => setGewaehlt(gewaehlt === w.kw ? null : w.kw)}
+            <div key={w.kw} aria-expanded={gewaehlt === w.kw}
+              {...klickbar(() => setGewaehlt(gewaehlt === w.kw ? null : w.kw), `Kalenderwoche ${w.kw}`)}
               style={{ marginBottom: 6, borderRadius: 10, cursor: "pointer",
                 background: gewaehlt === w.kw ? flaeche(w.stufe) : "transparent",
                 outline: gewaehlt === w.kw ? `1.5px solid ${farbe(w.stufe)}` : "none" }}>
@@ -14915,7 +14983,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
           {alles && (
             <Card style={{ marginTop: 14 }}>
               {rest.map((a, i) => (
-                <div key={i} onClick={() => a.ziel && gehZu(a.ziel)}
+                <div key={i} {...klickbar(a.ziel ? () => gehZu(a.ziel) : null)}
                   className="zeile-hover"
                   style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 22px",
                     cursor: a.ziel ? "pointer" : "default",
@@ -15123,7 +15191,7 @@ function Handbuch({ sitz, akt, gehZu }) {
 
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap",
         marginBottom: 26 }}>
-        <Inp value={suche} onChange={(e) => setSuche(e.target.value)}
+        <Inp value={suche} onChange={(e) => setSuche(e.target.value)} aria-label="Im Handbuch suchen"
           placeholder="Im Handbuch suchen …" style={{ maxWidth: 320 }} />
         {treffer && <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
           {treffer.length} {treffer.length === 1 ? "Abschnitt" : "Abschnitte"}</span>}
@@ -16239,16 +16307,23 @@ function Einstellungen({ sitz, akt, gehZu }) {
       padding: "11px 20px", borderRadius: 10, fontSize: 13.5, fontWeight: 550,
       boxShadow: "0 8px 24px -8px rgba(7,19,23,.4)" }}>{children}</div>);
 
-  const Zeile = ({ titel, text, children }) => (
-    <div style={{ display: "flex", gap: 20, padding: "18px var(--pad-x)",
-      borderBottom: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600 }}>{titel}</div>
-        {text && <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
-          {text}</div>}
-      </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
-    </div>);
+  /* Die Beschriftung steht links, das Bedienelement rechts — für das Auge
+     eindeutig, für eine Vorlesesoftware zunächst nicht: Sie liest den Titel
+     als Fließtext und danach ein namenloses Feld. Die Verbindung entsteht
+     erst durch die Auszeichnung als Gruppe mit benanntem Titel. */
+  const Zeile = ({ titel, text, children }) => {
+    const kennung = `einst-${String(titel).replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`;
+    return (
+      <div style={{ display: "flex", gap: 20, padding: "18px var(--pad-x)",
+        borderBottom: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div id={kennung} style={{ fontSize: 14.5, fontWeight: 600 }}>{titel}</div>
+          {text && <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
+            {text}</div>}
+        </div>
+        <div role="group" aria-labelledby={kennung} style={{ flexShrink: 0 }}>{children}</div>
+      </div>);
+  };
 
   const Schalter = ({ an, onChange, label }) => (
     <button onClick={() => onChange(!an)} role="switch" aria-checked={an} aria-label={label}
@@ -16297,7 +16372,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
         </Zeile>
         <Zeile titel="Startansicht"
           text="Womit die Anwendung nach dem Anmelden öffnet.">
-          <Sel value={p.startansicht || "start"}
+          <Sel value={p.startansicht || "start"} aria-label="Startansicht"
             onChange={(e) => { akt.setzeMeineEinstellung("startansicht", e.target.value);
               melde("Startansicht geändert."); }}>
             {(sitz.mandant ? NAV_KUNDE.filter((v) => !v[2] || darf(sitz, v[2])) : [])
@@ -16313,7 +16388,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
         <Zeile titel="Anmeldeadresse"
           text="Unter dieser Adresse erreichen dich Mitteilungen. Eine Änderung wird dem Betreiber angezeigt.">
           <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
-            <Inp type="email" defaultValue={p.email || ""} id="ein-mail"
+            <Inp type="email" defaultValue={p.email || ""} id="ein-mail" aria-label="Anmeldeadresse"
               placeholder="name@betrieb.de" style={{ minWidth: 220 }} />
             <Btn size="sm" onClick={() => {
               const el = document.getElementById("ein-mail");
@@ -17716,7 +17791,7 @@ function Auftraggeberbericht({ sitz, akt }) {
         <Card style={{ marginBottom: 22 }}>
           <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
           <div style={{ padding: "16px var(--pad-x) 20px" }}>
-            <textarea className="inp" rows={3} value={anmerkung}
+            <textarea className="inp" rows={3} value={anmerkung} aria-label="Eigene Anmerkung zum Nachweis"
               placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
               onChange={(ev) => setAnmerkung(ev.target.value)} />
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
@@ -18735,7 +18810,8 @@ function MPlan({ sitz, akt, oeffnen }) {
               const t = personTag(m, ich, d);
               const da = t.dienstId && map[t.dienstId];
               return (
-                <div key={d} onClick={() => setGewaehlt({ datum: d, t })}
+                <div key={d} {...klickbar(() => setGewaehlt({ datum: d, t }),
+                  `${fKurz(d)}: ${da ? da.name : t.abwesenheit ? abwArt(t.abwesenheit.art).label : "frei"}`)}
                   style={{ aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column",
                     alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 2,
                     background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,

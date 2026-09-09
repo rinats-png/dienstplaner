@@ -47,6 +47,24 @@ const C = {
 
   line: "#BCCDD4", lineSoft: "#CBDAE0", lineStark: "#9DB3BC",
 
+  /* --- Bedienelemente ---
+
+     WCAG 2.1, 1.4.11 verlangt für Bedienelemente und ihre Zustände 3:1
+     gegen die Umgebung. `lineStark` erreicht auf Weiß nur 2,19:1 — als
+     Trennlinie in Ordnung, als Rand eines Eingabefelds oder als
+     Aus-Zustand eines Schalters zu wenig: Man sieht dann nicht, dass dort
+     überhaupt etwas zu bedienen ist.
+
+     Deshalb ein eigener Ton für alles, was man anfassen kann. Er ist
+     dunkler als die Zierlinie und bleibt hinter dem Text zurück. */
+  steuer: "#6E858E",          // 3,88:1 auf Weiß · 3,00:1 auf dem Grund
+
+  /* Was auf einer gefüllten Akzentfläche steht. Im Hellmodus ist der
+     Akzent dunkel und trägt weißen Text; im Dunkelmodus ist er hell und
+     trägt dunklen. Ohne diese Unterscheidung stand im Dunkelmodus weiß auf
+     Türkis — 2,23:1, unlesbar. */
+  aufAkzent: "#FFFFFF",
+
   /* Akzent: Traditional Turquoise, abgedunkelt bis es trägt */
   accent: "#017070",          // 4,56:1 · weißer Text darauf 5,91:1
   /* Traditional Turquoise erreicht auf Sea Salt nur 2,48:1 — zu wenig selbst
@@ -90,6 +108,8 @@ const C_DUNKEL = {
   dim: "#9FB2B9", dimmer: "#9FB2B9", aus: "#7A8D95",
 
   line: "#243238", lineSoft: "#1B282E", lineStark: "#33454C",
+  steuer: "#5C7681",          // 3,53:1 auf der Karte · 3,87:1 auf dem Grund
+  aufAkzent: "#071317",       // 8,45:1 auf dem hellen Akzent
 
   accent: "#3FBFBF",          // 8,35:1 — heller als im Hellmodus, sonst zu schwach
   accentHi: "#5FD6D6", accentOrig: "#5FD6D6",
