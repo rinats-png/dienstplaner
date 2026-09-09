@@ -88,6 +88,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     protokoll: [],
     freigaben: {},
     einspruenge: [],
+    kompetenzen: [],
     unterschreitungen: [],
     dienstbuch: [],
     erfassung: {},

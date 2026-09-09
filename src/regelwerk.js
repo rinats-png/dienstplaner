@@ -728,3 +728,131 @@ export function urlaubshinweisFaellig(offen, heuteDatum, letzterHinweis) {
       + "wenn sie nicht genommen werden.",
   };
 }
+
+/* --------------------------------------------------------------------------
+   KOMPETENZEN
+
+   Eine Qualifikation sagt, was jemand ist: Pflegefachkraft, Notfallsanitäter,
+   Elektrofachkraft. Eine Kompetenz sagt, was jemand an einer bestimmten
+   Sache darf: dieses Beatmungsgerät bedienen, diese Anlage schalten, diesen
+   Stapler fahren.
+
+   Der Unterschied ist keine Wortklauberei. „Geräteeinweisung" als
+   Qualifikation führen heißt: Wer sie hat, gilt als eingewiesen — in was,
+   steht nirgends. § 4 MPBetreibV verlangt die Einweisung aber je Gerät, und
+   nach § 12 BetrSichV gilt dasselbe für Arbeitsmittel. Wer zwölf
+   Beatmungsgeräte betreibt, braucht zwölf Nachweise, nicht einen.
+
+   Deshalb hier ein eigenes Objekt, das vier Dinge zusammenbringt:
+
+     woran   das Betriebsmittel oder die Tätigkeit
+     wer     die freigebende Stelle — nicht jede Einweisung darf jeder geben
+     wann    Erteilung und Wiederholung
+     wofür   die Dienstarten, für die sie Voraussetzung ist
+
+   Die Prüfung selbst ist bewusst einfach gehalten und rein: Sie bekommt
+   Kompetenz und Nachweis und sagt, wie es steht. Was daraus folgt —
+   Hinweis, Warnung oder Sperre — entscheidet die Anwendung.
+   -------------------------------------------------------------------------- */
+
+/** Wie lange vorher auf eine ablaufende Kompetenz hingewiesen wird. */
+export const KOMPETENZ_VORLAUF = 60;
+
+/**
+ * Stand einer Kompetenz an einer Person.
+ *
+ * @param {object} kompetenz  Eintrag aus m.kompetenzen
+ * @param {object|null} nachweis  Eintrag aus person.kompetenzNachweise
+ * @param {string} heuteDatum
+ * @returns {{stand: string, bis: (string|null), tage: (number|null), unbefristet: boolean}}
+ *   stand: "fehlt" | "gueltig" | "laeuft_ab" | "abgelaufen"
+ */
+export function kompetenzStand(kompetenz, nachweis, heuteDatum) {
+  if (!kompetenz) return { stand: "fehlt", bis: null, tage: null, unbefristet: false };
+  if (!nachweis || !nachweis.ab)
+    return { stand: "fehlt", bis: null, tage: null, unbefristet: false };
+
+  /* Eine zurückgenommene Freigabe zählt nicht — sie steht weiter im
+     Verlauf, damit nachvollziehbar bleibt, dass es sie gab. */
+  if (nachweis.zurueckgenommen)
+    return { stand: "fehlt", bis: null, tage: null, unbefristet: false,
+      zurueckgenommen: nachweis.zurueckgenommen };
+
+  /* Ohne Wiederholungsfrist gilt sie, bis jemand sie zurücknimmt. Ein
+     ausdrücklich gesetztes Ende wirkt trotzdem. */
+  const frist = kompetenz.wiederholungMonate;
+  const bis = nachweis.bis
+    || (frist ? addDays(nachweis.ab, Math.round(frist * 30.44)) : null);
+  if (!bis) return { stand: "gueltig", bis: null, tage: null, unbefristet: true };
+
+  const tage = between(heuteDatum, bis);
+  return {
+    stand: tage < 0 ? "abgelaufen" : tage <= KOMPETENZ_VORLAUF ? "laeuft_ab" : "gueltig",
+    bis, tage, unbefristet: false,
+  };
+}
+
+/** Gilt die Kompetenz an diesem Tag? */
+export function kompetenzGilt(kompetenz, nachweis, datum) {
+  const s = kompetenzStand(kompetenz, nachweis, datum);
+  return s.stand === "gueltig" || s.stand === "laeuft_ab";
+}
+
+/**
+ * Widersprüche in einer Kompetenz. Dasselbe Muster wie regelMaengel für
+ * Qualifikationen: Die Anwendung soll sagen können, was an einer Vorgabe
+ * nicht schlüssig ist, statt sie stillschweigend anzuwenden.
+ */
+export function kompetenzMaengel(k) {
+  const aus = [];
+  const name = (k && k.name) || "Kompetenz";
+  if (!k) return aus;
+
+  if ((k.pflichtFuer || []).length && !String(k.grundlage || "").trim())
+    aus.push({ art: "ohneGrundlage", schwere: "warn", kompetenzId: k.id,
+      text: `${name} ist Voraussetzung für einen Dienst, nennt aber keine Grundlage. `
+        + "Wer eine Einteilung verhindert, sollte sagen können, worauf er sich stützt." });
+
+  if (k.art === "geraet" && !k.betriebsmittelId)
+    aus.push({ art: "geraetOhneMittel", schwere: "warn", kompetenzId: k.id,
+      text: `${name} ist als Geräteeinweisung angelegt, nennt aber kein Betriebsmittel. `
+        + "§ 4 MPBetreibV und § 12 BetrSichV verlangen die Einweisung je Gerät — "
+        + "ohne Zuordnung bleibt offen, worauf sie sich bezieht." });
+
+  if (!String(k.freigabeStelle || "").trim())
+    aus.push({ art: "ohneFreigabeStelle", schwere: "info", kompetenzId: k.id,
+      text: `Für ${name} ist keine freigebende Stelle hinterlegt. `
+        + "Bei einer Prüfung ist das die erste Frage." });
+
+  return aus;
+}
+
+/**
+ * Welche Kompetenzen fehlen dieser Person für diese Dienstart?
+ *
+ * Steht hier statt in der Oberfläche, damit sie sich prüfen lässt: Die
+ * Sperrwirkung ist der Grund, warum es das Objekt überhaupt gibt, und was
+ * einen Dienst verhindert, gehört in den geprüften Kern.
+ *
+ * @param {Array} kompetenzen   alle Kompetenzen des Betriebs
+ * @param {Array} nachweise     die Nachweise der Person
+ * @param {string} dienstId
+ * @param {string} datum
+ * @param {Function} [mittelName] gibt zu einer Betriebsmittelkennung den Namen
+ * @returns {Array<{komp: object, stand: object, text: string}>}
+ */
+export function fehlendeKompetenzen(kompetenzen, nachweise, dienstId, datum, mittelName) {
+  const aus = [];
+  for (const k of kompetenzen || []) {
+    if (!(k.pflichtFuer || []).includes(dienstId)) continue;
+    const n = (nachweise || []).find((x) => x.kompetenzId === k.id) || null;
+    if (kompetenzGilt(k, n, datum)) continue;
+    const stand = kompetenzStand(k, n, datum);
+    const woran = k.betriebsmittelId && mittelName ? mittelName(k.betriebsmittelId) : null;
+    aus.push({ komp: k, stand,
+      text: `${k.name}${woran ? ` (${woran})` : ""} `
+        + (stand.stand === "abgelaufen" ? `abgelaufen am ${stand.bis}` : "fehlt")
+        + (k.grundlage ? ` — ${k.grundlage}` : "") });
+  }
+  return aus;
+}

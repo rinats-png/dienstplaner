@@ -21,6 +21,8 @@ import {
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   FREIE_SONNTAGE_MIN,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
+  kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
+  fehlendeKompetenzen,
 } from "../src/regelwerk.js";
 
 const F = { start: "06:00", ende: "14:00", pause: 30 };   //  7,5 h
@@ -616,5 +618,125 @@ describe("Mängel in der Regel selbst", () => {
   it("ein betrieblich gewähltes Intervall unter einer gesetzlichen Pflicht wird benannt", () => {
     expect(arten({ name: "Hygieneunterweisung", ebene: "bund", grundlage: "§ 23 IfSG",
       gueltigMonate: 12, intervallBetrieblich: true })).toContain("intervallBetrieblich");
+  });
+});
+
+/* ==========================================================================
+   KOMPETENZEN
+
+   Eine Qualifikation sagt, was jemand ist. Eine Kompetenz sagt, was jemand
+   an einer bestimmten Sache darf. Diese Prüfung hält die Grenze fest.
+   ========================================================================== */
+describe("Kompetenzen", () => {
+  const heute = "2026-09-09";
+
+  it("ohne Nachweis fehlt sie", () => {
+    expect(kompetenzStand({ id: "k1", name: "Beatmung" }, null, heute).stand).toBe("fehlt");
+    expect(kompetenzStand({ id: "k1" }, { ab: null }, heute).stand).toBe("fehlt");
+  });
+
+  it("ohne Wiederholungsfrist gilt sie unbefristet", () => {
+    const s = kompetenzStand({ id: "k1" }, { ab: "2020-01-01" }, heute);
+    expect(s.stand).toBe("gueltig");
+    expect(s.unbefristet).toBe(true);
+    expect(s.bis).toBe(null);
+  });
+
+  it("mit Frist läuft sie ab", () => {
+    const k = { id: "k1", wiederholungMonate: 24 };
+    expect(kompetenzStand(k, { ab: "2026-06-01" }, heute).stand).toBe("gueltig");
+    expect(kompetenzStand(k, { ab: "2024-01-01" }, heute).stand).toBe("abgelaufen");
+  });
+
+  it("kurz vorher wird gewarnt", () => {
+    const k = { id: "k1", wiederholungMonate: 12 };
+    /* Ein Jahr minus dreißig Tage: die Frist läuft in etwa einem Monat ab. */
+    const s = kompetenzStand(k, { ab: addDays(heute, -335) }, heute);
+    expect(s.stand).toBe("laeuft_ab");
+    expect(s.tage).toBeLessThanOrEqual(KOMPETENZ_VORLAUF);
+    expect(s.tage).toBeGreaterThanOrEqual(0);
+  });
+
+  it("ein ausdrückliches Ende schlägt die Frist", () => {
+    const k = { id: "k1", wiederholungMonate: 60 };
+    const s = kompetenzStand(k, { ab: "2026-01-01", bis: "2026-03-01" }, heute);
+    expect(s.stand).toBe("abgelaufen");
+    expect(s.bis).toBe("2026-03-01");
+  });
+
+  it("eine zurückgenommene Freigabe zählt nicht mehr", () => {
+    const s = kompetenzStand({ id: "k1" },
+      { ab: "2020-01-01", zurueckgenommen: "2026-05-05" }, heute);
+    expect(s.stand).toBe("fehlt");
+    expect(s.zurueckgenommen).toBe("2026-05-05");
+  });
+
+  it("kompetenzGilt fasst gültig und laufend zusammen", () => {
+    const k = { id: "k1", wiederholungMonate: 12 };
+    expect(kompetenzGilt(k, { ab: addDays(heute, -30) }, heute)).toBe(true);
+    expect(kompetenzGilt(k, { ab: addDays(heute, -335) }, heute)).toBe(true);
+    expect(kompetenzGilt(k, { ab: addDays(heute, -400) }, heute)).toBe(false);
+    expect(kompetenzGilt(k, null, heute)).toBe(false);
+  });
+
+  it("eine Geräteeinweisung ohne Gerät ist ein Mangel", () => {
+    const m = kompetenzMaengel({ id: "k1", name: "Beatmung", art: "geraet" });
+    expect(m.some((x) => x.art === "geraetOhneMittel")).toBe(true);
+  });
+
+  it("eine Voraussetzung ohne Grundlage ist ein Mangel", () => {
+    const m = kompetenzMaengel({ id: "k1", name: "Schalten", pflichtFuer: ["N"] });
+    expect(m.some((x) => x.art === "ohneGrundlage")).toBe(true);
+  });
+
+  it("eine vollständige Kompetenz hat keine Warnung", () => {
+    const m = kompetenzMaengel({ id: "k1", name: "Beatmung", art: "geraet",
+      betriebsmittelId: "bm1", pflichtFuer: ["N"], freigabeStelle: "Medizintechnik",
+      grundlage: "§ 4 MPBetreibV" });
+    expect(m.filter((x) => x.schwere === "warn")).toEqual([]);
+  });
+});
+
+describe("Kompetenz als Einsatzsperre", () => {
+  const heute = "2026-09-09";
+  const K = [
+    { id: "k1", name: "Beatmung Servo-u", art: "geraet", betriebsmittelId: "bm1",
+      wiederholungMonate: 24, pflichtFuer: ["N"], grundlage: "§ 4 MPBetreibV" },
+    { id: "k2", name: "Schaltberechtigung", pflichtFuer: [], grundlage: "Betrieblich" },
+  ];
+  const name = (id) => (id === "bm1" ? "Servo-u 3" : null);
+
+  it("sperrt nur den Dienst, an dem sie hängt", () => {
+    expect(fehlendeKompetenzen(K, [], "F", heute, name)).toEqual([]);
+    expect(fehlendeKompetenzen(K, [], "N", heute, name).length).toBe(1);
+  });
+
+  it("nennt das Gerät und die Grundlage", () => {
+    const [f] = fehlendeKompetenzen(K, [], "N", heute, name);
+    expect(f.text).toContain("Servo-u 3");
+    expect(f.text).toContain("§ 4 MPBetreibV");
+    expect(f.text).toContain("fehlt");
+  });
+
+  it("wer sie hat, kommt durch", () => {
+    const n = [{ kompetenzId: "k1", ab: addDays(heute, -30) }];
+    expect(fehlendeKompetenzen(K, n, "N", heute, name)).toEqual([]);
+  });
+
+  it("eine abgelaufene Einweisung sperrt wieder, mit Datum", () => {
+    const n = [{ kompetenzId: "k1", ab: "2020-01-01" }];
+    const [f] = fehlendeKompetenzen(K, n, "N", heute, name);
+    expect(f.stand.stand).toBe("abgelaufen");
+    expect(f.text).toContain("abgelaufen am");
+  });
+
+  it("eine zurückgenommene Freigabe sperrt ebenfalls", () => {
+    const n = [{ kompetenzId: "k1", ab: addDays(heute, -30), zurueckgenommen: heute }];
+    expect(fehlendeKompetenzen(K, n, "N", heute, name).length).toBe(1);
+  });
+
+  it("ohne Kompetenzen im Betrieb ändert sich nichts", () => {
+    expect(fehlendeKompetenzen([], [], "N", heute, name)).toEqual([]);
+    expect(fehlendeKompetenzen(undefined, undefined, "N", heute, name)).toEqual([]);
   });
 });

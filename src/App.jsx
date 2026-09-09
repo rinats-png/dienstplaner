@@ -11,6 +11,8 @@ import {
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
   HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, FREIE_SONNTAGE_MIN,
+  kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
+  fehlendeKompetenzen,
 } from "./regelwerk.js";
 
 /* ==========================================================================
@@ -1144,6 +1146,7 @@ function baueMandant(cfg, seed) {
     unterschreitungen: [],   // dokumentierte Unterdeckung mit Begründung
     stand: 0,                // Fortschreibungszähler für die Konflikterkennung
     betriebsmittel: [],      // Schlüssel, Fahrzeuge, Geräte, Dienstkleidung
+    kompetenzen: [],         // was jemand an einer bestimmten Sache darf
     aushang: [],             // Schwarzes Brett für alle
     einstempeln: {},         // "personId|datum" -> { start, ende, ortStart, ortEnde, abstand }
     notizen: {},             // "tag|JJJJ-MM-TT" oder "person|<id>" -> [{ id, text, von, zeit }]
@@ -2442,6 +2445,18 @@ function hindernisse(m, p, d, da) {
       g.push(`${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`);
     }
   }
+  /* Kompetenzen, die diese Dienstart voraussetzt.
+
+     Anders als eine Qualifikation hängt eine Kompetenz an einer Sache:
+     diesem Gerät, dieser Anlage. § 4 MPBetreibV und § 12 BetrSichV
+     verlangen die Einweisung je Gerät — wer den Beatmungsplatz besetzt,
+     ohne an diesem Gerät eingewiesen zu sein, gehört nicht dorthin.
+     Deshalb sperrt sie den Dienst, an dem sie hinterlegt ist, und nur
+     diesen. */
+  for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
+    (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
+    g.push(f.text);
+
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
     g.push("arbeitet an diesem Wochentag nicht");
@@ -3293,6 +3308,58 @@ function nachweisStand(m, p, qualId) {
   return { stand: tage < 0 ? "abgelaufen" : tage <= NACHWEIS_VORLAUF ? "laeuft_ab" : "gueltig",
     ablauf: n.ablauf, tage, qual: q, datei: n.datei };
 }
+/* --------------------------------------------------------------------------
+   KOMPETENZEN AN DER PERSON
+
+   Die Rechnung selbst steht in regelwerk.js und ist dort geprüft. Hier
+   liegen nur die Griffe, die den Betrieb kennen: Welche Kompetenz gehört
+   zu welchem Gerät, wer hat sie, und was fehlt für eine Dienstart.
+   -------------------------------------------------------------------------- */
+
+/** Der Nachweis einer Person zu einer Kompetenz — oder null. */
+const kompetenzNachweis = (p, kid) =>
+  ((p && p.kompetenzNachweise) || []).find((x) => x.kompetenzId === kid) || null;
+
+/** Stand einer Kompetenz an einer Person, an einem Tag. */
+function kompetenzAn(m, p, kid, datum) {
+  const k = (m.kompetenzen || []).find((x) => x.id === kid);
+  if (!k) return { stand: "unbekannt", komp: null };
+  return { ...kompetenzStand(k, kompetenzNachweis(p, kid), datum || heute()), komp: k };
+}
+
+/** Welche Kompetenzen verlangt diese Dienstart? */
+const kompetenzenFuerDienst = (m, dienstId) =>
+  (m.kompetenzen || []).filter((k) => (k.pflichtFuer || []).includes(dienstId));
+
+/** Das Betriebsmittel, auf das sich eine Kompetenz bezieht. */
+const mittelZuKompetenz = (m, k) =>
+  (k && k.betriebsmittelId && (m.betriebsmittel || []).find((x) => x.id === k.betriebsmittelId)) || null;
+
+/** Lage über alle Kompetenzen: fehlend, ablaufend, abgelaufen. */
+function kompetenzLage(m) {
+  return memo(m, "kompetenzlage", () => {
+    const fehlt = [], bald = [], abgelaufen = [];
+    const aktive = m.personen.filter((p) => imDienst(p, heute()));
+    for (const k of m.kompetenzen || []) {
+      for (const p of aktive) {
+        const n = kompetenzNachweis(p, k.id);
+        /* Ohne Nachweis ist eine Kompetenz nicht „fehlend" — die meisten
+           Menschen brauchen die meisten Geräte nie. Gezählt wird nur, was
+           für eine Dienstart verlangt wird und wem sie zugedacht ist. */
+        if (!n) {
+          if ((k.pflichtFuer || []).length && (k.zugedacht || []).includes(p.id))
+            fehlt.push({ person: p, komp: k });
+          continue;
+        }
+        const st = kompetenzStand(k, n, heute());
+        if (st.stand === "abgelaufen") abgelaufen.push({ person: p, komp: k, ...st });
+        else if (st.stand === "laeuft_ab") bald.push({ person: p, komp: k, ...st });
+      }
+    }
+    return { fehlt, bald, abgelaufen };
+  });
+}
+
 /** Zählt eine Qualifikation für die Besetzung nur, wenn der Nachweis gültig ist. */
 /**
  * Wirkt die harte Sperre dieser Qualifikation hier — und aus welchem Grund?
@@ -12689,6 +12756,202 @@ function Planstand({ sitz, ym, akt }) {
 }
 
 /* ======================== QUALIFIKATIONSMATRIX ========================= */
+/* ==========================================================================
+   KOMPETENZEN
+
+   Was jemand an einer bestimmten Sache darf. Die Ansicht führt drei Dinge
+   zusammen, die bisher nebeneinanderlagen: das Betriebsmittel, die
+   Einweisung darauf und die Dienstart, für die sie Voraussetzung ist.
+   ========================================================================== */
+const KOMPETENZ_ARTEN = [
+  ["geraet", "Gerät", "Einweisung auf ein bestimmtes Betriebsmittel — § 4 MPBetreibV, § 12 BetrSichV"],
+  ["anlage", "Anlage", "Freigabe für eine Anlage oder Spannungsebene, etwa eine Schaltberechtigung"],
+  ["taetigkeit", "Tätigkeit", "Freigabe für eine Verrichtung ohne festes Gerät, etwa Behandlungspflege"],
+];
+
+function Kompetenzen({ sitz, akt }) {
+  const m = sitz.mandant;
+  const darfPflegen = darf(sitz, "staff.edit");
+  const [neu, setNeu] = useState(null);
+  const [offen, setOffen] = useState(null);
+  const lage = useMemo(() => kompetenzLage(m), [m]);
+  const liste = m.kompetenzen || [];
+  const mittel = m.betriebsmittel || [];
+
+  const leer = { name: "", art: "geraet", betriebsmittelId: "", stufe: "",
+    freigabeStelle: "", wiederholungMonate: "", grundlage: "", pflichtFuer: [], zugedacht: [] };
+
+  return (
+    <div>
+      <H1 rubrik="Personal"
+        sub="Eine Qualifikation sagt, was jemand ist. Eine Kompetenz sagt, was jemand an einer bestimmten Sache darf — an diesem Gerät, an dieser Anlage. Das Recht verlangt die Einweisung je Gerät, nicht einmal im Leben."
+        right={darfPflegen && <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>}>
+        Kompetenzen</H1>
+
+      <KpiRow min={180}>
+        <Kpi label="Kompetenzen" value={liste.length} />
+        <Kpi label="Abgelaufen" value={lage.abgelaufen.length}
+          tone={lage.abgelaufen.length ? "danger" : "ok"} sub="Einsatz gesperrt, wo verlangt" />
+        <Kpi label="Laufen bald ab" value={lage.bald.length}
+          tone={lage.bald.length ? "warn" : "ok"} sub={`in ${KOMPETENZ_VORLAUF} Tagen`} />
+        <Kpi label="Fehlen" value={lage.fehlt.length}
+          tone={lage.fehlt.length ? "warn" : "ok"} sub="zugedacht, aber nicht erteilt" />
+      </KpiRow>
+
+      {liste.length === 0 ? (
+        <Card style={{ marginTop: 22 }}>
+          <Leer titel="Noch keine Kompetenz angelegt"
+            text="Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie." />
+          {darfPflegen && (
+            <div style={{ padding: "0 22px 22px" }}>
+              <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>
+            </div>)}
+        </Card>
+      ) : (
+        <Card style={{ marginTop: 22 }}>
+          <CardHead right={<Lab>{zahl(liste.length)} angelegt</Lab>}>Übersicht</CardHead>
+          {liste.map((k, i) => {
+            const bm = mittelZuKompetenz(m, k);
+            const maengel = kompetenzMaengel(k);
+            const traeger = m.personen.filter((p) => imDienst(p, heute())
+              && kompetenzGilt(k, kompetenzNachweis(p, k.id), heute()));
+            const auf = offen === k.id;
+            return (
+              <div key={k.id} style={{ borderBottom: i < liste.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
+                <div className="row" {...klickbar(() => setOffen(auf ? null : k.id))}
+                  aria-expanded={auf}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 22px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 600 }}>{k.name || "Ohne Namen"}</div>
+                    <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 3 }}>
+                      {(KOMPETENZ_ARTEN.find((a) => a[0] === k.art) || [])[1] || "Tätigkeit"}
+                      {bm ? ` · ${bm.name}${bm.kennung ? ` (${bm.kennung})` : ""}` : ""}
+                      {k.freigabeStelle ? ` · Freigabe: ${k.freigabeStelle}` : ""}
+                    </div>
+                  </div>
+                  <Pill size="sm" tone={traeger.length ? "ok" : "warn"}>{zahl(traeger.length)} Personen</Pill>
+                  {(k.pflichtFuer || []).length > 0 && (
+                    <Pill size="sm" tone="danger">
+                      Voraussetzung für {k.pflichtFuer.map((id) =>
+                        (m.dienstarten.find((d) => d.id === id) || {}).kurz || id).join(", ")}</Pill>)}
+                  {k.wiederholungMonate
+                    ? <Pill size="sm">alle {k.wiederholungMonate} Monate</Pill>
+                    : <Pill size="sm">ohne Frist</Pill>}
+                  {maengel.some((x) => x.schwere === "warn") && <Pill size="sm" tone="warn">unvollständig</Pill>}
+                  <span style={{ color: C.dimmer, fontSize: 18 }}>{auf ? "▾" : "›"}</span>
+                </div>
+
+                {auf && (
+                  <div style={{ padding: "0 22px 20px" }}>
+                    {k.grundlage && (
+                      <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12, lineHeight: 1.5 }}>
+                        <b style={{ color: C.text }}>Grundlage:</b> {k.grundlage}</div>)}
+                    {maengel.map((x, j) => (
+                      <div key={j} style={{ fontSize: 12.5, marginBottom: 8, lineHeight: 1.5,
+                        color: x.schwere === "warn" ? C.warn : C.dim }}>{x.text}</div>))}
+
+                    <Lab style={{ margin: "14px 0 8px" }}>Wer sie hat</Lab>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {m.personen.filter((p) => imDienst(p, heute())).map((p) => {
+                        const st = kompetenzStand(k, kompetenzNachweis(p, k.id), heute());
+                        const ton = st.stand === "gueltig" ? "ok" : st.stand === "laeuft_ab" ? "warn"
+                          : st.stand === "abgelaufen" ? "danger" : null;
+                        if (!ton && !darfPflegen) return null;
+                        const beschriftung = `${p.nachname}, ${p.vorname.slice(0, 1)}.`;
+                        if (!darfPflegen) return <Pill key={p.id} size="sm" tone={ton}>{beschriftung}</Pill>;
+                        return (
+                          <Btn key={p.id} size="sm" kind={ton === "ok" ? "ok" : ton === "danger" ? "danger" : "plain"}
+                            title={st.stand === "fehlt" ? "Kompetenz erteilen"
+                              : st.bis ? `gültig bis ${fDatum(st.bis)}` : "unbefristet gültig"}
+                            onClick={() => akt.setzeKompetenz(p.id, k.id, st.stand === "fehlt")}>
+                            {beschriftung}{st.stand === "abgelaufen" ? " ✕" : st.stand === "fehlt" ? "" : " ✓"}</Btn>);
+                      })}
+                    </div>
+
+                    {darfPflegen && (
+                      <div style={{ display: "flex", gap: 10, marginTop: 18, flexWrap: "wrap" }}>
+                        <Btn size="sm" onClick={() => setNeu({ ...k, bearbeiten: true })}>Bearbeiten</Btn>
+                        <Btn size="sm" kind="danger" onClick={() => akt.loescheKompetenz(k.id)}>Löschen</Btn>
+                      </div>)}
+                  </div>)}
+              </div>);
+          })}
+        </Card>)}
+
+      {neu && (
+        <Sheet open onClose={() => setNeu(null)} width={620}
+          titel={neu.bearbeiten ? "Kompetenz bearbeiten" : "Kompetenz anlegen"}>
+          <div style={{ display: "grid", gap: 16 }}>
+            <Field label="Bezeichnung" hint="Woran genau — nicht „Einweisung“, sondern „Beatmung Servo-u“.">
+              <Inp value={neu.name} onChange={(e) => setNeu({ ...neu, name: e.target.value })}
+                placeholder="z. B. Beatmungsgerät Servo-u" autoFocus /></Field>
+
+            <Field label="Art">
+              <Sel value={neu.art} onChange={(e) => setNeu({ ...neu, art: e.target.value })}>
+                {KOMPETENZ_ARTEN.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</Sel>
+              <div style={{ fontSize: 12, color: C.dimmer, marginTop: 6, lineHeight: 1.5 }}>
+                {(KOMPETENZ_ARTEN.find((a) => a[0] === neu.art) || [])[2]}</div>
+            </Field>
+
+            {neu.art === "geraet" && (
+              <Field label="Betriebsmittel"
+                hint={mittel.length ? "Die Einweisung gehört an das Gerät, auf das sie sich bezieht."
+                  : "Es sind noch keine Betriebsmittel erfasst — unter Betriebsmittel anlegen."}>
+                <Sel value={neu.betriebsmittelId || ""}
+                  onChange={(e) => setNeu({ ...neu, betriebsmittelId: e.target.value })}>
+                  <option value="">— keines zugeordnet —</option>
+                  {mittel.map((x) => (
+                    <option key={x.id} value={x.id}>{x.name}{x.kennung ? ` (${x.kennung})` : ""}</option>))}
+                </Sel></Field>)}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+              <Field label="Freigebende Stelle" hint="Wer darf sie erteilen?">
+                <Inp value={neu.freigabeStelle || ""}
+                  onChange={(e) => setNeu({ ...neu, freigabeStelle: e.target.value })}
+                  placeholder="z. B. Medizintechnik, Anlagenbetreiber" /></Field>
+              <Field label="Wiederholung" hint="Leer heißt: gilt bis zur Rücknahme.">
+                <Sel value={neu.wiederholungMonate === null ? "" : (neu.wiederholungMonate || "")}
+                  onChange={(e) => setNeu({ ...neu,
+                    wiederholungMonate: e.target.value === "" ? null : Number(e.target.value) })}>
+                  <option value="">ohne Frist</option>
+                  {[6, 12, 24, 36, 60].map((n) => <option key={n} value={n}>alle {n} Monate</option>)}
+                </Sel></Field>
+            </div>
+
+            <Field label="Grundlage"
+              hint="Woraus folgt sie? Ohne Grundlage sperrt sie zwar, lässt sich aber nicht begründen.">
+              <Inp value={neu.grundlage || ""} onChange={(e) => setNeu({ ...neu, grundlage: e.target.value })}
+                placeholder="z. B. § 4 MPBetreibV — Einweisung je Gerät" /></Field>
+
+            <div>
+              <Lab style={{ marginBottom: 9 }}>Voraussetzung für diese Dienste</Lab>
+              <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.5 }}>
+                Wer für einen dieser Dienste eingeteilt wird und die Kompetenz nicht
+                hat, wird abgewiesen — wie bei einer gesetzlich vorbehaltenen Qualifikation.
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {m.dienstarten.map((d) => {
+                  const an = (neu.pflichtFuer || []).includes(d.id);
+                  return (
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                      onClick={() => setNeu({ ...neu, pflichtFuer: an
+                        ? neu.pflichtFuer.filter((x) => x !== d.id)
+                        : [...(neu.pflichtFuer || []), d.id] })}>
+                      {an ? "✓ " : ""}{d.name}</Btn>);
+                })}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
+              <Btn kind="quiet" onClick={() => setNeu(null)}>Abbrechen</Btn>
+              <Btn kind="primary" disabled={!String(neu.name || "").trim()}
+                onClick={() => { akt.speichereKompetenz(neu); setNeu(null); }}>Speichern</Btn>
+            </div>
+          </div>
+        </Sheet>)}
+    </div>);
+}
+
 function Qualifikationsmatrix({ sitz, akt }) {
   const m = sitz.mandant;
   const qm = useMemo(() => qualMatrix(m), [m]);
@@ -19168,7 +19431,7 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     freigaben: {}, nachrichten: [], aenderungen: [], erfassung: {}, einspruenge: [],
     zuschlaege: (f.zuschlaege || []).map((z, i) => ({ id: `z${i + 1}`, ...z })),
     urlaubsrunde: null, unterschreitungen: [], dienstbuch: [], stand: 0,
-    betriebsmittel: [], aushang: [], einstempeln: {},
+    betriebsmittel: [], kompetenzen: [], aushang: [], einstempeln: {},
     wuensche: [], tagesnotizen: {}, planstaende: {},
   };
   return m;
@@ -19242,6 +19505,7 @@ const BEREICHE = [
     ["personal", "Personal", "staff.view"],
     ["quals", "Qualifikationen", "staff.view"],
     ["nachweise", "Nachweise", "staff.view"],
+    ["kompetenzen", "Kompetenzen", "staff.view"],
     ["einarbeitung", "Einarbeitung", "staff.view"],
     ["verteilung", "Verteilung", "staff.view"],
     ["mittel", "Betriebsmittel", "plan.view.unit"],
@@ -20802,6 +21066,54 @@ function AppInnen() {
           : { qualId: qid, ablauf, datei };
         return { ...p, qualNachweise: [...liste, eintrag] };
       }) }), "Nachweis gespeichert"),
+      /* --- Kompetenzen ---
+
+         Anlegen, ändern, löschen — und die Freigabe an einer Person. Wer
+         eine Freigabe zurücknimmt, löscht sie nicht: Der Eintrag bleibt mit
+         Datum stehen, damit nachvollziehbar ist, dass es sie einmal gab.
+         Bei einer Prüfung ist das der Unterschied zwischen „war nie da" und
+         „wurde entzogen". */
+      speichereKompetenz: (k) => mUpd((m) => {
+        const rein = {
+          id: k.id || uid("kp"),
+          name: String(k.name || "").trim(),
+          art: k.art || "taetigkeit",
+          betriebsmittelId: k.art === "geraet" ? (k.betriebsmittelId || null) : null,
+          stufe: k.stufe || "",
+          freigabeStelle: String(k.freigabeStelle || "").trim(),
+          wiederholungMonate: k.wiederholungMonate === "" ? null : (k.wiederholungMonate ?? null),
+          grundlage: String(k.grundlage || "").trim(),
+          pflichtFuer: k.pflichtFuer || [],
+          zugedacht: k.zugedacht || [],
+        };
+        const liste = m.kompetenzen || [];
+        return { ...m, kompetenzen: liste.some((x) => x.id === rein.id)
+          ? liste.map((x) => (x.id === rein.id ? rein : x)) : [...liste, rein] };
+      }, "Kompetenz gespeichert"),
+
+      loescheKompetenz: (kid) => mUpd((m) => ({ ...m,
+        kompetenzen: (m.kompetenzen || []).filter((x) => x.id !== kid),
+        personen: m.personen.map((p) => ({ ...p,
+          kompetenzNachweise: (p.kompetenzNachweise || []).filter((n) => n.kompetenzId !== kid) })),
+      }), "Kompetenz gelöscht"),
+
+      setzeKompetenz: (pid, kid, erteilen) => mUpd((m) => ({ ...m,
+        personen: m.personen.map((p) => {
+          if (p.id !== pid) return p;
+          const liste = (p.kompetenzNachweise || []).filter((x) => x.kompetenzId !== kid);
+          if (!erteilen) {
+            const vorher = (p.kompetenzNachweise || []).find((x) => x.kompetenzId === kid);
+            if (!vorher) return { ...p, kompetenzNachweise: liste };
+            return { ...p, kompetenzNachweise: [...liste,
+              { ...vorher, zurueckgenommen: heute(),
+                durch: `${sitz.person.vorname} ${sitz.person.nachname}` }] };
+          }
+          return { ...p, kompetenzNachweise: [...liste,
+            { kompetenzId: kid, ab: heute(), bis: null, zurueckgenommen: null,
+              durch: `${sitz.person.vorname} ${sitz.person.nachname}` }] };
+        }),
+      }), "Kompetenz erteilt oder zurückgenommen"),
+
       setzeKontrastmodus: (an) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === sitz.person.id ? { ...p, kontrastmodus: an } : p) }), null),
 
@@ -21419,6 +21731,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               Planstand · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
               <Planstand sitz={sitz} ym={ym} akt={akt} /></div>}
             {aktiveView === "quals" && <Qualifikationsmatrix sitz={sitz} akt={akt} />}
+            {aktiveView === "kompetenzen" && <Kompetenzen sitz={sitz} akt={akt} />}
             {aktiveView === "einarbeitung" && <Einarbeitung sitz={sitz} akt={akt} />}
             {aktiveView === "bereitschaft" && <Bereitschaft sitz={sitz} akt={akt} oeffneTag={setTag} />}
             {aktiveView === "ablauf" && <Ablaufansicht sitz={sitz} akt={akt} gehZu={setView} />}

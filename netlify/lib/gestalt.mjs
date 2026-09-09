@@ -97,7 +97,8 @@ const TEXT_MAX = 100_000;
 /** Wie viele Einträge darf eine Liste je Betrieb tragen? */
 const MENGEN = {
   personen: 20_000, einheiten: 2_000, dienstarten: 500, standorte: 500,
-  qualifikationen: 500, abwesenheiten: 200_000, anfragen: 100_000,
+  qualifikationen: 500, kompetenzen: 5_000, betriebsmittel: 50_000,
+  abwesenheiten: 200_000, anfragen: 100_000,
   nachrichten: 100_000, wuensche: 200_000, ausschreibungen: 20_000,
   uebergaben: 100_000, protokoll: 50_000, aenderungen: 100_000,
 };
