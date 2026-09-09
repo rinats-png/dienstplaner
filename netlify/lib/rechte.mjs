@@ -221,6 +221,23 @@ export function eigenesZusammen(alt, geschickt, ich) {
   return aus;
 }
 
+/* Was eine beschäftigte Person an der eigenen Person ändern darf.
+
+   Erreichbarkeit und Vorlieben — nicht der Vertrag, nicht die
+   Qualifikation, nicht die Beurteilung. Wer hier etwas ergänzt, sollte
+   sich fragen: Würde der Betrieb es hinnehmen, wenn die Person es selbst
+   einträgt? */
+const SELBST_FELDER = [
+  /* Erreichbarkeit */
+  "telefon", "mobil", "email", "anschrift", "notfallkontakt",
+  /* Wie sie erreicht werden möchte */
+  "zustellung", "pushSchluessel", "kalenderVerweis",
+  /* Wann sie kann und was sie sich wünscht */
+  "verfuegbarkeit", "wunschfrei",
+  /* Wie die Anwendung für sie aussieht */
+  "kontrastmodus", "feldmodus", "thema", "dichte", "tour", "einfuehrung", "handbuch",
+];
+
 /* Felder des Gesamtbestands, die jede Rolle setzen darf: der Zählerstand
    und die Sitzungsmarke der Oberfläche. */
 const BESTAND_FELDER = ["stand", "session", "version"];
@@ -539,8 +556,25 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
 
   const zusammen = { ...alt, ...eigenesZusammen(alt, geschickt, sitzung.person) };
 
-  /* Die eigene Person darf sich selbst pflegen — Telefonnummer, Wünsche,
-     Mitteilungseinstellungen. Fremde Personen bleiben unberührt. */
+  /* Die eigene Person darf sich selbst pflegen — aber nur das, was ihr
+     gehört. Bis September 2026 stand hier eine Ausschlussliste: Rolle,
+     Bereich, Status und ein paar Vertragsfelder blieben, alles übrige kam
+     durch. Übersehen wurde dabei das Wesentliche: `qualifikationen` und
+     `qualNachweise` waren nicht darunter.
+
+     Damit konnte sich eine beschäftigte Person per API die Pflegefachkraft
+     eintragen und einen gültigen Nachweis dazu — und genau das Gate
+     aushebeln, an dem die ganze Anwendung hängt: Wer ohne die nach § 4
+     PflBG vorbehaltene Qualifikation eingeteilt wird, soll blockiert
+     werden. Ein Katalogeintrag mit harter Sperre nützt nichts, wenn jeder
+     sich die Sperre selbst wegschreiben kann. In der Oberfläche gab es den
+     Weg nie; der Server verließ sich darauf.
+
+     Deshalb jetzt umgekehrt: eine Liste dessen, was durchkommt. Was ein
+     Betrieb über eine Person festhält — Qualifikation, Nachweis,
+     Kompetenz, Vertrag, Einschränkung, Personalnummer —, bleibt so
+     stehen, wie die Leitung es eingetragen hat. Was neu hinzukommt, ist
+     erst einmal geschützt und wird bewusst freigegeben. */
   const ich = sitzung.person;
   if (Array.isArray(alt.personen) && ich !== null && ich !== undefined
       && Array.isArray(geschickt.personen)) {
@@ -548,12 +582,11 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     if (meineNeu) {
       zusammen.personen = alt.personen.map((p) => {
         if (p.id !== ich) return p;
-        /* Rolle, Bereich und Status bleiben, wie sie sind — sonst
-           befördert sich jede beschäftigte Person selbst zur Leitung. */
-        return { ...meineNeu, rolle: p.rolle, rolleSeit: p.rolleSeit,
-          rolleVerlauf: p.rolleVerlauf, bereich: p.bereich, status: p.status,
-          zugehoerigkeit: p.zugehoerigkeit, eintritt: p.eintritt, austritt: p.austritt,
-          wochenstunden: p.wochenstunden, urlaubsanspruch: p.urlaubsanspruch };
+        const aus = { ...p };
+        for (const feld of SELBST_FELDER) {
+          if (Object.prototype.hasOwnProperty.call(meineNeu, feld)) aus[feld] = meineNeu[feld];
+        }
+        return aus;
       });
     }
   }

@@ -512,6 +512,46 @@ let tBetreiber = null;
   await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum, bestaetigung: raum }));
 }
 
+/* --- S10: Die eigene Person pflegen, aber nicht befördern ---
+
+   Bis September 2026 kam an der eigenen Person alles durch, was nicht
+   ausdrücklich ausgeschlossen war — auch Qualifikationen und deren
+   Nachweise. Damit ließ sich das Qualifikations-Gate aushebeln, an dem
+   die ganze Anwendung hängt. */
+{
+  /* Der Grundbestand wurde von S3 ersetzt; dort ist p2 die beschäftigte
+     Person. Über sie läuft dieser Block. */
+  const tM10 = await anmelden(await zugang("mitarbeiter", "p2"));
+  const r = await lies(tM10);
+  const b = JSON.parse(JSON.stringify(r.bestand));
+  b.mandanten[0].personen = b.mandanten[0].personen.map((p) => (p.id !== "p2" ? p : {
+    ...p,
+    telefon: "0170 123456",
+    verfuegbarkeit: { mo: true },
+    qualifikationen: ["q1", "q2"],
+    qualNachweise: [{ qualId: "q1", ablauf: "2099-12-31", datei: "selbst.pdf" }],
+    einschraenkungen: { keineNacht: false },
+    personalnummer: "GEFAELSCHT",
+    funktion: "Pflegedienstleitung",
+  }));
+  const w = await schreib(tM10, b, r.etag);
+  pruef("Beschäftigte dürfen ihre eigene Person schreiben", w.status === 200, `Status ${w.status}`);
+
+  const nach = (await lies(tL)).bestand.mandanten[0].personen.find((p) => p.id === "p2");
+  pruef("Telefonnummer kommt an", nach.telefon === "0170 123456", nach.telefon);
+  pruef("Verfügbarkeit kommt an", !!nach.verfuegbarkeit);
+  pruef("Qualifikationen kann sich niemand selbst eintragen",
+    !(nach.qualifikationen || []).includes("q1"), JSON.stringify(nach.qualifikationen));
+  pruef("Nachweise auch nicht", !(nach.qualNachweise || []).length,
+    JSON.stringify(nach.qualNachweise));
+  pruef("Einschränkungen bleiben Sache des Betriebs",
+    JSON.stringify(nach.einschraenkungen || {}) !== JSON.stringify({ keineNacht: false })
+    || nach.einschraenkungen === undefined, JSON.stringify(nach.einschraenkungen));
+  pruef("Personalnummer und Funktion bleiben unangetastet",
+    nach.personalnummer !== "GEFAELSCHT" && nach.funktion !== "Pflegedienstleitung",
+    `${nach.personalnummer} / ${nach.funktion}`);
+}
+
 /* --- S9: Herkunft, Grenzen, Protokoll ---
 
    Aus dem Master-Handbuch: Origin-Prüfung für zustandsändernde Anfragen
