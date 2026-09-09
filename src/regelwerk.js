@@ -764,7 +764,8 @@ export const KOMPETENZ_VORLAUF = 60;
  * @param {object} kompetenz  Eintrag aus m.kompetenzen
  * @param {object|null} nachweis  Eintrag aus person.kompetenzNachweise
  * @param {string} heuteDatum
- * @returns {{stand: string, bis: (string|null), tage: (number|null), unbefristet: boolean}}
+ * @returns {{stand: string, bis: (string|null), tage: (number|null),
+ *   unbefristet: boolean, zurueckgenommen?: string}}
  *   stand: "fehlt" | "gueltig" | "laeuft_ab" | "abgelaufen"
  */
 export function kompetenzStand(kompetenz, nachweis, heuteDatum) {

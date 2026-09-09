@@ -89,6 +89,8 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     freigaben: {},
     einspruenge: [],
     kompetenzen: [],
+    /* Belegung je Einheit, Tag und Schicht — Grundlage der PpUGV-Prüfung. */
+    belegung: {},
     unterschreitungen: [],
     dienstbuch: [],
     erfassung: {},

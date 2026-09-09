@@ -43,6 +43,11 @@ jobs:
       - name: Branchenprofile
         run: npm run pruefung:branchen
 
+      # Pflegepersonaluntergrenzen: Verhältniszahlen, Hilfskraftanteil,
+      # und der Unterschied zwischen „eingehalten" und „nicht bewertbar".
+      - name: Untergrenzen
+        run: npm run pruefung:ppugv
+
       # Der Löschlauf nach Artikel 17 DSGVO. Ein Fehler hier löscht zu viel
       # oder zu wenig — beides ist nicht zurückzunehmen.
       - name: Aufbewahrung

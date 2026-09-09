@@ -179,6 +179,8 @@ import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
   from "../netlify/lib/rollenvergabe.mjs";
 import { branchenListe, brancheVon, qualifikationenFuer, einheitLabel as brancheEinheit }
   from "../netlify/lib/branchen.mjs";
+import { BEREICHE as PPUGV_BEREICHE, bereichVon as ppugvBereich, pruefeSchicht as ppugvPruefen,
+  monatslage as ppugvMonatslage } from "./ppugv.js";
 import { monatspreis, rechnungFaellig, gestaltung, lagetext, monateZwischen }
   from "./preisgestaltung.js";
 import { jeStandort as aufstellungJeStandort, standortzuschlaege, standortZuschlag, STANDORT_BAENDER }
@@ -1147,6 +1149,7 @@ function baueMandant(cfg, seed) {
     stand: 0,                // Fortschreibungszähler für die Konflikterkennung
     betriebsmittel: [],      // Schlüssel, Fahrzeuge, Geräte, Dienstkleidung
     kompetenzen: [],         // was jemand an einer bestimmten Sache darf
+    belegung: {},            // "einheitId|datum|schicht" -> { patienten }
     aushang: [],             // Schwarzes Brett für alle
     einstempeln: {},         // "personId|datum" -> { start, ende, ortStart, ortEnde, abstand }
     notizen: {},             // "tag|JJJJ-MM-TT" oder "person|<id>" -> [{ id, text, von, zeit }]
@@ -4162,6 +4165,16 @@ const begriff = (m, was) => (BEGRIFFE[m.branche] || BEGRIFFE.standard)[was]
  * Dienst. Sie wird als Anteil geführt, nicht als absolute Zahl — sonst stimmt
  * sie bei wechselnder Besetzungsstärke nicht mehr.
  */
+/** Gilt diese Person als Pflegefachkraft?
+
+    Der Nachweisstand wird gegen heute gerechnet, nicht gegen den fraglichen
+    Tag — nachweisStand kennt kein Stichtagsargument. Für die Untergrenzen
+    des laufenden Monats ist das richtig; für weit zurückliegende Monate
+    wäre eine Rückrechnung nötig, und die gehört dann in nachweisStand. */
+function istFachkraft(m, p) {
+  return m.qualifikationen.some((q) => q.fachkraft && qualGueltig(m, p, q.id));
+}
+
 function fachkraftLage(m, datum, dienstId) {
   if (!kann(m, "fachkraftquote")) return null;
   const da = m.dienstarten.find((x) => x.id === dienstId);
@@ -12769,6 +12782,170 @@ const KOMPETENZ_ARTEN = [
   ["taetigkeit", "Tätigkeit", "Freigabe für eine Verrichtung ohne festes Gerät, etwa Behandlungspflege"],
 ];
 
+/* ==========================================================================
+   PFLEGEPERSONALUNTERGRENZEN
+
+   Die Verordnung verlangt einen schichtbezogenen Abgleich: Wie viele
+   Patientinnen und Patienten lagen auf der Station, wie viele Pflegekräfte
+   waren da, und wie viel davon durfte Hilfskraft sein. Die Rechnung steht
+   in ppugv.js und ist dort geprüft; hier wird erfasst und gezeigt.
+
+   Drei Entscheidungen, die man der Ansicht ansehen soll:
+
+   Sie blockiert nicht. Eine unterschrittene Untergrenze hat Folgen für die
+   Vergütung und die Meldung — sie ist kein Grund, eine Schicht ungeplant zu
+   lassen.
+
+   Sie meldet nicht grün, wenn sie nichts weiß. Ohne Patientenzahl steht
+   „nicht bewertbar", und das ist kein Makel der Anwendung, sondern eine
+   Aussage über den Betrieb.
+
+   Und sie nennt bei jedem Urteil den Paragrafen und die Fassung. Wer eine
+   Meldung abgibt, muss sagen können, wonach gerechnet wurde.
+   ========================================================================== */
+function Untergrenzen({ sitz, akt, ym }) {
+  const m = sitz.mandant;
+  const darfPflegen = darf(sitz, "plan.edit.unit");
+  const einheiten = (m.einheiten || []).filter((e) => !e.pool);
+  const [einheitId, setEinheitId] = useState((einheiten[0] || {}).id || "");
+  const einheit = einheiten.find((e) => e.id === einheitId) || null;
+  const tage = useMemo(() => {
+    const [y, mo] = ym.split("-").map(Number);
+    return Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
+  }, [ym]);
+
+  /* Welche Dienstart zählt als Tag-, welche als Nachtschicht? Der Betrieb
+     entscheidet das über das Nachtkennzeichen der Dienstart. */
+  const schichtVon = (da) => (istNachtdienst(da) ? "nacht" : "tag");
+
+  const zeilen = useMemo(() => {
+    if (!einheit) return [];
+    const aus = [];
+    for (const d of tage) {
+      for (const schicht of ["tag", "nacht"]) {
+        const imDienstHeute = m.personen.filter((p) => {
+          if (!imDienst(p, d)) return false;
+          if (einheitAm(p, d) !== einheit.id) return false;
+          const t = personTag(m, p, d);
+          if (!t.dienstId) return false;
+          const da = m.dienstarten.find((x) => x.id === t.dienstId);
+          return da && schichtVon(da) === schicht;
+        });
+        const fach = imDienstHeute.filter((p) => istFachkraft(m, p)).length;
+        const hilf = imDienstHeute.length - fach;
+        const b = (m.belegung || {})[`${einheit.id}|${d}|${schicht}`] || {};
+        aus.push({ datum: d, schicht,
+          ...ppugvPruefen({ bereich: einheit.ppugvBereich || null, schicht, datum: d,
+            patienten: b.patienten === undefined ? null : b.patienten,
+            fachkraefte: fach, hilfskraefte: hilf }),
+          erfasst: b.patienten !== undefined && b.patienten !== null && b.patienten !== "" });
+      }
+    }
+    return aus;
+  }, [m, einheit, tage]);
+
+  const lage = useMemo(() => ppugvMonatslage(zeilen), [zeilen]);
+  const bereich = einheit && einheit.ppugvBereich ? ppugvBereich(einheit.ppugvBereich) : null;
+
+  return (
+    <div>
+      <H1 rubrik="Auswertung"
+        sub="Die Pflegepersonaluntergrenzen gelten je Schicht, nicht im Monatsmittel. Geprüft wird gegen die Ist-Belegung — ohne sie steht „nicht bewertbar“, nie „eingehalten“.">
+        Untergrenzen · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
+
+      <Card style={{ marginBottom: 22 }}>
+        <div style={{ padding: "20px var(--pad-x)", display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16 }}>
+          <Field label={m.einheitLabel || "Einheit"}>
+            <Sel value={einheitId} onChange={(e) => setEinheitId(e.target.value)}>
+              {einheiten.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</Sel></Field>
+          <Field label="Pflegesensitiver Bereich"
+            hint="Ohne Bereich gilt keine Untergrenze — und es lässt sich keine prüfen.">
+            <Sel value={(einheit || {}).ppugvBereich || ""} disabled={!einheit || !darf(sitz, "org.edit")}
+              onChange={(e) => akt.setzeEinheitBereich(einheit.id, e.target.value || null)}>
+              <option value="">— kein pflegesensitiver Bereich —</option>
+              {PPUGV_BEREICHE.map((b) => (
+                <option key={b.id} value={b.id}>{b.name} · {b.paragraf}</option>))}</Sel></Field>
+        </div>
+      </Card>
+
+      {!bereich ? (
+        <Card><Leer titel="Kein pflegesensitiver Bereich hinterlegt"
+          text="Die PpUGV gilt für bestimmte Krankenhausbereiche — Intensivmedizin, Geriatrie, Kardiologie und weitere. Wähle oben den Bereich dieser Einheit, dann wird geprüft." /></Card>
+      ) : (<>
+        <KpiRow min={190}>
+          <Kpi label="Eingehalten" value={lage.gruen} tone="ok"
+            sub={`von ${zahl(lage.gesamt)} Schichten`} />
+          <Kpi label="Unterschritten" value={lage.rot} tone={lage.rot ? "danger" : "ok"}
+            sub="meldepflichtig gegenüber den Kassen" />
+          <Kpi label="Nicht bewertbar" value={lage.grau} tone={lage.grau ? "warn" : "ok"}
+            sub="Belegung fehlt" />
+          <Kpi label="Schlüssel" value={`${(bereich.name || "").slice(0, 18)}`}
+            sub={bereich.paragraf} />
+        </KpiRow>
+
+        <Card style={{ marginTop: 22 }}>
+          <CardHead right={<Lab>Belegung eintragen, auch nachträglich</Lab>}>
+            {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</CardHead>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr style={{ textAlign: "left", color: C.dim }}>
+                {["Tag", "Schicht", "Patienten", "Fachkräfte", "Hilfskräfte", "Nötig", "Urteil"].map((h) => (
+                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
+              </tr></thead>
+              <tbody>
+                {zeilen.map((z) => {
+                  const ton = z.urteil === "rot" ? C.danger : z.urteil === "grau" ? C.warn : C.ok;
+                  return (
+                    <tr key={`${z.datum}|${z.schicht}`} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
+                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>{fKurz(z.datum)}</td>
+                      <td style={{ padding: "8px 14px" }}>{z.schicht === "nacht" ? "Nacht" : "Tag"}</td>
+                      <td style={{ padding: "6px 14px" }}>
+                        <Inp type="number" min="0" style={{ width: 82, padding: "6px 8px" }}
+                          disabled={!darfPflegen}
+                          value={(m.belegung || {})[`${einheit.id}|${z.datum}|${z.schicht}`]?.patienten ?? ""}
+                          onChange={(e) => akt.setzeBelegung(einheit.id, z.datum, z.schicht, e.target.value)}
+                          aria-label={`Patienten am ${z.datum}, ${z.schicht === "nacht" ? "Nacht" : "Tag"}`} />
+                      </td>
+                      <td style={{ padding: "8px 14px", ...NUM }}>{z.fachkraefte ?? "—"}</td>
+                      <td style={{ padding: "8px 14px", ...NUM }}>
+                        {z.hilfskraefte ?? "—"}
+                        {z.hilfskraefteNichtAngerechnet > 0 && (
+                          <span style={{ color: C.warn, fontSize: 11.5 }}>
+                            {" "}(−{z.hilfskraefteNichtAngerechnet})</span>)}
+                      </td>
+                      <td style={{ padding: "8px 14px", ...NUM }}>{z.noetig ?? "—"}</td>
+                      <td style={{ padding: "8px 14px" }}>
+                        <span title={z.text} style={{ color: ton, fontWeight: 600, whiteSpace: "nowrap" }}>
+                          {z.urteil === "rot" ? `unterschritten um ${z.fehlend}`
+                            : z.urteil === "grau" ? "nicht bewertbar" : "eingehalten"}</span>
+                      </td>
+                    </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
+          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
+            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+            {bereich.paragraf}: höchstens {(zeilen[0] || {}).grenze?.patientenJeKraft ?? "—"} Patienten
+            je Pflegekraft in der Tagschicht, in der Nacht entsprechend weniger.
+            Pflegehilfskräfte zählen nur bis zu
+            {" "}{Math.round(((zeilen[0] || {}).grenze?.hilfskraftAnteil ?? 0) * 100)} Prozent
+            des Personals mit. Aufgerundet wird immer zur nächsten ganzen Kraft.
+            <div style={{ marginTop: 10 }}>
+              Die Fassung ist datiert hinterlegt: {(zeilen[0] || {}).grenze?.fassung || "—"}.
+              Ändert sich die Verordnung, kommt ein neuer Satz dazu — der alte bleibt
+              stehen, damit vergangene Monate nach dem Recht ihrer Zeit beurteilt werden.
+            </div>
+          </div>
+        </Card>
+      </>)}
+    </div>);
+}
+
 function Kompetenzen({ sitz, akt }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "staff.edit");
@@ -19431,7 +19608,7 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     freigaben: {}, nachrichten: [], aenderungen: [], erfassung: {}, einspruenge: [],
     zuschlaege: (f.zuschlaege || []).map((z, i) => ({ id: `z${i + 1}`, ...z })),
     urlaubsrunde: null, unterschreitungen: [], dienstbuch: [], stand: 0,
-    betriebsmittel: [], kompetenzen: [], aushang: [], einstempeln: {},
+    betriebsmittel: [], kompetenzen: [], belegung: {}, aushang: [], einstempeln: {},
     wuensche: [], tagesnotizen: {}, planstaende: {},
   };
   return m;
@@ -19512,6 +19689,7 @@ const BEREICHE = [
   ]},
   { id: "auswertung", label: "Nachsehen", views: [
     ["pruef", "Prüfung", "plan.view.all"],
+    ["untergrenzen", "Untergrenzen", "plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
     ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
@@ -21066,6 +21244,29 @@ function AppInnen() {
           : { qualId: qid, ablauf, datei };
         return { ...p, qualNachweise: [...liste, eintrag] };
       }) }), "Nachweis gespeichert"),
+      /* --- Pflegepersonaluntergrenzen ---
+
+         Die Belegung ist eine Zahl je Einheit, Tag und Schicht. Ein leeres
+         Feld löscht den Eintrag, statt ihn auf null zu setzen: „nichts
+         eingetragen" und „null Patienten" sind zwei verschiedene Aussagen,
+         und nur die zweite darf als eingehalten gelten. */
+      setzeBelegung: (einheitId, datum, schicht, wert) => mUpd((m) => {
+        const k = `${einheitId}|${datum}|${schicht}`;
+        const b = { ...(m.belegung || {}) };
+        const roh = String(wert).trim();
+        if (roh === "") delete b[k];
+        else {
+          const n = Number(roh);
+          if (!Number.isFinite(n) || n < 0) return m;
+          b[k] = { patienten: Math.round(n) };
+        }
+        return { ...m, belegung: b };
+      }, null),
+
+      setzeEinheitBereich: (einheitId, bereich) => mUpd((m) => ({ ...m,
+        einheiten: m.einheiten.map((e) => (e.id === einheitId ? { ...e, ppugvBereich: bereich } : e)),
+      }), "Pflegesensitiver Bereich gesetzt"),
+
       /* --- Kompetenzen ---
 
          Anlegen, ändern, löschen — und die Freigabe an einer Person. Wer
@@ -21732,6 +21933,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               <Planstand sitz={sitz} ym={ym} akt={akt} /></div>}
             {aktiveView === "quals" && <Qualifikationsmatrix sitz={sitz} akt={akt} />}
             {aktiveView === "kompetenzen" && <Kompetenzen sitz={sitz} akt={akt} />}
+            {aktiveView === "untergrenzen" && <Untergrenzen sitz={sitz} akt={akt} ym={ym} />}
             {aktiveView === "einarbeitung" && <Einarbeitung sitz={sitz} akt={akt} />}
             {aktiveView === "bereitschaft" && <Bereitschaft sitz={sitz} akt={akt} oeffneTag={setTag} />}
             {aktiveView === "ablauf" && <Ablaufansicht sitz={sitz} akt={akt} gehZu={setView} />}

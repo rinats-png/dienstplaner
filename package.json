@@ -11,7 +11,7 @@
     "pruefung:bremse": "node pruefungen/bremse.mjs",
     "pruefung:sicherung": "node pruefungen/sicherung.mjs",
     "pruefung:verwalter": "node pruefungen/verwalter.mjs",
-    "pruefung": "npm run lint && npm run pruefung:typen && npm run pruefung:regeln && npm run pruefung:branchen && npm run pruefung:selbst && npm run pruefung:aufbewahrung && npm run pruefung:tarife && npm run pruefung:codes && npm run pruefung:scherben && npm run pruefung:matrix && npm run pruefung:betreiber && npm run pruefung:rollen && npm run pruefung:standorte && npm run pruefung:rechte && npm run pruefung:sicherung && npm run pruefung:verwalter && npm run pruefung:demo && npm run pruefung:bremse",
+    "pruefung": "npm run lint && npm run pruefung:typen && npm run pruefung:regeln && npm run pruefung:branchen && npm run pruefung:ppugv && npm run pruefung:selbst && npm run pruefung:aufbewahrung && npm run pruefung:tarife && npm run pruefung:codes && npm run pruefung:scherben && npm run pruefung:matrix && npm run pruefung:betreiber && npm run pruefung:rollen && npm run pruefung:standorte && npm run pruefung:rechte && npm run pruefung:sicherung && npm run pruefung:verwalter && npm run pruefung:demo && npm run pruefung:bremse",
     "pruefung:codes": "node pruefungen/codes.mjs",
     "lint": "eslint .",
     "pruefung:matrix": "node pruefungen/matrix.mjs",
@@ -25,7 +25,8 @@
     "pruefung:rollen": "vitest run pruefungen/rollenvergabe.test.js",
     "pruefung:standorte": "vitest run pruefungen/standorte.test.js",
     "pruefung:selbst": "vitest run pruefungen/selbsttest.test.js",
-    "pruefung:branchen": "vitest run pruefungen/branchen.test.js"
+    "pruefung:branchen": "vitest run pruefungen/branchen.test.js",
+    "pruefung:ppugv": "vitest run pruefungen/ppugv.test.js"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
