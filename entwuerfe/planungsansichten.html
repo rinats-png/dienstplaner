@@ -402,6 +402,9 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
 .dz.S { background: rgba(149,84,16,.14); color: #7A4400; }
 .dz.N { background: rgba(49,60,110,.16); color: #333C6E; }
 .dz.frei { background: var(--still); color: var(--aus); }
+/* Im Tagesstreifen stehen dreißig Signets nebeneinander. Bei fester Breite
+   sprengen sie auf dem Tablet ihren Rahmen — hier dürfen sie schrumpfen. */
+.tagstreifen .dz { width: 100%; max-width: 22px; min-width: 0; }
 .dz.abw { background: rgba(14,107,69,.14); color: var(--ok); }
 .dz.abwk { background: var(--gefahr-hell); color: var(--gefahr); }
 
@@ -577,13 +580,165 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
     </div>
   </div>
 
+
+
+  <div class="befund">
+    <div class="nr">09</div>
+    <div>
+      <div class="kopf">Zwei Aussagen zur Deckung, im selben Bildschirm, die einander widersprechen</div>
+      <p>
+        Die Schichtfolge meldet oben in Grün <b>„Deckungslücken 0 — jeder Tag vollständig
+        gedeckt"</b>. Zwölf Zentimeter tiefer steht in Orange: <b>„Der Zyklus hat 3 Wochen, es
+        gibt 5 Wohnbereichn. Für lückenlose Deckung müssen beide Zahlen übereinstimmen."</b>
+        Die Rechnung sagt gedeckt, die Regel sagt unmöglich. Recht hat die Rechnung — die
+        Warnung stammt aus dem alten Modell mit Wochenversatz und trifft auf den
+        Tagesversatz nicht mehr zu. Sie steht seither in jedem Betrieb, der das neue
+        Modell nutzt. (Der Genitiv-Fehler „Wohnbereichn" fällt nebenbei mit auf.)
+      </p>
+      <div class="beleg">grün <b>„0 Lücken"</b> gegen orange <b>„kann nicht gedeckt sein"</b> — auf einem Bildschirm</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">10</div>
+    <div>
+      <div class="kopf">Eine Kennzahl bewertet das Muster, während der Plan etwas anderes tut</div>
+      <p>
+        Dieselbe Ansicht meldet in Grün <b>„Dienste am Stück: 5 max., Grenzwert 6"</b>. Das
+        stimmt — für das Zyklusmuster. Im tatsächlichen Plan desselben Monats erreicht
+        Wolf Ibrahim <b>siebzehn Diensttage am Stück</b>, weil Einspringen und Abweichungen
+        oben draufkommen. Beide Zahlen sind richtig, sie meinen nur verschiedene Dinge —
+        und keine der beiden Ansichten sagt, welches. Wer die grüne 5 sieht, hat keinen
+        Anlass, im Plan nachzusehen.
+      </p>
+      <div class="beleg">Zyklus <b>5</b> Dienste am Stück · realer Plan <b>17</b> · Grenzwert <b>6</b></div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">11</div>
+    <div>
+      <div class="kopf">Was der Planung fehlt, gibt es längst — in der Ansicht, die man einmal öffnet</div>
+      <p>
+        Die Schichtfolge trägt oben eine Kennzahlenreihe aus fünf Werten und unten rechts
+        je Wohnbereich einen Musterstreifen, der den Tagesversatz sichtbar macht. Das sind
+        genau die beiden Bauteile, die dem Monatsplan fehlen — und sie sind bereits gebaut,
+        getestet und im Betrieb. Sie stehen nur in der Einrichtungsansicht, die man einmal
+        beim Aufsetzen des Betriebs benutzt, statt in der, die täglich offen ist.
+      </p>
+      <p>
+        Das ändert die Empfehlung: Es geht in weiten Teilen nicht darum, etwas Neues zu
+        erfinden, sondern Vorhandenes umzuhängen.
+      </p>
+      <div class="beleg">KPI-Reihe und Musterstreifen: <b>vorhanden</b> · am falschen Ort</div>
+    </div>
+  </div>
+
+  <h3>Was heute um dieselbe Aufmerksamkeit konkurriert</h3>
+  <p>
+    Die Frage ist nicht, ob eine Ansicht zu viel zeigt, sondern ob das Wichtige lauter ist
+    als das Nebensächliche. Gemessen an der Fläche, die eine Information im Monatsplan
+    einnimmt, ist die Rangfolge heute fast umgekehrt.
+  </p>
+
+  <div class="rollbar">
+  <table class="bewertung" style="min-width:840px">
+    <thead><tr>
+      <th style="width:26%">Information</th>
+      <th style="width:12%;text-align:center">Fläche heute</th>
+      <th style="width:13%;text-align:center">Ebene heute</th>
+      <th style="width:13%;text-align:center">Ebene richtig</th>
+      <th style="text-align:left">Warum</th>
+    </tr></thead>
+    <tbody>
+      <tr><th>Wer ist heute eingeteilt</th><td>hoch</td><td>1</td><td>1</td>
+        <td style="text-align:left">Bleibt. Das ist die Frage, für die es die Ansicht gibt.</td></tr>
+      <tr><th>Unterbesetzte Tage</th><td>mittel</td><td>2</td><td>1</td>
+        <td style="text-align:left">Steht als Bruch in einer von 240 Zellen. Muss als Zahl über dem Raster stehen.</td></tr>
+      <tr><th>Monatsbilanz je Dienstart</th><td>—</td><td>—</td><td>1</td>
+        <td style="text-align:left">Existiert nirgends. Trägt den größten Befund des Monats.</td></tr>
+      <tr><th>Fachkraftquote</th><td>gering</td><td>3</td><td>1</td>
+        <td style="text-align:left">Ein 4-Pixel-Punkt in der Zelle. Rechtlich der härteste Verstoß.</td></tr>
+      <tr><th>Wer fehlt und warum</th><td>gering</td><td>2</td><td>2</td>
+        <td style="text-align:left">Richtig einsortiert, aber nur über das Tagesblatt erreichbar.</td></tr>
+      <tr><th>Qualifikationsplaketten je Person</th><td>sehr hoch</td><td>1</td><td>3</td>
+        <td style="text-align:left">402 Plaketten für zwei unterscheidbare Zustände (Befund 06).</td></tr>
+      <tr><th>Zugangsart je Person</th><td>hoch</td><td>1</td><td>3</td>
+        <td style="text-align:left">Ein Auswahlfeld je Zeile, das im Jahr vielleicht dreimal benutzt wird.</td></tr>
+      <tr><th>Versatz je Wohnbereich</th><td>gering</td><td>2</td><td>2</td>
+        <td style="text-align:left">Steht da — nur falsch (Befund 05). Als Streifen statt als Zahl.</td></tr>
+      <tr><th>Wochenende und Feiertag</th><td>mittel</td><td>1</td><td>2</td>
+        <td style="text-align:left">Flächenfarbe über 60 Zellen. Ein Kalenderdetail, kein Befund.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Wo Verdichtung und Gruppierung fehlen</h3>
+  <p>
+    Drei Achsen, nach denen ein Planungsverantwortlicher gruppieren möchte, gibt es in
+    keiner Ansicht: <b>über die Zeit</b> (Summe eines Dienstes über den Monat statt Wert je
+    Tag), <b>über die Bereiche</b> (fünf Wohnbereiche nebeneinander statt nacheinander,
+    Befund 07) und <b>über die Befundart</b> (nach Schwere und Art statt nach Datum,
+    Befund 03). Die Filter, die es gibt — Suche, Dienstartauswahl, „nur knappe Tage" —
+    arbeiten alle innerhalb eines Tages und einer Ansicht.
+  </p>
+  <p>
+    Die vierte fehlende Achse ist der <b>Standort</b>. Er ist im Datenmodell angelegt
+    (<code>standortId</code> je Einheit, eine Standortwahl in Personal und Monatsplan) und im
+    Prüfbetrieb mit einem einzigen Haus belegt — bei einem Träger mit mehreren Häusern wird
+    er zur wichtigsten Gruppierung überhaupt. Die Entwürfe halten die Reihe dafür frei.
+  </p>
+
+  <h3>Was auf Laptop und Tablet passiert</h3>
+  <p>
+    Gemessen wurde jede der sechs Entwürfe bei 1680, 1280 und 1024 Pixeln: kein Entwurf
+    steht über seinen Rahmen hinaus, und das Dokument rollt bei keiner Breite waagerecht.
+    Drei Entwürfe legen auf dem Tablet ihr Raster in einen eigenen Rollbereich — das ist
+    die richtige Antwort für dreißig Tagesspalten und keine Ausweichlösung: Ein Monat
+    lässt sich nicht auf 1024 Pixel stauchen, ohne die Spalten unlesbar zu machen.
+  </p>
+  <div class="rollbar">
+  <table class="bewertung" style="min-width:720px">
+    <thead><tr><th style="width:20%">Entwurf</th>
+      <th>Desktop 1680</th><th>Laptop 1280</th><th>Tablet 1024</th>
+      <th style="text-align:left;width:34%">Verhalten beim Schrumpfen</th></tr></thead>
+    <tbody>
+      <tr><th>A · Klassisch</th><td>passt</td><td>passt</td><td>rollt innen</td>
+        <td style="text-align:left">Raster in eigenem Rollbereich, Zeilenköpfe bleiben stehen.</td></tr>
+      <tr><th>B · Filter-first</th><td>passt</td><td>passt</td><td>passt</td>
+        <td style="text-align:left">Chips brechen um, Trefferliste ist ohnehin einspaltig.</td></tr>
+      <tr><th>C · Dashboard</th><td>passt</td><td>passt</td><td>passt</td>
+        <td style="text-align:left">Sechs Kacheln brechen auf drei plus drei, Streifen skalieren mit.</td></tr>
+      <tr><th>D · Zeitstrahl</th><td>passt</td><td>passt</td><td>rollt innen</td>
+        <td style="text-align:left">Bahnen behalten ihre Mindestbreite, sonst verschwindet das Muster.</td></tr>
+      <tr><th>E · Mitarbeiter</th><td>passt</td><td>passt</td><td>passt</td>
+        <td style="text-align:left">Zweispaltig, bis der Rahmen unter 870 px fällt; dann gestapelt.</td></tr>
+      <tr><th>F · Leitstelle</th><td>passt</td><td>rollt innen</td><td>rollt innen</td>
+        <td style="text-align:left">Bewusst für große Schirme; ab etwa 1300 px abwärts rollt das Raster innen.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="hinweis">
+    Für sehr große Bildschirme gilt die umgekehrte Sorge: Fläche darf nicht leer bleiben.
+    A, C und F nutzen sie über eine zusätzliche Spalte (Monatsbilanz, Detailspalte,
+    Befundschlange); B und E über breitere Trefferzeilen. D wächst mit der Zeitachse
+    und zeigt bei mehr Platz ein Quartal statt eines Monats.
+  </p>
+
+
   <h3>Was daraus folgt</h3>
   <p>
     Die Ansichten sind nicht falsch gebaut — sie sind vollständig gebaut. Jede zeigt ihren
     Gegenstand sauber und lückenlos. Was fehlt, ist die Ebene darüber: <b>Verdichtung</b>
     (Summen über Zeit statt Werte je Tag), <b>Rangfolge</b> (was zuerst) und
-    <b>Querschnitt</b> (mehrere Bereiche nebeneinander). Alle sechs folgenden Entwürfe
-    greifen genau hier an, mit verschiedenen Mitteln.
+    <b>Querschnitt</b> (mehrere Bereiche nebeneinander).
+  </p>
+  <p>
+    Befund 11 verschiebt dabei den Schwerpunkt der ganzen Studie: Zwei der drei fehlenden
+    Bauteile — die Kennzahlenreihe und der Musterstreifen — sind bereits gebaut und laufen
+    im Betrieb, nur in der Ansicht, die man einmal beim Einrichten öffnet. Ein erheblicher
+    Teil dessen, was die folgenden Entwürfe vorschlagen, ist deshalb kein Neubau, sondern
+    ein Umzug. Das schlägt sich in der Empfehlung nieder.
   </p>
   <p class="hinweis">
     Zur Lesart der Entwürfe: Sie verwenden CENTRICs eigene Palette und Typografie. Was sich
@@ -803,9 +958,10 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
   <div class="phase">Phase 4</div>
   <h2>Empfehlung</h2>
   <p class="fuehrung">
-    Drei Entwürfe lösen zusammen alle acht Befunde und widersprechen einander nicht — sie
+    Drei Entwürfe lösen zusammen alle elf Befunde und widersprechen einander nicht — sie
     beantworten verschiedene Fragen auf derselben Datengrundlage und lassen sich als drei
-    Ebenen desselben Wegs bauen.
+    Ebenen desselben Wegs bauen. Zwei ihrer Bauteile gibt es bereits (Befund 11); der
+    Aufwand ist deshalb kleiner, als die Entwürfe aussehen.
   </p>
 
   <div class="empfehlung">
@@ -819,11 +975,19 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
       machen Befund 01 beim ersten Hinsehen sichtbar: Der Nachtstreifen steht dreißig Tage
       lang über der Linie, der Frühstreifen darunter.
     </p>
+    <p>
+      Die Kennzahlenreihe ist dabei kein neues Bauteil: Dieselbe Reihe steht seit jeher über
+      der Schichtfolge. Sie bezieht sich dort nur auf das Zyklusmuster statt auf den Plan —
+      weshalb sie „5 Dienste am Stück" in Grün meldet, während im Plan siebzehn stehen
+      (Befund 10). C nimmt die Reihe und hängt sie an den richtigen Gegenstand.
+    </p>
     <div class="paar">
       <div><h5>Löst</h5><ul>
         <li>Befund 01 — strukturelle Schieflage wird zur Kopfzeile</li>
         <li>Befund 03 — Befunde nach Art und Schwere getrennt gezählt</li>
         <li>Befund 08 — Konten mit Median und Grenze statt als nackte Zahl</li>
+        <li>Befund 10 — die Kennzahl bezieht sich auf den Plan, nicht auf das Muster</li>
+        <li>Befund 11 — die Kennzahlenreihe zieht aus der Einrichtung in die Planung um</li>
       </ul></div>
       <div><h5>Kostet</h5><ul>
         <li>Ein Klick mehr bis zur eigentlichen Änderung am Plan</li>
@@ -849,6 +1013,7 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
         <li>Befund 04 — die zwei Tabellen werden zu zwei Bändern</li>
         <li>Befund 05 — Versatz wird sichtbar statt als Nullreihe behauptet</li>
         <li>Befund 01 — Monatsspalte trägt die Summe je Dienstart</li>
+        <li>Befund 11 — der Musterstreifen ist der aus der Schichtfolge, unverändert</li>
       </ul></div>
       <div><h5>Kostet</h5><ul>
         <li>Die absolute Kopfzahl weicht der Abweichung — sie muss im Hinweis bleiben</li>
@@ -916,8 +1081,11 @@ tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight
     <b>Phase 5 steht aus.</b> Nichts hiervon ist umgesetzt; die bestehenden Ansichten,
     Komponenten und Datenstrukturen sind unverändert. Diese Studie liegt als eigenständige
     Datei unter <code>entwuerfe/</code> und ist mit der Anwendung nicht verbunden. Sobald
-    eine Richtung feststeht, folgt die Umsetzung — sinnvoll in der Reihenfolge A, dann C,
-    dann B, weil A den geringsten Eingriff hat und die Bauteile schafft, auf denen C aufsetzt.
+    eine Richtung feststeht, folgt die Umsetzung. Sinnvoll wäre die Reihenfolge A, dann C,
+    dann B: A ist der geringste Eingriff und schafft die Bauteile, auf denen C aufsetzt.
+    Davor stehen zwei Korrekturen, die keine Entwurfsentscheidung brauchen und unabhängig
+    von der gewählten Variante fällig sind — die falsche Versatzanzeige (Befund 05) und die
+    Deckungswarnung, die dem eigenen Ergebnis widerspricht (Befund 09).
   </div>
 </section>
 
@@ -1129,69 +1297,152 @@ function bauB(ziel) {
      ein Planungsverantwortlicher morgens braucht: das Dringende ab heute.
      Eine ungefilterte Liste über 135 Befunde wäre genau die Wand, gegen
      die Befund 03 sich richtet. */
-  const zustand = { arten: new Set(), einheit: null, dienst: null, abHeute: true, nurDringend: true };
+  /* Jede Gruppe ist eine Menge, keine Einzelwahl: „Nord und Süd" ist die
+     häufigere Frage als „nur Nord". Innerhalb einer Gruppe gilt ODER,
+     zwischen den Gruppen UND — das ist die Erwartung, die Filterchips
+     überall sonst auch bedienen. */
+  const leer = () => ({ arten: new Set(), einheiten: new Set(), dienste: new Set(),
+    personen: new Set(), zeitraum: "abHeute", nurDringend: true });
+  let zustand = leer();
 
   /* Betrifft ein Befund diese Dienstart? Bei Unterbesetzung und Quote steht
      sie im Befund; bei personenbezogenen Befunden ergibt sie sich aus dem
      Dienst, den die Person an dem Tag hatte. */
+  const tagIndex = Object.fromEntries(D.tage.map((t, i) => [t.datum, i]));
   const trifftDienst = (b, id) => {
     if (b.dienstId) return b.dienstId === id;
     if (!b.personId || !P[b.personId]) return false;
-    const i = D.tage.findIndex((t) => t.datum === b.datum);
-    return i >= 0 && P[b.personId].verlauf[i].replace("!", "") === id;
+    const i = tagIndex[b.datum];
+    return i !== undefined && P[b.personId].verlauf[i].replace("!", "") === id;
   };
   const trifftEinheit = (b, id) => b.einheitId === id
     || (b.personId && P[b.personId] && P[b.personId].einheitId === id);
 
-  const treffer = () => {
-    let l = D.befunde.slice();
-    if (zustand.nurDringend) l = l.filter((b) => b.schwere === "hoch");
-    if (zustand.arten.size) l = l.filter((b) => zustand.arten.has(b.art));
-    if (zustand.dienst) l = l.filter((b) => trifftDienst(b, zustand.dienst));
-    if (zustand.einheit) l = l.filter((b) => trifftEinheit(b, zustand.einheit));
-    if (zustand.abHeute) l = l.filter((b) => b.datum >= HEUTE);
-    return l;
+  /* Eigenschaften der betroffenen Person. Ein Befund ohne Person — eine
+     unbesetzte Schicht etwa — fällt aus diesen Filtern heraus, statt
+     stillschweigend mitzulaufen. */
+  const PERSONFILTER = {
+    fachkraft:   { label: "Fachkräfte", pruef: (p) => p.fachkraft },
+    hilfskraft:  { label: "Hilfskräfte", pruef: (p) => !p.fachkraft },
+    plus:        { label: "Überstunden", pruef: (p) => p.konto > 20 },
+    minus:       { label: "Minusstunden", pruef: (p) => p.konto < -20 },
+    abwesend:    { label: "mit Abwesenheit", pruef: (p) => p.abwTage > 0 },
+    nacht:       { label: "viele Nachtdienste", pruef: (p) => p.naechte > 8 },
   };
+  const trifftPerson = (b, id) => b.personId && P[b.personId] && PERSONFILTER[id].pruef(P[b.personId]);
+
+  const ZEITRAUM = {
+    alles:   { label: "ganzer Monat", pruef: () => true },
+    abHeute: { label: "ab heute", pruef: (b) => b.datum >= HEUTE },
+    woche:   { label: "nächste 7 Tage", pruef: (b) => b.datum >= HEUTE && b.datum <= "2026-09-16" },
+  };
+
+  /* Gespeicherte Sichten sind der Unterschied zwischen einem Filter, den
+     man jeden Morgen neu zusammenklickt, und einer Arbeitsweise. */
+  const SICHTEN = {
+    "Frühdienst-Kontrolle": { ...leer(), dienste: new Set(["F"]), zeitraum: "abHeute", nurDringend: true },
+    "Nachtbelastung": { ...leer(), arten: new Set(["nachtfolge", "ruhezeit"]),
+      personen: new Set(["nacht"]), zeitraum: "alles", nurDringend: false },
+    "Urlaubsplanung": { ...leer(), arten: new Set(["urlaub"]), zeitraum: "alles", nurDringend: false },
+  };
+
+  const passt = (b, z) => {
+    if (z.nurDringend && b.schwere !== "hoch") return false;
+    if (!ZEITRAUM[z.zeitraum].pruef(b)) return false;
+    if (z.arten.size && !z.arten.has(b.art)) return false;
+    if (z.dienste.size && ![...z.dienste].some((id) => trifftDienst(b, id))) return false;
+    if (z.einheiten.size && ![...z.einheiten].some((id) => trifftEinheit(b, id))) return false;
+    if (z.personen.size && ![...z.personen].some((id) => trifftPerson(b, id))) return false;
+    return true;
+  };
+  const treffer = () => D.befunde.filter((b) => passt(b, zustand));
+
+  /* Die Zahl auf einem Chip ist keine Gesamtsumme, sondern eine Vorschau:
+     Was liefert diese Facette, wenn die übrigen Gruppen so bleiben, wie sie
+     stehen? Bewusst unabhängig davon, ob der Chip gerade an ist — sonst
+     zeigte ein aktiver Chip die Zahl nach seinem Abschalten und spränge bei
+     jedem Klick, was ihn als Anhaltspunkt wertlos macht. */
+  const kopie = () => ({ ...zustand, arten: new Set(zustand.arten), einheiten: new Set(zustand.einheiten),
+    dienste: new Set(zustand.dienste), personen: new Set(zustand.personen) });
+  const facetZahl = (menge, id) => {
+    const z = kopie(); z[menge] = new Set([id]);
+    return D.befunde.filter((b) => passt(b, z)).length;
+  };
+  const optionZahl = (aenderung) => {
+    const z = kopie(); aenderung(z);
+    return D.befunde.filter((b) => passt(b, z)).length;
+  };
+  const umschalten = (menge, id) => (z) => { const m = z[menge];
+    m.has(id) ? m.delete(id) : m.add(id); };
 
   const zeichne = () => {
     const l = treffer();
     const nachTag = {};
     for (const b of l) (nachTag[b.datum] ||= []).push(b);
     const tage = Object.keys(nachTag).sort();
+    const dringend = D.befunde.filter((b) => b.schwere === "hoch").length;
     let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
       <h5 class="titel" style="margin:0">Planung</h5>
       <span class="unter">${l.length} von ${D.befunde.length} Befunden · ${tage.length} betroffene Tage</span>
-      <span style="margin-left:auto"><button class="knopf still" id="bReset">Filter leeren</button></span></div>`;
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span class="lab">gespeicherte Sicht</span>
+        ${Object.keys(SICHTEN).map((n) => `<button class="chip" data-sicht="${esc(n)}">${esc(n)}</button>`).join("")}
+        <button class="knopf still" id="bReset">Filter leeren</button></span></div>
 
-    /* Filterleiste */
-    h += `<div class="karte" style="padding:13px 15px;margin-bottom:14px">
-      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <span class="lab" style="flex:0 0 78px">Problem</span>`;
+    <!-- Ebene 1: ein einziger Block, der die Frage „wo muss ich hin" beantwortet,
+         bevor irgendein Filter gesetzt ist. Die Aufschlüsselung ist zugleich
+         die Bedienung — jede Zeile ist ihr eigener Filter. -->
+    <div class="karte" style="padding:0;margin-bottom:12px;overflow:hidden;display:flex;flex-wrap:wrap">
+      <div style="flex:0 0 216px;padding:16px 20px;background:var(--gefahr-hell);
+        display:flex;flex-direction:column;justify-content:center">
+        <div class="num" style="font:300 40px/1 Inter;letter-spacing:-.03em;color:var(--gefahr)">
+          ${D.befunde.length}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--gefahr);margin-top:4px">Auffälligkeiten</div>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:3px">im September · ${dringend} davon dringend</div>
+      </div>
+      <div style="flex:1;min-width:340px;display:flex;flex-wrap:wrap;align-content:center;padding:11px 16px;gap:2px">`;
     for (const [art, meta] of Object.entries(ART)) {
       const n = (jeArt[art] || []).length;
-      h += `<button class="chip ${meta.ton}" data-art="${art}" aria-pressed="${zustand.arten.has(art)}">
-        ${meta.label}<span class="zahl">${n}</span></button>`;
+      const an = zustand.arten.has(art);
+      const ton = meta.ton === "gefahr" ? "var(--gefahr)" : "var(--warn)";
+      h += `<button data-art="${art}" aria-pressed="${an}" style="display:flex;align-items:baseline;gap:9px;
+        flex:1 1 235px;padding:6px 10px;border:none;border-radius:8px;cursor:pointer;text-align:left;
+        background:${an ? "var(--akzent-hell)" : "transparent"}">
+        <span class="num" style="font:700 15px/1 Inter;color:${ton};flex:0 0 30px;text-align:right">${n}</span>
+        <span style="font-size:12.5px;color:var(--text)">${meta.label}</span>
+        ${an ? '<span style="margin-left:auto;font-size:10px;color:var(--akzent);font-weight:700">GEFILTERT</span>' : ""}
+      </button>`;
     }
-    h += `<span style="width:12px"></span>
-      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend<span class="zahl">${D.befunde.filter((b) => b.schwere === "hoch").length}</span></button>`;
-    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <span class="lab" style="flex:0 0 78px">Bereich</span>`;
-    for (const e of D.einheiten) {
-      const n = D.befunde.filter((b) => trifftEinheit(b, e.id)).length;
-      h += `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheit === e.id}">
-        ${esc(e.name.replace("Wohnbereich ", ""))}<span class="zahl">${n}</span></button>`;
-    }
-    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
-        <span class="lab" style="flex:0 0 78px">Dienst</span>`;
-    for (const da of D.dienstarten) {
-      const n = D.befunde.filter((b) => trifftDienst(b, da.id)).length;
-      h += `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienst === da.id}">
-        ${esc(da.name)}<span class="zahl">${n}</span></button>`;
-    }
-    h += `<span style="width:14px"></span>
-      <button class="chip" data-ab="1" aria-pressed="${zustand.abHeute}">ab heute<span class="zahl">${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></button>
-      <span style="margin-left:auto;font-size:11.5px;color:var(--aus)">Gespeicherte Sicht: „Frühdienst-Kontrolle“</span>
-      </div></div>`;
+    h += `</div></div>`;
+
+    /* Ebene 2: die feineren Achsen. */
+    h += `<div class="karte" style="padding:12px 15px;margin-bottom:14px;display:grid;gap:9px">`;
+    const reihe = (titel, inhalt) => `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <span class="lab" style="flex:0 0 74px">${titel}</span>${inhalt}</div>`;
+
+    h += reihe("Zeitraum", Object.entries(ZEITRAUM).map(([id, z]) =>
+      `<button class="chip" data-zeit="${id}" aria-pressed="${zustand.zeitraum === id}">${z.label}
+        <span class="zahl">${optionZahl((x) => { x.zeitraum = id; })}</span></button>`).join("")
+      + `<span style="width:10px"></span>
+      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend
+        <span class="zahl">${optionZahl((x) => { x.nurDringend = true; })}</span></button>`);
+
+    h += reihe("Bereich", D.einheiten.map((e) =>
+      `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheiten.has(e.id)}">
+        ${esc(e.name.replace("Wohnbereich ", ""))}
+        <span class="zahl">${facetZahl("einheiten", e.id)}</span></button>`).join("")
+      + `<span style="margin-left:auto;font-size:11px;color:var(--aus)">
+        Standort: ${esc(D.betrieb.name)} — bei mehreren Häusern steht hier eine eigene Reihe</span>`);
+
+    h += reihe("Dienst", D.dienstarten.map((da) =>
+      `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienste.has(da.id)}">
+        ${esc(da.name)}<span class="zahl">${facetZahl("dienste", da.id)}</span></button>`).join(""));
+
+    h += reihe("Person", Object.entries(PERSONFILTER).map(([id, f]) =>
+      `<button class="chip" data-pf="${id}" aria-pressed="${zustand.personen.has(id)}">
+        ${f.label}<span class="zahl">${facetZahl("personen", id)}</span></button>`).join(""));
+
+    h += `</div>`;
 
     /* Trefferliste */
     if (!l.length) {
@@ -1235,19 +1486,23 @@ function bauB(ziel) {
     }
     ziel.innerHTML = h;
 
-    ziel.querySelectorAll("[data-art]").forEach((b) => b.onclick = () => {
-      const a = b.dataset.art; zustand.arten.has(a) ? zustand.arten.delete(a) : zustand.arten.add(a); zeichne(); });
-    ziel.querySelectorAll("[data-eh]").forEach((b) => b.onclick = () => {
-      zustand.einheit = zustand.einheit === b.dataset.eh ? null : b.dataset.eh; zeichne(); });
-    ziel.querySelectorAll("[data-da]").forEach((b) => b.onclick = () => {
-      zustand.dienst = zustand.dienst === b.dataset.da ? null : b.dataset.da; zeichne(); });
-    ziel.querySelectorAll("[data-ab]").forEach((b) => b.onclick = () => {
-      zustand.abHeute = !zustand.abHeute; zeichne(); });
+    const schalte = (wahl, menge) => ziel.querySelectorAll(`[data-${wahl}]`).forEach((b) => b.onclick = () => {
+      umschalten(menge, b.dataset[wahl])(zustand); zeichne(); });
+    schalte("art", "arten");
+    schalte("eh", "einheiten");
+    schalte("da", "dienste");
+    schalte("pf", "personen");
+    ziel.querySelectorAll("[data-zeit]").forEach((b) => b.onclick = () => {
+      zustand.zeitraum = b.dataset.zeit; zeichne(); });
     ziel.querySelectorAll("[data-dringend]").forEach((b) => b.onclick = () => {
       zustand.nurDringend = !zustand.nurDringend; zeichne(); });
+    ziel.querySelectorAll("[data-sicht]").forEach((b) => b.onclick = () => {
+      const s = SICHTEN[b.dataset.sicht];
+      zustand = { ...s, arten: new Set(s.arten), einheiten: new Set(s.einheiten),
+        dienste: new Set(s.dienste), personen: new Set(s.personen) };
+      zeichne(); });
     const r = ziel.querySelector("#bReset");
-    if (r) r.onclick = () => { zustand.arten.clear(); zustand.einheit = null; zustand.dienst = null;
-      zustand.abHeute = false; zustand.nurDringend = false; zeichne(); };
+    if (r) r.onclick = () => { zustand = { ...leer(), zeitraum: "alles", nurDringend: false }; zeichne(); };
   };
   zeichne();
 }
@@ -1518,15 +1773,15 @@ function bauE(ziel) {
           return `<button class="chip" data-sort="${id}" aria-pressed="${sortierung === id}">${lab}</button>`; }).join("")}
       </span></div>
 
-    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:12px;align-items:start">
 
       <!-- Links: die Belegschaft. Jede Zeile trägt den ganzen Monat. -->
       <div class="karte" style="overflow:hidden">
         <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--still);border-bottom:1px solid var(--linie-zart)">
-          <span class="lab" style="flex:1">Person</span>
-          <span class="lab" style="flex:0 0 236px">Monatsverlauf</span>
-          <span class="lab" style="flex:0 0 108px;text-align:right">Konto gegen Median</span>
-          <span class="lab" style="flex:0 0 34px;text-align:right">Bef.</span>
+          <span class="lab" style="flex:1 1 118px;min-width:0">Person</span>
+          <span class="lab" style="flex:2 1 150px;min-width:0">Monatsverlauf</span>
+          <span class="lab" style="flex:0 1 104px;min-width:60px;text-align:right">Konto gegen Median</span>
+          <span class="lab" style="flex:0 0 30px;text-align:right">Bef.</span>
         </div>
         <div style="max-height:560px;overflow-y:auto">`;
     for (const x of l) {
@@ -1540,11 +1795,11 @@ function bauE(ziel) {
       h += `<button data-p="${x.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;
         padding:6px 14px;border:none;border-bottom:1px solid var(--linie-zart);cursor:pointer;
         background:${x.id === gewaehlt ? "var(--akzent-hell)" : "transparent"}">
-        <span style="flex:1;min-width:0">
+        <span style="flex:1 1 118px;min-width:0">
           <span style="font-size:12.5px;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.name)}</span>
           <span style="font-size:10.5px;color:var(--aus)">${esc(x.funktion)} · <span style="color:${eh.farbe || "var(--aus)"}">${esc((eh.name || "").replace("Wohnbereich ", ""))}</span></span>
         </span>
-        <span style="flex:0 0 236px;display:flex;gap:1px">`;
+        <span style="flex:2 1 150px;min-width:0;display:flex;gap:1px">`;
       x.verlauf.forEach((v) => {
         const c = v.startsWith("*") ? (v[1] === "k" ? "#4E0401" : v[1] === "u" ? "#0E6B45" : "#316C81")
           : v.startsWith("F") ? "#3C7C8C" : v.startsWith("S") ? "#955410" : v.startsWith("N") ? "#333C6E" : "transparent";
@@ -1552,14 +1807,14 @@ function bauE(ziel) {
           opacity:${v.startsWith("*") ? .95 : .8}"></span>`;
       });
       h += `</span>
-        <span style="flex:0 0 108px;position:relative;height:15px">
+        <span style="flex:0 1 104px;min-width:60px;position:relative;height:15px">
           <span style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--linie)"></span>
           <span style="position:absolute;top:3px;height:9px;border-radius:1.5px;
             ${rechts ? `left:50%;width:${anteil * 50}%` : `right:50%;width:${anteil * 50}%`};
             background:${Math.abs(x.konto) > 40 ? "var(--gefahr)" : rechts ? "var(--warn)" : "var(--violett)"};opacity:.85"></span>
           <span class="num" style="position:absolute;right:0;top:0;font-size:10px;color:var(--aus)">${sgn(x.konto)}</span>
         </span>
-        <span class="num" style="flex:0 0 34px;text-align:right;font:600 12px/1 Inter;
+        <span class="num" style="flex:0 0 30px;text-align:right;font:600 12px/1 Inter;
           color:${bf > 3 ? "var(--gefahr)" : bf ? "var(--warn)" : "var(--aus)"}">${bf || "—"}</span>
       </button>`;
     }
@@ -1576,7 +1831,7 @@ function bauE(ziel) {
           ${esc((EH[p.einheitId] || {}).name || "")} · ${p.wochenstunden} h/Woche · ${esc(p.quals.map((q) => (D.qualifikationen.find((x) => x.id === q) || {}).kurz).join(" · "))}
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:9px;margin-bottom:16px">
           ${[["Stundenkonto", sgn(p.konto) + " h", Math.abs(p.konto) > 40 ? "var(--gefahr)" : "var(--text)", `${n1(p.ist)} von ${n1(p.soll)} h`],
              ["Nachtdienste", p.naechte, p.naechte > 8 ? "var(--warn)" : "var(--text)", "im Monat"],
              ["Resturlaub", p.urlaubRest, p.urlaubRest < 5 ? "var(--warn)" : "var(--text)", `von ${p.urlaubAnspruch} Tagen`],
@@ -1588,14 +1843,14 @@ function bauE(ziel) {
         </div>
 
         <div class="lab" style="margin-bottom:8px">September Tag für Tag</div>
-        <div style="display:flex;gap:2px;margin-bottom:6px">`;
+        <div class="tagstreifen" style="display:flex;gap:2px;margin-bottom:6px">`;
     p.verlauf.forEach((v, i) => {
       h += `<div title="${tagKurz(D.tage[i].datum)} · ${v.startsWith("*") ? { u: "Urlaub", k: "Krank", s: "Schulung", a: "Ausgleich" }[v[1]] : v ? DA[v.replace("!", "")].name : "frei"}"
-        style="flex:1;text-align:center">${dz(v)}</div>`;
+        style="flex:1;min-width:0;text-align:center">${dz(v)}</div>`;
     });
     h += `</div><div style="display:flex;gap:2px;margin-bottom:16px">`;
     D.tage.forEach((t, i) => {
-      h += `<div style="flex:1;text-align:center;font:500 8.5px/1.3 Inter;color:${i === iHeute ? "var(--akzent)" : "var(--aus)"}" class="num">${i + 1}</div>`;
+      h += `<div style="flex:1;min-width:0;text-align:center;font:500 8.5px/1.3 Inter;color:${i === iHeute ? "var(--akzent)" : "var(--aus)"}" class="num">${i + 1}</div>`;
     });
     h += `</div>`;
 

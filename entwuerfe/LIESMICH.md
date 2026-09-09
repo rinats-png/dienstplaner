@@ -31,21 +31,31 @@ Prüfbetriebs, nicht die eines Kunden.
 
 ## Aufbau
 
-Die fertige Datei entsteht aus acht Teilen — eine Datei von 158 KB ließe
+Die fertige Datei entsteht aus zehn Teilen — eine Datei von 173 KB ließe
 sich nicht mehr sinnvoll bearbeiten:
 
-    teil-1-kopf.html        Dokumenttypografie und Farbtoken
-    teil-2-produkt.html     Produktsprache, gilt nur innerhalb von .schirm
-    teil-3-analyse.html     Phase 1 — die acht gemessenen Befunde
-    teil-4-entwuerfe.html   Phase 2 — die sechs Rahmen
-    teil-5-bewertung.html   Phase 3 und 4 — Vergleich und Empfehlung
-    teil-6-code.html        Datenaufbereitung, Entwurf A und B
-    teil-7-code.html        Entwurf C und D
-    teil-8-code.html        Entwurf E und F
+    teil-1-kopf.html          Dokumenttypografie und Farbtoken
+    teil-2-produkt.html       Produktsprache, gilt nur innerhalb von .schirm
+    teil-3-analyse.html       Phase 1 — Befund 01 bis 08
+    teil-3b-hierarchie.html   Befund 09 bis 11, Informationshierarchie, Responsive
+    teil-3c-folgerung.html    Was aus der Analyse folgt
+    teil-4-entwuerfe.html     Phase 2 — die sechs Rahmen
+    teil-5-bewertung.html     Phase 3 und 4 — Vergleich und Empfehlung
+    teil-6-code.html          Datenaufbereitung, Entwurf A und B
+    teil-7-code.html          Entwurf C und D
+    teil-8-code.html          Entwurf E und F
 
 Neu zusammensetzen:
 
     cd entwuerfe && node bauen.mjs
+
+## Responsive
+
+Jeder Entwurf wurde bei 1680, 1280 und 1024 Pixeln gemessen: kein Überstand
+über den Rahmen, kein waagerechtes Rollen des Dokuments. A, D und F legen auf
+dem Tablet ihr Raster in einen eigenen Rollbereich — dreißig Tagesspalten
+lassen sich nicht auf 1024 Pixel stauchen, ohne unlesbar zu werden. Die
+Messung steht im Abschnitt „Was auf Laptop und Tablet passiert".
 
 ## Stand
 

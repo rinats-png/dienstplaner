@@ -1,7 +1,8 @@
 /* Setzt die Studie aus ihren Teilen zusammen. Getrennt geschrieben, weil
    eine Datei von 160 KB sich nicht mehr sinnvoll bearbeiten lässt. */
 import { readFileSync, writeFileSync, statSync } from "node:fs";
-const TEILE = ["teil-1-kopf.html", "teil-2-produkt.html", "teil-3-analyse.html",
+const TEILE = ["teil-1-kopf.html", "teil-2-produkt.html",
+  "teil-3-analyse.html", "teil-3b-hierarchie.html", "teil-3c-folgerung.html",
   "teil-4-entwuerfe.html", "teil-5-bewertung.html",
   "teil-6-code.html", "teil-7-code.html", "teil-8-code.html"];
 let out = TEILE.map((t) => readFileSync(t, "utf8")).join("\n\n");

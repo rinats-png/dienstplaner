@@ -90,6 +90,9 @@
 .dz.S { background: rgba(149,84,16,.14); color: #7A4400; }
 .dz.N { background: rgba(49,60,110,.16); color: #333C6E; }
 .dz.frei { background: var(--still); color: var(--aus); }
+/* Im Tagesstreifen stehen dreißig Signets nebeneinander. Bei fester Breite
+   sprengen sie auf dem Tablet ihren Rahmen — hier dürfen sie schrumpfen. */
+.tagstreifen .dz { width: 100%; max-width: 22px; min-width: 0; }
 .dz.abw { background: rgba(14,107,69,.14); color: var(--ok); }
 .dz.abwk { background: var(--gefahr-hell); color: var(--gefahr); }
 

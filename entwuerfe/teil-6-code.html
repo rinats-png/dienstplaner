@@ -176,69 +176,152 @@ function bauB(ziel) {
      ein Planungsverantwortlicher morgens braucht: das Dringende ab heute.
      Eine ungefilterte Liste über 135 Befunde wäre genau die Wand, gegen
      die Befund 03 sich richtet. */
-  const zustand = { arten: new Set(), einheit: null, dienst: null, abHeute: true, nurDringend: true };
+  /* Jede Gruppe ist eine Menge, keine Einzelwahl: „Nord und Süd" ist die
+     häufigere Frage als „nur Nord". Innerhalb einer Gruppe gilt ODER,
+     zwischen den Gruppen UND — das ist die Erwartung, die Filterchips
+     überall sonst auch bedienen. */
+  const leer = () => ({ arten: new Set(), einheiten: new Set(), dienste: new Set(),
+    personen: new Set(), zeitraum: "abHeute", nurDringend: true });
+  let zustand = leer();
 
   /* Betrifft ein Befund diese Dienstart? Bei Unterbesetzung und Quote steht
      sie im Befund; bei personenbezogenen Befunden ergibt sie sich aus dem
      Dienst, den die Person an dem Tag hatte. */
+  const tagIndex = Object.fromEntries(D.tage.map((t, i) => [t.datum, i]));
   const trifftDienst = (b, id) => {
     if (b.dienstId) return b.dienstId === id;
     if (!b.personId || !P[b.personId]) return false;
-    const i = D.tage.findIndex((t) => t.datum === b.datum);
-    return i >= 0 && P[b.personId].verlauf[i].replace("!", "") === id;
+    const i = tagIndex[b.datum];
+    return i !== undefined && P[b.personId].verlauf[i].replace("!", "") === id;
   };
   const trifftEinheit = (b, id) => b.einheitId === id
     || (b.personId && P[b.personId] && P[b.personId].einheitId === id);
 
-  const treffer = () => {
-    let l = D.befunde.slice();
-    if (zustand.nurDringend) l = l.filter((b) => b.schwere === "hoch");
-    if (zustand.arten.size) l = l.filter((b) => zustand.arten.has(b.art));
-    if (zustand.dienst) l = l.filter((b) => trifftDienst(b, zustand.dienst));
-    if (zustand.einheit) l = l.filter((b) => trifftEinheit(b, zustand.einheit));
-    if (zustand.abHeute) l = l.filter((b) => b.datum >= HEUTE);
-    return l;
+  /* Eigenschaften der betroffenen Person. Ein Befund ohne Person — eine
+     unbesetzte Schicht etwa — fällt aus diesen Filtern heraus, statt
+     stillschweigend mitzulaufen. */
+  const PERSONFILTER = {
+    fachkraft:   { label: "Fachkräfte", pruef: (p) => p.fachkraft },
+    hilfskraft:  { label: "Hilfskräfte", pruef: (p) => !p.fachkraft },
+    plus:        { label: "Überstunden", pruef: (p) => p.konto > 20 },
+    minus:       { label: "Minusstunden", pruef: (p) => p.konto < -20 },
+    abwesend:    { label: "mit Abwesenheit", pruef: (p) => p.abwTage > 0 },
+    nacht:       { label: "viele Nachtdienste", pruef: (p) => p.naechte > 8 },
   };
+  const trifftPerson = (b, id) => b.personId && P[b.personId] && PERSONFILTER[id].pruef(P[b.personId]);
+
+  const ZEITRAUM = {
+    alles:   { label: "ganzer Monat", pruef: () => true },
+    abHeute: { label: "ab heute", pruef: (b) => b.datum >= HEUTE },
+    woche:   { label: "nächste 7 Tage", pruef: (b) => b.datum >= HEUTE && b.datum <= "2026-09-16" },
+  };
+
+  /* Gespeicherte Sichten sind der Unterschied zwischen einem Filter, den
+     man jeden Morgen neu zusammenklickt, und einer Arbeitsweise. */
+  const SICHTEN = {
+    "Frühdienst-Kontrolle": { ...leer(), dienste: new Set(["F"]), zeitraum: "abHeute", nurDringend: true },
+    "Nachtbelastung": { ...leer(), arten: new Set(["nachtfolge", "ruhezeit"]),
+      personen: new Set(["nacht"]), zeitraum: "alles", nurDringend: false },
+    "Urlaubsplanung": { ...leer(), arten: new Set(["urlaub"]), zeitraum: "alles", nurDringend: false },
+  };
+
+  const passt = (b, z) => {
+    if (z.nurDringend && b.schwere !== "hoch") return false;
+    if (!ZEITRAUM[z.zeitraum].pruef(b)) return false;
+    if (z.arten.size && !z.arten.has(b.art)) return false;
+    if (z.dienste.size && ![...z.dienste].some((id) => trifftDienst(b, id))) return false;
+    if (z.einheiten.size && ![...z.einheiten].some((id) => trifftEinheit(b, id))) return false;
+    if (z.personen.size && ![...z.personen].some((id) => trifftPerson(b, id))) return false;
+    return true;
+  };
+  const treffer = () => D.befunde.filter((b) => passt(b, zustand));
+
+  /* Die Zahl auf einem Chip ist keine Gesamtsumme, sondern eine Vorschau:
+     Was liefert diese Facette, wenn die übrigen Gruppen so bleiben, wie sie
+     stehen? Bewusst unabhängig davon, ob der Chip gerade an ist — sonst
+     zeigte ein aktiver Chip die Zahl nach seinem Abschalten und spränge bei
+     jedem Klick, was ihn als Anhaltspunkt wertlos macht. */
+  const kopie = () => ({ ...zustand, arten: new Set(zustand.arten), einheiten: new Set(zustand.einheiten),
+    dienste: new Set(zustand.dienste), personen: new Set(zustand.personen) });
+  const facetZahl = (menge, id) => {
+    const z = kopie(); z[menge] = new Set([id]);
+    return D.befunde.filter((b) => passt(b, z)).length;
+  };
+  const optionZahl = (aenderung) => {
+    const z = kopie(); aenderung(z);
+    return D.befunde.filter((b) => passt(b, z)).length;
+  };
+  const umschalten = (menge, id) => (z) => { const m = z[menge];
+    m.has(id) ? m.delete(id) : m.add(id); };
 
   const zeichne = () => {
     const l = treffer();
     const nachTag = {};
     for (const b of l) (nachTag[b.datum] ||= []).push(b);
     const tage = Object.keys(nachTag).sort();
+    const dringend = D.befunde.filter((b) => b.schwere === "hoch").length;
     let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
       <h5 class="titel" style="margin:0">Planung</h5>
       <span class="unter">${l.length} von ${D.befunde.length} Befunden · ${tage.length} betroffene Tage</span>
-      <span style="margin-left:auto"><button class="knopf still" id="bReset">Filter leeren</button></span></div>`;
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span class="lab">gespeicherte Sicht</span>
+        ${Object.keys(SICHTEN).map((n) => `<button class="chip" data-sicht="${esc(n)}">${esc(n)}</button>`).join("")}
+        <button class="knopf still" id="bReset">Filter leeren</button></span></div>
 
-    /* Filterleiste */
-    h += `<div class="karte" style="padding:13px 15px;margin-bottom:14px">
-      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <span class="lab" style="flex:0 0 78px">Problem</span>`;
+    <!-- Ebene 1: ein einziger Block, der die Frage „wo muss ich hin" beantwortet,
+         bevor irgendein Filter gesetzt ist. Die Aufschlüsselung ist zugleich
+         die Bedienung — jede Zeile ist ihr eigener Filter. -->
+    <div class="karte" style="padding:0;margin-bottom:12px;overflow:hidden;display:flex;flex-wrap:wrap">
+      <div style="flex:0 0 216px;padding:16px 20px;background:var(--gefahr-hell);
+        display:flex;flex-direction:column;justify-content:center">
+        <div class="num" style="font:300 40px/1 Inter;letter-spacing:-.03em;color:var(--gefahr)">
+          ${D.befunde.length}</div>
+        <div style="font-size:13px;font-weight:600;color:var(--gefahr);margin-top:4px">Auffälligkeiten</div>
+        <div style="font-size:11.5px;color:var(--dim);margin-top:3px">im September · ${dringend} davon dringend</div>
+      </div>
+      <div style="flex:1;min-width:340px;display:flex;flex-wrap:wrap;align-content:center;padding:11px 16px;gap:2px">`;
     for (const [art, meta] of Object.entries(ART)) {
       const n = (jeArt[art] || []).length;
-      h += `<button class="chip ${meta.ton}" data-art="${art}" aria-pressed="${zustand.arten.has(art)}">
-        ${meta.label}<span class="zahl">${n}</span></button>`;
+      const an = zustand.arten.has(art);
+      const ton = meta.ton === "gefahr" ? "var(--gefahr)" : "var(--warn)";
+      h += `<button data-art="${art}" aria-pressed="${an}" style="display:flex;align-items:baseline;gap:9px;
+        flex:1 1 235px;padding:6px 10px;border:none;border-radius:8px;cursor:pointer;text-align:left;
+        background:${an ? "var(--akzent-hell)" : "transparent"}">
+        <span class="num" style="font:700 15px/1 Inter;color:${ton};flex:0 0 30px;text-align:right">${n}</span>
+        <span style="font-size:12.5px;color:var(--text)">${meta.label}</span>
+        ${an ? '<span style="margin-left:auto;font-size:10px;color:var(--akzent);font-weight:700">GEFILTERT</span>' : ""}
+      </button>`;
     }
-    h += `<span style="width:12px"></span>
-      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend<span class="zahl">${D.befunde.filter((b) => b.schwere === "hoch").length}</span></button>`;
-    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
-        <span class="lab" style="flex:0 0 78px">Bereich</span>`;
-    for (const e of D.einheiten) {
-      const n = D.befunde.filter((b) => trifftEinheit(b, e.id)).length;
-      h += `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheit === e.id}">
-        ${esc(e.name.replace("Wohnbereich ", ""))}<span class="zahl">${n}</span></button>`;
-    }
-    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
-        <span class="lab" style="flex:0 0 78px">Dienst</span>`;
-    for (const da of D.dienstarten) {
-      const n = D.befunde.filter((b) => trifftDienst(b, da.id)).length;
-      h += `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienst === da.id}">
-        ${esc(da.name)}<span class="zahl">${n}</span></button>`;
-    }
-    h += `<span style="width:14px"></span>
-      <button class="chip" data-ab="1" aria-pressed="${zustand.abHeute}">ab heute<span class="zahl">${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></button>
-      <span style="margin-left:auto;font-size:11.5px;color:var(--aus)">Gespeicherte Sicht: „Frühdienst-Kontrolle“</span>
-      </div></div>`;
+    h += `</div></div>`;
+
+    /* Ebene 2: die feineren Achsen. */
+    h += `<div class="karte" style="padding:12px 15px;margin-bottom:14px;display:grid;gap:9px">`;
+    const reihe = (titel, inhalt) => `<div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+      <span class="lab" style="flex:0 0 74px">${titel}</span>${inhalt}</div>`;
+
+    h += reihe("Zeitraum", Object.entries(ZEITRAUM).map(([id, z]) =>
+      `<button class="chip" data-zeit="${id}" aria-pressed="${zustand.zeitraum === id}">${z.label}
+        <span class="zahl">${optionZahl((x) => { x.zeitraum = id; })}</span></button>`).join("")
+      + `<span style="width:10px"></span>
+      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend
+        <span class="zahl">${optionZahl((x) => { x.nurDringend = true; })}</span></button>`);
+
+    h += reihe("Bereich", D.einheiten.map((e) =>
+      `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheiten.has(e.id)}">
+        ${esc(e.name.replace("Wohnbereich ", ""))}
+        <span class="zahl">${facetZahl("einheiten", e.id)}</span></button>`).join("")
+      + `<span style="margin-left:auto;font-size:11px;color:var(--aus)">
+        Standort: ${esc(D.betrieb.name)} — bei mehreren Häusern steht hier eine eigene Reihe</span>`);
+
+    h += reihe("Dienst", D.dienstarten.map((da) =>
+      `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienste.has(da.id)}">
+        ${esc(da.name)}<span class="zahl">${facetZahl("dienste", da.id)}</span></button>`).join(""));
+
+    h += reihe("Person", Object.entries(PERSONFILTER).map(([id, f]) =>
+      `<button class="chip" data-pf="${id}" aria-pressed="${zustand.personen.has(id)}">
+        ${f.label}<span class="zahl">${facetZahl("personen", id)}</span></button>`).join(""));
+
+    h += `</div>`;
 
     /* Trefferliste */
     if (!l.length) {
@@ -282,19 +365,23 @@ function bauB(ziel) {
     }
     ziel.innerHTML = h;
 
-    ziel.querySelectorAll("[data-art]").forEach((b) => b.onclick = () => {
-      const a = b.dataset.art; zustand.arten.has(a) ? zustand.arten.delete(a) : zustand.arten.add(a); zeichne(); });
-    ziel.querySelectorAll("[data-eh]").forEach((b) => b.onclick = () => {
-      zustand.einheit = zustand.einheit === b.dataset.eh ? null : b.dataset.eh; zeichne(); });
-    ziel.querySelectorAll("[data-da]").forEach((b) => b.onclick = () => {
-      zustand.dienst = zustand.dienst === b.dataset.da ? null : b.dataset.da; zeichne(); });
-    ziel.querySelectorAll("[data-ab]").forEach((b) => b.onclick = () => {
-      zustand.abHeute = !zustand.abHeute; zeichne(); });
+    const schalte = (wahl, menge) => ziel.querySelectorAll(`[data-${wahl}]`).forEach((b) => b.onclick = () => {
+      umschalten(menge, b.dataset[wahl])(zustand); zeichne(); });
+    schalte("art", "arten");
+    schalte("eh", "einheiten");
+    schalte("da", "dienste");
+    schalte("pf", "personen");
+    ziel.querySelectorAll("[data-zeit]").forEach((b) => b.onclick = () => {
+      zustand.zeitraum = b.dataset.zeit; zeichne(); });
     ziel.querySelectorAll("[data-dringend]").forEach((b) => b.onclick = () => {
       zustand.nurDringend = !zustand.nurDringend; zeichne(); });
+    ziel.querySelectorAll("[data-sicht]").forEach((b) => b.onclick = () => {
+      const s = SICHTEN[b.dataset.sicht];
+      zustand = { ...s, arten: new Set(s.arten), einheiten: new Set(s.einheiten),
+        dienste: new Set(s.dienste), personen: new Set(s.personen) };
+      zeichne(); });
     const r = ziel.querySelector("#bReset");
-    if (r) r.onclick = () => { zustand.arten.clear(); zustand.einheit = null; zustand.dienst = null;
-      zustand.abHeute = false; zustand.nurDringend = false; zeichne(); };
+    if (r) r.onclick = () => { zustand = { ...leer(), zeitraum: "alles", nurDringend: false }; zeichne(); };
   };
   zeichne();
 }
