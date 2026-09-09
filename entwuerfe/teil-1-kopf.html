@@ -1,0 +1,310 @@
+<title>Planungsansichten — Entwürfe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&display=swap">
+
+<style>
+/* ==========================================================================
+   ENTWÜRFE — Planungsansichten
+
+   Zwei Stimmen, bewusst getrennt:
+
+   Das Dokument spricht in Newsreader — eine Textserife. Es ist ein
+   Gutachten, keine Anwendung.
+
+   Die Entwürfe darin sprechen in Inter und in CENTRICs eigener Palette.
+   Sie sollen nach dem Produkt aussehen, nicht nach einem Vorschlag für
+   ein anderes Produkt: Was hier zur Debatte steht, ist die Struktur, und
+   ein neues Farbkleid würde diese Frage nur verdecken.
+   ========================================================================== */
+
+:root {
+  /* CENTRICs Palette, unverändert übernommen (src/farben.js) */
+  --grund: #D9E4E8;
+  --flaeche: #FFFFFF;
+  --still: #E7EEF1;
+  --tief: #071317;
+  --tiefer: #001619;
+  --text: #071317;
+  --dim: #3D4E55;
+  --aus: #5B6B72;
+  --linie: #BCCDD4;
+  --linie-zart: #CBDAE0;
+  --steuer: #6E858E;
+  --akzent: #017070;
+  --akzent-hell: #DFF0F0;
+  --akzent-tief: #023441;
+  --akzent-leucht: #02A0A0;
+  --ok: #0E6B45;
+  --warn: #955410;
+  --gefahr: #4E0401;
+  --violett: #316C81;
+  --ok-hell: #DFEFE7;
+  --warn-hell: #FFE0C0;
+  --gefahr-hell: #F6DEDC;
+
+  /* Dokumentflächen — eine Spur wärmer als das Produkt, damit die
+     Entwürfe darin als eingelegte Bilder lesbar bleiben. */
+  --papier: #F7F5F1;
+  --papier-tief: #EDEAE3;
+  --papier-linie: #DBD6CC;
+  --papier-text: #1C1A17;
+  --papier-dim: #55504A;
+
+  /* Der Akzent des Dokuments ist ein eigener Wert, nicht --akzent.
+     Der dunkle Türkiston des Produkts erreicht auf dem dunklen Papier nur
+     3,13:1 — für eine 11-Pixel-Auszeichnung zu wenig. Die Entwürfe darin
+     bleiben hell und behalten deshalb --akzent unverändert. */
+  --akzent-doc: #017070;
+
+  --zahl: "Inter", system-ui, sans-serif;
+  --serife: "Newsreader", Georgia, serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier: #14171A;
+    --papier-tief: #1B1F23;
+    --papier-linie: #2A3036;
+    --papier-text: #E9EDF0;
+    --papier-dim: #9AA6AE;
+    --akzent-doc: #3FBFBF;      /* 8,4:1 auf dem dunklen Papier */
+  }
+}
+:root[data-theme="dark"] {
+  --papier: #14171A;
+  --papier-tief: #1B1F23;
+  --papier-linie: #2A3036;
+  --papier-text: #E9EDF0;
+  --papier-dim: #9AA6AE;
+  --akzent-doc: #3FBFBF;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--papier-text);
+  font: 400 16px/1.6 "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ---------------------------------------------------------------- Dokument */
+.doc { max-width: 1560px; margin: 0 auto; padding: 0 32px 120px; }
+
+header.kopf {
+  padding: 72px 0 40px;
+  border-bottom: 1px solid var(--papier-linie);
+  margin-bottom: 48px;
+}
+.marke {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--papier-dim);
+  margin-bottom: 26px;
+}
+h1 {
+  font: 300 54px/1.05 var(--serife);
+  letter-spacing: -.02em;
+  margin: 0 0 20px;
+  text-wrap: balance;
+  max-width: 20ch;
+}
+.vorspann {
+  font: 300 21px/1.55 var(--serife);
+  color: var(--papier-dim);
+  max-width: 64ch;
+  margin: 0 0 32px;
+}
+.grundlage {
+  display: flex; flex-wrap: wrap; gap: 0;
+  border: 1px solid var(--papier-linie);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.grundlage div {
+  flex: 1 1 180px;
+  padding: 14px 18px;
+  border-right: 1px solid var(--papier-linie);
+}
+.grundlage div:last-child { border-right: none; }
+.grundlage dt {
+  font: 600 10px/1 "Inter", sans-serif;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--papier-dim); margin: 0 0 7px;
+}
+.grundlage dd { margin: 0; font: 500 14px/1.35 "Inter", sans-serif; }
+
+/* Abschnitte */
+section { margin: 0 0 96px; scroll-margin-top: 80px; }
+.phase {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--akzent-doc); margin-bottom: 14px;
+}
+h2 {
+  font: 300 38px/1.12 var(--serife);
+  letter-spacing: -.015em;
+  margin: 0 0 16px; text-wrap: balance;
+}
+h3 {
+  font: 500 22px/1.25 var(--serife);
+  margin: 44px 0 12px; text-wrap: balance;
+}
+h4 {
+  font: 600 12px/1 "Inter", sans-serif;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--papier-dim); margin: 32px 0 12px;
+}
+p { max-width: 74ch; margin: 0 0 16px; }
+.fuehrung { font: 300 19px/1.6 var(--serife); color: var(--papier-dim); max-width: 68ch; }
+
+/* Navigationsleiste */
+nav.sprung {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--papier) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--papier-linie);
+}
+nav.sprung ul {
+  display: flex; gap: 4px; list-style: none;
+  margin: 0 auto; padding: 0 32px;
+  max-width: 1560px;
+  overflow-x: auto; scrollbar-width: thin;
+}
+nav.sprung a {
+  display: block; padding: 13px 13px; white-space: nowrap;
+  font: 500 13px/1 "Inter", sans-serif;
+  color: var(--papier-dim); text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+nav.sprung a:hover { color: var(--papier-text); border-bottom-color: var(--linie); }
+nav.sprung a:focus-visible { outline: 2px solid var(--akzent-doc); outline-offset: -2px; }
+
+/* Befundliste der Analyse */
+.befund {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 0 24px;
+  padding: 22px 0;
+  border-top: 1px solid var(--papier-linie);
+  align-items: start;
+}
+.befund:last-of-type { border-bottom: 1px solid var(--papier-linie); }
+.befund .nr {
+  font: 300 30px/1 var(--serife);
+  color: var(--papier-dim);
+}
+.befund .kopf {
+  font: 600 16px/1.4 "Inter", sans-serif;
+  margin-bottom: 7px;
+}
+.befund p { margin: 0 0 10px; font-size: 15px; }
+.beleg {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  background: var(--papier-tief);
+  border-left: 2px solid var(--akzent-doc);
+  padding: 7px 12px;
+  font: 500 13px/1.4 "Inter", sans-serif;
+  border-radius: 0 3px 3px 0;
+}
+.beleg b { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* Rahmen für einen Entwurf */
+.entwurf { margin: 0 0 92px; scroll-margin-top: 80px; }
+.entwurf-kopf {
+  display: grid; grid-template-columns: minmax(0,1fr) 340px;
+  gap: 48px; align-items: end; margin-bottom: 22px;
+}
+@media (max-width: 1100px) { .entwurf-kopf { grid-template-columns: 1fr; gap: 20px; } }
+.variante {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--akzent-doc); margin-bottom: 10px;
+}
+.entwurf h3 { margin: 0 0 10px; font-size: 30px; }
+.ebenen { font-size: 13.5px; line-height: 1.5; }
+.ebenen div { display: flex; gap: 10px; padding: 5px 0; border-top: 1px solid var(--papier-linie); }
+.ebenen span:first-child {
+  flex: 0 0 62px; font: 600 10px/1.7 "Inter", sans-serif;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--papier-dim);
+}
+
+/* Der Bildschirm, in dem ein Entwurf steckt */
+.schirm {
+  background: var(--grund);
+  border: 1px solid var(--papier-linie);
+  border-radius: 6px;
+  overflow: hidden;
+  color: var(--text);
+  font: 400 14px/1.5 "Inter", system-ui, sans-serif;
+}
+.schirm.dunkel { background: #0B1418; color: #E8EFF1; }
+.schirmleiste {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  background: var(--papier-tief);
+  border-bottom: 1px solid var(--papier-linie);
+  font: 500 11px/1 "Inter", sans-serif;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--papier-dim);
+}
+.schirmleiste .punkte { display: flex; gap: 5px; }
+.schirmleiste .punkte i {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--papier-linie); display: block;
+}
+.rollbar { overflow-x: auto; }
+
+/* Bewertungstabelle */
+table.bewertung { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.bewertung th, table.bewertung td {
+  padding: 11px 12px; text-align: left;
+  border-bottom: 1px solid var(--papier-linie);
+}
+table.bewertung thead th {
+  font: 600 10px/1.3 "Inter", sans-serif;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--papier-dim); vertical-align: bottom;
+}
+table.bewertung tbody th {
+  font: 500 13.5px/1.35 "Inter", sans-serif; font-weight: 500;
+}
+table.bewertung td { text-align: center; font-variant-numeric: tabular-nums; }
+.sterne { letter-spacing: .5px; font-size: 13px; color: var(--akzent-doc); white-space: nowrap; }
+.sterne .leer { color: var(--papier-linie); }
+tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight: 700; }
+
+/* Empfehlung */
+.empfehlung {
+  border: 1px solid var(--papier-linie);
+  border-left: 3px solid var(--akzent-doc);
+  border-radius: 0 5px 5px 0;
+  padding: 26px 30px;
+  margin: 0 0 20px;
+  background: var(--papier-tief);
+}
+.empfehlung h4 { margin: 0 0 10px; color: var(--akzent-doc); }
+.empfehlung .titel { font: 500 22px/1.25 var(--serife); margin: 0 0 12px; }
+.empfehlung p { max-width: none; }
+.paar { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 16px; }
+@media (max-width: 900px) { .paar { grid-template-columns: 1fr; } }
+.paar h5 {
+  font: 600 10px/1 "Inter", sans-serif; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--papier-dim); margin: 0 0 8px;
+}
+.paar ul { margin: 0; padding-left: 18px; font-size: 14.5px; line-height: 1.6; }
+.paar li { margin-bottom: 5px; }
+
+.hinweis {
+  font: 400 13.5px/1.6 "Inter", sans-serif;
+  color: var(--papier-dim);
+  border-top: 1px solid var(--papier-linie);
+  padding-top: 14px; margin-top: 14px;
+  max-width: 84ch;
+}
+</style>

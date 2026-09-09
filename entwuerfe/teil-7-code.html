@@ -1,0 +1,226 @@
+<script>
+/* ========================================================================
+   C — Dashboard und Detail
+   ======================================================================== */
+function bauC(ziel) {
+  let gewaehlt = HEUTE;
+
+  const kacheln = () => {
+    const t = D.tage.find((x) => x.datum === HEUTE);
+    /* Nicht die Summe über alle Dienste: Die wäre heute 144 % und stünde
+       grün da, obwohl sie nur den Nachtüberschuss über den Frühmangel
+       mittelt. Eine Kennzahl, die eine Schieflage als Erfolg meldet, ist
+       schlechter als keine. Gezeigt wird der schwächste Dienst. */
+    const schwach = D.dienstarten.map((da) => ({ da, b: t.besetzung[da.id] }))
+      .sort((x, y) => x.b.a / x.b.s - y.b.a / y.b.s)[0];
+    const offen = D.befunde.filter((b) => b.art === "unterbesetzung" && b.datum >= HEUTE).length;
+    const quote = D.befunde.filter((b) => b.art === "quote" && b.datum >= HEUTE).length;
+    const ruhe = D.befunde.filter((b) => b.art === "ruhezeit").length;
+    const kritisch = D.personen.filter((p) => Math.abs(p.konto) > 40).length;
+    return [
+      { wert: Math.round(schwach.b.a / schwach.b.s * 100), einheit: "%", bez: "Schwächster Dienst heute",
+        fuss: `${schwach.da.name} · ${schwach.b.a} von ${schwach.b.s}`,
+        ton: schwach.b.d < 0 ? "gefahr" : "ok" },
+      { wert: offen, bez: "unterbesetzte Dienste", fuss: "ab heute bis Monatsende", ton: offen > 10 ? "gefahr" : "warn" },
+      { wert: t.abwesend, bez: "heute abwesend", fuss: `${D.abwesenheiten.filter((a) => a.art === "urlaub").length} Urlaube im Monat`, ton: "" },
+      { wert: quote, bez: "Quotenverstöße", fuss: "Fachkraft nach WTG-PersVO", ton: quote ? "gefahr" : "ok" },
+      { wert: ruhe, bez: "Ruhezeit unterschritten", fuss: `Grenze ${D.einstellungen.ruhezeit} h · § 5 ArbZG`, ton: ruhe ? "gefahr" : "ok" },
+      { wert: kritisch, bez: "Konten über Grenze", fuss: `ab ${D.einstellungen.ausgleichGrenze} h · Median ${n1(median)} h`, ton: kritisch ? "warn" : "ok" },
+    ];
+  };
+
+  const zeichne = () => {
+    const g = D.tage.find((x) => x.datum === gewaehlt);
+    const iG = D.tage.indexOf(g);
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+      <h5 class="titel" style="margin:0">Lagebild</h5>
+      <span class="unter">Mittwoch, 9. September 2026 · ${esc(D.betrieb.name)}</span>
+      <span style="margin-left:auto"><button class="knopf stark">Krankmeldung erfassen</button></span></div>`;
+
+    /* Ebene 1 — Kennzahlen */
+    h += `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px">`;
+    for (const k of kacheln()) {
+      const c = k.ton === "gefahr" ? "var(--gefahr)" : k.ton === "warn" ? "var(--warn)" : k.ton === "ok" ? "var(--ok)" : "var(--text)";
+      h += `<div class="karte kachel">
+        <div class="wert" style="color:${c}">${k.wert}${k.einheit ? `<small>&thinsp;${k.einheit}</small>` : ""}</div>
+        <div class="bez">${esc(k.bez)}</div><div class="fuss">${esc(k.fuss)}</div></div>`;
+    }
+    h += `</div>`;
+
+    /* Ebene 1b — Verlaufsstreifen je Dienstart */
+    h += `<div class="karte" style="padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:11px">
+        <span class="lab">Verlauf im Monat</span>
+        <span style="font-size:11.5px;color:var(--aus)">Höhe ist die Abweichung vom Soll · Mittellinie ist erfüllt · Klick öffnet den Tag</span></div>`;
+    for (const da of D.dienstarten) {
+      const b = bilanz[da.id];
+      h += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:9px">
+        <span style="flex:0 0 118px;display:flex;align-items:center;gap:8px">
+          <span class="dz ${da.id}">${da.kurz}</span>
+          <span style="font-size:12.5px">${esc(da.name)}</span></span>
+        <span style="flex:1;display:flex;gap:2px;align-items:center;height:34px">`;
+      D.tage.forEach((t, i) => {
+        const x = t.besetzung[da.id];
+        const hoehe = Math.min(15, Math.max(2, Math.abs(x.d) * 2.4));
+        const ton = x.d < -1 ? "var(--gefahr)" : x.d < 0 ? "var(--warn)" : x.d > 4 ? "var(--violett)" : "var(--ok)";
+        h += `<button data-tag="${t.datum}" title="${tagKurz(t.datum)} · ${x.a} von ${x.s}"
+          style="flex:1;height:34px;position:relative;border:none;background:${t.datum === gewaehlt ? "var(--akzent-hell)" : "transparent"};
+          cursor:pointer;padding:0;border-radius:3px">
+          <span style="position:absolute;left:0;right:0;top:16px;height:1px;background:var(--linie)"></span>
+          <span style="position:absolute;left:1px;right:1px;${x.d >= 0 ? "bottom:18px" : "top:17px"};height:${hoehe}px;
+            background:${ton};border-radius:1px;opacity:${x.d >= 0 && x.d <= 4 ? .45 : .95}"></span>
+          ${x.q ? '<span style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);width:3px;height:3px;border-radius:2px;background:var(--gefahr)"></span>' : ""}
+        </button>`;
+      });
+      h += `</span>
+        <span class="num" style="flex:0 0 96px;text-align:right;font-size:12px;color:var(--dim)">
+          <b style="font-size:14px;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--dim)"}">${sgn(b.summe)}</b><br>
+          <span style="font-size:10.5px;color:var(--aus)">${b.unter} T. unter Soll</span></span></div>`;
+    }
+    h += `</div>`;
+
+    /* Ebene 2 — der gewählte Tag */
+    const bef = D.befunde.filter((b) => b.datum === gewaehlt);
+    const abwHeute = D.personen.filter((p) => p.verlauf[iG].startsWith("*"));
+    h += `<div style="display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:10px">
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Besetzung · ${DOW[g.dow]}, ${tagKurz(gewaehlt)}</div>`;
+    for (const da of D.dienstarten) {
+      const x = g.besetzung[da.id];
+      const anteil = Math.min(100, Math.round(x.a / Math.max(1, x.s) * 100));
+      h += `<div style="margin-bottom:12px">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">
+          <span class="dz ${da.id}">${da.kurz}</span>
+          <span style="font-size:12.5px">${esc(da.name)}</span>
+          <span class="num" style="margin-left:auto;font:600 14px/1 Inter;color:${x.d < 0 ? "var(--gefahr)" : "var(--ok)"}">${x.a}<span style="color:var(--aus);font-size:11px;font-weight:400">/${x.s}</span></span>
+        </div>
+        <div class="balken"><i style="width:${anteil}%;background:${x.d < -1 ? "var(--gefahr)" : x.d < 0 ? "var(--warn)" : x.d > 4 ? "var(--violett)" : "var(--ok)"}"></i></div>
+        ${x.d > 4 ? `<div class="num" style="font-size:11px;color:var(--violett);margin-top:4px">${x.d} über Soll — Reserve für andere Dienste</div>` : ""}
+        ${x.q ? `<div style="font-size:11px;color:var(--gefahr);margin-top:4px">Fachkraftquote: ${x.ql[0].ist} von ${x.ql[0].noetig}</div>` : ""}
+      </div>`;
+    }
+    h += `</div>
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Abwesend · ${abwHeute.length}</div>`;
+    if (!abwHeute.length) h += `<div style="font-size:13px;color:var(--aus)">Niemand abwesend.</div>`;
+    for (const p of abwHeute.slice(0, 7)) {
+      const art = { u: ["Urlaub", "var(--ok)"], k: ["Krank", "var(--gefahr)"], s: ["Schulung", "var(--violett)"], a: ["Ausgleich", "var(--dim)"] }[p.verlauf[iG][1]];
+      h += `<div style="display:flex;align-items:baseline;gap:9px;padding:5px 0;border-top:1px solid var(--linie-zart)">
+        <span style="font-size:13px;flex:1">${esc(p.name)}</span>
+        <span style="font-size:11px;color:${EH[p.einheitId] ? EH[p.einheitId].farbe : "var(--aus)"}">${esc((EH[p.einheitId] || {}).name || "").replace("Wohnbereich ", "")}</span>
+        <span style="font-size:11px;font-weight:600;color:${art[1]}">${art[0]}</span></div>`;
+    }
+    h += `</div>
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Befunde an diesem Tag · ${bef.length}</div>`;
+    if (!bef.length) h += `<div style="font-size:13px;color:var(--aus)">Keine Befunde.</div>`;
+    for (const b of bef.slice(0, 7)) {
+      const ton = b.schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+      h += `<div style="display:flex;gap:9px;padding:6px 0;border-top:1px solid var(--linie-zart)">
+        <span style="width:3px;border-radius:2px;background:${ton};flex:0 0 3px"></span>
+        <span style="flex:1"><span style="font-size:12.5px;font-weight:500;display:block">${esc(b.titel)}</span>
+        <span style="font-size:11px;color:var(--dim)">${esc(b.detail)}</span></span></div>`;
+    }
+    if (bef.length > 7) h += `<div style="font-size:11.5px;color:var(--aus);padding-top:7px">… ${bef.length - 7} weitere</div>`;
+    h += `</div></div>`;
+    ziel.innerHTML = h;
+    ziel.querySelectorAll("[data-tag]").forEach((b) => b.onclick = () => { gewaehlt = b.dataset.tag; zeichne(); });
+  };
+  zeichne();
+}
+
+/* ========================================================================
+   D — Zeitstrahl mit Bahnen
+   ======================================================================== */
+function bauD(ziel) {
+  const T = D.tage, BR = 30;   /* Pixel je Tag */
+  const breite = T.length * BR;
+  let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+    <h5 class="titel" style="margin:0">Zeitstrahl</h5>
+    <span class="unter">September 2026 · Zyklus ${D.zyklus.wochen} Wochen · Versatz 0 · 4 · 8 · 12 · 17 Tage</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="knopf still">Woche</button><button class="knopf stark">Monat</button><button class="knopf still">Quartal</button>
+    </span></div>
+  <div class="karte rollbar" style="padding:0">
+  <div style="min-width:${breite + 210}px">`;
+
+  /* Datumsleiste */
+  h += `<div style="display:flex;position:sticky;top:0;background:var(--flaeche);z-index:3;border-bottom:1px solid var(--linie)">
+    <div style="flex:0 0 200px;padding:9px 14px" class="lab">Bahn</div>
+    <div style="flex:1;display:flex">`;
+  T.forEach((t, i) => {
+    h += `<div style="flex:1;text-align:center;padding:6px 0;font:500 9.5px/1.25 Inter;color:var(--aus);
+      ${t.we ? "background:var(--still);" : ""}${i === iHeute ? "background:var(--akzent-hell);box-shadow:inset 0 -2px 0 var(--akzent);" : ""}">
+      ${DOW[t.dow]}<b style="display:block;font:600 11.5px/1.15 Inter;color:var(--text)" class="num">${String(i + 1).padStart(2, "0")}</b></div>`;
+  });
+  h += `</div></div>`;
+
+  /* Bahnen je Wohnbereich */
+  h += `<div style="padding:10px 0 4px 14px" class="lab">Wohnbereiche · Schichtmuster im Zyklus</div>`;
+  for (const e of D.einheiten) {
+    h += `<div style="display:flex;align-items:center;border-bottom:1px solid var(--linie-zart)">
+      <div style="flex:0 0 200px;padding:8px 14px;display:flex;align-items:center;gap:9px">
+        <span style="width:8px;height:8px;border-radius:4px;background:${e.farbe};flex:0 0 8px"></span>
+        <span><span style="font-size:12.5px;font-weight:500;display:block">${esc(e.name)}</span>
+        <span class="num" style="font-size:10.5px;color:var(--aus)">${e.personen} Pers. · +${e.versatzTage} Tage</span></span></div>
+      <div style="flex:1;position:relative;height:30px">`;
+    /* Läufe zusammenfassen — daraus wird das Muster sichtbar */
+    let i = 0;
+    while (i < T.length) {
+      const d = T[i].einheiten[e.id];
+      let j = i; while (j + 1 < T.length && T[j + 1].einheiten[e.id] === d) j++;
+      const l = j - i + 1;
+      if (d) {
+        const fl = { F: "#3C7C8C", S: "#955410", N: "#333C6E" }[d];
+        h += `<div title="${esc(e.name)} · ${esc(DA[d].name)} · ${tagKurz(T[i].datum)} bis ${tagKurz(T[j].datum)} (${l} Tage)"
+          style="position:absolute;left:${i / T.length * 100}%;width:${l / T.length * 100}%;top:6px;bottom:6px;
+          background:${fl};opacity:.86;border-radius:4px;display:flex;align-items:center;justify-content:center;
+          font:700 10px/1 Inter;color:#fff;letter-spacing:.06em">${l > 1 ? DA[d].name.replace("dienst", "") : d}</div>`;
+      }
+      i = j + 1;
+    }
+    /* Abwesenheitsmarken der Bereichsleute */
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    T.forEach((t, k) => {
+      const n = eigene.filter((p) => p.verlauf[k].startsWith("*")).length;
+      if (n) h += `<div title="${n} abwesend am ${tagKurz(t.datum)}"
+        style="position:absolute;left:${k / T.length * 100}%;width:${1 / T.length * 100}%;bottom:1px;height:3px;
+        background:var(--gefahr);opacity:${Math.min(1, .3 + n * .28)}"></div>`;
+    });
+    h += `</div></div>`;
+  }
+
+  /* Bahnen je Dienstart: Besetzung als Fläche gegen die Solllinie */
+  h += `<div style="padding:14px 0 4px 14px" class="lab">Besetzung gegen Vorgabe · Fläche über der Linie ist Überschuss</div>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    const maxV = Math.max(...T.map((t) => t.besetzung[da.id].a), ...T.map((t) => t.besetzung[da.id].s)) * 1.08;
+    h += `<div style="display:flex;align-items:center;border-bottom:1px solid var(--linie-zart)">
+      <div style="flex:0 0 200px;padding:8px 14px;display:flex;align-items:center;gap:9px">
+        <span class="dz ${da.id}">${da.kurz}</span>
+        <span><span style="font-size:12.5px;display:block">${esc(da.name)}</span>
+        <span class="num" style="font-size:10.5px;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--aus)"}">
+          ${sgn(b.summe)} Personentage</span></span></div>
+      <div style="flex:1;position:relative;height:44px;display:flex;align-items:flex-end">`;
+    T.forEach((t) => {
+      const x = t.besetzung[da.id];
+      const hIst = x.a / maxV * 44, hSoll = x.s / maxV * 44;
+      const ton = x.d < -1 ? "#4E0401" : x.d < 0 ? "#955410" : x.d > 4 ? "#316C81" : "#0E6B45";
+      h += `<div style="flex:1;position:relative;height:44px" title="${tagKurz(t.datum)} · ${x.a} von ${x.s}">
+        <span style="position:absolute;left:1px;right:1px;bottom:0;height:${hIst}px;background:${ton};opacity:${x.d > 4 ? .4 : .8};border-radius:2px 2px 0 0"></span>
+        <span style="position:absolute;left:0;right:0;bottom:${hSoll}px;height:1.5px;background:var(--text);opacity:.55"></span>
+      </div>`;
+    });
+    h += `</div></div>`;
+  }
+  h += `</div></div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--dim);align-items:center">
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#3C7C8C"></span> Frühdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#955410"></span> Spätdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#333C6E"></span> Nachtdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:3px;background:var(--gefahr)"></span> Abwesende im Bereich</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:2px;background:var(--text)"></span> Vorgabe</span>
+  </div>`;
+  ziel.innerHTML = h;
+}
+</script>

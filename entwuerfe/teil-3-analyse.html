@@ -1,0 +1,176 @@
+<nav class="sprung">
+  <ul>
+    <li><a href="#analyse">Analyse</a></li>
+    <li><a href="#a">A · Klassisch</a></li>
+    <li><a href="#b">B · Filter-first</a></li>
+    <li><a href="#c">C · Dashboard</a></li>
+    <li><a href="#d">D · Zeitstrahl</a></li>
+    <li><a href="#e">E · Mitarbeiter</a></li>
+    <li><a href="#f">F · Leitstelle</a></li>
+    <li><a href="#bewertung">Bewertung</a></li>
+    <li><a href="#empfehlung">Empfehlung</a></li>
+  </ul>
+</nav>
+
+<div class="doc">
+
+<header class="kopf">
+  <div class="marke">CENTRIC · Entwurfsstudie</div>
+  <h1>Sechs Wege durch den Dienstplan</h1>
+  <p class="vorspann">
+    Die Personal-, Monats-, Jahres- und Einsatzansichten zeigen heute alles, was es gibt —
+    nebeneinander und gleich laut. Diese Studie misst zuerst, wo das kippt, und stellt dann
+    sechs strukturell verschiedene Antworten daneben. Nichts davon ist umgesetzt: Es sind
+    Entwürfe zum Vergleichen, gerechnet mit echten Daten aus einem laufenden Betrieb.
+  </p>
+  <div class="grundlage">
+    <div><dt>Datengrundlage</dt><dd id="g-betrieb">—</dd></div>
+    <div><dt>Zeitraum</dt><dd id="g-monat">—</dd></div>
+    <div><dt>Umfang</dt><dd id="g-umfang">—</dd></div>
+    <div><dt>Befunde im Monat</dt><dd id="g-befunde">—</dd></div>
+    <div><dt>Stand</dt><dd>9. September 2026</dd></div>
+  </div>
+</header>
+
+<section id="analyse">
+  <div class="phase">Phase 1</div>
+  <h2>Was die heutigen Ansichten dem Planenden abverlangen</h2>
+  <p class="fuehrung">
+    Gemessen wurde nicht am Bauchgefühl, sondern an einem echten September: fünf Wohnbereiche,
+    67 Personen, ein Drei-Wochen-Zyklus mit Tagesversatz, 21 Abwesenheiten, 24 Abweichungen
+    vom Sollplan. Alle folgenden Zahlen stammen aus diesem Bestand und wurden gegen die
+    Anwendung selbst geprüft — die Besetzungswerte stimmen an allen 90 Vergleichspunkten überein.
+  </p>
+
+  <div class="befund">
+    <div class="nr">01</div>
+    <div>
+      <div class="kopf">Die größte Fehlplanung des Monats steht in keiner Ansicht</div>
+      <p>
+        Der Nachtdienst ist an <b>jedem einzelnen Tag</b> mehr als doppelt besetzt, während der
+        Frühdienst an 18 von 30 Tagen unter dem Soll bleibt. Das ist keine Tagesstörung, sondern
+        ein Konstruktionsfehler der Schichtfolge — und er ist nirgends ablesbar, weil jede Ansicht
+        den Tag als Einheit nimmt. Der Monatsplan zeigt „13/6" in einer Zelle; die Summe über
+        dreißig solcher Zellen zieht niemand.
+      </p>
+      <div class="beleg">Nachtdienst <b>+247</b> Personentage über Soll · Frühdienst an <b>18</b> Tagen darunter</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">02</div>
+    <div>
+      <div class="kopf">Die Befundliste zählt doppelt und wird dadurch unbrauchbar</div>
+      <p>
+        Das Lagebild meldet <b>195 Befunde</b> für die nächsten vierzehn Tage. Von den vierzig
+        sichtbaren Zeilen sind einundzwanzig exakte Dubletten: „5 Nachtdienste in Folge — Quandt"
+        steht fünfmal untereinander, am selben Tag, für dieselbe Person. Entdupliziert bleiben
+        91 Befunde. Eine Liste, deren Zahl man nicht glauben kann, wird nicht gelesen.
+      </p>
+      <div class="beleg">gemeldet <b>195</b> · sichtbar <b>40</b> Zeilen · davon <b>21</b> Dubletten · tatsächlich <b>91</b></div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">03</div>
+    <div>
+      <div class="kopf">Ein Problemfilter, der 85 % der Belegschaft trifft, filtert nicht</div>
+      <p>
+        <b>57 von 67</b> Personen tragen mindestens einen Befund. „Nur Probleme anzeigen" würde
+        also fast alles anzeigen. Nützlich wird ein Problemfilter erst mit Rangfolge: Was ist
+        heute unumkehrbar, was ist diese Woche zu klären, was ist ein Hinweis. Diese Unterscheidung
+        gibt es im Datenmodell (Schwere, Art, Bezug) — in der Oberfläche wird sie eingeebnet.
+      </p>
+      <div class="beleg"><b>57/67</b> Personen mit Befund · 6 Befundarten · in der Liste ohne Rang</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">04</div>
+    <div>
+      <div class="kopf">Der Monatsplan stapelt zwei verschiedene Tabellen in einer</div>
+      <p>
+        Die oberen fünf Zeilen beantworten „welcher Wohnbereich fährt welchen Dienst",
+        die unteren drei „wie viele Köpfe stehen im Frühdienst". Zwei Fragen, zwei
+        Bezugsgrößen, zwei Zellinhalte — getrennt allein durch eine zwei Pixel breite Linie.
+        Wer quer liest, liest über den Bruch hinweg.
+      </p>
+      <div class="beleg"><b>240</b> Rasterzellen in <b>zwei</b> Bedeutungsschichten, eine Tabelle</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">05</div>
+    <div>
+      <div class="kopf">Der Versatz, der den ganzen Plan erklärt, steht falsch da</div>
+      <p>
+        Die fünf Wohnbereiche starten um 0, 4, 8, 12 und 17 Tage versetzt in denselben
+        Zyklus — das ist der Mechanismus, der jede Nacht abdeckt. Die Seitenspalte des
+        Monatsplans schreibt bei allen fünf „Versatz 0", weil sie das Wochenfeld liest
+        statt des Tagesfelds. Die wichtigste Struktureigenschaft des Betriebs erscheint
+        als Nullreihe.
+      </p>
+      <div class="beleg">tatsächlich <b>0 · 4 · 8 · 12 · 17</b> Tage — angezeigt <b>0 · 0 · 0 · 0 · 0</b></div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">06</div>
+    <div>
+      <div class="kopf">Die breiteste Spalte der Personalliste trägt ein Bit</div>
+      <p>
+        Über 67 Personen kommen genau <b>zwei</b> Qualifikationskombinationen vor: Fachkräfte
+        tragen alle sechs Nachweise, Hilfskräfte drei. Dargestellt wird das als 402 einzelne
+        Plaketten. Die Spalte kostet ein Drittel der Tabellenbreite und beantwortet eine
+        Ja-Nein-Frage. Was fehlt, ist die Gegenfrage: Wo reicht die Fachkraftquote nicht —
+        und die steht in einer anderen Ansicht.
+      </p>
+      <div class="beleg"><b>402</b> Plaketten für <b>2</b> unterscheidbare Zustände</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">07</div>
+    <div>
+      <div class="kopf">Jede Ansicht zeigt einen Wohnbereich, keine zeigt den Betrieb</div>
+      <p>
+        Personaleinsatz und Jahresansicht arbeiten mit einem Umschalter: erst Nord, dann Süd,
+        dann Ost. Wer wissen will, welcher Bereich am 21. September einspringen kann, muss
+        fünfmal umschalten und die Antwort im Kopf behalten. Der Ausgleich zwischen Bereichen
+        ist der häufigste Planungsvorgang überhaupt — und der einzige, für den es keine
+        Ansicht gibt.
+      </p>
+      <div class="beleg"><b>5</b> Umschaltvorgänge für eine bereichsübergreifende Frage</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">08</div>
+    <div>
+      <div class="kopf">Zahlen ohne Verteilung sagen nichts</div>
+      <p>
+        Die Personalliste zeigt Stundenkonten als rechtsbündige Zahl je Zeile: −11, +3, −171,6.
+        Ob −11 normal oder auffällig ist, erschließt sich erst aus dem Vergleich mit den anderen
+        66 Zeilen — den man beim Scrollen nicht behält. Der Median liegt bei −11 Stunden;
+        auffällig sind genau zwei Personen. Diese zwei zu finden kostet heute 67 Zeilen Lesen.
+      </p>
+      <div class="beleg">Median <b>−11 h</b> · Spanne <b>−171,6</b> bis <b>+42 h</b> · auffällig: <b>2</b> Personen</div>
+    </div>
+  </div>
+
+  <h3>Was daraus folgt</h3>
+  <p>
+    Die Ansichten sind nicht falsch gebaut — sie sind vollständig gebaut. Jede zeigt ihren
+    Gegenstand sauber und lückenlos. Was fehlt, ist die Ebene darüber: <b>Verdichtung</b>
+    (Summen über Zeit statt Werte je Tag), <b>Rangfolge</b> (was zuerst) und
+    <b>Querschnitt</b> (mehrere Bereiche nebeneinander). Alle sechs folgenden Entwürfe
+    greifen genau hier an, mit verschiedenen Mitteln.
+  </p>
+  <p class="hinweis">
+    Zur Lesart der Entwürfe: Sie verwenden CENTRICs eigene Palette und Typografie. Was sich
+    unterscheidet, ist ausschließlich die Struktur — Anordnung, Verdichtung, Reihenfolge,
+    Interaktion. Ein neues Farbkleid würde die Frage verdecken, um die es hier geht. Alle
+    Zahlen, Namen, Dienste und Befunde sind echt; die Entwürfe sind bedienbar, soweit es
+    dem Vergleich dient.
+  </p>
+</section>

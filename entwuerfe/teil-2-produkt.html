@@ -1,0 +1,105 @@
+<style>
+/* ==========================================================================
+   PRODUKTSPRACHE — gilt nur innerhalb von .schirm
+
+   Alles hier ist CENTRICs vorhandene Formensprache: dieselben Farben,
+   dieselben Radien, dieselbe Typografie. Was sich zwischen den Entwürfen
+   unterscheidet, ist die Struktur, nicht das Kleid.
+   ========================================================================== */
+
+.schirm .kopfzeile {
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  padding: 18px 22px 14px;
+}
+.schirm h5.titel {
+  font: 300 26px/1.1 "Inter", sans-serif; letter-spacing: -.03em; margin: 0;
+}
+.schirm .unter { font-size: 13px; color: var(--dim); }
+.schirm .rechts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.schirm .karte {
+  background: var(--flaeche);
+  border: 1px solid var(--linie-zart);
+  border-radius: 14px;
+}
+.schirm.dunkel .karte { background: #121E23; border-color: #243238; }
+
+.schirm .lab {
+  font: 600 9.5px/1 "Inter", sans-serif;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--aus);
+}
+.schirm.dunkel .lab { color: #7A8D95; }
+
+.schirm .knopf {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--steuer); background: var(--flaeche); color: var(--text);
+  border-radius: 9px; padding: 6px 11px;
+  font: 500 12.5px/1 "Inter", sans-serif; cursor: pointer;
+}
+.schirm .knopf.stark { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+.schirm .knopf.still { border-color: transparent; background: transparent; color: var(--dim); }
+
+/* Chips — in mehreren Entwürfen dasselbe Bauteil */
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--linie); background: var(--flaeche);
+  border-radius: 999px; padding: 5px 12px;
+  font: 500 12.5px/1.35 "Inter", sans-serif; color: var(--dim);
+  cursor: pointer; white-space: nowrap;
+}
+.chip .zahl {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  background: var(--still); border-radius: 999px; padding: 1px 6px; font-size: 11px;
+}
+.chip[aria-pressed="true"] {
+  background: var(--akzent); border-color: var(--akzent); color: #fff;
+}
+.chip[aria-pressed="true"] .zahl { background: rgba(255,255,255,.22); color: #fff; }
+.chip.gefahr[aria-pressed="true"] { background: var(--gefahr); border-color: var(--gefahr); }
+.chip.warn[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); }
+.schirm.dunkel .chip { background: #18262C; border-color: #33454C; color: #9FB2B9; }
+.schirm.dunkel .chip .zahl { background: #243238; }
+
+/* Statuspunkt und Tonflächen */
+.ton-ok { color: var(--ok); } .ton-warn { color: var(--warn); } .ton-gefahr { color: var(--gefahr); }
+.fl-ok { background: var(--ok-hell); } .fl-warn { background: var(--warn-hell); } .fl-gefahr { background: var(--gefahr-hell); }
+
+/* Raster, das mehrere Entwürfe teilen */
+.schirm table.raster { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.schirm table.raster th, .schirm table.raster td { padding: 0; }
+.schirm .tagkopf {
+  font: 500 9.5px/1.25 "Inter", sans-serif; text-align: center;
+  color: var(--aus); padding: 6px 0 5px; min-width: 26px;
+}
+.schirm .tagkopf b { display: block; font: 600 11.5px/1.15 "Inter", sans-serif; color: var(--text); }
+.schirm .tagkopf.we { background: var(--still); }
+.schirm .tagkopf.heute { background: var(--akzent-hell); box-shadow: inset 0 -2px 0 var(--akzent); }
+.schirm .zeilenkopf {
+  position: sticky; left: 0; z-index: 2; background: var(--flaeche);
+  text-align: left; padding: 7px 14px; white-space: nowrap;
+}
+.schirm.dunkel .zeilenkopf { background: #121E23; }
+
+/* Dienstsignatur — ein Buchstabe in seiner Farbe */
+.dz {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px; border-radius: 5px;
+  font: 700 11px/1 "Inter", sans-serif;
+}
+.dz.F { background: rgba(60,124,140,.16); color: #2C5F6D; }
+.dz.S { background: rgba(149,84,16,.14); color: #7A4400; }
+.dz.N { background: rgba(49,60,110,.16); color: #333C6E; }
+.dz.frei { background: var(--still); color: var(--aus); }
+.dz.abw { background: rgba(14,107,69,.14); color: var(--ok); }
+.dz.abwk { background: var(--gefahr-hell); color: var(--gefahr); }
+
+.balken { height: 4px; border-radius: 2px; background: var(--linie-zart); overflow: hidden; }
+.balken i { display: block; height: 100%; border-radius: 2px; }
+
+/* Kennzahlkachel */
+.kachel { padding: 15px 17px; }
+.kachel .wert { font: 300 34px/1 "Inter", sans-serif; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.kachel .wert small { font-size: 15px; color: var(--aus); font-weight: 400; letter-spacing: 0; }
+.kachel .bez { font-size: 12px; color: var(--dim); margin-top: 6px; }
+.kachel .fuss { font-size: 11px; color: var(--aus); margin-top: 3px; }
+</style>

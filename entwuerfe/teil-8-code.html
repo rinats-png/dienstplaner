@@ -1,0 +1,276 @@
+<script>
+/* ========================================================================
+   E — Mitarbeiter-zentriert
+   ======================================================================== */
+function bauE(ziel) {
+  let gewaehlt = null;
+  let sortierung = "befunde";
+  const abstaende = D.personen.map((p) => Math.abs(p.konto - median)).sort((a, b) => a - b);
+  const bezugKonto = Math.max(1, abstaende[Math.floor(abstaende.length * 0.9)]);
+  const befundeJePerson = {};
+  for (const b of D.befunde) if (b.personId) (befundeJePerson[b.personId] ||= []).push(b);
+
+  const liste = () => {
+    const l = D.personen.slice();
+    if (sortierung === "befunde") l.sort((a, b) => (befundeJePerson[b.id] || []).length - (befundeJePerson[a.id] || []).length
+      || a.nachname.localeCompare(b.nachname, "de"));
+    if (sortierung === "konto") l.sort((a, b) => a.konto - b.konto);
+    if (sortierung === "name") l.sort((a, b) => a.nachname.localeCompare(b.nachname, "de"));
+    if (sortierung === "nacht") l.sort((a, b) => b.naechte - a.naechte);
+    return l;
+  };
+
+  const zeichne = () => {
+    const l = liste();
+    if (!gewaehlt) gewaehlt = l[0].id;
+    const p = P[gewaehlt];
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+      <h5 class="titel" style="margin:0">Personal</h5>
+      <span class="unter">${D.personen.length} Personen · September 2026</span>
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span class="lab">sortiert nach</span>
+        ${["befunde:Auffälligkeit", "konto:Stundenkonto", "nacht:Nachtdienste", "name:Name"].map((x) => {
+          const [id, lab] = x.split(":");
+          return `<button class="chip" data-sort="${id}" aria-pressed="${sortierung === id}">${lab}</button>`; }).join("")}
+      </span></div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start">
+
+      <!-- Links: die Belegschaft. Jede Zeile trägt den ganzen Monat. -->
+      <div class="karte" style="overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--still);border-bottom:1px solid var(--linie-zart)">
+          <span class="lab" style="flex:1">Person</span>
+          <span class="lab" style="flex:0 0 236px">Monatsverlauf</span>
+          <span class="lab" style="flex:0 0 108px;text-align:right">Konto gegen Median</span>
+          <span class="lab" style="flex:0 0 34px;text-align:right">Bef.</span>
+        </div>
+        <div style="max-height:560px;overflow-y:auto">`;
+    for (const x of l) {
+      const bf = (befundeJePerson[x.id] || []).length;
+      const eh = EH[x.einheitId] || {};
+      /* Nicht gegen die volle Spanne skalieren: Ein einzelner Ausreißer bei
+         −171 h drückte sonst alle anderen Balken auf zwei Pixel. Bezug ist
+         das neunzigste Perzentil; was darüber liegt, läuft an den Rand. */
+      const anteil = Math.min(1, Math.abs(x.konto - median) / bezugKonto);
+      const rechts = x.konto >= median;
+      h += `<button data-p="${x.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+        padding:6px 14px;border:none;border-bottom:1px solid var(--linie-zart);cursor:pointer;
+        background:${x.id === gewaehlt ? "var(--akzent-hell)" : "transparent"}">
+        <span style="flex:1;min-width:0">
+          <span style="font-size:12.5px;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.name)}</span>
+          <span style="font-size:10.5px;color:var(--aus)">${esc(x.funktion)} · <span style="color:${eh.farbe || "var(--aus)"}">${esc((eh.name || "").replace("Wohnbereich ", ""))}</span></span>
+        </span>
+        <span style="flex:0 0 236px;display:flex;gap:1px">`;
+      x.verlauf.forEach((v) => {
+        const c = v.startsWith("*") ? (v[1] === "k" ? "#4E0401" : v[1] === "u" ? "#0E6B45" : "#316C81")
+          : v.startsWith("F") ? "#3C7C8C" : v.startsWith("S") ? "#955410" : v.startsWith("N") ? "#333C6E" : "transparent";
+        h += `<span style="flex:1;height:15px;border-radius:1.5px;background:${c === "transparent" ? "var(--still)" : c};
+          opacity:${v.startsWith("*") ? .95 : .8}"></span>`;
+      });
+      h += `</span>
+        <span style="flex:0 0 108px;position:relative;height:15px">
+          <span style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--linie)"></span>
+          <span style="position:absolute;top:3px;height:9px;border-radius:1.5px;
+            ${rechts ? `left:50%;width:${anteil * 50}%` : `right:50%;width:${anteil * 50}%`};
+            background:${Math.abs(x.konto) > 40 ? "var(--gefahr)" : rechts ? "var(--warn)" : "var(--violett)"};opacity:.85"></span>
+          <span class="num" style="position:absolute;right:0;top:0;font-size:10px;color:var(--aus)">${sgn(x.konto)}</span>
+        </span>
+        <span class="num" style="flex:0 0 34px;text-align:right;font:600 12px/1 Inter;
+          color:${bf > 3 ? "var(--gefahr)" : bf ? "var(--warn)" : "var(--aus)"}">${bf || "—"}</span>
+      </button>`;
+    }
+    h += `</div></div>
+
+      <!-- Rechts: die gewählte Person vollständig -->
+      <div class="karte" style="padding:17px 19px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font:600 19px/1.2 Inter">${esc(p.name)}</span>
+          <span class="chip" style="padding:2px 9px;font-size:11px">${esc(p.funktion)}</span>
+          ${p.fachkraft ? '<span class="chip" style="padding:2px 9px;font-size:11px;background:var(--ok-hell);border-color:var(--ok-hell);color:var(--ok)">Fachkraft</span>' : ""}
+        </div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:16px">
+          ${esc((EH[p.einheitId] || {}).name || "")} · ${p.wochenstunden} h/Woche · ${esc(p.quals.map((q) => (D.qualifikationen.find((x) => x.id === q) || {}).kurz).join(" · "))}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px">
+          ${[["Stundenkonto", sgn(p.konto) + " h", Math.abs(p.konto) > 40 ? "var(--gefahr)" : "var(--text)", `${n1(p.ist)} von ${n1(p.soll)} h`],
+             ["Nachtdienste", p.naechte, p.naechte > 8 ? "var(--warn)" : "var(--text)", "im Monat"],
+             ["Resturlaub", p.urlaubRest, p.urlaubRest < 5 ? "var(--warn)" : "var(--text)", `von ${p.urlaubAnspruch} Tagen`],
+             ["Abwesend", p.abwTage, "var(--text)", "Tage im Monat"]].map(([lab, w, c, f]) =>
+            `<div style="border-left:2px solid var(--linie-zart);padding-left:10px">
+              <div class="lab">${lab}</div>
+              <div class="num" style="font:300 24px/1.15 Inter;letter-spacing:-.02em;color:${c};margin-top:3px">${w}</div>
+              <div style="font-size:10.5px;color:var(--aus)">${f}</div></div>`).join("")}
+        </div>
+
+        <div class="lab" style="margin-bottom:8px">September Tag für Tag</div>
+        <div style="display:flex;gap:2px;margin-bottom:6px">`;
+    p.verlauf.forEach((v, i) => {
+      h += `<div title="${tagKurz(D.tage[i].datum)} · ${v.startsWith("*") ? { u: "Urlaub", k: "Krank", s: "Schulung", a: "Ausgleich" }[v[1]] : v ? DA[v.replace("!", "")].name : "frei"}"
+        style="flex:1;text-align:center">${dz(v)}</div>`;
+    });
+    h += `</div><div style="display:flex;gap:2px;margin-bottom:16px">`;
+    D.tage.forEach((t, i) => {
+      h += `<div style="flex:1;text-align:center;font:500 8.5px/1.3 Inter;color:${i === iHeute ? "var(--akzent)" : "var(--aus)"}" class="num">${i + 1}</div>`;
+    });
+    h += `</div>`;
+
+    const bf = befundeJePerson[p.id] || [];
+    h += `<div class="lab" style="margin-bottom:8px">Befunde · ${bf.length}</div>`;
+    if (!bf.length) h += `<div style="font-size:13px;color:var(--aus)">Keine Befunde in diesem Monat.</div>`;
+    for (const b of bf.slice(0, 6)) {
+      const ton = b.schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+      h += `<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--linie-zart)">
+        <span class="num" style="flex:0 0 46px;font-size:11.5px;color:var(--dim)">${tagKurz(b.datum)}</span>
+        <span style="flex:0 0 132px;font:600 10px/1.4 Inter;letter-spacing:.07em;text-transform:uppercase;color:${ton}">${ART[b.art].label}</span>
+        <span style="flex:1;font-size:12.5px">${esc(b.titel)}</span></div>`;
+    }
+    if (bf.length > 6) h += `<div style="font-size:11.5px;color:var(--aus);padding-top:7px">… ${bf.length - 6} weitere</div>`;
+    h += `</div></div>`;
+    ziel.innerHTML = h;
+    ziel.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { gewaehlt = b.dataset.p; zeichne(); });
+    ziel.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { sortierung = b.dataset.sort; zeichne(); });
+  };
+  zeichne();
+}
+
+/* ========================================================================
+   F — Leitstelle
+   ======================================================================== */
+function bauF(ziel) {
+  const t = D.tage[iHeute];
+  const rang = { hoch: 0, mittel: 1 };
+  const schlange = D.befunde.filter((b) => b.datum >= HEUTE)
+    .sort((a, b) => rang[a.schwere] - rang[b.schwere] || (a.datum < b.datum ? -1 : 1)).slice(0, 14);
+  const F = { fl: "#121E23", li: "#243238", tx: "#E8EFF1", dim: "#9FB2B9", aus: "#7A8D95",
+    ok: "#4ADE9B", warn: "#F0B060", gefahr: "#F87A70", violett: "#7FC4DC", akzent: "#3FBFBF" };
+
+  let h = `<div style="display:grid;grid-template-columns:206px minmax(0,1fr) 286px;gap:10px;align-items:stretch">
+
+    <!-- Feld 1: der laufende Tag -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Jetzt · Mi 09.09.</div>`;
+  for (const da of D.dienstarten) {
+    const x = t.besetzung[da.id];
+    const ton = x.d < -1 ? F.gefahr : x.d < 0 ? F.warn : x.d > 4 ? F.violett : F.ok;
+    h += `<div style="display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid ${F.li}">
+      <span style="font:700 11px/1 Inter;color:${F.dim};flex:0 0 14px">${da.kurz}</span>
+      <span style="font-size:10.5px;color:${F.aus};flex:1" class="num">${da.start}–${da.ende}</span>
+      <span class="num" style="font:600 16px/1 Inter;color:${ton}">${x.a}</span>
+      <span class="num" style="font-size:11px;color:${F.aus}">/${x.s}</span></div>`;
+  }
+  h += `</div>
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Heute abwesend · ${t.abwesend}</div>`;
+  for (const p of D.personen.filter((x) => x.verlauf[iHeute].startsWith("*")).slice(0, 6)) {
+    const a = { u: ["Url", F.ok], k: ["Krk", F.gefahr], s: ["Sch", F.violett], a: ["Ausg", F.dim] }[p.verlauf[iHeute][1]];
+    h += `<div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid ${F.li}">
+      <span style="font-size:11.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</span>
+      <span style="font:600 9.5px/1 Inter;color:${a[1]}">${a[0]}</span></div>`;
+  }
+  h += `</div>
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Monatsbilanz</div>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    h += `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid ${F.li}">
+      <span style="font:700 11px/1 Inter;color:${F.dim};flex:0 0 14px">${da.kurz}</span>
+      <span class="num" style="font:600 13px/1 Inter;color:${b.summe > 60 ? F.violett : b.unter > 8 ? F.gefahr : F.dim};flex:1;text-align:right">${sgn(b.summe)}</span>
+      <span style="font-size:10px;color:${F.aus};flex:0 0 58px;text-align:right">${b.unter} T. unter</span></div>`;
+  }
+  h += `</div></div>
+
+    <!-- Feld 2: das Raster, auf Vorzeichen verdichtet -->
+    <div class="karte" style="padding:12px 14px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <span class="lab">Abweichung vom Soll · 30 Tage</span>
+        <span style="margin-left:auto;font-size:10.5px;color:${F.aus}">jede Zelle: fehlende (−) oder überzählige (+) Köpfe</span></div>
+      <div class="rollbar"><table class="raster" style="width:100%;min-width:660px">
+      <thead><tr><th style="width:104px"></th>`;
+  D.tage.forEach((x, i) => {
+    h += `<th style="font:500 8.5px/1.2 Inter;color:${i === iHeute ? F.akzent : F.aus};padding:0 0 5px;text-align:center" class="num">${i + 1}</th>`;
+  });
+  h += `</tr></thead><tbody>`;
+  for (const da of D.dienstarten) {
+    h += `<tr><td style="font:600 11px/1 Inter;color:${F.dim};padding:3px 8px 3px 0;white-space:nowrap">${esc(da.name)}</td>`;
+    D.tage.forEach((x, i) => {
+      const b = x.besetzung[da.id];
+      const ton = b.d < -1 ? F.gefahr : b.d < 0 ? F.warn : b.d > 4 ? F.violett : F.dim;
+      const fl = b.d < -1 ? "rgba(248,122,112,.16)" : b.d < 0 ? "rgba(240,176,96,.14)" : "transparent";
+      h += `<td title="${tagKurz(x.datum)} · ${b.a}/${b.s}" style="text-align:center;padding:3px 0;background:${fl};
+        ${i === iHeute ? `box-shadow:inset 0 0 0 1px ${F.akzent};` : ""}">
+        <span class="num" style="font:${b.d < 0 ? 700 : 500} 10.5px/1 Inter;color:${ton}">${b.d === 0 ? "0" : (b.d > 0 ? "+" : "−") + Math.abs(b.d)}</span>
+        ${b.q ? `<span style="display:block;width:3px;height:3px;border-radius:2px;background:${F.gefahr};margin:2px auto 0"></span>` : '<span style="display:block;height:5px"></span>'}
+      </td>`;
+    });
+    h += `</tr>`;
+  }
+  /* Wohnbereichsbahnen darunter — dieselbe Achse, damit man Ursache und
+     Wirkung übereinander liest. */
+  h += `<tr><td colspan="31" style="height:9px"></td></tr>`;
+  for (const e of D.einheiten) {
+    h += `<tr><td style="font:500 10px/1 Inter;color:${F.aus};padding:2px 8px 2px 0;white-space:nowrap">${esc(e.name.replace("Wohnbereich ", ""))}</td>`;
+    D.tage.forEach((x) => {
+      const d = x.einheiten[e.id];
+      const c = d === "F" ? "#3C7C8C" : d === "S" ? "#955410" : d === "N" ? "#333C6E" : F.li;
+      h += `<td style="padding:1px"><span style="display:block;height:9px;border-radius:2px;background:${c};opacity:${d ? .9 : .5}"></span></td>`;
+    });
+    h += `</tr>`;
+  }
+  h += `</tbody></table></div>
+
+    <!-- Bereichsbalken: Auslastung und Ausfall je Wohnbereich, gegen dieselbe Achse -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid ${F.li}">
+      <div class="lab" style="margin-bottom:9px">Wohnbereiche · Ausfalltage im Monat gegen die Bereichsstärke</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px">`;
+  const maxAbw = Math.max(...D.einheiten.map((e) => D.personen.filter((p) => p.einheitId === e.id).reduce((s, p) => s + p.abwTage, 0)));
+  for (const e of D.einheiten) {
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    const abwTage = eigene.reduce((s, p) => s + p.abwTage, 0);
+    const heuteDienst = t.einheiten[e.id];
+    const anteil = Math.round(abwTage / maxAbw * 100);
+    h += `<div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px">
+        <span style="width:7px;height:7px;border-radius:4px;background:${e.farbe};flex:0 0 7px"></span>
+        <span style="font-size:11.5px;flex:1">${esc(e.name.replace("Wohnbereich ", ""))}</span>
+        <span style="font:600 9px/1 Inter;color:${heuteDienst === "F" ? "#7FC7D6" : heuteDienst === "S" ? "#F0B060" : heuteDienst === "N" ? "#9AA3D6" : F.aus}">
+          ${heuteDienst ? DA[heuteDienst].kurz : "frei"}</span></div>
+      <div style="height:5px;border-radius:3px;background:${F.li};overflow:hidden">
+        <div style="width:${anteil}%;height:100%;background:${abwTage > maxAbw * .7 ? F.gefahr : abwTage > maxAbw * .4 ? F.warn : F.ok};opacity:.85"></div></div>
+      <div class="num" style="font-size:10px;color:${F.aus};margin-top:4px">${abwTage} Ausfalltage · ${eigene.length} Pers.</div>
+    </div>`;
+  }
+  h += `</div></div></div>
+
+    <!-- Feld 3: die Befundschlange -->
+    <div class="karte" style="padding:12px 14px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+        <span class="lab">Zu tun</span>
+        <span class="num" style="margin-left:auto;font:600 12px/1 Inter;color:${F.gefahr}">${D.befunde.filter((b) => b.datum >= HEUTE && b.schwere === "hoch").length}</span>
+        <span style="font-size:10px;color:${F.aus}">dringend von ${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></div>
+      <div style="max-height:392px;overflow-y:auto;margin:0 -14px;padding:0 14px">`;
+  for (const b of schlange) {
+    const ton = b.schwere === "hoch" ? F.gefahr : F.warn;
+    h += `<div style="display:flex;gap:9px;padding:8px 0;border-top:1px solid ${F.li}">
+      <span style="width:2px;border-radius:1px;background:${ton};flex:0 0 2px"></span>
+      <span style="flex:1;min-width:0">
+        <span style="display:flex;gap:7px;align-items:baseline">
+          <span class="num" style="font:600 10px/1 Inter;color:${F.aus}">${tagKurz(b.datum)}</span>
+          <span style="font:600 9px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:${ton}">${ART[b.art].label}</span></span>
+        <span style="display:block;font-size:12px;margin-top:3px">${esc(b.titel)}</span>
+        <span style="display:block;font-size:10.5px;color:${F.aus};margin-top:1px">${esc(b.detail)}</span>
+      </span></div>`;
+  }
+  h += `</div></div></div>`;
+  ziel.innerHTML = h;
+}
+
+/* Aufbauen */
+bauA(document.getElementById("mA"));
+bauB(document.getElementById("mB"));
+bauC(document.getElementById("mC"));
+bauD(document.getElementById("mD"));
+bauE(document.getElementById("mE"));
+bauF(document.getElementById("mF"));
+</script>

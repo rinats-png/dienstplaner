@@ -1,0 +1,301 @@
+<script id="daten" type="application/json">__DATEN__</script>
+<script>
+/* ==========================================================================
+   Die Entwürfe rechnen mit dem echten Bestand eines Prüfbetriebs:
+   fünf Wohnbereiche, 67 Personen, September 2026. Die Besetzungswerte
+   wurden gegen die laufende Anwendung geprüft — 90 von 90 identisch.
+   ========================================================================== */
+const D = JSON.parse(document.getElementById("daten").textContent);
+const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+const HEUTE = D.stand;
+const iHeute = D.tage.findIndex((t) => t.datum === HEUTE);
+const DA = Object.fromEntries(D.dienstarten.map((d) => [d.id, d]));
+const EH = Object.fromEntries(D.einheiten.map((e) => [e.id, e]));
+const P = Object.fromEntries(D.personen.map((p) => [p.id, p]));
+const n1 = (x) => (Math.round(x * 10) / 10).toLocaleString("de-DE");
+const sgn = (x) => (x > 0 ? "+" : x < 0 ? "−" : "±") + n1(Math.abs(x));
+const tagKurz = (iso) => `${Number(iso.slice(8))}.${iso.slice(5, 7)}.`;
+const el = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* Kennzahlen, die mehrere Entwürfe teilen */
+const bilanz = Object.fromEntries(D.dienstarten.map((da) => {
+  const v = D.tage.map((t) => t.besetzung[da.id]);
+  return [da.id, {
+    summe: v.reduce((s, x) => s + x.d, 0),
+    unter: v.filter((x) => x.d < 0).length,
+    quote: v.filter((x) => x.q).length,
+    mittel: v.reduce((s, x) => s + x.a, 0) / v.length,
+    sollMittel: v.reduce((s, x) => s + x.s, 0) / v.length,
+  }];
+}));
+const konten = D.personen.map((p) => p.konto).sort((a, b) => a - b);
+const median = konten[Math.floor(konten.length / 2)];
+const spanne = Math.max(Math.abs(konten[0]), Math.abs(konten[konten.length - 1]));
+const ART = {
+  unterbesetzung: { label: "Unterbesetzung", ton: "gefahr" },
+  quote: { label: "Fachkraftquote", ton: "gefahr" },
+  ruhezeit: { label: "Ruhezeit", ton: "gefahr" },
+  folge: { label: "Dienste in Folge", ton: "warn" },
+  nachtfolge: { label: "Nachtdienste in Folge", ton: "warn" },
+  urlaub: { label: "Urlaubshäufung", ton: "warn" },
+};
+const jeArt = {};
+for (const b of D.befunde) (jeArt[b.art] ||= []).push(b);
+
+/* Kopfzeilen der Grundlagentabelle */
+document.getElementById("g-betrieb").textContent = `${D.betrieb.name} · ${D.einheiten.length} Wohnbereiche`;
+document.getElementById("g-monat").textContent = `${MON[8]} 2026 · 30 Tage`;
+document.getElementById("g-umfang").textContent = `${D.personen.length} Personen · ${D.dienstarten.length} Dienstarten`;
+document.getElementById("g-befunde").textContent = `${D.befunde.length} entdupliziert`;
+
+/* Ein Dienstsignet */
+const dz = (v) => {
+  if (!v) return '<span class="dz frei">·</span>';
+  if (v.startsWith("*")) {
+    const k = v[1] === "k" ? "abwk" : "abw";
+    return `<span class="dz ${k}">${v[1].toUpperCase()}</span>`;
+  }
+  const id = v.replace("!", "");
+  return `<span class="dz ${id}">${id}</span>${v.includes("!") ? '<span style="color:var(--warn);font-weight:700">·</span>' : ""}`;
+};
+
+/* ========================================================================
+   A — Optimierte klassische Planung
+   ======================================================================== */
+function bauA(ziel) {
+  const T = D.tage;
+  let h = `
+  <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    <h5 class="titel" style="margin:0">September 2026</h5>
+    <span class="unter">${esc(D.betrieb.name)} · ${D.einheiten.length} Wohnbereiche · ${D.personen.length} Personen</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="knopf still">Aushang</button>
+      <button class="knopf">Mehrfach ändern</button>
+      <button class="knopf stark">Planungsassistent</button>
+    </span>
+  </div>
+
+  <!-- Die Monatsbilanz zuerst: sie beantwortet Befund 01 vor dem Raster. -->
+  <div class="karte" style="padding:13px 16px;margin-bottom:12px;display:flex;gap:26px;flex-wrap:wrap;align-items:center">
+    <span class="lab">Monatsbilanz</span>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    const ton = b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : b.unter ? "var(--warn)" : "var(--ok)";
+    h += `<div style="display:flex;align-items:baseline;gap:9px">
+      <span class="dz ${da.id}">${da.kurz}</span>
+      <span style="font:600 17px/1 Inter;font-variant-numeric:tabular-nums;color:${ton}">${sgn(b.summe)}</span>
+      <span style="font-size:11.5px;color:var(--dim)">Personentage · ${b.unter ? `${b.unter} Tage unter Soll` : "nie unter Soll"}${b.quote ? ` · ${b.quote}× Quote` : ""}</span>
+    </div>`;
+  }
+  h += `<span style="margin-left:auto;font-size:11.5px;color:var(--aus);max-width:30ch;line-height:1.35">
+      Der Nachtdienst trägt den Überschuss, den der Frühdienst braucht.</span>
+  </div>
+
+  <div class="karte rollbar">
+  <table class="raster" style="width:100%;min-width:1080px">
+    <thead>
+      <tr>
+        <th class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)"></th>`;
+  T.forEach((t, i) => {
+    h += `<th class="tagkopf ${t.we ? "we" : ""} ${i === iHeute ? "heute" : ""}" style="border-bottom:1px solid var(--linie-zart)">
+      ${DOW[t.dow]}<b>${String(i + 1).padStart(2, "0")}</b></th>`;
+  });
+  h += `<th class="tagkopf" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);min-width:76px;padding-left:8px;padding-right:8px">
+        <span style="font-size:9px">Monat</span></th></tr></thead>`;
+
+  /* Band 1: Wohnbereiche als Lauf */
+  h += `<tbody><tr><td colspan="${T.length + 2}" style="padding:9px 14px 5px;background:var(--still)">
+      <span class="lab">Wohnbereiche · welcher Dienst läuft wo</span></td></tr>`;
+  for (const e of D.einheiten) {
+    h += `<tr><td class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="width:8px;height:8px;border-radius:4px;background:${e.farbe};flex:0 0 8px"></span>
+        <span><span style="font-size:13px;font-weight:500">${esc(e.name)}</span>
+        <span style="display:block;font-size:10.5px;color:var(--aus)" class="num">${e.personen} Pers. · Versatz ${e.versatzTage} Tage</span></span>
+      </div></td>`;
+    T.forEach((t, i) => {
+      const d = t.einheiten[e.id];
+      const vor = i > 0 ? T[i - 1].einheiten[e.id] : null;
+      const nach = i < T.length - 1 ? T[i + 1].einheiten[e.id] : null;
+      const fl = d ? { F: "rgba(60,124,140,.20)", S: "rgba(149,84,16,.18)", N: "rgba(49,60,110,.20)" }[d] : "transparent";
+      const r = `${vor === d ? 0 : 5}px ${nach === d ? 0 : 5}px ${nach === d ? 0 : 5}px ${vor === d ? 0 : 5}px`;
+      h += `<td style="border-bottom:1px solid var(--linie-zart);padding:5px 0;${t.we ? "background:var(--still)" : ""}">
+        <div style="height:17px;background:${fl};border-radius:${r};display:flex;align-items:center;justify-content:center;
+          font:700 9.5px/1 Inter;color:${d ? { F: "#2C5F6D", S: "#7A4400", N: "#333C6E" }[d] : "transparent"}">
+          ${vor !== d && d ? d : ""}</div></td>`;
+    });
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    const abw = eigene.reduce((s, p) => s + p.abwTage, 0);
+    h += `<td class="num" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);text-align:right;padding:5px 8px;font-size:11.5px;color:var(--dim)">
+      ${abw} Abw.-Tage</td></tr>`;
+  }
+
+  /* Band 2: Besetzung */
+  h += `<tr><td colspan="${T.length + 2}" style="padding:11px 14px 5px;background:var(--still);border-top:1px solid var(--linie)">
+      <span class="lab">Besetzung · wie viele Köpfe gegen die Vorgabe</span></td></tr>`;
+  for (const da of D.dienstarten) {
+    h += `<tr><td class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)">
+      <div style="display:flex;align-items:center;gap:9px"><span class="dz ${da.id}">${da.kurz}</span>
+      <span><span style="font-size:13px">${esc(da.name)}</span>
+      <span style="display:block;font-size:10.5px;color:var(--aus)" class="num">${da.start}–${da.ende}</span></span></div></td>`;
+    T.forEach((t, i) => {
+      const b = t.besetzung[da.id];
+      /* Nur die Abweichung, nicht der Bruch: „−3" ist in einer Zeile aus
+         dreißig Zellen lesbar, „12/15" nicht. */
+      const ton = b.d < -1 ? "var(--gefahr)" : b.d < 0 ? "var(--warn)" : b.d > 4 ? "var(--violett)" : "var(--aus)";
+      const fett = b.d < 0 ? 700 : 500;
+      h += `<td title="${esc(da.name)} am ${tagKurz(t.datum)}: ${b.a} von ${b.s}${b.q ? " · Fachkraftquote nicht erfüllt" : ""}"
+        style="border-bottom:1px solid var(--linie-zart);text-align:center;padding:6px 0;
+        ${i === iHeute ? "background:var(--akzent-hell);" : t.we ? "background:var(--still);" : ""}">
+        <div class="num" style="font:${fett} 11.5px/1.1 Inter;color:${ton}">${b.d === 0 ? "±0" : sgn(b.d)}</div>
+        ${b.q ? '<div style="width:4px;height:4px;border-radius:2px;background:var(--gefahr);margin:3px auto 0"></div>' : '<div style="height:7px"></div>'}
+      </td>`;
+    });
+    const b = bilanz[da.id];
+    h += `<td class="num" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);text-align:right;padding:6px 8px">
+      <div style="font:700 13px/1.1 Inter;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--dim)"}">${sgn(b.summe)}</div>
+      <div style="font-size:10px;color:var(--aus)">${b.unter} T. unter</div></td></tr>`;
+  }
+  h += `</tbody></table></div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--dim);align-items:center">
+    <span><span class="dz F" style="width:16px;height:14px;font-size:9px">F</span> Früh 06–14</span>
+    <span><span class="dz S" style="width:16px;height:14px;font-size:9px">S</span> Spät 14–22</span>
+    <span><span class="dz N" style="width:16px;height:14px;font-size:9px">N</span> Nacht 22–06</span>
+    <span style="color:var(--aus)">Zellwert ist die Abweichung vom Soll · roter Punkt: Fachkraftquote nicht erfüllt</span>
+  </div>`;
+  ziel.innerHTML = h;
+}
+
+/* ========================================================================
+   B — Filter-first
+   ======================================================================== */
+function bauB(ziel) {
+  /* Die Ansicht startet nicht leer und nicht voll, sondern auf dem, was
+     ein Planungsverantwortlicher morgens braucht: das Dringende ab heute.
+     Eine ungefilterte Liste über 135 Befunde wäre genau die Wand, gegen
+     die Befund 03 sich richtet. */
+  const zustand = { arten: new Set(), einheit: null, dienst: null, abHeute: true, nurDringend: true };
+
+  /* Betrifft ein Befund diese Dienstart? Bei Unterbesetzung und Quote steht
+     sie im Befund; bei personenbezogenen Befunden ergibt sie sich aus dem
+     Dienst, den die Person an dem Tag hatte. */
+  const trifftDienst = (b, id) => {
+    if (b.dienstId) return b.dienstId === id;
+    if (!b.personId || !P[b.personId]) return false;
+    const i = D.tage.findIndex((t) => t.datum === b.datum);
+    return i >= 0 && P[b.personId].verlauf[i].replace("!", "") === id;
+  };
+  const trifftEinheit = (b, id) => b.einheitId === id
+    || (b.personId && P[b.personId] && P[b.personId].einheitId === id);
+
+  const treffer = () => {
+    let l = D.befunde.slice();
+    if (zustand.nurDringend) l = l.filter((b) => b.schwere === "hoch");
+    if (zustand.arten.size) l = l.filter((b) => zustand.arten.has(b.art));
+    if (zustand.dienst) l = l.filter((b) => trifftDienst(b, zustand.dienst));
+    if (zustand.einheit) l = l.filter((b) => trifftEinheit(b, zustand.einheit));
+    if (zustand.abHeute) l = l.filter((b) => b.datum >= HEUTE);
+    return l;
+  };
+
+  const zeichne = () => {
+    const l = treffer();
+    const nachTag = {};
+    for (const b of l) (nachTag[b.datum] ||= []).push(b);
+    const tage = Object.keys(nachTag).sort();
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <h5 class="titel" style="margin:0">Planung</h5>
+      <span class="unter">${l.length} von ${D.befunde.length} Befunden · ${tage.length} betroffene Tage</span>
+      <span style="margin-left:auto"><button class="knopf still" id="bReset">Filter leeren</button></span></div>`;
+
+    /* Filterleiste */
+    h += `<div class="karte" style="padding:13px 15px;margin-bottom:14px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span class="lab" style="flex:0 0 78px">Problem</span>`;
+    for (const [art, meta] of Object.entries(ART)) {
+      const n = (jeArt[art] || []).length;
+      h += `<button class="chip ${meta.ton}" data-art="${art}" aria-pressed="${zustand.arten.has(art)}">
+        ${meta.label}<span class="zahl">${n}</span></button>`;
+    }
+    h += `<span style="width:12px"></span>
+      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend<span class="zahl">${D.befunde.filter((b) => b.schwere === "hoch").length}</span></button>`;
+    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span class="lab" style="flex:0 0 78px">Bereich</span>`;
+    for (const e of D.einheiten) {
+      const n = D.befunde.filter((b) => trifftEinheit(b, e.id)).length;
+      h += `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheit === e.id}">
+        ${esc(e.name.replace("Wohnbereich ", ""))}<span class="zahl">${n}</span></button>`;
+    }
+    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <span class="lab" style="flex:0 0 78px">Dienst</span>`;
+    for (const da of D.dienstarten) {
+      const n = D.befunde.filter((b) => trifftDienst(b, da.id)).length;
+      h += `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienst === da.id}">
+        ${esc(da.name)}<span class="zahl">${n}</span></button>`;
+    }
+    h += `<span style="width:14px"></span>
+      <button class="chip" data-ab="1" aria-pressed="${zustand.abHeute}">ab heute<span class="zahl">${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></button>
+      <span style="margin-left:auto;font-size:11.5px;color:var(--aus)">Gespeicherte Sicht: „Frühdienst-Kontrolle“</span>
+      </div></div>`;
+
+    /* Trefferliste */
+    if (!l.length) {
+      h += `<div class="karte" style="padding:38px;text-align:center;color:var(--aus);font-size:13.5px">
+        Kein Befund passt zu dieser Auswahl.</div>`;
+    } else {
+      h += `<div class="karte" style="overflow:hidden">
+        <div style="max-height:520px;overflow-y:auto">`;
+      let erste = true;
+      for (const d of tage) {
+        const t = D.tage.find((x) => x.datum === d);
+        h += `<div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--still);
+          position:sticky;top:0;z-index:1;${erste ? "" : "border-top:1px solid var(--linie-zart);"}">
+          <span class="num" style="font:600 12.5px/1 Inter">${DOW[t.dow]}, ${tagKurz(d)}</span>
+          <span style="font-size:11.5px;color:var(--dim)">${nachTag[d].length} Befund${nachTag[d].length > 1 ? "e" : ""}</span>
+          ${d === HEUTE ? '<span class="chip" style="padding:1px 8px;font-size:10.5px;background:var(--akzent);color:#fff;border-color:var(--akzent)">heute</span>' : ""}
+        </div>`;
+        erste = false;
+        /* Gleiche Art am gleichen Tag wird zu einer Zeile. Genau hier
+           entstehen im heutigen Lagebild die einundzwanzig Dubletten:
+           dreizehn Zeilen „5 Nachtdienste in Folge" untereinander sagen
+           nichts, was eine Zeile mit dreizehn Namen nicht auch sagt. */
+        const nachArt = {};
+        for (const b of nachTag[d]) (nachArt[b.art] ||= []).push(b);
+        for (const [art, gruppe] of Object.entries(nachArt)) {
+          const ton = gruppe[0].schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+          const einzeln = gruppe.length === 1;
+          const namen = gruppe.map((b) => b.personId ? P[b.personId].nachname + ", " + P[b.personId].vorname : null).filter(Boolean);
+          h += `<div style="display:flex;align-items:baseline;gap:12px;padding:9px 16px;border-top:1px solid var(--linie-zart)">
+            <span style="width:3px;align-self:stretch;border-radius:2px;background:${ton};flex:0 0 3px"></span>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:${ton};flex:0 0 132px">${ART[art].label}</span>
+            <span style="font-size:13.5px;flex:1;min-width:170px">${esc(gruppe[0].titel)}${einzeln ? "" : `<span class="num" style="color:var(--dim);font-weight:600"> · ${gruppe.length}×</span>`}</span>
+            <span style="font-size:12px;color:var(--dim);flex:1.3;min-width:190px">${
+              einzeln ? esc(gruppe[0].detail)
+              : namen.length ? esc(namen.slice(0, 3).join(" · ")) + (namen.length > 3 ? ` und ${namen.length - 3} weitere` : "")
+              : esc(gruppe.map((b) => b.titel).join(" · "))}</span>
+            <button class="knopf" style="flex:0 0 auto">${einzeln ? "Öffnen" : "Alle öffnen"}</button></div>`;
+        }
+      }
+      h += `</div></div>`;
+    }
+    ziel.innerHTML = h;
+
+    ziel.querySelectorAll("[data-art]").forEach((b) => b.onclick = () => {
+      const a = b.dataset.art; zustand.arten.has(a) ? zustand.arten.delete(a) : zustand.arten.add(a); zeichne(); });
+    ziel.querySelectorAll("[data-eh]").forEach((b) => b.onclick = () => {
+      zustand.einheit = zustand.einheit === b.dataset.eh ? null : b.dataset.eh; zeichne(); });
+    ziel.querySelectorAll("[data-da]").forEach((b) => b.onclick = () => {
+      zustand.dienst = zustand.dienst === b.dataset.da ? null : b.dataset.da; zeichne(); });
+    ziel.querySelectorAll("[data-ab]").forEach((b) => b.onclick = () => {
+      zustand.abHeute = !zustand.abHeute; zeichne(); });
+    ziel.querySelectorAll("[data-dringend]").forEach((b) => b.onclick = () => {
+      zustand.nurDringend = !zustand.nurDringend; zeichne(); });
+    const r = ziel.querySelector("#bReset");
+    if (r) r.onclick = () => { zustand.arten.clear(); zustand.einheit = null; zustand.dienst = null;
+      zustand.abHeute = false; zustand.nurDringend = false; zeichne(); };
+  };
+  zeichne();
+}
+</script>

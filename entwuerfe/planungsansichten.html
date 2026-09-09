@@ -1,0 +1,1760 @@
+<title>Planungsansichten — Entwürfe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,300;6..72,400;6..72,500&display=swap">
+
+<style>
+/* ==========================================================================
+   ENTWÜRFE — Planungsansichten
+
+   Zwei Stimmen, bewusst getrennt:
+
+   Das Dokument spricht in Newsreader — eine Textserife. Es ist ein
+   Gutachten, keine Anwendung.
+
+   Die Entwürfe darin sprechen in Inter und in CENTRICs eigener Palette.
+   Sie sollen nach dem Produkt aussehen, nicht nach einem Vorschlag für
+   ein anderes Produkt: Was hier zur Debatte steht, ist die Struktur, und
+   ein neues Farbkleid würde diese Frage nur verdecken.
+   ========================================================================== */
+
+:root {
+  /* CENTRICs Palette, unverändert übernommen (src/farben.js) */
+  --grund: #D9E4E8;
+  --flaeche: #FFFFFF;
+  --still: #E7EEF1;
+  --tief: #071317;
+  --tiefer: #001619;
+  --text: #071317;
+  --dim: #3D4E55;
+  --aus: #5B6B72;
+  --linie: #BCCDD4;
+  --linie-zart: #CBDAE0;
+  --steuer: #6E858E;
+  --akzent: #017070;
+  --akzent-hell: #DFF0F0;
+  --akzent-tief: #023441;
+  --akzent-leucht: #02A0A0;
+  --ok: #0E6B45;
+  --warn: #955410;
+  --gefahr: #4E0401;
+  --violett: #316C81;
+  --ok-hell: #DFEFE7;
+  --warn-hell: #FFE0C0;
+  --gefahr-hell: #F6DEDC;
+
+  /* Dokumentflächen — eine Spur wärmer als das Produkt, damit die
+     Entwürfe darin als eingelegte Bilder lesbar bleiben. */
+  --papier: #F7F5F1;
+  --papier-tief: #EDEAE3;
+  --papier-linie: #DBD6CC;
+  --papier-text: #1C1A17;
+  --papier-dim: #55504A;
+
+  /* Der Akzent des Dokuments ist ein eigener Wert, nicht --akzent.
+     Der dunkle Türkiston des Produkts erreicht auf dem dunklen Papier nur
+     3,13:1 — für eine 11-Pixel-Auszeichnung zu wenig. Die Entwürfe darin
+     bleiben hell und behalten deshalb --akzent unverändert. */
+  --akzent-doc: #017070;
+
+  --zahl: "Inter", system-ui, sans-serif;
+  --serife: "Newsreader", Georgia, serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --papier: #14171A;
+    --papier-tief: #1B1F23;
+    --papier-linie: #2A3036;
+    --papier-text: #E9EDF0;
+    --papier-dim: #9AA6AE;
+    --akzent-doc: #3FBFBF;      /* 8,4:1 auf dem dunklen Papier */
+  }
+}
+:root[data-theme="dark"] {
+  --papier: #14171A;
+  --papier-tief: #1B1F23;
+  --papier-linie: #2A3036;
+  --papier-text: #E9EDF0;
+  --papier-dim: #9AA6AE;
+  --akzent-doc: #3FBFBF;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--papier);
+  color: var(--papier-text);
+  font: 400 16px/1.6 "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+/* ---------------------------------------------------------------- Dokument */
+.doc { max-width: 1560px; margin: 0 auto; padding: 0 32px 120px; }
+
+header.kopf {
+  padding: 72px 0 40px;
+  border-bottom: 1px solid var(--papier-linie);
+  margin-bottom: 48px;
+}
+.marke {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--papier-dim);
+  margin-bottom: 26px;
+}
+h1 {
+  font: 300 54px/1.05 var(--serife);
+  letter-spacing: -.02em;
+  margin: 0 0 20px;
+  text-wrap: balance;
+  max-width: 20ch;
+}
+.vorspann {
+  font: 300 21px/1.55 var(--serife);
+  color: var(--papier-dim);
+  max-width: 64ch;
+  margin: 0 0 32px;
+}
+.grundlage {
+  display: flex; flex-wrap: wrap; gap: 0;
+  border: 1px solid var(--papier-linie);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.grundlage div {
+  flex: 1 1 180px;
+  padding: 14px 18px;
+  border-right: 1px solid var(--papier-linie);
+}
+.grundlage div:last-child { border-right: none; }
+.grundlage dt {
+  font: 600 10px/1 "Inter", sans-serif;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--papier-dim); margin: 0 0 7px;
+}
+.grundlage dd { margin: 0; font: 500 14px/1.35 "Inter", sans-serif; }
+
+/* Abschnitte */
+section { margin: 0 0 96px; scroll-margin-top: 80px; }
+.phase {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--akzent-doc); margin-bottom: 14px;
+}
+h2 {
+  font: 300 38px/1.12 var(--serife);
+  letter-spacing: -.015em;
+  margin: 0 0 16px; text-wrap: balance;
+}
+h3 {
+  font: 500 22px/1.25 var(--serife);
+  margin: 44px 0 12px; text-wrap: balance;
+}
+h4 {
+  font: 600 12px/1 "Inter", sans-serif;
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--papier-dim); margin: 32px 0 12px;
+}
+p { max-width: 74ch; margin: 0 0 16px; }
+.fuehrung { font: 300 19px/1.6 var(--serife); color: var(--papier-dim); max-width: 68ch; }
+
+/* Navigationsleiste */
+nav.sprung {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--papier) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--papier-linie);
+}
+nav.sprung ul {
+  display: flex; gap: 4px; list-style: none;
+  margin: 0 auto; padding: 0 32px;
+  max-width: 1560px;
+  overflow-x: auto; scrollbar-width: thin;
+}
+nav.sprung a {
+  display: block; padding: 13px 13px; white-space: nowrap;
+  font: 500 13px/1 "Inter", sans-serif;
+  color: var(--papier-dim); text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+nav.sprung a:hover { color: var(--papier-text); border-bottom-color: var(--linie); }
+nav.sprung a:focus-visible { outline: 2px solid var(--akzent-doc); outline-offset: -2px; }
+
+/* Befundliste der Analyse */
+.befund {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 0 24px;
+  padding: 22px 0;
+  border-top: 1px solid var(--papier-linie);
+  align-items: start;
+}
+.befund:last-of-type { border-bottom: 1px solid var(--papier-linie); }
+.befund .nr {
+  font: 300 30px/1 var(--serife);
+  color: var(--papier-dim);
+}
+.befund .kopf {
+  font: 600 16px/1.4 "Inter", sans-serif;
+  margin-bottom: 7px;
+}
+.befund p { margin: 0 0 10px; font-size: 15px; }
+.beleg {
+  display: inline-flex; align-items: baseline; gap: 8px;
+  background: var(--papier-tief);
+  border-left: 2px solid var(--akzent-doc);
+  padding: 7px 12px;
+  font: 500 13px/1.4 "Inter", sans-serif;
+  border-radius: 0 3px 3px 0;
+}
+.beleg b { font-variant-numeric: tabular-nums; font-weight: 700; }
+
+/* Rahmen für einen Entwurf */
+.entwurf { margin: 0 0 92px; scroll-margin-top: 80px; }
+.entwurf-kopf {
+  display: grid; grid-template-columns: minmax(0,1fr) 340px;
+  gap: 48px; align-items: end; margin-bottom: 22px;
+}
+@media (max-width: 1100px) { .entwurf-kopf { grid-template-columns: 1fr; gap: 20px; } }
+.variante {
+  font: 600 11px/1 "Inter", sans-serif;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--akzent-doc); margin-bottom: 10px;
+}
+.entwurf h3 { margin: 0 0 10px; font-size: 30px; }
+.ebenen { font-size: 13.5px; line-height: 1.5; }
+.ebenen div { display: flex; gap: 10px; padding: 5px 0; border-top: 1px solid var(--papier-linie); }
+.ebenen span:first-child {
+  flex: 0 0 62px; font: 600 10px/1.7 "Inter", sans-serif;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--papier-dim);
+}
+
+/* Der Bildschirm, in dem ein Entwurf steckt */
+.schirm {
+  background: var(--grund);
+  border: 1px solid var(--papier-linie);
+  border-radius: 6px;
+  overflow: hidden;
+  color: var(--text);
+  font: 400 14px/1.5 "Inter", system-ui, sans-serif;
+}
+.schirm.dunkel { background: #0B1418; color: #E8EFF1; }
+.schirmleiste {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+  background: var(--papier-tief);
+  border-bottom: 1px solid var(--papier-linie);
+  font: 500 11px/1 "Inter", sans-serif;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--papier-dim);
+}
+.schirmleiste .punkte { display: flex; gap: 5px; }
+.schirmleiste .punkte i {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--papier-linie); display: block;
+}
+.rollbar { overflow-x: auto; }
+
+/* Bewertungstabelle */
+table.bewertung { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.bewertung th, table.bewertung td {
+  padding: 11px 12px; text-align: left;
+  border-bottom: 1px solid var(--papier-linie);
+}
+table.bewertung thead th {
+  font: 600 10px/1.3 "Inter", sans-serif;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--papier-dim); vertical-align: bottom;
+}
+table.bewertung tbody th {
+  font: 500 13.5px/1.35 "Inter", sans-serif; font-weight: 500;
+}
+table.bewertung td { text-align: center; font-variant-numeric: tabular-nums; }
+.sterne { letter-spacing: .5px; font-size: 13px; color: var(--akzent-doc); white-space: nowrap; }
+.sterne .leer { color: var(--papier-linie); }
+tr.summe td, tr.summe th { border-top: 2px solid var(--papier-text); font-weight: 700; }
+
+/* Empfehlung */
+.empfehlung {
+  border: 1px solid var(--papier-linie);
+  border-left: 3px solid var(--akzent-doc);
+  border-radius: 0 5px 5px 0;
+  padding: 26px 30px;
+  margin: 0 0 20px;
+  background: var(--papier-tief);
+}
+.empfehlung h4 { margin: 0 0 10px; color: var(--akzent-doc); }
+.empfehlung .titel { font: 500 22px/1.25 var(--serife); margin: 0 0 12px; }
+.empfehlung p { max-width: none; }
+.paar { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 16px; }
+@media (max-width: 900px) { .paar { grid-template-columns: 1fr; } }
+.paar h5 {
+  font: 600 10px/1 "Inter", sans-serif; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--papier-dim); margin: 0 0 8px;
+}
+.paar ul { margin: 0; padding-left: 18px; font-size: 14.5px; line-height: 1.6; }
+.paar li { margin-bottom: 5px; }
+
+.hinweis {
+  font: 400 13.5px/1.6 "Inter", sans-serif;
+  color: var(--papier-dim);
+  border-top: 1px solid var(--papier-linie);
+  padding-top: 14px; margin-top: 14px;
+  max-width: 84ch;
+}
+</style>
+
+
+<style>
+/* ==========================================================================
+   PRODUKTSPRACHE — gilt nur innerhalb von .schirm
+
+   Alles hier ist CENTRICs vorhandene Formensprache: dieselben Farben,
+   dieselben Radien, dieselbe Typografie. Was sich zwischen den Entwürfen
+   unterscheidet, ist die Struktur, nicht das Kleid.
+   ========================================================================== */
+
+.schirm .kopfzeile {
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  padding: 18px 22px 14px;
+}
+.schirm h5.titel {
+  font: 300 26px/1.1 "Inter", sans-serif; letter-spacing: -.03em; margin: 0;
+}
+.schirm .unter { font-size: 13px; color: var(--dim); }
+.schirm .rechts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+.schirm .karte {
+  background: var(--flaeche);
+  border: 1px solid var(--linie-zart);
+  border-radius: 14px;
+}
+.schirm.dunkel .karte { background: #121E23; border-color: #243238; }
+
+.schirm .lab {
+  font: 600 9.5px/1 "Inter", sans-serif;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--aus);
+}
+.schirm.dunkel .lab { color: #7A8D95; }
+
+.schirm .knopf {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--steuer); background: var(--flaeche); color: var(--text);
+  border-radius: 9px; padding: 6px 11px;
+  font: 500 12.5px/1 "Inter", sans-serif; cursor: pointer;
+}
+.schirm .knopf.stark { background: var(--akzent); border-color: var(--akzent); color: #fff; }
+.schirm .knopf.still { border-color: transparent; background: transparent; color: var(--dim); }
+
+/* Chips — in mehreren Entwürfen dasselbe Bauteil */
+.chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--linie); background: var(--flaeche);
+  border-radius: 999px; padding: 5px 12px;
+  font: 500 12.5px/1.35 "Inter", sans-serif; color: var(--dim);
+  cursor: pointer; white-space: nowrap;
+}
+.chip .zahl {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  background: var(--still); border-radius: 999px; padding: 1px 6px; font-size: 11px;
+}
+.chip[aria-pressed="true"] {
+  background: var(--akzent); border-color: var(--akzent); color: #fff;
+}
+.chip[aria-pressed="true"] .zahl { background: rgba(255,255,255,.22); color: #fff; }
+.chip.gefahr[aria-pressed="true"] { background: var(--gefahr); border-color: var(--gefahr); }
+.chip.warn[aria-pressed="true"] { background: var(--warn); border-color: var(--warn); }
+.schirm.dunkel .chip { background: #18262C; border-color: #33454C; color: #9FB2B9; }
+.schirm.dunkel .chip .zahl { background: #243238; }
+
+/* Statuspunkt und Tonflächen */
+.ton-ok { color: var(--ok); } .ton-warn { color: var(--warn); } .ton-gefahr { color: var(--gefahr); }
+.fl-ok { background: var(--ok-hell); } .fl-warn { background: var(--warn-hell); } .fl-gefahr { background: var(--gefahr-hell); }
+
+/* Raster, das mehrere Entwürfe teilen */
+.schirm table.raster { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.schirm table.raster th, .schirm table.raster td { padding: 0; }
+.schirm .tagkopf {
+  font: 500 9.5px/1.25 "Inter", sans-serif; text-align: center;
+  color: var(--aus); padding: 6px 0 5px; min-width: 26px;
+}
+.schirm .tagkopf b { display: block; font: 600 11.5px/1.15 "Inter", sans-serif; color: var(--text); }
+.schirm .tagkopf.we { background: var(--still); }
+.schirm .tagkopf.heute { background: var(--akzent-hell); box-shadow: inset 0 -2px 0 var(--akzent); }
+.schirm .zeilenkopf {
+  position: sticky; left: 0; z-index: 2; background: var(--flaeche);
+  text-align: left; padding: 7px 14px; white-space: nowrap;
+}
+.schirm.dunkel .zeilenkopf { background: #121E23; }
+
+/* Dienstsignatur — ein Buchstabe in seiner Farbe */
+.dz {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px; border-radius: 5px;
+  font: 700 11px/1 "Inter", sans-serif;
+}
+.dz.F { background: rgba(60,124,140,.16); color: #2C5F6D; }
+.dz.S { background: rgba(149,84,16,.14); color: #7A4400; }
+.dz.N { background: rgba(49,60,110,.16); color: #333C6E; }
+.dz.frei { background: var(--still); color: var(--aus); }
+.dz.abw { background: rgba(14,107,69,.14); color: var(--ok); }
+.dz.abwk { background: var(--gefahr-hell); color: var(--gefahr); }
+
+.balken { height: 4px; border-radius: 2px; background: var(--linie-zart); overflow: hidden; }
+.balken i { display: block; height: 100%; border-radius: 2px; }
+
+/* Kennzahlkachel */
+.kachel { padding: 15px 17px; }
+.kachel .wert { font: 300 34px/1 "Inter", sans-serif; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.kachel .wert small { font-size: 15px; color: var(--aus); font-weight: 400; letter-spacing: 0; }
+.kachel .bez { font-size: 12px; color: var(--dim); margin-top: 6px; }
+.kachel .fuss { font-size: 11px; color: var(--aus); margin-top: 3px; }
+</style>
+
+
+<nav class="sprung">
+  <ul>
+    <li><a href="#analyse">Analyse</a></li>
+    <li><a href="#a">A · Klassisch</a></li>
+    <li><a href="#b">B · Filter-first</a></li>
+    <li><a href="#c">C · Dashboard</a></li>
+    <li><a href="#d">D · Zeitstrahl</a></li>
+    <li><a href="#e">E · Mitarbeiter</a></li>
+    <li><a href="#f">F · Leitstelle</a></li>
+    <li><a href="#bewertung">Bewertung</a></li>
+    <li><a href="#empfehlung">Empfehlung</a></li>
+  </ul>
+</nav>
+
+<div class="doc">
+
+<header class="kopf">
+  <div class="marke">CENTRIC · Entwurfsstudie</div>
+  <h1>Sechs Wege durch den Dienstplan</h1>
+  <p class="vorspann">
+    Die Personal-, Monats-, Jahres- und Einsatzansichten zeigen heute alles, was es gibt —
+    nebeneinander und gleich laut. Diese Studie misst zuerst, wo das kippt, und stellt dann
+    sechs strukturell verschiedene Antworten daneben. Nichts davon ist umgesetzt: Es sind
+    Entwürfe zum Vergleichen, gerechnet mit echten Daten aus einem laufenden Betrieb.
+  </p>
+  <div class="grundlage">
+    <div><dt>Datengrundlage</dt><dd id="g-betrieb">—</dd></div>
+    <div><dt>Zeitraum</dt><dd id="g-monat">—</dd></div>
+    <div><dt>Umfang</dt><dd id="g-umfang">—</dd></div>
+    <div><dt>Befunde im Monat</dt><dd id="g-befunde">—</dd></div>
+    <div><dt>Stand</dt><dd>9. September 2026</dd></div>
+  </div>
+</header>
+
+<section id="analyse">
+  <div class="phase">Phase 1</div>
+  <h2>Was die heutigen Ansichten dem Planenden abverlangen</h2>
+  <p class="fuehrung">
+    Gemessen wurde nicht am Bauchgefühl, sondern an einem echten September: fünf Wohnbereiche,
+    67 Personen, ein Drei-Wochen-Zyklus mit Tagesversatz, 21 Abwesenheiten, 24 Abweichungen
+    vom Sollplan. Alle folgenden Zahlen stammen aus diesem Bestand und wurden gegen die
+    Anwendung selbst geprüft — die Besetzungswerte stimmen an allen 90 Vergleichspunkten überein.
+  </p>
+
+  <div class="befund">
+    <div class="nr">01</div>
+    <div>
+      <div class="kopf">Die größte Fehlplanung des Monats steht in keiner Ansicht</div>
+      <p>
+        Der Nachtdienst ist an <b>jedem einzelnen Tag</b> mehr als doppelt besetzt, während der
+        Frühdienst an 18 von 30 Tagen unter dem Soll bleibt. Das ist keine Tagesstörung, sondern
+        ein Konstruktionsfehler der Schichtfolge — und er ist nirgends ablesbar, weil jede Ansicht
+        den Tag als Einheit nimmt. Der Monatsplan zeigt „13/6" in einer Zelle; die Summe über
+        dreißig solcher Zellen zieht niemand.
+      </p>
+      <div class="beleg">Nachtdienst <b>+247</b> Personentage über Soll · Frühdienst an <b>18</b> Tagen darunter</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">02</div>
+    <div>
+      <div class="kopf">Die Befundliste zählt doppelt und wird dadurch unbrauchbar</div>
+      <p>
+        Das Lagebild meldet <b>195 Befunde</b> für die nächsten vierzehn Tage. Von den vierzig
+        sichtbaren Zeilen sind einundzwanzig exakte Dubletten: „5 Nachtdienste in Folge — Quandt"
+        steht fünfmal untereinander, am selben Tag, für dieselbe Person. Entdupliziert bleiben
+        91 Befunde. Eine Liste, deren Zahl man nicht glauben kann, wird nicht gelesen.
+      </p>
+      <div class="beleg">gemeldet <b>195</b> · sichtbar <b>40</b> Zeilen · davon <b>21</b> Dubletten · tatsächlich <b>91</b></div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">03</div>
+    <div>
+      <div class="kopf">Ein Problemfilter, der 85 % der Belegschaft trifft, filtert nicht</div>
+      <p>
+        <b>57 von 67</b> Personen tragen mindestens einen Befund. „Nur Probleme anzeigen" würde
+        also fast alles anzeigen. Nützlich wird ein Problemfilter erst mit Rangfolge: Was ist
+        heute unumkehrbar, was ist diese Woche zu klären, was ist ein Hinweis. Diese Unterscheidung
+        gibt es im Datenmodell (Schwere, Art, Bezug) — in der Oberfläche wird sie eingeebnet.
+      </p>
+      <div class="beleg"><b>57/67</b> Personen mit Befund · 6 Befundarten · in der Liste ohne Rang</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">04</div>
+    <div>
+      <div class="kopf">Der Monatsplan stapelt zwei verschiedene Tabellen in einer</div>
+      <p>
+        Die oberen fünf Zeilen beantworten „welcher Wohnbereich fährt welchen Dienst",
+        die unteren drei „wie viele Köpfe stehen im Frühdienst". Zwei Fragen, zwei
+        Bezugsgrößen, zwei Zellinhalte — getrennt allein durch eine zwei Pixel breite Linie.
+        Wer quer liest, liest über den Bruch hinweg.
+      </p>
+      <div class="beleg"><b>240</b> Rasterzellen in <b>zwei</b> Bedeutungsschichten, eine Tabelle</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">05</div>
+    <div>
+      <div class="kopf">Der Versatz, der den ganzen Plan erklärt, steht falsch da</div>
+      <p>
+        Die fünf Wohnbereiche starten um 0, 4, 8, 12 und 17 Tage versetzt in denselben
+        Zyklus — das ist der Mechanismus, der jede Nacht abdeckt. Die Seitenspalte des
+        Monatsplans schreibt bei allen fünf „Versatz 0", weil sie das Wochenfeld liest
+        statt des Tagesfelds. Die wichtigste Struktureigenschaft des Betriebs erscheint
+        als Nullreihe.
+      </p>
+      <div class="beleg">tatsächlich <b>0 · 4 · 8 · 12 · 17</b> Tage — angezeigt <b>0 · 0 · 0 · 0 · 0</b></div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">06</div>
+    <div>
+      <div class="kopf">Die breiteste Spalte der Personalliste trägt ein Bit</div>
+      <p>
+        Über 67 Personen kommen genau <b>zwei</b> Qualifikationskombinationen vor: Fachkräfte
+        tragen alle sechs Nachweise, Hilfskräfte drei. Dargestellt wird das als 402 einzelne
+        Plaketten. Die Spalte kostet ein Drittel der Tabellenbreite und beantwortet eine
+        Ja-Nein-Frage. Was fehlt, ist die Gegenfrage: Wo reicht die Fachkraftquote nicht —
+        und die steht in einer anderen Ansicht.
+      </p>
+      <div class="beleg"><b>402</b> Plaketten für <b>2</b> unterscheidbare Zustände</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">07</div>
+    <div>
+      <div class="kopf">Jede Ansicht zeigt einen Wohnbereich, keine zeigt den Betrieb</div>
+      <p>
+        Personaleinsatz und Jahresansicht arbeiten mit einem Umschalter: erst Nord, dann Süd,
+        dann Ost. Wer wissen will, welcher Bereich am 21. September einspringen kann, muss
+        fünfmal umschalten und die Antwort im Kopf behalten. Der Ausgleich zwischen Bereichen
+        ist der häufigste Planungsvorgang überhaupt — und der einzige, für den es keine
+        Ansicht gibt.
+      </p>
+      <div class="beleg"><b>5</b> Umschaltvorgänge für eine bereichsübergreifende Frage</div>
+    </div>
+  </div>
+
+  <div class="befund">
+    <div class="nr">08</div>
+    <div>
+      <div class="kopf">Zahlen ohne Verteilung sagen nichts</div>
+      <p>
+        Die Personalliste zeigt Stundenkonten als rechtsbündige Zahl je Zeile: −11, +3, −171,6.
+        Ob −11 normal oder auffällig ist, erschließt sich erst aus dem Vergleich mit den anderen
+        66 Zeilen — den man beim Scrollen nicht behält. Der Median liegt bei −11 Stunden;
+        auffällig sind genau zwei Personen. Diese zwei zu finden kostet heute 67 Zeilen Lesen.
+      </p>
+      <div class="beleg">Median <b>−11 h</b> · Spanne <b>−171,6</b> bis <b>+42 h</b> · auffällig: <b>2</b> Personen</div>
+    </div>
+  </div>
+
+  <h3>Was daraus folgt</h3>
+  <p>
+    Die Ansichten sind nicht falsch gebaut — sie sind vollständig gebaut. Jede zeigt ihren
+    Gegenstand sauber und lückenlos. Was fehlt, ist die Ebene darüber: <b>Verdichtung</b>
+    (Summen über Zeit statt Werte je Tag), <b>Rangfolge</b> (was zuerst) und
+    <b>Querschnitt</b> (mehrere Bereiche nebeneinander). Alle sechs folgenden Entwürfe
+    greifen genau hier an, mit verschiedenen Mitteln.
+  </p>
+  <p class="hinweis">
+    Zur Lesart der Entwürfe: Sie verwenden CENTRICs eigene Palette und Typografie. Was sich
+    unterscheidet, ist ausschließlich die Struktur — Anordnung, Verdichtung, Reihenfolge,
+    Interaktion. Ein neues Farbkleid würde die Frage verdecken, um die es hier geht. Alle
+    Zahlen, Namen, Dienste und Befunde sind echt; die Entwürfe sind bedienbar, soweit es
+    dem Vergleich dient.
+  </p>
+</section>
+
+
+<section>
+  <div class="phase">Phase 2</div>
+  <h2>Sechs Entwürfe</h2>
+  <p class="fuehrung">
+    Nicht sechs Anstriche derselben Tabelle, sondern sechs Antworten auf die Frage, was die
+    primäre Einheit der Ansicht sein soll: der Tag, der Filter, die Kennzahl, der Verlauf,
+    die Person oder die Lage.
+  </p>
+
+  <!-- ============================ A ============================ -->
+  <article class="entwurf" id="a">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante A</div>
+        <h3>Optimierte klassische Planung</h3>
+        <p style="margin:0">
+          Dieselbe Tabelle, aufgeräumt. Die zwei Bedeutungsschichten werden zu zwei benannten
+          Bändern. Rechts kommt eine Monatsspalte hinzu: die Summe der Abweichung über dreißig
+          Tage — die Zahl, die Befund 01 sichtbar macht. Die Wohnbereichszeilen zeigen den
+          Zyklus als durchgehenden Lauf statt als dreißig Einzelzellen, damit der Versatz
+          erkennbar wird.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Monatsbilanz je Dienstart · unterbesetzte Tage</span></div>
+        <div><span>Ebene 2</span><span>Tageswert, Wohnbereichslauf, Abwesende</span></div>
+        <div><span>Ebene 3</span><span>Tagesblatt mit Namen und Ersatzvorschlägen</span></div>
+      </div>
+    </div>
+    <div class="schirm">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Monatsplan · September 2026</div>
+      <div id="mA" style="padding:16px 18px 20px"></div>
+    </div>
+  </article>
+
+  <!-- ============================ B ============================ -->
+  <article class="entwurf" id="b">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante B</div>
+        <h3>Filter-first</h3>
+        <p style="margin:0">
+          Kein Formular, sondern eine Leiste mit Zählern: Jeder Chip trägt vorab, wie viele
+          Zeilen er zeigen wird — dadurch ist die Leiste selbst schon eine Auswertung. Der
+          Problemfilter ist nicht ein Chip, sondern eine Gruppe, weil „alle Probleme" laut
+          Befund 03 fast alles bedeutet. Der Einstieg steht deshalb auf <i>dringend ab heute</i>:
+          44 von 135. Gleichartige Befunde eines Tages werden zu einer Zeile mit Anzahl und
+          Namen zusammengefasst — genau dort entstehen heute die Dubletten aus Befund 02.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Filterleiste mit Trefferzahlen</span></div>
+        <div><span>Ebene 2</span><span>Trefferliste: Tag · Dienst · Bereich · Person</span></div>
+        <div><span>Ebene 3</span><span>Zeile aufklappen: Ursache und Handlungsweg</span></div>
+      </div>
+    </div>
+    <div class="schirm">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Planung · gefiltert</div>
+      <div id="mB" style="padding:16px 18px 20px"></div>
+    </div>
+  </article>
+
+  <!-- ============================ C ============================ -->
+  <article class="entwurf" id="c">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante C</div>
+        <h3>Dashboard und Detail</h3>
+        <p style="margin:0">
+          Drei Stufen übereinander: Kennzahlen des Monats, darunter je Dienstart ein
+          Dreißig-Tage-Verlauf als Streifen, darunter das aufgeschlagene Detail des gewählten
+          Tages. Der Einstieg ist die Verdichtung, nicht das Raster. Wer nichts anklickt,
+          hat nach zwei Sekunden trotzdem die Lage.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Sechs Kennzahlen · Verlaufsstreifen</span></div>
+        <div><span>Ebene 2</span><span>Tag anwählen: Besetzung, Abwesende, Befunde</span></div>
+        <div><span>Ebene 3</span><span>Person oder Dienst öffnen</span></div>
+      </div>
+    </div>
+    <div class="schirm">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Lagebild · September 2026</div>
+      <div id="mC" style="padding:16px 18px 20px"></div>
+    </div>
+  </article>
+
+  <!-- ============================ D ============================ -->
+  <article class="entwurf" id="d">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante D</div>
+        <h3>Zeitstrahl mit Bahnen</h3>
+        <p style="margin:0">
+          Y-Achse: Wohnbereiche und darunter die Dienstarten. X-Achse: der Monat, durchgehend.
+          Ein Dienst ist ein Balken, kein Buchstabe — dadurch werden Blocklängen, der
+          Tagesversatz zwischen den Bereichen und die Lücken zum ersten Mal als Muster
+          sichtbar. Darunter läuft die Besetzung als Flächenband gegen die Solllinie.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Schichtmuster, Versatz, Deckungslücken</span></div>
+        <div><span>Ebene 2</span><span>Balken überfahren: Bereich, Dienst, Köpfe</span></div>
+        <div><span>Ebene 3</span><span>Ausschnitt aufziehen: Personenbahnen</span></div>
+      </div>
+    </div>
+    <div class="schirm">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Zeitstrahl · September 2026</div>
+      <div id="mD" style="padding:16px 18px 20px"></div>
+    </div>
+  </article>
+
+  <!-- ============================ E ============================ -->
+  <article class="entwurf" id="e">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante E</div>
+        <h3>Mitarbeiter-zentriert</h3>
+        <p style="margin:0">
+          Zweigeteilt: links die Belegschaft als dichte Liste, je Person ein Monatsstreifen und
+          ein Kontobalken gegen den Median — damit beantwortet Befund 08 sich beim Scrollen von
+          selbst. Rechts die gewählte Person vollständig: Monat, Konten, Nachweise, Befunde.
+          Sortierbar nach dem, was gerade weh tut.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Belegschaft mit Streifen und Kontoverteilung</span></div>
+        <div><span>Ebene 2</span><span>Person: Monat, Konto, Nachweise, Befunde</span></div>
+        <div><span>Ebene 3</span><span>Personalakte, Anträge, Jahresverlauf</span></div>
+      </div>
+    </div>
+    <div class="schirm">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Personal · September 2026</div>
+      <div id="mE" style="padding:16px 18px 20px"></div>
+    </div>
+  </article>
+
+  <!-- ============================ F ============================ -->
+  <article class="entwurf" id="f">
+    <div class="entwurf-kopf">
+      <div>
+        <div class="variante">Variante F</div>
+        <h3>Leitstelle</h3>
+        <p style="margin:0">
+          Vier Felder ohne Scrollen: links der laufende Tag, in der Mitte das ganze Raster auf
+          reine Vorzeichen verdichtet, rechts die Befundschlange nach Schwere, unten die
+          Bereiche als Balken. Dunkel, weil diese Ansicht nachts offen steht. Maximale Dichte —
+          erreicht dadurch, dass jede Zelle nur noch <i>eine</i> Größe trägt: die Abweichung.
+        </p>
+      </div>
+      <div class="ebenen">
+        <div><span>Ebene 1</span><span>Alles gleichzeitig, ohne Scrollen</span></div>
+        <div><span>Ebene 2</span><span>Feld anwählen: Detail ersetzt die Befundschlange</span></div>
+        <div><span>Ebene 3</span><span>Tagesblatt als Überlagerung</span></div>
+      </div>
+    </div>
+    <div class="schirm dunkel">
+      <div class="schirmleiste"><span class="punkte"><i></i><i></i><i></i></span> Leitstelle · 9. September 2026, 08:14</div>
+      <div id="mF" style="padding:14px 16px 18px"></div>
+    </div>
+  </article>
+</section>
+
+
+<section id="bewertung">
+  <div class="phase">Phase 3</div>
+  <h2>Bewertung im Vergleich</h2>
+  <p class="fuehrung">
+    Fünf Sterne heißt nicht „gut", sondern „für diesen Zweck stark". Kein Entwurf ist überall
+    stark, und das ist der Punkt: Die Kriterien ziehen in verschiedene Richtungen. Wer maximale
+    Dichte will, verliert Ruhe; wer filtert, verliert den Überblick über das Ungefilterte.
+  </p>
+
+  <div class="rollbar">
+  <table class="bewertung" style="min-width:880px">
+    <thead>
+      <tr>
+        <th style="width:230px">Kriterium</th>
+        <th>A<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Klassisch</span></th>
+        <th>B<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Filter-first</span></th>
+        <th>C<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Dashboard</span></th>
+        <th>D<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Zeitstrahl</span></th>
+        <th>E<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Mitarbeiter</span></th>
+        <th>F<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Leitstelle</span></th>
+      </tr>
+    </thead>
+    <tbody id="bewertungKoerper"></tbody>
+  </table>
+  </div>
+
+  <h4>Was die Tabelle nicht sagt</h4>
+  <p>
+    Die Punktsumme ist kein Ranking, und drei Dinge fehlen ihr. <b>Erstens der Aufwand:</b>
+    <b>A</b> steht mit 29 an vorletzter Stelle und ist trotzdem die zweite Empfehlung, weil
+    es der einzige Entwurf ist, der aus der vorhandenen Tabelle entsteht statt neben ihr.
+    <b>Zweitens die Rolle:</b> <b>F</b> ist stark, wenn jemand ständig davorsitzt — in einem
+    Pflegeheim, dessen Leitung vormittags plant und nachmittags auf Station steht, ist der
+    Einstieg wichtiger als die Dichte. <b>Drittens die Kombinierbarkeit:</b> <b>B</b> und
+    <b>E</b> liegen mit je 36 gleichauf und beantworten völlig verschiedene Fragen; sie
+    schließen einander nicht aus, sondern ergänzen sich. Und <b>C</b> gewinnt mit 37,
+    genügt aber allein nicht: Wer nur Kennzahlen sieht, kann nichts ändern.
+  </p>
+</section>
+
+<section id="empfehlung">
+  <div class="phase">Phase 4</div>
+  <h2>Empfehlung</h2>
+  <p class="fuehrung">
+    Drei Entwürfe lösen zusammen alle acht Befunde und widersprechen einander nicht — sie
+    beantworten verschiedene Fragen auf derselben Datengrundlage und lassen sich als drei
+    Ebenen desselben Wegs bauen.
+  </p>
+
+  <div class="empfehlung">
+    <h4>Erste Wahl</h4>
+    <div class="titel">C — Dashboard und Detail als neuer Einstieg</div>
+    <p>
+      Der Einstieg in die Planung ist heute ein Raster mit 240 gleich lauten Zellen. C
+      ersetzt ihn durch drei Stufen: sechs Kennzahlen, darunter der Monatsverlauf je
+      Dienstart, darunter der aufgeschlagene Tag. Das ist die einzige Variante, die die
+      Zwei-Sekunden-Anforderung ohne jede Interaktion erfüllt — und die Verlaufsstreifen
+      machen Befund 01 beim ersten Hinsehen sichtbar: Der Nachtstreifen steht dreißig Tage
+      lang über der Linie, der Frühstreifen darunter.
+    </p>
+    <div class="paar">
+      <div><h5>Löst</h5><ul>
+        <li>Befund 01 — strukturelle Schieflage wird zur Kopfzeile</li>
+        <li>Befund 03 — Befunde nach Art und Schwere getrennt gezählt</li>
+        <li>Befund 08 — Konten mit Median und Grenze statt als nackte Zahl</li>
+      </ul></div>
+      <div><h5>Kostet</h5><ul>
+        <li>Ein Klick mehr bis zur eigentlichen Änderung am Plan</li>
+        <li>Braucht eine bewusste Auswahl der sechs Kennzahlen je Branche</li>
+        <li>Ersetzt das Raster nicht — es muss darunter erreichbar bleiben</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="empfehlung">
+    <h4>Zweite Wahl</h4>
+    <div class="titel">A — die klassische Planung, aufgeräumt</div>
+    <p>
+      A ist der geringste Eingriff mit der größten Wirkung je Aufwand. Drei Änderungen
+      genügen: Die zwei Bedeutungsschichten bekommen eigene, benannte Bänder; die Zellen
+      tragen die Abweichung statt des Bruchs, wodurch eine Zeile aus dreißig Zellen erstmals
+      quer lesbar wird; rechts kommt eine Monatsspalte hinzu. Der Wohnbereichslauf als
+      durchgehender Balken zeigt zusätzlich den Versatz, den die Seitenspalte heute falsch
+      angibt. Wer das Raster gewohnt ist, findet sich sofort zurecht.
+    </p>
+    <div class="paar">
+      <div><h5>Löst</h5><ul>
+        <li>Befund 04 — die zwei Tabellen werden zu zwei Bändern</li>
+        <li>Befund 05 — Versatz wird sichtbar statt als Nullreihe behauptet</li>
+        <li>Befund 01 — Monatsspalte trägt die Summe je Dienstart</li>
+      </ul></div>
+      <div><h5>Kostet</h5><ul>
+        <li>Die absolute Kopfzahl weicht der Abweichung — sie muss im Hinweis bleiben</li>
+        <li>Bleibt eine Tagesansicht: Personen sind weiter nur über den Tag erreichbar</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="empfehlung">
+    <h4>Dritte Wahl</h4>
+    <div class="titel">B — Filter-first als Querschnitt über alle Bereiche</div>
+    <p>
+      B ist die einzige Variante, die Befund 07 löst: Die Trefferliste läuft quer über alle
+      fünf Wohnbereiche, ohne umzuschalten. Entscheidend ist, dass die Chips ihre Trefferzahl
+      vorab tragen — dadurch ist die Leiste selbst schon eine Auswertung, auch wenn niemand
+      klickt. Als eigene Ansicht neben dem Plan, nicht als dessen Ersatz.
+    </p>
+    <div class="paar">
+      <div><h5>Löst</h5><ul>
+        <li>Befund 07 — bereichsübergreifend ohne Umschalten</li>
+        <li>Befund 03 — Problemfilter mit Art und Schwere statt einem Schalter</li>
+        <li>Befund 02 — eine entduplizierte Liste, deren Zahl stimmt</li>
+      </ul></div>
+      <div><h5>Kostet</h5><ul>
+        <li>Zeigt nur, was als Befund modelliert ist — blinde Flecken bleiben blind</li>
+        <li>Ohne gespeicherte Sichten fängt man jeden Morgen von vorn an</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <h3>Was sich kombinieren lässt</h3>
+  <p>
+    Die drei sind keine Alternativen, sondern Ebenen: <b>C</b> als Startseite der Planung,
+    von dort ein Klick in <b>A</b> für den gewählten Monat, und <b>B</b> als dritter
+    Navigationspunkt für die bereichsübergreifende Suche. Vier Bauteile aus den übrigen
+    Entwürfen sind es wert, einzeln übernommen zu werden:
+  </p>
+  <ul style="max-width:74ch;font-size:15.5px;line-height:1.7">
+    <li><b>Aus D</b> die Wohnbereichsbahn als durchgehender Balken — sie gehört unter das
+      Raster von A und macht den Zyklus zum ersten Mal als Muster lesbar.</li>
+    <li><b>Aus E</b> der Monatsstreifen je Person und der Kontobalken gegen den Median.
+      Beides gehört in die vorhandene Personalliste und ersetzt dort die Qualifikationsspalte,
+      die laut Befund 06 ein Bit trägt.</li>
+    <li><b>Aus F</b> die nach Schwere sortierte Befundschlange — als rechte Spalte im Lagebild,
+      nicht als eigene Ansicht.</li>
+    <li><b>Aus B</b> die Chips mit vorab gezählten Treffern. Sie funktionieren auch als
+      Filterleiste über dem klassischen Raster.</li>
+  </ul>
+
+  <h3>Wovon abzuraten ist</h3>
+  <p>
+    <b>F als Hauptansicht.</b> Die Dichte ist beeindruckend und für eine besetzte Leitstelle
+    richtig — für eine Pflegedienstleitung, die zwischen zwei Terminen auf den Plan schaut,
+    ist sie eine Wand. Sie ist als Zusatzansicht für große Betriebe denkbar, nicht als
+    Ersatz des Einstiegs.
+  </p>
+  <p>
+    <b>D als Ersatz des Rasters.</b> Der Zeitstrahl ist zum Verstehen des Musters
+    unschlagbar und zum Ändern eines einzelnen Tages ungeeignet — ein Balken hat keine
+    Zelle, die man anklicken und umsetzen kann. Er gehört als Lesehilfe dazu, nicht als
+    Arbeitsfläche.
+  </p>
+
+  <div class="hinweis">
+    <b>Phase 5 steht aus.</b> Nichts hiervon ist umgesetzt; die bestehenden Ansichten,
+    Komponenten und Datenstrukturen sind unverändert. Diese Studie liegt als eigenständige
+    Datei unter <code>entwuerfe/</code> und ist mit der Anwendung nicht verbunden. Sobald
+    eine Richtung feststeht, folgt die Umsetzung — sinnvoll in der Reihenfolge A, dann C,
+    dann B, weil A den geringsten Eingriff hat und die Bauteile schafft, auf denen C aufsetzt.
+  </div>
+</section>
+
+</div>
+
+<script>
+/* Die Bewertung steht als Daten da, nicht als Auszeichnung — so bleibt sie
+   nachvollziehbar und die Summenzeile rechnet sich selbst. */
+const KRIT = [
+  ["Übersichtlichkeit",                 { A: 4, B: 4, C: 5, D: 4, E: 4, F: 2 }],
+  ["Informationsdichte",                { A: 4, B: 2, C: 3, D: 3, E: 4, F: 5 }],
+  ["Geschwindigkeit der Orientierung",  { A: 3, B: 3, C: 5, D: 4, E: 3, F: 4 }],
+  ["Bedienbarkeit",                     { A: 4, B: 5, C: 4, D: 2, E: 5, F: 3 }],
+  ["Filtermöglichkeiten",               { A: 3, B: 5, C: 3, D: 2, E: 4, F: 3 }],
+  ["Skalierbarkeit",                    { A: 3, B: 5, C: 5, D: 3, E: 4, F: 4 }],
+  ["Eignung für tägliche Planung",      { A: 4, B: 4, C: 5, D: 2, E: 3, F: 5 }],
+  ["Eignung für Jahresplanung",         { A: 2, B: 3, C: 3, D: 5, E: 4, F: 2 }],
+  ["Eignung für große Personalbestände",{ A: 2, B: 5, C: 4, D: 3, E: 5, F: 4 }],
+];
+const SP = ["A", "B", "C", "D", "E", "F"];
+const stern = (n) => `<span class="sterne" title="${n} von 5">${"★".repeat(n)}<span class="leer">${"★".repeat(5 - n)}</span></span>`;
+let hb = "";
+for (const [name, w] of KRIT) {
+  hb += `<tr><th>${name}</th>` + SP.map((s) => `<td>${stern(w[s])}</td>`).join("") + `</tr>`;
+}
+const summe = Object.fromEntries(SP.map((s) => [s, KRIT.reduce((a, [, w]) => a + w[s], 0)]));
+const best = Math.max(...Object.values(summe));
+hb += `<tr class="summe"><th>Summe von 45</th>` + SP.map((s) =>
+  `<td class="num" style="color:${summe[s] === best ? "var(--akzent)" : "inherit"}">${summe[s]}</td>`).join("") + `</tr>`;
+document.getElementById("bewertungKoerper").innerHTML = hb;
+</script>
+
+
+<script id="daten" type="application/json">{"stand":"2026-09-09","monat":"2026-09","betrieb":{"name":"Lindenhof Rollenprobe","branche":"pflege","bundesland":"HE","einheitLabel":"Wohnbereich"},"einheiten":[{"id":"e1","name":"Wohnbereich Nord","farbe":"#017070","versatzTage":0,"personen":15},{"id":"e2","name":"Wohnbereich Süd","farbe":"#017070","versatzTage":4,"personen":13},{"id":"e3","name":"Wohnbereich Ost","farbe":"#017070","versatzTage":8,"personen":13},{"id":"e4","name":"Wohnbereich West","farbe":"#017070","versatzTage":12,"personen":13},{"id":"e5","name":"Wohnbereich Park","farbe":"#017070","versatzTage":17,"personen":13}],"dienstarten":[{"id":"F","name":"Frühdienst","kurz":"F","start":"06:00","ende":"14:00","farbe":"#3C7C8C","mindest":{"mo_do":15,"fr":15,"sa":12,"so":12},"mindestQual":{"q1":7},"dauer":7.5},{"id":"S","name":"Spätdienst","kurz":"S","start":"14:00","ende":"22:00","farbe":"#A8621B","mindest":{"mo_do":13,"fr":13,"sa":11,"so":11},"mindestQual":{"q1":6},"dauer":7.5},{"id":"N","name":"Nachtdienst","kurz":"N","start":"22:00","ende":"06:00","farbe":"#43507E","mindest":{"mo_do":6,"fr":6,"sa":6,"so":6},"mindestQual":{"q1":3},"dauer":8}],"qualifikationen":[{"id":"q1","kurz":"PFK","name":"Pflegefachkraft","fachkraft":true,"grundlage":"§§ 1, 4 PflBG — Erlaubnis zum Führen der Berufsbezeichnung"},{"id":"q2","kurz":"BK","name":"Betreuungskraft § 43b","fachkraft":false,"grundlage":"§ 43b SGB XI"},{"id":"q3","kurz":"PA","name":"Pflegeassistenz","fachkraft":false,"grundlage":"Landesrecht — Bezeichnung und Umfang sind je Bundesland verschieden"},{"id":"q4","kurz":"EH","name":"Erste Hilfe","fachkraft":false,"grundlage":"Betrieblich — Umfang nach Gefährdungsbeurteilung (§ 5 ArbSchG, DGUV Vorschrift 1)"},{"id":"q5","kurz":"HYG","name":"Hygieneunterweisung","fachkraft":false,"grundlage":"§ 23 IfSG in Verbindung mit dem Hygieneplan der Einrichtung"},{"id":"q6","kurz":"MSG","name":"Masernschutz — Status","fachkraft":false,"grundlage":"§ 20 Abs. 8, 9 IfSG — nur das Vorliegen erfassen, keine Impfdaten"}],"zyklus":{"wochen":3,"tage":["F","F","F","F","F","-","S","S","S","S","S","-","N","N","N","N","N","-","-","-","-"],"anker":"2026-09-07"},"tage":[{"datum":"2026-09-01","dow":1,"we":false,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":"S","e5":null},"besetzung":{"F":{"a":13,"s":15,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":14,"s":6,"d":8,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":7,"ok":true}]}},"abwesend":0},{"datum":"2026-09-02","dow":2,"we":false,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":"S","e5":"N"},"besetzung":{"F":{"a":13,"s":15,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":27,"s":6,"d":21,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":13,"ok":true}]}},"abwesend":0},{"datum":"2026-09-03","dow":3,"we":false,"einheiten":{"e1":null,"e2":"F","e3":"F","e4":"S","e5":"N"},"besetzung":{"F":{"a":24,"s":15,"d":9,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":10,"ok":true}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":1},{"datum":"2026-09-04","dow":4,"we":false,"einheiten":{"e1":null,"e2":"F","e3":null,"e4":"S","e5":"N"},"besetzung":{"F":{"a":12,"s":15,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":5,"ok":false}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":1},{"datum":"2026-09-05","dow":5,"we":true,"einheiten":{"e1":null,"e2":"F","e3":"S","e4":"S","e5":"N"},"besetzung":{"F":{"a":12,"s":12,"d":0,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":5,"ok":false}]},"S":{"a":26,"s":11,"d":15,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":12,"ok":true}]},"N":{"a":14,"s":6,"d":8,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":7,"ok":true}]}},"abwesend":1},{"datum":"2026-09-06","dow":6,"we":true,"einheiten":{"e1":null,"e2":"F","e3":"S","e4":null,"e5":"N"},"besetzung":{"F":{"a":13,"s":12,"d":1,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":13,"s":11,"d":2,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":0},{"datum":"2026-09-07","dow":0,"we":false,"einheiten":{"e1":"F","e2":"F","e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":27,"s":15,"d":12,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":13,"ok":true}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":12,"s":6,"d":6,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":1},{"datum":"2026-09-08","dow":1,"we":false,"einheiten":{"e1":"F","e2":null,"e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":14,"s":15,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":7,"ist":7,"ok":true}]},"S":{"a":12,"s":13,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":11,"s":6,"d":5,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":4,"ok":true}]}},"abwesend":3},{"datum":"2026-09-09","dow":2,"we":false,"einheiten":{"e1":"F","e2":"S","e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":15,"s":15,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":8,"ok":true}]},"S":{"a":23,"s":13,"d":10,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":11,"ok":true}]},"N":{"a":11,"s":6,"d":5,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":4,"ok":true}]}},"abwesend":4},{"datum":"2026-09-10","dow":3,"we":false,"einheiten":{"e1":"F","e2":"S","e3":null,"e4":"N","e5":null},"besetzung":{"F":{"a":14,"s":15,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":7,"ist":7,"ok":true}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":11,"s":6,"d":5,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":4,"ok":true}]}},"abwesend":4},{"datum":"2026-09-11","dow":4,"we":false,"einheiten":{"e1":"F","e2":"S","e3":"N","e4":"N","e5":"F"},"besetzung":{"F":{"a":27,"s":15,"d":12,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":13,"ok":true}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":23,"s":6,"d":17,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":10,"ok":true}]}},"abwesend":3},{"datum":"2026-09-12","dow":5,"we":true,"einheiten":{"e1":null,"e2":"S","e3":"N","e4":null,"e5":"F"},"besetzung":{"F":{"a":12,"s":12,"d":0,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":5,"ok":false}]},"S":{"a":12,"s":11,"d":1,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":11,"s":6,"d":5,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":5},{"datum":"2026-09-13","dow":6,"we":true,"einheiten":{"e1":"S","e2":"S","e3":"N","e4":null,"e5":"F"},"besetzung":{"F":{"a":10,"s":12,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":4,"ok":false}]},"S":{"a":26,"s":11,"d":15,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":12,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":6},{"datum":"2026-09-14","dow":0,"we":false,"einheiten":{"e1":"S","e2":null,"e3":"N","e4":null,"e5":"F"},"besetzung":{"F":{"a":12,"s":15,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":4,"ok":false}]},"S":{"a":14,"s":13,"d":1,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":7,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":5},{"datum":"2026-09-15","dow":1,"we":false,"einheiten":{"e1":"S","e2":"N","e3":"N","e4":null,"e5":"F"},"besetzung":{"F":{"a":11,"s":15,"d":-4,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":4,"ok":false}]},"S":{"a":14,"s":13,"d":1,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":7,"ok":true}]},"N":{"a":23,"s":6,"d":17,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":10,"ok":true}]}},"abwesend":6},{"datum":"2026-09-16","dow":2,"we":false,"einheiten":{"e1":"S","e2":"N","e3":null,"e4":"F","e5":null},"besetzung":{"F":{"a":13,"s":15,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":14,"s":13,"d":1,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":7,"ok":true}]},"N":{"a":12,"s":6,"d":6,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":7},{"datum":"2026-09-17","dow":3,"we":false,"einheiten":{"e1":"S","e2":"N","e3":null,"e4":"F","e5":"S"},"besetzung":{"F":{"a":12,"s":15,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":24,"s":13,"d":11,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":10,"ok":true}]},"N":{"a":12,"s":6,"d":6,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":7},{"datum":"2026-09-18","dow":4,"we":false,"einheiten":{"e1":null,"e2":"N","e3":null,"e4":"F","e5":"S"},"besetzung":{"F":{"a":12,"s":15,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":11,"s":13,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":6,"ist":4,"ok":false}]},"N":{"a":12,"s":6,"d":6,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":6},{"datum":"2026-09-19","dow":5,"we":true,"einheiten":{"e1":"N","e2":"N","e3":null,"e4":"F","e5":"S"},"besetzung":{"F":{"a":11,"s":12,"d":-1,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":8,"s":11,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":6,"ist":3,"ok":false}]},"N":{"a":27,"s":6,"d":21,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":13,"ok":true}]}},"abwesend":9},{"datum":"2026-09-20","dow":6,"we":true,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":"F","e5":"S"},"besetzung":{"F":{"a":22,"s":12,"d":10,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":9,"ok":true}]},"S":{"a":8,"s":11,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":6,"ist":3,"ok":false}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":7,"ok":true}]}},"abwesend":10},{"datum":"2026-09-21","dow":0,"we":false,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":null,"e5":"S"},"besetzung":{"F":{"a":10,"s":15,"d":-5,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":3,"ok":false}]},"S":{"a":8,"s":13,"d":-5,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":6,"ist":3,"ok":false}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":7,"ok":true}]}},"abwesend":10},{"datum":"2026-09-22","dow":1,"we":false,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":"S","e5":null},"besetzung":{"F":{"a":10,"s":15,"d":-5,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":4,"ok":false}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":7,"ok":true}]}},"abwesend":8},{"datum":"2026-09-23","dow":2,"we":false,"einheiten":{"e1":"N","e2":null,"e3":"F","e4":"S","e5":"N"},"besetzung":{"F":{"a":12,"s":15,"d":-3,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":5,"ok":false}]},"S":{"a":12,"s":13,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":23,"s":6,"d":17,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":12,"ok":true}]}},"abwesend":6},{"datum":"2026-09-24","dow":3,"we":false,"einheiten":{"e1":null,"e2":"F","e3":"F","e4":"S","e5":"N"},"besetzung":{"F":{"a":25,"s":15,"d":10,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":11,"ok":true}]},"S":{"a":12,"s":13,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":10,"s":6,"d":4,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":6},{"datum":"2026-09-25","dow":4,"we":false,"einheiten":{"e1":null,"e2":"F","e3":null,"e4":"S","e5":"N"},"besetzung":{"F":{"a":13,"s":15,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":10,"s":6,"d":4,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":6},{"datum":"2026-09-26","dow":5,"we":true,"einheiten":{"e1":null,"e2":"F","e3":"S","e4":"S","e5":"N"},"besetzung":{"F":{"a":13,"s":12,"d":1,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":25,"s":11,"d":14,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":11,"ok":true}]},"N":{"a":10,"s":6,"d":4,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":5},{"datum":"2026-09-27","dow":6,"we":true,"einheiten":{"e1":null,"e2":"F","e3":"S","e4":null,"e5":"N"},"besetzung":{"F":{"a":13,"s":12,"d":1,"st":"warn","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":13,"s":11,"d":2,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":11,"s":6,"d":5,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":5,"ok":true}]}},"abwesend":2},{"datum":"2026-09-28","dow":0,"we":false,"einheiten":{"e1":"F","e2":"F","e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":27,"s":15,"d":12,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":7,"ist":13,"ok":true}]},"S":{"a":13,"s":13,"d":0,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":6,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":1},{"datum":"2026-09-29","dow":1,"we":false,"einheiten":{"e1":"F","e2":null,"e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":13,"s":15,"d":-2,"st":"danger","q":true,"ql":[{"qid":"q1","noetig":7,"ist":6,"ok":false}]},"S":{"a":14,"s":13,"d":1,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":7,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":1},{"datum":"2026-09-30","dow":2,"we":false,"einheiten":{"e1":"F","e2":"S","e3":"S","e4":"N","e5":null},"besetzung":{"F":{"a":14,"s":15,"d":-1,"st":"warn","q":false,"ql":[{"qid":"q1","noetig":7,"ist":7,"ok":true}]},"S":{"a":26,"s":13,"d":13,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":6,"ist":12,"ok":true}]},"N":{"a":13,"s":6,"d":7,"st":"ok","q":false,"ql":[{"qid":"q1","noetig":3,"ist":6,"ok":true}]}},"abwesend":1}],"personen":[{"id":"pOL","name":"Kowalski, Ruben","nachname":"Kowalski","vorname":"Ruben","funktion":"Pflegedienstleitung","rolle":"leitung","einheitId":"e1","wochenstunden":39,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","","","","","","","","","","","","","","","","","","","","","","","","","","","",""],"ist":0,"soll":171.6,"konto":-171.6,"naechte":0,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p0","name":"Adler, Anna","nachname":"Adler","vorname":"Anna","funktion":"Pflegefachkraft","rolle":"subplaner","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p1","name":"Huber, Bernd","nachname":"Huber","vorname":"Bernd","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p2","name":"Ortmann, Clara","nachname":"Ortmann","vorname":"Clara","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","N!","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":161.5,"soll":176,"konto":-14.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p3","name":"Adler, David","nachname":"Adler","vorname":"David","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p4","name":"Huber, Elif","nachname":"Huber","vorname":"Elif","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","N!","","","F","F","F"],"ist":161.5,"soll":176,"konto":-14.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p5","name":"Ortmann, Frank","nachname":"Ortmann","vorname":"Frank","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","S!","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p6","name":"Adler, Gesa","nachname":"Adler","vorname":"Gesa","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","*s","*s","","F","F","F"],"ist":169.5,"soll":176,"konto":-6.5,"naechte":7,"abwTage":2,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p7","name":"Huber, Hakan","nachname":"Huber","vorname":"Hakan","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F!","F!","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p8","name":"Ortmann, Ines","nachname":"Ortmann","vorname":"Ines","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p9","name":"Adler, Jonas","nachname":"Adler","vorname":"Jonas","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p10","name":"Huber, Katrin","nachname":"Huber","vorname":"Katrin","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","S!","N","","","","","F","F","F"],"ist":153,"soll":176,"konto":-23,"naechte":6,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p11","name":"Ortmann, Lars","nachname":"Ortmann","vorname":"Lars","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","*u","*u","*u","*u","*u","*u","","","","F","F","F"],"ist":161.5,"soll":176,"konto":-14.5,"naechte":2,"abwTage":6,"urlaubGenommen":4,"urlaubAnspruch":30,"urlaubRest":26},{"id":"p12","name":"Adler, Maja","nachname":"Adler","vorname":"Maja","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e1","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","!","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":176,"konto":-22.5,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p13","name":"Ibrahim, Nuri","nachname":"Ibrahim","vorname":"Nuri","funktion":"Pflegefachkraft","rolle":"subplaner","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p14","name":"Petrov, Olga","nachname":"Petrov","vorname":"Olga","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","F","*s","*s","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":161,"soll":176,"konto":-15,"naechte":5,"abwTage":2,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p15","name":"Böhm, Peter","nachname":"Böhm","vorname":"Peter","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","F","F","F","F","F","","F!","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p16","name":"Ibrahim, Quirin","nachname":"Ibrahim","vorname":"Quirin","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","!","F","F","F","F","","S","S","S","S","S","","N","N","N","!","N","","","","","F","F","F","F","F","","S"],"ist":144.5,"soll":176,"konto":-31.5,"naechte":4,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p17","name":"Petrov, Rana","nachname":"Petrov","vorname":"Rana","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","F","F","F","F","F","","S","S","S","S","*k","*k","*k","*k","*k","N","N","","","","","F","F","F","F","F","","S"],"ist":168.5,"soll":176,"konto":-7.5,"naechte":2,"abwTage":5,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p18","name":"Böhm, Sven","nachname":"Böhm","vorname":"Sven","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p19","name":"Ibrahim, Tuana","nachname":"Ibrahim","vorname":"Tuana","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p20","name":"Petrov, Uwe","nachname":"Petrov","vorname":"Uwe","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","*k","*k","*k","*k","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":169,"soll":176,"konto":-7,"naechte":4,"abwTage":4,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p21","name":"Böhm, Vera","nachname":"Böhm","vorname":"Vera","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p22","name":"Ibrahim, Wolf","nachname":"Ibrahim","vorname":"Wolf","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","!","S","S","S","S","S","F!","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":167.5,"soll":176,"konto":-8.5,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p23","name":"Petrov, Anna","nachname":"Petrov","vorname":"Anna","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p24","name":"Böhm, Bernd","nachname":"Böhm","vorname":"Bernd","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S"],"ist":160,"soll":176,"konto":-16,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p25","name":"Ibrahim, Clara","nachname":"Ibrahim","vorname":"Clara","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e2","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","","F","F","F","F","F","","S","S","S","S","S","","N","F!","N","N","N","","","","","F","F","F","F","F","","S"],"ist":159.5,"soll":176,"konto":-16.5,"naechte":4,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p26","name":"Quandt, David","nachname":"Quandt","vorname":"David","funktion":"Pflegefachkraft","rolle":"subplaner","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":175,"soll":176,"konto":-1,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p27","name":"Cordes, Elif","nachname":"Cordes","vorname":"Elif","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","*u","*u","*u","*u","*u","*u","F","F","F","","S","S","S","S","S"],"ist":208,"soll":176,"konto":32,"naechte":5,"abwTage":6,"urlaubGenommen":4,"urlaubAnspruch":30,"urlaubRest":26},{"id":"p28","name":"Jung, Frank","nachname":"Jung","vorname":"Frank","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","S","S","S","S"],"ist":218,"soll":176,"konto":42,"naechte":4,"abwTage":12,"urlaubGenommen":9,"urlaubAnspruch":30,"urlaubRest":21},{"id":"p29","name":"Quandt, Gesa","nachname":"Quandt","vorname":"Gesa","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","*u","*u","*u","*u","*u","F","F","","S","S","S","S","S"],"ist":192.5,"soll":176,"konto":16.5,"naechte":5,"abwTage":5,"urlaubGenommen":3,"urlaubAnspruch":30,"urlaubRest":27},{"id":"p30","name":"Cordes, Hakan","nachname":"Cordes","vorname":"Hakan","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","*a","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":167.5,"soll":176,"konto":-8.5,"naechte":5,"abwTage":1,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p31","name":"Jung, Ines","nachname":"Jung","vorname":"Ines","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F!","F","F","F","","S","S","S","S","S"],"ist":175,"soll":176,"konto":-1,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p32","name":"Quandt, Jonas","nachname":"Quandt","vorname":"Jonas","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":175,"soll":176,"konto":-1,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p33","name":"Cordes, Katrin","nachname":"Cordes","vorname":"Katrin","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":175,"soll":176,"konto":-1,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p34","name":"Jung, Lars","nachname":"Jung","vorname":"Lars","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","*k","*k","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":183.5,"soll":176,"konto":7.5,"naechte":5,"abwTage":2,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p35","name":"Quandt, Maja","nachname":"Quandt","vorname":"Maja","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","N!","F","F","","S","S","S","S","S"],"ist":175.5,"soll":176,"konto":-0.5,"naechte":6,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p36","name":"Cordes, Nuri","nachname":"Cordes","vorname":"Nuri","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","S","","N","!","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":167,"soll":176,"konto":-9,"naechte":4,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p37","name":"Jung, Olga","nachname":"Jung","vorname":"Olga","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","*k","*k","*k","*k","*k","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":184,"soll":176,"konto":8,"naechte":3,"abwTage":5,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p38","name":"Quandt, Peter","nachname":"Quandt","vorname":"Peter","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e3","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S"],"ist":175,"soll":176,"konto":-1,"naechte":5,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p39","name":"Dreyer, Quirin","nachname":"Dreyer","vorname":"Quirin","funktion":"Pflegefachkraft","rolle":"subplaner","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","N","*k","*k","*k","*k","*k","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":184.5,"soll":176,"konto":8.5,"naechte":4,"abwTage":5,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p40","name":"Kaya, Rana","nachname":"Kaya","vorname":"Rana","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p41","name":"Roth, Sven","nachname":"Roth","vorname":"Sven","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","*u","*u","*u","*u","*u","*u","*u","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":192.5,"soll":176,"konto":16.5,"naechte":3,"abwTage":7,"urlaubGenommen":5,"urlaubAnspruch":30,"urlaubRest":25},{"id":"p42","name":"Dreyer, Tuana","nachname":"Dreyer","vorname":"Tuana","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p43","name":"Kaya, Uwe","nachname":"Kaya","vorname":"Uwe","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p44","name":"Roth, Vera","nachname":"Roth","vorname":"Vera","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p45","name":"Dreyer, Wolf","nachname":"Dreyer","vorname":"Wolf","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S!","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p46","name":"Kaya, Anna","nachname":"Kaya","vorname":"Anna","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","N!","F","","S","S","S","S","S","","N","N","N"],"ist":177,"soll":176,"konto":1,"naechte":9,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p47","name":"Roth, Bernd","nachname":"Roth","vorname":"Bernd","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p48","name":"Dreyer, Clara","nachname":"Dreyer","vorname":"Clara","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p49","name":"Kaya, David","nachname":"Kaya","vorname":"David","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","S","S","","N","N","N"],"ist":212.5,"soll":176,"konto":36.5,"naechte":8,"abwTage":12,"urlaubGenommen":9,"urlaubAnspruch":30,"urlaubRest":21},{"id":"p50","name":"Roth, Elif","nachname":"Roth","vorname":"Elif","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p51","name":"Dreyer, Frank","nachname":"Dreyer","vorname":"Frank","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e4","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N"],"ist":176.5,"soll":176,"konto":0.5,"naechte":8,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p52","name":"Lorenz, Gesa","nachname":"Lorenz","vorname":"Gesa","funktion":"Pflegefachkraft","rolle":"subplaner","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","N","N","N","N","N","","",""],"ist":175.5,"soll":176,"konto":-0.5,"naechte":10,"abwTage":11,"urlaubGenommen":7,"urlaubAnspruch":30,"urlaubRest":23},{"id":"p53","name":"Schmidt, Hakan","nachname":"Schmidt","vorname":"Hakan","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","",""],"ist":155,"soll":176,"konto":-21,"naechte":10,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p54","name":"Engel, Ines","nachname":"Engel","vorname":"Ines","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","*u","*u","*u","*u","*u","*u","*u","*u","*u","","",""],"ist":164.5,"soll":176,"konto":-11.5,"naechte":5,"abwTage":9,"urlaubGenommen":5,"urlaubAnspruch":30,"urlaubRest":25},{"id":"p55","name":"Lorenz, Jonas","nachname":"Lorenz","vorname":"Jonas","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","*a","N","N","","",""],"ist":147,"soll":176,"konto":-29,"naechte":9,"abwTage":1,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p56","name":"Schmidt, Katrin","nachname":"Schmidt","vorname":"Katrin","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","F","*k","*k","*k","*k","*k","S","S","S","S","","N","N","N","N","N","","",""],"ist":165,"soll":176,"konto":-11,"naechte":10,"abwTage":5,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p57","name":"Engel, Lars","nachname":"Engel","vorname":"Lars","funktion":"Pflegefachkraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","*u","*u","*u","*u","*u","*u","","N","N","N","N","N","","",""],"ist":165.5,"soll":176,"konto":-10.5,"naechte":10,"abwTage":6,"urlaubGenommen":4,"urlaubAnspruch":30,"urlaubRest":26},{"id":"p58","name":"Lorenz, Maja","nachname":"Lorenz","vorname":"Maja","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","",""],"ist":155,"soll":176,"konto":-21,"naechte":10,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p59","name":"Schmidt, Nuri","nachname":"Schmidt","vorname":"Nuri","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","",""],"ist":155,"soll":176,"konto":-21,"naechte":10,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p60","name":"Engel, Olga","nachname":"Engel","vorname":"Olga","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","S!","F","F!","N!","S","S","S","S","S","","N","N","N","N","N","","",""],"ist":163,"soll":176,"konto":-13,"naechte":11,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p61","name":"Lorenz, Peter","nachname":"Lorenz","vorname":"Peter","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F!","F","","S","S","S","S","S","","N","N","N","N","N","","",""],"ist":155,"soll":176,"konto":-21,"naechte":10,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p62","name":"Schmidt, Quirin","nachname":"Schmidt","vorname":"Quirin","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","!","S","S","","N","N","N","N","N","","",""],"ist":147.5,"soll":176,"konto":-28.5,"naechte":10,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30},{"id":"p63","name":"Engel, Rana","nachname":"Engel","vorname":"Rana","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","*u","*u","*u","*u","*u","*u","*u","*u","N","","",""],"ist":164.5,"soll":176,"konto":-11.5,"naechte":6,"abwTage":8,"urlaubGenommen":5,"urlaubAnspruch":30,"urlaubRest":25},{"id":"p64","name":"Lorenz, Sven","nachname":"Lorenz","vorname":"Sven","funktion":"Pflegehilfskraft","rolle":"mitarbeiter","einheitId":"e5","wochenstunden":40,"quals":["q2","q3","q4"],"fachkraft":false,"verlauf":["","N","N","N","N","N","","","","","F","F","F","F","F","","S","S","S","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u","*u"],"ist":188,"soll":176,"konto":12,"naechte":5,"abwTage":11,"urlaubGenommen":10,"urlaubAnspruch":30,"urlaubRest":20},{"id":"pBR","name":"Rat, Britta","nachname":"Rat","vorname":"Britta","funktion":"Pflegefachkraft","rolle":"betriebsrat","einheitId":"e1","wochenstunden":39,"quals":["q1","q2","q3","q4","q5","q6"],"fachkraft":true,"verlauf":["N","N","","","","","F","F","F","F","F","","S","S","S","S","S","","N","N","N","N","N","","","","","F","F","F"],"ist":153.5,"soll":171.6,"konto":-18.1,"naechte":7,"abwTage":0,"urlaubGenommen":0,"urlaubAnspruch":30,"urlaubRest":30}],"abwesenheiten":[{"id":"a_u0","personId":"p27","art":"urlaub","von":"2026-09-16","bis":"2026-09-21","notiz":"","person":"Cordes, Elif"},{"id":"a_u1","personId":"p41","art":"urlaub","von":"2026-09-07","bis":"2026-09-13","notiz":"","person":"Roth, Sven"},{"id":"a_u2","personId":"p28","art":"urlaub","von":"2026-09-15","bis":"2026-09-26","notiz":"","person":"Jung, Frank"},{"id":"a_u3","personId":"p54","art":"urlaub","von":"2026-09-19","bis":"2026-09-27","notiz":"","person":"Engel, Ines"},{"id":"a_u4","personId":"p63","art":"urlaub","von":"2026-09-19","bis":"2026-09-26","notiz":"","person":"Engel, Rana"},{"id":"a_u5","personId":"p57","art":"urlaub","von":"2026-09-16","bis":"2026-09-21","notiz":"","person":"Engel, Lars"},{"id":"a_u6","personId":"p49","art":"urlaub","von":"2026-09-13","bis":"2026-09-24","notiz":"","person":"Kaya, David"},{"id":"a_u7","personId":"p29","art":"urlaub","von":"2026-09-18","bis":"2026-09-22","notiz":"","person":"Quandt, Gesa"},{"id":"a_u8","personId":"p64","art":"urlaub","von":"2026-09-20","bis":"2026-10-02","notiz":"","person":"Lorenz, Sven"},{"id":"a_u9","personId":"p52","art":"urlaub","von":"2026-09-12","bis":"2026-09-22","notiz":"","person":"Lorenz, Gesa"},{"id":"a_u10","personId":"p11","art":"urlaub","von":"2026-09-19","bis":"2026-09-24","notiz":"","person":"Ortmann, Lars"},{"id":"a_k0","personId":"p39","art":"krank","von":"2026-09-08","bis":"2026-09-12","notiz":"","person":"Dreyer, Quirin"},{"id":"a_k1","personId":"p20","art":"krank","von":"2026-09-12","bis":"2026-09-15","notiz":"","person":"Petrov, Uwe"},{"id":"a_k2","personId":"p56","art":"krank","von":"2026-09-13","bis":"2026-09-17","notiz":"","person":"Schmidt, Katrin"},{"id":"a_k3","personId":"p34","art":"krank","von":"2026-09-09","bis":"2026-09-10","notiz":"","person":"Jung, Lars"},{"id":"a_k4","personId":"p17","art":"krank","von":"2026-09-13","bis":"2026-09-17","notiz":"","person":"Petrov, Rana"},{"id":"a_k5","personId":"p37","art":"krank","von":"2026-09-08","bis":"2026-09-12","notiz":"","person":"Jung, Olga"},{"id":"a_s0","personId":"p6","art":"schulung","von":"2026-09-25","bis":"2026-09-26","notiz":"","person":"Adler, Gesa"},{"id":"a_s1","personId":"p14","art":"schulung","von":"2026-09-04","bis":"2026-09-05","notiz":"","person":"Petrov, Olga"},{"id":"a_s2","personId":"p30","art":"ausgleich","von":"2026-09-03","bis":"2026-09-03","notiz":"","person":"Cordes, Hakan"},{"id":"a_s3","personId":"p55","art":"ausgleich","von":"2026-09-25","bis":"2026-09-25","notiz":"","person":"Lorenz, Jonas"}],"einstellungen":{"wochenstunden":40,"sollWochenstunden":40,"maxUrlaubJeEinheit":2,"ausgleichGrenze":40,"ausgleichFristMonate":6,"ruhezeit":11,"maxFolge":6,"maxNachtFolge":4,"urlaubsanspruch":30,"ausgleichWochen":24,"maxTagesstunden":10,"pausen":{"ab6h":30,"ab9h":45},"quote":{"tag":0.4,"nacht":0.5},"pakete":["pflege"]},"befunde":[{"datum":"2026-09-01","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"13 von 15 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-01","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-02","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"13 von 15 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-02","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-04","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"12 von 15 — 3 fehlen","dienstId":"F"},{"datum":"2026-09-04","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"5 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-05","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"5 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-06","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p52","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Gesa — Grenze 4","personId":"p52"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p53","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Hakan — Grenze 4","personId":"p53"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p54","titel":"5 Nachtdienste in Folge","detail":"Engel, Ines — Grenze 4","personId":"p54"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p55","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Jonas — Grenze 4","personId":"p55"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p56","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Katrin — Grenze 4","personId":"p56"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p57","titel":"5 Nachtdienste in Folge","detail":"Engel, Lars — Grenze 4","personId":"p57"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p58","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Maja — Grenze 4","personId":"p58"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p59","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Nuri — Grenze 4","personId":"p59"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p60","titel":"5 Nachtdienste in Folge","detail":"Engel, Olga — Grenze 4","personId":"p60"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p61","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Peter — Grenze 4","personId":"p61"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p62","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Quirin — Grenze 4","personId":"p62"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p63","titel":"5 Nachtdienste in Folge","detail":"Engel, Rana — Grenze 4","personId":"p63"},{"datum":"2026-09-06","art":"nachtfolge","schwere":"mittel","bezug":"p64","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Sven — Grenze 4","personId":"p64"},{"datum":"2026-09-08","art":"unterbesetzung","schwere":"mittel","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"14 von 15 — 1 fehlen","dienstId":"F"},{"datum":"2026-09-08","art":"unterbesetzung","schwere":"mittel","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"12 von 13 — 1 fehlen","dienstId":"S"},{"datum":"2026-09-10","art":"unterbesetzung","schwere":"mittel","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"14 von 15 — 1 fehlen","dienstId":"F"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p40","titel":"5 Nachtdienste in Folge","detail":"Kaya, Rana — Grenze 4","personId":"p40"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p42","titel":"5 Nachtdienste in Folge","detail":"Dreyer, Tuana — Grenze 4","personId":"p42"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p43","titel":"5 Nachtdienste in Folge","detail":"Kaya, Uwe — Grenze 4","personId":"p43"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p44","titel":"5 Nachtdienste in Folge","detail":"Roth, Vera — Grenze 4","personId":"p44"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p45","titel":"5 Nachtdienste in Folge","detail":"Dreyer, Wolf — Grenze 4","personId":"p45"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p46","titel":"5 Nachtdienste in Folge","detail":"Kaya, Anna — Grenze 4","personId":"p46"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p47","titel":"5 Nachtdienste in Folge","detail":"Roth, Bernd — Grenze 4","personId":"p47"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p48","titel":"5 Nachtdienste in Folge","detail":"Dreyer, Clara — Grenze 4","personId":"p48"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p49","titel":"5 Nachtdienste in Folge","detail":"Kaya, David — Grenze 4","personId":"p49"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p50","titel":"5 Nachtdienste in Folge","detail":"Roth, Elif — Grenze 4","personId":"p50"},{"datum":"2026-09-11","art":"nachtfolge","schwere":"mittel","bezug":"p51","titel":"5 Nachtdienste in Folge","detail":"Dreyer, Frank — Grenze 4","personId":"p51"},{"datum":"2026-09-12","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"5 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-13","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"10 von 12 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-13","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"4 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-14","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"12 von 15 — 3 fehlen","dienstId":"F"},{"datum":"2026-09-14","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"4 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-14","art":"ruhezeit","schwere":"hoch","bezug":"p22","titel":"Ruhezeit unterschritten","detail":"Ibrahim, Wolf — 8 h statt 11 h (S → F)","personId":"p22"},{"datum":"2026-09-14","art":"ruhezeit","schwere":"hoch","bezug":"p60","titel":"Ruhezeit unterschritten","detail":"Engel, Olga — 8 h statt 11 h (S → F)","personId":"p60"},{"datum":"2026-09-15","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"11 von 15 — 4 fehlen","dienstId":"F"},{"datum":"2026-09-15","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"4 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-15","art":"folge","schwere":"hoch","bezug":"p22","titel":"7 Dienste in Folge","detail":"Ibrahim, Wolf — Grenze 6","personId":"p22"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p26","titel":"5 Nachtdienste in Folge","detail":"Quandt, David — Grenze 4","personId":"p26"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p27","titel":"5 Nachtdienste in Folge","detail":"Cordes, Elif — Grenze 4","personId":"p27"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p29","titel":"5 Nachtdienste in Folge","detail":"Quandt, Gesa — Grenze 4","personId":"p29"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p30","titel":"5 Nachtdienste in Folge","detail":"Cordes, Hakan — Grenze 4","personId":"p30"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p31","titel":"5 Nachtdienste in Folge","detail":"Jung, Ines — Grenze 4","personId":"p31"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p32","titel":"5 Nachtdienste in Folge","detail":"Quandt, Jonas — Grenze 4","personId":"p32"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p33","titel":"5 Nachtdienste in Folge","detail":"Cordes, Katrin — Grenze 4","personId":"p33"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p34","titel":"5 Nachtdienste in Folge","detail":"Jung, Lars — Grenze 4","personId":"p34"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p35","titel":"5 Nachtdienste in Folge","detail":"Quandt, Maja — Grenze 4","personId":"p35"},{"datum":"2026-09-15","art":"nachtfolge","schwere":"mittel","bezug":"p38","titel":"5 Nachtdienste in Folge","detail":"Quandt, Peter — Grenze 4","personId":"p38"},{"datum":"2026-09-16","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"13 von 15 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-16","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-16","art":"ruhezeit","schwere":"hoch","bezug":"p25","titel":"Ruhezeit unterschritten","detail":"Ibrahim, Clara — 0 h statt 11 h (N → F)","personId":"p25"},{"datum":"2026-09-17","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"12 von 15 — 3 fehlen","dienstId":"F"},{"datum":"2026-09-17","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-17","art":"folge","schwere":"hoch","bezug":"p60","titel":"7 Dienste in Folge","detail":"Engel, Olga — Grenze 6","personId":"p60"},{"datum":"2026-09-17","art":"ruhezeit","schwere":"hoch","bezug":"p60","titel":"Ruhezeit unterschritten","detail":"Engel, Olga — 8 h statt 11 h (N → S)","personId":"p60"},{"datum":"2026-09-18","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"12 von 15 — 3 fehlen","dienstId":"F"},{"datum":"2026-09-18","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-18","art":"unterbesetzung","schwere":"hoch","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"11 von 13 — 2 fehlen","dienstId":"S"},{"datum":"2026-09-18","art":"quote","schwere":"hoch","bezug":"S|q1","titel":"Spätdienst: Pflegefachkraft fehlt","detail":"4 von 6 — § 15 Abs. 1 WTG-PersVO","dienstId":"S"},{"datum":"2026-09-18","art":"urlaub","schwere":"mittel","bezug":"e3","titel":"Wohnbereich Ost: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e3"},{"datum":"2026-09-19","art":"unterbesetzung","schwere":"mittel","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"11 von 12 — 1 fehlen","dienstId":"F"},{"datum":"2026-09-19","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-19","art":"unterbesetzung","schwere":"hoch","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"8 von 11 — 3 fehlen","dienstId":"S"},{"datum":"2026-09-19","art":"quote","schwere":"hoch","bezug":"S|q1","titel":"Spätdienst: Pflegefachkraft fehlt","detail":"3 von 6 — § 15 Abs. 1 WTG-PersVO","dienstId":"S"},{"datum":"2026-09-19","art":"urlaub","schwere":"mittel","bezug":"e3","titel":"Wohnbereich Ost: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e3"},{"datum":"2026-09-19","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 4 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p13","titel":"5 Nachtdienste in Folge","detail":"Ibrahim, Nuri — Grenze 4","personId":"p13"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p14","titel":"5 Nachtdienste in Folge","detail":"Petrov, Olga — Grenze 4","personId":"p14"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p15","titel":"5 Nachtdienste in Folge","detail":"Böhm, Peter — Grenze 4","personId":"p15"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p18","titel":"5 Nachtdienste in Folge","detail":"Böhm, Sven — Grenze 4","personId":"p18"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p19","titel":"5 Nachtdienste in Folge","detail":"Ibrahim, Tuana — Grenze 4","personId":"p19"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p21","titel":"5 Nachtdienste in Folge","detail":"Böhm, Vera — Grenze 4","personId":"p21"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p22","titel":"5 Nachtdienste in Folge","detail":"Ibrahim, Wolf — Grenze 4","personId":"p22"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p23","titel":"5 Nachtdienste in Folge","detail":"Petrov, Anna — Grenze 4","personId":"p23"},{"datum":"2026-09-19","art":"nachtfolge","schwere":"mittel","bezug":"p24","titel":"5 Nachtdienste in Folge","detail":"Böhm, Bernd — Grenze 4","personId":"p24"},{"datum":"2026-09-20","art":"unterbesetzung","schwere":"hoch","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"8 von 11 — 3 fehlen","dienstId":"S"},{"datum":"2026-09-20","art":"quote","schwere":"hoch","bezug":"S|q1","titel":"Spätdienst: Pflegefachkraft fehlt","detail":"3 von 6 — § 15 Abs. 1 WTG-PersVO","dienstId":"S"},{"datum":"2026-09-20","art":"urlaub","schwere":"mittel","bezug":"e3","titel":"Wohnbereich Ost: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e3"},{"datum":"2026-09-20","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 5 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-20","art":"ruhezeit","schwere":"hoch","bezug":"p46","titel":"Ruhezeit unterschritten","detail":"Kaya, Anna — 0 h statt 11 h (N → F)","personId":"p46"},{"datum":"2026-09-21","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"10 von 15 — 5 fehlen","dienstId":"F"},{"datum":"2026-09-21","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"3 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-21","art":"unterbesetzung","schwere":"hoch","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"8 von 13 — 5 fehlen","dienstId":"S"},{"datum":"2026-09-21","art":"quote","schwere":"hoch","bezug":"S|q1","titel":"Spätdienst: Pflegefachkraft fehlt","detail":"3 von 6 — § 15 Abs. 1 WTG-PersVO","dienstId":"S"},{"datum":"2026-09-21","art":"urlaub","schwere":"mittel","bezug":"e3","titel":"Wohnbereich Ost: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e3"},{"datum":"2026-09-21","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 5 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-22","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"10 von 15 — 5 fehlen","dienstId":"F"},{"datum":"2026-09-22","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"4 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-22","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 4 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-22","art":"ruhezeit","schwere":"hoch","bezug":"p10","titel":"Ruhezeit unterschritten","detail":"Huber, Katrin — 8 h statt 11 h (N → S)","personId":"p10"},{"datum":"2026-09-23","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"12 von 15 — 3 fehlen","dienstId":"F"},{"datum":"2026-09-23","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"5 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-23","art":"unterbesetzung","schwere":"mittel","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"12 von 13 — 1 fehlen","dienstId":"S"},{"datum":"2026-09-23","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p0","titel":"5 Nachtdienste in Folge","detail":"Adler, Anna — Grenze 4","personId":"p0"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p1","titel":"5 Nachtdienste in Folge","detail":"Huber, Bernd — Grenze 4","personId":"p1"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p2","titel":"5 Nachtdienste in Folge","detail":"Ortmann, Clara — Grenze 4","personId":"p2"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p3","titel":"5 Nachtdienste in Folge","detail":"Adler, David — Grenze 4","personId":"p3"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p4","titel":"5 Nachtdienste in Folge","detail":"Huber, Elif — Grenze 4","personId":"p4"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p5","titel":"5 Nachtdienste in Folge","detail":"Ortmann, Frank — Grenze 4","personId":"p5"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p6","titel":"5 Nachtdienste in Folge","detail":"Adler, Gesa — Grenze 4","personId":"p6"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p7","titel":"5 Nachtdienste in Folge","detail":"Huber, Hakan — Grenze 4","personId":"p7"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p8","titel":"5 Nachtdienste in Folge","detail":"Ortmann, Ines — Grenze 4","personId":"p8"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p9","titel":"5 Nachtdienste in Folge","detail":"Adler, Jonas — Grenze 4","personId":"p9"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"p12","titel":"5 Nachtdienste in Folge","detail":"Adler, Maja — Grenze 4","personId":"p12"},{"datum":"2026-09-23","art":"ruhezeit","schwere":"hoch","bezug":"p35","titel":"Ruhezeit unterschritten","detail":"Quandt, Maja — 0 h statt 11 h (N → F)","personId":"p35"},{"datum":"2026-09-23","art":"nachtfolge","schwere":"mittel","bezug":"pBR","titel":"5 Nachtdienste in Folge","detail":"Rat, Britta — Grenze 4","personId":"pBR"},{"datum":"2026-09-24","art":"unterbesetzung","schwere":"mittel","bezug":"S","titel":"Spätdienst unterbesetzt","detail":"12 von 13 — 1 fehlen","dienstId":"S"},{"datum":"2026-09-24","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-25","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"13 von 15 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-25","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-25","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-26","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-26","art":"urlaub","schwere":"mittel","bezug":"e5","titel":"Wohnbereich Park: 3 gleichzeitig im Urlaub","detail":"Grenze 2","einheitId":"e5"},{"datum":"2026-09-27","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p52","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Gesa — Grenze 4","personId":"p52"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p53","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Hakan — Grenze 4","personId":"p53"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p56","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Katrin — Grenze 4","personId":"p56"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p57","titel":"5 Nachtdienste in Folge","detail":"Engel, Lars — Grenze 4","personId":"p57"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p58","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Maja — Grenze 4","personId":"p58"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p59","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Nuri — Grenze 4","personId":"p59"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p60","titel":"5 Nachtdienste in Folge","detail":"Engel, Olga — Grenze 4","personId":"p60"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p61","titel":"5 Nachtdienste in Folge","detail":"Lorenz, Peter — Grenze 4","personId":"p61"},{"datum":"2026-09-27","art":"nachtfolge","schwere":"mittel","bezug":"p62","titel":"5 Nachtdienste in Folge","detail":"Schmidt, Quirin — Grenze 4","personId":"p62"},{"datum":"2026-09-29","art":"unterbesetzung","schwere":"hoch","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"13 von 15 — 2 fehlen","dienstId":"F"},{"datum":"2026-09-29","art":"quote","schwere":"hoch","bezug":"F|q1","titel":"Frühdienst: Pflegefachkraft fehlt","detail":"6 von 7 — § 15 Abs. 1 WTG-PersVO","dienstId":"F"},{"datum":"2026-09-30","art":"unterbesetzung","schwere":"mittel","bezug":"F","titel":"Frühdienst unterbesetzt","detail":"14 von 15 — 1 fehlen","dienstId":"F"},{"datum":"2026-09-30","art":"ruhezeit","schwere":"hoch","bezug":"p5","titel":"Ruhezeit unterschritten","detail":"Ortmann, Frank — 8 h statt 11 h (S → F)","personId":"p5"}]}</script>
+<script>
+/* ==========================================================================
+   Die Entwürfe rechnen mit dem echten Bestand eines Prüfbetriebs:
+   fünf Wohnbereiche, 67 Personen, September 2026. Die Besetzungswerte
+   wurden gegen die laufende Anwendung geprüft — 90 von 90 identisch.
+   ========================================================================== */
+const D = JSON.parse(document.getElementById("daten").textContent);
+const DOW = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MON = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+const HEUTE = D.stand;
+const iHeute = D.tage.findIndex((t) => t.datum === HEUTE);
+const DA = Object.fromEntries(D.dienstarten.map((d) => [d.id, d]));
+const EH = Object.fromEntries(D.einheiten.map((e) => [e.id, e]));
+const P = Object.fromEntries(D.personen.map((p) => [p.id, p]));
+const n1 = (x) => (Math.round(x * 10) / 10).toLocaleString("de-DE");
+const sgn = (x) => (x > 0 ? "+" : x < 0 ? "−" : "±") + n1(Math.abs(x));
+const tagKurz = (iso) => `${Number(iso.slice(8))}.${iso.slice(5, 7)}.`;
+const el = (h) => { const t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstElementChild; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* Kennzahlen, die mehrere Entwürfe teilen */
+const bilanz = Object.fromEntries(D.dienstarten.map((da) => {
+  const v = D.tage.map((t) => t.besetzung[da.id]);
+  return [da.id, {
+    summe: v.reduce((s, x) => s + x.d, 0),
+    unter: v.filter((x) => x.d < 0).length,
+    quote: v.filter((x) => x.q).length,
+    mittel: v.reduce((s, x) => s + x.a, 0) / v.length,
+    sollMittel: v.reduce((s, x) => s + x.s, 0) / v.length,
+  }];
+}));
+const konten = D.personen.map((p) => p.konto).sort((a, b) => a - b);
+const median = konten[Math.floor(konten.length / 2)];
+const spanne = Math.max(Math.abs(konten[0]), Math.abs(konten[konten.length - 1]));
+const ART = {
+  unterbesetzung: { label: "Unterbesetzung", ton: "gefahr" },
+  quote: { label: "Fachkraftquote", ton: "gefahr" },
+  ruhezeit: { label: "Ruhezeit", ton: "gefahr" },
+  folge: { label: "Dienste in Folge", ton: "warn" },
+  nachtfolge: { label: "Nachtdienste in Folge", ton: "warn" },
+  urlaub: { label: "Urlaubshäufung", ton: "warn" },
+};
+const jeArt = {};
+for (const b of D.befunde) (jeArt[b.art] ||= []).push(b);
+
+/* Kopfzeilen der Grundlagentabelle */
+document.getElementById("g-betrieb").textContent = `${D.betrieb.name} · ${D.einheiten.length} Wohnbereiche`;
+document.getElementById("g-monat").textContent = `${MON[8]} 2026 · 30 Tage`;
+document.getElementById("g-umfang").textContent = `${D.personen.length} Personen · ${D.dienstarten.length} Dienstarten`;
+document.getElementById("g-befunde").textContent = `${D.befunde.length} entdupliziert`;
+
+/* Ein Dienstsignet */
+const dz = (v) => {
+  if (!v) return '<span class="dz frei">·</span>';
+  if (v.startsWith("*")) {
+    const k = v[1] === "k" ? "abwk" : "abw";
+    return `<span class="dz ${k}">${v[1].toUpperCase()}</span>`;
+  }
+  const id = v.replace("!", "");
+  return `<span class="dz ${id}">${id}</span>${v.includes("!") ? '<span style="color:var(--warn);font-weight:700">·</span>' : ""}`;
+};
+
+/* ========================================================================
+   A — Optimierte klassische Planung
+   ======================================================================== */
+function bauA(ziel) {
+  const T = D.tage;
+  let h = `
+  <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+    <h5 class="titel" style="margin:0">September 2026</h5>
+    <span class="unter">${esc(D.betrieb.name)} · ${D.einheiten.length} Wohnbereiche · ${D.personen.length} Personen</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="knopf still">Aushang</button>
+      <button class="knopf">Mehrfach ändern</button>
+      <button class="knopf stark">Planungsassistent</button>
+    </span>
+  </div>
+
+  <!-- Die Monatsbilanz zuerst: sie beantwortet Befund 01 vor dem Raster. -->
+  <div class="karte" style="padding:13px 16px;margin-bottom:12px;display:flex;gap:26px;flex-wrap:wrap;align-items:center">
+    <span class="lab">Monatsbilanz</span>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    const ton = b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : b.unter ? "var(--warn)" : "var(--ok)";
+    h += `<div style="display:flex;align-items:baseline;gap:9px">
+      <span class="dz ${da.id}">${da.kurz}</span>
+      <span style="font:600 17px/1 Inter;font-variant-numeric:tabular-nums;color:${ton}">${sgn(b.summe)}</span>
+      <span style="font-size:11.5px;color:var(--dim)">Personentage · ${b.unter ? `${b.unter} Tage unter Soll` : "nie unter Soll"}${b.quote ? ` · ${b.quote}× Quote` : ""}</span>
+    </div>`;
+  }
+  h += `<span style="margin-left:auto;font-size:11.5px;color:var(--aus);max-width:30ch;line-height:1.35">
+      Der Nachtdienst trägt den Überschuss, den der Frühdienst braucht.</span>
+  </div>
+
+  <div class="karte rollbar">
+  <table class="raster" style="width:100%;min-width:1080px">
+    <thead>
+      <tr>
+        <th class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)"></th>`;
+  T.forEach((t, i) => {
+    h += `<th class="tagkopf ${t.we ? "we" : ""} ${i === iHeute ? "heute" : ""}" style="border-bottom:1px solid var(--linie-zart)">
+      ${DOW[t.dow]}<b>${String(i + 1).padStart(2, "0")}</b></th>`;
+  });
+  h += `<th class="tagkopf" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);min-width:76px;padding-left:8px;padding-right:8px">
+        <span style="font-size:9px">Monat</span></th></tr></thead>`;
+
+  /* Band 1: Wohnbereiche als Lauf */
+  h += `<tbody><tr><td colspan="${T.length + 2}" style="padding:9px 14px 5px;background:var(--still)">
+      <span class="lab">Wohnbereiche · welcher Dienst läuft wo</span></td></tr>`;
+  for (const e of D.einheiten) {
+    h += `<tr><td class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="width:8px;height:8px;border-radius:4px;background:${e.farbe};flex:0 0 8px"></span>
+        <span><span style="font-size:13px;font-weight:500">${esc(e.name)}</span>
+        <span style="display:block;font-size:10.5px;color:var(--aus)" class="num">${e.personen} Pers. · Versatz ${e.versatzTage} Tage</span></span>
+      </div></td>`;
+    T.forEach((t, i) => {
+      const d = t.einheiten[e.id];
+      const vor = i > 0 ? T[i - 1].einheiten[e.id] : null;
+      const nach = i < T.length - 1 ? T[i + 1].einheiten[e.id] : null;
+      const fl = d ? { F: "rgba(60,124,140,.20)", S: "rgba(149,84,16,.18)", N: "rgba(49,60,110,.20)" }[d] : "transparent";
+      const r = `${vor === d ? 0 : 5}px ${nach === d ? 0 : 5}px ${nach === d ? 0 : 5}px ${vor === d ? 0 : 5}px`;
+      h += `<td style="border-bottom:1px solid var(--linie-zart);padding:5px 0;${t.we ? "background:var(--still)" : ""}">
+        <div style="height:17px;background:${fl};border-radius:${r};display:flex;align-items:center;justify-content:center;
+          font:700 9.5px/1 Inter;color:${d ? { F: "#2C5F6D", S: "#7A4400", N: "#333C6E" }[d] : "transparent"}">
+          ${vor !== d && d ? d : ""}</div></td>`;
+    });
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    const abw = eigene.reduce((s, p) => s + p.abwTage, 0);
+    h += `<td class="num" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);text-align:right;padding:5px 8px;font-size:11.5px;color:var(--dim)">
+      ${abw} Abw.-Tage</td></tr>`;
+  }
+
+  /* Band 2: Besetzung */
+  h += `<tr><td colspan="${T.length + 2}" style="padding:11px 14px 5px;background:var(--still);border-top:1px solid var(--linie)">
+      <span class="lab">Besetzung · wie viele Köpfe gegen die Vorgabe</span></td></tr>`;
+  for (const da of D.dienstarten) {
+    h += `<tr><td class="zeilenkopf" style="border-bottom:1px solid var(--linie-zart)">
+      <div style="display:flex;align-items:center;gap:9px"><span class="dz ${da.id}">${da.kurz}</span>
+      <span><span style="font-size:13px">${esc(da.name)}</span>
+      <span style="display:block;font-size:10.5px;color:var(--aus)" class="num">${da.start}–${da.ende}</span></span></div></td>`;
+    T.forEach((t, i) => {
+      const b = t.besetzung[da.id];
+      /* Nur die Abweichung, nicht der Bruch: „−3" ist in einer Zeile aus
+         dreißig Zellen lesbar, „12/15" nicht. */
+      const ton = b.d < -1 ? "var(--gefahr)" : b.d < 0 ? "var(--warn)" : b.d > 4 ? "var(--violett)" : "var(--aus)";
+      const fett = b.d < 0 ? 700 : 500;
+      h += `<td title="${esc(da.name)} am ${tagKurz(t.datum)}: ${b.a} von ${b.s}${b.q ? " · Fachkraftquote nicht erfüllt" : ""}"
+        style="border-bottom:1px solid var(--linie-zart);text-align:center;padding:6px 0;
+        ${i === iHeute ? "background:var(--akzent-hell);" : t.we ? "background:var(--still);" : ""}">
+        <div class="num" style="font:${fett} 11.5px/1.1 Inter;color:${ton}">${b.d === 0 ? "±0" : sgn(b.d)}</div>
+        ${b.q ? '<div style="width:4px;height:4px;border-radius:2px;background:var(--gefahr);margin:3px auto 0"></div>' : '<div style="height:7px"></div>'}
+      </td>`;
+    });
+    const b = bilanz[da.id];
+    h += `<td class="num" style="border-bottom:1px solid var(--linie-zart);border-left:1px solid var(--linie);text-align:right;padding:6px 8px">
+      <div style="font:700 13px/1.1 Inter;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--dim)"}">${sgn(b.summe)}</div>
+      <div style="font-size:10px;color:var(--aus)">${b.unter} T. unter</div></td></tr>`;
+  }
+  h += `</tbody></table></div>
+  <div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--dim);align-items:center">
+    <span><span class="dz F" style="width:16px;height:14px;font-size:9px">F</span> Früh 06–14</span>
+    <span><span class="dz S" style="width:16px;height:14px;font-size:9px">S</span> Spät 14–22</span>
+    <span><span class="dz N" style="width:16px;height:14px;font-size:9px">N</span> Nacht 22–06</span>
+    <span style="color:var(--aus)">Zellwert ist die Abweichung vom Soll · roter Punkt: Fachkraftquote nicht erfüllt</span>
+  </div>`;
+  ziel.innerHTML = h;
+}
+
+/* ========================================================================
+   B — Filter-first
+   ======================================================================== */
+function bauB(ziel) {
+  /* Die Ansicht startet nicht leer und nicht voll, sondern auf dem, was
+     ein Planungsverantwortlicher morgens braucht: das Dringende ab heute.
+     Eine ungefilterte Liste über 135 Befunde wäre genau die Wand, gegen
+     die Befund 03 sich richtet. */
+  const zustand = { arten: new Set(), einheit: null, dienst: null, abHeute: true, nurDringend: true };
+
+  /* Betrifft ein Befund diese Dienstart? Bei Unterbesetzung und Quote steht
+     sie im Befund; bei personenbezogenen Befunden ergibt sie sich aus dem
+     Dienst, den die Person an dem Tag hatte. */
+  const trifftDienst = (b, id) => {
+    if (b.dienstId) return b.dienstId === id;
+    if (!b.personId || !P[b.personId]) return false;
+    const i = D.tage.findIndex((t) => t.datum === b.datum);
+    return i >= 0 && P[b.personId].verlauf[i].replace("!", "") === id;
+  };
+  const trifftEinheit = (b, id) => b.einheitId === id
+    || (b.personId && P[b.personId] && P[b.personId].einheitId === id);
+
+  const treffer = () => {
+    let l = D.befunde.slice();
+    if (zustand.nurDringend) l = l.filter((b) => b.schwere === "hoch");
+    if (zustand.arten.size) l = l.filter((b) => zustand.arten.has(b.art));
+    if (zustand.dienst) l = l.filter((b) => trifftDienst(b, zustand.dienst));
+    if (zustand.einheit) l = l.filter((b) => trifftEinheit(b, zustand.einheit));
+    if (zustand.abHeute) l = l.filter((b) => b.datum >= HEUTE);
+    return l;
+  };
+
+  const zeichne = () => {
+    const l = treffer();
+    const nachTag = {};
+    for (const b of l) (nachTag[b.datum] ||= []).push(b);
+    const tage = Object.keys(nachTag).sort();
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:12px">
+      <h5 class="titel" style="margin:0">Planung</h5>
+      <span class="unter">${l.length} von ${D.befunde.length} Befunden · ${tage.length} betroffene Tage</span>
+      <span style="margin-left:auto"><button class="knopf still" id="bReset">Filter leeren</button></span></div>`;
+
+    /* Filterleiste */
+    h += `<div class="karte" style="padding:13px 15px;margin-bottom:14px">
+      <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span class="lab" style="flex:0 0 78px">Problem</span>`;
+    for (const [art, meta] of Object.entries(ART)) {
+      const n = (jeArt[art] || []).length;
+      h += `<button class="chip ${meta.ton}" data-art="${art}" aria-pressed="${zustand.arten.has(art)}">
+        ${meta.label}<span class="zahl">${n}</span></button>`;
+    }
+    h += `<span style="width:12px"></span>
+      <button class="chip gefahr" data-dringend="1" aria-pressed="${zustand.nurDringend}">nur dringend<span class="zahl">${D.befunde.filter((b) => b.schwere === "hoch").length}</span></button>`;
+    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        <span class="lab" style="flex:0 0 78px">Bereich</span>`;
+    for (const e of D.einheiten) {
+      const n = D.befunde.filter((b) => trifftEinheit(b, e.id)).length;
+      h += `<button class="chip" data-eh="${e.id}" aria-pressed="${zustand.einheit === e.id}">
+        ${esc(e.name.replace("Wohnbereich ", ""))}<span class="zahl">${n}</span></button>`;
+    }
+    h += `</div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center">
+        <span class="lab" style="flex:0 0 78px">Dienst</span>`;
+    for (const da of D.dienstarten) {
+      const n = D.befunde.filter((b) => trifftDienst(b, da.id)).length;
+      h += `<button class="chip" data-da="${da.id}" aria-pressed="${zustand.dienst === da.id}">
+        ${esc(da.name)}<span class="zahl">${n}</span></button>`;
+    }
+    h += `<span style="width:14px"></span>
+      <button class="chip" data-ab="1" aria-pressed="${zustand.abHeute}">ab heute<span class="zahl">${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></button>
+      <span style="margin-left:auto;font-size:11.5px;color:var(--aus)">Gespeicherte Sicht: „Frühdienst-Kontrolle“</span>
+      </div></div>`;
+
+    /* Trefferliste */
+    if (!l.length) {
+      h += `<div class="karte" style="padding:38px;text-align:center;color:var(--aus);font-size:13.5px">
+        Kein Befund passt zu dieser Auswahl.</div>`;
+    } else {
+      h += `<div class="karte" style="overflow:hidden">
+        <div style="max-height:520px;overflow-y:auto">`;
+      let erste = true;
+      for (const d of tage) {
+        const t = D.tage.find((x) => x.datum === d);
+        h += `<div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--still);
+          position:sticky;top:0;z-index:1;${erste ? "" : "border-top:1px solid var(--linie-zart);"}">
+          <span class="num" style="font:600 12.5px/1 Inter">${DOW[t.dow]}, ${tagKurz(d)}</span>
+          <span style="font-size:11.5px;color:var(--dim)">${nachTag[d].length} Befund${nachTag[d].length > 1 ? "e" : ""}</span>
+          ${d === HEUTE ? '<span class="chip" style="padding:1px 8px;font-size:10.5px;background:var(--akzent);color:#fff;border-color:var(--akzent)">heute</span>' : ""}
+        </div>`;
+        erste = false;
+        /* Gleiche Art am gleichen Tag wird zu einer Zeile. Genau hier
+           entstehen im heutigen Lagebild die einundzwanzig Dubletten:
+           dreizehn Zeilen „5 Nachtdienste in Folge" untereinander sagen
+           nichts, was eine Zeile mit dreizehn Namen nicht auch sagt. */
+        const nachArt = {};
+        for (const b of nachTag[d]) (nachArt[b.art] ||= []).push(b);
+        for (const [art, gruppe] of Object.entries(nachArt)) {
+          const ton = gruppe[0].schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+          const einzeln = gruppe.length === 1;
+          const namen = gruppe.map((b) => b.personId ? P[b.personId].nachname + ", " + P[b.personId].vorname : null).filter(Boolean);
+          h += `<div style="display:flex;align-items:baseline;gap:12px;padding:9px 16px;border-top:1px solid var(--linie-zart)">
+            <span style="width:3px;align-self:stretch;border-radius:2px;background:${ton};flex:0 0 3px"></span>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:${ton};flex:0 0 132px">${ART[art].label}</span>
+            <span style="font-size:13.5px;flex:1;min-width:170px">${esc(gruppe[0].titel)}${einzeln ? "" : `<span class="num" style="color:var(--dim);font-weight:600"> · ${gruppe.length}×</span>`}</span>
+            <span style="font-size:12px;color:var(--dim);flex:1.3;min-width:190px">${
+              einzeln ? esc(gruppe[0].detail)
+              : namen.length ? esc(namen.slice(0, 3).join(" · ")) + (namen.length > 3 ? ` und ${namen.length - 3} weitere` : "")
+              : esc(gruppe.map((b) => b.titel).join(" · "))}</span>
+            <button class="knopf" style="flex:0 0 auto">${einzeln ? "Öffnen" : "Alle öffnen"}</button></div>`;
+        }
+      }
+      h += `</div></div>`;
+    }
+    ziel.innerHTML = h;
+
+    ziel.querySelectorAll("[data-art]").forEach((b) => b.onclick = () => {
+      const a = b.dataset.art; zustand.arten.has(a) ? zustand.arten.delete(a) : zustand.arten.add(a); zeichne(); });
+    ziel.querySelectorAll("[data-eh]").forEach((b) => b.onclick = () => {
+      zustand.einheit = zustand.einheit === b.dataset.eh ? null : b.dataset.eh; zeichne(); });
+    ziel.querySelectorAll("[data-da]").forEach((b) => b.onclick = () => {
+      zustand.dienst = zustand.dienst === b.dataset.da ? null : b.dataset.da; zeichne(); });
+    ziel.querySelectorAll("[data-ab]").forEach((b) => b.onclick = () => {
+      zustand.abHeute = !zustand.abHeute; zeichne(); });
+    ziel.querySelectorAll("[data-dringend]").forEach((b) => b.onclick = () => {
+      zustand.nurDringend = !zustand.nurDringend; zeichne(); });
+    const r = ziel.querySelector("#bReset");
+    if (r) r.onclick = () => { zustand.arten.clear(); zustand.einheit = null; zustand.dienst = null;
+      zustand.abHeute = false; zustand.nurDringend = false; zeichne(); };
+  };
+  zeichne();
+}
+</script>
+
+
+<script>
+/* ========================================================================
+   C — Dashboard und Detail
+   ======================================================================== */
+function bauC(ziel) {
+  let gewaehlt = HEUTE;
+
+  const kacheln = () => {
+    const t = D.tage.find((x) => x.datum === HEUTE);
+    /* Nicht die Summe über alle Dienste: Die wäre heute 144 % und stünde
+       grün da, obwohl sie nur den Nachtüberschuss über den Frühmangel
+       mittelt. Eine Kennzahl, die eine Schieflage als Erfolg meldet, ist
+       schlechter als keine. Gezeigt wird der schwächste Dienst. */
+    const schwach = D.dienstarten.map((da) => ({ da, b: t.besetzung[da.id] }))
+      .sort((x, y) => x.b.a / x.b.s - y.b.a / y.b.s)[0];
+    const offen = D.befunde.filter((b) => b.art === "unterbesetzung" && b.datum >= HEUTE).length;
+    const quote = D.befunde.filter((b) => b.art === "quote" && b.datum >= HEUTE).length;
+    const ruhe = D.befunde.filter((b) => b.art === "ruhezeit").length;
+    const kritisch = D.personen.filter((p) => Math.abs(p.konto) > 40).length;
+    return [
+      { wert: Math.round(schwach.b.a / schwach.b.s * 100), einheit: "%", bez: "Schwächster Dienst heute",
+        fuss: `${schwach.da.name} · ${schwach.b.a} von ${schwach.b.s}`,
+        ton: schwach.b.d < 0 ? "gefahr" : "ok" },
+      { wert: offen, bez: "unterbesetzte Dienste", fuss: "ab heute bis Monatsende", ton: offen > 10 ? "gefahr" : "warn" },
+      { wert: t.abwesend, bez: "heute abwesend", fuss: `${D.abwesenheiten.filter((a) => a.art === "urlaub").length} Urlaube im Monat`, ton: "" },
+      { wert: quote, bez: "Quotenverstöße", fuss: "Fachkraft nach WTG-PersVO", ton: quote ? "gefahr" : "ok" },
+      { wert: ruhe, bez: "Ruhezeit unterschritten", fuss: `Grenze ${D.einstellungen.ruhezeit} h · § 5 ArbZG`, ton: ruhe ? "gefahr" : "ok" },
+      { wert: kritisch, bez: "Konten über Grenze", fuss: `ab ${D.einstellungen.ausgleichGrenze} h · Median ${n1(median)} h`, ton: kritisch ? "warn" : "ok" },
+    ];
+  };
+
+  const zeichne = () => {
+    const g = D.tage.find((x) => x.datum === gewaehlt);
+    const iG = D.tage.indexOf(g);
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+      <h5 class="titel" style="margin:0">Lagebild</h5>
+      <span class="unter">Mittwoch, 9. September 2026 · ${esc(D.betrieb.name)}</span>
+      <span style="margin-left:auto"><button class="knopf stark">Krankmeldung erfassen</button></span></div>`;
+
+    /* Ebene 1 — Kennzahlen */
+    h += `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px">`;
+    for (const k of kacheln()) {
+      const c = k.ton === "gefahr" ? "var(--gefahr)" : k.ton === "warn" ? "var(--warn)" : k.ton === "ok" ? "var(--ok)" : "var(--text)";
+      h += `<div class="karte kachel">
+        <div class="wert" style="color:${c}">${k.wert}${k.einheit ? `<small>&thinsp;${k.einheit}</small>` : ""}</div>
+        <div class="bez">${esc(k.bez)}</div><div class="fuss">${esc(k.fuss)}</div></div>`;
+    }
+    h += `</div>`;
+
+    /* Ebene 1b — Verlaufsstreifen je Dienstart */
+    h += `<div class="karte" style="padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:11px">
+        <span class="lab">Verlauf im Monat</span>
+        <span style="font-size:11.5px;color:var(--aus)">Höhe ist die Abweichung vom Soll · Mittellinie ist erfüllt · Klick öffnet den Tag</span></div>`;
+    for (const da of D.dienstarten) {
+      const b = bilanz[da.id];
+      h += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:9px">
+        <span style="flex:0 0 118px;display:flex;align-items:center;gap:8px">
+          <span class="dz ${da.id}">${da.kurz}</span>
+          <span style="font-size:12.5px">${esc(da.name)}</span></span>
+        <span style="flex:1;display:flex;gap:2px;align-items:center;height:34px">`;
+      D.tage.forEach((t, i) => {
+        const x = t.besetzung[da.id];
+        const hoehe = Math.min(15, Math.max(2, Math.abs(x.d) * 2.4));
+        const ton = x.d < -1 ? "var(--gefahr)" : x.d < 0 ? "var(--warn)" : x.d > 4 ? "var(--violett)" : "var(--ok)";
+        h += `<button data-tag="${t.datum}" title="${tagKurz(t.datum)} · ${x.a} von ${x.s}"
+          style="flex:1;height:34px;position:relative;border:none;background:${t.datum === gewaehlt ? "var(--akzent-hell)" : "transparent"};
+          cursor:pointer;padding:0;border-radius:3px">
+          <span style="position:absolute;left:0;right:0;top:16px;height:1px;background:var(--linie)"></span>
+          <span style="position:absolute;left:1px;right:1px;${x.d >= 0 ? "bottom:18px" : "top:17px"};height:${hoehe}px;
+            background:${ton};border-radius:1px;opacity:${x.d >= 0 && x.d <= 4 ? .45 : .95}"></span>
+          ${x.q ? '<span style="position:absolute;left:50%;bottom:1px;transform:translateX(-50%);width:3px;height:3px;border-radius:2px;background:var(--gefahr)"></span>' : ""}
+        </button>`;
+      });
+      h += `</span>
+        <span class="num" style="flex:0 0 96px;text-align:right;font-size:12px;color:var(--dim)">
+          <b style="font-size:14px;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--dim)"}">${sgn(b.summe)}</b><br>
+          <span style="font-size:10.5px;color:var(--aus)">${b.unter} T. unter Soll</span></span></div>`;
+    }
+    h += `</div>`;
+
+    /* Ebene 2 — der gewählte Tag */
+    const bef = D.befunde.filter((b) => b.datum === gewaehlt);
+    const abwHeute = D.personen.filter((p) => p.verlauf[iG].startsWith("*"));
+    h += `<div style="display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:10px">
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Besetzung · ${DOW[g.dow]}, ${tagKurz(gewaehlt)}</div>`;
+    for (const da of D.dienstarten) {
+      const x = g.besetzung[da.id];
+      const anteil = Math.min(100, Math.round(x.a / Math.max(1, x.s) * 100));
+      h += `<div style="margin-bottom:12px">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">
+          <span class="dz ${da.id}">${da.kurz}</span>
+          <span style="font-size:12.5px">${esc(da.name)}</span>
+          <span class="num" style="margin-left:auto;font:600 14px/1 Inter;color:${x.d < 0 ? "var(--gefahr)" : "var(--ok)"}">${x.a}<span style="color:var(--aus);font-size:11px;font-weight:400">/${x.s}</span></span>
+        </div>
+        <div class="balken"><i style="width:${anteil}%;background:${x.d < -1 ? "var(--gefahr)" : x.d < 0 ? "var(--warn)" : x.d > 4 ? "var(--violett)" : "var(--ok)"}"></i></div>
+        ${x.d > 4 ? `<div class="num" style="font-size:11px;color:var(--violett);margin-top:4px">${x.d} über Soll — Reserve für andere Dienste</div>` : ""}
+        ${x.q ? `<div style="font-size:11px;color:var(--gefahr);margin-top:4px">Fachkraftquote: ${x.ql[0].ist} von ${x.ql[0].noetig}</div>` : ""}
+      </div>`;
+    }
+    h += `</div>
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Abwesend · ${abwHeute.length}</div>`;
+    if (!abwHeute.length) h += `<div style="font-size:13px;color:var(--aus)">Niemand abwesend.</div>`;
+    for (const p of abwHeute.slice(0, 7)) {
+      const art = { u: ["Urlaub", "var(--ok)"], k: ["Krank", "var(--gefahr)"], s: ["Schulung", "var(--violett)"], a: ["Ausgleich", "var(--dim)"] }[p.verlauf[iG][1]];
+      h += `<div style="display:flex;align-items:baseline;gap:9px;padding:5px 0;border-top:1px solid var(--linie-zart)">
+        <span style="font-size:13px;flex:1">${esc(p.name)}</span>
+        <span style="font-size:11px;color:${EH[p.einheitId] ? EH[p.einheitId].farbe : "var(--aus)"}">${esc((EH[p.einheitId] || {}).name || "").replace("Wohnbereich ", "")}</span>
+        <span style="font-size:11px;font-weight:600;color:${art[1]}">${art[0]}</span></div>`;
+    }
+    h += `</div>
+      <div class="karte" style="padding:15px 17px">
+        <div class="lab" style="margin-bottom:11px">Befunde an diesem Tag · ${bef.length}</div>`;
+    if (!bef.length) h += `<div style="font-size:13px;color:var(--aus)">Keine Befunde.</div>`;
+    for (const b of bef.slice(0, 7)) {
+      const ton = b.schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+      h += `<div style="display:flex;gap:9px;padding:6px 0;border-top:1px solid var(--linie-zart)">
+        <span style="width:3px;border-radius:2px;background:${ton};flex:0 0 3px"></span>
+        <span style="flex:1"><span style="font-size:12.5px;font-weight:500;display:block">${esc(b.titel)}</span>
+        <span style="font-size:11px;color:var(--dim)">${esc(b.detail)}</span></span></div>`;
+    }
+    if (bef.length > 7) h += `<div style="font-size:11.5px;color:var(--aus);padding-top:7px">… ${bef.length - 7} weitere</div>`;
+    h += `</div></div>`;
+    ziel.innerHTML = h;
+    ziel.querySelectorAll("[data-tag]").forEach((b) => b.onclick = () => { gewaehlt = b.dataset.tag; zeichne(); });
+  };
+  zeichne();
+}
+
+/* ========================================================================
+   D — Zeitstrahl mit Bahnen
+   ======================================================================== */
+function bauD(ziel) {
+  const T = D.tage, BR = 30;   /* Pixel je Tag */
+  const breite = T.length * BR;
+  let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+    <h5 class="titel" style="margin:0">Zeitstrahl</h5>
+    <span class="unter">September 2026 · Zyklus ${D.zyklus.wochen} Wochen · Versatz 0 · 4 · 8 · 12 · 17 Tage</span>
+    <span style="margin-left:auto;display:flex;gap:8px">
+      <button class="knopf still">Woche</button><button class="knopf stark">Monat</button><button class="knopf still">Quartal</button>
+    </span></div>
+  <div class="karte rollbar" style="padding:0">
+  <div style="min-width:${breite + 210}px">`;
+
+  /* Datumsleiste */
+  h += `<div style="display:flex;position:sticky;top:0;background:var(--flaeche);z-index:3;border-bottom:1px solid var(--linie)">
+    <div style="flex:0 0 200px;padding:9px 14px" class="lab">Bahn</div>
+    <div style="flex:1;display:flex">`;
+  T.forEach((t, i) => {
+    h += `<div style="flex:1;text-align:center;padding:6px 0;font:500 9.5px/1.25 Inter;color:var(--aus);
+      ${t.we ? "background:var(--still);" : ""}${i === iHeute ? "background:var(--akzent-hell);box-shadow:inset 0 -2px 0 var(--akzent);" : ""}">
+      ${DOW[t.dow]}<b style="display:block;font:600 11.5px/1.15 Inter;color:var(--text)" class="num">${String(i + 1).padStart(2, "0")}</b></div>`;
+  });
+  h += `</div></div>`;
+
+  /* Bahnen je Wohnbereich */
+  h += `<div style="padding:10px 0 4px 14px" class="lab">Wohnbereiche · Schichtmuster im Zyklus</div>`;
+  for (const e of D.einheiten) {
+    h += `<div style="display:flex;align-items:center;border-bottom:1px solid var(--linie-zart)">
+      <div style="flex:0 0 200px;padding:8px 14px;display:flex;align-items:center;gap:9px">
+        <span style="width:8px;height:8px;border-radius:4px;background:${e.farbe};flex:0 0 8px"></span>
+        <span><span style="font-size:12.5px;font-weight:500;display:block">${esc(e.name)}</span>
+        <span class="num" style="font-size:10.5px;color:var(--aus)">${e.personen} Pers. · +${e.versatzTage} Tage</span></span></div>
+      <div style="flex:1;position:relative;height:30px">`;
+    /* Läufe zusammenfassen — daraus wird das Muster sichtbar */
+    let i = 0;
+    while (i < T.length) {
+      const d = T[i].einheiten[e.id];
+      let j = i; while (j + 1 < T.length && T[j + 1].einheiten[e.id] === d) j++;
+      const l = j - i + 1;
+      if (d) {
+        const fl = { F: "#3C7C8C", S: "#955410", N: "#333C6E" }[d];
+        h += `<div title="${esc(e.name)} · ${esc(DA[d].name)} · ${tagKurz(T[i].datum)} bis ${tagKurz(T[j].datum)} (${l} Tage)"
+          style="position:absolute;left:${i / T.length * 100}%;width:${l / T.length * 100}%;top:6px;bottom:6px;
+          background:${fl};opacity:.86;border-radius:4px;display:flex;align-items:center;justify-content:center;
+          font:700 10px/1 Inter;color:#fff;letter-spacing:.06em">${l > 1 ? DA[d].name.replace("dienst", "") : d}</div>`;
+      }
+      i = j + 1;
+    }
+    /* Abwesenheitsmarken der Bereichsleute */
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    T.forEach((t, k) => {
+      const n = eigene.filter((p) => p.verlauf[k].startsWith("*")).length;
+      if (n) h += `<div title="${n} abwesend am ${tagKurz(t.datum)}"
+        style="position:absolute;left:${k / T.length * 100}%;width:${1 / T.length * 100}%;bottom:1px;height:3px;
+        background:var(--gefahr);opacity:${Math.min(1, .3 + n * .28)}"></div>`;
+    });
+    h += `</div></div>`;
+  }
+
+  /* Bahnen je Dienstart: Besetzung als Fläche gegen die Solllinie */
+  h += `<div style="padding:14px 0 4px 14px" class="lab">Besetzung gegen Vorgabe · Fläche über der Linie ist Überschuss</div>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    const maxV = Math.max(...T.map((t) => t.besetzung[da.id].a), ...T.map((t) => t.besetzung[da.id].s)) * 1.08;
+    h += `<div style="display:flex;align-items:center;border-bottom:1px solid var(--linie-zart)">
+      <div style="flex:0 0 200px;padding:8px 14px;display:flex;align-items:center;gap:9px">
+        <span class="dz ${da.id}">${da.kurz}</span>
+        <span><span style="font-size:12.5px;display:block">${esc(da.name)}</span>
+        <span class="num" style="font-size:10.5px;color:${b.summe > 60 ? "var(--violett)" : b.unter > 8 ? "var(--gefahr)" : "var(--aus)"}">
+          ${sgn(b.summe)} Personentage</span></span></div>
+      <div style="flex:1;position:relative;height:44px;display:flex;align-items:flex-end">`;
+    T.forEach((t) => {
+      const x = t.besetzung[da.id];
+      const hIst = x.a / maxV * 44, hSoll = x.s / maxV * 44;
+      const ton = x.d < -1 ? "#4E0401" : x.d < 0 ? "#955410" : x.d > 4 ? "#316C81" : "#0E6B45";
+      h += `<div style="flex:1;position:relative;height:44px" title="${tagKurz(t.datum)} · ${x.a} von ${x.s}">
+        <span style="position:absolute;left:1px;right:1px;bottom:0;height:${hIst}px;background:${ton};opacity:${x.d > 4 ? .4 : .8};border-radius:2px 2px 0 0"></span>
+        <span style="position:absolute;left:0;right:0;bottom:${hSoll}px;height:1.5px;background:var(--text);opacity:.55"></span>
+      </div>`;
+    });
+    h += `</div></div>`;
+  }
+  h += `</div></div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-size:11.5px;color:var(--dim);align-items:center">
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#3C7C8C"></span> Frühdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#955410"></span> Spätdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:9px;border-radius:2px;background:#333C6E"></span> Nachtdienst</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:3px;background:var(--gefahr)"></span> Abwesende im Bereich</span>
+    <span style="display:flex;align-items:center;gap:6px"><span style="width:22px;height:2px;background:var(--text)"></span> Vorgabe</span>
+  </div>`;
+  ziel.innerHTML = h;
+}
+</script>
+
+
+<script>
+/* ========================================================================
+   E — Mitarbeiter-zentriert
+   ======================================================================== */
+function bauE(ziel) {
+  let gewaehlt = null;
+  let sortierung = "befunde";
+  const abstaende = D.personen.map((p) => Math.abs(p.konto - median)).sort((a, b) => a - b);
+  const bezugKonto = Math.max(1, abstaende[Math.floor(abstaende.length * 0.9)]);
+  const befundeJePerson = {};
+  for (const b of D.befunde) if (b.personId) (befundeJePerson[b.personId] ||= []).push(b);
+
+  const liste = () => {
+    const l = D.personen.slice();
+    if (sortierung === "befunde") l.sort((a, b) => (befundeJePerson[b.id] || []).length - (befundeJePerson[a.id] || []).length
+      || a.nachname.localeCompare(b.nachname, "de"));
+    if (sortierung === "konto") l.sort((a, b) => a.konto - b.konto);
+    if (sortierung === "name") l.sort((a, b) => a.nachname.localeCompare(b.nachname, "de"));
+    if (sortierung === "nacht") l.sort((a, b) => b.naechte - a.naechte);
+    return l;
+  };
+
+  const zeichne = () => {
+    const l = liste();
+    if (!gewaehlt) gewaehlt = l[0].id;
+    const p = P[gewaehlt];
+    let h = `<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:14px">
+      <h5 class="titel" style="margin:0">Personal</h5>
+      <span class="unter">${D.personen.length} Personen · September 2026</span>
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span class="lab">sortiert nach</span>
+        ${["befunde:Auffälligkeit", "konto:Stundenkonto", "nacht:Nachtdienste", "name:Name"].map((x) => {
+          const [id, lab] = x.split(":");
+          return `<button class="chip" data-sort="${id}" aria-pressed="${sortierung === id}">${lab}</button>`; }).join("")}
+      </span></div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:12px;align-items:start">
+
+      <!-- Links: die Belegschaft. Jede Zeile trägt den ganzen Monat. -->
+      <div class="karte" style="overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;background:var(--still);border-bottom:1px solid var(--linie-zart)">
+          <span class="lab" style="flex:1">Person</span>
+          <span class="lab" style="flex:0 0 236px">Monatsverlauf</span>
+          <span class="lab" style="flex:0 0 108px;text-align:right">Konto gegen Median</span>
+          <span class="lab" style="flex:0 0 34px;text-align:right">Bef.</span>
+        </div>
+        <div style="max-height:560px;overflow-y:auto">`;
+    for (const x of l) {
+      const bf = (befundeJePerson[x.id] || []).length;
+      const eh = EH[x.einheitId] || {};
+      /* Nicht gegen die volle Spanne skalieren: Ein einzelner Ausreißer bei
+         −171 h drückte sonst alle anderen Balken auf zwei Pixel. Bezug ist
+         das neunzigste Perzentil; was darüber liegt, läuft an den Rand. */
+      const anteil = Math.min(1, Math.abs(x.konto - median) / bezugKonto);
+      const rechts = x.konto >= median;
+      h += `<button data-p="${x.id}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+        padding:6px 14px;border:none;border-bottom:1px solid var(--linie-zart);cursor:pointer;
+        background:${x.id === gewaehlt ? "var(--akzent-hell)" : "transparent"}">
+        <span style="flex:1;min-width:0">
+          <span style="font-size:12.5px;font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(x.name)}</span>
+          <span style="font-size:10.5px;color:var(--aus)">${esc(x.funktion)} · <span style="color:${eh.farbe || "var(--aus)"}">${esc((eh.name || "").replace("Wohnbereich ", ""))}</span></span>
+        </span>
+        <span style="flex:0 0 236px;display:flex;gap:1px">`;
+      x.verlauf.forEach((v) => {
+        const c = v.startsWith("*") ? (v[1] === "k" ? "#4E0401" : v[1] === "u" ? "#0E6B45" : "#316C81")
+          : v.startsWith("F") ? "#3C7C8C" : v.startsWith("S") ? "#955410" : v.startsWith("N") ? "#333C6E" : "transparent";
+        h += `<span style="flex:1;height:15px;border-radius:1.5px;background:${c === "transparent" ? "var(--still)" : c};
+          opacity:${v.startsWith("*") ? .95 : .8}"></span>`;
+      });
+      h += `</span>
+        <span style="flex:0 0 108px;position:relative;height:15px">
+          <span style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--linie)"></span>
+          <span style="position:absolute;top:3px;height:9px;border-radius:1.5px;
+            ${rechts ? `left:50%;width:${anteil * 50}%` : `right:50%;width:${anteil * 50}%`};
+            background:${Math.abs(x.konto) > 40 ? "var(--gefahr)" : rechts ? "var(--warn)" : "var(--violett)"};opacity:.85"></span>
+          <span class="num" style="position:absolute;right:0;top:0;font-size:10px;color:var(--aus)">${sgn(x.konto)}</span>
+        </span>
+        <span class="num" style="flex:0 0 34px;text-align:right;font:600 12px/1 Inter;
+          color:${bf > 3 ? "var(--gefahr)" : bf ? "var(--warn)" : "var(--aus)"}">${bf || "—"}</span>
+      </button>`;
+    }
+    h += `</div></div>
+
+      <!-- Rechts: die gewählte Person vollständig -->
+      <div class="karte" style="padding:17px 19px">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font:600 19px/1.2 Inter">${esc(p.name)}</span>
+          <span class="chip" style="padding:2px 9px;font-size:11px">${esc(p.funktion)}</span>
+          ${p.fachkraft ? '<span class="chip" style="padding:2px 9px;font-size:11px;background:var(--ok-hell);border-color:var(--ok-hell);color:var(--ok)">Fachkraft</span>' : ""}
+        </div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:16px">
+          ${esc((EH[p.einheitId] || {}).name || "")} · ${p.wochenstunden} h/Woche · ${esc(p.quals.map((q) => (D.qualifikationen.find((x) => x.id === q) || {}).kurz).join(" · "))}
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px">
+          ${[["Stundenkonto", sgn(p.konto) + " h", Math.abs(p.konto) > 40 ? "var(--gefahr)" : "var(--text)", `${n1(p.ist)} von ${n1(p.soll)} h`],
+             ["Nachtdienste", p.naechte, p.naechte > 8 ? "var(--warn)" : "var(--text)", "im Monat"],
+             ["Resturlaub", p.urlaubRest, p.urlaubRest < 5 ? "var(--warn)" : "var(--text)", `von ${p.urlaubAnspruch} Tagen`],
+             ["Abwesend", p.abwTage, "var(--text)", "Tage im Monat"]].map(([lab, w, c, f]) =>
+            `<div style="border-left:2px solid var(--linie-zart);padding-left:10px">
+              <div class="lab">${lab}</div>
+              <div class="num" style="font:300 24px/1.15 Inter;letter-spacing:-.02em;color:${c};margin-top:3px">${w}</div>
+              <div style="font-size:10.5px;color:var(--aus)">${f}</div></div>`).join("")}
+        </div>
+
+        <div class="lab" style="margin-bottom:8px">September Tag für Tag</div>
+        <div style="display:flex;gap:2px;margin-bottom:6px">`;
+    p.verlauf.forEach((v, i) => {
+      h += `<div title="${tagKurz(D.tage[i].datum)} · ${v.startsWith("*") ? { u: "Urlaub", k: "Krank", s: "Schulung", a: "Ausgleich" }[v[1]] : v ? DA[v.replace("!", "")].name : "frei"}"
+        style="flex:1;text-align:center">${dz(v)}</div>`;
+    });
+    h += `</div><div style="display:flex;gap:2px;margin-bottom:16px">`;
+    D.tage.forEach((t, i) => {
+      h += `<div style="flex:1;text-align:center;font:500 8.5px/1.3 Inter;color:${i === iHeute ? "var(--akzent)" : "var(--aus)"}" class="num">${i + 1}</div>`;
+    });
+    h += `</div>`;
+
+    const bf = befundeJePerson[p.id] || [];
+    h += `<div class="lab" style="margin-bottom:8px">Befunde · ${bf.length}</div>`;
+    if (!bf.length) h += `<div style="font-size:13px;color:var(--aus)">Keine Befunde in diesem Monat.</div>`;
+    for (const b of bf.slice(0, 6)) {
+      const ton = b.schwere === "hoch" ? "var(--gefahr)" : "var(--warn)";
+      h += `<div style="display:flex;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--linie-zart)">
+        <span class="num" style="flex:0 0 46px;font-size:11.5px;color:var(--dim)">${tagKurz(b.datum)}</span>
+        <span style="flex:0 0 132px;font:600 10px/1.4 Inter;letter-spacing:.07em;text-transform:uppercase;color:${ton}">${ART[b.art].label}</span>
+        <span style="flex:1;font-size:12.5px">${esc(b.titel)}</span></div>`;
+    }
+    if (bf.length > 6) h += `<div style="font-size:11.5px;color:var(--aus);padding-top:7px">… ${bf.length - 6} weitere</div>`;
+    h += `</div></div>`;
+    ziel.innerHTML = h;
+    ziel.querySelectorAll("[data-p]").forEach((b) => b.onclick = () => { gewaehlt = b.dataset.p; zeichne(); });
+    ziel.querySelectorAll("[data-sort]").forEach((b) => b.onclick = () => { sortierung = b.dataset.sort; zeichne(); });
+  };
+  zeichne();
+}
+
+/* ========================================================================
+   F — Leitstelle
+   ======================================================================== */
+function bauF(ziel) {
+  const t = D.tage[iHeute];
+  const rang = { hoch: 0, mittel: 1 };
+  const schlange = D.befunde.filter((b) => b.datum >= HEUTE)
+    .sort((a, b) => rang[a.schwere] - rang[b.schwere] || (a.datum < b.datum ? -1 : 1)).slice(0, 14);
+  const F = { fl: "#121E23", li: "#243238", tx: "#E8EFF1", dim: "#9FB2B9", aus: "#7A8D95",
+    ok: "#4ADE9B", warn: "#F0B060", gefahr: "#F87A70", violett: "#7FC4DC", akzent: "#3FBFBF" };
+
+  let h = `<div style="display:grid;grid-template-columns:206px minmax(0,1fr) 286px;gap:10px;align-items:stretch">
+
+    <!-- Feld 1: der laufende Tag -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Jetzt · Mi 09.09.</div>`;
+  for (const da of D.dienstarten) {
+    const x = t.besetzung[da.id];
+    const ton = x.d < -1 ? F.gefahr : x.d < 0 ? F.warn : x.d > 4 ? F.violett : F.ok;
+    h += `<div style="display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid ${F.li}">
+      <span style="font:700 11px/1 Inter;color:${F.dim};flex:0 0 14px">${da.kurz}</span>
+      <span style="font-size:10.5px;color:${F.aus};flex:1" class="num">${da.start}–${da.ende}</span>
+      <span class="num" style="font:600 16px/1 Inter;color:${ton}">${x.a}</span>
+      <span class="num" style="font-size:11px;color:${F.aus}">/${x.s}</span></div>`;
+  }
+  h += `</div>
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Heute abwesend · ${t.abwesend}</div>`;
+  for (const p of D.personen.filter((x) => x.verlauf[iHeute].startsWith("*")).slice(0, 6)) {
+    const a = { u: ["Url", F.ok], k: ["Krk", F.gefahr], s: ["Sch", F.violett], a: ["Ausg", F.dim] }[p.verlauf[iHeute][1]];
+    h += `<div style="display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid ${F.li}">
+      <span style="font-size:11.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</span>
+      <span style="font:600 9.5px/1 Inter;color:${a[1]}">${a[0]}</span></div>`;
+  }
+  h += `</div>
+      <div class="karte" style="padding:13px 15px">
+        <div class="lab" style="margin-bottom:9px">Monatsbilanz</div>`;
+  for (const da of D.dienstarten) {
+    const b = bilanz[da.id];
+    h += `<div style="display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid ${F.li}">
+      <span style="font:700 11px/1 Inter;color:${F.dim};flex:0 0 14px">${da.kurz}</span>
+      <span class="num" style="font:600 13px/1 Inter;color:${b.summe > 60 ? F.violett : b.unter > 8 ? F.gefahr : F.dim};flex:1;text-align:right">${sgn(b.summe)}</span>
+      <span style="font-size:10px;color:${F.aus};flex:0 0 58px;text-align:right">${b.unter} T. unter</span></div>`;
+  }
+  h += `</div></div>
+
+    <!-- Feld 2: das Raster, auf Vorzeichen verdichtet -->
+    <div class="karte" style="padding:12px 14px">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:10px">
+        <span class="lab">Abweichung vom Soll · 30 Tage</span>
+        <span style="margin-left:auto;font-size:10.5px;color:${F.aus}">jede Zelle: fehlende (−) oder überzählige (+) Köpfe</span></div>
+      <div class="rollbar"><table class="raster" style="width:100%;min-width:660px">
+      <thead><tr><th style="width:104px"></th>`;
+  D.tage.forEach((x, i) => {
+    h += `<th style="font:500 8.5px/1.2 Inter;color:${i === iHeute ? F.akzent : F.aus};padding:0 0 5px;text-align:center" class="num">${i + 1}</th>`;
+  });
+  h += `</tr></thead><tbody>`;
+  for (const da of D.dienstarten) {
+    h += `<tr><td style="font:600 11px/1 Inter;color:${F.dim};padding:3px 8px 3px 0;white-space:nowrap">${esc(da.name)}</td>`;
+    D.tage.forEach((x, i) => {
+      const b = x.besetzung[da.id];
+      const ton = b.d < -1 ? F.gefahr : b.d < 0 ? F.warn : b.d > 4 ? F.violett : F.dim;
+      const fl = b.d < -1 ? "rgba(248,122,112,.16)" : b.d < 0 ? "rgba(240,176,96,.14)" : "transparent";
+      h += `<td title="${tagKurz(x.datum)} · ${b.a}/${b.s}" style="text-align:center;padding:3px 0;background:${fl};
+        ${i === iHeute ? `box-shadow:inset 0 0 0 1px ${F.akzent};` : ""}">
+        <span class="num" style="font:${b.d < 0 ? 700 : 500} 10.5px/1 Inter;color:${ton}">${b.d === 0 ? "0" : (b.d > 0 ? "+" : "−") + Math.abs(b.d)}</span>
+        ${b.q ? `<span style="display:block;width:3px;height:3px;border-radius:2px;background:${F.gefahr};margin:2px auto 0"></span>` : '<span style="display:block;height:5px"></span>'}
+      </td>`;
+    });
+    h += `</tr>`;
+  }
+  /* Wohnbereichsbahnen darunter — dieselbe Achse, damit man Ursache und
+     Wirkung übereinander liest. */
+  h += `<tr><td colspan="31" style="height:9px"></td></tr>`;
+  for (const e of D.einheiten) {
+    h += `<tr><td style="font:500 10px/1 Inter;color:${F.aus};padding:2px 8px 2px 0;white-space:nowrap">${esc(e.name.replace("Wohnbereich ", ""))}</td>`;
+    D.tage.forEach((x) => {
+      const d = x.einheiten[e.id];
+      const c = d === "F" ? "#3C7C8C" : d === "S" ? "#955410" : d === "N" ? "#333C6E" : F.li;
+      h += `<td style="padding:1px"><span style="display:block;height:9px;border-radius:2px;background:${c};opacity:${d ? .9 : .5}"></span></td>`;
+    });
+    h += `</tr>`;
+  }
+  h += `</tbody></table></div>
+
+    <!-- Bereichsbalken: Auslastung und Ausfall je Wohnbereich, gegen dieselbe Achse -->
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid ${F.li}">
+      <div class="lab" style="margin-bottom:9px">Wohnbereiche · Ausfalltage im Monat gegen die Bereichsstärke</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:9px">`;
+  const maxAbw = Math.max(...D.einheiten.map((e) => D.personen.filter((p) => p.einheitId === e.id).reduce((s, p) => s + p.abwTage, 0)));
+  for (const e of D.einheiten) {
+    const eigene = D.personen.filter((p) => p.einheitId === e.id);
+    const abwTage = eigene.reduce((s, p) => s + p.abwTage, 0);
+    const heuteDienst = t.einheiten[e.id];
+    const anteil = Math.round(abwTage / maxAbw * 100);
+    h += `<div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:5px">
+        <span style="width:7px;height:7px;border-radius:4px;background:${e.farbe};flex:0 0 7px"></span>
+        <span style="font-size:11.5px;flex:1">${esc(e.name.replace("Wohnbereich ", ""))}</span>
+        <span style="font:600 9px/1 Inter;color:${heuteDienst === "F" ? "#7FC7D6" : heuteDienst === "S" ? "#F0B060" : heuteDienst === "N" ? "#9AA3D6" : F.aus}">
+          ${heuteDienst ? DA[heuteDienst].kurz : "frei"}</span></div>
+      <div style="height:5px;border-radius:3px;background:${F.li};overflow:hidden">
+        <div style="width:${anteil}%;height:100%;background:${abwTage > maxAbw * .7 ? F.gefahr : abwTage > maxAbw * .4 ? F.warn : F.ok};opacity:.85"></div></div>
+      <div class="num" style="font-size:10px;color:${F.aus};margin-top:4px">${abwTage} Ausfalltage · ${eigene.length} Pers.</div>
+    </div>`;
+  }
+  h += `</div></div></div>
+
+    <!-- Feld 3: die Befundschlange -->
+    <div class="karte" style="padding:12px 14px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+        <span class="lab">Zu tun</span>
+        <span class="num" style="margin-left:auto;font:600 12px/1 Inter;color:${F.gefahr}">${D.befunde.filter((b) => b.datum >= HEUTE && b.schwere === "hoch").length}</span>
+        <span style="font-size:10px;color:${F.aus}">dringend von ${D.befunde.filter((b) => b.datum >= HEUTE).length}</span></div>
+      <div style="max-height:392px;overflow-y:auto;margin:0 -14px;padding:0 14px">`;
+  for (const b of schlange) {
+    const ton = b.schwere === "hoch" ? F.gefahr : F.warn;
+    h += `<div style="display:flex;gap:9px;padding:8px 0;border-top:1px solid ${F.li}">
+      <span style="width:2px;border-radius:1px;background:${ton};flex:0 0 2px"></span>
+      <span style="flex:1;min-width:0">
+        <span style="display:flex;gap:7px;align-items:baseline">
+          <span class="num" style="font:600 10px/1 Inter;color:${F.aus}">${tagKurz(b.datum)}</span>
+          <span style="font:600 9px/1 Inter;letter-spacing:.08em;text-transform:uppercase;color:${ton}">${ART[b.art].label}</span></span>
+        <span style="display:block;font-size:12px;margin-top:3px">${esc(b.titel)}</span>
+        <span style="display:block;font-size:10.5px;color:${F.aus};margin-top:1px">${esc(b.detail)}</span>
+      </span></div>`;
+  }
+  h += `</div></div></div>`;
+  ziel.innerHTML = h;
+}
+
+/* Aufbauen */
+bauA(document.getElementById("mA"));
+bauB(document.getElementById("mB"));
+bauC(document.getElementById("mC"));
+bauD(document.getElementById("mD"));
+bauE(document.getElementById("mE"));
+bauF(document.getElementById("mF"));
+</script>
