@@ -29,7 +29,8 @@
     "pruefung:ppugv": "vitest run pruefungen/ppugv.test.js",
     "pruefung:fahrzeit": "vitest run pruefungen/fahrzeit.test.js",
     "pruefung:ppprl": "vitest run pruefungen/ppprl.test.js",
-    "pruefung:kontrast": "vitest run pruefungen/kontrast.test.js"
+    "pruefung:kontrast": "vitest run pruefungen/kontrast.test.js",
+    "pruefung:pentest": "node pruefungen/pentest.mjs"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
