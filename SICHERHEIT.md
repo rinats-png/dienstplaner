@@ -13,6 +13,12 @@ pruefung:rechte`, 87 Negativ- und Positivtests gegen den laufenden
 Server), Sonden mit fünf Rollen-Tokens, Tastatur- und Ablaufproben im
 Browser, statische Durchsicht.
 
+Ergänzend liegt ein eigener **Penetrationstest** nach der Strix-Methodik
+vor (OWASP Top 10:2025 + API Security Top 10:2023) — siehe
+[`PENTEST.md`](PENTEST.md). Ergebnis: null ausnutzbare Schwachstellen,
+34 belegt abgewehrte Angriffe. Wiederholbar mit `npm run pruefung:pentest`
+gegen einen laufenden Dienst.
+
 ## Grundsatz
 
 Der Browser ist keine Sicherheitsgrenze. Jede Entscheidung fällt in
