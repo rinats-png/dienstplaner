@@ -69,6 +69,22 @@ jobs:
       - name: Scherben
         run: npm run pruefung:scherben
 
+      # Der Dateispeicher hinter getStore(): Formen, Präfixe, Verzeichnis,
+      # gleichzeitiges Schreiben ohne halbe Dateien.
+      - name: Ablage
+        run: npm run pruefung:ablage
+
+      # entlasten() nimmt nach einem Erfolg auch den Speicherzähler zurück —
+      # sonst sperrt ein dauerhafter Prozess eine Station nach acht richtigen
+      # Anmeldungen aus.
+      - name: Bremse im Prozess
+        run: npm run pruefung:bremse-lokal
+
+      # Der eigene Server statt Netlify: Ausliefern, Rückfall, Routing,
+      # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
+      - name: Server
+        run: npm run pruefung:server
+
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix
