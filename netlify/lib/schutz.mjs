@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { getStore } from "./ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /* ==========================================================================
@@ -345,6 +345,11 @@ export async function entlasten(art, kennung) {
   if (!g) return;
   const jetzt = Math.floor(Date.now() / 1000);
   const fenster = Math.floor(jetzt / g.fenster);
+  /* Auch den prozesslokalen Zähler zurücksetzen. In einem dauerhaften Prozess
+     (eigener Server statt kurzlebiger Funktionsinstanz) zählte er sonst
+     erfolgreiche Anmeldungen weiter mit und sperrte nach acht Anmeldungen
+     hinter derselben Adresse — Büro, Station, Wache — auch die richtigen. */
+  lokal.delete(`${art}:${kennung}:${fenster}`);
   try {
     await versucheLoeschen(takt(), `${art}:${kennung}:${fenster}`);
     await takt().delete(`sperre:${art}:${kennung}`);

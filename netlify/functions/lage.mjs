@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { getStore } from "../lib/ablage.mjs";
 import { createHash } from "node:crypto";
 import { spurLesen, spurAufraeumen, GRENZEN } from "../lib/schutz.mjs";
 

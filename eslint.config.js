@@ -47,7 +47,7 @@ export default [
 
   /* --- Server --- */
   {
-    files: ["netlify/**/*.mjs", "pruefungen/**/*.mjs"],
+    files: ["netlify/**/*.mjs", "pruefungen/**/*.mjs", "server.mjs"],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 2023,
