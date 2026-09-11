@@ -72,6 +72,11 @@ export function ablageArt() {
    Schlüssel <-> Dateiname
    --------------------------------------------------------------------------- */
 
+/* Ein Dateiname darf 255 Bytes lang sein; die Kodierung verdreifacht im
+   schlimmsten Fall, dazu kommen Endung und der Anhang des Zwischennamens.
+   Die Schlüssel der Anwendung sind höchstens rund 90 Zeichen lang. */
+const NAME_MAX = 200;
+
 /** @param {string} schluessel */
 function dateiname(schluessel) {
   if (typeof schluessel !== "string" || !schluessel.length)
@@ -81,6 +86,7 @@ function dateiname(schluessel) {
     const z = String.fromCharCode(byte);
     aus += /[A-Za-z0-9_-]/.test(z) ? z : "%" + byte.toString(16).toUpperCase().padStart(2, "0");
   }
+  if (aus.length > NAME_MAX) throw new Error(`Ablage: Schlüssel zu lang (${aus.length} > ${NAME_MAX})`);
   return aus + ".json";
 }
 
@@ -97,10 +103,20 @@ function schluesselAus(name) {
 
 const angelegt = new Set();
 
-/** @param {string} verzeichnis */
+/**
+ * Legt das Verzeichnis an und räumt einmal je Prozess auf: Eine .tmp-Datei
+ * kann nur von einem Schreibvorgang stammen, der vor dem Umbenennen
+ * abgebrochen wurde — Stromausfall, Absturz. Sie enthält keinen gültigen
+ * Stand und wird nie gelesen; hier verschwindet sie.
+ * @param {string} verzeichnis
+ */
 async function sicherstellen(verzeichnis) {
   if (angelegt.has(verzeichnis)) return;
   await mkdir(verzeichnis, { recursive: true, mode: 0o700 });
+  try {
+    for (const n of await readdir(verzeichnis))
+      if (n.endsWith(".tmp")) await unlink(path.join(verzeichnis, n)).catch(() => {});
+  } catch { /* nicht lesbar? dann meldet sich der nächste Zugriff */ }
   angelegt.add(verzeichnis);
 }
 
@@ -144,7 +160,12 @@ async function umschlagLesen(datei) {
     if (e && e.code === "ENOENT") return null;
     throw e;
   }
-  const u = JSON.parse(text);
+  let u;
+  try {
+    u = JSON.parse(text);
+  } catch {
+    throw new Error(`Ablage: ${datei} ist kein gültiger Umschlag (beschädigt?)`);
+  }
   if (!u || u.fassung !== FASSUNG) throw new Error(`Ablage: unbekannte Fassung in ${datei}`);
   return u;
 }
@@ -188,9 +209,19 @@ function dateiStore(name) {
     await sicherstellen(verzeichnis);
     const metadata = opts && opts.metadata && typeof opts.metadata === "object" ? opts.metadata : {};
     const serialisiert = typ === "json" ? JSON.stringify(daten) : String(daten);
+    if (serialisiert === undefined) throw new TypeError("Ablage: Wert lässt sich nicht als JSON ablegen");
     const umschlag = { fassung: FASSUNG, etag: etagFuer(serialisiert), typ, metadata,
       daten: typ === "json" ? daten : serialisiert };
-    await atomarSchreiben(pfad(schluessel), JSON.stringify(umschlag));
+    const inhalt = JSON.stringify(umschlag);
+    try {
+      await atomarSchreiben(pfad(schluessel), inhalt);
+    } catch (e) {
+      /* Verzeichnis unter uns weggeräumt? Einmal neu anlegen, dann nochmal. */
+      if (!e || e.code !== "ENOENT") throw e;
+      angelegt.delete(verzeichnis);
+      await sicherstellen(verzeichnis);
+      await atomarSchreiben(pfad(schluessel), inhalt);
+    }
   };
 
   return {
@@ -231,6 +262,8 @@ function dateiStore(name) {
      * @param {{metadata?: object}} [opts]
      */
     async set(schluessel, daten, opts) {
+      if (typeof daten !== "string")
+        throw new TypeError("Ablage: set() nimmt Text — für Objekte setJSON()");
       await schreiben(schluessel, "text", daten, opts);
     },
 

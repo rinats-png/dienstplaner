@@ -17,6 +17,7 @@
    Umgebung
      PORT            Vorgabe 3000
      CENTRIC_DATEN   Ablage der Daten, Vorgabe /data (siehe netlify/lib/ablage.mjs)
+     CENTRIC_STATIK  Ordner der gebauten Oberfläche, Vorgabe dist/ (nur für Prüfungen)
 
    Start:  node server.mjs
    Prüfen: GET /gesund  ->  200 {"status":"ok"}
@@ -27,11 +28,13 @@ import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PORT = Number(process.env.PORT) || 3000;
-const WURZEL = path.dirname(new URL(import.meta.url).pathname);
-const DIST = path.join(WURZEL, "dist");
+const WURZEL = path.dirname(fileURLToPath(import.meta.url));
+/* CENTRIC_STATIK gibt es nur, damit die Prüfung einen eigenen, kleinen
+   Ordner statt dist/ unterschieben kann. Im Betrieb bleibt es bei dist/. */
+const DIST = path.resolve(WURZEL, process.env.CENTRIC_STATIK || "dist");
 const FUNKTIONEN = path.join(WURZEL, "netlify", "functions");
 
 /* Sechs Megabyte — dieselbe Grenze wie in daten.mjs (RUMPF_MAX). Hier wird
@@ -133,10 +136,14 @@ function rumpfEinlesen(req) {
     const beiDaten = (stueck) => {
       groesse += stueck.length;
       if (groesse > RUMPF_MAX) {
-        /* Nicht weiterlesen, aber die Leitung noch offen lassen: So kommt
-           die 413 beim Absender an. Getrennt wird nach der Antwort. */
+        /* Ab hier wird nichts mehr behalten, aber weiter gelesen und
+           verworfen. Nur so bleibt der HTTP-Parser bis zum Ende der
+           Nachricht im Takt, und dieselbe Verbindung kann danach die nächste
+           Anfrage tragen. Ein Anhalten (pause) ließe den Rest liegen — die
+           Verbindung wäre für den Aufrufer bis zum Zeitablauf verloren. */
         req.off("data", beiDaten);
-        req.pause();
+        req.on("data", () => {});
+        teile.length = 0;
         erfuellt(null);
         return;
       }
@@ -149,21 +156,29 @@ function rumpfEinlesen(req) {
 }
 
 /**
- * 413 senden. Den Rest des Rumpfs verwirft Node von selbst, sobald die
- * Antwort steht — so bekommt auch ein Client, der noch sendet, die 413
- * zuverlässig zu sehen, statt mit einer abgerissenen Leitung dazustehen.
- * Die harte Obergrenze gegen endlose Uploads setzt der Reverse Proxy davor.
+ * 413 senden, ohne die Verbindung zu kappen: Ein Client, der noch sendet,
+ * bekommt so die Antwort zu sehen statt einer abgerissenen Leitung. Den Rest
+ * des Rumpfs liest Node zu Ende und verwirft ihn (bei bekannter Länge von
+ * selbst, sonst über den Verwerfer in rumpfEinlesen). Endlose Uploads
+ * beendet requestTimeout; die harte Grenze davor setzt der Reverse Proxy.
  * @param {import("node:http").ServerResponse} res
  */
 function zuGross(res) {
   json(res, 413, { fehler: "Anfrage zu groß." });
 }
 
+/* Was ein Host-Kopf enthalten darf: Name oder Adresse, wahlweise mit Port.
+   Alles andere — Leerzeichen, Steuerzeichen, Pfade — ist keine Adresse und
+   führt sonst tief in `new Request()` zu einer Ausnahme statt zu einer 400. */
+const HOST_FORM = /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]{0,252}))(?::\d{1,5})?$/;
+
 /**
  * @param {import("node:http").IncomingMessage} req
+ * @param {URL} url   bereits zerlegter Pfad samt Query
  * @param {Buffer|undefined} rumpf
+ * @returns {Request|null}   null = Host unbrauchbar
  */
-function webRequest(req, rumpf) {
+function webRequest(req, url, rumpf) {
   const kopf = new Headers();
   for (const [name, wert] of Object.entries(req.headers)) {
     if (wert === undefined) continue;
@@ -178,9 +193,12 @@ function webRequest(req, rumpf) {
 
   const proto = String(kopf.get("x-forwarded-proto") || "http").split(",")[0].trim();
   const host = String(kopf.get("host") || `localhost:${PORT}`).split(",")[0].trim();
-  const url = `${proto}://${host}${req.url}`;
+  if (!HOST_FORM.test(host) || (proto !== "http" && proto !== "https")) return null;
 
-  return new Request(url, {
+  /* Pfad und Query aus der bereits zerlegten Adresse — nicht aus req.url.
+     So landet ein Ziel in absoluter Form (GET http://x/pfad) oder eines,
+     das mit // beginnt, genau dort, wo auch das Routing es gesehen hat. */
+  return new Request(`${proto}://${host}${url.pathname}${url.search}`, {
     method: req.method,
     headers: kopf,
     body: rumpf && rumpf.length ? /** @type {any} */ (rumpf) : undefined,
@@ -208,7 +226,8 @@ async function antwortSenden(antwort, res, nurKopf) {
   await new Promise((erfuellt, verworfen) => {
     const strom = Readable.fromWeb(/** @type {any} */ (antwort.body));
     strom.on("error", verworfen);
-    res.on("close", erfuellt);
+    /* Geht der Aufrufer vorher, darf der Quellstrom nicht offen bleiben. */
+    res.on("close", () => { strom.destroy(); erfuellt(); });
     res.on("error", verworfen);
     strom.pipe(res);
   });
@@ -285,14 +304,15 @@ async function statisch(req, res, pfad) {
     "last-modified": info.mtime.toUTCString(),
     etag,
   };
-  if (req.headers["if-none-match"] === etag) { res.writeHead(304, kopf); res.end(); return; }
+  const gesehen = String(req.headers["if-none-match"] || "").split(",").map((e) => e.trim());
+  if (gesehen.includes(etag) || gesehen.includes("*")) { res.writeHead(304, kopf); res.end(); return; }
   kopf["content-length"] = info.size;
   res.writeHead(200, kopf);
   if (req.method === "HEAD") { res.end(); return; }
   await new Promise((erfuellt, verworfen) => {
     const strom = createReadStream(datei);
     strom.on("error", verworfen);
-    res.on("close", erfuellt);
+    res.on("close", () => { strom.destroy(); erfuellt(); });
     strom.pipe(res);
   });
 }
@@ -320,7 +340,8 @@ const server = createServer(async (req, res) => {
         rumpf = await rumpfEinlesen(req);
         if (rumpf === null) { zuGross(res); return; }
       }
-      const anfrage = webRequest(req, rumpf);
+      const anfrage = webRequest(req, url, rumpf);
+      if (!anfrage) { json(res, 400, { fehler: "Ungültiger Host." }); return; }
       const kontext = { ip: anfrage.headers.get("x-forwarded-for") };
       const antwort = await route.handler(anfrage, kontext);
       if (!(antwort instanceof Response)) throw new Error(`Funktion ${route.name}: keine Response`);
@@ -330,10 +351,21 @@ const server = createServer(async (req, res) => {
 
     await statisch(req, res, pfad);
   } catch (e) {
+    /* Hat der Aufrufer selbst aufgelegt, gibt es niemanden mehr, dem eine
+       Antwort oder ein Protokolleintrag nützen würde. */
+    if (req.destroyed || res.destroyed) return;
     console.error(`${new Date().toISOString()} ${req.method} ${req.url}:`, e && e.stack ? e.stack : e);
     if (!res.headersSent) json(res, 500, { fehler: "Interner Fehler." });
     else res.destroy();
   }
+});
+
+/* Fehler an der Verbindung selbst (Reset, kaputte Kopfzeilen) sind kein
+   Grund, den Prozess zu verlieren — Node beantwortet kaputte Anfragen mit
+   400, hier wird nur verhindert, dass ein Reset als Ausnahme hochsteigt. */
+server.on("clientError", (fehler, socket) => {
+  if (/** @type {any} */ (fehler).code === "ECONNRESET" || !socket.writable) { socket.destroy(); return; }
+  socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
 });
 
 server.requestTimeout = 60_000;
