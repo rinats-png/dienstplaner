@@ -121,7 +121,7 @@ jobs:
       # Die Bremse in schutz.mjs zählt für /einrichten auch ein
       # Gesamtaufkommen — 20 Aufrufe je zehn Minuten, über alle Herkünfte
       # hinweg — und dieser Zähler liegt in /data. Die Rechteprüfung braucht
-      # 17 Aufrufe, die Verwalterprüfung 18, die Demoprüfung 4: Ab dem 21.
+      # 19 Aufrufe, die Verwalterprüfung 18, die Demoprüfung 4: Ab dem 21.
       # antwortet der Dienst mit 429. Unter Netlify war jede Instanz kurzlebig; im
       # Container bleibt der Stand stehen, bis der Container geht.
       - name: Container-Start bereitlegen

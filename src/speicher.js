@@ -456,6 +456,18 @@ export async function zugangSperren({ code, pruefsumme, id, kennung, alleDesBetr
   return d;
 }
 
+/**
+ * Die Zugänge eines Raums — Betreiber, über die Sitzung. Ohne Codes, ohne
+ * Prüfsummen; die gekürzte Kennung genügt zum Sperren, der eigene Zugang
+ * ist als `eigen` markiert.
+ */
+export async function zugaengeUebersicht(raum) {
+  /* Ohne Raum nimmt der Server den Raum der Sitzung — den Demoraum. */
+  const { status, daten } = await ruf(`zugaenge-uebersicht${raum ? `?bestand=${encodeURIComponent(raum)}` : ""}`);
+  if (status !== 200) throw new Error(daten?.text || daten?.fehler || "Die Übersicht konnte nicht geladen werden.");
+  return daten;
+}
+
 export async function bestandAnlegen(bestand, inhalt) {
   const a = await fetch("/api/bestand-anlegen", { method: "POST", headers: kopf(),
     body: JSON.stringify({ bestand, inhalt }) });

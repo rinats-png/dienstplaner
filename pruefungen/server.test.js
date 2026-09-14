@@ -152,6 +152,7 @@ describe("Funktionen", () => {
       ["GET", "/api/bestand", 401], ["POST", "/einrichten", 401], ["GET", "/einrichten/verwalter", 401],
       ["GET", "/starten", 405], ["GET", "/kalender/daten", 401], ["GET", "/zustellung/schluessel", 200],
       ["GET", "/lage", 401], ["GET", "/einrichten/uebersicht?bestand=demo-schau", 401],
+      ["GET", "/api/zugaenge-uebersicht?bestand=demo-schau", 401],
     ];
     for (const [m, p, status] of faelle) {
       const r = await fetch(`${B}${p}`, { method: m });

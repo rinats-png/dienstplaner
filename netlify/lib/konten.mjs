@@ -73,3 +73,40 @@ export async function kontoVereinzeln(store, schluessel) {
     return true;
   } catch { return false; }
 }
+
+/**
+ * Die Zugänge eines Raums und die Selbststarts — ohne Codes, ohne
+ * Prüfsummen. Die gekürzte Kennung (letzte acht Zeichen) genügt zum
+ * Sperren.
+ *
+ * Zwei Türen führen hierher, und beide bleiben getrennt: /einrichten mit
+ * Verwalterschlüssel (Bereitstellungsskript) und /api mit Betreibersitzung
+ * (Konsole). Was hinausgeht, ist an beiden dasselbe — deshalb steht es
+ * einmal hier.
+ *
+ * @param eigen Prüfsumme des Zugangs, mit dem der Aufrufer angemeldet ist.
+ *   Der passende Eintrag wird als `eigen` markiert — die Konsole sperrt
+ *   ihn nicht, sonst sägt sie sich den Ast ab. Der Hash selbst bleibt hier.
+ */
+export async function raumUebersicht(store, raum, { eigen = null } = {}) {
+  const konten = await alleKonten(store);
+  const zugaenge = Object.entries(konten)
+    .filter(([, k]) => k && k.bestand === raum)
+    .map(([h, k]) => ({
+      kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
+      betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
+      gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
+      selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
+      angelegt: k.angelegt || null,
+      ...(eigen ? { eigen: h === eigen } : {}),
+    }))
+    .sort((a, b) => String(a.angelegt || "").localeCompare(String(b.angelegt || "")));
+  let selbst = [];
+  try { selbst = (await store.get("selbststarts", { type: "json" })) || []; } catch { /* keine */ }
+  const selbststarts = selbst.filter((x) => x && x.raum).map((x) => ({
+    raum: x.raum, name: x.name || null, branche: x.branche || null,
+    zugaenge: x.zugaenge ?? null, angelegt: x.angelegt || null, laeuftAb: x.laeuftAb || null,
+    abgelaufen: !!(x.laeuftAb && new Date(x.laeuftAb).getTime() < Date.now()),
+  }));
+  return { bestand: raum, zugaenge, selbststarts };
+}

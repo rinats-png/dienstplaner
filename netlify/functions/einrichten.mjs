@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
-import { kontoSchreiben, alleKonten } from "../lib/konten.mjs";
+import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
   from "../lib/verwalter.mjs";
 
@@ -188,25 +188,7 @@ export default async (req) => {
     const raum = url.searchParams.get("bestand") || "";
     if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raum))
       return antwort({ fehler: "Kein gültiger Raumname." }, 400);
-    const konten = await alleKonten(s0);
-    const zugaenge = Object.entries(konten)
-      .filter(([, k]) => k && k.bestand === raum)
-      .map(([h, k]) => ({
-        kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
-        betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
-        gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
-        selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
-        angelegt: k.angelegt || null,
-      }))
-      .sort((a, b) => String(a.angelegt || "").localeCompare(String(b.angelegt || "")));
-    let selbst = [];
-    try { selbst = (await s0.get("selbststarts", { type: "json" })) || []; } catch { /* keine */ }
-    const selbststarts = selbst.filter((x) => x && x.raum).map((x) => ({
-      raum: x.raum, name: x.name || null, branche: x.branche || null,
-      zugaenge: x.zugaenge ?? null, angelegt: x.angelegt || null, laeuftAb: x.laeuftAb || null,
-      abgelaufen: !!(x.laeuftAb && new Date(x.laeuftAb).getTime() < Date.now()),
-    }));
-    return antwort({ bestand: raum, zugaenge, selbststarts, ich: wer.name });
+    return antwort({ ...(await raumUebersicht(s0, raum)), ich: wer.name });
   }
 
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);

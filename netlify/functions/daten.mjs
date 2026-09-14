@@ -6,7 +6,8 @@ import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
-import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln } from "../lib/konten.mjs";
+import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
+  from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 
 /* ==========================================================================
@@ -350,6 +351,30 @@ export default async (req, context) => {
       return antwort({ ok: true, raum, geloescht });
     }
 
+    /* ------------------ Die Zugänge eines Raums einsehen --------------
+       Dieselbe Übersicht wie /einrichten/uebersicht, nur über die andere
+       Tür: Betreibersitzung statt Verwalterschlüssel. Die Konsole konnte
+       Demozugänge zurückziehen und Testbetriebe löschen, aber nicht sehen,
+       welche Konten es in einem Raum gibt — den überzähligen Betreibercode
+       fand sie deshalb nicht. Ohne Codes, ohne Prüfsummen; der eigene
+       Zugang ist markiert, damit die Konsole ihn nicht zum Sperren anbietet. */
+    if (pfad === "zugaenge-uebersicht" && req.method === "GET") {
+      const sB = await sitzung(req);
+      if (!sB) return antwort({ fehler: "Nicht angemeldet." }, 401);
+      if (sB.rolle !== "betreiber") {
+        await protokoll("zugaenge", kennung(req, sB), "abgewiesen", "Übersicht ohne Recht");
+        return antwort({ fehler: "Nur für den Betreiber." }, 403);
+      }
+      const kU = kennung(req, sB);
+      const bU = await bremse("zugaenge", kU);
+      if (!bU.frei) { await protokoll("zugaenge", kU, "gebremst", bU.grund);
+        return zuVielAntwort(bU.wartet); }
+      const raum = url.searchParams.get("bestand") || sB.bestand;
+      if (!raum || typeof raum !== "string" || !/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raum))
+        return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+      return antwort(await raumUebersicht(store, raum, { eigen: sB.konto || null }));
+    }
+
     /* ------------------------ Einen Zugang sperren -------------------- */
     /* Bis hierher gab es drei Stellen, die Zugänge anlegen, und keine, die
        einen zurückzieht. Wer den Betrieb verließ, behielt seinen Code —
@@ -393,6 +418,12 @@ export default async (req, context) => {
          Hexzeichen; ein leerer oder kürzerer Wert träfe sonst alles. */
       if (kurz && /^[0-9a-f]{8}$/i.test(String(kurz))) {
         const ende = String(kurz).toLowerCase();
+        /* Nicht den eigenen. Die Konsole bietet ihn nicht an, aber die
+           Kennung steht in derselben Liste wie alle anderen — ein Tippfehler
+           darf nicht die Sitzung beenden, aus der man gerade sperrt. */
+        if (sB.konto && String(sB.konto).endsWith(ende))
+          return antwort({ fehler: "Der eigene Zugang lässt sich nicht sperren. "
+            + "Sonst steht am Ende niemand mehr bereit." }, 400);
         for (const h of Object.keys(konten)) if (h.endsWith(ende)) ziele.push(h);
       }
       /* Notausgang: alle Zugänge eines Betriebs auf einmal. Gedacht für den

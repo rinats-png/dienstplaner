@@ -18489,13 +18489,38 @@ function Demozugaenge() {
   const [fehler, setFehler] = useState(null);
   const [laeuft, setLaeuft] = useState(null);   // id des Eintrags, der gerade gesperrt wird
   const [hinweis, setHinweis] = useState(null);
+  /* Die Konten des Demoraums — über die Sitzung, nicht über die
+     öffentliche Liste. Nur so ist ein überzähliger Betreibercode zu sehen. */
+  const [konten, setKonten] = useState(null);
+  const [kontenFehler, setKontenFehler] = useState(null);
 
   const laden = async () => {
-    setFehler(null);
+    setFehler(null); setKontenFehler(null);
     try { setListe(await SP.demos()); }
     catch (e) { setFehler(e.message); setListe([]); }
+    try { setKonten(await SP.zugaengeUebersicht()); }
+    catch (e) { setKontenFehler(e.message); setKonten({ zugaenge: [] }); }
   };
   useEffect(() => { laden(); }, []);
+
+  /* Ein Konto über seine gekürzte Kennung sperren. Der eigene Zugang ist
+     im Knopf abgeschaltet und wird vom Server zusätzlich abgewiesen. */
+  const kontoSperren = async (z) => {
+    const rolle = ROLLEN.find((r) => r.id === z.rolle)?.label || z.rolle;
+    const frage = `Diesen Zugang sperren?\n\n${z.name || "(ohne Namen)"} · ${rolle}\n`
+      + `Kennung ${z.kennung}${z.demo ? ` · Demo ${z.id}` : ""}\n\n`
+      + "Der Code führt danach ins Leere, laufende Sitzungen enden. "
+      + "Der Eintrag bleibt gesperrt stehen.";
+    if (!window.confirm(frage)) return;
+    setLaeuft(z.kennung); setFehler(null); setHinweis(null);
+    try {
+      const r = await SP.zugangSperren({ kennung: z.kennung });
+      if (!r.gesperrt) { setFehler("Kein Zugang gesperrt — vielleicht war er schon gesperrt."); return; }
+      setHinweis(`Zugang ${z.kennung} (${rolle}) gesperrt · ${r.sitzungenBeendet || 0} Sitzungen beendet.`);
+      await laden();
+    } catch (e) { setFehler(e.message); }
+    finally { setLaeuft(null); }
+  };
 
   const zurueckziehen = async (d) => {
     const frage = `Diesen Demozugang zurückziehen?\n\n${d.name}\n`
@@ -18508,6 +18533,8 @@ function Demozugaenge() {
       const r = await SP.zugangSperren({ id: d.id });
       if (!r.gesperrt) { setFehler("Kein Zugang gesperrt — vielleicht war er schon zurückgezogen."); return; }
       setListe((l) => (l || []).filter((x) => x.id !== d.id));
+      /* Die Kontenliste kennt keinen Zwischenspeicher — sie darf neu laden. */
+      SP.zugaengeUebersicht().then(setKonten).catch(() => {});
       setHinweis(`${d.name} (${d.id}) zurückgezogen · ${r.sitzungenBeendet || 0} Sitzungen beendet. `
         + "Die Startseite zeigt es innerhalb einer Minute.");
     } catch (e) { setFehler(e.message); }
@@ -18582,6 +18609,57 @@ function Demozugaenge() {
               </div>);
           })}
         </Card>))}
+
+      {/* ------------------ Alle Konten des Demoraums ------------------
+          Auch die, die auf der Startseite nie erscheinen: Betreibercodes
+          und bereits gesperrte Einträge. Hier findet sich ein zweiter
+          Betreibercode, den ein doppelter Skriptlauf hinterlassen hat. */}
+      <Card style={{ marginTop: 26 }}>
+        <CardHead right={konten && <Lab>{zahl((konten.zugaenge || []).length)} Konten
+          {konten.bestand ? ` · Raum ${konten.bestand}` : ""}</Lab>}>
+          Zugänge des Demoraums</CardHead>
+        <div style={{ padding: "14px var(--pad-x)", fontSize: 13, color: C.dim, lineHeight: 1.55,
+          borderBottom: `1px solid ${C.lineSoft}` }}>
+          Jedes Konto im Raum der Betreiberkonsole, mit gekürzter Kennung. Codes und
+          Prüfsummen zeigt der Server nicht. Der Zugang, mit dem du gerade angemeldet
+          bist, lässt sich hier nicht sperren.
+        </div>
+        {kontenFehler && (
+          <div style={{ padding: "14px var(--pad-x)", color: C.danger, fontSize: 14 }}>{kontenFehler}</div>)}
+        {konten === null ? (
+          <Laden zeilen={3} text="Konten werden geladen …" />
+        ) : (konten.zugaenge || []).length === 0 ? (
+          <Leer titel="Keine Konten" text="In diesem Raum gibt es keine Zugänge." />
+        ) : (konten.zugaenge || []).map((z, i, alle) => {
+          const rolle = ROLLEN.find((r) => r.id === z.rolle)?.label || z.rolle;
+          return (
+            <div key={z.kennung} style={{ padding: "13px var(--pad-x)", display: "flex", gap: 14,
+              alignItems: "center", flexWrap: "wrap",
+              borderBottom: i < alle.length - 1 ? `1px solid ${C.lineSoft}` : "none",
+              opacity: z.gesperrt ? 0.55 : 1 }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14.5, fontWeight: 600 }}>{z.name || "(ohne Namen)"}</span>
+                  <Pill size="sm" tone={z.rolle === "betreiber" ? "accent" : "neutral"}>{rolle}</Pill>
+                  {z.demo && <Pill size="sm">Demo</Pill>}
+                  {z.eigen && <Pill size="sm" tone="ok">diese Sitzung</Pill>}
+                  {z.gesperrt && <Pill size="sm">gesperrt</Pill>}
+                </div>
+                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
+                  Kennung <code style={{ ...NUM }}>{z.kennung}</code>
+                  {z.id ? <> · Demo-ID <code style={{ ...NUM }}>{z.id}</code></> : null}
+                  {" "}· Betrieb {z.betrieb ?? 0}
+                  {z.angelegt ? ` · angelegt ${fKurz(String(z.angelegt).slice(0, 10))}` : ""}
+                </div>
+              </div>
+              <Btn size="sm" kind="danger"
+                disabled={laeuft !== null || z.gesperrt || z.eigen}
+                title={z.eigen ? "Der eigene Zugang lässt sich nicht sperren." : undefined}
+                onClick={() => kontoSperren(z)}>
+                {laeuft === z.kennung ? "Wird gesperrt …" : z.gesperrt ? "Gesperrt" : "Sperren"}</Btn>
+            </div>);
+        })}
+      </Card>
     </div>);
 }
 

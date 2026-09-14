@@ -591,6 +591,66 @@ let tBetreiber = null;
   const demosNach = (await (await fetch(`${BASIS}/api/demos`, { headers: herkunft() })).json()).demos || [];
   pruef("Beide fehlen danach in der öffentlichen Liste",
     !demosNach.some((d) => d.bestand === "demo-fremd"));
+
+  /* --- Die Zugangsübersicht über die Sitzung ---
+
+     Dieselbe Übersicht wie /einrichten/uebersicht, nur für die Konsole:
+     Betreibersitzung statt Verwalterschlüssel. Die Vertrauensebenen
+     bleiben getrennt — ein Sitzungsmerkmal öffnet /einrichten nicht, ein
+     Verwalterschlüssel öffnet /api nicht. */
+  const ueGet = (t, raum = "demo-fremd") => fetch(`${BASIS}/api/zugaenge-uebersicht?bestand=${raum}`,
+    { headers: t ? kopf(t) : { ...herkunft() } });
+  const ueOhne = await ueGet(null);
+  pruef("Übersicht ohne Sitzung: 401", ueOhne.status === 401, `Status ${ueOhne.status}`);
+  const ueL = await ueGet(tL);
+  pruef("Übersicht als Leitung: 403", ueL.status === 403, `Status ${ueL.status}`);
+  const ueM = await ueGet(tM8);
+  pruef("Übersicht als Beschäftigte: 403", ueM.status === 403, `Status ${ueM.status}`);
+  const ueBRaum = await ueGet(tBetr2, "../etc");
+  pruef("Übersicht mit unzulässigem Raumnamen: 400", ueBRaum.status === 400, `Status ${ueBRaum.status}`);
+  const ueBetr = await ueGet(tBetr2);
+  const ueBD = await ueBetr.json().catch(() => ({}));
+  pruef("Übersicht als Betreiber: 200", ueBetr.status === 200 && Array.isArray(ueBD.zugaenge), `Status ${ueBetr.status}`);
+  const ueText = JSON.stringify(ueBD);
+  pruef("Übersicht nennt weder Code noch Prüfsumme",
+    !ueText.includes(dA.zugangscode) && !ueText.includes(dB.zugangscode) && !ueText.includes(betr2.zugangscode)
+      && !/[0-9a-f]{64}/i.test(ueText) && !/zugangscode|pruefsumme|schluessel/i.test(ueText));
+  const ueA = (ueBD.zugaenge || []).find((z) => z.id === fremdA?.id);
+  pruef("Kennung und Demo-ID werden geliefert",
+    !!ueA && /^[0-9a-f]{8}$/i.test(ueA.kennung) && ueA.gesperrt === true && ueA.rolle === "leitung",
+    JSON.stringify(ueA));
+  pruef("Übersicht führt die Selbststarts mit", Array.isArray(ueBD.selbststarts));
+
+  /* Der eigene Zugang: markiert in der Übersicht des eigenen Raums, und
+     über die Kennung nicht sperrbar. Eine dritte Betreibersitzung in
+     einem eigenen Raum — die Bremse zählt je Raum. */
+  const betr3 = await (await fetch(`${BASIS}/einrichten`, { method: "POST",
+    headers: { "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ verwaltung: GEHEIM, name: "Dritte Konsole", bestand: "probe-betr3",
+      rolle: "betreiber", person: null, betrieb: 0 }) })).json();
+  const tBetr3 = await anmelden(betr3.zugangscode);
+  const ueEigen = await (await ueGet(tBetr3, "probe-betr3")).json();
+  const meinEintrag = (ueEigen.zugaenge || []).find((z) => z.eigen === true);
+  pruef("Der eigene Zugang ist als eigen markiert",
+    !!meinEintrag && meinEintrag.rolle === "betreiber"
+      && (ueEigen.zugaenge || []).filter((z) => z.eigen).length === 1, JSON.stringify(meinEintrag));
+  pruef("Ohne Raumangabe gilt der Raum der Sitzung",
+    (await (await fetch(`${BASIS}/api/zugaenge-uebersicht`, { headers: kopf(tBetr3) })).json()).bestand === "probe-betr3");
+  const selbstSperren = await post("zugang-sperren", tBetr3, JSON.stringify({ kennung: meinEintrag?.kennung }));
+  pruef("Der eigene Zugang lässt sich über die Kennung nicht sperren", selbstSperren.status === 400,
+    `Status ${selbstSperren.status}`);
+  const nochDa = await ueGet(tBetr3);
+  pruef("Die eigene Sitzung lebt danach noch", nochDa.status === 200, `Status ${nochDa.status}`);
+
+  /* Die andere Tür bleibt zu: /einrichten/uebersicht nimmt keine Sitzung. */
+  const einrichtenMitSitzung = await fetch(`${BASIS}/einrichten/uebersicht?bestand=demo-fremd`,
+    { headers: kopf(tBetr3) });
+  pruef("/einrichten/uebersicht weist eine Betreibersitzung ab", einrichtenMitSitzung.status === 401,
+    `Status ${einrichtenMitSitzung.status}`);
+  const apiMitSchluessel = await fetch(`${BASIS}/api/zugaenge-uebersicht?bestand=demo-fremd`,
+    { headers: { authorization: `Bearer ${GEHEIM}`, ...herkunft() } });
+  pruef("/api/zugaenge-uebersicht weist den Verwalterschlüssel ab", apiMitSchluessel.status === 401,
+    `Status ${apiMitSchluessel.status}`);
 }
 
 /* --- S10: Die eigene Person pflegen, aber nicht befördern ---
