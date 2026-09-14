@@ -1,0 +1,16 @@
+# Nicht in den Bau-Kontext: Werkzeuge, Verlauf, Geheimnisse.
+# rechtliches/ bleibt drin — die Oberfläche bindet die Rechtstexte ein.
+.git
+.github
+.netlify
+node_modules
+dist
+marketing
+werkzeug
+pruefungen
+deploy
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore

@@ -1,0 +1,141 @@
+# Auslieferung als Container — VORBEREITET, noch nicht scharf.
+#
+# Weg:  GitHub → Prüfungen → Docker-Bild → GHCR → VPS (SSH, Forced Command
+#       → deploy.sh → Healthcheck → Rollback bei Fehler)
+#
+# Heute läuft dieser Ablauf nur von Hand (workflow_dispatch). Er baut das
+# Bild, prüft es mit der Rechteprüfung gegen den laufenden Container und
+# lädt es nach GHCR. Der Schritt auf den VPS läuft erst, wenn
+#   - er beim Start ausdrücklich angefordert wird (Eingabe „ausliefern") und
+#   - Repository-Variable DEPLOY_HOST sowie Secret DEPLOY_SSH_KEY gesetzt sind.
+#
+# Um ihn später bei jedem Push nach main laufen zu lassen: den Block
+# `push:` unter `on:` einkommentieren.
+name: Auslieferung
+
+on:
+  workflow_dispatch:
+    inputs:
+      ausliefern:
+        description: "Nach dem Bau auf den VPS ausliefern?"
+        type: boolean
+        default: false
+  # push:
+  #   branches: ["main"]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  BILD: ghcr.io/${{ github.repository }}
+  VITE_ANWENDUNG_URL: ${{ vars.VITE_ANWENDUNG_URL || 'https://app.centric-dienstplanung.de' }}
+  VITE_KONTAKT_MAIL: ${{ vars.VITE_KONTAKT_MAIL || 'info@centric-dienstplanung.de' }}
+
+jobs:
+  # -------------------------------------------------------------------
+  # 1. Bauen, gegen den laufenden Container prüfen, nach GHCR laden
+  # -------------------------------------------------------------------
+  bild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Kennzeichen (git-SHA und latest)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.BILD }}
+          tags: |
+            type=sha,format=long,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Bild bauen (lokal, für die Prüfung)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
+            VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Der Container läuft hier genau so gehärtet wie später auf dem VPS.
+      - name: Container starten
+        run: |
+          docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
+            -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
+            -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges:true --memory 512m \
+            "${BILD}:${{ steps.meta.outputs.version }}"
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:3000/gesund >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3000/gesund
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+
+      # Dieselbe Rechteprüfung wie in pruefung.yml — nur gegen das Bild,
+      # das ausgeliefert wird, statt gegen den Entwicklungsserver.
+      - name: Rechteprüfung gegen den Container
+        run: npm run pruefung:rechte
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.9
+
+      - name: Container-Logs (bei Fehler)
+        if: failure()
+        run: docker logs centric-pruefung
+
+      - name: GHCR anmelden
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bild nach GHCR laden
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
+            VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
+          cache-from: type=gha
+
+  # -------------------------------------------------------------------
+  # 2. Auf den VPS — nur auf Anforderung und nur mit hinterlegtem Zugang
+  # -------------------------------------------------------------------
+  vps:
+    needs: bild
+    if: ${{ inputs.ausliefern && vars.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Der Schlüssel darf auf dem VPS genau eines: /opt/bin/deploy.sh
+      # aufrufen (Forced Command in authorized_keys). Das Skript zieht das
+      # Bild, startet es, wartet auf den Healthcheck und rollt bei Fehler
+      # auf das vorige Kennzeichen zurück.
+      - name: deploy.sh auf dem VPS aufrufen
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: centric-dienstplanung ${{ needs.bild.outputs.tag }}

@@ -1,0 +1,64 @@
+# =====================================================================
+#  CENTRIC Dienstplanung — Betrieb auf dem VPS
+#  Ort auf dem Server: /opt/apps/centric-dienstplanung/compose.yml
+#
+#  Der Container veröffentlicht KEINEN Port. Erreichbar ist er nur für
+#  Caddy über das gemeinsame Docker-Netzwerk "proxy" als
+#  centric-dp-web:3000. Daten liegen unter ./data (Bind-Mount).
+#
+#  Befehle (im Verzeichnis /opt/apps/centric-dienstplanung):
+#    docker compose up -d          starten / nach Änderung neu erstellen
+#    docker compose logs -f        Logs
+#    docker compose ps             Status inkl. Healthcheck
+# =====================================================================
+name: centric-dienstplanung
+
+services:
+  centric-dp-web:
+    image: ghcr.io/rinats-png/dienstplaner:${IMAGE_TAG:-latest}
+    container_name: centric-dp-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      CENTRIC_DATEN: /data
+      CENTRIC_ABLAGE: dateien
+
+    networks:
+      - proxy
+
+    volumes:
+      - ./data:/data                          # persistent, überlebt Neuerstellung
+
+    # --- Härtung ---
+    user: "1000:1000"                         # = admin auf dem Host, = node im Image
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/gesund').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  proxy:
+    external: true

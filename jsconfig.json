@@ -34,6 +34,7 @@
     "src/migration.js",
     "src/farben.js",
     "src/kontakt.js",
-    "netlify/lib/*.mjs"
+    "netlify/lib/*.mjs",
+    "server.mjs"
   ]
 }

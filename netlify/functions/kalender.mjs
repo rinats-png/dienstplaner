@@ -1,4 +1,4 @@
-import { getStore } from "@netlify/blobs";
+import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort } from "../lib/schutz.mjs";
 
