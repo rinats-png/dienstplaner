@@ -102,22 +102,49 @@ function schluesselAus(name) {
    --------------------------------------------------------------------------- */
 
 const angelegt = new Set();
+/** Verzeichnisse, deren Anlegen gerade läuft — ein Promise je Verzeichnis. */
+const imGang = new Map();
+
+/* Eine Zwischendatei dieses Prozesses heißt <name>.json.<pid>.<zufall>.tmp.
+   Die Schlüsselkodierung lässt keinen Punkt durch, also steht die
+   Prozessnummer immer zwischen genau diesen beiden Punkten. */
+const EIGENE_TMP = `.${process.pid}.`;
 
 /**
  * Legt das Verzeichnis an und räumt einmal je Prozess auf: Eine .tmp-Datei
  * kann nur von einem Schreibvorgang stammen, der vor dem Umbenennen
  * abgebrochen wurde — Stromausfall, Absturz. Sie enthält keinen gültigen
  * Stand und wird nie gelesen; hier verschwindet sie.
+ *
+ * Läuft je Verzeichnis nur einmal zur Zeit. Vorher betraten fünfzig
+ * gleichzeitige Erstschreiber diese Funktion alle vor dem ersten Abschluss,
+ * und die Nachzügler räumten die halbfertigen Zwischendateien der Vorläufer
+ * weg — deren rename() scheiterte dann mit ENOENT. Jetzt warten alle auf
+ * dasselbe Promise, und Zwischendateien des eigenen Prozesses bleiben
+ * ohnehin unangetastet: Ein Absturzrest stammt nie vom laufenden Prozess.
  * @param {string} verzeichnis
+ * @returns {Promise<void>}
  */
-async function sicherstellen(verzeichnis) {
-  if (angelegt.has(verzeichnis)) return;
+function sicherstellen(verzeichnis) {
+  if (angelegt.has(verzeichnis)) return Promise.resolve();
+  let lauf = imGang.get(verzeichnis);
+  if (!lauf) {
+    lauf = anlegen(verzeichnis)
+      .then(() => { angelegt.add(verzeichnis); })
+      .finally(() => { imGang.delete(verzeichnis); });
+    imGang.set(verzeichnis, lauf);
+  }
+  return lauf;
+}
+
+/** @param {string} verzeichnis */
+async function anlegen(verzeichnis) {
   await mkdir(verzeichnis, { recursive: true, mode: 0o700 });
   try {
     for (const n of await readdir(verzeichnis))
-      if (n.endsWith(".tmp")) await unlink(path.join(verzeichnis, n)).catch(() => {});
+      if (n.endsWith(".tmp") && !n.includes(EIGENE_TMP))
+        await unlink(path.join(verzeichnis, n)).catch(() => {});
   } catch { /* nicht lesbar? dann meldet sich der nächste Zugriff */ }
-  angelegt.add(verzeichnis);
 }
 
 /**

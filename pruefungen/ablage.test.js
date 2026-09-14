@@ -185,6 +185,46 @@ describe("Unversehrtheit", () => {
     expect(roh.daten).toEqual(wert);
   });
 
+  /* Der Fall, der in der Prüfung wechselnd rot und grün war: Viele
+     Erstschreiber in ein frisches Verzeichnis. Das Aufräumen beim ersten
+     Zugriff lief je Schreiber einmal, und die Nachzügler löschten die
+     Zwischendateien der Vorläufer — ENOENT beim Umbenennen, etwa jeder
+     zweite Lauf. Zehn Runden, jede in ein neues Verzeichnis, damit der
+     Erstzugriff jedes Mal wirklich der erste ist. */
+  it("übersteht gleichzeitige Erstschreiber in ein frisches Verzeichnis, zehnmal", async () => {
+    for (let runde = 0; runde < 10; runde++) {
+      const name = `erstzugriff-${runde}`;
+      const s = getStore(name);
+      const ausgang = await Promise.allSettled(
+        Array.from({ length: 50 }, (_, i) => s.setJSON("k", { runde, i, f: "y".repeat(1000) })));
+      const gescheitert = ausgang.filter((a) => a.status === "rejected")
+        .map((a) => /** @type {PromiseRejectedResult} */ (a).reason && /** @type {any} */ (a).reason.code);
+      expect(gescheitert, `Runde ${runde}`).toEqual([]);
+      const namen = await readdir(path.join(wurzel, name));
+      expect(namen, `Runde ${runde}`).toEqual(["k.json"]);
+      const roh = JSON.parse(await readFile(path.join(wurzel, name, "k.json"), "utf8"));
+      expect(roh.fassung).toBe(1);
+      expect(roh.daten.runde).toBe(runde);
+      expect(roh.daten.i).toBeGreaterThanOrEqual(0);
+      expect(roh.daten.i).toBeLessThan(50);
+      expect(roh.daten.f).toHaveLength(1000);
+      expect(await s.get("k", { type: "json" })).toEqual(roh.daten);
+    }
+  });
+
+  it("lässt beim Aufräumen die Zwischendateien des eigenen Prozesses stehen", async () => {
+    const dir = path.join(wurzel, "eigene");
+    await (await import("node:fs/promises")).mkdir(dir, { recursive: true });
+    const eigene = `k.json.${process.pid}.0123456789ab.tmp`;
+    const fremde = `k.json.${process.pid + 1}.0123456789ab.tmp`;
+    await writeFile(path.join(dir, eigene), "läuft noch");
+    await writeFile(path.join(dir, fremde), "Absturzrest");
+    await getStore("eigene").setJSON("neu", 1);                 // erster Zugriff räumt auf
+    const namen = await readdir(dir);
+    expect(namen).toContain(eigene);
+    expect(namen).not.toContain(fremde);
+  });
+
   it("verliert bei gleichzeitigem Schreiben verschiedener Schlüssel keinen", async () => {
     const s = getStore("parallel");
     await Promise.all(Array.from({ length: 200 }, (_, i) => s.setJSON(`p:${i}`, i)));
