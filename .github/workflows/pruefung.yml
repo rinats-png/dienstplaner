@@ -14,6 +14,9 @@ jobs:
   pruefen:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # Das Bild, gegen das die serverseitigen Prüfungen laufen (siehe unten).
+      BILD: centric-pruefung:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -103,23 +106,40 @@ jobs:
         with:
           context: .
           load: true
-          tags: centric-pruefung:${{ github.sha }}
+          tags: ${{ env.BILD }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Container starten
+      # Jede Prüfung bekommt einen frischen Container mit leerer Ablage.
+      #
+      # Die Bremse in schutz.mjs zählt für /einrichten auch ein
+      # Gesamtaufkommen — 20 Aufrufe je zehn Minuten, über alle Herkünfte
+      # hinweg — und dieser Zähler liegt in /data. Die Rechteprüfung braucht
+      # 13 Aufrufe, die Verwalterprüfung 13 weitere: Ab dem 21. antwortet
+      # der Dienst mit 429. Unter Netlify war jede Instanz kurzlebig; im
+      # Container bleibt der Stand stehen, bis der Container geht.
+      - name: Container-Start bereitlegen
         run: |
+          cat > "$RUNNER_TEMP/container-neu.sh" <<'SKRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          docker rm -fv centric-pruefung >/dev/null 2>&1 || true
           docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
             -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges:true --memory 512m \
-            "centric-pruefung:${{ github.sha }}"
+            "$BILD"
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:3000/gesund >/dev/null && break
             sleep 1
           done
           curl -sf http://127.0.0.1:3000/gesund
+          SKRIPT
+          chmod +x "$RUNNER_TEMP/container-neu.sh"
+
+      - name: Container starten
+        run: "$RUNNER_TEMP/container-neu.sh"
 
       - name: Rechteprüfung
         run: npm run pruefung:rechte
@@ -132,6 +152,8 @@ jobs:
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
       # Betrieb geschafft hätte.
       # Benannte Verwalterkonten statt eines Geheimnisses für alle.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
       - name: Verwalterkonten
         run: npm run pruefung:verwalter
         env:
@@ -142,6 +164,8 @@ jobs:
       # Ein Demozugang steht ohne Code offen. Das Zurückziehen muss deshalb
       # sofort wirken — es wirkte nicht: Die Sperre stand im Datensatz und
       # wurde auf den beiden Demopfaden nicht gelesen.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
       - name: Demozugänge
         run: npm run pruefung:demo
         env:
@@ -149,17 +173,23 @@ jobs:
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.7
 
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
       - name: Sicherung außer Haus
         run: npm run pruefung:sicherung
         env:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_HERKUNFT: 10.9.9.9
 
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
       - name: Bremse
         run: npm run pruefung:bremse
         env:
           CENTRIC_BASIS: http://127.0.0.1:3000
 
+      # Bei einem Fehler wird kein weiterer Container gestartet — die Logs
+      # gehören also immer zu der Prüfung, die gescheitert ist.
       - name: Container-Logs (bei Fehler)
         if: failure()
         run: docker logs centric-pruefung
