@@ -92,19 +92,39 @@ jobs:
       - name: Übersetzen
         run: npm run build
 
-      # Die serverseitigen Prüfungen brauchen einen laufenden Dienst.
-      - name: Server starten
+      # Die serverseitigen Prüfungen laufen gegen das Bild, das später
+      # ausgeliefert wird — nicht gegen den Entwicklungsserver. Der Aufbau
+      # ist derselbe wie in deploy.yml: bauen, gehärtet starten, /gesund
+      # abwarten. Das Bild bleibt hier; nach GHCR lädt nur deploy.yml.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Bild bauen (lokal, für die Prüfung)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: centric-pruefung:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Container starten
         run: |
-          CENTRIC_ADMIN=ci-geheim npx vite --port 5173 &
+          docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
+            -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
+            -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges:true --memory 512m \
+            "centric-pruefung:${{ github.sha }}"
           for i in $(seq 1 30); do
-            curl -sf http://localhost:5173/ >/dev/null && break
+            curl -sf http://127.0.0.1:3000/gesund >/dev/null && break
             sleep 1
           done
+          curl -sf http://127.0.0.1:3000/gesund
 
       - name: Rechteprüfung
         run: npm run pruefung:rechte
         env:
-          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.9
 
@@ -115,7 +135,7 @@ jobs:
       - name: Verwalterkonten
         run: npm run pruefung:verwalter
         env:
-          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.8
 
@@ -125,17 +145,21 @@ jobs:
       - name: Demozugänge
         run: npm run pruefung:demo
         env:
-          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.7
 
       - name: Sicherung außer Haus
         run: npm run pruefung:sicherung
         env:
-          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_HERKUNFT: 10.9.9.9
 
       - name: Bremse
         run: npm run pruefung:bremse
         env:
-          CENTRIC_BASIS: http://localhost:5173
+          CENTRIC_BASIS: http://127.0.0.1:3000
+
+      - name: Container-Logs (bei Fehler)
+        if: failure()
+        run: docker logs centric-pruefung
