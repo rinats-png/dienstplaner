@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
-import { kontoSchreiben } from "../lib/konten.mjs";
+import { kontoSchreiben, alleKonten } from "../lib/konten.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
   from "../lib/verwalter.mjs";
 
@@ -26,7 +26,7 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
-  if (!["", "verwalter", "umgebung"].includes(pfad))
+  if (!["", "verwalter", "umgebung", "uebersicht"].includes(pfad))
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
@@ -175,7 +175,63 @@ export default async (req) => {
     });
   }
 
+  /* ---------------------------- Übersicht eines Raums ----------------
+     Was gibt es schon? Bis hierher konnte das niemand fragen: /einrichten
+     legte nur an, und die einzige Liste war die öffentliche Demoliste.
+     Das Bereitstellungsskript lief deshalb zweimal blind durch und legte
+     jeden Zugang doppelt an.
+
+     Hier stehen die Zugänge eines Raums und die Selbststarts — ohne Codes
+     und ohne Prüfsummen. Die gekürzte Kennung genügt zum Sperren.        */
+  if (pfad === "uebersicht") {
+    if (req.method !== "GET") return antwort({ fehler: "Nur GET." }, 405);
+    const raum = url.searchParams.get("bestand") || "";
+    if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raum))
+      return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+    const konten = await alleKonten(s0);
+    const zugaenge = Object.entries(konten)
+      .filter(([, k]) => k && k.bestand === raum)
+      .map(([h, k]) => ({
+        kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
+        betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
+        gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
+        selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
+        angelegt: k.angelegt || null,
+      }))
+      .sort((a, b) => String(a.angelegt || "").localeCompare(String(b.angelegt || "")));
+    let selbst = [];
+    try { selbst = (await s0.get("selbststarts", { type: "json" })) || []; } catch { /* keine */ }
+    const selbststarts = selbst.filter((x) => x && x.raum).map((x) => ({
+      raum: x.raum, name: x.name || null, branche: x.branche || null,
+      zugaenge: x.zugaenge ?? null, angelegt: x.angelegt || null, laeuftAb: x.laeuftAb || null,
+      abgelaufen: !!(x.laeuftAb && new Date(x.laeuftAb).getTime() < Date.now()),
+    }));
+    return antwort({ bestand: raum, zugaenge, selbststarts, ich: wer.name });
+  }
+
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);
+
+  /* Ein Demozugang je Betrieb und Rolle. Die Startseite zeigt jeden
+     aktiven Demozugang als eigene Karte; zwei gleiche wären zwei Karten
+     mit demselben Namen. Das ist nie gewollt — wer denselben Betrieb aus
+     einem zweiten Blickwinkel zeigen will, nimmt eine andere Rolle. Ein
+     gesperrter Eintrag zählt nicht: Nach dem Zurückziehen darf neu
+     angelegt werden. */
+  if (demo) {
+    const konten = await alleKonten(s0);
+    const gleicheRolle = rolle || "kunde", gleicherBetrieb = betrieb ?? 0;
+    const vorhanden = Object.values(konten).find((k) => k && k.demo && !k.gesperrt
+      && k.bestand === bestand && (k.betrieb ?? 0) === gleicherBetrieb
+      && (k.rolle || "kunde") === gleicheRolle);
+    if (vorhanden) {
+      await protokoll("einrichten", k, "abgewiesen", `Demozugang doppelt · ${bestand}`);
+      return antwort({ fehler: "Für diesen Betrieb und diese Rolle gibt es bereits einen "
+        + "aktiven Demozugang. Erst zurückziehen, dann neu anlegen.",
+        vorhanden: { id: vorhanden.id || null, name: vorhanden.name || null,
+          rolle: gleicheRolle, betrieb: gleicherBetrieb, gruppe: vorhanden.gruppe || null,
+          angelegt: vorhanden.angelegt || null } }, 409);
+    }
+  }
 
   // Zugangscode in gut vorlesbarer Form: vier Blöcke, keine verwechselbaren Zeichen
   const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";

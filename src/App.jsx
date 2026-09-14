@@ -18289,6 +18289,8 @@ function Selbststarts({ db, akt }) {
   const [laeuft, setLaeuft] = useState(true);
   const [fehler, setFehler] = useState(null);
   const [tage, setTage] = useState(30);
+  const [loescht, setLoescht] = useState(null);   // Raum, der gerade gelöscht wird
+  const [hinweis, setHinweis] = useState(null);
 
   const laden = async (t) => {
     setLaeuft(true); setFehler(null);
@@ -18297,6 +18299,26 @@ function Selbststarts({ db, akt }) {
     finally { setLaeuft(false); }
   };
   useEffect(() => { laden(tage); }, [tage]);
+
+  /* Einen Testbetrieb endgültig löschen — Bestand, Monate, Sicherungen,
+     Zugangscodes, Sitzungen und der Vermerk in dieser Liste. Bis hierher
+     gab es dafür keinen Knopf: Selbststarts sind keine Mandanten der
+     Konsole, und nur für die gab es einen. Der Server verlangt den Namen
+     noch einmal; deshalb wird er hier abgefragt und nicht nur bestätigt. */
+  const raumLoeschen = async (s) => {
+    const eingabe = window.prompt(`Löscht den Testbetrieb „${s.name}" unwiderruflich — `
+      + "Personal, Pläne, Sicherungen und alle Zugangscodes.\n\n"
+      + `Zur Bestätigung den Raumnamen eingeben:\n\n${s.raum}`);
+    if (eingabe === null) return;
+    if (eingabe.trim() !== s.raum) { setFehler("Löschung abgebrochen — der Raumname stimmte nicht."); return; }
+    setLoescht(s.raum); setFehler(null); setHinweis(null);
+    try {
+      const r = await SP.raumLoeschen(s.raum);
+      setHinweis(`Datenraum „${s.raum}" gelöscht (${r.geloescht} Einträge).`);
+      await laden();
+    } catch (e) { setFehler(e.message); }
+    finally { setLoescht(null); }
+  };
 
   const liste = (stand && stand.selbststarts) || [];
   /* Nicht noch eine Tabelle: der Name kommt aus dem Branchenprofil, und
@@ -18329,6 +18351,10 @@ function Selbststarts({ db, akt }) {
         <Card style={{ marginBottom: 20, padding: "18px var(--pad-x)",
           borderColor: C.danger }}>
           <div style={{ color: C.danger, fontSize: 14 }}>{fehler}</div>
+        </Card>)}
+      {hinweis && (
+        <Card style={{ marginBottom: 20, padding: "18px var(--pad-x)", borderColor: C.ok }}>
+          <div style={{ fontSize: 14 }}>{hinweis}</div>
         </Card>)}
 
       {laeuft && !stand ? (
@@ -18397,6 +18423,9 @@ function Selbststarts({ db, akt }) {
                           : `abgelaufen ${fKurz(s.laeuftAb.slice(0, 10))}`}</div>
                       <code style={{ display: "block", fontSize: 11, marginTop: 7,
                         color: C.aus, ...NUM }}>{s.raum}</code>
+                      <Btn size="sm" kind="danger" style={{ marginTop: 10 }}
+                        disabled={loescht !== null} onClick={() => raumLoeschen(s)}>
+                        {loescht === s.raum ? "Wird gelöscht …" : "Datenraum löschen"}</Btn>
                     </div>
                   </div>
                 </div>);
@@ -18437,6 +18466,122 @@ function Selbststarts({ db, akt }) {
               </div>)}
           </Card>)}
       </>)}
+    </div>);
+}
+
+/* ==========================================================================
+   DEMOZUGÄNGE — was auf der Startseite offensteht
+
+   Dieselbe Liste, die jeder Besucher sieht, nur mit einem Knopf daneben.
+   Bis hierher gab es keinen Ort, an dem der Betreiber sie überhaupt zu
+   Gesicht bekam: Die Konsole zeigte die Mandanten des Demoraums, nicht
+   die Zugänge dazu. Ein zweimal gelaufenes Bereitstellungsskript legte
+   jeden Demozugang doppelt an, und die Startseite zeigte jeden Betrieb
+   zweimal — ohne dass es in der Konsole zu sehen oder zu beheben war.
+
+   Zurückgezogen wird über die öffentliche Kennung. Der Server prüft wie
+   überall: Betreiber, frische Anmeldung, Bremse. Die Liste ist bis zu
+   eine Minute zwischengespeichert; deshalb wird der Eintrag nach dem
+   Zurückziehen sofort aus der Ansicht genommen, statt neu zu laden.
+   ========================================================================== */
+function Demozugaenge() {
+  const [liste, setListe] = useState(null);
+  const [fehler, setFehler] = useState(null);
+  const [laeuft, setLaeuft] = useState(null);   // id des Eintrags, der gerade gesperrt wird
+  const [hinweis, setHinweis] = useState(null);
+
+  const laden = async () => {
+    setFehler(null);
+    try { setListe(await SP.demos()); }
+    catch (e) { setFehler(e.message); setListe([]); }
+  };
+  useEffect(() => { laden(); }, []);
+
+  const zurueckziehen = async (d) => {
+    const frage = `Diesen Demozugang zurückziehen?\n\n${d.name}\n`
+      + `${ROLLEN.find((r) => r.id === d.rolle)?.label || d.rolle} · ${d.gruppe || "ohne Gruppe"} · ${d.id}\n\n`
+      + "Er verschwindet von der Startseite, laufende Sitzungen enden. "
+      + "Der Eintrag bleibt gesperrt stehen und lässt sich nicht wieder öffnen.";
+    if (!window.confirm(frage)) return;
+    setLaeuft(d.id); setFehler(null); setHinweis(null);
+    try {
+      const r = await SP.zugangSperren({ id: d.id });
+      if (!r.gesperrt) { setFehler("Kein Zugang gesperrt — vielleicht war er schon zurückgezogen."); return; }
+      setListe((l) => (l || []).filter((x) => x.id !== d.id));
+      setHinweis(`${d.name} (${d.id}) zurückgezogen · ${r.sitzungenBeendet || 0} Sitzungen beendet. `
+        + "Die Startseite zeigt es innerhalb einer Minute.");
+    } catch (e) { setFehler(e.message); }
+    finally { setLaeuft(null); }
+  };
+
+  /* Nach Gruppen, wie auf der Startseite — so erkennt man Doppelte sofort. */
+  const gruppen = {};
+  for (const d of liste || []) (gruppen[d.gruppe || "Weitere"] = gruppen[d.gruppe || "Weitere"] || []).push(d);
+  /* Doppelte markieren: gleicher Raum, gleicher Betrieb, gleiche Rolle. */
+  const schluessel = (d) => `${d.bestand}·${d.betrieb ?? 0}·${d.rolle}`;
+  const zaehl = {};
+  for (const d of liste || []) zaehl[schluessel(d)] = (zaehl[schluessel(d)] || 0) + 1;
+  const doppelte = (liste || []).filter((d) => zaehl[schluessel(d)] > 1).length;
+
+  return (
+    <div>
+      <H1 rubrik="Betreiber"
+        sub="Was auf der Startseite ohne Code offensteht — dieselbe Liste, die jeder Besucher sieht. Zurückziehen sperrt den Zugang endgültig; neu anlegen geht über das Bereitstellungsskript."
+        right={<Btn size="sm" onClick={laden}>Neu laden</Btn>}>
+        Demozugänge</H1>
+
+      {fehler && (
+        <Card style={{ marginBottom: 20, padding: "18px var(--pad-x)", borderColor: C.danger }}>
+          <div style={{ color: C.danger, fontSize: 14 }}>{fehler}</div>
+        </Card>)}
+      {hinweis && (
+        <Card style={{ marginBottom: 20, padding: "18px var(--pad-x)", borderColor: C.ok }}>
+          <div style={{ color: C.text, fontSize: 14 }}>{hinweis}</div>
+        </Card>)}
+      {doppelte > 0 && (
+        <Card style={{ marginBottom: 20, padding: "18px var(--pad-x)", borderColor: C.warn }}>
+          <div style={{ fontSize: 14, lineHeight: 1.55 }}>
+            <b>{zahl(doppelte)} Einträge sind doppelt</b> — gleicher Raum, gleicher Betrieb,
+            gleiche Rolle. Die Startseite zeigt diese Betriebe mehrfach. Je Paar einen
+            Eintrag zurückziehen; welcher, ist gleichgültig.
+          </div>
+        </Card>)}
+
+      {liste === null ? (
+        <Card><Laden zeilen={3} text="Demozugänge werden geladen …" /></Card>
+      ) : liste.length === 0 ? (
+        <Card><Leer titel="Keine Demozugänge"
+          text="Auf der Startseite steht derzeit nichts ohne Code offen. Demozugänge legt das Bereitstellungsskript werkzeug/zugaenge-anlegen.sh an." /></Card>
+      ) : Object.entries(gruppen).map(([gruppe, eintraege]) => (
+        <Card key={gruppe} style={{ marginBottom: 18 }}>
+          <CardHead right={<Lab>{zahl(eintraege.length)} {eintraege.length === 1 ? "Zugang" : "Zugänge"}</Lab>}>
+            {gruppe}</CardHead>
+          {eintraege.map((d, i) => {
+            const doppelt = zaehl[schluessel(d)] > 1;
+            return (
+              <div key={d.id} style={{ padding: "15px var(--pad-x)", display: "flex", gap: 14,
+                alignItems: "center", flexWrap: "wrap",
+                borderBottom: i < eintraege.length - 1 ? `1px solid ${C.lineSoft}` : "none",
+                background: doppelt ? C.warnLight : "transparent" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 15.5, fontWeight: 620 }}>{d.name}</span>
+                    <Pill size="sm">{ROLLEN.find((r) => r.id === d.rolle)?.label || d.rolle}</Pill>
+                    {doppelt && <Pill size="sm" tone="warn">doppelt</Pill>}
+                  </div>
+                  <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>
+                    Raum <code style={{ ...NUM }}>{d.bestand}</code> · Betrieb {d.betrieb ?? 0}
+                    {d.hinweis ? ` · ${d.hinweis}` : ""}
+                  </div>
+                  <code style={{ display: "block", fontSize: 11.5, marginTop: 6, color: C.aus, ...NUM }}
+                    title="Öffentliche Kennung des Demozugangs">{d.id}</code>
+                </div>
+                <Btn size="sm" kind="danger" disabled={laeuft !== null}
+                  onClick={() => zurueckziehen(d)}>
+                  {laeuft === d.id ? "Wird zurückgezogen …" : "Zurückziehen"}</Btn>
+              </div>);
+          })}
+        </Card>))}
     </div>);
 }
 
@@ -20213,7 +20358,8 @@ function lade(name, inhalt, typ) {
 }
 
 const NAV_BETREIBER = [
-  ["mandanten", "Mandanten"], ["selbststarts", "Selbststarts"], ["neu", "Neuer Mandant"], ["adressen", "Adressänderungen"],
+  ["mandanten", "Mandanten"], ["selbststarts", "Selbststarts"], ["demos", "Demozugänge"],
+  ["neu", "Neuer Mandant"], ["adressen", "Adressänderungen"],
   ["rechnungen", "Rechnungen"], ["tarife", "Tarife"], ["rechner", "Rechner"], ["pakete", "Pakete"]];
 /**
  * Navigation in sechs Bereichen statt neunzehn Einzelpunkten.
@@ -22564,6 +22710,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
                   </Card>
                 </div>)}
               {aktiveView === "selbststarts" && <Selbststarts db={db} akt={akt} />}
+              {aktiveView === "demos" && <Demozugaenge />}
               {aktiveView === "adressen" && (
                 <div>
                   <H1 rubrik="Betreiber"

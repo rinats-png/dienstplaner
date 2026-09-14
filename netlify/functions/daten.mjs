@@ -336,6 +336,16 @@ export default async (req, context) => {
           }
         }
       } catch { /* egal */ }
+      /* Der Vermerk in der Nachfassliste. Ohne diesen Schritt stand ein
+         gelöschter Testbetrieb weiter unter „Selbststarts" in der Konsole —
+         mit Zugangszahl und Ablaufdatum, als gäbe es ihn noch. */
+      try {
+        const liste = await store.get("selbststarts", { type: "json" });
+        if (Array.isArray(liste) && liste.some((x) => x && x.raum === raum)) {
+          await store.setJSON("selbststarts", liste.filter((x) => !x || x.raum !== raum));
+          geloescht++;
+        }
+      } catch { /* keine Liste */ }
       await protokoll("loeschen", kR, "erfolg", `${raum}: ${geloescht} Einträge`);
       return antwort({ ok: true, raum, geloescht });
     }
@@ -362,13 +372,29 @@ export default async (req, context) => {
       if (!bS.frei) { await protokoll("zugaenge", kS, "gebremst", bS.grund);
         return zuVielAntwort(bS.wartet); }
 
-      const { code, pruefsumme, alleDesBetriebs } = rumpf;
+      const { code, pruefsumme, id, kennung: kurz, alleDesBetriebs } = rumpf;
       const konten = await alleKonten(store);
       const ziele = [];
 
       /* Beide Schlüssel — ein Konto kann noch unter dem alten liegen. */
       if (code) { ziele.push(ablageSchluessel(code)); ziele.push(altHash(code)); }
       if (pruefsumme) ziele.push(String(pruefsumme));
+      /* Die öffentliche Demo-Kennung aus /api/demos. Bis hierher ließ sich
+         ein Demozugang nur über seinen Code zurückziehen — den kennt nach
+         dem Anlegen niemand mehr, er steht nur einmal auf dem Bildschirm.
+         Die Konsole sieht dieselbe Liste wie die Startseite und zieht
+         damit genau den einen Eintrag zurück, der zu viel ist. */
+      if (id) {
+        for (const [h, k] of Object.entries(konten))
+          if (k && k.demo && k.id === String(id)) ziele.push(h);
+      }
+      /* Die gekürzte Kennung aus /einrichten/uebersicht — die letzten acht
+         Zeichen der Prüfsumme, wie bei den Verwalterkonten. Nur genau acht
+         Hexzeichen; ein leerer oder kürzerer Wert träfe sonst alles. */
+      if (kurz && /^[0-9a-f]{8}$/i.test(String(kurz))) {
+        const ende = String(kurz).toLowerCase();
+        for (const h of Object.keys(konten)) if (h.endsWith(ende)) ziele.push(h);
+      }
       /* Notausgang: alle Zugänge eines Betriebs auf einmal. Gedacht für den
          Fall, dass Codes in falsche Hände geraten sind. Der eigene Zugang
          bleibt bestehen, sonst sperrt man sich selbst aus. */
@@ -407,7 +433,10 @@ export default async (req, context) => {
         const { blobs } = await sitzungen().list();
         for (const b of blobs) {
           const sit = await sitzungen().get(b.key, { type: "json" });
-          if (!sit || sit.bestand !== sB.bestand) continue;
+          /* Die Leitung sieht nur die Sitzungen des eigenen Hauses. Der
+             Betreiber sperrt auch Zugänge fremder Räume — dann müssen
+             deren Sitzungen ebenso enden, sonst ist die Sperre keine. */
+          if (!sit || (sB.rolle !== "betreiber" && sit.bestand !== sB.bestand)) continue;
           /* Sitzungen aus der Zeit vor dieser Änderung tragen keine
              Kontokennung. Sie laufen binnen zwölf Stunden von selbst ab. */
           if (!sit.konto || !gesperrteHashes.has(sit.konto)) continue;
@@ -451,8 +480,10 @@ export default async (req, context) => {
          gilt, ist keine. */
       const liste = Object.values(konten)
         .filter((k) => k.demo && k.id && k.rolle !== "betreiber" && !k.gesperrt)
+        /* `betrieb` ist der Index des Mandanten im Raum. Die Konsole erkennt
+           daran, ob zwei Einträge denselben Betrieb zeigen. */
         .map((k) => ({ id: k.id, name: k.name, rolle: k.rolle, gruppe: k.gruppe,
-          bestand: k.bestand, hinweis: k.hinweis }));
+          bestand: k.bestand, betrieb: k.betrieb ?? 0, hinweis: k.hinweis }));
       return antwort({ demos: liste }, 200, { "cache-control": "public, max-age=60" });
     }
 
@@ -463,7 +494,8 @@ export default async (req, context) => {
       if (!bd.frei) return zuVielAntwort(bd.wartet);
       const { id } = rumpf;
       const konten = await alleKonten(store);
-      const eintrag = Object.values(konten).find((k) => k.demo && k.id === id);
+      const [eintragSchluessel, eintrag] = Object.entries(konten)
+        .find(([, k]) => k && k.demo && k.id === id) || [null, null];
       if (!eintrag) return antwort({ fehler: "Unbekannter Demozugang." }, 404);
       /* Ein zurückgezogener Zugang bleibt zurückgezogen — auch wenn seine
          Kennung noch jemand kennt. Die Liste verschweigt ihn zwar, aber sie
@@ -490,6 +522,10 @@ export default async (req, context) => {
       await sitzungen().setJSON(`t:${hash(token)}`, {
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        /* Die Prüfsumme des Zugangs mitführen — wie beim Anmelden mit Code.
+           Sie fehlte hier, und damit lief die Sitzung eines zurückgezogenen
+           Demozugangs bis zu zwölf Stunden weiter. */
+        konto: eintragSchluessel,
         demo: true, seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
       });
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,

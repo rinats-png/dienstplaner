@@ -2,7 +2,7 @@
 # ===========================================================================
 # ZUGÄNGE ANLEGEN
 #
-# Legt in einem Zug an:
+# Legt in einem Zug an — und nur, was noch fehlt:
 #
 #   1. einen Betreiberzugang für die Konsole
 #   2. drei Demobetriebe, die auf der Anmeldeseite ohne Code offenstehen
@@ -18,6 +18,22 @@
 #       werkzeug/zugaenge-anlegen.sh
 #
 # ---------------------------------------------------------------------------
+# Warum das Skript wiederholbar sein muss
+#
+# Es ist einmal zweimal gelaufen. Danach standen alle drei Demobetriebe
+# doppelt auf der Startseite, es gab zwei Betreibercodes und zwei
+# Testbetriebe — und die Ausgabedatei des ersten Laufs war vom zweiten
+# überschrieben, die ersten Codes damit verloren.
+#
+# Jetzt fragt das Skript vor jedem Schritt nach, was es schon gibt
+# (GET /einrichten/uebersicht), überspringt Vorhandenes und meldet das.
+# Ausgabedateien tragen die Uhrzeit und werden nie überschrieben. Ein
+# zweiter Lauf legt nichts an, ein dritter auch nicht.
+#
+# Der Server hält zusätzlich dagegen: Ein zweiter aktiver Demozugang für
+# denselben Betrieb und dieselbe Rolle wird mit 409 abgewiesen.
+#
+# ---------------------------------------------------------------------------
 # Warum der Demoraum „demo-schau" heißen muss
 #
 # `/api/demo` lässt einen Zugang ohne Code nur dann durch, wenn sein Raum mit
@@ -28,13 +44,27 @@
 
 set -euo pipefail
 
-SITE="${SITE:-https://centric-dienstplanung.netlify.app}"
+SITE="${SITE:-https://app.centric-dienstplanung.de}"
 RAUM="${RAUM:-demo-schau}"
-AUSGABE="${AUSGABE:-zugaenge-$(date +%Y-%m-%d).txt}"
+TESTBETRIEB="${TESTBETRIEB:-Eigener Testbetrieb}"
+AUSGABE="${AUSGABE:-zugaenge-$(date +%Y-%m-%d-%H%M%S).txt}"
 
 if [ -z "${CENTRIC_ADMIN:-}" ]; then
   echo "CENTRIC_ADMIN ist nicht gesetzt." >&2
-  echo "Der Wert steht in Netlify unter Site configuration → Environment variables." >&2
+  echo "Der Wert steht in den Umgebungsvariablen des Containers (deploy/compose.yml)." >&2
+  exit 1
+fi
+
+for werkzeug in curl jq; do
+  if ! command -v "$werkzeug" >/dev/null 2>&1; then
+    echo "$werkzeug fehlt. Bitte installieren (apt install $werkzeug)." >&2
+    exit 1
+  fi
+done
+
+# Die Ausgabedatei wird nie überschrieben — nicht einmal mit Absicht.
+if [ -e "$AUSGABE" ]; then
+  echo "$AUSGABE gibt es schon. Bitte AUSGABE anders setzen oder die Datei wegräumen." >&2
   exit 1
 fi
 
@@ -50,7 +80,7 @@ einrichten() {
 code_aus() {
   local antwort="$1" beschreibung="$2"
   local code
-  code=$(printf '%s' "$antwort" | sed -n 's/.*"zugangscode":"\([^"]*\)".*/\1/p')
+  code=$(printf '%s' "$antwort" | jq -r '.zugangscode // empty')
   if [ -z "$code" ]; then
     echo "FEHLGESCHLAGEN: $beschreibung" >&2
     printf '%s\n' "$antwort" >&2
@@ -59,9 +89,33 @@ code_aus() {
   printf '%s' "$code"
 }
 
-: > "$AUSGABE"
-chmod 600 "$AUSGABE"
+# --------------------------------------------------------------------------
+# Was gibt es schon?
+#
+# Eine Abfrage für alles: Zugänge des Demoraums und die Liste der
+# Selbststarts. Ohne Codes, ohne Prüfsummen — nur das, was zum Vergleich
+# nötig ist.
+# --------------------------------------------------------------------------
+UEBERSICHT=$(curl -sS "$SITE/einrichten/uebersicht?bestand=$RAUM" \
+  -H "authorization: Bearer $CENTRIC_ADMIN")
+if ! printf '%s' "$UEBERSICHT" | jq -e '.zugaenge' >/dev/null 2>&1; then
+  echo "FEHLGESCHLAGEN: Übersicht von $SITE nicht lesbar." >&2
+  printf '%s\n' "$UEBERSICHT" >&2
+  exit 1
+fi
 
+# Aktive Zugänge einer Rolle im Raum — Anzahl.
+aktive() {                     # rolle  [jq-Zusatzfilter]
+  printf '%s' "$UEBERSICHT" | jq "[.zugaenge[] | select(.gesperrt == false and .rolle == \"$1\" ${2:-})] | length"
+}
+
+ANGELEGT=0
+UEBERSPRUNGEN=0
+angelegt() { ANGELEGT=$((ANGELEGT + 1)); echo "   angelegt: $1"; }
+uebersprungen() { UEBERSPRUNGEN=$((UEBERSPRUNGEN + 1)); echo "   vorhanden, übersprungen: $1"; }
+
+umask 077
+set -o noclobber   # und auch die Schale selbst überschreibt nichts
 {
   echo "CENTRIC — Zugänge, angelegt am $(date '+%Y-%m-%d %H:%M')"
   echo "Site: $SITE"
@@ -69,7 +123,8 @@ chmod 600 "$AUSGABE"
   echo "Jeder Code erscheint nur einmal. Gespeichert ist auf dem Server nur"
   echo "seine Prüfsumme; verloren heißt verloren."
   echo
-} >> "$AUSGABE"
+} > "$AUSGABE"
+chmod 600 "$AUSGABE"
 
 # --------------------------------------------------------------------------
 # 1. Betreiberkonsole
@@ -80,15 +135,25 @@ chmod 600 "$AUSGABE"
 # weist sie zurück.
 # --------------------------------------------------------------------------
 echo "→ Betreiberzugang"
-ANTWORT=$(einrichten "{\"name\":\"Betreiberkonsole\",\"bestand\":\"$RAUM\",\"rolle\":\"betreiber\",\"demo\":false}")
-BETREIBER=$(code_aus "$ANTWORT" "Betreiberzugang")
-{
-  echo "BETREIBERKONSOLE"
-  echo "  Code:  $BETREIBER"
-  echo "  Raum:  $RAUM"
-  echo "  Weg:   $SITE → Code eingeben"
-  echo
-} >> "$AUSGABE"
+if [ "$(aktive betreiber)" -gt 0 ]; then
+  uebersprungen "Betreiberzugang ($(aktive betreiber) aktiv)"
+  {
+    echo "BETREIBERKONSOLE"
+    echo "  bereits vorhanden — kein neuer Code. Der bestehende Code gilt weiter."
+    echo
+  } >> "$AUSGABE"
+else
+  ANTWORT=$(einrichten "{\"name\":\"Betreiberkonsole\",\"bestand\":\"$RAUM\",\"rolle\":\"betreiber\",\"demo\":false}")
+  BETREIBER=$(code_aus "$ANTWORT" "Betreiberzugang")
+  angelegt "Betreiberzugang"
+  {
+    echo "BETREIBERKONSOLE"
+    echo "  Code:  $BETREIBER"
+    echo "  Raum:  $RAUM"
+    echo "  Weg:   $SITE → Code eingeben"
+    echo
+  } >> "$AUSGABE"
+fi
 
 # --------------------------------------------------------------------------
 # 2. Die drei Demobetriebe
@@ -98,12 +163,26 @@ BETREIBER=$(code_aus "$ANTWORT" "Betreiberzugang")
 #   0 Nordwacht Sicherheitsdienste (Sicherheit, 16 Personen, Rufbereitschaft)
 #   1 Seniorenzentrum Lindenhof    (Pflege, 13 Personen, TVöD-Wochenstunden)
 #   2 Steinbach Fertigung          (Produktion, 11 Personen, Testbetrieb)
+#
+# Vorhanden heißt: ein aktiver Demozugang mit demselben Betriebsindex und
+# derselben Rolle. Der Name spielt keine Rolle — er ist Anzeige, nicht
+# Schlüssel.
 # --------------------------------------------------------------------------
 demo() {                       # index  name  gruppe  hinweis
   echo "→ Demobetrieb: $2"
+  if [ "$(aktive leitung "and .demo == true and .betrieb == $1")" -gt 0 ]; then
+    uebersprungen "Demobetrieb $2"
+    {
+      echo "DEMO — $2"
+      echo "  bereits vorhanden — kein neuer Code."
+      echo
+    } >> "$AUSGABE"
+    return
+  fi
   local antwort code
   antwort=$(einrichten "{\"name\":\"$2\",\"bestand\":\"$RAUM\",\"rolle\":\"leitung\",\"betrieb\":$1,\"demo\":true,\"gruppe\":\"$3\",\"hinweis\":\"$4\"}")
   code=$(code_aus "$antwort" "Demobetrieb $2")
+  angelegt "Demobetrieb $2"
   {
     echo "DEMO — $2"
     echo "  Code:  $code   (wird auf der Anmeldeseite nicht gebraucht)"
@@ -127,32 +206,50 @@ demo 2 "Steinbach Fertigung" "Produktion" \
 # Beispielpersonal, keine erfundenen Dienstpläne, nur Name, Branche und
 # Bundesland. /einrichten legt nur einen Code an; der Betrieb dahinter würde
 # beim ersten Öffnen mit den drei Beispielmandanten gefüllt.
+#
+# /starten kennt keine Eindeutigkeit — jeder Aufruf ist ein neuer Raum mit
+# Zufallsanhang. Vorhanden heißt deshalb: ein Selbststart mit diesem Namen,
+# dessen Testzeitraum noch läuft.
 # --------------------------------------------------------------------------
 echo "→ Leerer Testbetrieb"
-START=$(curl -sS -X POST "$SITE/starten" \
-  -H "content-type: application/json" \
-  -d '{"name":"Eigener Testbetrieb","branche":"sonstige","land":"HE","rollen":["mitarbeiter"]}')
+VORHANDEN=$(printf '%s' "$UEBERSICHT" \
+  | jq -r --arg n "$TESTBETRIEB" '[.selbststarts[] | select(.name == $n and .abgelaufen == false)] | map(.raum) | join(", ")')
+if [ -n "$VORHANDEN" ]; then
+  uebersprungen "Testbetrieb ($VORHANDEN)"
+  {
+    echo "LEERER TESTBETRIEB — ohne jede Beispieldaten"
+    echo "  bereits vorhanden: $VORHANDEN — kein neuer Betrieb, keine neuen Codes."
+    echo
+  } >> "$AUSGABE"
+else
+  START=$(curl -sS -X POST "$SITE/starten" \
+    -H "content-type: application/json" \
+    -d "$(jq -cn --arg n "$TESTBETRIEB" '{name: $n, branche: "sonstige", land: "HE", rollen: ["mitarbeiter"]}')")
 
-if ! printf '%s' "$START" | grep -q '"ok":true'; then
-  echo "FEHLGESCHLAGEN: Testbetrieb" >&2
-  printf '%s\n' "$START" >&2
-  exit 1
+  if ! printf '%s' "$START" | jq -e '.ok == true' >/dev/null 2>&1; then
+    echo "FEHLGESCHLAGEN: Testbetrieb" >&2
+    printf '%s\n' "$START" >&2
+    exit 1
+  fi
+  angelegt "Testbetrieb $(printf '%s' "$START" | jq -r '.raum')"
+  {
+    echo "LEERER TESTBETRIEB — ohne jede Beispieldaten"
+    printf '%s' "$START" | jq -r '.zugaenge[] | "  Rolle: \(.rolle)\n  Code:  \(.code)"'
+    printf '%s' "$START" | jq -r '"  Raum:  \(.raum)\n  Läuft ab: \(.laeuftAb)"'
+    echo
+  } >> "$AUSGABE"
 fi
 
 {
-  echo "LEERER TESTBETRIEB — ohne jede Beispieldaten"
-  printf '%s' "$START" \
-    | tr ',' '\n' \
-    | sed -n 's/.*"rolle":"\([^"]*\)".*/  Rolle: \1/p;s/.*"code":"\([^"]*\)".*/  Code:  \1/p'
-  printf '%s' "$START" | sed -n 's/.*"raum":"\([^"]*\)".*/  Raum:  \1/p'
-  printf '%s' "$START" | sed -n 's/.*"laeuftAb":"\([^"]*\)".*/  Läuft ab: \1/p'
-  echo
+  echo "Ergebnis: $ANGELEGT angelegt, $UEBERSPRUNGEN übersprungen."
 } >> "$AUSGABE"
 
 echo
-echo "Fertig. Alle Codes stehen in: $AUSGABE"
+echo "Fertig: $ANGELEGT angelegt, $UEBERSPRUNGEN übersprungen. Alle Codes stehen in: $AUSGABE"
 echo
-echo "Noch zu tun:"
-echo "  1. $AUSGABE an einen sicheren Ort, dann löschen."
-echo "  2. Mit dem Betreibercode ein benanntes Verwalterkonto anlegen"
-echo "     (BEREITSTELLUNG.md, Schritt 5.1), danach CENTRIC_ADMIN entfernen."
+if [ "$ANGELEGT" -gt 0 ]; then
+  echo "Noch zu tun:"
+  echo "  1. $AUSGABE an einen sicheren Ort, dann löschen."
+  echo "  2. Mit dem Betreibercode ein benanntes Verwalterkonto anlegen"
+  echo "     (BEREITSTELLUNG.md, Schritt 5.1), danach CENTRIC_ADMIN entfernen."
+fi

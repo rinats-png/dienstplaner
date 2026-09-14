@@ -510,6 +510,87 @@ let tBetreiber = null;
     inhalt: { version: 5, stand: 1, mandanten: [{ id: "m1", name: "Wegwerf", personen: [], dienstarten: [], einheiten: [] }] } }));
   pruef("Danach ist der Raum frei", wieder.status === 200, `Status ${wieder.status}`);
   await post("raum-loeschen", tBetr, JSON.stringify({ bestand: raum, bestaetigung: raum }));
+
+  /* Ein Selbststart verschwindet mit seinem Raum auch aus der Nachfassliste.
+
+     Bis hierher blieb der Vermerk stehen: Die Konsole zeigte einen
+     gelöschten Testbetrieb weiter unter „Selbststarts", mit Zugangszahl
+     und Ablaufdatum, als gäbe es ihn noch. */
+  const selbst = await fetch(`${BASIS}/starten`, { method: "POST",
+    headers: { "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ name: "Wegwerf Selbststart", branche: "sonstige", land: "HE" }) });
+  const selbstD = await selbst.json();
+  pruef("Ein Selbststart legt einen Testbetrieb an", selbst.status === 200 && !!selbstD.raum,
+    selbstD.raum || selbstD.fehler);
+  const lage1 = await (await fetch(`${BASIS}/lage?tage=7`, { headers: kopf(tBetr) })).json();
+  pruef("Er steht in der Nachfassliste", (lage1.selbststarts || []).some((s) => s.raum === selbstD.raum));
+  /* Eine zweite Betreibersitzung in einem eigenen Raum: Die Bremse zählt
+     je Raum der Sitzung zehn Aufrufe in zehn Minuten, und „probe2" hat
+     davon schon einige verbraucht. */
+  const betr2 = await (await fetch(`${BASIS}/einrichten`, { method: "POST",
+    headers: { "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ verwaltung: GEHEIM, name: "Zweite Konsole", bestand: "probe-betr2",
+      rolle: "betreiber", person: null, betrieb: 0 }) })).json();
+  const tBetr2 = await anmelden(betr2.zugangscode);
+  const selbstWeg = await post("raum-loeschen", tBetr2,
+    JSON.stringify({ bestand: selbstD.raum, bestaetigung: selbstD.raum }));
+  const selbstWegD = await selbstWeg.json().catch(() => ({}));
+  pruef("Der Testbetrieb lässt sich als Raum löschen", selbstWeg.status === 200 && selbstWegD.geloescht >= 1,
+    `Status ${selbstWeg.status}, ${selbstWegD.geloescht} Einträge`);
+  const lage2 = await (await fetch(`${BASIS}/lage?tage=7`, { headers: kopf(tBetr) })).json();
+  pruef("Danach fehlt er in der Nachfassliste", !(lage2.selbststarts || []).some((s) => s.raum === selbstD.raum));
+  const selbstCode = (selbstD.zugaenge || [])[0]?.code;
+  const selbstAnm = await fetch(`${BASIS}/api/anmelden`, { method: "POST",
+    headers: { "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ zugangscode: selbstCode }) });
+  pruef("Seine Zugangscodes führen ins Leere", selbstAnm.status === 401, `Status ${selbstAnm.status}`);
+  const selbstFrei = await post("bestand-anlegen", tBetr2, JSON.stringify({ bestand: selbstD.raum,
+    inhalt: { version: 5, stand: 1, mandanten: [] } }));
+  pruef("Und der Raum ist wieder frei", selbstFrei.status === 200, `Status ${selbstFrei.status}`);
+  await post("raum-loeschen", tBetr2, JSON.stringify({ bestand: selbstD.raum, bestaetigung: selbstD.raum }));
+
+  /* Sperren über die öffentliche Demo-Kennung und die gekürzte Kennung —
+     wer darf das, und über welche Räume hinweg?
+
+     Die Leitung eines Hauses darf nicht die Demozugänge eines anderen
+     Raums abschalten, auch wenn sie deren Kennung von der Startseite
+     kennt. Der Betreiber darf es — über beide Kennungen. */
+  const demoAnlegen = async (betrieb) => (await (await fetch(`${BASIS}/einrichten`, { method: "POST",
+    headers: { "content-type": "application/json", ...herkunft() },
+    body: JSON.stringify({ verwaltung: GEHEIM, name: "Fremder Demobetrieb", bestand: "demo-fremd",
+      rolle: "leitung", betrieb, demo: true, gruppe: "Prüfung" }) })).json());
+  const dA = await demoAnlegen(0);
+  const dB = await demoAnlegen(1);
+  pruef("Zwei Demozugänge in einem fremden Raum angelegt", !!dA.zugangscode && !!dB.zugangscode,
+    dA.fehler || dB.fehler || "");
+  const demosL = (await (await fetch(`${BASIS}/api/demos`, { headers: herkunft() })).json()).demos || [];
+  const fremdA = demosL.find((d) => d.bestand === "demo-fremd" && d.betrieb === 0);
+  const fremdB = demosL.find((d) => d.bestand === "demo-fremd" && d.betrieb === 1);
+  pruef("Beide stehen in der öffentlichen Liste", !!fremdA && !!fremdB);
+  const leitungFremd = await post("zugang-sperren", tL, JSON.stringify({ id: fremdA?.id }));
+  const leitungFremdD = await leitungFremd.json().catch(() => ({}));
+  pruef("Leitung sperrt keinen Demozugang eines fremden Raums",
+    leitungFremd.status === 200 && leitungFremdD.gesperrt === 0, JSON.stringify(leitungFremdD));
+  const betreiberId = await post("zugang-sperren", tBetr2, JSON.stringify({ id: fremdA?.id }));
+  const betreiberIdD = await betreiberId.json().catch(() => ({}));
+  pruef("Betreiber sperrt ihn über die Demo-Kennung",
+    betreiberId.status === 200 && betreiberIdD.gesperrt === 1, JSON.stringify(betreiberIdD));
+  const ue = await (await fetch(`${BASIS}/einrichten/uebersicht?bestand=demo-fremd`,
+    { headers: { authorization: `Bearer ${GEHEIM}`, ...herkunft() } })).json();
+  const ueB = (ue.zugaenge || []).find((z) => z.id === fremdB?.id);
+  pruef("Die Übersicht kennt den zweiten mit gekürzter Kennung", !!ueB && /^[0-9a-f]{8}$/i.test(ueB.kennung),
+    ueB?.kennung);
+  const kurzLeer = await post("zugang-sperren", tBetr2, JSON.stringify({ kennung: "" }));
+  pruef("Eine leere Kennung trifft nichts", kurzLeer.status === 400, `Status ${kurzLeer.status}`);
+  const kurzKurz = await post("zugang-sperren", tBetr2, JSON.stringify({ kennung: (ueB?.kennung || "").slice(0, 4) }));
+  pruef("Eine zu kurze Kennung trifft nichts", kurzKurz.status === 400, `Status ${kurzKurz.status}`);
+  const betreiberKurz = await post("zugang-sperren", tBetr2, JSON.stringify({ kennung: ueB?.kennung }));
+  const betreiberKurzD = await betreiberKurz.json().catch(() => ({}));
+  pruef("Betreiber sperrt über die gekürzte Kennung",
+    betreiberKurz.status === 200 && betreiberKurzD.gesperrt === 1, JSON.stringify(betreiberKurzD));
+  const demosNach = (await (await fetch(`${BASIS}/api/demos`, { headers: herkunft() })).json()).demos || [];
+  pruef("Beide fehlen danach in der öffentlichen Liste",
+    !demosNach.some((d) => d.bestand === "demo-fremd"));
 }
 
 /* --- S10: Die eigene Person pflegen, aber nicht befördern ---

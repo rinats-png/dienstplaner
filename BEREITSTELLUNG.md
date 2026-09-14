@@ -293,7 +293,12 @@ ist der Pfeffer nicht mehr folgenlos zu ändern.
       werkzeug/zugaenge-anlegen.sh
 
 Das Skript legt in einem Zug an und schreibt alle Codes in eine Datei mit
-Rechten `600` — jeder erscheint genau einmal:
+Rechten `600` — jeder erscheint genau einmal. Es ist **wiederholbar**: Vor
+jedem Schritt fragt es über `GET /einrichten/uebersicht?bestand=demo-schau`
+nach, was es schon gibt, überspringt Vorhandenes und meldet am Ende
+„n angelegt, m übersprungen". Ausgabedateien tragen die Uhrzeit und werden
+nie überschrieben. Es braucht `curl` und `jq`; `SITE` zeigt in der Vorgabe
+auf `https://app.centric-dienstplanung.de`.
 
 | Was | Wie | Wodurch |
 |---|---|---|
@@ -320,6 +325,23 @@ Für eine Vorführung ist das hinnehmbar, für eine öffentlich verlinkte Seite
 nicht. Wer das ändern will, braucht eine Schreibsperre für Sitzungen mit
 `demo: true` in `netlify/functions/daten.mjs` — dieselbe Stelle, an der
 `nurSicherung` schon so behandelt wird.
+
+**Der Server hält zusätzlich dagegen.** Ein zweiter aktiver Demozugang für
+denselben Betrieb und dieselbe Rolle wird von `/einrichten` mit `409` und
+dem Verweis auf den vorhandenen abgewiesen. Ein zurückgezogener Zugang
+zählt dabei nicht — nach dem Zurückziehen darf neu angelegt werden.
+
+**Wenn doch etwas doppelt ist — Aufräumen aus der Konsole.** Der Reiter
+„Demozugänge" der Betreiberkonsole zeigt dieselbe Liste wie die Startseite,
+markiert Doppelte und bietet je Eintrag „Zurückziehen" (sperrt über die
+öffentliche Kennung, beendet laufende Sitzungen; die Startseite zieht binnen
+einer Minute nach). Unter „Selbststarts" löscht „Datenraum löschen" einen
+Testbetrieb vollständig — Bestand, Monate, Sicherungen, Zugangscodes,
+Sitzungen und der Vermerk in der Liste. Beides verlangt eine Anmeldung, die
+jünger als zwanzig Minuten ist. Einen überzähligen Betreibercode nennt die
+Übersicht mit gekürzter Kennung; gesperrt wird er mit
+`POST /api/zugang-sperren {"kennung":"<8 Zeichen>"}` aus einer
+Betreibersitzung.
 
 ### 5.1 Ein benanntes Verwalterkonto anlegen
 

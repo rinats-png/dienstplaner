@@ -118,5 +118,36 @@ pruef("inOrdnung trägt das Ergebnis",
 const uPost = await ruf("/umgebung", "POST", { verwaltung: URSPRUNG });
 pruef("Umgebungsbericht nur per GET", uPost.status === 405, `Status ${uPost.status}`);
 
+/* --- Die Übersicht eines Raums: was gibt es schon? ---
+
+   Das Bereitstellungsskript fragt hier nach, bevor es anlegt. Vorher gab
+   es keine Stelle, die das beantworten konnte — und das Skript legte beim
+   zweiten Lauf alles noch einmal an.
+
+   Zwei Dinge müssen halten: ohne Schlüssel kommt nichts heraus, und mit
+   Schlüssel kommt kein Code und keine Prüfsumme heraus.                  */
+const raumU = zd.bestand;
+const ueOhne = await fetch(`${BASIS}/einrichten/uebersicht?bestand=${raumU}`, {
+  headers: { "x-forwarded-for": HERKUNFT } });
+pruef("Übersicht ohne Schlüssel abgewiesen", ueOhne.status === 401, `Status ${ueOhne.status}`);
+const ueFalsch = await fetch(`${BASIS}/einrichten/uebersicht?bestand=${raumU}`, {
+  headers: { "x-forwarded-for": HERKUNFT, authorization: "Bearer V-FALSCH-FALSCH-FALSCH-FALSCH" } });
+pruef("Übersicht mit falschem Schlüssel abgewiesen", ueFalsch.status === 401, `Status ${ueFalsch.status}`);
+const ueKaputt = await ruf("/uebersicht?bestand=../etc", "GET", { verwaltung: URSPRUNG });
+pruef("Übersicht mit unzulässigem Raumnamen abgewiesen", ueKaputt.status === 400, `Status ${ueKaputt.status}`);
+const ueAntwort = await ruf(`/uebersicht?bestand=${raumU}`, "GET", { verwaltung: URSPRUNG });
+const ue = await ueAntwort.json();
+pruef("Übersicht mit Schlüssel", ueAntwort.status === 200, ue.fehler || "");
+const ueMeiner = (ue.zugaenge || []).find((z) => z.rolle === "leitung");
+pruef("nennt den vorher angelegten Zugang", !!ueMeiner, JSON.stringify(ueMeiner));
+pruef("mit gekürzter Kennung aus acht Zeichen", /^[0-9a-f]{8}$/i.test(ueMeiner?.kennung || ""),
+  ueMeiner?.kennung);
+pruef("nennt weder Code noch Prüfsumme",
+  !JSON.stringify(ue).includes(zd.zugangscode) && !/[0-9a-f]{64}/i.test(JSON.stringify(ue))
+    && !/zugangscode|pruefsumme/i.test(JSON.stringify(ue)));
+pruef("führt die Selbststarts mit", Array.isArray(ue.selbststarts));
+const uePost = await ruf(`/uebersicht?bestand=${raumU}`, "POST", { verwaltung: URSPRUNG });
+pruef("Übersicht nur per GET", uePost.status === 405, `Status ${uePost.status}`);
+
 console.log(`\n${ok} von ${ok + fehl} Prüfungen bestanden.`);
 process.exit(fehl ? 1 : 0);

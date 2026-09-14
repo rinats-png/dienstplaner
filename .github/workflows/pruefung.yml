@@ -88,6 +88,12 @@ jobs:
       - name: Server
         run: npm run pruefung:server
 
+      # Das Bereitstellungsskript, zweimal gegen denselben Server: genau ein
+      # Betreiber, drei Demozugänge, ein Testbetrieb — und die Ausgabedatei
+      # des ersten Laufs unangetastet. Braucht bash, curl und jq.
+      - name: Bereitstellungsskript
+        run: npm run pruefung:zugaenge
+
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix
@@ -115,8 +121,8 @@ jobs:
       # Die Bremse in schutz.mjs zählt für /einrichten auch ein
       # Gesamtaufkommen — 20 Aufrufe je zehn Minuten, über alle Herkünfte
       # hinweg — und dieser Zähler liegt in /data. Die Rechteprüfung braucht
-      # 13 Aufrufe, die Verwalterprüfung 13 weitere: Ab dem 21. antwortet
-      # der Dienst mit 429. Unter Netlify war jede Instanz kurzlebig; im
+      # 17 Aufrufe, die Verwalterprüfung 18, die Demoprüfung 4: Ab dem 21.
+      # antwortet der Dienst mit 429. Unter Netlify war jede Instanz kurzlebig; im
       # Container bleibt der Stand stehen, bis der Container geht.
       - name: Container-Start bereitlegen
         run: |

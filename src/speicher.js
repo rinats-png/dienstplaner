@@ -441,15 +441,18 @@ export async function stempeln(datum, art, koord) {
  * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
  * Codes ließen sich anlegen, aber nie wieder abschalten.
  *
- * Entweder den Code selbst übergeben, seine Prüfsumme, oder mit
- * alleDesBetriebs sämtliche Zugänge des Betriebs auf einmal — der eigene
- * bleibt dabei bestehen.
+ * Entweder den Code selbst übergeben, seine Prüfsumme, die öffentliche
+ * Demo-Kennung (id aus /api/demos), die gekürzte Kennung aus der
+ * Verwalterübersicht, oder mit alleDesBetriebs sämtliche Zugänge des
+ * Betriebs auf einmal — der eigene bleibt dabei bestehen.
  */
-export async function zugangSperren({ code, pruefsumme, alleDesBetriebs } = {}) {
+export async function zugangSperren({ code, pruefsumme, id, kennung, alleDesBetriebs } = {}) {
   const a = await fetch("/api/zugang-sperren", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ code, pruefsumme, alleDesBetriebs: !!alleDesBetriebs }) });
+    body: JSON.stringify({ code, pruefsumme, id, kennung, alleDesBetriebs: !!alleDesBetriebs }) });
   const d = await a.json();
-  if (!a.ok) throw new Error(d.fehler || "Der Zugang konnte nicht gesperrt werden.");
+  /* `text` trägt den Satz, der weiterhilft — etwa, dass die Anmeldung
+     jünger als zwanzig Minuten sein muss. */
+  if (!a.ok) throw new Error(d.text || d.fehler || "Der Zugang konnte nicht gesperrt werden.");
   return d;
 }
 
