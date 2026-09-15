@@ -16,7 +16,7 @@ import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default [
-  { ignores: ["dist/**", "node_modules/**", ".netlify/**"] },
+  { ignores: ["dist/**", "node_modules/**"] },
 
   /* --- Oberfläche --- */
   {
@@ -47,7 +47,7 @@ export default [
 
   /* --- Server --- */
   {
-    files: ["netlify/**/*.mjs", "pruefungen/**/*.mjs", "server.mjs"],
+    files: ["server/**/*.mjs", "pruefungen/**/*.mjs", "server.mjs"],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 2023,

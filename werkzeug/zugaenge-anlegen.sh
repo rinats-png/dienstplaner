@@ -37,7 +37,7 @@
 # Warum der Demoraum „demo-schau" heißen muss
 #
 # `/api/demo` lässt einen Zugang ohne Code nur dann durch, wenn sein Raum mit
-# `demo-` beginnt (siehe netlify/functions/daten.mjs). Der Raumname trägt die
+# `demo-` beginnt (siehe server/funktionen/daten.mjs). Der Raumname trägt die
 # Absicht — ein versehentlich als Demo gekennzeichneter Zugang auf einen
 # echten Betrieb wäre sonst öffentlich.
 # ===========================================================================

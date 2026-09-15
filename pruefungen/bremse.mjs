@@ -8,9 +8,9 @@
    Grenze exakt halten, und das tut sie.
 
    Der gleichzeitige Schwarm — alles auf einmal, ohne auf Antworten zu warten.
-   Hier ist die Grenze auf Netlify Blobs allein nicht zu halten: Der Dienst
-   kennt kein bedingtes Schreiben (SetOptions trägt nur metadata), also gibt
-   es keine atomare Operation, auf der ein Zähler aufbauen könnte.
+   Hier ist die Grenze über die Dateiablage allein nicht zu halten: Sie
+   kennt kein bedingtes Schreiben, also gibt es keine atomare Operation,
+   auf der ein Zähler aufbauen könnte.
 
    Gemessen an dieser Prüfung, 60 gleichzeitige Versuche bei Grenze 8:
      Zählen, dann schreiben (ursprünglich)      55 kamen durch
@@ -23,12 +23,11 @@
    und schreibt den Durchschlupf als Messwert hin.
 
    Aufruf:
-     CENTRIC_ADMIN=<geheim> npx vite --port 5173 &
-     npm run pruefung:bremse
+     node pruefungen/serverlauf.mjs bremse         # frischer Server mit Wegwerfablage
    ========================================================================== */
 
 const BASIS = process.env.CENTRIC_BASIS || "http://localhost:5173";
-/* GRENZEN.anmelden in netlify/lib/schutz.mjs */
+/* GRENZEN.anmelden in server/lib/schutz.mjs */
 const GRENZE = 8;
 const PARALLEL = 60;
 const ATOMAR = !!(process.env.REDIS_REST_URL && process.env.REDIS_REST_TOKEN);
@@ -102,7 +101,7 @@ if (ATOMAR) {
     gebremst >= PARALLEL / 3, `${gebremst} von ${PARALLEL} gebremst`);
   console.log(`  Hinweis: ${abgewiesen} Versuche kamen bis zur Codeprüfung durch.`);
   console.log("  Für eine scharfe Grenze REDIS_REST_URL und REDIS_REST_TOKEN setzen —");
-  console.log("  siehe atomarZaehlen() in netlify/lib/schutz.mjs.\n");
+  console.log("  siehe atomarZaehlen() in server/lib/schutz.mjs.\n");
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

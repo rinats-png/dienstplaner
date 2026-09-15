@@ -1,8 +1,10 @@
 node_modules
 dist
-.netlify
 
 # Laufzeitumgebung — nie einchecken (Vorlage: .env.example)
 .env
 .env.*
 !.env.example
+
+# Wegwerfablage für die lokale Entwicklung (ENTWICKLUNG.md)
+daten-dev

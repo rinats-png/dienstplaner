@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import { vergebbareRollen, darfVergeben, pruefeRollenwechsel, rollennamen, nameGueltig }
-  from "../netlify/lib/rollenvergabe.mjs";
+  from "../server/lib/rollenvergabe.mjs";
 
 describe("Wer darf was vergeben", () => {
   it("die Leitung alles unter sich", () => {

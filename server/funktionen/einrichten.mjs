@@ -118,12 +118,11 @@ export default async (req) => {
   }
 
   /* ---------------------------- Umgebungsbericht ---------------------
-     Ob eine Umgebungsvariable gesetzt ist, war von außen nicht
-     feststellbar. Bei Netlify kommt hinzu, dass als *secret* angelegte
-     Variablen auch über die Verwaltungsschnittstelle nicht mehr
-     erscheinen — wer sie setzt, kann es anschließend nirgends nachsehen.
-     Das hat schon einmal dazu geführt, dass eine Anwendung ohne Pfeffer
-     lief, ohne dass es jemandem auffiel.
+     Ob eine Umgebungsvariable im Container angekommen ist, war von außen
+     nicht feststellbar — die .env liegt mit Rechten 600 auf dem Server,
+     und wer sie setzt, kann anschließend nur raten, ob der Container sie
+     gelesen hat. Das hat schon einmal dazu geführt, dass eine Anwendung
+     ohne Pfeffer lief, ohne dass es jemandem auffiel.
 
      Deshalb hier: ja oder nein, nie der Wert. Der Bericht steht hinter
      derselben Prüfung wie das Anlegen von Zugängen; wer ihn lesen darf,
@@ -157,7 +156,6 @@ export default async (req) => {
 
     return antwort({
       gepr: new Date().toISOString(),
-      region: process.env.AWS_REGION || null,
       umgebung: {
         pfeffer: gesetzt("CENTRIC_PFEFFER"),
         ursprungsschluessel: gesetzt("CENTRIC_ADMIN"),

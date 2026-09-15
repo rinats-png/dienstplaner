@@ -10,7 +10,7 @@
    ========================================================================== */
 
 import { findeKonto, umschluesseln, altHash, neuHash, gleich, pfeffrig }
-  from "../netlify/lib/codes.mjs";
+  from "../server/lib/codes.mjs";
 
 const ergebnisse = [];
 const pruef = (name, bedingung, detail) => {

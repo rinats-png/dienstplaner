@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from "vitest";
 import { schreibumfang, zusammenfuehren, SCHREIBEN_BETREIBER, SCHREIBEN_NEIN }
-  from "../netlify/lib/rechte.mjs";
+  from "../server/lib/rechte.mjs";
 
 const SITZUNG = { rolle: "betreiber" };
 

@@ -58,7 +58,7 @@ jobs:
           set -e
           fehl=0
           pruefe() {
-            if grep -rnE "$1" src netlify --include=*.js --include=*.jsx --include=*.mjs; then
+            if grep -rnE "$1" src server --include=*.js --include=*.jsx --include=*.mjs; then
               echo "::error::$2"; fehl=1
             fi
           }

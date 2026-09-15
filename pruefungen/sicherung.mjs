@@ -11,8 +11,7 @@
    sollte, konnte den ganzen Betrieb überschreiben.
 
    Aufruf:
-     CENTRIC_ADMIN=<geheim> npx vite --port 5173 &
-     npm run pruefung:sicherung
+     node pruefungen/serverlauf.mjs sicherung      # frischer Server mit Wegwerfablage
    ========================================================================== */
 
 const BASIS = process.env.CENTRIC_BASIS || "http://localhost:5173";

@@ -1,172 +1,164 @@
 # Bereitstellung
 
-Was zu tun ist, um den aktuellen Stand auf `centric-app.netlify.app` zu
-bringen — in der Reihenfolge, in der es zu tun ist.
-
-Projekt-Kennung: `7515ca04-74ea-4f6b-b268-33c466aafbb2`
-(die alte Site wurde am 14.08.2026 gelöscht und neu angelegt — mit ihr auch
-der gesamte Blob-Speicher: alle Betriebe, Zugänge und Sicherungen)
+Was zu tun ist, um einen Stand aus `main` auf `app.centric-dienstplanung.de`
+zu bringen — in der Reihenfolge, in der es zu tun ist.
 
 ---
 
-## Zwei Adressen, zwei Auslieferungen
+## Wie es läuft
 
-Website und Anwendung sind getrennte Netlify-Projekte aus getrennten
-Repos. Das ist keine Umständlichkeit, sondern Absicht: Die
-`netlify.toml` dieser Anwendung fängt mit `/* → /index.html` alles ab,
-was keine Funktion ist. Eine statische Website davor hieße, ab dem
-ersten Tag gegen die Reihenfolge dieser Regeln zu arbeiten — und jede
-neue Funktion wäre eine neue Gelegenheit, eine Website-Seite zu
-verschatten.
+    Browser
+      → https://app.centric-dienstplanung.de
+      → Caddy (TLS, HSTS)                          Container „caddy", /opt/proxy
+      → Container centric-dp-web:3000              /opt/apps/centric-dienstplanung
+      → node server.mjs                            liefert dist/ aus, ruft die Funktionen
+      → server/funktionen/*.mjs + server/lib/*.mjs
+      → Dateien unter /data                        Bind-Mount ./data, Rechte 700
 
-| | Netlify-Projekt | Rolle | Quelle |
-|---|---|---|---|
-| Website | `centric-dienstplanung` | die vordere Tür | `rinats-png/claude`, Ordner `website` |
-| Anwendung | `centric-app` | dahinter | dieses Repo |
+    GitHub (main)
+      → Actions „Prüfung" (jeder Push)             Linter, Typen, alle Prüfungen, Bild bauen
+      → Actions „Auslieferung" (von Hand)          Bild bauen, gegen den Container prüfen, nach GHCR
+      → ghcr.io/rinats-png/dienstplaner:<sha>, :latest
+      → VPS: docker compose pull && docker compose up -d
 
-Die Website verweist in jedem Seitenkopf hierher („Anmelden", „Testen").
-Der Rückweg — die Zeile „Öffnen: …" unter jeder Benachrichtigung, die
-Zugangsliste zum Ausdrucken, später die Einladungslinks — steht an genau
-zwei Stellen im Quelltext und wird von der Umgebung übersteuert:
+Ein einziger Node-Prozess je Container, kein Port nach außen: Caddy erreicht
+ihn über das Docker-Netz `proxy` als `centric-dp-web:3000`. Der Container
+läuft schreibgeschützt, ohne Capabilities, als Benutzer 1000 — nur `/data`
+und `/tmp` sind beschreibbar (`deploy/compose.yml`).
 
-| Variable | Wirkt auf | Vorgabe |
+| Ort auf dem VPS | Inhalt | Im Git? |
 |---|---|---|
-| `VITE_ANWENDUNG_URL` | Oberfläche (`src/kontakt.js`) | `https://centric-app.netlify.app` |
-| `CENTRIC_BASIS` | Server, Einladungs- und Rücksetzlinks (`netlify/lib/post.mjs`) | dieselbe Adresse |
+| `/opt/apps/centric-dienstplanung/compose.yml` | Container-Definition (Kopie von `deploy/compose.yml`) | ja |
+| `/opt/apps/centric-dienstplanung/.env` | Laufzeitumgebung, Rechte 600 | **nie** |
+| `/opt/apps/centric-dienstplanung/data/` | alle Anwendungsdaten | **nie** |
+| `/opt/proxy/Caddyfile`, `/opt/proxy/sites/app.centric-dienstplanung.de.caddy` | Caddy: `reverse_proxy centric-dp-web:3000`, Sicherheitsköpfe | nein |
 
-Beide gehören in die Umgebungsvariablen der Auslieferung, damit ein Umzug
-auf die eigene Domain kein Commit ist. **Sie zeigen nie auf die Website** —
+Die eigene Adresse der Anwendung steht an genau einer Stelle im Quelltext
+(`src/kontakt.js`, Vorgabe `https://app.centric-dienstplanung.de`) und wird
+beim Bauen über `VITE_ANWENDUNG_URL` übersteuert (Repository-Variable in
+GitHub Actions, `Dockerfile`-Build-Argument). Sie ist der Rückweg aus jeder
+Benachrichtigung und jeder Zugangsliste — **nie** die Adresse der Website,
 sonst landet jemand aus einer Dienstplan-Benachrichtigung auf einer
 Verkaufsseite statt in seinem Plan.
-
-Die Website führt ihre Adressen spiegelbildlich in `website/build.py`:
-`APP` für den Weg hierher, `WEBSITE` für sitemap.xml und robots.txt,
-übersteuerbar über `CENTRIC_APP` und `CENTRIC_WEBSITE`.
 
 ---
 
 ## Keine Datenbank nötig
 
-CENTRIC speichert in **Netlify Blobs**. Es gibt keine einzige SQL-Abfrage im
-Quelltext und kein Schema. Eine zusätzliche Datenbank — Supabase oder eine
-andere — würde eine zweite Datenhaltung einführen, die nichts löst und beim
-geplanten Umzug nach Deutschland eine weitere Baustelle wäre.
+CENTRIC speichert Dateien. Es gibt keine einzige SQL-Abfrage im Quelltext,
+kein Schema und keinen Fremddienst für die Daten. Was der Betrieb an Ablage
+braucht, steht in `server/lib/bestand.mjs`: ein Kern je Betrieb plus eine
+Scherbe je Monat; die Ablage selbst — atomares Schreiben, Schlüssel als
+Dateinamen, ein Umschlag je Wert — in `server/lib/ablage.mjs`. Vier Stores
+liegen unter `/data`: `centric` (Betriebe, Zugänge, Sicherungen),
+`centric-sitzungen`, `centric-takt` (Bremse), `centric-spur` (Protokoll).
 
-Was der Betrieb an Ablage braucht, steht in `netlify/lib/bestand.mjs`:
-ein Kern je Betrieb plus eine Scherbe je Monat, alles im Blob-Speicher der
-Site.
+Eine zusätzliche Datenbank würde eine zweite Datenhaltung einführen, die
+nichts löst.
 
 ---
 
-## Schritt 1 — Erledigt: das Projekt hängt am Git-Vorrat
+## Schritt 1 — Bild bauen und veröffentlichen
 
-Nachgeprüft am 14.08.2026. Der veröffentlichte Stand trägt
+Jeder Push nach `main` lässt `Prüfung` laufen (`.github/workflows/pruefung.yml`):
+Linter, Typen, Regelwerk, Branchen, Untergrenzen, Lenkzeiten, Aufbewahrung,
+Zugangscodes, Scherben, Ablage, Bremse, Server, Bereitstellungsskript,
+Rechtetabellen, Bauen — und danach gegen ein frisch gebautes, gehärtet
+gestartetes Bild: Rechteprüfung, Verwalterkonten, Demozugänge, Sicherung
+außer Haus, Bremse. Daneben `Sicherheit` (Audit, Secret-Scan, verbotene
+Muster). Ein roter Lauf blockiert.
 
-    commit_ref f1419e2e7a2f5fa8ede97e7e9cf50e6f0484b1df
-    branch     main
-    state      ready
-    framework  vite
-    functions  6 (daten, einrichten, kalender, lage, starten, zustellung)
+Ausgeliefert wird nur, was `Prüfung` bestanden hat, und nur von Hand:
 
-Der Commit ist der Kopf von `main`. Damit ist zum ersten Mal belegbar,
-welcher Quelltext läuft. Die Verbindung ging über die Oberfläche:
+    GitHub → Actions → „Auslieferung" → Run workflow → Branch main
 
-    Site configuration → Build & deploy → Continuous deployment
-    → Link repository → GitHub → rinats-png/dienstplaner
+Der Lauf baut das Bild mit `VITE_ANWENDUNG_URL` und `VITE_KONTAKT_MAIL` aus
+den Repository-Variablen, startet es genau so gehärtet wie auf dem VPS,
+lässt die Rechteprüfung dagegen laufen und lädt es dann nach GHCR — als
+`<vollständiger Commit-Hash>` und als `latest`. Erst wenn beide Kennzeichen
+da sind, geht es weiter mit Schritt 3.
 
-Die Bauangaben kamen aus `netlify.toml` und mussten **nicht** von Hand
-eingetragen werden:
+Zu jedem veröffentlichten Stand gehört damit ein Commit. Ob das laufende Bild
+wirklich zu ihm gehört, lässt sich auf dem VPS belegen:
 
-| Angabe | Wert | Herkunft |
-|---|---|---|
-| Build command | `npm run build` | `netlify.toml` |
-| Publish directory | `dist` | `netlify.toml` |
-| Functions directory | `netlify/functions` | Vorgabe |
-| Node-Fassung | 24 | Vorgabe von Netlify |
-
-Produktionszweig: **`main`**. Ab jetzt löst jeder Push nach `main` einen
-Bau aus, und zu jedem veröffentlichten Stand gehört ein Commit.
-
-### Warum das der bessere Weg ist als ein Upload
-
-Die vorige Site lief über Uploads: `commit_ref: null`, `committer: null`,
-`deploy_source: "api"`. Niemand konnte sagen, welcher Quelltext läuft. So
-war auch eine Funktion namens `schutz` auf der Site, die es im Vorrat nie
-gab — sie stammte aus einem Upload, dessen Quelltext nirgends mehr lag.
+    docker exec centric-dp-web sha256sum /app/server/funktionen/daten.mjs
+    git show <hash>:server/funktionen/daten.mjs | sha256sum
 
 ## Schritt 2 — Umgebungsvariablen setzen
 
-`Site configuration → Environment variables`
+`/opt/apps/centric-dienstplanung/.env`, Rechte 600, Vorlage `.env.example`.
+Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
+(erstellt den Container neu — die Daten liegen außerhalb).
 
-### Stand am 14.08.2026
+| Variable | Pflicht | Wert |
+|---|---|---|
+| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` — **vor dem ersten Zugangscode setzen, danach nie ändern** |
+| `CENTRIC_DATEN`, `CENTRIC_ABLAGE`, `PORT`, `NODE_ENV` | gesetzt durch Compose | `/data`, `dateien`, `3000`, `production` |
+| `IMAGE_TAG` | nein | Kennzeichen des Bilds, Vorgabe `latest`; für einen Rollback der Commit-Hash |
+| `CENTRIC_ADMIN` | **nur vorübergehend** | `openssl rand -base64 24` — nur bis das erste benannte Verwalterkonto angelegt ist (Schritt 5.1), dann entfernen |
+| `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT` | nein | aus `npx web-push generate-vapid-keys`; beide Hälften gehören zusammen |
+| `RESEND_API_KEY`, `CENTRIC_ABSENDER` | nein | E-Mail-Versand; der Absender braucht eine bei Resend verifizierte Domain |
+| `REDIS_REST_URL`, `REDIS_REST_TOKEN` | nein | atomare Bremse, siehe unten |
+| `CENTRIC_AUFRAEUMEN` | nein | `aus` schaltet den täglichen Löschlauf für abgelaufene Testbetriebe ab (Vorgabe: an) |
 
-`CENTRIC_PFEFFER` gesetzt (alle Kontexte, ein Wert). `CENTRIC_ADMIN`
-gelöscht — der Weg in die Verwaltung führt ausschließlich über den
-benannten `V-`-Schlüssel des Kontos „Rinat Schmidt". Geht der verloren,
-hilft nur der Wiederherstellungsweg aus Schritt 5.1.
+Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
-### Setze Geheimnisse über die Oberfläche, nicht über die Schnittstelle
+| Fehlt | Folge |
+|---|---|
+| `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
+| `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
+| `VITE_KONTAKT_MAIL` (Bauzeit) | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
 
-Diese Regel hat drei Anläufe gekostet und ist der Grund, warum frühere
-Fassungen dieser Datei nacheinander drei verschiedene Dinge behaupteten.
-Der Reihe nach, weil jede Beobachtung für sich stimmte und trotzdem in die
-Irre führte:
+**Zu `CENTRIC_PFEFFER`:** Ohne ihn liegen die Zugangscodes als ungesalzenes
+SHA-256 im Speicher — bei drei Blöcken aus einem Alphabet von sechsundzwanzig
+Zeichen ist das mit einer Wortliste zurückrechenbar. Einmal setzen und **nie
+wieder ändern**: `umschluesseln()` in `server/lib/codes.mjs` schlüsselt jeden
+Code beim nächsten Anmelden auf den neuen Hashwert um, und ohne denselben
+Pfeffer gilt danach keiner mehr.
 
-**`manage-env-vars` schreibt nur mit `scopes: ["all"]`.** Mit einer engeren
-Auswahl — etwa `["functions", "runtime"]`, was sachlich richtig wäre —
-meldet der Aufruf `Environment variable upserted` und legt nichts an. Die
-Erfolgsmeldung trägt nicht. Das war die erste Falle, und sie erklärte,
-warum sechs vermeintlich gesetzte Variablen fehlten.
+**Zu `CENTRIC_ADMIN`:** ein Wegwerfschlüssel für genau einen Zweck — das erste
+benannte Verwalterkonto anlegen. Danach gehört er aus der `.env` entfernt und
+der Container neu erstellt; wer ihn stehen lässt, hat ein Geheimnis mit
+unbekanntem Leserkreis auf einem laufenden System. Ab dann führt der Weg in
+die Verwaltung ausschließlich über benannte `V-`-Schlüssel. Geht der letzte
+verloren, hilft nur: `CENTRIC_ADMIN` erneut setzen, `docker compose up -d`,
+Konto anlegen, Variable wieder entfernen, erneut `docker compose up -d`.
 
-**Über die Schnittstelle mit Kontext `all` gesetzte Geheimnisse erschienen
-danach in keiner Leseabfrage.** Nicht mit verdecktem Wert, sondern gar
-nicht. Ich schloss daraus, secret-Variablen seien grundsätzlich unsichtbar —
-und lag falsch: Der über die **Oberfläche** angelegte Pfeffer erscheint
-einwandfrei, mit einem Eintrag je Kontext und maskiertem Wert. Der
-Unterschied liegt also nicht am Kennzeichen allein.
+**Zu VAPID:** Ein Paar erzeugen und **beide** Hälften eintragen — nur der
+öffentliche Teil allein sendet nichts, ohne dass es auffiele.
 
-**Der `dev`-Kontext wird nicht maskiert.** Vier Kontexte liefert Netlify als
-`****…1zE=` aus, den fünften im Klartext. Wer die Schnittstelle abfragen
-darf, kann den Pfeffer lesen. Das ist verschmerzbar — wer so weit kommt,
-erreicht auch den Blob-Speicher — aber es ist gut, es zu wissen, statt es
-anzunehmen.
+**Zu `CENTRIC_ABSENDER`:** `onboarding@resend.dev` ist die Sandbox-Adresse
+von Resend und stellt ausschließlich an die Adresse des Resend-Kontos zu.
+Jede Nachricht an einen Kunden ginge ins Leere, ohne dass jemand etwas merkt.
+Vor dem Echtbetrieb eine eigene Domain bei Resend verifizieren.
 
-**Was daraus folgt:** Geheimnisse über die Oberfläche setzen und danach über
-den Umgebungsbericht prüfen (Schritt 2a). Der Bericht ist die einzige
-Rückmeldung in dieser Kette, die trägt: Er fragt den laufenden Server, ob er
-den Wert tatsächlich sieht — nicht die Verwaltung, ob sie ihn gespeichert zu
-haben glaubt.
+**Zu `VITE_`-Variablen:** Sie werden beim **Bauen** eingesetzt, nicht zur
+Laufzeit — sie stehen als Repository-Variablen in GitHub, nicht in der
+`.env`. Nach einer Änderung muss ein neues Bild gebaut werden (Schritt 1).
 
-### In der Oberfläche: *secret* erzwingt Werte je Kontext
+### Optional, härtet die Fehlversuchsbremse
 
-Wer **Contains secret values** ankreuzt, kann **Same value for all deploy
-contexts** nicht mehr wählen — Netlify verlangt dann vier einzelne Felder:
-Production, Deploy Previews, Branch deploys, Local development.
-
-**Überall denselben Wert eintragen.** Netlify Blobs gehören der Site, nicht
-dem einzelnen Deploy: Ein Branch-Deploy schreibt in denselben Speicher wie
-die Produktion. Stünde dort ein anderer Pfeffer, gälte ein über die Vorschau
-angelegter Code in der Produktion nicht mehr — ein Fehler, der erst Wochen
-später auffällt, wenn sich jemand nicht anmelden kann.
+| Variable | Wirkung |
+|---|---|
+| `REDIS_REST_URL`, `REDIS_REST_TOKEN` | Ohne sie zählt die Bremse je Vorgang und je Netzadresse über die Ablage und den Prozess, aber nicht atomar über gleichzeitige Anfragen. Mit ihnen ist die Grenze scharf. Siehe `atomarZaehlen()` in `server/lib/schutz.mjs`. |
 
 ## Schritt 2a — Nachsehen, ob es angekommen ist
 
-    curl -sS https://centric-app.netlify.app/einrichten/umgebung \
-      -H "authorization: Bearer <CENTRIC_ADMIN oder V-Schlüssel>"
+    curl -sS https://app.centric-dienstplanung.de/einrichten/umgebung \
+      -H "authorization: Bearer V-XXXXX-XXXXX-XXXXX-XXXXX"
 
-Ohne Terminal geht es genauso — auf der Seite `F12`, Reiter *Console*:
+(Solange es noch kein Verwalterkonto gibt: mit `CENTRIC_ADMIN` statt des
+`V-`-Schlüssels.) Ohne Terminal geht es genauso — auf der Seite `F12`,
+Reiter *Console*:
 
     fetch("/einrichten/umgebung", { headers: { authorization: "Bearer <Schlüssel>" } })
       .then(r => r.json()).then(a => console.log(JSON.stringify(a, null, 2)))
 
 Antwortet mit `ja` oder `nein` je Variable, **nie mit einem Wert**, dazu
 einer Liste offener Punkte im Klartext. `"inOrdnung": true` heißt: nichts
-mehr offen.
-
-Der Bericht steht hinter derselben Prüfung wie das Anlegen von Zugängen —
-wer ihn lesen darf, dürfte die Werte ohnehin setzen. Er fragt den laufenden
-Server, nicht die Verwaltung: Das unterscheidet ihn von jeder anderen
-Rückmeldung in dieser Kette.
+mehr offen. Der Bericht fragt den laufenden Server, ob er den Wert
+tatsächlich sieht — das ist die einzige Rückmeldung in dieser Kette, die
+trägt.
 
 **Achtung, die Bremse zählt mit.** `/einrichten` lässt fünf Versuche je zehn
 Minuten zu, dann dreißig Minuten Sperre, gezählt je Netzadresse — auch für
@@ -175,113 +167,47 @@ ohne das Wort `Bearer` schickt, verbraucht einen Versuch. Eine stehende
 Sperre verlängert sich durch weitere Versuche **nicht**; verdoppelt wird
 erst, wenn nach Ablauf erneut fünf Fehlversuche zusammenkommen.
 
-Die Anwendung **läuft auch ohne die fehlenden Variablen**. Was fehlt:
+## Schritt 3 — Auf den VPS ausliefern
 
-| Fehlt | Folge |
-|---|---|
-| `RESEND_API_KEY` | Kein Mailversand. Der Selbststart funktioniert weiter — die Zugangscodes stehen in der Antwort und damit auf dem Bildschirm. |
-| `VAPID_PUBLIC`, `VAPID_PRIVATE` | Keine Push-Mitteilungen. |
-| `VITE_KONTAKT_MAIL` | Hilfe und Impressum zeigen `kontakt@example.org` mit sichtbarem Hinweis. |
+Im Verzeichnis `/opt/apps/centric-dienstplanung`:
 
-`Site configuration → Environment variables → Add a variable`
+    docker compose pull
+    docker compose up -d
+    docker compose ps            # centric-dp-web … (healthy)
 
-| Variable | Als *secret*? | Wert | Stand |
-|---|---|---|---|
-| `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` | **gesetzt**, alle Kontexte |
-| `CENTRIC_ADMIN` | nein, mit Absicht | `openssl rand -base64 24` | **gelöscht**, siehe unten |
-| `VAPID_PUBLIC` | nein | aus `npx web-push generate-vapid-keys` | fehlt |
-| `VAPID_PRIVATE` | **ja** | aus demselben Aufruf — beide gehören zusammen | fehlt |
-| `VAPID_KONTAKT` | nein | `mailto:<eure Adresse>` | fehlt |
-| `RESEND_API_KEY` | **ja** | der Schlüssel aus dem Resend-Konto | fehlt |
-| `CENTRIC_ABSENDER` | nein | siehe unten | fehlt |
+Danach prüfen — jeder Punkt einzeln:
 
-**`CENTRIC_PFEFFER` gehört über die Oberfläche gesetzt**, mit einem frisch
-erzeugten Wert, als *secret*, und zwar **bevor** der erste Zugangscode
-entsteht — also vor Schritt 5.0. Danach nie wieder ändern: `umschluesseln()`
-in
-`netlify/lib/codes.mjs` schlüsselt jeden Code beim nächsten Anmelden auf den
-neuen Hashwert um, und ohne denselben Pfeffer gilt danach keiner mehr.
+    docker inspect centric-dp-web --format '{{.State.Health.Status}} {{.Image}}'
+    docker run --rm --network proxy curlimages/curl -sS http://centric-dp-web:3000/gesund
+    curl -sS https://app.centric-dienstplanung.de/gesund
+    curl -sS -o /dev/null -w '%{http_code}\n' https://app.centric-dienstplanung.de/
+    docker logs centric-dp-web --tail 5
+    docker logs caddy --since 5m
 
-**`CENTRIC_ADMIN` war ein Wegwerfschlüssel und ist gelöscht.** Er wurde in
-einer Arbeitssitzung erzeugt und stand damit in deren Verlauf. Für seinen
-einzigen Zweck — das erste benannte Verwalterkonto anlegen, Schritt 5.1 —
-war das vertretbar; danach gehörte er weg, nicht aufgehoben. Wer ihn
-länger stehen lässt, hat ein Geheimnis mit unbekanntem Leserkreis auf einem
-laufenden System.
+`/gesund` antwortet `{"status":"ok"}`; die Startseite 200; das Startlog des
+Containers nennt die Funktionen und „Ablage: Dateien unter /data".
 
-Ab jetzt führt der Weg in die Verwaltung ausschließlich über benannte
-`V-`-Schlüssel. Geht der letzte verloren, hilft nur, `CENTRIC_ADMIN` erneut
-zu setzen — und danach wieder zu löschen.
+**Rollback:** Das vorige Bild bleibt lokal liegen. `IMAGE_TAG=<voriger
+Commit-Hash>` in die `.env`, `docker compose up -d`, nach dem Prüfen wieder
+auf `latest`. Die Daten unter `/data` sind von einem Bildwechsel nie
+betroffen.
 
-**Warum manche als *secret*:** Netlify erlaubt dieses Kennzeichen **nur beim
-Anlegen**. Auf der alten Site war es bei keiner Variablen gesetzt — alle
-Werte standen über die Schnittstelle im Klartext lesbar, der
-Resend-Schlüssel eingeschlossen. Das ist die einzige Gelegenheit, das anders
-zu machen.
-
-**Warum `CENTRIC_ADMIN` nicht:** Er wird genau einmal gebraucht, um das
-erste benannte Verwalterkonto anzulegen (Schritt 5.1), und danach gelöscht.
-Für diese Minuten ist lesbar in der eigenen Oberfläche das Richtige.
-
-**Zu `CENTRIC_PFEFFER`:** Ohne ihn liegen die Zugangscodes als ungesalzenes
-SHA-256 im Speicher — bei drei Blöcken aus einem Alphabet von
-sechsundzwanzig Zeichen ist das mit einer Wortliste zurückrechenbar. Einmal
-setzen und **nie wieder ändern**: `umschluesseln()` in
-`netlify/lib/codes.mjs` schlüsselt jeden Code beim nächsten Anmelden auf den
-neuen Hashwert um, und ohne denselben Pfeffer gilt danach keiner mehr. Jetzt
-ist der richtige Zeitpunkt — die Site hat noch keinen Bestand.
-
-**Zu VAPID:** Auf der alten Site war nur der öffentliche Teil gesetzt.
-Push-Mitteilungen konnten damit nie versendet werden, ohne dass es auffiel.
-Ein Paar erzeugen und **beide** eintragen.
-
-### Was noch fehlt
-
-**`CENTRIC_ABSENDER` steht auf `onboarding@resend.dev`.** Das ist die
-Sandbox-Adresse von Resend: Sie stellt ausschließlich an die Adresse des
-Resend-Kontos zu. Jede Nachricht an einen Kunden — Zugangscodes aus dem
-Selbststart zuerst — geht ins Leere, ohne dass jemand etwas merkt. Vor dem
-Echtbetrieb eine eigene Domain bei Resend verifizieren und hier eintragen.
-Diesen Wert kann nur jemand setzen, der die Domain besitzt.
-
-**`VITE_KONTAKT_MAIL` fehlt.** Der Hilfebereich zeigt `kontakt@example.org`
-und weist sichtbar darauf hin, dass die Adresse noch nicht gesetzt ist.
-Dieselbe Adresse gehört ins Impressum. Optional dazu
-`VITE_KONTAKT_TELEFON` und `VITE_KONTAKT_ZEITEN`.
-
-### Optional, härtet die Fehlversuchsbremse
-
-| Variable | Wirkung |
-|---|---|
-| `REDIS_REST_URL`, `REDIS_REST_TOKEN` | Ohne sie zählt die Bremse je Vorgang und je Netzadresse, aber nicht atomar über gleichzeitige Anfragen. Bei sechzig gleichzeitigen Versuchen kommen einige durch. Mit ihnen ist die Grenze scharf. Siehe `atomarZaehlen()` in `netlify/lib/schutz.mjs`. |
-
-**Achtung bei `VITE_`-Variablen:** Sie werden beim **Bauen** eingesetzt, nicht
-zur Laufzeit. Nach einer Änderung muss neu gebaut werden — „Clear cache and
-deploy site".
-
----
-
-## Schritt 3 — Erledigt: der Stand liegt auf `main`
-
-Die dreißig Commits aus Pull Request #1 sind nach `main` zusammengeführt
-und gepusht. Die Pipeline (`.github/workflows/pruefung.yml`) lief auf dem
-Kopf grün und deckt ab: Linter, Typen, Regelwerk, Aufbewahrung,
-Tarifvorlagen, Zugangscodes, Scherben, Rechtetabellen, Bauen,
-Rechteprüfung, Verwalterkonten, Sicherung außer Haus, Bremse.
-
-Nach dem Verbinden aus Schritt 1 baut Netlify genau diesen Stand.
+Der Schritt auf den VPS aus GitHub Actions heraus (`deploy.yml`, Job `vps`
+über SSH und `/opt/bin/deploy.sh` mit Healthcheck und Rollback) ist
+vorbereitet, aber nicht scharf: Er läuft erst, wenn `DEPLOY_HOST` und
+`DEPLOY_SSH_KEY` hinterlegt sind und das Skript auf dem VPS liegt. Bis dahin
+gilt der Weg oben.
 
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
-**Keine Migration.** Mit der alten Site ist auch ihr Blob-Speicher gelöscht
-worden — es gibt keinen Altbestand, der hochzuziehen wäre. Die Anwendung
-startet auf Fassung 8.
+**Keine Migration.** Ein leeres `/data` ist ein leerer Betrieb; die
+Anwendung legt beim ersten Schreiben an, was sie braucht.
 
 **Dienstarbeiter.** Beim ersten Aufruf richtet sich der Offlinebetrieb ein.
 Danach startet die Anwendung auch ohne Netz, und der zuletzt geladene Plan
 bleibt lesbar — mit einem Hinweis, wie alt er ist.
 
-## Schritt 5 — Unmittelbar nach dem ersten erfolgreichen Deploy
+## Schritt 5 — Unmittelbar nach der ersten Inbetriebnahme
 
 ### 5.0 Betreiberzugang, Demobetriebe und einen leeren Testbetrieb anlegen
 
@@ -289,7 +215,7 @@ bleibt lesbar — mit einem Hinweis, wie alt er ist.
 nachsehen, dass er wirklich da ist.** Danach entstehen Codes, und ab dann
 ist der Pfeffer nicht mehr folgenlos zu ändern.
 
-    CENTRIC_ADMIN='<Wert aus den Umgebungsvariablen>' \
+    CENTRIC_ADMIN='<Verwalterschlüssel oder Ursprungsschlüssel>' \
       werkzeug/zugaenge-anlegen.sh
 
 Das Skript legt in einem Zug an und schreibt alle Codes in eine Datei mit
@@ -298,13 +224,27 @@ jedem Schritt fragt es über `GET /einrichten/uebersicht?bestand=demo-schau`
 nach, was es schon gibt, überspringt Vorhandenes und meldet am Ende
 „n angelegt, m übersprungen". Ausgabedateien tragen die Uhrzeit und werden
 nie überschrieben. Es braucht `curl` und `jq`; `SITE` zeigt in der Vorgabe
-auf `https://app.centric-dienstplanung.de`.
+auf `https://app.centric-dienstplanung.de`. Die Variable heißt aus
+historischen Gründen `CENTRIC_ADMIN` — ein benannter `V-`-Schlüssel tut es
+genauso.
 
 | Was | Wie | Wodurch |
 |---|---|---|
 | Betreiberkonsole | Code, Rolle `betreiber` | `/einrichten` |
 | Drei Demobetriebe | ohne Code offen auf der Anmeldeseite | `/einrichten`, `demo: true` |
 | Ein leerer Testbetrieb | eigener Raum, 30 Tage | `/starten` |
+
+**Abgelaufene Testbetriebe löscht der Server selbst.** Ein selbst angelegter
+Testbetrieb läuft 30 Tage; danach weist die Anmeldung ab, die Daten bleiben
+90 Tage liegen, dann löscht ein täglicher Lauf im Serverprozess den Raum
+vollständig (erster Lauf eine Minute nach jedem Start, dann alle 24 Stunden;
+`server/lib/aufraeumen.mjs`). Gelöscht wird nur, was eindeutig ein
+abgelaufener Testbetrieb ist: Raum `t-…`, `selbstAngelegt`, Status „test",
+Ablaufdatum plus 90 Tage überschritten. Ein auf „aktiv" gesetzter Betrieb
+wird nie angefasst. Jeder Lauf hinterlässt `aufraeumen:letzter` in der Ablage
+(Zeitpunkt, geprüft, gelöscht, Fehler) und Zeilen `loeschlauf` im Protokoll;
+ein Raum, bei dem etwas liegen blieb, behält seinen Kern und wird beim
+nächsten Lauf erneut versucht.
 
 **Warum der Testbetrieb über `/starten` läuft.** Nur dieser Weg legt den
 Betrieb mit `baueLeerenBetrieb()` an — kein Beispielpersonal, keine
@@ -323,7 +263,7 @@ offen, und für Demositzungen gibt es keine Schreibsperre — wer sie öffnet,
 kann Personal löschen und Pläne ändern, und der nächste Besucher sieht das.
 Für eine Vorführung ist das hinnehmbar, für eine öffentlich verlinkte Seite
 nicht. Wer das ändern will, braucht eine Schreibsperre für Sitzungen mit
-`demo: true` in `netlify/functions/daten.mjs` — dieselbe Stelle, an der
+`demo: true` in `server/funktionen/daten.mjs` — dieselbe Stelle, an der
 `nurSicherung` schon so behandelt wird.
 
 **Der Server hält zusätzlich dagegen.** Ein zweiter aktiver Demozugang für
@@ -335,30 +275,31 @@ zählt dabei nicht — nach dem Zurückziehen darf neu angelegt werden.
 „Demozugänge" der Betreiberkonsole zeigt dieselbe Liste wie die Startseite,
 markiert Doppelte und bietet je Eintrag „Zurückziehen" (sperrt über die
 öffentliche Kennung, beendet laufende Sitzungen; die Startseite zieht binnen
-einer Minute nach). Unter „Selbststarts" löscht „Datenraum löschen" einen
+einer Minute nach). Darunter stehen alle Konten des Demoraums mit gekürzter
+Kennung — auch Betreibercodes — je mit „Sperren"; der eigene Zugang ist
+ausgenommen. Unter „Selbststarts" löscht „Datenraum löschen" einen
 Testbetrieb vollständig — Bestand, Monate, Sicherungen, Zugangscodes,
-Sitzungen und der Vermerk in der Liste. Beides verlangt eine Anmeldung, die
-jünger als zwanzig Minuten ist. Einen überzähligen Betreibercode nennt die
-Übersicht mit gekürzter Kennung; gesperrt wird er mit
-`POST /api/zugang-sperren {"kennung":"<8 Zeichen>"}` aus einer
-Betreibersitzung.
+Sitzungen und der Vermerk in der Liste. Alles verlangt eine Anmeldung, die
+jünger als zwanzig Minuten ist.
 
 ### 5.1 Ein benanntes Verwalterkonto anlegen
 
-    curl -X POST https://centric-app.netlify.app/einrichten/verwalter \
+    curl -X POST https://app.centric-dienstplanung.de/einrichten/verwalter \
       -H "content-type: application/json" \
       -H "authorization: Bearer <CENTRIC_ADMIN>" \
       -d '{"neuerName":"<Vor- und Nachname>","email":"<E-Mail>","tage":365}'
 
-Der zurückgegebene Schlüssel erscheint **genau einmal**. Danach kann
-`CENTRIC_ADMIN` aus den Umgebungsvariablen entfernt werden — ab dann ist
-jede Handlung einer Person zuzuordnen und einzeln widerrufbar.
+Der zurückgegebene Schlüssel erscheint **genau einmal**. Danach
+`CENTRIC_ADMIN` aus der `.env` entfernen und `docker compose up -d` — ab dann
+ist jede Handlung einer Person zuzuordnen und einzeln widerrufbar
+(`DELETE /einrichten/verwalter {"kennung":"<8 Zeichen>"}`; der eigene Zugang
+lässt sich nicht sperren).
 
 **Erst sichern, dann prüfen, dann löschen — in dieser Reihenfolge.** Beim
 ersten Durchgang ging der Schlüssel verloren, weil zuerst gelöscht und
-danach geprüft wurde; das kostete einen kompletten Wiederherstellungsweg
-(`CENTRIC_ADMIN` neu setzen, Bau abwarten, Konto neu anlegen, wieder
-löschen).
+danach geprüft wurde; das kostete den kompletten Wiederherstellungsweg aus
+Schritt 2. Prüfen heißt: `GET /einrichten/verwalter` mit dem neuen
+Schlüssel muss 200 liefern und das Konto mit `gesperrt: false` nennen.
 
 **Der Schlüssel hat vier Blöcke.** `V-XXXXX-XXXXX-XXXXX-XXXXX`,
 fünfundzwanzig Zeichen. Beim Markieren mit der Maus fehlt leicht der erste
@@ -371,25 +312,29 @@ wie ein falscher: `401`. Sicherer ist der Weg über die Zwischenablage:
     await navigator.clipboard.writeText(v.schluessel);
     console.log("Laenge:", v.schluessel.length);   // muss 25 sein
 
-**Nach dem Löschen von `CENTRIC_ADMIN` einen Bau anstoßen.** Netlify friert
-die Umgebung beim Deploy ein; ohne neuen Bau lesen die laufenden Funktionen
-den gelöschten Wert weiter. Erst danach ist der Wegwerfschlüssel wirklich
-wertlos.
+**Der Schlüssel gehört in keinen Chat, kein Ticket, kein Protokoll.** Steht
+er einmal dort, ist er als offengelegt zu behandeln: neues Konto anlegen,
+altes sperren. Auf dem Server liegt nur seine Prüfsumme.
 
-### 5.2 Die alten Testzugänge — erledigt
+**Nach dem Entfernen von `CENTRIC_ADMIN` den Container neu erstellen.** Die
+Umgebung wird beim Start gelesen; ohne `docker compose up -d` sieht der
+laufende Prozess den alten Wert weiter. Erst danach ist der Wegwerfschlüssel
+wirklich wertlos — nachsehen mit Schritt 2a: `ursprungsschluessel: false`.
 
-Die fünf Zugangscodes aus der Testrunde standen im Klartext in einem
-Chatverlauf und waren damit als kompromittiert zu behandeln. Mit dem
-Löschen der alten Site ist ihr Speicher verschwunden; sie gelten nirgends
-mehr.
+### 5.2 Einen Zugang zurückziehen
 
-Wer künftig einen Zugang zurückziehen muss: als Organisationsleitung
-angemeldet
+Als Organisationsleitung oder Betreiber angemeldet, Anmeldung jünger als
+zwanzig Minuten:
 
-    POST /api/zugang-sperren     { "alle": true }
+    POST /api/zugang-sperren     { "code": "<Zugangscode>" }
+    POST /api/zugang-sperren     { "kennung": "<8 Zeichen aus der Übersicht>" }
+    POST /api/zugang-sperren     { "alleDesBetriebs": true }
 
-Der eigene Zugang bleibt bestehen, alle übrigen enden sofort — auch
-laufende Sitzungen.
+Der Eintrag bleibt als Grabstein stehen (derselbe Code wird nie wieder
+vergeben), laufende Sitzungen enden sofort. Bei `alleDesBetriebs` bleibt der
+eigene Zugang bestehen. Ein Zugangscode, der in einem Chatverlauf oder einer
+Datei im Klartext stand, gilt als kompromittiert und wird zurückgezogen —
+nicht aufgehoben.
 
 ### 5.3 Eine Sicherung außer Haus einrichten
 
@@ -397,68 +342,37 @@ Als Organisationsleitung unter **Verwaltung → Datenmitnahme**:
 Sicherungsschlüssel anlegen, dann auf einem eigenen Rechner täglich
 
     curl -sS -H "Authorization: Bearer <Schlüssel>" \
-      https://centric-app.netlify.app/api/vollausgabe \
+      https://app.centric-dienstplanung.de/api/vollausgabe \
       -o centric-$(date +%F).json
 
 Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
-löschen und sich nicht anmelden.
+löschen und sich nicht anmelden. Unabhängig davon gehört `/data` auf dem
+VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
+liegen.
 
 ---
 
 ## Schritt 6 — Bevor zahlende Kunden echte Personaldaten eingeben
 
-Das ist keine technische Liste, und sie lässt sich nicht durch ein Deploy
-erledigen.
+Das ist keine technische Liste, und sie lässt sich nicht durch eine
+Auslieferung erledigen.
 
-1. **Umzug nach Deutschland vollziehen.** Der Bestand liegt derzeit in
-   `us-east-2` (Ohio). Die Schrittfolge steht in Anlage 2 des AV-Vertrags
-   (`rechtliches/auftragsverarbeitung.md`). Die Rechtstexte werden **am Tag
-   des Umzugs** nachgeführt, nicht vorher — sie beschreiben den Zustand,
-   nicht das Vorhaben.
-2. **Solange nicht umgezogen:** Standardvertragsklauseln mit Netlify und mit
-   Resend schließen und ablegen, dazu je eine Übermittlungs-Folgen­abschätzung.
-3. **Rechtstexte anwaltlich prüfen lassen** und die `[BEISPIEL-…]`-Angaben
+1. **Rechtstexte nachführen.** Der Bestand liegt auf dem eigenen VPS bei
+   IONOS; AV-Vertrag, Verarbeitungsverzeichnis und Datenschutzhinweise in
+   `rechtliches/` beschreiben noch den früheren Hoster und müssen Hoster,
+   Standort des Rechenzentrums und Unterauftragsverarbeiter (Resend, falls
+   E-Mail-Versand aktiv) nennen. Sie beschreiben den Zustand, nicht das
+   Vorhaben — also am Tag der Änderung, mit Beleg.
+2. **Rechtstexte anwaltlich prüfen lassen** und die `[BEISPIEL-…]`-Angaben
    ersetzen — siehe `rechtliches/PLATZHALTER.md`.
-4. **Betriebsrat beteiligen** nach § 87 Abs. 1 Nr. 6 BetrVG. Das betrifft
+3. **Betriebsrat beteiligen** nach § 87 Abs. 1 Nr. 6 BetrVG. Das betrifft
    vor allem Zeiterfassung und Standortprüfung beim Stempeln.
-5. **AV-Vertrag mit jedem Kunden schließen**, bevor dieser echte
+4. **AV-Vertrag mit jedem Kunden schließen**, bevor dieser echte
    Beschäftigtendaten einspielt.
-6. **Entscheiden, ob der Vorrat öffentlich bleiben soll.**
+5. **Entscheiden, ob der Vorrat öffentlich bleiben soll.**
    `rinats-png/dienstplaner` steht auf `visibility: public`. Ein Geheimnis
-   liegt nicht darin — alle Werte kommen aus der Umgebung, und die
-   Geheimnisprüfung des Deploys hat achtundsechzig Dateien ohne Fund
-   durchgesehen. Öffentlich ist aber auch die Sicherheitsarchitektur
-   lesbar: Bremsschwellen, Sitzungsdauern, Rechtetabellen. Das ist eine
-   Entscheidung, keine Panne — sie sollte nur bewusst getroffen sein.
-
----
-
-## Warum das hier steht und nicht ausgeführt wurde
-
-Die Arbeitsumgebung dieses Reviews erreicht keinen Netlify-Host. Der
-Egress-Proxy beantwortet jeden Verbindungsaufbau dorthin mit 403 — eine
-Organisationsrichtlinie, keine Störung:
-
-    api.netlify.com:443              gateway answered 403 to CONNECT
-    app.netlify.com:443              gateway answered 403 to CONNECT
-    centric-app.netlify.app:443   gateway answered 403 to CONNECT
-    netlify-mcp.netlify.app:443      gateway answered 403 to CONNECT
-
-Der Netlify-Connector läuft über eine andere Strecke und funktioniert —
-darüber stammen die Angaben zu den Umgebungsvariablen und zum
-veröffentlichten Stand. Sein Bereitstellungsbefehl lädt den Quelltext aber
-über `netlify-mcp.netlify.app` hoch, und dieser Host ist gesperrt. Der
-Versuch bricht entsprechend ab:
-
-    Starting deployment process...
-    Uploading your project...
-    Error: Failed to deploy site: 403 Forbidden
-
-Das 403 kommt vom Egress-Gateway beim Verbindungsaufbau, noch vor jedem
-TLS-Austausch mit Netlify — es ist also keine Frage von Zugangsdaten oder
-Berechtigungen im Netlify-Konto. Ein Deploy von hier aus ist auf keinem Weg
-möglich.
-
-Die Schritte oben sind so geschrieben, dass sie ohne Rückfragen abzuarbeiten
-sind. Schritt 1 ist auf diesem Weg erledigt worden und nachgeprüft; Schritt 2
-steht noch aus.
+   liegt nicht darin — alle Werte kommen aus der Umgebung, und der
+   Secret-Scan läuft bei jedem Push. Öffentlich ist aber auch die
+   Sicherheitsarchitektur lesbar: Bremsschwellen, Sitzungsdauern,
+   Rechtetabellen. Das ist eine Entscheidung, keine Panne — sie sollte nur
+   bewusst getroffen sein.

@@ -49,7 +49,7 @@ WORKDIR /app
 
 COPY --from=laufzeit /app/node_modules ./node_modules
 COPY --from=bauen /app/dist ./dist
-COPY netlify ./netlify
+COPY server ./server
 COPY server.mjs package.json ./
 
 # Datenverzeichnis gehört dem unprivilegierten Benutzer `node` (uid 1000).

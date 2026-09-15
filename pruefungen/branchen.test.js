@@ -9,7 +9,7 @@
    ========================================================================== */
 import { describe, test, expect } from "vitest";
 import { BRANCHEN, brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer,
-  quoteFuer, paketFuer, branchenListe } from "../netlify/lib/branchen.mjs";
+  quoteFuer, paketFuer, branchenListe } from "../server/lib/branchen.mjs";
 import { PAKETE } from "../src/stufen.js";
 import { EBENEN, BEZUEGE, verbindlichkeit, regelMaengel } from "../src/regelwerk.js";
 

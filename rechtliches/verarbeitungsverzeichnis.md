@@ -33,8 +33,8 @@ Kunden brauchen ein **eigenes** Verzeichnis für ihre Verarbeitung
 | **Betroffene** | Besucher der Website |
 | **Datenkategorien** | Abgerufene Adresse, Zeitpunkt, übertragene Menge, Statuscode, Browserkennung, IP-Adresse ausschließlich als Hashwert |
 | **Rechtsgrundlage** | Art. 6 Abs. 1 lit. f DSGVO — berechtigtes Interesse an einem sicheren und funktionsfähigen Angebot |
-| **Empfänger** | Netlify, Inc. (Hosting, USA) |
-| **Drittland** | USA, Standardvertragsklauseln (EU) 2021/914 |
+| **Empfänger** | IONOS SE (Hosting des virtuellen Servers; Auftragsverarbeitungsvertrag). Betrieb der VPS-Plattform durch den Subunternehmer Arsys Internet S.L.U., Logroño, Spanien |
+| **Drittland** | keines — Verarbeitung auf einem Server in Spanien (EU) |
 | **Löschfrist** | 30 Tage |
 | **Maßnahmen** | TLS, HSTS, Content-Security-Policy, selbst ausgelieferte Schriftarten, keine Cookies zu Werbe- oder Messzwecken |
 
@@ -46,9 +46,9 @@ Kunden brauchen ein **eigenes** Verzeichnis für ihre Verarbeitung
 | **Betroffene** | Ansprechpartner interessierter Unternehmen |
 | **Datenkategorien** | Betriebsname, Branche, Bundesland, E-Mail-Adresse, Zeitpunkt, Ablaufdatum |
 | **Rechtsgrundlage** | Art. 6 Abs. 1 lit. b DSGVO — vorvertragliche Maßnahme |
-| **Empfänger** | Netlify, Inc.; Resend, Inc. (E-Mail-Versand, USA) |
-| **Drittland** | USA, Standardvertragsklauseln |
-| **Löschfrist** | 90 Tage nach Ablauf des Testzeitraums |
+| **Empfänger** | IONOS SE (Hosting, siehe A1). Nur bei Aktivierung des serverseitigen E-Mail-Versands — derzeit nicht aktiviert: Resend, Inc. (USA) für die Zustellung der Zugangscodes |
+| **Drittland** | derzeit keines. Bei Aktivierung des E-Mail-Versands: USA (Resend); Voraussetzungen nach Art. 44 ff. DSGVO sind vor Aktivierung zu schaffen und hier einzutragen |
+| **Löschfrist** | 30 Tage Testlaufzeit; nach Ablauf des Testzeitraums 90 Tage Aufbewahrung; anschließend automatische Löschung des gesamten Testbetriebs im täglichen Bereinigungslauf, sofern kein Vertrag zustande gekommen ist |
 | **Maßnahmen** | Zugangscodes nur als HMAC gespeichert, Versand nur an die hinterlegte Adresse, Mengenbegrenzung je Netzadresse |
 
 ## A3 Anmeldung, Sitzungsverwaltung, Missbrauchsabwehr
@@ -59,7 +59,8 @@ Kunden brauchen ein **eigenes** Verzeichnis für ihre Verarbeitung
 | **Betroffene** | Nutzer der Anwendung |
 | **Datenkategorien** | Zugangscode als HMAC, Sitzungsschlüssel als Hashwert, Zeitpunkt, Rolle, Betriebskennung, IP-Adresse als Hashwert |
 | **Rechtsgrundlage** | Art. 6 Abs. 1 lit. f DSGVO — Sicherheit der Verarbeitung; Art. 32 DSGVO |
-| **Empfänger** | Netlify, Inc. |
+| **Empfänger** | IONOS SE (Hosting, siehe A1) |
+| **Drittland** | keines |
 | **Löschfrist** | Sitzungen: 12 Stunden, bei Untätigkeit 30 Minuten. Fehlversuchsvermerke: 30 Tage |
 | **Maßnahmen** | zeitkonstanter Vergleich, ansteigende Sperrdauer, sofortiger Widerruf einzelner Zugänge |
 
@@ -97,8 +98,8 @@ Kunden brauchen ein **eigenes** Verzeichnis für ihre Verarbeitung
 | **Datenkategorien** | Siehe § 2 des AV-Vertrags: Stamm-, Vertrags-, Planungs-, Zeit-, Qualifikations- und Abwesenheitsdaten, Schutzangaben, Nachrichten, Protokolle |
 | **Besondere Kategorien** | Gesundheitsdaten (Abwesenheitsgründe, Mutterschutz, Schwerbehinderung), soweit vom Kunden erfasst |
 | **Betroffene** | Beschäftigte der Kunden |
-| **Empfänger** | Netlify, Inc.; Resend, Inc. |
-| **Drittland** | USA, Standardvertragsklauseln (EU) 2021/914 |
+| **Empfänger** | IONOS SE (Hosting des virtuellen Servers, auf dem der Datenbestand liegt; Subunternehmer für den Plattformbetrieb: Arsys Internet S.L.U., Spanien). Nur bei Aktivierung des serverseitigen E-Mail-Versands — derzeit nicht aktiviert: Resend, Inc. (USA) für Empfängeradresse, Betreff und Inhalt der jeweiligen Nachricht |
+| **Drittland** | keines für Speicherung und Verarbeitung des Bestands (Spanien, EU). Bei Aktivierung des E-Mail-Versands gesondert zu bewerten, siehe Anlage 2 zum AV-Vertrag |
 | **Löschfristen** | Nach Weisung des Kunden; Voreinstellungen siehe Anlage 1 zum AV-Vertrag |
 | **Maßnahmen** | Anlage 1 zum AV-Vertrag |
 
@@ -119,7 +120,7 @@ ein. Ein brauchbarer Ausgangspunkt:
 | **Besondere Kategorien** | Gesundheitsdaten, soweit Abwesenheitsgründe, Mutterschutz oder Schwerbehinderung erfasst werden — Art. 9 Abs. 2 lit. b DSGVO i. V. m. § 26 Abs. 3 BDSG |
 | **Rechtsgrundlage** | § 26 Abs. 1 BDSG i. V. m. Art. 88 DSGVO (Durchführung des Beschäftigungsverhältnisses); Art. 6 Abs. 1 lit. c DSGVO i. V. m. § 16 Abs. 2 ArbZG, JArbSchG, MuSchG, SGB IX; gegebenenfalls Betriebsvereinbarung als Rechtsgrundlage nach Art. 88 Abs. 1 DSGVO |
 | **Empfänger** | [Anbieter] als Auftragsverarbeiter; Lohnbuchhaltung; Arbeitnehmervertretung im Rahmen ihrer Aufgaben |
-| **Drittland** | Ja — siehe AV-Vertrag § 7 |
+| **Drittland** | Für die Verarbeitung durch [Anbieter] keine — Speicherung und Verarbeitung auf einem Server in Spanien (EU), siehe AV-Vertrag § 7; optionale Dienste mit Drittlandbezug sind derzeit nicht aktiviert. Eigene Empfänger des Kunden (etwa Lohnbuchhaltung) sind hier zu ergänzen. |
 | **Löschfristen** | Plandaten 24 Monate, Stammdaten 6 Monate nach Austritt (danach Anonymisierung), Abwesenheitsgründe 3 Monate; abweichende Einstellung im Betrieb möglich |
 | **Maßnahmen** | Anlage 1 zum AV-Vertrag; ergänzend die eigenen Maßnahmen des Kunden (Vergabe und Entzug von Zugängen, Schulung, Bildschirmsperre) |
 

@@ -31,8 +31,8 @@ Suchen mit:
 | `[BEISPIEL-KUNDE-ANSCHRIFT]` | Anschrift des Kunden im AV-Vertrag |
 | `[BEISPIEL-STEUERBERATUNG]` | Steuerbüro, das die Buchführung übernimmt |
 | `[BEISPIEL-KUNDENLISTE]` | Ablage der Kundenliste zum Verarbeitungsverzeichnis |
-| `[BEISPIEL-AVV-NETLIFY]` | Ablage des abgeschlossenen Vertrags mit Netlify |
-| `[BEISPIEL-AVV-RESEND]` | Ablage des abgeschlossenen Vertrags mit Resend |
+| `[BEISPIEL-AVV-IONOS]` | Ablage des Auftragsverarbeitungsvertrags mit der IONOS SE (liegt vor; Bestandteil der IONOS-AGB, mit Anhang 1 „Server Produkte" und Anhang 2 Subunternehmer, Version 4.5, Stand 04/2026) |
+| `[BEISPIEL-AVV-RESEND]` | Ablage der Unterlagen zu Resend — nur nötig, wenn der serverseitige E-Mail-Versand aktiviert wird (derzeit nicht) |
 
 ## Was in welcher Datei steht
 
@@ -66,17 +66,19 @@ technischen und organisatorischen Maßnahmen. Was dort steht, muss stimmen —
 eine Beschreibung, die den tatsächlichen Zustand übertrifft, ist schlimmer
 als gar keine.
 
-**Unterauftragsverarbeiter und Speicherort.** Netlify und Resend verarbeiten
-Daten außerhalb der EU. Solange das so ist, müssen die
-Standardvertragsklauseln mit beiden geschlossen und dokumentiert sein, bevor
-ein Kunde echte Personaldaten einspielt.
+**Unterauftragsverarbeiter und Speicherort.** Anwendung und Datenbestand
+liegen auf einem virtuellen Server der IONOS SE in Spanien (EU); der
+Auftragsverarbeitungsvertrag mit IONOS liegt vor (`[BEISPIEL-AVV-IONOS]`).
+Für das Produkt vServer nennt IONOS als Subunternehmer die Arsys Internet
+S.L.U., Spanien — nur dieser ist in Anlage 2 des AV-Vertrags aufgeführt, nicht
+die gesamte produktübergreifende Liste. Resend (E-Mail-Versand, USA) ist
+derzeit nicht aktiviert; wird der Versand eingeschaltet, sind vorher die
+Voraussetzungen für eine Drittlandübermittlung zu schaffen und alle drei
+Texte nachzuführen.
 
-Geplant ist ein Umzug auf ein Rechenzentrum in Deutschland vor dem
-kostenpflichtigen Betrieb. Die Schrittfolge steht in Anlage 2 des
-AV-Vertrags. Wichtig dabei: Die Texte beschreiben durchgehend den Zustand,
-nicht das Vorhaben. Wer sie vor dem Umzug veröffentlicht, veröffentlicht
-richtigerweise „liegt in den USA" — und ändert sie am Tag des Umzugs, nicht
-davor.
+Wichtig dabei: Die Texte beschreiben durchgehend den Zustand, nicht das
+Vorhaben. Ändert sich Hoster, Standort oder ein aktivierter Dienst, werden
+sie am Tag der Änderung nachgeführt — nicht davor.
 
 **Widerrufsrecht.** Die AGB gehen davon aus, dass ausschließlich an
 Unternehmer verkauft wird. Sobald ein Verbraucher Kunde werden kann, kommt
@@ -85,8 +87,9 @@ eine Widerrufsbelehrung hinzu, und die Haftungsklauseln sind zu prüfen.
 ## Umgebungsvariablen
 
 Die Kontaktangaben gehören nicht in den Quelltext, weil sie sich ändern
-können, ohne dass jemand die Anwendung neu baut. Sie werden beim Bauen gesetzt —
-bei Netlify unter *Site configuration → Environment variables*:
+können, ohne dass jemand den Quelltext anfasst. Sie werden beim Bauen des
+Container-Bilds gesetzt — als Repository-Variablen in GitHub Actions
+(`VITE_…`, siehe `BEREITSTELLUNG.md`, Schritt 1 und 2):
 
 | Variable | Wirkung |
 |---|---|

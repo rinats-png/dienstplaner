@@ -47,12 +47,11 @@ export const KONTAKT_UNGESETZT = HILFE_MAIL === "kontakt@example.org";
  * verwechselt, schickt Beschäftigte aus einer Benachrichtigung heraus auf
  * eine Verkaufsseite statt in ihren Dienstplan.
  *
- * VITE_ANWENDUNG_URL übersteuert; der Serverteil liest dieselbe Angabe
- * aus CENTRIC_BASIS (netlify/lib/post.mjs). Beide gehören in die
- * Umgebungsvariablen der Auslieferung, nicht in den Quelltext.
+ * VITE_ANWENDUNG_URL übersteuert beim Bauen (Dockerfile, deploy.yml);
+ * ohne Angabe gilt die Adresse der Anwendung auf dem eigenen Server.
  */
 export const ANWENDUNG_URL = (ausUmgebung("VITE_ANWENDUNG_URL")
-  || "https://centric-app.netlify.app").replace(/\/+$/, "");
+  || "https://app.centric-dienstplanung.de").replace(/\/+$/, "");
 
 /**
  * Baut einen mailto-Verweis mit vorbereitetem Betreff und Rumpf.

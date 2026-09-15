@@ -176,9 +176,9 @@ import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAG
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
-  from "../netlify/lib/rollenvergabe.mjs";
+  from "../server/lib/rollenvergabe.mjs";
 import { branchenListe, brancheVon, qualifikationenFuer, einheitLabel as brancheEinheit }
-  from "../netlify/lib/branchen.mjs";
+  from "../server/lib/branchen.mjs";
 import { BEREICHE as PPUGV_BEREICHE, bereichVon as ppugvBereich, pruefeSchicht as ppugvPruefen,
   monatslage as ppugvMonatslage } from "./ppugv.js";
 import { pruefeWoche as fahrzeitWoche, wochentage as fahrWochentage,
@@ -9734,7 +9734,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
    TESTABLAUF
 
    Ein selbst angelegter Betrieb läuft nach 30 Tagen ab, und der Server weist
-   danach jede Anmeldung ab — nachgelesen in netlify/functions/daten.mjs. Der
+   danach jede Anmeldung ab — nachgelesen in server/funktionen/daten.mjs. Der
    Kunde erfuhr davon nichts: Der Ablauf stand nur in der Betreiberkonsole.
    Am einunddreißigsten Tag stand jemand mit einem eingerichteten Betrieb vor
    einer Anmeldung, die ihn nicht mehr kannte.

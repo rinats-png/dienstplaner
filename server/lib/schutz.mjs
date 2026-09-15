@@ -86,10 +86,11 @@ function lokalZaehlen(schluessel, fensterSekunden) {
 /* --------------------------------------------------------------------------
    ATOMARER ZÄHLER, WENN VORHANDEN
 
-   Netlify Blobs kennt kein bedingtes Schreiben — SetOptions trägt nur
-   metadata. Damit lässt sich darauf kein Zähler bauen, der einem parallelen
-   Schwarm standhält; gemessen kamen 55 von 60 gleichzeitigen Versuchen
-   durch, obwohl die Grenze bei 8 liegt.
+   Die Dateiablage kennt kein bedingtes Schreiben. Damit lässt sich darauf
+   kein Zähler bauen, der einem parallelen Schwarm standhält; gemessen kamen
+   55 von 60 gleichzeitigen Versuchen durch, obwohl die Grenze bei 8 liegt.
+   Der prozesslokale Zähler (lokalZaehlen) fängt das im Container ab, solange
+   es nur einen Prozess gibt.
 
    Wer die Lücke schließen will, hinterlegt einen Redis-Dienst mit
    HTTP-Schnittstelle (Upstash und Vergleichbare, kostenfreie Stufe genügt):
@@ -197,10 +198,10 @@ export function kennung(req, sitzung) {
   return `a:${kurz(herkunft(req))}`;
 }
 
-/** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte. */
+/** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte.
+    Caddy trägt sie als X-Forwarded-For ein; der erste Eintrag ist der Client. */
 export function herkunft(req) {
-  const adresse = req.headers.get("x-nf-client-connection-ip")
-    || req.headers.get("x-forwarded-for") || "unbekannt";
+  const adresse = req.headers.get("x-forwarded-for") || "unbekannt";
   return String(adresse).split(",")[0].trim();
 }
 
@@ -288,7 +289,7 @@ export async function bremse(art, kennung, ziel) {
        sequenzielles Vertippen und war gegen einen parallelen Angriff
        wirkungslos, auch beim Verwaltungskennwort.
 
-       Netlify Blobs kennt kein atomares Hochzählen. Ein eigener Schlüssel
+       Die Ablage kennt kein atomares Hochzählen. Ein eigener Schlüssel
        je Versuch braucht keins: Jeder Schreibvorgang ist unabhängig, und
        gezählt wird durch Auflisten. Zwei parallele Anfragen erzeugen zwei
        Einträge — nicht einen. */

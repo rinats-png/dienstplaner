@@ -14,8 +14,8 @@
    Es lässt sich nicht zuordnen. Nach einem Vorfall steht im Protokoll
    „jemand mit dem Verwaltungskennwort" — das ist keine Auskunft.
 
-   Und es steht in einer Umgebungsvariablen, die jeder sieht, der Zugriff
-   auf die Netlify-Oberfläche hat.
+   Und es steht in einer Umgebungsvariablen, die jeder sieht, der die
+   .env auf dem Server lesen kann.
 
    Jetzt gibt es benannte Konten: je Person ein eigener Schlüssel, einzeln
    widerrufbar, mit Namen im Protokoll. CENTRIC_ADMIN bleibt als

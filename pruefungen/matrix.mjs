@@ -2,7 +2,7 @@
    RECHTETABELLEN VERGLEICHEN
 
    Die Tabelle steht doppelt: MATRIX_STD in src/App.jsx steuert, was die
-   Oberfläche anbietet, MATRIX in netlify/lib/rechte.mjs entscheidet, was der
+   Oberfläche anbietet, MATRIX in server/lib/rechte.mjs entscheidet, was der
    Server zulässt. Die Doppelung ist Absicht — was im Browser läuft, gehört
    dem Browser.
 
@@ -19,7 +19,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { MATRIX } from "../netlify/lib/rechte.mjs";
+import { MATRIX } from "../server/lib/rechte.mjs";
 
 const hier = dirname(fileURLToPath(import.meta.url));
 const quelle = readFileSync(join(hier, "..", "src", "App.jsx"), "utf8");

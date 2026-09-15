@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SERVER — der Node-Prozess statt Netlify
+   SERVER — der Node-Prozess hinter Caddy
 
    server.mjs wird so gestartet, wie er im Container läuft, nur mit einem
    kleinen Ordner statt dist/ und einem Wegwerfverzeichnis statt /data.

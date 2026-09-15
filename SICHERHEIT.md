@@ -16,7 +16,7 @@ Browser, statische Durchsicht.
 ## Grundsatz
 
 Der Browser ist keine Sicherheitsgrenze. Jede Entscheidung fällt in
-`netlify/lib/rechte.mjs` und `netlify/functions/daten.mjs` — die
+`server/lib/rechte.mjs` und `server/funktionen/daten.mjs` — die
 Oberfläche darf weniger anbieten als der Server erlaubt, nie mehr. Der
 Server nimmt einen ganzen Bestand entgegen und übernimmt daraus nur, was
 die Rolle ändern darf (`zusammenfuehren`); alles andere bleibt, wie es
@@ -34,18 +34,19 @@ was er nicht auch mit der ehrlichen Oberfläche dürfte.
 | **Anmeldung** | Kein Kennwort, ein Zugangscode mit ~9,5·10¹⁶ Möglichkeiten. Abgelegt als HMAC-SHA256 mit Pfeffer aus der Umgebung (`CENTRIC_PFEFFER`); ohne Pfeffer als SHA-256 (Übergang). Zeitkonstanter Vergleich, gleichlange Antwortzeit für falsche Codes, keine Kontenauflistung. | `codes.mjs`, `daten.mjs` |
 | **Brute Force** | Bremse in drei Dimensionen (Herkunft, Zielbetrieb, Gesamt) mit steigender Sperre; optional atomar über Redis (`REDIS_REST_URL`). Anmelden 8/5 min, Einrichten 5/10 min, Selbststart 3/h. | `schutz.mjs` |
 | **Sitzungen** | Zufälliges 256-Bit-Merkmal, nur der Hash liegt im Speicher. 12 h absolut, 30 min Untätigkeit, Betreiber 2 h. Abmelden löscht serverseitig; Sperren eines Zugangs beendet dessen Sitzungen. Merkmal im `sessionStorage`, nur auf Wunsch im `localStorage` (nie für Betreiber). | `daten.mjs`, `speicher.js` |
-| **Datenbank** | Netlify Blobs, nur über Funktionen erreichbar, kein Port. Kein SQL, also keine Injektion; Schlüssel werden aus Sitzungsdaten gebaut, nie aus freiem Text (Ausnahme: Raumname des Betreibers, geprüft gegen `^[a-z0-9][a-z0-9_-]{2,79}$`). Form des Bestands wird vor dem Schreiben geprüft (`pruefeGestalt`); Schrumpfung über 34 % löst eine Sicherung aus. | `bestand.mjs`, `gestalt.mjs` |
-| **Geheimnisse** | Keine im Quelltext, im Bundle, in Git oder in Fehlermeldungen (geprüft). Alles über Umgebungsvariablen: `CENTRIC_ADMIN`, `CENTRIC_PFEFFER`, `RESEND_API_KEY`, `VAPID_*`, `REDIS_REST_*`. Verwaltungsschlüssel zeitkonstant verglichen. Secret-Scan läuft in der CI. | `.github/workflows/sicherheit.yml` |
+| **Datenablage** | Dateien unter `/data` im Container (Bind-Mount, Rechte 700, Dateien 600), nur über die Funktionen erreichbar, kein Port, kein Fremddienst. Kein SQL, also keine Injektion; Schlüssel werden zu Dateinamen kodiert (kein Zeichen außer `A–Z a–z 0–9 _ -` bleibt roh, kein Schlüssel verlässt sein Verzeichnis) und aus Sitzungsdaten gebaut, nie aus freiem Text (Ausnahme: Raumname des Betreibers, geprüft gegen `^[a-z0-9][a-z0-9_-]{2,79}$`). Schreiben ist atomar (Zwischendatei, fsync, umbenennen). Form des Bestands wird vor dem Schreiben geprüft (`pruefeGestalt`); Schrumpfung über 34 % löst eine Sicherung aus. | `ablage.mjs`, `bestand.mjs`, `gestalt.mjs` |
+| **Container** | Schreibgeschütztes Dateisystem, alle Capabilities abgelegt, `no-new-privileges`, Benutzer 1000, Speichergrenze, kein veröffentlichter Port — erreichbar nur für Caddy über das Docker-Netz `proxy`. Geheimnisse kommen aus einer `.env` mit Rechten 600, nie aus dem Bild. | `deploy/compose.yml`, `Dockerfile` |
+| **Geheimnisse** | Keine im Quelltext, im Bundle, im Bild, in Git oder in Fehlermeldungen (geprüft). Alles über die Umgebung des Containers: `CENTRIC_PFEFFER`, `RESEND_API_KEY`, `VAPID_*`, `REDIS_REST_*`; `CENTRIC_ADMIN` nur vorübergehend bis zum ersten benannten Verwalterkonto. Verwalterschlüssel zeitkonstant verglichen, nur als Prüfsumme gespeichert. Secret-Scan läuft in der CI. | `.github/workflows/sicherheit.yml`, `verwalter.mjs` |
 | **API** | Jeder Endpunkt hat Rolle und Umfang; Rumpf höchstens 6 MB (413), kaputtes JSON 400 statt 500; Antworten `no-store` und `nosniff`; keine Debug- oder Testpfade (`/einrichten` verlangt den Verwaltungsschlüssel). | `daten.mjs` |
 | **Eingaben** | Der ganze Bestand wird strukturell geprüft; Kennungen müssen eindeutig sein; Tagesschlüssel haben die Form `personId\|Datum`. Obergrenzen gegen Wucher: höchstens 100.000 Zeichen je Feld und feste Mengen je Liste (etwa 20.000 Personen, 500 Dienstarten) — beides gibt 422 statt eines unbrauchbaren Betriebs. Keine URLs werden verarbeitet (kein SSRF-Vektor); Mail geht nur an `api.resend.com`. | `gestalt.mjs`, `zustellung.mjs` |
-| **XSS / CSRF / Browser** | React ohne `dangerouslySetInnerHTML`; CSP `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'self'`; keine Cookies, also kein CSRF; alle Schreibwege sind PUT/POST. Zusätzlich prüft jede Funktion bei zustandsändernden Anfragen den `Origin` gegen die eigene Adresse (`herkunftErlaubt`) — ein fremdes Blatt kommt damit auch dann nicht durch, wenn eines Tages doch ein Cookie dazukäme. | `netlify.toml`, `schutz.mjs` |
-| **HTTPS / Header** | HSTS ein Jahr inkl. Subdomains; `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (nur Ortung, nur eigene Seite), `X-Frame-Options`. Kein CORS-Header — die API ist nur für die eigene Herkunft. | `netlify.toml` |
+| **XSS / CSRF / Browser** | React ohne `dangerouslySetInnerHTML`; CSP `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`, `frame-ancestors 'self'`; keine Cookies, also kein CSRF; alle Schreibwege sind PUT/POST. Zusätzlich prüft jede Funktion bei zustandsändernden Anfragen den `Origin` gegen die eigene Adresse (`herkunftErlaubt`) — ein fremdes Blatt kommt damit auch dann nicht durch, wenn eines Tages doch ein Cookie dazukäme. | `server.mjs`, `schutz.mjs` |
+| **HTTPS / Header** | TLS und Weiterleitung von HTTP durch Caddy; HSTS ein Jahr inkl. Subdomains (Caddy und Server); `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` (nur Ortung, nur eigene Seite), `X-Frame-Options`, CSP auf jeder Antwort des Servers. Kein CORS-Header — die API ist nur für die eigene Herkunft. | `server.mjs` (`SICHERHEIT`), `/opt/proxy/sites/*.caddy` |
 | **Dateien** | Es gibt keinen Upload. Nachweise werden als Fundstelle (Text) geführt, das Dokument bleibt in der Personalakte. | — |
 | **Fehler** | Nach außen nur „Serverfehler"; Einzelheiten im Protokoll. Keine Stacktraces, Pfade oder Merkmale in Antworten. | `daten.mjs` |
-| **Protokoll** | Anmeldungen, Fehlversuche, Sperren, Abweisungen, Rollenverstöße, Löschungen — je Eintrag ein Blob. Jeder schreibende Vorgang führt Rolle, Personenkennung, Weg und Verfahren mit, die Herkunft als gekürzten Hash. Nie Namen, Codes, Merkmale oder Planinhalte. | `schutz.mjs`, `daten.mjs` |
-| **Datenschutz** | Datenminimierung nach Rolle beim Lesen; Gesundheitsdaten (Krankheitsgrund, Masernschutz) nur als Status; Löschlauf nach Art. 17 DSGVO (`aufbewahrung.js`) mit Fristen; Datenraum-Löschung durch den Betreiber entfernt Bestand, Scherben, Sicherungen, Codes, Sitzungen und Kalender-Feeds. Vollausgabe nur für die Leitung oder einen reinen Sicherungsschlüssel. | `aufbewahrung.js`, `daten.mjs` |
+| **Protokoll** | Anmeldungen, Fehlversuche, Sperren, Abweisungen, Rollenverstöße, Löschungen — je Eintrag eine Datei. Jeder schreibende Vorgang führt Rolle, Personenkennung, Weg und Verfahren mit, die Herkunft als gekürzten Hash. Nie Namen, Codes, Merkmale oder Planinhalte. | `schutz.mjs`, `daten.mjs` |
+| **Datenschutz** | Datenminimierung nach Rolle beim Lesen; Gesundheitsdaten (Krankheitsgrund, Masernschutz) nur als Status; Löschlauf nach Art. 17 DSGVO (`aufbewahrung.js`) mit Fristen; Datenraum-Löschung (Betreiber oder täglicher Löschlauf für Testbetriebe: 30 Tage Test + 90 Tage Aufbewahrung) entfernt Bestand, Scherben, Stände, Sicherungen, Codes, Sitzungen samt Sicherungsschlüsseln und Kalender-Feeds — der Kern zuletzt, damit ein abgebrochener Lauf nachholbar bleibt; jeder Lauf ist im Protokoll und in `aufraeumen:letzter` nachvollziehbar. Vollausgabe nur für die Leitung oder einen reinen Sicherungsschlüssel. | `aufbewahrung.js`, `raumloeschung.mjs`, `aufraeumen.mjs` |
 | **Abhängigkeiten** | Lockfile, `npm audit` ohne Befund; CI bricht ab Schwere „hoch" (Laufzeit). Kein Fremdskript, keine Fremdschrift zur Laufzeit. | `sicherheit.yml` |
-| **CI-Gate** | Lint → Typen → Regelwerk → Branchen → Untergrenzen → PPP-RL → Lenkzeiten → Aufbewahrung → Codes → Scherben → Matrix → Build → Rechte → Verwalter → Demo → Sicherung → Bremse; daneben Audit, Secret-Scan, Musterprüfung. | `.github/workflows` |
+| **CI-Gate** | Lint → Typen → Regelwerk → Branchen → Untergrenzen → PPP-RL → Lenkzeiten → Aufbewahrung → Codes → Scherben → Ablage → Bremse → Server → Bereitstellungsskript → Matrix → Build → Bild bauen → je frischer Container: Rechte, Verwalter, Demo, Sicherung, Bremse; daneben Audit, Secret-Scan, Musterprüfung. Ausgeliefert wird nur ein Bild, das diese Kette bestanden hat (`Auslieferung` → GHCR). | `.github/workflows` |
 | **Regelstand** | Jede Planänderung trägt die Fassung des Regelwerks (`REGELSTAND`), die Prüfansicht nennt sie samt Quellen. Ein Befund ohne Regelstand ist eine Behauptung. | `regelwerk.js` |
 | **DevTools** | Keine Geheimnisse im Bundle, keine Sourcemaps in Produktion, keine versteckten Adminfunktionen — der Server weist alles ab, was die Rolle nicht darf (Tests S1–S8). | — |
 | **PWA / Offline** | Der Dienstarbeiter hält nur die Schale und die letzte Antwort auf `GET /api/bestand` (bereits nach Rolle gefiltert). Abmelden löscht diesen Speicher. Schreiben offline wird gepuffert und beim Zurückkehren erneut durch den Server geprüft. | `public/sw.js`, `speicher.js` |
@@ -68,7 +69,7 @@ Auslieferung. Was davon hier zutrifft:
 | **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Wunschzellen tragen eine Beschriftung mit Datum und Zustand. |
 | **Kontrast** | Eigene Palette; zusätzlich ein Feldmodus mit größerer Schrift und maximalem Kontrast für die Arbeit draußen. Zustände werden nie allein über Farbe gezeigt, sondern zusätzlich über Wort und Zeichen. |
 | **Dateiuploads** | Es gibt keine. Nachweise werden als Fundstelle geführt — damit entfallen MIME-Prüfung, Pfadwanderung und Schadsoftware im Speicher als Angriffsfläche. |
-| **CI/CD** | Zwei Läufe: `Prüfung` (Lint, Typen, Regelwerk, Aufbewahrung, Codes, Scherben, Rechtetabellen, Build, Rechte, Verwalter, Demo, Sicherung, Bremse) und `Sicherheit` (Audit, Secret-Scan, verbotene Muster). Ein roter Lauf blockiert. |
+| **CI/CD** | Drei Läufe: `Prüfung` (jeder Push: alle Prüfungen, Bild bauen, serverseitige Prüfungen gegen den Container), `Sicherheit` (Audit, Secret-Scan, verbotene Muster) und `Auslieferung` (von Hand: Bild bauen, Rechteprüfung gegen den Container, nach GHCR). Ein roter Lauf blockiert. Auf dem VPS: `docker compose pull && up -d`, Rollback über das vorige Bild. |
 
 Offen aus diesem Handbuch: rund dreißig weitere klickbare Zellen der
 Schreibtischansicht (Monatsplan, Listen) sind noch keine Schaltflächen;
@@ -96,8 +97,8 @@ Kontrastwerte nach WCAG AA stehen aus.
 
 1. **Bremse unter echter Gleichzeitigkeit.** Ohne Redis kommen bei
    einem parallelen Schwarm mehr Versuche durch als die Grenze erlaubt
-   (gemessen 55 von 60 im Blob-Weg, deutlich weniger mit der
-   prozesslokalen Sperre). Der Suchraum des Codes macht das ungefährlich,
+   (gemessen 55 von 60 über die Ablage allein, deutlich weniger mit der
+   prozesslokalen Sperre — im Container läuft ein einziger Prozess). Der Suchraum des Codes macht das ungefährlich,
    aber sauber ist es erst mit `REDIS_REST_URL`.
 2. **Betreiber ohne zweiten Faktor.** Wer den Betreibercode hat, hat
    alles — 2 h lang. Frische Anmeldung für Sperren und Löschen begrenzt
@@ -106,8 +107,10 @@ Kontrastwerte nach WCAG AA stehen aus.
    Sitzungsmerkmal im `localStorage`. Ein fremdes Skript auf derselben
    Herkunft könnte es lesen — die CSP lässt keines zu, das ist die
    Verteidigung.
-4. **Netlify Blobs** verschlüsselt ruhend; die Anwendung verschlüsselt
-   nicht zusätzlich. Wer das braucht, verschlüsselt auf Ebene des Raums.
+4. **Daten ruhen unverschlüsselt** unter `/data` auf dem VPS, geschützt
+   durch Dateirechte (700/600), den Container-Benutzer und den Zugang zum
+   Server. Die Anwendung verschlüsselt nicht zusätzlich; wer das braucht,
+   verschlüsselt das Dateisystem des Servers oder auf Ebene des Raums.
 5. **Branch-Schutz** auf GitHub ist Einstellungssache des Kontos und
    nicht aus dem Repository heraus erzwingbar. Empfohlen: `main` nur
    über Pull Request mit grüner Prüfung.
@@ -116,7 +119,10 @@ Kontrastwerte nach WCAG AA stehen aus.
 
 - [ ] `npm run pruefung` grün, `Sicherheit`-Workflow grün.
 - [ ] Keine offenen Befunde der Schwere „kritisch" oder „hoch".
-- [ ] `CENTRIC_PFEFFER` und `CENTRIC_ADMIN` in der Produktionsumgebung
-      gesetzt, nirgends sonst.
+- [ ] `CENTRIC_PFEFFER` in der Produktions-`.env` gesetzt und unverändert;
+      `CENTRIC_ADMIN` **nicht** mehr gesetzt (`/einrichten/umgebung`:
+      `ursprungsschluessel: false`, mindestens ein aktives Verwalterkonto).
+- [ ] Das laufende Bild gehört zum Commit (`sha256sum` der Funktionen im
+      Container gegen `git show`).
 - [ ] Änderungen an `rechte.mjs` oder `daten.mjs` haben einen Test in
       `pruefungen/rechte.mjs`.

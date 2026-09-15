@@ -18,9 +18,8 @@
 
      anlegen → listen → öffnen → sperren → nicht mehr listen → nicht mehr öffnen
 
-   Aufruf:
-     CENTRIC_ADMIN=<geheim> npx vite --port 5173 &
-     npm run pruefung:demo
+   Aufruf (frischer Server mit Wegwerfablage):
+     node pruefungen/serverlauf.mjs demozugang
    ========================================================================== */
 
 const BASIS = process.env.CENTRIC_BASIS || "http://localhost:5173";

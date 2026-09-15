@@ -9,7 +9,7 @@
    ========================================================================== */
 
 import { zerlegen, zusammensetzen, abdruck, unterschiede,
-  zusammenfuehrenNachMonat } from "../netlify/lib/scherben.mjs";
+  zusammenfuehrenNachMonat } from "../server/lib/scherben.mjs";
 
 const ergebnisse = [];
 const pruef = (name, bedingung, detail) => {

@@ -9,9 +9,8 @@
    der Ursprungsschlüssel, und dass ein gesperrtes Konto sofort nichts mehr
    kann.
 
-   Aufruf:
-     CENTRIC_ADMIN=<geheim> npx vite --port 5173 &
-     npm run pruefung:verwalter
+   Aufruf (frischer Server mit Wegwerfablage):
+     node pruefungen/serverlauf.mjs verwalter
    ========================================================================== */
 
 const BASIS = process.env.CENTRIC_BASIS || "http://localhost:5173";
@@ -86,10 +85,10 @@ pruef("gesperrtes Konto bleibt als Beleg stehen", !!jetzt && jetzt.gesperrt === 
 
 /* --- Der Umgebungsbericht: ja oder nein, nie der Wert ---
 
-   Er ist der einzige Weg, von außen festzustellen, ob eine Variable
-   gesetzt ist. Netlify liefert als *secret* angelegte Variablen selbst
-   über die Verwaltungsschnittstelle nicht mehr aus — ohne diesen Bericht
-   liefe eine Anwendung ohne Pfeffer, ohne dass es jemandem auffiele.
+   Er ist der einzige Weg, von außen festzustellen, ob eine Variable im
+   Container angekommen ist — die .env liegt mit Rechten 600 auf dem
+   Server. Ohne diesen Bericht liefe eine Anwendung ohne Pfeffer, ohne
+   dass es jemandem auffiele.
 
    Zwei Dinge müssen halten: dass er ohne Schlüssel nicht herausgeht, und
    dass in ihm kein einziger Wert steht.                                */

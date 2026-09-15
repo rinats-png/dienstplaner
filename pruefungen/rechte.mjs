@@ -5,9 +5,9 @@
    August 2026 gab es keine Tests; angefangen wird an der Stelle, an der ein
    Fehler am teuersten ist.
 
-   Aufruf:
-     CENTRIC_ADMIN=<geheim> npx vite --port 5173 &
-     npm run pruefung:rechte
+   Aufruf (frischer Server mit Wegwerfablage):
+     node pruefungen/serverlauf.mjs rechte
+   Oder gegen einen laufenden Server: CENTRIC_BASIS=… CENTRIC_ADMIN=… npm run pruefung:rechte
 
    Der Server braucht CENTRIC_ADMIN, weil die Prüfung ihre Zugänge selbst
    anlegt. Sie schreibt in den Raum "probe2" — nicht gegen einen echten

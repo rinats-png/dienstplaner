@@ -1,11 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import netlify from "@netlify/vite-plugin";
 
 /* Vendor-Bündel getrennt halten: React ändert sich selten, die Anwendung
    täglich. Getrennt kann der Browser React über Wochen zwischenspeichern,
    während neue Fassungen der Anwendung nachgeladen werden. */
-/* Die strenge Content-Security-Policy aus netlify.toml gilt dem gebauten
+/* Die strenge Content-Security-Policy aus server.mjs gilt dem gebauten
    Ergebnis — dort gibt es kein einziges Inline-Skript, geprüft im Build.
 
    Im Entwicklungsbetrieb schiebt Vite ein Inline-Skript für das schnelle
@@ -26,8 +25,19 @@ const cspNurFuerEntwicklung = {
   },
 };
 
+/* Im Entwicklungsbetrieb liefert Vite nur die Oberfläche. Alles, was der
+   Server beantwortet, geht an einen parallel laufenden `node server.mjs`
+   (Vorgabe Port 3000, siehe ENTWICKLUNG.md). Die Liste entspricht den
+   Pfaden, die die Funktionen in `export const config = { path }` nennen,
+   plus /gesund aus server.mjs. `vite build` sieht sie nie. */
+const SERVER = process.env.CENTRIC_ENTWICKLUNG_SERVER || "http://localhost:3000";
+const proxy = Object.fromEntries(
+  ["/api", "/lage", "/starten", "/kalender", "/zustellung", "/einrichten", "/gesund"]
+    .map((pfad) => [pfad, { target: SERVER, changeOrigin: false }]));
+
 export default defineConfig({
-  plugins: [react(), netlify(), cspNurFuerEntwicklung],
+  plugins: [react(), cspNurFuerEntwicklung],
+  server: { proxy },
   build: {
     outDir: "dist",
     sourcemap: false,

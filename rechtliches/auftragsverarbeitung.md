@@ -114,31 +114,26 @@ geplanten Wechsel kündigen.
 Verpflichtungen, die denen dieses Vertrags entsprechen, und haftet für deren
 Einhaltung wie für eigenes Verhalten.
 
-## § 7 Drittlandübermittlung
+## § 7 Ort der Verarbeitung und Drittlandübermittlung
 
-(1) Eine Verarbeitung findet auch außerhalb der Europäischen Union statt.
-Anlage 2 nennt Ort und Grundlage je Unterauftragsverarbeiter.
+(1) Die Verarbeitung der Beschäftigtendaten — Auslieferung der Anwendung,
+Ausführung der Serverfunktionen und Speicherung des gesamten Datenbestands —
+erfolgt auf einem virtuellen Server, den der Auftragsverarbeiter bei dem in
+Anlage 2 genannten Unterauftragsverarbeiter IONOS SE betreibt. Das
+Rechenzentrum steht in Spanien, einem Mitgliedstaat der Europäischen Union.
+Nach dem Auftragsverarbeitungsvertrag mit IONOS findet die vereinbarte
+Datenverarbeitung in einem Mitgliedstaat der EU oder einem anderen
+Vertragsstaat des EWR statt.
 
-(2) Grundlage sind die Standardvertragsklauseln der Kommission
-(Durchführungsbeschluss (EU) 2021/914) nebst ergänzenden Maßnahmen.
+(2) Für die Speicherung und Verarbeitung des Bestands findet damit keine
+Übermittlung in ein Drittland statt.
 
-(3) **Ausdrücklicher Hinweis zum jetzigen Stand.** Der Bestand liegt derzeit
-in der Region `us-east-2` (Ohio) der Vereinigten Staaten; dort werden auch
-die Serverfunktionen ausgeführt. Verlangt der
-Verantwortliche eine Verarbeitung ausschließlich innerhalb der EU, ist der
-Vertrag in der vorliegenden Fassung dafür **nicht geeignet**. Der
-Auftragsverarbeiter weist darauf vor Vertragsschluss hin.
-
-(4) **Geplanter Wechsel nach Deutschland.** Vor der Aufnahme des
-kostenpflichtigen Betriebs mit echten Beschäftigtendaten wird die
-Verarbeitung auf einen Anbieter mit Rechenzentrum in Deutschland verlegt.
-Solange dieser Wechsel nicht vollzogen und in Anlage 2 nachgeführt ist, gilt
-Absatz 3 unverändert. Ein geplanter Wechsel ist kein Erfüllungsstand: Was
-hier steht, beschreibt den Zustand, nicht die Absicht.
-
-(5) Nach dem Wechsel entfällt für die Speicherung der Beschäftigtendaten die
-Übermittlung in ein Drittland. Der Versand von Systemnachrichten per E-Mail
-ist gesondert zu bewerten; siehe Anlage 2.
+(3) Optionale Dienste, die eine Übermittlung in ein Drittland bedeuten
+könnten — der serverseitige Versand von Systemnachrichten per E-Mail und
+Push-Mitteilungen — sind **derzeit nicht aktiviert**. Vor einer Aktivierung
+stellt der Auftragsverarbeiter die Voraussetzungen der Artikel 44 ff. DSGVO
+sicher, führt Anlage 2 nach und teilt dies dem Verantwortlichen nach § 6
+Abs. 2 mit.
 
 ## § 8 Unterstützung des Verantwortlichen
 
@@ -223,15 +218,20 @@ nicht. Offene Punkte stehen am Ende und sind bewusst nicht beschönigt.
   Klartext gespeichert.
 - Die Standortprüfung beim Stempeln speichert nur das Ergebnis
   („innerhalb" oder „abweichend" mit Entfernungsangabe), keine Koordinaten.
-- Der Datenbestand liegt bei einem Auftragsverarbeiter, der die Speicherung
-  verschlüsselt vornimmt (Verschlüsselung im Ruhezustand durch den
-  Anbieter).
+- Der Datenbestand liegt als Dateien auf dem virtuellen Server, zugänglich
+  nur für den Prozess der Anwendung (Dateirechte 700 für Verzeichnisse und
+  600 für Dateien, eigener unprivilegierter Benutzer, schreibgeschützter
+  Container ohne Port nach außen). Eine zusätzliche Verschlüsselung der
+  ruhenden Daten durch die Anwendung erfolgt nicht; siehe Abschnitt 7.
 
 ## 2. Vertraulichkeit (Art. 32 Abs. 1 lit. b)
 
-**Zutritt.** Eigene Serverräume bestehen nicht. Der Betrieb erfolgt in
-Rechenzentren der in Anlage 2 genannten Anbieter; deren Zutrittskonzepte
-sind über die dort genannten Zertifizierungen nachgewiesen.
+**Zutritt.** Eigene Serverräume bestehen nicht. Der Betrieb erfolgt auf
+einem virtuellen Server im Rechenzentrum des in Anlage 2 genannten
+Unterauftragsverarbeiters; für Zutritt und Betrieb der Infrastruktur gelten
+dessen technische und organisatorische Maßnahmen, deren Einhaltung IONOS
+nach seinem Auftragsverarbeitungsvertrag mit einer Zertifizierung nach
+ISO 27001 nachweist.
 
 **Zugang.**
 - Zugang nur über einen zwölfstelligen Zugangscode je Person.
@@ -312,23 +312,37 @@ Je Betrieb einstellbar, Voreinstellung:
 | Stammdaten nach Austritt | 6 Monate, danach Anonymisierung statt Löschung |
 | Abwesenheitsgründe (Freitext) | 3 Monate |
 | Protokolldaten mit IP-Hash | 30 Tage |
-| Testbestände nach Ablauf | 90 Tage |
+| Selbst angelegte Testbetriebe ohne Vertragsschluss | 30 Tage Testlaufzeit; nach Ablauf 90 Tage Aufbewahrung; anschließend automatische Löschung im täglichen Bereinigungslauf |
 
 Ausgeschiedene Personen werden anonymisiert, nicht entfernt — sonst zerfällt
 die Dokumentation vergangener Dienstpläne, die nach § 16 Abs. 2 ArbZG
 aufzubewahren ist.
 
+Die Regel für selbst angelegte Testbetriebe ist eine eigenständige Frist für
+Interessenten, die keinen Vertrag geschlossen haben; sie ist von § 11
+(Herausgabe und Löschung nach Ende eines Hauptvertrags) unabhängig. Der
+Bereinigungslauf erfasst ausschließlich selbst angelegte Testbetriebe —
+Kundenbetriebe und Vorführbetriebe nie — und löscht den gesamten Datenraum:
+Bestand, Monatsscherben, Standvermerke, Sicherungen, Zugangscodes,
+Sitzungen einschließlich Sicherungsschlüsseln und Kalender-Feeds. Er läuft
+täglich und nach jedem Neustart des Servers; die Löschung erfolgt daher im
+ersten Lauf, nachdem die Aufbewahrungsfrist erreicht ist. Kann ein Raum nicht
+vollständig gelöscht werden, wird der Fehler protokolliert und der Raum im
+nächsten Lauf erneut bearbeitet.
+
 ## 7. Offene Punkte
 
 Ehrlich benannt, damit der Verantwortliche sie kennt:
 
-- **Kein Speicherort in der EU.** Siehe § 7 Abs. 3. Der Wechsel auf ein
-  Rechenzentrum in Deutschland ist vorgesehen, aber nicht vollzogen. Bis
-  dahin bleibt dieser Punkt offen — ein Vorhaben ist keine Maßnahme.
+- **Keine Verschlüsselung ruhender Daten durch die Anwendung.** Der
+  Bestand liegt als Dateien auf dem virtuellen Server, geschützt durch
+  Dateirechte, Container-Härtung und den Zugang zum Server. Ob der
+  Datenträger des Servers durch den Anbieter verschlüsselt ist, ist nicht
+  belegt und wird hier nicht behauptet.
 - **Keine Zwei-Faktor-Authentisierung.** Der Zugang beruht auf einem Code.
 - **Keine zertifizierte Prüfung** (ISO 27001, TISAX oder vergleichbar) des
-  Auftragsverarbeiters selbst; nur seine Unterauftragsverarbeiter sind
-  zertifiziert.
+  Auftragsverarbeiters selbst; der Unterauftragsverarbeiter IONOS weist eine
+  Zertifizierung nach ISO 27001 nach.
 - **Kein automatisierter Auslagerungsort.** Die Vollausgabe macht eine
   Sicherung außer Haus möglich; sie einzurichten und zu überwachen bleibt
   Sache des Verantwortlichen.
@@ -341,40 +355,41 @@ Ehrlich benannt, damit der Verantwortliche sie kennt:
 
 | Unternehmen | Leistung | Ort der Verarbeitung | Grundlage |
 |---|---|---|---|
-| Netlify, Inc., 512 2nd Street, San Francisco, CA 94107, USA | Auslieferung der Anwendung, Ausführung der Serverfunktionen, Speicherung des Datenbestands | USA, Region `us-east-2` (Ohio) | Standardvertragsklauseln (EU) 2021/914, Module 2 und 3 |
-| Resend, Inc., USA | Versand von Systemnachrichten per E-Mail (Zugangscodes, Hinweise) | USA | Standardvertragsklauseln (EU) 2021/914 |
+| IONOS SE | Bereitstellung und Betrieb der Serverinfrastruktur (virtueller Server, Produktgruppe „Server Produkte"): Auslieferung der Anwendung, Ausführung der Serverfunktionen, Speicherung des Datenbestands | Spanien (Mitgliedstaat der EU) | Auftragsverarbeitungsvertrag mit IONOS SE nach Art. 28 DSGVO (Bestandteil der IONOS-AGB); Verarbeitung nach dessen § 4.3 in einem Mitgliedstaat der EU oder des EWR |
+
+**Von IONOS eingesetzter Subunternehmer, soweit für das Produkt vServer (VPS)
+relevant** (IONOS-Anhang 2, Version 4.5, Stand 04/2026, Nr. 24):
+
+| Unternehmen | Leistung | Ort | Garantie |
+|---|---|---|---|
+| Arsys Internet S.L.U., C/Madre de Dios No. 21, 26004 Logroño (La Rioja), Spanien | Kundensupport und Betrieb der Plattformen vServer (VPS), Cloud Server, Private Cloud und Dedicated Server | Spanien | Mitgliedstaat der EU |
+
+Die Subunternehmerliste von IONOS ist produktbezogen. Aufgeführt ist hier
+nur der für das eingesetzte Produkt genannte Subunternehmer; die übrigen dort
+genannten Unternehmen erhalten keine Daten aus CENTRIC.
 
 **Übermittelte Daten je Empfänger**
 
-*Netlify:* sämtliche in § 2 genannten Kategorien, da dort der Bestand liegt.
+*IONOS SE:* sämtliche in § 2 genannten Kategorien, da der Bestand auf dem
+bei IONOS gemieteten Server liegt. Die Verarbeitung auf dem Server selbst
+erfolgt durch den Auftragsverarbeiter; IONOS stellt die Infrastruktur bereit.
 
-*Resend:* Empfängeradresse, Betreff und Inhalt der jeweiligen Nachricht.
-Der Versand erfolgt nur an Adressen, die im betroffenen Betrieb hinterlegt
-sind; ein Versand an beliebige Adressen ist serverseitig unterbunden.
+**Optionale Dienste — derzeit nicht aktiviert**
 
-**Geplanter Wechsel nach Deutschland**
+| Unternehmen | Leistung | Ort der Verarbeitung | Stand |
+|---|---|---|---|
+| Resend, Inc., USA | Versand von Systemnachrichten per E-Mail (Zugangscodes, Hinweise) — nur bei Aktivierung des serverseitigen E-Mail-Versands | USA | **nicht aktiviert**; es werden keine Daten übermittelt |
 
-Vor dem kostenpflichtigen Betrieb soll die Verarbeitung auf ein
-Rechenzentrum in Deutschland umziehen. Was dabei zu tun ist:
+*Resend, bei Aktivierung:* Empfängeradresse, Betreff und Inhalt der
+jeweiligen Nachricht. Der Versand erfolgt nur an Adressen, die im
+betroffenen Betrieb hinterlegt sind; ein Versand an beliebige Adressen ist
+serverseitig unterbunden.
 
-| Schritt | Wirkung |
-|---|---|
-| Anbieter mit Standort Deutschland wählen und AV-Vertrag schließen | Ersetzt Netlify als Unterauftragsverarbeiter für Auslieferung, Ausführung und Speicherung |
-| Diese Anlage 2 nachführen | Sonst beschreibt der Vertrag einen Zustand, den es nicht mehr gibt |
-| § 7 dieses Vertrags anpassen | Die Absätze 3 bis 5 werden gegenstandslos, sobald der Wechsel vollzogen ist |
-| Datenschutzerklärung anpassen | Dort steht derzeit `us-east-2` |
-| E-Mail-Versand gesondert entscheiden | Resend sitzt in den USA. Entweder ein Anbieter in der EU oder die Standardvertragsklauseln bleiben für diesen Teil bestehen |
-| Bestehende Bestände umziehen und die alten löschen | Ein Umzug ohne Löschung verdoppelt nur den Speicherort |
+**Vor einer Aktivierung des E-Mail-Versands zu erledigen**
 
-Was CENTRIC dafür mitbringt: `GET /api/vollausgabe` gibt den vollständigen
-Bestand als eine Datei aus (siehe Anlage 1, Abschnitt 4). Der Umzug ist
-damit ein Ausgeben, Einspielen und Löschen — kein Sonderfall.
-
-**Solange der Wechsel nicht vollzogen ist, zu erledigen**
-
-1. Standardvertragsklauseln mit Netlify abschließen und ablegen
-   (`[BEISPIEL-AVV-NETLIFY]`).
-2. Standardvertragsklauseln mit Resend abschließen und ablegen
-   (`[BEISPIEL-AVV-RESEND]`).
-3. Für beide je eine Übermittlungs-Folgenabschätzung (Transfer Impact
-   Assessment) erstellen.
+1. Voraussetzungen für die Übermittlung in ein Drittland nach Art. 44 ff.
+   DSGVO schaffen und dokumentieren (`[BEISPIEL-AVV-RESEND]`), einschließlich
+   der dafür erforderlichen Bewertung.
+2. Diese Anlage 2, das Verarbeitungsverzeichnis und die
+   Datenschutzerklärung nachführen.
+3. Mitteilung an den Verantwortlichen nach § 6 Abs. 2.

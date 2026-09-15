@@ -77,13 +77,19 @@ jobs:
       - name: Ablage
         run: npm run pruefung:ablage
 
+      # Abgelaufene Testbetriebe: Kandidatenwahl an der Tagesgrenze, der Lauf
+      # gegen eine echte Dateiablage mit allen Schlüsselarten, Idempotenz,
+      # und ein Fehler, der den Kern stehen lässt statt Waisen zu hinterlassen.
+      - name: Aufräumen
+        run: npm run pruefung:aufraeumen
+
       # entlasten() nimmt nach einem Erfolg auch den Speicherzähler zurück —
       # sonst sperrt ein dauerhafter Prozess eine Station nach acht richtigen
       # Anmeldungen aus.
       - name: Bremse im Prozess
         run: npm run pruefung:bremse-lokal
 
-      # Der eigene Server statt Netlify: Ausliefern, Rückfall, Routing,
+      # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server
         run: npm run pruefung:server
@@ -122,8 +128,8 @@ jobs:
       # Gesamtaufkommen — 20 Aufrufe je zehn Minuten, über alle Herkünfte
       # hinweg — und dieser Zähler liegt in /data. Die Rechteprüfung braucht
       # 19 Aufrufe, die Verwalterprüfung 18, die Demoprüfung 4: Ab dem 21.
-      # antwortet der Dienst mit 429. Unter Netlify war jede Instanz kurzlebig; im
-      # Container bleibt der Stand stehen, bis der Container geht.
+      # antwortet der Dienst mit 429. Im Container bleibt der Stand stehen,
+      # bis der Container geht — deshalb je Prüfung ein frischer.
       - name: Container-Start bereitlegen
         run: |
           cat > "$RUNNER_TEMP/container-neu.sh" <<'SKRIPT'

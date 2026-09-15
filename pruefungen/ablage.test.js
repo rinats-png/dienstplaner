@@ -19,7 +19,7 @@ beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-ablage-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
-  ({ getStore } = await import("../netlify/lib/ablage.mjs"));
+  ({ getStore } = await import("../server/lib/ablage.mjs"));
 });
 
 afterAll(async () => {

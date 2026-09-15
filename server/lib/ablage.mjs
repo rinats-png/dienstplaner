@@ -1,11 +1,11 @@
 /* ==========================================================================
-   ABLAGE — Ersatz für @netlify/blobs
+   ABLAGE — der Datenspeicher der Anwendung
 
    Die Anwendung ruft an sieben Stellen `getStore()` auf und benutzt davon
    genau sieben Methoden: get, getWithMetadata, getMetadata, set, setJSON,
-   delete, list.
-   Diese Datei stellt dieselbe Schnittstelle bereit und legt die Werte als
-   Dateien ab — auf dem eigenen Server, nicht bei Netlify.
+   delete, list. Diese Datei stellt diese Schnittstelle bereit und legt die
+   Werte als Dateien auf dem eigenen Server ab — keine Datenbank, kein
+   Fremddienst, kein offener Port.
 
    Wo die Daten liegen
 
@@ -28,15 +28,12 @@
    Stand, nie einen halben. Die Standnummern und der Drei-Wege-Abgleich in
    bestand.mjs bleiben davon unberührt — sie leben oberhalb dieser Schicht.
 
-   Umschalten
+   Umgebung
 
-     CENTRIC_ABLAGE=dateien   Dateien (Vorgabe außerhalb von Netlify)
-     CENTRIC_ABLAGE=netlify   weiterhin @netlify/blobs — für den Betrieb
-                              auf Netlify und für `vite dev` mit dem
-                              Netlify-Plugin, das den Blob-Kontext setzt.
-
-   Ohne ausdrückliche Angabe entscheidet der Blob-Kontext: Ist er da (Netlify
-   oder Netlify-Plugin), bleibt es bei @netlify/blobs. Sonst Dateien.
+     CENTRIC_DATEN    Wurzel der Ablage, Vorgabe /data
+     CENTRIC_ABLAGE   darf fehlen oder „dateien" lauten. Jeder andere Wert
+                      ist ein Fehler in der Konfiguration und hält den Start
+                      an — es gibt nur diese eine Ablage.
    ========================================================================== */
 
 import { mkdir, open, readdir, readFile, rename, unlink } from "node:fs/promises";
@@ -51,21 +48,15 @@ export function ablageWurzel() {
   return process.env.CENTRIC_DATEN || "/data";
 }
 
-/**
- * Welche Ablage gilt? Einmal entschieden, einmal gemeldet.
- * @returns {"dateien"|"netlify"}
- */
-let entschieden = null;
-export function ablageArt() {
-  if (entschieden) return entschieden;
-  const wahl = (process.env.CENTRIC_ABLAGE || "").trim().toLowerCase();
-  if (wahl === "dateien" || wahl === "netlify") entschieden = wahl;
-  else {
-    const kontext = process.env.NETLIFY_BLOBS_CONTEXT
-      || /** @type {any} */ (globalThis).netlifyBlobsContext;
-    entschieden = kontext ? "netlify" : "dateien";
-  }
-  return entschieden;
+/** Einmal je Prozess prüfen und melden, nicht bei jedem Store-Aufruf. */
+let geprueft = false;
+function ablagePruefen() {
+  if (geprueft) return;
+  const wahl = (process.env.CENTRIC_ABLAGE || "dateien").trim().toLowerCase();
+  if (wahl !== "dateien")
+    throw new Error(`Ablage: CENTRIC_ABLAGE=„${wahl}" ist unbekannt — nur „dateien" gibt es.`);
+  geprueft = true;
+  console.log(`Ablage: Dateien unter ${ablageWurzel()}`);
 }
 
 /* ---------------------------------------------------------------------------
@@ -214,8 +205,8 @@ function dateiStore(name) {
   const pfad = (/** @type {string} */ schluessel) => path.join(verzeichnis, dateiname(schluessel));
 
   /**
-   * Gibt den Wert in der gewünschten Form zurück — wie @netlify/blobs:
-   * ohne Angabe als Text, mit { type: "json" } als Objekt.
+   * Gibt den Wert in der gewünschten Form zurück: ohne Angabe als Text,
+   * mit { type: "json" } als Objekt.
    * @param {any} u
    * @param {{type?: string}|undefined} opts
    */
@@ -313,9 +304,8 @@ function dateiStore(name) {
     },
 
     /**
-     * Alle Schlüssel, wahlweise mit Präfix. Wie bei @netlify/blobs kommt eine
-     * flache Liste zurück; der ETag steht dort, wo er ohne zweites Lesen zu
-     * haben ist — hier also nicht, und kein Aufrufer verlangt ihn.
+     * Alle Schlüssel, wahlweise mit Präfix, als flache Liste. Einen ETag
+     * gäbe es nur mit einem zweiten Lesen — kein Aufrufer verlangt ihn.
      * @param {{prefix?: string}} [opts]
      * @returns {Promise<{blobs: Array<{key: string}>, directories: string[]}>}
      */
@@ -341,31 +331,9 @@ function dateiStore(name) {
 }
 
 /**
- * Bleibt bei Netlify: lädt @netlify/blobs erst, wenn es gebraucht wird, und
- * reicht jeden Aufruf durch. So bleibt der Import hier synchron wie bisher.
- * @param {object} opts
- */
-function netlifyStore(opts) {
-  const laden = import("@netlify/blobs").then((m) => m.getStore(/** @type {any} */ (opts)));
-  const durch = (/** @type {string} */ methode) =>
-    (/** @type {any[]} */ ...a) => laden.then((s) => s[methode](...a));
-  return {
-    get: durch("get"),
-    getWithMetadata: durch("getWithMetadata"),
-    getMetadata: durch("getMetadata"),
-    set: durch("set"),
-    setJSON: durch("setJSON"),
-    delete: durch("delete"),
-    list: durch("list"),
-  };
-}
-
-let gemeldet = false;
-
-/**
- * Ersatz für `getStore` aus @netlify/blobs. Nimmt denselben Aufruf entgegen:
- * einen Namen oder `{ name, consistency }`. `consistency` ist bei Dateien
- * ohne Bedeutung — eine Platte ist immer „strong".
+ * Der Zugang zur Ablage. Nimmt einen Namen oder `{ name, consistency }`
+ * entgegen; `consistency` ist bei Dateien ohne Bedeutung — eine Platte ist
+ * immer „strong".
  * @param {string|{name: string, consistency?: string}} angabe
  */
 export function getStore(angabe) {
@@ -373,13 +341,6 @@ export function getStore(angabe) {
   const opts = typeof angabe === "string" ? { name: angabe } : angabe || {};
   const name = String(opts.name || "");
   if (!STORE_NAME.test(name)) throw new Error(`Ablage: unzulässiger Store-Name „${name}"`);
-
-  const art = ablageArt();
-  if (!gemeldet) {
-    gemeldet = true;
-    console.log(art === "dateien"
-      ? `Ablage: Dateien unter ${ablageWurzel()}`
-      : "Ablage: @netlify/blobs");
-  }
-  return art === "netlify" ? netlifyStore(opts) : dateiStore(name);
+  ablagePruefen();
+  return dateiStore(name);
 }

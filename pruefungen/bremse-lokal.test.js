@@ -22,7 +22,7 @@ beforeAll(async () => {
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
   delete process.env.REDIS_REST_URL;
-  ({ bremse, entlasten, GRENZEN } = await import("../netlify/lib/schutz.mjs"));
+  ({ bremse, entlasten, GRENZEN } = await import("../server/lib/schutz.mjs"));
 });
 
 afterAll(async () => {

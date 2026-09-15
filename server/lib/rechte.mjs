@@ -277,9 +277,14 @@ const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
    ändert der Betreiber.
 
    Name, Anschrift und Ansprechpartner stehen bewusst nicht hier: Die darf
-   ein Betrieb pflegen, sie kosten nichts. */
+   ein Betrieb pflegen, sie kosten nichts.
+
+   laeuftAb und selbstAngelegt gehören dazu, seit der Löschlauf für
+   abgelaufene Testbetriebe daran hängt (aufraeumen.mjs): Wer sie
+   zurückschreiben könnte, könnte seine eigene Löschung aushebeln. */
 const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
-  "testTage", "rabattGrund", "preisgestaltung", "pakete"];
+  "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "laeuftAb", "selbstAngelegt"];
 
 /* --------------------------------------------------------------------------
    LESEN — was verlässt den Server?
@@ -421,7 +426,16 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
     aus.mandanten = aus.mandanten.map((m) => {
       if (!m || !m.id) return m;
       const alt = gespeichert.mandanten.find((x) => x && x.id === m.id);
-      if (!alt) return m;
+      /* Ein Betrieb, den es gespeichert nicht gibt, kommt ohne Vertragsfelder
+         an. Sonst ließe sich ein zweiter Mandant mit erfundenem Status oder
+         Selbststart-Merkmalen einschleusen — der gespeicherte Betrieb bleibt
+         davon unberührt (siehe unten), aber der Löschlauf soll auch im Kern
+         nichts vorfinden, was der Server nicht selbst geschrieben hat. */
+      if (!alt) {
+        const ohne = { ...m };
+        for (const feld of VERTRAGSFELDER) delete ohne[feld];
+        return ohne;
+      }
       const zusammen = { ...m };
       for (const feld of ["protokoll", "aenderungen"]) {
         if (!(feld in m) && feld in alt) zusammen[feld] = alt[feld];

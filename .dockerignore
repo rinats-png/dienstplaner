@@ -2,7 +2,6 @@
 # rechtliches/ bleibt drin — die Oberfläche bindet die Rechtstexte ein.
 .git
 .github
-.netlify
 node_modules
 dist
 marketing

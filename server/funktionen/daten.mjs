@@ -9,6 +9,7 @@ import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/cod
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { raumLoeschen } from "../lib/raumloeschung.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -203,7 +204,7 @@ async function sitzung(req) {
 
 export default async (req, context) => {
   const url = new URL(req.url);
-  const pfad = url.pathname.replace(/^\/(api|\.netlify\/functions\/daten)\/?/, "");
+  const pfad = url.pathname.replace(/^\/api\/?/, "");
   const store = laden();
 
   /* Zweite Linie gegen fremd ausgelöste Schreibvorgänge (siehe schutz.mjs). */
@@ -297,58 +298,20 @@ export default async (req, context) => {
       if (raum === sB.bestand)
         return antwort({ fehler: "Der eigene Datenraum lässt sich nicht löschen." }, 400);
 
-      let geloescht = 0;
-      const weg = async (key) => { await store.delete(key).catch(() => {}); geloescht++; };
-      /* Der alte Ganzbestand, der Kern der Zerlegung, dann die Scherben. */
-      await weg(`bestand:${raum}`);
-      await weg(`kern:${raum}`);
-      for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`]) {
-        const { blobs } = await store.list({ prefix: praefix }).catch(() => ({ blobs: [] }));
-        for (const b of blobs) await weg(b.key);
+      /* Die eigentliche Arbeit steht in lib/raumloeschung.mjs — dieselbe
+         Funktion, die der Löschlauf für abgelaufene Testbetriebe nutzt.
+         Was sich nicht löschen ließ, kommt mit Schlüssel und Grund zurück;
+         der Kern bleibt dann stehen, damit ein zweiter Versuch ihn findet. */
+      const ergebnis = await raumLoeschen(store, sitzungen(), raum);
+      if (!ergebnis.vollstaendig) {
+        await protokoll("loeschen", kR, "fehler",
+          `${raum}: ${ergebnis.fehler.length} Fehler, ${ergebnis.geloescht} Einträge`);
+        return antwort({ fehler: "Der Datenraum wurde nicht vollständig gelöscht.",
+          text: "Bitte noch einmal versuchen. Was liegen blieb, steht in der Antwort.",
+          raum, geloescht: ergebnis.geloescht, offen: ergebnis.fehler }, 500);
       }
-      /* Zugangscodes des Raums — einzeln abgelegte und die im Sammelblob. */
-      const konten = await alleKonten(store);
-      const zuLoeschen = Object.entries(konten).filter(([, k]) => k && k.bestand === raum).map(([schl]) => schl);
-      for (const schl of zuLoeschen) await weg(`konto:${schl}`);
-      if (zuLoeschen.length) {
-        try {
-          const sammel = await store.get("konten", { type: "json" });
-          if (sammel && zuLoeschen.some((k) => k in sammel)) {
-            for (const k of zuLoeschen) delete sammel[k];
-            await store.setJSON("konten", sammel);
-          }
-        } catch { /* kein Sammelblob */ }
-      }
-      /* Offene Sitzungen und Kalenderabonnements des Raums. */
-      try {
-        const { blobs } = await sitzungen().list({ prefix: "t:" });
-        for (const b of blobs) {
-          const sx = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-          if (sx && sx.bestand === raum) { await sitzungen().delete(b.key).catch(() => {}); geloescht++; }
-        }
-      } catch { /* egal */ }
-      try {
-        const { blobs } = await store.list({ prefix: "feed:" });
-        for (const b of blobs) {
-          const f = await store.get(b.key, { type: "json" }).catch(() => null);
-          if (f && f.bestand === raum) {
-            await weg(b.key);
-            await weg(`feeddaten:${b.key.slice("feed:".length)}`);
-          }
-        }
-      } catch { /* egal */ }
-      /* Der Vermerk in der Nachfassliste. Ohne diesen Schritt stand ein
-         gelöschter Testbetrieb weiter unter „Selbststarts" in der Konsole —
-         mit Zugangszahl und Ablaufdatum, als gäbe es ihn noch. */
-      try {
-        const liste = await store.get("selbststarts", { type: "json" });
-        if (Array.isArray(liste) && liste.some((x) => x && x.raum === raum)) {
-          await store.setJSON("selbststarts", liste.filter((x) => !x || x.raum !== raum));
-          geloescht++;
-        }
-      } catch { /* keine Liste */ }
-      await protokoll("loeschen", kR, "erfolg", `${raum}: ${geloescht} Einträge`);
-      return antwort({ ok: true, raum, geloescht });
+      await protokoll("loeschen", kR, "erfolg", `${raum}: ${ergebnis.geloescht} Einträge`);
+      return antwort({ ok: true, raum, geloescht: ergebnis.geloescht });
     }
 
     /* ------------------ Die Zugänge eines Raums einsehen --------------

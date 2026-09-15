@@ -1,23 +1,25 @@
 /* ==========================================================================
-   SERVER — Betrieb ohne Netlify
+   SERVER — der Node-Prozess hinter Caddy
 
-   Ein einzelner Node-Prozess übernimmt, was bisher Netlify tat:
+   Ein einzelner Node-Prozess im Container tut vier Dinge:
 
      1. die gebaute Oberfläche aus dist/ ausliefern
      2. Verweise, die keine Datei sind, auf index.html lenken (die Anwendung
         entscheidet im Browser, was sie zeigt)
-     3. die sechs Funktionen aus netlify/functions/ unter genau den Pfaden
+     3. die sechs Funktionen aus server/funktionen/ unter genau den Pfaden
         aufrufen, die sie selbst in `export const config = { path }` nennen
-     4. die Sicherheitsköpfe aus netlify.toml auf jede Antwort setzen
+     4. die Sicherheitsköpfe (SICHERHEIT, unten) auf jede Antwort setzen
 
    Die Funktionen bleiben unverändert: Sie bekommen ein Web-`Request` und
    geben ein Web-`Response` zurück. Diese Datei übersetzt zwischen Node und
    diesem Standard — mehr nicht.
 
    Umgebung
-     PORT            Vorgabe 3000
-     CENTRIC_DATEN   Ablage der Daten, Vorgabe /data (siehe netlify/lib/ablage.mjs)
-     CENTRIC_STATIK  Ordner der gebauten Oberfläche, Vorgabe dist/ (nur für Prüfungen)
+     PORT                Vorgabe 3000
+     CENTRIC_DATEN       Ablage der Daten, Vorgabe /data (siehe server/lib/ablage.mjs)
+     CENTRIC_STATIK      Ordner der gebauten Oberfläche, Vorgabe dist/ (nur für Prüfungen)
+     CENTRIC_AUFRAEUMEN  „aus" schaltet den täglichen Löschlauf für abgelaufene
+                         Testbetriebe ab (Vorgabe: an, siehe server/lib/aufraeumen.mjs)
 
    Start:  node server.mjs
    Prüfen: GET /gesund  ->  200 {"status":"ok"}
@@ -29,21 +31,24 @@ import { readdir, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { getStore } from "./server/lib/ablage.mjs";
+import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
 const WURZEL = path.dirname(fileURLToPath(import.meta.url));
 /* CENTRIC_STATIK gibt es nur, damit die Prüfung einen eigenen, kleinen
    Ordner statt dist/ unterschieben kann. Im Betrieb bleibt es bei dist/. */
 const DIST = path.resolve(WURZEL, process.env.CENTRIC_STATIK || "dist");
-const FUNKTIONEN = path.join(WURZEL, "netlify", "functions");
+const FUNKTIONEN = path.join(WURZEL, "server", "funktionen");
 
 /* Sechs Megabyte — dieselbe Grenze wie in daten.mjs (RUMPF_MAX). Hier wird
    sie schon beim Einlesen durchgesetzt, damit ein zu großer Rumpf gar nicht
    erst im Speicher landet. */
 const RUMPF_MAX = 6 * 1024 * 1024;
 
-/* Die Köpfe aus netlify.toml, Wort für Wort. Sie gelten für jede Antwort,
-   die nicht selbst einen gleichnamigen Kopf setzt. */
+/* Die Sicherheitsköpfe der Anwendung. Sie gelten für jede Antwort, die
+   nicht selbst einen gleichnamigen Kopf setzt; Caddy ergänzt davor HSTS
+   und nosniff noch einmal für alles, was er ausliefert. */
 const SICHERHEIT = {
   "x-frame-options": "SAMEORIGIN",
   "x-content-type-options": "nosniff",
@@ -257,8 +262,8 @@ function json(res, status, inhalt) {
 function zwischenspeicher(rel) {
   if (rel === "/index.html" || rel === "/sw.js") return "no-cache";
   if (rel.startsWith("/assets/")) return "public, max-age=31536000, immutable";
-  if (/^\/icon-[^/]*\.png$/.test(rel)) return "public, max-age=31536000, immutable";   // netlify.toml
-  if (rel === "/manifest.webmanifest") return "public, max-age=3600";                   // netlify.toml
+  if (/^\/icon-[^/]*\.png$/.test(rel)) return "public, max-age=31536000, immutable";   // Symbole ändern sich nie
+  if (rel === "/manifest.webmanifest") return "public, max-age=3600";                   // Manifest selten
   return "public, max-age=0, must-revalidate";
 }
 
@@ -375,6 +380,38 @@ server.keepAliveTimeout = 65_000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`CENTRIC läuft auf Port ${PORT}, Daten: ${process.env.CENTRIC_DATEN || "/data"}`);
 });
+
+/* ---------------------------------------------------------------------------
+   Täglicher Löschlauf für abgelaufene Testbetriebe
+
+   Kein Cron, kein zweiter Container: Der Prozess, der die Daten hält, räumt
+   sie auch auf. Erster Lauf eine Minute nach dem Start — damit läuft er nach
+   jedem Neustart erneut und holt nach, was ein Ausfall ausgelassen hat —,
+   danach alle vierundzwanzig Stunden. Der Lauf selbst wirft nie; hier wird
+   trotzdem noch einmal abgefangen, damit ein Fehler im Aufräumen unter
+   keinen Umständen den Server mitnimmt. Was geschah, steht im Protokoll und
+   im Vermerk aufraeumen:letzter.
+   --------------------------------------------------------------------------- */
+const AUFRAEUMEN_START_MS = 60_000;
+const AUFRAEUMEN_TAKT_MS = 24 * 60 * 60 * 1000;
+if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
+  const lauf = async () => {
+    try {
+      const v = await testbetriebeAufraeumen(
+        getStore({ name: "centric", consistency: "strong" }),
+        getStore({ name: "centric-sitzungen", consistency: "strong" }));
+      if (v.uebersprungen) console.log("Löschlauf: übersprungen, ein anderer läuft noch");
+      else console.log(`Löschlauf: ${v.geprueft} Testräume geprüft, ${v.geloescht.length} gelöscht, `
+        + `${v.fehler.length} Fehler`);
+    } catch (e) {
+      console.error("Löschlauf fehlgeschlagen:", e && e.message ? e.message : e);
+    }
+  };
+  setTimeout(lauf, AUFRAEUMEN_START_MS).unref();
+  setInterval(lauf, AUFRAEUMEN_TAKT_MS).unref();
+} else {
+  console.log("Löschlauf: abgeschaltet (CENTRIC_AUFRAEUMEN=aus)");
+}
 
 /* Sauber aufhören: keine neuen Verbindungen, laufende zu Ende, dann Schluss.
    Docker schickt SIGTERM und wartet zehn Sekunden — wir sind früher fertig. */

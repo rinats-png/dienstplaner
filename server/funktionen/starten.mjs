@@ -5,6 +5,7 @@ import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
 import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { TESTTAGE } from "../lib/aufraeumen.mjs";
 
 /* ==========================================================================
    SELBST STARTEN
@@ -32,7 +33,8 @@ const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
-const TESTTAGE = 30;
+/* TESTTAGE (30) und die anschließende Aufbewahrung (90 Tage) stehen in
+   lib/aufraeumen.mjs — dort, wo nach Ablauf gelöscht wird. */
 
 /** Ein lesbarer Raumname aus dem Betriebsnamen, mit Zufallsanhang. */
 function raumName(name) {
