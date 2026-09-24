@@ -104,6 +104,36 @@ jobs:
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix
 
+      # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
+      # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
+      # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
+      # falsch ist, fällt hinterher niemandem mehr auf, und die Normalform
+      # eines Passworts lässt sich nach dem ersten Prüfwert nicht mehr
+      # ändern.
+      - name: E-Mail-Adressen
+        run: npm run pruefung:adressen
+
+      # scrypt-Ablage und die Regel; darin die Normalform (NFC), das
+      # Ausbleiben eines trim und acht Hashvorgänge nebeneinander.
+      - name: Passwörter
+        run: npm run pruefung:passwoerter
+
+      # Einladung, Verifizierung, Zurücksetzen: Fristen, Einmaligkeit,
+      # getrennte Laufnummern je Zweck, Aktivierungscode — und dass bei
+      # gleichzeitigen Einlösungen genau eine gewinnt.
+      - name: Einmal-Token
+        run: npm run pruefung:token
+
+      # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
+      # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
+      - name: Sitzungen
+        run: npm run pruefung:sitzungen
+
+      # Der Versand im Trockenlauf — und die Schranke, die ein Geheimnis
+      # in einer Auslieferung nie in eine Antwort schreiben lässt.
+      - name: Mailversand
+        run: npm run pruefung:post
+
       - name: Übersetzen
         run: npm run build
 
