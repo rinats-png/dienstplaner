@@ -10,6 +10,11 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
+/* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
+   nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
+   Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
+import { sitzungsSpeicher as sitzungen, sitzungLesen as sitzung,
+  sitzungAnlegen, sitzungBeenden, merkmalAus, dauerFuer } from "../lib/sitzungen.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -26,7 +31,6 @@ import { raumLoeschen } from "../lib/raumloeschung.mjs";
    ========================================================================== */
 
 const laden = () => getStore({ name: "centric", consistency: "strong" });
-const sitzungen = () => getStore({ name: "centric-sitzungen", consistency: "strong" });
 
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const gleich = (a, b) => {
@@ -160,46 +164,6 @@ async function sicherungenAusduennen(store, raum) {
       if (!behalten.has(m.key)) await store.delete(m.key).catch(() => {});
     }
   } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
-}
-
-/** Prüft den Sitzungsschlüssel aus dem Kopf und gibt die Sitzung zurück. */
-async function sitzung(req) {
-  const kopf = req.headers.get("authorization") || "";
-  const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
-  if (!token) return null;
-
-  /* Ein Sicherungsschlüssel ist keine Sitzung: Er läuft nicht ab, weil
-     jemand eine halbe Stunde nichts tut, und er wird nirgends verlängert.
-     Er darf ausschließlich lesen — das prüft der Endpunkt selbst über
-     nurSicherung. */
-  const sk = await sitzungen().get(`sk:${hash(token)}`, { type: "json" }).catch(() => null);
-  if (sk) {
-    if (sk.bis < Date.now()) { await sitzungen().delete(`sk:${hash(token)}`); return null; }
-    return { ...sk, nurSicherung: true };
-  }
-
-  const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
-  if (!s) return null;
-  const jetzt = Date.now();
-  if (s.bis < jetzt) { await sitzungen().delete(`t:${hash(token)}`); return null; }
-
-  /* Untätigkeit beendet die Sitzung, nicht erst die Frist.
-
-     Zwölf Stunden sind für ein eigenes Telefon richtig und für den
-     Stationsrechner, den sich eine ganze Schicht teilt, zu lang. Wer eine
-     halbe Stunde nichts tut, ist weg — wer arbeitet, bleibt, weil jeder
-     Zugriff die Uhr neu stellt. */
-  const RUHE = 30 * 60 * 1000;
-  if (s.zuletzt && jetzt - s.zuletzt > RUHE) {
-    await sitzungen().delete(`t:${hash(token)}`);
-    return null;
-  }
-  /* Nicht bei jedem Zugriff schreiben — ein Planer klickt sich durch einen
-     Monat, das wären hunderte Schreibvorgänge. Einmal je Minute genügt. */
-  if (!s.zuletzt || jetzt - s.zuletzt > 60 * 1000) {
-    sitzungen().setJSON(`t:${hash(token)}`, { ...s, zuletzt: jetzt }).catch(() => {});
-  }
-  return s;
 }
 
 export default async (req, context) => {
@@ -511,20 +475,18 @@ export default async (req, context) => {
          könnte jeder Datenräume anlegen und Zugangscodes erzeugen. */
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
-      const token = randomBytes(32).toString("base64url");
-      const dauer = 1000 * 60 * 60 * 12;
-      await sitzungen().setJSON(`t:${hash(token)}`, {
+      const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         /* Die Prüfsumme des Zugangs mitführen — wie beim Anmelden mit Code.
            Sie fehlte hier, und damit lief die Sitzung eines zurückgezogenen
            Demozugangs bis zu zwölf Stunden weiter. */
         konto: eintragSchluessel,
-        demo: true, seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
-      });
+        demo: true,
+      }, 1000 * 60 * 60 * 12);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
-        gueltigBis: Date.now() + dauer });
+        gueltigBis });
     }
 
     /* ---------------------------- Anmelden --------------------------- */
@@ -584,12 +546,10 @@ export default async (req, context) => {
           text: "Melde dich bei uns, wenn du weitermachen möchtest — die Daten sind noch da." }, 403);
       }
 
-      const token = randomBytes(32).toString("base64url");
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
-         soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein. */
-      const dauer = eintrag.rolle === "betreiber"
-        ? 1000 * 60 * 60 * 2 : 1000 * 60 * 60 * 12;
-      await sitzungen().setJSON(`t:${hash(token)}`, {
+         soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein —
+         die Dauer zur Rolle steht in lib/sitzungen.mjs (dauerFuer). */
+      const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
@@ -597,8 +557,7 @@ export default async (req, context) => {
         konto: fund.schluessel,
         /* Für die einheitsgenaue Schreibprüfung der Schichtverantwortung. */
         einheit: eintrag.einheit ?? eintrag.gruppe ?? null,
-        seit: Date.now(), zuletzt: Date.now(), bis: Date.now() + dauer,
-      });
+      }, dauerFuer(eintrag.rolle));
       /* Über den alten Schlüssel gefunden und ein Pfeffer ist da: still
          umschlüsseln. So wandert der Bestand ohne Sammelvorgang hinüber —
          jeder Code beim ersten Anmelden nach der Umstellung. */
@@ -619,7 +578,7 @@ export default async (req, context) => {
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
-        hinweis: eintrag.hinweis || null, gueltigBis: Date.now() + dauer });
+        hinweis: eintrag.hinweis || null, gueltigBis });
     }
 
     /* ------------------------- Ab hier angemeldet -------------------- */
@@ -838,9 +797,7 @@ export default async (req, context) => {
 
     /* ------------------------------ Abmelden ------------------------- */
     if (pfad === "abmelden" && req.method === "POST") {
-      const kopf = req.headers.get("authorization") || "";
-      const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
-      if (token) await sitzungen().delete(`t:${hash(token)}`);
+      await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
     }
 

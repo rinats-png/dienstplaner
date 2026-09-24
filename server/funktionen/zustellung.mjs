@@ -2,6 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
+import { sendeMail } from "../lib/post.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -63,26 +64,11 @@ async function adressbuch(s) {
   return karte;
 }
 
-/* ------------------------------- E-Mail ---------------------------------- */
-async function sendeMail(an, betreff, text) {
-  const schluessel = process.env.RESEND_API_KEY;
-  const absender = process.env.CENTRIC_ABSENDER || "CENTRIC <kein-absender@example.invalid>";
-  if (!schluessel) {
-    // Trockenlauf: nichts geht hinaus, aber der Ablauf ist prüfbar
-    return { ok: true, trocken: true, an, betreff };
-  }
-  const a = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${schluessel}`, "content-type": "application/json" },
-    body: JSON.stringify({ from: absender, to: [an], subject: betreff, text }),
-  });
-  if (!a.ok) {
-    const fehler = await a.text();
-    return { ok: false, fehler: fehler.slice(0, 200) };
-  }
-  const d = await a.json();
-  return { ok: true, id: d.id };
-}
+/* ------------------------------- E-Mail ----------------------------------
+   Der Versand steht in lib/post.mjs — dieselbe Funktion wie vorher hier,
+   nur an einer Stelle: Einladung, Adressbestätigung und Passwort-Reset
+   brauchen denselben Weg, und ein zweiter Versandpfad wäre der Anfang von
+   zwei Wahrheiten über denselben Vorgang. */
 
 /* -------------------------------- Push ----------------------------------- */
 /* Web Push braucht ein Schlüsselpaar (VAPID). Der öffentliche Teil geht an
