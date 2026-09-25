@@ -145,6 +145,10 @@ jobs:
       - name: Accounts und Mitgliedschaften
         run: npm run pruefung:accounts
 
+      # Die Grenzen desselben Speichers: Was er niemals tun darf.
+      - name: Account-Isolation
+        run: npm run pruefung:account-isolation
+
       - name: Übersetzen
         run: npm run build
 
