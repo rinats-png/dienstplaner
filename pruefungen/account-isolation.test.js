@@ -668,13 +668,22 @@ describe("Der Demoweg weiß noch nichts von Accounts", () => {
 
   it("wird von keinem Produktionsmodul eingebunden", async () => {
     /* Phase 2.2 und 2.3 verändern kein Benutzerverhalten. Sobald das nicht
-       mehr stimmt, soll diese Prüfung es sagen — und nicht ein Kunde. */
+       mehr stimmt, soll diese Prüfung es sagen — und nicht ein Kunde.
+       Gesucht wird die Einbindung, nicht das Wort: Ein Querverweis in einem
+       Kommentar ist erwünscht (raumloeschung.mjs nennt das Modul, weil dort
+       dieselben Schlüssel gelöscht werden), ein `import` ist es nicht. */
+    const einbindung = /(?:^|[^*\s])\s*(?:import[^;]*from\s*["'][^"']*accounts\.mjs|import\s*\(\s*["'][^"']*accounts\.mjs|require\s*\(\s*["'][^"']*accounts\.mjs)/m;
     for (const d of ["../server.mjs", "../server/funktionen/daten.mjs",
       "../server/lib/rechte.mjs", "../server/lib/sitzungen.mjs",
       "../server/lib/konten.mjs", "../server/lib/raumloeschung.mjs",
       "../server/lib/aufraeumen.mjs"]) {
       const text = await readFile(new URL(d, import.meta.url), "utf8");
-      expect(text, d).not.toContain("accounts.mjs");
+      expect(einbindung.test(text), d).toBe(false);
     }
+    /* Und die Gegenprobe: In dieser Prüfdatei erkennt das Muster die
+       Einbindung tatsächlich. */
+    expect(einbindung.test('import { x } from "../server/lib/accounts.mjs";')).toBe(true);
+    expect(einbindung.test('const A = await import("../server/lib/accounts.mjs");')).toBe(true);
+    expect(einbindung.test("/* siehe accounts.mjs für die Schlüssel */")).toBe(false);
   });
 });

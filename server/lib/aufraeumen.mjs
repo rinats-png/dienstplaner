@@ -24,9 +24,24 @@
    geschützt (rechte.mjs), aber die zweite Quelle sind die Zugangskonten
    (konto:*): Sie entstehen ausschließlich auf dem Server, tragen
    selbstAngelegt und laeuftAb seit /starten und werden nie vom Client
-   berührt. Ohne ein solches Konto ist ein Raum kein Kandidat — was auch
-   immer sein Kern behauptet. Gezählt wird das späteste Ablaufdatum aus
+   berührt. Solange es sie gibt, muss eines davon die Merkmale tragen — was
+   auch immer der Kern behauptet. Gezählt wird das späteste Ablaufdatum aus
    Kern und Konten; im Zweifel wartet der Lauf.
+
+   Für einen Raum, der überhaupt keinen Zugangscode mehr hat, kann diese
+   Bedingung nicht mehr greifen. Das wird der Normalfall, sobald die
+   Zugangscodes persönlichen Konten weichen — und es kommt schon heute vor,
+   wenn der Betreiber die Codes eines abgelaufenen Raums von Hand löscht; der
+   Raum blieb dann für immer liegen. Dann zählt der Kern allein: Seine
+   Vertragsfelder kann kein Betrieb zurückschreiben (VERTRAGSFELDER in
+   rechte.mjs gehen beim Zusammenführen immer auf den gespeicherten Stand
+   zurück, und ein eingeschleuster Betrieb kommt ohne sie an). Ließ sich
+   dagegen nur ein einziges Konto nicht lesen, gilt kein Raum als kontenlos:
+   „nicht lesbar" darf nie zu „ist nicht da" werden.
+
+   Persönliche Accounts sind hier keine Bestätigung. Eine Mitgliedschaft
+   entsteht durch eine Einladung und sagt nichts darüber, ob der Server
+   diesen Raum als Testbetrieb angelegt hat.
 
    Eine Ausnahme, und die schreibt nur der Server selbst: Bevor ein
    bestätigter Raum gelöscht wird, setzt der Lauf die Marke loeschung:<raum>.
@@ -69,14 +84,18 @@ const ablaufVon = (wert) => {
  *
  * @param {Array<{ raum: string, kern: any }>} kerne  Raumname und Kerninhalt
  * @param {Date|number} jetzt
- * @param {{ aufbewahrungTage?: number, konten?: Array<any>, begonnen?: Iterable<string> }} [o]
- *   konten: alle Zugangskonten (Inhalt der konto:*-Einträge). Ohne sie ist
- *   kein Raum ein Kandidat — die Konten sind die serverseitige Bestätigung.
+ * @param {{ aufbewahrungTage?: number, konten?: Array<any>,
+ *   begonnen?: Iterable<string>, kontenUnvollstaendig?: boolean }} [o]
+ *   konten: alle Zugangskonten (Inhalt der konto:*-Einträge). Sie sind die
+ *   erste serverseitige Bestätigung.
  *   begonnen: Räume, für die der Server eine Löschung bereits begonnen hat
  *   (Marke loeschung:<raum>); für sie ersetzt die Marke die Konten.
+ *   kontenUnvollstaendig: Mindestens ein konto:*-Eintrag ließ sich nicht
+ *   lesen. Dann darf die Abwesenheit von Konten nichts bedeuten — der Lauf
+ *   wartet lieber.
  * @returns {string[]} Raumnamen, für die alle Bedingungen erfüllt sind
  */
-export function zuLoeschendeTestraeume(kerne, jetzt, { aufbewahrungTage = AUFBEWAHRUNG_TAGE, konten = [], begonnen = [] } = {}) {
+export function zuLoeschendeTestraeume(kerne, jetzt, { aufbewahrungTage = AUFBEWAHRUNG_TAGE, konten = [], begonnen = [], kontenUnvollstaendig = false } = {}) {
   const angefangen = new Set(begonnen || []);
   const t = jetzt instanceof Date ? jetzt.getTime() : Number(jetzt);
   const aus = [];
@@ -94,16 +113,44 @@ export function zuLoeschendeTestraeume(kerne, jetzt, { aufbewahrungTage = AUFBEW
        tragen, die nur /starten schreibt. */
     const eigene = (konten || []).filter((k) => k && k.bestand === raum
       && k.selbstAngelegt === true && ablaufVon(k.laeuftAb) !== null);
-    if (!eigene.length && !angefangen.has(raum)) continue;
+    /* Dritte Bestätigung, für die Zeit nach der Umstellung auf persönliche
+       Konten: Ein Raum, für den es überhaupt keinen Zugangscode mehr gibt,
+       kann seine Bestätigung nicht aus Konten beziehen — sonst bliebe jeder
+       migrierte Testbetrieb für immer liegen, und derselbe Fall entsteht schon
+       heute, wenn der Betreiber die Codes eines abgelaufenen Raums von Hand
+       löscht.
+       Dann zählt der Kern. Dessen Vertragsfelder kann kein Betrieb
+       zurückschreiben: status, laeuftAb und selbstAngelegt gehen beim
+       Zusammenführen immer auf den gespeicherten Stand zurück, und ein
+       eingeschleuster Betrieb kommt ohne sie an (VERTRAGSFELDER in
+       rechte.mjs). Geschrieben werden sie nur von /starten und vom Betreiber.
+       Solange noch irgendein Zugangscode dieses Raums existiert, bleibt die
+       strengere alte Regel: Einer von ihnen muss die Merkmale tragen.
+       Und ließ sich nur eines der Konten nicht lesen, gilt kein Raum als
+       kontenlos — „nicht lesbar" darf nie zu „ist nicht da" werden. */
+    const nochCodes = (konten || []).some((k) => k && k.bestand === raum);
+    const ohneCodes = !nochCodes && !kontenUnvollstaendig;
+    if (!eigene.length && !angefangen.has(raum) && !ohneCodes) continue;
     const ablauf = Math.max(kernAblauf, ...eigene.map((k) => ablaufVon(k.laeuftAb)));
     if (t >= ablauf + aufbewahrungTage * TAG_MS) aus.push(raum);
   }
   return aus;
 }
 
-/** Alle Zugangskonten — die serverseitige Bestätigung je Raum. */
+/**
+ * Alle Zugangskonten — die erste serverseitige Bestätigung je Raum.
+ *
+ * Das Präfix heißt konto: mit Doppelpunkt. Ohne ihn lägen auch die
+ * Kennungszeiger persönlicher Accounts (kontoId:) in dieser Liste.
+ *
+ * `unvollstaendig` sagt, ob mindestens eines nicht lesbar war. Die
+ * Kandidatenwahl darf aus „keine Konten gefunden" nur dann etwas folgern,
+ * wenn wirklich alle gelesen wurden.
+ * @returns {Promise<{ konten: Array<any>, unvollstaendig: boolean }>}
+ */
 async function kontenLesen(store, fehler) {
   const aus = [];
+  let unvollstaendig = false;
   const { blobs } = await store.list({ prefix: "konto:" });
   for (const b of blobs) {
     try {
@@ -112,10 +159,11 @@ async function kontenLesen(store, fehler) {
     } catch (e) {
       /* Ein unlesbares Konto ist ein Fehler des Laufs, kein stilles Nichts —
          ohne die Kennung; der Schlüssel ist eine Prüfsumme. */
+      unvollstaendig = true;
       fehler.push({ raum: null, grund: `Konto nicht lesbar: ${String(e && e.message || e).slice(0, 120)}` });
     }
   }
-  return aus;
+  return { konten: aus, unvollstaendig };
 }
 
 /**
@@ -163,11 +211,12 @@ export async function testbetriebeAufraeumen(store, sitzungen, { jetzt = new Dat
       }
       if (kern) kerne.push({ raum, kern });
     }
-    const konten = await kontenLesen(store, vermerk.fehler);
+    const { konten, unvollstaendig } = await kontenLesen(store, vermerk.fehler);
     const begonnen = (await store.list({ prefix: "loeschung:" })).blobs
       .map((b) => b.key.slice("loeschung:".length));
 
-    for (const raum of zuLoeschendeTestraeume(kerne, t, { aufbewahrungTage, konten, begonnen })) {
+    for (const raum of zuLoeschendeTestraeume(kerne, t, { aufbewahrungTage, konten, begonnen,
+      kontenUnvollstaendig: unvollstaendig })) {
       let ergebnis;
       try {
         /* Erst die Marke, dann löschen — sonst wäre ein Teilabbruch nach

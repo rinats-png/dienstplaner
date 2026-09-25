@@ -2,11 +2,21 @@
    RAUMLÖSCHUNG — „gelöscht" heißt gelöscht
 
    Ein Datenraum ist mehr als sein Bestand: Monatsscherben, Standvermerke,
-   Sicherungen, Zugangscodes, offene Sitzungen, Sicherungsschlüssel,
-   Kalender-Feeds und der Vermerk in der Nachfassliste. Diese Funktion
-   räumt alles davon ab — für die Betreiberkonsole (/api/raum-loeschen)
-   und für den automatischen Löschlauf abgelaufener Testbetriebe
-   (aufraeumen.mjs) gleichermaßen.
+   Sicherungen, Zugangscodes, persönliche Mitgliedschaften, Push-Anmeldungen,
+   offene Sitzungen, Sicherungsschlüssel, Kalender-Feeds und der Vermerk in
+   der Nachfassliste. Diese Funktion räumt alles davon ab — für die
+   Betreiberkonsole (/api/raum-loeschen) und für den automatischen Löschlauf
+   abgelaufener Testbetriebe (aufraeumen.mjs) gleichermaßen.
+
+   Was ausdrücklich NICHT mitgeht: der Account eines Menschen. Er ist globale
+   Identität und gehört keinem Betrieb; wer hier arbeitete, kann woanders
+   weiterarbeiten. Gelöscht wird seine Berechtigung in diesem Raum, nicht er.
+   Die Namensräume account: und kontoId: werden deshalb nicht angefasst —
+   auch nicht gelesen.
+
+   Und der Namensraum der alten Zugangscodes heißt konto: mit Doppelpunkt.
+   Ohne ihn träfe die Suche auch kontoId: und der Löschlauf nähme die
+   Kennungszeiger persönlicher Accounts mit.
 
    Zwei Regeln, die vorher fehlten:
 
@@ -83,6 +93,45 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     }
   } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
+
+  /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.
+
+        Der Account selbst bleibt stehen. Er ist globale Identität und kann in
+        anderen Betrieben weiterarbeiten; account: und kontoId: werden hier
+        nicht einmal aufgelistet. Was zum Raum gehört, ist die Berechtigung in
+        ihm, nicht der Mensch.
+
+        Auch eine entzogene Mitgliedschaft geht mit. Der Grabstein belegt, wer
+        wann Zugang zu diesem Raum hatte — wenn der Raum rechtmäßig vollständig
+        verschwindet, verschwindet auch dieser Beleg.
+
+        Erst die Wahrheit, dann der Index: Bleibt nach mitglied: etwas liegen,
+        ist die Berechtigung weg und nur ein Wegweiser zu viel da — und ein
+        Wegweiser allein erzeugt keine Mitgliedschaft (accounts.mjs).
+        Umgekehrt bestünde die Berechtigung weiter.
+
+        Gesucht wird über beide Seiten, weil sie auseinanderlaufen können: Der
+        Raumindex ist der schnelle Weg, aber eine verwaiste Mitgliedschaft ohne
+        Index würde er nicht finden. Die Ablage kennt nur Präfixsuche, und der
+        Raum steht im Mitgliedschaftsschlüssel hinten — also einmal über alle
+        Mitgliedschaften und exakt auf diesen Raum filtern. Exakt heißt Zeichen
+        für Zeichen: „t-Kunde" ist nicht „t-kunde", und kein anderer Raum darf
+        durch eine lockere Suche mitgehen. */
+  try {
+    const { blobs } = await store.list({ prefix: "mitglied:" });
+    for (const b of blobs) {
+      const teile = b.key.split(":");
+      if (teile.length === 3 && teile[2] === raum) await weg(b.key);
+    }
+  } catch (e) { fehler.push({ schluessel: `mitglied:*:${raum}`, grund: grundVon(e) }); }
+  await praefixWeg(`raummitglied:${raum}:`);
+
+  /* 2c. Die Push-Anmeldungen des Raums. Sie hängen heute an Raum und Person
+        (push:<raum>:<personId>, zustellung.mjs) und blieben bisher liegen: Ein
+        gelöschter Raum hinterließ Endgeräte-Schlüssel, die niemand mehr
+        zuordnen konnte. Das Präfix endet auf einem Doppelpunkt, damit ein Raum
+        „t-ab" nicht die Anmeldungen von „t-a" mitnimmt. */
+  await praefixWeg(`push:${raum}:`);
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein

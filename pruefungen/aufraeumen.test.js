@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 let getStore, zuLoeschendeTestraeume, testbetriebeAufraeumen, letzterLauf, raumLoeschen, zusammenfuehren;
+let A;
 let wurzel, store, sitzungen;
 
 const TAG = 86400000;
@@ -78,6 +79,9 @@ beforeAll(async () => {
   ({ zuLoeschendeTestraeume, testbetriebeAufraeumen, letzterLauf } = await import("../server/lib/aufraeumen.mjs"));
   ({ raumLoeschen } = await import("../server/lib/raumloeschung.mjs"));
   ({ zusammenfuehren } = await import("../server/lib/rechte.mjs"));
+  /* Der echte Account-Speicher — kein Nachbau: Die Löschung muss die
+     Schlüssel treffen, die accounts.mjs wirklich schreibt. */
+  A = await import("../server/lib/accounts.mjs");
   store = getStore({ name: "centric", consistency: "strong" });
   sitzungen = getStore({ name: "centric-sitzungen", consistency: "strong" });
 });
@@ -124,15 +128,20 @@ describe("Kandidatenwahl", () => {
   it("verlangt die serverseitige Bestätigung aus den Konten", () => {
     const spaet = ablaufMs + 400 * TAG;
     const k = [eintrag("t-probe")];
-    expect(zuLoeschendeTestraeume(k, spaet)).toEqual([]);                               // gar keine Konten
-    expect(zuLoeschendeTestraeume(k, spaet, { konten: [kontoVon("t-anderer")] })).toEqual([]);
+    /* Solange der Raum einen Zugangscode hat, muss einer von ihnen die
+       Selbststart-Merkmale tragen. Ein Raum ohne jeden Code fällt unter die
+       dritte Bestätigung (eigener Abschnitt weiter unten). */
     expect(zuLoeschendeTestraeume(k, spaet, { konten: [kontoVon("t-probe", { selbstAngelegt: false })] })).toEqual([]);
     expect(zuLoeschendeTestraeume(k, spaet, { konten: [kontoVon("t-probe", { laeuftAb: null })] })).toEqual([]);
     expect(zuLoeschendeTestraeume(k, spaet, { konten: [kontoVon("t-probe", { laeuftAb: "x" })] })).toEqual([]);
     expect(zuLoeschendeTestraeume(k, spaet, { konten: [kontoVon("t-probe")] })).toEqual(["t-probe"]);
-    /* Nur die serverseitige Löschmarke ersetzt die Konten — für den Wiederanlauf. */
-    expect(zuLoeschendeTestraeume(k, spaet, { konten: [], begonnen: ["t-probe"] })).toEqual(["t-probe"]);
-    expect(zuLoeschendeTestraeume(k, spaet, { konten: [], begonnen: ["t-anderer"] })).toEqual([]);
+    /* Die serverseitige Löschmarke ersetzt die Merkmale — für den Wiederanlauf
+       einer abgebrochenen Löschung, bei der die Konten schon weg sind. Geprüft
+       mit einem Code ohne Merkmale, damit allein die Marke den Unterschied
+       macht. */
+    const ohneMerkmale = [kontoVon("t-probe", { selbstAngelegt: false })];
+    expect(zuLoeschendeTestraeume(k, spaet, { konten: ohneMerkmale, begonnen: ["t-probe"] })).toEqual(["t-probe"]);
+    expect(zuLoeschendeTestraeume(k, spaet, { konten: ohneMerkmale, begonnen: ["t-anderer"] })).toEqual([]);
     /* Die Marke hebt die Kernbedingungen nicht auf. */
     expect(zuLoeschendeTestraeume([eintrag("t-probe", { status: "aktiv" })], spaet, { begonnen: ["t-probe"] })).toEqual([]);
   });
@@ -361,5 +370,407 @@ describe("raumLoeschen", () => {
     expect(e.vollstaendig).toBe(true);
     expect(await raumSchluessel(R)).toEqual([]);
     expect(await store.get("konten", { type: "json" })).toEqual({ fremd: { bestand: "x" } });
+  });
+});
+
+/* ==========================================================================
+   PERSÖNLICHE KONTEN UND DIE RAUMLÖSCHUNG
+
+   Ein Raum verschwindet — und mit ihm jede Berechtigung in ihm. Der Mensch
+   dahinter bleibt: Sein Account gehört keinem Betrieb, und er kann in einem
+   anderen weiterarbeiten. Geprüft wird beides, gegen den echten Löschpfad
+   und den echten Account-Speicher.
+   ========================================================================== */
+
+/** Alle accountbezogenen Schlüssel eines Raums — zum Nachsehen. */
+async function raumKonten(raum) {
+  const aus = [];
+  const { blobs } = await store.list({ prefix: "mitglied:" });
+  for (const b of blobs) {
+    const teile = b.key.split(":");
+    if (teile.length === 3 && teile[2] === raum) aus.push(b.key);
+  }
+  for (const p of [`raummitglied:${raum}:`, `push:${raum}:`]) {
+    const { blobs: bs } = await store.list({ prefix: p });
+    for (const b of bs) aus.push(b.key);
+  }
+  return aus.sort();
+}
+
+const mitgliedAnlegen = async (accountId, raum, felder = {}) => {
+  const e = await A.mitgliedschaftAnlegen(store, { accountId, raum, betrieb: 0,
+    mandantId: "m1", rolle: "mitarbeiter", status: "aktiv", ...felder });
+  expect(e.ok, `${raum}: ${e.grund}`).toBe(true);
+  return e.mitgliedschaft;
+};
+
+const kontoAnlegen = async (email) => {
+  const e = await A.accountAnlegen(store, { email });
+  expect(e.ok, `${email}: ${e.grund}`).toBe(true);
+  return e.account;
+};
+
+describe("Raumlöschung mit persönlichen Konten", () => {
+  it("nimmt Mitgliedschaft und Raumindex mit, den Account aber nicht", async () => {
+    const R = "t-loesch-eins";
+    await raumAnlegen(R, kernVon());
+    const a = await kontoAnlegen("eins@example.org");
+    await mitgliedAnlegen(a.id, R, { rolle: "leitung", person: "p17" });
+    expect(await raumKonten(R)).toEqual([
+      `mitglied:${a.id}:${R}`, `raummitglied:${R}:${a.id}`]);
+
+    const e = await raumLoeschen(store, sitzungen, R);
+    expect(e.vollstaendig).toBe(true);
+    expect(e.fehler).toEqual([]);
+    expect(await raumKonten(R)).toEqual([]);
+    expect(await A.mitgliedschaftLesen(store, a.id, R)).toBe(null);
+
+    /* Der Mensch bleibt — mit Kennung, Zeiger und Adresse. */
+    expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+    expect((await A.accountLesenPerMail(store, "eins@example.org")).id).toBe(a.id);
+    expect(await store.get(A.kontoIdSchluessel(a.id), { type: "json" })).toBeTruthy();
+    expect(await store.get(A.accountSchluessel("eins@example.org"), { type: "json" }))
+      .toBeTruthy();
+  });
+
+  it("lässt die Mitgliedschaft desselben Accounts im anderen Raum unberührt", async () => {
+    const X = "t-loesch-x";
+    const Y = "t-bleibt-y";
+    await raumAnlegen(X, kernVon());
+    await raumAnlegen(Y, kernVon());
+    const a = await kontoAnlegen("beide@example.org");
+    await mitgliedAnlegen(a.id, X, { rolle: "leitung", person: "p17" });
+    const inY = await mitgliedAnlegen(a.id, Y, { rolle: "mitarbeiter", person: "p83" });
+    const vorher = JSON.stringify(inY);
+
+    await raumLoeschen(store, sitzungen, X);
+
+    expect(await A.mitgliedschaftLesen(store, a.id, X)).toBe(null);
+    expect(JSON.stringify(await A.mitgliedschaftLesen(store, a.id, Y))).toBe(vorher);
+    expect(await raumKonten(Y)).toEqual([
+      `mitglied:${a.id}:${Y}`, `raummitglied:${Y}:${a.id}`]);
+    expect((await A.mitgliedschaftenDesAccounts(store, a.id)).map((m) => m.raum)).toEqual([Y]);
+    await raumLoeschen(store, sitzungen, Y);
+  });
+
+  it("nimmt alle Mitglieder des Raums mit und lässt fremde Räume stehen", async () => {
+    const X = "t-mehrere-x";
+    const Z = "t-fremder-z";
+    await raumAnlegen(X, kernVon());
+    await raumAnlegen(Z, kernVon());
+    const a = await kontoAnlegen("mehr-a@example.org");
+    const b = await kontoAnlegen("mehr-b@example.org");
+    const c = await kontoAnlegen("mehr-c@example.org");
+    await mitgliedAnlegen(a.id, X, { rolle: "leitung" });
+    await mitgliedAnlegen(a.id, Z, { rolle: "planer" });
+    await mitgliedAnlegen(b.id, X, { rolle: "mitarbeiter" });
+    await mitgliedAnlegen(c.id, Z, { rolle: "mitarbeiter" });
+
+    await raumLoeschen(store, sitzungen, X);
+
+    expect(await raumKonten(X)).toEqual([]);
+    expect(await A.mitgliedschaftenDesRaums(store, X)).toEqual([]);
+    /* Raum Z ist vollständig unberührt: beide Mitglieder, beide Indizes. */
+    expect(new Set((await A.mitgliedschaftenDesRaums(store, Z)).map((m) => m.accountId)))
+      .toEqual(new Set([a.id, c.id]));
+    for (const konto of [a, b, c]) {
+      expect(await A.accountLesenPerId(store, konto.id), konto.id).not.toBe(null);
+    }
+    await raumLoeschen(store, sitzungen, Z);
+  });
+
+  it("nimmt auch eine entzogene Mitgliedschaft mit — der Grabstein gehört zum Raum", async () => {
+    const R = "t-grabstein-r";
+    await raumAnlegen(R, kernVon());
+    const a = await kontoAnlegen("grab@example.org");
+    await mitgliedAnlegen(a.id, R, { rolle: "leitung" });
+    expect((await A.mitgliedschaftEntziehen(store, a.id, R)).ok).toBe(true);
+    /* Solange der Raum steht, bleibt der Beleg. */
+    expect((await A.mitgliedschaftLesen(store, a.id, R)).status).toBe("entzogen");
+
+    await raumLoeschen(store, sitzungen, R);
+    expect(await raumKonten(R)).toEqual([]);
+    expect(await A.mitgliedschaftLesen(store, a.id, R)).toBe(null);
+    expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+  });
+
+  it("entfernt einen verwaisten Raumindex ohne Mitgliedschaft", async () => {
+    const R = "t-verwaist-idx";
+    await raumAnlegen(R, kernVon());
+    await store.setJSON(`raummitglied:${R}:a_verwaist`,
+      { accountId: "a_verwaist", raum: R });
+    expect(await raumKonten(R)).toEqual([`raummitglied:${R}:a_verwaist`]);
+
+    const e = await raumLoeschen(store, sitzungen, R);
+    expect(e.vollstaendig).toBe(true);
+    expect(await raumKonten(R)).toEqual([]);
+  });
+
+  it("entfernt eine verwaiste Mitgliedschaft ohne Raumindex", async () => {
+    const R = "t-verwaist-mit";
+    await raumAnlegen(R, kernVon());
+    const a = await kontoAnlegen("verwaist@example.org");
+    await mitgliedAnlegen(a.id, R, { rolle: "planer" });
+    /* Der Index geht verloren — die Löschung darf sich nicht darauf stützen. */
+    await store.delete(`raummitglied:${R}:${a.id}`);
+    expect(await raumKonten(R)).toEqual([`mitglied:${a.id}:${R}`]);
+
+    const e = await raumLoeschen(store, sitzungen, R);
+    expect(e.vollstaendig).toBe(true);
+    expect(await raumKonten(R)).toEqual([]);
+    expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+  });
+
+  it("räumt die Push-Anmeldungen des Raums ab und nur die", async () => {
+    const X = "t-push-x";
+    const Y = "t-push-y";
+    await raumAnlegen(X, kernVon());
+    await raumAnlegen(Y, kernVon());
+    for (const [raum, person] of [[X, "p17"], [X, "p83"], [Y, "p17"]]) {
+      await store.setJSON(`push:${raum}:${person}`,
+        { endpoint: `https://push.example/${raum}-${person}`, keys: {} });
+    }
+    /* Ein Raum, dessen Name mit demselben Anfang beginnt, darf nicht mitgehen. */
+    await store.setJSON(`push:${X}x:p1`, { endpoint: "https://push.example/fremd" });
+
+    await raumLoeschen(store, sitzungen, X);
+
+    expect(await store.get(`push:${X}:p17`, { type: "json" }).catch(() => null)).toBe(null);
+    expect(await store.get(`push:${X}:p83`, { type: "json" }).catch(() => null)).toBe(null);
+    expect(await store.get(`push:${Y}:p17`, { type: "json" })).toBeTruthy();
+    expect(await store.get(`push:${X}x:p1`, { type: "json" })).toBeTruthy();
+    await store.delete(`push:${X}x:p1`);
+    await raumLoeschen(store, sitzungen, Y);
+    expect(await store.get(`push:${Y}:p17`, { type: "json" }).catch(() => null)).toBe(null);
+  });
+
+  it("trifft mit konto: niemals die Kennungszeiger persönlicher Accounts", async () => {
+    const R = "t-namensraum-r";
+    await raumAnlegen(R, kernVon());
+    const a = await kontoAnlegen("namensraum@example.org");
+    await mitgliedAnlegen(a.id, R);
+    const idKey = A.kontoIdSchluessel(a.id);
+    const accKey = A.accountSchluessel("namensraum@example.org");
+    /* Beide beginnen mit „konto"/„account" — aber nicht mit „konto:". */
+    expect(idKey.startsWith("konto:")).toBe(false);
+    expect(accKey.startsWith("konto:")).toBe(false);
+
+    const e = await raumLoeschen(store, sitzungen, R);
+    expect(e.vollstaendig).toBe(true);
+    /* Der Zugangscode des Raums ist weg, der Kennungszeiger steht. */
+    expect(await store.get(`konto:h-${R}`, { type: "json" }).catch(() => null)).toBe(null);
+    expect(await store.get(idKey, { type: "json" })).toBeTruthy();
+    expect(await store.get(accKey, { type: "json" })).toBeTruthy();
+    expect((await store.list({ prefix: "kontoId:" })).blobs.length).toBeGreaterThan(0);
+  });
+
+  it("löscht beim zweiten Mal nichts Fremdes mehr", async () => {
+    const X = "t-zweimal-x";
+    const Y = "t-zweimal-y";
+    await raumAnlegen(X, kernVon());
+    await raumAnlegen(Y, kernVon());
+    const a = await kontoAnlegen("zweimal@example.org");
+    await mitgliedAnlegen(a.id, X);
+    await mitgliedAnlegen(a.id, Y, { rolle: "leitung" });
+    await raumLoeschen(store, sitzungen, X);
+
+    const zweite = await raumLoeschen(store, sitzungen, X);
+    expect(zweite.vollstaendig).toBe(true);
+    expect(zweite.fehler).toEqual([]);
+    /* Nichts vom anderen Raum, nichts vom Account. */
+    expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+    expect((await A.mitgliedschaftLesen(store, a.id, Y)).rolle).toBe("leitung");
+    expect(await raumKonten(Y)).toEqual([
+      `mitglied:${a.id}:${Y}`, `raummitglied:${Y}:${a.id}`]);
+    await raumLoeschen(store, sitzungen, Y);
+  });
+
+  it("meldet einen Fehler, wenn eine Mitgliedschaft nicht gelöscht werden kann", async () => {
+    const R = "t-klemmt-mit";
+    await raumAnlegen(R, kernVon());
+    const a = await kontoAnlegen("klemmt@example.org");
+    await mitgliedAnlegen(a.id, R);
+    const klemme = `mitglied:${a.id}:${R}`;
+    const stur = new Proxy(store, { get(ziel, name) {
+      if (name !== "delete") return Reflect.get(ziel, name);
+      return (key) => (key === klemme
+        ? Promise.reject(new Error("Zugriff verweigert"))
+        : ziel.delete(key));
+    } });
+
+    const e = await raumLoeschen(stur, sitzungen, R);
+    expect(e.vollstaendig).toBe(false);
+    expect(e.fehler.some((f) => f.schluessel === klemme)).toBe(true);
+    /* Der Kern bleibt stehen: Der nächste Lauf findet den Raum wieder. */
+    expect(await store.get(`kern:${R}`, { type: "json" })).toBeTruthy();
+    /* Und der Account ist trotzdem unangetastet. */
+    expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+    await store.delete(klemme);
+    await raumLoeschen(store, sitzungen, R);
+  });
+
+  it("bindet die Löschung an die genaue Schreibweise des Raumnamens", async () => {
+    /* Die Dateiablage unterscheidet auf Linux Groß- und Kleinschreibung, auf
+       Windows und macOS nicht (Befund aus Phase 2.3). Dieser Test hält beide
+       Plattformen fest, statt eine zu bevorzugen — und prüft auf beiden, was
+       wirklich zählt: dass nach der Löschung niemand mehr eine Berechtigung
+       für diesen Raum hat und kein anderer Raum mitgegangen ist. */
+    const KLEIN = "t-schreibweise-a";
+    const GROSS = "t-Schreibweise-A";
+    const satz = (raum) => ({ accountId: "a_probe", raum, betrieb: 0,
+      mandantId: "m1", rolle: "leitung", status: "aktiv" });
+    await store.setJSON(`mitglied:a_probe:${KLEIN}`, satz(KLEIN));
+    await store.setJSON(`mitglied:a_probe:${GROSS}`, satz(GROSS));
+    const gelesen = await store.get(`mitglied:a_probe:${KLEIN}`, { type: "json" });
+    const trennt = !!gelesen && gelesen.raum === KLEIN;
+
+    await raumLoeschen(store, sitzungen, KLEIN);
+
+    /* Keine Berechtigung mehr für den gelöschten Raum — das ist auf beiden
+       Plattformen die Zusage. Auf einer Ablage ohne
+       Schreibweisenunterscheidung bleibt der Schlüssel der anderen
+       Schreibweise liegen; er verleiht nichts, weil der Datensatz den Raum
+       nennt, zu dem er gehört (mitgliedschaftLesen in accounts.mjs). */
+    expect(await A.mitgliedschaftLesen(store, "a_probe", KLEIN)).toBe(null);
+    if (trennt) {
+      /* Linux: zwei Schlüssel, zwei Räume. Der eine ist weg, der andere steht. */
+      expect(await store.get(`mitglied:a_probe:${KLEIN}`, { type: "json" })
+        .catch(() => null)).toBe(null);
+      expect((await A.mitgliedschaftLesen(store, "a_probe", GROSS)).raum).toBe(GROSS);
+      await store.delete(`mitglied:a_probe:${GROSS}`);
+    } else {
+      /* Windows/macOS: Beide Schreibweisen sind dieselbe Datei, und sie
+         gehört dem Raum, der zuletzt geschrieben wurde. Beim Löschen von
+         „t-schreibweise-a" bleibt sie deshalb zu Recht stehen — sie ist die
+         Mitgliedschaft von „t-Schreibweise-A". Eine Kanonisierung der
+         Raumnamen gehört in die Endpoint-Ebene, nicht hierher. */
+      expect((await store.get(`mitglied:a_probe:${KLEIN}`, { type: "json" })).raum)
+        .toBe(GROSS);
+      await store.delete(`mitglied:a_probe:${GROSS}`);
+    }
+  });
+});
+
+/* ==========================================================================
+   EIN TESTRAUM OHNE ZUGANGSCODE
+
+   Bisher war ein Raum nur Kandidat, wenn eines seiner Zugangskonten die
+   Selbststart-Merkmale trug. Nach der Umstellung auf persönliche Konten gibt
+   es diese Codes nicht mehr — und derselbe Fall entsteht schon heute, wenn
+   der Betreiber die Codes eines abgelaufenen Raums von Hand löscht: Der Raum
+   blieb für immer liegen.
+
+   Geprüft wird die dritte Bestätigung an ihren Grenzen: Sie greift nur, wenn
+   der Raum gar keinen Code mehr hat, und sie hebt keine der anderen
+   Bedingungen auf.
+   ========================================================================== */
+
+describe("Testraumerkennung ohne Zugangscode", () => {
+  const eintrag = (raum, extra) => ({ raum, kern: kernVon(extra) });
+  const spaet = ablaufMs + 400 * TAG;
+
+  it("erkennt einen abgelaufenen Testraum, der keinen Code mehr hat", () => {
+    expect(zuLoeschendeTestraeume([eintrag("t-ohne-code")], spaet, { konten: [] }))
+      .toEqual(["t-ohne-code"]);
+    /* Codes anderer Räume ändern daran nichts. */
+    expect(zuLoeschendeTestraeume([eintrag("t-ohne-code")], spaet,
+      { konten: [kontoVon("t-anderer")] })).toEqual(["t-ohne-code"]);
+  });
+
+  it("bleibt streng, solange der Raum noch irgendeinen Code hat", () => {
+    const k = [eintrag("t-mit-code")];
+    /* Ein Code ohne Selbststart-Merkmale: dann zählt der Kern nicht. Das ist
+       die alte, strengere Regel — unverändert. */
+    expect(zuLoeschendeTestraeume(k, spaet,
+      { konten: [kontoVon("t-mit-code", { selbstAngelegt: false })] })).toEqual([]);
+    expect(zuLoeschendeTestraeume(k, spaet,
+      { konten: [kontoVon("t-mit-code", { laeuftAb: null })] })).toEqual([]);
+    /* Mit Merkmalen: Kandidat, wie bisher. */
+    expect(zuLoeschendeTestraeume(k, spaet,
+      { konten: [kontoVon("t-mit-code")] })).toEqual(["t-mit-code"]);
+  });
+
+  it("wartet, wenn sich ein Zugangscode nicht lesen ließ", () => {
+    /* „Nicht lesbar" darf nie zu „ist nicht da" werden: Sonst hebt ein
+       einziger Lesefehler die Bestätigung auf. */
+    expect(zuLoeschendeTestraeume([eintrag("t-unlesbar")], spaet,
+      { konten: [], kontenUnvollstaendig: true })).toEqual([]);
+    /* Die anderen beiden Bestätigungen wirken weiter. */
+    expect(zuLoeschendeTestraeume([eintrag("t-unlesbar")], spaet,
+      { konten: [kontoVon("t-unlesbar")], kontenUnvollstaendig: true }))
+      .toEqual(["t-unlesbar"]);
+    expect(zuLoeschendeTestraeume([eintrag("t-unlesbar")], spaet,
+      { konten: [], begonnen: ["t-unlesbar"], kontenUnvollstaendig: true }))
+      .toEqual(["t-unlesbar"]);
+  });
+
+  it("hebt ohne Code keine der Kernbedingungen auf", () => {
+    const o = { konten: [] };
+    /* Produktivraum: Status aktiv — niemals, ob mit Codes oder ohne. */
+    expect(zuLoeschendeTestraeume([eintrag("t-kunde-ohne-code", { status: "aktiv" })],
+      spaet, o)).toEqual([]);
+    /* Kein t--Präfix. */
+    expect(zuLoeschendeTestraeume([eintrag("kunde-nordwacht-2")], spaet, o)).toEqual([]);
+    /* Demoraum. */
+    expect(zuLoeschendeTestraeume([eintrag("demo-schau-2")], spaet, o)).toEqual([]);
+    /* Nicht selbst angelegt. */
+    expect(zuLoeschendeTestraeume([eintrag("t-fremd-2", { selbstAngelegt: false })],
+      spaet, o)).toEqual([]);
+    /* Kein oder unbrauchbares Ablaufdatum — fail closed. */
+    expect(zuLoeschendeTestraeume([eintrag("t-kein-ablauf-2", { laeuftAb: null })],
+      spaet, o)).toEqual([]);
+    expect(zuLoeschendeTestraeume([eintrag("t-krumm-2", { laeuftAb: "irgendwann" })],
+      spaet, o)).toEqual([]);
+    /* Kein Kern, kein Betrieb darin. */
+    expect(zuLoeschendeTestraeume([{ raum: "t-leer-2", kern: null }], spaet, o)).toEqual([]);
+    expect(zuLoeschendeTestraeume([{ raum: "t-ohne-mandant-2", kern: { mandanten: [] } }],
+      spaet, o)).toEqual([]);
+  });
+
+  it("ändert keine Frist: Tag 89 nein, Tag 90 ja — auch ohne Code", () => {
+    const k = [eintrag("t-frist-ohne-code")];
+    expect(zuLoeschendeTestraeume(k, ablaufMs + 89 * TAG, { konten: [] })).toEqual([]);
+    expect(zuLoeschendeTestraeume(k, ablaufMs + 90 * TAG, { konten: [] }))
+      .toEqual(["t-frist-ohne-code"]);
+    /* Und vor Ablauf der Testzeit erst gar nicht. */
+    expect(zuLoeschendeTestraeume(k, ablaufMs - TAG, { konten: [] })).toEqual([]);
+  });
+
+  it("löscht im echten Lauf einen abgelaufenen Testraum ohne Code samt Mitgliedschaften",
+    async () => {
+      const R = "t-lauf-ohne-code";
+      /* Derselbe Raum wie sonst, nur ohne Zugangscode — so sieht ein Raum
+         nach der Umstellung auf persönliche Konten aus. */
+      await raumAnlegen(R, kernVon());
+      await store.delete(`konto:h-${R}`);
+      const a = await kontoAnlegen("lauf@example.org");
+      await mitgliedAnlegen(a.id, R, { rolle: "leitung", person: "p17" });
+      await store.setJSON(`push:${R}:p17`, { endpoint: "https://push.example/x" });
+
+      const v = await testbetriebeAufraeumen(store, sitzungen,
+        { jetzt: ablaufMs + 100 * TAG });
+
+      expect(v.geloescht).toContain(R);
+      expect(v.fehler.filter((f) => f.raum === R)).toEqual([]);
+      expect(await raumSchluessel(R)).toEqual([]);
+      expect(await raumKonten(R)).toEqual([]);
+      /* Der Mensch bleibt. */
+      expect(await A.accountLesenPerId(store, a.id)).not.toBe(null);
+    });
+
+  it("lässt einen Produktivraum ohne Code auch im echten Lauf stehen", async () => {
+    const R = "t-produktiv-ohne-code";
+    await raumAnlegen(R, kernVon({ status: "aktiv" }));
+    await store.delete(`konto:h-${R}`);
+    const a = await kontoAnlegen("produktiv@example.org");
+    await mitgliedAnlegen(a.id, R, { rolle: "leitung" });
+
+    const v = await testbetriebeAufraeumen(store, sitzungen,
+      { jetzt: ablaufMs + 400 * TAG });
+
+    expect(v.geloescht).not.toContain(R);
+    expect(await store.get(`kern:${R}`, { type: "json" })).toBeTruthy();
+    expect((await A.mitgliedschaftLesen(store, a.id, R)).rolle).toBe("leitung");
+    await raumLoeschen(store, sitzungen, R);
   });
 });
