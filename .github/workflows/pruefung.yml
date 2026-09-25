@@ -149,6 +149,11 @@ jobs:
       - name: Account-Isolation
         run: npm run pruefung:account-isolation
 
+      # Der Weg von einer Adresse zu einem nutzbaren Konto — und die
+      # Abkürzungen, die es dabei nicht geben darf.
+      - name: Registrierung
+        run: npm run pruefung:registrierung
+
       - name: Übersetzen
         run: npm run build
 
