@@ -141,6 +141,124 @@ export const neueAccountId = () => `a_${randomBytes(16).toString("base64url")}`;
 const RAUM_FORM = /^[a-z0-9][a-z0-9_-]{2,79}$/i;
 const DEMO = /^demo-/i;
 
+/* --------------------------------------------------------------------------
+   DER SELBSTBEDIENUNGSWEG
+
+   Zwei Felder am Account, und beide beantworten genau eine Frage:
+
+     testbetriebOffenSeit     Läuft für diesen Menschen gerade ein
+                              Neukundenvorgang, aus dem ein Testbetrieb
+                              entstehen darf? Gesetzt allein beim
+                              Selbsteintritt, verbraucht mit der
+                              Provisionierung.
+
+     testbetriebVerbrauchtAm  Hat dieser Account seinen einen kostenlosen
+                              Testbetrieb schon gehabt? Einmal gesetzt,
+                              bleibt es gesetzt — für immer.
+
+   Warum nicht „hat keine Mitgliedschaft"
+
+   Weil eine Mitgliedschaft verschwindet. Ein Testbetrieb läuft dreißig
+   Tage, wird neunzig Tage aufbewahrt und dann gelöscht — mit ihm die
+   Mitgliedschaft und ihr Grabstein (raumloeschung.mjs). Der Account sähe
+   danach aus wie neu und bekäme alle hundertzwanzig Tage einen weiteren
+   kostenlosen Betrieb. Umgekehrt hätte jemand, der zuerst in einen fremden
+   Betrieb eingeladen wurde, nie einen eigenen Anspruch. Der Verbrauch
+   gehört deshalb an den Account und nicht an das, was aus ihm folgte.
+
+   Warum kein Herkunftsfeld
+
+   „Kam aus einer Einladung" wäre eine Sperre auf Lebenszeit, und das ist
+   fachlich falsch: Wer heute als Beschäftigte eingeladen wird, kann morgen
+   ihren eigenen Betrieb führen wollen. Was zählt, ist nicht die Herkunft,
+   sondern ob der Anspruch verbraucht ist — und ob gerade ein legitimer
+   Vorgang läuft.
+
+   Die vier unterscheidbaren Lagen, ganz ohne Mitgliedschaften:
+
+     offen = null,  verbraucht = null   kein Vorgang. Ein historischer oder
+                                        eingeladener Account. NICHT
+                                        berechtigt.
+     offen = Zeit,  verbraucht = null   Neukundenvorgang läuft.
+     offen = null,  verbraucht = Zeit   verbraucht. Nie wieder.
+     offen = Zeit,  verbraucht = Zeit   darf nicht entstehen; wird wie
+                                        verbraucht behandelt. Im Zweifel
+                                        kein Betrieb.
+
+   Kein Ablauf am offenen Vorgang: Solange nichts provisioniert ist,
+   entstehen keine Kosten, und eine Frist würde nur den aussperren, der
+   seine Post erst nächste Woche liest.
+   -------------------------------------------------------------------------- */
+
+/** Ein Zeitpunkt oder null — alte Datensätze kennen die Felder nicht. */
+const zeitOderNull = (w) => (typeof w === "string" && w ? w : null);
+
+/* Registrierungsdaten: was ein Mensch beim Selbsteintritt über sich und
+   seinen Betrieb angibt. Grenzen wie im bestehenden Selbststart (3–80 für
+   den Betriebsnamen, starten.mjs); Namen dürfen kürzer sein, denn es gibt
+   Menschen mit einem Buchstaben als Vornamen.
+
+   Unicode bleibt erlaubt — eine Namensliste aus A–Z hätte den halben
+   Kundenkreis ausgeschlossen. Verboten sind nur Steuer- und
+   Zeilenumbruchzeichen: Sie stehen später in einer Mail, in einem Betrieb
+   und auf einem Dienstplan, und ein Zeilenumbruch im Betriebsnamen zerlegt
+   jede dieser Ausgaben. Gezählt wird in Zeichen, nicht in Bytes. */
+const NAME_MAX = 80;
+const BETRIEB_MIN = 3;
+/* Steuer- und Zeilentrennzeichen, geprüft über den Codepoint statt über
+   einen Ausdruck mit Escapefolgen: In einem Regexliteral sind sie
+   unlesbar, und unlesbare Zeichenklassen sind die, die jemand später
+   falsch erweitert. */
+const hatSteuerzeichen = (s) => [...s].some((z) => {
+  const c = z.codePointAt(0);
+  return c < 0x20 || (c >= 0x7f && c <= 0x9f) || c === 0x2028 || c === 0x2029;
+});
+
+const laenge = (s) => [...s].length;
+
+/**
+ * Prüft und putzt ein Registrierungsprofil. Getrimmt wird hier — anders als
+ * beim Passwort, wo ein Leerzeichen zum Geheimnis gehört: Ein Name mit
+ * Leerzeichen am Rand ist ein Tippfehler, kein Name.
+ *
+ * @param {unknown} profil
+ * @returns {{ok: boolean, profil?: object, grund?: string}}
+ */
+export function profilPruefen(profil) {
+  if (!profil || typeof profil !== "object") return { ok: false, grund: "profil" };
+  const aus = {};
+  for (const feld of ["vorname", "nachname", "betriebsname"]) {
+    const roh = profil[feld];
+    if (typeof roh !== "string") return { ok: false, grund: feld };
+    const wert = roh.trim();
+    const mindest = feld === "betriebsname" ? BETRIEB_MIN : 1;
+    if (laenge(wert) < mindest || laenge(wert) > NAME_MAX) return { ok: false, grund: feld };
+    if (hatSteuerzeichen(wert)) return { ok: false, grund: feld };
+    aus[feld] = wert;
+  }
+  return { ok: true, profil: aus };
+}
+
+/**
+ * Darf aus diesem Account gerade ein kostenloser Testbetrieb entstehen?
+ *
+ * Reine Funktion über den Datensatz, damit jeder Aufrufer dieselbe Antwort
+ * bekommt. Sie entscheidet keine betriebliche Rolle und kennt keinen Raum —
+ * nur, ob der Anspruch offen ist.
+ *
+ * @param {object} konto
+ * @returns {{ok: boolean, grund: string}}
+ */
+export function testbetriebOffen(konto) {
+  if (!konto || typeof konto !== "object") return { ok: false, grund: "unbekannt" };
+  if (zeitOderNull(konto.testbetriebVerbrauchtAm)) return { ok: false, grund: "verbraucht" };
+  if (!zeitOderNull(konto.testbetriebOffenSeit)) return { ok: false, grund: "kein-vorgang" };
+  if (konto.status !== "aktiv") return { ok: false, grund: "nicht-aktiv" };
+  if (!zeitOderNull(konto.emailVerifiziertAm)) return { ok: false, grund: "unbestaetigt" };
+  if (!konto.passwort) return { ok: false, grund: "ohne-passwort" };
+  return { ok: true, grund: "offen" };
+}
+
 /** Ist das ein Raum, in dem eine Mitgliedschaft bestehen darf? */
 export function raumErlaubt(raum) {
   if (typeof raum !== "string" || !RAUM_FORM.test(raum)) return false;
@@ -171,17 +289,33 @@ class AblageFehler extends Error {
  * in dem eine Einladung wartet.
  *
  * @param {object} store
+ * `profil` sind Registrierungsdaten — Vor- und Nachname und der Name des
+ * Betriebs, den jemand anlegen will. Keine Rolle, keine Person, kein Raum;
+ * die Adresse steht schon oben und wird hier nicht zweitgeschrieben.
+ *
+ * `selbstbedienung` öffnet den Neukundenvorgang (testbetriebOffenSeit). Nur
+ * der Selbsteintritt setzt das. Eine Einladung legt denselben Account an,
+ * ohne ihn zu öffnen: Wer eingeladen wird, bekommt Zugang zu einem
+ * bestehenden Betrieb, keinen eigenen.
+ *
  * @param {{email?: string, status?: string, passwort?: (string|null),
- *          emailVerifiziertAm?: (string|null)}} o
+ *          emailVerifiziertAm?: (string|null), profil?: (object|null),
+ *          selbstbedienung?: boolean}} o
  * @returns {Promise<{ok: true, account: object}|{ok: false, grund: string}>}
  */
 export async function accountAnlegen(store, { email, status = "eingeladen",
-  passwort = null, emailVerifiziertAm = null } = {}) {
+  passwort = null, emailVerifiziertAm = null, profil = null,
+  selbstbedienung = false } = {}) {
   const emailNorm = mailNormieren(email);
   if (!mailBrauchbar(emailNorm)) return { ok: false, grund: "adresse" };
   if (!ACCOUNT_STATUS.includes(status)) return { ok: false, grund: "status" };
   if (passwort !== null && (typeof passwort !== "string" || !passwort.startsWith("s1$")))
     return { ok: false, grund: "passwortform" };
+  if (profil !== null) {
+    const gepruef = profilPruefen(profil);
+    if (!gepruef.ok) return { ok: false, grund: gepruef.grund };
+    profil = gepruef.profil;
+  }
 
   const schluessel = accountSchluessel(emailNorm);
 
@@ -205,6 +339,11 @@ export async function accountAnlegen(store, { email, status = "eingeladen",
       aktualisiert: nun,
       passwortGeaendert: passwort ? nun : null,
       letzteAnmeldung: null,
+      /* Registrierungsdaten und der Anspruch auf einen Testbetrieb. Beide
+         gehören zum Menschen, nicht zu einem Betrieb. */
+      profil: profil ? { ...profil, erfasstAm: nun } : null,
+      testbetriebOffenSeit: selbstbedienung ? nun : null,
+      testbetriebVerbrauchtAm: null,
     };
 
     /* Zwei Schreibvorgänge, und die Ablage kennt keine Transaktion. Die
@@ -292,7 +431,8 @@ export async function accountLesenPerId(store, accountId) {
    -------------------------------------------------------------------------- */
 
 const AENDERBAR = new Set(["emailVerifiziertAm", "passwort", "status",
-  "tokenNr", "epoche", "passwortGeaendert", "letzteAnmeldung"]);
+  "tokenNr", "epoche", "passwortGeaendert", "letzteAnmeldung",
+  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm"]);
 
 /**
  * Ändert einen Account feldweise. Unbekannte oder geschützte Felder führen
@@ -315,6 +455,15 @@ export async function accountAendern(store, accountId, felder) {
     return { ok: false, grund: "passwortform" };
   if ("epoche" in felder && (!Number.isInteger(felder.epoche) || felder.epoche < 1))
     return { ok: false, grund: "epoche" };
+  if ("profil" in felder && felder.profil !== null) {
+    const g = profilPruefen(felder.profil);
+    if (!g.ok) return { ok: false, grund: `profil:${g.grund}` };
+  }
+  for (const feld of ["testbetriebOffenSeit", "testbetriebVerbrauchtAm"]) {
+    if (feld in felder && felder[feld] !== null
+        && !(typeof felder[feld] === "string" && felder[feld]))
+      return { ok: false, grund: feld };
+  }
   if ("tokenNr" in felder) {
     const t = felder.tokenNr;
     if (!t || typeof t !== "object") return { ok: false, grund: "tokenNr" };
@@ -390,6 +539,39 @@ export async function tokenNrErhoehen(store, accountId, zweck) {
   const e = await accountAendern(store, accountId,
     { tokenNr: { ...(a.tokenNr || {}), [zweck]: nr } });
   return e.ok ? { ...e, nr } : e;
+}
+
+/**
+ * Vermerkt, dass der kostenlose Testbetrieb dieses Accounts verbraucht ist
+ * — und beendet damit denselben Vorgang.
+ *
+ * Beides in einem Schreibvorgang: Bliebe `testbetriebOffenSeit` stehen,
+ * wäre der Anspruch nach außen weiter offen; bliebe der Verbrauch aus,
+ * entstünde beim nächsten Versuch ein zweiter kostenloser Betrieb. Der
+ * Verbrauch ist endgültig und überlebt Testende, Aufbewahrung und
+ * Raumlöschung — er hängt an keinem Raum.
+ *
+ * Aufzurufen erst, wenn eine Provisionierung vollständig gelungen ist.
+ */
+export const testbetriebVerbrauchen = (store, accountId) =>
+  accountAendern(store, accountId,
+    { testbetriebVerbrauchtAm: jetztISO(), testbetriebOffenSeit: null });
+
+/**
+ * Öffnet einen Neukundenvorgang für einen bestehenden Account — der Weg,
+ * über den später auch ein eingeladener Mensch seinen eigenen Betrieb
+ * bekommen kann.
+ *
+ * Ein verbrauchter Anspruch lässt sich damit nicht wiederbeleben: Das ist
+ * die eine Regel, die diese Funktion durchsetzt. Wer das erlauben will,
+ * braucht einen eigenen, sichtbaren Vorgang — nicht diese Funktion.
+ */
+export async function testbetriebOeffnen(store, accountId) {
+  const a = await accountLesenPerId(store, accountId);
+  if (!a) return { ok: false, grund: "unbekannt" };
+  if (zeitOderNull(a.testbetriebVerbrauchtAm)) return { ok: false, grund: "verbraucht" };
+  if (zeitOderNull(a.testbetriebOffenSeit)) return { ok: true, account: a, unveraendert: true };
+  return accountAendern(store, accountId, { testbetriebOffenSeit: jetztISO() });
 }
 
 /** Zugang sperren. Der Datensatz bleibt — ein gesperrter Account ist ein

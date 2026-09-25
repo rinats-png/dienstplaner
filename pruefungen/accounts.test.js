@@ -83,7 +83,8 @@ describe("Account anlegen", () => {
     expect(Object.keys(account).sort()).toEqual([
       "aktualisiert", "email", "emailNorm", "emailVerifiziertAm", "epoche",
       "erstellt", "id", "letzteAnmeldung", "passwort", "passwortGeaendert",
-      "status", "tokenNr",
+      "profil", "status", "testbetriebOffenSeit", "testbetriebVerbrauchtAm",
+      "tokenNr",
     ]);
     expect(account.status).toBe("eingeladen");
     expect(account.passwort).toBe(null);
@@ -91,6 +92,30 @@ describe("Account anlegen", () => {
     expect(account.epoche).toBe(1);
     expect(account.tokenNr).toEqual({ einladung: 0, verifizierung: 0, zuruecksetzen: 0 });
     expect(account.letzteAnmeldung).toBe(null);
+    /* Ohne ausdrückliche Angabe: kein Registrierungsprofil, kein
+       Neukundenvorgang, kein verbrauchter Testbetrieb. Ein Account, den eine
+       Einladung anlegt, sieht genau so aus. */
+    expect(account.profil).toBe(null);
+    expect(account.testbetriebOffenSeit).toBe(null);
+    expect(account.testbetriebVerbrauchtAm).toBe(null);
+  });
+
+  it("nimmt Registrierungsdaten und den Neukundenvorgang nur auf Verlangen an", async () => {
+    const s = laden();
+    const { account } = await A.accountAnlegen(s, { email: "profil@example.org",
+      profil: { vorname: "  Rina ", nachname: "Schmitt", betriebsname: "Wachdienst Nord" },
+      selbstbedienung: true });
+    expect(Object.keys(account.profil).sort())
+      .toEqual(["betriebsname", "erfasstAm", "nachname", "vorname"]);
+    expect(account.profil.vorname).toBe("Rina");
+    expect(account.testbetriebOffenSeit).toBeTruthy();
+    expect(account.testbetriebVerbrauchtAm).toBe(null);
+    /* Ein unbrauchbares Profil verhindert die Anlage — kein halber Account. */
+    const e = await A.accountAnlegen(s, { email: "halb@example.org",
+      profil: { vorname: "A", nachname: "B" } });
+    expect(e.ok).toBe(false);
+    expect(e.grund).toBe("betriebsname");
+    expect(await A.accountLesenPerMail(s, "halb@example.org")).toBe(null);
   });
 
   it("gibt jedem Account eine stabile, zufällige Kennung", async () => {

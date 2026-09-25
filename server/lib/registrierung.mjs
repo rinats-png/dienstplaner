@@ -44,6 +44,33 @@
    eine Mitgliedschaft, ein Selbsteintritt nicht.
 
    ---------------------------------------------------------------------------
+   Der Zustandsweg eines Selbsteintritts
+
+     Selbsteintritt begonnen   Account angelegt, Profil erfasst, Anspruch
+                               auf einen Testbetrieb geöffnet
+                               (testbetriebOffenSeit).
+     E-Mail bestätigt          emailVerifiziertAm gesetzt.
+     Passwort gesetzt          Account aktiv.
+     Provisionierung offen     bis hierher reicht dieses Modul.
+     Provisionierung gelungen  ein Betrieb entsteht — anderer Schritt.
+     Anspruch verbraucht       testbetriebVerbrauchtAm, für immer.
+
+   Der Anspruch wird ausschließlich beim Anlegen eines neuen Accounts
+   geöffnet. Ein bestehendes Konto bekommt über die Registrierung nur einen
+   neuen Link — nie einen neuen Anspruch: Sonst wäre „registrieren" der
+   stille Weg, sich einen weiteren kostenlosen Betrieb zu holen oder einer
+   eingeladenen Person einen zu verschaffen, an dem niemand mitgewirkt hat.
+   Für diesen Übergang gehört ein eigener, sichtbarer Vorgang hierher
+   (testbetriebOeffnen in accounts.mjs) — nicht dieser.
+
+   Profildaten (Vorname, Nachname, Betriebsname) sind Registrierungsdaten,
+   aus denen später eine Leitungsperson und ein Betrieb entstehen. Sie sind
+   keine Rolle, keine Mitgliedschaft und keine Zuordnung zu einem Betrieb —
+   und sie werden bei einem zweiten Startversuch nicht überschrieben: Was
+   zuerst angenommen wurde, gilt, bis ein eigener Profilpfad etwas anderes
+   erlaubt.
+
+   ---------------------------------------------------------------------------
    Keine Auskunft darüber, wer Kunde ist
 
    „Diese Adresse ist bereits vergeben" ist eine Auskunft: Wer sie bekommt,
@@ -72,7 +99,7 @@ import { tokenAusstellen, tokenEinloesen, laufnummer, FRISTEN } from "./token.mj
 import { sendeMail, anwendungsAdresse, pruefLinkErlaubt } from "./post.mjs";
 import {
   accountAnlegen, accountLesenPerMail, accountLesenPerId,
-  emailBestaetigen, tokenNrErhoehen, passwortSetzen,
+  emailBestaetigen, tokenNrErhoehen, passwortSetzen, profilPruefen,
 } from "./accounts.mjs";
 
 /**
@@ -97,6 +124,14 @@ export const FRIST_STUNDEN = Math.round(FRISTEN[ZWECK] / 60);
 export const HINWEIS_GENERISCH =
   "Wenn diese Adresse verwendet werden kann, ist eine E-Mail mit dem "
   + "Bestätigungslink unterwegs. Bitte sieh auch im Spam-Ordner nach.";
+
+/** Was ein Mensch liest, wenn eine Angabe fehlt oder zu lang ist. */
+export const HINWEISE_PROFIL = {
+  profil: "Bitte gib deinen Namen und den Namen deines Betriebs an.",
+  vorname: "Bitte einen Vornamen angeben (höchstens 80 Zeichen).",
+  nachname: "Bitte einen Nachnamen angeben (höchstens 80 Zeichen).",
+  betriebsname: "Bitte den Namen des Betriebs angeben — drei bis 80 Zeichen.",
+};
 
 /** Der Weg, den der Link nimmt. Das Token steht im Fragment. */
 export const VERIFIZIERUNGSPFAD = "/verifizieren";
@@ -185,19 +220,30 @@ async function bestaetigungSenden(store, konto, { jetzt = Date.now, versand = se
  * einen neuen Link. Nach außen sieht beides gleich aus.
  *
  * @param {object} store
- * @param {{email?: unknown, jetzt?: () => number, versand?: Function}} [o]
+ * @param {{email?: unknown, vorname?: unknown, nachname?: unknown,
+ *   betriebsname?: unknown, jetzt?: () => number, versand?: Function}} [o]
  * @returns {Promise<{ok: boolean, hinweis: string, grund?: string,
  *   protokoll: {fall: string, accountId?: string}, pruefToken?: string}>}
  *   `protokoll` ist für Protokoll und Prüfung. Niemals ausliefern.
  */
-export async function registrierungStarten(store, { email, jetzt = Date.now,
-  versand = sendeMail } = {}) {
+export async function registrierungStarten(store, { email, vorname, nachname,
+  betriebsname, jetzt = Date.now, versand = sendeMail } = {}) {
   const emailNorm = mailNormieren(email);
   /* Eine unbrauchbare Adresse darf man benennen: Das ist eine Aussage über
      die Eingabe, nicht über den Bestand. */
   if (!mailBrauchbar(emailNorm)) {
     return { ok: false, grund: "adresse", hinweis: "Diese E-Mail-Adresse sieht nicht gültig aus.",
       protokoll: { fall: "adresse" } };
+  }
+
+  /* Das Profil wird geprüft, bevor irgendetwas gelesen wird: Ein Formfehler
+     ist eine Aussage über die Eingabe und darf für eine bekannte wie für
+     eine unbekannte Adresse gleich ausfallen. */
+  const gepruef = profilPruefen({ vorname, nachname, betriebsname });
+  if (!gepruef.ok) {
+    return { ok: false, grund: gepruef.grund,
+      hinweis: HINWEISE_PROFIL[gepruef.grund] || "Bitte prüfe deine Angaben.",
+      protokoll: { fall: `profil:${gepruef.grund}` } };
   }
 
   const vorhanden = await accountLesenPerMail(store, emailNorm);
@@ -224,7 +270,8 @@ export async function registrierungStarten(store, { email, jetzt = Date.now,
   /* Die Anzeigeform, wie sie eingegeben wurde — aber als Zeichenkette.
      Die Normalform steht daneben und ist der Schlüssel. */
   const anzeige = typeof email === "string" ? email : emailNorm;
-  const angelegt = await accountAnlegen(store, { email: anzeige, status: "eingeladen" });
+  const angelegt = await accountAnlegen(store, { email: anzeige, status: "eingeladen",
+    profil: gepruef.profil, selbstbedienung: true });
   if (!angelegt.ok) {
     /* „belegt" heißt: Zwischen dem Nachsehen und dem Anlegen war jemand
        schneller — dieselbe Adresse, zwei gleichzeitige Versuche. Dann gilt

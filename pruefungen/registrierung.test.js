@@ -24,6 +24,16 @@ let wurzel, getStore, R, A, P;
 const STUNDE = 60 * 60 * 1000;
 const GUT = "Nordwind und Sonne 1846";   // 23 Zeichen, keine Sperrliste
 
+/* Die Angaben, die ein Selbsteintritt künftig mitbringt. Aus ihnen entsteht
+   später eine Leitungsperson und ein Betrieb — in diesem Schritt werden sie
+   nur erfasst. */
+/* Ein gueltig geformter Pruefwert fuer Faelle, in denen ein Account direkt
+   angelegt wird — die Kryptographie prueft passwoerter.mjs. */
+const PW_ABLAGE = "s1$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA=";
+
+const PROFIL = { vorname: "Rina", nachname: "Schmitt",
+  betriebsname: "Wachdienst Nordlicht" };
+
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-registrierung-"));
   process.env.CENTRIC_DATEN = wurzel;
@@ -66,9 +76,9 @@ const uhr = (ms) => () => ms;
 const T0 = new Date("2026-09-01T08:00:00.000Z").getTime();
 
 /** Der ganze Weg bis zum gesetzten Passwort. */
-async function durchlaufen(s, email = "neu@example.org", passwort = GUT) {
+async function durchlaufen(s, email = "neu@example.org", passwort = GUT, profil = PROFIL) {
   const pf = postfach();
-  const start = await R.registrierungStarten(s, { email, versand: pf.versand, jetzt: uhr(T0) });
+  const start = await R.registrierungStarten(s, { ...profil, email, versand: pf.versand, jetzt: uhr(T0) });
   expect(start.ok, `Start: ${start.grund}`).toBe(true);
   const token = tokenAus(pf.letzter().text);
   const v = await R.emailVerifizieren(s, { token, jetzt: uhr(T0 + STUNDE) });
@@ -85,7 +95,7 @@ describe("Eine Registrierung beginnen", () => {
   it("legt genau einen Account an und schickt genau eine Mail", async () => {
     const s = laden();
     const pf = postfach();
-    const e = await R.registrierungStarten(s, { email: "eins@example.org", versand: pf.versand });
+    const e = await R.registrierungStarten(s, { ...PROFIL, email: "eins@example.org", versand: pf.versand });
     expect(e.ok).toBe(true);
     expect(e.protokoll.fall).toBe("neu");
     expect(pf.briefe.length).toBe(1);
@@ -100,7 +110,7 @@ describe("Eine Registrierung beginnen", () => {
   it("normalisiert die Adresse und erzeugt keine zweite Identität", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "  Test@Example.org ", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "  Test@Example.org ", versand: pf.versand });
     const konto = await A.accountLesenPerMail(s, "test@example.org");
     expect(konto).not.toBe(null);
     expect(konto.emailNorm).toBe("test@example.org");
@@ -108,7 +118,7 @@ describe("Eine Registrierung beginnen", () => {
     expect(konto.email).toBe("Test@Example.org");
 
     /* Zweiter Versuch in anderer Schreibweise: derselbe Account. */
-    const zweite = await R.registrierungStarten(s, { email: "TEST@EXAMPLE.ORG", versand: pf.versand });
+    const zweite = await R.registrierungStarten(s, { ...PROFIL, email: "TEST@EXAMPLE.ORG", versand: pf.versand });
     expect(zweite.protokoll.fall).toBe("erneut");
     expect(zweite.protokoll.accountId).toBe(konto.id);
     expect((await s.list({ prefix: "account:" })).blobs.length).toBe(1);
@@ -117,8 +127,8 @@ describe("Eine Registrierung beginnen", () => {
   it("behandelt eine Plus-Kennzeichnung als eigene Adresse", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "max@example.org", versand: pf.versand });
-    await R.registrierungStarten(s, { email: "max+dienst@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "max@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "max+dienst@example.org", versand: pf.versand });
     expect((await s.list({ prefix: "account:" })).blobs.length).toBe(2);
   });
 
@@ -126,7 +136,7 @@ describe("Eine Registrierung beginnen", () => {
     const s = laden();
     const pf = postfach();
     for (const email of ["", "   ", "kein-at", "a@b", null, undefined, 42, {}]) {
-      const e = await R.registrierungStarten(s, { email, versand: pf.versand });
+      const e = await R.registrierungStarten(s, { ...PROFIL, email, versand: pf.versand });
       expect(e.ok, String(email)).toBe(false);
       expect(e.grund).toBe("adresse");
     }
@@ -140,7 +150,7 @@ describe("Eine Registrierung beginnen", () => {
     const vorher = JSON.stringify(await A.accountLesenPerId(s, accountId));
 
     const pf = postfach();
-    const e = await R.registrierungStarten(s, { email: "aktiv@example.org", versand: pf.versand });
+    const e = await R.registrierungStarten(s, { ...PROFIL, email: "aktiv@example.org", versand: pf.versand });
     expect(e.ok).toBe(true);
     expect(e.hinweis).toBe(R.HINWEIS_GENERISCH);
     /* Kein zweites Konto, keine Mail, kein angetasteter Datensatz. */
@@ -156,7 +166,7 @@ describe("Eine Registrierung beginnen", () => {
     const vorher = await A.accountLesenPerId(s, accountId);
 
     const pf = postfach();
-    const e = await R.registrierungStarten(s, { email: "gesperrt@example.org", versand: pf.versand });
+    const e = await R.registrierungStarten(s, { ...PROFIL, email: "gesperrt@example.org", versand: pf.versand });
     expect(e.ok).toBe(true);
     expect(e.hinweis).toBe(R.HINWEIS_GENERISCH);
     expect(pf.briefe.length).toBe(0);
@@ -170,10 +180,10 @@ describe("Eine Registrierung beginnen", () => {
   it("überschreibt ein wartendes Konto nicht, sondern schickt einen neuen Link", async () => {
     const s = laden();
     const pf = postfach();
-    const erste = await R.registrierungStarten(s, { email: "warte@example.org", versand: pf.versand });
+    const erste = await R.registrierungStarten(s, { ...PROFIL, email: "warte@example.org", versand: pf.versand });
     const konto1 = await A.accountLesenPerMail(s, "warte@example.org");
 
-    const zweite = await R.registrierungStarten(s, { email: "warte@example.org", versand: pf.versand });
+    const zweite = await R.registrierungStarten(s, { ...PROFIL, email: "warte@example.org", versand: pf.versand });
     const konto2 = await A.accountLesenPerMail(s, "warte@example.org");
 
     expect(zweite.ok).toBe(true);
@@ -199,7 +209,7 @@ describe("Eine Registrierung beginnen", () => {
 
     const antworten = [];
     for (const email of ["a-neu@example.org", "a-aktiv@example.org", "a-gesperrt@example.org"]) {
-      const e = await R.registrierungStarten(s, { email, versand: pf.versand });
+      const e = await R.registrierungStarten(s, { ...PROFIL, email, versand: pf.versand });
       antworten.push(JSON.stringify({ ok: e.ok, hinweis: e.hinweis }));
     }
     expect(new Set(antworten).size).toBe(1);
@@ -220,7 +230,7 @@ describe("Eine Registrierung beginnen", () => {
        gescheiterter Versuch meldet den Fehler und lässt nichts Halbes
        zurück. */
     const alle = await Promise.allSettled(Array.from({ length: 12 }, () =>
-      R.registrierungStarten(s, { email: "viele@example.org", versand: pf.versand })));
+      R.registrierungStarten(s, { ...PROFIL, email: "viele@example.org", versand: pf.versand })));
     const werte = alle.filter((x) => x.status === "fulfilled").map((x) => x.value);
 
     expect((await s.list({ prefix: "account:" })).blobs.length).toBe(1);
@@ -253,7 +263,7 @@ describe("Das Bestätigungstoken", () => {
   it("läuft unter dem Zweck verifizierung und gilt 24 Stunden", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "zweck@example.org", versand: pf.versand,
+    await R.registrierungStarten(s, { ...PROFIL, email: "zweck@example.org", versand: pf.versand,
       jetzt: uhr(T0) });
     expect(R.ZWECK).toBe("verifizierung");
     expect(R.FRIST_STUNDEN).toBe(24);
@@ -267,7 +277,7 @@ describe("Das Bestätigungstoken", () => {
   it("liegt nur als Prüfsumme in der Ablage — nie im Klartext", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "hash@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "hash@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     expect(token.length).toBeGreaterThan(30);
 
@@ -285,7 +295,7 @@ describe("Das Bestätigungstoken", () => {
   it("steht nicht im Account und in keiner Mitgliedschaft", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "nichtdrin@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "nichtdrin@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     const konto = await A.accountLesenPerMail(s, "nichtdrin@example.org");
     expect(JSON.stringify(konto)).not.toContain(token);
@@ -297,9 +307,9 @@ describe("Das Bestätigungstoken", () => {
   it("ist an genau dieses Konto gebunden — ein Token von A bestätigt B nicht", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "bind-a@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "bind-a@example.org", versand: pf.versand });
     const tokenA = tokenAus(pf.letzter().text);
-    await R.registrierungStarten(s, { email: "bind-b@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "bind-b@example.org", versand: pf.versand });
     const tokenB = tokenAus(pf.letzter().text);
     expect(tokenA).not.toBe(tokenB);
 
@@ -319,9 +329,9 @@ describe("Das Bestätigungstoken", () => {
        ein Link für eine Adresse das Konto einer anderen. */
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "eintrag-a@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "eintrag-a@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
-    await R.registrierungStarten(s, { email: "eintrag-b@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "eintrag-b@example.org", versand: pf.versand });
     const a = await A.accountLesenPerMail(s, "eintrag-a@example.org");
     const b = await A.accountLesenPerMail(s, "eintrag-b@example.org");
 
@@ -346,7 +356,7 @@ describe("Das Bestätigungstoken", () => {
   it("verwirft einen Eintrag ohne oder mit erfundener Kennung", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "ohne-id@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "ohne-id@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     const [blob] = (await s.list({ prefix: "token:" })).blobs;
     const eintrag = await s.get(blob.key, { type: "json" });
@@ -371,7 +381,7 @@ describe("Das Bestätigungstoken", () => {
   it("verliert seine Geltung, sobald ein neues ausgestellt wird", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "zwei@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "zwei@example.org", versand: pf.versand });
     const erstes = tokenAus(pf.letzter().text);
     await R.verifizierungErneutSenden(s, { email: "zwei@example.org", versand: pf.versand });
     const zweites = tokenAus(pf.letzter().text);
@@ -386,7 +396,7 @@ describe("Das Bestätigungstoken", () => {
   it("lässt die Zähler der anderen Zwecke unberührt", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "zaehler@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "zaehler@example.org", versand: pf.versand });
     const konto = await A.accountLesenPerMail(s, "zaehler@example.org");
     /* Ein laufender Rücksetzvorgang und eine Einladung existieren gedanklich
        parallel — eine neue Bestätigung darf sie nicht abschneiden. */
@@ -413,7 +423,7 @@ describe("Das Bestätigungstoken", () => {
     ]) {
       const pf = postfach();
       const email = `frist-${versatz}@example.org`;
-      await R.registrierungStarten(s, { email, versand: pf.versand, jetzt: uhr(T0) });
+      await R.registrierungStarten(s, { ...PROFIL, email, versand: pf.versand, jetzt: uhr(T0) });
       const token = tokenAus(pf.letzter().text);
       const e = await R.emailVerifizieren(s, { token, jetzt: uhr(T0 + versatz) });
       expect(e.ok, name).toBe(erwartet);
@@ -423,7 +433,7 @@ describe("Das Bestätigungstoken", () => {
   it("weist falsche, zweckfremde und formlose Token ab", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "falsch@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "falsch@example.org", versand: pf.versand });
     const echt = tokenAus(pf.letzter().text);
     const konto = await A.accountLesenPerMail(s, "falsch@example.org");
 
@@ -449,7 +459,7 @@ describe("Das Bestätigungstoken", () => {
   it("weist ein Token ab, dessen Konto gesperrt wurde", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "sperre-token@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "sperre-token@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     const konto = await A.accountLesenPerMail(s, "sperre-token@example.org");
     await A.accountSperren(s, konto.id);
@@ -463,7 +473,7 @@ describe("Das Bestätigungstoken", () => {
   it("wirkt genau einmal — auch bei zwei gleichzeitigen Versuchen", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "einmal@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "einmal@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
 
     /* Zuerst nebeneinander: Die Reihe in token.mjs stellt sie hintereinander. */
@@ -485,7 +495,7 @@ describe("Die Bestätigung tut genau eine Sache", () => {
   it("setzt den Zeitpunkt und sonst nichts", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "nur-datum@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "nur-datum@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     const vorher = await A.accountLesenPerMail(s, "nur-datum@example.org");
 
@@ -519,7 +529,7 @@ describe("Das erste Passwort", () => {
   it("wird vor der Bestätigung abgewiesen", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "zu-frueh@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "zu-frueh@example.org", versand: pf.versand });
     const konto = await A.accountLesenPerMail(s, "zu-frueh@example.org");
 
     const e = await R.registrierungPasswortSetzen(s, { accountId: konto.id, passwort: GUT });
@@ -533,7 +543,7 @@ describe("Das erste Passwort", () => {
   it("wird für ein gesperrtes Konto abgewiesen", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "sperre-pw@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "sperre-pw@example.org", versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     const v = await R.emailVerifizieren(s, { token });
     await A.accountSperren(s, v.accountId);
@@ -558,7 +568,7 @@ describe("Das erste Passwort", () => {
   it("richtet sich nach der Regel aus passwoerter.mjs, ohne sie zu wiederholen", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "regel@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "regel@example.org", versand: pf.versand });
     const v = await R.emailVerifizieren(s, { token: tokenAus(pf.letzter().text) });
 
     for (const schwach of ["kurz", "elfzeichen", "passwort1234", "centric-dienstplan",
@@ -638,7 +648,7 @@ describe("Die Mail", () => {
   it("führt den Link im Fragment, nicht im Abfragestring", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "link@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "link@example.org", versand: pf.versand });
     const text = pf.letzter().text;
     const token = tokenAus(text);
 
@@ -654,7 +664,7 @@ describe("Die Mail", () => {
   it("nennt die Frist, keine Werbung und kein Passwort", async () => {
     const s = laden();
     const pf = postfach();
-    await R.registrierungStarten(s, { email: "inhalt@example.org", versand: pf.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "inhalt@example.org", versand: pf.versand });
     const { an, betreff, text } = pf.letzter();
     expect(an).toBe("inhalt@example.org");
     expect(betreff).toMatch(/bestätige deine E-Mail-Adresse/i);
@@ -667,7 +677,7 @@ describe("Die Mail", () => {
   it("lässt den Account bestehen, wenn der Versand scheitert", async () => {
     const s = laden();
     const pf = postfach({ scheitert: true });
-    const e = await R.registrierungStarten(s, { email: "kaputt@example.org", versand: pf.versand });
+    const e = await R.registrierungStarten(s, { ...PROFIL, email: "kaputt@example.org", versand: pf.versand });
 
     /* Der Fehler ist sichtbar — und der Account ist da. */
     expect(e.ok).toBe(false);
@@ -682,7 +692,7 @@ describe("Die Mail", () => {
   it("lässt nach einem Versandfehler einen neuen Versuch zu", async () => {
     const s = laden();
     const kaputt = postfach({ scheitert: true });
-    await R.registrierungStarten(s, { email: "zweiter@example.org", versand: kaputt.versand });
+    await R.registrierungStarten(s, { ...PROFIL, email: "zweiter@example.org", versand: kaputt.versand });
     const altesToken = tokenAus(kaputt.letzter().text);
 
     const gut = postfach();
@@ -747,7 +757,7 @@ describe("Die Grenzen des Moduls", () => {
   it("gibt kein Token in einem Fehlerobjekt zurück", async () => {
     const s = laden();
     const pf = postfach({ scheitert: true });
-    const e = await R.registrierungStarten(s, { email: "fehlerobjekt@example.org",
+    const e = await R.registrierungStarten(s, { ...PROFIL, email: "fehlerobjekt@example.org",
       versand: pf.versand });
     const token = tokenAus(pf.letzter().text);
     expect(e.ok).toBe(false);
@@ -763,13 +773,13 @@ describe("Die Grenzen des Moduls", () => {
     const pf = postfach();
     /* Standard in dieser Prüfung: Schranke zu (CENTRIC_PRUEFLINK nicht gesetzt). */
     delete process.env.CENTRIC_PRUEFLINK;
-    const zu = await R.registrierungStarten(s, { email: "schranke-zu@example.org",
+    const zu = await R.registrierungStarten(s, { ...PROFIL, email: "schranke-zu@example.org",
       versand: pf.versand });
     expect(zu.pruefToken).toBeUndefined();
     expect(JSON.stringify(zu)).not.toContain(tokenAus(pf.letzter().text));
 
     process.env.CENTRIC_PRUEFLINK = "ja";
-    const offen = await R.registrierungStarten(s, { email: "schranke-auf@example.org",
+    const offen = await R.registrierungStarten(s, { ...PROFIL, email: "schranke-auf@example.org",
       versand: pf.versand });
     expect(offen.pruefToken).toBe(tokenAus(pf.letzter().text));
     delete process.env.CENTRIC_PRUEFLINK;
@@ -810,5 +820,423 @@ describe("Die Grenzen des Moduls", () => {
        verschwindet, den später niemand liest. */
     expect(quelle).toMatch(/Bremse je Herkunft UND je Adresse/);
     expect(quelle).toMatch(/Kein\s+öffentlicher Endpunkt ohne Bremse/);
+  });
+});
+
+/* ==========================================================================
+   DAS REGISTRIERUNGSPROFIL
+
+   Vorname, Nachname und Betriebsname sind das, woraus später eine
+   Leitungsperson und ein Betrieb entstehen. Hier werden sie nur erfasst —
+   geprüft wird, dass sie erfasst werden müssen, dass sie nichts anderes
+   mitbringen (keine Rolle, keine Person, keinen Raum) und dass ein zweiter
+   Versuch sie nicht überschreibt.
+   ========================================================================== */
+
+describe("Das Registrierungsprofil", () => {
+  const ohne = (feld) => {
+    const p = { ...PROFIL };
+    delete p[feld];
+    return p;
+  };
+
+  it("verlangt Vorname, Nachname und Betriebsname", async () => {
+    const s = laden();
+    const pf = postfach();
+    for (const feld of ["vorname", "nachname", "betriebsname"]) {
+      const e = await R.registrierungStarten(s,
+        { ...ohne(feld), email: `fehlt-${feld}@example.org`, versand: pf.versand });
+      expect(e.ok, feld).toBe(false);
+      expect(e.grund, feld).toBe(feld);
+      expect(e.hinweis).toBe(R.HINWEISE_PROFIL[feld]);
+    }
+    /* Nichts angelegt, nichts verschickt. */
+    expect(pf.briefe.length).toBe(0);
+    expect((await s.list({ prefix: "account:" })).blobs.length).toBe(0);
+  });
+
+  it("weist leere, zu lange und unsichtbare Angaben ab", async () => {
+    const s = laden();
+    const pf = postfach();
+    const lang = "x".repeat(81);
+    const faelle = [
+      ["vorname", ""], ["vorname", "   "], ["vorname", lang], ["vorname", 42],
+      ["vorname", null], ["vorname", "Ri\nna"], ["vorname", "Ri\tna"],
+      ["nachname", ""], ["nachname", "  "], ["nachname", lang], ["nachname", {}],
+      ["betriebsname", ""], ["betriebsname", "ab"], ["betriebsname", "  ab  "],
+      ["betriebsname", lang], ["betriebsname", "Wach\ndienst"],
+    ];
+    for (const [feld, wert] of faelle) {
+      const e = await R.registrierungStarten(s,
+        { ...PROFIL, [feld]: wert, email: "grenzen@example.org", versand: pf.versand });
+      expect(e.ok, `${feld}=${JSON.stringify(wert)}`).toBe(false);
+      expect(e.grund, `${feld}=${JSON.stringify(wert)}`).toBe(feld);
+    }
+    expect((await s.list({ prefix: "account:" })).blobs.length).toBe(0);
+  });
+
+  it("nimmt genau die Grenzwerte an", async () => {
+    const s = laden();
+    const pf = postfach();
+    const e = await R.registrierungStarten(s, {
+      vorname: "A", nachname: "B", betriebsname: "abc",
+      email: "grenzwert@example.org", versand: pf.versand,
+    });
+    expect(e.ok).toBe(true);
+    const lang = "y".repeat(80);
+    const e2 = await R.registrierungStarten(s, {
+      vorname: lang, nachname: lang, betriebsname: lang,
+      email: "grenzwert2@example.org", versand: pf.versand,
+    });
+    expect(e2.ok).toBe(true);
+    expect((await A.accountLesenPerMail(s, "grenzwert2@example.org")).profil.vorname)
+      .toBe(lang);
+  });
+
+  it("trimmt die Angaben, ohne sie zu verändern", async () => {
+    const s = laden();
+    const pf = postfach();
+    await R.registrierungStarten(s, {
+      vorname: "  Rina  ", nachname: "\tSchmitt ", betriebsname: "  Wachdienst Nord  ",
+      email: "trim@example.org", versand: pf.versand,
+    });
+    const konto = await A.accountLesenPerMail(s, "trim@example.org");
+    expect(konto.profil.vorname).toBe("Rina");
+    expect(konto.profil.nachname).toBe("Schmitt");
+    expect(konto.profil.betriebsname).toBe("Wachdienst Nord");
+  });
+
+  it("lässt Namen aus aller Welt zu", async () => {
+    const s = laden();
+    const pf = postfach();
+    const faelle = [
+      ["Þórunn", "Guðmundsdóttir", "Öryggisþjónusta Norður"],
+      ["مريم", "الأحمد", "خدمة الأمن"],
+      ["李", "娜", "北方安保有限公司"],
+      ["Jean-Luc", "O'Brien-Müller", "Sécurité & Co. (Süd)"],
+      ["Ana", "Ruiz", "Seguridad 24·7"],
+    ];
+    let n = 0;
+    for (const [vorname, nachname, betriebsname] of faelle) {
+      const email = `welt${++n}@example.org`;
+      const e = await R.registrierungStarten(s,
+        { vorname, nachname, betriebsname, email, versand: pf.versand });
+      expect(e.ok, vorname).toBe(true);
+      const konto = await A.accountLesenPerMail(s, email);
+      expect([konto.profil.vorname, konto.profil.nachname, konto.profil.betriebsname])
+        .toEqual([vorname, nachname, betriebsname]);
+    }
+  });
+
+  it("speichert im Profil nichts als die drei Angaben", async () => {
+    const s = laden();
+    const pf = postfach();
+    await R.registrierungStarten(s, {
+      ...PROFIL, email: "sauber@example.org", versand: pf.versand,
+      /* Alles, was ein Aufrufer noch mitschicken könnte: */
+      rolle: "betreiber", person: "p17", personId: "p17", raum: "t-eigener",
+      betrieb: 0, mandantId: "m1", passwort: GUT, email2: "zweit@example.org",
+    });
+    const konto = await A.accountLesenPerMail(s, "sauber@example.org");
+    expect(Object.keys(konto.profil).sort())
+      .toEqual(["betriebsname", "erfasstAm", "nachname", "vorname"]);
+    const text = JSON.stringify(konto.profil);
+    /* Keine Rolle, keine Person, kein Raum, kein Betrieb. */
+    for (const wort of ["betreiber", "p17", "t-eigener", "mandant", "leitung"]) {
+      expect(text.toLowerCase(), wort).not.toContain(wort.toLowerCase());
+    }
+    /* Keine zweite Adresse und kein Passwort im Profil. */
+    expect(text).not.toContain("@");
+    expect(text).not.toContain(GUT);
+    expect(text).not.toContain("s1$");
+    /* Die Adresse bleibt allein in den Accountfeldern. */
+    expect(konto.emailNorm).toBe("sauber@example.org");
+  });
+
+  it("überschreibt die Angaben bei einem zweiten Startversuch nicht", async () => {
+    const s = laden();
+    const pf = postfach();
+    await R.registrierungStarten(s,
+      { ...PROFIL, email: "erst@example.org", versand: pf.versand });
+    const erst = (await A.accountLesenPerMail(s, "erst@example.org")).profil;
+
+    const e = await R.registrierungStarten(s, {
+      vorname: "Fremd", nachname: "Fremder", betriebsname: "Fremder Betrieb",
+      email: "erst@example.org", versand: pf.versand,
+    });
+    expect(e.ok).toBe(true);
+    expect(e.protokoll.fall).toBe("erneut");
+    const nachher = (await A.accountLesenPerMail(s, "erst@example.org")).profil;
+    expect(nachher).toEqual(erst);
+    expect(nachher.vorname).toBe("Rina");
+    /* Ein neuer Link ist trotzdem unterwegs. */
+    expect(pf.briefe.length).toBe(2);
+  });
+
+  it("bleibt durch Bestätigung und Passwortsetzung unverändert", async () => {
+    const s = laden();
+    const pf = postfach();
+    await R.registrierungStarten(s,
+      { ...PROFIL, email: "unberuehrt@example.org", versand: pf.versand });
+    const nachStart = JSON.stringify(
+      (await A.accountLesenPerMail(s, "unberuehrt@example.org")).profil);
+
+    const v = await R.emailVerifizieren(s, { token: tokenAus(pf.letzter().text) });
+    expect(JSON.stringify((await A.accountLesenPerId(s, v.accountId)).profil))
+      .toBe(nachStart);
+
+    await R.registrierungPasswortSetzen(s, { accountId: v.accountId, passwort: GUT });
+    const konto = await A.accountLesenPerId(s, v.accountId);
+    expect(JSON.stringify(konto.profil)).toBe(nachStart);
+    /* Und nach der Aktivierung sind die Angaben für die Provisionierung da. */
+    expect(konto.status).toBe("aktiv");
+    expect(konto.profil.vorname).toBe("Rina");
+    expect(konto.profil.nachname).toBe("Schmitt");
+    expect(konto.profil.betriebsname).toBe("Wachdienst Nordlicht");
+  });
+});
+
+/* ==========================================================================
+   DER ANSPRUCH AUF EINEN TESTBETRIEB
+
+   Eine Frage, die ohne Mitgliedschaften beantwortet werden muss: Darf aus
+   diesem Account ein kostenloser Testbetrieb entstehen? Vier Lagen sind zu
+   unterscheiden, und keine davon hängt daran, ob irgendwo eine
+   Mitgliedschaft liegt.
+   ========================================================================== */
+
+describe("Der Anspruch auf einen kostenlosen Testbetrieb", () => {
+  it("ist für einen fertigen Selbsteintritt offen", async () => {
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "offen@example.org");
+    const konto = await A.accountLesenPerId(s, accountId);
+    expect(konto.testbetriebOffenSeit).toBeTruthy();
+    expect(konto.testbetriebVerbrauchtAm).toBe(null);
+    expect(A.testbetriebOffen(konto)).toEqual({ ok: true, grund: "offen" });
+    /* Und das, obwohl es keine einzige Mitgliedschaft gibt. */
+    expect(await A.mitgliedschaftenDesAccounts(s, accountId)).toEqual([]);
+  });
+
+  it("ist während der Registrierung noch nicht offen", async () => {
+    const s = laden();
+    const pf = postfach();
+    await R.registrierungStarten(s,
+      { ...PROFIL, email: "nochnicht@example.org", versand: pf.versand });
+    const roh = await A.accountLesenPerMail(s, "nochnicht@example.org");
+    /* Der Vorgang läuft, aber Adresse und Passwort fehlen noch. */
+    expect(roh.testbetriebOffenSeit).toBeTruthy();
+    expect(A.testbetriebOffen(roh)).toEqual({ ok: false, grund: "nicht-aktiv" });
+
+    const v = await R.emailVerifizieren(s, { token: tokenAus(pf.letzter().text) });
+    const nachMail = await A.accountLesenPerId(s, v.accountId);
+    expect(A.testbetriebOffen(nachMail).ok).toBe(false);
+    expect(A.testbetriebOffen(nachMail).grund).toBe("nicht-aktiv");
+
+    await R.registrierungPasswortSetzen(s, { accountId: v.accountId, passwort: GUT });
+    expect(A.testbetriebOffen(await A.accountLesenPerId(s, v.accountId)).ok).toBe(true);
+  });
+
+  it("ist für einen aktiven Account ohne Vorgang NICHT offen", async () => {
+    /* Der historische Fall: ein Account aus der späteren Codemigration oder
+       aus einer Einladung. Aktiv, bestätigt, mit Passwort — und trotzdem kein
+       Anspruch, denn niemand hat einen Neukundenvorgang begonnen. */
+    const s = laden();
+    const angelegt = await A.accountAnlegen(s, { email: "historisch@example.org",
+      status: "aktiv", passwort: PW_ABLAGE, emailVerifiziertAm: new Date().toISOString() });
+    const konto = angelegt.account;
+    expect(konto.testbetriebOffenSeit).toBe(null);
+    expect(konto.testbetriebVerbrauchtAm).toBe(null);
+    expect(A.testbetriebOffen(konto)).toEqual({ ok: false, grund: "kein-vorgang" });
+  });
+
+  it("wird einem eingeladenen Account nicht beiläufig gegeben", async () => {
+    const s = laden();
+    /* So legt der Einladungsweg an: ohne Selbstbedienung, ohne Profil. */
+    const eingeladen = (await A.accountAnlegen(s, { email: "geladen@example.org" })).account;
+    expect(eingeladen.testbetriebOffenSeit).toBe(null);
+    expect(eingeladen.profil).toBe(null);
+    await A.mitgliedschaftAnlegen(s, { accountId: eingeladen.id, raum: "t-fremder-betrieb",
+      betrieb: 0, mandantId: "m1", rolle: "mitarbeiter", status: "aktiv", person: "p9" });
+
+    /* Auch ein Registrierungsversuch auf dieselbe Adresse öffnet nichts: Das
+       wartende Konto bekommt nur einen neuen Link. */
+    const pf = postfach();
+    const e = await R.registrierungStarten(s,
+      { ...PROFIL, email: "geladen@example.org", versand: pf.versand });
+    expect(e.ok).toBe(true);
+    expect(e.protokoll.fall).toBe("erneut");
+    const nachher = await A.accountLesenPerId(s, eingeladen.id);
+    expect(nachher.testbetriebOffenSeit).toBe(null);
+    expect(nachher.profil).toBe(null);
+    expect(A.testbetriebOffen(nachher).grund).toBe("kein-vorgang");
+    /* Seine Mitgliedschaft ist unberührt. */
+    expect((await A.mitgliedschaftLesen(s, eingeladen.id, "t-fremder-betrieb")).rolle)
+      .toBe("mitarbeiter");
+  });
+
+  it("kann für einen eingeladenen Account ausdrücklich geöffnet werden", async () => {
+    /* Der Weg, den ein späterer Schritt nutzen wird: Wer als Beschäftigte
+       eingeladen wurde, darf morgen ihren eigenen Betrieb führen wollen. Die
+       Herkunft ist keine Sperre auf Lebenszeit — der Verbrauch ist es. */
+    const s = laden();
+    const konto = (await A.accountAnlegen(s, { email: "spaeter@example.org",
+      status: "aktiv", passwort: PW_ABLAGE,
+      emailVerifiziertAm: new Date().toISOString() })).account;
+    expect(A.testbetriebOffen(konto).ok).toBe(false);
+
+    const e = await A.testbetriebOeffnen(s, konto.id);
+    expect(e.ok).toBe(true);
+    expect(A.testbetriebOffen(await A.accountLesenPerId(s, konto.id)).ok).toBe(true);
+    /* Zweimal öffnen ändert nichts. */
+    const zwei = await A.testbetriebOeffnen(s, konto.id);
+    expect(zwei.ok).toBe(true);
+    expect(zwei.unveraendert).toBe(true);
+  });
+
+  it("ist nach dem Verbrauch für immer zu — auch ohne Raum und Mitgliedschaft", async () => {
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "verbraucht@example.org");
+    /* So wird die Provisionierung es später vermerken. */
+    const e = await A.testbetriebVerbrauchen(s, accountId);
+    expect(e.ok).toBe(true);
+
+    const konto = await A.accountLesenPerId(s, accountId);
+    expect(konto.testbetriebVerbrauchtAm).toBeTruthy();
+    expect(konto.testbetriebOffenSeit).toBe(null);
+    expect(A.testbetriebOffen(konto)).toEqual({ ok: false, grund: "verbraucht" });
+
+    /* Und er lässt sich nicht wiederbeleben: weder über die Registrierung
+       noch über das ausdrückliche Öffnen. */
+    const pf = postfach();
+    await R.registrierungStarten(s,
+      { ...PROFIL, email: "verbraucht@example.org", versand: pf.versand });
+    expect((await A.accountLesenPerId(s, accountId)).testbetriebOffenSeit).toBe(null);
+    const wieder = await A.testbetriebOeffnen(s, accountId);
+    expect(wieder.ok).toBe(false);
+    expect(wieder.grund).toBe("verbraucht");
+    expect(A.testbetriebOffen(await A.accountLesenPerId(s, accountId)).grund)
+      .toBe("verbraucht");
+  });
+
+  it("bleibt verbraucht, wenn Raum und Mitgliedschaft später verschwinden", async () => {
+    /* Der Fall, an dem „hat keine Mitgliedschaft" scheitern würde: Nach
+       dreißig Tagen Test und neunzig Tagen Aufbewahrung ist der Betrieb weg —
+       und mit ihm jede Mitgliedschaft. Der Anspruch bleibt verbraucht. */
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "spurlos@example.org");
+    await A.mitgliedschaftAnlegen(s, { accountId, raum: "t-spurlos-raum", betrieb: 0,
+      mandantId: "m1", rolle: "leitung", status: "aktiv", person: "p1" });
+    await A.testbetriebVerbrauchen(s, accountId);
+
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    const sitzungen = getStore({ name: `sitz${zaehler}`, consistency: "strong" });
+    const weg = await raumLoeschen(s, sitzungen, "t-spurlos-raum");
+    expect(weg.vollstaendig).toBe(true);
+
+    const konto = await A.accountLesenPerId(s, accountId);
+    expect(await A.mitgliedschaftenDesAccounts(s, accountId)).toEqual([]);
+    expect(konto.testbetriebVerbrauchtAm).toBeTruthy();
+    expect(A.testbetriebOffen(konto).grund).toBe("verbraucht");
+  });
+
+  it("hängt an keiner Mitgliedschaft — in beide Richtungen", async () => {
+    const s = laden();
+    /* Offener Anspruch, aber schon Mitglied in einem fremden Betrieb: Das
+       nimmt ihm den eigenen Test nicht. */
+    const { accountId } = await durchlaufen(s, "beides@example.org");
+    await A.mitgliedschaftAnlegen(s, { accountId, raum: "t-fremd-beides", betrieb: 0,
+      mandantId: "m1", rolle: "mitarbeiter", status: "aktiv", person: "p3" });
+    expect(A.testbetriebOffen(await A.accountLesenPerId(s, accountId)).ok).toBe(true);
+
+    /* Kein Anspruch, aber auch keine Mitgliedschaft: Das gibt ihm keinen. */
+    const leer = (await A.accountAnlegen(s, { email: "leer-ohne@example.org",
+      status: "aktiv", passwort: PW_ABLAGE,
+      emailVerifiziertAm: new Date().toISOString() })).account;
+    expect(await A.mitgliedschaftenDesAccounts(s, leer.id)).toEqual([]);
+    expect(A.testbetriebOffen(leer).ok).toBe(false);
+  });
+
+  it("ist für einen gesperrten Account zu", async () => {
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "gesperrt-anspruch@example.org");
+    await A.accountSperren(s, accountId);
+    const konto = await A.accountLesenPerId(s, accountId);
+    expect(A.testbetriebOffen(konto)).toEqual({ ok: false, grund: "nicht-aktiv" });
+    /* Der Vorgang bleibt vermerkt — gesperrt ist nicht verbraucht. */
+    expect(konto.testbetriebOffenSeit).toBeTruthy();
+    expect(konto.testbetriebVerbrauchtAm).toBe(null);
+  });
+
+  it("nimmt einen Verbrauch bei zwei gleichzeitig gesetzten Marken ernst", async () => {
+    /* Ein Zustand, der nicht entstehen soll — und wenn doch, entscheidet er
+       gegen den kostenlosen Betrieb. Im Zweifel kein Betrieb. */
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "beide-marken@example.org");
+    const e = await A.accountAendern(s, accountId,
+      { testbetriebVerbrauchtAm: new Date().toISOString() });
+    expect(e.ok).toBe(true);
+    const konto = await A.accountLesenPerId(s, accountId);
+    expect(konto.testbetriebOffenSeit).toBeTruthy();
+    expect(konto.testbetriebVerbrauchtAm).toBeTruthy();
+    expect(A.testbetriebOffen(konto)).toEqual({ ok: false, grund: "verbraucht" });
+  });
+
+  it("liest einen alten Account ohne die neuen Felder", async () => {
+    /* Bestandsdatensätze aus der Zeit vor diesem Schritt: Sie kennen weder
+       Profil noch Marken. Lesen muss gehen, und der Anspruch ist zu. */
+    const s = laden();
+    const alt = {
+      id: "a_altbestand", email: "alt@example.org", emailNorm: "alt@example.org",
+      emailVerifiziertAm: "2026-01-01T00:00:00.000Z", passwort: PW_ABLAGE,
+      status: "aktiv", tokenNr: { einladung: 0, verifizierung: 1, zuruecksetzen: 0 },
+      epoche: 2, erstellt: "2026-01-01T00:00:00.000Z",
+      aktualisiert: "2026-01-01T00:00:00.000Z",
+      passwortGeaendert: "2026-01-01T00:00:00.000Z", letzteAnmeldung: null,
+    };
+    await s.setJSON(A.accountSchluessel("alt@example.org"), alt);
+    await s.setJSON(A.kontoIdSchluessel("a_altbestand"),
+      { schluessel: A.accountSchluessel("alt@example.org") });
+
+    const gelesen = await A.accountLesenPerId(s, "a_altbestand");
+    expect(gelesen.id).toBe("a_altbestand");
+    expect(gelesen.profil).toBeUndefined();
+    expect(gelesen.testbetriebVerbrauchtAm).toBeUndefined();
+    /* Kein Anspruch — ein fehlender Verbrauchsvermerk ist keine Erlaubnis. */
+    expect(A.testbetriebOffen(gelesen)).toEqual({ ok: false, grund: "kein-vorgang" });
+    /* Und er bleibt änderbar wie jeder andere. */
+    expect((await A.anmeldungVermerken(s, "a_altbestand")).ok).toBe(true);
+  });
+
+  it("weist unbrauchbare Werte für Profil und Marken ab", async () => {
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "werte@example.org");
+    for (const [feld, wert] of [
+      ["testbetriebOffenSeit", 42], ["testbetriebOffenSeit", ""],
+      ["testbetriebVerbrauchtAm", true], ["testbetriebVerbrauchtAm", {}],
+    ]) {
+      const e = await A.accountAendern(s, accountId, { [feld]: wert });
+      expect(e.ok, `${feld}=${JSON.stringify(wert)}`).toBe(false);
+      expect(e.grund).toBe(feld);
+    }
+    const e = await A.accountAendern(s, accountId, { profil: { vorname: "A" } });
+    expect(e.ok).toBe(false);
+    expect(e.grund).toBe("profil:nachname");
+    /* null bleibt erlaubt: So räumt die Provisionierung den Vorgang ab. */
+    expect((await A.accountAendern(s, accountId, { testbetriebOffenSeit: null })).ok)
+      .toBe(true);
+  });
+
+  it("erzeugt bis hierher weiterhin keinen Betrieb, keine Rolle, keine Sitzung", async () => {
+    const s = laden();
+    const { accountId } = await durchlaufen(s, "grenze@example.org");
+    const konto = await A.accountLesenPerId(s, accountId);
+    /* Der Account trägt Profildaten — aber keine Rolle und keinen Raum. */
+    for (const feld of ["rolle", "raum", "betrieb", "mandantId", "person", "einheit"]) {
+      expect(Object.prototype.hasOwnProperty.call(konto, feld), feld).toBe(false);
+    }
+    for (const praefix of ["mitglied:", "raummitglied:", "kern:", "bestand:",
+      "scherbe:", "konto:", "t:", "sk:", "push:"]) {
+      expect((await s.list({ prefix: praefix })).blobs.length, praefix).toBe(0);
+    }
   });
 });
