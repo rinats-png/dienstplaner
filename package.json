@@ -31,6 +31,7 @@
     "pruefung:rollen": "vitest run pruefungen/rollenvergabe.test.js",
     "pruefung:standorte": "vitest run pruefungen/standorte.test.js",
     "pruefung:adressen": "vitest run pruefungen/adressen.test.js",
+    "pruefung:accounts": "vitest run pruefungen/accounts.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
