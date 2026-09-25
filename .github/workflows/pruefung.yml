@@ -134,6 +134,17 @@ jobs:
       - name: Mailversand
         run: npm run pruefung:post
 
+      # Accounts und Mitgliedschaften: der Speicher, der die Identität eines
+      # Menschen von seiner Berechtigung in einem Betrieb trennt. Geprüft
+      # werden hier vor allem die Fälle, die man nicht von Hand nachstellt:
+      # gleichzeitige Anlageversuche derselben Adresse, gleichzeitige
+      # Mitgliedschaften, die vier Fehlerfälle des zweiten Schreibvorgangs —
+      # und die Isolation. Ein Rückfall in der Mitgliedschaftsprüfung wäre
+      # ein Weg von einem Betrieb in einen anderen; genau darauf zielt der
+      # letzte dieser Tests.
+      - name: Accounts und Mitgliedschaften
+        run: npm run pruefung:accounts
+
       - name: Übersetzen
         run: npm run build
 
