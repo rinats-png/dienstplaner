@@ -1,10 +1,9 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
-import { baueLeerenBetrieb } from "../lib/leerbetrieb.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben } from "../lib/konten.mjs";
-import { bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { testbetriebAnlegen } from "../lib/provisionierung.mjs";
 import { TESTTAGE } from "../lib/aufraeumen.mjs";
 
 /* ==========================================================================
@@ -36,16 +35,11 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
 /* TESTTAGE (30) und die anschließende Aufbewahrung (90 Tage) stehen in
    lib/aufraeumen.mjs — dort, wo nach Ablauf gelöscht wird. */
 
-/** Ein lesbarer Raumname aus dem Betriebsnamen, mit Zufallsanhang. */
-function raumName(name) {
-  const rein = String(name || "betrieb").toLowerCase()
-    .replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 28) || "betrieb";
-  const alphabet = "acdefghjkmnpqrtuvwxy34679";
-  const anhang = Array.from(randomBytes(5))
-    .map((b) => alphabet[b % alphabet.length]).join("");
-  return `t-${rein}-${anhang}`;
-}
+/* Raumkennung, leerer Betrieb und die dreißig Tage liegen in
+   lib/provisionierung.mjs — dieselbe Erstellung nutzt der Accountweg. Was
+   hier bleibt, ist das, was nur dieser Endpunkt hat: Bremse,
+   Herkunftsprüfung, Eingabeprüfung, Zugangscodes, Nachfassliste,
+   Protokoll und die Antwortform. */
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -88,25 +82,22 @@ export default async (req) => {
       ? rollen.filter((r) => erlaubteRollen.includes(r)).slice(0, 3) : [];
     const alle = ["leitung", "planer", ...zusatz];
 
-    const raum = raumName(name);
-    const jetzt = new Date();
-    const laeuftAb = new Date(jetzt.getTime() + TESTTAGE * 86400000);
-
-    /* Der Raum darf noch nicht belegt sein — bei fünf Zufallszeichen
-       praktisch ausgeschlossen, aber geprüft wird trotzdem. */
-    if (await raumBelegt(store(), raum))
-      return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
-
     /* Den Betrieb anlegen, bevor die Zugänge entstehen.
 
        Vorher fehlte dieser Schritt, und die Anwendung erzeugte beim ersten
        Öffnen ihre Beispieldaten — der Interessent landete in einem
        erfundenen Wachdienst statt im eigenen Haus. Name und Branche waren
-       damit verloren. */
-    const leer = baueLeerenBetrieb({
-      name, branche: br, email, land: bl, raum, laeuftAb: laeuftAb.toISOString(),
+       damit verloren.
+
+       Kennung, leerer Betrieb, Kollisionsprüfung und die dreißig Tage
+       kommen aus dem gemeinsamen Kern. Ohne `personenBauen` bleibt der
+       Betrieb leer — wie bisher. */
+    const erstellt = await testbetriebAnlegen(store(), {
+      name, branche: br, email, land: bl, durch: "Selbststart",
     });
-    await bestandSchreiben(store(), raum, leer, { durch: "Selbststart" });
+    if (!erstellt.ok)
+      return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
+    const { raum, laeuftAb, angelegt } = erstellt;
 
     /* Zugänge erzeugen */
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
@@ -118,8 +109,8 @@ export default async (req) => {
       await kontoSchreiben(store(), ablageSchluessel(code), {
         name: String(name).trim(), bestand: raum, rolle,
         person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
-        selbstAngelegt: true, laeuftAb: laeuftAb.toISOString(),
-        angelegt: jetzt.toISOString(),
+        selbstAngelegt: true, laeuftAb,
+        angelegt,
       });
       zugaenge.push({ rolle, code });
     }
@@ -129,15 +120,15 @@ export default async (req) => {
     liste.unshift({
       raum, name: String(name).trim(), branche: br,
       email: email ? String(email).trim() : null,
-      zugaenge: alle.length, angelegt: jetzt.toISOString(),
-      laeuftAb: laeuftAb.toISOString(), herkunft: k,
+      zugaenge: alle.length, angelegt,
+      laeuftAb, herkunft: k,
     });
     await store().setJSON("selbststarts", liste.slice(0, 500));
 
     await protokoll("starten", k, "erfolg", `${br} · ${alle.length} Zugänge`);
 
     return antwort({ ok: true, raum, zugaenge, branche: br,
-      laeuftAb: laeuftAb.toISOString(), testtage: TESTTAGE });
+      laeuftAb, testtage: TESTTAGE });
   } catch (e) {
     return antwort({ fehler: "Das hat nicht geklappt. Versuch es noch einmal." }, 500);
   }

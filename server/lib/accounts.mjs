@@ -344,6 +344,11 @@ export async function accountAnlegen(store, { email, status = "eingeladen",
       profil: profil ? { ...profil, erfasstAm: nun } : null,
       testbetriebOffenSeit: selbstbedienung ? nun : null,
       testbetriebVerbrauchtAm: null,
+      /* Der Raum, für den eine Provisionierung begonnen wurde. Steht er
+         hier, ohne dass der Vorgang abgeschlossen ist, nimmt ein späterer
+         Versuch genau diesen Raum wieder auf statt einen zweiten anzulegen
+         (provisionierung.mjs). */
+      testbetriebRaum: null,
     };
 
     /* Zwei Schreibvorgänge, und die Ablage kennt keine Transaktion. Die
@@ -432,7 +437,7 @@ export async function accountLesenPerId(store, accountId) {
 
 const AENDERBAR = new Set(["emailVerifiziertAm", "passwort", "status",
   "tokenNr", "epoche", "passwortGeaendert", "letzteAnmeldung",
-  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm"]);
+  "profil", "testbetriebOffenSeit", "testbetriebVerbrauchtAm", "testbetriebRaum"]);
 
 /**
  * Ändert einen Account feldweise. Unbekannte oder geschützte Felder führen
@@ -459,7 +464,8 @@ export async function accountAendern(store, accountId, felder) {
     const g = profilPruefen(felder.profil);
     if (!g.ok) return { ok: false, grund: `profil:${g.grund}` };
   }
-  for (const feld of ["testbetriebOffenSeit", "testbetriebVerbrauchtAm"]) {
+  for (const feld of ["testbetriebOffenSeit", "testbetriebVerbrauchtAm",
+    "testbetriebRaum"]) {
     if (feld in felder && felder[feld] !== null
         && !(typeof felder[feld] === "string" && felder[feld]))
       return { ok: false, grund: feld };
@@ -550,6 +556,10 @@ export async function tokenNrErhoehen(store, accountId, zweck) {
  * entstünde beim nächsten Versuch ein zweiter kostenloser Betrieb. Der
  * Verbrauch ist endgültig und überlebt Testende, Aufbewahrung und
  * Raumlöschung — er hängt an keinem Raum.
+ *
+ * `testbetriebRaum` bleibt stehen: Er ist ab hier eine historische
+ * Angabe — welcher Raum einmal daraus entstand. Für die Frage, ob noch ein
+ * Anspruch besteht, zählt allein der Verbrauch.
  *
  * Aufzurufen erst, wenn eine Provisionierung vollständig gelungen ist.
  */

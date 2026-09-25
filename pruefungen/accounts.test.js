@@ -83,8 +83,8 @@ describe("Account anlegen", () => {
     expect(Object.keys(account).sort()).toEqual([
       "aktualisiert", "email", "emailNorm", "emailVerifiziertAm", "epoche",
       "erstellt", "id", "letzteAnmeldung", "passwort", "passwortGeaendert",
-      "profil", "status", "testbetriebOffenSeit", "testbetriebVerbrauchtAm",
-      "tokenNr",
+      "profil", "status", "testbetriebOffenSeit", "testbetriebRaum",
+      "testbetriebVerbrauchtAm", "tokenNr",
     ]);
     expect(account.status).toBe("eingeladen");
     expect(account.passwort).toBe(null);
@@ -98,6 +98,8 @@ describe("Account anlegen", () => {
     expect(account.profil).toBe(null);
     expect(account.testbetriebOffenSeit).toBe(null);
     expect(account.testbetriebVerbrauchtAm).toBe(null);
+    /* Und kein begonnener Provisionierungsvorgang. */
+    expect(account.testbetriebRaum).toBe(null);
   });
 
   it("nimmt Registrierungsdaten und den Neukundenvorgang nur auf Verlangen an", async () => {
