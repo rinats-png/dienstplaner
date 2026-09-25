@@ -34,6 +34,7 @@
     "pruefung:accounts": "vitest run pruefungen/accounts.test.js",
     "pruefung:account-isolation": "vitest run pruefungen/account-isolation.test.js",
     "pruefung:registrierung": "vitest run pruefungen/registrierung.test.js",
+    "pruefung:starten": "vitest run pruefungen/starten.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
