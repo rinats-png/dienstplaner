@@ -393,7 +393,14 @@ export async function tokenNrErhoehen(store, accountId, zweck) {
 }
 
 /** Zugang sperren. Der Datensatz bleibt — ein gesperrter Account ist ein
-    Beleg, kein leerer Platz. */
+    Beleg, kein leerer Platz.
+
+    Die Sperre trifft die Identität, nicht den Betrieb: Mitgliedschaften,
+    Rollen und Personenverweise bleiben unangetastet. Ein gesperrter Mensch
+    ist nicht ausgetreten, und eine Dienstplanung, aus der seine Rolle
+    verschwindet, wäre hinterher nicht mehr nachvollziehbar. Was eine Sperre
+    für laufende Sitzungen bedeutet, entscheidet die Anmeldung, nicht der
+    Speicher. */
 export const accountSperren = (store, accountId) =>
   accountAendern(store, accountId, { status: "gesperrt" });
 
@@ -495,6 +502,13 @@ export async function mitgliedschaftAnlegen(store, { accountId, raum, betrieb = 
  * eben den". Wer nach Raum Y fragt und nur in Raum X Mitglied ist,
  * bekommt nichts. Jede Bequemlichkeit an dieser Stelle wäre ein Weg von
  * einem Betrieb in einen anderen.
+ *
+ * Die Prüfung am Ende — der Datensatz muss die gestellte Frage bestätigen —
+ * ist nicht nur Vorsicht gegen einen verfälschten Inhalt. Die Dateiablage
+ * unterscheidet auf Windows und macOS keine Groß- und Kleinschreibung:
+ * `mitglied:a_x:t-RAUM-A` trifft dort denselben Datensatz wie
+ * `mitglied:a_x:t-raum-a`. Der Schlüssel allein ist also nicht überall
+ * eindeutig; erst der Inhalt bindet die Mitgliedschaft an Account und Raum.
  * @returns {Promise<object|null>}
  */
 export async function mitgliedschaftLesen(store, accountId, raum) {
@@ -561,6 +575,13 @@ export async function mitgliedschaftenDesRaums(store, raum, wahl = {}) {
 
 /* --------------------------------------------------------------------------
    ZUSTÄNDE EINER MITGLIEDSCHAFT
+
+   Was hier fehlt, fehlt mit Absicht: eine Funktion, die die Rolle einer
+   bestehenden Mitgliedschaft ändert. Eine Rolle wechselt, indem die alte
+   Mitgliedschaft entzogen und eine neue ausgesprochen wird — dann steht im
+   Protokoll, wer wann welchen Rang hatte. Ein `rolleSetzen()` wäre der
+   kürzeste Weg, einen Rang beiläufig zu heben, und der Grabstein, der das
+   belegen müsste, entstünde nie.
 
    Drei Zustände, drei erlaubte Wege — und keine Sprünge daneben. „entzogen"
    ist eine Endstation und bleibt als Grabstein liegen: Das Protokoll soll
