@@ -154,6 +154,16 @@ jobs:
       - name: Registrierung
         run: npm run pruefung:registrierung
 
+      # Das heutige Verhalten von POST /starten, Zeile für Zeile festgehalten:
+      # Der gemeinsame Provisionierungskern wird daran gemessen.
+      - name: Selbststart
+        run: npm run pruefung:starten
+
+      # Raum, Leitungsperson, Mitgliedschaft und der einmalige Anspruch —
+      # und was nach einem Fehler übrig bleiben darf: nichts.
+      - name: Provisionierung
+        run: npm run pruefung:provisionierung
+
       - name: Übersetzen
         run: npm run build
 
