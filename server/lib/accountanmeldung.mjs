@@ -258,14 +258,21 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
 }
 
 /**
- * Abmelden. Gelingt immer — auch mit einem Merkmal, das es nie gab.
+ * Abmelden.
+ *
+ * Ein Merkmal, das es nie gab, ist kein Fehler: Ein unbekannter Schlüssel
+ * lässt sich löschen, und ob es eine Sitzung gab, muss niemand erfahren.
+ * `ok: false` heißt deshalb genau eine Sache — die Ablage hat den Widerruf
+ * nicht angenommen, die Sitzung gilt also weiter. Wer das Ergebnis
+ * weiterreicht, darf es nicht in ein „abgemeldet" umdeuten.
+ *
  * @param {unknown} token
  * @param {{sitzungsAblage?: (object|null)}} [o]
- * @returns {Promise<{ok: true}>}
+ * @returns {Promise<{ok: boolean}>}
  */
 export async function abmelden(token, { sitzungsAblage = null } = {}) {
-  await accountSitzungBeenden(token, { ablage: sitzungsAblage });
-  return { ok: true };
+  const weg = await accountSitzungBeenden(token, { ablage: sitzungsAblage });
+  return { ok: weg };
 }
 
 /**

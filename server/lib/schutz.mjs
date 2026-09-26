@@ -194,6 +194,19 @@ export const GRENZEN = {
      Versuche je zehn Minuten lassen Raum für Tippfehler in einer
      Passwortregel und nicht mehr. */
   "passwort-setzen": { versuche: 10, fenster: 600, sperre: 600 },
+  /* Anmeldung mit E-Mail und Passwort. Strenger als alles andere, weil
+     hier zwei Dinge gleichzeitig auf dem Spiel stehen: ein erratbares
+     Geheimnis und ein scrypt-Durchlauf je Versuch (rund 32 MB und
+     Rechenzeit). Dieselben Zahlen wie beim Anmelden mit Zugangscode, und
+     aus demselben Grund steigend: Wer wiederholt anrennt, wartet jedes Mal
+     doppelt so lange. */
+  "anmelden-konto": { versuche: 8, fenster: 300, sperre: 300, steigend: true,
+    max: 7200 },
+  /* Sitzung prüfen und abmelden. Kein Geheimnis zu raten — ein Merkmal hat
+     256 Bit —, also großzügig wie das Lesen. Gebremst wird, damit ein
+     Ansturm nicht die Ablage beschäftigt: Jede Prüfung liest zwei
+     Datensätze und schreibt gelegentlich einen. */
+  "konto-sitzung": { versuche: 300, fenster: 60, sperre: 60 },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
@@ -209,6 +222,13 @@ export const WEITERE = {
      Adresse, nie die Adresse selbst. */
   registrierung: { ziel: { versuche: 5, fenster: 3600 },
     gesamt: { versuche: 60, fenster: 3600 } },
+  /* Zwei weitere Dimensionen für die Account-Anmeldung. Das Ziel ist der
+     Ablageschlüssel der Adresse — ein gepfefferter Prüfwert, nie die
+     Adresse selbst: Ein Angriff auf EIN Postfach fällt damit auf, auch
+     wenn er aus hundert Herkünften kommt. Die Gesamtgrenze deckelt den
+     verteilten Versuch, der je Herkunft unauffällig bleibt. */
+  "anmelden-konto": { ziel: { versuche: 20, fenster: 300 },
+    gesamt: { versuche: 200, fenster: 300 } },
 };
 
 /**
@@ -259,6 +279,83 @@ export function herkunftErlaubt(req) {
     if (w) eigen.add(String(w).split(",")[0].trim());
   }
   return eigen.has(fremd);
+}
+
+/* --------------------------------------------------------------------------
+   HERKUNFT EINER COOKIE-GESTÜTZTEN ANFRAGE
+
+   `herkunftErlaubt` lässt eine Anfrage ohne `Origin` durch. Das ist richtig,
+   solange das Sitzungsmerkmal im Kopf `authorization` steht: Ein fremdes
+   Blatt kann diesen Kopf nicht setzen, also ist eine Anfrage ohne Origin
+   entweder ein Skript (das seinen eigenen Schlüssel mitbringt) oder nicht
+   angemeldet.
+
+   Für ein Cookie gilt das NICHT. Ein Cookie schickt der Browser von selbst,
+   auch wenn ein fremdes Blatt die Anfrage auslöst. Genau der Fall, den
+   `herkunftErlaubt` durchlässt — zustandsändernd, ohne Origin — wäre dann
+   die Lücke. Deshalb eine eigene, strengere Prüfung für die Endpunkte, die
+   mit dem Account-Cookie arbeiten. Die bestehende bleibt unberührt: Sie
+   gehört zu einem anderen Verfahren.
+
+   Die Regeln, und warum:
+
+     Fetch-Metadata zuerst. `sec-fetch-site` setzt der Browser selbst, ein
+     Blatt kann es nicht fälschen. Steht dort `cross-site` oder
+     `same-site` (ein Nachbar-Host derselben Registry-Domain), ist Schluss —
+     für JEDE Methode, auch für das Lesen.
+
+     Lesend (GET, HEAD) ist danach frei. Eine fremde Seite kann eine solche
+     Antwort nicht lesen: Es gibt keinen CORS-Kopf, und JSON ohne
+     `Access-Control-Allow-Origin` bleibt für sie unzugänglich.
+
+     Zustandsändernd ist ausschließlich POST, und dafür MUSS ein `Origin`
+     kommen, der zu diesem Wirt gehört. Fehlt er ganz, gilt die Anfrage nur
+     dann als eigen, wenn der Browser `sec-fetch-site: same-origin`
+     mitschickt. Ein Aufruf ohne beides — typisch für curl — wird
+     abgewiesen. Das ist Absicht und der Unterschied zur alten Prüfung:
+     Hier gibt es keinen Aufrufer, der ein Recht darauf hätte.
+
+   Damit ist auch Login-CSRF gedeckt: Niemand kann einen fremden Browser in
+   ein Konto anmelden, das er kontrolliert, denn der Anmeldeaufruf braucht
+   einen eigenen Origin. Und Logout-CSRF ebenso — ein fremdes Blatt kann
+   niemanden abmelden. Ein zusätzliches CSRF-Token würde daran nichts
+   verbessern: Es wäre ein zweites Geheimnis auf demselben Weg, auf dem
+   schon der Origin verlangt wird. Sollte die Origin-Pflicht eines Tages
+   fallen — etwa für einen Aufrufer ohne Browser —, braucht es das Token;
+   solange sie steht, nicht.
+   -------------------------------------------------------------------------- */
+
+/** Die Wirte, die als „diese Seite" gelten. Eigene Fassung, damit
+    `herkunftErlaubt` unverändert bleibt. */
+function eigeneWirte(req) {
+  const eigen = new Set();
+  try { eigen.add(new URL(req.url).host); } catch { /* ohne */ }
+  for (const kopf of ["host", "x-forwarded-host"]) {
+    const w = req.headers.get(kopf);
+    if (w) eigen.add(String(w).split(",")[0].trim());
+  }
+  return eigen;
+}
+
+/**
+ * Darf diese Anfrage mit dem Account-Cookie arbeiten?
+ * @param {Request} req
+ * @returns {boolean}
+ */
+export function herkunftStreng(req) {
+  const methode = (req.method || "GET").toUpperCase();
+
+  const ziel = req.headers.get("sec-fetch-site");
+  if (ziel && ziel !== "same-origin" && ziel !== "none") return false;
+
+  if (methode === "GET" || methode === "HEAD") return true;
+  if (methode !== "POST") return false;
+
+  const roh = req.headers.get("origin");
+  if (!roh || roh === "null") return ziel === "same-origin";
+  let fremd;
+  try { fremd = new URL(roh).host; } catch { return false; }
+  return eigeneWirte(req).has(fremd);
 }
 
 /**

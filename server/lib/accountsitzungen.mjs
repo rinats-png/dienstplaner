@@ -227,10 +227,23 @@ async function weg(speicher, schluessel) {
 export async function accountSitzungBeenden(token, { ablage = null } = {}) {
   if (!merkmalBrauchbar(token)) return true;
   const speicher = ablage || accountSitzungsSpeicher();
+  const schluessel = accountSitzungsSchluessel(token);
   try {
-    await speicher.delete(accountSitzungsSchluessel(token));
+    await speicher.delete(schluessel);
     return true;
-  } catch { return false; }
+  } catch {
+    /* Gescheitert — und trotzdem ist die Frage nicht, wer gelöscht hat,
+       sondern ob die Sitzung noch existiert. Zwei gleichzeitige Abmeldungen
+       desselben Merkmals greifen nach derselben Datei; eine gewinnt, die
+       andere sieht einen Fehler, obwohl das Ziel erreicht ist. Deshalb
+       nachsehen: Ist der Datensatz weg, ist die Sitzung beendet.
+
+       Ist er noch da — oder lässt sich das nicht feststellen —, bleibt es
+       bei „nicht gelungen". Diese Antwort darf niemand in ein
+       „abgemeldet" umdeuten. */
+    try { return !(await speicher.get(schluessel, { type: "json" })); }
+    catch { return false; }
+  }
 }
 
 /**

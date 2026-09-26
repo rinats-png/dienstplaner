@@ -179,6 +179,11 @@ jobs:
       - name: Account-Anmeldung
         run: npm run pruefung:accountanmeldung
 
+      # Drei Endpunkte, ein HttpOnly-Cookie, Origin-Pflicht: Die Prüfung hält
+      # fest, dass das Cookie eine Identität belegt und keinen Betrieb öffnet.
+      - name: Account-Anmeldung über HTTP
+        run: npm run pruefung:anmeldung-http
+
       - name: Übersetzen
         run: npm run build
 
