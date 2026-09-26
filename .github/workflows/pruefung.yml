@@ -164,6 +164,11 @@ jobs:
       - name: Provisionierung
         run: npm run pruefung:provisionierung
 
+      # Die erste öffentliche Tür zum neuen Konto: zwei Endpunkte, und beide
+      # dürfen nicht verraten, ob eine Adresse schon vergeben ist.
+      - name: Registrierung über HTTP
+        run: npm run pruefung:registrierung-http
+
       - name: Übersetzen
         run: npm run build
 

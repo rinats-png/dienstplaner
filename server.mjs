@@ -118,10 +118,19 @@ async function funktionenLaden() {
  * @param {string} pfad
  */
 function routeFuer(routen, pfad) {
-  for (const r of routen) {
-    if (r.exakt !== null && pfad === r.exakt) return r;
-    if (r.praefix !== null && pfad.startsWith(r.praefix)) return r;
-  }
+  /* Erst alle genauen Pfade, dann die Präfixe.
+
+     Vorher entschied die Reihenfolge der Dateien: `daten.mjs` beansprucht
+     `/api/*` und wird alphabetisch vor allem anderen geladen, also hätte ein
+     genauer Pfad wie `/api/registrierung` sie nie erreicht. Wer eine solche
+     Route anlegt, soll nicht darauf angewiesen sein, seine Datei passend zu
+     benennen — das ist eine Falle, die genau einmal auffällt.
+
+     Für den Bestand ändert sich nichts: Kein genauer Pfad liegt unter einem
+     fremden Präfix (`/einrichten`, `/lage`, `/starten` gegen `/api/`,
+     `/kalender/`, `/zustellung/`). */
+  for (const r of routen) if (r.exakt !== null && pfad === r.exakt) return r;
+  for (const r of routen) if (r.praefix !== null && pfad.startsWith(r.praefix)) return r;
   return null;
 }
 

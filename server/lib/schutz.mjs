@@ -177,6 +177,17 @@ export const GRENZEN = {
   /* Selbstbedienung: drei Betriebe je Stunde. Ohne diese Bremse legt jemand
      über Nacht zehntausend Räume an, und die Kosten laufen mit. */
   starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  /* Eine Registrierung kostet zunächst nichts — aber sie schickt eine Mail.
+     Ohne Bremse wäre der Endpunkt ein Werkzeug, mit dem sich fremde
+     Postfächer zuschütten lassen, und der Versanddienst rechnet mit. Fünf
+     Versuche je Stunde und Herkunft reichen für jeden Tippfehler; die
+     Sperre verdoppelt sich wie beim Anmelden. */
+  registrierung: { versuche: 5, fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  /* Ein Bestätigungslink wird auch von Mailprogrammen vorab geladen und von
+     Menschen mehrfach angeklickt. Deshalb großzügiger: Das Raten eines
+     256-Bit-Tokens verhindert seine Länge, nicht diese Bremse. Sie hält nur
+     jemanden auf, der es trotzdem versucht. */
+  verifizieren: { versuche: 30, fenster: 600, sperre: 600 },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
@@ -186,6 +197,12 @@ export const WEITERE = {
   zugaenge: { gesamt: { versuche: 40, fenster: 600 } },
   /* Auch insgesamt gedeckelt — ein verteilter Ansturm soll nicht durchkommen. */
   starten: { gesamt: { versuche: 60, fenster: 3600 } },
+  /* Zwei weitere Dimensionen für die Registrierung: dieselbe Adresse aus
+     hundert Herkünften ist ein Angriff auf ein Postfach, und ein verteilter
+     Ansturm bleibt je Herkunft unauffällig. Das Ziel ist der Prüfwert der
+     Adresse, nie die Adresse selbst. */
+  registrierung: { ziel: { versuche: 5, fenster: 3600 },
+    gesamt: { versuche: 60, fenster: 3600 } },
 };
 
 /**

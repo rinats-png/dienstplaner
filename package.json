@@ -36,6 +36,7 @@
     "pruefung:registrierung": "vitest run pruefungen/registrierung.test.js",
     "pruefung:starten": "vitest run pruefungen/starten.test.js",
     "pruefung:provisionierung": "vitest run pruefungen/provisionierung.test.js",
+    "pruefung:registrierung-http": "vitest run pruefungen/registrierung-http.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
