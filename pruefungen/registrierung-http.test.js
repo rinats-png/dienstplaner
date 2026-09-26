@@ -361,11 +361,15 @@ describe("POST /api/registrierung", () => {
 describe("POST /api/registrierung/verifizieren", () => {
   const pfad = "/api/registrierung/verifizieren";
 
-  it("bestätigt die Adresse und sagt, dass noch ein Passwort fehlt", async () => {
+  it("bestätigt die Adresse und gibt den Nachweis für das erste Passwort", async () => {
     const token = await tokenAusMail("bestaetigt@example.org");
     const e = await anfrage({ token }, { pfad });
     expect(e.status).toBe(200);
-    expect(e.daten).toEqual({ ok: true, passwortFehlt: true });
+    expect(Object.keys(e.daten).sort()).toEqual(["fortsetzung", "ok", "passwortFehlt"]);
+    expect(e.daten.ok).toBe(true);
+    expect(e.daten.passwortFehlt).toBe(true);
+    /* 256 Bit, base64url — dieselbe Form wie jedes andere Token. */
+    expect(e.daten.fortsetzung).toMatch(/^[A-Za-z0-9_-]{40,}$/);
     expect(e.antwort.headers.get("cache-control")).toBe("no-store");
 
     const konto = await A.accountLesenPerMail(laden(), "bestaetigt@example.org");
@@ -377,9 +381,30 @@ describe("POST /api/registrierung/verifizieren", () => {
     expect(konto.testbetriebVerbrauchtAm).toBe(null);
     await keineNebenwirkungen();
 
-    /* Keine Kennung und kein Token in der Antwort. */
+    /* Keine Kennung und kein Bestätigungstoken in der Antwort. */
     expect(e.text).not.toContain(konto.id);
     expect(e.text).not.toContain(token);
+
+    /* Der Nachweis liegt nur als Prüfsumme in der Ablage, mit dem Zweck
+       „einrichten" und einer Frist von fünfzehn Minuten. */
+    const s = laden();
+    let gefunden = null;
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.zweck !== "einrichten") continue;
+      if (eintrag.accountId !== konto.id) continue;
+      gefunden = { key: b.key, eintrag };
+    }
+    expect(gefunden).not.toBe(null);
+    expect(gefunden.key).not.toContain(e.daten.fortsetzung);
+    expect(JSON.stringify(gefunden.eintrag)).not.toContain(e.daten.fortsetzung);
+    expect(gefunden.eintrag.bis - Date.now()).toBeLessThanOrEqual(15 * 60 * 1000);
+    expect(gefunden.eintrag.bis - Date.now()).toBeGreaterThan(13 * 60 * 1000);
+    /* Und in der ganzen Ablage steht er nirgends im Klartext. */
+    for (const b of (await s.list({})).blobs) {
+      const roh = await s.get(b.key).catch(() => null);
+      expect(String(roh || ""), b.key).not.toContain(e.daten.fortsetzung);
+    }
   }, LIMIT);
 
   it("gibt für jeden unbrauchbaren Link dieselbe Absage", async () => {
@@ -523,5 +548,316 @@ describe("Routing und Protokoll", () => {
     const a = await legacy(req);
     /* Unverändertes Verhalten: GET bleibt 405. */
     expect(a.status).toBe(405);
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   DER NACHWEIS FÜR DAS ERSTE PASSWORT
+
+   Wer seine Adresse bestätigt hat, bekommt dabei ein zweites, kurzlebiges
+   Token. Geprüft wird, wer ihn bekommt — und vor allem, wer nicht: ein
+   eingeladenes Konto, ein Konto mit Passwort, ein verbrauchter Link, ein
+   fremder Zweck.
+   ========================================================================== */
+
+describe("Der Fortsetzungsnachweis", () => {
+  const pfad = "/api/registrierung/verifizieren";
+
+  it("geht nur an einen Selbstbedienungsvorgang ohne Passwort", async () => {
+    const s = laden();
+    /* Ein eingeladenes Konto: angelegt ohne Selbstbedienung, also ohne
+       geöffneten Testbetriebsanspruch. Sein Weg zum Passwort führt über die
+       Einladung, nicht über diesen Nachweis. */
+    const geladen = (await A.accountAnlegen(s, { email: "geladen-n@example.org" })).account;
+    expect(geladen.testbetriebOffenSeit).toBe(null);
+    const { tokenAusstellen } = await import("../server/lib/token.mjs");
+    const link = await tokenAusstellen(s, { zweck: "verifizierung", nr: 1,
+      inhalt: { accountId: geladen.id, emailNorm: geladen.emailNorm } });
+    await A.tokenNrErhoehen(s, geladen.id, "verifizierung");
+
+    const e = await anfrage({ token: link.token }, { pfad });
+    expect(e.status).toBe(200);
+    expect(e.daten).toEqual({ ok: true, passwortFehlt: true });
+    expect(e.daten.fortsetzung).toBeUndefined();
+    /* Die Adresse ist trotzdem bestätigt — die bisherige Semantik bleibt. */
+    expect((await A.accountLesenPerId(s, geladen.id)).emailVerifiziertAm).toBeTruthy();
+    /* Und es liegt kein Nachweis für ihn in der Ablage. */
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.zweck === "einrichten") expect(eintrag.accountId).not.toBe(geladen.id);
+    }
+  }, LIMIT);
+
+  it("geht nicht an ein Konto, das schon ein Passwort hat", async () => {
+    const s = laden();
+    const konto = (await A.accountAnlegen(s, { email: "hatpw@example.org",
+      profil: PROFIL, selbstbedienung: true, passwort: PW_ABLAGE })).account;
+    const { tokenAusstellen } = await import("../server/lib/token.mjs");
+    const link = await tokenAusstellen(s, { zweck: "verifizierung", nr: 1,
+      inhalt: { accountId: konto.id, emailNorm: konto.emailNorm } });
+    await A.tokenNrErhoehen(s, konto.id, "verifizierung");
+
+    const e = await anfrage({ token: link.token }, { pfad });
+    expect(e.status).toBe(200);
+    expect(e.daten).toEqual({ ok: true, passwortFehlt: false });
+    expect(e.daten.fortsetzung).toBeUndefined();
+  }, LIMIT);
+
+  it("entsteht nicht aus einem verbrauchten Bestätigungslink", async () => {
+    const token = await tokenAusMail("verbraucht-n@example.org");
+    const erste = await anfrage({ token }, { pfad });
+    expect(erste.daten.fortsetzung).toBeTruthy();
+
+    /* Derselbe Link ein zweites Mal: keine Bestätigung, kein Nachweis. */
+    const zweite = await anfrage({ token }, { pfad });
+    expect(zweite.status).toBe(400);
+    expect(zweite.daten.fehler).toBe("ungueltiger-oder-abgelaufener-link");
+    expect(zweite.daten.fortsetzung).toBeUndefined();
+
+    /* Und es gibt genau einen Nachweis für dieses Konto, nicht zwei. */
+    const s = laden();
+    const konto = await A.accountLesenPerMail(s, "verbraucht-n@example.org");
+    let nachweise = 0;
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.zweck === "einrichten" && eintrag.accountId === konto.id) nachweise++;
+    }
+    expect(nachweise).toBe(1);
+  }, LIMIT);
+
+  it("entsteht nicht aus einem unbekannten, verfälschten oder zweckfremden Token", async () => {
+    const s = laden();
+    const konto = (await A.accountAnlegen(s, { email: "fremd-n@example.org",
+      profil: PROFIL, selbstbedienung: true })).account;
+    await A.emailBestaetigen(s, konto.id);
+    const { tokenAusstellen } = await import("../server/lib/token.mjs");
+    /* Die Laufnummer wird passend gesetzt, damit allein der ZWECK über die
+       Absage entscheidet — sonst fiele der Fall schon an der Entwertung
+       heraus und die Zweckprüfung bliebe ungeprüft. */
+    await A.tokenNrErhoehen(s, konto.id, "verifizierung");
+    const nr = (await A.accountLesenPerId(s, konto.id)).tokenNr.verifizierung;
+    const reset = await tokenAusstellen(s, { zweck: "zuruecksetzen", nr,
+      inhalt: { accountId: konto.id, emailNorm: konto.emailNorm } });
+    const einrichten = await tokenAusstellen(s, { zweck: "einrichten", nr,
+      inhalt: { accountId: konto.id, emailNorm: konto.emailNorm } });
+
+    for (const token of [reset.token, einrichten.token, "x".repeat(43),
+      "kurz", `${reset.token}x`]) {
+      const e = await anfrage({ token }, { pfad });
+      expect(e.status, String(token).slice(0, 12)).toBe(400);
+      expect(e.daten.fehler).toBe("ungueltiger-oder-abgelaufener-link");
+      expect(e.daten.fortsetzung).toBeUndefined();
+    }
+  }, LIMIT);
+
+  it("gilt fünfzehn Minuten und danach nicht mehr", async () => {
+    /* Geprüft über die Geschäftslogik mit eingespeister Uhr: Der Handler hat
+       keine Uhr, und dafür wird keine eingebaut. */
+    const s = laden();
+    const T0 = new Date("2026-09-26T08:00:00.000Z").getTime();
+    const uhr = (ms) => () => ms;
+    const pf = [];
+    const start = await R.registrierungStarten(s, { ...PROFIL, email: "frist-n@example.org",
+      versand: async (an, betreff, text) => { pf.push({ text }); return { ok: true, trocken: true }; },
+      jetzt: uhr(T0) });
+    expect(start.ok).toBe(true);
+    const link = /#token=([A-Za-z0-9_-]+)/.exec(pf[0].text)[1];
+    const v = await R.emailVerifizieren(s, { token: link, jetzt: uhr(T0) });
+    expect(v.ok).toBe(true);
+    expect(v.fortsetzung).toBeTruthy();
+    expect(v.fortsetzungBis - T0).toBe(15 * 60 * 1000);
+
+    const { tokenEinloesen } = await import("../server/lib/token.mjs");
+    /* Eine Minute vor Ablauf gilt er. */
+    const frueh = await tokenEinloesen(s, v.fortsetzung,
+      { zweck: "einrichten", jetzt: uhr(T0 + 14 * 60 * 1000) });
+    expect(frueh.eintrag).not.toBe(null);
+    expect(frueh.eintrag.accountId).toBe(v.accountId);
+
+    /* Ein zweiter Nachweis, diesmal über die Frist hinaus geprüft. */
+    const v2 = await R.emailVerifizieren(s, { token: link, jetzt: uhr(T0) });
+    expect(v2.ok).toBe(false);          // der Link ist verbraucht
+    const zweiter = await R.verifizierungErneutSenden(s, { email: "frist-n@example.org",
+      versand: async (an, betreff, text) => { pf.push({ text }); return { ok: true, trocken: true }; },
+      jetzt: uhr(T0) });
+    expect(zweiter.ok).toBe(true);
+    const link2 = /#token=([A-Za-z0-9_-]+)/.exec(pf[pf.length - 1].text)[1];
+    const v3 = await R.emailVerifizieren(s, { token: link2, jetzt: uhr(T0) });
+    expect(v3.fortsetzung).toBeTruthy();
+    const spaet = await tokenEinloesen(s, v3.fortsetzung,
+      { zweck: "einrichten", jetzt: uhr(T0 + 15 * 60 * 1000 + 1) });
+    expect(spaet.eintrag).toBe(null);
+    expect(spaet.grund).toBe("abgelaufen");
+  }, LIMIT);
+
+  it("wirkt genau einmal", async () => {
+    const s = laden();
+    const token = await tokenAusMail("einmalig-n@example.org");
+    const e = await anfrage({ token }, { pfad });
+    const nachweis = e.daten.fortsetzung;
+    expect(nachweis).toBeTruthy();
+
+    const { tokenEinloesen } = await import("../server/lib/token.mjs");
+    /* Acht gleichzeitige Einlösungen: genau eine gewinnt (Reihe in token.mjs). */
+    const acht = await Promise.all(Array.from({ length: 8 }, () =>
+      tokenEinloesen(s, nachweis, { zweck: "einrichten" })));
+    expect(acht.filter((x) => x.eintrag).length).toBe(1);
+    /* Und danach ist er auch einzeln wertlos. */
+    expect((await tokenEinloesen(s, nachweis, { zweck: "einrichten" })).eintrag).toBe(null);
+  }, LIMIT);
+
+  it("entwertet einen älteren Nachweis, wenn ein neuer entsteht", async () => {
+    /* Zwei Bestätigungen hintereinander sollen nicht zwei gültige Nachweise
+       ergeben — dafür führt der Account eine Laufnummer je Zweck. */
+    const s = laden();
+    const pf = [];
+    const versand = async (an, betreff, text) => { pf.push({ text }); return { ok: true, trocken: true }; };
+    await R.registrierungStarten(s, { ...PROFIL, email: "zwei-n@example.org", versand });
+    const ersterLink = /#token=([A-Za-z0-9_-]+)/.exec(pf[0].text)[1];
+    const eins = await R.emailVerifizieren(s, { token: ersterLink });
+    expect(eins.fortsetzung).toBeTruthy();
+
+    await R.verifizierungErneutSenden(s, { email: "zwei-n@example.org", versand });
+    const zweiterLink = /#token=([A-Za-z0-9_-]+)/.exec(pf[pf.length - 1].text)[1];
+    const zwei = await R.emailVerifizieren(s, { token: zweiterLink });
+    expect(zwei.fortsetzung).toBeTruthy();
+    expect(zwei.fortsetzung).not.toBe(eins.fortsetzung);
+
+    const konto = await A.accountLesenPerMail(s, "zwei-n@example.org");
+    expect(konto.tokenNr.einrichten).toBe(2);
+
+    /* Der erste Nachweis ist entwertet: Er wird eingelöst, aber die
+       Laufnummer passt nicht mehr. */
+    const { tokenEinloesen } = await import("../server/lib/token.mjs");
+    const alt = await tokenEinloesen(s, eins.fortsetzung,
+      { zweck: "einrichten", nummern: konto.tokenNr });
+    expect(alt.eintrag).toBe(null);
+    expect(alt.grund).toBe("entwertet");
+    /* Der neue gilt. */
+    const neu = await tokenEinloesen(s, zwei.fortsetzung,
+      { zweck: "einrichten", nummern: konto.tokenNr });
+    expect(neu.eintrag).not.toBe(null);
+    expect(neu.eintrag.accountId).toBe(konto.id);
+  }, LIMIT);
+
+  it("lässt bei acht gleichzeitigen Bestätigungen höchstens einen Nachweis entstehen", async () => {
+    const s = laden();
+    const token = await tokenAusMail("parallel-n@example.org");
+    const acht = await Promise.all(Array.from({ length: 8 }, () =>
+      anfrage({ token }, { pfad })));
+    const gelungen = acht.filter((x) => x.status === 200);
+    expect(gelungen.length).toBe(1);
+    expect(gelungen[0].daten.fortsetzung).toBeTruthy();
+    for (const x of acht.filter((y) => y.status !== 200)) {
+      expect(x.daten.fehler).toBe("ungueltiger-oder-abgelaufener-link");
+      expect(x.daten.fortsetzung).toBeUndefined();
+    }
+    const konto = await A.accountLesenPerMail(s, "parallel-n@example.org");
+    let nachweise = 0;
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.zweck === "einrichten" && eintrag.accountId === konto.id) nachweise++;
+    }
+    expect(nachweise).toBe(1);
+  }, LIMIT);
+
+  it("bestätigt die Adresse auch dann, wenn die Ausstellung scheitert — ohne Nachweis", async () => {
+    /* Der Fehlerfall zwischen Bestätigung und Nachweis: Die Adresse ist
+       bestätigt, ein Passwort lässt sich nicht setzen, und der Weg zurück
+       führt über einen neuen Bestätigungslink. Kein ungesicherter Zugang. */
+    const s = laden();
+    const pf = [];
+    const versand = async (an, betreff, text) => { pf.push({ text }); return { ok: true, trocken: true }; };
+    await R.registrierungStarten(s, { ...PROFIL, email: "klemmt-n@example.org", versand });
+    const link = /#token=([A-Za-z0-9_-]+)/.exec(pf[0].text)[1];
+
+    /* Ein Speicher, der das Ausstellen des Nachweises verweigert: Der
+       Schlüssel des neuen Tokens ist noch nicht bekannt, also scheitert jedes
+       Schreiben unter `token:` nach der Bestätigung. */
+    let bestaetigt = false;
+    const stur = new Proxy(s, {
+      get(ziel, name) {
+        if (name !== "setJSON") return Reflect.get(ziel, name);
+        return (key, ...rest) => {
+          if (key.startsWith("account:")) bestaetigt = true;
+          if (key.startsWith("token:") && bestaetigt) {
+            return Promise.reject(new Error("Platte voll beim Nachweis"));
+          }
+          return ziel.setJSON(key, ...rest);
+        };
+      },
+    });
+
+    const e = await R.emailVerifizieren(stur, { token: link });
+    expect(e.ok).toBe(true);
+    expect(e.fortsetzung).toBeUndefined();
+    expect(typeof e.ohneNachweis).toBe("string");
+
+    /* Die Adresse ist bestätigt, das Konto hat kein Passwort — und kein
+       Nachweis liegt herum. */
+    const konto = await A.accountLesenPerMail(s, "klemmt-n@example.org");
+    expect(konto.emailVerifiziertAm).toBeTruthy();
+    expect(konto.passwort).toBe(null);
+    expect(konto.status).toBe("eingeladen");
+    /* Für dieses Konto liegt kein Nachweis — andere Konten dieses
+       geteilten Speichers haben ihre eigenen. */
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.accountId !== konto.id) continue;
+      expect(eintrag.zweck).not.toBe("einrichten");
+    }
+
+    /* Der Weg zurück: ein neuer Bestätigungslink, derselbe Besitznachweis. */
+    const nochmal = await R.verifizierungErneutSenden(s,
+      { email: "klemmt-n@example.org", versand });
+    expect(nochmal.ok).toBe(true);
+    const link2 = /#token=([A-Za-z0-9_-]+)/.exec(pf[pf.length - 1].text)[1];
+    const zweite = await R.emailVerifizieren(s, { token: link2 });
+    expect(zweite.ok).toBe(true);
+    expect(zweite.fortsetzung).toBeTruthy();
+  }, LIMIT);
+
+  it("verrät den Nachweis weder im Protokoll noch in einer Adresszeile", async () => {
+    const spur = getStore({ name: "centric-spur" });
+    const token = await tokenAusMail("protokoll-n@example.org");
+    const e = await anfrage({ token }, { pfad });
+    const nachweis = e.daten.fortsetzung;
+    expect(nachweis).toBeTruthy();
+
+    const tag = new Date().toISOString().slice(0, 10);
+    const { blobs } = await spur.list({ prefix: `${tag}/verifizieren/` });
+    let text = "";
+    for (const b of blobs) {
+      const z = await spur.get(b.key, { type: "json" }).catch(() => null);
+      if (z) text += JSON.stringify(z);
+    }
+    expect(blobs.length).toBeGreaterThan(0);
+    expect(text).not.toContain(nachweis);
+    expect(text).not.toContain(token);
+    expect(text).not.toContain("protokoll-n@example.org");
+
+    /* Und der Handler baut keine Adresszeile mit dem Nachweis. */
+    const quelle = await readFile(
+      new URL("../server/funktionen/registrierung.mjs", import.meta.url), "utf8");
+    expect(quelle).not.toMatch(/fortsetzung=|\?token=|&token=/);
+    expect(quelle).not.toMatch(/\bconsole\s*\./);
+  }, LIMIT);
+
+  it("wird von keiner öffentlichen Neuausstellung per Adresse erzeugt", async () => {
+    /* Eine Adresse allein darf keinen Nachweis auslösen — sonst wäre der
+       Besitz der Mail überflüssig. Der Registrierungsstart schickt einen
+       Link, nichts weiter. */
+    const e = await starten({ email: "keinweg-n@example.org" });
+    expect(e.status).toBe(200);
+    expect(e.daten.fortsetzung).toBeUndefined();
+    expect(e.text).not.toContain("fortsetzung");
+
+    const s = laden();
+    const konto = await A.accountLesenPerMail(s, "keinweg-n@example.org");
+    for (const b of (await s.list({ prefix: "token:" })).blobs) {
+      const eintrag = await s.get(b.key, { type: "json" });
+      if (eintrag.accountId === konto.id) expect(eintrag.zweck).toBe("verifizierung");
+    }
+    expect(konto.tokenNr.einrichten).toBe(0);
   }, LIMIT);
 });

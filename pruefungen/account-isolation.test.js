@@ -605,13 +605,13 @@ describe("Passwort und Zähler bleiben beim Account", () => {
     await mitglied(s, a.id, "t-tk-x");
     expect((await A.tokenNrErhoehen(s, a.id, "verifizierung")).nr).toBe(1);
     expect((await A.accountLesenPerId(s, a.id)).tokenNr)
-      .toEqual({ einladung: 0, verifizierung: 1, zuruecksetzen: 0 });
+      .toEqual({ einladung: 0, verifizierung: 1, zuruecksetzen: 0, einrichten: 0 });
     /* Zweiter Zweck: Eine neue Einladung darf einen laufenden
        Rücksetzvorgang nicht abschneiden — und umgekehrt. */
     await A.tokenNrErhoehen(s, a.id, "zuruecksetzen");
     await A.tokenNrErhoehen(s, a.id, "einladung");
     expect((await A.accountLesenPerId(s, a.id)).tokenNr)
-      .toEqual({ einladung: 1, verifizierung: 1, zuruecksetzen: 1 });
+      .toEqual({ einladung: 1, verifizierung: 1, zuruecksetzen: 1, einrichten: 0 });
     /* Die Zähler stehen im Account, nicht in der Mitgliedschaft. */
     const m = await A.mitgliedschaftLesen(s, a.id, "t-tk-x");
     expect(Object.prototype.hasOwnProperty.call(m, "tokenNr")).toBe(false);

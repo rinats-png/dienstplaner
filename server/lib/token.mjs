@@ -1,12 +1,24 @@
 /* ==========================================================================
    TOKEN — ein Recht, genau einmal, mit Frist
 
-   Drei Vorgänge brauchen dasselbe: einen Schlüssel, der an eine Adresse
-   geht und dort genau einmal etwas erlaubt.
+   Vier Vorgänge brauchen dasselbe: einen Schlüssel, der genau einmal etwas
+   erlaubt und danach wertlos ist.
 
      einladung       ein Zugang zu einem Betrieb entsteht        7 Tage
      verifizierung   eine Adresse wird als erreichbar bestätigt  24 Stunden
      zuruecksetzen   ein Passwort wird neu gesetzt               30 Minuten
+     einrichten      das erste Passwort wird gesetzt             15 Minuten
+
+   Der vierte kam später dazu und ist der kürzeste. Er entsteht nicht durch
+   eine Mail, sondern als Antwort auf eine gerade eingelöste
+   Adressbestätigung: Wer den Link aus der Mail hatte, bekommt damit den
+   Nachweis, dass er sein erstes Passwort setzen darf. Ohne ihn wäre die
+   Passwortsetzung auf eine Kontokennung angewiesen — und eine Kennung ist
+   in dieser Architektur ausdrücklich keine Berechtigung.
+
+   Fünfzehn Minuten, weil der Nachweis nur die Spanne zwischen zwei
+   Formularen überbrücken muss. Wer länger braucht, fordert einen neuen
+   Bestätigungslink an — das kostet nichts und ist derselbe Weg wie vorher.
 
    Drei Dateien dafür wären drei Kopien derselben Sorgfalt. Deshalb eine
    Mechanik mit einem Zweck als Parameter — und der Zweck ist Teil der
@@ -81,7 +93,7 @@ const CODE_PRAEFIX = "tokencode:";
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 /** Die Zwecke. Was hier nicht steht, gibt es nicht. */
-export const ZWECKE = ["einladung", "verifizierung", "zuruecksetzen"];
+export const ZWECKE = ["einladung", "verifizierung", "zuruecksetzen", "einrichten"];
 
 /**
  * Die Fristen in Minuten — die einzige Quelle. Bewusst keine Angabe von
@@ -92,6 +104,7 @@ export const FRISTEN = {
   einladung: 7 * 24 * 60,      // 7 × 24 Stunden
   verifizierung: 24 * 60,      // 24 Stunden
   zuruecksetzen: 30,           // 30 Minuten
+  einrichten: 15,              // 15 Minuten
 };
 
 /* Verwechslungsarm: ohne 0/O, 1/I/L, 2/Z, 5/S, 8/B. Dasselbe Alphabet wie

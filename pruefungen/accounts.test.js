@@ -90,7 +90,8 @@ describe("Account anlegen", () => {
     expect(account.passwort).toBe(null);
     expect(account.emailVerifiziertAm).toBe(null);
     expect(account.epoche).toBe(1);
-    expect(account.tokenNr).toEqual({ einladung: 0, verifizierung: 0, zuruecksetzen: 0 });
+    expect(account.tokenNr).toEqual({ einladung: 0, verifizierung: 0, zuruecksetzen: 0,
+      einrichten: 0 });
     expect(account.letzteAnmeldung).toBe(null);
     /* Ohne ausdrückliche Angabe: kein Registrierungsprofil, kein
        Neukundenvorgang, kein verbrauchter Testbetrieb. Ein Account, den eine
@@ -366,7 +367,8 @@ describe("Account ändern — begrenzt und ausdrücklich", () => {
     const c = await A.tokenNrErhoehen(s, account.id, "zuruecksetzen");
     expect([a.nr, b.nr, c.nr]).toEqual([1, 2, 1]);
     const stand = await A.accountLesenPerId(s, account.id);
-    expect(stand.tokenNr).toEqual({ einladung: 2, verifizierung: 0, zuruecksetzen: 1 });
+    expect(stand.tokenNr).toEqual({ einladung: 2, verifizierung: 0, zuruecksetzen: 1,
+      einrichten: 0 });
     expect((await A.tokenNrErhoehen(s, account.id, "unsinn")).grund).toBe("zweck");
   });
 

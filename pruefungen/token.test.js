@@ -88,10 +88,13 @@ describe("Ausstellen und einlösen", () => {
     }
   });
 
-  it("kennt nur die drei Zwecke", async () => {
+  it("kennt nur die vier Zwecke", async () => {
     const s = laden();
     await expect(T.tokenAusstellen(s, { zweck: "irgendwas", nr: 1 })).rejects.toThrow();
-    expect(T.ZWECKE).toEqual(["einladung", "verifizierung", "zuruecksetzen"]);
+    expect(T.ZWECKE).toEqual(["einladung", "verifizierung", "zuruecksetzen",
+      "einrichten"]);
+    /* Die Fristen: der Nachweis fürs erste Passwort ist der kürzeste. */
+    expect(T.FRISTEN.einrichten).toBe(15);
   });
 });
 

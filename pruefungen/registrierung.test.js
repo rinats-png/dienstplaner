@@ -104,7 +104,8 @@ describe("Eine Registrierung beginnen", () => {
     expect(konto.status).toBe("eingeladen");
     expect(konto.passwort).toBe(null);
     expect(konto.emailVerifiziertAm).toBe(null);
-    expect(konto.tokenNr).toEqual({ einladung: 0, verifizierung: 1, zuruecksetzen: 0 });
+    expect(konto.tokenNr).toEqual({ einladung: 0, verifizierung: 1, zuruecksetzen: 0,
+      einrichten: 0 });
   });
 
   it("normalisiert die Adresse und erzeugt keine zweite Identität", async () => {
@@ -194,7 +195,8 @@ describe("Eine Registrierung beginnen", () => {
     expect(konto2.status).toBe("eingeladen");
     expect(konto2.passwort).toBe(null);
     /* Nur der Zähler des Zwecks ist weitergelaufen. */
-    expect(konto2.tokenNr).toEqual({ einladung: 0, verifizierung: 2, zuruecksetzen: 0 });
+    expect(konto2.tokenNr).toEqual({ einladung: 0, verifizierung: 2, zuruecksetzen: 0,
+      einrichten: 0 });
     expect(pf.briefe.length).toBe(2);
     expect(erste.protokoll.fall).toBe("neu");
   });
@@ -404,7 +406,7 @@ describe("Das Bestätigungstoken", () => {
     await A.tokenNrErhoehen(s, konto.id, "einladung");
     await R.verifizierungErneutSenden(s, { email: "zaehler@example.org", versand: pf.versand });
     expect((await A.accountLesenPerId(s, konto.id)).tokenNr)
-      .toEqual({ einladung: 1, verifizierung: 2, zuruecksetzen: 1 });
+      .toEqual({ einladung: 1, verifizierung: 2, zuruecksetzen: 1, einrichten: 0 });
   });
 
   it("gilt bis einschließlich der Frist und danach nicht mehr", async () => {
@@ -483,7 +485,15 @@ describe("Das Bestätigungstoken", () => {
 
     /* Und danach ist der Link auch einzeln wertlos. */
     expect((await R.emailVerifizieren(s, { token })).ok).toBe(false);
-    expect((await s.list({ prefix: "token:" })).blobs.length).toBe(0);
+    /* Der Bestätigungslink ist verbraucht. Was jetzt noch unter `token:`
+       liegt, ist der Nachweis für das erste Passwort, den die eine
+       gelungene Bestätigung ausgestellt hat — und kein zweiter Weg zur
+       Adressbestätigung. */
+    const rest = (await s.list({ prefix: "token:" })).blobs;
+    for (const b of rest) {
+      expect((await s.get(b.key, { type: "json" })).zweck).toBe("einrichten");
+    }
+    expect(rest.length).toBeLessThanOrEqual(1);
   });
 });
 

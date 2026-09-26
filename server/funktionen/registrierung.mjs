@@ -42,6 +42,11 @@ import {
    ---------------------------------------------------------------------------
    Was hier noch nicht geht
 
+   Die Bestätigung gibt einen kurzlebigen Nachweis zurück (fünfzehn Minuten,
+   einmalig), mit dem sich später das erste Passwort setzen lässt. Er ist das
+   Einzige, was diese Datei je herausgibt, das ein Geheimnis ist — und er
+   gehört dem Vorgang, den der Aufrufer selbst gerade abgeschlossen hat.
+
    Kein Passwort, keine Anmeldung, keine Sitzung, kein Cookie, kein
    Testbetrieb, keine Mitgliedschaft. Nach beiden Aufrufen existiert ein
    Konto, das noch nichts kann — genau das ist der Zweck.
@@ -218,12 +223,24 @@ async function verifizieren(req, k) {
     return antwort(LINK_ABSAGE, 400);
   }
 
-  await protokoll("verifizieren", k, "erfolg", null);
-  /* Keine Kennung, kein Zustand, kein nächster Schritt mit Geheimnis. Dass
-     noch ein Passwort fehlt, darf der Aufrufer wissen — es ist die Auskunft
-     über seinen eigenen, gerade bestätigten Vorgang und verrät keinen
-     fremden Bestand. */
-  return antwort({ ok: true, passwortFehlt: !!e.passwortFehlt });
+  await protokoll("verifizieren", k, e.fortsetzung ? "erfolg" : "erfolg-ohne-nachweis", null);
+
+  /* Keine Kennung, kein Kontozustand, kein Speicherschlüssel. Zwei Dinge
+     gehen hinaus, und beide gehören zu dem Vorgang, den der Aufrufer selbst
+     gerade abgeschlossen hat: dass noch ein Passwort fehlt, und der Nachweis,
+     mit dem er es setzen darf.
+
+     Der Nachweis steht im Rumpf, nicht in einer Adresszeile — ein
+     Abfragestring landet in Protokollen. Er wird nicht gespeichert und nicht
+     protokolliert; wo er hingehört, ist der Arbeitsspeicher des Browsers für
+     die Dauer eines Formulars.
+
+     Fehlt er, weil seine Ausstellung scheiterte, sagt die Antwort das
+     schlicht dadurch, dass er fehlt: Die Adresse ist bestätigt, ein Passwort
+     lässt sich noch nicht setzen, und ein neuer Bestätigungslink führt
+     denselben Weg noch einmal. Der Grund dafür bleibt innen. */
+  return antwort({ ok: true, passwortFehlt: !!e.passwortFehlt,
+    ...(e.fortsetzung ? { fortsetzung: e.fortsetzung } : {}) });
 }
 
 export const config = {

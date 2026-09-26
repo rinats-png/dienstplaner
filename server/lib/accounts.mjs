@@ -118,7 +118,12 @@ function nacheinander(schluessel, arbeit) {
 
 export const ACCOUNT_STATUS = ["eingeladen", "aktiv", "gesperrt"];
 export const MITGLIED_STATUS = ["eingeladen", "aktiv", "entzogen"];
-export const TOKEN_ZWECKE = ["einladung", "verifizierung", "zuruecksetzen"];
+/* Die Zwecke, für die ein Account Laufnummern führt — dieselbe Liste wie in
+   token.mjs, hier als eigene Konstante, weil dieses Modul die Nummern
+   speichert und token.mjs sie nur liest. „einrichten" gehört dazu, seit der
+   Nachweis für das erste Passwort ein eigener Vorgang ist: Eine zweite
+   Adressbestätigung soll den älteren Nachweis entwerten. */
+export const TOKEN_ZWECKE = ["einladung", "verifizierung", "zuruecksetzen", "einrichten"];
 
 /**
  * Welche Rollen eine Mitgliedschaft tragen darf: die Rollen im Betrieb,
@@ -333,7 +338,7 @@ export async function accountAnlegen(store, { email, status = "eingeladen",
       emailVerifiziertAm: emailVerifiziertAm || null,
       passwort,
       status,
-      tokenNr: { einladung: 0, verifizierung: 0, zuruecksetzen: 0 },
+      tokenNr: { einladung: 0, verifizierung: 0, zuruecksetzen: 0, einrichten: 0 },
       epoche: 1,
       erstellt: nun,
       aktualisiert: nun,

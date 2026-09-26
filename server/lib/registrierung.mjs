@@ -55,6 +55,32 @@
      Provisionierung gelungen  ein Betrieb entsteht — anderer Schritt.
      Anspruch verbraucht       testbetriebVerbrauchtAm, für immer.
 
+   ---------------------------------------------------------------------------
+   Der Nachweis für das erste Passwort
+
+   Wer seine Adresse bestätigt hat, bekommt dabei ein zweites, kurzlebiges
+   Token zurück: den Nachweis, dass er sein erstes Passwort setzen darf
+   (Zweck „einrichten", fünfzehn Minuten, einmalig, token.mjs).
+
+   Warum überhaupt: Ohne ihn müsste die Passwortsetzung der Kontokennung
+   glauben, die ein Aufrufer mitschickt. Eine Kennung ist in dieser
+   Architektur aber ausdrücklich keine Berechtigung — die ganze
+   Isolationsprüfung beruht darauf. Wer eine fremde Kennung kennte, könnte
+   sonst ein fertig bestätigtes, noch passwortloses Konto übernehmen.
+
+   Ausgestellt wird er nur, wenn die Adressbestätigung gerade tatsächlich
+   gelungen ist, das Konto aus einem Selbstbedienungsvorgang stammt
+   (testbetriebOffenSeit) und noch kein Passwort trägt. Ein eingeladenes
+   Konto bekommt keinen: Sein Weg zum Passwort führt über die Einladung.
+
+   Scheitert die Ausstellung, nachdem die Adresse bestätigt ist, gibt es
+   keinen Nachweis — und damit keinen Weg zum Passwort. Das ist der
+   gewünschte Ausgang: Der Mensch fordert einen neuen Bestätigungslink an
+   und läuft denselben Weg noch einmal. Ein Konto ohne Passwort kann nichts,
+   und eine erneute Bestätigung ist keine Abkürzung, sondern derselbe
+   Besitznachweis wie vorher.
+
+   ---------------------------------------------------------------------------
    Der Anspruch wird ausschließlich beim Anlegen eines neuen Accounts
    geöffnet. Ein bestehendes Konto bekommt über die Registrierung nur einen
    neuen Link — nie einen neuen Anspruch: Sonst wäre „registrieren" der
@@ -111,8 +137,11 @@ import {
  */
 const grundVon = (e) => (e && "grund" in e ? String(e.grund) : "");
 
-/** Der Zweck, unter dem eine Adressbestätigung läuft. Einer von drei. */
+/** Der Zweck, unter dem eine Adressbestätigung läuft. */
 export const ZWECK = "verifizierung";
+
+/** Der Zweck des Nachweises für das erste Passwort. */
+export const ZWECK_EINRICHTEN = "einrichten";
 
 /** Die Frist in Stunden — abgeleitet, nicht zweitgeschrieben. */
 export const FRIST_STUNDEN = Math.round(FRISTEN[ZWECK] / 60);
@@ -343,7 +372,8 @@ export async function verifizierungErneutSenden(store, { email, jetzt = Date.now
  * @param {object} store
  * @param {{token?: unknown, jetzt?: () => number}} [o]
  * @returns {Promise<{ok: boolean, accountId?: string, emailNorm?: string,
- *   grund?: string, hinweis?: string, passwortFehlt?: boolean}>}
+ *   grund?: string, hinweis?: string, passwortFehlt?: boolean,
+ *   fortsetzung?: string, fortsetzungBis?: number, ohneNachweis?: string}>}
  */
 export async function emailVerifizieren(store, { token, jetzt = Date.now } = {}) {
   const absage = (grund) => ({ ok: false, grund,
@@ -371,9 +401,44 @@ export async function emailVerifizieren(store, { token, jetzt = Date.now } = {})
   const bestaetigt = await emailBestaetigen(store, konto.id);
   if (!bestaetigt.ok) return absage(grundVon(bestaetigt) || "speichern");
 
-  return { ok: true, accountId: konto.id, emailNorm: konto.emailNorm,
+  const hatPasswort = !!(bestaetigt.ok && bestaetigt.account.passwort);
+  const grundzustand = { ok: true, accountId: konto.id, emailNorm: konto.emailNorm,
     /* Ob schon ein Passwort steht, entscheidet, welches Formular folgt. */
-    passwortFehlt: !(bestaetigt.ok && bestaetigt.account.passwort) };
+    passwortFehlt: !hatPasswort };
+
+  /* Der Nachweis für das erste Passwort — nur für einen laufenden
+     Selbstbedienungsvorgang ohne Passwort. Die Unterscheidung kommt aus dem
+     Datenmodell (testbetriebOffenSeit, gesetzt allein beim Selbsteintritt),
+     nicht aus einer Vermutung über die Herkunft. */
+  const selbstbedienung = !!konto.testbetriebOffenSeit;
+  if (hatPasswort || !selbstbedienung) return grundzustand;
+
+  /* Eine neue Laufnummer entwertet jeden früher ausgestellten Nachweis:
+     Zwei Bestätigungen hintereinander sollen nicht zwei gültige Nachweise
+     ergeben. */
+  const gezaehlt = await tokenNrErhoehen(store, konto.id, ZWECK_EINRICHTEN);
+  if (!gezaehlt.ok) {
+    /* Die Adresse ist bestätigt, der Nachweis fehlt. Kein Weg zum Passwort,
+       also auch kein ungesicherter Zugang — und der Mensch kommt über einen
+       neuen Bestätigungslink wieder herein. */
+    return { ...grundzustand, ohneNachweis: grundVon(gezaehlt) || "zaehler" };
+  }
+
+  try {
+    const ausgestellt = await tokenAusstellen(store, {
+      zweck: ZWECK_EINRICHTEN,
+      nr: gezaehlt.nr,
+      /* Im Eintrag steht, wem der Nachweis gehört — nicht der Nachweis
+         selbst. Abgelegt wird nur dessen Prüfsumme (token.mjs). */
+      inhalt: { accountId: konto.id, emailNorm: konto.emailNorm },
+      jetzt,
+    });
+    return { ...grundzustand, fortsetzung: ausgestellt.token,
+      fortsetzungBis: ausgestellt.bis };
+  } catch (e) {
+    return { ...grundzustand,
+      ohneNachweis: String((e && e.message) || e || "ausstellen").slice(0, 120) };
+  }
 }
 
 /* --------------------------------------------------------------------------
