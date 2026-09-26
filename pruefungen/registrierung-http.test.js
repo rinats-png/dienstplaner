@@ -490,7 +490,8 @@ describe("Routing und Protokoll", () => {
   it("hängt unter genau diesen Pfaden im Server", async () => {
     const modul = await import("../server/funktionen/registrierung.mjs");
     expect(modul.config.path).toEqual([
-      "/api/registrierung", "/api/registrierung/verifizieren"]);
+      "/api/registrierung", "/api/registrierung/verifizieren",
+      "/api/registrierung/passwort"]);
     /* Und der Server wählt genaue Pfade vor Präfixen — sonst finge
        daten.mjs mit `/api/*` diese Routen ab. */
     const server = await readFile(new URL("../server.mjs", import.meta.url), "utf8");
@@ -529,12 +530,31 @@ describe("Routing und Protokoll", () => {
       new URL("../server/funktionen/registrierung.mjs", import.meta.url), "utf8");
     /* Der Handler prüft keine Adresse, hasht nichts, stellt kein Token aus
        und legt keinen Account an — das alles liegt in lib/. */
-    for (const name of ["mailBrauchbar", "profilPruefen", "accountAnlegen",
-      "tokenAusstellen", "tokenEinloesen", "passwortAblegen", "scrypt",
-      "createHash", "randomBytes", "mitgliedschaftAnlegen",
-      "testbetriebFuerAccountAnlegen", "sitzungAnlegen"]) {
-      expect(quelle.includes(name), name).toBe(false);
-    }
+    /* Exakt: Der Handler importiert genau diese Funktionen und nichts
+       weiter. Jede neue Einbindung fällt auf — und was nicht eingebunden
+       ist, kann er nicht aufrufen. Ein Kommentar, der scrypt erwähnt, ist
+       dabei erlaubt; ein Import aus einem Kryptomodul nicht. */
+    const importe = [...quelle.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)]
+      .flatMap(([, namen, modul]) => namen.split(",")
+        .map((n) => n.trim()).filter(Boolean).map((n) => `${n} aus ${modul}`));
+    expect(importe.sort()).toEqual([
+      "HINWEISE_PROFIL aus ../lib/registrierung.mjs",
+      "HINWEIS_GENERISCH aus ../lib/registrierung.mjs",
+      "accountSchluessel aus ../lib/accounts.mjs",
+      "bremse aus ../lib/schutz.mjs",
+      "emailVerifizieren aus ../lib/registrierung.mjs",
+      "getStore aus ../lib/ablage.mjs",
+      "herkunftErlaubt aus ../lib/schutz.mjs",
+      "kennung aus ../lib/schutz.mjs",
+      "mailNormieren aus ../lib/adressen.mjs",
+      "passwortMitNachweisSetzen aus ../lib/registrierung.mjs",
+      "protokoll aus ../lib/schutz.mjs",
+      "registrierungStarten aus ../lib/registrierung.mjs",
+      "zuVielAntwort aus ../lib/schutz.mjs",
+    ].sort());
+    /* Kein Kryptomodul, kein nachgeladener Import. */
+    expect(quelle).not.toMatch(/node:crypto/);
+    expect(quelle).not.toMatch(/await\s+import\s*\(/);
     expect(quelle).not.toMatch(/\bconsole\s*\./);
     /* Und keine Aufweichung der Herkunftsprüfung. */
     expect(quelle).not.toMatch(/Access-Control-Allow-Origin/);

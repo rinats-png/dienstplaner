@@ -3,7 +3,8 @@ import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../l
 import { accountSchluessel } from "../lib/accounts.mjs";
 import { mailNormieren } from "../lib/adressen.mjs";
 import {
-  registrierungStarten, emailVerifizieren, HINWEIS_GENERISCH, HINWEISE_PROFIL,
+  registrierungStarten, emailVerifizieren, passwortMitNachweisSetzen,
+  HINWEIS_GENERISCH, HINWEISE_PROFIL,
 } from "../lib/registrierung.mjs";
 
 /* ==========================================================================
@@ -11,6 +12,7 @@ import {
 
      POST /api/registrierung               eine Adresse angeben
      POST /api/registrierung/verifizieren  den Link aus der Mail einlösen
+     POST /api/registrierung/passwort      das erste Passwort setzen
 
    Diese Datei entscheidet nichts. Sie liest einen Rumpf, bremst, prüft die
    Herkunft und gibt weiter an lib/registrierung.mjs — dort liegt die
@@ -135,7 +137,9 @@ export default async (req) => {
   if (!herkunftErlaubt(req))
     return antwort({ ok: false, fehler: "fremde-herkunft" }, 403);
 
-  if (pfad !== "/api/registrierung" && pfad !== "/api/registrierung/verifizieren")
+  const PFADE = ["/api/registrierung", "/api/registrierung/verifizieren",
+    "/api/registrierung/passwort"];
+  if (!PFADE.includes(pfad))
     return antwort({ ok: false, fehler: "unbekannter-pfad" }, 404);
   if (req.method !== "POST")
     return antwort({ ok: false, fehler: "nur-post" }, 405);
@@ -144,7 +148,8 @@ export default async (req) => {
 
   try {
     if (pfad === "/api/registrierung") return await starten(req, k);
-    return await verifizieren(req, k);
+    if (pfad === "/api/registrierung/verifizieren") return await verifizieren(req, k);
+    return await erstesPasswort(req, k);
   } catch {
     /* Kein Grund nach außen: Was hier ankommt, ist ein Fehler der Ablage
        oder des Versands, und beides sagt über die Eingabe nichts. */
@@ -243,6 +248,52 @@ async function verifizieren(req, k) {
     ...(e.fortsetzung ? { fortsetzung: e.fortsetzung } : {}) });
 }
 
+/* --------------------------------------------------------------------------
+   DAS ERSTE PASSWORT
+   -------------------------------------------------------------------------- */
+
+async function erstesPasswort(req, k) {
+  const gelesen = await rumpfLesen(req);
+  if (!gelesen.ok) return gelesen.antwort;
+  const { fortsetzung, passwort } = gelesen.daten;
+
+  /* Gebremst wird, weil jeder Versuch einen scrypt-Durchlauf kostet. Der
+     Nachweis selbst ist 256 Bit lang — es geht nicht ums Raten, sondern um
+     Rechenzeit. Gezählt wird je Herkunft; eine Adresse gibt es hier nicht,
+     und der Nachweis taugt nicht als Zählschlüssel: Er ist ein Geheimnis. */
+  const b = await bremse("passwort-setzen", k);
+  if (!b.frei) {
+    await protokoll("passwort-setzen", k, "gebremst", b.grund);
+    return zuVielAntwort(b.wartet);
+  }
+
+  const e = await passwortMitNachweisSetzen(store(), {
+    fortsetzung: typeof fortsetzung === "string" ? fortsetzung : null,
+    passwort,
+  });
+
+  if (!e.ok) {
+    await protokoll("passwort-setzen", k, "abgewiesen", String(e.grund || "").slice(0, 30));
+    /* Zwei Klassen nach außen: Was am Passwort liegt, darf ein Mensch
+       erfahren — er soll es verbessern können. Alles andere ist derselbe
+       Satz, ob der Nachweis fehlte, ablief, verbraucht war, zu einem
+       gesperrten Konto gehörte oder das Konto schon ein Passwort hatte. Eine
+       feinere Auskunft wäre eine Auskunft über fremde Konten. */
+    if (e.grund === "regel") {
+      return antwort({ ok: false, fehler: "passwort", hinweis: e.hinweis }, 400);
+    }
+    return antwort({ ok: false, fehler: "ungueltiger-oder-abgelaufener-vorgang",
+      hinweis: "Dieser Vorgang ist nicht mehr gültig. Fordere bitte einen neuen "
+        + "Bestätigungslink an." }, 400);
+  }
+
+  await protokoll("passwort-setzen", k, "erfolg", null);
+  /* Kein Passwort, kein Prüfwert, keine Kennung, kein Zustand, keine Sitzung.
+     Der nächste Schritt ist eine Anmeldung, und die gibt es noch nicht. */
+  return antwort({ ok: true });
+}
+
 export const config = {
-  path: ["/api/registrierung", "/api/registrierung/verifizieren"],
+  path: ["/api/registrierung", "/api/registrierung/verifizieren",
+    "/api/registrierung/passwort"],
 };

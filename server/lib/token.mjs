@@ -293,6 +293,42 @@ export async function tokenEinloesen(store, token, { zweck, nummern = null,
 }
 
 /**
+ * Sieht einen Vorgang an, ohne ihn zu verbrauchen.
+ *
+ * ACHTUNG, und das ist der ganze Sinn dieses Absatzes: Ein Blick ist KEINE
+ * Berechtigung. Diese Funktion beantwortet nur die Frage „zu wem gehört
+ * dieser Schlüssel, wenn er gerade gültig ist" — damit ein Aufrufer den
+ * Kontext kennt, den er für eine Prüfung braucht. Wer auf ihr Ergebnis hin
+ * etwas erlaubt, hat die Einmaligkeit ausgehebelt: Zwischen Blick und
+ * Handlung kann derselbe Schlüssel beliebig oft angesehen werden.
+ *
+ * Erlaubt wird ausschließlich nach `tokenEinloesen`. Der Blick dient dem
+ * einen Fall, in dem das nicht reicht: Die Passwortregel braucht die Adresse
+ * des Kontos, und ein Tippfehler im Passwort darf keinen Link verbrennen
+ * (registrierung.mjs). Geprüft wird hier dasselbe wie beim Einlösen — Frist,
+ * Zweck, Laufnummer —, nur ohne zu löschen.
+ *
+ * @param {object} store
+ * @param {unknown} token
+ * @param {{zweck?: string, nummern?: (object|null), jetzt?: () => number}} [o]
+ * @returns {Promise<{eintrag: object|null, grund: string|null}>}
+ */
+export async function tokenAnsehen(store, token, { zweck, nummern = null,
+  jetzt = Date.now } = {}) {
+  if (!token || typeof token !== "string" || token.length < 20)
+    return { eintrag: null, grund: "form" };
+  try {
+    const eintrag = await store.get(PRAEFIX + hash(token), { type: "json" });
+    if (!eintrag) return { eintrag: null, grund: "unbekannt" };
+    if (eintrag.bis < jetzt()) return { eintrag: null, grund: "abgelaufen" };
+    if (zweck && eintrag.zweck !== zweck) return { eintrag: null, grund: "zweck" };
+    if (nummern && laufnummer(nummern, eintrag.zweck) !== (Number(eintrag.nr) || 0))
+      return { eintrag: null, grund: "entwertet" };
+    return { eintrag, grund: null };
+  } catch { return { eintrag: null, grund: "fehler" }; }
+}
+
+/**
  * Löst einen Aktivierungscode ein — derselbe Vorgang, anderer Weg hinein.
  * Adresse und Code müssen zusammenpassen; danach gelten dieselben
  * Prüfungen wie beim Link, und beide Wege sind verbraucht.

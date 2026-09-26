@@ -188,6 +188,12 @@ export const GRENZEN = {
      256-Bit-Tokens verhindert seine Länge, nicht diese Bremse. Sie hält nur
      jemanden auf, der es trotzdem versucht. */
   verifizieren: { versuche: 30, fenster: 600, sperre: 600 },
+  /* Das erste Passwort setzen: Der Nachweis ist 256 Bit lang, also geht es
+     nicht ums Raten. Gebremst wird, weil jeder Versuch einen scrypt-Durchlauf
+     kostet — ohne Grenze wäre der Endpunkt ein Rechenzeitverbrenner. Zehn
+     Versuche je zehn Minuten lassen Raum für Tippfehler in einer
+     Passwortregel und nicht mehr. */
+  "passwort-setzen": { versuche: 10, fenster: 600, sperre: 600 },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */

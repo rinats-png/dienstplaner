@@ -121,7 +121,9 @@
 
 import { mailNormieren, mailBrauchbar } from "./adressen.mjs";
 import { pruefeRegel, passwortAblegen } from "./passwoerter.mjs";
-import { tokenAusstellen, tokenEinloesen, laufnummer, FRISTEN } from "./token.mjs";
+import {
+  tokenAusstellen, tokenEinloesen, tokenAnsehen, laufnummer, FRISTEN,
+} from "./token.mjs";
 import { sendeMail, anwendungsAdresse, pruefLinkErlaubt } from "./post.mjs";
 import {
   accountAnlegen, accountLesenPerMail, accountLesenPerId,
@@ -442,6 +444,27 @@ export async function emailVerifizieren(store, { token, jetzt = Date.now } = {})
 }
 
 /* --------------------------------------------------------------------------
+   EINE REIHE JE KONTO
+
+   Für die Passwortsetzung reicht die Reihe je Tokenschlüssel in token.mjs
+   nicht ganz: Sie verhindert, dass derselbe Nachweis zweimal einlöst, aber
+   nicht, dass zwischen der Zustandsprüfung und dem Schreiben ein anderer
+   Vorgang dasselbe Konto anfasst. Dieselbe prozesslokale Reihe wie in
+   accounts.mjs, token.mjs und provisionierung.mjs — und dieselbe Grenze: Sie
+   trägt einen schreibenden Prozess, nicht mehrere.
+   -------------------------------------------------------------------------- */
+const kontoReihe = new Map();
+
+function jeKonto(schluessel, arbeit) {
+  const davor = kontoReihe.get(schluessel) || Promise.resolve();
+  const lauf = davor.then(arbeit, arbeit);
+  const warten = lauf.then(() => {}, () => {});
+  kontoReihe.set(schluessel, warten);
+  warten.then(() => { if (kontoReihe.get(schluessel) === warten) kontoReihe.delete(schluessel); });
+  return lauf;
+}
+
+/* --------------------------------------------------------------------------
    PASSWORT SETZEN
    -------------------------------------------------------------------------- */
 
@@ -507,4 +530,124 @@ export async function registrierungPasswortSetzen(store, { accountId, passwort }
   }
 
   return { ok: true, account: gesetzt.account };
+}
+
+/**
+ * Setzt das erste Passwort gegen einen Fortsetzungsnachweis.
+ *
+ * Die Reihenfolge ist die ganze Sicherheit dieses Vorgangs:
+ *
+ *   1. Nachweis ANSEHEN, nicht einlösen. Das liefert die Kontokennung —
+ *      nichts weiter, und es erlaubt noch nichts.
+ *   2. Kontozustand prüfen: nicht gesperrt, Adresse bestätigt, noch kein
+ *      Passwort, Laufnummer des Nachweises aktuell.
+ *   3. Passwortregel vollständig prüfen, mit der Adresse des Kontos als
+ *      Zusammenhang. Scheitert sie, ist der Nachweis unberührt — ein
+ *      Tippfehler darf keinen Link verbrennen.
+ *   4. Prüfwert rechnen (scrypt). Bewusst VOR dem Einlösen: Das hält die
+ *      Spanne zwischen „Nachweis ist weg" und „Passwort steht" so kurz wie
+ *      möglich; eine halbe Sekunde Rechenzeit gehört nicht in dieses Fenster.
+ *   5. In der Reihe des Kontos: Zustand noch einmal lesen, dann den Nachweis
+ *      VERBINDLICH einlösen — damit ist er weg, für jeden — und erst danach
+ *      das Passwort schreiben.
+ *
+ * Warum Schritt 1 keine Berechtigung ist: Ein Blick lässt sich beliebig
+ * wiederholen. Erlaubt wird ausschließlich durch das Einlösen in Schritt 5,
+ * das genau einmal gelingt (token.mjs löscht, bevor es urteilt, und
+ * serialisiert je Schlüssel).
+ *
+ * Bleibt ein Rest: Scheitert das Schreiben in Schritt 5 nach dem Einlösen,
+ * ist der Nachweis verbraucht und kein Passwort gesetzt. Der Nachweis wird
+ * NICHT wiederbelebt — ein zweites Mal gültig zu machen, was einmal
+ * ausgegeben war, wäre die Einmaligkeit selbst. Der Weg zurück ist derselbe
+ * wie nach jedem anderen Abbruch: ein neuer Bestätigungslink, ein neuer
+ * Nachweis. Das Konto bleibt dabei unverändert — ohne Passwort, mit
+ * bestätigter Adresse.
+ *
+ * @param {object} store
+ * @param {{fortsetzung?: unknown, passwort?: unknown, jetzt?: () => number}} [o]
+ * @returns {Promise<{ok: boolean, grund?: string, hinweis?: string,
+ *   account?: object}>}
+ */
+export async function passwortMitNachweisSetzen(store, { fortsetzung, passwort,
+  jetzt = Date.now } = {}) {
+  const absageNachweis = () => ({ ok: false, grund: "nachweis",
+    hinweis: "Dieser Vorgang ist nicht mehr gültig. Fordere bitte einen neuen "
+      + "Bestätigungslink an." });
+
+  /* 1. Ansehen, nicht einlösen. */
+  const gesehen = await tokenAnsehen(store, fortsetzung,
+    { zweck: ZWECK_EINRICHTEN, jetzt });
+  if (!gesehen.eintrag || !gesehen.eintrag.accountId) return absageNachweis();
+
+  const konto = await accountLesenPerId(store, gesehen.eintrag.accountId);
+  if (!konto) return absageNachweis();
+  /* Der Eintrag muss zu dem Konto passen, das er nennt — dieselbe
+     Inhaltsbindung wie bei Mitgliedschaften. */
+  if (gesehen.eintrag.emailNorm && konto.emailNorm !== gesehen.eintrag.emailNorm)
+    return absageNachweis();
+  /* Und er muss der neueste sein: Ein älterer ist durch eine spätere
+     Bestätigung entwertet. */
+  if (laufnummer(konto.tokenNr, ZWECK_EINRICHTEN) !== (Number(gesehen.eintrag.nr) || 0))
+    return absageNachweis();
+
+  /* 2. Der Zustand des Kontos. */
+  if (konto.status === "gesperrt")
+    return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+  if (!konto.emailVerifiziertAm) {
+    return { ok: false, grund: "unbestaetigt",
+      hinweis: "Bitte bestätige zuerst deine E-Mail-Adresse." };
+  }
+  if (konto.passwort) {
+    return { ok: false, grund: "vorhanden",
+      hinweis: "Für diesen Zugang ist schon ein Passwort gesetzt. "
+        + "Nutze bitte „Passwort vergessen“." };
+  }
+
+  /* 3. Die Regel — vollständig, mit Zusammenhang, und ohne den Nachweis
+        anzufassen. */
+  const lokal = String(konto.emailNorm || "").split("@")[0];
+  const regel = pruefeRegel(/** @type {string} */ (passwort),
+    [konto.emailNorm, lokal].filter(Boolean));
+  if (!regel.ok) return { ok: false, grund: "regel", hinweis: grundVon(regel) };
+
+  /* 4. Der Prüfwert, vor dem Einlösen. */
+  const ablage = await passwortAblegen(/** @type {string} */ (passwort));
+
+  /* 5. Verbindlich: erst einlösen, dann schreiben. */
+  return jeKonto(`pw:${konto.id}`, async () => {
+    const stand = await accountLesenPerId(store, konto.id);
+    if (!stand) return absageNachweis();
+    if (stand.status === "gesperrt")
+      return { ok: false, grund: "gesperrt", hinweis: "Dieser Zugang ist gesperrt." };
+    if (stand.passwort) {
+      return { ok: false, grund: "vorhanden",
+        hinweis: "Für diesen Zugang ist schon ein Passwort gesetzt. "
+          + "Nutze bitte „Passwort vergessen“." };
+    }
+
+    const eingeloest = await tokenEinloesen(store, fortsetzung,
+      { zweck: ZWECK_EINRICHTEN, nummern: stand.tokenNr, jetzt });
+    if (!eingeloest.eintrag) return absageNachweis();
+    if (eingeloest.eintrag.accountId !== stand.id) return absageNachweis();
+
+    /* `passwortSetzen` wirft, wenn die Ablage versagt (AblageFehler in
+       accounts.mjs) — hier wird daraus ein Ergebnis, damit der Aufrufer den
+       Fall behandeln kann, statt ihn als Serverfehler durchzulassen. */
+    let gesetzt;
+    try {
+      gesetzt = await passwortSetzen(store, stand.id, ablage);
+    } catch (e) {
+      gesetzt = { ok: false, grund: String((e && e.message) || e).slice(0, 120) };
+    }
+    if (!gesetzt.ok || !("account" in gesetzt)) {
+      /* Der Nachweis ist verbraucht, das Passwort nicht gesetzt. Kein
+         Wiederbeleben: Der Mensch fordert einen neuen Bestätigungslink an.
+         Das Konto ist dabei unverändert. */
+      return { ok: false, grund: grundVon(gesetzt) || "speichern",
+        hinweis: "Das hat nicht geklappt. Fordere bitte einen neuen "
+          + "Bestätigungslink an." };
+    }
+    return { ok: true, account: gesetzt.account };
+  });
 }

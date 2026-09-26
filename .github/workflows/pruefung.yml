@@ -169,6 +169,11 @@ jobs:
       - name: Registrierung über HTTP
         run: npm run pruefung:registrierung-http
 
+      # Das erste Passwort: ein Nachweis, einmal, fünfzehn Minuten — und ein
+      # falsches Passwort verbrennt ihn nicht.
+      - name: Erstes Passwort über HTTP
+        run: npm run pruefung:passwort-http
+
       - name: Übersetzen
         run: npm run build
 
