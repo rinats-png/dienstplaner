@@ -72,22 +72,56 @@ let zaehler = 0;
 const adresse = (was) => `${was}-${++zaehler}@example.org`;
 
 /**
- * Wartet, bis der Zugriffszeitpunkt einer Sitzung in der Ablage steht.
+ * Wartet, bis der Zugriffszeitpunkt einer Sitzung in der Ablage steht — und
+ * stößt ihn notfalls noch einmal an.
  *
- * `accountSitzungLesen` schreibt `zuletzt` absichtlich ohne await — eine
- * Anfrage soll nicht auf vier Dateisystemschritte warten. Eine Prüfung, die
- * mit einer künstlichen Uhr weiterläuft, muss darauf aber warten: Sonst
- * rechnet der nächste Durchgang mit einem alten `zuletzt` und die Sitzung
- * verfällt an der Untätigkeit statt an der Frist. Dieselbe Überlegung wie
- * in sitzungen.test.js, wo ein festes setTimeout in der Linux-CI umfiel.
+ * `accountSitzungLesen` schreibt `zuletzt` absichtlich ohne await und
+ * schluckt einen Fehler dabei (`.catch(() => {})`): Eine Anfrage soll nicht
+ * auf vier Dateisystemschritte warten, und ein misslungenes Fortschreiben
+ * macht die gerade bestandene Prüfung nicht nachträglich ungültig. Zugesagt
+ * ist also nicht, dass EIN Versuch gelingt, sondern dass der Wert
+ * fortgeschrieben wird — spätestens beim nächsten Zugriff.
+ *
+ * Genau das tut diese Hilfe: warten, und wenn der Wert ausbleibt, noch einmal
+ * echt zugreifen. Unter Windows ist das nötig, weil das atomare Umbenennen
+ * mit EPERM scheitert, solange dieselbe Datei gelesen wird — und diese
+ * Prüfung liest sie im Zehn-Millisekunden-Takt. Unter Linux gelingt der
+ * erste Versuch.
+ *
+ * Wichtig ist, was NICHT geschieht: Der erneute Zugriff ist ein echter
+ * `sitzungPruefen`-Aufruf mit derselben Uhr. Er verschiebt keine Frist —
+ * `accountSitzungLesen` prüft `bis` VOR dem Fortschreiben und schreibt
+ * `bis` nie —, und er muss gelingen: Ein verlorener Schreibvorgang darf
+ * keine Sitzung entwerten. Bleibt der Wert auch nach mehreren echten
+ * Zugriffen aus, ist das ein Fehler und die Prüfung fällt.
+ *
+ * @param {object} store
+ * @param {string} token
+ * @param {() => number} jetzt
+ * @param {number} ziel
  */
-async function warteAufZuletzt(token, ziel) {
-  for (let v = 0; v < 300; v++) {
-    const roh = await sitzungsAblage().get(`as:${hash(token)}`, { type: "json" });
+async function warteAufZuletzt(store, token, jetzt, ziel) {
+  const stand = () => sitzungsAblage().get(`as:${hash(token)}`, { type: "json" });
+  let letzter = null;
+  for (let anlauf = 0; anlauf < 12; anlauf++) {
+    /* Erst warten, OHNE zu lesen. Das ist der entscheidende Punkt: Unter
+       Windows scheitert das atomare Umbenennen, solange irgendjemand
+       dieselbe Datei offen hält — eine Leseschleife im
+       Zehn-Millisekunden-Takt verhindert das Fortschreiben also selbst,
+       und zwar dauerhaft. Deshalb je Anlauf genau ein Lesevorgang. */
+    await new Promise((r) => setTimeout(r, 40));
+    const roh = await stand();
+    letzter = roh && roh.zuletzt;
     if (roh && Number(roh.zuletzt) === ziel) return;
-    await new Promise((r) => setTimeout(r, 10));
+    /* Noch nicht da. Also noch einmal zugreifen — wie im Betrieb die
+       nächste Anfrage. Und dabei festhalten, dass der verlorene
+       Schreibvorgang die Sitzung nicht beschädigt hat. */
+    const p = await AN.sitzungPruefen(store, token, { jetzt });
+    expect(p.ok, `erneuter Zugriff nach verlorenem Fortschreiben (Anlauf ${anlauf + 1})`)
+      .toBe(true);
   }
-  throw new Error(`zuletzt erreichte ${ziel} nicht — Ablage antwortet nicht.`);
+  throw new Error(`zuletzt erreichte ${ziel} nicht — zuletzt = ${letzter} `
+    + "nach zwölf echten Zugriffen.");
 }
 
 /**
@@ -437,7 +471,15 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
          `zuletzt` wird ohne await geschrieben. Ohne dieses Warten wäre der
          nächste Durchgang mit einem alten `zuletzt` unterwegs und die
          Sitzung stürbe an der Untätigkeit statt an der Frist. */
-      await warteAufZuletzt(e.token, u.stand());
+      await warteAufZuletzt(s, e.token, u.jetzt, u.stand());
+      /* Und das Wichtigste an dieser Runde: Die absolute Frist wandert
+         nicht mit. Aus zwölf Stunden darf kein gleitendes Fenster werden —
+         weder durch Zugriffe noch durch das Fortschreiben von `zuletzt`. */
+      const zwischen = await sitzungsAblage().get(`as:${hash(e.token)}`,
+        { type: "json" });
+      expect(Number(zwischen.bis), `bis nach ${runden} Zugriffen`)
+        .toBe(e.gueltigBis);
+      expect((await AN.sitzungPruefen(s, e.token, { jetzt: u.jetzt })).ok).toBe(true);
     }
     expect(runden).toBeGreaterThan(30);
 
@@ -446,7 +488,7 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
     u.vor(20 * MINUTE);
     expect(u.stand()).toBe(e.gueltigBis);
     expect((await AN.sitzungPruefen(s, e.token, { jetzt: u.jetzt })).ok).toBe(true);
-    await warteAufZuletzt(e.token, u.stand());
+    await warteAufZuletzt(s, e.token, u.jetzt, u.stand());
 
     /* Eine Millisekunde darüber nicht mehr. */
     u.vor(1);
@@ -481,12 +523,18 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
     const k = await konto(s, adresse("arbeit"));
     const e = await AN.anmelden(s, { email: k.email, passwort: GUT, jetzt: u.jetzt });
     if (!e.ok) throw new Error("Anmeldung gescheitert");
+    const vorherSeit = Number((await sitzungsAblage()
+      .get(`as:${hash(e.token)}`, { type: "json" })).seit);
     for (let i = 0; i < 4; i++) {
       u.vor(25 * MINUTE);
       expect((await AN.sitzungPruefen(s, e.token, { jetzt: u.jetzt })).ok).toBe(true);
-      await warteAufZuletzt(e.token, u.stand());
+      await warteAufZuletzt(s, e.token, u.jetzt, u.stand());
       const roh = await sitzungsAblage().get(`as:${hash(e.token)}`, { type: "json" });
       expect(Number(roh.zuletzt), `Runde ${i}`).toBe(u.stand());
+      /* Der Zugriff schreibt `zuletzt` fort und sonst nichts: Frist und
+         Beginn bleiben, wo sie waren. */
+      expect(Number(roh.bis), `bis in Runde ${i}`).toBe(e.gueltigBis);
+      expect(Number(roh.seit), `seit in Runde ${i}`).toBe(vorherSeit);
     }
   }, LIMIT);
 
