@@ -399,9 +399,12 @@ describe("Mitgliedschaft anlegen", () => {
     expect(e.ok).toBe(true);
     expect(Object.keys(e.mitgliedschaft).sort()).toEqual([
       "accountId", "aktiviertAm", "betrieb", "eingeladenAm", "eingeladenVon",
-      "einheit", "entzogenAm", "mandantId", "person", "raum", "rolle", "status",
+      "einheit", "entzogenAm", "generation", "mandantId", "person", "raum",
+      "rolle", "status",
     ]);
     expect(e.mitgliedschaft.status).toBe("eingeladen");
+    /* Die Generation dieser Account-Raum-Beziehung: beim ersten Mal 1. */
+    expect(e.mitgliedschaft.generation).toBe(1);
     expect(e.mitgliedschaft.aktiviertAm).toBe(null);
     expect(e.mitgliedschaft.entzogenAm).toBe(null);
   });

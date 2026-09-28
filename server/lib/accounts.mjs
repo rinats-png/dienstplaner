@@ -65,6 +65,11 @@ const ACCOUNT = "account:";
 const KONTO_ID = "kontoId:";
 const MITGLIED = "mitglied:";
 const RAUMMITGLIED = "raummitglied:";
+/* Der Generationsanker einer Account-Raum-Beziehung. Eigener Schlüssel,
+   nicht Teil der Mitgliedschaft: Er muss sie überleben. Der Doppelpunkt
+   gehört dazu — „mitgliedlauf:" und „mitglied:" sind zwei Namensräume, und
+   ein Lauf über „mitglied" ohne Doppelpunkt träfe beide. */
+const MITGLIEDLAUF = "mitgliedlauf:";
 
 /** Der Schlüssel einer Adresse — mit Pfeffer, wo einer da ist. */
 export const accountSchluessel = (email) => {
@@ -77,6 +82,8 @@ export const mitgliedSchluessel = (accountId, raum) =>
   `${MITGLIED}${accountId}:${raum}`;
 export const raummitgliedSchluessel = (raum, accountId) =>
   `${RAUMMITGLIED}${raum}:${accountId}`;
+export const mitgliedlaufSchluessel = (accountId, raum) =>
+  `${MITGLIEDLAUF}${accountId}:${raum}`;
 
 /* --------------------------------------------------------------------------
    EINE REIHE JE SCHLÜSSEL
@@ -606,6 +613,209 @@ export const anmeldungVermerken = (store, accountId) =>
   accountAendern(store, accountId, { letzteAnmeldung: jetztISO() });
 
 /* --------------------------------------------------------------------------
+   DIE GENERATION EINER ACCOUNT-RAUM-BEZIEHUNG
+
+   Eine Mitgliedschaft kann entzogen und später neu ausgesprochen werden. Für
+   die Berechtigung genügt dafür ihr Status — für den Widerruf von etwas, das
+   aus ihr entstanden ist, genügt er nicht: Eine neue Mitgliedschaft mit
+   denselben Angaben wäre von der alten nicht zu unterscheiden, und was auf
+   die alte ausgestellt war, würde wieder passen.
+
+   Deshalb eine Generation: eine Laufnummer der BEZIEHUNG zwischen einem
+   Account und einem Raum.
+
+     mitgliedlauf:<accountId>:<raum>   { accountId, raum, generation }
+
+   Ein eigener Datensatz, mit Absicht. Die Mitgliedschaft selbst kann
+   verschwinden (Entzug, gelöschter Grabstein, gelöschter Raum) — der Anker
+   bleibt und weiß, wie oft diese Beziehung schon neu begonnen hat.
+
+   ---------------------------------------------------------------------------
+   Der Lebenszyklus, genau einmal festgelegt
+
+     erste Mitgliedschaft   Lauf entsteht mit 1, Mitgliedschaft bekommt 1
+     eingeladen  ->  aktiv  nichts ändert sich
+     Entzug                 Lauf 1 -> 2. Der Grabstein behält 1.
+     neue Mitgliedschaft    bekommt 2
+     nächster Entzug        Lauf 2 -> 3
+
+   Hochgezählt wird beim ENTZUG, nicht beim Anlegen. Das ist die Entscheidung,
+   und sie hat einen Grund: Damit ist unmittelbar nach dem Entzug kein
+   Vergleich mit der alten Generation mehr möglich — der Entzug selbst ist der
+   Widerrufspunkt, ohne dass irgendwo ein zweiter Vermerk („widerrufen")
+   geführt werden müsste. Zählte erst die Neuanlage hoch, klaffte zwischen
+   Entzug und Wiederaufnahme ein Fenster, in dem die alte Generation noch die
+   aktuelle wäre.
+
+   Was die Generation NICHT ist: keine Rolle, kein Recht, keine Aussage über
+   einen Betrieb. Sie beantwortet genau eine Frage — ist das noch dieselbe
+   Beziehung, aus der etwas entstanden ist?
+
+   ---------------------------------------------------------------------------
+   Reihenfolge und Teilfehler
+
+   Die Ablage kennt keine Transaktion, kein bedingtes Schreiben und kein
+   atomares Schreiben über zwei Schlüssel (ablage.mjs). Ein Entzug berührt
+   zwei Datensätze, also entscheidet die Reihenfolge, was ein Teilfehler
+   anrichtet:
+
+     1. Lauf hochzählen
+     2. Status auf „entzogen" setzen
+
+   Scheitert (1), wird (2) nicht ausgeführt: Der Entzug schlägt sichtbar fehl,
+   der Zustand bleibt, wie er war, und der Aufrufer versucht es erneut.
+
+   Scheitert (2) nach gelungenem (1), steht eine Mitgliedschaft mit Status
+   „aktiv" da, deren Generation nicht mehr der aktuellen entspricht. Sie ist
+   damit UNBRAUCHBAR — jede Prüfung, die Generationen vergleicht, weist sie
+   ab. Das ist die gewollte Richtung: lieber eine Mitgliedschaft, die
+   niemandem mehr etwas öffnet, als eine alte Sitzung, die weiter gilt.
+
+   Die umgekehrte Reihenfolge wäre genau falsch: „entzogen, aber Generation
+   nicht erhöht" hieße, dass eine später neu ausgesprochene Mitgliedschaft
+   wieder dieselbe Generation trüge.
+
+   ---------------------------------------------------------------------------
+   Gleichzeitigkeit
+
+   Jede Änderung an Lauf und Mitgliedschaft läuft in der Reihe des
+   Mitgliedschaftsschlüssels (`nacheinander`), also nacheinander je Beziehung.
+   Zwei gleichzeitige Entzüge zählen deshalb nicht zweimal: Der zweite sieht
+   den Grabstein und tut nichts. Dieselbe Grenze wie überall in dieser
+   Anwendung: Die Reihe ist prozesslokal und trägt EINEN schreibenden Prozess.
+   Bei mehreren Instanzen könnten zwei Entzüge denselben Lauf lesen und beide
+   auf 2 setzen — die Generation ginge dabei nie zurück, und die alte bliebe
+   ungültig; verloren wäre nur ein Zählschritt. Verlässlich wird das erst mit
+   bedingtem Schreiben in der Ablage.
+
+   ---------------------------------------------------------------------------
+   Altbestand
+
+   Mitgliedschaften aus der Zeit vor dieser Änderung tragen keine Generation.
+   Sie bekommen hier keine untergeschoben: Wer ohne Generation gelesen wird,
+   hat keine, und `generationStimmt` sagt dazu nein. Das ist die sichere
+   Richtung. Nachgetragen wird nur ausdrücklich, über
+   `mitgliedschaftGenerationNachtragen` — in der Reihe der Beziehung, also
+   ohne dass zwei gleichzeitige Aufrufe zwei verschiedene Werte erzeugen
+   könnten.
+   -------------------------------------------------------------------------- */
+
+/**
+ * Die Generation dieser Beziehung, streng gelesen.
+ *
+ * Alles außer einem einwandfreien Datensatz ist ein Nein: kein Datensatz,
+ * einer für eine andere Beziehung, eine unbrauchbare Zahl, ein Lesefehler.
+ * Wer daraus eine Berechtigung ableitet, muss bei `ok: false` schließen.
+ *
+ * @param {object} store
+ * @param {string} accountId
+ * @param {string} raum
+ * @returns {Promise<{ok: true, generation: number}|{ok: false, grund: string}>}
+ */
+export async function mitgliedlaufLesen(store, accountId, raum) {
+  if (!accountId || typeof accountId !== "string") return { ok: false, grund: "accountId" };
+  if (typeof raum !== "string" || !raum) return { ok: false, grund: "raum" };
+  let satz;
+  try { satz = await store.get(mitgliedlaufSchluessel(accountId, raum), { type: "json" }); }
+  catch { return { ok: false, grund: "fehler" }; }
+  if (!satz) return { ok: false, grund: "fehlt" };
+  /* Inhaltsbindung wie bei der Mitgliedschaft: Auf Windows und macOS
+     unterscheidet die Dateiablage keine Groß- und Kleinschreibung. */
+  if (satz.accountId !== accountId || satz.raum !== raum)
+    return { ok: false, grund: "fremd" };
+  if (!Number.isInteger(satz.generation) || satz.generation < 1)
+    return { ok: false, grund: "kaputt" };
+  return { ok: true, generation: satz.generation };
+}
+
+/**
+ * Trägt diese Mitgliedschaft die aktuelle Generation ihrer Beziehung?
+ *
+ * Eine reine Funktion, damit jeder Aufrufer dieselbe Antwort bekommt. Ohne
+ * Generation am Datensatz: nein. Das ist die Antwort für den Altbestand, und
+ * sie ist die sichere.
+ *
+ * @param {object|null} mitgliedschaft
+ * @param {unknown} generation  die aktuelle Generation der Beziehung
+ */
+export function generationStimmt(mitgliedschaft, generation) {
+  const eigen = mitgliedschaft && mitgliedschaft.generation;
+  return Number.isInteger(eigen) && eigen >= 1
+    && Number.isInteger(generation) && eigen === generation;
+}
+
+/* Sorgt dafür, dass ein Lauf existiert, und gibt seine Generation zurück.
+   NUR innerhalb der Reihe des Mitgliedschaftsschlüssels aufrufen — sonst
+   könnten zwei Aufrufer denselben Wert lesen und schreiben.
+
+   Ein unbrauchbarer Lauf wird nicht überschrieben, sondern führt zum Fehler:
+   Ein kaputter Anker ist der einzige Zeuge dafür, wie oft diese Beziehung
+   schon begonnen hat. Ihn stillschweigend auf 1 zu setzen wäre ein Rückgang
+   der Generation — genau das, was nie passieren darf. */
+async function laufSichern(store, accountId, raum) {
+  const gelesen = await mitgliedlaufLesen(store, accountId, raum);
+  if (gelesen.ok) return gelesen.generation;
+  const grund = "grund" in gelesen ? String(gelesen.grund) : "unbekannt";
+  if (grund !== "fehlt")
+    throw new AblageFehler(`Mitgliedlauf unbrauchbar (${grund})`, null);
+  try {
+    await store.setJSON(mitgliedlaufSchluessel(accountId, raum),
+      { accountId, raum, generation: 1 });
+  } catch (e) {
+    throw new AblageFehler(`Mitgliedlauf konnte nicht angelegt werden: ${e && e.message}`, e);
+  }
+  return 1;
+}
+
+/* Zählt den Lauf um eins weiter. Dieselbe Bedingung: nur in der Reihe. */
+async function laufWeiter(store, accountId, raum) {
+  const jetzt = await laufSichern(store, accountId, raum);
+  const neu = jetzt + 1;
+  try {
+    await store.setJSON(mitgliedlaufSchluessel(accountId, raum),
+      { accountId, raum, generation: neu });
+  } catch (e) {
+    throw new AblageFehler(`Mitgliedlauf konnte nicht erhöht werden: ${e && e.message}`, e);
+  }
+  return neu;
+}
+
+/**
+ * Trägt einem Altbestand seine Generation nach — ausdrücklich, nicht beim
+ * Lesen.
+ *
+ * Zwei gleichzeitige Aufrufe können keine zwei Werte erzeugen: Der Zweite
+ * sieht die Generation des Ersten und ändert nichts. Ein Grabstein bekommt
+ * keine: Er öffnet nichts, und ihn auf die aktuelle Generation zu heben würde
+ * eine entzogene Beziehung wie eine laufende aussehen lassen.
+ *
+ * @param {object} store
+ * @param {string} accountId
+ * @param {string} raum
+ * @returns {Promise<{ok: true, mitgliedschaft: object, unveraendert?: boolean}
+ *   |{ok: false, grund: string}>}
+ */
+export async function mitgliedschaftGenerationNachtragen(store, accountId, raum) {
+  const schluessel = mitgliedSchluessel(accountId, raum);
+  return nacheinander(schluessel, async () => {
+    const m = await mitgliedschaftLesen(store, accountId, raum);
+    if (!m) return { ok: false, grund: "unbekannt" };
+    if (Number.isInteger(m.generation) && m.generation >= 1)
+      return { ok: true, mitgliedschaft: m, unveraendert: true };
+    if (m.status === "entzogen") return { ok: false, grund: "entzogen" };
+    const generation = await laufSichern(store, accountId, raum);
+    const neu = { ...m, generation };
+    try {
+      await store.setJSON(schluessel, neu);
+    } catch (e) {
+      throw new AblageFehler(
+        `Generation konnte nicht nachgetragen werden: ${e && e.message}`, e);
+    }
+    return { ok: true, mitgliedschaft: neu };
+  });
+}
+
+/* --------------------------------------------------------------------------
    MITGLIEDSCHAFTEN
    -------------------------------------------------------------------------- */
 
@@ -658,9 +868,16 @@ export async function mitgliedschaftAnlegen(store, { accountId, raum, betrieb = 
        soll den Grabstein nicht stillschweigend überschreiben. */
     if (vorhanden) return { ok: false, grund: "vorhanden" };
 
+    /* Die Generation dieser Beziehung. Beim ersten Mal entsteht der Lauf
+       mit 1; nach einem Entzug steht dort schon eine höhere Zahl, und die
+       neue Mitgliedschaft bekommt sie. Sie wird NICHT aus den Angaben des
+       Aufrufers genommen — dieses Feld gibt es dort nicht. */
+    const generation = await laufSichern(store, accountId, raum);
+
     const nun = jetztISO();
     const mitgliedschaft = {
       accountId, raum, betrieb, mandantId: mandantId.trim(),
+      generation,
       person, rolle, einheit,
       status,
       eingeladenVon: eingeladenVon || null,
@@ -793,7 +1010,8 @@ const UEBERGAENGE = {
   entzogen: [],
 };
 
-async function statusSetzen(store, accountId, raum, ziel, zusatz) {
+async function statusSetzen(store, accountId, raum, ziel, zusatz,
+  { laufWeiterZaehlen = false } = {}) {
   const schluessel = mitgliedSchluessel(accountId, raum);
   return nacheinander(schluessel, async () => {
     const m = await mitgliedschaftLesen(store, accountId, raum);
@@ -801,6 +1019,15 @@ async function statusSetzen(store, accountId, raum, ziel, zusatz) {
     if (m.status === ziel) return { ok: true, mitgliedschaft: m, unveraendert: true };
     if (!(UEBERGAENGE[m.status] || []).includes(ziel))
       return { ok: false, grund: `uebergang:${m.status}->${ziel}` };
+
+    /* Beim Entzug ZUERST die Generation weiterzählen, dann den Status
+       schreiben. Scheitert das Zählen, wirft es — dann bleibt der Zustand,
+       wie er war, und der Entzug ist sichtbar nicht geschehen. Scheitert
+       danach das Schreiben des Status, ist die Mitgliedschaft unbrauchbar
+       (ihre Generation passt nicht mehr) und nicht etwa weiter gültig.
+       Die Begründung steht ausführlich beim Generationsanker. */
+    if (laufWeiterZaehlen) await laufWeiter(store, accountId, raum);
+
     const neu = { ...m, status: ziel, ...zusatz };
     try {
       await store.setJSON(schluessel, neu);
@@ -818,4 +1045,5 @@ export const mitgliedschaftAktivieren = (store, accountId, raum) =>
 
 /** Eingeladen oder aktiv → entzogen. Der Datensatz bleibt. */
 export const mitgliedschaftEntziehen = (store, accountId, raum) =>
-  statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() });
+  statusSetzen(store, accountId, raum, "entzogen", { entzogenAm: jetztISO() },
+    { laufWeiterZaehlen: true });

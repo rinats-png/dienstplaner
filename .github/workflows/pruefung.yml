@@ -189,6 +189,11 @@ jobs:
       - name: Betriebsauswahl
         run: npm run pruefung:betriebsauswahl
 
+      # Die Generation einer Account-Raum-Beziehung: Sie zählt beim Entzug
+      # weiter, damit nichts Altes zu einer neuen Mitgliedschaft passt.
+      - name: Mitgliedschaftsgeneration
+        run: npm run pruefung:generation
+
       - name: Übersetzen
         run: npm run build
 
