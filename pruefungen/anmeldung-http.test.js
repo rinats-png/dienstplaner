@@ -968,3 +968,405 @@ describe("Das Account-Cookie öffnet keinen Betrieb", () => {
     }
   }, LIMIT);
 });
+
+/* ==========================================================================
+   NACHPRÜFUNG: DREI SICHERHEITSFRAGEN
+
+   Die drei Punkte, die nach der ersten Fassung offen waren — als belegte
+   Befunde, nicht als Vermutungen:
+
+     1. `bremse()` lässt bei einem Fehler der Ablage durch. Für die
+        Passwortprüfung hieße das unbegrenzt viele scrypt-Durchläufe.
+     2. Die Herkunft wurde aus der Anfrage abgeleitet. Mit einem gefälschten
+        `x-forwarded-host` galt eine fremde Herkunft als eigen — belegt.
+     3. Ein gescheiterter Widerruf der alten Sitzung blieb ohne Folge: Es
+        entstand trotzdem eine neue, und zwei galten gleichzeitig.
+   ========================================================================== */
+
+/** Eine Ablage unbenutzbar machen: Wo ein Verzeichnis liegen müsste, liegt
+    eine Datei. Gibt die Wiederherstellung zurück. */
+async function ablageKaputt(name) {
+  const ort = path.join(wurzel, name);
+  await rm(ort, { recursive: true, force: true });
+  await writeFile(ort, "");
+  return async () => {
+    await rm(ort, { force: true });
+    await mkdir(ort, { recursive: true });
+  };
+}
+
+describe("Die Bremse fällt nicht ins Unbegrenzte aus", () => {
+  it("begrenzt die Versuche auch bei kaputter Zählerablage", async () => {
+    /* Der Befund: `bremse()` gibt bei einem Fehler `{frei:true}` zurück.
+       Ohne zweite Grenze wären damit beliebig viele scrypt-Durchläufe frei.
+       Die Notbremse zählt im Prozessspeicher und kann nicht ausfallen. */
+    const k = await konto(adresse("not-herkunft"));
+    const heile = await ablageKaputt("centric-takt");
+    let gebremst = 0, versuche = 0;
+    try {
+      const grenze = SCH.NOTGRENZEN["anmelden-konto"].versuche;
+      for (let i = 0; i < grenze + 3 && !gebremst; i++) {
+        versuche++;
+        const e = await anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+          herkunft: "10.90.0.1" });
+        if (e.status === 429) gebremst++;
+        else expect(e.status, `Versuch ${i + 1}`).toBe(401);
+      }
+    } finally { await heile(); }
+    expect(gebremst).toBe(1);
+    expect(versuche).toBeLessThanOrEqual(SCH.NOTGRENZEN["anmelden-konto"].versuche + 1);
+  }, 90000);
+
+  /**
+   * Füllt die Gesamtgrenze der Notbremse bis zur Sperre und gibt zurück, wie
+   * viele Versuche dafür nötig waren — danach ist der Zähler genau wieder
+   * dort, wo er vorher stand.
+   *
+   * Gezählt wird über dieselbe Funktion, die auch der Endpunkt benutzt, aber
+   * ohne scrypt: Zweihundert echte Anmeldeversuche wären eine Minute
+   * Rechenzeit, und die Prüfung hängt dann an der Kante des Zählfensters
+   * statt an der Sache. Jede Messung nimmt genau zurück, was sie gezählt hat.
+   */
+  function bisSperre() {
+    let n = { frei: true }, runden = 0;
+    while (n.frei && runden < 600) {
+      n = SCH.notbremse("anmelden-konto", `a:messen${runden}`);
+      runden++;
+    }
+    for (let i = 0; i < runden; i++) SCH.notentlasten("anmelden-konto", "a:abbau");
+    return { runden, letzte: n };
+  }
+
+  it("deckelt bei blinder Hauptbremse auch das Gesamtaufkommen", async () => {
+    /* Der verteilte Fall: jede Anfrage aus einer anderen Herkunft, also je
+       Herkunft unauffällig — und bei kaputter Ablage zählt die Hauptbremse
+       still null, auch für das Ziel und das Gesamtaufkommen. Bliebe es dabei,
+       wären beliebig viele scrypt-Durchläufe frei. */
+    const k = await konto(adresse("not-gesamt"));
+    const heile = await ablageKaputt("centric-takt");
+    let gebraucht = 0;
+    try {
+      /* Bis an die Grenze füllen — und diesmal nicht zurücknehmen: Der
+         nächste echte Aufruf soll auf eine gesperrte Gesamtgrenze treffen. */
+      let n = { frei: true };
+      while (n.frei && gebraucht < 600) {
+        n = SCH.notbremse("anmelden-konto", `a:fuellung${gebraucht}`);
+        gebraucht++;
+      }
+      expect(n.frei).toBe(false);
+      expect(n.dimension).toBe("gesamt");
+      expect(gebraucht).toBeLessThanOrEqual(SCH.NOTGRENZEN["anmelden-konto"].gesamt + 1);
+
+      /* Der echte Aufruf: unbelastete Herkunft, gesperrt trotzdem. */
+      const e = await anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+        herkunft: "10.91.0.1" });
+      expect(e.status).toBe(429);
+      expect(Number(e.daten.wartet)).toBeGreaterThan(0);
+    } finally {
+      for (let i = 0; i < gebraucht + 3; i++) SCH.notentlasten("anmelden-konto", "a:abbau");
+      await heile();
+    }
+    /* Und danach geht es wieder. */
+    expect((await anfrage({ rumpf: { email: k.email, passwort: GUT },
+      herkunft: "10.91.9.9" })).status).toBe(200);
+  }, 90000);
+
+  it("lässt gelungene Anmeldungen nicht auf die Gesamtgrenze zählen", async () => {
+    /* Sonst wäre die Notbremse eine Grenze für alle Anmeldungen: Ein
+       Schichtwechsel, bei dem sich zweihundert Menschen in fünf Minuten
+       anmelden, bremste sich selbst aus. Gemessen wird der Abstand zur
+       Sperre vor und nach fünf gelungenen Anmeldungen. */
+    const k = await konto(adresse("not-entlasten"));
+    const vorher = bisSperre();
+    expect(vorher.letzte.frei).toBe(false);
+    expect(vorher.runden).toBeGreaterThan(5);
+
+    for (let i = 0; i < 5; i++) {
+      const e = await anfrage({ rumpf: { email: k.email, passwort: GUT },
+        herkunft: `10.95.0.${i + 1}` });
+      expect(e.status).toBe(200);
+    }
+
+    const nachher = bisSperre();
+    expect(nachher.runden).toBe(vorher.runden);
+
+    /* Zum Vergleich: Fünf FEHLversuche zählen mit. */
+    for (let i = 0; i < 5; i++) {
+      await anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+        herkunft: `10.96.0.${i + 1}` });
+    }
+    const fehlversuche = bisSperre();
+    expect(fehlversuche.runden).toBe(vorher.runden - 5);
+    /* Und wieder aufräumen, damit die folgenden Prüfungen Luft haben. */
+    for (let i = 0; i < 10; i++) SCH.notentlasten("anmelden-konto", "a:abbau");
+  }, 90000);
+
+  it("bremst ohne Redis-Konfiguration", async () => {
+    /* Ohne Fremddienst zählt die Hauptbremse prozesslokal und über Vermerke
+       in der Ablage. Das ist die Lage im heutigen Betrieb — deshalb
+       ausdrücklich geprüft, dass die Grenze dabei greift. */
+    expect(process.env.REDIS_REST_URL).toBeUndefined();
+    expect(process.env.REDIS_REST_TOKEN).toBeUndefined();
+    const k = await konto(adresse("ohne-redis"));
+    let gebremst = 0;
+    for (let i = 0; i < 12 && !gebremst; i++) {
+      const e = await anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+        herkunft: "10.92.0.1" });
+      if (e.status === 429) gebremst++;
+    }
+    expect(gebremst).toBe(1);
+  }, 90000);
+
+  it("bremst auch, wenn der Redis-Dienst nicht erreichbar ist", async () => {
+    /* `atomarZaehlen` gibt bei einem Ausfall null zurück, und die Zählung
+       fällt auf den Blob-Weg zurück — die Grenze bleibt. */
+    process.env.REDIS_REST_URL = "http://127.0.0.1:9";
+    process.env.REDIS_REST_TOKEN = "unerreichbar";
+    try {
+      const k = await konto(adresse("redis-aus"));
+      let gebremst = 0;
+      for (let i = 0; i < 12 && !gebremst; i++) {
+        const e = await anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+          herkunft: "10.93.0.1" });
+        if (e.status === 429) gebremst++;
+      }
+      expect(gebremst).toBe(1);
+    } finally {
+      delete process.env.REDIS_REST_URL;
+      delete process.env.REDIS_REST_TOKEN;
+    }
+  }, 180000);
+
+  it("sperrt die Herkunft nach einem Bündel gleichzeitiger Versuche", async () => {
+    /* Gleichzeitige Versuche können sich beim Zählen gegenseitig übersehen
+       (schutz.mjs nennt diese Restlücke). Was gelten muss: Danach ist die
+       Herkunft gesperrt, und kein Versuch hat eine Sitzung hinterlassen. */
+    const k = await konto(adresse("parallel-login"));
+    const vorher = (await sitzAblage().list({ prefix: "as:" })).blobs.length;
+    await Promise.all(Array.from({ length: 12 },
+      () => anfrage({ rumpf: { email: k.email, passwort: ANDERS },
+        herkunft: "10.94.0.1" })));
+    const danach = await anfrage({ rumpf: { email: k.email, passwort: GUT },
+      herkunft: "10.94.0.1" });
+    expect(danach.status).toBe(429);
+    expect((await sitzAblage().list({ prefix: "as:" })).blobs.length).toBe(vorher);
+  }, 90000);
+});
+
+describe("Die Herkunft entscheidet der Vertrauensanker, nicht die Anfrage", () => {
+  /** Eine Anfrage mit frei wählbaren Köpfen — für die Fälle, in denen der
+      eigene Wirt gerade nicht 127.0.0.1 sein soll. */
+  async function rohAnfrage(koepfe, { pfad = P_AN, wirt = WIRT, methode = "POST" } = {}) {
+    const req = new Request(`http://${wirt}${pfad}`, {
+      method: methode,
+      headers: { "content-type": "application/json",
+        "x-forwarded-for": eigeneHerkunft(), ...koepfe },
+      ...(methode === "POST"
+        ? { body: JSON.stringify({ email: "a@b.de", passwort: GUT }) } : {}),
+    });
+    const antwort = await handler(req);
+    let daten = null;
+    try { daten = await antwort.clone().json(); } catch { /* egal */ }
+    return { status: antwort.status, daten, keks: antwort.headers.get("set-cookie") };
+  }
+
+  it("lässt sich mit einem gefälschten x-forwarded-host nicht überreden", async () => {
+    /* Genau der belegte Befund der ersten Fassung: Host und
+       X-Forwarded-Host kommen aus der Anfrage. Wer sie setzen kann, hätte
+       damit jede Herkunft zur eigenen erklärt. */
+    const e = await rohAnfrage({ host: "intern:3000",
+      "x-forwarded-host": "boese.example", origin: "https://boese.example" },
+    { wirt: "intern:3000" });
+    expect(e.status).toBe(403);
+    expect(e.daten.fehler).toBe("fremde-herkunft");
+    expect(e.keks).toBe(null);
+  }, LIMIT);
+
+  it("weist widersprüchliche Angaben ab", async () => {
+    for (const koepfe of [
+      { host: "app.centric-dienstplanung.de", origin: "https://boese.example" },
+      { host: "boese.example", origin: "https://boese.example" },
+      { host: "boese.example", "x-forwarded-host": "app.centric-dienstplanung.de",
+        origin: "https://boese.example" },
+      { host: WIRT, origin: "https://127.0.0.1:3000" },
+    ]) {
+      const e = await rohAnfrage(koepfe, { wirt: String(koepfe.host) });
+      expect(e.status, JSON.stringify(koepfe)).toBe(403);
+    }
+  }, LIMIT);
+
+  it("weist fremde Nachbarn der eigenen Adresse ab", async () => {
+    for (const origin of ["https://app.centric-dienstplanung.de.boese.example",
+      "https://boese.app.centric-dienstplanung.de",
+      "https://app.centric-dienstplanung.de:8443",
+      "http://app.centric-dienstplanung.de",
+      "https://localhost.boese.example"]) {
+      const e = await rohAnfrage({ host: "app.centric-dienstplanung.de", origin },
+        { wirt: "app.centric-dienstplanung.de" });
+      expect(e.status, origin).toBe(403);
+    }
+  }, LIMIT);
+
+  it("weist doppelte und unsinnige Köpfe ab", async () => {
+    /* Zwei Werte kommen als „a, b" an — daran scheitert das Zerlegen, und
+       das ist richtig: Widersprüchliches ist keine Herkunft. */
+    for (const koepfe of [
+      { host: WIRT, origin: `${EIGEN}, https://boese.example` },
+      { host: WIRT, origin: `https://boese.example, ${EIGEN}` },
+      { host: WIRT, origin: EIGEN, "sec-fetch-site": "same-origin, cross-site" },
+      { host: WIRT, origin: "kein-ursprung" },
+      { host: WIRT, origin: "javascript:alert(1)" },
+    ]) {
+      const e = await rohAnfrage(koepfe);
+      expect(e.status, JSON.stringify(koepfe)).toBe(403);
+    }
+  }, LIMIT);
+
+  it("weist eine Anfrage ohne jede Herkunftsangabe ab", async () => {
+    const e = await rohAnfrage({ host: WIRT });
+    expect(e.status).toBe(403);
+    /* Und mit der Angabe des Browsers geht es weiter. */
+    const gut = await rohAnfrage({ host: WIRT, "sec-fetch-site": "same-origin" });
+    expect(gut.status).not.toBe(403);
+  }, LIMIT);
+
+  it("nimmt die ausdrücklich konfigurierte Adresse als Anker", async () => {
+    process.env.CENTRIC_BASIS = "https://app.beispiel.test";
+    try {
+      const k = await konto(adresse("anker"));
+      /* Der konfigurierte Ursprung gilt — auch wenn der Wirt der Anfrage
+         ein anderer ist. */
+      const req = new Request(`http://intern:3000${P_AN}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", host: "intern:3000",
+          origin: "https://app.beispiel.test", "x-forwarded-for": eigeneHerkunft() },
+        body: JSON.stringify({ email: k.email, passwort: GUT }),
+      });
+      expect((await handler(req)).status).toBe(200);
+
+      /* Die Vorgabe gilt jetzt nicht mehr … */
+      const alt = await rohAnfrage({ host: "app.centric-dienstplanung.de",
+        origin: "https://app.centric-dienstplanung.de" },
+      { wirt: "app.centric-dienstplanung.de" });
+      expect(alt.status).toBe(403);
+      /* … und das Schema zählt mit. */
+      const schema = await rohAnfrage({ host: "app.beispiel.test",
+        origin: "http://app.beispiel.test" }, { wirt: "app.beispiel.test" });
+      expect(schema.status).toBe(403);
+    } finally { delete process.env.CENTRIC_BASIS; }
+  }, LIMIT);
+
+  it("erlaubt einen örtlichen Ursprung nur bei örtlicher Anfrage", async () => {
+    /* Für Entwicklung und Prüfung. Kommt die Anfrage unter einem anderen
+       Wirt an — im Betrieb spricht Caddy den Container unter seinem
+       Dienstnamen an —, hilft ein örtlicher Origin nicht. */
+    const fremd = await rohAnfrage({ host: "intern:3000",
+      origin: "http://localhost:3000" }, { wirt: "intern:3000" });
+    expect(fremd.status).toBe(403);
+    /* Und selbst örtlich müssen Wirt und Port zusammenpassen. */
+    const port = await rohAnfrage({ host: WIRT, origin: "http://127.0.0.1:5173" });
+    expect(port.status).toBe(403);
+  }, LIMIT);
+
+  it("ändert die Herkunftsprüfung der übrigen Endpunkte nicht", async () => {
+    /* `herkunftErlaubt` gilt weiter für die Endpunkte mit
+       authorization-Kopf: ohne Origin durchlassen, fremden abweisen. */
+    const ohne = new Request("http://intern:3000/api/irgendwas",
+      { method: "POST", headers: { host: "intern:3000" }, body: "{}" });
+    expect(SCH.herkunftErlaubt(ohne)).toBe(true);
+    const eigenKopf = new Request("http://intern:3000/api/irgendwas",
+      { method: "POST", headers: { host: "intern:3000",
+        origin: "http://intern:3000" }, body: "{}" });
+    expect(SCH.herkunftErlaubt(eigenKopf)).toBe(true);
+    const fremdKopf = new Request("http://intern:3000/api/irgendwas",
+      { method: "POST", headers: { host: "intern:3000",
+        origin: "https://boese.example" }, body: "{}" });
+    expect(SCH.herkunftErlaubt(fremdKopf)).toBe(false);
+  }, LIMIT);
+});
+
+describe("Ein gescheiterter Sitzungswechsel ist kein Wechsel", () => {
+  it("legt bei gescheitertem Widerruf keine neue Sitzung an", async () => {
+    const k = await konto(adresse("wechsel-fehler"));
+    const alt = await angemeldet(k.email);
+    const anderesGeraet = await angemeldet(k.email);
+    const legacy = await S.sitzungAnlegen({ bestand: "t-wechsel", rolle: "leitung",
+      person: "p_1", betrieb: 0 });
+    const vorher = (await sitzAblage().list({ prefix: "as:" })).blobs.length;
+
+    /* Die Datei der alten Sitzung wird unlöschbar: An ihrer Stelle liegt
+       ein Verzeichnis. */
+    const datei = path.join(wurzel, "centric-accountsitzungen",
+      `as%3A${hash(alt.merkmal)}.json`);
+    const inhalt = await readFile(datei, "utf8");
+    await rm(datei, { force: true });
+    await mkdir(datei, { recursive: true });
+    let e;
+    try {
+      e = await anfrage({ rumpf: { email: k.email, passwort: GUT },
+        keks: alt.merkmal });
+    } finally {
+      await rm(datei, { recursive: true, force: true });
+      await writeFile(datei, inhalt);
+    }
+
+    /* Ehrliche Absage, kein neues Merkmal, und das alte Cookie weg. */
+    expect(e.status).toBe(500);
+    expect(e.daten.ok).toBe(false);
+    expect(e.daten.fehler).toBe("nicht-moeglich");
+    expect(keksWert(e.keks)).toBe("");
+    /* Keine zweite Sitzung entstanden. */
+    expect((await sitzAblage().list({ prefix: "as:" })).blobs.length).toBe(vorher);
+    /* Die alte gilt noch — sie wurde ja nicht widerrufen. Zwei gleichzeitig
+       gültige Sitzungen für dasselbe Gerät gibt es damit nicht. */
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET", keks: alt.merkmal })).status)
+      .toBe(200);
+    /* Das andere Gerät ist unberührt … */
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET",
+      keks: anderesGeraet.merkmal })).status).toBe(200);
+    /* … und die Arbeitssitzung ebenso. */
+    const mitKopf = {
+      headers: { get: (n) => (n === "authorization" ? `Bearer ${legacy.token}` : null) },
+    };
+    expect(await S.sitzungLesen(/** @type {any} */ (mitKopf))).toBeTruthy();
+
+    /* Der nächste Versuch bringt kein altes Merkmal mehr mit — das Cookie
+       ist gelöscht — und gelingt. */
+    const neu = await angemeldet(k.email);
+    expect(neu.merkmal).not.toBe(alt.merkmal);
+  }, 90000);
+
+  it("wechselt bei heiler Ablage vollständig", async () => {
+    const k = await konto(adresse("wechsel-gut"));
+    const alt = await angemeldet(k.email);
+    const neu = await angemeldet(k.email, GUT, { keks: alt.merkmal });
+    expect(neu.merkmal).not.toBe(alt.merkmal);
+    expect(await sitzung(alt.merkmal)).toBe(null);
+    expect(await sitzung(neu.merkmal)).toBeTruthy();
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET", keks: alt.merkmal })).status)
+      .toBe(401);
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET", keks: neu.merkmal })).status)
+      .toBe(200);
+  }, LIMIT);
+
+  it("stolpert nicht über ein fremdes oder erfundenes Cookie beim Anmelden", async () => {
+    const k = await konto(adresse("wechsel-fremd"));
+    const fremd = await konto(adresse("wechsel-fremd2"));
+    const fremdeSitzung = await angemeldet(fremd.email);
+
+    /* Ein erfundenes Merkmal: nichts zu widerrufen, Anmeldung gelingt. */
+    const erfunden = await angemeldet(k.email, GUT,
+      { keks: "erfundenes-merkmal-mit-genug-laenge-xyz" });
+    expect(erfunden.merkmal).toBeTruthy();
+
+    /* Ein fremdes, gültiges Merkmal im eigenen Cookie: Es wird widerrufen —
+       es ist das Merkmal dieses Geräts, und das Gerät wechselt gerade den
+       Menschen. Andere Geräte des fremden Kontos bleiben angemeldet. */
+    const zweitesGeraetFremd = await angemeldet(fremd.email);
+    const e = await angemeldet(k.email, GUT, { keks: fremdeSitzung.merkmal });
+    expect(e.merkmal).toBeTruthy();
+    expect(await sitzung(fremdeSitzung.merkmal)).toBe(null);
+    expect((await anfrage({ pfad: P_SITZ, methode: "GET",
+      keks: zweitesGeraetFremd.merkmal })).status).toBe(200);
+  }, 90000);
+});

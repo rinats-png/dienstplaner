@@ -1,11 +1,13 @@
 import { getStore } from "../lib/ablage.mjs";
 import {
-  bremse, entlasten, kennung, herkunftStreng, zuVielAntwort, protokoll,
+  bremse, notbremse, entlasten, notentlasten, kennung, herkunftStreng,
+  zuVielAntwort, protokoll,
 } from "../lib/schutz.mjs";
 import { accountSchluessel, accountLesenPerId } from "../lib/accounts.mjs";
 import { mailNormieren, mailBrauchbar } from "../lib/adressen.mjs";
 import {
   anmelden, sitzungPruefen, abmelden, HINWEIS_ANMELDUNG, HINWEIS_SITZUNG,
+  HINWEIS_SPEICHERN,
 } from "../lib/accountanmeldung.mjs";
 import { DAUER } from "../lib/accountsitzungen.mjs";
 
@@ -237,9 +239,25 @@ async function anmeldung(req, k) {
       `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
     return zuVielAntwort(b.wartet);
   }
-  /* Eine ausgefallene Bremse lässt durch (schutz.mjs, Verfügbarkeit vor
-     Schutz). Dann soll es zumindest in der Spur stehen. */
+
+  /* Die zweite Grenze, und die einzige, die nicht ausfallen kann: Sie zählt
+     im Prozessspeicher. `bremse()` lässt bei einem Fehler der Ablage durch
+     (schutz.mjs, Verfügbarkeit vor Schutz) — für einen Dienstplan richtig,
+     für eine Passwortprüfung nicht: Jeder Versuch kostet einen
+     scrypt-Durchlauf, und eine blinde Bremse hieße unbegrenzt viele davon.
+
+     Und sie gilt immer, nicht erst bei einem gemeldeten Fehler: Eine
+     kaputte Ablage fällt nicht auf: Sie liefert „nicht vorhanden" statt zu
+     werfen, und die Hauptbremse zählt dann still null (schutz.mjs). Es gibt
+     also kein Signal, auf das sich ein Umschalten stützen könnte. Damit ist
+     der schlimmste Fall beziffert statt offen: rund NOTGRENZEN.gesamt
+     scrypt-Durchläufe je Fenster und Prozess. */
   if (b.fehler) await protokoll("anmelden-konto", k, "bremse-ausfall", b.fehler);
+  const n = notbremse("anmelden-konto", k);
+  if (!n.frei) {
+    await protokoll("anmelden-konto", k, "notbremse", n.dimension || null);
+    return zuVielAntwort(n.wartet);
+  }
 
   /* Ein Merkmal, das der Aufrufer schon mitbringt, wird widerrufen — noch
      bevor ein neues entsteht. Zwei Gründe: Nach einer neuen Anmeldung soll
@@ -248,7 +266,21 @@ async function anmeldung(req, k) {
      übernommen, sondern gelöscht. Andere Geräte desselben Menschen bleiben
      angemeldet — eine Anmeldung hier ist kein Grund, dort hinauszuwerfen. */
   const altes = merkmalAusKeks(req);
-  if (altes) await abmelden(altes);
+  if (altes) {
+    const weg = await abmelden(altes);
+    if (!weg.ok) {
+      /* Die Regel: Ein gescheiterter Widerruf ist kein Sitzungswechsel.
+         Würde hier trotzdem eine neue Sitzung entstehen, gälten zwei
+         gleichzeitig — die alte, die niemand mehr sieht, und die neue.
+         Also keine neue Sitzung, eine ehrliche Absage und das Cookie weg:
+         Der nächste Versuch bringt kein altes Merkmal mehr mit und
+         gelingt. Fremde Geräte sind davon nicht betroffen; widerrufen
+         wird ausschließlich das Merkmal dieser Anfrage. */
+      await protokoll("anmelden-konto", k, "wechsel-unvollstaendig", null);
+      return antwort({ ok: false, fehler: "nicht-moeglich",
+        hinweis: HINWEIS_SPEICHERN }, 500, { "set-cookie": keksWeg() });
+    }
+  }
 
   const e = await anmelden(store(), { email, passwort });
 
@@ -268,8 +300,12 @@ async function anmeldung(req, k) {
     401, { "set-cookie": keksWeg() });
   }
 
-  /* Wer sich richtig anmeldet, hat sich vorher offenbar nur vertippt. */
+  /* Wer sich richtig anmeldet, hat sich vorher offenbar nur vertippt. Das
+     gilt für beide Grenzen: Die Gesamtgrenze der Notbremse soll Fehlversuche
+     zählen, nicht Anmeldungen — sonst bremst ein Schichtwechsel sich
+     selbst aus. */
   await entlasten("anmelden-konto", k);
+  notentlasten("anmelden-konto", k);
   /* Kein Merkmal, keine Kennung, keine Adresse im Protokoll — nur, dass es
      geklappt hat. */
   await protokoll("anmelden-konto", k, "erfolg", null);

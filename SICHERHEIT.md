@@ -93,6 +93,29 @@ Kontrastwerte nach WCAG AA stehen aus.
   Speicher ist ein Schlüssel-Wert-Ablage, und die Schlüssel entstehen aus
   Sitzungsdaten, nie aus freiem Text.
 
+## Der öffentliche Account-Login: was der Betrieb dafür setzen muss
+
+Die Anmeldung mit E-Mail und Passwort (`POST /api/account/anmelden`) trägt
+zwei Zusagen, die an der Umgebung des Containers hängen — nicht am Quelltext:
+
+| Variable | Wirkung, wenn gesetzt | Wirkung, wenn nicht gesetzt |
+|---|---|---|
+| `CENTRIC_BASIS` | Vertrauensanker der Herkunftsprüfung: Nur dieser Ursprung gilt als eigen (`herkunftStreng`), und nur an ihn geht das Sitzungscookie. | Vorgabe `https://app.centric-dienstplanung.de`. Richtig für den heutigen Betrieb — **falsch, sobald die Anwendung unter einer anderen Adresse läuft**. Dann wird jede Anmeldung abgewiesen (403), nicht fälschlich erlaubt. |
+| `REDIS_REST_URL`, `REDIS_REST_TOKEN` | Die Bremse zählt atomar und über Instanzgrenzen hinweg. | Gezählt wird prozesslokal und über Vermerke in der Ablage. Im Container mit **einem** Node-Prozess ist das wirksam; bei mehreren Instanzen zählt jede für sich. |
+
+Ohne Redis bleibt die Zusage begrenzt, aber beziffert: Fällt die Ablage aus,
+zählt die Hauptbremse still null — sie wirft nicht, sie sieht nur nichts
+(`schutz.mjs`). Deshalb gilt am Anmeldeendpunkt zusätzlich eine **Notbremse**
+im Prozessspeicher: 20 Versuche je Herkunft und 200 Fehlversuche insgesamt, je
+fünf Minuten; gelungene Anmeldungen zählen nicht mit. Der schlimmste Fall ist
+damit rund 200 scrypt-Durchläufe je Fenster und Prozess statt unbegrenzt
+vieler. Wer mehr Zusage will als „ein Prozess je Container", hinterlegt Redis.
+
+Das Cookie heißt `__Host-centric_konto` und trägt `HttpOnly`, `Secure`,
+`SameSite=Strict`, `Path=/` und keine Domain. `Secure` steht unabhängig von
+jedem Kopf: Über eine ungesicherte Verbindung ist es damit nicht nutzbar — das
+ist Absicht und setzt voraus, dass Caddy TLS beendet.
+
 ## Verbleibende Risiken
 
 1. **Bremse unter echter Gleichzeitigkeit.** Ohne Redis kommen bei

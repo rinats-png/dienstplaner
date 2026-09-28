@@ -325,16 +325,75 @@ export function herkunftErlaubt(req) {
    solange sie steht, nicht.
    -------------------------------------------------------------------------- */
 
-/** Die Wirte, die als „diese Seite" gelten. Eigene Fassung, damit
-    `herkunftErlaubt` unverändert bleibt. */
-function eigeneWirte(req) {
-  const eigen = new Set();
-  try { eigen.add(new URL(req.url).host); } catch { /* ohne */ }
-  for (const kopf of ["host", "x-forwarded-host"]) {
-    const w = req.headers.get(kopf);
-    if (w) eigen.add(String(w).split(",")[0].trim());
-  }
-  return eigen;
+/* --------------------------------------------------------------------------
+   DER VERTRAUENSANKER
+
+   Der erste Entwurf dieser Prüfung nahm die eigene Adresse aus der Anfrage:
+   `host`, `x-forwarded-host`, die Adresse des Request-Objekts. Das war
+   falsch, und zwar nachweisbar — mit
+
+     Host: intern:3000
+     X-Forwarded-Host: boese.example
+     Origin: https://boese.example
+
+   galt eine fremde Herkunft als eigen. Ob ein Angreifer diese Köpfe bis
+   hierher bringt, hängt am Reverse Proxy; dessen Konfiguration liegt NICHT in
+   diesem Repository und ist damit nicht nachweisbar. Eine Sicherheitsprüfung
+   darf sich nicht auf eine Annahme stützen, die sich nicht prüfen lässt.
+
+   Deshalb entscheidet die eigene, ausdrücklich konfigurierte Adresse —
+   dieselbe, die auch in jeder Mail steht (CENTRIC_BASIS, siehe
+   anwendungsAdresse() in post.mjs; die Vorgabe ist die Produktionsadresse).
+   Sie kommt aus der Umgebung des Containers, nicht aus der Anfrage, und
+   lässt sich von außen nicht setzen.
+
+   Örtliche Adressen bleiben zusätzlich erlaubt — localhost, 127.0.0.1,
+   [::1] —, und nur dann, wenn die Anfrage selbst örtlich adressiert ist und
+   der ganze Ursprung übereinstimmt. Das ist der Entwicklungs- und Prüffall.
+   In einer Auslieferung kommt keine Anfrage mit einem örtlichen Host an:
+   Caddy spricht den Container unter seinem Dienstnamen an, und der ist nicht
+   „localhost".
+
+   Wer die Anwendung unter einer zweiten Adresse betreibt, setzt
+   CENTRIC_BASIS — nicht einen Kopf. Dasselbe gilt für einen
+   Entwicklungsserver mit eigenem Port: Er braucht CENTRIC_BASIS, sonst ist
+   sein Ursprung ein fremder.
+   -------------------------------------------------------------------------- */
+
+/** Die eigene Adresse als Ursprung: Schema und Wirt, ohne Pfad. Kommt aus
+    der Umgebung, nie aus der Anfrage. */
+function ankerUrsprung() {
+  const roh = (process.env.CENTRIC_BASIS || "https://app.centric-dienstplanung.de")
+    .trim().replace(/\/+$/, "");
+  try { return new URL(roh).origin; } catch { return null; }
+}
+
+/** Ist das ein örtlicher Name? Nur diese vier Schreibweisen — kein Muster,
+    das sich mit einer erfundenen Domain wie „localhost.boese.example"
+    austricksen lässt. */
+const OERTLICH = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+const oertlich = (name) => OERTLICH.has(String(name || "").toLowerCase());
+
+/**
+ * Gehört dieser Ursprung zu dieser Anwendung?
+ * @param {string} roh   der Wert des Kopfes `origin`
+ * @param {Request} req
+ */
+function ursprungEigen(roh, req) {
+  let u;
+  /* Zwei `Origin`-Köpfe kommen als „a, b" an — daran scheitert das Zerlegen,
+     und das ist richtig: Widersprüchliche Angaben sind keine Herkunft. */
+  try { u = new URL(roh); } catch { return false; }
+  const anker = ankerUrsprung();
+  if (anker && u.origin === anker) return true;
+  if (!oertlich(u.hostname)) return false;
+  /* Örtlich: Die Anfrage muss selbst örtlich adressiert sein, und dann muss
+     der ganze Ursprung passen — Schema, Wirt und Port. Nur den Wirt zu
+     vergleichen wäre eine Einladung: „https://127.0.0.1:3000" gälte dann als
+     eigen, obwohl die Anfrage über http kam. */
+  let eigen;
+  try { eigen = new URL(req.url); } catch { return false; }
+  return oertlich(eigen.hostname) && u.origin === eigen.origin;
 }
 
 /**
@@ -353,9 +412,7 @@ export function herkunftStreng(req) {
 
   const roh = req.headers.get("origin");
   if (!roh || roh === "null") return ziel === "same-origin";
-  let fremd;
-  try { fremd = new URL(roh).host; } catch { return false; }
-  return eigeneWirte(req).has(fremd);
+  return ursprungEigen(roh, req);
 }
 
 /**
@@ -585,4 +642,109 @@ export async function spurAufraeumen() {
       if (tag < grenze) await spur().delete(b.key);
     }
   } catch { /* egal */ }
+}
+
+/* --------------------------------------------------------------------------
+   NOTBREMSE — eine Grenze, die ohne Ablage auskommt
+
+   `bremse()` verlässt sich auf die Ablage. Bei dieser Nachprüfung kam heraus,
+   dass ein Ausfall dort schlimmer ist als gedacht: Die Bremse wirft nicht,
+   sie zählt still null. Ein Verzeichnis, das keines ist, liefert beim Lesen
+   „nicht vorhanden"; `versucheZaehlen` gibt 0 zurück, `versuchVermerken`
+   schluckt seinen Fehler. Es gibt also kein Signal, an dem sich ein Ausfall
+   erkennen ließe — die Grenze je Ziel und die Gesamtgrenze sind dann blind,
+   ohne dass es jemand merkt. Der `fehler`-Fall in `bremse()` deckt nur, was
+   wirklich wirft.
+
+   Übrig bleibt dann der prozesslokale Zähler der Hauptbremse, und der zählt
+   je Herkunft. Ein verteilter Versuch aus hundert Adressen hätte damit
+   hundertmal acht scrypt-Durchläufe frei — und scrypt ist mit rund 32 MB und
+   Rechenzeit je Versuch genau das, was man nicht verschenkt.
+
+   Deshalb diese zweite Grenze. Sie zählt ausschließlich im Prozessspeicher:
+   keine Datei, kein Fremddienst, kein Netz — sie kann nicht ausfallen,
+   solange der Prozess läuft. Und sie gilt IMMER, nicht erst bei einem
+   erkannten Ausfall: einen erkennbaren Ausfall gibt es nicht.
+
+     je Herkunft   20 je fünf Minuten — über der gewöhnlichen Grenze von 8,
+                   also im Normalbetrieb unsichtbar.
+     gesamt        200 je fünf Minuten für den ganzen Dienst.
+
+   Damit die Gesamtgrenze niemanden trifft, der sich richtig anmeldet, wird
+   sie bei jeder gelungenen Anmeldung um diesen Versuch entlastet
+   (`notentlasten`). Gezählt bleibt im Ergebnis, was fehlschlug.
+   Zweihundert Fehlversuche in fünf Minuten für den ganzen Dienst sind für
+   ehrliche Nutzung reichlich und für einen Angriff wenig: Der schlimmste Fall
+   ist damit beziffert — rund zweihundert scrypt-Durchläufe je Fenster und
+   Prozess — statt offen.
+
+   Was sie nicht kann: über mehrere Instanzen hinweg zählen. Für diese
+   Anwendung ist das kein Verlust — sie läuft als genau ein Node-Prozess je
+   Container (deploy/compose.yml). Wer mehrere Instanzen fährt, braucht
+   REDIS_REST_URL und REDIS_REST_TOKEN; erst dann ist auch die Hauptbremse
+   über Instanzgrenzen hinweg verlässlich.
+   -------------------------------------------------------------------------- */
+
+/** @type {Record<string, {versuche: number, fenster: number, gesamt: number}>} */
+export const NOTGRENZEN = {
+  "anmelden-konto": { versuche: 20, fenster: 300, gesamt: 200 },
+};
+
+/** Der Zähler der Notbremse. Eigene Karte, damit sie sich mit der Zählung der
+    Hauptbremse nicht vermischt. */
+const not = new Map();
+
+function notZaehlen(schluessel, fensterSekunden, schritt = 1) {
+  const jetzt = Date.now();
+  const eintrag = not.get(schluessel);
+  if (!eintrag || eintrag.bis < jetzt) {
+    if (schritt < 0) return 0;
+    not.set(schluessel, { n: schritt, bis: jetzt + fensterSekunden * 1000 });
+    if (not.size > 500) for (const [k, v] of not) if (v.bis < jetzt) not.delete(k);
+    return schritt;
+  }
+  eintrag.n = Math.max(0, eintrag.n + schritt);
+  return eintrag.n;
+}
+
+/**
+ * Die Grenze, die ohne Ablage gilt. Synchron und ohne Wirkung außerhalb des
+ * Prozesses.
+ *
+ * @param {string} art
+ * @param {string} kennung
+ * @returns {{frei: boolean, wartet?: number, dimension?: string}}
+ */
+export function notbremse(art, kennung) {
+  const g = NOTGRENZEN[art];
+  if (!g) return { frei: true };
+  const jetzt = Math.floor(Date.now() / 1000);
+  const fenster = Math.floor(jetzt / g.fenster);
+  const wartet = g.fenster - (jetzt % g.fenster);
+
+  const eigene = notZaehlen(`${art}:${kennung}:${fenster}`, g.fenster);
+  if (eigene > g.versuche) return { frei: false, wartet, dimension: "herkunft" };
+  const alle = notZaehlen(`${art}:gesamt:${fenster}`, g.fenster);
+  if (alle > g.gesamt) return { frei: false, wartet, dimension: "gesamt" };
+  return { frei: true };
+}
+
+/**
+ * Einen Versuch zurücknehmen — nach einer gelungenen Anmeldung.
+ *
+ * Ohne das wäre die Gesamtgrenze eine Grenze für ALLE Anmeldungen, auch die
+ * richtigen: Ein Schichtwechsel, bei dem sich zweihundert Menschen in fünf
+ * Minuten anmelden, würde ausgebremst. Mit dem Zurücknehmen zählt am Ende,
+ * was fehlgeschlagen ist.
+ *
+ * @param {string} art
+ * @param {string} kennung
+ */
+export function notentlasten(art, kennung) {
+  const g = NOTGRENZEN[art];
+  if (!g) return;
+  const jetzt = Math.floor(Date.now() / 1000);
+  const fenster = Math.floor(jetzt / g.fenster);
+  notZaehlen(`${art}:${kennung}:${fenster}`, g.fenster, -1);
+  notZaehlen(`${art}:gesamt:${fenster}`, g.fenster, -1);
 }
