@@ -40,6 +40,7 @@
     "pruefung:passwort-http": "vitest run pruefungen/passwort-http.test.js",
     "pruefung:accountanmeldung": "vitest run pruefungen/accountanmeldung.test.js",
     "pruefung:anmeldung-http": "vitest run pruefungen/anmeldung-http.test.js",
+    "pruefung:betriebsauswahl": "vitest run pruefungen/betriebsauswahl.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",

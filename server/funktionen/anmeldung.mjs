@@ -10,13 +10,18 @@ import {
   HINWEIS_SPEICHERN,
 } from "../lib/accountanmeldung.mjs";
 import { DAUER } from "../lib/accountsitzungen.mjs";
+import {
+  mitgliedschaftenFuerAuswahl, betriebWaehlen,
+} from "../lib/betriebsauswahl.mjs";
 
 /* ==========================================================================
    ACCOUNT-ZUGANG ÜBER HTTP
 
-     POST /api/account/anmelden   E-Mail und Passwort gegen ein Cookie
-     GET  /api/account/sitzung    Gilt meine Sitzung noch, und wer bin ich?
-     POST /api/account/abmelden   Sitzung widerrufen, Cookie löschen
+     POST /api/account/anmelden          E-Mail und Passwort gegen ein Cookie
+     GET  /api/account/sitzung           Gilt meine Sitzung noch, wer bin ich?
+     POST /api/account/abmelden          Sitzung widerrufen, Cookie löschen
+     GET  /api/account/mitgliedschaften  Welche Betriebe kann ich anwählen?
+     POST /api/account/betrieb           Genau einen davon öffnen
 
    Diese Datei entscheidet nichts über Identität und Recht. Sie liest einen
    Rumpf oder ein Cookie, prüft Herkunft und Bremse und gibt weiter an
@@ -75,11 +80,15 @@ import { DAUER } from "../lib/accountsitzungen.mjs";
    ---------------------------------------------------------------------------
    Was hier NICHT geschieht
 
-   Keine Betriebsauswahl, keine Mitgliedschaft, keine Rolle, kein Recht auf
-   irgendeinen Bestand. Eine Account-Sitzung belegt eine Identität. Der Weg
-   in einen Betrieb ist ein eigener, späterer Vorgang — und die
-   Arbeitssitzungen mit ihrem `authorization`-Kopf bleiben davon unberührt:
-   Sie kennen dieses Cookie nicht, und dieses Cookie öffnet sie nicht.
+   Keine automatische Betriebsauswahl, keine Mitgliedschaft, keine Rolle,
+   kein Recht auf irgendeinen Bestand — auch nicht bei genau einer
+   Mitgliedschaft. Eine Account-Sitzung belegt eine Identität; der Weg in
+   einen Betrieb ist ein ausdrücklicher zweiter Aufruf, und was dabei gilt,
+   entscheidet ausschließlich der Server (lib/betriebsauswahl.mjs).
+
+   Die dabei entstehende Arbeitssitzung ist eine andere Sitzung: eigenes
+   Merkmal, eigene Ablage, `authorization`-Kopf statt Cookie. Das Cookie
+   öffnet keinen Bestand, und das Arbeitsmerkmal öffnet kein Konto.
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -177,7 +186,15 @@ const SITZUNG_ABSAGE = { ok: false, angemeldet: false, hinweis: HINWEIS_SITZUNG 
 const SERVERFEHLER = new Set(["speichern"]);
 
 const PFADE = ["/api/account/anmelden", "/api/account/sitzung",
-  "/api/account/abmelden"];
+  "/api/account/abmelden", "/api/account/mitgliedschaften",
+  "/api/account/betrieb"];
+
+/** Die eine Absage für jeden Betrieb, der sich nicht öffnen lässt: Es gibt
+    ihn nicht, es gibt keine Mitgliedschaft, sie ist entzogen, ihr fehlt die
+    Person, der Bestand ist unlesbar. Ein Unterschied nach außen wäre ein
+    Verzeichnis fremder Betriebe. */
+const BETRIEB_ABSAGE = { ok: false, fehler: "kein-zugang",
+  hinweis: "Dieser Arbeitsbereich steht dir nicht offen." };
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -203,6 +220,16 @@ export default async (req) => {
       if (req.method !== "GET" && req.method !== "HEAD")
         return antwort({ ok: false, fehler: "nur-get" }, 405, { allow: "GET, HEAD" });
       return await sitzungsstand(req, k);
+    }
+    if (pfad === "/api/account/mitgliedschaften") {
+      if (req.method !== "GET" && req.method !== "HEAD")
+        return antwort({ ok: false, fehler: "nur-get" }, 405, { allow: "GET, HEAD" });
+      return await mitgliedschaften(req, k);
+    }
+    if (pfad === "/api/account/betrieb") {
+      if (req.method !== "POST")
+        return antwort({ ok: false, fehler: "nur-post" }, 405, { allow: "POST" });
+      return await betriebOeffnen(req, k);
     }
     if (req.method !== "POST")
       return antwort({ ok: false, fehler: "nur-post" }, 405, { allow: "POST" });
@@ -379,6 +406,79 @@ async function abmeldung(req, k) {
   return antwort({ ok: true, angemeldet: false }, 200, { "set-cookie": keksWeg() });
 }
 
+/* --------------------------------------------------------------------------
+   DIE EIGENEN ARBEITSBEREICHE
+   -------------------------------------------------------------------------- */
+
+async function mitgliedschaften(req, k) {
+  const b = await bremse("konto-sitzung", k);
+  if (!b.frei) return zuVielAntwort(b.wartet);
+
+  const merkmal = merkmalAusKeks(req);
+  if (!merkmal) return antwort(SITZUNG_ABSAGE, 401);
+  const p = await sitzungPruefen(store(), merkmal);
+  if (!p.ok) return antwort(SITZUNG_ABSAGE, 401, { "set-cookie": keksWeg() });
+
+  /* Die Kennung kommt aus der geprüften Sitzung, nie aus der Anfrage. */
+  const e = await mitgliedschaftenFuerAuswahl(store(), p.accountId);
+  /* Auch eine leere Liste ist eine gelungene Antwort: Wer noch nirgends
+     Mitglied ist, ist trotzdem angemeldet. Und keine Auswahl geschieht hier,
+     auch nicht bei genau einem Eintrag — dafür gibt es den zweiten Aufruf. */
+  return antwort({ ok: true, mitgliedschaften: e.mitgliedschaften });
+}
+
+/* --------------------------------------------------------------------------
+   EINEN BETRIEB ÖFFNEN
+   -------------------------------------------------------------------------- */
+
+async function betriebOeffnen(req, k) {
+  const b = await bremse("betrieb-waehlen", k);
+  if (!b.frei) {
+    await protokoll("betrieb-waehlen", k, "gebremst", b.grund);
+    return zuVielAntwort(b.wartet);
+  }
+
+  const gelesen = await rumpfLesen(req);
+  if (!gelesen.ok) return gelesen.antwort;
+  /* Aus dem Rumpf wird genau ein Feld gelesen. Alles andere — eine Rolle,
+     eine Personenkennung, eine Kontokennung, eine Mitgliedschaft — wird
+     nicht gelesen und kann deshalb nichts bewirken. */
+  const { raum } = gelesen.daten;
+  if (typeof raum !== "string" || !raum.trim())
+    return antwort({ ok: false, fehler: "raum-fehlt" }, 400);
+
+  const merkmal = merkmalAusKeks(req);
+  if (!merkmal) return antwort(SITZUNG_ABSAGE, 401);
+  const p = await sitzungPruefen(store(), merkmal);
+  if (!p.ok) return antwort(SITZUNG_ABSAGE, 401, { "set-cookie": keksWeg() });
+
+  const e = await betriebWaehlen(store(), { accountId: p.accountId, raum });
+  if (!e.ok) {
+    await protokoll("betrieb-waehlen", k, "abgewiesen",
+      String(e.grund || "").slice(0, 30));
+    /* Ein Fehler der Ablage ist kein fehlender Zugang — das eine ist unsere
+       Schuld, das andere eine Auskunft. Alles übrige ist dieselbe Absage. */
+    if (e.grund === "speichern") {
+      return antwort({ ok: false, fehler: "nicht-moeglich",
+        hinweis: HINWEIS_SPEICHERN }, 500);
+    }
+    return antwort(BETRIEB_ABSAGE, 403);
+  }
+
+  await protokoll("betrieb-waehlen", k, "erfolg", null, { rolle: e.rolle,
+    person: e.person, weg: e.raum, verfahren: "konto" });
+
+  /* Das Merkmal der Arbeitssitzung geht in den Rumpf, nicht in ein Cookie:
+     Die Anwendung führt es im Kopf `authorization` — so, wie sie es seit
+     Anfang an tut. Das Account-Cookie bleibt davon unberührt und wird
+     nicht wiederverwendet; die beiden Merkmale haben nichts miteinander zu
+     tun und liegen in getrennten Ablagen. */
+  return antwort({ ok: true, token: e.token, gueltigBis: e.gueltigBis,
+    raum: e.raum, name: e.name, rolle: e.rolle, person: e.person,
+    betrieb: e.betrieb });
+}
+
 export const config = {
-  path: ["/api/account/anmelden", "/api/account/sitzung", "/api/account/abmelden"],
+  path: ["/api/account/anmelden", "/api/account/sitzung", "/api/account/abmelden",
+    "/api/account/mitgliedschaften", "/api/account/betrieb"],
 };

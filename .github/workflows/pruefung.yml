@@ -184,6 +184,11 @@ jobs:
       - name: Account-Anmeldung über HTTP
         run: npm run pruefung:anmeldung-http
 
+      # Vom Konto in einen Betrieb: Der Browser nennt einen Raum, alles
+      # übrige — Mitgliedschaft, Person, Rolle — holt der Server aus der Ablage.
+      - name: Betriebsauswahl
+        run: npm run pruefung:betriebsauswahl
+
       - name: Übersetzen
         run: npm run build
 

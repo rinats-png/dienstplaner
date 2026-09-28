@@ -207,6 +207,13 @@ export const GRENZEN = {
      Ansturm nicht die Ablage beschäftigt: Jede Prüfung liest zwei
      Datensätze und schreibt gelegentlich einen. */
   "konto-sitzung": { versuche: 300, fenster: 60, sperre: 60 },
+  /* Einen Betrieb anwählen. Kein Geheimnis zu raten — ohne Mitgliedschaft
+     gibt es keinen Zugang, und die Absage verrät nicht, ob der Raum
+     existiert. Gebremst wird, weil jeder Aufruf eine Arbeitssitzung
+     anlegt: Ohne Grenze ließe sich die Sitzungsablage zuschreiben.
+     Dreißig je fünf Minuten reichen für jeden Wechsel zwischen
+     Arbeitsbereichen und für keinen Ansturm. */
+  "betrieb-waehlen": { versuche: 30, fenster: 300, sperre: 300 },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
