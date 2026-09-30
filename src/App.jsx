@@ -170,6 +170,7 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
+import { aufhellenBis } from "./gestalt/lesbar.js";
 import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
   Abschnittskopf, Punkt, Grosszahl, Zeitwahl, Statuszeile, Fehlerband } from "./gestalt/ansichten.jsx";
@@ -234,8 +235,13 @@ function themaVomSystem() {
 /* Dienstarten: entsättigte Tönungen mit dünner Akzentlinie — keine Farbflächen. */
 const TON = (farbe, staerke = 1) => ({
   background: `${farbe}${staerke > 1 ? "1F" : "12"}`,
-  borderLeft: `2.5px solid ${farbe}`,
+  borderLeft: `2.5px solid ${lesbar(farbe, 3)}`,
 });
+
+/** Farben von Dienstarten und Einheiten sind Daten, gewählt für hellen Grund. Als Schrift
+ *  oder Kante auf dem dunklen Kartengrund werden sie aufgehellt (nur Darstellung, siehe
+ *  gestalt/lesbar.js). Im hellen Erscheinungsbild bleibt die Farbe, wie sie ist. */
+const lesbar = (farbe, mindest = 4.5) => (_dunkel ? aufhellenBis(farbe, C.flaeche, mindest) : farbe);
 
 const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif";
 const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" };
@@ -4962,7 +4968,7 @@ const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
   return (
     <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
       title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
-      style={{ background: `${da.farbe}1C`, color: da.farbe, cursor: onClick ? "pointer" : "default",
+      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe), cursor: onClick ? "pointer" : "default",
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
       <div className="oben">{da.kurz}</div>
@@ -5230,13 +5236,13 @@ function Zelle({ da, abw, size = 28, blass }) {
   if (abw) { const m = abwArt(abw.art);
     return <div title={m.label}  style={{ width: size, height: size, borderRadius: Math.round(size * .3),
       display: "flex", alignItems: "center", justifyContent: "center", border: `1.5px dashed ${m.farbe}88`,
-      color: m.farbe, fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{m.kurz}</div>; }
+      color: lesbar(m.farbe), fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{m.kurz}</div>; }
   if (!da) return <div style={{ width: size, height: size, borderRadius: Math.round(size * .3),
     background: "rgba(20,20,25,.045)", display: "flex", alignItems: "center", justifyContent: "center",
     color: C.dimmer, fontSize: 13 }}>·</div>;
   return <div title={`${da.name} ${da.start}–${da.ende}`} 
     style={{ width: size, height: size, borderRadius: Math.round(size * .3), display: "flex", alignItems: "center",
-      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: da.farbe,
+      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: lesbar(da.farbe),
       fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{da.kurz}</div>;
 }
 function Balken({ ist, soll, tone }) {
@@ -5452,7 +5458,7 @@ function Anmeldung({ db, onLogin }) {
                   onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 26px rgba(16,16,24,.12)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: r.farbe,
+                    <span style={{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: lesbar(r.farbe),
                       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{r.kurz}</span>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{r.label}</div>
                   </div>
@@ -5672,12 +5678,15 @@ function LinienDiagramm({ daten, hoehe = 168, wert = "y", label = "label", nulll
         <polygon points={flaeche} fill={`url(#${id})`} />
         <polyline points={punkte} fill="none" stroke={farbe} strokeWidth="2"
           strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {daten.map((d, i) => (
-          <circle key={i} cx={x(i)} cy={y(d[wert])} r={aktiv === i ? 4 : 2.4} fill="#fff"
-            stroke={farbe} strokeWidth="2" vectorEffect="non-scaling-stroke"
-            onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
-            style={{ cursor: "pointer" }} />))}
       </svg>
+      {/* Die Punkte sind HTML, nicht SVG: In einem gestreckten SVG
+          (preserveAspectRatio="none") würde jeder Kreis zur Ellipse. */}
+      {daten.map((d, i) => (
+        <span key={i} onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
+          style={{ position: "absolute", left: `${x(i)}%`, top: (y(d[wert]) / H) * hoehe,
+            width: aktiv === i ? 11 : 8, height: aktiv === i ? 11 : 8, boxSizing: "border-box",
+            transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+            border: `2px solid ${farbe}`, cursor: "pointer" }} />))}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         {daten.map((d, i) => (
           <span key={i} style={{ fontSize: 10.5, color: aktiv === i ? C.text : C.dimmer,
@@ -6214,7 +6223,7 @@ function Assistent2({ sitz, akt, onClose }) {
               return (
                 <Card key={g.id} style={{ padding: 16, marginBottom: 12 }}>
                   <div style={{ display: "flex", gap: 13, alignItems: "flex-end", flexWrap: "wrap" }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 5, background: g.farbe, marginBottom: 12 }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 5, background: lesbar(g.farbe, 3), marginBottom: 12 }} />
                     <Field label="Bezeichnung">
                       <Inp value={g.name} style={{ width: 190 }}
                         onChange={(e) => setGruppen(gruppen.map((x, k) => k === gi ? { ...x, name: e.target.value } : x))} /></Field>
@@ -7506,7 +7515,7 @@ function BetreiberMandanten({ db, akt, oeffne }) {
                   return (
                     <div key={r.id} className="karte" style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
-                        <span style={{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: r.farbe,
+                        <span style={{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: lesbar(r.farbe),
                           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{r.kurz}</span>
                         <span style={{ fontSize: 11.5, color: C.dim }}>{r.label}</span>
                       </div>
@@ -8390,7 +8399,7 @@ function Lagebild({ sitz, oeffneTag, akt }) {
                   </th>))}</tr></thead>
                 <tbody>{m.einheiten.map((e) => (
                   <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, display: "inline-block", marginRight: 9 }} />{e.name}</td>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
                     {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
                       <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
                   </tr>))}</tbody>
@@ -8718,7 +8727,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                 <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "11px 20px",
                   borderBottom: `1px solid ${C.lineSoft}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), flexShrink: 0 }} />
                     <div><div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
                       <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
                         {aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === e.id).length} Pers. · Versatz {e.versatz}</div></div>
@@ -9083,7 +9092,7 @@ function Schichtfolge({ sitz, akt }) {
             <Lab style={{ margin: "20px 0 12px" }}>Startpunkt je {m.einheitLabel}</Lab>
             {m.einheiten.map((e) => (
               <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px 13px", marginBottom: 10, flexWrap: "wrap" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe }} />
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3) }} />
                 <span style={{ fontSize: 13.5, flex: "1 1 120px", minWidth: 0 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
                   aria-label={`Startpunkt im Zyklus für ${e.name}`}
@@ -9780,7 +9789,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         return (<div key={a.id} className="karte" style={{ display: "flex", justifyContent: "space-between",
           alignItems: "center", padding: "11px 14px", marginBottom: 8 }}>
           <div style={{ fontSize: 13.5 }}>
-            <span style={{ color: meta.farbe, fontWeight: 600 }}>{meta.label}</span>
+            <span style={{ color: lesbar(meta.farbe), fontWeight: 600 }}>{meta.label}</span>
             <span style={{ color: C.dim, marginLeft: 11, ...NUM }}>{fKurz(a.von)} – {fKurz(a.bis)}</span>
             {z && z.tage > 0 && <span style={{ color: C.dimmer, marginLeft: 11, ...NUM }}>{z.tage} Urlaubstage</span>}</div>
           {editierbar && <Btn size="sm" kind="danger" onClick={() => akt.loescheAbwesenheit(a.id)}>Löschen</Btn>}
@@ -12586,7 +12595,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
           background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,
           borderRadius: 8, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
           outline: s.status === "danger" ? `2px solid ${C.danger}` : s.status === "warn" ? `2px solid ${C.warn}` : "none" }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: s.da.farbe, lineHeight: 1.2,
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: lesbar(s.da.farbe), lineHeight: 1.2,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.da.kurz}</div>
         {hoehe > 40 && (
           <div style={{ fontSize: 10.5, marginTop: 2, lineHeight: 1.25,
@@ -12689,7 +12698,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
                             top: 6, bottom: 6, borderRadius: 9, cursor: "pointer",
                             background: `${z.da.farbe}14`, borderLeft: `3px solid ${z.da.farbe}`,
                             display: "flex", alignItems: "center", padding: "0 10px", overflow: "hidden" }}>
-                          <span style={{ fontSize: 11.5, fontWeight: 650, color: z.da.farbe,
+                          <span style={{ fontSize: 11.5, fontWeight: 650, color: lesbar(z.da.farbe),
                             whiteSpace: "nowrap" }}>{z.da.kurz}</span>
                           <span style={{ fontSize: 11, color: C.dim, marginLeft: 8,
                             whiteSpace: "nowrap", ...NUM }}>{z.da.start}–{z.da.ende}</span>
@@ -13922,7 +13931,7 @@ function Qualifikationsmatrix({ sitz, akt }) {
           {qm.spalten.map((s) => (
             <div key={s.qual.id} style={{ marginBottom: 22 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
-                <span style={{ width: 9, height: 9, borderRadius: 5, background: s.qual.farbe }} />
+                <span style={{ width: 9, height: 9, borderRadius: 5, background: lesbar(s.qual.farbe, 3) }} />
                 <span style={{ fontSize: 14.5, fontWeight: 620 }}>{s.qual.name}</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{s.anzahl} Personen</span>
                 {s.bedarf > 0 && <Pill size="sm">Bedarf {s.bedarf} je Dienst</Pill>}
@@ -13939,7 +13948,7 @@ function Qualifikationsmatrix({ sitz, akt }) {
                   return (
                     <div key={e.id} className="karte-still" style={{ padding: "11px 13px", borderRadius: "var(--r)",
                       background: kritisch ? C.dangerLight : knapp ? C.warnLight : C.flaecheStill }}>
-                      <div style={{ fontSize: 11.5, color: e.farbe, fontWeight: 600, overflow: "hidden",
+                      <div style={{ fontSize: 11.5, color: lesbar(e.farbe), fontWeight: 600, overflow: "hidden",
                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</div>
                       <div style={{ fontSize: 19, fontWeight: 650, marginTop: 3, ...NUM,
                         color: kritisch ? C.danger : knapp ? C.warn : C.text }}>{n}</div>
@@ -14174,7 +14183,7 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
         {WUNSCH_ARTEN.map((a) => (
           <span key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.dim }}>
             <span style={{ width: 17, height: 17, borderRadius: 6, background: `${a.farbe}1C`,
-              color: a.farbe, fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center",
+              color: lesbar(a.farbe), fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center",
               justifyContent: "center" }}>{a.zeichen}</span>{a.label}</span>))}
         <span style={{ fontSize: 13, color: C.dimmer, marginLeft: "auto", ...NUM }}>
           {meine.length} Wünsche in diesem Monat</span>
@@ -14212,7 +14221,7 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
                 <div key={w.datum} className="listenzeile" style={{ padding: "9px 0", gap: 10 }}>
                   <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13,
-                    background: `${art.farbe}1C`, color: art.farbe }}>{art.zeichen}</span>
+                    background: `${art.farbe}1C`, color: lesbar(art.farbe) }}>{art.zeichen}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13.5, fontWeight: 550 }}>{fKurz(w.datum)}</div>
                     <div style={{ fontSize: 12, color: C.dim }}>{art.label} · im Plan {da ? da.name : "frei"}</div>
@@ -18804,15 +18813,10 @@ const MTitel = ({ children, rubrik, rechts }) => (
 const MBlatt = ({ offen, onClose, titel, children }) => {
   if (!offen) return null;
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80,
-      background: "var(--c-ueberlagerung)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "92vh", overflowY: "auto",
-        background: C.flaeche, borderRadius: "26px 26px 0 0",
-        padding: "10px 20px calc(28px + env(safe-area-inset-bottom))" }}>
-        <div style={{ width: 42, height: 4.5, borderRadius: 3, background: C.lineStark,
-          margin: "6px auto 16px" }} />
-        {titel && <div style={{ fontSize: 20, fontWeight: 650, letterSpacing: "-.02em", marginBottom: 18 }}>
-          {titel}</div>}
+    <div onClick={onClose} className="m-blattrahmen" role="dialog" aria-modal="true" aria-label={titel || "Blatt"}>
+      <div onClick={(e) => e.stopPropagation()} className="m-blatt">
+        <div className="m-griff" aria-hidden="true" />
+        {titel && <div className="m-blatttitel">{titel}</div>}
         {children}
       </div>
     </div>);
@@ -18846,7 +18850,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
       {/* Der Dienst des Tages — die wichtigste Karte */}
       {da ? (
         <MKarte style={{ padding: 22, background: `${da.farbe}0E`, border: `1px solid ${da.farbe}33` }}>
-          <Rubrik style={{ color: da.farbe }}>Dein Dienst heute</Rubrik>
+          <Rubrik style={{ color: lesbar(da.farbe) }}>Dein Dienst heute</Rubrik>
           <div style={{ fontSize: 27, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
             {da.name}</div>
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
@@ -19021,7 +19025,7 @@ function MPlan({ sitz, akt, oeffnen }) {
                   <div style={{ fontSize: 10.5, color: C.dimmer, ...NUM }}>{MON[Number(d.slice(5, 7)) - 1].slice(0, 3)}</div>
                 </div>
                 <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2,
-                  background: da ? da.farbe : t.abwesenheit ? abwArt(t.abwesenheit.art).farbe : "transparent" }} />
+                  background: da ? lesbar(da.farbe, 3) : t.abwesenheit ? lesbar(abwArt(t.abwesenheit.art).farbe, 3) : "transparent" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 16.5, fontWeight: 600, letterSpacing: "-.015em" }}>
                     {da ? da.name : abwArt(t.abwesenheit.art).label}</div>
@@ -19058,7 +19062,7 @@ function MPlan({ sitz, akt, oeffnen }) {
                     outline: d === heute() ? `2px solid ${C.accent}` : "none" }}>
                   <span style={{ fontSize: 12, color: C.dim, ...NUM }}>{Number(String(d).slice(8))}</span>
                   {(da || t.abwesenheit) && <span style={{ fontSize: 11, fontWeight: 700, ...NUM,
-                    color: da ? da.farbe : abwArt(t.abwesenheit.art).farbe }}>
+                    color: da ? lesbar(da.farbe) : lesbar(abwArt(t.abwesenheit.art).farbe) }}>
                     {da ? da.kurz : abwArt(t.abwesenheit.art).kurz}</span>}
                 </div>);
             })}
@@ -19235,16 +19239,21 @@ function Kontoblatt({ m, verlauf, jetzt, trend }) {
       </div>
 
       {/* Eine dünne Linie, sonst nichts */}
+      <div style={{ position: "relative", marginTop: 26 }}>
       <svg viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none"
-        style={{ width: "100%", height: 104, display: "block", marginTop: 26, overflow: "visible" }}>
+        style={{ width: "100%", height: 104, display: "block", overflow: "visible" }}>
         {min < 0 && max > 0 && (
           <line x1="0" y1={y(0)} x2={W} y2={y(0)} stroke={C.line} strokeWidth=".8"
             vectorEffect="non-scaling-stroke" />)}
         <path d={linie} fill="none" stroke={ueber ? C.warn : C.accentHi} strokeWidth="1.8"
           strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        <circle cx={letzterX} cy={letzterY} r="4" fill={C.flaeche}
-          stroke={ueber ? C.warn : C.accentHi} strokeWidth="2" vectorEffect="non-scaling-stroke" />
       </svg>
+      {/* Endpunkt als HTML-Punkt (im gestreckten SVG würde er zur Ellipse) */}
+      <span aria-hidden="true" style={{ position: "absolute", left: `${(letzterX / W) * 100}%`,
+        top: (letzterY / (H + 14)) * 104, width: 10, height: 10, boxSizing: "border-box",
+        transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+        border: `2px solid ${ueber ? C.warn : C.accentHi}` }} />
+      </div>
 
       {/* Monatsnamen nur an den Enden — der Rest ist selbsterklärend */}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12,
@@ -19358,21 +19367,14 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
     von: d || heute(), bis: d || heute(), text: "" }) };
 
   return (
-    <div style={{ minHeight: "100vh", paddingBottom: 92 }}>
-      <header style={{ position: "sticky", top: 0, zIndex: 40, padding: "12px 18px",
-        background: "var(--c-kopf-grund)", backdropFilter: "saturate(200%) blur(24px)",
-        WebkitBackdropFilter: "saturate(200%) blur(24px)", borderBottom: `1px solid ${C.line}`,
-        display: "flex", alignItems: "center", gap: 12 }}>
+    <div className="m-schale">
+      <header className="m-kopf">
         <Logo size={24} />
-        <span style={{ fontSize: 15.5, fontWeight: 800, letterSpacing: "-.02em", flex: 1 }}>CENTRIC</span>
-        <button onClick={() => oeffnen("post")} aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
-          style={{ position: "relative", border: "none",
-          background: C.bg, width: 38, height: 38, borderRadius: 13, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center", color: C.dim }}>
-          <Icon n="brief" size={18} />
-          {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18,
-            borderRadius: 9, background: C.danger, color: "#fff", fontSize: 10.5, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>{ungelesen}</span>}
+        <span className="m-wort">CENTRIC</span>
+        <button onClick={() => oeffnen("post")} className="m-postknopf"
+          aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}>
+          <Icon n="brief" size={19} />
+          {ungelesen > 0 && <span className="m-zahl">{ungelesen}</span>}
         </button>
       </header>
 
@@ -19383,18 +19385,11 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
         {tab === "mehr" && <MMehr sitz={sitz} akt={akt} oeffnen={oeffnen} aufRechner={aufRechner} />}
       </main>
 
-      <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex",
-        background: "var(--c-kopf-grund)", backdropFilter: "saturate(200%) blur(28px)",
-        WebkitBackdropFilter: "saturate(200%) blur(28px)", borderTop: `1px solid ${C.line}`,
-        padding: "8px 6px calc(8px + env(safe-area-inset-bottom))" }}>
+      <nav className="m-tabs" aria-label="Bereiche">
         {M_TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ flex: 1, border: "none", background: tab === t.id ? C.accentLight : "transparent",
-              cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column",
-              alignItems: "center", gap: 4, padding: "8px 2px", borderRadius: 15, minHeight: 52,
-              color: tab === t.id ? C.text : C.dimmer, fontSize: 11, fontWeight: 600,
-              boxShadow: tab === t.id ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
-            <Icon n={t.icon} size={20} />{t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} className={tab === t.id ? "on" : ""}
+            aria-current={tab === t.id ? "page" : undefined}>
+            <Icon n={t.icon} size={22} />{t.label}
           </button>))}
       </nav>
 
@@ -19886,7 +19881,7 @@ function MWuensche({ sitz, akt }) {
             <span style={{ fontSize: 12, color: C.dim, ...NUM }}>{Number(d.slice(8))}</span>
             {w ? <span style={{ fontSize: 13, fontWeight: 700, color: w.art === "moechte" ? C.ok : C.warn }}>
               {w.art === "moechte" ? "✓" : "✕"}</span>
-              : da && <span style={{ fontSize: 9.5, color: da.farbe, fontWeight: 700 }}>{da.kurz}</span>}
+              : da && <span style={{ fontSize: 9.5, color: lesbar(da.farbe), fontWeight: 700 }}>{da.kurz}</span>}
           </div>);
       })}
     </div>
@@ -20344,7 +20339,7 @@ function Betrieb({ sitz, akt }) {
               const zahl = r.id === "leitung" ? ALLE_RECHTE.length : hat.length;
               return (
                 <th key={r.id} style={{ padding: "13px 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 86 }}>
-                  <Lab style={{ color: r.farbe, textAlign: "center", fontWeight: 700 }}>{r.kurz}</Lab>
+                  <Lab style={{ color: lesbar(r.farbe), textAlign: "center", fontWeight: 700 }}>{r.kurz}</Lab>
                   <div title={`${rollenName(m, r.id)} — ${zahl} von ${ALLE_RECHTE.length} Rechten`}
                     style={{ fontSize: 11, color: C.dimmer, textAlign: "center", marginTop: 3, ...NUM }}>
                     {zahl}/{ALLE_RECHTE.length}</div>

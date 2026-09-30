@@ -248,3 +248,43 @@ describe("Avatar-Töne", () => {
     });
   }
 });
+
+/* --------------------------------------------------------------------------
+   Dienstfarben im Dunkelmodus (Darstellung, nicht Daten)
+
+   Die Farben von Dienstarten, Einheiten und Qualifikationen sind Daten und
+   für hellen Grund gewählt. Als Schrift oder Kante auf dem dunklen Kartengrund
+   werden sie in der Darstellung aufgehellt (src/gestalt/lesbar.js, in App.jsx
+   als `lesbar()`): Schrift auf mindestens 4,5:1, Kanten und Punkte auf 3:1.
+   Im hellen Erscheinungsbild bleibt die Farbe unverändert.
+   -------------------------------------------------------------------------- */
+import { readFileSync } from "node:fs";
+import { aufhellenBis, kontrastVon } from "../src/gestalt/lesbar.js";
+
+describe("Dienstfarben als Schrift und Kante im Dunkelmodus", () => {
+  const DIENST = ["#017070", "#316C81", "#023441", "#4C4668", "#955410", "#2E6B4F", "#B3261E", "#35506B",
+    "#0369A1", "#8A5A00", "#878C93"];
+  const quelle = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const bloc = quelle.slice(quelle.indexOf("const PALETTE = ["), quelle.indexOf("const PALETTE_NAMEN"));
+  const PALETTE = bloc.match(/#[0-9A-Fa-f]{6}/g) || [];
+  const grund = C_DUNKEL.flaeche;
+
+  it("die Palette der dreißig Farben wird gelesen", () => expect(PALETTE).toHaveLength(30));
+
+  for (const farbe of [...DIENST, ...PALETTE]) {
+    it(`${farbe}: als Schrift ≥ 4,5:1 und als Kante ≥ 3:1 auf dem Kartengrund`, () => {
+      expect(kontrastVon(aufhellenBis(farbe, grund, 4.5), grund)).toBeGreaterThanOrEqual(4.5);
+      expect(kontrastVon(aufhellenBis(farbe, grund, 3), grund)).toBeGreaterThanOrEqual(3);
+    });
+  }
+  it("eine Farbe, die schon trägt, bleibt unverändert", () => {
+    expect(aufhellenBis("#7FE0E0", grund, 4.5)).toBe("#7FE0E0");
+  });
+  it("die dunkelste Dienstfarbe (Nacht) wird spürbar heller, bleibt aber bläulich-grün", () => {
+    const h = aufhellenBis("#023441", grund, 4.5);
+    expect(h).not.toBe("#023441");
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    expect(b).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(r);
+  });
+});
