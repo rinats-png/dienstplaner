@@ -287,14 +287,9 @@ try {
     try { await geheZu(page, "personal"); await page.getByText("Ahrens, Mehmet").first().click({ timeout: 3000 }); await warte(700);
       await bild(page, "dialog-personalakte.jpg", "Personalakte", "Organisationsleitung", "1440 hell", { voll: false }); await page.keyboard.press("Escape"); await warte(300);
     } catch (e) { console.log("  Personalakte", e.message.split("\n")[0]); }
-    // Meldung mit Rückgängig: einen Aushang abnehmen (im Bilderbetrieb; danach ändert sich der Bestand)
-    try { await geheZu(page, "aushang"); await warte(300);
-      await page.getByRole("button", { name: "Abnehmen" }).first().click({ timeout: 3000 }); await warte(600);
-      await bild(page, "dialog-toast-rueckgaengig.jpg", "Meldung mit Rückgängig (Toast)", "Organisationsleitung", "1440 hell", { voll: false });
-    } catch (e) { console.log("  Toast", e.message.split("\n")[0]); }
     // Offline-Leiste
     try { await ctx.setOffline(true); await page.evaluate(() => window.dispatchEvent(new Event("offline"))); await warte(600);
-      await bild(page, "dialog-offline.jpg", "Offline-Leiste", "Organisationsleitung", "1440 Feldmodus", { voll: false });
+      await bild(page, "dialog-offline.jpg", "Offline-Leiste", "Organisationsleitung", "1440 hell", { voll: false });
       await ctx.setOffline(false); await page.evaluate(() => window.dispatchEvent(new Event("online")));
     } catch (e) { console.log("  Offline", e.message.split("\n")[0]); }
     if (meldungen.length) console.log("  Konsole:", [...new Set(meldungen)].slice(0, 5).join(" | "));
