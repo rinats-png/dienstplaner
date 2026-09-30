@@ -9124,7 +9124,7 @@ function Dienstarten({ sitz, akt }) {
       <H1 sub="Dienstarten sind vollständig frei gestaltbar: Zeiten, Pause, Farbe, Ort, Mindestbesetzung je Wochentag und geforderte Qualifikationen. Ein Außenposten wird automatisch aus der Einheit besetzt, die den Quelldienst fährt."
         right={editierbar && <Btn kind="primary" onClick={() => oeffnen(null)}>Dienstart anlegen</Btn>}>Dienstarten</H1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 16 }}>
         {m.dienstarten.map((d) => {
           const verwendet = m.zyklus.tage.filter((t) => t === d.id).length
             + Object.values(m.abweichungen).filter((v) => v === d.id).length;
@@ -9173,7 +9173,7 @@ function Dienstarten({ sitz, akt }) {
             <Field label="Ende" hint="Früher als der Beginn bedeutet Folgetag."><Inp type="time" value={f.ende} onChange={(e) => setF({ ...f, ende: e.target.value })} /></Field>
             <Field label="Pause in Minuten"><Inp type="number" min={0} value={f.pause || 0} onChange={(e) => setF({ ...f, pause: Number(e.target.value) })} /></Field>
           </div>
-          <div className="karte" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="karte-still" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center", borderRadius: "var(--r)" }}>
             <div><Lab>Dauer</Lab><div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>{n1(dauer(f))} h</div></div>
             <div><Lab>Brutto</Lab><div style={{ fontSize: 19, fontWeight: 650, color: C.dim, ...NUM }}>{n1(brutto(f))} h</div></div>
             <div><Lab>Nachtanteil {nachtFenster(m.einstellungen).von.slice(0, 2)}–{nachtFenster(m.einstellungen).bis.slice(0, 2)} Uhr</Lab>
@@ -9220,7 +9220,7 @@ function Dienstarten({ sitz, akt }) {
               ihr Name, sondern die Bindung. Diese drei Angaben sind die,
               nach denen im Streitfall gefragt wird. */}
           {(f.form === "ruf" || f.form === "bereitschaft") && (
-            <div className="karte" style={{ padding: 16 }}>
+            <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
               <Lab style={{ marginBottom: 12 }}>Ausgestaltung der Bereitschaft</Lab>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 13 }}>
                 <Field label="Aufenthalt" hint={aufenthaltVon(f.aufenthalt).text}>
@@ -9243,18 +9243,18 @@ function Dienstarten({ sitz, akt }) {
               {bereitschaftHinweise(f).map((h, i) => (
                 <div key={i} style={{ marginTop: 11, fontSize: 12.5, lineHeight: 1.55,
                   color: h.schwere === "warn" ? C.warn : C.dim }}>{h.text}</div>))}
-              <div style={{ marginTop: 12, fontSize: 12, color: C.dimmer, lineHeight: 1.55 }}>
+              <Erklaerkasten style={{ marginTop: 12 }}>
                 Die Anwendung stuft nicht selbst ein — sie kennt weder den Tarifvertrag noch
                 die tatsächliche Belastung. Sie hält fest, was für die Einstufung zählt, und
                 sagt, wo die Angaben in eine andere Richtung zeigen als die gewählte Form.
-              </div>
+              </Erklaerkasten>
             </div>)}
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 13 }}>
             <Field label="Ort oder Objekt"><Inp value={f.ort} onChange={(e) => setF({ ...f, ort: e.target.value })} /></Field>
             <Field label="Farbe">
               <Farbwahl wert={f.farbe} onChange={(c) => setF({ ...f, farbe: c })} /></Field>
           </div>
-          <div className="karte" style={{ padding: 16 }}>
+          <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
               <input type="checkbox" checked={!!f.posten} onChange={(e) => setF({ ...f, posten: e.target.checked, quelle: e.target.checked ? (f.quelle || m.dienstarten[0].id) : null })} />
               <span style={{ fontSize: 14, fontWeight: 500 }}>Außenposten — wird automatisch besetzt</span>
@@ -11328,87 +11328,90 @@ function Datenschutz({ sitz, akt }) {
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0",
       borderBottom: `1px solid ${C.lineSoft}` }}>
       <span style={{ fontSize: 15, fontWeight: 640, minWidth: 44, textAlign: "right",
-        color: zahl ? C.text : C.dimmer, ...NUM }}>{zahl}</span>
+        color: zahl ? C.text : C.dim, ...NUM }}>{zahl}</span>
       <span style={{ fontSize: 13.5, flex: 1 }}>{was}</span>
       <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>vor {fDatum(ab)}</span>
     </div>);
 
   return (
-    <Card>
-      <CardHead right={<Lab>{f.zuletztGeraeumt
-        ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
-      <div style={{ padding: 22, display: "grid", gap: 18 }}>
+    <Leitraster seiteBreite={380}
+      haupt={<>
+      <Card>
+        <CardHead right={<Lab>{f.zuletztGeraeumt
+          ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
+        <div style={{ padding: "var(--pad-y) var(--pad-x) calc(var(--pad-y) + 8px)", display: "grid", gap: 18 }}>
 
-        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
-          Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
-          sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
-          und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+          <Erklaerkasten>
+            Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
+            sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
+            und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+          </Erklaerkasten>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
+            <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
+              label="Plandaten in Monaten"
+              hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
+            <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
+              label="Stammdaten nach Austritt"
+              hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
+            <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
+              label="Abwesenheitsgründe in Monaten"
+              hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
+          </div>
+
+          {v.warnung && <Hinweisband ton="danger" style={{ boxShadow: "none", marginBottom: 0 }}>{v.warnung}</Hinweisband>}
         </div>
+      </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-          <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
-            label="Plandaten in Monaten"
-            hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
-          <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
-            label="Stammdaten nach Austritt"
-            hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
-          <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
-            label="Abwesenheitsgründe in Monaten"
-            hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
-        </div>
+      <Card>
+        <CardHead right={<Pill size="sm" tone={v.gesamt ? "warn" : "ok"}>{v.gesamt ? `${v.gesamt} fällig` : "nichts fällig"}</Pill>}>
+          Löschlauf</CardHead>
+        <div style={{ padding: "var(--pad-y) var(--pad-x) calc(var(--pad-y) + 8px)", display: "grid", gap: 18 }}>
+          <div>
+            <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
+            {v.gesamt === 0
+              ? <div style={{ fontSize: 13, color: C.dim }}>
+                  Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
+              : (<div>
+                {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
+                  was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
+                {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
+                  was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
+                {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
+                  was="Änderungsvermerke werden gelöscht" />}
+                {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
+                  was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                  <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
+                  <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
+                </div>
+              </div>)}
+          </div>
 
-        {v.warnung && (
-          <div style={{ padding: "12px 15px", borderRadius: 10, background: C.dangerLight,
-            border: `1px solid ${C.danger}33`, fontSize: 13, lineHeight: 1.55 }}>
-            {v.warnung}</div>)}
-
-        <div>
-          <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
-          {v.gesamt === 0
-            ? <div style={{ fontSize: 13, color: C.dimmer }}>
-                Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
-            : (<div>
-              {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
-                was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
-              {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
-                was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
-              {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
-                was="Änderungsvermerke werden gelöscht" />}
-              {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
-                was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
-                <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
-              </div>
+          {v.personen.length > 0 && (
+            <div>
+              <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
+              {v.personen.map((p) => (
+                <div key={p.id} className="karte-still" style={{ display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 13px", marginBottom: 7, borderRadius: "var(--r)" }}>
+                  <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
+                  <span style={{ fontSize: 12, color: C.dim, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
+                  <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
+                </div>))}
             </div>)}
         </div>
-
-        {v.personen.length > 0 && (
-          <div>
-            <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
-            {v.personen.map((p) => (
-              <div key={p.id} className="karte" style={{ display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 13px", marginBottom: 7 }}>
-                <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
-                <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
-                <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
-              </div>))}
-          </div>)}
-
-        <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
-          <Lab style={{ marginBottom: 8 }}>Datenauskunft nach Artikel 15</Lab>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginBottom: 12, lineHeight: 1.5 }}>
-            Vollständige Aufstellung aller zu einer Person gespeicherten Daten, als Datei zur Aushändigung.
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Sel value={pid} onChange={(e) => setPid(e.target.value)} style={{ flex: 1, minWidth: 220 }}>
-              <option value="">— Person wählen —</option>
-              {m.personen.map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel>
-            <Btn kind="primary" disabled={!pid} onClick={() => akt.datenauskunft(pid)}>Auskunft erzeugen</Btn>
-          </div>
+      </Card>
+      </>}
+      seite={
+      <Seitenkarte titel="Datenauskunft nach Artikel 15"
+        sub="Vollständige Aufstellung aller zu einer Person gespeicherten Daten, als Datei zur Aushändigung.">
+        <div style={{ display: "grid", gap: 12 }}>
+          <Sel value={pid} onChange={(e) => setPid(e.target.value)} aria-label="Person für die Datenauskunft">
+            <option value="">— Person wählen —</option>
+            {m.personen.map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel>
+          <Btn kind="primary" disabled={!pid} onClick={() => akt.datenauskunft(pid)}>Auskunft erzeugen</Btn>
         </div>
-      </div>
-    </Card>);
+      </Seitenkarte>} />);
 }
 
 
@@ -13803,11 +13806,11 @@ function Kompetenzen({ sitz, akt }) {
                 {m.dienstarten.map((d) => {
                   const an = (aufgabe.dienstarten || []).includes(d.id);
                   return (
-                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"} aria-pressed={an}
                       onClick={() => setAufgabe({ ...aufgabe, dienstarten: an
                         ? aufgabe.dienstarten.filter((x) => x !== d.id)
                         : [...(aufgabe.dienstarten || []), d.id] })}>
-                      {an ? "✓ " : ""}{d.name}</Btn>);
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{d.name}</Btn>);
                 })}
               </div>
             </div>
@@ -13876,11 +13879,11 @@ function Kompetenzen({ sitz, akt }) {
                 {m.dienstarten.map((d) => {
                   const an = (neu.pflichtFuer || []).includes(d.id);
                   return (
-                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"} aria-pressed={an}
                       onClick={() => setNeu({ ...neu, pflichtFuer: an
                         ? neu.pflichtFuer.filter((x) => x !== d.id)
                         : [...(neu.pflichtFuer || []), d.id] })}>
-                      {an ? "✓ " : ""}{d.name}</Btn>);
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{d.name}</Btn>);
                 })}
               </div>
             </div>
@@ -14808,7 +14811,7 @@ function SicherungAusserHaus({ sitz, melde }) {
     + `-o centric-$(date +%F).json`;
 
   return (
-    <Card style={{ marginTop: 18 }}>
+    <Card>
       <CardHead right={<Lab>{schluessel.filter((k) => !k.abgelaufen).length} gültig</Lab>}>
         Sicherung außer Haus</CardHead>
       <div style={{ padding: 22 }}>
@@ -14832,17 +14835,17 @@ function SicherungAusserHaus({ sitz, melde }) {
           </p>
 
           {neu && (
-            <div style={{ padding: "14px 16px", borderRadius: 10, marginBottom: 16,
+            <div style={{ padding: "14px 16px", borderRadius: "var(--r)", marginBottom: 16,
               background: C.okLight, border: `1px solid ${C.ok}44` }}>
               <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 8 }}>
                 Schlüssel angelegt — gültig bis {fDatum(neu.gueltigBis.slice(0, 10))}</div>
               <code style={{ display: "block", fontFamily: "ui-monospace, monospace",
                 fontSize: 12.5, wordBreak: "break-all", background: C.flaeche,
-                padding: "9px 11px", borderRadius: 7, marginBottom: 10 }}>{neu.schluessel}</code>
+                padding: "9px 11px", borderRadius: 8, marginBottom: 10 }}>{neu.schluessel}</code>
               <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 8 }}>
                 Jetzt notieren. Er wird nicht wieder angezeigt.</div>
-              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 7,
-                background: C.sidebar, color: "#DCE6EA", fontSize: 12,
+              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 8,
+                background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,
                 overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
               <div style={{ marginTop: 10 }}>
                 <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
@@ -14858,8 +14861,8 @@ function SicherungAusserHaus({ sitz, melde }) {
 
           {schluessel.length > 0 && (<div>
             {schluessel.map((k) => (
-              <div key={k.kennung} className="karte" style={{ display: "flex", gap: 12,
-                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap" }}>
+              <div key={k.kennung} className="karte-still" style={{ display: "flex", gap: 12,
+                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap", borderRadius: "var(--r)" }}>
                 <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>
                   {k.kennung}…</code>
                 <span style={{ fontSize: 12.5, color: C.dim, flex: 1, minWidth: 160 }}>
@@ -14897,13 +14900,13 @@ function Datenmitnahme({ sitz, akt }) {
         right={<Btn kind="primary" onClick={akt.exportAlles}>Alles herunterladen</Btn>}>
         Datenmitnahme</H1>
 
+      <Leitraster seiteBreite={420}
+        haupt={<>
       <Card>
         <CardHead right={<Lab>{Object.values(tabellen).reduce((a, t) => a + t.length, 0)} Zeilen insgesamt</Lab>}>
           Was ausgegeben wird</CardHead>
         {Object.entries(tabellen).map(([k, t], i) => (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 16, padding: "15px 20px",
-            borderBottom: i < Object.keys(tabellen).length - 1 ? `1px solid ${C.lineSoft}` : "none",
-            flexWrap: "wrap" }}>
+          <div key={k} className="listenzeile" style={{ flexWrap: "wrap", padding: "15px var(--pad-x)" }}>
             <div style={{ flex: 1, minWidth: 240 }}>
               <div style={{ fontSize: 14.5, fontWeight: 600 }}>{namen[k] || k}</div>
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3, lineHeight: 1.45 }}>
@@ -14916,22 +14919,21 @@ function Datenmitnahme({ sitz, akt }) {
           </div>))}
       </Card>
 
-      <SicherungAusserHaus sitz={sitz} melde={akt.melde} />
-
-      <Card style={{ marginTop: 18, padding: 22 }}>
-        <Lab style={{ marginBottom: 11 }}>Was das bedeutet</Lab>
+      <Seitenkarte titel="Was das bedeutet">
         <Haken punkte={[
           "Alle Dateien sind CSV mit Semikolon und Byte-Reihenfolge-Markierung — Excel öffnet sie ohne Nachfrage.",
           "Der Dienstplan ist Tag für Tag ausgeschrieben, nicht als Regel. Er lässt sich in jedes andere System einlesen.",
           "Personalnummern bleiben erhalten, damit die Zuordnung zur Lohnabrechnung nicht verloren geht.",
           "Die Ausgabe ist jederzeit möglich, ohne Ankündigung und ohne zusätzliche Kosten.",
         ]} />
-        <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.6, maxWidth: 740 }}>
+        <Erklaerkasten style={{ marginTop: 14, maxWidth: 740 }}>
           Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört
           deshalb an den Anfang eines Vertragsgesprächs und nicht an dessen Ende. Wer sie nicht
           beantworten kann, sollte kein betriebskritisches System verkaufen.
-        </div>
-      </Card>
+        </Erklaerkasten>
+      </Seitenkarte>
+        </>}
+        seite={<SicherungAusserHaus sitz={sitz} melde={akt.melde} />} />
     </div>);
 }
 
@@ -15464,8 +15466,6 @@ function Handbuch({ sitz, akt, gehZu }) {
               </div>
             </>)}
           </div>
-        </div>)}
-    </div>);
 
           {/* ------------------ Stand in diesem Kapitel ------------------ */}
           {k && (
@@ -15477,6 +15477,8 @@ function Handbuch({ sitz, akt, gehZu }) {
                   onClick: () => akt.handbuchHaken(`${k.id}:${a.titel}`) }))} />
               </Seitenkarte>
             </div>)}
+        </div>)}
+    </div>);
 }
 
 /** Handbuch als druckbare Seite — zum Mitgeben nach der Einrichtung. */
@@ -16517,11 +16519,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
   const melde = (was) => { setGespeichert(was); setTimeout(() => setGespeichert(null), 2200); };
   /* Eine schlichte Rückmeldung am oberen Rand — die Anwendung hat dafür
      keinen eigenen Baustein, und für zwei Zeilen lohnt keiner. */
-  const Hinweis = ({ children }) => (
-    <div role="status" style={{ position: "fixed", top: 68, left: "50%",
-      transform: "translateX(-50%)", zIndex: 800, background: C.sidebar, color: "#fff",
-      padding: "11px 20px", borderRadius: 10, fontSize: 13.5, fontWeight: 550,
-      boxShadow: "0 8px 24px -8px rgba(7,19,23,.4)" }}>{children}</div>);
+  const Hinweis = ({ children }) => <div role="status" className="toast">{children}</div>;
 
   /* Die Beschriftung steht links, das Bedienelement rechts — für das Auge
      eindeutig, für eine Vorlesesoftware zunächst nicht: Sie liest den Titel
@@ -16537,7 +16535,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
           {text && <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
             {text}</div>}
         </div>
-        <div role="group" aria-labelledby={kennung} style={{ flexShrink: 0 }}>{children}</div>
+        <div role="group" aria-labelledby={kennung} style={{ flexShrink: 0, maxWidth: "100%" }}>{children}</div>
       </div>);
   };
 
@@ -16550,8 +16548,10 @@ function Einstellungen({ sitz, akt, gehZu }) {
 
       {gespeichert && <Hinweis>{gespeichert}</Hinweis>}
 
+      <div className="spalten2">
+      <div>
       {/* ------------------------- Darstellung ------------------------- */}
-      <Card style={{ marginBottom: 20 }}>
+      <Card>
         <CardHead>Darstellung</CardHead>
         <Zeile titel="Dichte"
           text="Kompakt zeigt mehr auf einmal, komfortabel ist ruhiger zu lesen.">
@@ -16592,13 +16592,13 @@ function Einstellungen({ sitz, akt, gehZu }) {
       </Card>
 
       {/* --------------------------- Zugang ---------------------------- */}
-      <Card style={{ marginBottom: 20 }}>
+      <Card>
         <CardHead>Zugang</CardHead>
         <Zeile titel="Anmeldeadresse"
           text="Unter dieser Adresse erreichen dich Mitteilungen. Eine Änderung wird dem Betreiber angezeigt.">
-          <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
             <Inp type="email" defaultValue={p.email || ""} id="ein-mail" aria-label="Anmeldeadresse"
-              placeholder="name@betrieb.de" style={{ minWidth: 220 }} />
+              placeholder="name@betrieb.de" style={{ minWidth: 0, flex: "1 1 200px" }} />
             <Btn size="sm" onClick={() => {
               const el = document.getElementById("ein-mail");
               if (!el) return;
@@ -16623,7 +16623,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
       {/* ------------------------ Geführte Tour ------------------------
           Der Inhalt kommt nachgeladen. Bis er da ist, bleibt die Karte weg —
           eine Karte mit leeren Feldern sieht aus wie ein Fehler. */}
-      {t && (<Card style={{ marginBottom: 20 }}>
+      {t && (<Card>
         <CardHead right={st.anteil > 0 ? <Lab>{st.anteil} % durch</Lab> : null}>
           Geführte Tour</CardHead>
         <Zeile titel={t.titel}
@@ -16656,11 +16656,11 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <div style={{ display: "grid", gap: 7 }}>
             {tourKapitel(tour, rolleId, st.gesehen).map((k) => (
               <div key={k.idx} style={{ display: "flex", gap: 12, alignItems: "center",
-                padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.lineSoft}`,
+                padding: "9px 12px", borderRadius: "var(--r)", border: `1px solid ${C.lineSoft}`,
                 flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160,
-                  color: k.fertig ? C.dim : C.text }}>
-                  {k.fertig ? "✓ " : ""}{k.name}</span>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160, display: "inline-flex", gap: 7,
+                  alignItems: "center", color: k.fertig ? C.dim : C.text }}>
+                  {k.fertig && <Icon n="haken" size={14} strokeWidth={2.3} />}{k.name}</span>
                 <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
                   {k.gesehen} von {k.anzahl}</span>
                 <Btn size="sm" kind={k.fertig ? "plain" : "quiet"}
@@ -16673,7 +16673,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
 
       {/* ------------------- Kalender und Weckzeiten ------------------- */}
       {sitz.mandant && sitz.person && sitz.person.imSchichtdienst !== false && (
-        <Card style={{ marginBottom: 20 }}>
+        <Card>
           <CardHead>Kalender und Weckzeiten</CardHead>
 
           <Zeile titel="Dienstplan im eigenen Kalender"
@@ -16755,51 +16755,6 @@ function Einstellungen({ sitz, akt, gehZu }) {
           </Zeile>
         </Card>)}
 
-      {/* ---------------------- Benachrichtigungen --------------------- */}
-      {sitz.mandant && <Card style={{ marginBottom: 20 }}>
-        <CardHead>Benachrichtigungen</CardHead>
-        <Zeile titel="Mitteilungen auf diesem Gerät"
-          text={SP.pushMoeglich()
-            ? "Bei kurzfristigen Änderungen wirst du sofort unterrichtet."
-            : "Dieses Gerät unterstützt keine Mitteilungen. Auf dem iPhone muss CENTRIC dafür auf dem Startbildschirm liegen."}>
-          <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
-            onChange={(v) => akt.pushUmschalten(v)} />
-        </Zeile>
-        {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
-          const w = zustellwege(p, id);
-          return (
-            <Zeile key={id} titel={a.titel} text={a.text}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[["mail", "E-Mail", w.mail], ["push", "Gerät", w.push]].map(([weg, label, an]) => (
-                  <button key={weg} onClick={() => akt.setzeZustellung(p.id, id, weg, !an)}
-                    style={{ padding: "7px 14px", borderRadius: 999, minWidth: 82,
-                      border: `1px solid ${an ? C.accent : C.line}`, cursor: "pointer",
-                      background: an ? C.accentLight : "transparent", color: an ? C.accent : C.dim,
-                      fontFamily: "inherit", fontSize: 12.5, fontWeight: 600 }}>
-                    {an ? "✓ " : ""}{label}</button>))}
-              </div>
-            </Zeile>);
-        })}
-      </Card>}
-
-      {/* ------------------- Nur für die Leitung ----------------------- */}
-      {sitz.mandant && darf(sitz, "mandant.edit") && (
-        <Card style={{ marginBottom: 20 }}>
-          <CardHead>Für den Betrieb</CardHead>
-          <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
-            text="Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.">
-            <Btn size="sm" onClick={() => gehZu("betrieb")}>Zum Betrieb</Btn>
-          </Zeile>
-          <Zeile titel="Datenmitnahme"
-            text="Alle Daten als CSV, jederzeit, ohne Gebühr.">
-            <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
-          </Zeile>
-          <Zeile titel="Sicherung anlegen"
-            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
-            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
-              Jetzt sichern</Btn>
-          </Zeile>
-        </Card>)}
 
       {/* ----------------------- Datenschutz --------------------------- */}
       {sitz.mandant ? (<Card>
@@ -16824,6 +16779,56 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <Btn size="sm" onClick={() => akt.verbindungTrennen()}>Abmelden</Btn>
         </Zeile>
       </Card>)}
+      </div>
+      <div>
+      {/* ---------------------- Benachrichtigungen --------------------- */}
+      {sitz.mandant && <Card>
+        <CardHead>Benachrichtigungen</CardHead>
+        <Zeile titel="Mitteilungen auf diesem Gerät"
+          text={SP.pushMoeglich()
+            ? "Bei kurzfristigen Änderungen wirst du sofort unterrichtet."
+            : "Dieses Gerät unterstützt keine Mitteilungen. Auf dem iPhone muss CENTRIC dafür auf dem Startbildschirm liegen."}>
+          <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
+            onChange={(v) => akt.pushUmschalten(v)} />
+        </Zeile>
+        {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
+          const w = zustellwege(p, id);
+          return (
+            <Zeile key={id} titel={a.titel} text={a.text}>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[["mail", "E-Mail", w.mail], ["push", "Gerät", w.push]].map(([weg, label, an]) => (
+                  <button key={weg} type="button" className="chip" aria-pressed={!!an}
+                    onClick={() => akt.setzeZustellung(p.id, id, weg, !an)}
+                    style={{ minWidth: 82, justifyContent: "center", fontWeight: 600,
+                      borderColor: an ? C.accent : undefined,
+                      background: an ? C.accentLight : C.flaeche, color: an ? C.accent : C.dim }}>
+                    {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{label}</button>))}
+              </div>
+            </Zeile>);
+        })}
+      </Card>}
+
+      {/* ------------------- Nur für die Leitung ----------------------- */}
+      {sitz.mandant && darf(sitz, "mandant.edit") && (
+        <Card>
+          <CardHead>Für den Betrieb</CardHead>
+          <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
+            text="Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.">
+            <Btn size="sm" onClick={() => gehZu("betrieb")}>Zum Betrieb</Btn>
+          </Zeile>
+          <Zeile titel="Datenmitnahme"
+            text="Alle Daten als CSV, jederzeit, ohne Gebühr.">
+            <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
+          </Zeile>
+          <Zeile titel="Sicherung anlegen"
+            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
+            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
+              Jetzt sichern</Btn>
+          </Zeile>
+        </Card>)}
+
+      </div>
+      </div>
     </div>);
 }
 
@@ -19912,7 +19917,7 @@ function Tarifwerk({ sitz, akt }) {
   const aktuell = m.tarifwerk || null;
 
   return (
-    <Card style={{ marginBottom: 20 }}>
+    <Card style={{ marginBottom: 16 }}>
       <CardHead right={aktuell
         ? <Lab>{aktuell.name} · Stand {aktuell.stand}</Lab>
         : <Lab>keines hinterlegt</Lab>}>Tarifwerk</CardHead>
@@ -19926,18 +19931,17 @@ function Tarifwerk({ sitz, akt }) {
         </p>
 
         {aktuell && (
-          <div style={{ padding: "11px 14px", borderRadius: 9, marginBottom: 16,
-            background: C.flaecheStill, fontSize: 13, color: C.dim, lineHeight: 1.55 }}>
+          <Erklaerkasten style={{ marginBottom: 16 }}>
             Angewendet am {fDatum(aktuell.angewendet)} · Stand der Werte {aktuell.stand} ·{" "}
             <a href={aktuell.quelle} target="_blank" rel="noreferrer"
               style={{ color: C.accent }}>Fundstelle</a>
-          </div>)}
+          </Erklaerkasten>)}
 
         <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
           {vorlagen.map((v) => (
             <div key={v.id} className="karte"
               style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start",
-                flexWrap: "wrap",
+                flexWrap: "wrap", boxShadow: "none", borderRadius: "var(--r)",
                 borderColor: gewaehlt === v.id ? C.accent : undefined }}>
               <div style={{ flex: 1, minWidth: 240 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 620, display: "flex", gap: 8,
@@ -19971,7 +19975,7 @@ function Tarifwerk({ sitz, akt }) {
                     <span style={{ fontSize: 13.5, flex: 1, minWidth: 200 }}>
                       {TARIF_FELD[g.feld] || g.feld}</span>
                     <span style={{ fontSize: 13, color: C.dimmer, ...NUM }}>{tarifWert(g.von)}</span>
-                    <span style={{ fontSize: 13, color: C.dimmer }}>→</span>
+                    <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}><Icon n="pfeil-rechts" size={14} /></span>
                     <span style={{ fontSize: 13, fontWeight: 620, ...NUM }}>{tarifWert(g.nach)}</span>
                   </div>))}
               </div>)}
@@ -20036,7 +20040,7 @@ function Standorte({ sitz, akt }) {
   };
 
   return (
-    <Card style={{ marginBottom: 20 }}>
+    <Card style={{ marginBottom: 16 }}>
       <CardHead right={p.summeStandorte > 0
         ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
         : <Pill tone="ok">kostenlos enthalten</Pill>}>
@@ -20058,7 +20062,7 @@ function Standorte({ sitz, akt }) {
           const inklusive = rang > -1 && rang < p.stufe.standorteInklusive;
           const zuschlag = inklusive ? 0 : standortZuschlag(a ? a.personen : 0);
           return (
-            <div key={st.id} style={{ border: `1px solid ${C.lineSoft}`, borderRadius: 12, padding: 16 }}>
+            <div key={st.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
                 <Field label="Name">
                   <Inp value={st.name} onChange={(e) => akt.setzeStandort(st.id, "name", e.target.value)} /></Field>
@@ -20232,7 +20236,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
         Stammdaten</Abschnitt>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
         <div style={{ padding: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 15 }}>
           <Field label="Name des Betriebs"><Inp value={m.name} onChange={(e) => akt.setzeFeld("name", e.target.value)} /></Field>
@@ -20252,7 +20256,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub={`Woraus der Betrieb besteht und welche Grenzen für die Planung gelten. Das Regelwerk ist die Grundlage jeder Prüfung — was hier steht, meldet die Prüfung später als Verstoß.`}>
         Struktur und Regelwerk</Abschnitt>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 16 }}>
         <Card>
           <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{mehrzahl(m.einheitLabel)}</CardHead>
           <div style={{ padding: 22 }}>
@@ -20279,10 +20283,10 @@ function Betrieb({ sitz, akt }) {
                 <Inp value={q.kurz} maxLength={4} onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
                 <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)}>×</Btn>
               </div>))}
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
+            <Erklaerkasten style={{ marginTop: 12 }}>
               Qualifikationen werden in den Dienstarten als Anforderung hinterlegt und in der Prüfung ausgewertet.
               Eine Kopfzahl ohne Funktionsnachweis ist keine besetzte Schicht.
-            </div>
+            </Erklaerkasten>
           </div>
         </Card>
 
@@ -20321,7 +20325,7 @@ function Betrieb({ sitz, akt }) {
           </div>
         </Card>)}
 
-      <Card style={{ marginTop: 20, overflowX: "auto" }}>
+      <Card style={{ marginTop: 16, overflowX: "auto" }}>
         <CardHead right={<Btn size="sm" onClick={akt.matrixZuruecksetzen}>Auf Standard zurücksetzen</Btn>}>Rollen und Rechte</CardHead>
         <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
           Eine Rolle allein ist keine Berechtigung. Erst Rolle plus Geltungsbereich ergibt eine:
@@ -20348,7 +20352,7 @@ function Betrieb({ sitz, akt }) {
           </tr></thead>
           <tbody>{RECHTE_GRUPPEN.map(([g, items]) => (
             <Fragment key={g}>
-              <tr><td colSpan={6} style={{ padding: "13px 22px 6px", background: "rgba(20,20,25,.025)" }}><Lab>{g}</Lab></td></tr>
+              <tr><td colSpan={6} style={{ padding: "13px 22px 6px", background: C.flaecheStill }}><Lab>{g}</Lab></td></tr>
               {items.map(([id, label]) => (
                 <tr key={id} className="row">
                   <td style={{ padding: "10px 22px", borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -20369,10 +20373,11 @@ function Betrieb({ sitz, akt }) {
                         title={fest ? "Die Organisationsleitung hat immer alle Rechte."
                           : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
                         style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          border: an ? "none" : `1.5px solid ${C.line}`,
-                          background: an ? r.farbe : "transparent", color: an ? "#fff" : "transparent",
-                          fontSize: 13, fontWeight: 700, opacity: fest ? .55 : 1 }}>✓</button></td>);
+                          display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0,
+                          border: an ? "none" : `1.5px solid ${C.steuer}`,
+                          background: an ? r.farbe : "transparent", color: an ? "white" : "transparent",
+                          opacity: fest ? .55 : 1 }}>
+                        <Icon n="haken" size={14} strokeWidth={2.5} /></button></td>);
                   })}
                 </tr>))}
             </Fragment>))}</tbody>
@@ -20382,7 +20387,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub="Ausgabe, Prüfung und Nachweis. Nichts hiervon verändert den Betrieb — es liest ihn nur aus.">
         Werkzeuge und Nachweis</Abschnitt>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead>Daten</CardHead>
         <div style={{ padding: 22, display: "flex", gap: 11, flexWrap: "wrap" }}>
           <Btn onClick={akt.exportCSV}>Monatsplan als CSV</Btn>
@@ -20408,8 +20413,10 @@ function Betrieb({ sitz, akt }) {
             {tests.map((t, i) => (
               <div key={i} style={{ display: "flex", gap: 13, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.lineSoft}` }}>
                 <span style={{ width: 23, height: 23, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center",
-                  justifyContent: "center", background: t.ok ? C.okLight : "rgba(179,38,30,.11)",
-                  color: t.ok ? C.ok : C.danger, fontSize: 12, fontWeight: 700 }}>{t.ok ? "✓" : "✕"}</span>
+                  justifyContent: "center", background: t.ok ? C.okLight : C.dangerLight,
+                  color: t.ok ? C.ok : C.danger }}>
+                  <Icon n={t.ok ? "haken" : "x"} size={13} strokeWidth={2.5} />
+                  <span className="nurLeser">{t.ok ? "bestanden" : "nicht bestanden"}</span></span>
                 <span style={{ fontSize: 13.5, flex: 1 }}>{t.name}</span>
                 <span style={{ fontSize: 12.5, color: t.ok ? C.dim : C.danger, fontWeight: 600, ...NUM }}>{t.ist}</span>
               </div>))}
@@ -20417,7 +20424,7 @@ function Betrieb({ sitz, akt }) {
         </div>
       </Card>
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead>Protokoll</CardHead>
         <div style={{ maxHeight: 300, overflowY: "auto" }}>
           {m.protokoll.length === 0 && <div style={{ padding: 26, fontSize: 13.5, color: C.dimmer }}>Noch keine Änderungen.</div>}
