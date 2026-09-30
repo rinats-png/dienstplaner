@@ -1,6 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort } from "../lib/schutz.mjs";
+import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -33,6 +34,13 @@ async function sitzung(req) {
   if (!token) return null;
   const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
   if (!s || s.bis < Date.now()) return null;
+  /* Fachlich gültig? Eine Sitzung aus einem Konto trägt einen
+     Herkunftsanker, der gegen Account, Mitgliedschaft und Generation
+     geprüft wird (arbeitssitzung.mjs). Eine Sitzung aus einem
+     Zugangscode hat keinen und kostet keinen zusätzlichen Lesevorgang.
+     Dieselbe Primitive wie in daten.mjs — keine zweite Fassung. */
+  const fachlich = await arbeitssitzungPruefen(store(), s, { merkmal: token });
+  if (!fachlich.ok) return null;
   return s;
 }
 

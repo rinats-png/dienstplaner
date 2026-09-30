@@ -194,6 +194,11 @@ jobs:
       - name: Mitgliedschaftsgeneration
         run: npm run pruefung:generation
 
+      # Die Bindung der Arbeitssitzung: Entzug, Sperre, Epoche und
+      # Personenwechsel wirken beim nächsten Zugriff — an allen vier Pfaden.
+      - name: Arbeitssitzungsbindung
+        run: npm run pruefung:arbeitssitzung
+
       - name: Übersetzen
         run: npm run build
 

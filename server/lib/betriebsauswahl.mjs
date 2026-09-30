@@ -1,4 +1,8 @@
-import { mitgliedschaftenDesAccounts, mitgliedschaftLesen, raumErlaubt } from "./accounts.mjs";
+import {
+  mitgliedschaftenDesAccounts, mitgliedschaftLesen, mitgliedlaufLesen,
+  generationStimmt, accountLesenPerId, raumErlaubt,
+} from "./accounts.mjs";
+import { HERKUNFT_KONTO } from "./arbeitssitzung.mjs";
 import { bestandLesen } from "./bestand.mjs";
 import { wirksameRolle, eigenerMandant } from "./rechte.mjs";
 import { sitzungAnlegen, dauerFuer } from "./sitzungen.mjs";
@@ -155,6 +159,25 @@ export async function betriebWaehlen(store, { accountId, raum, jetzt = Date.now 
   if (m.status !== "aktiv") return absage(`status:${m.status}`);
   if (!m.person) return absage("ohne-person");
 
+  /* Die Generation dieser Beziehung muss stimmen, bevor irgendetwas
+     entsteht: Eine Mitgliedschaft, deren Generation nicht die aktuelle ist,
+     ist unbrauchbar — etwa weil ein Entzug den Lauf schon weitergezählt hat
+     und nur das Schreiben des Status scheiterte. Und ein Altbestand ohne
+     Generation bekommt hier keine untergeschoben: Er wird abgewiesen, bis
+     sie ausdrücklich nachgetragen ist (accounts.mjs). */
+  const lauf = await mitgliedlaufLesen(store, accountId, raum);
+  if (!lauf.ok) return absage("lauf");
+  if (!generationStimmt(m, lauf.generation)) return absage("generation");
+
+  /* Der Account selbst, autoritativ gelesen: Seine Epoche geht in die
+     Bindung der Arbeitssitzung ein, und sein Zustand wird hier noch einmal
+     geprüft — nicht nur beim Cookie. */
+  const konto = await accountLesenPerId(store, accountId).catch(() => null);
+  if (!konto) return absage("konto-fehlt");
+  if (konto.status !== "aktiv") return absage("konto-status");
+  const epoche = Number(konto.epoche);
+  if (!Number.isInteger(epoche) || epoche < 1) return absage("epoche");
+
   const gelesen = await bestandLesen(store, raum).catch(() => null);
   if (!gelesen || !gelesen.bestand) return absage("kein-bestand");
 
@@ -184,6 +207,13 @@ export async function betriebWaehlen(store, { accountId, raum, jetzt = Date.now 
     person: m.person,
     betrieb: m.betrieb,
     einheit: m.einheit ?? null,
+    /* Der Anker, an dem diese Sitzung hängt. Vier Werte, alle aus der
+       Ablage: die Kennung aus der geprüften Account-Sitzung, Epoche aus dem
+       Account, Generation aus dem Lauf der Beziehung. Kein Wert kommt aus
+       der Anfrage, und eine Rolle steht nicht darin — sie ist kein
+       Widerrufsanker (arbeitssitzung.mjs). Raum und Person stehen schon
+       oben; doppelt wird nichts gespeichert. */
+    herkunft: { art: HERKUNFT_KONTO, accountId, epoche, generation: lauf.generation },
   };
 
   /* Die Rolle, die jetzt gilt — aus der Person im Bestand, über dieselbe

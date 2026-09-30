@@ -10,6 +10,7 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
+import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
 /* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
    nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
    Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
@@ -593,6 +594,21 @@ export default async (req, context) => {
       if (bestandGelesen === undefined) bestandGelesen = await bestandLesen(store, s0.bestand);
       return bestandGelesen;
     };
+
+    /* Technisch gültig ist nicht fachlich gültig: Eine Sitzung, die aus
+       einem Konto entstand, trägt einen Herkunftsanker — und der wird hier
+       gegen Account, Mitgliedschaft und Generation geprüft
+       (arbeitssitzung.mjs). Eine Sitzung aus einem Zugangscode hat keinen
+       Anker und kostet dabei keinen einzigen zusätzlichen Lesevorgang.
+       Nach außen sieht ein Widerruf aus wie jede andere abgelaufene
+       Sitzung — mehr muss niemand erfahren. */
+    const fachlich = await arbeitssitzungPruefen(store, s0,
+      { merkmal: merkmalAus(req), bestandLader: bestandJetzt });
+    if (!fachlich.ok) {
+      await protokoll("schreiben", kennung(req, null), "abgewiesen",
+        `sitzung: ${String(fachlich.grund).slice(0, 24)}`);
+      return antwort({ fehler: "Nicht angemeldet." }, 401);
+    }
     const s = (s0.nurSicherung || s0.rolle === "betreiber"
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };

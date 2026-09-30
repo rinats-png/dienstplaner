@@ -289,6 +289,7 @@ describe("GET /api/account/mitgliedschaften", () => {
 
 describe("POST /api/account/betrieb", () => {
   it("öffnet den gewählten Betrieb und legt eine Arbeitssitzung an", async () => {
+    const s = laden();
     const k = await konto(adresse("wahl-gut"));
     const raum = await arbeitsbereich(k.id, "gut", { rolle: "leitung",
       name: "Haus Sonnenhof" });
@@ -313,10 +314,24 @@ describe("POST /api/account/betrieb", () => {
     expect(roh.person).toBe("p_1");
     expect(roh.betrieb).toBe(0);
     expect(roh.name).toBe("Rina Schmitt");
-    /* Kein Zugangscode, kein Demomerkmal, keine Kontokennung. */
+    /* Kein Zugangscode, kein Demomerkmal. */
     expect(roh.konto).toBe(undefined);
     expect(roh.demo).toBe(undefined);
-    expect(JSON.stringify(roh)).not.toContain(k.id);
+
+    /* Der Herkunftsanker: genau vier Werte, alle serverseitig. Er ist der
+       Grund, warum ein Entzug sofort wirkt (arbeitssitzung.mjs) — und er
+       trägt keine Rolle. */
+    expect(Object.keys(roh.herkunft).sort())
+      .toEqual(["accountId", "art", "epoche", "generation"]);
+    expect(roh.herkunft.art).toBe("account");
+    expect(roh.herkunft.accountId).toBe(k.id);
+    expect(roh.herkunft.generation).toBe(1);
+    expect(roh.herkunft.epoche).toBe((await A.accountLesenPerId(s, k.id)).epoche);
+    expect(JSON.stringify(roh.herkunft)).not.toContain("leitung");
+    /* Und die Antwort nach außen trägt den Anker nicht. */
+    expect(e.text).not.toContain("herkunft");
+    expect(e.text).not.toContain("generation");
+    expect(e.text).not.toContain(k.id);
   }, LIMIT);
 
   it("liefert ein Merkmal, das die bestehende Sitzungsprüfung annimmt", async () => {
