@@ -139,9 +139,7 @@
       "Wer im Betrieb arbeitet — einzeln angelegt oder aus einer Liste eingelesen. Danach bekommt jede Person eine Zugangsart, die bestimmt, was sie sehen und ändern darf.": 1,
       "Wie der Betrieb aufgebaut ist: Standorte mit eigenem Bundesland, die vertragliche Wochenarbeitszeit, Ruhezeiten und die Höchstzahl von Diensten in Folge.": 1,
       "dein Bereich": 6,
-      "nichts zu tun": 1,
-      "→": 5,
-      "✓": 12
+      "nichts zu tun": 1
      },
      "knoepfe": {
       "Ansehen": 6,
@@ -171,6 +169,7 @@
       "10": 1,
       "11": 1,
       "12": 1,
+      "0 von 2 als erledigt markiert": 1,
       "10 Minuten · 2 Abschnitte": 1,
       "15 Minuten · 2 Abschnitte": 1,
       "15 Minuten · 3 Abschnitte": 1,
@@ -200,6 +199,7 @@
       "Gespeichert werden nur die Abweichungen von der Regel: wer einspringt, wer tauscht, wer fehlt.": 1,
       "HILFE": 1,
       "Handbuch": 1,
+      "In diesem Kapitel": 1,
       "Nachschlagen · 4 Abschnitte": 1,
       "Nächstes Kapitel": 1,
       "Schritt 1 — Den Betrieb einrichten": 1,
@@ -209,10 +209,11 @@
       "Schritt 5 — Prüfen und freigeben": 1,
       "Vorheriges Kapitel": 1,
       "Was du bereithalten solltest, damit die Einrichtung in einem Zug durchläuft.": 1,
-      "Was du brauchst": 1,
+      "Was du brauchst": 2,
       "Wenn etwas nicht stimmt": 1,
       "Wer darf was? Wer plant, wer vertritt, wer sieht nur den eigenen Plan.": 1,
-      "Wie CENTRIC den Plan berechnet": 1,
+      "Wie CENTRIC den Plan berechnet": 2,
+      "offen": 2,
       "täglich · 7 Abschnitte": 1
      },
      "knoepfe": {
@@ -231,7 +232,9 @@
       "Als PDF drucken": 1,
       "Als erledigt markieren": 2,
       "Nächstes Kapitel": 1,
-      "Vorheriges Kapitel": 1
+      "Vorheriges Kapitel": 1,
+      "Was du brauchst offen": 1,
+      "Wie CENTRIC den Plan berechnet offen": 1
      },
      "felder": {
       "input:text | Im Handbuch suchen | Im Handbuch suchen …": 1
@@ -250,6 +253,7 @@
       "Etwas fehlt oder soll anders sein": 1,
       "Etwas funktioniert nicht": 1,
       "Handbuch": 1,
+      "Handbuch öffnen": 1,
       "Hilfe": 1,
       "Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung.": 1,
       "Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar.": 1,
@@ -268,6 +272,7 @@
      },
      "knoepfe": {
       "E-Mail schreiben": 6,
+      "Handbuch öffnen": 1,
       "Vorschlag senden": 2,
       "kontakt@example.org": 1,
       "Öffnen": 3
@@ -2843,7 +2848,7 @@
       "Özdemir, Hakan öffnen": 1
      },
      "felder": {
-      "input:text |  | Name suchen": 1,
+      "input:text | Name suchen | Name suchen": 1,
       "select |  | ": 85,
       "select | Standort Alle Standorte Leitstelle Frankfurt Niederlassung Hannover | ": 1
      },
@@ -5902,8 +5907,7 @@
       "staff.edit": 1,
       "staff.view": 1,
       "subplaner": 1,
-      "×": 10,
-      "✓": 95
+      "×": 10
      },
      "knoepfe": {
       "Anlegen": 1,
@@ -6144,7 +6148,7 @@
       "Dienstplan im eigenen Kalender": 1,
       "Du richtest den Betrieb ein und trägst die Verantwortung für Regelwerk, Personal und Freigaben. Diese Tour führt vom leeren Bestand bis zum laufenden Plan. Dauer: 25 bis 40 Minuten, 46 Schritte.": 1,
       "Dunkel": 1,
-      "E-Mail": 5,
+      "E-Mail": 11,
       "Ein Dienst ist unbesetzt und steht zur Bewerbung offen.": 1,
       "Ein bereits freigegebener Dienst wurde verschoben, getauscht oder gestrichen.": 1,
       "Eine Qualifikation verliert demnächst ihre Gültigkeit.": 1,
@@ -6214,14 +6218,13 @@
       "Zeiten offen": 1,
       "Zugang": 1,
       "Übergabe fehlt": 1,
-      "Übernehmen": 1,
-      "✓ E-Mail": 6
+      "Übernehmen": 1
      },
      "knoepfe": {
       "Abmelden": 1,
       "Bewegung reduzieren": 1,
       "Dunkel": 1,
-      "E-Mail": 5,
+      "E-Mail": 11,
       "Einrichten": 1,
       "Erhöhter Kontrast": 1,
       "Erzeugen": 1,
@@ -6236,8 +6239,7 @@
       "Tour beim Anmelden": 1,
       "Weckruf": 1,
       "Wie das Gerät": 1,
-      "Übernehmen": 1,
-      "✓ E-Mail": 6
+      "Übernehmen": 1
      },
      "felder": {
       "input:email | Anmeldeadresse | name@betrieb.de": 1,
@@ -6363,6 +6365,7 @@
       "Krämer, Sven": 1,
       "Lindner, Britta": 1,
       "Lindner, Hakan": 1,
+      "Löschlauf": 1,
       "Marek, Kevin": 1,
       "Marek, Leonie": 1,
       "Marek, Steffi": 1,
@@ -6403,6 +6406,7 @@
       "Yildiz, Julia": 1,
       "Yildiz, Lars": 1,
       "Yilmaz, Anna": 1,
+      "nichts fällig": 1,
       "noch nie ausgeführt": 1,
       "Özdemir, Carla": 1,
       "Özdemir, Hakan": 1,
@@ -6415,7 +6419,7 @@
       "input:number | Abwesenheitsgründe in Monaten | ": 1,
       "input:number | Plandaten in Monaten | ": 1,
       "input:number | Stammdaten nach Austritt | ": 1,
-      "select |  | ": 1
+      "select | Person für die Datenauskunft | ": 1
      },
      "kopf": {}
     },
@@ -8773,9 +8777,7 @@
       "Wie der Betrieb aufgebaut ist: Standorte mit eigenem Bundesland, die vertragliche Wochenarbeitszeit, Ruhezeiten und die Höchstzahl von Diensten in Folge.": 1,
       "dein Bereich": 1,
       "nicht dein Bereich": 5,
-      "nichts zu tun": 1,
-      "→": 5,
-      "✓": 12
+      "nichts zu tun": 1
      },
      "knoepfe": {
       "Ansehen": 1,
@@ -8805,6 +8807,7 @@
       "10": 1,
       "11": 1,
       "12": 1,
+      "0 von 2 als erledigt markiert": 1,
       "10 Minuten · 2 Abschnitte": 1,
       "15 Minuten · 2 Abschnitte": 1,
       "15 Minuten · 3 Abschnitte": 1,
@@ -8834,6 +8837,7 @@
       "Gespeichert werden nur die Abweichungen von der Regel: wer einspringt, wer tauscht, wer fehlt.": 1,
       "HILFE": 1,
       "Handbuch": 1,
+      "In diesem Kapitel": 1,
       "Nachschlagen · 4 Abschnitte": 1,
       "Nächstes Kapitel": 1,
       "Schritt 1 — Den Betrieb einrichten": 1,
@@ -8843,10 +8847,11 @@
       "Schritt 5 — Prüfen und freigeben": 1,
       "Vorheriges Kapitel": 1,
       "Was du bereithalten solltest, damit die Einrichtung in einem Zug durchläuft.": 1,
-      "Was du brauchst": 1,
+      "Was du brauchst": 2,
       "Wenn etwas nicht stimmt": 1,
       "Wer darf was? Wer plant, wer vertritt, wer sieht nur den eigenen Plan.": 1,
-      "Wie CENTRIC den Plan berechnet": 1,
+      "Wie CENTRIC den Plan berechnet": 2,
+      "offen": 2,
       "täglich · 7 Abschnitte": 1
      },
      "knoepfe": {
@@ -8865,7 +8870,9 @@
       "Als PDF drucken": 1,
       "Als erledigt markieren": 2,
       "Nächstes Kapitel": 1,
-      "Vorheriges Kapitel": 1
+      "Vorheriges Kapitel": 1,
+      "Was du brauchst offen": 1,
+      "Wie CENTRIC den Plan berechnet offen": 1
      },
      "felder": {
       "input:text | Im Handbuch suchen | Im Handbuch suchen …": 1
@@ -8884,6 +8891,7 @@
       "Etwas fehlt oder soll anders sein": 1,
       "Etwas funktioniert nicht": 1,
       "Handbuch": 1,
+      "Handbuch öffnen": 1,
       "Hilfe": 1,
       "Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung.": 1,
       "Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar.": 1,
@@ -8902,6 +8910,7 @@
      },
      "knoepfe": {
       "E-Mail schreiben": 6,
+      "Handbuch öffnen": 1,
       "Vorschlag senden": 2,
       "kontakt@example.org": 1,
       "Öffnen": 3
@@ -10510,7 +10519,7 @@
       "Özdemir, Hakan öffnen": 1
      },
      "felder": {
-      "input:text |  | Name suchen": 1,
+      "input:text | Name suchen | Name suchen": 1,
       "select |  | ": 85,
       "select | Standort Alle Standorte Leitstelle Frankfurt Niederlassung Hannover | ": 1
      },
