@@ -96,20 +96,22 @@ class Fehlerauffang extends Component {
     if (!this.state.fehler) return this.props.children;
     const meldung = String(this.state.fehler && this.state.fehler.message || this.state.fehler);
     return (
-      <div style={{ minHeight: "100vh", background: MARKE.creme, color: "#111827", fontFamily: FONT,
+      <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: FONT,
         display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ maxWidth: 620, width: "100%", background: "rgba(255,255,255,.8)",
-          border: "1px solid rgba(255,255,255,.9)", borderRadius: 22, padding: 30,
-          boxShadow: "0 20px 60px rgba(24,26,30,.14)" }}>
+        {/* Die Fehlerseite ersetzt die ganze Anwendung, auch deren Stilblock — ohne ihn wären die Knöpfe unformatiert. */}
+        <style>{bauStyles()}</style>
+        <div style={{ maxWidth: 620, width: "100%", background: C.flaeche,
+          border: `1px solid ${C.line}`, borderRadius: "var(--r-gross)", padding: 30,
+          boxShadow: "var(--schatten-blatt)" }}>
           <div style={{ marginBottom: 18 }}><Logo size={38} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 650, margin: "0 0 10px", letterSpacing: "-.02em" }}>
             Da ist etwas schiefgegangen</h1>
-          <p style={{ fontSize: 14.5, color: "#5A5F66", lineHeight: 1.55, margin: "0 0 18px" }}>
+          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.55, margin: "0 0 18px" }}>
             Die Anwendung konnte diese Ansicht nicht darstellen. Deine Daten sind gespeichert und
             gehen nicht verloren. Bitte melde den folgenden Text zusammen mit dem, was du zuletzt
             gemacht hast.
           </p>
-          <pre style={{ background: "rgba(20,20,25,.05)", borderRadius: 12, padding: 14, fontSize: 12,
+          <pre style={{ background: C.flaecheStill, borderRadius: 12, padding: 14, fontSize: 12,
             overflowX: "auto", margin: "0 0 20px", whiteSpace: "pre-wrap" }}>{meldung}</pre>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => window.location.reload()} className="btn btn-primary">Neu laden</button>
@@ -451,7 +453,6 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 
 .hakenliste{list-style:none; padding:0; margin:0;}
 .hakenliste li{display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13.5px;}
-.hakenliste li::before{content:"✓"; color:${C.ok}; font-weight:700; flex-shrink:0;}
 
 .schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
   position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
@@ -5223,7 +5224,7 @@ function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = 
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
       <span style={{ fontSize: gross ? 30 : 20, fontWeight: 300, color: C.dimmer, ...NUM }}>{vorher}</span>
-      <span style={{ fontSize: gross ? 18 : 14, color: C.dimmer }} aria-label="wird zu">→</span>
+      <span style={{ fontSize: gross ? 18 : 14, color: C.dimmer }} aria-label="wird zu"><Icon n="pfeil-rechts" size={gross ? 20 : 16} /></span>
       <span style={{ fontSize: gross ? 34 : 23, fontWeight: 650, ...NUM }}>{nachher}</span>
       {einheit && <span style={{ fontSize: 13.5, color: C.dimmer }}>{einheit}</span>}
       {differenz && <Pill tone={ton}>{differenz}</Pill>}
@@ -5558,9 +5559,9 @@ function ZiehAnbieter({ children }) {
       {last && (
         <div style={{ position: "fixed", left: zeiger.x, top: zeiger.y, zIndex: 999,
           transform: "translate(-50%,-140%)", pointerEvents: "none",
-          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: "#fff",
+          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: last.farbe ? "#fff" : C.aufAkzent,
           padding: "8px 14px", borderRadius: 12, fontSize: 13.5, fontWeight: 600,
-          boxShadow: "0 10px 26px rgba(17,24,39,.28)", whiteSpace: "nowrap" }}>
+          boxShadow: "var(--schatten-toast)", whiteSpace: "nowrap" }}>
           {last.beschriftung}
           {last.zeit && <span style={{ opacity: .75, marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
             {last.zeit}</span>}
@@ -5631,8 +5632,8 @@ function ZiehHinweis({ text }) {
   if (!ctx || !ctx.last) return null;
   return (
     <div style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 998,
-      background: C.text, color: "#fff", padding: "11px 20px", borderRadius: 999,
-      fontSize: 13.5, boxShadow: "0 12px 34px rgba(24,26,30,.30)", pointerEvents: "none" }}>
+      background: C.text, color: C.flaeche, padding: "11px 20px", borderRadius: 999,
+      fontSize: 13.5, boxShadow: "var(--schatten-toast)", pointerEvents: "none" }}>
       {text || "Auf ein Ziel ziehen und loslassen"}
     </div>);
 }
@@ -5816,8 +5817,8 @@ function Schritte({ aktuell, schritte }) {
             <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
               alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
               background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
-              color: i <= aktuell ? "#fff" : C.dim }}>
-              {i < aktuell ? "✓" : i + 1}</span>
+              color: i <= aktuell ? C.aufAkzent : C.dim }}>
+              {i < aktuell ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
             <span style={{ fontSize: 13, fontWeight: i === aktuell ? 650 : 500,
               color: i === aktuell ? C.text : C.dimmer, whiteSpace: "nowrap" }}>{s}</span>
           </div>
@@ -6134,7 +6135,7 @@ function Assistent2({ sitz, akt, onClose }) {
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
                     {dienste.length > 1 && <Btn size="sm" kind="danger"
                       onClick={() => { setDienste(dienste.filter((_, k) => k !== i));
-                        setTage(tage.map((t) => t === d.id ? "-" : t)); }}>×</Btn>}</td>
+                        setTage(tage.map((t) => t === d.id ? "-" : t)); }} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}</td>
                 </tr>))}</tbody>
             </table>
           </Card>
@@ -6244,7 +6245,7 @@ function Assistent2({ sitz, akt, onClose }) {
                       </div>
                     </div>
                     {gruppen.length > 1 && <Btn size="sm" kind="danger" style={{ marginBottom: 8 }}
-                      onClick={() => setGruppen(gruppen.filter((_, k) => k !== gi))}>×</Btn>}
+                      onClick={() => setGruppen(gruppen.filter((_, k) => k !== gi))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
                   </div>
                 </Card>);
             })}
@@ -6452,7 +6453,7 @@ function MandantAnlegen({ db, akt, onClose }) {
                 <Field label="Umkreis in Metern"><Inp type="number" value={s.radius}
                   onChange={(e) => setz("standorte", f.standorte.map((x, k) => k === i ? { ...x, radius: Number(e.target.value) } : x))} /></Field>
                 {f.standorte.length > 1 && <Btn size="sm" kind="danger" style={{ marginBottom: 8 }}
-                  onClick={() => setz("standorte", f.standorte.filter((_, k) => k !== i))}>×</Btn>}
+                  onClick={() => setz("standorte", f.standorte.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>
             </Card>))}
           <Btn onClick={() => setz("standorte", [...f.standorte, { name: `Standort ${f.standorte.length + 1}`, land: "HE", radius: 200 }])}>
@@ -6548,7 +6549,7 @@ function MandantAnlegen({ db, akt, onClose }) {
                       ? { ...x, nurStatus: e.target.checked, ...(e.target.checked ? { gueltigMonate: null } : {}) } : x))} />
                   nur Status</label>
                 <Btn size="sm" kind="danger"
-                  onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))}>×</Btn>
+                  onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
                 {/* Die Rechtsgrundlage steht über die volle Breite unter der
                     Zeile. Sie ist der Unterschied zwischen „das Gesetz
                     verlangt es" und „so haben wir das festgelegt" — und
@@ -6604,7 +6605,7 @@ function MandantAnlegen({ db, akt, onClose }) {
                   aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, prozent: Number(e.target.value) } : x))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
-                <Btn size="sm" kind="danger" onClick={() => setz("zuschlaege", f.zuschlaege.filter((_, k) => k !== i))}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => setz("zuschlaege", f.zuschlaege.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
             <Btn size="sm" onClick={() => setz("zuschlaege", [...f.zuschlaege,
               { name: "Neue Regel", art: "nacht", prozent: 0, aktiv: false }])}>Regel hinzufügen</Btn>
@@ -6674,8 +6675,8 @@ function Schrittleiste({ aktuell, schritte }) {
           <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
             alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
             background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
-            color: i <= aktuell ? "#fff" : C.dim }}>
-            {i < aktuell ? "✓" : i + 1}</span>
+            color: i <= aktuell ? C.aufAkzent : C.dim }}>
+            {i < aktuell ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
           <span style={{ fontSize: 13, fontWeight: i === aktuell ? 650 : 500,
             color: i === aktuell ? C.text : C.dimmer, whiteSpace: "nowrap" }}>{s}</span>
           {i < schritte.length - 1 && <span style={{ width: 24, height: 1.5,
@@ -7935,7 +7936,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
                 <Lab style={{ marginBottom: 10 }}>Im Tarif enthalten</Lab>
                 {p.t.leistungen.map((f) => <div key={f} style={{ fontSize: 13.5, color: C.dim, marginBottom: 7 }}>
-                  <span style={{ color: C.ok, marginRight: 9 }}>✓</span>{f}</div>)}
+                  <span style={{ color: C.ok, marginRight: 9, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
               </div>
             </div>
           </Card>
@@ -8048,7 +8049,7 @@ function BetreiberTarife({ db, akt }) {
               <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
                 <Lab style={{ marginBottom: 8 }}>Enthalten</Lab>
                 {t.leistungen.map((f) => <div key={f} style={{ fontSize: 13, color: C.dim, marginBottom: 5 }}>
-                  <span style={{ color: C.ok, marginRight: 8 }}>✓</span>{f}</div>)}
+                  <span style={{ color: C.ok, marginRight: 8, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
               </div>
             </div>
           </Card>))}
@@ -9622,7 +9623,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         {m.qualifikationen.map((q) => { const an = p.qualifikationen.includes(q.id);
           return (<button key={q.id} disabled={!editierbar} onClick={() => akt.toggleQual(p.id, q.id)} className="btn btn-sm"
             style={{ background: an ? `${q.farbe}1C` : C.bg, color: an ? q.farbe : C.dimmer, fontWeight: 600 }}>
-            {an ? "✓ " : ""}{q.name}</button>); })}
+            {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{q.name}</button>); })}
       </div>
 
       {editierbar && (<>
@@ -11054,7 +11055,7 @@ function Urlaubsrunde({ sitz, akt }) {
                   Priorität {x.prio}</Pill>
                 <span style={{ fontSize: 13.5, flex: 1, ...NUM }}>{fDatum(x.von)} bis {fDatum(x.bis)}</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer }}>{x.status}</span>
-                {x.status === "offen" && <Btn size="sm" kind="quiet" onClick={() => akt.wunschLoeschen(x.id)}>×</Btn>}
+                {x.status === "offen" && <Btn size="sm" kind="quiet" onClick={() => akt.wunschLoeschen(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>))}
           </div>}
         </Card>)}
@@ -11184,7 +11185,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
                   aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "prozent", Number(e.target.value))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
-                {darf(sitz, "org.edit") && <Btn size="sm" kind="danger" onClick={() => akt.loescheZuschlag(z.id)}>×</Btn>}
+                {darf(sitz, "org.edit") && <Btn size="sm" kind="danger" onClick={() => akt.loescheZuschlag(z.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>))}
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
               Der Zuschlagswert wird in Stunden ausgegeben: geleistete Stunden mal Prozentsatz. Die Umrechnung
@@ -11636,7 +11637,7 @@ function Import({ sitz, akt, onClose }) {
                   <span style={{ width: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center",
                     justifyContent: "center", fontSize: 11, fontWeight: 700,
                     background: z.ok ? "rgba(46,107,79,.14)" : "rgba(179,38,30,.12)",
-                    color: z.ok ? C.ok : C.danger }}>{z.ok ? "✓" : "✕"}</span></td>
+                    color: z.ok ? C.ok : C.danger }}>{z.ok ? <><Icon n="haken" size={13} strokeWidth={2.4} /><span className="nurLeser">ja</span></> : <><Icon n="x" size={13} strokeWidth={2.4} /><span className="nurLeser">nein</span></>}</span></td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13 }}>
                   {z.nachname}, {z.vorname}{z.teilzeit && <Pill size="sm" style={{ marginLeft: 6 }}>TZ</Pill>}</td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 12.5,
@@ -11984,13 +11985,13 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
             Folgen für {gewaehlt.vorname} {gewaehlt.nachname}</div>
           {folgen.hindernisse.length > 0 && folgen.hindernisse.map((h, i) => (
             <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 7 }}>
-              <span style={{ color: C.danger, fontWeight: 700, fontSize: 13 }}>✕</span>
+              <span style={{ color: C.danger, display: "flex", marginTop: 2 }}><Icon n="x" size={14} strokeWidth={2.2} /></span>
               <span style={{ fontSize: 13, color: C.danger }}>{h}</span></div>))}
           {folgen.hinweise.map((h, i) => (
             <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 7 }}>
               <span style={{ fontSize: 13, fontWeight: 700,
                 color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dimmer }}>
-                {h.art === "danger" ? "✕" : h.art === "warn" ? "!" : "·"}</span>
+                {h.art === "danger" ? <Icon n="x" size={14} strokeWidth={2.2} /> : h.art === "warn" ? <Icon n="warnung" size={14} /> : "·"}</span>
               <span style={{ fontSize: 13, color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dim }}>{h.text}</span>
             </div>))}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
@@ -12239,7 +12240,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                 <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
                   alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700,
                   background: x.erledigt ? C.okLight : C.lineSoft,
-                  color: x.erledigt ? C.ok : C.dimmer }}>{x.erledigt ? "✓" : "·"}</span>
+                  color: x.erledigt ? C.ok : C.dimmer }}>{x.erledigt ? <Icon n="haken" size={14} strokeWidth={2.4} /> : "·"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: x.erledigt ? 400 : 600,
                     textDecoration: x.erledigt ? "line-through" : "none" }}>{x.titel}</div>
@@ -12265,7 +12266,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
 
       {aufgaben.length === 0
         ? <Card style={{ padding: 44, textAlign: "center" }}>
-            <div style={{ fontSize: 34, marginBottom: 12, color: C.ok }}>✓</div>
+            <div style={{ marginBottom: 12, color: C.ok, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={40} /></div>
             <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 7 }}>Alles erledigt</div>
             <div style={{ fontSize: 14, color: C.dim, maxWidth: 380, margin: "0 auto", lineHeight: 1.5 }}>
               Nichts erfordert derzeit eine Entscheidung. Über die Navigation kommst du zu allen Ansichten.
@@ -12401,7 +12402,7 @@ function Verfuegbarkeit({ sitz, akt, personId, onClose }) {
                 <button key={d} onClick={() => um(i)} 
                   style={{ height: 46, borderRadius: 12, border: "none", cursor: "pointer",
                     background: an ? C.okLight : C.bg,
-                    color: an ? C.ok : "transparent", fontSize: 17, fontWeight: 700 }}>✓</button>);
+                    color: an ? C.ok : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon n="haken" size={20} strokeWidth={2.4} /></button>);
             })}
           </div>))}
         <div style={{ display: "flex", gap: 18, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
@@ -12927,7 +12928,7 @@ function Betriebsmittel({ sitz, akt }) {
                     </Sel>
                   : <Pill size="sm" tone={p ? "accent" : "neutral"}>{p ? `${p.nachname}` : "im Bestand"}</Pill>}
                 {x.seit && <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>seit {fKurz(x.seit)}</span>}
-                {darfPflegen && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)}>×</Btn>}
+                {darfPflegen && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </Ziehbar>);
           })}
       </Card>
@@ -14565,7 +14566,7 @@ function AnsichtLeiste({ sitz, akt, bereich, aktuell, anwenden }) {
           <Btn size="sm" onClick={() => anwenden(a.zustand)}>{a.name}</Btn>
           <button onClick={() => akt.loescheAnsicht(a.id)} aria-label={`${a.name} löschen`}
             style={{ border: "none", background: "transparent", color: C.dim, cursor: "pointer",
-              fontSize: 15, padding: "0 4px" }}>×</button>
+              padding: "0 4px", display: "flex" }}><Icon n="x" size={14} strokeWidth={2.2} /></button>
         </div>))}
       {neu ? (
         <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
@@ -16374,8 +16375,8 @@ function TourLeiste({ sitz, akt, gehZu }) {
   const rahmen = {
     position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 900,
     maxWidth: eingeklappt ? 560 : 940, margin: "0 auto",
-    background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: 14,
-    overflow: "hidden", boxShadow: "0 14px 40px -14px rgba(7,19,23,.28)",
+    background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: "var(--r-gross)",
+    overflow: "hidden", boxShadow: "var(--schatten-blatt)",
   };
 
   /* ---------------------------- Eingeklappt ---------------------------
@@ -16404,7 +16405,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
           <button type="button" onClick={() => akt.tourSchliessen(false)} aria-label="Tour schließen"
             title="Tour schließen — unter Einstellungen fortsetzbar"
             style={{ border: "none", background: "transparent", color: C.dim, cursor: "pointer",
-              fontFamily: "inherit", fontSize: 17, lineHeight: 1, padding: "6px 8px", flexShrink: 0 }}>×</button>
+              fontFamily: "inherit", padding: "6px 8px", flexShrink: 0, display: "flex" }}><Icon n="x" size={18} strokeWidth={2.2} /></button>
         </div>
       </div>);
   }
@@ -16448,7 +16449,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
                     background: hier ? C.accentLight : "transparent",
                     color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,
                     fontWeight: hier ? 620 : 500 }}>
-                  {k.fertig && !hier ? "✓ " : ""}{k.name}
+                  {k.fertig && !hier && <Icon n="haken" size={13} strokeWidth={2.4} />}{k.name}
                 </button>);
             })}
           </div>
@@ -16468,7 +16469,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
           {punkt.pruefen && (
             <div style={{ display: "flex", gap: 9, marginTop: 8, fontSize: 13.5,
               color: C.ok, alignItems: "flex-start", lineHeight: 1.5 }}>
-              <span style={{ fontWeight: 700, flexShrink: 0 }}>✓</span>
+              <span style={{ flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={16} strokeWidth={2.2} /></span>
               <span>{punkt.pruefen}</span>
             </div>)}
 
@@ -18910,7 +18911,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
 
       {aufgaben.length === 0 && (
         <MKarte style={{ textAlign: "center", padding: 30 }}>
-          <div style={{ fontSize: 30, color: C.ok, marginBottom: 8 }}>✓</div>
+          <div style={{ color: C.ok, marginBottom: 8, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={36} /></div>
           <div style={{ fontSize: 15.5, fontWeight: 600 }}>Nichts zu erledigen</div>
         </MKarte>)}
     </div>);
@@ -19299,7 +19300,7 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
           if (!st) return null;
           return (
             <MZeile links="Checkliste heute"
-              rechts={st.vollstaendig ? "✓" : `${st.fertig}/${st.gesamt}`}
+              rechts={st.vollstaendig ? <span style={{ color: C.ok, display: "flex" }}><Icon n="haken" size={18} strokeWidth={2.2} /></span> : `${st.fertig}/${st.gesamt}`}
               unten={st.vollstaendig ? "alles erledigt"
                 : `noch ${st.pflichtGesamt - st.pflichtFertig} Pflichtpunkte`}
               onClick={() => oeffnen("checkliste")} />);
@@ -19451,8 +19452,8 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0,
                         marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center",
                         border: `1.5px solid ${z.erledigt ? C.ok : C.lineStark}`,
-                        background: z.erledigt ? C.ok : "transparent", color: "#fff",
-                        fontSize: 14 }}>{z.erledigt ? "✓" : ""}</span>
+                        background: z.erledigt ? C.ok : "transparent", color: C.aufAkzent,
+                        fontSize: 14 }}>{z.erledigt ? <Icon n="haken" size={14} strokeWidth={2.4} /> : ""}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 15.5,
                           fontWeight: z.erledigt ? 500 : 600,
@@ -19743,7 +19744,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       border: `1px solid ${an ? C.accent : C.line}`, cursor: "pointer",
                       background: an ? C.accentLight : "transparent", color: an ? C.accent : C.dim,
                       fontFamily: "inherit", fontSize: 13.5, fontWeight: 600 }}>
-                    {an ? "✓ " : ""}{label}</button>))}
+                    {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{label}</button>))}
               </div>
             </MKarte>);
         })}
@@ -19879,8 +19880,8 @@ function MWuensche({ sitz, akt }) {
               background: w ? (w.art === "moechte" ? C.okLight : C.warnLight)
                 : C.bg }}>
             <span style={{ fontSize: 12, color: C.dim, ...NUM }}>{Number(d.slice(8))}</span>
-            {w ? <span style={{ fontSize: 13, fontWeight: 700, color: w.art === "moechte" ? C.ok : C.warn }}>
-              {w.art === "moechte" ? "✓" : "✕"}</span>
+            {w ? <span style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", color: w.art === "moechte" ? C.ok : C.warn }}>
+              {w.art === "moechte" ? <><Icon n="haken" size={13} strokeWidth={2.4} /><span className="nurLeser">möchte arbeiten</span></> : <><Icon n="x" size={13} strokeWidth={2.4} /><span className="nurLeser">lieber nicht</span></>}</span>
               : da && <span style={{ fontSize: 9.5, color: lesbar(da.farbe), fontWeight: 700 }}>{da.kurz}</span>}
           </div>);
       })}
@@ -20262,7 +20263,7 @@ function Betrieb({ sitz, akt }) {
                 <Inp value={e.name} onChange={(ev) => akt.setzeEinheit(e.id, "name", ev.target.value)} style={{ flex: 1 }} />
                 <span style={{ fontSize: 12.5, color: C.dimmer, width: 64, ...NUM }}>
                   {aktive(m, heute()).filter((x) => einheitAm(x, heute()) === e.id).length} Pers.</span>
-                <Btn size="sm" kind="danger" onClick={() => akt.loescheEinheit(e.id)}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => akt.loescheEinheit(e.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
           </div>
         </Card>
@@ -20276,7 +20277,7 @@ function Betrieb({ sitz, akt }) {
                   titel={`Farbe von ${q.name}`} />
                 <Inp value={q.name} onChange={(e) => akt.setzeQual(q.id, "name", e.target.value)} style={{ flex: 1 }} />
                 <Inp value={q.kurz} maxLength={4} onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
-                <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
             <Erklaerkasten style={{ marginTop: 12 }}>
               Qualifikationen werden in den Dienstarten als Anforderung hinterlegt und in der Prüfung ausgewertet.
@@ -22724,8 +22725,8 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
     {verfDlg && <Verfuegbarkeit sitz={sitz} akt={akt} personId={verfDlg} onClose={() => setVerfDlg(null)} />}
     {krank && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
     {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
-      zIndex: 90, background: C.accentDeep, color: "#fff", padding: "12px 20px", borderRadius: 999,
-      fontSize: 14, boxShadow: "0 10px 30px rgba(24,26,30,.28)", maxWidth: "90vw", textAlign: "center" }}>
+      zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
+      fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
       {hinweis}</div>}
   </>);
 
