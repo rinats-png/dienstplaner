@@ -78,6 +78,14 @@ const paare = (P) => [
   ["violet", "flaecheStill", 4.5],               // Pille „violet"
   ["accentLight", "accentDeep", 4.5],            // Konto-Knopf in der Kopfzeile
   ["danger", "dangerLight", 4.5],                // .btn-danger, Zähler-Warnung
+  /* Übersichten und Entscheidungsansichten: getönte Zeilen (Untergrenzen,
+     Lenkzeiten, Belastung, Notrufe) tragen normalen Text, Erklärkästen und
+     Seitenkarten tragen Statuswörter auf der eingelassenen Fläche. */
+  ["text", "dangerLight", 4.5], ["dim", "dangerLight", 4.5],
+  ["text", "warnLight", 4.5], ["dim", "warnLight", 4.5],
+  ["text", "okLight", 4.5],
+  ["ok", "flaecheStill", 4.5], ["warn", "flaecheStill", 4.5], ["danger", "flaecheStill", 4.5],
+  ["dim", "accentLight", 4.5],                   // Checkliste auf Karte, aktive Zeile in Listen
 ];
 
 for (const [name, P] of [["Hell", C_HELL], ["Dunkel", C_DUNKEL]]) {

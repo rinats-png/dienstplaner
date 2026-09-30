@@ -172,7 +172,7 @@ import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
 import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
-  Abschnittskopf, Punkt } from "./gestalt/ansichten.jsx";
+  Abschnittskopf, Punkt, Grosszahl } from "./gestalt/ansichten.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
@@ -7298,7 +7298,7 @@ function AntraegeGeteilt({ sitz, akt }) {
           alignItems: "start" }}>
 
           {/* ------------------------- Liste ------------------------- */}
-          <Card>
+          <Card style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
               borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
               <Seg value={filter} onChange={setFilter} options={[
@@ -7335,7 +7335,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                   const tage = between(a.von, a.bis) + 1;
                   return (
                     <div key={a.id} {...klickbar(() => setZeiger(i))}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", flexWrap: "wrap",
                         borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                         background: amZeiger ? C.accentLight : anGewaehlt ? C.bg : "transparent",
                         borderLeft: amZeiger ? `3px solid ${C.accent}` : "3px solid transparent" }}>
@@ -7345,6 +7345,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                          {p && <Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}
                           <span style={{ fontSize: 13.5, fontWeight: 600 }}>
                             {p ? `${p.nachname}, ${p.vorname}` : "?"}</span>
                           {e && <span style={{ fontSize: 11.5, color: C.dim }}>{e.name}</span>}
@@ -7360,7 +7361,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         const st = genehmigungsStand(m, a);
                         const darfIch = darfStufe(sitz, a, st);
                         return (
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                             {st.noetig > 1 && (
                               <Pill size="sm" tone={st.erteilt ? "accent" : "warn"}>
                                 Stufe {st.erteilt + 1} von {st.noetig}</Pill>)}
@@ -11811,8 +11812,9 @@ function Dienstbuch({ sitz, akt }) {
             <div style={{ display: "flex", gap: 8 }}>
               {arten.map(([id, l]) => (
                 <button key={id} onClick={() => setArt(id)} className="btn btn-sm" aria-pressed={art === id}
-                  style={{ background: art === id ? "rgba(43,52,64,.10)" : C.bg,
-                    color: art === id ? C.text : C.dim, fontWeight: 600 }}>{l}</button>))}
+                  style={{ background: art === id ? C.accentLight : C.flaeche,
+                    borderColor: art === id ? C.accent : undefined,
+                    color: art === id ? C.accent : C.dim, fontWeight: 600 }}>{l}</button>))}
             </div>
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
               aria-label="Eintrag ins Dienstbuch"
@@ -11824,6 +11826,8 @@ function Dienstbuch({ sitz, akt }) {
           </div>
         </Card>)}
 
+      <Leitraster seiteBreite={340}
+        haupt={<>
       <Card>
         <CardHead right={<Lab>{eintraege.length} Einträge</Lab>}>{fLang(datum)}</CardHead>
         {eintraege.length === 0
@@ -11831,8 +11835,7 @@ function Dienstbuch({ sitz, akt }) {
           : eintraege.map((e, i) => (
             <div key={e.id} style={{ display: "flex", gap: 15, padding: "15px 22px",
               borderBottom: i < eintraege.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-              <span style={{ width: 4, borderRadius: 2, flexShrink: 0,
-                background: e.art === "vorkommnis" ? C.danger : e.art === "hinweis" ? C.warn : C.accent }} />
+              <span style={{ paddingTop: 6 }}><Punkt gross ton={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill size="sm" tone={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"}>
@@ -11843,6 +11846,15 @@ function Dienstbuch({ sitz, akt }) {
               </div>
             </div>))}
       </Card>
+        </>}
+        seite={eintraege.length > 0 ? (
+          <Seitenkarte titel="Einträge nach Art" sub={fLang(datum)}>
+            {arten.map(([id, l]) => {
+              const n = eintraege.filter((x) => x.art === id).length;
+              return <Balkenzeile key={id} label={l} wert={n} anteil={(n / eintraege.length) * 100}
+                ton={id === "vorkommnis" ? "danger" : id === "hinweis" ? "warn" : "accent"} punkt />;
+            })}
+          </Seitenkarte>) : null} />
     </div>);
 }
 
@@ -12029,7 +12041,20 @@ function Tauschboerse({ sitz, akt }) {
   const [neu, setNeu] = useState(false);
   const [f, setF] = useState({ datum: "", partnerId: "", text: "" });
   const boerse = m.anfragen.filter((a) => a.typ === "tausch" && a.status === "offen" && !a.partnerId);
-  const meine = m.anfragen.filter((a) => a.typ === "tausch" && a.personId === ich.id);
+  /* Wer über Anträge der Einheit entscheiden darf, sieht auch deren
+     Tauschvorgänge — nicht nur die eigenen (Entscheidung C7). Es ist eine
+     Frage der Anzeige: m.anfragen liefert der Server allen Rollen ohnehin
+     vollständig aus (bestandFuerRolle filtert Personen und Abwesenheiten,
+     nicht die Anfragen), und die Anträge-Ansicht filtert genauso. Alle
+     anderen sehen weiter nur ihre eigenen. */
+  const imUmfang = (a) => {
+    if (a.personId === ich.id) return true;
+    const pp = m.personen.find((x) => x.id === a.personId);
+    return !!pp && darfEntscheiden(sitz, einheitAm(pp, a.von));
+  };
+  const meine = m.anfragen.filter((a) => a.typ === "tausch" && imUmfang(a))
+    .sort((a, b) => (a.von < b.von ? 1 : a.von > b.von ? -1 : 0));
+  const fremde = meine.some((a) => a.personId !== ich.id);
   const eigeneDienste = Array.from({ length: 45 }, (_, i) => addDays(heute(), i))
     .filter((d) => personTag(m, ich, d).dienstId);
 
@@ -12039,7 +12064,9 @@ function Tauschboerse({ sitz, akt }) {
         right={darf(sitz, "req.create") && ich.imSchichtdienst !== false &&
           <Btn kind="primary" onClick={() => setNeu(true)}>Gesuch einstellen</Btn>}>Tauschbörse</H1>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Leitraster seiteBreite={360}
+        haupt={<>
+      <Card>
         <CardHead right={<Pill tone={boerse.length ? "accent" : "neutral"}>{boerse.length} offen</Pill>}>
           Offene Gesuche</CardHead>
         {boerse.length === 0
@@ -12077,7 +12104,7 @@ function Tauschboerse({ sitz, akt }) {
                           <Btn key={iid} size="sm" kind={konflikt ? "danger" : "ok"}
                             title={konflikt ? "Einteilung würde Vorgaben verletzen" : "Tausch mit dieser Person bestätigen"}
                             onClick={() => akt.tauschZuteilen(a.id, iid)}>
-                            {konflikt ? "! " : "✓ "}{ip.nachname}
+                            {konflikt ? <Icon n="warnung" size={14} /> : <Icon n="haken" size={14} />}{ip.nachname}
                           </Btn>);
                       })}
                     </div>)}
@@ -12099,19 +12126,27 @@ function Tauschboerse({ sitz, akt }) {
           })}
       </Card>
 
+        </>}
+        seite={<>
       {meine.length > 0 && (
         <Card>
-          <CardHead>Meine Tauschvorgänge</CardHead>
-          {meine.map((a) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 13, padding: "13px 22px",
-              borderBottom: `1px solid ${C.lineSoft}` }}>
-              <Pill size="sm" tone={a.status === "offen" ? "warn" : a.status === "genehmigt" ? "ok" : "danger"}>{a.status}</Pill>
-              <span style={{ fontSize: 13.5, flex: 1, ...NUM }}>
-                {fKurz(a.von)}{a.partnerId ? ` · mit ${(m.personen.find((x) => x.id === a.partnerId) || {}).nachname}` : " · offenes Gesuch"}
-              </span>
-              {a.antwort && <span style={{ fontSize: 12.5, color: C.dim }}>{a.antwort}</span>}
-            </div>))}
+          <CardHead right={fremde ? <Lab>Stand der Entscheidung</Lab> : undefined}>
+            {fremde ? "Tauschvorgänge" : "Meine Tauschvorgänge"}</CardHead>
+          {meine.map((a) => {
+            const wer = a.personId === ich.id ? null : m.personen.find((x) => x.id === a.personId);
+            return (
+              <div key={a.id} className="listenzeile" style={{ padding: "13px 22px", flexWrap: "wrap" }}>
+                <Pill size="sm" tone={a.status === "offen" ? "warn" : a.status === "genehmigt" ? "ok" : "danger"}>{a.status}</Pill>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160, ...NUM }}>
+                  {fKurz(a.von)}{a.partnerId ? ` · mit ${(m.personen.find((x) => x.id === a.partnerId) || {}).nachname}` : " · offenes Gesuch"}
+                  {wer && <span style={{ color: C.dim }}> · {wer.vorname} {wer.nachname}</span>}
+                </span>
+                {a.antwort && <span style={{ fontSize: 12.5, color: C.dim }}>{a.antwort}</span>}
+              </div>);
+          })}
         </Card>)}
+
+        </>} />
 
       <Sheet open={neu} onClose={() => setNeu(false)} titel="Tauschgesuch einstellen" width={560}>
         <div style={{ display: "grid", gap: 15 }}>
@@ -12799,7 +12834,12 @@ function SchwarzesBrett({ sitz, akt }) {
 
       {eintraege.length === 0
         ? <Card><Leer titel="Nichts angeschlagen" text="Hier stehen Mitteilungen, die alle im Betrieb betreffen — Termine, Änderungen, Hinweise." /></Card>
-        : <div style={{ display: "grid", gap: 14 }}>
+        : <>
+          <Abschnittskopf titel="Angeschlagen"
+            sub={`${eintraege.filter((x) => !(x.bis && x.bis < heute())).length} gelten · ${eintraege.filter((x) => x.wichtig).length} wichtig · ${eintraege.filter((x) => x.bis && x.bis < heute()).length} abgelaufen`}
+            rechts="Wichtige zuerst, danach nach Eingang" />
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,420px),1fr))",
+            alignItems: "start" }}>
             {eintraege.map((x) => {
               const abgelaufen = x.bis && x.bis < heute();
               return (
@@ -12820,7 +12860,7 @@ function SchwarzesBrett({ sitz, akt }) {
                   </div>
                 </Card>);
             })}
-          </div>}
+          </div></>}
 
       <Sheet open={neu} onClose={() => setNeu(false)} titel="Aushang verfassen" width={580}>
         <div style={{ display: "grid", gap: 16 }}>
@@ -14168,10 +14208,40 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
   </>);
 
   if (onClose) return <Sheet open onClose={onClose} titel={titel} width={640}>{kern}</Sheet>;
+  /* Was der Plan aus den Wünschen gemacht hat: Ein „möchte arbeiten" ist
+     getroffen, wenn an dem Tag ein Dienst steht, ein „lieber nicht", wenn
+     keiner steht. Gezählt wird nur, was im Plan steht — nichts geschätzt. */
+  const bilanz = meine.slice().sort((a, b) => (a.datum < b.datum ? -1 : 1)).map((w) => {
+    const t = personTag(m, p, w.datum);
+    const da = t.dienstId ? map[t.dienstId] : null;
+    const art = WUNSCH_ARTEN.find((a) => a.id === w.art);
+    const getroffen = w.art === "moechte" ? !!da : !da;
+    return { w, da, art, getroffen };
+  });
+  const treffer = bilanz.filter((x) => x.getroffen).length;
   return (
     <div>
       <H1 sub="Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.">{titel}</H1>
-      <Card style={{ padding: 22, maxWidth: 680 }}>{kern}</Card>
+      <Leitraster seiteBreite={360}
+        haupt={<Card style={{ padding: 22 }}>{kern}</Card>}
+        seite={bilanz.length > 0 ? (
+          <Seitenkarte titel="Wünsche und Plan" rechts={<span style={{ fontSize: 12.5, color: C.dim }}>{MON[mo - 1]} {y}</span>}
+            sub={`${treffer} von ${bilanz.length} Wünschen trifft der Plan`}>
+            <Fortschritt wert={(treffer / bilanz.length) * 100} hoehe={7} label="Anteil der getroffenen Wünsche" />
+            <div style={{ marginTop: 10 }}>
+              {bilanz.map(({ w, da, art, getroffen }) => (
+                <div key={w.datum} className="listenzeile" style={{ padding: "9px 0", gap: 10 }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, display: "flex",
+                    alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13,
+                    background: `${art.farbe}1C`, color: art.farbe }}>{art.zeichen}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 550 }}>{fKurz(w.datum)}</div>
+                    <div style={{ fontSize: 12, color: C.dim }}>{art.label} · im Plan {da ? da.name : "frei"}</div>
+                  </div>
+                  <Pill size="sm" tone={getroffen ? "ok" : "warn"}>{getroffen ? "erfüllt" : "nicht erfüllt"}</Pill>
+                </div>))}
+            </div>
+          </Seitenkarte>) : null} />
     </div>);
 }
 
@@ -15835,7 +15905,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
         <Card><Leer titel="Nichts ausgeschrieben"
           text="Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren." /></Card>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,340px) minmax(0,1fr)",
+        <div className="zweispaltig" style={{ display: "grid", gridTemplateColumns: "minmax(280px,340px) minmax(0,1fr)",
           gap: 24, alignItems: "start" }}>
 
           {/* ------------------------ Die Liste ------------------------ */}
@@ -15876,7 +15946,10 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
               <div>
                 <Card style={{ marginBottom: 18 }}>
                   <div style={{ padding: "22px var(--pad-x)" }}>
-                    <Rubrik>{fLang(a.datum)}</Rubrik>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <Rubrik>{fLang(a.datum)}</Rubrik>
+                      {lage.dringend && <Pill size="sm" tone="danger">dringend</Pill>}
+                    </div>
                     <h2 style={{ fontSize: 24, fontWeight: 300, letterSpacing: "-.035em",
                       margin: "9px 0 8px" }}>
                       {da ? da.name : a.dienstId}
@@ -17830,20 +17903,50 @@ function Notrufe({ sitz, akt }) {
       {offen.length === 0 && erledigt.length === 0 ? (
         <Card><Leer titel="Keine Notrufe"
           text="Beschäftigte im Alleindienst können über die Telefonansicht Hilfe anfordern. Die Meldung geht zuerst an die Schichtverantwortung, dann an die Planung." /></Card>
-      ) : (<>
-        {offen.length > 0 && (
-          <Card style={{ marginBottom: 22, borderColor: C.danger }}>
-            <CardHead right={<Pill tone="danger">{zahl(offen.length)} offen</Pill>}>
-              Nicht bestätigt</CardHead>
-            {offen.map((n) => <Zeile key={n.id} n={n} offen />)}
-          </Card>)}
+      ) : (
+        <Leitraster seiteBreite={340}
+          haupt={<>
+            {offen.length > 0 && (
+              <Card style={{ borderColor: C.danger, borderWidth: 2 }}>
+                <CardHead right={<Pill tone="danger">{zahl(offen.length)} offen</Pill>}>
+                  Nicht bestätigt</CardHead>
+                {offen.map((n) => <Zeile key={n.id} n={n} offen />)}
+              </Card>)}
 
-        {erledigt.length > 0 && (
-          <Card>
-            <CardHead right={<Lab>letzte {zahl(erledigt.length)}</Lab>}>Bestätigt</CardHead>
-            {erledigt.map((n) => <Zeile key={n.id} n={n} offen={false} />)}
-          </Card>)}
-      </>)}
+            {erledigt.length > 0 && (
+              <Card>
+                <CardHead right={<Lab>letzte {zahl(erledigt.length)}</Lab>}>Bestätigt</CardHead>
+                {erledigt.map((n) => <Zeile key={n.id} n={n} offen={false} />)}
+              </Card>)}
+          </>}
+          seite={(() => {
+            /* Der Rückblick zählt, was im Bestand steht — sieben Tage,
+               nach Art. Die Quittierzeit ist der Abstand zwischen Meldung
+               und Bestätigung, wo beides vorliegt. */
+            const grenze = Date.now() - 7 * 86400000;
+            const woche = (m.notrufe || []).filter((n) => new Date(n.zeit).getTime() >= grenze);
+            if (!woche.length) return null;
+            const nachArt = Object.entries(NOTRUF_ARTEN).map(([id, a]) => ({ id, a,
+              n: woche.filter((n) => (NOTRUF_ARTEN[n.art] ? n.art : "hilfe") === id).length })).filter((x) => x.n > 0);
+            const hoechst = Math.max(...nachArt.map((x) => x.n));
+            const zeiten = woche.filter((n) => n.bestaetigt).map((n) =>
+              (new Date(n.bestaetigt).getTime() - new Date(n.zeit).getTime()) / 1000).filter((x) => x >= 0);
+            const mittel = zeiten.length ? zeiten.reduce((x, y) => x + y, 0) / zeiten.length : null;
+            const text = (sek) => sek < 90 ? `${Math.round(sek)} s` : sek < 5400 ? `${Math.round(sek / 60)} min`
+              : `${n1(sek / 3600)} h`;
+            return (<>
+              <Seitenkarte titel="Sieben Tage im Rückblick" sub={`${zahl(woche.length)} ${woche.length === 1 ? "Meldung" : "Meldungen"}`}>
+                {nachArt.map((x) => (
+                  <Balkenzeile key={x.id} label={x.a.label} wert={x.n} anteil={(x.n / hoechst) * 100}
+                    ton={x.a.dringend ? "danger" : "warn"} punkt />))}
+              </Seitenkarte>
+              {mittel !== null && (
+                <Seitenkarte titel="Mittlere Quittierzeit" sub={`aus ${zahl(zeiten.length)} bestätigten Meldungen`}>
+                  <Grosszahl wert={text(mittel)} />
+                </Seitenkarte>)}
+            </>);
+          })()} />
+      )}
     </div>);
 }
 

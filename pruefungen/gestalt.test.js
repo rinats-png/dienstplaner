@@ -130,3 +130,31 @@ describe("Farben", () => {
     }
   });
 });
+
+describe("Bausteine der Ansichten", async () => {
+  const { Pille } = await import("../src/gestalt/bausteine.jsx");
+  const { Kennzahlen, Balkenzeile } = await import("../src/gestalt/ansichten.jsx");
+  const html = (el) => renderToStaticMarkup(el);
+
+  it("die Pille versteht den bisherigen Namen `tone` — App.jsx ruft sie überall so auf", () => {
+    /* Bis P3 las sie nur `ton`; jeder Aufruf mit `tone` wurde still neutral. */
+    expect(html(React.createElement(Pille, { tone: "warn" }, "x"))).toContain("pille-warn");
+    expect(html(React.createElement(Pille, { ton: "danger" }, "x"))).toContain("pille-danger");
+    expect(html(React.createElement(Pille, { tone: null }, "x"))).toContain("pille-neutral");
+    expect(html(React.createElement(Pille, { ton: "ok", tone: "warn" }, "x"))).toContain("pille-ok");
+  });
+
+  it("Kennzahlen lässt fehlende Karten und fehlende Trends einfach weg", () => {
+    const h = html(React.createElement(Kennzahlen, { kacheln: [false, null,
+      { label: "Offen", wert: 3, ton: "warn", sub: "Plätze" },
+      { label: "Ruhe", wert: 0, trend: undefined }] }));
+    expect(h.match(/class="karte kachel/g)).toHaveLength(2);
+    expect(h).not.toContain("pille");           // kein Trend ohne beide Zeiträume
+    expect(h).toContain("Plätze");
+  });
+
+  it("Balkenzeile kürzt den Anteil auf 0 bis 100", () => {
+    const h = html(React.createElement(Balkenzeile, { label: "A", wert: 9, anteil: 250 }));
+    expect(h).toContain('aria-valuenow="100"');
+  });
+});
