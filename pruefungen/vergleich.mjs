@@ -85,6 +85,9 @@
    Exitcode: 0 gleich, 1 Unterschiede, 2 Aufruf-/Laufzeitfehler.
    ========================================================================== */
 
+/* Die Funktionen in page.evaluate laufen im Browser, nicht in Node. */
+/* global document, window, getComputedStyle, sessionStorage */
+
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
