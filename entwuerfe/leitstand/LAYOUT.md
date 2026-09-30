@@ -19,14 +19,14 @@ Karten:
   - x957 y111 129x40 "Anträge", 2 Kinder
   - x1094 y111 112x40 "Übergabe", 1 Kinder
   - x1214 y111 165x40 "Monatsplan öffnen", 1 Kinder
-  - x61 y198 429x244 "Einrichtung", 3 Kinder, Grid-Zeile span 4 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x61 y198 429x244 "Einrichtung", 3 Kinder, Spaltenspanne "span 4" (Eltern-Grid: 12 Spalten à ca. 95px)
     (+1 gleich große Karten: x950 y198 "94 %")
-  - x61 y458 318x156 "97,3 %", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x61 y458 318x156 "97,3 %", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
     (+1 gleich große Karten: x395 y458 "12")
-  - x728 y458 317x156 "6,4 %", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x1061 y458 318x156 "3", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x61 y630 762x248 "1.842", 4 Kinder, Grid-Zeile span 7 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x839 y630 540x248 "Dienstbuch", 3 Kinder, Grid-Zeile span 5 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x728 y458 317x156 "6,4 %", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x1061 y458 318x156 "3", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x61 y630 762x248 "1.842", 4 Kinder, Spaltenspanne "span 7" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x839 y630 540x248 "Dienstbuch", 3 Kinder, Spaltenspanne "span 5" (Eltern-Grid: 12 Spalten à ca. 95px)
 
 ## Leitstand-Dunkel (1440x980)
 
@@ -43,14 +43,14 @@ Karten:
   - x949 y111 129x40 "Anträge", 2 Kinder
   - x1085 y111 112x40 "Übergabe", 1 Kinder
   - x1205 y111 174x40 "Monatsplan öffnen", 1 Kinder
-  - x61 y198 429x244 "Einrichtung", 3 Kinder, Grid-Zeile span 4 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x61 y198 429x244 "Einrichtung", 3 Kinder, Spaltenspanne "span 4" (Eltern-Grid: 12 Spalten à ca. 95px)
     (+1 gleich große Karten: x950 y198 "94 %")
-  - x61 y458 318x156 "97,3 %", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x61 y458 318x156 "97,3 %", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
     (+1 gleich große Karten: x395 y458 "12")
-  - x728 y458 317x156 "6,4 %", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x1061 y458 318x156 "3", 5 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x61 y630 762x248 "1.842", 4 Kinder, Grid-Zeile span 7 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
-  - x839 y630 540x248 "Dienstbuch", 3 Kinder, Grid-Zeile span 5 / auto (Eltern-Spalten: 95.1562px 95.1562px 95.1562px 95.1562px 95.1719px 95.1719px 95.1562px 95.1719px 95.1562px 95.1719px 95.1719px 95.1719px)
+  - x728 y458 317x156 "6,4 %", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x1061 y458 318x156 "3", 5 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x61 y630 762x248 "1.842", 4 Kinder, Spaltenspanne "span 7" (Eltern-Grid: 12 Spalten à ca. 95px)
+  - x839 y630 540x248 "Dienstbuch", 3 Kinder, Spaltenspanne "span 5" (Eltern-Grid: 12 Spalten à ca. 95px)
 
 ## Kontrast (880x460)
 
@@ -94,10 +94,10 @@ Hauptblöcke (Kinder des Root):
 Karten:
 - x28 y28 1384x924 "Lagebild", 4 Kinder
   - x162 y37 562x44 "Im Dienst", 6 Kinder
-  - x59 y168 431x207 "11", 4 Kinder, Grid-Zeile span 4 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x59 y168 431x207 "11", 4 Kinder, Spaltenspanne "span 4" (Eltern-Grid: 12 Spalten à ca. 97px)
     (+2 gleich große Karten: x504 y168 "9"; x950 y168 "3")
-  - x59 y389 877x340 "Jetzt im Dienst", 5 Kinder, Grid-Zeile span 8 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
-  - x950 y389 431x340 "Achtungspunkte", 6 Kinder, Grid-Zeile span 4 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x59 y389 877x340 "Jetzt im Dienst", 5 Kinder, Spaltenspanne "span 8" (Eltern-Grid: 12 Spalten à ca. 97px)
+  - x950 y389 431x340 "Achtungspunkte", 6 Kinder, Spaltenspanne "span 4" (Eltern-Grid: 12 Spalten à ca. 97px)
 
 ## Zeitachse (1440x980)
 
@@ -441,16 +441,16 @@ Hauptblöcke (Kinder des Root):
 Karten:
 - x28 y28 1384x924 "Betrieb", 4 Kinder
   - x162 y37 563x44 "Im Dienst", 6 Kinder
-  - x59 y168 543x376 "Stammdaten", 5 Kinder, Grid-Zeile span 5 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
-  - x616 y168 765x376 "Einheiten", 6 Kinder, Grid-Zeile span 7 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x59 y168 543x376 "Stammdaten", 5 Kinder, Spaltenspanne "span 5" (Eltern-Grid: 12 Spalten à ca. 97px)
+  - x616 y168 765x376 "Einheiten", 6 Kinder, Spaltenspanne "span 7" (Eltern-Grid: 12 Spalten à ca. 97px)
     - x634 y214 729x52 "Wohnbereich Nord", 5 Kinder
       (+4 gleich große Karten: x634 y279 "Wohnbereich Süd"; x634 y344 "Wohnbereich West"; x634 y409 "Tagespflege"; x634 y474 "Springerpool")
-  - x59 y558 543x329 "Regelwerk und Tarif", 5 Kinder, Grid-Zeile span 5 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x59 y558 543x329 "Regelwerk und Tarif", 5 Kinder, Spaltenspanne "span 5" (Eltern-Grid: 12 Spalten à ca. 97px)
     - x77 y604 507x52 "Branchenprofil", 2 Kinder
       (+3 gleich große Karten: x77 y669 "Tarifwerk"; x77 y734 "Ausgleichszeitraum"; x77 y799 "Regelstand")
-  - x616 y558 431x329 "Zugänge", 8 Kinder, Grid-Zeile span 4 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x616 y558 431x329 "Zugänge", 8 Kinder, Spaltenspanne "span 4" (Eltern-Grid: 12 Spalten à ca. 97px)
     - x634 y814 395x55 "Zugangscodes werden nur als Prüfsumme gespeichert und lassen", 0 Kinder
-  - x1061 y558 320x329 "Pflege", 4 Kinder, Grid-Zeile span 3 / auto (Eltern-Spalten: 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px 97.3281px)
+  - x1061 y558 320x329 "Pflege", 4 Kinder, Spaltenspanne "span 3" (Eltern-Grid: 12 Spalten à ca. 97px)
 
 ## Dienstarten (1440x980)
 
@@ -624,7 +624,7 @@ Karten:
 - x28 y28 1384x924 "Wunschdienste", 4 Kinder
   - x162 y37 564x44 "Zu entscheiden", 6 Kinder
   - x59 y168 958x755 "Wunschdienste · Nina Berger", 5 Kinder
-    - x475 y287 126x82 "·", 3 Kinder, im Grid (Spalten: 126.281px 126.281px 126.281px 126.297px 126.281px 126.281px 126.281px)
+    - x475 y287 126x82 "·", 3 Kinder, im Grid (7 Spalten à ca. 126px)
       (+30 gleich große Karten: x607 y287 "·"; x739 y287 "+"; x872 y287 "·"; x78 y375 "·"; x210 y375 "·"; x343 y375 "·"; x475 y375 "−"; x607 y375 "·" …)
   - x1031 y168 350x472 "+", 11 Kinder
   - x1031 y653 350x117 "Wünsche sind keine Anträge — es gibt weder Genehmigung noch", 2 Kinder
@@ -639,10 +639,10 @@ Hauptblöcke (Kinder des Root):
 Karten:
 - x28 y28 1384x924 "Schwarzes Brett", 4 Kinder
   - x162 y37 564x44 "Zu entscheiden", 6 Kinder
-  - x59 y196 467x210 "Brandschutzübung am 7. Oktober", 5 Kinder, im Grid (Spalten: 467px 467px)
-  - x540 y196 467x190 "Dienstplan Oktober ist freigegeben", 5 Kinder, im Grid (Spalten: 467px 467px)
+  - x59 y196 467x210 "Brandschutzübung am 7. Oktober", 5 Kinder, im Grid (467px 467px)
+  - x540 y196 467x190 "Dienstplan Oktober ist freigegeben", 5 Kinder, im Grid (467px 467px)
     (+3 gleich große Karten: x59 y420 "Fortbildung Hygiene am 14. Okt"; x540 y420 "Parkplatz am Hintereingang ges"; x59 y624 "Sommerfest am 12. September")
-  - x540 y624 467x104 "Ein Aushang erreicht alle im Betrieb, nicht einzelne Persone", 2 Kinder, im Grid (Spalten: 467px 467px)
+  - x540 y624 467x104 "Ein Aushang erreicht alle im Betrieb, nicht einzelne Persone", 2 Kinder, im Grid (467px 467px)
   - x1021 y168 360x412 "Aushang verfassen", 5 Kinder
     - x1040 y303 322x116 "Am 11. November, 14:00 bis 17:00 Uhr. Eingeladen sind alle,", 0 Kinder
   - x1021 y593 360x246 "Wo Aushänge erscheinen", 4 Kinder
@@ -977,7 +977,7 @@ Hauptblöcke (Kinder des Root):
 - <div> x0 y392 390x452, absolute/block, 3 Kinder – "Krankmeldung"
 
 Karten:
-- x18 y146 172x52 "Frei beantragen", 1 Kinder, im Grid (Spalten: 172px 172px)
+- x18 y146 172x52 "Frei beantragen", 1 Kinder, im Grid (172px 172px)
   (+1 gleich große Karten: x200 y146 "Krank melden")
 - x18 y245 354x310 "Urlaub 12.10.", 4 Kinder
 - x198 y781 102x56 "Anliegen", 2 Kinder
@@ -986,7 +986,7 @@ Karten:
   - x20 y567 170x48 "", 0 Kinder
   - x200 y567 170x48 "", 0 Kinder
   - x20 y647 350x48 "", 0 Kinder
-  - x20 y780 350x52 "Krank melden", 0 Kinder, im Grid (Spalten: 350px)
+  - x20 y780 350x52 "Krank melden", 0 Kinder, im Grid (350px)
 
 ## Mobil-Mehr (390x844)
 
@@ -1068,7 +1068,7 @@ Karten:
   - x906 y102 160x52 "Alle Einheiten", 1 Kinder
   - x1075 y102 120x52 "Nur Lücken", 0 Kinder
   - x1205 y102 175x52 "Schicht besetzen", 0 Kinder
-  - x60 y178 274x266 "11", 5 Kinder, im Grid (Spalten: 274px 274px 274px)
+  - x60 y178 274x266 "11", 5 Kinder, im Grid (274px 274px 274px)
     (+2 gleich große Karten: x348 y178 "9"; x636 y178 "3")
   - x60 y458 850x470 "Jetzt im Dienst", 5 Kinder
     - x242 y509 118x44 "Adler, A.", 2 Kinder
