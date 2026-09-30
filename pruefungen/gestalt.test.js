@@ -114,11 +114,11 @@ describe("Icons", () => {
 describe("Farben", () => {
   const HEX = /#[0-9A-Fa-f]{6}\b/g;
 
-  /* Stand nach P6 (P1/P2: 102; die Rollenfarben des Ablaufs und der Befehlsblock
+  /* Stand nach P6 (P1/P2: 102; nach P7: 95; die Rollenfarben des Ablaufs und der Befehlsblock
      der Sicherung laufen jetzt über Tokens). Die Zahl darf sinken; wer sie erhöht, muss die Farbe
      in src/farben.js anlegen — oder begründen, warum sie Daten ist (eine
      Dienstart, eine Rollenfarbe, eine Druckvorlage). */
-  const OBERGRENZE_APP = 97;
+  const OBERGRENZE_APP = 95;
 
   it("App.jsx hat nicht mehr harte Hexfarben als bisher", () => {
     const n = (lies(join(WURZEL, "src", "App.jsx")).match(HEX) || []).length;
@@ -212,5 +212,20 @@ describe("Bausteine der Ansichten", async () => {
   it("Balkenzeile kürzt den Anteil auf 0 bis 100", () => {
     const h = html(React.createElement(Balkenzeile, { label: "A", wert: 9, anteil: 250 }));
     expect(h).toContain('aria-valuenow="100"');
+  });
+});
+
+describe("Textzeichen als Symbole (nach P7 überall ersetzt)", () => {
+  it("✓ und ✕ kommen im Quelltext der Oberfläche nicht mehr vor", () => {
+    const funde = [];
+    for (const p of alle(join(WURZEL, "src"), [".js", ".jsx"])) {
+      if (/(handbuch-inhalt|tour-inhalt|rechtstexte|pruefung)\./.test(p)) continue;
+      lies(p).split("\n").forEach((z, i) => { if (/[✓✕]/.test(z)) funde.push(`${rel(p)}:${i + 1}`); });
+    }
+    expect(funde).toEqual([]);
+  });
+  it("kein Knopf trägt nur ein × als Beschriftung", () => {
+    const t = lies(join(WURZEL, "src", "App.jsx"));
+    expect(t.match(/>×<\/(Btn|button)>/g) || []).toEqual([]);
   });
 });
