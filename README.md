@@ -4,20 +4,23 @@ Dienstplanung für rotierende Schichtbetriebe.
 
 ## Aufbau
 
-    src/App.jsx        die Anwendung (aus quelle/ zusammengesetzt)
+    src/App.jsx        die Anwendung (eine Datei, direkt bearbeitet)
+    src/gestalt/       Gestaltung: Symbole, Bausteine, Kopfzeile, Stilregeln
     src/main.jsx       Einstieg mit Anmeldung
     src/speicher.js    Anbindung an den Server
     netlify/functions/ Datenspeicher und Einrichtung
-    quelle/            die Einzelteile, aus denen App.jsx gebaut wird
+    pruefungen/        Prüfungen, Oberflächenvergleich, Bildersatz
 
 ## Entwickeln
 
     npm install
     npm run dev
 
-## Neue Fassung bauen
+## Bauen
 
-    cd quelle && ./bau.sh && cp CENTRIC.jsx ../src/App.jsx
+`src/App.jsx` ist die Quelle; einen Ordner `quelle/` mit `bau.sh` gibt es nicht
+mehr (siehe ENTWICKLUNG.md).
+
     npm run build
 
 ## Zugang anlegen

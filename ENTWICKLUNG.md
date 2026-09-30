@@ -25,6 +25,7 @@ Wer in `quelle/` etwas geändert und `bau.sh` ausgeführt hätte, hätte rund
     index.html            Einstieg, Symbole, Manifest
     src/main.jsx          Anmeldung, Preise, Selbststart — alles vor der Anwendung
     src/App.jsx           Die Anwendung
+    src/gestalt/          Gestaltung (Leitstand-Stil), siehe unten
     src/pruefung.jsx      Arbeitszeitprüfung, nachgeladen
     src/speicher.js       Server statt window.storage
     netlify/functions/    Sieben Endpunkte
@@ -37,6 +38,8 @@ Wer in `quelle/` etwas geändert und `bau.sh` ausgeführt hätte, hätte rund
     npm run lint              # Linter
     npm run pruefung:codes    # Schlüsselwechsel der Zugangscodes, ohne Server
     npm run pruefung:matrix   # Rechtetabellen auf Drift, ohne Server
+    npm run pruefung:kontrast # WCAG-Kontraste beider Paletten, Verlauf, Dienstfarben im Dunkelmodus
+    npm run pruefung:gestalt  # Struktur der Gestaltung: keine fremden Adressen, Hexfarben-Obergrenze, Symbole
 
 Die beiden übrigen brauchen einen laufenden Dienst:
 
@@ -45,6 +48,59 @@ Die beiden übrigen brauchen einen laufenden Dienst:
     CENTRIC_BASIS=http://localhost:5173 npm run pruefung:bremse
 
 `.github/workflows/pruefung.yml` fährt dasselbe bei jedem Push.
+
+
+## Gestaltung (Leitstand-Stil)
+
+Die Oberfläche folgt den Entwürfen unter `entwuerfe/leitstand/` (`DESIGN.md`,
+`design-tokens.json`, `LAYOUT.md`). Der Code dazu liegt in `src/gestalt/`:
+
+    icons.jsx      Icon: Inline-SVG, 24er Raster, Strich 1,7; keine Bibliothek
+    bausteine.jsx  Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten, Menue
+    ansichten.jsx  Bausteine der Ansichten: Abschnittskopf, Grosszahl, Zeitwahl, Statuszeile, Fehlerband
+    rahmen.jsx     Kopfzeile mit Bereichs-Pillen, Unterleiste, Ansicht- und Konto-Menü
+    stil.js        die Stilregeln dazu (CSS als Text, wird mit bauStyles() in App.jsx zusammengesetzt)
+    lesbar.js      Dienstfarben im Dunkelmodus aufhellen (nur Darstellung)
+
+Regeln, die Prüfungen erzwingen oder die man beim Ändern beachten muss:
+
+- **Farben nur aus `src/farben.js`** (`C`, beide Paletten). Neue Farbe: in
+  `C_HELL` und `C_DUNKEL` anlegen. Keine neuen harten Hexwerte in `App.jsx`
+  (Obergrenze in `pruefungen/gestalt.test.js`, sie darf nur sinken; übrig sind
+  Dienstfarben als Daten und Druckvorlagen).
+- **Dienstfarben sind Daten.** Angezeigt als Tönung mit Linie (`TON`), das
+  Kürzel steht immer dabei. Als Schrift oder Kante auf dunklem Grund läuft die
+  Farbe durch `lesbar()`; der Kontrasttest prüft die Regel (Schrift 4,5:1,
+  Kante 3:1).
+- **Der Verlauf** hinter der Titelzone hat begrenzte Deckkraft; nur `text` und
+  `dim` liegen darauf, nie `aus`. Der Kontrasttest rechnet den ungünstigsten Punkt.
+- **Kein Textzeichen als Symbol** (✓ ✕ × →): immer `Icon`; ein Icon-Knopf trägt
+  `aria-label`, ein Icon, das allein einen Zustand meldet, ein Wort für
+  Vorlesesoftware (`className="nurLeser"`).
+- **Keine externen Ressourcen**, Inter liegt lokal (`schrift.css`); die CSP in
+  `netlify.toml` bleibt unverändert.
+- **Zwei Schalen:** Rechner/Tablet (Kopfzeile, ab 1025 px) und die eigene
+  Telefonschale der Beschäftigten (`MobilSchale`). Unter 1025 px führt der
+  Drawer, die Leiste unten (`.tabbar`) trägt die häufigsten Ansichten.
+  Sondermodi: Kompakt (`.dicht`), Feldmodus, Fokus, Druck.
+- Ansichts-IDs und `BEREICHE` sind Schnittstellen (Tour, Handbuch, Suche,
+  Zähler); sie werden nicht umbenannt.
+
+### Oberflächenvergleich und Bildersatz
+
+Beide brauchen einen Browser und laufen nicht in `npm run pruefung`.
+
+    CENTRIC_ADMIN=vergleich-geheim npx vite --port 5173 &
+    export NODE_PATH=<Ordner mit node_modules/playwright-core>
+    npm run pruefung:vergleich              # gegen die Basis pruefungen/basis/vergleich.json
+    npm run pruefung:vergleich -- --basis   # Basis neu schreiben (erst nach Prüfung jeder Differenz)
+    node pruefungen/bildersatz.mjs          # Bilder nach entwuerfe/leitstand/umsetzung/
+
+Der Vergleich hält fest, WAS die Oberfläche zeigt (Text, Knöpfe, Felder,
+Tabellenköpfe je Ansicht und Blatt, für Leitung, Betriebsrat, Telefonschale und
+Betreiberkonsole), nicht wie sie aussieht. Ein Umbau darf Formen ändern, aber
+nichts verlieren; jede Differenz wird erklärt, dann erst kommt die neue Basis.
+Der Bildersatz (`bildersatz.mjs`, Testdaten in `testdaten.mjs`) zeigt das Ergebnis.
 
 ## Rechte an zwei Stellen
 
