@@ -172,7 +172,7 @@ import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
 import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
 import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
-  Abschnittskopf, Punkt, Grosszahl } from "./gestalt/ansichten.jsx";
+  Abschnittskopf, Punkt, Grosszahl, Zeitwahl, Statuszeile, Fehlerband } from "./gestalt/ansichten.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
@@ -5177,13 +5177,9 @@ function Standortleiste({ m, wert, setWert }) {
       {zeilen.map((z) => {
         const hier = wert === z.standort.id;
         return (
-          <button key={z.standort.id} type="button"
+          <button key={z.standort.id} type="button" className="standortkarte"
             onClick={() => setWert(hier ? ALLE_STANDORTE : z.standort.id)}
-            aria-pressed={hier}
-            style={{ textAlign: "left", padding: "13px 15px", borderRadius: 10, cursor: "pointer",
-              fontFamily: "inherit", color: C.text,
-              border: `1px solid ${hier ? C.accent : C.lineSoft}`,
-              background: hier ? C.accentLight : C.flaeche }}>
+            aria-pressed={hier}>
             <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap",
               overflow: "hidden", textOverflow: "ellipsis" }}>{z.standort.name}</div>
             <div style={{ fontSize: 12, color: C.dim, marginTop: 4, ...NUM }}>
@@ -8476,12 +8472,8 @@ function monatsLage(m, tage, bes) {
 function Tagesfazit({ lage, onTag }) {
   if (!lage.tage.length) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
-        background: C.okLight, borderLeft: `3px solid ${C.ok}`, borderRadius: "0 6px 6px 0",
-        marginBottom: 16 }}>
-        <span style={{ fontSize: 14.5 }}>
-          <b>Der Monat ist durchgehend besetzt.</b> Keine Unterschreitung, keine offene Quote.</span>
-      </div>);
+      <Hinweisband ton="ok" titel={<>Der Monat ist durchgehend besetzt.{" "}
+        <span style={{ fontWeight: 400, color: C.dim }}>Keine Unterschreitung, keine offene Quote.</span></>} />);
   }
   const satz = lage.dringend && lage.knapp
     ? `${lage.dringend} Tag${lage.dringend > 1 ? "e sind" : " ist"} unterbesetzt, ${lage.knapp} weitere${lage.knapp > 1 ? "" : "r"} knapp.`
@@ -8489,25 +8481,19 @@ function Tagesfazit({ lage, onTag }) {
       ? `${lage.dringend} Tag${lage.dringend > 1 ? "e brauchen" : " braucht"} Aufmerksamkeit.`
       : `${lage.knapp} Tag${lage.knapp > 1 ? "e sind" : " ist"} knapp besetzt.`;
   return (
-    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      padding: "13px 16px", background: lage.dringend ? C.dangerLight : C.warnLight,
-      borderLeft: `3px solid ${lage.dringend ? C.danger : C.warn}`, borderRadius: "0 6px 6px 0",
-      marginBottom: 16 }}>
-      <span style={{ fontSize: 14.5, flex: "1 1 220px" }}><b>{satz}</b></span>
-      {lage.tage.slice(0, 8).map((t) => (
-        <button key={t.datum} type="button" onClick={() => onTag(t.datum)}
-          title={`${fLang(t.datum)} · ${t.text}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.flaeche,
-            border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 11px", fontSize: 12.5,
-            fontFamily: "inherit", color: C.text, cursor: "pointer", ...NUM }}>
-          <span style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-            background: t.stufe === 2 ? C.danger : C.warn }} />
-          {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
-          <span style={{ color: C.dimmer }}>{t.text}</span>
-        </button>))}
-      {lage.tage.length > 8 && (
-        <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
-    </div>);
+    <Hinweisband ton={lage.dringend ? "danger" : "warn"} titel={satz}>
+      <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+        {lage.tage.slice(0, 8).map((t) => (
+          <button key={t.datum} type="button" className="chip" onClick={() => onTag(t.datum)}
+            title={`${fLang(t.datum)} · ${t.text}`}>
+            <span className="punkt" style={{ background: t.stufe === 2 ? C.danger : C.warn }} />
+            {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
+            <span style={{ color: C.dim }}>{t.text}</span>
+          </button>))}
+        {lage.tage.length > 8 && (
+          <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
+      </div>
+    </Hinweisband>);
 }
 
 /**
@@ -8521,14 +8507,12 @@ function TeamAuslastungLeiste({ ta }) {
   if (ta.ueber) teile.push(`${ta.ueber} überplant`);
   if (ta.unter) teile.push(`${ta.unter} unterausgelastet`);
   return (
-    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      padding: "13px 16px", background: C.flaecheStill, borderRadius: 6, marginBottom: 12, fontSize: 13.5 }}>
-      <span style={{ width: 90, height: 6, borderRadius: 3, background: C.line, overflow: "hidden", flexShrink: 0 }}>
-        <span style={{ display: "block", height: "100%", width: `${Math.min(100, ta.pct)}%`,
-          background: ta.pct > 105 ? C.warn : ta.pct < 85 ? C.dim : C.ok }} /></span>
+    <Statuszeile>
+      <Fortschritt wert={Math.min(100, ta.pct)} hoehe={6} ton={ta.pct > 105 ? "warn" : ta.pct < 85 ? "neutral" : "ok"}
+        label="Team-Auslastung" />
       <b style={{ ...NUM }}>{teile.join(" · ")}</b>
-      <span style={{ color: C.dimmer }}>{ta.personen} Personen im Schichtdienst</span>
-    </div>);
+      <span style={{ color: C.dim }}>{ta.personen} Personen im Schichtdienst</span>
+    </Statuszeile>);
 }
 
 /* --------------------------------------------------------------------------
@@ -8656,8 +8640,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           {darf(sitz, "plan.edit.unit") && <Btn onClick={akt.oeffneMehrfach}>Mehrfach ändern</Btn>}
           {darf(sitz, "pattern.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
           {darf(sitz, "plan.edit.all") && <Btn kind="primary" onClick={akt.oeffneAssistent}>Planungsassistent</Btn>}
-          <Btn onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn><Btn onClick={() => setYm(d0.slice(0, 7))}>Heute</Btn>
-          <Btn onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn></div>}>{MON[mo - 1]} {y}</H1>
+          <Zeitwahl onZurueck={() => shift(-1)} onHeute={() => setYm(d0.slice(0, 7))} onWeiter={() => shift(1)} /></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
 
@@ -8759,7 +8742,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
               && (!suche.trim() || da.name.toLowerCase().includes(suche.trim().toLowerCase())
                 || da.kurz.toLowerCase().includes(suche.trim().toLowerCase()))).map((da, i) => (
               <tr key={da.id}>
-                <td style={{ position: "sticky", left: 0, zIndex: 1, background: "rgba(246,247,251,.97)", padding: "9px 20px",
+                <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "9px 20px",
                   borderTop: i === 0 ? `2px solid ${C.line}` : `1px solid ${C.lineSoft}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Zelle da={da} size={21} />
                     <div><div style={{ fontSize: 12.5 }}>{da.name}</div>
@@ -8840,17 +8823,18 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} className="noprint">
           <Seg value={eid} onChange={setEid} options={m.einheiten.filter((e) => darf(sitz, "plan.view.all") || e.id === sitz.person.bereich || sitz.person.bereich === "ALLE")
             .map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
-          <span style={{ fontSize: 13.5, color: C.dim, minWidth: 112, textAlign: "center", ...NUM }}>{MON[mo - 1]} {y}</span>
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
+          <Zeitwahl mitte={`${MON[mo - 1]} ${y}`}
+            onZurueck={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}
+            onWeiter={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} />
         </div>}>Personaleinsatz</H1>
 
       {editierbar && (
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }} className="noprint">
           <Lab>Abweichung eintragen als</Lab>
           {m.dienstarten.map((d) => (
-            <button key={d.id} onClick={() => setPinsel(d.id)} className="btn btn-sm"
-              style={{ background: pinsel === d.id ? `${d.farbe}22` : C.bg, color: pinsel === d.id ? d.farbe : C.dim, fontWeight: 600 }}>
+            <button key={d.id} type="button" onClick={() => setPinsel(d.id)} className="chip" aria-pressed={pinsel === d.id}
+              style={{ background: pinsel === d.id ? `${d.farbe}22` : C.flaeche, color: pinsel === d.id ? d.farbe : C.dim,
+                borderColor: pinsel === d.id ? d.farbe : undefined, fontWeight: 600 }}>
               {d.kurz}</button>))}
         </div>)}
 
@@ -8861,7 +8845,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
               padding: "15px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 200 }}><Lab>Person</Lab></th>
             {tage.map((d) => { const fei = feiertag(d, m.bundesland);
               return (<th key={d} style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 29,
-                background: d === d0 ? "rgba(43,52,64,.075)" : fei ? C.dangerLight : dow(d) >= 5 ? "rgba(20,20,25,.03)" : "transparent" }}>
+                background: d === d0 ? C.accentLight : fei ? C.dangerLight : dow(d) >= 5 ? C.flaecheStill : "transparent" }}>
                 <div style={{ fontSize: 9.5, color: C.dimmer }}>{DOW[dow(d)]}</div>
                 <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div></th>); })}
             <th style={{ padding: "9px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}` }}><Lab>Ist/Soll</Lab></th>
@@ -8880,7 +8864,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                     `${p.nachname}, ${p.vorname} am ${fKurz(d)}: ${map[t.dienstId] ? map[t.dienstId].name : "frei"}`)}
                   style={{ padding: "4px 1px", textAlign: "center",
                   borderBottom: `1px solid ${C.lineSoft}`, cursor: editierbar ? "pointer" : "default",
-                  background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? "rgba(43,52,64,.05)" : "transparent" }}>
+                  background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} /></div></td>); })}
               <td style={{ padding: "8px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" }}>
@@ -9020,36 +9004,38 @@ function Schichtfolge({ sitz, akt }) {
       <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)} mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
         right={editierbar && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
 
-      <KpiRow>
-        <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h"
-          tone={Math.abs(abw) < .5 ? "ok" : Math.abs(abw) < 1.5 ? "warn" : "danger"} sub={`Soll ${n2(soll)} h · ${sgn(abw)} h`} />
-        <Kpi label="Deckungslücken" value={sim.luecken.length} tone={sim.luecken.length ? "danger" : "ok"}
-          sub={sim.luecken.length ? "Zyklus deckt nicht jeden Tag" : "jeder Tag vollständig gedeckt"} />
-        <Kpi label="Dienste am Stück" value={sim.maxFolge} unit="max."
-          tone={sim.maxFolge <= 5 ? "ok" : sim.maxFolge <= 7 ? "warn" : "danger"} sub={`Grenzwert ${m.einstellungen.maxFolge}`} />
-        <Kpi label="Nächte am Stück" value={sim.maxNacht} unit="max." tone={sim.maxNacht <= 4 ? "ok" : "danger"} sub="empfohlen 3 bis 4" />
-        <Kpi label="Einzeldienste" value={sim.einzel} tone={sim.einzel === 0 ? "ok" : "warn"} sub="isolierte Diensttage" />
-      </KpiRow>
+      <Kennzahlen min={170} kacheln={[
+        { label: "Wochenarbeitszeit", wert: n2(sim.wochenstunden), einheit: "h",
+          ton: Math.abs(abw) < .5 ? "ok" : Math.abs(abw) < 1.5 ? "warn" : "danger", sub: `Soll ${n2(soll)} h · ${sgn(abw)} h` },
+        { label: "Deckungslücken", wert: sim.luecken.length, ton: sim.luecken.length ? "danger" : "ok",
+          hervor: sim.luecken.length ? "danger" : undefined,
+          sub: sim.luecken.length ? "Zyklus deckt nicht jeden Tag" : "jeder Tag vollständig gedeckt" },
+        { label: "Dienste am Stück", wert: sim.maxFolge, einheit: "max.",
+          ton: sim.maxFolge <= 5 ? "ok" : sim.maxFolge <= 7 ? "warn" : "danger", sub: `Grenzwert ${m.einstellungen.maxFolge}` },
+        { label: "Nächte am Stück", wert: sim.maxNacht, einheit: "max.", ton: sim.maxNacht <= 4 ? "ok" : "danger", sub: "empfohlen 3 bis 4" },
+        { label: "Einzeldienste", wert: sim.einzel, ton: sim.einzel === 0 ? "ok" : "warn", sub: "isolierte Diensttage" }]} />
 
       {(sim.luecken.length > 0 || sim.konflikte.length > 0) && (
-        <Card style={{ marginTop: 18, padding: 20, background: C.dangerLight }}>
-          {sim.luecken.map((l) => <div key={l.da.id} style={{ fontSize: 13.5, color: C.danger, marginBottom: 6 }}>
+        <Hinweisband ton="danger">
+          {sim.luecken.map((l) => <div key={l.da.id} style={{ color: C.danger, marginBottom: 6 }}>
             <b>{l.da.name}</b> ist an {l.tage} von {sim.len} Zyklustagen von keiner {m.einheitLabel} besetzt.</div>)}
-          {sim.konflikte.slice(0, 5).map((k, i) => <div key={i} style={{ fontSize: 13.5, color: C.danger, marginBottom: 6 }}>
+          {sim.konflikte.slice(0, 5).map((k, i) => <div key={i} style={{ color: C.danger, marginBottom: 6 }}>
             Tag {k.tag + 1}: {k.von} → {k.nach} lässt nur {n1(k.ruhe)} h Ruhezeit. Das trifft jede {m.einheitLabel}.</div>)}
-        </Card>)}
+        </Hinweisband>)}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 20, marginTop: 20 }}>
-        <Card>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 16 }}>
+        <Card style={{ minWidth: 0 }}>
           <CardHead right={editierbar && <Seg value={String(m.zyklus.wochen)}
             options={[3, 4, 5, 6].map((w) => ({ id: String(w), label: `${w} Wo.` }))}
             onChange={(v) => akt.setzeZyklusWochen(Number(v))} />}>Zyklusraster</CardHead>
           {editierbar && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "16px 22px 0" }}>
             {m.dienstarten.filter((d) => !d.posten).map((d) => (
-              <button key={d.id} onClick={() => setPinsel(d.id)} className="btn btn-sm"
-                style={{ background: pinsel === d.id ? `${d.farbe}22` : C.bg, color: pinsel === d.id ? d.farbe : C.dim, fontWeight: 600 }}>{d.kurz}</button>))}
-            <button onClick={() => setPinsel("-")} className="btn btn-sm"
-              style={{ background: pinsel === "-" ? "rgba(20,20,25,.10)" : C.bg, color: C.dim, fontWeight: 600 }}>frei</button>
+              <button key={d.id} type="button" onClick={() => setPinsel(d.id)} className="chip" aria-pressed={pinsel === d.id}
+                style={{ background: pinsel === d.id ? `${d.farbe}22` : C.flaeche, color: pinsel === d.id ? d.farbe : C.dim,
+                  borderColor: pinsel === d.id ? d.farbe : undefined, fontWeight: 600 }}>{d.kurz}</button>))}
+            <button type="button" onClick={() => setPinsel("-")} className="chip" aria-pressed={pinsel === "-"}
+              style={{ background: pinsel === "-" ? C.flaecheStill : C.flaeche, color: C.dim,
+                borderColor: pinsel === "-" ? C.steuer : undefined, fontWeight: 600 }}>frei</button>
           </div>}
           <div style={{ padding: 22, overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse" }}>
@@ -9072,12 +9058,13 @@ function Schichtfolge({ sitz, akt }) {
           </div>
         </Card>
 
-        <Card>
+        <Card style={{ minWidth: 0 }}>
           <CardHead>Vorlagen und Versatz</CardHead>
           <div style={{ padding: 22 }}>
             {VORLAGEN.map((v) => (
               <div key={v.id} className="karte" style={{ padding: 16, marginBottom: 13,
-                background: m.zyklus.vorlage === v.id ? "rgba(43,52,64,.07)" : undefined }}>
+                background: m.zyklus.vorlage === v.id ? C.accentLight : undefined,
+                borderColor: m.zyklus.vorlage === v.id ? C.accent : undefined }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 600 }}>{v.name}</div>
                   <Btn size="sm" kind={m.zyklus.vorlage === v.id ? "quiet" : "primary"} disabled={!editierbar}
@@ -9088,14 +9075,14 @@ function Schichtfolge({ sitz, akt }) {
                   {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {mehrzahl(m.einheitLabel)}</div>
               </div>))}
             {m.einheiten.length !== m.zyklus.wochen && (
-              <div style={{ padding: 14, borderRadius: 12, background: C.warnLight, color: C.warn, fontSize: 13, marginBottom: 14, lineHeight: 1.45 }}>
+              <Hinweisband ton="warn" style={{ marginBottom: 14, boxShadow: "none" }}>
                 Der Zyklus hat {m.zyklus.wochen} Wochen, es gibt {m.einheiten.length} {m.einheitLabel}n.
-                Für lückenlose Deckung müssen beide Zahlen übereinstimmen.</div>)}
+                Für lückenlose Deckung müssen beide Zahlen übereinstimmen.</Hinweisband>)}
             <Lab style={{ margin: "20px 0 12px" }}>Startpunkt je {m.einheitLabel}</Lab>
             {m.einheiten.map((e) => (
-              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px 13px", marginBottom: 10, flexWrap: "wrap" }}>
                 <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe }} />
-                <span style={{ fontSize: 13.5, flex: 1 }}>{e.name}</span>
+                <span style={{ fontSize: 13.5, flex: "1 1 120px", minWidth: 0 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
                   aria-label={`Startpunkt im Zyklus für ${e.name}`}
                   onChange={(ev) => akt.setzeVersatz(e.id, Number(ev.target.value))} style={{ width: 210 }}>
@@ -11675,19 +11662,18 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={eid} onChange={setEid}
             options={m.einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => setJahr(jahr - 1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
-          <span style={{ fontSize: 14, fontWeight: 600, minWidth: 52, textAlign: "center", ...NUM }}>{jahr}</span>
-          <Btn size="sm" onClick={() => setJahr(jahr + 1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
+          <Zeitwahl mitte={String(jahr)} onZurueck={() => setJahr(jahr - 1)} onWeiter={() => setJahr(jahr + 1)} />
         </div>}>Jahresansicht</H1>
 
       <Card style={{ overflowX: "auto" }}>
-        <div style={{ padding: 20, minWidth: 1080 }}>
+        <div style={{ padding: 20, display: "grid", gap: "22px 40px",
+          gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,540px),1fr))" }}>
           {leute.map((p) => {
             const jahresIst = monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
             const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
             const url = urlaubskonto(m, p, jahr);
             return (
-              <div key={p.id} style={{ marginBottom: 18 }}>
+              <div key={p.id} style={{ minWidth: 0 }}>
                 <div {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
                   style={{ display: "flex", alignItems: "baseline",
                   gap: 12, marginBottom: 7, cursor: "pointer", flexWrap: "wrap" }}>
@@ -11743,7 +11729,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                         + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)")
                         + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
-                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 3,
+                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 6,
                           position: "relative", overflow: "hidden" }}>
                           {/* Die Nulllinie: hundert Prozent des Monatssolls */}
                           <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,
@@ -11766,25 +11752,14 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           })}
         </div>
       </Card>
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.accent, opacity: .6 }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>im Rahmen</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.warn }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>über Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.danger }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>deutlich über Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.violet }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>unter Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 3, borderRadius: 2, background: C.ok }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>Abwesenheit</span></div>
-        <span style={{ fontSize: 12.5, color: C.dimmer }}>
-          Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</span>
-      </div>
+      <Legende style={{ marginTop: 16 }} punkte={[
+        { ton: "accent", label: "im Rahmen", farbig: false },
+        { ton: "warn", label: "über Soll", farbig: false },
+        { ton: "danger", label: "deutlich über Soll", farbig: false },
+        { ton: "violet", label: "unter Soll", farbig: false },
+        { ton: "ok", label: "Abwesenheit", farbig: false }]} />
+      <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+        Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</div>
     </div>);
 }
 
@@ -12602,7 +12577,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
         style={{ position: "absolute", top: oben, height: hoehe,
           left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,
           background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,
-          borderRadius: 9, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
+          borderRadius: 8, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
           outline: s.status === "danger" ? `2px solid ${C.danger}` : s.status === "warn" ? `2px solid ${C.warn}` : "none" }}>
         <div style={{ fontSize: 11.5, fontWeight: 700, color: s.da.farbe, lineHeight: 1.2,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.da.kurz}</div>
@@ -12650,9 +12625,9 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={modus} onChange={setModus} options={[{ id: "tag", label: "Tag" },
             { id: "woche", label: "Woche" }, { id: "personen", label: "Personen" }]} />
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
-          <Btn size="sm" onClick={() => setDatum(heute())}>Heute</Btn>
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
+          <Zeitwahl onZurueck={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))}
+            onHeute={() => setDatum(heute())}
+            onWeiter={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))} />
         </div>}>
         {modus === "tag" ? fLang(datum) : `Woche ab ${fDatum(montag(datum))}`}</H1>
 
@@ -12777,7 +12752,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
               {/* Waagerechte Stundenlinien über die ganze Breite */}
               {STD.map((h) => (
                 <div key={h} style={{ position: "absolute", left: 0, right: 0, top: (h - VON) * ZH,
-                  height: 1, background: h % 6 === 0 ? "rgba(30,30,22,.13)" : C.bg,
+                  height: 1, background: h % 6 === 0 ? C.lineStark : C.bg,
                   pointerEvents: "none" }} />))}
               {(modus === "tag" ? [datum] : woche).map((d) => {
                 const eintrag = spuren.find((x) => x.d === d) || { b: [] };
@@ -12794,7 +12769,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
                 const anzahlLagen = Math.max(1, lagen.length);
                 return (
                   <div key={d} style={{ flex: 1, position: "relative", opacity: aus ? .22 : 1,
-                    background: d === heute() ? "rgba(43,44,37,.035)" : "transparent", borderRadius: 9 }}>
+                    background: d === heute() ? C.flaecheStill : "transparent", borderRadius: 8 }}>
                     {lagen.map((lage, li) => lage.map((sp) => (
                       <Balken key={`${d}${sp.da.id}`} s={sp} spalten={anzahlLagen} index={li} tag={d} />)))}
                   </div>);
@@ -14087,13 +14062,14 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
   const m = sitz.mandant;
   const plan = useMemo(() => bereitschaftsplan(m, heute(), 21), [m]);
   if (!plan) return (
-    <Card style={{ padding: 30 }}>
-      <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 8 }}>Keine Rufbereitschaft eingerichtet</div>
-      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 560 }}>
-        Lege unter Dienstarten eine Dienstart mit dem Kennzeichen „Rufbereitschaft" an. Sie wird anteilig
-        auf die Arbeitszeit angerechnet und unterbricht die Ruhezeit nicht.
-      </div>
-    </Card>);
+    <div>
+      <H1 rubrik="Planung" sub="Wer ist erreichbar und wer ist Rückfallebene. Rufbereitschaft zählt anteilig auf die Arbeitszeit und unterbricht die Ruhezeit nicht.">
+        Bereitschaft</H1>
+      <Card>
+        <Leer titel="Keine Rufbereitschaft eingerichtet"
+          text={'Lege unter Dienstarten eine Dienstart mit dem Kennzeichen „Rufbereitschaft" an. Sie wird anteilig auf die Arbeitszeit angerechnet und unterbricht die Ruhezeit nicht.'} />
+      </Card>
+    </div>);
 
   return (
     <div>
@@ -14106,7 +14082,7 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
             <div key={t.datum} className="row" {...klickbar(() => oeffneTag(t.datum), `${fKurz(t.datum)} öffnen`)}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "13px 22px", cursor: "pointer",
                 borderBottom: i < plan.tage.length - 1 ? `1px solid ${C.lineSoft}` : "none",
-                background: t.datum === heute() ? "rgba(43,44,37,.045)" : undefined, flexWrap: "wrap" }}>
+                background: t.datum === heute() ? C.accentLight : undefined, flexWrap: "wrap" }}>
               <div style={{ minWidth: 116 }}>
                 <div style={{ fontSize: 13.5, fontWeight: t.datum === heute() ? 700 : 500, ...NUM }}>
                   {DOW[dow(t.datum)]} {fKurz(t.datum)}</div>
@@ -14116,7 +14092,7 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
                 <div key={e.da.id} style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "center", gap: 11 }}>
                   <Zelle da={e.da} size={26} />
                   {e.personen.length === 0
-                    ? <span style={{ fontSize: 13, color: C.danger, fontWeight: 600 }}>nicht besetzt</span>
+                    ? <Pill size="sm" tone="danger">nicht besetzt</Pill>
                     : <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {e.personen.map((p, k) => (
                           <Pill key={p.id} size="sm" tone={k === 0 ? "accent" : "neutral"}>
@@ -17701,30 +17677,20 @@ function Selbstplanung({ sitz, akt, gehZu }) {
 
       {runden.length === 0 ? (
         <Card><Leer titel="Noch keine Runde"
-          text="Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest." />
-          {darfFuehren && (
-            <div style={{ padding: "0 var(--pad-x) 22px" }}>
-              <Btn kind="primary" onClick={() => setNeu(true)}>Erste Runde öffnen</Btn>
-            </div>)}
+          text="Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest."
+          aktion={darfFuehren && <Btn kind="primary" onClick={() => setNeu(true)}>Erste Runde öffnen</Btn>} />
         </Card>
       ) : (<>
         {/* ---------------------- Der Stand ------------------------- */}
         {r && f && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-            gap: 16, marginBottom: 26 }}>
-            {[["Belegt", `${f.belegt} von ${f.gesamt}`, `${f.anteil} %`, f.anteil >= 80 ? "ok" : f.anteil >= 50 ? "warn" : "danger"],
-              ["Beteiligung", `${f.beteiligt} von ${f.moeglich}`, `${f.beteiligung} %`, f.beteiligung >= 60 ? "ok" : "warn"],
-              ["Eintragungen", zahl(f.eintraege), "insgesamt", "text"],
-              ["Noch offen", zahl(f.offen), f.offen ? "Dienste" : "nichts", f.offen ? "warn" : "ok"]].map(
-              ([label, wert, sub, ton]) => (
-              <Card key={label} style={{ padding: "20px 22px" }}>
-                <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-                <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM,
-                  color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                    : ton === "ok" ? C.ok : C.text }}>{wert}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>{sub}</div>
-              </Card>))}
-          </div>)}
+          <Kennzahlen min={180} kacheln={[
+            { label: "Belegt", wert: `${f.belegt} von ${f.gesamt}`, sub: `${f.anteil} %`,
+              ton: f.anteil >= 80 ? "ok" : f.anteil >= 50 ? "warn" : "danger" },
+            { label: "Beteiligung", wert: `${f.beteiligt} von ${f.moeglich}`, sub: `${f.beteiligung} %`,
+              ton: f.beteiligung >= 60 ? "ok" : "warn" },
+            { label: "Eintragungen", wert: zahl(f.eintraege), sub: "insgesamt" },
+            { label: "Noch offen", wert: zahl(f.offen), sub: f.offen ? "Dienste" : "nichts",
+              ton: f.offen ? "warn" : "ok" }]} />)}
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(240px,300px) minmax(0,1fr)",
           gap: 24, alignItems: "start" }}>
@@ -17809,7 +17775,7 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                                 <span style={{ color: C.aus, fontSize: 12 }}>—</span>
                               ) : (
                                 <span style={{ display: "inline-block", minWidth: 44,
-                                  padding: "3px 8px", borderRadius: 6, fontSize: 12.5,
+                                  padding: "3px 8px", borderRadius: 8, fontSize: 12.5,
                                   fontWeight: 600, ...NUM,
                                   background: x.gedeckt ? C.okLight : x.drin > 0 ? C.warnLight : C.dangerLight,
                                   color: x.gedeckt ? C.ok : x.drin > 0 ? C.warn : C.danger }}>
@@ -17837,12 +17803,11 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                 {[3, 5, 7, 10, 14].map((v) => (
                   <option key={v} value={v}>{v} Tage</option>))}</Sel></Field>
 
-            <div style={{ padding: "14px 16px", borderRadius: 10, background: C.accentLight,
-              fontSize: 13.5, lineHeight: 1.55, color: C.text }}>
+            <Erklaerkasten>
               Alle Beschäftigten im Schichtdienst werden unterrichtet. Beim Eintragen
               prüft CENTRIC Ruhezeit, Qualifikation, Abwesenheit und das Stundenziel —
               wer sich einträgt, bekommt den Dienst auch.
-            </div>
+            </Erklaerkasten>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <Btn kind="quiet" onClick={() => setNeu(false)}>Abbrechen</Btn>
@@ -18547,8 +18512,7 @@ function Sondereinsaetze({ sitz, akt }) {
           <Field label="Bis"><Inp type="date" value={bis}
             onChange={(e) => setBis(e.target.value)} /></Field>
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
-            <div style={{ fontSize: 12.5, color: C.dim }}>Stunden im Zeitraum</div>
-            <div style={{ fontSize: 24, fontWeight: 300, ...NUM }}>{n1(summe)}</div>
+            <Grosszahl wert={n1(summe)} label="Stunden im Zeitraum" />
           </div>
         </div>
       </Card>
@@ -18579,7 +18543,7 @@ function Sondereinsaetze({ sitz, akt }) {
                         <Pill key={pid} size="sm">{p.nachname}, {p.vorname.slice(0, 1)}.</Pill>) : null;
                     })}
                     {!(s.zugeteilt || []).length && (
-                      <span style={{ fontSize: 12.5, color: C.warn }}>niemand zugeteilt</span>)}
+                      <Pill size="sm" tone="warn">niemand zugeteilt</Pill>)}
                   </div>
                 </div>
                 <div style={{ textAlign: "right", minWidth: 90 }}>
