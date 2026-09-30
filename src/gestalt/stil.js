@@ -163,4 +163,126 @@ export const gestaltStil = () => `
   .suchknopf span{display:inline;}
 }
 @media print{ .kopfblock{display:none !important;} }
+
+/* Untere Leiste für schmale Fenster (Schichten, Anträge, Lage, Post, Krank).
+   Sie hatte nie eine Regel: Auf dem Rechner stand sie als Reihe nackter Knöpfe
+   unter dem Inhalt. Ab 1025 px entfällt sie (dort führt die Unterleiste),
+   darunter klebt sie am unteren Rand — main.bereich lässt dafür Platz. */
+.tabbar{position:fixed; left:0; right:0; bottom:0; z-index:28; display:flex; gap:2px;
+  padding:6px 8px calc(6px + env(safe-area-inset-bottom)); background:var(--c-kopf-grund);
+  backdrop-filter:saturate(160%) blur(12px); -webkit-backdrop-filter:saturate(160%) blur(12px);
+  border-top:1px solid ${C.line};}
+.tabbar button{flex:1 1 0; min-width:0; min-height:52px; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:3px; border:0; border-radius:14px; background:transparent; color:${C.dim};
+  font-family:inherit; font-size:11px; font-weight:500; cursor:pointer; padding:4px 2px;}
+.tabbar button.on{background:${C.accentLight}; color:${C.accent}; font-weight:620;}
+@media (min-width: 1025px){ .tabbar{display:none;} }
+@media print{ .tabbar{display:none !important;} }
+
+/* ------------------------- 5. Ansichten (Ü und E) --------------------------
+   Kennzahlkarten, Leitraster, Seitenkarten, Hinweisband. Abstände laufen über
+   --pad-y/--pad-x, damit Kompakt sie verkleinert; die Kennzahl selbst behält
+   ihre Größe. Tönungen der Ränder mischen die Statusfarbe mit dem Kartenrand,
+   damit sie in Hell und Dunkel gleich ruhig bleiben. */
+.punkt{display:inline-block; width:8px; height:8px; border-radius:2px; flex-shrink:0;}
+.punkt.gross{width:10px; height:10px; border-radius:3px;}
+
+.kachelreihe{display:grid; grid-template-columns:repeat(auto-fit,minmax(var(--kmin,200px),1fr));
+  gap:16px; margin-bottom:16px;}
+.kachel{padding:calc(var(--pad-y) + 4px) calc(var(--pad-x) + 2px) calc(var(--pad-y) + 6px);
+  min-width:0; text-align:left; font-family:inherit; color:${C.text};}
+button.kachel{cursor:pointer; display:block; width:100%;}
+.kachel-kopf{display:flex; align-items:center; gap:8px; font-size:12.5px; color:${C.aus}; min-width:0;}
+.kachel-kopf > span:not(.punkt){overflow-wrap:anywhere;}
+.kachel-wert{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 8px; margin-top:10px;}
+.kachel-wert .zahl{font-size:32px; font-weight:450; letter-spacing:-.035em; line-height:1.05;}
+.kachel-wert .einheit{font-size:13.5px; font-weight:500; color:${C.dim};}
+.kachel-sub{font-size:12.5px; color:${C.dim}; margin-top:6px; line-height:1.45;}
+.kachel-bild{margin-top:14px;}
+.kachel.hervor-warn{border-color:color-mix(in srgb, var(--c-warn) 42%, var(--c-line));}
+.kachel.hervor-danger{border-color:color-mix(in srgb, var(--c-danger) 42%, var(--c-line));}
+
+.leitraster{display:grid; grid-template-columns:minmax(0,1fr) var(--seite,360px); gap:16px; align-items:start;}
+.leitraster > .haupt, .leitraster > .seite{min-width:0; display:flex; flex-direction:column; gap:16px;}
+@media (max-width: 1100px){ .leitraster{grid-template-columns:minmax(0,1fr);} }
+
+.seitenkarte{padding:calc(var(--pad-y) + 6px) calc(var(--pad-x) + 2px);}
+.skopf{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px;}
+.stitel{font-size:15.5px; font-weight:620; letter-spacing:-.015em; margin:0; line-height:1.3;}
+.ssub{font-size:12.5px; color:${C.dim}; margin-top:3px; line-height:1.45;}
+
+.hinweisband{display:flex; align-items:flex-start; gap:12px; padding:calc(var(--pad-y) + 4px) calc(var(--pad-x) + 2px);
+  border-left-width:3px; margin-bottom:16px;}
+.hinweisband .sym{display:flex; margin-top:1px;}
+.hinweisband .titel{font-size:15px; font-weight:620; line-height:1.45;}
+.hinweisband .text{font-size:13px; color:${C.dim}; margin-top:4px; line-height:1.55;}
+
+.balkenzeile{padding:7px 0;}
+.balkenzeile .kopf{display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+  font-size:13.5px; margin-bottom:6px;}
+.balkenzeile .name{display:inline-flex; align-items:center; gap:8px; min-width:0;}
+.balkenzeile .wert{font-weight:600;}
+.balkenzeile .sub{font-size:12px; color:${C.dim}; margin-top:5px;}
+
+.legende{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:6px 18px;
+  font-size:12.5px; color:${C.dim};}
+.legende li{display:flex; align-items:center; gap:7px;}
+.legende b{font-weight:650;}
+
+.namenschip{display:inline-flex; align-items:center; gap:8px; padding:4px 12px 4px 4px; border-radius:999px;
+  background:${C.flaecheStill}; font-size:13px; max-width:100%;}
+.namenschip .n{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0;}
+
+.grosszahl .zahl{font-size:32px; font-weight:450; letter-spacing:-.035em; line-height:1.05;}
+.grosszahl .einheit{font-size:13.5px; color:${C.dim}; margin-left:8px;}
+.grosszahl .label{font-size:12.5px; color:${C.dim}; margin-top:4px;}
+
+.schritte{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px;}
+.schritte li{display:flex; gap:12px; align-items:flex-start;}
+.schritte .nr{width:24px; height:24px; border-radius:50%; flex-shrink:0; display:flex; align-items:center;
+  justify-content:center; font-size:12px; font-weight:650; background:${C.text}; color:${C.flaeche};}
+.schritte .nr.hell{background:${C.accentLight}; color:${C.accent};}
+.schritte .t{font-size:13.5px; font-weight:620;}
+.schritte .x{font-size:12.5px; color:${C.dim}; line-height:1.5; margin-top:2px;}
+
+.abschnittskopf{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  margin:8px 0 12px;}
+.abschnittskopf h2{font-size:19px; font-weight:640; letter-spacing:-.02em; margin:0;}
+.abschnittskopf .sub{font-size:13px; color:${C.dim}; margin-top:3px; line-height:1.5;}
+.abschnittskopf .rechts{font-size:12.5px; color:${C.dim}; display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+
+/* Zeilen in Listen der Entscheidungsansichten */
+.listenzeile{display:flex; align-items:center; gap:14px; padding:14px calc(var(--pad-x) + 2px);
+  border-bottom:1px solid ${C.lineSoft}; min-width:0;}
+.listenzeile:last-child{border-bottom:0;}
+.listenzeile.klick{cursor:pointer; transition:background .14s;}
+.listenzeile.klick:hover{background:${C.bg};}
+.zeit-ziffern{font-variant-numeric:tabular-nums;}
+
+/* Startseite: Einrichtung und Untergrenzen nebeneinander */
+.startpaar{display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr)); gap:16px; margin-bottom:40px;}
+
+/* Lagebild: Schichtkarten, Dienstliste, Achtungspunkte */
+.schichtreihe{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-bottom:16px;}
+.schichtkarte{padding:calc(var(--pad-y) + 6px) calc(var(--pad-x) + 2px); cursor:pointer; min-width:0;
+  transition:box-shadow .16s, border-color .16s;}
+.schichtkarte:hover{box-shadow:var(--schatten-hoch); border-color:${C.lineStark};}
+.schichtkarte.luecke{border-color:color-mix(in srgb, var(--c-danger) 40%, var(--c-line));}
+.schichtkarte .kopf{display:flex; align-items:center; gap:10px;}
+.schichtkarte .name{font-size:14.5px; font-weight:620;}
+.schichtkarte .zeit{font-size:12px; color:${C.dim};}
+.dienstliste .zeile{display:flex; gap:18px; padding:12px 0; border-top:1px solid ${C.lineSoft}; align-items:flex-start;}
+.dienstliste .zeile:first-child{border-top:0; padding-top:2px;}
+.dienstliste .einheit{flex:0 0 172px; min-width:0;}
+.dienstliste .einheit .n{font-size:13.5px; font-weight:620;}
+.dienstliste .einheit .s{font-size:12px; color:${C.dim}; margin-top:2px;}
+.dienstliste .chips{display:flex; flex-wrap:wrap; gap:6px; min-width:0; flex:1;}
+.dienstliste .kurz{font-size:11px; font-weight:700; color:${C.dim};}
+@media (max-width: 560px){ .dienstliste .zeile{flex-direction:column; gap:8px;} .dienstliste .einheit{flex-basis:auto;} }
+.achtungszeile{display:flex; align-items:baseline; gap:10px; padding:11px 0; border-top:1px solid ${C.lineSoft};
+  cursor:pointer;}
+.achtungszeile:first-child{border-top:0;}
+.achtungszeile .punkt{align-self:center;}
+.achtungszeile .t{flex:1; min-width:0; font-size:13.5px; line-height:1.4;}
+.achtungszeile .d{font-size:12px; color:${C.dim}; white-space:nowrap;}
 `;

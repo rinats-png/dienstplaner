@@ -20,9 +20,13 @@ const tonFarbe = (ton) => ({ ok: C.ok, warn: C.warn, danger: C.danger, accent: C
   neutral: C.dim, text: C.text }[ton] || C.accent);
 
 /* ------------------------------- Pille ---------------------------------- */
-/** Tönung plus Wort, kein Rand. Die Klassen stehen in bauStyles (.pille-…). */
-export function Pille({ children, ton = "neutral", size, style }) {
-  const t = ["neutral", "ok", "warn", "danger", "accent", "violet"].includes(ton) ? ton : "neutral";
+/** Tönung plus Wort, kein Rand. Die Klassen stehen in bauStyles (.pille-…).
+ *  `tone` ist der bisherige Name des Arguments (App.jsx ruft die Pille überall
+ *  so auf); beide gelten, `ton` gewinnt. Vorher las die Pille nur `ton` — jeder
+ *  Aufruf mit `tone` wurde dadurch neutral. */
+export function Pille({ children, ton, tone, size, style }) {
+  const wahl = ton !== undefined ? ton : tone;
+  const t = ["neutral", "ok", "warn", "danger", "accent", "violet"].includes(wahl) ? wahl : "neutral";
   return <span className={`pille pille-${t}${size === "sm" ? " pille-sm" : ""}`} style={style}>{children}</span>;
 }
 
@@ -52,7 +56,7 @@ export function Sparkline({ daten, art = "linie", hoehe = 40, beschriftung, herv
   if (!Array.isArray(daten) || daten.length === 0) return null;
 
   if (art === "punkte") {
-    const farbe = (d) => (d === "ok" ? C.ok : d === "warn" ? C.warn : d === "danger" ? C.danger : C.line);
+    const farbe = (d) => (d === "ok" ? C.ok : d === "warn" ? C.warn : d === "danger" ? C.danger : C.steuer);
     return (
       <div {...a11y} style={{ display: "flex", flexWrap: "wrap", gap: 3, alignContent: "flex-end", minHeight: hoehe }}>
         {daten.map((d, i) => <span key={i} style={{ width: 4, height: 4, borderRadius: 1, background: farbe(d) }} />)}
