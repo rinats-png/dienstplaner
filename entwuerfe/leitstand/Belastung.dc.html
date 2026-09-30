@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Belastung</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Belastung</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Wie sich Nachtdienste, Wochenenden und Einspringen auf die Belegschaft verteilen · letzte 28 Tage</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">14 Tage</button>
+      <span style="height: 30px; padding: 0 13px; border-radius: 999px; background: #071317; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center">28 Tage</span>
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">8 Wochen</button>
+    </div>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Ausgleich vorschlagen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Nach Belastung sortiert</span>
+      <span style="font-size: 11.5px; color: #5B6B72">12 von 57 angezeigt</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #BCCDD4">
+      <span style="width: 196px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Person</span>
+      <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Verteilung</span>
+      <span style="width: 58px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: center">Nacht</span>
+      <span style="width: 58px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: center">WE</span>
+      <span style="width: 68px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: center">Folge</span>
+      <span style="width: 108px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Stufe</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 1px">
+      <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="12">
+        <div style="display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 8px; margin: 0 -8px; border-radius: 10px; border-bottom: 1px solid #F4F8F9; background: {{z.bg}}">
+          <div style="width: 196px; flex-shrink: 0; display: flex; align-items: center; gap: 9px">
+            <span style="width: 27px; height: 27px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{z.farbe}}">{{z.kuerzel}}</span>
+            <div style="min-width: 0">
+              <div style="font-size: 12.5px; color: #071317; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{z.name}}</div>
+              <div style="font-size: 10px; color: #5B6B72">{{z.einheit}}</div>
+            </div>
+          </div>
+          <div style="flex-grow: 1; display: flex; align-items: center; gap: 10px">
+            <div style="flex-grow: 1; height: 9px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 9px; border-radius: 999px; width: {{z.b}}; background: {{z.c}}"></div></div>
+            <span style="width: 30px; font-size: 12px; font-weight: 600; color: {{z.c}}; font-variant-numeric: tabular-nums">{{z.punkte}}</span>
+          </div>
+          <span style="width: 58px; text-align: center; font-size: 12px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.nacht}}</span>
+          <span style="width: 58px; text-align: center; font-size: 12px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.we}}</span>
+          <span style="width: 68px; text-align: center; font-size: 12px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.folge}}</span>
+          <span style="width: 108px; text-align: right"><span style="padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{z.stufeBg}}; color: {{z.stufeFg}}">{{z.stufe}}</span></span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; box-sizing: border-box; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #FFF6EC; border: 1px solid #FFE0C0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+      <span style="flex-grow: 1; font-size: 12px; color: #071317">Zwei Personen liegen deutlich über dem Üblichen. CENTRIC schlägt vor, die nächsten drei Nachtdienste umzuverteilen.</span>
+      <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12px; color: #071317">Vorschlag ansehen</button>
+    </div>
+  </div>
+
+  <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Verteilung im Betrieb</span>
+      <div style="display: flex; align-items: flex-end; gap: 4px; height: 92px">
+        <sc-for list="{{histogramm}}" as="h" hint-placeholder-count="10">
+          <div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; gap: 4px">
+            <span style="font-size: 9.5px; color: #5B6B72">{{h.n}}</span>
+            <div style="width: 100%; border-radius: 3px 3px 1px 1px; height: {{h.h}}; background: {{h.c}}"></div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-size: 10px; color: #5B6B72">
+        <span>0 Punkte</span><span>100 Punkte</span>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Was die Stufen bedeuten</span>
+      <sc-for list="{{stufen}}" as="s" hint-placeholder-count="3">
+        <div style="display: flex; align-items: flex-start; gap: 10px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; margin-top: 4px; flex-shrink: 0; background: {{s.c}}"></span>
+          <div style="flex-grow: 1">
+            <div style="display: flex; align-items: baseline; gap: 8px">
+              <span style="font-size: 12.5px; font-weight: 600; color: #071317">{{s.n}}</span>
+              <span style="font-size: 11px; color: #5B6B72">{{s.ab}}</span>
+            </div>
+            <div style="margin-top: 3px; font-size: 11.5px; line-height: 1.45; color: #5B6B72">{{s.t}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #E7EEF1; border: 1px solid #CBDAE0; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 9px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+        <span style="font-size: 13px; font-weight: 600; color: #071317">Keine Leistungskontrolle</span>
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Die Punkte messen, wie ungleich der Dienstplan verteilt ist — nicht, wie jemand arbeitet. Es fließen nur Lage und Häufigkeit der Schichten ein, keine Tempo-, Qualitäts- oder Anwesenheitsdaten.</div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Der Betriebsrat sieht diese Ansicht mit denselben Zahlen, aber ohne Eingriffsmöglichkeit.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const Z = (name, kuerzel, farbe, einheit, punkte, nacht, we, folge) => {
+      let stufe = 'unauffällig', c = '#017070', stufeBg = '#DFF0F0', stufeFg = '#017070', bg = 'transparent';
+      if (punkte >= 70) { stufe = 'hoch'; c = '#4E0401'; stufeBg = '#F6DEDC'; stufeFg = '#4E0401'; bg = '#FDF7F6'; }
+      else if (punkte >= 45) { stufe = 'erhöht'; c = '#955410'; stufeBg = '#FFE0C0'; stufeFg = '#955410'; bg = '#FFFCF8'; }
+      return {
+        name: name, kuerzel: kuerzel, farbe: farbe, einheit: einheit,
+        punkte: String(punkte), b: punkte + '%', c: c,
+        nacht: String(nacht), we: String(we), folge: String(folge),
+        stufe: stufe, stufeBg: stufeBg, stufeFg: stufeFg, bg: bg
+      };
+    };
+
+    const zeilen = [
+      Z('Öztürk, Derya', 'DÖ', '#017070', 'Springerpool', 82, 7, 6, 9),
+      Z('Mertens, Frank', 'FM', '#017070', 'Springerpool', 74, 6, 5, 11),
+      Z('Hoffmann, Lars', 'LH', '#316C81', 'Wohnbereich Süd', 61, 8, 4, 6),
+      Z('Nowak, Piotr', 'PN', '#017070', 'Wohnbereich Nord', 58, 8, 4, 5),
+      Z('Vogel, Jana', 'JV', '#017070', 'Wohnbereich West', 52, 5, 4, 7),
+      Z('Lang, Sonja', 'SL', '#316C81', 'Wohnbereich Süd', 47, 4, 4, 6),
+      Z('Richter, Kai', 'KR', '#316C81', 'Wohnbereich Nord', 39, 4, 3, 5),
+      Z('Weiß, Carola', 'CW', '#316C81', 'Wohnbereich Süd', 34, 3, 3, 4),
+      Z('Kern, Andrea', 'AK', '#017070', 'Wohnbereich Nord', 31, 2, 3, 4),
+      Z('Adler, Antje', 'AA', '#017070', 'Wohnbereich Nord', 28, 2, 2, 4),
+      Z('Sadiku, Elira', 'ES', '#017070', 'Wohnbereich Süd', 24, 2, 2, 3),
+      Z('Brandt, Miriam', 'MB', '#017070', 'Wohnbereich Süd', 19, 1, 2, 3)
+    ];
+
+    const ZAHL = [2, 5, 9, 11, 8, 10, 6, 4, 1, 1];
+    const histogramm = ZAHL.map((n, i) => ({
+      n: String(n),
+      h: Math.max(5, n * 6.5) + 'px',
+      c: i >= 7 ? '#4E0401' : (i >= 4 ? '#955410' : '#017070')
+    }));
+
+    const stufen = [
+      { n: 'unauffällig', ab: 'bis 44 Punkte', c: '#017070', t: 'Die Belastung liegt im üblichen Rahmen.' },
+      { n: 'erhöht', ab: 'ab 45 Punkten', c: '#955410', t: 'Auffällig, aber vertretbar. Bei der nächsten Planung berücksichtigen.' },
+      { n: 'hoch', ab: 'ab 70 Punkten', c: '#4E0401', t: 'Deutlich über dem Üblichen. Vor weiteren Einsätzen ansprechen.' }
+    ];
+
+    return { nav: this.nav('Nachsehen'), zeilen, histogramm, stufen };
+  }
+}
+</script>
+</body>
+</html>

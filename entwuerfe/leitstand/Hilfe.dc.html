@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Hilfe</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Hilfe</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Zuerst das Handbuch – es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns.</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Handbuch öffnen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; flex-basis: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 4px">
+      <div style="display: flex; align-items: center; padding-bottom: 8px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Selbst nachsehen</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; background: #DFF0F0; color: #017070; display: flex; align-items: center; justify-content: center">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4.5h9.5a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h9.5"></path></svg>
+        </div>
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Handbuch</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Jede Ansicht, jeder Begriff, jede Regel – nach Aufgaben geordnet und durchsuchbar.</div>
+        </div>
+        <button type="button" style="height: 34px; padding: 0 16px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Öffnen</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; background: #DFF0F0; color: #017070; display: flex; align-items: center; justify-content: center">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5h6M4 12h10M4 17.5h6M14 6.5l2.5 2.5L21 4.5"></path></svg>
+        </div>
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Ablauf einrichten</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist.</div>
+        </div>
+        <button type="button" style="height: 34px; padding: 0 16px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Öffnen</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; background: #DFF0F0; color: #017070; display: flex; align-items: center; justify-content: center">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 4.5 6.5v5.2c0 4.3 3 7.4 7.5 8.8 4.5-1.4 7.5-4.5 7.5-8.8V6.5z"></path></svg>
+        </div>
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Rechtliche Angaben</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung.</div>
+        </div>
+        <button type="button" style="height: 34px; padding: 0 16px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Öffnen</button>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 4px">
+      <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 8px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Uns fragen</span>
+        <span style="font-size: 11.5px; color: #5B6B72">Werktags 8 bis 18 Uhr. Außerhalb dieser Zeiten per E-Mail.</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Etwas funktioniert nicht</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Betrieb, Rolle, Ansicht und Fassung werden mitgeschickt – das spart die erste Rückfrage.</div>
+        </div>
+        <a href="mailto:kontakt@example.org?subject=CENTRIC%20%E2%80%94%20St%C3%B6rung" style="height: 34px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500; text-decoration: none; display: flex; align-items: center; white-space: nowrap">E-Mail schreiben</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Etwas fehlt oder soll anders sein</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist.</div>
+        </div>
+        <a href="mailto:kontakt@example.org?subject=CENTRIC%20%E2%80%94%20Vorschlag" style="height: 34px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500; text-decoration: none; display: flex; align-items: center; white-space: nowrap">Vorschlag senden</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Vertrag, Tarif, Rechnung</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Verlängern, wechseln, kündigen, Rechnungsanschrift ändern.</div>
+        </div>
+        <a href="mailto:kontakt@example.org?subject=CENTRIC%20%E2%80%94%20Vertrag" style="height: 34px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500; text-decoration: none; display: flex; align-items: center; white-space: nowrap">E-Mail schreiben</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid #F4F8F9">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 13.5px; font-weight: 600; color: #071317">Auskunft, Löschung, Datenschutz</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">Anträge betroffener Personen beantwortet der Betrieb selbst – unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns.</div>
+        </div>
+        <a href="mailto:kontakt@example.org?subject=CENTRIC%20%E2%80%94%20Datenschutz" style="height: 34px; padding: 0 16px; box-sizing: border-box; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500; text-decoration: none; display: flex; align-items: center; white-space: nowrap">E-Mail schreiben</a>
+      </div>
+      <div style="margin-top: auto; padding-top: 12px; border-top: 1px solid #E7EEF1; font-size: 12.5px; color: #3D4E55">
+        E-Mail: <a href="mailto:kontakt@example.org">kontakt@example.org</a>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="width: 452px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border-radius: 16px; background: #FFF6EC; border: 1px solid #FFE0C0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+      <span style="font-size: 12px; line-height: 1.55; color: #071317"><strong style="font-weight: 600">Kontaktadresse noch nicht gesetzt.</strong> Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL. Eine Telefonnummer ist nicht hinterlegt, deshalb erscheint keine Telefonzeile.</span>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Was jede E-Mail mitbringt</span>
+      <div style="font-size: 11.5px; line-height: 1.5; color: #5B6B72">Betrieb, Rolle und Fassung werden mitgeschickt – das spart die erste Rückfrage.</div>
+      <div style="box-sizing: border-box; padding: 4px 12px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+        <sc-for list="{{mitgeschickt}}" as="m" hint-placeholder-count="4">
+          <div style="display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid #E7EEF1">
+            <span style="width: 64px; flex-shrink: 0; font-size: 11px; color: #5B6B72">{{m.k}}</span>
+            <span style="flex-grow: 1; font-size: 12px; color: #071317">{{m.v}}</span>
+            <span style="font-size: 10.5px; color: #5B6B72">{{m.n}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 9px">
+      <div style="display: flex; align-items: center; gap: 8px">
+        <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Häufige Fragen aus der Einführung</span>
+        <span style="font-size: 11px; color: #5B6B72">Handbuch, Kapitel „Für Beschäftigte“</span>
+      </div>
+      <sc-for list="{{haeufig}}" as="q" hint-placeholder-count="5">
+        <div style="padding: 9px 0; border-top: 1px solid #F4F8F9">
+          <div style="font-size: 12.5px; font-weight: 600; color: #071317">{{q.f}}</div>
+          <div style="margin-top: 2px; font-size: 12px; line-height: 1.5; color: #3D4E55">{{q.a}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const mitgeschickt = [
+      { k: 'Betrieb', v: 'Seniorenzentrum Lindenhof', n: 'immer' },
+      { k: 'Rolle', v: 'Organisationsleitung', n: 'immer' },
+      { k: 'Ansicht', v: 'Hilfe', n: 'nur bei Störung' },
+      { k: 'Fassung', v: 'aus der Anwendung', n: 'immer' }
+    ];
+
+    const haeufig = [
+      { f: '„Wann arbeite ich?“', a: 'Reiter Heute, ganz oben.' },
+      { f: '„Wie viele Urlaubstage habe ich noch?“', a: 'Mehr, oben in den Kennzahlen.' },
+      { f: '„Kann ich tauschen?“', a: 'Mein Plan, Tag antippen, Tausch suchen. Das Gesuch sehen alle.' },
+      { f: '„Warum steht mein Konto im Minus?“', a: 'Anliegen, Stundenkonto, mit Verlauf über sechs Monate.' },
+      { f: '„Sieht der Chef, wo ich bin?“', a: 'Nein. Nur ob du beim Stempeln am Einsatzort warst.' }
+    ];
+
+    return { nav: this.nav('Im Dienst'), mitgeschickt, haeufig };
+  }
+}
+</script>
+</body>
+</html>

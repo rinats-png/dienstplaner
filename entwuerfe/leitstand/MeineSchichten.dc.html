@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Meine Schichten</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.34), rgba(80,232,244,0.16) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav aria-label="Bereiche" style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <span aria-current="page" style="height: 34px; padding: 0 14px; border-radius: 999px; display: flex; align-items: center; font-size: 12.5px; font-weight: 600; background: #DFF0F0; color: #017070">Im Dienst</span>
+    <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Planen</button>
+    <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Zu entscheiden</button>
+    <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Wer mitfährt</button>
+    <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Nachsehen</button>
+    <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Verwaltung</button>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">TB</div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Meine Schichten</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Tobias Brandt · Wohnbereich Nord · Mitarbeiter</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Wunschdienste</button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Verfügbarkeit</button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #F6DEDC; font-size: 12.5px; font-weight: 600; color: #4E0401">Krank melden</button>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Antrag stellen</button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Tausch anfragen</button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; color: #3D4E55; font-size: 12.5px">Kalender</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; min-height: 0; box-sizing: border-box; padding: 16px 30px 14px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+    <div style="position: relative; overflow: hidden; box-sizing: border-box; padding: 20px 24px 20px 26px; border-radius: 18px; background: #E8EFF2; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; align-items: stretch; gap: 26px">
+      <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 2.5px; background: #316C81"></div>
+      <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 11px">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="padding: 3px 10px; border-radius: 999px; background: #DFF0F0; color: #017070; font-size: 11px; font-weight: 600">Nächste Schicht · heute</span>
+          <span style="padding: 3px 10px; border-radius: 999px; background: #FFFFFF; color: #3D4E55; font-size: 11px">beginnt in 2 Std 3 Min</span>
+        </div>
+        <div style="font-size: 40px; line-height: 1.05; font-weight: 300; letter-spacing: -0.025em; color: #071317">Spätdienst</div>
+        <div>
+          <div style="font-size: 17px; font-weight: 500; color: #071317">13:45 – 22:00 Uhr · 8,3 Stunden</div>
+          <div style="margin-top: 3px; font-size: 12.5px; color: #3D4E55">Dienstag, 29. September · Wohnbereich Nord</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="display: flex">
+            <span style="width: 27px; height: 27px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid #E8EFF2">AK</span>
+            <span style="width: 27px; height: 27px; border-radius: 999px; background: #316C81; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid #E8EFF2; margin-left: -9px">CW</span>
+            <span style="width: 27px; height: 27px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center; border: 2px solid #E8EFF2; margin-left: -9px">AA</span>
+          </div>
+          <span style="font-size: 12.5px; color: #3D4E55">mit Kern, Weiß und Adler</span>
+        </div>
+      </div>
+      <div style="width: 1px; background: #CBDAE0"></div>
+      <div style="width: 230px; flex-shrink: 0; display: flex; flex-direction: column; justify-content: center; gap: 16px">
+        <sc-for list="{{kennzahlen}}" as="k" hint-placeholder-count="2">
+          <div>
+            <div style="font-size: 11.5px; color: #3D4E55">{{k.l}}</div>
+            <div style="display: flex; align-items: baseline; gap: 5px; margin-top: 2px">
+              <span style="font-size: 26px; font-weight: 500; letter-spacing: -0.02em; color: #071317; font-variant-numeric: tabular-nums">{{k.v}}</span>
+              <span style="font-size: 13px; color: #3D4E55">h</span>
+            </div>
+            <div style="margin-top: 2px; font-size: 11.5px; color: #3D4E55">{{k.sub}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+      <div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 22px; border-bottom: 1px solid #E7EEF1">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Kommende Dienste</span>
+        <span style="padding: 2px 9px; border-radius: 999px; background: #DFEFE7; color: #0E6B45; font-size: 11px; font-weight: 600">freigegeben</span>
+      </div>
+      <sc-for list="{{woche}}" as="w" hint-placeholder-count="7">
+        <div style="display: flex; align-items: center; gap: 16px; height: 50px; padding: 0 22px; border-bottom: 1px solid #F1F6F7; background: {{w.bg}}">
+          <div style="width: 84px; flex-shrink: 0">
+            <div style="font-size: 13.5px; font-weight: {{w.gewicht}}; color: #071317; font-variant-numeric: tabular-nums">{{w.datum}}</div>
+            <div style="font-size: 11px; color: {{w.wdFarbe}}">{{w.wd}}</div>
+          </div>
+          <span style="{{w.zelle}}">{{w.kurz}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="font-size: 13.5px; font-weight: 500; color: #071317">{{w.art}}</div>
+            <div style="font-size: 12px; color: #5B6B72; font-variant-numeric: tabular-nums">{{w.zeit}}</div>
+          </div>
+          <span style="{{w.pill1s}}">{{w.pill1}}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="width: 440px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px">
+
+    <div style="box-sizing: border-box; padding: 18px 20px 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+      <div style="display: flex; align-items: baseline; gap: 8px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Mein Stundenkonto</span>
+        <span style="font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">zwölf Monate</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 8px">
+        <span style="font-size: 34px; font-weight: 300; letter-spacing: -0.03em; color: #071317; font-variant-numeric: tabular-nums">+12,5</span>
+        <span style="font-size: 15px; color: #5B6B72">h</span>
+        <span style="padding: 2px 8px; border-radius: 999px; background: #FFE0C0; color: #955410; font-size: 11px; font-weight: 600">steigend</span>
+      </div>
+      <div style="margin-top: 2px; font-size: 11.5px; color: #5B6B72">kumuliert seit Jahresbeginn</div>
+      <svg width="400" height="84" viewBox="0 0 400 84" style="display: block; margin-top: 10px; overflow: visible" role="img" aria-label="Verlauf des Stundenkontos über zwölf Monate, steigend auf plus 12,5 Stunden">
+        <line x1="0" y1="{{konto.nullY}}" x2="400" y2="{{konto.nullY}}" stroke="#CBDAE0" stroke-width="1"></line>
+        <path d="{{konto.linie}}" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path>
+        <circle cx="{{konto.x}}" cy="{{konto.y}}" r="4" fill="#FFFFFF" stroke="#955410" stroke-width="2"></circle>
+      </svg>
+      <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em"><span>Okt. 2025</span><span>Sep. 2026</span></div>
+      <div style="margin-top: 12px; padding-top: 11px; border-top: 1px solid #E7EEF1; font-size: 12px; line-height: 1.5; color: #3D4E55">Steigt die Linie über Monate, steht Freizeitausgleich an. Sprich das mit der Planung ab.</div>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px 20px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+      <div style="display: flex; align-items: baseline; gap: 8px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Urlaubskonto</span>
+        <span style="font-size: 11.5px; color: #5B6B72">2026</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 7px; margin-top: 8px">
+        <span style="font-size: 30px; font-weight: 500; letter-spacing: -0.02em; color: #071317">9</span>
+        <span style="font-size: 14px; color: #3D4E55">Tage Resturlaub</span>
+        <div style="flex-grow: 1"></div>
+        <span style="font-size: 12px; color: #5B6B72">von 30 Tagen</span>
+      </div>
+      <div style="margin-top: 10px; height: 7px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 7px; border-radius: 999px; width: 30%; background: #2E6B4F"></div></div>
+      <div style="margin-top: 10px; font-size: 12px; color: #3D4E55">Offener Antrag: 12. – 16. Oktober</div>
+    </div>
+
+    <div style="flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+      <div style="display: flex; align-items: center; height: 48px; padding: 0 20px; border-bottom: 1px solid #E7EEF1">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Meine Anträge</span>
+        <span style="padding: 2px 9px; border-radius: 999px; background: #FFE0C0; color: #955410; font-size: 11px; font-weight: 600">1 offen</span>
+      </div>
+      <sc-for list="{{antraege}}" as="a" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 20px; border-bottom: 1px solid #F1F6F7">
+          <span style="{{a.pillS}}">{{a.status}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="font-size: 13px; color: #071317">{{a.titel}}<span style="color: #5B6B72"> · {{a.datum}}</span></div>
+            <div style="margin-top: 2px; font-size: 12px; color: #3D4E55">{{a.zusatz}}</div>
+          </div>
+          <button type="button" style="{{a.knopf}}">Zurückziehen</button>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+</div>
+
+<div style="position: relative; flex-shrink: 0; height: 58px; box-sizing: border-box; padding: 0 30px; display: flex; align-items: center; gap: 4px; background: #FFFFFF; border-top: 1px solid #CBDAE0">
+  <sc-for list="{{unterleiste}}" as="u" hint-placeholder-count="8">
+    <button type="button" aria-current="{{u.cur}}" style="{{u.s}}">{{u.t}}</button>
+  </sc-for>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const kennzahlen = [
+      { l: 'Stunden im Monat', v: '148,0', sub: 'Soll 154,0 h · −6,0 h' },
+      { l: 'Nachtstunden', v: '22,5', sub: '3 Nachtdienste im Monat' }
+    ];
+
+    const ART = {
+      F: { n: 'Frühdienst', c: '#017070', t: '#E6F1F1', z: '6:00–14:15 · 8,3 h' },
+      S: { n: 'Spätdienst', c: '#316C81', t: '#E8EFF2', z: '13:45–22:00 · 8,3 h' },
+      N: { n: 'Nachtdienst', c: '#023441', t: '#E5ECEE', z: '21:45–6:15 · 8,5 h' }
+    };
+    const PN = 'flex-shrink:0;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#E4EDF1;color:#2A5A6D;';
+    const PG = 'flex-shrink:0;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#FFE0C0;color:#955410;';
+    const PX = 'display:none;';
+    const roh = [
+      { d: '29.9.', wd: 'Dienstag · heute', k: 'S', heute: true, p: 'Wohnbereich Nord' },
+      { d: '30.9.', wd: 'Mittwoch', k: 'S', p: 'Wohnbereich Nord' },
+      { d: '1.10.', wd: 'Donnerstag', k: 'S', p: 'Wohnbereich Nord', geaendert: true },
+      { d: '2.10.', wd: 'Freitag', k: '' },
+      { d: '3.10.', wd: 'Samstag · Feiertag', k: 'N', p: 'Wohnbereich Nord', fei: true },
+      { d: '4.10.', wd: 'Sonntag', k: 'N', p: 'Wohnbereich Nord' },
+      { d: '5.10.', wd: 'Montag', k: '' }
+    ];
+    const woche = roh.map((r) => {
+      const a = ART[r.k];
+      const zBasis = 'width:32px;height:32px;flex-shrink:0;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;';
+      let pill1 = '', pill1s = PX;
+      if (r.geaendert) { pill1 = 'geändert'; pill1s = PG; }
+      else if (r.k === 'N') { pill1 = 'Nacht'; pill1s = PN; }
+      return {
+        datum: r.d, wd: r.wd, wdFarbe: r.fei ? '#4E0401' : '#5B6B72',
+        gewicht: r.heute ? '700' : '500',
+        bg: r.heute ? '#F4FAFA' : 'transparent',
+        kurz: a ? r.k : '·',
+        zelle: a
+          ? zBasis + 'background:' + a.t + ';color:' + a.c + ';border-left:2.5px solid ' + a.c + ';'
+          : zBasis + 'background:#F4F8F9;color:#9DB3BC;font-weight:500;',
+        art: a ? a.n : 'frei',
+        zeit: a ? a.z + ' · ' + r.p : 'kein Dienst',
+        pill1: pill1, pill1s: pill1s
+      };
+    });
+
+    const werte = [-1.5, 0.5, 2, 1, 4, 5.5, 4.5, 7, 8.5, 9.5, 11, 12.5];
+    const min = -1.5, max = 12.5, W = 400, H = 84, rand = 8;
+    const px = (i) => rand + (i / (werte.length - 1)) * (W - 2 * rand);
+    const py = (v) => rand + (max - v) / (max - min) * (H - 2 * rand);
+    const linie = werte.map((v, i) => (i ? 'L' : 'M') + px(i).toFixed(1) + ',' + py(v).toFixed(1)).join(' ');
+    const konto = {
+      linie: linie,
+      nullY: py(0).toFixed(1),
+      x: px(werte.length - 1).toFixed(1),
+      y: py(werte[werte.length - 1]).toFixed(1)
+    };
+
+    const pOffen = 'flex-shrink:0;width:82px;text-align:center;padding:2px 0;border-radius:999px;font-size:10.5px;font-weight:600;background:#FFE0C0;color:#955410;';
+    const pOk = 'flex-shrink:0;width:82px;text-align:center;padding:2px 0;border-radius:999px;font-size:10.5px;font-weight:600;background:#DFEFE7;color:#0E6B45;';
+    const pNein = 'flex-shrink:0;width:82px;text-align:center;padding:2px 0;border-radius:999px;font-size:10.5px;font-weight:600;background:#F6DEDC;color:#4E0401;';
+    const knopfAn = 'flex-shrink:0;height:36px;padding:0 12px;border-radius:999px;font-size:12px;color:#3D4E55;border:1px solid #CBDAE0;';
+    const knopfAus = 'display:none;';
+    const antraege = [
+      { status: 'offen', pillS: pOffen, titel: 'Urlaub', datum: '12.10. – 16.10.', zusatz: 'Antwort steht noch aus', knopf: knopfAn },
+      { status: 'genehmigt', pillS: pOk, titel: 'Tauschanfrage', datum: '2.10.', zusatz: 'Antwort: Passt, danke.', knopf: knopfAus },
+      { status: 'abgelehnt', pillS: pNein, titel: 'Freizeitausgleich', datum: '25.9.', zusatz: 'Antwort: Besetzung reicht an dem Tag nicht.', knopf: knopfAus }
+    ];
+
+    const an = 'height:40px;padding:0 15px;border-radius:999px;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:40px;padding:0 15px;border-radius:999px;font-size:12.5px;color:#3D4E55;';
+    const unterleiste = ['Start', 'Ablauf', 'Handbuch', 'Hilfe', 'Übergabe', 'Meine Schichten', 'Lagebild', 'Zeitachse']
+      .map((t) => ({ t: t, s: t === 'Meine Schichten' ? an : aus, cur: t === 'Meine Schichten' ? 'page' : 'false' }));
+
+    return { kennzahlen, woche, konto, antraege, unterleiste };
+  }
+}
+</script>
+</body>
+</html>

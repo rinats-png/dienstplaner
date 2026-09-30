@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Betriebsmittel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1; min-width: 0">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Betriebsmittel</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Schlüssel, Fahrzeuge, Geräte und Dienstkleidung — wer hat was, seit wann.</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px; flex-shrink: 0">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Betriebsmittel anlegen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="display: flex; gap: 14px">
+    <sc-for list="{{kacheln}}" as="k" hint-placeholder-count="5">
+      <div style="flex-grow: 1; flex-basis: 0; min-width: 0; box-sizing: border-box; padding: 15px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid {{k.rand}}; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: {{k.c}}"></span>
+          <span style="flex-grow: 1; font-size: 11.5px; color: #5B6B72">{{k.titel}}</span>
+        </div>
+        <div style="margin-top: 5px; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px">
+          <span style="font-size: 27px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{k.wert}}</span>
+          <span style="font-size: 11.5px; color: #3D4E55">{{k.zusatz}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Wer hat was, seit wann</span>
+        <span style="font-size: 11.5px; color: #5B6B72">{{anzahlText}}</span>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid #BCCDD4">
+        <span style="width: 104px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Art</span>
+        <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Bezeichnung</span>
+        <span style="width: 210px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Ausgegeben an</span>
+        <span style="width: 70px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Seit</span>
+        <span style="width: 30px; flex-shrink: 0"></span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1px">
+        <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="11">
+          <div style="display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 8px; margin: 0 -8px; border-radius: 10px; border-bottom: 1px solid #F4F8F9">
+            <span style="width: 104px; flex-shrink: 0"><span style="padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #E7EEF1; color: #3D4E55">{{z.art}}</span></span>
+            <div style="flex-grow: 1; min-width: 0">
+              <div style="font-size: 12.5px; font-weight: 500; color: #071317; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{z.name}}</div>
+              <div style="font-size: 10.5px; color: #5B6B72; font-variant-numeric: tabular-nums">{{z.kennung}}</div>
+            </div>
+            <select aria-label="{{z.al}}" style="{{z.selS}}">
+              <option>{{z.wer}}</option>
+              <option>{{z.alt}}</option>
+            </select>
+            <span style="width: 70px; flex-shrink: 0; font-size: 11.5px; color: #5B6B72; font-variant-numeric: tabular-nums">{{z.seit}}</span>
+            <button type="button" aria-label="{{z.loeschen}}" style="width: 30px; height: 30px; flex-shrink: 0; border-radius: 999px; border: 1px solid #F6DEDC; background: #FFFFFF; color: #4E0401; font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center">×</button>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 11px">
+      <div>
+        <div style="font-size: 13.5px; font-weight: 600; color: #071317">Ausgabe per Ziehen</div>
+        <div style="margin-top: 4px; font-size: 11.5px; line-height: 1.45; color: #5B6B72">Ein Betriebsmittel aus der Liste auf eine Person ziehen gibt es aus. Auf „Zurück in den Bestand“ ziehen nimmt es zurück.</div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 7px">
+        <sc-for list="{{ablagen}}" as="a" hint-placeholder-count="13">
+          <span style="{{a.s}}">{{a.t}}<span style="margin-left: 6px; color: #5B6B72; font-variant-numeric: tabular-nums">{{a.n}}</span></span>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Nach Art</span>
+      <sc-for list="{{arten}}" as="r" hint-placeholder-count="5">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="width: 96px; flex-shrink: 0; font-size: 12px; color: #071317">{{r.t}}</span>
+          <div style="flex-grow: 1; height: 8px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 8px; border-radius: 999px; width: {{r.b}}; background: #017070"></div></div>
+          <span style="width: 18px; text-align: right; font-size: 12px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">{{r.n}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #E7EEF1; border: 1px solid #CBDAE0; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 9px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+        <span style="font-size: 13px; font-weight: 600; color: #071317">Was die Liste nicht weiß</span>
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Sie führt nur, wer ein Betriebsmittel hat und seit wann. Ob ein Gerät gewartet, defekt oder für eine Schicht reserviert ist, lässt sich hier nicht eintragen.</div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Einweisungen hängen an der Kompetenz je Gerät (§ 4 MPBetreibV, § 12 BetrSichV): Wer nicht eingewiesen ist, sperrt den Dienst — nicht den Bestand.</div>
+    </div>
+
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    // Betriebsmittel: Art, Bezeichnung, Kennung, ausgegeben an (null = im Bestand), seit
+    const ARTEN = ['Schlüssel', 'Fahrzeug', 'Gerät', 'Dienstkleidung', 'Sonstiges'];
+    const liste = [
+      { art: 'Schlüssel', name: 'Generalschlüssel Haupthaus', kennung: 'S-001', wer: 'Krüger, Sabine', seit: '12.01.' },
+      { art: 'Schlüssel', name: 'Stationsschlüssel Wohnbereich Nord', kennung: 'S-014', wer: 'Kern, Andrea', seit: '03.03.' },
+      { art: 'Schlüssel', name: 'Stationsschlüssel Wohnbereich Süd', kennung: 'S-015', wer: 'Weiß, Carola', seit: '03.03.' },
+      { art: 'Schlüssel', name: 'Stationsschlüssel Wohnbereich West', kennung: 'S-016', wer: 'Vogel, Jana', seit: '17.08.' },
+      { art: 'Schlüssel', name: 'Schlüssel Medikamentenraum', kennung: 'S-021', wer: 'Lang, Sonja', seit: '14.05.' },
+      { art: 'Schlüssel', name: 'Zweitschlüssel Nachtdienst', kennung: 'S-022', wer: null, seit: '' },
+      { art: 'Fahrzeug', name: 'Kleinbus Ausflugsfahrten', kennung: 'KS-LH 214', wer: 'Nowak, Piotr', seit: '21.09.' },
+      { art: 'Fahrzeug', name: 'Pkw Springerdienst', kennung: 'KS-LH 305', wer: 'Öztürk, Derya', seit: '07.09.' },
+      { art: 'Gerät', name: 'Diensthandy Nachtdienst Nord', kennung: 'DH-04', wer: 'Richter, Kai', seit: '28.09.' },
+      { art: 'Gerät', name: 'Diensthandy Springerpool', kennung: 'DH-07', wer: 'Mertens, Frank', seit: '15.06.' },
+      { art: 'Sonstiges', name: 'Transponder Tiefgarage', kennung: 'T-088', wer: 'Hoffmann, Lars', seit: '01.04.' }
+    ];
+
+    const selS = 'width:210px;flex-shrink:0;height:32px;box-sizing:border-box;padding:0 8px;border-radius:10px;border:1px solid #CBDAE0;background:#FFFFFF;font:inherit;font-size:12.5px;color:#071317;';
+    const selB = 'width:210px;flex-shrink:0;height:32px;box-sizing:border-box;padding:0 8px;border-radius:10px;border:1px solid #CBDAE0;background:#F4F8F9;font:inherit;font-size:12.5px;color:#5B6B72;';
+    const zeilen = liste.map((x) => ({
+      art: x.art, name: x.name, kennung: x.kennung,
+      wer: x.wer || '— im Bestand —',
+      alt: x.wer ? '— im Bestand —' : '— Person wählen —',
+      seit: x.seit ? 'seit ' + x.seit : '',
+      selS: x.wer ? selS : selB,
+      al: 'Ausgegeben an: ' + x.name,
+      loeschen: x.name + ' löschen'
+    }));
+
+    const ausgegeben = liste.filter((x) => x.wer).length;
+    const jeArt = {};
+    ARTEN.forEach((a) => { jeArt[a] = liste.filter((x) => x.art === a).length; });
+
+    const kacheln = [
+      { titel: 'Erfasst', wert: String(liste.length), zusatz: 'Betriebsmittel', c: '#017070', rand: '#CBDAE0' },
+      { titel: 'Ausgegeben', wert: String(ausgegeben), zusatz: (liste.length - ausgegeben) + ' im Bestand', c: '#017070', rand: '#CBDAE0' },
+      { titel: 'Schlüssel', wert: String(jeArt['Schlüssel']), zusatz: 'erfasst', c: '#316C81', rand: '#CBDAE0' },
+      { titel: 'Fahrzeug', wert: String(jeArt['Fahrzeug']), zusatz: 'erfasst', c: '#316C81', rand: '#CBDAE0' },
+      { titel: 'Gerät', wert: String(jeArt['Gerät']), zusatz: 'erfasst', c: '#316C81', rand: '#CBDAE0' }
+    ];
+
+    // Ablagen wie in der Ansicht: erst der Bestand, dann die Personen im Dienst mit der Zahl ihrer Betriebsmittel
+    const chipS = 'display:inline-flex;align-items:center;height:32px;box-sizing:border-box;padding:0 12px;border-radius:14px;background:#F4F8F9;border:1px solid #CBDAE0;font-size:12px;color:#071317;';
+    const namen = [['Krüger, S.', 'Krüger, Sabine'], ['Kern, A.', 'Kern, Andrea'], ['Weiß, C.', 'Weiß, Carola'], ['Vogel, J.', 'Vogel, Jana'],
+      ['Lang, S.', 'Lang, Sonja'], ['Nowak, P.', 'Nowak, Piotr'], ['Öztürk, D.', 'Öztürk, Derya'], ['Richter, K.', 'Richter, Kai'],
+      ['Mertens, F.', 'Mertens, Frank'], ['Hoffmann, L.', 'Hoffmann, Lars'], ['Adler, A.', 'Adler, Antje'], ['Brandt, M.', 'Brandt, Miriam']];
+    const ablagen = [{ t: 'Zurück in den Bestand', n: '', s: chipS + 'border-style:dashed;' }]
+      .concat(namen.map((p) => {
+        const n = liste.filter((x) => x.wer === p[1]).length;
+        return { t: p[0], n: n ? String(n) : '', s: chipS };
+      }));
+
+    const arten = ARTEN.map((a) => ({ t: a, n: String(jeArt[a]), b: Math.round(jeArt[a] / 6 * 100) + '%' }));
+
+    return { nav: this.nav('Wer mitfährt'), kacheln, zeilen, ablagen, arten,
+      anzahlText: liste.length + ' erfasst · ' + ausgegeben + ' ausgegeben' };
+  }
+}
+</script>
+</body>
+</html>

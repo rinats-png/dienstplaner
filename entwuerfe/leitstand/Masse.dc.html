@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Maße</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+.kart{box-sizing:border-box;padding:14px 18px;border-radius:18px;background:#FFFFFF;border:1px solid #CBDAE0;box-shadow:0 1px 2px rgba(7,19,23,0.04),0 8px 22px rgba(7,19,23,0.05)}
+.kt{font-size:13.5px;font-weight:600;color:#071317}
+.lab{font-size:10.5px;color:#5B6B72}
+.mk{position:absolute;width:18px;height:18px;border-radius:999px;background:#017070;color:#FFFFFF;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.spec{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#3D4E55}
+.spec b{width:16px;height:16px;border-radius:999px;background:#017070;color:#FFFFFF;font-size:9.5px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0">
+  <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Maße</h1>
+  <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Kennzahlkarte, Bogen, Sparkline und Fortschrittsbalken · links das Original, rechts mit Maßen in Pixeln</p>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 24px; display: flex; flex-direction: column; gap: 13px">
+
+  <div style="display: flex; gap: 14px">
+
+    <!-- Kennzahlkarte -->
+    <section class="kart" aria-label="Kennzahlkarte" style="width: 680px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px">
+      <span class="kt">Kennzahlkarte (Kpi)</span>
+      <div style="display: flex; gap: 46px; align-items: flex-start">
+        <div>
+          <div class="lab" style="margin-bottom: 8px">Original</div>
+          <div style="width: 240px; height: 158px; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 10px 26px rgba(7,19,23,0.05); display: flex; flex-direction: column">
+            <div style="height: 16px; font-size: 12px; line-height: 16px; color: #5B6B72">Besetzungsgrad</div>
+            <div style="margin-top: 4px; height: 36px; display: flex; align-items: center; gap: 9px"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #071317">97,3 %</span><span style="padding: 2px 8px; border-radius: 999px; background: #DFEFE7; color: #0E6B45; font-size: 11px; font-weight: 600">↗ 2,4 %</span></div>
+            <div style="margin-top: 2px; height: 14px; font-size: 11px; line-height: 14px; color: #5B6B72">Vergleich zum Vormonat</div>
+            <div style="flex-grow: 1"></div>
+            <svg width="100%" height="40" viewBox="0 0 220 40" preserveAspectRatio="none" fill="none"><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9 L220 40 L0 40 Z" fill="#DFF0F0"></path><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9" stroke="#017070" stroke-width="1.8" stroke-linejoin="round"></path></svg>
+          </div>
+        </div>
+        <div>
+          <div class="lab" style="margin-bottom: 8px; margin-left: 28px">Mit Maßen</div>
+          <div style="position: relative; margin: 0 34px 0 28px; width: 240px; height: 158px">
+            <div style="position: absolute; inset: 0; box-sizing: border-box; border-radius: 18px; background: #DFF0F0; border: 1px solid #02A0A0"></div>
+            <div style="position: absolute; left: 16px; top: 16px; right: 16px; bottom: 16px; box-sizing: border-box; background: #FFFFFF; outline: 1px dashed #02A0A0; display: flex; flex-direction: column">
+              <div style="height: 16px; font-size: 12px; line-height: 16px; color: #5B6B72">Besetzungsgrad</div>
+              <div style="margin-top: 4px; height: 36px; display: flex; align-items: center; gap: 9px"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #071317">97,3 %</span><span style="padding: 2px 8px; border-radius: 999px; background: #DFEFE7; color: #0E6B45; font-size: 11px; font-weight: 600">↗ 2,4 %</span></div>
+              <div style="margin-top: 2px; height: 14px; font-size: 11px; line-height: 14px; color: #5B6B72">Vergleich zum Vormonat</div>
+              <div style="flex-grow: 1"></div>
+              <div style="height: 40px; background: #DFF0F0; border-bottom: 1.8px solid #017070"></div>
+            </div>
+            <div style="position: absolute; left: 0; top: -14px; width: 240px; border-top: 1px solid #017070"></div>
+            <div style="position: absolute; left: 0; top: -26px; width: 240px; text-align: center; font-size: 10.5px; color: #017070">240 px</div>
+            <div style="position: absolute; right: -12px; top: 102px; height: 40px; border-left: 1px solid #017070"></div>
+            <sc-for list="{{kpiMarken}}" as="m" hint-placeholder-count="7"><span class="mk" style="{{m.s}}">{{m.n}}</span></sc-for>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px 22px">
+        <sc-for list="{{kpiSpec}}" as="s" hint-placeholder-count="7"><span class="spec"><b>{{s.n}}</b>{{s.t}}</span></sc-for>
+      </div>
+    </section>
+
+    <!-- Bogen -->
+    <section class="kart" aria-label="Halbkreis-Bogen" style="flex-grow: 1; display: flex; flex-direction: column; gap: 12px">
+      <span class="kt">Halbkreis-Bogen</span>
+      <div style="display: flex; gap: 44px; align-items: flex-start">
+        <div>
+          <div class="lab" style="margin-bottom: 8px">Original</div>
+          <svg width="196" height="112" viewBox="0 0 196 112" fill="none" role="img" aria-label="Bogen, 94 Prozent">
+            <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#E7EEF1" stroke-width="13" stroke-linecap="round"></path>
+            <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#0E6B45" stroke-width="13" stroke-linecap="round" stroke-dasharray="173 400"></path>
+            <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#955410" stroke-width="13" stroke-linecap="round" stroke-dasharray="32 400" stroke-dashoffset="-179"></path>
+            <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#BCCDD4" stroke-width="13" stroke-linecap="round" stroke-dasharray="7 400" stroke-dashoffset="-217"></path>
+            <text x="98" y="72" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#5B6B72">Erfüllungsgrad</text>
+            <text x="98" y="100" text-anchor="middle" font-family="Inter, sans-serif" font-size="30" font-weight="500" fill="#071317">94 %</text>
+          </svg>
+        </div>
+        <div>
+          <div class="lab" style="margin-bottom: 8px; margin-left: 40px">Mit Maßen</div>
+          <div style="position: relative; margin: 0 24px 0 40px; width: 196px; height: 112px">
+            <svg width="196" height="112" viewBox="0 0 196 112" fill="none" style="position: absolute; left: 0; top: 0">
+              <rect x="0.5" y="0.5" width="195" height="111" stroke="#02A0A0" stroke-dasharray="4 3"></rect>
+              <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#E7EEF1" stroke-width="13" stroke-linecap="round"></path>
+              <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#0E6B45" stroke-width="13" stroke-linecap="round" stroke-dasharray="173 400"></path>
+              <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#955410" stroke-width="13" stroke-linecap="round" stroke-dasharray="32 400" stroke-dashoffset="-179"></path>
+              <path d="M 26 100 A 72 72 0 0 1 170 100" stroke="#BCCDD4" stroke-width="13" stroke-linecap="round" stroke-dasharray="7 400" stroke-dashoffset="-217"></path>
+              <text x="98" y="72" text-anchor="middle" font-family="Inter, sans-serif" font-size="11" fill="#5B6B72">Erfüllungsgrad</text>
+              <text x="98" y="100" text-anchor="middle" font-family="Inter, sans-serif" font-size="30" font-weight="500" fill="#071317">94 %</text>
+            </svg>
+            <div style="position: absolute; left: 0; top: -14px; width: 196px; border-top: 1px solid #017070"></div>
+            <div style="position: absolute; left: 0; top: -27px; width: 196px; text-align: center; font-size: 10.5px; color: #017070">196 px</div>
+            <div style="position: absolute; left: -14px; top: 0; height: 112px; border-left: 1px solid #017070"></div>
+            <div style="position: absolute; left: -42px; top: 50px; width: 26px; text-align: right; font-size: 10.5px; color: #017070">112</div>
+            <sc-for list="{{bogenMarken}}" as="m" hint-placeholder-count="3"><span class="mk" style="{{m.s}}">{{m.n}}</span></sc-for>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <sc-for list="{{bogenSpec}}" as="s" hint-placeholder-count="3"><span class="spec"><b>{{s.n}}</b>{{s.t}}</span></sc-for>
+        <div style="display: flex; align-items: center; gap: 14px; padding-left: 23px">
+          <sc-for list="{{segmente}}" as="g" hint-placeholder-count="3"><span class="spec"><span style="width: 22px; height: 8px; border-radius: 4px; background: {{g.c}}"></span>{{g.t}}</span></sc-for>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 14px">
+
+    <!-- Sparkline -->
+    <section class="kart" aria-label="Sparkline" style="width: 680px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+      <span class="kt">Sparkline · Höhe 40</span>
+
+      <div style="display: flex; align-items: center; gap: 30px">
+        <div style="width: 226px; flex-shrink: 0">
+          <div class="lab" style="margin-bottom: 4px">Linie und Fläche</div>
+          <svg width="226" height="40" viewBox="0 0 226 40" fill="none" role="img" aria-label="Sparkline Linie und Fläche"><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9 L220 40 L0 40 Z" fill="#DFF0F0"></path><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9" stroke="#017070" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path><circle cx="220" cy="9" r="3.2" fill="#017070" stroke="#FFFFFF" stroke-width="1.5"></circle></svg>
+        </div>
+        <div style="position: relative; width: 226px; height: 40px; flex-shrink: 0; margin-top: 16px">
+          <svg width="226" height="40" viewBox="0 0 226 40" fill="none" style="position: absolute; left: 0; top: 0"><rect x="0.5" y="0.5" width="225" height="39" stroke="#02A0A0" stroke-dasharray="4 3"></rect><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9 L220 40 L0 40 Z" fill="#DFF0F0"></path><path d="M0 34 L14 31 L28 32 L42 26 L56 28 L70 21 L84 23 L98 16 L112 19 L126 13 L140 17 L154 11 L168 14 L182 9 L196 12 L210 7 L220 9" stroke="#017070" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path><circle cx="220" cy="9" r="3.2" fill="#017070" stroke="#FFFFFF" stroke-width="1.5"></circle><circle cx="220" cy="9" r="8" stroke="#02A0A0" stroke-dasharray="2 2"></circle></svg>
+          <div style="position: absolute; right: -14px; top: 0; height: 40px; border-left: 1px solid #017070"></div>
+          <div style="position: absolute; right: -40px; top: 13px; font-size: 10.5px; color: #017070">40</div>
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55; margin-top: 16px">Linie 1,8 px #017070<br>Fläche #DFF0F0<br>Endpunkt r 3,2 px, weißer Ring 1,5 px</div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 30px">
+        <div style="width: 226px; flex-shrink: 0">
+          <div class="lab" style="margin-bottom: 4px">Säulen</div>
+          <div style="display: flex; align-items: flex-end; gap: 3px; height: 40px">
+            <sc-for list="{{saeulen}}" as="t" hint-placeholder-count="26"><div style="width: {{t.w}}; flex-shrink: 0; border-radius: 1.5px; height: {{t.h}}; background: {{t.c}}"></div></sc-for>
+          </div>
+        </div>
+        <div style="position: relative; width: 226px; height: 40px; flex-shrink: 0; margin-top: 16px">
+          <div style="position: absolute; left: 0; top: 0; display: flex; align-items: flex-end; gap: 18px; height: 40px">
+            <div style="width: 18px; height: 24px; background: #BCCDD4"></div><div style="width: 24px; height: 32px; background: #BCCDD4"></div><div style="width: 18px; height: 20px; background: #BCCDD4"></div><div style="width: 24px; height: 40px; background: #017070"></div>
+          </div>
+          <div style="position: absolute; left: 0; top: -14px; width: 18px; border-top: 1px solid #017070"></div>
+          <div style="position: absolute; left: 0; top: -28px; font-size: 10.5px; color: #017070; white-space: nowrap">3 bis 4 px (6-fach)</div>
+          <div style="position: absolute; left: 36px; top: 46px; width: 18px; border-top: 1px solid #017070"></div>
+          <div style="position: absolute; left: 30px; top: 49px; font-size: 10.5px; color: #017070; white-space: nowrap">Lücke 3 px</div>
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55; margin-top: 16px">Breite 3 bis 4 px<br>Lücke 3 px<br>ältere #BCCDD4, neueste #017070</div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 30px; margin-top: 8px">
+        <div style="width: 226px; flex-shrink: 0">
+          <div class="lab" style="margin-bottom: 4px">Punktraster</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 3px; height: 40px; width: 226px; align-content: flex-end; overflow: hidden">
+            <sc-for list="{{punkte}}" as="p" hint-placeholder-count="160"><div style="width: 4px; height: 4px; border-radius: 1px; background: {{p.c}}"></div></sc-for>
+          </div>
+        </div>
+        <div style="position: relative; width: 226px; height: 40px; flex-shrink: 0; margin-top: 16px">
+          <div style="position: absolute; left: 0; top: 0; display: grid; grid-template-columns: repeat(4, 24px); gap: 18px; row-gap: 18px">
+            <sc-for list="{{detailPunkte}}" as="p" hint-placeholder-count="8"><div style="width: 24px; height: 24px; border-radius: 4px; background: {{p.c}}"></div></sc-for>
+          </div>
+          <div style="position: absolute; left: 0; top: -14px; width: 24px; border-top: 1px solid #017070"></div>
+          <div style="position: absolute; left: 0; top: -28px; font-size: 10.5px; color: #017070; white-space: nowrap">4 px (6-fach)</div>
+          <div style="position: absolute; left: 132px; top: 30px; width: 18px; border-top: 1px solid #017070"></div>
+          <div style="position: absolute; left: 156px; top: 24px; font-size: 10.5px; color: #017070; white-space: nowrap">Lücke 3 px</div>
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55; margin-top: 16px">Punkt 4 px, Radius 1 px<br>Lücke 3 px, bündig unten</div>
+      </div>
+    </section>
+
+    <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 13px; min-width: 0">
+
+      <!-- Fortschrittsbalken -->
+      <section class="kart" aria-label="Fortschrittsbalken" style="display: flex; flex-direction: column; gap: 10px">
+        <span class="kt">Fortschrittsbalken</span>
+        <div style="display: flex; gap: 30px; align-items: flex-start">
+          <div style="width: 240px; flex-shrink: 0">
+            <div class="lab" style="margin-bottom: 8px">Original, 6 px und 8 px</div>
+            <div style="height: 6px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 6px; width: 62%; border-radius: 999px; background: #017070"></div></div>
+            <div style="margin-top: 14px; height: 8px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 8px; width: 78%; border-radius: 999px; background: #017070"></div></div>
+          </div>
+          <div style="flex-grow: 1">
+            <div class="lab" style="margin-bottom: 8px">Mit Maßen</div>
+            <div style="position: relative; height: 6px; width: 200px; border-radius: 999px; background: #E7EEF1; outline: 1px dashed #02A0A0; outline-offset: 2px"><div style="height: 6px; width: 62%; border-radius: 999px; background: #017070"></div><div style="position: absolute; right: -34px; top: -4px; font-size: 10.5px; color: #017070">6 px</div></div>
+            <div style="position: relative; margin-top: 14px; height: 8px; width: 200px; border-radius: 999px; background: #E7EEF1; outline: 1px dashed #02A0A0; outline-offset: 2px"><div style="height: 8px; width: 78%; border-radius: 999px; background: #017070"></div><div style="position: absolute; right: -34px; top: -3px; font-size: 10.5px; color: #017070">8 px</div></div>
+          </div>
+        </div>
+        <div class="spec" style="line-height: 1.5">Spur #E7EEF1, Füllung #017070, beide Enden ganz rund (Radius 999). 6 px in Listen, 8 px in Karten.</div>
+      </section>
+
+      <!-- Farbregel -->
+      <section class="kart" aria-label="Farbregel" style="flex-grow: 1; display: flex; flex-direction: column; gap: 10px; border: 1px solid #017070">
+        <span class="kt">Farbregel für den Verlauf</span>
+        <div style="display: flex; gap: 12px">
+          <div style="flex-grow: 1; flex-basis: 0">
+            <div style="position: relative; height: 84px; overflow: hidden; border-radius: 12px; border: 1px solid #CBDAE0; background: #E7EEF1">
+              <div style="position: absolute; inset: 0; background: radial-gradient(closest-side, rgba(2,160,160,0.34), rgba(231,238,241,0) 92%)"></div>
+              <div style="position: relative; padding: 10px 12px"><div style="font-size: 13px; font-weight: 600; color: #071317">Text #071317</div><div style="margin-top: 4px; font-size: 12px; color: #3D4E55">Dim #3D4E55</div></div>
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; line-height: 1.5; color: #3D4E55"><b>Hell:</b> Teal höchstens 0,40, im Token 0,34</div>
+          </div>
+          <div style="flex-grow: 1; flex-basis: 0">
+            <div style="position: relative; height: 84px; overflow: hidden; border-radius: 12px; border: 1px solid #071317; background: #071317">
+              <div style="position: absolute; inset: 0; background: radial-gradient(closest-side, rgba(2,160,160,0.22), rgba(7,19,23,0) 92%)"></div>
+              <div style="position: relative; padding: 10px 12px"><div style="font-size: 13px; font-weight: 600; color: #FFFFFF">Text hell</div><div style="margin-top: 4px; font-size: 12px; color: #DFF0F0">Dim hell</div></div>
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; line-height: 1.5; color: #3D4E55"><b>Dunkel:</b> Teal höchstens 0,24, im Token 0,22</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #071317">
+          <span style="padding: 2px 9px; border-radius: 999px; background: #DFEFE7; color: #0E6B45; font-size: 10.5px; font-weight: 600">erlaubt</span>
+          Auf dem Verlauf steht Text nur in #071317 und #3D4E55.
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #071317">
+          <span style="padding: 2px 9px; border-radius: 999px; background: #F6DEDC; color: #4E0401; font-size: 10.5px; font-weight: 600">verboten</span>
+          Die leise Textfarbe #5B6B72 gehört nie auf den Verlauf.
+        </div>
+      </section>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const kpiMarken = [
+      { n: '1', s: 'left:-26px;top:-1px;' },
+      { n: '2', s: 'left:-26px;top:15px;' },
+      { n: '3', s: 'left:-26px;top:45px;' },
+      { n: '4', s: 'right:-30px;top:45px;' },
+      { n: '5', s: 'left:-26px;top:72px;' },
+      { n: '6', s: 'right:-34px;top:113px;' },
+      { n: '7', s: 'left:-26px;top:140px;' }
+    ];
+    const kpiSpec = [
+      { n: '1', t: 'Padding 16 px' },
+      { n: '2', t: 'Titel 12 px, #5B6B72' },
+      { n: '3', t: 'Wert 30 px, Gewicht 500' },
+      { n: '4', t: 'Trendpille 11 px' },
+      { n: '5', t: 'Fuß 11 px' },
+      { n: '6', t: 'Diagrammhöhe 40 px' },
+      { n: '7', t: 'Radius 18 px' }
+    ];
+    const bogenMarken = [
+      { n: '1', s: 'left:176px;top:92px;' },
+      { n: '2', s: 'left:139px;top:58px;' },
+      { n: '3', s: 'left:14px;top:66px;' }
+    ];
+    const bogenSpec = [
+      { n: '1', t: 'Strichbreite 13 px, runde Enden, Radius 72 px' },
+      { n: '2', t: 'Zahl 30 px, Gewicht 500, mittig; Beschriftung 11 px' },
+      { n: '3', t: 'Fläche 196 mal 112 px, Segmente von links nach rechts' }
+    ];
+    const segmente = [
+      { t: 'ok #0E6B45', c: '#0E6B45' },
+      { t: 'warn #955410', c: '#955410' },
+      { t: 'lineStark #BCCDD4', c: '#BCCDD4' }
+    ];
+
+    const H = [12, 18, 15, 22, 17, 26, 20, 24, 28, 22, 30, 25, 33, 27, 36, 30, 34, 28, 37, 32, 38, 34, 36, 40];
+    const saeulen = H.map((h, i) => ({
+      h: h + 'px',
+      w: i % 3 === 1 ? '4px' : '3px',
+      c: i >= H.length - 6 ? '#017070' : '#BCCDD4'
+    }));
+
+    const punkte = [];
+    for (let i = 0; i < 160; i++) {
+      const k = i % 7;
+      punkte.push({ c: i > 120 && k < 2 ? '#955410' : (i % 11 === 0 ? '#BCCDD4' : '#017070') });
+    }
+    const detailPunkte = [];
+    for (let i = 0; i < 4; i++) { detailPunkte.push({ c: i === 3 ? '#955410' : '#017070' }); }
+
+    return { nav: this.nav('Verwaltung'), kpiMarken, kpiSpec, bogenMarken, bogenSpec, segmente, saeulen, punkte, detailPunkte };
+  }
+}
+</script>
+</body>
+</html>

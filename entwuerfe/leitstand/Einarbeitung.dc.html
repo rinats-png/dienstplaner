@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Einarbeitung</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1; min-width: 0">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Einarbeitung</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Neue Kräfte werden einer festen Begleitung zugeordnet · CENTRIC prüft für jeden Diensttag, ob beide tatsächlich zusammen eingeteilt sind</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px; flex-shrink: 0">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Einarbeitung anlegen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="display: flex; gap: 14px">
+    <sc-for list="{{kacheln}}" as="k" hint-placeholder-count="4">
+      <div style="flex-grow: 1; flex-basis: 0; min-width: 0; box-sizing: border-box; padding: 15px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid {{k.rand}}; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: {{k.c}}"></span>
+          <span style="flex-grow: 1; font-size: 11.5px; color: #5B6B72">{{k.titel}}</span>
+        </div>
+        <div style="margin-top: 5px; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px">
+          <span style="font-size: 27px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{k.wert}}</span>
+          <span style="font-size: 11.5px; color: #3D4E55">{{k.zusatz}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Laufende Einarbeitungen</span>
+        <span style="font-size: 11.5px; color: #5B6B72">Diensttage von heute bis 28.12.2026, soweit die Einarbeitung reicht</span>
+      </div>
+
+      <div style="display: flex; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #BCCDD4">
+        <span style="width: 170px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Neue Kraft</span>
+        <span style="width: 160px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Begleitung</span>
+        <span style="width: 108px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Zeitraum</span>
+        <span style="width: 220px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Gemeinsame Dienste</span>
+        <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Ohne Begleitung</span>
+        <span style="width: 80px; flex-shrink: 0"></span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1px">
+        <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 12px 8px 10px; margin: 0 -8px; border-radius: 10px; border-bottom: 1px solid #F4F8F9; background: {{z.bg}}">
+            <div style="display: flex; align-items: flex-start; gap: 10px">
+              <div style="width: 170px; flex-shrink: 0; display: flex; align-items: center; gap: 9px">
+                <span style="width: 27px; height: 27px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{z.farbe}}">{{z.kuerzel}}</span>
+                <div style="min-width: 0">
+                  <div style="font-size: 12.5px; font-weight: 500; color: #071317; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{z.name}}</div>
+                  <div style="font-size: 10px; color: #5B6B72">{{z.einheit}}</div>
+                </div>
+              </div>
+              <div style="width: 160px; flex-shrink: 0; display: flex; align-items: center; gap: 9px">
+                <span style="width: 27px; height: 27px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{z.mFarbe}}">{{z.mKuerzel}}</span>
+                <div style="min-width: 0">
+                  <div style="font-size: 12.5px; color: #071317; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{z.mName}}</div>
+                  <div style="font-size: 10px; color: #5B6B72">{{z.mEinheit}}</div>
+                </div>
+              </div>
+              <div style="width: 108px; flex-shrink: 0; font-size: 12px; line-height: 1.4; color: #3D4E55; font-variant-numeric: tabular-nums">
+                <div>{{z.von}}</div>
+                <div style="color: #5B6B72">bis {{z.bis}}</div>
+              </div>
+              <div style="width: 220px; flex-shrink: 0">
+                <div style="display: flex; align-items: baseline; gap: 8px">
+                  <span style="font-size: 25px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.1; color: {{z.c}}; font-variant-numeric: tabular-nums">{{z.quote}}</span>
+                  <span style="font-size: 11.5px; color: #5B6B72; font-variant-numeric: tabular-nums">{{z.anzahl}}</span>
+                </div>
+                <div style="margin-top: 6px; height: 7px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 7px; border-radius: 999px; width: {{z.b}}; background: {{z.c}}"></div></div>
+              </div>
+              <div style="flex-grow: 1; min-width: 0; font-size: 11.5px; line-height: 1.45; color: {{z.alleinFg}}; font-variant-numeric: tabular-nums">{{z.allein}}</div>
+              <div style="width: 80px; flex-shrink: 0; text-align: right"><button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; color: #4E0401; font-size: 11.5px">Beenden</button></div>
+            </div>
+            <div style="font-size: 11.5px; color: #3D4E55; padding-left: 36px"><span style="color: #5B6B72">Ziel</span> · {{z.ziel}}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+      <span style="flex-grow: 1; font-size: 11.5px; line-height: 1.55; color: #3D4E55"><strong style="color: #071317">Begleitet</strong> heißt: beide haben am selben Tag dieselbe Dienstart. Ob sie im selben Wohnbereich arbeiten, lässt sich daraus nicht ablesen. Das Ziel ist Freitext — CENTRIC prüft es nicht.</span>
+    </div>
+  </div>
+
+  <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Einarbeitung anlegen</span>
+
+      <div style="display: flex; flex-direction: column; gap: 5px">
+        <label for="ea-kraft" style="font-size: 11.5px; color: #5B6B72">Neue Kraft</label>
+        <select id="ea-kraft" style="height: 36px; box-sizing: border-box; padding: 0 10px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12.5px; color: #071317">
+          <option>Krause, Ines · Fachkraft</option>
+          <option>— wählen —</option>
+        </select>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 5px">
+        <label for="ea-begleitung" style="font-size: 11.5px; color: #5B6B72">Begleitung</label>
+        <select id="ea-begleitung" style="height: 36px; box-sizing: border-box; padding: 0 10px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12.5px; color: #071317">
+          <option>Lang, Sonja · Fachkraft</option>
+          <option>— wählen —</option>
+        </select>
+        <span style="font-size: 10.5px; line-height: 1.4; color: #5B6B72">Sollte derselben Einheit angehören, sonst treffen sich beide selten im Dienst.</span>
+      </div>
+
+      <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 9px; padding: 10px 12px; border-radius: 12px; background: #FFF6EC; border: 1px solid #FFE0C0">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+        <span style="font-size: 11.5px; line-height: 1.45; color: #071317">Beide gehören verschiedenen Wohnbereichen an. Sie werden dadurch kaum gemeinsam Dienst haben.</span>
+      </div>
+
+      <div style="display: flex; gap: 10px">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px">
+          <label for="ea-von" style="font-size: 11.5px; color: #5B6B72">Von</label>
+          <input id="ea-von" type="date" value="2026-09-29" style="height: 36px; box-sizing: border-box; width: 100%; padding: 0 8px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317" />
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px">
+          <label for="ea-bis" style="font-size: 11.5px; color: #5B6B72">Bis</label>
+          <input id="ea-bis" type="date" value="2026-11-24" style="height: 36px; box-sizing: border-box; width: 100%; padding: 0 8px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317" />
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 5px">
+        <label for="ea-ziel" style="font-size: 11.5px; color: #5B6B72">Ziel der Einarbeitung</label>
+        <input id="ea-ziel" type="text" placeholder="z. B. selbstständiger Nachtdienst nach acht Wochen" style="height: 36px; box-sizing: border-box; width: 100%; padding: 0 10px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317" />
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px">
+        <button type="button" style="height: 34px; padding: 0 14px; border-radius: 999px; color: #3D4E55; font-size: 12px">Abbrechen</button>
+        <button type="button" style="height: 34px; padding: 0 16px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12px; font-weight: 500">Anlegen</button>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Was die Farben bedeuten</span>
+      <sc-for list="{{stufen}}" as="s" hint-placeholder-count="3">
+        <div style="display: flex; align-items: flex-start; gap: 10px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; margin-top: 4px; flex-shrink: 0; background: {{s.c}}"></span>
+          <div style="flex-grow: 1">
+            <div style="font-size: 12.5px; font-weight: 600; color: #071317">{{s.n}}</div>
+            <div style="margin-top: 2px; font-size: 11.5px; line-height: 1.45; color: #5B6B72">{{s.t}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const EH = { 'Wohnbereich Nord': '#017070', 'Wohnbereich Süd': '#316C81', 'Wohnbereich West': '#023441' };
+
+    // tage = Diensttage der neuen Kraft im Zeitfenster, allein = die Tage, an denen die Begleitung nicht dieselbe Dienstart hat
+    const E = (name, kuerzel, einheit, mName, mKuerzel, mEinheit, von, bis, ziel, tage, allein) => {
+      const begleitet = tage - allein.length;
+      const q = Math.round((begleitet / tage) * 100);
+      let c = '#0E6B45', bg = 'transparent';
+      if (q < 50) { c = '#4E0401'; bg = '#FDF7F6'; }
+      else if (q < 80) { c = '#955410'; bg = '#FFFCF8'; }
+      const kurz = allein.slice(0, 5).join(', ') + (allein.length > 5 ? ' und ' + (allein.length - 5) + ' weitere' : '');
+      return {
+        name: name, kuerzel: kuerzel, farbe: EH[einheit], einheit: einheit,
+        mName: mName, mKuerzel: mKuerzel, mFarbe: EH[mEinheit], mEinheit: mEinheit,
+        von: von, bis: bis, ziel: ziel,
+        quote: q + ' %', anzahl: begleitet + ' von ' + tage + ' Diensten', b: q + '%', c: c, bg: bg,
+        allein: allein.length ? kurz : '—', alleinFg: allein.length ? '#955410' : '#5B6B72',
+        q: q, tage: tage, nAllein: allein.length
+      };
+    };
+
+    const zeilen = [
+      E('Berger, Nina', 'NB', 'Wohnbereich Nord', 'Kern, Andrea', 'AK', 'Wohnbereich Nord',
+        '07.09.2026', '02.11.2026', 'selbstständiger Nachtdienst nach acht Wochen', 21, ['06.10.', '20.10.']),
+      E('Roth, Hanna', 'HR', 'Wohnbereich Süd', 'Adler, Antje', 'AA', 'Wohnbereich Nord',
+        '14.09.2026', '09.11.2026', 'erste Frühdienste ohne Begleitung ab Woche sechs', 24,
+        ['30.09.', '02.10.', '05.10.', '07.10.', '09.10.', '13.10.', '15.10.', '19.10.', '22.10.', '26.10.', '29.10.', '03.11.', '06.11.']),
+      E('Timm, Anja', 'AT', 'Wohnbereich Süd', 'Weiß, Carola', 'CW', 'Wohnbereich Süd',
+        '21.09.2026', '16.11.2026', 'Medikamentengabe eigenverantwortlich', 27, ['01.10.', '13.10.', '27.10.', '10.11.']),
+      E('Peters, Max', 'MP', 'Wohnbereich West', 'Vogel, Jana', 'JV', 'Wohnbereich West',
+        '24.08.2026', '19.10.2026', 'selbstständiger Spätdienst nach acht Wochen', 13, ['12.10.'])
+    ];
+
+    const summe = (f) => zeilen.reduce((a, z) => a + z[f], 0);
+    const kacheln = [
+      { titel: 'Laufende Einarbeitungen', wert: String(zeilen.length), zusatz: 'mit fester Begleitung', c: '#017070', rand: '#CBDAE0' },
+      { titel: 'Begleitet ab 80 %', wert: String(zeilen.filter((z) => z.q >= 80).length), zusatz: 'von ' + zeilen.length, c: '#0E6B45', rand: '#DFEFE7' },
+      { titel: 'Begleitet unter 50 %', wert: String(zeilen.filter((z) => z.q < 50).length), zusatz: 'Begleitung selten im Dienst', c: '#4E0401', rand: '#F6DEDC' },
+      { titel: 'Diensttage ohne Begleitung', wert: String(summe('nAllein')), zusatz: 'von ' + summe('tage') + ' Diensttagen', c: '#955410', rand: '#FFE0C0' }
+    ];
+
+    const stufen = [
+      { n: 'ab 80 %', c: '#0E6B45', t: 'An fast allen Diensttagen sind beide zusammen eingeteilt.' },
+      { n: '50 bis 79 %', c: '#955410', t: 'Ein spürbarer Teil der Diensttage läuft ohne Begleitung.' },
+      { n: 'unter 50 %', c: '#4E0401', t: 'Mehr als die Hälfte der Diensttage läuft ohne Begleitung.' }
+    ];
+
+    return { nav: this.nav('Wer mitfährt'), kacheln, zeilen, stufen };
+  }
+}
+</script>
+</body>
+</html>

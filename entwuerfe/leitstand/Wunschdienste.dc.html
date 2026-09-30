@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Wunschdienste</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Wunschdienste</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Möchte arbeiten und Lieber nicht · Wünsche sind keine Anträge, die Planung berücksichtigt sie, soweit die Besetzung es zulässt</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <button type="button" aria-label="Vormonat" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 6-6 6 6 6"></path></svg></button>
+      <span style="min-width: 108px; text-align: center; font-size: 12.5px; font-weight: 600; color: #071317">Oktober 2026</span>
+      <button type="button" aria-label="Folgemonat" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 6 6 6-6 6"></path></svg></button>
+    </div>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+
+    <div style="display: flex; align-items: center; gap: 11px">
+      <span style="width: 34px; height: 34px; border-radius: 999px; flex-shrink: 0; font-size: 12px; font-weight: 600; color: #FFFFFF; background: #017070; display: flex; align-items: center; justify-content: center">NB</span>
+      <div style="flex-grow: 1">
+        <div style="font-size: 15px; font-weight: 600; color: #071317">Wunschdienste · Nina Berger</div>
+        <div style="margin-top: 2px; font-size: 12px; color: #5B6B72">Wohnbereich Nord · Pflegefachkraft</div>
+      </div>
+      <span style="font-size: 12.5px; color: #3D4E55">{{anzahl}} Wünsche in diesem Monat</span>
+    </div>
+
+    <div style="font-size: 12.5px; line-height: 1.55; color: #3D4E55">Tippe einen Tag an: einmal für <span style="font-weight: 600; color: #071317">möchte arbeiten</span>, zweimal für <span style="font-weight: 600; color: #071317">lieber nicht</span>, dreimal zum Löschen.</div>
+
+    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px">
+      <sc-for list="{{wochentage}}" as="w" hint-placeholder-count="7">
+        <div style="{{w.s}}">{{w.t}}</div>
+      </sc-for>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px">
+      <sc-for list="{{zellen}}" as="c" hint-placeholder-count="35">
+        <button type="button" aria-label="{{c.label}}" style="{{c.s}}">
+          <span style="{{c.nrS}}">{{c.nr}}</span>
+          <span style="{{c.dienstS}}">{{c.dienst}}</span>
+          <span style="{{c.zeichenS}}">{{c.zeichen}}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 18px; margin-top: auto; padding-top: 2px">
+      <sc-for list="{{legende}}" as="l" hint-placeholder-count="2">
+        <span style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #3D4E55"><span style="{{l.s}}">{{l.z}}</span>{{l.n}}</span>
+      </sc-for>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 11.5px; color: #5B6B72">Dienste im Plan: F Früh · S Spät · N Nacht</span>
+    </div>
+  </div>
+
+  <div style="width: 350px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 3px">
+      <div style="display: flex; align-items: center">
+        <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Wünsche und Plan</span>
+        <span style="font-size: 11px; color: #5B6B72">Oktober 2026</span>
+      </div>
+      <div style="margin-top: 6px; font-size: 12px; color: #3D4E55">{{erfuellt}}</div>
+      <div style="margin: 7px 0 8px; height: 6px; border-radius: 3px; background: #E7EEF1; overflow: hidden"><div style="{{balken}}"></div></div>
+      <sc-for list="{{wuensche}}" as="x" hint-placeholder-count="8">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid #F4F8F9">
+          <span style="{{x.zs}}">{{x.z}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="font-size: 12.5px; color: #071317">{{x.datum}}</div>
+            <div style="margin-top: 1px; font-size: 11px; color: #5B6B72">{{x.art}} · {{x.plan}}</div>
+          </div>
+          <span style="{{x.stS}}">{{x.st}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 13px 16px; border-radius: 14px; background: #E7EEF1; border: 1px solid #CBDAE0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+      <span style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Wünsche sind keine Anträge — es gibt weder Genehmigung noch Ablehnung. Ein „Lieber nicht“ lässt sich nicht erzwingen: Wo die Besetzung es nicht zulässt, bleibt der Wunsch im Plan unerfüllt. Vergangene Tage lassen sich nicht mehr eintragen.</span>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const DOW = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const ARTEN = {
+      m: { label: 'Möchte arbeiten', zeichen: '+', farbe: '#2E6B4F', bg: '#DFEFE7' },
+      l: { label: 'Lieber nicht', zeichen: '−', farbe: '#8A5A00', bg: '#FFE0C0' }
+    };
+    const DIENSTE = {
+      F: { name: 'Frühdienst', farbe: '#017070' },
+      S: { name: 'Spätdienst', farbe: '#316C81' },
+      N: { name: 'Nachtdienst', farbe: '#023441' }
+    };
+    /* Oktober 2026 beginnt an einem Donnerstag. */
+    const erster = 3;
+    const tage = 31;
+    const plan = 'FFF-SSS--FF--FFF--NNN----FFF-S-';
+    const wunsch = { 3: 'm', 8: 'l', 10: 'm', 13: 'l', 17: 'l', 21: 'l', 24: 'm', 31: 'l' };
+
+    const wochentage = DOW.map((d, i) => ({
+      t: d,
+      s: 'text-align:center;font-size:11.5px;font-weight:600;color:' + (i >= 5 ? '#5B6B72' : '#3D4E55') + ';'
+    }));
+
+    const zellen = [];
+    for (let i = 0; i < erster; i++) {
+      zellen.push({ label: '', nr: '', dienst: '', zeichen: '', s: 'visibility:hidden;height:82px;', nrS: '', dienstS: '', zeichenS: '' });
+    }
+    for (let d = 1; d <= tage; d++) {
+      const w = wunsch[d] ? ARTEN[wunsch[d]] : null;
+      const kz = plan.charAt(d - 1);
+      const di = DIENSTE[kz] || null;
+      const wd = DOW[(erster + d - 1) % 7];
+      const we = (erster + d - 1) % 7 >= 5;
+      zellen.push({
+        label: wd + ', ' + d + '. Oktober: ' + (w ? w.label : 'kein Wunsch') + ', im Plan ' + (di ? di.name : 'frei'),
+        nr: String(d),
+        dienst: di ? kz : '·',
+        zeichen: w ? w.zeichen : '·',
+        s: 'box-sizing:border-box;height:82px;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;'
+          + 'background:' + (w ? w.bg : '#F4F8F9') + ';border:' + (w ? '1.5px solid ' + w.farbe : '1px solid #E7EEF1') + ';',
+        nrS: 'font-size:13px;font-weight:600;color:' + (w ? w.farbe : (we ? '#5B6B72' : '#3D4E55')) + ';',
+        dienstS: 'font-size:11px;font-weight:600;color:' + (di ? di.farbe : 'transparent') + ';',
+        zeichenS: 'font-size:16px;font-weight:800;line-height:1;color:' + (w ? w.farbe : 'transparent') + ';'
+      });
+    }
+
+    const legende = [
+      { z: '+', n: 'Möchte arbeiten', s: 'width:19px;height:19px;border-radius:6px;background:#DFEFE7;border:1.5px solid #2E6B4F;color:#2E6B4F;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;' },
+      { z: '−', n: 'Lieber nicht', s: 'width:19px;height:19px;border-radius:6px;background:#FFE0C0;border:1.5px solid #8A5A00;color:#8A5A00;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;' }
+    ];
+
+    const ok = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;flex-shrink:0;background:#DFEFE7;color:#0E6B45;';
+    const nicht = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;flex-shrink:0;background:#FFE0C0;color:#955410;';
+    const wuensche = [];
+    let treffer = 0;
+    for (let d = 1; d <= tage; d++) {
+      if (!wunsch[d]) continue;
+      const w = ARTEN[wunsch[d]];
+      const kz = plan.charAt(d - 1);
+      const hat = !!DIENSTE[kz];
+      const erfuellt = (wunsch[d] === 'm' && hat) || (wunsch[d] === 'l' && !hat);
+      if (erfuellt) treffer++;
+      wuensche.push({
+        datum: DOW[(erster + d - 1) % 7] + ', ' + d + '. Oktober',
+        art: w.label,
+        plan: hat ? 'im Plan ' + DIENSTE[kz].name : 'im Plan frei',
+        z: w.zeichen,
+        zs: 'width:22px;height:22px;border-radius:7px;flex-shrink:0;background:' + w.bg + ';border:1.5px solid ' + w.farbe + ';color:' + w.farbe + ';font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;',
+        st: erfuellt ? 'erfüllt' : 'nicht erfüllt',
+        stS: erfuellt ? ok : nicht
+      });
+    }
+    const gesamt = wuensche.length;
+    const quote = Math.round((treffer / gesamt) * 100);
+
+    return {
+      nav: this.nav('Zu entscheiden'),
+      anzahl: String(gesamt),
+      wochentage, zellen, legende, wuensche,
+      erfuellt: treffer + ' von ' + gesamt + ' Wünschen trifft der Plan · ' + quote + ' %',
+      balken: 'height:6px;border-radius:3px;background:#0E6B45;width:' + quote + '%;'
+    };
+  }
+}
+</script>
+</body>
+</html>

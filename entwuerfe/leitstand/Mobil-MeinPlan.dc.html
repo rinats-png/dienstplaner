@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Mobil — Mein Plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #D9E4E8; display: flex; flex-direction: column">
+
+<div style="position: absolute; top: -170px; left: -60px; width: 500px; height: 380px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.44), rgba(80,232,244,0.22) 50%, rgba(223,240,240,0) 80%); filter: blur(46px)"></div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 20px 18px 0; display: flex; align-items: center; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px">
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+      <div style="width: 4px; height: 17px; border-radius: 2px; background: #02A0A0"></div>
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Mitteilungen" style="position: relative; width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2.4"></rect><path d="m4.2 7.8 7.8 5.8 7.8-5.8"></path></svg>
+    <span style="position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 999px; background: #955410; border: 1.5px solid #D9E4E8"></span>
+  </button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">TB</div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 14px 18px 0; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+  <div>
+    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #3D4E55">Freigegeben · Stand 25. Sep.</div>
+    <h1 style="margin: 6px 0 0; font-size: 29px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Mein Plan</h1>
+  </div>
+  <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <span aria-current="true" style="height: 40px; padding: 0 16px; border-radius: 999px; background: #071317; color: #FFFFFF; font-size: 13px; font-weight: 600; display: flex; align-items: center">Liste</span>
+    <button type="button" style="height: 40px; padding: 0 16px; border-radius: 999px; color: #3D4E55; font-size: 13px">Monat</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 16px 18px 0; display: flex; gap: 8px; overflow: hidden">
+  <sc-for list="{{filter}}" as="f" hint-placeholder-count="5">
+    <button type="button" style="{{f.s}}">{{f.t}}</button>
+  </sc-for>
+</div>
+
+<div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 16px 18px 0">
+  <sc-for list="{{tage}}" as="d" hint-placeholder-count="8">
+    <button type="button" style="{{d.s}}">
+      <span style="width: 2.5px; align-self: stretch; flex-shrink: 0; background: {{d.linie}}"></span>
+      <span style="width: 50px; flex-shrink: 0; text-align: center">
+        <span style="display: block; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: #3D4E55">{{d.wd}}</span>
+        <span style="display: block; font-size: 22px; font-weight: 600; line-height: 1.1; color: {{d.numFarbe}}">{{d.num}}</span>
+        <span style="display: block; font-size: 10.5px; color: #3D4E55">{{d.mon}}</span>
+      </span>
+      <span style="flex-grow: 1; min-width: 0">
+        <span style="display: block; font-size: 16px; font-weight: 600; letter-spacing: -0.015em; color: #071317">{{d.art}}</span>
+        <span style="display: block; margin-top: 2px; font-size: 13px; color: #3D4E55">{{d.zeit}}</span>
+        <span style="display: block; margin-top: 1px; font-size: 12px; color: #5B6B72">{{d.ort}}</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-right: 12px"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"></path></svg>
+    </button>
+  </sc-for>
+</div>
+
+<div style="position: relative; flex-shrink: 0; height: 72px; box-sizing: border-box; padding: 0 8px; background: #FFFFFF; border-top: 1px solid #CBDAE0; display: flex; align-items: center">
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.4"></circle><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"></circle></svg>
+    <span style="font-size: 10.5px">Heute</span>
+  </button>
+  <span aria-current="page" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #017070; background: #DFF0F0; box-shadow: inset 0 -2px 0 #017070">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3.4" y="5.4" width="17.2" height="15.2" rx="2.4"></rect><path d="M8 3.2v4M16 3.2v4M3.4 10.4h17.2"></path></svg>
+    <span style="font-size: 10.5px; font-weight: 600">Mein Plan</span>
+  </span>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20.2h14"></path><path d="M14.2 4.4 18 8.2 8.6 17.6H4.8v-3.8z"></path></svg>
+    <span style="font-size: 10.5px">Anliegen</span>
+  </button>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7.5h16M4 12h16M4 16.5h16"></path></svg>
+    <span style="font-size: 10.5px">Mehr</span>
+  </button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const an = 'height:44px;padding:0 16px;border-radius:999px;flex-shrink:0;font-size:13px;font-weight:600;background:#017070;color:#FFFFFF;border:1px solid #017070;';
+    const aus = 'height:44px;padding:0 16px;border-radius:999px;flex-shrink:0;font-size:13px;background:#FFFFFF;color:#3D4E55;border:1px solid #CBDAE0;';
+    const filter = [
+      { t: 'Alle', s: an }, { t: 'Nur Dienste', s: aus }, { t: 'Nur frei', s: aus },
+      { t: 'Nachtdienste', s: aus }, { t: 'Wochenende', s: aus }
+    ];
+
+    const ART = {
+      F: { n: 'Frühdienst', c: '#017070', t: '#E6F1F1', z: '6:00 – 14:15 · 8,3 h' },
+      S: { n: 'Spätdienst', c: '#316C81', t: '#E8EFF2', z: '13:45 – 22:00 · 8,3 h' },
+      N: { n: 'Nachtdienst', c: '#023441', t: '#E5ECEE', z: '21:45 – 6:15 · 8,5 h' }
+    };
+    const roh = [
+      { wd: 'Di', num: '29', mon: 'Sep', k: 'S', heute: true },
+      { wd: 'Mi', num: '30', mon: 'Sep', k: 'S' },
+      { wd: 'Do', num: '1', mon: 'Okt', k: 'S' },
+      { wd: 'Sa', num: '3', mon: 'Okt', k: 'N', feiertag: true },
+      { wd: 'So', num: '4', mon: 'Okt', k: 'N' },
+      { wd: 'Di', num: '6', mon: 'Okt', k: 'F' },
+      { wd: 'Mi', num: '7', mon: 'Okt', k: 'F' },
+      { wd: 'Do', num: '8', mon: 'Okt', k: 'F' }
+    ];
+    const tage = roh.map((r) => {
+      const a = ART[r.k];
+      return {
+        wd: r.wd, num: r.num, mon: r.mon,
+        numFarbe: r.feiertag ? '#4E0401' : (r.heute ? '#017070' : '#071317'),
+        art: a.n, zeit: a.z, ort: 'Wohnbereich Nord', linie: a.c,
+        s: 'width:100%;box-sizing:border-box;min-height:62px;padding:6px 0;margin-bottom:8px;border-radius:14px;overflow:hidden;text-align:left;'
+          + 'display:flex;align-items:center;gap:12px;background:' + a.t + ';border:1px solid #CBDAE0;'
+          + (r.heute ? 'outline:2px solid #017070;outline-offset:0;' : '')
+      };
+    });
+    return { filter, tage };
+  }
+}
+</script>
+</body>
+</html>

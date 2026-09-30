@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Schwarzes Brett</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Schwarzes Brett</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Aushänge für alle im Betrieb · für Nachrichten an einzelne Personen gibt es die Mitteilungen</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Aushang verfassen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="font-size: 14px; font-weight: 600; color: #071317">Angeschlagen</span>
+      <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #DFF0F0; color: #017070">{{gueltig}} gelten</span>
+      <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #F6DEDC; color: #4E0401">{{wichtig}} wichtig</span>
+      <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #E7EEF1; color: #3D4E55">{{abgelaufen}} abgelaufen</span>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 12px; color: #5B6B72">Wichtige zuerst, danach die neuesten</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start">
+      <sc-for list="{{aushaenge}}" as="a" hint-placeholder-count="5">
+        <div style="{{a.karte}}">
+          <div style="display: flex; align-items: center; gap: 8px; min-height: 22px">
+            <span style="{{a.pilleS}}">{{a.pille}}</span>
+            <div style="flex-grow: 1"></div>
+            <button type="button" style="height: 28px; padding: 0 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #4E0401; color: #4E0401; font-size: 11.5px">Abnehmen</button>
+          </div>
+          <div style="margin-top: 9px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: #071317">{{a.titel}}</div>
+          <div style="margin-top: 7px; font-size: 13px; line-height: 1.55; color: #3D4E55">{{a.text}}</div>
+          <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #F4F8F9; font-size: 11.5px; line-height: 1.5; color: #5B6B72">{{a.von}} · {{a.zeit}}</div>
+          <div style="margin-top: 1px; font-size: 11.5px; color: #5B6B72">{{a.bis}}</div>
+        </div>
+      </sc-for>
+
+      <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; border-radius: 14px; background: #E7EEF1; border: 1px solid #CBDAE0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+        <span style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Ein Aushang erreicht alle im Betrieb, nicht einzelne Personen — dafür gibt es die Mitteilungen. Abgelaufene Aushänge nimmt niemand von allein ab: Sie stehen abgeblendet da, bis jemand „Abnehmen“ wählt. Ob ein Aushang gelesen wurde, lässt sich nicht nachvollziehen.</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 18px; display: flex; flex-direction: column; gap: 14px">
+      <span style="font-size: 14px; font-weight: 600; color: #071317">Aushang verfassen</span>
+
+      <div>
+        <label for="ab-titel" style="display: block; font-size: 11px; color: #5B6B72; margin-bottom: 5px">Überschrift</label>
+        <input id="ab-titel" type="text" value="Erste-Hilfe-Auffrischung im November" style="box-sizing: border-box; width: 100%; height: 38px; padding: 0 13px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-family: inherit; font-size: 12.5px; color: #071317">
+      </div>
+
+      <div>
+        <label for="ab-text" style="display: block; font-size: 11px; color: #5B6B72; margin-bottom: 5px">Text</label>
+        <textarea id="ab-text" rows="5" style="box-sizing: border-box; width: 100%; padding: 10px 13px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-family: inherit; font-size: 12.5px; line-height: 1.5; color: #071317; resize: none">Am 11. November, 14:00 bis 17:00 Uhr. Eingeladen sind alle, deren Nachweis bis Ende des Jahres abläuft. Bitte bis 6. November bei der Leitung melden.</textarea>
+      </div>
+
+      <div style="display: flex; align-items: flex-start; gap: 12px">
+        <div style="flex-grow: 1">
+          <label for="ab-bis" style="display: block; font-size: 11px; color: #5B6B72; margin-bottom: 5px">Aushängen bis</label>
+          <input id="ab-bis" type="date" value="2026-11-11" style="box-sizing: border-box; width: 100%; height: 38px; padding: 0 11px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-family: inherit; font-size: 12.5px; color: #071317">
+          <div style="margin-top: 5px; font-size: 11px; color: #5B6B72">Leer bedeutet unbefristet.</div>
+        </div>
+        <div style="flex-shrink: 0; padding-top: 19px">
+          <label for="ab-wichtig" style="display: flex; align-items: center; gap: 9px; height: 38px; font-size: 12.5px; color: #071317; cursor: pointer">
+            <input id="ab-wichtig" type="checkbox" style="width: 16px; height: 16px; margin: 0; accent-color: #017070">Als wichtig hervorheben
+          </label>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 2px">
+        <button type="button" style="height: 36px; padding: 0 14px; border-radius: 999px; font-size: 12.5px; color: #3D4E55">Abbrechen</button>
+        <button type="button" style="height: 36px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Anschlagen</button>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Wo Aushänge erscheinen</span>
+      <sc-for list="{{orte}}" as="o" hint-placeholder-count="3">
+        <div style="display: flex; align-items: flex-start; gap: 10px; padding-top: 10px; border-top: 1px solid #F4F8F9">
+          <span style="width: 8px; height: 8px; border-radius: 2px; margin-top: 4px; flex-shrink: 0; background: #017070"></span>
+          <div style="flex-grow: 1">
+            <div style="font-size: 12.5px; font-weight: 500; color: #071317">{{o.titel}}</div>
+            <div style="margin-top: 2px; font-size: 11.5px; line-height: 1.5; color: #5B6B72">{{o.text}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const karteWichtig = 'box-sizing:border-box;padding:16px 18px;border-radius:18px;background:#FFFFFF;border:1px solid #CBDAE0;border-left:4px solid #4E0401;box-shadow:0 1px 2px rgba(7,19,23,0.04),0 8px 22px rgba(7,19,23,0.05);';
+    const karteNormal = 'box-sizing:border-box;padding:16px 18px;border-radius:18px;background:#FFFFFF;border:1px solid #CBDAE0;box-shadow:0 1px 2px rgba(7,19,23,0.04),0 8px 22px rgba(7,19,23,0.05);';
+    const karteAlt = 'box-sizing:border-box;padding:16px 18px;border-radius:18px;background:#FFFFFF;border:1px solid #CBDAE0;opacity:0.55;';
+    const pWichtig = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#F6DEDC;color:#4E0401;';
+    const pNormal = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const pAlt = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#E7EEF1;color:#3D4E55;';
+
+    const aushaenge = [
+      { karte: karteWichtig, pille: 'wichtig', pilleS: pWichtig,
+        titel: 'Brandschutzübung am 7. Oktober',
+        text: 'Um 14:00 Uhr in allen Wohnbereichen, im laufenden Betrieb. Bitte vorher Fluchtwege und Sammelplatz am Haupteingang ansehen. Wer im Dienst ist, nimmt teil.',
+        von: 'Sabine Krüger', zeit: '28.9.2026, 14:32', bis: 'aushängen bis 07.10.2026' },
+      { karte: karteWichtig, pille: 'wichtig', pilleS: pWichtig,
+        titel: 'Dienstplan Oktober ist freigegeben',
+        text: 'Spätere Änderungen erhältst du als Mitteilung. Wünsche für den November trägst du unter Wunschdienste ein.',
+        von: 'Sabine Krüger', zeit: '26.9.2026, 09:05', bis: 'aushängen bis 31.10.2026' },
+      { karte: karteNormal, pille: 'gilt', pilleS: pNormal,
+        titel: 'Fortbildung Hygiene am 14. Oktober',
+        text: 'Auffrischung für alle, deren Nachweis in diesem Quartal abläuft. Die Anmeldung läuft über die Leitung, bis 9. Oktober.',
+        von: 'Sabine Krüger', zeit: '25.9.2026, 16:48', bis: 'aushängen bis 14.10.2026' },
+      { karte: karteNormal, pille: 'gilt', pilleS: pNormal,
+        titel: 'Parkplatz am Hintereingang gesperrt',
+        text: 'Wegen Bauarbeiten bis Freitag nicht nutzbar. Bitte den Parkplatz am Haupteingang verwenden.',
+        von: 'Sabine Krüger', zeit: '29.9.2026, 07:10', bis: 'aushängen bis 02.10.2026' },
+      { karte: karteAlt, pille: 'abgelaufen', pilleS: pAlt,
+        titel: 'Sommerfest am 12. September',
+        text: 'Ab 14:00 Uhr im Garten. Kuchenspenden bitte im Wohnbereich Süd abgeben.',
+        von: 'Sabine Krüger', zeit: '1.9.2026, 11:20', bis: 'aushängen bis 12.09.2026' }
+    ];
+
+    const orte = [
+      { titel: 'Am Tagesstart', text: 'Die drei neuesten Aushänge, die noch gelten, unter „Am Schwarzen Brett“.' },
+      { titel: 'In der mobilen Ansicht', text: 'Als Zeile „Schwarzes Brett“ mit der Zahl der Aushänge.' },
+      { titel: 'Für alle im Betrieb', text: 'Jede Person sieht jeden Aushang. Anschlagen und Abnehmen dürfen nur Berechtigte.' }
+    ];
+
+    return { nav: this.nav('Zu entscheiden'), gueltig: '4', wichtig: '2', abgelaufen: '1', aushaenge, orte };
+  }
+}
+</script>
+</body>
+</html>

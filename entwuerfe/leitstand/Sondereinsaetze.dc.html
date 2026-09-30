@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Sondereinsätze</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Sondereinsätze</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Einsätze außerhalb des Regelplans – Feste, Ausflüge, Begleitungen · mit eigener Kostenstelle, weil sie gesondert berechnet werden</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Einsatz anlegen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; flex-direction: column; gap: 13px">
+
+  <div style="box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; align-items: flex-end; gap: 16px">
+    <div style="display: flex; flex-direction: column; gap: 5px">
+      <label for="se-von" style="font-size: 11.5px; color: #5B6B72">Von</label>
+      <input id="se-von" type="date" value="2026-08-30" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 13px; color: #071317">
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 5px">
+      <label for="se-bis" style="font-size: 11.5px; color: #5B6B72">Bis</label>
+      <input id="se-bis" type="date" value="2026-11-28" style="height: 36px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 13px; color: #071317">
+    </div>
+    <span style="padding-bottom: 9px; font-size: 11.5px; color: #5B6B72">Voreinstellung: 30 Tage zurück, 60 Tage voraus</span>
+    <div style="flex-grow: 1"></div>
+    <div style="text-align: right">
+      <div style="font-size: 11.5px; color: #5B6B72">Stunden im Zeitraum</div>
+      <div style="margin-top: 2px; font-size: 26px; line-height: 1.1; font-weight: 300; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: #071317">{{summe}}</div>
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; gap: 14px; align-items: flex-start">
+
+    <div style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 8px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Einsätze</span>
+        <span style="font-size: 11.5px; color: #5B6B72">6 im Zeitraum</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 7px; border-bottom: 1px solid #BCCDD4">
+        <span style="width: 44px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Datum</span>
+        <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Einsatz</span>
+        <span style="width: 236px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Zugeteilt</span>
+        <span style="width: 84px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Stunden</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{einsaetze}}" as="s" hint-placeholder-count="6">
+          <button type="button" style="{{s.stil}}">
+            <span style="width: 44px; flex-shrink: 0; text-align: left">
+              <span style="display: block; font-size: 20px; line-height: 1.1; font-weight: 300; letter-spacing: -0.02em; color: #071317; font-variant-numeric: tabular-nums">{{s.tag}}</span>
+              <span style="display: block; margin-top: 1px; font-size: 10.5px; color: #5B6B72">{{s.wm}}</span>
+            </span>
+            <span style="flex-grow: 1; min-width: 0; text-align: left">
+              <span style="display: block; font-size: 13.5px; font-weight: 600; color: #071317">{{s.bezeichnung}}</span>
+              <span style="display: block; margin-top: 2px; font-size: 11.5px; color: #3D4E55; font-variant-numeric: tabular-nums">{{s.zeit}}</span>
+              <span style="display: block; margin-top: 1px; font-size: 11px; color: #5B6B72">{{s.kostenstelle}}</span>
+            </span>
+            <span style="width: 236px; flex-shrink: 0; display: flex; flex-wrap: wrap; gap: 4px; text-align: left">
+              <sc-for list="{{s.zugeteilt}}" as="p" hint-placeholder-count="4">
+                <span style="{{p.stil}}">{{p.t}}</span>
+              </sc-for>
+            </span>
+            <span style="width: 84px; flex-shrink: 0; text-align: right">
+              <span style="display: block; font-size: 15px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">{{s.gesamt}}</span>
+              <span style="display: block; margin-top: 2px; font-size: 10.5px; color: #5B6B72; font-variant-numeric: tabular-nums">{{s.rechnung}}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="width: 392px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+      <div style="box-sizing: border-box; padding: 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+        <div>
+          <div style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #017070">{{detail.ks}}</div>
+          <div style="margin-top: 5px; font-size: 18px; font-weight: 600; letter-spacing: -0.015em; color: #071317">{{detail.titel}}</div>
+          <div style="margin-top: 5px; font-size: 12.5px; color: #3D4E55; font-variant-numeric: tabular-nums">{{detail.zeit}}</div>
+          <div style="margin-top: 2px; font-size: 12.5px; color: #3D4E55">{{detail.ort}}</div>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <sc-for list="{{kacheln}}" as="k" hint-placeholder-count="3">
+            <div style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 9px 11px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+              <div style="font-size: 10.5px; color: #5B6B72">{{k.label}}</div>
+              <div style="margin-top: 3px; font-size: 16px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">{{k.wert}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Zugeteilt</div>
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px">
+            <sc-for list="{{personen}}" as="p" hint-placeholder-count="3">
+              <div style="display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 10px; background: #F4F8F9; border: 1px solid #E7EEF1">
+                <span style="width: 24px; height: 24px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{p.farbe}}">{{p.kuerzel}}</span>
+                <span style="flex-grow: 1; font-size: 12.5px; color: #071317">{{p.name}}</span>
+                <span style="font-size: 10.5px; color: #5B6B72">{{p.einheit}}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <button type="button" style="height: 34px; padding: 0 15px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Zuteilung ändern</button>
+        </div>
+      </div>
+
+      <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border-radius: 16px; background: #FFF6EC; border: 1px solid #FFE0C0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+        <span style="font-size: 11.5px; line-height: 1.55; color: #071317">Ein Sondereinsatz lässt sich nicht gegen die Ruhezeit prüfen: Die Planprüfung liest ihn nicht. Wer nach einem Nachtdienst zugeteilt wird, fällt dort nicht auf. Die Stunden erscheinen getrennt im Nachweis; ohne Zuteilung stehen sie bei 0,0 h.</span>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    /* Stunden wie sondereinsatzStunden(): (Ende - Beginn - Pause) je Person, mal Zahl der Zugeteilten */
+    const zuMin = (z) => Number(z.slice(0, 2)) * 60 + Number(z.slice(3));
+    const stunden = (start, ende, pause, n) => {
+      let a = zuMin(start), b = zuMin(ende);
+      if (b <= a) b += 1440;
+      const je = Math.round(((b - a - pause) / 60) * 10) / 10;
+      return { je: je, gesamt: Math.round(je * n * 10) / 10 };
+    };
+    const z1 = (x) => x.toFixed(1).replace('.', ',');
+    const WT = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+    const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+    const P = {
+      adler: { k: 'AA', n: 'Adler, A.', name: 'Adler, Antje', e: 'Wohnbereich Nord', f: '#017070' },
+      brandt: { k: 'MB', n: 'Brandt, M.', name: 'Brandt, Miriam', e: 'Wohnbereich Süd', f: '#017070' },
+      lang: { k: 'SL', n: 'Lang, S.', name: 'Lang, Sonja', e: 'Wohnbereich Süd', f: '#316C81' },
+      weiss: { k: 'CW', n: 'Weiß, C.', name: 'Weiß, Carola', e: 'Wohnbereich Süd', f: '#316C81' },
+      kern: { k: 'AK', n: 'Kern, A.', name: 'Kern, Andrea', e: 'Wohnbereich Nord', f: '#017070' },
+      sadiku: { k: 'ES', n: 'Sadiku, E.', name: 'Sadiku, Elira', e: 'Wohnbereich Süd', f: '#017070' },
+      richter: { k: 'KR', n: 'Richter, K.', name: 'Richter, Kai', e: 'Wohnbereich Nord', f: '#316C81' },
+      nowak: { k: 'PN', n: 'Nowak, P.', name: 'Nowak, Piotr', e: 'Wohnbereich Nord', f: '#017070' },
+      oeztuerk: { k: 'DÖ', n: 'Öztürk, D.', name: 'Öztürk, Derya', e: 'Springerpool', f: '#017070' },
+      hoffmann: { k: 'LH', n: 'Hoffmann, L.', name: 'Hoffmann, Lars', e: 'Wohnbereich Süd', f: '#316C81' },
+      krause: { k: 'IK', n: 'Krause, I.', name: 'Krause, Ines', e: 'Wohnbereich West', f: '#316C81' },
+      peters: { k: 'MP', n: 'Peters, M.', name: 'Peters, Max', e: 'Springerpool', f: '#017070' },
+      berger: { k: 'NB', n: 'Berger, N.', name: 'Berger, Nina', e: 'Wohnbereich West', f: '#017070' },
+      roth: { k: 'HR', n: 'Roth, H.', name: 'Roth, Hanna', e: 'Wohnbereich West', f: '#017070' }
+    };
+
+    const liste = [
+      { datum: [2026, 9, 12], bez: 'Sommerfest im Garten', start: '14:00', ende: '20:00', ort: 'Garten und Speisesaal',
+        ks: 'SE-2026-010', ag: 'Förderverein Lindenhof e. V.', zug: ['adler', 'brandt', 'lang', 'weiss'] },
+      { datum: [2026, 9, 17], bez: 'Ausflug Tierpark Sababurg', start: '09:00', ende: '16:00', ort: 'Tierpark Sababurg',
+        ks: 'SE-2026-011', ag: 'Förderverein Lindenhof e. V.', zug: ['kern', 'sadiku', 'richter'] },
+      { datum: [2026, 10, 4], bez: 'Erntedank-Andacht mit Begleitung', start: '10:00', ende: '12:30', ort: 'Kapelle und Speisesaal',
+        ks: 'SE-2026-012', ag: 'Evangelische Kirchengemeinde', zug: ['hoffmann', 'krause'] },
+      { datum: [2026, 10, 14], bez: 'Grippeschutz-Impftag', start: '08:00', ende: '13:00', ort: 'Wohnbereiche Nord, Süd, West',
+        ks: 'SE-2026-013', ag: 'Hausarztpraxis am Park', zug: ['nowak', 'oeztuerk'], gewaehlt: true },
+      { datum: [2026, 11, 6], bez: 'Laternenumzug mit Kita', start: '16:30', ende: '19:00', ort: 'Außengelände',
+        ks: 'SE-2026-015', ag: 'Kita Sonnenhof', zug: [] },
+      { datum: [2026, 11, 28], bez: 'Adventsbasar', start: '11:00', ende: '17:00', ort: 'Speisesaal',
+        ks: 'SE-2026-016', ag: 'Förderverein Lindenhof e. V.', zug: ['peters', 'berger', 'roth'] }
+    ];
+
+    let summeH = 0;
+    let gewaehlt = null;
+    const einsaetze = liste.map((s) => {
+      const d = new Date(s.datum[0], s.datum[1] - 1, s.datum[2]);
+      const h = stunden(s.start, s.ende, 0, s.zug.length);
+      summeH += h.gesamt;
+      if (s.gewaehlt) gewaehlt = { s: s, d: d, h: h };
+      const pillen = s.zug.length
+        ? s.zug.map((k) => ({ t: P[k].n, stil: 'padding:2px 8px;border-radius:999px;font-size:10.5px;background:#F4F8F9;border:1px solid #CBDAE0;color:#071317;white-space:nowrap;' }))
+        : [{ t: 'niemand zugeteilt', stil: 'padding:2px 0;font-size:11.5px;font-weight:600;color:#955410;' }];
+      return {
+        tag: String(d.getDate()), wm: WT[d.getDay()] + ' · ' + MON[d.getMonth()],
+        bezeichnung: s.bez,
+        zeit: s.start + '–' + s.ende + ' · ' + s.ort,
+        kostenstelle: 'Kostenstelle ' + s.ks + ' · ' + s.ag,
+        zugeteilt: pillen,
+        gesamt: z1(h.gesamt) + ' h',
+        rechnung: s.zug.length + ' × ' + z1(h.je) + ' h',
+        stil: 'display:flex;align-items:center;gap:12px;width:100%;box-sizing:border-box;padding:10px 8px;margin:0;border-radius:12px;border-bottom:1px solid #F4F8F9;background:' + (s.gewaehlt ? '#DFF0F0' : 'transparent') + ';'
+      };
+    });
+
+    const g = gewaehlt;
+    const WTL = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+    const MONL = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    const detail = {
+      ks: 'Kostenstelle ' + g.s.ks,
+      titel: g.s.bez,
+      zeit: WTL[g.d.getDay()] + ', ' + g.d.getDate() + '. ' + MONL[g.d.getMonth()] + ' ' + g.d.getFullYear() + ' · ' + g.s.start + '–' + g.s.ende,
+      ort: g.s.ort + ' · ' + g.s.ag
+    };
+    const kacheln = [
+      { label: 'je Person', wert: z1(g.h.je) + ' h' },
+      { label: 'Zugeteilte', wert: String(g.s.zug.length) },
+      { label: 'Gesamt', wert: z1(g.h.gesamt) + ' h' }
+    ];
+    const personen = g.s.zug.map((k) => ({ name: P[k].name, kuerzel: P[k].k, einheit: P[k].e, farbe: P[k].f }));
+
+    return { nav: this.nav('Planen'), summe: z1(summeH), einsaetze, detail, kacheln, personen };
+  }
+}
+</script>
+</body>
+</html>

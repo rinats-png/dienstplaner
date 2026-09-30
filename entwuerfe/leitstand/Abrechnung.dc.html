@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Abrechnungsdaten</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Abrechnungsdaten</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">September 2026 · fertig zur Übergabe an die Lohnbuchhaltung · Stand nach Freigabe vom 28. September</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <span style="height: 30px; padding: 0 13px; border-radius: 999px; background: #071317; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center">Zuschläge</span>
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">Freizeitausgleich</button>
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">Lohnausgabe</button>
+    </div>
+    <button type="button" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Export<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"></path></svg></button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Zuschlagspflichtige Stunden</span>
+      <span style="font-size: 11.5px; color: #5B6B72">12 von 57 · Werte in Stunden</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #BCCDD4">
+      <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Person</span>
+      <span style="width: 82px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Nacht</span>
+      <span style="width: 82px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Samstag</span>
+      <span style="width: 82px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Sonntag</span>
+      <span style="width: 82px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Feiertag</span>
+      <span style="width: 96px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Gesamt</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 1px">
+      <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="12">
+        <div style="display: flex; align-items: center; gap: 10px; height: 40px; border-bottom: 1px solid #F4F8F9">
+          <div style="flex-grow: 1; display: flex; align-items: center; gap: 9px; min-width: 0">
+            <span style="width: 26px; height: 26px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{z.farbe}}">{{z.kuerzel}}</span>
+            <span style="font-size: 12.5px; color: #071317; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{z.name}}</span>
+          </div>
+          <span style="width: 82px; text-align: right; font-size: 12.5px; color: #071317; font-variant-numeric: tabular-nums">{{z.nacht}}</span>
+          <span style="width: 82px; text-align: right; font-size: 12.5px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.samstag}}</span>
+          <span style="width: 82px; text-align: right; font-size: 12.5px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.sonntag}}</span>
+          <span style="width: 82px; text-align: right; font-size: 12.5px; color: #3D4E55; font-variant-numeric: tabular-nums">{{z.feiertag}}</span>
+          <span style="width: 96px; text-align: right; font-size: 12.5px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">{{z.gesamt}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px; margin: 0 -10px; border-radius: 10px; background: #F4F8F9">
+      <span style="flex-grow: 1; font-size: 12.5px; font-weight: 600; color: #071317">Summe aller 57 Beschäftigten</span>
+      <span style="width: 82px; text-align: right; font-size: 12.5px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">2.184,5</span>
+      <span style="width: 82px; text-align: right; font-size: 12.5px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">1.396,0</span>
+      <span style="width: 82px; text-align: right; font-size: 12.5px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">1.312,5</span>
+      <span style="width: 82px; text-align: right; font-size: 12.5px; font-weight: 600; color: #071317; font-variant-numeric: tabular-nums">198,0</span>
+      <span style="width: 96px; text-align: right; font-size: 13px; font-weight: 700; color: #071317; font-variant-numeric: tabular-nums">5.091,0</span>
+    </div>
+
+    <div style="margin-top: auto; box-sizing: border-box; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #F4FAF7; border: 1px solid #DFEFE7">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E6B45" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m4.6 12.4 4.8 4.8L19.4 6.6"></path></svg>
+      <span style="flex-grow: 1; font-size: 12px; color: #071317">Der Monat ist freigegeben und regelgeprüft. Nachträgliche Änderungen erzeugen eine Korrekturzeile statt einer stillen Anpassung.</span>
+    </div>
+  </div>
+
+  <div style="width: 330px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Hinterlegte Sätze</span>
+      <sc-for list="{{saetze}}" as="s" hint-placeholder-count="4">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: {{s.c}}"></span>
+          <div style="flex-grow: 1">
+            <div style="font-size: 12px; color: #071317">{{s.n}}</div>
+            <div style="margin-top: 1px; font-size: 10.5px; color: #5B6B72">{{s.zeit}}</div>
+          </div>
+          <span style="font-size: 13px; font-weight: 600; color: #071317">{{s.p}}</span>
+        </div>
+      </sc-for>
+      <div style="box-sizing: border-box; padding: 10px 12px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 11px; line-height: 1.5; color: #3D4E55">
+        Sätze und Grenzen kommen aus dem gewählten Tarifwerk. Abweichende Betriebsvereinbarungen lassen sich je Einheit hinterlegen.
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Übergabeformat</span>
+      <sc-for list="{{formate}}" as="f" hint-placeholder-count="3">
+        <button type="button" style="display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 13px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: #017070"></span>
+          <div style="flex-grow: 1; text-align: left">
+            <div style="font-size: 12.5px; color: #071317">{{f.n}}</div>
+            <div style="margin-top: 1px; font-size: 10.5px; color: #5B6B72">{{f.t}}</div>
+          </div>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #E7EEF1; border: 1px solid #CBDAE0; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 9px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round"><rect x="4.5" y="10.5" width="15" height="9.5" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+        <span style="font-size: 13px; font-weight: 600; color: #071317">Nur Zahlen, keine Gründe</span>
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Der Export enthält Stunden, Zuschlagsarten und Personalnummern. Abwesenheitsgründe, Freitexte und alles, was auf Gesundheitsdaten schließen lässt, bleiben in CENTRIC.</div>
+      <div style="font-size: 11.5px; line-height: 1.6; color: #3D4E55">Wer diese Ansicht öffnen darf, steht in der Rechtetabelle — die Organisationsleitung, sonst niemand.</div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const n = (x) => x.toFixed(1).replace('.', ',');
+    const Z = (name, kuerzel, farbe, nacht, samstag, sonntag, feiertag) => ({
+      name: name, kuerzel: kuerzel, farbe: farbe,
+      nacht: n(nacht), samstag: n(samstag), sonntag: n(sonntag), feiertag: n(feiertag),
+      gesamt: n(nacht + samstag + sonntag + feiertag)
+    });
+
+    const zeilen = [
+      Z('Adler, Antje', 'AA', '#017070', 33.0, 24.75, 16.5, 0),
+      Z('Brandt, Miriam', 'MB', '#017070', 24.75, 16.5, 8.25, 0),
+      Z('Hoffmann, Lars', 'LH', '#316C81', 66.0, 24.75, 24.75, 8.25),
+      Z('Kern, Andrea', 'AK', '#017070', 16.5, 16.5, 16.5, 0),
+      Z('Lang, Sonja', 'SL', '#316C81', 33.0, 24.75, 16.5, 8.25),
+      Z('Mertens, Frank', 'FM', '#017070', 49.5, 33.0, 24.75, 0),
+      Z('Nowak, Piotr', 'PN', '#017070', 66.0, 24.75, 24.75, 8.25),
+      Z('Öztürk, Derya', 'DÖ', '#017070', 57.75, 33.0, 24.75, 8.25),
+      Z('Richter, Kai', 'KR', '#316C81', 33.0, 16.5, 16.5, 0),
+      Z('Sadiku, Elira', 'ES', '#017070', 24.75, 16.5, 8.25, 0),
+      Z('Seidel, Tim', 'TS', '#955410', 0, 16.5, 8.25, 0),
+      Z('Weiß, Carola', 'CW', '#316C81', 24.75, 24.75, 16.5, 0)
+    ];
+
+    const saetze = [
+      { n: 'Nachtarbeit', zeit: '21:00 – 6:00 Uhr', p: '25 %', c: '#023441' },
+      { n: 'Samstagsarbeit', zeit: 'ab 13:00 Uhr', p: '20 %', c: '#316C81' },
+      { n: 'Sonntagsarbeit', zeit: 'ganztägig', p: '50 %', c: '#017070' },
+      { n: 'Feiertagsarbeit', zeit: 'ganztägig', p: '125 %', c: '#955410' }
+    ];
+
+    const formate = [
+      { n: 'DATEV Lohn und Gehalt', t: 'CSV nach Vorgabe des Steuerbüros' },
+      { n: 'Tabelle zur Kontrolle', t: 'alle Zeilen mit Einzelnachweis' },
+      { n: 'Monatsnachweis je Person', t: 'PDF, zur Aushändigung geeignet' }
+    ];
+
+    return { nav: this.nav('Nachsehen'), zeilen, saetze, formate };
+  }
+}
+</script>
+</body>
+</html>

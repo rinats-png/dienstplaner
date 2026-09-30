@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Personal — kompakt</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <span style="display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12px; font-weight: 600; color: #3D4E55">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    Kompakt
+  </span>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Personal</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">57 Beschäftigte in vier Einheiten und einem Springerpool · Stand 29. September 2026</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Übernehmen aus Datei</button>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Person anlegen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 12px 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 9px; min-height: 0">
+
+    <div style="display: flex; align-items: center; gap: 9px">
+      <div style="width: 260px">
+        <label for="pe-suche" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Person suchen</label>
+        <input id="pe-suche" type="search" placeholder="Name suchen …" style="box-sizing: border-box; width: 100%; height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid #BCCDD4; background: #F4F8F9; font-size: 13px; color: #071317">
+      </div>
+      <sc-for list="{{filter}}" as="f" hint-placeholder-count="5"><span style="{{f.s}}">{{f.t}}</span></sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 8px; padding: 0 0 6px; border-bottom: 1px solid #BCCDD4">
+      <span style="width: 28px; flex-shrink: 0"></span>
+      <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Name</span>
+      <span style="width: 150px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Einheit</span>
+      <span style="width: 96px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Qualifikation</span>
+      <span style="width: 74px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Umfang</span>
+      <span style="width: 78px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Konto</span>
+      <span style="width: 96px; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase; text-align: right">Rolle</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column">
+      <sc-for list="{{leute}}" as="p" hint-placeholder-count="16">
+        <div style="display: flex; align-items: center; gap: 8px; height: 36px; box-sizing: border-box; padding: 0 8px; margin: 0 -8px; border-radius: 8px; border-bottom: 1px solid #F1F6F7; background: {{p.zeileBg}}">
+          <span style="width: 28px; height: 24px; flex-shrink: 0; border-radius: 999px; font-size: 10px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{p.farbe}}">{{p.kuerzel}}</span>
+          <div style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden">
+            <span style="font-size: 13.5px; font-weight: 500; color: #071317">{{p.name}}</span>
+            <span style="font-size: 11px; color: #5B6B72">{{p.seit}}</span>
+          </div>
+          <span style="width: 150px; font-size: 13.5px; color: #3D4E55">{{p.einheit}}</span>
+          <span style="width: 96px"><span style="padding: 1px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{p.qualBg}}; color: {{p.qualFg}}">{{p.qual}}</span></span>
+          <span style="width: 74px; font-size: 13.5px; color: #3D4E55">{{p.umfang}}</span>
+          <span style="width: 78px; text-align: right; font-size: 13.5px; font-weight: 600; color: {{p.kontoFg}}; font-variant-numeric: tabular-nums">{{p.konto}}</span>
+          <span style="width: 96px; text-align: right; font-size: 12px; color: #5B6B72">{{p.rolle}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; display: flex; align-items: center; gap: 10px; padding-top: 4px; border-top: 1px solid #E7EEF1">
+      <span style="font-size: 11.5px; color: #5B6B72">16 von 57 angezeigt</span>
+      <div style="flex-grow: 1"></div>
+      <a href="#" style="font-size: 12.5px; font-weight: 600; text-decoration: none">Weitere laden</a>
+    </div>
+  </div>
+
+  <div style="width: 320px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+      <div style="display: flex; align-items: center; gap: 11px">
+        <span style="width: 44px; height: 44px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center">AK</span>
+        <div style="flex-grow: 1">
+          <div style="font-size: 15px; font-weight: 600; color: #071317">Kern, Andrea</div>
+          <div style="margin-top: 2px; font-size: 11.5px; color: #5B6B72">Pflegefachkraft · seit 3. Mai 2019</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 9px">
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 10px 11px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1">
+          <div style="font-size: 10.5px; color: #5B6B72">Umfang</div>
+          <div style="margin-top: 2px; font-size: 16px; font-weight: 500; color: #071317">80 %</div>
+        </div>
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 10px 11px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1">
+          <div style="font-size: 10.5px; color: #5B6B72">Konto</div>
+          <div style="margin-top: 2px; font-size: 16px; font-weight: 500; color: #071317">+18,5 h</div>
+        </div>
+        <div style="flex-grow: 1; box-sizing: border-box; padding: 10px 11px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1">
+          <div style="font-size: 10.5px; color: #5B6B72">Urlaub</div>
+          <div style="margin-top: 2px; font-size: 16px; font-weight: 500; color: #071317">9 T</div>
+        </div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px">
+        <sc-for list="{{marken}}" as="m" hint-placeholder-count="5">
+          <span style="padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 500; background: {{m.bg}}; color: {{m.fg}}">{{m.t}}</span>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <button type="button" style="flex-grow: 1; height: 36px; border-radius: 999px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 12px; color: #071317">Jahresansicht</button>
+        <button type="button" style="flex-grow: 1; height: 36px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12px; font-weight: 500">Bearbeiten</button>
+      </div>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 11px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Zusammensetzung</span>
+      <sc-for list="{{verteilung}}" as="v" hint-placeholder-count="5">
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="width: 9px; height: 9px; border-radius: 3px; background: {{v.c}}"></span>
+            <span style="flex-grow: 1; font-size: 12px; color: #071317">{{v.n}}</span>
+            <span style="font-size: 12px; font-weight: 600; color: #071317">{{v.z}}</span>
+          </div>
+          <div style="margin-top: 5px; height: 5px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 5px; border-radius: 999px; width: {{v.b}}; background: {{v.c}}"></div></div>
+        </div>
+      </sc-for>
+      <div style="margin-top: auto; box-sizing: border-box; padding: 11px 12px; border-radius: 12px; background: #F4FAF7; border: 1px solid #DFEFE7; font-size: 11.5px; line-height: 1.5; color: #3D4E55">
+        Fachkraftquote 54 % — die Landesvorgabe von 50 % ist eingehalten.
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const fAn = 'height:36px;padding:0 13px;border-radius:999px;display:flex;align-items:center;font-size:12px;font-weight:600;background:#071317;color:#FFFFFF;';
+    const fAus = 'height:36px;padding:0 13px;border-radius:999px;display:flex;align-items:center;font-size:12px;background:#F4F8F9;border:1px solid #E7EEF1;color:#3D4E55;';
+    const filter = [
+      { t: 'Alle', s: fAn }, { t: 'Nord', s: fAus }, { t: 'Süd', s: fAus },
+      { t: 'West', s: fAus }, { t: 'Ausgetreten', s: fAus }
+    ];
+
+    const Q = {
+      PFK: { bg: '#DFF0F0', fg: '#017070', farbe: '#017070' },
+      PHK: { bg: '#E4EDF1', fg: '#2A5A6D', farbe: '#316C81' },
+      AZB: { bg: '#FFE0C0', fg: '#955410', farbe: '#955410' }
+    };
+    const R = (name, kuerzel, einheit, qual, umfang, konto, rolle, seit, aktiv) => {
+      const k = parseFloat(String(konto).replace(',', '.').replace('+', ''));
+      return {
+        name: name, kuerzel: kuerzel, einheit: einheit, qual: qual,
+        qualBg: Q[qual].bg, qualFg: Q[qual].fg, farbe: Q[qual].farbe,
+        umfang: umfang, konto: konto, rolle: rolle, seit: seit,
+        kontoFg: k > 15 ? '#955410' : (k < -5 ? '#316C81' : '#071317'),
+        zeileBg: aktiv ? '#F4FAFA' : 'transparent'
+      };
+    };
+
+    const leute = [
+      R('Adler, Antje', 'AA', 'Wohnbereich Nord', 'PFK', '100 %', '+4,0 h', 'Mitarbeiterin', 'seit 2016', false),
+      R('Berger, Nina', 'NB', 'Wohnbereich West', 'PFK', '100 %', '+3,5 h', 'Sub-Planerin', 'seit 2021', false),
+      R('Brandt, Miriam', 'MB', 'Wohnbereich Süd', 'PFK', '75 %', '−2,5 h', 'Mitarbeiterin', 'seit 2018', false),
+      R('Hoffmann, Lars', 'LH', 'Wohnbereich Süd', 'PHK', '100 %', '+9,0 h', 'Mitarbeiter', 'seit 2020', false),
+      R('Kern, Andrea', 'AK', 'Wohnbereich Nord', 'PFK', '80 %', '+18,5 h', 'Mitarbeiterin', 'seit 2019', true),
+      R('Krause, Ines', 'IK', 'Wohnbereich West', 'PHK', '60 %', '+1,0 h', 'Mitarbeiterin', 'seit 2022', false),
+      R('Lang, Sonja', 'SL', 'Wohnbereich Süd', 'PHK', '100 %', '+6,5 h', 'Mitarbeiterin', 'seit 2017', false),
+      R('Mertens, Frank', 'FM', 'Springerpool', 'PFK', '100 %', '−6,5 h', 'Mitarbeiter', 'seit 2023', false),
+      R('Nowak, Piotr', 'PN', 'Wohnbereich Nord', 'PFK', '100 %', '+2,0 h', 'Mitarbeiter', 'seit 2015', false),
+      R('Öztürk, Derya', 'DÖ', 'Springerpool', 'PFK', '100 %', '+11,0 h', 'Mitarbeiterin', 'seit 2019', false),
+      R('Peters, Marie', 'MP', 'Springerpool', 'PFK', '100 %', '+1,5 h', 'Mitarbeiterin', 'seit 2022', false),
+      R('Richter, Kai', 'KR', 'Wohnbereich Nord', 'PHK', '80 %', '+0,5 h', 'Mitarbeiter', 'seit 2021', false),
+      R('Roth, Heike', 'HR', 'Wohnbereich West', 'PFK', '100 %', '+5,0 h', 'Mitarbeiterin', 'seit 2018', false),
+      R('Seidel, Tim', 'TS', 'Wohnbereich Nord', 'AZB', '100 %', '±0,0 h', 'Auszubildender', 'seit 2025', false),
+      R('Timm, Anna', 'AT', 'Wohnbereich West', 'PHK', '75 %', '−1,0 h', 'Mitarbeiterin', 'seit 2023', false),
+      R('Weiß, Carola', 'CW', 'Wohnbereich Nord', 'PHK', '100 %', '+3,0 h', 'Mitarbeiterin', 'seit 2017', false)
+    ];
+
+    const marken = [
+      { t: 'Praxisanleitung', bg: '#DFF0F0', fg: '#017070' },
+      { t: 'Wundexpertin ICW', bg: '#DFF0F0', fg: '#017070' },
+      { t: 'Erste Hilfe', bg: '#DFEFE7', fg: '#0E6B45' },
+      { t: 'Brandschutzhelferin', bg: '#FFE0C0', fg: '#955410' },
+      { t: 'Nachtdiensttauglich', bg: '#E4EDF1', fg: '#2A5A6D' }
+    ];
+
+    const verteilung = [
+      { n: 'Pflegefachkräfte', z: '31', b: '100%', c: '#017070' },
+      { n: 'Pflegehilfskräfte', z: '18', b: '58%', c: '#316C81' },
+      { n: 'Auszubildende', z: '5', b: '16%', c: '#955410' },
+      { n: 'Springerpool', z: '3', b: '10%', c: '#0E6B45' },
+      { n: 'Ausgetreten (12 Monate)', z: '4', b: '13%', c: '#9DB3BC' }
+    ];
+
+    return { nav: this.nav('Wer mitfährt'), filter, leute, marken, verteilung };
+  }
+}
+</script>
+</body>
+</html>

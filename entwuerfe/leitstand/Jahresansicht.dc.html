@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Jahresansicht</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Jahresansicht</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Kern, Andrea · Pflegefachkraft · Wohnbereich Nord · Kalenderjahr 2026</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Kern, Andrea<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="2.2" stroke-linecap="round"><path d="m6 9.5 6 6 6-6"></path></svg></button>
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <button type="button" aria-label="Vorjahr" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14.5 5.5-6.5 6.5 6.5 6.5"></path></svg></button>
+      <span style="padding: 0 9px; font-size: 12.5px; font-weight: 600; color: #071317">2026</span>
+      <button type="button" aria-label="Folgejahr" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"></path></svg></button>
+    </div>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Urlaub eintragen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="display: flex; gap: 14px">
+    <sc-for list="{{konten}}" as="k" hint-placeholder-count="4">
+      <div style="flex-grow: 1; box-sizing: border-box; padding: 14px 16px; border-radius: 16px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="font-size: 11.5px; color: #5B6B72">{{k.titel}}</div>
+        <div style="display: flex; align-items: baseline; gap: 8px; margin-top: 3px">
+          <span style="font-size: 25px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{k.wert}}</span>
+          <span style="font-size: 12px; color: #3D4E55">{{k.zusatz}}</span>
+        </div>
+        <div style="margin-top: 8px; height: 6px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 6px; border-radius: 999px; width: {{k.breite}}; background: {{k.farbe}}"></div></div>
+        <div style="margin-top: 6px; font-size: 11px; color: #5B6B72">{{k.fuss}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px">
+
+    <div style="display: flex; align-items: center; gap: 16px">
+      <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Das ganze Jahr auf einen Blick</span>
+      <sc-for list="{{legende}}" as="l" hint-placeholder-count="7">
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #3D4E55"><span style="width: 11px; height: 11px; border-radius: 3px; background: {{l.c}}"></span>{{l.n}}</span>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center">
+      <div style="width: 46px; flex-shrink: 0"></div>
+      <sc-for list="{{tageskopf}}" as="d" hint-placeholder-count="31">
+        <div style="width: 40px; flex-shrink: 0; text-align: center; font-size: 9.5px; color: #5B6B72">{{d}}</div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 3px">
+      <sc-for list="{{monate}}" as="m" hint-placeholder-count="12">
+        <div style="display: flex; align-items: center">
+          <div style="width: 46px; flex-shrink: 0; font-size: 11.5px; font-weight: 600; color: #3D4E55">{{m.name}}</div>
+          <sc-for list="{{m.tage}}" as="t" hint-placeholder-count="31">
+            <div style="width: 40px; flex-shrink: 0; padding: 0 1px; box-sizing: border-box">
+              <div style="{{t.s}}">{{t.k}}</div>
+            </div>
+          </sc-for>
+          <div style="padding-left: 12px; font-size: 11px; color: #5B6B72; white-space: nowrap">{{m.summe}}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const ARTEN = {
+      F: { n: 'Früh', c: '#017070' },
+      S: { n: 'Spät', c: '#316C81' },
+      N: { n: 'Nacht', c: '#023441' },
+      U: { n: 'Urlaub', c: '#2E6B4F' },
+      K: { n: 'Krank', c: '#B3261E' },
+      A: { n: 'Ausgleich', c: '#0369A1' },
+      B: { n: 'Schulung', c: '#35506B' }
+    };
+    const legende = ['F', 'S', 'N', 'U', 'K', 'A', 'B'].map((k) => ({ n: ARTEN[k].n, c: ARTEN[k].c }));
+
+    const NAMEN = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+    const LAENGE = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    const ZYKLUS = 'FFFF..SSSS..NNNN..';
+
+    const tageskopf = [];
+    for (let i = 1; i <= 31; i++) tageskopf.push(String(i));
+
+    // Ein Kalendertag ist 1. Januar 2026 = Donnerstag.
+    let lauf = 0;
+    let wochentag = 3;
+    const monate = [];
+    for (let m = 0; m < 12; m++) {
+      const tage = [];
+      let dienste = 0;
+      for (let d = 0; d < 31; d++) {
+        if (d >= LAENGE[m]) {
+          tage.push({ k: '', s: 'height:22px;border-radius:5px;background:transparent;' });
+          continue;
+        }
+        const we = wochentag === 5 || wochentag === 6;
+        let k = ZYKLUS.charAt(lauf % ZYKLUS.length);
+        if (m === 6 && d >= 5 && d <= 25) k = 'U';
+        else if (m === 3 && d >= 5 && d <= 11) k = 'U';
+        else if (m === 8 && d >= 13 && d <= 17) k = 'K';
+        else if (m === 1 && (d === 9 || d === 10)) k = 'B';
+        else if (m === 10 && (d === 16 || d === 17)) k = 'A';
+        const art = ARTEN[k];
+        if (k === 'F' || k === 'S' || k === 'N') dienste++;
+        let s = 'height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;';
+        if (art) s += 'color:#FFFFFF;background:' + art.c + ';';
+        else s += 'color:#9DB3BC;background:' + (we ? '#E7EEF1' : '#F4F8F9') + ';';
+        tage.push({ k: art ? k : '', s: s });
+        lauf++;
+        wochentag = (wochentag + 1) % 7;
+      }
+      monate.push({ name: NAMEN[m], tage: tage, summe: dienste + ' Dienste' });
+    }
+
+    const konten = [
+      { titel: 'Urlaub', wert: '21', zusatz: 'von 30 Tagen', breite: '70%', farbe: '#2E6B4F', fuss: '9 Tage offen · Verfall am 31. März 2027' },
+      { titel: 'Krankheitstage', wert: '5', zusatz: 'in diesem Jahr', breite: '14%', farbe: '#B3261E', fuss: 'Betriebsdurchschnitt: 11 Tage' },
+      { titel: 'Stundenkonto', wert: '+18,5 h', zusatz: 'Saldo', breite: '58%', farbe: '#017070', fuss: 'Soll 1.664 h · Ist 1.682,5 h' },
+      { titel: 'Wochenenddienste', wert: '24', zusatz: 'von 52', breite: '46%', farbe: '#316C81', fuss: 'Betriebsdurchschnitt: 26' }
+    ];
+
+    return { nav: this.nav('Planen'), legende, tageskopf, monate, konten };
+  }
+}
+</script>
+</body>
+</html>

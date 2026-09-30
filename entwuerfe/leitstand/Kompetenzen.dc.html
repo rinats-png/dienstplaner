@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Kompetenzen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Kompetenzen</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Eine Qualifikation sagt, was jemand ist. Eine Kompetenz sagt, was jemand an einer bestimmten Sache darf — an diesem Gerät, an dieser Anlage.</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Kompetenz anlegen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+    <div style="display: flex; gap: 14px">
+      <sc-for list="{{kpis}}" as="t" hint-placeholder-count="4">
+        <div style="flex: 1 1 0; box-sizing: border-box; padding: 14px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+          <div style="font-size: 11px; color: #5B6B72">{{t.label}}</div>
+          <div style="{{t.wertS}}">{{t.wert}}</div>
+          <div style="display: flex; align-items: center; gap: 6px; margin-top: 3px; font-size: 11px; color: #5B6B72"><span style="{{t.punktS}}"></span>{{t.sub}}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex-grow: 1; display: flex; gap: 14px; min-height: 0">
+
+      <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); flex-grow: 1; min-width: 0; align-self: flex-start; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; padding: 15px 20px 12px">
+          <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Übersicht</span>
+          <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #5B6B72">5 angelegt</span>
+        </div>
+
+        <sc-for list="{{kompetenzen}}" as="k" hint-placeholder-count="5">
+          <div style="border-top: 1px solid #F4F8F9">
+            <button type="button" aria-expanded="{{k.exp}}" style="width: 100%; box-sizing: border-box; text-align: left; display: flex; align-items: center; gap: 10px; padding: 12px 20px">
+              <div style="flex-grow: 1; min-width: 0">
+                <div style="font-size: 14px; font-weight: 600; color: #071317">{{k.name}}</div>
+                <div style="margin-top: 3px; font-size: 12px; color: #5B6B72">{{k.unter}}</div>
+              </div>
+              <span style="{{k.traegerS}}">{{k.traeger}}</span>
+              <span style="{{k.pflichtS}}">{{k.pflicht}}</span>
+              <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: #E7EEF1; color: #3D4E55">{{k.frist}}</span>
+              <span style="{{k.mangelS}}">unvollständig</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="{{k.chev}}"><path d="m9.5 6 6 6-6 6"></path></svg>
+            </button>
+
+            <div style="{{k.koerperS}}">
+              <div style="font-size: 12.5px; line-height: 1.5; color: #3D4E55"><span style="font-weight: 600; color: #071317">Grundlage:</span> {{k.grundlage}}</div>
+              <div style="margin-top: 14px; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #5B6B72">Wer sie hat</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 7px">
+                <sc-for list="{{k.chips}}" as="c" hint-placeholder-count="12">
+                  <button type="button" title="{{c.title}}" style="{{c.s}}">{{c.t}}</button>
+                </sc-for>
+              </div>
+              <div style="margin-top: 11px; font-size: 11.5px; line-height: 1.5; color: #5B6B72">Grün gültig · Orange läuft in den nächsten 60 Tagen ab · Rot abgelaufen · Weiß kein Nachweis. Ein Klick erteilt die Kompetenz oder nimmt sie zurück.</div>
+              <div style="display: flex; gap: 8px; margin-top: 14px">
+                <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12px; color: #071317">Bearbeiten</button>
+                <button type="button" style="height: 32px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #4E0401; font-size: 12px; color: #4E0401">Löschen</button>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="width: 370px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+        <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; align-items: center">
+            <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Vorbehaltene Aufgaben</span>
+            <span style="font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: #5B6B72">3 angelegt</span>
+          </div>
+          <div style="margin: 6px 0 8px; font-size: 12px; line-height: 1.55; color: #3D4E55">Manche Tätigkeiten darf nur ausüben, wer eine bestimmte Berufserlaubnis hat. Anders als die Fachkraftquote, ein Anteil, ist das eine Anwesenheit: mindestens eine Person im Dienst, die es darf.</div>
+          <sc-for list="{{aufgaben}}" as="a" hint-placeholder-count="3">
+            <div style="padding: 11px 0 3px; border-top: 1px solid #F4F8F9">
+              <div style="font-size: 12.5px; font-weight: 600; line-height: 1.4; color: #071317">{{a.name}}</div>
+              <div style="margin-top: 2px; font-size: 11.5px; color: #5B6B72">{{a.grundlage}}</div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px">
+                <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: #DFEFE7; color: #0E6B45">Pflegefachkraft</span>
+                <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: #E7EEF1; color: #3D4E55">geprüft bei F, S, N</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 13px 16px; border-radius: 14px; background: #E7EEF1; border: 1px solid #CBDAE0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+          <span style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Eine Kompetenz sperrt nur den Dienst, an dem sie hinterlegt ist, und lässt sich nicht als Qualifikation der Person führen. Eine zurückgenommene Freigabe wird nicht gelöscht: Sie bleibt mit Datum im Verlauf, damit „wurde entzogen“ von „war nie da“ zu unterscheiden ist.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const pille = (bg, fg) => 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:' + bg + ';color:' + fg + ';';
+    const AUS = 'display:none;';
+
+    const kpis = [
+      { label: 'Kompetenzen', wert: '5', sub: 'im Betrieb angelegt', c: '#071317', p: '#5B6B72' },
+      { label: 'Abgelaufen', wert: '2', sub: 'Einsatz gesperrt, wo verlangt', c: '#4E0401', p: '#4E0401' },
+      { label: 'Laufen bald ab', wert: '4', sub: 'in 60 Tagen', c: '#955410', p: '#955410' },
+      { label: 'Fehlen', wert: '3', sub: 'zugedacht, aber nicht erteilt', c: '#955410', p: '#955410' }
+    ].map((t) => ({
+      label: t.label, wert: t.wert, sub: t.sub,
+      wertS: 'margin-top: 4px; font-size: 26px; line-height: 1.1; font-weight: 500; letter-spacing: -0.02em; color: ' + t.c + ';',
+      punktS: 'width: 7px; height: 7px; border-radius: 2px; flex-shrink: 0; background: ' + t.p + ';'
+    }));
+
+    /* Stand je Person an der ersten Kompetenz: g gültig, l läuft ab, a abgelaufen, f fehlt */
+    const roh = [
+      ['Adler, A.', 'g'], ['Berger, N.', 'g'], ['Brandt, M.', 'l'], ['Hoffmann, L.', 'f'], ['Kern, A.', 'g'],
+      ['Krause, I.', 'g'], ['Lang, S.', 'f'], ['Mertens, F.', 'g'], ['Nowak, P.', 'g'], ['Öztürk, D.', 'a'],
+      ['Peters, M.', 'g'], ['Richter, K.', 'f'], ['Roth, H.', 'g'], ['Sadiku, E.', 'g'], ['Seidel, T.', 'f'],
+      ['Timm, A.', 'g'], ['Weiß, C.', 'f']
+    ];
+    const basis = 'height:30px;padding:0 12px;border-radius:999px;font-size:12px;flex-shrink:0;';
+    const STIL = {
+      g: { s: basis + 'background:#DFEFE7;border:1px solid #DFEFE7;color:#0E6B45;', mark: ' ✓', title: 'gültig, Klick nimmt die Kompetenz zurück' },
+      l: { s: basis + 'background:#FFFFFF;border:1px solid #955410;color:#955410;', mark: ' ✓', title: 'läuft ab, Klick nimmt die Kompetenz zurück' },
+      a: { s: basis + 'background:#F6DEDC;border:1px solid #F6DEDC;color:#4E0401;', mark: ' ✕', title: 'abgelaufen, Klick nimmt die Kompetenz zurück' },
+      f: { s: basis + 'background:#FFFFFF;border:1px solid #CBDAE0;color:#3D4E55;', mark: '', title: 'Kompetenz erteilen' }
+    };
+    const chips = roh.map((r) => ({ t: r[0] + STIL[r[1]].mark, s: STIL[r[1]].s, title: STIL[r[1]].title }));
+
+    const koerperAuf = 'padding:2px 20px 20px;';
+    const keinTraeger = pille('#FFE0C0', '#955410');
+    const traeger = pille('#DFEFE7', '#0E6B45');
+    const pflicht = pille('#F6DEDC', '#4E0401');
+    const zu = 'flex-shrink:0;transform:rotate(0deg);';
+    const auf = 'flex-shrink:0;transform:rotate(90deg);';
+
+    const kompetenzen = [
+      { name: 'Sauerstoffkonzentrator', unter: 'Gerät · Sauerstoffkonzentrator Station 2 (BM-014) · Freigabe: Medizintechnik',
+        traeger: '22 Personen', traegerS: traeger, pflicht: 'Voraussetzung für S, N', pflichtS: pflicht, frist: 'alle 12 Monate',
+        mangelS: AUS, exp: 'true', chev: auf, koerperS: koerperAuf, chips: chips,
+        grundlage: '§ 4 MPBetreibV — Einweisung je Gerät' },
+      { name: 'Deckenlifter', unter: 'Gerät · Deckenlifter Wohnbereich Nord (BM-021) · Freigabe: Hersteller-Einweisung',
+        traeger: '26 Personen', traegerS: traeger, pflicht: '', pflichtS: AUS, frist: 'alle 24 Monate',
+        mangelS: AUS, exp: 'false', chev: zu, koerperS: AUS, chips: [], grundlage: '' },
+      { name: 'Infusionspumpe', unter: 'Gerät · Infusionspumpe Station 1 (BM-033) · Freigabe: Medizintechnik',
+        traeger: '9 Personen', traegerS: traeger, pflicht: 'Voraussetzung für N', pflichtS: pflicht, frist: 'alle 12 Monate',
+        mangelS: AUS, exp: 'false', chev: zu, koerperS: AUS, chips: [], grundlage: '' },
+      { name: 'Brandmeldezentrale', unter: 'Anlage · Freigabe: Haustechnik',
+        traeger: '6 Personen', traegerS: traeger, pflicht: 'Voraussetzung für N', pflichtS: pflicht, frist: 'alle 12 Monate',
+        mangelS: pille('#FFE0C0', '#955410'), exp: 'false', chev: zu, koerperS: AUS, chips: [], grundlage: '' },
+      { name: 'Behandlungspflege, Injektionen', unter: 'Tätigkeit · Freigabe: Pflegedienstleitung',
+        traeger: '31 Personen', traegerS: traeger, pflicht: '', pflichtS: AUS, frist: 'ohne Frist',
+        mangelS: AUS, exp: 'false', chev: zu, koerperS: AUS, chips: [], grundlage: '' }
+    ];
+
+    const aufgaben = [
+      { name: 'Erhebung und Feststellung des individuellen Pflegebedarfs', grundlage: '§ 4 PflBG' },
+      { name: 'Organisation und Steuerung des Pflegeprozesses', grundlage: '§ 4 PflBG' },
+      { name: 'Analyse, Evaluation und Sicherung der Qualität der Pflege', grundlage: '§ 4 PflBG' }
+    ];
+
+    return { nav: this.nav('Wer mitfährt'), kpis, kompetenzen, aufgaben };
+  }
+}
+</script>
+</body>
+</html>

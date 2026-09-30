@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Übergabe</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.32), rgba(80,232,244,0.15) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">AA</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Übergabe</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Frühdienst → Spätdienst · Wohnbereich Nord · Dienstag, 29. September 2026, 13:45 Uhr</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Vorlage laden</button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Als Entwurf sichern</button>
+    <button type="button" style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Übergeben und quittieren<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.6 12.4 4.8 4.8L19.4 6.6"></path></svg></button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-content: start">
+
+  <div style="grid-column: span 8; display: flex; flex-direction: column; gap: 12px">
+    <sc-for list="{{felder}}" as="f" hint-placeholder-count="4">
+      <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="font-size: 13.5px; font-weight: 600; color: #071317">{{f.titel}}</span>
+          <span style="padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: {{f.markeBg}}; color: {{f.markeFg}}">{{f.marke}}</span>
+          <div style="flex-grow: 1"></div>
+          <span style="font-size: 11px; color: #5B6B72">{{f.hinweis}}</span>
+          <button type="button" style="height: 28px; padding: 0 11px; border-radius: 999px; background: #E7EEF1; font-size: 11.5px; color: #3D4E55">Bearbeiten</button>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 12.5px; line-height: 1.65; color: #071317; white-space: pre-line">{{f.text}}</p>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="grid-column: span 4; display: flex; flex-direction: column; gap: 12px">
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Übergabe an</span>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: #DFF0F0">
+        <span style="width: 34px; height: 34px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">MB</span>
+        <div style="flex-grow: 1">
+          <div style="font-size: 12.5px; font-weight: 600; color: #071317">Brandt, Miriam</div>
+          <div style="font-size: 11px; color: #3D4E55">Pflegefachkraft · Spätdienst ab 13:45 Uhr</div>
+        </div>
+      </div>
+      <div>
+        <label for="ue-suche" style="display: block; font-size: 11px; color: #5B6B72; margin-bottom: 5px">Andere Person übernehmen lassen</label>
+        <input id="ue-suche" type="search" placeholder="Name eingeben …" style="box-sizing: border-box; width: 100%; height: 38px; padding: 0 13px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12.5px; color: #071317">
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 11px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Vor dem Absenden</span>
+      <sc-for list="{{pruefliste}}" as="p" hint-placeholder-count="4">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="width: 17px; height: 17px; border-radius: 999px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: {{p.bg}}">
+            <span style="width: 7px; height: 7px; border-radius: 999px; background: {{p.punkt}}"></span>
+          </span>
+          <span style="flex-grow: 1; font-size: 12px; color: {{p.fg}}">{{p.t}}</span>
+          <span style="font-size: 11px; color: #5B6B72">{{p.stand}}</span>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 9px">
+      <div style="display: flex; align-items: center; gap: 9px">
+        <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Letzte Übergabe</span>
+        <a href="#" style="font-size: 12px; font-weight: 600; text-decoration: none">Ansehen</a>
+      </div>
+      <div style="font-size: 12px; color: #3D4E55; line-height: 1.6">Nachtdienst → Frühdienst, heute 6:15 Uhr.<br>Von Nowak, P. an Adler, A.</div>
+      <div style="display: flex; align-items: center; gap: 7px">
+        <span style="padding: 2px 9px; border-radius: 999px; background: #DFEFE7; color: #0E6B45; font-size: 11px; font-weight: 600">quittiert 6:22 Uhr</span>
+      </div>
+    </div>
+
+    <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 16px; background: #E7EEF1; border: 1px solid #CBDAE0">
+      <div style="display: flex; align-items: flex-start; gap: 9px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="margin-top: 1px; flex-shrink: 0"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+        <span style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Übergaben bleiben 24 Monate abrufbar — § 16 Abs. 2 ArbZG und § 17 MiLoG. Danach löscht CENTRIC sie selbsttätig.</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const felder = [
+      {
+        titel: 'Lage und Besonderheiten',
+        marke: 'Pflichtfeld', markeBg: '#FFE0C0', markeFg: '#955410',
+        hinweis: 'Was die übernehmende Schicht wissen muss.',
+        text: 'Wohnbereich Nord vollständig besetzt, keine Ausfälle. Zimmer 214: seit heute früh wieder mobilisiert, Transfer ausschließlich zu zweit. Zimmer 231: Angehörigengespräch um 15:30 Uhr, die Hausärztin kommt dazu. Die Sensormatte in 207 ist repariert und wieder in Betrieb.'
+      },
+      {
+        titel: 'Offene Aufgaben',
+        marke: 'mit Zeitbezug', markeBg: '#E7EEF1', markeFg: '#3D4E55',
+        hinweis: 'Was noch zu erledigen ist.',
+        text: '15:00 Uhr — Medikamentenstellung für Mittwoch abschließen, Fächer A bis L sind fertig.\n16:30 Uhr — Rücksprache mit der Hausarztpraxis wegen der Rezeptanforderung für 214.\nBis Dienstende — Trinkprotokolle 203, 211 und 228 nachtragen.'
+      },
+      {
+        titel: 'Besondere Vorkommnisse',
+        marke: 'dokumentiert', markeBg: '#F6DEDC', markeFg: '#4E0401',
+        hinweis: 'Ereignisse mit Dokumentationspflicht.',
+        text: '10:12 Uhr — Sturz ohne Verletzung in Zimmer 209, Bewohner ist selbstständig wieder aufgestanden. Sturzprotokoll angelegt, Pflegedienstleitung informiert, Angehörige um 10:40 Uhr telefonisch benachrichtigt.'
+      },
+      {
+        titel: 'Material und Betriebsmittel',
+        marke: 'übergeben', markeBg: '#DFEFE7', markeFg: '#0E6B45',
+        hinweis: 'Fehlendes, Defektes, Übergebenes.',
+        text: 'Fehlend: zwei Blutdruckmanschetten Größe L, Nachbestellung ausgelöst.\nDefekt: Pflegebett 226, Fernbedienung ohne Funktion — Haustechnik informiert um 9:20 Uhr, Vorgang 4471.\nÜbergeben: Stationsschlüssel, Notfallrucksack vollständig, Betäubungsmittelschrank kontrolliert und gegengezeichnet.'
+      }
+    ];
+
+    const pruefliste = [
+      { t: 'Lage und Besonderheiten ausgefüllt', stand: 'erledigt', bg: '#DFEFE7', punkt: '#0E6B45', fg: '#3D4E55' },
+      { t: 'Vorkommnis dokumentiert', stand: 'erledigt', bg: '#DFEFE7', punkt: '#0E6B45', fg: '#3D4E55' },
+      { t: 'Betäubungsmittel gegengezeichnet', stand: 'erledigt', bg: '#DFEFE7', punkt: '#0E6B45', fg: '#3D4E55' },
+      { t: 'Quittierung durch Spätdienst', stand: 'offen', bg: '#FFE0C0', punkt: '#955410', fg: '#071317' }
+    ];
+
+    return { nav: this.nav('Im Dienst'), felder, pruefliste };
+  }
+}
+</script>
+</body>
+</html>

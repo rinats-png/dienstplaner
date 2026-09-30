@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lagebild</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.34), rgba(80,232,244,0.16) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Lagebild</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Dienstag, 29. September 2026 · 11:42 Uhr · Seniorenzentrum Lindenhof</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Alle Einheiten<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="2.2" stroke-linecap="round"><path d="m6 9.5 6 6 6-6"></path></svg></button>
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Nur Lücken</button>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Schicht besetzen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-content: start">
+
+  <sc-for list="{{schichten}}" as="s" hint-placeholder-count="3">
+    <div style="grid-column: span 4; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: center; gap: 9px">
+        <span style="width: 11px; height: 11px; border-radius: 4px; background: {{s.farbe}}"></span>
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">{{s.name}}</span>
+        <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{s.tonBg}}; color: {{s.tonFg}}">{{s.ton}}</span>
+      </div>
+      <div style="display: flex; align-items: baseline; gap: 8px">
+        <span style="font-size: 32px; font-weight: 500; letter-spacing: -0.022em; color: #071317">{{s.ist}}</span>
+        <span style="font-size: 15px; color: #5B6B72">von {{s.soll}}</span>
+        <div style="flex-grow: 1"></div>
+        <span style="font-size: 12px; color: #3D4E55">{{s.zeit}}</span>
+      </div>
+      <div style="height: 7px; border-radius: 999px; background: #E7EEF1; overflow: hidden"><div style="height: 7px; border-radius: 999px; width: {{s.breite}}; background: {{s.balken}}"></div></div>
+      <div style="display: flex; flex-direction: column; gap: 7px">
+        <sc-for list="{{s.einheiten}}" as="e" hint-placeholder-count="4">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="flex-grow: 1; font-size: 12px; color: #3D4E55">{{e.name}}</span>
+            <span style="font-size: 12px; font-weight: 600; color: {{e.fg}}">{{e.wert}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="grid-column: span 8; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <span style="width: 7px; height: 7px; border-radius: 999px; background: #0E6B45"></span>
+      <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Jetzt im Dienst</span>
+      <span style="font-size: 12px; color: #5B6B72">23 Personen · Stand 11:42 Uhr</span>
+    </div>
+    <sc-for list="{{gruppen}}" as="g" hint-placeholder-count="4">
+      <div style="display: flex; align-items: flex-start; gap: 14px">
+        <div style="width: 150px; flex-shrink: 0; padding-top: 4px">
+          <div style="font-size: 12.5px; font-weight: 600; color: #071317">{{g.name}}</div>
+          <div style="margin-top: 2px; font-size: 11px; color: #5B6B72">{{g.unter}}</div>
+        </div>
+        <div style="flex-grow: 1; display: flex; flex-wrap: wrap; gap: 7px">
+          <sc-for list="{{g.leute}}" as="p" hint-placeholder-count="6">
+            <span style="display: flex; align-items: center; gap: 7px; padding: 4px 11px 4px 4px; border-radius: 999px; background: #E7EEF1; font-size: 12px; color: #071317">
+              <span style="width: 22px; height: 22px; border-radius: 999px; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{p.farbe}}">{{p.kuerzel}}</span>
+              {{p.name}}
+            </span>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="grid-column: span 4; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Achtungspunkte</span>
+      <span style="padding: 2px 9px; border-radius: 999px; background: #FFE0C0; color: #955410; font-size: 11px; font-weight: 600">4</span>
+    </div>
+    <sc-for list="{{punkte}}" as="a" hint-placeholder-count="4">
+      <div style="display: flex; align-items: flex-start; gap: 10px; padding-bottom: 11px; border-bottom: 1px solid #F1F6F7">
+        <span style="width: 8px; height: 8px; border-radius: 2px; margin-top: 4px; flex-shrink: 0; background: {{a.farbe}}"></span>
+        <div style="flex-grow: 1">
+          <div style="font-size: 12.5px; font-weight: 500; color: #071317">{{a.titel}}</div>
+          <div style="margin-top: 3px; font-size: 11.5px; line-height: 1.45; color: #5B6B72">{{a.text}}</div>
+        </div>
+        <span style="font-size: 11px; color: #5B6B72; white-space: nowrap">{{a.zeit}}</span>
+      </div>
+    </sc-for>
+    <a href="#" style="font-size: 12.5px; font-weight: 600; text-decoration: none">Alle Hinweise ansehen</a>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const schichten = [
+      { name: 'Frühdienst', zeit: '6:00 – 14:15', farbe: '#017070', ist: '11', soll: '11', breite: '100%', balken: '#0E6B45',
+        ton: 'vollständig', tonBg: '#DFEFE7', tonFg: '#0E6B45',
+        einheiten: [{ name: 'Wohnbereich Nord', wert: '4 / 4', fg: '#0E6B45' }, { name: 'Wohnbereich Süd', wert: '4 / 4', fg: '#0E6B45' }, { name: 'Wohnbereich West', wert: '2 / 2', fg: '#0E6B45' }, { name: 'Springerpool', wert: '1 / 1', fg: '#0E6B45' }] },
+      { name: 'Spätdienst', zeit: '13:45 – 22:00', farbe: '#316C81', ist: '9', soll: '10', breite: '90%', balken: '#955410',
+        ton: '1 offen', tonBg: '#FFE0C0', tonFg: '#955410',
+        einheiten: [{ name: 'Wohnbereich Nord', wert: '4 / 4', fg: '#0E6B45' }, { name: 'Wohnbereich Süd', wert: '3 / 4', fg: '#955410' }, { name: 'Wohnbereich West', wert: '2 / 2', fg: '#0E6B45' }, { name: 'Springerpool', wert: '0 / 0', fg: '#3D4E55' }] },
+      { name: 'Nachtdienst', zeit: '21:45 – 6:15', farbe: '#023441', ist: '3', soll: '5', breite: '60%', balken: '#4E0401',
+        ton: '2 offen', tonBg: '#F6DEDC', tonFg: '#4E0401',
+        einheiten: [{ name: 'Wohnbereich Nord', wert: '2 / 2', fg: '#0E6B45' }, { name: 'Wohnbereich Süd', wert: '1 / 2', fg: '#4E0401' }, { name: 'Wohnbereich West', wert: '0 / 1', fg: '#4E0401' }, { name: 'Springerpool', wert: '0 / 0', fg: '#3D4E55' }] }
+    ];
+
+    const P = (name, kuerzel, farbe) => ({ name: name, kuerzel: kuerzel, farbe: farbe });
+    const gruppen = [
+      { name: 'Wohnbereich Nord', unter: '4 im Dienst · PFK 3, PHK 1',
+        leute: [P('Adler, A.', 'AA', '#017070'), P('Kern, A.', 'AK', '#017070'), P('Weiß, C.', 'CW', '#316C81'), P('Seidel, T.', 'TS', '#955410')] },
+      { name: 'Wohnbereich Süd', unter: '7 im Dienst · PFK 4, PHK 3',
+        leute: [P('Brandt, M.', 'MB', '#017070'), P('Nowak, P.', 'PN', '#017070'), P('Lang, S.', 'SL', '#316C81'), P('Richter, K.', 'KR', '#316C81'), P('Sadiku, E.', 'ES', '#017070'), P('Vogel, J.', 'JV', '#017070'), P('Hoffmann, L.', 'LH', '#316C81')] },
+      { name: 'Wohnbereich West', unter: '5 im Dienst · PFK 3, PHK 2',
+        leute: [P('Berger, N.', 'NB', '#017070'), P('Krause, I.', 'IK', '#316C81'), P('Mertens, F.', 'FM', '#017070'), P('Roth, H.', 'HR', '#017070'), P('Timm, A.', 'AT', '#316C81')] },
+      { name: 'Springerpool', unter: '2 im Dienst · einsatzbereit',
+        leute: [P('Öztürk, D.', 'DÖ', '#017070'), P('Peters, M.', 'MP', '#017070')] }
+    ];
+
+    const punkte = [
+      { titel: 'Nachtdienst West unbesetzt', text: 'Ab 21:45 Uhr fehlt eine Pflegefachkraft. Drei Springer sind anfragbar.', zeit: 'in 10 Std', farbe: '#4E0401' },
+      { titel: 'Krankmeldung ohne Ersatz', text: 'Kern, A. — Spätdienst Wohnbereich Süd. Eingegangen um 10:38 Uhr.', zeit: 'vor 1 Std', farbe: '#4E0401' },
+      { titel: 'PpUGV Nachtdienst grenzwertig', text: 'Verhältniszahl erreicht 1 : 21 bei zulässigen 1 : 20.', zeit: 'laufend', farbe: '#955410' },
+      { titel: 'Nachweis läuft ab', text: 'Seidel, T. — Erste-Hilfe-Auffrischung endet am 12. Oktober.', zeit: 'in 13 Tagen', farbe: '#955410' }
+    ];
+
+    return { nav: this.nav('Im Dienst'), schichten, gruppen, punkte };
+  }
+}
+</script>
+</body>
+</html>

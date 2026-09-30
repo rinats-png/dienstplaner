@@ -1,0 +1,552 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-09-29T20:30:00Z"
+  },
+  "title": "CENTRIC Leitstand-Entwürfe",
+  "launch": {
+    "view": "canvas"
+  },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "title": "Leitstand — hell"
+    },
+    "Leitstand-Dunkel.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 980,
+      "title": "Leitstand — dunkel"
+    },
+    "Kontrast.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 880,
+      "h": 460,
+      "title": "Glas gegen deckend"
+    },
+    "Mobil.dc.html": {
+      "x": 4000,
+      "y": 0,
+      "w": 390,
+      "h": 844,
+      "title": "Mobil — Meine Schichten"
+    },
+    "Lagebild.dc.html": {
+      "x": 0,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Lagebild"
+    },
+    "Zeitachse.dc.html": {
+      "x": 1520,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Zeitachse"
+    },
+    "Uebergabe.dc.html": {
+      "x": 3040,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Übergabe"
+    },
+    "Monatsplan.dc.html": {
+      "x": 0,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Monatsplan — Arbeitsebene"
+    },
+    "Jahresansicht.dc.html": {
+      "x": 1520,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Jahresansicht"
+    },
+    "Personaleinsatz.dc.html": {
+      "x": 3040,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Personaleinsatz"
+    },
+    "Selbstplanung.dc.html": {
+      "x": 4560,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Selbstplanung"
+    },
+    "Schichtfolge.dc.html": {
+      "x": 6080,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Schichtfolge"
+    },
+    "Antraege.dc.html": {
+      "x": 0,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Anträge"
+    },
+    "OffeneSchichten.dc.html": {
+      "x": 1520,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Offene Schichten"
+    },
+    "Notrufe.dc.html": {
+      "x": 3040,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Notrufe"
+    },
+    "Dienstbuch.dc.html": {
+      "x": 4560,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Dienstbuch"
+    },
+    "Personal.dc.html": {
+      "x": 0,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Personal"
+    },
+    "Qualifikationen.dc.html": {
+      "x": 1520,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Qualifikationen"
+    },
+    "Nachweise.dc.html": {
+      "x": 3040,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Nachweise"
+    },
+    "Pruefung.dc.html": {
+      "x": 0,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Prüfung"
+    },
+    "Untergrenzen.dc.html": {
+      "x": 1520,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Untergrenzen"
+    },
+    "Belastung.dc.html": {
+      "x": 3040,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Belastung"
+    },
+    "Abrechnung.dc.html": {
+      "x": 4560,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Abrechnungsdaten"
+    },
+    "Betrieb.dc.html": {
+      "x": 0,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Betrieb"
+    },
+    "Dienstarten.dc.html": {
+      "x": 1520,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Dienstarten"
+    },
+    "Datenschutz.dc.html": {
+      "x": 3040,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Datenschutz"
+    },
+    "Ablauf.dc.html": {
+      "x": 4560,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Ablauf"
+    },
+    "Handbuch.dc.html": {
+      "x": 6080,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Handbuch"
+    },
+    "Hilfe.dc.html": {
+      "x": 7600,
+      "y": 1400,
+      "w": 1440,
+      "h": 980,
+      "title": "Hilfe"
+    },
+    "Bereitschaft.dc.html": {
+      "x": 7600,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Bereitschaft"
+    },
+    "Sondereinsaetze.dc.html": {
+      "x": 9120,
+      "y": 2800,
+      "w": 1440,
+      "h": 980,
+      "title": "Sondereinsätze"
+    },
+    "Tauschboerse.dc.html": {
+      "x": 6080,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Tauschbörse"
+    },
+    "Wunschdienste.dc.html": {
+      "x": 7600,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Wunschdienste"
+    },
+    "SchwarzesBrett.dc.html": {
+      "x": 9120,
+      "y": 4200,
+      "w": 1440,
+      "h": 980,
+      "title": "Schwarzes Brett"
+    },
+    "Kompetenzen.dc.html": {
+      "x": 4560,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Kompetenzen"
+    },
+    "Einarbeitung.dc.html": {
+      "x": 6080,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Einarbeitung"
+    },
+    "Verteilung.dc.html": {
+      "x": 7600,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Verteilung"
+    },
+    "Betriebsmittel.dc.html": {
+      "x": 9120,
+      "y": 5600,
+      "w": 1440,
+      "h": 980,
+      "title": "Betriebsmittel"
+    },
+    "Lenkzeiten.dc.html": {
+      "x": 6080,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Lenkzeiten"
+    },
+    "Belastbarkeit.dc.html": {
+      "x": 7600,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Belastbarkeit"
+    },
+    "Planstand.dc.html": {
+      "x": 9120,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Planstand"
+    },
+    "Leistungsnachweis.dc.html": {
+      "x": 10640,
+      "y": 7000,
+      "w": 1440,
+      "h": 980,
+      "title": "Leistungsnachweis"
+    },
+    "Einstellungen.dc.html": {
+      "x": 4560,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Einstellungen"
+    },
+    "Datenmitnahme.dc.html": {
+      "x": 6080,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Datenmitnahme"
+    },
+    "Rechtliches.dc.html": {
+      "x": 7600,
+      "y": 8400,
+      "w": 1440,
+      "h": 980,
+      "title": "Rechtliches"
+    },
+    "Rahmen.dc.html": {
+      "x": 0,
+      "y": 9800,
+      "w": 1440,
+      "h": 980,
+      "title": "Rahmen mit Unterleiste"
+    },
+    "Menues.dc.html": {
+      "x": 1520,
+      "y": 9800,
+      "w": 1200,
+      "h": 760,
+      "title": "Ansicht- und Avatar-Menü"
+    },
+    "Zustaende.dc.html": {
+      "x": 2800,
+      "y": 9800,
+      "w": 1440,
+      "h": 1100,
+      "title": "Zustände der Bausteine"
+    },
+    "Icons.dc.html": {
+      "x": 4320,
+      "y": 9800,
+      "w": 1440,
+      "h": 900,
+      "title": "Icon-Satz"
+    },
+    "Masse.dc.html": {
+      "x": 5840,
+      "y": 9800,
+      "w": 1440,
+      "h": 980,
+      "title": "Maße: Kennzahl, Bogen, Diagramme"
+    },
+    "Mobil-MeinPlan.dc.html": {
+      "x": 0,
+      "y": 11400,
+      "w": 390,
+      "h": 844,
+      "title": "Mobil — Mein Plan"
+    },
+    "Mobil-Anliegen.dc.html": {
+      "x": 470,
+      "y": 11400,
+      "w": 390,
+      "h": 844,
+      "title": "Mobil — Anliegen"
+    },
+    "Mobil-Mehr.dc.html": {
+      "x": 940,
+      "y": 11400,
+      "w": 390,
+      "h": 844,
+      "title": "Mobil — Mehr"
+    },
+    "MeineSchichten.dc.html": {
+      "x": 1440,
+      "y": 11400,
+      "w": 1440,
+      "h": 980,
+      "title": "Meine Schichten (Desktop)"
+    },
+    "Monatsplan-Dunkel.dc.html": {
+      "x": 2960,
+      "y": 11400,
+      "w": 1440,
+      "h": 980,
+      "title": "Monatsplan — dunkel"
+    },
+    "Personal-Kompakt.dc.html": {
+      "x": 4480,
+      "y": 11400,
+      "w": 1440,
+      "h": 980,
+      "title": "Personal — kompakt"
+    },
+    "Lagebild-Feldmodus.dc.html": {
+      "x": 6000,
+      "y": 11400,
+      "w": 1440,
+      "h": 980,
+      "title": "Lagebild — Feldmodus"
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Leitstand-Dunkel.dc.html",
+    "Kontrast.dc.html",
+    "Mobil.dc.html",
+    "Lagebild.dc.html",
+    "Zeitachse.dc.html",
+    "Uebergabe.dc.html",
+    "Monatsplan.dc.html",
+    "Jahresansicht.dc.html",
+    "Personaleinsatz.dc.html",
+    "Selbstplanung.dc.html",
+    "Schichtfolge.dc.html",
+    "Antraege.dc.html",
+    "OffeneSchichten.dc.html",
+    "Notrufe.dc.html",
+    "Dienstbuch.dc.html",
+    "Personal.dc.html",
+    "Qualifikationen.dc.html",
+    "Nachweise.dc.html",
+    "Pruefung.dc.html",
+    "Untergrenzen.dc.html",
+    "Belastung.dc.html",
+    "Abrechnung.dc.html",
+    "Betrieb.dc.html",
+    "Dienstarten.dc.html",
+    "Datenschutz.dc.html",
+    "Ablauf.dc.html",
+    "Handbuch.dc.html",
+    "Hilfe.dc.html",
+    "Bereitschaft.dc.html",
+    "Sondereinsaetze.dc.html",
+    "Tauschboerse.dc.html",
+    "Wunschdienste.dc.html",
+    "SchwarzesBrett.dc.html",
+    "Kompetenzen.dc.html",
+    "Einarbeitung.dc.html",
+    "Verteilung.dc.html",
+    "Betriebsmittel.dc.html",
+    "Lenkzeiten.dc.html",
+    "Belastbarkeit.dc.html",
+    "Planstand.dc.html",
+    "Leistungsnachweis.dc.html",
+    "Einstellungen.dc.html",
+    "Datenmitnahme.dc.html",
+    "Rechtliches.dc.html",
+    "Rahmen.dc.html",
+    "Menues.dc.html",
+    "Zustaende.dc.html",
+    "Icons.dc.html",
+    "Masse.dc.html",
+    "Mobil-MeinPlan.dc.html",
+    "Mobil-Anliegen.dc.html",
+    "Mobil-Mehr.dc.html",
+    "MeineSchichten.dc.html",
+    "Monatsplan-Dunkel.dc.html",
+    "Personal-Kompakt.dc.html",
+    "Lagebild-Feldmodus.dc.html"
+  ],
+  "notes": {
+    "t0": {
+      "x": 0,
+      "y": -300,
+      "text": "Übersicht und Gestaltung",
+      "kind": "title1",
+      "maxW": 4390
+    },
+    "t1": {
+      "x": 0,
+      "y": 1100,
+      "text": "Im Dienst",
+      "kind": "title1",
+      "maxW": 9040
+    },
+    "t2": {
+      "x": 0,
+      "y": 2500,
+      "text": "Planen",
+      "kind": "title1",
+      "maxW": 10560
+    },
+    "t3": {
+      "x": 0,
+      "y": 3900,
+      "text": "Zu entscheiden",
+      "kind": "title1",
+      "maxW": 10560
+    },
+    "t4": {
+      "x": 0,
+      "y": 5300,
+      "text": "Wer mitfährt",
+      "kind": "title1",
+      "maxW": 10560
+    },
+    "t5": {
+      "x": 0,
+      "y": 6700,
+      "text": "Nachsehen",
+      "kind": "title1",
+      "maxW": 12080
+    },
+    "t6": {
+      "x": 0,
+      "y": 8100,
+      "text": "Verwaltung",
+      "kind": "title1",
+      "maxW": 9040
+    },
+    "n1": {
+      "x": 4600,
+      "y": 40,
+      "text": "Deckende Karten statt Glas: Der Farbverlauf liegt nur in den Zwischenräumen, nie unter Text. So bleiben die gemessenen Kontraste aus farben.js gültig.",
+      "w": 420,
+      "fill": "teal"
+    },
+    "n2": {
+      "x": 10700,
+      "y": 2840,
+      "text": "Zwei Geschwindigkeiten: Übersichten im neuen Stil, Arbeitsebene dicht. Monatsplan und Jahresansicht übernehmen nur Radien, Chips und Abstände — nicht den Verlauf.",
+      "w": 420,
+      "fill": "orange"
+    },
+    "t7": {
+      "x": 0,
+      "y": 9500,
+      "text": "Rahmen, Zustände und Bausteine",
+      "kind": "title1",
+      "maxW": 7280
+    },
+    "t8": {
+      "x": 0,
+      "y": 11100,
+      "text": "Telefon und Sondermodi",
+      "kind": "title1",
+      "maxW": 7440
+    }
+  },
+  "designSystems": []
+}

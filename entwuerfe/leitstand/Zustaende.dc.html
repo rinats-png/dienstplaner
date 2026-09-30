@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Zustände</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+button[aria-disabled="true"]{cursor:not-allowed}
+input{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+a:focus-visible,button:focus-visible{outline:2px solid #017070;outline-offset:2px}
+@keyframes dcpuls{0%,100%{opacity:1}50%{opacity:.55}}
+.dc-puls{animation:dcpuls 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.dc-puls{animation:none}}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 1100px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0">
+  <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Zustände</h1>
+  <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Alle Bausteine in ihren Zuständen · Fokusring 2 px #017070 mit 2 px Abstand · Ränder von Bedienelementen im Aus-Zustand #5B6B72</p>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 24px; display: flex; flex-direction: column; gap: 13px">
+
+  <!-- Knöpfe -->
+  <section aria-label="Knöpfe" style="box-sizing: border-box; height: 252px; flex-shrink: 0; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 13.5px; font-weight: 600; color: #071317">Knopf</span>
+    <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 6px; border-bottom: 1px solid #E7EEF1">
+      <span style="width: 90px; flex-shrink: 0"></span>
+      <sc-for list="{{zustaende}}" as="h" hint-placeholder-count="5"><span style="flex-grow: 1; flex-basis: 0; font-size: 10.5px; color: #5B6B72">{{h.t}}</span></sc-for>
+    </div>
+    <sc-for list="{{knoepfe}}" as="r" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="width: 90px; flex-shrink: 0; font-size: 11.5px; font-weight: 600; color: #3D4E55">{{r.name}}</span>
+        <sc-for list="{{r.zellen}}" as="b" hint-placeholder-count="5">
+          <div style="flex-grow: 1; flex-basis: 0"><button type="button" aria-disabled="{{b.ad}}" style="{{b.s}}">{{r.text}}</button></div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </section>
+
+  <div style="height: 296px; flex-shrink: 0; display: flex; gap: 14px">
+
+    <!-- Pille und Segment -->
+    <section aria-label="Pille und Segment" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Pille</span>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px 14px">
+        <sc-for list="{{pillen}}" as="p" hint-placeholder-count="5">
+          <div>
+            <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{p.bg}}; color: {{p.fg}}">{{p.t}}</span>
+            <div style="margin-top: 6px; font-size: 10.5px; color: #5B6B72">{{p.k}}</div>
+          </div>
+        </sc-for>
+      </div>
+      <span style="margin-top: 6px; font-size: 13.5px; font-weight: 600; color: #071317">Segment</span>
+      <div>
+        <div role="group" aria-label="Zeitraum" style="display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: #E7EEF1">
+          <button type="button" aria-pressed="false" style="height: 30px; padding: 0 14px; border-radius: 999px; color: #3D4E55; font-size: 12px">Tag</button>
+          <button type="button" aria-pressed="true" style="height: 30px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; color: #071317; font-size: 12px; font-weight: 600">Woche</button>
+          <button type="button" aria-pressed="false" style="height: 30px; padding: 0 14px; border-radius: 999px; color: #3D4E55; font-size: 12px">Monat</button>
+        </div>
+        <div style="margin-top: 6px; font-size: 10.5px; color: #5B6B72">Tag und Monat normal · Woche aktiv</div>
+      </div>
+    </section>
+
+    <!-- Eingabefeld -->
+    <section aria-label="Eingabefeld" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Eingabefeld</span>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px 14px">
+        <div>
+          <label for="zu-normal" style="display: block; margin-bottom: 5px; font-size: 11.5px; color: #3D4E55">Nachname</label>
+          <input id="zu-normal" type="text" value="Adler" style="box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12.5px; color: #071317">
+          <div style="margin-top: 5px; font-size: 10.5px; color: #5B6B72">normal</div>
+        </div>
+        <div>
+          <label for="zu-fokus" style="display: block; margin-bottom: 5px; font-size: 11.5px; color: #3D4E55">Vorname</label>
+          <input id="zu-fokus" type="text" value="Antje" style="box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #017070; background: #FFFFFF; box-shadow: 0 0 0 3px #DFF0F0; font-size: 12.5px; color: #071317; outline: none">
+          <div style="margin-top: 5px; font-size: 10.5px; color: #5B6B72">Fokus · Ring 3 px #DFF0F0</div>
+        </div>
+        <div>
+          <label for="zu-fehler" style="display: block; margin-bottom: 5px; font-size: 11.5px; color: #3D4E55">Wochenstunden</label>
+          <input id="zu-fehler" type="text" value="45" aria-invalid="true" aria-describedby="zu-fehler-m" style="box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1.5px solid #4E0401; background: #FFFFFF; font-size: 12.5px; color: #071317">
+          <div id="zu-fehler-m" style="margin-top: 5px; display: flex; align-items: center; gap: 5px; font-size: 11px; color: #4E0401"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>Höchstens 40 Stunden je Woche.</div>
+          <div style="margin-top: 3px; font-size: 10.5px; color: #5B6B72">Fehler mit Meldung</div>
+        </div>
+        <div>
+          <label for="zu-aus" style="display: block; margin-bottom: 5px; font-size: 11.5px; color: #5B6B72">Personalnummer</label>
+          <input id="zu-aus" type="text" value="10482" disabled style="box-sizing: border-box; width: 100%; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid #E7EEF1; background: #F4F8F9; font-size: 12.5px; color: #5B6B72">
+          <div style="margin-top: 5px; font-size: 10.5px; color: #5B6B72">deaktiviert</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Karte -->
+    <section aria-label="Karte" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Karte</span>
+      <sc-for list="{{karten}}" as="k" hint-placeholder-count="3">
+        <div>
+          <div style="{{k.s}}">
+            <div style="flex-grow: 1">
+              <div style="font-size: 12.5px; font-weight: 600; color: #071317">Frühdienst · Wohnbereich Nord</div>
+              <div style="margin-top: 2px; font-size: 11px; color: #5B6B72">06:00 bis 14:00 Uhr · 6 Personen</div>
+            </div>
+            <span style="{{k.hakenS}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.6 12.4 4.8 4.8L19.4 6.6"></path></svg></span>
+          </div>
+          <div style="margin-top: 4px; font-size: 10.5px; color: #5B6B72">{{k.t}}</div>
+        </div>
+      </sc-for>
+    </section>
+  </div>
+
+  <div style="flex-grow: 1; min-height: 0; display: flex; gap: 14px">
+
+    <!-- Checkliste und Ladegerüst -->
+    <section aria-label="Checkliste und Ladegerüst" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px; overflow: hidden">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Checkliste</span>
+      <div style="display: flex; align-items: center; gap: 9px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9"><circle cx="12" cy="12" r="8.6"></circle></svg>
+        <span style="flex-grow: 1; font-size: 12.5px; color: #071317">Schichtfolge zuweisen</span>
+        <span style="font-size: 10.5px; color: #5B6B72">offen</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 9px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E6B45" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.6"></circle><path d="m8.4 12.2 2.4 2.4 4.8-5"></path></svg>
+        <span style="flex-grow: 1; font-size: 12.5px; color: #5B6B72; text-decoration: line-through">Personal übernommen (57)</span>
+        <span style="font-size: 10.5px; color: #5B6B72">erledigt</span>
+      </div>
+      <span style="margin-top: 6px; font-size: 13.5px; font-weight: 600; color: #071317">Ladegerüst</span>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div class="dc-puls" style="width: 34px; height: 34px; flex-shrink: 0; border-radius: 999px; background: #E7EEF1"></div>
+        <div style="flex-grow: 1; display: flex; flex-direction: column; gap: 7px">
+          <div class="dc-puls" style="width: 62%; height: 11px; border-radius: 6px; background: #E7EEF1"></div>
+          <div class="dc-puls" style="width: 38%; height: 9px; border-radius: 5px; background: #E7EEF1"></div>
+        </div>
+        <div class="dc-puls" style="width: 52px; height: 22px; border-radius: 999px; background: #E7EEF1"></div>
+      </div>
+      <div style="font-size: 10.5px; color: #5B6B72">graue Platzhalter, sanft pulsierend (aus bei reduzierter Bewegung)</div>
+    </section>
+
+    <!-- Leerzustand -->
+    <section aria-label="Leerzustand" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Leerzustand</span>
+      <div style="flex-grow: 1; box-sizing: border-box; border-radius: 14px; border: 1px dashed #BCCDD4; background: #F4F8F9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 12px; text-align: center">
+        <span style="width: 42px; height: 42px; border-radius: 999px; background: #FFFFFF; border: 1px solid #E7EEF1; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h15M15.5 4.5 19 8l-3.5 3.5"></path><path d="M20 16H5M8.5 12.5 5 16l3.5 3.5"></path></svg></span>
+        <div style="font-size: 14px; font-weight: 600; color: #071317">Kein Eintrag</div>
+        <div style="max-width: 260px; font-size: 11.5px; line-height: 1.5; color: #3D4E55">Für diese Woche gibt es noch kein Tauschgesuch im Wohnbereich Nord.</div>
+        <button type="button" style="margin-top: 4px; height: 34px; padding: 0 16px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500; display: flex; align-items: center; gap: 6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5.2v13.6M5.2 12h13.6"></path></svg>Gesuch anlegen</button>
+      </div>
+      <div style="font-size: 10.5px; color: #5B6B72">Icon, Text, nächster Schritt als Knopf</div>
+    </section>
+
+    <!-- Streifen und Toast -->
+    <section aria-label="Streifen und Toast" style="flex-grow: 1; flex-basis: 0; box-sizing: border-box; padding: 14px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">Fehlerstreifen</span>
+      <div role="alert" style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 12px; background: #F6DEDC; border: 1px solid #4E0401">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4E0401" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+        <span style="flex-grow: 1; font-size: 11.5px; color: #4E0401">Speichern fehlgeschlagen. Die Änderung ist noch nicht übernommen.</span>
+        <button type="button" style="height: 26px; padding: 0 11px; border-radius: 999px; background: #FFFFFF; border: 1px solid #4E0401; color: #4E0401; font-size: 11.5px; font-weight: 600">Erneut</button>
+      </div>
+      <span style="margin-top: 4px; font-size: 13.5px; font-weight: 600; color: #071317">Offline-Streifen</span>
+      <div role="status" style="display: flex; align-items: center; gap: 9px; padding: 9px 12px; border-radius: 12px; background: #FFF6EC; border: 1px solid #FFE0C0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#955410" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M4.5 9.5a11 11 0 0 1 15 0"></path><path d="M7.5 12.8a6.6 6.6 0 0 1 9 0"></path><path d="M12 17v.2"></path><path d="M4 4l16 16"></path></svg>
+        <span style="flex-grow: 1; font-size: 11.5px; color: #071317">Keine Verbindung. Änderungen werden gesendet, sobald du wieder online bist.</span>
+      </div>
+      <span style="margin-top: 4px; font-size: 13.5px; font-weight: 600; color: #071317">Toast</span>
+      <div role="status" style="display: flex; align-items: center; gap: 11px; padding: 9px 12px 9px 14px; border-radius: 14px; background: #071317; color: #FFFFFF; box-shadow: 0 10px 24px rgba(7,19,23,0.22)">
+        <span style="flex-grow: 1; font-size: 12px">Dienst getauscht: Adler, A. mit Kern, A.</span>
+        <button type="button" style="font-size: 12px; font-weight: 600; color: #DFF0F0">Rückgängig</button>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-label="Noch 5 Sekunden" role="img" style="flex-shrink: 0"><circle cx="12" cy="12" r="9" stroke="#3D4E55" stroke-width="2.5"></circle><circle cx="12" cy="12" r="9" stroke="#DFF0F0" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="38 60" transform="rotate(-90 12 12)"></circle></svg>
+      </div>
+    </section>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1100}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const zustaende = [{ t: 'normal' }, { t: 'Hover' }, { t: 'Fokus (2 px, Abstand 2 px)' }, { t: 'gedrückt' }, { t: 'deaktiviert' }];
+    const BASIS = 'height:34px;padding:0 16px;border-radius:999px;font-size:12.5px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;box-sizing:border-box;';
+    const RING = 'outline:2px solid #017070;outline-offset:2px;';
+    const PRESS = 'box-shadow:inset 0 2px 4px rgba(7,19,23,0.28);';
+    const V = {
+      'primär': {
+        text: 'Speichern',
+        normal: 'background:#017070;color:#FFFFFF;',
+        hover: 'background:#028E8E;color:#FFFFFF;',
+        aus: 'background:#F4F8F9;color:#5B6B72;border:1px solid #E7EEF1;'
+      },
+      'sekundär': {
+        text: 'Abbrechen',
+        normal: 'background:#FFFFFF;color:#071317;border:1px solid #CBDAE0;',
+        hover: 'background:#F4F8F9;color:#071317;border:1px solid #BCCDD4;',
+        aus: 'background:#F4F8F9;color:#5B6B72;border:1px solid #E7EEF1;'
+      },
+      'ruhig': {
+        text: 'Mehr anzeigen',
+        normal: 'background:transparent;color:#3D4E55;',
+        hover: 'background:#F4F8F9;color:#071317;',
+        aus: 'background:transparent;color:#5B6B72;'
+      },
+      'Gefahr': {
+        text: 'Dienst löschen',
+        normal: 'background:#F6DEDC;color:#4E0401;border:1px solid transparent;',
+        hover: 'background:#F6DEDC;color:#4E0401;border:1px solid #4E0401;',
+        aus: 'background:#F4F8F9;color:#5B6B72;border:1px solid #E7EEF1;'
+      }
+    };
+    const knoepfe = Object.keys(V).map((name) => {
+      const v = V[name];
+      const druck = name === 'primär' ? v.normal + PRESS + 'transform:scale(0.98);' : v.hover + PRESS + 'transform:scale(0.98);';
+      return {
+        name: name, text: v.text,
+        zellen: [
+          { s: BASIS + v.normal, ad: 'false' },
+          { s: BASIS + v.hover, ad: 'false' },
+          { s: BASIS + v.normal + RING, ad: 'false' },
+          { s: BASIS + druck, ad: 'false' },
+          { s: BASIS + v.aus + 'opacity:0.75;', ad: 'true' }
+        ]
+      };
+    });
+
+    const pillen = [
+      { t: 'Entwurf', k: 'neutral', bg: '#E7EEF1', fg: '#3D4E55' },
+      { t: 'Freigegeben', k: 'ok', bg: '#DFEFE7', fg: '#0E6B45' },
+      { t: 'Prüfen', k: 'warn', bg: '#FFE0C0', fg: '#955410' },
+      { t: 'Abgelehnt', k: 'danger', bg: '#F6DEDC', fg: '#4E0401' },
+      { t: 'Neu', k: 'accent', bg: '#DFF0F0', fg: '#017070' }
+    ];
+
+    const KB = 'box-sizing:border-box;padding:10px 13px;border-radius:14px;display:flex;align-items:center;gap:10px;background:#FFFFFF;';
+    const HK = 'width:20px;height:20px;border-radius:999px;flex-shrink:0;';
+    const karten = [
+      { t: 'normal', s: KB + 'border:1px solid #CBDAE0;box-shadow:0 1px 2px rgba(7,19,23,0.04),0 8px 22px rgba(7,19,23,0.05);', hakenS: 'display:none;' },
+      { t: 'Hover', s: KB + 'border:1px solid #BCCDD4;box-shadow:0 2px 4px rgba(7,19,23,0.06),0 12px 28px rgba(7,19,23,0.10);', hakenS: 'display:none;' },
+      { t: 'gewählt', s: KB + 'border:2px solid #017070;padding:9px 12px;background:#F4FAFA;box-shadow:0 1px 2px rgba(7,19,23,0.04);', hakenS: HK + 'background:#017070;color:#FFFFFF;display:flex;align-items:center;justify-content:center;' }
+    ];
+
+    return { nav: this.nav('Verwaltung'), zustaende, knoepfe, pillen, karten };
+  }
+}
+</script>
+</body>
+</html>

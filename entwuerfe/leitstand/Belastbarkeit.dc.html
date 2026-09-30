@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Belastbarkeit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1; min-width: 0">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Belastbarkeit</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Wie viele Krankmeldungen hält der Plan noch aus, bevor eine Schicht unterbesetzt ist? · Lindenhof, Kassel · ab Woche vom 28.09.2026</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px; flex-shrink: 0">
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">4 Wochen</button>
+      <span style="height: 30px; padding: 0 13px; border-radius: 999px; background: #071317; color: #FFFFFF; font-size: 12px; font-weight: 600; display: flex; align-items: center">8 Wochen</span>
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">Quartal</button>
+    </div>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); border-left: 4px solid {{befund.c}}; padding: 14px 18px; display: flex; align-items: flex-start; gap: 13px">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="{{befund.c}}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M12 4.2 2.8 19.8h18.4z"></path><path d="M12 10.2v4M12 17.2v.4"></path></svg>
+    <div style="flex-grow: 1">
+      <div style="font-size: 15px; font-weight: 600; line-height: 1.45; color: {{befund.c}}">{{befund.satz}}</div>
+      <div style="margin-top: 5px; font-size: 12.5px; line-height: 1.5; color: #3D4E55">{{befund.dazu}}</div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 14px">
+    <sc-for list="{{kacheln}}" as="k" hint-placeholder-count="3">
+      <div style="flex-grow: 1; flex-basis: 0; min-width: 0; box-sizing: border-box; padding: 15px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid {{k.rand}}; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: {{k.c}}"></span>
+          <span style="flex-grow: 1; font-size: 11.5px; color: #5B6B72">{{k.titel}}</span>
+        </div>
+        <div style="margin-top: 5px; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px">
+          <span style="font-size: 27px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{k.wert}}</span>
+          <span style="font-size: 11.5px; color: #3D4E55">{{k.zusatz}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; gap: 14px">
+
+    <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="flex-grow: 1; font-size: 14px; font-weight: 600; color: #071317">Wo bricht es zuerst</span>
+        <span style="font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Reserve je Woche</span>
+      </div>
+
+      <div style="font-size: 12px; line-height: 1.5; color: #3D4E55">Jeder Balken ist eine Dienstart. Die Zahl darin sagt, wie viele Personen in dieser Woche <strong style="color: #071317">gleichzeitig ausfallen dürften</strong>, bevor die schwächste Schicht der Woche unterbesetzt ist.</div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 6px 20px; padding-bottom: 10px; border-bottom: 1px solid #BCCDD4">
+        <sc-for list="{{stufen}}" as="s" hint-placeholder-count="3">
+          <span style="display: flex; align-items: center; gap: 7px; font-size: 11.5px">
+            <span style="width: 26px; height: 15px; border-radius: 4px; flex-shrink: 0; box-sizing: border-box; background: {{s.bg}}; border-bottom: 2px solid {{s.fg}}"></span>
+            <strong style="font-weight: 600; color: {{s.fg}}">{{s.n}}</strong>
+            <span style="color: #5B6B72">· {{s.t}}</span>
+          </span>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <sc-for list="{{wochen}}" as="w" hint-placeholder-count="8">
+          <div style="display: flex; align-items: center; gap: 14px; height: 38px; padding: 0 10px; margin: 0 -10px; border-radius: 10px; background: {{w.bg}}">
+            <span style="width: 76px; flex-shrink: 0; font-size: 12.5px; color: #3D4E55; font-variant-numeric: tabular-nums">ab {{w.von}}</span>
+            <div style="flex-grow: 1; display: flex; gap: 4px">
+              <sc-for list="{{w.zeilen}}" as="z" hint-placeholder-count="3">
+                <div style="{{z.s}}">{{z.t}}</div>
+              </sc-for>
+            </div>
+            <span style="width: 96px; flex-shrink: 0; text-align: right; font-size: 12.5px; font-weight: 600; color: {{w.c}}">{{w.stufe}}</span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-top: auto; font-size: 11.5px; line-height: 1.5; color: #5B6B72">Gezählt wird nur, wer wirklich einspringen dürfte — ohne Ruhezeitverstoß, mit der geforderten Qualifikation und nicht selbst abwesend. Deshalb steht hier oft eine kleinere Zahl, als die Personalliste vermuten lässt.</div>
+    </div>
+
+    <div style="width: 360px; flex-shrink: 0; box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 10px">
+      <div>
+        <div style="font-size: 13.5px; font-weight: 600; color: #071317">Was bei einer Krankheitswelle passiert</div>
+        <div style="margin-top: 3px; font-size: 11.5px; line-height: 1.45; color: #5B6B72">Die nächsten vierzehn Tage. „Hält“ heißt: keine Schicht bliebe ganz unbesetzt und kaum neue Regelverstöße entstünden.</div>
+      </div>
+
+      <sc-for list="{{szenarien}}" as="s" hint-placeholder-count="4">
+        <div style="box-sizing: border-box; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: #FFFFFF; border: 1px solid {{s.rand}}">
+          <div style="width: 66px; flex-shrink: 0">
+            <div style="font-size: 26px; font-weight: 300; letter-spacing: -0.03em; line-height: 1.1; color: {{s.fg}}; font-variant-numeric: tabular-nums">{{s.neu}}</div>
+            <div style="font-size: 10px; color: #5B6B72">Regelverstöße</div>
+          </div>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="flex-grow: 1; font-size: 12.5px; font-weight: 600; color: #071317">{{s.titel}}</span>
+              <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: {{s.bg}}; color: {{s.fg}}">{{s.urteil}}</span>
+            </div>
+            <div style="margin-top: 3px; font-size: 11px; line-height: 1.4; color: #5B6B72; font-variant-numeric: tabular-nums">{{s.zeile}}</div>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="margin-top: auto; box-sizing: border-box; padding: 11px 12px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 11.5px; line-height: 1.5; color: #3D4E55">
+        Der Ausfall wird gleichmäßig über die Belegschaft verteilt, nicht zufällig. Eine echte Welle trifft meist eine Einheit stärker — der reale Verlauf ist also eher schlechter als hier gezeigt.
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    // Farben je Stufe
+    const ST = {
+      'robust': { fg: '#0E6B45', bg: '#DFEFE7' },
+      'knapp': { fg: '#955410', bg: '#FFE0C0' },
+      'ohne Reserve': { fg: '#4E0401', bg: '#F6DEDC' }
+    };
+    const stufeVon = (min) => (min >= 3 ? 'robust' : (min >= 1 ? 'knapp' : 'ohne Reserve'));
+    const RANG = { 'ohne Reserve': 0, 'knapp': 1, 'robust': 2 };
+
+    // Pro Woche: wie viele gleichzeitige Ausfälle die schwächste Schicht je Dienstart noch verkraftet
+    const W = [
+      ['28.09.', 4, 3, 2],
+      ['05.10.', 4, 3, 3],
+      ['12.10.', 3, 2, 2],
+      ['19.10.', 3, 3, 1],
+      ['26.10.', 2, 2, 0],
+      ['02.11.', 3, 2, 1],
+      ['09.11.', 4, 3, 2],
+      ['16.11.', 4, 4, 3]
+    ];
+    const NAMEN = ['Früh', 'Spät', 'Nacht'];
+    const DIENSTE = ['Frühdienst', 'Spätdienst', 'Nachtdienst'];
+
+    const wochenRoh = W.map((w) => {
+      const mins = [w[1], w[2], w[3]];
+      let schwach = 0;
+      mins.forEach((m, i) => { if (m < mins[schwach]) schwach = i; });
+      return { von: w[0], mins: mins, schwach: schwach, stufe: stufeVon(mins[schwach]) };
+    });
+
+    const wochen = wochenRoh.map((w) => ({
+      von: w.von, stufe: w.stufe, c: ST[w.stufe].fg,
+      bg: w.stufe === 'ohne Reserve' ? '#FDF7F6' : 'transparent',
+      zeilen: w.mins.map((m, i) => {
+        const s = ST[stufeVon(m)];
+        return {
+          t: NAMEN[i] + ' ' + m,
+          s: 'flex:1;height:26px;box-sizing:border-box;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums;background:' + s.bg + ';color:' + s.fg + ';border-bottom:2px solid ' + s.fg + ';'
+        };
+      })
+    }));
+
+    const kritisch = wochenRoh.filter((w) => w.stufe === 'ohne Reserve');
+    const knapp = wochenRoh.filter((w) => w.stufe === 'knapp');
+
+    // Krankheitswelle, 14 Tage, 57 Personen: Anteil, Betroffene, zusätzliche Regelverstöße, unterbesetzte Dienste, Dienste ohne Besetzung
+    const SZ = [
+      [5, 3, 1, 2, 0],
+      [10, 6, 4, 7, 0],
+      [20, 11, 13, 19, 2],
+      [30, 17, 31, 41, 9]
+    ];
+    const szenarien = SZ.map((s) => {
+      const haelt = s[4] === 0;
+      return {
+        titel: s[0] + ' % fallen aus', neu: '+' + s[2],
+        urteil: haelt ? 'hält' : 'reißt',
+        fg: haelt ? '#0E6B45' : '#4E0401', bg: haelt ? '#DFEFE7' : '#F6DEDC', rand: haelt ? '#CBDAE0' : '#4E0401',
+        zeile: s[1] + ' Betroffene · ' + s[3] + ' unterbesetzt · ' + s[4] + ' ganz ohne Besetzung',
+        haelt: haelt, anteil: s[0]
+      };
+    });
+    const grenze = szenarien.filter((s) => !s.haelt)[0];
+
+    const w0 = kritisch[0];
+    const befund = {
+      c: '#4E0401',
+      satz: 'Ab der Woche vom ' + w0.von + ' verkraftet der ' + DIENSTE[w0.schwach] + ' keinen einzigen Ausfall mehr — die nächste Krankmeldung führt dort zur Unterbesetzung.',
+      dazu: 'Betroffen ist ' + (kritisch.length === 1 ? 'eine Woche' : kritisch.length + ' Wochen') + '. Der Plan reißt rechnerisch, sobald ' + grenze.anteil + ' % der Belegschaft gleichzeitig ausfällt.'
+    };
+
+    const kacheln = [
+      { titel: 'Wochen ohne Reserve', wert: String(kritisch.length), zusatz: 'ab ' + w0.von + ' — kein Ausfall mehr auffangbar', c: '#4E0401', rand: '#F6DEDC' },
+      { titel: 'Knappe Wochen', wert: String(knapp.length), zusatz: 'höchstens zwei Ausfälle auffangbar', c: '#955410', rand: '#FFE0C0' },
+      { titel: 'Belastungsgrenze', wert: String(grenze.anteil), zusatz: '% der Belegschaft, dann reißt der Plan',
+        c: grenze.anteil <= 10 ? '#4E0401' : (grenze.anteil <= 20 ? '#955410' : '#0E6B45'),
+        rand: grenze.anteil <= 10 ? '#F6DEDC' : (grenze.anteil <= 20 ? '#FFE0C0' : '#DFEFE7') }
+    ];
+
+    const stufen = [
+      { n: 'robust', t: 'drei oder mehr Ausfälle', fg: ST['robust'].fg, bg: ST['robust'].bg },
+      { n: 'knapp', t: 'ein bis zwei Ausfälle', fg: ST['knapp'].fg, bg: ST['knapp'].bg },
+      { n: 'ohne Reserve', t: 'kein Ausfall mehr', fg: ST['ohne Reserve'].fg, bg: ST['ohne Reserve'].bg }
+    ];
+
+    return { nav: this.nav('Nachsehen'), befund, kacheln, stufen, wochen, szenarien };
+  }
+}
+</script>
+</body>
+</html>

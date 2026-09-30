@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Betrieb</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Betrieb</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Seniorenzentrum Lindenhof · Branchenprofil Pflege · ein eigener, vollständig getrennter Datenraum</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Einheit anlegen</button>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Änderungen sichern</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; align-content: start">
+
+  <div style="grid-column: span 5; box-sizing: border-box; padding: 17px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+    <span style="font-size: 13.5px; font-weight: 600; color: #071317">Stammdaten</span>
+    <sc-for list="{{felder}}" as="f" hint-placeholder-count="4">
+      <div>
+        <label for="{{f.id}}" style="display: block; font-size: 11px; color: #5B6B72; margin-bottom: 5px">{{f.label}}</label>
+        <input id="{{f.id}}" type="text" placeholder="{{f.wert}}" style="box-sizing: border-box; width: 100%; height: 38px; padding: 0 13px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12.5px; color: #071317">
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="grid-column: span 7; box-sizing: border-box; padding: 17px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Einheiten</span>
+      <span style="font-size: 11.5px; color: #5B6B72">Ein Sub-Planer sieht nur seine eigene Einheit</span>
+    </div>
+    <sc-for list="{{einheiten}}" as="e" hint-placeholder-count="5">
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+        <span style="width: 10px; height: 30px; border-radius: 4px; flex-shrink: 0; background: {{e.c}}"></span>
+        <div style="flex-grow: 1">
+          <div style="font-size: 12.5px; font-weight: 500; color: #071317">{{e.name}}</div>
+          <div style="margin-top: 2px; font-size: 10.5px; color: #5B6B72">{{e.unter}}</div>
+        </div>
+        <span style="width: 74px; text-align: right; font-size: 12px; color: #3D4E55">{{e.leute}}</span>
+        <span style="width: 96px; text-align: right; font-size: 12px; color: #3D4E55">{{e.planer}}</span>
+        <button type="button" aria-label="Einheit bearbeiten" style="width: 30px; height: 30px; border-radius: 999px; color: #5B6B72; display: flex; align-items: center; justify-content: center"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20.2h14"></path><path d="M14.2 4.4 18 8.2 8.6 17.6H4.8v-3.8z"></path></svg></button>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="grid-column: span 5; box-sizing: border-box; padding: 17px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+    <span style="font-size: 13.5px; font-weight: 600; color: #071317">Regelwerk und Tarif</span>
+    <sc-for list="{{regeln}}" as="r" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 11px; padding: 11px 12px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+        <div style="flex-grow: 1">
+          <div style="font-size: 12.5px; color: #071317">{{r.n}}</div>
+          <div style="margin-top: 2px; font-size: 10.5px; color: #5B6B72">{{r.t}}</div>
+        </div>
+        <span style="padding: 3px 10px; border-radius: 999px; background: {{r.bg}}; color: {{r.fg}}; font-size: 11px; font-weight: 600">{{r.w}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="grid-column: span 4; box-sizing: border-box; padding: 17px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+    <div style="display: flex; align-items: center; gap: 9px">
+      <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Zugänge</span>
+      <a href="#" style="font-size: 12px; font-weight: 600; text-decoration: none">Verwalten</a>
+    </div>
+    <sc-for list="{{rollen}}" as="r" hint-placeholder-count="6">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="width: 28px; height: 22px; border-radius: 6px; flex-shrink: 0; font-size: 9.5px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{r.c}}">{{r.k}}</span>
+        <span style="flex-grow: 1; font-size: 12px; color: #071317">{{r.n}}</span>
+        <span style="font-size: 12px; font-weight: 600; color: #071317">{{r.z}}</span>
+      </div>
+    </sc-for>
+    <div style="margin-top: auto; box-sizing: border-box; padding: 10px 12px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 11px; line-height: 1.5; color: #3D4E55">
+      Zugangscodes werden nur als Prüfsumme gespeichert und lassen sich nicht wiederherstellen — nur neu vergeben.
+    </div>
+  </div>
+
+  <div style="grid-column: span 3; box-sizing: border-box; padding: 17px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 13.5px; font-weight: 600; color: #071317">Paket</span>
+    <div>
+      <div style="font-size: 20px; font-weight: 500; letter-spacing: -0.02em; color: #071317">Pflege</div>
+      <div style="margin-top: 3px; font-size: 11.5px; color: #5B6B72">Ein Standort · monatlich kündbar</div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 7px">
+      <sc-for list="{{paket}}" as="p" hint-placeholder-count="4">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0E6B45" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m4.6 12.4 4.8 4.8L19.4 6.6"></path></svg>
+          <span style="font-size: 11.5px; color: #3D4E55">{{p}}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top: auto">
+      <div style="font-size: 11px; color: #5B6B72">Nächste Rechnung</div>
+      <div style="margin-top: 2px; font-size: 12.5px; color: #071317">1. Oktober 2026</div>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const felder = [
+      { id: 'bt-name', label: 'Name des Betriebs', wert: 'Seniorenzentrum Lindenhof' },
+      { id: 'bt-traeger', label: 'Träger', wert: 'Lindenhof gemeinnützige GmbH' },
+      { id: 'bt-adresse', label: 'Anschrift des Standorts', wert: 'Lindenallee 14, 34117 Kassel' },
+      { id: 'bt-ansprech', label: 'Verantwortlich für die Verarbeitung', wert: 'Sabine Krüger, Einrichtungsleitung' }
+    ];
+
+    const einheiten = [
+      { name: 'Wohnbereich Nord', unter: '32 Plätze · Station 1 und 2', leute: '16 Personen', planer: 'Krüger, S.', c: '#017070' },
+      { name: 'Wohnbereich Süd', unter: '28 Plätze · Station 3', leute: '15 Personen', planer: 'Berger, N.', c: '#316C81' },
+      { name: 'Wohnbereich West', unter: '24 Plätze · Station 4', leute: '14 Personen', planer: 'Berger, N.', c: '#023441' },
+      { name: 'Tagespflege', unter: '18 Plätze · werktags', leute: '9 Personen', planer: 'Krüger, S.', c: '#0E6B45' },
+      { name: 'Springerpool', unter: 'einheitsübergreifend', leute: '3 Personen', planer: 'Krüger, S.', c: '#955410' }
+    ];
+
+    const regeln = [
+      { n: 'Branchenprofil', t: 'Kataloge, Rechtsgrundlagen, Qualifikationen', w: 'Pflege', bg: '#DFF0F0', fg: '#017070' },
+      { n: 'Tarifwerk', t: 'Zuschläge, Ausgleichszeitraum, Urlaubsanspruch', w: 'TVöD-P', bg: '#E4EDF1', fg: '#2A5A6D' },
+      { n: 'Ausgleichszeitraum', t: 'für die Höchstarbeitszeit nach § 3 ArbZG', w: '26 Wochen', bg: '#E7EEF1', fg: '#3D4E55' },
+      { n: 'Regelstand', t: 'geprüfter Stand der hinterlegten Vorschriften', w: '2026.09', bg: '#DFEFE7', fg: '#0E6B45' }
+    ];
+
+    const rollen = [
+      { k: 'OL', n: 'Organisationsleitung', z: '1', c: '#2B3440' },
+      { k: 'PL', n: 'Planer', z: '2', c: '#35506B' },
+      { k: 'SP', n: 'Sub-Planer', z: '3', c: '#4C4668' },
+      { k: 'MA', n: 'Mitarbeiter', z: '52', c: '#3C5A48' },
+      { k: 'BR', n: 'Betriebsrat (lesend)', z: '2', c: '#6B4E23' },
+      { k: 'SV', n: 'Schichtverantwortung', z: '6', c: '#017070' }
+    ];
+
+    const paket = [
+      'Alle Ansichten und Auswertungen',
+      'Untergrenzen und Regelprüfung',
+      'Betriebsratszugang kostenfrei',
+      'Unbegrenzt viele Beschäftigte'
+    ];
+
+    return { nav: this.nav('Verwaltung'), felder, einheiten, regeln, rollen, paket };
+  }
+}
+</script>
+</body>
+</html>

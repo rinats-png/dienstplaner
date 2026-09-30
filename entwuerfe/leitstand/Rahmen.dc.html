@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Rahmen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+a:focus-visible,button:focus-visible{outline:2px solid #017070;outline-offset:2px}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -120px; left: 340px; width: 820px; height: 560px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.34), rgba(80,232,244,0.16) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: absolute; left: 0; top: 440px; width: 22px; border-top: 1px dashed #5B6B72"></div>
+<div style="position: absolute; right: 0; top: 440px; width: 22px; border-top: 1px dashed #5B6B72"></div>
+
+<header style="position: relative; z-index: 3; height: 64px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <div style="width: 1px; height: 22px; flex-shrink: 0; background: #BCCDD4"></div>
+  <span style="min-width: 0; flex-shrink: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; color: #3D4E55">Seniorenzentrum Lindenhof</span>
+
+  <nav aria-label="Bereiche" style="display: flex; align-items: center; gap: 2px; padding: 4px; flex-shrink: 0; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <a href="#" aria-current="{{nav.dienstAc}}" style="{{nav.dienst}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"></rect><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"></rect><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"></rect><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"></rect></svg>Im Dienst</a>
+    <a href="#" aria-current="{{nav.planenAc}}" style="{{nav.planen}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.4"></rect><path d="M8 3v4M16 3v4M3 10.5h18"></path></svg>Planen</a>
+    <a href="#" aria-current="{{nav.entscheidenAc}}" style="{{nav.entscheiden}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4.5h6v2.6H9z"></path><path d="M7.5 5.8H5.2v15.1h13.6V5.8H16.5"></path><path d="m9.2 13.4 2.1 2.1 4.2-4.3"></path></svg>Zu entscheiden<span style="min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border-radius: 999px; background: #FFE0C0; color: #955410; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center">5</span></a>
+    <a href="#" aria-current="{{nav.mitfaehrtAc}}" style="{{nav.mitfaehrt}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.2" cy="8.4" r="3.3"></circle><path d="M3.2 19.8c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2"></path><path d="M16.2 6.4a3.2 3.2 0 0 1 0 7.5"></path><path d="M17.8 15.6c2 .7 3.2 2.1 3.2 4.2"></path></svg>Wer mitfährt</a>
+    <a href="#" aria-current="{{nav.nachsehenAc}}" style="{{nav.nachsehen}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20.5h18"></path><path d="M6 20V11M11 20V4.5M16 20v-6.5M20.5 20v-10"></path></svg>Nachsehen</a>
+    <a href="#" aria-current="{{nav.verwaltungAc}}" style="{{nav.verwaltung}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"></circle><path d="M12 2.6v2.3M12 19.1v2.3M21.4 12h-2.3M4.9 12H2.6M18.6 5.4 17 7M7 17l-1.6 1.6M18.6 18.6 17 17M7 7 5.4 5.4"></path></svg>Verwaltung</a>
+  </nav>
+
+  <div style="flex-grow: 1; min-width: 0"></div>
+
+  <button type="button" style="height: 40px; flex-shrink: 0; padding: 0 8px 0 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #3D4E55">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg>
+    Suchen …
+    <span style="padding: 2px 6px; border-radius: 6px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 10.5px; color: #5B6B72">Strg K</span>
+  </button>
+  <button type="button" aria-label="Rückgängig" style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 5 4 9.5 8.5 14"></path><path d="M4.5 9.5H15a5 5 0 0 1 0 10h-3"></path></svg></button>
+  <button type="button" aria-label="Postfach, 2 ungelesen" style="position: relative; width: 40px; height: 40px; flex-shrink: 0; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.4"></rect><path d="m3.8 7.5 8.2 6 8.2-6"></path></svg>
+    <span style="position: absolute; top: 3px; right: 2px; min-width: 16px; height: 16px; box-sizing: border-box; padding: 0 4px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center">2</span>
+  </button>
+  <button type="button" aria-haspopup="menu" aria-expanded="false" style="height: 40px; flex-shrink: 0; padding: 0 12px 0 15px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #071317">
+    Ansicht
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9.5 6 6 6-6"></path></svg>
+  </button>
+  <button type="button" aria-label="Konto: Krüger, Sabine" style="width: 36px; height: 36px; flex-shrink: 0; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</button>
+</header>
+
+<div style="position: sticky; top: 0; z-index: 2; height: 48px; flex-shrink: 0; box-sizing: border-box; overflow: hidden">
+  <nav aria-label="Planen" style="height: 48px; box-sizing: border-box; padding: 0 30px; display: flex; align-items: stretch; gap: 26px; border-bottom: 1px solid rgba(188,205,212,0.6)">
+    <sc-for list="{{tabs}}" as="k" hint-placeholder-count="7">
+      <a href="#" aria-current="{{k.ac}}" style="{{k.s}}">{{k.t}}<span style="{{k.zs}}">{{k.z}}</span></a>
+    </sc-for>
+  </nav>
+  <div style="position: absolute; top: 0; right: 0; width: 72px; height: 48px; pointer-events: none; background: linear-gradient(90deg, rgba(231,238,241,0), #E7EEF1)"></div>
+</div>
+
+<div style="position: relative; z-index: 1; padding: 18px 30px 0">
+  <section aria-label="Monatsplan" style="box-sizing: border-box; padding: 16px 18px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <div style="flex-grow: 1">
+        <h1 style="margin: 0; font-size: 20px; line-height: 1.2; font-weight: 600; letter-spacing: -0.01em; color: #071317">Monatsplan</h1>
+        <p style="margin: 3px 0 0; font-size: 12px; color: #5B6B72">September 2026 · Wohnbereich Nord · 14 Personen · heute ist Dienstag, der 29.</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #E7EEF1">
+        <button type="button" style="height: 28px; padding: 0 12px; border-radius: 999px; color: #3D4E55; font-size: 12px">Woche</button>
+        <span style="height: 28px; padding: 0 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; color: #071317; font-size: 12px; font-weight: 600; display: flex; align-items: center">Monat</span>
+      </div>
+      <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Dienst eintragen</button>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 176px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Person</span>
+      <div style="flex-grow: 1; display: flex; gap: 2px">
+        <sc-for list="{{tage}}" as="d" hint-placeholder-count="30">
+          <div style="{{d.s}}"><span style="font-size: 9px; opacity: 0.9">{{d.wt}}</span><span style="font-size: 11px; font-weight: 600">{{d.n}}</span></div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <div style="width: 176px; flex-shrink: 0; display: flex; align-items: center; gap: 9px">
+            <span style="width: 26px; height: 26px; border-radius: 999px; flex-shrink: 0; font-size: 9.5px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{z.farbe}}">{{z.kuerzel}}</span>
+            <div style="min-width: 0">
+              <div style="font-size: 12.5px; color: #071317; white-space: nowrap">{{z.name}}</div>
+              <div style="font-size: 10px; color: #5B6B72">{{z.umfang}}</div>
+            </div>
+          </div>
+          <div style="flex-grow: 1; display: flex; gap: 2px">
+            <sc-for list="{{z.zellen}}" as="c" hint-placeholder-count="30">
+              <div style="{{c.s}}">{{c.t}}</div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 16px; padding-top: 10px; border-top: 1px solid #E7EEF1">
+      <sc-for list="{{legende}}" as="l" hint-placeholder-count="4">
+        <div style="display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #3D4E55"><span style="{{l.s}}"></span>{{l.t}}</div>
+      </sc-for>
+    </div>
+  </section>
+</div>
+
+<div style="position: absolute; left: 30px; right: 30px; bottom: 26px; z-index: 1; display: flex; align-items: flex-end; gap: 34px; color: #5B6B72; font-size: 11px">
+  <div style="display: flex; align-items: center; gap: 8px"><div style="width: 7px; height: 64px; box-sizing: border-box; border: 1px solid #5B6B72; border-right: 0"></div><div><div style="font-weight: 600">64 px</div><div>Kopfzeile mit Bereichs-Pillen</div></div></div>
+  <div style="display: flex; align-items: center; gap: 8px"><div style="width: 7px; height: 48px; box-sizing: border-box; border: 1px solid #5B6B72; border-right: 0"></div><div><div style="font-weight: 600">48 px</div><div>Unterleiste, sticky, nur Text</div></div></div>
+  <div style="display: flex; align-items: center; gap: 8px"><div style="width: 7px; height: 40px; box-sizing: border-box; border: 1px solid #5B6B72; border-right: 0"></div><div><div style="font-weight: 600">40 px</div><div>Bereichs-Pille, aktiv #DFF0F0</div></div></div>
+  <div style="display: flex; align-items: center; gap: 8px"><div style="width: 22px; border-top: 1px dashed #5B6B72"></div><div><div style="font-weight: 600">ca. 440 px</div><div>Der Verlauf-Fleck reicht bis zur gestrichelten Marke</div></div></div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const basis = 'height:40px;padding:0 13px;border-radius:999px;display:flex;align-items:center;gap:7px;font-size:12.5px;text-decoration:none;white-space:nowrap;';
+    const an = basis + 'font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = basis + 'color:#3D4E55;';
+    const s = (k) => (k === aktiv ? an : aus);
+    const a = (k) => (k === aktiv ? 'page' : 'false');
+    return {
+      dienst: s('Im Dienst'), dienstAc: a('Im Dienst'),
+      planen: s('Planen'), planenAc: a('Planen'),
+      entscheiden: s('Zu entscheiden'), entscheidenAc: a('Zu entscheiden'),
+      mitfaehrt: s('Wer mitfährt'), mitfaehrtAc: a('Wer mitfährt'),
+      nachsehen: s('Nachsehen'), nachsehenAc: a('Nachsehen'),
+      verwaltung: s('Verwaltung'), verwaltungAc: a('Verwaltung')
+    };
+  }
+  renderVals() {
+    const tabDefs = [
+      ['Monatsplan', ''], ['Personaleinsatz', ''], ['Jahresansicht', ''], ['Bereitschaft', ''],
+      ['Selbstplanung', '3'], ['Sondereinsätze', ''], ['Schichtfolge', '']
+    ];
+    const tabs = tabDefs.map((d) => {
+      const aktiv = d[0] === 'Monatsplan';
+      const basis = 'display:flex;align-items:center;gap:7px;box-sizing:border-box;font-size:13px;text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;';
+      return {
+        t: d[0], z: d[1], ac: aktiv ? 'page' : 'false',
+        s: basis + (aktiv ? 'font-weight:620;color:#071317;border-bottom-color:#017070;' : 'color:#3D4E55;'),
+        zs: d[1] ? 'min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:999px;background:#DFF0F0;color:#017070;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;' : 'display:none;'
+      };
+    });
+
+    const WT = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
+    const tage = [];
+    for (let d = 1; d <= 30; d++) {
+      const wd = d % 7;
+      const heute = d === 29;
+      const we = wd >= 5;
+      tage.push({
+        n: String(d), wt: WT[wd],
+        s: 'flex-grow:1;flex-basis:0;min-width:0;height:34px;box-sizing:border-box;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+          (heute ? 'background:#017070;color:#FFFFFF;' : (we ? 'background:#F4F8F9;color:#3D4E55;' : 'color:#071317;'))
+      });
+    }
+
+    const ART = {
+      F: { bg: '#DFF0F0', line: '#017070' },
+      S: { bg: '#FFE0C0', line: '#955410' },
+      N: { bg: '#E4EDF1', line: '#316C81' },
+      U: { bg: '#DFEFE7', line: '#0E6B45' }
+    };
+    const zelle = (ch) => {
+      const basis = 'flex-grow:1;flex-basis:0;min-width:0;height:30px;box-sizing:border-box;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;color:#071317;';
+      if (ch === '-') { return { t: '', s: basis + 'background:#F4F8F9;' }; }
+      const a = ART[ch];
+      return { t: ch, s: basis + 'background:' + a.bg + ';border-left:2.5px solid ' + a.line + ';' };
+    };
+    const Z = (name, kuerzel, farbe, umfang, muster, versatz, urlaub) => {
+      const zellen = [];
+      for (let d = 1; d <= 30; d++) {
+        let ch = muster.charAt((d - 1 + versatz) % muster.length);
+        if (urlaub && d >= urlaub[0] && d <= urlaub[1]) { ch = 'U'; }
+        zellen.push(zelle(ch));
+      }
+      return { name: name, kuerzel: kuerzel, farbe: farbe, umfang: umfang, zellen: zellen };
+    };
+    const zeilen = [
+      Z('Adler, Antje', 'AA', '#017070', 'Pflegefachkraft · 100 %', 'FFFSS--', 0),
+      Z('Kern, Andrea', 'AK', '#017070', 'Pflegefachkraft · 80 %', 'F-FF-SS', 2),
+      Z('Brandt, Miriam', 'MB', '#017070', 'Pflegefachkraft · 75 %', 'FF-FF--', 1, [14, 18]),
+      Z('Nowak, Piotr', 'PN', '#017070', 'Pflegefachkraft · 100 %', 'NNN----', 4),
+      Z('Hoffmann, Lars', 'LH', '#316C81', 'Pflegehilfskraft · 100 %', 'SSS--FF', 3),
+      Z('Richter, Kai', 'KR', '#316C81', 'Pflegehilfskraft · 80 %', '--FFSS-', 5)
+    ];
+
+    const lg = (t, k) => ({ t: t, s: 'width: 14px; height: 12px; border-radius: 3px; background:' + ART[k].bg + '; border-left: 2.5px solid ' + ART[k].line });
+    const legende = [lg('Frühdienst', 'F'), lg('Spätdienst', 'S'), lg('Nachtdienst', 'N'), lg('Urlaub', 'U')];
+
+    return { nav: this.nav('Planen'), tabs, tage, zeilen, legende };
+  }
+}
+</script>
+</body>
+</html>

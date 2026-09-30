@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Mobil — Mehr</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #D9E4E8; display: flex; flex-direction: column">
+
+<div style="position: absolute; top: -170px; left: -60px; width: 500px; height: 380px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.44), rgba(80,232,244,0.22) 50%, rgba(223,240,240,0) 80%); filter: blur(46px)"></div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 20px 18px 0; display: flex; align-items: center; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px">
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+      <div style="width: 4px; height: 17px; border-radius: 2px; background: #02A0A0"></div>
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Mitteilungen" style="position: relative; width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2.4"></rect><path d="m4.2 7.8 7.8 5.8 7.8-5.8"></path></svg>
+    <span style="position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 999px; background: #955410; border: 1.5px solid #D9E4E8"></span>
+  </button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">TB</div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 14px 18px 0">
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #3D4E55">Wohnbereich Nord</div>
+  <h1 style="margin: 6px 0 0; font-size: 29px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Tobias Brandt</h1>
+</div>
+
+<div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 16px 18px 0">
+
+  <div style="display: flex; gap: 14px; box-sizing: border-box; padding: 14px 16px; margin-bottom: 10px; border-radius: 14px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 10px 26px rgba(7,19,23,0.06)">
+    <sc-for list="{{kennzahlen}}" as="k" hint-placeholder-count="3">
+      <div style="flex: 1 1 0">
+        <div style="font-size: 11.5px; color: #5B6B72">{{k.l}}</div>
+        <div style="margin-top: 3px; font-size: 19px; font-weight: 650; color: #071317; font-variant-numeric: tabular-nums">{{k.v}}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="box-sizing: border-box; padding: 2px 18px; margin-bottom: 10px; border-radius: 14px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 10px 26px rgba(7,19,23,0.06)">
+    <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="4">
+      <button type="button" style="width: 100%; text-align: left; display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 11px 0; border-bottom: 1px solid #E7EEF1">
+        <span style="flex-grow: 1; min-width: 0">
+          <span style="display: block; font-size: 15.5px; font-weight: 500; color: {{z.farbe}}">{{z.links}}</span>
+          <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: #5B6B72">{{z.unten}}</span>
+        </span>
+        <span style="{{z.pill}}">{{z.rechts}}</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"></path></svg>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="box-sizing: border-box; padding: 2px 18px; border-radius: 14px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 10px 26px rgba(7,19,23,0.06)">
+    <div style="display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 11px 0; border-bottom: 1px solid #E7EEF1">
+      <div style="flex-grow: 1; min-width: 0">
+        <div style="font-size: 15.5px; font-weight: 500; color: #071317">Feldmodus</div>
+        <div style="margin-top: 3px; font-size: 13px; line-height: 1.4; color: #5B6B72">Größere Schrift, maximaler Kontrast</div>
+      </div>
+      <button type="button" role="switch" aria-checked="false" aria-label="Feldmodus" style="position: relative; flex-shrink: 0; width: 52px; height: 32px; box-sizing: border-box; border-radius: 999px; border: 2px solid #5B6B72; background: #FFFFFF">
+        <span style="position: absolute; top: 4px; left: 4px; width: 20px; height: 20px; border-radius: 999px; background: #5B6B72"></span>
+      </button>
+    </div>
+    <button type="button" style="width: 100%; text-align: left; display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 11px 0; border-bottom: 1px solid #E7EEF1">
+      <span style="flex-grow: 1; min-width: 0">
+        <span style="display: block; font-size: 15.5px; font-weight: 500; color: #071317">Rundgang wiederholen</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: #5B6B72">Wie CENTRIC funktioniert, in fünf Schritten</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"></path></svg>
+    </button>
+    <button type="button" style="width: 100%; text-align: left; display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 11px 0">
+      <span style="flex-grow: 1; min-width: 0">
+        <span style="display: block; font-size: 15.5px; font-weight: 500; color: #071317">Rechneransicht</span>
+        <span style="display: block; margin-top: 3px; font-size: 13px; line-height: 1.4; color: #5B6B72">Alle Tabellen und Auswertungen</span>
+      </span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m9.5 5.5 6.5 6.5-6.5 6.5"></path></svg>
+    </button>
+  </div>
+
+  <div style="padding: 12px 0 0">
+    <button type="button" style="width: 100%; height: 46px; border-radius: 15px; background: #FFFFFF; border: 1px solid #BCCDD4; font-size: 15px; color: #071317">Abmelden</button>
+  </div>
+  <div style="text-align: center; font-size: 11.5px; color: #3D4E55; padding: 12px 0 0">CENTRIC · Seniorenzentrum Lindenhof</div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; height: 72px; box-sizing: border-box; padding: 0 8px; background: #FFFFFF; border-top: 1px solid #CBDAE0; display: flex; align-items: center">
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.4"></circle><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"></circle></svg>
+    <span style="font-size: 10.5px">Heute</span>
+  </button>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3.4" y="5.4" width="17.2" height="15.2" rx="2.4"></rect><path d="M8 3.2v4M16 3.2v4M3.4 10.4h17.2"></path></svg>
+    <span style="font-size: 10.5px">Mein Plan</span>
+  </button>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20.2h14"></path><path d="M14.2 4.4 18 8.2 8.6 17.6H4.8v-3.8z"></path></svg>
+    <span style="font-size: 10.5px">Anliegen</span>
+  </button>
+  <span aria-current="page" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #017070; background: #DFF0F0; box-shadow: inset 0 -2px 0 #017070">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7.5h16M4 12h16M4 16.5h16"></path></svg>
+    <span style="font-size: 10.5px; font-weight: 600">Mehr</span>
+  </span>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const kennzahlen = [
+      { l: 'Auslastung', v: '94 %' },
+      { l: 'Wochenstunden', v: '38,5 h' },
+      { l: 'Urlaub übrig', v: '9 Tage' }
+    ];
+    const zeilen = [
+      { links: 'Checkliste heute', unten: 'noch 1 Pflichtpunkt', rechts: '4/5', farbe: '#071317',
+        pill: 'flex-shrink:0;font-size:15px;font-weight:600;color:#3D4E55;font-variant-numeric:tabular-nums;' },
+      { links: 'Offene Schichten', unten: 'Dienste, die du übernehmen kannst', rechts: '2', farbe: '#071317',
+        pill: 'flex-shrink:0;font-size:15px;font-weight:600;color:#3D4E55;' },
+      { links: 'Mitteilungen', unten: '2 ungelesen', rechts: '2', farbe: '#071317',
+        pill: 'flex-shrink:0;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;background:#F6DEDC;color:#4E0401;' }
+    ];
+    return { kennzahlen, zeilen };
+  }
+}
+</script>
+</body>
+</html>

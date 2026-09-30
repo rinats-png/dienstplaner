@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Einstellungen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input,select,textarea{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Einstellungen</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Was du für dich einstellen kannst · Sabine Krüger, Einrichtungsleitung · Seniorenzentrum Lindenhof</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Abmelden</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px; align-items: flex-start">
+
+  <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 13px">
+    <sc-for list="{{links}}" as="k" hint-placeholder-count="3">
+      <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 14px 18px 10px; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 9px; padding-bottom: 4px">
+          <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">{{k.titel}}</span>
+          <span style="font-size: 11.5px; color: #5B6B72">{{k.rechts}}</span>
+        </div>
+        <sc-for list="{{k.zeilen}}" as="r" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid #F4F8F9">
+            <div style="flex-grow: 1; min-width: 0">
+              <div style="font-size: 12.5px; font-weight: 500; color: #071317">{{r.titel}}</div>
+              <div style="margin-top: 2px; font-size: 11px; line-height: 1.45; color: #5B6B72">{{r.text}}</div>
+            </div>
+            <sc-for list="{{r.seg}}" as="g" hint-placeholder-count="1">
+              <div role="group" aria-label="{{g.label}}" style="display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #F4F8F9; border: 1px solid #CBDAE0; flex-shrink: 0">
+                <sc-for list="{{g.opts}}" as="o" hint-placeholder-count="3">
+                  <button type="button" aria-pressed="{{o.p}}" style="{{o.s}}">{{o.t}}</button>
+                </sc-for>
+              </div>
+            </sc-for>
+            <sc-for list="{{r.sw}}" as="w" hint-placeholder-count="1">
+              <button type="button" role="switch" aria-checked="{{w.an}}" aria-label="{{w.label}}" style="{{w.s}}"><span style="{{w.k}}"></span></button>
+            </sc-for>
+            <sc-for list="{{r.sel}}" as="s" hint-placeholder-count="1">
+              <div style="flex-shrink: 0">
+                <label for="{{s.id}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">{{s.label}}</label>
+                <select id="{{s.id}}" style="box-sizing: border-box; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12px; color: #071317; width: 150px"><option>{{s.wert}}</option></select>
+              </div>
+            </sc-for>
+            <sc-for list="{{r.inp}}" as="i" hint-placeholder-count="1">
+              <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+                <label for="{{i.id}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">{{i.label}}</label>
+                <input id="{{i.id}}" type="email" value="{{i.wert}}" placeholder="name@betrieb.de" style="box-sizing: border-box; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12px; color: #071317; width: 200px">
+              </div>
+            </sc-for>
+            <sc-for list="{{r.chips}}" as="c" hint-placeholder-count="2">
+              <button type="button" aria-pressed="{{c.p}}" style="{{c.s}}">{{c.t}}</button>
+            </sc-for>
+            <sc-for list="{{r.pill}}" as="p" hint-placeholder-count="1">
+              <span style="padding: 3px 11px; border-radius: 999px; background: #DFF0F0; color: #017070; font-size: 11.5px; font-weight: 600; flex-shrink: 0">{{p}}</span>
+            </sc-for>
+            <sc-for list="{{r.btn}}" as="b" hint-placeholder-count="1">
+              <button type="button" style="{{b.s}}">{{b.t}}</button>
+            </sc-for>
+          </div>
+        </sc-for>
+        <sc-for list="{{k.hinweis}}" as="h" hint-placeholder-count="1">
+          <div style="margin: 4px 0 6px; box-sizing: border-box; padding: 10px 12px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 11px; line-height: 1.5; color: #3D4E55">{{h}}</div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 13px">
+    <sc-for list="{{rechts}}" as="k" hint-placeholder-count="3">
+      <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 14px 18px 10px; display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; gap: 9px; padding-bottom: 4px">
+          <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">{{k.titel}}</span>
+          <span style="font-size: 11.5px; color: #5B6B72">{{k.rechts}}</span>
+        </div>
+        <sc-for list="{{k.zeilen}}" as="r" hint-placeholder-count="5">
+          <div style="display: flex; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid #F4F8F9">
+            <div style="flex-grow: 1; min-width: 0">
+              <div style="font-size: 12.5px; font-weight: 500; color: #071317">{{r.titel}}</div>
+              <div style="margin-top: 2px; font-size: 11px; line-height: 1.45; color: #5B6B72">{{r.text}}</div>
+            </div>
+            <sc-for list="{{r.seg}}" as="g" hint-placeholder-count="1">
+              <div role="group" aria-label="{{g.label}}" style="display: flex; gap: 2px; padding: 3px; border-radius: 999px; background: #F4F8F9; border: 1px solid #CBDAE0; flex-shrink: 0">
+                <sc-for list="{{g.opts}}" as="o" hint-placeholder-count="3">
+                  <button type="button" aria-pressed="{{o.p}}" style="{{o.s}}">{{o.t}}</button>
+                </sc-for>
+              </div>
+            </sc-for>
+            <sc-for list="{{r.sw}}" as="w" hint-placeholder-count="1">
+              <button type="button" role="switch" aria-checked="{{w.an}}" aria-label="{{w.label}}" style="{{w.s}}"><span style="{{w.k}}"></span></button>
+            </sc-for>
+            <sc-for list="{{r.sel}}" as="s" hint-placeholder-count="1">
+              <div style="flex-shrink: 0">
+                <label for="{{s.id}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">{{s.label}}</label>
+                <select id="{{s.id}}" style="box-sizing: border-box; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12px; color: #071317; width: 150px"><option>{{s.wert}}</option></select>
+              </div>
+            </sc-for>
+            <sc-for list="{{r.inp}}" as="i" hint-placeholder-count="1">
+              <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0">
+                <label for="{{i.id}}" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">{{i.label}}</label>
+                <input id="{{i.id}}" type="email" value="{{i.wert}}" placeholder="name@betrieb.de" style="box-sizing: border-box; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid #BCCDD4; background: #FFFFFF; font-size: 12px; color: #071317; width: 200px">
+              </div>
+            </sc-for>
+            <sc-for list="{{r.chips}}" as="c" hint-placeholder-count="2">
+              <button type="button" aria-pressed="{{c.p}}" style="{{c.s}}">{{c.t}}</button>
+            </sc-for>
+            <sc-for list="{{r.pill}}" as="p" hint-placeholder-count="1">
+              <span style="padding: 3px 11px; border-radius: 999px; background: #DFF0F0; color: #017070; font-size: 11.5px; font-weight: 600; flex-shrink: 0">{{p}}</span>
+            </sc-for>
+            <sc-for list="{{r.btn}}" as="b" hint-placeholder-count="1">
+              <button type="button" style="{{b.s}}">{{b.t}}</button>
+            </sc-for>
+          </div>
+        </sc-for>
+        <sc-for list="{{k.hinweis}}" as="h" hint-placeholder-count="1">
+          <div style="margin: 4px 0 6px; box-sizing: border-box; padding: 10px 12px; border-radius: 11px; background: #F4F8F9; border: 1px solid #E7EEF1; font-size: 11px; line-height: 1.5; color: #3D4E55">{{h}}</div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const SEG_AN = 'height:28px;padding:0 12px;border-radius:999px;background:#071317;color:#FFFFFF;font-size:12px;font-weight:600;';
+    const SEG_AUS = 'height:28px;padding:0 12px;border-radius:999px;color:#3D4E55;font-size:12px;';
+    const TR_AN = 'position:relative;flex-shrink:0;width:44px;height:26px;border-radius:13px;background:#017070;';
+    const TR_AUS = 'position:relative;flex-shrink:0;width:44px;height:26px;border-radius:13px;background:#BCCDD4;';
+    const KN_AN = 'position:absolute;top:3px;left:21px;width:20px;height:20px;border-radius:10px;background:#FFFFFF;box-shadow:0 1px 3px rgba(7,19,23,0.25);';
+    const KN_AUS = 'position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:10px;background:#FFFFFF;box-shadow:0 1px 3px rgba(7,19,23,0.25);';
+    const CH_AN = 'height:28px;min-width:76px;padding:0 12px;border-radius:999px;border:1px solid #017070;background:#DFF0F0;color:#017070;font-size:12px;font-weight:600;';
+    const CH_AUS = 'height:28px;min-width:76px;padding:0 12px;border-radius:999px;border:1px solid #CBDAE0;background:#FFFFFF;color:#5B6B72;font-size:12px;font-weight:500;';
+    const BT = 'height:30px;padding:0 13px;border-radius:999px;background:#FFFFFF;border:1px solid #CBDAE0;font-size:12px;color:#071317;flex-shrink:0;';
+    const BT_A = 'height:30px;padding:0 13px;border-radius:999px;background:#017070;color:#FFFFFF;font-size:12px;font-weight:500;flex-shrink:0;';
+
+    const seg = (label, opts, aktiv) => [{
+      label: label,
+      opts: opts.map((t) => ({ t: t, p: t === aktiv ? 'true' : 'false', s: t === aktiv ? SEG_AN : SEG_AUS }))
+    }];
+    const sw = (label, an) => [{ label: label, an: an ? 'true' : 'false', s: an ? TR_AN : TR_AUS, k: an ? KN_AN : KN_AUS }];
+    const chips = (mail, push) => [
+      { t: 'E-Mail', p: mail ? 'true' : 'false', s: mail ? CH_AN : CH_AUS },
+      { t: 'Gerät', p: push ? 'true' : 'false', s: push ? CH_AN : CH_AUS }
+    ];
+    const Z = (titel, text, x) => Object.assign({ titel: titel, text: text, seg: [], sw: [], sel: [], inp: [], chips: [], pill: [], btn: [] }, x);
+    const B = (t, primaer) => [{ t: t, s: primaer ? BT_A : BT }];
+
+    const darstellung = {
+      titel: 'Darstellung', rechts: 'gilt nur für dich', hinweis: [],
+      zeilen: [
+        Z('Dichte', 'Kompakt zeigt mehr auf einmal, komfortabel ist ruhiger zu lesen.',
+          { seg: seg('Dichte', ['Komfortabel', 'Kompakt'], 'Komfortabel') }),
+        Z('Farbstimmung', 'Hell ist die Vorgabe. Dunkel schont die Augen im Nachtdienst — wer will, kann auch der Einstellung des Geräts folgen.',
+          { seg: seg('Farbstimmung', ['Hell', 'Dunkel', 'Wie das Gerät'], 'Hell') }),
+        Z('Erhöhter Kontrast', 'Verstärkt Ränder und Schrift. Hilft bei hellem Umgebungslicht und schwacher Sicht.',
+          { sw: sw('Erhöhter Kontrast', false) }),
+        Z('Bewegung reduzieren', 'Schaltet Übergänge und Animationen ab.',
+          { sw: sw('Bewegung reduzieren', false) }),
+        Z('Startansicht', 'Womit die Anwendung nach dem Anmelden öffnet.',
+          { sel: [{ id: 'es-start', label: 'Startansicht', wert: 'Start' }] })
+      ]
+    };
+
+    const zugang = {
+      titel: 'Zugang', rechts: '', 
+      hinweis: ['Betriebliche Festlegungen wie Arbeitszeitregeln gelten für alle und lassen sich hier nicht ändern — sie stehen unter Betrieb.'],
+      zeilen: [
+        Z('Anmeldeadresse', 'Unter dieser Adresse erreichen dich Mitteilungen. Eine Änderung wird dem Betreiber angezeigt.',
+          { inp: [{ id: 'es-mail', label: 'Anmeldeadresse', wert: 's.krueger@lindenhof.example' }], btn: B('Übernehmen', false) }),
+        Z('Rolle', 'Wird von der Organisationsleitung vergeben und lässt sich hier nicht ändern.',
+          { pill: ['Organisationsleitung'] })
+      ]
+    };
+
+    const betrieb = {
+      titel: 'Für den Betrieb', rechts: 'nur Leitung', hinweis: [],
+      zeilen: [
+        Z('Arbeitszeitregeln, Standorte, Dienstarten', 'Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.',
+          { btn: B('Zum Betrieb', false) }),
+        Z('Datenmitnahme', 'Alle Daten als CSV, jederzeit, ohne Gebühr.',
+          { btn: B('Öffnen', false) }),
+        Z('Sicherung anlegen', 'Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.',
+          { btn: B('Jetzt sichern', false) })
+      ]
+    };
+
+    const art = (titel, text, mail, push) => Z(titel, text, { chips: chips(mail, push) });
+    const benachrichtigung = {
+      titel: 'Benachrichtigungen', rechts: '7 von 11 Arten', hinweis: ['Weitere Arten: Tauschangebot, Nachweis läuft ab, Zeiten offen, Aushang am Schwarzen Brett.'],
+      zeilen: [
+        Z('Mitteilungen auf diesem Gerät', 'Bei kurzfristigen Änderungen wirst du sofort unterrichtet.',
+          { sw: sw('Mitteilungen', true) }),
+        art('Antrag entschieden', 'Urlaub, Tausch oder Schulung wurde genehmigt oder abgelehnt.', true, true),
+        art('Dienst geändert', 'Ein bereits freigegebener Dienst wurde verschoben, getauscht oder gestrichen.', true, true),
+        art('Monatsplan freigegeben', 'Der Plan für einen Monat ist verbindlich.', true, true),
+        art('Anfrage zum Einspringen', 'Jemand fehlt, und du kämst infrage.', true, true),
+        art('Offene Schicht ausgeschrieben', 'Ein Dienst ist unbesetzt und steht zur Bewerbung offen.', false, true),
+        art('Resturlaub verfällt', 'Nicht genommener Urlaub verfällt zum Jahresende, wenn er nicht eingeplant wird.', true, false),
+        art('Übergabe fehlt', 'Für eine abgeschlossene Schicht wurde keine Übergabe hinterlegt.', false, true)
+      ]
+    };
+
+    const daten = {
+      titel: 'Deine Daten', rechts: '', hinweis: [],
+      zeilen: [
+        Z('Auskunft nach Artikel 15', 'Alles, was über dich gespeichert ist, als Datei.',
+          { btn: B('Erzeugen', false) }),
+        Z('Verbindung trennen', 'Meldet dich auf diesem Gerät ab. Der Zugangscode bleibt gültig.',
+          { btn: B('Abmelden', false) })
+      ]
+    };
+
+    return { nav: this.nav('Verwaltung'), links: [darstellung, zugang, daten], rechts: [benachrichtigung, betrieb] };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Mobil — Anliegen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+input{font:inherit}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #D9E4E8; display: flex; flex-direction: column">
+
+<div style="position: absolute; top: -170px; left: -60px; width: 500px; height: 380px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.44), rgba(80,232,244,0.22) 50%, rgba(223,240,240,0) 80%); filter: blur(46px)"></div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 20px 18px 0; display: flex; align-items: center; gap: 12px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px">
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+      <div style="width: 4px; height: 17px; border-radius: 2px; background: #02A0A0"></div>
+      <div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Mitteilungen" style="position: relative; width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2.4"></rect><path d="m4.2 7.8 7.8 5.8 7.8-5.8"></path></svg>
+    <span style="position: absolute; top: 9px; right: 10px; width: 8px; height: 8px; border-radius: 999px; background: #955410; border: 1.5px solid #D9E4E8"></span>
+  </button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">TB</div>
+</div>
+
+<div style="position: relative; flex-shrink: 0; box-sizing: border-box; padding: 14px 18px 0">
+  <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #3D4E55">Deine Vorgänge</div>
+  <h1 style="margin: 6px 0 0; font-size: 29px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Anliegen</h1>
+</div>
+
+<div style="position: relative; flex-grow: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 18px 18px 0">
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+    <button type="button" style="height: 52px; border-radius: 17px; background: #017070; color: #FFFFFF; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.4" y="5.4" width="17.2" height="15.2" rx="2.4"></rect><path d="M8 3.2v4M16 3.2v4M3.4 10.4h17.2"></path></svg>
+      Frei beantragen
+    </button>
+    <button type="button" style="height: 52px; border-radius: 17px; background: #F6DEDC; color: #4E0401; font-size: 15px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5.4v13.2M5.4 12h13.2"></path></svg>
+      Krank melden
+    </button>
+  </div>
+
+  <div style="margin: 24px 0 11px; font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #3D4E55">Meine Anträge</div>
+  <div style="box-sizing: border-box; padding: 4px 18px; border-radius: 14px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 10px 26px rgba(7,19,23,0.06)">
+    <sc-for list="{{antraege}}" as="a" hint-placeholder-count="4">
+      <div style="display: flex; align-items: center; gap: 14px; min-height: 46px; padding: 14px 0; border-bottom: 1px solid #E7EEF1">
+        <div style="flex-grow: 1; min-width: 0">
+          <div style="font-size: 15.5px; font-weight: 500; color: #071317">{{a.titel}}</div>
+          <div style="margin-top: 3px; font-size: 13px; line-height: 1.4; color: #5B6B72">{{a.unten}}</div>
+        </div>
+        <span style="padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{a.bg}}; color: {{a.fg}}">{{a.status}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+
+<div style="position: relative; flex-shrink: 0; height: 72px; box-sizing: border-box; padding: 0 8px; background: #FFFFFF; border-top: 1px solid #CBDAE0; display: flex; align-items: center">
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8.4"></circle><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"></circle></svg>
+    <span style="font-size: 10.5px">Heute</span>
+  </button>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3.4" y="5.4" width="17.2" height="15.2" rx="2.4"></rect><path d="M8 3.2v4M16 3.2v4M3.4 10.4h17.2"></path></svg>
+    <span style="font-size: 10.5px">Mein Plan</span>
+  </button>
+  <span aria-current="page" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #017070; background: #DFF0F0; box-shadow: inset 0 -2px 0 #017070">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20.2h14"></path><path d="M14.2 4.4 18 8.2 8.6 17.6H4.8v-3.8z"></path></svg>
+    <span style="font-size: 10.5px; font-weight: 600">Anliegen</span>
+  </span>
+  <button type="button" style="flex-grow: 1; height: 56px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: #5B6B72">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7.5h16M4 12h16M4 16.5h16"></path></svg>
+    <span style="font-size: 10.5px">Mehr</span>
+  </button>
+</div>
+
+<div style="position: absolute; left: 0; top: 0; width: 390px; height: 844px; background: rgba(7,19,23,0.42); backdrop-filter: blur(5px)"></div>
+
+<div role="dialog" aria-label="Krankmeldung" style="position: absolute; left: 0; bottom: 0; width: 390px; height: 452px; box-sizing: border-box; overflow: hidden; padding: 10px 20px 0; background: #FFFFFF; border-radius: 26px 26px 0 0; box-shadow: 0 -10px 40px rgba(7,19,23,0.18)">
+  <div style="width: 42px; height: 4.5px; border-radius: 3px; background: #9DB3BC; margin: 6px auto 16px"></div>
+  <div style="font-size: 20px; font-weight: 650; letter-spacing: -0.02em; color: #071317; margin-bottom: 16px">Krankmeldung</div>
+
+  <div style="display: grid; gap: 13px">
+    <div>
+      <label for="ka-person" style="display: block; margin-bottom: 5px; font-size: 12.5px; font-weight: 500; color: #3D4E55">Person</label>
+      <input id="ka-person" type="text" value="Brandt, Tobias" style="box-sizing: border-box; width: 100%; height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid #BCCDD4; background: #F4F8F9; font-size: 15px; color: #071317">
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+      <div>
+        <label for="ka-von" style="display: block; margin-bottom: 5px; font-size: 12.5px; font-weight: 500; color: #3D4E55">Von</label>
+        <input id="ka-von" type="date" value="2026-09-29" style="box-sizing: border-box; width: 100%; height: 48px; padding: 0 12px; border-radius: 14px; border: 1px solid #BCCDD4; background: #F4F8F9; font-size: 15px; color: #071317">
+      </div>
+      <div>
+        <label for="ka-bis" style="display: block; margin-bottom: 5px; font-size: 12.5px; font-weight: 500; color: #3D4E55">Voraussichtlich bis</label>
+        <input id="ka-bis" type="date" value="2026-09-30" style="box-sizing: border-box; width: 100%; height: 48px; padding: 0 12px; border-radius: 14px; border: 1px solid #BCCDD4; background: #F4F8F9; font-size: 15px; color: #071317">
+      </div>
+    </div>
+    <div>
+      <label for="ka-notiz" style="display: block; margin-bottom: 5px; font-size: 12.5px; font-weight: 500; color: #3D4E55">Anmerkung</label>
+      <input id="ka-notiz" type="text" placeholder="freiwillig" style="box-sizing: border-box; width: 100%; height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid #BCCDD4; background: #F4F8F9; font-size: 15px; color: #071317">
+      <div style="margin-top: 5px; font-size: 12px; line-height: 1.45; color: #5B6B72">Kein Grund, keine Diagnose — nur was für die Planung nötig ist.</div>
+    </div>
+    <div style="font-size: 12.5px; line-height: 1.5; color: #5B6B72">Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor.</div>
+    <button type="button" style="height: 52px; border-radius: 17px; background: #4E0401; color: #FFFFFF; font-size: 15.5px; font-weight: 600">Krank melden</button>
+  </div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const W = { bg: '#FFE0C0', fg: '#955410' };
+    const O = { bg: '#DFEFE7', fg: '#0E6B45' };
+    const antraege = [
+      { titel: 'Urlaub 12.10.', unten: 'bis 16.10.', status: 'offen', bg: W.bg, fg: W.fg },
+      { titel: 'Tausch 2.10.', unten: 'Passt, danke.', status: 'genehmigt', bg: O.bg, fg: O.fg },
+      { titel: 'Urlaub 3.8.', unten: 'bis 7.8.', status: 'genehmigt', bg: O.bg, fg: O.fg },
+      { titel: 'Freizeitausgleich 25.9.', unten: 'Besetzung reicht an dem Tag nicht.', status: 'abgelehnt', bg: '#F6DEDC', fg: '#4E0401' }
+    ];
+    return { antraege };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Tauschbörse</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Tauschbörse</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Offene Gesuche ohne festen Partner · alle im Betrieb sehen sie und können sich melden, danach entscheidet die Planung</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Gesuch einstellen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="font-size: 14px; font-weight: 600; color: #071317">Offene Gesuche</span>
+      <span style="padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #DFF0F0; color: #017070">{{anzahl}} offen</span>
+      <div style="flex-grow: 1"></div>
+      <span style="font-size: 12px; color: #5B6B72">Bestätigen darf, wer für die Einheit entscheiden darf</span>
+    </div>
+
+    <sc-for list="{{gesuche}}" as="g" hint-placeholder-count="3">
+      <div style="box-sizing: border-box; padding: 15px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 11px">
+        <div style="display: flex; align-items: flex-start; gap: 13px">
+          <span style="{{g.zelle}}">{{g.kurz}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="font-size: 14.5px; font-weight: 600; color: #071317">{{g.titel}}</div>
+            <div style="margin-top: 3px; font-size: 12.5px; color: #3D4E55">{{g.wer}} sucht Tausch · {{g.zeit}} · {{g.einheit}}</div>
+            <div style="{{g.textS}}">{{g.textT}}</div>
+          </div>
+          <div style="flex-shrink: 0; text-align: right">
+            <span style="{{g.meldS}}">{{g.meldT}}</span>
+            <div style="margin-top: 6px; font-size: 11px; color: #5B6B72">eingestellt {{g.erstellt}}</div>
+          </div>
+        </div>
+
+        <sc-for list="{{g.kand}}" as="k" hint-placeholder-count="2">
+          <div style="{{k.zeile}}">
+            <span style="{{k.av}}">{{k.kuerzel}}</span>
+            <div style="flex-grow: 1; min-width: 0">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="font-size: 13px; font-weight: 600; color: #071317">{{k.name}}</span>
+                <span style="font-size: 11px; color: #5B6B72">{{k.qual}}</span>
+              </div>
+              <div style="{{k.grundS}}">{{k.grund}}</div>
+              <div style="margin-top: 2px; font-size: 11.5px; color: #5B6B72">{{k.gegen}}</div>
+            </div>
+            <span style="{{k.markeS}}">{{k.marke}}</span>
+            <button type="button" style="{{k.knopf}}">{{k.knopfText}}</button>
+          </div>
+        </sc-for>
+
+        <div style="{{g.leerS}}">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5B6B72" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+          <span style="font-size: 12px; color: #3D4E55">{{g.leerT}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+    <div style="box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 13px">
+      <span style="font-size: 13.5px; font-weight: 600; color: #071317">So läuft ein Tausch</span>
+      <sc-for list="{{schritte}}" as="s" hint-placeholder-count="3">
+        <div style="display: flex; align-items: flex-start; gap: 11px">
+          <span style="{{s.punkt}}">{{s.nr}}</span>
+          <div style="flex-grow: 1">
+            <div style="font-size: 12.5px; font-weight: 600; color: #071317">{{s.titel}}</div>
+            <div style="margin-top: 2px; font-size: 11.5px; line-height: 1.5; color: #3D4E55">{{s.text}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex-grow: 1; box-sizing: border-box; padding: 16px 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 4px">
+      <div style="display: flex; align-items: center; margin-bottom: 8px">
+        <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Tauschvorgänge</span>
+        <span style="font-size: 11px; color: #5B6B72">Stand der Entscheidung</span>
+      </div>
+      <sc-for list="{{vorgaenge}}" as="v" hint-placeholder-count="4">
+        <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid #F4F8F9">
+          <span style="{{v.pille}}">{{v.status}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="font-size: 12.5px; color: #071317">{{v.was}}</div>
+            <div style="margin-top: 2px; font-size: 11.5px; color: #5B6B72">{{v.antwort}}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="box-sizing: border-box; display: flex; align-items: flex-start; gap: 11px; padding: 13px 16px; border-radius: 14px; background: #E7EEF1; border: 1px solid #CBDAE0">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0; margin-top: 1px"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+      <span style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Rot markierte Meldungen verletzen eine Vorgabe, etwa Ruhezeit oder Qualifikationsvorbehalt. Bestätigen lässt sich der Tausch trotzdem, die Entscheidung liegt bei der Planung. Geprüft wird nur die Übernahme durch die meldende Person; der Rückweg an die Anbieterin lässt sich hier nicht gegenprüfen.</span>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const pille = (bg, fg) => 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;flex-shrink:0;background:' + bg + ';color:' + fg + ';';
+    const OK = pille('#DFEFE7', '#0E6B45');
+    const WARN = pille('#FFE0C0', '#955410');
+    const DANGER = pille('#F6DEDC', '#4E0401');
+    const zelle = (farbe) => 'width:38px;height:38px;border-radius:11px;flex-shrink:0;font-size:13px;font-weight:600;color:#FFFFFF;display:flex;align-items:center;justify-content:center;background:' + farbe + ';';
+    const av = 'width:30px;height:30px;border-radius:999px;flex-shrink:0;font-size:10.5px;font-weight:600;color:#FFFFFF;display:flex;align-items:center;justify-content:center;background:#017070;';
+    const avAus = 'width:30px;height:30px;border-radius:999px;flex-shrink:0;font-size:10.5px;font-weight:600;color:#FFFFFF;display:flex;align-items:center;justify-content:center;background:#316C81;';
+    const zeileOk = 'display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:13px;background:#F4F8F9;border:1px solid #E7EEF1;';
+    const zeileKonflikt = 'display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:13px;background:#F6DEDC;border:1px solid #F6DEDC;';
+    const knopfAn = 'height:34px;padding:0 15px;border-radius:999px;background:#017070;color:#FFFFFF;font-size:12px;font-weight:500;flex-shrink:0;';
+    const knopfKonflikt = 'height:34px;padding:0 15px;border-radius:999px;background:#FFFFFF;border:1px solid #4E0401;color:#4E0401;font-size:12px;font-weight:500;flex-shrink:0;';
+    const grundOk = 'margin-top:3px;font-size:12px;color:#071317;';
+    const grundKonflikt = 'margin-top:3px;font-size:12px;font-weight:500;color:#4E0401;';
+    const textS = 'margin-top:5px;font-size:12.5px;color:#3D4E55;';
+    const meldAn = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const meldLeer = 'padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:600;background:#E7EEF1;color:#3D4E55;';
+    const leerAn = 'display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:11px;background:#F4F8F9;';
+    const nichts = 'display:none;';
+
+    const gesuche = [
+      { kurz: 'S', zelle: zelle('#316C81'),
+        titel: 'Freitag, 2. Oktober 2026 · Spätdienst', wer: 'Kern, Andrea', zeit: '13:45 – 22:00', einheit: 'Wohnbereich Süd',
+        textS: textS, textT: '„Arzttermin der Tochter, tausche gern gegen einen Frühdienst“',
+        meldS: meldAn, meldT: '2 Meldungen', erstellt: '27.9.2026, 08:14', leerS: nichts, leerT: '',
+        kand: [
+          { name: 'Berger, Nina', kuerzel: 'NB', qual: 'Pflegefachkraft', av: av, zeile: zeileOk,
+            grund: 'Ruhezeit eingehalten · keine Abwesenheit · keine Vorgabe verletzt', grundS: grundOk,
+            gegen: 'Im Gegenzug hätte Kern, Andrea den Frühdienst (6:00 – 14:15)',
+            marke: 'passt', markeS: OK, knopf: knopfAn, knopfText: 'Bestätigen' },
+          { name: 'Weiß, Carola', kuerzel: 'CW', qual: 'Pflegehilfskraft', av: avAus, zeile: zeileKonflikt,
+            grund: 'Ruhezeit 8,0 h zum Dienst am 3. Okt.', grundS: grundKonflikt,
+            gegen: 'Im Gegenzug hätte Kern, Andrea frei',
+            marke: 'Vorgabe verletzt', markeS: DANGER, knopf: knopfKonflikt, knopfText: 'Trotzdem bestätigen' }
+        ] },
+      { kurz: 'N', zelle: zelle('#023441'),
+        titel: 'Montag, 5. Oktober 2026 · Nachtdienst', wer: 'Nowak, Piotr', zeit: '21:45 – 6:15', einheit: 'Wohnbereich West',
+        textS: textS, textT: '„Familienfeier am Sonntag, ich brauche den Montag frei“',
+        meldS: meldAn, meldT: '1 Meldung', erstellt: '28.9.2026, 19:40', leerS: nichts, leerT: '',
+        kand: [
+          { name: 'Peters, Max', kuerzel: 'MP', qual: 'Pflegefachkraft', av: av, zeile: zeileOk,
+            grund: 'Ruhezeit eingehalten · Nachtdienste zugelassen · Wunsch „möchte arbeiten“ an diesem Tag', grundS: grundOk,
+            gegen: 'Im Gegenzug hätte Nowak, Piotr frei',
+            marke: 'passt', markeS: OK, knopf: knopfAn, knopfText: 'Bestätigen' }
+        ] },
+      { kurz: 'F', zelle: zelle('#017070'),
+        titel: 'Samstag, 10. Oktober 2026 · Frühdienst', wer: 'Adler, Antje', zeit: '6:00 – 14:15', einheit: 'Wohnbereich Nord',
+        textS: nichts, textT: '',
+        meldS: meldLeer, meldT: 'keine Meldung', erstellt: '29.9.2026, 07:52', leerS: leerAn,
+        leerT: 'Noch niemand hat sich gemeldet. Das Gesuch steht für alle im Betrieb sichtbar; wer einspringen kann, meldet sich mit „Ich übernehme“.',
+        kand: [] }
+    ];
+
+    const stufe = (bg, fg) => 'width:22px;height:22px;border-radius:999px;flex-shrink:0;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;background:' + bg + ';color:' + fg + ';';
+    const schritte = [
+      { nr: '1', punkt: stufe('#071317', '#FFFFFF'), titel: 'Gesuch einstellen',
+        text: 'Die Person wählt einen ihrer Dienste in den nächsten 45 Tagen, wahlweise mit Anmerkung und Wunschpartner.' },
+      { nr: '2', punkt: stufe('#DFF0F0', '#017070'), titel: 'Meldung',
+        text: 'Wer einspringen kann, meldet sich. Eine Meldung lässt sich zurücknehmen, das Gesuch zurückziehen.' },
+      { nr: '3', punkt: stufe('#017070', '#FFFFFF'), titel: 'Planung bestätigt',
+        text: 'Erst mit der Bestätigung tauschen beide Dienste im Plan. Beide Seiten erhalten eine Mitteilung.' }
+    ];
+
+    const vorgaenge = [
+      { status: 'offen', pille: WARN, was: 'Fr, 2.10. · offenes Gesuch', antwort: 'Kern, Andrea · 2 Meldungen liegen vor' },
+      { status: 'genehmigt', pille: OK, was: 'Di, 22.9. · mit Timm', antwort: 'getauscht mit Anja Timm' },
+      { status: 'genehmigt', pille: OK, was: 'Do, 17.9. · mit Roth', antwort: 'getauscht mit Hanna Roth' },
+      { status: 'abgelehnt', pille: DANGER, was: 'Mo, 14.9. · offenes Gesuch', antwort: 'Ruhezeit beim Übernehmenden nicht eingehalten' }
+    ];
+
+    return { nav: this.nav('Zu entscheiden'), anzahl: String(gesuche.length), gesuche, schritte, vorgaenge };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Offene Schichten</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">SK</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Offene Schichten</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">12 unbesetzte Dienste in den nächsten 30 Tagen · niemand wird stillschweigend eingeteilt</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px">
+    <button type="button" style="height: 38px; padding: 0 14px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; font-size: 12.5px; color: #071317">Am Brett aushängen</button>
+    <button type="button" style="height: 38px; padding: 0 17px; border-radius: 999px; background: #017070; color: #FFFFFF; font-size: 12.5px; font-weight: 500">Alle anfragen</button>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; gap: 14px">
+
+  <div style="width: 520px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{schichten}}" as="s" hint-placeholder-count="5">
+      <div style="box-sizing: border-box; padding: 14px 16px; border-radius: 16px; background: #FFFFFF; border: 1px solid {{s.rand}}; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; align-items: center; gap: 13px">
+        <div style="width: 52px; flex-shrink: 0; text-align: center">
+          <div style="font-size: 10.5px; color: #5B6B72">{{s.wd}}</div>
+          <div style="font-size: 20px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{s.tag}}</div>
+          <div style="font-size: 10px; color: #5B6B72">{{s.monat}}</div>
+        </div>
+        <div style="width: 1px; align-self: stretch; background: #E7EEF1"></div>
+        <div style="flex-grow: 1">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span style="width: 10px; height: 10px; border-radius: 3px; background: {{s.farbe}}"></span>
+            <span style="font-size: 13px; font-weight: 600; color: #071317">{{s.art}}</span>
+            <span style="font-size: 12px; color: #3D4E55">{{s.zeit}}</span>
+          </div>
+          <div style="margin-top: 4px; font-size: 11.5px; color: #5B6B72">{{s.einheit}} · {{s.grund}}</div>
+        </div>
+        <div style="text-align: right">
+          <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: {{s.statusBg}}; color: {{s.statusFg}}">{{s.status}}</span>
+          <div style="margin-top: 5px; font-size: 11px; color: #5B6B72">{{s.kandidaten}}</div>
+        </div>
+      </div>
+    </sc-for>
+    <div style="box-sizing: border-box; padding: 13px 16px; border-radius: 14px; background: #E7EEF1; border: 1px solid #CBDAE0; font-size: 11.5px; line-height: 1.55; color: #3D4E55">
+      Eine angefragte Person sagt zu oder ab. Erst mit der Zusage wird die Schicht vergeben — und die Absage kostet nichts.
+    </div>
+  </div>
+
+  <div style="flex-grow: 1; box-sizing: border-box; padding: 18px; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); display: flex; flex-direction: column; gap: 15px">
+
+    <div style="display: flex; align-items: flex-start; gap: 12px">
+      <div style="flex-grow: 1">
+        <div style="font-size: 17px; font-weight: 600; color: #071317">Nachtdienst · Mittwoch, 30. September</div>
+        <div style="margin-top: 3px; font-size: 12px; color: #5B6B72">Wohnbereich West · 21:45 – 6:15 Uhr · eine Pflegefachkraft gesucht</div>
+      </div>
+      <span style="padding: 3px 11px; border-radius: 999px; background: #F6DEDC; color: #4E0401; font-size: 11.5px; font-weight: 600">dringend</span>
+    </div>
+
+    <div>
+      <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px">
+        <span style="font-size: 12.5px; font-weight: 600; color: #071317">Vorschlagsreihenfolge</span>
+        <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #E7EEF1">
+          <span style="height: 28px; padding: 0 12px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0; color: #071317; font-size: 11.5px; font-weight: 600; display: flex; align-items: center">Nach Eignung</span>
+          <button type="button" style="height: 28px; padding: 0 12px; border-radius: 999px; color: #3D4E55; font-size: 11.5px">Nach Dienstalter</button>
+          <button type="button" style="height: 28px; padding: 0 12px; border-radius: 999px; color: #3D4E55; font-size: 11.5px">Gemischt</button>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; line-height: 1.5; color: #5B6B72">Stundenkonto, Auslastung, Wünsche und wie oft jemand zuletzt eingesprungen ist — in dieser Gewichtung.</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 9px">
+      <sc-for list="{{kandidaten}}" as="k" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 11px 13px; border-radius: 13px; background: {{k.bg}}; border: 1px solid {{k.rand}}">
+          <span style="width: 22px; flex-shrink: 0; font-size: 12px; font-weight: 700; color: #9DB3BC">{{k.rang}}</span>
+          <span style="width: 32px; height: 32px; border-radius: 999px; flex-shrink: 0; font-size: 11px; font-weight: 600; color: #FFFFFF; display: flex; align-items: center; justify-content: center; background: {{k.farbe}}">{{k.kuerzel}}</span>
+          <div style="flex-grow: 1; min-width: 0">
+            <div style="display: flex; align-items: center; gap: 8px">
+              <span style="font-size: 13px; font-weight: 600; color: #071317">{{k.name}}</span>
+              <span style="font-size: 11px; color: #5B6B72">{{k.qual}}</span>
+            </div>
+            <div style="margin-top: 3px; font-size: 11.5px; color: #3D4E55">{{k.grund}}</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px">
+            <span style="padding: 2px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 600; background: {{k.markeBg}}; color: {{k.markeFg}}">{{k.marke}}</span>
+            <span style="font-size: 10.5px; color: #5B6B72">{{k.konto}}</span>
+          </div>
+          <button type="button" style="{{k.knopf}}">{{k.knopfText}}</button>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; box-sizing: border-box; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border-radius: 12px; background: #F4F8F9; border: 1px solid #E7EEF1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round" style="flex-shrink: 0"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+      <span style="flex-grow: 1; font-size: 11.5px; line-height: 1.5; color: #3D4E55">Gesperrte Vorschläge lassen sich nicht übergehen: Ruhezeit und Qualifikationsvorbehalt nach § 4 PflBG sind harte Grenzen, keine Warnungen.</span>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const schichten = [
+      { wd: 'Mi', tag: '30', monat: 'Sept.', art: 'Nachtdienst', zeit: '21:45 – 6:15', farbe: '#023441',
+        einheit: 'Wohnbereich West', grund: 'Krankmeldung', status: 'offen', statusBg: '#F6DEDC', statusFg: '#4E0401',
+        kandidaten: '6 Vorschläge', rand: '#017070' },
+      { wd: 'Do', tag: '1', monat: 'Okt.', art: 'Spätdienst', zeit: '13:45 – 22:00', farbe: '#316C81',
+        einheit: 'Wohnbereich Süd', grund: 'Urlaub genehmigt', status: 'angefragt', statusBg: '#FFE0C0', statusFg: '#955410',
+        kandidaten: '2 antworten noch', rand: '#CBDAE0' },
+      { wd: 'Sa', tag: '3', monat: 'Okt.', art: 'Frühdienst', zeit: '6:00 – 14:15', farbe: '#017070',
+        einheit: 'Wohnbereich Nord', grund: 'Feiertagsbesetzung', status: 'offen', statusBg: '#F6DEDC', statusFg: '#4E0401',
+        kandidaten: '4 Vorschläge', rand: '#CBDAE0' },
+      { wd: 'So', tag: '4', monat: 'Okt.', art: 'Nachtdienst', zeit: '21:45 – 6:15', farbe: '#023441',
+        einheit: 'Wohnbereich Süd', grund: 'Schichtfolge lückenhaft', status: 'offen', statusBg: '#F6DEDC', statusFg: '#4E0401',
+        kandidaten: '3 Vorschläge', rand: '#CBDAE0' },
+      { wd: 'Di', tag: '6', monat: 'Okt.', art: 'Spätdienst', zeit: '13:45 – 22:00', farbe: '#316C81',
+        einheit: 'Wohnbereich West', grund: 'Schulung', status: 'vergeben', statusBg: '#DFEFE7', statusFg: '#0E6B45',
+        kandidaten: 'Mertens, F.', rand: '#CBDAE0' }
+    ];
+
+    const knopfAn = 'height:34px;padding:0 15px;border-radius:999px;background:#017070;color:#FFFFFF;font-size:12px;font-weight:500;flex-shrink:0;';
+    const knopfAus = 'height:34px;padding:0 15px;border-radius:999px;background:#FFFFFF;border:1px solid #CBDAE0;color:#071317;font-size:12px;flex-shrink:0;';
+    const knopfSperr = 'height:34px;padding:0 15px;border-radius:999px;background:#F4F8F9;border:1px solid #E7EEF1;color:#9DB3BC;font-size:12px;flex-shrink:0;';
+
+    const kandidaten = [
+      { rang: '1', name: 'Mertens, Frank', kuerzel: 'FM', qual: 'PFK', farbe: '#017070',
+        grund: 'Stundenkonto −6,5 h · zuletzt eingesprungen vor 31 Tagen · frei am Folgetag',
+        marke: 'sehr gut', markeBg: '#DFEFE7', markeFg: '#0E6B45', konto: '−6,5 h',
+        bg: '#F4FAF7', rand: '#DFEFE7', knopf: knopfAn, knopfText: 'Anfragen' },
+      { rang: '2', name: 'Peters, Max', kuerzel: 'MP', qual: 'PFK', farbe: '#017070',
+        grund: 'Springerpool · Wunsch „möchte arbeiten“ für diesen Tag',
+        marke: 'sehr gut', markeBg: '#DFEFE7', markeFg: '#0E6B45', konto: '−2,0 h',
+        bg: '#F4FAF7', rand: '#DFEFE7', knopf: knopfAn, knopfText: 'Anfragen' },
+      { rang: '3', name: 'Berger, Nina', kuerzel: 'NB', qual: 'PFK', farbe: '#017070',
+        grund: 'Eigene Einheit · dritter Nachtdienst in Folge wäre die Grenze',
+        marke: 'gut', markeBg: '#DFF0F0', markeFg: '#017070', konto: '+3,5 h',
+        bg: '#FFFFFF', rand: '#E7EEF1', knopf: knopfAus, knopfText: 'Anfragen' },
+      { rang: '4', name: 'Öztürk, Derya', kuerzel: 'DÖ', qual: 'PFK', farbe: '#017070',
+        grund: 'Bereits 4 Dienste in dieser Woche · Belastung erhöht',
+        marke: 'prüfen', markeBg: '#FFE0C0', markeFg: '#955410', konto: '+11,0 h',
+        bg: '#FFFFFF', rand: '#E7EEF1', knopf: knopfAus, knopfText: 'Anfragen' },
+      { rang: '5', name: 'Vogel, Jana', kuerzel: 'JV', qual: 'PFK', farbe: '#9DB3BC',
+        grund: 'Ruhezeit endet erst um 20:10 Uhr — unter 11 Stunden nach § 5 ArbZG',
+        marke: 'gesperrt', markeBg: '#F6DEDC', markeFg: '#4E0401', konto: '+7,0 h',
+        bg: '#FDF7F6', rand: '#F6DEDC', knopf: knopfSperr, knopfText: 'Gesperrt' },
+      { rang: '6', name: 'Seidel, Tim', kuerzel: 'TS', qual: 'AZB', farbe: '#9DB3BC',
+        grund: 'Auszubildender — darf den Nachtdienst nicht allein verantworten',
+        marke: 'gesperrt', markeBg: '#F6DEDC', markeFg: '#4E0401', konto: '±0,0 h',
+        bg: '#FDF7F6', rand: '#F6DEDC', knopf: knopfSperr, knopfText: 'Gesperrt' }
+    ];
+
+    return { nav: this.nav('Zu entscheiden'), schichten, kandidaten };
+  }
+}
+</script>
+</body>
+</html>

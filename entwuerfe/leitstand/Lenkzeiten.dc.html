@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Lenkzeiten</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200..700&amp;display=swap">
+<style>
+body{margin:0;font-family:'Inter','Helvetica Neue',Arial,sans-serif;background:#D9E4E8;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+a{color:#017070}a:hover{color:#028E8E}
+</style>
+</helmet>
+
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: 28px; background: #D9E4E8; display: flex">
+<div style="flex-grow: 1; position: relative; overflow: hidden; border-radius: 26px; border: 1px solid #CBDAE0; background: #E7EEF1; display: flex; flex-direction: column">
+<div style="position: absolute; top: -150px; left: 340px; width: 820px; height: 470px; border-radius: 50%; background: radial-gradient(closest-side, rgba(2,160,160,0.30), rgba(80,232,244,0.14) 50%, rgba(231,238,241,0) 80%); filter: blur(56px)"></div>
+
+<div style="position: relative; height: 60px; flex-shrink: 0; box-sizing: border-box; padding: 0 20px; display: flex; align-items: center; gap: 16px">
+  <div style="display: flex; align-items: center; gap: 8px">
+    <div style="display: flex; align-items: flex-end; gap: 3px"><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div><div style="width: 4px; height: 18px; border-radius: 2px; background: #02A0A0"></div><div style="width: 4px; height: 12px; border-radius: 2px; background: #071317"></div></div>
+    <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.14em; color: #071317">CENTRIC</span>
+  </div>
+  <nav style="display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+    <sc-for list="{{nav}}" as="n" hint-placeholder-count="6"><span style="{{n.s}}">{{n.t}}</span></sc-for>
+  </nav>
+  <div style="flex-grow: 1"></div>
+  <button type="button" aria-label="Suchen" style="width: 44px; height: 44px; border-radius: 999px; color: #3D4E55; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="6.6"></circle><path d="m16 16 4.6 4.6"></path></svg></button>
+  <div style="width: 36px; height: 36px; border-radius: 999px; background: #023441; color: #DFF0F0; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center">MH</div>
+</div>
+
+<div style="position: relative; box-sizing: border-box; padding: 6px 30px 0; display: flex; align-items: flex-start; gap: 20px">
+  <div style="flex-grow: 1; min-width: 0">
+    <h1 style="margin: 0; font-size: 34px; line-height: 1.1; font-weight: 300; letter-spacing: -0.022em; color: #071317">Lenkzeiten · 21.09. bis 27.09.</h1>
+    <p style="margin: 6px 0 0; font-size: 12.5px; color: #3D4E55">Lenkzeit, Unterbrechung und Ruhezeit nach VO (EG) 561/2006 und FPersV · erfasst wird, was der Tachograf aufgezeichnet hat</p>
+  </div>
+  <div style="display: flex; align-items: center; gap: 8px; padding-top: 6px; flex-shrink: 0">
+    <label for="fahrer" style="font-size: 11.5px; color: #5B6B72">Fahrerin oder Fahrer</label>
+    <select id="fahrer" style="width: 156px; height: 38px; box-sizing: border-box; padding: 0 10px; border-radius: 999px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12.5px; color: #071317">
+      <option>Nowak, Piotr</option>
+      <option>Hoffmann, Lars</option>
+      <option>Richter, Kai</option>
+      <option>Seidel, Tim</option>
+    </select>
+    <div style="display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 999px; background: #FFFFFF; border: 1px solid #CBDAE0">
+      <button type="button" aria-label="Woche zurück" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; font-size: 15px; line-height: 1">‹</button>
+      <button type="button" style="height: 30px; padding: 0 13px; border-radius: 999px; color: #3D4E55; font-size: 12px">Diese Woche</button>
+      <button type="button" aria-label="Woche vor" style="width: 30px; height: 30px; border-radius: 999px; color: #3D4E55; font-size: 15px; line-height: 1">›</button>
+    </div>
+  </div>
+</div>
+
+<div style="position: relative; flex-grow: 1; box-sizing: border-box; padding: 16px 30px 28px; display: flex; flex-direction: column; gap: 14px">
+
+  <div style="display: flex; gap: 14px">
+    <sc-for list="{{kacheln}}" as="k" hint-placeholder-count="4">
+      <div style="flex-grow: 1; flex-basis: 0; min-width: 0; box-sizing: border-box; padding: 15px 17px; border-radius: 16px; background: #FFFFFF; border: 1px solid {{k.rand}}; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05)">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <span style="width: 9px; height: 9px; border-radius: 3px; flex-shrink: 0; background: {{k.c}}"></span>
+          <span style="flex-grow: 1; font-size: 11.5px; color: #5B6B72">{{k.titel}}</span>
+        </div>
+        <div style="margin-top: 5px; display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 8px">
+          <span style="font-size: 27px; font-weight: 500; letter-spacing: -0.02em; color: #071317">{{k.wert}}</span>
+          <span style="font-size: 11.5px; color: #3D4E55">{{k.zusatz}}</span>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; gap: 14px">
+
+    <div style="flex-grow: 1; min-width: 0; box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <span style="font-size: 14px; font-weight: 600; color: #071317">Die Woche</span>
+        <span style="flex-grow: 1; font-size: 11.5px; color: #5B6B72">Nowak, Piotr · Fahrdienst Nordwacht, Kassel</span>
+        <span style="font-size: 11.5px; color: #5B6B72">Minuten, wie vom Kontrollgerät gelesen · Marken bei 9 und 10 Stunden</span>
+      </div>
+
+      <div style="display: flex; align-items: flex-end; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid #BCCDD4">
+        <span style="width: 74px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Tag</span>
+        <span style="width: 90px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Kennzeichen</span>
+        <span style="width: 150px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Lenkzeit</span>
+        <span style="width: 92px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Unterbrech.</span>
+        <span style="width: 78px; flex-shrink: 0; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Ruhe davor</span>
+        <span style="flex-grow: 1; font-size: 11px; color: #5B6B72; letter-spacing: 0.04em; text-transform: uppercase">Urteil</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1px">
+        <sc-for list="{{zeilen}}" as="z" hint-placeholder-count="7">
+          <div style="display: flex; align-items: center; gap: 10px; min-height: 52px; box-sizing: border-box; padding: 6px 8px; margin: 0 -8px; border-radius: 10px; border-bottom: 1px solid #F4F8F9; background: {{z.bg}}">
+            <span style="width: 74px; flex-shrink: 0; font-size: 12.5px; color: #071317; font-variant-numeric: tabular-nums">{{z.tag}}</span>
+            <div style="width: 90px; flex-shrink: 0"><input type="text" value="{{z.kz}}" placeholder="—" aria-label="{{z.alKz}}" style="width: 88px; height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317; font-variant-numeric: tabular-nums" /></div>
+            <div style="width: 150px; flex-shrink: 0">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <input type="number" min="0" step="5" value="{{z.lenk}}" placeholder="—" aria-label="{{z.alLenk}}" style="width: 62px; height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317; font-variant-numeric: tabular-nums" />
+                <span style="font-size: 12px; font-weight: 600; color: {{z.lenkFg}}; font-variant-numeric: tabular-nums">{{z.lenkH}}</span>
+              </div>
+              <div style="margin-top: 5px; position: relative; height: 5px; border-radius: 999px; background: #E7EEF1; overflow: hidden">
+                <div style="height: 5px; border-radius: 999px; width: {{z.b}}; background: {{z.c}}"></div>
+                <div style="position: absolute; top: 0; bottom: 0; left: 81.8%; width: 1px; background: #5B6B72"></div>
+                <div style="position: absolute; top: 0; bottom: 0; left: 90.9%; width: 1px; background: #5B6B72"></div>
+              </div>
+            </div>
+            <div style="width: 92px; flex-shrink: 0"><input type="text" value="{{z.unt}}" placeholder="45 oder 15, 30" aria-label="{{z.alUnt}}" style="width: 90px; height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317; font-variant-numeric: tabular-nums" /></div>
+            <div style="width: 78px; flex-shrink: 0; display: flex; align-items: center; gap: 5px">
+              <input type="number" min="0" step="15" value="{{z.ruhe}}" placeholder="—" aria-label="{{z.alRuhe}}" style="width: 52px; padding: 0 5px; height: 30px; box-sizing: border-box; padding: 0 8px; border-radius: 8px; border: 1px solid #CBDAE0; background: #FFFFFF; font: inherit; font-size: 12px; color: #071317; font-variant-numeric: tabular-nums" />
+              <span style="font-size: 11.5px; color: {{z.ruheFg}}; font-variant-numeric: tabular-nums">{{z.ruheH}}</span>
+            </div>
+            <div style="flex-grow: 1; min-width: 0">
+              <span style="display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{z.uBg}}; color: {{z.uFg}}">{{z.urteil}}</span>
+              <sc-for list="{{z.befunde}}" as="b" hint-placeholder-count="2">
+                <div style="margin-top: 4px; font-size: 11px; line-height: 1.4; color: {{b.fg}}">{{b.t}}</div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 13px">
+
+      <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; gap: 8px">
+          <span style="flex-grow: 1; font-size: 13.5px; font-weight: 600; color: #071317">Doppelwoche</span>
+          <span style="padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; background: {{doppel.bg}}; color: {{doppel.fg}}">{{doppel.urteil}}</span>
+        </div>
+        <div style="position: relative; height: 14px; border-radius: 999px; background: #E7EEF1; overflow: hidden; display: flex">
+          <div style="height: 14px; width: {{doppel.bVor}}; background: #316C81"></div>
+          <div style="height: 14px; width: {{doppel.bWoche}}; background: #017070"></div>
+          <div style="position: absolute; top: 0; bottom: 0; left: {{doppel.marke}}; width: 2px; background: #4E0401"></div>
+        </div>
+        <div style="display: flex; gap: 14px; font-size: 11px; color: #3D4E55">
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 9px; height: 9px; border-radius: 3px; background: #316C81"></span>Vorwoche {{doppel.vor}}</span>
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 9px; height: 9px; border-radius: 3px; background: #017070"></span>Diese Woche {{doppel.woche}}</span>
+          <span style="display: flex; align-items: center; gap: 6px"><span style="width: 2px; height: 10px; background: #4E0401"></span>90 h</span>
+        </div>
+        <div style="box-sizing: border-box; padding: 10px 12px; border-radius: 12px; background: {{doppel.boxBg}}; border: 1px solid {{doppel.boxRand}}">
+          <div style="font-size: 11.5px; line-height: 1.45; color: #071317">{{doppel.text}}</div>
+          <div style="margin-top: 3px; font-size: 10.5px; color: #5B6B72">{{doppel.regel}}</div>
+        </div>
+      </div>
+
+      <div style="box-sizing: border-box; border-radius: 18px; background: #FFFFFF; border: 1px solid #CBDAE0; box-shadow: 0 1px 2px rgba(7,19,23,0.04), 0 8px 22px rgba(7,19,23,0.05); padding: 16px; display: flex; flex-direction: column; gap: 9px">
+        <span style="font-size: 13.5px; font-weight: 600; color: #071317">Wonach gerechnet wird</span>
+        <sc-for list="{{regeln}}" as="r" hint-placeholder-count="4">
+          <div style="font-size: 11px; line-height: 1.4; color: #3D4E55"><span style="font-weight: 600; color: #071317">{{r.n}}</span> · {{r.t}}</div>
+        </sc-for>
+      </div>
+
+      <div style="flex-grow: 1; box-sizing: border-box; padding: 16px; border-radius: 18px; background: #E7EEF1; border: 1px solid #CBDAE0; display: flex; flex-direction: column; gap: 9px">
+        <div style="display: flex; align-items: center; gap: 9px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3D4E55" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.8"></circle><path d="M12 11.2v5.4M12 7.8v.4"></path></svg>
+          <span style="font-size: 13px; font-weight: 600; color: #071317">Ersetzt kein Kontrollgerät</span>
+        </div>
+        <div style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im Streitfall gilt die Aufzeichnung des Tachografen.</div>
+        <div style="font-size: 11.5px; line-height: 1.55; color: #3D4E55">Aus dem Dienstplan leitet CENTRIC keine Lenkzeit ab — wo nichts erfasst ist, steht „nicht erfasst“, nicht „null Stunden“.</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  nav(aktiv) {
+    const an = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;font-weight:600;background:#DFF0F0;color:#017070;';
+    const aus = 'height:34px;padding:0 14px;border-radius:999px;display:flex;align-items:center;font-size:12.5px;color:#3D4E55;';
+    return ['Im Dienst', 'Planen', 'Zu entscheiden', 'Wer mitfährt', 'Nachsehen', 'Verwaltung']
+      .map((t) => ({ t: t, s: t === aktiv ? an : aus }));
+  }
+  renderVals() {
+    const st = (min) => Math.round((min / 60) * 10) / 10;
+    const de = (x) => String(x).replace('.', ',');
+    const G = { tag: 540, tagV: 600, tagVN: 2, woche: 3360, doppel: 5400, block: 270, ruhe: 660, ruheV: 540, ruheVN: 3 };
+
+    // Erfasste Werte der Woche 21. bis 27.09.2026: Lenkzeit, Unterbrechungen und Ruhe davor in Minuten (null = nicht erfasst)
+    const T = [
+      { tag: 'Mo 21.09.', kz: 'KS-NW 214', l: 510, u: [45], r: 660 },
+      { tag: 'Di 22.09.', kz: 'KS-NW 214', l: 570, u: [15, 30], r: 600 },
+      { tag: 'Mi 23.09.', kz: 'KS-NW 214', l: 600, u: [45], r: 660 },
+      { tag: 'Do 24.09.', kz: 'KS-NW 214', l: 540, u: [45], r: 540 },
+      { tag: 'Fr 25.09.', kz: 'KS-NW 231', l: 570, u: [45], r: 660 },
+      { tag: 'Sa 26.09.', kz: 'KS-NW 231', l: 300, u: [20], r: 660 },
+      { tag: 'So 27.09.', kz: '', l: null, u: [], r: null }
+    ];
+    const VORWOCHE = 2400;
+
+    let verl = 0, verk = 0, summe = 0, erfasst = 0;
+    const zeilen = T.map((t) => {
+      const b = [];
+      let urteil = 'grau';
+      if (t.l === null) {
+        b.push({ t: 'Für diesen Tag ist keine Lenkzeit erfasst. Ohne sie lässt sich nichts beurteilen — der Tachograf ist die Quelle, nicht der Dienstplan.', gefahr: false });
+      } else {
+        const min = t.l;
+        if (min > G.tagV) {
+          b.push({ t: de(st(min)) + ' Stunden am Steuer. Mehr als 10 sind an keinem Tag zulässig.', gefahr: true });
+        } else if (min > G.tag) {
+          if (verl >= G.tagVN) {
+            b.push({ t: de(st(min)) + ' Stunden am Steuer — die Verlängerung auf zehn Stunden ist in dieser Woche bereits ' + verl + '-mal genutzt, zulässig sind ' + G.tagVN + '.', gefahr: true });
+          } else {
+            b.push({ t: de(st(min)) + ' Stunden am Steuer — zulässige Verlängerung, ' + (verl + 1) + '. von ' + G.tagVN + ' in dieser Woche.', gefahr: false });
+          }
+        }
+        if (min > G.block) {
+          const p = t.u;
+          const gesamt = p.reduce((a, x) => a + x, 0);
+          const einzeln = p.some((x) => x >= 45);
+          let geteilt = false;
+          for (let i = 0; i < p.length - 1 && !geteilt; i++) {
+            if (p[i] >= 15) { for (let j = i + 1; j < p.length; j++) { if (p[j] >= 30) { geteilt = true; break; } } }
+          }
+          if (!einzeln && !geteilt) {
+            b.push({ t: de(st(min)) + ' Stunden Lenkzeit, aber keine ausreichende Unterbrechung: ' + gesamt + ' Minuten erfasst. Verlangt sind 45 Minuten am Stück oder 15 und danach 30 Minuten.', gefahr: true });
+          }
+        }
+        if (t.r !== null) {
+          if (t.r < G.ruheV) {
+            b.push({ t: 'Nur ' + de(st(t.r)) + ' Stunden Ruhe vor dem Dienst. Weniger als 9 Stunden sind nie zulässig.', gefahr: true });
+          } else if (t.r < G.ruhe) {
+            if (verk >= G.ruheVN) {
+              b.push({ t: de(st(t.r)) + ' Stunden Ruhe — die Verkürzung ist zwischen zwei Wochenruhezeiten bereits ' + verk + '-mal genutzt, zulässig sind ' + G.ruheVN + '.', gefahr: true });
+            } else {
+              b.push({ t: de(st(t.r)) + ' Stunden Ruhe — zulässige Verkürzung, ' + (verk + 1) + '. von ' + G.ruheVN + '.', gefahr: false });
+            }
+          }
+        }
+        urteil = b.some((x) => x.gefahr) ? 'rot' : 'gruen';
+        erfasst++;
+        summe += min;
+        if (min > G.tag) verl++;
+        if (t.r !== null && t.r < G.ruhe) verk++;
+      }
+      const rot = urteil === 'rot', grau = urteil === 'grau';
+      return {
+        tag: t.tag, kz: t.kz, lenk: t.l === null ? '' : String(t.l), unt: t.u.join(', '), ruhe: t.r === null ? '' : String(t.r),
+        alKz: 'Kennzeichen am ' + t.tag, alLenk: 'Lenkzeit in Minuten am ' + t.tag,
+        alUnt: 'Unterbrechungen in Minuten am ' + t.tag, alRuhe: 'Ruhezeit vor dem Dienst am ' + t.tag,
+        lenkH: t.l === null ? '' : de(st(t.l)) + ' h', lenkFg: rot ? '#4E0401' : '#071317',
+        b: t.l === null ? '0%' : Math.min(100, t.l / 660 * 100).toFixed(1) + '%',
+        c: rot ? '#4E0401' : (t.l !== null && t.l > G.tag ? '#955410' : '#017070'),
+        ruheH: t.r === null ? '' : de(st(t.r)) + ' h', ruheFg: t.r !== null && t.r < G.ruhe ? '#955410' : '#3D4E55',
+        bg: rot ? '#FDF7F6' : 'transparent',
+        urteil: rot ? 'unzulässig' : (grau ? 'nicht erfasst' : 'zulässig'),
+        uBg: rot ? '#F6DEDC' : (grau ? '#E7EEF1' : '#DFEFE7'),
+        uFg: rot ? '#4E0401' : (grau ? '#3D4E55' : '#0E6B45'),
+        befunde: b.map((x) => ({ t: x.t, fg: x.gefahr ? '#4E0401' : '#5B6B72' }))
+      };
+    });
+    const fehlend = T.length - erfasst;
+
+    // Wochen- und Doppelwochenbefund
+    const doppelMin = summe + VORWOCHE;
+    const doppelRot = doppelMin > G.doppel;
+    const wocheRot = summe > G.woche;
+    const doppel = {
+      urteil: doppelRot ? 'über der Grenze' : 'zulässig',
+      bg: doppelRot ? '#F6DEDC' : '#DFEFE7', fg: doppelRot ? '#4E0401' : '#0E6B45',
+      bVor: (VORWOCHE / 6000 * 100).toFixed(1) + '%', bWoche: (summe / 6000 * 100).toFixed(1) + '%',
+      marke: (G.doppel / 6000 * 100).toFixed(1) + '%',
+      vor: de(st(VORWOCHE)) + ' h', woche: de(st(summe)) + ' h',
+      text: doppelRot ? de(st(doppelMin)) + ' Stunden in zwei aufeinanderfolgenden Wochen. Zulässig sind 90.'
+        : de(st(doppelMin)) + ' Stunden in zwei aufeinanderfolgenden Wochen — im Rahmen.',
+      regel: 'Art. 6 Abs. 3 VO (EG) 561/2006',
+      boxBg: doppelRot ? '#FDF7F6' : '#F4F8F9', boxRand: doppelRot ? '#F6DEDC' : '#E7EEF1'
+    };
+
+    const kacheln = [
+      { titel: 'Lenkzeit der Woche', wert: de(st(summe)) + ' h', zusatz: 'höchstens 56 h',
+        c: wocheRot ? '#4E0401' : '#0E6B45', rand: wocheRot ? '#F6DEDC' : '#DFEFE7' },
+      { titel: 'Verlängerte Tage', wert: String(verl), zusatz: 'höchstens 2 auf zehn Stunden',
+        c: verl > G.tagVN ? '#4E0401' : '#0E6B45', rand: verl > G.tagVN ? '#F6DEDC' : '#DFEFE7' },
+      { titel: 'Verkürzte Ruhezeiten', wert: String(verk), zusatz: 'höchstens 3 auf neun Stunden',
+        c: verk > G.ruheVN ? '#4E0401' : '#0E6B45', rand: verk > G.ruheVN ? '#F6DEDC' : '#DFEFE7' },
+      { titel: 'Nicht erfasst', wert: String(fehlend), zusatz: 'Tage ohne Aufzeichnung',
+        c: fehlend ? '#955410' : '#0E6B45', rand: fehlend ? '#FFE0C0' : '#DFEFE7' }
+    ];
+
+    const regeln = [
+      { n: 'Tag', t: 'täglich 9 Stunden am Steuer, höchstens zweimal je Woche 10 (Art. 6 Abs. 1)' },
+      { n: 'Woche', t: '56 Stunden je Woche, 90 in zwei aufeinanderfolgenden (Art. 6 Abs. 2, 3)' },
+      { n: 'Unterbrechung', t: 'nach 4,5 Stunden 45 Minuten, teilbar in 15 und danach 30 (Art. 7)' },
+      { n: 'Ruhe', t: '11 Stunden täglich, dreimal zwischen zwei Wochenruhezeiten 9 (Art. 8)' }
+    ];
+
+    return { nav: this.nav('Nachsehen'), kacheln, zeilen, doppel, regeln };
+  }
+}
+</script>
+</body>
+</html>
