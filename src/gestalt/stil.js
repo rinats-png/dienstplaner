@@ -316,4 +316,35 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 
 .fehlerband{padding:11px 14px; border-radius:var(--r); background:${C.dangerLight}; color:${C.danger};
   font-size:13px; line-height:1.5;}
+
+/* Wege in der Hilfe: Symbolkachel, Text, Knopf — eine Zeile je Weg */
+.wegliste{padding:4px 0 var(--pad-y);}
+.wegzeile{display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; padding:15px var(--pad-x);
+  border-bottom:1px solid ${C.lineSoft};}
+.wegzeile:last-child{border-bottom:0;}
+.wegsymbol{width:40px; height:40px; border-radius:12px; flex-shrink:0; display:flex; align-items:center;
+  justify-content:center; background:${C.accentLight}; color:${C.accent};}
+
+/* Handbuch: Kapitelliste, Kapitel, Stand — Liste und Stand kleben unter der Kopfzeile (112 px) */
+.handbuchraster{display:grid; grid-template-columns:minmax(230px,280px) minmax(0,1fr) 290px; gap:20px; align-items:start;}
+.handbuchraster > .rechts{position:sticky; top:128px;}
+.kapitelliste{position:sticky; top:128px; max-height:calc(100vh - 148px); overflow-y:auto;}
+@media (max-width: 1280px){
+  .handbuchraster{grid-template-columns:minmax(230px,280px) minmax(0,1fr);}
+  .handbuchraster > .rechts{grid-column:1 / -1; position:static;}
+}
+@media (max-width: 900px){
+  .handbuchraster{grid-template-columns:minmax(0,1fr);}
+  .kapitelliste{position:static; max-height:none;}
+}
+@media print{ .handbuchraster > .rechts{display:none;} }
+
+/* Haken in Listen: kein Textzeichen, sondern ein gezeichneter Haken */
+.hakenliste li::before{content:""; flex-shrink:0; width:6px; height:11px; margin:3px 8px 0 4px;
+  border:solid ${C.ok}; border-width:0 2px 2px 0; transform:rotate(45deg); font-weight:400;}
+
+/* Zwei Spalten für Formularseiten (Einstellungen): jede Spalte stapelt ihre Karten */
+.spalten2{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; align-items:start;}
+.spalten2 > div{display:flex; flex-direction:column; gap:16px; min-width:0;}
+@media (max-width: 1100px){ .spalten2{grid-template-columns:minmax(0,1fr);} }
 `;

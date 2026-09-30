@@ -114,10 +114,11 @@ describe("Icons", () => {
 describe("Farben", () => {
   const HEX = /#[0-9A-Fa-f]{6}\b/g;
 
-  /* Stand nach P1/P2. Die Zahl darf sinken; wer sie erhöht, muss die Farbe
+  /* Stand nach P6 (P1/P2: 102; die Rollenfarben des Ablaufs und der Befehlsblock
+     der Sicherung laufen jetzt über Tokens). Die Zahl darf sinken; wer sie erhöht, muss die Farbe
      in src/farben.js anlegen — oder begründen, warum sie Daten ist (eine
      Dienstart, eine Rollenfarbe, eine Druckvorlage). */
-  const OBERGRENZE_APP = 102;
+  const OBERGRENZE_APP = 97;
 
   it("App.jsx hat nicht mehr harte Hexfarben als bisher", () => {
     const n = (lies(join(WURZEL, "src", "App.jsx")).match(HEX) || []).length;
@@ -128,6 +129,46 @@ describe("Farben", () => {
     for (const p of alle(join(WURZEL, "src", "gestalt"), [".js", ".jsx"])) {
       expect(lies(p).match(HEX) || [], rel(p)).toEqual([]);
     }
+  });
+});
+
+describe("Ansichten der Arbeitsebene und der Formulare", () => {
+  /* Diese Ansichten (P5 und P6) zeigen Haken, Kreuze und Pfeile als Icon.
+     Die übrigen Fundstellen von ✓ und ✕ liegen in anderen Blättern und
+     kommen mit späteren Phasen. */
+  const ANSICHTEN = ["Monatsplan", "Einsatzplan", "Jahresansicht", "Zeitachse", "Bereitschaft", "Selbstplanung",
+    "Sondereinsaetze", "Schichtfolge", "Personal", "Qualifikationsmatrix", "Nachweise", "Kompetenzen",
+    "Einarbeitung", "Betriebsmittel", "MeineSchichten", "Betrieb", "Tarifwerk", "Standorte", "Dienstarten",
+    "Einstellungen", "Datenmitnahme", "SicherungAusserHaus", "Datenschutz", "Handbuch", "Hilfe",
+    "Ablaufansicht", "Ablaufdiagramm", "Schichtuebergabe"];
+  const quelle = lies(join(WURZEL, "src", "App.jsx"));
+  const koerper = (name) => {
+    const a = quelle.search(new RegExp(`^function ${name}\\(`, "m"));
+    if (a < 0) return null;
+    const rest = quelle.slice(a + 10);
+    const b = rest.search(/^(function|const) \w+/m);
+    return b < 0 ? rest : rest.slice(0, b);
+  };
+
+  it("jede Ansicht ist im Quelltext zu finden", () => {
+    for (const n of ANSICHTEN) expect(koerper(n), n).not.toBeNull();
+  });
+
+  it("keine dieser Ansichten setzt ✓, ✕ oder → als Symbol", () => {
+    const funde = [];
+    for (const n of ANSICHTEN) {
+      for (const [nr, z] of codezeilen(koerper(n))) {
+        /* Erlaubt: Pfeile im Fließtext (»von → nach«, »Verwaltung → Datenschutz«) */
+        if (/[✓✕]/.test(z)) funde.push(`${n}: ${z.trim().slice(0, 90)}`);
+        if (/>\s*→\s*</.test(z)) funde.push(`${n} (Pfeil als Symbol): ${z.trim().slice(0, 90)}`);
+        void nr;
+      }
+    }
+    expect(funde).toEqual([]);
+  });
+
+  it("die Rollenfarben des Ablaufs folgen dem Erscheinungsbild (Zugriffsfunktionen, keine festen Werte)", () => {
+    expect(quelle).toMatch(/const ROLLE_FARBE = \{\s*get leitung\(\)/);
   });
 });
 
