@@ -78,7 +78,8 @@ export function Kennzahlen({ kacheln, min = 200, style }) {
 /** Links die Arbeitsfläche, rechts die Seitenkarten; unter 1100 px untereinander. */
 export function Leitraster({ haupt, seite, seiteBreite = 360, style }) {
   return (
-    <div className="leitraster" style={{ "--seite": `${seiteBreite}px`, ...style }}>
+    <div className="leitraster" style={{ "--seite": `${seiteBreite}px`,
+      ...(seite ? {} : { gridTemplateColumns: "minmax(0,1fr)" }), ...style }}>
       <div className="haupt">{haupt}</div>
       {seite && <div className="seite">{seite}</div>}
     </div>);
