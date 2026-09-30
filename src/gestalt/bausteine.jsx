@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { C } from "../farben.js";
 import { Icon } from "./icons.jsx";
 

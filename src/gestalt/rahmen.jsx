@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { C } from "../farben.js";
 import { Icon } from "./icons.jsx";
 import { Menue } from "./bausteine.jsx";
@@ -78,6 +78,7 @@ export function Kopfblock({
   const letzte = useRef({});                           // zuletzt besuchte Ansicht je Bereich
 
   const aktBereich = bereiche.find((b) => b.views.some(([id]) => id === aktiveView)) || bereiche[0];
+  const aktBereichId = aktBereich && aktBereich.id;
   useEffect(() => { if (aktBereich) letzte.current[aktBereich.id] = aktiveView; }, [aktBereich, aktiveView]);
 
   /* Das aktive Element der Unterleiste ins Sichtfeld rücken — nur die
@@ -88,7 +89,7 @@ export function Kopfblock({
     const links = a.offsetLeft - 24, rechts = a.offsetLeft + a.offsetWidth + 48;
     if (links < l.scrollLeft) l.scrollLeft = Math.max(0, links);
     else if (rechts > l.scrollLeft + l.clientWidth) l.scrollLeft = rechts - l.clientWidth;
-  }, [aktiveView, aktBereich && aktBereich.id]);
+  }, [aktiveView, aktBereichId]);
 
   if (!aktBereich) return null;
   const summe = (b) => b.views.reduce((a, [id]) => a + (zaehler[id] || 0), 0);
