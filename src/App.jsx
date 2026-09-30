@@ -8112,16 +8112,15 @@ function MeineSchichten({ sitz, akt, ym }) {
           <Btn kind="quiet" onClick={() => akt.kalenderAbo(ich.id)}>Kalender</Btn>
         </div>}>Meine Schichten</H1>
 
-      <KpiRow min={200}>
-        <Kpi label="Stunden im Monat" value={n1(ist.gesamt)} unit="h" sub={`Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`}
-          tone={Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"} />
-        <Kpi label="Stundenkonto" value={sgn(kto)} unit="h" tone={Math.abs(kto) < 18 ? "ok" : "warn"} sub="kumuliert seit Jahresbeginn" />
-        <Kpi label="Resturlaub" value={url.rest} unit="Tage" tone={url.rest < 5 ? "warn" : "ok"} sub={`von ${url.anspruch} Tagen`} />
-        <Kpi label="Nachtstunden" value={n1(ist.nacht)} unit="h" sub={`${ist.naechte} Nachtdienste im Monat`} />
-      </KpiRow>
+      <Kennzahlen min={200} kacheln={[
+        { label: "Stunden im Monat", wert: n1(ist.gesamt), einheit: "h", sub: `Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`,
+          ton: Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn" },
+        { label: "Stundenkonto", wert: sgn(kto), einheit: "h", ton: Math.abs(kto) < 18 ? "ok" : "warn", sub: "kumuliert seit Jahresbeginn" },
+        { label: "Resturlaub", wert: url.rest, einheit: "Tage", ton: url.rest < 5 ? "warn" : "ok", sub: `von ${url.anspruch} Tagen` },
+        { label: "Nachtstunden", wert: n1(ist.nacht), einheit: "h", sub: `${ist.naechte} Nachtdienste im Monat` }]} />
 
       {einsatz.length > 0 && (
-        <Card style={{ marginTop: 20, background: C.dangerLight }}>
+        <Card style={{ marginBottom: 16, borderColor: C.danger, borderWidth: 2 }}>
           <CardHead right={<Pill tone="danger">{einsatz.length}</Pill>}>Einsatzanfragen</CardHead>
           {einsatz.map((a) => {
             const da = map[a.dienstId];
@@ -8139,7 +8138,7 @@ function MeineSchichten({ sitz, akt, ym }) {
               </div>); })}
         </Card>)}
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Lab>zwölf Monate</Lab>}>Mein Stundenkonto</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
           <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
@@ -8151,7 +8150,7 @@ function MeineSchichten({ sitz, akt, ym }) {
       </Card>
 
       {offen.length > 0 && (
-        <Card style={{ marginTop: 20 }}>
+        <Card style={{ marginBottom: 16 }}>
           <CardHead right={<Pill tone="warn">{offen.length}</Pill>}>Zeiten bestätigen</CardHead>
           <div style={{ padding: "14px 22px 6px", fontSize: 13, color: C.dim, lineHeight: 1.5 }}>
             Solange die tatsächliche Zeit nicht bestätigt ist, bleibt das Stundenkonto eine Hochrechnung.
@@ -8172,7 +8171,7 @@ function MeineSchichten({ sitz, akt, ym }) {
         </Card>)}
 
       {meine.length > 0 && (
-        <Card style={{ marginTop: 20 }}>
+        <Card style={{ marginBottom: 16 }}>
           <CardHead>Meine Anträge</CardHead>
           <div>{meine.slice(0, 6).map((a) => (
             <div key={a.id} className="row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 22px", borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -8190,14 +8189,14 @@ function MeineSchichten({ sitz, akt, ym }) {
             </div>))}</div>
         </Card>)}
 
-      <Card style={{ marginTop: 20 }}>
+      <Card>
         <CardHead right={<Pill size="sm" tone={frei ? "ok" : "warn"}>{frei ? "freigegeben" : "Entwurf"}</Pill>}>
           Kommende Dienste</CardHead>
         <div>{tage.map((d) => {
           const t = personTag(m, ich, d), da = map[t.dienstId], fei = feiertag(d, m.bundesland);
           return (
             <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, padding: "14px 22px",
-              borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? "rgba(43,52,64,.055)" : "transparent" }}>
+              borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? C.accentLight : "transparent" }}>
               <div style={{ width: 104, flexShrink: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: d === heute() ? 650 : 500, ...NUM }}>{fKurz(d)}</div>
                 <div style={{ fontSize: 11.5, color: fei ? C.danger : C.dimmer }}>{DOW[dow(d)]}{fei ? " · Feiertag" : ""}</div>
@@ -8245,7 +8244,7 @@ function MeineSchichten({ sitz, akt, ym }) {
               <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e) => setForm({ ...form, bis: e.target.value })} /></Field>
             </div>
             <Field label="Anmerkung"><Inp value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="freiwillig" /></Field>
-            {fehler && <div style={{ padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+            {fehler && <Fehlerband>{fehler}</Fehlerband>}
             <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
               Beim Urlaub werden nur Tage angerechnet, an denen laut Schichtfolge Dienst gewesen wäre.
               Der Antrag geht an die Planung der eigenen Einheit.
@@ -8267,7 +8266,7 @@ function MeineSchichten({ sitz, akt, ym }) {
                 {m.personen.filter((p) => p.id !== ich.id && imDienst(p, heute()))
                   .map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel></Field>
             <Field label="Anmerkung"><Inp value={tausch.text} onChange={(e) => setTausch({ ...tausch, text: e.target.value })} /></Field>
-            {fehler && <div style={{ padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+            {fehler && <Fehlerband>{fehler}</Fehlerband>}
             <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
               Bei Genehmigung werden beide Dienste getauscht. Ruhezeit und Besetzung werden dabei geprüft.
             </div>
@@ -9446,12 +9445,11 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
           </div>
         </Card>)}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
-        <Inp value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name suchen" style={{ width: 210 }} />
+      <Filterleiste suche={q} setSuche={setQ} platzhalter="Name suchen">
         <Seg value={filter} onChange={setFilter} options={[{ id: "alle", label: "Alle" },
           ...einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name })),
           { id: "aus", label: "Ausgetreten" }]} />
-      </div>
+      </Filterleiste>
 
       <Card style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 980 }}>
@@ -9795,7 +9793,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
             <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e2) => setForm({ ...form, bis: e2.target.value })} /></Field>
             <Btn kind="primary" onClick={eintragen}>Eintragen</Btn>
           </div>
-          {fehler && <div style={{ marginTop: 11, padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+          {fehler && <Fehlerband style={{ marginTop: 11 }}>{fehler}</Fehlerband>}
         </div>
         <div style={{ paddingTop: 20, marginTop: 20, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 13 }}>Versetzung und Austritt</Lab>
@@ -12428,19 +12426,18 @@ function Nachweise({ sitz, akt }) {
         sub="Sachkunde, Erste Hilfe, Führungszeugnis und Fahrerlaubnis laufen ab. Ein abgelaufener Nachweis zählt für die Besetzung nicht mehr mit — die Prüfung schlägt an, bevor jemand ohne gültige Qualifikation im Dienst steht.">
         Nachweise</H1>
 
-      <KpiRow min={190}>
-        <Kpi label="Abgelaufen" value={nl.abgelaufen.length} tone={nl.abgelaufen.length ? "danger" : "ok"}
-          sub="zählen nicht mehr für die Besetzung" />
-        <Kpi label="Laufen bald ab" value={nl.bald.length} tone={nl.bald.length ? "warn" : "ok"}
-          sub={`in den nächsten ${NACHWEIS_VORLAUF} Tagen`} />
-        <Kpi label="Fehlen" value={nl.fehlt.length} tone={nl.fehlt.length ? "warn" : "ok"} sub="pflichtig, aber nicht hinterlegt" />
-        <Kpi label="Gültig" value={alleZeilen.filter((x) => x.stand === "gueltig").length} tone="ok" />
-      </KpiRow>
+      <Kennzahlen min={190} kacheln={[
+        { label: "Abgelaufen", wert: nl.abgelaufen.length, ton: nl.abgelaufen.length ? "danger" : "ok",
+          hervor: nl.abgelaufen.length ? "danger" : undefined, sub: "zählen nicht mehr für die Besetzung" },
+        { label: "Laufen bald ab", wert: nl.bald.length, ton: nl.bald.length ? "warn" : "ok",
+          sub: `in den nächsten ${NACHWEIS_VORLAUF} Tagen` },
+        { label: "Fehlen", wert: nl.fehlt.length, ton: nl.fehlt.length ? "warn" : "ok", sub: "pflichtig, aber nicht hinterlegt" },
+        { label: "Gültig", wert: alleZeilen.filter((x) => x.stand === "gueltig").length, ton: "ok" }]} />
 
-      <div className="reiterreihe" style={{ margin: "22px 0 16px" }}>
-        {[["alle", "Alle"], ["kritisch", `Kritisch · ${nl.abgelaufen.length + nl.fehlt.length}`],
-          ["bald", `Bald · ${nl.bald.length}`], ["gueltig", "Gültig"]].map(([id, l]) => (
-          <Btn key={id} size="sm" kind={f === id ? "primary" : "plain"} onClick={() => setF(id)}>{l}</Btn>))}
+      <div style={{ margin: "0 0 14px" }}>
+        <Seg value={f} onChange={setF} options={[{ id: "alle", label: "Alle" },
+          { id: "kritisch", label: `Kritisch · ${nl.abgelaufen.length + nl.fehlt.length}` },
+          { id: "bald", label: `Bald · ${nl.bald.length}` }, { id: "gueltig", label: "Gültig" }]} />
       </div>
 
       <Card>
@@ -12880,14 +12877,13 @@ function Betriebsmittel({ sitz, akt }) {
         right={darfPflegen && <Btn kind="primary" onClick={() => setNeu(true)}>Betriebsmittel anlegen</Btn>}>
         Betriebsmittel</H1>
 
-      <KpiRow min={160}>
-        <Kpi label="Erfasst" value={liste.length} />
-        <Kpi label="Ausgegeben" value={ausgegeben} tone={ausgegeben ? "accent" : "text"}
-          sub={`${liste.length - ausgegeben} im Bestand`} />
-        {MITTEL_ARTEN.slice(0, 3).map(([id, l]) => <Kpi key={id} label={l} value={jeArt[id] || 0} />)}
-      </KpiRow>
+      <Kennzahlen min={160} kacheln={[
+        { label: "Erfasst", wert: liste.length },
+        { label: "Ausgegeben", wert: ausgegeben, ton: ausgegeben ? "accent" : undefined,
+          sub: `${liste.length - ausgegeben} im Bestand` },
+        ...MITTEL_ARTEN.slice(0, 3).map(([id, l]) => ({ label: l, wert: jeArt[id] || 0 }))]} />
 
-      <Card style={{ marginTop: 22 }}>
+      <Card>
         {liste.length === 0
           ? <Leer titel="Noch nichts erfasst" text="Lege Schlüssel, Fahrzeuge oder Geräte an und weise sie Personen zu." />
           : liste.map((x, i) => {
@@ -13640,27 +13636,23 @@ function Kompetenzen({ sitz, akt }) {
         right={darfPflegen && <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>}>
         Kompetenzen</H1>
 
-      <KpiRow min={180}>
-        <Kpi label="Kompetenzen" value={liste.length} />
-        <Kpi label="Abgelaufen" value={lage.abgelaufen.length}
-          tone={lage.abgelaufen.length ? "danger" : "ok"} sub="Einsatz gesperrt, wo verlangt" />
-        <Kpi label="Laufen bald ab" value={lage.bald.length}
-          tone={lage.bald.length ? "warn" : "ok"} sub={`in ${KOMPETENZ_VORLAUF} Tagen`} />
-        <Kpi label="Fehlen" value={lage.fehlt.length}
-          tone={lage.fehlt.length ? "warn" : "ok"} sub="zugedacht, aber nicht erteilt" />
-      </KpiRow>
+      <Kennzahlen min={180} kacheln={[
+        { label: "Kompetenzen", wert: liste.length },
+        { label: "Abgelaufen", wert: lage.abgelaufen.length, ton: lage.abgelaufen.length ? "danger" : "ok",
+          hervor: lage.abgelaufen.length ? "danger" : undefined, sub: "Einsatz gesperrt, wo verlangt" },
+        { label: "Laufen bald ab", wert: lage.bald.length, ton: lage.bald.length ? "warn" : "ok",
+          sub: `in ${KOMPETENZ_VORLAUF} Tagen` },
+        { label: "Fehlen", wert: lage.fehlt.length, ton: lage.fehlt.length ? "warn" : "ok",
+          sub: "zugedacht, aber nicht erteilt" }]} />
 
       {liste.length === 0 ? (
-        <Card style={{ marginTop: 22 }}>
+        <Card>
           <Leer titel="Noch keine Kompetenz angelegt"
-            text="Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie." />
-          {darfPflegen && (
-            <div style={{ padding: "0 22px 22px" }}>
-              <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>
-            </div>)}
+            text="Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie."
+            aktion={darfPflegen && <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>} />
         </Card>
       ) : (
-        <Card style={{ marginTop: 22 }}>
+        <Card>
           <CardHead right={<Lab>{zahl(liste.length)} angelegt</Lab>}>Übersicht</CardHead>
           {liste.map((k, i) => {
             const bm = mittelZuKompetenz(m, k);
@@ -13716,7 +13708,10 @@ function Kompetenzen({ sitz, akt }) {
                             title={st.stand === "fehlt" ? "Kompetenz erteilen"
                               : st.bis ? `gültig bis ${fDatum(st.bis)}` : "unbefristet gültig"}
                             onClick={() => akt.setzeKompetenz(p.id, k.id, st.stand === "fehlt")}>
-                            {beschriftung}{st.stand === "abgelaufen" ? " ✕" : st.stand === "fehlt" ? "" : " ✓"}</Btn>);
+                            {beschriftung}
+                            {st.stand === "abgelaufen" ? <><Icon n="x" size={13} strokeWidth={2.2} /><span className="nurLeser"> abgelaufen</span></>
+                              : st.stand === "fehlt" ? null
+                              : <><Icon n="haken" size={13} strokeWidth={2.2} /><span className="nurLeser"> {st.stand === "laeuft_ab" ? "läuft ab" : "gültig"}</span></>}</Btn>);
                       })}
                     </div>
 
@@ -13735,7 +13730,7 @@ function Kompetenzen({ sitz, akt }) {
           Sie stehen hier, weil sie dieselbe Frage beantworten wie eine
           Kompetenz — wer darf was —, nur eine Ebene höher: nicht an einem
           Gerät, sondern kraft Berufserlaubnis. */}
-      <Card style={{ marginTop: 22 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead right={darfPflegen && !(m.aufgaben || []).length
           ? <Btn size="sm" onClick={akt.legeAufgabenVor}>Die drei aus § 4 PflBG anlegen</Btn>
           : <Lab>{zahl((m.aufgaben || []).length)} angelegt</Lab>}>
@@ -13904,16 +13899,14 @@ function Qualifikationsmatrix({ sitz, akt }) {
         sub="Wer kann was — und wo hängt eine Qualifikation an zu wenigen Personen. Der Engpass zeigt sich sonst erst bei der Krankmeldung."
         >Qualifikationen</H1>
 
-      <KpiRow min={180}>
-        <Kpi label="Qualifikationen" value={qm.spalten.length} />
-        <Kpi label="Engpässe" value={qm.engpaesse} tone={qm.engpaesse ? "warn" : "ok"}
-          sub="knapp über dem Bedarf" />
-        <Kpi label="Kritisch" value={qm.kritische} tone={qm.kritische ? "danger" : "ok"}
-          sub="unter dem Bedarf in einer Einheit" />
-        <Kpi label="Im Schichtdienst" value={qm.personen.length} />
-      </KpiRow>
+      <Kennzahlen min={180} kacheln={[
+        { label: "Qualifikationen", wert: qm.spalten.length },
+        { label: "Engpässe", wert: qm.engpaesse, ton: qm.engpaesse ? "warn" : "ok", sub: "knapp über dem Bedarf" },
+        { label: "Kritisch", wert: qm.kritische, ton: qm.kritische ? "danger" : "ok",
+          hervor: qm.kritische ? "danger" : undefined, sub: "unter dem Bedarf in einer Einheit" },
+        { label: "Im Schichtdienst", wert: qm.personen.length }]} />
 
-      <Card style={{ marginTop: 22 }}>
+      <Card>
         <CardHead right={<Lab>gültige Nachweise je {m.einheitLabel}</Lab>}>Abdeckung</CardHead>
         <div style={{ padding: 22 }}>
           {qm.spalten.map((s) => (
@@ -13928,14 +13921,14 @@ function Qualifikationsmatrix({ sitz, akt }) {
                 {!s.kritisch && s.engpass && <Pill size="sm" tone="warn">
                   knapp in {s.schwaechsteEinheit ? s.schwaechsteEinheit.name : ""}</Pill>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(einheiten.length, 6)},1fr)`, gap: 9 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,108px),1fr))", gap: 9 }}>
                 {einheiten.map((e) => {
                   const n = s.jeEinheit[e.id] || 0;
                   const kritisch = s.bedarf > 0 && n < s.bedarf;
                   const knapp = s.bedarf > 0 && n === s.bedarf;
                   return (
-                    <div key={e.id} className="karte" style={{ padding: "11px 13px",
-                      background: kritisch ? C.dangerLight : knapp ? C.warnLight : undefined }}>
+                    <div key={e.id} className="karte-still" style={{ padding: "11px 13px", borderRadius: "var(--r)",
+                      background: kritisch ? C.dangerLight : knapp ? C.warnLight : C.flaecheStill }}>
                       <div style={{ fontSize: 11.5, color: e.farbe, fontWeight: 600, overflow: "hidden",
                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</div>
                       <div style={{ fontSize: 19, fontWeight: 650, marginTop: 3, ...NUM,
@@ -13950,7 +13943,7 @@ function Qualifikationsmatrix({ sitz, akt }) {
         </div>
       </Card>
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead>Wann laufen Nachweise ab</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
           <BalkenDiagramm daten={nachweisVerlauf(m, 12)} wert="anzahl" label="label" hoehe={130}
@@ -14035,9 +14028,9 @@ function Einarbeitung({ sitz, akt }) {
             </Sel></Field>
           {f.personId && f.mentorId && einheitAm(m.personen.find((p) => p.id === f.personId), heute())
             !== einheitAm(m.personen.find((p) => p.id === f.mentorId), heute()) && (
-            <div style={{ padding: 13, borderRadius: 11, background: C.warnLight, color: C.warn, fontSize: 13 }}>
+            <Hinweisband ton="warn" style={{ marginBottom: 0, boxShadow: "none" }}>
               Beide gehören verschiedenen {mehrzahl(m.einheitLabel)} an. Sie werden dadurch kaum gemeinsam Dienst haben.
-            </div>)}
+            </Hinweisband>)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Von"><Inp type="date" value={f.von} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
             <Field label="Bis"><Inp type="date" value={f.bis} onChange={(e) => setF({ ...f, bis: e.target.value })} /></Field>
