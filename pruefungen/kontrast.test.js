@@ -86,6 +86,12 @@ const paare = (P) => [
   ["text", "okLight", 4.5],
   ["ok", "flaecheStill", 4.5], ["warn", "flaecheStill", 4.5], ["danger", "flaecheStill", 4.5],
   ["dim", "accentLight", 4.5],                   // Checkliste auf Karte, aktive Zeile in Listen
+  /* Arbeitsebene und Formulare (P5, P6): Rollenfarben des Ablaufs als Schrift
+     auf Karte, Grund und der Fläche einer erledigten Station */
+  ["accentDeep", "flaeche", 4.5], ["accentDeep", "okLight", 4.5], ["accentDeep", "bg", 4.5],
+  ["violet", "okLight", 4.5], ["violet", "bg", 4.5], ["accent", "okLight", 4.5],
+  ["ok", "bg", 4.5],
+  ["aufAkzent", "steuer", 3],                    // Haken im Kreis, wenn »steuer« die Fläche ist
 ];
 
 for (const [name, P] of [["Hell", C_HELL], ["Dunkel", C_DUNKEL]]) {
