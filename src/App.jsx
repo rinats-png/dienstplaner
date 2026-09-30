@@ -171,6 +171,7 @@ class Fehlerauffang extends Component {
 import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
 import { Pille, Trend } from "./gestalt/bausteine.jsx";
+import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import Ringregler from "./ringregler.jsx";
@@ -284,11 +285,8 @@ body{margin:0;}
   display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:40;
   transition:transform .24s cubic-bezier(.4,0,.2,1);
 }
-.inhalt{flex:1; margin-left:var(--sidebar-breite); min-width:0; display:flex; flex-direction:column;
-  transition:margin-left .24s cubic-bezier(.4,0,.2,1);}
+.inhalt{flex:1; margin-left:0; min-width:0; display:flex; flex-direction:column;}
 .fokus .seitenleiste{transform:translateX(-100%);}
-.fokus .inhalt{margin-left:0;}
-.fokus .kopfleiste{display:none;}
 
 .marke{padding:22px 20px 18px; display:flex; align-items:center; gap:11px;
   border-bottom:1px solid rgba(255,255,255,.08);}
@@ -316,20 +314,19 @@ body{margin:0;}
 .sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
   color:rgba(255,255,255,.55);}
 
+/* Die Kopfzeile sitzt im klebenden .kopfblock (gestalt/stil.js), zusammen mit der Unterleiste. */
 .kopfleiste{
-  position:sticky; top:0; z-index:30; background:rgba(255,255,255,.92);
-  backdrop-filter:saturate(180%) blur(12px); -webkit-backdrop-filter:saturate(180%) blur(12px);
-  border-bottom:1px solid ${C.line}; padding:0 var(--luft); height:56px;
-  display:flex; align-items:center; gap:14px;
+  padding:0 16px; height:var(--kopf-hoehe);
+  display:flex; align-items:center; gap:12px;
 }
 .suchknopf{
-  display:flex; align-items:center; gap:9px; border:1px solid ${C.line}; background:${C.bg};
-  border-radius:var(--r); padding:7px 12px; cursor:pointer; font-family:inherit;
-  font-size:13px; color:${C.dim}; min-width:210px; transition:border-color .14s;
+  display:flex; align-items:center; gap:9px; border:1px solid ${C.line}; background:${C.flaeche};
+  border-radius:var(--r-pille); height:40px; padding:0 8px 0 14px; cursor:pointer; font-family:inherit;
+  font-size:13px; color:${C.dim}; min-width:0; flex-shrink:0; transition:border-color .14s;
 }
 .suchknopf:hover{border-color:${C.steuer};}
-.suchknopf kbd{margin-left:auto; font-size:10.5px; font-family:inherit; padding:2px 6px;
-  border-radius:5px; background:${C.flaeche}; border:1px solid ${C.line}; color:${C.dim};}
+.suchknopf kbd{margin-left:6px; font-size:10.5px; font-family:inherit; padding:2px 6px;
+  border-radius:6px; background:${C.flaecheStill}; border:1px solid ${C.lineSoft}; color:${C.dim};}
 
 main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; width:100%;}
 
@@ -568,7 +565,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 }
 
 @media print{
-  .seitenleiste,.kopfleiste,.noprint,.toast{display:none !important;}
+  .seitenleiste,.kopfblock,.kopfleiste,.noprint,.toast{display:none !important;}
   .inhalt{margin-left:0;}
   .sw-root{background:#fff;}
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
@@ -5053,7 +5050,7 @@ const H1 = ({ children, rubrik, sub, right, style }) => (
       {sub && <p className="untertitel">{sub}</p>}
     </div>
     {right && <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-      flexShrink: 0 }}>{right}</div>}
+      flexShrink: 0, maxWidth: "100%" }}>{right}</div>}
   </div>)
 
 /**
@@ -22574,48 +22571,25 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
         {/* ------------------------- Inhalt --------------------------- */}
         <div className="inhalt">
-          <header className="kopfleiste">
-            <button className="btn btn-sm btn-quiet nur-schmal" onClick={() => setSeiteOffen(!seiteOffen)}
-              aria-label="Navigation öffnen" aria-expanded={seiteOffen} title="Navigation">
-              <Icon n="menue" size={18} /></button>
-
-            {!istBetreiber && (
-              <button className="suchknopf" onClick={() => setKmd(true)}>
-                <Icon n="suche" size={16} /><span>Suchen …</span><kbd>Strg K</kbd>
-              </button>)}
-
-            <div style={{ flex: 1 }} />
-
-            {/* Auf dem Telefon treten diese Werkzeuge ab — sie schoben die
-                Kopfleiste über die Gerätebreite hinaus. Das Postfach bleibt,
-                weil dort Mitteilungen zum Dienst ankommen. */}
-            {!istBetreiber && (
-              <button onClick={() => setPostfach(true)} className="btn btn-sm btn-quiet"
-                title="Mitteilungen" aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
-                style={{ position: "relative" }}>
-                <Icon n="brief" size={18} />
-                {ungelesen > 0 && <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16,
-                  height: 16, borderRadius: 8, background: C.danger, color: "#fff", fontSize: 10,
-                  fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {ungelesen}</span>}
-              </button>)}
-            <div className="kopf-werkzeuge" style={{ display: "contents" }}>
-            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
-              title="Zeilenhöhe und Abstände umschalten">
-              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
-            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
-              title="Seitenleiste ausblenden für maximale Breite">
-              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
-            {!istBetreiber && <Btn size="sm" kind="quiet" onClick={akt.zurueck}
-              title="Letzte Änderung zurücknehmen">Rückgängig</Btn>}
-            {!istBetreiber && <Btn size="sm" kind="quiet"
-              onClick={() => akt.setzeKontrastmodus(!sitz.person.kontrastmodus)}
-              title="Größere Schrift und maximaler Kontrast">
-              {sitz.person.kontrastmodus ? "Feldmodus aus" : "Feldmodus"}</Btn>}
-            </div>
-            {nurMitarbeiter && rechnerAnsicht && (
-              <Btn size="sm" kind="quiet" onClick={() => setRechnerAnsicht(false)}>Telefonansicht</Btn>)}
-          </header>
+          <Kopfblock istBetreiber={istBetreiber}
+            betrieb={istBetreiber ? "Betreiberkonsole" : sitz.mandant.name}
+            bereiche={istBetreiber ? [{ id: "betreiber", label: "Betreiberkonsole", views: nav }] : bereiche}
+            aktiveView={aktiveView} zaehler={zaehler} zaehlerWarn={zaehlerWarn}
+            konto={{
+              name: istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`,
+              kurz: istBetreiber ? "BE" : (((sitz.person.vorname || " ")[0] + (sitz.person.nachname || " ")[0]).toUpperCase().trim() || r.kurz),
+              rolle: r.label }}
+            ungelesen={ungelesen}
+            dicht={dicht} onDicht={setDicht} fokus={fokus} onFokus={setFokus}
+            feldmodus={!istBetreiber && !!sitz.person.kontrastmodus}
+            onFeldmodus={istBetreiber ? undefined : (an) => akt.setzeKontrastmodus(an)}
+            thema={istBetreiber ? undefined : sitz.person.thema}
+            onThema={istBetreiber ? undefined : (v) => akt.setzeMeineEinstellung("thema", v)}
+            onAnsicht={(id) => { setView(id); setDetail(null); setSeiteOffen(false); }}
+            onSuche={() => setKmd(true)} onZurueck={akt.zurueck} onPostfach={() => setPostfach(true)}
+            onDrawer={() => setSeiteOffen(!seiteOffen)} drawerOffen={seiteOffen}
+            onAbmelden={akt.abmelden}
+            telefonansicht={nurMitarbeiter && rechnerAnsicht ? () => setRechnerAnsicht(false) : null} />
 
           {fokus && (
             <div style={{ padding: "10px 24px", background: C.accentLight,

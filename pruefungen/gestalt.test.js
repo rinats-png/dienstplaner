@@ -117,7 +117,7 @@ describe("Farben", () => {
   /* Stand nach P1/P2. Die Zahl darf sinken; wer sie erhöht, muss die Farbe
      in src/farben.js anlegen — oder begründen, warum sie Daten ist (eine
      Dienstart, eine Rollenfarbe, eine Druckvorlage). */
-  const OBERGRENZE_APP = 128;
+  const OBERGRENZE_APP = 102;
 
   it("App.jsx hat nicht mehr harte Hexfarben als bisher", () => {
     const n = (lies(join(WURZEL, "src", "App.jsx")).match(HEX) || []).length;
