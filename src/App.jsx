@@ -4937,7 +4937,7 @@ const Fussleiste = ({ children }) => <div className="fussleiste noprint">{childr
  * Filterleiste sitzt unmittelbar über der Tabelle, nicht in der Kopfzeile —
  * dort wird gesucht, und dort erwartet man die Bedienelemente.
  */
-const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, rechts }) => (
+const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", label, children, rechts }) => (
   <div className="filterleiste noprint">
     {setSuche && (
       <div className="suchfeld">
@@ -4945,7 +4945,7 @@ const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, r
         {/* Ein Platzhalter verschwindet, sobald etwas im Feld steht — er
             ist deshalb keine Beschriftung (WCAG 3.3.2). Beides zu setzen
             kostet nichts und trägt auch dann noch. */}
-        <input className="inp" value={suche} placeholder={platzhalter} aria-label={platzhalter}
+        <input className="inp" value={suche} placeholder={platzhalter} aria-label={label || platzhalter}
           onChange={(e) => setSuche(e.target.value)} />
       </div>)}
     {children}
@@ -6746,7 +6746,12 @@ const ABLAUF = [
   },
 ];
 
-const ROLLE_FARBE = { leitung: "#2C5A8A", planer: "#5B4A87", subplaner: "#2C6B63", alle: "#4A6B2E" };
+/* Die Farbe der Rolle im Ablauf. Als Zugriffsfunktion, nicht als fester Wert:
+   C wird beim Umschalten des Erscheinungsbildes ausgetauscht, und ein beim
+   Laden eingefrorener Ton bliebe hell. */
+const ROLLE_FARBE = {
+  get leitung() { return C.accentDeep; }, get planer() { return C.violet; },
+  get subplaner() { return C.accent; }, get alle() { return C.ok; } };
 const ROLLE_KURZ = { leitung: "Organisationsleitung", planer: "Planung", subplaner: "Schichtverantwortung", alle: "Alle Beteiligten" };
 
 /** Ist diese Station Sache der angemeldeten Person? */
@@ -6785,7 +6790,7 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
                   <span style={{ width: 20, height: 20, borderRadius: 10, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, ...NUM,
                     background: st.ok ? C.ok : aktuell ? f : C.lineStark,
-                    color: st.ok || aktuell ? "#fff" : C.dimmer }}>{st.ok ? "✓" : i + 1}</span>
+                    color: st.ok || aktuell ? C.aufAkzent : C.dimmer }}>{st.ok ? <Icon n="haken" size={12} strokeWidth={2.4} /> : i + 1}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em",
                     textTransform: "uppercase", color: f }}>{ROLLE_KURZ[st.rolle]}</span>
                 </div>
@@ -6796,8 +6801,8 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
                   nicht dein Bereich</div>}
               </div>
               {i < stationen.length - 1 && (
-                <div style={{ display: "flex", alignItems: "center", color: C.dimmer, fontSize: 16,
-                  flexShrink: 0, padding: "0 2px" }}>→</div>)}
+                <div aria-hidden="true" style={{ display: "flex", alignItems: "center", color: C.dimmer,
+                  flexShrink: 0, padding: "0 2px" }}><Icon n="pfeil-rechts" size={16} /></div>)}
             </Fragment>);
         })}
       </div>
@@ -6991,22 +6996,20 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
         right={<Btn onClick={akt.starteEinfuehrung}>Rundgang starten</Btn>}>
         Ablauf</H1>
 
-      <KpiRow min={175}>
-        <Kpi label="Stationen erledigt" value={`${stationen.filter((x) => x.ok).length} / ${stationen.length}`}
-          tone={stationen.every((x) => x.ok) ? "ok" : "text"} />
-        <Kpi label="Deine Stationen" value={meine.length} sub={ROLLE_KURZ[
+      <Kennzahlen min={175} kacheln={[
+        { label: "Stationen erledigt", wert: `${stationen.filter((x) => x.ok).length} / ${stationen.length}`,
+          ton: stationen.every((x) => x.ok) ? "ok" : undefined },
+        { label: "Deine Stationen", wert: meine.length, sub: ROLLE_KURZ[
           darf(sitz, "org.edit") ? "leitung" : darf(sitz, "pattern.edit") ? "planer"
-            : darf(sitz, "plan.edit.unit") ? "subplaner" : "alle"]} />
-        <Kpi label="Offen bei dir" value={meineOffen.length}
-          tone={meineOffen.length ? "warn" : "ok"}
-          sub={meineOffen.length ? meineOffen[0].titel : "nichts zu tun"} />
-      </KpiRow>
+            : darf(sitz, "plan.edit.unit") ? "subplaner" : "alle"] },
+        { label: "Offen bei dir", wert: meineOffen.length, ton: meineOffen.length ? "warn" : "ok",
+          sub: meineOffen.length ? meineOffen[0].titel : "nichts zu tun" }]} />
 
-      <div style={{ marginTop: 24 }}>
+      <Card style={{ padding: "22px 22px 12px", marginBottom: 16 }}>
         <Ablaufdiagramm sitz={sitz} gehZu={gehZu} />
-      </div>
+      </Card>
 
-      <Card style={{ marginTop: 8 }}>
+      <Card>
         <CardHead right={<Lab>Antippen für Erklärungen</Lab>}>Alle Stationen im Einzelnen</CardHead>
         {stationen.map((st, i) => (
           <div key={st.id} style={{ padding: "18px 22px",
@@ -7015,8 +7018,8 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
             <div style={{ display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap", marginBottom: 9 }}>
               <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 700, ...NUM,
-                background: st.ok ? C.ok : C.line, color: st.ok ? "#fff" : C.dimmer }}>
-                {st.ok ? "✓" : i + 1}</span>
+                background: st.ok ? C.ok : C.line, color: st.ok ? C.aufAkzent : C.dimmer }}>
+                {st.ok ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
               <span style={{ fontSize: 16, fontWeight: 650, letterSpacing: "-.015em" }}>{st.titel}</span>
               <Pill size="sm" style={{ background: `${ROLLE_FARBE[st.rolle]}18`, color: ROLLE_FARBE[st.rolle] }}>
                 {ROLLE_KURZ[st.rolle]}</Pill>
@@ -9896,10 +9899,11 @@ function Hilfe({ sitz, gehZu }) {
   const rollenName = sitz.rolle === "betreiber"
     ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
 
-  const Weg = ({ titel, text, knopf, aufKlick, href }) => (
-    <div className="karte" style={{ padding: "16px 18px", display: "flex", gap: 16,
-      alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
-      <div style={{ flex: 1, minWidth: 240 }}>
+  /* Eine Zeile: Symbol (nur bei den Wegen im Haus), Titel, Satz, Knopf. */
+  const Weg = ({ titel, text, knopf, aufKlick, href, symbol }) => (
+    <div className="wegzeile">
+      {symbol && <span className="wegsymbol" aria-hidden="true"><Icon n={symbol} size={20} /></span>}
+      <div style={{ flex: 1, minWidth: 220 }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
         <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
       </div>
@@ -9911,58 +9915,61 @@ function Hilfe({ sitz, gehZu }) {
 
   return (
     <div>
-      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns.">
+      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns."
+        right={<Btn kind="primary" onClick={() => gehZu("handbuch")}>Handbuch öffnen</Btn>}>
         Hilfe</H1>
 
       {KONTAKT_UNGESETZT && (
-        <div style={{ padding: "12px 16px", borderRadius: 10, marginBottom: 18,
-          background: C.warnLight, border: `1px solid ${C.warn}33`, fontSize: 13, lineHeight: 1.55 }}>
-          <strong style={{ fontWeight: 640 }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
+        <Hinweisband ton="warn">
+          <strong style={{ fontWeight: 640, color: C.text }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
           Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
           Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
           rechtliches/PLATZHALTER.md.
-        </div>)}
+        </Hinweisband>)}
 
-      <Card style={{ marginBottom: 18 }}>
-        <CardHead>Selbst nachsehen</CardHead>
-        <div style={{ padding: 18 }}>
-          <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")}
-            text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
-          <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")}
-            text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
-          <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")}
-            text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
-        </div>
-      </Card>
+      <Leitraster seiteBreite={1}
+        haupt={<>
+          <Card>
+            <CardHead>Selbst nachsehen</CardHead>
+            <div className="wegliste">
+              <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")} symbol="buch"
+                text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
+              <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")} symbol="pruefliste"
+                text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
+              <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")} symbol="schild"
+                text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
+            </div>
+          </Card>
 
-      <Card>
-        <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
-        <div style={{ padding: 18 }}>
-          <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
-              rolle: rollenName, ansicht: "Hilfe",
-              zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
-            text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
-          <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
-            href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
-              zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
-            text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
-          <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
-            text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
-          <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
-              zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
-            text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
+          <Card>
+            <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
+            <div className="wegliste">
+              <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
+                  rolle: rollenName, ansicht: "Hilfe",
+                  zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
+                text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
+              <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
+                href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
+                  zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
+                text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
+              <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
+                text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
+              <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
+                  zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
+                text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
 
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.lineSoft}`,
-            fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
-            E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
-            {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
-              style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
-          </div>
-        </div>
-      </Card>
+              <div style={{ marginTop: 6, padding: "14px var(--pad-x) 2px", borderTop: `1px solid ${C.lineSoft}`,
+                fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+                E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
+                {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
+                  style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
+              </div>
+            </div>
+          </Card>
+        </>} />
     </div>);
 }
 
@@ -14360,18 +14367,17 @@ function Schichtuebergabe({ sitz, akt }) {
         {begriff(m, "uebergabe")}</H1>
 
       {offeneListe.length > 0 && (
-        <Card style={{ padding: 18, marginBottom: 18, background: C.warnLight, borderColor: `${C.warn}66` }}>
-          <div style={{ fontSize: 14.5, fontWeight: 620, color: C.warn, marginBottom: 8 }}>
-            {offeneListe.length} {offeneListe.length === 1 ? "Übergabe fehlt" : "Übergaben fehlen"}</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Hinweisband ton="warn"
+          titel={`${offeneListe.length} ${offeneListe.length === 1 ? "Übergabe fehlt" : "Übergaben fehlen"}`}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
             {offeneListe.slice(0, 8).map((x, i) => (
               <Btn key={i} size="sm" onClick={() => { setDatum(x.datum); setDienstId(x.dienstart.id); }}>
                 {fKurz(x.datum)} · {x.dienstart.kurz}</Btn>))}
           </div>
-        </Card>)}
+        </Hinweisband>)}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(280px,1fr)", gap: 18,
-        alignItems: "start" }}>
+      <Leitraster seiteBreite={380}
+        haupt={
         <Card>
           <CardHead right={vorhanden
             ? <Pill tone="ok">erfasst {vorhanden.zeit}</Pill>
@@ -14390,7 +14396,7 @@ function Schichtuebergabe({ sitz, akt }) {
                 Übergeben von <b>{vorhanden.von}</b> an <b>{vorhanden.an || "die Folgeschicht"}</b> am {vorhanden.zeit}.
               </div>
               {(vorhanden.ergaenzungen || []).map((e, i) => (
-                <div key={i} className="karte" style={{ padding: 13, background: C.bg }}>
+                <div key={i} className="karte-still" style={{ padding: 13, borderRadius: "var(--r)" }}>
                   <div style={{ fontSize: 12, color: C.dim, marginBottom: 4, ...NUM }}>{e.zeit} · {e.von}</div>
                   <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{e.text}</div>
                 </div>))}
@@ -14409,9 +14415,8 @@ function Schichtuebergabe({ sitz, akt }) {
                   Übergabe abschließen</Btn>
               </div>)}
           </div>
-        </Card>
-
-        <div>
+        </Card>}
+        seite={<>
           <Card>
             <CardHead>Besetzung dieser Schicht</CardHead>
             {b && b.personen.length ? b.personen.map((p) => (
@@ -14427,17 +14432,17 @@ function Schichtuebergabe({ sitz, akt }) {
             const fl = fachkraftLage(m, datum, dienstId);
             if (!fl) return null;
             return (
-              <Card style={{ marginTop: 14, padding: 18 }}>
+              <Card style={{ padding: 18 }}>
                 <Rubrik style={{ marginBottom: 10 }}>Fachkraftquote</Rubrik>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                   <span style={{ fontSize: 28, fontWeight: 300, letterSpacing: "-.03em", ...NUM,
                     color: fl.erfuellt ? C.ok : C.danger }}>{fl.ist} %</span>
                   <span style={{ fontSize: 13, color: C.dim, ...NUM }}>gefordert {fl.soll} %</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 3, background: C.bg, marginTop: 12, position: "relative" }}>
-                  <div style={{ width: `${Math.min(100, fl.ist)}%`, height: "100%", borderRadius: 3,
-                    background: fl.erfuellt ? C.ok : C.danger }} />
-                  <div style={{ position: "absolute", left: `${fl.soll}%`, top: -3, bottom: -3, width: 2,
+                <div style={{ position: "relative", marginTop: 12 }}>
+                  <Fortschritt wert={fl.ist} ton={fl.erfuellt ? "ok" : "danger"} hoehe={6}
+                    label={`Fachkraftquote ${fl.ist} Prozent, gefordert ${fl.soll} Prozent`} />
+                  <div aria-hidden="true" style={{ position: "absolute", left: `${fl.soll}%`, top: -3, bottom: -3, width: 2,
                     background: C.text, opacity: .5 }} />
                 </div>
                 <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.5 }}>
@@ -14446,8 +14451,7 @@ function Schichtuebergabe({ sitz, akt }) {
                 </div>
               </Card>);
           })()}
-        </div>
-      </div>
+        </>} />
     </div>);
 }
 
@@ -15311,25 +15315,20 @@ function Handbuch({ sitz, akt, gehZu }) {
   if (ladefehler) return (
     <div>
       <H1>Handbuch</H1>
-      <Card style={{ padding: 24 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>
-          Das Handbuch ließ sich nicht nachladen</div>
-        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px" }}>
-          Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung
-          abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen.</p>
-        <Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
-          .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>
+      <Card>
+        <Leer titel="Das Handbuch ließ sich nicht nachladen" symbol="offline"
+          text="Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen."
+          aktion={<Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
+            .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>} />
       </Card>
     </div>);
 
   if (!alle) return (
     <div>
       <H1 sub="Wird geholt …">Handbuch</H1>
-      <div style={{ display: "grid", gridTemplateColumns: "230px 1fr", gap: 26 }}>
-        <div className="pulsiert" style={{ height: 300, borderRadius: 12,
-          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
-        <div className="pulsiert" style={{ height: 420, borderRadius: 12,
-          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+      <div className="handbuchraster">
+        <div className="pulsiert karte" style={{ height: 300 }} />
+        <div className="pulsiert karte" style={{ height: 420 }} />
       </div>
       <div className="nurLeser" role="status" aria-live="polite">Handbuch wird geladen</div>
     </div>);
@@ -15344,13 +15343,13 @@ function Handbuch({ sitz, akt, gehZu }) {
     return (
       <Card style={{ padding: 26, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
-          <button onClick={() => akt.handbuchHaken(schluessel)}
+          <button type="button" onClick={() => akt.handbuchHaken(schluessel)}
             aria-label={ok ? "Als ungelesen markieren" : "Als erledigt markieren"}
             style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, cursor: "pointer",
-              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.lineStark}`,
-              background: ok ? C.ok : "transparent", color: "#fff", fontSize: 13,
+              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.steuer}`,
+              background: ok ? C.ok : "transparent", color: C.aufAkzent, padding: 0,
               display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
-            {ok ? "✓" : ""}</button>
+            {ok ? <Icon n="haken" size={15} strokeWidth={2.4} /> : null}</button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em", margin: 0,
               opacity: ok ? .6 : 1 }}>{a.titel}</h3>
@@ -15373,18 +15372,13 @@ function Handbuch({ sitz, akt, gehZu }) {
           </ol>)}
 
         {a.pruefen && (
-          <div style={{ padding: "13px 16px", borderRadius: 10, background: C.okLight,
-            border: `1px solid ${C.ok}66`, marginBottom: 12 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".08em",
-              textTransform: "uppercase", color: C.ok, marginBottom: 6 }}>Woran du merkst, dass es geklappt hat</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.6, color: C.text }}>{a.pruefen}</div>
-          </div>)}
+          <Hinweisband ton="ok" style={{ boxShadow: "none", marginBottom: 12, background: C.okLight }}
+            titel={<span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".08em",
+              textTransform: "uppercase", color: C.ok }}>Woran du merkst, dass es geklappt hat</span>}>
+            <span style={{ fontSize: 13.5, lineHeight: 1.6, color: C.text }}>{a.pruefen}</span>
+          </Hinweisband>)}
 
-        {a.merke && (
-          <div style={{ padding: "13px 16px", borderRadius: 10, background: C.bg,
-            borderLeft: `3px solid ${C.accent}` }}>
-            <div style={{ fontSize: 13.5, lineHeight: 1.6, color: C.dim }}>{a.merke}</div>
-          </div>)}
+        {a.merke && <Erklaerkasten style={{ fontSize: 13.5, lineHeight: 1.6 }}>{a.merke}</Erklaerkasten>}
 
         {(kapZiel || a.ziel) && !suche && (
           <div style={{ marginTop: 16 }}>
@@ -15402,32 +15396,27 @@ function Handbuch({ sitz, akt, gehZu }) {
         </div>}>
         Handbuch</H1>
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap",
-        marginBottom: 26 }}>
-        <Inp value={suche} onChange={(e) => setSuche(e.target.value)} aria-label="Im Handbuch suchen"
-          placeholder="Im Handbuch suchen …" style={{ maxWidth: 320 }} />
-        {treffer && <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
-          {treffer.length} {treffer.length === 1 ? "Abschnitt" : "Abschnitte"}</span>}
-        {suche && <Btn size="sm" kind="quiet" onClick={() => setSuche("")}>Zurücksetzen</Btn>}
-        <div style={{ flex: 1 }} />
-        {gelesen.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <div style={{ width: 90, height: 5, borderRadius: 3, background: C.bg, overflow: "hidden" }}>
-              <div style={{ width: `${anteil}%`, height: "100%", background: C.ok }} /></div>
-            <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{anteil} % durch</span>
-          </div>)}
-      </div>
+      <Filterleiste suche={suche} setSuche={setSuche} platzhalter="Im Handbuch suchen …" label="Im Handbuch suchen"
+        rechts={<>
+          {treffer && <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
+            {treffer.length} {treffer.length === 1 ? "Abschnitt" : "Abschnitte"}</span>}
+          {suche && <Btn size="sm" kind="quiet" onClick={() => setSuche("")}>Zurücksetzen</Btn>}
+          {gelesen.length > 0 && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 11 }}>
+              <span style={{ width: 90 }}><Fortschritt wert={anteil} ton="ok" hoehe={6} label="Handbuch gelesen" /></span>
+              <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{anteil} % durch</span>
+            </span>)}
+        </>} />
 
       {treffer ? (
         treffer.length === 0
           ? <Leer titel="Nichts gefunden" text="Versuch einen anderen Begriff — etwa „Ruhezeit“, „Urlaub“ oder „Zuschlag“." />
           : treffer.map((a, i) => <Abschnitt key={i} a={a} kapId={a.kapitelId} kapZiel={a.ziel} />)
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(230px,280px) minmax(0,1fr)",
-          gap: 24, alignItems: "start" }}>
+        <div className="handbuchraster">
 
           {/* --------------------- Kapitelliste --------------------- */}
-          <Card style={{ position: "sticky", top: 76 }}>
+          <Card className="kapitelliste">
             {kapitel.map((x, i) => {
               const fertig = x.abschnitte.every((a) => gelesen.includes(`${x.id}:${a.titel}`));
               const an = x.id === offen;
@@ -15442,8 +15431,8 @@ function Handbuch({ sitz, akt, gehZu }) {
                   <span style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 11, fontWeight: 700, ...NUM,
-                    background: fertig ? C.ok : an ? C.accent : C.bg,
-                    color: fertig || an ? "#fff" : C.dim }}>{fertig ? "✓" : i + 1}</span>
+                    background: fertig ? C.ok : an ? C.accent : C.flaecheStill,
+                    color: fertig || an ? C.aufAkzent : C.dim }}>{fertig ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13.5, fontWeight: an ? 640 : 550,
                       lineHeight: 1.35 }}>{x.titel}</span>
@@ -15477,6 +15466,17 @@ function Handbuch({ sitz, akt, gehZu }) {
           </div>
         </div>)}
     </div>);
+
+          {/* ------------------ Stand in diesem Kapitel ------------------ */}
+          {k && (
+            <div className="rechts">
+              <Seitenkarte titel="In diesem Kapitel"
+                sub={`${k.abschnitte.filter((a) => gelesen.includes(`${k.id}:${a.titel}`)).length} von ${k.abschnitte.length} als erledigt markiert`}>
+                <Checkliste punkte={k.abschnitte.map((a) => ({ text: a.titel,
+                  erledigt: gelesen.includes(`${k.id}:${a.titel}`),
+                  onClick: () => akt.handbuchHaken(`${k.id}:${a.titel}`) }))} />
+              </Seitenkarte>
+            </div>)}
 }
 
 /** Handbuch als druckbare Seite — zum Mitgeben nach der Einrichtung. */
@@ -22899,7 +22899,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "rechtliches" && <div>
               <H1 sub="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung. Änderungen an diesen Texten geschehen an einer Stelle — im Ordner rechtliches/ — und erscheinen hier.">
                 Rechtliches</H1>
-              <Rechtliches /></div>}
+              <Rechtliches flaeche /></div>}
             {aktiveView === "selbstplan" && <Selbstplanung sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "notrufe" && <Notrufe sitz={sitz} akt={akt} />}
             {aktiveView === "belastung" && <Belastung sitz={sitz} akt={akt} gehZu={setView} />}
