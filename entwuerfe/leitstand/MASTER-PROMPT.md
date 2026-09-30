@@ -2,6 +2,8 @@
 
 Stand: 29. September 2026. Dieser Prompt ist **noch nicht ausgeführt**. An der Anwendung wurde nichts geändert.
 
+**Abgleich mit dem Remote-Stand (30. September 2026):** Dieser Prompt wurde zuerst gegen einen veralteten Arbeitsstand geschrieben. Seither liegen im Remote u. a. die Barrierefreiheits-Arbeit (`steuer`, `aufAkzent` in `farben.js`), ein Kontrasttest (`pruefungen/kontrast.test.js`) und `PENTEST.md`. Folgende Stellen sind darauf angepasst; wo sonst etwas nicht zum Code passt, gilt der Code.
+
 Grundlage: die Design-Canvas „CENTRIC Leitstand-Entwürfe" (45 Artboards) und ein Durchgang durch den echten Code (`src/App.jsx`, `src/farben.js`, `src/main.jsx`, `src/marke.jsx`, `src/schrift.css`, `index.html`, `vite.config.js`, `netlify.toml`). Alle Zahlen zu Kontrasten in diesem Dokument sind gerechnet, nicht geschätzt.
 
 ---
@@ -27,7 +29,7 @@ Nicht anfassen, außer wo Teil E/F es ausdrücklich verlangt:
 - Server: alles unter `netlify/`.
 - Datenmodell, Speicherformat, Migration (`speicher.js`, `migration.js`).
 - **Ansichts-IDs** (`"start"`, `"plan"`, `"jahr"` …) und die Struktur von `BEREICHE`. Tour, Handbuch, Suche (Strg K) und Zähler hängen daran.
-- Sicherheitsheader und CSP (`netlify.toml`, später der nginx-Ersatz). Das Redesign braucht **keine** Änderung daran (siehe A.3).
+- Sicherheitsheader und CSP (`netlify.toml`; Prüfbericht in `PENTEST.md`, später der nginx-Ersatz). Das Redesign braucht **keine** Änderung daran (siehe A.3).
 
 ### A.3 Harte Randbedingungen aus dem Code
 1. **Schrift bleibt im Haus.** `src/schrift.css` bindet Inter lokal ein; der Kommentar dort erklärt warum (IP-Weitergabe an Dritte, LG München I 2022). Die Canvas benutzt zur Vorschau einen Google-Fonts-Link — **das darf nie in die Anwendung**. Keine externen Fonts, Bilder, Icon-CDNs, Skripte.
@@ -67,7 +69,7 @@ Nicht anfassen, außer wo Teil E/F es ausdrücklich verlangt:
 | `.kopfleiste` | `background: rgba(255,255,255,.92)` hart — **im Dunkelmodus prüfen** |
 | `.btn-danger` | `background:#fff` hart |
 | Glyphen als Icons | `⌕ ✉︎ ☰ ◉ ▤ ✎ ⏻ ›` sind Textzeichen; sie sehen je Betriebssystem anders aus und werden teils als Emoji gerendert |
-| `Schalter` | CSS `.schalter.on` nimmt Akzent, das React-Style `C.ok` — zwei Quellen |
+| `Schalter` | CSS `.schalter.on` nimmt Akzent, das React-Style `C.ok` — zwei Quellen (Aus-Zustand nutzt im Remote-Stand schon `steuer`) |
 
 ---
 
@@ -123,7 +125,8 @@ Nicht anfassen, außer wo Teil E/F es ausdrücklich verlangt:
 | `verlaufC` | `rgba(2,52,65,.14)` | `rgba(127,224,224,.10)` | Tiefe rechts |
 | `kopfGrund` | `rgba(255,255,255,.86)` | `rgba(18,30,35,.86)` | Kopfzeile (ersetzt hartes Weiß) |
 | `ueberlagerung` | `rgba(7,19,23,.36)` | `rgba(0,0,0,.56)` | Rücken hinter Blättern (ersetzt `rgba(17,24,39,…)`) |
-| `randStark` | `#5B6B72` | `#7A8D95` | Rand/Kontur von Bedienelementen im Aus-Zustand (Kreise, Checkboxen) — siehe Kontrastbefund |
+| *(vorhanden)* `steuer` | `#6E858E` | `#5C7681` | Rand/Kontur von Bedienelementen und Aus-Zustand (Kreise, Checkboxen, Schalter); ≥ 3:1 nach WCAG 1.4.11. **Ersetzt den früher vorgeschlagenen Ton `randStark`.** |
+| *(vorhanden)* `aufAkzent` | `#FFFFFF` | `#071317` | Schrift auf gefüllter Akzentfläche (dunkel 8,45:1). **Ersetzt die früher vorgeschlagene Knopfschrift `#06181A`.** |
 
 **Dienstarten-Farben** stammen aus den Daten (`#017070` Früh, `#316C81` Spät, `#023441` Nacht, `#4C4668` Bereitschaft, `#955410` Rufbereitschaft, `#2E6B4F` Urlaub, `#B3261E` Krank, `#35506B` Schulung, `#0369A1` Ausgleich, `#8A5A00` Sonstiges, `#878C93` Freistellung). Sie bleiben Daten; **Darstellung immer per `TON()`** (Tönung + 2,5 px Akzentlinie, Kürzel als Text). Weiße Schrift auf voller Dienstfarbe nur für: Akzent 5,91:1, `#316C81` 5,85:1, `#023441` 13,37:1, `#955410` 5,91:1, `#2E6B4F` 6,30:1, `#B3261E` 6,54:1, `#4C4668` 8,81:1, `#0369A1` 5,93:1, `#35506B` 8,36:1, `#8A5A00` 5,93:1 — **nicht** auf `#878C93` (3,39:1).
 
@@ -238,7 +241,7 @@ Nur: Hover/Fokus 140–160 ms, Blatt einblenden 160 ms, Toast 200 ms (alles best
 | `plus` | `M12 5.2v13.6M5.2 12h13.6` | Anlegen |
 | `haken` | `m4.6 12.4 4.8 4.8L19.4 6.6` | Genehmigen, erledigt |
 | `kreis-haken` | `circle 12 12 r8.6` · `m8.4 12.2 2.4 2.4 4.8-5` | Checkliste erledigt |
-| `kreis-leer` | `circle 12 12 r8.6` (Kontur `randStark`) | Checkliste offen |
+| `kreis-leer` | `circle 12 12 r8.6` (Kontur `steuer`) | Checkliste offen |
 | `pfeil-rechts` | `M5 12h13M13 7l5 5-5 5` | „Öffnen" |
 | `chevron-l/-r/-u/-o` | `m14.5 5.5-6.5 6.5 6.5 6.5` / `m9.5 5.5 6.5 6.5-6.5 6.5` / `m6 9.5 6 6 6-6` (unten) | Monat vor/zurück, Auswahl |
 | `mehr` | drei `circle r1.6` (gefüllt) bei x5.5/12/18.5 | Kartenmenü |
@@ -268,14 +271,14 @@ Alle neuen Bausteine in `src/gestalt/bausteine.jsx`; die CSS-Klassen in `bauStyl
 | Baustein | Änderung | Wichtig |
 |---|---|---|
 | `Card` / `.karte` | Radius 18, Schatten E2, Rand `line`; Variante `.karte-still` (E1) | Rand bleibt (1,3:1-Lehre). |
-| `Btn` | Pille, Höhen laut D.5; `kind`: plain/primary/quiet/danger/ok bleiben | Primär: `accent`-Grund, Weiß 5,91:1; dunkel: Grund `accent` (#3FBFBF), Schrift `#06181A` (8,16:1) statt Weiß. |
+| `Btn` | Pille, Höhen laut D.5; `kind`: plain/primary/quiet/danger/ok bleiben | Primär: `accent`-Grund, Weiß 5,91:1; Schrift auf Akzent über das vorhandene Token `aufAkzent` (hell Weiß, dunkel #071317). |
 | `Pille` | ohne Rand; Ton = Tönung (`okLight` …) + Volltönung | Tailwind-Ränder entfernen. Kontraste: ok 5,50, warn 4,69, danger 12,22, accent 5,03 — alle über 4,5. |
 | `Seg` | bleibt Pillenreihe; aktiv: `accentLight`-Grund + `accent`-Rand (besteht) | `role="tablist"` beibehalten. Alternativ segmentiert (Kapsel, aktiv dunkel) nur für Zeitraum-Schalter; **eine** Form wählen (Empfehlung: bestehende). |
 | `Kpi` | neu: Titel klein `aus`, Wert groß, optional `trend` (Pille), optional `bild` (Mikro-Diagramm), Fußzeile | Trend nur wenn Daten (Teil J). |
 | `Sparkline` (neu) | SVG-`polyline` + Fläche `accentLight`, Endpunkt hervorgehoben; Säulen-Variante; Punktraster-Variante | Farbe nur `accent`/Status; Werte tabellarisch beschriftet für Leser (`<title>` oder `aria-label` mit Zusammenfassung). |
 | `Bogen` (neu, Halbkreis) | SVG-Pfad, Segmente per `stroke-dasharray`; Farben `ok`/`warn`/`lineStark` (nicht Orange-Grün-Blau wie im Vorbild) | Für PpUGV-Erfüllung, PPP-RL. Zahl in der Mitte als Text. Segmentfarben tragen nie allein: Legende/Text daneben. |
 | `Fortschritt` (neu) | Balken 6–8 px, `accent`/Status | für Einrichtung, Beteiligung, Auslastung |
-| `Checkliste` (neu) | Zeile mit `kreis-haken` (ok) / `kreis-leer` (Kontur `randStark`) | Leer-Kreise in den Entwürfen nutzen #9DB3BC = 2,19:1 → fällt unter 3:1 für Bedienelement-Konturen. **`randStark` verwenden (5,54:1).** |
+| `Checkliste` (neu) | Zeile mit `kreis-haken` (ok) / `kreis-leer` (Kontur `steuer`) | Leer-Kreise in den Entwürfen nutzen #9DB3BC = 2,19:1 → fällt unter 3:1 für Bedienelement-Konturen. **`steuer` verwenden** (das hat der Remote-Stand bereits als Token; Schalter und Felder nutzen es dort schon). |
 | `Avatar` | Töne aus D.1 | |
 | `Planzelle` / `TON` | **unverändert**, nur Radius 9 → 8 und Mindesthöhe 44 auf Touch | Tönung + Linie bleibt. |
 | `Leer` | Icon statt „◌", Text unverändert, Aktion als `Btn` | |
@@ -461,10 +464,10 @@ Ein Produkt für Nachweise darf keine dekorativen Zahlen zeigen.
 
 ## Teil L — Prüfungen (neu anzulegen, alles unter `pruefungen/`)
 
-### L.1 Kontrastprüfung `kontrast.test.js` (vitest, ohne Server, in `npm run pruefung`)
+### L.1 Kontrastprüfung — `pruefungen/kontrast.test.js` **besteht bereits** (WCAG-Rechnung, beide Paletten). Nicht neu anlegen, sondern erweitern um die Paare unten, vor allem die Verlaufsprüfung. Das Skript muss in `npm run pruefung` hängen (prüfen, ob es das schon tut).
 - Liest `C_HELL` und `C_DUNKEL` aus `farben.js`.
 - Prüft eine **Tabelle von Paaren** (Vorder-/Hintergrund, Mindestwert) für Text ≥ 4,5, große Schrift ≥ 3, Bedienelement-Konturen ≥ 3.
-- Pflichtpaare (mindestens): `text/bg`, `dim/bg`, `aus/flaeche`, `accent/bg`, `Weiß/accent`, `ok|warn|danger|violet` auf ihrer `…Light`-Fläche, dunkel `#06181A` auf `accent`, alle zehn weißen-Schrift-Dienstfarben aus D.1, `randStark/flaeche` ≥ 3, die acht Avatar-Paare.
+- Pflichtpaare (mindestens): `text/bg`, `dim/bg`, `aus/flaeche`, `accent/bg`, `Weiß/accent`, `ok|warn|danger|violet` auf ihrer `…Light`-Fläche, `aufAkzent` auf `accent` (hell und dunkel), alle zehn weißen-Schrift-Dienstfarben aus D.1, `steuer/flaeche` ≥ 3 (ist im Remote-Test bereits abgedeckt — prüfen, nicht doppeln), die acht Avatar-Paare.
 - **Verlauf:** Komposition `verlaufA` (+ `verlaufB`) über `flaecheStill` (hell) bzw. `bg` (dunkel) am ungünstigsten Punkt; `text` und `dim` ≥ 4,5. Schlägt fehl, sobald jemand die Deckkraft erhöht.
 - Rechnet mit WCAG-Formel (relative Luminanz), keine Bibliothek.
 
@@ -519,7 +522,7 @@ Matrix: **Rolle** (Leitung, Planer, Mitarbeiter, Betriebsrat, Betreiber) × **Th
 | Weichzeichner | `filter: blur(56px)` im Entwurf | Nicht übernehmen; Radialverlauf ohne Filter. |
 | Navigation | Pillenleiste, Unterebene fehlt | Unterleiste (F.2) ergänzt; Drawer bleibt. |
 | Icons | Teilweise nur Icons (Monatsplan/Main) | Bereichs-Pillen immer mit Text. |
-| Unerledigt-Kreis | `#9DB3BC` (2,19:1) | `randStark` (5,54:1). |
+| Unerledigt-Kreis | `#9DB3BC` (2,19:1) | `steuer`. |
 | Prognosekarte | „Personalbedarf 30 Tage / 87 %" | Gestrichen (keine Funktion). |
 | Hilfe-Suchfeld, Kategorien am Brett, Fristen bei Wünschen, Einarbeitungsbausteine, Wartung, Wiederherstellen | teils im Entwurf oder in der Beschreibung | Nicht im Code → nicht zeigen. |
 | Leitungssicht Tauschbörse | Einheit | Im Code nur eigene Vorgänge; Entscheidung nötig (Teil G). |
