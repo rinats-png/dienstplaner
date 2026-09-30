@@ -58,15 +58,14 @@
       "durchgehend gedeckt": 1,
       "in den nächsten vier": 1,
       "von 86 Beschäftigten": 1,
-      "zu entscheiden": 1,
-      "›": 1
+      "zu entscheiden": 1
      },
      "knoepfe": {
+      "Alles Weitere anzeigen (3)": 1,
       "Anträge ansehen": 1,
       "Jetzt bestätigen": 1,
       "Meine Schichten": 1,
-      "Nachweise prüfen": 1,
-      "› Alles Weitere anzeigen (3)": 1
+      "Nachweise prüfen": 1
      },
      "felder": {},
      "kopf": {}
@@ -684,10 +683,7 @@
       "Yildiz, Engel, Baumann": 1,
       "Yildiz, Schäfer, Kowalski": 5,
       "Zurücksetzen": 1,
-      "nur knappe Tage": 1,
-      "‹": 1,
-      "›": 1,
-      "⌕": 1
+      "nur knappe Tage": 1
      },
      "knoepfe": {
       "01.10. öffnen": 1,
@@ -724,10 +720,10 @@
       "Spätdienst 13:45–23:30, 16 von 7 besetzt · Yildiz, Schäfer, Kowalski": 1,
       "Spätdienst 13:45–23:30, 17 von 7 besetzt · Lindner, Sander, Engel": 1,
       "Tag": 1,
+      "Weiter": 1,
       "Woche": 1,
-      "Zurücksetzen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1,
+      "Zurücksetzen": 1
      },
      "felder": {
       "input:text | Dienstart oder Person … | Dienstart oder Person …": 1
@@ -844,10 +840,7 @@
       "Veröffentlicht 22.9.2026, 09:00:00 durch Olga Dietrich. Änderungen danach lösen eine Mitteilung an die Betroffenen aus.": 1,
       "Zurücksetzen": 1,
       "alle Dienstarten": 1,
-      "nur knappe Tage": 1,
-      "‹": 1,
-      "›": 1,
-      "⌕": 1
+      "nur knappe Tage": 1
      },
      "knoepfe": {
       "Aushang": 1,
@@ -857,9 +850,9 @@
       "Mehrfach ändern": 1,
       "Niederlassung Hannover 34 Personen · 2 Schichtgruppen": 1,
       "Planungsassistent": 1,
-      "Zurücksetzen": 1,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1,
+      "Zurücksetzen": 1
      },
      "felder": {
       "input:text | Schichtgruppe oder Dienstart … | Schichtgruppe oder Dienstart …": 1,
@@ -993,8 +986,6 @@
       "U": 20,
       "Yildiz, Lars": 1,
       "·": 178,
-      "‹": 1,
-      "›": 1,
       "−10,6 h": 1,
       "−15,0 h": 1,
       "−2,9 h": 1
@@ -1476,6 +1467,7 @@
       "Sommer, Ines am 30.09.: Objektwache Tag": 1,
       "Sommer, Ines öffnen": 1,
       "Springerpool": 1,
+      "Weiter": 1,
       "Yildiz, Lars am 01.09.: Nachtdienst": 1,
       "Yildiz, Lars am 02.09.: Nachtdienst": 1,
       "Yildiz, Lars am 03.09.: Nachtdienst": 1,
@@ -1507,8 +1499,7 @@
       "Yildiz, Lars am 29.09.: Objektwache Tag": 1,
       "Yildiz, Lars am 30.09.: Objektwache Tag": 1,
       "Yildiz, Lars öffnen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {
@@ -1604,9 +1595,7 @@
       "deutlich über Soll": 1,
       "im Rahmen": 1,
       "unter Soll": 1,
-      "über Soll": 1,
-      "‹": 1,
-      "›": 1
+      "über Soll": 1
      },
      "knoepfe": {
       "1": 1,
@@ -1630,9 +1619,9 @@
       "Pohl, Leonie öffnen": 1,
       "Sommer, Ines öffnen": 1,
       "Springerpool": 1,
+      "Weiter": 1,
       "Yildiz, Lars öffnen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -1703,8 +1692,7 @@
       "PLANUNG": 1,
       "Runde öffnen": 1,
       "Selbstplanung": 1,
-      "Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest.": 1,
-      "◌": 1
+      "Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest.": 1
      },
      "knoepfe": {
       "Erste Runde öffnen": 1,
@@ -1725,8 +1713,7 @@
       "PLANUNG": 1,
       "Sondereinsätze": 1,
       "Stunden im Zeitraum": 1,
-      "Von": 1,
-      "◌": 1
+      "Von": 1
      },
      "knoepfe": {
       "Einsatz anlegen": 1
@@ -1915,8 +1902,7 @@
       "HEUTE": 1,
       "Keine Notrufe": 1,
       "Notrufe": 1,
-      "Notrufe aus Alleindiensten. Was offen ist, bleibt hier stehen, bis jemand bestätigt — auch nach einem Neuladen.": 1,
-      "◌": 1
+      "Notrufe aus Alleindiensten. Was offen ist, bleibt hier stehen, bis jemand bestätigt — auch nach einem Neuladen.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -1929,8 +1915,7 @@
       "Nichts ausgeschrieben": 1,
       "Offene Schichten": 1,
       "Statt zehn Leute anzurufen: die Lücke sichtbar machen. Wer sich meldet, darf auch — Ruhezeit, Qualifikation und Abwesenheit sind vorher geprüft.": 1,
-      "Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren.": 1,
-      "◌": 1
+      "Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -2084,8 +2069,6 @@
       "Wunschdienste · Ines Sommer": 1,
       "Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.": 1,
       "·": 41,
-      "‹": 1,
-      "›": 1,
       "−": 1
      },
      "knoepfe": {
@@ -2119,8 +2102,8 @@
       "7 · ·": 1,
       "8 S ·": 1,
       "9 S ·": 1,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -2133,8 +2116,7 @@
       "BETRIEB": 1,
       "Hier stehen Mitteilungen, die alle im Betrieb betreffen — Termine, Änderungen, Hinweise.": 1,
       "Nichts angeschlagen": 1,
-      "Schwarzes Brett": 1,
-      "◌": 1
+      "Schwarzes Brett": 1
      },
      "knoepfe": {
       "Aushang verfassen": 1
@@ -2155,8 +2137,7 @@
       "Kein Eintrag": 1,
       "Vorkommnis": 1,
       "Was die nächste Schicht wissen muss. Ersetzt den Zettel am Wachtisch und bleibt nachvollziehbar.": 1,
-      "Übergabe": 1,
-      "◌": 1
+      "Übergabe": 1
      },
      "knoepfe": {
       "Eintragen": 1,
@@ -2486,7 +2467,6 @@
       "von 33": 21,
       "Özdemir, Carla": 1,
       "Özdemir, Hakan": 1,
-      "›": 86,
       "−0,7 h": 1,
       "−1,1 h": 1,
       "−1,5 h": 1,
@@ -2830,8 +2810,7 @@
       "Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie.": 1,
       "Vorbehaltene Aufgaben": 1,
       "in 60 Tagen": 1,
-      "zugedacht, aber nicht erteilt": 1,
-      "◌": 1
+      "zugedacht, aber nicht erteilt": 1
      },
      "knoepfe": {
       "Die drei aus § 4 PflBG anlegen": 1,
@@ -2848,8 +2827,7 @@
       "Keine laufende Einarbeitung": 1,
       "Neue Kräfte werden einer festen Begleitung zugeordnet. CENTRIC prüft für jeden Diensttag, ob beide tatsächlich zusammen eingeteilt sind.": 1,
       "Ordne einer neuen Kraft eine Begleitung zu — die App prüft dann, ob beide gemeinsam Dienst haben.": 1,
-      "PERSONAL": 1,
-      "◌": 1
+      "PERSONAL": 1
      },
      "knoepfe": {
       "Einarbeitung anlegen": 1
@@ -3104,8 +3082,7 @@
       "Sommer, I.": 1,
       "Stein, V.": 1,
       "Yildiz, L.": 1,
-      "Zurück in den Bestand": 1,
-      "◌": 1
+      "Zurück in den Bestand": 1
      },
      "knoepfe": {
       "Betriebsmittel anlegen": 1
@@ -3257,9 +3234,7 @@
       "von 30": 1,
       "§ 4 ArbZG": 1333,
       "§ 6 Abs. 3 ArbZG": 77,
-      "Überlappung": 1,
-      "‹": 1,
-      "›": 1
+      "Überlappung": 1
      },
      "knoepfe": {
       "01.09. Di Regel prüfen: Sachkunde §34a Sachkunde §34a hängt an der Tätigkeit, sperrt aber jeden Dienst. Wo das Recht nach Tätigkeiten unterscheidet — etwa § 34a GewO —, gehört die Anforderung an die betreffenden Dienstarten statt an alle. Konfiguration Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt.": 1,
@@ -4436,15 +4411,15 @@
       "Besetzung": 1,
       "Dienstfolge": 1,
       "Heute": 1,
+      "Monat vor": 1,
+      "Monat zurück": 1,
       "Nachtfolge": 1,
       "Qualifikation": 1,
       "Ruhezeit": 1,
       "Schutzvorschriften": 1,
       "Urlaub": 1,
       "Vorbehaltene Aufgaben": 1,
-      "Überlappung": 1,
-      "‹": 1,
-      "›": 1
+      "Überlappung": 1
      },
      "felder": {},
      "kopf": {}
@@ -4486,8 +4461,7 @@
       "Unfallchirurgie · § 8 PpUGV": 1,
       "Untergrenzen · September 2026": 1,
       "Urologie · § 14 PpUGV": 1,
-      "— kein pflegesensitiver Bereich —": 1,
-      "◌": 1
+      "— kein pflegesensitiver Bereich —": 1
      },
      "knoepfe": {
       "PPP-RL Psychiatrie": 1,
@@ -4622,14 +4596,12 @@
       "höchstens 56 h": 1,
       "nicht erfasst": 7,
       "Özdemir, Carla": 1,
-      "Özdemir, Hakan": 1,
-      "‹": 1,
-      "›": 1
+      "Özdemir, Hakan": 1
      },
      "knoepfe": {
       "Diese Woche": 1,
-      "‹": 1,
-      "›": 1
+      "Woche vor": 1,
+      "Woche zurück": 1
      },
      "felder": {
       "input:number | Lenkzeit in Minuten am 2026-09-28 | —": 1,
@@ -6552,8 +6524,7 @@
       "Fertig": 1,
       "Hier erscheinen Entscheidungen zu deinen Anträgen und Änderungen an deinen Diensten.": 1,
       "Mitteilungen": 1,
-      "Nichts Neues": 1,
-      "◌": 1
+      "Nichts Neues": 1
      },
      "knoepfe": {
       "Fertig": 1
@@ -6614,8 +6585,6 @@
       "Tippe einen Tag an: einmal für möchte arbeiten, zweimal für lieber nicht, dreimal zum Löschen. Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.": 1,
       "Wunschdienste · Ines Sommer": 1,
       "·": 41,
-      "‹": 1,
-      "›": 1,
       "−": 1
      },
      "knoepfe": {
@@ -6650,8 +6619,8 @@
       "8 S ·": 1,
       "9 S ·": 1,
       "Fertig": 2,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -8236,14 +8205,13 @@
       "durchgehend gedeckt": 1,
       "in den nächsten vier": 1,
       "von 86 Beschäftigten": 1,
-      "zu entscheiden": 1,
-      "›": 1
+      "zu entscheiden": 1
      },
      "knoepfe": {
+      "Alles Weitere anzeigen (2)": 1,
       "Jetzt bestätigen": 1,
       "Meine Schichten": 1,
-      "Nachweise prüfen": 1,
-      "› Alles Weitere anzeigen (2)": 1
+      "Nachweise prüfen": 1
      },
      "felder": {},
      "kopf": {}
@@ -8855,10 +8823,7 @@
       "Yildiz, Engel, Baumann": 1,
       "Yildiz, Schäfer, Kowalski": 5,
       "Zurücksetzen": 1,
-      "nur knappe Tage": 1,
-      "‹": 1,
-      "›": 1,
-      "⌕": 1
+      "nur knappe Tage": 1
      },
      "knoepfe": {
       "01.10. öffnen": 1,
@@ -8895,10 +8860,10 @@
       "Spätdienst 13:45–23:30, 16 von 7 besetzt · Yildiz, Schäfer, Kowalski": 1,
       "Spätdienst 13:45–23:30, 17 von 7 besetzt · Lindner, Sander, Engel": 1,
       "Tag": 1,
+      "Weiter": 1,
       "Woche": 1,
-      "Zurücksetzen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1,
+      "Zurücksetzen": 1
      },
      "felder": {
       "input:text | Dienstart oder Person … | Dienstart oder Person …": 1
@@ -9012,19 +8977,16 @@
       "Veröffentlicht 22.9.2026, 09:00:00 durch Olga Dietrich. Änderungen danach lösen eine Mitteilung an die Betroffenen aus.": 1,
       "Zurücksetzen": 1,
       "alle Dienstarten": 1,
-      "nur knappe Tage": 1,
-      "‹": 1,
-      "›": 1,
-      "⌕": 1
+      "nur knappe Tage": 1
      },
      "knoepfe": {
       "Aushang": 1,
       "Heute": 1,
       "Leitstelle Frankfurt 52 Personen · 4 Schichtgruppen": 1,
       "Niederlassung Hannover 34 Personen · 2 Schichtgruppen": 1,
-      "Zurücksetzen": 1,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1,
+      "Zurücksetzen": 1
      },
      "felder": {
       "input:text | Schichtgruppe oder Dienstart … | Schichtgruppe oder Dienstart …": 1,
@@ -9157,8 +9119,6 @@
       "X": 4,
       "Yildiz, Lars": 1,
       "·": 178,
-      "‹": 1,
-      "›": 1,
       "−10,6 h": 1,
       "−15,0 h": 1,
       "−2,9 h": 1
@@ -9185,9 +9145,9 @@
       "Pohl, Leonie öffnen": 1,
       "Sommer, Ines öffnen": 1,
       "Springerpool": 1,
+      "Weiter": 1,
       "Yildiz, Lars öffnen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {
@@ -9283,9 +9243,7 @@
       "deutlich über Soll": 1,
       "im Rahmen": 1,
       "unter Soll": 1,
-      "über Soll": 1,
-      "‹": 1,
-      "›": 1
+      "über Soll": 1
      },
      "knoepfe": {
       "1": 1,
@@ -9309,9 +9267,9 @@
       "Pohl, Leonie öffnen": 1,
       "Sommer, Ines öffnen": 1,
       "Springerpool": 1,
+      "Weiter": 1,
       "Yildiz, Lars öffnen": 1,
-      "‹": 1,
-      "›": 1
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -9387,8 +9345,7 @@
       "PLANUNG": 1,
       "Sondereinsätze": 1,
       "Stunden im Zeitraum": 1,
-      "Von": 1,
-      "◌": 1
+      "Von": 1
      },
      "knoepfe": {},
      "felder": {
@@ -9407,8 +9364,7 @@
       "HEUTE": 1,
       "Keine Notrufe": 1,
       "Notrufe": 1,
-      "Notrufe aus Alleindiensten. Was offen ist, bleibt hier stehen, bis jemand bestätigt — auch nach einem Neuladen.": 1,
-      "◌": 1
+      "Notrufe aus Alleindiensten. Was offen ist, bleibt hier stehen, bis jemand bestätigt — auch nach einem Neuladen.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -9421,8 +9377,7 @@
       "Nichts ausgeschrieben": 1,
       "Offene Schichten": 1,
       "Statt zehn Leute anzurufen: die Lücke sichtbar machen. Wer sich meldet, darf auch — Ruhezeit, Qualifikation und Abwesenheit sind vorher geprüft.": 1,
-      "Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren.": 1,
-      "◌": 1
+      "Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -9487,8 +9442,6 @@
       "Wunschdienste · Sven Krämer": 1,
       "Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.": 1,
       "·": 41,
-      "‹": 1,
-      "›": 1,
       "−": 1
      },
      "knoepfe": {
@@ -9522,8 +9475,8 @@
       "7 · ·": 1,
       "8 S ·": 1,
       "9 S ·": 1,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -9535,8 +9488,7 @@
       "BETRIEB": 1,
       "Hier stehen Mitteilungen, die alle im Betrieb betreffen — Termine, Änderungen, Hinweise.": 1,
       "Nichts angeschlagen": 1,
-      "Schwarzes Brett": 1,
-      "◌": 1
+      "Schwarzes Brett": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -9555,8 +9507,7 @@
       "Kein Eintrag": 1,
       "Vorkommnis": 1,
       "Was die nächste Schicht wissen muss. Ersetzt den Zettel am Wachtisch und bleibt nachvollziehbar.": 1,
-      "Übergabe": 1,
-      "◌": 1
+      "Übergabe": 1
      },
      "knoepfe": {
       "Eintragen": 1,
@@ -9778,8 +9729,7 @@
       "im Tarif enthalten": 85,
       "kostenfrei": 1,
       "Özdemir, Carla": 1,
-      "Özdemir, Hakan": 1,
-      "›": 86
+      "Özdemir, Hakan": 1
      },
      "knoepfe": {
       "1": 1,
@@ -10082,8 +10032,7 @@
       "Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie.": 1,
       "Vorbehaltene Aufgaben": 1,
       "in 60 Tagen": 1,
-      "zugedacht, aber nicht erteilt": 1,
-      "◌": 1
+      "zugedacht, aber nicht erteilt": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -10096,8 +10045,7 @@
       "Keine laufende Einarbeitung": 1,
       "Neue Kräfte werden einer festen Begleitung zugeordnet. CENTRIC prüft für jeden Diensttag, ob beide tatsächlich zusammen eingeteilt sind.": 1,
       "Ordne einer neuen Kraft eine Begleitung zu — die App prüft dann, ob beide gemeinsam Dienst haben.": 1,
-      "PERSONAL": 1,
-      "◌": 1
+      "PERSONAL": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -10322,8 +10270,7 @@
       "Lege Schlüssel, Fahrzeuge oder Geräte an und weise sie Personen zu.": 1,
       "Noch nichts erfasst": 1,
       "Schlüssel": 1,
-      "Schlüssel, Fahrzeuge, Geräte und Dienstkleidung — wer hat was, seit wann.": 1,
-      "◌": 1
+      "Schlüssel, Fahrzeuge, Geräte und Dienstkleidung — wer hat was, seit wann.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -10473,9 +10420,7 @@
       "von 30": 1,
       "§ 4 ArbZG": 1333,
       "§ 6 Abs. 3 ArbZG": 77,
-      "Überlappung": 1,
-      "‹": 1,
-      "›": 1
+      "Überlappung": 1
      },
      "knoepfe": {
       "01.09. Di Regel prüfen: Sachkunde §34a Sachkunde §34a hängt an der Tätigkeit, sperrt aber jeden Dienst. Wo das Recht nach Tätigkeiten unterscheidet — etwa § 34a GewO —, gehört die Anforderung an die betreffenden Dienstarten statt an alle. Konfiguration Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt.": 1,
@@ -11652,15 +11597,15 @@
       "Besetzung": 1,
       "Dienstfolge": 1,
       "Heute": 1,
+      "Monat vor": 1,
+      "Monat zurück": 1,
       "Nachtfolge": 1,
       "Qualifikation": 1,
       "Ruhezeit": 1,
       "Schutzvorschriften": 1,
       "Urlaub": 1,
       "Vorbehaltene Aufgaben": 1,
-      "Überlappung": 1,
-      "‹": 1,
-      "›": 1
+      "Überlappung": 1
      },
      "felder": {},
      "kopf": {}
@@ -11702,8 +11647,7 @@
       "Unfallchirurgie · § 8 PpUGV": 1,
       "Untergrenzen · September 2026": 1,
       "Urologie · § 14 PpUGV": 1,
-      "— kein pflegesensitiver Bereich —": 1,
-      "◌": 1
+      "— kein pflegesensitiver Bereich —": 1
      },
      "knoepfe": {
       "PPP-RL Psychiatrie": 1,
@@ -11838,14 +11782,12 @@
       "höchstens 56 h": 1,
       "nicht erfasst": 7,
       "Özdemir, Carla": 1,
-      "Özdemir, Hakan": 1,
-      "‹": 1,
-      "›": 1
+      "Özdemir, Hakan": 1
      },
      "knoepfe": {
       "Diese Woche": 1,
-      "‹": 1,
-      "›": 1
+      "Woche vor": 1,
+      "Woche zurück": 1
      },
      "felder": {
       "input:number | Lenkzeit in Minuten am 2026-09-28 | —": 1,
@@ -12675,8 +12617,7 @@
       "Fertig": 1,
       "Hier erscheinen Entscheidungen zu deinen Anträgen und Änderungen an deinen Diensten.": 1,
       "Mitteilungen": 1,
-      "Nichts Neues": 1,
-      "◌": 1
+      "Nichts Neues": 1
      },
      "knoepfe": {
       "Fertig": 1
@@ -12737,8 +12678,6 @@
       "Tippe einen Tag an: einmal für möchte arbeiten, zweimal für lieber nicht, dreimal zum Löschen. Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.": 1,
       "Wunschdienste · Sven Krämer": 1,
       "·": 41,
-      "‹": 1,
-      "›": 1,
       "−": 1
      },
      "knoepfe": {
@@ -12773,8 +12712,8 @@
       "8 S ·": 1,
       "9 S ·": 1,
       "Fertig": 2,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
@@ -12905,15 +12844,12 @@
       "Objektwache Tag · 06:00–16:00": 1,
       "PF": 1,
       "Ruhepause zu kurz — Sommer": 1,
-      "Solange offen, bleibt das Stundenkonto eine Hochrechnung": 1,
-      "›": 2,
-      "◷": 1,
-      "⚠": 1
+      "Solange offen, bleibt das Stundenkonto eine Hochrechnung": 1
      },
      "knoepfe": {
-      "Einstempeln": 1,
-      "◷ 7 Zeiten bestätigen Solange offen, bleibt das Stundenkonto eine Hochrechnung ›": 1,
-      "⚠ 607 kritische Befunde in 14 Tagen Ruhepause zu kurz — Sommer ›": 1
+      "607 kritische Befunde in 14 Tagen Ruhepause zu kurz — Sommer": 1,
+      "7 Zeiten bestätigen Solange offen, bleibt das Stundenkonto eine Hochrechnung": 1,
+      "Einstempeln": 1
      },
      "felder": {},
      "kopf": {}
@@ -12970,42 +12906,41 @@
       "Sep": 2,
       "Solange offen, bleibt dein Stundenkonto eine Hochrechnung": 1,
       "Spätdienst": 7,
-      "Wochenende": 1,
-      "›": 26
+      "Wochenende": 1
      },
      "knoepfe": {
-      "7 Zeiten bestätigen Solange offen, bleibt dein Stundenkonto eine Hochrechnung ›": 2,
+      "7 Zeiten bestätigen Solange offen, bleibt dein Stundenkonto eine Hochrechnung": 2,
       "Alle": 1,
-      "DI 13 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "DI 29 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord ›": 1,
-      "DI 3 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "DI 6 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "DO 15 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "DO 29 Okt Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord ›": 1,
-      "DO 8 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "FR 23 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "FR 30 Okt Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord ›": 1,
-      "FR 9 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
+      "DI 13 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "DI 29 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord": 1,
+      "DI 3 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "DI 6 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "DO 15 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "DO 29 Okt Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord": 1,
+      "DO 8 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "FR 23 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "FR 30 Okt Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord": 1,
+      "FR 9 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
       "Liste": 1,
-      "MI 14 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "MI 30 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord ›": 1,
-      "MI 4 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "MI 7 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "MO 19 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "MO 2 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "MO 26 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
+      "MI 14 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "MI 30 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord": 1,
+      "MI 4 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "MI 7 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "MO 19 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "MO 2 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "MO 26 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
       "Monat": 1,
       "Nachtdienste": 1,
       "Nur Dienste": 1,
       "Nur frei": 1,
-      "SA 17 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "SA 24 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "SA 3 Okt Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "SA 7 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "SO 18 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle ›": 1,
-      "SO 25 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle ›": 1,
-      "SO 4 Okt Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
-      "SO 8 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle ›": 1,
+      "SA 17 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "SA 24 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "SA 3 Okt Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "SA 7 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "SO 18 Okt Nachtdienst 21:30 – 07:15 · 9,8 h Leitstelle": 1,
+      "SO 25 Okt Spätdienst 13:45 – 23:30 · 9,8 h Leitstelle": 1,
+      "SO 4 Okt Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
+      "SO 8 Nov Frühdienst 06:00 – 15:45 · 9,8 h Leitstelle": 1,
       "Wochenende": 1
      },
      "felder": {},
@@ -13080,22 +13015,21 @@
       "Wunschdienste": 1,
       "alle gültig": 1,
       "gerade nichts frei": 1,
-      "keine neuen": 1,
-      "›": 11
+      "keine neuen": 1
      },
      "knoepfe": {
       "Abmelden": 1,
-      "Benachrichtigungen E-Mail und Gerät einstellen ›": 1,
-      "Hilfe anfordern Notruf an die Schichtverantwortung ›": 1,
-      "Kalender abonnieren Dienste im Telefonkalender ›": 1,
-      "Meine Nachweise alle gültig ›": 1,
-      "Mitteilungen keine neuen ›": 1,
-      "Offene Schichten gerade nichts frei ›": 1,
-      "Rechneransicht Alle Tabellen und Auswertungen ›": 1,
-      "Rundgang wiederholen Wie CENTRIC funktioniert, in fünf Schritten ›": 1,
-      "Schwarzes Brett 0 Aushänge ›": 1,
-      "Verfügbarkeit Wann kannst du arbeiten? ›": 1,
-      "Wunschdienste Gern oder lieber nicht ›": 1
+      "Benachrichtigungen E-Mail und Gerät einstellen": 1,
+      "Hilfe anfordern Notruf an die Schichtverantwortung": 1,
+      "Kalender abonnieren Dienste im Telefonkalender": 1,
+      "Meine Nachweise alle gültig": 1,
+      "Mitteilungen keine neuen": 1,
+      "Offene Schichten gerade nichts frei": 1,
+      "Rechneransicht Alle Tabellen und Auswertungen": 1,
+      "Rundgang wiederholen Wie CENTRIC funktioniert, in fünf Schritten": 1,
+      "Schwarzes Brett 0 Aushänge": 1,
+      "Verfügbarkeit Wann kannst du arbeiten?": 1,
+      "Wunschdienste Gern oder lieber nicht": 1
      },
      "felder": {},
      "kopf": {}
@@ -13112,7 +13046,7 @@
      "felder": {},
      "kopf": {}
     },
-    "plan›DI 29 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord ›": {
+    "plan›DI 29 Sep Objektwache Tag 06:00 – 16:00 · 10,0 h Objekt Nord": {
      "titel": "Di, 29. September 2026",
      "text": {
       "06:00 – 16:00 · 10,0 h": 1,
@@ -13185,7 +13119,7 @@
      },
      "kopf": {}
     },
-    "mehr›Offene Schichten gerade nichts frei ›": {
+    "mehr›Offene Schichten gerade nichts frei": {
      "titel": "Offene Schichten",
      "text": {
       "Gerade ist nichts offen, das du übernehmen könntest. Sobald eine Schicht ausgeschrieben wird, die zu deinem Plan passt, erscheint sie hier.": 1,
@@ -13195,7 +13129,7 @@
      "felder": {},
      "kopf": {}
     },
-    "mehr›Hilfe anfordern Notruf an die Schichtverantwortung ›": {
+    "mehr›Hilfe anfordern Notruf an die Schichtverantwortung": {
      "titel": "Hilfe anfordern",
      "text": {
       "Anlage, Fahrzeug oder Ausrüstung ausgefallen.": 1,
@@ -13219,7 +13153,7 @@
      "felder": {},
      "kopf": {}
     },
-    "mehr›Benachrichtigungen E-Mail und Gerät einstellen ›": {
+    "mehr›Benachrichtigungen E-Mail und Gerät einstellen": {
      "titel": "Mitteilungen",
      "text": {
       "Anfrage zum Einspringen": 1,
@@ -13254,7 +13188,6 @@
       "Wähle, worüber du unterrichtet werden willst. Im Postfach erscheint alles — hier geht es nur um E-Mail und Mitteilungen auf dem Gerät.": 1,
       "Zeiten offen": 1,
       "Übergabe fehlt": 1,
-      "◈": 1,
       "✓ E-Mail": 6
      },
      "knoepfe": {
@@ -13268,7 +13201,7 @@
      },
      "kopf": {}
     },
-    "mehr›Mitteilungen keine neuen ›": {
+    "mehr›Mitteilungen keine neuen": {
      "titel": "Mitteilungen",
      "text": {
       "Hier erscheinen Entscheidungen zu deinen Anträgen und Änderungen an deinen Diensten.": 1,
@@ -13278,7 +13211,7 @@
      "felder": {},
      "kopf": {}
     },
-    "mehr›Verfügbarkeit Wann kannst du arbeiten? ›": {
+    "mehr›Verfügbarkeit Wann kannst du arbeiten?": {
      "titel": "Verfügbarkeit · Lars Yildiz",
      "text": {
       "21 von 21 Zeitfenstern frei": 1,
@@ -13315,7 +13248,7 @@
      "felder": {},
      "kopf": {}
     },
-    "mehr›Wunschdienste Gern oder lieber nicht ›": {
+    "mehr›Wunschdienste Gern oder lieber nicht": {
      "titel": "Wunschdienste",
      "text": {
       "1": 1,
@@ -13361,20 +13294,18 @@
       "September 2026": 1,
       "So": 1,
       "Tippen wechselt zwischen „würde gern\", „lieber nicht\" und leer. Kein Antrag — nur ein Hinweis an die Planung.": 1,
-      "Wunschdienste": 1,
-      "‹": 1,
-      "›": 1
+      "Wunschdienste": 1
      },
      "knoepfe": {
       "Di, 29. September 2026": 1,
       "Mi, 30. September 2026": 1,
-      "‹": 1,
-      "›": 1
+      "Weiter": 1,
+      "Zurück": 1
      },
      "felder": {},
      "kopf": {}
     },
-    "mehr›Meine Nachweise alle gültig ›": {
+    "mehr›Meine Nachweise alle gültig": {
      "titel": "Meine Nachweise",
      "text": {
       "Erste Hilfe": 1,
@@ -13389,7 +13320,7 @@
      "felder": {},
      "kopf": {}
     },
-    "mehr›Schwarzes Brett 0 Aushänge ›": {
+    "mehr›Schwarzes Brett 0 Aushänge": {
      "titel": "Schwarzes Brett",
      "text": {
       "Nichts angeschlagen.": 1,
@@ -13552,8 +13483,7 @@
       "BETREIBER": 1,
       "Keine Änderungen": 1,
       "Wenn jemand seine Anmeldeadresse ändert, erscheint das hier mit Datum und Rolle.": 1,
-      "Wenn jemand seine Anmeldeadresse ändert, erscheint das hier. So merkst du, wenn ein Zugang den Besitzer wechselt.": 1,
-      "◌": 1
+      "Wenn jemand seine Anmeldeadresse ändert, erscheint das hier. So merkst du, wenn ein Zugang den Besitzer wechselt.": 1
      },
      "knoepfe": {},
      "felder": {},
@@ -13584,8 +13514,7 @@
       "Umsatzsteuer-Identifikationsnummer": 1,
       "Umsatzsteuersatz in Prozent": 1,
       "Zahlungsziel 14 Tage": 1,
-      "Zahlungsziel in Tagen": 1,
-      "◌": 1
+      "Zahlungsziel in Tagen": 1
      },
      "knoepfe": {
       "Rechnungslauf starten": 1
@@ -13817,6 +13746,7 @@
       "86 Personen": 1,
       "89,00 €": 1,
       "Aktuelle Abrechnung": 1,
+      "Alle Mandanten": 1,
       "Aussetzen": 1,
       "Betriebsrat": 1,
       "Bis (leer = ein Monat)": 1,
@@ -13870,8 +13800,6 @@
       "planer": 1,
       "subplaner": 1,
       "—": 1,
-      "‹ Alle Mandanten": 1,
-      "◉": 1,
       "✓Alles aus Basis": 1,
       "✓Arbeitszeitprüfung": 1,
       "✓Belastbarkeitsanalyse": 1,
@@ -13882,10 +13810,10 @@
       "1 Monat kostenlos": 1,
       "3 Monate kostenlos": 1,
       "6 Monate kostenlos": 1,
+      "Alle Mandanten": 1,
       "Aussetzen": 1,
       "Löschen": 1,
-      "Rechnung erzeugen": 1,
-      "‹ Alle Mandanten": 1
+      "Rechnung erzeugen": 1
      },
      "felder": {
       "input:checkbox | Fester Monatspreis statt Tarifrechnung | ": 1,
