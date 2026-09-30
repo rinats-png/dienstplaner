@@ -269,14 +269,22 @@ try {
     await ueber("heute", "dialog-tag.jpg", "Tagesdetail");
     await ueber("Aushangplan", "dialog-aushangplan.jpg", "Aushangplan");
     await ueber("Wunschdienste", "dialog-wunschdienste.jpg", "Wunschdienste eintragen");
-    await ueber("Mehrfach", "dialog-mehrfach.jpg", "Mehrfacheintrag");
-    await ueber("Import", "dialog-import.jpg", "Import");
+    // Blätter, die ein Knopf der Ansicht öffnet
+    const knopf = async (ansicht, name, datei, titel) => {
+      try { await geheZu(page, ansicht); await page.getByRole("button", { name }).first().click({ timeout: 4000 }); await warte(600);
+        await bild(page, datei, titel, "Organisationsleitung", "1440 hell", { voll: false });
+        await page.keyboard.press("Escape"); await warte(300);
+      } catch (e) { console.log("  Blatt", titel, e.message.split("\n")[0]); }
+    };
+    await knopf("plan", "Mehrfach ändern", "dialog-mehrfach.jpg", "Mehrfach ändern");
+    await knopf("personal", "Importieren", "dialog-import.jpg", "Import");
+    await knopf("personal", "Person hinzufügen", "dialog-person-hinzufuegen.jpg", "Person hinzufügen");
     // Postfach über die Kopfzeile
     try { await page.getByRole("button", { name: /^Mitteilungen/ }).first().click({ timeout: 3000 }); await warte(500);
       await bild(page, "dialog-postfach.jpg", "Postfach", "Organisationsleitung", "1440 hell", { voll: false }); await page.keyboard.press("Escape"); await warte(300);
     } catch (e) { console.log("  Postfach", e.message.split("\n")[0]); }
     // Personalakte aus der Personalliste
-    try { await geheZu(page, "personal"); await page.locator("table.raster tbody tr, table tbody tr").first().click({ timeout: 3000 }); await warte(600);
+    try { await geheZu(page, "personal"); await page.getByText("Ahrens, Mehmet").first().click({ timeout: 3000 }); await warte(700);
       await bild(page, "dialog-personalakte.jpg", "Personalakte", "Organisationsleitung", "1440 hell", { voll: false }); await page.keyboard.press("Escape"); await warte(300);
     } catch (e) { console.log("  Personalakte", e.message.split("\n")[0]); }
     // Meldung mit Rückgängig: einen Aushang abnehmen (im Bilderbetrieb; danach ändert sich der Bestand)

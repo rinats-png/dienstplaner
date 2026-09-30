@@ -352,6 +352,13 @@ button.kachel{cursor:pointer; display:block; width:100%;}
   padding:12px var(--pad-x); background:${C.flaecheStill}; border:1px solid ${C.lineSoft};
   border-radius:var(--r-gross);}
 
+/* Felder in Blättern dürfen schmaler werden als ihr Inhalt: Zwei Datumsfelder
+   nebeneinander (Krankmeldung) hielten das Raster bei 390 px 30 px breiter als
+   das Blatt, weil 1fr ohne min-width:0 nicht unter die Mindestbreite des Felds
+   fällt. */
+.blatt :where(div, label){min-width:0;}
+.blatt :where(input, select, textarea){min-width:0; max-width:100%;}
+
 /* ------------------------- 6. Telefonschale (Beschäftigte) ------------------
    Eigene Schale ohne Kopfnavigation: Kopf, Verlauf, vier Tabs unten, Blätter
    von unten. Der Verlauf liegt wie am Rechner hinter der Titelzone (nur text
