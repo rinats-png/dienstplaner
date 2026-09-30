@@ -1,4 +1,3 @@
-import React from "react";
 
 /* ==========================================================================
    ICONS — ein eigener kleiner Satz als Inline-SVG

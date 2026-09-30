@@ -35,6 +35,10 @@ export default [
       ...hooks.configs.recommended.rules,
       /* React 18 mit automatischem JSX braucht kein React im Geltungsbereich */
       "react/react-in-jsx-scope": "off",
+      /* Ohne diese Regel gilt eine Komponente, die nur im JSX vorkommt, als
+         „nie benutzt": no-unused-vars kennt JSX nicht. Rund neun von zehn
+         Warnungen waren dieses Missverständnis und verdeckten die echten. */
+      "react/jsx-uses-vars": "warn",
       "react/prop-types": "off",
       /* Ungenutzte Argumente sind oft Absicht (Signaturen), ungenutzte
          Variablen selten. */
