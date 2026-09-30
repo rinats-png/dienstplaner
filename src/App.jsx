@@ -168,7 +168,9 @@ class Fehlerauffang extends Component {
    Branchenneutral für jeden Betrieb im durchgehenden Schichtbetrieb.
    ========================================================================== */
 
-import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
+import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
+import { Icon } from "./gestalt/icons.jsx";
+import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
@@ -241,13 +243,20 @@ const bauStyles = () => `
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
-  --r: 12px; --r-gross: 16px;
-  --schatten: 0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);
+  --r: 12px; --r-gross: 18px; --r-pille: 999px;
+  /* Ebenen: E2 Karte, E3 Karte im Hover, E5 Blatt und Menü, E6 Toast */
+  --schatten: 0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05);
   --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
+  --schatten-blatt: 0 20px 48px rgba(7,19,23,.18);
+  --schatten-toast: 0 12px 32px rgba(7,19,23,.28);
   --sidebar-breite: 252px;
+  --kopf-hoehe: 64px; --unter-hoehe: 48px;
 }
-/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
-:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen.
+   Auf Dunkel trägt der Rand die Karte, nicht der Schatten. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)}
+  --schatten: 0 1px 2px rgba(0,0,0,.30); --schatten-hoch: 0 1px 2px rgba(0,0,0,.30);
+  --schatten-blatt: 0 20px 48px rgba(0,0,0,.5); --schatten-toast: 0 12px 32px rgba(0,0,0,.5); }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -257,7 +266,7 @@ const bauStyles = () => `
 .nurLeser{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
   clip:rect(0,0,0,0); white-space:nowrap; border:0;}
 /* Sprungmarke zum Inhalt */
-.sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:#fff;
+.sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:${C.aufAkzent};
   padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; text-decoration:none;
   transition:top .16s;}
 .sprung:focus{top:8px;}
@@ -319,7 +328,7 @@ body{margin:0;}
 }
 .suchknopf:hover{border-color:${C.steuer};}
 .suchknopf kbd{margin-left:auto; font-size:10.5px; font-family:inherit; padding:2px 6px;
-  border-radius:5px; background:#fff; border:1px solid ${C.line}; color:${C.dim};}
+  border-radius:5px; background:${C.flaeche}; border:1px solid ${C.line}; color:${C.dim};}
 
 main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; width:100%;}
 
@@ -327,7 +336,9 @@ main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; wid
 /* Auf Sea Salt hebt sich Weiß nur mit 1,3:1 ab. Der Rand macht die Kante
    sichtbar, der Schatten gibt die Ebene — beides zusammen trägt. */
 .karte{background:${C.flaeche}; border:1px solid ${C.line}; border-radius:var(--r-gross);
-  box-shadow:0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);}
+  box-shadow:var(--schatten);}
+/* E1: eingelassene Gruppe — Tabellenkopf, Hinweiskasten, Einsatzfläche */
+.karte-still{background:${C.flaecheStill}; border:1px solid ${C.lineSoft}; border-radius:var(--r-gross);}
 /* Typografische Sprünge statt gleichmäßiger Stufen — das Auge soll sofort
    wissen, wo es anfängt. */
 h1.titel{font-size:38px; font-weight:300; letter-spacing:-.045em; line-height:1.08;
@@ -350,8 +361,8 @@ h1.titel b{font-weight:680;}
 
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:7px;
-  padding:10px 18px; font-size:13.5px; font-weight:560; font-family:inherit; cursor:pointer;
-  border-radius:10px; border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
+  min-height:40px; padding:0 18px; font-size:13.5px; font-weight:560; font-family:inherit; cursor:pointer;
+  border-radius:var(--r-pille); border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
   transition:background .14s, border-color .14s, color .14s; white-space:nowrap; line-height:1.2;
 }
 .btn:hover{background:${C.bg}; border-color:${C.steuer};}
@@ -362,14 +373,14 @@ h1.titel b{font-weight:680;}
 .btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi}; color:${C.aufAkzent};}
 .btn-quiet{background:transparent; border-color:transparent; color:${C.dim};}
 .btn-quiet:hover{background:${C.bg}; color:${C.text};}
-.btn-danger{background:#fff; border-color:${C.danger}; color:${C.danger};}
-.btn-danger:hover{background:${C.dangerLight};}
-.btn-ok{background:${C.ok}; border-color:${C.ok}; color:#fff;}
+.btn-danger{background:${C.dangerLight}; border-color:${C.dangerLight}; color:${C.danger};}
+.btn-danger:hover{background:${C.flaeche}; border-color:${C.danger};}
+.btn-ok{background:${C.ok}; border-color:${C.ok}; color:${C.aufAkzent};}
 .btn-ok:hover{filter:brightness(1.08);}
-.btn-sm{padding:7px 14px; font-size:12.5px; border-radius:8px;}
+.btn-sm{min-height:34px; padding:0 14px; font-size:12.5px;}
 
 .inp,.sel,textarea.inp{
-  width:100%; padding:9px 12px; border-radius:var(--r); border:1px solid ${C.line};
+  width:100%; min-height:40px; padding:9px 12px; border-radius:var(--r); border:1px solid ${C.line};
   background:${C.flaeche}; color:${C.text}; font-size:13.5px; font-family:inherit;
   transition:border-color .14s, box-shadow .14s;
 }
@@ -381,13 +392,15 @@ h1.titel b{font-weight:680;}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%236B7280' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:right 12px center;}
 
-.pille{display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px;
-  font-size:12px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
-  border:1px solid transparent; white-space:nowrap;}
-.pille-ok{background:${C.okLight}; color:${C.ok}; border-color:#BBF7D0;}
-.pille-warn{background:${C.warnLight}; color:${C.warn}; border-color:#FEF08A;}
-.pille-danger{background:${C.dangerLight}; color:${C.danger}; border-color:#FECACA;}
-.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#9FC2AC;}
+.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:999px;
+  font-size:12.5px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
+  white-space:nowrap; font-variant-numeric:tabular-nums;}
+.pille-sm{padding:2px 9px; font-size:11.5px;}
+/* Ohne Rand: die Tönung trägt, das Wort daneben ist die Aussage. */
+.pille-ok{background:${C.okLight}; color:${C.ok};}
+.pille-warn{background:${C.warnLight}; color:${C.warn};}
+.pille-danger{background:${C.dangerLight}; color:${C.danger};}
+.pille-accent{background:${C.accentLight}; color:${C.accent};}
 
 /* Rundes Namenszeichen — ersetzt Fotos, die wir nicht haben */
 .avatar{width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex;
@@ -438,7 +451,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
   position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
-  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
+  background:${C.aufAkzent}; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
 .schalter.on i{transform:translateX(17px);}
 
 /* Tastaturkürzel als Marke im Text */
@@ -447,7 +460,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   font-family:inherit; font-size:11px; font-weight:600; color:${C.dim};}
 
 /* Blätter und Überlagerungen */
-.blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:0 20px 48px rgba(17,24,39,.18);
+.blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:var(--schatten-blatt);
   border:1px solid ${C.line};}
 /* Der Rücken hinter einem Blatt.
 
@@ -463,7 +476,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
    oben abgeschnitten, und der abgeschnittene Teil ist nicht erreichbar.
    So zentriert er, solange Platz ist, und lässt sonst scrollen. */
 .sheet-back{position:fixed; inset:0; z-index:90; display:flex; justify-content:center;
-  background:rgba(20,20,28,.32); backdrop-filter:blur(6px);
+  background:var(--c-ueberlagerung); backdrop-filter:blur(6px);
   padding:24px; overflow-y:auto; overscroll-behavior:contain;
   animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
 .sheet-back > .blatt{width:100%; margin:auto; outline:none;}
@@ -472,14 +485,14 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 
 /* Meldungsstreifen mit Rücknahme */
 .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:95;
-  background:${C.text}; color:#fff; padding:12px 16px; border-radius:var(--r); font-size:13.5px;
-  box-shadow:0 12px 32px rgba(17,24,39,.28); display:flex; align-items:center; gap:14px;
+  background:${C.text}; color:${C.flaeche}; padding:12px 16px; border-radius:var(--r); font-size:13.5px;
+  box-shadow:var(--schatten-toast); display:flex; align-items:center; gap:14px;
   max-width:92vw; animation:auf .2s cubic-bezier(.4,0,.2,1);}
 @keyframes auf{from{opacity:0; transform:translate(-50%,10px);} to{opacity:1; transform:translate(-50%,0);}}
 .toast button{border:none; background:transparent; color:${C.accentGlanz}; font-family:inherit;
   font-size:13px; font-weight:650; cursor:pointer; padding:0;}
 /* Fünf Sekunden Rücknahmefrist, sichtbar als schrumpfender Ring */
-.toast-uhr{width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.22);
+.toast-uhr{width:16px; height:16px; border-radius:50%; border:2px solid ${C.steuer};
   position:relative; flex-shrink:0;}
 .toast-uhr i{position:absolute; inset:-2px; border-radius:50%; border:2px solid ${C.accentGlanz};
   border-right-color:transparent; border-bottom-color:transparent;
@@ -559,6 +572,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   .sw-root{background:#fff;}
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
+${gestaltStil()}
 `;
 
 /* --------------------------------- Datum --------------------------------- */
@@ -4827,11 +4841,11 @@ function tabelleCSV(zeilen) {
     ...zeilen.map((z) => spalten.map((s) => feld(z[s])).join(";"))].join("\r\n");
 }
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
-const Leer = ({ titel, text, symbol = "◌", aktion }) => (
+const Leer = ({ titel, text, symbol = "kreis-leer", aktion }) => (
   <div style={{ padding: "56px 28px", textAlign: "center" }}>
     <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "flex",
-      alignItems: "center", justifyContent: "center", background: C.bg, color: C.dim, fontSize: 20 }}>
-      {symbol}</div>
+      alignItems: "center", justifyContent: "center", background: C.flaecheStill, color: C.dim }}>
+      <Icon n={symbol} size={22} /></div>
     <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 7 }}>{titel}</div>
     {text && <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, maxWidth: 380,
       margin: "0 auto" }}>{text}</div>}
@@ -4912,9 +4926,9 @@ const CardHead = ({ children, right }) => (
   </div>);
 const Lab = ({ children, style }) => (<div style={{ fontSize: 12, fontWeight: 500, color: C.dim, ...style }}>{children}</div>);
 const Rubrik = ({ children, style }) => (<div className="rubrik" style={style}>{children}</div>);
-const Schalter = ({ an, onChange }) => (
-  <button type="button" className={`schalter${an ? " on" : ""}`} onClick={onChange}
-    style={{ background: an ? C.ok : C.steuer }} aria-pressed={an}><i /></button>);
+const Schalter = ({ an, onChange, label }) => (
+  <button type="button" className={`schalter${an ? " on" : ""}`} onClick={() => onChange(!an)}
+    role="switch" aria-checked={!!an} aria-label={label}><i /></button>);
 const Haken = ({ punkte }) => (
   <ul className="hakenliste">{punkte.map((p, i) => <li key={i}>{p}</li>)}</ul>);
 const Fussleiste = ({ children }) => <div className="fussleiste noprint">{children}</div>;
@@ -4926,7 +4940,7 @@ const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, r
   <div className="filterleiste noprint">
     {setSuche && (
       <div className="suchfeld">
-        <span className="lupe">⌕</span>
+        <span className="lupe"><Icon n="suche" size={16} /></span>
         {/* Ein Platzhalter verschwindet, sobald etwas im Feld steht — er
             ist deshalb keine Beschriftung (WCAG 3.3.2). Beides zu setzen
             kostet nichts und trägt auch dann noch. */}
@@ -4960,23 +4974,19 @@ const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
  * Die Farbe leitet sich vom Namen ab — dieselbe Person bekommt immer
  * dieselbe, ohne dass etwas gespeichert werden muss.
  */
-const AV_TOENE = [
-  ["#F0FDFA", "#0F766E"], ["#EFF6FF", "#1D4ED8"], ["#FAF5FF", "#6D28D9"],
-  ["#FEF2F2", "#B91C1C"], ["#FFF7ED", "#C2410C"], ["#F0FDF4", "#15803D"],
-  ["#FDF2F8", "#BE185D"], ["#FEFCE8", "#A16207"],
-];
 const Avatar = ({ person, size, style }) => {
   const n = `${person.vorname || ""} ${person.nachname || ""}`.trim();
   const kuerzel = ((person.vorname || " ")[0] + (person.nachname || " ")[0]).toUpperCase();
   let summe = 0; for (let i = 0; i < n.length; i++) summe = (summe * 31 + n.charCodeAt(i)) % 997;
-  const [flaeche, farbe] = AV_TOENE[summe % AV_TOENE.length];
+  const toene = avatarToene();
+  const [flaeche, farbe] = toene[summe % toene.length];
   return (
     <span className={`avatar${size === "sm" ? " avatar-sm" : ""}`} aria-hidden="true"
       style={{ background: flaeche, color: farbe, ...style }}>{kuerzel}</span>);
 };
 
-const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, className = "" }) => (
-  <button type="button" onClick={onClick} disabled={disabled} title={title}
+const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, className = "", ...rest }) => (
+  <button type="button" onClick={onClick} disabled={disabled} title={title} {...rest}
     className={`btn btn-${kind}${size === "sm" ? " btn-sm" : ""} ${className}`} style={style}>
     {children}</button>);
 
@@ -5206,14 +5216,10 @@ function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = 
 }
 
 function Pill({ children, tone = "neutral", size }) {
-  const t = { neutral: ["rgba(20,20,25,.06)", C.dim], ok: [C.okLight, C.ok],
-    warn: ["rgba(179,91,0,.12)", C.warn], danger: ["rgba(211,36,56,.11)", C.danger],
-    accent: ["rgba(43,52,64,.09)", C.accent], violet: ["rgba(76,70,104,.12)", C.violet] }[tone]
-    /* Ein ausdrückliches null bedeutet „unauffällig" und soll nicht abstürzen —
-       der Vorgabewert greift nur bei fehlendem Argument, nicht bei null. */
-    || { neutral: ["rgba(20,20,25,.06)", C.dim] }.neutral;
-  return <span style={{ background: t[0], color: t[1], borderRadius: 20, padding: size === "sm" ? "2px 9px" : "4px 11px",
-    fontSize: size === "sm" ? 11.5 : 12.5, fontWeight: 600, whiteSpace: "nowrap", ...NUM }}>{children}</span>;
+  /* Ein ausdrückliches null bedeutet „unauffällig" und soll nicht abstürzen —
+     der Vorgabewert greift nur bei fehlendem Argument, nicht bei null. */
+  const t = ["neutral", "ok", "warn", "danger", "accent", "violet"].includes(tone) ? tone : "neutral";
+  return <span className={`pille pille-${t}${size === "sm" ? " pille-sm" : ""}`}>{children}</span>;
 }
 function Zelle({ da, abw, size = 28, blass }) {
   if (abw) { const m = abwArt(abw.art);
@@ -5421,7 +5427,7 @@ function Anmeldung({ db, onLogin }) {
                   Mandanten, Tarife, Zugangszahlen und Rechnungen. Ohne Einsicht in Namen oder Pläne.
                 </div>
               </div>
-              <span style={{ color: C.dimmer, fontSize: 22 }}>›</span>
+              <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={22} /></span>
             </div>
           </Card>
 
@@ -6918,7 +6924,7 @@ function Einfuehrung({ sitz, akt, gehZu, onClose }) {
   const springen = () => { if (s.ziel) { akt.einfuehrungSchritt(i); gehZu(s.ziel); onClose(); } };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 96, background: "rgba(24,24,20,.42)",
+    <div style={{ position: "fixed", inset: 0, zIndex: 96, background: "var(--c-ueberlagerung)",
       backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
       <div className="blatt" style={{ width: "min(760px,96vw)", maxHeight: "92vh", overflowY: "auto",
         padding: "28px 30px 26px" }}>
@@ -7771,7 +7777,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
   const rgs = db.rechnungen.filter((r) => r.mandantId === m.id);
   return (
     <div>
-      <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}>‹ Alle Mandanten</Btn>
+      <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}><Icon n="chevron-links" size={14} /> Alle Mandanten</Btn>
       <H1 sub={`${(BRANCHEN.find((b) => b[0] === s.branche) || [])[1]} · Tarif ${p.t.name} · ${stat(s.status).label}`}
         right={<div style={{ display: "flex", gap: 9 }}>
           <Btn kind="primary" onClick={() => akt.rechnungStellen(m.id)}>Rechnung erzeugen</Btn>
@@ -7827,7 +7833,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
               <span style={{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,
                 color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700 }}>◉</span>
+                fontSize: 11, fontWeight: 700 }}><Icon n="kreis-haken" size={14} /></span>
               <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Grundgebühr {p.stufe.name}</span>
               <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(p.grund)}</span>
             </div>
@@ -8499,11 +8505,11 @@ function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
         gap: 10, marginBottom: 12 }}>
-        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}>‹ davor</Btn>
+        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}><Icon n="chevron-links" size={14} /> davor</Btn>
         <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
           {pISO(tage[0]).getDate()}. – {pISO(tage[tage.length - 1]).getDate()}. {MON[mo - 1]}</span>
         <Btn size="sm" onClick={() => setAb(Math.min(n - 6 > 0 ? n - 6 : 1, ab + 7))}
-          disabled={ab + 7 > n}>danach ›</Btn>
+          disabled={ab + 7 > n}>danach <Icon n="chevron-rechts" size={14} /></Btn>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -8594,8 +8600,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           {darf(sitz, "plan.edit.unit") && <Btn onClick={akt.oeffneMehrfach}>Mehrfach ändern</Btn>}
           {darf(sitz, "pattern.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
           {darf(sitz, "plan.edit.all") && <Btn kind="primary" onClick={akt.oeffneAssistent}>Planungsassistent</Btn>}
-          <Btn onClick={() => shift(-1)}>‹</Btn><Btn onClick={() => setYm(d0.slice(0, 7))}>Heute</Btn>
-          <Btn onClick={() => shift(1)}>›</Btn></div>}>{MON[mo - 1]} {y}</H1>
+          <Btn onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn><Btn onClick={() => setYm(d0.slice(0, 7))}>Heute</Btn>
+          <Btn onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
 
@@ -8778,9 +8784,9 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} className="noprint">
           <Seg value={eid} onChange={setEid} options={m.einheiten.filter((e) => darf(sitz, "plan.view.all") || e.id === sitz.person.bereich || sitz.person.bereich === "ALLE")
             .map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}>‹</Btn>
+          <Btn size="sm" onClick={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
           <span style={{ fontSize: 13.5, color: C.dim, minWidth: 112, textAlign: "center", ...NUM }}>{MON[mo - 1]} {y}</span>
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}>›</Btn>
+          <Btn size="sm" onClick={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>}>Personaleinsatz</H1>
 
       {editierbar && (
@@ -9460,7 +9466,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{nacht.anzahl} Dienste</div></td>
               </>) : <td colSpan={3} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 12.5, color: C.dimmer }}>
                 Konten nur für die Planung sichtbar</td>}
-              <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}>›</td>
+              <td aria-hidden="true" style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}><Icon n="chevron-rechts" size={16} /></td>
             </tr>); })}</tbody>
         </table>
       </Card>
@@ -10186,7 +10192,7 @@ function Fenster({ titel, breit = 520, onClose, children }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label={titel}
-      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+      style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
       <div ref={rahmen} tabIndex={-1} className="blatt"
@@ -10219,7 +10225,7 @@ function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Gleichzeitig bearbeitet"
-      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+      style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
       <div ref={rahmen} tabIndex={-1} className="blatt"
@@ -10346,10 +10352,10 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
       <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}
         right={setYm ? (<div style={{ display: "flex", gap: 9 }} className="noprint">
           <Btn onClick={() => { const d = new Date(y, mo - 2, 1);
-            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück">‹</Btn>
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück"><Icon n="chevron-links" size={16} /></Btn>
           <Btn onClick={() => setYm(heute().slice(0, 7))}>Heute</Btn>
           <Btn onClick={() => { const d = new Date(y, mo, 1);
-            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor">›</Btn>
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
 
@@ -10634,9 +10640,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <Pill tone="danger">Lücke {idx + 1} von {luecken.length}</Pill>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn size="sm" kind="quiet" disabled={idx === 0} onClick={() => setIdx(idx - 1)}>‹</Btn>
+              <Btn size="sm" kind="quiet" disabled={idx === 0} onClick={() => setIdx(idx - 1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
               <Btn size="sm" kind="quiet" onClick={() => (idx + 1 < luecken.length ? setIdx(idx + 1) : setSchritt(4))}>
-                {idx + 1 < luecken.length ? "Überspringen ›" : "Fertig"}</Btn>
+                {idx + 1 < luecken.length ? <>Überspringen <Icon n="chevron-rechts" size={14} /></> : "Fertig"}</Btn>
             </div>
           </div>
           <Ersatzliste sitz={sitz} datum={luecken[idx].datum} dienstId={luecken[idx].dienstId} akt={akt}
@@ -11595,9 +11601,9 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={eid} onChange={setEid}
             options={m.einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => setJahr(jahr - 1)}>‹</Btn>
+          <Btn size="sm" onClick={() => setJahr(jahr - 1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
           <span style={{ fontSize: 14, fontWeight: 600, minWidth: 52, textAlign: "center", ...NUM }}>{jahr}</span>
-          <Btn size="sm" onClick={() => setJahr(jahr + 1)}>›</Btn>
+          <Btn size="sm" onClick={() => setJahr(jahr + 1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>}>Jahresansicht</H1>
 
       <Card style={{ overflowX: "auto" }}>
@@ -12067,8 +12073,11 @@ function Tauschboerse({ sitz, akt }) {
    TAGESSTART — der Einstieg für jede Rolle
    Nicht was alles existiert, sondern was heute ansteht.
    ========================================================================== */
-const AUFGABE_SYMBOL = { stempel: "◷", zeiten: "◷", nachweis: "⚠", nachweise: "⚠", post: "✉",
-  einsatz: "!", antrag: "✓", boerse: "⇄", besetzung: "!", pruefung: "⚠", freigabe: "◎", konto: "Σ" };
+const AUFGABE_SYMBOL = { stempel: "uhr", zeiten: "uhr", nachweis: "warnung", nachweise: "warnung", post: "brief",
+  einsatz: "warnung", antrag: "haken", boerse: "tausch", besetzung: "warnung", pruefung: "warnung",
+  freigabe: "kreis-haken", konto: "saeulen" };
+const AufgabeSymbol = ({ art }) => AUFGABE_SYMBOL[art]
+  ? <Icon n={AUFGABE_SYMBOL[art]} size={18} /> : <span aria-hidden="true">·</span>;
 
 function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
@@ -12136,7 +12145,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                     textDecoration: x.erledigt ? "line-through" : "none" }}>{x.titel}</div>
                   <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 2 }}>{x.text}</div>
                 </div>
-                {!x.erledigt && <span style={{ color: C.dimmer, fontSize: 19 }}>›</span>}
+                {!x.erledigt && <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={19} /></span>}
               </div>))}
           </Card>);
       })()}
@@ -12172,14 +12181,14 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                   <span style={{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                     background: a.dringend ? C.dangerLight : C.bg,
-                    color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                    color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 620, letterSpacing: "-.01em" }}>{a.titel}</div>
                     <div style={{ fontSize: 13, color: C.dim, marginTop: 5, lineHeight: 1.45 }}>{a.text}</div>
                     {a.aktion && <div style={{ marginTop: 12 }}>
                       <span className="btn btn-sm btn-primary">{a.aktion}</span></div>}
                   </div>
-                  <span style={{ color: C.dimmer, fontSize: 19, flexShrink: 0 }}>›</span>
+                  <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={19} /></span>
                 </div>
               </Card>))}
           </div>}
@@ -12533,9 +12542,9 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={modus} onChange={setModus} options={[{ id: "tag", label: "Tag" },
             { id: "woche", label: "Woche" }, { id: "personen", label: "Personen" }]} />
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))}>‹</Btn>
+          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
           <Btn size="sm" onClick={() => setDatum(heute())}>Heute</Btn>
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))}>›</Btn>
+          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>}>
         {modus === "tag" ? fLang(datum) : `Woche ab ${fDatum(montag(datum))}`}</H1>
 
@@ -12916,15 +12925,15 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
   };
 
   if (!offen) return null;
-  const SYM = { ansicht: "▸", person: "◍", datum: "▤", aktion: "⚡", satz: "→", unklar: "?" };
+  const SYM = { ansicht: "pfeil-rechts", person: "person", datum: "kalender", aktion: "stift", satz: "pfeil-rechts", unklar: "info" };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, padding: "12vh 20px 20px",
-      background: "rgba(24,24,20,.30)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
+      background: "var(--c-ueberlagerung)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
       <div onClick={(e) => e.stopPropagation()} className="blatt"
         style={{ maxWidth: 620, margin: "0 auto", padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${C.lineSoft}`, display: "flex",
           alignItems: "center", gap: 13 }}>
-          <span style={{ fontSize: 17, color: C.dimmer }}>⌕</span>
+          <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}><Icon n="suche" size={18} /></span>
           {/* Die Trefferliste wird mit Pfeiltasten bedient, nicht mit der
               Tabulatortaste. Für eine Vorlesesoftware ist das nur dann
               nachvollziehbar, wenn Feld und Liste als zusammengehörig
@@ -12959,7 +12968,7 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
                   background: i === k ? "rgba(43,44,37,.07)" : "transparent" }}>
                 <span style={{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  background: C.bg, color: C.dim }}>{SYM[t.art]}</span>
+                  background: C.bg, color: C.dim }}><Icon n={SYM[t.art] || "info"} size={15} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: i === k ? 620 : 500 }}>{t.titel}</div>
                   <div style={{ fontSize: 12, color: C.dimmer }}>{t.unter}</div>
@@ -13097,9 +13106,9 @@ function Lenkzeiten({ sitz, akt }) {
       <H1 rubrik="Auswertung"
         sub="Lenkzeit, Unterbrechung und Ruhezeit nach der Verordnung (EG) 561/2006 und der FPersV. Erfasst wird, was der Tachograf aufgezeichnet hat — aus dem Dienstplan lässt sich keine Lenkzeit ableiten."
         right={(<div style={{ display: "flex", gap: 9 }} className="noprint">
-          <Btn onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+          <Btn onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück"><Icon n="chevron-links" size={16} /></Btn>
           <Btn onClick={() => setWoche(montag(heute()))}>Diese Woche</Btn>
-          <Btn onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+          <Btn onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>)}>
         Lenkzeiten · {fKurz(woche)} bis {fKurz(addDays(woche, 6))}</H1>
 
@@ -13252,9 +13261,9 @@ function Therapieminuten({ sitz, akt, einheit }) {
               {PPP_ARTEN.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Sel></Field>
           <Field label="Woche">
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Btn size="sm" onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück"><Icon n="chevron-links" size={16} /></Btn>
               <span style={{ fontSize: 13, ...NUM }}>{fKurz(woche)}–{fKurz(addDays(woche, 6))}</span>
-              <Btn size="sm" onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor"><Icon n="chevron-rechts" size={16} /></Btn>
             </div>
           </Field>
           <Field label="Patientinnen und Patienten"
@@ -13562,7 +13571,7 @@ function Kompetenzen({ sitz, akt }) {
                     ? <Pill size="sm">alle {k.wiederholungMonate} Monate</Pill>
                     : <Pill size="sm">ohne Frist</Pill>}
                   {maengel.some((x) => x.schwere === "warn") && <Pill size="sm" tone="warn">unvollständig</Pill>}
-                  <span style={{ color: C.dimmer, fontSize: 18 }}>{auf ? "▾" : "›"}</span>
+                  <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}>{auf ? <Icon n="chevron-unten" size={18} /> : <Icon n="chevron-rechts" size={18} />}</span>
                 </div>
 
                 {auf && (
@@ -14005,9 +14014,9 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+        <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
         <span style={{ fontSize: 16, fontWeight: 620 }}>{MON[mo - 1]} {y}</span>
-        <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+        <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, marginBottom: 8 }}>
@@ -14208,7 +14217,7 @@ function Schichtuebergabe({ sitz, akt }) {
         {begriff(m, "uebergabe")}</H1>
 
       {offeneListe.length > 0 && (
-        <Card style={{ padding: 18, marginBottom: 18, background: C.warnLight, borderColor: "#FDE68A" }}>
+        <Card style={{ padding: 18, marginBottom: 18, background: C.warnLight, borderColor: `${C.warn}66` }}>
           <div style={{ fontSize: 14.5, fontWeight: 620, color: C.warn, marginBottom: 8 }}>
             {offeneListe.length} {offeneListe.length === 1 ? "Übergabe fehlt" : "Übergaben fehlen"}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -14268,7 +14277,7 @@ function Schichtuebergabe({ sitz, akt }) {
                 <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
                 <span style={{ fontSize: 12, color: C.dim }}>{p.funktion}</span>
               </div>))
-              : <Leer titel="Niemand eingeteilt" symbol="◌" />}
+              : <Leer titel="Niemand eingeteilt" />}
           </Card>
 
           {kann(m, "fachkraftquote") && (() => {
@@ -14977,7 +14986,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         <div className="abschnitt">
           <button className={`mehr${alles ? " auf" : ""}`} onClick={() => setAlles(!alles)}
             aria-expanded={alles}>
-            <span aria-hidden="true">›</span>
+            <span aria-hidden="true" style={{ display: "flex" }}><Icon n="chevron-rechts" size={14} /></span>
             {alles ? "Weniger anzeigen" : `Alles Weitere anzeigen (${rest.length})`}
           </button>
           {alles && (
@@ -14991,12 +15000,12 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
                   <span style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 14,
                     background: a.dringend ? C.dangerLight : C.bg,
-                    color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                    color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 550 }}>{a.titel}</div>
                     <div style={{ fontSize: 13, color: C.dim, marginTop: 3, lineHeight: 1.5 }}>{a.text}</div>
                   </div>
-                  {a.ziel && <span style={{ color: C.dim, fontSize: 18 }}>›</span>}
+                  {a.ziel && <span aria-hidden="true" style={{ color: C.dim, display: "flex" }}><Icon n="chevron-rechts" size={18} /></span>}
                 </div>))}
             </Card>)}
         </div>)}
@@ -15161,7 +15170,7 @@ function Handbuch({ sitz, akt, gehZu }) {
 
         {a.pruefen && (
           <div style={{ padding: "13px 16px", borderRadius: 10, background: C.okLight,
-            border: `1px solid #BBF7D0`, marginBottom: 12 }}>
+            border: `1px solid ${C.ok}66`, marginBottom: 12 }}>
             <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".08em",
               textTransform: "uppercase", color: C.ok, marginBottom: 6 }}>Woran du merkst, dass es geklappt hat</div>
             <div style={{ fontSize: 13.5, lineHeight: 1.6, color: C.text }}>{a.pruefen}</div>
@@ -15819,7 +15828,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
 
                 <div style={{ padding: "14px 16px", borderRadius: 10,
                   background: moeglich > 0 ? C.okLight : C.warnLight,
-                  border: `1px solid ${moeglich > 0 ? "#BBF7D0" : "#FEF08A"}` }}>
+                  border: `1px solid ${moeglich > 0 ? C.ok : C.warn}66` }}>
                   <div style={{ fontSize: 14, lineHeight: 1.55,
                     color: moeglich > 0 ? C.text : C.warn }}>
                     {moeglich > 0
@@ -16234,7 +16243,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
           {punkt.tun && (
             <div style={{ display: "flex", gap: 9, marginTop: 12, fontSize: 14,
               alignItems: "flex-start" }}>
-              <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>▸</span>
+              <span aria-hidden="true" style={{ color: C.accent, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={14} /></span>
               <span style={{ fontWeight: 550 }}>{punkt.tun}</span>
             </div>)}
 
@@ -16325,13 +16334,6 @@ function Einstellungen({ sitz, akt, gehZu }) {
       </div>);
   };
 
-  const Schalter = ({ an, onChange, label }) => (
-    <button onClick={() => onChange(!an)} role="switch" aria-checked={an} aria-label={label}
-      style={{ width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
-        background: an ? C.accent : C.lineStark, position: "relative", transition: "background .16s" }}>
-      <span style={{ position: "absolute", top: 3, left: an ? 23 : 3, width: 22, height: 22,
-        borderRadius: 11, background: "#fff", transition: "left .16s",
-        boxShadow: "0 1px 3px rgba(7,19,23,.25)" }} /></button>);
 
   return (
     <div>
@@ -18524,17 +18526,17 @@ function Selbststarts({ db, akt }) {
    ========================================================================== */
 
 const M_TABS = [
-  { id: "heute", label: "Heute", glyph: "◉" },
-  { id: "plan", label: "Mein Plan", glyph: "▤" },
-  { id: "anliegen", label: "Anliegen", glyph: "✎" },
-  { id: "mehr", label: "Mehr", glyph: "☰" },
+  { id: "heute", label: "Heute", icon: "heute" },
+  { id: "plan", label: "Mein Plan", icon: "kalender" },
+  { id: "anliegen", label: "Anliegen", icon: "stift" },
+  { id: "mehr", label: "Mehr", icon: "menue" },
 ];
 
 /* ------------------------------- Bausteine ------------------------------- */
 const MKarte = ({ children, onClick, ton, style }) => (
   <div {...klickbar(onClick)} style={{ background: C.flaeche,
-    border: `1px solid ${ton === "danger" ? "#FECACA" : ton === "warn" ? "#FDE68A" : C.line}`,
-    borderRadius: 14, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
+    border: `1px solid ${ton === "danger" ? `${C.danger}66` : ton === "warn" ? `${C.warn}66` : C.line}`,
+    borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
     boxShadow: "var(--schatten)", ...style }}>{children}</div>);
 
 const MZeile = ({ links, rechts, unten, onClick, ton }) => (
@@ -18546,7 +18548,7 @@ const MZeile = ({ links, rechts, unten, onClick, ton }) => (
       {unten && <div style={{ fontSize: 13, color: C.dimmer, marginTop: 3, lineHeight: 1.4 }}>{unten}</div>}
     </div>
     {rechts}
-    {onClick && <span style={{ color: C.dimmer, fontSize: 20, flexShrink: 0 }}>›</span>}
+    {onClick && <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>}
   </div>);
 
 const MTitel = ({ children, rubrik, rechts }) => (
@@ -18565,7 +18567,7 @@ const MBlatt = ({ offen, onClose, titel, children }) => {
   if (!offen) return null;
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80,
-      background: "rgba(17,24,39,.42)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-end" }}>
+      background: "var(--c-ueberlagerung)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "92vh", overflowY: "auto",
         background: C.flaeche, borderRadius: "26px 26px 0 0",
         padding: "10px 20px calc(28px + env(safe-area-inset-bottom))" }}>
@@ -18654,12 +18656,12 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
               <span style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                 background: a.dringend ? C.dangerLight : C.bg,
-                color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 620 }}>{a.titel}</div>
                 <div style={{ fontSize: 13, color: C.dim, marginTop: 3, lineHeight: 1.4 }}>{a.text}</div>
               </div>
-              <span style={{ color: C.dimmer, fontSize: 20 }}>›</span>
+              <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
             </div>
           </MKarte>))}
       </>)}
@@ -18790,15 +18792,15 @@ function MPlan({ sitz, akt, oeffnen }) {
                   </div>
                   {da && da.ort && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 2 }}>{da.ort}</div>}
                 </div>
-                <span style={{ color: C.dimmer, fontSize: 20 }}>›</span>
+                <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
               </MKarte>);
           })
       ) : (
         <MKarte style={{ padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+            <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
             <span style={{ fontSize: 16, fontWeight: 600 }}>{MON[mo - 1]} {y}</span>
-            <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+            <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
             {DOW.map((d, i) => <div key={d} style={{ textAlign: "center", fontSize: 11,
@@ -19120,14 +19122,16 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
   return (
     <div style={{ minHeight: "100vh", paddingBottom: 92 }}>
       <header style={{ position: "sticky", top: 0, zIndex: 40, padding: "12px 18px",
-        background: "rgba(255,255,255,.94)", backdropFilter: "saturate(200%) blur(24px)",
+        background: "var(--c-kopf-grund)", backdropFilter: "saturate(200%) blur(24px)",
         WebkitBackdropFilter: "saturate(200%) blur(24px)", borderBottom: `1px solid ${C.line}`,
         display: "flex", alignItems: "center", gap: 12 }}>
         <Logo size={24} />
         <span style={{ fontSize: 15.5, fontWeight: 800, letterSpacing: "-.02em", flex: 1 }}>CENTRIC</span>
-        <button onClick={() => oeffnen("post")} style={{ position: "relative", border: "none",
+        <button onClick={() => oeffnen("post")} aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
+          style={{ position: "relative", border: "none",
           background: C.bg, width: 38, height: 38, borderRadius: 13, cursor: "pointer",
-          fontSize: 15, color: C.dim }}>✉︎
+          display: "flex", alignItems: "center", justifyContent: "center", color: C.dim }}>
+          <Icon n="brief" size={18} />
           {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18,
             borderRadius: 9, background: C.danger, color: "#fff", fontSize: 10.5, fontWeight: 700,
             display: "flex", alignItems: "center", justifyContent: "center" }}>{ungelesen}</span>}
@@ -19142,7 +19146,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
       </main>
 
       <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex",
-        background: "rgba(255,255,255,.96)", backdropFilter: "saturate(200%) blur(28px)",
+        background: "var(--c-kopf-grund)", backdropFilter: "saturate(200%) blur(28px)",
         WebkitBackdropFilter: "saturate(200%) blur(28px)", borderTop: `1px solid ${C.line}`,
         padding: "8px 6px calc(8px + env(safe-area-inset-bottom))" }}>
         {M_TABS.map((t) => (
@@ -19152,7 +19156,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
               alignItems: "center", gap: 4, padding: "8px 2px", borderRadius: 15, minHeight: 52,
               color: tab === t.id ? C.text : C.dimmer, fontSize: 11, fontWeight: 600,
               boxShadow: tab === t.id ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{t.glyph}</span>{t.label}
+            <Icon n={t.icon} size={20} />{t.label}
           </button>))}
       </nav>
 
@@ -19455,7 +19459,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
         {/* Push zuerst: ohne Erlaubnis nützt jede Einstellung nichts */}
         <MKarte style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <span style={{ fontSize: 20, lineHeight: 1.2 }}>◈</span>
+            <span aria-hidden="true" style={{ color: C.accent, display: "flex" }}><Icon n="glocke" size={22} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15.5, fontWeight: 620 }}>Mitteilungen auf diesem Gerät</div>
               <div style={{ fontSize: 13.5, color: C.dim, marginTop: 5, lineHeight: 1.5 }}>
@@ -19618,9 +19622,9 @@ function MWuensche({ sitz, akt }) {
       an die Planung.
     </div>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-      <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+      <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{MON[mo - 1]} {y}</span>
-      <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+      <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
       {DOW.map((d, i) => <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 600,
@@ -22465,11 +22469,11 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const MOBIL = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
   const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
   const tabs = istBetreiber
-    ? [["mandanten", "Mandanten", "▤"], ["rechnungen", "Rechnungen", "€"],
-       ["tarife", "Tarife", "◈"], ["rechner", "Rechner", "∑"]]
-    : [["meine", "Schichten", "◧"],
-    ...(darf(sitz, "req.approve.unit") ? [["antraege", "Anträge", "✓"]] : []),
-    ...(darf(sitz, "plan.view.unit") ? [["lage", "Lage", "◉"]] : [])];
+    ? [["mandanten", "Mandanten", "raster"], ["rechnungen", "Rechnungen", "euro"],
+       ["tarife", "Tarife", "tarif"], ["rechner", "Rechner", "rechner"]]
+    : [["meine", "Schichten", "kalender"],
+    ...(darf(sitz, "req.approve.unit") ? [["antraege", "Anträge", "haken"]] : []),
+    ...(darf(sitz, "plan.view.unit") ? [["lage", "Lage", "raster"]] : [])];
 
   /**
    * Mobil zuerst: Beschäftigte im Schichtdienst ohne Planungsrechte sehen die
@@ -22551,9 +22555,9 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
                   {istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`}</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{r.label}</div>
               </div>
-              <button onClick={akt.abmelden} title="Abmelden"
+              <button onClick={akt.abmelden} title="Abmelden" aria-label="Abmelden"
                 style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.55)",
-                  cursor: "pointer", fontSize: 15, padding: 4 }}><span aria-hidden="true">⏻</span></button>
+                  cursor: "pointer", padding: 4, display: "flex" }}><Icon n="abmelden" size={18} /></button>
             </div>
           </div>
         </aside>
@@ -22563,11 +22567,11 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <header className="kopfleiste">
             <button className="btn btn-sm btn-quiet nur-schmal" onClick={() => setSeiteOffen(!seiteOffen)}
               aria-label="Navigation öffnen" aria-expanded={seiteOffen} title="Navigation">
-              <span aria-hidden="true">☰</span></button>
+              <Icon n="menue" size={18} /></button>
 
             {!istBetreiber && (
               <button className="suchknopf" onClick={() => setKmd(true)}>
-                <span>⌕</span><span>Suchen …</span><kbd>Strg K</kbd>
+                <Icon n="suche" size={16} /><span>Suchen …</span><kbd>Strg K</kbd>
               </button>)}
 
             <div style={{ flex: 1 }} />
@@ -22579,7 +22583,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               <button onClick={() => setPostfach(true)} className="btn btn-sm btn-quiet"
                 title="Mitteilungen" aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
                 style={{ position: "relative" }}>
-                <span aria-hidden="true">✉︎</span>
+                <Icon n="brief" size={18} />
                 {ungelesen > 0 && <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16,
                   height: 16, borderRadius: 8, background: C.danger, color: "#fff", fontSize: 10,
                   fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -22765,15 +22769,15 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         <nav className="tabbar">
           {tabs.map(([id, label, glyph]) => (
             <button key={id} className={aktiveView === id ? "on" : ""} onClick={() => { setView(id); setDetail(null); }}>
-              <span className="glyph">{glyph}</span>{label}</button>))}
+              <Icon n={glyph} size={20} />{label}</button>))}
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
-            <span className="glyph" style={{ position: "relative" }}>✉︎
+            <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
                 borderRadius: 8, background: C.danger, color: "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
-            <span className="glyph" style={{ color: C.danger }}>✚</span>Krank</button>}
+            <span className="glyph" style={{ color: C.danger, display: "flex" }}><Icon n="krank" size={20} /></span>Krank</button>}
         </nav>)}
 
       {konflikt && (

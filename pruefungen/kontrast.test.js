@@ -110,10 +110,15 @@ describe("Beide Erscheinungsbilder", () => {
     expect(dunkel).toEqual(hell);
   });
 
-  it("jede Farbe ist eine gültige Hexangabe", () => {
+  it("jede Farbe ist eine gültige Hexangabe — die halbtransparenten Tokens als rgba", () => {
+    /* verlaufA/B/C, kopfGrund und ueberlagerung liegen über anderen Flächen
+       und sind deshalb bewusst rgba(). Ihre Wirkung prüft der Abschnitt
+       „Verlauf" unten. */
+    const halbtransparent = ["verlaufA", "verlaufB", "verlaufC", "kopfGrund", "ueberlagerung"];
     for (const [name, P] of [["hell", C_HELL], ["dunkel", C_DUNKEL]]) {
       for (const [k, v] of Object.entries(P)) {
-        expect(String(v), `${name}.${k}`).toMatch(/^#[0-9A-Fa-f]{3,8}$/);
+        if (halbtransparent.includes(k)) expect(String(v), `${name}.${k}`).toMatch(/^rgba\(\d+,\d+,\d+,\.?\d+\)$/);
+        else expect(String(v), `${name}.${k}`).toMatch(/^#[0-9A-Fa-f]{3,8}$/);
       }
     }
   });

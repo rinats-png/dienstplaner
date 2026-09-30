@@ -88,6 +88,20 @@ const C = {
   violet: "#316C81",          // Vintage Aqua, abgedunkelt · 4,51:1
 
   okLight: "#DFEFE7", warnLight: "#FFE0C0", dangerLight: "#F6DEDC",
+
+  /* --- Leitstand: Verlauf, Kopfzeile, Rücken hinter Blättern ---
+
+     Der Verlauf liegt als eine einzige Schicht hinter der Titelzone jeder
+     Ansicht (`.inhalt::before`). Titel und Untertitel stehen darauf, deshalb
+     sind die Deckkräfte begrenzt: Auf dem Verlauf liegen nur `text` und
+     `dim`, nie `aus`. Obergrenze hell 0,40 (dim bleibt ≥ 4,9:1), Token 0,34.
+     pruefungen/kontrast.test.js rechnet die Überlagerung nach und schlägt
+     fehl, sobald jemand einen Wert darüber schiebt. */
+  verlaufA: "rgba(2,160,160,.34)",      // Hauptfleck
+  verlaufB: "rgba(80,232,244,.16)",     // Glanz im Fleck
+  verlaufC: "rgba(2,52,65,.14)",        // Tiefe rechts
+  kopfGrund: "rgba(255,255,255,.86)",   // Kopfzeile und Unterleiste (sticky)
+  ueberlagerung: "rgba(7,19,23,.36)",   // Rücken hinter Blättern
 };
 
 /* --------------------------------------------------------------------------
@@ -119,6 +133,13 @@ const C_DUNKEL = {
 
   ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
   okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",
+
+  /* Dunkel: Verlauf höchstens 0,24, Token 0,22 (dim #9FB2B9 bleibt ≥ 5,3:1) */
+  verlaufA: "rgba(63,191,191,.22)",
+  verlaufB: "rgba(80,232,244,.10)",
+  verlaufC: "rgba(127,224,224,.10)",
+  kopfGrund: "rgba(18,30,35,.86)",
+  ueberlagerung: "rgba(0,0,0,.56)",
 };
 
 /* Umschalten ohne Umbau: Statt tausend Verwendungsstellen zu ändern, werden
@@ -127,7 +148,23 @@ const C_DUNKEL = {
    erzwingt den Neuaufbau. */
 const C_HELL = { ...C };
 
-export { C, C_DUNKEL, C_HELL };
+/* Namenszeichen (Avatar): acht Paare aus der Palette — Fläche ist die
+   Tönung, Schrift die Volltönung, jedes Paar ≥ 4,5:1 (kontrast.test.js).
+   Im Dunkelmodus dunkle Tönung mit heller Schrift. Die Paare stehen hier
+   und nicht in der Oberfläche, damit keine Farbe außerhalb dieser Datei
+   erfunden wird. Reihenfolge: [Fläche, Schrift]. */
+const AVATAR_HELL = [
+  ["#DFF0F0", "#017070"], ["#E4EDF1", "#316C81"], ["#DFF0F0", "#023441"], ["#FFE0C0", "#955410"],
+  ["#DFEFE7", "#0E6B45"], ["#E4E9F1", "#35506B"], ["#ECEAF3", "#4C4668"], ["#DFEFE7", "#2E6B4F"],
+];
+const AVATAR_DUNKEL = [
+  ["#13292C", "#3FBFBF"], ["#152A33", "#7FC4DC"], ["#13292C", "#7FE0E0"], ["#2A2013", "#F0B060"],
+  ["#0F2620", "#4ADE9B"], ["#16222E", "#8FB1D4"], ["#1E1B2C", "#B5AEDB"], ["#122820", "#7FD1A6"],
+];
+/** Die Paare des gerade gültigen Erscheinungsbildes. */
+const avatarToene = () => (C.bg === C_DUNKEL.bg ? AVATAR_DUNKEL : AVATAR_HELL);
+
+export { C, C_DUNKEL, C_HELL, AVATAR_HELL, AVATAR_DUNKEL, avatarToene };
 
 /* Die Palette als CSS-Variablen. Sie erreichen Stellen, an die ein
    JavaScript-Objekt nicht kommt: Bildlaufleisten, Auswahlfelder und die
