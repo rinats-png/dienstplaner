@@ -133,7 +133,7 @@ describe("Farben", () => {
 
 describe("Bausteine der Ansichten", async () => {
   const { Pille } = await import("../src/gestalt/bausteine.jsx");
-  const { Kennzahlen, Balkenzeile } = await import("../src/gestalt/ansichten.jsx");
+  const { Kennzahlen, Balkenzeile, Zeitwahl, Statuszeile, Fehlerband } = await import("../src/gestalt/ansichten.jsx");
   const html = (el) => renderToStaticMarkup(el);
 
   it("die Pille versteht den bisherigen Namen `tone` — App.jsx ruft sie überall so auf", () => {
@@ -151,6 +151,21 @@ describe("Bausteine der Ansichten", async () => {
     expect(h.match(/class="karte kachel/g)).toHaveLength(2);
     expect(h).not.toContain("pille");           // kein Trend ohne beide Zeiträume
     expect(h).toContain("Plätze");
+  });
+
+  it("Zeitwahl behält die Beschriftungen der Knöpfe davor und lässt fehlende Knöpfe weg", () => {
+    const voll = html(React.createElement(Zeitwahl, { onZurueck() {}, onWeiter() {}, onHeute() {}, mitte: "2026" }));
+    expect(voll).toContain('aria-label="Zurück"');
+    expect(voll).toContain('aria-label="Weiter"');
+    expect(voll).toContain(">Heute<");
+    expect(voll).toContain("2026");
+    const ohneHeute = html(React.createElement(Zeitwahl, { onZurueck() {}, onWeiter() {} }));
+    expect(ohneHeute).not.toContain("Heute");
+  });
+
+  it("Fehlerband wird vorgelesen, Statuszeile nicht gedruckt", () => {
+    expect(html(React.createElement(Fehlerband, null, "Das Ende liegt vor dem Beginn."))).toContain('role="alert"');
+    expect(html(React.createElement(Statuszeile, null, "x"))).toContain("noprint");
   });
 
   it("Balkenzeile kürzt den Anteil auf 0 bis 100", () => {
