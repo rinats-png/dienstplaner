@@ -1,4 +1,3 @@
-import React from "react";
 import { C } from "../farben.js";
 import { Icon } from "./icons.jsx";
 import { Pille, Fortschritt, Trend } from "./bausteine.jsx";
@@ -202,6 +201,35 @@ export function Abschnittskopf({ titel, sub, rechts, style }) {
       </div>
       {rechts && <div className="rechts">{rechts}</div>}
     </div>);
+}
+
+/* ------------------------------- Zeitwahl ------------------------------- */
+/**
+ * Zurück, Heute, Weiter als eine Pillengruppe — die Monats- und Wochenwahl der
+ * Arbeitsebene. Die Beschriftungen bleiben die der einzelnen Knöpfe davor
+ * („Zurück", „Heute", „Weiter"), damit Vorlesesoftware und Prüfungen dasselbe
+ * finden. `mitte` ist ein Text zwischen den Pfeilen (z. B. „September 2026").
+ */
+export function Zeitwahl({ onZurueck, onWeiter, onHeute, mitte, zurueck = "Zurück", weiter = "Weiter", heute = "Heute", style }) {
+  return (
+    <div className="zeitwahl noprint" role="group" aria-label="Zeitraum wechseln" style={style}>
+      <button type="button" onClick={onZurueck} aria-label={zurueck}><Icon n="chevron-links" size={16} /></button>
+      {mitte && <span className="mitte">{mitte}</span>}
+      {onHeute && <button type="button" onClick={onHeute}>{heute}</button>}
+      <button type="button" onClick={onWeiter} aria-label={weiter}><Icon n="chevron-rechts" size={16} /></button>
+    </div>);
+}
+
+/* ------------------------------ Statuszeile ----------------------------- */
+/** Schmale eingelassene Zeile über einer Arbeitsfläche: Zustand in Worten, ggf. mit Balken. */
+export function Statuszeile({ children, style, className = "" }) {
+  return <div className={`statuszeile noprint ${className}`} style={style}>{children}</div>;
+}
+
+/* ------------------------------ Fehlerband ------------------------------ */
+/** Meldung im Formular: Tönung und Wort, ohne Rand; wird vorgelesen (role="alert"). */
+export function Fehlerband({ children, style }) {
+  return <div className="fehlerband" role="alert" style={style}>{children}</div>;
 }
 
 export { Pille };

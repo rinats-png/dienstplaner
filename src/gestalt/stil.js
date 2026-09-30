@@ -285,4 +285,35 @@ button.kachel{cursor:pointer; display:block; width:100%;}
 .achtungszeile .punkt{align-self:center;}
 .achtungszeile .t{flex:1; min-width:0; font-size:13.5px; line-height:1.4;}
 .achtungszeile .d{font-size:12px; color:${C.dim}; white-space:nowrap;}
+
+/* ------------------- 6. Arbeitsebene (A) und Formulare (F) ------------------
+   Die Raster selbst (table.raster, Planzelle, TON) bleiben, wie sie sind. Hier
+   stehen nur Kopfzone, Werkzeugleisten, Chips, Statuszeilen und Formularkarten. */
+.zeitwahl{display:inline-flex; align-items:center; gap:2px; padding:2px; flex-shrink:0;
+  border:1px solid ${C.line}; border-radius:var(--r-pille); background:${C.flaeche};}
+.zeitwahl button{height:34px; min-width:36px; padding:0 12px; border:0; border-radius:var(--r-pille);
+  background:transparent; color:${C.text}; font-family:inherit; font-size:13px; font-weight:560; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; transition:background .14s;}
+.zeitwahl button:hover{background:${C.flaecheStill};}
+.zeitwahl .mitte{padding:0 10px; font-size:13px; font-weight:620; white-space:nowrap; color:${C.text};}
+
+.statuszeile{display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; margin-bottom:12px;
+  padding:calc(var(--pad-y) - 1px) var(--pad-x); background:${C.flaecheStill}; border:1px solid ${C.lineSoft};
+  border-radius:var(--r-gross); font-size:13.5px; min-width:0;}
+.statuszeile .fortschritt{width:90px; flex-shrink:0;}
+
+.chip{display:inline-flex; align-items:center; gap:7px; min-height:32px; padding:4px 12px; border:1px solid ${C.line};
+  border-radius:var(--r-pille); background:${C.flaeche}; color:${C.text}; font-family:inherit; font-size:12.5px;
+  cursor:pointer; font-variant-numeric:tabular-nums; transition:border-color .14s, background .14s;}
+.chip:hover{border-color:${C.steuer};}
+.chip .punkt{width:7px; height:7px; border-radius:50%;}
+
+.standortkarte{text-align:left; padding:13px 16px; border-radius:var(--r-gross); cursor:pointer; font-family:inherit;
+  color:${C.text}; border:1px solid ${C.line}; background:${C.flaeche}; box-shadow:var(--schatten);
+  transition:border-color .14s, box-shadow .14s;}
+.standortkarte:hover{border-color:${C.lineStark};}
+.standortkarte[aria-pressed="true"]{border-color:${C.accent}; background:${C.accentLight};}
+
+.fehlerband{padding:11px 14px; border-radius:var(--r); background:${C.dangerLight}; color:${C.danger};
+  font-size:13px; line-height:1.5;}
 `;
