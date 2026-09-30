@@ -170,6 +170,7 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
+import { Pille, Trend } from "./gestalt/bausteine.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
 import Ringregler from "./ringregler.jsx";
@@ -4916,8 +4917,9 @@ function klickbar(onClick, label) {
   };
 }
 
-const Card = ({ children, style, hover, glanz, className = "", ...p }) => (
-  <div {...p} className={`karte ${hover ? "karte-hover" : ""} ${className}`}
+/** `still`: eingelassene Fläche (E1) statt Karte — Hinweiskasten, Einsatzfläche. */
+const Card = ({ children, style, hover, glanz, still, className = "", ...p }) => (
+  <div {...p} className={`${still ? "karte-still" : "karte"} ${hover ? "karte-hover" : ""} ${className}`}
     style={style}>{children}</div>);
 const CardHead = ({ children, right }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
@@ -5054,15 +5056,27 @@ const H1 = ({ children, rubrik, sub, right, style }) => (
       flexShrink: 0 }}>{right}</div>}
   </div>)
 
-function Kpi({ label, value, unit, tone = "text", sub }) {
+/**
+ * Kennzahl. `trend` und `bild` sind optional; ohne sie bleibt die Karte, wie
+ * sie war.
+ *
+ * @param {{text:string, ton?:string, richtung?:"auf"|"ab"|"gleich"}} [trend]
+ *   Trendpille — nur übergeben, wenn beide Zeiträume vorliegen. Fehlt der
+ *   Vergleich, steht dort nichts (kein Strich, kein Platzhalter).
+ * @param {React.ReactNode} [bild] Mikro-Diagramm (Sparkline) unter der Zahl;
+ *   die Zahl daneben bleibt die Aussage.
+ */
+function Kpi({ label, value, unit, tone = "text", sub, trend, bild }) {
   const col = { ok: C.ok, warn: C.warn, danger: C.danger, accent: C.accent, text: C.text }[tone];
-  return (<div style={{ padding: "22px 24px" }}>
-    <Lab>{label}</Lab>
-    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 9 }}>
+  return (<div style={{ padding: "calc(var(--pad-y) + 8px) calc(var(--pad-x) + 4px)" }}>
+    <Lab style={{ color: C.aus }}>{label}</Lab>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
       <span style={{ fontSize: 31, fontWeight: 650, letterSpacing: "-.035em", color: col, ...NUM }}>{value}</span>
-      {unit && <span style={{ fontSize: 14, color: C.dimmer, fontWeight: 500 }}>{unit}</span>}
+      {unit && <span style={{ fontSize: 14, color: C.aus, fontWeight: 500 }}>{unit}</span>}
+      {trend && trend.text && <Trend ton={trend.ton} richtung={trend.richtung}>{trend.text}</Trend>}
     </div>
     {sub && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 6, lineHeight: 1.4 }}>{sub}</div>}
+    {bild && <div style={{ marginTop: 14 }}>{bild}</div>}
   </div>);
 }
 const KpiRow = ({ children, min = 190 }) => (
@@ -5215,12 +5229,8 @@ function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = 
     </div>);
 }
 
-function Pill({ children, tone = "neutral", size }) {
-  /* Ein ausdrückliches null bedeutet „unauffällig" und soll nicht abstürzen —
-     der Vorgabewert greift nur bei fehlendem Argument, nicht bei null. */
-  const t = ["neutral", "ok", "warn", "danger", "accent", "violet"].includes(tone) ? tone : "neutral";
-  return <span className={`pille pille-${t}${size === "sm" ? " pille-sm" : ""}`}>{children}</span>;
-}
+/* Die Pille selbst steht in gestalt/bausteine.jsx; hier der bisherige Name. */
+const Pill = Pille;
 function Zelle({ da, abw, size = 28, blass }) {
   if (abw) { const m = abwArt(abw.art);
     return <div title={m.label}  style={{ width: size, height: size, borderRadius: Math.round(size * .3),

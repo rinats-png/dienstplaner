@@ -62,7 +62,7 @@ export const gestaltStil = () => `
 .erklaerkasten > .icon{color:${C.dim}; margin-top:1px; display:flex;}
 
 /* ------------------------------ 3. Menüs ---------------------------------- */
-.menue{position:absolute; z-index:60; background:${C.flaeche}; border:1px solid ${C.line};
+.menue{position:absolute; top:calc(100% + 8px); z-index:60; background:${C.flaeche}; border:1px solid ${C.line};
   border-radius:var(--r-gross); box-shadow:var(--schatten-blatt); padding:8px;
   max-width:min(92vw, 420px); animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
 .menue.rechts{right:0;} .menue.links{left:0;}
