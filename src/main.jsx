@@ -34,12 +34,25 @@ const ROLLENTEXT = {
   betriebsrat: "Nur lesen: Verteilung, Prüfung, Protokoll",
   kunde: "Eigener Datenraum zum freien Ausprobieren",
 };
-/* Die Anmeldeseite nimmt dieselbe Palette wie die Anwendung. Vorher stand
-   hier eine eigene Kopie — beim Aufhellen des Grundes behielt die
-   Anmeldung deshalb den alten Ton, während dahinter schon der neue galt. */
-const F = { bg: C.bg, karte: C.flaeche, text: C.text, dim: C.dim,
-  line: C.line, lineStark: C.lineStark, accent: C.accent, accentHell: C.accentLight,
-  danger: C.danger, ok: C.ok };
+/* Rahmen der öffentlichen Seiten: Grund, Verlauf hinter der Titelzone (dieselben Tokens
+   wie in der Anwendung; nur text und dim liegen darauf) und die Markenzeile. Die Klassen
+   der Anwendung sind hier noch nicht geladen — alles läuft über Inline-Werte und C. */
+const SEITE = { minHeight: "100vh", position: "relative", isolation: "isolate", background: C.bg,
+  padding: "5vh 20px 8vh", fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: C.text };
+const VERLAUF = { position: "absolute", left: 0, right: 0, top: 0, height: 440, zIndex: -1,
+  pointerEvents: "none",
+  background: `radial-gradient(ellipse 46% 60% at 46% 0%, ${C.verlaufA}, ${C.verlaufB} 48%, transparent 76%),`
+    + ` radial-gradient(ellipse 28% 44% at 82% 14%, ${C.verlaufC}, transparent 74%)` };
+const KARTE = { background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,
+  boxShadow: "0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05)" };
+const Markenzeile = () => (
+  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
+    <Marke data-marke-ziel="" />
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: ".14em" }}>CENTRIC</div>
+      <div style={{ fontSize: 13, color: C.dim, marginTop: 2 }}>Dienstplanung im Schichtbetrieb</div>
+    </div>
+  </div>);
 
 /* ==========================================================================
    WAS WÄHREND DER STARTSEQUENZ GELADEN WIRD
@@ -97,7 +110,7 @@ const startBereit = Promise.all([schriftenBereit, demosBereit]);
  * viele Personen zentral mitplanen, wie viele eigenständige, große
  * Standorte er führt.
  */
-function Preise({ onZurueck, onStarten, F }) {
+function Preise({ onZurueck, onStarten }) {
   const [planer, setPlaner] = useState(1);
   const [standorte, setStandorte] = useState([25]);
   const [pakete, setPakete] = useState([]);
@@ -136,7 +149,7 @@ function Preise({ onZurueck, onStarten, F }) {
     <span style={{ fontVariantNumeric: "tabular-nums" }}>
       <span style={{ fontSize: gross ? 40 : 22, fontWeight: 300,
         letterSpacing: "-.04em" }}>{wert}</span>
-      {einheit && <span style={{ fontSize: gross ? 17 : 13, color: F.dim,
+      {einheit && <span style={{ fontSize: gross ? 17 : 13, color: C.dim,
         marginLeft: 5 }}>{einheit}</span>}
     </span>);
 
@@ -144,23 +157,23 @@ function Preise({ onZurueck, onStarten, F }) {
     <div>
       <h1 style={{ fontSize: 32, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 12px" }}>
         Was CENTRIC kostet</h1>
-      <p style={{ fontSize: 15.5, color: F.dim, lineHeight: 1.6, margin: "0 0 8px",
+      <p style={{ fontSize: 15.5, color: C.dim, lineHeight: 1.6, margin: "0 0 8px",
         maxWidth: 560 }}>
-        Bezahlt wird, wer plant. <b style={{ color: F.text }}>Wer geplant wird, kostet
+        Bezahlt wird, wer plant. <b style={{ color: C.text }}>Wer geplant wird, kostet
         nichts</b> — Beschäftigte, Sub-Planer, Betriebsrat und Standorte innerhalb des
         Kontingents sind unbegrenzt und kostenfrei.
       </p>
-      <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 32px",
+      <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.6, margin: "0 0 32px",
         maxWidth: 560 }}>
         Alle Preise monatlich, netto, monatlich kündbar. Keine Einrichtungsgebühr,
         keine Mindestlaufzeit.
       </p>
 
       {/* ------------------------- Der Rechner ------------------------- */}
-      <div style={{ background: F.karte, border: `1px solid ${F.accent}`, borderRadius: 16,
+      <div style={{ background: C.flaeche, border: `1px solid ${C.accent}`, borderRadius: 16,
         padding: 26, marginBottom: 40 }}>
         <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
-          textTransform: "uppercase", color: F.accent, marginBottom: 20 }}>
+          textTransform: "uppercase", color: C.accent, marginBottom: 20 }}>
           Dein Preis</div>
 
         {/* Drei Ringe statt Schieber und Zahlenfelder — dieselbe Darstellung
@@ -190,7 +203,7 @@ function Preise({ onZurueck, onStarten, F }) {
             eingestuft wird. Deshalb liegt die Liste weiter bereit, nur
             zusammengeklappt statt vorneweg. */}
         <details style={{ marginBottom: 24 }}>
-          <summary style={{ cursor: "pointer", fontSize: 13.5, color: F.dim,
+          <summary style={{ cursor: "pointer", fontSize: 13.5, color: C.dim,
             padding: "6px 0" }}>
             Standorte einzeln angeben</summary>
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
@@ -200,18 +213,18 @@ function Preise({ onZurueck, onStarten, F }) {
                   aria-label={`Personen an Standort ${i + 1}`}
                   onChange={(e) => aendereStandort(i, Number(e.target.value))}
                   style={{ width: 76, padding: "8px 10px", borderRadius: 8,
-                    border: `1px solid ${F.line}`, fontFamily: "inherit", fontSize: 14 }} />
-                <span style={{ fontSize: 13, color: F.dim }}>Personen</span>
+                    border: `1px solid ${C.line}`, fontFamily: "inherit", fontSize: 14 }} />
+                <span style={{ fontSize: 13, color: C.dim }}>Personen</span>
                 <span style={{ flex: 1 }} />
                 {standorte.length > 1 && (
                   <button onClick={() => setStandorte((s) => s.filter((_, ix) => ix !== i))}
-                    style={{ border: "none", background: "transparent", color: F.dim,
+                    style={{ border: "none", background: "transparent", color: C.dim,
                       fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>Entfernen</button>)}
               </div>))}
             {standorte.length < 30 && (
               <button onClick={() => setStandorte((s) => [...s, 15])}
                 style={{ alignSelf: "flex-start", padding: "8px 14px", borderRadius: 8,
-                  border: `1px solid ${F.line}`, background: "transparent", color: F.text,
+                  border: `1px solid ${C.line}`, background: "transparent", color: C.text,
                   fontFamily: "inherit", fontSize: 13, cursor: "pointer" }}>
                 Standort hinzufügen</button>)}
           </div>
@@ -222,7 +235,7 @@ function Preise({ onZurueck, onStarten, F }) {
             beiden Rechner für denselben Betrieb verschiedene Zahlen. */}
         <fieldset style={{ border: "none", padding: 0, margin: "0 0 24px" }}>
           <legend style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
-            textTransform: "uppercase", color: F.dim, padding: 0, marginBottom: 12 }}>
+            textTransform: "uppercase", color: C.dim, padding: 0, marginBottom: 12 }}>
             Branchenpakete</legend>
           <div style={{ display: "grid", gap: 9,
             gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))" }}>
@@ -232,55 +245,55 @@ function Preise({ onZurueck, onStarten, F }) {
                 <label key={p.id} style={{ display: "flex", alignItems: "baseline",
                   justifyContent: "space-between", gap: 10, padding: "12px 14px",
                   borderRadius: 10, cursor: "pointer",
-                  border: `1px solid ${an ? F.accent : F.line}`,
-                  background: an ? F.accentHell : "transparent" }}>
+                  border: `1px solid ${an ? C.accent : C.line}`,
+                  background: an ? C.accentLight : "transparent" }}>
                   <input type="checkbox" checked={an} style={{ position: "absolute", opacity: 0,
                     width: 1, height: 1 }}
                     onChange={() => setPakete((s) => an
                       ? s.filter((x) => x !== p.id) : [...s, p.id])} />
                   <span style={{ fontSize: 13.5 }}>{p.name}</span>
                   <span style={{ fontSize: 12.5, fontVariantNumeric: "tabular-nums",
-                    color: an ? F.accent : F.dim }}>+{p.aufpreis} €</span>
+                    color: an ? C.accent : C.dim }}>+{p.aufpreis} €</span>
                 </label>);
             })}
           </div>
-          <div style={{ fontSize: 12.5, color: F.dim, lineHeight: 1.55, marginTop: 10 }}>
+          <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 10 }}>
             Je Betrieb, nicht je Standort und nicht je Kopf. In Enterprise sind zwei
             Pakete enthalten — angerechnet werden die beiden teuersten.
           </div>
         </fieldset>
 
-        <div style={{ borderTop: `1px solid ${F.line}`, paddingTop: 20 }}>
+        <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 20 }}>
           <div style={{ display: "grid", gap: 9, fontSize: 14, marginBottom: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: F.dim }}>Grundgebühr {passend.stufe.name}</span>
+              <span style={{ color: C.dim }}>Grundgebühr {passend.stufe.name}</span>
               <span style={{ fontVariantNumeric: "tabular-nums" }}>
                 {eur(passend.stufe.grund)}</span>
             </div>
             {passend.zusatzPlaner > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>
+                <span style={{ color: C.dim }}>
                   {passend.zusatzPlaner} zusätzliche{passend.zusatzPlaner === 1 ? "r" : ""} Planer</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
                   {eur(passend.summePlaner)}</span>
               </div>)}
             {passend.zuschlaege.posten.length > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>
+                <span style={{ color: C.dim }}>
                   {passend.zuschlaege.posten.length} Standort{passend.zuschlaege.posten.length === 1 ? "" : "e"} über dem Kontingent</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
                   {eur(passend.zuschlaege.summe)}</span>
               </div>)}
             {passend.pakete.zahlend.map((p) => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>Branchenpaket {p.name}</span>
+                <span style={{ color: C.dim }}>Branchenpaket {p.name}</span>
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>
                   {eur(p.aufpreis)}</span>
               </div>))}
             {passend.pakete.frei.map((p) => (
               <div key={p.id} style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: F.dim }}>Branchenpaket {p.name} — in {passend.stufe.name} enthalten</span>
-                <span style={{ fontVariantNumeric: "tabular-nums", color: F.ok }}>0,00 €</span>
+                <span style={{ color: C.dim }}>Branchenpaket {p.name} — in {passend.stufe.name} enthalten</span>
+                <span style={{ fontVariantNumeric: "tabular-nums", color: C.ok }}>0,00 €</span>
               </div>))}
           </div>
 
@@ -292,7 +305,7 @@ function Preise({ onZurueck, onStarten, F }) {
               <Zahl wert={eur(passend.gesamt)} einheit="im Monat" gross />
             </div>)}
 
-          <div style={{ marginTop: 14, fontSize: 13, color: F.dim, lineHeight: 1.5 }}>
+          <div style={{ marginTop: 14, fontSize: 13, color: C.dim, lineHeight: 1.5 }}>
             {passend.stufe.name} enthält {passend.stufe.planerInklusive} Planer-Zug{passend.stufe.planerInklusive === 1 ? "ang" : "änge"} und {passend.stufe.standorteInklusive} Standort
             {passend.stufe.standorteInklusive === 1 ? "" : "e"} beliebiger Größe. Beschäftigte, Sub-Planer und
             Betriebsrat sind unbegrenzt und immer kostenfrei — ihre Zahl ändert diesen Preis nicht.
@@ -307,13 +320,13 @@ function Preise({ onZurueck, onStarten, F }) {
           const an = a.stufe.id === passend.stufe.id;
           return (
             <div key={a.stufe.id} style={{ padding: 24, borderRadius: 16,
-              border: `1px solid ${an ? F.accent : F.line}`,
-              background: an ? F.accentHell : F.karte }}>
+              border: `1px solid ${an ? C.accent : C.line}`,
+              background: an ? C.accentLight : C.flaeche }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".09em",
-                textTransform: "uppercase", color: an ? F.accent : F.dim,
+                textTransform: "uppercase", color: an ? C.accent : C.dim,
                 marginBottom: 12 }}>{a.stufe.name}</div>
               <Zahl wert={a.stufe.grund + " €"} einheit="/ Monat" />
-              <div style={{ fontSize: 13, color: F.dim, marginTop: 8, marginBottom: 18 }}>
+              <div style={{ fontSize: 13, color: C.dim, marginTop: 8, marginBottom: 18 }}>
                 {a.stufe.planerInklusive} Planer-Zug{a.stufe.planerInklusive === 1 ? "ang" : "änge"},
                 {" "}{a.stufe.standorteInklusive} Standort{a.stufe.standorteInklusive === 1 ? "" : "e"} inklusive
               </div>
@@ -321,7 +334,7 @@ function Preise({ onZurueck, onStarten, F }) {
                 {a.stufe.leistungen.map((w, i) => (
                   <li key={i} style={{ display: "flex", gap: 9, fontSize: 13.5,
                     lineHeight: 1.5 }}>
-                    <span style={{ color: F.accent, flexShrink: 0 }}>✓</span>
+                    <span style={{ color: C.accent, flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={16} /></span>
                     <span>{w}</span>
                   </li>))}
               </ul>
@@ -330,10 +343,10 @@ function Preise({ onZurueck, onStarten, F }) {
       </div>
 
       {/* ------------------------- Der Zuschlag -------------------------- */}
-      <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
+      <div style={{ background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 14,
         padding: 24, marginBottom: 36 }}>
         <div style={{ fontSize: 16, fontWeight: 640, marginBottom: 8 }}>Standortzuschlag</div>
-        <div style={{ fontSize: 13.5, color: F.dim, lineHeight: 1.6, marginBottom: 18 }}>
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, marginBottom: 18 }}>
           Gilt nur für Standorte über dem Kontingent der Stufe — die größten zählen
           automatisch dazu, unabhängig von ihrer Größe. Ein Betrieb, der an einem Ort
           wächst, zahlt dafür nie mehr; erst ein weiterer, eigenständiger Standort ab
@@ -342,11 +355,11 @@ function Preise({ onZurueck, onStarten, F }) {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {STANDORT_BAENDER.map((b, i) => (
             <div key={i} style={{ flex: "1 1 130px", padding: "13px 15px", borderRadius: 11,
-              border: `1px solid ${F.line}` }}>
-              <div style={{ fontSize: 12.5, color: F.dim }}>{b.label}</div>
+              border: `1px solid ${C.line}` }}>
+              <div style={{ fontSize: 12.5, color: C.dim }}>{b.label}</div>
               <div style={{ fontSize: 19, fontWeight: 600, marginTop: 4,
                 fontVariantNumeric: "tabular-nums",
-                color: b.zuschlag ? F.accent : F.dim }}>{b.zuschlag ? `+${b.zuschlag} €` : "kostenlos"}</div>
+                color: b.zuschlag ? C.accent : C.dim }}>{b.zuschlag ? `+${b.zuschlag} €` : "kostenlos"}</div>
             </div>))}
         </div>
       </div>
@@ -363,32 +376,32 @@ function Preise({ onZurueck, onStarten, F }) {
             "Ohne Zahlungsdaten, ohne automatische Verlängerung. Danach meldest du dich — oder eben nicht."]].map(
           ([titel, text], i) => (
           <div key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <span style={{ color: F.accent, fontSize: 17, flexShrink: 0, lineHeight: 1.3 }}>✓</span>
+            <span style={{ color: C.accent, flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={17} /></span>
             <div>
               <div style={{ fontSize: 15, fontWeight: 600 }}>{titel}</div>
-              <div style={{ fontSize: 13.5, color: F.dim, marginTop: 4,
+              <div style={{ fontSize: 13.5, color: C.dim, marginTop: 4,
                 lineHeight: 1.55 }}>{text}</div>
             </div>
           </div>))}
       </div>
 
       <button onClick={onStarten}
-        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 12,
-          border: "none", background: F.accent, color: "#fff", fontFamily: "inherit",
+        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
+          border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
           cursor: "pointer", marginBottom: 14 }}>
         Betrieb anlegen und testen</button>
-      <div style={{ fontSize: 12, color: F.dim, textAlign: "center", marginBottom: 24 }}>
+      <div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginBottom: 24 }}>
         Kostenlos · Keine Zahlungsdaten · 30 Tage
       </div>
 
       <button onClick={onZurueck}
-        style={{ border: "none", background: "transparent", color: F.accent, fontFamily: "inherit",
+        style={{ border: "none", background: "transparent", color: C.accent, fontFamily: "inherit",
           fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0" }}>
         Zurück</button>
     </div>);
 }
 
-function SelbstStarten({ onZurueck, onFertig, F }) {
+function SelbstStarten({ onZurueck, onFertig }) {
   const [name, setName] = useState("");
   const [branche, setBranche] = useState("");
   const [email, setEmail] = useState("");
@@ -423,31 +436,30 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
 
   if (fertig) return (
     <div>
-      <div style={{ padding: "22px 24px", borderRadius: 14, background: "#F0FDF4",
-        border: "1px solid #BBF7D0", marginBottom: 24 }}>
+      <div style={{ padding: "22px 24px", borderRadius: 14, background: C.okLight,
+        border: `1px solid ${C.line}`, marginBottom: 24 }}>
         <div style={{ fontSize: 19, fontWeight: 640, marginBottom: 7 }}>
           {name.trim()} steht bereit</div>
-        <div style={{ fontSize: 14.5, color: F.dim, lineHeight: 1.6 }}>
+        <div style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6 }}>
           Der Betrieb ist leer — kein Beispielpersonal, keine erfundenen Dienstpläne.
           Beim ersten Öffnen führt dich eine Tour durch alles Nötige.
         </div>
       </div>
 
-      <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
-        padding: 24, marginBottom: 20 }}>
-        <div style={{ fontSize: 13.5, color: F.danger, lineHeight: 1.55, marginBottom: 18,
+      <div style={{ ...KARTE, padding: 24, marginBottom: 20 }}>
+        <div style={{ fontSize: 13.5, color: C.danger, lineHeight: 1.55, marginBottom: 18,
           fontWeight: 550 }}>
           Notier dir die Codes jetzt. Sie werden nur als Prüfsumme gespeichert
           und lassen sich nicht wiederherstellen.
         </div>
         {fertig.zugaenge.map((z, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 14,
-            padding: "13px 0", borderTop: i ? `1px solid ${F.line}` : "none" }}>
+            padding: "13px 0", borderTop: i ? `1px solid ${C.line}` : "none" }}>
             <span style={{ flex: 1, fontSize: 14.5, fontWeight: 550 }}>
               {ROLLENNAMEN[z.rolle] || z.rolle}</span>
             <code style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".07em",
-              padding: "8px 13px", borderRadius: 8, background: F.bg,
-              border: `1px solid ${F.line}`, fontVariantNumeric: "tabular-nums" }}>{z.code}</code>
+              padding: "8px 13px", borderRadius: 8, background: C.bg,
+              border: `1px solid ${C.line}`, fontVariantNumeric: "tabular-nums" }}>{z.code}</code>
           </div>))}
         <button onClick={() => {
           const txt = [`CENTRIC — Zugänge für ${name.trim()}`, "",
@@ -459,20 +471,20 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
           const a = document.createElement("a");
           a.href = u; a.download = `centric-zugaenge.txt`; a.click();
           setTimeout(() => URL.revokeObjectURL(u), 1000);
-        }} style={{ marginTop: 18, padding: "11px 18px", borderRadius: 10,
-          border: `1px solid ${F.line}`, background: "transparent", color: F.text,
+        }} style={{ marginTop: 18, padding: "11px 18px", borderRadius: 999,
+          border: `1px solid ${C.line}`, background: "transparent", color: C.text,
           fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
           Als Datei sichern</button>
       </div>
 
-      <div style={{ fontSize: 13, color: F.dim, lineHeight: 1.6, marginBottom: 22 }}>
+      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 22 }}>
         Der Testzeitraum läuft {fertig.testtage} Tage. Danach melden wir uns —
         oder du meldest dich, wenn es passt.
       </div>
 
       <button onClick={() => onFertig(fertig.zugaenge[0].code)}
-        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 12,
-          border: "none", background: F.accent, color: "#fff", fontFamily: "inherit",
+        style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
+          border: "none", background: C.accent, color: C.aufAkzent, fontFamily: "inherit",
           cursor: "pointer" }}>
         Mit der Organisationsleitung anmelden</button>
     </div>);
@@ -481,7 +493,7 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
     <div>
       <h1 style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 10px" }}>
         Selbst starten</h1>
-      <p style={{ fontSize: 15, color: F.dim, lineHeight: 1.6, margin: "0 0 12px", maxWidth: 520 }}>
+      <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.6, margin: "0 0 12px", maxWidth: 520 }}>
         Kein Verkaufsgespräch, keine Zahlungsdaten. Drei Angaben, dann steht dein
         Betrieb — leer, mit geführter Tour.
       </p>
@@ -495,35 +507,34 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
           ["Am Monatsende", "liegt die Lohnausgabe fertig da — eine Datei statt sechs Mails."]].map(
           ([wann, was], i) => (
           <div key={i} style={{ display: "flex", gap: 13, fontSize: 14, lineHeight: 1.55 }}>
-            <span style={{ color: F.accent, fontWeight: 700, flexShrink: 0, minWidth: 118 }}>{wann}</span>
-            <span style={{ color: F.dim }}>{was}</span>
+            <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0, minWidth: 118 }}>{wann}</span>
+            <span style={{ color: C.dim }}>{was}</span>
           </div>))}
       </div>
 
-      <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
-        padding: 26, display: "grid", gap: 20 }}>
+      <div style={{ ...KARTE, padding: 26, display: "grid", gap: 20 }}>
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 7 }}>Wie heißt dein Betrieb?</label>
+            color: C.dim, marginBottom: 7 }}>Wie heißt dein Betrieb?</label>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)}
             placeholder="z. B. Nordwacht Sicherheitsdienste"
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
-              border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
-              background: F.bg, color: F.text }} />
+              border: `1px solid ${C.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              background: C.bg, color: C.text }} />
         </div>
 
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 9 }}>Was für ein Betrieb ist das?</label>
+            color: C.dim, marginBottom: 9 }}>Was für ein Betrieb ist das?</label>
           <div style={{ display: "grid", gap: 9 }}>
             {BRANCHEN.map(([id, label, text]) => (
               <button key={id} onClick={() => setBranche(id)}
                 style={{ display: "block", width: "100%", textAlign: "left", cursor: "pointer",
                   padding: "13px 16px", borderRadius: 11, fontFamily: "inherit",
-                  border: `1px solid ${branche === id ? F.accent : F.line}`,
-                  background: branche === id ? F.accentHell : "transparent", color: F.text }}>
+                  border: `1px solid ${branche === id ? C.accent : C.line}`,
+                  background: branche === id ? C.accentLight : "transparent", color: C.text }}>
                 <span style={{ display: "block", fontSize: 14.5, fontWeight: 600 }}>{label}</span>
-                <span style={{ display: "block", fontSize: 12.5, color: F.dim, marginTop: 3,
+                <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 3,
                   lineHeight: 1.45 }}>{text}</span>
               </button>))}
           </div>
@@ -531,8 +542,8 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
 
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 9 }}>Welche Zugänge brauchst du?</label>
-          <div style={{ fontSize: 12.5, color: F.dim, marginBottom: 11, lineHeight: 1.5 }}>
+            color: C.dim, marginBottom: 9 }}>Welche Zugänge brauchst du?</label>
+          <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 11, lineHeight: 1.5 }}>
             Organisationsleitung und Planung entstehen immer. Weitere kannst du
             gleich mitnehmen, um die anderen Blickwinkel zu sehen.
           </div>
@@ -541,12 +552,12 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
               ["betriebsrat", "Betriebsrat"]].map(([id, label]) => (
               <label key={id} style={{ display: "flex", alignItems: "center", gap: 11,
                 padding: "10px 14px", borderRadius: 10, cursor: "pointer",
-                border: `1px solid ${rollen.includes(id) ? F.accent : F.line}`,
-                background: rollen.includes(id) ? F.accentHell : "transparent" }}>
+                border: `1px solid ${rollen.includes(id) ? C.accent : C.line}`,
+                background: rollen.includes(id) ? C.accentLight : "transparent" }}>
                 <input type="checkbox" checked={rollen.includes(id)}
                   onChange={(e) => setRollen(e.target.checked
                     ? [...rollen, id] : rollen.filter((x) => x !== id))}
-                  style={{ width: 17, height: 17, accentColor: F.accent }} />
+                  style={{ width: 17, height: 17, accentColor: C.accent }} />
                 <span style={{ fontSize: 14 }}>{label}</span>
               </label>))}
           </div>
@@ -554,33 +565,33 @@ function SelbstStarten({ onZurueck, onFertig, F }) {
 
         <div>
           <label style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-            color: F.dim, marginBottom: 7 }}>E-Mail (freiwillig)</label>
+            color: C.dim, marginBottom: 7 }}>E-Mail (freiwillig)</label>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             placeholder="damit wir dich erreichen können"
             style={{ width: "100%", padding: "13px 15px", fontSize: 16, borderRadius: 12,
-              border: `1px solid ${F.line}`, fontFamily: "inherit", boxSizing: "border-box",
-              background: F.bg, color: F.text }} />
+              border: `1px solid ${C.line}`, fontFamily: "inherit", boxSizing: "border-box",
+              background: C.bg, color: C.text }} />
         </div>
 
         {fehler && (
           <div role="alert" style={{ padding: "13px 16px", borderRadius: 10,
-            background: "#FEF2F2", color: F.danger, fontSize: 13.5, lineHeight: 1.5 }}>
+            background: C.dangerLight, color: C.danger, fontSize: 13.5, lineHeight: 1.5 }}>
             {fehler}</div>)}
 
         <button onClick={starten} disabled={!name.trim() || !branche || laeuft}
-          style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 12,
+          style={{ width: "100%", padding: 15, fontSize: 15.5, fontWeight: 600, borderRadius: 999,
             border: "none", fontFamily: "inherit",
             cursor: name.trim() && branche && !laeuft ? "pointer" : "default",
-            background: name.trim() && branche && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
+            background: name.trim() && branche && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}>
           {laeuft ? "Wird angelegt …" : "Betrieb anlegen"}</button>
 
-        <div style={{ fontSize: 12, color: F.dim, textAlign: "center", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 12, color: C.dim, textAlign: "center", lineHeight: 1.5 }}>
           Kostenlos · Keine Zahlungsdaten · 30 Tage Testzeitraum
         </div>
       </div>
 
       <button onClick={onZurueck}
-        style={{ border: "none", background: "transparent", color: F.accent, fontFamily: "inherit",
+        style={{ border: "none", background: "transparent", color: C.accent, fontFamily: "inherit",
           fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "18px 0 0" }}>
         Zurück
       </button>
@@ -594,7 +605,8 @@ function Einstieg() {
   useEffect(() => {
     try {
       document.documentElement.style.colorScheme = "light";
-      document.body.style.background = F.bg;
+      document.body.style.background = C.bg;
+      document.body.style.margin = "0";
     } catch { /* egal */ }
   }, []);
   const [an, setAn] = useState(SP.angemeldet());
@@ -619,7 +631,7 @@ function Einstieg() {
   const [recht, setRecht] = useState(null);
   const fuss = <>
     <RechtLeiste onOeffnen={setRecht} style={{ marginTop: 40, paddingTop: 22,
-      borderTop: `1px solid ${F.line}` }} />
+      borderTop: `1px solid ${C.line}` }} />
     {recht && <RechtFenster start={recht} onClose={() => setRecht(null)} />}
   </>;
 
@@ -644,36 +656,22 @@ function Einstieg() {
   if (an) return <App />;
 
   if (preise) return (
-    <div style={{ minHeight: "100vh", background: F.bg, padding: "5vh 20px 8vh",
-      fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
+    <div style={SEITE}>
+      <div aria-hidden="true" style={VERLAUF} />
       <div style={{ width: "min(760px, 100%)", margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke data-marke-ziel="" />
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
-            <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
-              Dienstplanung im Schichtbetrieb</div>
-          </div>
-        </div>
-        <Preise F={F} onZurueck={() => setPreise(false)}
+        <Markenzeile />
+        <Preise onZurueck={() => setPreise(false)}
           onStarten={() => { setPreise(false); setSelbst(true); }} />
         {fuss}
       </div>
     </div>);
 
   if (selbst) return (
-    <div style={{ minHeight: "100vh", background: F.bg, padding: "5vh 20px 8vh",
-      fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
+    <div style={SEITE}>
+      <div aria-hidden="true" style={VERLAUF} />
       <div style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke data-marke-ziel="" />
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
-            <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
-              Dienstplanung im Schichtbetrieb</div>
-          </div>
-        </div>
-        <SelbstStarten F={F} onZurueck={() => setSelbst(false)}
+        <Markenzeile />
+        <SelbstStarten onZurueck={() => setSelbst(false)}
           onFertig={(code) => { setSelbst(false); setMitCode(true); setCode(code); }} />
         {fuss}
       </div>
@@ -687,66 +685,56 @@ function Einstieg() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: F.bg, padding: "5vh 20px 8vh",
-      fontFamily: "Inter, -apple-system, system-ui, sans-serif", color: F.text }}>
+    <div style={SEITE}>
+      <div aria-hidden="true" style={VERLAUF} />
       <div style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
-          <Marke data-marke-ziel="" />
-          <div>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.035em" }}>CENTRIC</div>
-            <div style={{ fontSize: 13, color: F.dim, marginTop: 2 }}>
-              Dienstplanung im Schichtbetrieb</div>
-          </div>
-        </div>
+        <Markenzeile />
 
         {begruessung ? (
-          <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 16,
-            padding: "48px 32px", textAlign: "center" }}>
-            <div style={{ fontSize: 30, color: F.ok, marginBottom: 14 }}>✓</div>
+          <div style={{ ...KARTE, padding: "48px 32px", textAlign: "center" }}>
+            <div style={{ color: C.ok, marginBottom: 14, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={40} /></div>
             <div style={{ fontSize: 19, fontWeight: 640, marginBottom: 7 }}>{begruessung.name}</div>
-            <div style={{ fontSize: 14.5, color: F.dim }}>
+            <div style={{ fontSize: 14.5, color: C.dim }}>
               {ROLLENNAME[begruessung.rolle] || begruessung.rolle} — wird geöffnet …</div>
           </div>
         ) : (<>
 
           {/* ---------------------- Testzugänge ---------------------- */}
           {demos === null ? (
-            <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 16,
-              padding: 28 }} aria-busy="true">
+            <div style={{ ...KARTE, padding: 28 }} aria-busy="true">
               {[0, 1, 2].map((i) => (
-                <div key={i} style={{ height: 15, borderRadius: 6, background: F.bg, marginBottom: 12,
+                <div key={i} style={{ height: 15, borderRadius: 6, background: C.bg, marginBottom: 12,
                   width: `${92 - i * 16}%` }} />))}
             </div>
           ) : demos.length > 0 && !mitCode ? (<>
             {/* Zuerst der eigene Betrieb, dann die fertigen Beispiele. Wer
                 selbst einrichten will, soll nicht erst durch eine Demoliste. */}
-            <div style={{ background: F.karte, border: `1px solid ${F.accent}`, borderRadius: 16,
-              padding: 26, marginBottom: 34 }}>
+            <div style={{ ...KARTE, border: `1px solid ${C.accent}`, padding: 26, marginBottom: 34 }}>
               <h1 style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.04em",
                 margin: "0 0 10px" }}>Eigenen Betrieb anlegen</h1>
-              <p style={{ fontSize: 14.5, color: F.dim, lineHeight: 1.6, margin: "0 0 18px" }}>
+              <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 18px" }}>
                 Leer, mit geführter Tour. Kein Verkaufsgespräch, keine Zahlungsdaten —
                 in einer Viertelstunde steht deine erste Schichtfolge.
               </p>
               <button onClick={() => setSelbst(true)}
                 style={{ width: "100%", padding: 14, fontSize: 15.5, fontWeight: 600,
-                  borderRadius: 12, border: "none", background: F.accent, color: "#fff",
+                  borderRadius: 999, border: "none", background: C.accent, color: C.aufAkzent,
                   fontFamily: "inherit", cursor: "pointer" }}>
                 Selbst starten</button>
-              <div style={{ fontSize: 12, color: F.dim, textAlign: "center", marginTop: 11 }}>
+              <div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginTop: 11 }}>
                 Kostenlos · 30 Tage Testzeitraum
               </div>
               <button onClick={() => setPreise(true)}
-                style={{ display: "block", margin: "14px auto 0", border: "none",
-                  background: "transparent", color: F.accent, fontFamily: "inherit",
+                style={{ display: "flex", alignItems: "center", gap: 6, margin: "14px auto 0", border: "none",
+                  background: "transparent", color: C.accent, fontFamily: "inherit",
                   fontSize: 13.5, fontWeight: 600, cursor: "pointer" }}>
-                Was kostet das? →</button>
+                Was kostet das? <Icon n="pfeil-rechts" size={15} /></button>
             </div>
 
             <h1 style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 10px" }}>
               Oder erst umsehen</h1>
-            <p style={{ fontSize: 15, color: F.dim, lineHeight: 1.6, margin: "0 0 28px", maxWidth: 520 }}>
+            <p style={{ fontSize: 15, color: C.dim, lineHeight: 1.6, margin: "0 0 28px", maxWidth: 520 }}>
               Fertig eingerichtete Beispielbetriebe zum Durchklicken. Antippen genügt,
               kein Code nötig — jede Rolle zeigt einen anderen Blickwinkel auf denselben Plan.
             </p>
@@ -754,82 +742,81 @@ function Einstieg() {
             {Object.entries(gruppen).map(([gruppe, liste]) => (
               <div key={gruppe} style={{ marginBottom: 30 }}>
                 <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".10em",
-                  textTransform: "uppercase", color: F.dim, marginBottom: 12 }}>{gruppe}</div>
+                  textTransform: "uppercase", color: C.dim, marginBottom: 12 }}>{gruppe}</div>
                 <div style={{ display: "grid", gap: 10 }}>
                   {liste.map((d) => (
                     <button key={d.id} disabled={laeuft}
                       onClick={() => oeffne(SP.demoOeffnen(d.id, merken))}
                       style={{ display: "flex", alignItems: "center", gap: 16, width: "100%",
-                        background: F.karte, border: `1px solid ${F.line}`, borderRadius: 14,
+                        background: C.flaeche, border: `1px solid ${C.line}`, borderRadius: 18,
                         padding: "16px 18px", cursor: laeuft ? "default" : "pointer",
-                        fontFamily: "inherit", textAlign: "left", color: F.text,
+                        fontFamily: "inherit", textAlign: "left", color: C.text,
                         opacity: laeuft ? .5 : 1, transition: "border-color .14s, background .14s" }}
                       onMouseEnter={(e) => { if (!laeuft) {
-                        e.currentTarget.style.borderColor = F.accent;
-                        e.currentTarget.style.background = F.accentHell; } }}
+                        e.currentTarget.style.borderColor = C.accent;
+                        e.currentTarget.style.background = C.accentLight; } }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = F.line;
-                        e.currentTarget.style.background = F.karte; }}>
+                        e.currentTarget.style.borderColor = C.line;
+                        e.currentTarget.style.background = C.flaeche; }}>
                       <span style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        background: F.accentHell, color: F.accent, fontSize: 12.5, fontWeight: 700 }}>
+                        background: C.accentLight, color: C.accent, fontSize: 12.5, fontWeight: 700 }}>
                         {(ROLLENNAME[d.rolle] || "?").slice(0, 2).toUpperCase()}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 15.5, fontWeight: 600 }}>
                           {ROLLENNAME[d.rolle] || d.rolle}</span>
-                        <span style={{ display: "block", fontSize: 13, color: F.dim, marginTop: 3,
+                        <span style={{ display: "block", fontSize: 13, color: C.dim, marginTop: 3,
                           lineHeight: 1.45 }}>{d.hinweis || ROLLENTEXT[d.rolle] || ""}</span>
                       </span>
-                      <span aria-hidden="true" style={{ color: F.dim, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
+                      <span aria-hidden="true" style={{ color: C.dim, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
                     </button>))}
                 </div>
               </div>))}
 
             <label style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20,
-              cursor: "pointer", fontSize: 13.5, color: F.dim }}>
+              cursor: "pointer", fontSize: 13.5, color: C.dim }}>
               <input type="checkbox" checked={merken}
                 onChange={(e) => setMerken(e.target.checked)}
-                style={{ width: 18, height: 18, accentColor: F.accent, cursor: "pointer" }} />
+                style={{ width: 18, height: 18, accentColor: C.accent, cursor: "pointer" }} />
               Zugang auf diesem Gerät merken
             </label>
 
             <button onClick={() => { setMitCode(true); setBetreiber(false); }}
-              style={{ border: "none", background: "transparent", color: F.accent, fontFamily: "inherit",
+              style={{ border: "none", background: "transparent", color: C.accent, fontFamily: "inherit",
                 fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "8px 0" }}>
               Ich habe einen Zugangscode
             </button>
           </>) : (<>
 
             {/* ------------------- Anmeldung mit Code ------------------- */}
-            <div style={{ background: F.karte, border: `1px solid ${F.line}`, borderRadius: 16,
-              padding: 32, maxWidth: 430 }}>
+            <div style={{ ...KARTE, padding: 32, maxWidth: 430 }}>
               <h1 style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.04em", margin: "0 0 10px" }}>
                 {betreiber ? "Betreiberkonsole" : "Anmelden"}</h1>
-              <p style={{ fontSize: 14, color: F.dim, lineHeight: 1.6, margin: "0 0 24px" }}>
+              <p style={{ fontSize: 14, color: C.dim, lineHeight: 1.6, margin: "0 0 24px" }}>
                 {betreiber
                   ? "Für die Verwaltung von Mandanten, Zugängen und Rechnungen. Die Sitzung läuft nach zwei Stunden ab."
                   : "Der Zugangscode wurde dir von deinem Betrieb mitgeteilt. Er gilt zwölf Stunden."}
               </p>
               <label htmlFor="code" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
-                color: F.dim, marginBottom: 7 }}>Zugangscode</label>
+                color: C.dim, marginBottom: 7 }}>Zugangscode</label>
               <input id="code" value={code} autoFocus autoCapitalize="characters"
                 autoComplete="one-time-code" inputMode="text"
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
                 onKeyDown={(e) => e.key === "Enter" && senden()}
                 placeholder="XXXX-XXXX-XXXX"
                 style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
-                  border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit",
+                  border: `1px solid ${fehler ? C.danger : C.line}`, fontFamily: "inherit",
                   letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
-                  background: F.bg, color: F.text }} />
+                  background: C.bg, color: C.text }} />
               {fehler && (
                 <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
-                  color: F.danger, lineHeight: 1.45 }}>
-                  <span style={{ fontWeight: 700 }}>!</span><span>{fehler}</span></div>)}
+                  color: C.danger, lineHeight: 1.45 }}>
+                  <span style={{ display: "flex", flexShrink: 0, marginTop: 1 }}><Icon n="warnung" size={16} /></span><span>{fehler}</span></div>)}
               <button onClick={senden} disabled={!code.trim() || laeuft}
                 style={{ width: "100%", marginTop: 22, padding: 14, fontSize: 15, fontWeight: 600,
-                  borderRadius: 12, border: "none", fontFamily: "inherit",
+                  borderRadius: 999, border: "none", fontFamily: "inherit",
                   cursor: code.trim() && !laeuft ? "pointer" : "default",
-                  background: code.trim() && !laeuft ? F.accent : F.lineStark, color: "#fff" }}>
+                  background: code.trim() && !laeuft ? C.accent : C.lineStark, color: C.aufAkzent }}>
                 {laeuft ? "Wird geprüft …" : "Anmelden"}</button>
 
               {/* Ohne dieses Häkchen endet der Zugang mit dem Schließen des
@@ -837,13 +824,13 @@ function Einstieg() {
                   Stationsrechner soll nicht der Nächste im Plan des Vorigen
                   landen. */}
               <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 18,
-                cursor: "pointer", fontSize: 13.5, color: F.dim, lineHeight: 1.5 }}>
+                cursor: "pointer", fontSize: 13.5, color: C.dim, lineHeight: 1.5 }}>
                 <input type="checkbox" checked={merken}
                   onChange={(e) => setMerken(e.target.checked)}
-                  style={{ width: 18, height: 18, marginTop: 1, accentColor: F.accent,
+                  style={{ width: 18, height: 18, marginTop: 1, accentColor: C.accent,
                     cursor: "pointer", flexShrink: 0 }} />
                 <span>
-                  <span style={{ display: "block", fontWeight: 550, color: F.text }}>
+                  <span style={{ display: "block", fontWeight: 550, color: C.text }}>
                     Zugang auf diesem Gerät merken</span>
                   <span style={{ display: "block", marginTop: 2 }}>
                     Nur auf einem Gerät, das niemand sonst benutzt. Ohne Häkchen musst du
@@ -853,7 +840,7 @@ function Einstieg() {
 
               {demos && demos.length > 0 && (
                 <button onClick={() => { setMitCode(false); setFehler(null); }}
-                  style={{ border: "none", background: "transparent", color: F.accent,
+                  style={{ border: "none", background: "transparent", color: C.accent,
                     fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer",
                     padding: "16px 0 0", display: "block" }}>
                   Zurück zu den Testzugängen</button>)}
@@ -861,7 +848,7 @@ function Einstieg() {
           </>)}
         </>)}
 
-        <p style={{ fontSize: 12.5, color: F.dim, lineHeight: 1.6, marginTop: 32, maxWidth: 520 }}>
+        <p style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.6, marginTop: 32, maxWidth: 520 }}>
           Die Daten sind erfunden — Namen und Dienstpläne sind erzeugt, keine echten Personen.
           Bitte auch keine echten Personaldaten eingeben.
         </p>
@@ -871,9 +858,9 @@ function Einstieg() {
             sein. Der Verweis hier führt nur zum Codefeld — ohne gültigen Code
             geht nichts. */}
         {!begruessung && (
-          <div style={{ marginTop: 26, paddingTop: 20, borderTop: `1px solid ${F.line}` }}>
+          <div style={{ marginTop: 26, paddingTop: 20, borderTop: `1px solid ${C.line}` }}>
             <button onClick={() => { setMitCode(true); setBetreiber(true); setFehler(null); }}
-              style={{ border: "none", background: "transparent", color: F.dim,
+              style={{ border: "none", background: "transparent", color: C.dim,
                 fontFamily: "inherit", fontSize: 12.5, cursor: "pointer", padding: 0 }}>
               Betreiberkonsole
             </button>
