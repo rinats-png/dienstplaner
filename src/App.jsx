@@ -12399,10 +12399,11 @@ function Verfuegbarkeit({ sitz, akt, personId, onClose }) {
             {DOW.map((_, d) => {
               const i = d * 3 + f.id, an = v.raster[i];
               return (
-                <button key={d} onClick={() => um(i)} 
+                <button key={d} onClick={() => um(i)} aria-label={`${DOW[d]}, ${f.name}`} aria-pressed={!!an}
                   style={{ height: 46, borderRadius: 12, border: "none", cursor: "pointer",
                     background: an ? C.okLight : C.bg,
-                    color: an ? C.ok : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon n="haken" size={20} strokeWidth={2.4} /></button>);
+                    color: C.ok, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {an && <Icon n="haken" size={20} strokeWidth={2.4} />}</button>);
             })}
           </div>))}
         <div style={{ display: "flex", gap: 18, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
