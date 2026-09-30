@@ -9,6 +9,7 @@ import { Marke } from "./marke.jsx";
 import Startbild from "./startbild.jsx";
 import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
+import { Icon } from "./gestalt/icons.jsx";
 import { STUFEN, PAKETE, preisFuer, passendeStufe } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 
@@ -779,7 +780,7 @@ function Einstieg() {
                         <span style={{ display: "block", fontSize: 13, color: F.dim, marginTop: 3,
                           lineHeight: 1.45 }}>{d.hinweis || ROLLENTEXT[d.rolle] || ""}</span>
                       </span>
-                      <span style={{ color: F.dim, fontSize: 20, flexShrink: 0 }}>›</span>
+                      <span aria-hidden="true" style={{ color: F.dim, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
                     </button>))}
                 </div>
               </div>))}

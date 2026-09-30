@@ -134,9 +134,11 @@ const C_DUNKEL = {
   ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
   okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",
 
-  /* Dunkel: Verlauf höchstens 0,24, Token 0,22 (dim #9FB2B9 bleibt ≥ 5,3:1) */
+  /* Dunkel: Verlauf höchstens 0,24, Token 0,22 (dim #9FB2B9 bleibt ≥ 5,3:1).
+     Der Glanz ist mit 0,08 etwas leiser als im Entwurf (0,10): gestapelt auf A
+     würde dim bei 0,10 auf 4,40:1 fallen, bei 0,08 bleibt es bei 4,59:1. */
   verlaufA: "rgba(63,191,191,.22)",
-  verlaufB: "rgba(80,232,244,.10)",
+  verlaufB: "rgba(80,232,244,.08)",
   verlaufC: "rgba(127,224,224,.10)",
   kopfGrund: "rgba(18,30,35,.86)",
   ueberlagerung: "rgba(0,0,0,.56)",

@@ -33,6 +33,10 @@
                      --ohne-blaetter   (Dialoge auslassen)
                      --nav-klick       (Ansichten nur per Navigationsknopf ansteuern)
                      --laut            (jede Ansicht/jeden Klick melden)
+                     --ergebnis=datei  (den erfassten Stand zusätzlich als JSON ablegen)
+                     --vergleiche=datei (nichts erfassen; einen abgelegten Stand gegen die Basis halten)
+                     --glyphen         (die Textzeichen, die der Umbau durch Icons ersetzt hat, auf
+                                        beiden Seiten weglassen — zeigt nur, was darüber hinaus anders ist)
    Mit --nur/--rolle schreibt --basis in die vorhandene Basis hinein, statt sie
    zu ersetzen; Blätter werden dann nicht verglichen.
    Umgebung: CENTRIC_BASIS (http://localhost:5173), CENTRIC_ADMIN,
@@ -109,6 +113,9 @@ const NUR_ROLLEN = typeof arg("rolle") === "string" ? arg("rolle").split(",") : 
 const NUR_ANSICHTEN = typeof arg("nur") === "string" ? arg("nur").split(",") : null;
 const OHNE_BLAETTER = !!arg("ohne-blaetter");
 const LAUT = !!arg("laut");
+const ERGEBNIS = typeof arg("ergebnis") === "string" ? arg("ergebnis") : null;
+const VERGLEICHE = typeof arg("vergleiche") === "string" ? arg("vergleiche") : null;
+const GLYPHEN = !!arg("glyphen");
 const NAV_KLICK = !!arg("nav-klick");   // Suchpalette überspringen, nur Navigationsknöpfe (Test des Rückfallwegs)
 
 /* import() beachtet NODE_PATH nicht, require() schon — deshalb über createRequire. */
@@ -133,8 +140,10 @@ const TELEFON = { width: 390, height: 844 };
 
 /* Selektoren, die ein Umbau berühren kann. */
 const INHALT = "main#inhalt, main";               // Wurzel des Auszugs
-const NAV_KNOEPFE = ".slink";                     // Navigationseinträge (Desktop)
-const NAV_ZAEHLER = ".slink .zahl";               // Zähler darin
+const NAV_KNOEPFE = ".utab";                      // Ansichten in der Unterleiste (Desktop ab 1025 px)
+const NAV_BEREICHE = ".bpille";                   // Bereichs-Pillen in der Kopfzeile
+const NAV_SCHUBLADE = ".slink";                   // Seitenleiste als Schublade (≤ 1024 px); bleibt im DOM
+const NAV_ZAEHLER = ".slink .zahl";               // Zähler darin — die Schublade zählt für alle Ansichten
 const TELEFON_TABS = "nav button";                // Tabs der Telefonschale
 const BLATT = ".blatt, [role=dialog]";            // geöffnete Blätter (Desktop)
 
@@ -156,8 +165,15 @@ function ansichtenLesen() {
     .map((m) => [m[1], m[2]]);
   if (kunde.length < 10 || !betreiber.length || !tabs.length)
     throw new Error("Ansichtenliste im Quelltext nicht lesbar");
-  return { kunde, betreiber, tabs };
+  /* Zu jeder Ansicht der Bereich, in dem sie in der Kopfzeile steht. */
+  const bereichVon = {};
+  for (const m of teil("const BEREICHE = [", "const NAV_KUNDE").matchAll(/\{ id: "\w+", label: "([^"]+)", views: \[([\s\S]*?)\n {2}\]\}/g))
+    for (const v of m[2].matchAll(/\["([a-z0-9]+)",/g)) bereichVon[v[1]] = m[1];
+  for (const [id] of betreiber) bereichVon[id] = "Betreiberkonsole";
+  return { kunde, betreiber, tabs, bereichVon };
 }
+
+let BEREICH_VON = {};
 
 /* ------------------------------ Bestand --------------------------------- */
 const kopf = { "content-type": "application/json", "x-forwarded-for": HERKUNFT };
@@ -307,10 +323,24 @@ async function geheZu(page, id, ziel) {
     await page.keyboard.press("Escape");
   } catch { await page.keyboard.press("Escape").catch(() => {}); }
 
-  /* 2. Navigationsknopf mit genau dieser Beschriftung. */
+  /* 2. Kopfnavigation: Bereichs-Pille (öffnet die zuletzt besuchte Ansicht des
+        Bereichs), danach die Ansicht in der Unterleiste. */
+  const nameRe = new RegExp(`^\\s*${ziel.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\d*\\s*$`);
   try {
-    const knopf = page.locator(NAV_KNOEPFE).filter({ hasText: new RegExp(`^\\s*${ziel.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\d*\\s*$`) }).first();
+    let knopf = page.locator(NAV_KNOEPFE).filter({ hasText: nameRe }).first();
+    if (!(await knopf.count()) && BEREICH_VON[id]) {
+      const pille = page.locator(NAV_BEREICHE).filter({ hasText: BEREICH_VON[id] }).first();
+      if (await pille.count()) { await pille.click({ timeout: 3000 }); await warte(150); }
+      if (await ist()) return true;
+      knopf = page.locator(NAV_KNOEPFE).filter({ hasText: nameRe }).first();
+    }
     if (await knopf.count()) { await knopf.click({ timeout: 3000 }); await warte(150); if (await ist()) return true; }
+  } catch { /* nicht erreichbar */ }
+
+  /* 3. Rückfall: Schublade der Seitenleiste (nur sichtbar bis 1024 px). */
+  try {
+    const knopf = page.locator(NAV_SCHUBLADE).filter({ hasText: nameRe }).first();
+    if (await knopf.count() && await knopf.isVisible()) { await knopf.click({ timeout: 3000 }); await warte(150); if (await ist()) return true; }
   } catch { /* nicht erreichbar */ }
   return false;
 }
@@ -337,6 +367,35 @@ const zaehlerLesen = (page) => page.evaluate((sel) => {
   }
   return o;
 }, NAV_ZAEHLER);
+
+/** Die Zähler der Kopfzeile müssen zu denen der Schublade passen: je Bereichs-Pille
+ *  die Summe, je Ansicht in der Unterleiste der einzelne Wert. Abweichungen
+ *  landen als Einträge „Kopf: …" in der Navigation und erscheinen im Vergleich. */
+async function kopfZaehlerPruefen(page) {
+  const schublade = await zaehlerLesen(page);
+  const abw = {};
+  const pillen = await page.locator(NAV_BEREICHE).count();
+  for (let i = 0; i < pillen; i++) {
+    await page.locator(NAV_BEREICHE).nth(i).click({ timeout: 3000 }); await warte(150);
+    const daten = await page.evaluate(() => {
+      const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+      const p = document.querySelectorAll(".bpille")[0] && [...document.querySelectorAll(".bpille")];
+      const aktiv = p.find((e) => e.getAttribute("aria-current") === "page");
+      const tabs = [...document.querySelectorAll(".utab")].map((e) => {
+        const z = e.querySelector(".uzahl"); const c = e.cloneNode(true); c.querySelectorAll(".uzahl").forEach((x) => x.remove());
+        return [norm(c.textContent), z ? Number(norm(z.textContent)) : 0]; });
+      const pz = aktiv && aktiv.querySelector(".bzahl");
+      return { bereich: aktiv ? norm(aktiv.querySelector("span").textContent) : "?", pille: pz ? Number(norm(pz.textContent)) : 0, tabs };
+    });
+    let summe = 0;
+    for (const [name, z] of daten.tabs) {
+      const soll = Number(schublade[name] || 0); summe += soll;
+      if (soll !== z) abw[`Kopf: ${daten.bereich} › ${name}`] = `Unterleiste ${z}, Schublade ${soll}`;
+    }
+    if (summe !== daten.pille) abw[`Kopf: ${daten.bereich}`] = `Pille ${daten.pille}, Summe der Schublade ${summe}`;
+  }
+  return abw;
+}
 
 async function bild(page, rolle, id) {
   if (!BILDER) return;
@@ -492,6 +551,7 @@ async function rolleErfassen(browser, name, token, viewport, ziele, optionen) {
       }
     }
     if (!optionen.telefon) ergebnis.navigation = { ...ergebnis.navigation, ...(await zaehlerLesen(page)) };
+    if (!optionen.telefon && !optionen.detail) ergebnis.navigation = { ...ergebnis.navigation, ...(await kopfZaehlerPruefen(page)) };
     if (!OHNE_BLAETTER) {
       /* Zweite Phase, auf frisch geladener Seite: jeder Schreibzugriff auf
          die Schnittstelle (PUT, POST, DELETE) wird abgewiesen. */
@@ -529,6 +589,7 @@ async function rolleErfassen(browser, name, token, viewport, ziele, optionen) {
 
 async function erzeugen() {
   const ans = ansichtenLesen();
+  BEREICH_VON = ans.bereichVon;
   const raum = `vergleich-${Date.now().toString(36)}`;
   const browser = await chromium.launch({ args: ["--force-color-profile=srgb", "--font-render-hinting=none"] });
   const alle = {};
@@ -665,12 +726,35 @@ function vergleichen(basis, aktuell) {
   return { anzahl, geprueft, ausgabe };
 }
 
+/* Textzeichen, die als Symbol dienten und durch Icons ersetzt wurden. Mit
+   --glyphen fallen sie auf beiden Seiten weg (Text, Knopfbeschriftung,
+   Blattschlüssel), damit nur der Rest als Unterschied erscheint. */
+const GLYPHEN_RE = /\uFE0E|[\u2315\u2709\u2630\u23FB\u25C9\u25A4\u270E\u25CC\u25E7\u25C8\u2211\u271A\u203A\u2039\u25F7\u26A0\u21C4\u25CE\u03A3\u25B8\u25BE\u25CD\u26A1]/g;
+const glyphenWeg = (t) => t.replace(GLYPHEN_RE, "").replace(/\s+/g, " ").trim();
+function ohneGlyphen(stand) {
+  const neu = JSON.parse(JSON.stringify(stand));
+  const tabelle = (o) => { const r = {};
+    for (const [k, n] of Object.entries(o || {})) { const g = glyphenWeg(k); if (g) r[g] = (r[g] || 0) + n; }
+    return Object.fromEntries(Object.entries(r).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))); };
+  const eintrag = (e) => (e.nicht_erreichbar ? e : { ...e, text: tabelle(e.text), knoepfe: tabelle(e.knoepfe),
+    felder: tabelle(e.felder), kopf: tabelle(e.kopf) });
+  for (const r of Object.values(neu.rollen)) {
+    for (const feld of ["ansichten", "blaetter"]) {
+      const o = {};
+      for (const [id, e] of Object.entries(r[feld] || {})) o[glyphenWeg(id)] = eintrag(e);
+      r[feld] = o;
+    }
+  }
+  return neu;
+}
+
 /* ==========================================================================
    Los
    ========================================================================== */
 const t0 = Date.now();
 try {
-  const erg = await erzeugen();
+  const erg = VERGLEICHE ? JSON.parse(readFileSync(VERGLEICHE, "utf8")) : await erzeugen();
+  if (ERGEBNIS) writeFileSync(ERGEBNIS, JSON.stringify(erg, null, 1) + "\n");
   const json = JSON.stringify(erg, null, 1);
   if (Object.keys(maskiert).length)
     console.log("Maskiert:", Object.entries(maskiert).map(([k, v]) => `${k} ×${v}`).join(", "));
@@ -690,8 +774,8 @@ try {
     process.exit(0);
   }
   if (!existsSync(BASISDATEI)) { console.error(`Keine Basis: ${BASISDATEI} — erst mit --basis erzeugen.`); process.exit(2); }
-  const basis = JSON.parse(readFileSync(BASISDATEI, "utf8"));
-  const v = vergleichen(basis, erg);
+  let basis = JSON.parse(readFileSync(BASISDATEI, "utf8"));
+  const v = GLYPHEN ? vergleichen(ohneGlyphen(basis), ohneGlyphen(erg)) : vergleichen(basis, erg);
   console.log(v.ausgabe.join("\n"));
   console.log(`\n${v.geprueft} Ansichten/Blätter geprüft, ${v.anzahl} mit Unterschieden (${((Date.now() - t0) / 1000).toFixed(0)} s).`);
   process.exit(v.anzahl ? 1 : 0);

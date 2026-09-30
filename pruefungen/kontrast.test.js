@@ -15,7 +15,7 @@
    allein über Farbe getroffen wird. Das steht in der Zugänglichkeitsprüfung.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
-import { C_HELL, C_DUNKEL } from "../src/farben.js";
+import { C_HELL, C_DUNKEL, AVATAR_HELL, AVATAR_DUNKEL } from "../src/farben.js";
 
 /* --- Die Rechnung nach WCAG 2.1, Abschnitt „relative luminance" --------- */
 const kanal = (v) => {
@@ -69,6 +69,15 @@ const paare = (P) => [
      Umschalter. Reine Trennlinien (line, lineSoft, lineStark) sind davon
      ausgenommen: Sie tragen keine Bedeutung, die verloren ginge. */
   ["steuer", "flaeche", 3], ["steuer", "bg", 3], ["steuer", "flaecheStill", 3],
+  /* Leitstand: Text auf Flächen, die der neue Stil zusätzlich benutzt */
+  ["aus", "flaeche", 4.5],                       // Kennzahl-Titel, Einheit, Legende auf Karten
+  ["aufAkzent", "accent", 4.5],                  // Knopf mit gefülltem Akzent
+  ["aufAkzent", "ok", 4.5],                      // .btn-ok
+  ["accent", "accentLight", 4.5],                // aktive Bereichs-Pille, aktives Seg, Pille „accent"
+  ["text", "accentLight", 4.5],
+  ["violet", "flaecheStill", 4.5],               // Pille „violet"
+  ["accentLight", "accentDeep", 4.5],            // Konto-Knopf in der Kopfzeile
+  ["danger", "dangerLight", 4.5],                // .btn-danger, Zähler-Warnung
 ];
 
 for (const [name, P] of [["Hell", C_HELL], ["Dunkel", C_DUNKEL]]) {
@@ -122,4 +131,106 @@ describe("Beide Erscheinungsbilder", () => {
       }
     }
   });
+});
+
+/* --------------------------------------------------------------------------
+   Rechnen mit halbtransparenten Farben (rgba) über einem Grund
+   -------------------------------------------------------------------------- */
+const rgb = (hex) => {
+  const h = String(hex).replace("#", "");
+  const voll = h.length === 3 ? h.split("").map((x) => x + x).join("") : h;
+  return [0, 2, 4].map((i) => parseInt(voll.slice(i, i + 2), 16));
+};
+const rgba = (t) => {
+  const m = String(t).match(/^rgba\((\d+),(\d+),(\d+),(\.?\d+)\)$/);
+  if (!m) throw new Error(`Kein rgba: ${t}`);
+  return { farbe: [+m[1], +m[2], +m[3]], alpha: parseFloat(m[4]) };
+};
+const ueber = (grund, deck) => {
+  const { farbe, alpha } = rgba(deck);
+  return grund.map((g, i) => Math.round(farbe[i] * alpha + g * (1 - alpha)));
+};
+const hexVon = (c) => "#" + c.map((x) => x.toString(16).padStart(2, "0")).join("");
+
+/* --------------------------------------------------------------------------
+   VERLAUF
+
+   Titel und Untertitel jeder Ansicht liegen auf dem Farbverlauf. Er ist
+   deshalb nur so kräftig, dass `text` und `dim` darauf lesbar bleiben;
+   die leise Textfarbe `aus` gehört nie auf den Verlauf (Beleg unten).
+
+   Der Verlauf ist ein Radialverlauf: An jedem Punkt liegt höchstens eine
+   Stufe (A, dann B, dann durchsichtig) über dem Grund, dazu am rechten Rand
+   ein zweiter, kleinerer Fleck (C). Geprüft wird jede Stufe für sich und
+   der Stapel A+B als strenge Obergrenze — er kommt in der Wirklichkeit nicht
+   vor, weil die Stufen nacheinander stehen, nicht übereinander.
+
+   Der Grund ist `bg` (so liegt der Verlauf in der Anwendung), im
+   Hellmodus zusätzlich `flaecheStill`, auf dem die Entwürfe gezeichnet sind.
+   -------------------------------------------------------------------------- */
+describe("Verlauf", () => {
+  const grenzen = { Hell: 0.40, Dunkel: 0.24 };
+  for (const [name, P, gruende] of [["Hell", C_HELL, ["bg", "flaecheStill"]], ["Dunkel", C_DUNKEL, ["bg"]]]) {
+    describe(name, () => {
+      it("bleibt unter der Deckkraft-Grenze", () => {
+        for (const k of ["verlaufA", "verlaufB", "verlaufC"]) {
+          expect(rgba(P[k]).alpha, `${name}.${k}`).toBeLessThanOrEqual(grenzen[name]);
+        }
+      });
+      for (const grund of gruende) {
+        const g = rgb(P[grund]);
+        const stufen = {
+          "A": ueber(g, P.verlaufA),
+          "B": ueber(g, P.verlaufB),
+          "C": ueber(g, P.verlaufC),
+          "A+B (Obergrenze)": ueber(ueber(g, P.verlaufA), P.verlaufB),
+        };
+        for (const [stufe, farbe] of Object.entries(stufen)) {
+          for (const text of ["text", "dim"]) {
+            it(`${text} auf ${stufe} über ${grund} erreicht 4,5:1`, () => {
+              const v = verhaeltnis(P[text], hexVon(farbe));
+              expect(v, `${P[text]} auf ${hexVon(farbe)} = ${v}:1`).toBeGreaterThanOrEqual(4.5);
+            });
+          }
+        }
+      }
+      it("die leise Textfarbe `aus` trägt auf dem Verlauf nicht — deshalb steht sie dort nie", () => {
+        const farbe = hexVon(ueber(rgb(P.bg), P.verlaufA));
+        expect(verhaeltnis(P.aus, farbe)).toBeLessThan(4.5);
+      });
+    });
+  }
+});
+
+/* --------------------------------------------------------------------------
+   Weiße Schrift auf den Dienstfarben (Master-Prompt D.1). Die Dienstarten
+   erscheinen als Tönung mit Linie; wo eine volle Fläche vorkommt (Legende,
+   Zeitachse), trägt die weiße Schrift nur auf diesen zehn.
+   -------------------------------------------------------------------------- */
+describe("Dienstfarben", () => {
+  const TRAEGT = { "#017070": 5.91, "#316C81": 5.85, "#023441": 13.37, "#955410": 5.91, "#2E6B4F": 6.30,
+    "#B3261E": 6.54, "#4C4668": 8.81, "#0369A1": 5.93, "#35506B": 8.36, "#8A5A00": 5.93 };
+  for (const [farbe, soll] of Object.entries(TRAEGT)) {
+    it(`Weiß auf ${farbe} erreicht ${soll}:1`, () => {
+      expect(verhaeltnis("#FFFFFF", farbe)).toBeGreaterThanOrEqual(4.5);
+      expect(Math.abs(verhaeltnis("#FFFFFF", farbe) - soll)).toBeLessThan(0.05);
+    });
+  }
+  it("Weiß auf Freistellung-Grau trägt nicht (3,39:1) — dort steht die Tönung, nie die volle Fläche", () => {
+    expect(verhaeltnis("#FFFFFF", "#878C93")).toBeLessThan(4.5);
+  });
+});
+
+/* --------------------------------------------------------------------------
+   Namenszeichen: acht Paare je Erscheinungsbild
+   -------------------------------------------------------------------------- */
+describe("Avatar-Töne", () => {
+  for (const [name, paare] of [["Hell", AVATAR_HELL], ["Dunkel", AVATAR_DUNKEL]]) {
+    it(`${name}: acht Paare`, () => expect(paare).toHaveLength(8));
+    paare.forEach(([flaeche, schrift], i) => {
+      it(`${name} ${i + 1}: ${schrift} auf ${flaeche} erreicht 4,5:1`, () => {
+        expect(verhaeltnis(schrift, flaeche)).toBeGreaterThanOrEqual(4.5);
+      });
+    });
+  }
 });
