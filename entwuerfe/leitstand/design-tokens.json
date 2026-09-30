@@ -1,0 +1,487 @@
+{
+  "$beschreibung": "CENTRIC – Designkonzept „Leitstand-Stil“. Farben aus src/farben.js (Stand Repo), Ergänzungen als 'vorgeschlagen' markiert. Ausführliche Begründung: DESIGN.md.",
+  "stand": "2026-09-30",
+  "farbe": {
+    "hell": {
+      "bg": "#D9E4E8",
+      "flaeche": "#FFFFFF",
+      "flaecheStill": "#E7EEF1",
+      "sidebar": "#071317",
+      "sidebarTief": "#001619",
+      "text": "#071317",
+      "dim": "#3D4E55",
+      "dimmer": "#3D4E55",
+      "aus": "#5B6B72",
+      "line": "#BCCDD4",
+      "lineSoft": "#CBDAE0",
+      "lineStark": "#9DB3BC",
+      "steuer": "#6E858E",
+      "aufAkzent": "#FFFFFF",
+      "accent": "#017070",
+      "accentHi": "#028E8E",
+      "accentOrig": "#02A0A0",
+      "accentDeep": "#023441",
+      "accentLight": "#DFF0F0",
+      "accentGlanz": "#50E8F4",
+      "marke": "#02A0A0",
+      "ok": "#0E6B45",
+      "warn": "#955410",
+      "danger": "#4E0401",
+      "violet": "#316C81",
+      "okLight": "#DFEFE7",
+      "warnLight": "#FFE0C0",
+      "dangerLight": "#F6DEDC",
+      "verlaufA": "rgba(2,160,160,.34)",
+      "verlaufB": "rgba(80,232,244,.16)",
+      "verlaufC": "rgba(2,52,65,.14)",
+      "kopfGrund": "rgba(255,255,255,.86)",
+      "ueberlagerung": "rgba(7,19,23,.36)"
+    },
+    "dunkel": {
+      "bg": "#0B1418",
+      "flaeche": "#121E23",
+      "flaecheStill": "#18262C",
+      "sidebar": "#070F12",
+      "sidebarTief": "#040A0C",
+      "text": "#E8EFF1",
+      "dim": "#9FB2B9",
+      "dimmer": "#9FB2B9",
+      "aus": "#7A8D95",
+      "line": "#243238",
+      "lineSoft": "#1B282E",
+      "lineStark": "#33454C",
+      "steuer": "#5C7681",
+      "aufAkzent": "#071317",
+      "accent": "#3FBFBF",
+      "accentHi": "#5FD6D6",
+      "accentOrig": "#5FD6D6",
+      "accentDeep": "#7FE0E0",
+      "accentGlanz": "#50E8F4",
+      "marke": "#02A0A0",
+      "accentLight": "#13292C",
+      "ok": "#4ADE9B",
+      "warn": "#F0B060",
+      "danger": "#F87A70",
+      "violet": "#7FC4DC",
+      "okLight": "#0F2620",
+      "warnLight": "#2A2013",
+      "dangerLight": "#2A1614",
+      "verlaufA": "rgba(63,191,191,.22)",
+      "verlaufB": "rgba(80,232,244,.08)",
+      "verlaufC": "rgba(127,224,224,.10)",
+      "kopfGrund": "rgba(18,30,35,.86)",
+      "ueberlagerung": "rgba(0,0,0,.56)"
+    },
+    "vorgeschlagen": {
+      "hell": {
+        "verlaufA": "rgba(2,160,160,.34)",
+        "verlaufB": "rgba(80,232,244,.16)",
+        "verlaufC": "rgba(2,52,65,.14)",
+        "kopfGrund": "rgba(255,255,255,.86)",
+        "ueberlagerung": "rgba(7,19,23,.36)"
+      },
+      "dunkel": {
+        "verlaufA": "rgba(63,191,191,.22)",
+        "verlaufB": "rgba(80,232,244,.10)",
+        "verlaufC": "rgba(127,224,224,.10)",
+        "kopfGrund": "rgba(18,30,35,.86)",
+        "ueberlagerung": "rgba(0,0,0,.56)"
+      }
+    },
+    "dienstarten": {
+      "frueh": "#017070",
+      "spaet": "#316C81",
+      "nacht": "#023441",
+      "bereitschaft": "#4C4668",
+      "rufbereitschaft": "#955410",
+      "urlaub": "#2E6B4F",
+      "krank": "#B3261E",
+      "schulung": "#35506B",
+      "ausgleich": "#0369A1",
+      "sonstiges": "#8A5A00",
+      "freistellung": "#878C93"
+    },
+    "dienstartenDarstellung": "Tönung (Farbe + Alpha 12/1F hex) mit 2,5 px Akzentlinie links, Kürzel als Text; nie volle Farbfläche. Weiße Schrift auf Vollfarbe nur wo ≥ 4,5:1 (nicht auf Freistellung #878C93 = 3,39:1).",
+    "regeln": {
+      "textAufVerlauf": [
+        "text",
+        "dim"
+      ],
+      "nieAufVerlauf": [
+        "aus"
+      ],
+      "verlaufMaxDeckkraft": {
+        "hell": 0.4,
+        "dunkel": 0.24
+      },
+      "kontrastMin": {
+        "text": 4.5,
+        "grosserText": 3,
+        "bedienelement": 3
+      }
+    }
+  },
+  "typografie": {
+    "familie": "Inter (lokal, variabel 100–900, @fontsource-variable/inter) – nie extern laden",
+    "ziffern": "tabellarisch",
+    "stufen": {
+      "titel": {
+        "px": 38,
+        "gewicht": 300,
+        "laufweite": "-0.045em",
+        "zeilenhoehe": 1.08
+      },
+      "titelMobil": {
+        "px": 27,
+        "gewicht": 300,
+        "laufweite": "-0.035em"
+      },
+      "untertitel": {
+        "px": 15.5,
+        "gewicht": 400,
+        "farbe": "dim",
+        "maxBreitePx": 680
+      },
+      "abschnitt": {
+        "px": 19,
+        "gewicht": 640,
+        "laufweite": "-0.02em"
+      },
+      "kartentitel": {
+        "px": "14–15.5",
+        "gewicht": "600–620"
+      },
+      "kennzahl": {
+        "px": "30–32",
+        "gewicht": "500–650",
+        "laufweite": "-0.03em"
+      },
+      "fliesstext": {
+        "px": 14.5,
+        "kompakt": 13.5,
+        "feldmodus": 16
+      },
+      "tabellenkopf": {
+        "px": 11.5,
+        "gewicht": 600,
+        "laufweite": "+0.04em",
+        "versal": true
+      },
+      "rubrik": {
+        "px": 11,
+        "gewicht": 700,
+        "laufweite": "+0.10em",
+        "versal": true
+      },
+      "pille": {
+        "px": "11–12",
+        "gewicht": 600
+      },
+      "kleintext": {
+        "minPx": 11
+      }
+    },
+    "regel": "Gewicht 300 nur ab 27 px."
+  },
+  "form": {
+    "radius": {
+      "klein": 12,
+      "karte": 18,
+      "pille": 999,
+      "blattMobilOben": 26,
+      "planzelle": 8
+    },
+    "hoehen": {
+      "kopfzeile": 64,
+      "unterleiste": 48,
+      "bereichsPille": 40,
+      "knopf": 40,
+      "knopfKlein": 34,
+      "knopfMobil": 46,
+      "eingabe": 40,
+      "tabellenzeile": {
+        "komfortabel": 48,
+        "kompakt": 36
+      }
+    },
+    "tippflaeche": {
+      "touchMin": 44,
+      "rechnerMin": 40
+    },
+    "raster": {
+      "spalten": 12,
+      "luecke": 16,
+      "inhaltMaxBreite": 1720,
+      "seitenrand": {
+        "komfortabel": 32,
+        "kompakt": 20
+      }
+    },
+    "umbrueche": [
+      1280,
+      1024,
+      900,
+      820,
+      560
+    ]
+  },
+  "ebenen": {
+    "E0": "Seitengrund bg + Verlaufsschicht",
+    "E1": "eingelassene Fläche flaecheStill, optional Rand lineSoft",
+    "E2": {
+      "fläche": "flaeche",
+      "rand": "1px line",
+      "schatten": "0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05)",
+      "dunkel": "0 1px 2px rgba(0,0,0,.30)"
+    },
+    "E3": "Hover/gewählt: Rand lineStark/steuer, Schatten --schatten-hoch",
+    "E4": "Kopfzeile/Unterleiste sticky: kopfGrund + backdrop-filter saturate(160%) blur(12px), unten 1px line",
+    "E5": {
+      "schatten": "0 20px 48px rgba(7,19,23,.18)",
+      "dunkel": "0 20px 48px rgba(0,0,0,.5)"
+    },
+    "E6": {
+      "schatten": "0 12px 32px rgba(7,19,23,.28)"
+    },
+    "zIndex": {
+      "verlauf": 0,
+      "inhalt": 1,
+      "unterleiste": 29,
+      "kopfzeile": 30,
+      "drawer": 40,
+      "blattRuecken": 90,
+      "toast": 95,
+      "sprungmarke": 100
+    }
+  },
+  "verlauf": {
+    "ort": "eine Schicht hinter der Kopfzone, .inhalt::before, Höhe 440 px, pointer-events none",
+    "css": "radial-gradient(ellipse 46% 60% at 46% 0%, var(--c-verlauf-a), var(--c-verlauf-b) 48%, transparent 76%), radial-gradient(ellipse 28% 44% at 82% 14%, var(--c-verlauf-c), transparent 74%)",
+    "verboten": [
+      "filter: blur",
+      "Animation",
+      "Verlauf im Feldmodus",
+      "Verlauf im Druck"
+    ]
+  },
+  "bewegung": {
+    "hoverMs": "140–160",
+    "blattMs": 160,
+    "toastMs": 200,
+    "seitenuebergaenge": false,
+    "reducedMotion": "respektieren"
+  },
+  "navigation": {
+    "desktop": "Kopfzeile 64 px: Bildmarke + CENTRIC + Betriebsname; sechs beschriftete Bereichs-Pillen mit Icon und Zähler; rechts Suche (Strg K), Rückgängig, Postfach, Ansicht-Menü, Avatar-Menü. Darunter Unterleiste 48 px mit den Ansichten des aktiven Bereichs (Unterstrich 2 px = aktiv).",
+    "bis1024": "Seitenleiste als Drawer (bestehender Code), Kopfzeile mit Menüknopf",
+    "telefonMitarbeiter": "eigene Schale, 4 Tabs: Heute, Mein Plan, Anliegen, Mehr; Tableiste 72 px + safe-area",
+    "bereiche": [
+      {
+        "id": "heute",
+        "label": "Im Dienst",
+        "icon": "raster",
+        "ansichten": [
+          "start",
+          "ablauf",
+          "handbuch",
+          "hilfe",
+          "uebergabe",
+          "meine",
+          "lage",
+          "zeitachse"
+        ]
+      },
+      {
+        "id": "planung",
+        "label": "Planen",
+        "icon": "kalender",
+        "ansichten": [
+          "plan",
+          "einsatz",
+          "jahr",
+          "bereitschaft",
+          "selbstplan",
+          "sonder",
+          "folge"
+        ]
+      },
+      {
+        "id": "anliegen",
+        "label": "Zu entscheiden",
+        "icon": "pruefliste",
+        "ansichten": [
+          "notrufe",
+          "offene",
+          "antraege",
+          "boerse",
+          "wuensche",
+          "aushang",
+          "buch"
+        ]
+      },
+      {
+        "id": "team",
+        "label": "Wer mitfährt",
+        "icon": "personen",
+        "ansichten": [
+          "personal",
+          "quals",
+          "nachweise",
+          "kompetenzen",
+          "einarbeitung",
+          "verteilung",
+          "mittel"
+        ]
+      },
+      {
+        "id": "auswertung",
+        "label": "Nachsehen",
+        "icon": "saeulen",
+        "ansichten": [
+          "pruef",
+          "untergrenzen",
+          "lenkzeiten",
+          "belastung",
+          "belastbarkeit",
+          "planstand",
+          "nachweis",
+          "abrechnung"
+        ]
+      },
+      {
+        "id": "verwaltung",
+        "label": "Verwaltung",
+        "icon": "zahnrad",
+        "ansichten": [
+          "betrieb",
+          "dienste",
+          "einstellungen",
+          "mitnahme",
+          "datenschutz",
+          "rechtliches"
+        ]
+      }
+    ]
+  },
+  "icons": {
+    "stil": "24er Raster, Strich 1.7, runde Enden, keine Füllung außer Punkten, currentColor, aria-hidden; Icon-Knöpfe mit aria-label",
+    "svgInhalt": {
+      "raster": "<rect x=\"3\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"1.6\"><rect x=\"13.5\" y=\"3\" width=\"7.5\" height=\"7.5\" rx=\"1.6\"><rect x=\"3\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"1.6\"><rect x=\"13.5\" y=\"13.5\" width=\"7.5\" height=\"7.5\" rx=\"1.6\">",
+      "kalender": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2.4\"><path d=\"M8 3v4M16 3v4M3 10.5h18\">",
+      "pruefliste": "<path d=\"M9 4.5h6v2.6H9z\"><path d=\"M7.5 5.8H5.2v15.1h13.6V5.8H16.5\"><path d=\"m9.2 13.4 2.1 2.1 4.2-4.3\">",
+      "personen": "<circle cx=\"9.2\" cy=\"8.4\" r=\"3.3\"><path d=\"M3.2 19.8c0-3.3 2.7-5.2 6-5.2s6 1.9 6 5.2\"><path d=\"M16.2 6.4a3.2 3.2 0 0 1 0 7.5\"><path d=\"M17.8 15.6c2 .7 3.2 2.1 3.2 4.2\">",
+      "saeulen": "<path d=\"M3 20.5h18\"><path d=\"M6 20V11M11 20V4.5M16 20v-6.5M20.5 20v-10\">",
+      "zahnrad": "<circle cx=\"12\" cy=\"12\" r=\"3.2\"><path d=\"M12 2.6v2.3M12 19.1v2.3M21.4 12h-2.3M4.9 12H2.6M18.6 5.4 17 7M7 17l-1.6 1.6M18.6 18.6 17 17M7 7 5.4 5.4\">",
+      "suche": "<circle cx=\"11\" cy=\"11\" r=\"6.6\"><path d=\"m16 16 4.6 4.6\">",
+      "plus": "<path d=\"M12 5.2v13.6M5.2 12h13.6\">",
+      "haken": "<path d=\"m4.6 12.4 4.8 4.8L19.4 6.6\">",
+      "kreis-haken": "<circle cx=\"12\" cy=\"12\" r=\"8.6\"><path d=\"m8.4 12.2 2.4 2.4 4.8-5\">",
+      "kreis-leer": "<circle cx=\"12\" cy=\"12\" r=\"8.6\">",
+      "pfeil-rechts": "<path d=\"M5 12h13M13 7l5 5-5 5\">",
+      "chevron-links": "<path d=\"m14.5 6-6 6 6 6\">",
+      "chevron-rechts": "<path d=\"m9.5 6 6 6-6 6\">",
+      "chevron-unten": "<path d=\"m6 9.5 6 6 6-6\">",
+      "mehr": "<circle cx=\"5.5\" cy=\"12\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"12\" cy=\"12\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"18.5\" cy=\"12\" r=\"1.6\" fill=\"currentColor\" stroke=\"none\">",
+      "warnung": "<path d=\"M12 4.2 2.8 19.8h18.4z\"><path d=\"M12 10.2v4M12 17.2v.4\">",
+      "info": "<circle cx=\"12\" cy=\"12\" r=\"8.6\"><path d=\"M12 11v5.2M12 7.8v.4\">",
+      "schloss": "<rect x=\"4.5\" y=\"10.5\" width=\"15\" height=\"9.5\" rx=\"2\"><path d=\"M8 10.5V8a4 4 0 0 1 8 0v2.5\">",
+      "laden": "<path d=\"M12 3.6a8.4 8.4 0 1 0 8.4 8.4\">",
+      "stift": "<path d=\"M5 20.2h14\"><path d=\"M14.2 4.4 18 8.2 8.6 17.6H4.8v-3.8z\">",
+      "tausch": "<path d=\"M4 8h15M15.5 4.5 19 8l-3.5 3.5\"><path d=\"M20 16H5M8.5 12.5 5 16l3.5 3.5\">",
+      "glocke": "<path d=\"M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z\"><path d=\"M10 21h4\">",
+      "sonne": "<circle cx=\"12\" cy=\"12\" r=\"4\"><path d=\"M12 2.4v2.2M12 19.4v2.2M21.6 12h-2.2M4.6 12H2.4M18.8 5.2 17.2 6.8M6.8 17.2l-1.6 1.6M18.8 18.8l-1.6-1.6M6.8 6.8 5.2 5.2\">",
+      "mond": "<path d=\"M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z\">",
+      "heute": "<rect x=\"3\" y=\"5\" width=\"18\" height=\"16\" rx=\"2.4\"><path d=\"M8 3v4M16 3v4M3 10.5h18\"><circle cx=\"12\" cy=\"15.5\" r=\"1.5\" fill=\"currentColor\" stroke=\"none\">",
+      "brief": "<rect x=\"3\" y=\"5.5\" width=\"18\" height=\"13\" rx=\"2.4\"><path d=\"m3.8 7.5 8.2 6 8.2-6\">",
+      "abmelden": "<path d=\"M9.5 4.5H6A1.5 1.5 0 0 0 4.5 6v12A1.5 1.5 0 0 0 6 19.5h3.5\"><path d=\"m14 8 4 4-4 4\"><path d=\"M18 12H9.5\">",
+      "menue": "<path d=\"M4 7h16M4 12h16M4 17h16\">",
+      "filter": "<path d=\"M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2z\">",
+      "uhr": "<circle cx=\"12\" cy=\"12\" r=\"8.6\"><path d=\"M12 7.2V12l3.2 2\">",
+      "person": "<circle cx=\"12\" cy=\"8.2\" r=\"3.7\"><path d=\"M4.8 20c0-3.6 3.2-5.8 7.2-5.8s7.2 2.2 7.2 5.8\">",
+      "griff": "<circle cx=\"9\" cy=\"6\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"15\" cy=\"6\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"9\" cy=\"12\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"15\" cy=\"12\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"9\" cy=\"18\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"15\" cy=\"18\" r=\"1.4\" fill=\"currentColor\" stroke=\"none\">",
+      "notruf": "<path d=\"M6.5 18.5v-5.2a5.5 5.5 0 0 1 11 0v5.2\"><path d=\"M4 18.5h16\"><path d=\"M12 3.2v1.8\"><path d=\"M4.6 6.6l1.3 1.3\"><path d=\"M19.4 6.6l-1.3 1.3\"><path d=\"M10 21h4\">",
+      "fahrzeug": "<path d=\"M4 17v-4.6l2-5.2h12l2 5.2V17z\"><path d=\"M4 12.4h16\"><path d=\"M7 17v2M17 17v2\"><circle cx=\"7.6\" cy=\"14.8\" r=\"1\" fill=\"currentColor\" stroke=\"none\"><circle cx=\"16.4\" cy=\"14.8\" r=\"1\" fill=\"currentColor\" stroke=\"none\">",
+      "schluessel": "<circle cx=\"8\" cy=\"15\" r=\"3.8\"><path d=\"M10.7 12.3 19.5 3.5\"><path d=\"M16 7l2.5 2.5\"><path d=\"M13.5 9.5l1.8 1.8\">",
+      "buch": "<path d=\"M5 5.5A1.5 1.5 0 0 1 6.5 4H19v13.5H6.5A1.5 1.5 0 0 0 5 19z\"><path d=\"M5 19a1.5 1.5 0 0 0 1.5 1.5H19\"><path d=\"M9 8.5h6.5\">",
+      "rettungsring": "<circle cx=\"12\" cy=\"12\" r=\"8.4\"><circle cx=\"12\" cy=\"12\" r=\"3.6\"><path d=\"M6 6l3.5 3.5M18 6l-3.5 3.5M6 18l3.5-3.5M18 18l-3.5-3.5\">",
+      "schild": "<path d=\"M12 3.4 19.5 6v5.6c0 4.4-3.1 7.6-7.5 9-4.4-1.4-7.5-4.6-7.5-9V6z\"><path d=\"m9 12 2.2 2.2 4-4.2\">",
+      "nadel": "<path d=\"M12 21s6.5-5.6 6.5-11a6.5 6.5 0 0 0-13 0C5.5 15.4 12 21 12 21z\"><circle cx=\"12\" cy=\"10\" r=\"2.3\">",
+      "stern": "<path d=\"M12 3.6l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 17l-5.2 2.8 1-5.9L3.5 9.8l5.9-.8z\">",
+      "x": "<path d=\"M6 6l12 12M18 6 6 18\">"
+    }
+  },
+  "komponenten": {
+    "karte": "weiß, Rand 1px line, Radius 18, Schatten E2",
+    "knopf": "Pille; primär: accent + aufAkzent; sekundär: flaeche + line; ruhig: transparent; Gefahr: Rand danger",
+    "pille": "Tönung + Volltönung, ohne Rand (ok/warn/danger/accent/neutral)",
+    "segment": "Pillenreihe, aktiv: accentLight + accent-Rand",
+    "kennzahl": "Titel 12 px aus, Wert 30/500, optionale Trendpille 11 px, Fuß 11 px, Diagramm 40 px hoch",
+    "bogen": "196×112, Strichbreite 13, Segmente ok/warn/lineStark, Zahl 30 px in der Mitte",
+    "sparkline": "Linie 1.8 px + Fläche accentLight + betonter Endpunkt; Säulen 3–4 px, Lücke 3; Punktraster 4 px, Lücke 3",
+    "fortschritt": "Höhe 6–8, Radius voll",
+    "checkliste": "erledigt: kreis-haken (ok); offen: kreis-leer mit Kontur steuer",
+    "erklaerkasten": "flaecheStill, info-Icon, Text dim"
+  },
+  "ansichtenKlassen": {
+    "Uebersicht": [
+      "start",
+      "lage",
+      "untergrenzen",
+      "pruef",
+      "belastung",
+      "belastbarkeit",
+      "planstand",
+      "verteilung",
+      "lenkzeiten",
+      "nachweis",
+      "abrechnung"
+    ],
+    "Entscheidung": [
+      "notrufe",
+      "offene",
+      "antraege",
+      "boerse",
+      "wuensche",
+      "buch",
+      "selbstplan"
+    ],
+    "Arbeitsebene": [
+      "plan",
+      "einsatz",
+      "jahr",
+      "zeitachse",
+      "bereitschaft",
+      "sonder",
+      "folge",
+      "personal",
+      "quals",
+      "nachweise",
+      "kompetenzen",
+      "einarbeitung",
+      "mittel",
+      "meine"
+    ],
+    "Formular": [
+      "betrieb",
+      "dienste",
+      "einstellungen",
+      "mitnahme",
+      "datenschutz",
+      "rechtliches",
+      "handbuch",
+      "hilfe",
+      "ablauf",
+      "uebergabe",
+      "aushang"
+    ]
+  },
+  "nichtAendern": [
+    "Rechte und Rollen",
+    "Rechenkerne (regelwerk, ppugv, ppprl, fahrzeit, aufbewahrung, tarifwerke, stufen, preisgestaltung)",
+    "Server (netlify/)",
+    "Datenmodell/Speicher",
+    "Ansichts-IDs und BEREICHE",
+    "CSP und Header",
+    "lokale Schrift"
+  ]
+}
