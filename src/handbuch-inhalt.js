@@ -242,7 +242,7 @@ export const HANDBUCH = [
           "Ab dann löst jede Änderung eine Mitteilung an die Betroffenen aus.",
           "Der Planstandvergleich zeigt, was sich seit der Freigabe geändert hat.",
         ],
-        pruefen: "In der Kopfzeile steht „Freigegeben\" mit Datum und Name.",
+        pruefen: "Unter dem Titel des Monatsplans steht „Freigegeben\" mit Datum und Name.",
         merke: "Vor der Freigabe ist alles Entwurf und niemand wird benachrichtigt. Danach zählt jede Änderung in die Planungssicherheit.",
       },
     ],
