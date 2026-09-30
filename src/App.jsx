@@ -170,7 +170,9 @@ class Fehlerauffang extends Component {
 
 import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
 import { Icon } from "./gestalt/icons.jsx";
-import { Pille, Trend } from "./gestalt/bausteine.jsx";
+import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
+import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
+  Abschnittskopf, Punkt } from "./gestalt/ansichten.jsx";
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
@@ -8294,89 +8296,135 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
   const kontenHoch = aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
+  const darfBesetzen = darfEinheit(sitz, sitz.person.bereich);
+
+  /* Wer heute eingeteilt ist, nach Einheit. Dieselbe Antwort wie im Plan
+     (personTag), nur nach Einheiten gruppiert; eine Uhrzeit wird nicht
+     unterstellt — „im Dienst" heißt hier: für heute eingeteilt. */
+  const imDienstHeute = useMemo(() => {
+    const je = m.einheiten.map((e) => ({ einheit: e, personen: [] }));
+    for (const p of aktive(m, d0)) {
+      if (p.imSchichtdienst === false) continue;
+      const t = personTag(m, p, d0);
+      if (!t.dienstId || t.abwesenheit) continue;
+      const g = je.find((x) => x.einheit.id === einheitAm(p, d0));
+      if (g) g.personen.push({ person: p, da: map[t.dienstId] });
+    }
+    for (const g of je) g.personen.sort((a, b) => a.person.nachname.localeCompare(b.person.nachname, "de"));
+    return je.filter((g) => g.personen.length);
+  }, [m]);
+  const summeImDienst = imDienstHeute.reduce((a, g) => a + g.personen.length, 0);
 
   return (
     <div>
       <H1 sub={fLang(d0)} right={darfEinheit(sitz, sitz.person.bereich) &&
         <Btn kind="danger" onClick={() => akt.oeffneKrankmeldung(null)}>Krankmeldung erfassen</Btn>}>Lagebild</H1>
-      <Card style={{ marginBottom: 20, overflow: "hidden" }}>
-        <CardHead right={<Btn size="sm" onClick={() => oeffneTag(d0)}>Tag öffnen</Btn>}>Besetzung heute</CardHead>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(215px,1fr))" }}>
-          {m.dienstarten.map((d) => {
-            const b = bes[d.id];
-            const e = m.einheiten.find((x) => einheitDienst(m, x.id, d0) === (d.posten ? d.quelle : d.id));
-            return (
-              <div key={d.id} className={b.diff < 0 || b.qualFehlt ? "row" : ""}
-                {...klickbar(() => (b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0))}
-                style={{ padding: "20px 22px", cursor: "pointer" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <Zelle da={d} size={24} />
-                  <div><div style={{ fontSize: 13.5, fontWeight: 500 }}>{d.name}</div>
-                    <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{d.start}–{d.ende}</div></div>
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                  <span style={{ fontSize: 30, fontWeight: 650, color: b.diff < 0 ? C.danger : C.text, ...NUM }}>{b.anzahl}</span>
-                  <span style={{ fontSize: 14, color: C.dimmer, ...NUM }}>/ {b.soll}</span></div>
-                <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.soll} tone={b.status} /></div>
-                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 9 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
-                {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
-                {(b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich) && (
-                  <div style={{ marginTop: 11 }}>
-                    <Btn size="sm" kind="primary" onClick={(ev) => { if (ev) ev.stopPropagation();
-                      akt.oeffneSchnellbesetzung(d0, d.id); }}>Besetzen oder anfragen</Btn>
-                  </div>)}
-              </div>);
-          })}
-        </div>
-      </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 20, marginBottom: 20 }}>
-        <KpiRow min={150}>
-          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
-          <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
-          <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
-          <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
-          <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
-            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
-        </KpiRow>
-        <Card>
-          <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
-          <div style={{ maxHeight: 300, overflowY: "auto" }}>
-            {kommend.length === 0 && <div style={{ padding: 28, fontSize: 13.5, color: C.ok }}>
-              Keine Befunde. Besetzung, Qualifikationen, Ruhezeiten und Urlaubsgrenzen sind eingehalten.</div>}
-            {kommend.slice(0, 40).map((b, i) => (
-              <div key={b.id + i} className="row"
-                {...klickbar(() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum),
-                  `${fKurz(b.datum)}: ${b.titel}`)}
-                style={{ display: "flex", gap: 12, padding: "12px 22px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <span style={{ width: 4, borderRadius: 2, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: C.dimmer, minWidth: 52, ...NUM }}>{fKurz(b.datum)}</span>
-                <span style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.warn, flex: 1 }}>{b.titel}</span>
-              </div>))}
-          </div>
-        </Card>
+      <Abschnittskopf titel="Besetzung heute"
+        rechts={<Btn size="sm" onClick={() => oeffneTag(d0)}>Tag öffnen</Btn>} />
+      <div className="schichtreihe">
+        {m.dienstarten.map((d) => {
+          const b = bes[d.id];
+          const e = m.einheiten.find((x) => einheitDienst(m, x.id, d0) === (d.posten ? d.quelle : d.id));
+          const luecke = b.diff < 0 || b.qualFehlt;
+          return (
+            <div key={d.id} className={`karte schichtkarte${luecke ? " luecke" : ""}`}
+              {...klickbar(() => (luecke) && darfBesetzen
+                ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0))}>
+              <div className="kopf">
+                <Zelle da={d} size={24} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="name">{d.name}</div>
+                  <div className="zeit" style={NUM}>{d.start}–{d.ende}</div>
+                </div>
+                {b.soll > 0 && (b.diff < 0
+                  ? <Pill size="sm" tone={b.status === "danger" ? "danger" : "warn"}>{Math.abs(b.diff)} offen</Pill>
+                  : <Pill size="sm" tone="ok">vollständig</Pill>)}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 14 }}>
+                <span style={{ fontSize: 32, fontWeight: 450, letterSpacing: "-.035em",
+                  color: b.diff < 0 ? C.danger : C.text, ...NUM }}>{b.anzahl}</span>
+                <span style={{ fontSize: 14, color: C.dim, ...NUM }}>/ {b.soll}</span></div>
+              <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.soll} tone={b.status} /></div>
+              <div style={{ fontSize: 12, color: C.dim, marginTop: 10 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
+              {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
+              {luecke && darfBesetzen && (
+                <div style={{ marginTop: 11 }}>
+                  <Btn size="sm" kind="primary" onClick={(ev) => { if (ev) ev.stopPropagation();
+                    akt.oeffneSchnellbesetzung(d0, d.id); }}>Besetzen oder anfragen</Btn>
+                </div>)}
+            </div>);
+        })}
       </div>
 
-      <Card>
-        <CardHead>Schichtfolge der kommenden zwei Wochen</CardHead>
-        <div style={{ padding: 22, overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse" }}>
-            <thead><tr><th />{woche.map((d) => (
-              <th key={d} style={{ padding: "0 4px 11px", minWidth: 40 }}>
-                <div style={{ fontSize: 10.5, color: feiertag(d, m.bundesland) ? C.danger : C.dimmer }}>{DOW[dow(d)]}</div>
-                <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
-              </th>))}</tr></thead>
-            <tbody>{m.einheiten.map((e) => (
-              <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, display: "inline-block", marginRight: 9 }} />{e.name}</td>
-                {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
-              </tr>))}</tbody>
-          </table>
-        </div>
-      </Card>
+      <Leitraster seiteBreite={380}
+        haupt={<>
+          {imDienstHeute.length > 0 && (
+            <Seitenkarte titel="Heute im Dienst"
+              rechts={<span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{summeImDienst} Personen</span>}>
+              <div className="dienstliste">
+                {imDienstHeute.map((g) => (
+                  <div key={g.einheit.id} className="zeile">
+                    <div className="einheit">
+                      <div className="n">{g.einheit.name}</div>
+                      <div className="s">{g.personen.length} im Dienst</div>
+                    </div>
+                    <div className="chips">
+                      {g.personen.map(({ person: p, da }) => (
+                        <Namenschip key={p.id} title={da ? `${da.name} ${da.start}–${da.ende}` : undefined}
+                          avatar={<Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}
+                          rechts={da ? <span className="kurz">{da.kurz}</span> : null}>
+                          {p.nachname}, {(p.vorname || " ").slice(0, 1)}.</Namenschip>))}
+                    </div>
+                  </div>))}
+              </div>
+            </Seitenkarte>)}
+
+          <Card>
+            <CardHead>Schichtfolge der kommenden zwei Wochen</CardHead>
+            <div style={{ padding: 22, overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse" }}>
+                <thead><tr><th />{woche.map((d) => (
+                  <th key={d} style={{ padding: "0 4px 11px", minWidth: 40 }}>
+                    <div style={{ fontSize: 10.5, color: feiertag(d, m.bundesland) ? C.danger : C.dim }}>{DOW[dow(d)]}</div>
+                    <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
+                  </th>))}</tr></thead>
+                <tbody>{m.einheiten.map((e) => (
+                  <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, display: "inline-block", marginRight: 9 }} />{e.name}</td>
+                    {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
+                      <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          </Card>
+        </>}
+        seite={
+          <Seitenkarte titel="Nächste 14 Tage"
+            rechts={<Pill size="sm" tone={kritisch ? "danger" : kommend.length ? "warn" : "ok"}>{kommend.length} Befunde</Pill>}
+            className="achtung">
+            <div style={{ maxHeight: 420, overflowY: "auto" }}>
+              {kommend.length === 0 && <div style={{ padding: "4px 0 8px", fontSize: 13.5, color: C.ok }}>
+                Keine Befunde. Besetzung, Qualifikationen, Ruhezeiten und Urlaubsgrenzen sind eingehalten.</div>}
+              {kommend.slice(0, 40).map((b, i) => (
+                <div key={b.id + i} className="achtungszeile"
+                  {...klickbar(() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
+                    ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum),
+                    `${fKurz(b.datum)}: ${b.titel}`)}>
+                  <Punkt ton={b.schwere === "danger" ? "danger" : "warn"} />
+                  <span className="t">{b.titel}</span>
+                  <span className="d" style={NUM}>{fKurz(b.datum)}</span>
+                </div>))}
+            </div>
+          </Seitenkarte>} />
+
+      <Kennzahlen style={{ marginTop: 16, marginBottom: 0 }} min={170} kacheln={[
+        { label: "Personalstärke", wert: aktiv.length, ton: "accent", sub: `${m.einheiten.length} ${mehrzahl(m.einheitLabel)}` },
+        { label: "Heute abwesend", wert: abwesend, ton: abwesend > aktiv.length * .2 ? "warn" : "ok" },
+        { label: "Wochenarbeitszeit", wert: n2(sim.wochenstunden), einheit: "h", sub: "aus dem Modell" },
+        { label: "Offene Anträge", wert: offen, ton: offen ? "warn" : "ok" },
+        { label: "Konten über Grenze", wert: kontenHoch, ton: kontenHoch ? "warn" : "ok",
+          sub: `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich` }]} />
     </div>);
 }
 
@@ -10366,19 +10414,6 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
 
-      {/* Nach welchem Stand geurteilt wurde.
-
-          Ein Befund ohne Regelstand ist eine Behauptung. Bei einer Prüfung
-          durch die Aufsicht ist die erste Frage, wonach gerechnet wurde —
-          und die zweite, ob das damals schon so galt. Beides steht hier. */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap",
-        margin: "0 0 18px", fontSize: 12.5, color: C.dim }}>
-        <Pill size="sm">Regelstand {REGELSTAND.version}</Pill>
-        <span>Geprüft nach {REGELSTAND.quellen.slice(0, 4).join(" · ")}
-          {REGELSTAND.quellen.length > 4 ? ` und ${REGELSTAND.quellen.length - 4} weiteren` : ""}.
-          Jede Planänderung wird mit diesem Stand festgehalten.</span>
-      </div>
-
       {/* --- Zeitumstellung ---
           Zwei Tage im Jahr, an denen die gerechneten Stunden von der Uhr
           abweichen. Wer das nicht weiß, sucht den Fehler in der Anwendung. */}
@@ -10446,46 +10481,70 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
               </div>}
         </div>
       </Card>
-      <KpiRow min={200}>
-        <Kpi label="Befunde" value={befunde.length} tone={befunde.length ? "warn" : "ok"} />
-        <Kpi label="Kritisch" value={krit} tone={krit ? "danger" : "ok"} sub="sofort klären" />
-        <Kpi label="Betroffene Tage" value={new Set(befunde.map((b) => b.datum)).size} sub={`von ${dim_(y, mo - 1)}`} />
-      </KpiRow>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "20px 0 16px" }}>
-        {arten.map(([id, l]) => { const n = id === "alle" ? befunde.length : befunde.filter((b) => b.art === id).length;
-          return <Btn key={id} size="sm" kind={f === id ? "primary" : "plain"} onClick={() => setF(id)}>{l}{n > 0 ? ` · ${n}` : ""}</Btn>; })}
-      </div>
-      <Card>
-        {gez.length === 0
-          ? <Leer titel="Keine Befunde" text="Der Monat erfüllt in dieser Kategorie alle hinterlegten Regeln." />
-          : gez.map((b, i) => (
-            <div key={b.id + i} className="row" {...klickbar(() => oeffneTag(b.datum))}
-              style={{ display: "flex", gap: 15, padding: "15px 22px", cursor: "pointer",
-                borderBottom: i < gez.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-              <span style={{ width: 5, borderRadius: 3, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
-              <div style={{ minWidth: 84 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, ...NUM }}>{fKurz(b.datum)}</div>
-                <div style={{ fontSize: 11.5, color: C.dimmer }}>{DOW[dow(b.datum)]}</div></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
-                {(() => {
-                  /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
-                     Meinung der Software; mit ihr ist er eine Vorschrift. */
-                  const q = rechtsquelle(b);
-                  if (!q || !q.norm) return null;
-                  return (
-                    <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5,
-                      display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <span style={{ padding: "1px 7px", borderRadius: 5,
-                        background: q.betrieblich ? "transparent" : C.flaecheStill,
-                        border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
-                        color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
-                      {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
-                    </div>);
-                })()}</div>
-            </div>))}
-      </Card>
+      <Kennzahlen kacheln={[
+        { label: "Befunde", wert: befunde.length, ton: befunde.length ? "warn" : "ok" },
+        { label: "Kritisch", wert: krit, ton: krit ? "danger" : "ok", hervor: krit ? "danger" : undefined, sub: "sofort klären" },
+        { label: "Betroffene Tage", wert: new Set(befunde.map((b) => b.datum)).size, sub: `von ${dim_(y, mo - 1)}` }]} />
+      <Leitraster seiteBreite={340}
+        haupt={<>
+          <div className="seg" role="group" aria-label="Befunde filtern" style={{ flexWrap: "wrap" }}>
+            {arten.map(([id, l]) => { const n = id === "alle" ? befunde.length : befunde.filter((b) => b.art === id).length;
+              return <button key={id} type="button" className={f === id ? "on" : ""} aria-pressed={f === id}
+                onClick={() => setF(id)}>{l}{n > 0 ? ` · ${n}` : ""}</button>; })}
+          </div>
+          <Card>
+            {gez.length === 0
+              ? <Leer titel="Keine Befunde" text="Der Monat erfüllt in dieser Kategorie alle hinterlegten Regeln." />
+              : gez.map((b, i) => (
+                <div key={b.id + i} className="listenzeile klick" {...klickbar(() => oeffneTag(b.datum))}
+                  style={{ alignItems: "flex-start", gap: 15 }}>
+                  <span style={{ paddingTop: 5 }}><Punkt ton={b.schwere === "danger" ? "danger" : "warn"} gross /></span>
+                  <div style={{ minWidth: 84 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, ...NUM }}>{fKurz(b.datum)}</div>
+                    <div style={{ fontSize: 11.5, color: C.dim }}>{DOW[dow(b.datum)]}</div></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
+                    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
+                    {(() => {
+                      /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
+                         Meinung der Software; mit ihr ist er eine Vorschrift. */
+                      const q = rechtsquelle(b);
+                      if (!q || !q.norm) return null;
+                      return (
+                        <div style={{ fontSize: 11.5, color: C.dim, marginTop: 5,
+                          display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <span style={{ padding: "1px 7px", borderRadius: 5,
+                            background: q.betrieblich ? "transparent" : C.flaecheStill,
+                            border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
+                            color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
+                          {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                        </div>);
+                    })()}</div>
+                </div>))}
+          </Card>
+        </>}
+        seite={<>
+          <Seitenkarte titel="Was geprüft wurde">
+            {arten.filter(([id]) => id !== "alle").map(([id, l]) => {
+              const n = befunde.filter((b) => b.art === id).length;
+              const hart = befunde.some((b) => b.art === id && b.schwere === "danger");
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13.5 }}>
+                  <Punkt ton={n ? (hart ? "danger" : "warn") : "ok"} gross />
+                  <span style={{ flex: 1 }}>{l}</span>
+                  <span style={{ fontSize: 12, color: C.dim }}>{n ? `${n} ${n === 1 ? "Befund" : "Befunde"}` : "geprüft"}</span>
+                </div>);
+            })}
+          </Seitenkarte>
+          <Erklaerkasten>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+              <Pill size="sm">Regelstand {REGELSTAND.version}</Pill>
+              <span>Geprüft nach {REGELSTAND.quellen.slice(0, 4).join(" · ")}
+                {REGELSTAND.quellen.length > 4 ? ` und ${REGELSTAND.quellen.length - 4} weiteren` : ""}.
+                Jede Planänderung wird mit diesem Stand festgehalten.</span>
+            </div>
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
@@ -10735,50 +10794,25 @@ function Verteilung({ sitz, ym }) {
           options={[{ id: "90", label: "90 Tage" }, { id: "180", label: "6 Monate" }, { id: "365", label: "12 Monate" }]} />}>
         Belastungsverteilung</H1>
 
-      <KpiRow min={200}>
-        <Kpi label="Planungssicherheit" value={`${100 - sicher.anteil} %`}
-          tone={sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok"}
-          sub={`${sicher.kurzfristig} von ${sicher.gesamt} Änderungen unter ${sicher.grenze} Tagen Vorlauf`} />
-        {spalten.slice(0, 3).map(([f, l]) => (
-          <Kpi key={f} label={`Spannweite ${l}`} value={spanne(f)} tone={spanne(f) > 4 ? "warn" : "ok"}
-            sub={`Mittel ${n1(v.mittel[f])}`} />))}
-      </KpiRow>
+      <Kennzahlen kacheln={[
+        { label: "Planungssicherheit", wert: `${100 - sicher.anteil} %`,
+          ton: sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok",
+          hervor: sicher.anteil > 15 ? (sicher.anteil > 30 ? "danger" : "warn") : undefined,
+          sub: `${sicher.kurzfristig} von ${sicher.gesamt} Änderungen unter ${sicher.grenze} Tagen Vorlauf` },
+        ...spalten.slice(0, 3).map(([fe, l]) => ({ label: `Spannweite ${l}`, wert: spanne(fe),
+          ton: spanne(fe) > 4 ? "warn" : "ok", hervor: spanne(fe) > 4 ? "warn" : undefined,
+          sub: `Mittel ${n1(v.mittel[fe])}` }))]} />
 
       {spanne("weNacht") <= 1 && spanne("feier") <= 1 && (
-        <Card style={{ marginTop: 18, padding: 18, background: C.okLight }}>
-          <div style={{ fontSize: 13.5, color: C.ok, lineHeight: 1.5 }}>
-            Die Belastung ist annähernd gleich verteilt. Das ist die Eigenschaft eines sauberen Rotationsmodells —
-            Ungleichheit entsteht erst durch Abweichungen, Einsprünge und kurzfristige Änderungen. Genau die zeigt
-            diese Ansicht, sobald sie auftreten.
-          </div>
-        </Card>)}
+        <Hinweisband ton="ok">
+          Die Belastung ist annähernd gleich verteilt. Das ist die Eigenschaft eines sauberen Rotationsmodells —
+          Ungleichheit entsteht erst durch Abweichungen, Einsprünge und kurzfristige Änderungen. Genau die zeigt
+          diese Ansicht, sobald sie auftreten.
+        </Hinweisband>)}
 
-      <Card style={{ marginTop: 18 }}>
-        <CardHead right={<Lab>Abweichung vom Mittel</Lab>}>Wochenendnächte je Person</CardHead>
-        <div style={{ padding: "22px 24px 18px", maxHeight: 420, overflowY: "auto" }}>
-          <AbweichungsDiagramm zeilen={v.zeilen.slice(0, 24).map((z) => ({ ...z, abwWeNacht: z.abw.weNacht }))}
-            wert="abwWeNacht" name={(z) => `${z.person.nachname}, ${z.person.vorname}`} />
-        </div>
-      </Card>
-
-      <Card style={{ marginTop: 18, padding: 24 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 28 }}>
-          {spalten.slice(0, 4).map(([f, l]) => (
-            <div key={f}>
-              <Lab style={{ marginBottom: 10 }}>{l}</Lab>
-              <AbweichungsDiagramm wert="abw" name={(z) => z.nm}
-                zeilen={v.zeilen.slice(0, 14).map((z) => ({
-                  nm: `${z.person.nachname}, ${z.person.vorname}`, abw: z.abw[f] }))} />
-            </div>))}
-        </div>
-        <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 18, lineHeight: 1.55 }}>
-          Jeder Punkt ist eine Person. Farbig hervorgehoben sind die Ausreißer — gelb bedeutet
-          überdurchschnittlich belastet, grün unterdurchschnittlich. Häufen sich die Punkte um die
-          Mittellinie, ist die Verteilung in Ordnung.
-        </div>
-      </Card>
-
-      <Card style={{ marginTop: 18, overflowX: "auto" }}>
+      <Leitraster seiteBreite={380}
+        haupt={<>
+      <Card style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 880 }}>
           <thead><tr>
             <th style={{ textAlign: "left", padding: "14px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 200 }}>
@@ -10807,9 +10841,39 @@ function Verteilung({ sitz, ym }) {
             </tr>); })}</tbody>
         </table>
       </Card>
-      <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55, maxWidth: 760 }}>
+      <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
         Die kleine Zahl unter jedem Wert ist die Abweichung vom Mittel der Belegschaft. Hervorgehoben wird ab
         zwei Diensten Unterschied — darunter ist es Zufall, darüber wird es zur Frage.
+      </div>
+          </>}
+        seite={<>
+      <Card>
+        <CardHead right={<Lab>Abweichung vom Mittel</Lab>}>Wochenendnächte je Person</CardHead>
+        <div style={{ padding: "22px 24px 18px", maxHeight: 420, overflowY: "auto" }}>
+          <AbweichungsDiagramm zeilen={v.zeilen.slice(0, 24).map((z) => ({ ...z, abwWeNacht: z.abw.weNacht }))}
+            wert="abwWeNacht" name={(z) => `${z.person.nachname}, ${z.person.vorname}`} />
+        </div>
+      </Card>
+
+        </>} />
+      <div style={{ marginTop: 16 }}>
+      <Card style={{ padding: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 28 }}>
+          {spalten.slice(0, 4).map(([f, l]) => (
+            <div key={f}>
+              <Lab style={{ marginBottom: 10 }}>{l}</Lab>
+              <AbweichungsDiagramm wert="abw" name={(z) => z.nm}
+                zeilen={v.zeilen.slice(0, 14).map((z) => ({
+                  nm: `${z.person.nachname}, ${z.person.vorname}`, abw: z.abw[f] }))} />
+            </div>))}
+        </div>
+        <div style={{ fontSize: 12.5, color: C.dim, marginTop: 18, lineHeight: 1.55 }}>
+          Jeder Punkt ist eine Person. Farbig hervorgehoben sind die Ausreißer — gelb bedeutet
+          überdurchschnittlich belastet, grün unterdurchschnittlich. Häufen sich die Punkte um die
+          Mittellinie, ist die Verteilung in Ordnung.
+        </div>
+      </Card>
+
       </div>
     </div>);
 }
@@ -11057,40 +11121,42 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
   return (
     <div>
       <H1 sub="Was die Lohnstelle braucht — und was das Stundenkonto verlangt. Entgelte bleiben bewusst außerhalb: Löhne gehören in die Lohnabrechnung, nicht in die Dienstplanung."
-        right={<div style={{ display: "flex", gap: 10 }}>
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
           <Seg value={reiter} onChange={setReiter} options={[{ id: "zuschlaege", label: "Zuschläge" },
             { id: "ausgleich", label: "Freizeitausgleich" }, { id: "lohn", label: "Lohnausgabe" }]} />
           <Btn onClick={() => akt.exportZuschlaege(ym)}>Export</Btn></div>}>
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
       {reiter === "zuschlaege" && (<>
-        <KpiRow min={170}>
-          <Kpi label="Nachtstunden" value={n1(summe("nacht"))} unit="h" sub="23 bis 6 Uhr" />
-          <Kpi label="Sonntagsstunden" value={n1(summe("sonntag"))} unit="h" />
-          <Kpi label="Feiertagsstunden" value={n1(summe("feiertag"))} unit="h" />
-          <Kpi label="Samstagsstunden" value={n1(summe("samstag"))} unit="h" />
-        </KpiRow>
+        <Kennzahlen min={170} kacheln={[
+          { label: "Nachtstunden", wert: n1(summe("nacht")), einheit: "h", ton: "accent", sub: "23 bis 6 Uhr" },
+          { label: "Sonntagsstunden", wert: n1(summe("sonntag")), einheit: "h", ton: "violet" },
+          { label: "Feiertagsstunden", wert: n1(summe("feiertag")), einheit: "h", ton: "warn" },
+          { label: "Samstagsstunden", wert: n1(summe("samstag")), einheit: "h" }]} />
 
-        <Card style={{ marginTop: 20, overflowX: "auto" }}>
+        <Leitraster seiteBreite={480}
+          haupt={<>
+        <Card style={{ overflowX: "auto" }}>
           <CardHead right={<Lab>Zuschlagswert in Stunden</Lab>}>Je Person</CardHead>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 840 }}>
+          <table className="raster" style={{ minWidth: 760 }}>
             <thead><tr>{["Person", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag", "Zuschlagswert"].map((h, i) => (
-              <th key={i} style={{ textAlign: i ? "right" : "left", padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <Lab>{h}</Lab></th>))}</tr></thead>
+              <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>
             <tbody>{zeilen.map(({ p, z }) => (
-              <tr key={p.id} className="row">
-                <td style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13.5 }}>
-                  {p.nachname}, {p.vorname}</td>
+              <tr key={p.id}>
+                <td style={{ fontSize: 13.5 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                    <Avatar person={p} size="sm" style={{ width: 26, height: 26, fontSize: 10 }} />
+                    {p.nachname}, {p.vorname}</span></td>
                 {["gesamt", "nacht", "sonntag", "feiertag", "samstag"].map((f) => (
-                  <td key={f} style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right",
-                    fontSize: 13, color: z.std[f] ? C.text : C.dimmer, ...NUM }}>{n1(z.std[f])}</td>))}
-                <td style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right",
-                  fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
+                  <td key={f} style={{ textAlign: "right", fontSize: 13,
+                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1(z.std[f])}</td>))}
+                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
         </Card>
-
-        <Card style={{ marginTop: 20 }}>
+          </>}
+          seite={<>
+        <Card>
           <CardHead right={darf(sitz, "org.edit") && <Btn size="sm" onClick={akt.neueZuschlagsregel}>Regel hinzufügen</Btn>}>
             Zuschlagsregeln</CardHead>
           <div style={{ padding: 22 }}>
@@ -11124,17 +11190,17 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
             </div>
           </div>
         </Card>
+          </>} />
       </>)}
 
       {reiter === "lohn" && <Lohnausgabe sitz={sitz} ym={ym} akt={akt} />}
       {reiter === "ausgleich" && (<>
-        <KpiRow min={190}>
-          <Kpi label="Über der Ausgleichsgrenze" value={faellig.length} tone={faellig.length ? "warn" : "ok"}
-            sub={`Grenze ${n1(m.einstellungen.ausgleichGrenze || 40)} h`} />
-          <Kpi label="Summe Überhang" value={n1(faellig.reduce((a, z) => a + z.a.ueber, 0))} unit="h" />
-          <Kpi label="Entspricht Freischichten" value={faellig.reduce((a, z) => a + Math.ceil(z.a.ueber / (z.a.mittel || 8)), 0)} />
-        </KpiRow>
-        <Card style={{ marginTop: 20 }}>
+        <Kennzahlen min={190} kacheln={[
+          { label: "Über der Ausgleichsgrenze", wert: faellig.length, ton: faellig.length ? "warn" : "ok",
+            hervor: faellig.length ? "warn" : undefined, sub: `Grenze ${n1(m.einstellungen.ausgleichGrenze || 40)} h` },
+          { label: "Summe Überhang", wert: n1(faellig.reduce((a, z) => a + z.a.ueber, 0)), einheit: "h" },
+          { label: "Entspricht Freischichten", wert: faellig.reduce((a, z) => a + Math.ceil(z.a.ueber / (z.a.mittel || 8)), 0) }]} />
+        <Card>
           <CardHead>Konten mit Ausgleichsbedarf</CardHead>
           {faellig.length === 0
             ? <Leer titel="Alle Konten im Rahmen" text="Kein Stundenkonto liegt über der eingestellten Ausgleichsgrenze." />
@@ -13007,34 +13073,54 @@ function Planstand({ sitz, ym, akt }) {
       </div>
     </Card>);
 
+  const kurz = v.zeilen.filter((z) => z.vorlauf < 14).length;
+  const summe = Math.max(1, v.wechsel + v.zusatz + v.entfall);
   return (
     <div>
-      <KpiRow min={165}>
-        <Kpi label="Änderungen seit Freigabe" value={v.zeilen.length}
-          tone={v.zeilen.length > 20 ? "warn" : "text"} sub={fg ? `Stand ${fg.stand} · ${v.zeit}` : ""} />
-        <Kpi label="Zusätzlich" value={v.zusatz} tone={v.zusatz ? "warn" : "ok"} />
-        <Kpi label="Entfallen" value={v.entfall} />
-        <Kpi label="Getauscht" value={v.wechsel} />
-        <Kpi label="Kurzfristig" value={v.zeilen.filter((z) => z.vorlauf < 14).length}
-          tone={v.zeilen.filter((z) => z.vorlauf < 14).length ? "danger" : "ok"} sub="unter 14 Tagen Vorlauf" />
-      </KpiRow>
+      <Kennzahlen min={165} kacheln={[
+        { label: "Änderungen seit Freigabe", wert: v.zeilen.length, ton: v.zeilen.length > 20 ? "warn" : "accent",
+          sub: fg ? `Stand ${fg.stand} · ${v.zeit}` : "" },
+        { label: "Zusätzlich", wert: v.zusatz, ton: v.zusatz ? "warn" : "ok" },
+        { label: "Entfallen", wert: v.entfall },
+        { label: "Getauscht", wert: v.wechsel, ton: "accent" },
+        { label: "Kurzfristig", wert: kurz, ton: kurz ? "danger" : "ok", hervor: kurz ? "danger" : undefined,
+          sub: "unter 14 Tagen Vorlauf" }]} />
 
-      <Card style={{ marginTop: 20 }}>
-        <CardHead right={<Lab>nach Datum</Lab>}>Was sich geändert hat</CardHead>
-        {v.zeilen.length === 0
-          ? <Leer titel="Unverändert" text="Seit der Freigabe wurde nichts am Plan geändert." />
-          : v.zeilen.slice(0, 80).map((z, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 22px",
-              borderBottom: `1px solid ${C.lineSoft}`, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.dim, minWidth: 82, ...NUM }}>{fKurz(z.datum)}</span>
-              <span style={{ fontSize: 13.5, flex: 1, minWidth: 150 }}>{z.person.nachname}, {z.person.vorname}</span>
-              <span style={{ fontSize: 13, color: C.dimmer }}>{z.von}</span>
-              <span style={{ color: C.dimmer }}>→</span>
-              <span style={{ fontSize: 13, fontWeight: 600,
-                color: z.richtung === "zusatz" ? C.warn : z.richtung === "entfall" ? C.dim : C.accent }}>{z.nach}</span>
-              {z.vorlauf < 14 && z.vorlauf >= 0 && <Pill size="sm" tone="danger">{z.vorlauf} Tage Vorlauf</Pill>}
-            </div>))}
-      </Card>
+      <Leitraster seiteBreite={340}
+        haupt={
+          <Card>
+            <CardHead right={<Lab>nach Datum</Lab>}>Was sich geändert hat</CardHead>
+            {v.zeilen.length === 0
+              ? <Leer titel="Unverändert" text="Seit der Freigabe wurde nichts am Plan geändert." />
+              : v.zeilen.slice(0, 80).map((z, i) => (
+                <div key={i} className="listenzeile" style={{ padding: "11px 22px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: C.dim, minWidth: 82, ...NUM }}>{fKurz(z.datum)}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 190 }}>
+                    <Avatar person={z.person} size="sm" style={{ width: 26, height: 26, fontSize: 10 }} />
+                    <span style={{ fontSize: 13.5 }}>{z.person.nachname}, {z.person.vorname}</span></span>
+                  <span style={{ fontSize: 13, color: C.dim }}>{z.von}</span>
+                  <span style={{ color: C.dim, display: "flex" }}><Icon n="pfeil-rechts" size={15} /></span>
+                  <span style={{ fontSize: 13, fontWeight: 600,
+                    color: z.richtung === "zusatz" ? C.warn : z.richtung === "entfall" ? C.dim : C.accent }}>{z.nach}</span>
+                  {z.vorlauf < 14 && z.vorlauf >= 0 && <Pill size="sm" tone="danger">{z.vorlauf} Tage Vorlauf</Pill>}
+                </div>))}
+          </Card>}
+        seite={<>
+          {fg && (
+            <Seitenkarte titel="Stand der Freigabe" rechts={<Pill size="sm" tone="ok">festgehalten</Pill>}>
+              <div style={{ fontSize: 26, fontWeight: 350, letterSpacing: "-.03em", ...NUM }}>{fg.stand}</div>
+              <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.5 }}>
+                Veröffentlicht {fg.zeit} durch {fg.durch}.</div>
+            </Seitenkarte>)}
+          <Seitenkarte titel="Nach Art der Änderung">
+            <Balkenzeile label="Getauscht" wert={v.wechsel} anteil={(v.wechsel / summe) * 100} ton="accent" />
+            <Balkenzeile label="Zusätzlich" wert={v.zusatz} anteil={(v.zusatz / summe) * 100} ton="warn" />
+            <Balkenzeile label="Entfallen" wert={v.entfall} anteil={(v.entfall / summe) * 100} ton="neutral" />
+            <Erklaerkasten style={{ marginTop: 12 }}>
+              Kurzfristig heißt: weniger als 14 Tage zwischen der Änderung und dem betroffenen Diensttag.
+            </Erklaerkasten>
+          </Seitenkarte>
+        </>} />
     </div>);
 }
 
@@ -13119,7 +13205,7 @@ function Lenkzeiten({ sitz, akt }) {
         </div>)}>
         Lenkzeiten · {fKurz(woche)} bis {fKurz(addDays(woche, 6))}</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", maxWidth: 420 }}>
           <Field label="Fahrerin oder Fahrer">
             <Sel value={person ? person.id : ""} onChange={(e) => setPersonId(e.target.value)}>
@@ -13132,99 +13218,99 @@ function Lenkzeiten({ sitz, akt }) {
         <Card><Leer titel="Niemand im Bestand"
           text="Für diese Woche ist keine Person im Dienst." /></Card>
       ) : (<>
-        <KpiRow min={190}>
-          <Kpi label="Lenkzeit der Woche" value={`${n1(lage.summe / 60)} h`}
-            tone={lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.wocheLenkzeit / 60} h`} />
-          <Kpi label="Verlängerte Tage" value={lage.verlaengerungen}
-            tone={lage.verlaengerungen > FAHR_GRENZEN.tagVerlaengerungenJeWoche ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.tagVerlaengerungenJeWoche} auf zehn Stunden`} />
-          <Kpi label="Verkürzte Ruhezeiten" value={lage.verkuerzungen}
-            tone={lage.verkuerzungen > FAHR_GRENZEN.verkuerzungenJeWoche ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.verkuerzungenJeWoche} auf neun Stunden`} />
-          <Kpi label="Nicht erfasst" value={lage.fehlend}
-            tone={lage.fehlend ? "warn" : "ok"} sub="Tage ohne Aufzeichnung" />
-        </KpiRow>
+        <Kennzahlen kacheln={[
+          { label: "Lenkzeit der Woche", wert: `${n1(lage.summe / 60)} h`,
+            ton: lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : "ok",
+            hervor: lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : undefined,
+            sub: `höchstens ${FAHR_GRENZEN.wocheLenkzeit / 60} h` },
+          { label: "Verlängerte Tage", wert: lage.verlaengerungen,
+            ton: lage.verlaengerungen > FAHR_GRENZEN.tagVerlaengerungenJeWoche ? "danger" : "ok",
+            sub: `höchstens ${FAHR_GRENZEN.tagVerlaengerungenJeWoche} auf zehn Stunden` },
+          { label: "Verkürzte Ruhezeiten", wert: lage.verkuerzungen,
+            ton: lage.verkuerzungen > FAHR_GRENZEN.verkuerzungenJeWoche ? "danger" : "ok",
+            sub: `höchstens ${FAHR_GRENZEN.verkuerzungenJeWoche} auf neun Stunden` },
+          { label: "Nicht erfasst", wert: lage.fehlend, ton: lage.fehlend ? "warn" : "ok",
+            hervor: lage.fehlend ? "warn" : undefined, sub: "Tage ohne Aufzeichnung" }]} />
 
-        {lage.befunde.length > 0 && (
-          <Card style={{ marginTop: 22, borderColor: C.danger }}>
-            <CardHead>Wochenbefunde</CardHead>
-            {lage.befunde.map((b, i) => (
-              <div key={i} style={{ padding: "12px 22px", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
-                <div style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.dim,
-                  lineHeight: 1.55 }}>{b.text}</div>
-                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 4 }}>{b.regel}</div>
-              </div>))}
-          </Card>)}
+        <Leitraster seiteBreite={340}
+          haupt={<>
+            {lage.befunde.length > 0 && (
+              <Card style={{ borderColor: C.danger }}>
+                <CardHead>Wochenbefunde</CardHead>
+                {lage.befunde.map((b, i) => (
+                  <div key={i} style={{ padding: "12px 22px", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+                    <div style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.dim,
+                      lineHeight: 1.55 }}>{b.text}</div>
+                    <div style={{ fontSize: 11.5, color: C.dim, marginTop: 4 }}>{b.regel}</div>
+                  </div>))}
+              </Card>)}
 
-        <Card style={{ marginTop: 22 }}>
-          <CardHead right={<Lab>Minuten, wie vom Kontrollgerät gelesen</Lab>}>Die Woche</CardHead>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ textAlign: "left", color: C.dim }}>
-                {["Tag", "Kennzeichen", "Lenkzeit", "Unterbrechungen", "Ruhe davor", "Urteil"].map((h) => (
-                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
-              </tr></thead>
-              <tbody>
-                {tage.map((d, i) => {
-                  const e = eintrag(d);
-                  const r = lage.tage[i];
-                  const ton = r.urteil === "rot" ? C.danger : r.urteil === "grau" ? C.dimmer : C.ok;
-                  return (
-                    <tr key={d} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>
-                        {DOW[dow(d)]} {fKurz(d)}</td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp style={{ width: 110, padding: "6px 8px" }} disabled={!darfPflegen}
-                          value={e.kennzeichen || ""} placeholder="—"
-                          onChange={(ev) => setz(d, "kennzeichen", ev.target.value)}
-                          aria-label={`Kennzeichen am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" step="5" style={{ width: 84, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={e.lenkzeit ?? ""} placeholder="—"
-                          onChange={(ev) => setz(d, "lenkzeit", ev.target.value)}
-                          aria-label={`Lenkzeit in Minuten am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp style={{ width: 120, padding: "6px 8px" }} disabled={!darfPflegen}
-                          value={(e.unterbrechungen || []).join(", ")} placeholder="45 oder 15, 30"
-                          onChange={(ev) => setz(d, "unterbrechungen", ev.target.value)}
-                          aria-label={`Unterbrechungen in Minuten am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" step="15" style={{ width: 84, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={e.ruhezeitDavor ?? ""} placeholder="—"
-                          onChange={(ev) => setz(d, "ruhezeitDavor", ev.target.value)}
-                          aria-label={`Ruhezeit vor dem Dienst am ${d}`} /></td>
-                      <td style={{ padding: "8px 14px", minWidth: 240 }}>
-                        <div style={{ color: ton, fontWeight: 600, fontSize: 12.5 }}>
-                          {r.urteil === "rot" ? "unzulässig"
-                            : r.urteil === "grau" ? "nicht erfasst" : "zulässig"}</div>
-                        {r.befunde.map((b, j) => (
-                          <div key={j} style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.45,
-                            color: b.schwere === "danger" ? C.danger : C.dimmer }}>{b.text}</div>))}
-                      </td>
-                    </tr>);
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            Täglich neun Stunden am Steuer, höchstens zweimal je Woche zehn (Art. 6 Abs. 1).
-            56 Stunden je Woche, 90 in zwei aufeinanderfolgenden Wochen (Art. 6 Abs. 2, 3).
-            Nach viereinhalb Stunden 45 Minuten Unterbrechung — teilbar in 15 und danach
-            30 Minuten, nicht umgekehrt (Art. 7). Elf Stunden tägliche Ruhe, dreimal
-            zwischen zwei Wochenruhezeiten neun (Art. 8).
-            <div style={{ marginTop: 10 }}>
-              Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im
-              Streitfall gilt die Aufzeichnung des Tachografen.
-            </div>
-          </div>
-        </Card>
+            <Card>
+              <CardHead right={<Lab>Minuten, wie vom Kontrollgerät gelesen</Lab>}>Die Woche</CardHead>
+              <div style={{ overflowX: "auto" }}>
+                <table className="raster" style={{ minWidth: 820 }}>
+                  <thead><tr>
+                    {["Tag", "Kennzeichen", "Lenkzeit", "Unterbrechungen", "Ruhe davor", "Urteil"].map((h) => (
+                      <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>))}
+                  </tr></thead>
+                  <tbody>
+                    {tage.map((d, i) => {
+                      const e = eintrag(d);
+                      const r = lage.tage[i];
+                      return (
+                        <tr key={d} style={r.urteil === "rot" ? { background: C.dangerLight } : undefined}>
+                          <td style={{ whiteSpace: "nowrap", ...NUM }}>
+                            {DOW[dow(d)]} {fKurz(d)}</td>
+                          <td>
+                            <Inp style={{ width: 110, padding: "6px 8px", minHeight: 34 }} disabled={!darfPflegen}
+                              value={e.kennzeichen || ""} placeholder="—"
+                              onChange={(ev) => setz(d, "kennzeichen", ev.target.value)}
+                              aria-label={`Kennzeichen am ${d}`} /></td>
+                          <td>
+                            <Inp type="number" min="0" step="5" style={{ width: 84, padding: "6px 8px", minHeight: 34 }}
+                              disabled={!darfPflegen}
+                              value={e.lenkzeit ?? ""} placeholder="—"
+                              onChange={(ev) => setz(d, "lenkzeit", ev.target.value)}
+                              aria-label={`Lenkzeit in Minuten am ${d}`} /></td>
+                          <td>
+                            <Inp style={{ width: 120, padding: "6px 8px", minHeight: 34 }} disabled={!darfPflegen}
+                              value={(e.unterbrechungen || []).join(", ")} placeholder="45 oder 15, 30"
+                              onChange={(ev) => setz(d, "unterbrechungen", ev.target.value)}
+                              aria-label={`Unterbrechungen in Minuten am ${d}`} /></td>
+                          <td>
+                            <Inp type="number" min="0" step="15" style={{ width: 84, padding: "6px 8px", minHeight: 34 }}
+                              disabled={!darfPflegen}
+                              value={e.ruhezeitDavor ?? ""} placeholder="—"
+                              onChange={(ev) => setz(d, "ruhezeitDavor", ev.target.value)}
+                              aria-label={`Ruhezeit vor dem Dienst am ${d}`} /></td>
+                          <td style={{ minWidth: 240, height: "auto", padding: "10px var(--pad-x)" }}>
+                            <Pill size="sm" tone={r.urteil === "rot" ? "danger" : r.urteil === "grau" ? "neutral" : "ok"}>
+                              {r.urteil === "rot" ? "unzulässig"
+                                : r.urteil === "grau" ? "nicht erfasst" : "zulässig"}</Pill>
+                            {r.befunde.map((b, j) => (
+                              <div key={j} style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.45,
+                                color: b.schwere === "danger" ? C.danger : C.dim }}>{b.text}</div>))}
+                          </td>
+                        </tr>);
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>}
+          seite={
+            <Erklaerkasten>
+              <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+              Täglich neun Stunden am Steuer, höchstens zweimal je Woche zehn (Art. 6 Abs. 1).
+              56 Stunden je Woche, 90 in zwei aufeinanderfolgenden Wochen (Art. 6 Abs. 2, 3).
+              Nach viereinhalb Stunden 45 Minuten Unterbrechung — teilbar in 15 und danach
+              30 Minuten, nicht umgekehrt (Art. 7). Elf Stunden tägliche Ruhe, dreimal
+              zwischen zwei Wochenruhezeiten neun (Art. 8).
+              <div style={{ marginTop: 10 }}>
+                Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im
+                Streitfall gilt die Aufzeichnung des Tachografen.
+              </div>
+            </Erklaerkasten>} />
       </>)}
     </div>);
 }
@@ -13285,19 +13371,17 @@ function Therapieminuten({ sitz, akt, einheit }) {
         <Card><Leer titel="Kein Bereich der PPP-RL hinterlegt"
           text="Die Richtlinie gilt für die stationäre Psychiatrie, die Kinder- und Jugendpsychiatrie und die Psychosomatik. Wähle oben den Bereich, dann wird geprüft." /></Card>
       ) : (<>
-        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${ton === "danger" ? C.danger
-          : ton === "warn" ? C.warn : C.accent}` }}>
-          <div style={{ padding: "18px 22px" }}>
-            <Pill size="sm" tone={ton}>
-              {lage.urteil === "rot" ? "unter der Mindesterfüllung"
-                : lage.urteil === "gelb" ? "unter der Vorgabe"
-                : lage.urteil === "grau" ? "nicht bewertbar" : "erfüllt"}</Pill>
-            <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10, lineHeight: 1.6 }}>{lage.text}</div>
-            {lage.luecken && lage.luecken.length > 0 && (
-              <div style={{ fontSize: 12.5, color: C.warn, marginTop: 8 }}>
-                Nicht erfasst: {lage.luecken.join(", ")}.</div>)}
-          </div>
-        </Card>
+        <Hinweisband ton={ton === "danger" ? "danger" : ton === "warn" ? "warn" : ton === "ok" ? "ok" : "accent"}
+          icon={ton === "ok" ? "kreis-haken" : ton ? "warnung" : "info"}
+          titel={<Pill size="sm" tone={ton}>
+            {lage.urteil === "rot" ? "unter der Mindesterfüllung"
+              : lage.urteil === "gelb" ? "unter der Vorgabe"
+              : lage.urteil === "grau" ? "nicht bewertbar" : "erfüllt"}</Pill>}>
+          <div style={{ fontSize: 13.5, marginTop: 2, lineHeight: 1.6 }}>{lage.text}</div>
+          {lage.luecken && lage.luecken.length > 0 && (
+            <div style={{ fontSize: 12.5, color: C.warn, marginTop: 8 }}>
+              Nicht erfasst: {lage.luecken.join(", ")}.</div>)}
+        </Hinweisband>
 
         <Card>
           <CardHead right={<Lab>Minuten in dieser Woche</Lab>}>Berufsgruppen</CardHead>
@@ -13322,8 +13406,15 @@ function Therapieminuten({ sitz, akt, einheit }) {
                           value={(e.minuten || {})[z.gruppe.id] ?? ""} placeholder="—"
                           onChange={(ev) => akt.setzeTherapie(einheit.id, woche, z.gruppe.id, ev.target.value)}
                           aria-label={`Minuten ${z.gruppe.name} in der Woche ab ${woche}`} /></td>
-                      <td style={{ padding: "8px 14px", color: farbe, fontWeight: 600, ...NUM }}>
-                        {z.quote === null ? "nicht erfasst" : `${Math.round(z.quote * 100)} %`}</td>
+                      <td style={{ padding: "8px 14px", minWidth: 150 }}>
+                        <div style={{ color: farbe, fontWeight: 600, ...NUM }}>
+                          {z.quote === null ? "nicht erfasst" : `${Math.round(z.quote * 100)} %`}</div>
+                        {z.quote !== null && (
+                          <div style={{ marginTop: 5 }}>
+                            <Fortschritt wert={Math.min(100, z.quote * 100)} hoehe={5}
+                              ton={z.quote >= 1 ? "ok" : z.quote >= PPP_MINDEST ? "warn" : "danger"}
+                              label={`${z.gruppe.name}: ${Math.round(z.quote * 100)} Prozent Erfüllung`} /></div>)}
+                      </td>
                     </tr>);
                 })}
               </tbody>
@@ -13331,24 +13422,54 @@ function Therapieminuten({ sitz, akt, einheit }) {
           </div>
         </Card>
 
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            Die PPP-RL gibt Minuten je Patientin und Woche vor, getrennt nach
-            Berufsgruppen. Unter {Math.round(PPP_MINDEST * 100)} Prozent Erfüllung drohen
-            Vergütungsabschläge; dazwischen liegt der Bereich, in dem die Vorgabe verfehlt,
-            die Mindesterfüllung aber gehalten ist.
-            <div style={{ marginTop: 10 }}>
-              Grundlage: {lage.richtwerte ? lage.richtwerte.fassung : "—"}
-              {lage.richtwerte && lage.richtwerte.eigen ? " · von der Einrichtung angepasst" : ""}.
-              Das Nachweisverfahren gegenüber den Kassen wurde zum 1. Januar 2026 umgestellt
-              und läuft jährlich über eine eigene Spezifikation — was hier entsteht, ist die
-              Grundlage dafür, nicht die Meldung selbst.
-            </div>
+        <Erklaerkasten style={{ marginTop: 16 }}>
+          <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+          Die PPP-RL gibt Minuten je Patientin und Woche vor, getrennt nach
+          Berufsgruppen. Unter {Math.round(PPP_MINDEST * 100)} Prozent Erfüllung drohen
+          Vergütungsabschläge; dazwischen liegt der Bereich, in dem die Vorgabe verfehlt,
+          die Mindesterfüllung aber gehalten ist.
+          <div style={{ marginTop: 10 }}>
+            Grundlage: {lage.richtwerte ? lage.richtwerte.fassung : "—"}
+            {lage.richtwerte && lage.richtwerte.eigen ? " · von der Einrichtung angepasst" : ""}.
+            Das Nachweisverfahren gegenüber den Kassen wurde zum 1. Januar 2026 umgestellt
+            und läuft jährlich über eine eigene Spezifikation — was hier entsteht, ist die
+            Grundlage dafür, nicht die Meldung selbst.
           </div>
-        </Card>
+        </Erklaerkasten>
       </>)}
     </div>);
+}
+
+/** Die Schicht-für-Schicht-Prüfung einer Einheit für die Tage eines Monats.
+ *  Steht als eigene Funktion, weil Untergrenzen und Startseite dieselbe
+ *  Antwort brauchen — gerechnet wird nur in ppugv.js. */
+function ppugvZeilen(m, einheit, tage) {
+  if (!einheit) return [];
+  /* Welche Dienstart zählt als Tag-, welche als Nachtschicht? Der Betrieb
+     entscheidet das über das Nachtkennzeichen der Dienstart. */
+  const schichtVon = (da) => (istNachtdienst(da) ? "nacht" : "tag");
+  const aus = [];
+  for (const d of tage) {
+    for (const schicht of ["tag", "nacht"]) {
+      const imDienstHeute = m.personen.filter((p) => {
+        if (!imDienst(p, d)) return false;
+        if (einheitAm(p, d) !== einheit.id) return false;
+        const t = personTag(m, p, d);
+        if (!t.dienstId) return false;
+        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        return da && schichtVon(da) === schicht;
+      });
+      const fach = imDienstHeute.filter((p) => istFachkraft(m, p)).length;
+      const hilf = imDienstHeute.length - fach;
+      const b = (m.belegung || {})[`${einheit.id}|${d}|${schicht}`] || {};
+      aus.push({ datum: d, schicht,
+        ...ppugvPruefen({ bereich: einheit.ppugvBereich || null, schicht, datum: d,
+          patienten: b.patienten === undefined ? null : b.patienten,
+          fachkraefte: fach, hilfskraefte: hilf }),
+        erfasst: b.patienten !== undefined && b.patienten !== null && b.patienten !== "" });
+    }
+  }
+  return aus;
 }
 
 function Untergrenzen({ sitz, akt, ym }) {
@@ -13366,36 +13487,7 @@ function Untergrenzen({ sitz, akt, ym }) {
     return Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
   }, [ym]);
 
-  /* Welche Dienstart zählt als Tag-, welche als Nachtschicht? Der Betrieb
-     entscheidet das über das Nachtkennzeichen der Dienstart. */
-  const schichtVon = (da) => (istNachtdienst(da) ? "nacht" : "tag");
-
-  const zeilen = useMemo(() => {
-    if (!einheit) return [];
-    const aus = [];
-    for (const d of tage) {
-      for (const schicht of ["tag", "nacht"]) {
-        const imDienstHeute = m.personen.filter((p) => {
-          if (!imDienst(p, d)) return false;
-          if (einheitAm(p, d) !== einheit.id) return false;
-          const t = personTag(m, p, d);
-          if (!t.dienstId) return false;
-          const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          return da && schichtVon(da) === schicht;
-        });
-        const fach = imDienstHeute.filter((p) => istFachkraft(m, p)).length;
-        const hilf = imDienstHeute.length - fach;
-        const b = (m.belegung || {})[`${einheit.id}|${d}|${schicht}`] || {};
-        aus.push({ datum: d, schicht,
-          ...ppugvPruefen({ bereich: einheit.ppugvBereich || null, schicht, datum: d,
-            patienten: b.patienten === undefined ? null : b.patienten,
-            fachkraefte: fach, hilfskraefte: hilf }),
-          erfasst: b.patienten !== undefined && b.patienten !== null && b.patienten !== "" });
-      }
-    }
-    return aus;
-  }, [m, einheit, tage]);
-
+  const zeilen = useMemo(() => ppugvZeilen(m, einheit, tage), [m, einheit, tage]);
   const lage = useMemo(() => ppugvMonatslage(zeilen), [zeilen]);
   const bereich = einheit && einheit.ppugvBereich ? ppugvBereich(einheit.ppugvBereich) : null;
 
@@ -13405,7 +13497,7 @@ function Untergrenzen({ sitz, akt, ym }) {
         sub="Die Pflegepersonaluntergrenzen gelten je Schicht, nicht im Monatsmittel. Geprüft wird gegen die Ist-Belegung — ohne sie steht „nicht bewertbar“, nie „eingehalten“.">
         Untergrenzen · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", display: "grid",
           gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16 }}>
           <Field label={m.einheitLabel || "Einheit"}>
@@ -13421,10 +13513,9 @@ function Untergrenzen({ sitz, akt, ym }) {
         </div>
       </Card>
 
-      <div className="reiterreihe" style={{ margin: "0 0 20px" }}>
-        {[["ppugv", "Pflegepersonaluntergrenzen"], ["ppprl", "PPP-RL Psychiatrie"]].map(([id, l]) => (
-          <Btn key={id} size="sm" kind={reiter === id ? "primary" : "plain"}
-            aria-pressed={reiter === id} onClick={() => setReiter(id)}>{l}</Btn>))}
+      <div className="reiterreihe" style={{ margin: "0 0 16px" }}>
+        <Seg value={reiter} onChange={setReiter}
+          options={[{ id: "ppugv", label: "Pflegepersonaluntergrenzen" }, { id: "ppprl", label: "PPP-RL Psychiatrie" }]} />
       </div>
 
       {reiter === "ppprl" && (einheit
@@ -13435,75 +13526,81 @@ function Untergrenzen({ sitz, akt, ym }) {
         <Card><Leer titel="Kein pflegesensitiver Bereich hinterlegt"
           text="Die PpUGV gilt für bestimmte Krankenhausbereiche — Intensivmedizin, Geriatrie, Kardiologie und weitere. Wähle oben den Bereich dieser Einheit, dann wird geprüft." /></Card>
       ) : (<>
-        <KpiRow min={190}>
-          <Kpi label="Eingehalten" value={lage.gruen} tone="ok"
-            sub={`von ${zahl(lage.gesamt)} Schichten`} />
-          <Kpi label="Unterschritten" value={lage.rot} tone={lage.rot ? "danger" : "ok"}
-            sub="meldepflichtig gegenüber den Kassen" />
-          <Kpi label="Nicht bewertbar" value={lage.grau} tone={lage.grau ? "warn" : "ok"}
-            sub="Belegung fehlt" />
-          <Kpi label="Schlüssel" value={`${(bereich.name || "").slice(0, 18)}`}
-            sub={bereich.paragraf} />
-        </KpiRow>
+        <Kennzahlen kacheln={[
+          { label: "Eingehalten", wert: lage.gruen, ton: "ok", sub: `von ${zahl(lage.gesamt)} Schichten` },
+          { label: "Unterschritten", wert: lage.rot, ton: lage.rot ? "danger" : "ok",
+            hervor: lage.rot ? "danger" : undefined, sub: "meldepflichtig gegenüber den Kassen" },
+          { label: "Nicht bewertbar", wert: lage.grau, ton: "neutral", sub: "Belegung fehlt" },
+          { label: "Schlüssel", wert: `${(bereich.name || "").slice(0, 18)}`, sub: bereich.paragraf }]} />
 
-        <Card style={{ marginTop: 22 }}>
-          <CardHead right={<Lab>Belegung eintragen, auch nachträglich</Lab>}>
-            {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</CardHead>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ textAlign: "left", color: C.dim }}>
-                {["Tag", "Schicht", "Patienten", "Fachkräfte", "Hilfskräfte", "Nötig", "Urteil"].map((h) => (
-                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
-              </tr></thead>
-              <tbody>
-                {zeilen.map((z) => {
-                  const ton = z.urteil === "rot" ? C.danger : z.urteil === "grau" ? C.warn : C.ok;
-                  return (
-                    <tr key={`${z.datum}|${z.schicht}`} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>{fKurz(z.datum)}</td>
-                      <td style={{ padding: "8px 14px" }}>{z.schicht === "nacht" ? "Nacht" : "Tag"}</td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" style={{ width: 82, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={(m.belegung || {})[`${einheit.id}|${z.datum}|${z.schicht}`]?.patienten ?? ""}
-                          onChange={(e) => akt.setzeBelegung(einheit.id, z.datum, z.schicht, e.target.value)}
-                          aria-label={`Patienten am ${z.datum}, ${z.schicht === "nacht" ? "Nacht" : "Tag"}`} />
-                      </td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>{z.fachkraefte ?? "—"}</td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>
-                        {z.hilfskraefte ?? "—"}
-                        {z.hilfskraefteNichtAngerechnet > 0 && (
-                          <span style={{ color: C.warn, fontSize: 11.5 }}>
-                            {" "}(−{z.hilfskraefteNichtAngerechnet})</span>)}
-                      </td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>{z.noetig ?? "—"}</td>
-                      <td style={{ padding: "8px 14px" }}>
-                        <span title={z.text} style={{ color: ton, fontWeight: 600, whiteSpace: "nowrap" }}>
-                          {z.urteil === "rot" ? `unterschritten um ${z.fehlend}`
-                            : z.urteil === "grau" ? "nicht bewertbar" : "eingehalten"}</span>
-                      </td>
-                    </tr>);
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            {bereich.paragraf}: höchstens {(zeilen[0] || {}).grenze?.patientenJeKraft ?? "—"} Patienten
-            je Pflegekraft in der Tagschicht, in der Nacht entsprechend weniger.
-            Pflegehilfskräfte zählen nur bis zu
-            {" "}{Math.round(((zeilen[0] || {}).grenze?.hilfskraftAnteil ?? 0) * 100)} Prozent
-            des Personals mit. Aufgerundet wird immer zur nächsten ganzen Kraft.
-            <div style={{ marginTop: 10 }}>
-              Die Fassung ist datiert hinterlegt: {(zeilen[0] || {}).grenze?.fassung || "—"}.
-              Ändert sich die Verordnung, kommt ein neuer Satz dazu — der alte bleibt
-              stehen, damit vergangene Monate nach dem Recht ihrer Zeit beurteilt werden.
-            </div>
-          </div>
-        </Card>
+        <Leitraster seiteBreite={340}
+          haupt={
+            <Card>
+              <CardHead right={<Lab>Belegung eintragen, auch nachträglich</Lab>}>
+                {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</CardHead>
+              <div style={{ overflowX: "auto" }}>
+                <table className="raster" style={{ minWidth: 640 }}>
+                  <thead><tr>
+                    {["Tag", "Schicht", "Patienten", "Fachkräfte", "Hilfskräfte", "Nötig", "Urteil"].map((h) => (
+                      <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>))}
+                  </tr></thead>
+                  <tbody>
+                    {zeilen.map((z) => (
+                      <tr key={`${z.datum}|${z.schicht}`}
+                        style={z.urteil === "rot" ? { background: C.dangerLight } : undefined}>
+                        <td style={{ whiteSpace: "nowrap", ...NUM }}>{fKurz(z.datum)}</td>
+                        <td>{z.schicht === "nacht" ? "Nacht" : "Tag"}</td>
+                        <td>
+                          <Inp type="number" min="0" style={{ width: 82, padding: "6px 8px", minHeight: 34 }}
+                            disabled={!darfPflegen}
+                            value={(m.belegung || {})[`${einheit.id}|${z.datum}|${z.schicht}`]?.patienten ?? ""}
+                            onChange={(e) => akt.setzeBelegung(einheit.id, z.datum, z.schicht, e.target.value)}
+                            aria-label={`Patienten am ${z.datum}, ${z.schicht === "nacht" ? "Nacht" : "Tag"}`} />
+                        </td>
+                        <td style={NUM}>{z.fachkraefte ?? "—"}</td>
+                        <td style={NUM}>
+                          {z.hilfskraefte ?? "—"}
+                          {z.hilfskraefteNichtAngerechnet > 0 && (
+                            <span style={{ color: C.warn, fontSize: 11.5 }}>
+                              {" "}(−{z.hilfskraefteNichtAngerechnet})</span>)}
+                        </td>
+                        <td style={NUM}>{z.noetig ?? "—"}</td>
+                        <td>
+                          {/* Nicht bewertbar ist ein eigener Zustand: grau, kein Verstoß und keine Einhaltung. */}
+                          <span title={z.text} style={{ display: "inline-flex" }}>
+                            <Pill size="sm" ton={z.urteil === "rot" ? "danger" : z.urteil === "grau" ? "neutral" : "ok"}>
+                              {z.urteil === "rot" ? `unterschritten um ${z.fehlend}`
+                                : z.urteil === "grau" ? "nicht bewertbar" : "eingehalten"}</Pill></span>
+                        </td>
+                      </tr>))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>}
+          seite={<>
+            <Seitenkarte titel="Schichten im Monat"
+              sub={`${zahl(zeilen.length)} Schichten, Tag und Nacht`}>
+              <Sparkline art="punkte" hoehe={60}
+                daten={zeilen.map((z) => (z.urteil === "gruen" ? "ok" : z.urteil === "rot" ? "danger" : ""))}
+                beschriftung={`${lage.gruen} Schichten eingehalten, ${lage.rot} unterschritten, ${lage.grau} nicht bewertbar`} />
+              <Legende style={{ marginTop: 12 }} punkte={[
+                { ton: "ok", label: "eingehalten" }, { ton: "danger", label: "unterschritten" },
+                { ton: "neutral", label: "nicht bewertbar", farbig: false }]} />
+            </Seitenkarte>
+            <Erklaerkasten>
+              <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+              {bereich.paragraf}: höchstens {(zeilen[0] || {}).grenze?.patientenJeKraft ?? "—"} Patienten
+              je Pflegekraft in der Tagschicht, in der Nacht entsprechend weniger.
+              Pflegehilfskräfte zählen nur bis zu
+              {" "}{Math.round(((zeilen[0] || {}).grenze?.hilfskraftAnteil ?? 0) * 100)} Prozent
+              des Personals mit. Aufgerundet wird immer zur nächsten ganzen Kraft.
+              <div style={{ marginTop: 10 }}>
+                Die Fassung ist datiert hinterlegt: {(zeilen[0] || {}).grenze?.fassung || "—"}.
+                Ändert sich die Verordnung, kommt ein neuer Satz dazu — der alte bleibt
+                stehen, damit vergangene Monate nach dem Recht ihrer Zeit beurteilt werden.
+              </div>
+            </Erklaerkasten>
+          </>} />
       </>))}
     </div>);
 }
@@ -14461,35 +14558,24 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
         Belastbarkeit</H1>
 
       {/* Der Befund in Worten, bevor die erste Zahl kommt. */}
-      <Card style={{ marginBottom: 18, borderLeft: `3px solid ${
-        befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok}`,
-        background: befund.ton === "danger" ? C.dangerLight
-          : befund.ton === "warn" ? C.warnLight : C.okLight }}>
-        <div style={{ padding: "18px 22px" }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.5,
-            color: befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok }}>
-            {befund.satz}</div>
-          <div style={{ fontSize: 13, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
-            {befund.dazu}</div>
-        </div>
-      </Card>
+      <Hinweisband ton={befund.ton === "danger" ? "danger" : befund.ton === "warn" ? "warn" : "ok"}
+        titel={befund.satz}>{befund.dazu}</Hinweisband>
 
-      <KpiRow min={180}>
-        <Kpi label="Wochen ohne Reserve" value={kritisch.length}
-          tone={kritisch.length ? "danger" : "ok"}
-          sub={kritisch.length
-            ? `ab ${fKurz(kritisch[0].von)} — dort ist kein Ausfall mehr auffangbar`
-            : "keine Woche steht ohne Reserve da"} />
-        <Kpi label="Knappe Wochen" value={knapp.length} tone={knapp.length ? "warn" : "text"}
-          sub="höchstens zwei gleichzeitige Ausfälle auffangbar" />
-        <Kpi label="Belastungsgrenze" value={grenze ? `${Math.round(grenze.anteil * 100)}` : "über 30"}
-          unit="% der Belegschaft"
-          tone={grenze && grenze.anteil <= 0.1 ? "danger" : grenze && grenze.anteil <= 0.2 ? "warn" : "ok"}
-          sub="fallen so viele gleichzeitig aus, reißt der Plan" />
-      </KpiRow>
+      <Kennzahlen kacheln={[
+        { label: "Wochen ohne Reserve", wert: kritisch.length, ton: kritisch.length ? "danger" : "ok",
+          hervor: kritisch.length ? "danger" : undefined,
+          sub: kritisch.length ? `ab ${fKurz(kritisch[0].von)} — dort ist kein Ausfall mehr auffangbar`
+            : "keine Woche steht ohne Reserve da" },
+        { label: "Knappe Wochen", wert: knapp.length, ton: knapp.length ? "warn" : "ok", hervor: knapp.length ? "warn" : undefined,
+          sub: "höchstens zwei gleichzeitige Ausfälle auffangbar" },
+        { label: "Belastungsgrenze", wert: grenze ? `${Math.round(grenze.anteil * 100)}` : "über 30", einheit: "% der Belegschaft",
+          ton: grenze && grenze.anteil <= 0.1 ? "danger" : grenze && grenze.anteil <= 0.2 ? "warn" : "ok",
+          hervor: grenze && grenze.anteil <= 0.2 ? "warn" : undefined,
+          sub: "fallen so viele gleichzeitig aus, reißt der Plan" }]} />
 
-      {/* ------------------------ Wochenbild ------------------------ */}
-      <Card style={{ marginTop: 20 }}>
+      <Leitraster seiteBreite={370}
+        haupt={<>
+            <Card>
         <CardHead right={<Lab>Reserve je Woche</Lab>}>Wo bricht es zuerst</CardHead>
 
         {/* Was die Zahlen bedeuten, steht vor den Zahlen — nicht als Fußnote
@@ -14575,45 +14661,44 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
         </div>
       </Card>
 
-      {/* ---------------------- Ausfallszenarien --------------------- */}
-      <Lab style={{ margin: "24px 0 6px" }}>Was passiert bei einer Krankheitswelle</Lab>
-      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 12, maxWidth: 760 }}>
-        Vier Durchrechnungen für die nächsten vierzehn Tage: Was bricht, wenn 5, 10, 20 oder
-        30 Prozent der Belegschaft gleichzeitig krank werden? „Hält" heißt, dass keine Schicht
-        ganz unbesetzt bliebe und kaum neue Regelverstöße entstünden.
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
-        {szenarien.map((s) => (
-          <Card key={s.anteil} style={{ padding: 20,
-            borderColor: s.haltbar ? C.line : C.danger }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              marginBottom: 12 }}>
-              <Rubrik>{Math.round(s.anteil * 100)} % fallen aus</Rubrik>
-              <Pill size="sm" tone={s.haltbar ? "ok" : "danger"}>{s.haltbar ? "hält" : "reißt"}</Pill>
+        </>}
+        seite={<>
+          <Seitenkarte titel="Was passiert bei einer Krankheitswelle"
+            sub={'Vier Durchrechnungen für die nächsten vierzehn Tage: Was bricht, wenn 5, 10, 20 oder 30 Prozent der Belegschaft gleichzeitig krank werden? „Hält" heißt, dass keine Schicht ganz unbesetzt bliebe und kaum neue Regelverstöße entstünden.'}>
+            <div style={{ display: "grid", gap: 10 }}>
+              {szenarien.map((s) => (
+                <div key={s.anteil} className="karte-still" style={{ padding: "14px 16px",
+                  borderColor: s.haltbar ? undefined : C.danger }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Rubrik>{Math.round(s.anteil * 100)} % fallen aus</Rubrik>
+                    <Pill size="sm" tone={s.haltbar ? "ok" : "danger"}>{s.haltbar ? "hält" : "reißt"}</Pill>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                    <span style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-.04em", ...NUM,
+                      color: s.haltbar ? C.text : C.danger }}>{s.neu < 0 ? "−" : "+"}{Math.abs(s.neu)}</span>
+                    <span style={{ fontSize: 12.5, color: C.dim }}>zusätzliche Regelverstöße gegenüber heute</span>
+                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.lineSoft}`,
+                    display: "grid", gap: 4, fontSize: 12.5 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Betroffene</span><span style={NUM}>{s.betroffen} Personen</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Unterbesetzte Dienste</span>
+                      <span style={{ ...NUM, color: s.unter ? C.warn : C.dim }}>{s.unter}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Ganz ohne Besetzung</span>
+                      <span style={{ ...NUM, color: s.leer ? C.danger : C.dim }}>{s.leer}</span></div>
+                  </div>
+                </div>))}
             </div>
-            <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", ...NUM,
-              color: s.haltbar ? C.text : C.danger }}>+{s.neu}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
-              zusätzliche Regelverstöße gegenüber heute</div>
-            <div style={{ marginTop: 16, paddingTop: 13, borderTop: `1px solid ${C.lineSoft}`,
-              display: "grid", gap: 6, fontSize: 12.5 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Betroffene</span><span style={NUM}>{s.betroffen} Personen</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Unterbesetzte Dienste</span>
-                <span style={{ ...NUM, color: s.unter ? C.warn : C.dim }}>{s.unter}</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Ganz ohne Besetzung</span>
-                <span style={{ ...NUM, color: s.leer ? C.danger : C.dim }}>{s.leer}</span></div>
-            </div>
-          </Card>))}
-      </div>
-      <div style={{ fontSize: 12.5, color: C.dim, marginTop: 14, lineHeight: 1.55, maxWidth: 760 }}>
-        Gerechnet über die nächsten vierzehn Tage. Der Ausfall wird gleichmäßig über die Belegschaft
-        verteilt, nicht zufällig — ein Zufallsergebnis wäre bei jedem Aufruf anders und damit
-        wertlos. Eine echte Welle trifft meist eine Einheit stärker; der reale Verlauf ist also
-        eher schlechter als hier gezeigt.
-      </div>
+          </Seitenkarte>
+          <Erklaerkasten>
+            Gerechnet über die nächsten vierzehn Tage. Der Ausfall wird gleichmäßig über die Belegschaft
+            verteilt, nicht zufällig — ein Zufallsergebnis wäre bei jedem Aufruf anders und damit
+            wertlos. Eine echte Welle trifft meist eine Einheit stärker; der reale Verlauf ist also
+            eher schlechter als hier gezeigt.
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
@@ -14904,9 +14989,9 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         </p>
       </div>
 
-      {/* Vier Kennzahlen als große, ruhige Kacheln — wie im Entwurf.
-          Sie stehen vor den Handlungskarten, damit die Lage klar ist,
-          bevor es ans Erledigen geht. */}
+      {/* Kennzahlen als einzelne Karten. Jede hat ihre Quelle in einer
+          bestehenden Funktion (besetzung, pruefen, ppugv); fehlt die Grundlage
+          (kein Soll, keine Untergrenzen-Bereiche), fehlt die Karte. */}
       {darf(sitz, "plan.view.unit") && (() => {
         const bes = besetzung(m, d0);
         const offen = Object.values(bes).filter((b) => b.soll > 0 && b.diff < 0)
@@ -14917,31 +15002,87 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
           for (let i = 1; i <= 7; i++) { const d = addDays(d0, i);
             n += Object.values(besetzung(m, d)).filter((b) => b.soll > 0 && b.diff < 0).length; }
           return n; })();
-        const kacheln = [
-          ["Offene Schichten", offen, offen ? "Plätze heute" : "alles besetzt", offen ? "danger" : "ok"],
-          ["Freigaben warten", frei, frei ? "zu entscheiden" : "nichts offen", frei ? "warn" : "ok"],
-          ["Abwesenheiten heute", abw, "Urlaub, krank, Schulung", "text"],
-          ["Nächste 7 Tage", kommend, kommend ? "Lücken erwartet" : "durchgehend gedeckt", kommend ? "warn" : "ok"],
-        ];
+        const sollHeute = Object.values(bes).reduce((a, b) => a + b.soll, 0);
+        const istHeute = Object.values(bes).reduce((a, b) => a + Math.min(b.anzahl, b.soll), 0);
+        const verlauf = besetzungsVerlauf(m, addDays(d0, -13), 14).filter((x) => x.soll > 0);
+        /* Ruhezeit-Befunde der letzten 28 Tage gegen die 28 davor — beide
+           Zeiträume kommen aus derselben Prüfung, sonst gäbe es keinen Trend. */
+        const ruheJetzt = pruefen(m, addDays(d0, -27), d0).filter((x) => x.art === "ruhezeit").length;
+        const ruheVorher = pruefen(m, addDays(d0, -55), addDays(d0, -28)).filter((x) => x.art === "ruhezeit").length;
+        const diff = ruheJetzt - ruheVorher;
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-            gap: 16, marginBottom: 40 }}>
-            {kacheln.map(([label, wert, sub, ton]) => (
-              <Card key={label} style={{ padding: "22px 24px 24px" }}>
-                <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 16, lineHeight: 1.4,
-                  minHeight: 38 }}>{label}</div>
-                <div style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.045em", lineHeight: 1,
-                  color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                    : ton === "ok" ? C.ok : C.text, ...NUM }}>{wert}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 9 }}>{sub}</div>
-              </Card>))}
+          <Kennzahlen style={{ marginBottom: 40 }} kacheln={[
+            sollHeute > 0 && { label: "Besetzung heute", wert: Math.round((istHeute / sollHeute) * 100), einheit: "%",
+              ton: istHeute >= sollHeute ? "ok" : "warn", sub: `${istHeute} von ${sollHeute} Plätzen besetzt`,
+              bild: verlauf.length > 1 && (
+                <Sparkline art="saeulen" daten={verlauf.map((x) => x.quote)} hoehe={34}
+                  beschriftung={`Besetzungsgrad der letzten ${verlauf.length} Tage, heute ${verlauf[verlauf.length - 1].quote} Prozent`} />) },
+            { label: "Offene Schichten", wert: offen, ton: offen ? "danger" : "ok", hervor: offen ? "danger" : undefined,
+              sub: offen ? "Plätze heute" : "alles besetzt" },
+            { label: "Freigaben warten", wert: frei, ton: frei ? "warn" : "ok", sub: frei ? "zu entscheiden" : "nichts offen" },
+            { label: "Abwesenheiten heute", wert: abw, sub: "Urlaub, krank, Schulung" },
+            { label: "Nächste 7 Tage", wert: kommend, ton: kommend ? "warn" : "ok",
+              sub: kommend ? "Lücken erwartet" : "durchgehend gedeckt" },
+            { label: "Ruhezeit-Befunde", wert: ruheJetzt, ton: ruheJetzt ? "warn" : "ok",
+              sub: "letzte 28 Tage, gegen die 28 davor",
+              trend: ruheJetzt + ruheVorher === 0 ? undefined
+                : { text: diff === 0 ? "wie zuvor" : `${diff > 0 ? "+" : "−"}${Math.abs(diff)}`,
+                  ton: diff > 0 ? "warn" : diff < 0 ? "ok" : "neutral",
+                  richtung: diff > 0 ? "auf" : diff < 0 ? "ab" : "gleich" } },
+          ]} />);
+      })()}
+
+      {/* Einrichtung und Untergrenzen: nur, wo es etwas zu zeigen gibt. */}
+      {(() => {
+        const es = einrichtungsstand(m);
+        const zeigEinr = !es.fertig && darf(sitz, "org.edit");
+        const ugEinh = darf(sitz, "plan.view.unit")
+          ? (m.einheiten || []).filter((e) => !e.pool && e.ppugvBereich) : [];
+        if (!zeigEinr && !ugEinh.length) return null;
+        const [y0, mo0] = d0.split("-").map(Number);
+        const tageMonat = Array.from({ length: dim_(y0, mo0 - 1) }, (_, i) => `${d0.slice(0, 7)}-${pad(i + 1)}`);
+        const ug = ugEinh.map((e) => ({ e, l: ppugvMonatslage(ppugvZeilen(m, e, tageMonat)) }));
+        const gesamt = ug.reduce((a, x) => a + x.l.gesamt, 0);
+        const gruen = ug.reduce((a, x) => a + x.l.gruen, 0);
+        const rot = ug.reduce((a, x) => a + x.l.rot, 0);
+        const grau = ug.reduce((a, x) => a + x.l.grau, 0);
+        return (
+          <div className="startpaar">
+            {zeigEinr && (
+              <Seitenkarte titel="Einrichtung" sub="Diese Schritte fehlen noch für den vollständigen Betrieb.">
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}><Fortschritt wert={es.anteil} hoehe={8} label="Einrichtung" /></div>
+                  <b style={{ color: C.accent, fontSize: 13, ...NUM }}>{es.anteil} %</b>
+                </div>
+                <Checkliste punkte={es.schritte.map((st) => ({
+                  text: st.titel, erledigt: st.erledigt, onClick: st.erledigt ? undefined : () => gehZu(st.ziel) }))} />
+              </Seitenkarte>)}
+            {ug.length > 0 && (
+              <Seitenkarte titel="Untergrenzen im Monat" sub="Schichten je Bereich nach PpUGV, Stand dieses Monats.">
+                <Bogen segmente={[{ wert: gruen, ton: "ok", label: `${gruen} eingehalten` },
+                  { wert: rot, ton: "danger", label: `${rot} unterschritten` },
+                  { wert: grau, label: `${grau} nicht bewertbar` }]}
+                  zahl={gesamt ? `${Math.round((gruen / gesamt) * 100)} %` : "—"} kopf="Eingehalten"
+                  beschriftung={`${gruen} von ${gesamt} Schichten eingehalten, ${rot} unterschritten, ${grau} nicht bewertbar`} />
+                <div style={{ marginTop: 14 }}>
+                  {ug.map(({ e, l }) => (
+                    <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                      gap: 10, padding: "6px 0", fontSize: 13.5 }}>
+                      <span>{e.name}</span>
+                      <Pill size="sm" tone={l.rot ? "danger" : l.grau ? "neutral" : "ok"}>
+                        {l.rot ? `${l.rot} unterschritten` : l.grau ? `${l.grau} nicht bewertbar` : "eingehalten"}</Pill>
+                    </div>))}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <Btn size="sm" onClick={() => gehZu("untergrenzen")}>Untergrenzen öffnen</Btn></div>
+              </Seitenkarte>)}
           </div>);
       })()}
 
       {/* ------------------------ Die drei Karten -------------------- */}
       {oben.length === 0 ? (
         <Card style={{ padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 34, color: C.ok, marginBottom: 14 }}>✓</div>
+          <div style={{ color: C.ok, marginBottom: 14, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={38} /></div>
           <div style={{ fontSize: 19, fontWeight: 620, marginBottom: 8 }}>Alles im Lauf</div>
           <div style={{ fontSize: 14.5, color: C.dim, maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>
             Keine offenen Entscheidungen, keine Lücken, keine abgelaufenen Nachweise.
@@ -15022,22 +15163,39 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Die Lage in Zahlen</h2>
           <p className="abschnitt-sub">Stand heute, über alle {mehrzahl(m.einheitLabel)}.</p>
-          <KpiRow min={200}>
-            {(() => {
-              const bes = besetzung(m, d0);
-              const eingeteilt = Object.values(bes).reduce((a, b) => a + b.anzahl, 0);
-              const abw = m.personen.filter((x) => imDienst(x, d0) && abwesenheitAm(m, x.id, d0)).length;
-              const bl = belastbarkeit(m, 4);
-              const schwach = bl.filter((w) => w.stufe !== "robust").length;
-              return (<>
-                <Kpi label="Heute im Dienst" value={eingeteilt} sub={`von ${aktive(m, d0).length} Beschäftigten`} />
-                <Kpi label="Abwesend" value={abw} sub="Urlaub, krank, Schulung" />
-                <Kpi label="Wochen ohne Puffer" value={schwach} tone={schwach ? "warn" : "ok"}
-                  sub="in den nächsten vier" />
-              </>);
-            })()}
-          </KpiRow>
+          {(() => {
+            const bes = besetzung(m, d0);
+            const eingeteilt = Object.values(bes).reduce((a, b) => a + b.anzahl, 0);
+            const abw = m.personen.filter((x) => imDienst(x, d0) && abwesenheitAm(m, x.id, d0)).length;
+            const bl = belastbarkeit(m, 4);
+            const schwach = bl.filter((w) => w.stufe !== "robust").length;
+            return (
+              <Kennzahlen style={{ marginBottom: 0 }} kacheln={[
+                { label: "Heute im Dienst", wert: eingeteilt, ton: "accent", sub: `von ${aktive(m, d0).length} Beschäftigten` },
+                { label: "Abwesend", wert: abw, sub: "Urlaub, krank, Schulung" },
+                { label: "Wochen ohne Puffer", wert: schwach, ton: schwach ? "warn" : "ok", sub: "in den nächsten vier" }]} />);
+          })()}
         </div>)}
+
+      {/* ------------------------ Dienstbuch ------------------------- */}
+      {darf(sitz, "plan.view.unit") && (m.dienstbuch || []).length > 0 && (() => {
+        const arten = { uebergabe: ["Übergabe", "accent"], vorkommnis: ["Vorkommnis", "danger"], hinweis: ["Hinweis", "warn"] };
+        const letzte = [...m.dienstbuch].sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1 : 0)).slice(0, 5);
+        return (
+          <div className="abschnitt">
+            <Abschnittskopf titel="Dienstbuch" sub="Die letzten Einträge."
+              rechts={<Btn size="sm" onClick={() => gehZu("buch")}>Dienstbuch öffnen</Btn>} />
+            <Card>
+              {letzte.map((e) => (
+                <div key={e.id} className="listenzeile" style={{ alignItems: "flex-start" }}>
+                  <Pill size="sm" tone={(arten[e.art] || [])[1]}>{(arten[e.art] || [e.art])[0]}</Pill>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.5,
+                    overflowWrap: "anywhere" }}>{e.text}</div>
+                  <span style={{ fontSize: 12, color: C.dim, whiteSpace: "nowrap", ...NUM }}>{fKurz(e.datum)}</span>
+                </div>))}
+            </Card>
+          </div>);
+      })()}
     </div>);
 }
 
@@ -17741,7 +17899,7 @@ function Auftraggeberbericht({ sitz, akt }) {
         sub="Ein Blatt zum Weitergeben an den Auftraggeber: Wie zuverlässig war die Besetzung im Zeitraum, und was ist vorgefallen? Ohne Namen, ohne interne Aufgaben, ohne Krankmeldungen — ein Auftraggeber bekommt Nachweis, keine Personalakte.">
         Leistungsnachweis</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", display: "grid",
           gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16 }}>
           <Field label="Von"><Inp type="date" value={von}
@@ -17756,62 +17914,22 @@ function Auftraggeberbericht({ sitz, akt }) {
       </Card>
 
       {b && (<>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-          gap: 16, marginBottom: 22 }}>
-          {[["Zeitraum", `${zahl(b.tage)} Tage`, ""],
-            ["Vollständig besetzt", `${zahl(b.vollstaendig)}`,
-              `von ${zahl(b.tage)} Tagen${b.betriebsweit ? " · Betrieb gesamt" : ""}`],
-            ["Deckungsquote", b.quote === null ? "—" : `${b.quote} %`,
-              (b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken")
-                + (b.betriebsweit ? " · Mindestbesetzung gilt je Dienstart, nicht je Einheit" : "")],
-            [`Dienste aus ${e ? e.name : "der Einheit"}`, zahl(b.diensteEinheit),
-              b.tageOhneEinheit ? `${zahl(b.tageOhneEinheit)} Tage ohne Dienst aus dieser Einheit` : "an jedem Tag im Dienst"],
-            ["Vorkommnisse", zahl(b.eintraege.length), "aus den Übergaben"]]
-            .map(([label, wert, sub]) => (
-            <Card key={label} style={{ padding: "20px 22px" }}>
-              <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-              <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em",
-                ...NUM }}>{wert}</div>
-              {sub && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>{sub}</div>}
-            </Card>))}
-        </div>
+        <Kennzahlen min={180} kacheln={[
+          { label: "Zeitraum", wert: `${zahl(b.tage)} Tage`, sub: `${fKurz(b.von)} bis ${fKurz(b.bis)}` },
+          { label: "Vollständig besetzt", wert: `${zahl(b.vollstaendig)}`, ton: "ok",
+            sub: `von ${zahl(b.tage)} Tagen${b.betriebsweit ? " · Betrieb gesamt" : ""}` },
+          { label: "Deckungsquote", wert: b.quote === null ? "—" : `${b.quote} %`,
+            ton: b.quote === null ? undefined : b.quote >= 95 ? "ok" : "warn",
+            sub: (b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken")
+              + (b.betriebsweit ? " · Mindestbesetzung gilt je Dienstart, nicht je Einheit" : "") },
+          { label: `Dienste aus ${e ? e.name : "der Einheit"}`, wert: zahl(b.diensteEinheit),
+            sub: b.tageOhneEinheit ? `${zahl(b.tageOhneEinheit)} Tage ohne Dienst aus dieser Einheit` : "an jedem Tag im Dienst" },
+          { label: "Vorkommnisse", wert: zahl(b.eintraege.length), ton: b.eintraege.length ? "warn" : "ok",
+            sub: "aus den Übergaben" }]} />
 
-        {/* Woher die Vorkommnisse kommen — und was zu tun ist, wenn keine
-            da sind. Ohne diesen Hinweis wirkt ein leerer Nachweis wie ein
-            Fehler der Anwendung. */}
-        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Der Nachweis wird nicht geschrieben, sondern abgeleitet.</b>{" "}
-            Die Besetzungszahlen kommen aus dem Plan, die Vorkommnisse ausschließlich aus dem
-            Feld „Vorkommnis" der abgeschlossenen Schichtübergaben. Das ist Absicht: Was einem
-            Auftraggeber als Nachweis vorgelegt wird, soll niemand nachträglich hineinschreiben
-            können.
-            <div style={{ marginTop: 10 }}>
-              {uebergabenImZeitraum === 0
-                ? <>Im gewählten Zeitraum ist <b style={{ color: C.text }}>keine einzige Übergabe</b> erfasst —
-                    deshalb steht hier nichts. Erfasst werden sie unter <b style={{ color: C.text }}>Übergabe</b>.</>
-                : <>Im Zeitraum sind {anzahlWort(uebergabenImZeitraum, "Übergabe")} erfasst,
-                    davon {zahl(b.eintraege.length)} mit einem Vorkommnis.</>}
-            </div>
-          </div>
-        </Card>
-
-        {/* Freie Anmerkung — bewusst getrennt, bewusst nicht gespeichert. */}
-        <Card style={{ marginBottom: 22 }}>
-          <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
-          <div style={{ padding: "16px var(--pad-x) 20px" }}>
-            <textarea className="inp" rows={3} value={anmerkung} aria-label="Eigene Anmerkung zum Nachweis"
-              placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
-              onChange={(ev) => setAnmerkung(ev.target.value)} />
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
-              Erscheint im Nachweis unter eigener Überschrift und ausdrücklich als nachträglich
-              erfasst — getrennt von den Vorkommnissen aus den Übergaben. Sie wird nicht
-              gespeichert, sondern gilt nur für dieses eine Blatt.
-            </div>
-          </div>
-        </Card>
-
-        <Card style={{ marginBottom: 22 }}>
+        <Leitraster seiteBreite={370}
+          haupt={<>
+        <Card>
           <CardHead right={<div style={{ display: "flex", gap: 9 }}>
             <Btn size="sm" onClick={() => {
               try { navigator.clipboard.writeText(alsText()); } catch { /* egal */ }
@@ -17829,7 +17947,44 @@ function Auftraggeberbericht({ sitz, akt }) {
             color: C.text }}>{alsText()}</pre>
         </Card>
 
-        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, maxWidth: 660 }}>
+          </>}
+          seite={<>
+        {/* Woher die Vorkommnisse kommen — und was zu tun ist, wenn keine
+            da sind. Ohne diesen Hinweis wirkt ein leerer Nachweis wie ein
+            Fehler der Anwendung. */}
+        <Erklaerkasten>
+          <div>
+            <b style={{ color: C.text }}>Der Nachweis wird nicht geschrieben, sondern abgeleitet.</b>{" "}
+            Die Besetzungszahlen kommen aus dem Plan, die Vorkommnisse ausschließlich aus dem
+            Feld „Vorkommnis" der abgeschlossenen Schichtübergaben. Das ist Absicht: Was einem
+            Auftraggeber als Nachweis vorgelegt wird, soll niemand nachträglich hineinschreiben
+            können.
+            <div style={{ marginTop: 10 }}>
+              {uebergabenImZeitraum === 0
+                ? <>Im gewählten Zeitraum ist <b style={{ color: C.text }}>keine einzige Übergabe</b> erfasst —
+                    deshalb steht hier nichts. Erfasst werden sie unter <b style={{ color: C.text }}>Übergabe</b>.</>
+                : <>Im Zeitraum sind {anzahlWort(uebergabenImZeitraum, "Übergabe")} erfasst,
+                    davon {zahl(b.eintraege.length)} mit einem Vorkommnis.</>}
+            </div>
+          </div>
+        </Erklaerkasten>
+
+        {/* Freie Anmerkung — bewusst getrennt, bewusst nicht gespeichert. */}
+        <Card>
+          <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
+          <div style={{ padding: "16px var(--pad-x) 20px" }}>
+            <textarea className="inp" rows={3} value={anmerkung} aria-label="Eigene Anmerkung zum Nachweis"
+              placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
+              onChange={(ev) => setAnmerkung(ev.target.value)} />
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
+              Erscheint im Nachweis unter eigener Überschrift und ausdrücklich als nachträglich
+              erfasst — getrennt von den Vorkommnissen aus den Übergaben. Sie wird nicht
+              gespeichert, sondern gilt nur für dieses eine Blatt.
+            </div>
+          </div>
+        </Card>
+
+        <Erklaerkasten>
           Nicht enthalten sind Namen, Stundenkonten, Krankmeldungen und die internen
           Felder der Übergabe. Wer einem Auftraggeber mehr geben will, sollte es
           bewusst tun — nicht, weil eine Ausgabe es versehentlich mitliefert.
@@ -17840,7 +17995,8 @@ function Auftraggeberbericht({ sitz, akt }) {
             {m.einheitLabel || "Einheit"}. Die Auswahl oben grenzt die Vorkommnisse ein,
             nicht die Besetzungszahlen.
           </div>
-        </div>
+        </Erklaerkasten>
+          </>} />
       </>)}
     </div>);
 }
@@ -18159,92 +18315,102 @@ function Belastung({ sitz, akt, gehZu }) {
             { id: "56", label: "8 Wochen" }]} />}>
         Belastung</H1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-        gap: 16, marginBottom: 26 }}>
-        {[["Hoch", zaehl.hoch, "vor weiteren Einsätzen ansprechen", zaehl.hoch ? "danger" : "ok"],
-          ["Erhöht", zaehl.erhoeht, "bei der nächsten Planung beachten", zaehl.erhoeht ? "warn" : "ok"],
-          ["Unauffällig", zaehl.normal, "im üblichen Rahmen", "ok"],
-          ["Betrachtet", bild.length, `Personen über ${tage} Tage`, "text"]].map(
-          ([label, wert, sub, ton]) => (
-          <Card key={label} style={{ padding: "20px 22px" }}>
-            <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-            <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.035em", ...NUM,
-              color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                : ton === "ok" ? C.ok : C.text }}>{zahl(wert)}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6, lineHeight: 1.4 }}>{sub}</div>
-          </Card>))}
-      </div>
+      <Kennzahlen kacheln={[
+        { label: "Hoch", wert: zahl(zaehl.hoch), ton: "danger", hervor: zaehl.hoch ? "danger" : undefined,
+          sub: "vor weiteren Einsätzen ansprechen" },
+        { label: "Erhöht", wert: zahl(zaehl.erhoeht), ton: "warn", hervor: zaehl.erhoeht ? "warn" : undefined,
+          sub: "bei der nächsten Planung beachten" },
+        { label: "Unauffällig", wert: zahl(zaehl.normal), ton: "ok", sub: "im üblichen Rahmen" },
+        { label: "Betrachtet", wert: zahl(bild.length), sub: `Personen über ${tage} Tage` }]} />
 
-      {bild.length === 0 ? (
-        <Card><Leer titel="Keine Daten"
-          text="Sobald Dienste geplant und gefahren wurden, entsteht hier das Bild." /></Card>
-      ) : (
-        <Card>
-          <CardHead right={<Lab>nach Belastung geordnet</Lab>}>Personen</CardHead>
-          {bild.map(({ person: p, e }, i) => {
-            const st = ERMUEDUNG_STUFEN[e.stufe];
-            const auf = offen === p.id;
-            return (
-              <div key={p.id} style={{ borderBottom: i < bild.length - 1
-                ? `1px solid ${C.lineSoft}` : "none" }}>
-                <button onClick={() => setOffen(auf ? null : p.id)}
-                  style={{ display: "flex", alignItems: "center", gap: 14, width: "100%",
-                    padding: "15px var(--pad-x)", border: "none", cursor: "pointer",
-                    textAlign: "left", fontFamily: "inherit", color: C.text,
-                    background: e.stufe === "hoch" ? C.dangerLight
-                      : e.stufe === "erhoeht" ? C.warnLight : "transparent" }}>
-                  <Avatar person={p} size="sm" />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 14.5, fontWeight: 550 }}>
-                      {p.nachname}, {p.vorname}</span>
-                    <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 3 }}>
-                      {zahl(e.dienste)} Dienste · {e.nachtanteil} % nachts
-                      {e.serie > 0 ? ` · längste Serie ${e.serie} Tage` : ""}</span>
-                  </span>
-                  {/* Ein Balken sagt mehr als eine Zahl */}
-                  <span style={{ width: 90, height: 6, borderRadius: 3, background: C.bg,
-                    overflow: "hidden", flexShrink: 0 }}>
-                    <span style={{ display: "block", height: "100%",
-                      width: `${Math.min(100, e.punkte)}%`,
-                      background: e.stufe === "hoch" ? C.danger
-                        : e.stufe === "erhoeht" ? C.warn : C.ok }} /></span>
-                  <Pill size="sm" tone={st.ton}>{st.label}</Pill>
-                </button>
+      <Leitraster seiteBreite={340}
+        haupt={bild.length === 0 ? (
+          <Card><Leer titel="Keine Daten"
+            text="Sobald Dienste geplant und gefahren wurden, entsteht hier das Bild." /></Card>
+        ) : (
+          <Card>
+            <CardHead right={<Lab>nach Belastung geordnet</Lab>}>Personen</CardHead>
+            {bild.map(({ person: p, e }, i) => {
+              const st = ERMUEDUNG_STUFEN[e.stufe];
+              const auf = offen === p.id;
+              return (
+                <div key={p.id} style={{ borderBottom: i < bild.length - 1
+                  ? `1px solid ${C.lineSoft}` : "none" }}>
+                  <button onClick={() => setOffen(auf ? null : p.id)} aria-expanded={auf}
+                    style={{ display: "flex", alignItems: "center", gap: 14, width: "100%",
+                      padding: "13px var(--pad-x)", border: "none", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", color: C.text,
+                      background: e.stufe === "hoch" ? C.dangerLight
+                        : e.stufe === "erhoeht" ? C.warnLight : "transparent" }}>
+                    <Avatar person={p} size="sm" />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 14.5, fontWeight: 550 }}>
+                        {p.nachname}, {p.vorname}</span>
+                      <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 3 }}>
+                        {zahl(e.dienste)} Dienste · {e.nachtanteil} % nachts
+                        {e.serie > 0 ? ` · längste Serie ${e.serie} Tage` : ""}</span>
+                    </span>
+                    {/* Ein Balken sagt mehr als eine Zahl */}
+                    <span style={{ width: 110, flexShrink: 0 }}>
+                      <Fortschritt wert={Math.min(100, e.punkte)} hoehe={7}
+                        ton={e.stufe === "hoch" ? "danger" : e.stufe === "erhoeht" ? "warn" : "ok"}
+                        label={`Belastung ${Math.round(e.punkte)} von 100 Punkten`} /></span>
+                    <Pill size="sm" tone={st.ton}>{st.label}</Pill>
+                  </button>
 
-                {auf && (
-                  <div style={{ padding: "0 var(--pad-x) 20px 62px" }}>
-                    <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6,
-                      marginBottom: 14 }}>{st.text}</div>
-                    {e.gruende.length === 0 ? (
-                      <div style={{ fontSize: 13.5, color: C.dim }}>
-                        Keine auffälligen Einzelwerte.</div>
-                    ) : (
-                      <div style={{ display: "grid", gap: 9 }}>
-                        {e.gruende.map((g, gi) => (
-                          <div key={gi} style={{ display: "flex", alignItems: "center", gap: 12,
-                            fontSize: 13.5 }}>
-                            <span style={{ minWidth: 200, fontWeight: 550 }}>{g.was}</span>
-                            <span style={{ flex: 1, color: C.dim }}>{g.wert}</span>
-                            <span style={{ color: C.dim, ...NUM }}>+{g.punkte}</span>
-                          </div>))}
-                      </div>)}
-                    <div style={{ display: "flex", gap: 20, marginTop: 16, fontSize: 12.5,
-                      color: C.dim, flexWrap: "wrap" }}>
-                      <span>Nachtanteil {e.nachtanteil} %</span>
-                      <span>Wochenenden {e.wochenendanteil} %</span>
-                      <span>Rückwärtswechsel {zahl(e.wechsel)}</span>
-                      <span>Stundenkonto {e.konto} h</span>
-                    </div>
-                  </div>)}
-              </div>);
-          })}
-        </Card>)}
-
-      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginTop: 24, maxWidth: 640 }}>
-        Die Bewertung sperrt niemanden. Wer sperrt, wo das Gesetz es nicht verlangt,
-        erzeugt Umgehungen — und dann steht die Belastung nirgends mehr. Sie ist als
-        Hinweis vor der nächsten Planungsrunde gedacht, nicht als Urteil.
-      </div>
+                  {auf && (
+                    <div style={{ padding: "0 var(--pad-x) 20px 62px" }}>
+                      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6,
+                        marginBottom: 14 }}>{st.text}</div>
+                      {e.gruende.length === 0 ? (
+                        <div style={{ fontSize: 13.5, color: C.dim }}>
+                          Keine auffälligen Einzelwerte.</div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 9 }}>
+                          {e.gruende.map((g, gi) => (
+                            <div key={gi} style={{ display: "flex", alignItems: "center", gap: 12,
+                              fontSize: 13.5 }}>
+                              <span style={{ minWidth: 200, fontWeight: 550 }}>{g.was}</span>
+                              <span style={{ flex: 1, color: C.dim }}>{g.wert}</span>
+                              <span style={{ color: C.dim, ...NUM }}>+{g.punkte}</span>
+                            </div>))}
+                        </div>)}
+                      <div style={{ display: "flex", gap: 20, marginTop: 16, fontSize: 12.5,
+                        color: C.dim, flexWrap: "wrap" }}>
+                        <span>Nachtanteil {e.nachtanteil} %</span>
+                        <span>Wochenenden {e.wochenendanteil} %</span>
+                        <span>Rückwärtswechsel {zahl(e.wechsel)}</span>
+                        <span>Stundenkonto {e.konto} h</span>
+                      </div>
+                    </div>)}
+                </div>);
+            })}
+          </Card>)}
+        seite={<>
+          {bild.length > 0 && (
+            <Seitenkarte titel="Verteilung im Betrieb" sub="Personen je Punktebereich, von 0 bis 100.">
+              <Sparkline art="saeulen" hoehe={70} hervor={10}
+                daten={Array.from({ length: 10 }, (_, k) => bild.filter((x) =>
+                  Math.min(99, Math.floor(x.e.punkte)) >= k * 10 && Math.min(99, Math.floor(x.e.punkte)) < (k + 1) * 10).length)}
+                beschriftung={`Verteilung der Belastungspunkte auf zehn Bereiche: ${zaehl.normal} unauffällig, ${zaehl.erhoeht} erhöht, ${zaehl.hoch} hoch`} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: C.dim, marginTop: 6 }}>
+                <span>0 Punkte</span><span>100 Punkte</span></div>
+            </Seitenkarte>)}
+          <Seitenkarte titel="Was die Stufen bedeuten">
+            {Object.entries(ERMUEDUNG_STUFEN).map(([id, st]) => (
+              <div key={id} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+                  <Punkt ton={st.ton || "ok"} /><b>{st.label}</b>
+                  <span style={{ fontSize: 12, color: C.dim }}>ab {st.ab} Punkte</span></div>
+                <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginTop: 3, paddingLeft: 16 }}>{st.text}</div>
+              </div>))}
+          </Seitenkarte>
+          <Erklaerkasten>
+            Die Bewertung sperrt niemanden. Wer sperrt, wo das Gesetz es nicht verlangt,
+            erzeugt Umgehungen — und dann steht die Belastung nirgends mehr. Sie ist als
+            Hinweis vor der nächsten Planungsrunde gedacht, nicht als Urteil.
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
