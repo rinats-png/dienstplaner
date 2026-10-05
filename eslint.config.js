@@ -47,7 +47,7 @@ export default [
 
   /* --- Server --- */
   {
-    files: ["server/**/*.mjs", "pruefungen/**/*.mjs", "server.mjs"],
+    files: ["server/**/*.mjs", "pruefungen/**/*.mjs", "werkzeug/**/*.mjs", "server.mjs"],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 2023,

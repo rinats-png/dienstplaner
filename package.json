@@ -43,6 +43,7 @@
     "pruefung:betriebsauswahl": "vitest run pruefungen/betriebsauswahl.test.js",
     "pruefung:generation": "vitest run pruefungen/mitgliedschaftsgeneration.test.js",
     "pruefung:arbeitssitzung": "vitest run pruefungen/arbeitssitzung.test.js",
+    "pruefung:sicherung-ablage": "vitest run pruefungen/sicherung-ablage.test.js",
     "pruefung:passwoerter": "vitest run pruefungen/passwoerter.test.js",
     "pruefung:token": "vitest run pruefungen/token.test.js",
     "pruefung:sitzungen": "vitest run pruefungen/sitzungen.test.js",
