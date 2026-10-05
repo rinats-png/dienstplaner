@@ -34,9 +34,22 @@ env:
 
 jobs:
   # -------------------------------------------------------------------
+  # 0. Das volle Gate — dieselben Workflows, die bei jedem Push laufen.
+  #    Schlägt einer fehl, entsteht kein Bild, geht nichts nach GHCR und
+  #    läuft kein Schritt auf den VPS. Es gibt keinen Weg um das Gate:
+  #    `bild` hängt daran, `vps` hängt an `bild`.
+  # -------------------------------------------------------------------
+  pruefung:
+    uses: ./.github/workflows/pruefung.yml
+
+  sicherheit:
+    uses: ./.github/workflows/sicherheit.yml
+
+  # -------------------------------------------------------------------
   # 1. Bauen, gegen den laufenden Container prüfen, nach GHCR laden
   # -------------------------------------------------------------------
   bild:
+    needs: [pruefung, sicherheit]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:

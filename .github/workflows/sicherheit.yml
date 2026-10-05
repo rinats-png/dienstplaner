@@ -12,6 +12,8 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Auslieferung (deploy.yml) ruft diese Schranke auf, bevor sie ein Bild baut.
+  workflow_call:
 
 permissions:
   contents: read

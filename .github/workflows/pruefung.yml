@@ -9,6 +9,8 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Auslieferung (deploy.yml) ruft dieses Gate auf, bevor sie ein Bild baut.
+  workflow_call:
 
 jobs:
   pruefen:
@@ -198,6 +200,39 @@ jobs:
       # Personenwechsel wirken beim nächsten Zugriff — an allen vier Pfaden.
       - name: Arbeitssitzungsbindung
         run: npm run pruefung:arbeitssitzung
+
+      # Bisher nur lokal gelaufen, obwohl in package.json angelegt. Ab jetzt
+      # Teil des Gates: Wer sie nicht erfüllt, liefert nicht aus.
+      - name: Tarifwerke
+        run: npm run pruefung:tarife
+
+      - name: Betreiberrechte
+        run: npm run pruefung:betreiber
+
+      - name: Rollenvergabe
+        run: npm run pruefung:rollen
+
+      - name: Standorte
+        run: npm run pruefung:standorte
+
+      # Die Zusicherungen aus src/pruefung.jsx, ohne Oberfläche aufgerufen.
+      # Enthält eine Zeitgrenze („Erster Aufbau unter 500 ms"), die auf
+      # langsamen Rechnern kippen kann — rot heißt dann: messen, nicht
+      # die Grenze verschieben.
+      - name: Selbsttest der Anwendung
+        run: npm run pruefung:selbst
+
+      # pruefung:serverlauf (dieselben fünf serverbasierten Prüfungen gegen
+      # `node server.mjs` mit Wegwerfordner) läuft hier bewusst NICHT:
+      # Dieselben fünf laufen unten gegen das Docker-Bild — das ist die
+      # Auslieferung, nicht ihr Stellvertreter. Das Skript bleibt die
+      # Abkürzung für die Entwicklung ohne Docker.
+
+      # Sicherung und Wiederherstellung der gesamten Ablage, gegen eine
+      # echte Ablage: Konten, Mitgliedschaften, Betriebe — und danach
+      # Anmeldung und Betriebsauswahl.
+      - name: Sicherung und Wiederherstellung
+        run: npm run pruefung:sicherung-ablage
 
       - name: Übersetzen
         run: npm run build
