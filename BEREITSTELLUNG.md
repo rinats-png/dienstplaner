@@ -50,8 +50,11 @@ kein Schema und keinen Fremddienst für die Daten. Was der Betrieb an Ablage
 braucht, steht in `server/lib/bestand.mjs`: ein Kern je Betrieb plus eine
 Scherbe je Monat; die Ablage selbst — atomares Schreiben, Schlüssel als
 Dateinamen, ein Umschlag je Wert — in `server/lib/ablage.mjs`. Vier Stores
-liegen unter `/data`: `centric` (Betriebe, Zugänge, Sicherungen),
-`centric-sitzungen`, `centric-takt` (Bremse), `centric-spur` (Protokoll).
+liegen unter `/data`: `centric` (Betriebe, Accounts, Mitgliedschaften,
+Zugänge, Sicherungen), `centric-sitzungen` (Arbeitssitzungen und
+Sicherungsschlüssel), `centric-accountsitzungen` (Account-Sitzungen),
+`centric-takt` (Bremse), `centric-spur` (Protokoll). Was davon gesichert wird,
+steht in 5.4.
 
 Eine zusätzliche Datenbank würde eine zweite Datenhaltung einführen, die
 nichts löst.
@@ -63,12 +66,17 @@ nichts löst.
 Jeder Push nach `main` lässt `Prüfung` laufen (`.github/workflows/pruefung.yml`):
 Linter, Typen, Regelwerk, Branchen, Untergrenzen, Lenkzeiten, Aufbewahrung,
 Zugangscodes, Scherben, Ablage, Bremse, Server, Bereitstellungsskript,
-Rechtetabellen, Bauen — und danach gegen ein frisch gebautes, gehärtet
+Rechtetabellen, Konten, Registrierung, Anmeldung, Betriebsauswahl, Tarife,
+Betreiberrechte, Rollen, Standorte, Selbsttest, Sicherung und
+Wiederherstellung, Bauen — und danach gegen ein frisch gebautes, gehärtet
 gestartetes Bild: Rechteprüfung, Verwalterkonten, Demozugänge, Sicherung
 außer Haus, Bremse. Daneben `Sicherheit` (Audit, Secret-Scan, verbotene
 Muster). Ein roter Lauf blockiert.
 
-Ausgeliefert wird nur, was `Prüfung` bestanden hat, und nur von Hand:
+Ausgeliefert wird nur, was `Prüfung` und `Sicherheit` bestanden haben, und nur
+von Hand. Der Workflow `Auslieferung` ruft beide selbst als erste Aufträge auf
+(`pruefung`, `sicherheit`); das Bauen, das Laden nach GHCR und der Schritt auf
+den VPS hängen davon ab. Ist einer rot, entsteht kein Bild:
 
     GitHub → Actions → „Auslieferung" → Run workflow → Branch main
 
@@ -349,6 +357,109 @@ Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
 löschen und sich nicht anmelden. Unabhängig davon gehört `/data` auf dem
 VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
 liegen.
+
+### 5.4 Sicherung und Wiederherstellung der gesamten Ablage
+
+Die Sicherung nach 5.3 holt nur die Betriebsdaten über die Schnittstelle. Konten,
+Mitgliedschaften, Zugangscodes und das Protokoll stehen dort nicht. Für eine
+vollständige Wiederherstellung — Server verloren, Platte defekt — gibt es
+`werkzeug/ablage-sicherung.mjs`. Es ist im Bild enthalten und braucht nur Node.
+
+**Wo die Daten liegen.** Alles unter `/data` im Container, auf dem VPS
+`/opt/apps/centric-dienstplanung/data` (Bind-Mount): ein Verzeichnis je Store,
+darin eine Datei je Schlüssel.
+
+**Was gesichert wird**
+
+| Klasse | Store | Inhalt |
+|---|---|---|
+| A, zwingend | `centric` | Betriebe, Bestände, Monatsscherben, Stände, betriebsinterne Sicherungen, Accounts, Mitgliedschaften samt Generation, Zugangscodes, Verwalter, Kalender-Feeds, Push-Anmeldungen |
+| B, sinnvoll | `centric-sitzungen`, nur `sk:` | Sicherungsschlüssel für die Sicherung außer Haus (gelten bis zu einem Jahr; ohne den Eintrag gälte der Schlüssel im Skript der Sicherung außer Haus nicht mehr, und der Klartext lässt sich nicht neu erzeugen) |
+| B, sinnvoll | `centric-spur` | Protokoll |
+
+**Was bewusst nicht gesichert wird (C, flüchtig):** Account- und Arbeitssitzungen
+(`centric-accountsitzungen`, `t:` in `centric-sitzungen`), offene Einmal-Token
+(`token:`, `tokencode:` in `centric`: Einladungs-, Verifizierungs-, Passwortlinks)
+und die Bremszähler (`centric-takt`). Das ist die sichere Richtung: Eine Sitzung
+oder ein Link, der nach der Sicherung widerrufen oder verbraucht wurde, würde
+sonst nach einer Wiederherstellung wieder gelten. Folge: Nach einer
+Wiederherstellung müssen sich alle neu anmelden, und offene Links werden neu
+angefordert. Die Sicherung zählt jedes Ausgelassene im Manifest und in ihrer
+Ausgabe mit.
+
+**Was nicht in `/data` liegt, aber dazugehört:** `CENTRIC_PFEFFER`. Ohne denselben
+Pfeffer findet kein Konto und kein Zugangscode mehr zu seinem Datensatz. Die
+Sicherung enthält nur einen Prüfwert des Pfeffers, nie den Pfeffer selbst; die
+Wiederherstellung lehnt einen anderen oder fehlenden ab. Den Pfeffer getrennt
+von den Sicherungen aufbewahren (Passwortmanager), nicht daneben.
+
+**Sicherung erstellen.** Der Server darf dabei laufen. Jede Datei ist einzeln
+atomar; das Werkzeug sieht die Quelle nach dem Kopieren noch einmal an und
+verwirft die Sicherung, wenn sich währenddessen etwas geändert hat (drei
+Versuche, dann Abbruch mit Meldung — in dem Fall den Server kurz stoppen).
+
+    cd /opt/apps/centric-dienstplanung
+    mkdir -p sicherungen && sudo chown 1000:1000 sicherungen && chmod 700 sicherungen
+    docker compose run --rm --no-deps -v "$PWD/sicherungen:/sicherungen" centric-dp-web \
+      node werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen
+
+Das Ergebnis ist ein Ordner `sicherungen/centric-sicherung-<UTC-Zeit>/`. Er wird
+unter `.unfertig-…` aufgebaut und erst am Ende umbenannt; er enthält `daten/`,
+`MANIFEST.json` (Dateiliste mit SHA-256), `MANIFEST.sha256` und als Letztes
+`FERTIG`. Fehlt `FERTIG`, ist die Sicherung unvollständig. Ein Fehler
+(unbekannter Store, beschädigte Datei, geänderte Quelle) beendet das Werkzeug
+mit einem Code ungleich 0 und legt keine Sicherung an.
+
+**Aufbewahrung.** Mindestens eine Kopie gehört **außerhalb des VPS** — ein
+verlorener Server nimmt sonst die Sicherung mit. Den Ordner als Ganzes kopieren
+(`rsync`, `scp`, `tar` — nichts ändern), danach am Zielort prüfen:
+
+    node werkzeug/ablage-sicherung.mjs pruefen --sicherung <Ordner>
+
+Das prüft FERTIG, Manifest, jede Datei nach Größe und Prüfsumme und dass nichts
+dabeiliegt, was das Manifest nicht kennt. Täglich sichern, mehrere Stände
+behalten, die Sicherungen verschlüsselt ablegen — sie enthalten Personaldaten.
+
+**Wiederherstellen.** Der Server muss stehen. Das Werkzeug prüft die Sicherung
+zuerst vollständig, bricht bei jedem Befund ab und fasst bis dahin nichts an.
+Ein nicht leeres Ziel wird nur mit `--ersetzen` angefasst — und auch dann wird
+nichts gelöscht: Der alte Inhalt wandert nach `.vor-wiederherstellung-<Zeit>/`
+im Ziel.
+
+    cd /opt/apps/centric-dienstplanung
+    docker compose stop
+    docker compose run --rm --no-deps -v "$PWD/sicherungen:/sicherungen:ro" centric-dp-web \
+      node werkzeug/ablage-sicherung.mjs wiederherstellen \
+      --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /data --ersetzen --ohne-serverpruefung
+    docker compose up -d
+
+`CENTRIC_PFEFFER` kommt dabei aus der `.env` des Dienstes, also derselben wie im
+Betrieb. Danach anmelden, einen Betrieb öffnen, stichprobenweise Daten ansehen.
+Erst wenn alles stimmt, `data/.vor-wiederherstellung-<Zeit>/` von Hand entfernen.
+Wiederhergestellt wird der Stand der Sicherung: Was seitdem geschah — auch ein
+Zugangsentzug, eine Passwortänderung, eine Sperre — ist zurückgenommen und muss
+erneut ausgeführt werden.
+
+**Restore-Test.** Eine Sicherung, die nie zurückgespielt wurde, ist keine. Mindestens
+vierteljährlich, und nach jeder Änderung an Ablage oder Konten: in einen leeren
+Ordner zurückspielen (nicht in `data/`) und dort ansehen.
+
+    mkdir -p restore-test && sudo chown 1000:1000 restore-test
+    docker compose run --rm --no-deps \
+      -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
+      node werkzeug/ablage-sicherung.mjs wiederherstellen \
+      --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
+    docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
+      -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
+      ghcr.io/rinats-png/dienstplaner:latest
+
+Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
+Container beenden und `restore-test/` löschen. Der Ablauf der Werkzeuge selbst ist
+mit `npm run pruefung:sicherung-ablage` automatisch geprüft (Konto, Mitgliedschaft,
+Betrieb, Anmeldung und Betriebsauswahl nach der Wiederherstellung).
+
+**Als root wiederherstellen** (nicht über `docker compose run`): danach
+`chown -R 1000:1000 data`, sonst kann der Container nicht schreiben.
 
 ---
 
