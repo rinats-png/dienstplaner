@@ -51,6 +51,9 @@ COPY --from=laufzeit /app/node_modules ./node_modules
 COPY --from=bauen /app/dist ./dist
 COPY server ./server
 COPY server.mjs package.json ./
+# Sicherung und Wiederherstellung der Ablage (BEREITSTELLUNG.md, 5.4) — im Bild,
+# damit der VPS kein eigenes Node braucht.
+COPY werkzeug/ablage-sicherung.mjs ./werkzeug/
 
 # Datenverzeichnis gehört dem unprivilegierten Benutzer `node` (uid 1000).
 # Im Betrieb wird es durch einen Bind-Mount ersetzt (./data:/data).

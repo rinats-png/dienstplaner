@@ -5,7 +5,8 @@
 node_modules
 dist
 marketing
-werkzeug
+werkzeug/*
+!werkzeug/ablage-sicherung.mjs
 pruefungen
 deploy
 .env
