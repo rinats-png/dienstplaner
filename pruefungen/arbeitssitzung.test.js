@@ -590,30 +590,32 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
 
   it("bindet jeden Pfad an dieselbe Primitive", async () => {
     /* Kein Pfad darf eine eigene Fassung der Prüfung bekommen, und es darf
-       kein fünfter Nebeneingang entstehen, der sie vergisst. Deshalb wird
-       hier festgehalten, welche produktiven Dateien überhaupt eine
-       Arbeitssitzung lesen — und dass jede davon die Primitive benutzt. */
+       kein fünfter Nebeneingang entstehen, der sie vergisst. Seit Phase A.1
+       gibt es EINEN Weg, eine Arbeitssitzung aus einer Anfrage zu lesen
+       (arbeitssitzungLesen: technisch lesen UND fachlich prüfen). Deshalb wird
+       hier festgehalten, welche produktiven Dateien ihn benutzen — und dass
+       keine Datei eine Sitzung auf dem alten Weg liest. Die genaue Aufstellung
+       aller Lesestellen steht in sitzungsinventar.test.js. */
     const verzeichnis = new URL("../server/funktionen/", import.meta.url);
     const { readdir } = await import("node:fs/promises");
     const dateien = (await readdir(verzeichnis)).filter((d) => d.endsWith(".mjs"));
     const leser = [];
+    const roh = [];
     for (const d of dateien) {
       const text = await readFile(new URL(d, verzeichnis), "utf8");
-      /* Zwei Wege, eine Arbeitssitzung zu lesen: über sitzungLesen oder
-         direkt über den Schlüssel `t:`. */
-      const liest = /sitzungLesen/.test(text) || /`t:\$\{/.test(text);
-      if (liest) leser.push(d);
+      if (/arbeitssitzungLesen/.test(text)) leser.push(d);
+      /* Die zwei alten Wege: über sitzungLesen oder direkt über den Schlüssel
+         `t:`. Beide sind den Endpunkten verschlossen. */
+      if (/sitzungLesen/.test(text) || /`t:\$\{/.test(text)) roh.push(d);
     }
     expect(leser.sort()).toEqual(["daten.mjs", "kalender.mjs", "lage.mjs",
       "zustellung.mjs"]);
-    for (const d of leser) {
-      const text = await readFile(new URL(d, verzeichnis), "utf8");
-      expect(text.includes("arbeitssitzungPruefen"), d).toBe(true);
-    }
+    expect(roh, "Dateien, die eine Sitzung auf dem alten Weg lesen").toEqual([]);
     /* Und die Primitive gibt es genau einmal. */
     const modul = await readFile(new URL("../server/lib/arbeitssitzung.mjs",
       import.meta.url), "utf8");
     expect(modul.includes("export async function arbeitssitzungPruefen")).toBe(true);
+    expect(modul.includes("export async function arbeitssitzungLesen")).toBe(true);
     /* sitzungen.mjs bleibt frei von Accountwissen. */
     const sitzungen = await readFile(new URL("../server/lib/sitzungen.mjs",
       import.meta.url), "utf8");

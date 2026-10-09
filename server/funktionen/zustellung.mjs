@@ -1,9 +1,8 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { sendeMail } from "../lib/post.mjs";
-import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
+import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -21,27 +20,10 @@ import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
-const sitzungen = () => getStore({ name: "centric-sitzungen", consistency: "strong" });
-const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
   status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
-async function sitzung(req) {
-  const kopf = req.headers.get("authorization") || "";
-  const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
-  if (!token) return null;
-  const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
-  if (!s || s.bis < Date.now()) return null;
-  /* Fachlich gültig? Eine Sitzung aus einem Konto trägt einen
-     Herkunftsanker, der gegen Account, Mitgliedschaft und Generation
-     geprüft wird (arbeitssitzung.mjs). Eine Sitzung aus einem
-     Zugangscode hat keinen und kostet keinen zusätzlichen Lesevorgang.
-     Dieselbe Primitive wie in daten.mjs — keine zweite Fassung. */
-  const fachlich = await arbeitssitzungPruefen(store(), s, { merkmal: token });
-  if (!fachlich.ok) return null;
-  return s;
-}
 
 /* --------------------------------------------------------------------------
    ADRESSBUCH
@@ -112,7 +94,8 @@ export default async (req) => {
       return antwort({ vapid: process.env.VAPID_PUBLIC || null,
         mail: !!process.env.RESEND_API_KEY });
 
-    const s = await sitzung(req);
+    /* Die Sitzung kommt aus dem einen Prüfpunkt (lib/arbeitssitzung.mjs). */
+    const s = (await arbeitssitzungLesen(req, { store: store() })).sitzung;
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
 
     /* --------------------------- Zustellen ---------------------------- */

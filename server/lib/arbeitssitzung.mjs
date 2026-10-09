@@ -1,9 +1,10 @@
 import {
   accountLesenPerId, mitgliedschaftLesen, mitgliedlaufLesen, generationStimmt,
 } from "./accounts.mjs";
+import { getStore } from "./ablage.mjs";
 import { bestandLesen } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
-import { sitzungBeenden } from "./sitzungen.mjs";
+import { sitzungBeenden, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -101,6 +102,68 @@ import { sitzungBeenden } from "./sitzungen.mjs";
 
 /** Die einzige Art, die dieser Anker haben darf. */
 export const HERKUNFT_KONTO = "account";
+
+/* ==========================================================================
+   DER EINE PRÜFPUNKT: arbeitssitzungLesen
+
+   Bis hierher las jeder Pfad seine Sitzung selbst. Vier Dateien hatten je eine
+   eigene Fassung des Lesens, und fünf Pfade in daten.mjs lasen die Sitzung roh
+   und kamen an der fachlichen Prüfung vorbei: Eine Leitung, deren
+   Mitgliedschaft entzogen war, konnte dort weiter Zugangscodes sperren. Die
+   Primitive `arbeitssitzungPruefen` gab es — sie wurde nur nicht überall
+   gerufen.
+
+   Jetzt gibt es einen Weg, eine Arbeitssitzung aus einer Anfrage zu lesen, und
+   er enthält beides: das technische Lesen (Merkmal, Frist, Untätigkeit) und die
+   fachliche Prüfung. Wer eine Sitzung braucht, ruft diese Funktion. Ein
+   Strukturtest (sitzungsinventar.test.js) hält fest, dass es keine andere
+   Stelle gibt, die den Kopf `authorization` liest oder `t:` anfasst.
+
+   Rückgabe:
+
+     sitzung      die Sitzung, wenn sie technisch UND fachlich gilt; sonst null
+     abgewiesen   wahr, wenn es eine technisch gültige Sitzung gab, die
+                  fachlich widerrufen ist (Entzug, Sperre, Epoche, …)
+     grund        der innere Grund dafür — für das Protokoll, nie nach außen
+
+   Warum `abgewiesen` getrennt von „keine Sitzung": Die Pfade antworten auf eine
+   fehlende Sitzung wie bisher, auf eine widerrufene aber einheitlich mit
+   „Nicht angemeldet" (401) — und protokollieren sie.
+
+   Sicherungsschlüssel (sk:) sind keine Arbeitssitzungen. Sie dürfen nur lesen,
+   und nur ein Pfad darf sie annehmen (daten.mjs, über seine Positivliste). Alle
+   anderen bekommen sie nicht zu sehen: ohne `sicherungsschluessel: true` ist
+   ein Sicherungsschlüssel „keine Sitzung".
+   ========================================================================== */
+
+/**
+ * @param {Request} req
+ * @param {{store?: (object|null), sicherungsschluessel?: boolean,
+ *   bestandLader?: (((s: any) => Promise<any>)|null)}} [o]
+ *   `store`: Ablage „centric" (sonst die eigene). `bestandLader` bekommt die
+ *   gelesene Sitzung und gibt einen schon gelesenen Bestand zurück, damit er
+ *   nicht zweimal gelesen wird.
+ * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null)}>}
+ */
+export async function arbeitssitzungLesen(req,
+  { store = null, sicherungsschluessel = false, bestandLader = null } = {}) {
+  const keine = () => ({ sitzung: null, abgewiesen: false, grund: null });
+  const merkmal = merkmalAus(req);
+  if (!merkmal) return keine();
+
+  const s0 = await sitzungLesen(req);
+  if (!s0) return keine();
+  if (s0.nurSicherung && !sicherungsschluessel) return keine();
+
+  const ablage = store || getStore({ name: "centric", consistency: "strong" });
+  const fachlich = await arbeitssitzungPruefen(ablage, s0,
+    { merkmal, bestandLader: bestandLader ? () => bestandLader(s0) : null });
+  if (!fachlich.ok) {
+    return { sitzung: null, abgewiesen: true,
+      grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
+  }
+  return { sitzung: s0, abgewiesen: false, grund: null };
+}
 
 /** Trägt dieser Datensatz überhaupt einen Herkunftsanker? */
 const hatHerkunft = (sitzung) =>

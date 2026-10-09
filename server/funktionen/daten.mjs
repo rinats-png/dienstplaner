@@ -10,11 +10,11 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
+import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 /* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
    nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
    Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
-import { sitzungsSpeicher as sitzungen, sitzungLesen as sitzung,
+import { sitzungsSpeicher as sitzungen,
   sitzungAnlegen, sitzungBeenden, merkmalAus, dauerFuer } from "../lib/sitzungen.mjs";
 
 /* ==========================================================================
@@ -167,6 +167,22 @@ async function sicherungenAusduennen(store, raum) {
   } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
 }
 
+/**
+ * Die Antwort auf eine Sitzung, die technisch gültig war und fachlich
+ * widerrufen ist (Entzug, Sperre, Epoche, Logout). Einheitlich „Nicht
+ * angemeldet" — nicht „kein Betreiber", das wäre eine andere Auskunft —, und
+ * im Protokoll mit dem inneren Grund, nie nach außen.
+ *
+ * Gebraucht von den Pfaden vor dem Hauptpfad: Sie lasen die Sitzung bisher roh
+ * und kamen an der fachlichen Prüfung vorbei. Jetzt lesen sie über denselben
+ * Prüfpunkt wie alle anderen (lib/arbeitssitzung.mjs, arbeitssitzungLesen).
+ */
+async function widerrufen(req, lese) {
+  await protokoll("zugaenge", kennung(req, null), "abgewiesen",
+    `sitzung: ${String(lese.grund).slice(0, 24)}`);
+  return antwort({ fehler: "Nicht angemeldet." }, 401);
+}
+
 export default async (req, context) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/api\/?/, "");
@@ -192,7 +208,9 @@ export default async (req, context) => {
     /* Nur der Betreiber darf das. Die Codes entstehen hier, damit sie als
        Prüfsumme abgelegt werden können — im Browser wäre das sinnlos. */
     if (pfad === "zugaenge" && req.method === "POST") {
-      const sB = await sitzung(req);
+      const lB = await arbeitssitzungLesen(req, { store });
+      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "keine Betreibersitzung");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
@@ -244,7 +262,9 @@ export default async (req, context) => {
        nur mit wiederholtem Raumnamen. Der eigene Raum lässt sich nicht
        löschen — sonst sägt sich der Betreiber den Ast ab.              */
     if (pfad === "raum-loeschen" && req.method === "POST") {
-      const sB = await sitzung(req);
+      const lB = await arbeitssitzungLesen(req, { store });
+      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("loeschen", kennung(req, null), "abgewiesen", "Raumlöschung ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
@@ -287,7 +307,9 @@ export default async (req, context) => {
        fand sie deshalb nicht. Ohne Codes, ohne Prüfsummen; der eigene
        Zugang ist markiert, damit die Konsole ihn nicht zum Sperren anbietet. */
     if (pfad === "zugaenge-uebersicht" && req.method === "GET") {
-      const sB = await sitzung(req);
+      const lB = await arbeitssitzungLesen(req, { store });
+      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const sB = lB.sitzung;
       if (!sB) return antwort({ fehler: "Nicht angemeldet." }, 401);
       if (sB.rolle !== "betreiber") {
         await protokoll("zugaenge", kennung(req, sB), "abgewiesen", "Übersicht ohne Recht");
@@ -313,7 +335,9 @@ export default async (req, context) => {
        Eintrag bleibt als Grabstein stehen: So kann derselbe Code nicht
        durch Zufall ein zweites Mal vergeben werden. */
     if (pfad === "zugang-sperren" && req.method === "POST") {
-      const sB = await sitzung(req);
+      const lB = await arbeitssitzungLesen(req, { store });
+      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const sB = lB.sitzung;
       const darfSperren = sB && (sB.rolle === "betreiber" || sB.rolle === "leitung");
       if (!darfSperren) {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Sperrung ohne Recht");
@@ -411,7 +435,9 @@ export default async (req, context) => {
     /* --------------- Bestand für einen anderen Raum schreiben --------- */
     /* Der Betreiber legt den leeren Betrieb an, bevor sich jemand anmeldet. */
     if (pfad === "bestand-anlegen" && req.method === "POST") {
-      const sB = await sitzung(req);
+      const lB = await arbeitssitzungLesen(req, { store });
+      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
@@ -583,12 +609,10 @@ export default async (req, context) => {
     }
 
     /* ------------------------- Ab hier angemeldet -------------------- */
-    const s0 = await sitzung(req);
-    if (!s0) return antwort({ fehler: "Nicht angemeldet." }, 401);
-
     /* Der Bestand wird je Anfrage höchstens einmal gelesen. Die Rolle der
        Sitzung ergibt sich aus der Person im Betrieb (siehe wirksameRolle),
        und dafür braucht es ihn schon, bevor ein Endpunkt ihn selbst holt. */
+    let s0 = null;
     let bestandGelesen;
     const bestandJetzt = async () => {
       if (bestandGelesen === undefined) bestandGelesen = await bestandLesen(store, s0.bestand);
@@ -596,19 +620,24 @@ export default async (req, context) => {
     };
 
     /* Technisch gültig ist nicht fachlich gültig: Eine Sitzung, die aus
-       einem Konto entstand, trägt einen Herkunftsanker — und der wird hier
-       gegen Account, Mitgliedschaft und Generation geprüft
-       (arbeitssitzung.mjs). Eine Sitzung aus einem Zugangscode hat keinen
-       Anker und kostet dabei keinen einzigen zusätzlichen Lesevorgang.
-       Nach außen sieht ein Widerruf aus wie jede andere abgelaufene
-       Sitzung — mehr muss niemand erfahren. */
-    const fachlich = await arbeitssitzungPruefen(store, s0,
-      { merkmal: merkmalAus(req), bestandLader: bestandJetzt });
-    if (!fachlich.ok) {
-      await protokoll("schreiben", kennung(req, null), "abgewiesen",
-        `sitzung: ${String(fachlich.grund).slice(0, 24)}`);
+       einem Konto entstand, trägt einen Herkunftsanker — und der wird
+       gegen Account, Mitgliedschaft und Generation geprüft. Beides passiert
+       im einen Prüfpunkt (arbeitssitzung.mjs, arbeitssitzungLesen), derselbe
+       wie in allen anderen Pfaden. Eine Sitzung aus einem Zugangscode hat
+       keinen Anker und kostet dabei keinen einzigen zusätzlichen Lesevorgang.
+       Nur dieser Pfad nimmt Sicherungsschlüssel an; seine Positivliste
+       unten begrenzt sie auf das Lesen. Nach außen sieht ein Widerruf aus
+       wie jede andere abgelaufene Sitzung — mehr muss niemand erfahren. */
+    const lese = await arbeitssitzungLesen(req, { store, sicherungsschluessel: true,
+      bestandLader: (sx) => { s0 = sx; return bestandJetzt(); } });
+    if (!lese.sitzung) {
+      if (lese.abgewiesen) {
+        await protokoll("schreiben", kennung(req, null), "abgewiesen",
+          `sitzung: ${String(lese.grund).slice(0, 24)}`);
+      }
       return antwort({ fehler: "Nicht angemeldet." }, 401);
     }
+    s0 = lese.sitzung;
     const s = (s0.nurSicherung || s0.rolle === "betreiber"
       || s0.person === null || s0.person === undefined) ? s0
       : { ...s0, rolle: wirksameRolle(s0, (await bestandJetzt())?.bestand) };

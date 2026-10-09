@@ -1,7 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
-import { createHash } from "node:crypto";
 import { spurLesen, spurAufraeumen, GRENZEN } from "../lib/schutz.mjs";
-import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
+import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 
 /* ==========================================================================
    BETRIEBSLAGE
@@ -10,25 +9,15 @@ import { arbeitssitzungPruefen } from "../lib/arbeitssitzung.mjs";
    Adressen und keine Namen.
    ========================================================================== */
 
-const sitzungen = () => getStore({ name: "centric-sitzungen", consistency: "strong" });
-const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const antwort = (d, status = 200) => new Response(JSON.stringify(d),
   { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
 export default async (req) => {
-  const kopf = req.headers.get("authorization") || "";
-  const token = kopf.startsWith("Bearer ") ? kopf.slice(7) : null;
-  if (!token) return antwort({ fehler: "Nicht angemeldet." }, 401);
-  const s = await sitzungen().get(`t:${hash(token)}`, { type: "json" });
-  if (!s || s.bis < Date.now()) return antwort({ fehler: "Nicht angemeldet." }, 401);
-  /* Fachlich gültig? Eine Sitzung aus einem Konto trägt einen
-     Herkunftsanker, der gegen Account, Mitgliedschaft und Generation
-     geprüft wird (arbeitssitzung.mjs). Eine Sitzung aus einem
-     Zugangscode hat keinen und kostet keinen zusätzlichen Lesevorgang.
-     Dieselbe Primitive wie in daten.mjs — keine zweite Fassung. */
-  const fachlich = await arbeitssitzungPruefen(
-    getStore({ name: "centric", consistency: "strong" }), s, { merkmal: token });
-  if (!fachlich.ok) return antwort({ fehler: "Nicht angemeldet." }, 401);
+  /* Die Sitzung kommt aus dem einen Prüfpunkt (lib/arbeitssitzung.mjs): Merkmal,
+     Frist, Untätigkeit und — bei einer Sitzung aus einem Konto — der Anker. */
+  const s = (await arbeitssitzungLesen(req,
+    { store: getStore({ name: "centric", consistency: "strong" }) })).sitzung;
+  if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
   if (s.rolle !== "betreiber") return antwort({ fehler: "Nur für den Betreiber." }, 403);
 
   const tage = Math.min(30, Number(new URL(req.url).searchParams.get("tage") || 7));
