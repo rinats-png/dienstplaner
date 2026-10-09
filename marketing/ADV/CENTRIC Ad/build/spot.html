@@ -15,7 +15,7 @@ body { font-family: "InterD", sans-serif; font-variation-settings: "opsz" 32; co
 .sz { position: absolute; inset: 0; display: none; }
 .glow { position: absolute; border-radius: 50%; will-change: transform, opacity; }
 .h { font-weight: 760; letter-spacing: -0.045em; line-height: .95; white-space: nowrap; }
-.l { font-weight: 640; letter-spacing: .32em; text-transform: uppercase; font-size: 15px; color: var(--dim); white-space: nowrap; }
+.l { font-weight: 660; letter-spacing: .22em; text-transform: uppercase; font-size: 25px; color: #A9BCC2; white-space: nowrap; }
 .w { display: inline-block; will-change: transform, opacity, filter; }
 .shot { position: absolute; overflow: hidden; border-radius: 22px; background: #D9E4E8;
   box-shadow: 0 50px 120px -30px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.06); }
@@ -34,7 +34,7 @@ body { font-family: "InterD", sans-serif; font-variation-settings: "opsz" 32; co
   <div class="glow" id="g3" style="background:radial-gradient(closest-side, rgba(80,232,244,.9), rgba(80,232,244,.25) 45%, rgba(80,232,244,0))"></div>
   <!-- Motion-Graphics-Ebene: Lineal mit Zeitmarken unten, Kapitelzähler oben -->
   <svg class="abs" id="mg" style="left:0;top:0;z-index:40;overflow:visible"></svg>
-  <div class="abs l" id="kap" style="z-index:41;font-size:18px"></div>
+  <div class="abs l" id="kap" style="z-index:41;font-size:28px;color:var(--ink);opacity:.85"></div>
   <div id="welt" class="abs" style="left:0;top:0;z-index:10"></div>
   <canvas id="korn"></canvas><div id="vign"></div>
 </div>
@@ -104,7 +104,7 @@ const KAPITEL = [[1.67, "01 · Ruhezeit"], [6.76, "02 · Kopfarbeit"], [15.27, "
 /* S1 + S2 · „Elf Stunden.“ → Zeitbogen ------------------------------- */
 const s1 = sz("s1");
 const elf = el("div", "abs h", "11", s1, `font-size:${HOCH ? 640 : 700}px;font-weight:820;letter-spacing:-.07em;left:0;top:0`);
-const elfL = el("div", "abs l", "Stunden", s1, "font-size:22px;color:var(--ink);letter-spacing:.6em");
+const elfL = el("div", "abs l", "Stunden", s1, "font-size:36px;color:var(--ink);letter-spacing:.5em");
 const uhr = document.createElementNS("http://www.w3.org/2000/svg", "svg"); uhr.classList.add("abs"); s1.appendChild(uhr); uhr.setAttribute("width", 900); uhr.setAttribute("height", 900);
 const striche = []; for (let i = 0; i < 60; i++) { const a = (i / 60) * Math.PI * 2 - Math.PI / 2, r1 = 410, r2 = i % 5 === 0 ? 372 : 392;
   const l = document.createElementNS(NS, "line"); l.setAttribute("x1", 450 + Math.cos(a) * r1); l.setAttribute("y1", 450 + Math.sin(a) * r1);
@@ -120,13 +120,13 @@ const bLicht = bLinie.cloneNode(); bLicht.setAttribute("stroke", "url(#bv)"); bL
 bogen.insertAdjacentHTML("afterbegin", `<defs><linearGradient id="bv" x1="0" x2="1"><stop offset="0" stop-color="#02A0A0"/><stop offset="1" stop-color="#50E8F4"/></linearGradient></defs>`);
 const bLen = 2600; bLicht.setAttribute("stroke-dasharray", bLen);
 const pkt = (x, txt, sub) => { const g = el("div", "abs", `<div style="width:22px;height:22px;border-radius:50%;background:var(--glanz);box-shadow:0 0 30px var(--glanz);margin:0 auto 18px"></div>
-  <div class="h" style="font-size:${HOCH ? 54 : 58}px;text-align:center">${txt}</div><div class="l" style="text-align:center;margin-top:12px">${sub}</div>`, s1, `width:360px;left:${x - 180}px;top:${by - 11}px`); return g; };
+  <div class="h" style="font-size:${HOCH ? 54 : 58}px;text-align:center">${txt}</div><div class="l" style="text-align:center;margin-top:14px">${sub}</div>`, s1, `width:440px;left:${x - 220}px;top:${by - 11}px`); return g; };
 const p1 = pkt(bx1, "21:30", "Dienstende"), p2 = pkt(bx2, "08:30", "Dienstbeginn");
 const ruheZ = el("div", "abs", "", s1, `width:${W}px;left:0;text-align:center`);
 const ruheZeile = el("div", "h", "", ruheZ, `font-size:${HOCH ? 74 : 84}px;font-weight:700`);
 const ruheW = woerter(ruheZeile, "Ruhe zwischen zwei Diensten.");
 const stempel = el("div", "abs", `<div style="padding:14px 26px;border:3px solid var(--glanz);border-radius:14px;color:var(--glanz);font-weight:760;font-size:34px;letter-spacing:.02em">§ 5 ArbZG</div>`, s1);
-const gesetz = el("div", "abs l", "So steht es im Gesetz", s1, "color:var(--ink)");
+const gesetz = el("div", "abs l", "So steht es im Gesetz", s1, "color:var(--ink);font-size:28px");
 
 function szene1(t) {
   if (!zeige(s1, t, 0, 6.76)) return;
@@ -141,7 +141,7 @@ function szene1(t) {
   elf.style.filter = `blur(${(1 - ein) * 18}px)`;
   elf.style.transformOrigin = "50% 56%";
   // „Stunden“ unter der 11
-  const lx = eO(prog(t, .55, .4)); set(elfL, { opacity: lx * (1 - ab), left: CX - 220 + "px", top: CY + fs * .36 + "px", width: "440px", textAlign: "center" });
+  const lx = eO(prog(t, .55, .4)); set(elfL, { opacity: lx * (1 - ab), left: CX - 320 + "px", top: CY + fs * .36 + "px", width: "640px", textAlign: "center" });
   tf(elfL, 0, (1 - lx) * 30);
   // Uhrstriche zeichnen sich im Kreis, verschwinden mit dem Wechsel
   set(uhr, { left: CX - 450 + "px", top: CY - 450 + "px", opacity: 1 - ab }); tf(uhr, 0, 0, lerp(1, 1.6, ab));
@@ -154,10 +154,10 @@ function szene1(t) {
   const wz = [2.3, 2.75, 3.1, 3.55]; ruheW.forEach((w, i) => rein(w, t, wz[i], .5, 90));
   // Stempel § 5 ArbZG (4.64) mit Landung
   const st = prog(t, 4.62, .3); stempel.style.opacity = st > 0 ? 1 : 0;
-  set(stempel, { left: CX - 120 + "px", top: (HOCH ? by - 760 : by - 560) + "px" });
+  set(stempel, { left: CX - 120 + "px", top: (HOCH ? by - 790 : by - 600) + "px" });
   tf(stempel, 0, 0, lerp(2.2, 1, eO(st)), lerp(-14, -6, eO(st)));
   stempel.style.filter = `blur(${(1 - eO(st)) * 10}px)`;
-  const gg = eO(prog(t, 4.9, .4)); set(gesetz, { opacity: gg, left: CX - 200 + "px", width: "400px", textAlign: "center", top: (HOCH ? by - 640 : by - 470) + "px" });
+  const gg = eO(prog(t, 4.9, .4)); set(gesetz, { opacity: gg, left: CX - 450 + "px", width: "900px", textAlign: "center", top: (HOCH ? by - 650 : by - 470) + "px" });
   // Wechsel zu S3: alles kippt nach oben weg
   const raus = eIO(prog(t, 6.3, .46)); s1.style.transform = `translateY(${-raus * H * .5}px)`; s1.style.opacity = 1 - raus;
 }
@@ -230,11 +230,11 @@ const s5 = sz("s5"); s5.style.perspective = "2200px";
 const zyk = el("div", "abs", "", s5);
 const ZYKLUS = ["·NNNN··", "·SSS·NN", "N···SSS", "S··FF··", "FFF··FF"];          // aus leitung-folge (Zyklusraster, 5 Wochen)
 const zk = []; ZYKLUS.forEach((z, r) => z.split("").forEach((c, i) => { const farbe = c === "F" ? "--F" : c === "S" ? "--S" : c === "N" ? "--N" : null;
-  const k = el("div", "kachel", c === "·" ? "" : c, zyk, `width:64px;height:64px;font-size:26px;color:${farbe ? `var(${farbe})` : "transparent"};background:${farbe ? `color-mix(in srgb, var(${farbe}) 20%, #0b1418)` : "rgba(241,246,247,.05)"};border:1px solid ${farbe ? `color-mix(in srgb, var(${farbe}) 55%, transparent)` : "rgba(241,246,247,.08)"}`);
+  const k = el("div", "kachel", c === "·" ? "" : c, zyk, `width:88px;height:88px;font-size:38px;border-radius:14px;color:${farbe ? `var(${farbe})` : "transparent"};background:${farbe ? `color-mix(in srgb, var(${farbe}) 20%, #0b1418)` : "rgba(241,246,247,.05)"};border:1px solid ${farbe ? `color-mix(in srgb, var(${farbe}) 55%, transparent)` : "rgba(241,246,247,.08)"}`);
   zk.push({ k, r, i }); }));
 const s5T = el("div", "abs h", "", s5, `font-size:${HOCH ? 70 : 80}px;font-weight:700;width:${HOCH ? 900 : 700}px;white-space:normal;line-height:1.02`);
 const s5a = el("div", "", "Einmal anlegen.", s5T); const s5b = el("div", "", "Jeden Monat gerechnet.", s5T, "color:var(--glanz)");
-const s5L = el("div", "abs l", "1 Muster · jeder Tag · keine Jahresgrenze", s5);
+const s5L = el("div", "abs l", "1 Muster<br>Jeder Tag<br>Keine Jahresgrenze", s5, "line-height:1.6;color:var(--ink);font-size:30px");
 const planF = el("div", "shot", `<img src="../assets_in/screens/leitung-plan-hell.jpg">`, s5);
 const planI = planF.firstChild;
 function szene5(t) {
@@ -244,12 +244,12 @@ function szene5(t) {
   rein(s5a, t, 15.34, .45, -80); rein(s5b, t, 17.46, .45, -80);
   set(s5L, HOCH ? { left: "80px", top: "520px" } : { left: "134px", top: "420px" }); rein(s5L, t, 17.9, .5, -60);
   // Kachel teilt sich: 1 → Woche (15.6) → 5 Wochen (16.2)
-  const ox = HOCH ? CX - 255 : CX - 160, oy = HOCH ? 760 : 420;
+  const ox = HOCH ? CX - 332 : CX - 90, oy = HOCH ? 760 : 330;
   const pW = eO(prog(t, 15.55, .45)), pM = eO(prog(t, 16.15, .6));
   const weg = eIO(prog(t, 17.5, .6));
   zk.forEach(({ k, r, i }) => { const erste = r === 0 && i === 1;
     const sichtbar = erste ? 1 : (r === 0 ? pW : pM * clamp((pM * 7) - r * .6));
-    const x0 = ox + 1 * 74, y0 = oy, x = ox + i * 74, y = oy + r * 74;
+    const x0 = ox + 1 * 96, y0 = oy, x = ox + i * 96, y = oy + r * 96;
     const tx = lerp(x0, x, r === 0 ? pW : 1), ty = lerp(y0, y, r === 0 ? 0 : pM);
     k.style.opacity = sichtbar * (1 - weg); k.style.transform = `translate(${tx}px,${ty}px) scale(${lerp(.6, 1, sichtbar) * lerp(1, 1.6, weg)})`;
     k.style.filter = `blur(${weg * 18}px)`; });
@@ -377,13 +377,13 @@ const fenster9 = el("div", "abs", "", s9, `overflow:hidden;height:${HOCH ? 210 :
 const rolle9 = el("div", "abs", "", fenster9, `left:0;width:${W}px`);
 const BR = [["Pflege", 33.68], ["Klinik", 34.57], ["Sicherheit", 35.24], ["Industrie", 35.9]];
 const br9 = BR.map(([w]) => el("div", "h", w, rolle9, `height:${HOCH ? 210 : 250}px;font-size:${HOCH ? 180 : 230}px;text-align:center;font-weight:800`));
-const fuer = el("div", "abs l", "Für", s9, "font-size:24px;color:var(--ink);letter-spacing:.5em");
+const fuer = el("div", "abs l", "Für", s9, "font-size:36px;color:var(--ink);letter-spacing:.5em");
 const det = [
   ["leitung-untergrenzen-hell.jpg", 68, 890, 430, 68],      // Pill „Pflegepersonaluntergrenzen“ (2x)
   ["leitung-untergrenzen-hell.jpg", 514, 890, 306, 68],     // Pill „PPP-RL Psychiatrie“
   ["leitung-quals-hell.jpg", 96, 1032, 740, 44],            // „Sachkunde §34a · 82 Personen“
-].map(([f, x, y, w, h]) => { const d = el("div", "shot", `<img src="../assets_in/screens/${f}">`, s9, `width:${w}px;height:${h}px;border-radius:14px;background:#fff`); const i = d.firstChild; i.style.width = "2880px"; i.style.left = -x + "px"; i.style.top = -y + "px"; return d; });
-const dreischicht = el("div", "abs", ["F", "S", "N"].map((c) => `<div class="kachel" style="position:relative;display:inline-flex;width:68px;height:68px;margin:0 6px;font-size:28px;color:var(--${c});background:color-mix(in srgb, var(--${c}) 20%, #0b1418);border:1px solid color-mix(in srgb, var(--${c}) 55%, transparent)">${c}</div>`).join(""), s9);
+].map(([f, x, y, w, h]) => { const z = 1.45; const d = el("div", "shot", `<img src="../assets_in/screens/${f}">`, s9, `width:${w * z}px;height:${h * z}px;border-radius:20px;background:#fff`); const i = d.firstChild; i.style.width = 2880 * z + "px"; i.style.left = -x * z + "px"; i.style.top = -y * z + "px"; return d; });
+const dreischicht = el("div", "abs", ["F", "S", "N"].map((c) => `<div class="kachel" style="position:relative;display:inline-flex;width:124px;height:124px;margin:0 12px;font-size:58px;border-radius:20px;color:var(--${c});background:color-mix(in srgb, var(--${c}) 20%, #0b1418);border:1px solid color-mix(in srgb, var(--${c}) 55%, transparent)">${c}</div>`).join(""), s9, "width:444px;display:flex;justify-content:center");
 function szene9(t) {
   if (!zeige(s9, t, 33.45, 37.0)) return;
   const ein = eO(prog(t, 33.53, .35)); s9.style.opacity = ein;
@@ -394,11 +394,11 @@ function szene9(t) {
   const y = -lerp(idx - 1, idx, p) * zh; rolle9.style.transform = `translateY(${y}px)`;
   rolle9.style.filter = `blur(${idx > 0 ? Math.sin(clamp(prog(t, a - .05, .32)) * Math.PI) * 10 : 0}px)`;
   br9.forEach((b, i) => b.style.color = i === idx ? "var(--ink)" : "rgba(241,246,247,.3)");
-  set(fuer, { left: CX - 60 + "px", top: CY - zh / 2 - 100 + "px", opacity: ein });
+  set(fuer, { left: CX - 200 + "px", width: "400px", textAlign: "center", top: CY - zh / 2 - 110 + "px", opacity: ein });
   // Detail aus der App unter dem Wort
   [...det, dreischicht].forEach((d, i) => { const an = t >= BR[i][1] - .05 && (i === 3 || t < BR[i + 1][1] - .05);
     const pp = eO(prog(t, BR[i][1], .35)); const w = parseFloat(d.style.width) || 260;
-    set(d, { left: CX - w / 2 + "px", top: CY + zh / 2 + 10 + "px", opacity: an ? pp : 0 }); tf(d, 0, (1 - pp) * 30); });
+    set(d, { left: CX - w / 2 + "px", top: CY + zh / 2 + 20 + "px", opacity: an ? pp : 0 }); tf(d, 0, (1 - pp) * 30); });
   const raus = eIO(prog(t, 36.6, .3)); if (raus > 0) s9.style.opacity = 1 - raus;
 }
 
@@ -409,8 +409,8 @@ const wort10 = el("div", "abs h", "CENTRIC", s10, `font-size:${HOCH ? 88 : 104}p
 const claim = el("div", "abs h", "", s10, `font-size:${HOCH ? 54 : 60}px;font-weight:500;letter-spacing:-.025em;text-align:center;white-space:normal`);
 const cl1 = el("span", "w", "Dienstplanung,&nbsp;", claim), cl2 = el("span", "w", "die das Gesetz kennt.", claim, "color:var(--glanz);font-weight:650");
 const knopf = el("div", "abs", "30 Tage kostenlos testen", s10, `padding:26px 54px;border-radius:999px;background:var(--marke);color:#03181B;font-weight:760;font-size:${HOCH ? 40 : 38}px;white-space:nowrap`);
-const ohne = el("div", "abs l", "Ohne Zahlungsdaten", s10, "color:var(--ink);font-size:18px");
-const url = el("div", "abs l", "centric-app.netlify.app", s10, "letter-spacing:.18em;font-size:18px;text-transform:none");
+const ohne = el("div", "abs l", "Ohne Zahlungsdaten", s10, "color:var(--ink);font-size:30px");
+const url = el("div", "abs l", "centric-app.netlify.app", s10, "letter-spacing:.12em;font-size:28px;text-transform:none");
 function szene10(t) {
   if (!zeige(s10, t, 36.85, 45.1)) return;
   const ein = eO(prog(t, 36.89, .3)); s10.style.opacity = ein;
