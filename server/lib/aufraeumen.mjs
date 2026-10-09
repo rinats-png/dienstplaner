@@ -56,6 +56,10 @@
    blieb, gilt nicht als gelöscht; sein Kern steht noch, und der nächste Lauf
    versucht es erneut (siehe raumloeschung.mjs).
 
+   Im selben Lauf werden abgelaufene Sitzungen und Zähler der Bremse
+   aufgeräumt (sitzungsaufraeumen.mjs): vorsichtig, nur Eindeutiges, jede Datei
+   für sich. Was es getan hat, steht im Vermerk unter `sitzungen`.
+
    Nie zweimal zugleich. Eine Sperre in der Ablage hält einen zweiten Lauf
    fern; nach einer Stunde gilt sie als verwaist — ein abgestürzter Prozess
    darf das Aufräumen nicht für immer blockieren.
@@ -63,6 +67,7 @@
 
 import { protokoll } from "./schutz.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
+import { sitzungenAufraeumen } from "./sitzungsaufraeumen.mjs";
 
 export const TESTTAGE = 30;
 export const AUFBEWAHRUNG_TAGE = 90;
@@ -175,6 +180,8 @@ async function kontenLesen(store, fehler) {
  */
 export async function testbetriebeAufraeumen(store, sitzungen, { jetzt = new Date(), aufbewahrungTage = AUFBEWAHRUNG_TAGE } = {}) {
   const t = jetzt instanceof Date ? jetzt.getTime() : Number(jetzt);
+  /** @type {{zeit: string, geprueft: number, geloescht: string[], fehler: any[],
+   *   uebersprungen: boolean, sitzungen?: any}} */
   const vermerk = { zeit: new Date(t).toISOString(), geprueft: 0, geloescht: [], fehler: [],
     uebersprungen: false };
 
@@ -239,6 +246,16 @@ export async function testbetriebeAufraeumen(store, sitzungen, { jetzt = new Dat
     vermerk.fehler.push({ raum: null, grund: String(e && e.message || e).slice(0, 160) });
     await protokoll("loeschlauf", "system", "fehler", vermerk.fehler[vermerk.fehler.length - 1].grund);
   } finally {
+    /* Sitzungen und Bremszähler: unabhängig von den Testbetrieben und auch dann,
+       wenn dort etwas schiefging. Der Aufräumer wirft nie; der Vermerk nennt,
+       was er gelöscht und was er bewusst liegen gelassen hat. */
+    try {
+      vermerk.sitzungen = await sitzungenAufraeumen({ jetzt: t });
+      const n = Object.values(vermerk.sitzungen.geloescht).reduce((a, b) => a + b, 0);
+      if (n > 0) await protokoll("loeschlauf", "system", "erfolg", `Sitzungen und Zähler: ${n} Dateien entfernt`);
+    } catch (e) {
+      vermerk.fehler.push({ raum: null, grund: `Sitzungen: ${String(e && e.message || e).slice(0, 120)}` });
+    }
     await vermerkSchreiben(store, vermerk);
     await store.delete(SPERRE).catch(() => {});
   }

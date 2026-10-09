@@ -615,6 +615,14 @@ Regeln, die sich bewährt haben:
   Arbeitssitzungen beenden: die Dateien `t:…` in `centric-sitzungen` und alles in `centric-accountsitzungen`
   sind flüchtig und lassen sich entfernen, ohne dass etwas verloren geht außer den laufenden Anmeldungen. Die
   Sicherungsschlüssel `sk:…` im selben Speicher dürfen dabei NICHT mit gelöscht werden.
+- **Aufräumen.** Der tägliche Löschlauf (derselbe, der abgelaufene Testbetriebe entfernt; mit
+  `CENTRIC_AUFRAEUMEN=aus` ist er insgesamt abgeschaltet) räumt jetzt auch abgelaufene Sitzungen und
+  Zähler der Anmeldebremse weg: Account-Sitzungen, Arbeitssitzungen, deren Aktivität und Marker sowie
+  Zählfenster und Sperren der Bremse, deren Zeit vorbei ist. Er ist vorsichtig: Es muss eindeutig
+  abgelaufen sein und eine Stunde Karenz verstrichen; Dateien, die er nicht lesen kann oder nicht
+  versteht, bleiben liegen. Nie angefasst werden Sicherungsschlüssel, das Protokoll und `stufe:` (siehe
+  5.6). Was er getan und was er liegen gelassen hat, steht im Vermerk `aufraeumen:letzter` unter
+  `sitzungen`. Diese Speicher gehören zur flüchtigen Klasse und sind nicht Teil der Sicherung.
 
 ---
 
