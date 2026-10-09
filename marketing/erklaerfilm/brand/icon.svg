@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
+  <defs>
+    <pattern id="n" width="14" height="14" patternUnits="userSpaceOnUse">
+      <path d="M0 0 L14 14 M14 0 L0 14 M7 0 L7 14 M0 7 L14 7"
+        stroke="rgba(255,255,255,.075)" stroke-width=".7"/>
+    </pattern>
+    <linearGradient id="g" x1="55%" y1="0%" x2="100%" y2="70%">
+      <stop offset="0%" stop-color="#023441"/><stop offset="100%" stop-color="#017070"/>
+    </linearGradient>
+    <clipPath id="c1"><rect x="6" y="8" width="88" height="26" rx="13"/></clipPath>
+    <clipPath id="c2"><rect x="6" y="37" width="88" height="26" rx="13"/></clipPath>
+    <clipPath id="c3"><rect x="6" y="66" width="88" height="26" rx="13"/></clipPath>
+  </defs>
+  <g clip-path="url(#c1)">
+    <rect x="6" y="8" width="88" height="26" rx="13" fill="#023441"/>
+    <path d="M52 8 C74 8 66 34 94 34 L94 8 Z" fill="url(#g)"/>
+    <rect x="6" y="8" width="88" height="26" rx="13" fill="url(#n)"/>
+  </g>
+  <g clip-path="url(#c2)">
+    <rect x="6" y="37" width="88" height="26" rx="13" fill="#02A0A0"/>
+    <path d="M6 50 C6 43 20 43 28 47 C40 53 52 57 62 51 C72 45 80 41 94 41 L94 63 L6 63 Z"
+      fill="rgba(0,0,0,.06)"/>
+  </g>
+  <g clip-path="url(#c3)">
+    <rect x="6" y="66" width="88" height="26" rx="13" fill="#023441"/>
+    <rect x="6" y="66" width="88" height="26" rx="13" fill="url(#n)"/>
+  </g>
+  <path d="M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C13 69 13 78 20 82"
+    stroke="#023441" stroke-width="1.9" fill="none" stroke-linecap="round" opacity=".92"/>
+</svg>

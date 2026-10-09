@@ -1,0 +1,6 @@
+# Zwischenstände, jederzeit neu erzeugbar (src/render.mjs, src/ton.py, src/probe.mjs)
+build/video/
+build/probe/
+build/ton/*.wav
+stills/beats/
+stills/390/

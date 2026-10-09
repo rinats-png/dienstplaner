@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<title>Ausgleichszeitraum · Richtungen</title>
+<link rel="stylesheet" href="brand/tokens.css">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--grund); color: var(--ink); font-family: var(--schrift); padding: 48px 56px 64px; }
+header { max-width: 1100px; }
+.eyebrow { font: 600 12px/1 var(--schrift); letter-spacing: .16em; text-transform: uppercase; color: var(--akzent); }
+h1 { font-size: 40px; font-weight: 300; letter-spacing: -.02em; margin-top: 12px; }
+h1 b { font-weight: 700; }
+.idee { font-size: 18px; line-height: 1.55; color: var(--dim); margin-top: 16px; max-width: 70ch; }
+.idee b { color: var(--ink); }
+.raster { display: grid; grid-template-columns: repeat(2, 1fr); gap: 32px; margin-top: 40px; }
+.richtung { background: var(--flaeche); border-radius: 16px; box-shadow: 0 0 0 1px var(--linie); overflow: hidden; }
+.richtung.sieger { box-shadow: 0 0 0 3px var(--akzent); }
+.bild { aspect-ratio: 16/9; background: var(--grund); position: relative; border-bottom: 1px solid var(--linie); }
+.bild svg { width: 100%; height: 100%; display: block; }
+.text { padding: 20px 24px 24px; }
+.kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+h2 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
+.urteil { font: 600 11px/1 var(--schrift); letter-spacing: .12em; text-transform: uppercase; padding: 6px 10px; border-radius: 99px; white-space: nowrap; }
+.urteil.ja { background: var(--akzent); color: #fff; }
+.urteil.teil { background: var(--akzent-hell); color: var(--akzent); }
+.urteil.nein { background: #ECECE8; color: var(--aus); }
+.text p { font-size: 15px; line-height: 1.55; color: var(--dim); margin-top: 8px; }
+.text ul { margin-top: 10px; padding-left: 18px; font-size: 14px; line-height: 1.55; color: var(--dim); }
+.log { margin-top: 40px; max-width: 900px; }
+.log h2 { margin-bottom: 8px; }
+.log li { font-size: 15px; line-height: 1.6; color: var(--dim); margin-left: 18px; }
+@media (max-width: 900px) { .raster { grid-template-columns: 1fr; } body { padding: 32px 16px; } }
+</style></head>
+<body>
+<header>
+  <div class="eyebrow">Erklärfilm · Richtungen</div>
+  <h1>Ausgleichszeitraum nach <b>§ 3 ArbZG</b></h1>
+  <p class="idee"><b>Die Idee in einem Satz:</b> Ein Plan, in dem jede Woche zulässig ist, kann den Ausgleichszeitraum trotzdem reißen, denn das Gesetz misst den Durchschnitt über 24 Wochen.<br>
+  <b>Danach können die Zuschauer:</b> den Rahmen von 1.152 Stunden selbst nachrechnen und erklären, warum fünf Dienste weniger den Plan zulässig machen.</p>
+</header>
+
+<div class="raster">
+  <!-- A: Stundenkonto -->
+  <section class="richtung sieger">
+    <div class="bild"><svg viewBox="0 0 640 360">
+      <text x="40" y="60" font-family="Inter" font-size="22" font-weight="700" fill="#071317">24 Wochen · Rahmen 1.152 h</text>
+      <rect x="40" y="150" width="520" height="56" rx="8" fill="#fff" stroke="#9DA7A3"/>
+      <g id="segA"></g>
+      <line x1="560" y1="130" x2="560" y2="226" stroke="#071317" stroke-width="2"/>
+      <text x="560" y="122" text-anchor="middle" font-family="Plex Mono" font-size="13" fill="#071317">1.152 h</text>
+      <text x="40" y="262" font-family="Plex Mono" font-size="15" fill="#3D4E55">+50 h je Woche  ·  Woche 24: 1.200 h</text>
+      <text x="40" y="292" font-family="Inter" font-size="16" font-weight="650" fill="#955410">48 h zu viel</text>
+    </svg></div>
+    <div class="text">
+      <div class="kopf"><h2>A · Stundenkonto mit Rahmen</h2><span class="urteil ja">Gewählt</span></div>
+      <p>Jede Woche legt 50 h in einen Rahmen von 24 × 6 × 8 = 1.152 h. Jede Woche passt – bis Woche 24 über den Rahmen läuft.</p>
+      <ul><li>Genau die Rechnung der Anwendung, keine Metapher.</li><li>Ursache und Wirkung laufen sichtbar ab: Woche für Woche, dann der Überlauf.</li><li>Die Wende (fünf Dienste weniger) ist im selben Bild ablesbar.</li></ul>
+    </div>
+  </section>
+
+  <!-- B: Linie -->
+  <section class="richtung">
+    <div class="bild"><svg viewBox="0 0 640 360">
+      <text x="40" y="60" font-family="Inter" font-size="22" font-weight="700" fill="#071317">Ø Stunden je Werktag</text>
+      <line x1="60" y1="250" x2="600" y2="250" stroke="#9DA7A3"/>
+      <line x1="60" y1="170" x2="600" y2="170" stroke="#071317" stroke-dasharray="6 6"/>
+      <text x="604" y="174" font-family="Plex Mono" font-size="13" fill="#071317">8 h</text>
+      <polyline points="60,150 600,150" fill="none" stroke="#955410" stroke-width="4"/>
+      <text x="60" y="140" font-family="Plex Mono" font-size="13" fill="#955410">8,3 h – von Anfang an darüber</text>
+    </svg></div>
+    <div class="text">
+      <div class="kopf"><h2>B · Gleitender Durchschnitt als Linie</h2><span class="urteil nein">Verworfen</span></div>
+      <p>Die Durchschnittslinie gegen die 8-h-Grenze.</p>
+      <ul><li>Bei gleichmäßigem Plan ist die Linie flach: Sie liegt ab Woche 1 über 8 h. Die Spannung „Woche für Woche passt alles“ verschwindet.</li><li>Ein Durchschnitt ist abstrakter als eine Summe gegen einen Rahmen.</li></ul>
+    </div>
+  </section>
+
+  <!-- C: Kalenderwand -->
+  <section class="richtung">
+    <div class="bild"><svg viewBox="0 0 640 360" id="wand"></svg></div>
+    <div class="text">
+      <div class="kopf"><h2>C · Kalenderwand 24 × 7</h2><span class="urteil teil">Als Rahmenbild</span></div>
+      <p>Alle 168 Tage als Kacheln, jeder Dienst mit Häkchen.</p>
+      <ul><li>Stark als Eröffnungsbild: Alles grün – und trotzdem falsch.</li><li>Zeigt die Ursache nicht: Die Summe sieht man in Kacheln nicht.</li><li>Übernommen für Frage und Auflösung, die Wand wird zum Stundenkonto.</li></ul>
+    </div>
+  </section>
+
+  <!-- D: Metapher -->
+  <section class="richtung">
+    <div class="bild"><svg viewBox="0 0 640 360">
+      <text x="40" y="60" font-family="Inter" font-size="22" font-weight="700" fill="#071317">Wasserglas, das überläuft</text>
+      <path d="M260 110 L280 290 L360 290 L380 110" fill="none" stroke="#9DA7A3" stroke-width="3"/>
+      <path d="M266 160 L280 290 L360 290 L374 160 Z" fill="#DFF0F0"/>
+      <text x="420" y="200" font-family="Inter" font-size="15" fill="#5B6B72">Schöner, aber falsch:</text>
+      <text x="420" y="222" font-family="Inter" font-size="15" fill="#5B6B72">kein Rahmen, keine Werktage,</text>
+      <text x="420" y="244" font-family="Inter" font-size="15" fill="#5B6B72">kein Gleiten.</text>
+    </svg></div>
+    <div class="text">
+      <div class="kopf"><h2>D · Metapher (Glas oder Waage)</h2><span class="urteil nein">Verworfen</span></div>
+      <p>Ein Glas füllt sich mit Stunden.</p>
+      <ul><li>Macht die Idee nicht genauer: Weder Werktage noch die 24 Wochen haben im Glas eine Entsprechung.</li><li>Wirkt wie das generische Erklärvideo, das jeder kennt.</li></ul>
+    </div>
+  </section>
+</div>
+
+<section class="log">
+  <h2>Entscheidung</h2>
+  <ul>
+    <li><b>A trägt den Film:</b> Das Stundenkonto ist die echte Rechnung, und der Überlauf in Woche 24 ist der Moment, in dem es klickt.</li>
+    <li><b>C rahmt ihn:</b> Die Kalenderwand eröffnet („alles grün“) und kehrt am Ende zurück, dann richtig gelesen. Ihre Wochenzeilen werden zu den Segmenten des Kontos, dasselbe Objekt, kein Schnitt.</li>
+    <li><b>B und D raus:</b> B verliert die Spannung, D ist ungenauer als das, was es erklären soll.</li>
+  </ul>
+</section>
+
+<script>
+// Segmente für A und Kacheln für C – reine Zeichnung, keine Animation
+const NS = "http://www.w3.org/2000/svg";
+const segA = document.getElementById("segA");
+for (let i = 0; i < 24; i++) { const w = 520 * 50 / 1152, x = 40 + i * w;
+  const r = document.createElementNS(NS, "rect"); r.setAttribute("x", x + 1); r.setAttribute("y", 152); r.setAttribute("width", w - 2); r.setAttribute("height", 52);
+  r.setAttribute("rx", 4); r.setAttribute("fill", i < 23 ? "#017070" : "#955410"); segA.appendChild(r); }
+const wand = document.getElementById("wand");
+for (let w = 0; w < 24; w++) for (let d = 0; d < 7; d++) { const r = document.createElementNS(NS, "rect");
+  r.setAttribute("x", 40 + w * 23.5); r.setAttribute("y", 90 + d * 30); r.setAttribute("width", 20); r.setAttribute("height", 26); r.setAttribute("rx", 4);
+  r.setAttribute("fill", d < 5 ? "#017070" : (d === 6 ? "#ECECE8" : "#fff")); r.setAttribute("stroke", d < 5 ? "none" : "#D6DAD6"); wand.appendChild(r); }
+const t = document.createElementNS(NS, "text"); t.setAttribute("x", 40); t.setAttribute("y", 60); t.setAttribute("font-family", "Inter"); t.setAttribute("font-size", 22);
+t.setAttribute("font-weight", 700); t.setAttribute("fill", "#071317"); t.textContent = "Jeder Dienst zulässig ✓"; wand.appendChild(t);
+</script>
+</body></html>

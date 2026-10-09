@@ -1,0 +1,25 @@
+/* Tokens für den Erklärfilm, abgeleitet aus brand/farben.js (= src/farben.js der Anwendung).
+   Kontrast gegen den Grund #F5F5F2 (WCAG): ink 17,3 · dim 8,0 · aus 5,1 · akzent 5,4 · ok 6,0 · sand 5,4.
+   Weiß auf akzent 5,9, auf sand 5,9, auf ink 18,8. */
+@font-face { font-family: "Inter"; src: url(../src/fonts/inter-latin-wght-normal.woff2) format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Plex Mono"; src: url(../src/fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2"); font-weight: 400; }
+@font-face { font-family: "Plex Mono"; src: url(../src/fonts/ibm-plex-mono-latin-500-normal.woff2) format("woff2"); font-weight: 500; }
+@font-face { font-family: "Plex Mono"; src: url(../src/fonts/ibm-plex-mono-latin-600-normal.woff2) format("woff2"); font-weight: 600; }
+:root {
+  /* Grund: warmes Neutral statt des kühlen Sea Salt der App (siehe DECISIONS.md) */
+  --grund: #F5F5F2;
+  --flaeche: #FFFFFF;
+  --linie: #D6DAD6;
+  --linie-stark: #9DA7A3;
+  --ink: #071317;        /* Midnight Edition – Text */
+  --dim: #3D4E55;
+  --aus: #5B6B72;
+  --akzent: #017070;     /* Traditional Turquoise, abgedunkelt – der eine Akzent */
+  --akzent-hell: #DFF0F0;
+  --ok: #0E6B45;         /* eingehalten */
+  --sand: #955410;       /* Orange Grove, abgedunkelt – nur für „überschritten“, immer mit Schraffur und Wort */
+  --sand-hell: #FFE0C0;
+  --schrift: "Inter", system-ui, sans-serif;
+  --zahl: "Plex Mono", ui-monospace, monospace;
+  --raster: 8px;         /* alle Maße sind Vielfache */
+}
