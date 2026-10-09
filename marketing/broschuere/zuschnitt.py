@@ -4,7 +4,9 @@ from PIL import Image
 A, R, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
 # Aufruf: python3 zuschnitt.py <assets_in/screens> <weitere Aufnahmen aus pruefungen/bildersatz.mjs> bild
 Z = {
- "titel_plan_dunkel": (A, "leitung-plan-dunkel.jpg", (0, 0, 2880, 1800)),
+ # Titel: nur der sichtbare Teil (176 × 131 mm bis an den Seitenrand). Ein Bild, das über die Seite
+ # hinausragt, lässt Chromium beim Drucken weg.
+ "titel_plan_dunkel": (A, "leitung-plan-dunkel.jpg", (0, 0, 2368, 1763)),
  "start":            (A, "leitung-start-hell.jpg", (0, 0, 2880, 1330)),
  "plan":             (A, "leitung-plan-hell.jpg", (0, 260, 2880, 2000)),
  "folge_raster":     (A, "leitung-folge-hell.jpg", (60, 830, 1425, 1680)),
