@@ -12,7 +12,7 @@
    AUFRUF (Dev-Server läuft):
      CENTRIC_ADMIN=vergleich-geheim npx vite --port 5173 &
      export NODE_PATH=<Ordner mit node_modules/playwright-core>
-     node pruefungen/bildersatz.mjs [--aus=entwuerfe/leitstand/umsetzung]
+     node pruefungen/bildersatz.mjs [--aus=entwuerfe/leitstand/umsetzung] [--skala=2]
                                     [--teil=leitung,dunkel,telefon,betreiber,anmeldung,modi,menues,dialoge,breit]
    Ohne --teil entstehen alle Teile. Die Anmeldeseite zeigt Demokacheln, die
    der Dev-Server nicht anbietet; sie werden für das Bild nachgestellt
@@ -37,6 +37,9 @@ const TEILE = typeof arg("teil") === "string" ? arg("teil").split(",") : null;
 const dabei = (t) => !TEILE || TEILE.includes(t);
 const QUALITAET = +(arg("qualitaet") || 82);
 const MAXHOEHE = 1700;
+/* --skala=2 nimmt dieselben Bilder in doppelter Pixeldichte auf (für
+   Werbefilme mit Zoom und Hochformat). Die Seitengröße bleibt gleich. */
+const SKALA = +(arg("skala") || 1);
 
 const holen = createRequire(process.env.NODE_PATH ? join(process.env.NODE_PATH.split(":")[0], "x.js") : import.meta.url);
 const { chromium } = holen("playwright-core");
@@ -67,7 +70,7 @@ const FESTLEGUNG = `(() => { let s = 20260929; const roh = () => { s |= 0; s = (
 
 async function neueSeite(browser, tok, vp, extra = {}) {
   const ctx = await browser.newContext({ viewport: vp, locale: "de-DE", timezoneId: "Europe/Berlin", reducedMotion: "reduce",
-    colorScheme: "light", deviceScaleFactor: 1, extraHTTPHeaders: { "x-forwarded-for": HERKUNFT }, ...extra });
+    colorScheme: "light", deviceScaleFactor: SKALA, extraHTTPHeaders: { "x-forwarded-for": HERKUNFT }, ...extra });
   await ctx.clock.setFixedTime(new Date(FEST));
   await ctx.addInitScript(FESTLEGUNG);
   if (tok) await ctx.addInitScript((t) => { try { sessionStorage.setItem("centric:token", t); } catch {} }, tok);
