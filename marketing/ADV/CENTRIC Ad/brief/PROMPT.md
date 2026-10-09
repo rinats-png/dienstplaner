@@ -2,7 +2,7 @@
 
 **Status:** Entwurf, wartet auf dein OK. Es wird nichts gebaut, nichts heruntergeladen und kein Guthaben ausgegeben, bevor du „los“ sagst.
 **Marke:** CENTRIC Dienstplanung (dieses Repository). Kydon ist überall gestrichen.
-**Sprache:** Deutsch · **Länge:** ca. 41 s Sprechertext + 4 s End Card = **ca. 45 s**
+**Sprache:** Deutsch · **Länge:** ca. 43 s Sprechertext + 4 s End Card = **ca. 47 s** (Ziel ~45 s, wird nach der Stimmaufnahme feinjustiert)
 **Formate:** 16:9 (1920×1080) und 9:16 (1080×1920), **60 fps**
 **Look:** Spotify / Shopify / Huel — dunkle Bühne, weicher wandernder Markenschein, Apple-artiges Finish, starke Bewegungsunschärfe, kinetische Typografie, Motion-Graphics-Ebene darüber.
 
@@ -70,7 +70,7 @@ Alles Folgende ist für **Idee A** ausgearbeitet. Wählst du B oder C, schreibe 
 
 ## 3. Sprechertext (Idee A)
 
-Ganze, klare Sätze, gut verständlich auch über einen Handylautsprecher. Ca. **104 Wörter**, bei ruhigem Werbetempo (ca. 2,6 Wörter/s inkl. Pausen) **ca. 40–41 s**.
+Ganze, klare Sätze, gut verständlich auch über einen Handylautsprecher. 116 Wörter, bei ruhigem Werbetempo (ca. 2,7 Wörter/s inkl. Pausen) **ca. 43 s**. Ist die Aufnahme länger, kürze ich Satz [3] auf „Ruhezeiten. Qualifikationen. Wer fehlt, wer kann.“
 
 > **[1]** Elf Stunden.
 > **[2]** So viel Ruhe braucht ein Mensch zwischen zwei Diensten. So steht es im Gesetz.
