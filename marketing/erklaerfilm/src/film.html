@@ -321,9 +321,11 @@ function zeigeUntertitel(t) {
   ccS.innerHTML = umbruch(u.text).join("<br>"); cc.style.opacity = 1;
 }
 
+let KAM_E = 0;   // wie weit die Kamera gerade auf das Kontoende fährt (0–1)
 function kamera(t) {
   const K = L.konto, F = { x: K.x + 1152 * S_KONTO, y: K.y + K.h / 2 };
   const e = RM ? (t >= T.k_rein && t < T.k_raus ? 1 : 0) : eInAus(prog(t, T.k_rein, 0.7)) - eInAus(prog(t, T.k_raus, 0.7));
+  KAM_E = e;
   const s = 1 + (L.zoom - 1) * e, zx = W * (FMT === "16x9" ? 0.62 : 0.55), zy = H * 0.52;
   welt.style.transformOrigin = "0 0"; welt.style.transform = `translate(${(zx - s * F.x) * e}px,${(zy - s * F.y) * e}px) scale(${s})`;
 }
@@ -387,7 +389,7 @@ function malen(t) {
   { const aK = prog(t, T.p_w1, 0.3) * (1 - prog(t, T.a_wand, 0.4));
     const wochen = Math.min(24, Math.round(summe / 50));
     zaehler.textContent = t < T.w_weg ? `Woche ${wochen} · ${fmt(summe)} h` : `${fmt(summe)} h`;
-    setz(zaehler, K.x, K.y + K.h + 22, null, null, aK);
+    setz(zaehler, K.x, K.y + K.h + 22, null, null, aK * (1 - clamp(KAM_E * 5)));   // beim Zoom läge er halb im Bild
     const aO = 0;   // „eingehalten“ steht in der Zeile; hier nicht doppelt
     setz(zaehlerOk, K.x + zaehler.offsetWidth + 24, K.y + K.h + 24, null, null, aO);
     // Überlauf: Schraffur ab dem Rahmen

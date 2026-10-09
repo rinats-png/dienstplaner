@@ -1,0 +1,17 @@
+q_zehn 3.02
+q_woche 5.86
+q_gesetz 9.43
+m_acht 12.27
+m_zehn 13.94
+m_samstag 18.4
+m_24 20.59
+p_summe 26.53
+p_w2 31.37
+p_landen 35.22
+k_rein 36.02
+w_48 40.97
+w_fertig 45.12
+a_schnitt 48.7
+a_ring 51.06
+a_pruef 53.21
+ende 59.5
