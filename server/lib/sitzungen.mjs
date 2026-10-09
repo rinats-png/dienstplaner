@@ -21,6 +21,27 @@
    Zugriff die Uhr neu stellt. Eine Betreibersitzung läuft kürzer, weil sie
    Datenräume anlegen kann.
 
+   ---------------------------------------------------------------------------
+   Autorität und Aktivität sind getrennt (Phase A.1, Befund F4)
+
+   `t:<Prüfsumme>` ist die Autorität. Es wird genau einmal geschrieben, in
+   `sitzungAnlegen`, und danach nie wieder. Die Verlängerung einer Sitzung aus
+   einem Zugangscode schreibt in einen eigenen Schlüssel, `ta:<Prüfsumme>` mit
+   `{ zuletzt }`.
+
+   Vorher schrieb sie den ganzen Datensatz zurück, ohne darauf zu warten. Löschte
+   in der Zwischenzeit eine Sperre (zugang-sperren) oder eine Raumlöschung die
+   Sitzung, legte der verspätete Schreibvorgang sie wieder an — und eine Sitzung
+   aus einem Zugangscode wird nicht gegen den Code geprüft, sie galt dann wieder
+   bis zu zwölf Stunden. Jetzt kann der verspätete Schreibvorgang nur ein `ta:`
+   anlegen, und ein `ta:` ohne `t:` erlaubt nichts: Gelesen wird zuerst die
+   Autorität. Eine Aktivität kann verlängern, nie berechtigen.
+
+   Eine Sitzung mit Herkunftsanker (aus einem Konto) hat gar keine eigene
+   Aktivität: Ihr Login-Kontext lebt, solange in ihm gearbeitet wird; wie das
+   geschieht, steht bei der Prüfung der Arbeitssitzung (arbeitssitzung.mjs). Diese
+   Datei kennt davon nur das Wort „Herkunft".
+
    Ein Sicherungsschlüssel (`sk:`) ist keine Sitzung: Er läuft nicht ab,
    weil jemand eine halbe Stunde nichts tut, und er wird nirgends
    verlängert. Er darf ausschließlich lesen — das setzt der Aufrufer über
@@ -79,7 +100,8 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
     return { ...sk, nurSicherung: true };
   }
 
-  const s = await sitzungen.get(`t:${hash(token)}`, { type: "json" });
+  const id = hash(token);
+  const s = await sitzungen.get(`t:${id}`, { type: "json" });
   if (!s) return null;
   const nun = jetzt();
   /* Die Regel, wann eine Sitzung abgelaufen ist, steht in lebendigkeit.mjs —
@@ -90,17 +112,28 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
      und die Prüfung dort (arbeitssitzung.mjs) verlängert und beendet ihn. Nur
      die absolute Frist gilt hier. */
   const gebunden = Object.prototype.hasOwnProperty.call(s, "herkunft");
+
+  /* Die Aktivität einer Sitzung aus einem Zugangscode, daneben. Lässt sie sich
+     nicht lesen, bleibt die Tür zu: Eine Sitzung, deren Untätigkeit sich nicht
+     beurteilen lässt, gilt nicht — und gelöscht wird dabei nichts. */
+  let aktiv = null;
+  if (!gebunden) {
+    try { aktiv = await sitzungen.get(`ta:${id}`, { type: "json" }); }
+    catch { return null; }
+  }
+
   const urteil = ablaufUrteil(s, nun,
-    { streng: false, ruhe: gebunden ? Infinity : RUHE });
-  if (urteil.grund === "frist") { await sitzungen.delete(`t:${hash(token)}`); return null; }
-  if (urteil.grund === "untaetig") {
-    await sitzungen.delete(`t:${hash(token)}`);
+    { streng: false, ruhe: gebunden ? Infinity : RUHE, aktivitaet: aktiv });
+  if (urteil.grund === "frist" || urteil.grund === "untaetig") {
+    await sitzungWeg(sitzungen, id);
     return null;
   }
   /* Ein Planer klickt sich durch einen Monat — das wären hunderte
-     Schreibvorgänge. Einmal je Minute genügt. */
-  if (!gebunden && verlaengernFaellig(s, null, nun)) {
-    sitzungen.setJSON(`t:${hash(token)}`, { ...s, zuletzt: nun }).catch(() => {});
+     Schreibvorgänge. Einmal je Minute genügt. Und in den EIGENEN Schlüssel:
+     Käme dieser Schreibvorgang nach einer Sperre an, legte er höchstens ein
+     `ta:` an, das nichts erlaubt — nie die Sitzung selbst. */
+  if (!gebunden && verlaengernFaellig(s, aktiv, nun)) {
+    sitzungen.setJSON(`ta:${id}`, { zuletzt: nun }).catch(() => {});
   }
   return s;
 }
@@ -137,8 +170,47 @@ export async function sitzungBeenden(token) {
   if (!token) return false;
   try {
     await sitzungsSpeicher().delete(`t:${hash(token)}`);
+    /* Die Autorität ist weg — das ist der Widerruf. Die Aktivität räumt der
+       Rest nach; bleibt sie liegen, ist sie eine Waise, die nichts erlaubt. */
+    await sitzungsSpeicher().delete(`ta:${hash(token)}`).catch(() => {});
     return true;
   } catch { return false; }
+}
+
+/** Autorität zuerst, dann Aktivität; Fehler stören den Aufrufer nicht. */
+async function sitzungWeg(speicher, id) {
+  try { await speicher.delete(`t:${id}`); } catch { /* bleibt liegen, läuft ab */ }
+  try { await speicher.delete(`ta:${id}`); } catch { /* Waise, harmlos */ }
+}
+
+/**
+ * Beendet alle Arbeitssitzungen, für die `passt` wahr ist — der Weg, wenn ein
+ * Zugang gesperrt wird: Eine Sitzung, die nach der Sperre noch zwölf Stunden
+ * läuft, ist keine Sperre. `passt` bekommt den gelesenen Datensatz.
+ *
+ * Fehler bei einzelnen Dateien stoppen den Lauf nicht; sie werden gezählt.
+ *
+ * @param {(satz: any) => boolean} passt
+ * @returns {Promise<{beendet: number, fehler: number}>}
+ */
+export async function sitzungenBeendenWenn(passt) {
+  const speicher = sitzungsSpeicher();
+  let beendet = 0, fehler = 0;
+  let blobs;
+  try { ({ blobs } = await speicher.list({ prefix: "t:" })); }
+  catch { return { beendet: 0, fehler: 1 }; }
+  for (const b of blobs) {
+    let satz = null;
+    try { satz = await speicher.get(b.key, { type: "json" }); }
+    catch { fehler++; continue; }
+    if (!satz || typeof satz !== "object" || !passt(satz)) continue;
+    try {
+      await speicher.delete(b.key);
+      beendet++;
+      await speicher.delete(`ta:${b.key.slice(2)}`).catch(() => {});
+    } catch { fehler++; }
+  }
+  return { beendet, fehler };
 }
 
 /**
@@ -152,6 +224,7 @@ export async function sitzungBeendenPerId(id) {
   if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return false;
   try {
     await sitzungsSpeicher().delete(`t:${id}`);
+    await sitzungsSpeicher().delete(`ta:${id}`).catch(() => {});
     return true;
   } catch { return false; }
 }

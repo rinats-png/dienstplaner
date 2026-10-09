@@ -145,7 +145,13 @@ export async function raumLoeschen(store, sitzungen, raum) {
       let sx = null;
       try { sx = await sitzungen.get(b.key, { type: "json" }); }
       catch (e) { fehler.push({ schluessel: b.key, grund: grundVon(e) }); continue; }
-      if (sx && sx.bestand === raum) await weg(b.key, sitzungen);
+      if (sx && sx.bestand === raum) {
+        await weg(b.key, sitzungen);
+        /* Zu einer Sitzung aus einem Zugangscode gehört ihre Aktivität (ta:).
+           Sie erlaubt nichts und bleibt als Waise harmlos; hier wird sie
+           mitgenommen, ohne die Löschung davon abhängig zu machen. */
+        if (praefix === "t:") await sitzungen.delete(`ta:${b.key.slice(2)}`).catch(() => {});
+      }
     }
   }
 

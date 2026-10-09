@@ -8,7 +8,7 @@
 
      Frist          12 Stunden, Betreiber 2
      Untätigkeit     30 Minuten
-     Verlängerung    `zuletzt` höchstens einmal je Minute
+     Verlängerung    die Aktivität (`ta:`) höchstens einmal je Minute
      sk:             läuft ab, wird nie verlängert, trägt nurSicherung
    ========================================================================== */
 
@@ -95,8 +95,12 @@ const DROSSEL = 60 * 1000;
  * Erfolgskriterium ist der Zustand; die Frist ist nur das Sicherheitsnetz.
  */
 async function warteAufZuletzt(token, erwartet, was) {
+  /* Seit Phase A.1 steht die Aktivität einer Sitzung aus einem Zugangscode in
+     einem eigenen Schlüssel (ta:); der Datensatz t: bleibt nach dem Anlegen
+     unverändert, damit ein verspäteter Schreibvorgang eine gesperrte oder
+     gelöschte Sitzung nie wieder anlegen kann. */
   const speicher = S.sitzungsSpeicher();
-  const schluessel = `t:${hash(token)}`;
+  const schluessel = `ta:${hash(token)}`;
   const spaetestens = Date.now() + WARTEFRIST;
   let gesehen = "(nie gelesen)";
   /* Erst dem Schreibvorgang Vorsprung lassen, dann nachsehen. Der Grund
@@ -123,11 +127,16 @@ async function warteAufZuletzt(token, erwartet, was) {
  * Schreibvorgang wirklich angekommen ist, sofern einer fällig war.
  */
 const lies = async (token, u) => {
+  /* Der letzte bekannte Zugriff vor dem Lesen: der spätere von Datensatz und
+     Aktivität. Danach richtet sich, ob ein Schreibvorgang fällig ist. */
+  const vorher = await S.sitzungsSpeicher().get(`ta:${hash(token)}`, { type: "json" })
+    .catch(() => null);
   const s = await S.sitzungLesen(anfrage(token), { jetzt: u.jetzt });
   /* Ohne Sitzung gibt es keinen Eintrag mehr, auf den zu warten wäre; ein
      Sicherungsschlüssel wird nie fortgeschrieben. */
   if (!s || s.nurSicherung) return s;
-  const faellig = !s.zuletzt || u.jetzt() - s.zuletzt > DROSSEL;
+  const letzte = Math.max(Number(s.zuletzt) || 0, Number(vorher && vorher.zuletzt) || 0);
+  const faellig = !letzte || u.jetzt() - letzte > DROSSEL;
   if (faellig) await warteAufZuletzt(token, u.jetzt(), "nach einem Zugriff");
   return s;
 };
@@ -295,14 +304,19 @@ describe("Lesen", () => {
        auf die Uhr. */
     const nach = await warteAufZuletzt(token, u.stand(), "nach zwei Minuten");
     expect(nach.zuletzt).toBe(u.stand());
+    /* Der Datensatz mit der Autorität bleibt, wie `sitzungAnlegen` ihn
+       geschrieben hat: Fortgeschrieben wird nur die Aktivität. */
+    const roh = await S.sitzungsSpeicher().get(`t:${hash(token)}`, { type: "json" });
+    expect(roh.zuletzt).not.toBe(u.stand());
+    expect(Object.keys(roh).sort()).toEqual(["bestand", "bis", "rolle", "seit", "zuletzt"]);
   }, LIMIT);
 
-  it("schreibt `zuletzt` höchstens einmal je Minute fort", async () => {
+  it("schreibt die Aktivität höchstens einmal je Minute fort", async () => {
     const u = uhr();
     const { token } = await S.sitzungAnlegen({ bestand: "t-eta", rolle: "planer" },
       undefined, { jetzt: u.jetzt });
     const speicher = S.sitzungsSpeicher();
-    const anfang = (await speicher.get(`t:${hash(token)}`, { type: "json" })).zuletzt;
+    const anfangRoh = await speicher.get(`t:${hash(token)}`, { type: "json" });
 
     u.vor(30 * 1000);                       // eine halbe Minute
     const halbeMinute = u.stand();
@@ -311,7 +325,8 @@ describe("Lesen", () => {
        den man warten könnte — auf das Ausbleiben eines Ereignisses lässt
        sich nicht warten. Die Prüfung steht trotzdem, und der zweite Teil
        unten entscheidet den Fall eindeutig. */
-    expect((await speicher.get(`t:${hash(token)}`, { type: "json" })).zuletzt).toBe(anfang);
+    expect(await speicher.get(`ta:${hash(token)}`, { type: "json" }),
+      "nach einer halben Minute ist noch keine Aktivität geschrieben").toBe(null);
 
     u.vor(31 * 1000);                       // zusammen über eine Minute
     await S.sitzungLesen(anfrage(token), { jetzt: u.jetzt });
@@ -323,6 +338,8 @@ describe("Lesen", () => {
        einunddreißig Sekunden dahinter, also unter der Drossel, und hätte
        selbst nicht geschrieben. Der Wert von jetzt wäre nie erschienen. */
     expect(nach.zuletzt).not.toBe(halbeMinute);
+    /* Der Datensatz der Sitzung ist dabei nie angefasst worden. */
+    expect(await speicher.get(`t:${hash(token)}`, { type: "json" })).toEqual(anfangRoh);
   }, LIMIT);
 });
 

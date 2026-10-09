@@ -15,7 +15,8 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
    nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
    Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
 import { sitzungsSpeicher as sitzungen,
-  sitzungAnlegen, sitzungBeenden, merkmalAus, dauerFuer } from "../lib/sitzungen.mjs";
+  sitzungAnlegen, sitzungBeenden, sitzungenBeendenWenn, merkmalAus, dauerFuer }
+  from "../lib/sitzungen.mjs";
 
 /* ==========================================================================
    DATENSPEICHER
@@ -430,19 +431,15 @@ export default async (req, context) => {
       let beendet = 0;
       const gesperrteHashes = new Set(ziele);
       try {
-        const { blobs } = await sitzungen().list();
-        for (const b of blobs) {
-          const sit = await sitzungen().get(b.key, { type: "json" });
+        beendet = (await sitzungenBeendenWenn((sit) => {
           /* Die Leitung sieht nur die Sitzungen des eigenen Hauses. Der
              Betreiber sperrt auch Zugänge fremder Räume — dann müssen
              deren Sitzungen ebenso enden, sonst ist die Sperre keine. */
-          if (!sit || (sB.rolle !== "betreiber" && sit.bestand !== sB.bestand)) continue;
+          if (sB.rolle !== "betreiber" && sit.bestand !== sB.bestand) return false;
           /* Sitzungen aus der Zeit vor dieser Änderung tragen keine
              Kontokennung. Sie laufen binnen zwölf Stunden von selbst ab. */
-          if (!sit.konto || !gesperrteHashes.has(sit.konto)) continue;
-          await sitzungen().delete(b.key);
-          beendet++;
-        }
+          return !!sit.konto && gesperrteHashes.has(sit.konto);
+        })).beendet;
       } catch { /* Sitzungen laufen ohnehin nach spätestens zwölf Stunden ab */ }
 
       await protokoll("zugaenge", kS, "erfolg", `${gesperrt} gesperrt · ${beendet} Sitzungen beendet`);
