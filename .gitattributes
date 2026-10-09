@@ -1,0 +1,11 @@
+# Zeilenenden fuer Quelltext und Skripte: immer LF, unabhaengig von core.autocrlf.
+#
+# Anlass: werkzeug/ablage-sicherung.mjs beginnt mit einer Shebang-Zeile. Unter
+# Windows mit core.autocrlf=true wurde daraus "#!/usr/bin/env node\r", und der
+# Transform von Vitest brach mit "Invalid or unexpected token" ab (Node selbst
+# und die Linux-CI waren nicht betroffen). Skripte mit Shebang muessen unter
+# Linux ohnehin LF haben; fuer die uebrigen Quelltexte gilt dasselbe, damit
+# der Arbeitsbaum ueberall gleich aussieht.
+*.mjs text eol=lf
+*.js  text eol=lf
+*.sh  text eol=lf
