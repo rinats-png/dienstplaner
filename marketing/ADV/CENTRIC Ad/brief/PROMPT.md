@@ -1,6 +1,6 @@
 # CENTRIC Spec-Ad · Briefing v1
 
-**Status:** Entwurf, wartet auf dein OK. Es wird nichts gebaut, nichts heruntergeladen und kein Guthaben ausgegeben, bevor du „los“ sagst.
+**Status:** Briefing freigegeben (Idee A, Aussprache „Sentrik“, Stimme Bernhard, SFX und Musik im Code, Inter Display, End Card wie beschrieben). Nächster Schritt: Materialliste `assets_in/ASSETS.md` → dein OK → „los“.
 **Marke:** CENTRIC Dienstplanung (dieses Repository). Kydon ist überall gestrichen.
 **Sprache:** Deutsch · **Länge:** ca. 43 s Sprechertext + 4 s End Card = **ca. 47 s** (Ziel ~45 s, wird nach der Stimmaufnahme feinjustiert)
 **Formate:** 16:9 (1920×1080) und 9:16 (1080×1920), **60 fps**
