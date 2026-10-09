@@ -295,7 +295,16 @@ export async function arbeitssitzungPruefen(store, sitzung,
      billigste Frage ist und die, die ein Logout beantwortet. */
   const anm = await kontoSitzungFuerArbeit(h.sitzung,
     { accountId: h.accountId, epoche: h.epoche }, { ablage: kontoAblage, jetzt });
-  if (!anm.ok) return absage("konto-sitzung");
+  /* Ein Lesefehler schließt die Tür, löscht aber nichts: Eine Arbeitssitzung, deren
+     Anmeldung sich gerade nicht lesen lässt, ist nicht widerrufen, nur nicht
+     beurteilbar. Mit dem nächsten Lesen geht es weiter. Alles andere — die
+     Anmeldung fehlt, gehört einem anderen Konto, ist abgelaufen — ist ein
+     Widerruf, und die Arbeitssitzung wird weggeräumt. */
+  if (!anm.ok) {
+    if ("grund" in anm && anm.grund === "fehler")
+      return { ok: false, grund: "konto-sitzung-fehler" };
+    return absage("konto-sitzung");
+  }
 
   /* 1. Der Account. */
   let konto;

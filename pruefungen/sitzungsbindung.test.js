@@ -308,6 +308,31 @@ describe("Die Bindung selbst (Spezifikation)", () => {
 });
 
 /* ==========================================================================
+   SICHERUNGSSCHLÜSSEL SIND NUR IM HAUPTPFAD SITZUNGEN
+   ========================================================================== */
+
+describe("Sicherungsschlüssel (sk:)", () => {
+  it("sind an keinem der anderen Pfade eine Sitzung; im Hauptpfad dürfen sie nur lesen", async () => {
+    const raum = Z.raum("sk");
+    await Z.betriebAnlegen(raum);
+    const roh = `sicherungsschluessel-fuer-die-pruefung-${raum}`;
+    await Z.ablageArbeit().setJSON(Z.S.sicherungsSchluessel(roh), {
+      bestand: raum, rolle: "leitung", nurSicherung: true,
+      name: "Sicherungsschlüssel (Leitung)", angelegt: new Date().toISOString(),
+      bis: Date.now() + 24 * 3600 * 1000,
+    });
+    for (const p of [Z.HAUPTPFADE[1], Z.HAUPTPFADE[2], Z.HAUPTPFADE[3], ...Z.VORABPFADE(raum)]) {
+      expect.soft((await p.ruf(roh)).status, `${p.name}: Sicherungsschlüssel`).toBe(401);
+    }
+    /* Der Hauptpfad nimmt ihn an, aber nur für die Vollausgabe. */
+    expect((await Z.bearer(Z.daten, "/api/vollausgabe", roh)).status, "Vollausgabe").not.toBe(401);
+    expect((await Z.bearer(Z.daten, "/api/bestand", roh, { methode: "PUT", rumpf: {} })).status,
+      "Schreiben mit dem Sicherungsschlüssel").toBe(403);
+    expect((await Z.bearer(Z.daten, "/api/bestand", roh)).status, "Lesen über /bestand").toBe(403);
+  }, LIMIT);
+});
+
+/* ==========================================================================
    AK: AKTIVITÄT HÄLT DEN LOGIN-KONTEXT AM LEBEN
    ========================================================================== */
 

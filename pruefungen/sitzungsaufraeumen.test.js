@@ -172,6 +172,12 @@ beforeAll(async () => {
   await roh("centric-sitzungen", "t%3Adefekt.json", "{ das ist kein json");
   F.asDefekt = "as:defekt";
   await roh("centric-accountsitzungen", "as%3Adefekt.json", "{ das ist kein json");
+  /* Aktivität zu einer Autorität, die sich nicht lesen lässt: „nicht lesbar"
+     ist nicht „nicht da" - sie bleibt liegen. */
+  F.azZuDefekterAutoritaet = "az:defekt";
+  await setze(konto, F.azZuDefekterAutoritaet, { zuletzt: JETZT - 6 * STUNDE });
+  F.taZuDefekterAutoritaet = "ta:defekt";
+  await setze(arbeit, F.taZuDefekterAutoritaet, { zuletzt: JETZT - 6 * STUNDE });
   F.vDefektDatei = "v:anmelden-konto:a:gcd:1:defekt"; // altes Fenster, aber Datei kaputt: bleibt nicht zwingend
   F.tSeltsam = "t:seltsam";                           // gültiges JSON, falsche Form
   await setze(arbeit, F.tSeltsam, ["kein", "objekt"]);
@@ -307,6 +313,10 @@ describe("Unbekanntes und Defektes wird nicht gelöscht", () => {
     };
     expect(await dateien("centric-sitzungen", "t%3Adefekt.json")).toBe(true);
     expect(await dateien("centric-accountsitzungen", "as%3Adefekt.json")).toBe(true);
+  }, LIMIT);
+  it("Aktivität (az:/ta:), deren Autorität sich nicht lesen lässt", async () => {
+    expect(await da(Z.ablageKonto(), F.azZuDefekterAutoritaet)).toBe(true);
+    expect(await da(Z.ablageArbeit(), F.taZuDefekterAutoritaet)).toBe(true);
   }, LIMIT);
   it("t: mit falscher Form", async () => {
     expect(await da(Z.ablageArbeit(), F.tSeltsam)).toBe(true);

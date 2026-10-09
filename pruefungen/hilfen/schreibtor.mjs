@@ -10,7 +10,8 @@
                      sieht bis dahin nichts. So steht fest: Die Anfrage hat
                      gelesen, ihr Schreibvorgang ist unterwegs, aber noch
                      nicht gelandet.
-     fehlerBei(...)  ein delete/setJSON auf passende Schlüssel wirft.
+     fehlerBei(...)  ein get, delete oder setJSON auf passende Schlüssel wirft;
+                     mit beenden() geht es danach wieder.
      protokoll       jeder Schreib- und Löschvorgang, in Reihenfolge.
      leer()          wartet, bis kein (nicht angehaltener) Schreibvorgang mehr
                      läuft — statt zu schlafen.
@@ -56,9 +57,12 @@ export const tor = {
     return regel;
   },
 
-  /** Ein Vorgang (`delete` oder `setJSON`) auf passende Schlüssel wirft. */
+  /** Ein Vorgang (`get`, `delete` oder `setJSON`) auf passende Schlüssel wirft. */
   fehlerBei({ store, praefixe, op = "delete" }) {
-    const f = { store, praefixe, op, ausgeloest: /** @type {string[]} */ ([]) };
+    const f = { store, praefixe, op, aktiv: true,
+      ausgeloest: /** @type {string[]} */ ([]),
+      /** Ab jetzt geht der Vorgang wieder durch. */
+      beenden() { f.aktiv = false; } };
     zustand.fehler.push(f);
     return f;
   },
@@ -93,7 +97,7 @@ export function umhuellen(echt, name) {
   const schreib = (op) => (key, ...rest) => {
     const k = String(key);
     zustand.protokoll.push({ store: name, op, key: k });
-    const f = zustand.fehler.find((x) => x.op === op && passt(x, name, k));
+    const f = zustand.fehler.find((x) => x.aktiv && x.op === op && passt(x, name, k));
     if (f) { f.ausgeloest.push(k); return Promise.reject(new Error(`Tor: ${op} auf ${k} scheitert (Absicht)`)); }
 
     const regel = zustand.regeln.find((r) => r.aktiv && op !== "delete" && passt(r, name, k));
@@ -114,8 +118,15 @@ export function umhuellen(echt, name) {
     }
     return p;
   };
+  const lesen = (key) => {
+    const k = String(key);
+    const f = zustand.fehler.find((x) => x.aktiv && x.op === "get" && passt(x, name, k));
+    if (!f) return null;
+    f.ausgeloest.push(k);
+    return Promise.reject(new Error(`Tor: get auf ${k} scheitert (Absicht)`));
+  };
   return {
-    get: (...a) => echt.get(...a),
+    get: (key, ...a) => lesen(key) || echt.get(key, ...a),
     getWithMetadata: (...a) => echt.getWithMetadata(...a),
     getMetadata: (...a) => echt.getMetadata(...a),
     list: (...a) => echt.list(...a),

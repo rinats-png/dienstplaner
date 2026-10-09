@@ -177,6 +177,44 @@ describe("Der Logout bleibt endgültig, auch wenn das Aufräumen scheitert", () 
   }, LIMIT);
 });
 
+describe("Ein Lesefehler schließt die Tür, ohne etwas zu löschen", () => {
+  for (const [name, praefix] of [["die Account-Sitzung (as:)", "as:"], ["ihre Aktivität (az:)", "az:"]]) {
+    it(`${name} lässt sich nicht lesen: Konto und Arbeit sind zu, nichts geht verloren`, async () => {
+      const b = await Z.arbeitsbereich(`lesefehler-${praefix.slice(0, 2)}`);
+      await tor.leer();
+      expect((await Z.HAUPTPFADE[0].ruf(b.token)).status, "vorher").not.toBe(401);
+
+      const f = tor.fehlerBei({ store: KONTO, praefixe: [praefix], op: "get" });
+      expect((await Z.sitzungsstand(b.keks)).status, "Konto-Sitzung bei Lesefehler").toBe(401);
+      expect((await Z.HAUPTPFADE[0].ruf(b.token)).status, "Arbeit bei Lesefehler").toBe(401);
+      expect((await Z.VORABPFADE(b.raum)[3].ruf(b.token)).status, "Vorab-Pfad bei Lesefehler").toBe(401);
+      expect(f.ausgeloest.length, "Vorbedingung: der Lesefehler wurde ausgelöst").toBeGreaterThanOrEqual(2);
+
+      f.beenden();
+      /* Nichts wurde gelöscht: weder die Anmeldung noch die Arbeitssitzung. */
+      expect.soft(await Z.ablageKonto().get(asSchluessel(b.keks), { type: "json" }),
+        "as: ist noch da").toBeTruthy();
+      expect.soft(await Z.ablageArbeit().get(tSchluessel(b.token), { type: "json" }),
+        "t: ist noch da").toBeTruthy();
+      expect.soft((await Z.sitzungsstand(b.keks)).status, "Konto-Sitzung danach").toBe(200);
+      expect.soft((await Z.HAUPTPFADE[0].ruf(b.token)).status, "Arbeit danach").not.toBe(401);
+    }, LIMIT);
+  }
+
+  it("die Aktivität einer alten Sitzung (ta:) lässt sich nicht lesen: zu, nichts geht verloren", async () => {
+    const raum = Z.raum("lesefehler-ta");
+    await Z.betriebAnlegen(raum);
+    const s = await Z.legacySitzung(raum);
+    await tor.leer();
+    const f = tor.fehlerBei({ store: ARBEIT, praefixe: ["ta:"], op: "get" });
+    expect((await Z.HAUPTPFADE[0].ruf(s.token)).status, "bei Lesefehler").toBe(401);
+    expect(f.ausgeloest.length).toBeGreaterThanOrEqual(1);
+    f.beenden();
+    expect(await Z.ablageArbeit().get(tSchluessel(s.token), { type: "json" }), "t: ist noch da").toBeTruthy();
+    expect((await Z.HAUPTPFADE[0].ruf(s.token)).status, "danach").not.toBe(401);
+  }, LIMIT);
+});
+
 describe("Schreiber der Autoritätsdatensätze", () => {
   it("as: und t: werden nach dem Anlegen nie wieder geschrieben", async () => {
     uhr.start();
