@@ -285,6 +285,116 @@ async function weg(speicher, id) {
   try { await speicher.delete(AKTIVITAET + id); } catch { /* Waise, harmlos */ }
 }
 
+/* ==========================================================================
+   DIE ARBEITSSITZUNG FRAGT NACH IHRER ANMELDUNG
+   ========================================================================== */
+
+/**
+ * Gilt die Account-Sitzung, an der eine Arbeitssitzung hängt?
+ *
+ * Eine Arbeitssitzung aus einem Konto trägt im Anker die Kennung der
+ * Account-Sitzung, mit der sie geöffnet wurde (herkunft.sitzung). Sie gilt nur,
+ * solange GENAU diese Sitzung gilt: Meldet sich das Gerät ab, endet auch seine
+ * Arbeit — ein zweites Gerät desselben Kontos hat eine eigene Sitzung und
+ * bleibt davon unberührt.
+ *
+ * Geprüft wird dieselbe Lebendigkeit wie beim Konto-Aufruf (Frist, Untätigkeit
+ * mit Aktivität), außerdem dass die Sitzung zu diesem Account und dieser Epoche
+ * gehört. Dabei wird die Aktivität verlängert: Wer im Betrieb arbeitet, hält
+ * damit seinen Login-Kontext am Leben — sonst endete die Anmeldung unter einem
+ * aktiven Menschen, sobald er einen Konto-Aufruf macht.
+ *
+ * Jeder Fehler schließt die Tür.
+ *
+ * @param {unknown} id  Kennung der Account-Sitzung (aus dem Anker)
+ * @param {{accountId: string, epoche: number}} erwartet
+ * @param {{jetzt?: () => number, ablage?: (object|null)}} [wahl]
+ * @returns {Promise<{ok: true, bis: number}|{ok: false, grund: string}>}
+ */
+export async function kontoSitzungFuerArbeit(id, erwartet,
+  { jetzt = Date.now, ablage = null } = {}) {
+  const g = await accountSitzungLesenPerId(id, { jetzt, ablage });
+  if (!g.sitzung) return { ok: false, grund: g.grund || "unbekannt" };
+  if (!erwartet || g.sitzung.accountId !== erwartet.accountId) return { ok: false, grund: "konto" };
+  if (Number(g.sitzung.epoche) !== Number(erwartet.epoche)) return { ok: false, grund: "epoche" };
+  return { ok: true, bis: Number(g.sitzung.bis) };
+}
+
+/* --------------------------------------------------------------------------
+   MARKER: WELCHE ARBEITSSITZUNG HÄNGT AN WELCHER ANMELDUNG
+
+   `ab:<Kennung der Account-Sitzung>:<Kennung der Arbeitssitzung>`. Der Marker
+   ist Hygiene, keine Autorität: Er sagt dem Logout, welche Arbeitssitzungen er
+   gleich mit wegräumen kann, ohne alle zu durchsuchen. Fehlt er, ändert das
+   nichts an der Gültigkeit — die Arbeitssitzung fragt bei jedem Zugriff nach
+   ihrer Anmeldung (kontoSitzungFuerArbeit). Je Arbeitssitzung ein eigener
+   Schlüssel, damit zwei gleichzeitig geöffnete Betriebe einander nichts
+   überschreiben: kein Lesen-Ändern-Schreiben einer Liste.
+   -------------------------------------------------------------------------- */
+
+const MARKER = "ab:";
+
+/** Der Schlüssel eines Markers. */
+export const markerSchluessel = (accountSitzungsId, arbeitssitzungsId) =>
+  `${MARKER}${accountSitzungsId}:${arbeitssitzungsId}`;
+
+/**
+ * Legt den Marker an. Gelingt das nicht, ist das kein Fehler der Sitzung (siehe
+ * oben); der Aufrufer erfährt es, damit er es festhalten kann.
+ *
+ * @param {string} accountSitzungsId
+ * @param {string} arbeitssitzungsId
+ * @param {{seit: number, bis: number}} zeiten
+ * @param {{ablage?: (object|null)}} [wahl]
+ * @returns {Promise<boolean>}
+ */
+export async function markerAnlegen(accountSitzungsId, arbeitssitzungsId, zeiten,
+  { ablage = null } = {}) {
+  if (!kennungBrauchbar(accountSitzungsId) || !kennungBrauchbar(arbeitssitzungsId)) return false;
+  const speicher = ablage || accountSitzungsSpeicher();
+  try {
+    await speicher.setJSON(markerSchluessel(accountSitzungsId, arbeitssitzungsId),
+      { seit: zeiten.seit, bis: zeiten.bis });
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * Die Arbeitssitzungen, die an dieser Account-Sitzung hängen — aus den
+ * Markern. Ein Lesefehler liefert eine leere Liste und `fehler: true`.
+ *
+ * @param {string} accountSitzungsId
+ * @param {{ablage?: (object|null)}} [wahl]
+ * @returns {Promise<{ids: string[], fehler: boolean}>}
+ */
+export async function markerListe(accountSitzungsId, { ablage = null } = {}) {
+  if (!kennungBrauchbar(accountSitzungsId)) return { ids: [], fehler: false };
+  const speicher = ablage || accountSitzungsSpeicher();
+  const praefix = `${MARKER}${accountSitzungsId}:`;
+  try {
+    const { blobs } = await speicher.list({ prefix: praefix });
+    const ids = blobs.map((b) => b.key.slice(praefix.length)).filter(kennungBrauchbar);
+    return { ids, fehler: false };
+  } catch { return { ids: [], fehler: true }; }
+}
+
+/**
+ * Löscht einen Marker. Best effort: ein übrig gebliebener Marker verweist auf
+ * eine tote Arbeitssitzung und ist harmlos.
+ *
+ * @param {string} accountSitzungsId
+ * @param {string} arbeitssitzungsId
+ * @param {{ablage?: (object|null)}} [wahl]
+ * @returns {Promise<boolean>}
+ */
+export async function markerLoeschen(accountSitzungsId, arbeitssitzungsId,
+  { ablage = null } = {}) {
+  if (!kennungBrauchbar(accountSitzungsId) || !kennungBrauchbar(arbeitssitzungsId)) return false;
+  const speicher = ablage || accountSitzungsSpeicher();
+  try { await speicher.delete(markerSchluessel(accountSitzungsId, arbeitssitzungsId)); return true; }
+  catch { return false; }
+}
+
 /**
  * Beendet genau diese Sitzung. Ein unbekanntes Merkmal ist kein Fehler:
  * Abmelden soll immer gelingen — und ob es eine Sitzung gab, ist eine

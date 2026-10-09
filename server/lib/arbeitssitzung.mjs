@@ -2,6 +2,7 @@ import {
   accountLesenPerId, mitgliedschaftLesen, mitgliedlaufLesen, generationStimmt,
 } from "./accounts.mjs";
 import { getStore } from "./ablage.mjs";
+import { kontoSitzungFuerArbeit, kennungBrauchbar } from "./accountsitzungen.mjs";
 import { bestandLesen } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
 import { sitzungBeenden, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
@@ -32,12 +33,39 @@ import { sitzungBeenden, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
    Eine Arbeitssitzung, die aus einem Konto entstand, trägt seit dieser
    Änderung einen Anker:
 
-     herkunft: { art: "account", accountId, epoche, generation }
+     herkunft: { art: "account", accountId, epoche, generation, sitzung }
 
-   Vier Werte, und keiner davon ist doppelt: Der Raum steht schon in
-   `bestand`, die Person in `person`, der Betriebsindex in `betrieb`. Eine
-   Rolle steht NICHT darin — sie ist kein Widerrufsanker, sondern wird bei
-   jeder Anfrage aus dem Bestand abgeleitet (`wirksameRolle`).
+   Fünf Werte, und keiner davon ist doppelt: Der Raum steht schon in
+   `bestand`, die Person in `person`, der Betriebsindex in `betrieb`. Neu ist
+   `sitzung`, die Kennung (Prüfsumme) der Account-Sitzung, mit der dieser
+   Betrieb geöffnet wurde. Eine Rolle steht NICHT darin — sie ist kein
+   Widerrufsanker, sondern wird bei jeder Anfrage aus dem Bestand abgeleitet
+   (`wirksameRolle`).
+
+   ---------------------------------------------------------------------------
+   Die Anmeldung, an der die Arbeit hängt
+
+   Eine Arbeitssitzung gilt nur, solange die Account-Sitzung gilt, aus der sie
+   entstand. Ohne das überlebte ein Betriebsmerkmal den Logout: Der Mensch
+   meldet sich ab, das Merkmal im Browser, im Speicher einer Seite oder in der
+   Hand eines anderen arbeitet weiter, bis es abläuft.
+
+   Gebunden wird an die KONKRETE Sitzung, nicht an den Account. Ein zweites
+   Gerät desselben Kontos hat eine eigene Account-Sitzung und bleibt vom Logout
+   des ersten unberührt; ein globaler Widerruf bleibt Sperre, Passwortwechsel
+   (Epoche) und Entzug vorbehalten — sie wirken wie bisher.
+
+   Bei jedem Zugriff wird zuerst nachgesehen, ob diese Sitzung noch existiert
+   und zu diesem Account und dieser Epoche gehört (kontoSitzungFuerArbeit). Das
+   ist ein Lesevorgang mehr und ein kleiner Schreibvorgang je Minute (die
+   Aktivität, nie die Autorität). Ein Anker ohne gültige Kennung ist ungültig,
+   nicht „alt": Eine Arbeitssitzung aus der Zeit vor dieser Bindung gilt nicht
+   weiter. Es gibt keinen Übergangsmodus.
+
+   Eine Account-Sitzung verlängert sich durch Arbeit im Betrieb. Dafür hat eine
+   gebundene Arbeitssitzung keine eigene Untätigkeitsgrenze mehr: Der
+   Login-Kontext lebt, solange in ihm gearbeitet wird, und endet nach dreißig
+   Minuten ohne jede Aktivität (sitzungen.mjs, accountsitzungen.mjs).
 
    Drei Fälle, und der dritte ist der, an dem man sich schneidet:
 
@@ -175,6 +203,8 @@ const hatHerkunft = (sitzung) =>
 function ankerBrauchbar(h) {
   if (!h || typeof h !== "object" || Array.isArray(h)) return false;
   if (h.art !== HERKUNFT_KONTO) return false;
+  /* Die Anmeldung, an der die Arbeit hängt: eine Prüfsumme, nichts sonst. */
+  if (!kennungBrauchbar(h.sitzung)) return false;
   if (!h.accountId || typeof h.accountId !== "string") return false;
   if (!Number.isInteger(h.epoche) || h.epoche < 1) return false;
   if (!Number.isInteger(h.generation) || h.generation < 1) return false;
@@ -187,14 +217,16 @@ function ankerBrauchbar(h) {
  *
  * @param {object} store  Ablage „centric"
  * @param {object|null} sitzung  der Datensatz aus der Sitzungsablage
- * @param {{merkmal?: (string|null), bestandLader?: (() => Promise<object|null>)|null}} [o]
+ * @param {{merkmal?: (string|null), bestandLader?: (() => Promise<object|null>)|null,
+ *   kontoAblage?: (object|null), jetzt?: () => number}} [o]
  *   `merkmal` nur, um eine widerrufene Sitzung wegzuräumen — die Gültigkeit
  *   hängt nicht daran. `bestandLader` gibt einen schon gelesenen Bestand
  *   weiter (Rückgabe wie `bestandLesen`), damit er nicht zweimal gelesen wird.
+ *   `kontoAblage` und `jetzt` nur für Prüfungen.
  * @returns {Promise<{ok: true, art: string}|{ok: false, grund: string}>}
  */
 export async function arbeitssitzungPruefen(store, sitzung,
-  { merkmal = null, bestandLader = null } = {}) {
+  { merkmal = null, bestandLader = null, kontoAblage = null, jetzt = Date.now } = {}) {
   if (!sitzung || typeof sitzung !== "object") return { ok: false, grund: "keine-sitzung" };
 
   /* Kein Anker: eine Sitzung aus einem Zugangscode oder ein
@@ -219,6 +251,12 @@ export async function arbeitssitzungPruefen(store, sitzung,
   if (typeof raum !== "string" || !raum) return absage("kein-raum");
   const person = sitzung.person;
   if (!person || typeof person !== "string") return absage("keine-person");
+
+  /* 0. Die Anmeldung, an der diese Arbeit hängt. Zuerst, weil es die
+     billigste Frage ist und die, die ein Logout beantwortet. */
+  const anm = await kontoSitzungFuerArbeit(h.sitzung,
+    { accountId: h.accountId, epoche: h.epoche }, { ablage: kontoAblage, jetzt });
+  if (!anm.ok) return absage("konto-sitzung");
 
   /* 1. Der Account. */
   let konto;

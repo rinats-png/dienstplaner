@@ -103,7 +103,7 @@ import {
 } from "./accounts.mjs";
 import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
-  accountSitzungenBeenden,
+  accountSitzungenBeenden, accountSitzungsId,
 } from "./accountsitzungen.mjs";
 
 /** Der eine Satz für jede fehlgeschlagene Anmeldung. Er unterscheidet
@@ -230,7 +230,7 @@ export async function anmelden(store, { email, passwort, jetzt = Date.now,
  * @param {unknown} token
  * @param {{jetzt?: () => number, sitzungsAblage?: (object|null)}} [o]
  * @returns {Promise<{ok: true, accountId: string, epoche: number,
- *     seit: number, bis: number}
+ *     seit: number, bis: number, sitzungsId: string}
  *   |{ok: false, grund: string, hinweis: string}>}
  */
 export async function sitzungPruefen(store, token, { jetzt = Date.now,
@@ -253,8 +253,10 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
   if (konto.status !== "aktiv") return schluss("nicht-aktiv");
   if ((Number(konto.epoche) || 1) !== Number(s.epoche)) return schluss("epoche");
 
+  /* Die Kennung der Sitzung — die Prüfsumme des Merkmals, nie das Merkmal. An ihr
+     hängt eine Arbeitssitzung, die aus dieser Anmeldung entsteht. */
   return { ok: true, accountId: konto.id, epoche: Number(s.epoche),
-    seit: Number(s.seit), bis: Number(s.bis) };
+    seit: Number(s.seit), bis: Number(s.bis), sitzungsId: accountSitzungsId(token) };
 }
 
 /**

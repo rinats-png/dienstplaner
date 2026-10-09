@@ -593,6 +593,29 @@ Regeln, die sich bewährt haben:
   Datensatz je Ziel). Sie ist offen und wird getrennt entschieden, bevor die
   Datenmenge der Bremse eine Rolle spielt.
 
+### 5.7 Sitzungen: Abmelden, Aktivität und was beim Ausrollen geschieht
+
+- **Abmelden beendet die Arbeit dieses Geräts.** Eine Arbeitssitzung (das Betriebsmerkmal
+  im Kopf `authorization`), die aus einem Konto entstand, hängt an der Account-Sitzung, mit der
+  der Betrieb geöffnet wurde. Nach `POST /api/account/abmelden` gilt dieses Merkmal nicht mehr;
+  jedes weitere Öffnen braucht eine neue Anmeldung. Ein **zweites Gerät** desselben Kontos hat
+  eine eigene Account-Sitzung und bleibt angemeldet und arbeitsfähig. Sperre, Passwortwechsel
+  (Epoche) und Entzug einer Mitgliedschaft wirken weiter für alle Geräte des Kontos.
+- **Aktivität hält den Login-Kontext am Leben.** Wer im Betrieb arbeitet, verlängert damit auch
+  seine Anmeldung: Dreißig Minuten ohne jede Anfrage beenden beides, dreißig Minuten nur Arbeit
+  im Betrieb beenden nichts. Die Arbeitssitzung läuft nie länger als ihre Anmeldung (zwölf
+  Stunden ab der Anmeldung); die Antwort beim Öffnen nennt dieses gekappte Ende.
+- **Beim Ausrollen** gelten Konto-Arbeitssitzungen aus der Zeit davor als ungültig (kein Übergangsmodus): Wer
+  gerade in einem Betrieb arbeitet, bekommt „Nicht angemeldet" und muss ihn neu öffnen. Das betrifft nur
+  Sitzungen aus Konten; Sitzungen aus einem Zugangscode (und Sicherungsschlüssel) bleiben unberührt. Vor dem
+  Ausrollen auf eine Umgebung ausdrücklich bestätigen, ob dort schon Konten angemeldet arbeiten; erst dann
+  ausrollen.
+- **Zurückrollen auf ein älteres Bild:** Das ältere Bild kennt die Bindung nicht und prüft eine Arbeitssitzung
+  nur nach seinen eigenen Regeln. Vor einem Zurückrollen nach der Einführung der Bindung deshalb alle
+  Arbeitssitzungen beenden: die Dateien `t:…` in `centric-sitzungen` und alles in `centric-accountsitzungen`
+  sind flüchtig und lassen sich entfernen, ohne dass etwas verloren geht außer den laufenden Anmeldungen. Die
+  Sicherungsschlüssel `sk:…` im selben Speicher dürfen dabei NICHT mit gelöscht werden.
+
 ---
 
 ## Schritt 6 — Bevor zahlende Kunden echte Personaldaten eingeben

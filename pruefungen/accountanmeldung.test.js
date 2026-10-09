@@ -454,7 +454,11 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
     if (!p.ok) return;
     expect(p.accountId).toBe(k.id);
     expect(p.epoche).toBe(2);
-    expect(Object.keys(p).sort()).toEqual(["accountId", "bis", "epoche", "ok", "seit"]);
+    /* Eine Identität und die Kennung der Sitzung (Prüfsumme des Merkmals), an
+       der eine Arbeitssitzung hängen kann — sonst nichts. */
+    expect(Object.keys(p).sort())
+      .toEqual(["accountId", "bis", "epoche", "ok", "seit", "sitzungsId"]);
+    expect(p.sitzungsId).toBe(hash(e.token));
   }, LIMIT);
 
   it("endet nach zwölf Stunden", async () => {
@@ -898,7 +902,8 @@ describe("Eine Account-Sitzung allein berechtigt zu nichts", () => {
 
     /* Keine der beiden Rollen steht in der Sitzung — auch nicht die
        höhere. Es gibt keine „höchste Rolle" eines Menschen. */
-    expect(Object.keys(p).sort()).toEqual(["accountId", "bis", "epoche", "ok", "seit"]);
+    expect(Object.keys(p).sort())
+      .toEqual(["accountId", "bis", "epoche", "ok", "seit", "sitzungsId"]);
     const roh = await sitzungsAblage().get(`as:${hash(e.token)}`, { type: "json" });
     expect(JSON.stringify(roh)).not.toContain("leitung");
     expect(JSON.stringify(roh)).not.toContain("t-anm-");

@@ -452,7 +452,10 @@ async function betriebOeffnen(req, k) {
   const p = await sitzungPruefen(store(), merkmal);
   if (!p.ok) return antwort(SITZUNG_ABSAGE, 401, { "set-cookie": keksWeg() });
 
-  const e = await betriebWaehlen(store(), { accountId: p.accountId, raum });
+  /* Die Arbeitssitzung hängt an dieser Anmeldung: Kennung und Ende der
+     geprüften Account-Sitzung gehen mit, nie etwas aus der Anfrage. */
+  const e = await betriebWaehlen(store(), { accountId: p.accountId, raum,
+    kontoSitzung: { id: p.sitzungsId, bis: p.bis } });
   if (!e.ok) {
     await protokoll("betrieb-waehlen", k, "abgewiesen",
       String(e.grund || "").slice(0, 30));

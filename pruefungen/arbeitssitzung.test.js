@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
-let wurzel, getStore, A, P, S, B, R, AS, konten;
+let wurzel, getStore, A, P, S, B, R, AS, AC, konten;
 let daten, kalender, lage, zustellung;
 
 const LIMIT = 40000;
@@ -42,6 +42,7 @@ beforeAll(async () => {
   B = await import("../server/lib/bestand.mjs");
   R = await import("../server/lib/rechte.mjs");
   AS = await import("../server/lib/arbeitssitzung.mjs");
+  AC = await import("../server/lib/accountsitzungen.mjs");
   konten = await import("../server/lib/betriebsauswahl.mjs");
   daten = (await import("../server/funktionen/daten.mjs")).default;
   kalender = (await import("../server/funktionen/kalender.mjs")).default;
@@ -110,6 +111,19 @@ async function konto(email) {
   return g.account;
 }
 
+/** Die Anmeldung, an der eine Arbeitssitzung hängt: eine echte Account-Sitzung. */
+async function kontoSitzung(accountId) {
+  const konto = await A.accountLesenPerId(laden(), accountId);
+  const s = await AC.accountSitzungAnlegen({ accountId, epoche: konto.epoche });
+  if (!s.ok) throw new Error("Account-Sitzung nicht angelegt");
+  return { id: AC.accountSitzungsId(s.token), bis: s.gueltigBis, token: s.token };
+}
+
+/** Einen Betrieb wählen wie der Handler: mit der Anmeldung, an der die Arbeit hängt. */
+const waehle = async (accountId, raum, extra = {}) =>
+  konten.betriebWaehlen(laden(), { accountId, raum,
+    kontoSitzung: await kontoSitzung(accountId), ...extra });
+
 /** Konto, Raum, Person, Mitgliedschaft, Auswahl — und das Arbeitsmerkmal. */
 async function arbeitsbereich(was, { rolle = "leitung", email = null,
   accountId = null, mandantId = "m1" } = {}) {
@@ -119,7 +133,7 @@ async function arbeitsbereich(was, { rolle = "leitung", email = null,
   const m = await A.mitgliedschaftAnlegen(laden(), { accountId: k.id, raum, betrieb: 0,
     mandantId, person: "p_1", rolle, status: "aktiv" });
   expect(m.ok, JSON.stringify(m)).toBe(true);
-  const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+  const wahl = await waehle(k.id, raum);
   expect(wahl.ok, JSON.stringify(wahl)).toBe(true);
   if (!wahl.ok) throw new Error("Auswahl gescheitert");
   return { konto: k, raum, token: wahl.token, rolle: wahl.rolle };
@@ -153,7 +167,9 @@ describe("Der Herkunftsanker", () => {
     const { konto: k, token } = await arbeitsbereich("anker");
     const roh = await satz(token);
     expect(Object.keys(roh.herkunft).sort())
-      .toEqual(["accountId", "art", "epoche", "generation"]);
+      .toEqual(["accountId", "art", "epoche", "generation", "sitzung"]);
+    /* Die Anmeldung, an der die Arbeit hängt: eine Prüfsumme, nie ein Merkmal. */
+    expect(roh.herkunft.sitzung).toMatch(/^[0-9a-f]{64}$/);
     expect(roh.herkunft.art).toBe("account");
     expect(roh.herkunft.accountId).toBe(k.id);
     expect(roh.herkunft.generation).toBe(1);
@@ -194,11 +210,22 @@ describe("Der Herkunftsanker", () => {
 
   it("weist eine Herkunft mit fremder Kontokennung ab", async () => {
     const { raum } = await arbeitsbereich("fremdekennung");
+    /* Mit einer echten Anmeldung, aber einer Kontokennung, die es nicht gibt:
+       Die Anmeldung gehört einem anderen Konto — abgewiesen, noch bevor der
+       Account gelesen wird. */
+    const echt = await kontoSitzung((await konto(adresse("fremdekennung-a"))).id);
     const e = await AS.arbeitssitzungPruefen(laden(), { bestand: raum, person: "p_1",
       betrieb: 0, herkunft: { art: "account", accountId: "a_gibtesnicht",
-        epoche: 2, generation: 1 } });
+        epoche: 2, generation: 1, sitzung: echt.id } });
     expect(e.ok).toBe(false);
-    if (!e.ok) expect(e.grund).toBe("account-fehlt");
+    if (!e.ok) expect(e.grund).toBe("konto-sitzung");
+
+    /* Und ohne Anmeldung im Anker: keine gültige Form, nicht „alt". */
+    const ohne = await AS.arbeitssitzungPruefen(laden(), { bestand: raum, person: "p_1",
+      betrieb: 0, herkunft: { art: "account", accountId: "a_gibtesnicht",
+        epoche: 2, generation: 1 } });
+    expect(ohne.ok).toBe(false);
+    if (!ohne.ok) expect(ohne.grund).toBe("herkunft");
   }, LIMIT);
 
   it("weist eine Sitzung ohne Raum oder ohne Person ab", async () => {
@@ -253,7 +280,7 @@ describe("Ein Entzug wirkt sofort", () => {
     if (!neu.ok) return;
     expect(neu.mitgliedschaft.generation).toBe(2);
 
-    const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+    const wahl = await waehle(k.id, raum);
     expect(wahl.ok).toBe(true);
     if (!wahl.ok) return;
     const T2 = wahl.token;
@@ -286,7 +313,7 @@ describe("Ein Entzug wirkt sofort", () => {
     expect(e.ok).toBe(false);
     if (!e.ok) expect(e.grund).toBe("epoche");
     /* Eine neue Auswahl bindet die neue Epoche und gilt. */
-    const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+    const wahl = await waehle(k.id, raum);
     expect(wahl.ok).toBe(true);
     if (!wahl.ok) return;
     expect((await satz(wahl.token)).herkunft.epoche).toBe(vorher + 1);
@@ -541,7 +568,7 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
     const { konto: k, raum } = await arbeitsbereich("pfade");
     const merkmale = {};
     for (const p of PFADE) {
-      const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+      const wahl = await waehle(k.id, raum);
       expect(wahl.ok).toBe(true);
       if (!wahl.ok) return;
       merkmale[p.name] = wahl.token;
@@ -562,7 +589,7 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
     const { konto: k, raum } = await arbeitsbereich("pfade-sperre");
     const merkmale = {};
     for (const p of PFADE) {
-      const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+      const wahl = await waehle(k.id, raum);
       if (!wahl.ok) throw new Error("Auswahl gescheitert");
       merkmale[p.name] = wahl.token;
       expect((await p.ruf(wahl.token)).status, `${p.name} vorher`).not.toBe(401);
@@ -577,7 +604,7 @@ describe("Jeder produktive Zugriffspfad prüft mit", () => {
     const { konto: k, raum } = await arbeitsbereich("pfade-epoche");
     const merkmale = {};
     for (const p of PFADE) {
-      const wahl = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+      const wahl = await waehle(k.id, raum);
       if (!wahl.ok) throw new Error("Auswahl gescheitert");
       merkmale[p.name] = wahl.token;
       expect((await p.ruf(wahl.token)).status, `${p.name} vorher`).not.toBe(401);
@@ -709,7 +736,7 @@ describe("Die Auswahl selbst", () => {
     delete ohne.generation;
     await laden().setJSON(A.mitgliedSchluessel(k.id, raum), ohne);
 
-    const e = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+    const e = await waehle(k.id, raum);
     expect(e.ok).toBe(false);
     if (!e.ok) expect(e.grund).toBe("generation");
   }, LIMIT);
@@ -721,7 +748,7 @@ describe("Die Auswahl selbst", () => {
     await A.mitgliedschaftAnlegen(laden(), { accountId: k.id, raum, betrieb: 0,
       mandantId: "m1", person: "p_1", rolle: "leitung", status: "aktiv" });
     await laden().delete(A.mitgliedlaufSchluessel(k.id, raum));
-    const e = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+    const e = await waehle(k.id, raum);
     expect(e.ok).toBe(false);
     if (!e.ok) expect(e.grund).toBe("lauf");
   }, LIMIT);
@@ -733,7 +760,7 @@ describe("Die Auswahl selbst", () => {
     await A.mitgliedschaftAnlegen(laden(), { accountId: k.id, raum, betrieb: 0,
       mandantId: "m1", person: "p_1", rolle: "leitung", status: "aktiv" });
     await A.accountSperren(laden(), k.id);
-    const e = await konten.betriebWaehlen(laden(), { accountId: k.id, raum });
+    const e = await waehle(k.id, raum);
     expect(e.ok).toBe(false);
     if (!e.ok) expect(e.grund).toBe("konto-status");
   }, LIMIT);

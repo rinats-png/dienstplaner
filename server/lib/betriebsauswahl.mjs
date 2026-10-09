@@ -5,7 +5,9 @@ import {
 import { HERKUNFT_KONTO } from "./arbeitssitzung.mjs";
 import { bestandLesen } from "./bestand.mjs";
 import { wirksameRolle, eigenerMandant } from "./rechte.mjs";
-import { sitzungAnlegen, dauerFuer } from "./sitzungen.mjs";
+import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
+import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
+  from "./accountsitzungen.mjs";
 
 /* ==========================================================================
    VOM ACCOUNT IN EINEN BETRIEB
@@ -136,17 +138,31 @@ export async function mitgliedschaftenFuerAuswahl(store, accountId) {
  * Mitgliedschaft besteht, ob sie entzogen wurde: alles dasselbe. Sonst wäre
  * dieser Endpunkt ein Verzeichnis fremder Betriebe.
  *
+ * Die Arbeitssitzung hängt an der Account-Sitzung, mit der sie geöffnet wird
+ * (`kontoSitzung`: Kennung und Ende der Sitzung, geprüft vom Aufrufer). Ohne
+ * sie entsteht nichts. Die Arbeitssitzung läuft nie über das Ende ihrer
+ * Anmeldung hinaus — `gueltigBis` ist entsprechend gekappt, damit die Antwort
+ * wahr bleibt.
+ *
  * @param {object} store  Ablage „centric"
- * @param {{accountId?: string, raum?: unknown, jetzt?: () => number}} o
+ * @param {{accountId?: string, raum?: unknown,
+ *   kontoSitzung?: ({id?: unknown, bis?: unknown}|null),
+ *   jetzt?: () => number, kontoAblage?: (object|null)}} o
  * @returns {Promise<{ok: true, token: string, gueltigBis: number, raum: string,
  *     name: string, rolle: string, person: string, betrieb: number}
  *   |{ok: false, grund: string}>}
  */
-export async function betriebWaehlen(store, { accountId, raum, jetzt = Date.now } = {}) {
+export async function betriebWaehlen(store,
+  { accountId, raum, kontoSitzung = null, jetzt = Date.now, kontoAblage = null } = {}) {
   /** @type {(grund: string) => {ok: false, grund: string}} */
   const absage = (grund) => ({ ok: false, grund });
 
   if (!accountId || typeof accountId !== "string") return absage("konto");
+  /* Ohne Anmeldung, an der die Arbeit hängen kann, entsteht keine. */
+  const asId = kontoSitzung && kontoSitzung.id;
+  const asBis = Number(kontoSitzung && kontoSitzung.bis);
+  if (!kennungBrauchbar(asId) || !Number.isFinite(asBis) || asBis < jetzt())
+    return absage("konto-sitzung");
   /* Die Form des Raumnamens prüft dieselbe Funktion, die auch eine
      Mitgliedschaft prüft — samt Ausschluss der Demoräume: Ein Demozugang
      braucht kein Konto und darf über diesen Weg nicht entstehen. */
@@ -213,7 +229,8 @@ export async function betriebWaehlen(store, { accountId, raum, jetzt = Date.now 
        der Anfrage, und eine Rolle steht nicht darin — sie ist kein
        Widerrufsanker (arbeitssitzung.mjs). Raum und Person stehen schon
        oben; doppelt wird nichts gespeichert. */
-    herkunft: { art: HERKUNFT_KONTO, accountId, epoche, generation: lauf.generation },
+    herkunft: { art: HERKUNFT_KONTO, accountId, epoche, generation: lauf.generation,
+      sitzung: String(asId) },
   };
 
   /* Die Rolle, die jetzt gilt — aus der Person im Bestand, über dieselbe
@@ -222,12 +239,36 @@ export async function betriebWaehlen(store, { accountId, raum, jetzt = Date.now 
      ohnehin erst wieder bei der nächsten Anfrage. */
   const rolle = wirksameRolle(felder, gelesen.bestand) || m.rolle;
 
+  /* Die Arbeit überlebt ihre Anmeldung nicht: Die Dauer endet spätestens mit
+     der Account-Sitzung. */
+  const dauer = Math.min(dauerFuer(rolle), asBis - jetzt());
+  if (!(dauer > 0)) return absage("konto-sitzung");
+
   let angelegt;
   try {
-    angelegt = await sitzungAnlegen(felder, dauerFuer(rolle), { jetzt });
+    angelegt = await sitzungAnlegen(felder, dauer, { jetzt });
   } catch {
     /* Ohne Sitzung kein Zugang. Kein halbes Ergebnis. */
     return absage("speichern");
+  }
+
+  /* Der Marker sagt dem Logout, was er mit wegräumen kann. Er ist Hygiene, keine
+     Autorität: Scheitert er, gilt die Sitzung trotzdem nur, solange ihre
+     Anmeldung gilt, und der Aufräumlauf findet sie später. */
+  const arbeitsId = sitzungsSchluessel(angelegt.token).slice(2);
+  await markerAnlegen(String(asId), arbeitsId,
+    { seit: jetzt(), bis: angelegt.gueltigBis }, { ablage: kontoAblage });
+
+  /* Nachkontrolle: Zwischen der Prüfung der Anmeldung und dem Anlegen kann ein
+     Logout gelaufen sein. Dann bekäme der Aufrufer ein Merkmal, das beim
+     Ausgeben schon tot ist — und eine Datei bliebe liegen. Also noch einmal
+     nachsehen; im Zweifel weg damit. */
+  const noch = await kontoSitzungFuerArbeit(String(asId), { accountId, epoche },
+    { ablage: kontoAblage, jetzt });
+  if (!noch.ok) {
+    await sitzungBeenden(angelegt.token);
+    await markerLoeschen(String(asId), arbeitsId, { ablage: kontoAblage });
+    return absage("konto-sitzung");
   }
 
   return { ok: true, token: angelegt.token, gueltigBis: angelegt.gueltigBis,

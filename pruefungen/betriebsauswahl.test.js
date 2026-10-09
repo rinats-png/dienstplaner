@@ -318,11 +318,13 @@ describe("POST /api/account/betrieb", () => {
     expect(roh.konto).toBe(undefined);
     expect(roh.demo).toBe(undefined);
 
-    /* Der Herkunftsanker: genau vier Werte, alle serverseitig. Er ist der
+    /* Der Herkunftsanker: genau fünf Werte, alle serverseitig. Er ist der
        Grund, warum ein Entzug sofort wirkt (arbeitssitzung.mjs) — und er
-       trägt keine Rolle. */
+       trägt keine Rolle. `sitzung` ist die Prüfsumme der Account-Sitzung, an
+       der die Arbeit hängt, nie das Merkmal selbst. */
     expect(Object.keys(roh.herkunft).sort())
-      .toEqual(["accountId", "art", "epoche", "generation"]);
+      .toEqual(["accountId", "art", "epoche", "generation", "sitzung"]);
+    expect(roh.herkunft.sitzung).toMatch(/^[0-9a-f]{64}$/);
     expect(roh.herkunft.art).toBe("account");
     expect(roh.herkunft.accountId).toBe(k.id);
     expect(roh.herkunft.generation).toBe(1);
@@ -908,17 +910,31 @@ describe("Bremse, Ablagefehler und die alten Zugänge", () => {
     async () => {
       /* Ohne HTTP: Die Primitive selbst gibt für eine fremde Kennung nichts
          her, auch wenn der Raum existiert. */
+      const ACS = await import("../server/lib/accountsitzungen.mjs");
+      /* Die Anmeldung, an der die Arbeit hängt — ohne sie entsteht nichts. */
+      const anmeldung = async (accountId) => {
+        const k = await A.accountLesenPerId(laden(), accountId);
+        const s = await ACS.accountSitzungAnlegen({ accountId, epoche: k.epoche });
+        if (!s.ok) throw new Error("Account-Sitzung nicht angelegt");
+        return { id: ACS.accountSitzungsId(s.token), bis: s.gueltigBis };
+      };
       const a = await konto(adresse("modul-a"));
       const b = await konto(adresse("modul-b"));
       const raum = await arbeitsbereich(b.id, "modul", { rolle: "leitung" });
-      const fremd = await BA.betriebWaehlen(laden(), { accountId: a.id, raum });
+      const fremd = await BA.betriebWaehlen(laden(),
+        { accountId: a.id, raum, kontoSitzung: await anmeldung(a.id) });
       expect(fremd.ok).toBe(false);
-      const eigen = await BA.betriebWaehlen(laden(), { accountId: b.id, raum });
+      const eigen = await BA.betriebWaehlen(laden(),
+        { accountId: b.id, raum, kontoSitzung: await anmeldung(b.id) });
       expect(eigen.ok).toBe(true);
       if (eigen.ok) expect(eigen.rolle).toBe("leitung");
       /* Und ohne Kennung gar nichts. */
       expect((await BA.betriebWaehlen(laden(), { raum })).ok).toBe(false);
       expect((await BA.betriebWaehlen(laden(),
         { accountId: b.id, raum: "demo-haus" })).ok).toBe(false);
+      /* Und ohne Anmeldung auch nicht — selbst mit allem anderen in Ordnung. */
+      const ohne = await BA.betriebWaehlen(laden(), { accountId: b.id, raum });
+      expect(ohne.ok).toBe(false);
+      if (!ohne.ok) expect(ohne.grund).toBe("konto-sitzung");
     }, LIMIT);
 });

@@ -85,7 +85,13 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
   /* Die Regel, wann eine Sitzung abgelaufen ist, steht in lebendigkeit.mjs —
      einmal, für jeden, der sie braucht. Die lockere Lesart ist die alte:
      ein Datensatz ohne Ende läuft nicht ab. */
-  const urteil = ablaufUrteil(s, nun, { streng: false, ruhe: RUHE });
+  /* Eine Sitzung mit Herkunftsanker (aus einem Konto) hat keine eigene
+     Untätigkeitsgrenze: Ihr Login-Kontext lebt, solange in ihm gearbeitet wird,
+     und die Prüfung dort (arbeitssitzung.mjs) verlängert und beendet ihn. Nur
+     die absolute Frist gilt hier. */
+  const gebunden = Object.prototype.hasOwnProperty.call(s, "herkunft");
+  const urteil = ablaufUrteil(s, nun,
+    { streng: false, ruhe: gebunden ? Infinity : RUHE });
   if (urteil.grund === "frist") { await sitzungen.delete(`t:${hash(token)}`); return null; }
   if (urteil.grund === "untaetig") {
     await sitzungen.delete(`t:${hash(token)}`);
@@ -93,7 +99,7 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
   }
   /* Ein Planer klickt sich durch einen Monat — das wären hunderte
      Schreibvorgänge. Einmal je Minute genügt. */
-  if (verlaengernFaellig(s, null, nun)) {
+  if (!gebunden && verlaengernFaellig(s, null, nun)) {
     sitzungen.setJSON(`t:${hash(token)}`, { ...s, zuletzt: nun }).catch(() => {});
   }
   return s;
