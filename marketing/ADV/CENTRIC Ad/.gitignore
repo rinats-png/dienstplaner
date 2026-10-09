@@ -1,0 +1,3 @@
+# Aus build/ton.py und build/master.py reproduzierbar – nicht einchecken, erst die Finals
+stems/*.wav
+build/*.mp4
