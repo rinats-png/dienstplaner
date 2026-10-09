@@ -10,11 +10,11 @@ Jede Zahl im Film, woher sie kommt.
 | Werktage = Montag bis Samstag, Sonntag zählt nicht | Werktage im Sinn des ArbZG sind Montag bis Samstag; die Anwendung zählt so (`werktage()` in src/regelwerk.js: `dow(d) < 6`) und schreibt in der Prüfung „Sonntage zählen nicht als Werktage“ (Aufnahme screens/leitung-pruef-hell.jpg). |
 | 1.152 Stunden | Rechnung: 24 Wochen × 6 Werktage × 8 h = 1.152 h (= „zulässig“ in `ausgleichszeitraum()`). |
 | 144 Werktage | 24 × 6. |
-| 5 Dienste × 10 h = 50 h je Woche | Beispielplan des Films (frei gewählt, kein Kundendatensatz). |
+| 5 Dienste × 10 h = 50 h je Woche | Beispielplan des Films (frei gewählt, kein Kundendatensatz). Zulässig je Tag und Woche: § 3 Satz 2 erlaubt bis 10 h werktäglich, also bis 6 × 10 = 60 h in einer Woche; eine eigene Wochengrenze kennt § 3 nicht. |
 | 1.200 Stunden | 24 × 50 h. |
-| 8,3 h je Werktag | 1.200 h ÷ 144 Werktage = 8,33 h. |
+| Ø 8,3 h je Werktag | 1.200 h ÷ 144 Werktage = 8,33 h. |
 | 48 Stunden Überhang | 1.200 h − 1.152 h; die Anwendung nennt diesen Wert als „h abzubauen“ (`ueberhang` in src/regelwerk.js, Anzeige in src/App.jsx, Prüfung). |
-| 5 Dienste weniger → 1.150 Stunden, eingehalten | 1.200 h − 5 × 10 h = 1.150 h ≤ 1.152 h; Durchschnitt 7,99 h je Werktag. |
-| „gleitend“, „für jede Person“, „Nachsehen → Prüfung“ | Anwendung: `ausgleichVerstoesse()` prüft jede aktive Person über einen gleitenden Zeitraum bis zum Monatsende; Karte „Ausgleichszeitraum nach § 3 Arbeitszeitgesetz“ in Nachsehen → Prüfung (screens/karte-ausgleich.jpg). |
+| 5 Dienste weniger → 1.150 Stunden, eingehalten | 1.200 h − 5 × 10 h = 1.150 h ≤ 1.152 h; Durchschnitt 7,99 h je Werktag, angezeigt als „Ø 8,0 h“ (eine Nachkommastelle wie in der App). |
+| „gleitend“, „für jede Person“, „Nachsehen → Prüfung“ | Anwendung: `ausgleichVerstoesse()` prüft jede aktive Person über einen gleitenden Zeitraum bis zum Monatsende; Karte „Ausgleichszeitraum nach § 3 Arbeitszeitgesetz“ in Nachsehen → Prüfung; im Film Titel und Status daraus (screens/karte-titel.jpg, karte-status.jpg), aufgenommen im Beispielbetrieb der Anwendung. |
 
 Hinweis: gesetze-im-internet.de war aus der Arbeitsumgebung nicht erreichbar (Netzwerkrichtlinie). Der Wortlaut von § 3 ist aus dem Gesetz zitiert; vor einer Veröffentlichung dort gegenlesen.

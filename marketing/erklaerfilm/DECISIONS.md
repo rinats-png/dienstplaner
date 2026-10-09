@@ -12,11 +12,21 @@ Eine Zeile je Entscheidung, in der Reihenfolge, in der sie fiel.
 - Beispielplan frei gewählt: 5 × 10 h je Woche, Montag bis Freitag; als solcher benannt, kein Kundendatensatz.
 - Wende = eine Variable: Anzahl der Dienste im Zeitraum (120 → 115). Ergebnis 1.150 ≤ 1.152.
 - Stimme: Thorsten (Coqui VITS, CC0), lokal erzeugt, keine Kosten; ElevenLabs war im Spot nicht nutzbar. „CENTRIC“ gesprochen als „Sentrik“.
-- Bild wird auf die Stimme getimt (vo.json), nicht umgekehrt. Bogen nach Stimme: Frage 0–10,3 s · Modell 10,3–22 s · Beweis 22–39,3 s · Wende 39,3–46,4 s · Auflösung 46,4–60 s.
+- Bild wird auf die Stimme getimt (vo.json), nicht umgekehrt. Bogen nach Stimme (Endstand): Frage 0–9,8 s · Modell 9,8–21,4 s · Beweis 21,4–38,6 s · Wende 38,6–45,6 s · Auflösung 45,6–60 s. Die Frage ist mit 16 % länger als 10 %, weil der Haken drei Sätze braucht.
 - Grund #F5F5F2 statt Sea Salt #D9E4E8 der App: Der Auftrag verlangt einen warmen neutralen Grund; Sea Salt ist kühl. Akzent, Text- und Statusfarben bleiben die der App.
 - Ein Akzent (#017070). „Überschritten“ in Sand #955410 ist Statusfarbe, nicht zweiter Akzent, und erscheint nie ohne Schraffur und Wort.
 - Zwei Schriften: Inter (Marke) für Text, IBM Plex Mono (OFL) für Zahlen und Stundenwerte – Zahlen lesen sich als Daten, nicht als Überschrift.
 - Ein Raster: 8 px; 16:9 mit 12 Spalten, 9:16 und 1:1 mit 6 Spalten.
-- Echte Oberfläche: die Karte „Ausgleichszeitraum nach § 3 Arbeitszeitgesetz“ aus der Anwendung (Aufnahme) in der Auflösung. Die Zeile für den überschrittenen Fall ist nach dem Aufbau in src/App.jsx (Prüfung) nachgesetzt, weil der Beispielbetrieb keinen Verstoß enthält; das ist im Bild als „Beispielrechnung“ gekennzeichnet.
+- Echte Oberfläche: Titel und Status der Karte „Ausgleichszeitraum nach § 3 Arbeitszeitgesetz“ aus der Anwendung (Aufnahme, screens/karte-titel.jpg und karte-status.jpg), groß gesetzt und als „Ansicht in CENTRIC“ beschriftet. Der Absatz der Karte entfällt, weil er auf dem Handy nicht lesbar war. Die Zeile für den überschrittenen Fall ist dem Aufbau in src/App.jsx (Prüfung) nachgebildet, weil der Beispielbetrieb keinen Verstoß enthält; sie ist groß als „Beispielrechnung · so rechnet CENTRIC“ gekennzeichnet.
 - Musikbett und Klänge in Python (numpy) statt Web Audio erzeugt: dieselbe Pipeline wie beim Spot, deterministisch; die Klangmarken kommen aus demselben TIMELINE-Objekt wie das Bild (aus film.html exportiert).
 - Keine Bewegungsunschärfe-Teilbilder: klare UI-Bewegung, Frames bleiben reine Funktion von t und bitgleich reproduzierbar.
+- Nach der Design-Review: Bildschirmworte wiederholen keine Beschriftung im Bild und nicht den Sprechertext; sie nennen die Vorschrift („§ 3 Arbeitszeitgesetz“), die Regel („Durchschnitt ≤ 8 h je Werktag“) oder die Rechnung („1.200 h > 1.152 h“).
+- Ein Name je Sache auf dem Bildschirm: „Durchschnitt“ (nie „Schnitt“), „Überhang“ für die 48 h (in der Zeile wie in der App „abzubauen“), „zulässig“ für Tage und Wochen, „eingehalten“ für den Zeitraum. Die Stimme spricht natürlicher („erlaubt“, „passt“, „hält“).
+- Wende: Zähler, Überhang und Zeile wechseln gemeinsam, erst wenn das Konto aufgerückt ist (T.w_fertig); „eingehalten“ steht nur noch in der Zeile.
+- Eröffnung: Tagesnamen Mo–So von Anfang an, „24 Wochen“ schon am Eröffnungsbild, Wochen-Häkchen größer.
+- Überlauf: Die Kamera fährt in 16:9, 9:16 und 1:1 auf das Kontoende (1,6× / 2,2× / 2,0×), solange „überschritten“ gesprochen wird; in der Fassung mit reduzierter Bewegung ist das ein harter Schnitt.
+- Barrierefreiheit: „So“ mit Farbe statt Deckkraft (5,1:1 statt 4,1:1), Schraffur kräftiger, kleine Beschriftungen in 9:16 und 1:1 auf 26 px, Untertitel ohne Trennung von Zahl und Einheit.
+- Untertitel unter 17 Zeichen/s: Blöcke b05 und b15 langsamer gesprochen (length_scale 1,04), Pause nach b05 0,45 s, Standzeit bis kurz vor den nächsten Satz. Stimme mit festen Zufallswerten (torch.manual_seed), also reproduzierbar.
+- Lautheit: Die Stimme braucht für −16 LUFS etwa +1,6 dB; ihre Spitzen würden −1,5 dBTP überschreiten. Ein Spitzenfänger (1,5 ms Vorausschau, 40 ms Rücklauf) greift auf 0,7 % der Sprechzeit mit mehr als 1 dB, höchstens 2,9 dB. Sonst bleibt die Stimme unbearbeitet.
+- Reduzierte Bewegung nur als 16:9-Fassung gerendert; 9:16 und 1:1 lassen sich mit `render.mjs <format> <datei> rm` genauso erzeugen.
+- 16:9 ist für große Bildschirme gesetzt; auf 390 px Breite sind die Untertitel dort 8 px hoch. Für das Handy ist 9:16 die Fassung.

@@ -24,7 +24,7 @@ body { font-family: var(--schrift); color: var(--ink); -webkit-font-smoothing: a
 .pille { border-radius: 99px; font-family: var(--schrift); font-weight: 650; white-space: nowrap; display: inline-flex; align-items: center; gap: .4em; }
 .pille.ok { background: var(--ok); color: #fff; }
 .pille.sand { background: var(--sand); color: #fff; }
-.schraffur { background: repeating-linear-gradient(135deg, rgba(149,84,16,.92) 0 7px, rgba(149,84,16,.62) 7px 14px); }
+.schraffur { background: repeating-linear-gradient(135deg, rgba(149,84,16,1) 0 7px, rgba(149,84,16,.78) 7px 14px); }
 .haken svg, .pille svg { display: block; }
 #anker { position: absolute; z-index: 30; }
 #anker .zeile { font-weight: 650; letter-spacing: -.02em; line-height: 1.12; white-space: nowrap; }
@@ -81,26 +81,28 @@ const T = {
   ende: 60,
 };
 T.p_landen = T.p_w24 + 0.45;                      // Woche 24 sitzt
+T.k_rein = T.p_landen + 0.3; T.k_raus = B("b12").ende + 0.2;   // Kamera auf das Kontoende und zurück
 const WEG = [[2, 4], [7, 4], [12, 4], [17, 4], [21, 4]];   // fünf Dienste (Freitage), die in der Wende wegfallen
 const weg = (w, d) => WEG.some(([a, b]) => a === w && b === d);
 const flugZeit = (w) => w === 0 ? T.p_w1 : w < 20 ? T.p_w2 + (w - 1) * 0.085 : w < 23 ? T.p_w21 + (w - 20) * 0.33 : T.p_w24;
 const wegZeit = (i) => T.w_weg + i * 0.15;
 const T_AUFRUECKEN = wegZeit(4) + 0.15;
+T.w_fertig = +(T_AUFRUECKEN + 0.6).toFixed(3);         // Konto aufgerückt: ab hier gilt 1.150 h überall
 
 /* ================================================================ Lagen je Format */
 const LAGEN = {
-  "16x9": { anker: { x: 128, y: 88, s: 56 }, cc: { unten: 48, s: 40, b: 1600, z: 64 }, mini: 15,
+  "16x9": { anker: { x: 128, y: 88, s: 56 }, cc: { unten: 48, s: 40, b: 1600, z: 64 }, mini: 18,
     woche: { c: 150, g: 20, x: 375, y: 420 }, wandQ: { c: 48, g: 10, x: 269, y: 330 }, wandP: { c: 30, g: 7, x: 520, y: 244 },
-    tag: { x: 760, unten: 840, b: 150, ph: 52 }, konto: { x: 192, y: 664, b: 1440, h: 88 }, zeile: { x: 192, y: 836, b: 1536, s: 24 },
-    karte: { x: 240, y: 590, b: 1440 }, marke: { x: 1792, y: 88 } },
-  "9x16": { anker: { x: 72, y: 190, s: 60 }, cc: { unten: 230, s: 44, b: 960, z: 34 }, mini: 18,
+    tag: { x: 760, unten: 840, b: 150, ph: 52 }, konto: { x: 192, y: 664, b: 1440, h: 88 }, zeile: { x: 192, y: 836, b: 1536, s: 26 },
+    karte: { x: 192, y: 600, titel: 1150 }, zoom: 1.6, marke: { x: 1792, y: 88 } },
+  "9x16": { anker: { x: 72, y: 190, s: 60 }, cc: { unten: 230, s: 44, b: 960, z: 34 }, mini: 26,
     woche: { c: 128, g: 12, x: 56, y: 840 }, wandQ: { c: 36, g: 6, x: 39, y: 860 }, wandP: { c: 30, g: 6, x: 111, y: 560 },
-    tag: { x: 400, unten: 1400, b: 150, ph: 54 }, konto: { x: 72, y: 1040, b: 880, h: 100 }, zeile: { x: 72, y: 1210, b: 936, s: 30, gestapelt: true },
-    karte: { x: 40, y: 1000, b: 1000 }, marke: { x: 1008, y: 96 } },
-  "1x1": { anker: { x: 64, y: 60, s: 46 }, cc: { unten: 44, s: 32, b: 980, z: 46 }, mini: 14,
+    tag: { x: 400, unten: 1400, b: 150, ph: 54 }, konto: { x: 72, y: 1040, b: 880, h: 100 }, zeile: { x: 72, y: 1250, b: 936, s: 36, gestapelt: true },
+    karte: { x: 72, y: 1000, titel: 936, gestapelt: true }, zoom: 2.2, marke: { x: 1008, y: 96 } },
+  "1x1": { anker: { x: 64, y: 60, s: 46 }, cc: { unten: 44, s: 32, b: 980, z: 46 }, mini: 26,
     woche: { c: 120, g: 12, x: 84, y: 430 }, wandQ: { c: 34, g: 7, x: 52, y: 390 }, wandP: { c: 24, g: 5, x: 195, y: 200 },
-    tag: { x: 400, unten: 820, b: 130, ph: 42 }, konto: { x: 90, y: 540, b: 860, h: 80 }, zeile: { x: 64, y: 700, b: 952, s: 22, gestapelt: true },
-    karte: { x: 40, y: 560, b: 1000 }, marke: { x: 1016, y: 60 } },
+    tag: { x: 400, unten: 820, b: 130, ph: 42 }, konto: { x: 90, y: 540, b: 860, h: 80 }, zeile: { x: 64, y: 710, b: 952, s: 30, gestapelt: true },
+    karte: { x: 64, y: 580, titel: 900, gestapelt: true }, zoom: 2.0, marke: { x: 1016, y: 60 } },
 };
 const L = LAGEN[FMT];
 const S_KONTO = L.konto.b / 1152;                  // Pixel je Stunde im Konto
@@ -168,7 +170,7 @@ function zustand(kf, t) {
 /* ================================================================ Weitere Objekte */
 const haken5 = [0, 1, 2, 3, 4].map(() => el("o haken", HAKEN("#0E6B45", 40)));
 const wochenPille = el("o pille ok", HAKEN("#fff", 26) + "<span>Woche zulässig</span>", welt, `font-size:${L.anker.s * .5}px;padding:.45em .9em`);
-const spaltenHaken = Array.from({ length: 24 }, () => el("o haken", HAKEN("#0E6B45", Math.round(L.wandQ.c * .55))));
+const spaltenHaken = Array.from({ length: 24 }, () => el("o haken", HAKEN("#0E6B45", Math.round(L.wandQ.c * .8))));
 const sandRahmen = el("o", "", welt, "border:4px solid var(--sand);border-radius:16px");
 const sandSchraffur = el("o schraffur", "", welt, "border-radius:10px");
 const sandPille = el("o pille sand", "<span>§ 3 ArbZG: überschritten</span>", welt, `font-size:${L.anker.s * .44}px;padding:.45em .9em`);
@@ -177,13 +179,13 @@ const skala = Array.from({ length: 11 }, (_, i) => el("o zahl", `${i} h`, welt, 
 const linie8 = el("o", "", welt, "height:4px;background:var(--ink);border-radius:2px");
 const linie8T = el("o text", "8 h je Werktag", welt, `font-size:${L.anker.s * .5}px;font-weight:650`);
 const klammer = el("o", "", welt, "border:3px solid var(--akzent);border-left:0;border-radius:0 10px 10px 0");
-const klammerT = el("o text", "bis 10 h<br><span style='color:var(--dim);font-weight:400'>wenn der Schnitt stimmt</span>", welt, `font-size:${L.anker.s * .44}px;font-weight:650;line-height:1.3`);
+const klammerT = el("o text", "bis 10 h<br><span style='color:var(--dim);font-weight:400'>wenn der Durchschnitt stimmt</span>", welt, `font-size:${L.anker.s * .44}px;font-weight:650;line-height:1.3`);
 // Woche: Tagesnamen, Werktage, Sonntag
 const TAGE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const tagNamen = TAGE.map((n) => el("o text", n, welt, `font-size:${L.anker.s * .46}px;font-weight:650;text-align:center`));
 const werkKlammer = el("o", "", welt, "border:3px solid var(--akzent);border-bottom:0;border-radius:10px 10px 0 0");
 const werkT = el("o text", "6 Werktage", welt, `font-size:${L.anker.s * .46}px;font-weight:650;color:var(--akzent);text-align:center`);
-const soT = el("o text", "kein<br>Werktag", welt, `font-size:${L.anker.s * .36}px;color:var(--dim);text-align:center;line-height:1.2`);
+const soT = el("o text", "kein<br>Werktag", welt, `font-size:${L.anker.s * .44}px;color:var(--dim);text-align:center;line-height:1.2`);
 // Wand: Klammern
 const klammer24 = el("o", "", welt, "border:3px solid var(--akzent);border-top:0;border-radius:0 0 10px 10px");
 const klammer24T = el("o text", "24 Wochen", welt, `font-size:${L.anker.s * .44}px;font-weight:650;color:var(--akzent);text-align:center`);
@@ -200,21 +202,23 @@ const zaehler = el("o zahl", "", welt, `font-size:${L.mini + 15}px;font-weight:6
 const zaehlerOk = el("o pille ok", HAKEN("#fff", 20) + "<span>eingehalten</span>", welt, `font-size:${L.mini + 7}px;padding:.35em .75em`);
 // Zeile wie in der Prüfung von CENTRIC (Beispielrechnung)
 const zeile = el("o karte", "", welt, `width:${L.zeile.b}px;padding:${L.zeile.s * .8}px ${L.zeile.s}px;border-left:6px solid var(--sand)`);
-zeile.innerHTML = `<div class="mini" style="font-size:${L.mini}px">Beispielrechnung · aufgebaut wie in CENTRIC, Nachsehen → Prüfung</div>
+zeile.innerHTML = `<div class="text" style="font-size:${L.zeile.s * .82}px;font-weight:700">Beispielrechnung <span style="font-weight:400;color:var(--dim)">· so rechnet CENTRIC</span></div>
   <div style="display:flex;align-items:center;gap:${L.zeile.s}px;margin-top:${L.zeile.s * .5}px;flex-wrap:${L.zeile.gestapelt ? "wrap" : "nowrap"}">
-    <div class="text" style="font-size:${L.zeile.s}px;font-weight:650">Beispielplan</div>
-    <div class="zahl" data-z="summe" style="font-size:${L.zeile.s * .92}px;color:var(--dim)"></div>
-    <div class="zahl" data-z="schnitt" style="font-size:${L.zeile.s * .92}px;font-weight:600"></div>
+    <div class="zahl" data-z="summe" style="font-size:${L.zeile.s}px;color:var(--ink)"></div>
+    <div class="zahl" data-z="schnitt" style="font-size:${L.zeile.s}px;font-weight:600"></div>
     <span style="flex:1"></span>
     <span class="pille" data-z="pille" style="font-size:${L.zeile.s * .82}px;padding:.35em .8em"></span>
   </div>`;
 const zSumme = zeile.querySelector("[data-z=summe]"), zSchnitt = zeile.querySelector("[data-z=schnitt]"), zPille = zeile.querySelector("[data-z=pille]");
 // Echte Karte aus CENTRIC
-const KARTE_PX = [2755, 415];
-const karte = el("o", `<img src="../screens/karte-ausgleich.jpg" style="width:100%;display:block;border-radius:12px">`, welt,
-  `width:${L.karte.b}px;border-radius:14px;box-shadow:0 0 0 1px var(--linie),0 24px 50px -28px rgba(7,19,23,.4);background:#fff`);
-const ring = el("o", "", welt, "border:4px solid var(--akzent);border-radius:99px");
-const karteT = el("o mini", "Aus CENTRIC · Nachsehen → Prüfung", welt, `font-size:${L.mini}px`);
+// Echte Oberfläche: Titel und Status der Karte „Ausgleichszeitraum“ (Aufnahme, 2x), vergrößert, damit sie auf dem Handy lesbar bleiben
+const KT = L.karte.titel / 730;
+const karte = el("o karte", `<div style="display:flex;${L.karte.gestapelt ? "flex-direction:column;align-items:flex-start" : "align-items:center"};gap:${24 * KT}px">
+    <img src="../screens/karte-titel.jpg" style="width:${L.karte.titel}px;display:block">
+    <div style="position:relative"><img src="../screens/karte-status.jpg" style="width:${190 * KT}px;display:block"><div class="ring" style="position:absolute;inset:-${8 * KT}px;border:${Math.max(3, 2.2 * KT)}px solid var(--akzent);border-radius:99px"></div></div>
+  </div>`, welt, `padding:${22 * KT}px ${28 * KT}px`);
+const ring = karte.querySelector(".ring");
+const karteT = el("o mini", "Ansicht in CENTRIC", welt, `font-size:${L.mini * 1.3}px`);
 // Marke (Bildmarke wie src/marke.jsx, Fassung für hellen Grund) mit Wortmarke
 const marke = el("o", `<div style="display:flex;align-items:center;gap:12px;transform:translateX(-100%)"><svg width="40" height="40" viewBox="0 0 100 100"><defs><linearGradient id="mg" x1="55%" y1="0%" x2="100%" y2="70%"><stop offset="0%" stop-color="#071317"/><stop offset="100%" stop-color="#017070"/></linearGradient><clipPath id="mc"><rect x="6" y="8" width="88" height="26" rx="13"/></clipPath></defs><g clip-path="url(#mc)"><rect x="6" y="8" width="88" height="26" rx="13" fill="#071317"/><path d="M52 8 C74 8 66 34 94 34 L94 8 Z" fill="url(#mg)"/></g><rect x="6" y="37" width="88" height="26" rx="13" fill="#02A0A0"/><rect x="6" y="66" width="88" height="26" rx="13" fill="#071317"/><path d="M92 26 C99 30 99 41 90 45 C78 50 62 44 50 47 C38 50 26 58 20 63 C13 69 13 78 20 82" stroke="#071317" stroke-width="1.9" fill="none" stroke-linecap="round" opacity=".92"/></svg><span style="font-weight:750;letter-spacing:.22em;font-size:22px">CENTRIC</span></div>`);
 
@@ -222,26 +226,22 @@ const marke = el("o", `<div style="display:flex;align-items:center;gap:12px;tran
 const ANKER = [
   [T.q_zehn - 0.1, "5 Dienste × 10 h", ""],
   [T.q_tag, "Jeder Tag zulässig.", ""],
-  [T.q_woche, "Jeder Tag zulässig.", "Jede Woche zulässig."],
-  [T.q_gesetz - 0.1, "Und trotzdem:", "§ 3 ArbZG überschritten."],
-  [T.m_acht - 0.1, "8 h je Werktag", ""],
-  [T.m_zehn, "8 h je Werktag", "bis 10 h, wenn der Schnitt stimmt"],
-  [B("b06").start, "Werktage: Montag bis Samstag", ""],
-  [T.m_wand, "Der Schnitt gilt", "über 24 Wochen."],
+  [T.q_gesetz - 0.1, "Und trotzdem?", ""],
+  [T.m_acht - 0.1, "§ 3 Arbeitszeitgesetz", ""],
+  [T.m_wand, "§ 3 Arbeitszeitgesetz", "Durchschnitt ≤ 8 h je Werktag"],
   [T.p_start, "24 Wochen", ""],
   [T.p_sechs - 0.05, "24 Wochen × 6 Werktage", ""],
   [T.p_acht - 0.05, "24 Wochen × 6 Werktage", "× 8 h"],
   [T.p_summe, "24 × 6 × 8 h", "= 1.152 h Rahmen"],
   [T.p_w1 - 0.1, "+50 h je Woche", ""],
-  [T.p_w2, "+50 h je Woche", "Woche für Woche: passt."],
-  [T.p_w24, "Woche 24: 1.200 h", ""],
-  [B("b12").start, "Jede Woche passt.", "Der Zeitraum nicht."],
+  [T.p_w2, "+50 h je Woche", "Woche für Woche zulässig."],
+  [T.p_w24, "1.200 h > 1.152 h", ""],
+  [B("b12").start, "Jede Woche zulässig.", "Der Durchschnitt nicht."],
   [T.w_zeile, "Überhang: 48 h", ""],
   [B("b14").start, "5 Dienste weniger", ""],
-  [T.w_haelt - 0.1, "5 Dienste weniger:", "1.150 h – eingehalten."],
-  [T.a_wand, "Es zählt nicht die Woche.", ""],
-  [T.a_schnitt - 0.1, "Es zählt nicht die Woche.", "Es zählt der Durchschnitt."],
-  [T.a_karte, "CENTRIC rechnet mit:", "für jede Person, gleitend."],
+  [T.w_fertig, "5 Dienste weniger", "1.150 h ≤ 1.152 h"],
+  [T.a_schnitt - 0.1, "Es zählt der Durchschnitt.", ""],
+  [T.a_karte + 0.9, "", ""],
   [T.a_pruef - 0.1, "Nachsehen → Prüfung", ""],
 ];
 const anker = document.getElementById("anker");
@@ -254,8 +254,11 @@ for (const b of VO.bloecke) {
   const ut = b.untertitel.split(/(?<=[.?!:])\s+/).filter(Boolean);
   const gruppen = b.untertitel.length <= 84 ? [{ text: b.untertitel, start: b.start, ende: b.ende }]
     : ut.map((s, i) => ({ text: s, start: b.saetze[i].start, ende: b.saetze[i].ende }));
-  for (const g of gruppen) UNTERTITEL.push({ ...g, ende: +(g.ende + 0.25).toFixed(3) });
+  for (const g of gruppen) UNTERTITEL.push({ ...g, text: g.text.replace(/(\d) (?=[A-Za-zÄÖÜäöü])/g, "$1\u00a0") });
 }
+// Standzeit: bis kurz vor den nächsten gesprochenen Satz (höchstens 0,45 s Nachlauf), Vorlauf nur in die freie Lücke
+UNTERTITEL.forEach((u, i) => { const nach = UNTERTITEL[i + 1]; u.ende = +Math.min(nach ? nach.start - 0.04 : T.ende, u.ende + 0.45).toFixed(3); });
+UNTERTITEL.forEach((u, i) => { const vor = UNTERTITEL[i - 1]; u.start = +Math.max(vor ? vor.ende + 0.04 : 0, u.start - 0.3).toFixed(3); });
 function umbruch(s, max = L.cc.z) {
   if (s.length <= max) return [s];
   let best = -1; for (let i = 0; i < s.length; i++) if (s[i] === " " && (best < 0 || Math.abs(i - s.length / 2) < Math.abs(best - s.length / 2))) best = i;
@@ -276,15 +279,15 @@ cue(T.m_balken + 0.1, "wisch", 0.5);
 cue(T.m_acht, "linie", 0.8); cue(T.m_zehn + 0.1, "linie", 0.6);
 cue(T.m_montag, "kachel", 0.6);
 cue(T.m_motiv, "motiv", 1);
-cue(T.p_start, "wisch", 0.5); cue(T.p_rahmen + 0.1, "linie", 0.9);
+cue(T.p_start, "wisch", 0.5); cue(T.p_rahmen - 0.15, "linie", 0.9);
 for (let w = 0; w < 24; w++) cue(flugZeit(w) + (w === 0 || w >= 20 ? 0.5 : 0.36), "block", w === 0 || w >= 20 ? 0.9 : 0.45);
-cue(T.p_landen, "schlag", 1);
+cue(T.p_landen, "schlag", 1); cue(T.k_rein, "wisch", 0.4);
 cue(T.w_zeile, "wisch", 0.5); cue(T.w_48, "kachel", 0.8);
 for (let i = 0; i < 5; i++) cue(wegZeit(i), "heben", 0.8);
-cue(T.w_haelt, "ok", 1);
+cue(T.w_fertig, "ok", 1);
 cue(T.a_wand, "wisch", 0.6);
 cue(T.a_schnitt, "motiv", 1);
-cue(T.a_karte, "wisch", 0.6); cue(T.a_ring, "haken", 0.8);
+cue(T.a_karte, "wisch", 0.4); cue(T.a_karte + 0.9, "wisch", 0.5); cue(T.a_ring, "haken", 0.8);
 cue(T.a_pruef, "schluss", 1);
 CUES.sort((a, b) => a.t - b.t);
 
@@ -318,7 +321,14 @@ function zeigeUntertitel(t) {
   ccS.innerHTML = umbruch(u.text).join("<br>"); cc.style.opacity = 1;
 }
 
+function kamera(t) {
+  const K = L.konto, F = { x: K.x + 1152 * S_KONTO, y: K.y + K.h / 2 };
+  const e = RM ? (t >= T.k_rein && t < T.k_raus ? 1 : 0) : eInAus(prog(t, T.k_rein, 0.7)) - eInAus(prog(t, T.k_raus, 0.7));
+  const s = 1 + (L.zoom - 1) * e, zx = W * (FMT === "16x9" ? 0.62 : 0.55), zy = H * 0.52;
+  welt.style.transformOrigin = "0 0"; welt.style.transform = `translate(${(zx - s * F.x) * e}px,${(zy - s * F.y) * e}px) scale(${s})`;
+}
 function malen(t) {
+  kamera(t);
   /* --- Kacheln --- */
   for (const z of ZELLEN) {
     const s = zustand(z.kf, t);
@@ -335,11 +345,11 @@ function malen(t) {
   { const p = posWoche(0), a = eAus(prog(t, T.q_woche, 0.35)) * (1 - prog(t, T.q_wand, 0.3));
     setz(wochenPille, p.x, p.y + p.h + 86, null, null, a); }
   spaltenHaken.forEach((h, w) => { const p = posWand(L.wandQ, w, 0), a = eAus(prog(t, T.q_wand + 0.9 + w * 0.02, 0.3)) * (1 - prog(t, T.m_balken, 0.3));
-    setz(h, p.x + p.w / 2 - L.wandQ.c * .275, p.y - L.wandQ.c * .8, null, null, a); });
+    setz(h, p.x + p.w / 2 - L.wandQ.c * .4, p.y - L.wandQ.c * 1.0, null, null, a); });
   { const m = wandMass(L.wandQ), a = eAus(prog(t, T.q_gesetz, 0.3)) * (1 - prog(t, T.m_balken, 0.35)), pad = 14;
     setz(sandRahmen, m.x - pad, m.y - pad, m.w + 2 * pad, m.h + 2 * pad, a, RM ? 1 : lerp(1.03, 1, eAus(prog(t, T.q_gesetz, 0.4))));
     setz(sandSchraffur, m.x - pad, m.y + m.h + pad + 10, m.w + 2 * pad, 14, a);
-    setz(sandPille, m.x + m.w + pad - sandPille.offsetWidth, m.y - pad - sandPille.offsetHeight - 14 - L.wandQ.c * .8, null, null, a); }
+    setz(sandPille, m.x + m.w + pad - sandPille.offsetWidth, m.y - pad - sandPille.offsetHeight - 14 - L.wandQ.c * 1.05, null, null, a); }
   /* --- S2: Tagesbalken --- */
   { const p = posTag(), a = eAus(prog(t, T.m_balken + 0.5, 0.4)) * (1 - prog(t, T.m_woche, 0.3));
     skala.forEach((s, i) => setz(s, p.x - 92, p.y + p.h - i * L.tag.ph - (L.mini + 7) * 0.65, null, null, (i % 2 === 0 ? 1 : 0.0) * a));
@@ -351,8 +361,8 @@ function malen(t) {
     setz(klammerT, p.x + p.w + 52, p.y - 6, null, null, az);
     if (FMT !== "16x9") setz(linie8T, p.x + p.w + 40, y8 + 10, null, null, a8); }
   /* --- S2: Woche mit Werktagen --- */
-  { const aT = eAus(prog(t, T.m_montag - 0.4, 0.4)) * (1 - prog(t, T.m_wand, 0.3));
-    tagNamen.forEach((n, d) => { const p = posWoche(d); setz(n, p.x, p.y - L.anker.s * .9, p.w, null, aT * (d === 6 ? 0.55 : 1)); });
+  { const aT = Math.max(eAus(prog(t, T.q_ein + 0.5, 0.4)) * (1 - prog(t, T.q_wand, 0.3)), eAus(prog(t, T.m_woche + 0.3, 0.4)) * (1 - prog(t, T.m_wand, 0.3)));
+    tagNamen.forEach((n, d) => { const p = posWoche(d); n.style.color = d === 6 ? "var(--aus)" : "var(--ink)"; setz(n, p.x, p.y - L.anker.s * .9, p.w, null, aT); });
     const p0 = posWoche(0), p5 = posWoche(5), p6 = posWoche(6), aW = eAus(prog(t, T.m_montag, 0.45)) * (1 - prog(t, T.m_wand, 0.3));
     setz(werkKlammer, p0.x, p0.y - L.anker.s * 1.15, p5.x + p5.w - p0.x, 18, aW);
     setz(werkT, p0.x, p0.y - L.anker.s * 2.0, p5.x + p5.w - p0.x, null, aW);
@@ -361,16 +371,16 @@ function malen(t) {
   /* --- S2/S3: Klammern an der Wand --- */
   { const wandJetzt = t < T.p_start ? L.wandQ : L.wandP, mQ = wandMass(L.wandQ), mP = wandMass(L.wandP), x = RM ? (t < T.p_start + 0.4 ? 0 : 1) : eInAus(prog(t, T.p_start, 0.8));
     const m = { x: lerp(mQ.x, mP.x, x), y: lerp(mQ.y, mP.y, x), w: lerp(mQ.w, mP.w, x), h: lerp(mQ.h, mP.h, x) };
-    const a24 = eAus(prog(t, T.m_24, 0.4)) * (1 - prog(t, T.p_w1 - 0.2, 0.3));
+    const a24 = Math.max(eAus(prog(t, T.q_wand + 1.1, 0.4)) * (1 - prog(t, T.m_balken, 0.3)), eAus(prog(t, T.m_24, 0.4)) * (1 - prog(t, T.p_w1 - 0.2, 0.3)));
     setz(klammer24, m.x, m.y + m.h + 12, m.w, 18, a24); setz(klammer24T, m.x, m.y + m.h + 40, m.w, null, a24);
     const a6 = eAus(prog(t, T.p_sechs, 0.4)) * (1 - prog(t, T.p_w1 - 0.2, 0.3)), h6 = m.h * (6 / 7) - (wandJetzt.g || 0) / 7;
     setz(klammer6, m.x - 30, m.y, 18, h6, a6); setz(klammer6T, m.x - 80, m.y + h6 / 2 - L.anker.s * .32, 40, null, a6); }
   /* --- S3/S4: Stundenkonto --- */
   const K = L.konto, endeX = K.x + 1152 * S_KONTO;
-  { const aR = eAus(prog(t, T.p_rahmen, 0.35)) * (1 - prog(t, T.a_wand, 0.4)), zieh = RM ? 1 : eInAus(prog(t, T.p_rahmen, 1.0));
+  { const aR = eAus(prog(t, T.p_rahmen - 0.2, 0.3)) * (1 - prog(t, T.a_wand, 0.4)), zieh = RM ? 1 : eInAus(prog(t, T.p_rahmen - 0.2, 0.6));
     setz(rahmen, K.x - 8, K.y - 8, (endeX - K.x + 16) * zieh, K.h + 16, aR);
-    setz(rahmenEnde, endeX - 2, K.y - 26, 4, K.h + 52, aR * prog(t, T.p_rahmen + 0.8, 0.2));
-    setz(rahmenT, endeX - 80, K.y - 26 - (L.mini + 9) * 1.5, 160, null, aR * prog(t, T.p_rahmen + 0.8, 0.3)); }
+    setz(rahmenEnde, endeX - 2, K.y - 26, 4, K.h + 52, aR * prog(t, T.p_rahmen + 0.4, 0.2));
+    setz(rahmenT, endeX - 80, K.y - 26 - (L.mini + 9) * 1.5, 160, null, aR * prog(t, T.p_rahmen + 0.4, 0.3)); }
   // Summe im Konto: Blöcke, die angekommen sind
   let summe = 0; for (const z of ZELLEN) if (z.art === "dienst") { const s = zustand(z.kf, t); if (s.k.konto && s.a > 0.5 && t >= z.kf.find((k) => k.konto).t + z.kf.find((k) => k.konto).d * 0.8) summe += 10; }
   const aufgerueckt = prog(t, T_AUFRUECKEN, 0.6);
@@ -378,32 +388,31 @@ function malen(t) {
     const wochen = Math.min(24, Math.round(summe / 50));
     zaehler.textContent = t < T.w_weg ? `Woche ${wochen} · ${fmt(summe)} h` : `${fmt(summe)} h`;
     setz(zaehler, K.x, K.y + K.h + 22, null, null, aK);
-    const aO = eAus(prog(t, T.w_haelt, 0.4)) * (1 - prog(t, T.a_wand, 0.4));
+    const aO = 0;   // „eingehalten“ steht in der Zeile; hier nicht doppelt
     setz(zaehlerOk, K.x + zaehler.offsetWidth + 24, K.y + K.h + 24, null, null, aO);
     // Überlauf: Schraffur ab dem Rahmen
     const ueber = Math.max(0, summe - 1152), sichtbar = prog(t, T.p_w24 + 0.35, 0.25) * (1 - prog(t, T.a_wand, 0.3));
     const breite = ueber * S_KONTO * (1 - (RM ? (aufgerueckt > 0 ? 1 : 0) : eInAus(aufgerueckt)));
     setz(ueberlauf, endeX, K.y, Math.max(0, breite), K.h, ueber > 0 ? sichtbar : sichtbar * (1 - aufgerueckt));
-    ueberT.innerHTML = `<span>+${fmt(Math.max(48 * (1 - aufgerueckt), 0))} h über dem Rahmen</span>`;
-    const aU = eAus(prog(t, T.p_ueber, 0.35)) * (1 - prog(t, T.w_weg + 1.2, 0.3));
-    setz(ueberT, Math.min(endeX + 60 * S_KONTO - ueberT.offsetWidth, W - 24 - ueberT.offsetWidth), K.y - 30 - ueberT.offsetHeight - (L.mini + 9) * 1.6, null, null, aU);
-    const a48 = eAus(prog(t, T.w_48, 0.35)) * (1 - prog(t, T.w_weg + 1.2, 0.3));
+    ueberT.innerHTML = `<span>+48 h Überhang</span>`;
+    const aU = eAus(prog(t, T.p_landen + 0.2, 0.35)) * (1 - prog(t, T.w_weg, 0.25));
+    setz(ueberT, endeX + 48 * S_KONTO - ueberT.offsetWidth, K.y + K.h + 18, null, null, aU);
+    const a48 = eAus(prog(t, T.w_48, 0.35)) * (1 - prog(t, T.w_weg, 0.25));
     setz(klammer48, endeX, K.y - 22, 48 * S_KONTO, 14, a48); }
   /* --- S4: Zeile wie in CENTRIC --- */
-  { const a = eAus(prog(t, T.w_zeile, 0.45)) * (1 - prog(t, T.a_wand, 0.35)), ok = t >= T.w_haelt;
+  { const a = eAus(prog(t, T.w_zeile + 0.35, 0.45)) * (1 - prog(t, T.a_wand, 0.35)), ok = t >= T.w_fertig;
     setz(zeile, L.zeile.x, L.zeile.y + (RM ? 0 : (1 - a) * 24), null, null, a);
     zeile.style.borderLeftColor = ok ? "var(--ok)" : "var(--sand)";
-    zSumme.textContent = ok ? "1.150,0 von 1.152,0 h auf 144 Werktage" : "1.200,0 von 1.152,0 h auf 144 Werktage";
-    zSchnitt.innerHTML = ok ? `<b style="color:var(--ok)">8,0 h</b> <span style="color:var(--dim);font-weight:400">je Werktag</span>` : `<b style="color:var(--sand)">8,3 h</b> <span style="color:var(--dim);font-weight:400">je Werktag</span>`;
+    zSumme.textContent = ok ? "1.150 von 1.152 h" : "1.200 von 1.152 h";
+    zSchnitt.innerHTML = ok ? `<b style="color:var(--ok)">Ø 8,0 h</b> <span style="color:var(--dim);font-weight:400">je Werktag</span>` : `<b style="color:var(--sand)">Ø 8,3 h</b> <span style="color:var(--dim);font-weight:400">je Werktag</span>`;
     zPille.className = "pille " + (ok ? "ok" : "sand");
-    zPille.innerHTML = ok ? HAKEN("#fff", 18) + "<span>eingehalten</span>" : "<span>48,0 h abzubauen</span>";
+    zPille.innerHTML = ok ? HAKEN("#fff", 18) + "<span>eingehalten</span>" : "<span>48 h abzubauen</span>";
     zPille.style.outline = !ok && t >= T.w_48 && t < T.w_weg ? "4px solid rgba(149,84,16,.35)" : "none"; }
   /* --- S5: echte Karte, Ring, Marke --- */
-  { const a = eAus(prog(t, T.a_karte + 0.3, 0.5)), kh = L.karte.b * KARTE_PX[1] / KARTE_PX[0];
+  { const a = eAus(prog(t, T.a_karte + 0.9, 0.5));
     setz(karte, L.karte.x, L.karte.y + (RM ? 0 : (1 - a) * 30), null, null, a);
-    setz(karteT, L.karte.x, L.karte.y + kh + 18, null, null, a);
-    const sk = L.karte.b / KARTE_PX[0], ar = eAus(prog(t, T.a_ring, 0.35));
-    setz(ring, L.karte.x + 2532 * sk, L.karte.y + 36 * sk, 196 * sk, 64 * sk, ar, RM ? 1 : lerp(1.25, 1, ar));
+    setz(karteT, L.karte.x, L.karte.y - L.mini * 1.3 * 1.9, null, null, a);
+    const ar = eAus(prog(t, T.a_ring, 0.35)); ring.style.opacity = ar; ring.style.transform = `scale(${RM ? 1 : lerp(1.25, 1, ar)})`;
     setz(marke, L.marke.x, L.marke.y, null, null, eAus(prog(t, T.a_pruef, 0.5))); }
   zeigeAnker(t); zeigeUntertitel(t);
 }

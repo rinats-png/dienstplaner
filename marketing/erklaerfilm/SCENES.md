@@ -1,6 +1,6 @@
 # Szenen
 
-Zeiten aus der Stimme (build/vo/vo.json). Die eine Frage: „Wenn jede Woche passt – wie kann der Plan dann gegen das Gesetz verstoßen?“
+Zeiten aus der Stimme (build/vo/vo.json); die genauen Werte stehen in build/timeline.json (beats). Unten der Stand der ersten Stimme, gerundet; die Endfassung liegt je Szene 0,3–0,8 s früher. Die eine Frage: „Wenn jede Woche passt – wie kann der Plan dann gegen das Gesetz verstoßen?“
 Durchgehendes Objekt: die Dienstkachel (10 h). Sie ist erst Tag, dann Teil der Woche, dann Teil der Wand, dann Block im Stundenkonto, und am Ende wieder Teil der Wand.
 
 ## S1 · Frage · 0,0–10,3 s
