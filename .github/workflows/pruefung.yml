@@ -201,6 +201,36 @@ jobs:
       - name: Arbeitssitzungsbindung
         run: npm run pruefung:arbeitssitzung
 
+      # Phase A.1: Abmelden, Bindung, Rennen, Aufräumen.
+      #
+      # Die Ablaufregel der Sitzungen als reine Funktionen — dieselbe für den
+      # Zugriff und für den Aufräumlauf.
+      - name: Lebendigkeit der Sitzungen
+        run: npm run pruefung:lebendigkeit
+
+      # Eine Arbeitssitzung aus einem Konto hängt an der Anmeldung, aus der sie
+      # entstand: Abmelden, Entzug, Sperre und Epoche wirken an allen neun Pfaden
+      # (auch denen vor dem Hauptpfad in daten.mjs); ein zweites Gerät bleibt
+      # angemeldet; Aktivität hält den Login-Kontext am Leben.
+      - name: Sitzungsbindung
+        run: npm run pruefung:sitzungsbindung
+
+      # Deterministische Rennen (Schreibtor, keine Sleeps): Ein verspäteter
+      # Schreibvorgang darf nach Logout, Sperre oder Löschung weder as: noch t:
+      # wiederbeleben; Autoritätsdatensätze werden nur einmal geschrieben.
+      - name: Rennen um die Verlängerung
+        run: npm run pruefung:sitzungsrennen
+
+      # Wer darf Bearer, t:, sk:, as: und die Sitzungsspeicher ansprechen —
+      # eine neue Lesestelle lässt den Test scheitern.
+      - name: Inventar der Sitzungszugriffe
+        run: npm run pruefung:sitzungsinventar
+
+      # Der Aufräumlauf: Eindeutiges raus, Gültiges, Sicherungsschlüssel,
+      # Protokoll und stufe: bleiben, ein Fehler stoppt den Lauf nicht.
+      - name: Aufräumen von Sitzungen und Bremszählern
+        run: npm run pruefung:sitzungsaufraeumen
+
       # Bisher nur lokal gelaufen, obwohl in package.json angelegt. Ab jetzt
       # Teil des Gates: Wer sie nicht erfüllt, liefert nicht aus.
       - name: Tarifwerke
