@@ -387,11 +387,30 @@ Wiederherstellung müssen sich alle neu anmelden, und offene Links werden neu
 angefordert. Die Sicherung zählt jedes Ausgelassene im Manifest und in ihrer
 Ausgabe mit.
 
-**Was nicht in `/data` liegt, aber dazugehört:** `CENTRIC_PFEFFER`. Ohne denselben
-Pfeffer findet kein Konto und kein Zugangscode mehr zu seinem Datensatz. Die
-Sicherung enthält nur einen Prüfwert des Pfeffers, nie den Pfeffer selbst; die
-Wiederherstellung lehnt einen anderen oder fehlenden ab. Den Pfeffer getrennt
-von den Sicherungen aufbewahren (Passwortmanager), nicht daneben.
+**Der Pfeffer gehört zur Sicherung — ohne ihn ist keine Sicherung verwendbar.**
+`CENTRIC_PFEFFER` liegt nicht in `/data`, ist aber ein zwingender Bestandteil der
+Wiederherstellbarkeit: Ohne genau denselben Pfeffer findet kein Konto und kein
+Zugangscode mehr zu seinem Datensatz, weil die Ablageschlüssel daraus gebildet
+werden. Eine Sicherung ohne den passenden Pfeffer ist ein Archiv, das niemand mehr
+öffnen kann.
+
+- Die Sicherung enthält nur einen Prüfwert des Pfeffers, nie den Pfeffer selbst. Die
+  Wiederherstellung lehnt einen anderen oder fehlenden Pfeffer ab — das ist gewollt.
+- Eine Kopie gehört **getrennt von den Sicherungen** und außerhalb des VPS in einen
+  Passwortmanager. Wer beides im selben Ordner ablegt, hat die Trennung aufgehoben;
+  wer nur die Sicherung außer Haus legt, hat im Ernstfall nichts, womit er sie
+  öffnet.
+- Vor jeder Wiederherstellung muss der Pfeffer in der `.env` des Dienstes stehen.
+  Er gehört in die `.env` und nie in `compose.yml`, in die Shell-Historie, auf eine
+  Kommandozeile (dort sieht ihn `ps`) oder in ein Log. Container bekommen ihn über
+  `--env-file`, nicht über `-e`.
+- Er lässt sich nicht rotieren. Wer ihn ändert, macht alle bestehenden Konten und
+  Zugangscodes unauffindbar.
+- Die Kopie im Passwortmanager ist erst dann eine Sicherung des Pfeffers, wenn sie
+  einmal gegen eine echte Sicherung benutzt wurde: Beim Restore-Test (unten) die
+  Kopie aus dem Passwortmanager verwenden, nicht die auf dem Server.
+- Staging und Produktion haben **verschiedene** Pfeffer. Eine Sicherung aus dem
+  Staging lässt sich mit dem Pfeffer der Produktion nicht öffnen, und umgekehrt.
 
 **Sicherung erstellen.** Der Server darf dabei laufen. Jede Datei ist einzeln
 atomar; das Werkzeug sieht die Quelle nach dem Kopieren noch einmal an und
@@ -400,8 +419,14 @@ Versuche, dann Abbruch mit Meldung — in dem Fall den Server kurz stoppen).
 
     cd /opt/apps/centric-dienstplanung
     mkdir -p sicherungen && sudo chown 1000:1000 sicherungen && chmod 700 sicherungen
-    docker compose run --rm --no-deps -v "$PWD/sicherungen:/sicherungen" centric-dp-web \
+    docker compose run -T --rm --no-deps -v "$PWD/sicherungen:/sicherungen" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs sichern --quelle /data --ziel /sicherungen
+
+`-T` schaltet die Terminalzuteilung ab und ist **Pflicht**, sobald der Aufruf nicht
+von einer interaktiven Konsole kommt — aus einem Skript, über SSH ohne Terminal,
+aus einer Pipe oder einem Cron-Auftrag. Ohne `-T` bricht `docker compose run` dort
+mit „the input device is not a TTY" ab oder hängt. Bei der Staging-Validierung war
+das die erste Abweichung zur ursprünglichen Fassung dieses Abschnitts.
 
 Das Ergebnis ist ein Ordner `sicherungen/centric-sicherung-<UTC-Zeit>/`. Er wird
 unter `.unfertig-…` aufgebaut und erst am Ende umbenannt; er enthält `daten/`,
@@ -420,15 +445,55 @@ Das prüft FERTIG, Manifest, jede Datei nach Größe und Prüfsumme und dass nic
 dabeiliegt, was das Manifest nicht kennt. Täglich sichern, mehrere Stände
 behalten, die Sicherungen verschlüsselt ablegen — sie enthalten Personaldaten.
 
-**Wiederherstellen.** Der Server muss stehen. Das Werkzeug prüft die Sicherung
-zuerst vollständig, bricht bei jedem Befund ab und fasst bis dahin nichts an.
-Ein nicht leeres Ziel wird nur mit `--ersetzen` angefasst — und auch dann wird
-nichts gelöscht: Der alte Inhalt wandert nach `.vor-wiederherstellung-<Zeit>/`
-im Ziel.
+**Wiederherstellen.** Das Werkzeug prüft die Sicherung zuerst vollständig, bricht bei
+jedem Befund ab und fasst bis dahin nichts an. Es verlangt den passenden Pfeffer und
+lehnt ein Ziel ab, auf dem noch ein Server läuft. Es gibt zwei Wege. Der erste ist
+der erprobte (Staging-Validierung, mit Ersatz des Containers und Wiederholung der
+fachlichen Prüfungen) und der bevorzugte, weil er nichts überschreibt: Der Rückweg
+ist ein Umbenennen.
+
+*Weg 1 — beiseitelegen und in ein neues, leeres `data/` zurückspielen.*
+
+    cd /opt/apps/centric-dienstplanung
+    docker compose stop -t 30                      # sauberes Beenden (SIGTERM), Exitcode 0
+    mv data "data.vor-wiederherstellung-$(date -u +%Y%m%dT%H%M%SZ)"
+    sudo install -d -m 700 -o 1000 -g 1000 data    # neu, leer, dem Benutzer node (uid 1000)
+    docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
+      --security-opt no-new-privileges:true --env-file .env \
+      -v "$PWD/sicherungen/centric-sicherung-<Zeit>:/s/sicherung:ro" \
+      -v "$PWD/data:/s/ziel" <dasselbe-Bild-wie-der-Dienst> \
+      node werkzeug/ablage-sicherung.mjs wiederherstellen \
+      --sicherung /s/sicherung --ziel /s/ziel < /dev/null
+    docker compose rm -f -s centric-dp-web         # Container entfernen …
+    docker compose up -d --pull never              # … und neu erzeugen, nicht nur neu starten
+
+Dazu:
+
+- Das Bild ist dasselbe wie das des Dienstes (`docker compose images`); bei einer
+  Auslieferung per Digest genau dieser Digest. `--pull never` verhindert, dass beim
+  Neuerzeugen stillschweigend ein anderes Bild gezogen wird.
+- Der Pfeffer kommt über `--env-file .env` in den Container, nie über die
+  Kommandozeile. `--network none` heißt: Der Restore kann nichts senden, und das
+  Werkzeug findet keinen laufenden Server (das ist der erwartete Zustand).
+- `data.vor-wiederherstellung-<Zeit>` ist die Sicherheitskopie des Zustands vor dem
+  Eingriff. Sie wird nicht gelöscht, solange nicht alles bestätigt ist (anmelden,
+  Betrieb öffnen, Stichproben). Danach entweder verschlüsselt außerhalb des VPS
+  archivieren oder bewusst löschen — sie enthält alles, auch Sitzungsdateien und
+  Zugangsdaten.
+- Geht etwas schief: `docker compose stop`, das neue `data/` in `data.fehlgeschlagen-<Zeit>`
+  umbenennen, die Sicherheitskopie zurück nach `data/` benennen, `up -d`.
+- Nach dem Start läuft der tägliche Löschlauf erstmals eine Minute später und danach
+  alle 24 Stunden **ab diesem Start**. Seine Uhrzeit wandert also mit jedem
+  Neuerzeugen des Containers. Er schreibt den Vermerk `aufraeumen:letzter` neu — das
+  ist die einzige Datei in `centric`, die sich von selbst täglich ändert.
+
+*Weg 2 — `--ersetzen` (nur wenn Weg 1 nicht möglich ist).* Ein nicht leeres Ziel wird
+nur mit `--ersetzen` angefasst — und auch dann wird nichts gelöscht: Der alte Inhalt
+wandert nach `.vor-wiederherstellung-<Zeit>/` im Ziel.
 
     cd /opt/apps/centric-dienstplanung
     docker compose stop
-    docker compose run --rm --no-deps -v "$PWD/sicherungen:/sicherungen:ro" centric-dp-web \
+    docker compose run -T --rm --no-deps -v "$PWD/sicherungen:/sicherungen:ro" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /data --ersetzen --ohne-serverpruefung
     docker compose up -d
@@ -436,16 +501,22 @@ im Ziel.
 `CENTRIC_PFEFFER` kommt dabei aus der `.env` des Dienstes, also derselben wie im
 Betrieb. Danach anmelden, einen Betrieb öffnen, stichprobenweise Daten ansehen.
 Erst wenn alles stimmt, `data/.vor-wiederherstellung-<Zeit>/` von Hand entfernen.
-Wiederhergestellt wird der Stand der Sicherung: Was seitdem geschah — auch ein
-Zugangsentzug, eine Passwortänderung, eine Sperre — ist zurückgenommen und muss
-erneut ausgeführt werden.
+
+**Was nach einer Wiederherstellung gilt.** Wiederhergestellt wird der Stand der
+Sicherung: Was seitdem geschah — auch ein Zugangsentzug, eine Passwortänderung, eine
+Sperre — ist zurückgenommen und muss erneut ausgeführt werden. Sitzungen, offene
+Einmal-Token und Bremszähler (Klasse C) fehlen bewusst; dadurch kann nichts
+wiederaufleben, was nach der Sicherung widerrufen wurde: Ein Konto, eine Sitzung
+oder ein Betriebsmerkmal, die erst nach der Sicherung entstanden sind, gibt es
+danach nicht, und ihre Merkmale sind wertlos. Der Rückweg zu den Sitzungen ist die
+neue Anmeldung.
 
 **Restore-Test.** Eine Sicherung, die nie zurückgespielt wurde, ist keine. Mindestens
 vierteljährlich, und nach jeder Änderung an Ablage oder Konten: in einen leeren
 Ordner zurückspielen (nicht in `data/`) und dort ansehen.
 
     mkdir -p restore-test && sudo chown 1000:1000 restore-test
-    docker compose run --rm --no-deps \
+    docker compose run -T --rm --no-deps \
       -v "$PWD/sicherungen:/sicherungen:ro" -v "$PWD/restore-test:/restore" centric-dp-web \
       node werkzeug/ablage-sicherung.mjs wiederherstellen \
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
@@ -454,12 +525,73 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       ghcr.io/rinats-png/dienstplaner:latest
 
 Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
-Container beenden und `restore-test/` löschen. Der Ablauf der Werkzeuge selbst ist
+Container beenden und `restore-test/` löschen.
+
+Ein Restore, der nicht gegen die Sicherung verglichen wurde, ist nicht geprüft.
+Belastbar ist der Vergleich Datei für Datei: Jede Datei unter `daten/` der Sicherung
+muss im Ziel denselben SHA-256 haben, und im Ziel darf nichts liegen, was die
+Sicherung nicht kennt. Wer die aktive Ablage mit der Sicherung vergleicht, muss
+erklärbare Abweichungen kennen und nur diese zulassen: den Löschlauf-Vermerk
+`aufraeumen:letzter`, neue Protokolleinträge (das Protokoll hängt nur an) und die
+nicht gesicherten Laufzeitdaten (Sitzungen, Bremszähler, Einmal-Token). Jede andere
+Abweichung ist ein Befund. Der Ablauf der Werkzeuge selbst ist
 mit `npm run pruefung:sicherung-ablage` automatisch geprüft (Konto, Mitgliedschaft,
 Betrieb, Anmeldung und Betriebsauswahl nach der Wiederherstellung).
 
 **Als root wiederherstellen** (nicht über `docker compose run`): danach
 `chown -R 1000:1000 data`, sonst kann der Container nicht schreiben.
+
+### 5.5 Staging auf dem VPS (ohne Domain, ohne Caddy)
+
+Bevor eine Änderung in die Produktion geht, läuft dasselbe Bild auf einem eigenen
+Staging neben der Produktion — nicht öffentlich erreichbar. So wurde es in der
+technischen Staging-Validierung betrieben:
+
+| | Produktion | Staging |
+|---|---|---|
+| Verzeichnis | `/opt/apps/centric-dienstplanung` | `/opt/apps/centric-staging` |
+| Dienst / Container | `centric-dp-web` | `centric-staging-web` |
+| Compose-Projekt | `centric-dienstplanung` | ein eigener Name, nie derselbe |
+| Ablage | `./data` | `./data`, eigene Daten |
+| Pfeffer | der der Produktion | **ein eigener**, nie der der Produktion |
+| Netz | `proxy` | `proxy` (nur Mitglied), keine Port-Bindung |
+| Erreichbarkeit | über Caddy | nur aus dem Netz `proxy` oder per `docker exec` |
+
+Regeln, die sich bewährt haben:
+
+- **Eigener Dienstname und eigener Alias im Netz `proxy`.** Zwei Container mit demselben
+  Namen oder Alias im selben Netz lassen den Namen auf den falschen Container
+  auflösen. Der Projektname muss sich ebenfalls unterscheiden, sonst übernimmt
+  `docker compose` Container der Produktion.
+- **Bild per Digest** in der `compose.yml`, Start mit `docker compose up -d --pull never`.
+  Ein Update ist dann der bewusste Austausch des Digests, ein Rollback der Austausch
+  zurück.
+- **Container erneuern heißt neu erzeugen**: `docker compose rm -f -s <Dienst>` und
+  `up -d --pull never`. Ein Neustart prüft weder die Konfiguration noch das Bild.
+- **`docker compose config` zeigt aufgelöste Werte, also Secrets.** Zum Prüfen der
+  Konfiguration `docker compose config --no-env-resolution` benutzen und die Ausgabe
+  nicht weitergeben.
+- **Prüfungen laufen im Container:** `docker exec -i centric-staging-web node
+  --input-type=module -` mit dem Skript über die Standardeingabe, oder `docker run`
+  mit `--network proxy`. Kein DNS, kein Caddy, kein Port, bis das ausdrücklich
+  freigegeben ist.
+- **Eigene Daten:** Testkonten mit `example.org`-Adressen, nie ein Abzug aus der
+  Produktion. Sicherung und Wiederherstellung wie in 5.4, mit dem Dienstnamen des
+  Staging.
+- **Die Produktion wird nicht angefasst.** Vor und nach jedem Schritt die Referenzen der
+  Produktion vergleichen (Startzeit, Neustartzähler, Health der Container, `/gesund`).
+
+### 5.6 Offene Entscheidungen zur Aufbewahrung
+
+- **`stufe:` (Eskalationsgedächtnis der Anmeldebremse, Speicher `centric-takt`).** Wer
+  wiederholt an der Anmeldung scheitert, wartet jedes Mal doppelt so lange; die
+  erreichte Stufe steht in `stufe:<Art>:<Kennung>` und bleibt heute bis zu einer
+  erfolgreichen Anmeldung bestehen — unbegrenzt. Der Aufräumlauf für Sitzungen und
+  Bremszähler (Phase A.1) lässt sie **ausdrücklich unangetastet**: Eine Frist wäre
+  keine Aufräumregel, sondern eine Sicherheitsentscheidung (kürzere Frist erleichtert
+  einen langsamen Angriff, unbegrenzte Aufbewahrung kostet nur einen kleinen
+  Datensatz je Ziel). Sie ist offen und wird getrennt entschieden, bevor die
+  Datenmenge der Bremse eine Rolle spielt.
 
 ---
 
