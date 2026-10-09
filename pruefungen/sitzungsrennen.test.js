@@ -139,11 +139,9 @@ describe("S3: Logout parallel zum Öffnen eines Betriebs", () => {
     const w = await offen;
     await regel.abwarten();
 
-    if (w.status === 200) {
-      expect.soft((await Z.HAUPTPFADE[0].ruf(w.token)).status,
-        "ein ausgegebenes Merkmal darf nicht gelten").toBe(401);
-    }
-    /* Und nichts bleibt liegen, das später wieder gültig werden könnte. */
+    /* ZUERST zählen, was liegen geblieben ist - und erst danach das Merkmal
+       ansprechen: Schon die Abfrage mit einem toten Merkmal räumt dessen Datei
+       weg und würde einen fehlenden Aufräumschritt verdecken. */
     const { blobs } = await Z.ablageArbeit().list({ prefix: "t:" });
     let uebrig = 0;
     for (const x of blobs) {
@@ -151,6 +149,10 @@ describe("S3: Logout parallel zum Öffnen eines Betriebs", () => {
       if (s && s.bestand === raum) uebrig++;
     }
     expect.soft(uebrig, "übrig gebliebene Arbeitssitzungen des Raums").toBe(0);
+    if (w.status === 200) {
+      expect.soft((await Z.HAUPTPFADE[0].ruf(w.token)).status,
+        "ein ausgegebenes Merkmal darf nicht gelten").toBe(401);
+    }
   }, LIMIT);
 });
 
@@ -212,6 +214,29 @@ describe("Ein Lesefehler schließt die Tür, ohne etwas zu löschen", () => {
     f.beenden();
     expect(await Z.ablageArbeit().get(tSchluessel(s.token), { type: "json" }), "t: ist noch da").toBeTruthy();
     expect((await Z.HAUPTPFADE[0].ruf(s.token)).status, "danach").not.toBe(401);
+  }, LIMIT);
+});
+
+describe("Aktivität allein berechtigt nichts (auf Ebene der Module)", () => {
+  it("ein az: ohne as: ist keine Sitzung, ein ta: ohne t: auch nicht", async () => {
+    const AC = await import("../server/lib/accountsitzungen.mjs");
+    const id = "a".repeat(64);
+    await Z.ablageKonto().setJSON(`az:${id}`, { zuletzt: Date.now() });
+    const g = await AC.accountSitzungLesenPerId(id);
+    expect(g.sitzung, "Account-Sitzung aus nur einer Aktivität").toBeNull();
+    expect(g.grund).toBe("unbekannt");
+    const k = await AC.kontoSitzungFuerArbeit(id, { accountId: "a_x", epoche: 1 });
+    expect(k.ok).toBe(false);
+
+    await Z.ablageArbeit().setJSON(`ta:${id}`, { zuletzt: Date.now() });
+    const rein = new Request("http://127.0.0.1:3000/api/bestand", { headers: { authorization: "Bearer x" } });
+    expect(await Z.S.sitzungLesen(rein)).toBeNull();
+    /* Auch mit dem passenden Merkmal: Ein Merkmal, dessen Prüfsumme nur als ta: existiert. */
+    const merkmal = "m".repeat(43);
+    await Z.ablageArbeit().setJSON(`ta:${Z.S.sitzungsSchluessel(merkmal).slice(2)}`, { zuletzt: Date.now() });
+    const mit = new Request("http://127.0.0.1:3000/api/bestand",
+      { headers: { authorization: `Bearer ${merkmal}` } });
+    expect(await Z.S.sitzungLesen(mit)).toBeNull();
   }, LIMIT);
 });
 

@@ -393,7 +393,10 @@ describe("Der Bericht des Aufräumers", () => {
   }, LIMIT);
 
   it("die Karenz schützt: knapp abgelaufen heißt noch nicht löschen", async () => {
-    const { sitzungenAufraeumen, KARENZ } = await import("../server/lib/sitzungsaufraeumen.mjs");
+    const { sitzungenAufraeumen } = await import("../server/lib/sitzungsaufraeumen.mjs");
+    /* Fest eine Stunde, nicht der Wert aus dem Modul: Eine Prüfung, die sich die
+       Karenz vom Prüfling nennen lässt, merkt nicht, wenn sie verschwindet. */
+    const KARENZ = STUNDE;
     const knapp = `as:${hash("gc-karenz-knapp")}`;
     const lange = `as:${hash("gc-karenz-lange")}`;
     /* Zuletzt vor zwei Minuten aktiv: Nur die absolute Frist entscheidet hier. */

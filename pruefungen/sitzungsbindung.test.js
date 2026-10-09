@@ -278,6 +278,16 @@ describe("Die Bindung selbst (Spezifikation)", () => {
       .not.toBe(401);
   }, LIMIT);
 
+  it("401, wenn die Epoche der Account-Sitzung nicht die im Anker ist", async () => {
+    const b = await Z.arbeitsbereich("bindung-epoche-as");
+    const k = asSchluessel(b.keks);
+    const s = await Z.ablageKonto().get(k, { type: "json" });
+    /* Der Anker nennt die Epoche, in der die Arbeit geöffnet wurde; die
+       Account-Sitzung, an der er hängt, muss aus derselben Epoche sein. */
+    await Z.ablageKonto().setJSON(k, { ...s, epoche: Number(s.epoche) + 1 });
+    expect.soft((await Z.HAUPTPFADE[0].ruf(b.token)).status, "daten").toBe(401);
+  }, LIMIT);
+
   it("ein Marker ab:<Konto-Sitzung>:<Arbeitssitzung> verbindet beide", async () => {
     const b = await Z.arbeitsbereich("bindung-marker");
     const { blobs } = await Z.ablageKonto().list({ prefix: `ab:${hash(b.keks)}:` });
@@ -304,6 +314,33 @@ describe("Die Bindung selbst (Spezifikation)", () => {
     expect.soft(w.daten.gueltigBis, "gueltigBis der Arbeitssitzung").toBeLessThanOrEqual(asBis);
     expect.soft((await Z.ablageArbeit().get(tSchluessel(w.token), { type: "json" })).bis,
       "bis im Datensatz").toBeLessThanOrEqual(asBis);
+  }, LIMIT);
+});
+
+/* ==========================================================================
+   EINE SPERRE TRIFFT NUR DEN GESPERRTEN ZUGANG
+   ========================================================================== */
+
+describe("Eine Sperre beendet nur die Sitzungen des gesperrten Zugangs", () => {
+  it("die Sitzungen anderer Zugänge desselben Hauses bleiben", async () => {
+    const raum = Z.raum("sperre-gezielt");
+    await Z.betriebAnlegen(raum);
+    const gesperrt = await Z.zugangskonto(raum, { rolle: "mitarbeiter", person: "p_2" });
+    const andere = await Z.zugangskonto(raum, { rolle: "mitarbeiter", person: "p_2" });
+    const leitung = await Z.zugangskonto(raum, { rolle: "leitung", person: "p_1" });
+    const sGesperrt = await Z.legacySitzung(raum, { rolle: "mitarbeiter", person: "p_2", konto: gesperrt });
+    const sAndere = await Z.legacySitzung(raum, { rolle: "mitarbeiter", person: "p_2", konto: andere });
+    const sLeitung = await Z.legacySitzung(raum, { rolle: "leitung", person: "p_1", konto: leitung });
+    await vorherNichtAbgewiesen([Z.HAUPTPFADE[0]], sGesperrt.token);
+
+    const e = await Z.bearer(Z.daten, "/api/zugang-sperren", sLeitung.token,
+      { methode: "POST", rumpf: { pruefsumme: gesperrt } });
+    expect(e.status, JSON.stringify(e.daten)).toBe(200);
+    expect(e.daten.sitzungenBeendet, "beendete Sitzungen").toBe(1);
+
+    expect((await Z.HAUPTPFADE[0].ruf(sGesperrt.token)).status, "gesperrter Zugang").toBe(401);
+    expect((await Z.HAUPTPFADE[0].ruf(sAndere.token)).status, "anderer Zugang").not.toBe(401);
+    expect((await Z.HAUPTPFADE[0].ruf(sLeitung.token)).status, "die sperrende Leitung").not.toBe(401);
   }, LIMIT);
 });
 
