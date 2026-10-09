@@ -32,6 +32,7 @@
    ========================================================================== */
 
 import { getStore } from "./ablage.mjs";
+import { ablaufUrteil, verlaengernFaellig } from "./lebendigkeit.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /** Die Ablage der Sitzungen. Auch für die Aufrufer, die `sk:`-Schlüssel
@@ -46,10 +47,6 @@ export const DAUER_STANDARD = 1000 * 60 * 60 * 12;
 export const DAUER_BETREIBER = 1000 * 60 * 60 * 2;
 /** Untätigkeit beendet die Sitzung, nicht erst die Frist. */
 export const RUHE = 30 * 60 * 1000;
-/** Ein Planer klickt sich durch einen Monat — das wären hunderte
-    Schreibvorgänge. Einmal je Minute genügt. */
-const VERLAENGERN_AB = 60 * 1000;
-
 /** Das Merkmal aus dem Kopf `authorization`, oder null. */
 export function merkmalAus(req) {
   const kopf = (req && req.headers && req.headers.get("authorization")) || "";
@@ -85,13 +82,18 @@ export async function sitzungLesen(req, { jetzt = Date.now } = {}) {
   const s = await sitzungen.get(`t:${hash(token)}`, { type: "json" });
   if (!s) return null;
   const nun = jetzt();
-  if (s.bis < nun) { await sitzungen.delete(`t:${hash(token)}`); return null; }
-
-  if (s.zuletzt && nun - s.zuletzt > RUHE) {
+  /* Die Regel, wann eine Sitzung abgelaufen ist, steht in lebendigkeit.mjs —
+     einmal, für jeden, der sie braucht. Die lockere Lesart ist die alte:
+     ein Datensatz ohne Ende läuft nicht ab. */
+  const urteil = ablaufUrteil(s, nun, { streng: false, ruhe: RUHE });
+  if (urteil.grund === "frist") { await sitzungen.delete(`t:${hash(token)}`); return null; }
+  if (urteil.grund === "untaetig") {
     await sitzungen.delete(`t:${hash(token)}`);
     return null;
   }
-  if (!s.zuletzt || nun - s.zuletzt > VERLAENGERN_AB) {
+  /* Ein Planer klickt sich durch einen Monat — das wären hunderte
+     Schreibvorgänge. Einmal je Minute genügt. */
+  if (verlaengernFaellig(s, null, nun)) {
     sitzungen.setJSON(`t:${hash(token)}`, { ...s, zuletzt: nun }).catch(() => {});
   }
   return s;

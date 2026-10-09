@@ -85,6 +85,7 @@
    ========================================================================== */
 
 import { getStore } from "./ablage.mjs";
+import { ablaufUrteil, verlaengernFaellig } from "./lebendigkeit.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /** Der eigene Speicher. Getrennt von „centric-sitzungen", mit Absicht. */
@@ -106,9 +107,6 @@ export const DAUER = 1000 * 60 * 60 * 12;
 /** Eine halbe Stunde Untätigkeit beendet die Sitzung. Auf einem geteilten
     Rechner ist das der Unterschied zwischen „abgemeldet" und „offen". */
 export const RUHE = 30 * 60 * 1000;
-/** `zuletzt` höchstens einmal je Minute schreiben. */
-const VERLAENGERN_AB = 60 * 1000;
-
 /** Der Ablageschlüssel eines Merkmals. */
 export const accountSitzungsSchluessel = (token) => PRAEFIX + hash(token);
 
@@ -191,12 +189,14 @@ export async function accountSitzungLesen(token,
   /* Genau wie bei den Token (token.mjs) und den Arbeitssitzungen: Der
      Zeitpunkt `bis` gehört noch zur Gültigkeit, erst danach ist Schluss.
      Ein fehlender oder unsinniger Wert gilt als abgelaufen — ein
-     Datensatz ohne Frist darf nicht ewig leben. */
-  if (!Number.isFinite(Number(s.bis)) || Number(s.bis) < nun) {
+     Datensatz ohne Frist darf nicht ewig leben (strenge Lesart,
+     lebendigkeit.mjs). */
+  const urteil = ablaufUrteil(s, nun, { streng: true, ruhe: RUHE });
+  if (urteil.grund === "frist") {
     await weg(speicher, schluessel);
     return { sitzung: null, grund: "abgelaufen" };
   }
-  if (s.zuletzt && nun - Number(s.zuletzt) > RUHE) {
+  if (urteil.grund === "untaetig") {
     await weg(speicher, schluessel);
     return { sitzung: null, grund: "untaetig" };
   }
@@ -204,7 +204,7 @@ export async function accountSitzungLesen(token,
   /* Verlängern, aber nicht bei jedem Zugriff: Ein Mensch, der arbeitet,
      erzeugt sonst hunderte Schreibvorgänge je Stunde. Ohne await — die
      Anfrage soll nicht auf die Platte warten. */
-  if (!s.zuletzt || nun - Number(s.zuletzt) > VERLAENGERN_AB) {
+  if (verlaengernFaellig(s, null, nun)) {
     speicher.setJSON(schluessel, { ...s, zuletzt: nun }).catch(() => {});
   }
   return { sitzung: s, grund: null };
