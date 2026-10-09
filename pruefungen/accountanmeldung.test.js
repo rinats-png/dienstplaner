@@ -101,7 +101,11 @@ const adresse = (was) => `${was}-${++zaehler}@example.org`;
  * @param {number} ziel
  */
 async function warteAufZuletzt(store, token, jetzt, ziel) {
-  const stand = () => sitzungsAblage().get(`as:${hash(token)}`, { type: "json" });
+  /* Die Aktivität steht seit Phase A.1 in einem eigenen Schlüssel (az:), nicht
+     mehr im Datensatz der Sitzung (as:) — der bleibt nach dem Anlegen
+     unverändert, damit ein verspätetes Fortschreiben ihn nach einem Logout nie
+     wieder anlegen kann. */
+  const stand = () => sitzungsAblage().get(`az:${hash(token)}`, { type: "json" });
   let letzter = null;
   for (let anlauf = 0; anlauf < 12; anlauf++) {
     /* Erst warten, OHNE zu lesen. Das ist der entscheidende Punkt: Unter
@@ -498,8 +502,10 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
       expect(nach.grund).toBe("abgelaufen");
       expect(nach.hinweis).toBe(AN.HINWEIS_SITZUNG);
     }
-    /* Und der Datensatz ist weg, nicht bloß abgewiesen. */
+    /* Und der Datensatz ist weg, nicht bloß abgewiesen — samt Aktivität. */
     expect(await sitzungsAblage().get(`as:${hash(e.token)}`, { type: "json" }))
+      .toBe(null);
+    expect(await sitzungsAblage().get(`az:${hash(e.token)}`, { type: "json" }))
       .toBe(null);
   }, LIMIT);
 
@@ -517,24 +523,25 @@ describe("Die Sitzung gilt, bis sie nicht mehr gilt", () => {
       .toBe(null);
   }, LIMIT);
 
-  it("bleibt bei Arbeit bestehen und schreibt `zuletzt` fort", async () => {
+  it("bleibt bei Arbeit bestehen und schreibt die Aktivität in einen eigenen Schlüssel fort", async () => {
     const s = laden();
     const u = uhr();
     const k = await konto(s, adresse("arbeit"));
     const e = await AN.anmelden(s, { email: k.email, passwort: GUT, jetzt: u.jetzt });
     if (!e.ok) throw new Error("Anmeldung gescheitert");
-    const vorherSeit = Number((await sitzungsAblage()
-      .get(`as:${hash(e.token)}`, { type: "json" })).seit);
+    const anfang = await sitzungsAblage().get(`as:${hash(e.token)}`, { type: "json" });
     for (let i = 0; i < 4; i++) {
       u.vor(25 * MINUTE);
       expect((await AN.sitzungPruefen(s, e.token, { jetzt: u.jetzt })).ok).toBe(true);
       await warteAufZuletzt(s, e.token, u.jetzt, u.stand());
+      const aktiv = await sitzungsAblage().get(`az:${hash(e.token)}`, { type: "json" });
+      expect(Number(aktiv.zuletzt), `Runde ${i}`).toBe(u.stand());
+      /* Der Zugriff schreibt die Aktivität fort und sonst nichts: Der Datensatz
+         mit der Autorität bleibt Byte für Byte, wie die Anmeldung ihn angelegt
+         hat — Frist, Beginn, auch sein erstes `zuletzt`. */
       const roh = await sitzungsAblage().get(`as:${hash(e.token)}`, { type: "json" });
-      expect(Number(roh.zuletzt), `Runde ${i}`).toBe(u.stand());
-      /* Der Zugriff schreibt `zuletzt` fort und sonst nichts: Frist und
-         Beginn bleiben, wo sie waren. */
+      expect(roh, `Datensatz in Runde ${i}`).toEqual(anfang);
       expect(Number(roh.bis), `bis in Runde ${i}`).toBe(e.gueltigBis);
-      expect(Number(roh.seit), `seit in Runde ${i}`).toBe(vorherSeit);
     }
   }, LIMIT);
 
@@ -760,7 +767,9 @@ describe("Account-Sitzungen und Arbeitssitzungen sind zwei Welten", () => {
     expect(neu.length).toBeGreaterThan(0);
     for (const kk of alt) expect(kk.startsWith("as:"), kk).toBe(false);
     for (const kk of neu) {
-      expect(kk.startsWith("as:"), kk).toBe(true);
+      /* Die Account-Sitzung (as:), ihre Aktivität (az:) und die Marker der
+         Arbeitssitzungen, die an ihr hängen (ab:) — nie t: oder sk:. */
+      expect(/^(as|az|ab):/.test(kk), kk).toBe(true);
       expect(kk.startsWith("t:"), kk).toBe(false);
       expect(kk.startsWith("sk:"), kk).toBe(false);
     }

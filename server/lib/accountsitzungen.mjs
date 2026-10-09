@@ -28,6 +28,8 @@
      centric-sitzungen          t:…   Arbeitssitzung (Legacy, Zugangscode)
                                 sk:…  Sicherungsschlüssel
      centric-accountsitzungen   as:…  Account-Sitzung (Identität)
+                                az:…  Aktivität einer Account-Sitzung
+                                ab:…  Marker: welche Arbeitssitzung hängt woran
 
    Zwei Speicher, zwei Präfixe. `sitzungLesen` sieht eine Account-Sitzung
    nie, weil sie in einem anderen Speicher liegt; diese Datei sieht eine
@@ -51,6 +53,32 @@
    als `sitzungAnlegen`, das `...felder` durchreicht. Damit lässt sich in
    eine Account-Sitzung kein `bestand` und keine `rolle` schmuggeln, auch
    nicht versehentlich, auch nicht in einem späteren Umbau.
+
+   ---------------------------------------------------------------------------
+   Autorität und Aktivität sind getrennt (Phase A.1, Befund R1)
+
+   Der Datensatz `as:<Prüfsumme>` ist die Autorität: Es gibt ihn, solange die
+   Sitzung gilt, und sein Fehlen ist der Widerruf. Er wird genau einmal
+   geschrieben, in `accountSitzungAnlegen`, und danach NIE wieder — von
+   niemandem, auch nicht von der Verlängerung.
+
+   Vorher schrieb die Verlängerung den ganzen Datensatz zurück
+   (`{ ...s, zuletzt }`), ohne darauf zu warten. Löschte ein Logout ihn
+   zwischen Lesen und Schreiben, legte der verspätete Schreibvorgang ihn
+   wieder an: Die abgemeldete Sitzung galt wieder, samt Cookie und
+   Arbeitsmerkmal. Ein Logout, das sich rückgängig machen lässt, ist keines.
+
+   Jetzt schreibt die Verlängerung in einen EIGENEN Schlüssel, `az:<Prüfsumme>`
+   mit `{ zuletzt }`. Der verspätete Schreibvorgang kann nur diesen Schlüssel
+   anlegen — und ein `az:` ohne `as:` erlaubt nichts: Zuerst wird immer die
+   Autorität gelesen, und fehlt sie, ist die Sitzung tot, gleichgültig was
+   sonst herumliegt. Übrig bleibt höchstens ein Waisen-Datensatz, den der
+   Aufräumlauf entfernt. Das ist die ganze Invariante:
+
+       Eine Aktivität kann eine Sitzung verlängern, nie berechtigen.
+
+   Kein Sperren, kein Vergleichen-und-Setzen, kein Zwischenspeicher: Die
+   Ablage kennt kein bedingtes Schreiben, und die Struktur braucht keines.
 
    Die Epoche ist der Rückruf: Sie steht im Account (accounts.mjs) und
    wächst bei jeder Passwortänderung. Eine Sitzung mit veralteter Epoche
@@ -97,6 +125,8 @@ const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 /** Das Präfix. Zusammen mit dem eigenen Speicher die zweite Schranke
     gegen eine Verwechslung mit `t:` und `sk:`. */
 const PRAEFIX = "as:";
+/** Die Aktivität einer Account-Sitzung — keine Autorität, siehe oben. */
+const AKTIVITAET = "az:";
 
 /** Die Art, die jeder Datensatz selbst nennt. */
 export const ART = "konto";
@@ -109,6 +139,10 @@ export const DAUER = 1000 * 60 * 60 * 12;
 export const RUHE = 30 * 60 * 1000;
 /** Der Ablageschlüssel eines Merkmals. */
 export const accountSitzungsSchluessel = (token) => PRAEFIX + hash(token);
+/** Die Kennung einer Sitzung: die Prüfsumme ihres Merkmals, ohne Präfix. */
+export const accountSitzungsId = (token) => hash(token);
+/** Der Schlüssel der Aktivität zu einer Sitzungskennung. */
+export const aktivitaetsSchluessel = (id) => AKTIVITAET + id;
 
 /** Nur Zeichenketten in der Länge eines echten Merkmals kommen überhaupt
     in die Ablage — sonst wäre jeder Tippfehler ein Verzeichniszugriff. */
@@ -169,8 +203,34 @@ export async function accountSitzungLesen(token,
   { jetzt = Date.now, ablage = null } = {}) {
   if (!merkmalBrauchbar(token)) return { sitzung: null, grund: "form" };
   const speicher = ablage || accountSitzungsSpeicher();
-  const schluessel = accountSitzungsSchluessel(token);
+  return sitzungPerId(speicher, hash(token), jetzt());
+}
 
+/**
+ * Dieselbe Prüfung für eine Sitzung, die man nur über ihre Kennung kennt — der
+ * Weg der Arbeitssitzung (arbeitssitzung.mjs), die diese Kennung im Anker
+ * trägt, aber nie das Merkmal. Die Kennung muss die Form einer Prüfsumme haben;
+ * alles andere ist keine Sitzung und kommt nicht in die Ablage.
+ *
+ * @param {unknown} id  Prüfsumme des Merkmals (64 Hexzeichen)
+ * @param {{jetzt?: () => number, ablage?: (object|null)}} [wahl]
+ * @returns {Promise<{sitzung: object|null, grund: string|null}>}
+ */
+export async function accountSitzungLesenPerId(id,
+  { jetzt = Date.now, ablage = null } = {}) {
+  if (!kennungBrauchbar(id)) return { sitzung: null, grund: "form" };
+  const speicher = ablage || accountSitzungsSpeicher();
+  return sitzungPerId(speicher, String(id), jetzt());
+}
+
+/** Eine Kennung ist die Prüfsumme eines Merkmals: genau 64 Hexzeichen. */
+export const kennungBrauchbar = (id) => typeof id === "string" && /^[0-9a-f]{64}$/.test(id);
+
+async function sitzungPerId(speicher, id, nun) {
+  const schluessel = PRAEFIX + id;
+
+  /* Zuerst die Autorität. Fehlt sie, ist die Sitzung tot — was an
+     Aktivitätsdatensätzen herumliegt, ändert daran nichts. */
   let s = null;
   try { s = await speicher.get(schluessel, { type: "json" }); }
   catch { return { sitzung: null, grund: "fehler" }; }
@@ -181,38 +241,48 @@ export async function accountSitzungLesen(token,
      steht trotzdem hier: Sie kostet nichts und hält, wenn jemand die
      Speicher eines Tages zusammenlegt. */
   if (s.art !== ART || !s.accountId) {
-    await weg(speicher, schluessel);
+    await weg(speicher, id);
     return { sitzung: null, grund: "art" };
   }
 
-  const nun = jetzt();
+  /* Die Aktivität daneben. Lässt sie sich nicht lesen, ist das ein Fehler,
+     kein „nie aktiv gewesen": Die Tür bleibt zu, und die Autorität bleibt
+     unangetastet — ein Lesefehler ist kein Grund zu löschen. */
+  let aktiv = null;
+  try { aktiv = await speicher.get(AKTIVITAET + id, { type: "json" }); }
+  catch { return { sitzung: null, grund: "fehler" }; }
+
   /* Genau wie bei den Token (token.mjs) und den Arbeitssitzungen: Der
      Zeitpunkt `bis` gehört noch zur Gültigkeit, erst danach ist Schluss.
      Ein fehlender oder unsinniger Wert gilt als abgelaufen — ein
      Datensatz ohne Frist darf nicht ewig leben (strenge Lesart,
      lebendigkeit.mjs). */
-  const urteil = ablaufUrteil(s, nun, { streng: true, ruhe: RUHE });
+  const urteil = ablaufUrteil(s, nun, { streng: true, ruhe: RUHE, aktivitaet: aktiv });
   if (urteil.grund === "frist") {
-    await weg(speicher, schluessel);
+    await weg(speicher, id);
     return { sitzung: null, grund: "abgelaufen" };
   }
   if (urteil.grund === "untaetig") {
-    await weg(speicher, schluessel);
+    await weg(speicher, id);
     return { sitzung: null, grund: "untaetig" };
   }
 
   /* Verlängern, aber nicht bei jedem Zugriff: Ein Mensch, der arbeitet,
      erzeugt sonst hunderte Schreibvorgänge je Stunde. Ohne await — die
-     Anfrage soll nicht auf die Platte warten. */
-  if (verlaengernFaellig(s, null, nun)) {
-    speicher.setJSON(schluessel, { ...s, zuletzt: nun }).catch(() => {});
+     Anfrage soll nicht auf die Platte warten. Und in den EIGENEN Schlüssel:
+     Käme dieser Schreibvorgang nach einem Logout an, legte er höchstens
+     ein `az:` an, das nichts erlaubt — nie die Autorität selbst. */
+  if (verlaengernFaellig(s, aktiv, nun)) {
+    speicher.setJSON(AKTIVITAET + id, { zuletzt: nun }).catch(() => {});
   }
   return { sitzung: s, grund: null };
 }
 
-/** Löschen, ohne dass ein Fehler dabei den Aufrufer stört. */
-async function weg(speicher, schluessel) {
-  try { await speicher.delete(schluessel); } catch { /* bleibt liegen, läuft ab */ }
+/** Löschen, ohne dass ein Fehler dabei den Aufrufer stört. Die Autorität
+    zuerst — sie ist der Widerruf —, dann die Aktivität. */
+async function weg(speicher, id) {
+  try { await speicher.delete(PRAEFIX + id); } catch { /* bleibt liegen, läuft ab */ }
+  try { await speicher.delete(AKTIVITAET + id); } catch { /* Waise, harmlos */ }
 }
 
 /**
@@ -230,6 +300,9 @@ export async function accountSitzungBeenden(token, { ablage = null } = {}) {
   const schluessel = accountSitzungsSchluessel(token);
   try {
     await speicher.delete(schluessel);
+    /* Die Autorität ist weg — das ist der Widerruf. Die Aktivität räumt der
+       Rest nach; scheitert das, bleibt eine Waise, die nichts erlaubt. */
+    await speicher.delete(AKTIVITAET + hash(token)).catch(() => {});
     return true;
   } catch {
     /* Gescheitert — und trotzdem ist die Frage nicht, wer gelöscht hat,
@@ -241,7 +314,11 @@ export async function accountSitzungBeenden(token, { ablage = null } = {}) {
        Ist er noch da — oder lässt sich das nicht feststellen —, bleibt es
        bei „nicht gelungen". Diese Antwort darf niemand in ein
        „abgemeldet" umdeuten. */
-    try { return !(await speicher.get(schluessel, { type: "json" })); }
+    try {
+      const noch = await speicher.get(schluessel, { type: "json" });
+      if (!noch) await speicher.delete(AKTIVITAET + hash(token)).catch(() => {});
+      return !noch;
+    }
     catch { return false; }
   }
 }
@@ -270,7 +347,11 @@ export async function accountSitzungenBeenden(accountId, { ablage = null } = {})
     try { s = await speicher.get(b.key, { type: "json" }); }
     catch { fehler++; continue; }
     if (!s || s.art !== ART || s.accountId !== accountId) continue;
-    try { await speicher.delete(b.key); beendet++; }
+    try {
+      await speicher.delete(b.key);
+      beendet++;
+      await speicher.delete(AKTIVITAET + b.key.slice(PRAEFIX.length)).catch(() => {});
+    }
     catch { fehler++; }
   }
   return { beendet, fehler };
