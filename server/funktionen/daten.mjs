@@ -168,19 +168,32 @@ async function sicherungenAusduennen(store, raum) {
 }
 
 /**
- * Die Antwort auf eine Sitzung, die technisch gültig war und fachlich
- * widerrufen ist (Entzug, Sperre, Epoche, Logout). Einheitlich „Nicht
- * angemeldet" — nicht „kein Betreiber", das wäre eine andere Auskunft —, und
- * im Protokoll mit dem inneren Grund, nie nach außen.
+ * Die Absage der Pfade vor dem Hauptpfad, wenn die Anfrage ein Merkmal
+ * mitbrachte, das nicht gilt: widerrufen (Entzug, Sperre, Epoche, Abmelden),
+ * abgelaufen oder unbekannt. Einheitlich „Nicht angemeldet" (401) — nicht „kein
+ * Betreiber", das wäre eine andere Auskunft —, damit die Antwort nicht davon
+ * abhängt, ob eine widerrufene Sitzung schon weggeräumt wurde. Eine fachlich
+ * widerrufene Sitzung kommt mit dem inneren Grund ins Protokoll, nie nach
+ * außen; ein unbekanntes Merkmal nicht (sonst wäre jede erfundene Anfrage ein
+ * Eintrag).
+ *
+ * Ohne jedes Merkmal bleibt es bei den Antworten, die diese Pfade schon
+ * immer gaben.
  *
  * Gebraucht von den Pfaden vor dem Hauptpfad: Sie lasen die Sitzung bisher roh
  * und kamen an der fachlichen Prüfung vorbei. Jetzt lesen sie über denselben
  * Prüfpunkt wie alle anderen (lib/arbeitssitzung.mjs, arbeitssitzungLesen).
+ *
+ * @returns {Promise<Response|null>}  die Absage, oder null, wenn der Pfad weitermacht
  */
-async function widerrufen(req, lese) {
-  await protokoll("zugaenge", kennung(req, null), "abgewiesen",
-    `sitzung: ${String(lese.grund).slice(0, 24)}`);
-  return antwort({ fehler: "Nicht angemeldet." }, 401);
+async function ungueltigesMerkmal(req, lese) {
+  if (lese.abgewiesen) {
+    await protokoll("zugaenge", kennung(req, null), "abgewiesen",
+      `sitzung: ${String(lese.grund).slice(0, 24)}`);
+  }
+  if (lese.abgewiesen || (!lese.sitzung && lese.mitMerkmal))
+    return antwort({ fehler: "Nicht angemeldet." }, 401);
+  return null;
 }
 
 export default async (req, context) => {
@@ -209,7 +222,8 @@ export default async (req, context) => {
        Prüfsumme abgelegt werden können — im Browser wäre das sinnlos. */
     if (pfad === "zugaenge" && req.method === "POST") {
       const lB = await arbeitssitzungLesen(req, { store });
-      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const aB = await ungueltigesMerkmal(req, lB);
+      if (aB) return aB;
       const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "keine Betreibersitzung");
@@ -263,7 +277,8 @@ export default async (req, context) => {
        löschen — sonst sägt sich der Betreiber den Ast ab.              */
     if (pfad === "raum-loeschen" && req.method === "POST") {
       const lB = await arbeitssitzungLesen(req, { store });
-      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const aB = await ungueltigesMerkmal(req, lB);
+      if (aB) return aB;
       const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("loeschen", kennung(req, null), "abgewiesen", "Raumlöschung ohne Recht");
@@ -308,7 +323,8 @@ export default async (req, context) => {
        Zugang ist markiert, damit die Konsole ihn nicht zum Sperren anbietet. */
     if (pfad === "zugaenge-uebersicht" && req.method === "GET") {
       const lB = await arbeitssitzungLesen(req, { store });
-      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const aB = await ungueltigesMerkmal(req, lB);
+      if (aB) return aB;
       const sB = lB.sitzung;
       if (!sB) return antwort({ fehler: "Nicht angemeldet." }, 401);
       if (sB.rolle !== "betreiber") {
@@ -336,7 +352,8 @@ export default async (req, context) => {
        durch Zufall ein zweites Mal vergeben werden. */
     if (pfad === "zugang-sperren" && req.method === "POST") {
       const lB = await arbeitssitzungLesen(req, { store });
-      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const aB = await ungueltigesMerkmal(req, lB);
+      if (aB) return aB;
       const sB = lB.sitzung;
       const darfSperren = sB && (sB.rolle === "betreiber" || sB.rolle === "leitung");
       if (!darfSperren) {
@@ -436,7 +453,8 @@ export default async (req, context) => {
     /* Der Betreiber legt den leeren Betrieb an, bevor sich jemand anmeldet. */
     if (pfad === "bestand-anlegen" && req.method === "POST") {
       const lB = await arbeitssitzungLesen(req, { store });
-      if (lB.abgewiesen) return await widerrufen(req, lB);
+      const aB = await ungueltigesMerkmal(req, lB);
+      if (aB) return aB;
       const sB = lB.sitzung;
       if (!sB || sB.rolle !== "betreiber") {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");

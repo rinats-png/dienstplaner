@@ -105,6 +105,7 @@ import {
   accountSitzungAnlegen, accountSitzungLesen, accountSitzungBeenden,
   accountSitzungenBeenden, accountSitzungsId,
 } from "./accountsitzungen.mjs";
+import { arbeitssitzungenBeenden } from "./arbeitssitzung.mjs";
 
 /** Der eine Satz für jede fehlgeschlagene Anmeldung. Er unterscheidet
     nicht zwischen unbekannter Adresse, falschem Passwort, gesperrtem und
@@ -268,12 +269,22 @@ export async function sitzungPruefen(store, token, { jetzt = Date.now,
  * nicht angenommen, die Sitzung gilt also weiter. Wer das Ergebnis
  * weiterreicht, darf es nicht in ein „abgemeldet" umdeuten.
  *
+ * Mit der Account-Sitzung endet die Arbeit, die an ihr hängt: Die Arbeitssitzungen
+ * dieses Geräts gelten nicht mehr (das stellt die Bindung sicher, bei jedem
+ * Zugriff) und werden hier zusätzlich weggeräumt. Das Löschen der
+ * Account-Sitzung ist der Widerruf; scheitert das Wegräumen, ändert das am
+ * Ergebnis nichts. Ein zweites Gerät desselben Kontos bleibt unberührt.
+ *
  * @param {unknown} token
  * @param {{sitzungsAblage?: (object|null)}} [o]
  * @returns {Promise<{ok: boolean}>}
  */
 export async function abmelden(token, { sitzungsAblage = null } = {}) {
   const weg = await accountSitzungBeenden(token, { ablage: sitzungsAblage });
+  if (weg && typeof token === "string") {
+    await arbeitssitzungenBeenden(accountSitzungsId(token), { kontoAblage: sitzungsAblage })
+      .catch(() => ({ beendet: 0, fehler: 1 }));
+  }
   return { ok: weg };
 }
 
@@ -285,11 +296,20 @@ export async function abmelden(token, { sitzungsAblage = null } = {}) {
  * Sitzungen ohnehin abweisen; dies räumt sie zusätzlich weg, statt sie bis
  * zum Ablauf liegen zu lassen.
  *
+ * Wie beim einzelnen Abmelden endet damit auch die Arbeit, die an diesen
+ * Sitzungen hängt.
+ *
  * @param {string} accountId
  * @param {{sitzungsAblage?: (object|null)}} [o]
  * @returns {Promise<{ok: true, beendet: number, fehler: number}>}
  */
 export async function ueberallAbmelden(accountId, { sitzungsAblage = null } = {}) {
   const e = await accountSitzungenBeenden(accountId, { ablage: sitzungsAblage });
-  return { ok: true, beendet: e.beendet, fehler: e.fehler };
+  let fehler = e.fehler;
+  for (const id of e.ids) {
+    const r = await arbeitssitzungenBeenden(id, { kontoAblage: sitzungsAblage })
+      .catch(() => ({ beendet: 0, fehler: 1 }));
+    fehler += r.fehler;
+  }
+  return { ok: true, beendet: e.beendet, fehler };
 }

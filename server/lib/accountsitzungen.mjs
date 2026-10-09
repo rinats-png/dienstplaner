@@ -441,17 +441,22 @@ export async function accountSitzungBeenden(token, { ablage = null } = {}) {
  * diesen Account nennt. Ein Listenlauf über fremde Sitzungen ändert nichts
  * an ihnen.
  *
+ * `ids` nennt die Kennungen der beendeten Sitzungen: Wer die Arbeitssitzungen
+ * dazu wegräumen will, braucht sie.
+ *
  * @param {string} accountId
  * @param {{ablage?: (object|null)}} [wahl]
- * @returns {Promise<{beendet: number, fehler: number}>}
+ * @returns {Promise<{beendet: number, fehler: number, ids: string[]}>}
  */
 export async function accountSitzungenBeenden(accountId, { ablage = null } = {}) {
-  if (!accountId || typeof accountId !== "string") return { beendet: 0, fehler: 0 };
+  if (!accountId || typeof accountId !== "string") return { beendet: 0, fehler: 0, ids: [] };
   const speicher = ablage || accountSitzungsSpeicher();
   let beendet = 0, fehler = 0;
+  /** @type {string[]} */
+  const ids = [];
   let blobs = [];
   try { ({ blobs } = await speicher.list({ prefix: PRAEFIX })); }
-  catch { return { beendet: 0, fehler: 1 }; }
+  catch { return { beendet: 0, fehler: 1, ids: [] }; }
   for (const b of blobs) {
     let s = null;
     try { s = await speicher.get(b.key, { type: "json" }); }
@@ -460,9 +465,10 @@ export async function accountSitzungenBeenden(accountId, { ablage = null } = {})
     try {
       await speicher.delete(b.key);
       beendet++;
+      ids.push(b.key.slice(PRAEFIX.length));
       await speicher.delete(AKTIVITAET + b.key.slice(PRAEFIX.length)).catch(() => {});
     }
     catch { fehler++; }
   }
-  return { beendet, fehler };
+  return { beendet, fehler, ids };
 }

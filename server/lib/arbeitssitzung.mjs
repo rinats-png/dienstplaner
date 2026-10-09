@@ -2,10 +2,11 @@ import {
   accountLesenPerId, mitgliedschaftLesen, mitgliedlaufLesen, generationStimmt,
 } from "./accounts.mjs";
 import { getStore } from "./ablage.mjs";
-import { kontoSitzungFuerArbeit, kennungBrauchbar } from "./accountsitzungen.mjs";
+import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
+  from "./accountsitzungen.mjs";
 import { bestandLesen } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
-import { sitzungBeenden, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
+import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
 
 /* ==========================================================================
    IST DIESE ARBEITSSITZUNG FACHLICH NOCH GÜLTIG?
@@ -153,10 +154,15 @@ export const HERKUNFT_KONTO = "account";
      abgewiesen   wahr, wenn es eine technisch gültige Sitzung gab, die
                   fachlich widerrufen ist (Entzug, Sperre, Epoche, …)
      grund        der innere Grund dafür — für das Protokoll, nie nach außen
+     mitMerkmal   wahr, wenn die Anfrage überhaupt ein Merkmal mitbrachte
 
-   Warum `abgewiesen` getrennt von „keine Sitzung": Die Pfade antworten auf eine
-   fehlende Sitzung wie bisher, auf eine widerrufene aber einheitlich mit
-   „Nicht angemeldet" (401) — und protokollieren sie.
+   Warum `abgewiesen` getrennt von „keine Sitzung": Eine widerrufene Sitzung
+   wird protokolliert, ein unbekanntes oder abgelaufenes Merkmal nicht — sonst
+   wäre jede erfundene Anfrage ein Protokolleintrag. Und `mitMerkmal`, damit die
+   Pfade zwischen „kein Merkmal" und „ein Merkmal, das nicht mehr gilt" trennen
+   können: Das zweite ist für den Aufrufer „Nicht angemeldet" (401), gleichgültig,
+   ob die Sitzung widerrufen, abgelaufen oder beim Abmelden weggeräumt wurde.
+   Sonst hinge die Antwort daran, ob das Aufräumen schon gelaufen ist.
 
    Sicherungsschlüssel (sk:) sind keine Arbeitssitzungen. Sie dürfen nur lesen,
    und nur ein Pfad darf sie annehmen (daten.mjs, über seine Positivliste). Alle
@@ -171,12 +177,13 @@ export const HERKUNFT_KONTO = "account";
  *   `store`: Ablage „centric" (sonst die eigene). `bestandLader` bekommt die
  *   gelesene Sitzung und gibt einen schon gelesenen Bestand zurück, damit er
  *   nicht zweimal gelesen wird.
- * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null)}>}
+ * @returns {Promise<{sitzung: any, abgewiesen: boolean, grund: (string|null),
+ *   mitMerkmal: boolean}>}
  */
 export async function arbeitssitzungLesen(req,
   { store = null, sicherungsschluessel = false, bestandLader = null } = {}) {
-  const keine = () => ({ sitzung: null, abgewiesen: false, grund: null });
   const merkmal = merkmalAus(req);
+  const keine = () => ({ sitzung: null, abgewiesen: false, grund: null, mitMerkmal: !!merkmal });
   if (!merkmal) return keine();
 
   const s0 = await sitzungLesen(req);
@@ -187,10 +194,10 @@ export async function arbeitssitzungLesen(req,
   const fachlich = await arbeitssitzungPruefen(ablage, s0,
     { merkmal, bestandLader: bestandLader ? () => bestandLader(s0) : null });
   if (!fachlich.ok) {
-    return { sitzung: null, abgewiesen: true,
+    return { sitzung: null, abgewiesen: true, mitMerkmal: true,
       grund: "grund" in fachlich ? fachlich.grund : "unbekannt" };
   }
-  return { sitzung: s0, abgewiesen: false, grund: null };
+  return { sitzung: s0, abgewiesen: false, grund: null, mitMerkmal: true };
 }
 
 /** Trägt dieser Datensatz überhaupt einen Herkunftsanker? */
@@ -209,6 +216,38 @@ function ankerBrauchbar(h) {
   if (!Number.isInteger(h.epoche) || h.epoche < 1) return false;
   if (!Number.isInteger(h.generation) || h.generation < 1) return false;
   return true;
+}
+
+/**
+ * Beendet die Arbeitssitzungen, die an einer Account-Sitzung hängen — der Rest
+ * des Logouts. Die Account-Sitzung ist zu diesem Zeitpunkt schon gelöscht, und
+ * das ist der Widerruf: Jede Arbeitssitzung dazu ist bereits ungültig, weil sie
+ * bei jedem Zugriff nach ihrer Anmeldung fragt. Hier wird nur aufgeräumt, damit
+ * keine Datei liegen bleibt, die jemand später missverstehen könnte.
+ *
+ * Gefunden werden sie über die Marker (ab:), nicht durch Durchsuchen aller
+ * Arbeitssitzungen. Ein Marker wird erst entfernt, wenn seine Arbeitssitzung
+ * weg ist; scheitert das Löschen, bleibt der Marker für den Aufräumlauf liegen.
+ * Fehler hier ändern nichts am Logout.
+ *
+ * Andere Geräte desselben Kontos haben eigene Account-Sitzungen und damit eigene
+ * Marker: Sie werden nicht berührt.
+ *
+ * @param {string} accountSitzungsId  Kennung der beendeten Account-Sitzung
+ * @param {{kontoAblage?: (object|null)}} [o]
+ * @returns {Promise<{beendet: number, fehler: number}>}
+ */
+export async function arbeitssitzungenBeenden(accountSitzungsId, { kontoAblage = null } = {}) {
+  const m = await markerListe(accountSitzungsId, { ablage: kontoAblage });
+  let beendet = 0;
+  let fehler = m.fehler ? 1 : 0;
+  for (const id of m.ids) {
+    if (await sitzungBeendenPerId(id)) {
+      beendet++;
+      if (!(await markerLoeschen(accountSitzungsId, id, { ablage: kontoAblage }))) fehler++;
+    } else fehler++;
+  }
+  return { beendet, fehler };
 }
 
 /**

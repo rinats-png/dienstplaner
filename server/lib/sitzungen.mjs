@@ -141,6 +141,21 @@ export async function sitzungBeenden(token) {
   } catch { return false; }
 }
 
+/**
+ * Beendet eine Sitzung über ihre Kennung (die Prüfsumme des Merkmals), ohne das
+ * Merkmal zu kennen — der Weg des Logouts, der die Arbeitssitzungen seines
+ * Login-Kontexts aus den Markern kennt. Nur eine Prüfsumme kommt in die Ablage.
+ * @param {unknown} id  64 Hexzeichen
+ * @returns {Promise<boolean>}  wahr, wenn die Sitzung nach dem Aufruf nicht mehr existiert
+ */
+export async function sitzungBeendenPerId(id) {
+  if (typeof id !== "string" || !/^[0-9a-f]{64}$/.test(id)) return false;
+  try {
+    await sitzungsSpeicher().delete(`t:${id}`);
+    return true;
+  } catch { return false; }
+}
+
 /** Der Ablageschlüssel einer Sitzung — für Aufrufer, die selbst listen. */
 export const sitzungsSchluessel = (token) => `t:${hash(token)}`;
 export const sicherungsSchluessel = (roh) => `sk:${hash(roh)}`;
