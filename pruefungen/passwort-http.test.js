@@ -35,6 +35,9 @@ beforeAll(async () => {
   process.env.CENTRIC_BASIS = "https://app.centric-dienstplanung.de";
   delete process.env.RESEND_API_KEY;
   delete process.env.CENTRIC_PRUEFLINK;
+  /* Diese Prüfung gilt dem eingeschalteten Weg; der Schalter selbst steht in
+     registrierung-schalter.test.js. */
+  process.env.CENTRIC_PUBLIC_REGISTRATION = "true";
   ({ getStore } = await import("../server/lib/ablage.mjs"));
   handler = (await import("../server/funktionen/registrierung.mjs")).default;
   A = await import("../server/lib/accounts.mjs");

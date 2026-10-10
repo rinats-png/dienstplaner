@@ -171,6 +171,11 @@ jobs:
       - name: Registrierung über HTTP
         run: npm run pruefung:registrierung-http
 
+      # Die Selbstregistrierung ist bis zum Account-Onboarding abgeschaltet:
+      # ohne CENTRIC_PUBLIC_REGISTRATION=true keine Datei, kein Token, keine Mail.
+      - name: Schalter der öffentlichen Registrierung
+        run: npm run pruefung:registrierung-schalter
+
       # Das erste Passwort: ein Nachweis, einmal, fünfzehn Minuten — und ein
       # falsches Passwort verbrennt ihn nicht.
       - name: Erstes Passwort über HTTP

@@ -108,6 +108,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | nein | E-Mail-Versand; der Absender braucht eine bei Resend verifizierte Domain |
 | `REDIS_REST_URL`, `REDIS_REST_TOKEN` | nein | atomare Bremse, siehe unten |
 | `CENTRIC_AUFRAEUMEN` | nein | `aus` schaltet den täglichen Löschlauf für abgelaufene Testbetriebe ab (Vorgabe: an) |
+| `CENTRIC_PUBLIC_REGISTRATION` | nein | **Vorgabe: aus.** Nur genau `true` öffnet die öffentliche Selbstregistrierung (`/api/registrierung*`); jeder andere Wert lässt sie zu. Erst setzen, wenn das Account-Onboarding steht — siehe 5.8 |
 
 Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
@@ -623,6 +624,42 @@ Regeln, die sich bewährt haben:
   versteht, bleiben liegen. Nie angefasst werden Sicherungsschlüssel, das Protokoll und `stufe:` (siehe
   5.6). Was er getan und was er liegen gelassen hat, steht im Vermerk `aufraeumen:letzter` unter
   `sitzungen`. Diese Speicher gehören zur flüchtigen Klasse und sind nicht Teil der Sicherung.
+
+### 5.8 Öffentliche Selbstregistrierung — vorerst aus
+
+Die drei Pfade der Selbstregistrierung sind öffentlich erreichbar, aber **standardmäßig
+abgeschaltet**:
+
+| Pfad | Zweck | Ohne Schalter |
+|---|---|---|
+| `POST /api/registrierung` | Adresse angeben; legt ein eingeladenes Konto und ein Bestätigungstoken an und verschickt die Mail | 404 `nicht-verfuegbar` |
+| `POST /api/registrierung/verifizieren` | Bestätigungslink einlösen | 404 `nicht-verfuegbar` |
+| `POST /api/registrierung/passwort` | erstes Passwort setzen | 404 `nicht-verfuegbar` |
+
+Die Absage kommt vor allem anderen: vor der Herkunftsprüfung, dem Rumpf, der Bremse und dem
+Protokoll. Ohne Schalter entsteht unter `CENTRIC_DATEN` **keine einzige Datei** — kein Konto,
+kein Token, kein Zählerstand, kein Protokolleintrag —, und es geht keine Mail hinaus.
+
+An ist der Schalter nur bei genau `CENTRIC_PUBLIC_REGISTRATION=true`. `false`, ein fehlender
+Wert und alles andere (`TRUE`, `1`, `yes`, Leerzeichen …) lassen ihn aus.
+
+**Nicht betroffen** sind die Account-Pfade unter `/api/account/*` (Anmelden mit vorhandenem
+Konto, Sitzungsstand, Mitgliedschaften, Betrieb öffnen, Abmelden). Sie legen kein Konto an und
+setzen ein bestehendes Konto bzw. eine Sitzung voraus. Ebenfalls unberührt bleiben der
+Zugangscode-Weg (`/api/anmelden`) und der bisherige Selbststart (`/starten`), der Zugangscodes
+ausgibt.
+
+**Erst einschalten, wenn das Account-Onboarding steht.** Voraussetzungen:
+
+1. Mailanbieter eingerichtet und `RESEND_API_KEY` gesetzt.
+2. Absenderdomain bei Resend verifiziert, `CENTRIC_ABSENDER` gesetzt (SPF/DKIM).
+3. `CENTRIC_BASIS` zeigt auf die öffentliche Adresse; die Links in der Mail führen dorthin.
+4. End-to-End-Test auf Staging: Registrierung → Mail kommt an → Link → Passwort → Anmeldung →
+   Betrieb öffnen.
+5. Aufräumen abgebrochener Registrierungen: eingeladene Konten, deren Bestätigung nie kam,
+   werden nach einer Frist entfernt. Das gibt es heute noch nicht.
+6. Datenschutzerklärung und Rechtstexte decken die Selbstregistrierung ab; die Oberfläche bietet
+   den Weg an.
 
 ---
 

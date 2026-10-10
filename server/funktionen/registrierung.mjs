@@ -56,6 +56,29 @@ import {
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
 
+/* --------------------------------------------------------------------------
+   SCHALTER: ÖFFENTLICHE SELBSTREGISTRIERUNG — Vorgabe AUS
+
+   Die Oberfläche nutzt diese Pfade noch nicht, und ohne Mailversand lässt
+   sich eine Registrierung nicht abschließen: Sie hinterließe Konten und
+   Token, die niemand einlösen kann. Bis das Onboarding steht, antworten alle
+   drei Pfade deshalb mit derselben Absage — vor der Herkunftsprüfung, vor
+   dem Rumpf, vor der Bremse, vor dem Protokoll. Kein Zählerstand, keine
+   Datei, kein Token, keine Mail.
+
+   An ist der Schalter nur bei genau `CENTRIC_PUBLIC_REGISTRATION=true`.
+   „1", „yes", „TRUE" und alles andere bleiben aus: Ein Schalter, der eine
+   öffentliche Fläche öffnet, soll nicht aus Versehen umfallen.
+
+   Gelesen wird bei jeder Anfrage, nicht beim Laden — so gilt, was gerade in
+   der Umgebung steht, und die Prüfungen können beide Zustände anfahren.
+   -------------------------------------------------------------------------- */
+export const oeffentlicheRegistrierungAn = () =>
+  process.env.CENTRIC_PUBLIC_REGISTRATION === "true";
+
+const ABGESCHALTET = { ok: false, fehler: "nicht-verfuegbar",
+  hinweis: "Die Registrierung ist derzeit nicht verfügbar." };
+
 /** Rumpfgrenze für diese Endpunkte. Ein Name und eine Adresse brauchen kein
     Megabyte; alles darüber ist ein Versuch, den Parser zu beschäftigen. */
 const RUMPF_MAX = 16 * 1024;
@@ -129,6 +152,10 @@ const LINK_ABSAGE = {
 };
 
 export default async (req) => {
+  /* Zuerst der Schalter: Ohne ihn geschieht hier nichts, nicht einmal ein
+     Lesevorgang. */
+  if (!oeffentlicheRegistrierungAn()) return antwort(ABGESCHALTET, 404);
+
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/\/+$/, "");
 
