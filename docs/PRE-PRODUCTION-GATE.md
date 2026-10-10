@@ -148,3 +148,152 @@ unverändert, und die Regression aus Phase A.1 (F1/F3/R1/F4, 36-Minuten-Tests) g
 **Gegenprobe:** Gegen den alten Handler scheitern 32 von 33 Fällen. Der eine verbleibende prüft
 gültige Termine und kann dort nicht scheitern. Die Prüfung hat außerdem einen Fehler im ersten
 Entwurf der Validierung gefunden (ein ungültiges Datum warf), bevor er ausgeliefert wurde.
+
+**Lokale Prüfkette (Windows):** Lint 0 Fehler (Warnungen unverändert), Typen und Build grün,
+`npm audit --omit=dev` ohne Befund, die Muster der Sicherheitsschranke ohne Treffer. Alle
+sitzungs- und kontobezogenen Suiten sind grün.
+
+Fünf Prüfungen scheitern lokal, und zwar auch auf dem unveränderten Stand 7a385d19. Sie sind
+plattformgebunden und in CI (Linux) grün:
+
+- eine Zeitmessung im Selbsttest;
+- POSIX-Dateirechte und `rename` bei gleichzeitigem Schreiben;
+- SIGTERM;
+- das fehlende `jq`.
+
+---
+
+## 3. Staging-Aufräumen (Phase-A.1-Testartefakte)
+
+**Ablage:** Die beiden `a1st`-Testbetriebe wurden über das produkteigene `raumLoeschen`
+entfernt — mit Codes, Mitgliedschaften, Feeds, Sitzungen und `sk:`-Prüfanker. Einzeln
+benannt kamen dazu:
+
+- 6 Testaccounts mit `kontoId`, `mitgliedlauf` und `mitglied`;
+- `stufe:a1probe`;
+- 4 Zählfenster.
+
+Ein Abdruck aller Schlüssel vorher und nachher belegt: Entfernt wurde genau das Inventar, kein
+anderer Schlüssel ist neu oder verändert, `centric-spur` (Audit) ist unverändert.
+
+**Host:** Entfernt wurden
+- `sitzungen-vor-rollback-20261010T205532Z` (nachweislich die 30 beiseitegelegten Sitzungsdateien);
+- zwei byte-gleiche Compose-Kopien.
+
+Unberührt geblieben sind `compose.yml.vor-a1-…`, `data.vor-*`, `restore-test/` und alle
+Sicherungen.
+
+**Nachprüfung:**
+- Staging healthy.
+- Anmeldung mit einem A.1-Account oder A.1-Code: 401.
+- Login-Smoke-Test mit einem Wegwerf-Betrieb, der im selben Lauf wieder entfernt wurde.
+
+---
+
+## 4. Kandidat und Staging-Umstellung
+
+| | |
+|---|---|
+| Commits | `2fb8411` (A), `ec97bb1` (B/C), `9c3130e` (Bewertung) auf `fix/pre-production-cleanup` |
+| CI | Prüfung `38088893836` und Sicherheit `38088893798` grün; Auslieferung `38089763529` grün (`vps` übersprungen, „ausliefern“ aus) |
+| Bild | `ghcr.io/rinats-png/dienstplaner:9c3130e507cbc6729313c7c7548bd6466d735bf7` |
+| Index-Digest | `sha256:a3ed1f09b585e25c3a0118b7fe0d56af990c73a0331c13a43a10801c53e40aed` |
+| amd64-Manifest / Config | `sha256:c27d1df762d6…c717` / `sha256:94f4b8a5fc10…f350` (erstellt 22:02:30Z, `USER node`) |
+| `latest` | unverändert `sha256:0861adee…` (Production-Bild) |
+
+**Umstellung:**
+1. Vorher Sicherung `centric-sicherung-20261010T220439Z` („In Ordnung“) und
+   `compose.yml.vor-ppg-20261010T220525Z`.
+2. In `compose.yml` nur die Bildzeile von 7a385d19 auf 9c3130e umgestellt.
+3. `up -d --pull never --force-recreate`.
+
+**Ergebnis:**
+- healthy nach 8 s, `/gesund` 200.
+- Netz, Benutzer `1000:1000`, read-only, keine Ports und der Mount sind unverändert.
+- Neues Bundle `index-DOWrrTP_.js`.
+- Der Aufräumlauf eine Minute nach dem Start lief fehlerfrei (44 alte Zählfenster).
+
+---
+
+## 5. Pre-Production-Staging-Test
+
+Grundlage waren eigene, pseudonyme Testbetriebe `ppg-a`/`ppg-b`. Sie wurden über die
+Produktwege angelegt und danach mit demselben geprüften Verfahren wieder entfernt. Der
+Hauptspeicher ist danach schlüssel- und inhaltsgleich mit dem Stand vor den Tests; einzige
+Ausnahme ist der Vermerk des Aufräumlaufs.
+
+| Bereich | Ergebnis |
+|---|---|
+| Health | 200, healthy, 0 Neustarts |
+| Login / Logout | Konto-Anmeldung, Betrieb öffnen, Lesen; nach Abmelden 401; Code-Anmeldung |
+| Person hinzufügen | Vor- und Nachname vollständig getippt („Ömer-Jürgen“, „Äßling-Weiß“), Tab-Navigation, Speichern, Fokus zurück auf den Auslöser, nach Reload in der Liste, serverseitig byte-genau UTF-8, nur in A |
+| Kalender gültig | Dienst, Nachtdienst, ganztägig, 24:00 → 00:00 Folgetag; ICS mit Umlauten |
+| Kalender ungültig | ungültiger Termin, fehlende Pflichtfelder, 30. Februar, Monat 13, 25:00, Minute 60, Kennung mit Zeilenumbruch, fehlendes Geheimnis: jeweils 400 mit Feld; der gespeicherte Feed bleibt unverändert |
+| Kalender Manipulation | Zeilenumbrüche in Text und Ort maskiert, keine eingeschleusten ICS-Zeilen |
+| Kalender Fehlerlogging | 500 generisch ohne Interna; genau ein Protokolleintrag `fehler`/`kalender/feed` mit Ursache; Geheimnis weder in Antwort noch im Protokoll; nach Wiederherstellung 200 |
+| Ansichten | Monatsplan (mit Diensten), Jahresansicht, Personal, Qualifikationen, Anträge, Tauschbörse, Leistungsnachweis, Abrechnungsdaten, Zeitachse: keine Fehlerseite, keine Konsolenfehler |
+| Zeiterfassung | Mitarbeiter stempelt Start/Ende, die Leitung sieht die Erfassung; Vollausgabe für Mitarbeiter 403 |
+| Mobilansicht | 390 px ohne horizontalen Überlauf, Mobilhinweis; Service Worker steuert, Manifest vorhanden |
+| Mandantentrennung | B öffnen 403; Lesen mit fremdem Raum bleibt in A; `zugaenge`/`raum-loeschen` für B 403; Export ohne B; Kalender-Daten mit fremdem Verweis 404; B bit-gleich |
+| F1 | nach Abmelden 401 auf Haupt- und allen frühen Pfaden und auf dem Kalender; `as:`/`t:` entfernt; zweites Gerät gültig |
+| F3 | unbekanntes Merkmal 401 auf allen Pfaden einschließlich Kalender |
+| R1 | Aktivität nach mehr als 60 s: `as:`/`t:` unverändert, `az:` geschrieben, `t:` mit `herkunft` |
+| F4 | Code-Sitzung: `t:` unverändert, `ta:` geschrieben, ohne `herkunft` |
+| Backup | Sicherung `centric-sicherung-20261010T223537Z` mit dem neuen Bild, `pruefen`: „In Ordnung: 465 Dateien“ |
+
+Ein 36-Minuten-Test war nicht nötig, weil die Sitzungslogik nicht geändert wurde.
+
+**Beobachtung während des Browsertests: kein Produktbefund.** Mehrere Bildschirmfotos und
+längere Skripte liefen in eine Zeitüberschreitung („renderer frozen“). Untersucht wurde das
+so:
+
+- mit dem alten Bundle (7a385d19) und dem neuen, lokal und auf Staging;
+- es trat bei beiden auf und war nicht deterministisch.
+
+Ursache: Das Browserfenster der Testautomatisierung lag im Hintergrund
+(`document.visibilityState = "hidden"`). Bildschirmfotos scheitern dann, und Chrome drosselt
+die Timer. Die Seite selbst reagierte sofort und zeigte die richtige Ansicht. Die Ansichten
+wurden danach über den DOM geprüft.
+
+---
+
+## 6. Ergebnis
+
+**A. Behobene Altbefunde:**
+- A: Fokus im Blatt springt nach jedem Tastendruck.
+- B: Kalender-Fehler ohne Protokoll.
+- C: Kalender-Termine ungeprüft, einschließlich ICS-Zeileninjektion in den eigenen Feed.
+
+**B. Bewusst offen:** D (unlesbares `t:` ergibt 500 statt 401). Das ist die richtige Semantik,
+weil der Client bei 401 eine gültige Sitzung verwürfe. Fail closed ist belegt.
+
+**C. Commits:** `fa88bd6` (Bericht A.1), `2fb8411`, `ec97bb1`, `9c3130e` sowie dieser
+Bericht. `main` ist unverändert `223dd385`.
+
+**D. CI:** Prüfung, Sicherheit und Auslieferung für `9c3130e` grün; die Auslieferung lief
+ohne VPS-Schritt.
+
+**E. Staging-Bild:** `9c3130e@sha256:a3ed1f09b585e25c3a0118b7fe0d56af990c73a0331c13a43a10801c53e40aed`.
+
+**F. Staging-Smoke-Test:** alle Punkte in Abschnitt 5 bestanden.
+
+**G. Production:** unverändert. `centric-dp-web` Id `ccad65996cb2…`, Start
+`2026-09-15T02:06:02Z`, 0 Neustarts, healthy, `/gesund` 200, Bild `sha256:0861adee…`.
+Keine Änderung an Caddy oder DNS.
+
+**H. Offene Risiken und Hinweise:**
+- Production läuft auf einem älteren Stand als `main` und den Kandidaten. Der Schritt dorthin
+  braucht eine eigene Entscheidung, inklusive der Ausrollregel aus BEREITSTELLUNG.md 5.7:
+  Konto-Arbeitssitzungen werden ungültig.
+- Die Sicherung `centric-sicherung-20261010T223537Z` enthält die (inzwischen gelöschten)
+  pseudonymen PPG-Testbetriebe. Neu auf Staging sind außerdem
+  `centric-sicherung-20261010T220439Z` und `compose.yml.vor-ppg-20261010T220525Z`.
+- Nicht behoben, weil ohne Eingabefelder und ohne Auswirkung: `RechtFenster` und
+  `Konfliktfenster` haben dasselbe Abhängigkeitsmuster wie früher `Sheet`.
+- Lokal unter Windows scheitern fünf plattformgebundene Prüfungen; maßgeblich ist CI unter Linux.
+
+---
+
+## 7. Urteil
+
+**PRE-PRODUCTION GATE BESTANDEN**
