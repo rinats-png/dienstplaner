@@ -1,6 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
-import { bremse, kennung, herkunftErlaubt, zuVielAntwort } from "../lib/schutz.mjs";
+import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 
 /* ==========================================================================
@@ -27,6 +27,81 @@ const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 const antwort = (d, status = 200) => new Response(JSON.stringify(d),
   { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
+/* Der Rumpf: kaputtes JSON ist ein Fehler des Aufrufers (400), kein
+   Serverfehler. Achthundert Termine passen bequem in ein Megabyte. */
+const RUMPF_MAX = 1024 * 1024;
+
+async function rumpfLesen(req) {
+  if (Number(req.headers.get("content-length") || 0) > RUMPF_MAX)
+    return { antwort: antwort({ fehler: "Anfrage zu groß." }, 413) };
+  let text;
+  try { text = await req.text(); } catch { text = ""; }
+  if (text.length > RUMPF_MAX) return { antwort: antwort({ fehler: "Anfrage zu groß." }, 413) };
+  try {
+    const daten = JSON.parse(text || "{}");
+    if (!daten || typeof daten !== "object" || Array.isArray(daten))
+      return { antwort: antwort({ fehler: "Der Rumpf muss ein JSON-Objekt sein." }, 400) };
+    return { daten };
+  } catch {
+    return { antwort: antwort({ fehler: "Der Rumpf ist kein gültiges JSON." }, 400) };
+  }
+}
+
+/* ---------------------------- Termine prüfen ------------------------------
+
+   Bisher speicherte /kalender/daten jede Liste, die ein Array war. Ein
+   Termin ohne Uhrzeit oder mit kaputtem Datum fiel erst beim Abruf des
+   Feeds auf — als 500, den der Kalender des Beschäftigten stumm schluckte.
+   Und was in eine ICS-Zeile wandert (Kennung, Datum, Uhrzeit), ging
+   ungeprüft hinein: Ein Zeilenumbruch darin hätte eigene Zeilen in den
+   Feed geschrieben.
+
+   Geprüft wird genau die Form, die die Anwendung baut (kalenderTermine in
+   App.jsx): ein ganztägiger Termin mit datum und bis, oder ein Dienst mit
+   datum/von und endDatum/bisZeit; endDatum ist derselbe Tag oder bei
+   Nachtdiensten der nächste. „24:00" ist als Dienstende erlaubt. */
+
+const DATUM = /^\d{4}-\d{2}-\d{2}$/;
+const ZEIT = /^([01]\d|2[0-3]):[0-5]\d$/;
+const KENNUNG = /^[A-Za-z0-9_.:-]{1,120}$/;
+const TEXT_MAX = 200;
+
+/* Rundreise über Date: „2026-02-30" wird zum 2. März und fällt durch;
+   „2026-13-01" ist gar kein Datum (getTime NaN) und darf nicht werfen. */
+const datumGueltig = (s) => {
+  if (typeof s !== "string" || !DATUM.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+};
+const naechsterTag = (s) => {
+  const d = new Date(`${s}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+const textGueltig = (s, pflicht) => (s === undefined || s === null || s === "")
+  ? !pflicht : typeof s === "string" && s.length <= TEXT_MAX;
+
+/** Warum ein Termin nicht passt (Feldname) — oder null. */
+export function terminFehler(t) {
+  if (!t || typeof t !== "object" || Array.isArray(t)) return "termin";
+  if (typeof t.id !== "string" || !KENNUNG.test(t.id)) return "id";
+  if (!datumGueltig(t.datum)) return "datum";
+  if (!textGueltig(t.titel, true)) return "titel";
+  if (!textGueltig(t.text, false)) return "text";
+  if (!textGueltig(t.ort, false)) return "ort";
+  if (t.ganztags === true) {
+    if (!datumGueltig(t.bis) || t.bis <= t.datum) return "bis";
+    return null;
+  }
+  if (t.ganztags !== undefined && t.ganztags !== false) return "ganztags";
+  if (typeof t.von !== "string" || !ZEIT.test(t.von)) return "von";
+  if (!datumGueltig(t.endDatum) || (t.endDatum !== t.datum && t.endDatum !== naechsterTag(t.datum)))
+    return "endDatum";
+  if (typeof t.bisZeit !== "string" || !(ZEIT.test(t.bisZeit) || t.bisZeit === "24:00")) return "bisZeit";
+  if (t.endDatum === t.datum && t.bisZeit <= t.von) return "bisZeit";
+  return null;
+}
+
 
 /* ------------------------------ ICS bauen -------------------------------- */
 
@@ -47,9 +122,11 @@ const zeile = (s) => {
   return teile[0] + teile.slice(1).map((t) => `\r\n ${t}`).join("");
 };
 
+/* Auch ein einzelnes \r ist für manche Kalender ein Zeilenende — es wird
+   wie \n zu einem maskierten Umbruch, statt eine neue Zeile zu beginnen. */
 const esc = (s) => String(s || "")
   .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,")
-  .replace(/\n/g, "\\n");
+  .replace(/\r\n|\r|\n/g, "\\n");
 
 const stempel = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
@@ -82,7 +159,9 @@ function baueICS(name, betrieb, termine) {
       z.push(`DTEND;VALUE=DATE:${t.bis.replace(/-/g, "")}`);
     } else {
       z.push(`DTSTART;TZID=Europe/Berlin:${lokal(t.datum, t.von)}`);
-      z.push(`DTEND;TZID=Europe/Berlin:${lokal(t.endDatum, t.bisZeit)}`);
+      /* „24:00" kennt ICS nicht (Stunden 0–23): Mitternacht des Folgetags. */
+      z.push(`DTEND;TZID=Europe/Berlin:${t.bisZeit === "24:00"
+        ? lokal(naechsterTag(t.endDatum), "00:00") : lokal(t.endDatum, t.bisZeit)}`);
     }
     z.push(zeile(`SUMMARY:${esc(t.titel)}`));
     if (t.text) z.push(zeile(`DESCRIPTION:${esc(t.text)}`));
@@ -119,7 +198,12 @@ export default async (req) => {
       const daten = await store().get(`feeddaten:${hash(geheim)}`, { type: "json" });
       if (!daten) return new Response("Noch keine Daten", { status: 404 });
 
-      const ics = baueICS(daten.name, daten.betrieb, daten.termine || []);
+      /* Was vor der Prüfung in /kalender/daten gespeichert wurde, kann
+         ungültige Termine enthalten. Sie fehlen im Feed, statt ihn ganz
+         scheitern zu lassen; beim nächsten Abgleich ersetzt die Anwendung
+         die Liste ohnehin. */
+      const termine = Array.isArray(daten.termine) ? daten.termine.filter((t) => !terminFehler(t)) : [];
+      const ics = baueICS(daten.name, daten.betrieb, termine);
       return new Response(ics, { status: 200, headers: {
         "content-type": "text/calendar; charset=utf-8",
         "content-disposition": `inline; filename="dienstplan.ics"`,
@@ -141,7 +225,9 @@ export default async (req) => {
 
     /* Feed einrichten oder erneuern */
     if (pfad === "einrichten" && req.method === "POST") {
-      const { personId, alt } = await req.json();
+      const r = await rumpfLesen(req);
+      if (r.antwort) return r.antwort;
+      const { personId, alt } = r.daten;
       if (!personId) return antwort({ fehler: "Keine Person." }, 400);
       /* Ein bestehendes Geheimnis wird ungültig — so lässt sich ein Verweis
          zurückziehen, der versehentlich weitergegeben wurde. */
@@ -161,13 +247,21 @@ export default async (req) => {
 
     /* Termine hinterlegen — die Anwendung rechnet, der Server speichert nur */
     if (pfad === "daten" && req.method === "POST") {
-      const { geheim, name, betrieb, termine } = await req.json();
-      if (!geheim || !Array.isArray(termine))
+      const r = await rumpfLesen(req);
+      if (r.antwort) return r.antwort;
+      const { geheim, name, betrieb, termine } = r.daten;
+      if (typeof geheim !== "string" || !geheim || !Array.isArray(termine))
         return antwort({ fehler: "Unvollständig." }, 400);
       const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });
       if (!eintrag || eintrag.bestand !== s.bestand)
         return antwort({ fehler: "Unbekannter Verweis." }, 404);
       if (termine.length > 800) return antwort({ fehler: "Zu viele Termine." }, 400);
+      if (!textGueltig(name, false) || !textGueltig(betrieb, false))
+        return antwort({ fehler: "Name oder Betrieb ungültig." }, 400);
+      for (let i = 0; i < termine.length; i++) {
+        const feld = terminFehler(termine[i]);
+        if (feld) return antwort({ fehler: "Ungültiger Termin.", termin: i, feld }, 400);
+      }
       await store().setJSON(`feeddaten:${hash(geheim)}`,
         { name, betrieb, termine, stand: new Date().toISOString() });
       return antwort({ ok: true, termine: termine.length });
@@ -175,7 +269,9 @@ export default async (req) => {
 
     /* Feed abschalten */
     if (pfad === "loeschen" && req.method === "POST") {
-      const { geheim } = await req.json();
+      const r = await rumpfLesen(req);
+      if (r.antwort) return r.antwort;
+      const { geheim } = r.daten;
       if (geheim) {
         /* Prüfen, ob der Verweis zum eigenen Betrieb gehört — wie es
            „daten" weiter oben bereits richtig macht. */
@@ -190,7 +286,13 @@ export default async (req) => {
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   } catch (e) {
-    return antwort({ fehler: "Serverfehler" }, 500);
+    /* Nach außen nur, dass es schiefging; die Ursache ins Protokoll wie in
+       daten.mjs. Bisher verschwand sie spurlos. Der Pfad des Feeds trägt das
+       Geheimnis — protokolliert wird nur „feed". */
+    const ort = pfad.startsWith("feed/") ? "kalender/feed" : `kalender/${pfad.slice(0, 40)}`;
+    await protokoll("fehler", kennung(req, null), ort, String(e && e.message || e).slice(0, 200));
+    return antwort({ fehler: "Serverfehler",
+      text: "Das hat nicht geklappt. Versuch es noch einmal." }, 500);
   }
 };
 

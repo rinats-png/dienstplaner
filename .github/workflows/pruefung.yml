@@ -231,6 +231,11 @@ jobs:
       - name: Aufräumen von Sitzungen und Bremszählern
         run: npm run pruefung:sitzungsaufraeumen
 
+      # Kalender-Feed: Termine werden beim Speichern geprüft, ein Fehler im
+      # Handler landet im Protokoll statt spurlos als 500.
+      - name: Kalender-Feed
+        run: npm run pruefung:kalender
+
       # Bisher nur lokal gelaufen, obwohl in package.json angelegt. Ab jetzt
       # Teil des Gates: Wer sie nicht erfüllt, liefert nicht aus.
       - name: Tarifwerke
