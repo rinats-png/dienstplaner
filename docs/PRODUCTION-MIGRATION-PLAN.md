@@ -61,22 +61,24 @@ nennt dieser Plan jedes Image ausschließlich per **Digest**.
 
 | | |
 |---|---|
-| `main` | `e676b8ebaf74df294bc36a061b079a3a6a8484b7` (Fast-Forward von `223dd385`, CI grün: Prüfung `38093723503`, Sicherheit `38093723552`) |
+| `main` | `64d08a4957c5374e1f04c17be2b75162c07573d2`: Fast-Forward über `e676b8e` (Pre-Production-Gate) und `64d08a4` (Schalter der Selbstregistrierung, Vorgabe aus) |
 | Auf Staging geprüftes Image | `ghcr.io/rinats-png/dienstplaner:9c3130e507cbc6729313c7c7548bd6466d735bf7@sha256:a3ed1f09b585e25c3a0118b7fe0d56af990c73a0331c13a43a10801c53e40aed` |
-| Image vom `main`-Commit | **wird nach dem Build eingetragen** (Tag `e676b8e…`, Index-, amd64- und Config-Digest) |
-| Inhaltliche Gleichheit | `9c3130e` → `e676b8e` ändert nur `docs/PRE-PRODUCTION-GATE.md`; `docs/` gelangt nicht ins Laufzeit-Image (Dockerfile kopiert nur `dist`, `server`, `server.mjs`, `package.json`, das Sicherungswerkzeug) |
+| Image vom `main`-Commit | **wird nach dem Build eingetragen** (Tag `64d08a4…`, Index-, amd64- und Config-Digest) |
+| Inhaltliche Unterschiede zu 9c3130e | `e676b8e` ändert nur Doku. `64d08a4` ändert im Laufzeit-Image genau `server/funktionen/registrierung.mjs`: Die drei Registrierungspfade antworten ohne Schalter mit 404, bevor irgendetwas geschieht. Alles andere ist Doku, Tests und CI und gelangt nicht ins Image (Dockerfile kopiert nur `dist`, `server`, `server.mjs`, `package.json`, das Sicherungswerkzeug) |
 
-**Deploy-Ziel:** das `main`-Image, sobald es gebaut und auf Staging kurz bestätigt ist (siehe
-Abschluss). Ersatzweise das bereits vollständig geprüfte `9c3130e@sha256:a3ed1f09…`.
+**Deploy-Ziel:** das `main`-Image (`64d08a4`), sobald es gebaut und auf Staging kurz bestätigt
+ist. Der Kurzcheck dort umfasst ausdrücklich, dass `/api/registrierung` ohne Schalter 404
+liefert und keine Datei anlegt. `9c3130e` ist **kein** Ersatz mehr, weil die Registrierung dort
+noch offen ist.
 
 ## C. Unterschiede Production → Release Candidate
 
-`1a56988..e676b8e`: 45 Commits, 66 Dateien (15 feat, 9 fix, 7 ci, 6 test, 5 docs, 1 refactor,
-1 chore, 1 build).
+`1a56988..64d08a4`: 46 Commits (15 feat, 10 fix, 7 ci, 6 test, 5 docs, 1 refactor, 1 chore,
+1 build).
 
 | Bereich | Inhalt |
 |---|---|
-| Persönliche Accounts | Speicher, Registrierung (öffentlich), E-Mail-Verifizierung, Passwort setzen, Account-Anmeldung, Betriebsauswahl, Mitgliedschaften mit Generation |
+| Persönliche Accounts | Speicher, Registrierung (öffentlich erreichbar, **standardmäßig aus**), E-Mail-Verifizierung, Passwort setzen, Account-Anmeldung, Betriebsauswahl, Mitgliedschaften mit Generation |
 | Sitzungen (Phase A.1) | Arbeitssitzung an Account-Sitzung gebunden, ein Prüfpunkt für alle Pfade (F3), Aktivität getrennt von der Autorität (R1/F4), Abmelden räumt auf (F1), täglicher Aufräumlauf (F2) |
 | Sicherung | `werkzeug/ablage-sicherung.mjs` im Image (sichern/prüfen/wiederherstellen) |
 | Kalender | Termine werden geprüft, Fehler protokolliert, ICS-Zeileninjektion geschlossen |
@@ -100,10 +102,17 @@ danach entfernt):
 3. Sicherung mit dem RC-Image bei nur lesend gemounteten Daten: „In Ordnung“.
 4. Zurück auf `0861adee`: Alles gilt weiter, auch eine im RC angelegte Code-Sitzung.
 
-**Neu öffentlich erreichbar:** `/api/registrierung*` und `/api/account/*`. Die Oberfläche nutzt
-sie noch nicht. Ohne `RESEND_API_KEY` geht keine Mail hinaus (Trockenlauf). Eine Registrierung
-lässt sich deshalb nicht abschließen, erzeugt aber einen eingeladenen Account-Datensatz; das ist
-durch die Bremse begrenzt. Siehe Risiken.
+**Neu öffentlich erreichbar:**
+
+| Pfad | Verhalten in Production nach dem Deploy |
+|---|---|
+| `POST /api/registrierung`, `…/verifizieren`, `…/passwort` | **aus**: `CENTRIC_PUBLIC_REGISTRATION` steht nicht in der Production-`.env`. Antwort 404 `nicht-verfuegbar`, keine Datei, kein Token, keine Mail (BEREITSTELLUNG 5.8) |
+| `POST /api/account/anmelden` | erreichbar, braucht ein bestehendes Konto mit Passwort. Production hat keine Konten; jeder Versuch ergibt 401 und wird gebremst |
+| `GET /api/account/sitzung`, `GET …/mitgliedschaften`, `POST …/betrieb`, `POST …/abmelden` | erreichbar, brauchen eine gültige Account-Sitzung; ohne sie 401 |
+
+Die Oberfläche nutzt keinen dieser Pfade. **Nicht** in die Production-`.env` aufnehmen:
+`CENTRIC_PUBLIC_REGISTRATION`. Die Aktivierung ist ein eigener späterer Schritt mit den
+Voraussetzungen aus BEREITSTELLUNG 5.8.
 
 ## D. Backup vor dem Deploy
 
@@ -238,6 +247,12 @@ keine Ports, gleicher Mount. Nur Image und Id sind neu.
 - `docker logs centric-dp-web`: Startzeilen, keine Fehler; nach 1 min
   `Löschlauf: … 0 Fehler`.
 - `aufraeumen:letzter` → `sitzungen.fehler = 0`, `abgebrochen = false`.
+- **Registrierung aus:**
+  - `grep -c CENTRIC_PUBLIC_REGISTRATION .env` ergibt 0.
+  - `POST /api/registrierung` (im Container per `docker exec` und von außen über Caddy) ergibt
+    404 `nicht-verfuegbar`.
+  - Die Anzahl der Dateien unter `data/` ist vorher und nachher gleich.
+  - Ein anderes Ergebnis ist ein Rollback-Kriterium (U).
 
 ## O. Login/Logout-Smoke
 
@@ -302,6 +317,8 @@ E4 noch einmal mit dem RC-Image und dem laufenden Container: `sichern` und `prue
 - **Auth:** Eine Anmeldung, die gelingen muss, scheitert. Oder etwas, das scheitern muss, gelingt
   (F1/F3 verletzt, falsches 200). → **sofort**
 - **Tenant:** irgendein Zugriff auf B aus A. → **sofort**
+- **Registrierung offen:** `/api/registrierung` liefert etwas anderes als 404
+  `nicht-verfuegbar`, oder es entsteht ein eingeladener Account. → **sofort**
 - **Daten:** vorhandene Codes melden nicht mehr an, Verwalter ungültig, Abdruck vorher/nachher
   weicht außerhalb des Erwarteten ab, `pruefen` meldet nicht „In Ordnung“. → **sofort**
 - Aufräumlauf mit Fehlern oder Löschungen gültiger Einträge.
@@ -339,8 +356,9 @@ Danach Health (N) und die Anmeldung mit einem Smoke-Code prüfen; Image-Digest =
 | T+24 h | Zweiter Aufräumlauf fehlerfrei; Anzahl `konto:`/`verwalter:` unverändert; Sitzungsdateien nicht unbegrenzt gewachsen |
 | T+7 d | Rückblick; die Rohkopie `data.vor-rc-*` bleibt trotzdem stehen |
 
-Zusätzlich beobachten: ob über `/api/registrierung` eingeladene Accounts entstehen (siehe
-Risiken).
+Zusätzlich beobachten: Es dürfen keine `account:`-Schlüssel entstehen, außer denen des
+Smoke-Tests, die wieder entfernt werden. Ein neuer eingeladener Account hieße, dass die
+Registrierung offen ist; dann sofort prüfen (U).
 
 ## X. Entscheidungspunkt GO / ROLLBACK
 
@@ -357,10 +375,12 @@ Jede Entscheidung trifft der Betreiber und protokolliert sie mit Uhrzeit.
 
 ## Offene Risiken
 
-1. **Neue öffentliche Account-Endpunkte ohne Mailversand:** Registrierungen lassen sich nicht
-   abschließen, legen aber eingeladene Datensätze an (begrenzt durch die Bremse, ohne
-   automatisches Aufräumen). Vor dem Deploy entscheiden: so akzeptieren, `RESEND_API_KEY`
-   setzen oder die Endpunkte in einem eigenen Schritt per Schalter abschalten.
+1. **Öffentliche Selbstregistrierung — erledigt durch Schalter (`64d08a4`).** Entschieden:
+   in Production vorerst aus. Der Schalter `CENTRIC_PUBLIC_REGISTRATION` ist standardmäßig
+   aus; ohne ihn entsteht keine Datei, kein Token, keine Mail. Restrisiko: Jemand setzt den
+   Schalter versehentlich. Er wirkt nur bei genau `true` und wird in N geprüft. Die
+   Account-Anmeldung (`/api/account/anmelden`) bleibt erreichbar, ist ohne Konten aber
+   wirkungslos und gebremst.
 2. **`latest` verschiebt sich mit dem `main`-Build.** Abgefangen durch die Digest-Pins in F und
    M. Bis zum Deploy darf in `/opt/apps/centric-dienstplanung` kein `pull` laufen.
 3. **Production hat bisher keine Sicherung**, und das alte Image kann keine erstellen. Die erste
