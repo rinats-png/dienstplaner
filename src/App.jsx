@@ -5228,6 +5228,14 @@ const blattStapel = [];
 function Sheet({ open, onClose, titel, children, width = 700 }) {
   const blatt = useRef(null);
   const vorher = useRef(null);
+  /* onClose steht in einer Ref, nicht in den Abhängigkeiten des Effekts.
+     Aufrufer reichen es fast immer als Pfeilfunktion herein — bei jedem
+     Rendern eine neue. Hing der Effekt daran, lief er bei jedem Tastendruck
+     in einem Feld des Blatts neu: Aufräumen gab den Fokus zurück, der neue
+     Lauf setzte ihn auf das erste Element — „Fertig". Wer „Ömer" tippte,
+     bekam „Ö". */
+  const schliessen = useRef(onClose);
+  schliessen.current = onClose;
 
   /* Fokus führen.
 
@@ -5265,12 +5273,12 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
       if (blattStapel[blattStapel.length - 1] !== kennung) return;
       if (knoten.contains(document.activeElement)) return;   // erledigt der Griff unten
       e.stopPropagation();
-      onClose();
+      schliessen.current();
     };
     document.addEventListener("keydown", escAmDokument);
 
     const taste = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key === "Escape") { e.stopPropagation(); schliessen.current(); return; }
       if (e.key !== "Tab") return;
       const liste = fokussierbar();
       if (!liste.length) return;
@@ -5289,7 +5297,7 @@ function Sheet({ open, onClose, titel, children, width = 700 }) {
       const z = vorher.current;
       if (z && typeof z.focus === "function" && document.contains(z)) z.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (<div className="sheet-back" onClick={onClose}>
