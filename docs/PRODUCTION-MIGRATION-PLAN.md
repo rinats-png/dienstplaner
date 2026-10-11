@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Stand | 2026-10-10 |
+| Stand | 2026-10-11 (Deploy-Image festgelegt, finaler Staging-Check bestanden) |
 | Status | **Plan. Nicht ausgeführt.** Production ist unverändert. Ausführung nur nach ausdrücklichem GO des Betreibers. |
 | Grundlage | [PHASE-A1-STAGING-REPORT.md](PHASE-A1-STAGING-REPORT.md), [PRE-PRODUCTION-GATE.md](PRE-PRODUCTION-GATE.md), BEREITSTELLUNG.md 5.4/5.7 |
 
@@ -63,13 +63,41 @@ nennt dieser Plan jedes Image ausschließlich per **Digest**.
 |---|---|
 | `main` | `64d08a4957c5374e1f04c17be2b75162c07573d2`: Fast-Forward über `e676b8e` (Pre-Production-Gate) und `64d08a4` (Schalter der Selbstregistrierung, Vorgabe aus) |
 | Auf Staging geprüftes Image | `ghcr.io/rinats-png/dienstplaner:9c3130e507cbc6729313c7c7548bd6466d735bf7@sha256:a3ed1f09b585e25c3a0118b7fe0d56af990c73a0331c13a43a10801c53e40aed` |
-| Image vom `main`-Commit | **wird nach dem Build eingetragen** (Tag `64d08a4…`, Index-, amd64- und Config-Digest) |
+| **Deploy-Image (final)** | `ghcr.io/rinats-png/dienstplaner:64d08a4957c5374e1f04c17be2b75162c07573d2@sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79` |
+| Index-Digest | `sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79` |
+| amd64-Manifest | `sha256:dd1fd37b432f99b2224b50e51832a494e48780ea6e179b7ca91d8dd41dc295f0` |
+| Config-Digest | `sha256:ad3737a645d31d81dca82e5162dd621ae31bac061dc5f2076f9cbf03f0d381ba` (erstellt `2026-10-11T00:36:35Z`, `USER node`, `CMD ["node","server.mjs"]`, `WORKDIR /app`) |
+| Build-Run | Auslieferung `38098836621` (workflow_dispatch auf `main`, `ausliefern=false`, Job `vps` übersprungen); Gate im selben Lauf grün. CI auf `main`: Prüfung `38096522588`, Sicherheit `38096522576` |
+| Herkunft belegt | SLSA-Provenance des Images: `vcs:revision = 64d08a4957c5374e1f04c17be2b75162c07573d2`, `ref = refs/heads/main`, `inputs.ausliefern = false` |
+| `latest` in GHCR | zeigt seit diesem Build ebenfalls auf `f03a8514…`. Production nutzt lokal weiterhin `0861adee` (nicht gezogen) |
+| Laufzeit-Diff zu 9c3130e | Im Image unterscheiden sich 2 von 348 Dateien unter `/app`: `server/funktionen/registrierung.mjs` (die Sperre) und `package.json` (nur eine neue Skriptzeile für die Prüfung). `dist/`, `node_modules/`, `server.mjs` und das Sicherungswerkzeug sind byte-gleich, die Basis-Layer identisch. Keine unbeabsichtigten Änderungen |
 | Inhaltliche Unterschiede zu 9c3130e | `e676b8e` ändert nur Doku. `64d08a4` ändert im Laufzeit-Image genau `server/funktionen/registrierung.mjs`: Die drei Registrierungspfade antworten ohne Schalter mit 404, bevor irgendetwas geschieht. Alles andere ist Doku, Tests und CI und gelangt nicht ins Image (Dockerfile kopiert nur `dist`, `server`, `server.mjs`, `package.json`, das Sicherungswerkzeug) |
 
-**Deploy-Ziel:** das `main`-Image (`64d08a4`), sobald es gebaut und auf Staging kurz bestätigt
-ist. Der Kurzcheck dort umfasst ausdrücklich, dass `/api/registrierung` ohne Schalter 404
-liefert und keine Datei anlegt. `9c3130e` ist **kein** Ersatz mehr, weil die Registrierung dort
-noch offen ist.
+**Deploy-Ziel:** ausschließlich das Deploy-Image oben, per Digest. `9c3130e` ist **kein** Ersatz,
+weil die Registrierung dort noch offen ist.
+
+### B.1 Finaler Staging-Check des Deploy-Images (2026-10-11)
+
+**Umstellung:** Staging wurde von `9c3130e@sha256:a3ed1f09…` auf genau das Deploy-Image
+umgestellt.
+- Vorher: Sicherung `centric-sicherung-20261011T003920Z` („In Ordnung“) und
+  `compose.yml.vor-main-20261011T003921Z`.
+- Danach: Container `e6664b4861aa`, healthy nach 8 s, `/gesund` 200, Logs ohne Fehler,
+  Aufräumlauf 0 Fehler.
+- Netz `proxy`, Benutzer `1000:1000`, read-only, `cap_drop ALL`, keine Ports, Mount unverändert.
+
+Grundlage der Prüfungen waren eigene, pseudonyme Testbetriebe. Sie wurden danach wieder
+entfernt; der Hauptspeicher ist bis auf den Vermerk des Aufräumlaufs gleich wie vorher.
+
+| Bereich | Ergebnis |
+|---|---|
+| A Registrierung aus | Schalter weder in `.env` noch im Container gesetzt. `POST /api/registrierung`, `…/verifizieren`, `…/passwort` (je 5×, auch ohne Origin): 404 `nicht-verfuegbar`, generisch. Abdruck aller 466 Dateien unverändert: keine Datei, kein Konto, kein Token, kein Zählerstand, kein Protokolleintrag. Containerlog unverändert. Kein Mailversand (kein Schlüssel, kein Versuch) |
+| B Account-/Legacy-Pfade | Zugangscode-Login 200; weiterer Legacy-Zugang 200; `/api/account/anmelden` ohne bestehendes Konto 401; mit bestehendem Konto 200 |
+| C Kernfunktionen | Login/Logout (Logout → 401); Person hinzufügen (vollständiger Vor- und Nachname mit Umlauten, Tab-Navigation, Speichern, Fokus zurück, nach Reload in der Liste, serverseitig byte-genau, nur in A); Monatsplan (mit Diensten), Jahresansicht, Personal, Qualifikationen, Anträge, Tauschbörse, Leistungsnachweis, Abrechnungsdaten ohne Fehlerseite und Konsolenfehler; Zeiterfassung (Stempeln, Erfassung sichtbar, Vollausgabe für Mitarbeiter 403); Kalender gültig (ICS, Nachtdienst, ganztägig, 24:00), ungültig (8 Fälle → 400 mit Feld), Manipulation maskiert, Fehlerlogging ohne Geheimnis; Mobilansicht 390 px ohne Überlauf |
+| D Security | Mandantentrennung (B öffnen 403, Lesen bleibt in A, Zugänge/Raum-Löschen für B 403, Export ohne B, fremder Kalender-Verweis 404, B bit-gleich); F1, F3, R1, F4 grün |
+| E Backup | `centric-sicherung-20261011T004504Z` mit dem Deploy-Image: „In Ordnung: 505 Dateien“ |
+
+Ein 36-Minuten-Test war nicht nötig, weil die Sitzungslogik seit Phase A.1 unverändert ist.
 
 ## C. Unterschiede Production → Release Candidate
 
@@ -123,7 +151,7 @@ Im Wartungsfenster, **Container kurz gestoppt**, damit die Kopie konsistent ist 
 cd /opt/apps/centric-dienstplanung && [ "$(pwd -P)" = /opt/apps/centric-dienstplanung ] || exit 9
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 ALT=ghcr.io/rinats-png/dienstplaner@sha256:0861adee32ca593cee96fc80355db170cf3ef6e695a28489f4876240237410f1
-RC=<RC-Image per Digest, siehe B>
+RC=ghcr.io/rinats-png/dienstplaner:64d08a4957c5374e1f04c17be2b75162c07573d2@sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79
 
 # 1. Zustand festhalten
 docker inspect centric-dp-web > inspect.vor-rc-$TS.json
@@ -227,7 +255,7 @@ Regel trifft daher niemanden, gilt aber für jeden späteren Deploy in gleicher 
 ```sh
 cd /opt/apps/centric-dienstplanung && [ "$(pwd -P)" = /opt/apps/centric-dienstplanung ] || exit 9
 # Image per Digest festnageln (Tag@Digest); damit spielt `latest` keine Rolle mehr
-RC_TAG='<commit-sha>@sha256:<index-digest>'                 # aus B
+RC_TAG='64d08a4957c5374e1f04c17be2b75162c07573d2@sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79'   # Deploy-Image aus B
 grep -q '^IMAGE_TAG=latest$' .env || { echo "STOPP: .env unerwartet"; exit 9; }
 sed -i "s#^IMAGE_TAG=latest\$#IMAGE_TAG=$RC_TAG#" .env
 grep '^IMAGE_TAG=' .env
@@ -381,8 +409,12 @@ Jede Entscheidung trifft der Betreiber und protokolliert sie mit Uhrzeit.
    Schalter versehentlich. Er wirkt nur bei genau `true` und wird in N geprüft. Die
    Account-Anmeldung (`/api/account/anmelden`) bleibt erreichbar, ist ohne Konten aber
    wirkungslos und gebremst.
-2. **`latest` verschiebt sich mit dem `main`-Build.** Abgefangen durch die Digest-Pins in F und
-   M. Bis zum Deploy darf in `/opt/apps/centric-dienstplanung` kein `pull` laufen.
+2. **`latest` ist bereits verschoben:** In GHCR zeigt es seit 2026-10-11 00:36Z auf
+   `f03a8514…`. Production läuft weiter auf dem lokalen `0861adee`.
+   - Ein `docker compose pull` oder ein `up` mit Pull in `/opt/apps/centric-dienstplanung`
+     würde unkontrolliert den RC ausrollen, ohne Backup. **Bis zum Deploy dort nichts ziehen.**
+   - Abgefangen wird das durch die Digest-Pins in F, M und V und durch den lokalen Anker-Tag
+     `prod-vor-rc-1a56988` in D.
 3. **Production hat bisher keine Sicherung**, und das alte Image kann keine erstellen. Die erste
    Sicherung entsteht in E4 mit dem RC-Werkzeug; geprobt in der Generalprobe.
 4. **Generalprobe mit synthetischen Daten:** Die echten 9 Codes und 2 Verwalter wurden nicht
