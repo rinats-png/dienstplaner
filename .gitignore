@@ -11,3 +11,4 @@ daten-dev
 
 # Abnahmebilder des Design-Befehls (lokal, groß)
 design/abnahme
+__pycache__
