@@ -2,7 +2,7 @@
 
 **Stand:** 11.10.2026 · **Maßgebliche Fachspezifikation:** [`CENTRIC-Intelligence-Spezifikation-1-0.docx`](CENTRIC-Intelligence-Spezifikation-1-0.docx) (Stand 01.10.2026). Dieses Dokument hält fest, was seitdem entschieden wurde, und hat bei Widerspruch Vorrang.
 **Status:** Planung. Es gibt keinen Intelligence-Code. Umsetzung erst ab dem Zeitpunkt in Abschnitt 6.
-**Gesamtdokument:** [`CENTRIC-INTELLIGENCE.md`](CENTRIC-INTELLIGENCE.md) (15.10.2026) fasst alles zusammen und hat Vorrang. Neu dort: Modell je Funktion (E-6, Haiku 5.5 als Standard, Sonnet 5.5 nach Testsatz) und fünf Ebenen Kostenschutz (E-7).
+**Gesamtdokument:** [`CENTRIC-INTELLIGENCE.md`](CENTRIC-INTELLIGENCE.md) (15.10.2026) fasst alles zusammen und hat Vorrang. Neu dort: Stufenkette Haiku 5.5 → Sonnet 5.5 → Opus 5.5 mit selbstständigem Wechsel (E-6), fünf Ebenen Kostenschutz (E-7) und die Leitregel „Qualität vor Tokenersparnis“ (E-8).
 
 ---
 
@@ -13,7 +13,7 @@
 - Recht, Ruhezeiten, Qualifikationen, Besetzung, Rollen, Tarife, Kosten: Das berechnet ausschließlich der deterministische Rechenkern von CENTRIC.
 - Das Sprachmodell bekommt nur ein Faktenpaket des Rechenkerns (Decision Engine), nie den Rohdatenbestand. Jede Zahl in einer Antwort muss aus dem Faktenpaket stammen, sonst verwirft der Prüfer die Antwort.
 - Kein Vorschlag wird ohne Bestätigung eines berechtigten Menschen wirksam. Jeder übernommene Vorschlag läuft erneut durch die Prüfung.
-- Modell: **Claude Sonnet 5.5**, kein schwächeres Modell aus Kostengründen. Bei Abkündigung wechselt CENTRIC auf ein vergleichbares Modell (Spezifikation D-02).
+- Modell: Stufenkette **Haiku 5.5 → Sonnet 5.5 → Opus 5.5** mit selbstständigem Wechsel nach oben (E-6, 15.10.2026; ersetzt Spezifikation D-02). Kein Wechsel auf ein schwächeres Modell aus Kostengründen. Bei Abkündigung wechselt CENTRIC auf ein vergleichbares Modell.
 
 ## 2. Entscheidungen vom 11.10.2026
 
@@ -44,7 +44,7 @@ Standardmäßig an ist nur zulässig, wenn diese vier Dinge vorher stehen:
 
 ```
 Upload (Quarantäne, Typ, Größe, Schadsoftware)
-→ Lesen: Excel/CSV deterministisch (Parser) · PDF/Foto: Sonnet 5.5 (Vision)
+→ Lesen: Excel/CSV deterministisch (Parser) · PDF/Foto: Modell per Stufenkette (Vision)
 → Erkennen (KI): Personen, Datum, Dienstkürzel („F“, „N2“, „Sp“), Uhrzeiten, wiederkehrendes Muster
 → Zuordnen (KI schlägt vor, Mensch bestätigt):
      Dienstkürzel → Dienstarten in CENTRIC
@@ -121,7 +121,7 @@ F13 (Optimierer) bleibt ein eigenes spätes Projekt mit gesonderter Prüfung nac
 |---|---|---|
 | 0 | jetzt | Nichts bauen. In den Kundengesprächen fragen: Wie werden Altpläne heute übertragen, wie lange dauert das? Was kostet eine Krankmeldung am Abend an Zeit? Wäre ein Ersatzvorschlag mit Begründung ein Kaufgrund? |
 | 1 | nach P0 (Produktion, Rechtstexte, Überwachung, Sicherung) und **parallel zu den ersten Piloten** | Decision Engine als Faktenpaket (ohne Modell). „Warum nicht einplanbar?“ und Ersatzliste mit Regelbegründung deterministisch. Muster-Betriebsvereinbarung anwaltlich prüfen lassen. AVV mit Anthropic abschließen. |
-| 2 | wenn **mindestens 2 Piloten** CENTRIC wöchentlich nutzen **und** Altplan-Übernahme bzw. Ausfall als Schmerzpunkt bestätigt ist | Gateway mit Sonnet 5.5 für **Funktion A und B**, standardmäßig aktiv (mit den Voraussetzungen aus Abschnitt 2), als technischer Pilot mit 2–3 Betrieben. |
+| 2 | wenn **mindestens 2 Piloten** CENTRIC wöchentlich nutzen **und** Altplan-Übernahme bzw. Ausfall als Schmerzpunkt bestätigt ist | Gateway mit Stufenkette Haiku 5.5 → Sonnet 5.5 → Opus 5.5 für **Funktion A und B**, standardmäßig aktiv (mit den Voraussetzungen aus Abschnitt 2), als technischer Pilot mit 2–3 Betrieben. |
 | 3 | nach dem technischen Piloten | Commercial Beta mit 8–15 Betrieben, weitere Funktionen nach Abschnitt 5. Erst jetzt über Preis und Kontingent für Intelligence entscheiden (Spezifikation D-08, D-11, D-27). |
 
 **Begründung:** Funktion A ist ein Verkaufs- und Einführungshebel; der Altplan ist die größte Hürde beim Wechsel. Funktion B löst einen täglichen Schmerz. Beide werden aber erst mit echten Altplänen und echten Ausfällen gut. Diese gibt es erst mit Piloten.

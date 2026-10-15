@@ -104,8 +104,8 @@ Eigenes Kapitel: [`intelligence/INTELLIGENCE.md`](intelligence/INTELLIGENCE.md).
 - **Zeitpunkt:**
   - jetzt nur Gesprächsfragen
   - Phase 1 (Decision Engine ohne Modell, AVV mit Anthropic, Muster-BV prüfen) parallel zu den Piloten
-  - Phase 2 (A und B mit Modell je Funktion: Haiku 5.5 Standard, Sonnet 5.5 nach Testsatz), sobald mindestens 2 Piloten wöchentlich nutzen und der Schmerzpunkt bestätigt ist
-- **Gesamtdokument** mit Modellwechsel und Kostenschutz: [`intelligence/CENTRIC-INTELLIGENCE.md`](intelligence/CENTRIC-INTELLIGENCE.md)
+  - Phase 2 (A und B mit Stufenkette Haiku 5.5 → Sonnet 5.5 → Opus 5.5, Wechsel selbstständig nach oben), sobald mindestens 2 Piloten wöchentlich nutzen und der Schmerzpunkt bestätigt ist
+- **Gesamtdokument** mit Modellkette und Kostenschutz: [`intelligence/CENTRIC-INTELLIGENCE.md`](intelligence/CENTRIC-INTELLIGENCE.md)
 
 ## 5. Bewusst nicht
 
