@@ -2,6 +2,7 @@
 
 **Stand:** 11.10.2026 · **Maßgebliche Fachspezifikation:** [`CENTRIC-Intelligence-Spezifikation-1-0.docx`](CENTRIC-Intelligence-Spezifikation-1-0.docx) (Stand 01.10.2026). Dieses Dokument hält fest, was seitdem entschieden wurde, und hat bei Widerspruch Vorrang.
 **Status:** Planung. Es gibt keinen Intelligence-Code. Umsetzung erst ab dem Zeitpunkt in Abschnitt 6.
+**Gesamtdokument:** [`CENTRIC-INTELLIGENCE.md`](CENTRIC-INTELLIGENCE.md) (15.10.2026) fasst alles zusammen und hat Vorrang. Neu dort: Modell je Funktion (E-6, Haiku 5.5 als Standard, Sonnet 5.5 nach Testsatz) und fünf Ebenen Kostenschutz (E-7).
 
 ---
 

@@ -16,7 +16,9 @@ import hooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default [
-  { ignores: ["dist/**", "node_modules/**"] },
+  /* design/canvas: exportierte Artboards samt fremder Laufzeit (support.js) —
+     Vorlage für die Umsetzung, kein Quelltext der Anwendung. */
+  { ignores: ["dist/**", "node_modules/**", "design/canvas/**"] },
 
   /* --- Oberfläche --- */
   {

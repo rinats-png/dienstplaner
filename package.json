@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "design:ansehen": "node design/werkzeug/ansehen.mjs",
+    "design:website": "cd design/website/quelle && python3 bau_web.py && python3 bau_web_dunkel.py && rm -f web_liste.json",
     "pruefung:rechte": "node pruefungen/rechte.mjs",
     "pruefung:bremse": "node pruefungen/bremse.mjs",
     "pruefung:serverlauf": "node pruefungen/serverlauf.mjs rechte && node pruefungen/serverlauf.mjs sicherung && node pruefungen/serverlauf.mjs verwalter && node pruefungen/serverlauf.mjs demozugang && node pruefungen/serverlauf.mjs bremse",

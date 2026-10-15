@@ -1,0 +1,1542 @@
+{
+ "v": 3,
+ "attachments": {},
+ "boards": {
+  "Anmeldung.dc.html": {
+   "h": 1024,
+   "title": "Anmeldung",
+   "w": 1440,
+   "x": 0,
+   "y": 2808
+  },
+  "Dunkel-Anmeldung.dc.html": {
+   "h": 1024,
+   "title": "Anmeldung · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 7408
+  },
+  "Dunkel-Entscheiden.dc.html": {
+   "h": 1024,
+   "title": "Entscheiden · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 4600
+  },
+  "Dunkel-Main.dc.html": {
+   "h": 1024,
+   "title": "Heute · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 4600
+  },
+  "Dunkel-Mobil-Heute.dc.html": {
+   "h": 844,
+   "title": "Mobil – Heute · dunkel",
+   "w": 390,
+   "x": 1520,
+   "y": 7408
+  },
+  "Dunkel-Mobil-Plan.dc.html": {
+   "h": 844,
+   "title": "Mobil – Mein Plan · dunkel",
+   "w": 390,
+   "x": 1990,
+   "y": 7408
+  },
+  "Dunkel-Nachsehen.dc.html": {
+   "h": 1024,
+   "title": "Prüfung · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 6004
+  },
+  "Dunkel-Planen.dc.html": {
+   "h": 1024,
+   "title": "Planen · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 4600
+  },
+  "Dunkel-Team.dc.html": {
+   "h": 1024,
+   "title": "Team · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 6004
+  },
+  "Dunkel-Verwaltung.dc.html": {
+   "h": 1024,
+   "title": "Verwaltung · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 6004
+  },
+  "Entscheiden.dc.html": {
+   "h": 1024,
+   "title": "Entscheiden",
+   "w": 1440,
+   "x": 3040,
+   "y": 0
+  },
+  "Main.dc.html": {
+   "h": 1024,
+   "title": "Heute",
+   "w": 1440,
+   "x": 0,
+   "y": 0
+  },
+  "Mobil-Heute.dc.html": {
+   "h": 844,
+   "title": "Mobil – Heute",
+   "w": 390,
+   "x": 1520,
+   "y": 2808
+  },
+  "Mobil-Plan.dc.html": {
+   "h": 844,
+   "title": "Mobil – Mein Plan",
+   "w": 390,
+   "x": 1990,
+   "y": 2808
+  },
+  "Nachsehen.dc.html": {
+   "h": 1024,
+   "title": "Prüfung",
+   "w": 1440,
+   "x": 1520,
+   "y": 1404
+  },
+  "Planen.dc.html": {
+   "h": 1024,
+   "title": "Planen",
+   "w": 1440,
+   "x": 1520,
+   "y": 0
+  },
+  "Team.dc.html": {
+   "h": 1024,
+   "title": "Team",
+   "w": 1440,
+   "x": 0,
+   "y": 1404
+  },
+  "V3-ablauf.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Ablauf",
+   "w": 1440,
+   "x": 1520,
+   "y": 0
+  },
+  "V3-abrechnung.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Abrechnungsdaten",
+   "w": 1440,
+   "x": 10640,
+   "y": 5696
+  },
+  "V3-antraege.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Anträge",
+   "w": 1440,
+   "x": 3040,
+   "y": 2848
+  },
+  "V3-aushang.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Schwarzes Brett",
+   "w": 1440,
+   "x": 7600,
+   "y": 2848
+  },
+  "V3-belastbarkeit.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Belastbarkeit",
+   "w": 1440,
+   "x": 6080,
+   "y": 5696
+  },
+  "V3-belastung.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Belastung",
+   "w": 1440,
+   "x": 4560,
+   "y": 5696
+  },
+  "V3-bereitschaft.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Bereitschaft",
+   "w": 1440,
+   "x": 4560,
+   "y": 1424
+  },
+  "V3-betrieb.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Betrieb",
+   "w": 1440,
+   "x": 0,
+   "y": 7120
+  },
+  "V3-boerse.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Tauschbörse",
+   "w": 1440,
+   "x": 4560,
+   "y": 2848
+  },
+  "V3-buch.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Dienstbuch",
+   "w": 1440,
+   "x": 9120,
+   "y": 2848
+  },
+  "V3-datenschutz.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Datenschutz",
+   "w": 1440,
+   "x": 6080,
+   "y": 7120
+  },
+  "V3-dienste.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Dienstarten",
+   "w": 1440,
+   "x": 1520,
+   "y": 7120
+  },
+  "V3-einarbeitung.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Einarbeitung",
+   "w": 1440,
+   "x": 6080,
+   "y": 4272
+  },
+  "V3-einsatz.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Personaleinsatz",
+   "w": 1440,
+   "x": 1520,
+   "y": 1424
+  },
+  "V3-einstellungen.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Einstellungen",
+   "w": 1440,
+   "x": 3040,
+   "y": 7120
+  },
+  "V3-folge.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Schichtfolge",
+   "w": 1440,
+   "x": 9120,
+   "y": 1424
+  },
+  "V3-handbuch.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Handbuch",
+   "w": 1440,
+   "x": 3040,
+   "y": 0
+  },
+  "V3-hilfe.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Hilfe",
+   "w": 1440,
+   "x": 4560,
+   "y": 0
+  },
+  "V3-jahr.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Jahresansicht",
+   "w": 1440,
+   "x": 3040,
+   "y": 1424
+  },
+  "V3-kompetenzen.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Kompetenzen",
+   "w": 1440,
+   "x": 4560,
+   "y": 4272
+  },
+  "V3-lage.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Lagebild",
+   "w": 1440,
+   "x": 9120,
+   "y": 0
+  },
+  "V3-lenkzeiten.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Lenkzeiten",
+   "w": 1440,
+   "x": 3040,
+   "y": 5696
+  },
+  "V3-meine.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Meine Schichten",
+   "w": 1440,
+   "x": 7600,
+   "y": 0
+  },
+  "V3-mitnahme.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Datenmitnahme",
+   "w": 1440,
+   "x": 4560,
+   "y": 7120
+  },
+  "V3-mittel.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Betriebsmittel",
+   "w": 1440,
+   "x": 9120,
+   "y": 4272
+  },
+  "V3-nachweis.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Leistungsnachweis",
+   "w": 1440,
+   "x": 9120,
+   "y": 5696
+  },
+  "V3-nachweise.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Nachweise",
+   "w": 1440,
+   "x": 3040,
+   "y": 4272
+  },
+  "V3-notrufe.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Notrufe",
+   "w": 1371,
+   "x": 0,
+   "y": 2848
+  },
+  "V3-offene.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Offene Schichten",
+   "w": 1440,
+   "x": 1520,
+   "y": 2848
+  },
+  "V3-personal.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Personal",
+   "w": 1440,
+   "x": 0,
+   "y": 4272
+  },
+  "V3-plan.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Monatsplan",
+   "w": 1440,
+   "x": 0,
+   "y": 1424
+  },
+  "V3-planstand.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Planstand",
+   "w": 1440,
+   "x": 7600,
+   "y": 5696
+  },
+  "V3-pruef.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Prüfung",
+   "w": 1440,
+   "x": 0,
+   "y": 5696
+  },
+  "V3-quals.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Qualifikationen",
+   "w": 1440,
+   "x": 1520,
+   "y": 4272
+  },
+  "V3-rechtliches.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Rechtliches",
+   "w": 1440,
+   "x": 7600,
+   "y": 7120
+  },
+  "V3-selbstplan.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Selbstplanung",
+   "w": 1440,
+   "x": 6080,
+   "y": 1424
+  },
+  "V3-sonder.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Sondereinsätze",
+   "w": 1440,
+   "x": 7600,
+   "y": 1424
+  },
+  "V3-start.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Start",
+   "w": 1440,
+   "x": 0,
+   "y": 0
+  },
+  "V3-tel-anliegen.dc.html": {
+   "h": 844,
+   "page": "version3",
+   "title": "Telefon · Anliegen",
+   "w": 390,
+   "x": 940,
+   "y": 8544
+  },
+  "V3-tel-heute.dc.html": {
+   "h": 844,
+   "page": "version3",
+   "title": "Telefon · Heute",
+   "w": 390,
+   "x": 0,
+   "y": 8544
+  },
+  "V3-tel-mehr.dc.html": {
+   "h": 844,
+   "page": "version3",
+   "title": "Telefon · Mehr",
+   "w": 390,
+   "x": 1410,
+   "y": 8544
+  },
+  "V3-tel-plan.dc.html": {
+   "h": 844,
+   "page": "version3",
+   "title": "Telefon · Mein Plan",
+   "w": 390,
+   "x": 470,
+   "y": 8544
+  },
+  "V3-uebergabe.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Übergabe",
+   "w": 1440,
+   "x": 6080,
+   "y": 0
+  },
+  "V3-untergrenzen.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Untergrenzen",
+   "w": 1440,
+   "x": 1520,
+   "y": 5696
+  },
+  "V3-verteilung.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Verteilung",
+   "w": 1440,
+   "x": 7600,
+   "y": 4272
+  },
+  "V3-wuensche.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Wunschdienste",
+   "w": 1440,
+   "x": 6080,
+   "y": 2848
+  },
+  "V3-zeitachse.dc.html": {
+   "h": 1024,
+   "page": "version3",
+   "title": "Zeitachse",
+   "w": 1440,
+   "x": 10640,
+   "y": 0
+  },
+  "Verwaltung.dc.html": {
+   "h": 1024,
+   "title": "Verwaltung",
+   "w": 1440,
+   "x": 3040,
+   "y": 1404
+  },
+  "V3D-ablauf.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Ablauf · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 0
+  },
+  "V3D-abrechnung.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Abrechnungsdaten · dunkel",
+   "w": 1440,
+   "x": 10640,
+   "y": 5696
+  },
+  "V3D-antraege.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Anträge · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 2848
+  },
+  "V3D-aushang.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Schwarzes Brett · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 2848
+  },
+  "V3D-belastbarkeit.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Belastbarkeit · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 5696
+  },
+  "V3D-belastung.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Belastung · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 5696
+  },
+  "V3D-bereitschaft.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Bereitschaft · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 1424
+  },
+  "V3D-betrieb.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Betrieb · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 7120
+  },
+  "V3D-boerse.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Tauschbörse · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 2848
+  },
+  "V3D-buch.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Dienstbuch · dunkel",
+   "w": 1440,
+   "x": 9120,
+   "y": 2848
+  },
+  "V3D-datenschutz.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Datenschutz · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 7120
+  },
+  "V3D-dienste.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Dienstarten · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 7120
+  },
+  "V3D-einarbeitung.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Einarbeitung · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 4272
+  },
+  "V3D-einsatz.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Personaleinsatz · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 1424
+  },
+  "V3D-einstellungen.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Einstellungen · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 7120
+  },
+  "V3D-folge.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Schichtfolge · dunkel",
+   "w": 1440,
+   "x": 9120,
+   "y": 1424
+  },
+  "V3D-handbuch.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Handbuch · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 0
+  },
+  "V3D-hilfe.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Hilfe · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 0
+  },
+  "V3D-jahr.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Jahresansicht · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 1424
+  },
+  "V3D-kompetenzen.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Kompetenzen · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 4272
+  },
+  "V3D-lage.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Lagebild · dunkel",
+   "w": 1440,
+   "x": 9120,
+   "y": 0
+  },
+  "V3D-lenkzeiten.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Lenkzeiten · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 5696
+  },
+  "V3D-meine.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Meine Schichten · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 0
+  },
+  "V3D-mitnahme.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Datenmitnahme · dunkel",
+   "w": 1440,
+   "x": 4560,
+   "y": 7120
+  },
+  "V3D-mittel.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Betriebsmittel · dunkel",
+   "w": 1440,
+   "x": 9120,
+   "y": 4272
+  },
+  "V3D-nachweis.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Leistungsnachweis · dunkel",
+   "w": 1440,
+   "x": 9120,
+   "y": 5696
+  },
+  "V3D-nachweise.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Nachweise · dunkel",
+   "w": 1440,
+   "x": 3040,
+   "y": 4272
+  },
+  "V3D-notrufe.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Notrufe · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 2848
+  },
+  "V3D-offene.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Offene Schichten · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 2848
+  },
+  "V3D-personal.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Personal · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 4272
+  },
+  "V3D-plan.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Monatsplan · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 1424
+  },
+  "V3D-planstand.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Planstand · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 5696
+  },
+  "V3D-pruef.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Prüfung · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 5696
+  },
+  "V3D-quals.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Qualifikationen · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 4272
+  },
+  "V3D-rechtliches.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Rechtliches · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 7120
+  },
+  "V3D-selbstplan.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Selbstplanung · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 1424
+  },
+  "V3D-sonder.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Sondereinsätze · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 1424
+  },
+  "V3D-start.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Start · dunkel",
+   "w": 1440,
+   "x": 0,
+   "y": 0
+  },
+  "V3D-tel-anliegen.dc.html": {
+   "h": 844,
+   "page": "version3dunkel",
+   "title": "Telefon · Anliegen · dunkel",
+   "w": 390,
+   "x": 940,
+   "y": 8544
+  },
+  "V3D-tel-heute.dc.html": {
+   "h": 844,
+   "page": "version3dunkel",
+   "title": "Telefon · Heute · dunkel",
+   "w": 390,
+   "x": 0,
+   "y": 8544
+  },
+  "V3D-tel-mehr.dc.html": {
+   "h": 844,
+   "page": "version3dunkel",
+   "title": "Telefon · Mehr · dunkel",
+   "w": 390,
+   "x": 1410,
+   "y": 8544
+  },
+  "V3D-tel-plan.dc.html": {
+   "h": 844,
+   "page": "version3dunkel",
+   "title": "Telefon · Mein Plan · dunkel",
+   "w": 390,
+   "x": 470,
+   "y": 8544
+  },
+  "V3D-uebergabe.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Übergabe · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 0
+  },
+  "V3D-untergrenzen.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Untergrenzen · dunkel",
+   "w": 1440,
+   "x": 1520,
+   "y": 5696
+  },
+  "V3D-verteilung.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Verteilung · dunkel",
+   "w": 1440,
+   "x": 7600,
+   "y": 4272
+  },
+  "V3D-wuensche.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Wunschdienste · dunkel",
+   "w": 1440,
+   "x": 6080,
+   "y": 2848
+  },
+  "V3D-zeitachse.dc.html": {
+   "h": 1024,
+   "page": "version3dunkel",
+   "title": "Zeitachse · dunkel",
+   "w": 1440,
+   "x": 10640,
+   "y": 0
+  },
+  "W-start.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 4261,
+   "title": "Startseite",
+   "page": "website"
+  },
+  "W-funktionen.dc.html": {
+   "x": 1560,
+   "y": 0,
+   "w": 1440,
+   "h": 4182,
+   "title": "Funktionen",
+   "page": "website"
+  },
+  "W-branchen.dc.html": {
+   "x": 3120,
+   "y": 0,
+   "w": 1440,
+   "h": 2668,
+   "title": "Branchen",
+   "page": "website"
+  },
+  "W-preise.dc.html": {
+   "x": 4680,
+   "y": 0,
+   "w": 1440,
+   "h": 2839,
+   "title": "Preise und Rechner",
+   "page": "website"
+  },
+  "W-sicherheit.dc.html": {
+   "x": 6240,
+   "y": 0,
+   "w": 1440,
+   "h": 2281,
+   "title": "Sicherheit und Datenschutz",
+   "page": "website"
+  },
+  "W-kontakt.dc.html": {
+   "x": 7800,
+   "y": 0,
+   "w": 1440,
+   "h": 1441,
+   "title": "Kontakt",
+   "page": "website"
+  },
+  "W-recht.dc.html": {
+   "x": 9360,
+   "y": 0,
+   "w": 1440,
+   "h": 1169,
+   "title": "Rechtliches (Impressum)",
+   "page": "website"
+  },
+  "W-anmeldung.dc.html": {
+   "x": 0,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Anmeldung",
+   "page": "website"
+  },
+  "W-demo.dc.html": {
+   "x": 1560,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Demo-Rollenwahl",
+   "page": "website"
+  },
+  "W-starten.dc.html": {
+   "x": 3120,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Selbst starten",
+   "page": "website"
+  },
+  "M-start.dc.html": {
+   "x": 0,
+   "y": 6085,
+   "w": 390,
+   "h": 2138,
+   "title": "Mobil · Startseite",
+   "page": "website"
+  },
+  "M-preise.dc.html": {
+   "x": 470,
+   "y": 6085,
+   "w": 390,
+   "h": 2424,
+   "title": "Mobil · Preise",
+   "page": "website"
+  },
+  "M-anmeldung.dc.html": {
+   "x": 940,
+   "y": 6085,
+   "w": 390,
+   "h": 844,
+   "title": "Mobil · Anmeldung",
+   "page": "website"
+  },
+  "DW-start.dc.html": {
+   "x": 0,
+   "y": 0,
+   "w": 1440,
+   "h": 4261,
+   "title": "Startseite · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-funktionen.dc.html": {
+   "x": 1560,
+   "y": 0,
+   "w": 1440,
+   "h": 4182,
+   "title": "Funktionen · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-branchen.dc.html": {
+   "x": 3120,
+   "y": 0,
+   "w": 1440,
+   "h": 2668,
+   "title": "Branchen · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-preise.dc.html": {
+   "x": 4680,
+   "y": 0,
+   "w": 1440,
+   "h": 2839,
+   "title": "Preise und Rechner · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-sicherheit.dc.html": {
+   "x": 6240,
+   "y": 0,
+   "w": 1440,
+   "h": 2281,
+   "title": "Sicherheit und Datenschutz · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-kontakt.dc.html": {
+   "x": 7800,
+   "y": 0,
+   "w": 1440,
+   "h": 1441,
+   "title": "Kontakt · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-recht.dc.html": {
+   "x": 9360,
+   "y": 0,
+   "w": 1440,
+   "h": 1169,
+   "title": "Rechtliches (Impressum) · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-anmeldung.dc.html": {
+   "x": 0,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Anmeldung · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-demo.dc.html": {
+   "x": 1560,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Demo-Rollenwahl · dunkel",
+   "page": "websitedunkel"
+  },
+  "DW-starten.dc.html": {
+   "x": 3120,
+   "y": 4661,
+   "w": 1440,
+   "h": 1024,
+   "title": "Selbst starten · dunkel",
+   "page": "websitedunkel"
+  },
+  "DM-start.dc.html": {
+   "x": 0,
+   "y": 6085,
+   "w": 390,
+   "h": 2138,
+   "title": "Mobil · Startseite · dunkel",
+   "page": "websitedunkel"
+  },
+  "DM-preise.dc.html": {
+   "x": 470,
+   "y": 6085,
+   "w": 390,
+   "h": 2424,
+   "title": "Mobil · Preise · dunkel",
+   "page": "websitedunkel"
+  },
+  "DM-anmeldung.dc.html": {
+   "x": 940,
+   "y": 6085,
+   "w": 390,
+   "h": 844,
+   "title": "Mobil · Anmeldung · dunkel",
+   "page": "websitedunkel"
+  }
+ },
+ "createdOnFiles": {
+  "at": "2026-10-12T05:21:07Z",
+  "v": 1
+ },
+ "designSystems": [],
+ "launch": {
+  "page": "version3",
+  "view": "canvas"
+ },
+ "notes": {
+  "d0": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Dunkle Variante",
+   "w": 240,
+   "x": 0,
+   "y": 4080
+  },
+  "d1": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Tagesgeschäft · dunkel",
+   "w": 240,
+   "x": 0,
+   "y": 4340
+  },
+  "d2": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Team, Prüfung, Verwaltung · dunkel",
+   "w": 240,
+   "x": 0,
+   "y": 5744
+  },
+  "d3": {
+   "kind": "title1",
+   "maxW": 2380,
+   "text": "Anmeldung und Mobil · dunkel",
+   "w": 240,
+   "x": 0,
+   "y": 7148
+  },
+  "dinfo": {
+   "text": "Dunkel: dieselben Kacheln auf Graphit. Dienst- und Zustandsfarben aufgehellt, Hauptknopf hell mit dunkler Schrift.",
+   "w": 420,
+   "x": 2480,
+   "y": 7408
+  },
+  "info": {
+   "text": "Kachel-Dashboard: Navigation oben als Pillenleiste, jede Kachel führt per Pfeil in ihren Bereich. Große Zahlen, kleine Grafiken, wenig Text. Schrift Instrument Sans. Farbe nur für Dienste und Zustände. Mobbin-Vorlagen: Deel, Aboard, Magnific (Schnellzugriff), Square (Plan). Alle Daten erfunden.",
+   "w": 420,
+   "x": 2480,
+   "y": 2808
+  },
+  "r1": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Tagesgeschäft: Heute, Planen, Entscheiden",
+   "w": 240,
+   "x": 0,
+   "y": -260
+  },
+  "r2": {
+   "kind": "title1",
+   "maxW": 4480,
+   "text": "Team, Prüfung, Verwaltung",
+   "w": 240,
+   "x": 0,
+   "y": 1144
+  },
+  "r3": {
+   "kind": "title1",
+   "maxW": 2380,
+   "text": "Anmeldung und Mobil",
+   "w": 240,
+   "x": 0,
+   "y": 2548
+  },
+  "v3info": {
+   "page": "version3",
+   "text": "Version 3: das Bessere aus Entwurf 2 und der jetzigen App. Grund, Akzent und Farbverlauf aus der jetzigen App (Sea Salt #D9E4E8, Petrol #017070, radialer Verlauf oben). Arbeitsansichten wieder dicht: Monatsplan, Personaleinsatz, Personal, Anträge, Abrechnung, Übergabe, Nachweise. Übernommen: Konfliktwarnung Tauschbörse, Sicherungsschlüssel, Filter im Handy-Plan, Aushang auf Heute.",
+   "w": 440,
+   "x": -560,
+   "y": 0
+  },
+  "v3r0": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Heute",
+   "w": 240,
+   "x": 0,
+   "y": -260
+  },
+  "v3r1": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Planen",
+   "w": 240,
+   "x": 0,
+   "y": 1164
+  },
+  "v3r2": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Entscheiden",
+   "w": 240,
+   "x": 0,
+   "y": 2588
+  },
+  "v3r3": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Team",
+   "w": 240,
+   "x": 0,
+   "y": 4012
+  },
+  "v3r4": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Prüfung",
+   "w": 240,
+   "x": 0,
+   "y": 5436
+  },
+  "v3r5": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Verwaltung",
+   "w": 240,
+   "x": 0,
+   "y": 6860
+  },
+  "v3r6": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3",
+   "text": "Telefon für Beschäftigte",
+   "w": 240,
+   "x": 0,
+   "y": 8284
+  },
+  "dv3r0": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Heute",
+   "w": 240,
+   "x": 0,
+   "y": -260
+  },
+  "dv3r1": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Planen",
+   "w": 240,
+   "x": 0,
+   "y": 1164
+  },
+  "dv3r2": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Entscheiden",
+   "w": 240,
+   "x": 0,
+   "y": 2588
+  },
+  "dv3r3": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Team",
+   "w": 240,
+   "x": 0,
+   "y": 4012
+  },
+  "dv3r4": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Prüfung",
+   "w": 240,
+   "x": 0,
+   "y": 5436
+  },
+  "dv3r5": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Verwaltung",
+   "w": 240,
+   "x": 0,
+   "y": 6860
+  },
+  "dv3r6": {
+   "kind": "title1",
+   "maxW": 2400,
+   "page": "version3dunkel",
+   "text": "Telefon für Beschäftigte",
+   "w": 240,
+   "x": 0,
+   "y": 8284
+  },
+  "dv3info": {
+   "x": -560,
+   "y": 0,
+   "w": 440,
+   "page": "version3dunkel",
+   "text": "Version 3 dunkel: Werte aus der dunklen Palette der jetzigen App (Grund #0B1418, Fläche #121E23, Petrol #3FBFBF) mit dem dunklen Farbverlauf oben."
+  },
+  "web0": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Marketing-Website",
+   "w": 240,
+   "x": 0,
+   "y": -260,
+   "page": "website"
+  },
+  "web1": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Öffentliche Seiten der Anwendung",
+   "w": 240,
+   "x": 0,
+   "y": 4401,
+   "page": "website"
+  },
+  "web2": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Mobil",
+   "w": 240,
+   "x": 0,
+   "y": 5825,
+   "page": "website"
+  },
+  "webinfo": {
+   "x": -560,
+   "y": 0,
+   "w": 440,
+   "page": "website",
+   "text": "Website im Stil von Version 3: Grund, Petrol und Verlauf aus der App, Schrift Instrument Sans, Kacheln aus dem Produkt. Inhalte aus dem Code (Preise aus stufen.js, Branchen aus branchen.mjs). Mobbin-Vorlagen: Charma/Sprig (Hero), Loom/Deel (Kachelraster), Circle/HoneyBook (Preise), Mural/Loom (Vertrauen). Platzhalter in eckigen Klammern."
+  },
+  "Dweb0": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Marketing-Website · dunkel",
+   "w": 240,
+   "x": 0,
+   "y": -260,
+   "page": "websitedunkel"
+  },
+  "Dweb1": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Öffentliche Seiten der Anwendung",
+   "w": 240,
+   "x": 0,
+   "y": 4401,
+   "page": "websitedunkel"
+  },
+  "Dweb2": {
+   "kind": "title1",
+   "maxW": 2400,
+   "text": "Mobil",
+   "w": 240,
+   "x": 0,
+   "y": 5825,
+   "page": "websitedunkel"
+  },
+  "Dwebinfo": {
+   "x": -560,
+   "y": 0,
+   "w": 440,
+   "page": "websitedunkel",
+   "text": "Dunkle Variante der Website mit den Farben von Version 3 dunkel: Grund #0B1418, Kacheln #121E23, Akzent #3FBFBF, gleicher Verlauf in gedämpftem Petrol. Inhalte und Aufbau identisch mit der hellen Website."
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Planen.dc.html",
+  "Entscheiden.dc.html",
+  "Team.dc.html",
+  "Nachsehen.dc.html",
+  "Verwaltung.dc.html",
+  "Anmeldung.dc.html",
+  "Mobil-Heute.dc.html",
+  "Mobil-Plan.dc.html",
+  "Dunkel-Main.dc.html",
+  "Dunkel-Planen.dc.html",
+  "Dunkel-Entscheiden.dc.html",
+  "Dunkel-Team.dc.html",
+  "Dunkel-Nachsehen.dc.html",
+  "Dunkel-Verwaltung.dc.html",
+  "Dunkel-Anmeldung.dc.html",
+  "Dunkel-Mobil-Heute.dc.html",
+  "Dunkel-Mobil-Plan.dc.html",
+  "V3-start.dc.html",
+  "V3-ablauf.dc.html",
+  "V3-handbuch.dc.html",
+  "V3-hilfe.dc.html",
+  "V3-uebergabe.dc.html",
+  "V3-meine.dc.html",
+  "V3-lage.dc.html",
+  "V3-zeitachse.dc.html",
+  "V3-plan.dc.html",
+  "V3-einsatz.dc.html",
+  "V3-jahr.dc.html",
+  "V3-bereitschaft.dc.html",
+  "V3-selbstplan.dc.html",
+  "V3-sonder.dc.html",
+  "V3-folge.dc.html",
+  "V3-notrufe.dc.html",
+  "V3-offene.dc.html",
+  "V3-antraege.dc.html",
+  "V3-boerse.dc.html",
+  "V3-wuensche.dc.html",
+  "V3-aushang.dc.html",
+  "V3-buch.dc.html",
+  "V3-personal.dc.html",
+  "V3-quals.dc.html",
+  "V3-nachweise.dc.html",
+  "V3-kompetenzen.dc.html",
+  "V3-einarbeitung.dc.html",
+  "V3-verteilung.dc.html",
+  "V3-mittel.dc.html",
+  "V3-pruef.dc.html",
+  "V3-untergrenzen.dc.html",
+  "V3-lenkzeiten.dc.html",
+  "V3-belastung.dc.html",
+  "V3-belastbarkeit.dc.html",
+  "V3-planstand.dc.html",
+  "V3-nachweis.dc.html",
+  "V3-abrechnung.dc.html",
+  "V3-betrieb.dc.html",
+  "V3-dienste.dc.html",
+  "V3-einstellungen.dc.html",
+  "V3-mitnahme.dc.html",
+  "V3-datenschutz.dc.html",
+  "V3-rechtliches.dc.html",
+  "V3-tel-heute.dc.html",
+  "V3-tel-plan.dc.html",
+  "V3-tel-anliegen.dc.html",
+  "V3-tel-mehr.dc.html",
+  "V3D-ablauf.dc.html",
+  "V3D-abrechnung.dc.html",
+  "V3D-antraege.dc.html",
+  "V3D-aushang.dc.html",
+  "V3D-belastbarkeit.dc.html",
+  "V3D-belastung.dc.html",
+  "V3D-bereitschaft.dc.html",
+  "V3D-betrieb.dc.html",
+  "V3D-boerse.dc.html",
+  "V3D-buch.dc.html",
+  "V3D-datenschutz.dc.html",
+  "V3D-dienste.dc.html",
+  "V3D-einarbeitung.dc.html",
+  "V3D-einsatz.dc.html",
+  "V3D-einstellungen.dc.html",
+  "V3D-folge.dc.html",
+  "V3D-handbuch.dc.html",
+  "V3D-hilfe.dc.html",
+  "V3D-jahr.dc.html",
+  "V3D-kompetenzen.dc.html",
+  "V3D-lage.dc.html",
+  "V3D-lenkzeiten.dc.html",
+  "V3D-meine.dc.html",
+  "V3D-mitnahme.dc.html",
+  "V3D-mittel.dc.html",
+  "V3D-nachweis.dc.html",
+  "V3D-nachweise.dc.html",
+  "V3D-notrufe.dc.html",
+  "V3D-offene.dc.html",
+  "V3D-personal.dc.html",
+  "V3D-plan.dc.html",
+  "V3D-planstand.dc.html",
+  "V3D-pruef.dc.html",
+  "V3D-quals.dc.html",
+  "V3D-rechtliches.dc.html",
+  "V3D-selbstplan.dc.html",
+  "V3D-sonder.dc.html",
+  "V3D-start.dc.html",
+  "V3D-tel-anliegen.dc.html",
+  "V3D-tel-heute.dc.html",
+  "V3D-tel-mehr.dc.html",
+  "V3D-tel-plan.dc.html",
+  "V3D-uebergabe.dc.html",
+  "V3D-untergrenzen.dc.html",
+  "V3D-verteilung.dc.html",
+  "V3D-wuensche.dc.html",
+  "V3D-zeitachse.dc.html",
+  "W-start.dc.html",
+  "W-funktionen.dc.html",
+  "W-branchen.dc.html",
+  "W-preise.dc.html",
+  "W-sicherheit.dc.html",
+  "W-kontakt.dc.html",
+  "W-recht.dc.html",
+  "W-anmeldung.dc.html",
+  "W-demo.dc.html",
+  "W-starten.dc.html",
+  "M-start.dc.html",
+  "M-preise.dc.html",
+  "M-anmeldung.dc.html",
+  "DW-start.dc.html",
+  "DW-funktionen.dc.html",
+  "DW-branchen.dc.html",
+  "DW-preise.dc.html",
+  "DW-sicherheit.dc.html",
+  "DW-kontakt.dc.html",
+  "DW-recht.dc.html",
+  "DW-anmeldung.dc.html",
+  "DW-demo.dc.html",
+  "DW-starten.dc.html",
+  "DM-start.dc.html",
+  "DM-preise.dc.html",
+  "DM-anmeldung.dc.html"
+ ],
+ "pages": [
+  {
+   "id": "entwurf2",
+   "name": "Entwurf 2"
+  },
+  {
+   "id": "version3",
+   "name": "Version 3"
+  },
+  {
+   "id": "version3dunkel",
+   "name": "Version 3 dunkel"
+  },
+  {
+   "id": "website",
+   "name": "Website"
+  },
+  {
+   "id": "websitedunkel",
+   "name": "Website dunkel"
+  }
+ ],
+ "title": "CENTRIC – Neues Design"
+}
