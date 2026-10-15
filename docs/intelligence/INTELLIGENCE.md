@@ -2,7 +2,7 @@
 
 **Stand:** 11.10.2026 · **Maßgebliche Fachspezifikation:** [`CENTRIC-Intelligence-Spezifikation-1-0.docx`](CENTRIC-Intelligence-Spezifikation-1-0.docx) (Stand 01.10.2026). Dieses Dokument hält fest, was seitdem entschieden wurde, und hat bei Widerspruch Vorrang.
 **Status:** Planung. Es gibt keinen Intelligence-Code. Umsetzung erst ab dem Zeitpunkt in Abschnitt 6.
-**Gesamtdokument:** [`CENTRIC-INTELLIGENCE.md`](CENTRIC-INTELLIGENCE.md) (15.10.2026) fasst alles zusammen und hat Vorrang. Neu dort: Stufenkette Haiku 5.5 → Sonnet 5.5 → Opus 5.5 mit selbstständigem Wechsel (E-6), fünf Ebenen Kostenschutz (E-7) und die Leitregel „Qualität vor Tokenersparnis“ (E-8).
+**Gesamtdokument:** [`CENTRIC-INTELLIGENCE.md`](CENTRIC-INTELLIGENCE.md) (Fassung 6, 15.10.2026) fasst alles zusammen und hat Vorrang. Dort u. a.: Stufenkette Haiku 5.5 → Sonnet 5.5 → Opus 5.5 (E-6), Kostenschutz in fünf Ebenen mit getrennten Business- und Security-Limits (E-7, E-14), Leitregel „Qualität vor Tokenersparnis“ (E-8), Decision Fingerprint, degradierter Modus und Architecture Freeze (E-11 bis E-18). Die EU-KI-Verordnung ist intern vorgeprüft; die externe Bestätigung steht vor dem Produktivbetrieb aus (E-17).
 
 ---
 
