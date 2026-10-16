@@ -10616,7 +10616,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         return (
           <Card style={{ marginBottom: 18 }}>
             <CardHead right={<div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {recht.length > 0 && <Pill size="sm" tone="danger">{recht.length} Rechtsverstoß{recht.length === 1 ? "" : "e"}</Pill>}
+              {recht.length > 0 && <Pill size="sm" tone="danger">{recht.length} {recht.length === 1 ? "Rechtsverstoß" : "Rechtsverstöße"}</Pill>}
               {ohneGrund > 0 && <Pill size="sm">{ohneGrund} ohne Grund</Pill>}</div>}>
               Bewusst bestätigte Abweichungen</CardHead>
             <div style={{ padding: "0 var(--pad-x) 16px" }}>
@@ -10949,7 +10949,7 @@ function Freigabeleiste({ sitz, ym, akt }) {
       {offen.length > 0 && (
         /* Die Freigabe bleibt immer möglich (E-19). Sie zeigt nur, was bewusst abweicht. */
         <Pill tone={offenRecht ? "danger" : "warn"}>
-          {offen.length} bestätigte Abweichung{offen.length === 1 ? "" : "en"}{offenRecht ? `, davon ${offenRecht} Rechtsverstoß${offenRecht === 1 ? "" : "e"}` : ""}
+          {offen.length} bestätigte Abweichung{offen.length === 1 ? "" : "en"}{offenRecht ? `, davon ${offenRecht} ${offenRecht === 1 ? "Rechtsverstoß" : "Rechtsverstöße"}` : ""}
         </Pill>)}
       {darfFreigeben && <Btn kind={f ? "plain" : "primary"} onClick={() => {
         if (offen.length && typeof window !== "undefined" && !window.confirm(
@@ -23400,6 +23400,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const dialogBlock = (<>
     {verfDlg && <Verfuegbarkeit sitz={sitz} akt={akt} personId={verfDlg} onClose={() => setVerfDlg(null)} />}
     {krank && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
+    {warnung && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
     {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
       zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
       fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
@@ -23642,11 +23643,13 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       {schnell && !istBetreiber && <Schnellbesetzung sitz={sitz} datum={schnell.datum} dienstId={schnell.dienstId}
         akt={akt} onClose={() => setSchnell(null)} />}
       {eskal && !istBetreiber && <Eskalation sitz={sitz} datum={eskal.datum} dienstId={eskal.dienstId} akt={akt} onClose={() => setEskal(null)} />}
-      {warnung && !istBetreiber && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
       {ausgl && !istBetreiber && <AusgleichPlanen sitz={sitz} personId={ausgl} akt={akt} onClose={() => setAusgl(null)} />}
       {krank && !istBetreiber && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
       {postfach && !istBetreiber && <Nachrichten sitz={sitz} akt={akt} onClose={() => { akt.alleGelesen(); setPostfach(false); }} />}
       {person && !istBetreiber && <Personalakte sitz={sitz} personId={person} ym={ym} onClose={() => setPerson(null)} akt={akt} />}
+      {/* Der Warndialog steht zuletzt: Er öffnet sich aus anderen Blättern
+          heraus (Krankmeldung, Personalakte) und muss über ihnen liegen. */}
+      {warnung && !istBetreiber && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
 
       <Sheet open={!!ausgabe} onClose={() => setAusgabe(null)} titel={ausgabe ? ausgabe.titel : ""} width={740}>
         {ausgabe && (<>
