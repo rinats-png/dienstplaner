@@ -201,6 +201,20 @@ function ausschreibungenZusammen(alt, neu, ich) {
   });
 }
 
+/* Selbstplanung: In einer offenen Runde trägt die Person nur eigene
+   Einträge ein oder aus. Status, Monat und fremde Einträge bleiben, wie sie
+   gespeichert waren. Bisher fehlte das Feld ganz — die Eintragungen
+   Beschäftigter kamen beim Server nie an. */
+function selbstplanungZusammen(alt, neu, ich) {
+  if (!Array.isArray(alt)) return alt;
+  const neueNachId = new Map((Array.isArray(neu) ? neu : []).filter(Boolean).map((r) => [r.id, r]));
+  return alt.map((r) => {
+    const g = r && neueNachId.get(r.id);
+    if (!g || r.status !== "offen") return r;
+    return { ...r, eintraege: eigeneEintraege(r.eintraege, g.eintraege, ich) };
+  });
+}
+
 function urlaubsrundeZusammen(alt, neu, ich) {
   if (!alt || typeof alt !== "object") return alt;
   const w = neu && typeof neu === "object" ? neu.wuensche : undefined;
@@ -218,6 +232,7 @@ export function eigenesZusammen(alt, geschickt, ich) {
   if (hat("nachrichten")) aus.nachrichten = nachrichtenZusammen(alt.nachrichten, geschickt.nachrichten, ich);
   if (hat("ausschreibungen")) aus.ausschreibungen = ausschreibungenZusammen(alt.ausschreibungen, geschickt.ausschreibungen, ich);
   if (hat("urlaubsrunde")) aus.urlaubsrunde = urlaubsrundeZusammen(alt.urlaubsrunde, geschickt.urlaubsrunde, ich);
+  if (hat("selbstplanung")) aus.selbstplanung = selbstplanungZusammen(alt.selbstplanung, geschickt.selbstplanung, ich);
   return aus;
 }
 
@@ -374,6 +389,14 @@ export function bestandFuerRolle(bestand, sitzung) {
     if (rolle === "mitarbeiter") {
       delete m.protokoll;
       delete m.aenderungen;
+      /* Bestätigte Abweichungen nennen fremde Personen und Gründe. */
+      delete m.bestaetigungen;
+    }
+    /* Der Betriebsrat sieht bestätigte Abweichungen je Regel und Tag, aber
+       ohne Namen (Muster-BV, Anlage 5). */
+    if (rolle === "betriebsrat" && Array.isArray(m.bestaetigungen)) {
+      m.bestaetigungen = m.bestaetigungen.map((b) => b && ({ ...b,
+        personId: null, durch: b.rolle || null, durchId: null }));
     }
   }
 
@@ -666,7 +689,7 @@ function andereFelderGeaendert(alt, neu) {
    Anliegen und Übergaben ihres Bereichs. Personal, Dienstarten,
    Schichtfolge und Regelwerk gehören der Leitung. */
 const EINHEIT_FELDER = ["anfragen", "nachrichten", "dienstbuch", "einspruenge",
-  "unterschreitungen", "aenderungen", "protokoll"];
+  "unterschreitungen", "aenderungen", "protokoll", "bestaetigungen"];
 
 /**
  * Prüft, ob eine einheitsgebundene Rolle diese Änderung vornehmen darf.
@@ -722,7 +745,7 @@ export function einheitDarf(altM, neuM, sitzung) {
      Bereich genehmigen. Die Oberfläche zeigte den Knopf nie; der Server
      muss es trotzdem prüfen. Geändert oder neu: nur im eigenen Bereich,
      zum Tag des Antrags. */
-  for (const feld of ["anfragen", "einspruenge"]) {
+  for (const feld of ["anfragen", "einspruenge", "bestaetigungen"]) {
     const alt = new Map(((altM || {})[feld] || []).filter(Boolean).map((a) => [a.id, a]));
     for (const a of ((neuM || {})[feld] || []).filter(Boolean)) {
       const vorher = alt.get(a.id);

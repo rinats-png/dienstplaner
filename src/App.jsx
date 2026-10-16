@@ -179,6 +179,8 @@ import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende,
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+  abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
   PAKETE, paketVon, paketkosten, preisFuer } from "./stufen.js";
@@ -385,6 +387,8 @@ h1.titel b{font-weight:680;}
 .btn-danger:hover{background:${C.flaeche}; border-color:${C.danger};}
 .btn-ok{background:${C.ok}; border-color:${C.ok}; color:${C.aufAkzent};}
 .btn-ok:hover{filter:brightness(1.08);}
+.btn-warn{background:${C.warnLight}; border-color:${C.warnLight}; color:${C.text};}
+.btn-warn:hover{background:${C.flaeche}; border-color:${C.warn};}
 .btn-sm{min-height:34px; padding:0 14px; font-size:12.5px;}
 
 .inp,.sel,textarea.inp{
@@ -976,7 +980,7 @@ function baueMandant(cfg, seed) {
     gueltigMonate: q[2] === undefined ? null : q[2],
     nachweisPflicht: !!q[3],
     fachkraft: !!q[4],            // zählt für die Fachkraftquote
-    harteSperre: !!q[5],          // ohne sie ist keine Einteilung möglich
+    harteSperre: !!q[5],          // verbindlich: ohne sie warnt jede Einteilung (seit E-19 keine Sperre mehr)
     /* Ebene und Bezug: Wer eine Einteilung verhindert, muss sagen können,
        worauf er sich stützt. In den Vorführdaten ist die einzige harte
        Sperre die Sachkunde nach § 34a GewO — Bundesrecht, aber nur für
@@ -1171,6 +1175,7 @@ function baueMandant(cfg, seed) {
     ],
     urlaubsrunde: null,      // { jahr, phase, frist, kontingent, wuensche }
     unterschreitungen: [],   // dokumentierte Unterdeckung mit Begründung
+    bestaetigungen: [],      // bewusst bestätigte Abweichungen (Warnen statt sperren)
     stand: 0,                // Fortschreibungszähler für die Konflikterkennung
     betriebsmittel: [],      // Schlüssel, Fahrzeuge, Geräte, Dienstkleidung
     kompetenzen: [],         // was jemand an einer bestimmten Sache darf
@@ -2467,26 +2472,47 @@ const offeneErfassung = (m, p, bis) => {
 };
 
 /* ------------------ Personenbezogene Einschränkungen --------------------- */
+/* Warnen statt sperren (E-19).
+
+   Keine Regel verhindert die Entscheidung eines berechtigten Menschen.
+   Jeder Befund trägt eine Stufe:
+   - hinweis:  Information, nichts zu bestätigen
+   - achtung:  betriebliche Vorgabe, Tarif oder Personalkonflikt — ein Klick
+   - recht:    gesetzliche Vorgabe — „gelesen" ankreuzen, Grund freiwillig
+   Die Maschine selbst (Planungsassistent) setzt weiter nur Einteilungen
+   ohne Befund; der Mensch darf über den Warndialog abweichen. */
+/* Stufen, Gründe und Protokolleinträge stehen in src/warnstufen.js. */
+
 /**
- * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten darf.
- * Liefert eine Liste von Hinderungsgründen — leer bedeutet zulässig.
+ * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten kann,
+ * und liefert die Befunde mit Stufe, Quelle und Text — leer bedeutet
+ * regelkonform. Gesperrt wird nichts: Die Befunde gehen in den Warndialog.
  */
-function hindernisse(m, p, d, da) {
+function hindernisBefunde(m, p, d, da) {
   const g = [];
+  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel" });
   const e = einschr(p);
-  if (!imDienst(p, d)) g.push("nicht im Bestand");
-  if (abwesenheitAm(m, p.id, d)) g.push(`abwesend (${abwArt(abwesenheitAm(m, p.id, d).art).label})`);
+  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand");
+  const abw = abwesenheitAm(m, p.id, d);
+  /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
+     bietet an, sie für diesen Tag aufzuheben. */
+  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
+  /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
+     ein ärztliches Attest oder eine Absprache sein. */
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-    g.push("keine Nachtdienste zugelassen");
-  if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
-  // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
+    push("achtung", "keine Nachtdienste zugelassen", "Schutzvorschrift oder Einsatzeinschränkung für diese Person");
+  if (!verfuegbarFuer(p, d, da))
+    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person");
+  // Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung
   if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
       /* Der Grund nennt die Ebene. Vorher stand unter jeder Sperre
          „gesetzlich zwingend" — auch unter einer Betriebsvereinbarung. */
       const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
       if (!v || qualGueltig(m, p, q.id)) continue;
-      g.push(`${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`);
+      push(v.gesetzlich ? "recht" : "achtung",
+        `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
+        q.grundlage || v.label, "qualifikation");
     }
   }
   /* Kompetenzen, die diese Dienstart voraussetzt.
@@ -2499,11 +2525,11 @@ function hindernisse(m, p, d, da) {
      diesen. */
   for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
     (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
-    g.push(f.text);
+    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz");
 
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
-    g.push("arbeitet an diesem Wochentag nicht");
+    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung");
   // Ruhezeit vor und nach dem Dienst
   const [nStart, nEnde] = fenster(d, da);
   for (const off of [-2, -1, 1, 2]) {
@@ -2514,14 +2540,20 @@ function hindernisse(m, p, d, da) {
     if (!other) continue;
     const [oStart, oEnde] = fenster(dd, other);
     const ruhe = oStart > nStart ? (oStart - nEnde) / 60 : (nStart - oEnde) / 60;
-    if (ruhe < m.einstellungen.ruhezeit) { g.push(`Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`); break; }
+    const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
+    if (rs) {
+      push(rs, `Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`,
+        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit");
+      break;
+    }
   }
   // Dienste je Woche
   if (e.maxDiensteWoche) {
     const mo = montag(d);
     let n = 0;
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
-    if (n >= e.maxDiensteWoche) g.push(`bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
+    if (n >= e.maxDiensteWoche)
+      push("achtung", `bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`, "Einsatzeinschränkung für diese Person");
   }
   // Wiedereingliederung
   const w = e.wiedereingliederung;
@@ -2535,15 +2567,66 @@ function hindernisse(m, p, d, da) {
       if (x) std += dauer(x);
     }
     if (std + dauer(da) > w.maxStundenWoche)
-      g.push(`Wiedereingliederung: höchstens ${n1(w.maxStundenWoche)} h je Woche`);
+      push("achtung", `Wiedereingliederung: höchstens ${n1(w.maxStundenWoche)} h je Woche`, "Wiedereingliederungsplan (§ 74 SGB V)");
   }
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
     if (personTag(m, p, addDays(d, -i)).dienstId) lauf++; else break;
   }
-  if (lauf >= m.einstellungen.maxFolge) g.push(`${lauf} Dienste in Folge davor`);
+  if (lauf >= m.einstellungen.maxFolge)
+    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`);
   return g;
+}
+
+/** Die Befunde als Text — für alle Stellen, die nur den Wortlaut brauchen. */
+const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).map((b) => b.text);
+
+/**
+ * Befunde für eine geplante Einteilung, wie der Warndialog sie braucht.
+ * Ergänzt die Regelbefunde um den Hinweis, dass ein bestehender Dienst
+ * ersetzt würde.
+ */
+function befundeFuerEinteilung(m, personId, datum, dienstId) {
+  const p = m.personen.find((x) => x.id === personId);
+  const da = m.dienstarten.find((x) => x.id === dienstId);
+  if (!p || !da) return { person: p || null, da: da || null, befunde: [], technisch: "Person oder Dienstart nicht gefunden" };
+  const befunde = hindernisBefunde(m, p, datum, da);
+  const vorher = personTag(m, p, datum).dienstId;
+  if (vorher && vorher !== dienstId) {
+    const alt = m.dienstarten.find((x) => x.id === vorher);
+    befunde.push({ stufe: "hinweis", text: `ersetzt den geplanten ${alt ? alt.name : vorher}`, quelle: "Plan", art: "umteilung" });
+  }
+  return { person: p, da, befunde };
+}
+
+/** Hebt eine Abwesenheit für genau einen Tag auf (src/warnstufen.js). */
+const abwesenheitTagAufheben = (m, personId, datum) =>
+  abwTagAufheben(m.abwesenheiten, personId, datum, () => uid("a"));
+
+/**
+ * Hält eine bestätigte Abweichung fest (Bestätigungsprotokoll) und
+ * unterrichtet die Leitung, wenn eine gesetzliche Vorgabe betroffen ist.
+ *
+ * @param best   was der Warndialog zurückgibt: eintraege mit befunden, grund
+ * @param wer    { personId, name, rolle } der bestätigenden Person
+ * @param aktion Kennung der Planungsaktion, z. B. „einsprung"
+ */
+function bestaetigungVermerken(m, best, wer, aktion) {
+  const neu = bestaetigungsEintraege(best, wer, aktion,
+    { neueId: () => uid("bs"), zeit: new Date().toISOString(), regelstand: REGELSTAND.version });
+  if (!neu.length) return m;
+  const recht = neu.filter((x) => x.stufe === "recht");
+  const leitung = recht.length
+    ? m.personen.filter((x) => x.rolle === "leitung" && x.id !== wer.personId && imDienst(x, heute())) : [];
+  const namen = (pid) => { const x = m.personen.find((y) => y.id === pid); return x ? `${x.vorname} ${x.nachname}` : "?"; };
+  const nachr = leitung.map((l) => baueMitteilung(m, l.id, "planGeaendert",
+    recht.length === 1 ? "Rechtsverstoß bewusst bestätigt" : `${recht.length} Rechtsverstöße bewusst bestätigt`,
+    recht.slice(0, 3).map((x) => `${namen(x.personId)} · ${fKurz(x.datum)} · ${x.befunde[0].text}`).join("; ")
+      + ` — bestätigt von ${wer.name}${best.grundArt ? "" : ", ohne Grund"}`,
+    "pruef")).filter(Boolean);
+  return { ...m, bestaetigungen: [...neu, ...(m.bestaetigungen || [])].slice(0, 2000),
+    nachrichten: nachr.length ? [...nachr, ...(m.nachrichten || [])].slice(0, 400) : m.nachrichten };
 }
 
 /**
@@ -3423,7 +3506,9 @@ function sperreWirkt(m, q, land) {
   if (!q || !q.harteSperre) return null;
   const v = verbindlichkeit(q, { land });
   if (!v.sperrt) return null;
-  return kann(m, v.gesetzlich ? "sperreGesetz" : "sperreEigen") ? v : null;
+  /* Seit E-21 warnen eigene Vorgaben in jeder Stufe. Gesperrt wird ohnehin
+     nichts mehr; die Verbindlichkeit bestimmt nur die Warnstufe. */
+  return v;
 }
 
 function qualGueltig(m, p, qualId) {
@@ -6589,10 +6674,10 @@ function MandantAnlegen({ db, akt, onClose }) {
             <Btn size="sm" onClick={() => setz("qualifikationen", [...f.qualifikationen,
               { name: "", kurz: "", gueltigMonate: null, nachweisPflicht: false, grundlage: "" }])}>Qualifikation hinzufügen</Btn>
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12, lineHeight: 1.55 }}>
-              Ein Nachweis mit Ablauf sperrt den Einsatz nicht von selbst. Wer eine
-              Qualifikation als gesetzlich zwingend führen will — etwa die Sachkunde nach
-              § 34a GewO für die Tätigkeiten, die sie verlangen —, setzt das unter
-              Qualifikationen als harte Sperre.
+              Ein Nachweis mit Ablauf warnt nicht von selbst. Wer eine Qualifikation als
+              verbindlich führen will — etwa die Sachkunde nach § 34a GewO für die
+              Tätigkeiten, die sie verlangen —, setzt das unter Qualifikationen. CENTRIC
+              sperrt dann nicht, sondern warnt bei jedem Einsatz ohne sie.
             </div>
           </Card>
 
@@ -10492,6 +10577,44 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
               </div>}
         </div>
       </Card>
+      {(() => {
+        /* Bewusst bestätigte Abweichungen (E-19): getrennt von den
+           unentdeckten Befunden. Sie stehen hier, bis der Monat abgelaufen
+           ist — wer bestätigt hat, aus welchem Grund, mit welchem Regelstand. */
+        const best = (m.bestaetigungen || []).filter((x) => x.datum >= von && x.datum <= bis);
+        if (!best.length) return null;
+        const recht = best.filter((x) => x.stufe === "recht");
+        const ohneGrund = recht.filter((x) => x.ohneGrund).length;
+        return (
+          <Card style={{ marginBottom: 18 }}>
+            <CardHead right={<div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {recht.length > 0 && <Pill size="sm" tone="danger">{recht.length} Rechtsverstoß{recht.length === 1 ? "" : "e"}</Pill>}
+              {ohneGrund > 0 && <Pill size="sm">{ohneGrund} ohne Grund</Pill>}</div>}>
+              Bewusst bestätigte Abweichungen</CardHead>
+            <div style={{ padding: "0 var(--pad-x) 16px" }}>
+              {best.slice(0, 40).map((x) => {
+                const pp = m.personen.find((y) => y.id === x.personId);
+                const da = m.dienstarten.find((y) => y.id === x.dienstId);
+                const g = ABWEICHUNG_GRUENDE.find((y) => y.id === x.grundArt);
+                return (
+                  <div key={x.id} className="klick" {...klickbar(() => oeffneTag(x.datum))}
+                    style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+                    <div style={{ minWidth: 150, fontSize: 13.5, ...NUM }}>
+                      {fKurz(x.datum)} · {da ? da.kurz : x.dienstId}
+                      <div style={{ fontSize: 12, color: C.dim }}>{pp ? `${pp.nachname}, ${pp.vorname}` : "Person"}</div></div>
+                    <div style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.45 }}>
+                      {x.befunde.map((b) => b.text).join(" · ")}
+                      <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>
+                        bestätigt von {x.durch || "?"} · {x.zeit ? fKurz(x.zeit.slice(0, 10)) : ""}
+                        {" · "}{g ? `${g.label}${x.grund ? `: ${x.grund}` : ""}` : "ohne Grund"}</div>
+                    </div>
+                  </div>);
+              })}
+              {best.length > 40 && <div style={{ fontSize: 12.5, color: C.dim, paddingTop: 8 }}>und {best.length - 40} weitere.</div>}
+            </div>
+          </Card>);
+      })()}
       <Kennzahlen kacheln={[
         { label: "Befunde", wert: befunde.length, ton: befunde.length ? "warn" : "ok" },
         { label: "Kritisch", wert: krit, ton: krit ? "danger" : "ok", hervor: krit ? "danger" : undefined, sub: "sofort klären" },
@@ -10566,6 +10689,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
 function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
   const m = sitz.mandant;
   const [alle, setAlle] = useState(false);
+  const [alleGesperrt, setAlleGesperrt] = useState(false);
   const [begruendung, setBegruendung] = useState(null);
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const b = besetzung(m, datum)[dienstId];
@@ -10610,7 +10734,9 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
             <div style={{ fontSize: 12, color: C.dimmer, lineHeight: 1.4 }}>{x.gruende.slice(0, 3).join(" · ")}</div>
           </div>
           <Btn size="sm" kind={i === 0 ? "primary" : "plain"}
-            onClick={() => { akt.setzeEinsprung(x.person.id, datum, dienstId); if (onFertig) onFertig(); }}>
+            onClick={() => akt.mitWarnung(m, { titel: "Ersatz einteilen",
+              eintraege: [{ personId: x.person.id, datum, dienstId }], knopf: "Einteilen",
+              ausfuehren: (best) => { akt.setzeEinsprung(x.person.id, datum, dienstId, best); if (onFertig) onFertig(); } })}>
             Einteilen</Btn>
           <button onClick={() => setBegruendung(begruendung === x.person.id ? null : x.person.id)}
             aria-label="Warum steht diese Person hier?"
@@ -10639,11 +10765,10 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
 
       {moeglich.length === 0 && (
         <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: C.dangerLight }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Keine Kraft einsetzbar</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Niemand ohne Befund einsetzbar</div>
           <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
-            Damit endet die automatische Suche. Der nächste Schritt ist die Eskalation:
-            erweiterte Anfrage an mehrere Personen oder — wenn auch das nicht trägt — die
-            dokumentierte Unterschreitung.
+            Regelkonform findet die Suche niemanden. Du kannst eskalieren — erweiterte Anfrage
+            oder dokumentierte Unterschreitung — oder unten jemanden mit Abweichung einteilen.
           </div>
           <Btn kind="danger" onClick={() => akt.oeffneEskalation(datum, dienstId)}>Eskalation öffnen</Btn>
         </div>)}
@@ -10654,14 +10779,22 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
 
       {gesperrt.length > 0 && (
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
-          <Lab style={{ marginBottom: 10 }}>Nicht einsetzbar · {gesperrt.length}</Lab>
-          {gesperrt.slice(0, 5).map((x) => (
-            <div key={x.person.id} style={{ display: "flex", gap: 10, padding: "6px 0", fontSize: 12.5 }}>
+          <Lab style={{ marginBottom: 6 }}>Nur mit Abweichung · {gesperrt.length}</Lab>
+          <div style={{ fontSize: 12, color: C.dimmer, marginBottom: 8, lineHeight: 1.45 }}>
+            CENTRIC sperrt niemanden. Wer hier steht, verletzt eine Regel; vor dem Einteilen zeigt der Warndialog, welche.</div>
+          {(alleGesperrt ? gesperrt : gesperrt.slice(0, 5)).map((x) => (
+            <div key={x.person.id} style={{ display: "flex", gap: 10, padding: "6px 0", fontSize: 12.5, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ color: C.dim, minWidth: 150 }}>{x.person.nachname}, {x.person.vorname}</span>
-              <span style={{ color: C.danger }}>{x.hindernisse[0]}</span>
+              <span style={{ color: C.danger, flex: 1, minWidth: 160 }}>{x.hindernisse[0]}</span>
+              <Btn size="sm" kind="quiet" onClick={() => akt.mitWarnung(m, { titel: "Ersatz einteilen",
+                eintraege: [{ personId: x.person.id, datum, dienstId }], knopf: "Einteilen",
+                alternative: (pid) => { akt.setzeEinsprung(pid, datum, dienstId); if (onFertig) onFertig(); },
+                ausfuehren: (best) => { akt.setzeEinsprung(x.person.id, datum, dienstId, best); if (onFertig) onFertig(); } })}>
+                Prüfen …</Btn>
             </div>))}
-          {gesperrt.length > 5 && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 6 }}>
-            und {gesperrt.length - 5} weitere</div>}
+          {gesperrt.length > 5 && (
+            <Btn size="sm" kind="quiet" onClick={() => setAlleGesperrt(!alleGesperrt)} style={{ marginTop: 6 }}>
+              {alleGesperrt ? "Weniger zeigen" : `und ${gesperrt.length - 5} weitere zeigen`}</Btn>)}
         </div>)}
     </div>);
 }
@@ -11931,7 +12064,9 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const b = besetzung(m, datum)[dienstId];
   const liste = useMemo(() => ersatzVorschlaege(m, datum, dienstId), [m, datum, dienstId]);
-  const moeglich = liste.filter((x) => x.moeglich);
+  const [mitAbweichung, setMitAbweichung] = useState(false);
+  const moeglich = liste.filter((x) => x.moeglich || mitAbweichung);
+  const anzahlAbweichung = liste.filter((x) => !x.moeglich).length;
   const folgen = gewaehlt ? folgenPruefen(m, gewaehlt, datum, dienstId) : null;
   const nachricht = anfrageText(m, datum, dienstId, Math.max(0, -b.diff));
 
@@ -11963,11 +12098,11 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
       <Lab style={{ marginBottom: 10 }}>Direkt eintragen · nach Eignung sortiert</Lab>
       {moeglich.length === 0 && (
         <div style={{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger, fontSize: 13.5, marginBottom: 16 }}>
-          Niemand einsetzbar, ohne Ruhezeit oder Einschränkungen zu verletzen. Nutze die Anfrage unten
-          oder die Eskalation im Tagesdetail.
+          Niemand einsetzbar, ohne Ruhezeit oder Einschränkungen zu verletzen. Nutze die Anfrage unten,
+          die Eskalation im Tagesdetail oder wähle unten jemanden mit Abweichung.
         </div>)}
       <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 18 }}>
-        {moeglich.slice(0, 8).map((x, i) => {
+        {moeglich.slice(0, mitAbweichung ? 30 : 8).map((x, i) => {
           const an = gewaehlt && gewaehlt.id === x.person.id;
           return (
             <div key={x.person.id} aria-pressed={an}
@@ -11980,7 +12115,8 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
                 background: i === 0 ? C.okLight : C.bg, color: i === 0 ? C.ok : C.dimmer }}>{i + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{x.person.vorname} {x.person.nachname}</div>
-                <div style={{ fontSize: 12, color: C.dimmer }}>{x.gruende.slice(0, 2).join(" · ")}</div>
+                <div style={{ fontSize: 12, color: x.moeglich ? C.dimmer : C.danger }}>
+                  {x.moeglich ? x.gruende.slice(0, 2).join(" · ") : `mit Abweichung: ${x.hindernisse[0]}`}</div>
               </div>
               <span style={{ fontSize: 12, color: C.dimmer }}>{an ? "gewählt" : "prüfen"}</span>
             </div>);
@@ -12005,10 +12141,17 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
             <Btn kind="quiet" onClick={() => setGewaehlt(null)}>Andere wählen</Btn>
             <Btn kind={folgen.hindernisse.length ? "danger" : "primary"}
-              onClick={() => { akt.setzeEinsprung(gewaehlt.id, datum, dienstId); onClose(); }}>
-              {folgen.hindernisse.length ? "Trotzdem eintragen" : "Eintragen"}</Btn>
+              onClick={() => akt.mitWarnung(m, { titel: "Dienst besetzen",
+                eintraege: [{ personId: gewaehlt.id, datum, dienstId }], knopf: "Eintragen",
+                alternative: (pid) => { akt.setzeEinsprung(pid, datum, dienstId); onClose(); },
+                ausfuehren: (best) => { akt.setzeEinsprung(gewaehlt.id, datum, dienstId, best); onClose(); } })}>
+              {folgen.hindernisse.length ? "Trotzdem eintragen …" : "Eintragen"}</Btn>
           </div>
         </div>)}
+
+      {anzahlAbweichung > 0 && (
+        <Btn size="sm" kind="quiet" onClick={() => setMitAbweichung(!mitAbweichung)} style={{ marginTop: -8, marginBottom: 16 }}>
+          {mitAbweichung ? "Nur regelkonforme zeigen" : `Auch ${anzahlAbweichung} mit Abweichung zeigen`}</Btn>)}
 
       {/* Weg 2: offene Anfrage versenden */}
       <div style={{ paddingTop: 18, borderTop: `1px solid ${C.lineSoft}` }}>
@@ -12029,6 +12172,153 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
         {text && <textarea readOnly value={text} onFocus={(e) => e.target.select()} className="inp"
           style={{ height: 150, marginTop: 12, fontSize: 12.5 }} />}
       </div>
+    </Sheet>);
+}
+
+/* ==========================================================================
+   WARNDIALOG — warnen statt sperren (E-19)
+
+   Ein Dialog für alle Stellen, an denen eine Einteilung gegen eine Regel
+   verstoßen würde. Er zeigt Was, Wo, Warum, Grundlage, Folgen und andere
+   Wege. Entscheiden tut der Mensch: ändern oder dennoch fortfahren.
+   Bei einem Rechtsverstoß ist „gelesen" anzukreuzen; der Grund ist
+   freiwillig und lässt sich überspringen.
+   ========================================================================== */
+function Warndialog({ sitz, vorgang, onClose }) {
+  const m = sitz.mandant;
+  const eintraege = vorgang.geprueft;
+  const mehrere = eintraege.length > 1;
+  const ernst = (e) => e.technisch || e.befunde.some((b) => stufeRang(b.stufe) >= 2);
+  const [auswahl, setAuswahl] = useState(() => new Set(eintraege
+    .map((e, i) => i).filter((i) => !mehrere || !ernst(eintraege[i]))));
+  const [gelesen, setGelesen] = useState(false);
+  const [grundArt, setGrundArt] = useState("");
+  const [grundText, setGrundText] = useState("");
+  const [uebersprungen, setUebersprungen] = useState(false);
+
+  const gewaehlt = eintraege.filter((_, i) => auswahl.has(i));
+  const alleBefunde = gewaehlt.flatMap((e) => e.befunde);
+  const stufe = hoechsteStufe(alleBefunde);
+  const technisch = gewaehlt.filter((e) => e.technisch || e.befunde.some((b) => b.art === "bestand"));
+  const abwesend = gewaehlt.some((e) => e.befunde.some((b) => b.art === "abwesend"));
+  const recht = stufe === "recht";
+  /* Rechte bleiben (E-19, Grenzen): Eine Abwesenheit hebt nur auf, wer
+     Abwesenheiten pflegen darf — die Schichtverantwortung nicht. */
+  const abwesenheitGesperrt = abwesend && sitz.rolle === "subplaner";
+  const kann = gewaehlt.length > 0 && !technisch.length && !abwesenheitGesperrt && (!recht || gelesen);
+  const knopf = recht ? "Dennoch fortfahren" : stufe === "achtung" ? "Dennoch übernehmen" : (vorgang.knopf || "Übernehmen");
+  const grund = ABWEICHUNG_GRUENDE.find((g) => g.id === grundArt);
+  const einzel = !mehrere ? eintraege[0] : null;
+  const folgen = einzel && einzel.person && einzel.da ? folgenPruefen(m, einzel.person, einzel.datum, einzel.dienstId).hinweise : [];
+  const andere = einzel && vorgang.alternative && einzel.da
+    ? ersatzVorschlaege(m, einzel.datum, einzel.dienstId).filter((x) => x.moeglich && x.person.id !== einzel.personId).slice(0, 3) : [];
+
+  const umschalten = (i) => setAuswahl((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const ausfuehren = () => {
+    vorgang.ausfuehren({
+      eintraege: gewaehlt.map((e) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, idx: e.idx, befunde: e.befunde })),
+      indizes: gewaehlt.map((e) => e.idx).filter((x) => x !== undefined),
+      gelesen, grundArt: uebersprungen ? null : (grundArt || null), grundText: uebersprungen ? "" : grundText.trim(),
+      abwesenheitAufheben: abwesend,
+    });
+    onClose();
+  };
+  const name = (e) => e.person ? `${e.person.vorname} ${e.person.nachname}` : "Unbekannte Person";
+  const farbe = (s) => s === "recht" ? C.danger : s === "achtung" ? C.warn : C.dim;
+
+  const Befund = ({ b }) => (
+    <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 8 }}>
+      <Pill size="sm" tone={(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, color: farbe(b.stufe), lineHeight: 1.45 }}>{b.text}</div>
+        {b.quelle && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 2 }}>Grundlage: {b.quelle}</div>}
+      </div>
+    </div>);
+
+  return (
+    <Sheet open onClose={onClose} titel={vorgang.titel || "Bitte prüfen"} width={720}>
+      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 16 }}>
+        {mehrere
+          ? `${eintraege.filter((e) => !ernst(e)).length} von ${eintraege.length} Einträgen sind regelkonform und vorausgewählt. Einträge mit Befund kannst du einzeln dazunehmen.`
+          : "CENTRIC sperrt nicht. Lies, was gegen die Einteilung spricht, und entscheide: ändern oder dennoch fortfahren."}
+      </div>
+
+      {eintraege.map((e, i) => (!mehrere || ernst(e) || e.befunde.length > 0) && (
+        <div key={i} className="karte" style={{ padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: e.befunde.length ? 10 : 0 }}>
+            {mehrere && (
+              <input type="checkbox" checked={auswahl.has(i)} onChange={() => umschalten(i)}
+                aria-label={`${name(e)} am ${fKurz(e.datum)} übernehmen`} />)}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 600 }}>{name(e)}</div>
+              <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
+                {fLang(e.datum)} · {e.da ? `${e.da.name} ${e.da.start}–${e.da.ende}` : e.dienstId}</div>
+            </div>
+          </div>
+          {e.technisch && <div style={{ fontSize: 13, color: C.danger }}>{e.technisch}</div>}
+          {e.befunde.map((b, k) => <Befund key={k} b={b} />)}
+        </div>))}
+
+      {mehrere && eintraege.every((e) => !ernst(e) && !e.befunde.length) && (
+        <div style={{ fontSize: 13.5, color: C.ok, marginBottom: 12 }}>Alle Einträge sind regelkonform.</div>)}
+
+      {folgen.length > 0 && (
+        <div style={{ margin: "6px 0 14px" }}>
+          <Lab style={{ marginBottom: 8 }}>Folgen</Lab>
+          {folgen.map((h, k) => (
+            <div key={k} style={{ fontSize: 13, marginBottom: 5,
+              color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dim }}>{h.text}</div>))}
+        </div>)}
+
+      {andere.length > 0 && stufe && stufeRang(stufe) >= 2 && (
+        <div style={{ margin: "6px 0 14px" }}>
+          <Lab style={{ marginBottom: 8 }}>Andere Wege ohne Befund</Lab>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {andere.map((x) => (
+              <Btn key={x.person.id} size="sm" onClick={() => { vorgang.alternative(x.person.id); onClose(); }}>
+                {x.person.vorname} {x.person.nachname} einteilen</Btn>))}
+          </div>
+        </div>)}
+
+      {abwesend && (
+        <div style={{ fontSize: 13, color: abwesenheitGesperrt ? C.danger : C.dim, background: C.bg, borderRadius: 10, padding: "10px 12px", margin: "6px 0 14px", lineHeight: 1.5 }}>
+          {abwesenheitGesperrt
+            ? "Eine Abwesenheit kann nur die Planung oder die Leitung aufheben. Bitte dort melden oder einen anderen Weg wählen."
+            : "Die Abwesenheit wird für diesen Tag aufgehoben und die Person benachrichtigt. Der übrige Zeitraum bleibt bestehen."}
+        </div>)}
+
+      {technisch.length > 0 && (
+        <div style={{ fontSize: 13, color: C.danger, margin: "6px 0 14px", lineHeight: 1.5 }}>
+          Das geht technisch nicht: Die Person ist an diesem Tag nicht beschäftigt. Prüfe Eintritt und Austritt unter Personal.
+        </div>)}
+
+      {recht && !technisch.length && (
+        <div className="karte" style={{ padding: 14, margin: "6px 0 14px" }}>
+          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.45, cursor: "pointer" }}>
+            <input type="checkbox" checked={gelesen} onChange={(e) => setGelesen(e.target.checked)} />
+            Ich habe den Hinweis gelesen. Die Einteilung verstößt gegen eine gesetzliche Vorgabe; die Verantwortung liegt beim Arbeitgeber.
+          </label>
+          {!uebersprungen && (
+            <div style={{ marginTop: 12 }}>
+              <Lab style={{ marginBottom: 6 }}>Grund (freiwillig)</Lab>
+              <Sel value={grundArt} onChange={(e) => setGrundArt(e.target.value)} aria-label="Grund für die Abweichung">
+                <option value="">Grund wählen …</option>
+                {ABWEICHUNG_GRUENDE.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}</Sel>
+              {grund && <Inp value={grundText} onChange={(e) => setGrundText(e.target.value)}
+                placeholder={grund.feld} aria-label={grund.feld} style={{ marginTop: 8 }} />}
+            </div>)}
+          <div style={{ marginTop: 10 }}>
+            <Btn size="sm" kind="quiet" onClick={() => setUebersprungen(!uebersprungen)}>
+              {uebersprungen ? "Doch einen Grund angeben" : "Überspringen"}</Btn>
+          </div>
+        </div>)}
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
+        <Btn kind="quiet" onClick={onClose}>Ändern</Btn>
+        <Btn kind={recht ? "danger" : stufe === "achtung" ? "warn" : "primary"} disabled={!kann} onClick={ausfuehren}>
+          {mehrere ? `${knopf} (${gewaehlt.length})` : knopf}</Btn>
+      </div>
+      {vorgang.fussnote && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>{vorgang.fussnote}</div>}
     </Sheet>);
 }
 
@@ -12104,7 +12394,13 @@ function Tauschboerse({ sitz, akt }) {
                         return (
                           <Btn key={iid} size="sm" kind={konflikt ? "danger" : "ok"}
                             title={konflikt ? "Einteilung würde Vorgaben verletzen" : "Tausch mit dieser Person bestätigen"}
-                            onClick={() => akt.tauschZuteilen(a.id, iid)}>
+                            onClick={() => akt.mitWarnung(m, { titel: "Tausch bestätigen",
+                              eintraege: [...(t && t.dienstId ? [{ personId: iid, datum: a.von, dienstId: t.dienstId }] : []),
+                                ...(() => { const t2 = personTag(m, ip, a.von);
+                                  return t2 && t2.dienstId && m.dienstarten.some((x) => x.id === t2.dienstId)
+                                    ? [{ personId: a.personId, datum: a.von, dienstId: t2.dienstId }] : []; })()],
+                              knopf: "Tausch bestätigen", immerZeigen: false,
+                              ausfuehren: (best) => akt.tauschZuteilen(a.id, iid, best) })}>
                             {konflikt ? <Icon n="warnung" size={14} /> : <Icon n="haken" size={14} />}{ip.nachname}
                           </Btn>);
                       })}
@@ -15750,20 +16046,27 @@ function darfSichBewerben(m, personId, a) {
   if ((a.bewerbungen || []).some((b) => b.personId === personId))
     return { darf: false, grund: "bereits beworben" };
 
-  /* Dieselbe Prüfung wie bei der Ersatzsuche — was dort sperrt, sperrt hier. */
-  const da = m.dienstarten.find((x) => x.id === a.dienstId);
-  const h = hindernisse(m, p, a.datum, da);
-  if (h.length) return { darf: false, grund: h[0], hindernisse: h };
-
   /* Wer an dem Tag schon eingeteilt ist, kann nicht zusätzlich. Geprüft wird
      gegen die Dienstarten des Betriebs — eine feste Kennung wie „F" wäre
-     falsch, weil sie in vielen Betrieben der Frühdienst ist. */
+     falsch, weil sie in vielen Betrieben der Frühdienst ist. Das ist keine
+     Regel, sondern technisch: Eine Person hat je Tag einen Planeintrag. */
   const eigen = personTag(m, p, a.datum);
   if (eigen && eigen.dienstId && m.dienstarten.some((x) => x.id === eigen.dienstId))
     return { darf: false, grund: "an diesem Tag bereits eingeteilt" };
 
-  return { darf: true };
+  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein Befund
+     die Bewerbung nicht mehr: Die Person sieht den Hinweis und darf sich
+     trotzdem melden; die Planung entscheidet mit dem Warndialog. */
+  const da = m.dienstarten.find((x) => x.id === a.dienstId);
+  const h = da ? hindernisse(m, p, a.datum, da) : [];
+  return h.length ? { darf: true, hinweise: h } : { darf: true };
 }
+
+/** Darf sich bewerben, und nichts spricht dagegen — wer so steht, wird benachrichtigt. */
+const bewerbbarOhneHinweis = (m, personId, a) => {
+  const r = darfSichBewerben(m, personId, a);
+  return r.darf && !(r.hinweise || []).length;
+};
 
 /** Die Ausschreibungen, die einer Person offenstehen. */
 const meineOffenenSchichten = (m, personId) =>
@@ -15814,7 +16117,7 @@ function bewerbungsPunkte(m, p, a) {
 function ausschreibungLage(m, a) {
   const bew = bewerbungenGeordnet(m, a);
   const moeglich = m.personen.filter((p) => imDienst(p, a.datum)
-    && darfSichBewerben(m, p.id, { ...a, bewerbungen: [] }).darf).length;
+    && bewerbbarOhneHinweis(m, p.id, { ...a, bewerbungen: [] })).length;
   const tage = between(heute(), a.datum);
   return { bewerbungen: bew, anzahl: bew.length, moeglich, tage,
     dringend: tage <= 2 && !bew.length,
@@ -15964,7 +16267,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                 {lage.anzahl === 0 ? (
                   <Card><Leer titel="Noch niemand hat sich gemeldet"
                     text={lage.moeglich === 0
-                      ? "Niemand darf diese Schicht übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Hier hilft nur die Ersatzsuche mit Begründung."
+                      ? "Niemand kann diese Schicht ohne Befund übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Die Ersatzsuche zeigt, wer nur mit Abweichung infrage kommt."
                       : `${zahl(lage.moeglich)} Personen wurden unterrichtet. Bei kurzem Vorlauf lohnt zusätzlich die gezielte Anfrage.`} />
                     {lage.moeglich > 0 && (
                       <div style={{ padding: "0 var(--pad-x) 22px" }}>
@@ -15990,11 +16293,19 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                           </div>
                           {darfVergeben && (
                             <Btn size="sm" kind={i === 0 ? "primary" : undefined}
-                              onClick={() => akt.vergibSchicht(a.id, b.personId)}>Einteilen</Btn>)}
+                              onClick={() => akt.mitWarnung(m, { titel: "Offene Schicht vergeben",
+                                eintraege: [{ personId: b.personId, datum: a.datum, dienstId: a.dienstId }],
+                                knopf: "Einteilen",
+                                ausfuehren: (best) => akt.vergibSchicht(a.id, b.personId, best) })}>Einteilen</Btn>)}
                         </div>
                         {b.text && (
                           <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10,
                             paddingLeft: 52, lineHeight: 1.5, fontStyle: "italic" }}>„{b.text}"</div>)}
+                        {(() => { const dx = m.dienstarten.find((x) => x.id === a.dienstId);
+                          const h = dx ? hindernisse(m, b.person, a.datum, dx) : [];
+                          return h.length > 0 && (
+                            <div style={{ display: "flex", gap: 7, fontSize: 12.5, color: C.warn, marginTop: 8, paddingLeft: 52, lineHeight: 1.45 }}>
+                              <Icon n="warnung" size={14} /><span>mit Hinweis: {h.join(" · ")}</span></div>); })()}
                         {b.gruende && b.gruende.length > 0 && (
                           <div style={{ marginTop: 12, paddingLeft: 52, display: "grid", gap: 5 }}>
                             {b.gruende.slice(0, 3).map((g, gi) => (
@@ -16042,8 +16353,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
           {(() => {
             const da = m.dienstarten.find((x) => x.id === neu.dienstId);
             const moeglich = m.personen.filter((p) => imDienst(p, neu.datum)
-              && darfSichBewerben(m, p.id, { datum: neu.datum, dienstId: neu.dienstId,
-                status: "offen", bewerbungen: [] }).darf).length;
+              && bewerbbarOhneHinweis(m, p.id, { datum: neu.datum, dienstId: neu.dienstId,
+                status: "offen", bewerbungen: [] })).length;
             return (
               <div style={{ display: "grid", gap: 18 }}>
                 <div>
@@ -17422,7 +17733,6 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
   if (datum.slice(0, 7) !== runde.monat)
     return { darf: false, grund: "liegt außerhalb des Planungsmonats" };
   if (!imDienst(p, datum)) return { darf: false, grund: "an diesem Tag nicht beschäftigt" };
-  if (abwesenheitAm(m, p.id, datum)) return { darf: false, grund: "an diesem Tag abwesend" };
 
   const schon = (runde.eintraege || []).find((e) =>
     e.personId === personId && e.datum === datum);
@@ -17431,40 +17741,46 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { darf: false, grund: "Dienstart unbekannt" };
 
+  /* Seit E-19 hindert keine Regel die Eintragung. Was dagegen spricht,
+     wird als Hinweis mitgegeben; die Person darf sich trotzdem eintragen,
+     und die Planung entscheidet bei der Übernahme mit dem Warndialog. */
+  const hinweise = [];
+
   /* Ruhezeit gegen die eigenen bisherigen Eintragungen prüfen — nicht nur
      gegen den bestehenden Plan. Sonst trägt sich jemand Nacht und Früh
-     hintereinander ein, und die Planung muss es hinterher auflösen. */
+     hintereinander ein, ohne es zu merken. */
   const eigene = (runde.eintraege || []).filter((e) => e.personId === personId);
   const vortag = eigene.find((e) => e.datum === addDays(datum, -1));
   if (vortag) {
     const dv = m.dienstarten.find((x) => x.id === vortag.dienstId);
     if (dv && ruhezeitVerletzt(m, dv, da, addDays(datum, -1)))
-      return { darf: false, grund: "zu wenig Ruhezeit nach dem Vortag" };
+      hinweise.push("zu wenig Ruhezeit nach dem Vortag");
   }
   const folgetag = eigene.find((e) => e.datum === addDays(datum, 1));
   if (folgetag) {
     const df = m.dienstarten.find((x) => x.id === folgetag.dienstId);
     if (df && ruhezeitVerletzt(m, da, df, datum))
-      return { darf: false, grund: "zu wenig Ruhezeit vor dem Folgetag" };
+      hinweise.push("zu wenig Ruhezeit vor dem Folgetag");
   }
 
-  /* Qualifikationen und harte Sperren — dieselbe Prüfung wie sonst */
-  const h = hindernisse(m, p, datum, da);
-  if (h.length) return { darf: false, grund: h[0] };
+  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie sonst */
+  hinweise.push(...hindernisse(m, p, datum, da));
 
   /* Ist der Dienst schon voll? Über die Mindestbesetzung hinaus soll sich
-     niemand eintragen, solange andere Tage leer sind. */
+     niemand eintragen, ohne es zu wissen. */
   const drin = (runde.eintraege || []).filter((e) =>
     e.datum === datum && e.dienstId === dienstId).length;
   const soll = mindestFuer(m, da, datum);
   if (runde.deckelung !== false && soll > 0 && drin >= soll)
-    return { darf: false, grund: "dieser Dienst ist bereits gedeckt" };
+    hinweise.push("dieser Dienst ist bereits gedeckt");
 
-  /* Wer sein Stundenziel deutlich überschreitet, tritt zurück */
+  /* Wer sein Stundenziel deutlich überschreitet, erfährt es */
   const st = selbstplanStand(m, runde, personId);
-  if (st && st.zuViel) return { darf: false, grund: "dein Stundenziel ist erreicht" };
+  if (st && st.zuViel) hinweise.push("dein Stundenziel ist erreicht");
 
-  return { darf: true, offen: Math.max(0, soll - drin) };
+  return hinweise.length
+    ? { darf: true, hinweise, offen: Math.max(0, soll - drin) }
+    : { darf: true, offen: Math.max(0, soll - drin) };
 }
 
 /** Wie viele fehlen noch je Tag und Dienst? Die Karte der Runde. */
@@ -17749,17 +18065,31 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                   {r.status === "offen" && (
                     <Btn size="sm" onClick={() => akt.rundeSchliessen(r.id)}>Schließen</Btn>)}
                   {r.status === "geschlossen" && (
-                    <Btn size="sm" kind="primary" onClick={() => akt.rundeUebernehmen(r.id)}>
+                    <Btn size="sm" kind="primary" onClick={() => akt.mitWarnung(m, { titel: "Selbstplanung übernehmen",
+                      eintraege: (r.eintraege || []).map((e, idx) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, idx })),
+                      knopf: "Übernehmen",
+                      fussnote: "Was du nicht auswählst, wird nicht übernommen und bleibt mit Grund an der Runde sichtbar.",
+                      ausfuehren: (best) => akt.rundeUebernehmen(r.id, best) })}>
                       In den Plan übernehmen</Btn>)}
                   {r.status === "uebernommen" && (
                     <div style={{ fontSize: 13, color: C.ok }}>
                       {zahl(r.uebernommen || 0)} übernommen
-                      {r.verworfen ? `, ${zahl(r.verworfen)} verworfen` : ""}</div>)}
+                      {r.verworfen ? `, ${zahl(r.verworfen)} nicht übernommen` : ""}</div>)}
                 </div>
+                {r.status === "uebernommen" && (r.nichtUebernommen || []).length > 0 && (
+                  <details style={{ marginTop: 12 }}>
+                    <summary style={{ fontSize: 12.5, color: C.dim, cursor: "pointer" }}>Nicht übernommen, mit Grund</summary>
+                    {r.nichtUebernommen.map((e, k) => {
+                      const pp = m.personen.find((x) => x.id === e.personId);
+                      return (
+                        <div key={k} style={{ fontSize: 12.5, color: C.dim, padding: "4px 0", lineHeight: 1.45 }}>
+                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {e.grund}</div>);
+                    })}
+                  </details>)}
                 {r.status === "geschlossen" && (
                   <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12, lineHeight: 1.5 }}>
-                    Beim Übernehmen wird jeder Eintrag noch einmal geprüft. Was inzwischen
-                    nicht mehr geht, wird verworfen statt stillschweigend eingetragen.
+                    Beim Übernehmen wird jeder Eintrag noch einmal geprüft. Einträge mit Befund
+                    zeigt der Warndialog; du entscheidest je Eintrag. Nichts wird still verworfen.
                   </div>)}
               </Card>)}
           </div>
@@ -19807,14 +20137,19 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                           <span style={{ display: "block", fontSize: 12, color: C.dim,
                             marginTop: 2 }}>{da.start}–{da.ende}
                             {pruef.offen ? ` · ${pruef.offen} frei` : ""}</span>
+                          {(pruef.hinweise || []).length > 0 && (
+                            <span style={{ display: "flex", gap: 5, alignItems: "flex-start", fontSize: 12, color: C.warn,
+                              marginTop: 5, lineHeight: 1.35 }}>
+                              <Icon n="warnung" size={13} />{pruef.hinweise[0]}</span>)}
                         </button>))}
                     </div>
                   </MKarte>);
               })}
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.55,
               paddingBottom: 20 }}>
-              Hier steht nur, was du auch wirklich übernehmen darfst — Ruhezeit,
-              Qualifikationen und deine Abwesenheiten sind bereits geprüft.
+              Ruhezeit, Qualifikationen und deine Abwesenheiten sind bereits geprüft. Spricht
+              etwas dagegen, steht ein Hinweis am Dienst. Du kannst dich trotzdem eintragen;
+              die Planung entscheidet.
             </div>
           </>);
         })()}
@@ -19895,6 +20230,13 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       {da ? ` · ${n1(dauer(da))} h` : ""}</div>
                     {a.hinweis && <div style={{ fontSize: 13.5, color: C.dim, marginTop: 8,
                       lineHeight: 1.5, fontStyle: "italic" }}>„{a.hinweis}"</div>}
+                    {(() => { const h = darfSichBewerben(m, p.id, a).hinweise || [];
+                      return h.length > 0 && (
+                        <div style={{ display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13.5, color: C.warn,
+                          marginTop: 8, lineHeight: 1.45 }}>
+                          <Icon n="warnung" size={15} />
+                          <span>{h[0]}{h.length > 1 ? ` (und ${h.length - 1} weitere)` : ""}. Du kannst dich trotzdem melden; die Planung entscheidet.</span>
+                        </div>); })()}
                     <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
                       {tage <= 1 ? "morgen" : `in ${tage} Tagen`}
                       {(a.bewerbungen || []).length > 0
@@ -19908,8 +20250,8 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
               })}
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.55,
                 paddingBottom: 20 }}>
-                Hier steht nur, was du auch wirklich übernehmen darfst — Ruhezeit,
-                Qualifikationen und deine Abwesenheiten sind bereits geprüft.
+                Ruhezeit, Qualifikationen und deine Abwesenheiten sind bereits geprüft. Spricht
+                etwas dagegen, steht es dabei — melden kannst du dich trotzdem.
               </div>
             </>)}
           </>);
@@ -20850,6 +21192,7 @@ function AppInnen() {
   const [krank, setKrank] = useState(null);
   const [assist, setAssist] = useState(false);
   const [eskal, setEskal] = useState(null);
+  const [warnung, setWarnung] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
   /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
@@ -21279,6 +21622,10 @@ function AppInnen() {
     });
     const bLog = (s, text) => ({ ...s, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...(s.protokoll || [])].slice(0, 300) });
     const jetzt = () => new Date().toLocaleString("de-DE");
+    /** Wer gerade bestätigt — für das Bestätigungsprotokoll. */
+    const wer = () => ({ personId: sitz && sitz.person ? sitz.person.id : null,
+      name: sitz && sitz.person ? `${sitz.person.vorname} ${sitz.person.nachname}` : "unbekannt",
+      rolle: sitz ? sitz.rolle : null });
 
     return {
       /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
@@ -21549,22 +21896,34 @@ function AppInnen() {
         return { ...m, abwesenheiten: [...m.abwesenheiten, { id: uid("a"), personId: pid, art: "krank", von, bis, notiz }],
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Krankmeldung erfasst"),
-      setzeEinsprung: (pid, d, dienstId) => mUpd((m) => {
+      setzeEinsprung: (pid, d, dienstId, best) => mUpd((m0) => {
+        let m = m0;
         const p = m.personen.find((x) => x.id === pid);
         const da = m.dienstarten.find((x) => x.id === dienstId);
         if (!p) { melde("Person nicht gefunden."); return m; }
-        // Eine bestehende Abwesenheit schlägt jede Einteilung — sonst wird die
-        // Zuteilung angenommen, wirkt aber nicht und die Besetzung bleibt stehen.
+        /* Eine bestehende Abwesenheit schlägt jede Einteilung — sonst wird
+           die Zuteilung angenommen, wirkt aber nicht. Gesperrt wird nicht:
+           Der Warndialog bietet an, die Abwesenheit für diesen Tag
+           aufzuheben (best.abwesenheitAufheben). */
         const abw = abwesenheitAm(m, pid, d);
-        if (abw) {
-          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(d)} ${abwArt(abw.art).label.toLowerCase()} — Einteilung nicht möglich.`);
+        if (abw && !(best && best.abwesenheitAufheben)) {
+          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(d)} ${abwArt(abw.art).label.toLowerCase()}. Erst die Abwesenheit für diesen Tag aufheben.`);
           return m;
+        }
+        let nachrAbw = [];
+        if (abw) {
+          const r = abwesenheitTagAufheben(m, pid, d);
+          m = { ...m, abwesenheiten: r.abwesenheiten };
+          nachrAbw = [baueMitteilung(m, pid, "antragEntschieden", `${abwArt(abw.art).label} am ${fKurz(d)} aufgehoben`,
+            `Die Planung hat dich für ${da ? da.name : dienstId} eingeteilt. Der übrige Zeitraum bleibt bestehen.`, "meine")].filter(Boolean);
         }
         const vorher = personTag(m, p, d).dienstId;
         if (vorher === dienstId) { melde(`${p.nachname} ist bereits eingeteilt.`); return m; }
         melde(vorher
           ? `${p.vorname} ${p.nachname} für ${fKurz(d)} umgeteilt.`
           : `${p.vorname} ${p.nachname} für ${fKurz(d)} eingeteilt.`);
+        m = bestaetigungVermerken(m, best, wer(), "einsprung");
+        if (nachrAbw.length) m = { ...m, nachrichten: [...nachrAbw, ...(m.nachrichten || [])].slice(0, 400) };
         return { ...m,
           abweichungen: { ...m.abweichungen, [`${pid}|${d}`]: dienstId },
           einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE") }, ...(m.einspruenge || [])].slice(0, 500),
@@ -21897,9 +22256,13 @@ function AppInnen() {
         if (!r || !pid) return m;
         const pruef = darfSelbstEintragen(m, r, pid, datum, dienstId);
         if (!pruef.darf) { melde(`Nicht möglich: ${pruef.grund}.`); return m; }
+        /* Mit Hinweis eintragen ist erlaubt (E-19). Der Eintrag trägt den
+           Hinweis, die Planung entscheidet bei der Übernahme. */
+        if ((pruef.hinweise || []).length) melde(`Eingetragen, mit Hinweis: ${pruef.hinweise[0]}. Die Planung entscheidet.`);
         return { ...m, selbstplanung: m.selbstplanung.map((x) => x.id !== r.id ? x
           : { ...x, eintraege: [...(x.eintraege || []),
-              { personId: pid, datum, dienstId, zeit: new Date().toISOString() }] }) };
+              { personId: pid, datum, dienstId, zeit: new Date().toISOString(),
+                ...((pruef.hinweise || []).length ? { hinweise: pruef.hinweise } : {}) }] }) };
       }, "Selbst eingetragen"),
 
       selbstAustragen: (datum) => mUpd((m) => {
@@ -21916,26 +22279,39 @@ function AppInnen() {
           ? { ...r, status: "geschlossen", geschlossen: new Date().toISOString() } : r) }),
         "Selbstplanung geschlossen"),
 
-      rundeUebernehmen: (id) => mUpd((m) => {
+      rundeUebernehmen: (id, best) => mUpd((m0) => {
+        let m = m0;
         const r = (m.selbstplanung || []).find((x) => x.id === id);
         if (!r) return m;
-        /* Jeder Eintrag wird zur Abweichung. Vor dem Übernehmen noch einmal
-           prüfen — zwischen Eintragung und Übernahme können Tage liegen. */
+        /* Jeder Eintrag wird zur Abweichung. Vor dem Übernehmen wird noch
+           einmal geprüft — zwischen Eintragung und Übernahme können Tage
+           liegen. Nichts wird mehr still verworfen: Was die Planung im
+           Warndialog nicht ausgewählt hat, steht mit Grund an der Runde.
+           Ohne Auswahl (best fehlt) gilt die alte Vorauswahl: alles
+           Regelkonforme. */
+        const gewaehlt = best && Array.isArray(best.indizes) ? new Set(best.indizes) : null;
         const neu = { ...m.abweichungen };
-        let uebernommen = 0, verworfen = 0;
-        for (const e of (r.eintraege || [])) {
+        let uebernommen = 0;
+        const nicht = [];
+        (r.eintraege || []).forEach((e, i) => {
           const p = m.personen.find((x) => x.id === e.personId);
           const da = m.dienstarten.find((x) => x.id === e.dienstId);
-          if (!p || !da) { verworfen++; continue; }
-          if (hindernisse(m, p, e.datum, da).length) { verworfen++; continue; }
+          if (!p || !da) { nicht.push({ ...e, grund: "Person oder Dienstart nicht mehr vorhanden" }); return; }
+          const bef = hindernisBefunde(m, p, e.datum, da);
+          const ernst = bef.filter((b) => stufeRang(b.stufe) >= 2);
+          const nehmen = gewaehlt ? gewaehlt.has(i) : ernst.length === 0;
+          if (!nehmen) { nicht.push({ ...e, grund: ernst.length ? ernst[0].text : "nicht ausgewählt" }); return; }
+          if (bef.some((b) => b.art === "abwesend") && best && best.abwesenheitAufheben)
+            m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, e.personId, e.datum).abwesenheiten };
           neu[`${e.personId}|${e.datum}`] = e.dienstId;
           uebernommen++;
-        }
-        melde(`${uebernommen} übernommen${verworfen ? `, ${verworfen} verworfen` : ""}.`);
+        });
+        m = bestaetigungVermerken(m, best, wer(), "selbstplanung");
+        melde(`${uebernommen} übernommen${nicht.length ? `, ${nicht.length} nicht übernommen` : ""}.`);
         return { ...m, abweichungen: neu,
           selbstplanung: m.selbstplanung.map((x) => x.id === id
             ? { ...x, status: "uebernommen", uebernommenAm: new Date().toISOString(),
-                uebernommen, verworfen } : x) };
+                uebernommen, verworfen: nicht.length, nichtUebernommen: nicht } : x) };
       }, "Selbstplanung übernommen"),
 
       /* --- Notruf --- */
@@ -22101,8 +22477,8 @@ function AppInnen() {
            eine Mitteilung über einen Dienst, den man nicht nehmen kann,
            ist Lärm. */
         const nachr = m.personen
-          .filter((p) => darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
-            p.id, a).darf)
+          .filter((p) => { const r = darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
+            p.id, a); return r.darf && !(r.hinweise || []).length; })
           .map((p) => baueMitteilung(m, p.id, "offeneSchicht",
             `Offene Schicht am ${fKurz(datum)}`,
             `${da ? da.name : dienstId}${da ? ` · ${da.start}–${da.ende}` : ""}${hinweis ? ` · ${hinweis}` : ""}`,
@@ -22118,10 +22494,13 @@ function AppInnen() {
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const pruef = darfSichBewerben(m, pid, a);
         if (!pruef.darf) { melde(`Bewerbung nicht möglich: ${pruef.grund}.`); return m; }
-        melde("Bewerbung eingegangen. Die Planung entscheidet.");
+        const hinw = pruef.hinweise || [];
+        melde(hinw.length ? `Bewerbung eingegangen, mit Hinweis: ${hinw[0]}. Die Planung entscheidet.`
+          : "Bewerbung eingegangen. Die Planung entscheidet.");
         return { ...m, ausschreibungen: m.ausschreibungen.map((x) => x.id !== asId ? x
           : { ...x, bewerbungen: [...(x.bewerbungen || []),
-              { personId: pid, zeit: new Date().toISOString(), text: text || "" }] }) };
+              { personId: pid, zeit: new Date().toISOString(), text: text || "",
+                ...(hinw.length ? { hinweise: hinw } : {}) }] }) };
       }, "Auf offene Schicht beworben"),
 
       ziehBewerbungZurueck: (asId) => mUpd((m) => {
@@ -22131,16 +22510,23 @@ function AppInnen() {
           : { ...x, bewerbungen: (x.bewerbungen || []).filter((b) => b.personId !== pid) }) };
       }, "Bewerbung zurückgezogen"),
 
-      vergibSchicht: (asId, personId) => mUpd((m) => {
+      vergibSchicht: (asId, personId, best) => mUpd((m0) => {
+        let m = m0;
         const a = (m.ausschreibungen || []).find((x) => x.id === asId);
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const p = m.personen.find((x) => x.id === personId);
         const da = m.dienstarten.find((x) => x.id === a.dienstId);
         if (!p) { melde("Person nicht gefunden."); return m; }
-        /* Vor dem Eintragen noch einmal prüfen — zwischen Bewerbung und
-           Zuschlag können Tage liegen, in denen sich etwas geändert hat. */
-        const h = hindernisse(m, p, a.datum, da);
-        if (h.length) { melde(`Nicht möglich: ${h[0]}.`); return m; }
+        /* Zwischen Bewerbung und Zuschlag können Tage liegen. Geprüft wird
+           im Warndialog vor dem Aufruf; hier wird nicht mehr abgebrochen,
+           sondern die Bestätigung festgehalten (E-19). */
+        const abw = abwesenheitAm(m, personId, a.datum);
+        if (abw && !(best && best.abwesenheitAufheben)) {
+          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(a.datum)} abwesend. Erst die Abwesenheit für diesen Tag aufheben.`);
+          return m;
+        }
+        if (abw) m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, personId, a.datum).abwesenheiten };
+        m = bestaetigungVermerken(m, best, wer(), "ausschreibung");
         const jetzt = new Date().toLocaleString("de-DE");
         const abgelehnt = (a.bewerbungen || []).filter((b) => b.personId !== personId);
         const nachr = [
@@ -22615,7 +23001,8 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       }, "Meldung auf Tauschgesuch"),
       tauschAbmelden: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.map((x) => x.id === id
         ? { ...x, interessenten: (x.interessenten || []).filter((p) => p !== sitz.person.id) } : x) }), null),
-      tauschZuteilen: (id, interessentId) => mUpd((m) => {
+      tauschZuteilen: (id, interessentId, best) => mUpd((m0) => {
+        const m = bestaetigungVermerken(m0, best, wer(), "tausch");
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const t1 = personTag(m, m.personen.find((x) => x.id === a.personId), a.von);
         const t2 = personTag(m, m.personen.find((x) => x.id === interessentId), a.von);
@@ -22681,6 +23068,22 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           aenderungen: [...aend, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Planungsvorschlag übernommen"),
+
+      /* --- Warnen statt sperren (E-19) ---
+         Prüft die Einträge eines Vorgangs. Ohne ernsten Befund läuft die
+         Aktion sofort, sonst öffnet der Warndialog. Gesperrt wird nie. */
+      mitWarnung: (m, vorgang) => {
+        const geprueft = (vorgang.eintraege || []).map((e) => ({ ...e,
+          ...befundeFuerEinteilung(m, e.personId, e.datum, e.dienstId) }));
+        const ernst = geprueft.some((e) => e.technisch || e.befunde.some((b) => stufeRang(b.stufe) >= 2));
+        if (!ernst && !vorgang.immerZeigen) {
+          vorgang.ausfuehren({ eintraege: geprueft.map((e) => ({ personId: e.personId, datum: e.datum,
+            dienstId: e.dienstId, idx: e.idx, befunde: e.befunde })),
+          indizes: geprueft.map((e) => e.idx).filter((x) => x !== undefined), gelesen: false, grundArt: null });
+          return;
+        }
+        setWarnung({ ...vorgang, geprueft });
+      },
 
       /* --- Eskalation --- */
       oeffneEskalation: (d, dienstId) => setEskal({ datum: d, dienstId }),
@@ -23199,6 +23602,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       {schnell && !istBetreiber && <Schnellbesetzung sitz={sitz} datum={schnell.datum} dienstId={schnell.dienstId}
         akt={akt} onClose={() => setSchnell(null)} />}
       {eskal && !istBetreiber && <Eskalation sitz={sitz} datum={eskal.datum} dienstId={eskal.dienstId} akt={akt} onClose={() => setEskal(null)} />}
+      {warnung && !istBetreiber && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
       {ausgl && !istBetreiber && <AusgleichPlanen sitz={sitz} personId={ausgl} akt={akt} onClose={() => setAusgl(null)} />}
       {krank && !istBetreiber && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
       {postfach && !istBetreiber && <Nachrichten sitz={sitz} akt={akt} onClose={() => { akt.alleGelesen(); setPostfach(false); }} />}

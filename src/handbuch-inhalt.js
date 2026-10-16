@@ -410,13 +410,14 @@ export const HANDBUCH = [
     abschnitte: [
       {
         titel: "Sachkunde nach § 34a",
-        text: "Gesetzlich zwingend — ohne sie ist kein Einsatz zulässig.",
+        text: "Gesetzlich zwingend — ohne sie ist der Einsatz ein Rechtsverstoß.",
         schritte: [
           "Bei der Qualifikation den Schalter „gesetzlich zwingend\" setzen.",
-          "CENTRIC sperrt daraufhin jeden Einsatz ohne diese Qualifikation, unabhängig von der Dienstart.",
-          "Auch die Ersatzsuche schließt betroffene Personen aus, mit Begründung.",
+          "CENTRIC warnt daraufhin bei jedem Einsatz ohne diese Qualifikation als Rechtsverstoß, unabhängig von der Dienstart.",
+          "Die Ersatzsuche führt betroffene Personen unter „Nur mit Abweichung“, mit Begründung.",
+          "Wer trotzdem einteilt, bestätigt im Warndialog; die Bestätigung steht im Protokoll und in der Prüfung.",
         ],
-        merke: "Anders als eine normale Mindestqualifikation gilt die harte Sperre für alle Dienste. Das entspricht der Rechtslage.",
+        merke: "CENTRIC sperrt nicht, es warnt und dokumentiert. Die Verantwortung für den Einsatz bleibt beim Arbeitgeber.",
       },
       {
         titel: "Außenposten",
