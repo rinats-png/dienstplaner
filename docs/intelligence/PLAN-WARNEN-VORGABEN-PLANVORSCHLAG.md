@@ -121,6 +121,30 @@ Bei mehreren Einträgen, zum Beispiel beim Übernehmen einer Selbstplanung, zeig
    - Die Migration von `harteSperre` setzt die richtigen Stufen.
    - Kontrast und Gestaltung bestehen weiter.
 
+### 4.6 Umsetzungsstand Schritt 1 (16.10.2026)
+
+Umgesetzt:
+- `hindernisBefunde()` und `befundeFuerEinteilung()` liefern Befunde mit Stufe, Quelle und Art. `hindernisse()` bleibt als Textadapter.
+- Stufen, Gründe, Aufheben einer Abwesenheit und Protokolleinträge stehen in `src/warnstufen.js`, geprüft in `pruefungen/warnen.test.js`.
+- `Warndialog` und `akt.mitWarnung()` sind eingebunden in Ersatzsuche, Schnellbesetzung, Ausschreibung, Tausch und Übernahme der Selbstplanung.
+- Bewerbung und Selbstplanung: Beschäftigte melden sich trotz Hinweis; der Hinweis steht am Eintrag.
+- Bestätigungsprotokoll `m.bestaetigungen`:
+  - eigener Abschnitt in der Prüfung
+  - Punkt in der Planzelle, solange die Abweichung wirkt
+  - Hinweis und Rückfrage bei der Freigabe
+  - Mitteilung an die Leitung bei Rechtsverstoß
+- Server:
+  - Die Schichtverantwortung schreibt Bestätigungen nur im eigenen Bereich.
+  - Beschäftigte sehen das Protokoll nicht; der Betriebsrat sieht es ohne Namen.
+  - Eintragungen Beschäftigter in der Selbstplanung kommen jetzt beim Server an. Das war vorher ein Fehler: Das Feld fehlte im Server.
+
+Abweichungen vom Plan:
+- **Dialog in `src/App.jsx`, nicht in `src/gestalt/`:** Er braucht die Rechenfunktionen aus `App.jsx`.
+- **Feld `harteSperre` bleibt bestehen, ohne Migration.** Es bedeutet jetzt „verbindlich“. Die Stufe folgt aus der Ebene: Gesetz → Rechtsverstoß, Betrieb → Achtung.
+- **Ausnahme Abwesenheit:** Die Schichtverantwortung darf keine Abwesenheit aufheben. Das ist eine Frage der Rechte, keine Regelsperre. Der Dialog sagt das.
+
+Offen bleibt Schritt 2: Live-Prüfung im Schichtfolge-Editor.
+
 ---
 
 ## 5. Interne Vorgaben – neue Funktion

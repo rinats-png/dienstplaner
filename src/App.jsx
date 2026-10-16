@@ -2630,6 +2630,24 @@ function bestaetigungVermerken(m, best, wer, aktion) {
 }
 
 /**
+ * Bestätigte Abweichungen, die im Plan noch wirken: Die Person hat an dem
+ * Tag weiter genau diesen Dienst. Ist die Einteilung inzwischen geändert,
+ * ist die Abweichung behoben und verschwindet von der Markierung.
+ * Schlüssel „personId|Datum".
+ */
+function offeneAbweichungen(m, von, bis) {
+  const aus = new Map();
+  for (const b of m.bestaetigungen || []) {
+    if (!b || !b.personId || b.datum < von || b.datum > bis) continue;
+    const p = m.personen.find((x) => x.id === b.personId);
+    if (!p || personTag(m, p, b.datum).dienstId !== b.dienstId) continue;
+    const k = `${b.personId}|${b.datum}`;
+    if (!aus.has(k) || stufeRang(b.stufe) > stufeRang(aus.get(k).stufe)) aus.set(k, b);
+  }
+  return aus;
+}
+
+/**
  * Ersatzsuche für einen unterbesetzten Dienst.
  * Sortiert nach Eignung: Qualifikation, Stundenkonto im Minus, Belastungsausgleich.
  */
@@ -8905,6 +8923,8 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const editierbar = darfEinheit(sitz, eid);
   const [suche, setSuche] = useState("");
   const [nurAbw, setNurAbw] = useState(false);
+  const planVon = tage[0], planBis = tage[tage.length - 1];
+  const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -8970,8 +8990,16 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                   style={{ padding: "4px 1px", textAlign: "center",
                   borderBottom: `1px solid ${C.lineSoft}`, cursor: editierbar ? "pointer" : "default",
                   background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} /></div></td>); })}
+                  <div style={{ display: "flex", justifyContent: "center", position: "relative" }}>
+                    <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} />
+                    {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
+                      if (!b) return null;
+                      /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
+                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${b.befunde.map((x) => x.text).join(" · ")}`}
+                        aria-label={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt`}
+                        style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,
+                          background: b.stufe === "recht" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }} />; })()}
+                  </div></td>); })}
               <td style={{ padding: "8px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" }}>
                 <div style={{ fontSize: 12.5, ...NUM }}>{n1(ist.gesamt)}/{n1(soll)}</div>
                 <div style={{ fontSize: 11.5, color: Math.abs(diff) < 6 ? C.dimmer : diff > 0 ? C.warn : C.accent, ...NUM }}>{sgn(diff)} h</div></td>
@@ -10902,6 +10930,9 @@ function Freigabeleiste({ sitz, ym, akt }) {
   const f = freigabeStand(m, ym);
   const darfFreigeben = darf(sitz, "plan.publish");
   const sicher = planungssicherheit(m, ym);
+  const [y, mo] = ym.split("-").map(Number);
+  const offen = [...offeneAbweichungen(m, `${ym}-01`, `${ym}-${pad(dim_(y, mo - 1))}`).values()];
+  const offenRecht = offen.filter((b) => b.stufe === "recht").length;
   return (
     <Card style={{ padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center",
       gap: 16, flexWrap: "wrap" }}>
@@ -10915,7 +10946,16 @@ function Freigabeleiste({ sitz, ym, akt }) {
         <Pill tone={sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok"}>
           {sicher.kurzfristig} von {sicher.gesamt} Änderungen kurzfristig
         </Pill>)}
-      {darfFreigeben && <Btn kind={f ? "plain" : "primary"} onClick={() => akt.freigeben(ym)}>
+      {offen.length > 0 && (
+        /* Die Freigabe bleibt immer möglich (E-19). Sie zeigt nur, was bewusst abweicht. */
+        <Pill tone={offenRecht ? "danger" : "warn"}>
+          {offen.length} bestätigte Abweichung{offen.length === 1 ? "" : "en"}{offenRecht ? `, davon ${offenRecht} Rechtsverstoß${offenRecht === 1 ? "" : "e"}` : ""}
+        </Pill>)}
+      {darfFreigeben && <Btn kind={f ? "plain" : "primary"} onClick={() => {
+        if (offen.length && typeof window !== "undefined" && !window.confirm(
+          `Im Plan stehen ${offen.length} bewusst bestätigte Abweichungen${offenRecht ? `, davon ${offenRecht} gegen gesetzliche Vorgaben` : ""}. `
+          + "Sie sind in der Prüfung einzeln aufgeführt. Plan trotzdem freigeben?")) return;
+        akt.freigeben(ym); }}>
         {f ? "Erneut freigeben" : "Plan freigeben"}</Btn>}
     </Card>);
 }
