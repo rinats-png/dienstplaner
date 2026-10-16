@@ -21958,10 +21958,15 @@ function AppInnen() {
             `Die Planung hat dich für ${da ? da.name : dienstId} eingeteilt. Der übrige Zeitraum bleibt bestehen.`, "meine")].filter(Boolean);
         }
         const vorher = personTag(m, p, d).dienstId;
-        if (vorher === dienstId) { melde(`${p.nachname} ist bereits eingeteilt.`); return m; }
-        melde(vorher
-          ? `${p.vorname} ${p.nachname} für ${fKurz(d)} umgeteilt.`
-          : `${p.vorname} ${p.nachname} für ${fKurz(d)} eingeteilt.`);
+        /* War die Person ohne die Abwesenheit ohnehin für diesen Dienst
+           geplant, ist sie mit dem Aufheben wieder eingeteilt — das ist
+           kein „bereits eingeteilt", und die Bestätigung gehört ins Protokoll. */
+        if (vorher === dienstId && !abw) { melde(`${p.nachname} ist bereits eingeteilt.`); return m; }
+        melde(abw && vorher === dienstId
+          ? `${p.vorname} ${p.nachname} für ${fKurz(d)} wieder eingeteilt.`
+          : vorher
+            ? `${p.vorname} ${p.nachname} für ${fKurz(d)} umgeteilt.`
+            : `${p.vorname} ${p.nachname} für ${fKurz(d)} eingeteilt.`);
         m = bestaetigungVermerken(m, best, wer(), "einsprung");
         if (nachrAbw.length) m = { ...m, nachrichten: [...nachrAbw, ...(m.nachrichten || [])].slice(0, 400) };
         return { ...m,
