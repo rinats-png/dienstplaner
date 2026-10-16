@@ -1,8 +1,17 @@
 # CENTRIC Intelligence – Gesamtdokument
 
-**Stand:** 15.10.2026 (Fassung 6, führt Fassung 4 und zwei unabhängige Fassungen 5 zusammen)  
+**Stand:** 16.10.2026 (Fassung 7, erweitert Fassung 6 um interne Vorgaben, Planvorschlag und Plan-Gutachten)  
 **Status:** Planung. Es gibt noch keinen Intelligence-Code.  
 **Zweck:** Alles an einer Stelle: wofür Intelligence da ist, was sie kann und was nicht, wie sie gebaut, eingeführt, abgesichert und bezahlt wird.
+
+**Neu in Fassung 7 (Entscheidungen E-19 und E-20 vom 16.10.2026):**
+- **Warnen statt sperren** im ganzen Produkt: keine Regel verhindert eine Planungsentscheidung; drei Warnstufen, Warndialog mit „Dennoch fortfahren“, Bestätigungsprotokoll. Kern ohne KI, Grundlage für alles Weitere (Abschnitt 4.4)
+- **Interne Vorgaben** mit deterministischem Regelbaukasten; der Rechenkern prüft sie wie Gesetz und Tarif, nur mit eigener Stufe (Abschnitt 4.4)
+- **F16 Regel-Übersetzer** und **F17 Regel-Konflikte erklären** im Katalog (E-19)
+- **F13 Planvorschlag** und **F18 Plan-Gutachten** im Katalog (E-20): CENTRIC schlägt selbstständig einen ganzen Plan vor, sobald die Mitarbeiterlisten vollständig sind, und begutachtet selbst gebaute Pläne. Die Einteilung rechnet der **Planer-Kern** im Rechenkern, nie das Sprachmodell (Abschnitt 4.4)
+- **D-01 und D-24 der Spezifikation geändert:** Vorschlag ja, Veröffentlichung nein (Abschnitt 12)
+- **EU-KI-Verordnung:** F13 und F18 ausdrücklich in die externe Einordnung, produktiv erst danach (Abschnitt 8.3)
+- Ausführlicher Umsetzungsplan: [`PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md`](PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md)
 
 **Neu in Fassung 6 (aus den zwei Fassungen 5 übernommen und abgestimmt):**
 - **Decision Fingerprint:** Eine gespeicherte Antwort wird nur bei identischem Entscheidungskontext wiederverwendet, nie über Betriebsgrenzen (Abschnitt 5.1)
@@ -41,6 +50,7 @@
 
 Weitere Unterlagen:
 - [`MUSTER-BETRIEBSVEREINBARUNG.md`](MUSTER-BETRIEBSVEREINBARUNG.md)
+- [`PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md`](PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md) (Warnen statt sperren, interne Vorgaben, Planvorschlag, Plan-Gutachten)
 - Leitfaden für Kundengespräche (Claude-Dokument, Abschnitt 13)
 
 ---
@@ -131,7 +141,8 @@ Eine **Stufenkette mit selbstständigem Wechsel**:
 ## 3. Was Intelligence nicht tut
 
 - **Keine Entscheidung über Zulässigkeit.** Ruhezeiten, Höchstarbeitszeit, Besetzung, Qualifikation, Tarife und Kosten rechnet nur der Rechenkern.
-- **Nichts wirkt automatisch.** Kein automatisches Eintragen, Veröffentlichen oder Benachrichtigen.
+- **Nichts wirkt automatisch.** Kein automatisches Eintragen, Veröffentlichen oder Benachrichtigen. Ein Planvorschlag (F13) entsteht selbstständig, bleibt aber ein Entwurf, bis ein Mensch ihn übernimmt.
+- **Keine Einteilung durch das Sprachmodell.** Welche Person welchen Dienst bekommt, rechnet der Planer-Kern im Rechenkern (4.4).
 - **Keine Bewertung von Personen.** Keine Scores, keine „Zuverlässigkeit“, keine Leistungs- oder Fehlzeitenprofile. Gereiht wird nur nach Planfakten der konkreten Schicht.
 - **Keine Gesundheitsdaten an das Modell.** Abwesenheitsgründe werden nicht übergeben. Einzige Ausnahme sind Angaben, die untrennbar im hochgeladenen Dokument (F7B) stehen; für diese stellt CENTRIC vor dem Upload ein Schwärzungswerkzeug im Browser bereit. Verarbeitet werden sie nur über eine Strecke mit zugesicherter Nicht-Speicherung (Zero Data Retention, soweit für das Modell verfügbar) und EU-Verarbeitung, soweit vertraglich zugesichert, und nur nach Bestätigung im Einzelfall (8.1).
 - **Kein freier Chat auf Rohdaten.**
@@ -238,16 +249,67 @@ Maßgeblich ist der Katalog F1–F15 der Spezifikation. Nach A (F7) und B (F3) k
 | F11 | Frühwarnungen | mittel | C |
 | F12 | Abschluss-Assistent | mittel | C |
 | F8 | Schichtmodell-Analyse | groß | C |
+| **F16** | **Regel-Übersetzer** (Satz → interne Vorgabe, E-19) | mittel | B |
+| **F17** | **Regel-Konflikte erklären** (E-19) | klein | B / C (nächtlicher Regel-Check) |
+| **F18** | **Plan-Gutachten** (E-20) | mittel | B auf Abruf / C nachts |
+| **F13** | **Planvorschlag** (bisher „Optimierer“, E-20) | groß | C, auf Abruf sofort |
 
-**F13 (Optimierer)** ist nicht Teil dieser Planung. Er braucht eine eigene Prüfung nach der KI-Verordnung.
+**F13 und F18** sind seit E-20 Teil der Planung. Die Einteilung rechnet der Planer-Kern ohne KI. Produktiv werden beide erst nach der externen Einordnung nach der KI-Verordnung (8.3).
 
-**Architecture Freeze:** Bis zum Abschluss von Phase 1 werden keine neuen Intelligence-Funktionen in die Architektur aufgenommen. Neue Ideen kommen in den Backlog, nicht in die Architektur.
+**Architecture Freeze:** Bis zum Abschluss von Phase 1 werden keine neuen Intelligence-Funktionen in die Architektur aufgenommen. Neue Ideen kommen in den Backlog, nicht in die Architektur. Ausnahmen sind nur durch ausdrückliche Entscheidung möglich: E-19 (F16, F17) und E-20 (F13, F18) nehmen Funktionen in den Katalog auf. Gebaut werden ihre Intelligence-Teile trotzdem erst ab Phase 2. Die Kernteile ohne KI (Warnen statt sperren, Regelbaukasten, Planer-Kern) betrifft der Freeze nicht.
 
 **Klassen** (steuern das Verhalten bei Limits, Abschnitt 7):
 - **A** kritisch-operativ: F3, Einzelbefund F2
-- **B** interaktiv normal: F1, F5, F6, F9
-- **C** verschiebbar, läuft nachts: F4, F8, F10, F11, F12, F14, F15, Sammelbefund F2
+- **B** interaktiv normal: F1, F5, F6, F9, F16, F17 und F18 auf Abruf
+- **C** verschiebbar, läuft nachts: F4, F8, F10, F11, F12, F13, F14, F15, Sammelbefund F2, nächtlicher Lauf von F17 und F18
 - **D** dokumentintensiv: F7A, F7B
+
+### 4.4 Interne Vorgaben, Planvorschlag und Plan-Gutachten (E-19, E-20)
+
+Ausführlich im Umsetzungsplan [`PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md`](PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md). Kurz:
+
+**Grundlage ohne KI: Warnen statt sperren.**
+- Keine Regel verhindert eine Planungsentscheidung eines berechtigten Menschen.
+- Drei Stufen:
+  - **Hinweis**
+  - **Achtung:** ein Klick auf „Dennoch übernehmen“
+  - **Rechtsverstoß:** „gelesen“ ankreuzen, Grund freiwillig oder überspringen, dann „Dennoch fortfahren“
+- Ein einheitlicher Warndialog zeigt Was, Wo, Warum, Grundlage, Folgen und Alternativen.
+- Jede Bestätigung steht im Protokoll und in der Prüfung.
+- Rechte und Rollen bleiben. Technisch Unmögliches wird erklärt. Datenkonflikte wie Urlaub werden aufgelöst, nicht gesperrt.
+
+**Interne Vorgaben.**
+- Die Leitung hinterlegt eigene Regeln mit Geltung, Zeitraum, Stärke (Muss, Soll, Wunsch), Priorität, Grundlage und Ausnahmen. Beispiel: „zwei freie Wochenenden, ein Tagdienst-Wochenende, ein Nachtdienst-Wochenende je Monat“.
+- Der Rechenkern übersetzt sie in feste Regelarten: Zähl-, Muster-, Block-, Verteilungs-, Besetzungs-, Paar-, Grenz- und Wunschregel. Er prüft sie wie Gesetz und Tarif.
+- Rangfolge: Gesetz, Tarif, Betriebsvereinbarung, interne Vorgabe, Wunsch.
+
+| Funktion | Was Intelligence tut | Was der Rechenkern tut |
+|---|---|---|
+| **F16 Regel-Übersetzer** | macht aus einem Satz eine Vorgabe im Baukasten, stellt Rückfragen bei Mehrdeutigkeit, erkennt Gesundheitsbegriffe und bittet, sie wegzulassen | prüft Darstellbarkeit und Widerspruch zum Gesetz, rechnet den Testlauf |
+| **F17 Regel-Konflikte erklären** | erklärt, warum nicht alle Vorgaben zugleich erfüllbar sind und welche nachgeben müsste | findet die kleinste Ursache |
+| **F13 Planvorschlag** | erklärt den Vorschlag, vergleicht bis zu drei Varianten, beantwortet Rückfragen | **Planer-Kern:** teilt ein, rechnet Varianten, Erfüllungsbericht und Konflikte mit Ursache und Wegen |
+| **F18 Plan-Gutachten** | schreibt: was gut aufgebaut ist, wo Konflikte und Regelverstöße drohen, wo es eng wird, Empfehlung | vollständige Prüfung, Belastbarkeitsprobe, Verbessern-Modus mit Änderungsliste |
+
+**Ablauf Planvorschlag:**
+1. Sind alle Angaben vollständig (**Planungsreife**: Personal, Vertragsstunden, Qualifikationen, Abwesenheiten, Dienstarten, Bedarf, Vorgaben, offener Zeitraum), rechnet der Planer-Kern im Hintergrund einen Vorschlag.
+2. Die Planung bekommt eine Mitteilung.
+3. Der Vorschlag ist ein Entwurf. Er wird nicht veröffentlicht, benachrichtigt niemanden und überschreibt nichts.
+4. Die Leitung kann einstellen: automatisch (Standard), nur auf Knopfdruck oder aus.
+
+**Ablauf Gutachten:**
+1. Die Planung drückt auf „Plan begutachten“.
+2. CENTRIC prüft den Plan unter denselben Voraussetzungen und gibt das Gutachten aus.
+3. Danach stehen drei Wege offen:
+   - **Optimierten Vorschlag ansehen:** möglichst wenige Änderungen, jede mit Grund
+   - **Einzelne Änderungen übernehmen**
+   - **Eigenen Plan trotzdem übernehmen:** über den Warndialog mit Sammelbestätigung
+
+**Regeln für alle vier Funktionen:**
+- Das Sprachmodell teilt nie selbst ein und rechnet keine Zahl. Es gelten Satzbausteine und Prüfer aus Abschnitt 5.
+- Der Kern setzt keinen Rechtsverstoß von sich aus. Geht es nicht ohne, bleibt die Lücke offen und wird mit Wegen gezeigt.
+- Kein Personen-Scoring, keine Gesamtnote in Prozent (D-16), nur Zählwerte.
+- Derselbe Datenstand ergibt denselben Vorschlag (fester Startwert, Decision Fingerprint 5.1).
+- Der Planer-Kern verbraucht keine Token. Intelligence schreibt je Plan ein bis zwei Texte, Klasse C, über das normale Kontingent.
 
 ---
 
@@ -725,6 +787,7 @@ Alle Werte stehen in der Konfiguration, nicht im Code, und werden nach dem erste
 ### 8.3 EU-KI-Verordnung und Verzeichnis der Modelle
 
 - **Stand:** Am 11.10.2026 hat die Auftraggeberseite die Funktionen A und B intern vorgeprüft (E-3). Ergebnis: Für A und B ist derzeit kein Ausschlussgrund erkannt. **Die endgültige Einordnung und die daraus folgenden Pflichten werden vor dem Produktivbetrieb extern bestätigt** (E-17). Bis dahin wird gegenüber Kunden nicht von „geprüft und zulässig“ gesprochen.
+- **F13 Planvorschlag und F18 Plan-Gutachten (E-20)** fallen unter „Arbeit zuweisen“. Nach Anhang III Nr. 4 Buchst. b ist ein System hochriskant, wenn es Aufgaben nach individuellem Verhalten oder persönlichen Merkmalen zuweist oder Leistung und Verhalten überwacht. Der Entwurf vermeidet das: Die Einteilung beruht nur auf Planfakten (Verfügbarkeit, Qualifikation, Vertragsstunden, Regeln, Wünsche). Es gibt keine Verhaltens-, Leistungs- oder Fehlzeitenprofile, und die Einteilung rechnet ein regelbasierter Rechenkern, nicht das Sprachmodell. Ob das für eine Einordnung außerhalb des Hochrisikobereichs reicht, ist **nicht entschieden**. F13 und F18 gehen ausdrücklich in die externe Einordnung (E-17) und werden erst danach produktiv. F16 und F17 kommen ebenfalls dazu, weil interne Vorgaben die Zuteilung beeinflussen.
 - **Erneut prüfen bei:** einer Funktion, die Arbeit zuweist, Personen reiht, bewertet oder auswählt; einem neuen Anbieter oder einer neuen Modellklasse; einer Änderung der Verordnung oder ihrer Fristen.
 - Der Wechsel zwischen Haiku, Sonnet und Opus desselben Anbieters ändert den Verarbeitungsweg nicht. Er wird trotzdem im **Verzeichnis der Modelle je Funktion** festgehalten, mit Datum, Stufe, Version und Grund (auch jede automatische Anhebung einer Startstufe, 6.3).
 
@@ -735,6 +798,8 @@ Alle Werte stehen in der Konfiguration, nicht im Code, und werden nach dem erste
 **Status:** Entwurf, vor Phase 1 anwaltlich prüfen lassen.
 
 **Anpassen wegen E-6:** In Anlage 1 und 2 steht „Modelle je Aufgabe laut Konfiguration: Claude Haiku 5.5, Claude Sonnet 5.5 und Claude Opus 5.5 (Anbieter Anthropic / EU-Hosting über AWS Bedrock Frankfurt), mit automatischem Wechsel zur stärkeren Stufe bei Misserfolg“. Dazu der Satz, dass der Stufenwechsel keine weiteren Daten an das Modell gibt und keine Bewertung von Personen enthält. Außerdem zu regeln: Audit-Stichprobe mit erneuter Verarbeitung (6.7), Aufbewahrungsfristen der F7B-Originale (4.1) und degradierter Modus (5.3).
+
+**Anpassen wegen E-19 und E-20:** Neue Abschnitte zu internen Vorgaben (Mitbestimmung nach § 87 Abs. 1 Nr. 2 BetrVG), zum Bestätigungsprotokoll bei Abweichungen und zu Planvorschlag und Gutachten (§ 87 Abs. 1 Nr. 6 BetrVG). Sie regeln Zweck, verwendete Daten, kein Personen-Scoring, Entscheidung durch den Menschen, Einsicht des Betriebsrats in die Gewichtung des Planer-Kerns und die Zahl bestätigter Rechtsverstöße je Monat ohne Personennamen.
 
 ---
 
@@ -748,6 +813,8 @@ Alle Werte stehen in der Konfiguration, nicht im Code, und werden nach dem erste
 | **3** | nach dem technischen Piloten | Erweiterter Test mit 8–15 Betrieben, weitere Funktionen nach Nachfrage; Preis und Kontingent für Intelligence festlegen | Verbrauchsverteilung gemessen; Entscheidung D-08/D-11/D-27 getroffen |
 
 Die Phasen haben keine festen Termine. Jede beginnt erst, wenn die vorige erfüllt ist.
+
+**Neben den Phasen (Kern ohne KI, E-19/E-20):** Warnen statt sperren, interne Vorgaben mit Regelbaukasten und der Planer-Kern können unabhängig von den Phasen gebaut werden, in dieser Reihenfolge. Die Intelligence-Teile F16, F17, F13 und F18 folgen ab Phase 2. F13 und F18 werden erst nach der externen Einordnung (8.3) produktiv.
 
 **Architecture Freeze:** Erst wenn die Kette mit der Attrappe deterministisch und vollständig getestet ist, werden echte Modelle zugeschaltet. Neue Funktionsideen gehen bis zum Ende von Phase 1 in den Backlog.
 
@@ -827,8 +894,10 @@ Die Phasen haben keine festen Termine. Jede beginnt erst, wenn die vorige erfül
 | **E-16** | **15.10.2026 (Fassung 6)** | **F7B ist eigener Sicherheitsbereich; Original sofort nach Übernahme löschen, max. 7 Tage bei offenem Import, max. 24 h für Audit-Stichprobe (4.1).** |
 | **E-17** | **15.10.2026 (Fassung 6)** | **EU-KI-Verordnung: interne Vorprüfung, externe Bestätigung vor Produktivbetrieb (8.3).** |
 | **E-18** | **15.10.2026 (Fassung 6)** | **Klasse A nur reine Satzbausteine; Model Registry; Architecture Freeze bis Ende Phase 1 (4.3, 5, 5.2, 9).** |
+| **E-19** | **16.10.2026 (Fassung 7)** | **Warnen statt sperren; interne Vorgaben mit Regelbaukasten; F16 Regel-Übersetzer und F17 Regel-Konflikte erklären in den Katalog, Bau ab Phase 2. Sub-Planung darf Rechtsverstöße bestätigen (Leitung wird benachrichtigt); Grund freiwillig mit „Überspringen“; Beschäftigte dürfen sich trotz Hinweis melden (4.4).** |
+| **E-20** | **16.10.2026 (Fassung 7)** | **F13 Planvorschlag und F18 Plan-Gutachten in den Katalog. Vorschlag automatisch bei Planungsreife, nie veröffentlicht; Einteilung durch den Planer-Kern ohne KI; optimierter Vorschlag oder eigener Plan trotzdem übernehmen. Ändert D-01 und D-24. Produktiv erst nach externer Einordnung (4.4, 8.3).** |
 
-Weiter gültig aus der Spezifikation: **D-01** (kein Sprachassistent, kein autonomer Planer, kein Scoring), **D-03** (Rechenkern als alleinige Faktenquelle), **D-04** (menschliche Bestätigung), **D-05/D-06** (Funktionen je Plan und Rolle), **D-12** (Verbrauch nie nach Person), **D-13** (abschaltbar), **D-14** (Interessenvertretung einstellbar), **D-15** (Import in zwei Stufen), **D-16** (keine Scheinpräzision), **D-17** (Decision Context ID), **D-18** (Engine-Extraktion), **D-19** (Hintergrundlauf und Batch), **D-20** (Anbieter hinter Schnittstelle mit Attrappe), **D-21** (Testbetriebe und Demo), **D-22** (eigener Speicher), **D-23** (Pilot kostenlos), **D-24** (F13 nicht Teil), **D-25** (Deutsch, Du-Form), **D-26** (Hilfe ohne Betriebsdaten), **D-27** (Fair Use statt Hard-Stop für Kunden).
+Weiter gültig aus der Spezifikation: **D-01** (kein Sprachassistent, kein Scoring; „kein autonomer Planer“ seit E-20 gefasst als: Vorschlag ja, Veröffentlichung nein), **D-03** (Rechenkern als alleinige Faktenquelle), **D-04** (menschliche Bestätigung), **D-05/D-06** (Funktionen je Plan und Rolle), **D-12** (Verbrauch nie nach Person), **D-13** (abschaltbar), **D-14** (Interessenvertretung einstellbar), **D-15** (Import in zwei Stufen), **D-16** (keine Scheinpräzision), **D-17** (Decision Context ID), **D-18** (Engine-Extraktion), **D-19** (Hintergrundlauf und Batch), **D-20** (Anbieter hinter Schnittstelle mit Attrappe), **D-21** (Testbetriebe und Demo), **D-22** (eigener Speicher), **D-23** (Pilot kostenlos), **D-24** (F13 nicht Teil; aufgehoben durch E-20), **D-25** (Deutsch, Du-Form), **D-26** (Hilfe ohne Betriebsdaten), **D-27** (Fair Use statt Hard-Stop für Kunden).
 
 ---
 
@@ -879,18 +948,26 @@ Leitfaden: **„CENTRIC Intelligence – Leitfaden für Kundengespräche“** (C
 18. **F7B-Upload-Strecke** und erzwungene Löschfristen bauen (4.1).
 19. **EU-KI-Verordnung** extern einordnen lassen (8.3).
 20. **Degradierten Modus** testen: Anbieter aus, Deckel erreicht, Notschalter (5.3).
+21. **Warnen statt sperren** umsetzen (Plan, Schritt 1): Befundliste, Warndialog, alle Sperrstellen, Bestätigungsprotokoll, Migration `harteSperre`.
+22. **Interne Vorgaben** und Regelbaukasten umsetzen (Plan, Schritt 3); Wochenend-Rotation als Prüffall.
+23. **Planer-Kern** bauen: Planungsreife, ganzer Plan, Varianten, Konflikte mit Ursache, Verbessern-Modus; Laufzeit im Pilot messen.
+24. **Preisstufen für interne Vorgaben** entscheiden (Plan, Abschnitt 10.2); Beschreibung des Pakets Sicherheitsdienst ohne „harte Sperre“ neu fassen.
+25. **E-19 und E-20 in die Spezifikation übernehmen** (D-01, D-24, Katalog F13, F16–F18).
 
 ---
 
 ## Abschluss
 
-CENTRIC Intelligence ist kein Chatbot und kein autonomer Planer.
+CENTRIC Intelligence ist kein Chatbot und kein autonomer Planer. Sie schlägt Pläne vor, wirksam macht sie ein Mensch.
 
 ```text
 CENTRIC
 ├── Personal, Rechte und Betriebe
 ├── Planung
 ├── Regel- und Rechenkern (Decision Engine)
+│   ├── Warnstufen und Bestätigungsprotokoll
+│   ├── Regelbaukasten (interne Vorgaben)
+│   └── Planer-Kern (Planvorschlag, Verbessern-Modus)
 │
 └── CENTRIC Intelligence
     ├── Faktenpaket (Context Builder)

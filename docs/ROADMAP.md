@@ -73,10 +73,11 @@ Jede Zeile unten trägt eine **Evidenzklasse**: **R** = Repo (mit Fundstelle) ·
 | E-Mail-Versand | gebaut, nicht aktiv | wenn Push nicht reicht; dann Resend-AVV/Drittland klären |
 | Sicherheit: Objektplanung, Einsatznachweise für Auftraggeber | teilweise | wenn Sicherheit gewählt |
 | **Intelligence Phase 1** | Spezifikation, kein Code | siehe Abschnitt 4 |
+| **Warnen statt sperren, interne Vorgaben, Planer-Kern** (E-19/E-20) | Plan, kein Code | [Plan](intelligence/PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md); Kern ohne KI, vor den Intelligence-Teilen |
 
 ### P3 – ab 5–10 Kunden
 
-- Intelligence Phase 2–3: Funktion A Altplan-Import und Funktion B Ausfall-Vorschlag, danach weitere Funktionen
+- Intelligence Phase 2–3: Funktion A Altplan-Import und Funktion B Ausfall-Vorschlag, danach weitere Funktionen; F16/F17 (interne Vorgaben) und F13/F18 (Planvorschlag, Plan-Gutachten) nach externer Einordnung
 - tiefere Integrationen nach Nachfrage
 - Support-Automatisierung, skalierbares Onboarding
 - weitere Segmente
