@@ -4,11 +4,12 @@
 **Status:** Planung. Es gibt noch keinen Intelligence-Code.  
 **Zweck:** Alles an einer Stelle: wofür Intelligence da ist, was sie kann und was nicht, wie sie gebaut, eingeführt, abgesichert und bezahlt wird.
 
-**Neu in Fassung 7 (Entscheidungen E-19 und E-20 vom 16.10.2026):**
+**Neu in Fassung 7 (Entscheidungen E-19 bis E-21 vom 16.10.2026):**
 - **Warnen statt sperren** im ganzen Produkt: keine Regel verhindert eine Planungsentscheidung; drei Warnstufen, Warndialog mit „Dennoch fortfahren“, Bestätigungsprotokoll. Kern ohne KI, Grundlage für alles Weitere (Abschnitt 4.4)
 - **Interne Vorgaben** mit deterministischem Regelbaukasten; der Rechenkern prüft sie wie Gesetz und Tarif, nur mit eigener Stufe (Abschnitt 4.4)
 - **F16 Regel-Übersetzer** und **F17 Regel-Konflikte erklären** im Katalog (E-19)
 - **F13 Planvorschlag** und **F18 Plan-Gutachten** im Katalog (E-20): CENTRIC schlägt selbstständig einen ganzen Plan vor, sobald die Mitarbeiterlisten vollständig sind, und begutachtet selbst gebaute Pläne. Die Einteilung rechnet der **Planer-Kern** im Rechenkern, nie das Sprachmodell (Abschnitt 4.4)
+- **Interne Vorgaben in allen Preisstufen,** unterschieden nur nach Anzahl (E-21)
 - **D-01 und D-24 der Spezifikation geändert:** Vorschlag ja, Veröffentlichung nein (Abschnitt 12)
 - **EU-KI-Verordnung:** F13 und F18 ausdrücklich in die externe Einordnung, produktiv erst danach (Abschnitt 8.3)
 - Ausführlicher Umsetzungsplan: [`PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md`](PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md)
@@ -799,7 +800,7 @@ Alle Werte stehen in der Konfiguration, nicht im Code, und werden nach dem erste
 
 **Anpassen wegen E-6:** In Anlage 1 und 2 steht „Modelle je Aufgabe laut Konfiguration: Claude Haiku 5.5, Claude Sonnet 5.5 und Claude Opus 5.5 (Anbieter Anthropic / EU-Hosting über AWS Bedrock Frankfurt), mit automatischem Wechsel zur stärkeren Stufe bei Misserfolg“. Dazu der Satz, dass der Stufenwechsel keine weiteren Daten an das Modell gibt und keine Bewertung von Personen enthält. Außerdem zu regeln: Audit-Stichprobe mit erneuter Verarbeitung (6.7), Aufbewahrungsfristen der F7B-Originale (4.1) und degradierter Modus (5.3).
 
-**Anpassen wegen E-19 und E-20:** Neue Abschnitte zu internen Vorgaben (Mitbestimmung nach § 87 Abs. 1 Nr. 2 BetrVG), zum Bestätigungsprotokoll bei Abweichungen und zu Planvorschlag und Gutachten (§ 87 Abs. 1 Nr. 6 BetrVG). Sie regeln Zweck, verwendete Daten, kein Personen-Scoring, Entscheidung durch den Menschen, Einsicht des Betriebsrats in die Gewichtung des Planer-Kerns und die Zahl bestätigter Rechtsverstöße je Monat ohne Personennamen.
+**Anpassen wegen E-19 und E-20:** Erledigt als Anlage 5 der Muster-BV. Neue Abschnitte zu internen Vorgaben (Mitbestimmung nach § 87 Abs. 1 Nr. 2 BetrVG), zum Bestätigungsprotokoll bei Abweichungen und zu Planvorschlag und Gutachten (§ 87 Abs. 1 Nr. 6 BetrVG). Sie regeln Zweck, verwendete Daten, kein Personen-Scoring, Entscheidung durch den Menschen, Einsicht des Betriebsrats in die Gewichtung des Planer-Kerns und die Zahl bestätigter Rechtsverstöße je Monat ohne Personennamen.
 
 ---
 
@@ -896,6 +897,7 @@ Die Phasen haben keine festen Termine. Jede beginnt erst, wenn die vorige erfül
 | **E-18** | **15.10.2026 (Fassung 6)** | **Klasse A nur reine Satzbausteine; Model Registry; Architecture Freeze bis Ende Phase 1 (4.3, 5, 5.2, 9).** |
 | **E-19** | **16.10.2026 (Fassung 7)** | **Warnen statt sperren; interne Vorgaben mit Regelbaukasten; F16 Regel-Übersetzer und F17 Regel-Konflikte erklären in den Katalog, Bau ab Phase 2. Sub-Planung darf Rechtsverstöße bestätigen (Leitung wird benachrichtigt); Grund freiwillig mit „Überspringen“; Beschäftigte dürfen sich trotz Hinweis melden (4.4).** |
 | **E-20** | **16.10.2026 (Fassung 7)** | **F13 Planvorschlag und F18 Plan-Gutachten in den Katalog. Vorschlag automatisch bei Planungsreife, nie veröffentlicht; Einteilung durch den Planer-Kern ohne KI; optimierter Vorschlag oder eigener Plan trotzdem übernehmen. Ändert D-01 und D-24. Produktiv erst nach externer Einordnung (4.4, 8.3).** |
+| **E-21** | **16.10.2026 (Fassung 7)** | **Interne Vorgaben in allen Preisstufen: Basis bis 5 aktive Vorgaben, Business bis 25, Enterprise unbegrenzt. Planvorschlag und Gutachten in allen Stufen (wie E-5). Das Paket Sicherheitsdienst verliert die „harte Sperre“ und bekommt branchentypische Vorlagen für interne Vorgaben.** |
 
 Weiter gültig aus der Spezifikation: **D-01** (kein Sprachassistent, kein Scoring; „kein autonomer Planer“ seit E-20 gefasst als: Vorschlag ja, Veröffentlichung nein), **D-03** (Rechenkern als alleinige Faktenquelle), **D-04** (menschliche Bestätigung), **D-05/D-06** (Funktionen je Plan und Rolle), **D-12** (Verbrauch nie nach Person), **D-13** (abschaltbar), **D-14** (Interessenvertretung einstellbar), **D-15** (Import in zwei Stufen), **D-16** (keine Scheinpräzision), **D-17** (Decision Context ID), **D-18** (Engine-Extraktion), **D-19** (Hintergrundlauf und Batch), **D-20** (Anbieter hinter Schnittstelle mit Attrappe), **D-21** (Testbetriebe und Demo), **D-22** (eigener Speicher), **D-23** (Pilot kostenlos), **D-24** (F13 nicht Teil; aufgehoben durch E-20), **D-25** (Deutsch, Du-Form), **D-26** (Hilfe ohne Betriebsdaten), **D-27** (Fair Use statt Hard-Stop für Kunden).
 
@@ -951,8 +953,8 @@ Leitfaden: **„CENTRIC Intelligence – Leitfaden für Kundengespräche“** (C
 21. **Warnen statt sperren** umsetzen (Plan, Schritt 1): Befundliste, Warndialog, alle Sperrstellen, Bestätigungsprotokoll, Migration `harteSperre`.
 22. **Interne Vorgaben** und Regelbaukasten umsetzen (Plan, Schritt 3); Wochenend-Rotation als Prüffall.
 23. **Planer-Kern** bauen: Planungsreife, ganzer Plan, Varianten, Konflikte mit Ursache, Verbessern-Modus; Laufzeit im Pilot messen.
-24. **Preisstufen für interne Vorgaben** entscheiden (Plan, Abschnitt 10.2); Beschreibung des Pakets Sicherheitsdienst ohne „harte Sperre“ neu fassen.
-25. **E-19 und E-20 in die Spezifikation übernehmen** (D-01, D-24, Katalog F13, F16–F18).
+24. **Preisstufen für interne Vorgaben** (E-21) umsetzen: Anzahlgrenzen je Stufe, Vorlagen im Paket Sicherheitsdienst.
+25. **E-19 bis E-21 in die Spezifikation übernehmen** (D-01, D-24, Katalog F13, F16–F18).
 
 ---
 

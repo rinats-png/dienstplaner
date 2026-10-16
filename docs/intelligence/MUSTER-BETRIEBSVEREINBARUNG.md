@@ -3,7 +3,7 @@
 > **Hinweis zur Verwendung**
 > Muster als Verhandlungsgrundlage, das CENTRIC seinen Kunden zur Verfügung stellt. Keine Rechtsberatung. Vertragsparteien sind der jeweilige Arbeitgeber und seine Arbeitnehmervertretung, nicht CENTRIC. Vor Verwendung von einer Fachanwältin oder einem Fachanwalt für Arbeitsrecht sowie der oder dem Datenschutzbeauftragten prüfen lassen. Eckige Klammern sind auszufüllen.
 > Für Personalräte und Mitarbeitervertretungen (MAVO, MVG) sind Begriffe und Paragrafen anzupassen.
-> **Stand:** 11.10.2026 · **Status:** Entwurf, nicht anwaltlich geprüft · **EU-KI-Verordnung:** nach Prüfung durch CENTRIC zum 11.10.2026 zulässig für die Funktionen in Anlage 1. Bei Verwendung den aktuellen Rechtsstand prüfen.
+> **Stand:** 16.10.2026 (Anlage 5 ergänzt) · **Status:** Entwurf, nicht anwaltlich geprüft · **EU-KI-Verordnung:** Die Funktionen in Anlage 1 hat CENTRIC am 11.10.2026 intern vorgeprüft; die externe Bestätigung steht aus. Anlage 5 (Planvorschlag, Plan-Gutachten) ist erst nach externer Einordnung zu verwenden. Bei Verwendung den aktuellen Rechtsstand prüfen.
 
 ---
 
@@ -154,3 +154,50 @@ Platzhalter statt Name, Rolle, Bereich, Qualifikationen mit Gültigkeit, geplant
 ### Anlage 4 – Information der Beschäftigten
 
 [Text aus CENTRIC, „Information zu CENTRIC Intelligence“. Liegt in der Anwendung unter Rechtliches bereit.]
+
+### Anlage 5 – Ergänzung: Interne Vorgaben, Abweichungen, Planvorschlag und Plan-Gutachten
+
+> **Hinweis zur Verwendung:** Diese Anlage ist die gesonderte Vereinbarung nach § 12 Abs. 2. Sie wird erst verwendet, wenn CENTRIC die externe Einordnung nach der EU-KI-Verordnung für Planvorschlag und Plan-Gutachten abgeschlossen hat. Die Abschnitte 1 und 2 betreffen Funktionen ohne KI und können unabhängig davon vereinbart werden.
+
+**1. Abweichungen von Regeln**
+
+(1) CENTRIC verhindert keine Planungsentscheidung, weil eine Regel verletzt wäre. Es zeigt eine Warnung mit Regel, Ort, Grund, Grundlage und Folgen. Ein berechtigter Nutzer kann die Abweichung bestätigen.
+
+(2) Jede bestätigte Abweichung wird mit Regel, betroffenem Dienst, Zeitpunkt, bestätigender Rolle und, falls angegeben, Grund protokolliert. Die Angabe eines Grundes ist freiwillig.
+
+(3) Bestätigt ein Sub-Planer eine Abweichung von einer gesetzlichen Vorgabe, erhält die Betriebsleitung sofort eine Mitteilung.
+
+(4) Der Betriebsrat erhält monatlich die Zahl der bestätigten Abweichungen von gesetzlichen Vorgaben je Regel, ohne Personennamen. [Weitergehende Einsicht: …]
+
+(5) Die Verantwortung des Arbeitgebers für die Einhaltung des Arbeitszeitrechts bleibt unberührt.
+
+**2. Interne Vorgaben**
+
+(1) Interne Vorgaben sind betriebliche Regeln zur Dienstplanung, die in CENTRIC hinterlegt werden (zum Beispiel zur Verteilung von Wochenenden oder Nachtdiensten). Vorgaben zur Lage und Verteilung der Arbeitszeit werden vor ihrer Aktivierung mit dem Betriebsrat abgestimmt (§ 87 Abs. 1 Nr. 2 BetrVG). [Verfahren: …]
+
+(2) Eine interne Vorgabe enthält keine Gründe, die Gesundheit, Schwangerschaft, Behinderung oder andere besondere Kategorien personenbezogener Daten offenlegen.
+
+(3) Die jeweils aktiven Vorgaben sind für den Betriebsrat in CENTRIC einsehbar.
+
+**3. Planvorschlag und Plan-Gutachten**
+
+(1) CENTRIC kann einen Dienstplan-Vorschlag erstellen, sobald die nötigen Angaben vollständig sind, und einen selbst erstellten Plan begutachten. Die Einteilung von Personen berechnet ein regelbasierter Rechenkern. Das Sprachmodell erklärt den Vorschlag und schreibt das Gutachten. Es teilt keine Person ein.
+
+(2) Der Vorschlag ist ein Entwurf. Er wird nicht veröffentlicht, benachrichtigt keine Beschäftigten und wird erst durch Übernahme und Freigabe eines berechtigten Nutzers wirksam. Abweichend von § 3 Abs. 2 Buchst. e ist der Vorschlag einer ganzen Planung zulässig, weil ein Mensch über jede Übernahme entscheidet.
+
+(3) Der Vorschlag stützt sich ausschließlich auf: Verfügbarkeit und genehmigte Abwesenheiten (ohne Gründe), Qualifikationen, Vertragsstunden und Stundenkonto, gesetzliche, tarifliche und betriebliche Regeln, interne Vorgaben, Wünsche der Beschäftigten und die Verteilung von Diensten im Zeitraum. Leistungs-, Verhaltens- und Fehlzeitendaten werden nicht verwendet.
+
+(4) Die Gewichtung des Rechenkerns (Rangfolge Gesetz, Besetzung, Tarif und Vorgaben, Soll-Vorgaben, Verteilung, Wünsche, Stabilität) ist dem Betriebsrat offenzulegen. Änderungen an der Gewichtung durch den Arbeitgeber bedürfen [der Zustimmung / der Information] des Betriebsrats.
+
+(5) Das Gutachten bewertet den Plan, nicht Personen. Es enthält keine Bewertung, Rangfolge oder Kennzahl über einzelne Beschäftigte.
+
+(6) Einträge, die aus einem Vorschlag übernommen wurden, sind im Plan als solche erkennbar.
+
+(7) Die Betriebsleitung kann den automatischen Vorschlag auf „nur auf Knopfdruck“ oder „aus“ stellen.
+
+| Funktion | Zweck | Wer nutzt | Was sieht das Modell |
+|---|---|---|---|
+| F16 Regel-Übersetzer | aus einem Satz eine interne Vorgabe erstellen | Betriebsleitung, Planer | den Satz, Dienstarten, Regelarten, anonyme Zählwerte |
+| F17 Regel-Konflikte | erklären, warum Vorgaben nicht zugleich erfüllbar sind | Betriebsleitung, Planer, Sub-Planer (eigener Bereich) | Regelkennungen, anonyme Zählwerte |
+| F13 Planvorschlag | Erklärung und Vergleich der vom Rechenkern berechneten Varianten | Betriebsleitung, Planer, Sub-Planer (eigener Bereich) | Erfüllungsbericht und Konflikte mit Platzhaltern statt Namen |
+| F18 Plan-Gutachten | Gutachten zu einem selbst erstellten Plan | Betriebsleitung, Planer, Sub-Planer (eigener Bereich) | Prüfbefunde mit Platzhaltern statt Namen |

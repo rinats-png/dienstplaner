@@ -1,7 +1,7 @@
 # Plan: Warnen statt sperren, interne Vorgaben, Planvorschlag und Plan-Gutachten – mit CENTRIC Intelligence
 
 **Stand:** 16.10.2026
-**Status:** Plan, Fassung 2. Entscheidungen vom 16.10.2026 eingearbeitet (Abschnitt 10). Noch nicht umgesetzt.
+**Status:** Plan, Fassung 2. Alle Entscheidungen vom 16.10.2026 getroffen (Abschnitt 10). Umsetzung von Schritt 1 begonnen.
 **Bezug:** Gesamtdokument CENTRIC Intelligence, Fassung 7 (`docs/intelligence/CENTRIC-INTELLIGENCE.md`), Entscheidungen E-19 und E-20
 
 ---
@@ -473,8 +473,9 @@ Intelligence ordnet die Befunde und schreibt daraus das Gutachten, in Satzbauste
 | 3 | Dürfen Beschäftigte sich trotz Hinweis melden? | **Ja.** |
 | 4 | E-19: F16 und F17 in den Katalog? | **Ja, freigegeben.** |
 | 5 | E-20: Planvorschlag (F13) und Plan-Gutachten (F18) | **Ja**, laut Auftrag vom 16.10.2026 (Abschnitt 7) |
+| 6 | E-21: Interne Vorgaben in welchen Preisstufen? | **Vorschlag aus 10.2 übernommen** |
 
-### 10.2 Noch offen: Interne Vorgaben in welchen Stufen?
+### 10.2 Interne Vorgaben in welchen Preisstufen (E-21, entschieden)
 
 Gemeint sind die **Preisstufen** von CENTRIC (Basis 89 €, Business 159 €, Enterprise 279 € im Monat) und die **Branchenpakete**. Tarifverträge sind hier nicht gemeint.
 
@@ -482,7 +483,7 @@ Gemeint sind die **Preisstufen** von CENTRIC (Basis 89 €, Business 159 €, En
 
 **Was sich ändert:** Mit „Warnen statt sperren“ gibt es keine Sperre mehr. Das Paket Sicherheitsdienst verliert damit ein Verkaufsmerkmal. Seine Beschreibung („eigene Vorgaben als harte Sperre durchsetzen“) muss ohnehin neu geschrieben werden.
 
-**Vorschlag:**
+**Entscheidung (Vorschlag übernommen am 16.10.2026):**
 - **Interne Vorgaben in allen Stufen.** Sie sind die Grundlage für Planvorschlag und Gutachten. Ohne sie wären beide in der Basis-Stufe nur halb so gut.
 - **Unterscheiden** lassen sich die Stufen über den Umfang: Basis bis 5 aktive Vorgaben, Business bis 25, Enterprise unbegrenzt.
 - Planvorschlag und Gutachten in allen Stufen, wie Intelligence insgesamt (E-5: vorerst kein gesonderter Preis).
