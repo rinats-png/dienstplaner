@@ -475,19 +475,19 @@ export function regelMaengel(q) {
 
   if (q && q.harteSperre && !String(q.grundlage || "").trim())
     aus.push({ art: "ohneGrundlage", schwere: "warn", qualId: q.id,
-      text: `${name} sperrt den Einsatz, nennt aber keine Grundlage. `
-        + "Wer einen Dienst verhindert, sollte sagen können, worauf er sich stützt." });
+      text: `${name} ist verbindlich und warnt bei jedem Einsatz, nennt aber keine Grundlage. `
+        + "Wer vor einem Dienst warnt, sollte sagen können, worauf er sich stützt." });
 
   if (q && q.harteSperre && !v.gesetzlich)
     aus.push({ art: "sperreOhneGesetz", schwere: "info", qualId: q.id,
       /* Nicht kleinschreiben: „betriebliche festlegung" las sich wie ein
          Tippfehler. Der Klartext der Ebene ist ein Substantiv. */
-      text: `${name} ist hinterlegt als: ${v.label}. Die Anforderung sperrt trotzdem den Einsatz. `
-        + "Das ist zulässig, wird aber als betriebliche Vorgabe ausgewiesen, nicht als gesetzliches Verbot." });
+      text: `${name} ist hinterlegt als: ${v.label}. Die Anforderung warnt trotzdem bei jedem Einsatz. `
+        + "Das ist zulässig, wird aber als betriebliche Vorgabe (Achtung) ausgewiesen, nicht als Rechtsverstoß." });
 
   if (q && q.harteSperre && v.bezug === "taetigkeit")
     aus.push({ art: "pauschaleSperre", schwere: "warn", qualId: q.id,
-      text: `${name} hängt an der Tätigkeit, sperrt aber jeden Dienst. `
+      text: `${name} hängt an der Tätigkeit, warnt aber bei jedem Dienst. `
         + "Wo das Recht nach Tätigkeiten unterscheidet — etwa § 34a GewO —, gehört die Anforderung "
         + "an die betreffenden Dienstarten statt an alle." });
 

@@ -47,6 +47,24 @@ const C = {
 
   line: "#BCCDD4", lineSoft: "#CBDAE0", lineStark: "#9DB3BC",
 
+  /* --- Bedienelemente ---
+
+     WCAG 2.1, 1.4.11 verlangt für Bedienelemente und ihre Zustände 3:1
+     gegen die Umgebung. `lineStark` erreicht auf Weiß nur 2,19:1 — als
+     Trennlinie in Ordnung, als Rand eines Eingabefelds oder als
+     Aus-Zustand eines Schalters zu wenig: Man sieht dann nicht, dass dort
+     überhaupt etwas zu bedienen ist.
+
+     Deshalb ein eigener Ton für alles, was man anfassen kann. Er ist
+     dunkler als die Zierlinie und bleibt hinter dem Text zurück. */
+  steuer: "#6E858E",          // 3,88:1 auf Weiß · 3,00:1 auf dem Grund
+
+  /* Was auf einer gefüllten Akzentfläche steht. Im Hellmodus ist der
+     Akzent dunkel und trägt weißen Text; im Dunkelmodus ist er hell und
+     trägt dunklen. Ohne diese Unterscheidung stand im Dunkelmodus weiß auf
+     Türkis — 2,23:1, unlesbar. */
+  aufAkzent: "#FFFFFF",
+
   /* Akzent: Traditional Turquoise, abgedunkelt bis es trägt */
   accent: "#017070",          // 4,56:1 · weißer Text darauf 5,91:1
   /* Traditional Turquoise erreicht auf Sea Salt nur 2,48:1 — zu wenig selbst
@@ -70,6 +88,20 @@ const C = {
   violet: "#316C81",          // Vintage Aqua, abgedunkelt · 4,51:1
 
   okLight: "#DFEFE7", warnLight: "#FFE0C0", dangerLight: "#F6DEDC",
+
+  /* --- Leitstand: Verlauf, Kopfzeile, Rücken hinter Blättern ---
+
+     Der Verlauf liegt als eine einzige Schicht hinter der Titelzone jeder
+     Ansicht (`.inhalt::before`). Titel und Untertitel stehen darauf, deshalb
+     sind die Deckkräfte begrenzt: Auf dem Verlauf liegen nur `text` und
+     `dim`, nie `aus`. Obergrenze hell 0,40 (dim bleibt ≥ 4,9:1), Token 0,34.
+     pruefungen/kontrast.test.js rechnet die Überlagerung nach und schlägt
+     fehl, sobald jemand einen Wert darüber schiebt. */
+  verlaufA: "rgba(2,160,160,.34)",      // Hauptfleck
+  verlaufB: "rgba(80,232,244,.16)",     // Glanz im Fleck
+  verlaufC: "rgba(2,52,65,.14)",        // Tiefe rechts
+  kopfGrund: "rgba(255,255,255,.86)",   // Kopfzeile und Unterleiste (sticky)
+  ueberlagerung: "rgba(7,19,23,.36)",   // Rücken hinter Blättern
 };
 
 /* --------------------------------------------------------------------------
@@ -90,6 +122,8 @@ const C_DUNKEL = {
   dim: "#9FB2B9", dimmer: "#9FB2B9", aus: "#7A8D95",
 
   line: "#243238", lineSoft: "#1B282E", lineStark: "#33454C",
+  steuer: "#5C7681",          // 3,53:1 auf der Karte · 3,87:1 auf dem Grund
+  aufAkzent: "#071317",       // 8,45:1 auf dem hellen Akzent
 
   accent: "#3FBFBF",          // 8,35:1 — heller als im Hellmodus, sonst zu schwach
   accentHi: "#5FD6D6", accentOrig: "#5FD6D6",
@@ -99,6 +133,15 @@ const C_DUNKEL = {
 
   ok: "#4ADE9B", warn: "#F0B060", danger: "#F87A70", violet: "#7FC4DC",
   okLight: "#0F2620", warnLight: "#2A2013", dangerLight: "#2A1614",
+
+  /* Dunkel: Verlauf höchstens 0,24, Token 0,22 (dim #9FB2B9 bleibt ≥ 5,3:1).
+     Der Glanz ist mit 0,08 etwas leiser als im Entwurf (0,10): gestapelt auf A
+     würde dim bei 0,10 auf 4,40:1 fallen, bei 0,08 bleibt es bei 4,59:1. */
+  verlaufA: "rgba(63,191,191,.22)",
+  verlaufB: "rgba(80,232,244,.08)",
+  verlaufC: "rgba(127,224,224,.10)",
+  kopfGrund: "rgba(18,30,35,.86)",
+  ueberlagerung: "rgba(0,0,0,.56)",
 };
 
 /* Umschalten ohne Umbau: Statt tausend Verwendungsstellen zu ändern, werden
@@ -107,7 +150,23 @@ const C_DUNKEL = {
    erzwingt den Neuaufbau. */
 const C_HELL = { ...C };
 
-export { C, C_DUNKEL, C_HELL };
+/* Namenszeichen (Avatar): acht Paare aus der Palette — Fläche ist die
+   Tönung, Schrift die Volltönung, jedes Paar ≥ 4,5:1 (kontrast.test.js).
+   Im Dunkelmodus dunkle Tönung mit heller Schrift. Die Paare stehen hier
+   und nicht in der Oberfläche, damit keine Farbe außerhalb dieser Datei
+   erfunden wird. Reihenfolge: [Fläche, Schrift]. */
+const AVATAR_HELL = [
+  ["#DFF0F0", "#017070"], ["#E4EDF1", "#316C81"], ["#DFF0F0", "#023441"], ["#FFE0C0", "#955410"],
+  ["#DFEFE7", "#0E6B45"], ["#E4E9F1", "#35506B"], ["#ECEAF3", "#4C4668"], ["#DFEFE7", "#2E6B4F"],
+];
+const AVATAR_DUNKEL = [
+  ["#13292C", "#3FBFBF"], ["#152A33", "#7FC4DC"], ["#13292C", "#7FE0E0"], ["#2A2013", "#F0B060"],
+  ["#0F2620", "#4ADE9B"], ["#16222E", "#8FB1D4"], ["#1E1B2C", "#B5AEDB"], ["#122820", "#7FD1A6"],
+];
+/** Die Paare des gerade gültigen Erscheinungsbildes. */
+const avatarToene = () => (C.bg === C_DUNKEL.bg ? AVATAR_DUNKEL : AVATAR_HELL);
+
+export { C, C_DUNKEL, C_HELL, AVATAR_HELL, AVATAR_DUNKEL, avatarToene };
 
 /* Die Palette als CSS-Variablen. Sie erreichen Stellen, an die ein
    JavaScript-Objekt nicht kommt: Bildlaufleisten, Auswahlfelder und die

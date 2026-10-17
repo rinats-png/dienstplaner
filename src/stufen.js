@@ -81,15 +81,17 @@ export const PAKETE = [
      Qualifikation eingeteilt ist, und schweigt, weil der Betrieb die kleinere
      Stufe gebucht hat, wäre nach einem Vorfall nicht zu verteidigen.
 
-     Verkauft wird, was darüber liegt: eigene Regeln durchsetzen. Das ist
-     „sperreEigen" und bleibt im Paket. */
+     Seit E-19 sperrt CENTRIC nicht mehr, es warnt — gesetzliche und eigene
+     Vorgaben in jeder Stufe (E-21). „sperreEigen" bleibt als Merkmal stehen,
+     damit bestehende Bestände und Auswertungen lesbar bleiben; die
+     Warnung hängt nicht mehr daran. */
   { id: "kern", name: "Kernplattform", pflicht: true,
     beschreibung: "Schichtplanung, Anträge, Zeiten, Stundenkonten, Auswertungen. "
-      + "Gesetzlich zwingende Qualifikationen sperren den Einsatz in jeder Stufe.",
+      + "Gesetzliche und eigene Vorgaben warnen in jeder Stufe, mit Bestätigungsprotokoll.",
     merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
   { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
     beschreibung: "Objektbezogene Posten, Wachbuch, Standortprüfung beim Stempeln, "
-      + "und eigene Vorgaben als harte Sperre durchsetzen.",
+      + "und branchentypische Vorlagen für interne Vorgaben.",
     merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
   { id: "pflege", name: "Pflege und Rettungsdienst", aufpreis: 89,
     beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Bereichs- und Wachabteilungsplanung, Betreuungskräfte nach § 43b.",
