@@ -64,7 +64,7 @@ Die Hauptnavigation der App (`src/App.jsx`) hat sechs Gruppen: Im Dienst, Planen
 | Team | `personal`, `quals`, `kompetenzen`, `einarbeitung`, `nachweise` |
 | Nachsehen | `pruef`, `belastung`, `belastbarkeit`, `untergrenzen`, `lenkzeiten`, `buch`, `abrechnung`, `nachweis` |
 | Verwaltung | `betrieb`, `dienste`, `mittel`, `ablauf`, `einstellungen`, `datenschutz`, `mitnahme`, `rechtliches`, `handbuch`, `hilfe` |
-| Beschäftigte | `meine` (Desktop), `tel-heute`, `tel-plan`, `tel-anliegen`, `tel-mehr` (Telefon) |
+| Beschäftigte | `meine` (Desktop), `tel-heute`, `tel-plan`, `tel-anliegen`, `tel-mehr` (Telefon); Folgezustände `tel-heute-eingestempelt`, `tel-heute-erfasst`, `tel-anliegen-gemeldet`, `tel-krank`, `tel-krank-erfasst` (Texte aus `MStempel`, `tauschMelden` und `Krankmeldung` in `src/App.jsx`) |
 
 Die Anmeldung der App ist in den Website-Entwürfen enthalten (`W-anmeldung`, `M-anmeldung`), ebenso Demo-Rollenwahl (`W-demo`) und Selbst starten (`W-starten`). Diese drei Seiten liegen heute in `src/main.jsx`.
 
