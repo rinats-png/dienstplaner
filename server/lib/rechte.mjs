@@ -15,6 +15,7 @@
    ========================================================================== */
 
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
+import { bestandSicht, SICHT_ROLLEN } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -295,43 +296,6 @@ const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
    den eigenen Dienstplan zu sehen.
    -------------------------------------------------------------------------- */
 
-/* Persönliche Angaben, die für fremde Personen nichts in der Antwort zu
-   suchen haben. Name und Funktion bleiben — ohne sie ist kein Plan lesbar. */
-const PERSON_PRIVAT = ["email", "telefon", "mobil", "anschrift", "geburtstag",
-  "geburtsdatum", "iban", "steuerId", "sozialversicherung", "notfall",
-  "notfallkontakt", "notizen", "personalnummer", "einschraenkungen",
-  "lohn", "gehalt", "zuschlaege"];
-
-/* Zustellwege und Geheimnisse einer Person. Die Oberfläche braucht sie nur
-   an der eigenen Person: Push-Anmeldung, Zustellvorlieben, das Geheimnis
-   des Kalender-Abos und dessen Verweis. Bei fremden Personen waren sie bis
-   Oktober 2026 in der Antwort enthalten — mit dem Kalender-Geheimnis einer
-   Kollegin ließ sich deren Feed lesen, überschreiben und löschen. */
-const PERSON_ZUGANG = ["pushSchluessel", "zustellung", "kalenderGeheim", "kalenderVerweis"];
-
-/* Alles, was eine fremde Person beim Lesen durch Beschäftigte und
-   Betriebsrat nicht mitbringt — an einer Stelle, damit es eine Liste bleibt. */
-const FREMDE_PERSON_OHNE = [...PERSON_PRIVAT, ...PERSON_ZUGANG];
-
-function personSaeubern(p) {
-  const rein = { ...p };
-  for (const feld of FREMDE_PERSON_OHNE) delete rein[feld];
-  return rein;
-}
-
-/* Eine Abwesenheit bleibt sichtbar — sonst stimmt die Besetzung nicht.
-   Der Grund verschwindet: Dass jemand fehlt, ist Betriebswissen. Warum
-   jemand fehlt, ist eine Gesundheitsangabe nach Artikel 9 DSGVO. */
-function abwesenheitSaeubern(a) {
-  const rein = { ...a };
-  delete rein.grund;
-  delete rein.bemerkung;
-  delete rein.diagnose;
-  delete rein.nachweis;
-  if (rein.art && rein.art !== "urlaub" && rein.art !== "frei") rein.art = "abwesend";
-  return rein;
-}
-
 /**
  * Baut die Antwort für eine Rolle.
  *
@@ -345,6 +309,12 @@ export function bestandFuerRolle(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
   const rolle = sitzung.rolle || "kunde";
   if (rolle === "betreiber") return bestand;
+
+  /* Beschäftigte und Betriebsrat: nur, was der Katalog in sicht.mjs
+     ausdrücklich freigibt. Unbekannte Felder gehen nicht hinaus — weder
+     ganz oben noch im Betrieb noch an einer Person. */
+  if (SICHT_ROLLEN.includes(rolle))
+    return bestandSicht(bestand, sitzung, eigenerMandant(bestand, sitzung));
 
   const kopie = { ...bestand };
 
@@ -368,42 +338,7 @@ export function bestandFuerRolle(bestand, sitzung) {
 
   /* Nur der eigene Betrieb. Die Oberfläche sucht über session.mandantId,
      nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
-  let m = { ...eigener };
-
-  if (rolle === "mitarbeiter" || rolle === "betriebsrat") {
-    const ich = sitzung.person;
-    if (Array.isArray(m.personen)) {
-      m.personen = m.personen.map((p) =>
-        (ich !== null && ich !== undefined && p.id === ich) ? p : personSaeubern(p));
-    }
-    if (Array.isArray(m.abwesenheiten)) {
-      m.abwesenheiten = m.abwesenheiten.map((a) =>
-        (ich !== null && ich !== undefined && a.personId === ich) ? a : abwesenheitSaeubern(a));
-    }
-    /* Mitteilungen und Notrufe: nur die eigenen, als Positivliste.
-
-       Beide Listen gingen bis Oktober 2026 vollständig hinaus. Die
-       Oberfläche filtert nach personId, die Antwort tat es nicht — wer
-       /api/bestand direkt las, bekam die Mitteilungen aller Kolleginnen
-       („Krankmeldung: …“ samt Anmerkung, „NOTRUF: …“), dazu in `wege` deren
-       E-Mail-Adresse und Push-Anmeldung, und jeden Notruf mit Anmerkung und
-       Ort. Der Betriebsrat bekommt ebenfalls nur die eigenen: Er prüft über
-       das Protokoll, nicht über fremde Postfächer.
-
-       Für den Schreibpfad ändert sich nichts: zusammenfuehren nimmt fremde
-       Mitteilungen immer aus dem gespeicherten Stand. */
-    const meins = (e) => ich !== null && ich !== undefined && eigenerEintrag(e, ich);
-    if (Array.isArray(m.nachrichten)) m.nachrichten = m.nachrichten.filter(meins);
-    if (Array.isArray(m.notrufe)) m.notrufe = m.notrufe.filter(meins);
-    /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
-       Prüfrolle ist das der Kern der Aufgabe, für alle anderen nicht. */
-    if (rolle === "mitarbeiter") {
-      delete m.protokoll;
-      delete m.aenderungen;
-    }
-  }
-
-  kopie.mandanten = [m];
+  kopie.mandanten = [{ ...eigener }];
   return kopie;
 }
 

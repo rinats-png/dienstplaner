@@ -111,6 +111,11 @@ jobs:
       - name: Leserechte
         run: npm run pruefung:leserechte
 
+      # Das View-Modell für Beschäftigte und Betriebsrat: Jedes Feld braucht
+      # eine Entscheidung im Katalog (server/lib/sicht.mjs).
+      - name: Sicht der Beschäftigten
+        run: npm run pruefung:sicht
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
