@@ -116,6 +116,11 @@ jobs:
       - name: Sicht der Beschäftigten
         run: npm run pruefung:sicht
 
+      # Krankmeldung, Selbstplanung und Notruf von Beschäftigten: genau der
+      # vorgesehene Vorgang wird gespeichert, sonst nichts.
+      - name: Selbstservice der Beschäftigten
+        run: npm run pruefung:selbstservice
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik

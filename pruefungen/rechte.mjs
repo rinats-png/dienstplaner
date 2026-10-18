@@ -653,6 +653,10 @@ let tBetreiber = null;
     `Status ${apiMitSchluessel.status}`);
 }
 
+/* Der Code der beschäftigten Person p2 — S10 legt ihn an, S11 nutzt ihn
+   wieder: Das Anlegen von Zugängen ist gebremst. */
+let CODE_P2 = null;
+
 /* --- S10: Die eigene Person pflegen, aber nicht befördern ---
 
    Bis September 2026 kam an der eigenen Person alles durch, was nicht
@@ -662,7 +666,8 @@ let tBetreiber = null;
 {
   /* Der Grundbestand wurde von S3 ersetzt; dort ist p2 die beschäftigte
      Person. Über sie läuft dieser Block. */
-  const tM10 = await anmelden(await zugang("mitarbeiter", "p2"));
+  CODE_P2 = await zugang("mitarbeiter", "p2");
+  const tM10 = await anmelden(CODE_P2);
   const r = await lies(tM10);
   const b = JSON.parse(JSON.stringify(r.bestand));
   b.mandanten[0].personen = b.mandanten[0].personen.map((p) => (p.id !== "p2" ? p : {
@@ -691,6 +696,77 @@ let tBetreiber = null;
   pruef("Personalnummer und Funktion bleiben unangetastet",
     nach.personalnummer !== "GEFAELSCHT" && nach.funktion !== "Pflegedienstleitung",
     `${nach.personalnummer} / ${nach.funktion}`);
+}
+
+/* --- S11: Krankmeldung, Selbstplanung und Notruf von Beschäftigten ---
+
+   Die Oberfläche bot alle drei an; der Server verwarf sie bis Oktober 2026
+   und antwortete trotzdem mit „ok". Hier läuft der echte Weg: schreiben,
+   neu laden, aus Sicht der Leitung und einer Kollegin lesen. */
+{
+  const tL11 = await anmelden(CODES.leitung);
+  const r0 = await lies(tL11);
+  const b0 = JSON.parse(JSON.stringify(r0.bestand));
+  const m0 = b0.mandanten[0];
+  if (!m0.personen.some((p) => p.id === "p3"))
+    m0.personen.push({ id: "p3", nachname: "Lind", rolle: "mitarbeiter",
+      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
+  m0.abwesenheiten = m0.abwesenheiten || [];
+  m0.notrufe = m0.notrufe || [];
+  m0.selbstplanung = [{ id: "sp11", monat: "2026-11", status: "offen", eintraege: [
+    { personId: "p3", datum: "2026-11-02", dienstId: "F", zeit: "t" }] }];
+  const w0 = await schreib(tL11, b0, r0.etag);
+  pruef("S11: Grundbestand mit zweiter Beschäftigter und offener Runde", w0.status === 200, `Status ${w0.status}`);
+
+  const tP2 = await anmelden(CODE_P2);
+  const tP3 = await anmelden(await zugang("mitarbeiter", "p3"));
+  const r1 = await lies(tP2);
+  const b1 = JSON.parse(JSON.stringify(r1.bestand));
+  const m1 = b1.mandanten[0];
+  m1.abwesenheiten.push({ id: "k11", personId: "p2", art: "krank", von: "2026-11-05",
+    bis: "2026-11-06", notiz: "Fieber", diagnose: "J11" });
+  m1.selbstplanung.find((r) => r.id === "sp11").eintraege.push(
+    { personId: "p2", datum: "2026-11-03", dienstId: "S", zeit: "t2" });
+  m1.notrufe.unshift({ id: "nr11", personId: "p2", art: "hilfe", notiz: "Hilfe",
+    zeit: "2026-10-18T09:00:00Z", datum: "2026-10-18", empfaenger: ["p1"], bestaetigt: "gefälscht" });
+  const w1 = await schreib(tP2, b1, r1.etag);
+  pruef("S11: Beschäftigte schreiben Krankmeldung, Selbstplanung und Notruf", w1.status === 200, `Status ${w1.status}`);
+
+  const leitung = (await lies(tL11)).bestand.mandanten[0];
+  const k = (leitung.abwesenheiten || []).find((a) => a.id === "k11");
+  pruef("S11: die Krankmeldung ist gespeichert, mit Anmerkung, ohne Diagnose",
+    k && k.notiz === "Fieber" && k.art === "krank" && k.diagnose === undefined, JSON.stringify(k));
+  const sp = (leitung.selbstplanung || []).find((r) => r.id === "sp11");
+  pruef("S11: der Selbstplanungs-Eintrag ist gespeichert, der fremde bleibt",
+    sp && sp.eintraege.some((e) => e.personId === "p2" && e.dienstId === "S")
+      && sp.eintraege.some((e) => e.personId === "p3"), JSON.stringify(sp && sp.eintraege));
+  const nr = (leitung.notrufe || []).find((n) => n.id === "nr11");
+  pruef("S11: der Notruf ist gespeichert und unbestätigt",
+    nr && nr.bestaetigt === null && nr.art === "hilfe", JSON.stringify(nr));
+
+  const selbst = (await lies(tP2)).bestand.mandanten[0];
+  pruef("S11: nach dem Neuladen sieht die Person alle drei",
+    selbst.abwesenheiten.some((a) => a.id === "k11") && selbst.notrufe.some((n) => n.id === "nr11")
+      && selbst.selbstplanung[0].eintraege.some((e) => e.personId === "p2"));
+
+  const kollegin = (await lies(tP3)).bestand.mandanten[0];
+  const kk = kollegin.abwesenheiten.find((a) => a.id === "k11");
+  pruef("S11: die Kollegin sieht nur „abwesend“ ohne Anmerkung",
+    kk && kk.art === "abwesend" && kk.notiz === undefined, JSON.stringify(kk));
+  pruef("S11: die Kollegin sieht den Notruf nicht", !kollegin.notrufe.some((n) => n.id === "nr11"));
+  pruef("S11: die Kollegin sieht im Selbstplanungs-Eintrag keine Person",
+    kollegin.selbstplanung[0].eintraege.every((e) => e.personId === undefined || e.personId === "p3"),
+    JSON.stringify(kollegin.selbstplanung[0].eintraege));
+
+  /* Die Kollegin schreibt ihre gekürzte Sicht zurück — es geht nichts verloren. */
+  const r3 = await lies(tP3);
+  const w3 = await schreib(tP3, r3.bestand, r3.etag);
+  const danach = (await lies(tL11)).bestand.mandanten[0];
+  pruef("S11: Zurückschreiben der gekürzten Sicht verliert nichts",
+    w3.status === 200 && danach.abwesenheiten.find((a) => a.id === "k11")?.notiz === "Fieber"
+      && danach.notrufe.some((n) => n.id === "nr11")
+      && danach.selbstplanung[0].eintraege.some((e) => e.personId === "p2"),
+    `Status ${w3.status}`);
 }
 
 /* --- S9: Herkunft, Grenzen, Protokoll ---

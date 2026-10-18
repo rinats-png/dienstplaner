@@ -116,7 +116,9 @@ export function schreibumfang(rolle) {
 
 /* Was eine beschäftigte Person am Betrieb ändern darf: ihre eigenen
    Anliegen in den Feldern anfragen, erfassung, nachrichten, wuensche,
-   einspruenge, urlaubsrunde und ausschreibungen. Alles andere — Personal,
+   einspruenge, urlaubsrunde und ausschreibungen, dazu neue eigene
+   Krankmeldungen (abwesenheiten), die eigenen Einträge einer offenen
+   Selbstplanungsrunde und neue eigene Notrufe. Alles andere — Personal,
    Dienstarten, Schichtfolge, Freigaben — bleibt unberührt, auch wenn es
    mitgeschickt wird.
 
@@ -208,6 +210,115 @@ function urlaubsrundeZusammen(alt, neu, ich) {
   return { ...alt, wuensche: eigeneEintraege(alt.wuensche, w, ich) };
 }
 
+/* --------------------------------------------------------------------------
+   KRANKMELDUNG, SELBSTPLANUNG, NOTRUF
+
+   Alle drei bot die Oberfläche Beschäftigten an, und alle drei verwarf der
+   Server bis Oktober 2026 stillschweigend: Die Felder fehlten hier, die
+   Antwort lautete trotzdem „ok". Eine Krankmeldung erschien als erfasst und
+   war nach dem Neuladen verschwunden.
+
+   Zugelassen wird jetzt genau der vorgesehene Vorgang, nicht das Feld:
+   eine neue eigene Krankmeldung, die eigenen Einträge in einer offenen
+   Selbstplanungsrunde, ein neuer eigener Notruf. Bestehendes und Fremdes
+   kommt immer aus dem gespeicherten Stand — die Sicht der Beschäftigten
+   enthält davon ohnehin nur einen Teil (sicht.mjs).
+
+   Mitteilungen an die Planung nimmt der Server von Beschäftigten weiterhin
+   nur als Tauschangebot an. Die Planung sieht Krankmeldung und Notruf im
+   Bestand; eine Zustellung per E-Mail oder Push folgt erst, wenn der
+   Server sie selbst auslöst.
+   -------------------------------------------------------------------------- */
+const DATUM = /^\d{4}-\d{2}-\d{2}$/;
+const ANMERKUNG_MAX = 2000;
+const kennungGueltig = (id) => (typeof id === "string" && id.length > 0 && id.length <= 100)
+  || (typeof id === "number" && Number.isFinite(id));
+const textOderLeer = (t) => t === undefined || t === null || (typeof t === "string" && t.length <= ANMERKUNG_MAX);
+
+/** Neue eigene Krankmeldungen: nur Art „krank", nur die Felder des Formulars. */
+function krankmeldungenZusammen(alt, neu, ich) {
+  const gespeichert = Array.isArray(alt) ? alt : [];
+  const bekannt = new Set(gespeichert.filter(Boolean).map((a) => String(a.id)));
+  const neue = [];
+  for (const a of Array.isArray(neu) ? neu : []) {
+    if (!a || typeof a !== "object" || !eigenerEintrag(a, ich)) continue;
+    if (!kennungGueltig(a.id) || bekannt.has(String(a.id))) continue;    // Bestehendes bleibt, wie es war
+    if (a.art !== "krank") continue;                                       // Urlaub geht über den Antrag
+    if (typeof a.von !== "string" || !DATUM.test(a.von)
+      || typeof a.bis !== "string" || !DATUM.test(a.bis) || a.bis < a.von) continue;
+    if (!textOderLeer(a.notiz)) continue;
+    const sauber = { id: a.id, personId: a.personId, art: "krank", von: a.von, bis: a.bis };
+    if (typeof a.notiz === "string") sauber.notiz = a.notiz;
+    neue.push(sauber);
+    bekannt.add(String(a.id));
+  }
+  return [...gespeichert, ...neue];
+}
+
+/** Selbstplanung: die eigenen Einträge in einer offenen Runde, sonst nichts. */
+function selbstplanungZusammen(alt, neu, ich, dienstarten) {
+  if (!Array.isArray(alt)) return alt;
+  const neueNachId = new Map((Array.isArray(neu) ? neu : [])
+    .filter((r) => r && typeof r === "object").map((r) => [r.id, r]));
+  const dienste = new Set((Array.isArray(dienstarten) ? dienstarten : [])
+    .filter(Boolean).map((d) => String(d.id)));
+  return alt.map((r) => {
+    if (!r || typeof r !== "object" || r.status !== "offen") return r;
+    const g = neueNachId.get(r.id);
+    if (!g) return r;
+    const fremde = (Array.isArray(r.eintraege) ? r.eintraege : []).filter((e) => !eigenerEintrag(e, ich));
+    const eigene = [];
+    const tage = new Set();
+    for (const e of Array.isArray(g.eintraege) ? g.eintraege : []) {
+      if (!e || typeof e !== "object" || !eigenerEintrag(e, ich)) continue;
+      if (typeof e.datum !== "string" || !DATUM.test(e.datum)
+        || e.datum.slice(0, 7) !== r.monat) continue;                    // nur im Monat der Runde
+      if (!dienste.has(String(e.dienstId))) continue;                     // nur bekannte Dienstarten
+      if (tage.has(e.datum)) continue;                                    // ein Eintrag je Tag
+      tage.add(e.datum);
+      const sauber = { personId: e.personId, datum: e.datum, dienstId: e.dienstId };
+      if (typeof e.zeit === "string" && e.zeit.length <= 40) sauber.zeit = e.zeit;
+      eigene.push(sauber);
+    }
+    return { ...r, eintraege: [...fremde, ...eigene] };
+  });
+}
+
+/* Die Arten eines Notrufs — dieselben wie NOTRUF_ARTEN in src/App.jsx. */
+const NOTRUF_ARTEN = ["hilfe", "medizin", "bedrohung", "technik"];
+const PLANUNGSROLLEN = ["subplaner", "planer", "leitung"];
+
+/** Neue eigene Notrufe. Bestätigen ist Sache der Planung. */
+function notrufeZusammen(alt, neu, ich, personen) {
+  const gespeichert = Array.isArray(alt) ? alt : [];
+  const bekannt = new Set(gespeichert.filter(Boolean).map((n) => String(n.id)));
+  const planung = new Set((Array.isArray(personen) ? personen : [])
+    .filter((p) => p && PLANUNGSROLLEN.includes(p.rolle)).map((p) => String(p.id)));
+  const neue = [];
+  for (const n of Array.isArray(neu) ? neu : []) {
+    if (!n || typeof n !== "object" || !eigenerEintrag(n, ich)) continue;
+    if (!kennungGueltig(n.id) || bekannt.has(String(n.id))) continue;
+    if (!NOTRUF_ARTEN.includes(n.art)) continue;
+    if (!textOderLeer(n.notiz)) continue;
+    neue.push({
+      id: n.id, personId: n.personId, art: n.art,
+      notiz: typeof n.notiz === "string" ? n.notiz : "",
+      zeit: typeof n.zeit === "string" && n.zeit.length <= 40 ? n.zeit : new Date().toISOString(),
+      datum: typeof n.datum === "string" && DATUM.test(n.datum) ? n.datum : new Date().toISOString().slice(0, 10),
+      dienst: typeof n.dienst === "string" && n.dienst.length <= 200 ? n.dienst : null,
+      ort: typeof n.ort === "string" && n.ort.length <= 200 ? n.ort : null,
+      /* Wer unterrichtet wird, bestimmt nicht die Übermittlung: nur
+         Schichtverantwortung, Planung und Leitung dieses Betriebs. */
+      empfaenger: (Array.isArray(n.empfaenger) ? n.empfaenger : [])
+        .filter((x) => planung.has(String(x))),
+      bestaetigt: null,
+    });
+    bekannt.add(String(n.id));
+  }
+  /* Neueste zuerst — so legt auch die Oberfläche sie ab. */
+  return [...neue, ...gespeichert];
+}
+
 /** Die eigenen Felder einer beschäftigten Person, personenbezogen gefiltert. */
 export function eigenesZusammen(alt, geschickt, ich) {
   const hat = (f) => Object.prototype.hasOwnProperty.call(geschickt, f);
@@ -219,6 +330,9 @@ export function eigenesZusammen(alt, geschickt, ich) {
   if (hat("nachrichten")) aus.nachrichten = nachrichtenZusammen(alt.nachrichten, geschickt.nachrichten, ich);
   if (hat("ausschreibungen")) aus.ausschreibungen = ausschreibungenZusammen(alt.ausschreibungen, geschickt.ausschreibungen, ich);
   if (hat("urlaubsrunde")) aus.urlaubsrunde = urlaubsrundeZusammen(alt.urlaubsrunde, geschickt.urlaubsrunde, ich);
+  if (hat("abwesenheiten")) aus.abwesenheiten = krankmeldungenZusammen(alt.abwesenheiten, geschickt.abwesenheiten, ich);
+  if (hat("selbstplanung")) aus.selbstplanung = selbstplanungZusammen(alt.selbstplanung, geschickt.selbstplanung, ich, alt.dienstarten);
+  if (hat("notrufe")) aus.notrufe = notrufeZusammen(alt.notrufe, geschickt.notrufe, ich, alt.personen);
   return aus;
 }
 
