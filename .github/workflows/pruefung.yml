@@ -141,6 +141,12 @@ jobs:
       - name: Erstbefüllung
         run: npm run pruefung:erstbefuellung
 
+      # Die Schichtverantwortung schreibt nur in ihrem Bereich: Plan, Anträge,
+      # Krankmeldungen; Protokoll und Änderungen nur anhängend; keine
+      # Stempelzeiten, keine Zeiterfassung, kein Dienstbuch.
+      - name: Schichtverantwortung
+        run: npm run pruefung:schichtverantwortung
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -397,6 +403,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.6.
+
+      # Zwei Bereiche, echte Schreibwege, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schichtverantwortung (HTTP)
+        run: npm run pruefung:schichtverantwortung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.5.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

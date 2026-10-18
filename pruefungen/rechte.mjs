@@ -356,12 +356,18 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Dienstarten darf sie nicht anlegen", wStamm.status === 403,
     `Status ${wStamm.status} — ${wStamm.text || ""}`);
 
-  /* Anträge fremder Bereiche entscheidet die Leitung. */
+  /* Anträge fremder Bereiche entscheidet die Leitung. Bis Oktober 2026
+     stand hier als „eigener Bereich" der Antrag der Schichtverantwortung
+     selbst (p1) — sie genehmigte sich den eigenen Urlaub. Jetzt gehört der
+     Antrag p3, einer Beschäftigten in e1; der eigene wird abgewiesen. */
   const rL4 = await lies(tL);
   const bL4 = JSON.parse(JSON.stringify(rL4.bestand));
+  bL4.mandanten[0].personen = [...bL4.mandanten[0].personen,
+    { id: "p3", nachname: "Lenz", rolle: "mitarbeiter", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] }];
   bL4.mandanten[0].anfragen = [...(bL4.mandanten[0].anfragen || []),
     { id: "s4-fremd", personId: "p2", art: "urlaub", von: "2026-11-20", bis: "2026-11-20", status: "offen" },
-    { id: "s4-eigen", personId: "p1", art: "urlaub", von: "2026-11-21", bis: "2026-11-21", status: "offen" }];
+    { id: "s4-eigen", personId: "p3", art: "urlaub", von: "2026-11-21", bis: "2026-11-21", status: "offen" },
+    { id: "s4-selbst", personId: "p1", art: "urlaub", von: "2026-11-22", bis: "2026-11-22", status: "offen" }];
   await schreib(tL, bL4, rL4.etag);
   const r4 = await lies(tSub);
   const g = JSON.parse(JSON.stringify(r4.bestand));
@@ -375,6 +381,12 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   const wEigenA = await schreib(tSub, h, r5.etag);
   pruef("Einen Antrag aus dem eigenen Bereich schon", wEigenA.status === 200,
     `Status ${wEigenA.status} — ${wEigenA.text || ""}`);
+  const r6 = await lies(tSub);
+  const s6 = JSON.parse(JSON.stringify(r6.bestand));
+  s6.mandanten[0].anfragen = s6.mandanten[0].anfragen.map((a) => a.id === "s4-selbst" ? { ...a, status: "genehmigt" } : a);
+  const wSelbst = await schreib(tSub, s6, r6.etag);
+  pruef("Den eigenen Antrag genehmigt sie sich nicht selbst", wSelbst.status === 403,
+    `Status ${wSelbst.status} — ${wSelbst.text || ""}`);
 }
 
 /* --- S5: Beschäftigte schreiben nur ihre eigenen Einträge ---
