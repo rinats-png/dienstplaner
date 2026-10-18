@@ -35,11 +35,11 @@ async function zugang(rolle, person) {
 
 /* Die Rolle kommt aus der Person im Betrieb (siehe wirksameRolle) — der
    Betriebsratscode gehört deshalb zu Person 2, die dort Betriebsrat ist. */
-const CODES = {
-  leitung: await zugang("leitung", null),
-  betriebsrat: await zugang("betriebsrat", 2),
-  mitarbeiter: await zugang("mitarbeiter", 0),
-};
+/* Seit Oktober 2026 gibt es Codes für Kundenrollen nur für einen
+   eingerichteten Raum, und einrichten darf ihn nur der Betreiber
+   (/api/bestand-anlegen). Sein Code entsteht deshalb zuerst; die übrigen
+   unten, sobald der Raum steht. */
+const CODE_BETREIBER = await zugang("betreiber", null);
 
 const anmelden = async (code) => {
   const a = await fetch(`${BASIS}/api/anmelden`, { method: "POST",
@@ -65,8 +65,7 @@ const pruef = (name, bedingung, detail) => {
   console.log(`${bedingung ? "  BESTANDEN" : "  FEHLGESCHLAGEN"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 
-/* --- Grundbestand als Leitung anlegen --- */
-const tL = await anmelden(CODES.leitung);
+/* --- Grundbestand: richtet der Betreiber ein --- */
 const start = {
   version: 5, stand: 1,
   session: { mandantId: "m1", personId: 0, rolle: "kunde" },
@@ -94,7 +93,19 @@ const start = {
     einheiten: [{ id: "e1", name: "Wohnbereich 1" }],
   }],
 };
-const w0 = await schreib(tL, start, null);
+const tBetreiberStart = await anmelden(CODE_BETREIBER);
+const wAnlegen = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
+  headers: { authorization: `Bearer ${tBetreiberStart}`, "content-type": "application/json" },
+  body: JSON.stringify({ bestand: RAUM, inhalt: start }) });
+pruef("Betreiber richtet den Raum ein", wAnlegen.status === 200, `Status ${wAnlegen.status}`);
+const CODES = {
+  leitung: await zugang("leitung", null),
+  betriebsrat: await zugang("betriebsrat", 2),
+  mitarbeiter: await zugang("mitarbeiter", 0),
+};
+const tL = await anmelden(CODES.leitung);
+const r0 = await lies(tL);
+const w0 = await schreib(tL, r0.bestand, r0.etag);
 pruef("Leitung darf schreiben", w0.status === 200, `Status ${w0.status}`);
 
 /* --- Befund 1a: Betriebsrat darf nicht schreiben --- */
@@ -493,7 +504,7 @@ let tBetreiber = null;
   pruef("Ein Rumpf über sechs Megabyte gibt 413", riesig.status === 413, `Status ${riesig.status}`);
 
   /* Löschkonzept: Ein Betreiber löscht einen Raum vollständig. */
-  const tBetr = await anmelden(await zugang("betreiber", null));
+  const tBetr = await anmelden(CODE_BETREIBER);
   tBetreiber = tBetr;
   const raum = `probe-loesch-${Date.now().toString(36)}`;
   const anlegen = await post("bestand-anlegen", tBetr, JSON.stringify({ bestand: raum,
@@ -545,7 +556,7 @@ let tBetreiber = null;
     body: JSON.stringify({ zugangscode: selbstCode }) });
   pruef("Seine Zugangscodes führen ins Leere", selbstAnm.status === 401, `Status ${selbstAnm.status}`);
   const selbstFrei = await post("bestand-anlegen", tBetr2, JSON.stringify({ bestand: selbstD.raum,
-    inhalt: { version: 5, stand: 1, mandanten: [] } }));
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m-frei", name: "Frei" }] } }));
   pruef("Und der Raum ist wieder frei", selbstFrei.status === 200, `Status ${selbstFrei.status}`);
   await post("raum-loeschen", tBetr2, JSON.stringify({ bestand: selbstD.raum, bestaetigung: selbstD.raum }));
 
@@ -559,6 +570,9 @@ let tBetreiber = null;
     headers: { "content-type": "application/json", ...herkunft() },
     body: JSON.stringify({ verwaltung: GEHEIM, name: "Fremder Demobetrieb", bestand: "demo-fremd",
       rolle: "leitung", betrieb, demo: true, gruppe: "Prüfung" }) })).json());
+  /* Codes gibt es nur für einen eingerichteten Raum (seit Oktober 2026). */
+  await post("bestand-anlegen", tBetr2, JSON.stringify({ bestand: "demo-fremd",
+    inhalt: { version: 5, stand: 1, mandanten: [{ id: "m-f0", name: "F0" }, { id: "m-f1", name: "F1" }] } }));
   const dA = await demoAnlegen(0);
   const dB = await demoAnlegen(1);
   pruef("Zwei Demozugänge in einem fremden Raum angelegt", !!dA.zugangscode && !!dB.zugangscode,

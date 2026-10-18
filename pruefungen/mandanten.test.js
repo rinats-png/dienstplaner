@@ -221,14 +221,14 @@ describe("Gestaltprüfung: Kennungen der Betriebe", () => {
   });
 });
 
-describe("Temporärer Bootstrap-Altpfad (leerer Raum)", () => {
-  it("ohne gespeicherten Bestand nimmt der erste Schreibvorgang den Startbestand wie bisher", () => {
-    const erg = zusammenfuehren(null, raum(), SITZ.leitungA);
-    expect(ids(erg)).toEqual(["m-nordwacht", "m-lindenhof", "m-steinbach"]);
-  });
-  it("… aber nur mit eindeutigen, gültigen Kennungen", () => {
-    const b = raum();
-    b.mandanten[2].id = "m-nordwacht";
-    expect(pruefeGestalt(zusammenfuehren(null, b, SITZ.leitungA)).ok).toBe(false);
+describe("Leerer Raum: kein Schreibweg (Commit 1g)", () => {
+  for (const s of ["leitungA", "planerB", "kundeB", "subplanerB", "mitarbeiterB", "betriebsratB"]) {
+    it(`${s} befüllt keinen leeren Raum`, () => {
+      const erg = zusammenfuehren(null, raum(), SITZ[s]);
+      expect(erg === null || !!erg.verweigert, s).toBe(true);
+    });
+  }
+  it("auch der Betreiber nicht über diesen Weg", () => {
+    expect(zusammenfuehren(null, raum(), { rolle: "betreiber" }).verweigert).toBeTruthy();
   });
 });

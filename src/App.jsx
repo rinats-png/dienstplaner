@@ -1172,6 +1172,15 @@ function baueMandant(cfg, seed) {
   };
 }
 
+/* Die Demo für /api/bestand-anlegen: der Startbestand mit festen Kennungen
+   in fester Reihenfolge. Der Server prüft genau diese Gestalt
+   (server/lib/erstbefuellung.mjs, DEMO_KENNUNGEN). */
+const DEMO_KENNUNGEN = ["m-nordwacht", "m-lindenhof", "m-steinbach"];
+function demobestand() {
+  const b = startbestand();
+  return { ...b, mandanten: b.mandanten.map((m, i) => ({ ...m, id: DEMO_KENNUNGEN[i] })) };
+}
+
 function startbestand() {
   const j = new Date().getFullYear();
   const mandanten = [
@@ -20648,7 +20657,16 @@ function AppInnen() {
          beides gleich behandelt: durch Beispieldaten ersetzt. */
       let b;
       if (!bestand) {
-        b = startbestand();
+        /* Einen leeren Raum befüllt die Oberfläche nicht mehr selbst — bis
+           Oktober 2026 schrieb hier der erste Client den Startbestand. Den
+           Raum richtet der Betreiber ein (/api/bestand-anlegen). */
+        setLadefehler({ titel: "Dieser Raum ist noch nicht eingerichtet.",
+          text: zugang && zugang.rolle === "betreiber"
+            ? "Als Betreiber kannst du ihn mit dem Demo-Bestand einrichten (Nordwacht, Lindenhof, Steinbach)."
+            : "Bitte wende dich an die Organisationsleitung oder an den Betreiber.",
+          demoAnlegen: !!(zugang && zugang.rolle === "betreiber") });
+        setLaedt(false);
+        return;
       } else {
         const erg = migriere(bestand);
         if (!erg.ok) {
@@ -22543,7 +22561,6 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       },
       exportJSON: () => { const s = ref.current; const inhalt = JSON.stringify(s, null, 2);
         if (lade(`centric_sicherung_${heute()}.json`, inhalt, "application/json")) melde("Sicherung erstellt."); else setAusgabe({ titel: "Sicherung", inhalt }); },
-      zuruecksetzen: () => { if (window.confirm("Alle Eingaben verwerfen?")) { verlauf.current = []; setDb(startbestand()); melde("Zurückgesetzt."); } },
     };
   }, [melde, ym, sitz]);
 
@@ -22589,6 +22606,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
+            {f.demoAnlegen && <Btn kind="primary" onClick={async () => {
+              try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
+              catch (e) { setLadefehler(String(e.message || e)); }
+            }}>Demo-Bestand anlegen</Btn>}
             <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
           </div>
         </Card></div></div></>);

@@ -4,6 +4,8 @@ import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
+import { bestandLesen } from "../lib/bestand.mjs";
+import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
   from "../lib/verwalter.mjs";
 
@@ -26,7 +28,7 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
-  if (!["", "verwalter", "umgebung", "uebersicht"].includes(pfad))
+  if (!["", "verwalter", "umgebung", "uebersicht", "bindung"].includes(pfad))
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
@@ -189,7 +191,69 @@ export default async (req) => {
     return antwort({ ...(await raumUebersicht(s0, raum)), ich: wer.name });
   }
 
+  /* ------------------- Alte Codes an ihren Betrieb binden -------------
+     Codes von vor Oktober 2026 zeigen nur über ihre Position auf den
+     Betrieb. In einem Raum mit genau einem Betrieb ergänzt die Anmeldung
+     die Kennung von selbst. In Räumen mit mehreren Betrieben — dem
+     Demoraum — wird nicht geraten: GET zeigt, worauf jeder Code heute
+     zeigt (Trockenlauf). POST bindet nur, was ein Mensch geprüft und
+     ausdrücklich bestätigt hat, und nur, wenn die Position noch auf
+     genau diesen Betrieb zeigt. */
+  if (pfad === "bindung") {
+    const raumB = req.method === "GET" ? (url.searchParams.get("bestand") || "") : String(body.bestand || "");
+    if (!/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(raumB))
+      return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+    const gelesenB = await bestandLesen(s0, raumB);
+    const bestandB = gelesenB && gelesenB.bestand;
+    if (!bestandB) return antwort({ fehler: "Raum ist noch nicht eingerichtet." }, 409);
+    const konten = await alleKonten(s0);
+    const eigene = Object.entries(konten).filter(([, kk]) => kk && kk.bestand === raumB && kk.rolle !== "betreiber");
+    const zugaenge = eigene.map(([h, kk]) => ({ ...kk, kennung: h.slice(-8) }));
+    if (req.method === "GET")
+      return antwort({ bestand: raumB, trockenlauf: true,
+        betriebe: (bestandB.mandanten || []).map((m, i) => ({ stelle: i, id: m.id, name: m.name || null })),
+        zugaenge: bindungsVorschau(bestandB, zugaenge) });
+    if (req.method !== "POST") return antwort({ fehler: "Nur GET oder POST." }, 405);
+    const zuordnung = Array.isArray(body.zuordnung) ? body.zuordnung : [];
+    if (!zuordnung.length) return antwort({ fehler: "Keine Zuordnung angegeben." }, 400);
+    const ergebnis = [];
+    for (const z of zuordnung) {
+      const treffer = eigene.filter(([h]) => h.slice(-8) === String(z && z.kennung));
+      if (treffer.length !== 1) { ergebnis.push({ kennung: z && z.kennung, gebunden: false, grund: "nicht eindeutig" }); continue; }
+      const [h, kk] = treffer[0];
+      if (kk.mandantId) { ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "schon gebunden" }); continue; }
+      const i = Number(kk.betrieb ?? 0);
+      const m = Number.isInteger(i) ? (bestandB.mandanten || [])[i] : null;
+      if (!m || m.id !== z.mandantId) {
+        ergebnis.push({ kennung: z.kennung, gebunden: false, grund: "Position zeigt nicht auf diesen Betrieb" });
+        continue;
+      }
+      await kontoSchreiben(s0, h, { ...kk, mandantId: m.id, gebunden: new Date().toISOString(),
+        gebundenDurch: wer.name });
+      ergebnis.push({ kennung: z.kennung, gebunden: true, mandantId: m.id });
+    }
+    await protokoll("einrichten", k, "erfolg",
+      `Bindung ${raumB}: ${ergebnis.filter((x) => x.gebunden).length} von ${ergebnis.length} durch ${wer.name}`);
+    return antwort({ bestand: raumB, ergebnis });
+  }
+
   if (!name || !bestand) return antwort({ fehler: "name und bestand sind nötig." }, 400);
+
+  /* Codes für Kundenrollen nur für einen eingerichteten Raum, gebunden an
+     Position und Kennung des Betriebs. Bis Oktober 2026 entstand hier auch
+     ein Code für einen Raum, den es noch nicht gab — und der erste Client
+     befüllte ihn. Den leeren Raum richtet jetzt der Betreiber ein
+     (/api/bestand-anlegen); sein eigener Code darf deshalb vorher entstehen. */
+  let bindungE = { betrieb: betrieb ?? 0, mandantId: null };
+  if ((rolle || "kunde") !== "betreiber") {
+    const gelesenE = await bestandLesen(s0, bestand);
+    const b2 = betriebFuerNeuenCode(gelesenE && gelesenE.bestand, betrieb);
+    if (b2.grund) {
+      await protokoll("einrichten", k, "abgewiesen", `${bestand}: ${b2.grund}`);
+      return antwort({ fehler: b2.grund }, 409);
+    }
+    bindungE = b2;
+  }
 
   /* Ein Demozugang je Betrieb und Rolle. Die Startseite zeigt jeden
      aktiven Demozugang als eigene Karte; zwei gleiche wären zwei Karten
@@ -222,7 +286,8 @@ export default async (req) => {
   const konto = { name, bestand,
     rolle: rolle || "kunde",       // betreiber | leitung | planer | subplaner | mitarbeiter | betriebsrat
     person: person ?? null,        // Index der Person innerhalb des Betriebs
-    betrieb: betrieb ?? 0,         // Index des Betriebs im Bestand
+    betrieb: bindungE.betrieb,     // Index des Betriebs im Bestand
+    mandantId: bindungE.mandantId, // und seine Kennung — beides muss zusammenpassen
     hinweis: hinweis || null,
     /* Als Demozugang gekennzeichnete Konten erscheinen auf der Anmeldeseite
        und lassen sich ohne Code öffnen. Alle übrigen bleiben geschützt. */

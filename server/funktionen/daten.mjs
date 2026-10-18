@@ -11,6 +11,8 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
+  from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
   betriebsSicherung, auszuduennen, listenEintrag, betriebWiederherstellen,
   vollausgabeBetrieb } from "../lib/sicherungen.mjs";
@@ -247,6 +249,11 @@ export default async (req, context) => {
       if (ohnePerson)
         return antwort({ fehler: `Ein Zugang der Rolle „${ohnePerson.rolle}" braucht eine Person.` }, 400);
 
+      /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
+         Kennung seines Betriebs (erstbefuellung.mjs). */
+      const zielGelesen = await bestandLesen(store, ziel);
+      const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
+      if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
@@ -257,7 +264,8 @@ export default async (req, context) => {
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
           name: e.name || ziel, bestand: ziel,
-          rolle: e.rolle || "kunde", person: e.personId || null, betrieb: 0,
+          rolle: e.rolle || "kunde", person: e.personId || null,
+          betrieb: bindungZ.betrieb, mandantId: bindungZ.mandantId,
           demo: false, gruppe: null, hinweis: null,
           angelegt: new Date().toISOString() });
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
@@ -459,12 +467,34 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
-      const { bestand: ziel, inhalt } = rumpf;
-      if (!ziel || !inhalt) return antwort({ fehler: "Unvollständig." }, 400);
+      /* Der einzige Weg, einen leeren Raum einzurichten (erstbefuellung.mjs).
+         Ohne Angabe der eigene Raum der Betreibersitzung. „leer" und „test"
+         baut der Server selbst; „demo" und ein eigener Inhalt werden
+         übermittelt und geprüft — Betreiber heißt nicht ungeprüft. */
+      const { bestand: zielAngabe, inhalt, vorlage, name: nameV, branche: brancheV } = rumpf;
+      const ziel = zielAngabe || sB.bestand;
+      if (!ziel || !/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(String(ziel)))
+        return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+      if (vorlage !== undefined && !VORLAGEN.includes(vorlage))
+        return antwort({ fehler: "Unbekannte Vorlage." }, 400);
       if (await raumBelegt(store, ziel))
         return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
-      await bestandSchreiben(store, ziel, inhalt, { durch: "Betreiber" });
-      return antwort({ ok: true });
+      const neuerBestand = (vorlage === "leer" || vorlage === "test")
+        ? vorlageBestand(vorlage, { raum: ziel, name: nameV, branche: brancheV })
+        : inhalt;
+      if (!neuerBestand || typeof neuerBestand !== "object")
+        return antwort({ fehler: "Unvollständig." }, 400);
+      const formA = pruefeGestalt(neuerBestand);
+      if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
+      if (vorlage === "demo") {
+        const demoGrund = demoGestaltPruefen(neuerBestand);
+        if (demoGrund) return antwort({ fehler: "Das ist nicht die Demo.", text: demoGrund }, 422);
+      }
+      await bestandSchreiben(store, ziel, neuerBestand, { durch: "Betreiber" });
+      await protokoll("zugaenge", kennung(req, sB), "erfolg",
+        `Raum ${ziel} eingerichtet (${vorlage || "eigener Inhalt"}, ${neuerBestand.mandanten.length} Betrieb(e))`);
+      return antwort({ ok: true, bestand: ziel, vorlage: vorlage || null,
+        mandanten: neuerBestand.mandanten.map((m) => m.id) });
     }
 
     /* ------------------------- Demozugänge auflisten ----------------- */
@@ -519,9 +549,16 @@ export default async (req, context) => {
          könnte jeder Datenräume anlegen und Zugangscodes erzeugen. */
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
+      const gelesenD = await bestandLesen(store, eintrag.bestand);
+      const bindungD = codeBindung(gelesenD && gelesenD.bestand, eintrag);
+      if (!bindungD.ok) {
+        await protokoll("demo", kd, "abgewiesen", bindungD.grund);
+        return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb." }, 403);
+      }
       const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        mandantId: bindungD.mandantId,
         /* Die Prüfsumme des Zugangs mitführen — wie beim Anmelden mit Code.
            Sie fehlte hier, und damit lief die Sitzung eines zurückgezogenen
            Demozugangs bis zu zwölf Stunden weiter. */
@@ -593,9 +630,27 @@ export default async (req, context) => {
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
          soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein —
          die Dauer zur Rolle steht in lib/sitzungen.mjs (dauerFuer). */
+      /* Der Code trägt die Kennung seines Betriebs. Zeigt seine Position
+         nicht mehr darauf, gilt er nicht. Ein alter Code ohne Kennung in
+         einem Raum mit genau einem Betrieb bekommt sie hier einmalig;
+         in Räumen mit mehreren Betrieben wird nicht geraten. */
+      const gelesenC = eintrag.rolle === "betreiber" ? null : await bestandLesen(store, eintrag.bestand);
+      const bindungC = codeBindung(gelesenC && gelesenC.bestand, eintrag);
+      if (!bindungC.ok) {
+        await protokoll("anmelden", k, "abgewiesen", bindungC.grund);
+        return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb.",
+          text: "Bitte wende dich an die Organisationsleitung." }, 403);
+      }
+      if (bindungC.migrieren) {
+        try {
+          await kontoSchreiben(store, fund.schluessel, { ...eintrag, mandantId: bindungC.mandantId,
+            gebunden: new Date().toISOString() });
+        } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
+      }
       const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        mandantId: bindungC.mandantId,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
            beim Sperren aller Zugänge der eigene aussparen. */
         konto: fund.schluessel,

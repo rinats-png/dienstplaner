@@ -471,9 +471,9 @@ export async function zugaengeUebersicht(raum) {
   return daten;
 }
 
-export async function bestandAnlegen(bestand, inhalt) {
+export async function bestandAnlegen(bestand, inhalt, vorlage) {
   const a = await fetch("/api/bestand-anlegen", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ bestand, inhalt }) });
+    body: JSON.stringify({ bestand, inhalt, vorlage }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Der Betrieb konnte nicht angelegt werden.");
   return d;

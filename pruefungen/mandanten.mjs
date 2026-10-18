@@ -72,10 +72,14 @@ const start = { version: 9, stand: 1, session: null, mandanten: [
   betrieb("m-steinbach", "Steinbach", [person("c-l", "leitung", "ALLE")]),
 ] };
 
+/* Den Raum richtet der Betreiber ein (seit Oktober 2026), mit der Demo-Prüfung:
+   genau diese drei Kennungen in dieser Reihenfolge. */
+const tBetreiber = await anmelden(await zugang("betreiber", null, 0));
+const w0 = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
+  headers: { authorization: `Bearer ${tBetreiber}`, "content-type": "application/json" },
+  body: JSON.stringify({ inhalt: start, vorlage: "demo" }) });
+pruef("Raum mit drei Betrieben über den Betreiber angelegt (Demo-Gestalt)", w0.status === 200, `Status ${w0.status}`);
 const tA = await anmelden(await zugang("leitung", "a-l", 0));
-/* Erstbefüllung über den vorläufig bestehenden Altpfad (leerer Raum). */
-const w0 = await schreib(tA, start, null);
-pruef("Raum mit drei Betrieben angelegt (Altpfad Erstbefüllung)", w0.status === 200, `Status ${w0.status}`);
 const tB = await anmelden(await zugang("leitung", "b-l", 1));
 const tC = await anmelden(await zugang("leitung", "c-l", 2));
 const tS = await anmelden(await zugang("subplaner", "b-s", 1));

@@ -94,7 +94,7 @@ export async function raumUebersicht(store, raum, { eigen = null } = {}) {
     .filter(([, k]) => k && k.bestand === raum)
     .map(([h, k]) => ({
       kennung: h.slice(-8), id: k.id || null, rolle: k.rolle || "kunde",
-      betrieb: k.betrieb ?? 0, person: k.person ?? null, demo: !!k.demo,
+      betrieb: k.betrieb ?? 0, mandantId: k.mandantId || null, person: k.person ?? null, demo: !!k.demo,
       gruppe: k.gruppe || null, name: k.name || null, gesperrt: !!k.gesperrt,
       selbstAngelegt: !!k.selbstAngelegt, laeuftAb: k.laeuftAb || null,
       angelegt: k.angelegt || null,

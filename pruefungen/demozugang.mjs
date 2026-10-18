@@ -33,6 +33,22 @@ const pruef = (t, b, z) => { if (b) { ok++; console.log("  BESTANDEN ", t, z ? "
 const kopf = (extra = {}) => ({ "content-type": "application/json",
   "x-forwarded-for": HERKUNFT, ...extra });
 
+/* --- Den Demoraum einrichten ---
+   Seit Oktober 2026 gibt es Codes nur für einen eingerichteten Raum, und
+   einrichten darf ihn nur der Betreiber (/api/bestand-anlegen). */
+const betreiberCode = (await (await fetch(`${BASIS}/einrichten`, { method: "POST",
+  headers: kopf({ authorization: `Bearer ${ADMIN}` }),
+  body: JSON.stringify({ name: "Betreiber Prüfung", bestand: "demo-pruefung", rolle: "betreiber" }),
+})).json()).zugangscode;
+const betreiber = await (await fetch(`${BASIS}/api/anmelden`, { method: "POST", headers: kopf(),
+  body: JSON.stringify({ zugangscode: betreiberCode }) })).json();
+const raumAngelegt = await fetch(`${BASIS}/api/bestand-anlegen`, { method: "POST",
+  headers: kopf({ authorization: `Bearer ${betreiber.token}` }),
+  body: JSON.stringify({ bestand: "demo-pruefung", inhalt: { version: 9, stand: 1, mandanten: [
+    { id: "m-pruef-0", name: "Prüfbetrieb", personen: [] }, { id: "m-pruef-1", name: "Prüfbetrieb Zwei", personen: [] }] } }),
+});
+pruef("Demoraum eingerichtet", raumAngelegt.status === 200, `Status ${raumAngelegt.status}`);
+
 /* --- Einen Demozugang anlegen --- */
 const anlegen = await (await fetch(`${BASIS}/einrichten`, {
   method: "POST", headers: kopf({ authorization: `Bearer ${ADMIN}` }),

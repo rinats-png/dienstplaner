@@ -596,21 +596,11 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
   if (umfang === SCHREIBEN_VOLL || umfang === SCHREIBEN_EINHEIT) {
     const ort = gespeicherterBetrieb(gespeichert, sitzung);
 
-    /* TEMPORÄRER BOOTSTRAP-ALTPFAD. Gibt es noch keinen gespeicherten
-       Betrieb, schreibt heute der erste Client den ganzen Bestand — so
-       entstehen Demo- und Testräume aus startbestand(). Das bleibt bis zur
-       serverseitigen Erstbefüllung unverändert und ist keine sichere
-       Architektur: Wer als Erster schreibt, bestimmt Anzahl, Kennungen und
-       Reihenfolge der Betriebe. Doppelte und ungültige Kennungen weist
-       pruefeGestalt trotzdem ab. */
-    if (!ort) {
-      if (umfang === SCHREIBEN_VOLL) {
-        const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
-        if (!rw.ok) return { verweigert: rw.grund };
-        return verlorenesZurueck(gespeichert, uebermittelt);
-      }
-      return uebermittelt;
-    }
+    /* Ein leerer Raum wird nicht über diesen Weg befüllt. Bis Oktober 2026
+       schrieb hier der erste Client den ganzen Bestand und bestimmte damit
+       Anzahl, Kennungen und Reihenfolge der Betriebe. Einen Raum richtet
+       jetzt der Betreiber über /api/bestand-anlegen ein (erstbefuellung.mjs). */
+    if (!ort) return { verweigert: "Raum ist noch nicht eingerichtet." };
 
     /* Ab hier gibt es einen gespeicherten Bestand, und der Server bestimmt
        seine Gestalt: wie viele Betriebe, welche Kennungen, welche
@@ -651,7 +641,10 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
      Betreiberkonsole und hat noch keinen Inhalt, den man schützen müsste.
      Ein Betrieb, den die Oberfläche nicht mehr mitschickt, verschwindet.  */
   if (umfang === SCHREIBEN_BETREIBER) {
-    if (!gespeichert || typeof gespeichert !== "object") return uebermittelt;
+    /* Auch der Betreiber befüllt einen leeren Raum nicht über diesen Weg,
+       sondern über /api/bestand-anlegen — dort wird die Gestalt geprüft. */
+    if (!gespeichert || typeof gespeichert !== "object")
+      return { verweigert: "Raum ist noch nicht eingerichtet." };
     if (!uebermittelt || typeof uebermittelt !== "object") return null;
 
     const aus = { ...gespeichert };

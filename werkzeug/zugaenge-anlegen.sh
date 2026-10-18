@@ -191,12 +191,33 @@ demo() {                       # index  name  gruppe  hinweis
   } >> "$AUSGABE"
 }
 
-demo 0 "Nordwacht Sicherheitsdienste" "Sicherheitsdienst" \
-  "Zwei Standorte, Rufbereitschaft, Sachkunde nach 34a GewO"
-demo 1 "Seniorenzentrum Lindenhof" "Pflege" \
-  "Drei Wohnbereiche, Pflegefachkraftquote, Wechselschicht"
-demo 2 "Steinbach Fertigung" "Produktion" \
-  "Vollkonti im Werk, Staplerschein mit Ablaufdatum"
+# Seit Oktober 2026 entstehen Codes nur für einen eingerichteten Raum, und
+# den Demobestand legt der Betreiber an: mit seinem Code anmelden,
+# „Demo-Bestand anlegen" wählen (/api/bestand-anlegen, Vorlage demo — der
+# Server prüft die drei Kennungen m-nordwacht, m-lindenhof, m-steinbach in
+# dieser Reihenfolge). Vorher entstanden die Codes hier, und der erste
+# Browser, der hineinkam, schrieb den Bestand.
+AUSSTEHEND=0
+RAUMSTATUS=$(curl -sS -o /dev/null -w "%{http_code}" "$SITE/einrichten/bindung?bestand=$RAUM" \
+  -H "authorization: Bearer $CENTRIC_ADMIN")
+if [ "$RAUMSTATUS" = "409" ]; then
+  AUSSTEHEND=1
+  echo "→ Demobetriebe: Raum $RAUM ist noch nicht eingerichtet — ausstehend"
+  {
+    echo "DEMO — ausstehend"
+    echo "  Der Raum $RAUM ist noch nicht eingerichtet. Mit dem Betreibercode"
+    echo "  anmelden, „Demo-Bestand anlegen\" wählen und dieses Skript danach"
+    echo "  erneut aufrufen. Erst dann entstehen die drei Demozugänge."
+    echo
+  } >> "$AUSGABE"
+else
+  demo 0 "Nordwacht Sicherheitsdienste" "Sicherheitsdienst" \
+    "Zwei Standorte, Rufbereitschaft, Sachkunde nach 34a GewO"
+  demo 1 "Seniorenzentrum Lindenhof" "Pflege" \
+    "Drei Wohnbereiche, Pflegefachkraftquote, Wechselschicht"
+  demo 2 "Steinbach Fertigung" "Produktion" \
+    "Vollkonti im Werk, Staplerschein mit Ablaufdatum"
+fi
 
 # --------------------------------------------------------------------------
 # 3. Der leere Testbetrieb
@@ -247,6 +268,10 @@ fi
 echo
 echo "Fertig: $ANGELEGT angelegt, $UEBERSPRUNGEN übersprungen. Alle Codes stehen in: $AUSGABE"
 echo
+if [ "$AUSSTEHEND" -eq 1 ]; then
+  echo "Ausstehend: Raum $RAUM einrichten (Betreibercode → „Demo-Bestand anlegen\"),"
+  echo "  danach dieses Skript erneut aufrufen."
+fi
 if [ "$ANGELEGT" -gt 0 ]; then
   echo "Noch zu tun:"
   echo "  1. $AUSGABE an einen sicheren Ort, dann löschen."

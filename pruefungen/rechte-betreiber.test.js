@@ -337,11 +337,11 @@ describe("Rollenwechsel beim Speichern", () => {
 });
 
 describe("Randfälle", () => {
-  it("ohne gespeicherten Stand wird der übermittelte genommen", () => {
-    /* Der allererste Schreibvorgang in einen leeren Raum. Gäbe es hier
-       null zurück, ließe sich ein Betrieb nie anlegen. */
-    const neu = bestand();
-    expect(zusammenfuehren(null, neu, SITZUNG)).toBe(neu);
+  it("ohne gespeicherten Stand wird über diesen Weg nichts angelegt", () => {
+    /* Einen leeren Raum richtet seit Oktober 2026 /api/bestand-anlegen ein,
+       mit Gestaltprüfung (erstbefuellung.mjs). Vorher nahm dieser Weg den
+       übermittelten Bestand ungeprüft als ersten Stand. */
+    expect(zusammenfuehren(null, bestand(), SITZUNG).verweigert).toBeTruthy();
   });
 
   it("ohne übermittelten Stand wird nichts geschrieben", () => {
