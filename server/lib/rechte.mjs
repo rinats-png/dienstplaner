@@ -456,6 +456,27 @@ export function bestandFuerRolle(bestand, sitzung) {
   return kopie;
 }
 
+/** Der gespeicherte Betrieb dieser Sitzung samt seiner Stelle — oder null,
+    wenn es noch keinen gespeicherten Bestand gibt. Dieselbe Zuordnung wie
+    eigenerMandant, damit Lesen und Schreiben denselben Betrieb meinen. */
+function gespeicherterBetrieb(gespeichert, sitzung) {
+  if (!gespeichert || !Array.isArray(gespeichert.mandanten) || !gespeichert.mandanten.length) return null;
+  const i = Number(sitzung.betrieb);
+  const index = Number.isInteger(i) && i >= 0 && i < gespeichert.mandanten.length ? i : 0;
+  return { index, betrieb: gespeichert.mandanten[index] || {} };
+}
+
+/** Genau ein übermittelter Betrieb, und zwar der eigene. Sonst der Grund der Absage. */
+function einzigerEigenerBetrieb(uebermittelt, id) {
+  const liste = uebermittelt && uebermittelt.mandanten;
+  const grund = "Über diesen Zugang lässt sich genau ein Betrieb schreiben — der eigene.";
+  if (typeof id !== "string" || !id) return grund;
+  if (!Array.isArray(liste) || liste.length !== 1) return grund;
+  const m = liste[0];
+  if (!m || typeof m !== "object" || m.id !== id) return grund;
+  return null;
+}
+
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
 export function eigenerMandant(bestand, sitzung) {
   if (!bestand || !Array.isArray(bestand.mandanten) || !bestand.mandanten.length) return null;
@@ -572,21 +593,54 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;
 
-  if (umfang === SCHREIBEN_VOLL) {
-    const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
-    if (!rw.ok) return { verweigert: rw.grund };
-    return verlorenesZurueck(gespeichert, uebermittelt);
-  }
+  if (umfang === SCHREIBEN_VOLL || umfang === SCHREIBEN_EINHEIT) {
+    const ort = gespeicherterBetrieb(gespeichert, sitzung);
 
-  if (umfang === SCHREIBEN_EINHEIT) {
-    const alt = eigenerMandant(gespeichert, sitzung);
-    const neu = eigenerMandant(uebermittelt, sitzung);
-    if (!alt || !neu) return uebermittelt;
-    const urteil = einheitDarf(alt, neu, sitzung);
-    if (!urteil.ok) return { verweigert: urteil.grund };
+    /* TEMPORÄRER BOOTSTRAP-ALTPFAD. Gibt es noch keinen gespeicherten
+       Betrieb, schreibt heute der erste Client den ganzen Bestand — so
+       entstehen Demo- und Testräume aus startbestand(). Das bleibt bis zur
+       serverseitigen Erstbefüllung unverändert und ist keine sichere
+       Architektur: Wer als Erster schreibt, bestimmt Anzahl, Kennungen und
+       Reihenfolge der Betriebe. Doppelte und ungültige Kennungen weist
+       pruefeGestalt trotzdem ab. */
+    if (!ort) {
+      if (umfang === SCHREIBEN_VOLL) {
+        const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
+        if (!rw.ok) return { verweigert: rw.grund };
+        return verlorenesZurueck(gespeichert, uebermittelt);
+      }
+      return uebermittelt;
+    }
+
+    /* Ab hier gibt es einen gespeicherten Bestand, und der Server bestimmt
+       seine Gestalt: wie viele Betriebe, welche Kennungen, welche
+       Reihenfolge — und welcher davon zu dieser Sitzung gehört.
+
+       Bis Oktober 2026 kam die Liste der Betriebe aus der Übermittlung.
+       Zwei Folgen: Ein zweites Exemplar des eigenen Betriebs mit fremden
+       Änderungen ging an der Einheitsprüfung vorbei, und nicht
+       mitgeschickte Betriebe wurden hinten angehängt. In einem Raum mit
+       mehreren Betrieben verschob das die Reihenfolge — und weil Sitzungen
+       ihren Betrieb über den Index finden, sah danach die Leitung von A
+       den Betrieb B. */
+    const abweichung = einzigerEigenerBetrieb(uebermittelt, ort.betrieb.id);
+    if (abweichung) return { verweigert: abweichung };
+    const geschickt = uebermittelt.mandanten[0];
+
+    if (umfang === SCHREIBEN_EINHEIT) {
+      const urteil = einheitDarf(ort.betrieb, geschickt, sitzung);
+      if (!urteil.ok) return { verweigert: urteil.grund };
+    }
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
-    return verlorenesZurueck(gespeichert, uebermittelt);
+
+    /* Verlorenes ergänzen wie bisher — dann den einen Betrieb an seine
+       Stelle im gespeicherten Bestand setzen. Alle anderen bleiben, wo
+       und wie sie waren. */
+    const zusammen = verlorenesZurueck(gespeichert, { ...uebermittelt, mandanten: [geschickt] });
+    const ersetzt = zusammen.mandanten.find((m) => m && m.id === ort.betrieb.id);
+    return { ...zusammen,
+      mandanten: gespeichert.mandanten.map((m, i) => (i === ort.index ? ersetzt : m)) };
   }
 
   /* --------------------------- Der Betreiber ---------------------------

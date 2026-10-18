@@ -165,7 +165,11 @@ describe("Betriebliches bleibt liegen", () => {
    Anlegen sinnlos — und wenn sie zu viel kann, ist es gefährlich.
    ========================================================================== */
 
-const LEITUNG = { rolle: "leitung", mandantId: "m2", person: "p1" };
+/* Sitzungen finden ihren Betrieb über den Index im Bestand (sitzung.betrieb).
+   m2 steht an Stelle 1 — bis Oktober 2026 fehlte der Index hier, der Server
+   ordnete die Sitzung deshalb m1 zu, und der Test lief nur, weil der
+   Schreibweg damals jeden mitgeschickten Betrieb übernahm. */
+const LEITUNG = { rolle: "leitung", betrieb: 1, person: "p1" };
 
 /* Was die Leitung von m2 ausgeliefert bekommt: ihren eigenen Betrieb, die
    Betreiberangaben für die Rechnungsansicht — aber nicht die Betriebe der

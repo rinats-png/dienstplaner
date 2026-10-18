@@ -126,6 +126,11 @@ jobs:
       - name: Oberfläche Selbstservice
         run: npm run pruefung:oberflaeche
 
+      # Mandantenstruktur beim Schreiben: genau ein Betrieb, der eigene, an
+      # seiner Stelle. Doppelte und ungültige Kennungen werden abgewiesen.
+      - name: Mandanten-Integrität
+        run: npm run pruefung:mandanten
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -349,6 +354,17 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.9
+
+      # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
+      # den echten Anfrageweg, im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Mandanten-Integrität (HTTP)
+        run: npm run pruefung:mandanten-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.6
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

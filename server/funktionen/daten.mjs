@@ -4,7 +4,7 @@ import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
-import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
+import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -715,6 +715,17 @@ export default async (req, context) => {
       const { bestand, etag, durch } = rumpf;
       if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
+
+      /* Doppelte oder ungültige Kennungen der Betriebe sind ein Strukturfehler,
+         kein Rechtefall — und werden vor jeder Zusammenführung abgewiesen, für
+         jede Rolle. Ein zweites Exemplar des eigenen Betriebs war der Weg an
+         der Einheitsprüfung vorbei (siehe gestalt.mjs). */
+      const kennungen = mandantenKennungenGeprueft(bestand.mandanten);
+      if (kennungen) {
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${kennungen.grund}`, wer);
+        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+          text: `${kennungen.grund} Es wurde nichts geändert.`, feld: kennungen.feld }, 422);
+      }
 
       const jetzt = await bestandJetzt();
 
