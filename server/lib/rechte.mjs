@@ -302,9 +302,20 @@ const PERSON_PRIVAT = ["email", "telefon", "mobil", "anschrift", "geburtstag",
   "notfallkontakt", "notizen", "personalnummer", "einschraenkungen",
   "lohn", "gehalt", "zuschlaege"];
 
+/* Zustellwege und Geheimnisse einer Person. Die Oberfläche braucht sie nur
+   an der eigenen Person: Push-Anmeldung, Zustellvorlieben, das Geheimnis
+   des Kalender-Abos und dessen Verweis. Bei fremden Personen waren sie bis
+   Oktober 2026 in der Antwort enthalten — mit dem Kalender-Geheimnis einer
+   Kollegin ließ sich deren Feed lesen, überschreiben und löschen. */
+const PERSON_ZUGANG = ["pushSchluessel", "zustellung", "kalenderGeheim", "kalenderVerweis"];
+
+/* Alles, was eine fremde Person beim Lesen durch Beschäftigte und
+   Betriebsrat nicht mitbringt — an einer Stelle, damit es eine Liste bleibt. */
+const FREMDE_PERSON_OHNE = [...PERSON_PRIVAT, ...PERSON_ZUGANG];
+
 function personSaeubern(p) {
   const rein = { ...p };
-  for (const feld of PERSON_PRIVAT) delete rein[feld];
+  for (const feld of FREMDE_PERSON_OHNE) delete rein[feld];
   return rein;
 }
 
@@ -369,6 +380,21 @@ export function bestandFuerRolle(bestand, sitzung) {
       m.abwesenheiten = m.abwesenheiten.map((a) =>
         (ich !== null && ich !== undefined && a.personId === ich) ? a : abwesenheitSaeubern(a));
     }
+    /* Mitteilungen und Notrufe: nur die eigenen, als Positivliste.
+
+       Beide Listen gingen bis Oktober 2026 vollständig hinaus. Die
+       Oberfläche filtert nach personId, die Antwort tat es nicht — wer
+       /api/bestand direkt las, bekam die Mitteilungen aller Kolleginnen
+       („Krankmeldung: …“ samt Anmerkung, „NOTRUF: …“), dazu in `wege` deren
+       E-Mail-Adresse und Push-Anmeldung, und jeden Notruf mit Anmerkung und
+       Ort. Der Betriebsrat bekommt ebenfalls nur die eigenen: Er prüft über
+       das Protokoll, nicht über fremde Postfächer.
+
+       Für den Schreibpfad ändert sich nichts: zusammenfuehren nimmt fremde
+       Mitteilungen immer aus dem gespeicherten Stand. */
+    const meins = (e) => ich !== null && ich !== undefined && eigenerEintrag(e, ich);
+    if (Array.isArray(m.nachrichten)) m.nachrichten = m.nachrichten.filter(meins);
+    if (Array.isArray(m.notrufe)) m.notrufe = m.notrufe.filter(meins);
     /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
        Prüfrolle ist das der Kern der Aufgabe, für alle anderen nicht. */
     if (rolle === "mitarbeiter") {
