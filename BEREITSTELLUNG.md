@@ -355,7 +355,9 @@ Sicherungsschlüssel anlegen, dann auf einem eigenen Rechner täglich
       -o centric-$(date +%F).json
 
 Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
-löschen und sich nicht anmelden. Unabhängig davon gehört `/data` auf dem
+löschen und sich nicht anmelden. Er ist an den Betrieb gebunden, für den er angelegt
+wurde, und die Ausgabe enthält nur diesen Betrieb (Fassung 2). Ältere Schlüssel
+ohne Bindung gelten nur in einem Raum mit genau einem Betrieb. Unabhängig davon gehört `/data` auf dem
 VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
 liegen.
 

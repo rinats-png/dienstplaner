@@ -131,6 +131,11 @@ jobs:
       - name: Mandanten-Integrität
         run: npm run pruefung:mandanten
 
+      # Sicherung, Vollausgabe und Wiederherstellung: nur der eigene Betrieb,
+      # getrennte Kontingente, sicheres Zurückspielen.
+      - name: Sicherungen
+        run: npm run pruefung:sicherungen
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -365,6 +370,17 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.6
+
+      # Rollen, Umfang, Bremse, Konfliktschutz und Protokoll von Sicherung und
+      # Wiederherstellung — im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicherungen (HTTP)
+        run: npm run pruefung:sicherungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.7.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

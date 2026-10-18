@@ -291,7 +291,10 @@ if (typeof window !== "undefined") {
 
 /* --------------------------- Sicherungskopien ---------------------------- */
 export async function sicherung() {
-  const { daten } = await ruf("sicherung", { method: "POST" });
+  const { status, daten } = await ruf("sicherung", { method: "POST" });
+  /* Eine Absage ist keine angelegte Sicherung — vorher meldete die
+     Oberfläche „Sicherung angelegt“, gleich was der Server sagte. */
+  if (status !== 200) throw new Error(daten?.fehler || "Die Sicherung wurde nicht angelegt.");
   return daten;
 }
 export async function sicherungen() {

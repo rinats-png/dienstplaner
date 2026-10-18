@@ -397,7 +397,7 @@ const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
    laeuftAb und selbstAngelegt gehören dazu, seit der Löschlauf für
    abgelaufene Testbetriebe daran hängt (aufraeumen.mjs): Wer sie
    zurückschreiben könnte, könnte seine eigene Löschung aushebeln. */
-const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
+export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
   "testTage", "rabattGrund", "preisgestaltung", "pakete",
   "laeuftAb", "selbstAngelegt"];
 
@@ -459,7 +459,7 @@ export function bestandFuerRolle(bestand, sitzung) {
 /** Der gespeicherte Betrieb dieser Sitzung samt seiner Stelle — oder null,
     wenn es noch keinen gespeicherten Bestand gibt. Dieselbe Zuordnung wie
     eigenerMandant, damit Lesen und Schreiben denselben Betrieb meinen. */
-function gespeicherterBetrieb(gespeichert, sitzung) {
+export function gespeicherterBetrieb(gespeichert, sitzung) {
   if (!gespeichert || !Array.isArray(gespeichert.mandanten) || !gespeichert.mandanten.length) return null;
   const i = Number(sitzung.betrieb);
   const index = Number.isInteger(i) && i >= 0 && i < gespeichert.mandanten.length ? i : 0;
@@ -561,7 +561,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
    Eine generische Kundenrolle zählt als Leitung — sie hat denselben
    Schreibumfang und soll darum auch dieselbe Vergabehöhe haben, nicht
    mehr. */
-function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
+export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
   const rolle = sitzung.rolle === "kunde" ? "leitung" : sitzung.rolle;
   if (!RANG[rolle]) return { ok: true, grund: null };
   const alt = eigenerMandant(gespeichert, sitzung);

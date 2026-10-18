@@ -11,6 +11,9 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
+  betriebsSicherung, auszuduennen, listenEintrag, betriebWiederherstellen,
+  vollausgabeBetrieb } from "../lib/sicherungen.mjs";
 /* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
    nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
    Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
@@ -153,18 +156,17 @@ function ortPruefen(m, person, datum, lat, lon) {
    -------------------------------------------------------------------------- */
 async function sicherungenAusduennen(store, raum) {
   try {
+    /* Je Kontingent getrennt (lib/sicherungen.mjs): automatische, je Betrieb
+       manuelle und ältere raumweite. Vorher teilten sich alle einen Topf —
+       zwanzig manuelle Sicherungen verdrängten jeden automatischen
+       Schutzpunkt des Tages. */
     const { blobs } = await store.list({ prefix: `sicherung:${raum}:` });
-    const marken = blobs.map((b) => ({ key: b.key, marke: b.key.split(":").pop() }))
-      .sort((a, b) => b.marke.localeCompare(a.marke));
-    const behalten = new Set(marken.slice(0, 20).map((x) => x.key));
-    const tageGesehen = new Set();
-    for (const m of marken.slice(20)) {
-      const tag = String(m.marke).slice(0, 10);
-      if (!tageGesehen.has(tag)) { tageGesehen.add(tag); behalten.add(m.key); }
+    const eintraege = [];
+    for (const b of blobs) {
+      const meta = await store.getMetadata(b.key).catch(() => null);
+      eintraege.push({ key: b.key, marke: b.key.split(":").pop(), meta: meta?.metadata || {} });
     }
-    for (const m of marken) {
-      if (!behalten.has(m.key)) await store.delete(m.key).catch(() => {});
-    }
+    for (const key of auszuduennen(eintraege)) await store.delete(key).catch(() => {});
   } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
 }
 
@@ -761,11 +763,12 @@ export default async (req, context) => {
       if (jetzt) {
         const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
         if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
-          const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+          const marke = markeNeu();
           await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
             { metadata: { zeit: new Date().toISOString(),
               durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
               automatisch: "ja" } }).catch(() => {});
+          await sicherungenAusduennen(store, s.bestand);
           await protokoll("schreiben", ks, "gesichert",
             `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
         }
@@ -891,15 +894,22 @@ export default async (req, context) => {
       if (!bv.frei) return zuVielAntwort(bv.wartet);
       const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      await protokoll("vollausgabe", kennung(req, s), "erfolg", s.nurSicherung ? "Schlüssel" : "Sitzung");
+      /* Der eigene Betrieb, nicht der Raum. Bis Oktober 2026 bekam die
+         Leitung eines Betriebs hier die Rohdaten aller Betriebe des Raums. */
+      const va = vollausgabeBetrieb(mit.bestand, s);
+      if (va.verweigert) return antwort({ fehler: va.verweigert }, va.status);
+      await protokoll("vollausgabe", kennung(req, s), "erfolg",
+        `${s.nurSicherung ? "Schlüssel" : "Sitzung"} · ${va.betrieb.id}`);
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       return antwort({
         centric: "vollausgabe",
-        fassung: 1,
+        fassung: 2,
+        umfang: "betrieb",
         erzeugt: new Date().toISOString(),
         raum: s.bestand,
+        mandantId: va.betrieb.id,
         stand: mit.stand,
-        bestand: mit.bestand,
+        bestand: { version: mit.bestand.version, stand: mit.bestand.stand, mandanten: [va.betrieb] },
       }, 200, { "content-disposition": `attachment; filename="centric-${s.bestand}-${marke}.json"` });
     }
 
@@ -919,10 +929,15 @@ export default async (req, context) => {
       /* Ein Schlüssel ohne Ablauf ist ein Schlüssel, der irgendwann in
          einem alten Skript vergessen wird. Höchstens ein Jahr. */
       const gueltig = Math.min(365, Math.max(1, Number(tage) || 90));
+      /* Seit Oktober 2026 an den Betrieb gebunden, nicht nur an den Raum. */
+      const skMit = await bestandJetzt();
+      const skOrt = skMit ? eigenerBetrieb(skMit.bestand, s) : null;
+      if (!skOrt) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
       await sitzungen().setJSON(`sk:${hash(roh)}`, {
         bestand: s.bestand, rolle: "leitung", nurSicherung: true,
+        betrieb: skOrt.index, mandantId: skOrt.betrieb.id,
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
         angelegt: new Date().toISOString(), bis,
       });
@@ -963,24 +978,39 @@ export default async (req, context) => {
     }
 
     /* -------------------------- Sicherungskopien --------------------- */
+    /* Bis Oktober 2026 durfte jede angemeldete Rolle beides, ohne Bremse,
+       und gesichert wurde der ganze Raum. Jetzt: Leitung (und der eigene
+       Probierraum), nur der eigene Betrieb, gebremst und protokolliert. */
     if (pfad === "sicherung" && req.method === "POST") {
+      if (!SICHERUNG_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Sicherungen legt die Leitung an.", text: absageText(s.rolle) }, 403);
       const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.bestand,
-        { metadata: { zeit: new Date().toISOString(), durch: s.name } });
+      const ort = eigenerBetrieb(mit.bestand, s);
+      if (!ort) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const bS = await bremse("sicherung", `${s.bestand}:${ort.betrieb.id}`);
+      if (!bS.frei) return zuVielAntwort(bS.wartet);
+      const marke = markeNeu();
+      await store.setJSON(`sicherung:${s.bestand}:${marke}`,
+        betriebsSicherung(mit.bestand, ort, { stand: mit.stand, durch: s.name || null }),
+        { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
+          mandantId: ort.betrieb.id, rolle: s.rolle } });
+      await protokoll("sicherung", kennung(req, s), "erfolg", `${ort.betrieb.id} · ${marke}`, wer);
       await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
     }
     if (pfad === "sicherungen" && req.method === "GET") {
+      if (!SICHERUNG_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Sicherungen sieht die Leitung.", text: absageText(s.rolle) }, 403);
+      const mit = await bestandJetzt();
+      const ort = mit ? eigenerBetrieb(mit.bestand, s) : null;
+      if (!ort) return antwort({ sicherungen: [] });
       const { blobs } = await store.list({ prefix: `sicherung:${s.bestand}:` });
       const liste = [];
       for (const b of blobs) {
         const meta = await store.getMetadata(b.key).catch(() => null);
-        liste.push({ marke: b.key.split(":").pop(),
-          zeit: meta?.metadata?.zeit || null,
-          durch: meta?.metadata?.durch || null,
-          automatisch: meta?.metadata?.automatisch === "ja" });
+        const e = listenEintrag(b.key.split(":").pop(), meta?.metadata, ort.betrieb.id);
+        if (e) liste.push(e);
       }
       return antwort({ sicherungen: liste.sort((a, b) => b.marke.localeCompare(a.marke)) });
     }
@@ -993,37 +1023,64 @@ export default async (req, context) => {
        Vor dem Einspielen wird der jetzige Stand gesichert — sonst tauscht
        man einen Verlust gegen den nächsten. */
     if (pfad === "wiederherstellen" && req.method === "POST") {
-      if (schreibumfang(s.rolle) !== "voll")
-        return antwort({ fehler: "Nur die Planung darf wiederherstellen.",
+      /* Bis Oktober 2026 spielte das den ganzen Raum zurück — alle Betriebe,
+         Reihenfolge, Rollen, Vertragsfelder, Protokolle — an jeder Prüfung
+         des Schreibwegs vorbei, und ohne Rücksicht auf inzwischen
+         Gespeichertes. Jetzt: nur die Leitung, nur der eigene Betrieb an
+         seiner Stelle, mit Rollen- und Vertragsschutz (lib/sicherungen.mjs)
+         und nur auf den Stand, den sie zuletzt gesehen hat. */
+      if (!WIEDERHERSTELLEN_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Wiederherstellen darf nur die Leitung.",
           text: absageText(s.rolle) }, 403);
       if (!frisch(s)) return neuAnmelden();
       const kW = kennung(req, s);
       const bW = await bremse("schreiben", kW);
       if (!bW.frei) return zuVielAntwort(bW.wartet);
+      const bW2 = await bremse("wiederherstellen", kW);
+      if (!bW2.frei) return zuVielAntwort(bW2.wartet);
 
-      const { marke } = rumpf;
-      if (!marke || !/^[\d-]{10,25}$/.test(String(marke)))
+      const { marke, etag: etagW } = rumpf;
+      if (!marke || !MARKE.test(String(marke)))
         return antwort({ fehler: "Keine gültige Marke." }, 400);
+
+      const jetztGelesen = await bestandJetzt();
+      if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
+        return antwort({ fehler: "konflikt",
+          text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
+          etag: jetztGelesen.stand }, 409);
 
       const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
       if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
-      const form = pruefeGestalt(alt2);
+      const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
+
+      const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
+        { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
+      if (w.verweigert) {
+        await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
+        return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
+      }
+      const form = pruefeGestalt(w.bestand);
       if (!form.ok)
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
       /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-      const jetztGelesen = await bestandJetzt();
-      const jetztStand = jetztGelesen ? jetztGelesen.bestand : null;
-      if (jetztStand) {
-        const m2 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-        await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztStand,
-          { metadata: { zeit: new Date().toISOString(),
-            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
-          .catch(() => {});
-      }
+      const m2 = markeNeu();
+      await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
+        { metadata: { zeit: new Date().toISOString(),
+          durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+        .catch(() => {});
+      await sicherungenAusduennen(store, s.bestand);
 
-      const ergW = await bestandSchreiben(store, s.bestand, alt2, {
+      const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {
+        erwarteterStand: jetztGelesen.stand,
         durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
+      if (!ergW.ok) {
+        await protokoll("schreiben", kW, "konflikt", `wiederherstellen ${marke}`, wer);
+        return antwort({ fehler: "konflikt",
+          text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
+          etag: ergW.stand }, 409);
+      }
       await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
       return antwort({ ok: true, etag: ergW.stand, marke });
     }
