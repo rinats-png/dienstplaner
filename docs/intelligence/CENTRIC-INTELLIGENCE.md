@@ -12,6 +12,7 @@
 - **Interne Vorgaben in allen Preisstufen,** unterschieden nur nach Anzahl (E-21)
 - **D-01 und D-24 der Spezifikation geändert:** Vorschlag ja, Veröffentlichung nein (Abschnitt 12)
 - **EU-KI-Verordnung:** F13 und F18 ausdrücklich in die externe Einordnung, produktiv erst danach (Abschnitt 8.3)
+- **Ladeanzeige Thinking Orb** für Planvorschlag, Ersatzsuche und Gutachten festgelegt, Umsetzung mit der Intelligence-Oberfläche (Abschnitt 5.4, Nachtrag 18.10.2026)
 - Ausführlicher Umsetzungsplan: [`PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md`](PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md)
 
 **Neu in Fassung 6 (aus den zwei Fassungen 5 übernommen und abgestimmt):**
@@ -396,6 +397,48 @@ Modellaufruf scheitert oder ist gesperrt
 ```
 
 CENTRIC hängt in keinem Teil der Planung vom Anbieter ab.
+
+### 5.4 Ladeanzeige: Thinking Orb (vorgesehen, noch nicht umgesetzt)
+
+**Stand:** am 18.10.2026 abgestimmt und im Prototyp gezeigt. Wird **zusammen mit der Intelligence-Oberfläche** gebaut (Artboards `I-planvorschlag`, `I-gutachten` u. a. in `design/canvas`), nicht vorher. Bis dahin liegt kein Code dazu im Repository.
+
+Solange Planer-Kern oder Modellkette rechnen, zeigt die Oberfläche statt eines Spinners einen kleinen animierten Punkt-Orb. Er sagt „CENTRIC arbeitet“, ohne Fortschritt vorzutäuschen. Den Text daneben liefert weiterhin die Oberfläche (6.8); der Orb ersetzt ihn nicht.
+
+**Paket:** `thinking-orbs` 0.3.2 (npm), MIT-Lizenz, Autor Jakub Antalik. Keine Abhängigkeiten, React ≥ 18 als Peer, 2D-Canvas, keine Netzaufrufe im ausgelieferten Code. Hält `prefers-reduced-motion` ein und pausiert außerhalb des sichtbaren Bereichs.
+
+**Drei Zustände, nicht mehr:**
+
+| Zustand (`state`) | Wann | Text daneben |
+|---|---|---|
+| `solving` | F13 Planvorschlag rechnet (im Hintergrund) | „Planvorschlag wird berechnet“ |
+| `searching` | Ausfallhilfe F3 sucht Ersatz | „Ersatz wird gesucht“ |
+| `working` | F18 Plan-Gutachten wird geschrieben | „Gutachten wird geschrieben“ |
+
+Die übrigen Zustände des Pakets werden nicht verwendet.
+
+**Größen:** `size={64}` in der Kachel der Karte (Kachel 84 px), `size={20}` inline in der Unterzeile neben dem Text.
+
+**Heller Grund (Variante B, gewählt):** Farbe kräftiger als die Paketvorgabe, damit der Kontrast auf `--grund` und Weiß trägt.
+
+```jsx
+<ThinkingOrb state="solving" size={64} theme="light"
+  color="#014C50" dotSize={1.3} dots={1} aria-label="Planvorschlag wird berechnet" />
+```
+
+**Dunkler Grund (wie im Prototyp gebaut):**
+
+```jsx
+<ThinkingOrb state="solving" size={64} theme="dark"
+  color="#3FBFBF" aria-label="Planvorschlag wird berechnet" />
+```
+
+**Regeln:**
+- **Nicht auf der dunklen Hero-Kachel** (`--hero`). Der Orb steht auf hellen Karten; die dunkle Variante gilt nur für den Dunkelmodus der App.
+- Die Eigenschaft heißt `theme` (`'light' | 'dark' | 'auto'`); einen Schalter `dark` gibt es nicht.
+- Immer mit `aria-label` und sichtbarem Text; der Orb allein trägt keine Information.
+- Endet der Vorgang (Ergebnis, Deadline, degradierter Modus 5.3), verschwindet der Orb sofort; kein Orb ohne laufenden Vorgang.
+
+**Vor der Übernahme prüfen:** Lizenz und Version erneut ansehen (junges Paket, ein einzelner Betreuer), Version fest pinnen, Bundle-Größe und CPU-Last auf schwachen Mobilgeräten messen. Fällt das Paket weg, reicht ein eigener Canvas-Nachbau mit denselben drei Zuständen; die Oberfläche hängt nicht davon ab.
 
 ---
 
@@ -955,6 +998,7 @@ Leitfaden: **„CENTRIC Intelligence – Leitfaden für Kundengespräche“** (C
 23. **Planer-Kern** bauen: Planungsreife, ganzer Plan, Varianten, Konflikte mit Ursache, Verbessern-Modus; Laufzeit im Pilot messen.
 24. **Preisstufen für interne Vorgaben** (E-21) umsetzen: Anzahlgrenzen je Stufe, Vorlagen im Paket Sicherheitsdienst.
 25. **E-19 bis E-21 in die Spezifikation übernehmen** (D-01, D-24, Katalog F13, F16–F18).
+26. **Ladeanzeige Thinking Orb** mit der Intelligence-Oberfläche einbauen (5.4): drei Zustände, Variante B auf hellem Grund, dunkle Variante wie im Prototyp; vorher Paket prüfen und pinnen.
 
 ---
 
