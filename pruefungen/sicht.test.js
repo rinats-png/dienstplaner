@@ -19,6 +19,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
+import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 import { BETRIEB, PERSONENFELDER } from "../server/lib/sicht.mjs";
 import { baueLeerenBetrieb } from "../server/lib/leerbetrieb.mjs";
 import { leitungsperson } from "../server/lib/provisionierung.mjs";
@@ -508,11 +509,15 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
 
   it("eigene Änderungen kommen an, Fremdes bleibt, und nach dem Neuladen ist alles da", () => {
     const gespeichert = bestand();
+    /* Zeiten bestätigt eine Beschäftigte seit Commit 1d.1 nur für einen
+       vergangenen Tag mit geplantem Dienst (zeiterfassung.mjs). */
+    const gestern = tagePlus(heuteBerlin(), -1);
+    gespeichert.mandanten[0].abweichungen = { ...(gespeichert.mandanten[0].abweichungen || {}), [`0|${gestern}`]: "F" };
     const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(gespeichert, SITZ.a)));
     const g = gelesen.mandanten[0];
     g.anfragen.push({ id: "an-a2", personId: 0, typ: "abwesenheit", art: "urlaub", status: "offen", von: "2027-01-02", bis: "2027-01-03", text: "neu" });
     g.wuensche.push({ id: "w-a2", personId: 0, datum: "2026-11-02", art: "moechte" });
-    g.erfassung["0|2026-10-02"] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
+    g.erfassung[`0|${gestern}`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
     g.ausschreibungen[0].bewerbungen = [];                    // eigene Meldung zurückgezogen
     g.anfragen.find((a) => a.id === "t-b").interessenten = ["verborgen-0"];  // eigene Meldung zurück
     g.personen.find((p) => p.id === 0).telefon = "0171";
@@ -524,7 +529,7 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
     expect(m.anfragen.find((a) => a.id === "t-b").antwort).toBe("intern");
     expect(ids(m.wuensche)).toEqual(expect.arrayContaining(["w-a", "w-a2", "w-b"]));
     expect(m.erfassung["1|2026-10-01"].grund).toBe("Kind krank abgeholt");
-    expect(m.erfassung["0|2026-10-02"]).toBeDefined();
+    expect(m.erfassung[`0|${gestern}`]).toBeDefined();
     expect(m.ausschreibungen[0].bewerbungen).toEqual([{ personId: 1, text: "Brauche Geld, Scheidung" }]);
     expect(m.personen.find((p) => p.id === 0).telefon).toBe("0171");
     expect(m.personen.find((p) => p.id === 1)).toEqual(gespeichert.mandanten[0].personen[1]);
@@ -535,7 +540,7 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
     const wieder = bestandFuerRolle(neu, SITZ.a).mandanten[0];
     expect(ids(wieder.anfragen).sort()).toEqual(["an-a", "an-a2", "t-b"]);
     expect(ids(wieder.wuensche)).toEqual(["w-a", "w-a2"]);
-    expect(Object.keys(wieder.erfassung).sort()).toEqual(["0|2026-10-01", "0|2026-10-02"]);
+    expect(Object.keys(wieder.erfassung).sort()).toEqual(["0|2026-10-01", `0|${gestern}`].sort());
     expect(wieder.personen.find((p) => p.id === 0).telefon).toBe("0171");
     /* … und ein zweiter Durchgang ohne Änderung ist verlustfrei. */
     const nochmal = zusammenfuehren(neu, JSON.parse(JSON.stringify(bestandFuerRolle(neu, SITZ.a))), SITZ.a);

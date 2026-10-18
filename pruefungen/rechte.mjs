@@ -214,8 +214,11 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
 
 
 
-/* --- S1: Die Stempeluhr entscheidet auf dem Server --- */
+/* --- S1: Die Stempeluhr entscheidet auf dem Server ---
+   Gestempelt wird heute: Seit Commit 1d.1 nimmt /api/stempeln keine
+   künftigen und keine älteren Tage mehr an (zeiterfassung.mjs). */
 {
+  const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
   const tS = await anmelden(await zugang("mitarbeiter", 0));
   /* Standort für den Wohnbereich hinterlegen (als Leitung) */
   const rL2 = await lies(tL);
@@ -230,7 +233,7 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   const stempel = async (art, lat, lon) => {
     const a = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
       headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-      body: JSON.stringify({ datum: "2026-08-14", art, lat, lon }) });
+      body: JSON.stringify({ datum: heute, art, lat, lon }) });
     return { status: a.status, ...(await a.json()) };
   };
 
@@ -247,7 +250,7 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
   const gelogen = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
     headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-    body: JSON.stringify({ datum: "2026-08-15", art: "start",
+    body: JSON.stringify({ datum: heute, art: "start",
       lat: 52.5200, lon: 13.4050, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
   const gelogenD = await gelogen.json();
   pruef("Ein mitgeschicktes Urteil wird ignoriert",
@@ -410,7 +413,9 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Beschäftigte dürfen ihre eigenen Einträge schreiben", w.status === 200, `Status ${w.status}`);
 
   const n = (await lies(tL)).bestand.mandanten[0];
-  pruef("Eigene Zeiterfassung ist gespeichert", !!(n.erfassung || {})["0|2026-12-01"]);
+  /* Seit Commit 1d.1: eine rohe eigene Zeit für einen künftigen Tag, mit
+     fremden Feldern, ist keine zulässige Selbstauskunft (zeiterfassung.mjs). */
+  pruef("Eigene Rohzeit für einen künftigen Tag ist verworfen", !(n.erfassung || {})["0|2026-12-01"]);
   pruef("Fremde Zeiterfassung ist nicht gespeichert", !(n.erfassung || {})["1|2026-12-01"]);
   pruef("Fremder Antrag ist verworfen", !(n.anfragen || []).some((a) => a.id === "s5-fremd"));
   const eigen = (n.anfragen || []).find((a) => a.id === "s5-eigen");

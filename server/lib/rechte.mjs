@@ -14,6 +14,7 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
+import { erfassungZusammen } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { bestandSicht, SICHT_ROLLEN } from "./sicht.mjs";
 
@@ -137,17 +138,8 @@ export function schreibumfang(rolle) {
    Und einen Antrag entscheidet nie, wer ihn stellt: Der Status eines
    eigenen Antrags darf nur „offen" oder „zurueckgezogen" werden. */
 const eigenerEintrag = (e, ich) => e && String(e.personId) === String(ich);
-const eigenerSchluessel = (k, ich) => String(k).split("|")[0] === String(ich);
 const ANTRAGSTATUS_SELBST = ["offen", "zurueckgezogen"];
 const NACHRICHT_AN_FREMDE = ["tauschAngebot"];
-
-/** Objekt mit Schlüsseln „personId|Datum": nur die eigenen wandern hinein. */
-function eigeneSchluessel(alt, neu, ich) {
-  const aus = {};
-  for (const [k, v] of Object.entries(alt || {})) if (!eigenerSchluessel(k, ich)) aus[k] = v;
-  for (const [k, v] of Object.entries(neu || {})) if (eigenerSchluessel(k, ich)) aus[k] = v;
-  return aus;
-}
 
 /** Liste mit personId: eigene Einträge aus dem Neuen, fremde aus dem Alten. */
 function eigeneEintraege(alt, neu, ich) {
@@ -323,7 +315,9 @@ function notrufeZusammen(alt, neu, ich, personen) {
 export function eigenesZusammen(alt, geschickt, ich) {
   const hat = (f) => Object.prototype.hasOwnProperty.call(geschickt, f);
   const aus = {};
-  if (hat("erfassung")) aus.erfassung = eigeneSchluessel(alt.erfassung, geschickt.erfassung, ich);
+  /* Zeiten: nur neue Selbstauskünfte nach den Regeln in zeiterfassung.mjs.
+     Bestehendes — auch Gestempeltes — bleibt, Unzulässiges wird übergangen. */
+  if (hat("erfassung")) aus.erfassung = erfassungZusammen(alt, geschickt.erfassung, ich).erfassung;
   if (hat("wuensche")) aus.wuensche = eigeneEintraege(alt.wuensche, geschickt.wuensche, ich);
   if (hat("einspruenge")) aus.einspruenge = eigeneEintraege(alt.einspruenge, geschickt.einspruenge, ich);
   if (hat("anfragen")) aus.anfragen = anfragenZusammen(alt.anfragen, geschickt.anfragen, ich);
@@ -896,11 +890,26 @@ export function einheitZusammen(altM, neuM, sitzung) {
         break;
       }
 
-      /* --- Stempeluhr und Zeiterfassung: nur über /api/stempeln --- */
+      /* --- Stempeluhr: nur über /api/stempeln. Was die Oberfläche nach dem
+             Stempeln lokal nachzieht, weicht im Detail ab (ohne geprueftStart);
+             es wird übergangen, der gespeicherte Stand bleibt. --- */
       case "einstempeln":
-      case "erfassung":
-        return nein("Stempelzeiten und Zeiterfassung entstehen über die Stempeluhr, nicht über den Bestand. "
-          + "Korrekturen nimmt die Leitung vor.");
+        break;
+
+      /* --- Zeiterfassung: für die eigene Person dieselbe Selbstauskunft wie
+             für Beschäftigte, für andere kein Rohzugriff. Bestehendes bleibt
+             (auch eine abweichende lokale Kopie wird übergangen). --- */
+      case "erfassung": {
+        if (n !== undefined && (!n || typeof n !== "object" || Array.isArray(n))) return nein("erfassung: ungültige Form.");
+        const r = erfassungZusammen(altM, n, ichId);
+        const abgelehnt = r.verworfen.find((v) => !v.bestehend);
+        if (abgelehnt)
+          return nein(abgelehnt.grund === "fremd"
+            ? "Zeiten anderer Personen erfasst die Leitung; Stempelzeiten entstehen über die Stempeluhr."
+            : abgelehnt.grund);
+        aus.erfassung = r.erfassung;
+        break;
+      }
 
       /* --- Ohne Bereichsbezug: der Leitung vorbehalten (siehe unten) --- */
       case "dienstbuch":

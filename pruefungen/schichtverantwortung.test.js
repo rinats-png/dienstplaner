@@ -206,12 +206,21 @@ describe("D — Abwesenheiten", () => {
 });
 
 describe("E — Stempeluhr und Zeiterfassung", () => {
-  it("7. fremdes einstempeln über PUT: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.einstempeln["b1|2026-10-01"].innerhalbStart = false; }));
-    ab(schreibe(bestand(), SUB, (m) => { m.einstempeln["a1|2026-10-02"] = { start: "06:00", innerhalbStart: true, geprueftStart: true }; }));
+  /* Seit 1d.1 wird einstempeln im PUT übergangen statt abgewiesen: Die
+     Oberfläche zieht nach /api/stempeln eine leicht abweichende Kopie nach,
+     und jeder folgende PUT bekam sonst 403. Ändern lässt sich trotzdem nichts. */
+  it("7. fremdes einstempeln über PUT: wirkungslos", () => {
+    const g = bestand();
+    const m = ok(schreibe(g, SUB, (m) => {
+      m.einstempeln["b1|2026-10-01"].innerhalbStart = false;
+      m.einstempeln["a1|2026-10-02"] = { start: "06:00", innerhalbStart: true, geprueftStart: true };
+    }));
+    expect(m.einstempeln).toEqual(g.mandanten[0].einstempeln);
   });
-  it("8. eigenes einstempeln über PUT: ebenfalls abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; }));
+  it("8. eigenes einstempeln über PUT: ebenfalls wirkungslos", () => {
+    const g = bestand();
+    const m = ok(schreibe(g, SUB, (m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; }));
+    expect(m.einstempeln).toEqual(g.mandanten[0].einstempeln);
   });
   it("9. erfassung.bestaetigt über PUT: abgewiesen — fremd, im Bereich und eigen", () => {
     ab(schreibe(bestand(), SUB, (m) => { m.erfassung["b1|2026-10-01"].bestaetigt = true; }));

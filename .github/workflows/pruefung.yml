@@ -147,6 +147,11 @@ jobs:
       - name: Schichtverantwortung
         run: npm run pruefung:schichtverantwortung
 
+      # Zeiten: Selbstauskunft nur neu, vergangen, mit geplantem Dienst;
+      # Stempeluhr nur heute oder gestern mit Nachtdienstbezug.
+      - name: Zeiterfassung
+        run: npm run pruefung:zeiterfassung
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -413,6 +418,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.5.
+
+      # Selbstauskunft und Stempeln über die echten Wege, Angriffe per PUT.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zeiterfassung (HTTP)
+        run: npm run pruefung:zeiterfassung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.4.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

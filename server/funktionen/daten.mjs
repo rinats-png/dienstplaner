@@ -3,13 +3,14 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
-  wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
+import { stempelDatumPruefen } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
@@ -852,6 +853,17 @@ export default async (req, context) => {
           durch: erg.durch, zeit: erg.zeit }, 409);
       }
 
+      /* Selbstauskünfte zur Zeit eigens vermerken: wer, wie viele Tage. Im
+         allgemeinen Schreibeintrag wären sie nicht zu erkennen. */
+      if ((s.rolle === "mitarbeiter" || s.rolle === "subplaner") && s.person !== null && s.person !== undefined) {
+        const vorM = jetzt && eigenerMandant(jetzt.bestand, s), nachM = eigenerMandant(zuSchreiben, s);
+        const praefix = `${s.person}|`;
+        const neueTage = Object.keys((nachM && nachM.erfassung) || {})
+          .filter((k) => k.startsWith(praefix) && !((vorM && vorM.erfassung) || {})[k]);
+        if (neueTage.length)
+          await protokoll("schreiben", ks, "erfolg",
+            `Selbstauskunft Zeiten: ${neueTage.map((k) => k.split("|")[1]).join(", ")}`, wer);
+      }
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
         + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
@@ -893,6 +905,15 @@ export default async (req, context) => {
 
       const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
       if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
+
+      /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
+         Beginn), nie künftig und nie älter — Nachträge laufen über
+         „Zeiten bestätigen" (zeiterfassung.mjs). */
+      const datumGrund = stempelDatumPruefen(m, person, String(datum), art);
+      if (datumGrund) {
+        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
+        return antwort({ fehler: datumGrund }, 422);
+      }
 
       /* Die eigene Zeit, nicht die des Geräts. */
       const jetzt = new Date();

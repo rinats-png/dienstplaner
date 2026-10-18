@@ -99,9 +99,11 @@ pruef("Fremden Antrag löschen: 403", wDel.status === 403, `Status ${wDel.status
 const wUm = await versuch((m) => { m.anfragen.find((a) => a.id === "an-b").personId = "a1"; });
 pruef("Fremden Antrag auf andere Person umhängen: 403", wUm.status === 403, `Status ${wUm.status}`);
 const wSt = await versuch((m) => { m.einstempeln["b1|2026-10-01"].innerhalbStart = true; });
-pruef("Fremde Stempelzeit manipulieren: 403", wSt.status === 403, `Status ${wSt.status}`);
+/* Seit 1d.1 übergeht der Server einstempeln im PUT (die Oberfläche zieht
+   nach dem Stempeln eine leicht abweichende Kopie nach) — wirkungslos. */
+pruef("Fremde Stempelzeit manipulieren: wirkungslos", wSt.status === 200, `Status ${wSt.status}`);
 const wStE = await versuch((m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; });
-pruef("Eigene Stempelzeit über PUT setzen: 403", wStE.status === 403, `Status ${wStE.status}`);
+pruef("Eigene Stempelzeit über PUT setzen: wirkungslos", wStE.status === 200, `Status ${wStE.status}`);
 const wEr = await versuch((m) => { m.erfassung["b1|2026-10-01"].bestaetigt = true; });
 pruef("Erfassung bestätigen über PUT: 403", wEr.status === 403, `Status ${wEr.status}`);
 const wPr = await versuch((m) => { m.protokoll = m.protokoll.slice(1); });
@@ -116,7 +118,8 @@ const wR = await versuch((m) => { m.personen.find((p) => p.id === "a1").rolle = 
 pruef("Rolle einer anderen Person ändern: 403", wR.status === 403, `Status ${wR.status}`);
 const wK = await versuch((m) => { m.abwesenheiten.push({ id: "k-s", personId: "s1", art: "krank", von: "2026-10-20", bis: "2026-10-20" }); });
 pruef("Eigene Krankmeldung: erlaubt", wK.status === 200, `Status ${wK.status} ${wK.text || ""}`);
-const st = await rufe(tS, "stempeln", "POST", { datum: "2026-10-18", art: "start" });
+const heute = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+const st = await rufe(tS, "stempeln", "POST", { datum: heute, art: "start" });
 pruef("Die Stempeluhr selbst bleibt offen (/api/stempeln)", st.status === 200, `Status ${st.status}`);
 
 /* Neu lesen als Leitung: Fremdes unverändert, Erlaubtes da. */
@@ -135,6 +138,7 @@ pruef("… Nachricht und Dienstbuch unverändert", nach.nachrichten.some((n) => 
 pruef("… erlaubte Schritte sind da", nach.abweichungen["a1|2026-11-02"] === "F"
   && nach.anfragen.find((a) => a.id === "an-a").status === "genehmigt"
   && nach.abwesenheiten.some((a) => a.id === "abw-a") && nach.abwesenheiten.some((a) => a.id === "k-s"));
+pruef("… keine eigene Stempelzeit aus dem PUT", !(nach.einstempeln || {})["s1|2026-10-02"]);
 pruef("… Rolle von Anna unverändert", nach.personen.find((p) => p.id === "a1").rolle === "mitarbeiter");
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
