@@ -121,6 +121,11 @@ jobs:
       - name: Selbstservice der Beschäftigten
         run: npm run pruefung:selbstservice
 
+      # Die Oberfläche benutzt den Selbstservice richtig und verspricht keine
+      # Zustellung, die es nicht gibt (Quelltextprüfung, kein Browser).
+      - name: Oberfläche Selbstservice
+        run: npm run pruefung:oberflaeche
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik

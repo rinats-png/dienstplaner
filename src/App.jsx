@@ -2065,6 +2065,19 @@ function pruefen(m, von, bis) {
     return out;
   });
 }
+
+/* Befunde, die auf Personendaten beruhen, die der Server Beschäftigten und
+   dem Betriebsrat nicht ausliefert (server/lib/sicht.mjs): Mutterschutz,
+   Schwerbehinderung, Geburtsdatum, arbeitsmedizinische Vorsorge und
+   Einschränkungen. Aus den gekürzten Daten entstünden falsche Befunde mit
+   Namen — etwa „Untersuchung anzubieten“ für jede Kollegin im Nachtdienst,
+   weil das Datum der letzten Untersuchung fehlt. Wer plan.edit.unit hat,
+   bekommt den Betrieb vollständig und sieht sie wie bisher. */
+const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];
+function befundeFuer(sitz, befunde) {
+  if (darf(sitz, "plan.edit.unit")) return befunde;
+  return befunde.filter((b) => !BEFUNDE_AUS_PERSONENDATEN.includes(b.art));
+}
 function simulation(m) {
   return memo(m, "sim", () => {
     const len = zyklusLaenge(m);
@@ -3546,7 +3559,7 @@ function tagesaufgaben(sitz) {
   }
 
   if (darf(sitz, "plan.view.unit")) {
-    const kommend = pruefen(m, d0, addDays(d0, 13));
+    const kommend = befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13)));
     const heuteOffen = kommend.filter((b) => b.datum === d0 && (b.art === "besetzung" || b.art === "qualifikation"));
     if (heuteOffen.length) push({ art: "besetzung", dringend: true, ziel: "lage",
       titel: `Heute ${heuteOffen.length}× unterbesetzt`, text: heuteOffen.map((b) => b.titel).slice(0, 2).join(" · "),
@@ -8250,7 +8263,7 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const m = sitz.mandant;
   const d0 = heute();
   const bes = useMemo(() => besetzung(m, d0), [m]);
-  const kommend = useMemo(() => pruefen(m, d0, addDays(d0, 13)), [m]);
+  const kommend = useMemo(() => befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13))), [m, sitz]);
   const sim = useMemo(() => simulation(m), [m]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const aktiv = aktive(m, d0);
@@ -8301,9 +8314,11 @@ function Lagebild({ sitz, oeffneTag, akt }) {
           <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
-          <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
-          <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
-            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
+          {/* Beide Zahlen rechnen mit fremden Anträgen bzw. Stundenkonten — die
+              liefert der Server nur Rollen, die sie bearbeiten (sicht.mjs). */}
+          {darf(sitz, "req.approve.unit") && <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />}
+          {darf(sitz, "account.view.all") && <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
+            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />}
         </KpiRow>
         <Card>
           <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
@@ -8852,7 +8867,8 @@ function Tagesdetail({ sitz, datum, onClose, akt }) {
         </div>
       </div>
 
-      {darf(sitz, "plan.view.unit") && (
+      {/* Tagesnotizen sind Planungswissen — „sichtbar für alle mit Planungsrecht“. */}
+      {darf(sitz, "plan.edit.unit") && (
         <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Btn size="sm" kind="quiet" onClick={() => akt.oeffneNotizen(`tag|${datum}`, `Notizen zum ${fDatum(datum)}`)}>
             Notizen{notizenZu(m, `tag|${datum}`).length ? ` (${notizenZu(m, `tag|${datum}`).length})` : ""}</Btn>
@@ -10295,7 +10311,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const [y, mo] = ym.split("-").map(Number);
   const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
   const [f, setF] = useState("alle");
-  const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
+  const befunde = useMemo(() => befundeFuer(sitz, pruefen(m, von, bis)), [m, ym, sitz]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
     ["aufgabe", "Vorbehaltene Aufgaben"], ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
@@ -10568,7 +10584,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
       if (t.dienstId) offen.push({ datum: d, dienstId: t.dienstId });
     }
     akt.krankmelden(f.personId, f.von, f.bis, f.notiz);
-    setLuecken(offen); setIdx(0); setSchritt(offen.length ? 3 : 4);
+    /* Wer nur die eigene Abwesenheit melden darf, teilt keinen Ersatz ein —
+       das ist Sache der Planung, und der Server nähme es ohnehin nicht an. */
+    setLuecken(offen); setIdx(0); setSchritt(offen.length && !eigene ? 3 : 4);
   };
 
   const kandidaten = m.personen.filter((p) => imDienst(p, heute()) &&
@@ -10589,7 +10607,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <Field label="Anmerkung" hint="Kein Grund, keine Diagnose — nur was für die Planung nötig ist.">
             <Inp value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} /></Field>
           <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-            Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor.
+            {eigene
+              ? "Die Meldung wirkt sofort. Betroffene Dienste erscheinen für die Planung in der Prüfung."
+              : "Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor."}
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
@@ -10617,7 +10637,7 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 20, lineHeight: 1.5 }}>
             {luecken.length === 0
               ? "Es waren keine Dienste betroffen."
-              : "Die Planung wurde benachrichtigt. Verbliebene Lücken erscheinen in der Prüfung."}
+              : `${anzahlWort(luecken.length, "Dienst")} betroffen. Verbliebene Lücken erscheinen in der Prüfung.`}
           </div>
           <Btn kind="primary" onClick={onClose}>Schließen</Btn>
         </div>)}
@@ -13014,7 +13034,10 @@ function Lenkzeiten({ sitz, akt }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "plan.edit.unit");
   const [woche, setWoche] = useState(montag(heute()));
-  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)), [m, woche]);
+  /* Fremde Lenkzeiten bekommt nur, wer sie pflegt — Beschäftigte sehen die
+     eigenen (sicht.mjs), alle anderen Einträge wären leer. */
+  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)
+    && (darfPflegen || (sitz.person && p.id === sitz.person.id))), [m, woche, darfPflegen, sitz.person]);
   const [personId, setPersonId] = useState((fahrer[0] || {}).id || "");
   const person = fahrer.find((p) => p.id === personId) || fahrer[0] || null;
   const tage = useMemo(() => fahrWochentage(woche), [woche]);
@@ -15625,7 +15648,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                     <span style={{ display: "block", fontSize: 14, fontWeight: an ? 640 : 550 }}>
                       {fKurz(x.datum)} · {da ? da.name : x.dienstId}</span>
                     <span style={{ display: "block", fontSize: 12, color: C.dim, marginTop: 3 }}>
-                      {l.anzahl === 0
+                      {!darfVergeben ? (l.dringend ? "offen · dringend" : "offen")
+                        : l.anzahl === 0
                         ? l.dringend ? "noch niemand · dringend" : "noch niemand"
                         : `${zahl(l.anzahl)} ${l.anzahl === 1 ? "Meldung" : "Meldungen"}`}</span>
                   </span>
@@ -15652,8 +15676,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                       lineHeight: 1.55 }}>{a.hinweis}</p>}
                     <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13,
                       color: C.dim, marginTop: 12 }}>
-                      <span>{zahl(lage.moeglich)} kämen infrage</span>
-                      <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>
+                      {darfVergeben && <span>{zahl(lage.moeglich)} kämen infrage</span>}
+                      {darfVergeben && <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>}
                       <span>{lage.tage <= 0 ? "heute" : `in ${zahl(lage.tage)} Tagen`}</span>
                     </div>
                     {darfVergeben && (
@@ -15664,7 +15688,9 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                   </div>
                 </Card>
 
-                {lage.anzahl === 0 ? (
+                {/* Wer sich gemeldet hat und in welcher Rangfolge, sieht nur, wer vergibt.
+                    Beschäftigte bekommen fremde Meldungen vom Server nicht (sicht.mjs). */}
+                {!darfVergeben ? null : lage.anzahl === 0 ? (
                   <Card><Leer titel="Noch niemand hat sich gemeldet"
                     text={lage.moeglich === 0
                       ? "Niemand darf diese Schicht übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Hier hilft nur die Ersatzsuche mit Begründung."
@@ -19508,8 +19534,10 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
       {/* --------------------------- Notruf -------------------------- */}
       <MBlatt offen={blatt === "notruf"} onClose={() => setBlatt(null)} titel="Hilfe anfordern">
         <div style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, marginBottom: 22 }}>
-          Deine Schichtverantwortung wird sofort unterrichtet, danach die Planung.
-          Standort und Dienst werden mitgeschickt.
+          {/* Bis der Server selbst zustellt, wird niemand aktiv benachrichtigt —
+              der Text verspricht nur, was geschieht. */}
+          Dein Hilferuf wird erfasst und ist für Schichtverantwortung, Planung und
+          Leitung in CENTRIC sichtbar. Dienst und Einsatzort werden vermerkt.
         </div>
         {Object.entries(NOTRUF_ARTEN).map(([id, a]) => (
           <button key={id} onClick={() => { akt.notrufSenden(id, ""); setBlatt(null); }}
@@ -20457,7 +20485,10 @@ const BEREICHE = [
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
     ["hilfe", "Hilfe", null],
-    ["uebergabe", "Übergabe", "PAKET:uebergabe"],
+    /* Übergaben, Dienstbuch und Belastbarkeit brauchen den vollständigen
+       Betrieb. Beschäftigte und Betriebsrat bekommen ihn nicht (sicht.mjs) —
+       die Ansichten wären für sie leer oder falsch gerechnet. */
+    ["uebergabe", "Übergabe", "PAKET:uebergabe|plan.edit.unit"],
     ["meine", "Meine Schichten", "SCHICHT"],
     ["lage", "Lagebild", "plan.view.unit"],
     ["zeitachse", "Zeitachse", "plan.view.unit"],
@@ -20478,7 +20509,7 @@ const BEREICHE = [
     ["boerse", "Tauschbörse", "req.create"],
     ["wuensche", "Wunschdienste", "SCHICHT"],
     ["aushang", "Schwarzes Brett", null],
-    ["buch", "Dienstbuch", "plan.view.unit"],
+    ["buch", "Dienstbuch", "plan.edit.unit"],
   ]},
   { id: "team", label: "Wer mitfährt", views: [
     ["personal", "Personal", "staff.view"],
@@ -20494,7 +20525,7 @@ const BEREICHE = [
     ["untergrenzen", "Untergrenzen", "plan.view.unit"],
     ["lenkzeiten", "Lenkzeiten", "plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
-    ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
+    ["belastbarkeit", "Belastbarkeit", "plan.edit.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
     ["nachweis", "Leistungsnachweis", "plan.view.unit"],
     ["abrechnung", "Abrechnungsdaten", "account.view.all"],
@@ -21576,7 +21607,7 @@ function AppInnen() {
 
       selbstEintragen: (datum, dienstId) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         const pruef = darfSelbstEintragen(m, r, pid, datum, dienstId);
         if (!pruef.darf) { melde(`Nicht möglich: ${pruef.grund}.`); return m; }
@@ -21587,7 +21618,7 @@ function AppInnen() {
 
       selbstAustragen: (datum) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         return { ...m, selbstplanung: m.selbstplanung.map((x) => x.id !== r.id ? x
           : { ...x, eintraege: (x.eintraege || []).filter((e) =>
@@ -21623,7 +21654,7 @@ function AppInnen() {
 
       /* --- Notruf --- */
       notrufSenden: (art, notiz) => mUpd((m) => {
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         const p = m.personen.find((x) => x.id === pid);
         if (!p) return m;
         const a = NOTRUF_ARTEN[art] || NOTRUF_ARTEN.hilfe;
@@ -21638,7 +21669,7 @@ function AppInnen() {
           `NOTRUF: ${a.label}`,
           `${p.vorname} ${p.nachname}${da ? ` · ${da.name}` : ""}${da && da.ort ? ` · ${da.ort}` : ""}${notiz ? ` · ${notiz}` : ""}`,
           "notruf")).filter(Boolean);
-        melde(`Notruf abgesetzt · ${empf.length} unterrichtet.`);
+        melde("Hilferuf erfasst. Er ist für die zuständigen Rollen in CENTRIC sichtbar.");
         return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200),
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Notruf abgesetzt"),
@@ -22528,7 +22559,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       if (boerse) z.boerse = boerse;
       const nl = nachweisLage(m);
       if (nl.abgelaufen.length) { z.nachweise = nl.abgelaufen.length; w.nachweise = true; }
-      const bef = pruefen(m, heute(), addDays(heute(), 13)).filter((b) => b.schwere === "danger").length;
+      const bef = befundeFuer(sitz, pruefen(m, heute(), addDays(heute(), 13))).filter((b) => b.schwere === "danger").length;
       if (bef) { z.pruef = bef; w.pruef = true; }
       const heuteOffen = Object.values(besetzung(m, heute())).filter((b) => b.diff < 0).length;
       if (heuteOffen) { z.lage = heuteOffen; w.lage = true; }
@@ -22595,7 +22626,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const istBetreiber = sitz.rolle === "betreiber";
   const erlaubt = ([, , recht]) => {
     if (recht === "SCHICHT") return sitz.person.imSchichtdienst !== false;   // Geschäftszimmer fährt keine Schicht
-    if (recht && recht.startsWith("PAKET:")) return kann(sitz.mandant, recht.slice(6));
+    if (recht && recht.startsWith("PAKET:")) {
+      const [paket, zusatz] = recht.slice(6).split("|");
+      return kann(sitz.mandant, paket) && (!zusatz || darf(sitz, zusatz));
+    }
     return !recht || darf(sitz, recht);
   };
   const nav = istBetreiber ? NAV_BETREIBER : NAV_KUNDE.filter(erlaubt);
