@@ -176,6 +176,10 @@ jobs:
       - name: Verwaltungswege
         run: npm run pruefung:verwaltungswege
 
+      # Rechtematrix: jede Datenklasse je Rolle und Lesepfad (RECHTEMATRIX.md).
+      - name: Rechtematrix
+        run: npm run pruefung:rechtematrix
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
