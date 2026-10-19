@@ -18,7 +18,7 @@ import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
-import { ausschreibungDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
+import { ausschreibungDerEinheit, eintragDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
@@ -828,7 +828,13 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     geschickt = vorgefiltert.mandant;
 
     /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
-    if (umfang === SCHREIBEN_VOLL) geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+    if (umfang === SCHREIBEN_VOLL) {
+      geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
+      const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
+      if (bezug.grund) return { verweigert: bezug.grund };
+      geschickt = bezug.mandant;
+    }
 
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
@@ -1007,6 +1013,59 @@ export function eigeneEinheit(altM, ich) {
   return null;
 }
 
+/* --------------------------------------------------------------------------
+   DIENSTBUCH UND ÜBERGABEN: EINHEITSBEZUG (Commit C2)
+
+   Beide tragen `einheitId`: eine bekannte Einheit oder null (betriebsweit,
+   Sache der Planung). Altbestand ohne das Feld bleibt, wie er ist. Eine
+   Übergabe ist eindeutig je Tag, Dienstart und Einheit (fehlend zählt wie
+   null) — nicht mehr nur je Tag und Dienstart.
+   -------------------------------------------------------------------------- */
+const einheitDerUebergabe = (u) => (u && u.einheitId !== undefined && u.einheitId !== null ? String(u.einheitId) : null);
+const uebergabeSchluessel = (u) => `${u && u.datum}|${u && u.dienstId}|${einheitDerUebergabe(u)}`;
+
+/** Planung und Leitung: neue oder umgehängte Einträge nur mit bekannter
+    einheitId oder null; neue Dienstbucheinträge bekommen vonId; keine zwei
+    Übergaben mit gleichem Tag, Dienst und Einheit. */
+function einheitsbezugVoll(altM, neuM, sitzung) {
+  const einheiten = new Set((altM.einheiten || []).filter(Boolean).map((e) => String(e.id)));
+  const gueltig = (e) => e.einheitId === undefined || e.einheitId === null || einheiten.has(String(e.einheitId));
+  let aus = neuM;
+  for (const feld of ["dienstbuch", "uebergaben"]) {
+    if (!Array.isArray(neuM[feld])) continue;
+    const alt = new Map((Array.isArray(altM[feld]) ? altM[feld] : []).filter((e) => e && typeof e === "object" && kennungGueltig(e.id))
+      .map((e) => [String(e.id), e]));
+    let geaendert = false;
+    const liste = [];
+    for (const e of neuM[feld]) {
+      if (!e || typeof e !== "object") { liste.push(e); continue; }
+      const vorher = kennungGueltig(e.id) ? alt.get(String(e.id)) : undefined;
+      const neu = !vorher;
+      if ((neu || !gleich(vorher.einheitId, e.einheitId)) && !gueltig(e))
+        return { grund: `${feld}: unbekannte Einheit.` };
+      if (neu && feld === "dienstbuch" && sitzung.person !== null && sitzung.person !== undefined
+          && String(e.vonId) !== String(sitzung.person)) {
+        liste.push({ ...e, vonId: sitzung.person }); geaendert = true; continue;
+      }
+      liste.push(e);
+    }
+    if (feld === "uebergaben") {
+      const altSchluessel = new Set([...alt.values()].map(uebergabeSchluessel));
+      const gesehen = new Set();
+      for (const e of liste) {
+        if (!e || typeof e !== "object") continue;
+        const k = uebergabeSchluessel(e);
+        const neu = !(kennungGueltig(e.id) && alt.has(String(e.id)));
+        if (neu && (altSchluessel.has(k) || gesehen.has(k)))
+          return { grund: "Für diesen Tag, Dienst und diese Einheit gibt es schon eine Übergabe." };
+        if (neu) gesehen.add(k);
+      }
+    }
+    if (geaendert) aus = { ...aus, [feld]: liste };
+  }
+  return { mandant: aus };
+}
+
 /** Gehört die Person `pid` heute zum eigenen Bereich der Schichtverantwortung `ichId`?
     (Für den Versand, Commit 4 — dieselbe Regel wie in einheitZusammen.) */
 export function imEigenenBereich(altM, ichId, pid) {
@@ -1096,6 +1155,8 @@ export function einheitZusammen(altM, neuM, sitzung) {
   const ichId = String(ich.id);
   const eigene = eigeneEinheit(altM, ich);
   if (!eigene) return nein("Diesem Zugang ist kein Bereich zugeordnet. Bitte die Leitung ansprechen.");
+  /* Eine Pool-Einheit ist kein eigener Bereich (C1/C2). */
+  const eigeneNutzbar = !(altM.einheiten || []).some((x) => x && x.pool && String(x.id) === eigene);
   const meinName = `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || ichId;
   const heute = new Date().toISOString().slice(0, 10);
 
@@ -1155,9 +1216,70 @@ export function einheitZusammen(altM, neuM, sitzung) {
       }
 
       /* --- Ohne Bereichsbezug: der Leitung vorbehalten (siehe unten) --- */
-      case "dienstbuch":
       case "unterschreitungen":
         return nein(`Änderungen an ${feld} sind der Leitung vorbehalten — die Einträge tragen keinen Bereich.`);
+
+      /* --- Dienstbuch (Commit C2): neue Einträge der eigenen Einheit
+             anhängen. Einheit, Autor (vonId, durch) und Zeit setzt der
+             Server; Bestehendes bleibt unverändert. Fremde, Pool-, null-
+             und Altbestand-Einträge sieht die Schichtverantwortung nicht
+             und kann sie weder ändern noch löschen. --- */
+      case "dienstbuch": {
+        if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) kein Dienstbucheintrag.");
+        const r = anhaengen(feld, a, n, { neuerEintrag: (e) => {
+          if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+          if (!["uebergabe", "vorkommnis", "hinweis"].includes(e.art)) return null;
+          if (typeof e.text !== "string" || !e.text.trim() || e.text.length > ANMERKUNG_MAX) return null;
+          return { id: e.id, datum: e.datum, art: e.art, text: e.text,
+            zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }),
+            durch: meinName, vonId: ich.id, einheitId: eigene };
+        } });
+        if (r.grund) return nein(r.grund);
+        aus.dienstbuch = r.liste;
+        break;
+      }
+
+      /* --- Übergaben (Commit C2): eine neue für die eigene Einheit, eine
+             bestehende der eigenen Einheit nur ergänzen (anhängen). Eindeutig
+             je Tag, Dienstart und Einheit. --- */
+      case "uebergaben": {
+        if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) keine Übergabe.");
+        const dienste = new Set((altM.dienstarten || []).filter(Boolean).map((d) => String(d.id)));
+        const vorhanden = new Set((Array.isArray(a) ? a : []).filter((u) => u && typeof u === "object").map(uebergabeSchluessel));
+        const textFeld = (t) => t === undefined || t === null || (typeof t === "string" && t.length <= ANMERKUNG_MAX);
+        const r = anhaengen(feld, a, n, {
+          neuerEintrag: (e) => {
+            if (typeof e.datum !== "string" || !TAG.test(e.datum) || !dienste.has(String(e.dienstId))) return null;
+            if (typeof e.lage !== "string" || !e.lage.trim()) return null;
+            if (![e.lage, e.offen, e.vorkommnis, e.material].every(textFeld)) return null;
+            const s = { id: e.id, datum: e.datum, dienstId: e.dienstId, einheitId: eigene,
+              lage: e.lage, offen: e.offen || "", vorkommnis: e.vorkommnis || "", material: e.material || "",
+              von: meinName, an: typeof e.an === "string" && e.an.length <= 200 ? e.an : null, zeit: jetztText(),
+              personen: (Array.isArray(e.personen) ? e.personen : []).filter((x) => personen.has(String(x))).slice(0, 500),
+              ergaenzungen: [] };
+            const k = uebergabeSchluessel(s);
+            if (vorhanden.has(k)) return null;                 // schon eine Übergabe für Tag, Dienst und Einheit
+            vorhanden.add(k);
+            return s;
+          },
+          aenderung: (vorher, e) => {
+            if (!eintragDerEinheit(vorher, eigene)) return null;
+            if (!gleich(ohne(vorher, ["ergaenzungen"]), ohne(e, ["ergaenzungen"]))) return null;
+            const alt = Array.isArray(vorher.ergaenzungen) ? vorher.ergaenzungen : [];
+            const neu = Array.isArray(e.ergaenzungen) ? e.ergaenzungen : [];
+            if (neu.length <= alt.length || !gleich(neu.slice(0, alt.length), alt)) return null;
+            const dazu = [];
+            for (const x of neu.slice(alt.length)) {
+              if (!x || typeof x.text !== "string" || !x.text.trim() || x.text.length > ANMERKUNG_MAX) return null;
+              dazu.push({ zeit: jetztText(), von: meinName, text: x.text });
+            }
+            return { ...vorher, ergaenzungen: [...alt, ...dazu] };
+          },
+        });
+        if (r.grund) return nein(r.grund);
+        aus.uebergaben = r.liste;
+        break;
+      }
 
       /* --- Revisionsspur: nur anhängen --- */
       case "protokoll": {

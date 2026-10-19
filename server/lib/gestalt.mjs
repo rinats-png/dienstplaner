@@ -20,7 +20,22 @@ const PFLICHT = ["mandanten"];
 
 /** Listen je Betrieb, die ein Array sein müssen, wenn sie vorhanden sind. */
 const LISTEN = ["personen", "einheiten", "dienstarten", "abwesenheiten",
-  "anfragen", "qualifikationen", "standorte"];
+  "anfragen", "qualifikationen", "standorte", "uebergaben"];
+
+/**
+ * Altform angleichen (Commit C2): Über die Betreiberkonsole angelegte
+ * Betriebe trugen `uebergaben: {}` statt einer Liste. Inhalt konnte darin
+ * nie stehen — das Speichern einer Übergabe scheiterte daran schon im
+ * Browser. Ein leeres Objekt wird zur leeren Liste, bevor die Gestalt
+ * geprüft wird; alles andere bleibt, wie es ist (und fällt dann auf).
+ * @param {any} bestand
+ */
+export function uebergabenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const leer = (u) => !!u && typeof u === "object" && !Array.isArray(u) && Object.keys(u).length === 0;
+  if (!bestand.mandanten.some((m) => m && leer(m.uebergaben))) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
+}
 
 /**
  * Prüft die Form eines Bestands.

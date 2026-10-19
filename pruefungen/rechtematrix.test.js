@@ -102,8 +102,9 @@ const MATRIX = [
   ["Antrag: Text",               "MK-ANTRAG",                0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Nachricht",                  "MK-NACHRICHT",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Notruf",                     "MK-NOTRUF",                0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Dienstbuch",                 "MK-DIENSTBUCH",            0, 0, 1, 1, 1, 1, 1, 1, "C"],
-  ["Übergaben",                  "MK-UEBERGABE",             0, 0, 1, 1, 1, 1, 1, 1, "C"],
+  /* Commit C2: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
+  ["Dienstbuch",                 "MK-DIENSTBUCH",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Übergaben",                  "MK-UEBERGABE",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 1, 1, 1, 1, 1, 1, "C"],
   ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 1, 1, 1, "A"],
   /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der

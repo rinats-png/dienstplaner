@@ -2151,6 +2151,21 @@ const darfEinheit = (s, eid) => darf(s, "plan.edit.all") || darf(s, "plan.edit.u
 const anBereichErlaubt = (s, p) => darf(s, "plan.edit.all") || !p || p.id === s.person.id
   || einheitAm(p, heute()) === (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
 const darfEntscheiden = (s, eid) => darf(s, "req.approve.all") || darf(s, "req.approve.unit", eid);
+/* Dienstbuch und Übergaben tragen eine Einheit (Commit C2). Die
+   Schichtverantwortung schreibt immer für ihre eigene — der Server setzt sie
+   ohnehin; Planung und Leitung (plan.edit.all) wählen eine Einheit oder
+   „betriebsweit" (null). */
+const eigeneEinheitVon = (s) => (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
+const waehltEinheit = (s) => darf(s, "plan.edit.all");
+/** Einheit oder „Betriebsweit" — nur für Planung und Leitung. */
+function EinheitWahl({ m, wert, setWert, style }) {
+  return (
+    <Sel value={wert ?? ""} onChange={(e) => setWert(e.target.value || null)} style={{ width: 190, ...style }}>
+      <option value="">Betriebsweit</option>
+      {(m.einheiten || []).map((e) => <option key={e.id} value={e.id}>{e.name || e.id}</option>)}
+    </Sel>);
+}
+const einheitName = (m, eid) => (eid ? ((m.einheiten || []).find((e) => e.id === eid) || {}).name || eid : "betriebsweit");
 
 /* ------------------------------ Preisrechnung ----------------------------- */
 /** Zählt Zugänge aus dem laufenden Personalbestand — daher automatisch aktuell. */
@@ -4404,10 +4419,14 @@ const UEBERGABE_FELDER = [
   { id: "material", label: "Material und Betriebsmittel", pflicht: false,
     hinweis: "Fehlendes, Defektes, Übergebenes." },
 ];
-const uebergabeAm = (m, datum, dienstId) =>
-  (m.uebergaben || []).find((u) => u.datum === datum && u.dienstId === dienstId) || null;
+/* Ältere Betriebe trugen `uebergaben: {}` (siehe leererMandant). */
+const uebergabenVon = (m) => (Array.isArray(m.uebergaben) ? m.uebergaben : []);
+/* Eine Übergabe je Tag, Dienstart und Einheit (Commit C2; fehlend wie null). */
+const uebergabeAm = (m, datum, dienstId, einheitId = null) =>
+  uebergabenVon(m).find((u) => u.datum === datum && u.dienstId === dienstId
+    && (u.einheitId ?? null) === (einheitId ?? null)) || null;
 /** Übergaben, die fällig, aber nicht erfolgt sind. */
-function offeneUebergaben(m, tage = 3) {
+function offeneUebergaben(m, tage = 3, einheitId = null) {
   if (!kann(m, "uebergabe")) return [];
   const out = [];
   for (let i = tage; i >= 1; i--) {
@@ -4415,8 +4434,10 @@ function offeneUebergaben(m, tage = 3) {
     for (const da of m.dienstarten) {
       if (da.posten || da.form === "ruf") continue;
       const b = besetzung(m, d)[da.id];
-      if (!b.personen.length) continue;
-      if (!uebergabeAm(m, d, da.id)) out.push({ datum: d, dienstart: da, personen: b.personen });
+      /* Fällig je Einheit: nur, wenn jemand aus ihr im Dienst war. */
+      const personen = einheitId ? b.personen.filter((p) => einheitAm(p, d) === einheitId) : b.personen;
+      if (!personen.length) continue;
+      if (!uebergabeAm(m, d, da.id, einheitId)) out.push({ datum: d, dienstart: da, personen });
     }
   }
   return out;
@@ -11720,6 +11741,7 @@ function Dienstbuch({ sitz, akt }) {
   const arten = [["uebergabe", "Übergabe"], ["vorkommnis", "Vorkommnis"], ["hinweis", "Hinweis"]];
   const eintraege = (m.dienstbuch || []).filter((e) => e.datum === datum);
   const darfSchreiben = darf(sitz, "plan.view.unit");
+  const [einheitId, setEinheitId] = useState(null);
 
   return (
     <div>
@@ -11740,8 +11762,9 @@ function Dienstbuch({ sitz, akt }) {
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
               placeholder="Kurz und sachlich. Keine Gesundheitsdaten, keine Bewertungen von Personen." />
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
               <Btn kind="primary" disabled={!text.trim()}
-                onClick={() => { akt.dienstbuchEintrag(datum, art, text); setText(""); }}>Eintragen</Btn>
+                onClick={() => { akt.dienstbuchEintrag(datum, art, text, einheitId); setText(""); }}>Eintragen</Btn>
             </div>
           </div>
         </Card>)}
@@ -11759,7 +11782,7 @@ function Dienstbuch({ sitz, akt }) {
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill size="sm" tone={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"}>
                     {(arten.find((a) => a[0] === e.art) || [])[1]}</Pill>
-                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}</span>
+                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}{waehltEinheit(sitz) ? ` · ${einheitName(m, e.einheitId)}` : ""}</span>
                 </div>
                 <div style={{ fontSize: 14, color: C.text, marginTop: 6, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.text}</div>
               </div>
@@ -14172,8 +14195,9 @@ function Schichtuebergabe({ sitz, akt }) {
   const [datum, setDatum] = useState(heute());
   const [dienstId, setDienstId] = useState(m.dienstarten.find((d) => !d.posten) ?.id || "");
   const [f, setF] = useState({ lage: "", offen: "", vorkommnis: "", material: "" });
-  const offeneListe = useMemo(() => offeneUebergaben(m, 3), [m]);
-  const vorhanden = uebergabeAm(m, datum, dienstId);
+  const [einheitId, setEinheitId] = useState(() => (waehltEinheit(sitz) ? null : eigeneEinheitVon(sitz)));
+  const offeneListe = useMemo(() => offeneUebergaben(m, 3, einheitId), [m, einheitId]);
+  const vorhanden = uebergabeAm(m, datum, dienstId, einheitId);
   const b = dienstId ? besetzung(m, datum)[dienstId] : null;
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const darfSchreiben = darfEinheit(sitz, sitz.person.bereich) || darf(sitz, "plan.edit.unit");
@@ -14189,6 +14213,7 @@ function Schichtuebergabe({ sitz, akt }) {
       <H1 rubrik={begriff(m, "einheit")}
         sub={`Die ${begriff(m, "uebergabe").toLowerCase()} hält fest, was die übernehmende Schicht wissen muss. Sie ist nachträglich nicht mehr änderbar — Ergänzungen werden angehängt.`}
         right={<div style={{ display: "flex", gap: 10 }}>
+          {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} />}
           <Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 160 }} />
           <Sel value={dienstId} onChange={(e) => setDienstId(e.target.value)} style={{ width: 170 }}>
             {m.dienstarten.filter((d) => !d.posten && d.form !== "ruf")
@@ -14236,13 +14261,13 @@ function Schichtuebergabe({ sitz, akt }) {
                   <Inp placeholder="Ergänzung anhängen …" value={f.nachtrag || ""}
                     onChange={(e) => setF({ ...f, nachtrag: e.target.value })} />
                   <Btn disabled={!(f.nachtrag || "").trim()}
-                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag);
+                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag, einheitId);
                       setF({ ...f, nachtrag: "" }); }}>Anhängen</Btn>
                 </div>)}
             </>) : darfSchreiben && (
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <Btn kind="primary" disabled={!f.lage.trim()}
-                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f)}>
+                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f, einheitId)}>
                   Übergabe abschließen</Btn>
               </div>)}
           </div>
@@ -16646,7 +16671,7 @@ function leererMandant(name, branche, anschrift, kontakt) {
     zyklusLaenge: 7, gruppen: 1, versatzTageVon: 0, anker: montag(jetzt),
     abwesenheiten: [], abweichungen: {}, erfassung: {}, anfragen: [],
     nachrichten: [], aenderungen: [], freigaben: {}, aushaenge: [],
-    uebergaben: {}, ausschreibungen: [], checklisten: [], listeneintraege: {},
+    uebergaben: [], ausschreibungen: [], checklisten: [], listeneintraege: {},
     betriebsmittel: [], protokoll: [], adressAenderungen: [],
     einheitLabel: "Schichtgruppe",
   };
@@ -17292,7 +17317,7 @@ function auftraggeberBericht(m, von, bis, einheitId) {
      ausnahmslos „keine besonderen Vorkommnisse" — gleichgültig, wie viel im
      Betrieb tatsächlich dokumentiert war. */
   const zeilen = [];
-  for (const u of (m.uebergaben || [])) {
+  for (const u of uebergabenVon(m)) {
     if (!u || !u.datum || u.datum < von || u.datum > bis) continue;
     if (!u.vorkommnis) continue;
     /* Eine Übergabe gehört zu der Einheit, aus der jemand an der übergebenen
@@ -17659,7 +17684,7 @@ function Auftraggeberbericht({ sitz, akt }) {
   const e = m.einheiten.find((x) => x.id === einheit);
   /* Wie viele Übergaben es im Zeitraum überhaupt gibt — die Antwort auf
      „warum steht hier nichts". */
-  const uebergabenImZeitraum = (m.uebergaben || [])
+  const uebergabenImZeitraum = uebergabenVon(m)
     .filter((u) => u && u.datum >= von && u.datum <= bis).length;
 
   const alsText = () => {
@@ -21494,25 +21519,30 @@ function AppInnen() {
         melde(`${neue.length} Personen übernommen.`);
         return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
-      dienstbuchEintrag: (datum, art, text) => mUpd((m) => ({ ...m, dienstbuch: [
+      dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [
         { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-          durch: `${sitz.person.vorname} ${sitz.person.nachname}` }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
+          durch: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
 
       melden: melde,
       /* --- Schichtübergabe --- */
-      uebergabeSpeichern: (datum, dienstId, f) => mUpd((m) => {
+      uebergabeSpeichern: (datum, dienstId, f, einheitWahl = null) => mUpd((m) => {
         const jetzt = new Date().toLocaleString("de-DE");
+        const einheitId = waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz);
+        if (uebergabeAm(m, datum, dienstId, einheitId)) { melde("Für diese Schicht und Einheit gibt es schon eine Übergabe."); return m; }
         const b = besetzung(m, datum)[dienstId];
+        const beteiligt = einheitId ? b.personen.filter((p) => einheitAm(p, datum) === einheitId) : b.personen;
         const folge = m.dienstarten.find((d) => !d.posten && d.id !== dienstId);
         melde("Übergabe abgeschlossen. Sie ist ab jetzt unveränderlich.");
-        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId,
+        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId, einheitId,
           lage: f.lage, offen: f.offen, vorkommnis: f.vorkommnis, material: f.material,
           von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          an: folge ? folge.name : null, zeit: jetzt, personen: b.personen.map((p) => p.id),
-          ergaenzungen: [] }, ...(m.uebergaben || [])] };
+          an: folge ? folge.name : null, zeit: jetzt, personen: beteiligt.map((p) => p.id),
+          ergaenzungen: [] }, ...uebergabenVon(m)] };
       }, "Übergabe erfasst"),
-      uebergabeErgaenzen: (datum, dienstId, text) => mUpd((m) => ({ ...m,
-        uebergaben: (m.uebergaben || []).map((u) => u.datum === datum && u.dienstId === dienstId
+      uebergabeErgaenzen: (datum, dienstId, text, einheitWahl = null) => mUpd((m) => ({ ...m,
+        uebergaben: uebergabenVon(m).map((u) => u === uebergabeAm(m, datum, dienstId,
+          waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz))
           ? { ...u, ergaenzungen: [...(u.ergaenzungen || []),
               { zeit: new Date().toLocaleString("de-DE"),
                 von: `${sitz.person.vorname} ${sitz.person.nachname}`, text }] }

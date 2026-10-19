@@ -372,11 +372,14 @@ describe("Sammlungen: je Scope", () => {
   /* Seit Commit C1 sind die Ausschreibungen nicht mehr unverändert: Ohne
      verantwortende eigene Einheit gehen nur die eigenen Bewerbungen hinaus
      (pruefungen/bereich-ausschreibungen.test.js). */
-  it("Plan und Regelwerk vollständig; Dienstbuch, Übergaben vorerst unverändert (Schuld); Ausschreibungen: Kopf vollständig", () => {
+  /* Seit Commit C2: Dienstbuch und Übergaben nur mit einheitId der eigenen
+     Einheit — der Altbestand hier hat keine, geht also nicht hinaus. */
+  it("Plan und Regelwerk vollständig; Dienstbuch, Übergaben ohne Einheit verborgen; Ausschreibungen: Kopf vollständig", () => {
     const g = sammlungen(), m = sichtS(g), roh = g.mandanten[0];
-    for (const f of ["einheiten", "dienstarten", "zyklus", "anker", "abweichungen", "freigaben", "matrix",
-      "dienstbuch", "uebergaben"])
+    for (const f of ["einheiten", "dienstarten", "zyklus", "anker", "abweichungen", "freigaben", "matrix"])
       expect(m[f], f).toEqual(roh[f]);
+    expect(m.dienstbuch).toEqual([]);
+    expect(m.uebergaben).toEqual([]);
     const ohneB = (l) => l.map(({ bewerbungen, ...rest }) => rest); // eslint-disable-line no-unused-vars
     expect(ohneB(m.ausschreibungen)).toEqual(ohneB(roh.ausschreibungen));
   });

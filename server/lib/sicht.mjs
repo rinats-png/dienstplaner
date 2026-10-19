@@ -132,11 +132,10 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
    bekommen („Nachtdienst nicht zulässig", „besondere Schutzprüfung
    erforderlich") — nicht die Gesundheitsmerkmale selbst.
 
-   SCHULD (Bereich): Dienstbuch, Übergaben und Tagesnotizen bekommt die
-   Schichtverantwortung vorerst vollständig. Sie tragen Bewohner- und
-   Vorfallsangaben ohne Bereichsbezug; sie brauchen eine einheitId bzw.
-   bereichId und eine serverseitige Filterung, bevor sie gekürzt werden
-   können. Die übrigen Sammlungen des Betriebs folgen in Commit 1e.2.
+   SCHULD (Bereich): Die Tagesnotizen bekommt die Schichtverantwortung
+   vorerst vollständig; sie brauchen eine einheitId (C3). Dienstbuch und
+   Übergaben tragen seit Commit C2 eine einheitId und gehen nur für die
+   eigene Einheit hinaus.
    ------------------------------------------------------------------------ */
 
 /** Wie weit um heute die Zugehörigkeit zum Bereich zählt. Zentral, damit
@@ -454,9 +453,10 @@ export function bestandSicht(bestand, sitzung, eigener) {
    (nimm), damit ein neues Feld nicht von selbst hinausgeht. Was nicht im
    Katalog SCHICHT steht, geht nicht hinaus.
 
-   SCHULD (Bereich): Dienstbuch, Übergaben und die Tagesnotizen (in
-   `notizen` unter „tag|…") bleiben vorerst vollständig sichtbar; sie
-   tragen keinen Bereich und brauchen eine einheitId (C2, C3). Die
+   SCHULD (Bereich): Die Tagesnotizen (in `notizen` unter „tag|…")
+   bleiben vorerst vollständig sichtbar; sie tragen keinen Bereich und
+   brauchen eine einheitId (C3). Dienstbuch und Übergaben: seit C2 nur die
+   eigene Einheit (siehe nurEigeneEinheit). Die
    Ausschreibungen tragen seit Commit C1 die verantwortende Einheit
    (siehe schichtAusschreibungen).
    ------------------------------------------------------------------------ */
@@ -539,6 +539,16 @@ const schichtAusschreibungen = (w, ctx) => liste(w).map((a) => {
   return ausschreibungDerEinheit(a, ctx.eigene) ? a
     : { ...a, bewerbungen: liste(a.bewerbungen).filter((b) => eigen(b, ctx.ich)) };
 });
+/* Dienstbuch und Übergaben (Commit C2): nur Einträge mit einheitId der
+   eigenen Einheit. Fremde Einheit, Pool-Einheit, null (betriebsweit, Sache
+   der Planung) und Altbestand ohne einheitId gehen nicht hinaus — es wird
+   nichts abgeleitet (fail-closed). Ist die eigene Einheit selbst eine
+   Pool-Einheit, gilt nichts als eigen. */
+export const eigeneEinheitNutzbar = (eigene, pool) => eigene !== null && eigene !== undefined && !pool.has(String(eigene));
+export const eintragDerEinheit = (e, eigene) => !!e && typeof e === "object" && e.einheitId !== undefined
+  && e.einheitId !== null && String(e.einheitId) === String(eigene);
+const nurEigeneEinheit = (w, ctx) => (eigeneEinheitNutzbar(ctx.eigene, ctx.pool)
+  ? liste(w).filter((e) => eintragDerEinheit(e, ctx.eigene)) : []);
 /* notizen: „tag|…" sind die Tagesnotizen (bleiben, siehe Schuld oben);
    „person|…" sind Notizen zu einzelnen Personen — weg. */
 const schichtNotizen = (w) => objektFilter(w, (k, v) => (String(k).startsWith("tag|") ? v : undefined));
@@ -568,7 +578,8 @@ Object.assign(SCHICHT, {
   einarbeitung: R(schichtEinarbeitung),
   betriebsmittel: R(schichtBetriebsmittel),
   sondereinsaetze: R(schichtSondereinsaetze),
-  dienstbuch: VOLL, uebergaben: VOLL, tagesnotizen: VOLL,   // siehe Schuld oben
+  dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
+  tagesnotizen: VOLL,                    // siehe Schuld oben (C3)
   notizen: R(schichtNotizen),
 });
 

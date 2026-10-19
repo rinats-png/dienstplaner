@@ -126,8 +126,12 @@ pruef("Fremde Nachricht löschen: wirkungslos (nicht sichtbar)", wN.status === 2
 const nB = (await gespeichert()).nachrichten.find((n) => n.id === "n-b");
 const wN2 = await versuch((m) => { m.nachrichten.push({ ...nB, titel: "geändert" }); });
 pruef("Fremde Nachricht ändern: 403", wN2.status === 403, `Status ${wN2.status}`);
-const wDb = await versuch((m) => { m.dienstbuch[0].text = "anders"; });
-pruef("Dienstbuch ändern: 403", wDb.status === 403, `Status ${wDb.status}`);
+/* Seit Commit C2 ist der Altbestand ohne einheitId für die
+   Schichtverantwortung verborgen; ein eingeschleuster geänderter Eintrag
+   bleibt abgewiesen (vorher: sichtbar, jede Änderung 403). */
+const dbAlt = (await gespeichert()).dienstbuch[0];
+const wDb = await versuch((m) => { m.dienstbuch.push({ ...dbAlt, text: "anders" }); });
+pruef("Dienstbuch (Altbestand) ändern: 403", wDb.status === 403, `Status ${wDb.status}`);
 const wR = await versuch((m) => { m.personen.find((p) => p.id === "a1").rolle = "planer"; });
 pruef("Rolle einer anderen Person ändern: 403", wR.status === 403, `Status ${wR.status}`);
 const wK = await versuch((m) => { m.abwesenheiten.push({ id: "k-s", personId: "s1", art: "krank", von: "2026-10-20", bis: "2026-10-20" }); });

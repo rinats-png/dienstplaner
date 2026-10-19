@@ -4,7 +4,7 @@ import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
-import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft } from "../lib/gestalt.mjs";
+import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -821,7 +821,7 @@ export default async (req, context) => {
       /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
          eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
          Lesen gar nicht bekommen hat. */
-      const zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
+      let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
       if (!zuSchreiben) {
         await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
@@ -832,6 +832,8 @@ export default async (req, context) => {
         return antwort({ fehler: "Keine Schreibberechtigung.",
           text: zuSchreiben.verweigert }, 403);
       }
+
+      zuSchreiben = uebergabenAngleichen(zuSchreiben);
 
       /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
          fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
@@ -1262,6 +1264,7 @@ export default async (req, context) => {
         await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
         return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
       }
+      w.bestand = uebergabenAngleichen(w.bestand);
       const form = pruefeGestalt(w.bestand);
       if (!form.ok)
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);

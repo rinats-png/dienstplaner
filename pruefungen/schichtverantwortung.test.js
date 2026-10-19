@@ -280,9 +280,15 @@ describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.protokoll = m.protokoll.slice(0, 1); m.abweichungen["a1|2026-11-03"] = "F"; }));
     expect(m.protokoll.map((n) => n.id)).toEqual(["l2", "l1"]);
   });
-  it("11. Dienstbuch ändern, löschen oder ergänzen: abgewiesen (kein Bereichsbezug)", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.dienstbuch[0].text = "anders"; }));
-    ab(schreibe(bestand(), SUB, (m) => { m.dienstbuch = []; }));
+  /* Bis Commit C2 war das Dienstbuch ohne Bereichsbezug der Leitung
+     vorbehalten (jede Änderung 403). Seit C2 trägt es eine einheitId: Der
+     Altbestand ohne Einheit ist für die Schichtverantwortung verborgen und
+     unveränderlich; neue Einträge bekommen ihre eigene Einheit
+     (pruefungen/bereich-dienstbuch-uebergaben.test.js). */
+  it("11. Dienstbuch: Altbestand verborgen und unveränderlich; neue Einträge nur gültig", () => {
+    ab(schreibe(bestand(), SUB, (m) => { m.dienstbuch.unshift({ ...gespeichert("dienstbuch", "db1"), text: "anders" }); }));
+    const leer = ok(schreibe(bestand(), SUB, (m) => { m.dienstbuch = []; m.abweichungen["a1|2026-11-03"] = "F"; }));
+    expect(leer.dienstbuch).toEqual(bestand().mandanten[0].dienstbuch);
     ab(schreibe(bestand(), SUB, (m) => { m.dienstbuch.unshift({ id: "db2", datum: "2026-10-02", text: "neu" }); }));
   });
   it("Unterschreitungen: abgewiesen (kein Bereichsbezug)", () => {
