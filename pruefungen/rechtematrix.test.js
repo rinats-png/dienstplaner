@@ -50,6 +50,7 @@ const bestand = () => ({
     notrufe: [{ id: "nr", personId: "b1", art: "medizin", notiz: "MK-NOTRUF", empfaenger: ["l1"], bestaetigt: null }],
     dienstbuch: [{ id: "db", text: "MK-DIENSTBUCH" }], uebergaben: [{ id: "ue", text: "MK-UEBERGABE" }],
     notizen: { "tag|2026-12-01": [{ id: "tn", text: "MK-TAGESNOTIZ" }], "person|b1": [{ id: "pn", text: "MK-PERSONENNOTIZ" }] },
+    tagesnotizen: { "2026-12-01": "MK-TOTFELD" },
     ausschreibungen: [{ id: "as", datum: "2026-12-05", dienstId: "F", status: "offen", bewerbungen: [{ personId: "b1", text: "MK-BEWERBUNG" }] }],
     protokoll: [{ id: "bl", text: "MK-BETRIEBSPROTOKOLL" }],
     adressAenderungen: [{ personId: "b1", von: "MK-ADRESSE-ALT", nach: "neu@x.de" }],
@@ -105,7 +106,9 @@ const MATRIX = [
   /* Commit C2: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
   ["Dienstbuch",                 "MK-DIENSTBUCH",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Übergaben",                  "MK-UEBERGABE",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 1, 1, 1, 1, 1, 1, "C"],
+  /* Commit C3: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
+  ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["tagesnotizen (totes Feld)",  "MK-TOTFELD",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 1, 1, 1, "A"],
   /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der
      eigenen Einheit (hier: Altbestand ohne einheitId — also nicht). */

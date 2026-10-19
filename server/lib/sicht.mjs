@@ -132,10 +132,8 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
    bekommen („Nachtdienst nicht zulässig", „besondere Schutzprüfung
    erforderlich") — nicht die Gesundheitsmerkmale selbst.
 
-   SCHULD (Bereich): Die Tagesnotizen bekommt die Schichtverantwortung
-   vorerst vollständig; sie brauchen eine einheitId (C3). Dienstbuch und
-   Übergaben tragen seit Commit C2 eine einheitId und gehen nur für die
-   eigene Einheit hinaus.
+   Dienstbuch und Übergaben (Commit C2) sowie die Tagesnotizen (Commit C3)
+   tragen eine einheitId und gehen nur für die eigene Einheit hinaus.
    ------------------------------------------------------------------------ */
 
 /** Wie weit um heute die Zugehörigkeit zum Bereich zählt. Zentral, damit
@@ -453,10 +451,9 @@ export function bestandSicht(bestand, sitzung, eigener) {
    (nimm), damit ein neues Feld nicht von selbst hinausgeht. Was nicht im
    Katalog SCHICHT steht, geht nicht hinaus.
 
-   SCHULD (Bereich): Die Tagesnotizen (in `notizen` unter „tag|…")
-   bleiben vorerst vollständig sichtbar; sie tragen keinen Bereich und
-   brauchen eine einheitId (C3). Dienstbuch und Übergaben: seit C2 nur die
-   eigene Einheit (siehe nurEigeneEinheit). Die
+   Dienstbuch und Übergaben (C2) und die Tagesnotizen (in `notizen` unter
+   „tag|…", C3): nur die eigene Einheit (siehe nurEigeneEinheit,
+   schichtNotizen). Die
    Ausschreibungen tragen seit Commit C1 die verantwortende Einheit
    (siehe schichtAusschreibungen).
    ------------------------------------------------------------------------ */
@@ -549,9 +546,15 @@ export const eintragDerEinheit = (e, eigene) => !!e && typeof e === "object" && 
   && e.einheitId !== null && String(e.einheitId) === String(eigene);
 const nurEigeneEinheit = (w, ctx) => (eigeneEinheitNutzbar(ctx.eigene, ctx.pool)
   ? liste(w).filter((e) => eintragDerEinheit(e, ctx.eigene)) : []);
-/* notizen: „tag|…" sind die Tagesnotizen (bleiben, siehe Schuld oben);
-   „person|…" sind Notizen zu einzelnen Personen — weg. */
-const schichtNotizen = (w) => objektFilter(w, (k, v) => (String(k).startsWith("tag|") ? v : undefined));
+/* notizen: „tag|…" sind die Tagesnotizen — seit Commit C3 nur die Einträge
+   der eigenen Einheit (wie Dienstbuch und Übergaben; fremde, Pool, null und
+   Altbestand ohne einheitId nicht). Ein Tag ohne sichtbaren Eintrag fällt
+   ganz weg. „person|…" sind Notizen zu einzelnen Personen — weg. */
+const schichtNotizen = (w, ctx) => objektFilter(w, (k, v) => {
+  if (!String(k).startsWith("tag|")) return undefined;
+  const sichtbar = nurEigeneEinheit(v, ctx);
+  return sichtbar.length ? sichtbar : undefined;
+});
 
 /** Je Betriebsfeld die Regel für die Schichtverantwortung. Ausgangspunkt
     ist die Spalte der Beschäftigten, wo sie Vollständiges oder nichts
@@ -579,7 +582,8 @@ Object.assign(SCHICHT, {
   betriebsmittel: R(schichtBetriebsmittel),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
-  tagesnotizen: VOLL,                    // siehe Schuld oben (C3)
+  /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */
+  tagesnotizen: WEG,
   notizen: R(schichtNotizen),
 });
 

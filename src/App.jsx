@@ -14078,7 +14078,11 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
 function Notizen({ sitz, akt, schluessel, titel, onClose }) {
   const m = sitz.mandant;
   const [text, setText] = useState("");
+  const [einheitId, setEinheitId] = useState(null);
   const liste = notizenZu(m, schluessel);
+  /* Tagesnotizen tragen eine Einheit (Commit C3): Planung und Leitung wählen,
+     die Schichtverantwortung schreibt für ihre eigene und löscht nur eigene. */
+  const darfLoeschen = (x) => waehltEinheit(sitz) || x.vonId === sitz.person.id;
   return (
     <Sheet open onClose={onClose} titel={titel} width={540}>
       <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
@@ -14090,8 +14094,8 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
           <div key={x.id} className="karte" style={{ padding: 14, marginBottom: 9 }}>
             <div style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{x.text}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 }}>
-              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}</span>
-              <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>
+              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}{waehltEinheit(sitz) ? ` · ${einheitName(m, x.einheitId)}` : ""}</span>
+              {darfLoeschen(x) && <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>}
             </div>
           </div>))}
       </div>}
@@ -14099,9 +14103,10 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
         <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
           placeholder="z. B. neu im Team, bis Ende Mai nicht allein einteilen" /></Field>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+        {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
         <Btn kind="quiet" onClick={onClose}>Schließen</Btn>
         <Btn kind="primary" disabled={!text.trim()}
-          onClick={() => { akt.neueNotiz(schluessel, text); setText(""); }}>Hinzufügen</Btn>
+          onClick={() => { akt.neueNotiz(schluessel, text, einheitId); setText(""); }}>Hinzufügen</Btn>
       </div>
     </Sheet>);
 }
@@ -22007,9 +22012,10 @@ function AppInnen() {
       }, null),
 
       /* --- Notizen --- */
-      neueNotiz: (k, text) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
-        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          zeit: new Date().toLocaleString("de-DE") }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
+      neueNotiz: (k, text, einheitId = null) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
+        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          zeit: new Date().toLocaleString("de-DE"),
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
       loescheNotiz: (k, id) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
         [k]: ((m.notizen || {})[k] || []).filter((x) => x.id !== id) } }), null),
 

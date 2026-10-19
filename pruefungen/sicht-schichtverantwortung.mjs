@@ -75,7 +75,7 @@ const start = { version: 9, stand: 1, session: null, mandanten: [{
     "b1|2026-10-01": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "x" } },
   einstempeln: { "a1|2026-10-01": { start: "06:00", ortStart: "Abweichend, 4 km", innerhalbStart: false, geprueftStart: true } },
   protokoll: [{ id: "l1", zeit: "1", text: "Lohn geändert" }],
-  notizen: { "tag|2026-12-01": [{ id: "tn", text: "Tagesnotiz" }], "person|a1": [{ id: "pn", text: "interne Leitungsnotiz zur Person" }] },
+  notizen: { "tag|2026-12-01": [{ id: "tn", text: "Tagesnotiz", einheitId: "e1" }, { id: "tn-alt", text: "Tagesnotiz ohne Einheit" }], "person|a1": [{ id: "pn", text: "interne Leitungsnotiz zur Person" }] },
   preisgestaltung: { sonder: 0 }, kontaktName: "Chef", ustId: "DE123",
   standorte: [{ id: "st1", name: "Haupthaus", lat: 50.1, lon: 8.6, radius: 150 }],
   geheimeSammlung: [{ x: "darf-nicht-raus" }],
@@ -115,8 +115,10 @@ pruef("„geheim\" nur am eigenen Kalendergeheimnis", (text.match(/geheim/g) || 
   pruef("Nachrichten: nur eigene", JSON.stringify(m.nachrichten.map((n) => n.id)) === JSON.stringify(["n-s"]));
   pruef("Erfassung: Bereich ohne Grund, fremd weg", JSON.stringify(m.erfassung) === JSON.stringify({ "a1|2026-10-01": { start: "06:00", ende: "15:00", bestaetigt: true } }));
   pruef("Stempelzeiten anderer nicht sichtbar", JSON.stringify(m.einstempeln) === "{}");
-  pruef("Protokoll leer, Personennotiz weg, Tagesnotiz da", m.protokoll.length === 0
-    && JSON.stringify(Object.keys(m.notizen)) === JSON.stringify(["tag|2026-12-01"]));
+  /* Seit Commit C3 nur Tagesnotizen der eigenen Einheit (die ohne Einheit nicht). */
+  pruef("Protokoll leer, Personennotiz weg, Tagesnotiz der eigenen Einheit da, ohne Einheit nicht", m.protokoll.length === 0
+    && JSON.stringify(Object.keys(m.notizen)) === JSON.stringify(["tag|2026-12-01"])
+    && JSON.stringify(m.notizen["tag|2026-12-01"].map((x) => x.id)) === JSON.stringify(["tn"]));
   pruef("Standort ohne Koordinaten", JSON.stringify(m.standorte) === JSON.stringify([{ id: "st1", name: "Haupthaus" }]));
   pruef("Kaufmännisches weg", m.preisgestaltung === undefined && m.ustId === undefined && m.kontaktName === undefined);
   pruef("Oben nur Zähler, Sitzungsmarke, Betrieb", JSON.stringify(Object.keys(rS.bestand).sort())

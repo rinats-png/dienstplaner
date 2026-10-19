@@ -1,7 +1,8 @@
 # Rechtematrix — Lesesicht und Verwaltungswege
 
 Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1e.4), Commit 3 (Kalender) und
-Commit 4 (Versand und Zustellung auf dem Server).
+Commit 4 (Versand und Zustellung auf dem Server) und C-Block C1–C3 (Bereichsbezug: Ausschreibungen,
+Dienstbuch, Übergaben, Tagesnotizen).
 Regressionstest: `pruefungen/rechtematrix.test.js` — jede Zeile der Tabelle unten ist dort ein Marker
 mit Erwartung je Rolle und Lesepfad. **Matrix und Test werden zusammen geändert.**
 
@@ -9,7 +10,7 @@ Einordnung je Zeile:
 
 - **A** sauber
 - **B** bewusst offen bis zu einem eigenen Schritt (siehe Fußnote; die Punkte „bis Commit 4" sind erledigt)
-- **C** bewusst offen, bis die Sammlung einen Bereichsbezug (`einheitId`/`bereichId`) hat
+- **C** bewusst offen, bis die Sammlung einen Bereichsbezug (`einheitId`/`bereichId`) hat — seit Commit C3 keine mehr
 - **S** dokumentierte technische/datenschutzrechtliche Schuld
 - **D** neuer Befund — derzeit keiner
 
@@ -47,7 +48,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Notrufe anderer | – | – | nur Bereich und an sie | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Dienstbuch | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Übergaben | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Tagesnotizen (`notizen` „tag\|…") | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | C |
+| Tagesnotizen (`notizen` „tag\|…") | – | – | nur eigene Einheit ⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
+| `tagesnotizen` (totes Feld, keine Ansicht) | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
@@ -75,6 +77,11 @@ nicht die von Personen ihres Bereichs; der Springer-Pool zählt nicht als eigene
 nur ihre eigene Einheit — nicht fremde, Pool, `null` oder Altbestand ohne `einheitId` (keine Ableitung). Sie hängt neue
 Dienstbucheinträge und Übergaben der eigenen Einheit an (Einheit, Autor, Zeit setzt der Server) und ergänzt nur Übergaben
 der eigenen Einheit. Eine Übergabe ist eindeutig je Tag, Dienstart und Einheit.
+⁹ Commit C3: Jeder Eintrag in `notizen["tag|…"]` trägt `einheitId` (bekannte Einheit oder `null` = betriebsweit) und
+`vonId`. Die Schichtverantwortung sieht nur Einträge ihrer eigenen Einheit — nicht fremde, Pool, `null` oder Altbestand
+ohne `einheitId`; ohne gültigen eigenen Bereich keine. Sie hängt neue an (Einheit, Autor, Zeit setzt der Server) und
+löscht nur selbst verfasste ihrer Einheit; Bestehendes ist unveränderlich. Die Rückfüllung führt Listen je Schlüssel
+über die Kennung zusammen (verborgene Notizen desselben Tages bleiben).
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -120,8 +127,7 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Versandwarteschlange und mehrere Geräte je Person | bei Bedarf |
 | Crash-Fenster beim Versand: Abbruch nach externem Versand und vor Statusabschluss — nach 15 Minuten erneuter Versand möglich | Restschuld, ohne Queue/Transaktion |
 | Rückfall-Alarmierung, wenn ein Notruf keinen gültigen Empfänger hat (heute: keine Mitteilung) | Produktentscheidung |
-| Bereichsbezug für Tagesnotizen (Ausschreibungen: C1; Dienstbuch, Übergaben: C2) | C3 |
-| Altbestand von Dienstbuch und Übergaben ohne `einheitId` einer Einheit zuordnen (heute nur für Planung/Leitung sichtbar) | eigener Schritt |
+| Altbestand von Dienstbuch, Übergaben und Tagesnotizen ohne `einheitId` einer Einheit zuordnen (heute nur für Planung/Leitung sichtbar) | eigener Schritt |
 | Rohe Schutzmerkmale für die Schichtverantwortung im eigenen Bereich statt abgeleiteter Aussagen | Schuld, mit der gemeinsamen Planrechnung |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |

@@ -357,11 +357,13 @@ describe("Sammlungen: je Scope", () => {
     expect(ids(m.betriebsmittel)).toEqual(["bm0", "bm-a"]);
     expect(ids(m.sondereinsaetze)).toEqual(["se-a"]);
   });
-  it("Betriebsweit: Protokoll, Adressänderungen, Personennotizen und Kaufmännisches weg; Tagesnotizen bleiben", () => {
+  /* Seit Commit C3 gehen Tagesnotizen nur mit einheitId der eigenen Einheit
+     hinaus; die hier (ohne Einheit, Altbestand) also nicht mehr. */
+  it("Betriebsweit: Protokoll, Adressänderungen, Personennotizen und Kaufmännisches weg; Tagesnotizen ohne Einheit ebenso", () => {
     const m = sichtS();
     expect(m.protokoll).toEqual([]);
     expect(m.adressAenderungen).toEqual([]);
-    expect(Object.keys(m.notizen)).toEqual([`tag|${tag(1)}`]);
+    expect(Object.keys(m.notizen)).toEqual([]);
     for (const f of ["tarif", "preisgestaltung", "rabattGrund", "kontakt", "kontaktName", "anschrift", "ustId", "notiz",
       "seit", "bis", "testTage", "selbstAngelegt", "raum", "lohnarten"])
       expect(m[f] === undefined || (Array.isArray(m[f]) && m[f].length === 0), f).toBe(true);   // Listen bleiben leer stehen

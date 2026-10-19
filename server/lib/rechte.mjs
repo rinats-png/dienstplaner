@@ -598,6 +598,15 @@ function listeRueckfuellen(alt, neu, sicht, ich) {
 function objektRueckfuellen(alt, neu, sicht, ich) {
   const aus = {};
   for (const k of new Set([...Object.keys(alt), ...Object.keys(neu)])) {
+    /* Listen je Schlüssel (notizen „tag|…", Commit C3): Einträge wie bei
+       Listen zusammenführen — sonst ginge mit einem sichtbaren Eintrag eines
+       Tages jeder verborgene desselben Tages verloren. Ein ganz verborgener
+       Schlüssel zählt als leere Sicht. */
+    if (hat(neu, k) && hat(alt, k) && Array.isArray(alt[k]) && Array.isArray(neu[k])
+        && (!hat(sicht, k) || Array.isArray(sicht[k]))) {
+      aus[k] = listeRueckfuellen(alt[k], neu[k], hat(sicht, k) ? sicht[k] : [], ich);
+      continue;
+    }
     if (hat(neu, k)) aus[k] = !hat(sicht, k) || !hat(alt, k) ? neu[k]
       : gleichJson(neu[k], sicht[k]) ? alt[k] : eintragRueckfuellen(alt[k], neu[k], sicht[k], ich);
     else if (hat(alt, k) && !hat(sicht, k)) aus[k] = alt[k];
@@ -1025,8 +1034,8 @@ const einheitDerUebergabe = (u) => (u && u.einheitId !== undefined && u.einheitI
 const uebergabeSchluessel = (u) => `${u && u.datum}|${u && u.dienstId}|${einheitDerUebergabe(u)}`;
 
 /** Planung und Leitung: neue oder umgehängte Einträge nur mit bekannter
-    einheitId oder null; neue Dienstbucheinträge bekommen vonId; keine zwei
-    Übergaben mit gleichem Tag, Dienst und Einheit. */
+    einheitId oder null; neue Dienstbucheinträge und Tagesnotizen bekommen
+    vonId; keine zwei Übergaben mit gleichem Tag, Dienst und Einheit. */
 function einheitsbezugVoll(altM, neuM, sitzung) {
   const einheiten = new Set((altM.einheiten || []).filter(Boolean).map((e) => String(e.id)));
   const gueltig = (e) => e.einheitId === undefined || e.einheitId === null || einheiten.has(String(e.einheitId));
@@ -1062,6 +1071,29 @@ function einheitsbezugVoll(altM, neuM, sitzung) {
       }
     }
     if (geaendert) aus = { ...aus, [feld]: liste };
+  }
+  /* Tagesnotizen (Commit C3): neue Einträge nur mit bekannter einheitId oder
+     null, vonId vom Server. */
+  if (neuM.notizen && typeof neuM.notizen === "object" && !Array.isArray(neuM.notizen)) {
+    const altN = altM.notizen && typeof altM.notizen === "object" ? altM.notizen : {};
+    let geaendert = false;
+    const notizen = {};
+    for (const [k, liste] of Object.entries(neuM.notizen)) {
+      if (!String(k).startsWith("tag|") || !Array.isArray(liste)) { notizen[k] = liste; continue; }
+      const alt = new Map((Array.isArray(altN[k]) ? altN[k] : []).filter((e) => e && typeof e === "object" && kennungGueltig(e.id))
+        .map((e) => [String(e.id), e]));
+      const neu = [];
+      for (const e of liste) {
+        const vorher = e && typeof e === "object" && kennungGueltig(e.id) ? alt.get(String(e.id)) : undefined;
+        if (e && typeof e === "object" && (!vorher || !gleich(vorher.einheitId, e.einheitId)) && !gueltig(e))
+          return { grund: "notizen: unbekannte Einheit." };
+        if (e && typeof e === "object" && !vorher && sitzung.person !== null && sitzung.person !== undefined
+            && String(e.vonId) !== String(sitzung.person)) { neu.push({ ...e, vonId: sitzung.person }); geaendert = true; continue; }
+        neu.push(e);
+      }
+      notizen[k] = neu;
+    }
+    if (geaendert) aus = { ...aus, notizen };
   }
   return { mandant: aus };
 }
@@ -1466,6 +1498,55 @@ export function einheitZusammen(altM, neuM, sitzung) {
           liste.push(p);
         }
         aus.personen = liste;
+        break;
+      }
+
+      /* --- Tagesnotizen (Commit C3): notizen[„tag|JJJJ-MM-TT"] ---
+             Neue Notizen der eigenen Einheit anhängen (Einheit, Autor, Zeit
+             setzt der Server), eigene (selbst verfasste, eigene Einheit)
+             löschen. Bestehende sind unveränderlich; fremde, Pool-, null-
+             und Altbestand-Notizen sieht die Schichtverantwortung nicht und
+             kann sie weder ändern, löschen noch übernehmen. Personennotizen
+             („person|…") bleiben der Leitung vorbehalten. --- */
+      case "notizen": {
+        const altO = a && typeof a === "object" && !Array.isArray(a) ? a : {};
+        if (n !== undefined && (!n || typeof n !== "object" || Array.isArray(n))) return nein("notizen: ungültige Form.");
+        const neuO = n || {};
+        const ergebnis = {};
+        for (const k of new Set([...Object.keys(altO), ...Object.keys(neuO)])) {
+          if (gleich(altO[k], neuO[k])) { if (k in altO) ergebnis[k] = altO[k]; continue; }
+          if (!(k in neuO)) { ergebnis[k] = altO[k]; continue; }          // nicht mitgeschickt: bleibt
+          if (!/^tag\|\d{4}-\d{2}-\d{2}$/.test(k)) return nein("Personennotizen sind der Leitung vorbehalten.");
+          if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) keine Tagesnotiz.");
+          if (!Array.isArray(neuO[k])) return nein("notizen: ungültige Form.");
+          const altL = (Array.isArray(altO[k]) ? altO[k] : []).filter((e) => e && typeof e === "object");
+          const altNach = new Map(altL.filter((e) => kennungGueltig(e.id)).map((e) => [String(e.id), e]));
+          const gesehen = new Set();
+          const neue = [];
+          for (const e of neuO[k]) {
+            if (!e || typeof e !== "object" || !kennungGueltig(e.id)) return nein("notizen: Eintrag ohne Kennung.");
+            const id = String(e.id);
+            if (gesehen.has(id)) return nein("notizen: doppelte Kennung.");
+            gesehen.add(id);
+            const vorher = altNach.get(id);
+            if (vorher) {
+              if (!gleich(vorher, e)) return nein("Bestehende Tagesnotizen sind nicht änderbar.");
+              continue;
+            }
+            if (typeof e.text !== "string" || !e.text.trim() || e.text.length > ANMERKUNG_MAX)
+              return nein("Eine Tagesnotiz braucht einen Text mit höchstens 2000 Zeichen.");
+            neue.push({ id: e.id, text: e.text, von: meinName, vonId: ich.id, zeit: jetztText(), einheitId: eigene });
+          }
+          const bleiben = [];
+          for (const e of altL) {
+            if (!kennungGueltig(e.id) || gesehen.has(String(e.id))) { bleiben.push(e); continue; }
+            /* gelöscht: nur die eigene Notiz der eigenen Einheit */
+            if (!(eintragDerEinheit(e, eigene) && String(e.vonId) === ichId))
+              return nein("Fremde Tagesnotizen lassen sich nicht löschen.");
+          }
+          ergebnis[k] = [...neue, ...bleiben];
+        }
+        aus.notizen = ergebnis;
         break;
       }
 
