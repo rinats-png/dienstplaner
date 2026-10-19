@@ -22086,13 +22086,13 @@ function AppInnen() {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
             const k = `${pid}|${datum}`;
-            const alt = (m.einstempeln || {})[k] || {};
-            const neu = art === "start"
-              ? { start: erg.zeit, ortStart: erg.ort, innerhalbStart: erg.innerhalb }
-              : { ...alt, ende: erg.zeit, ortEnde: erg.ort, innerhalbEnde: erg.innerhalb };
-            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-            if (art === "ende") mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
-              [k]: { start: neu.start, ende: erg.zeit, bestaetigt: true, grund: "" } } };
+            /* Übernommen wird, was der Server gespeichert hat (eintrag,
+               erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
+               409 bei gleichzeitigem Speichern) landet unten im catch und
+               ändert lokal nichts. */
+            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag } };
+            if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+              [k]: erg.erfassung } };
             return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
           });
           melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}`);

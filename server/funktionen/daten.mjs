@@ -913,6 +913,15 @@ export default async (req, context) => {
 
       const k = `${person.id}|${datum}`;
       const alt = (m.einstempeln || {})[k] || {};
+      /* Ein zweites Ein- oder Ausstempeln am selben Tag überschrieb bisher
+         das erste — ein erneutes Einstempeln löschte dabei sogar das schon
+         gestempelte Ende. Gestempeltes bleibt; korrigieren kann die Leitung. */
+      if ((art === "start" && alt.start) || (art === "ende" && alt.ende)) {
+        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
+        return antwort({ fehler: art === "start" ? "Für diesen Tag ist schon eingestempelt."
+          : "Für diesen Tag ist schon ausgestempelt.",
+        code: art === "start" ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
+      }
       const neu = art === "start"
         ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
             geprueftStart: urteil.geprueft }
@@ -929,9 +938,20 @@ export default async (req, context) => {
 
       const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
         erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
-      await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`, wer);
+      /* Bis Oktober 2026 kam hier auch nach einem gescheiterten Schreiben
+         (gleichzeitige Änderung desselben Monats) „ok: true" zurück — die
+         Oberfläche zeigte eine Stempelzeit, die es auf dem Server nicht gab. */
+      if (!ergSt.ok) {
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
+        return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
+          + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
+      }
+      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`, wer);
+      /* Zurück geht der gespeicherte Stand, damit die Oberfläche ihn
+         übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, etag: ergSt.stand || null });
+        geprueft: urteil.geprueft, etag: ergSt.stand || null, datum, eintrag: neu,
+        erfassung: art === "ende" ? neuerMandant.erfassung[k] : null });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------

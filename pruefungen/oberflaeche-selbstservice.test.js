@@ -172,3 +172,21 @@ describe("Zeiten bestätigen", () => {
     expect(q).toContain("pid !== sitz.person.id");
   });
 });
+
+/* Commit 1d.3: Die Stempeluhr meldete auch nach einem gescheiterten Schreiben
+   Erfolg, und die Oberfläche baute daraus eine eigene Kopie. Jetzt wird der
+   gespeicherte Eintrag des Servers übernommen; ein Fehler ändert lokal nichts. */
+describe("Stempeln", () => {
+  const i = APP.indexOf("      stempeln: async (pid, datum, art, koord) => {");
+  const q = APP.slice(i, APP.indexOf("\n      setzeVerfuegbarkeit:", i));
+  it("übernimmt eintrag und erfassung des Servers, baut keine eigene Kopie", () => {
+    expect(i).toBeGreaterThan(0);
+    expect(q).toContain("[k]: erg.eintrag");
+    expect(q).toContain("[k]: erg.erfassung");
+    expect(q).not.toContain("innerhalbStart: erg.innerhalb");
+  });
+  it("nachgezogen wird erst nach der Antwort; ein Fehler meldet nur", () => {
+    expect(q.indexOf("await SP.stempeln")).toBeLessThan(q.indexOf("erg.eintrag"));
+    expect(q).toMatch(/catch \(e\) \{\s*melde\(e\.message/);
+  });
+});

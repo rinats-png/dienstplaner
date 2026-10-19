@@ -33,7 +33,7 @@
     "pruefung:erstbefuellung-http": "node pruefungen/erstbefuellung.mjs",
     "pruefung:schichtverantwortung": "vitest run pruefungen/schichtverantwortung.test.js",
     "pruefung:schichtverantwortung-http": "node pruefungen/schichtverantwortung.mjs",
-    "pruefung:zeiterfassung": "vitest run pruefungen/zeiterfassung.test.js",
+    "pruefung:zeiterfassung": "vitest run pruefungen/zeiterfassung.test.js pruefungen/stempeln.test.js",
     "pruefung:zeiterfassung-http": "node pruefungen/zeiterfassung.mjs",
     "pruefung:scherben": "node pruefungen/scherben.mjs",
     "pruefung:typen": "tsc -p jsconfig.json",

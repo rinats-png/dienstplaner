@@ -128,6 +128,11 @@ const sHeute = await rufe(tA, "stempeln", "POST", { datum: HEUTE, art: "start" }
 pruef("/api/stempeln heute: 200", sHeute.status === 200, `Status ${sHeute.status}`);
 const sEnde = await rufe(tA, "stempeln", "POST", { datum: HEUTE, art: "ende" });
 pruef("/api/stempeln heute Ende: 200", sEnde.status === 200, `Status ${sEnde.status}`);
+const sNochmal = await rufe(tA, "stempeln", "POST", { datum: HEUTE, art: "start" });
+pruef("/api/stempeln zweites Einstempeln am selben Tag: 409, nichts überschrieben",
+  sNochmal.status === 409 && sNochmal.code === "STEMPEL_SCHON_EINGESTEMPELT", `Status ${sNochmal.status}`);
+pruef("/api/stempeln liefert den gespeicherten Eintrag", sEnde.eintrag && sEnde.eintrag.geprueftEnde !== undefined
+  && sEnde.erfassung && sEnde.erfassung.bestaetigt === true);
 const sZukunft = await rufe(tA, "stempeln", "POST", { datum: tag(1), art: "start" });
 pruef("/api/stempeln morgen: abgewiesen", sZukunft.status === 422, `Status ${sZukunft.status}`);
 const sAlt = await rufe(tA, "stempeln", "POST", { datum: tag(-5), art: "start" });

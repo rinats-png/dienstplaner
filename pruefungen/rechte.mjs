@@ -242,17 +242,19 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
     amOrt.status === 200 && amOrt.innerhalb === true && amOrt.geprueft === true,
     JSON.stringify({ innerhalb: amOrt.innerhalb, ort: amOrt.ort }));
 
-  const weitWeg = await stempel("ende", 52.5200, 13.4050);   // Berlin
-  pruef("Weit entfernt wird als abweichend erkannt",
-    weitWeg.status === 200 && weitWeg.innerhalb === false,
-    JSON.stringify({ innerhalb: weitWeg.innerhalb, ort: weitWeg.ort }));
-
-  /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
+  /* Ausstempeln aus Berlin, mit einem mitgeschickten Urteil „innerhalb".
+     Seit Commit 1d.3 lässt sich am selben Tag nicht ein zweites Mal
+     einstempeln — beide Prüfungen laufen deshalb über das Ausstempeln. */
   const gelogen = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
     headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-    body: JSON.stringify({ datum: heute, art: "start",
+    body: JSON.stringify({ datum: heute, art: "ende",
       lat: 52.5200, lon: 13.4050, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
   const gelogenD = await gelogen.json();
+  pruef("Weit entfernt wird als abweichend erkannt",
+    gelogen.status === 200 && gelogenD.innerhalbEnde !== true && gelogenD.innerhalb === false,
+    JSON.stringify({ innerhalb: gelogenD.innerhalb, ort: gelogenD.ort }));
+
+  /* Der eigentliche Punkt: Der Client kann das Urteil nicht mitliefern. */
   pruef("Ein mitgeschicktes Urteil wird ignoriert",
     gelogenD.innerhalb === false,
     `innerhalb=${gelogenD.innerhalb} trotz innerhalb:true im Rumpf`);
