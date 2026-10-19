@@ -6,7 +6,7 @@ import {
   dauer, brutto, fenster,
   dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefundeFuer, stundengrenzeAusRegeln, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzBefundeFuer, stundengrenzeAusRegeln, einsatzSchutz, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -2573,9 +2573,19 @@ function hindernisse(m, p, d, da) {
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
     if (n >= e.maxDiensteWoche) g.push(`bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
   }
-  // Wiedereingliederung
-  const w = e.wiedereingliederung;
-  if (w && w.von <= d && w.bis >= d) {
+  /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
+     eingeteilt werden darf, braucht im Dienst jemanden ohne diese
+     Einschränkung (Commit S2). */
+  if (e.keinAlleindienst) {
+    const b = besetzung(m, d)[da.id];
+    const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
+    if (mit.length === 0) g.push("darf nicht allein eingeteilt werden");
+  }
+  /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
+     die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
+     (Schichtverantwortung); fehlen diese, sperrt sie. Harte Befunde sind
+     Hindernisse; weiche liest schutzHinweise. */
+  const schutz = einsatzSchutz(p, da, d, () => {
     const mo = montag(d);
     let std = 0;
     for (let i = 0; i < 7; i++) {
@@ -2584,9 +2594,12 @@ function hindernisse(m, p, d, da) {
       const x = m.dienstarten.find((y) => y.id === t.dienstId);
       if (x) std += dauer(x);
     }
-    if (std + dauer(da) > w.maxStundenWoche)
-      g.push(`Wiedereingliederung: höchstens ${n1(w.maxStundenWoche)} h je Woche`);
-  }
+    return std;
+  });
+  g.push(...schutz.hindernisse);
+  if (schutz.grenze)
+    g.push(schutz.grenze.neutral ? `Wochenstundengrenze: höchstens ${n1(schutz.grenze.maxStundenWoche)} h je Woche`
+      : `Wiedereingliederung: höchstens ${n1(schutz.grenze.maxStundenWoche)} h je Woche`);
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -2653,6 +2666,8 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
     if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
       punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
+    /* Weiche Schutzregeln sperren nicht, stehen aber dabei (Commit S2). */
+    for (const h of einsatzSchutz(p, da, d).hinweise) gruende.push(`Hinweis: ${h}`);
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -11843,7 +11858,8 @@ function folgenPruefen(m, person, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { hindernisse: [], hinweise: [] };
   const hind = hindernisse(m, person, datum, da);
-  const hinweise = [];
+  /* Weiche Schutzregeln als Hinweis (Commit S2). */
+  const hinweise = einsatzSchutz(person, da, datum).hinweise.map((text) => ({ art: "warn", text }));
   const map = Object.fromEntries(m.dienstarten.map((x) => [x.id, x]));
 
   // Folgeschichten in beide Richtungen ausdrücklich benennen

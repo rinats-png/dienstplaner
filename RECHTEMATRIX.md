@@ -87,6 +87,8 @@ Schichtverantwortung (Bereich und Pool) nicht mehr hinaus. Stattdessen trägt di
 ohne Grund (Nacht, Tagesdauer, Wochenende, Sonntag, über 8 h, Wochenstundengrenze), mit Zeitraum, bei jedem Lesen aus dem
 gespeicherten Datensatz abgeleitet und nie gespeichert. Befunde dazu sind neutral, ohne Diagnose und ohne Gesetz; fehlen
 die Regeln, sperrt die Prüfung („Schutzprüfung nicht möglich"). Vorsorgehinweise sieht die Schichtverantwortung nicht.
+Seit Commit S2 gilt dieselbe Schutzprüfung auch bei der Einteilung (Ersatzsuche, Vergabe, Vorschläge, Selbstplanung:
+`hindernisse`): harte Regeln sperren, weiche sind Hinweise, ohne Einsatzregeln sperrt sie.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -134,7 +136,6 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Rückfall-Alarmierung, wenn ein Notruf keinen gültigen Empfänger hat (heute: keine Mitteilung) | Produktentscheidung |
 | Altbestand von Dienstbuch, Übergaben und Tagesnotizen ohne `einheitId` einer Einheit zuordnen (heute nur für Planung/Leitung sichtbar) | eigener Schritt |
 | Restrückschluss aus einzelnen Einsatzregeln (Sonntag nur mit Freigabe; über 8 h nur nach Absprache) auf das Merkmal (Commit S1, bewusst) | Schuld S |
-| Ersatzsuche (`hindernisse`) berücksichtigt keine Schutzregeln — für alle Rollen | S2 |
 | Betreiber erhält den ganzen Bestand samt Gesundheitsdaten | eigener Block nach S2 |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |

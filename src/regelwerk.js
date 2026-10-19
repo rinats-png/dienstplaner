@@ -793,6 +793,48 @@ export function schutzBefundeFuer(person, dienstart, datum) {
   return schutzBefunde(person, dienstart, datum);
 }
 
+/** Die Wochenstundengrenze einer Person: aus den Rohdaten
+    (einschraenkungen.wiedereingliederung) oder — ohne sie — aus den
+    Einsatzregeln. { von, bis, maxStundenWoche, neutral } oder null. */
+export function stundengrenzeFuer(person) {
+  const w = person && person.einschraenkungen && person.einschraenkungen.wiedereingliederung;
+  if (w) return { von: w.von, bis: w.bis, maxStundenWoche: w.maxStundenWoche, neutral: false };
+  const n = stundengrenzeAusRegeln(person && person.planungsregeln);
+  return n ? { ...n, neutral: true } : null;
+}
+
+/**
+ * Schutz bei der Einteilung eines Dienstes (Ersatzsuche, Vergabe,
+ * Selbstplanung — alles, was hindernisse() in App.jsx fragt; Commit S2).
+ * Dieselbe Prüfung wie die Planprüfung (schutzBefundeFuer), auf beiden
+ * Sichten — Rohdaten oder Einsatzregeln, sonst sperrend:
+ * - harte Befunde sperren (hindernisse), weiche sind Hinweise;
+ * - die Wochenstundengrenze sperrt, wie sie es in hindernisse() schon vor
+ *   S1 tat, wenn der Dienst sie überschreiten würde. wochenStunden sind die
+ *   in der Woche schon geplanten Stunden (Zahl oder Funktion).
+ * Texte für die Einsatzregeln sind neutral; mit Rohdaten trägt der Text die
+ * Fundstelle wie in der Planprüfung.
+ * @param {any} person
+ * @param {any} dienstart
+ * @param {string} datum
+ * @param {number | (() => number)} [wochenStunden]
+ * @returns {{ hindernisse: string[], hinweise: string[], grenze: null | { maxStundenWoche: number, neutral: boolean } }}
+ */
+export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0) {
+  const hindernisse = [], hinweise = [];
+  for (const b of /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum))) {
+    const satz = String(b.text || "").replace(/\.$/, "");
+    (b.hart ? hindernisse : hinweise).push(b.neutral ? satz : `${b.regel}: ${satz}`);
+  }
+  let grenze = null;
+  const w = stundengrenzeFuer(person);
+  if (w && w.von <= datum && w.bis >= datum) {
+    const std = typeof wochenStunden === "function" ? wochenStunden() : wochenStunden;
+    if (std + dauer(dienstart) > w.maxStundenWoche) grenze = { maxStundenWoche: w.maxStundenWoche, neutral: w.neutral };
+  }
+  return { hindernisse, hinweise, grenze };
+}
+
 /** Die Wochenstundengrenze aus den Einsatzregeln — in der Form, die die
     Prüfung bisher aus einschraenkungen.wiedereingliederung las. */
 export function stundengrenzeAusRegeln(planungsregeln) {

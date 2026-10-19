@@ -205,6 +205,10 @@ jobs:
       - name: Schutzmerkmale Sicht
         run: npm run pruefung:schutzmerkmale-sicht
 
+      # Ersatzsuche: harte Schutzregeln sperren, auf Rohdaten und Einsatzregeln (S2).
+      - name: Schutzregeln Ersatzsuche
+        run: npm run pruefung:schutzregeln-ersatzsuche
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
