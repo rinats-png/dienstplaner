@@ -28,7 +28,8 @@ const B1 = person("b1", "mitarbeiter", "e2", {
   zustellung: { planGeaendert: { mail: "MK-ZUSTELLUNG" } }, emailVorher: "MK-EMAILVORHER",
   unbekanntesPersonenfeld: "MK-UNBEKANNT-PERSON",
 });
-/* a1 im Bereich der Schichtverantwortung (e1): Schutzmerkmal für sie roh (Schuld). */
+/* a1 im Bereich der Schichtverantwortung (e1): seit Commit S1 für sie nur
+   abgeleitete Einsatzregeln, nicht das Schutzmerkmal selbst. */
 const A1 = person("a1", "mitarbeiter", "e1", { nachtvorsorge: "MK-SCHUTZ-BEREICH" });
 
 const bestand = () => ({
@@ -90,7 +91,7 @@ const MATRIX = [
   ["Lohn",                       "MK-LOHNBETRAG",            0, 0, 0, 0, 0, 1, 0, 1, "A"],
   ["frühere Anmeldeadresse",     "MK-EMAILVORHER",           0, 0, 0, 0, 0, 1, 0, 1, "A"],
   ["Schutzmerkmal fremd",        "MK-SCHUTZ-FREMD",          0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Schutzmerkmal eig. Bereich", "MK-SCHUTZ-BEREICH",        0, 0, 1, 1, 1, 1, 1, 1, "S"],
+  ["Schutzmerkmal eig. Bereich", "MK-SCHUTZ-BEREICH",        0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Qualifikationen",            "MK-QUAL",                  1, 1, 1, 1, 1, 1, 1, 1, "A"],
   ["Kalendergeheimnis",          "MK-KALGEHEIM",             0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Kalenderverweis",            "MK-KALVERWEIS",            0, 0, 0, 0, 0, 1, 0, 0, "A"],

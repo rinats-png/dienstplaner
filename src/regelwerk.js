@@ -724,6 +724,84 @@ export function schutzBefunde(person, dienstart, datum) {
 }
 
 /* --------------------------------------------------------------------------
+   EINSATZREGELN STATT SCHUTZMERKMALE (Commit S1)
+
+   Die Schichtverantwortung bekommt Mutterschutz, Schwerbehinderung,
+   Geburtsdatum und Wiedereingliederung ihrer Leute nicht mehr. Der Server
+   leitet daraus bei jedem Lesen Einsatzregeln ab (server/lib/planungsregeln.mjs)
+   — ohne Grund, mit Zeitraum. Hier werden sie auf einen Dienst angewendet:
+   dieselben Bedingungen und dieselbe Härte wie in schutzBefunde, aber mit
+   neutralen Texten, die weder Diagnose noch Gesetz nennen.
+   pruefungen/schutzmerkmale-sicht.test.js prüft die Gleichwertigkeit.
+
+   Eine unbekannte Regel sperrt (fail-closed): Was der Server meint, aber
+   diese Fassung nicht versteht, darf nicht als „frei" durchgehen.
+   -------------------------------------------------------------------------- */
+export const EINSATZREGEL_TEXTE = {
+  nachtNichtZulaessig: "Nachteinsatz 20–6 Uhr nicht zulässig.",
+  hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
+  wochenendePruefen: "Wochenendeinsatz prüfen.",
+  sonntagNurMitFreigabe: "Sonntagseinsatz nur mit Freigabe der Planung.",
+  ueber8hNurAbsprache: "Dienst über 8 Stunden nur nach Absprache.",
+  stundengrenzeWoche: "Wochenstundengrenze überschritten.",
+  unbekannt: "Einsatzregel nicht auswertbar — Planungsprüfung erforderlich.",
+};
+
+/**
+ * Die abgeleiteten Einsatzregeln einer Person auf einen geplanten Dienst
+ * anwenden. Gegenstück zu schutzBefunde für die Sicht ohne Rohdaten.
+ * Die Wochenstundengrenze gilt für eine Woche, nicht für einen Dienst; sie
+ * liest stundengrenzeAusRegeln.
+ * @returns Liste von Befunden: { regel, text, hart }
+ */
+export function regelBefunde(planungsregeln, dienstart, datum) {
+  const aus = [];
+  for (const r of Array.isArray(planungsregeln) ? planungsregeln : []) {
+    if (!r || typeof r !== "object") continue;
+    if (r.von && datum < r.von) continue;
+    if (r.bis && datum > r.bis) continue;
+    const treffer = (bed) => { if (bed) aus.push({ regel: r.regel, hart: r.hart === true, text: EINSATZREGEL_TEXTE[r.regel] }); };
+    switch (r.regel) {
+      case "nachtNichtZulaessig": treffer(istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60); break;
+      case "hoechstens8hTag": treffer(dauer(dienstart) > 8.5); break;
+      case "wochenendePruefen": treffer(dow(datum) >= 5); break;
+      case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
+      case "ueber8hNurAbsprache": treffer(dauer(dienstart) > 8); break;
+      case "stundengrenzeWoche": break;
+      default: aus.push({ regel: "unbekannt", hart: true, text: EINSATZREGEL_TEXTE.unbekannt });
+    }
+  }
+  return aus;
+}
+
+/**
+ * Die Schutzprüfung einer Person für einen geplanten Dienst — auf dem Weg,
+ * den ihre Daten zulassen, nie auf zweien:
+ * - planungsregeln vorhanden (Sicht der Schichtverantwortung): regelBefunde,
+ *   neutral;
+ * - die Sicht erwartet planungsregeln (sichtbereich Bereich oder Pool), sie
+ *   fehlen: ein sperrender Befund — ohne Daten ist niemand frei planbar;
+ * - sonst die Rohdaten: schutzBefunde, mit Fundstelle.
+ * @returns Liste von Befunden: { regel, text, hart, neutral? }
+ */
+export function schutzBefundeFuer(person, dienstart, datum) {
+  if (Array.isArray(person.planungsregeln))
+    return regelBefunde(person.planungsregeln, dienstart, datum).map((b) => ({ ...b, neutral: true }));
+  if (person.sichtbereich === "bereich" || person.sichtbereich === "pool")
+    return [{ regel: "pruefungNichtMoeglich", hart: true, neutral: true,
+      text: "Für diese Person fehlen die Einsatzregeln; sie gilt nicht als frei planbar." }];
+  return schutzBefunde(person, dienstart, datum);
+}
+
+/** Die Wochenstundengrenze aus den Einsatzregeln — in der Form, die die
+    Prüfung bisher aus einschraenkungen.wiedereingliederung las. */
+export function stundengrenzeAusRegeln(planungsregeln) {
+  const r = (Array.isArray(planungsregeln) ? planungsregeln : [])
+    .find((x) => x && x.regel === "stundengrenzeWoche");
+  return r ? { von: r.von, bis: r.bis, maxStundenWoche: r.wert } : null;
+}
+
+/* --------------------------------------------------------------------------
    § 7 BUrlG — URLAUBSVERFALL UND HINWEISPFLICHT
 
    Nach der Rechtsprechung des EuGH (C-684/16) und des BAG (9 AZR 541/15)

@@ -72,12 +72,16 @@ describe("eigene Person", () => {
 });
 
 describe("eigener Bereich", () => {
-  it("Plan, Qualifikation, Einschränkungen, Konten, Schutzmerkmale, Telefon und Mobil", () => {
+  /* Seit Commit S1 statt der Schutzmerkmale (mutterschutz, schwerbehindert,
+     geburtstag, nachtvorsorge) nur abgeleitete Einsatzregeln
+     (pruefungen/schutzmerkmale-sicht.test.js). */
+  it("Plan, Qualifikation, Einschränkungen, Konten, Einsatzregeln statt Schutzmerkmalen, Telefon und Mobil", () => {
     const a = p(sichtPersonen(), "a1");
     expect(a.sichtbereich).toBe("bereich");
-    expect(a).toMatchObject({ telefon: "0151-a1", mobil: "0171-a1", mutterschutz: true, schwerbehindert: true,
-      geburtstag: "2009-05-01", nachtvorsorge: "2025-01-01", stundenuebertrag: 12.5, urlaubsanspruch: 30,
+    expect(a).toMatchObject({ telefon: "0151-a1", mobil: "0171-a1", stundenuebertrag: 12.5, urlaubsanspruch: 30,
       einschraenkungen: { keineNacht: true }, wunschfrei: ["a1-wunsch"], qualifikationen: ["pfk", "masern"] });
+    for (const f of ["mutterschutz", "schwerbehindert", "geburtstag", "nachtvorsorge"]) expect(a[f], f).toBeUndefined();
+    expect(a.planungsregeln.map((r) => r.regel)).toEqual(expect.arrayContaining(["nachtNichtZulaessig", "sonntagNurMitFreigabe", "ueber8hNurAbsprache"]));
     expect(a.qualNachweise).toEqual([{ qualId: "pfk", ablauf: "2030-01-01" }, { qualId: "masern", vorhanden: true }]);
   });
   it("ohne E-Mail, Anschrift, Notfallkontakt, Lohn, Leitungsnotiz, Geheimnisse, Verlauf", () => {
@@ -105,11 +109,13 @@ describe("eigener Bereich", () => {
 });
 
 describe("Springer-Pool", () => {
-  it("planungsrelevant mit Schutzmerkmalen und Telefon — ohne Konten und Wünsche", () => {
+  it("planungsrelevant mit Einsatzregeln (statt Schutzmerkmalen) und Telefon — ohne Konten und Wünsche", () => {
     const sp = p(sichtPersonen(), "sp1");
     expect(sp.sichtbereich).toBe("pool");
-    expect(sp).toMatchObject({ telefon: "0151-sp1", mobil: "0171-sp1", mutterschutz: true,
+    expect(sp).toMatchObject({ telefon: "0151-sp1", mobil: "0171-sp1",
       einschraenkungen: { keineNacht: true }, verfuegbarkeit: { aktiv: true } });
+    expect(sp.mutterschutz).toBeUndefined();
+    expect(sp.planungsregeln.map((r) => r.regel)).toContain("sonntagNurMitFreigabe");
     for (const f of ["stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag", "wunschfrei", "email", "anschrift",
       "notfallkontakt", "notiz", "kalenderGeheim", "pushSchluessel", "iban", "lohn", "darfNichtRaus"])
       expect(sp[f], f).toBeUndefined();
@@ -149,11 +155,12 @@ describe("fail-closed", () => {
         `Leitungsnotiz-${id}`, `alt-${id}@`, `${id}@privat.de`, `PN-${id}`, `scan-${id}.pdf`])
         expect(text, s).not.toContain(s);
   });
-  it("Schutzmerkmale nur im eigenen Bereich und im Pool", () => {
+  it("Schutzmerkmale bei niemandem außer der eigenen Person; Einsatzregeln nur im eigenen Bereich und im Pool", () => {
     const l = sichtPersonen();
     for (const x of l) {
       const darf = ["bereich", "pool"].includes(x.sichtbereich);
-      expect(x.mutterschutz !== undefined, `${x.id}`).toBe(darf);
+      if (x.sichtbereich !== "eigen") expect(x.mutterschutz, `${x.id}`).toBeUndefined();
+      expect(Array.isArray(x.planungsregeln), `${x.id}`).toBe(darf);
     }
   });
 });
@@ -202,8 +209,18 @@ describe("Angriffe auf verborgene Felder: kein Durchschreiben", () => {
     "sichtbare Angabe einer Person des Bereichs entfernen": (m) => { delete p(m.personen, "a1").einschraenkungen; },
     "eigene IBAN setzen": (m) => { p(m.personen, "s1").iban = "DE00"; },
     "eigene Leitungsnotiz setzen": (m) => { p(m.personen, "s1").notiz = "selbst"; },
-    "sichtbereich umschreiben": (m) => { p(m.personen, "b1").sichtbereich = "bereich"; },
   };
+  /* Seit Commit S1 werden abgeleitete Felder (sichtbereich, planungsregeln)
+     vor dem Zusammenführen entfernt: Umschreiben ist wirkungslos statt 403. */
+  it("sichtbereich und planungsregeln umschreiben: wirkungslos, nichts gespeichert", () => {
+    const g = bestand();
+    const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(g, SUB)));
+    p(gelesen.mandanten[0].personen, "b1").sichtbereich = "bereich";
+    p(gelesen.mandanten[0].personen, "a1").planungsregeln = [];
+    const e = zusammenfuehren(g, gelesen, SUB);
+    expect(e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen).toEqual(g.mandanten[0].personen);
+  });
   for (const [name, f] of Object.entries(versuche)) {
     it(`${name}: abgewiesen`, () => {
       const g = bestand();

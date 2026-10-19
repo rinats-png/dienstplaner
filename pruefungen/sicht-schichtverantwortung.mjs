@@ -96,10 +96,13 @@ for (const id of ["a1", "b1", "sp1", "l1"]) {
     `Leitungsnotiz-${id}`, `${id}@privat.de`].filter((s) => text.includes(s));
   pruef(`Keine privaten Angaben oder Geheimnisse von ${id}`, lecks.length === 0, lecks.join(", "));
 }
-pruef("Eigener Bereich: Telefon, Mobil, Schutzmerkmale, Konto", pers(rS, "a1").telefon === "0151-a1"
-  && pers(rS, "a1").mobil === "0171-a1" && pers(rS, "a1").mutterschutz === true && pers(rS, "a1").stundenuebertrag === 7);
-pruef("Pool: Telefon und Schutzmerkmale, kein Konto", pers(rS, "sp1").telefon === "0151-sp1"
-  && pers(rS, "sp1").mutterschutz === true && pers(rS, "sp1").stundenuebertrag === undefined);
+/* Seit Commit S1 statt der Schutzmerkmale abgeleitete Einsatzregeln. */
+pruef("Eigener Bereich: Telefon, Mobil, Einsatzregeln statt Schutzmerkmal, Konto", pers(rS, "a1").telefon === "0151-a1"
+  && pers(rS, "a1").mobil === "0171-a1" && pers(rS, "a1").mutterschutz === undefined
+  && pers(rS, "a1").planungsregeln.some((x) => x.regel === "sonntagNurMitFreigabe") && pers(rS, "a1").stundenuebertrag === 7);
+pruef("Pool: Telefon und Einsatzregeln, kein Schutzmerkmal, kein Konto", pers(rS, "sp1").telefon === "0151-sp1"
+  && pers(rS, "sp1").mutterschutz === undefined && Array.isArray(pers(rS, "sp1").planungsregeln)
+  && pers(rS, "sp1").stundenuebertrag === undefined);
 pruef("Anderer Bereich: keine Schutzmerkmale, kein Telefon", pers(rS, "b1").mutterschutz === undefined
   && pers(rS, "b1").geburtstag === undefined && pers(rS, "b1").telefon === undefined);
 for (const s of ["Migräne", "Psychotherapie", "Kind krank", "IBAN", "Scheidung", "interne Leitungsnotiz",

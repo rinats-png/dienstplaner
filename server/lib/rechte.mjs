@@ -16,6 +16,7 @@
 
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
+import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
@@ -800,7 +801,19 @@ export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
   return pruefeRollenwechsel(alt.personen, neu.personen, rolle);
 }
 
-export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
+/* Abgeleitete Personenfelder (planungsregeln, sichtbereich) entstehen beim
+   Lesen und werden nie gespeichert — mitgeschickt, verändert oder gelöscht
+   bleiben sie ohne Wirkung (Commit S1). */
+function abgeleiteteEntfernen(uebermittelt) {
+  if (!uebermittelt || typeof uebermittelt !== "object" || !Array.isArray(uebermittelt.mandanten)) return uebermittelt;
+  const ohne = (p) => (p && typeof p === "object" && ABGELEITETE_PERSONENFELDER.some((f) => Object.prototype.hasOwnProperty.call(p, f))
+    ? Object.fromEntries(Object.entries(p).filter(([k]) => !ABGELEITETE_PERSONENFELDER.includes(k))) : p);
+  return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m) => (m && typeof m === "object" && Array.isArray(m.personen)
+    ? { ...m, personen: m.personen.map(ohne) } : m)) };
+}
+
+export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
+  const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;

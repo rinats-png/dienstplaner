@@ -6,7 +6,7 @@ import {
   dauer, brutto, fenster,
   dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzBefundeFuer, stundengrenzeAusRegeln, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -1717,6 +1717,8 @@ const RECHTSQUELLE = {
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
 function rechtsquelle(b) {
   if (!b) return null;
+  /* Einsatzregeln ohne Rohdaten (S1): keine Fundstelle — sie verriete den Grund. */
+  if (b.neutral) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
   /* Bei einer Sperre steht die Grundlage an der Qualifikation, nicht in
@@ -1909,7 +1911,10 @@ function pruefen(m, von, bis) {
           letzte: p.nachtvorsorge || null,
           stichtag: letzterSo,
         });
-        if (vs.nachtarbeitnehmer && vs.faellig)
+        /* Ohne Rohdaten (Sicht der Schichtverantwortung, Commit S1) gibt es
+           weder Untersuchungsdatum noch Alter — und die Pflicht liegt bei
+           Planung und Leitung. Kein Befund statt eines falschen. */
+        if (vs.nachtarbeitnehmer && vs.faellig && !("sichtbereich" in p))
           push({ art: "vorsorge", schwere: "warn", datum: letzterSo, ref: `${p.id}|vs${jahr}`, personId: p.id,
             titel: `Arbeitsmedizinische Untersuchung anzubieten — ${p.nachname}`,
             text: vs.letzte
@@ -1934,14 +1939,16 @@ function pruefen(m, von, bis) {
               titel: `Alleindienst nicht zulässig — ${p.nachname}`,
               text: `${da.name}: keine weitere eingewiesene Person eingeteilt` });
         }
-        const w = ein.wiedereingliederung;
+        /* Ohne Rohdaten kommt die Grenze neutral aus planungsregeln (S1). */
+        const wNeutral = !ein.wiedereingliederung ? stundengrenzeAusRegeln(p.planungsregeln) : null;
+        const w = ein.wiedereingliederung || wNeutral;
         if (w && w.von <= d && w.bis >= d && dow(d) === 0) {
           let std = 0;
           for (let i = 0; i < 7; i++) { const tt = personTag(m, p, addDays(d, i));
             if (!tt.dienstId) continue; const xx = m.dienstarten.find((y) => y.id === tt.dienstId); if (xx) std += dauer(xx); }
           if (std > w.maxStundenWoche)
-            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `Wiedereingliederung überschritten — ${p.nachname}`,
+            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id, neutral: !!wNeutral,
+              titel: wNeutral ? `Wochenstundengrenze überschritten — ${p.nachname}` : `Wiedereingliederung überschritten — ${p.nachname}`,
               text: `${n1(std)} h geplant, zulässig sind ${n1(w.maxStundenWoche)} h je Woche` });
         }
       }
@@ -2026,22 +2033,35 @@ function pruefen(m, von, bis) {
 
        Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
        werden sie nur auf den Plan angewendet. */
+    /* Drei Wege, nie zwei zugleich (Commit S1):
+       - Rohdaten (Planung, Leitung): schutzBefunde, mit Fundstelle;
+       - Einsatzregeln (Schichtverantwortung, Bereich und Pool): regelBefunde,
+         neutral — ohne Diagnose, ohne Gesetz;
+       - die Sicht erwartet Einsatzregeln, sie fehlen: Die Prüfung ist nicht
+         möglich, und das sperrt (fail-closed). Eine Person ohne Daten ist
+         nicht frei planbar. */
     for (const p of m.personen) {
       if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
-      const alterHeute = alterAm(p.geburtstag, bis);
-      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      const abgeleitet = Array.isArray(p.planungsregeln);
+      const erwartet = p.sichtbereich === "bereich" || p.sichtbereich === "pool";
+      if (!abgeleitet && !erwartet) {
+        /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
+           ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+        const alterHeute = alterAm(p.geburtstag, bis);
+        if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      }
+      if (abgeleitet && !p.planungsregeln.some((x) => x && x.regel !== "stundengrenzeWoche")) continue;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefunde(p, da, d)) {
+        for (const b of schutzBefundeFuer(p, da, d)) {
           push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
-            ref: `${p.id}|${b.regel}`, personId: p.id,
-            titel: `${b.regel} — ${p.nachname}`,
+            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: !!b.neutral,
+            titel: b.regel === "pruefungNichtMoeglich" ? `Schutzprüfung nicht möglich — ${p.nachname}`
+              : b.neutral ? `Einsatzregel verletzt — ${p.nachname}` : `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
         }
       }
@@ -9531,6 +9551,23 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
 }
 
 /* ============================== PERSONALAKTE ============================= */
+/** Die Einsatzregeln einer Person — neutral, ohne Grund (Commit S1). */
+function EinsatzregelListe({ regeln }) {
+  if (!Array.isArray(regeln)) return null;
+  const zeitraum = (r) => (r.von || r.bis
+    ? ` (${r.von ? `ab ${fKurz(r.von)}` : ""}${r.von && r.bis ? " " : ""}${r.bis ? `bis ${fKurz(r.bis)}` : ""})` : "");
+  const zeilen = [...new Set(regeln.filter((r) => r && r.regel).map((r) => r.regel === "stundengrenzeWoche"
+    ? `Wochenstundengrenze: höchstens ${n1(Number(r.wert) || 0)} h${zeitraum(r)}`
+    : `${(EINSATZREGEL_TEXTE[r.regel] || EINSATZREGEL_TEXTE.unbekannt).replace(/\.$/, "")}${zeitraum(r)}`))];
+  return (
+    <div>
+      <Lab style={{ marginBottom: 8 }}>Einsatzregeln</Lab>
+      {zeilen.length === 0
+        ? <div style={{ fontSize: 13, color: C.dim }}>Keine besonderen Einsatzregeln.</div>
+        : zeilen.map((z) => <div key={z} style={{ fontSize: 13.5, lineHeight: 1.6 }}>{z}</div>)}
+    </div>);
+}
+
 function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const m = sitz.mandant;
   const p = m.personen.find((x) => x.id === personId);
@@ -9611,6 +9648,10 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* Die Rohdaten pflegt, wer Personal bearbeitet (staff.edit). Die
+                Schichtverantwortung bekommt sie nicht mehr (Commit S1) und sieht
+                stattdessen die neutralen Einsatzregeln. */}
+            {!darf(sitz, "staff.edit") ? <EinsatzregelListe regeln={p.planungsregeln} /> : (<>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -9645,6 +9686,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
                 Die Prüfung meldet Verstöße unter „Schutzvorschriften".
               </div>)}
+            </>)}
 
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
               <div>
@@ -9732,13 +9774,13 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
               <Field label="Höchstzahl Dienste je Woche" hint="Leer bedeutet keine Begrenzung.">
                 <Inp type="number" min={0} value={(p.einschraenkungen || {}).maxDiensteWoche || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "maxDiensteWoche", e.target.value ? Number(e.target.value) : null)} /></Field>
-              <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
+              {darf(sitz, "staff.edit") && <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
                 <Inp type="date" value={((p.einschraenkungen || {}).wiedereingliederung || {}).bis || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung", e.target.value
                     ? { von: heute(), bis: e.target.value, maxStundenWoche: ((p.einschraenkungen || {}).wiedereingliederung || {}).maxStundenWoche || 20 }
-                    : null)} /></Field>
+                    : null)} /></Field>}
             </div>
-            {(p.einschraenkungen || {}).wiedereingliederung && (
+            {darf(sitz, "staff.edit") && (p.einschraenkungen || {}).wiedereingliederung && (
               <Field label="Zulässige Wochenstunden während der Wiedereingliederung">
                 <Inp type="number" step="0.5" value={p.einschraenkungen.wiedereingliederung.maxStundenWoche}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung",

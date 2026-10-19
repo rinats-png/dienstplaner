@@ -20,6 +20,8 @@
    gekürzt wird, kann beim Zurückschreiben deshalb nicht verloren gehen.
    ========================================================================== */
 
+import { planungsregelnAbleiten } from "./planungsregeln.mjs";
+
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
 export const NUR_EIGENE = "nurEigene";
@@ -125,12 +127,12 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
    Jede Person trägt `sichtbereich`, damit die Oberfläche weiß, wofür die
    Daten reichen; geschrieben wird das Feld nie (rechte.mjs füllt zurück).
 
-   SCHULD (Datenschutz): Für die Schutzprüfung (MuSchG, JArbSchG, SGB IX,
-   § 6 ArbZG) liest die Oberfläche Mutterschutz, Schwerbehinderung,
-   Geburtstag und Nachtvorsorge roh. Langfristig soll die Schichtverantwortung
-   stattdessen abgeleitete Aussagen aus einer Plan-/Entscheidungslogik
-   bekommen („Nachtdienst nicht zulässig", „besondere Schutzprüfung
-   erforderlich") — nicht die Gesundheitsmerkmale selbst.
+   Schutzmerkmale (Commit S1): Mutterschutz, Schwerbehinderung, Geburtsdatum,
+   das Datum der arbeitsmedizinischen Vorsorge und eine Wiedereingliederung
+   gehen nicht mehr hinaus. Stattdessen trägt jede Person aus Bereich und
+   Pool `planungsregeln` — Einsatzregeln ohne Grund, bei jedem Lesen aus dem
+   gespeicherten Datensatz abgeleitet (server/lib/planungsregeln.mjs), nie
+   gespeichert. Ein leeres Feld heißt: geprüft, keine Regel.
 
    Dienstbuch und Übergaben (Commit C2) sowie die Tagesnotizen (Commit C3)
    tragen eine einheitId und gehen nur für die eigene Einheit hinaus.
@@ -140,12 +142,15 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
     spätere Ansichten oder Branchen ein anderes Fenster wählen können. */
 export const SICHTFENSTER = { vorTage: 60, nachTage: 90 };
 
-const SCHUTZMERKMALE = ["mutterschutz", "schwerbehindert", "geburtstag", "nachtvorsorge"];
 const BEREICH_PERSON = [...PLAN, "bereich", "kompetenzNachweise", "einschraenkungen",
   "verfuegbarkeit", "wunschfrei", "stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag",
-  "einarbeitung", ...SCHUTZMERKMALE, "telefon", "mobil"];
+  "einarbeitung", "telefon", "mobil"];
 const POOL_PERSON = [...PLAN, "bereich", "kompetenzNachweise", "einschraenkungen",
-  "verfuegbarkeit", ...SCHUTZMERKMALE, "telefon", "mobil"];
+  "verfuegbarkeit", "telefon", "mobil"];
+/* Einschränkungen: die operativen Regeln (keine Nacht, kein Alleindienst,
+   Dienste je Woche) bleiben; die Wiedereingliederung verrät eine Erkrankung
+   und geht nur als neutrale Wochenstundengrenze in planungsregeln hinaus. */
+const EINSCHRAENKUNGEN_SCHICHT = ["keineNacht", "keinAlleindienst", "maxDiensteWoche"];
 /* Nachweise im eigenen Bereich: Qualifikation, Ablauf und — für die
    Status-Nachweise, an denen das Einsatz-Gate hängt — ob er vorliegt.
    Keine Datei. */
@@ -195,6 +200,9 @@ export function schichtPersonSicht(p, ctx) {
   if (umfang === "fremd") return { ...personSicht(p, { ...ctx, rolle: "mitarbeiter" }), sichtbereich: "fremd" };
   const aus = nimm(p, umfang === "bereich" ? BEREICH_PERSON : POOL_PERSON);
   if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
+  if (aus.einschraenkungen && typeof aus.einschraenkungen === "object" && !Array.isArray(aus.einschraenkungen))
+    aus.einschraenkungen = nimm(aus.einschraenkungen, EINSCHRAENKUNGEN_SCHICHT);
+  aus.planungsregeln = planungsregelnAbleiten(p, { von: ctx.von });
   aus.sichtbereich = umfang;
   return aus;
 }

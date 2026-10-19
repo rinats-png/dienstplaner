@@ -201,6 +201,10 @@ jobs:
       - name: Bereich Tagesnotizen
         run: npm run pruefung:bereich-tagesnotizen
 
+      # Schutzmerkmale: Einsatzregeln statt Rohdaten für die Schichtverantwortung (S1).
+      - name: Schutzmerkmale Sicht
+        run: npm run pruefung:schutzmerkmale-sicht
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -577,6 +581,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.4.
+
+      # Schutzmerkmale über echte Anmeldung: Sicht, Rundweg, Manipulation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schutzmerkmale Sicht (HTTP)
+        run: npm run pruefung:schutzmerkmale-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.3.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
