@@ -342,6 +342,11 @@ const SELBST_FELDER = [
   "telefon", "mobil", "email", "anschrift", "notfallkontakt",
   /* Wie sie erreicht werden möchte */
   "zustellung", "pushSchluessel", "kalenderVerweis",
+  /* Der Kalenderzustand der eigenen Person (Commit 3): Ohne gespeichertes
+     Geheimnis ließ sich ein Feed nach dem Neuladen nicht mehr abschalten,
+     und die Schichtverantwortung bekam beim Einrichten 403. Über die
+     Berechtigung entscheidet der Kalender-Endpunkt, nicht dieser Wert. */
+  "kalenderGeheim", "kalenderStand",
   /* Wann sie kann und was sie sich wünscht */
   "verfuegbarkeit", "wunschfrei",
   /* Wie die Anwendung für sie aussieht */

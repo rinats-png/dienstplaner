@@ -180,6 +180,10 @@ jobs:
       - name: Rechtematrix
         run: npm run pruefung:rechtematrix
 
+      # Kalender: nur die eigene Person, Rotation, keine Wirkung fremder Geheimnisse.
+      - name: Kalender-Rechte
+        run: npm run pruefung:kalender-rechte
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -506,6 +510,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.9.
+
+      # Kalender über echte Anmeldung: zwei Betriebe, fremde Geheimnisse, Rotation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Kalender-Rechte (HTTP)
+        run: npm run pruefung:kalender-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.8.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

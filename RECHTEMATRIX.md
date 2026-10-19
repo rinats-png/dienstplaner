@@ -1,6 +1,6 @@
 # Rechtematrix — Lesesicht und Verwaltungswege
 
-Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1e.4).
+Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1e.4) und Commit 3 (Kalender).
 Regressionstest: `pruefungen/rechtematrix.test.js` — jede Zeile der Tabelle unten ist dort ein Marker
 mit Erwartung je Rolle und Lesepfad. **Matrix und Test werden zusammen geändert.**
 
@@ -86,14 +86,16 @@ oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Bet
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |
 | `/einrichten/*` | Verwalterschlüssel | Codes anlegen, Übersicht und Bindung ohne Codes | A |
-| `/kalender/*` | jede Sitzung | `einrichten` nimmt die Person aus dem Rumpf; ein Geheimnis erlaubt Lesen und Überschreiben des Feeds | offen bis **Commit 3** |
+| `/kalender/einrichten`, `/kalender/daten`, `/kalender/loeschen` | jede Rolle mit eigener Person (Betreiber nicht) | nur die eigene Person aus der Sitzung (Raum, Betrieb, Person); `personId` im Rumpf zählt nicht; ein aktiver Feed je Person (Index nur als Hash); fremde und unbekannte Geheimnisse ohne Wirkung und mit gleicher Antwort (Commit 3) | A |
+| `/kalender/feed/<geheim>.ics` | wer das Geheimnis hat | liest den Feed (Bearer); ungültig nach erneutem Einrichten oder Löschen | A |
 | `/zustellung/senden` | jede Sitzung | sendet mit freiem Text an jede Person des eigenen Betriebs (Empfänger löst der Server auf) | **B** |
 
 ## 3. Bewusst offen
 
 | Punkt | bis |
 |---|---|
-| Kalender-Endpunkte an die eigene Person binden | Commit 3 |
+| Kalenderfeed nach Plan-/Dienständerungen automatisch aktualisieren (heute nur beim Einrichten hochgeladen) | eigener Funktionspunkt |
+| Trockenlauf für den Verwalter: Kalenderfeeds je Raum und Person (ohne Geheimnisse), mehrdeutige Altfeeds | eigener Schritt |
 | Versand und Zustellung auf dem Server; danach `pushSchluessel`, `zustellung`, `email` aus fremden Personensichten von Planung und Leitung entfernen; die Schichtverantwortung erzeugt Mitteilungen derzeit ohne Mail-/Push-Weg | Commit 4 |
 | Bereichsbezug für Dienstbuch, Übergaben, Tagesnotizen, Ausschreibungen | eigener Schritt |
 | Rohe Schutzmerkmale für die Schichtverantwortung im eigenen Bereich statt abgeleiteter Aussagen | Schuld, mit der gemeinsamen Planrechnung |
