@@ -157,6 +157,11 @@ jobs:
       - name: Sicht der Schichtverantwortung
         run: npm run pruefung:sicht-schicht
 
+      # Betreiberfelder oben und im Betrieb: für alle außer dem Betreiber
+      # wirkungslos; Notruf-Mitteilungen nur mit eigenem Notruf.
+      - name: Betreiberfelder
+        run: npm run pruefung:betreiberfelder
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -443,6 +448,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.3.
+
+      # Planung und Leitung schicken veränderte Betreiberfelder; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreiberfelder (HTTP)
+        run: npm run pruefung:betreiberfelder-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.2.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

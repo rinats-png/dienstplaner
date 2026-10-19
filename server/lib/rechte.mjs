@@ -386,12 +386,21 @@ const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
    Das ist keine Änderung an seinem Betrieb, sondern am Vertrag. Verträge
    ändert der Betreiber.
 
-   Name, Anschrift und Ansprechpartner stehen bewusst nicht hier: Die darf
-   ein Betrieb pflegen, sie kosten nichts.
+   Der Name steht bewusst nicht hier: Den darf ein Betrieb pflegen.
+   Anschrift, Ansprechpartner und USt-ID sind seit Commit 1e.2a
+   Rechnungsstammdaten des Betreibers (BETREIBERSTAMM oben).
 
    laeuftAb und selbstAngelegt gehören dazu, seit der Löschlauf für
    abgelaufene Testbetriebe daran hängt (aufraeumen.mjs): Wer sie
    zurückschreiben könnte, könnte seine eigene Löschung aushebeln. */
+/* Rechnungs- und Ansprechpartnerangaben, die interne Notiz des Betreibers,
+   die Raumkennung und die Lohnartenzuordnung. Gepflegt werden sie in der
+   Betreiberkonsole; einen Weg für den Betrieb gibt es in der Oberfläche
+   nicht (lohnarten hat noch gar keinen Editor). Bis Oktober 2026 konnten
+   Leitung und Planung sie über den allgemeinen Schreibweg ändern. Wie die
+   Vertragsfelder gehen sie immer auf den gespeicherten Stand zurück. */
+export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum", "lohnarten"];
+
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
   "testTage", "rabattGrund", "preisgestaltung", "pakete",
   "laeuftAb", "selbstAngelegt"];
@@ -574,6 +583,9 @@ export function schichtRueckfuellen(altM, neuM, sitzung) {
   const aus = {};
   for (const feld of new Set([...Object.keys(altM), ...Object.keys(neuM)])) {
     if (feld === "personen") { if (hat(mitPersonen, feld)) aus[feld] = mitPersonen[feld]; continue; }
+    /* Vertrag und Betreiberstamm: immer der gespeicherte Stand (1e.2a) —
+       mitgeschickt wirkungslos, wie bei allen Rollen außer dem Betreiber. */
+    if (VERTRAGSFELDER.includes(feld) || BETREIBERSTAMM.includes(feld)) { if (hat(altM, feld)) aus[feld] = altM[feld]; continue; }
     const a = altM[feld], n = neuM[feld], v = sicht[feld];
     /* nicht mitgeschickt: verborgen, gekürzt oder weggelassen — der gespeicherte Stand */
     if (!hat(neuM, feld)) { if (hat(altM, feld)) aus[feld] = a; continue; }
@@ -658,7 +670,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
          nichts vorfinden, was der Server nicht selbst geschrieben hat. */
       if (!alt) {
         const ohne = { ...m };
-        for (const feld of VERTRAGSFELDER) delete ohne[feld];
+        for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) delete ohne[feld];
         return ohne;
       }
       const zusammen = { ...m };
@@ -668,7 +680,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
       /* Vertragsfelder gehen immer auf den gespeicherten Stand zurück —
          nicht nur, wenn sie fehlen. Ein Betrieb bekommt sie zu sehen, aber
          ändern darf sie nur der Betreiber, und der nimmt diesen Weg nicht. */
-      for (const feld of VERTRAGSFELDER) {
+      for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
         if (feld in alt) zusammen[feld] = alt[feld];
         else delete zusammen[feld];
       }
@@ -760,12 +772,16 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     /* Verlorenes ergänzen wie bisher — dann den einen Betrieb an seine
        Stelle im gespeicherten Bestand setzen. Alle anderen bleiben, wo
        und wie sie waren. */
-    /* Ganz oben bekommt die Schichtverantwortung nur Zähler und Sitzungsmarke
-       (sicht.mjs) — alles Übrige kommt aus dem gespeicherten Stand, sonst
-       ginge es beim Zurückschreiben verloren. */
-    const oben = umfang === SCHREIBEN_EINHEIT
-      ? { ...gespeichert, ...Object.fromEntries(BESTAND_FELDER.filter((x) => hat(uebermittelt, x)).map((x) => [x, uebermittelt[x]])) }
-      : uebermittelt;
+    /* Ganz oben steht, was dem Betreiber gehört: Firmenstamm, Preisliste,
+       Rechnungen, sein Protokoll, Pakete, Adressänderungen, Selbststarts.
+       Bis Oktober 2026 kam die oberste Ebene aus der Übermittlung — Leitung
+       und Planung konnten Preisliste und Rechnungen überschreiben und das
+       Betreiberprotokoll leeren, das sie nicht einmal lesen. Jetzt gilt der
+       gespeicherte Stand; aus der Übermittlung nur Zähler und Sitzungsmarke.
+       Mitgeschicktes wird übergangen, nicht abgewiesen — eine veraltete
+       Kopie darf das Speichern nicht blockieren. */
+    const oben = { ...gespeichert,
+      ...Object.fromEntries(BESTAND_FELDER.filter((x) => hat(uebermittelt, x)).map((x) => [x, uebermittelt[x]])) };
     const zusammen = verlorenesZurueck(gespeichert, { ...oben, mandanten: [geschickt] });
     const ersetzt = zusammen.mandanten.find((m) => m && m.id === ort.betrieb.id);
     return { ...zusammen,
@@ -1003,6 +1019,29 @@ export function einheitZusammen(altM, neuM, sitzung) {
     return einheitAm(p, typeof tag === "string" && TAG.test(tag) ? tag : heute) === eigene;
   };
   const eigen = (pid) => String(pid) === ichId;
+
+  /* Neue eigene Notrufe dieser Übermittlung, geprüft wie bei Beschäftigten;
+     je Empfänger höchstens eine Notruf-Mitteilung. */
+  const bekannteNotrufe = new Set((Array.isArray(altM.notrufe) ? altM.notrufe : []).filter(Boolean).map((x) => String(x.id)));
+  const neueNotrufe = notrufeZusammen([], (Array.isArray(neuM.notrufe) ? neuM.notrufe : [])
+    .filter((x) => x && !bekannteNotrufe.has(String(x.id))), ichId, altM.personen);
+  const notrufKontingent = new Map();
+  for (const n of neueNotrufe) for (const x of n.empfaenger) notrufKontingent.set(String(x), (notrufKontingent.get(String(x)) || 0) + 1);
+  const notrufMitteilung = (e, p) => {
+    const rest = notrufKontingent.get(String(e.personId)) || 0;
+    if (!p || rest < 1) return null;
+    if (typeof e.titel !== "string" || !e.titel.startsWith("NOTRUF:") || e.titel.length > 120) return null;
+    if (e.text !== undefined && e.text !== null && (typeof e.text !== "string" || e.text.length > 300)) return null;
+    notrufKontingent.set(String(e.personId), rest - 1);
+    const w = e.wege && typeof e.wege === "object" ? e.wege : {};
+    return { id: e.id, personId: e.personId, art: "einspringen", titel: e.titel,
+      text: typeof e.text === "string" ? e.text : "", ziel: "notruf",
+      zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
+      gelesen: false, dringend: true,
+      wege: { mail: w.mail && w.mail === p.email ? p.email : null,
+        push: w.push && gleich(w.push, p.pushSchluessel) ? p.pushSchluessel : null },
+      zugestellt: { mail: null, push: null } };
+  };
   const fremdText = (pid) => `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`;
 
   const aus = { ...altM };
@@ -1094,11 +1133,13 @@ export function einheitZusammen(altM, neuM, sitzung) {
         const r = anhaengen(feld, a, n, {
           neuerEintrag: (e) => {
             const p = personen.get(String(e.personId));
-            /* Die Mitteilung zum eigenen Notruf geht an Planung und Leitung —
-               auch außerhalb des Bereichs (wie notrufeZusammen die Empfänger
-               begrenzt). Bis 1e.2 scheiterte der eigene Notruf daran mit 403. */
-            const notrufMitteilung = e.ziel === "notruf" && p && PLANUNGSROLLEN.includes(p.rolle);
-            if (!eigen(e.personId) && !imBereich(e.personId, heute) && !notrufMitteilung) return null;
+            /* Mitteilungen zu einem Notruf (ziel "notruf") nur zusammen mit
+               einem neuen eigenen Notruf in derselben Übermittlung, nur an
+               dessen geprüfte Empfänger, je Empfänger eine — und bereinigt.
+               In 1e.2 genügte ziel "notruf" an Planung oder Leitung; damit ließ
+               sich ohne Notruf jede Mitteilung an sie erzeugen (1e.2a). */
+            if (e.ziel === "notruf" && !eigen(e.personId)) return notrufMitteilung(e, p);
+            if (!eigen(e.personId) && !imBereich(e.personId, heute)) return null;
             const w = e.wege && typeof e.wege === "object" ? e.wege : {};
             /* Zustellwege nur zu den gespeicherten Angaben der Person. */
             return { ...e, wege: { mail: w.mail && p && w.mail === p.email ? p.email : null,

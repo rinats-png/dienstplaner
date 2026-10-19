@@ -451,7 +451,6 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
     "fremde Nachricht verändert einschleusen": (m) => { m.nachrichten.push({ id: "n-a", personId: "a1", art: "info", titel: "geändert" }); },
     "Protokolleintrag verändert einschleusen": (m) => { m.protokoll = [{ id: "l2", zeit: "2", text: "gefälscht" }]; },
     "fremde Änderung einschleusen": (m) => { m.aenderungen.push({ id: "c-b", personId: "b1", datum: tag(1), von: "-", nach: "S" }); },
-    "Kaufmännisches setzen": (m) => { m.preisgestaltung = { sonder: -100 }; },
     "Personennotiz einschleusen": (m) => { m.notizen["person|b1"] = [{ id: "x", text: "neu" }]; },
     "verborgene Standortkoordinaten setzen": (m) => { m.standorte[0].lat = 1; },
     "unbekannte Sammlung einschleusen": (m) => { m.geheimeSammlung = [{ x: "neu" }]; },
@@ -462,6 +461,12 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
       expect(e.verweigert, name).toBeTruthy();
     });
   }
+  /* Seit 1e.2a: Vertrag und Betreiberstamm im Betrieb mitgeschickt — wirkungslos statt 403 (E3). */
+  it("Kaufmännisches im Betrieb setzen: wirkungslos", () => {
+    const { g, e } = rundweg((m) => { m.preisgestaltung = { sonder: -100 }; m.ustId = "DE999"; m.notiz = "selbst"; });
+    expect(e.verweigert).toBeFalsy();
+    for (const k of ["preisgestaltung", "ustId", "notiz"]) expect(e.mandanten[0][k], k).toEqual(g.mandanten[0][k]);
+  });
   it("oben: Betreiberfelder setzen ist wirkungslos", () => {
     const { g, e } = rundweg((m, b) => { b.tarife = [{ id: "t1", preis: 0 }]; b.rechnungen = []; });
     expect(e.verweigert).toBeFalsy();
