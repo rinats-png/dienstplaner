@@ -14,9 +14,9 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
-import { erfassungZusammen } from "./zeiterfassung.mjs";
+import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
-import { bestandSicht, SICHT_ROLLEN } from "./sicht.mjs";
+import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -447,7 +447,58 @@ export function bestandFuerRolle(bestand, sitzung) {
   /* Nur der eigene Betrieb. Die Oberfläche sucht über session.mandantId,
      nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
   kopie.mandanten = [{ ...eigener }];
+
+  /* Die Schichtverantwortung: Personen nach Bereich gestuft (sicht.mjs).
+     Die übrigen Sammlungen folgen in einem eigenen Schritt. */
+  if (rolle === "subplaner") kopie.mandanten[0].personen = schichtPersonen(eigener, sitzung);
   return kopie;
+}
+
+/** Die Personen eines Betriebs in der Sicht der Schichtverantwortung. */
+function schichtSichtKontext(m, sitzung) {
+  const ich = (Array.isArray(m.personen) ? m.personen : []).find((p) => p && String(p.id) === String(sitzung.person));
+  return schichtKontext(m, sitzung, eigeneEinheit(m, ich), heuteBerlin());
+}
+function schichtPersonen(m, sitzung) {
+  const ctx = schichtSichtKontext(m, sitzung);
+  return (Array.isArray(m.personen) ? m.personen : []).map((p) => schichtPersonSicht(p, ctx));
+}
+
+/**
+ * Die Rückfüllung. Die Schichtverantwortung liest Personen gekürzt und
+ * schreibt diese gekürzte Fassung zurück. Ohne Rückfüllung sähe jedes
+ * Speichern aus wie das Löschen aller verborgenen Felder — und bekäme 403.
+ *
+ * Je Person: Was die Sicht zeigt und unverändert zurückkommt, wird durch
+ * den gespeicherten Wert ersetzt; was sie verbirgt und nicht mitkommt,
+ * kommt aus dem gespeicherten Stand. Alles andere — eine Änderung an einem
+ * sichtbaren Feld, ein mitgeschicktes verborgenes Feld — bleibt, wie es
+ * kam, und einheitZusammen entscheidet darüber wie bisher.
+ */
+export function personenRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || !Array.isArray(neuM.personen)) return neuM;
+  const ctx = schichtSichtKontext(altM, sitzung);
+  const gespeichert = new Map((Array.isArray(altM.personen) ? altM.personen : [])
+    .filter(Boolean).map((p) => [String(p.id), p]));
+  const gleichWert = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const personen = neuM.personen.map((n) => {
+    const s = n && gespeichert.get(String(n.id));
+    if (!s || typeof n !== "object") return n;
+    const v = schichtPersonSicht(s, ctx);
+    const aus = {};
+    for (const k of new Set([...Object.keys(s), ...Object.keys(v), ...Object.keys(n)])) {
+      const hatN = Object.prototype.hasOwnProperty.call(n, k);
+      const hatS = Object.prototype.hasOwnProperty.call(s, k);
+      if (Object.prototype.hasOwnProperty.call(v, k)) {
+        if (hatN && gleichWert(n[k], v[k])) { if (hatS) aus[k] = s[k]; }
+        else if (hatN) aus[k] = n[k];
+        /* sichtbar, aber nicht mehr mitgeschickt: gelöscht — einheitZusammen urteilt */
+      } else if (hatN) aus[k] = n[k];
+      else if (hatS) aus[k] = s[k];
+    }
+    return aus;
+  });
+  return { ...neuM, personen };
 }
 
 /** Der gespeicherte Betrieb dieser Sitzung samt seiner Stelle — oder null,
@@ -614,6 +665,7 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
     if (umfang === SCHREIBEN_EINHEIT) {
+      geschickt = personenRueckfuellen(ort.betrieb, geschickt, sitzung);
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;

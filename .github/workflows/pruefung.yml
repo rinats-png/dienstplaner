@@ -152,6 +152,11 @@ jobs:
       - name: Zeiterfassung
         run: npm run pruefung:zeiterfassung
 
+      # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
+      # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
+      - name: Sicht der Schichtverantwortung
+        run: npm run pruefung:sicht-schicht
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -428,6 +433,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.4.
+
+      # Lesen als Schichtverantwortung, Rundweg der gekürzten Sicht, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht der Schichtverantwortung (HTTP)
+        run: npm run pruefung:sicht-schicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.3.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

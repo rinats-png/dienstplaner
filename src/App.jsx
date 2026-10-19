@@ -2083,10 +2083,19 @@ function pruefen(m, von, bis) {
    weil das Datum der letzten Untersuchung fehlt. Wer plan.edit.unit hat,
    bekommt den Betrieb vollständig und sieht sie wie bisher. */
 const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];
+/* Seit Commit 1e.1 bekommt auch die Schichtverantwortung Personen anderer
+   Bereiche gekürzt (sichtbereich "fremd", siehe server/lib/sicht.mjs). Für
+   diese Personen fehlen die Merkmale; ihre Befunde wären falsch. */
+const personFremd = (m, pid) => { const p = (m.personen || []).find((x) => x.id === pid); return !!p && p.sichtbereich === "fremd"; };
 function befundeFuer(sitz, befunde) {
-  if (darf(sitz, "plan.edit.unit")) return befunde;
+  if (darf(sitz, "plan.edit.unit"))
+    return befunde.filter((b) => !(BEFUNDE_AUS_PERSONENDATEN.includes(b.art) && personFremd(sitz.mandant, b.personId)));
   return befunde.filter((b) => !BEFUNDE_AUS_PERSONENDATEN.includes(b.art));
 }
+/** Konten einer Person: mit account.view.all — außer für Personen, deren
+    Kontodaten die Sicht nicht enthält (fremder Bereich, Springer-Pool). */
+const kontoSichtbar = (sitz, p) => sitz.person.id === p.id
+  || (darf(sitz, "account.view.all") && p.sichtbereich !== "fremd" && p.sichtbereich !== "pool");
 function simulation(m) {
   return memo(m, "sim", () => {
     const len = zyklusLaenge(m);
@@ -3603,7 +3612,7 @@ function tagesaufgaben(sitz) {
 
   if (darf(sitz, "account.view.all")) {
     const grenze = m.einstellungen.ausgleichGrenze || 40;
-    const ueber = m.personen.filter((x) => imDienst(x, d0) && stundenkonto(m, x, ym) > grenze);
+    const ueber = m.personen.filter((x) => imDienst(x, d0) && kontoSichtbar(sitz, x) && stundenkonto(m, x, ym) > grenze);
     if (ueber.length) push({ art: "konto", dringend: false, ziel: "abrechnung",
       titel: `${ueber.length}× Stundenkonto über der Grenze`,
       text: `Freizeitausgleich einplanen · Grenze ${n1(grenze)} h`, anzahl: ueber.length });
@@ -8279,7 +8288,7 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const abwesend = aktiv.filter((p) => abwesenheitAm(m, p.id, d0)).length;
   const kritisch = kommend.filter((b) => b.schwere === "danger").length;
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
-  const kontenHoch = aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
+  const kontenHoch = aktiv.filter((p) => kontoSichtbar(sitz, p) && stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
 
   return (
@@ -9442,7 +9451,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {p.qualifikationen.map((qid) => { const qq = m.qualifikationen.find((x) => x.id === qid);
                     return qq ? <Pill key={qid} size="sm">{qq.kurz}</Pill> : null; })}</div></td>
-              {zeigt ? (<>
+              {zeigt && kontoSichtbar(sitz, p) ? (<>
                 <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right" }}>
                   <div style={{ fontSize: 14, color: url.rest < 5 ? C.warn : C.text, ...NUM }}>{url.rest}</div>
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>von {url.anspruch}</div></td>
@@ -9452,7 +9461,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                   <div style={{ fontSize: 14, ...NUM }}>{n1(nacht.stunden)} h</div>
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{nacht.anzahl} Dienste</div></td>
               </>) : <td colSpan={3} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 12.5, color: C.dimmer }}>
-                Konten nur für die Planung sichtbar</td>}
+                {zeigt ? "Konten dieser Person nicht im eigenen Bereich" : "Konten nur für die Planung sichtbar"}</td>}
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}>›</td>
             </tr>); })}</tbody>
         </table>
@@ -9508,7 +9517,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const url = urlaubskonto(m, p, jahr), ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
   const kto = stundenkonto(m, p, ym), nacht = nachtJahr(m, p, jahr);
   const editierbar = darf(sitz, "staff.edit") || darfEinheit(sitz, einheitAm(p, d0));
-  const zeigt = darf(sitz, "account.view.all") || sitz.person.id === p.id;
+  const zeigt = kontoSichtbar(sitz, p);
   const nm = Array.from({ length: 12 }, (_, i) => istStunden(m, p, `${jahr}-${pad(i + 1)}`).nacht);
   const maxN = Math.max(1, ...nm);
 

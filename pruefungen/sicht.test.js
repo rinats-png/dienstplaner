@@ -470,8 +470,8 @@ describe("Betriebsrat (9., 10.)", () => {
   });
 });
 
-describe("11. Leitung, Planung und Schichtleitung unverändert", () => {
-  for (const wer of ["leitung", "planer", "subplaner"]) {
+describe("11. Leitung und Planung unverändert", () => {
+  for (const wer of ["leitung", "planer"]) {
     it(`${wer} bekommt den eigenen Betrieb vollständig`, () => {
       const b = sicht(SITZ[wer]);
       const roh = bestand().mandanten[0];
@@ -479,6 +479,16 @@ describe("11. Leitung, Planung und Schichtleitung unverändert", () => {
       expect(b.mandanten[0]).toEqual(roh);
     });
   }
+  /* Seit Commit 1e.1 bekommt die Schichtverantwortung die Personen gestuft
+     (sicht-schichtverantwortung.test.js); alles Übrige vorerst wie bisher. */
+  it("subplaner: alles außer den Personen wie bisher, Personen gekürzt", () => {
+    const b = sicht(SITZ.subplaner).mandanten[0];
+    const { personen: pRoh, ...restRoh } = bestand().mandanten[0];
+    const { personen: pSicht, ...restSicht } = b;
+    expect(restSicht).toEqual(restRoh);
+    expect(pSicht.map((p) => p.id)).toEqual(pRoh.map((p) => p.id));
+    expect(pSicht.every((p) => typeof p.sichtbereich === "string")).toBe(true);
+  });
 });
 
 describe("12. Mandantentrennung", () => {

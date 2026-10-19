@@ -101,7 +101,10 @@ describe("Ansichten mit gekürzten Daten", () => {
   });
   it("10. Personalakte: Konten nur bei account.view.all oder für die eigene Person", () => {
     const q = funktion("Personalakte");
-    expect(q).toContain('const zeigt = darf(sitz, "account.view.all") || sitz.person.id === p.id;');
+    /* Seit 1e.1 über kontoSichtbar: account.view.all oder eigene Person —
+       ohne Personen, deren Kontodaten die Sicht nicht enthält. */
+    expect(q).toContain("const zeigt = kontoSichtbar(sitz, p);");
+    expect(APP).toContain('const kontoSichtbar = (sitz, p) => sitz.person.id === p.id\n  || (darf(sitz, "account.view.all")');
     const von = q.indexOf("{zeigt && (<>");
     const bis = q.indexOf("Abwesenheiten {jahr}");
     expect(von).toBeGreaterThan(0);
@@ -121,7 +124,10 @@ describe("Ansichten mit gekürzten Daten", () => {
   });
   it("Schutzbefunde nur für Rollen mit vollständigem Betrieb", () => {
     expect(APP).toContain('const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];');
-    expect(funktion("befundeFuer")).toContain('if (darf(sitz, "plan.edit.unit")) return befunde;');
+    /* Seit 1e.1: mit plan.edit.unit alle Befunde außer den personenbezogenen
+       zu Personen, deren Merkmale die Sicht nicht enthält (sichtbereich "fremd"). */
+    expect(funktion("befundeFuer")).toContain('if (darf(sitz, "plan.edit.unit"))');
+    expect(funktion("befundeFuer")).toContain("personFremd(sitz.mandant, b.personId)");
     expect(funktion("tagesaufgaben")).toContain("befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13)))");
     expect(funktion("Lagebild")).toContain("befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13)))");
     expect(funktion("Pruefung")).toContain("befundeFuer(sitz, pruefen(m, von, bis))");
@@ -188,5 +194,21 @@ describe("Stempeln", () => {
   it("nachgezogen wird erst nach der Antwort; ein Fehler meldet nur", () => {
     expect(q.indexOf("await SP.stempeln")).toBeLessThan(q.indexOf("erg.eintrag"));
     expect(q).toMatch(/catch \(e\) \{\s*melde\(e\.message/);
+  });
+});
+
+/* Commit 1e.1: Die Schichtverantwortung bekommt Personen anderer Bereiche und
+   den Springer-Pool ohne Kontodaten. Konten und daraus abgeleitete Zähler
+   zeigt die Oberfläche für diese Personen nicht — sie wären falsch. */
+describe("Konten und Befunde nach sichtbereich", () => {
+  it("kontoSichtbar schließt fremde Bereiche und den Pool aus", () => {
+    expect(APP).toContain('&& p.sichtbereich !== "fremd" && p.sichtbereich !== "pool"');
+    expect(APP).toContain('const personFremd = (m, pid) =>');
+  });
+  it("Personal, Personalakte, Lagebild und Tagesaufgaben verwenden kontoSichtbar", () => {
+    expect(funktion("Personal")).toContain("zeigt && kontoSichtbar(sitz, p)");
+    expect(funktion("Personalakte")).toContain("const zeigt = kontoSichtbar(sitz, p);");
+    expect(funktion("Lagebild")).toContain("kontoSichtbar(sitz, p) && stundenkonto(");
+    expect(funktion("tagesaufgaben")).toContain("kontoSichtbar(sitz, x) && stundenkonto(");
   });
 });

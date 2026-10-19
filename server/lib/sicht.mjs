@@ -104,7 +104,95 @@ export const PERSONENFELDER = [...new Set([...EIGENE_PERSON, "mutterschutz",
   "nachtvorsorge", "rolleSeit", "rolleVerlauf", "urlaubshinweis", "geburtstag",
   "geburtsdatum", "personalnummer", "iban", "steuerId", "sozialversicherung",
   "notfall", "lohn", "gehalt", "zuschlaege", "einarbeitung", "nachweise",
-  "neuerZugang", "anonymSeit", "schutz"])];
+  "neuerZugang", "anonymSeit", "schutz", "sichtbereich"])];
+
+/* ------------------------------------------------------------------------
+   PERSONEN IN DER SICHT DER SCHICHTVERANTWORTUNG
+
+   Bis Oktober 2026 bekam die Schichtverantwortung jede Person des Betriebs
+   vollständig: Anschrift, Notfallkontakt, Lohnfelder, die Notiz der Leitung,
+   Geheimnisse von Kalender und Push — auch aus fremden Bereichen. Jetzt
+   drei Stufen, jede eine Positivliste (was fehlt, geht nicht hinaus):
+
+   - die eigene Person wie bei Beschäftigten (EIGENE_PERSON);
+   - Personen des eigenen Bereichs: was Planung, Ersatzsuche, Konten und die
+     Schutzprüfung brauchen, dazu Telefon und Mobilnummer für Ausfälle;
+   - der Springer-Pool: dasselbe ohne Konten und Wünsche;
+   - alle übrigen wie für Beschäftigte (FREMD_MITARBEITER).
+
+   Zum Bereich gehört, wer im Sichtfenster (SICHTFENSTER) irgendwann dort
+   zugeordnet ist — Versetzungen im Planungszeitraum bleiben so sichtbar.
+   Jede Person trägt `sichtbereich`, damit die Oberfläche weiß, wofür die
+   Daten reichen; geschrieben wird das Feld nie (rechte.mjs füllt zurück).
+
+   SCHULD (Datenschutz): Für die Schutzprüfung (MuSchG, JArbSchG, SGB IX,
+   § 6 ArbZG) liest die Oberfläche Mutterschutz, Schwerbehinderung,
+   Geburtstag und Nachtvorsorge roh. Langfristig soll die Schichtverantwortung
+   stattdessen abgeleitete Aussagen aus einer Plan-/Entscheidungslogik
+   bekommen („Nachtdienst nicht zulässig", „besondere Schutzprüfung
+   erforderlich") — nicht die Gesundheitsmerkmale selbst.
+
+   SCHULD (Bereich): Dienstbuch, Übergaben und Tagesnotizen bekommt die
+   Schichtverantwortung vorerst vollständig. Sie tragen Bewohner- und
+   Vorfallsangaben ohne Bereichsbezug; sie brauchen eine einheitId bzw.
+   bereichId und eine serverseitige Filterung, bevor sie gekürzt werden
+   können. Die übrigen Sammlungen des Betriebs folgen in Commit 1e.2.
+   ------------------------------------------------------------------------ */
+
+/** Wie weit um heute die Zugehörigkeit zum Bereich zählt. Zentral, damit
+    spätere Ansichten oder Branchen ein anderes Fenster wählen können. */
+export const SICHTFENSTER = { vorTage: 60, nachTage: 90 };
+
+const SCHUTZMERKMALE = ["mutterschutz", "schwerbehindert", "geburtstag", "nachtvorsorge"];
+const BEREICH_PERSON = [...PLAN, "bereich", "kompetenzNachweise", "einschraenkungen",
+  "verfuegbarkeit", "wunschfrei", "stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag",
+  "einarbeitung", ...SCHUTZMERKMALE, "telefon", "mobil"];
+const POOL_PERSON = [...PLAN, "bereich", "kompetenzNachweise", "einschraenkungen",
+  "verfuegbarkeit", ...SCHUTZMERKMALE, "telefon", "mobil"];
+/* Nachweise im eigenen Bereich: Qualifikation, Ablauf und — für die
+   Status-Nachweise, an denen das Einsatz-Gate hängt — ob er vorliegt.
+   Keine Datei. */
+const nachweiseBereich = (p) => liste(p.qualNachweise).map((n) => nimm(n, ["qualId", "ablauf", "vorhanden"]));
+
+const tagPlus = (s, n) => new Date(new Date(`${s}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
+
+/** War die Person im Fenster [von, bis] irgendwann einer dieser Einheiten zugeordnet? */
+function imFenster(p, einheiten, von, bis) {
+  const z = liste(p.zugehoerigkeit).filter((x) => x && x.einheitId !== undefined)
+    .map((x) => ({ ab: x.ab || "0000-01-01", einheitId: String(x.einheitId) }))
+    .sort((a, b) => a.ab.localeCompare(b.ab));
+  if (!z.length) return p.bereich !== undefined && einheiten.has(String(p.bereich));
+  for (let i = 0; i < z.length; i++) {
+    const ende = z[i + 1] ? tagPlus(z[i + 1].ab, -1) : "9999-12-31";
+    if (z[i].ab <= bis && ende >= von && einheiten.has(z[i].einheitId)) return true;
+  }
+  return false;
+}
+
+/** Der Kontext der Personensicht: eigener Bereich (aus rechte.mjs), Pool, Fenster. */
+export function schichtKontext(m, sitzung, eigene, heute, fenster = SICHTFENSTER) {
+  return {
+    rolle: "subplaner", ich: sitzung.person, eigene: eigene ? String(eigene) : null,
+    pool: new Set(liste(m && m.einheiten).filter((e) => e && e.pool).map((e) => String(e.id))),
+    von: tagPlus(heute, -fenster.vorTage), bis: tagPlus(heute, fenster.nachTage),
+    nurStatus: new Set(liste(m && m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
+  };
+}
+
+/** Eine Person in der Sicht der Schichtverantwortung. */
+export function schichtPersonSicht(p, ctx) {
+  if (!p || typeof p !== "object") return p;
+  if (gleich(p.id, ctx.ich)) return { ...nimm(p, EIGENE_PERSON), sichtbereich: "eigen" };
+  /* Ohne eigenen Bereich gibt es weder Bereich noch Pool — alles fremd. */
+  const umfang = !ctx.eigene ? "fremd"
+    : imFenster(p, new Set([ctx.eigene]), ctx.von, ctx.bis) ? "bereich"
+      : (imFenster(p, ctx.pool, ctx.von, ctx.bis) || p.springer === true) ? "pool" : "fremd";
+  if (umfang === "fremd") return { ...personSicht(p, { ...ctx, rolle: "mitarbeiter" }), sichtbereich: "fremd" };
+  const aus = nimm(p, umfang === "bereich" ? BEREICH_PERSON : POOL_PERSON);
+  if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
+  aus.sichtbereich = umfang;
+  return aus;
+}
 
 function personSicht(p, ctx) {
   if (!p || typeof p !== "object") return p;
