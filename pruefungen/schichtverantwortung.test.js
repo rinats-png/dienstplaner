@@ -222,10 +222,14 @@ describe("E — Stempeluhr und Zeiterfassung", () => {
     const m = ok(schreibe(g, SUB, (m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; }));
     expect(m.einstempeln).toEqual(g.mandanten[0].einstempeln);
   });
-  it("9. erfassung.bestaetigt über PUT: abgewiesen — fremd, im Bereich und eigen", () => {
+  it("9. erfassung.bestaetigt über PUT: fremd und im Bereich abgewiesen, eigen wirkungslos", () => {
     ab(schreibe(bestand(), SUB, (m) => { m.erfassung["b1|2026-10-01"].bestaetigt = true; }));
     ab(schreibe(bestand(), SUB, (m) => { m.erfassung["a1|2026-10-01"] = { start: "06:00", ende: "14:00", bestaetigt: true }; }));
-    ab(schreibe(bestand(), SUB, (m) => { m.erfassung["s1|2026-10-01"] = { start: "00:00", ende: "23:59", bestaetigt: true }; }));
+    /* Seit 1d.2: die eigene Selbstauskunft läuft über POST /api/zeit-bestaetigen;
+       im PUT wird eine eigene Kopie übergangen, nicht abgewiesen. */
+    const g = bestand();
+    expect(ok(schreibe(g, SUB, (m) => { m.erfassung["s1|2026-10-01"] = { start: "00:00", ende: "23:59", bestaetigt: true }; })).erfassung)
+      .toEqual(g.mandanten[0].erfassung);
   });
 });
 

@@ -11,12 +11,32 @@
    Schichten". Für einen vergangenen Tag mit geplantem Dienst, an dem es
    noch keine erfasste Zeit gibt, bestätigt die Person entweder „wie
    geplant" (start und ende leer) oder „abweichend" mit Beginn, Ende und
-   Grund. Genau das nimmt der Server an — nur neu, nie ändernd.
+   Grund. Das läuft über einen eigenen Endpunkt (POST /api/zeit-bestaetigen)
+   mit ausdrücklicher Antwort — nicht über das allgemeine Speichern, das
+   eine verworfene Angabe nicht melden kann: Die Oberfläche hätte den Tag
+   als bestätigt gezeigt, bis zum nächsten Neuladen.
 
    Ob an einem Tag Dienst geplant ist, rechnet der Server selbst: dieselbe
    Rechnung wie personTag in src/App.jsx (Schichtfolge der Einheit,
    Teilzeit, Abweichungen, Abwesenheiten), ohne die Postenvergabe — die
-   ändert nur, welcher Dienst, nicht ob einer.
+   ändert nur, welcher Dienst, nicht ob einer (personTag stellt nur im
+   Zweig `ab === undefined && plan` von einer Dienstart auf eine andere
+   um; ohne Plandienst bleibt es bei keinem).
+
+   TECHNISCHE SCHULD — zwei Planrechnungen. personTag im Client und
+   geplanterDienst hier sind zwei unabhängige Umsetzungen derselben Regel.
+   Laufen sie auseinander, verwirft der Server, was die Oberfläche anbietet.
+   Zielbild: eine maßgebliche, reine Planrechnung als gemeinsames Modul
+   (ohne React), aus dem Client und Server ableiten; bis dahin wäre ein
+   Vergleichstest beider Umsetzungen auf denselben Daten der Zwischenschritt.
+
+   TECHNISCHE SCHULD — Uhr. „Heute" ist hier heuteBerlin() zum Zeitpunkt
+   der Anfrage. Tests rechnen ihr „heute" einmal beim Start; fällt
+   Mitternacht (Europe/Berlin) dazwischen, verschieben sich die relativen
+   Tage. Ziel: eine injizierbare Uhr (server/lib/uhr.mjs, jetzt()), im
+   Testserver über eine Umgebungsvariable fest gestellt — nur bei
+   NODE_ENV=test —, dieselbe Referenz in den HTTP-Prüfungen; in Unit-Tests
+   der Parameter `heute` bzw. vi.setSystemTime.
    ========================================================================== */
 
 const TAG_MS = 86400000;
@@ -143,33 +163,20 @@ export function selbstauskunftPruefen(m, person, datum, wert, heute = heuteBerli
 }
 
 /**
- * Die eigene `erfassung` einer Person zusammenführen: Fremdes und
- * Bestehendes aus dem gespeicherten Stand, Neues nur nach
- * selbstauskunftPruefen. Gibt die neue erfassung und die verworfenen
- * Schlüssel samt Grund zurück — ob ein Verwerfen abgelehnt oder still
- * übergangen wird, entscheidet der Aufrufer.
+ * `erfassung` im allgemeinen Speichern einer Beschäftigten oder
+ * Schichtverantwortung: Es bleibt der gespeicherte Stand. Neue
+ * Selbstauskünfte kommen über POST /api/zeit-bestaetigen; was die
+ * Oberfläche hier mitschickt, sind Kopien — veraltet, gekürzt oder
+ * identisch — und wird übergangen. Zurückgemeldet wird nur, ob dabei
+ * Schlüssel fremder Personen geändert werden sollten.
  */
-export function erfassungZusammen(m, geschickt, ich, heute = heuteBerlin()) {
+export function erfassungZusammen(m, geschickt, ich) {
   const alt = m.erfassung && typeof m.erfassung === "object" ? m.erfassung : {};
   const neu = geschickt && typeof geschickt === "object" && !Array.isArray(geschickt) ? geschickt : {};
-  const person = (m.personen || []).find((p) => p && String(p.id) === String(ich));
-  const aus = { ...alt };
-  const verworfen = [];
-  for (const k of new Set([...Object.keys(alt), ...Object.keys(neu)])) {
-    if (JSON.stringify(alt[k]) === JSON.stringify(neu[k])) continue;
-    const [pid, datum] = String(k).split("|");
-    if (String(pid) !== String(ich)) { verworfen.push({ schluessel: k, grund: "fremd" }); continue; }
-    if (Object.prototype.hasOwnProperty.call(alt, k)) {
-      /* Bestehendes bleibt — auch, wenn die Oberfläche es nicht mitschickt. */
-      verworfen.push({ schluessel: k, grund: "bestehend", bestehend: true });
-      continue;
-    }
-    const r = person ? selbstauskunftPruefen(m, person, datum, neu[k], heute) : { grund: "Person fehlt." };
-    if (r.grund) { verworfen.push({ schluessel: k, grund: r.grund }); continue; }
-    aus[k] = r.eintrag;
-  }
-  return { erfassung: aus, verworfen,
-    neu: Object.keys(aus).filter((k) => !Object.prototype.hasOwnProperty.call(alt, k)) };
+  const fremd = [...new Set([...Object.keys(alt), ...Object.keys(neu)])]
+    .filter((k) => JSON.stringify(alt[k]) !== JSON.stringify(neu[k]))
+    .filter((k) => String(k).split("|")[0] !== String(ich));
+  return { erfassung: alt, fremd };
 }
 
 /**

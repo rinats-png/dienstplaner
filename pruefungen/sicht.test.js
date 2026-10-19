@@ -509,8 +509,8 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
 
   it("eigene Änderungen kommen an, Fremdes bleibt, und nach dem Neuladen ist alles da", () => {
     const gespeichert = bestand();
-    /* Zeiten bestätigt eine Beschäftigte seit Commit 1d.1 nur für einen
-       vergangenen Tag mit geplantem Dienst (zeiterfassung.mjs). */
+    /* Zeiten bestätigt eine Beschäftigte seit Commit 1d.2 nur noch über
+       POST /api/zeit-bestaetigen; im PUT bleibt die Erfassung, wie sie ist. */
     const gestern = tagePlus(heuteBerlin(), -1);
     gespeichert.mandanten[0].abweichungen = { ...(gespeichert.mandanten[0].abweichungen || {}), [`0|${gestern}`]: "F" };
     const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(gespeichert, SITZ.a)));
@@ -529,7 +529,7 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
     expect(m.anfragen.find((a) => a.id === "t-b").antwort).toBe("intern");
     expect(ids(m.wuensche)).toEqual(expect.arrayContaining(["w-a", "w-a2", "w-b"]));
     expect(m.erfassung["1|2026-10-01"].grund).toBe("Kind krank abgeholt");
-    expect(m.erfassung[`0|${gestern}`]).toBeDefined();
+    expect(m.erfassung[`0|${gestern}`]).toBeUndefined();
     expect(m.ausschreibungen[0].bewerbungen).toEqual([{ personId: 1, text: "Brauche Geld, Scheidung" }]);
     expect(m.personen.find((p) => p.id === 0).telefon).toBe("0171");
     expect(m.personen.find((p) => p.id === 1)).toEqual(gespeichert.mandanten[0].personen[1]);
@@ -540,7 +540,7 @@ describe("13., 14. Zurückschreiben und Neuladen", () => {
     const wieder = bestandFuerRolle(neu, SITZ.a).mandanten[0];
     expect(ids(wieder.anfragen).sort()).toEqual(["an-a", "an-a2", "t-b"]);
     expect(ids(wieder.wuensche)).toEqual(["w-a", "w-a2"]);
-    expect(Object.keys(wieder.erfassung).sort()).toEqual(["0|2026-10-01", `0|${gestern}`].sort());
+    expect(Object.keys(wieder.erfassung).sort()).toEqual(["0|2026-10-01"]);
     expect(wieder.personen.find((p) => p.id === 0).telefon).toBe("0171");
     /* … und ein zweiter Durchgang ohne Änderung ist verlustfrei. */
     const nochmal = zusammenfuehren(neu, JSON.parse(JSON.stringify(bestandFuerRolle(neu, SITZ.a))), SITZ.a);

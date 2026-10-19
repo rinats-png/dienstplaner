@@ -3,9 +3,11 @@
 
    Bis Oktober 2026 übernahm der Server bei Beschäftigten jeden eigenen
    Schlüssel aus `erfassung` unverändert — anlegen, ändern, löschen, auch
-   Gestempeltes, für jeden Tag. Jetzt nur noch: neue eigene Bestätigung für
-   einen vergangenen Tag (höchstens 14 zurück) mit geplantem Dienst, ohne
-   bestehenden Eintrag, genau {start, ende, bestaetigt: true, grund}.
+   Gestempeltes, für jeden Tag. Jetzt nur noch über POST /api/zeit-bestaetigen:
+   neue eigene Bestätigung für einen vergangenen Tag (höchstens 14 zurück)
+   mit geplantem Dienst, ohne bestehenden Eintrag, genau {start, ende,
+   bestaetigt: true, grund}. Im allgemeinen Speichern (PUT) bleibt
+   `erfassung` für Beschäftigte und Schichtverantwortung, wie sie ist.
 
    Alle Daten relativ zu heute (Europe/Berlin), damit die Prüfung morgen
    genauso läuft. Den HTTP-Weg prüft pruefungen/zeiterfassung.mjs.
@@ -56,15 +58,37 @@ function schreibe(g, sitz, aendern) {
   return zusammenfuehren(g, gelesen, sitz);
 }
 const erf = (e) => { expect(e && !e.verweigert, e && e.verweigert).toBe(true); return e.mandanten[0].erfassung; };
+const pruefe = (pid, datum, wert) => {
+  const m = bestand().mandanten[0];
+  return selbstauskunftPruefen(m, m.personen.find((p) => p.id === pid), datum, wert, HEUTE);
+};
 
-describe("Beschäftigte: Selbstauskunft", () => {
-  it("1. „Wie geplant\" für einen vergangenen Dienst: angenommen", () => {
-    expect(erf(schreibe(bestand(), A1, (m) => { m.erfassung[`a1|${tag(-1)}`] = { ...WIE_GEPLANT }; }))[`a1|${tag(-1)}`])
-      .toEqual(WIE_GEPLANT);
+describe("Selbstauskunft: die Regeln (POST /api/zeit-bestaetigen)", () => {
+  it("1. „Wie geplant\" für einen vergangenen Dienst: gültig", () => {
+    expect(pruefe("a1", tag(-1), { ...WIE_GEPLANT }).eintrag).toEqual(WIE_GEPLANT);
   });
-  it("2. „Abweichend\" mit Beginn, Ende und Grund: angenommen", () => {
+  it("2. „Abweichend\" mit Beginn, Ende und Grund: gültig", () => {
     const w = { start: "06:00", ende: "15:30", bestaetigt: true, grund: "Übergabe verlängert" };
-    expect(erf(schreibe(bestand(), A1, (m) => { m.erfassung[`a1|${tag(-5)}`] = w; }))[`a1|${tag(-5)}`]).toEqual(w);
+    expect(pruefe("a1", tag(-5), w).eintrag).toEqual(w);
+  });
+  it("5./6./7. künftig, heute, älter als 14 Tage, ohne Dienst: ungültig — 14 Tage noch gültig", () => {
+    for (const t of [tag(1), HEUTE, tag(-15), tag(-3)]) expect(pruefe("a1", t, { ...WIE_GEPLANT }).grund, t).toBeTruthy();
+    expect(pruefe("a1", tag(-14), { ...WIE_GEPLANT }).eintrag).toEqual(WIE_GEPLANT);
+  });
+  it("11./12. Zusatzfelder, bestaetigt false: ungültig", () => {
+    expect(pruefe("a1", tag(-1), { ...WIE_GEPLANT, innerhalbStart: true }).grund).toBeTruthy();
+    expect(pruefe("a1", tag(-1), { ...WIE_GEPLANT, bestaetigt: false }).grund).toBeTruthy();
+  });
+});
+
+describe("Beschäftigte: im PUT keine Selbstauskunft, Kopien wirkungslos", () => {
+  it("eine neue eigene Bestätigung im PUT wird übergangen — sie läuft über den eigenen Endpunkt", () => {
+    const e = erf(schreibe(bestand(), A1, (m) => {
+      m.erfassung[`a1|${tag(-1)}`] = { ...WIE_GEPLANT };
+      m.erfassung[`a1|${tag(-5)}`] = { start: "06:00", ende: "15:30", bestaetigt: true, grund: "x" };
+    }));
+    expect(e[`a1|${tag(-1)}`]).toBeUndefined();
+    expect(e[`a1|${tag(-5)}`]).toBeUndefined();
   });
   it("3./4. nur die eigene Person — fremde Person: übergangen", () => {
     const e = erf(schreibe(bestand(), A1, (m) => { m.erfassung[`a2|${tag(-1)}`] = { ...WIE_GEPLANT }; }));
@@ -77,12 +101,12 @@ describe("Beschäftigte: Selbstauskunft", () => {
     expect(e[`a1|${tag(1)}`]).toBeUndefined();
     expect(e[`a1|${HEUTE}`]).toBeUndefined();
   });
-  it("6. älter als 14 Tage: übergangen, 14 Tage noch angenommen", () => {
+  it("6. älter als 14 Tage im PUT: übergangen", () => {
     const e = erf(schreibe(bestand(), A1, (m) => {
       m.erfassung[`a1|${tag(-15)}`] = { ...WIE_GEPLANT }; m.erfassung[`a1|${tag(-14)}`] = { ...WIE_GEPLANT };
     }));
     expect(e[`a1|${tag(-15)}`]).toBeUndefined();
-    expect(e[`a1|${tag(-14)}`]).toEqual(WIE_GEPLANT);
+    expect(e[`a1|${tag(-14)}`]).toBeUndefined();          // im PUT ohnehin nie neu (Regel oben)
   });
   it("7. Tag ohne Dienst: übergangen", () => {
     expect(erf(schreibe(bestand(), A1, (m) => { m.erfassung[`a1|${tag(-3)}`] = { ...WIE_GEPLANT }; }))[`a1|${tag(-3)}`])
@@ -130,9 +154,9 @@ describe("Beschäftigte: Selbstauskunft", () => {
     expect(selbstauskunftPruefen(m, p, tag(-4), { start: "21:00", ende: "06:15", bestaetigt: true, grund: "" }).eintrag)
       .toEqual({ start: "21:00", ende: "06:15", bestaetigt: true, grund: "" });
   });
-  it("14. der eigene Eintrag bleibt beim Neuladen und beim nächsten Speichern erhalten", () => {
-    const g = bestand();
-    const n1 = schreibe(g, A1, (m) => { m.erfassung[`a1|${tag(-1)}`] = { ...WIE_GEPLANT }; });
+  it("14. ein bestätigter Eintrag bleibt beim Neuladen und beim nächsten Speichern erhalten", () => {
+    const n1 = bestand();
+    n1.mandanten[0].erfassung[`a1|${tag(-1)}`] = { ...WIE_GEPLANT };       // wie vom Endpunkt geschrieben
     const wieder = bestandFuerRolle(n1, A1).mandanten[0];
     expect(wieder.erfassung[`a1|${tag(-1)}`]).toEqual(WIE_GEPLANT);
     const n2 = schreibe(n1, A1, (m) => { delete m.erfassung[`a1|${tag(-1)}`]; });
@@ -140,23 +164,27 @@ describe("Beschäftigte: Selbstauskunft", () => {
   });
 });
 
-describe("Schichtverantwortung: eigene Selbstauskunft, sonst nichts", () => {
-  it("15. eigene „Wie geplant\": angenommen", () => {
-    expect(erf(schreibe(bestand(), S1, (m) => { m.erfassung[`s1|${tag(-1)}`] = { ...WIE_GEPLANT }; }))[`s1|${tag(-1)}`])
-      .toEqual(WIE_GEPLANT);
-  });
-  it("16. eigene „Abweichend\": angenommen", () => {
+describe("Schichtverantwortung: eigene Selbstauskunft über den Endpunkt, sonst nichts", () => {
+  it("15./16. eigene „Wie geplant\" und „Abweichend\": gültig nach denselben Regeln", () => {
+    expect(pruefe("s1", tag(-1), { ...WIE_GEPLANT }).eintrag).toEqual(WIE_GEPLANT);
     const w = { start: "06:00", ende: "14:30", bestaetigt: true, grund: "Übergabe" };
-    expect(erf(schreibe(bestand(), S1, (m) => { m.erfassung[`s1|${tag(-2)}`] = w; }))[`s1|${tag(-2)}`]).toEqual(w);
+    expect(pruefe("s1", tag(-2), w).eintrag).toEqual(w);
+  });
+  it("eigene Kopien im PUT — neu, ungültig oder veraltet — blockieren das Speichern nicht", () => {
+    const g = bestand();
+    for (const f of [(m) => { m.erfassung[`s1|${tag(-1)}`] = { ...WIE_GEPLANT }; },
+      (m) => { m.erfassung[`s1|${tag(1)}`] = { start: "14:00", ende: "06:00", bestaetigt: true, grund: "" }; }]) {
+      const n = schreibe(g, S1, (m) => { f(m); m.abweichungen[`a1|${tag(5)}`] = "F"; });
+      expect(n.verweigert).toBeFalsy();
+      expect(n.mandanten[0].erfassung).toEqual(g.mandanten[0].erfassung);
+      expect(n.mandanten[0].abweichungen[`a1|${tag(5)}`]).toBe("F");
+    }
   });
   it("17. fremde Erfassung: 403 — neu, geändert, auch im eigenen Bereich", () => {
     for (const f of [(m) => { m.erfassung[`a1|${tag(-1)}`] = { ...WIE_GEPLANT }; },
       (m) => { m.erfassung[`a1|${tag(-2)}`].bestaetigt = false; },
       (m) => { delete m.erfassung[`a2|${tag(-2)}`]; }])
       expect(schreibe(bestand(), S1, f).verweigert).toBeTruthy();
-  });
-  it("eigene ungültige Auskunft: 403 statt still übergangen", () => {
-    expect(schreibe(bestand(), S1, (m) => { m.erfassung[`s1|${tag(1)}`] = { ...WIE_GEPLANT }; }).verweigert).toBeTruthy();
   });
 });
 

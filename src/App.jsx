@@ -21320,8 +21320,26 @@ function AppInnen() {
           planstaende: { ...(m.planstaende || {}), [ym2]: planAbbild(m, ym2) },
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Plan freigegeben"),
-      bestaetigeZeit: (pid, d, start, ende, grund) => mUpd((m) => ({ ...m,
-        erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null),
+      /* Die eigene Zeit bestätigt der Server über einen eigenen Weg und sagt,
+         ob es geklappt hat; erst dann wird hier nachgezogen. Vorher verschwand
+         der Tag aus „Zeiten bestätigen", auch wenn der Server die Angabe
+         verworfen hatte. Für andere Personen (Leitung, Planung) bleibt es beim
+         gewöhnlichen Speichern. */
+      bestaetigeZeit: async (pid, d, start, ende, grund) => {
+        if (!sitz.person || pid !== sitz.person.id) {
+          mUpd((m) => ({ ...m,
+            erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null);
+          return;
+        }
+        try {
+          const erg = await SP.zeitBestaetigen(d, start, ende, grund);
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) }));
+          melde("Zeit bestätigt.");
+        } catch (e) {
+          melde(e.message || "Die Zeit ließ sich nicht bestätigen.");
+        }
+      },
       setzeEinschraenkung: (pid, k, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid
         ? { ...p, einschraenkungen: { ...(p.einschraenkungen || {}), [k]: v } } : p) }), "Einsatzeinschränkung geändert"),
       alleGelesen: () => mUpd((m) => ({ ...m, nachrichten: (m.nachrichten || []).map((n) =>

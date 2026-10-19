@@ -150,3 +150,25 @@ describe("11. Navigation: nur die drei Ansichten mit vollständigem Datenbedarf 
     for (const [view, r] of Object.entries(erwartet)) expect(recht(view), view).toBe(r);
   });
 });
+
+/* Commit 1d.2: „Zeiten bestätigen" lief über das allgemeine Speichern. Der
+   Server verwarf unzulässige Angaben still, die Oberfläche hatte den Tag da
+   schon als bestätigt abgehakt. Jetzt: eigener Endpunkt, Nachziehen erst
+   nach Erfolg, sonst Meldung mit Grund. */
+describe("Zeiten bestätigen", () => {
+  const i = APP.indexOf("      bestaetigeZeit: async (");
+  const q = APP.slice(i, APP.indexOf("\n      setzeEinschraenkung:", i));
+  it("die eigene Zeit geht an POST /api/zeit-bestaetigen", () => {
+    expect(i).toBeGreaterThan(0);
+    expect(q).toContain("await SP.zeitBestaetigen(d, start, ende, grund)");
+    const sp = readFileSync(path.join(HIER, "..", "src", "speicher.js"), "utf8");
+    expect(sp).toContain('fetch("/api/zeit-bestaetigen"');
+  });
+  it("nachgezogen wird erst nach der Antwort, mit dem Eintrag des Servers", () => {
+    expect(q.indexOf("await SP.zeitBestaetigen")).toBeLessThan(q.indexOf("erg.eintrag"));
+    expect(q).toMatch(/catch \(e\) \{\s*melde\(e\.message/);
+  });
+  it("für andere Personen bleibt es beim gewöhnlichen Speichern", () => {
+    expect(q).toContain("pid !== sitz.person.id");
+  });
+});

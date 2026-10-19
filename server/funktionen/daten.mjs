@@ -10,7 +10,7 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen } from "../lib/zeiterfassung.mjs";
+import { stempelDatumPruefen, selbstauskunftPruefen } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
@@ -853,17 +853,6 @@ export default async (req, context) => {
           durch: erg.durch, zeit: erg.zeit }, 409);
       }
 
-      /* Selbstauskünfte zur Zeit eigens vermerken: wer, wie viele Tage. Im
-         allgemeinen Schreibeintrag wären sie nicht zu erkennen. */
-      if ((s.rolle === "mitarbeiter" || s.rolle === "subplaner") && s.person !== null && s.person !== undefined) {
-        const vorM = jetzt && eigenerMandant(jetzt.bestand, s), nachM = eigenerMandant(zuSchreiben, s);
-        const praefix = `${s.person}|`;
-        const neueTage = Object.keys((nachM && nachM.erfassung) || {})
-          .filter((k) => k.startsWith(praefix) && !((vorM && vorM.erfassung) || {})[k]);
-        if (neueTage.length)
-          await protokoll("schreiben", ks, "erfolg",
-            `Selbstauskunft Zeiten: ${neueTage.map((k) => k.split("|")[1]).join(", ")}`, wer);
-      }
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
         + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
@@ -943,6 +932,55 @@ export default async (req, context) => {
       await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`, wer);
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, etag: ergSt.stand || null });
+    }
+
+    /* ------------------------- Zeiten bestätigen ----------------------
+       Die Selbstauskunft „Zeiten bestätigen": für einen vergangenen Tag mit
+       geplantem Dienst, an dem noch keine Zeit erfasst ist, „wie geplant"
+       oder „abweichend". Bis Oktober 2026 lief das über das allgemeine
+       Speichern, und eine unzulässige Angabe verschwand dort still — die
+       Oberfläche zeigte den Tag trotzdem als bestätigt. Hier gibt es eine
+       Antwort: 200 mit dem gespeicherten Eintrag oder 4xx mit dem Grund.
+       Nur für die eigene Person; die Regeln stehen in zeiterfassung.mjs. */
+    if (pfad === "zeit-bestaetigen" && req.method === "POST") {
+      const kZ = kennung(req, s);
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: absageText(s.rolle) }, 403);
+      }
+      const bZ = await bremse("schreiben", kZ);
+      if (!bZ.frei) return zuVielAntwort(bZ.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      const { datum, start = null, ende = null, grund = "" } = rumpf || {};
+
+      const mitZ = await bestandJetzt();
+      if (!mitZ) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      const mZ = eigenerMandant(mitZ.bestand, s);
+      if (!mZ) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const personZ = (mZ.personen || []).find((x) => String(x.id) === String(s.person));
+      if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
+
+      const kTag = `${personZ.id}|${datum}`;
+      if ((mZ.erfassung || {})[kTag]) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
+        return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
+      }
+      const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund });
+      if (urteilZ.grund) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
+        return antwort({ fehler: urteilZ.grund }, 422);
+      }
+      const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
+      const ergZ = await bestandSchreiben(store, s.bestand,
+        { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
+        { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
+      if (!ergZ.ok) {
+        await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen ${datum}`, wer);
+        return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+      }
+      await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
+      return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null });
     }
 
     /* ------------------------------ Abmelden ------------------------- */

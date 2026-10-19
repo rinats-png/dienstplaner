@@ -441,6 +441,21 @@ export async function stempeln(datum, art, koord) {
 }
 
 /**
+ * Die eigene Zeit für einen vergangenen Diensttag bestätigen — „wie geplant"
+ * (start und ende null) oder abweichend. Der Server prüft und antwortet
+ * ausdrücklich; eine verworfene Angabe kommt als Fehler mit Grund zurück,
+ * statt im allgemeinen Speichern still zu verschwinden.
+ */
+export async function zeitBestaetigen(datum, start, ende, grund) {
+  const a = await fetch("/api/zeit-bestaetigen", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
+  return d;
+}
+
+/**
  * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
  * Codes ließen sich anlegen, aber nie wieder abschalten.
  *

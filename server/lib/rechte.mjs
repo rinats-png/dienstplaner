@@ -315,8 +315,8 @@ function notrufeZusammen(alt, neu, ich, personen) {
 export function eigenesZusammen(alt, geschickt, ich) {
   const hat = (f) => Object.prototype.hasOwnProperty.call(geschickt, f);
   const aus = {};
-  /* Zeiten: nur neue Selbstauskünfte nach den Regeln in zeiterfassung.mjs.
-     Bestehendes — auch Gestempeltes — bleibt, Unzulässiges wird übergangen. */
+  /* Zeiten: der gespeicherte Stand. Selbstauskünfte laufen über
+     POST /api/zeit-bestaetigen (zeiterfassung.mjs), Kopien werden übergangen. */
   if (hat("erfassung")) aus.erfassung = erfassungZusammen(alt, geschickt.erfassung, ich).erfassung;
   if (hat("wuensche")) aus.wuensche = eigeneEintraege(alt.wuensche, geschickt.wuensche, ich);
   if (hat("einspruenge")) aus.einspruenge = eigeneEintraege(alt.einspruenge, geschickt.einspruenge, ich);
@@ -896,17 +896,14 @@ export function einheitZusammen(altM, neuM, sitzung) {
       case "einstempeln":
         break;
 
-      /* --- Zeiterfassung: für die eigene Person dieselbe Selbstauskunft wie
-             für Beschäftigte, für andere kein Rohzugriff. Bestehendes bleibt
-             (auch eine abweichende lokale Kopie wird übergangen). --- */
+      /* --- Zeiterfassung: kein Rohzugriff. Die eigene Selbstauskunft läuft
+             wie bei Beschäftigten über POST /api/zeit-bestaetigen; eigene
+             Kopien werden übergangen, fremde Änderungen abgewiesen. --- */
       case "erfassung": {
         if (n !== undefined && (!n || typeof n !== "object" || Array.isArray(n))) return nein("erfassung: ungültige Form.");
         const r = erfassungZusammen(altM, n, ichId);
-        const abgelehnt = r.verworfen.find((v) => !v.bestehend);
-        if (abgelehnt)
-          return nein(abgelehnt.grund === "fremd"
-            ? "Zeiten anderer Personen erfasst die Leitung; Stempelzeiten entstehen über die Stempeluhr."
-            : abgelehnt.grund);
+        if (r.fremd.length)
+          return nein("Zeiten anderer Personen erfasst die Leitung; Stempelzeiten entstehen über die Stempeluhr.");
         aus.erfassung = r.erfassung;
         break;
       }

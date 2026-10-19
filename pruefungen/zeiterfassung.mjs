@@ -1,8 +1,9 @@
 /* ==========================================================================
    ZEITERFASSUNG — gegen einen laufenden Server
 
-   Eine Beschäftigte bestätigt ihre Zeiten über den echten Schreibweg
-   („Wie geplant", „Abweichend") und stempelt über /api/stempeln. Danach
+   Eine Beschäftigte bestätigt ihre Zeiten über POST /api/zeit-bestaetigen
+   („Wie geplant", „Abweichend") und stempelt über /api/stempeln. Unzulässige
+   Angaben bekommen dort eine ausdrückliche Absage (422/409). Danach
    versucht sie, bestehende und gestempelte Zeiten über PUT zu ändern, zu
    löschen und Tage ohne Dienst oder in der Zukunft einzutragen. Neu lesen:
    Der Serverstand ist unverändert.
@@ -61,12 +62,14 @@ for (let i = 1; i <= 10; i++) abw[`a1|${tag(-i)}`] = "F";
 abw[`a1|${tag(-3)}`] = "-";
 abw[`n1|${tag(-1)}`] = "N";
 abw[`a1|${tag(1)}`] = "F";
+abw[`s1|${tag(-1)}`] = "F";
+abw[`a1|${tag(-20)}`] = "F";
 const person = (id, rolle) => ({ id, vorname: "V", nachname: id, rolle, bereich: "e1",
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "zeit-probe", name: "Haus Zeit", einheiten: [{ id: "e1", name: "WB 1" }],
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" }],
-  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung")],
+  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner")],
   abweichungen: abw, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [],
 }] };
 
@@ -75,6 +78,8 @@ pruef("Raum eingerichtet", (await rufe(tBetr, "bestand-anlegen", "POST", { inhal
 const tA = await anmelden(await zugang("mitarbeiter", "a1"));
 const tN = await anmelden(await zugang("mitarbeiter", "n1"));
 const tL = await anmelden(await zugang("leitung", "l1"));
+const tS = await anmelden(await zugang("subplaner", "s1"));
+const bestaetigen = (t, rumpf) => rufe(t, "zeit-bestaetigen", "POST", rumpf);
 
 async function alsA(aendern) {
   const r = await lies(tA);
@@ -84,14 +89,39 @@ async function alsA(aendern) {
 }
 const erfassungL = async () => (await lies(tL)).bestand.mandanten[0].erfassung || {};
 
-/* --- Legitim: Wie geplant, Abweichend --- */
-const w1 = await alsA((m) => { m.erfassung[`a1|${tag(-1)}`] = { start: null, ende: null, bestaetigt: true, grund: "" }; });
-pruef("„Wie geplant\" per PUT: 200", w1.status === 200, `Status ${w1.status}`);
+/* --- Im PUT entsteht keine Selbstauskunft mehr --- */
+const w0 = await alsA((m) => { m.erfassung[`a1|${tag(-1)}`] = { start: null, ende: null, bestaetigt: true, grund: "" }; });
+pruef("Neue Selbstauskunft im PUT: wirkungslos", w0.status === 200 && !(await erfassungL())[`a1|${tag(-1)}`], `Status ${w0.status}`);
+
+/* --- Legitim über den Endpunkt: Wie geplant, Abweichend --- */
+const w1 = await bestaetigen(tA, { datum: tag(-1), start: null, ende: null, grund: "" });
+pruef("„Wie geplant\": 200", w1.status === 200 && w1.eintrag && w1.eintrag.bestaetigt === true, `Status ${w1.status} ${w1.fehler || ""}`);
 pruef("… nach dem Neuladen vorhanden", !!(await erfassungL())[`a1|${tag(-1)}`]);
 const ABWEICHEND = { start: "06:00", ende: "15:15", bestaetigt: true, grund: "Übergabe verlängert" };
-const w2 = await alsA((m) => { m.erfassung[`a1|${tag(-2)}`] = { ...ABWEICHEND }; });
-pruef("„Abweichend\" per PUT: 200", w2.status === 200, `Status ${w2.status}`);
+const w2 = await bestaetigen(tA, { datum: tag(-2), start: "06:00", ende: "15:15", grund: "Übergabe verlängert" });
+pruef("„Abweichend\": 200", w2.status === 200, `Status ${w2.status} ${w2.fehler || ""}`);
 pruef("… nach dem Neuladen vorhanden", JSON.stringify((await erfassungL())[`a1|${tag(-2)}`]) === JSON.stringify(ABWEICHEND));
+const wS = await bestaetigen(tS, { datum: tag(-1), start: null, ende: null, grund: "" });
+pruef("Schichtverantwortung, eigene Zeit: 200", wS.status === 200, `Status ${wS.status} ${wS.fehler || ""}`);
+
+/* --- Ausdrückliche Absagen mit Grund --- */
+for (const [name, rumpf, status] of [
+  ["Ende vor Beginn ohne Nachtdienst", { datum: tag(-4), start: "14:00", ende: "06:00", grund: "" }, 422],
+  ["ungültiges Zeitformat", { datum: tag(-4), start: "6 Uhr", ende: "14:00", grund: "" }, 422],
+  ["nur Beginn, kein Ende", { datum: tag(-4), start: "06:00", ende: null, grund: "" }, 422],
+  ["Tag ohne Dienst", { datum: tag(-3), start: null, ende: null, grund: "" }, 422],
+  ["älter als 14 Tage", { datum: tag(-20), start: null, ende: null, grund: "" }, 422],
+  ["künftiger Tag", { datum: tag(1), start: null, ende: null, grund: "" }, 422],
+  ["heute", { datum: HEUTE, start: null, ende: null, grund: "" }, 422],
+  ["schon bestätigt", { datum: tag(-2), start: "05:00", ende: "20:00", grund: "mehr" }, 409],
+]) {
+  const w = await bestaetigen(tA, rumpf);
+  pruef(`Absage „${name}": ${status} mit Grund`, w.status === status && typeof w.fehler === "string" && w.fehler.length > 0,
+    `Status ${w.status} · ${w.fehler || ""}`);
+}
+const wFremdS = await bestaetigen(tS, { datum: tag(-4), start: null, ende: null, grund: "", personId: "a1" });
+pruef("Eine mitgeschickte fremde Person zählt nicht (eigene Person ohne Dienst → 422)", wFremdS.status === 422
+  && !(await erfassungL())[`a1|${tag(-4)}`], `Status ${wFremdS.status}`);
 
 /* --- Stempeln --- */
 const sHeute = await rufe(tA, "stempeln", "POST", { datum: HEUTE, art: "start" });
