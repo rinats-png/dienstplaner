@@ -82,8 +82,9 @@ for (const [name, rolle, ich] of [["Planung", "planer", "p1"], ["Leitung", "leit
   pruef(`${name}: keine Geheimnisse, Lohn-/Bankfelder, Notfallkontakte, Betreiber- und Rechnungsdaten`, lecks.length === 0, lecks.join(", "));
   pruef(`${name}: personalnummer und lohnarten bleiben`, a.personalnummer === "PN-a1"
     && JSON.stringify(r.bestand.mandanten[0].lohnarten) === JSON.stringify([{ id: "lz", nr: "100" }]));
-  pruef(`${name}: ÜBERGANG bis Commit 4 — pushSchluessel, zustellung, email fremder Personen vorhanden`,
-    a.email === "a1@x.de" && a.pushSchluessel && a.pushSchluessel.endpoint === "push-a1" && a.zustellung && a.zustellung.planGeaendert);
+  /* Bis Commit 4 (Übergang) waren alle drei vorhanden. */
+  pruef(`${name}: Commit 4 — pushSchluessel und zustellung fremder Personen nicht mehr, email bleibt`,
+    a.email === "a1@x.de" && a.pushSchluessel === undefined && a.zustellung === undefined);
   pruef(`${name}: oben nur Zähler, Sitzungsmarke, Betrieb`, JSON.stringify(Object.keys(r.bestand).sort())
     === JSON.stringify(["mandanten", "session", "stand", "version"]));
   pruef(`${name}: eigene Person vollständig`, r.bestand.mandanten[0].personen.find((x) => x.id === ich).kalenderGeheim === `kal-geheim-${ich}`);

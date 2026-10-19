@@ -600,16 +600,15 @@ export const OBEN_FELDER = OBEN;
    Jetzt ein Positivkatalog wie für die übrigen Rollen: Was nicht darin
    steht, geht nicht hinaus — auch kein neues Feld.
 
-   ÜBERGANG BIS COMMIT 4: pushSchluessel, zustellung und email fremder
-   Personen bleiben vorerst. Die Oberfläche von Planung und Leitung baut
-   Mitteilungen heute selbst (zustellwege, baueMitteilung) und stellt sie
-   im Browser zu; ohne diese Felder ginge keine Push-Mitteilung mehr
-   hinaus. Commit 4 löst Empfänger und Versand auf dem Server auf — danach
-   werden die drei Felder aus fremden Personen entfernt.
+   Seit Commit 4 löst der Server Empfänger, Wege und Versand selbst auf
+   (versand.mjs). pushSchluessel und zustellung fremder Personen gehen
+   deshalb nicht mehr hinaus; beim Speichern kommen sie aus dem
+   gespeicherten Stand (vollRueckfuellen). Die E-Mail-Adresse bleibt als
+   Kontaktangabe für Planung und Leitung sichtbar (Datenauskunft, Export).
    ------------------------------------------------------------------------ */
 
 /** Was Planung und Leitung an fremden Personen nicht bekommen. */
-export const VOLL_PERSON_WEG = ["kalenderGeheim", "kalenderVerweis", "kalenderStand",
+export const VOLL_PERSON_WEG = ["kalenderGeheim", "kalenderVerweis", "kalenderStand", "pushSchluessel", "zustellung",
   "emailVorher", "emailGeaendert", "iban", "steuerId", "sozialversicherung", "lohn", "gehalt",
   "notfallkontakt"];
 /** Fremde Personen: alle bekannten Felder ohne die obigen. */

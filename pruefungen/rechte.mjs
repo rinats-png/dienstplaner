@@ -199,22 +199,22 @@ const sperrB = await fetch(`${BASIS}/api/zugang-sperren`, { method: "POST",
   body: JSON.stringify({ code: CODES.leitung }) });
 pruef("Betriebsrat darf keine Zugänge sperren", sperrB.status === 403, `Status ${sperrB.status}`);
 
-/* --- Befund 2: Mailversand nur an eigene Belegschaft --- */
-const send = await fetch(`${BASIS}/zustellung/senden`, { method: "POST",
-  headers: { authorization: `Bearer ${tB}`, "content-type": "application/json" },
+/* --- Befund 2: kein freier Mailversand ---
+   Bis Commit 4 nahm /zustellung/senden Aufträge mit Betreff und Text an —
+   auch vom Betriebsrat — und prüfte nur, ob die personId im Betrieb steht.
+   Seit Commit 4 nur Kennungen gespeicherter Mitteilungen, und der
+   Betriebsrat stößt keinen Versand an (Einzelheiten: zustellung-rechte.mjs). */
+const sendeAlt = (t) => fetch(`${BASIS}/zustellung/senden`, { method: "POST",
+  headers: { authorization: `Bearer ${t}`, "content-type": "application/json" },
   body: JSON.stringify({ auftraege: [
     { id: "x1", personId: 0, betreff: "Intern", text: "Regulär" },
     { id: "x2", mail: "opfer@example.com", betreff: "Spam", text: "Fremd" },
-    { id: "x3", personId: 999, betreff: "Spam", text: "Unbekannte Person" },
   ] }) });
-const sendD = await send.json();
-const z = Object.fromEntries((sendD.ergebnis || []).map((e) => [e.id, e]));
-pruef("Eigene Belegschaft wird zugestellt", z.x1 && z.x1.mail === "trocken",
-  `x1=${JSON.stringify(z.x1)}`);
-pruef("Freie Adresse im Rumpf wird abgewiesen", z.x2 && z.x2.mail === "abgewiesen",
-  `x2=${JSON.stringify(z.x2)}`);
-pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
-  `x3=${JSON.stringify(z.x3)}`);
+pruef("Freie Aufträge mit Betreff und Text werden nicht mehr angenommen", (await sendeAlt(tL)).status === 400);
+const sendB = await fetch(`${BASIS}/zustellung/senden`, { method: "POST",
+  headers: { authorization: `Bearer ${tB}`, "content-type": "application/json" },
+  body: JSON.stringify({ nachrichten: ["x1"] }) });
+pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${sendB.status}`);
 
 
 

@@ -154,8 +154,8 @@ export async function lies() {
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -232,6 +232,7 @@ async function jetztSchreiben(beimSchliessen) {
     if (status !== 200) throw new Error(daten?.fehler || "Speichern fehlgeschlagen.");
     etag = daten.etag;
     gescheitert = null;
+    if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);
     /* Der Auftrag bleibt liegen, damit er sich wiederholen lässt. */
@@ -317,12 +318,14 @@ export async function zustellwerte() {
   } catch { return { vapid: null, mail: false }; }
 }
 
-/** Aufträge an den Server geben. Fehler werden gemeldet, nicht geworfen. */
-export async function zustellen(auftraege) {
-  if (!auftraege || !auftraege.length) return { ergebnis: [] };
+/** Zustellung gespeicherter Mitteilungen anstoßen — nur ihre Kennungen
+    (Commit 4). Empfänger, Wege und Texte bestimmt der Server. Fehler werden
+    gemeldet, nicht geworfen. */
+export async function zustellen(nachrichten) {
+  if (!nachrichten || !nachrichten.length) return { ergebnis: [] };
   try {
     const a = await fetch("/zustellung/senden", { method: "POST", headers: kopf(),
-      body: JSON.stringify({ auftraege }) });
+      body: JSON.stringify({ nachrichten }) });
     if (!a.ok) return { ergebnis: [], fehler: `Status ${a.status}` };
     return await a.json();
   } catch (e) { return { ergebnis: [], fehler: String(e.message) }; }

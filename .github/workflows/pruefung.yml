@@ -184,6 +184,11 @@ jobs:
       - name: Kalender-Rechte
         run: npm run pruefung:kalender-rechte
 
+      # Versand und Zustellung auf dem Server: Rollen, Mandanten, kein Orakel,
+      # Notruf und Tausch vom Server, genau einmal je Kanal (Commit 4).
+      - name: Zustellung-Rechte
+        run: npm run pruefung:zustellung-rechte
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -520,6 +525,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.8.
+
+      # Versand über echte Anmeldung: zwei Betriebe, Notruf, Tausch, Sichten.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zustellung-Rechte (HTTP)
+        run: npm run pruefung:zustellung-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.7.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

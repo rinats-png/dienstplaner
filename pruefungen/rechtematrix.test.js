@@ -74,13 +74,15 @@ const PFADE = {
 };
 const SPALTEN = ["MA", "BR", "SV", "PL", "LT", "BT", "VA-LT", "VA-SK"];
 
-/* 1 = darf im Payload stehen, 0 = darf nicht. Klasse: A sauber, B offen bis
-   Commit 4, C offen bis Bereichsbezug, S Schuld (rohe Schutzmerkmale). */
+/* 1 = darf im Payload stehen, 0 = darf nicht. Klasse: A sauber, B bewusst
+   offen (eigener Schritt), C offen bis Bereichsbezug, S Schuld (rohe
+   Schutzmerkmale). Commit 4: E-Mail als Kontaktangabe A, Push-Schlüssel und
+   Zustelleinstellungen fremder Personen für Planung und Leitung entfernt. */
 const MATRIX = [
   // Datenklasse                 Marker                      MA BR SV PL LT BT VL VS  Klasse
   ["Kontakt: Telefon",           "MK-TELEFON",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Kontakt: Anschrift",         "MK-ANSCHRIFT",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Kontakt: E-Mail",            "mk-email@x.de",            0, 0, 0, 1, 1, 1, 1, 1, "B"],
+  ["Kontakt: E-Mail",            "mk-email@x.de",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Notfallkontakt",             "MK-NOTFALL",               0, 0, 0, 0, 0, 1, 0, 1, "A"],
   ["Bank",                       "MK-IBAN",                  0, 0, 0, 0, 0, 1, 0, 1, "A"],
   ["Steuer",                     "MK-STEUER",                0, 0, 0, 0, 0, 1, 0, 1, "A"],
@@ -91,8 +93,8 @@ const MATRIX = [
   ["Qualifikationen",            "MK-QUAL",                  1, 1, 1, 1, 1, 1, 1, 1, "A"],
   ["Kalendergeheimnis",          "MK-KALGEHEIM",             0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Kalenderverweis",            "MK-KALVERWEIS",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Push-Schlüssel",             "MK-PUSH",                  0, 0, 0, 1, 1, 1, 0, 0, "B"],
-  ["Zustelleinstellungen",       "MK-ZUSTELLUNG",            0, 0, 0, 1, 1, 1, 0, 0, "B"],
+  ["Push-Schlüssel",             "MK-PUSH",                  0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  ["Zustelleinstellungen",       "MK-ZUSTELLUNG",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["unbekanntes Personenfeld",   "MK-UNBEKANNT-PERSON",      0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Zeiterfassung: Grund",       "MK-ERFASSUNGSGRUND",       0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Stempel: Ortsurteil",        "MK-ORTSURTEIL",            0, 0, 0, 1, 1, 1, 1, 1, "A"],

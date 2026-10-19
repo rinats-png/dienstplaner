@@ -15390,21 +15390,26 @@ function zustellwege(person, art) {
   };
 }
 
+/* Kennungen der Mitteilungen, die diese Oberfläche angelegt hat und deren
+   Zustellung sie nach dem Speichern anstößt (siehe zustellungAnstossen). */
+const zustellungAusstehend = new Set();
+
 /**
- * Baut eine Mitteilung samt Zustellaufträgen. Der Versand selbst geschieht
- * auf dem Server — hier entsteht nur die Warteschlange, damit die Anwendung
- * auch ohne Netz weiterarbeitet und nichts verloren geht.
+ * Baut eine Mitteilung fürs Postfach. Ob und wie sie per E-Mail oder Push
+ * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
+ * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
+ * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
  */
 function baueMitteilung(m, personId, art, titel, text, ziel) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
-  const w = zustellwege(p, art);
+  const id = uid("n");
+  zustellungAusstehend.add(id);
   return {
-    id: uid("n"), personId, art, titel, text, ziel: ziel || null,
+    id, personId, art, titel: String(titel ?? "").slice(0, 120), text: String(text ?? "").slice(0, 500),
+    ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
-    gelesen: false, dringend: w.dringend,
-    wege: { mail: w.mail ? p.email : null, push: w.push ? p.pushSchluessel : null },
-    zugestellt: { mail: null, push: null },
+    gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
   };
 }
 
@@ -15428,31 +15433,6 @@ function urlaubshinweiseFaellig(m, stichtag) {
     if (h.faellig) aus.push({ person: p, ...h });
   }
   return aus;
-}
-
-/** Alle Mitteilungen, für die noch etwas hinausgehen muss. */
-const offeneZustellungen = (m) => (m.nachrichten || []).filter((n) =>
-  (n.wege && n.wege.mail && !(n.zugestellt || {}).mail) ||
-  (n.wege && n.wege.push && !(n.zugestellt || {}).push));
-
-/* --------------------------------------------------------------------------
-   E-MAIL-TEXTE
-   Keine Werbung, keine Bilder, keine Zählpixel. Wer im Nachtdienst auf ein
-   Telefon schaut, will drei Zeilen und einen Verweis.
-   -------------------------------------------------------------------------- */
-function mailText(m, n, p) {
-  const anrede = `Hallo ${p.vorname},`;
-  const fuss = [
-    "",
-    "———",
-    `${m.name} · Dienstplanung mit CENTRIC`,
-    "Diese Nachricht wurde ausgelöst durch eine Änderung in deinem Dienstplan.",
-    "Einstellungen zu Benachrichtigungen findest du in der Anwendung unter Mehr.",
-  ].join("\n");
-  return {
-    betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
-  };
 }
 
 /* ==========================================================================
@@ -20794,42 +20774,28 @@ function AppInnen() {
   useEffect(() => { ref.current = db; }, [db]);
 
 
-  /* Offene Zustellungen abarbeiten. Läuft nach dem Speichern, gebündelt und
-     ohne die Bedienung aufzuhalten. Was nicht hinausgeht, bleibt offen und
-     wird beim nächsten Mal erneut versucht — das Postfach trägt die
-     Mitteilung ohnehin, es geht nichts verloren. */
-  const zustellLauf = useRef(false);
-  useEffect(() => {
-    if (!db || zustellLauf.current) return;
-    const m = db.mandanten.find((x) => x.id === (db.session || {}).mandantId);
+  /* Zustellung anstoßen — erst nachdem gespeichert ist (Commit 4). Der
+     Server stellt nur zu, was in seinem gespeicherten Stand steht; vorher
+     lief dieser Lauf schon beim Ändern los und schickte Adresse, Betreff,
+     Text und Push-Titel selbst mit. Jetzt gehen nur die Kennungen der hier
+     angelegten Mitteilungen hinaus. Was der Server als „offen" meldet
+     (vorübergehender Fehler), wird beim nächsten Speichern erneut
+     angestoßen; doppelt geht nichts hinaus — das verhindert der Server.
+     Notruf und Tauschmeldung stellt der Server beim Speichern selbst zu. */
+  const zustellungAnstossen = useCallback(async (geschrieben) => {
+    const mid = (ref.current && ref.current.session || {}).mandantId;
+    const m = (geschrieben.mandanten || []).find((x) => x && x.id === mid);
     if (!m) return;
-    const offen = offeneZustellungen(m);
-    if (!offen.length) return;
-    zustellLauf.current = true;
-    (async () => {
-      try {
-        /* Es geht nur noch die Kennung der Person hinaus, nicht deren
-           Adresse. Der Server schlägt sie im eigenen Betrieb nach — über
-           diesen Weg lässt sich damit niemand Betriebsfremdes anschreiben. */
-        const auftraege = offen.slice(0, 100).map((n) => {
-          const p = m.personen.find((x) => x.id === n.personId);
-          const mt = p && n.wege.mail ? mailText(m, n, p) : null;
-          return { id: n.id, personId: n.personId,
-            betreff: mt ? mt.betreff : null, text: mt ? mt.text : null,
-            titel: n.wege.push ? n.titel : null, kurz: n.text, ziel: n.ziel };
-        });
-        const { ergebnis } = await SP.zustellen(auftraege);
-        if (ergebnis && ergebnis.length) {
-          const nach = {};
-          for (const e of ergebnis) nach[e.id] = { mail: e.mail, push: e.push };
-          setDb((s2) => ({ ...s2, mandanten: s2.mandanten.map((mm) => mm.id !== m.id ? mm
-            : { ...mm, nachrichten: (mm.nachrichten || []).map((n) => nach[n.id]
-              ? { ...n, zugestellt: { ...n.zugestellt, ...nach[n.id] } } : n) }) }));
-        }
-      } catch (e) { /* Zustellung ist nie kritisch */ }
-      finally { zustellLauf.current = false; }
-    })();
-  }, [db]);
+    const da = new Set((m.nachrichten || []).map((n) => n && n.id));
+    const ids = [...zustellungAusstehend].filter((id) => da.has(id)).slice(0, 200);
+    if (!ids.length) return;
+    for (const id of ids) zustellungAusstehend.delete(id);
+    try {
+      const { ergebnis, fehler } = await SP.zustellen(ids);
+      if (fehler) { for (const id of ids) zustellungAusstehend.add(id); return; }
+      for (const e of ergebnis || []) if (e && e.stand === "offen") zustellungAusstehend.add(e.id);
+    } catch (e) { for (const id of ids) zustellungAusstehend.add(id); }   // Zustellung ist nie kritisch
+  }, []);
 
   /* Zurückschreiben, verzögert gebündelt. Bei einem Konflikt wird nicht
      stillschweigend überschrieben — die Person erfährt davon. */
@@ -20878,8 +20844,9 @@ function AppInnen() {
         : "Betreiber",
       onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
       onFehler: (lage) => setNichtGespeichert(lage),
+      onGespeichert: (b) => { zustellungAnstossen(b); },
     });
-  }, [db]);
+  }, [db, zustellungAnstossen]);
 
   const melde = useCallback((t) => { setHinweis(t); setTimeout(() => setHinweis(null), 3000); }, []);
 
@@ -21704,7 +21671,6 @@ function AppInnen() {
         const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         const p = m.personen.find((x) => x.id === pid);
         if (!p) return m;
-        const a = NOTRUF_ARTEN[art] || NOTRUF_ARTEN.hilfe;
         const empf = notrufEmpfaenger(m, pid, heute());
         const t = personTag(m, p, heute());
         const da = t && t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
@@ -21712,13 +21678,11 @@ function AppInnen() {
           zeit: new Date().toISOString(), datum: heute(),
           dienst: da ? da.name : null, ort: da ? da.ort : null,
           empfaenger: empf.map((x) => x.id), bestaetigt: null };
-        const nachr = empf.map((x) => baueMitteilung(m, x.id, "einspringen",
-          `NOTRUF: ${a.label}`,
-          `${p.vorname} ${p.nachname}${da ? ` · ${da.name}` : ""}${da && da.ort ? ` · ${da.ort}` : ""}${notiz ? ` · ${notiz}` : ""}`,
-          "notruf")).filter(Boolean);
+        /* Die Mitteilungen an die Empfänger erzeugt und verschickt der Server
+           beim Speichern (Commit 4) — auch für Beschäftigte, deren Notruf
+           vorher ohne E-Mail und Push blieb. */
         melde("Hilferuf erfasst. Er ist für die zuständigen Rollen in CENTRIC sichtbar.");
-        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200),
-          nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
+        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200) };
       }, "Notruf abgesetzt"),
 
       notrufBestaetigen: (id) => mUpd((m) => ({ ...m,
@@ -21940,9 +21904,11 @@ function AppInnen() {
         if (!pid) return;
         try {
           if (ein) {
-            const anm = await SP.pushEinschalten(pid);
+            /* Die Anmeldung selbst liegt nur im Push-Register des Servers;
+               an der Person steht ein Merker (Commit 4). */
+            await SP.pushEinschalten(pid);
             mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
-              p.id === pid ? { ...p, pushSchluessel: anm } : p) }), null);
+              p.id === pid ? { ...p, pushSchluessel: true } : p) }), null);
             melde("Mitteilungen eingeschaltet.");
           } else {
             await SP.pushAusschalten(pid);
@@ -22367,12 +22333,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const jetzt = new Date().toLocaleString("de-DE");
         melde("Meldung eingegangen. Die Planung entscheidet.");
+        /* Die Mitteilung an die Person des Gesuchs erzeugt der Server (Commit 4). */
         return { ...m,
           anfragen: m.anfragen.map((x) => x.id === id
-            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x),
-          nachrichten: [baueMitteilung(m, a.personId, "tauschAngebot", `Meldung auf dein Tauschgesuch`,
-            `${sitz.person.vorname} ${sitz.person.nachname} bietet an, den Dienst am ${fKurz(a.von)} zu übernehmen.`, "tausch"),
-            ...(m.nachrichten || [])].slice(0, 400) };
+            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x) };
       }, "Meldung auf Tauschgesuch"),
       tauschAbmelden: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.map((x) => x.id === id
         ? { ...x, interessenten: (x.interessenten || []).filter((p) => p !== sitz.person.id) } : x) }), null),

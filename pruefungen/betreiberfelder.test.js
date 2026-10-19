@@ -111,55 +111,55 @@ describe("Betreiber: unverändert", () => {
   });
 });
 
-describe("Notruf-Mitteilungen der Schichtverantwortung: nur mit eigenem Notruf", () => {
+/* Bis Commit 4 baute die Schichtverantwortung die Notrufmitteilungen selbst,
+   und der Server prüfte sie (1e.2a: nur mit eigenem neuen Notruf, nur an
+   dessen Empfänger, je einer eine, bereinigt — sonst 403). Seit Commit 4
+   erzeugt der Server sie aus dem Notruf; was der Client dafür mitschickt,
+   wird verworfen, nicht abgewiesen (E4). */
+describe("Notruf-Mitteilungen der Schichtverantwortung: nur vom Server, nur mit eigenem Notruf", () => {
   const NOTRUF = { id: "nr-s", personId: "s1", art: "hilfe", notiz: "", empfaenger: ["l1", "p1"], bestaetigt: null };
   const mitteilung = (id, an, extra = {}) => ({ id, personId: an, art: "einspringen", titel: "NOTRUF: Hilfe",
     text: "V Ns1", ziel: "notruf", wege: { mail: `${an}@x.de`, push: null }, ...extra });
-  it("ohne Notruf: 403", () => {
+  const nachr = (e) => e.mandanten[0].nachrichten;
+  it("ohne Notruf: die mitgeschickte Mitteilung wird verworfen, keine entsteht", () => {
     const { e } = schreibe(SUB, (b, m) => { m.nachrichten.unshift(mitteilung("n1", "l1", { titel: "NOTRUF: Gehaltserhöhung bitte" })); });
-    expect(e.verweigert).toBeTruthy();
+    expect(e.verweigert).toBeFalsy();
+    expect(nachr(e)).toEqual([]);
   });
-  it("mit Notruf, aber an eine Person außerhalb seiner Empfänger: 403", () => {
+  it("mit Notruf: Client-Mitteilungen verworfen, der Server erzeugt je Empfänger genau eine", () => {
     const { e } = schreibe(SUB, (b, m) => {
       m.notrufe.unshift({ ...NOTRUF, empfaenger: ["l1"] });
-      m.nachrichten.unshift(mitteilung("n1", "l1"), mitteilung("n2", "p1"));
-    });
-    expect(e.verweigert).toBeTruthy();
-  });
-  it("zwei Mitteilungen an denselben Empfänger: 403", () => {
-    const { e } = schreibe(SUB, (b, m) => {
-      m.notrufe.unshift({ ...NOTRUF });
-      m.nachrichten.unshift(mitteilung("n1", "l1"), mitteilung("n2", "l1"));
-    });
-    expect(e.verweigert).toBeTruthy();
-  });
-  it("Titel ohne „NOTRUF:\", zu lang, Text zu lang: 403", () => {
-    for (const extra of [{ titel: "Info" }, { titel: `NOTRUF: ${"x".repeat(120)}` }, { text: "x".repeat(301) }]) {
-      const { e } = schreibe(SUB, (b, m) => { m.notrufe.unshift({ ...NOTRUF }); m.nachrichten.unshift(mitteilung("n1", "l1", extra)); });
-      expect(e.verweigert, JSON.stringify(extra).slice(0, 40)).toBeTruthy();
-    }
-  });
-  it("ein Notruf, der notrufeZusammen nicht besteht (unbekannte Art), trägt keine Mitteilung: 403", () => {
-    const { e } = schreibe(SUB, (b, m) => { m.notrufe.unshift({ ...NOTRUF, art: "erfunden" }); m.nachrichten.unshift(mitteilung("n1", "l1")); });
-    expect(e.verweigert).toBeTruthy();
-  });
-  it("ein schon gespeicherter Notruf trägt keine neue Mitteilung: 403", () => {
-    const g = bestand(); g.mandanten[0].notrufe = [{ ...NOTRUF, zeit: "z", datum: "2026-10-01", dienst: null, ort: null }];
-    const { e } = schreibe(SUB, (b, m) => { m.nachrichten.unshift(mitteilung("n1", "l1")); }, g);
-    expect(e.verweigert).toBeTruthy();
-  });
-  it("echter eigener Notruf mit je einer Mitteilung an seine Empfänger: angenommen und bereinigt", () => {
-    const { e } = schreibe(SUB, (b, m) => {
-      m.notrufe.unshift({ ...NOTRUF });
-      m.nachrichten.unshift(mitteilung("n1", "l1", { gelesen: true, zugestellt: { mail: "ok" }, geheim: "x", wege: { mail: "angreifer@x.de" } }),
-        mitteilung("n2", "p1"));
+      m.nachrichten.unshift(mitteilung("n1", "l1"), mitteilung("n2", "p1"), mitteilung("n3", "l1"));
     });
     expect(e.verweigert).toBeFalsy();
-    const n1 = e.mandanten[0].nachrichten.find((n) => n.id === "n1");
-    expect(n1).toMatchObject({ personId: "l1", art: "einspringen", titel: "NOTRUF: Hilfe", ziel: "notruf", gelesen: false,
-      wege: { mail: null, push: null }, zugestellt: { mail: null, push: null } });
-    expect(n1.geheim).toBeUndefined();
-    expect(e.mandanten[0].nachrichten.find((n) => n.id === "n2").wege.mail).toBe("p1@x.de");
+    expect(nachr(e).map((n) => n.id)).toEqual(["n-notruf-nr-s-l1"]);
+    expect(nachr(e)[0]).toMatchObject({ personId: "l1", art: "einspringen", titel: "NOTRUF: Hilfe angefordert", ziel: "notruf",
+      gelesen: false, dringend: true, quelle: { art: "notruf", id: "nr-s", von: "s1" } });
+    expect(nachr(e)[0].wege).toBeUndefined();
+    expect(nachr(e)[0].zugestellt).toBeUndefined();
+  });
+  it("ein Notruf, der notrufeZusammen nicht besteht (unbekannte Art), erzeugt nichts", () => {
+    const { e } = schreibe(SUB, (b, m) => { m.notrufe.unshift({ ...NOTRUF, art: "erfunden" }); m.nachrichten.unshift(mitteilung("n1", "l1")); });
+    expect(e.verweigert).toBeTruthy();                                         // der Notruf selbst ist unzulässig
+  });
+  it("ein schon gespeicherter Notruf erzeugt nichts neu", () => {
+    const g = bestand(); g.mandanten[0].notrufe = [{ ...NOTRUF, zeit: "z", datum: "2026-10-01", dienst: null, ort: null }];
+    const { e } = schreibe(SUB, (b, m) => { m.nachrichten.unshift(mitteilung("n1", "l1")); }, g);
+    expect(e.verweigert).toBeFalsy();
+    expect(nachr(e)).toEqual([]);
+  });
+  it("echter eigener Notruf: Empfänger aus dem Notruf, Inhalt vom Server, nichts vom Client", () => {
+    const { e } = schreibe(SUB, (b, m) => {
+      m.notrufe.unshift({ ...NOTRUF });
+      m.nachrichten.unshift(mitteilung("n1", "l1", { gelesen: true, zugestellt: { mail: "ok" }, geheim: "x", wege: { mail: "angreifer@x.de" } }));
+    });
+    expect(e.verweigert).toBeFalsy();
+    expect(nachr(e).map((n) => n.id).sort()).toEqual(["n-notruf-nr-s-l1", "n-notruf-nr-s-p1"]);
+    for (const n of nachr(e)) {
+      expect(n.geheim).toBeUndefined();
+      expect(n.wege).toBeUndefined();
+      expect(n.gelesen).toBe(false);
+    }
     expect(e.mandanten[0].notrufe.find((n) => n.id === "nr-s").empfaenger).toEqual(["l1", "p1"]);
   });
 });

@@ -1,8 +1,9 @@
 import { getStore } from "../lib/ablage.mjs";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
-import { sendeMail } from "../lib/post.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { eigenerMandant, wirksameRolle, imEigenenBereich } from "../lib/rechte.mjs";
+import { zustellen, pushAnmelden, pushAbmelden } from "../lib/versand.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -26,58 +27,33 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d), {
 
 
 /* --------------------------------------------------------------------------
-   ADRESSBUCH
+   WER DARF ZUSTELLUNG ANSTOSSEN (Commit 4)
 
-   Die einzige Quelle für Empfängeradressen. Gelesen wird der Bestand des
-   Betriebs, zu dem die Sitzung gehört — eine Adresse, die dort nicht steht,
-   ist keine gültige Empfängeradresse.
+   Bis Oktober 2026 nahm „senden" Aufträge mit freiem Betreff, Text und
+   Push-Titel von jeder Sitzung — auch Betriebsrat und Betreiber — an jede
+   personId des Raums, Push sogar über Betriebsgrenzen hinweg, und meldete
+   je Auftrag zurück, ob es Adresse oder Anmeldung gab.
+
+   Jetzt kommen nur Kennungen gespeicherter Mitteilungen herein. Empfänger,
+   Adresse, Anmeldung, Titel und Text stehen im gespeicherten Betrieb
+   (lib/versand.mjs). Anstoßen darf, wer den Vorgang auslösen durfte:
+   - Planung und Leitung: jede Mitteilung des eigenen Betriebs;
+   - Schichtverantwortung: an Personen ihres Bereichs, an sich selbst und
+     Mitteilungen aus eigenen Vorgängen (Notruf, Tauschmeldung);
+   - Beschäftigte: nur Mitteilungen aus eigenen Vorgängen — die stellt der
+     Server ohnehin schon beim Speichern zu;
+   - Betriebsrat, Betreiber, Zugänge ohne Person: nichts.
    -------------------------------------------------------------------------- */
-async function adressbuch(s) {
-  const karte = new Map();
-  try {
-    const gelesen = await bestandLesen(store(), s.bestand);
-    const bestand = gelesen && gelesen.bestand;
-    if (!bestand || !Array.isArray(bestand.mandanten)) return karte;
-    const i = Number(s.betrieb);
-    const m = Number.isInteger(i) && bestand.mandanten[i]
-      ? bestand.mandanten[i] : bestand.mandanten[0];
-    if (!m || !Array.isArray(m.personen)) return karte;
-    for (const p of m.personen) {
-      if (!p || !p.email) continue;
-      const adresse = String(p.email).trim();
-      /* Eine grobe Form genügt — die eigentliche Prüfung ist, dass die
-         Adresse überhaupt im eigenen Personalbestand steht. */
-      if (!adresse.includes("@") || adresse.length > 254) continue;
-      karte.set(String(p.id), adresse);
-    }
-  } catch { /* Ohne Bestand gibt es keine Empfänger — dann geht nichts hinaus */ }
-  return karte;
-}
+const VOLL = ["planer", "leitung", "kunde"];
+const NUR_KENNUNG = /^[A-Za-z0-9_.:-]{1,120}$/;
 
-/* ------------------------------- E-Mail ----------------------------------
-   Der Versand steht in lib/post.mjs — dieselbe Funktion wie vorher hier,
-   nur an einer Stelle: Einladung, Adressbestätigung und Passwort-Reset
-   brauchen denselben Weg, und ein zweiter Versandpfad wäre der Anfang von
-   zwei Wahrheiten über denselben Vorgang. */
-
-/* -------------------------------- Push ----------------------------------- */
-/* Web Push braucht ein Schlüsselpaar (VAPID). Der öffentliche Teil geht an
-   den Browser, der private bleibt hier. Fehlt er, wird übersprungen. */
-async function sendePush(anmeldung, titel, text, ziel) {
-  const oeff = process.env.VAPID_PUBLIC, priv = process.env.VAPID_PRIVATE;
-  if (!oeff || !priv) return { ok: true, trocken: true };
-  try {
-    const webpush = await import("web-push");
-    webpush.default.setVapidDetails(
-      process.env.VAPID_KONTAKT || "mailto:kein-kontakt@example.invalid", oeff, priv);
-    await webpush.default.sendNotification(anmeldung,
-      JSON.stringify({ titel, text, ziel }));
-    return { ok: true };
-  } catch (e) {
-    // 404 und 410 heißen: die Anmeldung ist erloschen, sie darf gelöscht werden
-    const weg = e && (e.statusCode === 404 || e.statusCode === 410);
-    return { ok: false, erloschen: weg, fehler: String(e && e.message || e).slice(0, 200) };
-  }
+function anstossRegel(rolle, m, ich) {
+  const ausEigenemVorgang = (n) => n.quelle && typeof n.quelle === "object" && String(n.quelle.von) === String(ich);
+  if (VOLL.includes(rolle)) return () => true;
+  if (rolle === "subplaner")
+    return (n, p) => ausEigenemVorgang(n) || String(p.id) === String(ich) || imEigenenBereich(m, ich, p.id);
+  if (rolle === "mitarbeiter") return (n) => ausEigenemVorgang(n);
+  return null;
 }
 
 export default async (req) => {
@@ -105,57 +81,23 @@ export default async (req) => {
       const kz = kennung(req, s);
       const bz = await bremse("zustellen", kz);
       if (!bz.frei) return zuVielAntwort(bz.wartet);
-      const { auftraege } = await req.json();
-      if (!Array.isArray(auftraege)) return antwort({ fehler: "Keine Aufträge." }, 400);
-      if (auftraege.length > 200) return antwort({ fehler: "Zu viele auf einmal." }, 400);
+      const rumpf = await req.json().catch(() => null);
+      const ids = rumpf && rumpf.nachrichten;
+      if (!Array.isArray(ids) || !ids.length) return antwort({ fehler: "Keine Mitteilungen." }, 400);
+      if (ids.length > 200) return antwort({ fehler: "Zu viele auf einmal." }, 400);
+      if (ids.some((x) => typeof x !== "string" || !NUR_KENNUNG.test(x)))
+        return antwort({ fehler: "Nur Kennungen gespeicherter Mitteilungen." }, 400);
 
-      /* Der Empfängerkreis wird hier bestimmt, nicht vom Aufrufer. Vorher
-         reichte eine beliebige Sitzung, um über die verifizierte Domain an
-         jede Adresse der Welt zu senden — zweihundert Stück je Anfrage.
+      const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+      const bestand = gelesen && gelesen.bestand;
+      const m = bestand && s.person !== null && s.person !== undefined ? eigenerMandant(bestand, s) : null;
+      const regel = m ? anstossRegel(wirksameRolle(s, bestand), m, s.person) : null;
+      if (!regel) return antwort({ fehler: "Über diesen Zugang wird nichts zugestellt." }, 403);
 
-         Jetzt schickt die Oberfläche nur noch eine personId, und der Server
-         schlägt die Adresse im eigenen Betrieb nach. Damit ist der
-         Empfängerkreis strukturell auf die eigene Belegschaft begrenzt. */
-      const verzeichnis = await adressbuch(s);
-
-      const ergebnis = [];
-      for (const a of auftraege) {
-        const zeile = { id: a.id, mail: null, push: null };
-        const hatPerson = a.personId !== undefined && a.personId !== null;
-        const ziel = hatPerson ? verzeichnis.get(String(a.personId)) : null;
-
-        if (a.betreff && a.text) {
-          if (!ziel) {
-            zeile.mail = "abgewiesen";
-            zeile.mailFehler = hatPerson
-              ? "Diese Person gehört nicht zum Betrieb oder hat keine Adresse."
-              : "Ohne personId wird nicht zugestellt.";
-          } else {
-            const r = await sendeMail(ziel, a.betreff, a.text);
-            zeile.mail = r.ok ? (r.trocken ? "trocken" : "gesendet") : "fehler";
-            if (!r.ok) zeile.mailFehler = r.fehler;
-          }
-        }
-
-        /* Auch die Push-Anmeldung kommt aus dem Speicher statt aus dem
-           Anfragerumpf — sonst ließe sich der Dienst als Weiterleitung an
-           beliebige fremde Push-Endpunkte missbrauchen. */
-        if (a.titel && hatPerson) {
-          const anmeldung = await store()
-            .get(`push:${s.bestand}:${a.personId}`, { type: "json" }).catch(() => null);
-          if (!anmeldung) { zeile.push = "keine Anmeldung"; }
-          else {
-            const r = await sendePush(anmeldung, a.titel, a.kurz || a.titel, a.ziel);
-            zeile.push = r.ok ? (r.trocken ? "trocken" : "gesendet")
-              : r.erloschen ? "erloschen" : "fehler";
-            if (r.erloschen) await store().delete(`push:${s.bestand}:${a.personId}`).catch(() => {});
-          }
-        }
-        ergebnis.push(zeile);
-      }
-      const gesendet = ergebnis.filter((x) => x.mail === "gesendet" || x.push === "gesendet").length;
-      if (gesendet) await protokoll("zustellen", kz, "erfolg", `${gesendet} zugestellt`);
-      return antwort({ ergebnis, zeit: new Date().toISOString() });
+      const r = await zustellen(store(), { raum: s.bestand, bestand, m, ids, erlaubt: regel });
+      const ergebnis = [...new Set(ids)].map((id) => ({ id, stand: r.get(id) || "erledigt" }));
+      await protokoll("zustellen", kz, "erfolg", `${ids.length} angestoßen`);
+      return antwort({ ergebnis });
     }
 
     /* ---------------------- Push-Anmeldung merken ---------------------- */
@@ -163,18 +105,29 @@ export default async (req) => {
        konnte jede angemeldete Person die Push-Anmeldung einer beliebigen
        Kollegin überschreiben — deren Mitteilungen wären danach auf dem
        fremden Gerät gelandet. */
-    if (pfad === "anmelden" && req.method === "POST") {
-      const { anmeldung } = await req.json();
-      if (!anmeldung || !anmeldung.endpoint) return antwort({ fehler: "Ungültig." }, 400);
+    /* Seit Commit 4 trägt der Schlüssel auch den Betrieb:
+       push:<raum>:<mandantId>:<person>. Vorher konnte eine Person mit
+       derselben Kennung in einem anderen Betrieb des Raums die Anmeldung
+       überschreiben, und Mitteilungen aus Betrieb A landeten auf ihrem Gerät. */
+    if ((pfad === "anmelden" || pfad === "abmelden") && req.method === "POST") {
       if (s.person === null || s.person === undefined)
-        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
-      await store().setJSON(`push:${s.bestand}:${s.person}`, anmeldung,
-        { metadata: { zeit: new Date().toISOString() } });
-      return antwort({ ok: true });
-    }
-    if (pfad === "abmelden" && req.method === "POST") {
-      if (s.person === null || s.person === undefined) return antwort({ ok: true });
-      await store().delete(`push:${s.bestand}:${s.person}`).catch(() => {});
+        return pfad === "abmelden" ? antwort({ ok: true })
+          : antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+      const bestand = gelesen && gelesen.bestand;
+      const m = bestand ? eigenerMandant(bestand, s) : null;
+      const da = m && Array.isArray(m.personen) && m.personen.some((p) => p && String(p.id) === String(s.person));
+      if (pfad === "abmelden") {
+        if (da) await pushAbmelden(store(), s.bestand, bestand, m.id, s.person);
+        return antwort({ ok: true });
+      }
+      const { anmeldung } = await req.json().catch(() => ({}));
+      if (!anmeldung || typeof anmeldung.endpoint !== "string" || !/^https:\/\//.test(anmeldung.endpoint)
+        || JSON.stringify(anmeldung).length > 4000)
+        return antwort({ fehler: "Ungültig." }, 400);
+      if (!da) return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      await pushAnmelden(store(), s.bestand, bestand, m.id, s.person,
+        { endpoint: anmeldung.endpoint, expirationTime: anmeldung.expirationTime ?? null, keys: anmeldung.keys || {} });
       return antwort({ ok: true });
     }
 

@@ -251,18 +251,26 @@ describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-a"), zugestellt: { mail: "ok", push: null } }); }));
     expect(m.nachrichten.find((n) => n.id === "n-a")).toEqual(gespeichert("nachrichten", "n-a"));
   });
-  it("neue Mitteilung an den eigenen Bereich: erlaubt, Zustellwege nur aus dem Stand", () => {
-    const m = ok(schreibe(bestand(), SUB, (m) => {
-      m.nachrichten.unshift({ id: "n-neu", personId: "a1", art: "planGeaendert", titel: "x", wege: { mail: "angreifer@x.de", push: null } });
-    }));
-    expect(m.nachrichten[0].wege.mail).toBeNull();
-    const m2 = ok(schreibe(bestand(), SUB, (m) => {
-      m.nachrichten.unshift({ id: "n-neu2", personId: "a1", art: "planGeaendert", titel: "x", wege: { mail: "a@x.de", push: null } });
-    }));
-    expect(m2.nachrichten[0].wege.mail).toBe("a@x.de");
+  /* Bis Commit 4 übernahm der Server Zustellwege, wenn sie zu den
+     gespeicherten Angaben passten. Seit Commit 4 löst er sie beim Versand
+     selbst auf; mitgeschickte Wege und Status werden nie gespeichert. */
+  it("neue Mitteilung an den eigenen Bereich: erlaubt, ohne Zustellwege und -status", () => {
+    for (const mail of ["angreifer@x.de", "a@x.de"]) {
+      const m = ok(schreibe(bestand(), SUB, (m) => {
+        m.nachrichten.unshift({ id: "n-neu", personId: "a1", art: "planGeaendert", titel: "x",
+          wege: { mail, push: null }, zugestellt: { mail: "gesendet", push: null } });
+      }));
+      expect(m.nachrichten[0].id).toBe("n-neu");
+      expect(m.nachrichten[0].wege).toBeUndefined();
+      expect(m.nachrichten[0].zugestellt).toBeUndefined();
+    }
+  });
+  it("neue Mitteilung: Titel über 120 oder Text über 500 Zeichen: abgewiesen", () => {
+    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.unshift({ id: "n-l", personId: "a1", art: "planGeaendert", titel: "x".repeat(121) }); }));
+    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.unshift({ id: "n-l", personId: "a1", art: "planGeaendert", titel: "x", text: "x".repeat(501) }); }));
   });
   it("… an den fremden Bereich: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.unshift({ id: "n-x", personId: "b1", art: "info" }); }));
+    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.unshift({ id: "n-x", personId: "b1", art: "info", titel: "x" }); }));
   });
   it("die eigene Nachricht als gelesen markieren: erlaubt", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten.find((n) => n.id === "n-s").gelesen = true; }));

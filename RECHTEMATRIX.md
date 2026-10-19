@@ -1,13 +1,14 @@
 # Rechtematrix — Lesesicht und Verwaltungswege
 
-Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1e.4) und Commit 3 (Kalender).
+Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1e.4), Commit 3 (Kalender) und
+Commit 4 (Versand und Zustellung auf dem Server).
 Regressionstest: `pruefungen/rechtematrix.test.js` — jede Zeile der Tabelle unten ist dort ein Marker
 mit Erwartung je Rolle und Lesepfad. **Matrix und Test werden zusammen geändert.**
 
 Einordnung je Zeile:
 
 - **A** sauber
-- **B** bewusst offen bis Commit 4 (Versand und Empfängerauflösung auf dem Server)
+- **B** bewusst offen bis zu einem eigenen Schritt (siehe Fußnote; die Punkte „bis Commit 4" sind erledigt)
 - **C** bewusst offen, bis die Sammlung einen Bereichsbezug (`einheitId`/`bereichId`) hat
 - **S** dokumentierte technische/datenschutzrechtliche Schuld
 - **D** neuer Befund — derzeit keiner
@@ -31,7 +32,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 |---|---|---|---|---|---|---|---|---|---|
 | Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Kontakt: Telefon, Anschrift | – | – | – ¹ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Kontakt: E-Mail | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | B |
+| Kontakt: E-Mail (Kontaktangabe für Planung und Leitung) | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Notfallkontakt | – | – | – | – | – | ✓ | – | ✓ | A |
 | Bank, Steuer, Sozialversicherung, Lohn/Gehalt | – | – | – | – | – | ✓ | – | ✓ | A |
 | frühere Anmeldeadresse | – | – | – | – | – | ✓ | – | ✓ | A |
@@ -50,7 +51,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Ausschreibungen mit Bewerbungen | nur eigene | – | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | C |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | ✓ | – | – | A |
-| Push-Schlüssel, Zustelleinstellungen | – | – | – | ✓ | ✓ | ✓ | – | – | B |
+| Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | ✓ | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | B ⁶ |
 | Lohnarten | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Betriebsprotokoll | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
@@ -73,6 +74,13 @@ genau den eigenen Betrieb (A).
 (Rückfüllung: `schichtRueckfuellen`, `vollRueckfuellen`); mitgeschickte verborgene Werte sind wirkungslos
 oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Betreiber (1e.2a).
 
+**Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
+Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
+eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`server/lib/mitteilungen.mjs`).
+Andere Mitteilungen legen Planung, Leitung und die Schichtverantwortung (eigener Bereich) an — Titel ≤ 120,
+Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger ändern an eigenen Mitteilungen nur
+`gelesen`. An der Person wird höchstens der Merker `pushSchluessel: true` geschrieben.
+
 ## 2. Weitere Wege
 
 | Weg | Wer | Was | |
@@ -88,7 +96,9 @@ oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Bet
 | `/einrichten/*` | Verwalterschlüssel | Codes anlegen, Übersicht und Bindung ohne Codes | A |
 | `/kalender/einrichten`, `/kalender/daten`, `/kalender/loeschen` | jede Rolle mit eigener Person (Betreiber nicht) | nur die eigene Person aus der Sitzung (Raum, Betrieb, Person); `personId` im Rumpf zählt nicht; ein aktiver Feed je Person (Index nur als Hash); fremde und unbekannte Geheimnisse ohne Wirkung und mit gleicher Antwort (Commit 3) | A |
 | `/kalender/feed/<geheim>.ics` | wer das Geheimnis hat | liest den Feed (Bearer); ungültig nach erneutem Einrichten oder Löschen | A |
-| `/zustellung/senden` | jede Sitzung | sendet mit freiem Text an jede Person des eigenen Betriebs (Empfänger löst der Server auf) | **B** |
+| `/zustellung/senden` | Planung, Leitung (Betrieb); Schichtverantwortung (Bereich, eigene Vorgänge); Beschäftigte (nur eigene Vorgänge); nicht Betriebsrat, Betreiber | nimmt nur `{nachrichten:[id,…]}`; Empfänger, Adresse, Push-Anmeldung, Titel und Text aus dem gespeicherten Betrieb der Sitzung; Antwort je Kennung nur „erledigt"/„offen" — unbekannt, fremd, ohne Weg sehen gleich aus; je Mitteilung und Kanal genau ein Versand (atomarer Claim), Wiederholung bis 3 Versuche (Commit 4) | A |
+| `/zustellung/anmelden`, `/zustellung/abmelden` | eigene Person | Push-Register `push:<raum>:<mandantId>:<person>`; alter Schlüssel ohne Betrieb nur bei eindeutiger Zuordnung im Raum übernommen (Commit 4) | A |
+| `PUT /api/bestand` (Notruf, Tauschmeldung) | wer den Vorgang auslöst | der Server erzeugt die Mitteilungen und stellt sie nach dem Speichern selbst zu; ein Versandfehler ändert den Vorgang nicht (Commit 4) | A |
 
 ## 3. Bewusst offen
 
@@ -96,7 +106,9 @@ oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Bet
 |---|---|
 | Kalenderfeed nach Plan-/Dienständerungen automatisch aktualisieren (heute nur beim Einrichten hochgeladen) | eigener Funktionspunkt |
 | Trockenlauf für den Verwalter: Kalenderfeeds je Raum und Person (ohne Geheimnisse), mehrdeutige Altfeeds | eigener Schritt |
-| Versand und Zustellung auf dem Server; danach `pushSchluessel`, `zustellung`, `email` aus fremden Personensichten von Planung und Leitung entfernen; die Schichtverantwortung erzeugt Mitteilungen derzeit ohne Mail-/Push-Weg | Commit 4 |
+| Ältere vollständige Push-Anmeldungen an Personen im Bestand (vor Commit 4 geschrieben): werden nicht mehr gelesen noch fremd ausgeliefert, bleiben aber bis zur nächsten Änderung der Person gespeichert | eigener Bereinigungsschritt |
+| Alte Push-Schlüssel `push:<raum>:<person>` bei mehrdeutiger Kennung im Raum: nie benutzt, nicht gelöscht | Trockenlauf/Bereinigung für den Verwalter |
+| Versandwarteschlange und mehrere Geräte je Person | bei Bedarf |
 | Bereichsbezug für Dienstbuch, Übergaben, Tagesnotizen, Ausschreibungen | eigener Schritt |
 | Rohe Schutzmerkmale für die Schichtverantwortung im eigenen Bereich statt abgeleiteter Aussagen | Schuld, mit der gemeinsamen Planrechnung |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |

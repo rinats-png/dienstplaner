@@ -16,6 +16,8 @@
 
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
+import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
+  TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
@@ -133,14 +135,14 @@ export function schreibumfang(rolle) {
    Jetzt entscheidet die Person am Eintrag: Eigenes wird übernommen,
    Fremdes bleibt, wie es gespeichert war. Dazu die wenigen Stellen, an
    denen Beschäftigte fremde Einträge berühren dürfen — weil die Abläufe
-   das brauchen: die Meldung auf ein fremdes Tauschgesuch, die Bewerbung
-   auf eine ausgeschriebene Schicht, die Mitteilung an die Gegenseite.
+   das brauchen: die Meldung auf ein fremdes Tauschgesuch und die Bewerbung
+   auf eine ausgeschriebene Schicht. Die Mitteilung an die Gegenseite
+   erzeugt seit Commit 4 der Server (mitteilungen.mjs).
 
    Und einen Antrag entscheidet nie, wer ihn stellt: Der Status eines
    eigenen Antrags darf nur „offen" oder „zurueckgezogen" werden. */
 const eigenerEintrag = (e, ich) => e && String(e.personId) === String(ich);
 const ANTRAGSTATUS_SELBST = ["offen", "zurueckgezogen"];
-const NACHRICHT_AN_FREMDE = ["tauschAngebot"];
 
 /** Liste mit personId: eigene Einträge aus dem Neuen, fremde aus dem Alten. */
 function eigeneEintraege(alt, neu, ich) {
@@ -177,13 +179,15 @@ function anfragenZusammen(alt, neu, ich) {
   return aus;
 }
 
+/* Nachrichten: Beschäftigte sind nur Empfänger. An den eigenen ändert sich
+   allein `gelesen` (Commit 4) — vorher ließen sie sich umschreiben, löschen
+   und neu anlegen, und an Fremde ging ein „Tauschangebot" mit freiem Text.
+   Die Mitteilung zur eigenen Tauschmeldung erzeugt jetzt der Server. */
 function nachrichtenZusammen(alt, neu, ich) {
-  const alteIds = new Set((Array.isArray(alt) ? alt : []).filter(Boolean).map((n) => n.id));
-  const fremdeAlt = (Array.isArray(alt) ? alt : []).filter((n) => n && !eigenerEintrag(n, ich));
-  const eigene = (Array.isArray(neu) ? neu : []).filter((n) => eigenerEintrag(n, ich));
-  const neueAnFremde = (Array.isArray(neu) ? neu : []).filter((n) => n && !eigenerEintrag(n, ich)
-    && !alteIds.has(n.id) && NACHRICHT_AN_FREMDE.includes(n.art));
-  return [...fremdeAlt, ...neueAnFremde, ...eigene];
+  const gelesen = new Map((Array.isArray(neu) ? neu : [])
+    .filter((n) => eigenerEintrag(n, ich) && typeof n.gelesen === "boolean").map((n) => [String(n.id), n.gelesen]));
+  return (Array.isArray(alt) ? alt : []).map((n) => (eigenerEintrag(n, ich) && gelesen.has(String(n.id))
+    && gelesen.get(String(n.id)) !== n.gelesen ? { ...n, gelesen: gelesen.get(String(n.id)) } : n));
 }
 
 function ausschreibungenZusammen(alt, neu, ich) {
@@ -217,10 +221,9 @@ function urlaubsrundeZusammen(alt, neu, ich) {
    kommt immer aus dem gespeicherten Stand — die Sicht der Beschäftigten
    enthält davon ohnehin nur einen Teil (sicht.mjs).
 
-   Mitteilungen an die Planung nimmt der Server von Beschäftigten weiterhin
-   nur als Tauschangebot an. Die Planung sieht Krankmeldung und Notruf im
-   Bestand; eine Zustellung per E-Mail oder Push folgt erst, wenn der
-   Server sie selbst auslöst.
+   Mitteilungen legen Beschäftigte nicht an. Zum neuen Notruf erzeugt der
+   Server die Mitteilungen an die Empfänger und stellt sie nach dem
+   Speichern selbst per E-Mail und Push zu (Commit 4, mitteilungen.mjs).
    -------------------------------------------------------------------------- */
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 const ANMERKUNG_MAX = 2000;
@@ -278,7 +281,7 @@ function selbstplanungZusammen(alt, neu, ich, dienstarten) {
 }
 
 /* Die Arten eines Notrufs — dieselben wie NOTRUF_ARTEN in src/App.jsx. */
-const NOTRUF_ARTEN = ["hilfe", "medizin", "bedrohung", "technik"];
+const NOTRUF_ARTEN = Object.keys(NOTRUF_NAMEN);
 const PLANUNGSROLLEN = ["subplaner", "planer", "leitung"];
 
 /** Neue eigene Notrufe. Bestätigen ist Sache der Planung. */
@@ -807,6 +810,13 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     if (abweichung) return { verweigert: abweichung };
     let geschickt = uebermittelt.mandanten[0];
 
+    /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
+       Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
+       Titel und Text (Commit 4, mitteilungen.mjs). */
+    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
+    if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
+    geschickt = vorgefiltert.mandant;
+
     /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
     if (umfang === SCHREIBEN_VOLL) geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
 
@@ -818,6 +828,8 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
     }
+    /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
+    geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
 
@@ -934,7 +946,10 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     }
   }
 
-  neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? zusammen : x));
+  /* Mitteilungen aus eigenen Vorgängen (Notruf, Tauschmeldung) erzeugt der
+     Server — dazu wird eine Push-Anmeldung an der Person zum Merker. */
+  const mitMitteilungen = mitteilungenErzeugen(alt, zusammen, sitzung.person);
+  neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? mitMitteilungen : x));
   return neu;
 }
 
@@ -980,6 +995,16 @@ export function eigeneEinheit(altM, ich) {
   const heute = einheitAm(ich, new Date().toISOString().slice(0, 10));
   if (heute && heute !== "ALLE" && gueltig.has(String(heute))) return String(heute);
   return null;
+}
+
+/** Gehört die Person `pid` heute zum eigenen Bereich der Schichtverantwortung `ichId`?
+    (Für den Versand, Commit 4 — dieselbe Regel wie in einheitZusammen.) */
+export function imEigenenBereich(altM, ichId, pid) {
+  const personen = (altM && Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean);
+  const ich = personen.find((p) => String(p.id) === String(ichId));
+  const eigene = eigeneEinheit(altM, ich);
+  const p = personen.find((x) => String(x.id) === String(pid));
+  return !!(eigene && p && einheitAm(p, new Date().toISOString().slice(0, 10)) === eigene);
 }
 
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -1072,28 +1097,6 @@ export function einheitZusammen(altM, neuM, sitzung) {
   };
   const eigen = (pid) => String(pid) === ichId;
 
-  /* Neue eigene Notrufe dieser Übermittlung, geprüft wie bei Beschäftigten;
-     je Empfänger höchstens eine Notruf-Mitteilung. */
-  const bekannteNotrufe = new Set((Array.isArray(altM.notrufe) ? altM.notrufe : []).filter(Boolean).map((x) => String(x.id)));
-  const neueNotrufe = notrufeZusammen([], (Array.isArray(neuM.notrufe) ? neuM.notrufe : [])
-    .filter((x) => x && !bekannteNotrufe.has(String(x.id))), ichId, altM.personen);
-  const notrufKontingent = new Map();
-  for (const n of neueNotrufe) for (const x of n.empfaenger) notrufKontingent.set(String(x), (notrufKontingent.get(String(x)) || 0) + 1);
-  const notrufMitteilung = (e, p) => {
-    const rest = notrufKontingent.get(String(e.personId)) || 0;
-    if (!p || rest < 1) return null;
-    if (typeof e.titel !== "string" || !e.titel.startsWith("NOTRUF:") || e.titel.length > 120) return null;
-    if (e.text !== undefined && e.text !== null && (typeof e.text !== "string" || e.text.length > 300)) return null;
-    notrufKontingent.set(String(e.personId), rest - 1);
-    const w = e.wege && typeof e.wege === "object" ? e.wege : {};
-    return { id: e.id, personId: e.personId, art: "einspringen", titel: e.titel,
-      text: typeof e.text === "string" ? e.text : "", ziel: "notruf",
-      zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
-      gelesen: false, dringend: true,
-      wege: { mail: w.mail && w.mail === p.email ? p.email : null,
-        push: w.push && gleich(w.push, p.pushSchluessel) ? p.pushSchluessel : null },
-      zugestellt: { mail: null, push: null } };
-  };
   const fremdText = (pid) => `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`;
 
   const aus = { ...altM };
@@ -1180,30 +1183,23 @@ export function einheitZusammen(altM, neuM, sitzung) {
         break;
       }
 
-      /* --- Nachrichten: neue an den eigenen Bereich, eigene lesen --- */
+      /* --- Nachrichten: neue an den eigenen Bereich, eigene lesen ---
+             Notruf- und Tauschmitteilungen sind schon verworfen, Zustellwege
+             und -status kommen aus dem gespeicherten Stand (mitteilungenVorfiltern);
+             die Mitteilungen zum eigenen Notruf erzeugt der Server danach. */
       case "nachrichten": {
         const r = anhaengen(feld, a, n, {
           neuerEintrag: (e) => {
-            const p = personen.get(String(e.personId));
-            /* Mitteilungen zu einem Notruf (ziel "notruf") nur zusammen mit
-               einem neuen eigenen Notruf in derselben Übermittlung, nur an
-               dessen geprüfte Empfänger, je Empfänger eine — und bereinigt.
-               In 1e.2 genügte ziel "notruf" an Planung oder Leitung; damit ließ
-               sich ohne Notruf jede Mitteilung an sie erzeugen (1e.2a). */
-            if (e.ziel === "notruf" && !eigen(e.personId)) return notrufMitteilung(e, p);
+            if (!personen.has(String(e.personId))) return null;
             if (!eigen(e.personId) && !imBereich(e.personId, heute)) return null;
-            const w = e.wege && typeof e.wege === "object" ? e.wege : {};
-            /* Zustellwege nur zu den gespeicherten Angaben der Person. */
-            return { ...e, wege: { mail: w.mail && p && w.mail === p.email ? p.email : null,
-              push: w.push && p && gleich(w.push, p.pushSchluessel) ? p.pushSchluessel : null },
-            zugestellt: { mail: null, push: null } };
+            if (typeof e.titel !== "string" || e.titel.length > TITEL_MAX) return null;
+            if (e.text !== undefined && e.text !== null && (typeof e.text !== "string" || e.text.length > MITTEILUNG_TEXT_MAX)) return null;
+            return e;
           },
+          /* An einer eigenen Mitteilung ändert sich nur `gelesen` (Commit 4). */
           aenderung: (vorher, e) => {
-            if (eigen(vorher.personId) && eigen(e.personId)) return e;
-            /* Den Zustellstatus zieht die Oberfläche nach dem Versand lokal nach;
-               er ist keine Änderung der Nachricht und wird übergangen. */
-            if (gleich(ohne(vorher, ["zugestellt"]), ohne(e, ["zugestellt"]))) return vorher;
-            return null;
+            if (!eigen(vorher.personId) || !gleich(ohne(vorher, ["gelesen"]), ohne(e, ["gelesen"]))) return null;
+            return { ...vorher, gelesen: e.gelesen === true };
           },
         });
         if (r.grund) return nein(r.grund);

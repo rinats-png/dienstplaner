@@ -70,9 +70,11 @@ for (const [name, sitz, ich] of [["Planung", PLANER, "p1"], ["Leitung", LEITUNG,
       expect(fremd.rolleVerlauf).toEqual([{ ab: "2020-01-01", rolle: "mitarbeiter" }]);
       expect(fremd.qualNachweise).toEqual([{ qualId: "pfk", ablauf: "2030-01-01" }]);
     });
-    it("ÜBERGANG bis Commit 4: pushSchluessel, zustellung und email fremder Personen bleiben", () => {
-      expect(fremd.pushSchluessel).toEqual({ endpoint: "push-a1" });
-      expect(fremd.zustellung).toEqual({ planGeaendert: { mail: true } });
+    /* Bis Commit 4 blieben die drei Felder (Übergang). Seit Commit 4 löst
+       der Server Empfänger und Wege auf; die E-Mail bleibt als Kontaktangabe. */
+    it("Commit 4: pushSchluessel und zustellung fremder Personen nicht mehr, email bleibt", () => {
+      expect(fremd.pushSchluessel).toBeUndefined();
+      expect(fremd.zustellung).toBeUndefined();
       expect(fremd.email).toBe("a1@x.de");
     });
     it("eigene Person vollständig (ohne Unbekanntes)", () => {

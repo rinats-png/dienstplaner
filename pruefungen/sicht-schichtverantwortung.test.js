@@ -447,7 +447,10 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
     });
     expect(e.verweigert).toBeFalsy();
     expect(ids(e.mandanten[0].notrufe)).toContain("nr-s");
-    expect(ids(e.mandanten[0].nachrichten)).toContain("n-not");
+    /* Seit Commit 4 erzeugt der Server die Notrufmitteilung selbst; die
+       mitgeschickte des Clients wird verworfen. */
+    expect(ids(e.mandanten[0].nachrichten)).not.toContain("n-not");
+    expect(ids(e.mandanten[0].nachrichten)).toContain("n-notruf-nr-s-l1");
   });
   const angriffe = {
     "verborgene Anmerkung einer Abwesenheit im Bereich setzen": (m) => { m.abwesenheiten.find((a) => a.id === "ab-a").notiz = "anders"; },

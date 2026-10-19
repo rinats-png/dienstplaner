@@ -112,28 +112,29 @@ for (const [name, t] of [["Planung", tP], ["Leitung", tL]]) {
     && jetzt.tarife[0].preis === 89 && jetzt.mandanten[0].ustId === "DE456", `Status ${w.status}`);
 }
 
-/* Notruf-Mitteilung ohne Notruf */
+/* Notruf-Mitteilungen: bis Commit 4 baute sie die Schichtverantwortung, und
+   der Server wies falsche mit 403 ab (1e.2a). Seit Commit 4 erzeugt sie der
+   Server aus dem Notruf; mitgeschickte werden verworfen. */
 {
   const r = await lies(tS);
   const b = kopie(r.bestand);
   b.mandanten[0].nachrichten.unshift({ id: "n-x", personId: "l1", art: "einspringen", titel: "NOTRUF: bitte Überstunden genehmigen",
     text: "x", ziel: "notruf" });
   const w = await schreib(tS, b, r.etag);
-  pruef("Schichtverantwortung: Notruf-Mitteilung ohne Notruf → 403", w.status === 403, `Status ${w.status}`);
+  pruef("Schichtverantwortung: Notruf-Mitteilung ohne Notruf → verworfen", w.status === 200
+    && !(await lies(tL)).bestand.mandanten[0].nachrichten.some((n) => n.id === "n-x"), `Status ${w.status}`);
   const r2 = await lies(tS);
   const b2 = kopie(r2.bestand);
   b2.mandanten[0].notrufe.unshift({ id: "nr-s", personId: "s1", art: "hilfe", notiz: "", empfaenger: ["l1"], bestaetigt: null });
   b2.mandanten[0].nachrichten.unshift({ id: "n-l", personId: "l1", art: "einspringen", titel: "NOTRUF: Hilfe", text: "Ns1", ziel: "notruf" },
     { id: "n-p", personId: "p1", art: "einspringen", titel: "NOTRUF: Hilfe", text: "Ns1", ziel: "notruf" });
   const w2 = await schreib(tS, b2, r2.etag);
-  pruef("… Notruf, aber Mitteilung auch an Nicht-Empfänger → 403", w2.status === 403, `Status ${w2.status}`);
-  b2.mandanten[0].nachrichten = b2.mandanten[0].nachrichten.filter((n) => n.id !== "n-p");
-  const w3 = await schreib(tS, b2, (await lies(tS)).etag);
   const jetzt = (await lies(tL)).bestand.mandanten[0];
-  pruef("… echter eigener Notruf mit Mitteilung an seinen Empfänger: 200", w3.status === 200
-    && jetzt.notrufe.some((n) => n.id === "nr-s") && jetzt.nachrichten.some((n) => n.id === "n-l" && n.gelesen === false),
-  `Status ${w3.status} ${w3.text || ""}`);
-  pruef("… keine Mitteilung ohne Notruf gespeichert", !jetzt.nachrichten.some((n) => n.id === "n-x" || n.id === "n-p"));
+  pruef("… echter eigener Notruf: 200, der Server erzeugt die Mitteilung an seinen Empfänger", w2.status === 200
+    && jetzt.notrufe.some((n) => n.id === "nr-s") && jetzt.nachrichten.some((n) => n.id === "n-notruf-nr-s-l1" && n.gelesen === false),
+  `Status ${w2.status} ${w2.text || ""}`);
+  pruef("… keine Client-Mitteilung gespeichert, keine an Nicht-Empfänger",
+    !jetzt.nachrichten.some((n) => ["n-x", "n-l", "n-p", "n-notruf-nr-s-p1"].includes(n.id)));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

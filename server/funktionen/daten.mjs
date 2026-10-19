@@ -12,6 +12,8 @@ import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
+import { zustellen } from "../lib/versand.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -885,6 +887,23 @@ export default async (req, context) => {
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
         + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
+
+      /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
+         stellt er selbst zu (Commit 4) — nach dem Speichern, aus dem
+         gespeicherten Stand. Ein Versandfehler ändert nichts am gespeicherten
+         Vorgang und nichts an dieser Antwort; der Status je Kanal liegt in
+         der Ablage (lib/versand.mjs). */
+      try {
+        const altM = jetzt ? eigenerMandant(jetzt.bestand, s) : null;
+        const ids = neueServermitteilungen(altM, eigenerMandant(zuSchreiben, s));
+        if (ids.length) {
+          const danach = await bestandLesen(store, s.bestand);
+          const mD = danach && danach.bestand ? eigenerMandant(danach.bestand, s) : null;
+          if (mD) await zustellen(store, { raum: s.bestand, bestand: danach.bestand, m: mD, ids });
+        }
+      } catch (e) {
+        await protokoll("fehler", ks, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
+      }
       return antwort({ ok: true, etag: erg.stand,
         zusammengefuehrt: erg.zusammengefuehrt || null });
     }
