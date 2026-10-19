@@ -16,8 +16,8 @@
 
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
-import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER }
-  from "./sicht.mjs";
+import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
+  betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -444,6 +444,17 @@ export function bestandFuerRolle(bestand, sitzung) {
     return aus;
   }
 
+  /* Planung, Leitung, Kundenrolle: Positivkatalog (sicht.mjs, Commit 1e.3).
+     Oben nur Zähler und Sitzungsmarke, darunter der eigene Betrieb. Die
+     Betreiberdaten liest keine Ansicht dieser Rollen. */
+  if (schreibumfang(rolle) === SCHREIBEN_VOLL) {
+    const aus = {};
+    for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
+    const eigenerV = eigenerMandant(bestand, sitzung);
+    if (eigenerV) aus.mandanten = [betriebSichtVoll(eigenerV, sitzung)];
+    return aus;
+  }
+
   const kopie = { ...bestand };
 
   /* Kaufmännisches nur für Rollen, die es sehen dürfen.
@@ -593,6 +604,39 @@ export function schichtRueckfuellen(altM, neuM, sitzung) {
     if (Array.isArray(a) && Array.isArray(v) && Array.isArray(n)) aus[feld] = listeRueckfuellen(a, n, v, sitzung.person);
     else if (istObjekt(a) && istObjekt(v) && istObjekt(n)) aus[feld] = objektRueckfuellen(a, n, v, sitzung.person);
     else aus[feld] = gleichJson(n, v) ? a : n;
+  }
+  return aus;
+}
+
+/**
+ * Rückfüllung für Planung, Leitung und Kundenrolle (Commit 1e.3). Ihr
+ * Betrieb wird im Ganzen aus der Übermittlung übernommen; was die Sicht
+ * verbirgt, fehlt darin. Verborgene Felder kommen deshalb immer aus dem
+ * gespeicherten Stand — fehlend wie mitgeschickt (wirkungslos). Eine neue
+ * Person bekommt verborgene Felder gar nicht erst.
+ */
+export function vollRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || typeof neuM !== "object") return neuM;
+  /* In der gespeicherten Reihenfolge der Felder — die Monatsscherben
+     vergleichen Abdrücke, eine bloß andere Reihenfolge wäre eine Änderung. */
+  const zusammenlegen = (alt, neu, sichtbar) => {
+    const aus = {};
+    for (const [k, v] of Object.entries(alt || {})) {
+      if (!sichtbar(k)) aus[k] = v;
+      else if (Object.prototype.hasOwnProperty.call(neu, k)) aus[k] = neu[k];
+    }
+    for (const [k, v] of Object.entries(neu)) if (sichtbar(k) && !Object.prototype.hasOwnProperty.call(aus, k)) aus[k] = v;
+    return aus;
+  };
+  const aus = zusammenlegen(altM, neuM, (k) => VOLL_BETRIEB.includes(k));
+  if (Array.isArray(neuM.personen)) {
+    const gespeichert = new Map((Array.isArray(altM.personen) ? altM.personen : [])
+      .filter(Boolean).map((p) => [String(p.id), p]));
+    aus.personen = neuM.personen.map((n) => {
+      if (!n || typeof n !== "object") return n;
+      const sichtbar = String(n.id) === String(sitzung.person) ? PERSONENFELDER : VOLL_PERSON;
+      return zusammenlegen(gespeichert.get(String(n.id)), n, (k) => sichtbar.includes(k));
+    });
   }
   return aus;
 }
@@ -757,6 +801,9 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     const abweichung = einzigerEigenerBetrieb(uebermittelt, ort.betrieb.id);
     if (abweichung) return { verweigert: abweichung };
     let geschickt = uebermittelt.mandanten[0];
+
+    /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
+    if (umfang === SCHREIBEN_VOLL) geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
 
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */

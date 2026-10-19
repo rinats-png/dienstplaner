@@ -162,14 +162,18 @@ describe("Betriebsrat", () => {
   });
 });
 
-describe("Planung und Leitung unverändert", () => {
+/* Seit 1e.3: Planung und Leitung bekommen die Kalendergeheimnisse fremder
+   Personen nicht mehr; pushSchluessel und zustellung bleiben bis Commit 4
+   (die Oberfläche stellt heute selbst zu). sicht-planung-leitung.test.js. */
+describe("Planung und Leitung: Mitteilungen, Notrufe, Zustellfelder", () => {
   for (const wer of ["planer", "leitung"]) {
-    it(`${wer} sieht alle Mitteilungen, Notrufe und Zugangsfelder des Betriebs`, () => {
+    it(`${wer} sieht alle Mitteilungen und Notrufe, Zustellfelder ja, Kalendergeheimnisse fremder Personen nicht`, () => {
       const m = betrieb(lies(SITZ[wer]));
       expect(ids(m.nachrichten)).toEqual(ids(bestand().mandanten[0].nachrichten));
       expect(ids(m.notrufe)).toEqual(["nr-a", "nr-b"]);
       const b = m.personen.find((p) => p.id === 1);
-      for (const f of FELDER) expect(b[f], f).toEqual(bestand().mandanten[0].personen[1][f]);
+      for (const f of ["pushSchluessel", "zustellung"]) expect(b[f], f).toEqual(bestand().mandanten[0].personen[1][f]);
+      for (const f of ["kalenderGeheim", "kalenderVerweis"]) expect(b[f], f).toBeUndefined();
       expect(m.abwesenheiten.find((x) => x.id === "a1").grund).toBe("Bandscheibe");
     });
   }

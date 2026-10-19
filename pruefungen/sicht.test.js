@@ -470,13 +470,19 @@ describe("Betriebsrat (9., 10.)", () => {
   });
 });
 
-describe("11. Leitung und Planung unverändert", () => {
+/* Seit 1e.3 ein Positivkatalog auch für Leitung und Planung
+   (sicht-planung-leitung.test.js): Plan, Regelwerk und Sammlungen wie
+   bisher, ohne Vertrag und Betreiberangaben, Personen ohne Geheimnisse. */
+describe("11. Leitung und Planung", () => {
   for (const wer of ["leitung", "planer"]) {
-    it(`${wer} bekommt den eigenen Betrieb vollständig`, () => {
+    it(`${wer} bekommt den eigenen Betrieb nach Katalog`, async () => {
+      const { VOLL_BETRIEB } = await import("../server/lib/sicht.mjs");
       const b = sicht(SITZ[wer]);
       const roh = bestand().mandanten[0];
       expect(b.mandanten).toHaveLength(1);
-      expect(b.mandanten[0]).toEqual(roh);
+      for (const f of Object.keys(roh).filter((k) => VOLL_BETRIEB.includes(k) && k !== "personen"))
+        expect(b.mandanten[0][f], f).toEqual(roh[f]);
+      expect(b.mandanten[0].personen.map((p) => p.id)).toEqual(roh.personen.map((p) => p.id));
     });
   }
   /* Seit Commit 1e.1 bekommt die Schichtverantwortung die Personen gestuft

@@ -162,6 +162,11 @@ jobs:
       - name: Betreiberfelder
         run: npm run pruefung:betreiberfelder
 
+      # Planung und Leitung: Positivkatalog, keine Geheimnisse fremder Personen,
+      # keine Betreiber- und Rechnungsdaten; Zustellfelder bis Commit 4.
+      - name: Sicht von Planung und Leitung
+        run: npm run pruefung:sicht-pl
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -458,6 +463,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.2.
+
+      # Lesen als Planung und Leitung, Rundweg, Nachlesen als Betreiber.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht von Planung und Leitung (HTTP)
+        run: npm run pruefung:sicht-pl-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.1.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

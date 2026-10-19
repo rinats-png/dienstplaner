@@ -171,8 +171,8 @@ describe("Rundweg und Rückfüllung", () => {
     expect(e.mandanten[0].abweichungen[`a1|${tag(3)}`]).toBe("F");
     expect(e.mandanten[0].personen).toEqual(g.mandanten[0].personen);           // wertgleich
     expect(JSON.stringify(e.mandanten[0].personen)).not.toContain("sichtbereich");
-    const leitung = bestandFuerRolle(e, LEITUNG).mandanten[0].personen;
-    expect(leitung).toEqual(g.mandanten[0].personen);
+    /* Die Leitung liest seit 1e.3 nach ihrem eigenen Katalog; gespeichert ist alles. */
+    expect(e.mandanten[0].personen).toEqual(g.mandanten[0].personen);
     expect(JSON.stringify(bestandFuerRolle(e, SUB))).not.toContain("Leitungsnotiz-a1");   // weiter gekürzt
   });
   it("die eigene Telefonnummer ändern: angenommen, Verborgenes bleibt", () => {
@@ -214,9 +214,16 @@ describe("Angriffe auf verborgene Felder: kein Durchschreiben", () => {
   }
 });
 
-describe("Planung und Leitung unverändert", () => {
-  it("bekommen die Personen vollständig, ohne sichtbereich", () => {
-    for (const s of [LEITUNG, PLANER]) expect(sichtPersonen(bestand(), s)).toEqual(bestand().mandanten[0].personen);
+/* Seit 1e.3 mit eigenem Katalog (sicht-planung-leitung.test.js) — hier nur,
+   dass die Stufen der Schichtverantwortung nicht auf sie übergreifen. */
+describe("Planung und Leitung: keine Stufen der Schichtverantwortung", () => {
+  it("alle Personen, kein sichtbereich, Schutzmerkmale und Telefon auch fremder Bereiche", () => {
+    for (const s of [LEITUNG, PLANER]) {
+      const l = sichtPersonen(bestand(), s);
+      expect(l.map((x) => x.id)).toEqual(bestand().mandanten[0].personen.map((x) => x.id));
+      expect(JSON.stringify(l)).not.toContain("sichtbereich");
+      expect(p(l, "b1")).toMatchObject({ mutterschutz: true, telefon: "0151-b1" });
+    }
   });
 });
 
@@ -475,13 +482,13 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
   });
 });
 
-describe("Sammlungen: Planung und Leitung unverändert", () => {
-  it("bekommen den Betrieb vollständig", () => {
-    for (const s of [LEITUNG, PLANER]) expect(bestandFuerRolle(sammlungen(), s).mandanten[0]).toEqual(sammlungen().mandanten[0]);
-  });
-  it("Leitung bekommt oben weiter alles außer dem Betreiberprotokoll (wie bisher)", () => {
-    const b = bestandFuerRolle(sammlungen(), LEITUNG);
-    expect(b.tarife).toEqual(sammlungen().tarife);
-    expect(b.selbststarts).toEqual(["x"]);
+/* Seit 1e.3: eigener Katalog — die Sammlungen ungekürzt, keine Stufen. */
+describe("Sammlungen: Planung und Leitung ohne Stufen der Schichtverantwortung", () => {
+  it("bekommen Sammlungen ungekürzt (Abwesenheiten mit Anmerkung, alle Anträge und Nachrichten)", () => {
+    for (const s of [LEITUNG, PLANER]) {
+      const m = bestandFuerRolle(sammlungen(), s).mandanten[0], roh = sammlungen().mandanten[0];
+      for (const f of ["abwesenheiten", "anfragen", "nachrichten", "erfassung", "einstempeln", "protokoll", "notizen"])
+        expect(m[f], f).toEqual(roh[f]);
+    }
   });
 });

@@ -586,5 +586,56 @@ export function betriebSichtSchicht(m, ctx) {
 export const OBEN_FELDER = OBEN;
 
 
+/* ------------------------------------------------------------------------
+   PLANUNG UND LEITUNG (Commit 1e.3)
+
+   Bis Oktober 2026 bekamen Planung, Leitung und Kundenrolle den eigenen
+   Betrieb roh: Kalendergeheimnisse aller Personen, Bank-, Steuer- und
+   Lohnfelder, Notfallkontakte, frühere Anmeldeadressen, die Vertrags- und
+   Rechnungsangaben des Betreibers samt seiner internen Notiz — und ganz
+   oben dessen Preisliste, die Rechnungen aller Betriebe des Raums, Pakete,
+   Adressänderungen und Selbststarts. Keine Ansicht dieser Rollen liest
+   davon etwas; die Betreiberkonsole ist die einzige.
+
+   Jetzt ein Positivkatalog wie für die übrigen Rollen: Was nicht darin
+   steht, geht nicht hinaus — auch kein neues Feld.
+
+   ÜBERGANG BIS COMMIT 4: pushSchluessel, zustellung und email fremder
+   Personen bleiben vorerst. Die Oberfläche von Planung und Leitung baut
+   Mitteilungen heute selbst (zustellwege, baueMitteilung) und stellt sie
+   im Browser zu; ohne diese Felder ginge keine Push-Mitteilung mehr
+   hinaus. Commit 4 löst Empfänger und Versand auf dem Server auf — danach
+   werden die drei Felder aus fremden Personen entfernt.
+   ------------------------------------------------------------------------ */
+
+/** Was Planung und Leitung an fremden Personen nicht bekommen. */
+export const VOLL_PERSON_WEG = ["kalenderGeheim", "kalenderVerweis", "kalenderStand",
+  "emailVorher", "emailGeaendert", "iban", "steuerId", "sozialversicherung", "lohn", "gehalt",
+  "notfallkontakt"];
+/** Fremde Personen: alle bekannten Felder ohne die obigen. */
+export const VOLL_PERSON = PERSONENFELDER.filter((f) => !VOLL_PERSON_WEG.includes(f));
+/** Was Planung und Leitung im Betrieb nicht bekommen: Vertrag, Rechnungsangaben
+    und die interne Notiz des Betreibers, die Raumkennung. */
+export const VOLL_BETRIEB_WEG = ["tarif", "preisgestaltung", "rabattGrund", "seit", "bis", "testTage",
+  "selbstAngelegt", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum"];
+/** Der Betrieb: alle Felder des Katalogs ohne die obigen. lohnarten bleibt
+    (Lohnexport), adressAenderungen vorerst ebenfalls (die Oberfläche schreibt
+    sie beim Ändern der eigenen Anmeldeadresse fort). */
+export const VOLL_BETRIEB = Object.keys(BETRIEB).filter((f) => !VOLL_BETRIEB_WEG.includes(f));
+
+/** Eine Person in der Sicht von Planung und Leitung. */
+export function vollPersonSicht(p, ich) {
+  if (!p || typeof p !== "object") return p;
+  return nimm(p, gleich(p.id, ich) ? PERSONENFELDER : VOLL_PERSON);
+}
+
+/** Der Betrieb in der Sicht von Planung und Leitung. */
+export function betriebSichtVoll(m, sitzung) {
+  if (!m || typeof m !== "object") return m;
+  const aus = nimm(m, VOLL_BETRIEB);
+  if (Array.isArray(m.personen)) aus.personen = m.personen.map((p) => vollPersonSicht(p, sitzung.person));
+  return aus;
+}
+
 /** Die Rollen, für die diese Sicht gilt. */
 export const SICHT_ROLLEN = ["mitarbeiter", "betriebsrat"];

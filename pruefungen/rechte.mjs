@@ -172,8 +172,12 @@ pruef("Krankheitsgrund wurde nicht durch das Lesen gelöscht",
   `grund=${JSON.stringify(mP.abwesenheiten[0].grund)}`);
 pruef("Dienstarten wurden nicht gelöscht", mP.dienstarten.length === 1,
   `dienstarten=${mP.dienstarten.length}`);
+/* Seit 1e.3 liest die Leitung die Betreiberdaten nicht mehr — nachgesehen
+   wird als Betreiber. */
+const danachBetreiber = await lies(tBetreiberStart);
 pruef("Betreiberdaten überlebten den Schreibvorgang",
-  danach.bestand.betreiber && danach.bestand.betreiber.iban === "DE00 1111 2222 3333");
+  danachBetreiber.bestand.betreiber && danachBetreiber.bestand.betreiber.iban === "DE00 1111 2222 3333");
+pruef("… und die Leitung bekommt sie nicht ausgeliefert", danach.bestand.betreiber === undefined);
 
 /* --- Befund 3: Zugang sperren --- */
 const sperr = await fetch(`${BASIS}/api/zugang-sperren`, { method: "POST",
