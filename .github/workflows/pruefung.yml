@@ -167,6 +167,11 @@ jobs:
       - name: Sicht von Planung und Leitung
         run: npm run pruefung:sicht-pl
 
+      # Vollausgabe: Umfang Leitung und Sicherungsschlüssel, keine Geheimnisse,
+      # keine Betreiberinterna.
+      - name: Vollausgabe
+        run: npm run pruefung:vollausgabe
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -473,6 +478,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.1.
+
+      # Leitung und Sicherungsschlüssel holen die Vollausgabe; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Vollausgabe (HTTP)
+        run: npm run pruefung:vollausgabe-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.0.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

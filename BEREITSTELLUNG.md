@@ -413,6 +413,31 @@ ohne Bindung gelten nur in einem Raum mit genau einem Betrieb. Unabhängig davon
 VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
 liegen.
 
+**Was die Vollausgabe ist — und was nicht (seit Oktober 2026).** Sie ist ein
+**Datenexport / eine Datenmitnahme des Kunden**, kein roher Serverbestand und
+**kein Wiederherstellungsformat**. Zurückgespielt wird aus den Sicherungen auf
+dem Server (`/api/sicherung`, `/api/wiederherstellen`, je Betrieb) bzw. bei Verlust des Servers
+mit `werkzeug/ablage-sicherung.mjs` (5.4). Die Ausgabe trägt im Feld
+`inhalt`, welcher Umfang geliefert wurde; beide sind Positivlisten
+(`server/lib/sicherungen.mjs`), ein neues Feld geht erst hinaus, wenn es dort
+eingetragen ist:
+
+| | Leitung (angemeldet, `inhalt: "leitung"`) | Sicherungsschlüssel (`inhalt: "sicherung"`) |
+|---|---|---|
+| Plan, Regelwerk, Sammlungen (Abwesenheiten, Anträge, Nachrichten, Dienstbuch, Übergaben, Notizen, Ausschreibungen, Zeiterfassung …) | vollständig | vollständig |
+| Personen: Plan-, Qualifikations-, Kontakt- und Planungsangaben, Personalnummer | ja | ja |
+| Personen: Bank, Steuer-ID, Sozialversicherung, Lohn/Gehalt, Notfallkontakt, frühere Anmeldeadresse | **nein** (wie in ihrer normalen Sicht) | ja |
+| Technische Geheimnisse: Kalendergeheimnis und -verweis, Push-Schlüssel, Zustelleinstellungen | **nie** | **nie** |
+| Betreiberinterna: Konditionen, Vertrag, Rechnungsangaben, interne Notiz, Raumkennung, Preisliste, Rechnungen, Betreiberstamm | **nie** | **nie** |
+| andere Betriebe des Raums | nie | nie |
+
+**Den Sicherungsschlüssel besonders schützen.** Seine Ausgabe enthält
+Personaldaten (Bank, Steuer, Sozialversicherung, Lohn, Notfallkontakte). Die
+Datei gehört auf einen verschlüsselten Datenträger, der Schlüssel in einen
+Passwortspeicher; ein Schlüssel, der im Klartext in einem Skript oder Chat
+stand, wird zurückgezogen. Die rechtliche Einordnung des Exports erfolgt
+separat.
+
 ### 5.4 Sicherung und Wiederherstellung der gesamten Ablage
 
 Die Sicherung nach 5.3 holt nur die Betriebsdaten über die Schnittstelle. Konten,

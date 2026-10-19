@@ -1039,6 +1039,8 @@ export default async (req, context) => {
         centric: "vollausgabe",
         fassung: 2,
         umfang: "betrieb",
+        /* leitung oder sicherung — die beiden Exportkataloge (sicherungen.mjs) */
+        inhalt: va.modus,
         erzeugt: new Date().toISOString(),
         raum: s.bestand,
         mandantId: va.betrieb.id,

@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER } from "./rechte.mjs";
+import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -184,6 +185,51 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
   return { bestand: neu };
 }
 
+/* --------------------------------------------------------------------------
+   DATENEXPORT (Vollausgabe) — zwei Umfänge, beide als Positivliste
+
+   Bis Oktober 2026 ging der eigene Betrieb hier roh hinaus: mit den
+   Kalender- und Push-Geheimnissen aller Personen, der internen Notiz des
+   Betreibers, Konditionen und Rechnungsangaben, unbekannten Feldern. Für
+   die Leitung war das ein Umweg an der Lesesicht vorbei (Commit 1e.3), und
+   mit einem fremden Kalendergeheimnis ließ sich dessen Feed lesen und
+   überschreiben.
+
+   Jetzt zwei ausdrückliche Kataloge. Was nicht darin steht, geht nicht
+   hinaus. In keinem: technische Geheimnisse (EXPORT_GEHEIMNISSE) und
+   Betreiberinterna (die Betriebsfelder außerhalb von VOLL_BETRIEB).
+
+   - leitung: die Lesesicht der Leitung (VOLL_PERSON, VOLL_BETRIEB) ohne
+     Zustellfelder — keine Daten, die ihr die normale Sicht nicht gibt; für
+     alle Personen gleich, auch die eigene.
+   - sicherung (Sicherungsschlüssel, externe Datenmitnahme): dazu die
+     Personaldaten des Kunden (Bank, Steuer, Sozialversicherung, Lohn,
+     Notfallkontakt, frühere Anmeldeadresse).
+
+   Sammlungen, Plan und Regelwerk gehen in beiden vollständig hinaus — die
+   Leitung liest sie auch in der normalen Sicht vollständig.
+
+   Das ist ein Datenexport, kein Wiederherstellungsformat: Zurückgespielt
+   wird aus den Sicherungen auf dem Server (oben) bzw. mit
+   werkzeug/ablage-sicherung.mjs.
+   -------------------------------------------------------------------------- */
+export const EXPORT_GEHEIMNISSE = ["kalenderGeheim", "kalenderVerweis", "kalenderStand", "pushSchluessel", "zustellung"];
+export const EXPORT_BETRIEB = VOLL_BETRIEB;
+export const EXPORT_PERSON = {
+  leitung: VOLL_PERSON.filter((x) => !EXPORT_GEHEIMNISSE.includes(x)),
+  sicherung: PERSONENFELDER.filter((x) => !EXPORT_GEHEIMNISSE.includes(x)),
+};
+const nimmNur = (o, felder) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => felder.includes(k)));
+
+/** Der Betrieb im Umfang des Exports. modus: "leitung" oder "sicherung". */
+export function exportBetrieb(m, { modus }) {
+  const personFelder = EXPORT_PERSON[modus];
+  if (!personFelder) throw new Error(`Unbekannter Exportumfang: ${modus}`);
+  const aus = nimmNur(m, EXPORT_BETRIEB);
+  if (Array.isArray(m.personen)) aus.personen = m.personen.map((p) => (p && typeof p === "object" ? nimmNur(p, personFelder) : p));
+  return aus;
+}
+
 /**
  * Was die Vollausgabe hergibt: den eigenen Betrieb, nicht den Raum.
  * Ein Sicherungsschlüssel trägt seit Oktober 2026 die Kennung seines
@@ -195,12 +241,14 @@ export function vollausgabeBetrieb(bestand, sitzung) {
   if (sitzung.nurSicherung) {
     if (sitzung.mandantId) {
       const m = liste.find((x) => x && x.id === sitzung.mandantId);
-      return m ? { betrieb: m } : { verweigert: "Der Betrieb dieses Schlüssels besteht nicht mehr.", status: 404 };
+      return m ? { betrieb: exportBetrieb(m, { modus: "sicherung" }), modus: "sicherung" }
+        : { verweigert: "Der Betrieb dieses Schlüssels besteht nicht mehr.", status: 404 };
     }
-    if (liste.length === 1) return { betrieb: liste[0] };
+    if (liste.length === 1) return { betrieb: exportBetrieb(liste[0], { modus: "sicherung" }), modus: "sicherung" };
     return { verweigert: "Dieser ältere Sicherungsschlüssel ist keinem Betrieb zugeordnet. "
       + "Bitte einen neuen anlegen.", status: 403 };
   }
   const ort = eigenerBetrieb(bestand, sitzung);
-  return ort ? { betrieb: ort.betrieb } : { verweigert: "Kein Betrieb vorhanden.", status: 404 };
+  return ort ? { betrieb: exportBetrieb(ort.betrieb, { modus: "leitung" }), modus: "leitung" }
+    : { verweigert: "Kein Betrieb vorhanden.", status: 404 };
 }
