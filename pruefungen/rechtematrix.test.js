@@ -106,7 +106,9 @@ const MATRIX = [
   ["Übergaben",                  "MK-UEBERGABE",             0, 0, 1, 1, 1, 1, 1, 1, "C"],
   ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 1, 1, 1, 1, 1, 1, "C"],
   ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Ausschreibung: Bewerbung",   "MK-BEWERBUNG",             0, 0, 1, 1, 1, 1, 1, 1, "C"],
+  /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der
+     eigenen Einheit (hier: Altbestand ohne einheitId — also nicht). */
+  ["Ausschreibung: Bewerbung",   "MK-BEWERBUNG",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Betriebsprotokoll",          "MK-BETRIEBSPROTOKOLL",     0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Adressänderungen im Betrieb","MK-ADRESSE-ALT",           0, 0, 0, 1, 1, 1, 1, 1, "B"],
   ["Lohnarten",                  "MK-LOHNART",               0, 0, 0, 1, 1, 1, 1, 1, "A"],

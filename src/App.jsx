@@ -2145,6 +2145,11 @@ function darf(sitz, recht, einheitId) {
   return sitz.person.bereich === einheitId;
 }
 const darfEinheit = (s, eid) => darf(s, "plan.edit.all") || darf(s, "plan.edit.unit", eid);
+/* Mitteilungen an Personen außerhalb des eigenen Bereichs nimmt der Server
+   von der Schichtverantwortung nicht an (rechte.mjs, einheitZusammen) —
+   dieselbe Bestimmung des eigenen Bereichs wie dort (eigeneEinheit). */
+const anBereichErlaubt = (s, p) => darf(s, "plan.edit.all") || !p || p.id === s.person.id
+  || einheitAm(p, heute()) === (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
 const darfEntscheiden = (s, eid) => darf(s, "req.approve.all") || darf(s, "req.approve.unit", eid);
 
 /* ------------------------------ Preisrechnung ----------------------------- */
@@ -21825,9 +21830,11 @@ function AppInnen() {
         /* Nur die unterrichten, die sich tatsächlich bewerben dürfen —
            eine Mitteilung über einen Dienst, den man nicht nehmen kann,
            ist Lärm. */
+        /* Die Schichtverantwortung unterrichtet nur ihren Bereich (Commit C1);
+           die verantwortende Einheit setzt der Server. */
         const nachr = m.personen
           .filter((p) => darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
-            p.id, a).darf)
+            p.id, a).darf && anBereichErlaubt(sitz, p))
           .map((p) => baueMitteilung(m, p.id, "offeneSchicht",
             `Offene Schicht am ${fKurz(datum)}`,
             `${da ? da.name : dienstId}${da ? ` · ${da.start}–${da.ende}` : ""}${hinweis ? ` · ${hinweis}` : ""}`,
@@ -21873,7 +21880,8 @@ function AppInnen() {
             `Du hast die Schicht am ${fKurz(a.datum)}`,
             `${da ? da.name : a.dienstId}${da ? ` · ${da.start}–${da.ende}` : ""} — du bist eingeteilt.`,
             "meine"),
-          ...abgelehnt.map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
+          ...abgelehnt.filter((b) => anBereichErlaubt(sitz, m.personen.find((x) => x.id === b.personId)))
+            .map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
             `Schicht am ${fKurz(a.datum)} anderweitig vergeben`,
             "Danke für die Meldung — beim nächsten Mal hast du Vorrang.", "offene")),
         ].filter(Boolean);

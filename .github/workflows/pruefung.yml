@@ -189,6 +189,10 @@ jobs:
       - name: Zustellung-Rechte
         run: npm run pruefung:zustellung-rechte
 
+      # Ausschreibungen: verantwortende Einheit, Bewerbungen nur bei eigener Einheit (C1).
+      - name: Bereich Ausschreibungen
+        run: npm run pruefung:bereich-ausschreibungen
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -535,6 +539,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.7.
+
+      # Ausschreibungen über echte Anmeldung: Sicht, Anlegen, Vergeben, Rundweg.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Ausschreibungen (HTTP)
+        run: npm run pruefung:bereich-ausschreibungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.6.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

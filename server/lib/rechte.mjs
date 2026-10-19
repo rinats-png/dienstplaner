@@ -18,7 +18,7 @@ import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
-import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
+import { ausschreibungDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
@@ -552,6 +552,16 @@ function eintragRueckfuellen(a, n, v, ich) {
   if (!istObjekt(a) || !istObjekt(n) || !istObjekt(v)) return n;
   const aus = {};
   for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
+    /* Bewerbungen haben keine eigene Kennung — zusammengeführt wird über die
+       personId (Commit C1): Was die Sicht verbarg, bleibt aus dem gespeicherten
+       Stand; die sichtbaren kommen aus der Übermittlung. Ob eine Änderung daran
+       zulässig ist, entscheidet danach einheitZusammen. */
+    if (k === "bewerbungen" && Array.isArray(a[k]) && Array.isArray(n[k]) && Array.isArray(v[k])) {
+      if (gleichJson(n[k], v[k])) { aus[k] = a[k]; continue; }
+      const sichtbar = new Set(v[k].filter(istObjekt).map((b) => String(b.personId)));
+      aus[k] = [...a[k].filter((b) => !istObjekt(b) || !sichtbar.has(String(b.personId))), ...n[k]];
+      continue;
+    }
     if (k === "interessenten" && Array.isArray(a[k]) && Array.isArray(n[k]) && Array.isArray(v[k])) {
       const ichDabei = n[k].some((x) => String(x) === String(ich));
       aus[k] = [...a[k].filter((x) => String(x) !== String(ich)), ...(ichDabei ? [ich] : [])];
@@ -1337,9 +1347,82 @@ export function einheitZusammen(altM, neuM, sitzung) {
         break;
       }
 
+      /* --- Ausschreibungen (Commit C1) ---
+             Bis C1 nahm der Server von der Schichtverantwortung nur die eigene
+             Bewerbung an; Anlegen, Vergeben und Zurückziehen, die ihre
+             Oberfläche anbietet, verwarf er still. Jetzt:
+             - neu: nur offen, ohne Bewerbungen, bekannte Dienstart; die
+               verantwortende Einheit setzt der Server (eigene Einheit),
+               ebenso Ersteller und Zeit — der Client bestimmt sie nicht;
+             - eigene Einheit: zurückziehen oder vergeben (nur aus „offen“,
+               nur an eine Person des eigenen Bereichs am Tag — das Eintragen
+               in den Plan prüft abweichungen ohnehin genauso);
+             - fremde Einheit, null, Altbestand: unverändert, nur die eigene
+               Bewerbung; einheitId zu übernehmen ist abgewiesen;
+             - Bewerbungen anderer kommen immer aus dem gespeicherten Stand,
+               die eigene aus der Übermittlung;
+             - nicht mitgeschickte Ausschreibungen bleiben gespeichert. */
+      case "ausschreibungen": {
+        if (n !== undefined && !Array.isArray(n)) return nein("ausschreibungen: ungültige Form.");
+        const altL = (Array.isArray(a) ? a : []).filter((x) => x && typeof x === "object");
+        const altNachId = new Map(altL.filter((x) => kennungGueltig(x.id)).map((x) => [String(x.id), x]));
+        const dienste = new Set((altM.dienstarten || []).filter(Boolean).map((d) => String(d.id)));
+        const meineB = (x) => (Array.isArray(x && x.bewerbungen) ? x.bewerbungen : []).filter((b) => b && eigen(b.personId))
+          .slice(0, 1).map((b) => ({ personId: b.personId, ...(typeof b.zeit === "string" && b.zeit.length <= 40 ? { zeit: b.zeit } : {}),
+            text: typeof b.text === "string" ? b.text.slice(0, TEXT_MAX) : "" }));
+        const bewerbungenZusammen = (vorher, x) => {
+          const alt = Array.isArray(vorher.bewerbungen) ? vorher.bewerbungen : [];
+          const istMeine = (b) => b && eigen(b.personId);
+          const neu = Array.isArray(x.bewerbungen) ? x.bewerbungen : [];
+          if (gleich(alt.filter(istMeine), neu.filter(istMeine))) return alt;     // eigene unverändert
+          return [...alt.filter((b) => !istMeine(b)), ...meineB(x)];
+        };
+        const ersetzt = new Map();
+        const neue = [];
+        const gesehen = new Set();
+        for (const x of (Array.isArray(n) ? n : []).filter((y) => y && typeof y === "object")) {
+          if (!kennungGueltig(x.id)) return nein("ausschreibungen: Eintrag ohne Kennung.");
+          const id = String(x.id);
+          if (gesehen.has(id)) return nein("ausschreibungen: doppelte Kennung.");
+          gesehen.add(id);
+          const vorher = altNachId.get(id);
+          if (!vorher) {
+            if (typeof x.datum !== "string" || !TAG.test(x.datum) || !dienste.has(String(x.dienstId)))
+              return nein("Eine Ausschreibung braucht Tag und bekannte Dienstart.");
+            if ((x.status || "offen") !== "offen" || (Array.isArray(x.bewerbungen) && x.bewerbungen.length) || (x.vergebenAn ?? null) !== null)
+              return nein("Eine neue Ausschreibung ist offen und hat noch keine Bewerbungen.");
+            if (typeof x.hinweis === "string" && x.hinweis.length > TEXT_MAX) return nein("ausschreibungen: Hinweis zu lang.");
+            neue.push({ id: x.id, datum: x.datum, dienstId: x.dienstId, einheitId: eigene,
+              hinweis: typeof x.hinweis === "string" ? x.hinweis : "", status: "offen",
+              erstellt: new Date().toISOString(), durch: meinName, bewerbungen: [], vergebenAn: null });
+            continue;
+          }
+          if (gleich(vorher, x)) continue;
+          const bewerbungen = bewerbungenZusammen(vorher, x);
+          const kopfGleich = gleich(ohne(vorher, ["bewerbungen"]), ohne(x, ["bewerbungen"]));
+          if (kopfGleich) { ersetzt.set(id, gleich(bewerbungen, vorher.bewerbungen || []) ? vorher : { ...vorher, bewerbungen }); continue; }
+          if (!ausschreibungDerEinheit(vorher, eigene))
+            return nein("Diese Ausschreibung verantwortet eine andere Einheit oder die Planung.");
+          /* Eigene Einheit: nur zurückziehen oder vergeben, aus „offen“. */
+          const kopf = ["status", "vergebenAn", "vergebenZeit"];
+          if (!gleich(ohne(vorher, ["bewerbungen", ...kopf]), ohne(x, ["bewerbungen", ...kopf])))
+            return nein("An einer Ausschreibung ändern sich nur Status und Vergabe.");
+          if (vorher.status !== "offen") return nein("Die Ausschreibung ist nicht mehr offen.");
+          if (x.status === "zurueckgezogen") {
+            ersetzt.set(id, { ...vorher, status: "zurueckgezogen", bewerbungen });
+          } else if (x.status === "vergeben") {
+            const an = x.vergebenAn;
+            if (an === null || an === undefined || !personen.has(String(an)) || !(eigen(an) || imBereich(an, vorher.datum)))
+              return nein(`${fremdText(an)} Die Vergabe ist Sache der Planung.`);
+            ersetzt.set(id, { ...vorher, status: "vergeben", vergebenAn: an, vergebenZeit: jetztText(), bewerbungen });
+          } else return nein("ausschreibungen: unbekannter Status.");
+        }
+        aus.ausschreibungen = [...neue, ...altL.map((x) => (kennungGueltig(x.id) && ersetzt.get(String(x.id))) || x)];
+        break;
+      }
+
       /* --- Selbstservice: nur die eigenen Einträge, Fremdes aus dem Stand --- */
       case "wuensche":
-      case "ausschreibungen":
       case "urlaubsrunde":
       case "selbstplanung":
         Object.assign(aus, eigenesZusammen(altM, { [feld]: n }, ichId));

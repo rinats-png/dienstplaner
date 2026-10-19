@@ -369,11 +369,16 @@ describe("Sammlungen: je Scope", () => {
   it("Standorte ohne Koordinaten und Radius", () => {
     expect(sichtS().standorte).toEqual([{ id: "st1", name: "Haupthaus", bundesland: "HE" }]);
   });
-  it("Plan und Regelwerk vollständig; Dienstbuch, Übergaben, Ausschreibungen vorerst unverändert (Schuld)", () => {
+  /* Seit Commit C1 sind die Ausschreibungen nicht mehr unverändert: Ohne
+     verantwortende eigene Einheit gehen nur die eigenen Bewerbungen hinaus
+     (pruefungen/bereich-ausschreibungen.test.js). */
+  it("Plan und Regelwerk vollständig; Dienstbuch, Übergaben vorerst unverändert (Schuld); Ausschreibungen: Kopf vollständig", () => {
     const g = sammlungen(), m = sichtS(g), roh = g.mandanten[0];
     for (const f of ["einheiten", "dienstarten", "zyklus", "anker", "abweichungen", "freigaben", "matrix",
-      "dienstbuch", "uebergaben", "ausschreibungen"])
+      "dienstbuch", "uebergaben"])
       expect(m[f], f).toEqual(roh[f]);
+    const ohneB = (l) => l.map(({ bewerbungen, ...rest }) => rest); // eslint-disable-line no-unused-vars
+    expect(ohneB(m.ausschreibungen)).toEqual(ohneB(roh.ausschreibungen));
   });
   it("Ganz oben nur Zähler, Sitzungsmarke und der eigene Betrieb", () => {
     expect(Object.keys(bestandFuerRolle(sammlungen(), SUB)).sort()).toEqual(["mandanten", "session", "stand", "version"]);

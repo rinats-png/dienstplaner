@@ -456,10 +456,9 @@ export function bestandSicht(bestand, sitzung, eigener) {
 
    SCHULD (Bereich): Dienstbuch, Übergaben und die Tagesnotizen (in
    `notizen` unter „tag|…") bleiben vorerst vollständig sichtbar; sie
-   tragen keinen Bereich. Ebenso die Ausschreibungen samt Bewerbungen:
-   Eine Ausschreibung nennt Tag und Dienst, aber keinen Bereich — wer sie
-   vergibt und welche Bewerbungen dafür nötig sind, lässt sich nicht
-   zuordnen. Beides braucht eine einheitId/bereichId.
+   tragen keinen Bereich und brauchen eine einheitId (C2, C3). Die
+   Ausschreibungen tragen seit Commit C1 die verantwortende Einheit
+   (siehe schichtAusschreibungen).
    ------------------------------------------------------------------------ */
 const umfangDer = (ctx, pid) => (gleich(pid, ctx.ich) ? "eigen" : (ctx.umfang.get(String(pid)) || "fremd"));
 const imScope = (ctx, pid, erlaubt) => erlaubt.includes(umfangDer(ctx, pid));
@@ -526,6 +525,20 @@ const schichtBetriebsmittel = (w, ctx) => liste(w).filter((b) => b && (b.personI
   || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"])));
 const schichtSondereinsaetze = (w, ctx) => liste(w).filter((s) => s && liste(s.zugeteilt)
   .some((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"])));
+/* Ausschreibungen (Commit C1): fachlich betriebsweit, der Kopf ist für alle
+   sichtbar wie bei Beschäftigten. `einheitId` ist allein die verantwortende
+   Einheit. Nur bei einer Ausschreibung der eigenen Einheit gehen alle
+   Bewerbungen hinaus — auch die von Pool- oder fremden Personen, denn diese
+   Ausschreibung entscheidet die Schichtverantwortung. Sonst (fremde Einheit,
+   null, Altbestand ohne einheitId) nur die eigene Bewerbung; nicht etwa die
+   von Personen des eigenen Bereichs. Der Pool ist kein eigener Bereich. */
+export const ausschreibungDerEinheit = (a, eigene) => !!a && eigene !== null && eigene !== undefined
+  && a.einheitId !== undefined && a.einheitId !== null && String(a.einheitId) === String(eigene);
+const schichtAusschreibungen = (w, ctx) => liste(w).map((a) => {
+  if (!a || typeof a !== "object") return a;
+  return ausschreibungDerEinheit(a, ctx.eigene) ? a
+    : { ...a, bewerbungen: liste(a.bewerbungen).filter((b) => eigen(b, ctx.ich)) };
+});
 /* notizen: „tag|…" sind die Tagesnotizen (bleiben, siehe Schuld oben);
    „person|…" sind Notizen zu einzelnen Personen — weg. */
 const schichtNotizen = (w) => objektFilter(w, (k, v) => (String(k).startsWith("tag|") ? v : undefined));
@@ -549,7 +562,7 @@ Object.assign(SCHICHT, {
   notrufe: R(schichtNotrufe),
   aenderungen: R(schichtAenderungen),
   selbstplanung: R(schichtSelbstplanung),
-  ausschreibungen: VOLL,                 // siehe Schuld oben — unverändert
+  ausschreibungen: R(schichtAusschreibungen),
   urlaubsrunde: R(schichtUrlaubsrunde),
   kompetenzen: R(schichtKompetenzen),
   einarbeitung: R(schichtEinarbeitung),

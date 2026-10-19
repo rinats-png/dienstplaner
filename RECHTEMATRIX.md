@@ -49,7 +49,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Übergaben | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | C |
 | Tagesnotizen (`notizen` „tag\|…") | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | C |
 | Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Ausschreibungen mit Bewerbungen | nur eigene | – | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | C |
+| Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
+| Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | ✓ | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | ✓ | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | B ⁶ |
@@ -65,7 +66,11 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 ¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen.
 ³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung.
 ⁵ im eigenen Bereich vollständig (zum Entscheiden). ⁶ Die Oberfläche schreibt sie beim Ändern der eigenen
-Anmeldeadresse fort; ein Umbau dieses Schreibwegs steht aus.
+Anmeldeadresse fort; ein Umbau dieses Schreibwegs steht aus. ⁷ Commit C1: `einheitId` ist die verantwortende
+Einheit (legt die Schichtverantwortung an, setzt der Server ihre eigene; Planung/Leitung auch `null` = betriebsweit).
+Bei fremder Einheit, `null` oder Altbestand ohne `einheitId` sieht die Schichtverantwortung nur die eigene Bewerbung —
+nicht die von Personen ihres Bereichs; der Springer-Pool zählt nicht als eigener Bereich. Schreiben: anlegen, vergeben
+(nur an Personen des eigenen Bereichs) und zurückziehen nur bei der eigenen Einheit; sonst nur die eigene Bewerbung.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -111,7 +116,7 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Versandwarteschlange und mehrere Geräte je Person | bei Bedarf |
 | Crash-Fenster beim Versand: Abbruch nach externem Versand und vor Statusabschluss — nach 15 Minuten erneuter Versand möglich | Restschuld, ohne Queue/Transaktion |
 | Rückfall-Alarmierung, wenn ein Notruf keinen gültigen Empfänger hat (heute: keine Mitteilung) | Produktentscheidung |
-| Bereichsbezug für Dienstbuch, Übergaben, Tagesnotizen, Ausschreibungen | eigener Schritt |
+| Bereichsbezug für Dienstbuch, Übergaben, Tagesnotizen (Ausschreibungen: Commit C1) | C2, C3 |
 | Rohe Schutzmerkmale für die Schichtverantwortung im eigenen Bereich statt abgeleiteter Aussagen | Schuld, mit der gemeinsamen Planrechnung |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |
