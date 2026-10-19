@@ -110,6 +110,14 @@ const mL = await betriebVon(tL1);
 pruef("Z4 der Server hat die Notrufmitteilung erzeugt", mL.nachrichten.some((n) => n.id === "n-notruf-nr-a1-l1" && n.titel === "NOTRUF: Hilfe angefordert"));
 pruef("Z4 die Client-Notrufmitteilung ist verworfen", !mL.nachrichten.some((n) => n.id === "n-fake"));
 
+/* Commit 4a: ohne gültigen Empfänger keine Ersatzempfänger */
+const nr2 = await schreibe(tA1, (m) => {
+  m.notrufe = [{ id: "nr-leer", personId: "a1", art: "hilfe", notiz: "", empfaenger: ["a2", "b1"], bestaetigt: null }, ...(m.notrufe || [])];
+});
+const mL2 = await betriebVon(tL1);
+pruef("4a Notruf ohne gültigen Empfänger: gespeichert, keine Mitteilung an Planung/Leitung", nr2.status === 200
+  && mL2.notrufe.some((n) => n.id === "nr-leer") && !mL2.nachrichten.some((n) => String(n.id).startsWith("n-notruf-nr-leer-")), nr2.text);
+
 /* Z6 */
 await schreibe(tP1, (m) => { m.nachrichten.unshift(mitteilung("n-z6", "l1", { wege: { mail: "angreifer@x.de" }, zugestellt: { mail: "gesendet" } })); });
 const z6 = (await betriebVon(tL1)).nachrichten.find((n) => n.id === "n-z6");

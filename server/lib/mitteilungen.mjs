@@ -123,16 +123,17 @@ function mitteilung({ id, personId, art, titel, text, ziel, quelle }) {
     dringend: !!(ZUSTELLARTEN[art] || {}).dringend, quelle };
 }
 
-/** Wer einen Notruf bekommt: die gespeicherten Empfänger, soweit sie
-    Schichtverantwortung, Planung oder Leitung dieses Betriebs sind. Ist
-    keiner übrig, Planung und Leitung — ein Notruf geht nie ins Leere. */
+/** Wer einen Notruf bekommt: ausschließlich die im Notruf gespeicherten
+    Empfänger, soweit sie Schichtverantwortung, Planung oder Leitung dieses
+    Betriebs sind (und nicht die Person selbst). Bleibt keiner übrig, bekommt
+    niemand eine Mitteilung — es gibt keine Ersatzempfänger (Commit 4a). Der
+    Notruf selbst bleibt gespeichert und in der Anwendung sichtbar. Eine
+    Rückfall-Alarmierung wäre eine eigene Produktentscheidung. */
 export function notrufEmpfaenger(personen, notruf) {
   const liste = (Array.isArray(personen) ? personen : []).filter(istObjekt);
   const zulaessig = (p) => NOTRUF_EMPFAENGER.includes(p.rolle) && !gleichId(p.id, notruf.personId);
   const gewaehlt = new Set((Array.isArray(notruf.empfaenger) ? notruf.empfaenger : []).map(String));
-  const aus = liste.filter((p) => zulaessig(p) && gewaehlt.has(String(p.id)));
-  if (aus.length) return aus;
-  return liste.filter((p) => (p.rolle === "planer" || p.rolle === "leitung") && !gleichId(p.id, notruf.personId));
+  return liste.filter((p) => zulaessig(p) && gewaehlt.has(String(p.id)));
 }
 
 /**

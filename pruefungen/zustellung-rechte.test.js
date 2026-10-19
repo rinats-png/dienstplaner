@@ -241,20 +241,81 @@ describe("Z4 — Notruf: Server erzeugt und stellt zu", () => {
     expect((await senden(T.p1, { nachrichten: ["n-fake"] })).ergebnis).toEqual([{ id: "n-fake", stand: "erledigt" }]);
     expect(post.mails).toEqual([]);
   });
-  it("ohne zulässige Empfänger: Planung und Leitung; ein Versandfehler lässt den Notruf stehen", async () => {
+  it("ein Versandfehler lässt den Notruf stehen", async () => {
     post.mailWirft = true;
     const w = await schreibe(T.a2, (m) => {
-      m.notrufe = [{ id: "nr-a2", personId: "a2", art: "hilfe", notiz: "", empfaenger: ["a1", "b1"], bestaetigt: null }, ...(m.notrufe || [])];
+      m.notrufe = [{ id: "nr-a2", personId: "a2", art: "hilfe", notiz: "", empfaenger: ["l1"], bestaetigt: null }, ...(m.notrufe || [])];
     });
     expect(w.status, w.text).toBe(200);
     const m = await betrieb("m-a");
     expect(m.notrufe.some((n) => n.id === "nr-a2")).toBe(true);
-    expect(m.nachrichten.filter((n) => n.quelle && n.quelle.id === "nr-a2").map((n) => n.personId).sort()).toEqual(["l1", "p1"]);
     expect(await status("m-a", "n-notruf-nr-a2-l1", "mail")).toMatchObject({ status: "fehler", versuche: 1 });
   });
 });
 
-describe("Z5 — genau einmal je Kanal: atomarer Claim, Wiederholung", () => {
+/* Commit 4a: Empfänger sind ausschließlich die gültigen, serverseitig
+   geprüften Empfänger des konkreten Notrufs. Kein Ersatz, keine Erweiterung
+   auf Planung oder Leitung (f050054 hatte diesen Rückfall selbst eingeführt). */
+describe("Notrufempfänger — nur die gültigen des Notrufs (Commit 4a)", () => {
+  const notrufVon = async (t, ich, id, empfaenger, extra = () => {}) => {
+    const w = await schreibe(t, (m) => {
+      m.notrufe = [{ id, personId: ich, art: "hilfe", notiz: "", empfaenger, bestaetigt: null }, ...(m.notrufe || [])];
+      extra(m);
+    });
+    expect(w.status, w.text).toBe(200);
+    const m = await betrieb("m-a");
+    return { m, an: m.nachrichten.filter((n) => n.quelle && n.quelle.id === id).map((n) => n.personId).sort() };
+  };
+  it("gültige Empfänger: genau diese bekommen Servermitteilungen", async () => {
+    const { an } = await notrufVon(T.a2, "a2", "nr-g", ["s1", "p1"]);
+    expect(an).toEqual(["p1", "s1"]);
+    expect(post.mails.map((x) => x.an).sort()).toEqual(["p1@x.de", "s1@x.de"]);
+  });
+  it("teilweise ungültig (Beschäftigte, fremder Betrieb, unbekannt, sie selbst): nur die gültigen", async () => {
+    const { an } = await notrufVon(T.a2, "a2", "nr-t", ["l1", "a1", "b1", "gibt-es-nicht", "a2"]);
+    expect(an).toEqual(["l1"]);
+    expect(post.mails.map((x) => x.an)).toEqual(["l1@x.de"]);
+  });
+  it("kein gültiger Empfänger: Notruf gespeichert, keine Mitteilung, keine Mail, kein Push", async () => {
+    await anfrage(zustellung, "/zustellung/anmelden", { token: T.p1, rumpf: ANM("p1-notruf") });
+    const { m, an } = await notrufVon(T.a2, "a2", "nr-leer", ["a1", "b1"]);
+    expect(m.notrufe.some((n) => n.id === "nr-leer")).toBe(true);
+    expect(an).toEqual([]);
+    expect(m.nachrichten.some((n) => String(n.id).startsWith("n-notruf-nr-leer-"))).toBe(false);
+    expect(post.mails).toEqual([]);
+    expect(post.pushes).toEqual([]);
+  });
+  it("ohne jede Empfängerangabe ebenso", async () => {
+    const { an } = await notrufVon(T.a2, "a2", "nr-ohne", []);
+    expect(an).toEqual([]);
+    expect(post.mails).toEqual([]); expect(post.pushes).toEqual([]);
+  });
+  it("Empfänger nachschieben (gespeicherten Notruf ändern): wirkungslos", async () => {
+    await schreibe(T.a2, (m) => { m.notrufe.find((n) => n.id === "nr-leer").empfaenger = ["l1", "p1"]; });
+    const m = await betrieb("m-a");
+    expect(m.notrufe.find((n) => n.id === "nr-leer").empfaenger).toEqual([]);
+    expect(m.nachrichten.some((n) => n.quelle && n.quelle.id === "nr-leer")).toBe(false);
+    expect(post.mails).toEqual([]);
+  });
+  it("eingeschleuste Client-Notrufmitteilungen (auch mit Serverkennung und quelle): wirkungslos", async () => {
+    const { m, an } = await notrufVon(T.a2, "a2", "nr-x", ["l1"], (mm) => {
+      mm.nachrichten.unshift(
+        mitteilung("n-notruf-nr-x-p1", "p1", { art: "einspringen", ziel: "notruf", titel: "NOTRUF: Hilfe angefordert",
+          quelle: { art: "notruf", id: "nr-x", von: "a2" } }),
+        mitteilung("n-fake-x", "s1", { art: "einspringen", ziel: "notruf", titel: "NOTRUF: frei" }));
+    });
+    expect(an).toEqual(["l1"]);
+    expect(m.nachrichten.some((n) => n.id === "n-fake-x" || n.id === "n-notruf-nr-x-p1")).toBe(false);
+    expect(post.mails.map((x) => x.an)).toEqual(["l1@x.de"]);
+  });
+  it("Planung als Absenderin: kein Rückfall auf die übrige Planung/Leitung", async () => {
+    const { an } = await notrufVon(T.p1, "p1", "nr-p", ["a1"]);
+    expect(an).toEqual([]);
+    expect(post.mails).toEqual([]); expect(post.pushes).toEqual([]);
+  });
+});
+
+describe("Z5 — kein paralleler Mehrfachversand: atomarer Claim, Wiederholung", () => {
   it("zehn gleichzeitige Anstöße derselben Mitteilung: genau eine E-Mail", async () => {
     await planungLegtAn(mitteilung("n-par", "l1"));
     post.verzoegerung = 20;

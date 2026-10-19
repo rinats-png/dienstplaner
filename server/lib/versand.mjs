@@ -1,5 +1,5 @@
 /* ==========================================================================
-   VERSAND — Mitteilungen zustellen, genau einmal je Kanal (Commit 4)
+   VERSAND — Mitteilungen zustellen, ohne parallelen Mehrfachversand (Commit 4)
 
    Wer zustellt, ist der Server. Empfänger, Adresse, Push-Anmeldung, Titel
    und Text kommen aus dem gespeicherten Stand des Betriebs, zu dem die
@@ -19,11 +19,15 @@
    angelegt mit setJSONWennNeu (ablage.mjs: link(), EEXIST für alle außer
    einem). Nur wer den Versuch bekommt, sendet.
 
-   Bricht ein Prozess mitten im Versuch ab, steht der Status auf „offen".
-   Nach OFFEN_FRIST gilt der Versuch als gescheitert, und der nächste
-   Anstoß darf den folgenden Versuch beanspruchen. Ob der abgebrochene
-   Versuch schon hinausging, weiß niemand — in diesem einen Fall ist eine
-   doppelte Zustellung möglich (höchstens VERSUCHE_MAX insgesamt).
+   Was das garantiert — und was nicht (keine absolute Genau-einmal-Zustellung):
+   - Der atomare Claim verhindert, dass gleichzeitige Anstöße denselben
+     Versuch mehrfach senden.
+   - gesendet und uebersprungen sind endgültig; danach geht nichts mehr hinaus.
+   - Crash-Fenster (dokumentierte Restschuld): Bricht ein Prozess nach dem
+     externen Versand, aber vor dem Abschluss des Status ab, steht der Status
+     auf „offen". Nach OFFEN_FRIST gilt der Versuch als gescheitert, und der
+     nächste Anstoß darf den folgenden Versuch beanspruchen — die Mitteilung
+     kann dann erneut hinausgehen (höchstens VERSUCHE_MAX Versuche insgesamt).
 
    Push-Register: push:<raum>:<mandantId>:<personId> — eine Anmeldung je
    Person (ein Gerät). Der alte Schlüssel push:<raum>:<personId> trug keinen
