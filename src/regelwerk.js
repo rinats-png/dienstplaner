@@ -809,9 +809,10 @@ export function stundengrenzeFuer(person) {
  * Dieselbe Prüfung wie die Planprüfung (schutzBefundeFuer), auf beiden
  * Sichten — Rohdaten oder Einsatzregeln, sonst sperrend:
  * - harte Befunde sperren (hindernisse), weiche sind Hinweise;
- * - die Wochenstundengrenze sperrt, wie sie es in hindernisse() schon vor
- *   S1 tat, wenn der Dienst sie überschreiten würde. wochenStunden sind die
- *   in der Woche schon geplanten Stunden (Zahl oder Funktion).
+ * - die Wochenstundengrenze ist weich wie in der Planprüfung (Commit S2a):
+ *   Würde der Dienst sie überschreiten, gibt es einen Hinweis, keine Sperre.
+ *   wochenStunden sind die in der Woche schon geplanten Stunden (Zahl oder
+ *   Funktion); grenze beschreibt die Überschreitung.
  * Texte für die Einsatzregeln sind neutral; mit Rohdaten trägt der Text die
  * Fundstelle wie in der Planprüfung.
  * @param {any} person
@@ -830,7 +831,11 @@ export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0) {
   const w = stundengrenzeFuer(person);
   if (w && w.von <= datum && w.bis >= datum) {
     const std = typeof wochenStunden === "function" ? wochenStunden() : wochenStunden;
-    if (std + dauer(dienstart) > w.maxStundenWoche) grenze = { maxStundenWoche: w.maxStundenWoche, neutral: w.neutral };
+    if (std + dauer(dienstart) > w.maxStundenWoche) {
+      grenze = { maxStundenWoche: w.maxStundenWoche, neutral: w.neutral };
+      const h = Number(w.maxStundenWoche).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      hinweise.push(`${w.neutral ? "Wochenstundengrenze" : "Wiedereingliederung"}: höchstens ${h} h je Woche`);
+    }
   }
   return { hindernisse, hinweise, grenze };
 }

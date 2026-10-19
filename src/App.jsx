@@ -2521,6 +2521,19 @@ const offeneErfassung = (m, p, bis) => {
  * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten darf.
  * Liefert eine Liste von Hinderungsgründen — leer bedeutet zulässig.
  */
+/** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
+function wochenStundenGeplant(m, p, d) {
+  const mo = montag(d);
+  let std = 0;
+  for (let i = 0; i < 7; i++) {
+    const t = personTag(m, p, addDays(mo, i));
+    if (!t.dienstId) continue;
+    const x = m.dienstarten.find((y) => y.id === t.dienstId);
+    if (x) std += dauer(x);
+  }
+  return std;
+}
+
 function hindernisse(m, p, d, da) {
   const g = [];
   const e = einschr(p);
@@ -2584,22 +2597,10 @@ function hindernisse(m, p, d, da) {
   /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
      die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
      (Schichtverantwortung); fehlen diese, sperrt sie. Harte Befunde sind
-     Hindernisse; weiche liest schutzHinweise. */
-  const schutz = einsatzSchutz(p, da, d, () => {
-    const mo = montag(d);
-    let std = 0;
-    for (let i = 0; i < 7; i++) {
-      const t = personTag(m, p, addDays(mo, i));
-      if (!t.dienstId) continue;
-      const x = m.dienstarten.find((y) => y.id === t.dienstId);
-      if (x) std += dauer(x);
-    }
-    return std;
-  });
+     Hindernisse; weiche — auch die Wochenstundengrenze (S2a) — sind
+     Hinweise in Ersatzsuche und folgenPruefen. */
+  const schutz = einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d));
   g.push(...schutz.hindernisse);
-  if (schutz.grenze)
-    g.push(schutz.grenze.neutral ? `Wochenstundengrenze: höchstens ${n1(schutz.grenze.maxStundenWoche)} h je Woche`
-      : `Wiedereingliederung: höchstens ${n1(schutz.grenze.maxStundenWoche)} h je Woche`);
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -2667,7 +2668,7 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
       punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
     /* Weiche Schutzregeln sperren nicht, stehen aber dabei (Commit S2). */
-    for (const h of einsatzSchutz(p, da, d).hinweise) gruende.push(`Hinweis: ${h}`);
+    for (const h of einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d)).hinweise) gruende.push(`Hinweis: ${h}`);
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -11859,7 +11860,7 @@ function folgenPruefen(m, person, datum, dienstId) {
   if (!da) return { hindernisse: [], hinweise: [] };
   const hind = hindernisse(m, person, datum, da);
   /* Weiche Schutzregeln als Hinweis (Commit S2). */
-  const hinweise = einsatzSchutz(person, da, datum).hinweise.map((text) => ({ art: "warn", text }));
+  const hinweise = einsatzSchutz(person, da, datum, () => wochenStundenGeplant(m, person, datum)).hinweise.map((text) => ({ art: "warn", text }));
   const map = Object.fromEntries(m.dienstarten.map((x) => [x.id, x]));
 
   // Folgeschichten in beide Richtungen ausdrücklich benennen
