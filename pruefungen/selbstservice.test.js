@@ -24,7 +24,7 @@ const person = (id, vorname, rolle) => ({
 const bestand = () => ({
   version: 9, stand: 1, session: null,
   mandanten: [{
-    id: "m1", name: "Probehaus",
+    id: "m1", name: "Probehaus", einheiten: [{ id: "e1", name: "WB 1" }],
     personen: [person(0, "Andrea", "mitarbeiter"), person(1, "Miriam", "mitarbeiter"),
       person(2, "Britta", "betriebsrat"), person(3, "Paula", "planer"),
       person(4, "Lea", "leitung"), person(5, "Sami", "subplaner")],
@@ -96,8 +96,13 @@ describe("Krankmeldung", () => {
     expect(sicht(nachher, SITZ.a).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
   });
   it("3. Planung und Leitung sehen sie vollständig", () => {
-    for (const s of [SITZ.planer, SITZ.leitung, SITZ.subplaner])
+    for (const s of [SITZ.planer, SITZ.leitung])
       expect(sicht(nachher, s).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(KRANK);
+  });
+  it("3a. die Schichtverantwortung des Bereichs sieht Zeitraum und Kategorie, keine Anmerkung (seit 1e.2)", () => {
+    const { notiz, ...ohneNotiz } = KRANK;
+    expect(notiz).toBeTruthy();
+    expect(sicht(nachher, SITZ.subplaner).abwesenheiten.find((a) => a.id === "a-neu")).toEqual(ohneNotiz);
   });
   it("4./5. andere Beschäftigte und der Betriebsrat sehen nur Zeitraum und „abwesend“", () => {
     for (const s of [SITZ.b, SITZ.br]) {

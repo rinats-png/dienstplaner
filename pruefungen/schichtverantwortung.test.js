@@ -66,6 +66,10 @@ function schreibe(gespeichert, sitz, aendern) {
   aendern(gelesen.mandanten[0], gelesen);
   return zusammenfuehren(gespeichert, gelesen, sitz);
 }
+/* Seit 1e.2 sieht die Schichtverantwortung fremde Einträge nicht mehr.
+   Ein Angriff auf sie heißt deshalb: den gespeicherten Eintrag verändert
+   einschleusen. Ein bloßes Weglassen ist wirkungslos (Rückfüllung). */
+const gespeichert = (feld, id) => JSON.parse(JSON.stringify(bestand().mandanten[0][feld].find((x) => x.id === id)));
 const ok = (e) => { expect(e && !e.verweigert, e && e.verweigert).toBe(true); return e.mandanten[0]; };
 const ab = (e) => { expect(e && e.verweigert, "abgewiesen erwartet").toBeTruthy(); return e.verweigert; };
 
@@ -119,12 +123,13 @@ describe("B — Plan", () => {
 });
 
 describe("C — Anträge", () => {
-  it("3. fremden Antrag löschen: abgewiesen — auch im eigenen Bereich", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-b"); }));
+  it("3. fremden Antrag löschen: im eigenen Bereich abgewiesen, im fremden wirkungslos (nicht sichtbar)", () => {
     ab(schreibe(bestand(), SUB, (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-a"); }));
+    const m = ok(schreibe(bestand(), SUB, (m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-b"); }));
+    expect(m.anfragen.find((a) => a.id === "an-b")).toEqual(gespeichert("anfragen", "an-b"));
   });
   it("4. auf eine andere Person umhängen: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.find((a) => a.id === "an-b").personId = "a1"; }));
+    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.push({ ...gespeichert("anfragen", "an-b"), personId: "a1" }); }));
     ab(schreibe(bestand(), SUB, (m) => { m.anfragen.find((a) => a.id === "an-a").personId = "b1"; }));
   });
   it("… oder Zeitraum und Art umschreiben: abgewiesen", () => {
@@ -133,7 +138,7 @@ describe("C — Anträge", () => {
   });
   it("fremden Antrag durch neuen mit derselben Kennung ersetzen: abgewiesen", () => {
     ab(schreibe(bestand(), SUB, (m) => {
-      m.anfragen = m.anfragen.map((a) => a.id === "an-b" ? { id: "an-b", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "genehmigt", von: "2026-01-01", bis: "2026-12-31" } : a);
+      m.anfragen.push({ id: "an-b", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "genehmigt", von: "2026-01-01", bis: "2026-12-31" });
     }));
   });
   it("5. Urlaub im eigenen Bereich genehmigen: Antrag und Abwesenheit, Entscheidung vom Server", () => {
@@ -149,7 +154,7 @@ describe("C — Anträge", () => {
     expect(m.abwesenheiten.find((x) => x.id === "abw-neu")).toMatchObject({ personId: "a1", art: "urlaub" });
   });
   it("… im fremden Bereich: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.find((x) => x.id === "an-b").status = "genehmigt"; }));
+    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.push({ ...gespeichert("anfragen", "an-b"), status: "genehmigt" }); }));
   });
   it("Urlaub ohne genehmigten Antrag eintragen: abgewiesen", () => {
     ab(schreibe(bestand(), SUB, (m) => {
@@ -185,7 +190,9 @@ describe("C — Anträge", () => {
   it("auf ein fremdes Tauschgesuch melden darf sie sich wie jede Beschäftigte", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => { m.anfragen.find((x) => x.id === "t-b").interessenten = ["s1"]; }));
     expect(m.anfragen.find((x) => x.id === "t-b").interessenten).toEqual(["s1"]);
-    ab(schreibe(bestand(), SUB, (m) => { m.anfragen.find((x) => x.id === "t-b").interessenten = ["a1"]; }));
+    /* Andere eintragen: wirkungslos — die Meldungen anderer bleiben, wie sie sind. */
+    const m2 = ok(schreibe(bestand(), SUB, (m) => { m.anfragen.find((x) => x.id === "t-b").interessenten = ["a1"]; }));
+    expect(m2.anfragen.find((x) => x.id === "t-b").interessenten).toEqual([]);
   });
 });
 
@@ -212,8 +219,8 @@ describe("E — Stempeluhr und Zeiterfassung", () => {
   it("7. fremdes einstempeln über PUT: wirkungslos", () => {
     const g = bestand();
     const m = ok(schreibe(g, SUB, (m) => {
-      m.einstempeln["b1|2026-10-01"].innerhalbStart = false;
-      m.einstempeln["a1|2026-10-02"] = { start: "06:00", innerhalbStart: true, geprueftStart: true };
+      m.einstempeln = { ...(m.einstempeln || {}), "b1|2026-10-01": { ...g.mandanten[0].einstempeln["b1|2026-10-01"], innerhalbStart: false },
+        "a1|2026-10-02": { start: "06:00", innerhalbStart: true, geprueftStart: true } };
     }));
     expect(m.einstempeln).toEqual(g.mandanten[0].einstempeln);
   });
@@ -223,7 +230,7 @@ describe("E — Stempeluhr und Zeiterfassung", () => {
     expect(m.einstempeln).toEqual(g.mandanten[0].einstempeln);
   });
   it("9. erfassung.bestaetigt über PUT: fremd und im Bereich abgewiesen, eigen wirkungslos", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.erfassung["b1|2026-10-01"].bestaetigt = true; }));
+    ab(schreibe(bestand(), SUB, (m) => { m.erfassung["b1|2026-10-01"] = { ...bestand().mandanten[0].erfassung["b1|2026-10-01"], bestaetigt: true }; }));
     ab(schreibe(bestand(), SUB, (m) => { m.erfassung["a1|2026-10-01"] = { start: "06:00", ende: "14:00", bestaetigt: true }; }));
     /* Seit 1d.2: die eigene Selbstauskunft läuft über POST /api/zeit-bestaetigen;
        im PUT wird eine eigene Kopie übergangen, nicht abgewiesen. */
@@ -234,10 +241,15 @@ describe("E — Stempeluhr und Zeiterfassung", () => {
 });
 
 describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
-  it("10. fremde Nachricht löschen oder ändern: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten = m.nachrichten.filter((n) => n.id !== "n-b"); }));
-    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten[1].titel = "anders"; }));
-    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten[0].gelesen = true; }));
+  it("10. fremde Nachricht ändern: abgewiesen; löschen: wirkungslos (nicht sichtbar)", () => {
+    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-a"), titel: "anders" }); }));
+    ab(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-b"), gelesen: true }); }));
+    const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten = []; m.abweichungen["a1|2026-11-03"] = "F"; }));
+    expect(m.nachrichten.map((n) => n.id).sort()).toEqual(["n-a", "n-b", "n-s"]);
+  });
+  it("Zustellstatus einer fremden Nachricht: übergangen, kein 403", () => {
+    const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten.push({ ...gespeichert("nachrichten", "n-a"), zugestellt: { mail: "ok", push: null } }); }));
+    expect(m.nachrichten.find((n) => n.id === "n-a")).toEqual(gespeichert("nachrichten", "n-a"));
   });
   it("neue Mitteilung an den eigenen Bereich: erlaubt, Zustellwege nur aus dem Stand", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => {
@@ -257,8 +269,8 @@ describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
     expect(m.nachrichten.find((n) => n.id === "n-s").gelesen).toBe(true);
   });
   it("eine hinten gekürzte Liste löscht nichts", () => {
-    const m = ok(schreibe(bestand(), SUB, (m) => { m.nachrichten = m.nachrichten.slice(0, 2); m.abweichungen["a1|2026-11-03"] = "F"; }));
-    expect(m.nachrichten.map((n) => n.id)).toEqual(["n-b", "n-a", "n-s"]);
+    const m = ok(schreibe(bestand(), SUB, (m) => { m.protokoll = m.protokoll.slice(0, 1); m.abweichungen["a1|2026-11-03"] = "F"; }));
+    expect(m.protokoll.map((n) => n.id)).toEqual(["l2", "l1"]);
   });
   it("11. Dienstbuch ändern, löschen oder ergänzen: abgewiesen (kein Bereichsbezug)", () => {
     ab(schreibe(bestand(), SUB, (m) => { m.dienstbuch[0].text = "anders"; }));
@@ -272,9 +284,10 @@ describe("F/G/H — Nachrichten, Dienstbuch, Unterschreitungen", () => {
 });
 
 describe("I — Protokoll und Änderungen: nur anhängen", () => {
-  it("12. Protokoll löschen oder ändern: abgewiesen", () => {
-    ab(schreibe(bestand(), SUB, (m) => { m.protokoll = m.protokoll.slice(1); }));
-    ab(schreibe(bestand(), SUB, (m) => { m.protokoll[1].text = "gefälscht"; }));
+  it("12. Protokoll ändern: abgewiesen; löschen: wirkungslos (nicht sichtbar)", () => {
+    ab(schreibe(bestand(), SUB, (m) => { m.protokoll = [{ ...gespeichert("protokoll", "l1"), text: "gefälscht" }]; }));
+    const m = ok(schreibe(bestand(), SUB, (m) => { m.protokoll = []; m.abweichungen["a1|2026-11-03"] = "F"; }));
+    expect(m.protokoll.map((l) => l.id)).toEqual(["l2", "l1"]);
   });
   it("neuer Protokolleintrag: angehängt, Zeit und Urheber vom Server", () => {
     const m = ok(schreibe(bestand(), SUB, (m) => {

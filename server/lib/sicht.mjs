@@ -179,14 +179,22 @@ export function schichtKontext(m, sitzung, eigene, heute, fenster = SICHTFENSTER
   };
 }
 
+/** eigen, bereich, pool oder fremd — für die Person selbst und für ihre Einträge. */
+export function umfangVon(p, ctx) {
+  if (!p || typeof p !== "object") return "fremd";
+  if (gleich(p.id, ctx.ich)) return "eigen";
+  /* Ohne eigenen Bereich gibt es weder Bereich noch Pool — alles fremd. */
+  if (!ctx.eigene) return "fremd";
+  if (imFenster(p, new Set([ctx.eigene]), ctx.von, ctx.bis)) return "bereich";
+  if (imFenster(p, ctx.pool, ctx.von, ctx.bis) || p.springer === true) return "pool";
+  return "fremd";
+}
+
 /** Eine Person in der Sicht der Schichtverantwortung. */
 export function schichtPersonSicht(p, ctx) {
   if (!p || typeof p !== "object") return p;
-  if (gleich(p.id, ctx.ich)) return { ...nimm(p, EIGENE_PERSON), sichtbereich: "eigen" };
-  /* Ohne eigenen Bereich gibt es weder Bereich noch Pool — alles fremd. */
-  const umfang = !ctx.eigene ? "fremd"
-    : imFenster(p, new Set([ctx.eigene]), ctx.von, ctx.bis) ? "bereich"
-      : (imFenster(p, ctx.pool, ctx.von, ctx.bis) || p.springer === true) ? "pool" : "fremd";
+  const umfang = umfangVon(p, ctx);
+  if (umfang === "eigen") return { ...nimm(p, EIGENE_PERSON), sichtbereich: "eigen" };
   if (umfang === "fremd") return { ...personSicht(p, { ...ctx, rolle: "mitarbeiter" }), sichtbereich: "fremd" };
   const aus = nimm(p, umfang === "bereich" ? BEREICH_PERSON : POOL_PERSON);
   if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
@@ -437,6 +445,146 @@ export function bestandSicht(bestand, sitzung, eigener) {
   if (eigener) aus.mandanten = [betriebSicht(eigener, sitzung)];
   return aus;
 }
+
+/* ------------------------------------------------------------------------
+   DIE SAMMLUNGEN IN DER SICHT DER SCHICHTVERANTWORTUNG (Commit 1e.2)
+
+   Je Eintrag entscheidet die Person, zu der er gehört (umfangVon): eigen,
+   eigener Bereich, Springer-Pool, fremd. Bereinigt wird über Positivlisten
+   (nimm), damit ein neues Feld nicht von selbst hinausgeht. Was nicht im
+   Katalog SCHICHT steht, geht nicht hinaus.
+
+   SCHULD (Bereich): Dienstbuch, Übergaben und die Tagesnotizen (in
+   `notizen` unter „tag|…") bleiben vorerst vollständig sichtbar; sie
+   tragen keinen Bereich. Ebenso die Ausschreibungen samt Bewerbungen:
+   Eine Ausschreibung nennt Tag und Dienst, aber keinen Bereich — wer sie
+   vergibt und welche Bewerbungen dafür nötig sind, lässt sich nicht
+   zuordnen. Beides braucht eine einheitId/bereichId.
+   ------------------------------------------------------------------------ */
+const umfangDer = (ctx, pid) => (gleich(pid, ctx.ich) ? "eigen" : (ctx.umfang.get(String(pid)) || "fremd"));
+const imScope = (ctx, pid, erlaubt) => erlaubt.includes(umfangDer(ctx, pid));
+const schluesselPerson = (k) => String(k).split("|")[0];
+const objektFilter = (w, fn) => Object.fromEntries(Object.entries(w && typeof w === "object" ? w : {})
+  .map(([k, v]) => [k, fn(k, v)]).filter(([, v]) => v !== undefined));
+
+/* Abwesenheiten: eigene ganz; im Bereich Zeitraum und Kategorie, keine
+   Anmerkung; sonst wie für Beschäftigte („abwesend"). */
+const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
+  if (!a) return a;
+  const u = umfangDer(ctx, a.personId);
+  if (u === "eigen") return a;
+  if (u === "bereich") return nimm(a, ["id", "personId", "art", "von", "bis"]);
+  return abwesenheiten([a], { ...ctx, ich: undefined })[0];
+});
+/* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst
+   wie für Beschäftigte (nur offene Tauschgesuche, Meldungen verborgen). */
+const schichtAnfragen = (w, ctx) => {
+  const eigeneOderBereich = (a) => imScope(ctx, a.personId, ["eigen", "bereich"]);
+  const rest = new Map(anfragen(liste(w).filter((a) => a && !eigeneOderBereich(a)), ctx).map((a) => [a.id, a]));
+  return liste(w).filter((a) => a && (eigeneOderBereich(a) || rest.has(a.id)))
+    .map((a) => (eigeneOderBereich(a) ? a : rest.get(a.id)));
+};
+/* Zeiterfassung: eigene ganz; im Bereich die Zeiten ohne freien Grund. */
+const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
+  const u = umfangDer(ctx, schluesselPerson(k));
+  if (u === "eigen") return v;
+  if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause"]);
+  return undefined;
+});
+const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>
+  (imScope(ctx, schluesselPerson(k), erlaubt) ? v : undefined));
+const schichtEintraege = (erlaubt, felder) => (w, ctx) => liste(w)
+  .filter((e) => e && imScope(ctx, e.personId, erlaubt))
+  .map((e) => (gleich(e.personId, ctx.ich) ? e : nimm(e, felder)));
+/* Änderungen: zu Personen im Bereich oder Pool, und die ohne Person
+   (Anfragen der Planung je Tag und Dienst). Nur die bekannten Felder. */
+const AENDERUNG = ["id", "personId", "datum", "von", "nach", "zeit", "regelstand", "vorlauf"];
+const schichtAenderungen = (w, ctx) => liste(w)
+  .filter((e) => e && (e.personId === null || e.personId === undefined || imScope(ctx, e.personId, ["eigen", "bereich", "pool"])))
+  .map((e) => nimm(e, AENDERUNG));
+/* Notrufe: eigene, an sie gerichtete, aus dem eigenen Bereich. */
+const schichtNotrufe = (w, ctx) => liste(w).filter((n) => n && (imScope(ctx, n.personId, ["eigen", "bereich"])
+  || liste(n.empfaenger).some((x) => gleich(x, ctx.ich))));
+/* Selbstplanung: Einträge aus dem Bereich mit Person, sonst wie für Beschäftigte. */
+const schichtSelbstplanung = (w, ctx) => liste(w).map((r) => (r && typeof r === "object" ? { ...r,
+  eintraege: liste(r.eintraege).map((e) => (e && imScope(ctx, e.personId, ["eigen", "bereich"]) ? e
+    : nimm(e, ["datum", "dienstId"]))) } : r));
+/* Urlaubsrunde: Kopf, Wünsche aus dem Bereich und die eigenen
+   (Überschneidungen im Bereich), ohne andere Bereiche. */
+const schichtUrlaubsrunde = (w, ctx) => {
+  if (!w || typeof w !== "object") return w;
+  const rein = { ...w, wuensche: liste(w.wuensche).filter((x) => x && imScope(ctx, x.personId, ["eigen", "bereich"])) };
+  if (Array.isArray(w.vorjahrZurueck))
+    rein.vorjahrZurueck = w.vorjahrZurueck.filter((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"]));
+  return rein;
+};
+const schichtKompetenzen = (w, ctx) => liste(w).map((k) => (k && Array.isArray(k.zugedacht)
+  ? { ...k, zugedacht: k.zugedacht.filter((x) => imScope(ctx, x, ["eigen", "bereich", "pool"])) } : k));
+const schichtEinarbeitung = (w, ctx) => liste(w).filter((e) => e
+  && (imScope(ctx, e.personId, ["eigen", "bereich"]) || gleich(e.mentorId, ctx.ich)));
+const schichtBetriebsmittel = (w, ctx) => liste(w).filter((b) => b && (b.personId === null
+  || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"])));
+const schichtSondereinsaetze = (w, ctx) => liste(w).filter((s) => s && liste(s.zugeteilt)
+  .some((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"])));
+/* notizen: „tag|…" sind die Tagesnotizen (bleiben, siehe Schuld oben);
+   „person|…" sind Notizen zu einzelnen Personen — weg. */
+const schichtNotizen = (w) => objektFilter(w, (k, v) => (String(k).startsWith("tag|") ? v : undefined));
+
+/** Je Betriebsfeld die Regel für die Schichtverantwortung. Ausgangspunkt
+    ist die Spalte der Beschäftigten, wo sie Vollständiges oder nichts
+    vorsieht; personenbezogene Sammlungen haben eigene Regeln. */
+export const SCHICHT = Object.fromEntries(Object.entries(BETRIEB).map(([feld, [ma]]) => [feld, ma]));
+Object.assign(SCHICHT, {
+  personen: "personen",
+  abwesenheiten: R(schichtAbwesenheiten),
+  anfragen: R(schichtAnfragen),
+  erfassung: R(schichtErfassung),
+  einstempeln: NUR_EIGENE,
+  wuensche: R(schichtEintraege(["eigen", "bereich"], ["id", "personId", "datum", "art"])),
+  einspruenge: R(schichtEintraege(["eigen", "bereich", "pool"], ["id", "personId", "datum", "dienstId", "zeit"])),
+  fahrzeiten: R(schichtSchluessel(["eigen", "bereich", "pool"])),
+  checks: NUR_EIGENE,
+  ansichten: NUR_EIGENE,
+  nachrichten: NUR_EIGENE,
+  notrufe: R(schichtNotrufe),
+  aenderungen: R(schichtAenderungen),
+  selbstplanung: R(schichtSelbstplanung),
+  ausschreibungen: VOLL,                 // siehe Schuld oben — unverändert
+  urlaubsrunde: R(schichtUrlaubsrunde),
+  kompetenzen: R(schichtKompetenzen),
+  einarbeitung: R(schichtEinarbeitung),
+  betriebsmittel: R(schichtBetriebsmittel),
+  sondereinsaetze: R(schichtSondereinsaetze),
+  dienstbuch: VOLL, uebergaben: VOLL, tagesnotizen: VOLL,   // siehe Schuld oben
+  notizen: R(schichtNotizen),
+});
+
+/** Der Betrieb in der Sicht der Schichtverantwortung. ctx aus schichtKontext. */
+export function betriebSichtSchicht(m, ctx) {
+  if (!m || typeof m !== "object") return m;
+  const c = { ...ctx, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])) };
+  const aus = {};
+  for (const [feld, wert] of Object.entries(m)) {
+    const regel = SCHICHT[feld];
+    if (!regel) continue;                                  // unbekannt: geht nicht hinaus
+    let neu;
+    if (regel === "personen") neu = liste(wert).map((p) => schichtPersonSicht(p, c));
+    else if (regel === VOLL) neu = wert;
+    else if (regel === WEG) neu = leerFuer(feld, wert);
+    else if (regel === NUR_EIGENE) {
+      if (Array.isArray(wert)) neu = wert.filter((e) => eigen(e, c.ich));
+      else if (wert && typeof wert === "object")
+        neu = Object.fromEntries(Object.entries(wert).filter(([k]) => eigenerSchluessel(k, c.ich)));
+      else neu = leerFuer(feld, wert);
+    } else neu = /** @type {any} */ (regel).fn(wert, c);
+    if (neu !== undefined) aus[feld] = neu;
+  }
+  return aus;
+}
+
+/** Ganz oben im Bestand: nur Zähler, Sitzungsmarke und der eigene Betrieb. */
+export const OBEN_FELDER = OBEN;
+
 
 /** Die Rollen, für die diese Sicht gilt. */
 export const SICHT_ROLLEN = ["mitarbeiter", "betriebsrat"];

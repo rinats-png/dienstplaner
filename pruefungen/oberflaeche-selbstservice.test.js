@@ -212,3 +212,11 @@ describe("Konten und Befunde nach sichtbereich", () => {
     expect(funktion("tagesaufgaben")).toContain("kontoSichtbar(sitz, x) && stundenkonto(");
   });
 });
+
+/* Commit 1e.2: Abrechnungsdaten rechnen mit der Zeiterfassung, die die
+   Schichtverantwortung für andere Bereiche nicht mehr bekommt. */
+describe("Abrechnungsdaten nach sichtbereich", () => {
+  it("nur Personen mit sichtbaren Kontodaten", () => {
+    expect(funktion("Abrechnungsdaten")).toContain("imDienst(p, `${ym}-28`) && kontoSichtbar(sitz, p)");
+  });
+});

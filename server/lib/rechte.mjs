@@ -16,7 +16,8 @@
 
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
-import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht } from "./sicht.mjs";
+import { bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER }
+  from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -424,6 +425,16 @@ export function bestandFuerRolle(bestand, sitzung) {
   if (SICHT_ROLLEN.includes(rolle))
     return bestandSicht(bestand, sitzung, eigenerMandant(bestand, sitzung));
 
+  /* Die Schichtverantwortung: ebenso über einen Katalog (SCHICHT), gestuft
+     nach eigener Person, eigenem Bereich, Springer-Pool und fremd. */
+  if (rolle === "subplaner") {
+    const aus = {};
+    for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
+    const eigenerS = eigenerMandant(bestand, sitzung);
+    if (eigenerS) aus.mandanten = [betriebSichtSchicht(eigenerS, schichtSichtKontext(eigenerS, sitzung))];
+    return aus;
+  }
+
   const kopie = { ...bestand };
 
   /* Kaufmännisches nur für Rollen, die es sehen dürfen.
@@ -448,9 +459,6 @@ export function bestandFuerRolle(bestand, sitzung) {
      nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
   kopie.mandanten = [{ ...eigener }];
 
-  /* Die Schichtverantwortung: Personen nach Bereich gestuft (sicht.mjs).
-     Die übrigen Sammlungen folgen in einem eigenen Schritt. */
-  if (rolle === "subplaner") kopie.mandanten[0].personen = schichtPersonen(eigener, sitzung);
   return kopie;
 }
 
@@ -458,10 +466,6 @@ export function bestandFuerRolle(bestand, sitzung) {
 function schichtSichtKontext(m, sitzung) {
   const ich = (Array.isArray(m.personen) ? m.personen : []).find((p) => p && String(p.id) === String(sitzung.person));
   return schichtKontext(m, sitzung, eigeneEinheit(m, ich), heuteBerlin());
-}
-function schichtPersonen(m, sitzung) {
-  const ctx = schichtSichtKontext(m, sitzung);
-  return (Array.isArray(m.personen) ? m.personen : []).map((p) => schichtPersonSicht(p, ctx));
 }
 
 /**
@@ -499,6 +503,86 @@ export function personenRueckfuellen(altM, neuM, sitzung) {
     return aus;
   });
   return { ...neuM, personen };
+}
+
+/* Die Rückfüllung der Sammlungen (Commit 1e.2) — dieselbe Regel wie für
+   Personen, je Eintrag: Was die Sicht zeigt und unverändert zurückkommt,
+   wird durch den gespeicherten Eintrag ersetzt; was sie verbirgt und nicht
+   mitkommt, kommt aus dem gespeicherten Stand. Neue Einträge, geänderte
+   und mitgeschickte verborgene bleiben, wie sie kamen — darüber urteilt
+   einheitZusammen. Listen ohne Kennung am Eintrag werden als Ganzes
+   verglichen. */
+const gleichJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+/* Ein einzelner Eintrag, den die Sicht gekürzt hat und der verändert
+   zurückkommt: der gespeicherte Eintrag, darauf nur die sichtbar geänderten
+   Felder (und mitgeschickte verborgene, über die einheitZusammen urteilt).
+   Die Meldungen auf ein Tauschgesuch zeigt die Sicht maskiert
+   („verborgen-0"); zurück gehen die gespeicherten, die eigene dazu oder weg. */
+function eintragRueckfuellen(a, n, v, ich) {
+  if (!istObjekt(a) || !istObjekt(n) || !istObjekt(v)) return n;
+  const aus = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
+    if (k === "interessenten" && Array.isArray(a[k]) && Array.isArray(n[k]) && Array.isArray(v[k])) {
+      const ichDabei = n[k].some((x) => String(x) === String(ich));
+      aus[k] = [...a[k].filter((x) => String(x) !== String(ich)), ...(ichDabei ? [ich] : [])];
+      if (gleichJson(aus[k].map(String).sort(), a[k].map(String).sort())) aus[k] = a[k];
+      continue;
+    }
+    if (hat(v, k)) {
+      if (hat(n, k)) aus[k] = gleichJson(n[k], v[k]) && hat(a, k) ? a[k] : n[k];
+    } else if (hat(n, k)) aus[k] = n[k];
+    else if (hat(a, k)) aus[k] = a[k];
+  }
+  return aus;
+}
+function listeRueckfuellen(alt, neu, sicht, ich) {
+  const kennung = (e) => (e && typeof e === "object" && (typeof e.id === "string" || typeof e.id === "number") ? String(e.id) : null);
+  if (!alt.every((e) => kennung(e) !== null) || !sicht.every((e) => kennung(e) !== null))
+    return gleichJson(neu, sicht) ? alt : neu;
+  const sichtNach = new Map(sicht.map((e) => [kennung(e), e]));
+  const neuNach = new Map(neu.filter((e) => kennung(e) !== null).map((e) => [kennung(e), e]));
+  const altIds = new Set(alt.map(kennung));
+  const neue = neu.filter((e) => kennung(e) === null || !altIds.has(kennung(e)));
+  const aus = [];
+  for (const a of alt) {
+    const id = kennung(a);
+    if (neuNach.has(id)) {
+      const n = neuNach.get(id);
+      const v = sichtNach.get(id);
+      aus.push(v === undefined ? n : gleichJson(n, v) ? a : eintragRueckfuellen(a, n, v, ich));
+    } else if (!sichtNach.has(id)) aus.push(a);               // verborgen: bleibt
+    /* sichtbar, aber nicht mehr mitgeschickt: gelöscht — einheitZusammen urteilt */
+  }
+  return [...neue, ...aus];
+}
+function objektRueckfuellen(alt, neu, sicht, ich) {
+  const aus = {};
+  for (const k of new Set([...Object.keys(alt), ...Object.keys(neu)])) {
+    if (hat(neu, k)) aus[k] = !hat(sicht, k) || !hat(alt, k) ? neu[k]
+      : gleichJson(neu[k], sicht[k]) ? alt[k] : eintragRueckfuellen(alt[k], neu[k], sicht[k], ich);
+    else if (hat(alt, k) && !hat(sicht, k)) aus[k] = alt[k];
+  }
+  return aus;
+}
+/** Rückfüllung des ganzen Betriebs der Schichtverantwortung. */
+export function schichtRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || typeof neuM !== "object") return neuM;
+  const sicht = betriebSichtSchicht(altM, schichtSichtKontext(altM, sitzung));
+  const mitPersonen = personenRueckfuellen(altM, neuM, sitzung);
+  const aus = {};
+  for (const feld of new Set([...Object.keys(altM), ...Object.keys(neuM)])) {
+    if (feld === "personen") { if (hat(mitPersonen, feld)) aus[feld] = mitPersonen[feld]; continue; }
+    const a = altM[feld], n = neuM[feld], v = sicht[feld];
+    /* nicht mitgeschickt: verborgen, gekürzt oder weggelassen — der gespeicherte Stand */
+    if (!hat(neuM, feld)) { if (hat(altM, feld)) aus[feld] = a; continue; }
+    if (!hat(sicht, feld)) { aus[feld] = n; continue; }        // verborgenes Feld mitgeschickt
+    if (Array.isArray(a) && Array.isArray(v) && Array.isArray(n)) aus[feld] = listeRueckfuellen(a, n, v, sitzung.person);
+    else if (istObjekt(a) && istObjekt(v) && istObjekt(n)) aus[feld] = objektRueckfuellen(a, n, v, sitzung.person);
+    else aus[feld] = gleichJson(n, v) ? a : n;
+  }
+  return aus;
 }
 
 /** Der gespeicherte Betrieb dieser Sitzung samt seiner Stelle — oder null,
@@ -665,7 +749,7 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
        (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
     if (umfang === SCHREIBEN_EINHEIT) {
-      geschickt = personenRueckfuellen(ort.betrieb, geschickt, sitzung);
+      geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung);
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
@@ -676,7 +760,13 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     /* Verlorenes ergänzen wie bisher — dann den einen Betrieb an seine
        Stelle im gespeicherten Bestand setzen. Alle anderen bleiben, wo
        und wie sie waren. */
-    const zusammen = verlorenesZurueck(gespeichert, { ...uebermittelt, mandanten: [geschickt] });
+    /* Ganz oben bekommt die Schichtverantwortung nur Zähler und Sitzungsmarke
+       (sicht.mjs) — alles Übrige kommt aus dem gespeicherten Stand, sonst
+       ginge es beim Zurückschreiben verloren. */
+    const oben = umfang === SCHREIBEN_EINHEIT
+      ? { ...gespeichert, ...Object.fromEntries(BESTAND_FELDER.filter((x) => hat(uebermittelt, x)).map((x) => [x, uebermittelt[x]])) }
+      : uebermittelt;
+    const zusammen = verlorenesZurueck(gespeichert, { ...oben, mandanten: [geschickt] });
     const ersetzt = zusammen.mandanten.find((m) => m && m.id === ort.betrieb.id);
     return { ...zusammen,
       mandanten: gespeichert.mandanten.map((m, i) => (i === ort.index ? ersetzt : m)) };
@@ -1003,15 +1093,25 @@ export function einheitZusammen(altM, neuM, sitzung) {
       case "nachrichten": {
         const r = anhaengen(feld, a, n, {
           neuerEintrag: (e) => {
-            if (!eigen(e.personId) && !imBereich(e.personId, heute)) return null;
             const p = personen.get(String(e.personId));
+            /* Die Mitteilung zum eigenen Notruf geht an Planung und Leitung —
+               auch außerhalb des Bereichs (wie notrufeZusammen die Empfänger
+               begrenzt). Bis 1e.2 scheiterte der eigene Notruf daran mit 403. */
+            const notrufMitteilung = e.ziel === "notruf" && p && PLANUNGSROLLEN.includes(p.rolle);
+            if (!eigen(e.personId) && !imBereich(e.personId, heute) && !notrufMitteilung) return null;
             const w = e.wege && typeof e.wege === "object" ? e.wege : {};
             /* Zustellwege nur zu den gespeicherten Angaben der Person. */
             return { ...e, wege: { mail: w.mail && p && w.mail === p.email ? p.email : null,
               push: w.push && p && gleich(w.push, p.pushSchluessel) ? p.pushSchluessel : null },
             zugestellt: { mail: null, push: null } };
           },
-          aenderung: (vorher, e) => (eigen(vorher.personId) && eigen(e.personId) ? e : null),
+          aenderung: (vorher, e) => {
+            if (eigen(vorher.personId) && eigen(e.personId)) return e;
+            /* Den Zustellstatus zieht die Oberfläche nach dem Versand lokal nach;
+               er ist keine Änderung der Nachricht und wird übergangen. */
+            if (gleich(ohne(vorher, ["zugestellt"]), ohne(e, ["zugestellt"]))) return vorher;
+            return null;
+          },
         });
         if (r.grund) return nein(r.grund);
         aus.nachrichten = r.liste;

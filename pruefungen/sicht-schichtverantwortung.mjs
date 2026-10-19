@@ -1,5 +1,5 @@
 /* ==========================================================================
-   SICHT DER SCHICHTVERANTWORTUNG — gegen einen laufenden Server (1e.1)
+   SICHT DER SCHICHTVERANTWORTUNG — gegen einen laufenden Server (1e.1, 1e.2)
 
    Die Schichtverantwortung liest über GET /api/bestand. Private Angaben,
    Lohnfelder, Leitungsnotizen und Geheimnisse anderer Personen dürfen nicht
@@ -50,9 +50,10 @@ const pruef = (name, bedingung, detail) => {
   console.log(`${bedingung ? "  BESTANDEN" : "  FEHLGESCHLAGEN"}  ${name}${detail ? ` — ${detail}` : ""}`);
 };
 const kopie = (x) => JSON.parse(JSON.stringify(x));
+const ohnePlan = (m) => Object.fromEntries(Object.entries(m).filter(([k]) => k !== "abweichungen"));
 
 const privat = (id) => ({ email: `${id}@privat.de`, telefon: `0151-${id}`, mobil: `0171-${id}`,
-  anschrift: `Gartenweg ${id}`, notfallkontakt: `Mutter von ${id}`, iban: `DE89-${id}`, notiz: `Leitungsnotiz-${id}`,
+  anschrift: `Gartenweg ${id}`, notfallkontakt: `Mutter von ${id}`, iban: `IBAN-DE89-${id}`, notiz: `interne Leitungsnotiz-${id}`,
   kalenderGeheim: `geheim-kal-${id}`, pushSchluessel: { endpoint: `push-${id}` }, mutterschutz: true,
   geburtstag: "2009-05-01", stundenuebertrag: 7, darfNichtRaus: `darf-nicht-raus-${id}` });
 const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: "V", nachname: `N${id}`, rolle, bereich: einheit,
@@ -62,7 +63,22 @@ const start = { version: 9, stand: 1, session: null, mandanten: [{
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
   personen: [person("s1", "subplaner", "e1"), person("a1", "mitarbeiter", "e1"), person("b1", "mitarbeiter", "e2"),
     person("sp1", "mitarbeiter", "pool", { springer: true }), person("l1", "leitung", "ALLE")],
-  abweichungen: {}, abwesenheiten: [], anfragen: [], nachrichten: [], erfassung: {}, einstempeln: {},
+  abweichungen: {},
+  /* Sammlungen mit Markern (1e.2) */
+  abwesenheiten: [{ id: "ab-a", personId: "a1", art: "krank", von: "2026-12-01", bis: "2026-12-02", notiz: "Migräne" },
+    { id: "ab-b", personId: "b1", art: "krank", von: "2026-12-01", bis: "2026-12-02", notiz: "Psychotherapie" },
+    { id: "ab-sp", personId: "sp1", art: "krank", von: "2026-12-01", bis: "2026-12-02", notiz: "Kind krank" }],
+  anfragen: [{ id: "an-a", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", von: "2026-12-20", bis: "2026-12-21", text: "Hochzeit" },
+    { id: "an-b", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: "2026-12-20", bis: "2026-12-21", text: "Scheidung" }],
+  nachrichten: [{ id: "n-a", personId: "a1", art: "info", titel: "fremde Nachricht" }, { id: "n-s", personId: "s1", art: "info", titel: "an mich" }],
+  erfassung: { "a1|2026-10-01": { start: "06:00", ende: "15:00", bestaetigt: true, grund: "Korrekturgrund geheim", geheimesZusatzfeld: "darf-nicht-raus" },
+    "b1|2026-10-01": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "x" } },
+  einstempeln: { "a1|2026-10-01": { start: "06:00", ortStart: "Abweichend, 4 km", innerhalbStart: false, geprueftStart: true } },
+  protokoll: [{ id: "l1", zeit: "1", text: "Lohn geändert" }],
+  notizen: { "tag|2026-12-01": [{ id: "tn", text: "Tagesnotiz" }], "person|a1": [{ id: "pn", text: "interne Leitungsnotiz zur Person" }] },
+  preisgestaltung: { sonder: 0 }, kontaktName: "Chef", ustId: "DE123",
+  standorte: [{ id: "st1", name: "Haupthaus", lat: 50.1, lon: 8.6, radius: 150 }],
+  geheimeSammlung: [{ x: "darf-nicht-raus" }],
 }] };
 
 const tBetr = await anmelden(await zugang("betreiber", null));
@@ -86,11 +102,32 @@ pruef("Pool: Telefon und Schutzmerkmale, kein Konto", pers(rS, "sp1").telefon ==
   && pers(rS, "sp1").mutterschutz === true && pers(rS, "sp1").stundenuebertrag === undefined);
 pruef("Anderer Bereich: keine Schutzmerkmale, kein Telefon", pers(rS, "b1").mutterschutz === undefined
   && pers(rS, "b1").geburtstag === undefined && pers(rS, "b1").telefon === undefined);
+for (const s of ["Migräne", "Psychotherapie", "Kind krank", "IBAN", "Scheidung", "interne Leitungsnotiz",
+  "Korrekturgrund geheim", "fremde Nachricht", "Abweichend, 4 km", "Lohn geändert", "DE123"])
+  pruef(`Marker „${s}" nicht im Payload`, !text.includes(s));
+pruef("„geheim\" nur am eigenen Kalendergeheimnis", (text.match(/geheim/g) || []).length === 1 && text.includes("geheim-kal-s1"));
+{
+  const m = rS.bestand.mandanten[0];
+  pruef("Abwesenheit im Bereich: Kategorie ohne Anmerkung", JSON.stringify(m.abwesenheiten.find((a) => a.id === "ab-a"))
+    === JSON.stringify({ id: "ab-a", personId: "a1", art: "krank", von: "2026-12-01", bis: "2026-12-02" }));
+  pruef("Fremder Antrag nicht sichtbar, Antrag im Bereich mit Text", !m.anfragen.some((a) => a.id === "an-b")
+    && m.anfragen.find((a) => a.id === "an-a").text === "Hochzeit");
+  pruef("Nachrichten: nur eigene", JSON.stringify(m.nachrichten.map((n) => n.id)) === JSON.stringify(["n-s"]));
+  pruef("Erfassung: Bereich ohne Grund, fremd weg", JSON.stringify(m.erfassung) === JSON.stringify({ "a1|2026-10-01": { start: "06:00", ende: "15:00", bestaetigt: true } }));
+  pruef("Stempelzeiten anderer nicht sichtbar", JSON.stringify(m.einstempeln) === "{}");
+  pruef("Protokoll leer, Personennotiz weg, Tagesnotiz da", m.protokoll.length === 0
+    && JSON.stringify(Object.keys(m.notizen)) === JSON.stringify(["tag|2026-12-01"]));
+  pruef("Standort ohne Koordinaten", JSON.stringify(m.standorte) === JSON.stringify([{ id: "st1", name: "Haupthaus" }]));
+  pruef("Kaufmännisches weg", m.preisgestaltung === undefined && m.ustId === undefined && m.kontaktName === undefined);
+  pruef("Oben nur Zähler, Sitzungsmarke, Betrieb", JSON.stringify(Object.keys(rS.bestand).sort())
+    === JSON.stringify(["mandanten", "session", "stand", "version"]));
+}
 pruef("Eigene Person: eigene Angaben vollständig", pers(rS, "s1").email === "s1@privat.de"
   && pers(rS, "s1").kalenderGeheim === "geheim-kal-s1");
 
 /* --- Rundweg: dieselbe gekürzte Sicht mit erlaubter Änderung zurück --- */
-const vorher = (await lies(tL)).bestand.mandanten[0].personen;
+const vorherM = (await lies(tL)).bestand.mandanten[0];
+const vorher = vorherM.personen;
 const b = kopie(rS.bestand);
 b.mandanten[0].abweichungen["a1|2026-12-01"] = "F";
 const w = await schreib(tS, b, rS.etag);
@@ -100,6 +137,12 @@ pruef("Leitung: Planänderung angekommen", rL.bestand.mandanten[0].abweichungen[
 pruef("Leitung: alle Personen wertgleich, nichts Verborgenes verloren",
   JSON.stringify(rL.bestand.mandanten[0].personen) === JSON.stringify(vorher));
 pruef("Leitung: kein sichtbereich im Bestand", !JSON.stringify(rL).includes("sichtbereich"));
+{
+  const restVorher = ohnePlan(vorherM);
+  const restNachher = ohnePlan(rL.bestand.mandanten[0]);
+  pruef("Leitung: alle Sammlungen und Felder außer dem Plan wertgleich", JSON.stringify(restNachher) === JSON.stringify(restVorher),
+    Object.keys(restVorher).filter((k) => JSON.stringify(restVorher[k]) !== JSON.stringify(restNachher[k])).join(", "));
+}
 const rS2 = await lies(tS);
 pruef("Erneut als Schichtverantwortung gelesen: weiter gekürzt", !JSON.stringify(rS2).includes("Leitungsnotiz-a1")
   && !JSON.stringify(rS2).includes("darf-nicht-raus"));
@@ -115,6 +158,24 @@ for (const [name, f] of [
   f(x.mandanten[0]);
   const a = await schreib(tS, x, r.etag);
   pruef(`Angriff „${name}": 403`, a.status === 403, `Status ${a.status}`);
+}
+for (const [name, f] of [
+  ["Anmerkung einer Abwesenheit im Bereich setzen", (m) => { m.abwesenheiten.find((a) => a.id === "ab-a").notiz = "anders"; }],
+  ["fremden Antrag genehmigt einschleusen", (m) => { m.anfragen.push({ id: "an-b", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "genehmigt", von: "2026-12-20", bis: "2026-12-21" }); }],
+  ["Korrekturgrund setzen", (m) => { m.erfassung["a1|2026-10-01"].grund = "anders"; }],
+  ["fremde Nachricht ändern", (m) => { m.nachrichten.push({ id: "n-a", personId: "a1", art: "info", titel: "geändert" }); }],
+  ["Protokoll fälschen", (m) => { m.protokoll = [{ id: "l1", zeit: "1", text: "gefälscht" }]; }],
+]) {
+  const r = await lies(tS);
+  const x = kopie(r.bestand);
+  f(x.mandanten[0]);
+  const a = await schreib(tS, x, r.etag);
+  pruef(`Angriff „${name}": 403`, a.status === 403, `Status ${a.status}`);
+}
+{
+  const restVorher = ohnePlan(vorherM);
+  const restNachher = ohnePlan((await lies(tL)).bestand.mandanten[0]);
+  pruef("Nach allen Angriffen: Sammlungen unverändert", JSON.stringify(restNachher) === JSON.stringify(restVorher));
 }
 pruef("Nach den Angriffen: Personen unverändert",
   JSON.stringify((await lies(tL)).bestand.mandanten[0].personen) === JSON.stringify(vorher));

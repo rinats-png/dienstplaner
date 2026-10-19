@@ -376,7 +376,11 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   await schreib(tL, bL4, rL4.etag);
   const r4 = await lies(tSub);
   const g = JSON.parse(JSON.stringify(r4.bestand));
-  g.mandanten[0].anfragen = g.mandanten[0].anfragen.map((a) => a.id === "s4-fremd" ? { ...a, status: "genehmigt" } : a);
+  /* Seit 1e.2 sieht die Schichtverantwortung den fremden Antrag nicht —
+     der Angriff schleust ihn genehmigt ein. */
+  const s4fremd = (await lies(tL)).bestand.mandanten[0].anfragen.find((a) => a.id === "s4-fremd");
+  pruef("Den Antrag aus dem fremden Bereich sieht sie nicht", !g.mandanten[0].anfragen.some((a) => a.id === "s4-fremd"));
+  g.mandanten[0].anfragen.push({ ...s4fremd, status: "genehmigt" });
   const wFremdA = await schreib(tSub, g, r4.etag);
   pruef("Einen Antrag aus dem fremden Bereich darf sie nicht entscheiden", wFremdA.status === 403,
     `Status ${wFremdA.status} — ${wFremdA.text || ""}`);

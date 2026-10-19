@@ -94,24 +94,38 @@ const wG = await versuch((m) => {
   m.abwesenheiten.push({ id: "abw-a", personId: "a1", art: "urlaub", von: "2026-11-10", bis: "2026-11-11" });
 });
 pruef("Urlaub im eigenen Bereich genehmigen: erlaubt", wG.status === 200, `Status ${wG.status} ${wG.text || ""}`);
+/* Seit 1e.2 sieht die Schichtverantwortung Fremdes nicht mehr. Ein Angriff
+   darauf heißt: den gespeicherten Eintrag verändert einschleusen; bloßes
+   Weglassen ist wirkungslos (Rückfüllung). */
+const gespeichert = async () => (await lies(tL)).bestand.mandanten[0];
+const anB = (await gespeichert()).anfragen.find((a) => a.id === "an-b");
 const wDel = await versuch((m) => { m.anfragen = m.anfragen.filter((a) => a.id !== "an-b"); });
-pruef("Fremden Antrag löschen: 403", wDel.status === 403, `Status ${wDel.status}`);
-const wUm = await versuch((m) => { m.anfragen.find((a) => a.id === "an-b").personId = "a1"; });
+pruef("Fremden Antrag löschen: wirkungslos (nicht sichtbar)", wDel.status === 200
+  && JSON.stringify((await gespeichert()).anfragen.find((a) => a.id === "an-b")) === JSON.stringify(anB), `Status ${wDel.status}`);
+const wUm = await versuch((m) => { m.anfragen.push({ ...anB, personId: "a1" }); });
 pruef("Fremden Antrag auf andere Person umhängen: 403", wUm.status === 403, `Status ${wUm.status}`);
-const wSt = await versuch((m) => { m.einstempeln["b1|2026-10-01"].innerhalbStart = true; });
+const stB = (await gespeichert()).einstempeln["b1|2026-10-01"];
+const wSt = await versuch((m) => { m.einstempeln = { ...(m.einstempeln || {}), "b1|2026-10-01": { ...stB, innerhalbStart: true } }; });
 /* Seit 1d.1 übergeht der Server einstempeln im PUT (die Oberfläche zieht
    nach dem Stempeln eine leicht abweichende Kopie nach) — wirkungslos. */
 pruef("Fremde Stempelzeit manipulieren: wirkungslos", wSt.status === 200, `Status ${wSt.status}`);
 const wStE = await versuch((m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; });
 pruef("Eigene Stempelzeit über PUT setzen: wirkungslos", wStE.status === 200, `Status ${wStE.status}`);
-const wEr = await versuch((m) => { m.erfassung["b1|2026-10-01"].bestaetigt = true; });
+const erB = (await gespeichert()).erfassung["b1|2026-10-01"];
+const wEr = await versuch((m) => { m.erfassung["b1|2026-10-01"] = { ...erB, bestaetigt: true }; });
 pruef("Erfassung bestätigen über PUT: 403", wEr.status === 403, `Status ${wEr.status}`);
-const wPr = await versuch((m) => { m.protokoll = m.protokoll.slice(1); });
-pruef("Protokolleintrag löschen: 403", wPr.status === 403, `Status ${wPr.status}`);
-const wPr2 = await versuch((m) => { m.protokoll[1].text = "gefälscht"; });
+const protV = (await gespeichert()).protokoll;
+const wPr = await versuch((m) => { m.protokoll = []; });
+pruef("Protokoll löschen: wirkungslos (nicht sichtbar)", wPr.status === 200
+  && JSON.stringify((await gespeichert()).protokoll.filter((l) => ["l1", "l2"].includes(l.id))) === JSON.stringify(protV.filter((l) => ["l1", "l2"].includes(l.id))), `Status ${wPr.status}`);
+const wPr2 = await versuch((m) => { m.protokoll = [{ ...protV.find((l) => l.id === "l1"), text: "gefälscht" }]; });
 pruef("Protokolleintrag ändern: 403", wPr2.status === 403, `Status ${wPr2.status}`);
 const wN = await versuch((m) => { m.nachrichten = []; });
-pruef("Fremde Nachricht löschen: 403", wN.status === 403, `Status ${wN.status}`);
+pruef("Fremde Nachricht löschen: wirkungslos (nicht sichtbar)", wN.status === 200
+  && (await gespeichert()).nachrichten.some((n) => n.id === "n-b"), `Status ${wN.status}`);
+const nB = (await gespeichert()).nachrichten.find((n) => n.id === "n-b");
+const wN2 = await versuch((m) => { m.nachrichten.push({ ...nB, titel: "geändert" }); });
+pruef("Fremde Nachricht ändern: 403", wN2.status === 403, `Status ${wN2.status}`);
 const wDb = await versuch((m) => { m.dienstbuch[0].text = "anders"; });
 pruef("Dienstbuch ändern: 403", wDb.status === 403, `Status ${wDb.status}`);
 const wR = await versuch((m) => { m.personen.find((p) => p.id === "a1").rolle = "planer"; });

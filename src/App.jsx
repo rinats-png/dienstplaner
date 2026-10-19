@@ -11042,8 +11042,10 @@ function Urlaubsrunde({ sitz, akt }) {
 function Abrechnungsdaten({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const [reiter, setReiter] = useState("zuschlaege");
-  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`))
-    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym]);
+  /* Nur Personen, deren Kontodaten die Sicht enthält (kontoSichtbar) — für
+     andere Bereiche fehlt der Schichtverantwortung die Erfassung seit 1e.2. */
+  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`) && kontoSichtbar(sitz, p))
+    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym, sitz]);
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
 

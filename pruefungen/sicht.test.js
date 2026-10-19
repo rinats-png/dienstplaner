@@ -481,13 +481,15 @@ describe("11. Leitung und Planung unverändert", () => {
   }
   /* Seit Commit 1e.1 bekommt die Schichtverantwortung die Personen gestuft
      (sicht-schichtverantwortung.test.js); alles Übrige vorerst wie bisher. */
-  it("subplaner: alles außer den Personen wie bisher, Personen gekürzt", () => {
+  /* Seit 1e.2 auch die Sammlungen (sicht-schichtverantwortung.test.js). */
+  it("subplaner: eigener Katalog — Personen gestuft, Plan und Regelwerk vollständig, Protokoll weg", () => {
     const b = sicht(SITZ.subplaner).mandanten[0];
-    const { personen: pRoh, ...restRoh } = bestand().mandanten[0];
-    const { personen: pSicht, ...restSicht } = b;
-    expect(restSicht).toEqual(restRoh);
-    expect(pSicht.map((p) => p.id)).toEqual(pRoh.map((p) => p.id));
-    expect(pSicht.every((p) => typeof p.sichtbereich === "string")).toBe(true);
+    const roh = bestand().mandanten[0];
+    expect(b.personen.map((p) => p.id)).toEqual(roh.personen.map((p) => p.id));
+    expect(b.personen.every((p) => typeof p.sichtbereich === "string")).toBe(true);
+    for (const f of ["einheiten", "dienstarten", "abweichungen", "freigaben", "matrix"])
+      if (f in roh) expect(b[f], f).toEqual(roh[f]);
+    expect(b.protokoll || []).toEqual([]);
   });
 });
 
