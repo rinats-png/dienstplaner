@@ -379,8 +379,33 @@ export default async (req, context) => {
         return zuVielAntwort(bS.wartet); }
 
       const { code, pruefsumme, id, kennung: kurz, alleDesBetriebs } = rumpf;
+      const kurzGueltig = !!kurz && /^[0-9a-f]{8}$/i.test(String(kurz));
+      /* Ob etwas angegeben wurde, entscheidet die Eingabe — nicht, ob es
+         gefunden wurde. Sonst verriete die Antwort, ob eine Kennung existiert. */
+      if (!code && !pruefsumme && !id && !kurzGueltig && !alleDesBetriebs)
+        return antwort({ fehler: "Kein Zugang angegeben." }, 400);
       const konten = await alleKonten(store);
       const ziele = [];
+
+      /* Die Leitung handelt für ihren Betrieb, nicht für den Raum. Bis
+         Oktober 2026 genügte derselbe Raum: In einem Raum mit mehreren
+         Betrieben sperrte die Leitung von A mit „alle des Betriebs" auch die
+         Zugänge von B und beendete deren Sitzungen, einzeln ebenso. Ein Code
+         gehört zum Betrieb über seine Kennung (mandantId, seit 1g), ältere
+         Codes ohne Kennung über ihre Position. Betreibercodes gehören keinem
+         Betrieb. Der Betreiber sperrt weiter raumweit. */
+      let eigenerOrt = null;
+      if (sB.rolle !== "betreiber") {
+        const gelesenS = await bestandLesen(store, sB.bestand).catch(() => null);
+        eigenerOrt = gelesenS && gelesenS.bestand ? eigenerBetrieb(gelesenS.bestand, sB) : null;
+      }
+      const imEigenenBetrieb = (k) => {
+        if (!k || k.bestand !== sB.bestand) return false;
+        if (sB.rolle === "betreiber") return true;
+        if (!eigenerOrt || k.rolle === "betreiber") return false;
+        if (k.mandantId) return k.mandantId === eigenerOrt.betrieb.id;
+        return Number(k.betrieb ?? 0) === eigenerOrt.index;
+      };
 
       /* Beide Schlüssel — ein Konto kann noch unter dem alten liegen. */
       if (code) { ziele.push(ablageSchluessel(code)); ziele.push(altHash(code)); }
@@ -397,7 +422,7 @@ export default async (req, context) => {
       /* Die gekürzte Kennung aus /einrichten/uebersicht — die letzten acht
          Zeichen der Prüfsumme, wie bei den Verwalterkonten. Nur genau acht
          Hexzeichen; ein leerer oder kürzerer Wert träfe sonst alles. */
-      if (kurz && /^[0-9a-f]{8}$/i.test(String(kurz))) {
+      if (kurzGueltig) {
         const ende = String(kurz).toLowerCase();
         /* Nicht den eigenen. Die Konsole bietet ihn nicht an, aber die
            Kennung steht in derselben Liste wie alle anderen — ein Tippfehler
@@ -413,18 +438,22 @@ export default async (req, context) => {
       if (alleDesBetriebs) {
         const eigenerHash = sB.konto || null;
         for (const [h, k] of Object.entries(konten)) {
-          if (k.bestand === sB.bestand && k.rolle !== "betreiber" && h !== eigenerHash) ziele.push(h);
+          if (k && k.bestand === sB.bestand && k.rolle !== "betreiber" && h !== eigenerHash) ziele.push(h);
         }
       }
-      if (!ziele.length) return antwort({ fehler: "Kein Zugang angegeben." }, 400);
 
-      let gesperrt = 0;
-      for (const h of ziele) {
+      /* Nur, was zum eigenen Betrieb gehört (der Betreiber: alles). Fremdes
+         fällt still heraus — die Antwort gleicht der für eine unbekannte
+         Kennung. */
+      const erlaubt = [...new Set(ziele)].filter((h) => {
         const k = konten[h];
-        if (!k) continue;
-        /* Nur im eigenen Betrieb — die Leitung eines Hauses darf nicht die
-           Zugänge eines anderen abschalten. */
-        if (sB.rolle !== "betreiber" && k.bestand !== sB.bestand) continue;
+        if (!k) return false;
+        if (sB.rolle === "betreiber") return true;
+        return imEigenenBetrieb(k);
+      });
+      let gesperrt = 0;
+      for (const h of erlaubt) {
+        const k = konten[h];
         if (k.gesperrt) continue;
         konten[h] = { ...k, gesperrt: true,
           gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
@@ -432,7 +461,7 @@ export default async (req, context) => {
       }
       /* Einzeln zurückschreiben — der Sammelblob wird nicht mehr gepflegt. */
       if (gesperrt) {
-        for (const h of ziele) {
+        for (const h of erlaubt) {
           if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
         }
       }
@@ -440,7 +469,7 @@ export default async (req, context) => {
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
       let beendet = 0;
-      const gesperrteHashes = new Set(ziele);
+      const gesperrteHashes = new Set(erlaubt);
       try {
         beendet = (await sitzungenBeendenWenn((sit) => {
           /* Die Leitung sieht nur die Sitzungen des eigenen Hauses. Der
@@ -1083,14 +1112,28 @@ export default async (req, context) => {
         hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen." });
     }
 
+    /* Auflisten und Widerrufen nur für den eigenen Betrieb. Bis Oktober 2026
+       genügte derselbe Raum: Die Leitung von A sah die Schlüssel von B und
+       konnte sie widerrufen — mit einer beliebig kurzen Kennung als Präfix.
+       Ein Schlüssel gehört zum Betrieb über seine Kennung (mandantId, seit
+       1f); ältere ohne Kennung nur in einem Raum mit genau einem Betrieb. */
+    const schluesselImBetrieb = async () => {
+      const mitS = await bestandJetzt();
+      const ortS = mitS ? eigenerBetrieb(mitS.bestand, s) : null;
+      const einBetrieb = !!(mitS && Array.isArray(mitS.bestand.mandanten) && mitS.bestand.mandanten.length === 1);
+      return (k) => !!k && !!ortS && k.bestand === s.bestand
+        && (k.mandantId ? k.mandantId === ortS.betrieb.id : einBetrieb);
+    };
+
     if (pfad === "sicherungsschluessel" && req.method === "GET") {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
+      const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: "sk:" }).catch(() => ({ blobs: [] }));
       const liste = [];
       for (const b of blobs) {
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-        if (!k || k.bestand !== s.bestand) continue;
+        if (!gehoert(k)) continue;
         liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
           gueltigBis: new Date(k.bis).toISOString(), abgelaufen: k.bis < Date.now() });
       }
@@ -1101,12 +1144,16 @@ export default async (req, context) => {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
       const { kennung: kz } = rumpf;
-      if (!kz) return antwort({ fehler: "Keine Kennung angegeben." }, 400);
+      /* Genau die achtstellige Kennung aus der Liste — keine Präfixsuche. */
+      if (!kz || !/^[0-9a-f]{8}$/.test(String(kz)))
+        return antwort({ fehler: "Keine gültige Kennung angegeben (acht Zeichen aus der Liste)." }, 400);
+      const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: `sk:${kz}` }).catch(() => ({ blobs: [] }));
       let weg = 0;
       for (const b of blobs) {
+        if (b.key.slice(3, 11) !== kz) continue;
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-        if (!k || k.bestand !== s.bestand) continue;
+        if (!gehoert(k)) continue;           // fremd: wie nicht gefunden
         await sitzungen().delete(b.key); weg++;
       }
       await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg), wer);

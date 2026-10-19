@@ -172,6 +172,10 @@ jobs:
       - name: Vollausgabe
         run: npm run pruefung:vollausgabe
 
+      # Sicherungsschlüssel und Zugang sperren: nur der eigene Betrieb.
+      - name: Verwaltungswege
+        run: npm run pruefung:verwaltungswege
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -488,6 +492,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.0.
+
+      # Zwei Betriebe in einem Raum: A greift nicht in B ein.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Verwaltungswege (HTTP)
+        run: npm run pruefung:verwaltungswege-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.9.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
