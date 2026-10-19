@@ -209,6 +209,10 @@ jobs:
       - name: Schutzregeln Ersatzsuche
         run: npm run pruefung:schutzregeln-ersatzsuche
 
+      # Betreiber: Positivliste statt des ganzen Raums, keine Personaldaten (D1).
+      - name: Betreibersicht
+        run: npm run pruefung:betreiber-sicht
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -595,6 +599,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.3.
+
+      # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreibersicht (HTTP)
+        run: npm run pruefung:betreiber-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.2.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

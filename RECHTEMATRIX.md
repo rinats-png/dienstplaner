@@ -19,8 +19,8 @@ Einordnung je Zeile:
 Beide Antworten laufen über `bestandFuerRolle` (`server/lib/rechte.mjs`). Kataloge in
 `server/lib/sicht.mjs`, alle als Positivliste: Beschäftigte und Betriebsrat (`BETRIEB`, `EIGENE_PERSON`,
 `FREMD_MITARBEITER`), Schichtverantwortung (`SCHICHT`, gestuft nach eigen / Bereich / Springer-Pool /
-fremd), Planung und Leitung samt Kundenrolle (`VOLL_BETRIEB`, `VOLL_PERSON`). Der Betreiber bekommt den
-ganzen Bestand.
+fremd), Planung und Leitung samt Kundenrolle (`VOLL_BETRIEB`, `VOLL_PERSON`). Der Betreiber bekommt seit
+Commit D1 ebenfalls eine Positivliste (`BETREIBER_*`, Fußnote ¹¹).
 
 Die Spalten beziehen sich auf eine **fremde Person aus einem anderen Bereich** (für die
 Schichtverantwortung also außerhalb ihres Bereichs). Die eigene Person bekommt jede Rolle vollständig.
@@ -31,39 +31,40 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 
 | Datenklasse | MA | BR | SV | PL | LT | BT | VA-LT | VA-SK | |
 |---|---|---|---|---|---|---|---|---|---|
-| Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Kontakt: Telefon, Anschrift | – | – | – ¹ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Kontakt: E-Mail (Kontaktangabe für Planung und Leitung) | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Notfallkontakt | – | – | – | – | – | ✓ | – | ✓ | A |
-| Bank, Steuer, Sozialversicherung, Lohn/Gehalt | – | – | – | – | – | ✓ | – | ✓ | A |
-| frühere Anmeldeadresse | – | – | – | – | – | ✓ | – | ✓ | A |
-| Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Zeiterfassung (fremd; Grund) | – | Zeiten ohne Grund | – ³ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Stempeldaten, Ortsurteil | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Nachrichten anderer | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Notrufe anderer | – | – | nur Bereich und an sie | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Dienstbuch | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Übergaben | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Tagesnotizen (`notizen` „tag\|…") | – | – | nur eigene Einheit ⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| `tagesnotizen` (totes Feld, keine Ansicht) | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | ✓ | – | – | A |
-| Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | ✓ | – | – | A |
-| Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | B ⁶ |
-| Lohnarten | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
-| Betriebsprotokoll | – | – | – | ✓ | ✓ | ✓ | ✓ | ✓ | A |
+| Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …) | ✓ | ✓ | ✓ | ✓ | ✓ | – ¹¹ | ✓ | ✓ | A |
+| Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | A |
+| Kontakt: Telefon, Anschrift | – | – | – ¹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Kontakt: E-Mail (Kontaktangabe für Planung und Leitung) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Notfallkontakt | – | – | – | – | – | – | – | ✓ | A |
+| Bank, Steuer, Sozialversicherung, Lohn/Gehalt | – | – | – | – | – | – | – | ✓ | A |
+| frühere Anmeldeadresse | – | – | – | – | – | – | – | ✓ | A |
+| Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zeiterfassung (fremd; Grund) | – | Zeiten ohne Grund | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten, Ortsurteil | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Notrufe anderer | – | – | nur Bereich und an sie | ✓ | ✓ | – | ✓ | ✓ | A |
+| Dienstbuch | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Übergaben | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Tagesnotizen (`notizen` „tag\|…") | – | – | nur eigene Einheit ⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| `tagesnotizen` (totes Feld, keine Ansicht) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
+| Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
+| Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
+| Lohnarten | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Betriebsprotokoll | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Billing: Konditionen, Vertrag, Rechnungsangaben, USt-ID | – | – | – | – | – | ✓ | – | – | A |
 | Betreiberfelder: interne Notiz, Raumkennung, Firmenstamm, Preisliste, Selbststarts | – | – | – | – | – | ✓ | – | – | A |
 | Rechnungen (eigener und anderer Betriebe) | – | – | – | – | – | ✓ | – | – | A |
 | Betreiberprotokoll | – | – | – | – | – | ✓ | – | – | A |
-| andere Betriebe des Raums | – | – | – | – | – | ✓ | – | – | A |
-| unbekannte neue Felder (Person, Betrieb, oben) | – | – | – | – | – | ✓ | – | – | A |
+| andere Betriebe des Raums | – | – | – | – | – | ✓ (gekürzt ¹¹) | – | – | A |
+| unbekannte neue Felder (Person, Betrieb, oben) | – | – | – | – | – | – | – | – | A |
 
 ¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen.
 ³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung.
@@ -89,6 +90,15 @@ gespeicherten Datensatz abgeleitet und nie gespeichert. Befunde dazu sind neutra
 die Regeln, sperrt die Prüfung („Schutzprüfung nicht möglich"). Vorsorgehinweise sieht die Schichtverantwortung nicht.
 Seit Commit S2 gilt dieselbe Schutzprüfung auch bei der Einteilung (Ersatzsuche, Vergabe, Vorschläge, Selbstplanung:
 `hindernisse`): harte Regeln sperren, weiche sind Hinweise, ohne Einsatzregeln sperrt sie.
+
+¹¹ Commit D1: Der Betreiber bekommt eine eigene Positivliste (`bestandSichtBetreiber` in `server/lib/sicht.mjs`) statt
+des ganzen Raums: oben seine Felder (Firmenstamm, Preisliste, Rechnungen, Betreiberprotokoll, Pakete, Adressänderungen,
+Selbststarts), je Betrieb das Kaufmännische, Einheiten `{id, name, standortId, pool}`, Standorte `{id, name}`,
+Dienstarten `{id}`, den Zeitpunkt der letzten Änderung und je Person nur das Gerüst `{id, rolle, rolleSeit, rolleVerlauf,
+status, eintritt, austritt, zugehoerigkeit}` — ohne Namen, Kontakt-, Gesundheits-, Lohn- oder Bankdaten, ohne Pläne, Zeiten,
+Abwesenheiten, Anträge, Nachrichten, Notrufe, Dienstbuch, Übergaben, Notizen und ohne unbekannte Felder. Die Adressänderungen
+des Betriebs bleiben als funktionale Ausnahme (die Konsole erkennt daran Kontoübernahmen), keine allgemeine
+Personalberechtigung. Schreiben nimmt der Server vom Betreiber nur das Kaufmännische an.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -136,7 +146,8 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Rückfall-Alarmierung, wenn ein Notruf keinen gültigen Empfänger hat (heute: keine Mitteilung) | Produktentscheidung |
 | Altbestand von Dienstbuch, Übergaben und Tagesnotizen ohne `einheitId` einer Einheit zuordnen (heute nur für Planung/Leitung sichtbar) | eigener Schritt |
 | Restrückschluss aus einzelnen Einsatzregeln (Sonntag nur mit Freigabe; über 8 h nur nach Absprache) auf das Merkmal (Commit S1, bewusst) | Schuld S |
-| Betreiber erhält den ganzen Bestand samt Gesundheitsdaten | eigener Block nach S2 |
+| `/api/zugaenge-uebersicht` liefert den Zugangsnamen (meist der Personenname) — neutraler Anzeigename prüfen | Minimierung, bei Bedarf |
+| Toter Code `zugangsUebersicht()` in der Oberfläche (liest Namen und E-Mail, ohne Aufrufer) | Aufräumen |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |
 | Ein eigener HR-/DSGVO-Export für eine berechtigte Leitung, Trennung `/api/datenexport` / `/api/externes-backup` | eigener Schritt |

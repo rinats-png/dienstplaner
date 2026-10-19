@@ -621,6 +621,72 @@ export function betriebSichtSchicht(m, ctx) {
 /** Ganz oben im Bestand: nur Zähler, Sitzungsmarke und der eigene Betrieb. */
 export const OBEN_FELDER = OBEN;
 
+/* ------------------------------------------------------------------------
+   DIE SICHT DES BETREIBERS (Commit D1)
+
+   Bis Commit D1 bekam der Betreiber den ganzen Raum ungefiltert: Gesundheits-
+   und Schutzmerkmale, Krankmeldungen mit Notiz, Bank-, Steuer- und
+   Lohndaten, Notfallkontakte, Namen und Kontaktdaten, Notizen der Leitung,
+   Kalender- und Push-Geheimnisse, Pläne, Zeiten, Anträge, Nachrichten,
+   Notrufe, Dienstbuch und Übergaben aller Betriebe — und jedes neue Feld.
+   Seine Konsole zeigt davon nichts; sie rechnet Preise, Zuschläge und
+   Rechnungen aus wenigen Angaben. Wer Software verkauft, führt den Betrieb
+   nicht (§ 3 AV-Vertrag).
+
+   Jetzt eine Positivliste, Objekt für Objekt neu gebaut — was nicht darin
+   steht, geht nicht hinaus, auch kein neues Feld:
+   - oben die eigenen Felder des Betreibers (BETREIBER_OBEN);
+   - je Betrieb das Kaufmännische, Einheiten, Standorte, die Zahl der
+     Dienstarten, der Zeitpunkt der letzten Änderung und die
+     Adressänderungen — Letztere als funktionale Ausnahme: Die Konsole
+     erkennt daran Kontoübernahmen; eine allgemeine Personalberechtigung
+     folgt daraus nicht;
+   - je Person nur das Gerüst für die Abrechnung: Rolle (auch im Verlauf),
+     Status, Ein- und Austritt, Zugehörigkeit — ohne Namen, Kontakt-,
+     Gesundheits- oder Lohndaten.
+   Schreiben nimmt der Server vom Betreiber ohnehin nur das Kaufmännische
+   an (rechte.mjs, zusammenfuehren) — die gekürzte Sicht überschreibt nichts.
+   ------------------------------------------------------------------------ */
+const BETREIBER_OBEN = ["version", "stand", "session", "betreiber", "tarife", "rechnungen", "protokoll",
+  "pakete", "adressaenderungen", "selbststarts"];
+const BETREIBER_BETRIEB = ["id", "raum", "selbstAngelegt", "name", "branche", "status", "tarif", "seit", "bis",
+  "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "kontakt", "kontaktName", "anschrift",
+  "ustId", "notiz", "einheitLabel", "rollennamen", "adressAenderungen"];
+const BETREIBER_PERSON = ["id", "rolle", "rolleSeit", "status", "eintritt", "austritt"];
+const istObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+
+/** Eine Person in der Sicht des Betreibers: nur das Gerüst für die Abrechnung. */
+export function betreiberPersonSicht(p) {
+  if (!istObj(p)) return null;
+  const aus = nimm(p, BETREIBER_PERSON);
+  aus.zugehoerigkeit = liste(p.zugehoerigkeit).filter(istObj).map((z) => nimm(z, ["ab", "einheitId"]));
+  if (Array.isArray(p.rolleVerlauf)) aus.rolleVerlauf = p.rolleVerlauf.filter(istObj).map((z) => nimm(z, ["ab", "rolle"]));
+  return aus;
+}
+
+/** Ein Betrieb in der Sicht des Betreibers. */
+export function betriebSichtBetreiber(m) {
+  if (!istObj(m)) return null;
+  const aus = nimm(m, BETREIBER_BETRIEB);
+  aus.personen = liste(m.personen).filter(istObj).map(betreiberPersonSicht);
+  aus.einheiten = liste(m.einheiten).filter(istObj).map((e) => nimm(e, ["id", "name", "standortId", "pool"]));
+  aus.standorte = liste(m.standorte).filter(istObj).map((s) => nimm(s, ["id", "name"]));
+  aus.dienstarten = liste(m.dienstarten).filter(istObj).map((x) => nimm(x, ["id"]));
+  /* Nur der Zeitpunkt der letzten Änderung — die Einträge selbst nennen
+     Personen und Vorgänge. */
+  aus.protokoll = liste(m.protokoll).filter(istObj).slice(0, 1).map((x) => nimm(x, ["zeit"]));
+  return aus;
+}
+
+/** Der Bestand in der Sicht des Betreibers: oben seine Felder, darunter
+    alle Betriebe des Raums — jeder gekürzt. */
+export function bestandSichtBetreiber(bestand) {
+  if (!istObj(bestand)) return bestand;
+  const aus = nimm(bestand, BETREIBER_OBEN);
+  aus.mandanten = liste(bestand.mandanten).filter(istObj).map(betriebSichtBetreiber);
+  return aus;
+}
+
 
 /* ------------------------------------------------------------------------
    PLANUNG UND LEITUNG (Commit 1e.3)

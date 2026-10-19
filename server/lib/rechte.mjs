@@ -19,7 +19,7 @@ import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
-import { ausschreibungDerEinheit, eintragDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
+import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
@@ -435,7 +435,8 @@ export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
 export function bestandFuerRolle(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
   const rolle = sitzung.rolle || "kunde";
-  if (rolle === "betreiber") return bestand;
+  /* Seit Commit D1 eine Positivliste statt des ganzen Raums (sicht.mjs). */
+  if (rolle === "betreiber") return bestandSichtBetreiber(bestand);
 
   /* Beschäftigte und Betriebsrat: nur, was der Katalog in sicht.mjs
      ausdrücklich freigibt. Unbekannte Felder gehen nicht hinaus — weder
