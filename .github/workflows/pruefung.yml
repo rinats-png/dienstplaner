@@ -44,11 +44,21 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
+      # Warnen statt sperren: Stufen (Hinweis, Achtung, Rechtsverstoß),
+      # Bestätigungsprotokoll, Sicht des Betriebsrats.
+      - name: Warnstufen
+        run: npm run pruefung:warnen
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
       - name: Kontrast
         run: npm run pruefung:kontrast
+
+      # Gestalt: keine externen Ressourcen, Icons aus dem Satz, und keine
+      # neuen harten Hexwerte in der Oberfläche.
+      - name: Gestalt
+        run: npm run pruefung:gestalt
 
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
