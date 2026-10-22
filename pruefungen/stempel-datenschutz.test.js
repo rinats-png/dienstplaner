@@ -1,9 +1,10 @@
 /* ==========================================================================
-   STEMPELEREIGNISSE: WER SIEHT WELCHE?
+   STEMPEL UND ZEITERFASSUNG: WER SIEHT WELCHE?
 
    m.einstempeln ("personId|JJJJ-MM-TT" → Zeit, Entfernung, Standorturteil)
-   ist personenbezogen. Beschäftigte erhalten nur die eigenen, der Betriebsrat
-   keine; Leitung, Planung und Schichtverantwortung unverändert.
+   und m.erfassung (Start, Ende, Bestätigung) sind personenbezogen.
+   Beschäftigte erhalten nur die eigenen, der Betriebsrat keine; Leitung,
+   Planung und Schichtverantwortung unverändert.
 
    Aufruf: npm run pruefung:stempeldaten
    (Die Prüfung gegen den laufenden Server steht in pruefungen/rechte.mjs, S2.)
@@ -26,7 +27,11 @@ const bestand = () => ({
       "p18|2026-10-22": stempel("05:58"),
       "p170|2026-10-22": stempel("07:00"),
     },
-    erfassung: { "p18|2026-10-22": { start: "05:58", bestaetigt: true } },
+    erfassung: {
+      "p17|2026-10-22": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
+      "p18|2026-10-22": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
+      "p170|2026-10-22": { start: "07:00", ende: "15:00", bestaetigt: true, grund: "" },
+    },
     abwesenheiten: [],
   }],
 });
@@ -42,9 +47,7 @@ describe("Stempelereignisse nach Rolle", () => {
     const e = sicht("mitarbeiter", "p17").einstempeln;
     expect(e["p18|2026-10-22"]).toBeUndefined();
     expect(e["p170|2026-10-22"]).toBeUndefined();
-    // Rohstempel und ihr Wortlaut kommen nirgends vor (die Erfassung ist ein eigenes Feld)
-    const ohneErfassung = { ...sicht("mitarbeiter", "p17"), erfassung: undefined };
-    expect(JSON.stringify(ohneErfassung)).not.toContain("05:58");
+    expect(JSON.stringify(sicht("mitarbeiter", "p17"))).not.toContain("05:58");
   });
   it("Mitarbeiter ohne Personenzuordnung bekommt keinen Stempel", () => {
     expect(sicht("mitarbeiter", null).einstempeln).toEqual({});
@@ -75,13 +78,47 @@ describe("Stempelereignisse nach Rolle", () => {
     }
     expect(sicht("leitung", "pl").personen.find((p) => p.id === "p18").email).toBe("max@x.de");
   });
-  it("die Erfassung (Ist-Stunden) bleibt von diesem Filter unberührt", () => {
-    expect(sicht("mitarbeiter", "p17").erfassung).toEqual(bestand().mandanten[0].erfassung);
-  });
   it("das Lesen verändert den gespeicherten Bestand nicht", () => {
     const b = bestand();
     bestandFuerRolle(b, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
     expect(Object.keys(b.mandanten[0].einstempeln).length).toBe(3);
+  });
+});
+
+describe("Zeiterfassung (erfassung) nach Rolle", () => {
+  const ALLE = ["p170|2026-10-22", "p17|2026-10-22", "p18|2026-10-22"].sort();
+  it("Mitarbeiter sieht die eigene Erfassung — vollständig", () => {
+    const e = sicht("mitarbeiter", "p17").erfassung;
+    expect(Object.keys(e)).toEqual(["p17|2026-10-22"]);
+    expect(e["p17|2026-10-22"]).toEqual(bestand().mandanten[0].erfassung["p17|2026-10-22"]);
+  });
+  it("Mitarbeiter sieht fremde Erfassung nicht", () => {
+    const e = sicht("mitarbeiter", "p17").erfassung;
+    expect(e["p18|2026-10-22"]).toBeUndefined();
+    expect(JSON.stringify(sicht("mitarbeiter", "p17"))).not.toContain("Übergabe länger");
+  });
+  it("p17 trifft nicht p170", () => {
+    expect(sicht("mitarbeiter", "p17").erfassung["p170|2026-10-22"]).toBeUndefined();
+    expect(Object.keys(sicht("mitarbeiter", "p170").erfassung)).toEqual(["p170|2026-10-22"]);
+  });
+  it("Person ohne Zuordnung sieht keine Erfassung", () => {
+    expect(sicht("mitarbeiter", null).erfassung).toEqual({});
+    expect(sicht("mitarbeiter", undefined).erfassung).toEqual({});
+  });
+  it("Betriebsrat sieht keine personenbezogene Erfassung", () => {
+    expect(sicht("betriebsrat", "pb").erfassung).toEqual({});
+    expect(sicht("betriebsrat", null).erfassung).toEqual({});
+  });
+  it("Leitung sieht die Erfassung unverändert", () => {
+    expect(sicht("leitung", "pl").erfassung).toEqual(bestand().mandanten[0].erfassung);
+  });
+  it("Planer, Schichtverantwortung und Kunde wie bisher: alles", () => {
+    for (const rolle of ["planer", "subplaner", "kunde"])
+      expect(Object.keys(sicht(rolle, "pl").erfassung).sort(), rolle).toEqual(ALLE);
+  });
+  it("ein Bestand ohne erfassung bleibt ohne (kein leeres Feld erfunden)", () => {
+    const b = bestand(); delete b.mandanten[0].erfassung;
+    expect(bestandFuerRolle(b, { rolle: "mitarbeiter", person: "p17", betrieb: 0 }).mandanten[0]).not.toHaveProperty("erfassung");
   });
 });
 
@@ -92,6 +129,27 @@ describe("Schreiben: ein gefilterter Bestand löscht keine fremden Stempel", () 
     const neu = zusammenfuehren(gespeichert, gesehen, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
     const m = (neu.bestand || neu).mandanten[0];
     expect(Object.keys(m.einstempeln).sort()).toEqual(["p170|2026-10-22", "p17|2026-10-22", "p18|2026-10-22"].sort());
+  });
+  it("Rückspeichern der gefilterten Sicht löscht keine fremde Erfassung; die eigene Änderung kommt an", () => {
+    const gespeichert = bestand();
+    const gesehen = bestandFuerRolle(gespeichert, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
+    gesehen.mandanten[0].erfassung["p17|2026-10-22"] = { start: "06:01", ende: "14:30", bestaetigt: true, grund: "länger geblieben" };
+    const neu = zusammenfuehren(gespeichert, gesehen, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
+    const m = (neu.bestand || neu).mandanten[0];
+    expect(Object.keys(m.erfassung).sort()).toEqual(["p170|2026-10-22", "p17|2026-10-22", "p18|2026-10-22"].sort());
+    expect(m.erfassung["p18|2026-10-22"]).toEqual(gespeichert.mandanten[0].erfassung["p18|2026-10-22"]);
+    expect(m.erfassung["p170|2026-10-22"]).toEqual(gespeichert.mandanten[0].erfassung["p170|2026-10-22"]);
+    expect(m.erfassung["p17|2026-10-22"].ende).toBe("14:30");
+  });
+  it("ein Mitarbeiter kann fremde Erfassung nicht anlegen oder ändern", () => {
+    const gespeichert = bestand();
+    const frech = bestandFuerRolle(gespeichert, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
+    frech.mandanten[0].erfassung["p18|2026-10-22"] = { start: "00:00", ende: "23:59", bestaetigt: true };
+    frech.mandanten[0].erfassung["p18|2026-10-23"] = { start: "00:00", ende: "23:59", bestaetigt: true };
+    const neu = zusammenfuehren(gespeichert, frech, { rolle: "mitarbeiter", person: "p17", betrieb: 0 });
+    const m = (neu.bestand || neu).mandanten[0];
+    expect(m.erfassung["p18|2026-10-22"].start).toBe("05:58");
+    expect(m.erfassung["p18|2026-10-23"]).toBeUndefined();
   });
   it("ein Mitarbeiter kann Stempel weder anlegen noch ändern", () => {
     const gespeichert = bestand();

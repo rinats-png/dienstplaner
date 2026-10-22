@@ -369,15 +369,18 @@ export function bestandFuerRolle(bestand, sitzung) {
       m.abwesenheiten = m.abwesenheiten.map((a) =>
         (ich !== null && ich !== undefined && a.personId === ich) ? a : abwesenheitSaeubern(a));
     }
-    /* Stempelereignisse (Zeit, Entfernung zum Einsatzort, Standorturteil) sind
-       personenbezogen. Eine beschäftigte Person bekommt nur die eigenen; der
-       Betriebsrat keine, denn die Mitbestimmung betrifft das Verfahren, nicht
-       die Stempel einzelner Personen (siehe Muster-BV, Anlage 5). Der
-       Schlüssel lautet „personId|JJJJ-MM-TT". */
-    if (m.einstempeln && typeof m.einstempeln === "object") {
-      m.einstempeln = (rolle === "mitarbeiter" && ich !== null && ich !== undefined)
-        ? Object.fromEntries(Object.entries(m.einstempeln)
-          .filter(([k]) => String(k.slice(0, k.lastIndexOf("|"))) === String(ich)))
+    /* Stempelereignisse (Zeit, Entfernung zum Einsatzort, Standorturteil) und
+       die Zeiterfassung (Start, Ende, Bestätigung) sind personenbezogen. Eine
+       beschäftigte Person bekommt nur die eigenen; der Betriebsrat keine, denn
+       die Mitbestimmung betrifft das Verfahren, nicht die Zeiten einzelner
+       Personen (siehe Muster-BV, Anlage 5). Eine Auswertung für den
+       Betriebsrat ist ein eigenes Thema. Die Schlüssel lauten
+       „personId|JJJJ-MM-TT" — dieselbe Regel wie beim Schreiben
+       (eigenerSchluessel), damit Lesen und Schreiben nie auseinanderlaufen. */
+    for (const feld of ["einstempeln", "erfassung"]) {
+      if (!m[feld] || typeof m[feld] !== "object") continue;
+      m[feld] = (rolle === "mitarbeiter" && ich !== null && ich !== undefined)
+        ? Object.fromEntries(Object.entries(m[feld]).filter(([k]) => eigenerSchluessel(k, ich)))
         : {};
     }
     /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
