@@ -97,6 +97,8 @@ Zwei Fragen, zwei Antworten — sie ersetzen sich nicht:
 - **`REGELSTAND`** (`version`, `stand`, `quellen`): *Welche Gesamtfassung des Regelwerks gilt?* Er wird im Bestätigungsprotokoll mitgeschrieben (E-20) und ist unverändert.
 - **Regel-ID**: *Welche Regel, aus welcher Quelle, an welcher Fundstelle, mit welchem Prüfstatus?* Das Bestätigungsprotokoll hält zusätzlich `regelIds` je Eintrag fest; die bisherige Form der `befunde` ist unverändert (getestet).
 
+`version`/`stand` bezeichnen den **Rechtsstand der Prüflogik** und stehen in jedem Protokolleintrag (E-20); `quellen` ist der erklärte Umfang. Wird nur die Quellenliste vervollständigt, ohne dass sich eine Prüfregel ändert, bleibt die Version, und `quellenstand` (Datum) hält die Korrektur fest. Ändert sich eine Prüfregel, wird die Version hochgezählt wie bisher. Die am 22.10.2026 nachgetragenen Quellen wirkten schon in 2026.09.
+
 Eine Regel gehört über `regelstand` zu einer Fassung. `regelstandAbdeckung()` zeigt, wo `REGELSTAND.quellen` und das Register auseinanderliegen (Auskunft, kein Fehler).
 
 ## 7. Eine neue Regel hinzufügen
@@ -178,3 +180,7 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 
 - „Verstoßregel" kommt weder im Plan, noch im Code, noch in E-19 bis E-21 vor. Kein Handlungsbedarf; im Code und in den Entscheidungen heißen die Bewertungen Hinweis, Achtung, Rechtsverstoß.
 - „Blockregel" (Plan 5.2) meint einen Block zusammengehöriger Tage („Samstag und Sonntag dieselbe Dienstart"), nicht Blockieren. Seit E-19 sperrt CENTRIC nichts; der Name kann trotzdem missverstanden werden (etwa als „Regel, die blockiert"). **Spätere Namensentscheidung**, z. B. „Tagesblockregel" oder „Zusammenhangsregel". In diesem Schritt wird nichts umbenannt; die Regelart `blockregel` im Register ist reserviert und wird nicht gerechnet.
+
+## Anhang E — Prüfstatus der Quelle und Laufzeit eines Bestandsrechners
+
+`provisional` sagt, wie gut die **Quelle** geprüft ist, und bremst neu eingeführte Regeln auf Hinweis. Fahrzeit, PPP-RL und Tarifvorlagen rechnen aber längst in getesteten Modulen. Ihre Registerzeilen tragen deshalb `laufzeit: "bestand"`: `begrenzeStufe()` stuft sie nicht herab, ihre Stufe bestimmt weiter das Modul (das das Register nicht einmal importiert). Watchlist und deprecated wirken weiterhin nicht. Test: `pruefungen/laufzeit.test.js`.

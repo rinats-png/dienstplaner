@@ -39,6 +39,15 @@
 export const REGELSTAND = {
   version: "2026.09",
   stand: "2026-09-09",
+  /* `version` und `stand` bezeichnen den Rechtsstand, nach dem die Prüflogik
+     gerechnet wird — er steht in jedem Protokolleintrag. Die Liste `quellen`
+     beschreibt den Umfang. Am 22.10.2026 wurden vier Quellen nachgetragen, die
+     schon in dieser Fassung wirkten (EFZG, SGB V/IX, Landesheimpersonal-
+     verordnung): Die Rechenlogik ist dieselbe geblieben, nur die Liste war
+     unvollständig. Deshalb wird die Version nicht hochgezählt; `quellenstand`
+     hält fest, wann die Liste zuletzt vervollständigt wurde. Ändert sich
+     dagegen eine Prüfregel, gilt wie bisher: neue Version. */
+  quellenstand: "2026-10-22",
   /* Was in dieser Fassung geprüft wird — die Liste ist der Umfang, zu dem
      sich die Anwendung bekennt, nicht eine Liste gelesener Gesetze. */
   quellen: [
