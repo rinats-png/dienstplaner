@@ -14,6 +14,9 @@ import {
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
   fehlendeKompetenzen, REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "./regelwerk.js";
+import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
+import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
+import { ABW_WEITERE } from "./abwesenheitsarten.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -151,6 +154,7 @@ class Fehlerauffang extends Component {
      eintritt, austritt, wochenstunden, urlaubsanspruch, urlaubsuebertrag,
      stundenuebertrag, qualifikationen[],
      teilzeit { aktiv, modus: "quote"|"wochentage", wochentage[] },
+     beschaeftigungsmodell (optional, src/beschaeftigung.js), stundenGrenzeMonat (optional),
      springer (bool), einschraenkungen{}, rolle, rolleSeit, rolleVerlauf[],
      bereich ("ALLE" oder einheitId), status
 
@@ -860,6 +864,7 @@ const ABW = [
   { id: "frei", label: "Freistellung", kurz: "F", farbe: "#878C93", urlaub: false, bezahlt: false, rang: 1 },
   { id: "sonst", label: "Sonstiges", kurz: "X", farbe: "#8A5A00", urlaub: false, bezahlt: true, rang: 2 },
   { id: "ausgleich", label: "Freizeitausgleich", kurz: "A", farbe: "#0369A1", urlaub: false, bezahlt: false, rang: 2 },
+  ...ABW_WEITERE,
 ];
 const abwArt = (id) => ABW.find((a) => a.id === id) || ABW[4];
 
@@ -1676,63 +1681,23 @@ function nachtJahr(m, p, jahr) {
    liefert schutzBefunde() in src/regelwerk.js die Fundstelle je Befund mit,
    weil sie dort je nach Merkmal verschieden ist.
    ========================================================================== */
-const RECHTSQUELLE = {
-  ruhezeit: { norm: "§ 5 Abs. 1 ArbZG",
-    satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
-  pause: { norm: "§ 4 ArbZG",
-    satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
-  /* Die Zahl zulässiger Dienste in Folge steht in keinem Gesetz. Sie kommt
-     aus dem Tarifvertrag, der Betriebsvereinbarung oder der eigenen
-     Festlegung — hier ist sie eine betriebliche Grenze, und das muss dabei
-     stehen. Sonst behauptet die Anwendung ein Gesetz, das es nicht gibt.
-     Die gesetzliche Anknüpfung nebenan ist echt, aber eine andere Frage. */
-  folge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Das Arbeitszeitgesetz begrenzt die Dienstfolge nicht unmittelbar. Gesetzlich gebunden ist der Sonntag: § 11 Abs. 1 ArbZG verlangt mindestens 15 beschäftigungsfreie Sonntage im Jahr." },
-  nachtfolge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Anknüpfung ist § 6 Abs. 1 ArbZG: Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen. Die Zahl selbst legt der Betrieb fest." },
-  abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
-    satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
-  ueberlappung: { norm: "§ 7 BUrlG",
-    satz: "Ein Zeitraum kann nicht zugleich Urlaub und eine andere Abwesenheit sein." },
-  urlaub: { norm: "§ 7 Abs. 1 BUrlG",
-    satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
-  nachweis: { norm: "§ 12 ArbSchG",
-    satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
-  /* Hier stand: „Bewachungstätigkeit setzt den Sachkundenachweis voraus."
-     Das stimmt so nicht — § 34a Abs. 1a GewO verlangt die Sachkunde nur für
-     bestimmte Tätigkeiten, für die übrigen genügt die Unterrichtung. Der
-     Satz erschien zudem unter jeder Sperre, auch unter einer betrieblichen.
-     Er greift jetzt nur noch, wenn die Qualifikation gar keine Grundlage
-     nennt — und sagt dann genau das. */
-  sperre: { norm: "Keine Grundlage hinterlegt", betrieblich: true,
-    satz: "Zu dieser Anforderung ist keine Rechtsgrundlage erfasst. Worauf sie sich stützt, "
-      + "steht unter Betrieb → Qualifikationen." },
-  qualifikation: { norm: "§ 5 ArbSchG",
-    satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
-  fachkraft: { norm: "Landesheimpersonalverordnung",
-    satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." },
-  besetzung: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Die Mindestbesetzung legt der Betrieb fest. Bleibt sie dauerhaft unerreicht, ist das nach § 5 ArbSchG als Gefährdung zu beurteilen." },
-  urlaubsgrenze: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Wie viele gleichzeitig Urlaub haben dürfen, legt der Betrieb fest." },
-  einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
-    satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
-  ausgleich: { norm: "§ 3 Satz 2 ArbZG",
-    satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
-  tagesgrenze: { norm: "§ 3 Satz 1 und 2 ArbZG",
-    satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
-  ersatzruhe: { norm: "§ 11 Abs. 3 ArbZG",
-    satz: "Für Sonntagsarbeit ist ein Ersatzruhetag innerhalb von zwei Wochen zu gewähren, für Feiertagsarbeit an einem Werktag innerhalb von acht Wochen." },
-  sonntagsfrei: { norm: "§ 11 Abs. 1 ArbZG",
-    satz: "Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei bleiben." },
-  regelsatz: { norm: "Konfiguration", betrieblich: true,
-    satz: "Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt." },
-  vorsorge: { norm: "§ 6 Abs. 3 ArbZG",
-    satz: "Nachtarbeitnehmer haben das Recht, sich arbeitsmedizinisch untersuchen zu lassen — regelmäßig nach höchstens drei Jahren, nach dem fünfzigsten Lebensjahr jährlich." },
-};
+/* Die Tabelle steht im Regelregister (src/regelregister.js), je Eintrag mit
+   Regelkennung, Prüfstatus und Gültigkeit. Hier wird sie nur gelesen: Gleiche
+   Schlüssel, gleicher Wortlaut wie vorher. */
+const RECHTSQUELLE = rechtsquelleTabelle();
+
+/**
+ * Fundstelle zu einem Befund samt der Kennung der Regel aus dem Regelregister,
+ * soweit der Befund einer Regel zugeordnet ist (Feld `regelId`).
+ */
+function rechtsquelle(b) {
+  const q = rechtsquelleDirekt(b);
+  const regelId = regelIdFuerBefund(b);
+  return q && regelId ? { ...q, regelId } : q;
+}
 
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
-function rechtsquelle(b) {
+function rechtsquelleDirekt(b) {
   if (!b) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
@@ -2490,7 +2455,8 @@ const offeneErfassung = (m, p, bis) => {
  */
 function hindernisBefunde(m, p, d, da) {
   const g = [];
-  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel" });
+  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel",
+    regelId: regelIdFuerBefund({ art: art || "regel", quelle }) });
   const e = einschr(p);
   if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand");
   const abw = abwesenheitAm(m, p.id, d);
@@ -8362,7 +8328,7 @@ function MeineSchichten({ sitz, akt, ym }) {
         {antrag === "abwesenheit" ? (
           <div style={{ display: "grid", gap: 15 }}>
             <Field label="Art"><Sel value={form.art} onChange={(e) => setForm({ ...form, art: e.target.value })}>
-              {ABW.filter((a) => a.id !== "krank").map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+              {ABW.filter((a) => a.id !== "krank" && a.selbst !== false).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
               <Field label="Von"><Inp type="date" value={form.von} onChange={(e) => setForm({ ...form, von: e.target.value })} /></Field>
               <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e) => setForm({ ...form, bis: e.target.value })} /></Field>
@@ -9764,6 +9730,24 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* Das Modell ist optional. Fehlt es, leitet die Anwendung es aus der
+                Verteilung ab (Voll- oder Teilzeit); hinterlegt wird nur, was von
+                Regeln gebraucht wird — etwa Werkstudent. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Beschäftigungsmodell"
+                hint={p.beschaeftigungsmodell ? "Regeln, die an dieses Modell gebunden sind, wirken auf diese Person."
+                  : `Nicht angegeben — gilt als ${(BESCHAEFTIGUNGSMODELLE.find((x) => x.id === modellVon(p)) || {}).label}.`}>
+                <Sel value={p.beschaeftigungsmodell || ""}
+                  onChange={(e) => akt.setzePerson(p.id, "beschaeftigungsmodell", e.target.value || null)}>
+                  <option value="">Nicht angegeben</option>
+                  {BESCHAEFTIGUNGSMODELLE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </Sel></Field>
+              {(p.beschaeftigungsmodell === "minijob" || p.beschaeftigungsmodell === "midijob") && (
+                <Field label="Zulässige Stunden je Monat"
+                  hint="Aus der Verdienstgrenze und dem Stundenlohn zu berechnen. CENTRIC kennt keinen Lohn.">
+                  <Inp type="number" step="0.5" value={p.stundenGrenzeMonat == null ? "" : p.stundenGrenzeMonat}
+                    onChange={(e) => akt.setzePerson(p.id, "stundenGrenzeMonat", e.target.value === "" ? null : Number(e.target.value))} /></Field>)}
+            </div>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -10680,6 +10664,8 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
                             border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
                             color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
                           {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                          {q.regelId && <span style={{ fontSize: 10.5, color: C.dimmer, whiteSpace: "nowrap", ...NUM }}
+                            title={`Regel ${q.regelId} · Regelstand ${REGELSTAND.version}`}>{q.regelId}</span>}
                         </div>);
                     })()}</div>
                 </div>))}
@@ -20432,7 +20418,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
-                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
+                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich" && a.selbst !== false)
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
               onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>

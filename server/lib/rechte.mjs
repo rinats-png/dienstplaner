@@ -315,7 +315,7 @@ const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
 const PERSON_PRIVAT = ["email", "telefon", "mobil", "anschrift", "geburtstag",
   "geburtsdatum", "iban", "steuerId", "sozialversicherung", "notfall",
   "notfallkontakt", "notizen", "personalnummer", "einschraenkungen",
-  "lohn", "gehalt", "zuschlaege"];
+  "lohn", "gehalt", "zuschlaege", "beschaeftigungsmodell", "stundenGrenzeMonat"];
 
 function personSaeubern(p) {
   const rein = { ...p };
