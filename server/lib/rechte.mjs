@@ -358,6 +358,8 @@ export function bestandFuerRolle(bestand, sitzung) {
   /* Nur der eigene Betrieb. Die Oberfläche sucht über session.mandantId,
      nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
   let m = { ...eigener };
+  /* Ein Antwortfeld, kein gespeichertes: Was gespeichert vorliegt, zählt nicht. */
+  delete m.sichtIstDaten;
 
   if (rolle === "mitarbeiter" || rolle === "betriebsrat") {
     const ich = sitzung.person;
@@ -383,6 +385,12 @@ export function bestandFuerRolle(bestand, sitzung) {
         ? Object.fromEntries(Object.entries(m[feld]).filter(([k]) => eigenerSchluessel(k, ich)))
         : {};
     }
+    /* Der Oberfläche sagen, dass Ist-Daten aus Datenschutzgründen fehlen — sonst
+       hielte sie eine fehlende Erfassung für „nicht erfasst" und rechnete mit
+       der Planzeit, als wäre sie die tatsächliche (src/istdaten.js). Das Feld
+       entsteht nur in der Antwort und wird nie gespeichert. */
+    m.sichtIstDaten = (rolle === "mitarbeiter" && ich !== null && ich !== undefined)
+      ? { umfang: "eigene", person: ich } : { umfang: "keine" };
     /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
        Prüfrolle ist das der Kern der Aufgabe, für alle anderen nicht. */
     if (rolle === "mitarbeiter") {

@@ -49,6 +49,11 @@ jobs:
       - name: Stempeldaten
         run: npm run pruefung:stempeldaten
 
+      # Fehlen Ist-Daten aus Datenschutzgründen, wird nie die Planzeit als
+      # tatsächliche Arbeitszeit gezeigt, geprüft oder ausgegeben.
+      - name: Ist-Daten
+        run: npm run pruefung:istdaten
+
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen

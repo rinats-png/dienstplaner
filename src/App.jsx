@@ -1,10 +1,11 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
+import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT } from "./istdaten.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, brutto, fenster,
-  dauerAm, bruttoAm, uhrversatz, uhrsprung,
+  bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
   schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
@@ -1525,6 +1526,9 @@ function sollStunden(m, p, ym) {
   });
 }
 function istStunden(m, p, ym) {
+  /* Ohne Zugang zu den Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine
+     Ist-Stunden — auch nicht aus dem Plan. */
+  if (!istVerfuegbar(m, p)) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
     let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0;
@@ -1556,6 +1560,7 @@ function istStunden(m, p, ym) {
    selbst steht in src/regelwerk.js und ist dort geprüft.
    -------------------------------------------------------------------------- */
 function ausgleichPruefen(m, p, bis) {
+  if (!istVerfuegbar(m, p)) return { nichtVerfuegbar: true, eingehalten: null };
   return memo(m, `ausgl|${p.id}|${bis}`, () => {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
@@ -1598,6 +1603,7 @@ function ausgleichVerstoesse(m, bis) {
   const aus = [];
   for (const p of aktive(m, bis)) {
     const e = ausgleichPruefen(m, p, bis);
+    if (e.nichtVerfuegbar) continue;
     if (!e.eingehalten) aus.push({ person: p, ...e });
   }
   return aus.sort((a, b) => b.ueberhang - a.ueberhang);
@@ -1620,6 +1626,7 @@ function urlaubskonto(m, p, jahr) {
   });
 }
 function stundenkonto(m, p, ym) {
+  if (!istVerfuegbar(m, p)) return null;
   return memo(m, `kto|${p.id}|${ym}`, () => {
     const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
     for (let x = 1; x <= bis; x++) { const k = `${j}-${pad(x)}`; d += istStunden(m, p, k).gesamt - sollStunden(m, p, k); }
@@ -1627,6 +1634,7 @@ function stundenkonto(m, p, ym) {
   });
 }
 function nachtJahr(m, p, jahr) {
+  if (!istVerfuegbar(m, p)) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
   return memo(m, `nacht|${p.id}|${jahr}`, () => {
     let h = 0, n = 0;
     for (let x = 1; x <= 12; x++) { const r = istStunden(m, p, `${jahr}-${pad(x)}`); h += r.nacht; n += r.naechte; }
@@ -1815,10 +1823,16 @@ function pruefen(m, von, bis) {
         /* Gegen die tatsächlich erfassten Zeiten, wo sie bestätigt sind —
            sonst gegen den Plan. Die Pause ist Teil der Dienstart, weil sie
            nach § 4 Satz 1 im Voraus feststehen muss. */
-        const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
-        const ist = e && e.bestaetigt
-          ? { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 }
-          : da;
+        const ist = pruefZeitFuer(m, p, d, da);
+        /* Ohne Zugang zu den Ist-Daten nicht bewertbar — nie gegen den Plan
+           als Ersatz prüfen. Ein Befund für die ganze Ansicht genügt. */
+        if (!ist) {
+          if (!out.some((x) => x.art === "istdaten"))
+            push({ art: "istdaten", schwere: "warn", datum: von, ref: "istdaten",
+              titel: "Pausen, Tageshöchstarbeitszeit und Ausgleichszeitraum nicht bewertbar",
+              text: `${ISTDATEN_TEXT} Diese Prüfungen brauchen die tatsächlichen Arbeitszeiten.` });
+          continue;
+        }
 
         if (!pauseGenuegt(ist)) {
           const anwesend = bruttoAm(d, ist);
@@ -2423,17 +2437,11 @@ const einschr = (p) => p.einschraenkungen || {};
 
 /* ------------------------------ Ist-Erfassung ---------------------------- */
 /** Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante. */
-function istDauer(m, p, d, da) {
-  /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
-     ein Nachtdienst sieben oder neun Stunden, nicht acht. Diese Stelle ist
-     der Engpass für alle geleisteten Stunden — Stundenkonto, Lohnausgabe,
-     Ausgleichszeitraum, Belastung hängen daran. */
-  const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
-  if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
-  const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
-  const std = dauerAm(d, roh);
-  return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
-}
+/* Diese Stelle ist der Engpass für alle geleisteten Stunden — Stundenkonto,
+   Lohnausgabe, Ausgleichszeitraum, Belastung hängen daran. Die Rechnung steht
+   in src/istdaten.js, mit dem Rollenschutz: Ohne Zugang zu den Ist-Daten
+   ist std null, nie die Planzeit. */
+const istDauer = (m, p, d, da) => istZeitFuer(m, p, d, da);
 const offeneErfassung = (m, p, bis) => {
   const out = [];
   for (let d = addDays(bis, -13); d <= bis; d = addDays(d, 1)) {
@@ -2544,9 +2552,11 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
   let median, nachtMittel;
   if (ctx) { median = ctx.median; nachtMittel = ctx.nachtMittel; }
   else {
-    const konten = m.personen.filter((x) => imDienst(x, d)).map((x) => stundenkonto(m, x, ym)).sort((a, b2) => a - b2);
+    const konten = m.personen.filter((x) => imDienst(x, d)).map((x) => stundenkonto(m, x, ym))
+      .filter((k) => k !== null).sort((a, b2) => a - b2);
     median = konten.length ? konten[Math.floor(konten.length / 2)] : 0;
-    const naechteJe = m.personen.filter((x) => imDienst(x, d)).map((x) => nachtJahr(m, x, jahr).anzahl);
+    const naechteJe = m.personen.filter((x) => imDienst(x, d)).map((x) => nachtJahr(m, x, jahr).anzahl)
+      .filter((k) => k !== null);
     nachtMittel = naechteJe.length ? naechteJe.reduce((a, b2) => a + b2, 0) / naechteJe.length : 0;
   }
 
@@ -2555,7 +2565,7 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     const t = personTag(m, p, d);
     if (t.dienstId) continue;                      // hat bereits Dienst
     const g = hindernisse(m, p, d, da);
-    const kto = ctx ? (ctx.konten.get(p.id) || 0) : stundenkonto(m, p, ym);
+    const kto = ctx ? (ctx.konten.has(p.id) ? ctx.konten.get(p.id) : 0) : stundenkonto(m, p, ym);
     const eigene = ctx ? (ctx.einspruenge[p.id] || 0) : (einspruengeJe[p.id] || 0);
     const passendeQuals = fehlendeQuals.filter((q) => qualGueltig(m, p, q));
     const gruende = [];
@@ -2566,8 +2576,10 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
       gruende.push(`${abgelaufen.length} Nachweis abgelaufen`); }
     if (passendeQuals.length) { punkte += 45 * passendeQuals.length;
       gruende.push(`bringt ${passendeQuals.map((q) => (m.qualifikationen.find((x) => x.id === q) || {}).kurz).join(", ")}`); }
-    const relKto = kto - median;
-    if (relKto < -3) { punkte += Math.min(30, -relKto * 2); gruende.push(`${n1(Math.abs(relKto))} h unter dem Mittel`); }
+    /* Ohne Ist-Daten (Rollenschutz) gibt es kein Konto — dann keine Aussage dazu. */
+    const relKto = kto === null ? null : kto - median;
+    if (relKto === null) gruende.push("Stundenkonto nicht verfügbar");
+    else if (relKto < -3) { punkte += Math.min(30, -relKto * 2); gruende.push(`${n1(Math.abs(relKto))} h unter dem Mittel`); }
     else if (relKto > 3) { punkte -= Math.min(28, relKto * 2); gruende.push(`${n1(relKto)} h über dem Mittel`); }
     else gruende.push("Stundenkonto im Mittel");
     if (eigene < mittel - .5) { punkte += 14; gruende.push("selten eingesprungen"); }
@@ -2714,6 +2726,7 @@ function tagesanteile(datum, da) {
 }
 /** Zuschlagsrelevante Stunden einer Person in einem Monat. */
 function zuschlagStunden(m, p, ym) {
+  const ohneIst = !istVerfuegbar(m, p);
   return memo(m, `zus|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number);
     const n = dim_(y, mo - 1);
@@ -2736,6 +2749,9 @@ function zuschlagStunden(m, p, ym) {
       }
     }
     for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
+    /* Nacht-, Sonn- und Feiertagsanteile folgen dem Plan; die gearbeiteten
+       Stunden gibt es ohne Ist-Daten nicht. */
+    if (ohneIst) { r.gesamt = null; r.nichtVerfuegbar = true; }
     return r;
   });
 }
@@ -2855,10 +2871,10 @@ function planeMonat(m, ym, grenzen = {}) {
     ctx.nachtAnzahl.set(p.id, nachtJahr(m, p, jahr).anzahl);
   }
   for (const e of m.einspruenge || []) ctx.einspruenge[e.personId] = (ctx.einspruenge[e.personId] || 0) + 1;
-  const werte = [...ctx.konten.values()].sort((a, b) => a - b);
+  const werte = [...ctx.konten.values()].filter((k) => k !== null).sort((a, b) => a - b);
   ctx.median = werte.length ? werte[Math.floor(werte.length / 2)] : 0;
   ctx.mittelEinspruenge = m.personen.length ? (m.einspruenge || []).length / m.personen.length : 0;
-  const nw = [...ctx.nachtAnzahl.values()];
+  const nw = [...ctx.nachtAnzahl.values()].filter((k) => k !== null);
   ctx.nachtMittel = nw.length ? nw.reduce((a, b) => a + b, 0) / nw.length : 0;
 
   let arbeit = { ...m, abweichungen: { ...m.abweichungen } };
@@ -3463,6 +3479,8 @@ const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] 
  * Eine Zahl, an der sofort ablesbar ist, wer noch Luft hat.
  */
 function auslastung(m, p, ym) {
+  if (!istVerfuegbar(m, p))
+    return { ist: null, soll: sollStunden(m, p, ym), pct: null, stand: "nicht_verfuegbar", nichtVerfuegbar: true };
   return memo(m, `ausl|${p.id}|${ym}`, () => {
     const ist = istStunden(m, p, ym).gesamt;
     const soll = sollStunden(m, p, ym);
@@ -3480,13 +3498,16 @@ function auslastung(m, p, ym) {
 function teamAuslastung(m, ym, bezugstag, standortId) {
   const leute = aktive(m, bezugstag).filter((p) => p.imSchichtdienst !== false
     && personAmStandort(m, p, standortId, bezugstag));
-  let ist = 0, soll = 0, ueber = 0, unter = 0;
+  let ist = 0, soll = 0, ueber = 0, unter = 0, ohneIst = 0;
   for (const p of leute) {
     const au = auslastung(m, p, ym);
+    if (au.nichtVerfuegbar) { ohneIst++; soll += au.soll; continue; }
     ist += au.ist; soll += au.soll;
     if (au.stand === "hoch" || au.stand === "erhoeht") ueber++;
     else if (au.stand === "niedrig") unter++;
   }
+  /* Fehlen Ist-Daten einzelner Personen, ist die Summe keine Ist-Summe mehr. */
+  if (ohneIst) return { personen: leute.length, ist: null, soll, pct: null, ueber: null, unter: null, nichtVerfuegbar: true };
   return { personen: leute.length, ist, soll, pct: soll > 0 ? Math.round((ist / soll) * 100) : 0, ueber, unter };
 }
 
@@ -4676,14 +4697,18 @@ function rangGruende(m, x, datum, dienstId) {
   const kto = stundenkonto(m, p, ym);
   const au = auslastung(m, p, ym);
   const alle = m.personen.filter((q) => imDienst(q, datum) && q.imSchichtdienst !== false);
-  const schnittKto = alle.reduce((a, q) => a + stundenkonto(m, q, ym), 0) / (alle.length || 1);
+  /* Ohne Ist-Daten (Rollenschutz) keine Aussage über Konto und Auslastung. */
+  const mitKonto = alle.map((q) => stundenkonto(m, q, ym)).filter((k) => k !== null);
+  const schnittKto = mitKonto.reduce((a, k) => a + k, 0) / (mitKonto.length || 1);
 
   if (p.springer) g.push({ art: "plus", text: "Springerpool — für genau solche Fälle vorgesehen" });
-  if (kto < schnittKto - 4) g.push({ art: "plus",
+  if (kto === null) g.push({ art: "hinweis", text: `Stundenkonto und Auslastung: ${ISTDATEN_TEXT}` });
+  else if (kto < schnittKto - 4) g.push({ art: "plus",
     text: `Stundenkonto ${sgn(kto)} h liegt unter dem Mittel (${sgn(Math.round(schnittKto))} h)` });
   else if (kto > schnittKto + 8) g.push({ art: "minus",
     text: `Stundenkonto ${sgn(kto)} h liegt bereits deutlich über dem Mittel` });
-  if (au.pct < 85) g.push({ art: "plus", text: `Auslastung ${au.pct} % — Luft nach oben` });
+  if (au.pct === null) { /* siehe oben */ }
+  else if (au.pct < 85) g.push({ art: "plus", text: `Auslastung ${au.pct} % — Luft nach oben` });
   else if (au.pct > 105) g.push({ art: "minus", text: `Auslastung ${au.pct} % — bereits über Soll` });
 
   const t = personTag(m, p, datum);
@@ -8257,7 +8282,9 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const abwesend = aktiv.filter((p) => abwesenheitAm(m, p.id, d0)).length;
   const kritisch = kommend.filter((b) => b.schwere === "danger").length;
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
-  const kontenHoch = aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
+  /* Ohne Ist-Daten (Rollenschutz) gibt es keine Konten — „0 über der Grenze" wäre falsch. */
+  const kontenHoch = aktiv.some((p) => !istVerfuegbar(m, p)) ? null
+    : aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
 
   return (
@@ -8302,8 +8329,9 @@ function Lagebild({ sitz, oeffneTag, akt }) {
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
           <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
-          <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
-            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
+          <Kpi label="Konten über Grenze" value={kontenHoch === null ? "–" : kontenHoch}
+            tone={kontenHoch === null ? "text" : kontenHoch ? "warn" : "ok"}
+            sub={kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
         </KpiRow>
         <Card>
           <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
@@ -8432,6 +8460,9 @@ function Tagesfazit({ lage, onTag }) {
  */
 function TeamAuslastungLeiste({ ta }) {
   if (!ta.personen) return null;
+  if (ta.nichtVerfuegbar) return (
+    <div className="noprint" style={{ padding: "13px 16px", background: C.flaecheStill, borderRadius: 6,
+      marginBottom: 12, fontSize: 13.5, color: C.dim }}>Team-Auslastung: {ISTDATEN_TEXT}</div>);
   const teile = [`Team-Auslastung ${ta.pct} %`];
   if (ta.ueber) teile.push(`${ta.ueber} überplant`);
   if (ta.unter) teile.push(`${ta.unter} unterausgelastet`);
@@ -8780,7 +8811,8 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
             <th style={{ padding: "9px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}` }}><Lab>Ist/Soll</Lab></th>
           </tr></thead>
           <tbody>{leute.map((p) => {
-            const ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym), diff = ist.gesamt - soll;
+            const ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
+            const diff = ist.nichtVerfuegbar ? null : ist.gesamt - soll;
             return (<tr key={p.id} className="row">
               <td onClick={() => oeffnePerson(p.id)} style={{ position: "sticky", left: 0, background: C.flaeche,
                 zIndex: 1, padding: "8px 20px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
@@ -8793,8 +8825,12 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                   <div style={{ display: "flex", justifyContent: "center" }}>
                     <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} /></div></td>); })}
               <td style={{ padding: "8px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" }}>
-                <div style={{ fontSize: 12.5, ...NUM }}>{n1(ist.gesamt)}/{n1(soll)}</div>
-                <div style={{ fontSize: 11.5, color: Math.abs(diff) < 6 ? C.dimmer : diff > 0 ? C.warn : C.accent, ...NUM }}>{sgn(diff)} h</div></td>
+                {ist.nichtVerfuegbar ? (
+                  <div title={ISTDATEN_TEXT} style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>–/{n1(soll)}</div>
+                ) : (<>
+                  <div style={{ fontSize: 12.5, ...NUM }}>{n1(ist.gesamt)}/{n1(soll)}</div>
+                  <div style={{ fontSize: 11.5, color: Math.abs(diff) < 6 ? C.dimmer : diff > 0 ? C.warn : C.accent, ...NUM }}>{sgn(diff)} h</div>
+                </>)}</td>
             </tr>); })}</tbody>
         </table>
       </Card>
@@ -11562,7 +11598,8 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
       <Card style={{ overflowX: "auto" }}>
         <div style={{ padding: 20, minWidth: 1080 }}>
           {leute.map((p) => {
-            const jahresIst = monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
+            const ohneIst = !istVerfuegbar(m, p);
+            const jahresIst = ohneIst ? null : monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
             const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
             const url = urlaubskonto(m, p, jahr);
             return (
@@ -11573,7 +11610,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
                   {p.springer && <Pill size="sm" tone="violet">Springer</Pill>}
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
-                    {n1(jahresIst)} von {n1(jahresSoll)} h · {sgn(jahresIst - jahresSoll)} h · Urlaub {url.genommen}/{url.anspruch}</span>
+                    {ohneIst ? `Ist nicht verfügbar · Soll ${n1(jahresSoll)} h` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`} · Urlaub {url.genommen}/{url.anspruch}</span>
                 </div>
                 {/* Zwölf Blöcke statt 365 Härchen.
 
@@ -11591,7 +11628,8 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                     const ymm = `${jahr}-${pad(mo + 1)}`;
                     const ist = istStunden(m, p, ymm).gesamt;
                     const soll = sollStunden(m, p, ymm);
-                    const quote = soll > 0 ? ist / soll : 0;
+                    /* Ohne Ist-Daten kein Ausschlag — weder Mehrarbeit noch Unterdeckung. */
+                    const quote = ist === null ? 1 : soll > 0 ? ist / soll : 0;
                     const tage = dim_(jahr, mo);
                     let abwTage = 0, urlaubTage = 0;
                     for (let i = 1; i <= tage; i++) {
@@ -11617,8 +11655,9 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                       : abw < -0.15 ? C.violet : C.accent;
                     const prozent = soll > 0 ? Math.round(quote * 100) : 0;
                     return (
-                      <div key={mo} title={`${MON[mo]} ${jahr} · ${n1(ist)} von ${n1(soll)} h`
-                        + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)")
+                      <div key={mo} title={(ist === null ? `${MON[mo]} ${jahr} · Soll ${n1(soll)} h · ${ISTDATEN_TEXT}`
+                        : `${MON[mo]} ${jahr} · ${n1(ist)} von ${n1(soll)} h`
+                        + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)"))
                         + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
                         <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 3,
@@ -11626,7 +11665,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                           {/* Die Nulllinie: hundert Prozent des Monatssolls */}
                           <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,
                             background: C.lineStark, opacity: .8 }} />
-                          {soll > 0 && (
+                          {soll > 0 && ist !== null && (
                             <span style={{ position: "absolute", left: 4, right: 4,
                               ...(ueber ? { bottom: 18 } : { top: 19 }),
                               height: balken, background: ton,
@@ -15497,9 +15536,11 @@ function bewerbungsPunkte(m, p, a) {
   let punkte = 0;
   const konto = stundenkonto(m, p, ym);
   const alle = m.personen.filter((x) => imDienst(x, a.datum) && x.imSchichtdienst !== false);
-  const mittel = alle.reduce((s, x) => s + stundenkonto(m, x, ym), 0) / (alle.length || 1);
-  /* Wer unter dem Mittel liegt, hat Vorrang — das gleicht die Konten aus. */
-  punkte += Math.max(-40, Math.min(40, (mittel - konto) * 0.8));
+  const konten = alle.map((x) => stundenkonto(m, x, ym)).filter((k) => k !== null);
+  const mittel = konten.reduce((s, k) => s + k, 0) / (konten.length || 1);
+  /* Wer unter dem Mittel liegt, hat Vorrang — das gleicht die Konten aus.
+     Ohne Ist-Daten (Rollenschutz) zählt das Konto nicht. */
+  if (konto !== null) punkte += Math.max(-40, Math.min(40, (mittel - konto) * 0.8));
   /* Wer zuletzt oft eingesprungen ist, tritt zurück. */
   const letzte = (m.ausschreibungen || []).filter((x) => x.status === "vergeben"
     && x.vergebenAn === p.id && x.datum >= addDays(heute(), -90)).length;
@@ -17868,7 +17909,8 @@ function ermuedung(m, personId, tage) {
   /* Stundenkonto über der Grenze */
   const konto = stundenkonto(m, p, bis.slice(0, 7));
   const grenze = m.einstellungen.ausgleichsgrenze || 40;
-  const ueber = Math.max(0, konto) / grenze;
+  /* Ohne Ist-Daten bleibt das Konto unberücksichtigt — und das wird gesagt. */
+  const ueber = konto === null ? 0 : Math.max(0, konto) / grenze;
 
   const G = ERMUEDUNG_GEWICHTE;
   const gruende = [];
@@ -17907,6 +17949,7 @@ function ermuedung(m, personId, tage) {
     gruende.push({ was: "Stundenkonto im Plus",
       wert: `${n1(konto)} Stunden`, punkte: Math.round(w) });
   }
+  if (konto === null) gruende.push({ was: "Stundenkonto nicht berücksichtigt", wert: ISTDATEN_TEXT, punkte: 0 });
 
   punkte = Math.round(punkte);
   const stufe = punkte >= ERMUEDUNG_STUFEN.hoch.ab ? "hoch"
