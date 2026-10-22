@@ -18,6 +18,9 @@ import {
 import { REGELSTAND, schutzBefunde, HOECHST_TAG, FREIE_SONNTAGE_MIN } from "../src/regelwerk.js";
 import { RUHEZEIT_GESETZ, bestaetigungsEintraege } from "../src/warnstufen.js";
 import { BESCHAEFTIGUNGSMODELLE } from "../src/beschaeftigung.js";
+import { GRENZEN as FAHR_GRENZEN } from "../src/fahrzeit.js";
+import { MINDESTERFUELLUNG } from "../src/ppprl.js";
+import { TARIFWERKE } from "../src/tarifwerke.js";
 
 const vorher = JSON.parse(readFileSync(new URL("./hilfen/rechtsquelle-vorher.json", import.meta.url), "utf8"));
 
@@ -301,5 +304,42 @@ describe("Bewertung und Folge sind getrennt", () => {
   it("die Folgen sind eine eigene Liste, keine Stufen", () => {
     expect(FOLGEN).toEqual(["keine", "bestaetigung", "nachweis", "berechnung", "bericht", "freigabe"]);
     for (const f of FOLGEN) expect(["hinweis", "achtung", "recht"]).not.toContain(f);
+  });
+});
+
+describe("Fahrzeit, PPP-RL und Tarifvorlagen: Zuordnung ohne zweite Berechnung", () => {
+  it("die Lenkzeitregeln verweisen auf die Konstanten des Fahrzeitmoduls", () => {
+    expect(regel("FAHRZEIT-LENK-01").parameter.grenzen).toEqual({
+      tag: FAHR_GRENZEN.tagLenkzeit, woche: FAHR_GRENZEN.wocheLenkzeit, doppelwoche: FAHR_GRENZEN.doppelwocheLenkzeit });
+    expect(regel("FAHRZEIT-PAUSE-01").parameter.lenkblockMinuten).toBe(FAHR_GRENZEN.lenkblockOhnePause);
+    expect(regel("FAHRZEIT-RUHE-01").parameter.wochenruheMinuten).toBe(FAHR_GRENZEN.wochenruhe);
+    expect(regel("FAHRZEIT-LENK-01").quelle).toBe("VO (EG) 561/2006");
+    expect(regel("FAHRZEIT-LENK-01").fundstelle).toBe("Art. 6");
+  });
+  it("PPP-RL verweist auf die Mindesterfüllung des Moduls und nennt die Richtwerte nicht als Gesetz", () => {
+    expect(regel("PPPRL-01").parameter.mindesterfuellung).toBe(MINDESTERFUELLUNG);
+    expect(regel("PPPRL-01").pruefhinweis).toContain("keine Gesetzeswerte");
+  });
+  it("jede Tarifvorlage hat genau eine Registerzeile mit Stand und Branche — abgeleitet", () => {
+    const tarife = REGELN.filter((r) => r.ebene === "tarif");
+    expect(tarife.length).toBe(TARIFWERKE.length);
+    for (const t of TARIFWERKE) {
+      const r = tarife.find((x) => x.parameter.vorlage === t.id);
+      expect(r, t.id).toBeTruthy();
+      expect(r.parameter.stand).toBe(t.stand);
+      expect(r.scope.branche).toEqual(t.branchen && t.branchen.length ? t.branchen : null);
+      expect(r.quelle).toBe(t.grundlage);
+    }
+  });
+  it("sie sind nicht im Regelstand und können nie über das Register zum Rechtsverstoß werden", () => {
+    for (const r of REGELN.filter((x) => /^(FAHRZEIT|PPPRL|TARIF)-/.test(x.id))) {
+      expect(r.pruefstatus, r.id).toBe("provisional");
+      expect(r.regelstand, r.id).toBeNull();
+      expect(begrenzeStufe(r, "recht"), r.id).toBe("hinweis");
+    }
+  });
+  it("die Rechner bleiben, wo sie sind: das Register enthält keine Berechnung", () => {
+    const quelltext = readFileSync(new URL("../src/regelregister.js", import.meta.url), "utf8");
+    expect(quelltext).not.toMatch(/pruefeTag|pruefeWoche|anwenden\(/);
   });
 });

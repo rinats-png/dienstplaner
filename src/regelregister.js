@@ -49,6 +49,9 @@ import { REGELSTAND, HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, NACHT_TAGE
   VORSORGE_MONATE, VORSORGE_MONATE_AB_50, FREIE_SONNTAGE_MIN, ERSATZ_TAGE_SONNTAG,
   ERSATZ_TAGE_FEIERTAG } from "./regelwerk.js";
 import { stufeRang, RUHEZEIT_GESETZ } from "./warnstufen.js";
+import { GRENZEN as FAHR_GRENZEN } from "./fahrzeit.js";
+import { MINDESTERFUELLUNG as PPP_MINDEST } from "./ppprl.js";
+import { TARIFWERKE } from "./tarifwerke.js";
 
 /** Prüfstatus und was er der Regel erlaubt. wirkung: "voll" | "hinweis" | "keine". */
 export const PRUEFSTATUS = {
@@ -283,8 +286,48 @@ const REGELN_VORLAEUFIG = [
     pruefhinweis: "Verbindlichkeit (Unfallverhütungsvorschrift, Norm, Betriebsanweisung) und Anwesenheit versus Aufsicht klären." }),
 ];
 
+/* --------------------------------------------------------------------------
+   Fahrzeit, PPP-RL und Tarifvorlagen — nur die Zuordnung
+
+   Diese drei rechnen in eigenen Modulen (fahrzeit.js, ppprl.js,
+   tarifwerke.js) und tun es weiter dort. Das Register führt nur, woher ihre
+   Werte stammen, damit ein Befund oder eine Vorlage eine stabile Kennung und
+   Quelle hat. Die Zahlen werden nicht noch einmal eingetragen: Die Parameter
+   verweisen auf die Konstanten der Module.
+
+   Sie gehören (noch) nicht zu REGELSTAND.quellen und sind deshalb als
+   „provisional" geführt: nicht im Regelstand 2026.09 geprüft, bis jemand sie
+   dort aufnimmt. Das ändert nichts an ihrer Berechnung — die Begrenzung des
+   Registers greift nur dort, wo ein Befund durch das Register bewertet wird.
+   -------------------------------------------------------------------------- */
+const REGELN_MODULE = [
+  vorlaeufig({ id: "FAHRZEIT-LENK-01", typ: "bestandsregel", bezeichnung: "Lenkzeit (Tag, Woche, Doppelwoche)",
+    ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 6", hoechsteStufe: null,
+    parameter: { modul: "fahrzeit.js", grenzen: { tag: FAHR_GRENZEN.tagLenkzeit, woche: FAHR_GRENZEN.wocheLenkzeit, doppelwoche: FAHR_GRENZEN.doppelwocheLenkzeit } },
+    pruefhinweis: "Fassung VO (EU) 2020/1054 und FPersV laut Modulkopf; im Regelstand noch nicht aufgeführt. Anwendungsbereich je Fahrzeug trägt der Betrieb." }),
+  vorlaeufig({ id: "FAHRZEIT-PAUSE-01", typ: "bestandsregel", bezeichnung: "Unterbrechung nach Lenkblock",
+    ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 7", hoechsteStufe: null,
+    parameter: { modul: "fahrzeit.js", lenkblockMinuten: FAHR_GRENZEN.lenkblockOhnePause, unterbrechungMinuten: FAHR_GRENZEN.unterbrechung },
+    pruefhinweis: "Wie FAHRZEIT-LENK-01." }),
+  vorlaeufig({ id: "FAHRZEIT-RUHE-01", typ: "bestandsregel", bezeichnung: "Tägliche und wöchentliche Ruhezeit (Fahrpersonal)",
+    ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 8", hoechsteStufe: null,
+    parameter: { modul: "fahrzeit.js", tagesruheMinuten: FAHR_GRENZEN.tagesruhe, wochenruheMinuten: FAHR_GRENZEN.wochenruhe },
+    pruefhinweis: "Wie FAHRZEIT-LENK-01." }),
+  vorlaeufig({ id: "PPPRL-01", typ: "bestandsregel", bezeichnung: "Personalausstattung Psychiatrie und Psychosomatik (PPP-RL)",
+    ebene: "bund", quelle: "PPP-RL (Gemeinsamer Bundesausschuss)", fundstelle: null, hoechsteStufe: null,
+    parameter: { modul: "ppprl.js", mindesterfuellung: PPP_MINDEST },
+    pruefhinweis: "Die hinterlegten Richtwerte sind Ausgangswerte, keine Gesetzeswerte; die Einrichtung überschreibt sie. Fassung und Gültigkeit je Satz stehen in ppprl.js. Im Regelstand nicht aufgeführt." }),
+  /* Eine Zeile je Tarifvorlage, aus TARIFWERKE abgeleitet — keine zweite Liste. */
+  ...TARIFWERKE.map((t) => vorlaeufig({
+    id: `TARIF-${String(t.id).toUpperCase()}-01`, typ: "bestandsregel", bezeichnung: `Tarifvorlage ${t.kurz || t.name}`,
+    ebene: "tarif", quelle: t.grundlage, fundstelle: null, hoechsteStufe: null,
+    scope: { branche: t.branchen && t.branchen.length ? t.branchen : null },
+    parameter: { modul: "tarifwerke.js", vorlage: t.id, stand: t.stand, link: t.quelle },
+    pruefhinweis: `Vorlage überschreibt Betriebseinstellungen mit Fundstelle und Stand (${t.stand}); CENTRIC rechnet keine Löhne. Tarifwerte vor Verwendung gegen den aktuellen Tarifabschluss prüfen.` })),
+];
+
 /** Alle Regeln. Die Reihenfolge ist die der Anzeige und der Prüfung. */
-export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG];
+export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE];
 
 /* --------------------------------------------------------------------------
    Nachschlagen

@@ -150,7 +150,7 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 
 **Migration:** keine Datenmigration. Neue Personenfelder sind optional; ohne sie gilt die Ableitung Vollzeit/Teilzeit. Unbekannte Modell- oder Abwesenheitskennungen aus einer neueren Fassung brechen nichts (`abwArt()` fällt zurück).
 
-**Abwesenheitsarten:** `elternzeit`, `pflegezeit`, `familienpflegezeit`, `arbeitsverhinderung`, `mutterschutz`, `ehrenamt` (Feuerwehr/THW), `personalvertretung`, `berufsschule`, `atzfreistellung` — jeweils `selbst: false` (Beschäftigte beantragen sie nicht in der App), mit Norm. Das Feld `bezahlt` ist vorläufig; CENTRIC rechnet keinen Lohn. Untersuchungs- und Stillzeiten (MuSchG) sind als Abwesenheit nicht abgebildet.
+**Abwesenheitsarten:** `elternzeit`, `pflegezeit`, `familienpflegezeit`, `arbeitsverhinderung`, `mutterschutz`, `ehrenamt` (Feuerwehr/THW), `personalvertretung`, `berufsschule`, `atzfreistellung` — jeweils `selbst: false` (Beschäftigte beantragen sie nicht in der App), mit Norm. Das Feld `bezahlt` kennt drei Zustände (`true`, `false`, `"ungeklaert"`); die neuen Arten stehen auf `ungeklaert`, siehe Anhang C. CENTRIC rechnet keinen Lohn. Untersuchungs- und Stillzeiten (MuSchG) sind als Abwesenheit nicht abgebildet.
 
 ## Anhang B — Bewusst nicht als Regel
 
@@ -159,3 +159,22 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 | „Aufzugswärter je Schicht" | TRBS 3121 verlangt Erreichbarkeit/Notfallorganisation, keine Dauerbesetzung. |
 | Brandschutzhelfer 5 % je Schicht | ASR A2.2: „in der Regel" 5 %, Bedarf nach Gefährdungsbeurteilung. Nur als vorläufiger Richtwert-Hinweis (`QUOTE-BRANDSCHUTZ-01`). |
 | § 50 AMG: „Person anwesend, solange geöffnet" | Keine automatische Minutenbesetzung; höchstens vorläufig, derzeit nicht eingetragen. |
+
+## Anhang C — Nachbesserungen nach dem ersten Bericht (Oktober 2026)
+
+**Eine Schutzquelle für Planprüfung und Warndialog.** `schutzEinsatz()` in `src/regelwerk.js` setzt aus `schutzBefunde()` die Bewertung (Verbot → Rechtsverstoß, Pflicht auf Verlangen oder Ausnahme → Achtung). `pruefen()` (Prüfansicht) und `hindernisBefunde()` (Warndialog) lesen beide dort. Vorher kannte der Warndialog Jugendarbeitsschutz, Mutterschutz und SGB IX nicht — dieselbe Einteilung war in der Prüfansicht ein Befund und beim Einteilen unauffällig. Test: `pruefungen/konsistenz.test.js`.
+
+**Nicht bewertbar ist nie erfüllt.** `aufgabeGedeckt()` meldet bei einer Aufgabe ohne Qualifikation `gedeckt: true, offen: true`. `pruefen()` übersprang das bei `gedeckt` und zeigte nichts; der `offen`-Zweig (`schwere: "warn"`) war unerreichbar. `aufgabeSchwere()` entscheidet jetzt: gedeckt und bewertbar → kein Befund, offen → Hinweis „nicht prüfbar", nicht gedeckt → Rechtsverstoß-Farbe. Der Zweig war also nicht überflüssig, sondern der Kontrollfluss falsch.
+
+**Entgeltstatus.** `bezahlt` wird nur noch über `entgeltStatus()` (`src/abwesenheitsarten.js`) gelesen: `true` → bezahlt, `false` → unbezahlt, alles andere → ungeklärt, nie wie unbezahlt behandelt und nicht als Wahrheitswert gelesen (eine nichtleere Zeichenkette würde sonst gutgeschrieben). Das Stundenkonto (`istStunden`) schreibt für ungeklärte Tage nichts gut, zählt sie (`ungeklaert`) und die Prüfansicht meldet „Entgeltstatus der Abwesenheit nicht geklärt". Bestehende Arten sind unverändert.
+
+**Regelstand und Register.** `REGELSTAND.quellen` wurde um die bereits wirkenden Quellen ergänzt (EFZG § 3, SGB V § 74 · SGB IX §§ 164, 207, Landesheimpersonalverordnung). `regelstandAbdeckung()` erkennt SGB-Bände jetzt einzeln. Ein Test verlangt, dass jede Quelle einer wirkenden Regel im Regelstand steht, und führt die zwei dokumentierten Ausnahmen (GewO § 34a hängt an den Qualifikationen des Betriebs, MiLoG § 17 an `aufbewahrung.js`).
+
+**Fahrzeit, PPP-RL, Tarifvorlagen.** Eine Registerzeile je Regelgruppe mit Kennung und Quelle (`FAHRZEIT-*`, `PPPRL-01`, `TARIF-*`). Die Parameter verweisen auf die Konstanten der Module, die Tarifzeilen werden aus `TARIFWERKE` abgeleitet. Die Rechner bleiben in `fahrzeit.js`, `ppprl.js`, `tarifwerke.js`. Die Zeilen sind `provisional`, weil diese Quellen noch nicht im Regelstand stehen — eine ehrliche Auskunft, keine Abstufung der Berechnung.
+
+**Aufbewahrung (nur Dokumentation).** Rechnungen und Buchungsbelege acht Jahre (§ 147 Abs. 3 AO), Bücher, Inventare, Jahresabschlüsse zehn, Handels- und Geschäftsbriefe sechs. Geändert: `rechtliches/verarbeitungsverzeichnis.md` (Kundenrechnungen) und ein Kommentar in `App.jsx`. CENTRIC löscht keine Rechnungen selbst (`aufbewahrung.js`: sie liegen beim Betreiber); es gibt keine neue Löschlogik. Vor Veröffentlichung von der Steuerberatung bestätigen lassen.
+
+## Anhang D — Begriffe
+
+- „Verstoßregel" kommt weder im Plan, noch im Code, noch in E-19 bis E-21 vor. Kein Handlungsbedarf; im Code und in den Entscheidungen heißen die Bewertungen Hinweis, Achtung, Rechtsverstoß.
+- „Blockregel" (Plan 5.2) meint einen Block zusammengehöriger Tage („Samstag und Sonntag dieselbe Dienstart"), nicht Blockieren. Seit E-19 sperrt CENTRIC nichts; der Name kann trotzdem missverstanden werden (etwa als „Regel, die blockiert"). **Spätere Namensentscheidung**, z. B. „Tagesblockregel" oder „Zusammenhangsregel". In diesem Schritt wird nichts umbenannt; die Regelart `blockregel` im Register ist reserviert und wird nicht gerechnet.
