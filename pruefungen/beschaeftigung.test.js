@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { BESCHAEFTIGUNGSMODELLE, beschaeftigungsmodell, modellVon, modellHinterlegt } from "../src/beschaeftigung.js";
-import { ABW_WEITERE, entgeltStatus } from "../src/abwesenheitsarten.js";
+import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "../src/abwesenheitsarten.js";
 import { regelnFuer, REGELN } from "../src/regelregister.js";
 
 const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
@@ -154,5 +154,24 @@ describe("Entgeltstatus der Abwesenheitsarten", () => {
   it("ungeklärte Tage werden gezählt und in der Prüfansicht gemeldet", () => {
     expect(app).toContain("ungeklaert++");
     expect(app).toContain('art: "entgelt"');
+  });
+});
+
+describe("Kennzeichnung ungeklärter Arten beim Eintragen", () => {
+  it("ungeklärte Arten tragen den Zusatz und lösen den Hinweis aus", () => {
+    for (const a of ABW_WEITERE) {
+      expect(entgeltZusatz(a), a.id).toContain("Entgelt ungeklärt");
+      expect(entgeltHinweis(a), a.id).toContain("nichts gut");
+    }
+  });
+  it("bezahlte und unbezahlte Arten bleiben ohne Zusatz und Hinweis", () => {
+    for (const a of [{ bezahlt: true }, { bezahlt: false }]) {
+      expect(entgeltZusatz(a)).toBe("");
+      expect(entgeltHinweis(a)).toBeNull();
+    }
+  });
+  it("beide Auswahllisten der Leitung zeigen sie", () => {
+    expect(app.match(/entgeltZusatz\(a\)/g).length).toBe(2);
+    expect(app.match(/entgeltHinweis\(abwArt\(/g).length).toBe(2);
   });
 });

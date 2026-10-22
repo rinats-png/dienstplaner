@@ -35,6 +35,14 @@ export function entgeltStatus(art) {
   return "ungeklaert";
 }
 
+/** Zusatz zur Bezeichnung in Auswahllisten; leer, wenn der Status geklärt ist. */
+export const entgeltZusatz = (art) => (entgeltStatus(art) === "ungeklaert" ? " · Entgelt ungeklärt" : "");
+
+/** Hinweis für den Planer, wenn die Art ausgewählt ist; sonst null. */
+export const entgeltHinweis = (art) => (entgeltStatus(art) === "ungeklaert"
+  ? "Entgelt ungeklärt: Das Stundenkonto schreibt für diese Tage nichts gut, bis die Art geklärt ist."
+  : null);
+
 export const ABW_WEITERE = [
   { id: "elternzeit", label: "Elternzeit", kurz: "E", farbe: "#7A5C99", urlaub: false, bezahlt: "ungeklaert", rang: 3, selbst: false, norm: "§§ 15 ff. BEEG" },
   { id: "pflegezeit", label: "Pflegezeit", kurz: "P", farbe: "#5C7A99", urlaub: false, bezahlt: "ungeklaert", rang: 3, selbst: false, norm: "§ 3 PflegeZG" },

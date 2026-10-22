@@ -17,7 +17,7 @@ import {
 import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
 import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
 import { addMonate } from "./regelbaukasten.js";
-import { ABW_WEITERE, entgeltStatus } from "./abwesenheitsarten.js";
+import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -9928,8 +9928,8 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <div style={{ paddingTop: 20, marginTop: 14, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 13 }}>Abwesenheit eintragen</Lab>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 11, alignItems: "end" }}>
-            <Field label="Art"><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
-              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+            <Field label="Art" hint={entgeltHinweis(abwArt(form.art)) || undefined}><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
+              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={form.von} onChange={(e2) => setForm({ ...form, von: e2.target.value })} /></Field>
             <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e2) => setForm({ ...form, bis: e2.target.value })} /></Field>
             <Btn kind="primary" onClick={eintragen}>Eintragen</Btn>
@@ -14651,10 +14651,10 @@ function Mehrfach({ sitz, akt, onClose }) {
               <Sel value={f.dienstId} onChange={(e) => setF({ ...f, dienstId: e.target.value })}>
                 <option value="-">frei</option>
                 {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
-          : <Field label="Art der Abwesenheit">
+          : <Field label="Art der Abwesenheit" hint={entgeltHinweis(abwArt(abwArtId)) || undefined}>
               <Sel value={abwArtId} onChange={(e) => setAbwArtId(e.target.value)}>
                 {ABW.filter((a) => a.id !== "krank").map((a) => (
-                  <option key={a.id} value={a.id}>{a.label}</option>))}</Sel></Field>}
+                  <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>))}</Sel></Field>}
       </div>
 
       <Lab style={{ marginBottom: 10 }}>Personen · {f.personen.length} gewählt</Lab>
