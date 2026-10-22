@@ -48,6 +48,10 @@ Jede Zeile unten trägt eine **Evidenzklasse**: **R** = Repo (mit Fundstelle) ·
 | Repo-Sichtbarkeit | öffentlich, Entscheidung offen | entscheiden | R |
 | Keine neuen Großfunktionen | – | – | – |
 
+### Regelwerk-Registry (lokal vorbereitet, nicht ausgeliefert)
+
+Register mit Quelle/Fundstelle/Prüfstatus und erste Schicht des Regelbaukastens liegen im Code; Beschäftigungsmodelle und weitere Abwesenheitsarten sind als Datenmodell vorbereitet. Beschreibung: `docs/REGELWERK-REGISTRY.md`, beobachtete Themen: `docs/legal/WATCHLIST.md`. Bewusst nicht jetzt: Branchenpakete (zuerst ambulante Pflege, nach Pilotbestätigung), Mitbestimmungs-Workflow. Reihenfolge von Paarung und Plan-Lebenszyklus bleibt unverändert.
+
 ### P1 – parallel zu P0 starten, bevor 2–3 zahlende Kunden gesucht werden
 
 | Thema | Iststand | Aktion | Evidenz |

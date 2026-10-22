@@ -170,6 +170,8 @@ Neuer Bereich **Verwaltung → Interne Vorgaben**. Jede Vorgabe hat:
 
 ### 5.2 Der Regelbaukasten (deterministisch, ohne KI)
 
+> **Umsetzungsstand (Oktober 2026, lokal, nicht ausgeliefert):** Erste Schicht gebaut — Zählregel, Grenzregel, Besetzungsregel, Paarregel in `src/regelbaukasten.js`, dazu ein Regelregister mit Quelle, Fundstelle, Prüfstatus und Gültigkeit (`src/regelregister.js`). Musterregel, Blockregel, Verteilungsregel und Wunschregel sind weiter geplant. Aufbau und Regeln zum Hinzufügen: `docs/REGELWERK-REGISTRY.md`. Es gibt eine Regelmaschine, keine zweite.
+
 Jede Vorgabe wird intern in eine von wenigen, fest geprüften **Regelarten** übersetzt. Nur diese rechnet der Rechenkern. Das hält die Prüfung nachvollziehbar und unabhängig vom Sprachmodell.
 
 | Regelart | Beispiel |
