@@ -189,13 +189,22 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 
 **Umgesetzt:** Registry Light, Prüfstatus, Quellenstand, Zähl-/Grenz-/Besetzungs-/Paarregel, gemeinsame Schutzprüfung, Korrektur „nicht bewertbar", Beschäftigungsmodelle, erweiterbare Abwesenheitsarten mit ungeklärtem Entgelt, Registerzuordnung für Fahrzeit, PPP-RL und Tarifvorlagen. **Vorbereitet:** Folge `freigabe` (Mitbestimmung), Branchenbereich im Geltungsbereich. **Geplant/später, nicht Teil des Codes:** Musterregel, Blockregel, Verteilungsregel, Wunschregel; Branchenpakete (zuerst ambulante Pflege, nach Pilotbestätigung); Mitbestimmungsworkflow. Das Register dokumentiert Quellen und Prüfstände; es ersetzt keine individuelle Rechtsprüfung und behauptet keine vollständige Branchen- oder Rechtskonformität.
 
+**Konsolidierte Follow-up-Liste** (die einzige; nichts davon ist umgesetzt):
+
 | Follow-up | Bereich | Primärquellenprüfung |
 |---|---|---|
-| Quellen der `provisional`-Registereinträge prüfen und aufwerten | Registry | ja |
+| Quellen der `provisional`-Registereinträge prüfen und aufwerten (Werkstudent, kurzfristige Beschäftigung, Brandschutzhelfer-Richtwert, Elektrofachkraft-Kopplung, Geburtsdatum-Meldung) | Registry | ja |
+| PPP-RL: Richtwerte und Mindesterfüllung an der Richtlinie des G-BA prüfen | PPP-RL | ja |
+| Fahr-/Lenkzeit: Grenzen gegen VO (EG) 561/2006 in der Fassung der VO (EU) 2020/1054 und FPersV prüfen | Fahrzeit | ja |
+| Tarifvorlagen: Werte gegen die aktuellen Tarifabschlüsse prüfen (Stand der Vorlagen 2026-08) | Tarife | ja |
+| Fahrzeit, PPP-RL, Tarife in den Regelstand aufnehmen (danach `provisional` auflösen) | REGELSTAND | ja |
 | Entgeltwirkung der neun neuen Abwesenheitsarten klären | Stundenkonto | ja (Tarif, Lohnbuchhaltung) |
-| Watchlist-Einträge verifizieren | docs/legal | ja |
-| Naming „Blockregel" | Begriffe | nein |
-| Fahrzeit, PPP-RL, Tarife in den Regelstand aufnehmen | REGELSTAND | ja |
+| Watchlist-Einträge verifizieren (`docs/legal/WATCHLIST.md`) | docs/legal | ja |
+| Aufbewahrungsfrist Kundenrechnungen (acht Jahre, § 147 Abs. 3 AO) von der Steuerberatung bestätigen | Verarbeitungsverzeichnis | ja |
+| Naming „Blockregel" (meint einen Tagesblock, nicht Blockieren) | Begriffe | nein |
+| Branchenpakete später nach Kundenbedarf, zuerst ambulante Pflege nach Pilotbestätigung; Mitbestimmungsworkflow | Roadmap | ja (je Branche) |
+| CI (`.github/workflows/pruefung.yml`) führt die Prüfungen schrittweise aus; `warnen`, `gestalt` und die Prüfungen dieses Stands (`register`, `baukasten`, `beschaeftigung`, `konsistenz`, `laufzeit`, `schutzdaten`) fehlen dort. Lokal laufen sie in `npm run pruefung`. | CI | nein |
+| Löschung von `marketing/` (35 Dateien) durch den Leitstand-Umbau bewusst bestätigen; der Inhalt liegt auf `marketing/material` | PR #7 | nein |
 
 ## Anhang G — Datenschutz und Fail-open (nach dem Review)
 
