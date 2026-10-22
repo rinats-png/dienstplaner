@@ -52,6 +52,13 @@ export const REGELSTAND = {
     "PpUGV (Fassung vom 09.11.2020)",
     "GewO § 34a, BewachV",
     "MPBetreibV §§ 4, 10 · BetrSichV § 12",
+    /* Nachgetragen (Oktober 2026): Diese Quellen wirkten schon in dieser
+       Fassung, standen aber nicht in der Liste. Die Regeln dazu sind im
+       Regelregister (src/regelregister.js) mit Fundstelle geführt; ein Test
+       hält beide Seiten zusammen. */
+    "EFZG § 3",
+    "SGB V § 74 · SGB IX §§ 164, 207",
+    "Landesheimpersonalverordnung (je Bundesland, vom Betrieb hinterlegt)",
   ],
 };
 

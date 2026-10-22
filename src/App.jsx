@@ -16,7 +16,8 @@ import {
 } from "./regelwerk.js";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
 import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
-import { ABW_WEITERE } from "./abwesenheitsarten.js";
+import { addMonate } from "./regelbaukasten.js";
+import { ABW_WEITERE, entgeltStatus } from "./abwesenheitsarten.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -1558,10 +1559,17 @@ function sollStunden(m, p, ym) {
 function istStunden(m, p, ym) {
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
-      if (t.abwesenheit) { if (abwArt(t.abwesenheit.art).bezahlt && t.plan) gg += proTag; continue; }
+      if (t.abwesenheit) {
+        /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
+           die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
+        const es = entgeltStatus(abwArt(t.abwesenheit.art));
+        if (es === "bezahlt" && t.plan) gg += proTag;
+        else if (es === "ungeklaert" && t.plan) ungeklaert++;
+        continue;
+      }
       if (!t.dienstId) continue;
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
@@ -1570,7 +1578,7 @@ function istStunden(m, p, ym) {
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert };
   });
 }
 /* --------------------------------------------------------------------------
@@ -1749,6 +1757,17 @@ function pruefen(m, von, bis) {
           push({ art: "aufgabe", schwere, datum: d, ref: `${k}|${a.id}`,
             titel: u.offen ? `${e.da.name}: ${a.name} nicht prüfbar` : `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
         }
+      }
+    }
+    /* Abwesenheiten, deren Entgeltstatus nicht geklärt ist: Das Stundenkonto
+       schreibt dafür nichts gut — und sagt es, statt still zu kürzen. */
+    for (const p of m.personen) {
+      for (let ym = von.slice(0, 7); ym <= bis.slice(0, 7); ym = addMonate(ym + "-01", 1).slice(0, 7)) {
+        const n = istStunden(m, p, ym).ungeklaert;
+        if (n > 0)
+          push({ art: "entgelt", schwere: "warn", datum: `${ym}-01`, ref: `${p.id}|${ym}`, personId: p.id,
+            titel: `${p.nachname}: Entgeltstatus der Abwesenheit nicht geklärt`,
+            text: `${n} geplante Abwesenheitstag(e) im ${ym} haben keinen geprüften Entgeltstatus. Das Stundenkonto schreibt dafür nichts gut; bitte Lohnbuchhaltung oder Tarif klären.` });
       }
     }
     const vor = addDays(von, -10);
@@ -21766,7 +21785,8 @@ function AppInnen() {
       rechnungStellen: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);
         /* Eine Rechnung über null Euro ist keine Freundlichkeit, sondern ein
-           Beleg, den jemand ablegen, prüfen und zehn Jahre aufbewahren muss. */
+           Beleg, den jemand ablegen, prüfen und acht Jahre aufbewahren muss
+           (Buchungsbeleg, § 147 Abs. 3 AO). */
         const f = rechnungFaellig(m, ym);
         if (!f.faellig) {
           melde(f.grund === "ausgesetzt"

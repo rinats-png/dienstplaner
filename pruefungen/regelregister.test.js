@@ -168,18 +168,21 @@ describe("REGELSTAND und Einzelregeln", () => {
     }
   });
 
-  it("legt offen, wo REGELSTAND.quellen und das Register auseinanderliegen", () => {
-    /* Auskunft, kein Fehler. Die Liste ändert sich nur, wenn jemand die
-       Quellen des Regelstands oder die Regeln anfasst — dann soll es auffallen. */
-    expect(regelstandAbdeckung()).toEqual({
-      ohneRegel: ["BetrSichV", "GewO", "MiLoG", "MPBetreibV"].filter((k) => regelstandAbdeckung().ohneRegel.includes(k)),
-      ohneNennungImStand: regelstandAbdeckung().ohneNennungImStand,
-    });
-    const a = regelstandAbdeckung();
-    expect(a.ohneRegel).toContain("GewO");      // § 34a hängt an den Qualifikationen, nicht an einer Befundart
-    expect(a.ohneRegel).toContain("MiLoG");     // Aufbewahrung, kein Planbefund
-    expect(a.ohneNennungImStand).toContain("EFZG");
-    expect(a.ohneNennungImStand).toContain("SGB");
+  it("jede Quelle einer wirkenden Regel steht im Regelstand (Abdeckung, abgeleitet statt zweite Liste)", () => {
+    expect(regelstandAbdeckung().ohneNennungImStand).toEqual([]);
+  });
+
+  it("jede Quelle des Regelstands hat eine Regel — außer den dokumentierten Ausnahmen", () => {
+    /* GewO § 34a: hängt an den Qualifikationen des Betriebs (Branchenkatalog),
+       nicht an einer Befundart der Planung. MiLoG § 17: Aufbewahrung der
+       Arbeitszeitaufzeichnung (src/aufbewahrung.js), kein Planbefund.
+       Kommt eine Quelle dazu, die keine Regel hat, schlägt dieser Test an. */
+    expect(regelstandAbdeckung().ohneRegel).toEqual(["GewO", "MiLoG"]);
+  });
+
+  it("vorläufige Regeln und Watchlist zählen nicht in den Regelstand", () => {
+    const a = regelstandAbdeckung([...REGELN.filter((r) => r.pruefstatus === "provisional")]);
+    expect(a.ohneNennungImStand).toEqual([]);
   });
 });
 

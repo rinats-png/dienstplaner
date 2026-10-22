@@ -11,6 +11,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { BESCHAEFTIGUNGSMODELLE, beschaeftigungsmodell, modellVon, modellHinterlegt } from "../src/beschaeftigung.js";
+import { ABW_WEITERE, entgeltStatus } from "../src/abwesenheitsarten.js";
 import { regelnFuer, REGELN } from "../src/regelregister.js";
 
 const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
@@ -123,5 +124,35 @@ describe("Abwesenheitsarten", () => {
   });
   it("Anträge der Beschäftigten bieten nur Arten an, die sie selbst beantragen dürfen", () => {
     expect(app.match(/a\.selbst !== false/g).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("Entgeltstatus der Abwesenheitsarten", () => {
+  it("true und false bleiben bezahlt und unbezahlt", () => {
+    expect(entgeltStatus({ bezahlt: true })).toBe("bezahlt");
+    expect(entgeltStatus({ bezahlt: false })).toBe("unbezahlt");
+  });
+  it("alles andere ist ungeklärt und nie unbezahlt", () => {
+    for (const a of [{ bezahlt: "ungeklaert" }, { bezahlt: null }, {}, { bezahlt: "ja" }, { bezahlt: 0 }, { bezahlt: 1 }, null, undefined])
+      expect(entgeltStatus(a), JSON.stringify(a)).toBe("ungeklaert");
+  });
+  it("alle neuen Arten sind ungeklärt, bis jemand sie geprüft hat", () => {
+    expect(ABW_WEITERE.length).toBe(9);
+    for (const a of ABW_WEITERE) expect(entgeltStatus(a), a.id).toBe("ungeklaert");
+  });
+  it("die bisherigen Arten behalten ihren Status", () => {
+    const soll = { urlaub: true, krank: true, schulung: true, frei: false, sonst: true, ausgleich: false };
+    for (const [id, b] of Object.entries(soll)) {
+      const z = app.split("\n").find((l) => l.includes(`{ id: "${id}", label:`) && l.includes("bezahlt:"));
+      expect(z, id).toContain(`bezahlt: ${b},`);
+    }
+  });
+  it("das Stundenkonto prüft den Status, nicht die Wahrheit eines Wertes", () => {
+    expect(app).toContain("entgeltStatus(abwArt(");
+    expect(app).not.toMatch(/abwArt\([^)]*\)\.bezahlt/);
+  });
+  it("ungeklärte Tage werden gezählt und in der Prüfansicht gemeldet", () => {
+    expect(app).toContain("ungeklaert++");
+    expect(app).toContain('art: "entgelt"');
   });
 });

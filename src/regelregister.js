@@ -455,7 +455,8 @@ export function pruefeRegister(liste = REGELN) {
  * Verglichen wird das Kürzel (erstes Wort der Quelle) — grob, aber ehrlich.
  */
 export function regelstandAbdeckung(liste = REGELN) {
-  const kuerzel = (s) => String(s).split(/[\s(,·]/)[0];
+  /* „SGB IX" ist ein Gesetz, nicht „SGB". */
+  const kuerzel = (s) => { const m = /^(SGB\s+[IVX]+|[^\s(,·]+)/.exec(String(s).trim()); return m ? m[1] : String(s); };
   const imRegister = new Set();
   for (const r of regelnImRegelstand(REGELSTAND.version, liste))
     for (const q of String(r.quelle || "").split(",")) if (q.trim()) imRegister.add(kuerzel(q.trim()));
