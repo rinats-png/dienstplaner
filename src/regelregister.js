@@ -300,25 +300,27 @@ const REGELN_VORLAEUFIG = [
    dort aufnimmt. Das ändert nichts an ihrer Berechnung — die Begrenzung des
    Registers greift nur dort, wo ein Befund durch das Register bewertet wird.
    -------------------------------------------------------------------------- */
+const modul = (e) => vorlaeufig({ laufzeit: "bestand", ...e });
+
 const REGELN_MODULE = [
-  vorlaeufig({ id: "FAHRZEIT-LENK-01", typ: "bestandsregel", bezeichnung: "Lenkzeit (Tag, Woche, Doppelwoche)",
+  modul({ id: "FAHRZEIT-LENK-01", typ: "bestandsregel", bezeichnung: "Lenkzeit (Tag, Woche, Doppelwoche)",
     ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 6", hoechsteStufe: null,
     parameter: { modul: "fahrzeit.js", grenzen: { tag: FAHR_GRENZEN.tagLenkzeit, woche: FAHR_GRENZEN.wocheLenkzeit, doppelwoche: FAHR_GRENZEN.doppelwocheLenkzeit } },
     pruefhinweis: "Fassung VO (EU) 2020/1054 und FPersV laut Modulkopf; im Regelstand noch nicht aufgeführt. Anwendungsbereich je Fahrzeug trägt der Betrieb." }),
-  vorlaeufig({ id: "FAHRZEIT-PAUSE-01", typ: "bestandsregel", bezeichnung: "Unterbrechung nach Lenkblock",
+  modul({ id: "FAHRZEIT-PAUSE-01", typ: "bestandsregel", bezeichnung: "Unterbrechung nach Lenkblock",
     ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 7", hoechsteStufe: null,
     parameter: { modul: "fahrzeit.js", lenkblockMinuten: FAHR_GRENZEN.lenkblockOhnePause, unterbrechungMinuten: FAHR_GRENZEN.unterbrechung },
     pruefhinweis: "Wie FAHRZEIT-LENK-01." }),
-  vorlaeufig({ id: "FAHRZEIT-RUHE-01", typ: "bestandsregel", bezeichnung: "Tägliche und wöchentliche Ruhezeit (Fahrpersonal)",
+  modul({ id: "FAHRZEIT-RUHE-01", typ: "bestandsregel", bezeichnung: "Tägliche und wöchentliche Ruhezeit (Fahrpersonal)",
     ebene: "bund", quelle: "VO (EG) 561/2006", fundstelle: "Art. 8", hoechsteStufe: null,
     parameter: { modul: "fahrzeit.js", tagesruheMinuten: FAHR_GRENZEN.tagesruhe, wochenruheMinuten: FAHR_GRENZEN.wochenruhe },
     pruefhinweis: "Wie FAHRZEIT-LENK-01." }),
-  vorlaeufig({ id: "PPPRL-01", typ: "bestandsregel", bezeichnung: "Personalausstattung Psychiatrie und Psychosomatik (PPP-RL)",
+  modul({ id: "PPPRL-01", typ: "bestandsregel", bezeichnung: "Personalausstattung Psychiatrie und Psychosomatik (PPP-RL)",
     ebene: "bund", quelle: "PPP-RL (Gemeinsamer Bundesausschuss)", fundstelle: null, hoechsteStufe: null,
     parameter: { modul: "ppprl.js", mindesterfuellung: PPP_MINDEST },
     pruefhinweis: "Die hinterlegten Richtwerte sind Ausgangswerte, keine Gesetzeswerte; die Einrichtung überschreibt sie. Fassung und Gültigkeit je Satz stehen in ppprl.js. Im Regelstand nicht aufgeführt." }),
   /* Eine Zeile je Tarifvorlage, aus TARIFWERKE abgeleitet — keine zweite Liste. */
-  ...TARIFWERKE.map((t) => vorlaeufig({
+  ...TARIFWERKE.map((t) => modul({
     id: `TARIF-${String(t.id).toUpperCase()}-01`, typ: "bestandsregel", bezeichnung: `Tarifvorlage ${t.kurz || t.name}`,
     ebene: "tarif", quelle: t.grundlage, fundstelle: null, hoechsteStufe: null,
     scope: { branche: t.branchen && t.branchen.length ? t.branchen : null },
@@ -398,6 +400,7 @@ export function wirkung(r) {
  *
  *   keine Wirkung (watchlist, deprecated, unbekannt)  → null, kein Befund
  *   provisional                                       → höchstens „hinweis"
+ *                                                       (außer laufzeit "bestand": nicht herabgestuft)
  *   sonst                                             → höchstens die Regelgrenze,
  *                                                       sofern die Regel eine nennt
  *
@@ -413,6 +416,12 @@ export function begrenzeStufe(regelOderId, stufe) {
   const w = wirkung(r);
   if (w === "keine") return null;
   if (stufe == null) return stufe;
+  /* Prüfstatus und Laufzeit sind zwei Fragen. „provisional" beschreibt, wie
+     gut die QUELLE geprüft ist, und bremst neu eingeführte Regeln. Eine
+     Regel, die ein getestetes Bestandsmodul schon rechnet (laufzeit
+     "bestand": Fahrzeit, PPP-RL, Tarifvorlagen), wird dadurch nicht
+     herabgestuft — ihre Stufe bestimmt weiter das Modul. */
+  if (r.laufzeit === "bestand") return stufe;
   const grenze = w === "hinweis" ? "hinweis" : r.hoechsteStufe;
   if (!grenze) return stufe;
   return stufeRang(stufe) > stufeRang(grenze) ? grenze : stufe;
@@ -479,6 +488,8 @@ export function pruefeRegister(liste = REGELN) {
       if (!r.pruefhinweis) m.push(`${wo}: vorläufige Regel ohne Prüfhinweis`);
       if (r.regelstand) m.push(`${wo}: vorläufige Regel darf zu keinem Regelstand gehören`);
     }
+    if (r.laufzeit === "bestand" && (r.typ !== "bestandsregel" || !r.parameter || !r.parameter.modul))
+      m.push(`${wo}: laufzeit "bestand" verlangt Regelart bestandsregel und das rechnende Modul im Parameter`);
     if (wirkung(r) === "voll" && r.pruefstatus === "legacy_verified" && r.regelstand !== REGELSTAND.version)
       m.push(`${wo}: Bestandsregel gehört nicht zum aktuellen Regelstand`);
     if (["zaehlregel", "grenzregel", "besetzungsregel", "paarregel"].includes(r.typ) && r.pruefstatus !== "legacy_verified") {

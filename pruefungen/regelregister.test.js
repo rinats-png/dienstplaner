@@ -148,6 +148,13 @@ describe("Zuordnung von Befunden zu Regeln", () => {
 });
 
 describe("REGELSTAND und Einzelregeln", () => {
+  it("Version und Stand der Rechenlogik sind unverändert; der Quellenstand ist ein eigenes Feld", () => {
+    expect(REGELSTAND.version).toBe("2026.09");
+    expect(REGELSTAND.stand).toBe("2026-09-09");
+    expect(REGELSTAND.quellenstand).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(REGELSTAND.quellenstand >= REGELSTAND.stand).toBe(true);
+  });
+
   it("REGELSTAND bleibt, was er war", () => {
     expect(REGELSTAND.version).toBe("2026.09");
     expect(Array.isArray(REGELSTAND.quellen)).toBe(true);
@@ -236,7 +243,7 @@ describe("Provisional Safety: eine ungeprüfte Regel erzeugt keinen Rechtsversto
   });
 
   it("keine vorläufige Regel des Registers kann höher als Hinweis wirken", () => {
-    const vorlaeufig = REGELN.filter((r) => r.pruefstatus === "provisional");
+    const vorlaeufig = REGELN.filter((r) => r.pruefstatus === "provisional" && r.laufzeit !== "bestand");
     expect(vorlaeufig.length).toBeGreaterThanOrEqual(5);
     for (const r of vorlaeufig) for (const s of ["hinweis", "achtung", "recht"])
       expect(begrenzeStufe(r, s), `${r.id} ${s}`).toBe("hinweis");
@@ -331,11 +338,12 @@ describe("Fahrzeit, PPP-RL und Tarifvorlagen: Zuordnung ohne zweite Berechnung",
       expect(r.quelle).toBe(t.grundlage);
     }
   });
-  it("sie sind nicht im Regelstand und können nie über das Register zum Rechtsverstoß werden", () => {
+  it("sie sind nicht im Regelstand; ihre Quelle gilt als ungeprüft, ihre Berechnung bleibt unangetastet", () => {
     for (const r of REGELN.filter((x) => /^(FAHRZEIT|PPPRL|TARIF)-/.test(x.id))) {
       expect(r.pruefstatus, r.id).toBe("provisional");
+      expect(r.laufzeit, r.id).toBe("bestand");
       expect(r.regelstand, r.id).toBeNull();
-      expect(begrenzeStufe(r, "recht"), r.id).toBe("hinweis");
+      for (const stufe of ["hinweis", "achtung", "recht"]) expect(begrenzeStufe(r, stufe), `${r.id} ${stufe}`).toBe(stufe);
     }
   });
   it("die Rechner bleiben, wo sie sind: das Register enthält keine Berechnung", () => {

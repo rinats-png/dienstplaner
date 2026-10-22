@@ -152,7 +152,7 @@ const holeRegel = (regelOderId, typ) => {
   const r = typeof regelOderId === "string" ? regel(regelOderId) : regelOderId;
   if (!r) throw new Error(`Regelbaukasten: Regel „${regelOderId}" ist nicht im Register.`);
   /* Was der Bestandscode schon rechnet, rechnet der Baukasten nicht ein zweites Mal. */
-  if (r.pruefstatus === "legacy_verified") throw new Error(`Regelbaukasten: ${r.id} ist eine Bestandsregel; sie wird vom Bestandscode gerechnet.`);
+  if (r.pruefstatus === "legacy_verified" || r.laufzeit === "bestand") throw new Error(`Regelbaukasten: ${r.id} ist eine Bestandsregel; sie wird vom Bestandscode gerechnet.`);
   if (r.typ !== typ) throw new Error(`Regelbaukasten: ${r.id} ist eine ${r.typ}, keine ${typ}.`);
   return r;
 };
@@ -344,7 +344,7 @@ export function paarregel(regelOderId, { personen, datum } = {}) {
 export function pruefeRegel(regelOderId, kontext = {}) {
   const r = typeof regelOderId === "string" ? regel(regelOderId) : regelOderId;
   if (!r) throw new Error(`Regelbaukasten: Regel „${regelOderId}" ist nicht im Register.`);
-  if (r.pruefstatus === "legacy_verified") throw new Error(`Regelbaukasten: ${r.id} ist eine Bestandsregel; sie wird vom Bestandscode gerechnet.`);
+  if (r.pruefstatus === "legacy_verified" || r.laufzeit === "bestand") throw new Error(`Regelbaukasten: ${r.id} ist eine Bestandsregel; sie wird vom Bestandscode gerechnet.`);
   switch (r.typ) {
     case "zaehlregel": return zaehlregel(r, kontext);
     case "grenzregel": return grenzregel(r, kontext);
