@@ -47,7 +47,7 @@ Abweichungen nach unten sind ein Befund. Nach oben sind sie nur bei neuen Tests 
 Diff gegen `main` lesen:
 
 - [ ] `git diff --stat origin/main...HEAD` — Größenordnung ~246 Dateien.
-- [ ] `git diff --name-status origin/main...HEAD | grep -E "^(D|R)"` — gelöscht: die 35 Dateien unter `marketing/` (beim Review aufgefallen). **Entscheiden:** Soll `marketing/` aus `main` verschwinden? Der Inhalt liegt auf `marketing/material`. Wenn nein: Dateien vor dem Merge wiederherstellen.
+- [ ] `git diff --name-status origin/main...HEAD | grep -E "^(D|R)"` — `marketing/` darf nicht gelöscht sein (wurde in `77dca1b` zurückgeholt; die Bereinigung folgt in einem eigenen PR).
 - [ ] Keine Änderungen an `Dockerfile`, `Caddyfile`, `docker-compose*`, `.github/workflows/deploy.yml`, `sicherheit.yml`. Erwartet ist nur `.github/workflows/pruefung.yml` (+6 Zeilen, Kontrastschritt).
 - [ ] Keine Geheimnisse, keine lokalen Pfade in `src/` und `server/`.
 
@@ -177,6 +177,6 @@ Mit lokalen Testdaten, nicht mit Kundendaten. Pro Zeile Ergebnis eintragen (ok /
 
 ## Bekannte Eigenheiten
 
-- Die CI führt die Prüfungen einzeln aus und enthält `warnen`, `gestalt` und die Prüfungen aus #6 nicht; lokal laufen sie in `npm run pruefung`. Deshalb den lokalen Lauf nicht überspringen.
+- Die CI führt die Prüfungen einzeln aus. `warnen` und `gestalt` laufen dort seit `c6e7204` (PR #7), die Registry-Prüfungen seit `adb2230` (PR #6). Der lokale Lauf von `npm run pruefung` bleibt trotzdem Pflicht.
 - Netlify-Prüfungen am PR („Header rules", „Redirect rules", „Pages changed") sind Vorschau-Anzeigen mit dem Ergebnis „neutral", kein Produktiv-Deploy.
 - `deploy.yml` läuft nur von Hand (`workflow_dispatch`); keiner dieser Schritte löst ihn aus.

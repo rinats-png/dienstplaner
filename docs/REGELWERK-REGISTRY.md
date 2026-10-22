@@ -203,8 +203,7 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 | Aufbewahrungsfrist Kundenrechnungen (acht Jahre, § 147 Abs. 3 AO) von der Steuerberatung bestätigen | Verarbeitungsverzeichnis | ja |
 | Naming „Blockregel" (meint einen Tagesblock, nicht Blockieren) | Begriffe | nein |
 | Branchenpakete später nach Kundenbedarf, zuerst ambulante Pflege nach Pilotbestätigung; Mitbestimmungsworkflow | Roadmap | ja (je Branche) |
-| CI (`.github/workflows/pruefung.yml`) führt die Prüfungen schrittweise aus; `warnen`, `gestalt` und die Prüfungen dieses Stands (`register`, `baukasten`, `beschaeftigung`, `konsistenz`, `laufzeit`, `schutzdaten`) fehlen dort. Lokal laufen sie in `npm run pruefung`. | CI | nein |
-| Löschung von `marketing/` (35 Dateien) durch den Leitstand-Umbau bewusst bestätigen; der Inhalt liegt auf `marketing/material` | PR #7 | nein |
+| Bereinigung von `marketing/` auf `main` (35 Dateien; Inhalt liegt auf `marketing/material`) in einem eigenen Cleanup-PR, nicht in #7 | Repository | nein |
 
 ## Anhang G — Datenschutz und Fail-open (nach dem Review)
 
