@@ -44,6 +44,11 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
+      # Stempelereignisse sind personenbezogen: Beschäftigte sehen nur die
+      # eigenen, der Betriebsrat keine.
+      - name: Stempeldaten
+        run: npm run pruefung:stempeldaten
+
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen

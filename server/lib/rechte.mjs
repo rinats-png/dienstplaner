@@ -369,6 +369,17 @@ export function bestandFuerRolle(bestand, sitzung) {
       m.abwesenheiten = m.abwesenheiten.map((a) =>
         (ich !== null && ich !== undefined && a.personId === ich) ? a : abwesenheitSaeubern(a));
     }
+    /* Stempelereignisse (Zeit, Entfernung zum Einsatzort, Standorturteil) sind
+       personenbezogen. Eine beschäftigte Person bekommt nur die eigenen; der
+       Betriebsrat keine, denn die Mitbestimmung betrifft das Verfahren, nicht
+       die Stempel einzelner Personen (siehe Muster-BV, Anlage 5). Der
+       Schlüssel lautet „personId|JJJJ-MM-TT". */
+    if (m.einstempeln && typeof m.einstempeln === "object") {
+      m.einstempeln = (rolle === "mitarbeiter" && ich !== null && ich !== undefined)
+        ? Object.fromEntries(Object.entries(m.einstempeln)
+          .filter(([k]) => String(k.slice(0, k.lastIndexOf("|"))) === String(ich)))
+        : {};
+    }
     /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
        Prüfrolle ist das der Kern der Aufgabe, für alle anderen nicht. */
     if (rolle === "mitarbeiter") {
