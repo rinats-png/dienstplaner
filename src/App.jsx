@@ -6,7 +6,7 @@ import {
   dauer, brutto, fenster,
   dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzEinsatz, aufgabeSchwere, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -1744,9 +1744,10 @@ function pruefen(m, von, bis) {
            hängt. */
         for (const a of (m.aufgaben || []).filter((x) => (x.dienstarten || []).includes(k))) {
           const u = aufgabeGedeckt(a, e.personen, (p, qid) => qualGueltig(m, p, qid));
-          if (u.gedeckt) continue;
-          push({ art: "aufgabe", schwere: u.offen ? "warn" : "danger", datum: d, ref: `${k}|${a.id}`,
-            titel: `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
+          const schwere = aufgabeSchwere(u);
+          if (!schwere) continue;
+          push({ art: "aufgabe", schwere, datum: d, ref: `${k}|${a.id}`,
+            titel: u.offen ? `${e.da.name}: ${a.name} nicht prüfbar` : `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
         }
       }
     }
@@ -2020,8 +2021,8 @@ function pruefen(m, von, bis) {
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefunde(p, da, d)) {
-          push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
+        for (const b of schutzEinsatz(p, da, d)) {
+          push({ art: "schutz", schwere: b.schwere, datum: d,
             ref: `${p.id}|${b.regel}`, personId: p.id,
             titel: `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
@@ -2465,6 +2466,9 @@ function hindernisBefunde(m, p, d, da) {
   if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
   /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
      ein ärztliches Attest oder eine Absprache sein. */
+  /* Jugendarbeitsschutz, Mutterschutz, SGB IX: dieselbe Quelle wie die
+     Planprüfung (schutzEinsatz), nicht eine zweite Fassung davon. */
+  for (const b of schutzEinsatz(p, da, d)) push(b.stufe, b.text, b.regel, "schutz");
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
     push("achtung", "keine Nachtdienste zugelassen", "Schutzvorschrift oder Einsatzeinschränkung für diese Person");
   if (!verfuegbarFuer(p, d, da))

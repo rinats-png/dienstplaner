@@ -723,6 +723,36 @@ export function schutzBefunde(person, dienstart, datum) {
   return aus;
 }
 
+/**
+ * Die Schutzbefunde einer Einteilung mit ihrer Bewertung — die eine Stelle,
+ * an der „hart" zu einer Stufe wird. Planprüfung (pruefen) und Warndialog
+ * (hindernisBefunde) lesen beide hier, damit sie über dieselbe Person und
+ * denselben Dienst nie Verschiedenes sagen: Sie zeigen es unterschiedlich,
+ * aber die Wahrheit ist dieselbe.
+ *
+ *   hart (Verbot)        → Rechtsverstoß (stufe "recht", schwere "danger")
+ *   nicht hart (Pflicht zur Freistellung auf Verlangen, Ausnahme) → Achtung
+ *
+ * @returns {{regel: string, text: string, stufe: string, schwere: string}[]}
+ */
+export function schutzEinsatz(person, dienstart, datum) {
+  return schutzBefunde(person, dienstart, datum).map((b) => ({
+    regel: b.regel, text: b.text,
+    stufe: b.hart ? "recht" : "achtung", schwere: b.hart ? "danger" : "warn",
+  }));
+}
+
+/**
+ * Wie schwer wiegt das Ergebnis von aufgabeGedeckt() in der Planprüfung?
+ * null: gedeckt und bewertbar — kein Befund. Eine Aufgabe ohne Qualifikation
+ * meldet gedeckt:true mit offen:true; das ist „nicht bewertbar" und darf nie
+ * als erfüllt durchgehen, sondern bleibt als Hinweis sichtbar.
+ */
+export function aufgabeSchwere(ergebnis) {
+  if (ergebnis.gedeckt && !ergebnis.offen) return null;
+  return ergebnis.offen ? "warn" : "danger";
+}
+
 /* --------------------------------------------------------------------------
    § 7 BUrlG — URLAUBSVERFALL UND HINWEISPFLICHT
 
