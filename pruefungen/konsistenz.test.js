@@ -29,8 +29,8 @@ const lang = { id: "L", name: "Lang", start: "06:00", ende: "18:30", pause: 30 }
 const frueh = { id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 };
 const MITTWOCH = "2026-10-14", SAMSTAG = "2026-10-17", SONNTAG = "2026-10-18";
 const jugend = { id: "j", geburtstag: "2010-03-01" };
-const mutter = { id: "m", mutterschutz: true };
-const sb = { id: "s", schwerbehindert: true };
+const mutter = { id: "m", mutterschutz: true, geburtstag: "1995-05-05" };
+const sb = { id: "s", schwerbehindert: true, geburtstag: "1980-01-01" };
 const regulaer = { id: "r", geburtstag: "1990-01-01" };
 
 const faelle = [
@@ -90,14 +90,56 @@ describe("Planprüfung und Warndialog lesen dieselbe Schutzquelle", () => {
     // Am Tag des 18. Geburtstags gilt das Jugendarbeitsschutzgesetz nicht mehr
     expect(schutzEinsatz({ geburtstag: "2008-10-14" }, nacht, MITTWOCH)).toEqual([]);
     expect(schutzEinsatz({ geburtstag: "2008-10-15" }, nacht, MITTWOCH).map((x) => x.regel)).toContain("JArbSchG § 14");
-    // Ohne Geburtsdatum und ohne Merkmale: kein Schutzbefund. Das ist das bestehende Verhalten
-    // (die Anwendung kann nicht wissen, was nicht eingetragen ist) — FOLLOW-UP: prüfen, ob
-    // ein fehlendes Geburtsdatum bei Auszubildenden als „nicht bewertbar" gemeldet werden soll.
-    expect(schutzEinsatz({ id: "x" }, nacht, MITTWOCH)).toEqual([]);
     // Wiederholter Aufruf liefert dasselbe (keine versteckten Zustände) und verändert die Eingaben nicht
     const p = { ...jugend }, d = { ...nacht };
     expect(schutzEinsatz(p, d, MITTWOCH)).toEqual(schutzEinsatz(p, d, MITTWOCH));
     expect(p).toEqual(jugend); expect(d).toEqual(nacht);
+  });
+
+  describe("Fehlendes Geburtsdatum ist nicht bewertbar, nicht zulässig", () => {
+    const ohne = { id: "x" };
+    const hinweis = (p, d, t) => schutzEinsatz(p, d, t).filter((b) => b.offen);
+
+    it("Nachtdienst ohne Geburtsdatum: Hinweis, kein Rechtsverstoß", () => {
+      const h = hinweis(ohne, nacht, MITTWOCH);
+      expect(h.length).toBe(1);
+      expect(h[0].stufe).toBe("hinweis");
+      expect(h[0].schwere).toBe("warn");
+      expect(h[0].text).toContain("Geburtsdatum");
+      expect(schutzEinsatz(ohne, nacht, MITTWOCH).some((b) => b.stufe === "recht")).toBe(false);
+    });
+    it("auch Dienst vor 6 Uhr und über acht Stunden", () => {
+      expect(hinweis(ohne, { ...frueh, start: "05:00", ende: "13:00" }, MITTWOCH).length).toBe(1);
+      expect(hinweis(ohne, lang, MITTWOCH).length).toBe(1);
+    });
+    it("bei einem Dienst, den Jugendliche leisten dürften, schweigt die Prüfung", () => {
+      expect(schutzEinsatz(ohne, frueh, MITTWOCH)).toEqual([]);
+    });
+    it("ungültiges oder leeres Geburtsdatum ist genauso nicht bewertbar", () => {
+      for (const g of ["2026-02-30", "2010-13-01", "abc", "", "01.03.2010", null])
+        expect(hinweis({ geburtstag: g }, nacht, MITTWOCH).length, String(g)).toBe(1);
+      expect(hinweis({ geburtsdatum: "2010-02-30" }, nacht, MITTWOCH).length).toBe(1);
+    });
+    it("das Alias-Feld geburtsdatum genügt", () => {
+      expect(schutzEinsatz({ geburtsdatum: "1990-01-01" }, nacht, MITTWOCH)).toEqual([]);
+    });
+    it("bekannte Geburtsdaten verhalten sich wie vorher", () => {
+      expect(hinweis(jugend, nacht, MITTWOCH)).toEqual([]);
+      expect(schutzEinsatz(jugend, nacht, MITTWOCH).map((x) => x.stufe)).toContain("recht");  // unter 18, unzulässig
+      expect(schutzEinsatz(jugend, frueh, MITTWOCH)).toEqual([]);                             // unter 18, zulässig
+      expect(schutzEinsatz({ geburtstag: "2008-10-14" }, nacht, MITTWOCH)).toEqual([]);       // genau 18
+      expect(schutzEinsatz({ geburtstag: "2008-10-15" }, nacht, MITTWOCH).length).toBeGreaterThan(0);  // einen Tag vor 18
+      expect(schutzEinsatz(regulaer, nacht, MITTWOCH)).toEqual([]);                            // Erwachsene
+    });
+    it("beide Verbraucher melden es; die Prüfansicht je Person nur einmal", () => {
+      const f = funktion("pruefen");
+      expect(f).toContain("b.offen");
+      expect(f).toContain("datenGemeldet");
+      expect(f).not.toMatch(/alterHeute === null \|\|/);
+    });
+    it("die Meldung hat eine Registerregel (vorläufig, höchstens Hinweis)", () => {
+      expect(regelIdFuerBefund({ art: "schutz", quelle: "JArbSchG (Geburtsdatum)" })).toBe("JARBSCHG-DATEN-01");
+    });
   });
 
   it("jeder Schutzbefund des Dialogs hat eine Regel im Register (Quelle als Schlüssel)", () => {

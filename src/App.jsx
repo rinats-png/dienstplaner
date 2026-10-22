@@ -2030,10 +2030,14 @@ function pruefen(m, von, bis) {
        werden sie nur auf den Plan angewendet. */
     for (const p of m.personen) {
       if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+      /* Ohne Merkmal und mit bekanntem Alter ab 18 gibt es nichts zu prüfen —
+         das spart bei einem Betrieb ohne Jugendliche und ohne Mutterschutz den
+         ganzen Durchlauf. */
       const alterHeute = alterAm(p.geburtstag, bis);
-      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      /* Ein unbekanntes Alter (Geburtsdatum fehlt oder ungültig) überspringt die
+         Prüfung nicht: Es wird einmal je Person als „nicht bewertbar" gemeldet. */
+      if (!p.mutterschutz && !p.schwerbehindert && alterHeute !== null && alterHeute >= 18) continue;
+      let datenGemeldet = false;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
@@ -2041,6 +2045,7 @@ function pruefen(m, von, bis) {
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
         for (const b of schutzEinsatz(p, da, d)) {
+          if (b.offen) { if (datenGemeldet) continue; datenGemeldet = true; }
           push({ art: "schutz", schwere: b.schwere, datum: d,
             ref: `${p.id}|${b.regel}`, personId: p.id,
             titel: `${b.regel} — ${p.nachname}`,

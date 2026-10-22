@@ -690,6 +690,9 @@ export function freieSonntage(hatDienst, jahr, bisDatum = null) {
 /** Alter in Jahren am Stichtag. Ohne Geburtsdatum: null. */
 export function alterAm(geburtstag, datum) {
   if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
+  /* Einen Tag, den es nicht gibt (30.02.), rechnet Date auf den 02.03. weiter —
+     das wäre ein falsches Alter statt keines. */
+  if (iso(pISO(geburtstag)) !== String(geburtstag)) return null;
   const g = pISO(geburtstag), d = pISO(datum);
   let jahre = d.getFullYear() - g.getFullYear();
   const vorGeburtstag = d.getMonth() < g.getMonth()
@@ -709,6 +712,14 @@ export function schutzBefunde(person, dienstart, datum) {
   const alter = alterAm(person.geburtstag || person.geburtsdatum, datum);
 
   /* --- Jugendarbeitsschutzgesetz --- */
+  /* Fehlt das Geburtsdatum (oder ist es ungültig), lässt sich nicht sagen, ob
+     das Gesetz gilt. Das ist „nicht bewertbar" — kein Verstoß, aber auch nicht
+     stillschweigend zulässig. Gemeldet wird nur, wo es darauf ankäme: bei einem
+     Dienst, den eine minderjährige Person nicht leisten dürfte. */
+  if (alter === null && (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60 || dauer(dienstart) > 8.5))
+    aus.push({ regel: "JArbSchG (Geburtsdatum)", hart: false, offen: true,
+      text: "Das Geburtsdatum fehlt oder ist ungültig. Ob das Jugendarbeitsschutzgesetz gilt, lässt sich nicht prüfen — "
+        + "für Jugendliche wäre dieser Dienst nicht zulässig (Nacht, vor 6 Uhr oder über acht Stunden)." });
   if (alter !== null && alter < 18) {
     if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
       aus.push({ regel: "JArbSchG § 14", hart: true,
@@ -748,13 +759,15 @@ export function schutzBefunde(person, dienstart, datum) {
  *
  *   hart (Verbot)        → Rechtsverstoß (stufe "recht", schwere "danger")
  *   nicht hart (Pflicht zur Freistellung auf Verlangen, Ausnahme) → Achtung
+ *   offen (Daten fehlen, nicht bewertbar) → Hinweis
  *
  * @returns {{regel: string, text: string, stufe: string, schwere: string}[]}
  */
 export function schutzEinsatz(person, dienstart, datum) {
   return schutzBefunde(person, dienstart, datum).map((b) => ({
-    regel: b.regel, text: b.text,
-    stufe: b.hart ? "recht" : "achtung", schwere: b.hart ? "danger" : "warn",
+    regel: b.regel, text: b.text, offen: !!b.offen,
+    /* offen = nicht bewertbar: ein Hinweis, nichts zu bestätigen */
+    stufe: b.offen ? "hinweis" : b.hart ? "recht" : "achtung", schwere: b.hart ? "danger" : "warn",
   }));
 }
 

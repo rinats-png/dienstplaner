@@ -251,6 +251,12 @@ const vorlaeufig = (e) => ({
 });
 
 const REGELN_VORLAEUFIG = [
+  /* Neu (Oktober 2026): fehlendes Geburtsdatum bei einem Dienst, den Jugendliche nicht leisten dürften.
+     Ein Hinweis „nicht bewertbar", kein Verstoß — deshalb vorläufig und nicht im Regelstand. */
+  vorlaeufig({ id: "JARBSCHG-DATEN-01", regeltext: "JArbSchG (Geburtsdatum)", typ: "bestandsregel",
+    bezeichnung: "Jugendschutz nicht bewertbar: Geburtsdatum fehlt", ebene: "bund", quelle: "JArbSchG", fundstelle: "§§ 8, 14",
+    hoechsteStufe: "hinweis",
+    pruefhinweis: "Verhalten festgelegt, Wortlaut und Umfang der Meldung (nur bei Diensten, die Jugendliche nicht leisten dürfen) mit der Praxis abstimmen." }),
   vorlaeufig({ id: "BESCH-WERKSTUDENT-01", typ: "grenzregel",
     bezeichnung: "Werkstudent: Wochenarbeitszeit in der Vorlesungszeit",
     ebene: "bund", quelle: "SGB V", fundstelle: "§ 6 Abs. 1 Nr. 3", hoechsteStufe: "achtung",

@@ -116,9 +116,10 @@ describe("Zuordnung von Befunden zu Regeln", () => {
     const lauf = (person, da, datum) => { for (const b of schutzBefunde(person, da, datum)) gesehen.add(b.regel); };
     lauf(jugendlich, nacht, "2026-10-14");                       // § 14, § 8 nicht
     lauf(jugendlich, lang, "2026-10-17");                        // § 8, §§ 16–17 (Samstag)
-    lauf({ mutterschutz: true }, nacht, "2026-10-18");           // § 5, § 6 (Sonntag)
-    lauf({ schwerbehindert: true }, lang, "2026-10-14");         // § 207
-    expect([...gesehen].sort()).toEqual(["JArbSchG § 14", "JArbSchG § 8", "JArbSchG §§ 16–17",
+    lauf({ mutterschutz: true, geburtstag: "1995-05-05" }, nacht, "2026-10-18");           // § 5, § 6 (Sonntag)
+    lauf({ schwerbehindert: true, geburtstag: "1980-01-01" }, lang, "2026-10-14");         // § 207
+    lauf({ id: "ohne" }, nacht, "2026-10-14");                   // Geburtsdatum fehlt: nicht bewertbar
+    expect([...gesehen].sort()).toEqual(["JArbSchG (Geburtsdatum)", "JArbSchG § 14", "JArbSchG § 8", "JArbSchG §§ 16–17",
       "MuSchG § 5", "MuSchG § 6", "SGB IX § 207"].sort());
     for (const text of gesehen) expect(regelIdFuerSchutz(text), text).not.toBeNull();
   });

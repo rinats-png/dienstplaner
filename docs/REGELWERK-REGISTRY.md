@@ -194,8 +194,11 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 | Quellen der `provisional`-Registereinträge prüfen und aufwerten | Registry | ja |
 | Entgeltwirkung der neun neuen Abwesenheitsarten klären | Stundenkonto | ja (Tarif, Lohnbuchhaltung) |
 | Watchlist-Einträge verifizieren | docs/legal | ja |
-| Fehlendes Geburtsdatum bei Jugend-Prüfung als „nicht bewertbar" melden (heute: kein Befund) | Schutzprüfung | nein |
-| Flags `mutterschutz`, `schwerbehindert` stehen nicht in `PERSON_PRIVAT` (server/lib/rechte.mjs); prüfen, wer sie sehen darf | Datenschutz | nein |
-| Betriebsrat sieht in bestätigten Abweichungen den Regeltext (z. B. „MuSchG § 5") mit Datum und Dienst, aber ohne Namen; Neutralisierung erwägen | Datenschutz | nein |
 | Naming „Blockregel" | Begriffe | nein |
 | Fahrzeit, PPP-RL, Tarife in den Regelstand aufnehmen | REGELSTAND | ja |
+
+## Anhang G — Datenschutz und Fail-open (nach dem Review)
+
+- **Schutzstatus bei fremden Personen:** `mutterschutz` und `schwerbehindert` stehen in `PERSON_PRIVAT` (`server/lib/rechte.mjs`). Beschäftigte und Betriebsrat sehen sie bei anderen Personen nicht; die eigene Person und die Planungsrollen unverändert.
+- **Betriebsratsprotokoll:** Bestätigte Abweichungen mit MuSchG oder SGB IX erscheinen dort als `SCHUTZ-INDIVIDUELL` / „Individuelle Schutzregel" (Stufe, Datum, Dienst und Bestätigungszeit bleiben; Regel-ID, Fundstelle, Text und der Freitext des Grundes entfallen). Jugendarbeitsschutz bleibt sichtbar. Die Planungsrollen sehen das Protokoll vollständig.
+- **Fehlendes Geburtsdatum:** Ist es leer oder ungültig (auch ein Tag wie der 30.02.), meldet die Schutzprüfung bei einem Dienst, den Jugendliche nicht leisten dürften (Nacht, vor 6 Uhr, über 8,5 Stunden), „nicht bewertbar" als Hinweis (`JARBSCHG-DATEN-01`, vorläufig, höchstens Hinweis). Kein Verstoß, aber auch nicht stillschweigend zulässig. In der Prüfansicht einmal je Person. Bekannte Geburtsdaten verhalten sich wie vorher.
