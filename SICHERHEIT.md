@@ -13,6 +13,12 @@ pruefung:rechte`, 87 Negativ- und Positivtests gegen den laufenden
 Server), Sonden mit fünf Rollen-Tokens, Tastatur- und Ablaufproben im
 Browser, statische Durchsicht.
 
+Ergänzend liegt ein eigener **Penetrationstest** nach der Strix-Methodik
+vor (OWASP Top 10:2025 + API Security Top 10:2023) — siehe
+[`PENTEST.md`](PENTEST.md). Ergebnis: null ausnutzbare Schwachstellen,
+34 belegt abgewehrte Angriffe. Wiederholbar mit `npm run pruefung:pentest`
+gegen einen laufenden Dienst.
+
 ## Grundsatz
 
 Der Browser ist keine Sicherheitsgrenze. Jede Entscheidung fällt in
@@ -65,9 +71,9 @@ Auslieferung. Was davon hier zutrifft:
 | **Waisen** | Es gibt keine. Personen werden nie gelöscht, sondern tragen ein Austrittsdatum; der Löschlauf nach Art. 17 DSGVO anonymisiert sie, statt sie aus der Liste zu nehmen. Ein gelöschter Betrieb nimmt seinen ganzen Datenraum mit. |
 | **Transaktionen** | Kein Mehrschritt-Schreiben: Ein Bestand wird als Kern und Monatsscherben abgelegt, der Zeiger auf den neuen Stand wird zuletzt gesetzt. Bricht etwas dazwischen ab, gilt weiter der alte Stand. |
 | **Pagination** | Bewusst anders: Die Anwendung arbeitet offline-fähig auf dem ganzen Betrieb. Statt Seitenweise gibt es die Zerlegung in Monatsscherben — geschrieben wird nur der geänderte Monat, und zwei Planer an verschiedenen Monaten stören einander nicht. |
-| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Klickbare Zellen und Zeilen der Telefonansicht sind Schaltflächen mit Fokus, Enter und Leertaste. |
-| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Wunschzellen tragen eine Beschriftung mit Datum und Zustand. |
-| **Kontrast** | Eigene Palette; zusätzlich ein Feldmodus mit größerer Schrift und maximalem Kontrast für die Arbeit draußen. Zustände werden nie allein über Farbe gezeigt, sondern zusätzlich über Wort und Zeichen. |
+| **Tastaturbedienung** | Blätter fangen den Fokus, geben ihn beim Schließen zurück und schließen mit Escape — auch wenn der Fokus daneben liegt. Jede klickbare Zelle, Karte und Zeile ist eine Schaltfläche mit Fokus, Enter und Leertaste (`klickbar()`); liegt darin ein eigenes Bedienelement, gehört der Tastendruck ihm. Der Monatsplan ist ein `role="grid"` mit Pfeiltastensteuerung. Ein Tastaturlauf über 90 Sprünge fand keine Falle und keinen Halt ohne sichtbaren Fokus. |
+| **Vorlesesoftware** | Blätter sind `role="dialog"` mit `aria-modal`, die Befehlssuche ist eine `combobox` mit `listbox` und `aria-activedescendant`; Zustände tragen `aria-pressed`, `aria-expanded`, `aria-current`; Meldungen laufen über `aria-live`. Jede Fläche ohne eigenen Text trägt eine Beschriftung — Planzelle, Balken, Kalendertag, Fortschrittspunkt. |
+| **Kontrast** | Gemessen statt geschätzt: `npm run pruefung:kontrast` rechnet die relative Leuchtkraft nach WCAG 2.1 nach und prüft jede Paarung, die tatsächlich vorkommt, in beiden Paletten — 4,5:1 für Text, 3:1 für Bedienelemente. Die erste Messung fand fünf Verstöße, darunter weiße Schrift auf Türkis mit 2,23:1 auf jeder Hauptschaltfläche im Dunkelmodus. Dazu ein Feldmodus mit größerer Schrift für die Arbeit draußen; Zustände werden nie allein über Farbe gezeigt. |
 | **Dateiuploads** | Es gibt keine. Nachweise werden als Fundstelle geführt — damit entfallen MIME-Prüfung, Pfadwanderung und Schadsoftware im Speicher als Angriffsfläche. |
 | **CI/CD** | Drei Läufe: `Prüfung` (jeder Push: alle Prüfungen, Bild bauen, serverseitige Prüfungen gegen den Container), `Sicherheit` (Audit, Secret-Scan, verbotene Muster) und `Auslieferung` (von Hand: Bild bauen, Rechteprüfung gegen den Container, nach GHCR). Ein roter Lauf blockiert. Auf dem VPS: `docker compose pull && up -d`, Rollback über das vorige Bild. |
 
