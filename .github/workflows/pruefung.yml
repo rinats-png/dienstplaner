@@ -49,6 +49,37 @@ jobs:
       - name: Warnstufen
         run: npm run pruefung:warnen
 
+      # Regelregister: Kennung, Quelle, Fundstelle, Prüfstatus, Gültigkeit.
+      # Die Rechtsquellen-Tabelle muss mit der früheren übereinstimmen, und
+      # eine vorläufige Regel darf höchstens einen Hinweis erzeugen.
+      - name: Regelregister
+        run: npm run pruefung:register
+
+      # Regelbaukasten: Zähl-, Grenz-, Besetzungs- und Paarregel. Fehlende
+      # Daten sind „offen", nie „erfüllt".
+      - name: Regelbaukasten
+        run: npm run pruefung:baukasten
+
+      # Beschäftigungsmodelle und Abwesenheitsarten: Bestandsdaten ohne das
+      # neue Feld bleiben gültig, ungeklärtes Entgelt wird nie gutgeschrieben.
+      - name: Beschäftigungsmodelle
+        run: npm run pruefung:beschaeftigung
+
+      # Planprüfung und Warndialog sagen über dieselbe Person dasselbe;
+      # „nicht bewertbar" geht nie als „erfüllt" durch.
+      - name: Konsistenz
+        run: npm run pruefung:konsistenz
+
+      # Prüfstatus der Quelle ist nicht die Laufzeit eines Bestandsrechners:
+      # Fahrzeit, PPP-RL und Tarife werden nicht herabgestuft.
+      - name: Laufzeit
+        run: npm run pruefung:laufzeit
+
+      # Schutzmerkmale (Mutterschutz, Schwerbehinderung) bei fremden Personen
+      # und im Betriebsratsprotokoll.
+      - name: Schutzdaten
+        run: npm run pruefung:schutzdaten
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.

@@ -6,7 +6,7 @@ import {
   dauer, brutto, fenster,
   dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzEinsatz, aufgabeSchwere, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -14,6 +14,10 @@ import {
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
   fehlendeKompetenzen, REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "./regelwerk.js";
+import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
+import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
+import { addMonate } from "./regelbaukasten.js";
+import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -151,6 +155,7 @@ class Fehlerauffang extends Component {
      eintritt, austritt, wochenstunden, urlaubsanspruch, urlaubsuebertrag,
      stundenuebertrag, qualifikationen[],
      teilzeit { aktiv, modus: "quote"|"wochentage", wochentage[] },
+     beschaeftigungsmodell (optional, src/beschaeftigung.js), stundenGrenzeMonat (optional),
      springer (bool), einschraenkungen{}, rolle, rolleSeit, rolleVerlauf[],
      bereich ("ALLE" oder einheitId), status
 
@@ -860,6 +865,7 @@ const ABW = [
   { id: "frei", label: "Freistellung", kurz: "F", farbe: "#878C93", urlaub: false, bezahlt: false, rang: 1 },
   { id: "sonst", label: "Sonstiges", kurz: "X", farbe: "#8A5A00", urlaub: false, bezahlt: true, rang: 2 },
   { id: "ausgleich", label: "Freizeitausgleich", kurz: "A", farbe: "#0369A1", urlaub: false, bezahlt: false, rang: 2 },
+  ...ABW_WEITERE,
 ];
 const abwArt = (id) => ABW.find((a) => a.id === id) || ABW[4];
 
@@ -1553,10 +1559,17 @@ function sollStunden(m, p, ym) {
 function istStunden(m, p, ym) {
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
-      if (t.abwesenheit) { if (abwArt(t.abwesenheit.art).bezahlt && t.plan) gg += proTag; continue; }
+      if (t.abwesenheit) {
+        /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
+           die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
+        const es = entgeltStatus(abwArt(t.abwesenheit.art));
+        if (es === "bezahlt" && t.plan) gg += proTag;
+        else if (es === "ungeklaert" && t.plan) ungeklaert++;
+        continue;
+      }
       if (!t.dienstId) continue;
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
@@ -1565,7 +1578,7 @@ function istStunden(m, p, ym) {
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert };
   });
 }
 /* --------------------------------------------------------------------------
@@ -1676,63 +1689,23 @@ function nachtJahr(m, p, jahr) {
    liefert schutzBefunde() in src/regelwerk.js die Fundstelle je Befund mit,
    weil sie dort je nach Merkmal verschieden ist.
    ========================================================================== */
-const RECHTSQUELLE = {
-  ruhezeit: { norm: "§ 5 Abs. 1 ArbZG",
-    satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
-  pause: { norm: "§ 4 ArbZG",
-    satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
-  /* Die Zahl zulässiger Dienste in Folge steht in keinem Gesetz. Sie kommt
-     aus dem Tarifvertrag, der Betriebsvereinbarung oder der eigenen
-     Festlegung — hier ist sie eine betriebliche Grenze, und das muss dabei
-     stehen. Sonst behauptet die Anwendung ein Gesetz, das es nicht gibt.
-     Die gesetzliche Anknüpfung nebenan ist echt, aber eine andere Frage. */
-  folge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Das Arbeitszeitgesetz begrenzt die Dienstfolge nicht unmittelbar. Gesetzlich gebunden ist der Sonntag: § 11 Abs. 1 ArbZG verlangt mindestens 15 beschäftigungsfreie Sonntage im Jahr." },
-  nachtfolge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Anknüpfung ist § 6 Abs. 1 ArbZG: Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen. Die Zahl selbst legt der Betrieb fest." },
-  abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
-    satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
-  ueberlappung: { norm: "§ 7 BUrlG",
-    satz: "Ein Zeitraum kann nicht zugleich Urlaub und eine andere Abwesenheit sein." },
-  urlaub: { norm: "§ 7 Abs. 1 BUrlG",
-    satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
-  nachweis: { norm: "§ 12 ArbSchG",
-    satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
-  /* Hier stand: „Bewachungstätigkeit setzt den Sachkundenachweis voraus."
-     Das stimmt so nicht — § 34a Abs. 1a GewO verlangt die Sachkunde nur für
-     bestimmte Tätigkeiten, für die übrigen genügt die Unterrichtung. Der
-     Satz erschien zudem unter jeder Sperre, auch unter einer betrieblichen.
-     Er greift jetzt nur noch, wenn die Qualifikation gar keine Grundlage
-     nennt — und sagt dann genau das. */
-  sperre: { norm: "Keine Grundlage hinterlegt", betrieblich: true,
-    satz: "Zu dieser Anforderung ist keine Rechtsgrundlage erfasst. Worauf sie sich stützt, "
-      + "steht unter Betrieb → Qualifikationen." },
-  qualifikation: { norm: "§ 5 ArbSchG",
-    satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
-  fachkraft: { norm: "Landesheimpersonalverordnung",
-    satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." },
-  besetzung: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Die Mindestbesetzung legt der Betrieb fest. Bleibt sie dauerhaft unerreicht, ist das nach § 5 ArbSchG als Gefährdung zu beurteilen." },
-  urlaubsgrenze: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Wie viele gleichzeitig Urlaub haben dürfen, legt der Betrieb fest." },
-  einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
-    satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
-  ausgleich: { norm: "§ 3 Satz 2 ArbZG",
-    satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
-  tagesgrenze: { norm: "§ 3 Satz 1 und 2 ArbZG",
-    satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
-  ersatzruhe: { norm: "§ 11 Abs. 3 ArbZG",
-    satz: "Für Sonntagsarbeit ist ein Ersatzruhetag innerhalb von zwei Wochen zu gewähren, für Feiertagsarbeit an einem Werktag innerhalb von acht Wochen." },
-  sonntagsfrei: { norm: "§ 11 Abs. 1 ArbZG",
-    satz: "Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei bleiben." },
-  regelsatz: { norm: "Konfiguration", betrieblich: true,
-    satz: "Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt." },
-  vorsorge: { norm: "§ 6 Abs. 3 ArbZG",
-    satz: "Nachtarbeitnehmer haben das Recht, sich arbeitsmedizinisch untersuchen zu lassen — regelmäßig nach höchstens drei Jahren, nach dem fünfzigsten Lebensjahr jährlich." },
-};
+/* Die Tabelle steht im Regelregister (src/regelregister.js), je Eintrag mit
+   Regelkennung, Prüfstatus und Gültigkeit. Hier wird sie nur gelesen: Gleiche
+   Schlüssel, gleicher Wortlaut wie vorher. */
+const RECHTSQUELLE = rechtsquelleTabelle();
+
+/**
+ * Fundstelle zu einem Befund samt der Kennung der Regel aus dem Regelregister,
+ * soweit der Befund einer Regel zugeordnet ist (Feld `regelId`).
+ */
+function rechtsquelle(b) {
+  const q = rechtsquelleDirekt(b);
+  const regelId = regelIdFuerBefund(b);
+  return q && regelId ? { ...q, regelId } : q;
+}
 
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
-function rechtsquelle(b) {
+function rechtsquelleDirekt(b) {
   if (!b) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
@@ -1779,10 +1752,22 @@ function pruefen(m, von, bis) {
            hängt. */
         for (const a of (m.aufgaben || []).filter((x) => (x.dienstarten || []).includes(k))) {
           const u = aufgabeGedeckt(a, e.personen, (p, qid) => qualGueltig(m, p, qid));
-          if (u.gedeckt) continue;
-          push({ art: "aufgabe", schwere: u.offen ? "warn" : "danger", datum: d, ref: `${k}|${a.id}`,
-            titel: `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
+          const schwere = aufgabeSchwere(u);
+          if (!schwere) continue;
+          push({ art: "aufgabe", schwere, datum: d, ref: `${k}|${a.id}`,
+            titel: u.offen ? `${e.da.name}: ${a.name} nicht prüfbar` : `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
         }
+      }
+    }
+    /* Abwesenheiten, deren Entgeltstatus nicht geklärt ist: Das Stundenkonto
+       schreibt dafür nichts gut — und sagt es, statt still zu kürzen. */
+    for (const p of m.personen) {
+      for (let ym = von.slice(0, 7); ym <= bis.slice(0, 7); ym = addMonate(ym + "-01", 1).slice(0, 7)) {
+        const n = istStunden(m, p, ym).ungeklaert;
+        if (n > 0)
+          push({ art: "entgelt", schwere: "warn", datum: `${ym}-01`, ref: `${p.id}|${ym}`, personId: p.id,
+            titel: `${p.nachname}: Entgeltstatus der Abwesenheit nicht geklärt`,
+            text: `${n} geplante Abwesenheitstag(e) im ${ym} haben keinen geprüften Entgeltstatus. Das Stundenkonto schreibt dafür nichts gut; bitte Lohnbuchhaltung oder Tarif klären.` });
       }
     }
     const vor = addDays(von, -10);
@@ -2045,18 +2030,23 @@ function pruefen(m, von, bis) {
        werden sie nur auf den Plan angewendet. */
     for (const p of m.personen) {
       if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+      /* Ohne Merkmal und mit bekanntem Alter ab 18 gibt es nichts zu prüfen —
+         das spart bei einem Betrieb ohne Jugendliche und ohne Mutterschutz den
+         ganzen Durchlauf. */
       const alterHeute = alterAm(p.geburtstag, bis);
-      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      /* Ein unbekanntes Alter (Geburtsdatum fehlt oder ungültig) überspringt die
+         Prüfung nicht: Es wird einmal je Person als „nicht bewertbar" gemeldet. */
+      if (!p.mutterschutz && !p.schwerbehindert && alterHeute !== null && alterHeute >= 18) continue;
+      let datenGemeldet = false;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefunde(p, da, d)) {
-          push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
+        for (const b of schutzEinsatz(p, da, d)) {
+          if (b.offen) { if (datenGemeldet) continue; datenGemeldet = true; }
+          push({ art: "schutz", schwere: b.schwere, datum: d,
             ref: `${p.id}|${b.regel}`, personId: p.id,
             titel: `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
@@ -2490,13 +2480,17 @@ const offeneErfassung = (m, p, bis) => {
  */
 function hindernisBefunde(m, p, d, da) {
   const g = [];
-  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel" });
+  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel",
+    regelId: regelIdFuerBefund({ art: art || "regel", quelle }) });
   const e = einschr(p);
   if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand");
   const abw = abwesenheitAm(m, p.id, d);
   /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
      bietet an, sie für diesen Tag aufzuheben. */
   if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
+  /* Jugendarbeitsschutz, Mutterschutz, SGB IX: dieselbe Quelle wie die
+     Planprüfung (schutzEinsatz), nicht eine zweite Fassung davon. */
+  for (const b of schutzEinsatz(p, da, d)) push(b.stufe, b.text, b.regel, "schutz");
   /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
      ein ärztliches Attest oder eine Absprache sein. */
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
@@ -8362,7 +8356,7 @@ function MeineSchichten({ sitz, akt, ym }) {
         {antrag === "abwesenheit" ? (
           <div style={{ display: "grid", gap: 15 }}>
             <Field label="Art"><Sel value={form.art} onChange={(e) => setForm({ ...form, art: e.target.value })}>
-              {ABW.filter((a) => a.id !== "krank").map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+              {ABW.filter((a) => a.id !== "krank" && a.selbst !== false).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
               <Field label="Von"><Inp type="date" value={form.von} onChange={(e) => setForm({ ...form, von: e.target.value })} /></Field>
               <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e) => setForm({ ...form, bis: e.target.value })} /></Field>
@@ -9764,6 +9758,24 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* Das Modell ist optional. Fehlt es, leitet die Anwendung es aus der
+                Verteilung ab (Voll- oder Teilzeit); hinterlegt wird nur, was von
+                Regeln gebraucht wird — etwa Werkstudent. */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Beschäftigungsmodell"
+                hint={p.beschaeftigungsmodell ? "Regeln, die an dieses Modell gebunden sind, wirken auf diese Person."
+                  : `Nicht angegeben — gilt als ${(BESCHAEFTIGUNGSMODELLE.find((x) => x.id === modellVon(p)) || {}).label}.`}>
+                <Sel value={p.beschaeftigungsmodell || ""}
+                  onChange={(e) => akt.setzePerson(p.id, "beschaeftigungsmodell", e.target.value || null)}>
+                  <option value="">Nicht angegeben</option>
+                  {BESCHAEFTIGUNGSMODELLE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </Sel></Field>
+              {(p.beschaeftigungsmodell === "minijob" || p.beschaeftigungsmodell === "midijob") && (
+                <Field label="Zulässige Stunden je Monat"
+                  hint="Aus der Verdienstgrenze und dem Stundenlohn zu berechnen. CENTRIC kennt keinen Lohn.">
+                  <Inp type="number" step="0.5" value={p.stundenGrenzeMonat == null ? "" : p.stundenGrenzeMonat}
+                    onChange={(e) => akt.setzePerson(p.id, "stundenGrenzeMonat", e.target.value === "" ? null : Number(e.target.value))} /></Field>)}
+            </div>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -9921,8 +9933,8 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <div style={{ paddingTop: 20, marginTop: 14, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 13 }}>Abwesenheit eintragen</Lab>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 11, alignItems: "end" }}>
-            <Field label="Art"><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
-              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+            <Field label="Art" hint={entgeltHinweis(abwArt(form.art)) || undefined}><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
+              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={form.von} onChange={(e2) => setForm({ ...form, von: e2.target.value })} /></Field>
             <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e2) => setForm({ ...form, bis: e2.target.value })} /></Field>
             <Btn kind="primary" onClick={eintragen}>Eintragen</Btn>
@@ -10680,6 +10692,8 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
                             border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
                             color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
                           {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                          {q.regelId && <span style={{ fontSize: 10.5, color: C.dimmer, whiteSpace: "nowrap", ...NUM }}
+                            title={`Regel ${q.regelId} · Regelstand ${REGELSTAND.version}`}>{q.regelId}</span>}
                         </div>);
                     })()}</div>
                 </div>))}
@@ -14642,10 +14656,10 @@ function Mehrfach({ sitz, akt, onClose }) {
               <Sel value={f.dienstId} onChange={(e) => setF({ ...f, dienstId: e.target.value })}>
                 <option value="-">frei</option>
                 {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
-          : <Field label="Art der Abwesenheit">
+          : <Field label="Art der Abwesenheit" hint={entgeltHinweis(abwArt(abwArtId)) || undefined}>
               <Sel value={abwArtId} onChange={(e) => setAbwArtId(e.target.value)}>
                 {ABW.filter((a) => a.id !== "krank").map((a) => (
-                  <option key={a.id} value={a.id}>{a.label}</option>))}</Sel></Field>}
+                  <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>))}</Sel></Field>}
       </div>
 
       <Lab style={{ marginBottom: 10 }}>Personen · {f.personen.length} gewählt</Lab>
@@ -20432,7 +20446,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
-                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
+                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich" && a.selbst !== false)
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
               onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>
@@ -21776,7 +21790,8 @@ function AppInnen() {
       rechnungStellen: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);
         /* Eine Rechnung über null Euro ist keine Freundlichkeit, sondern ein
-           Beleg, den jemand ablegen, prüfen und zehn Jahre aufbewahren muss. */
+           Beleg, den jemand ablegen, prüfen und acht Jahre aufbewahren muss
+           (Buchungsbeleg, § 147 Abs. 3 AO). */
         const f = rechnungFaellig(m, ym);
         if (!f.faellig) {
           melde(f.grund === "ausgesetzt"

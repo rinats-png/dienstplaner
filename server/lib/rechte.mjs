@@ -315,7 +315,39 @@ const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
 const PERSON_PRIVAT = ["email", "telefon", "mobil", "anschrift", "geburtstag",
   "geburtsdatum", "iban", "steuerId", "sozialversicherung", "notfall",
   "notfallkontakt", "notizen", "personalnummer", "einschraenkungen",
-  "lohn", "gehalt", "zuschlaege"];
+  "lohn", "gehalt", "zuschlaege", "beschaeftigungsmodell", "stundenGrenzeMonat",
+  /* Schutzstatus: Schwangerschaft und Schwerbehinderung sind Gesundheitsangaben
+     nach Artikel 9 DSGVO. Die Planung der Leitung braucht sie, Kolleginnen und
+     der Betriebsrat nicht. Die eigene Person sieht ihren Eintrag weiter. */
+  "mutterschutz", "schwerbehindert"];
+
+/* Bestätigte Abweichungen für den Betriebsrat. Namen fehlen dort ohnehin; bei
+   Schutzvorschriften, die eine Schwangerschaft oder Schwerbehinderung
+   verraten würden (MuSchG, SGB IX), bleiben auch Regel, Fundstelle und
+   Freitext weg — zusammen mit Datum und Dienst ließe sich sonst in einem
+   kleinen Team auf die Person schließen. Übrig bleiben Datum, Dienst, Stufe
+   und dass eine individuelle Schutzregel betroffen war. */
+export const SCHUTZ_NEUTRAL = "SCHUTZ-INDIVIDUELL";
+const SCHUTZ_NEUTRAL_TEXT = "Individuelle Schutzregel";
+const sensibleQuelle = (q) => /^\s*(MuSchG|SGB\s+IX)\b/i.test(String(q || ""));
+const sensibleRegel = (id) => /^(MUSCHG|SGBIX)-/i.test(String(id || ""));
+
+export function bestaetigungFuerBetriebsrat(b) {
+  if (!b) return b;
+  const basis = { ...b, personId: null, durch: b.rolle || null, durchId: null };
+  const befunde = Array.isArray(b.befunde) ? b.befunde : [];
+  const regelIds = Array.isArray(b.regelIds) ? b.regelIds : [];
+  const sensibel = befunde.some((x) => x && sensibleQuelle(x.quelle)) || regelIds.some(sensibleRegel);
+  if (!sensibel) return basis;
+  const neutral = { stufe: null, text: SCHUTZ_NEUTRAL_TEXT, quelle: SCHUTZ_NEUTRAL };
+  return {
+    ...basis,
+    befunde: befunde.map((x) => (x && sensibleQuelle(x.quelle)) ? { ...neutral, stufe: x.stufe } : x),
+    regelIds: [...new Set(regelIds.map((id) => sensibleRegel(id) ? SCHUTZ_NEUTRAL : id))],
+    /* Der Freitext der bestätigenden Person könnte den Anlass nennen. */
+    grund: b.grund ? "" : b.grund,
+  };
+}
 
 function personSaeubern(p) {
   const rein = { ...p };
@@ -395,8 +427,7 @@ export function bestandFuerRolle(bestand, sitzung) {
     /* Der Betriebsrat sieht bestätigte Abweichungen je Regel und Tag, aber
        ohne Namen (Muster-BV, Anlage 5). */
     if (rolle === "betriebsrat" && Array.isArray(m.bestaetigungen)) {
-      m.bestaetigungen = m.bestaetigungen.map((b) => b && ({ ...b,
-        personId: null, durch: b.rolle || null, durchId: null }));
+      m.bestaetigungen = m.bestaetigungen.map(bestaetigungFuerBetriebsrat);
     }
   }
 

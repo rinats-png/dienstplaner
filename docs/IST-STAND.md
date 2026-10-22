@@ -109,6 +109,10 @@ Hinweis: `BEREITSTELLUNG.md` sagt, die Rechtstexte beschrieben „noch den früh
 
 **Bewusst nicht** (bis Gegenbeleg): Rundgangskontrolle mit Hardware, Pflegedokumentation/AKI-Klinikdaten, Herstellerintegrationen (MediFox, Vivendi).
 
+## F2. Nachtrag Regelregister (Oktober 2026, lokal)
+
+Regeln tragen jetzt Kennung, Quelle, Fundstelle, Prüfstatus und Gültigkeit (`src/regelregister.js`); neue Regelarten rechnet `src/regelbaukasten.js`. Die Lücke „Regelbaukasten nur geplant" ist damit teilweise geschlossen (vier von acht Regelarten). Siehe `docs/REGELWERK-REGISTRY.md`.
+
 ## G. Korrekturen an früheren Aussagen
 
 | Aussage | Richtig ist |

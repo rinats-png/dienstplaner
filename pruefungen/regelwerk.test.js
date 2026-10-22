@@ -210,7 +210,7 @@ describe("Besondere Personengruppen", () => {
     expect(b.some((x) => x.hart && x.regel.startsWith("MuSchG"))).toBe(true);
   });
   it("weist bei Schwerbehinderung auf das Freistellungsrecht hin", () => {
-    const b = schutzBefunde({ schwerbehindert: true }, LANG, "2026-08-04");
+    const b = schutzBefunde({ schwerbehindert: true, geburtstag: "1980-01-01" }, LANG, "2026-08-04");
     expect(b).toHaveLength(1);
     expect(b[0].hart).toBe(false);
   });
@@ -281,8 +281,15 @@ describe("Schutzvorschriften am Plan", () => {
     expect(schutzBefunde(p, N, "2026-08-04")).toHaveLength(0);
   });
 
-  it("prüft ohne Geburtsdatum nichts Altersbezogenes", () => {
-    expect(schutzBefunde({ nachname: "Ohne" }, N, "2026-08-04")).toHaveLength(0);
+  it("meldet ohne Geburtsdatum bei einem Dienst, den Jugendliche nicht leisten dürften: nicht bewertbar, kein Verstoß", () => {
+    const b = schutzBefunde({ nachname: "Ohne" }, N, "2026-08-04");
+    expect(b).toHaveLength(1);
+    expect(b[0].offen).toBe(true);
+    expect(b[0].hart).toBe(false);
+  });
+
+  it("ohne Geburtsdatum und bei einem Dienst, den auch Jugendliche leisten dürften, gibt es nichts zu melden", () => {
+    expect(schutzBefunde({ nachname: "Ohne" }, { start: "08:00", ende: "16:00", pause: 30 }, "2026-08-04")).toHaveLength(0);
   });
 
   it("lässt Erwachsene ohne Merkmal in Ruhe", () => {

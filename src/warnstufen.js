@@ -95,6 +95,10 @@ export function bestaetigungsEintraege(best, wer, aktion, opt) {
       id: opt.neueId(), personId: e.personId, datum: e.datum, dienstId: e.dienstId, aktion,
       stufe: hoechsteStufe(ernst),
       befunde: ernst.map((b) => ({ stufe: b.stufe, text: b.text, quelle: b.quelle || "" })),
+      /* Welche Regeln dahinterstehen (Regelregister). Auf Eintragsebene, damit
+         die Form der Befunde unverändert bleibt; leer, wo ein Befund keiner
+         registrierten Regel zugeordnet ist. */
+      regelIds: [...new Set(ernst.map((b) => b.regelId).filter(Boolean))],
       grundArt: best.grundArt || null, grund: best.grundArt ? String(best.grundText || "").trim() : "",
       ohneGrund: !best.grundArt, gelesen: !!best.gelesen,
       durch: w.name || null, durchId: w.personId || null, rolle: w.rolle || null,

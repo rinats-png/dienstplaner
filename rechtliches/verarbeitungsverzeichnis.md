@@ -73,7 +73,7 @@ Kunden brauchen ein **eigenes** Verzeichnis für ihre Verarbeitung
 | **Datenkategorien** | Firma, Anschrift, Ansprechpartner, Tarif, Standorte, Rechnungsbeträge |
 | **Rechtsgrundlage** | Art. 6 Abs. 1 lit. b DSGVO; für die Aufbewahrung Art. 6 Abs. 1 lit. c i. V. m. § 147 AO, § 257 HGB |
 | **Empfänger** | [BEISPIEL-STEUERBERATUNG] |
-| **Löschfrist** | 10 Jahre nach Ablauf des Kalenderjahres der Rechnungsstellung |
+| **Löschfrist** | Rechnungen und Buchungsbelege: 8 Jahre (§ 147 Abs. 3 AO in der Fassung des Vierten Bürokratieentlastungsgesetzes); Bücher, Inventare, Jahresabschlüsse: 10 Jahre; Handels- und Geschäftsbriefe: 6 Jahre — jeweils ab Ende des Kalenderjahres der Entstehung. Dokumentart und Frist vor Veröffentlichung von der Steuerberatung bestätigen lassen. |
 
 ## A5 Anfragen per E-Mail
 

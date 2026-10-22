@@ -39,6 +39,15 @@
 export const REGELSTAND = {
   version: "2026.09",
   stand: "2026-09-09",
+  /* `version` und `stand` bezeichnen den Rechtsstand, nach dem die Prüflogik
+     gerechnet wird — er steht in jedem Protokolleintrag. Die Liste `quellen`
+     beschreibt den Umfang. Am 22.10.2026 wurden vier Quellen nachgetragen, die
+     schon in dieser Fassung wirkten (EFZG, SGB V/IX, Landesheimpersonal-
+     verordnung): Die Rechenlogik ist dieselbe geblieben, nur die Liste war
+     unvollständig. Deshalb wird die Version nicht hochgezählt; `quellenstand`
+     hält fest, wann die Liste zuletzt vervollständigt wurde. Ändert sich
+     dagegen eine Prüfregel, gilt wie bisher: neue Version. */
+  quellenstand: "2026-10-22",
   /* Was in dieser Fassung geprüft wird — die Liste ist der Umfang, zu dem
      sich die Anwendung bekennt, nicht eine Liste gelesener Gesetze. */
   quellen: [
@@ -52,6 +61,13 @@ export const REGELSTAND = {
     "PpUGV (Fassung vom 09.11.2020)",
     "GewO § 34a, BewachV",
     "MPBetreibV §§ 4, 10 · BetrSichV § 12",
+    /* Nachgetragen (Oktober 2026): Diese Quellen wirkten schon in dieser
+       Fassung, standen aber nicht in der Liste. Die Regeln dazu sind im
+       Regelregister (src/regelregister.js) mit Fundstelle geführt; ein Test
+       hält beide Seiten zusammen. */
+    "EFZG § 3",
+    "SGB V § 74 · SGB IX §§ 164, 207",
+    "Landesheimpersonalverordnung (je Bundesland, vom Betrieb hinterlegt)",
   ],
 };
 
@@ -674,6 +690,9 @@ export function freieSonntage(hatDienst, jahr, bisDatum = null) {
 /** Alter in Jahren am Stichtag. Ohne Geburtsdatum: null. */
 export function alterAm(geburtstag, datum) {
   if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
+  /* Einen Tag, den es nicht gibt (30.02.), rechnet Date auf den 02.03. weiter —
+     das wäre ein falsches Alter statt keines. */
+  if (iso(pISO(geburtstag)) !== String(geburtstag)) return null;
   const g = pISO(geburtstag), d = pISO(datum);
   let jahre = d.getFullYear() - g.getFullYear();
   const vorGeburtstag = d.getMonth() < g.getMonth()
@@ -693,6 +712,14 @@ export function schutzBefunde(person, dienstart, datum) {
   const alter = alterAm(person.geburtstag || person.geburtsdatum, datum);
 
   /* --- Jugendarbeitsschutzgesetz --- */
+  /* Fehlt das Geburtsdatum (oder ist es ungültig), lässt sich nicht sagen, ob
+     das Gesetz gilt. Das ist „nicht bewertbar" — kein Verstoß, aber auch nicht
+     stillschweigend zulässig. Gemeldet wird nur, wo es darauf ankäme: bei einem
+     Dienst, den eine minderjährige Person nicht leisten dürfte. */
+  if (alter === null && (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60 || dauer(dienstart) > 8.5))
+    aus.push({ regel: "JArbSchG (Geburtsdatum)", hart: false, offen: true,
+      text: "Das Geburtsdatum fehlt oder ist ungültig. Ob das Jugendarbeitsschutzgesetz gilt, lässt sich nicht prüfen — "
+        + "für Jugendliche wäre dieser Dienst nicht zulässig (Nacht, vor 6 Uhr oder über acht Stunden)." });
   if (alter !== null && alter < 18) {
     if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
       aus.push({ regel: "JArbSchG § 14", hart: true,
@@ -721,6 +748,38 @@ export function schutzBefunde(person, dienstart, datum) {
       text: "Schwerbehinderte Menschen sind auf Verlangen von Mehrarbeit über acht Stunden freizustellen." });
 
   return aus;
+}
+
+/**
+ * Die Schutzbefunde einer Einteilung mit ihrer Bewertung — die eine Stelle,
+ * an der „hart" zu einer Stufe wird. Planprüfung (pruefen) und Warndialog
+ * (hindernisBefunde) lesen beide hier, damit sie über dieselbe Person und
+ * denselben Dienst nie Verschiedenes sagen: Sie zeigen es unterschiedlich,
+ * aber die Wahrheit ist dieselbe.
+ *
+ *   hart (Verbot)        → Rechtsverstoß (stufe "recht", schwere "danger")
+ *   nicht hart (Pflicht zur Freistellung auf Verlangen, Ausnahme) → Achtung
+ *   offen (Daten fehlen, nicht bewertbar) → Hinweis
+ *
+ * @returns {{regel: string, text: string, stufe: string, schwere: string}[]}
+ */
+export function schutzEinsatz(person, dienstart, datum) {
+  return schutzBefunde(person, dienstart, datum).map((b) => ({
+    regel: b.regel, text: b.text, offen: !!b.offen,
+    /* offen = nicht bewertbar: ein Hinweis, nichts zu bestätigen */
+    stufe: b.offen ? "hinweis" : b.hart ? "recht" : "achtung", schwere: b.hart ? "danger" : "warn",
+  }));
+}
+
+/**
+ * Wie schwer wiegt das Ergebnis von aufgabeGedeckt() in der Planprüfung?
+ * null: gedeckt und bewertbar — kein Befund. Eine Aufgabe ohne Qualifikation
+ * meldet gedeckt:true mit offen:true; das ist „nicht bewertbar" und darf nie
+ * als erfüllt durchgehen, sondern bleibt als Hinweis sichtbar.
+ */
+export function aufgabeSchwere(ergebnis) {
+  if (ergebnis.gedeckt && !ergebnis.offen) return null;
+  return ergebnis.offen ? "warn" : "danger";
 }
 
 /* --------------------------------------------------------------------------
