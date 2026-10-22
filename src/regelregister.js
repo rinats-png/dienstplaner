@@ -300,6 +300,9 @@ const REGELN_VORLAEUFIG = [
    dort aufnimmt. Das ändert nichts an ihrer Berechnung — die Begrenzung des
    Registers greift nur dort, wo ein Befund durch das Register bewertet wird.
    -------------------------------------------------------------------------- */
+/** Die Module, die ihre Regeln selbst rechnen. Nur auf sie darf laufzeit "bestand" verweisen. */
+export const RECHENMODULE = ["fahrzeit.js", "ppprl.js", "tarifwerke.js"];
+
 const modul = (e) => vorlaeufig({ laufzeit: "bestand", ...e });
 
 const REGELN_MODULE = [
@@ -488,8 +491,13 @@ export function pruefeRegister(liste = REGELN) {
       if (!r.pruefhinweis) m.push(`${wo}: vorläufige Regel ohne Prüfhinweis`);
       if (r.regelstand) m.push(`${wo}: vorläufige Regel darf zu keinem Regelstand gehören`);
     }
-    if (r.laufzeit === "bestand" && (r.typ !== "bestandsregel" || !r.parameter || !r.parameter.modul))
-      m.push(`${wo}: laufzeit "bestand" verlangt Regelart bestandsregel und das rechnende Modul im Parameter`);
+    /* laufzeit "bestand" nimmt eine Regel von der Bremse für Vorläufiges aus. Das
+       darf nur, wer auf ein bekanntes, getestetes Rechenmodul verweist — sonst
+       ließe sich jede neue ungeprüfte Regel damit am Hinweis-Deckel vorbeischleusen. */
+    if (r.laufzeit !== undefined && r.laufzeit !== null && r.laufzeit !== "bestand")
+      m.push(`${wo}: laufzeit „${r.laufzeit}" unbekannt`);
+    if (r.laufzeit === "bestand" && (r.typ !== "bestandsregel" || !r.parameter || !RECHENMODULE.includes(r.parameter.modul)))
+      m.push(`${wo}: laufzeit "bestand" verlangt Regelart bestandsregel und ein bekanntes Rechenmodul (${RECHENMODULE.join(", ")})`);
     if (wirkung(r) === "voll" && r.pruefstatus === "legacy_verified" && r.regelstand !== REGELSTAND.version)
       m.push(`${wo}: Bestandsregel gehört nicht zum aktuellen Regelstand`);
     if (["zaehlregel", "grenzregel", "besetzungsregel", "paarregel"].includes(r.typ) && r.pruefstatus !== "legacy_verified") {

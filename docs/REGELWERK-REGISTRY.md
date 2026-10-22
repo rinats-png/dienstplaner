@@ -184,3 +184,18 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 ## Anhang E — Prüfstatus der Quelle und Laufzeit eines Bestandsrechners
 
 `provisional` sagt, wie gut die **Quelle** geprüft ist, und bremst neu eingeführte Regeln auf Hinweis. Fahrzeit, PPP-RL und Tarifvorlagen rechnen aber längst in getesteten Modulen. Ihre Registerzeilen tragen deshalb `laufzeit: "bestand"`: `begrenzeStufe()` stuft sie nicht herab, ihre Stufe bestimmt weiter das Modul (das das Register nicht einmal importiert). Watchlist und deprecated wirken weiterhin nicht. Test: `pruefungen/laufzeit.test.js`.
+
+## Anhang F — Nicht Bestandteil dieses Stands, Follow-up
+
+**Umgesetzt:** Registry Light, Prüfstatus, Quellenstand, Zähl-/Grenz-/Besetzungs-/Paarregel, gemeinsame Schutzprüfung, Korrektur „nicht bewertbar", Beschäftigungsmodelle, erweiterbare Abwesenheitsarten mit ungeklärtem Entgelt, Registerzuordnung für Fahrzeit, PPP-RL und Tarifvorlagen. **Vorbereitet:** Folge `freigabe` (Mitbestimmung), Branchenbereich im Geltungsbereich. **Geplant/später, nicht Teil des Codes:** Musterregel, Blockregel, Verteilungsregel, Wunschregel; Branchenpakete (zuerst ambulante Pflege, nach Pilotbestätigung); Mitbestimmungsworkflow. Das Register dokumentiert Quellen und Prüfstände; es ersetzt keine individuelle Rechtsprüfung und behauptet keine vollständige Branchen- oder Rechtskonformität.
+
+| Follow-up | Bereich | Primärquellenprüfung |
+|---|---|---|
+| Quellen der `provisional`-Registereinträge prüfen und aufwerten | Registry | ja |
+| Entgeltwirkung der neun neuen Abwesenheitsarten klären | Stundenkonto | ja (Tarif, Lohnbuchhaltung) |
+| Watchlist-Einträge verifizieren | docs/legal | ja |
+| Fehlendes Geburtsdatum bei Jugend-Prüfung als „nicht bewertbar" melden (heute: kein Befund) | Schutzprüfung | nein |
+| Flags `mutterschutz`, `schwerbehindert` stehen nicht in `PERSON_PRIVAT` (server/lib/rechte.mjs); prüfen, wer sie sehen darf | Datenschutz | nein |
+| Betriebsrat sieht in bestätigten Abweichungen den Regeltext (z. B. „MuSchG § 5") mit Datum und Dienst, aber ohne Namen; Neutralisierung erwägen | Datenschutz | nein |
+| Naming „Blockregel" | Begriffe | nein |
+| Fahrzeit, PPP-RL, Tarife in den Regelstand aufnehmen | REGELSTAND | ja |

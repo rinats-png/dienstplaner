@@ -86,6 +86,20 @@ describe("Planprüfung und Warndialog lesen dieselbe Schutzquelle", () => {
     expect(schutzEinsatz(sb, frueh, MITTWOCH)).toEqual([]);
   });
 
+  it("Grenzfälle: Volljährigkeit, Bestandsdaten ohne Angaben", () => {
+    // Am Tag des 18. Geburtstags gilt das Jugendarbeitsschutzgesetz nicht mehr
+    expect(schutzEinsatz({ geburtstag: "2008-10-14" }, nacht, MITTWOCH)).toEqual([]);
+    expect(schutzEinsatz({ geburtstag: "2008-10-15" }, nacht, MITTWOCH).map((x) => x.regel)).toContain("JArbSchG § 14");
+    // Ohne Geburtsdatum und ohne Merkmale: kein Schutzbefund. Das ist das bestehende Verhalten
+    // (die Anwendung kann nicht wissen, was nicht eingetragen ist) — FOLLOW-UP: prüfen, ob
+    // ein fehlendes Geburtsdatum bei Auszubildenden als „nicht bewertbar" gemeldet werden soll.
+    expect(schutzEinsatz({ id: "x" }, nacht, MITTWOCH)).toEqual([]);
+    // Wiederholter Aufruf liefert dasselbe (keine versteckten Zustände) und verändert die Eingaben nicht
+    const p = { ...jugend }, d = { ...nacht };
+    expect(schutzEinsatz(p, d, MITTWOCH)).toEqual(schutzEinsatz(p, d, MITTWOCH));
+    expect(p).toEqual(jugend); expect(d).toEqual(nacht);
+  });
+
   it("jeder Schutzbefund des Dialogs hat eine Regel im Register (Quelle als Schlüssel)", () => {
     for (const [, p, d, t] of faelle)
       for (const b of schutzEinsatz(p, d, t))

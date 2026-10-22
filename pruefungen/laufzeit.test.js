@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
 import { pruefeTag, pruefeWoche as fahrWoche } from "../src/fahrzeit.js";
 import { pruefeWoche as pppWoche, richtwerte, BERUFSGRUPPEN } from "../src/ppprl.js";
 import { TARIFWERKE, anwenden } from "../src/tarifwerke.js";
-import { REGELN, begrenzeStufe, regel } from "../src/regelregister.js";
+import { REGELN, RECHENMODULE, begrenzeStufe, regel, pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../src/regelbaukasten.js";
 
 const lies = (f) => readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
@@ -94,5 +94,33 @@ describe("Das Register stuft Bestandsrechner nicht herab", () => {
   it("watchlist und deprecated wirken auch bei einem Bestandsrechner nicht", () => {
     expect(begrenzeStufe({ ...MODULE_REGELN[0], pruefstatus: "watchlist" }, "recht")).toBeNull();
     expect(begrenzeStufe({ ...MODULE_REGELN[0], pruefstatus: "deprecated" }, "recht")).toBeNull();
+  });
+});
+
+describe("laufzeit \"bestand\" ist kein Schlupfloch", () => {
+  const neu = (o) => ({
+    id: "TEST-NEU-01", typ: "bestandsregel", bezeichnung: "Neu", ebene: "bund", quelle: "Testgesetz", fundstelle: "§ 1",
+    gueltigAb: null, gueltigBis: null, pruefstatus: "provisional", pruefhinweis: "ungeprüft", geprueftAm: null, regelstand: null,
+    scope: { branche: null, bundesland: null, beschaeftigungsmodell: null }, hoechsteStufe: "recht", folge: null,
+    parameter: {}, ...o });
+
+  it("eine neue Regel mit laufzeit bestand ohne bekanntes Rechenmodul fällt in der Registerprüfung durch", () => {
+    expect(pruefeRegister([neu({ laufzeit: "bestand" })]).join()).toContain("Rechenmodul");
+    expect(pruefeRegister([neu({ laufzeit: "bestand", parameter: { modul: "erfunden.js" } })]).join()).toContain("Rechenmodul");
+    expect(pruefeRegister([neu({ laufzeit: "bestand", typ: "grenzregel", parameter: { modul: "ppprl.js", groesse: "x", hoechstens: 1 } })]).join())
+      .toContain("bestandsregel");
+  });
+  it("eine unbekannte Laufzeit wird abgelehnt", () => {
+    expect(pruefeRegister([neu({ laufzeit: "egal" })]).join()).toContain("unbekannt");
+  });
+  it("mit bekanntem Modul besteht die Prüfung — das Modul muss es geben", () => {
+    expect(pruefeRegister([neu({ laufzeit: "bestand", parameter: { modul: "ppprl.js" } })])).toEqual([]);
+    for (const m of RECHENMODULE) expect(() => readFileSync(new URL(`../src/${m}`, import.meta.url))).not.toThrow();
+  });
+  it("im echten Register tragen genau Fahrzeit, PPP-RL und Tarife diese Laufzeit", () => {
+    const ids = REGELN.filter((r) => r.laufzeit === "bestand").map((r) => r.id);
+    expect(ids.length).toBeGreaterThan(4);
+    for (const id of ids) expect(id).toMatch(/^(FAHRZEIT|PPPRL|TARIF)-/);
+    expect(pruefeRegister()).toEqual([]);
   });
 });

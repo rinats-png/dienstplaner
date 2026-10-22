@@ -2483,11 +2483,11 @@ function hindernisBefunde(m, p, d, da) {
   /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
      bietet an, sie für diesen Tag aufzuheben. */
   if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
-  /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
-     ein ärztliches Attest oder eine Absprache sein. */
   /* Jugendarbeitsschutz, Mutterschutz, SGB IX: dieselbe Quelle wie die
      Planprüfung (schutzEinsatz), nicht eine zweite Fassung davon. */
   for (const b of schutzEinsatz(p, da, d)) push(b.stufe, b.text, b.regel, "schutz");
+  /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
+     ein ärztliches Attest oder eine Absprache sein. */
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
     push("achtung", "keine Nachtdienste zugelassen", "Schutzvorschrift oder Einsatzeinschränkung für diese Person");
   if (!verfuegbarFuer(p, d, da))
