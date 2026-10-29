@@ -14,7 +14,13 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
+import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
+import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
+import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
+  TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
+import { ausschreibungDerEinheit, eintragDerEinheit, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
+  betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -115,7 +121,9 @@ export function schreibumfang(rolle) {
 
 /* Was eine beschäftigte Person am Betrieb ändern darf: ihre eigenen
    Anliegen in den Feldern anfragen, erfassung, nachrichten, wuensche,
-   einspruenge, urlaubsrunde und ausschreibungen. Alles andere — Personal,
+   einspruenge, urlaubsrunde und ausschreibungen, dazu neue eigene
+   Krankmeldungen (abwesenheiten), die eigenen Einträge einer offenen
+   Selbstplanungsrunde und neue eigene Notrufe. Alles andere — Personal,
    Dienstarten, Schichtfolge, Freigaben — bleibt unberührt, auch wenn es
    mitgeschickt wird.
 
@@ -128,23 +136,14 @@ export function schreibumfang(rolle) {
    Jetzt entscheidet die Person am Eintrag: Eigenes wird übernommen,
    Fremdes bleibt, wie es gespeichert war. Dazu die wenigen Stellen, an
    denen Beschäftigte fremde Einträge berühren dürfen — weil die Abläufe
-   das brauchen: die Meldung auf ein fremdes Tauschgesuch, die Bewerbung
-   auf eine ausgeschriebene Schicht, die Mitteilung an die Gegenseite.
+   das brauchen: die Meldung auf ein fremdes Tauschgesuch und die Bewerbung
+   auf eine ausgeschriebene Schicht. Die Mitteilung an die Gegenseite
+   erzeugt seit Commit 4 der Server (mitteilungen.mjs).
 
    Und einen Antrag entscheidet nie, wer ihn stellt: Der Status eines
    eigenen Antrags darf nur „offen" oder „zurueckgezogen" werden. */
 const eigenerEintrag = (e, ich) => e && String(e.personId) === String(ich);
-const eigenerSchluessel = (k, ich) => String(k).split("|")[0] === String(ich);
 const ANTRAGSTATUS_SELBST = ["offen", "zurueckgezogen"];
-const NACHRICHT_AN_FREMDE = ["tauschAngebot"];
-
-/** Objekt mit Schlüsseln „personId|Datum": nur die eigenen wandern hinein. */
-function eigeneSchluessel(alt, neu, ich) {
-  const aus = {};
-  for (const [k, v] of Object.entries(alt || {})) if (!eigenerSchluessel(k, ich)) aus[k] = v;
-  for (const [k, v] of Object.entries(neu || {})) if (eigenerSchluessel(k, ich)) aus[k] = v;
-  return aus;
-}
 
 /** Liste mit personId: eigene Einträge aus dem Neuen, fremde aus dem Alten. */
 function eigeneEintraege(alt, neu, ich) {
@@ -181,13 +180,15 @@ function anfragenZusammen(alt, neu, ich) {
   return aus;
 }
 
+/* Nachrichten: Beschäftigte sind nur Empfänger. An den eigenen ändert sich
+   allein `gelesen` (Commit 4) — vorher ließen sie sich umschreiben, löschen
+   und neu anlegen, und an Fremde ging ein „Tauschangebot" mit freiem Text.
+   Die Mitteilung zur eigenen Tauschmeldung erzeugt jetzt der Server. */
 function nachrichtenZusammen(alt, neu, ich) {
-  const alteIds = new Set((Array.isArray(alt) ? alt : []).filter(Boolean).map((n) => n.id));
-  const fremdeAlt = (Array.isArray(alt) ? alt : []).filter((n) => n && !eigenerEintrag(n, ich));
-  const eigene = (Array.isArray(neu) ? neu : []).filter((n) => eigenerEintrag(n, ich));
-  const neueAnFremde = (Array.isArray(neu) ? neu : []).filter((n) => n && !eigenerEintrag(n, ich)
-    && !alteIds.has(n.id) && NACHRICHT_AN_FREMDE.includes(n.art));
-  return [...fremdeAlt, ...neueAnFremde, ...eigene];
+  const gelesen = new Map((Array.isArray(neu) ? neu : [])
+    .filter((n) => eigenerEintrag(n, ich) && typeof n.gelesen === "boolean").map((n) => [String(n.id), n.gelesen]));
+  return (Array.isArray(alt) ? alt : []).map((n) => (eigenerEintrag(n, ich) && gelesen.has(String(n.id))
+    && gelesen.get(String(n.id)) !== n.gelesen ? { ...n, gelesen: gelesen.get(String(n.id)) } : n));
 }
 
 function ausschreibungenZusammen(alt, neu, ich) {
@@ -207,17 +208,130 @@ function urlaubsrundeZusammen(alt, neu, ich) {
   return { ...alt, wuensche: eigeneEintraege(alt.wuensche, w, ich) };
 }
 
+/* --------------------------------------------------------------------------
+   KRANKMELDUNG, SELBSTPLANUNG, NOTRUF
+
+   Alle drei bot die Oberfläche Beschäftigten an, und alle drei verwarf der
+   Server bis Oktober 2026 stillschweigend: Die Felder fehlten hier, die
+   Antwort lautete trotzdem „ok". Eine Krankmeldung erschien als erfasst und
+   war nach dem Neuladen verschwunden.
+
+   Zugelassen wird jetzt genau der vorgesehene Vorgang, nicht das Feld:
+   eine neue eigene Krankmeldung, die eigenen Einträge in einer offenen
+   Selbstplanungsrunde, ein neuer eigener Notruf. Bestehendes und Fremdes
+   kommt immer aus dem gespeicherten Stand — die Sicht der Beschäftigten
+   enthält davon ohnehin nur einen Teil (sicht.mjs).
+
+   Mitteilungen legen Beschäftigte nicht an. Zum neuen Notruf erzeugt der
+   Server die Mitteilungen an die Empfänger und stellt sie nach dem
+   Speichern selbst per E-Mail und Push zu (Commit 4, mitteilungen.mjs).
+   -------------------------------------------------------------------------- */
+const DATUM = /^\d{4}-\d{2}-\d{2}$/;
+const ANMERKUNG_MAX = 2000;
+const kennungGueltig = (id) => (typeof id === "string" && id.length > 0 && id.length <= 100)
+  || (typeof id === "number" && Number.isFinite(id));
+const textOderLeer = (t) => t === undefined || t === null || (typeof t === "string" && t.length <= ANMERKUNG_MAX);
+
+/** Neue eigene Krankmeldungen: nur Art „krank", nur die Felder des Formulars. */
+function krankmeldungenZusammen(alt, neu, ich) {
+  const gespeichert = Array.isArray(alt) ? alt : [];
+  const bekannt = new Set(gespeichert.filter(Boolean).map((a) => String(a.id)));
+  const neue = [];
+  for (const a of Array.isArray(neu) ? neu : []) {
+    if (!a || typeof a !== "object" || !eigenerEintrag(a, ich)) continue;
+    if (!kennungGueltig(a.id) || bekannt.has(String(a.id))) continue;    // Bestehendes bleibt, wie es war
+    if (a.art !== "krank") continue;                                       // Urlaub geht über den Antrag
+    if (typeof a.von !== "string" || !DATUM.test(a.von)
+      || typeof a.bis !== "string" || !DATUM.test(a.bis) || a.bis < a.von) continue;
+    if (!textOderLeer(a.notiz)) continue;
+    const sauber = { id: a.id, personId: a.personId, art: "krank", von: a.von, bis: a.bis };
+    if (typeof a.notiz === "string") sauber.notiz = a.notiz;
+    neue.push(sauber);
+    bekannt.add(String(a.id));
+  }
+  return [...gespeichert, ...neue];
+}
+
+/** Selbstplanung: die eigenen Einträge in einer offenen Runde, sonst nichts. */
+function selbstplanungZusammen(alt, neu, ich, dienstarten) {
+  if (!Array.isArray(alt)) return alt;
+  const neueNachId = new Map((Array.isArray(neu) ? neu : [])
+    .filter((r) => r && typeof r === "object").map((r) => [r.id, r]));
+  const dienste = new Set((Array.isArray(dienstarten) ? dienstarten : [])
+    .filter(Boolean).map((d) => String(d.id)));
+  return alt.map((r) => {
+    if (!r || typeof r !== "object" || r.status !== "offen") return r;
+    const g = neueNachId.get(r.id);
+    if (!g) return r;
+    const fremde = (Array.isArray(r.eintraege) ? r.eintraege : []).filter((e) => !eigenerEintrag(e, ich));
+    const eigene = [];
+    const tage = new Set();
+    for (const e of Array.isArray(g.eintraege) ? g.eintraege : []) {
+      if (!e || typeof e !== "object" || !eigenerEintrag(e, ich)) continue;
+      if (typeof e.datum !== "string" || !DATUM.test(e.datum)
+        || e.datum.slice(0, 7) !== r.monat) continue;                    // nur im Monat der Runde
+      if (!dienste.has(String(e.dienstId))) continue;                     // nur bekannte Dienstarten
+      if (tage.has(e.datum)) continue;                                    // ein Eintrag je Tag
+      tage.add(e.datum);
+      const sauber = { personId: e.personId, datum: e.datum, dienstId: e.dienstId };
+      if (typeof e.zeit === "string" && e.zeit.length <= 40) sauber.zeit = e.zeit;
+      eigene.push(sauber);
+    }
+    return { ...r, eintraege: [...fremde, ...eigene] };
+  });
+}
+
+/* Die Arten eines Notrufs — dieselben wie NOTRUF_ARTEN in src/App.jsx. */
+const NOTRUF_ARTEN = Object.keys(NOTRUF_NAMEN);
+const PLANUNGSROLLEN = ["subplaner", "planer", "leitung"];
+
+/** Neue eigene Notrufe. Bestätigen ist Sache der Planung. */
+function notrufeZusammen(alt, neu, ich, personen) {
+  const gespeichert = Array.isArray(alt) ? alt : [];
+  const bekannt = new Set(gespeichert.filter(Boolean).map((n) => String(n.id)));
+  const planung = new Set((Array.isArray(personen) ? personen : [])
+    .filter((p) => p && PLANUNGSROLLEN.includes(p.rolle)).map((p) => String(p.id)));
+  const neue = [];
+  for (const n of Array.isArray(neu) ? neu : []) {
+    if (!n || typeof n !== "object" || !eigenerEintrag(n, ich)) continue;
+    if (!kennungGueltig(n.id) || bekannt.has(String(n.id))) continue;
+    if (!NOTRUF_ARTEN.includes(n.art)) continue;
+    if (!textOderLeer(n.notiz)) continue;
+    neue.push({
+      id: n.id, personId: n.personId, art: n.art,
+      notiz: typeof n.notiz === "string" ? n.notiz : "",
+      zeit: typeof n.zeit === "string" && n.zeit.length <= 40 ? n.zeit : new Date().toISOString(),
+      datum: typeof n.datum === "string" && DATUM.test(n.datum) ? n.datum : new Date().toISOString().slice(0, 10),
+      dienst: typeof n.dienst === "string" && n.dienst.length <= 200 ? n.dienst : null,
+      ort: typeof n.ort === "string" && n.ort.length <= 200 ? n.ort : null,
+      /* Wer unterrichtet wird, bestimmt nicht die Übermittlung: nur
+         Schichtverantwortung, Planung und Leitung dieses Betriebs. */
+      empfaenger: (Array.isArray(n.empfaenger) ? n.empfaenger : [])
+        .filter((x) => planung.has(String(x))),
+      bestaetigt: null,
+    });
+    bekannt.add(String(n.id));
+  }
+  /* Neueste zuerst — so legt auch die Oberfläche sie ab. */
+  return [...neue, ...gespeichert];
+}
+
 /** Die eigenen Felder einer beschäftigten Person, personenbezogen gefiltert. */
 export function eigenesZusammen(alt, geschickt, ich) {
   const hat = (f) => Object.prototype.hasOwnProperty.call(geschickt, f);
   const aus = {};
-  if (hat("erfassung")) aus.erfassung = eigeneSchluessel(alt.erfassung, geschickt.erfassung, ich);
+  /* Zeiten: der gespeicherte Stand. Selbstauskünfte laufen über
+     POST /api/zeit-bestaetigen (zeiterfassung.mjs), Kopien werden übergangen. */
+  if (hat("erfassung")) aus.erfassung = erfassungZusammen(alt, geschickt.erfassung, ich).erfassung;
   if (hat("wuensche")) aus.wuensche = eigeneEintraege(alt.wuensche, geschickt.wuensche, ich);
   if (hat("einspruenge")) aus.einspruenge = eigeneEintraege(alt.einspruenge, geschickt.einspruenge, ich);
   if (hat("anfragen")) aus.anfragen = anfragenZusammen(alt.anfragen, geschickt.anfragen, ich);
   if (hat("nachrichten")) aus.nachrichten = nachrichtenZusammen(alt.nachrichten, geschickt.nachrichten, ich);
   if (hat("ausschreibungen")) aus.ausschreibungen = ausschreibungenZusammen(alt.ausschreibungen, geschickt.ausschreibungen, ich);
   if (hat("urlaubsrunde")) aus.urlaubsrunde = urlaubsrundeZusammen(alt.urlaubsrunde, geschickt.urlaubsrunde, ich);
+  if (hat("abwesenheiten")) aus.abwesenheiten = krankmeldungenZusammen(alt.abwesenheiten, geschickt.abwesenheiten, ich);
+  if (hat("selbstplanung")) aus.selbstplanung = selbstplanungZusammen(alt.selbstplanung, geschickt.selbstplanung, ich, alt.dienstarten);
+  if (hat("notrufe")) aus.notrufe = notrufeZusammen(alt.notrufe, geschickt.notrufe, ich, alt.personen);
   return aus;
 }
 
@@ -232,6 +346,11 @@ const SELBST_FELDER = [
   "telefon", "mobil", "email", "anschrift", "notfallkontakt",
   /* Wie sie erreicht werden möchte */
   "zustellung", "pushSchluessel", "kalenderVerweis",
+  /* Der Kalenderzustand der eigenen Person (Commit 3): Ohne gespeichertes
+     Geheimnis ließ sich ein Feed nach dem Neuladen nicht mehr abschalten,
+     und die Schichtverantwortung bekam beim Einrichten 403. Über die
+     Berechtigung entscheidet der Kalender-Endpunkt, nicht dieser Wert. */
+  "kalenderGeheim", "kalenderStand",
   /* Wann sie kann und was sie sich wünscht */
   "verfuegbarkeit", "wunschfrei",
   /* Wie die Anwendung für sie aussieht */
@@ -276,13 +395,25 @@ const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
    Das ist keine Änderung an seinem Betrieb, sondern am Vertrag. Verträge
    ändert der Betreiber.
 
-   Name, Anschrift und Ansprechpartner stehen bewusst nicht hier: Die darf
-   ein Betrieb pflegen, sie kosten nichts.
+   Der Name steht bewusst nicht hier: Den darf ein Betrieb pflegen.
+   Anschrift, Ansprechpartner und USt-ID sind seit Commit 1e.2a
+   Rechnungsstammdaten des Betreibers (BETREIBERSTAMM oben).
 
    laeuftAb und selbstAngelegt gehören dazu, seit der Löschlauf für
    abgelaufene Testbetriebe daran hängt (aufraeumen.mjs): Wer sie
    zurückschreiben könnte, könnte seine eigene Löschung aushebeln. */
-const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
+/* Rechnungs- und Ansprechpartnerangaben, die interne Notiz des Betreibers,
+   die Raumkennung und die Lohnartenzuordnung. Gepflegt werden sie in der
+   Betreiberkonsole; einen Weg für den Betrieb gibt es in der Oberfläche
+   nicht (lohnarten hat noch gar keinen Editor). Bis Oktober 2026 konnten
+   Leitung und Planung sie über den allgemeinen Schreibweg ändern. Wie die
+   Vertragsfelder gehen sie immer auf den gespeicherten Stand zurück. */
+export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum", "lohnarten"];
+
+/** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
+const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
+
+export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
   "testTage", "rabattGrund", "preisgestaltung", "pakete",
   "laeuftAb", "selbstAngelegt"];
 
@@ -294,32 +425,6 @@ const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
    Notfallkontakt, Krankheitszeiten mit Grund. Nichts davon braucht sie, um
    den eigenen Dienstplan zu sehen.
    -------------------------------------------------------------------------- */
-
-/* Persönliche Angaben, die für fremde Personen nichts in der Antwort zu
-   suchen haben. Name und Funktion bleiben — ohne sie ist kein Plan lesbar. */
-const PERSON_PRIVAT = ["email", "telefon", "mobil", "anschrift", "geburtstag",
-  "geburtsdatum", "iban", "steuerId", "sozialversicherung", "notfall",
-  "notfallkontakt", "notizen", "personalnummer", "einschraenkungen",
-  "lohn", "gehalt", "zuschlaege"];
-
-function personSaeubern(p) {
-  const rein = { ...p };
-  for (const feld of PERSON_PRIVAT) delete rein[feld];
-  return rein;
-}
-
-/* Eine Abwesenheit bleibt sichtbar — sonst stimmt die Besetzung nicht.
-   Der Grund verschwindet: Dass jemand fehlt, ist Betriebswissen. Warum
-   jemand fehlt, ist eine Gesundheitsangabe nach Artikel 9 DSGVO. */
-function abwesenheitSaeubern(a) {
-  const rein = { ...a };
-  delete rein.grund;
-  delete rein.bemerkung;
-  delete rein.diagnose;
-  delete rein.nachweis;
-  if (rein.art && rein.art !== "urlaub" && rein.art !== "frei") rein.art = "abwesend";
-  return rein;
-}
 
 /**
  * Baut die Antwort für eine Rolle.
@@ -334,6 +439,47 @@ export function bestandFuerRolle(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
   const rolle = sitzung.rolle || "kunde";
   if (rolle === "betreiber") return bestand;
+
+  /* Beschäftigte und Betriebsrat: nur, was der Katalog in sicht.mjs
+     ausdrücklich freigibt. Unbekannte Felder gehen nicht hinaus — weder
+     ganz oben noch im Betrieb noch an einer Person. */
+  if (SICHT_ROLLEN.includes(rolle))
+    return bestandSicht(bestand, sitzung, eigenerMandant(bestand, sitzung));
+
+  /* Die Schichtverantwortung: ebenso über einen Katalog (SCHICHT), gestuft
+     nach eigener Person, eigenem Bereich, Springer-Pool und fremd. */
+  if (rolle === "subplaner") {
+    const aus = {};
+    for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
+    const eigenerS = eigenerMandant(bestand, sitzung);
+    if (eigenerS) aus.mandanten = [betriebSichtSchicht(eigenerS, schichtSichtKontext(eigenerS, sitzung))];
+    return aus;
+  }
+
+  /* Planung, Leitung, Kundenrolle: Positivkatalog (sicht.mjs, Commit 1e.3).
+     Oben nur Zähler und Sitzungsmarke, darunter der eigene Betrieb. Die
+     Betreiberdaten liest keine Ansicht dieser Rollen. */
+  if (schreibumfang(rolle) === SCHREIBEN_VOLL) {
+    const aus = {};
+    for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
+    const eigenerV = eigenerMandant(bestand, sitzung);
+    if (eigenerV) aus.mandanten = [betriebSichtVoll(eigenerV, sitzung)];
+    /* Die Kosten des eigenen Betriebs (B2): Wer billing.view hat — Leitung,
+       Kundenrolle —, bekommt die Preisgrundlage nur lesend: Tarif,
+       Preisgestaltung und Rabatt des eigenen Betriebs, oben nur den Eintrag
+       des eigenen Tarifs. Ohne sie rechnete die Betriebsseite mit der
+       ersten Stufe ohne Vereinbarung und zeigte einen falschen Monatspreis.
+       Schreiben bleibt beim Betreiber: Vertragsfelder und die oberste Ebene
+       kommen beim Speichern immer aus dem gespeicherten Stand. Die Planung
+       hat billing.view nicht und bekommt nichts davon. */
+    if (eigenerV && aus.mandanten && darf(rolle, "billing.view")) {
+      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld)) aus.mandanten[0][feld] = eigenerV[feld];
+      const eigenerTarif = Array.isArray(bestand.tarife)
+        ? bestand.tarife.filter((t) => t && typeof t === "object" && t.id === eigenerV.tarif) : [];
+      if (eigenerTarif.length) aus.tarife = eigenerTarif;
+    }
+    return aus;
+  }
 
   const kopie = { ...bestand };
 
@@ -357,28 +503,208 @@ export function bestandFuerRolle(bestand, sitzung) {
 
   /* Nur der eigene Betrieb. Die Oberfläche sucht über session.mandantId,
      nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
-  let m = { ...eigener };
+  kopie.mandanten = [{ ...eigener }];
 
-  if (rolle === "mitarbeiter" || rolle === "betriebsrat") {
-    const ich = sitzung.person;
-    if (Array.isArray(m.personen)) {
-      m.personen = m.personen.map((p) =>
-        (ich !== null && ich !== undefined && p.id === ich) ? p : personSaeubern(p));
-    }
-    if (Array.isArray(m.abwesenheiten)) {
-      m.abwesenheiten = m.abwesenheiten.map((a) =>
-        (ich !== null && ich !== undefined && a.personId === ich) ? a : abwesenheitSaeubern(a));
-    }
-    /* Das Betriebsprotokoll führt nach, wer wann was geändert hat. Für die
-       Prüfrolle ist das der Kern der Aufgabe, für alle anderen nicht. */
-    if (rolle === "mitarbeiter") {
-      delete m.protokoll;
-      delete m.aenderungen;
-    }
-  }
-
-  kopie.mandanten = [m];
   return kopie;
+}
+
+/** Die Personen eines Betriebs in der Sicht der Schichtverantwortung. */
+function schichtSichtKontext(m, sitzung) {
+  const ich = (Array.isArray(m.personen) ? m.personen : []).find((p) => p && String(p.id) === String(sitzung.person));
+  return schichtKontext(m, sitzung, eigeneEinheit(m, ich), heuteBerlin());
+}
+
+/**
+ * Die Rückfüllung. Die Schichtverantwortung liest Personen gekürzt und
+ * schreibt diese gekürzte Fassung zurück. Ohne Rückfüllung sähe jedes
+ * Speichern aus wie das Löschen aller verborgenen Felder — und bekäme 403.
+ *
+ * Je Person: Was die Sicht zeigt und unverändert zurückkommt, wird durch
+ * den gespeicherten Wert ersetzt; was sie verbirgt und nicht mitkommt,
+ * kommt aus dem gespeicherten Stand. Alles andere — eine Änderung an einem
+ * sichtbaren Feld, ein mitgeschicktes verborgenes Feld — bleibt, wie es
+ * kam, und einheitZusammen entscheidet darüber wie bisher.
+ */
+export function personenRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || !Array.isArray(neuM.personen)) return neuM;
+  const ctx = schichtSichtKontext(altM, sitzung);
+  const gespeichert = new Map((Array.isArray(altM.personen) ? altM.personen : [])
+    .filter(Boolean).map((p) => [String(p.id), p]));
+  const gleichWert = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const personen = neuM.personen.map((n) => {
+    const s = n && gespeichert.get(String(n.id));
+    if (!s || typeof n !== "object") return n;
+    const v = schichtPersonSicht(s, ctx);
+    const aus = {};
+    for (const k of new Set([...Object.keys(s), ...Object.keys(v), ...Object.keys(n)])) {
+      const hatN = Object.prototype.hasOwnProperty.call(n, k);
+      const hatS = Object.prototype.hasOwnProperty.call(s, k);
+      if (Object.prototype.hasOwnProperty.call(v, k)) {
+        if (hatN && gleichWert(n[k], v[k])) { if (hatS) aus[k] = s[k]; }
+        else if (hatN) aus[k] = n[k];
+        /* sichtbar, aber nicht mehr mitgeschickt: gelöscht — einheitZusammen urteilt */
+      } else if (hatN) aus[k] = n[k];
+      else if (hatS) aus[k] = s[k];
+    }
+    return aus;
+  });
+  return { ...neuM, personen };
+}
+
+/* Die Rückfüllung der Sammlungen (Commit 1e.2) — dieselbe Regel wie für
+   Personen, je Eintrag: Was die Sicht zeigt und unverändert zurückkommt,
+   wird durch den gespeicherten Eintrag ersetzt; was sie verbirgt und nicht
+   mitkommt, kommt aus dem gespeicherten Stand. Neue Einträge, geänderte
+   und mitgeschickte verborgene bleiben, wie sie kamen — darüber urteilt
+   einheitZusammen. Listen ohne Kennung am Eintrag werden als Ganzes
+   verglichen. */
+const gleichJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+/* Ein einzelner Eintrag, den die Sicht gekürzt hat und der verändert
+   zurückkommt: der gespeicherte Eintrag, darauf nur die sichtbar geänderten
+   Felder (und mitgeschickte verborgene, über die einheitZusammen urteilt).
+   Die Meldungen auf ein Tauschgesuch zeigt die Sicht maskiert
+   („verborgen-0"); zurück gehen die gespeicherten, die eigene dazu oder weg. */
+function eintragRueckfuellen(a, n, v, ich) {
+  if (!istObjekt(a) || !istObjekt(n) || !istObjekt(v)) return n;
+  const aus = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
+    /* Bewerbungen haben keine eigene Kennung — zusammengeführt wird über die
+       personId (Commit C1): Was die Sicht verbarg, bleibt aus dem gespeicherten
+       Stand; die sichtbaren kommen aus der Übermittlung. Ob eine Änderung daran
+       zulässig ist, entscheidet danach einheitZusammen. */
+    if (k === "bewerbungen" && Array.isArray(a[k]) && Array.isArray(n[k]) && Array.isArray(v[k])) {
+      if (gleichJson(n[k], v[k])) { aus[k] = a[k]; continue; }
+      const sichtbar = new Set(v[k].filter(istObjekt).map((b) => String(b.personId)));
+      aus[k] = [...a[k].filter((b) => !istObjekt(b) || !sichtbar.has(String(b.personId))), ...n[k]];
+      continue;
+    }
+    if (k === "interessenten" && Array.isArray(a[k]) && Array.isArray(n[k]) && Array.isArray(v[k])) {
+      const ichDabei = n[k].some((x) => String(x) === String(ich));
+      aus[k] = [...a[k].filter((x) => String(x) !== String(ich)), ...(ichDabei ? [ich] : [])];
+      if (gleichJson(aus[k].map(String).sort(), a[k].map(String).sort())) aus[k] = a[k];
+      continue;
+    }
+    if (hat(v, k)) {
+      if (hat(n, k)) aus[k] = gleichJson(n[k], v[k]) && hat(a, k) ? a[k] : n[k];
+    } else if (hat(n, k)) aus[k] = n[k];
+    else if (hat(a, k)) aus[k] = a[k];
+  }
+  return aus;
+}
+function listeRueckfuellen(alt, neu, sicht, ich) {
+  const kennung = (e) => (e && typeof e === "object" && (typeof e.id === "string" || typeof e.id === "number") ? String(e.id) : null);
+  if (!alt.every((e) => kennung(e) !== null) || !sicht.every((e) => kennung(e) !== null))
+    return gleichJson(neu, sicht) ? alt : neu;
+  const sichtNach = new Map(sicht.map((e) => [kennung(e), e]));
+  const neuNach = new Map(neu.filter((e) => kennung(e) !== null).map((e) => [kennung(e), e]));
+  const altIds = new Set(alt.map(kennung));
+  const neue = neu.filter((e) => kennung(e) === null || !altIds.has(kennung(e)));
+  const aus = [];
+  for (const a of alt) {
+    const id = kennung(a);
+    if (neuNach.has(id)) {
+      const n = neuNach.get(id);
+      const v = sichtNach.get(id);
+      aus.push(v === undefined ? n : gleichJson(n, v) ? a : eintragRueckfuellen(a, n, v, ich));
+    } else if (!sichtNach.has(id)) aus.push(a);               // verborgen: bleibt
+    /* sichtbar, aber nicht mehr mitgeschickt: gelöscht — einheitZusammen urteilt */
+  }
+  return [...neue, ...aus];
+}
+function objektRueckfuellen(alt, neu, sicht, ich) {
+  const aus = {};
+  for (const k of new Set([...Object.keys(alt), ...Object.keys(neu)])) {
+    /* Listen je Schlüssel (notizen „tag|…", Commit C3): Einträge wie bei
+       Listen zusammenführen — sonst ginge mit einem sichtbaren Eintrag eines
+       Tages jeder verborgene desselben Tages verloren. Ein ganz verborgener
+       Schlüssel zählt als leere Sicht. */
+    if (hat(neu, k) && hat(alt, k) && Array.isArray(alt[k]) && Array.isArray(neu[k])
+        && (!hat(sicht, k) || Array.isArray(sicht[k]))) {
+      aus[k] = listeRueckfuellen(alt[k], neu[k], hat(sicht, k) ? sicht[k] : [], ich);
+      continue;
+    }
+    if (hat(neu, k)) aus[k] = !hat(sicht, k) || !hat(alt, k) ? neu[k]
+      : gleichJson(neu[k], sicht[k]) ? alt[k] : eintragRueckfuellen(alt[k], neu[k], sicht[k], ich);
+    else if (hat(alt, k) && !hat(sicht, k)) aus[k] = alt[k];
+  }
+  return aus;
+}
+/** Rückfüllung des ganzen Betriebs der Schichtverantwortung. */
+export function schichtRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || typeof neuM !== "object") return neuM;
+  const sicht = betriebSichtSchicht(altM, schichtSichtKontext(altM, sitzung));
+  const mitPersonen = personenRueckfuellen(altM, neuM, sitzung);
+  const aus = {};
+  for (const feld of new Set([...Object.keys(altM), ...Object.keys(neuM)])) {
+    if (feld === "personen") { if (hat(mitPersonen, feld)) aus[feld] = mitPersonen[feld]; continue; }
+    /* Vertrag und Betreiberstamm: immer der gespeicherte Stand (1e.2a) —
+       mitgeschickt wirkungslos, wie bei allen Rollen außer dem Betreiber. */
+    if (VERTRAGSFELDER.includes(feld) || BETREIBERSTAMM.includes(feld)) { if (hat(altM, feld)) aus[feld] = altM[feld]; continue; }
+    const a = altM[feld], n = neuM[feld], v = sicht[feld];
+    /* nicht mitgeschickt: verborgen, gekürzt oder weggelassen — der gespeicherte Stand */
+    if (!hat(neuM, feld)) { if (hat(altM, feld)) aus[feld] = a; continue; }
+    if (!hat(sicht, feld)) { aus[feld] = n; continue; }        // verborgenes Feld mitgeschickt
+    if (Array.isArray(a) && Array.isArray(v) && Array.isArray(n)) aus[feld] = listeRueckfuellen(a, n, v, sitzung.person);
+    else if (istObjekt(a) && istObjekt(v) && istObjekt(n)) aus[feld] = objektRueckfuellen(a, n, v, sitzung.person);
+    else aus[feld] = gleichJson(n, v) ? a : n;
+  }
+  return aus;
+}
+
+/**
+ * Rückfüllung für Planung, Leitung und Kundenrolle (Commit 1e.3). Ihr
+ * Betrieb wird im Ganzen aus der Übermittlung übernommen; was die Sicht
+ * verbirgt, fehlt darin. Verborgene Felder kommen deshalb immer aus dem
+ * gespeicherten Stand — fehlend wie mitgeschickt (wirkungslos). Eine neue
+ * Person bekommt verborgene Felder gar nicht erst.
+ */
+export function vollRueckfuellen(altM, neuM, sitzung) {
+  if (!altM || !neuM || typeof neuM !== "object") return neuM;
+  /* In der gespeicherten Reihenfolge der Felder — die Monatsscherben
+     vergleichen Abdrücke, eine bloß andere Reihenfolge wäre eine Änderung. */
+  const zusammenlegen = (alt, neu, sichtbar) => {
+    const aus = {};
+    for (const [k, v] of Object.entries(alt || {})) {
+      if (!sichtbar(k)) aus[k] = v;
+      else if (Object.prototype.hasOwnProperty.call(neu, k)) aus[k] = neu[k];
+    }
+    for (const [k, v] of Object.entries(neu)) if (sichtbar(k) && !Object.prototype.hasOwnProperty.call(aus, k)) aus[k] = v;
+    return aus;
+  };
+  const aus = zusammenlegen(altM, neuM, (k) => VOLL_BETRIEB.includes(k));
+  if (Array.isArray(neuM.personen)) {
+    const gespeichert = new Map((Array.isArray(altM.personen) ? altM.personen : [])
+      .filter(Boolean).map((p) => [String(p.id), p]));
+    aus.personen = neuM.personen.map((n) => {
+      if (!n || typeof n !== "object") return n;
+      const sichtbar = String(n.id) === String(sitzung.person) ? PERSONENFELDER : VOLL_PERSON;
+      return zusammenlegen(gespeichert.get(String(n.id)), n, (k) => sichtbar.includes(k));
+    });
+  }
+  return aus;
+}
+
+/** Der gespeicherte Betrieb dieser Sitzung samt seiner Stelle — oder null,
+    wenn es noch keinen gespeicherten Bestand gibt. Dieselbe Zuordnung wie
+    eigenerMandant, damit Lesen und Schreiben denselben Betrieb meinen. */
+export function gespeicherterBetrieb(gespeichert, sitzung) {
+  if (!gespeichert || !Array.isArray(gespeichert.mandanten) || !gespeichert.mandanten.length) return null;
+  const i = Number(sitzung.betrieb);
+  const index = Number.isInteger(i) && i >= 0 && i < gespeichert.mandanten.length ? i : 0;
+  return { index, betrieb: gespeichert.mandanten[index] || {} };
+}
+
+/** Genau ein übermittelter Betrieb, und zwar der eigene. Sonst der Grund der Absage. */
+function einzigerEigenerBetrieb(uebermittelt, id) {
+  const liste = uebermittelt && uebermittelt.mandanten;
+  const grund = "Über diesen Zugang lässt sich genau ein Betrieb schreiben — der eigene.";
+  if (typeof id !== "string" || !id) return grund;
+  if (!Array.isArray(liste) || liste.length !== 1) return grund;
+  const m = liste[0];
+  if (!m || typeof m !== "object" || m.id !== id) return grund;
+  return null;
 }
 
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
@@ -433,7 +759,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
          nichts vorfinden, was der Server nicht selbst geschrieben hat. */
       if (!alt) {
         const ohne = { ...m };
-        for (const feld of VERTRAGSFELDER) delete ohne[feld];
+        for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) delete ohne[feld];
         return ohne;
       }
       const zusammen = { ...m };
@@ -443,7 +769,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
       /* Vertragsfelder gehen immer auf den gespeicherten Stand zurück —
          nicht nur, wenn sie fehlen. Ein Betrieb bekommt sie zu sehen, aber
          ändern darf sie nur der Betreiber, und der nimmt diesen Weg nicht. */
-      for (const feld of VERTRAGSFELDER) {
+      for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
         if (feld in alt) zusammen[feld] = alt[feld];
         else delete zusammen[feld];
       }
@@ -465,7 +791,7 @@ function verlorenesZurueck(gespeichert, uebermittelt) {
    Eine generische Kundenrolle zählt als Leitung — sie hat denselben
    Schreibumfang und soll darum auch dieselbe Vergabehöhe haben, nicht
    mehr. */
-function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
+export function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
   const rolle = sitzung.rolle === "kunde" ? "leitung" : sitzung.rolle;
   if (!RANG[rolle]) return { ok: true, grund: null };
   const alt = eigenerMandant(gespeichert, sitzung);
@@ -492,26 +818,93 @@ function rollenwechselErlaubt(gespeichert, uebermittelt, sitzung) {
   return pruefeRollenwechsel(alt.personen, neu.personen, rolle);
 }
 
-export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
+/* Abgeleitete Personenfelder (planungsregeln, sichtbereich) entstehen beim
+   Lesen und werden nie gespeichert — mitgeschickt, verändert oder gelöscht
+   bleiben sie ohne Wirkung (Commit S1). */
+function abgeleiteteEntfernen(uebermittelt) {
+  if (!uebermittelt || typeof uebermittelt !== "object" || !Array.isArray(uebermittelt.mandanten)) return uebermittelt;
+  const ohne = (p) => (p && typeof p === "object" && ABGELEITETE_PERSONENFELDER.some((f) => Object.prototype.hasOwnProperty.call(p, f))
+    ? Object.fromEntries(Object.entries(p).filter(([k]) => !ABGELEITETE_PERSONENFELDER.includes(k))) : p);
+  return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m) => (m && typeof m === "object" && Array.isArray(m.personen)
+    ? { ...m, personen: m.personen.map(ohne) } : m)) };
+}
+
+export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
+  const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);
   if (umfang === SCHREIBEN_NEIN) return null;
 
-  if (umfang === SCHREIBEN_VOLL) {
-    const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
-    if (!rw.ok) return { verweigert: rw.grund };
-    return verlorenesZurueck(gespeichert, uebermittelt);
-  }
+  if (umfang === SCHREIBEN_VOLL || umfang === SCHREIBEN_EINHEIT) {
+    const ort = gespeicherterBetrieb(gespeichert, sitzung);
 
-  if (umfang === SCHREIBEN_EINHEIT) {
-    const alt = eigenerMandant(gespeichert, sitzung);
-    const neu = eigenerMandant(uebermittelt, sitzung);
-    if (!alt || !neu) return uebermittelt;
-    const urteil = einheitDarf(alt, neu, sitzung);
-    if (!urteil.ok) return { verweigert: urteil.grund };
+    /* Ein leerer Raum wird nicht über diesen Weg befüllt. Bis Oktober 2026
+       schrieb hier der erste Client den ganzen Bestand und bestimmte damit
+       Anzahl, Kennungen und Reihenfolge der Betriebe. Einen Raum richtet
+       jetzt der Betreiber über /api/bestand-anlegen ein (erstbefuellung.mjs). */
+    if (!ort) return { verweigert: "Raum ist noch nicht eingerichtet." };
+
+    /* Ab hier gibt es einen gespeicherten Bestand, und der Server bestimmt
+       seine Gestalt: wie viele Betriebe, welche Kennungen, welche
+       Reihenfolge — und welcher davon zu dieser Sitzung gehört.
+
+       Bis Oktober 2026 kam die Liste der Betriebe aus der Übermittlung.
+       Zwei Folgen: Ein zweites Exemplar des eigenen Betriebs mit fremden
+       Änderungen ging an der Einheitsprüfung vorbei, und nicht
+       mitgeschickte Betriebe wurden hinten angehängt. In einem Raum mit
+       mehreren Betrieben verschob das die Reihenfolge — und weil Sitzungen
+       ihren Betrieb über den Index finden, sah danach die Leitung von A
+       den Betrieb B. */
+    const abweichung = einzigerEigenerBetrieb(uebermittelt, ort.betrieb.id);
+    if (abweichung) return { verweigert: abweichung };
+    let geschickt = uebermittelt.mandanten[0];
+
+    /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
+       Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
+       Titel und Text (Commit 4, mitteilungen.mjs). */
+    const vorgefiltert = mitteilungenVorfiltern(ort.betrieb, geschickt);
+    if (vorgefiltert.grund) return { verweigert: vorgefiltert.grund };
+    geschickt = vorgefiltert.mandant;
+
+    /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
+    if (umfang === SCHREIBEN_VOLL) {
+      geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
+      const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
+      if (bezug.grund) return { verweigert: bezug.grund };
+      geschickt = bezug.mandant;
+    }
+
+    /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
+       (siehe einheitZusammen). Weiter geht nur, was dabei herauskommt. */
+    if (umfang === SCHREIBEN_EINHEIT) {
+      geschickt = schichtRueckfuellen(ort.betrieb, geschickt, sitzung);
+      const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
+      if (!urteil.ok) return { verweigert: urteil.grund };
+      geschickt = urteil.mandant;
+    }
+    /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
+    geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
-    return verlorenesZurueck(gespeichert, uebermittelt);
+
+    /* Verlorenes ergänzen wie bisher — dann den einen Betrieb an seine
+       Stelle im gespeicherten Bestand setzen. Alle anderen bleiben, wo
+       und wie sie waren. */
+    /* Ganz oben steht, was dem Betreiber gehört: Firmenstamm, Preisliste,
+       Rechnungen, sein Protokoll, Pakete, Adressänderungen, Selbststarts.
+       Bis Oktober 2026 kam die oberste Ebene aus der Übermittlung — Leitung
+       und Planung konnten Preisliste und Rechnungen überschreiben und das
+       Betreiberprotokoll leeren, das sie nicht einmal lesen. Jetzt gilt der
+       gespeicherte Stand; aus der Übermittlung nur Zähler und Sitzungsmarke.
+       Mitgeschicktes wird übergangen, nicht abgewiesen — eine veraltete
+       Kopie darf das Speichern nicht blockieren. */
+    const oben = { ...gespeichert,
+      ...Object.fromEntries(BESTAND_FELDER.filter((x) => hat(uebermittelt, x)).map((x) => [x, uebermittelt[x]])) };
+    const zusammen = verlorenesZurueck(gespeichert, { ...oben, mandanten: [geschickt] });
+    const ersetzt = zusammen.mandanten.find((m) => m && m.id === ort.betrieb.id);
+    return { ...zusammen,
+      mandanten: gespeichert.mandanten.map((m, i) => (i === ort.index ? ersetzt : m)) };
   }
 
   /* --------------------------- Der Betreiber ---------------------------
@@ -522,7 +915,10 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
      Betreiberkonsole und hat noch keinen Inhalt, den man schützen müsste.
      Ein Betrieb, den die Oberfläche nicht mehr mitschickt, verschwindet.  */
   if (umfang === SCHREIBEN_BETREIBER) {
-    if (!gespeichert || typeof gespeichert !== "object") return uebermittelt;
+    /* Auch der Betreiber befüllt einen leeren Raum nicht über diesen Weg,
+       sondern über /api/bestand-anlegen — dort wird die Gestalt geprüft. */
+    if (!gespeichert || typeof gespeichert !== "object")
+      return { verweigert: "Raum ist noch nicht eingerichtet." };
     if (!uebermittelt || typeof uebermittelt !== "object") return null;
 
     const aus = { ...gespeichert };
@@ -605,20 +1001,37 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
     }
   }
 
-  neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? zusammen : x));
+  /* Mitteilungen aus eigenen Vorgängen (Notruf, Tauschmeldung) erzeugt der
+     Server — dazu wird eine Push-Anmeldung an der Person zum Merker. */
+  const mitMitteilungen = mitteilungenErzeugen(alt, zusammen, sitzung.person);
+  neu.mandanten = gespeichert.mandanten.map((x) => (x && x.id === alt.id ? mitMitteilungen : x));
   return neu;
 }
 
 /* --------------------------------------------------------------------------
    SCHREIBEN NUR IN DER EIGENEN EINHEIT
 
-   Die Schichtverantwortung darf Einsätze ihres Wohnbereichs ändern, sonst
-   nichts. Geprüft wird nicht die Absicht, sondern das Ergebnis: Welche
-   Personen sind von der Änderung betroffen, und gehören die alle zur
-   eigenen Einheit?
+   Die Schichtverantwortung plant ihren Bereich und entscheidet dessen
+   Anliegen. Geprüft wird nicht die Absicht, sondern das Ergebnis: Feld für
+   Feld, Eintrag für Eintrag gegen den gespeicherten Stand.
 
-   Das ist genauer als eine Prüfung des Vorhabens und kommt ohne Vertrauen
-   in die Oberfläche aus.
+   Bis Oktober 2026 genügte eine Liste von Feldern, die im Ganzen
+   durchgingen — Anfragen, Nachrichten, Dienstbuch, Unterschreitungen,
+   Änderungen, Protokoll —, dazu Stempeluhr und Zeiterfassung unter den
+   Tagesfeldern. Damit ließen sich fremde Anträge löschen oder auf eine
+   andere Person umhängen, das Protokoll leeren, Nachrichten anderer
+   Bereiche ersetzen und Stempelzeiten samt Ortsurteil von Hand setzen,
+   vorbei an /api/stempeln. Und wer am eigenen Eintrag „ALLE" trug, durfte
+   alles.
+
+   Welcher Bereich ist der eigene? Maßgeblich ist allein die gespeicherte
+   Person — nicht der Zugangscode, nicht die Mitgliedschaft, nicht die
+   Oberfläche. Zuerst ihr Zuständigkeitsbereich (`bereich`, von der Leitung
+   gepflegt), sonst ihre Zugehörigkeit von heute. „ALLE" ist für die
+   Schichtverantwortung nicht vorgesehen (die Oberfläche vergibt es nur an
+   Leitung, Planung und Betriebsrat) und zählt deshalb nicht als Bereich.
+   Ob eine betroffene Person dazugehört, entscheidet ihre Zugehörigkeit am
+   betroffenen Tag.
    -------------------------------------------------------------------------- */
 
 /** Welcher Einheit gehört die Person an diesem Tag an? */
@@ -629,113 +1042,630 @@ function einheitAm(person, datum) {
   return liste.length ? liste[liste.length - 1].einheitId : (person.bereich || null);
 }
 
-/* Felder, deren Schlüssel die Form "personId|JJJJ-MM-TT" tragen. */
-const TAGESFELDER = ["abweichungen", "erfassung", "einstempeln"];
-
-/**
- * Welche Personen sind von der Änderung betroffen?
- * Vergleicht die tagesbezogenen Felder Schlüssel für Schlüssel.
- */
-function betroffenePersonen(alt, neu) {
-  const aus = new Set();
-  for (const feld of TAGESFELDER) {
-    const a = (alt || {})[feld] || {};
-    const b = (neu || {})[feld] || {};
-    const alle = new Set([...Object.keys(a), ...Object.keys(b)]);
-    for (const k of alle) {
-      if (JSON.stringify(a[k]) === JSON.stringify(b[k])) continue;
-      const pid = String(k).split("|")[0];
-      if (pid) aus.add(pid);
-    }
-  }
-  return aus;
+/** Der eigene Bereich einer Schichtverantwortung — aus der gespeicherten Person. */
+export function eigeneEinheit(altM, ich) {
+  if (!ich) return null;
+  const gueltig = new Set((altM.einheiten || []).filter(Boolean).map((e) => String(e.id)));
+  if (ich.bereich && ich.bereich !== "ALLE" && gueltig.has(String(ich.bereich))) return String(ich.bereich);
+  const heute = einheitAm(ich, new Date().toISOString().slice(0, 10));
+  if (heute && heute !== "ALLE" && gueltig.has(String(heute))) return String(heute);
+  return null;
 }
 
-/** Was außerhalb der Tagesfelder geändert wurde. */
-function andereFelderGeaendert(alt, neu) {
-  const aus = [];
-  const alle = new Set([...Object.keys(alt || {}), ...Object.keys(neu || {})]);
-  for (const feld of alle) {
-    if (TAGESFELDER.includes(feld)) continue;
-    if (JSON.stringify((alt || {})[feld]) !== JSON.stringify((neu || {})[feld])) aus.push(feld);
+/* --------------------------------------------------------------------------
+   DIENSTBUCH UND ÜBERGABEN: EINHEITSBEZUG (Commit C2)
+
+   Beide tragen `einheitId`: eine bekannte Einheit oder null (betriebsweit,
+   Sache der Planung). Altbestand ohne das Feld bleibt, wie er ist. Eine
+   Übergabe ist eindeutig je Tag, Dienstart und Einheit (fehlend zählt wie
+   null) — nicht mehr nur je Tag und Dienstart.
+   -------------------------------------------------------------------------- */
+const einheitDerUebergabe = (u) => (u && u.einheitId !== undefined && u.einheitId !== null ? String(u.einheitId) : null);
+const uebergabeSchluessel = (u) => `${u && u.datum}|${u && u.dienstId}|${einheitDerUebergabe(u)}`;
+
+/** Planung und Leitung: neue oder umgehängte Einträge nur mit bekannter
+    einheitId oder null; neue Dienstbucheinträge und Tagesnotizen bekommen
+    vonId; keine zwei Übergaben mit gleichem Tag, Dienst und Einheit. */
+function einheitsbezugVoll(altM, neuM, sitzung) {
+  const einheiten = new Set((altM.einheiten || []).filter(Boolean).map((e) => String(e.id)));
+  const gueltig = (e) => e.einheitId === undefined || e.einheitId === null || einheiten.has(String(e.einheitId));
+  let aus = neuM;
+  for (const feld of ["dienstbuch", "uebergaben"]) {
+    if (!Array.isArray(neuM[feld])) continue;
+    const alt = new Map((Array.isArray(altM[feld]) ? altM[feld] : []).filter((e) => e && typeof e === "object" && kennungGueltig(e.id))
+      .map((e) => [String(e.id), e]));
+    let geaendert = false;
+    const liste = [];
+    for (const e of neuM[feld]) {
+      if (!e || typeof e !== "object") { liste.push(e); continue; }
+      const vorher = kennungGueltig(e.id) ? alt.get(String(e.id)) : undefined;
+      const neu = !vorher;
+      if ((neu || !gleich(vorher.einheitId, e.einheitId)) && !gueltig(e))
+        return { grund: `${feld}: unbekannte Einheit.` };
+      if (neu && feld === "dienstbuch" && sitzung.person !== null && sitzung.person !== undefined
+          && String(e.vonId) !== String(sitzung.person)) {
+        liste.push({ ...e, vonId: sitzung.person }); geaendert = true; continue;
+      }
+      liste.push(e);
+    }
+    if (feld === "uebergaben") {
+      const altSchluessel = new Set([...alt.values()].map(uebergabeSchluessel));
+      const gesehen = new Set();
+      for (const e of liste) {
+        if (!e || typeof e !== "object") continue;
+        const k = uebergabeSchluessel(e);
+        const neu = !(kennungGueltig(e.id) && alt.has(String(e.id)));
+        if (neu && (altSchluessel.has(k) || gesehen.has(k)))
+          return { grund: "Für diesen Tag, Dienst und diese Einheit gibt es schon eine Übergabe." };
+        if (neu) gesehen.add(k);
+      }
+    }
+    if (geaendert) aus = { ...aus, [feld]: liste };
   }
-  return aus;
+  /* Tagesnotizen (Commit C3): neue Einträge nur mit bekannter einheitId oder
+     null, vonId vom Server. */
+  if (neuM.notizen && typeof neuM.notizen === "object" && !Array.isArray(neuM.notizen)) {
+    const altN = altM.notizen && typeof altM.notizen === "object" ? altM.notizen : {};
+    let geaendert = false;
+    const notizen = {};
+    for (const [k, liste] of Object.entries(neuM.notizen)) {
+      if (!String(k).startsWith("tag|") || !Array.isArray(liste)) { notizen[k] = liste; continue; }
+      const alt = new Map((Array.isArray(altN[k]) ? altN[k] : []).filter((e) => e && typeof e === "object" && kennungGueltig(e.id))
+        .map((e) => [String(e.id), e]));
+      const neu = [];
+      for (const e of liste) {
+        const vorher = e && typeof e === "object" && kennungGueltig(e.id) ? alt.get(String(e.id)) : undefined;
+        if (e && typeof e === "object" && (!vorher || !gleich(vorher.einheitId, e.einheitId)) && !gueltig(e))
+          return { grund: "notizen: unbekannte Einheit." };
+        if (e && typeof e === "object" && !vorher && sitzung.person !== null && sitzung.person !== undefined
+            && String(e.vonId) !== String(sitzung.person)) { neu.push({ ...e, vonId: sitzung.person }); geaendert = true; continue; }
+        neu.push(e);
+      }
+      notizen[k] = neu;
+    }
+    if (geaendert) aus = { ...aus, notizen };
+  }
+  return { mandant: aus };
 }
 
-/* Was die Schichtverantwortung außerhalb der Tagesfelder anfassen darf:
-   Anliegen und Übergaben ihres Bereichs. Personal, Dienstarten,
-   Schichtfolge und Regelwerk gehören der Leitung. */
-const EINHEIT_FELDER = ["anfragen", "nachrichten", "dienstbuch", "einspruenge",
-  "unterschreitungen", "aenderungen", "protokoll"];
+/** Gehört die Person `pid` heute zum eigenen Bereich der Schichtverantwortung `ichId`?
+    (Für den Versand, Commit 4 — dieselbe Regel wie in einheitZusammen.) */
+export function imEigenenBereich(altM, ichId, pid) {
+  const personen = (altM && Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean);
+  const ich = personen.find((p) => String(p.id) === String(ichId));
+  const eigene = eigeneEinheit(altM, ich);
+  const p = personen.find((x) => String(x.id) === String(pid));
+  return !!(eigene && p && einheitAm(p, new Date().toISOString().slice(0, 10)) === eigene);
+}
+
+const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const ohne = (o, felder) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !felder.includes(k)));
+const jetztText = () => new Date().toLocaleString("de-DE");
+const TAG = /^\d{4}-\d{2}-\d{2}$/;
+const TEXT_MAX = 500;
 
 /**
- * Prüft, ob eine einheitsgebundene Rolle diese Änderung vornehmen darf.
- * @returns {{ok: boolean, grund?: string}}
+ * Eine Liste, an die nur angehängt wird. Neue Einträge prüft `neuerEintrag`
+ * (gibt den bereinigten Eintrag oder null zurück), Änderungen an
+ * bestehenden `aenderung` (Ersatz oder null). Bestehende Einträge dürfen
+ * fehlen, wenn die Oberfläche die Liste hinten gekürzt hat — sie bleiben
+ * dann gespeichert. Ein fehlender Eintrag davor ist eine Löschung.
+ * @param {string} feld
+ * @param {any} alt
+ * @param {any} neu
+ * @param {{neuerEintrag?: (e: any) => any, aenderung?: (vorher: any, e: any) => any, kuerzen?: boolean}} [optionen]
+ * @returns {{liste?: any[], grund?: string}}
  */
-export function einheitDarf(altM, neuM, sitzung) {
-  if (!altM) return { ok: true };   // frischer Betrieb, nichts zu schützen
+function anhaengen(feld, alt, neu, { neuerEintrag = () => null, aenderung = () => null, kuerzen = true } = {}) {
+  const altL = (Array.isArray(alt) ? alt : []).filter((e) => e && typeof e === "object");
+  if (neu !== undefined && !Array.isArray(neu)) return { grund: `${feld}: ungültige Form.` };
+  const neuL = (Array.isArray(neu) ? neu : []).filter((e) => e && typeof e === "object");
+  const altIndex = new Map();
+  altL.forEach((e, i) => { if (kennungGueltig(e.id)) altIndex.set(String(e.id), i); });
+  const gesehen = new Set();
+  const neue = [];
+  const ersetzt = new Map();
+  for (const e of neuL) {
+    if (!kennungGueltig(e.id)) {
+      /* Ohne Kennung: nur ein unveränderter gespeicherter Eintrag. */
+      if (altL.some((a) => !kennungGueltig(a.id) && gleich(a, e))) continue;
+      return { grund: `${feld}: Eintrag ohne Kennung.` };
+    }
+    const id = String(e.id);
+    if (gesehen.has(id)) return { grund: `${feld}: doppelte Kennung.` };
+    gesehen.add(id);
+    if (!altIndex.has(id)) {
+      const sauber = neuerEintrag(e);
+      if (!sauber) return { grund: `${feld}: Dieser Eintrag ist über diesen Zugang nicht möglich.` };
+      neue.push(sauber);
+      continue;
+    }
+    const vorher = altL[altIndex.get(id)];
+    if (gleich(vorher, e)) continue;
+    const neuer = aenderung(vorher, e);
+    if (!neuer) return { grund: `${feld}: Bestehende Einträge sind nicht änderbar.` };
+    ersetzt.set(id, neuer);
+  }
+  /* Fehlende bestehende Einträge: nur am Ende der Liste (gekürzt). */
+  const fehlend = [...altIndex.entries()].filter(([id]) => !gesehen.has(id)).map(([, i]) => i);
+  if (fehlend.length) {
+    const vorhanden = [...altIndex.entries()].filter(([id]) => gesehen.has(id)).map(([, i]) => i);
+    /* Gekürzt heißt: Das Neueste ist noch da. Eine leere oder ganz neue
+       Liste ersetzt das Gespeicherte — das ist keine Kürzung. Ein gar nicht
+       übermitteltes Feld ändert nichts. */
+    if (neu !== undefined && (!kuerzen || !vorhanden.length || Math.max(...vorhanden) > Math.min(...fehlend)))
+      return { grund: `${feld}: Bestehende Einträge lassen sich nicht löschen.` };
+  }
+  return { liste: [...neue, ...altL.map((e) => (kennungGueltig(e.id) && ersetzt.get(String(e.id))) || e)] };
+}
 
-  /* Die Einheit steht an der Person, nicht am Zugangscode.
+/* Was ein Antrag ist, bestimmt der gespeicherte Stand: Person, Art,
+   Zeitraum. Die Entscheidung ändert nur Status und Begleitfelder. */
+const ANTRAG_KERN = ["personId", "typ", "art", "von", "bis", "dienstId", "partnerId"];
+const ANTRAG_STATUS = ["offen", "genehmigt", "abgelehnt", "zurueckgezogen"];
 
-     Erst wurde sie aus dem Konto gelesen — das war falsch gedacht: Der Code
-     wird einmal ausgegeben, die Zuordnung ändert sich mit jeder Versetzung.
-     Maßgeblich ist, wo die Person heute steht. */
-  const ich = (altM.personen || []).find((p) => String(p.id) === String(sitzung.person));
-  const eigene = sitzung.einheit
-    || (ich && ich.bereich && ich.bereich !== "ALLE" ? ich.bereich : null)
-    || (ich ? einheitAm(ich, new Date().toISOString().slice(0, 10)) : null);
+/**
+ * Führt den Betrieb einer einheitsgebundenen Rolle zusammen.
+ * @returns {{ok: boolean, mandant?: any, grund?: string}}
+ */
+export function einheitZusammen(altM, neuM, sitzung) {
+  const nein = (grund) => ({ ok: false, grund });
+  if (!altM || !neuM || typeof neuM !== "object") return nein("Unvollständig.");
+  const personen = new Map((altM.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
+  const ich = sitzung.person === null || sitzung.person === undefined ? null : personen.get(String(sitzung.person));
+  if (!ich) return nein("Diesem Zugang ist keine Person des Betriebs zugeordnet. Bitte die Leitung ansprechen.");
+  const ichId = String(ich.id);
+  const eigene = eigeneEinheit(altM, ich);
+  if (!eigene) return nein("Diesem Zugang ist kein Bereich zugeordnet. Bitte die Leitung ansprechen.");
+  /* Eine Pool-Einheit ist kein eigener Bereich (C1/C2). */
+  const eigeneNutzbar = !(altM.einheiten || []).some((x) => x && x.pool && String(x.id) === eigene);
+  const meinName = `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || ichId;
+  const heute = new Date().toISOString().slice(0, 10);
 
-  if (ich && ich.bereich === "ALLE") return { ok: true };
-  if (!eigene)
-    return { ok: false,
-      grund: "Diesem Zugang ist kein Bereich zugeordnet. Bitte die Leitung ansprechen." };
+  /** Gehört die Person am Tag zum eigenen Bereich? */
+  const imBereich = (pid, tag) => {
+    const p = personen.get(String(pid));
+    if (!p) return false;
+    return einheitAm(p, typeof tag === "string" && TAG.test(tag) ? tag : heute) === eigene;
+  };
+  const eigen = (pid) => String(pid) === ichId;
 
-  const fremdeFelder = andereFelderGeaendert(altM, neuM)
-    .filter((f) => !EINHEIT_FELDER.includes(f));
-  if (fremdeFelder.length)
-    return { ok: false,
-      grund: `Änderungen an ${fremdeFelder.slice(0, 3).join(", ")} sind der Leitung vorbehalten.` };
+  const fremdText = (pid) => `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`;
 
-  const personen = new Map((altM.personen || []).map((p) => [String(p.id), p]));
-  for (const pid of betroffenePersonen(altM, neuM)) {
-    const person = personen.get(pid);
-    if (!person) return { ok: false, grund: "Eine geänderte Person gehört nicht zum Betrieb." };
-    /* Die Einheit wird zum betroffenen Tag geprüft, nicht zu heute — eine
-       Versetzung darf rückwirkende Einträge nicht plötzlich erlauben. */
-    const tage = [...TAGESFELDER].flatMap((feld) => {
-      const a = (altM || {})[feld] || {}, b = (neuM || {})[feld] || {};
-      return [...new Set([...Object.keys(a), ...Object.keys(b)])]
-        .filter((k) => String(k).split("|")[0] === pid
-          && JSON.stringify(a[k]) !== JSON.stringify(b[k]))
-        .map((k) => String(k).split("|")[1]);
-    }).filter(Boolean);
-    for (const tag of tage) {
-      if (einheitAm(person, tag) !== eigene)
-        return { ok: false,
-          grund: `${person.nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.` };
+  const aus = { ...altM };
+  const felder = new Set([...Object.keys(altM), ...Object.keys(neuM)]);
+  /* Anträge zuerst: neue Urlaubseinträge hängen an ihrer Genehmigung. */
+  const reihenfolge = ["anfragen", ...[...felder].filter((f) => f !== "anfragen")];
+  for (const feld of reihenfolge) {
+    if (!felder.has(feld)) continue;
+    const a = altM[feld], n = neuM[feld];
+    if (gleich(a, n)) continue;
+
+    switch (feld) {
+      /* --- Der Plan: Tag für Tag, Person für Person --- */
+      case "abweichungen": {
+        const altO = a && typeof a === "object" ? a : {};
+        const neuO = n && typeof n === "object" && !Array.isArray(n) ? n : null;
+        if (!neuO) return nein("abweichungen: ungültige Form.");
+        for (const k of new Set([...Object.keys(altO), ...Object.keys(neuO)])) {
+          if (gleich(altO[k], neuO[k])) continue;
+          const [pid, tag] = String(k).split("|");
+          if (!pid || !TAG.test(tag || "")) return nein("abweichungen: ungültiger Schlüssel.");
+          if (!personen.has(pid)) return nein("Eine geänderte Person gehört nicht zum Betrieb.");
+          if (!imBereich(pid, tag))
+            return nein(`${personen.get(pid).nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.`);
+        }
+        aus.abweichungen = neuO;
+        break;
+      }
+
+      /* --- Stempeluhr: nur über /api/stempeln. Was die Oberfläche nach dem
+             Stempeln lokal nachzieht, weicht im Detail ab (ohne geprueftStart);
+             es wird übergangen, der gespeicherte Stand bleibt. --- */
+      case "einstempeln":
+        break;
+
+      /* --- Zeiterfassung: kein Rohzugriff. Die eigene Selbstauskunft läuft
+             wie bei Beschäftigten über POST /api/zeit-bestaetigen; eigene
+             Kopien werden übergangen, fremde Änderungen abgewiesen. --- */
+      case "erfassung": {
+        if (n !== undefined && (!n || typeof n !== "object" || Array.isArray(n))) return nein("erfassung: ungültige Form.");
+        const r = erfassungZusammen(altM, n, ichId);
+        if (r.fremd.length)
+          return nein("Zeiten anderer Personen erfasst die Leitung; Stempelzeiten entstehen über die Stempeluhr.");
+        aus.erfassung = r.erfassung;
+        break;
+      }
+
+      /* --- Ohne Bereichsbezug: der Leitung vorbehalten (siehe unten) --- */
+      case "unterschreitungen":
+        return nein(`Änderungen an ${feld} sind der Leitung vorbehalten — die Einträge tragen keinen Bereich.`);
+
+      /* --- Dienstbuch (Commit C2): neue Einträge der eigenen Einheit
+             anhängen. Einheit, Autor (vonId, durch) und Zeit setzt der
+             Server; Bestehendes bleibt unverändert. Fremde, Pool-, null-
+             und Altbestand-Einträge sieht die Schichtverantwortung nicht
+             und kann sie weder ändern noch löschen. --- */
+      case "dienstbuch": {
+        if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) kein Dienstbucheintrag.");
+        const r = anhaengen(feld, a, n, { neuerEintrag: (e) => {
+          if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+          if (!["uebergabe", "vorkommnis", "hinweis"].includes(e.art)) return null;
+          if (typeof e.text !== "string" || !e.text.trim() || e.text.length > ANMERKUNG_MAX) return null;
+          return { id: e.id, datum: e.datum, art: e.art, text: e.text,
+            zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }),
+            durch: meinName, vonId: ich.id, einheitId: eigene };
+        } });
+        if (r.grund) return nein(r.grund);
+        aus.dienstbuch = r.liste;
+        break;
+      }
+
+      /* --- Übergaben (Commit C2): eine neue für die eigene Einheit, eine
+             bestehende der eigenen Einheit nur ergänzen (anhängen). Eindeutig
+             je Tag, Dienstart und Einheit. --- */
+      case "uebergaben": {
+        if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) keine Übergabe.");
+        const dienste = new Set((altM.dienstarten || []).filter(Boolean).map((d) => String(d.id)));
+        const vorhanden = new Set((Array.isArray(a) ? a : []).filter((u) => u && typeof u === "object").map(uebergabeSchluessel));
+        const textFeld = (t) => t === undefined || t === null || (typeof t === "string" && t.length <= ANMERKUNG_MAX);
+        const r = anhaengen(feld, a, n, {
+          neuerEintrag: (e) => {
+            if (typeof e.datum !== "string" || !TAG.test(e.datum) || !dienste.has(String(e.dienstId))) return null;
+            if (typeof e.lage !== "string" || !e.lage.trim()) return null;
+            if (![e.lage, e.offen, e.vorkommnis, e.material].every(textFeld)) return null;
+            const s = { id: e.id, datum: e.datum, dienstId: e.dienstId, einheitId: eigene,
+              lage: e.lage, offen: e.offen || "", vorkommnis: e.vorkommnis || "", material: e.material || "",
+              von: meinName, an: typeof e.an === "string" && e.an.length <= 200 ? e.an : null, zeit: jetztText(),
+              personen: (Array.isArray(e.personen) ? e.personen : []).filter((x) => personen.has(String(x))).slice(0, 500),
+              ergaenzungen: [] };
+            const k = uebergabeSchluessel(s);
+            if (vorhanden.has(k)) return null;                 // schon eine Übergabe für Tag, Dienst und Einheit
+            vorhanden.add(k);
+            return s;
+          },
+          aenderung: (vorher, e) => {
+            if (!eintragDerEinheit(vorher, eigene)) return null;
+            if (!gleich(ohne(vorher, ["ergaenzungen"]), ohne(e, ["ergaenzungen"]))) return null;
+            const alt = Array.isArray(vorher.ergaenzungen) ? vorher.ergaenzungen : [];
+            const neu = Array.isArray(e.ergaenzungen) ? e.ergaenzungen : [];
+            if (neu.length <= alt.length || !gleich(neu.slice(0, alt.length), alt)) return null;
+            const dazu = [];
+            for (const x of neu.slice(alt.length)) {
+              if (!x || typeof x.text !== "string" || !x.text.trim() || x.text.length > ANMERKUNG_MAX) return null;
+              dazu.push({ zeit: jetztText(), von: meinName, text: x.text });
+            }
+            return { ...vorher, ergaenzungen: [...alt, ...dazu] };
+          },
+        });
+        if (r.grund) return nein(r.grund);
+        aus.uebergaben = r.liste;
+        break;
+      }
+
+      /* --- Revisionsspur: nur anhängen --- */
+      case "protokoll": {
+        const r = anhaengen(feld, a, n, { neuerEintrag: (e) => (typeof e.text === "string" && e.text.length <= TEXT_MAX
+          ? { id: e.id, zeit: jetztText(), text: e.text, durch: meinName } : null) });
+        if (r.grund) return nein(r.grund);
+        aus.protokoll = r.liste;
+        break;
+      }
+      case "aenderungen": {
+        const r = anhaengen(feld, a, n, { neuerEintrag: (e) => {
+          if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+          if (e.personId !== null && e.personId !== undefined && !imBereich(e.personId, e.datum)) return null;
+          const s = { id: e.id, personId: e.personId ?? null, datum: e.datum, zeit: jetztText() };
+          for (const f of ["von", "nach", "regelstand"]) if (typeof e[f] === "string" && e[f].length <= 200) s[f] = e[f];
+          if (typeof e.vorlauf === "number" && Number.isFinite(e.vorlauf)) s.vorlauf = e.vorlauf;
+          return s;
+        } });
+        if (r.grund) return nein(r.grund);
+        aus.aenderungen = r.liste;
+        break;
+      }
+      case "einspruenge": {
+        const r = anhaengen(feld, a, n, { neuerEintrag: (e) => {
+          if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+          if (!eigen(e.personId) && !imBereich(e.personId, e.datum)) return null;
+          const s = { id: e.id, personId: e.personId, datum: e.datum, zeit: jetztText() };
+          if (typeof e.dienstId === "string" || typeof e.dienstId === "number") s.dienstId = e.dienstId;
+          return s;
+        } });
+        if (r.grund) return nein(r.grund);
+        aus.einspruenge = r.liste;
+        break;
+      }
+
+      /* --- Nachrichten: neue an den eigenen Bereich, eigene lesen ---
+             Notruf- und Tauschmitteilungen sind schon verworfen, Zustellwege
+             und -status kommen aus dem gespeicherten Stand (mitteilungenVorfiltern);
+             die Mitteilungen zum eigenen Notruf erzeugt der Server danach. */
+      case "nachrichten": {
+        const r = anhaengen(feld, a, n, {
+          neuerEintrag: (e) => {
+            if (!personen.has(String(e.personId))) return null;
+            if (!eigen(e.personId) && !imBereich(e.personId, heute)) return null;
+            if (typeof e.titel !== "string" || e.titel.length > TITEL_MAX) return null;
+            if (e.text !== undefined && e.text !== null && (typeof e.text !== "string" || e.text.length > MITTEILUNG_TEXT_MAX)) return null;
+            return e;
+          },
+          /* An einer eigenen Mitteilung ändert sich nur `gelesen` (Commit 4). */
+          aenderung: (vorher, e) => {
+            if (!eigen(vorher.personId) || !gleich(ohne(vorher, ["gelesen"]), ohne(e, ["gelesen"]))) return null;
+            return { ...vorher, gelesen: e.gelesen === true };
+          },
+        });
+        if (r.grund) return nein(r.grund);
+        aus.nachrichten = r.liste;
+        break;
+      }
+
+      /* --- Notrufe: eigene absetzen, an sie gerichtete bestätigen --- */
+      case "notrufe": {
+        const r = anhaengen(feld, a, n, {
+          neuerEintrag: (e) => notrufeZusammen([], [e], ichId, altM.personen)[0] || null,
+          aenderung: (vorher, e) => {
+            const zustaendig = (vorher.empfaenger || []).map(String).includes(ichId) || imBereich(vorher.personId, vorher.datum);
+            if (!zustaendig || vorher.bestaetigt || !e.bestaetigt) return null;
+            if (!gleich(ohne(vorher, ["bestaetigt", "durch"]), ohne(e, ["bestaetigt", "durch"]))) return null;
+            return { ...vorher, bestaetigt: new Date().toISOString(), durch: meinName };
+          },
+        });
+        if (r.grund) return nein(r.grund);
+        aus.notrufe = r.liste;
+        break;
+      }
+
+      /* --- Anträge --- */
+      case "anfragen": {
+        const altL = (Array.isArray(a) ? a : []).filter(Boolean);
+        if (n !== undefined && !Array.isArray(n)) return nein("anfragen: ungültige Form.");
+        const neuL = (Array.isArray(n) ? n : []).filter(Boolean);
+        const altNachId = new Map(altL.map((x) => [String(x.id), x]));
+        const gesehen = new Set();
+        const ergebnis = [];
+        for (const x of neuL) {
+          if (!kennungGueltig(x.id)) return nein("anfragen: Eintrag ohne Kennung.");
+          const id = String(x.id);
+          if (gesehen.has(id)) return nein("anfragen: doppelte Kennung.");
+          gesehen.add(id);
+          const vorher = altNachId.get(id);
+          if (!vorher) {
+            /* Neu: der eigene Antrag (offen) oder eine Anfrage an den eigenen Bereich (offen). */
+            if (!eigen(x.personId) && !imBereich(x.personId, x.von)) return nein(fremdText(x.personId));
+            if ((x.status || "offen") !== "offen")
+              return nein("Ein neuer Antrag ist offen — entschieden wird er danach.");
+            ergebnis.push({ ...x, status: "offen", freigaben: undefined, entschieden: undefined, durch: undefined });
+            continue;
+          }
+          if (gleich(vorher, x)) { ergebnis.push(vorher); continue; }
+          /* Wem der Antrag gehört, steht im gespeicherten Stand. */
+          for (const f of ANTRAG_KERN)
+            if (!gleich(vorher[f], x[f]) && !(eigen(vorher.personId) && f !== "personId" && f !== "typ"))
+              return nein("Ein bestehender Antrag lässt sich nicht auf eine andere Person, Art oder Zeit umschreiben.");
+          if (eigen(vorher.personId)) {
+            /* Den eigenen Antrag entscheidet jemand anderes. */
+            if (!ANTRAGSTATUS_SELBST.includes(x.status) && x.status !== vorher.status)
+              return nein("Den eigenen Antrag entscheidet die Leitung oder eine andere zuständige Person.");
+            ergebnis.push({ ...x, status: ANTRAGSTATUS_SELBST.includes(x.status) ? x.status : vorher.status,
+              freigaben: vorher.freigaben, entschieden: vorher.entschieden, durch: vorher.durch, antwort: vorher.antwort });
+            continue;
+          }
+          const ohneMich = (l) => (l || []).filter((y) => String(y) !== ichId).map(String);
+          const nurInteresse = gleich(ohne(vorher, ["interessenten"]), ohne(x, ["interessenten"]))
+            && gleich(ohneMich(vorher.interessenten), ohneMich(x.interessenten));
+          if (nurInteresse) { ergebnis.push(x); continue; }   // eigene Meldung auf ein Tauschgesuch
+          if (!imBereich(vorher.personId, vorher.von))
+            return nein(`${fremdText(vorher.personId)} Der Antrag ist Sache der Leitung.`);
+          if (!ANTRAG_STATUS.includes(x.status)) return nein("anfragen: unbekannter Status.");
+          /* Freigaben: höchstens die eigene kommt hinzu, Bestehendes bleibt. */
+          const fV = Array.isArray(vorher.freigaben) ? vorher.freigaben : [];
+          const fN = Array.isArray(x.freigaben) ? x.freigaben : [];
+          if (!gleich(fN.slice(0, fV.length), fV) || fN.length > fV.length + 1)
+            return nein("Bestehende Freigaben eines Antrags sind nicht änderbar.");
+          const freigaben = fN.length > fV.length ? [...fV, { von: meinName, zeit: jetztText() }] : fV;
+          const entschieden = x.status !== vorher.status && x.status !== "offen";
+          ergebnis.push({ ...vorher, status: x.status, freigaben,
+            antwort: typeof x.antwort === "string" && x.antwort.length <= TEXT_MAX ? x.antwort : vorher.antwort,
+            interessenten: x.interessenten ?? vorher.interessenten,
+            entschieden: entschieden ? jetztText() : vorher.entschieden,
+            durch: entschieden ? meinName : vorher.durch });
+        }
+        for (const v of altL) {
+          if (gesehen.has(String(v.id))) continue;
+          if (!eigen(v.personId)) return nein("Fremde Anträge lassen sich nicht löschen.");
+        }
+        aus.anfragen = ergebnis;
+        break;
+      }
+
+      /* --- Abwesenheiten: Krankmeldung im Bereich, Urlaub nur mit Genehmigung --- */
+      case "abwesenheiten": {
+        const anfragenNeu = Array.isArray(aus.anfragen) ? aus.anfragen : [];
+        const anfragenAlt = new Map((Array.isArray(altM.anfragen) ? altM.anfragen : []).filter(Boolean).map((x) => [String(x.id), x]));
+        const r = anhaengen(feld, a, n, { kuerzen: false, neuerEintrag: (e) => {
+          if (typeof e.von !== "string" || !TAG.test(e.von) || typeof e.bis !== "string" || !TAG.test(e.bis) || e.bis < e.von)
+            return null;
+          if (!textOderLeer(e.notiz)) return null;
+          const meine = eigen(e.personId);
+          if (!meine && !(imBereich(e.personId, e.von) && imBereich(e.personId, e.bis))) return null;
+          if (e.art === "krank") {
+            const s = { id: e.id, personId: e.personId, art: "krank", von: e.von, bis: e.bis };
+            if (typeof e.notiz === "string") s.notiz = e.notiz;
+            return s;
+          }
+          /* Alles andere entsteht aus einem Antrag, den dieser Vorgang genehmigt —
+             nicht aus der eigenen Person und nicht ohne Antrag. */
+          if (meine) return null;
+          const antrag = anfragenNeu.find((x) => x && x.status === "genehmigt" && String(x.personId) === String(e.personId)
+            && x.art === e.art && x.von === e.von && x.bis === e.bis
+            && (anfragenAlt.get(String(x.id)) || {}).status !== "genehmigt");
+          if (!antrag) return null;
+          return { id: e.id, personId: e.personId, art: e.art, von: e.von, bis: e.bis,
+            notiz: typeof e.notiz === "string" ? e.notiz : "" };
+        } });
+        if (r.grund) return nein(r.grund);
+        aus.abwesenheiten = r.liste;
+        break;
+      }
+
+      /* --- Personen: nur die eigene, nur ihre Selbstfelder --- */
+      case "personen": {
+        const neuL = Array.isArray(n) ? n.filter(Boolean) : null;
+        if (!neuL) return nein("personen: ungültige Form.");
+        const altL = (Array.isArray(a) ? a : []).filter(Boolean);
+        if (neuL.length !== altL.length || neuL.some((p, i) => String(p.id) !== String(altL[i].id)))
+          return nein("Personal anlegen oder entfernen ist der Leitung vorbehalten.");
+        const liste = [];
+        for (let i = 0; i < altL.length; i++) {
+          const vorher = altL[i], p = neuL[i];
+          if (gleich(vorher, p)) { liste.push(vorher); continue; }
+          if (!eigen(vorher.id)) return nein("Angaben anderer Personen ändert die Leitung.");
+          for (const k of new Set([...Object.keys(vorher), ...Object.keys(p)]))
+            if (!gleich(vorher[k], p[k]) && !SELBST_FELDER.includes(k))
+              return nein(`An der eigenen Person ist ${k} der Leitung vorbehalten.`);
+          liste.push(p);
+        }
+        aus.personen = liste;
+        break;
+      }
+
+      /* --- Tagesnotizen (Commit C3): notizen[„tag|JJJJ-MM-TT"] ---
+             Neue Notizen der eigenen Einheit anhängen (Einheit, Autor, Zeit
+             setzt der Server), eigene (selbst verfasste, eigene Einheit)
+             löschen. Bestehende sind unveränderlich; fremde, Pool-, null-
+             und Altbestand-Notizen sieht die Schichtverantwortung nicht und
+             kann sie weder ändern, löschen noch übernehmen. Personennotizen
+             („person|…") bleiben der Leitung vorbehalten. --- */
+      case "notizen": {
+        const altO = a && typeof a === "object" && !Array.isArray(a) ? a : {};
+        if (n !== undefined && (!n || typeof n !== "object" || Array.isArray(n))) return nein("notizen: ungültige Form.");
+        const neuO = n || {};
+        const ergebnis = {};
+        for (const k of new Set([...Object.keys(altO), ...Object.keys(neuO)])) {
+          if (gleich(altO[k], neuO[k])) { if (k in altO) ergebnis[k] = altO[k]; continue; }
+          if (!(k in neuO)) { ergebnis[k] = altO[k]; continue; }          // nicht mitgeschickt: bleibt
+          if (!/^tag\|\d{4}-\d{2}-\d{2}$/.test(k)) return nein("Personennotizen sind der Leitung vorbehalten.");
+          if (!eigeneNutzbar) return nein("Ohne eigenen Bereich (oder im Pool) keine Tagesnotiz.");
+          if (!Array.isArray(neuO[k])) return nein("notizen: ungültige Form.");
+          const altL = (Array.isArray(altO[k]) ? altO[k] : []).filter((e) => e && typeof e === "object");
+          const altNach = new Map(altL.filter((e) => kennungGueltig(e.id)).map((e) => [String(e.id), e]));
+          const gesehen = new Set();
+          const neue = [];
+          for (const e of neuO[k]) {
+            if (!e || typeof e !== "object" || !kennungGueltig(e.id)) return nein("notizen: Eintrag ohne Kennung.");
+            const id = String(e.id);
+            if (gesehen.has(id)) return nein("notizen: doppelte Kennung.");
+            gesehen.add(id);
+            const vorher = altNach.get(id);
+            if (vorher) {
+              if (!gleich(vorher, e)) return nein("Bestehende Tagesnotizen sind nicht änderbar.");
+              continue;
+            }
+            if (typeof e.text !== "string" || !e.text.trim() || e.text.length > ANMERKUNG_MAX)
+              return nein("Eine Tagesnotiz braucht einen Text mit höchstens 2000 Zeichen.");
+            neue.push({ id: e.id, text: e.text, von: meinName, vonId: ich.id, zeit: jetztText(), einheitId: eigene });
+          }
+          const bleiben = [];
+          for (const e of altL) {
+            if (!kennungGueltig(e.id) || gesehen.has(String(e.id))) { bleiben.push(e); continue; }
+            /* gelöscht: nur die eigene Notiz der eigenen Einheit */
+            if (!(eintragDerEinheit(e, eigene) && String(e.vonId) === ichId))
+              return nein("Fremde Tagesnotizen lassen sich nicht löschen.");
+          }
+          ergebnis[k] = [...neue, ...bleiben];
+        }
+        aus.notizen = ergebnis;
+        break;
+      }
+
+      /* --- Ausschreibungen (Commit C1) ---
+             Bis C1 nahm der Server von der Schichtverantwortung nur die eigene
+             Bewerbung an; Anlegen, Vergeben und Zurückziehen, die ihre
+             Oberfläche anbietet, verwarf er still. Jetzt:
+             - neu: nur offen, ohne Bewerbungen, bekannte Dienstart; die
+               verantwortende Einheit setzt der Server (eigene Einheit),
+               ebenso Ersteller und Zeit — der Client bestimmt sie nicht;
+             - eigene Einheit: zurückziehen oder vergeben (nur aus „offen“,
+               nur an eine Person des eigenen Bereichs am Tag — das Eintragen
+               in den Plan prüft abweichungen ohnehin genauso);
+             - fremde Einheit, null, Altbestand: unverändert, nur die eigene
+               Bewerbung; einheitId zu übernehmen ist abgewiesen;
+             - Bewerbungen anderer kommen immer aus dem gespeicherten Stand,
+               die eigene aus der Übermittlung;
+             - nicht mitgeschickte Ausschreibungen bleiben gespeichert. */
+      case "ausschreibungen": {
+        if (n !== undefined && !Array.isArray(n)) return nein("ausschreibungen: ungültige Form.");
+        const altL = (Array.isArray(a) ? a : []).filter((x) => x && typeof x === "object");
+        const altNachId = new Map(altL.filter((x) => kennungGueltig(x.id)).map((x) => [String(x.id), x]));
+        const dienste = new Set((altM.dienstarten || []).filter(Boolean).map((d) => String(d.id)));
+        const meineB = (x) => (Array.isArray(x && x.bewerbungen) ? x.bewerbungen : []).filter((b) => b && eigen(b.personId))
+          .slice(0, 1).map((b) => ({ personId: b.personId, ...(typeof b.zeit === "string" && b.zeit.length <= 40 ? { zeit: b.zeit } : {}),
+            text: typeof b.text === "string" ? b.text.slice(0, TEXT_MAX) : "" }));
+        const bewerbungenZusammen = (vorher, x) => {
+          const alt = Array.isArray(vorher.bewerbungen) ? vorher.bewerbungen : [];
+          const istMeine = (b) => b && eigen(b.personId);
+          const neu = Array.isArray(x.bewerbungen) ? x.bewerbungen : [];
+          if (gleich(alt.filter(istMeine), neu.filter(istMeine))) return alt;     // eigene unverändert
+          return [...alt.filter((b) => !istMeine(b)), ...meineB(x)];
+        };
+        const ersetzt = new Map();
+        const neue = [];
+        const gesehen = new Set();
+        for (const x of (Array.isArray(n) ? n : []).filter((y) => y && typeof y === "object")) {
+          if (!kennungGueltig(x.id)) return nein("ausschreibungen: Eintrag ohne Kennung.");
+          const id = String(x.id);
+          if (gesehen.has(id)) return nein("ausschreibungen: doppelte Kennung.");
+          gesehen.add(id);
+          const vorher = altNachId.get(id);
+          if (!vorher) {
+            if (typeof x.datum !== "string" || !TAG.test(x.datum) || !dienste.has(String(x.dienstId)))
+              return nein("Eine Ausschreibung braucht Tag und bekannte Dienstart.");
+            if ((x.status || "offen") !== "offen" || (Array.isArray(x.bewerbungen) && x.bewerbungen.length) || (x.vergebenAn ?? null) !== null)
+              return nein("Eine neue Ausschreibung ist offen und hat noch keine Bewerbungen.");
+            if (typeof x.hinweis === "string" && x.hinweis.length > TEXT_MAX) return nein("ausschreibungen: Hinweis zu lang.");
+            neue.push({ id: x.id, datum: x.datum, dienstId: x.dienstId, einheitId: eigene,
+              hinweis: typeof x.hinweis === "string" ? x.hinweis : "", status: "offen",
+              erstellt: new Date().toISOString(), durch: meinName, bewerbungen: [], vergebenAn: null });
+            continue;
+          }
+          if (gleich(vorher, x)) continue;
+          const bewerbungen = bewerbungenZusammen(vorher, x);
+          const kopfGleich = gleich(ohne(vorher, ["bewerbungen"]), ohne(x, ["bewerbungen"]));
+          if (kopfGleich) { ersetzt.set(id, gleich(bewerbungen, vorher.bewerbungen || []) ? vorher : { ...vorher, bewerbungen }); continue; }
+          if (!ausschreibungDerEinheit(vorher, eigene))
+            return nein("Diese Ausschreibung verantwortet eine andere Einheit oder die Planung.");
+          /* Eigene Einheit: nur zurückziehen oder vergeben, aus „offen“. */
+          const kopf = ["status", "vergebenAn", "vergebenZeit"];
+          if (!gleich(ohne(vorher, ["bewerbungen", ...kopf]), ohne(x, ["bewerbungen", ...kopf])))
+            return nein("An einer Ausschreibung ändern sich nur Status und Vergabe.");
+          if (vorher.status !== "offen") return nein("Die Ausschreibung ist nicht mehr offen.");
+          if (x.status === "zurueckgezogen") {
+            ersetzt.set(id, { ...vorher, status: "zurueckgezogen", bewerbungen });
+          } else if (x.status === "vergeben") {
+            const an = x.vergebenAn;
+            if (an === null || an === undefined || !personen.has(String(an)) || !(eigen(an) || imBereich(an, vorher.datum)))
+              return nein(`${fremdText(an)} Die Vergabe ist Sache der Planung.`);
+            ersetzt.set(id, { ...vorher, status: "vergeben", vergebenAn: an, vergebenZeit: jetztText(), bewerbungen });
+          } else return nein("ausschreibungen: unbekannter Status.");
+        }
+        aus.ausschreibungen = [...neue, ...altL.map((x) => (kennungGueltig(x.id) && ersetzt.get(String(x.id))) || x)];
+        break;
+      }
+
+      /* --- Selbstservice: nur die eigenen Einträge, Fremdes aus dem Stand --- */
+      case "wuensche":
+      case "urlaubsrunde":
+      case "selbstplanung":
+        Object.assign(aus, eigenesZusammen(altM, { [feld]: n }, ichId));
+        break;
+
+      default:
+        return nein(`Änderungen an ${feld} sind der Leitung vorbehalten.`);
     }
   }
-
-  /* Anträge und Einsprünge tragen eine Person, keinen Tagesschlüssel.
-     Bisher gingen sie im Ganzen durch — die Schichtverantwortung konnte
-     damit per API den Urlaubsantrag einer Person aus einem fremden
-     Bereich genehmigen. Die Oberfläche zeigte den Knopf nie; der Server
-     muss es trotzdem prüfen. Geändert oder neu: nur im eigenen Bereich,
-     zum Tag des Antrags. */
-  for (const feld of ["anfragen", "einspruenge"]) {
-    const alt = new Map(((altM || {})[feld] || []).filter(Boolean).map((a) => [a.id, a]));
-    for (const a of ((neuM || {})[feld] || []).filter(Boolean)) {
-      const vorher = alt.get(a.id);
-      if (vorher && JSON.stringify(vorher) === JSON.stringify(a)) continue;
-      const person = personen.get(String(a.personId));
-      if (!person) return { ok: false, grund: "Eine geänderte Person gehört nicht zum Betrieb." };
-      const tag = a.von || a.datum || new Date().toISOString().slice(0, 10);
-      if (einheitAm(person, tag) !== eigene)
-        return { ok: false,
-          grund: `${person.nachname || "Diese Person"} gehört nicht zu deinem Bereich — der Antrag ist Sache der Leitung.` };
-    }
-  }
-  return { ok: true };
+  return { ok: true, mandant: aus };
 }
 
 /** Klartext für die Absage — der Aufrufer soll wissen, woran es lag. */

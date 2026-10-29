@@ -20,7 +20,22 @@ const PFLICHT = ["mandanten"];
 
 /** Listen je Betrieb, die ein Array sein müssen, wenn sie vorhanden sind. */
 const LISTEN = ["personen", "einheiten", "dienstarten", "abwesenheiten",
-  "anfragen", "qualifikationen", "standorte"];
+  "anfragen", "qualifikationen", "standorte", "uebergaben"];
+
+/**
+ * Altform angleichen (Commit C2): Über die Betreiberkonsole angelegte
+ * Betriebe trugen `uebergaben: {}` statt einer Liste. Inhalt konnte darin
+ * nie stehen — das Speichern einer Übergabe scheiterte daran schon im
+ * Browser. Ein leeres Objekt wird zur leeren Liste, bevor die Gestalt
+ * geprüft wird; alles andere bleibt, wie es ist (und fällt dann auf).
+ * @param {any} bestand
+ */
+export function uebergabenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const leer = (u) => !!u && typeof u === "object" && !Array.isArray(u) && Object.keys(u).length === 0;
+  if (!bestand.mandanten.some((m) => m && leer(m.uebergaben))) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
+}
 
 /**
  * Prüft die Form eines Bestands.
@@ -43,11 +58,10 @@ export function pruefeGestalt(bestand) {
   if (!bestand.mandanten.length)
     return { ok: false, grund: "Ein Bestand ohne Betrieb wird nicht gespeichert.", feld: "mandanten" };
 
+  const ids = mandantenKennungenGeprueft(bestand.mandanten);
+  if (ids) return ids;
+
   for (const m of bestand.mandanten) {
-    if (!m || typeof m !== "object")
-      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
-    if (!m.id)
-      return { ok: false, grund: "Einem Betrieb fehlt die Kennung.", feld: "mandanten[].id" };
     for (const liste of LISTEN) {
       if (liste in m && !Array.isArray(m[liste]))
         return { ok: false, grund: `${m.id}.${liste} ist keine Liste.`, feld: liste };
@@ -73,6 +87,36 @@ export function pruefeGestalt(bestand) {
   if (uferlos) return uferlos;
 
   return { ok: true };
+}
+
+/* --------------------------------------------------------------------------
+   KENNUNGEN DER BETRIEBE
+
+   Zwei Betriebe mit derselben Kennung hielt bis Oktober 2026 nichts auf.
+   Genau das ließ sich ausnutzen: Neben dem eigenen Betrieb ein zweites
+   Exemplar mit derselben Kennung mitschicken — die Einheitsprüfung sah nur
+   das erste, beim Zerlegen in Monatsscherben verschmolzen beide, und die
+   Änderungen am zweiten standen danach im echten Betrieb.
+
+   Kennungen sind im ganzen Produkt Zeichenketten (uid, Raumname, „m-…").
+   Alles andere wird abgewiesen, ebenso leere. Verglichen wird ohne
+   Leerraum am Rand, damit „A" und „ A " nicht als zwei Betriebe
+   durchgehen. Die Kennung selbst wird nicht verändert.
+   -------------------------------------------------------------------------- */
+export function mandantenKennungenGeprueft(mandanten) {
+  if (!Array.isArray(mandanten)) return null;
+  const gesehen = new Set();
+  for (const m of mandanten) {
+    if (!m || typeof m !== "object" || Array.isArray(m))
+      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
+    if (typeof m.id !== "string" || !m.id.trim())
+      return { ok: false, grund: "Einem Betrieb fehlt eine gültige Kennung.", feld: "mandanten[].id" };
+    const vergleich = m.id.trim();
+    if (gesehen.has(vergleich))
+      return { ok: false, grund: "Zwei Betriebe tragen dieselbe Kennung.", feld: "mandanten[].id" };
+    gesehen.add(vergleich);
+  }
+  return null;
 }
 
 /* --------------------------------------------------------------------------

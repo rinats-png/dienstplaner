@@ -6,7 +6,7 @@ import {
   dauer, brutto, fenster,
   dauerAm, bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzBefundeFuer, stundengrenzeAusRegeln, einsatzSchutz, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -1172,6 +1172,15 @@ function baueMandant(cfg, seed) {
   };
 }
 
+/* Die Demo für /api/bestand-anlegen: der Startbestand mit festen Kennungen
+   in fester Reihenfolge. Der Server prüft genau diese Gestalt
+   (server/lib/erstbefuellung.mjs, DEMO_KENNUNGEN). */
+const DEMO_KENNUNGEN = ["m-nordwacht", "m-lindenhof", "m-steinbach"];
+function demobestand() {
+  const b = startbestand();
+  return { ...b, mandanten: b.mandanten.map((m, i) => ({ ...m, id: DEMO_KENNUNGEN[i] })) };
+}
+
 function startbestand() {
   const j = new Date().getFullYear();
   const mandanten = [
@@ -1708,6 +1717,8 @@ const RECHTSQUELLE = {
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
 function rechtsquelle(b) {
   if (!b) return null;
+  /* Einsatzregeln ohne Rohdaten (S1): keine Fundstelle — sie verriete den Grund. */
+  if (b.neutral) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
   /* Bei einer Sperre steht die Grundlage an der Qualifikation, nicht in
@@ -1900,7 +1911,10 @@ function pruefen(m, von, bis) {
           letzte: p.nachtvorsorge || null,
           stichtag: letzterSo,
         });
-        if (vs.nachtarbeitnehmer && vs.faellig)
+        /* Ohne Rohdaten (Sicht der Schichtverantwortung, Commit S1) gibt es
+           weder Untersuchungsdatum noch Alter — und die Pflicht liegt bei
+           Planung und Leitung. Kein Befund statt eines falschen. */
+        if (vs.nachtarbeitnehmer && vs.faellig && !("sichtbereich" in p))
           push({ art: "vorsorge", schwere: "warn", datum: letzterSo, ref: `${p.id}|vs${jahr}`, personId: p.id,
             titel: `Arbeitsmedizinische Untersuchung anzubieten — ${p.nachname}`,
             text: vs.letzte
@@ -1925,14 +1939,16 @@ function pruefen(m, von, bis) {
               titel: `Alleindienst nicht zulässig — ${p.nachname}`,
               text: `${da.name}: keine weitere eingewiesene Person eingeteilt` });
         }
-        const w = ein.wiedereingliederung;
+        /* Ohne Rohdaten kommt die Grenze neutral aus planungsregeln (S1). */
+        const wNeutral = !ein.wiedereingliederung ? stundengrenzeAusRegeln(p.planungsregeln) : null;
+        const w = ein.wiedereingliederung || wNeutral;
         if (w && w.von <= d && w.bis >= d && dow(d) === 0) {
           let std = 0;
           for (let i = 0; i < 7; i++) { const tt = personTag(m, p, addDays(d, i));
             if (!tt.dienstId) continue; const xx = m.dienstarten.find((y) => y.id === tt.dienstId); if (xx) std += dauer(xx); }
           if (std > w.maxStundenWoche)
-            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `Wiedereingliederung überschritten — ${p.nachname}`,
+            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id, neutral: !!wNeutral,
+              titel: wNeutral ? `Wochenstundengrenze überschritten — ${p.nachname}` : `Wiedereingliederung überschritten — ${p.nachname}`,
               text: `${n1(std)} h geplant, zulässig sind ${n1(w.maxStundenWoche)} h je Woche` });
         }
       }
@@ -2017,22 +2033,35 @@ function pruefen(m, von, bis) {
 
        Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
        werden sie nur auf den Plan angewendet. */
+    /* Drei Wege, nie zwei zugleich (Commit S1):
+       - Rohdaten (Planung, Leitung): schutzBefunde, mit Fundstelle;
+       - Einsatzregeln (Schichtverantwortung, Bereich und Pool): regelBefunde,
+         neutral — ohne Diagnose, ohne Gesetz;
+       - die Sicht erwartet Einsatzregeln, sie fehlen: Die Prüfung ist nicht
+         möglich, und das sperrt (fail-closed). Eine Person ohne Daten ist
+         nicht frei planbar. */
     for (const p of m.personen) {
       if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
-      const alterHeute = alterAm(p.geburtstag, bis);
-      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      const abgeleitet = Array.isArray(p.planungsregeln);
+      const erwartet = p.sichtbereich === "bereich" || p.sichtbereich === "pool";
+      if (!abgeleitet && !erwartet) {
+        /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
+           ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+        const alterHeute = alterAm(p.geburtstag, bis);
+        if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      }
+      if (abgeleitet && !p.planungsregeln.some((x) => x && x.regel !== "stundengrenzeWoche")) continue;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefunde(p, da, d)) {
+        for (const b of schutzBefundeFuer(p, da, d)) {
           push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
-            ref: `${p.id}|${b.regel}`, personId: p.id,
-            titel: `${b.regel} — ${p.nachname}`,
+            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: !!b.neutral,
+            titel: b.regel === "pruefungNichtMoeglich" ? `Schutzprüfung nicht möglich — ${p.nachname}`
+              : b.neutral ? `Einsatzregel verletzt — ${p.nachname}` : `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
         }
       }
@@ -2065,6 +2094,28 @@ function pruefen(m, von, bis) {
     return out;
   });
 }
+
+/* Befunde, die auf Personendaten beruhen, die der Server Beschäftigten und
+   dem Betriebsrat nicht ausliefert (server/lib/sicht.mjs): Mutterschutz,
+   Schwerbehinderung, Geburtsdatum, arbeitsmedizinische Vorsorge und
+   Einschränkungen. Aus den gekürzten Daten entstünden falsche Befunde mit
+   Namen — etwa „Untersuchung anzubieten“ für jede Kollegin im Nachtdienst,
+   weil das Datum der letzten Untersuchung fehlt. Wer plan.edit.unit hat,
+   bekommt den Betrieb vollständig und sieht sie wie bisher. */
+const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];
+/* Seit Commit 1e.1 bekommt auch die Schichtverantwortung Personen anderer
+   Bereiche gekürzt (sichtbereich "fremd", siehe server/lib/sicht.mjs). Für
+   diese Personen fehlen die Merkmale; ihre Befunde wären falsch. */
+const personFremd = (m, pid) => { const p = (m.personen || []).find((x) => x.id === pid); return !!p && p.sichtbereich === "fremd"; };
+function befundeFuer(sitz, befunde) {
+  if (darf(sitz, "plan.edit.unit"))
+    return befunde.filter((b) => !(BEFUNDE_AUS_PERSONENDATEN.includes(b.art) && personFremd(sitz.mandant, b.personId)));
+  return befunde.filter((b) => !BEFUNDE_AUS_PERSONENDATEN.includes(b.art));
+}
+/** Konten einer Person: mit account.view.all — außer für Personen, deren
+    Kontodaten die Sicht nicht enthält (fremder Bereich, Springer-Pool). */
+const kontoSichtbar = (sitz, p) => sitz.person.id === p.id
+  || (darf(sitz, "account.view.all") && p.sichtbereich !== "fremd" && p.sichtbereich !== "pool");
 function simulation(m) {
   return memo(m, "sim", () => {
     const len = zyklusLaenge(m);
@@ -2114,7 +2165,27 @@ function darf(sitz, recht, einheitId) {
   return sitz.person.bereich === einheitId;
 }
 const darfEinheit = (s, eid) => darf(s, "plan.edit.all") || darf(s, "plan.edit.unit", eid);
+/* Mitteilungen an Personen außerhalb des eigenen Bereichs nimmt der Server
+   von der Schichtverantwortung nicht an (rechte.mjs, einheitZusammen) —
+   dieselbe Bestimmung des eigenen Bereichs wie dort (eigeneEinheit). */
+const anBereichErlaubt = (s, p) => darf(s, "plan.edit.all") || !p || p.id === s.person.id
+  || einheitAm(p, heute()) === (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
 const darfEntscheiden = (s, eid) => darf(s, "req.approve.all") || darf(s, "req.approve.unit", eid);
+/* Dienstbuch und Übergaben tragen eine Einheit (Commit C2). Die
+   Schichtverantwortung schreibt immer für ihre eigene — der Server setzt sie
+   ohnehin; Planung und Leitung (plan.edit.all) wählen eine Einheit oder
+   „betriebsweit" (null). */
+const eigeneEinheitVon = (s) => (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
+const waehltEinheit = (s) => darf(s, "plan.edit.all");
+/** Einheit oder „Betriebsweit" — nur für Planung und Leitung. */
+function EinheitWahl({ m, wert, setWert, style }) {
+  return (
+    <Sel value={wert ?? ""} onChange={(e) => setWert(e.target.value || null)} style={{ width: 190, ...style }}>
+      <option value="">Betriebsweit</option>
+      {(m.einheiten || []).map((e) => <option key={e.id} value={e.id}>{e.name || e.id}</option>)}
+    </Sel>);
+}
+const einheitName = (m, eid) => (eid ? ((m.einheiten || []).find((e) => e.id === eid) || {}).name || eid : "betriebsweit");
 
 /* ------------------------------ Preisrechnung ----------------------------- */
 /** Zählt Zugänge aus dem laufenden Personalbestand — daher automatisch aktuell. */
@@ -2450,6 +2521,19 @@ const offeneErfassung = (m, p, bis) => {
  * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten darf.
  * Liefert eine Liste von Hinderungsgründen — leer bedeutet zulässig.
  */
+/** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
+function wochenStundenGeplant(m, p, d) {
+  const mo = montag(d);
+  let std = 0;
+  for (let i = 0; i < 7; i++) {
+    const t = personTag(m, p, addDays(mo, i));
+    if (!t.dienstId) continue;
+    const x = m.dienstarten.find((y) => y.id === t.dienstId);
+    if (x) std += dauer(x);
+  }
+  return std;
+}
+
 function hindernisse(m, p, d, da) {
   const g = [];
   const e = einschr(p);
@@ -2502,20 +2586,21 @@ function hindernisse(m, p, d, da) {
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
     if (n >= e.maxDiensteWoche) g.push(`bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
   }
-  // Wiedereingliederung
-  const w = e.wiedereingliederung;
-  if (w && w.von <= d && w.bis >= d) {
-    const mo = montag(d);
-    let std = 0;
-    for (let i = 0; i < 7; i++) {
-      const t = personTag(m, p, addDays(mo, i));
-      if (!t.dienstId) continue;
-      const x = m.dienstarten.find((y) => y.id === t.dienstId);
-      if (x) std += dauer(x);
-    }
-    if (std + dauer(da) > w.maxStundenWoche)
-      g.push(`Wiedereingliederung: höchstens ${n1(w.maxStundenWoche)} h je Woche`);
+  /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
+     eingeteilt werden darf, braucht im Dienst jemanden ohne diese
+     Einschränkung (Commit S2). */
+  if (e.keinAlleindienst) {
+    const b = besetzung(m, d)[da.id];
+    const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
+    if (mit.length === 0) g.push("darf nicht allein eingeteilt werden");
   }
+  /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
+     die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
+     (Schichtverantwortung); fehlen diese, sperrt sie. Harte Befunde sind
+     Hindernisse; weiche — auch die Wochenstundengrenze (S2a) — sind
+     Hinweise in Ersatzsuche und folgenPruefen. */
+  const schutz = einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d));
+  g.push(...schutz.hindernisse);
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -2582,6 +2667,8 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
     if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
       punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
+    /* Weiche Schutzregeln sperren nicht, stehen aber dabei (Commit S2). */
+    for (const h of einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d)).hinweise) gruende.push(`Hinweis: ${h}`);
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -3546,7 +3633,7 @@ function tagesaufgaben(sitz) {
   }
 
   if (darf(sitz, "plan.view.unit")) {
-    const kommend = pruefen(m, d0, addDays(d0, 13));
+    const kommend = befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13)));
     const heuteOffen = kommend.filter((b) => b.datum === d0 && (b.art === "besetzung" || b.art === "qualifikation"));
     if (heuteOffen.length) push({ art: "besetzung", dringend: true, ziel: "lage",
       titel: `Heute ${heuteOffen.length}× unterbesetzt`, text: heuteOffen.map((b) => b.titel).slice(0, 2).join(" · "),
@@ -3581,7 +3668,7 @@ function tagesaufgaben(sitz) {
 
   if (darf(sitz, "account.view.all")) {
     const grenze = m.einstellungen.ausgleichGrenze || 40;
-    const ueber = m.personen.filter((x) => imDienst(x, d0) && stundenkonto(m, x, ym) > grenze);
+    const ueber = m.personen.filter((x) => imDienst(x, d0) && kontoSichtbar(sitz, x) && stundenkonto(m, x, ym) > grenze);
     if (ueber.length) push({ art: "konto", dringend: false, ziel: "abrechnung",
       titel: `${ueber.length}× Stundenkonto über der Grenze`,
       text: `Freizeitausgleich einplanen · Grenze ${n1(grenze)} h`, anzahl: ueber.length });
@@ -4368,10 +4455,14 @@ const UEBERGABE_FELDER = [
   { id: "material", label: "Material und Betriebsmittel", pflicht: false,
     hinweis: "Fehlendes, Defektes, Übergebenes." },
 ];
-const uebergabeAm = (m, datum, dienstId) =>
-  (m.uebergaben || []).find((u) => u.datum === datum && u.dienstId === dienstId) || null;
+/* Ältere Betriebe trugen `uebergaben: {}` (siehe leererMandant). */
+const uebergabenVon = (m) => (Array.isArray(m.uebergaben) ? m.uebergaben : []);
+/* Eine Übergabe je Tag, Dienstart und Einheit (Commit C2; fehlend wie null). */
+const uebergabeAm = (m, datum, dienstId, einheitId = null) =>
+  uebergabenVon(m).find((u) => u.datum === datum && u.dienstId === dienstId
+    && (u.einheitId ?? null) === (einheitId ?? null)) || null;
 /** Übergaben, die fällig, aber nicht erfolgt sind. */
-function offeneUebergaben(m, tage = 3) {
+function offeneUebergaben(m, tage = 3, einheitId = null) {
   if (!kann(m, "uebergabe")) return [];
   const out = [];
   for (let i = tage; i >= 1; i--) {
@@ -4379,8 +4470,10 @@ function offeneUebergaben(m, tage = 3) {
     for (const da of m.dienstarten) {
       if (da.posten || da.form === "ruf") continue;
       const b = besetzung(m, d)[da.id];
-      if (!b.personen.length) continue;
-      if (!uebergabeAm(m, d, da.id)) out.push({ datum: d, dienstart: da, personen: b.personen });
+      /* Fällig je Einheit: nur, wenn jemand aus ihr im Dienst war. */
+      const personen = einheitId ? b.personen.filter((p) => einheitAm(p, d) === einheitId) : b.personen;
+      if (!personen.length) continue;
+      if (!uebergabeAm(m, d, da.id, einheitId)) out.push({ datum: d, dienstart: da, personen });
     }
   }
   return out;
@@ -8250,14 +8343,14 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const m = sitz.mandant;
   const d0 = heute();
   const bes = useMemo(() => besetzung(m, d0), [m]);
-  const kommend = useMemo(() => pruefen(m, d0, addDays(d0, 13)), [m]);
+  const kommend = useMemo(() => befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13))), [m, sitz]);
   const sim = useMemo(() => simulation(m), [m]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const aktiv = aktive(m, d0);
   const abwesend = aktiv.filter((p) => abwesenheitAm(m, p.id, d0)).length;
   const kritisch = kommend.filter((b) => b.schwere === "danger").length;
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
-  const kontenHoch = aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
+  const kontenHoch = aktiv.filter((p) => kontoSichtbar(sitz, p) && stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
 
   return (
@@ -8301,9 +8394,11 @@ function Lagebild({ sitz, oeffneTag, akt }) {
           <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
-          <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
-          <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
-            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
+          {/* Beide Zahlen rechnen mit fremden Anträgen bzw. Stundenkonten — die
+              liefert der Server nur Rollen, die sie bearbeiten (sicht.mjs). */}
+          {darf(sitz, "req.approve.unit") && <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />}
+          {darf(sitz, "account.view.all") && <Kpi label="Konten über Grenze" value={kontenHoch} tone={kontenHoch ? "warn" : "ok"}
+            sub={`ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />}
         </KpiRow>
         <Card>
           <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
@@ -8852,7 +8947,8 @@ function Tagesdetail({ sitz, datum, onClose, akt }) {
         </div>
       </div>
 
-      {darf(sitz, "plan.view.unit") && (
+      {/* Tagesnotizen sind Planungswissen — „sichtbar für alle mit Planungsrecht“. */}
+      {darf(sitz, "plan.edit.unit") && (
         <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Btn size="sm" kind="quiet" onClick={() => akt.oeffneNotizen(`tag|${datum}`, `Notizen zum ${fDatum(datum)}`)}>
             Notizen{notizenZu(m, `tag|${datum}`).length ? ` (${notizenZu(m, `tag|${datum}`).length})` : ""}</Btn>
@@ -9417,7 +9513,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {p.qualifikationen.map((qid) => { const qq = m.qualifikationen.find((x) => x.id === qid);
                     return qq ? <Pill key={qid} size="sm">{qq.kurz}</Pill> : null; })}</div></td>
-              {zeigt ? (<>
+              {zeigt && kontoSichtbar(sitz, p) ? (<>
                 <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right" }}>
                   <div style={{ fontSize: 14, color: url.rest < 5 ? C.warn : C.text, ...NUM }}>{url.rest}</div>
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>von {url.anspruch}</div></td>
@@ -9427,7 +9523,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                   <div style={{ fontSize: 14, ...NUM }}>{n1(nacht.stunden)} h</div>
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{nacht.anzahl} Dienste</div></td>
               </>) : <td colSpan={3} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 12.5, color: C.dimmer }}>
-                Konten nur für die Planung sichtbar</td>}
+                {zeigt ? "Konten dieser Person nicht im eigenen Bereich" : "Konten nur für die Planung sichtbar"}</td>}
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}>›</td>
             </tr>); })}</tbody>
         </table>
@@ -9471,6 +9567,23 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
 }
 
 /* ============================== PERSONALAKTE ============================= */
+/** Die Einsatzregeln einer Person — neutral, ohne Grund (Commit S1). */
+function EinsatzregelListe({ regeln }) {
+  if (!Array.isArray(regeln)) return null;
+  const zeitraum = (r) => (r.von || r.bis
+    ? ` (${r.von ? `ab ${fKurz(r.von)}` : ""}${r.von && r.bis ? " " : ""}${r.bis ? `bis ${fKurz(r.bis)}` : ""})` : "");
+  const zeilen = [...new Set(regeln.filter((r) => r && r.regel).map((r) => r.regel === "stundengrenzeWoche"
+    ? `Wochenstundengrenze: höchstens ${n1(Number(r.wert) || 0)} h${zeitraum(r)}`
+    : `${(EINSATZREGEL_TEXTE[r.regel] || EINSATZREGEL_TEXTE.unbekannt).replace(/\.$/, "")}${zeitraum(r)}`))];
+  return (
+    <div>
+      <Lab style={{ marginBottom: 8 }}>Einsatzregeln</Lab>
+      {zeilen.length === 0
+        ? <div style={{ fontSize: 13, color: C.dim }}>Keine besonderen Einsatzregeln.</div>
+        : zeilen.map((z) => <div key={z} style={{ fontSize: 13.5, lineHeight: 1.6 }}>{z}</div>)}
+    </div>);
+}
+
 function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const m = sitz.mandant;
   const p = m.personen.find((x) => x.id === personId);
@@ -9483,7 +9596,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const url = urlaubskonto(m, p, jahr), ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
   const kto = stundenkonto(m, p, ym), nacht = nachtJahr(m, p, jahr);
   const editierbar = darf(sitz, "staff.edit") || darfEinheit(sitz, einheitAm(p, d0));
-  const zeigt = darf(sitz, "account.view.all") || sitz.person.id === p.id;
+  const zeigt = kontoSichtbar(sitz, p);
   const nm = Array.from({ length: 12 }, (_, i) => istStunden(m, p, `${jahr}-${pad(i + 1)}`).nacht);
   const maxN = Math.max(1, ...nm);
 
@@ -9551,6 +9664,10 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* Die Rohdaten pflegt, wer Personal bearbeitet (staff.edit). Die
+                Schichtverantwortung bekommt sie nicht mehr (Commit S1) und sieht
+                stattdessen die neutralen Einsatzregeln. */}
+            {!darf(sitz, "staff.edit") ? <EinsatzregelListe regeln={p.planungsregeln} /> : (<>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -9585,6 +9702,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
                 Die Prüfung meldet Verstöße unter „Schutzvorschriften".
               </div>)}
+            </>)}
 
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
               <div>
@@ -9672,13 +9790,13 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
               <Field label="Höchstzahl Dienste je Woche" hint="Leer bedeutet keine Begrenzung.">
                 <Inp type="number" min={0} value={(p.einschraenkungen || {}).maxDiensteWoche || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "maxDiensteWoche", e.target.value ? Number(e.target.value) : null)} /></Field>
-              <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
+              {darf(sitz, "staff.edit") && <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
                 <Inp type="date" value={((p.einschraenkungen || {}).wiedereingliederung || {}).bis || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung", e.target.value
                     ? { von: heute(), bis: e.target.value, maxStundenWoche: ((p.einschraenkungen || {}).wiedereingliederung || {}).maxStundenWoche || 20 }
-                    : null)} /></Field>
+                    : null)} /></Field>}
             </div>
-            {(p.einschraenkungen || {}).wiedereingliederung && (
+            {darf(sitz, "staff.edit") && (p.einschraenkungen || {}).wiedereingliederung && (
               <Field label="Zulässige Wochenstunden während der Wiedereingliederung">
                 <Inp type="number" step="0.5" value={p.einschraenkungen.wiedereingliederung.maxStundenWoche}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung",
@@ -10295,7 +10413,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const [y, mo] = ym.split("-").map(Number);
   const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
   const [f, setF] = useState("alle");
-  const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
+  const befunde = useMemo(() => befundeFuer(sitz, pruefen(m, von, bis)), [m, ym, sitz]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
     ["aufgabe", "Vorbehaltene Aufgaben"], ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
@@ -10568,7 +10686,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
       if (t.dienstId) offen.push({ datum: d, dienstId: t.dienstId });
     }
     akt.krankmelden(f.personId, f.von, f.bis, f.notiz);
-    setLuecken(offen); setIdx(0); setSchritt(offen.length ? 3 : 4);
+    /* Wer nur die eigene Abwesenheit melden darf, teilt keinen Ersatz ein —
+       das ist Sache der Planung, und der Server nähme es ohnehin nicht an. */
+    setLuecken(offen); setIdx(0); setSchritt(offen.length && !eigene ? 3 : 4);
   };
 
   const kandidaten = m.personen.filter((p) => imDienst(p, heute()) &&
@@ -10589,7 +10709,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <Field label="Anmerkung" hint="Kein Grund, keine Diagnose — nur was für die Planung nötig ist.">
             <Inp value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} /></Field>
           <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-            Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor.
+            {eigene
+              ? "Die Meldung wirkt sofort. Betroffene Dienste erscheinen für die Planung in der Prüfung."
+              : "Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor."}
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
@@ -10617,7 +10739,7 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 20, lineHeight: 1.5 }}>
             {luecken.length === 0
               ? "Es waren keine Dienste betroffen."
-              : "Die Planung wurde benachrichtigt. Verbliebene Lücken erscheinen in der Prüfung."}
+              : `${anzahlWort(luecken.length, "Dienst")} betroffen. Verbliebene Lücken erscheinen in der Prüfung.`}
           </div>
           <Btn kind="primary" onClick={onClose}>Schließen</Btn>
         </div>)}
@@ -11004,8 +11126,10 @@ function Urlaubsrunde({ sitz, akt }) {
 function Abrechnungsdaten({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const [reiter, setReiter] = useState("zuschlaege");
-  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`))
-    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym]);
+  /* Nur Personen, deren Kontodaten die Sicht enthält (kontoSichtbar) — für
+     andere Bereiche fehlt der Schichtverantwortung die Erfassung seit 1e.2. */
+  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`) && kontoSichtbar(sitz, p))
+    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym, sitz]);
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
 
@@ -11675,6 +11799,7 @@ function Dienstbuch({ sitz, akt }) {
   const arten = [["uebergabe", "Übergabe"], ["vorkommnis", "Vorkommnis"], ["hinweis", "Hinweis"]];
   const eintraege = (m.dienstbuch || []).filter((e) => e.datum === datum);
   const darfSchreiben = darf(sitz, "plan.view.unit");
+  const [einheitId, setEinheitId] = useState(null);
 
   return (
     <div>
@@ -11695,8 +11820,9 @@ function Dienstbuch({ sitz, akt }) {
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
               placeholder="Kurz und sachlich. Keine Gesundheitsdaten, keine Bewertungen von Personen." />
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
               <Btn kind="primary" disabled={!text.trim()}
-                onClick={() => { akt.dienstbuchEintrag(datum, art, text); setText(""); }}>Eintragen</Btn>
+                onClick={() => { akt.dienstbuchEintrag(datum, art, text, einheitId); setText(""); }}>Eintragen</Btn>
             </div>
           </div>
         </Card>)}
@@ -11714,7 +11840,7 @@ function Dienstbuch({ sitz, akt }) {
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill size="sm" tone={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"}>
                     {(arten.find((a) => a[0] === e.art) || [])[1]}</Pill>
-                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}</span>
+                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}{waehltEinheit(sitz) ? ` · ${einheitName(m, e.einheitId)}` : ""}</span>
                 </div>
                 <div style={{ fontSize: 14, color: C.text, marginTop: 6, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.text}</div>
               </div>
@@ -11733,7 +11859,8 @@ function folgenPruefen(m, person, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { hindernisse: [], hinweise: [] };
   const hind = hindernisse(m, person, datum, da);
-  const hinweise = [];
+  /* Weiche Schutzregeln als Hinweis (Commit S2). */
+  const hinweise = einsatzSchutz(person, da, datum, () => wochenStundenGeplant(m, person, datum)).hinweise.map((text) => ({ art: "warn", text }));
   const map = Object.fromEntries(m.dienstarten.map((x) => [x.id, x]));
 
   // Folgeschichten in beide Richtungen ausdrücklich benennen
@@ -13014,7 +13141,10 @@ function Lenkzeiten({ sitz, akt }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "plan.edit.unit");
   const [woche, setWoche] = useState(montag(heute()));
-  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)), [m, woche]);
+  /* Fremde Lenkzeiten bekommt nur, wer sie pflegt — Beschäftigte sehen die
+     eigenen (sicht.mjs), alle anderen Einträge wären leer. */
+  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)
+    && (darfPflegen || (sitz.person && p.id === sitz.person.id))), [m, woche, darfPflegen, sitz.person]);
   const [personId, setPersonId] = useState((fahrer[0] || {}).id || "");
   const person = fahrer.find((p) => p.id === personId) || fahrer[0] || null;
   const tage = useMemo(() => fahrWochentage(woche), [woche]);
@@ -14007,7 +14137,11 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
 function Notizen({ sitz, akt, schluessel, titel, onClose }) {
   const m = sitz.mandant;
   const [text, setText] = useState("");
+  const [einheitId, setEinheitId] = useState(null);
   const liste = notizenZu(m, schluessel);
+  /* Tagesnotizen tragen eine Einheit (Commit C3): Planung und Leitung wählen,
+     die Schichtverantwortung schreibt für ihre eigene und löscht nur eigene. */
+  const darfLoeschen = (x) => waehltEinheit(sitz) || x.vonId === sitz.person.id;
   return (
     <Sheet open onClose={onClose} titel={titel} width={540}>
       <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
@@ -14019,8 +14153,8 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
           <div key={x.id} className="karte" style={{ padding: 14, marginBottom: 9 }}>
             <div style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{x.text}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 }}>
-              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}</span>
-              <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>
+              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}{waehltEinheit(sitz) ? ` · ${einheitName(m, x.einheitId)}` : ""}</span>
+              {darfLoeschen(x) && <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>}
             </div>
           </div>))}
       </div>}
@@ -14028,9 +14162,10 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
         <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
           placeholder="z. B. neu im Team, bis Ende Mai nicht allein einteilen" /></Field>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+        {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
         <Btn kind="quiet" onClick={onClose}>Schließen</Btn>
         <Btn kind="primary" disabled={!text.trim()}
-          onClick={() => { akt.neueNotiz(schluessel, text); setText(""); }}>Hinzufügen</Btn>
+          onClick={() => { akt.neueNotiz(schluessel, text, einheitId); setText(""); }}>Hinzufügen</Btn>
       </div>
     </Sheet>);
 }
@@ -14124,8 +14259,9 @@ function Schichtuebergabe({ sitz, akt }) {
   const [datum, setDatum] = useState(heute());
   const [dienstId, setDienstId] = useState(m.dienstarten.find((d) => !d.posten) ?.id || "");
   const [f, setF] = useState({ lage: "", offen: "", vorkommnis: "", material: "" });
-  const offeneListe = useMemo(() => offeneUebergaben(m, 3), [m]);
-  const vorhanden = uebergabeAm(m, datum, dienstId);
+  const [einheitId, setEinheitId] = useState(() => (waehltEinheit(sitz) ? null : eigeneEinheitVon(sitz)));
+  const offeneListe = useMemo(() => offeneUebergaben(m, 3, einheitId), [m, einheitId]);
+  const vorhanden = uebergabeAm(m, datum, dienstId, einheitId);
   const b = dienstId ? besetzung(m, datum)[dienstId] : null;
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const darfSchreiben = darfEinheit(sitz, sitz.person.bereich) || darf(sitz, "plan.edit.unit");
@@ -14141,6 +14277,7 @@ function Schichtuebergabe({ sitz, akt }) {
       <H1 rubrik={begriff(m, "einheit")}
         sub={`Die ${begriff(m, "uebergabe").toLowerCase()} hält fest, was die übernehmende Schicht wissen muss. Sie ist nachträglich nicht mehr änderbar — Ergänzungen werden angehängt.`}
         right={<div style={{ display: "flex", gap: 10 }}>
+          {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} />}
           <Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 160 }} />
           <Sel value={dienstId} onChange={(e) => setDienstId(e.target.value)} style={{ width: 170 }}>
             {m.dienstarten.filter((d) => !d.posten && d.form !== "ruf")
@@ -14188,13 +14325,13 @@ function Schichtuebergabe({ sitz, akt }) {
                   <Inp placeholder="Ergänzung anhängen …" value={f.nachtrag || ""}
                     onChange={(e) => setF({ ...f, nachtrag: e.target.value })} />
                   <Btn disabled={!(f.nachtrag || "").trim()}
-                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag);
+                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag, einheitId);
                       setF({ ...f, nachtrag: "" }); }}>Anhängen</Btn>
                 </div>)}
             </>) : darfSchreiben && (
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <Btn kind="primary" disabled={!f.lage.trim()}
-                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f)}>
+                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f, einheitId)}>
                   Übergabe abschließen</Btn>
               </div>)}
           </div>
@@ -15347,21 +15484,26 @@ function zustellwege(person, art) {
   };
 }
 
+/* Kennungen der Mitteilungen, die diese Oberfläche angelegt hat und deren
+   Zustellung sie nach dem Speichern anstößt (siehe zustellungAnstossen). */
+const zustellungAusstehend = new Set();
+
 /**
- * Baut eine Mitteilung samt Zustellaufträgen. Der Versand selbst geschieht
- * auf dem Server — hier entsteht nur die Warteschlange, damit die Anwendung
- * auch ohne Netz weiterarbeitet und nichts verloren geht.
+ * Baut eine Mitteilung fürs Postfach. Ob und wie sie per E-Mail oder Push
+ * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
+ * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
+ * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
  */
 function baueMitteilung(m, personId, art, titel, text, ziel) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
-  const w = zustellwege(p, art);
+  const id = uid("n");
+  zustellungAusstehend.add(id);
   return {
-    id: uid("n"), personId, art, titel, text, ziel: ziel || null,
+    id, personId, art, titel: String(titel ?? "").slice(0, 120), text: String(text ?? "").slice(0, 500),
+    ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
-    gelesen: false, dringend: w.dringend,
-    wege: { mail: w.mail ? p.email : null, push: w.push ? p.pushSchluessel : null },
-    zugestellt: { mail: null, push: null },
+    gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
   };
 }
 
@@ -15385,31 +15527,6 @@ function urlaubshinweiseFaellig(m, stichtag) {
     if (h.faellig) aus.push({ person: p, ...h });
   }
   return aus;
-}
-
-/** Alle Mitteilungen, für die noch etwas hinausgehen muss. */
-const offeneZustellungen = (m) => (m.nachrichten || []).filter((n) =>
-  (n.wege && n.wege.mail && !(n.zugestellt || {}).mail) ||
-  (n.wege && n.wege.push && !(n.zugestellt || {}).push));
-
-/* --------------------------------------------------------------------------
-   E-MAIL-TEXTE
-   Keine Werbung, keine Bilder, keine Zählpixel. Wer im Nachtdienst auf ein
-   Telefon schaut, will drei Zeilen und einen Verweis.
-   -------------------------------------------------------------------------- */
-function mailText(m, n, p) {
-  const anrede = `Hallo ${p.vorname},`;
-  const fuss = [
-    "",
-    "———",
-    `${m.name} · Dienstplanung mit CENTRIC`,
-    "Diese Nachricht wurde ausgelöst durch eine Änderung in deinem Dienstplan.",
-    "Einstellungen zu Benachrichtigungen findest du in der Anwendung unter Mehr.",
-  ].join("\n");
-  return {
-    betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
-  };
 }
 
 /* ==========================================================================
@@ -15625,7 +15742,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                     <span style={{ display: "block", fontSize: 14, fontWeight: an ? 640 : 550 }}>
                       {fKurz(x.datum)} · {da ? da.name : x.dienstId}</span>
                     <span style={{ display: "block", fontSize: 12, color: C.dim, marginTop: 3 }}>
-                      {l.anzahl === 0
+                      {!darfVergeben ? (l.dringend ? "offen · dringend" : "offen")
+                        : l.anzahl === 0
                         ? l.dringend ? "noch niemand · dringend" : "noch niemand"
                         : `${zahl(l.anzahl)} ${l.anzahl === 1 ? "Meldung" : "Meldungen"}`}</span>
                   </span>
@@ -15652,8 +15770,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                       lineHeight: 1.55 }}>{a.hinweis}</p>}
                     <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13,
                       color: C.dim, marginTop: 12 }}>
-                      <span>{zahl(lage.moeglich)} kämen infrage</span>
-                      <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>
+                      {darfVergeben && <span>{zahl(lage.moeglich)} kämen infrage</span>}
+                      {darfVergeben && <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>}
                       <span>{lage.tage <= 0 ? "heute" : `in ${zahl(lage.tage)} Tagen`}</span>
                     </div>
                     {darfVergeben && (
@@ -15664,7 +15782,9 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                   </div>
                 </Card>
 
-                {lage.anzahl === 0 ? (
+                {/* Wer sich gemeldet hat und in welcher Rangfolge, sieht nur, wer vergibt.
+                    Beschäftigte bekommen fremde Meldungen vom Server nicht (sicht.mjs). */}
+                {!darfVergeben ? null : lage.anzahl === 0 ? (
                   <Card><Leer titel="Noch niemand hat sich gemeldet"
                     text={lage.moeglich === 0
                       ? "Niemand darf diese Schicht übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Hier hilft nur die Ersatzsuche mit Begründung."
@@ -16615,7 +16735,7 @@ function leererMandant(name, branche, anschrift, kontakt) {
     zyklusLaenge: 7, gruppen: 1, versatzTageVon: 0, anker: montag(jetzt),
     abwesenheiten: [], abweichungen: {}, erfassung: {}, anfragen: [],
     nachrichten: [], aenderungen: [], freigaben: {}, aushaenge: [],
-    uebergaben: {}, ausschreibungen: [], checklisten: [], listeneintraege: {},
+    uebergaben: [], ausschreibungen: [], checklisten: [], listeneintraege: {},
     betriebsmittel: [], protokoll: [], adressAenderungen: [],
     einheitLabel: "Schichtgruppe",
   };
@@ -17261,7 +17381,7 @@ function auftraggeberBericht(m, von, bis, einheitId) {
      ausnahmslos „keine besonderen Vorkommnisse" — gleichgültig, wie viel im
      Betrieb tatsächlich dokumentiert war. */
   const zeilen = [];
-  for (const u of (m.uebergaben || [])) {
+  for (const u of uebergabenVon(m)) {
     if (!u || !u.datum || u.datum < von || u.datum > bis) continue;
     if (!u.vorkommnis) continue;
     /* Eine Übergabe gehört zu der Einheit, aus der jemand an der übergebenen
@@ -17628,7 +17748,7 @@ function Auftraggeberbericht({ sitz, akt }) {
   const e = m.einheiten.find((x) => x.id === einheit);
   /* Wie viele Übergaben es im Zeitraum überhaupt gibt — die Antwort auf
      „warum steht hier nichts". */
-  const uebergabenImZeitraum = (m.uebergaben || [])
+  const uebergabenImZeitraum = uebergabenVon(m)
     .filter((u) => u && u.datum >= von && u.datum <= bis).length;
 
   const alsText = () => {
@@ -19508,8 +19628,10 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
       {/* --------------------------- Notruf -------------------------- */}
       <MBlatt offen={blatt === "notruf"} onClose={() => setBlatt(null)} titel="Hilfe anfordern">
         <div style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, marginBottom: 22 }}>
-          Deine Schichtverantwortung wird sofort unterrichtet, danach die Planung.
-          Standort und Dienst werden mitgeschickt.
+          {/* Bis der Server selbst zustellt, wird niemand aktiv benachrichtigt —
+              der Text verspricht nur, was geschieht. */}
+          Dein Hilferuf wird erfasst und ist für Schichtverantwortung, Planung und
+          Leitung in CENTRIC sichtbar. Dienst und Einsatzort werden vermerkt.
         </div>
         {Object.entries(NOTRUF_ARTEN).map(([id, a]) => (
           <button key={id} onClick={() => { akt.notrufSenden(id, ""); setBlatt(null); }}
@@ -19936,6 +20058,9 @@ function Tarifwerk({ sitz, akt }) {
 function Standorte({ sitz, akt }) {
   const m = sitz.mandant;
   const p = preis(sitz.db, m);
+  /* Preise nur mit billing.view (B2): Die Planung führt Standorte, die
+     Kosten sieht sie nicht — ihr fehlt auch die Preisgrundlage. */
+  const preiseSichtbar = darf(sitz, "billing.view");
 
   const [name, setName] = useState("");
   const [land, setLand] = useState(m.bundesland);
@@ -19955,17 +20080,18 @@ function Standorte({ sitz, akt }) {
 
   return (
     <Card style={{ marginBottom: 20 }}>
-      <CardHead right={p.summeStandorte > 0
+      <CardHead right={!preiseSichtbar ? null : p.summeStandorte > 0
         ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
         : <Pill tone="ok">kostenlos enthalten</Pill>}>
         Standorte</CardHead>
       <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
         Standorte arbeiten unabhängig: eigene Einheiten, eigene Besetzung, oft
-        eigenes Bundesland und damit eigene Feiertage. Anlegen kostet nichts —
+        eigenes Bundesland und damit eigene Feiertage.
+        {preiseSichtbar && (<>{" "}Anlegen kostet nichts —
         {" "}{zahl(p.stufe.standorteInklusive)} der größten Standorte sind in der
         Stufe {p.stufe.name} enthalten, unabhängig von ihrer Größe. Ein
         zusätzlicher, kleinerer Standort kostet erst ab {zahl(STANDORT_BAENDER[0].bis + 1)} Personen —
-        siehe die Aufstellung unten.
+        siehe die Aufstellung unten.</>)}
       </div>
 
       <div style={{ padding: 22, display: "grid", gap: 10 }}>
@@ -19991,8 +20117,8 @@ function Standorte({ sitz, akt }) {
                 </span>
                 {a && Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
                   <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
-                <Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
-                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>
+                {preiseSichtbar && (<Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
+                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>)}
                 <span style={{ flex: 1 }} />
                 {liste.length > 1 && (
                   <Btn size="sm" kind="danger" onClick={() => akt.loescheStandort(st.id)}>Entfernen</Btn>)}
@@ -20010,11 +20136,11 @@ function Standorte({ sitz, akt }) {
                 {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
             <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegen}>Anlegen</Btn>
           </div>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+          {preiseSichtbar && (<div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
             Ein neuer Standort ist leer und kostet nichts. Erst wenn Personal
             zugeordnet wird und er über die Schwelle wächst, entsteht ein
             Zuschlag — sichtbar oben an der jeweiligen Karte.
-          </div>
+          </div>)}
         </div>
       </div>
     </Card>);
@@ -20457,7 +20583,10 @@ const BEREICHE = [
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
     ["hilfe", "Hilfe", null],
-    ["uebergabe", "Übergabe", "PAKET:uebergabe"],
+    /* Übergaben, Dienstbuch und Belastbarkeit brauchen den vollständigen
+       Betrieb. Beschäftigte und Betriebsrat bekommen ihn nicht (sicht.mjs) —
+       die Ansichten wären für sie leer oder falsch gerechnet. */
+    ["uebergabe", "Übergabe", "PAKET:uebergabe|plan.edit.unit"],
     ["meine", "Meine Schichten", "SCHICHT"],
     ["lage", "Lagebild", "plan.view.unit"],
     ["zeitachse", "Zeitachse", "plan.view.unit"],
@@ -20478,7 +20607,7 @@ const BEREICHE = [
     ["boerse", "Tauschbörse", "req.create"],
     ["wuensche", "Wunschdienste", "SCHICHT"],
     ["aushang", "Schwarzes Brett", null],
-    ["buch", "Dienstbuch", "plan.view.unit"],
+    ["buch", "Dienstbuch", "plan.edit.unit"],
   ]},
   { id: "team", label: "Wer mitfährt", views: [
     ["personal", "Personal", "staff.view"],
@@ -20494,7 +20623,7 @@ const BEREICHE = [
     ["untergrenzen", "Untergrenzen", "plan.view.unit"],
     ["lenkzeiten", "Lenkzeiten", "plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
-    ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
+    ["belastbarkeit", "Belastbarkeit", "plan.edit.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
     ["nachweis", "Leistungsnachweis", "plan.view.unit"],
     ["abrechnung", "Abrechnungsdaten", "account.view.all"],
@@ -20617,7 +20746,16 @@ function AppInnen() {
          beides gleich behandelt: durch Beispieldaten ersetzt. */
       let b;
       if (!bestand) {
-        b = startbestand();
+        /* Einen leeren Raum befüllt die Oberfläche nicht mehr selbst — bis
+           Oktober 2026 schrieb hier der erste Client den Startbestand. Den
+           Raum richtet der Betreiber ein (/api/bestand-anlegen). */
+        setLadefehler({ titel: "Dieser Raum ist noch nicht eingerichtet.",
+          text: zugang && zugang.rolle === "betreiber"
+            ? "Als Betreiber kannst du ihn mit dem Demo-Bestand einrichten (Nordwacht, Lindenhof, Steinbach)."
+            : "Bitte wende dich an die Organisationsleitung oder an den Betreiber.",
+          demoAnlegen: !!(zugang && zugang.rolle === "betreiber") });
+        setLaedt(false);
+        return;
       } else {
         const erg = migriere(bestand);
         if (!erg.ok) {
@@ -20734,42 +20872,28 @@ function AppInnen() {
   useEffect(() => { ref.current = db; }, [db]);
 
 
-  /* Offene Zustellungen abarbeiten. Läuft nach dem Speichern, gebündelt und
-     ohne die Bedienung aufzuhalten. Was nicht hinausgeht, bleibt offen und
-     wird beim nächsten Mal erneut versucht — das Postfach trägt die
-     Mitteilung ohnehin, es geht nichts verloren. */
-  const zustellLauf = useRef(false);
-  useEffect(() => {
-    if (!db || zustellLauf.current) return;
-    const m = db.mandanten.find((x) => x.id === (db.session || {}).mandantId);
+  /* Zustellung anstoßen — erst nachdem gespeichert ist (Commit 4). Der
+     Server stellt nur zu, was in seinem gespeicherten Stand steht; vorher
+     lief dieser Lauf schon beim Ändern los und schickte Adresse, Betreff,
+     Text und Push-Titel selbst mit. Jetzt gehen nur die Kennungen der hier
+     angelegten Mitteilungen hinaus. Was der Server als „offen" meldet
+     (vorübergehender Fehler), wird beim nächsten Speichern erneut
+     angestoßen; doppelt geht nichts hinaus — das verhindert der Server.
+     Notruf und Tauschmeldung stellt der Server beim Speichern selbst zu. */
+  const zustellungAnstossen = useCallback(async (geschrieben) => {
+    const mid = (ref.current && ref.current.session || {}).mandantId;
+    const m = (geschrieben.mandanten || []).find((x) => x && x.id === mid);
     if (!m) return;
-    const offen = offeneZustellungen(m);
-    if (!offen.length) return;
-    zustellLauf.current = true;
-    (async () => {
-      try {
-        /* Es geht nur noch die Kennung der Person hinaus, nicht deren
-           Adresse. Der Server schlägt sie im eigenen Betrieb nach — über
-           diesen Weg lässt sich damit niemand Betriebsfremdes anschreiben. */
-        const auftraege = offen.slice(0, 100).map((n) => {
-          const p = m.personen.find((x) => x.id === n.personId);
-          const mt = p && n.wege.mail ? mailText(m, n, p) : null;
-          return { id: n.id, personId: n.personId,
-            betreff: mt ? mt.betreff : null, text: mt ? mt.text : null,
-            titel: n.wege.push ? n.titel : null, kurz: n.text, ziel: n.ziel };
-        });
-        const { ergebnis } = await SP.zustellen(auftraege);
-        if (ergebnis && ergebnis.length) {
-          const nach = {};
-          for (const e of ergebnis) nach[e.id] = { mail: e.mail, push: e.push };
-          setDb((s2) => ({ ...s2, mandanten: s2.mandanten.map((mm) => mm.id !== m.id ? mm
-            : { ...mm, nachrichten: (mm.nachrichten || []).map((n) => nach[n.id]
-              ? { ...n, zugestellt: { ...n.zugestellt, ...nach[n.id] } } : n) }) }));
-        }
-      } catch (e) { /* Zustellung ist nie kritisch */ }
-      finally { zustellLauf.current = false; }
-    })();
-  }, [db]);
+    const da = new Set((m.nachrichten || []).map((n) => n && n.id));
+    const ids = [...zustellungAusstehend].filter((id) => da.has(id)).slice(0, 200);
+    if (!ids.length) return;
+    for (const id of ids) zustellungAusstehend.delete(id);
+    try {
+      const { ergebnis, fehler } = await SP.zustellen(ids);
+      if (fehler) { for (const id of ids) zustellungAusstehend.add(id); return; }
+      for (const e of ergebnis || []) if (e && e.stand === "offen") zustellungAusstehend.add(e.id);
+    } catch (e) { for (const id of ids) zustellungAusstehend.add(id); }   // Zustellung ist nie kritisch
+  }, []);
 
   /* Zurückschreiben, verzögert gebündelt. Bei einem Konflikt wird nicht
      stillschweigend überschrieben — die Person erfährt davon. */
@@ -20818,8 +20942,9 @@ function AppInnen() {
         : "Betreiber",
       onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
       onFehler: (lage) => setNichtGespeichert(lage),
+      onGespeichert: (b) => { zustellungAnstossen(b); },
     });
-  }, [db]);
+  }, [db, zustellungAnstossen]);
 
   const melde = useCallback((t) => { setHinweis(t); setTimeout(() => setHinweis(null), 3000); }, []);
 
@@ -21271,8 +21396,26 @@ function AppInnen() {
           planstaende: { ...(m.planstaende || {}), [ym2]: planAbbild(m, ym2) },
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Plan freigegeben"),
-      bestaetigeZeit: (pid, d, start, ende, grund) => mUpd((m) => ({ ...m,
-        erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null),
+      /* Die eigene Zeit bestätigt der Server über einen eigenen Weg und sagt,
+         ob es geklappt hat; erst dann wird hier nachgezogen. Vorher verschwand
+         der Tag aus „Zeiten bestätigen", auch wenn der Server die Angabe
+         verworfen hatte. Für andere Personen (Leitung, Planung) bleibt es beim
+         gewöhnlichen Speichern. */
+      bestaetigeZeit: async (pid, d, start, ende, grund) => {
+        if (!sitz.person || pid !== sitz.person.id) {
+          mUpd((m) => ({ ...m,
+            erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null);
+          return;
+        }
+        try {
+          const erg = await SP.zeitBestaetigen(d, start, ende, grund);
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) }));
+          melde("Zeit bestätigt.");
+        } catch (e) {
+          melde(e.message || "Die Zeit ließ sich nicht bestätigen.");
+        }
+      },
       setzeEinschraenkung: (pid, k, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid
         ? { ...p, einschraenkungen: { ...(p.einschraenkungen || {}), [k]: v } } : p) }), "Einsatzeinschränkung geändert"),
       alleGelesen: () => mUpd((m) => ({ ...m, nachrichten: (m.nachrichten || []).map((n) =>
@@ -21444,25 +21587,30 @@ function AppInnen() {
         melde(`${neue.length} Personen übernommen.`);
         return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
-      dienstbuchEintrag: (datum, art, text) => mUpd((m) => ({ ...m, dienstbuch: [
+      dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [
         { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-          durch: `${sitz.person.vorname} ${sitz.person.nachname}` }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
+          durch: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
 
       melden: melde,
       /* --- Schichtübergabe --- */
-      uebergabeSpeichern: (datum, dienstId, f) => mUpd((m) => {
+      uebergabeSpeichern: (datum, dienstId, f, einheitWahl = null) => mUpd((m) => {
         const jetzt = new Date().toLocaleString("de-DE");
+        const einheitId = waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz);
+        if (uebergabeAm(m, datum, dienstId, einheitId)) { melde("Für diese Schicht und Einheit gibt es schon eine Übergabe."); return m; }
         const b = besetzung(m, datum)[dienstId];
+        const beteiligt = einheitId ? b.personen.filter((p) => einheitAm(p, datum) === einheitId) : b.personen;
         const folge = m.dienstarten.find((d) => !d.posten && d.id !== dienstId);
         melde("Übergabe abgeschlossen. Sie ist ab jetzt unveränderlich.");
-        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId,
+        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId, einheitId,
           lage: f.lage, offen: f.offen, vorkommnis: f.vorkommnis, material: f.material,
           von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          an: folge ? folge.name : null, zeit: jetzt, personen: b.personen.map((p) => p.id),
-          ergaenzungen: [] }, ...(m.uebergaben || [])] };
+          an: folge ? folge.name : null, zeit: jetzt, personen: beteiligt.map((p) => p.id),
+          ergaenzungen: [] }, ...uebergabenVon(m)] };
       }, "Übergabe erfasst"),
-      uebergabeErgaenzen: (datum, dienstId, text) => mUpd((m) => ({ ...m,
-        uebergaben: (m.uebergaben || []).map((u) => u.datum === datum && u.dienstId === dienstId
+      uebergabeErgaenzen: (datum, dienstId, text, einheitWahl = null) => mUpd((m) => ({ ...m,
+        uebergaben: uebergabenVon(m).map((u) => u === uebergabeAm(m, datum, dienstId,
+          waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz))
           ? { ...u, ergaenzungen: [...(u.ergaenzungen || []),
               { zeit: new Date().toLocaleString("de-DE"),
                 von: `${sitz.person.vorname} ${sitz.person.nachname}`, text }] }
@@ -21576,7 +21724,7 @@ function AppInnen() {
 
       selbstEintragen: (datum, dienstId) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         const pruef = darfSelbstEintragen(m, r, pid, datum, dienstId);
         if (!pruef.darf) { melde(`Nicht möglich: ${pruef.grund}.`); return m; }
@@ -21587,7 +21735,7 @@ function AppInnen() {
 
       selbstAustragen: (datum) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         return { ...m, selbstplanung: m.selbstplanung.map((x) => x.id !== r.id ? x
           : { ...x, eintraege: (x.eintraege || []).filter((e) =>
@@ -21623,10 +21771,9 @@ function AppInnen() {
 
       /* --- Notruf --- */
       notrufSenden: (art, notiz) => mUpd((m) => {
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         const p = m.personen.find((x) => x.id === pid);
         if (!p) return m;
-        const a = NOTRUF_ARTEN[art] || NOTRUF_ARTEN.hilfe;
         const empf = notrufEmpfaenger(m, pid, heute());
         const t = personTag(m, p, heute());
         const da = t && t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
@@ -21634,13 +21781,11 @@ function AppInnen() {
           zeit: new Date().toISOString(), datum: heute(),
           dienst: da ? da.name : null, ort: da ? da.ort : null,
           empfaenger: empf.map((x) => x.id), bestaetigt: null };
-        const nachr = empf.map((x) => baueMitteilung(m, x.id, "einspringen",
-          `NOTRUF: ${a.label}`,
-          `${p.vorname} ${p.nachname}${da ? ` · ${da.name}` : ""}${da && da.ort ? ` · ${da.ort}` : ""}${notiz ? ` · ${notiz}` : ""}`,
-          "notruf")).filter(Boolean);
-        melde(`Notruf abgesetzt · ${empf.length} unterrichtet.`);
-        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200),
-          nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
+        /* Die Mitteilungen an die Empfänger erzeugt und verschickt der Server
+           beim Speichern (Commit 4) — auch für Beschäftigte, deren Notruf
+           vorher ohne E-Mail und Push blieb. */
+        melde("Hilferuf erfasst. Er ist für die zuständigen Rollen in CENTRIC sichtbar.");
+        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200) };
       }, "Notruf abgesetzt"),
 
       notrufBestaetigen: (id) => mUpd((m) => ({ ...m,
@@ -21783,9 +21928,11 @@ function AppInnen() {
         /* Nur die unterrichten, die sich tatsächlich bewerben dürfen —
            eine Mitteilung über einen Dienst, den man nicht nehmen kann,
            ist Lärm. */
+        /* Die Schichtverantwortung unterrichtet nur ihren Bereich (Commit C1);
+           die verantwortende Einheit setzt der Server. */
         const nachr = m.personen
           .filter((p) => darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
-            p.id, a).darf)
+            p.id, a).darf && anBereichErlaubt(sitz, p))
           .map((p) => baueMitteilung(m, p.id, "offeneSchicht",
             `Offene Schicht am ${fKurz(datum)}`,
             `${da ? da.name : dienstId}${da ? ` · ${da.start}–${da.ende}` : ""}${hinweis ? ` · ${hinweis}` : ""}`,
@@ -21831,7 +21978,8 @@ function AppInnen() {
             `Du hast die Schicht am ${fKurz(a.datum)}`,
             `${da ? da.name : a.dienstId}${da ? ` · ${da.start}–${da.ende}` : ""} — du bist eingeteilt.`,
             "meine"),
-          ...abgelehnt.map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
+          ...abgelehnt.filter((b) => anBereichErlaubt(sitz, m.personen.find((x) => x.id === b.personId)))
+            .map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
             `Schicht am ${fKurz(a.datum)} anderweitig vergeben`,
             "Danke für die Meldung — beim nächsten Mal hast du Vorrang.", "offene")),
         ].filter(Boolean);
@@ -21862,9 +22010,11 @@ function AppInnen() {
         if (!pid) return;
         try {
           if (ein) {
-            const anm = await SP.pushEinschalten(pid);
+            /* Die Anmeldung selbst liegt nur im Push-Register des Servers;
+               an der Person steht ein Merker (Commit 4). */
+            await SP.pushEinschalten(pid);
             mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
-              p.id === pid ? { ...p, pushSchluessel: anm } : p) }), null);
+              p.id === pid ? { ...p, pushSchluessel: true } : p) }), null);
             melde("Mitteilungen eingeschaltet.");
           } else {
             await SP.pushAusschalten(pid);
@@ -21925,9 +22075,10 @@ function AppInnen() {
       }, null),
 
       /* --- Notizen --- */
-      neueNotiz: (k, text) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
-        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          zeit: new Date().toLocaleString("de-DE") }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
+      neueNotiz: (k, text, einheitId = null) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
+        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          zeit: new Date().toLocaleString("de-DE"),
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
       loescheNotiz: (k, id) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
         [k]: ((m.notizen || {})[k] || []).filter((x) => x.id !== id) } }), null),
 
@@ -22019,13 +22170,13 @@ function AppInnen() {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
             const k = `${pid}|${datum}`;
-            const alt = (m.einstempeln || {})[k] || {};
-            const neu = art === "start"
-              ? { start: erg.zeit, ortStart: erg.ort, innerhalbStart: erg.innerhalb }
-              : { ...alt, ende: erg.zeit, ortEnde: erg.ort, innerhalbEnde: erg.innerhalb };
-            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-            if (art === "ende") mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
-              [k]: { start: neu.start, ende: erg.zeit, bestaetigt: true, grund: "" } } };
+            /* Übernommen wird, was der Server gespeichert hat (eintrag,
+               erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
+               409 bei gleichzeitigem Speichern) landet unten im catch und
+               ändert lokal nichts. */
+            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag } };
+            if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+              [k]: erg.erfassung } };
             return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
           });
           melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}`);
@@ -22289,12 +22440,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const jetzt = new Date().toLocaleString("de-DE");
         melde("Meldung eingegangen. Die Planung entscheidet.");
+        /* Die Mitteilung an die Person des Gesuchs erzeugt der Server (Commit 4). */
         return { ...m,
           anfragen: m.anfragen.map((x) => x.id === id
-            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x),
-          nachrichten: [baueMitteilung(m, a.personId, "tauschAngebot", `Meldung auf dein Tauschgesuch`,
-            `${sitz.person.vorname} ${sitz.person.nachname} bietet an, den Dienst am ${fKurz(a.von)} zu übernehmen.`, "tausch"),
-            ...(m.nachrichten || [])].slice(0, 400) };
+            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x) };
       }, "Meldung auf Tauschgesuch"),
       tauschAbmelden: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.map((x) => x.id === id
         ? { ...x, interessenten: (x.interessenten || []).filter((p) => p !== sitz.person.id) } : x) }), null),
@@ -22512,7 +22661,6 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       },
       exportJSON: () => { const s = ref.current; const inhalt = JSON.stringify(s, null, 2);
         if (lade(`centric_sicherung_${heute()}.json`, inhalt, "application/json")) melde("Sicherung erstellt."); else setAusgabe({ titel: "Sicherung", inhalt }); },
-      zuruecksetzen: () => { if (window.confirm("Alle Eingaben verwerfen?")) { verlauf.current = []; setDb(startbestand()); melde("Zurückgesetzt."); } },
     };
   }, [melde, ym, sitz]);
 
@@ -22528,7 +22676,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       if (boerse) z.boerse = boerse;
       const nl = nachweisLage(m);
       if (nl.abgelaufen.length) { z.nachweise = nl.abgelaufen.length; w.nachweise = true; }
-      const bef = pruefen(m, heute(), addDays(heute(), 13)).filter((b) => b.schwere === "danger").length;
+      const bef = befundeFuer(sitz, pruefen(m, heute(), addDays(heute(), 13))).filter((b) => b.schwere === "danger").length;
       if (bef) { z.pruef = bef; w.pruef = true; }
       const heuteOffen = Object.values(besetzung(m, heute())).filter((b) => b.diff < 0).length;
       if (heuteOffen) { z.lage = heuteOffen; w.lage = true; }
@@ -22558,6 +22706,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
+            {f.demoAnlegen && <Btn kind="primary" onClick={async () => {
+              try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
+              catch (e) { setLadefehler(String(e.message || e)); }
+            }}>Demo-Bestand anlegen</Btn>}
             <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
           </div>
         </Card></div></div></>);
@@ -22595,7 +22747,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const istBetreiber = sitz.rolle === "betreiber";
   const erlaubt = ([, , recht]) => {
     if (recht === "SCHICHT") return sitz.person.imSchichtdienst !== false;   // Geschäftszimmer fährt keine Schicht
-    if (recht && recht.startsWith("PAKET:")) return kann(sitz.mandant, recht.slice(6));
+    if (recht && recht.startsWith("PAKET:")) {
+      const [paket, zusatz] = recht.slice(6).split("|");
+      return kann(sitz.mandant, paket) && (!zusatz || darf(sitz, zusatz));
+    }
     return !recht || darf(sitz, recht);
   };
   const nav = istBetreiber ? NAV_BETREIBER : NAV_KUNDE.filter(erlaubt);

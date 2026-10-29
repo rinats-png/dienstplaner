@@ -42,7 +42,10 @@ const v = await fetch(`${BASIS}/api/vollausgabe`, { headers: kopf });
 const vd = await v.json();
 pruef("Vollausgabe für die Leitung", v.status === 200, `Status ${v.status}`);
 pruef("enthält den ganzen Bestand", !!(vd.bestand && vd.bestand.mandanten), `${(vd.bestand?.mandanten||[]).length} Betrieb(e)`);
-pruef("nennt Fassung, Raum und Stand", vd.fassung === 1 && !!vd.raum && vd.stand !== undefined);
+/* Seit Oktober 2026 Fassung 2: der eigene Betrieb, nicht der ganze Raum. */
+pruef("nennt Fassung, Umfang, Raum, Betrieb und Stand", vd.fassung === 2 && vd.umfang === "betrieb"
+  && !!vd.raum && !!vd.mandantId && vd.stand !== undefined, `fassung=${vd.fassung} umfang=${vd.umfang}`);
+pruef("enthält genau einen Betrieb", (vd.bestand?.mandanten || []).length === 1);
 pruef("bietet einen Dateinamen an", /attachment; filename=/.test(v.headers.get("content-disposition") || ""));
 
 const a = await fetch(`${BASIS}/api/sicherungsschluessel`, { method: "POST", headers: kopf,

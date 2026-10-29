@@ -2,6 +2,8 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { bestandLesen } from "../lib/bestand.mjs";
+import { eigenerMandant } from "../lib/rechte.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -22,6 +24,74 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
+
+/* --------------------------------------------------------------------------
+   WESSEN KALENDER — immer die eigene Person (Commit 3)
+
+   Bis Oktober 2026 nahm „einrichten" die Person aus dem Rumpf, „alt"
+   löschte jeden Feed, dessen Geheimnis man kannte, und „daten"/„loeschen"
+   prüften nur den Raum: Mit dem Geheimnis einer Person aus einem anderen
+   Betrieb ließ sich deren Feed überschreiben oder abschalten. Und weil
+   Beschäftigte ihr Geheimnis nicht speichern konnten, blieb nach dem
+   Neuladen jeder alte Feed gültig — ein weitergegebener Verweis ließ sich
+   nicht mehr zurückziehen.
+
+   Jetzt bestimmt die Sitzung die Person: Raum, Betrieb (mandantId) und
+   Personenkennung. Eine personId im Rumpf zählt nicht. Je Person zeigt
+   ein Index auf das eine aktive Geheimnis — nur als Hash:
+     feedperson:<raum>:<mandantId>:<personId>  →  { hash, seit }
+   Der Feed-Eintrag trägt dieselbe Bindung. Werte im Bestand (kalenderGeheim
+   an der Person) entscheiden nie über Berechtigungen; sie sind nur, was die
+   Oberfläche anzeigt.
+   -------------------------------------------------------------------------- */
+const NUR_EIGENE = "Den Kalender gibt es nur für die eigene Person.";
+const indexSchluessel = (b) => `feedperson:${b.raum}:${b.mandantId}:${b.personId}`;
+
+/** Die Bindung der Sitzung: Raum, eigener Betrieb, eigene Person — oder null. */
+async function eigeneBindung(s) {
+  if (!s || s.person === null || s.person === undefined || s.rolle === "betreiber") return null;
+  const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+  const bestand = gelesen && gelesen.bestand;
+  const m = bestand ? eigenerMandant(bestand, s) : null;
+  if (!m || !Array.isArray(m.personen) || !m.personen.some((p) => p && String(p.id) === String(s.person))) return null;
+  /* Ein alter Feed ohne Betriebskennung gehört nur dann sicher dieser
+     Person, wenn ihre Kennung im Raum in keinem anderen Betrieb vorkommt. */
+  const eindeutig = (bestand.mandanten || []).filter((x) => x && Array.isArray(x.personen)
+    && x.personen.some((p) => p && String(p.id) === String(s.person))).length === 1;
+  return { raum: s.bestand, mandantId: m.id, personId: String(s.person), eindeutig };
+}
+
+/** Gehört dieser Feed-Eintrag sicher der eigenen Person? */
+function gehoertMir(eintrag, b) {
+  if (!eintrag || eintrag.bestand !== b.raum || String(eintrag.personId) !== b.personId) return false;
+  if (eintrag.mandantId) return eintrag.mandantId === b.mandantId;
+  return b.eindeutig;                                   // Altfeed: nur bei eindeutiger Zuordnung
+}
+
+async function feedWiderrufen(h) {
+  await store().delete(`feed:${h}`).catch(() => {});
+  await store().delete(`feeddaten:${h}`).catch(() => {});
+}
+
+/** Alle sicher eigenen Feeds außer `behalten` widerrufen — aktiver Index,
+    mitgeschicktes Geheimnis, Altfeeds aus der Zeit vor dem Index. */
+async function eigeneFeedsWiderrufen(b, behalten = null, zusaetzlich = null) {
+  const ziele = new Set();
+  const index = await store().get(indexSchluessel(b), { type: "json" }).catch(() => null);
+  if (index && index.hash) ziele.add(index.hash);
+  if (zusaetzlich) ziele.add(zusaetzlich);
+  const { blobs } = await store().list({ prefix: "feed:" }).catch(() => ({ blobs: [] }));
+  for (const x of blobs || []) ziele.add(x.key.slice(5));
+  let weg = 0;
+  for (const h of ziele) {
+    if (!h || h === behalten) continue;
+    const eintrag = await store().get(`feed:${h}`, { type: "json" }).catch(() => null);
+    if (!gehoertMir(eintrag, b)) continue;               // fremd oder mehrdeutig: unangetastet
+    await feedWiderrufen(h);
+    weg++;
+  }
+  return weg;
+}
 const hash = (s) => createHash("sha256").update(String(s)).digest("hex");
 
 const antwort = (d, status = 200) => new Response(JSON.stringify(d),
@@ -223,24 +293,28 @@ export default async (req) => {
     const s = (await arbeitssitzungLesen(req, { store: store() })).sitzung;
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
 
-    /* Feed einrichten oder erneuern */
+    /* Alle Wege ab hier: nur für die eigene Person. */
+    const b = (pfad === "einrichten" || pfad === "daten" || pfad === "loeschen") ? await eigeneBindung(s) : null;
+    if ((pfad === "einrichten" || pfad === "daten" || pfad === "loeschen") && req.method === "POST" && !b)
+      return antwort({ fehler: NUR_EIGENE }, 403);
+
+    /* Feed einrichten oder erneuern — immer für die eigene Person; eine
+       personId im Rumpf wird nicht gelesen. Reihenfolge ohne Transaktion:
+       erst den neuen Feed anlegen, dann den Index umstellen, erst dann die
+       alten widerrufen. Bricht es dazwischen ab, funktioniert der alte Feed
+       weiter, und der nächste Lauf räumt den liegengebliebenen weg — nie
+       steht die Person ohne Feed da, weil der alte zu früh gelöscht wurde. */
     if (pfad === "einrichten" && req.method === "POST") {
       const r = await rumpfLesen(req);
       if (r.antwort) return r.antwort;
-      const { personId, alt } = r.daten;
-      if (!personId) return antwort({ fehler: "Keine Person." }, 400);
-      /* Ein bestehendes Geheimnis wird ungültig — so lässt sich ein Verweis
-         zurückziehen, der versehentlich weitergegeben wurde. */
-      /* Beide Schlüssel löschen. Vorher blieb feeddaten: liegen — nicht
-         mehr abrufbar, aber gespeichert, was dem Zweck eines Widerrufs
-         widerspricht. */
-      if (alt) {
-        await store().delete(`feed:${hash(alt)}`).catch(() => {});
-        await store().delete(`feeddaten:${hash(alt)}`).catch(() => {});
-      }
+      const { alt } = r.daten;
       const geheim = randomBytes(24).toString("base64url");
-      await store().setJSON(`feed:${hash(geheim)}`, {
-        bestand: s.bestand, personId, seit: new Date().toISOString() });
+      const neu = hash(geheim);
+      const seit = new Date().toISOString();
+      await store().setJSON(`feed:${neu}`, { bestand: b.raum, mandantId: b.mandantId, personId: b.personId, seit });
+      await store().setJSON(indexSchluessel(b), { hash: neu, seit });
+      /* „alt" nur, wenn es nachweislich der eigenen Person gehört (gehoertMir). */
+      await eigeneFeedsWiderrufen(b, neu, typeof alt === "string" && alt ? hash(alt) : null);
       return antwort({ ok: true, geheim,
         verweis: `${url.origin}/kalender/feed/${geheim}.ics` });
     }
@@ -252,8 +326,9 @@ export default async (req) => {
       const { geheim, name, betrieb, termine } = r.daten;
       if (typeof geheim !== "string" || !geheim || !Array.isArray(termine))
         return antwort({ fehler: "Unvollständig." }, 400);
+      /* Nur der eigene Feed — fremd und unbekannt antworten gleich. */
       const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });
-      if (!eintrag || eintrag.bestand !== s.bestand)
+      if (!gehoertMir(eintrag, b))
         return antwort({ fehler: "Unbekannter Verweis." }, 404);
       if (termine.length > 800) return antwort({ fehler: "Zu viele Termine." }, 400);
       if (!textGueltig(name, false) || !textGueltig(betrieb, false))
@@ -271,16 +346,12 @@ export default async (req) => {
     if (pfad === "loeschen" && req.method === "POST") {
       const r = await rumpfLesen(req);
       if (r.antwort) return r.antwort;
+      /* Den eigenen Kalender abschalten: den aktiven Feed, ein mitgeschicktes
+         eigenes Geheimnis und eigene Altfeeds. Ein fremdes oder unbekanntes
+         Geheimnis bleibt ohne Wirkung — die Antwort ist immer dieselbe. */
       const { geheim } = r.daten;
-      if (geheim) {
-        /* Prüfen, ob der Verweis zum eigenen Betrieb gehört — wie es
-           „daten" weiter oben bereits richtig macht. */
-        const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });
-        if (eintrag && eintrag.bestand !== s.bestand)
-          return antwort({ fehler: "Unbekannter Verweis." }, 404);
-        await store().delete(`feed:${hash(geheim)}`).catch(() => {});
-        await store().delete(`feeddaten:${hash(geheim)}`).catch(() => {});
-      }
+      await eigeneFeedsWiderrufen(b, null, typeof geheim === "string" && geheim ? hash(geheim) : null);
+      await store().delete(indexSchluessel(b)).catch(() => {});
       return antwort({ ok: true });
     }
 
