@@ -229,6 +229,10 @@ jobs:
       - name: Unbekannte Rollen an Eintrittspunkten
         run: npm run pruefung:rollen-eintritt
 
+      # Kalenderfeed: bei jedem Abruf Raum, Betrieb, Person, Status und Rolle prüfen; Altfeeds widerrufen (D1f, #14).
+      - name: Kalenderfeed-Autorität
+        run: npm run pruefung:kalender-feed-autoritaet
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik

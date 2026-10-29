@@ -4,6 +4,8 @@ import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../l
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { eigenerMandant, rolleBekannt } from "../lib/rechte.mjs";
+import { kernSchluessel } from "../lib/scherben.mjs";
+import { heuteBerlin } from "../lib/zeiterfassung.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -66,6 +68,61 @@ function gehoertMir(eintrag, b) {
   if (!eintrag || eintrag.bestand !== b.raum || String(eintrag.personId) !== b.personId) return false;
   if (eintrag.mandantId) return eintrag.mandantId === b.mandantId;
   return b.eindeutig;                                   // Altfeed: nur bei eindeutiger Zuordnung
+}
+
+/* --------------------------------------------------------------------------
+   GILT DER FEED NOCH? — bei jedem Abruf (Commit D1f)
+
+   Das Geheimnis ist ein Bearer-Zugang ohne Sitzung. Es allein reicht nicht:
+   Die Berechtigung dahinter muss jetzt noch bestehen. Bis D1f lieferte der
+   Feed weiter, wenn die Person ausgetreten, gesperrt, anonymisiert oder
+   aus dem Betrieb entfernt war — auch nach Löschen des Betriebs.
+
+   Geprüft wird gegen den gespeicherten Kern (dort stehen die Personen):
+   Raum vorhanden, Betrieb mit der Kennung des Feeds vorhanden, Person in
+   genau diesem Betrieb, nicht anonymisiert, nicht gesperrt (status außer
+   „aktiv" gilt als deaktiviert), nicht ausgetreten (Austrittstag zählt noch
+   wie in imDienst), Rolle bekannt (BEKANNTE_ROLLEN aus rechte.mjs; ohne
+   Angabe „mitarbeiter" wie in der Oberfläche; „betreiber" und „kunde" sind
+   keine Rollen von Personen).
+
+   Noch nicht geprüft: Konto, Mitgliedschaft, Sperre des Zugangscodes. Dafür
+   müsste ein Feed seine Herkunft tragen (Zugangscode bzw. accountId und
+   Generation) — ein späterer Schritt; Feeds ohne diese Angabe würden dann
+   weiterhin nur über Person und Betrieb geprüft.
+   -------------------------------------------------------------------------- */
+async function feedBetrieb(raum) {
+  const kern = await store().get(kernSchluessel(raum), { type: "json" }).catch(() => null);
+  if (kern) return kern;
+  /* Ein noch nicht zerlegter Altbestand liegt als ein Blob vor. */
+  const gelesen = await bestandLesen(store(), raum).catch(() => null);
+  return gelesen && gelesen.bestand;
+}
+
+export function feedPersonGilt(bestand, eintrag, heute = heuteBerlin()) {
+  if (!bestand || !Array.isArray(bestand.mandanten) || !eintrag || !eintrag.mandantId) return false;
+  const m = bestand.mandanten.filter((x) => x && x.id === eintrag.mandantId);
+  if (m.length !== 1 || !Array.isArray(m[0].personen)) return false;
+  const p = m[0].personen.filter((x) => x && String(x.id) === String(eintrag.personId));
+  if (p.length !== 1) return false;
+  const person = p[0];
+  if (person.anonym) return false;
+  if (person.status !== undefined && person.status !== null && person.status !== "aktiv") return false;
+  if (person.austritt && String(person.austritt) < heute) return false;
+  const rolle = person.rolle ?? "mitarbeiter";
+  return typeof rolle === "string" && rolleBekannt(rolle) && rolle !== "betreiber" && rolle !== "kunde";
+}
+
+/** Altfeed ohne Betriebskennung (vor Commit 3 war die Person frei wählbar):
+    widerrufen, samt Index — nur der Index, der genau auf diesen Hash zeigt. */
+async function altfeedWiderrufen(h, eintrag) {
+  await feedWiderrufen(h);
+  if (!eintrag || typeof eintrag.bestand !== "string" || !eintrag.bestand) return;
+  const { blobs } = await store().list({ prefix: `feedperson:${eintrag.bestand}:` }).catch(() => ({ blobs: [] }));
+  for (const x of blobs || []) {
+    const idx = await store().get(x.key, { type: "json" }).catch(() => null);
+    if (idx && idx.hash === h) await store().delete(x.key).catch(() => {});
+  }
 }
 
 async function feedWiderrufen(h) {
@@ -264,6 +321,16 @@ export default async (req) => {
 
       const eintrag = await store().get(`feed:${hash(geheim)}`, { type: "json" });
       if (!eintrag) return new Response("Nicht gefunden", { status: 404 });
+
+      /* Commit D1f: Gilt die Berechtigung noch? Sonst dieselbe Antwort wie
+         bei einem unbekannten Geheimnis. Ein Altfeed ohne Betriebskennung
+         wird dabei widerrufen — keine Zuordnung zu einem Betrieb geraten. */
+      if (!eintrag.mandantId) {
+        await altfeedWiderrufen(hash(geheim), eintrag);
+        return new Response("Nicht gefunden", { status: 404 });
+      }
+      if (!feedPersonGilt(await feedBetrieb(eintrag.bestand), eintrag))
+        return new Response("Nicht gefunden", { status: 404 });
 
       const daten = await store().get(`feeddaten:${hash(geheim)}`, { type: "json" });
       if (!daten) return new Response("Noch keine Daten", { status: 404 });

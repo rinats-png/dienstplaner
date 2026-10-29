@@ -165,11 +165,15 @@ describe("fremde Geheimnisse: keine Wirkung, kein Orakel (F2, F3)", () => {
 });
 
 describe("Altfeeds ohne Betriebskennung", () => {
+  /* Seit D1f liefert ein Altfeed beim Abruf nie mehr aus (404, dabei
+     widerrufen). Ob Einrichten und Löschen ihn anfassen, zeigt deshalb die
+     Ablage, nicht der Abruf. */
   it("eindeutig zuordenbar: beim eigenen Einrichten widerrufen", async () => {
     await laden().setJSON(`feed:${hash("altfeed-a1-geheimnis-xyz")}`, { bestand: "kal", personId: "a1", seit: "2026-01-01" });
     await laden().setJSON(`feeddaten:${hash("altfeed-a1-geheimnis-xyz")}`, { name: "A1", betrieb: "A", termine: [] });
-    expect((await feed("altfeed-a1-geheimnis-xyz")).status).toBe(200);
+    expect(await feedEintrag("altfeed-a1-geheimnis-xyz")).toBeTruthy();
     await einrichten(T.a1);
+    expect(await feedEintrag("altfeed-a1-geheimnis-xyz")).toBeNull();
     expect((await feed("altfeed-a1-geheimnis-xyz")).status).toBe(404);
   });
   it("mehrdeutig (Kennung in zwei Betrieben): bleibt unangetastet", async () => {
@@ -177,13 +181,13 @@ describe("Altfeeds ohne Betriebskennung", () => {
     await laden().setJSON(`feeddaten:${hash("altfeed-dup-geheimnis-xyz")}`, { name: "Dup", betrieb: "?", termine: [] });
     await einrichten(T.dup);
     await loeschen(T.dup);
-    expect((await feed("altfeed-dup-geheimnis-xyz")).status).toBe(200);
+    expect(await feedEintrag("altfeed-dup-geheimnis-xyz")).toBeTruthy();
   });
   it("Altfeed eines anderen Raums: unangetastet", async () => {
     await laden().setJSON(`feed:${hash("altfeed-fremdraum-xyz")}`, { bestand: "anderer", personId: "a1", seit: "2026-01-01" });
     await laden().setJSON(`feeddaten:${hash("altfeed-fremdraum-xyz")}`, { name: "X", betrieb: "?", termine: [] });
     await loeschen(T.a1);
-    expect((await feed("altfeed-fremdraum-xyz")).status).toBe(200);
+    expect(await feedEintrag("altfeed-fremdraum-xyz")).toBeTruthy();
   });
 });
 
