@@ -410,6 +410,9 @@ const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
    Vertragsfelder gehen sie immer auf den gespeicherten Stand zurück. */
 export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum", "lohnarten"];
 
+/** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
+const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
+
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
   "testTage", "rabattGrund", "preisgestaltung", "pakete",
   "laeuftAb", "selbstAngelegt"];
@@ -461,6 +464,20 @@ export function bestandFuerRolle(bestand, sitzung) {
     for (const feld of OBEN_FELDER) if (Object.prototype.hasOwnProperty.call(bestand, feld)) aus[feld] = bestand[feld];
     const eigenerV = eigenerMandant(bestand, sitzung);
     if (eigenerV) aus.mandanten = [betriebSichtVoll(eigenerV, sitzung)];
+    /* Die Kosten des eigenen Betriebs (B2): Wer billing.view hat — Leitung,
+       Kundenrolle —, bekommt die Preisgrundlage nur lesend: Tarif,
+       Preisgestaltung und Rabatt des eigenen Betriebs, oben nur den Eintrag
+       des eigenen Tarifs. Ohne sie rechnete die Betriebsseite mit der
+       ersten Stufe ohne Vereinbarung und zeigte einen falschen Monatspreis.
+       Schreiben bleibt beim Betreiber: Vertragsfelder und die oberste Ebene
+       kommen beim Speichern immer aus dem gespeicherten Stand. Die Planung
+       hat billing.view nicht und bekommt nichts davon. */
+    if (eigenerV && aus.mandanten && darf(rolle, "billing.view")) {
+      for (const feld of PREISGRUNDLAGE) if (hat(eigenerV, feld)) aus.mandanten[0][feld] = eigenerV[feld];
+      const eigenerTarif = Array.isArray(bestand.tarife)
+        ? bestand.tarife.filter((t) => t && typeof t === "object" && t.id === eigenerV.tarif) : [];
+      if (eigenerTarif.length) aus.tarife = eigenerTarif;
+    }
     return aus;
   }
 

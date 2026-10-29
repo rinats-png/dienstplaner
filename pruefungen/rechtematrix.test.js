@@ -117,7 +117,8 @@ const MATRIX = [
   ["Betriebsprotokoll",          "MK-BETRIEBSPROTOKOLL",     0, 0, 0, 1, 1, 1, 1, 1, "A"],
   ["Adressänderungen im Betrieb","MK-ADRESSE-ALT",           0, 0, 0, 1, 1, 1, 1, 1, "B"],
   ["Lohnarten",                  "MK-LOHNART",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Billing: Konditionen",       "MK-KONDITION",             0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  /* B2: Leitung liest die Preisgrundlage des eigenen Betriebs (billing.view), Planung nicht. */
+  ["Billing: Konditionen",       "MK-KONDITION",             0, 0, 0, 0, 1, 1, 0, 0, "A"],
   ["Billing: USt-ID",            "MK-USTID",                 0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: interne Notiz",   "MK-BETREIBERNOTIZ",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: Raumkennung",     "MK-RAUMKENNUNG",           0, 0, 0, 0, 0, 1, 0, 0, "A"],

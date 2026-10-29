@@ -20058,6 +20058,9 @@ function Tarifwerk({ sitz, akt }) {
 function Standorte({ sitz, akt }) {
   const m = sitz.mandant;
   const p = preis(sitz.db, m);
+  /* Preise nur mit billing.view (B2): Die Planung führt Standorte, die
+     Kosten sieht sie nicht — ihr fehlt auch die Preisgrundlage. */
+  const preiseSichtbar = darf(sitz, "billing.view");
 
   const [name, setName] = useState("");
   const [land, setLand] = useState(m.bundesland);
@@ -20077,17 +20080,18 @@ function Standorte({ sitz, akt }) {
 
   return (
     <Card style={{ marginBottom: 20 }}>
-      <CardHead right={p.summeStandorte > 0
+      <CardHead right={!preiseSichtbar ? null : p.summeStandorte > 0
         ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
         : <Pill tone="ok">kostenlos enthalten</Pill>}>
         Standorte</CardHead>
       <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
         Standorte arbeiten unabhängig: eigene Einheiten, eigene Besetzung, oft
-        eigenes Bundesland und damit eigene Feiertage. Anlegen kostet nichts —
+        eigenes Bundesland und damit eigene Feiertage.
+        {preiseSichtbar && (<>{" "}Anlegen kostet nichts —
         {" "}{zahl(p.stufe.standorteInklusive)} der größten Standorte sind in der
         Stufe {p.stufe.name} enthalten, unabhängig von ihrer Größe. Ein
         zusätzlicher, kleinerer Standort kostet erst ab {zahl(STANDORT_BAENDER[0].bis + 1)} Personen —
-        siehe die Aufstellung unten.
+        siehe die Aufstellung unten.</>)}
       </div>
 
       <div style={{ padding: 22, display: "grid", gap: 10 }}>
@@ -20113,8 +20117,8 @@ function Standorte({ sitz, akt }) {
                 </span>
                 {a && Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
                   <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
-                <Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
-                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>
+                {preiseSichtbar && (<Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
+                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>)}
                 <span style={{ flex: 1 }} />
                 {liste.length > 1 && (
                   <Btn size="sm" kind="danger" onClick={() => akt.loescheStandort(st.id)}>Entfernen</Btn>)}
@@ -20132,11 +20136,11 @@ function Standorte({ sitz, akt }) {
                 {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
             <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegen}>Anlegen</Btn>
           </div>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+          {preiseSichtbar && (<div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
             Ein neuer Standort ist leer und kostet nichts. Erst wenn Personal
             zugeordnet wird und er über die Schwelle wächst, entsteht ein
             Zuschlag — sichtbar oben an der jeweiligen Karte.
-          </div>
+          </div>)}
         </div>
       </div>
     </Card>);
