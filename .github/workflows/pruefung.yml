@@ -213,6 +213,10 @@ jobs:
       - name: Betreibersicht
         run: npm run pruefung:betreiber-sicht
 
+      # session ganz oben ist kein Bestandsfeld: verworfen, null für jede Rolle, Altbestand bereinigt (D1b).
+      - name: Session-Kanal
+        run: npm run pruefung:session-kanal
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -609,6 +613,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.2.
+
+      # session ganz oben: Betrieb A schreibt, B und Betreiber sehen nichts; 409 ebenso (D1b).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Session-Kanal (HTTP)
+        run: npm run pruefung:session-kanal-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.1.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

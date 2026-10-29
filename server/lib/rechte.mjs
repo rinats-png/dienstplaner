@@ -359,7 +359,10 @@ const SELBST_FELDER = [
 
 /* Felder des Gesamtbestands, die jede Rolle setzen darf: der Zählerstand
    und die Sitzungsmarke der Oberfläche. */
-const BESTAND_FELDER = ["stand", "session", "version"];
+/* session gehört seit Commit D1b nicht mehr dazu — sie ist kein Bestandsfeld
+   und wird beim Schreiben wie beim Lesen auf null gesetzt (siehe
+   zusammenfuehren, bestandFuerRolle, bestandSchreiben). */
+const BESTAND_FELDER = ["stand", "version"];
 
 /* Was dem Betreiber gehört: sein eigener Firmenstamm, die Tarifliste, der
    Rechnungsausgang, sein Protokoll. Nichts davon steht in einem Betrieb. */
@@ -432,7 +435,15 @@ export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
  * Deshalb schreibt `zusammenfuehren` unten immer auf den gespeicherten
  * Stand, nicht auf den übermittelten.
  */
+/** Die Sicht der Rolle — session immer null (Commit D1b): Auch ein
+    gespeicherter Altinhalt (Personenkennung, Token, beliebige Felder) geht
+    an keine Rolle hinaus. Gilt für GET /api/bestand und die 409-Antwort. */
 export function bestandFuerRolle(bestand, sitzung) {
+  const aus = bestandFuerRolleKern(bestand, sitzung);
+  return aus && typeof aus === "object" && !Array.isArray(aus) ? { ...aus, session: null } : aus;
+}
+
+function bestandFuerRolleKern(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
   const rolle = sitzung.rolle || "kunde";
   /* Seit Commit D1 eine Positivliste statt des ganzen Raums (sicht.mjs). */
@@ -813,7 +824,15 @@ function abgeleiteteEntfernen(uebermittelt) {
     ? { ...m, personen: m.personen.map(ohne) } : m)) };
 }
 
+/** Zusammenführen für jede Rolle — das Ergebnis trägt session: null
+    (Commit D1b): Ein mitgeschickter Inhalt wird verworfen, ein gespeicherter
+    Altinhalt beim Schreiben bereinigt. */
 export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
+  const aus = zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung);
+  return aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert ? { ...aus, session: null } : aus;
+}
+
+function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
   const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);

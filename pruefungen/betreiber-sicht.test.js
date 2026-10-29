@@ -66,7 +66,7 @@ const betrieb = (id, name, personen, extra = {}) => ({
 });
 const bestand = () => ({
   version: 9, stand: 1,
-  /* Altbestand: eine mitgespeicherte Sitzung (per PUT weiterhin setzbar). */
+  /* Altbestand: eine mitgespeicherte Sitzung (vor D1b per PUT setzbar). */
   session: { rolle: "kunde", mandantId: "m1", personId: "MK-SESSION-PERSON", token: "MK-SESSION-TOKEN", email: "mk-session@x.de" },
   betreiber: { firma: "CENTRIC" }, tarife: [{ id: "pro", preis: 99 }], rechnungen: [{ id: "r1", mandantId: "m1" }],
   protokoll: [{ id: "bp", text: "Betreiberprotokoll" }], pakete: [{ id: "pflege" }], adressaenderungen: [{ alt: "a@x" }],

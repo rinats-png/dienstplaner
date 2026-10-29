@@ -131,8 +131,9 @@ const MATRIX = [
   ["Rechnung anderer Betrieb",   "MK-RECHNUNG-FREMD",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiberprotokoll",         "MK-BETREIBERPROTOKOLL",    0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["unbekanntes Betriebsfeld",   "MK-UNBEKANNT-BETRIEB",     0, 0, 0, 0, 0, 0, 0, 0, "A"],
-  /* D1a — Befund: session wird von PUT angenommen und an alle Rollen außer dem Betreiber zurückgegeben. */
-  ["session (Altbestand)",       "MK-SESSION",               1, 1, 1, 1, 1, 0, 0, 0, "D"],
+  /* D1a fand es (Klasse D): session nahm PUT an und gab es allen Rollen außer dem Betreiber zurück.
+     Seit D1b ist session kein Bestandsfeld mehr — für alle Rollen null. */
+  ["session (Altbestand)",       "MK-SESSION",               0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["unbekanntes Feld oben",      "MK-UNBEKANNT-OBEN",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["anderer Betrieb",            "MK-FREMDBETRIEB",          0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Personal anderer Betrieb",   "MK-FREMD-IBAN",            0, 0, 0, 0, 0, 0, 0, 0, "A"],

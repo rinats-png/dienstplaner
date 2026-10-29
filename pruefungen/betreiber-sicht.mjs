@@ -74,8 +74,8 @@ pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "/api/bestand-a
   version: 9, stand: 1, session: null, mandanten: [betrieb("m-a", "A"), betrieb("m-b", "B")] } })).status === 200);
 const tL = await anmelden(await zugang("leitung", "l1", 0));
 
-/* Eine Sitzung im Bestand: PUT nimmt das Feld an (Befund, D1a) — der
-   Betreiber darf sie trotzdem nicht sehen. */
+/* Eine Sitzung im Bestand: D1a fand, dass PUT das Feld annahm; seit D1b
+   wird es verworfen. Der Betreiber sieht sie so oder so nicht. */
 {
   const rl = await rufe(tL, "/api/bestand", "GET");
   const bl = JSON.parse(JSON.stringify(rl.bestand));
