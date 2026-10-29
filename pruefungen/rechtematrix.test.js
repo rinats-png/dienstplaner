@@ -165,6 +165,13 @@ describe("Rechtematrix: oberste Ebene und Mandantentrennung", () => {
       expect(b.mandanten.map((m) => m.id), k).toEqual(["m1"]);
     }
   });
+  /* D1d: keine Spalte, keine Sicht — bis dahin der eigene Betrieb im Rohzustand. */
+  it("unbekannte Rolle: kein Bestand, kein Marker", () => {
+    for (const rolle of ["gast", "irgendwas", "", "Leitung"]) {
+      const aus = bestandFuerRolle(bestand(), { rolle, person: "b1", betrieb: 0 });
+      expect(aus, rolle).toBeNull();
+    }
+  });
   it("die Vollausgabe: nur der eigene Betrieb", () => {
     expect(PFADE["VA-LT"]().id).toBe("m1");
     expect(PFADE["VA-SK"]().id).toBe("m1");

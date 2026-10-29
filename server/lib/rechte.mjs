@@ -93,6 +93,13 @@ export function wirksameRolle(sitzung, bestand) {
   return p.rolle;
 }
 
+/* Die Rollen, die es gibt (Commit D1d): die Rangliste aus rollenvergabe.mjs
+   und „kunde" — die Rolle älterer Zugangscodes ohne Rollenangabe. Eine
+   Sitzung ohne Rolle gilt weiterhin als „kunde". Alles andere ist keine
+   Rolle: kein Bestand, keine Sicht, kein Rückfall. */
+export const BEKANNTE_ROLLEN = Object.freeze([...Object.keys(RANG), "kunde"]);
+export const rolleBekannt = (rolle) => BEKANNTE_ROLLEN.includes(rolle === undefined || rolle === null ? "kunde" : rolle);
+
 export const SCHREIBEN_VOLL = "voll";
 export const SCHREIBEN_EINHEIT = "einheit";
 export const SCHREIBEN_EIGENES = "eigenes";
@@ -461,6 +468,9 @@ export function bestandFuerRolle(bestand, sitzung) {
 
 function bestandFuerRolleKern(bestand, sitzung) {
   if (!bestand || typeof bestand !== "object") return bestand;
+  /* Unbekannte Rolle: nichts (Commit D1d). Bis hierher fiel sie unten auf
+     eine Rohkopie des eigenen Betriebs durch. */
+  if (!sitzung || !rolleBekannt(sitzung.rolle)) return null;
   const rolle = sitzung.rolle || "kunde";
   /* Seit Commit D1 eine Positivliste statt des ganzen Raums (sicht.mjs). */
   if (rolle === "betreiber") return bestandSichtBetreiber(bestand);
@@ -492,31 +502,11 @@ function bestandFuerRolleKern(bestand, sitzung) {
     return aus;
   }
 
-  const kopie = { ...bestand };
-
-  /* Kaufmännisches nur für Rollen, die es sehen dürfen.
-
-     Die Organisationsleitung hat billing.view — sie soll die Kosten ihres
-     Betriebs einsehen können, und dafür braucht die Rechnungsansicht auch
-     die Angaben des Anbieters. Planung, Schichtverantwortung, Beschäftigte
-     und Betriebsrat haben mit Rechnungen nichts zu tun. */
-  if (!darf(rolle, "billing.view")) {
-    delete kopie.betreiber;
-    delete kopie.rechnungen;
-    delete kopie.tarife;
-  }
-  /* Das Protokoll über alle Mandanten hinweg gehört niemandem außer dem
-     Betreiber — das betriebseigene Protokoll steht im Mandanten. */
-  delete kopie.protokoll;
-
-  const eigener = eigenerMandant(bestand, sitzung);
-  if (!Array.isArray(bestand.mandanten) || !eigener) return kopie;
-
-  /* Nur der eigene Betrieb. Die Oberfläche sucht über session.mandantId,
-     nicht über den Index — das Kürzen der Liste bricht sie also nicht. */
-  kopie.mandanten = [{ ...eigener }];
-
-  return kopie;
+  /* Jede bekannte Rolle hat oben ihre ausdrückliche Sicht. Hier stand bis
+     Commit D1d ein Rückfall auf eine Kopie des Bestands mit dem eigenen
+     Betrieb im Rohzustand — erreichbar nur für eine Rolle, die es nicht
+     gibt. Was keine Sicht hat, bekommt nichts. */
+  return null;
 }
 
 /** Die Personen eines Betriebs in der Sicht der Schichtverantwortung. */
@@ -852,6 +842,9 @@ export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
 }
 
 function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
+  /* Unbekannte Rolle schreibt nicht (Commit D1d) — vorher machte
+     „|| kunde" aus einer leeren Bezeichnung das volle Schreibrecht. */
+  if (!sitzung || !rolleBekannt(sitzung.rolle)) return null;
   const uebermittelt = abgeleiteteEntfernen(uebermitteltRoh);
   const rolle = sitzung.rolle || "kunde";
   const umfang = schreibumfang(rolle);

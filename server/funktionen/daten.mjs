@@ -2,7 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
@@ -769,6 +769,16 @@ export default async (req, context) => {
         text: "Für alles andere braucht es einen Zugangscode." }, 403);
     }
 
+
+    /* Eine Sitzung mit einer Rolle, die es nicht gibt (Commit D1d), darf
+       nichts außer sich abmelden. Entstehen konnte sie über /einrichten,
+       das bis dahin jede Rollenbezeichnung annahm; ältere Konten mit einer
+       solchen Rolle gibt es womöglich noch. Wie beim Sicherungsschlüssel:
+       erlaubt ist, was ausdrücklich erlaubt ist. */
+    if (!rolleBekannt(s.rolle) && !(pfad === "abmelden" && req.method === "POST")) {
+      await protokoll("schreiben", kennung(req, s), "abgewiesen", "unbekannte Rolle", wer);
+      return antwort({ fehler: "Keine Berechtigung.", text: absageText(s.rolle) }, 403);
+    }
 
     /* ------------------------------ Lesen ---------------------------- */
     /* Was hinausgeht, hängt an der Rolle. Eine Pflegekraft bekommt den Plan,

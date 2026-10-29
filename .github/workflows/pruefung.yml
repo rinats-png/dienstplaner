@@ -221,6 +221,10 @@ jobs:
       - name: Session am Betrieb
         run: npm run pruefung:mandanten-session
 
+      # Unbekannte Rolle: kein Bestand, 403 außer Abmelden; /einrichten nur bekannte Rollen (D1d).
+      - name: Unbekannte Rollen
+        run: npm run pruefung:rollen-failclosed
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik

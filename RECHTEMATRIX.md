@@ -119,6 +119,13 @@ und bei der Wiederherstellung).
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
 
+**Unbekannte Rolle (Commit D1d, A):** Die Spalten oben sind abschließend — `betreiber`, `leitung`, `planer`,
+`subplaner`, `mitarbeiter`, `betriebsrat` und `kunde` (ältere Codes; ohne Rollenangabe gilt `kunde`).
+Eine Sitzung mit einer anderen Rolle bekommt keinen Bestand: `bestandFuerRolle` und `zusammenfuehren` geben
+`null`, jeder Endpunkt von `/api` außer `abmelden` antwortet 403. Bis dahin fiel sie auf den eigenen Betrieb im
+Rohzustand durch. `/einrichten` nimmt nur diese Rollen an (sonst 400). Wie bisher gilt für ein Konto mit
+gebundener Person die Rolle dieser Person im Betrieb (`wirksameRolle`) — eine ausdrückliche Sicht.
+
 **Schreibweg dazu (A):** Was eine Rolle nicht sieht, kommt beim Speichern aus dem gespeicherten Stand
 (Rückfüllung: `schichtRueckfuellen`, `vollRueckfuellen`); mitgeschickte verborgene Werte sind wirkungslos
 oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Betreiber (1e.2a).
