@@ -12,7 +12,7 @@ Einordnung je Zeile:
 - **B** bewusst offen bis zu einem eigenen Schritt (siehe Fußnote; die Punkte „bis Commit 4" sind erledigt)
 - **C** bewusst offen, bis die Sammlung einen Bereichsbezug (`einheitId`/`bereichId`) hat — seit Commit C3 keine mehr
 - **S** dokumentierte technische/datenschutzrechtliche Schuld
-- **D** neuer Befund — derzeit keiner
+- **D** neuer Befund — derzeit: `session` oben im Bestand (D1a, Entscheidung offen)
 
 ## 1. Was über `GET /api/bestand` (und die 409-Antwort von `PUT`) hinausgeht
 
@@ -60,7 +60,9 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Lohnarten | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Betriebsprotokoll | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Billing: Konditionen, Vertrag, Rechnungsangaben, USt-ID | – | – | – | – | – | ✓ | – | – | A |
-| Betreiberfelder: interne Notiz, Raumkennung, Firmenstamm, Preisliste, Selbststarts | – | – | – | – | – | ✓ | – | – | A |
+| Betreiberfelder: Raumkennung, Firmenstamm, Preisliste, Selbststarts | – | – | – | – | – | ✓ | – | – | A |
+| Betriebsnotiz `notiz` (keine Oberfläche liest sie) | – | – | – | – | – | – ¹¹ | – | – | A |
+| `session` im gespeicherten Bestand (Altbestand, per PUT setzbar) | ✓ | ✓ | ✓ | ✓ | ✓ | – ¹¹ | – | – | D |
 | Rechnungen (eigener und anderer Betriebe) | – | – | – | – | – | ✓ | – | – | A |
 | Betreiberprotokoll | – | – | – | – | – | ✓ | – | – | A |
 | andere Betriebe des Raums | – | – | – | – | – | ✓ (gekürzt ¹¹) | – | – | A |
@@ -99,6 +101,8 @@ status, eintritt, austritt, zugehoerigkeit}` — ohne Namen, Kontakt-, Gesundhei
 Abwesenheiten, Anträge, Nachrichten, Notrufe, Dienstbuch, Übergaben, Notizen und ohne unbekannte Felder. Die Adressänderungen
 des Betriebs bleiben als funktionale Ausnahme (die Konsole erkennt daran Kontoübernahmen), keine allgemeine
 Personalberechtigung. Schreiben nimmt der Server vom Betreiber nur das Kaufmännische an.
+Commit D1a: `session` immer `null`; die Betriebsnotiz `notiz` geht nicht hinaus; Adressänderungen nur als
+`{personId, zeit, von, nach}`.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -148,6 +152,9 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Restrückschluss aus einzelnen Einsatzregeln (Sonntag nur mit Freigabe; über 8 h nur nach Absprache) auf das Merkmal (Commit S1, bewusst) | Schuld S |
 | `/api/zugaenge-uebersicht` liefert den Zugangsnamen (meist der Personenname) — neutraler Anzeigename prüfen | Minimierung, bei Bedarf |
 | Toter Code `zugangsUebersicht()` in der Oberfläche (liest Namen und E-Mail, ohne Aufrufer) | Aufräumen |
+| `session` oben im Bestand: PUT nimmt jedes Objekt an, alle Rollen außer dem Betreiber lesen es zurück — auch über Betriebsgrenzen im Raum (Befund D, D1a) | Entscheidung offen |
+| Adressänderungen: der Betreiber sieht alte und neue Anmeldeadresse im Klartext (die Konsole zeigt sie) — Maskierung prüfen | Minimierung, bei Bedarf |
+| `adressaenderungen` ganz oben: weder gelesen noch geschrieben von einer Oberfläche (Altfeld) | Aufräumen |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |
 | Wortlaut „Alle Daten dieses Betriebs, jederzeit vollständig" in der Ansicht Datenmitnahme | UX-Text |
 | Ein eigener HR-/DSGVO-Export für eine berechtigte Leitung, Trennung `/api/datenexport` / `/api/externes-backup` | eigener Schritt |

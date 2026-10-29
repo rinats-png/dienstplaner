@@ -37,7 +37,7 @@ const SENSIBEL = {
 const betrieb = (id, name, personen, extra = {}) => ({
   id, name, raum: "raum-1", branche: "pflege", status: "aktiv", tarif: "pro", seit: "2024-01-01", stichtag: 1, testTage: 30,
   rabattGrund: "Freund", preisgestaltung: { sonder: 10 }, pakete: ["pflege"], kontakt: "k@kunde.de", kontaktName: "Frau Kunde",
-  anschrift: "Kundenweg 1", ustId: "DE123", notiz: "Betreibernotiz", einheitLabel: "Wohnbereich", rollennamen: { leitung: "PDL" },
+  anschrift: "Kundenweg 1", ustId: "DE123", notiz: "MK-BETRIEBSNOTIZ", einheitLabel: "Wohnbereich", rollennamen: { leitung: "PDL" },
   einheiten: [{ id: "e1", name: "WB 1", standortId: "st1", pool: false, farbe: "#000", unbekanntesEinheitenfeld: "MK-UNBEKANNT-EINHEIT" },
     { id: "e2", name: "WB 2", standortId: "st2" }, { id: "ep", name: "Pool", standortId: "st1", pool: true }],
   standorte: [{ id: "st1", name: "Haupthaus", lat: 50, unbekanntesStandortfeld: "MK-UNBEKANNT-STANDORT" }, { id: "st2", name: "Nebenhaus" }],
@@ -59,12 +59,15 @@ const betrieb = (id, name, personen, extra = {}) => ({
   einspruenge: [{ id: "ei", personId: "a1", grund: "MK-EINSPRUNG" }], fahrzeiten: { "a1|2026-10-01": { kennzeichen: "MK-FAHRZEIT" } },
   checks: [{ id: "c", text: "MK-CHECK" }], lohnarten: [{ id: "MK-LOHNART" }],
   protokoll: [{ id: "l2", zeit: "2026-10-18 09:00", text: "MK-BETRIEBSPROTOKOLL", durch: "MK-NACHNAME-l1" }, { id: "l1", zeit: "2026-10-01", text: "alt" }],
-  adressAenderungen: [{ personId: "a1", von: "alt@x.de", nach: "neu@x.de" }],
+  adressAenderungen: [{ personId: "a1", zeit: "2026-10-10T08:00:00.000Z", von: "alt@x.de", nach: "neu@x.de",
+    geheim: "DARF-NICHT-RAUS", name: "MK-ADR-NAME", passwortHash: "MK-ADR-HASH" }],
   unbekanntImBetrieb: "MK-UNBEKANNT-BETRIEB",
   ...extra,
 });
 const bestand = () => ({
-  version: 9, stand: 1, session: null,
+  version: 9, stand: 1,
+  /* Altbestand: eine mitgespeicherte Sitzung (per PUT weiterhin setzbar). */
+  session: { rolle: "kunde", mandantId: "m1", personId: "MK-SESSION-PERSON", token: "MK-SESSION-TOKEN", email: "mk-session@x.de" },
   betreiber: { firma: "CENTRIC" }, tarife: [{ id: "pro", preis: 99 }], rechnungen: [{ id: "r1", mandantId: "m1" }],
   protokoll: [{ id: "bp", text: "Betreiberprotokoll" }], pakete: [{ id: "pflege" }], adressaenderungen: [{ alt: "a@x" }],
   selbststarts: [{ raum: "t-1" }], unbekanntOben: "MK-UNBEKANNT-OBEN",
@@ -84,7 +87,8 @@ const VERBOTEN = ["MK-VORNAME", "MK-NACHNAME", "MK-GEBDATUM", "MK-GEBTAG", "MK-V
   "\"krank\"", "MK-ANTRAG", "MK-WUNSCH", "MK-NACHRICHT", "MK-NOTRUF", "MK-DIENSTBUCH", "MK-UEBERGABE", "MK-TAGESNOTIZ",
   "MK-PERSONENNOTIZ", "MK-TOTFELD", "MK-BEWERBUNG", "MK-SELBSTPLAN", "MK-EINSPRUNG", "MK-FAHRZEIT", "MK-CHECK", "MK-LOHNART",
   "MK-BETRIEBSPROTOKOLL", "MK-UNBEKANNT-BETRIEB", "MK-UNBEKANNT-EINHEIT", "MK-UNBEKANNT-STANDORT", "MK-UNBEKANNT-DIENSTART",
-  "MK-UNBEKANNT-OBEN", "MK-ZUG-EXTRA", "MK-VERLAUF-EXTRA", "keineNacht"];
+  "MK-UNBEKANNT-OBEN", "MK-ZUG-EXTRA", "MK-VERLAUF-EXTRA", "keineNacht",
+  "MK-SESSION", "mk-session@x.de", "MK-BETRIEBSNOTIZ", "DARF-NICHT-RAUS", "MK-ADR-NAME", "MK-ADR-HASH"];
 
 describe("Sicht des Betreibers", () => {
   it("GET: kein sensibler Marker, kein unbekanntes Feld — in keinem Betrieb", () => {
@@ -100,7 +104,7 @@ describe("Sicht des Betreibers", () => {
     const b = sicht();
     expect(b.mandanten.map((m) => m.id)).toEqual(["m1", "m2"]);
     expect(Object.keys(b.mandanten[0]).sort()).toEqual(["adressAenderungen", "anschrift", "branche", "dienstarten", "einheitLabel",
-      "einheiten", "id", "kontakt", "kontaktName", "name", "notiz", "pakete", "personen", "preisgestaltung", "protokoll", "rabattGrund",
+      "einheiten", "id", "kontakt", "kontaktName", "name", "pakete", "personen", "preisgestaltung", "protokoll", "rabattGrund",
       "raum", "rollennamen", "seit", "standorte", "status", "stichtag", "tarif", "testTage", "ustId"].sort());
   });
   it("Personengerüst: genau die erlaubten Felder", () => {
@@ -117,7 +121,22 @@ describe("Sicht des Betreibers", () => {
     expect(m.standorte[0]).toEqual({ id: "st1", name: "Haupthaus" });
     expect(m.dienstarten).toEqual([{ id: "F" }, { id: "S" }, { id: "N" }]);
     expect(m.protokoll).toEqual([{ zeit: "2026-10-18 09:00" }]);
-    expect(m.adressAenderungen).toEqual(bestand().mandanten[0].adressAenderungen);
+    expect(m.adressAenderungen).toEqual([{ personId: "a1", zeit: "2026-10-10T08:00:00.000Z", von: "alt@x.de", nach: "neu@x.de" }]);
+  });
+  /* D1a */
+  it("session: immer null — auch wenn der Bestand eine (Alt-)Sitzung trägt", () => {
+    expect(sicht().session).toBeNull();
+    expect(bestand().session).toBeTruthy();
+  });
+  it("notiz: geht nicht hinaus; der Betreiber kann sie weiterhin setzen", () => {
+    expect(sicht().mandanten[0].notiz).toBeUndefined();
+    const g = bestand();
+    const gelesen = JSON.parse(JSON.stringify(sicht(BT, g)));
+    gelesen.mandanten[0].notiz = "neu vom Betreiber";
+    expect(zusammenfuehren(g, gelesen, BT).mandanten[0].notiz).toBe("neu vom Betreiber");
+  });
+  it("Adressänderungen: nur personId, zeit, von, nach — unbekannte Felder nicht", () => {
+    for (const a of sicht().mandanten[0].adressAenderungen) expect(Object.keys(a).sort()).toEqual(["nach", "personId", "von", "zeit"]);
   });
   it("fail-closed: neue unbekannte Felder auf allen Ebenen gehen nicht hinaus", () => {
     const g = bestand();
@@ -174,10 +193,9 @@ describe("Schreibweg und Rundweg", () => {
     const g = bestand();
     const gelesen = JSON.parse(JSON.stringify(sicht(BT, g)));
     gelesen.mandanten[0].tarif = "enterprise";
-    gelesen.mandanten[0].notiz = "neu";
     const e = zusammenfuehren(g, gelesen, BT);
     expect(e.verweigert).toBeFalsy();
-    expect(e.mandanten[0]).toEqual({ ...g.mandanten[0], tarif: "enterprise", notiz: "neu" });
+    expect(e.mandanten[0]).toEqual({ ...g.mandanten[0], tarif: "enterprise" });
     expect(e.mandanten[1]).toEqual(g.mandanten[1]);
     expect(e.unbekanntOben).toBe("MK-UNBEKANNT-OBEN");
   });

@@ -52,7 +52,8 @@ const pruef = (name, bedingung, detail) => {
 const person = (id, rolle, extra = {}) => ({ id, vorname: `MK-VORNAME-${id}`, nachname: `MK-NACHNAME-${id}`, rolle, bereich: "e1",
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
 const MARKER = ["MK-VORNAME", "MK-NACHNAME", "mutterschutz", "MK-IBAN", "MK-STEUER", "MK-LOHN", "MK-KRANKNOTIZ", "MK-KALGEHEIM",
-  "MK-NACHRICHT", "MK-DIENSTBUCH", "MK-PLAN", "MK-UNBEKANNT", "MK-TEL", "MK-NOTFALL", "MK-WIEDER"];
+  "MK-NACHRICHT", "MK-DIENSTBUCH", "MK-PLAN", "MK-UNBEKANNT", "MK-TEL", "MK-NOTFALL", "MK-WIEDER",
+  "MK-SESSION", "MK-BETRIEBSNOTIZ", "DARF-NICHT-RAUS"];
 const betrieb = (id, name) => ({
   id, name, status: "aktiv", tarif: "pro", einheiten: [{ id: "e1", name: "WB", standortId: "st1", geheim: "MK-UNBEKANNT-E" }],
   standorte: [{ id: "st1", name: "Haus" }], dienstarten: [{ id: "F", name: "Früh" }],
@@ -64,12 +65,24 @@ const betrieb = (id, name) => ({
   abwesenheiten: [{ id: "ab", personId: "a1", art: "krank", von: "2026-12-01", bis: "2026-12-01", notiz: "MK-KRANKNOTIZ" }],
   nachrichten: [{ id: "n", personId: "a1", titel: "MK-NACHRICHT" }], dienstbuch: [{ id: "db", text: "MK-DIENSTBUCH" }],
   protokoll: [{ id: "p", zeit: "2026-10-18", text: "MK-NACHNAME-l1 hat geplant" }], unbekanntImBetrieb: "MK-UNBEKANNT-B",
+  notiz: "MK-BETRIEBSNOTIZ",
+  adressAenderungen: [{ personId: "a1", zeit: "2026-10-10T08:00:00.000Z", von: "alt@x.de", nach: "neu@x.de", geheim: "DARF-NICHT-RAUS" }],
 });
 
 const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [betrieb("m-a", "A"), betrieb("m-b", "B")] } })).status === 200);
 const tL = await anmelden(await zugang("leitung", "l1", 0));
+
+/* Eine Sitzung im Bestand: PUT nimmt das Feld an (Befund, D1a) — der
+   Betreiber darf sie trotzdem nicht sehen. */
+{
+  const rl = await rufe(tL, "/api/bestand", "GET");
+  const bl = JSON.parse(JSON.stringify(rl.bestand));
+  bl.session = { rolle: "kunde", personId: "MK-SESSION-PERSON", token: "MK-SESSION-TOKEN" };
+  const wl = await rufe(tL, "/api/bestand", "PUT", { bestand: bl, etag: rl.etag, durch: "Test" });
+  pruef("Vorbereitung: Leitung schreibt eine Sitzung in den Bestand", wl.status === 200, `Status ${wl.status}`);
+}
 
 const r = await rufe(tBetr, "/api/bestand", "GET");
 const funde = MARKER.filter((s) => r.roh.includes(s));
@@ -78,6 +91,9 @@ pruef("Betreiber GET: beide Betriebe, Personen nur als Gerüst", r.bestand.manda
   && r.bestand.mandanten.every((m) => m.personen.every((p) => Object.keys(p).every((k) =>
     ["id", "rolle", "rolleSeit", "rolleVerlauf", "status", "eintritt", "austritt", "zugehoerigkeit"].includes(k)))));
 pruef("Betreiber GET: letzte Änderung als Zeitpunkt", JSON.stringify(r.bestand.mandanten[0].protokoll) === JSON.stringify([{ zeit: "2026-10-18" }]));
+pruef("Betreiber GET: session null, keine Betriebsnotiz, Adressänderungen nur mit Person, Zeit, alter und neuer Adresse",
+  r.bestand.session === null && r.bestand.mandanten[0].notiz === undefined
+  && JSON.stringify(r.bestand.mandanten[0].adressAenderungen) === JSON.stringify([{ personId: "a1", zeit: "2026-10-10T08:00:00.000Z", von: "alt@x.de", nach: "neu@x.de" }]));
 
 /* 409: veralteter Stand */
 const b0 = JSON.parse(JSON.stringify(r.bestand));

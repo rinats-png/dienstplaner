@@ -638,20 +638,33 @@ export const OBEN_FELDER = OBEN;
    - oben die eigenen Felder des Betreibers (BETREIBER_OBEN);
    - je Betrieb das Kaufmännische, Einheiten, Standorte, die Zahl der
      Dienstarten, der Zeitpunkt der letzten Änderung und die
-     Adressänderungen — Letztere als funktionale Ausnahme: Die Konsole
-     erkennt daran Kontoübernahmen; eine allgemeine Personalberechtigung
-     folgt daraus nicht;
+     Adressänderungen (nur Person, Zeit, alte und neue Adresse) — Letztere
+     als funktionale Ausnahme: Die Konsole erkennt daran Kontoübernahmen;
+     eine allgemeine Personalberechtigung folgt daraus nicht;
    - je Person nur das Gerüst für die Abrechnung: Rolle (auch im Verlauf),
      Status, Ein- und Austritt, Zugehörigkeit — ohne Namen, Kontakt-,
      Gesundheits- oder Lohndaten.
    Schreiben nimmt der Server vom Betreiber ohnehin nur das Kaufmännische
    an (rechte.mjs, zusammenfuehren) — die gekürzte Sicht überschreibt nichts.
    ------------------------------------------------------------------------ */
-const BETREIBER_OBEN = ["version", "stand", "session", "betreiber", "tarife", "rechnungen", "protokoll",
+/* session (D1a): Gespeichert wird sie nie absichtlich — die Oberfläche
+   schickt null und setzt ihre eigene Sitzung aus der Antwort des Servers
+   (Betreiber: { rolle: "betreiber" }). Ältere Bestände trugen hier aber eine
+   Sitzung mit echter Personenkennung, und PUT nimmt das Feld weiterhin an.
+   Für den Betreiber deshalb immer null — der Inhalt geht nicht hinaus. */
+const BETREIBER_OBEN = ["version", "stand", "betreiber", "tarife", "rechnungen", "protokoll",
   "pakete", "adressaenderungen", "selbststarts"];
+/* notiz (D1a) fehlt mit Absicht: Keine Oberfläche liest oder schreibt die
+   Betriebsnotiz; ihr Inhalt ist nicht sicher kaufmännisch (vor 1e.2a konnte
+   die Leitung sie per API setzen). Schreiben bleibt dem Betreiber möglich
+   (KAUFMAENNISCHE_FELDER), ausgeliefert wird sie nicht. */
 const BETREIBER_BETRIEB = ["id", "raum", "selbstAngelegt", "name", "branche", "status", "tarif", "seit", "bis",
   "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "kontakt", "kontaktName", "anschrift",
-  "ustId", "notiz", "einheitLabel", "rollennamen", "adressAenderungen"];
+  "ustId", "einheitLabel", "rollennamen"];
+/* Adressänderungen (D1a): genau die Felder, die die Konsole für die
+   Erkennung von Kontoübernahmen zeigt — wer (über die Rolle der Person),
+   wann, von welcher zu welcher Anmeldeadresse. Nichts sonst. */
+const BETREIBER_ADRESSAENDERUNG = ["personId", "zeit", "von", "nach"];
 const BETREIBER_PERSON = ["id", "rolle", "rolleSeit", "status", "eintritt", "austritt"];
 const istObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 
@@ -668,6 +681,8 @@ export function betreiberPersonSicht(p) {
 export function betriebSichtBetreiber(m) {
   if (!istObj(m)) return null;
   const aus = nimm(m, BETREIBER_BETRIEB);
+  if (Array.isArray(m.adressAenderungen))
+    aus.adressAenderungen = m.adressAenderungen.filter(istObj).map((a) => nimm(a, BETREIBER_ADRESSAENDERUNG));
   aus.personen = liste(m.personen).filter(istObj).map(betreiberPersonSicht);
   aus.einheiten = liste(m.einheiten).filter(istObj).map((e) => nimm(e, ["id", "name", "standortId", "pool"]));
   aus.standorte = liste(m.standorte).filter(istObj).map((s) => nimm(s, ["id", "name"]));
@@ -683,6 +698,7 @@ export function betriebSichtBetreiber(m) {
 export function bestandSichtBetreiber(bestand) {
   if (!istObj(bestand)) return bestand;
   const aus = nimm(bestand, BETREIBER_OBEN);
+  aus.session = null;
   aus.mandanten = liste(bestand.mandanten).filter(istObj).map(betriebSichtBetreiber);
   return aus;
 }

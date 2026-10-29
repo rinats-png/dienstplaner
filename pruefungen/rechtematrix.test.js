@@ -33,7 +33,7 @@ const B1 = person("b1", "mitarbeiter", "e2", {
 const A1 = person("a1", "mitarbeiter", "e1", { nachtvorsorge: "MK-SCHUTZ-BEREICH" });
 
 const bestand = () => ({
-  version: 9, stand: 1, session: null,
+  version: 9, stand: 1, session: { personId: "MK-SESSION" },
   betreiber: { firma: "MK-BETREIBERSTAMM" }, tarife: [{ id: "t", name: "MK-PREISLISTE" }],
   rechnungen: [{ id: "MK-RECHNUNG-EIGEN", mandantId: "m1" }, { id: "MK-RECHNUNG-FREMD", mandantId: "m2" }],
   protokoll: [{ id: "bp", text: "MK-BETREIBERPROTOKOLL" }], selbststarts: [{ raum: "MK-SELBSTSTART" }],
@@ -121,7 +121,8 @@ const MATRIX = [
   ["Lohnarten",                  "MK-LOHNART",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["Billing: Konditionen",       "MK-KONDITION",             0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Billing: USt-ID",            "MK-USTID",                 0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Betreiber: interne Notiz",   "MK-BETREIBERNOTIZ",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  /* D1a: Die Betriebsnotiz liest keine Oberfläche; sie geht auch an den Betreiber nicht mehr. */
+  ["Betreiber: interne Notiz",   "MK-BETREIBERNOTIZ",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["Betreiber: Raumkennung",     "MK-RAUMKENNUNG",           0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: Firmenstamm",     "MK-BETREIBERSTAMM",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: Preisliste",      "MK-PREISLISTE",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
@@ -130,6 +131,8 @@ const MATRIX = [
   ["Rechnung anderer Betrieb",   "MK-RECHNUNG-FREMD",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiberprotokoll",         "MK-BETREIBERPROTOKOLL",    0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["unbekanntes Betriebsfeld",   "MK-UNBEKANNT-BETRIEB",     0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  /* D1a — Befund: session wird von PUT angenommen und an alle Rollen außer dem Betreiber zurückgegeben. */
+  ["session (Altbestand)",       "MK-SESSION",               1, 1, 1, 1, 1, 0, 0, 0, "D"],
   ["unbekanntes Feld oben",      "MK-UNBEKANNT-OBEN",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["anderer Betrieb",            "MK-FREMDBETRIEB",          0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Personal anderer Betrieb",   "MK-FREMD-IBAN",            0, 0, 0, 0, 0, 0, 0, 0, "A"],
