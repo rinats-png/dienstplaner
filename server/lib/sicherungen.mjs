@@ -15,7 +15,7 @@
    Die Endpunkte stehen in server/funktionen/daten.mjs.
    ========================================================================== */
 
-import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER } from "./rechte.mjs";
+import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
@@ -134,6 +134,17 @@ const tagVon = (x) => String(x || "").slice(0, 10);
  * Speichern — eine Sicherung holt keine höhere Rolle zurück, als die Leitung
  * vergeben dürfte.
  *
+ * Ebenso aus dem jetzigen Stand: alles, was die Leitung beim gewöhnlichen
+ * Speichern nicht schreiben darf — die Rechnungsstammdaten des Betreibers
+ * (BETREIBERSTAMM), Felder außerhalb ihrer Sicht im Betrieb (VOLL_BETRIEB)
+ * und an bestehenden Personen (VOLL_PERSON, für die eigene Person
+ * PERSONENFELDER), also etwa Bank-, Steuer- und Lohnangaben. Dieselbe Grenze
+ * wie vollRueckfuellen in rechte.mjs. Bis hierher kamen diese Felder aus der
+ * Sicherung zurück: Die Leitung konnte eine USt-ID des Betreibers oder eine
+ * geänderte IBAN auf einen älteren Stand zurückdrehen. Personen, die es
+ * heute nicht mehr gibt, kommen vollständig aus der Sicherung zurück — das
+ * ist Wiederherstellen, kein Zurückdrehen.
+ *
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
@@ -165,6 +176,14 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
       if (heute2 && f in heute2) rein[f] = heute2[f];
       else delete rein[f];
     }
+    if (heute2) {
+      const sichtbar = String(p.id) === String(sitzung.person) ? PERSONENFELDER : VOLL_PERSON;
+      for (const f of new Set([...Object.keys(rein), ...Object.keys(heute2)])) {
+        if (sichtbar.includes(f)) continue;
+        if (f in heute2) rein[f] = heute2[f];
+        else delete rein[f];
+      }
+    }
     return rein;
   });
 
@@ -174,7 +193,13 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
     protokoll: [eintrag, ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])],
     aenderungen: alt.aenderungen };
   if (!("aenderungen" in alt)) delete zurueck.aenderungen;
-  for (const feld of VERTRAGSFELDER) {
+  const behalten = ["id", "personen", "protokoll", "aenderungen"];
+  for (const feld of new Set([...Object.keys(zurueck), ...Object.keys(alt)])) {
+    if (behalten.includes(feld) || VOLL_BETRIEB.includes(feld)) continue;
+    if (feld in alt) zurueck[feld] = alt[feld];
+    else delete zurueck[feld];
+  }
+  for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
     if (feld in alt) zurueck[feld] = alt[feld];
     else delete zurueck[feld];
   }

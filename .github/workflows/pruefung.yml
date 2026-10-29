@@ -136,6 +136,10 @@ jobs:
       - name: Sicherungen
         run: npm run pruefung:sicherungen
 
+      # Wiederherstellen mit derselben Grenze wie Speichern: Betreiberstamm, verborgene Personen- und Betriebsfelder aus dem jetzigen Stand.
+      - name: Wiederherstellung schützt Verborgenes
+        run: npm run pruefung:wiederherstellung-schutz
+
       # Leere Räume richtet nur der Betreiber ein (Demo mit fester Gestalt);
       # Zugangscodes tragen die Kennung ihres Betriebs, alte werden gebunden.
       - name: Erstbefüllung
