@@ -112,6 +112,19 @@ export const monatAusKennung = (id) => (String(id).split("::")[1] || id);
  *   zusammengefuehrt }, sonst { ok: false, grund: "konflikt", streit,
  *   bestand, stand, zeit, durch }
  */
+/** session ganz oben (D1b) und am Betrieb (D1c) sind keine Bestandsfelder:
+    oben null, am Betrieb entfernt. */
+function ohneSitzung(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return b;
+  const aus = { ...b, session: null };
+  if (Array.isArray(b.mandanten)) aus.mandanten = b.mandanten.map((m) => {
+    if (!m || typeof m !== "object" || !("session" in m)) return m;
+    const { session, ...rest } = m; // eslint-disable-line no-unused-vars
+    return rest;
+  });
+  return aus;
+}
+
 export async function bestandSchreiben(store, raum, neuerBestandRoh, {
   erwarteterStand = null, durch = "unbekannt",
 } = {}) {
@@ -120,9 +133,9 @@ export async function bestandSchreiben(store, raum, neuerBestandRoh, {
      ein Kanal, über den eine Rolle in Betrieb A Daten ablegen konnte, die
      Rollen in Betrieb B desselben Raums zurückbekamen. Jeder Schreibweg
      (PUT, Anlegen, Wiederherstellen, Stempeln …) läuft hier durch — hier
-     wird sie verworfen; ein Altinhalt verschwindet beim nächsten Schreiben. */
-  const neuerBestand = neuerBestandRoh && typeof neuerBestandRoh === "object" && !Array.isArray(neuerBestandRoh)
-    ? { ...neuerBestandRoh, session: null } : neuerBestandRoh;
+     wird sie verworfen; ein Altinhalt verschwindet beim nächsten Schreiben.
+     Ebenso session am Betrieb (Commit D1c). */
+  const neuerBestand = ohneSitzung(neuerBestandRoh);
   const zeigerRoh = await store.get(STAND_ZEIGER(raum), { type: "json" }).catch(() => null);
   const aktuellerStand = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr))
     ? Number(zeigerRoh.nr) : null;
@@ -175,8 +188,8 @@ export async function bestandSchreiben(store, raum, neuerBestandRoh, {
   /* Keine Überschneidung: Beide Arbeiten passen nebeneinander. Der aktuelle
      Stand ist die Grundlage, die eigenen Änderungen kommen obendrauf. */
   /* Auch der übernommene aktuelle Kern verliert einen Altinhalt in session
-     (D1b) — sonst bliebe er stehen, wenn nur andere den Kern geändert haben. */
-  const zAktuell = zerlegen({ ...jetzt.bestand, session: null });
+     (D1b, D1c) — sonst bliebe er stehen, wenn nur andere den Kern geändert haben. */
+  const zAktuell = zerlegen(ohneSitzung(jetzt.bestand));
   const kernNimmt = meine.has("kern") ? zNeu.kern : zAktuell.kern;
   const scherben = new Map(zAktuell.scherben);
   for (const id of meine) {

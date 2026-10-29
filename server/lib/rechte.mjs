@@ -435,11 +435,27 @@ export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
  * Deshalb schreibt `zusammenfuehren` unten immer auf den gespeicherten
  * Stand, nicht auf den übermittelten.
  */
+/** session am Betrieb (mandanten[].session) ist kein Bestandsfeld (Commit
+    D1c). Kein Schreiber hat es je gesetzt; die Oberfläche las daraus nur
+    irrtümlich die eigene Person (siehe 33e1cc1). Planung und Leitung konnten
+    dort aber beliebige Daten ablegen, die alle Beschäftigten des Betriebs
+    zurückbekamen. Es wird beim Lesen wie beim Schreiben entfernt. */
+function ohneBetriebsSession(bestand) {
+  if (!bestand || typeof bestand !== "object" || Array.isArray(bestand) || !Array.isArray(bestand.mandanten)) return bestand;
+  if (!bestand.mandanten.some((m) => m && typeof m === "object" && "session" in m)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => {
+    if (!m || typeof m !== "object" || !("session" in m)) return m;
+    const { session, ...rest } = m; // eslint-disable-line no-unused-vars
+    return rest;
+  }) };
+}
+
 /** Die Sicht der Rolle — session immer null (Commit D1b): Auch ein
     gespeicherter Altinhalt (Personenkennung, Token, beliebige Felder) geht
-    an keine Rolle hinaus. Gilt für GET /api/bestand und die 409-Antwort. */
+    an keine Rolle hinaus. Gilt für GET /api/bestand und die 409-Antwort.
+    session am Betrieb fehlt ganz (Commit D1c). */
 export function bestandFuerRolle(bestand, sitzung) {
-  const aus = bestandFuerRolleKern(bestand, sitzung);
+  const aus = ohneBetriebsSession(bestandFuerRolleKern(ohneBetriebsSession(bestand), sitzung));
   return aus && typeof aus === "object" && !Array.isArray(aus) ? { ...aus, session: null } : aus;
 }
 
@@ -826,10 +842,13 @@ function abgeleiteteEntfernen(uebermittelt) {
 
 /** Zusammenführen für jede Rolle — das Ergebnis trägt session: null
     (Commit D1b): Ein mitgeschickter Inhalt wird verworfen, ein gespeicherter
-    Altinhalt beim Schreiben bereinigt. */
+    Altinhalt beim Schreiben bereinigt. session am Betrieb (Commit D1c)
+    verschwindet auf beiden Seiten schon vorher — sonst hielte die
+    Einheitsprüfung einen Altinhalt für eine Änderung und wiese ab. */
 export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
-  const aus = zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung);
-  return aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert ? { ...aus, session: null } : aus;
+  const aus = zusammenfuehrenKern(ohneBetriebsSession(gespeichert), ohneBetriebsSession(uebermitteltRoh), sitzung);
+  return aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert
+    ? { ...ohneBetriebsSession(aus), session: null } : aus;
 }
 
 function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {

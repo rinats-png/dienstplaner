@@ -53,10 +53,12 @@ export function eigenerBetrieb(bestand, sitzung) {
 
 /** Was in eine manuelle Sicherung kommt: nur der eigene Betrieb. */
 export function betriebsSicherung(bestand, ort, { stand = null, durch = null, jetzt = new Date() } = {}) {
+  /* session am Betrieb ist kein Bestandsfeld (Commit D1c) — auch nicht in einer neuen Sicherung. */
+  const { session, ...mandant } = ort.betrieb; // eslint-disable-line no-unused-vars
   return {
     centric: "sicherung", fassung: 2, umfang: "betrieb",
     mandantId: ort.betrieb.id, erzeugt: jetzt.toISOString(), stand, durch,
-    mandant: ort.betrieb,
+    mandant,
   };
 }
 

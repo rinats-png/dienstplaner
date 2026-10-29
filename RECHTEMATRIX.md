@@ -12,7 +12,7 @@ Einordnung je Zeile:
 - **B** bewusst offen bis zu einem eigenen Schritt (siehe Fußnote; die Punkte „bis Commit 4" sind erledigt)
 - **C** bewusst offen, bis die Sammlung einen Bereichsbezug (`einheitId`/`bereichId`) hat — seit Commit C3 keine mehr
 - **S** dokumentierte technische/datenschutzrechtliche Schuld
-- **D** neuer Befund — derzeit keiner (`session`, gefunden in D1a, geschlossen in D1b)
+- **D** neuer Befund — derzeit keiner (`session` oben: D1a/D1b; `session` am Betrieb: D1c)
 
 ## 1. Was über `GET /api/bestand` (und die 409-Antwort von `PUT`) hinausgeht
 
@@ -63,6 +63,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Betreiberfelder: Raumkennung, Firmenstamm, Preisliste, Selbststarts | – | – | – | – | – | ✓ | – | – | A |
 | Betriebsnotiz `notiz` (keine Oberfläche liest sie) | – | – | – | – | – | – ¹¹ | – | – | A |
 | `session` ganz oben im Bestand — Legacy-Feld, kein Bestandsfeld mehr ¹² | – | – | – | – | – | – | – | – | A |
+| `session` am Betrieb (`mandanten[].session`) — Legacy-Feld, kein Bestandsfeld mehr ¹³ | – | – | – | – | – | – | – | – | A |
 | Rechnungen (eigener und anderer Betriebe) | – | – | – | – | – | ✓ | – | – | A |
 | Betreiberprotokoll | – | – | – | – | – | ✓ | – | – | A |
 | andere Betriebe des Raums | – | – | – | – | – | ✓ (gekürzt ¹¹) | – | – | A |
@@ -108,6 +109,12 @@ Bestand. Lesen: `bestandFuerRolle` liefert jeder Rolle `session: null` (GET und 
 `zusammenfuehren` und — für jeden Schreibweg — `bestandSchreiben` setzen `session: null`; ein mitgeschickter Inhalt
 wird verworfen, ein gespeicherter Altinhalt beim nächsten Schreiben bereinigt. Vorher konnte eine Rolle in Betrieb A
 dort Daten ablegen, die Rollen in Betrieb B desselben Raums zurückbekamen.
+¹³ Commit D1c: `mandanten[].session` hatte keinen Schreiber; die Oberfläche las daraus nur irrtümlich die eigene
+Person (`bewirbDich`, `ziehBewerbungZurueck`, jetzt nur `sitz.person.id`). Planung und Leitung konnten dort
+beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betriebsrat eingeschlossen — und die
+Vollausgabe zurückgaben. Jetzt: nie ausgeliefert (jede Rolle, Vollausgabe, 409, neue Sicherung), beim Schreiben
+verworfen ohne Ablehnung der übrigen Änderung, Altinhalt beim nächsten Schreiben entfernt (auch im Drei-Wege-Abgleich
+und bei der Wiederherstellung).
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).
@@ -157,7 +164,6 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | Restrückschluss aus einzelnen Einsatzregeln (Sonntag nur mit Freigabe; über 8 h nur nach Absprache) auf das Merkmal (Commit S1, bewusst) | Schuld S |
 | `/api/zugaenge-uebersicht` liefert den Zugangsnamen (meist der Personenname) — neutraler Anzeigename prüfen | Minimierung, bei Bedarf |
 | Toter Code `zugangsUebersicht()` in der Oberfläche (liest Namen und E-Mail, ohne Aufrufer) | Aufräumen |
-| Feld `session` auf Betriebsebene (`mandanten[].session`): von keiner Oberfläche gesetzt, im Katalog aber für alle Rollen freigegeben; Planung/Leitung können es schreiben, Beschäftigte desselben Betriebs lesen es (innerhalb eines Betriebs, nicht betriebsübergreifend) | Entscheidung offen |
 | Adressänderungen: der Betreiber sieht alte und neue Anmeldeadresse im Klartext (die Konsole zeigt sie) — Maskierung prüfen | Minimierung, bei Bedarf |
 | `adressaenderungen` ganz oben: weder gelesen noch geschrieben von einer Oberfläche (Altfeld) | Aufräumen |
 | Adressänderungen im Betrieb (Schreibweg der eigenen Anmeldeadresse) | eigener Schritt |

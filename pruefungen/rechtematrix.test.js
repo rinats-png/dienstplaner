@@ -58,6 +58,7 @@ const bestand = () => ({
     preisgestaltung: { grund: "MK-KONDITION" }, ustId: "MK-USTID", notiz: "MK-BETREIBERNOTIZ", raum: "MK-RAUMKENNUNG",
     status: "aktiv", lohnarten: [{ id: "MK-LOHNART" }],
     unbekanntImBetrieb: "MK-UNBEKANNT-BETRIEB",
+    session: { personId: "MK-BETRIEBSSESSION" },
   }, { id: "m2", name: "MK-FREMDBETRIEB", personen: [person("f1", "leitung", "ALLE", { iban: "MK-FREMD-IBAN" })] }],
 });
 
@@ -134,6 +135,8 @@ const MATRIX = [
   /* D1a fand es (Klasse D): session nahm PUT an und gab es allen Rollen außer dem Betreiber zurück.
      Seit D1b ist session kein Bestandsfeld mehr — für alle Rollen null. */
   ["session (Altbestand)",       "MK-SESSION",               0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  /* Bis D1c an alle Rollen des Betriebs (auch Vollausgabe); kein Schreiber, kein Zweck. */
+  ["session am Betrieb (Altbestand)", "MK-BETRIEBSSESSION",   0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["unbekanntes Feld oben",      "MK-UNBEKANNT-OBEN",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["anderer Betrieb",            "MK-FREMDBETRIEB",          0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Personal anderer Betrieb",   "MK-FREMD-IBAN",            0, 0, 0, 0, 0, 0, 0, 0, "A"],

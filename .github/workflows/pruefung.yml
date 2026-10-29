@@ -217,6 +217,10 @@ jobs:
       - name: Session-Kanal
         run: npm run pruefung:session-kanal
 
+      # session am Betrieb ebenso: nie ausgeliefert, verworfen, Altbestand bereinigt — auch Vollausgabe, Wiederherstellung (D1c).
+      - name: Session am Betrieb
+        run: npm run pruefung:mandanten-session
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik

@@ -346,7 +346,9 @@ export const BETRIEB = {
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],
   briefing: [VOLL, VOLL], aufgaben: [VOLL, VOLL], qualifikationen: [VOLL, VOLL],
-  genehmigungsstufen: [VOLL, VOLL], tarifwerk: [VOLL, VOLL], session: [VOLL, VOLL],
+  genehmigungsstufen: [VOLL, VOLL], tarifwerk: [VOLL, VOLL],
+  /* Kein Bestandsfeld (Commit D1c) — rechte.mjs entfernt es zusätzlich für jede Rolle. */
+  session: [WEG, WEG],
   version: [VOLL, VOLL], stand: [VOLL, VOLL],
   /* Gebuchte Pakete steuern, welche Ansichten es gibt (kann()). */
   pakete: [VOLL, VOLL],
@@ -734,7 +736,9 @@ export const VOLL_PERSON = PERSONENFELDER.filter((f) => !VOLL_PERSON_WEG.include
 /** Was Planung und Leitung im Betrieb nicht bekommen: Vertrag, Rechnungsangaben
     und die interne Notiz des Betreibers, die Raumkennung. */
 export const VOLL_BETRIEB_WEG = ["tarif", "preisgestaltung", "rabattGrund", "seit", "bis", "testTage",
-  "selbstAngelegt", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum"];
+  "selbstAngelegt", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum",
+  /* Kein Bestandsfeld (Commit D1c) — auch nicht in Vollausgabe und Sicherung. */
+  "session"];
 /** Der Betrieb: alle Felder des Katalogs ohne die obigen. lohnarten bleibt
     (Lohnexport), adressAenderungen vorerst ebenfalls (die Oberfläche schreibt
     sie beim Ändern der eigenen Anmeldeadresse fort). */
