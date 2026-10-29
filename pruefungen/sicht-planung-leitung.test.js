@@ -83,8 +83,33 @@ for (const [name, sitz, ich] of [["Planung", PLANER, "p1"], ["Leitung", LEITUNG,
         emailVorher: `alt-${ich}@x.de` });
       expect(eigen.neuesGeheimesFeld).toBeUndefined();
     });
+    /* B2: Wer billing.view hat (Leitung, Kundenrolle), liest die Preisgrundlage
+       des eigenen Betriebs — tarif, preisgestaltung, rabattGrund. Die Planung nicht. */
+    const preisgrundlage = name === "Planung" ? [] : ["tarif", "preisgestaltung", "rabattGrund"];
     it("Betrieb: kein Vertrag, keine Rechnungsangaben, keine Betreibernotiz, nichts Unbekanntes", () => {
-      for (const f of BETRIEB_WEG) expect(b.mandanten[0][f], f).toBeUndefined();
+      for (const f of BETRIEB_WEG.filter((x) => !preisgrundlage.includes(x))) expect(b.mandanten[0][f], f).toBeUndefined();
+    });
+    it(name === "Planung" ? "Preisgrundlage: nicht sichtbar (B2)" : "Preisgrundlage des eigenen Betriebs: nur lesend sichtbar (B2)", () => {
+      for (const f of ["tarif", "preisgestaltung", "rabattGrund"]) {
+        if (preisgrundlage.includes(f)) expect(b.mandanten[0][f], f).toEqual(bestand().mandanten[0][f]);
+        else expect(b.mandanten[0][f], f).toBeUndefined();
+      }
+    });
+    it(name === "Planung" ? "eigener Tarifeintrag: nicht sichtbar (B2)" : "oben nur der Eintrag des eigenen Tarifs, nicht die Preisliste (B2)", () => {
+      const g = { ...bestand(), tarife: [{ id: "pro", preis: 49 }, { id: "t1", preis: 99 }] };
+      const x = bestandFuerRolle(g, sitz);
+      if (name === "Planung") expect(x.tarife).toBeUndefined();
+      else expect(x.tarife).toEqual([{ id: "pro", preis: 49 }]);
+    });
+    it("Preisgrundlage und Tarife lassen sich nicht schreiben (B2)", () => {
+      const g = { ...bestand(), tarife: [{ id: "pro", preis: 49 }] };
+      const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(g, sitz)));
+      Object.assign(gelesen.mandanten[0], { tarif: "enterprise", preisgestaltung: { sonder: 0 }, rabattGrund: "1" });
+      gelesen.tarife = [{ id: "pro", preis: 1 }];
+      const e = zusammenfuehren(g, gelesen, sitz);
+      expect(e.verweigert).toBeFalsy();
+      for (const f of ["tarif", "preisgestaltung", "rabattGrund"]) expect(e.mandanten[0][f], f).toEqual(g.mandanten[0][f]);
+      expect(e.tarife).toEqual(g.tarife);
     });
     it("Betrieb: lohnarten, Testphase, Pakete, Adressänderungen, Plan und Sammlungen bleiben", () => {
       const m = b.mandanten[0], roh = bestand().mandanten[0];
