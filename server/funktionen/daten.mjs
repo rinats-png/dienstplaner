@@ -581,6 +581,9 @@ export default async (req, context) => {
          könnte jeder Datenräume anlegen und Zugangscodes erzeugen. */
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
+      /* Ebenso keine Rolle, die es nicht gibt (Commit D1e). */
+      if (!rolleBekannt(eintrag.rolle))
+        return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
       const gelesenD = await bestandLesen(store, eintrag.bestand);
       const bindungD = codeBindung(gelesenD && gelesenD.bestand, eintrag);
       if (!bindungD.ok) {
@@ -657,6 +660,15 @@ export default async (req, context) => {
         await protokoll("anmelden", k, "abgewiesen", "abgelaufen");
         return antwort({ fehler: "Der Testzeitraum ist abgelaufen.",
           text: "Melde dich bei uns, wenn du weitermachen möchtest — die Daten sind noch da." }, 403);
+      }
+
+      /* Eine Rolle, die es nicht gibt (Commit D1e): keine Sitzung. Vor dem
+         Nachtragen der Betriebsbindung und vor dem Umschlüsseln — die
+         Absage verändert nichts. Die Antwort nennt die Rolle nicht. */
+      if (!rolleBekannt(eintrag.rolle)) {
+        await protokoll("anmelden", k, "abgewiesen", "unbekannte Rolle");
+        return antwort({ fehler: "Dieser Zugang ist nicht nutzbar.",
+          text: "Bitte wende dich an die Organisationsleitung." }, 403);
       }
 
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
@@ -775,7 +787,10 @@ export default async (req, context) => {
        das bis dahin jede Rollenbezeichnung annahm; ältere Konten mit einer
        solchen Rolle gibt es womöglich noch. Wie beim Sicherungsschlüssel:
        erlaubt ist, was ausdrücklich erlaubt ist. */
-    if (!rolleBekannt(s.rolle) && !(pfad === "abmelden" && req.method === "POST")) {
+    /* Geprüft wird die gespeicherte Rolle der Sitzung und die wirksame
+       (Commit D1e): Eine unbekannte Kontorolle wird nicht dadurch gültig,
+       dass die gebundene Person im Betrieb eine bekannte Rolle hat. */
+    if ((!rolleBekannt(s0.rolle) || !rolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
       await protokoll("schreiben", kennung(req, s), "abgewiesen", "unbekannte Rolle", wer);
       return antwort({ fehler: "Keine Berechtigung.", text: absageText(s.rolle) }, 403);
     }

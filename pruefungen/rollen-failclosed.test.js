@@ -10,10 +10,10 @@
    Rolle — kein Bestand; jeder Endpunkt außer Abmelden antwortet 403.
    /einrichten nimmt nur Rollen an, die es gibt.
 
-   Wie bisher gilt für ein Konto mit gebundener Person die Rolle dieser
-   Person im Betrieb (wirksameRolle). Ein Altkonto „gast" für eine
-   beschäftigte Person sieht damit genau, was diese Person sieht — eine
-   ausdrückliche Sicht, keine Rohkopie.
+   Seit D1e entsteht eine solche Sitzung nicht mehr (rollen-eintritt.test.js);
+   die Sitzungen hier sind Altsitzungen, direkt angelegt. Und eine
+   unbekannte Kontorolle wird nicht mehr dadurch gültig, dass die gebundene
+   Person eine bekannte Rolle hat (bis D1e: deren Sicht über wirksameRolle).
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -75,7 +75,7 @@ describe("bestandFuerRolle", () => {
 const WIRT = "127.0.0.1:3000";
 const RAUM = "rollen";
 const ADMIN = "rollen-verwaltung-0123456789";
-let wurzel, laden, daten, einrichten, kontoSchreiben, alleKonten, ablageSchluessel, B;
+let wurzel, laden, daten, einrichten, kontoSchreiben, alleKonten, ablageSchluessel, B, S;
 let nr = 0;
 const anfrage = async (handler, pfad, { methode = "POST", rumpf, token } = {}) => {
   nr += 1;
@@ -95,6 +95,9 @@ async function sitzung(code, rolle, person) {
   expect(a.token, a.roh).toBeTruthy();
   return a.token;
 }
+/** Eine Sitzung mit unbekannter Rolle, wie sie vor D1e über die Anmeldung entstand. */
+const altsitzung = async (rolle, person) => (await S.sitzungAnlegen({ bestand: RAUM, name: `Alt ${rolle}`, rolle, person,
+  betrieb: 0, mandantId: "m-a" }, S.DAUER_STANDARD)).token;
 
 const T = {};
 beforeAll(async () => {
@@ -112,12 +115,13 @@ beforeAll(async () => {
   ({ kontoSchreiben, alleKonten } = await import("../server/lib/konten.mjs"));
   ({ ablageSchluessel } = await import("../server/lib/codes.mjs"));
   B = await import("../server/lib/bestand.mjs");
+  S = await import("../server/lib/sitzungen.mjs");
   await B.bestandSchreiben(laden(), RAUM, bestand(), { durch: "Pruefung" });
-  /* Altkonten mit erfundener Rolle — so, wie /einrichten sie bis D1d anlegte. */
-  T.gast = await sitzung("ROL1-GAST-0001", "gast", null);
-  T.irgendwas = await sitzung("ROL2-IRGW-0002", "irgendwas", null);
-  T.gross = await sitzung("ROL3-GROS-0003", "Leitung", "gibt-es-nicht");
-  T.gastMitPerson = await sitzung("ROL6-GAPE-0006", "gast", "am");
+  /* Altsitzungen mit erfundener Rolle. */
+  T.gast = await altsitzung("gast", null);
+  T.irgendwas = await altsitzung("irgendwas", null);
+  T.gross = await altsitzung("Leitung", "gibt-es-nicht");
+  T.gastMitPerson = await altsitzung("gast", "am");
   T.leitung = await sitzung("ROL4-LEIT-0004", "leitung", "al");
   T.mitarbeiter = await sitzung("ROL5-MITA-0005", "mitarbeiter", "am");
 });
@@ -143,14 +147,11 @@ describe("Sitzung mit unbekannter Rolle", () => {
       expect((await anfrage(daten, "/api/bestand", { methode: "GET", token: T[name] })).status).toBe(401);
     });
   }
-  it("unbekannte Kontorolle mit gebundener Person: die Sicht dieser Person, nicht mehr", async () => {
+  it("unbekannte Kontorolle mit gebundener Person: 403 — nicht die Rolle der Person (D1e)", async () => {
     const g = await anfrage(daten, "/api/bestand", { methode: "GET", token: T.gastMitPerson });
-    const m = await anfrage(daten, "/api/bestand", { methode: "GET", token: T.mitarbeiter });
-    expect(g.status).toBe(200);
-    expect(g.rolle).toBe("mitarbeiter");
-    expect(JSON.stringify(g.bestand)).toBe(JSON.stringify(m.bestand));
-    expect(funde(g.roh)).not.toContain("MK-ROH-UNBEKANNT");
-    expect(funde(g.roh)).not.toContain("MK-ROH-IBAN");
+    expect(g.status, g.roh).toBe(403);
+    expect(g.bestand).toBeUndefined();
+    expect(funde(g.roh)).toEqual([]);
   });
   it("bekannte Rollen unverändert: GET 200 mit Sicht", async () => {
     const l = await anfrage(daten, "/api/bestand", { methode: "GET", token: T.leitung });
