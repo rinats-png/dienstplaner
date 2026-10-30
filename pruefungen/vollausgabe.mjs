@@ -67,6 +67,10 @@ const tB = await anmelden(await zugang("betreiber", null));
 pruef("Raum über den Betreiber eingerichtet", (await rufe(tB, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
 const vorher = JSON.stringify((await rufe(tB, "bestand")).bestand);
 const tL = await anmelden(await zugang("leitung", "l1"));
+/* Seit Commit D1 sieht der Betreiber nur einen Ausschnitt; was sonst
+   gespeichert ist, prüfen Leitung und die Person selbst nach. */
+const vorherL = JSON.stringify((await rufe(tL, "bestand")).bestand);
+const tA1 = await anmelden(await zugang("mitarbeiter", "a1"));
 
 const NIE = ["kal-geheim-", "https://kal/", "push-", "interne Betreibernotiz", "Kundenweg", "DE123", "BETREIBER-IBAN",
   "raum-intern", "darf-nicht-raus", "f1@x.de", "Haus Zwei", "rg-eigen"];
@@ -89,9 +93,11 @@ await ausgabe("Leitung", tL, "leitung", false);
 const sk = await rufe(tL, "sicherungsschluessel", "POST", { tage: 30 });
 pruef("Leitung legt einen Sicherungsschlüssel an", sk.status === 200 && !!sk.schluessel, `Status ${sk.status}`);
 await ausgabe("Sicherungsschlüssel", sk.schluessel, "sicherung", true);
-pruef("Gespeicherter Bestand unverändert (Betreiber liest nach)", JSON.stringify((await rufe(tB, "bestand")).bestand) === vorher);
-const b = (await rufe(tB, "bestand")).bestand;
-pruef("… das Kalendergeheimnis liegt weiter gespeichert", b.mandanten[0].personen[1].kalenderGeheim === "kal-geheim-a1");
+pruef("Gespeicherter Bestand unverändert (Betreiber und Leitung lesen nach)", JSON.stringify((await rufe(tB, "bestand")).bestand) === vorher
+  && JSON.stringify((await rufe(tL, "bestand")).bestand) === vorherL);
+const b = (await rufe(tA1, "bestand")).bestand;
+pruef("… das Kalendergeheimnis liegt weiter gespeichert (die Person selbst liest nach)",
+  b.mandanten[0].personen.find((p) => p.id === "a1").kalenderGeheim === "kal-geheim-a1");
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
 console.log(`\n${bestanden} von ${ergebnisse.length} Prüfungen bestanden.`);

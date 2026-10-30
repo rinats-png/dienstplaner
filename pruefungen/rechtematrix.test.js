@@ -24,7 +24,7 @@ const B1 = person("b1", "mitarbeiter", "e2", {
   telefon: "MK-TELEFON", anschrift: "MK-ANSCHRIFT", email: "mk-email@x.de",
   notfallkontakt: "MK-NOTFALL", iban: "MK-IBAN", steuerId: "MK-STEUER", lohn: "MK-LOHNBETRAG",
   nachtvorsorge: "MK-SCHUTZ-FREMD", qualifikationen: ["MK-QUAL"],
-  kalenderGeheim: "MK-KALGEHEIM", kalenderVerweis: "MK-KALVERWEIS", pushSchluessel: { endpoint: "MK-PUSH" },
+  rolleSeit: "MK-ROLLESEIT", kalenderGeheim: "MK-KALGEHEIM", kalenderVerweis: "MK-KALVERWEIS", pushSchluessel: { endpoint: "MK-PUSH" },
   zustellung: { planGeaendert: { mail: "MK-ZUSTELLUNG" } }, emailVorher: "MK-EMAILVORHER",
   unbekanntesPersonenfeld: "MK-UNBEKANNT-PERSON",
 });
@@ -33,7 +33,7 @@ const B1 = person("b1", "mitarbeiter", "e2", {
 const A1 = person("a1", "mitarbeiter", "e1", { nachtvorsorge: "MK-SCHUTZ-BEREICH" });
 
 const bestand = () => ({
-  version: 9, stand: 1, session: null,
+  version: 9, stand: 1, session: { personId: "MK-SESSION" },
   betreiber: { firma: "MK-BETREIBERSTAMM" }, tarife: [{ id: "t", name: "MK-PREISLISTE" }],
   rechnungen: [{ id: "MK-RECHNUNG-EIGEN", mandantId: "m1" }, { id: "MK-RECHNUNG-FREMD", mandantId: "m2" }],
   protokoll: [{ id: "bp", text: "MK-BETREIBERPROTOKOLL" }], selbststarts: [{ raum: "MK-SELBSTSTART" }],
@@ -58,6 +58,7 @@ const bestand = () => ({
     preisgestaltung: { grund: "MK-KONDITION" }, ustId: "MK-USTID", notiz: "MK-BETREIBERNOTIZ", raum: "MK-RAUMKENNUNG",
     status: "aktiv", lohnarten: [{ id: "MK-LOHNART" }],
     unbekanntImBetrieb: "MK-UNBEKANNT-BETRIEB",
+    session: { personId: "MK-BETRIEBSSESSION" },
   }, { id: "m2", name: "MK-FREMDBETRIEB", personen: [person("f1", "leitung", "ALLE", { iban: "MK-FREMD-IBAN" })] }],
 });
 
@@ -82,45 +83,48 @@ const SPALTEN = ["MA", "BR", "SV", "PL", "LT", "BT", "VA-LT", "VA-SK"];
    Zustelleinstellungen fremder Personen für Planung und Leitung entfernt. */
 const MATRIX = [
   // Datenklasse                 Marker                      MA BR SV PL LT BT VL VS  Klasse
-  ["Kontakt: Telefon",           "MK-TELEFON",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Kontakt: Anschrift",         "MK-ANSCHRIFT",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Kontakt: E-Mail",            "mk-email@x.de",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Notfallkontakt",             "MK-NOTFALL",               0, 0, 0, 0, 0, 1, 0, 1, "A"],
-  ["Bank",                       "MK-IBAN",                  0, 0, 0, 0, 0, 1, 0, 1, "A"],
-  ["Steuer",                     "MK-STEUER",                0, 0, 0, 0, 0, 1, 0, 1, "A"],
-  ["Lohn",                       "MK-LOHNBETRAG",            0, 0, 0, 0, 0, 1, 0, 1, "A"],
-  ["frühere Anmeldeadresse",     "MK-EMAILVORHER",           0, 0, 0, 0, 0, 1, 0, 1, "A"],
-  ["Schutzmerkmal fremd",        "MK-SCHUTZ-FREMD",          0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Schutzmerkmal eig. Bereich", "MK-SCHUTZ-BEREICH",        0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Qualifikationen",            "MK-QUAL",                  1, 1, 1, 1, 1, 1, 1, 1, "A"],
-  ["Kalendergeheimnis",          "MK-KALGEHEIM",             0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Kalenderverweis",            "MK-KALVERWEIS",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Push-Schlüssel",             "MK-PUSH",                  0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Zustelleinstellungen",       "MK-ZUSTELLUNG",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["unbekanntes Personenfeld",   "MK-UNBEKANNT-PERSON",      0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Zeiterfassung: Grund",       "MK-ERFASSUNGSGRUND",       0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Stempel: Ortsurteil",        "MK-ORTSURTEIL",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Abwesenheit: Anmerkung",     "MK-ABWESENHEITSNOTIZ",     0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Antrag: Text",               "MK-ANTRAG",                0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Nachricht",                  "MK-NACHRICHT",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Notruf",                     "MK-NOTRUF",                0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Kontakt: Telefon",           "MK-TELEFON",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Kontakt: Anschrift",         "MK-ANSCHRIFT",             0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Kontakt: E-Mail",            "mk-email@x.de",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Notfallkontakt",             "MK-NOTFALL",               0, 0, 0, 0, 0, 0, 0, 1, "A"],
+  ["Bank",                       "MK-IBAN",                  0, 0, 0, 0, 0, 0, 0, 1, "A"],
+  ["Steuer",                     "MK-STEUER",                0, 0, 0, 0, 0, 0, 0, 1, "A"],
+  ["Lohn",                       "MK-LOHNBETRAG",            0, 0, 0, 0, 0, 0, 0, 1, "A"],
+  ["frühere Anmeldeadresse",     "MK-EMAILVORHER",           0, 0, 0, 0, 0, 0, 0, 1, "A"],
+  ["Schutzmerkmal fremd",        "MK-SCHUTZ-FREMD",          0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Schutzmerkmal eig. Bereich", "MK-SCHUTZ-BEREICH",        0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  /* Commit D1: der Betreiber sieht je Person nur das Gerüst für die Abrechnung. */
+  ["Personengerüst (Abrechnung)", "MK-ROLLESEIT",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Qualifikationen",            "MK-QUAL",                  1, 1, 1, 1, 1, 0, 1, 1, "A"],
+  ["Kalendergeheimnis",          "MK-KALGEHEIM",             0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["Kalenderverweis",            "MK-KALVERWEIS",            0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["Push-Schlüssel",             "MK-PUSH",                  0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["Zustelleinstellungen",       "MK-ZUSTELLUNG",            0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["unbekanntes Personenfeld",   "MK-UNBEKANNT-PERSON",      0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["Zeiterfassung: Grund",       "MK-ERFASSUNGSGRUND",       0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Stempel: Ortsurteil",        "MK-ORTSURTEIL",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Abwesenheit: Anmerkung",     "MK-ABWESENHEITSNOTIZ",     0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Antrag: Text",               "MK-ANTRAG",                0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Nachricht",                  "MK-NACHRICHT",             0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Notruf",                     "MK-NOTRUF",                0, 0, 0, 1, 1, 0, 1, 1, "A"],
   /* Commit C2: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
-  ["Dienstbuch",                 "MK-DIENSTBUCH",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Übergaben",                  "MK-UEBERGABE",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Dienstbuch",                 "MK-DIENSTBUCH",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Übergaben",                  "MK-UEBERGABE",             0, 0, 0, 1, 1, 0, 1, 1, "A"],
   /* Commit C3: nur mit einheitId der eigenen Einheit (hier: ohne Einheit). */
-  ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["tagesnotizen (totes Feld)",  "MK-TOTFELD",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Tagesnotizen",               "MK-TAGESNOTIZ",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["tagesnotizen (totes Feld)",  "MK-TOTFELD",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Personennotiz",              "MK-PERSONENNOTIZ",         0, 0, 0, 1, 1, 0, 1, 1, "A"],
   /* Commit C1: Bewerbungen fremder Personen nur bei einer Ausschreibung der
      eigenen Einheit (hier: Altbestand ohne einheitId — also nicht). */
-  ["Ausschreibung: Bewerbung",   "MK-BEWERBUNG",             0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  ["Betriebsprotokoll",          "MK-BETRIEBSPROTOKOLL",     0, 0, 0, 1, 1, 1, 1, 1, "A"],
+  ["Ausschreibung: Bewerbung",   "MK-BEWERBUNG",             0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  ["Betriebsprotokoll",          "MK-BETRIEBSPROTOKOLL",     0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["Adressänderungen im Betrieb","MK-ADRESSE-ALT",           0, 0, 0, 1, 1, 1, 1, 1, "B"],
-  ["Lohnarten",                  "MK-LOHNART",               0, 0, 0, 1, 1, 1, 1, 1, "A"],
-  /* B2: Leitung liest die Preisgrundlage des eigenen Betriebs (billing.view), Planung nicht. */
+  ["Lohnarten",                  "MK-LOHNART",               0, 0, 0, 1, 1, 0, 1, 1, "A"],
+  /* B2: Leitung liest die Preisgrundlage des eigenen Betriebs (billing.view), Planung nicht; Betreiber laut D1-Katalog. */
   ["Billing: Konditionen",       "MK-KONDITION",             0, 0, 0, 0, 1, 1, 0, 0, "A"],
   ["Billing: USt-ID",            "MK-USTID",                 0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Betreiber: interne Notiz",   "MK-BETREIBERNOTIZ",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  /* D1a: Die Betriebsnotiz liest keine Oberfläche; sie geht auch an den Betreiber nicht mehr. */
+  ["Betreiber: interne Notiz",   "MK-BETREIBERNOTIZ",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["Betreiber: Raumkennung",     "MK-RAUMKENNUNG",           0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: Firmenstamm",     "MK-BETREIBERSTAMM",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiber: Preisliste",      "MK-PREISLISTE",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
@@ -128,10 +132,15 @@ const MATRIX = [
   ["Rechnung eigener Betrieb",   "MK-RECHNUNG-EIGEN",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Rechnung anderer Betrieb",   "MK-RECHNUNG-FREMD",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
   ["Betreiberprotokoll",         "MK-BETREIBERPROTOKOLL",    0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["unbekanntes Betriebsfeld",   "MK-UNBEKANNT-BETRIEB",     0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["unbekanntes Feld oben",      "MK-UNBEKANNT-OBEN",        0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  ["unbekanntes Betriebsfeld",   "MK-UNBEKANNT-BETRIEB",     0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  /* D1a fand es (Klasse D): session nahm PUT an und gab es allen Rollen außer dem Betreiber zurück.
+     Seit D1b ist session kein Bestandsfeld mehr — für alle Rollen null. */
+  ["session (Altbestand)",       "MK-SESSION",               0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  /* Bis D1c an alle Rollen des Betriebs (auch Vollausgabe); kein Schreiber, kein Zweck. */
+  ["session am Betrieb (Altbestand)", "MK-BETRIEBSSESSION",   0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  ["unbekanntes Feld oben",      "MK-UNBEKANNT-OBEN",        0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["anderer Betrieb",            "MK-FREMDBETRIEB",          0, 0, 0, 0, 0, 1, 0, 0, "A"],
-  ["Personal anderer Betrieb",   "MK-FREMD-IBAN",            0, 0, 0, 0, 0, 1, 0, 0, "A"],
+  ["Personal anderer Betrieb",   "MK-FREMD-IBAN",            0, 0, 0, 0, 0, 0, 0, 0, "A"],
 ];
 
 describe("Rechtematrix: jeder Marker je Rolle und Lesepfad", () => {
@@ -155,6 +164,13 @@ describe("Rechtematrix: oberste Ebene und Mandantentrennung", () => {
       const b = PFADE[k]();
       expect(Object.keys(b).sort(), k).toEqual(["mandanten", "session", "stand", "version"]);
       expect(b.mandanten.map((m) => m.id), k).toEqual(["m1"]);
+    }
+  });
+  /* D1d: keine Spalte, keine Sicht — bis dahin der eigene Betrieb im Rohzustand. */
+  it("unbekannte Rolle: kein Bestand, kein Marker", () => {
+    for (const rolle of ["gast", "irgendwas", "", "Leitung"]) {
+      const aus = bestandFuerRolle(bestand(), { rolle, person: "b1", betrieb: 0 });
+      expect(aus, rolle).toBeNull();
     }
   });
   it("die Vollausgabe: nur der eigene Betrieb", () => {

@@ -5,6 +5,7 @@ import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
+import { BEKANNTE_ROLLEN, rolleBekannt } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
   from "../lib/verwalter.mjs";
@@ -83,6 +84,14 @@ export default async (req) => {
      dem Entlasten: Wer sich ausgewiesen hat und dann einen fachlichen
      Fehler macht, soll dafür nicht in die Bremse gegen das Erraten des
      Schlüssels laufen. */
+  /* Nur Rollen, die es gibt (Commit D1d). Bis hierher nahm diese Stelle
+     jede Bezeichnung an; eine Sitzung mit erfundener Rolle fiel beim Lesen
+     auf den Rohbestand des eigenen Betriebs durch. Ohne Angabe bleibt es
+     bei „kunde" wie bisher. */
+  if (req.method === "POST" && !pfad && rolle !== undefined && rolle !== null && !rolleBekannt(rolle))
+    return antwort({ fehler: "Diese Rolle gibt es nicht.",
+      text: `Erlaubt sind: ${BEKANNTE_ROLLEN.join(", ")}.` }, 400);
+
   if (req.method === "POST" && !pfad && (rolle === "mitarbeiter" || rolle === "subplaner")
       && (person === null || person === undefined || person === ""))
     return antwort({ fehler: `Ein Zugang der Rolle „${rolle}" braucht eine Person. `

@@ -346,7 +346,9 @@ export const BETRIEB = {
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],
   briefing: [VOLL, VOLL], aufgaben: [VOLL, VOLL], qualifikationen: [VOLL, VOLL],
-  genehmigungsstufen: [VOLL, VOLL], tarifwerk: [VOLL, VOLL], session: [VOLL, VOLL],
+  genehmigungsstufen: [VOLL, VOLL], tarifwerk: [VOLL, VOLL],
+  /* Kein Bestandsfeld (Commit D1c) — rechte.mjs entfernt es zusätzlich für jede Rolle. */
+  session: [WEG, WEG],
   version: [VOLL, VOLL], stand: [VOLL, VOLL],
   /* Gebuchte Pakete steuern, welche Ansichten es gibt (kann()). */
   pakete: [VOLL, VOLL],
@@ -621,6 +623,88 @@ export function betriebSichtSchicht(m, ctx) {
 /** Ganz oben im Bestand: nur Zähler, Sitzungsmarke und der eigene Betrieb. */
 export const OBEN_FELDER = OBEN;
 
+/* ------------------------------------------------------------------------
+   DIE SICHT DES BETREIBERS (Commit D1)
+
+   Bis Commit D1 bekam der Betreiber den ganzen Raum ungefiltert: Gesundheits-
+   und Schutzmerkmale, Krankmeldungen mit Notiz, Bank-, Steuer- und
+   Lohndaten, Notfallkontakte, Namen und Kontaktdaten, Notizen der Leitung,
+   Kalender- und Push-Geheimnisse, Pläne, Zeiten, Anträge, Nachrichten,
+   Notrufe, Dienstbuch und Übergaben aller Betriebe — und jedes neue Feld.
+   Seine Konsole zeigt davon nichts; sie rechnet Preise, Zuschläge und
+   Rechnungen aus wenigen Angaben. Wer Software verkauft, führt den Betrieb
+   nicht (§ 3 AV-Vertrag).
+
+   Jetzt eine Positivliste, Objekt für Objekt neu gebaut — was nicht darin
+   steht, geht nicht hinaus, auch kein neues Feld:
+   - oben die eigenen Felder des Betreibers (BETREIBER_OBEN);
+   - je Betrieb das Kaufmännische, Einheiten, Standorte, die Zahl der
+     Dienstarten, der Zeitpunkt der letzten Änderung und die
+     Adressänderungen (nur Person, Zeit, alte und neue Adresse) — Letztere
+     als funktionale Ausnahme: Die Konsole erkennt daran Kontoübernahmen;
+     eine allgemeine Personalberechtigung folgt daraus nicht;
+   - je Person nur das Gerüst für die Abrechnung: Rolle (auch im Verlauf),
+     Status, Ein- und Austritt, Zugehörigkeit — ohne Namen, Kontakt-,
+     Gesundheits- oder Lohndaten.
+   Schreiben nimmt der Server vom Betreiber ohnehin nur das Kaufmännische
+   an (rechte.mjs, zusammenfuehren) — die gekürzte Sicht überschreibt nichts.
+   ------------------------------------------------------------------------ */
+/* session (D1a): Gespeichert wird sie nie absichtlich — die Oberfläche
+   schickt null und setzt ihre eigene Sitzung aus der Antwort des Servers
+   (Betreiber: { rolle: "betreiber" }). Ältere Bestände trugen hier aber eine
+   Sitzung mit echter Personenkennung, und PUT nimmt das Feld weiterhin an.
+   Für den Betreiber deshalb immer null — der Inhalt geht nicht hinaus. */
+const BETREIBER_OBEN = ["version", "stand", "betreiber", "tarife", "rechnungen", "protokoll",
+  "pakete", "adressaenderungen", "selbststarts"];
+/* notiz (D1a) fehlt mit Absicht: Keine Oberfläche liest oder schreibt die
+   Betriebsnotiz; ihr Inhalt ist nicht sicher kaufmännisch (vor 1e.2a konnte
+   die Leitung sie per API setzen). Schreiben bleibt dem Betreiber möglich
+   (KAUFMAENNISCHE_FELDER), ausgeliefert wird sie nicht. */
+const BETREIBER_BETRIEB = ["id", "raum", "selbstAngelegt", "name", "branche", "status", "tarif", "seit", "bis",
+  "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "kontakt", "kontaktName", "anschrift",
+  "ustId", "einheitLabel", "rollennamen"];
+/* Adressänderungen (D1a): genau die Felder, die die Konsole für die
+   Erkennung von Kontoübernahmen zeigt — wer (über die Rolle der Person),
+   wann, von welcher zu welcher Anmeldeadresse. Nichts sonst. */
+const BETREIBER_ADRESSAENDERUNG = ["personId", "zeit", "von", "nach"];
+const BETREIBER_PERSON = ["id", "rolle", "rolleSeit", "status", "eintritt", "austritt"];
+const istObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+
+/** Eine Person in der Sicht des Betreibers: nur das Gerüst für die Abrechnung. */
+export function betreiberPersonSicht(p) {
+  if (!istObj(p)) return null;
+  const aus = nimm(p, BETREIBER_PERSON);
+  aus.zugehoerigkeit = liste(p.zugehoerigkeit).filter(istObj).map((z) => nimm(z, ["ab", "einheitId"]));
+  if (Array.isArray(p.rolleVerlauf)) aus.rolleVerlauf = p.rolleVerlauf.filter(istObj).map((z) => nimm(z, ["ab", "rolle"]));
+  return aus;
+}
+
+/** Ein Betrieb in der Sicht des Betreibers. */
+export function betriebSichtBetreiber(m) {
+  if (!istObj(m)) return null;
+  const aus = nimm(m, BETREIBER_BETRIEB);
+  if (Array.isArray(m.adressAenderungen))
+    aus.adressAenderungen = m.adressAenderungen.filter(istObj).map((a) => nimm(a, BETREIBER_ADRESSAENDERUNG));
+  aus.personen = liste(m.personen).filter(istObj).map(betreiberPersonSicht);
+  aus.einheiten = liste(m.einheiten).filter(istObj).map((e) => nimm(e, ["id", "name", "standortId", "pool"]));
+  aus.standorte = liste(m.standorte).filter(istObj).map((s) => nimm(s, ["id", "name"]));
+  aus.dienstarten = liste(m.dienstarten).filter(istObj).map((x) => nimm(x, ["id"]));
+  /* Nur der Zeitpunkt der letzten Änderung — die Einträge selbst nennen
+     Personen und Vorgänge. */
+  aus.protokoll = liste(m.protokoll).filter(istObj).slice(0, 1).map((x) => nimm(x, ["zeit"]));
+  return aus;
+}
+
+/** Der Bestand in der Sicht des Betreibers: oben seine Felder, darunter
+    alle Betriebe des Raums — jeder gekürzt. */
+export function bestandSichtBetreiber(bestand) {
+  if (!istObj(bestand)) return bestand;
+  const aus = nimm(bestand, BETREIBER_OBEN);
+  aus.session = null;
+  aus.mandanten = liste(bestand.mandanten).filter(istObj).map(betriebSichtBetreiber);
+  return aus;
+}
+
 
 /* ------------------------------------------------------------------------
    PLANUNG UND LEITUNG (Commit 1e.3)
@@ -652,7 +736,9 @@ export const VOLL_PERSON = PERSONENFELDER.filter((f) => !VOLL_PERSON_WEG.include
 /** Was Planung und Leitung im Betrieb nicht bekommen: Vertrag, Rechnungsangaben
     und die interne Notiz des Betreibers, die Raumkennung. */
 export const VOLL_BETRIEB_WEG = ["tarif", "preisgestaltung", "rabattGrund", "seit", "bis", "testTage",
-  "selbstAngelegt", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum"];
+  "selbstAngelegt", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum",
+  /* Kein Bestandsfeld (Commit D1c) — auch nicht in Vollausgabe und Sicherung. */
+  "session"];
 /** Der Betrieb: alle Felder des Katalogs ohne die obigen. lohnarten bleibt
     (Lohnexport), adressAenderungen vorerst ebenfalls (die Oberfläche schreibt
     sie beim Ändern der eigenen Anmeldeadresse fort). */

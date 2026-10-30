@@ -69,6 +69,9 @@ const tS = await anmelden(await zugang("subplaner", "s1"));
 const OBEN = ["betreiber", "tarife", "rechnungen", "protokoll", "selbststarts"];
 const IM_BETRIEB = ["preisgestaltung", "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "raum", "lohnarten"];
 const vorher = (await lies(tB)).bestand;
+/* Seit Commit D1 liest der Betreiber nur einen Ausschnitt — Plan und
+   lohnarten prüft die Leitung nach. */
+const vorherL = (await lies(tL)).bestand;
 
 for (const [name, t] of [["Planung", tP], ["Leitung", tL]]) {
   const r = await lies(t);
@@ -83,10 +86,11 @@ for (const [name, t] of [["Planung", tP], ["Leitung", tL]]) {
   const oben = OBEN.filter((f) => JSON.stringify(jetzt[f]) !== JSON.stringify(vorher[f]));
   pruef(`${name}: oben nichts verändert`, oben.length === 0, oben.join(", "));
   const imB = IM_BETRIEB.filter((f) => JSON.stringify(jetzt.mandanten[0][f]) !== JSON.stringify(vorher.mandanten[0][f]));
-  pruef(`${name}: im Betrieb nichts verändert`, imB.length === 0, imB.join(", "));
+  const lohnarten = JSON.stringify((await lies(tL)).bestand.mandanten[0].lohnarten) === JSON.stringify(vorherL.mandanten[0].lohnarten);
+  pruef(`${name}: im Betrieb nichts verändert`, imB.length === 0 && lohnarten, imB.join(", ") + (lohnarten ? "" : " lohnarten"));
 }
 {
-  const jetzt = (await lies(tB)).bestand;
+  const jetzt = (await lies(tL)).bestand;
   pruef("Beide Planänderungen sind angekommen", jetzt.mandanten[0].abweichungen["a1|2026-12-01"] === "F"
     && jetzt.mandanten[0].abweichungen["a1|2026-12-02"] === "F");
 }

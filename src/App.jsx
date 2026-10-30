@@ -21944,7 +21944,8 @@ function AppInnen() {
 
       bewirbDich: (asId, text) => mUpd((m) => {
         const a = (m.ausschreibungen || []).find((x) => x.id === asId);
-        const pid = (m.session || {}).personId || sitz.person.id;
+        /* Die eigene Person aus der Sitzung — nie aus dem Betrieb (Commit D1c). */
+        const pid = sitz.person.id;
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const pruef = darfSichBewerben(m, pid, a);
         if (!pruef.darf) { melde(`Bewerbung nicht möglich: ${pruef.grund}.`); return m; }
@@ -21955,7 +21956,7 @@ function AppInnen() {
       }, "Auf offene Schicht beworben"),
 
       ziehBewerbungZurueck: (asId) => mUpd((m) => {
-        const pid = (m.session || {}).personId || sitz.person.id;
+        const pid = sitz.person.id;
         melde("Bewerbung zurückgezogen.");
         return { ...m, ausschreibungen: (m.ausschreibungen || []).map((x) => x.id !== asId ? x
           : { ...x, bewerbungen: (x.bewerbungen || []).filter((b) => b.personId !== pid) }) };

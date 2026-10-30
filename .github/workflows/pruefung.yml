@@ -217,6 +217,30 @@ jobs:
       - name: Schutzregeln Ersatzsuche
         run: npm run pruefung:schutzregeln-ersatzsuche
 
+      # Betreiber: Positivliste statt des ganzen Raums, keine Personaldaten (D1).
+      - name: Betreibersicht
+        run: npm run pruefung:betreiber-sicht
+
+      # session ganz oben ist kein Bestandsfeld: verworfen, null für jede Rolle, Altbestand bereinigt (D1b).
+      - name: Session-Kanal
+        run: npm run pruefung:session-kanal
+
+      # session am Betrieb ebenso: nie ausgeliefert, verworfen, Altbestand bereinigt — auch Vollausgabe, Wiederherstellung (D1c).
+      - name: Session am Betrieb
+        run: npm run pruefung:mandanten-session
+
+      # Unbekannte Rolle: kein Bestand, 403 außer Abmelden; /einrichten nur bekannte Rollen (D1d).
+      - name: Unbekannte Rollen
+        run: npm run pruefung:rollen-failclosed
+
+      # Unbekannte Rolle schon an den Eintrittspunkten: keine Sitzung; Kalender und Zustellung 403 (D1e).
+      - name: Unbekannte Rollen an Eintrittspunkten
+        run: npm run pruefung:rollen-eintritt
+
+      # Kalenderfeed: bei jedem Abruf Raum, Betrieb, Person, Status und Rolle prüfen; Altfeeds widerrufen (D1f, #14).
+      - name: Kalenderfeed-Autorität
+        run: npm run pruefung:kalender-feed-autoritaet
+
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
       # wenn sie in Betrieb gehen: Was an Passwortablage und Tokenmechanik
@@ -603,6 +627,26 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.3.
+
+      # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreibersicht (HTTP)
+        run: npm run pruefung:betreiber-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.2.
+
+      # session ganz oben: Betrieb A schreibt, B und Betreiber sehen nichts; 409 ebenso (D1b).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Session-Kanal (HTTP)
+        run: npm run pruefung:session-kanal-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.1.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

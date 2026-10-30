@@ -152,9 +152,10 @@ for (const [name, sitz, ich] of [["Planung", PLANER, "p1"], ["Leitung", LEITUNG,
       for (const f of BETRIEB_WEG) expect(neu[f], f).toEqual(roh[f]);
       for (const f of OBEN_WEG) expect(e[f], f).toEqual(g[f]);
       expect(e.mandanten[1]).toEqual(g.mandanten[1]);
-      const betreiber = bestandFuerRolle(e, BETREIBER);
-      expect(betreiber.mandanten[0].personen.find((x) => x.id === "a1").iban).toBe("IBAN-a1");
-      expect(betreiber.rechnungen).toEqual(g.rechnungen);
+      /* Gespeichert direkt prüfen — seit Commit D1 sieht auch der Betreiber
+         nur einen Ausschnitt. */
+      expect(e.mandanten[0].personen.find((x) => x.id === "a1").iban).toBe("IBAN-a1");
+      expect(e.rechnungen).toEqual(g.rechnungen);
     });
     it("Angriff: fremdes kalenderGeheim, iban, steuerId, Betreiberfeld gezielt mitschicken — wirkungslos", () => {
       const { g, e } = rundweg((x, m) => {
@@ -182,8 +183,14 @@ for (const [name, sitz, ich] of [["Planung", PLANER, "p1"], ["Leitung", LEITUNG,
   });
 }
 
-describe("Betreiber: Sicht unverändert vollständig", () => {
-  it("bekommt den ganzen Bestand", () => {
-    expect(bestandFuerRolle(bestand(), BETREIBER)).toEqual(bestand());
+/* Bis Commit D1 bekam der Betreiber den ganzen Bestand. Seit D1 eine eigene
+   Positivliste (pruefungen/betreiber-sicht.test.js). */
+describe("Betreiber: eigene Positivliste, nicht der ganze Bestand", () => {
+  it("oben seine Felder, im Betrieb keine Personaldaten", () => {
+    const b = bestandFuerRolle(bestand(), BETREIBER);
+    expect(b.rechnungen).toEqual(bestand().rechnungen);
+    expect(b.betreiber).toEqual(bestand().betreiber);
+    const text = JSON.stringify(b.mandanten);
+    for (const s of ["IBAN-a1", "kal-geheim-a1", "Mutter von a1"]) expect(text).not.toContain(s);
   });
 });

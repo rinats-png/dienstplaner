@@ -36,6 +36,8 @@ import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
 
 const ALT = (raum) => `bestand:${raum}`;
+/** Schlüssel eines noch nicht zerlegten Altbestands (für Leser, die Lesefehler selbst unterscheiden müssen). */
+export const altBestandSchluessel = ALT;
 const STAND = (raum, nr) => `stand:${raum}:${nr}`;
 const STAND_ZEIGER = (raum) => `stand:${raum}:aktuell`;
 
@@ -112,9 +114,30 @@ export const monatAusKennung = (id) => (String(id).split("::")[1] || id);
  *   zusammengefuehrt }, sonst { ok: false, grund: "konflikt", streit,
  *   bestand, stand, zeit, durch }
  */
-export async function bestandSchreiben(store, raum, neuerBestand, {
+/** session ganz oben (D1b) und am Betrieb (D1c) sind keine Bestandsfelder:
+    oben null, am Betrieb entfernt. */
+function ohneSitzung(b) {
+  if (!b || typeof b !== "object" || Array.isArray(b)) return b;
+  const aus = { ...b, session: null };
+  if (Array.isArray(b.mandanten)) aus.mandanten = b.mandanten.map((m) => {
+    if (!m || typeof m !== "object" || !("session" in m)) return m;
+    const { session, ...rest } = m; // eslint-disable-line no-unused-vars
+    return rest;
+  });
+  return aus;
+}
+
+export async function bestandSchreiben(store, raum, neuerBestandRoh, {
   erwarteterStand = null, durch = "unbekannt",
 } = {}) {
+  /* session ist kein Bestandsfeld (Commit D1b): Die Sitzung lebt im Browser
+     und auf dem Server getrennt vom Bestand. Ganz oben gespeichert war sie
+     ein Kanal, über den eine Rolle in Betrieb A Daten ablegen konnte, die
+     Rollen in Betrieb B desselben Raums zurückbekamen. Jeder Schreibweg
+     (PUT, Anlegen, Wiederherstellen, Stempeln …) läuft hier durch — hier
+     wird sie verworfen; ein Altinhalt verschwindet beim nächsten Schreiben.
+     Ebenso session am Betrieb (Commit D1c). */
+  const neuerBestand = ohneSitzung(neuerBestandRoh);
   const zeigerRoh = await store.get(STAND_ZEIGER(raum), { type: "json" }).catch(() => null);
   const aktuellerStand = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr))
     ? Number(zeigerRoh.nr) : null;
@@ -166,7 +189,9 @@ export async function bestandSchreiben(store, raum, neuerBestand, {
 
   /* Keine Überschneidung: Beide Arbeiten passen nebeneinander. Der aktuelle
      Stand ist die Grundlage, die eigenen Änderungen kommen obendrauf. */
-  const zAktuell = zerlegen(jetzt.bestand);
+  /* Auch der übernommene aktuelle Kern verliert einen Altinhalt in session
+     (D1b, D1c) — sonst bliebe er stehen, wenn nur andere den Kern geändert haben. */
+  const zAktuell = zerlegen(ohneSitzung(jetzt.bestand));
   const kernNimmt = meine.has("kern") ? zNeu.kern : zAktuell.kern;
   const scherben = new Map(zAktuell.scherben);
   for (const id of meine) {

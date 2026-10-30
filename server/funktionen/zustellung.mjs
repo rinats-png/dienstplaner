@@ -2,7 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
-import { eigenerMandant, wirksameRolle, imEigenenBereich } from "../lib/rechte.mjs";
+import { eigenerMandant, wirksameRolle, imEigenenBereich, rolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden } from "../lib/versand.mjs";
 
 /* ==========================================================================
@@ -73,6 +73,11 @@ export default async (req) => {
     /* Die Sitzung kommt aus dem einen Prüfpunkt (lib/arbeitssitzung.mjs). */
     const s = (await arbeitssitzungLesen(req, { store: store() })).sitzung;
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
+    /* Unbekannte Rolle: nichts zustellen, kein Gerät anmelden — nur das
+       Abmelden des eigenen Geräts bleibt (Commit D1e). Ohne diese Prüfung
+       galt über wirksameRolle die Rolle der gebundenen Person. */
+    if (!rolleBekannt(s.rolle) && !(pfad === "abmelden" && req.method === "POST"))
+      return antwort({ fehler: "Keine Berechtigung." }, 403);
 
     /* --------------------------- Zustellen ---------------------------- */
     if (pfad === "senden" && req.method === "POST") {
