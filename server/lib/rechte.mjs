@@ -843,8 +843,17 @@ function abgeleiteteEntfernen(uebermittelt) {
   if (!uebermittelt || typeof uebermittelt !== "object" || !Array.isArray(uebermittelt.mandanten)) return uebermittelt;
   const ohne = (p) => (p && typeof p === "object" && ABGELEITETE_PERSONENFELDER.some((f) => Object.prototype.hasOwnProperty.call(p, f))
     ? Object.fromEntries(Object.entries(p).filter(([k]) => !ABGELEITETE_PERSONENFELDER.includes(k))) : p);
-  return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m) => (m && typeof m === "object" && Array.isArray(m.personen)
-    ? { ...m, personen: m.personen.map(ohne) } : m)) };
+  /* sichtIstDaten (E1) entsteht nur in der Antwort — wie die abgeleiteten
+     Personenfelder wird es vor dem Zusammenführen entfernt, nie gespeichert. */
+  const ohneVermerk = (m) => {
+    if (!m || typeof m !== "object" || !("sichtIstDaten" in m)) return m;
+    const { sichtIstDaten, ...rest } = m; // eslint-disable-line no-unused-vars
+    return rest;
+  };
+  return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m0) => {
+    const m = ohneVermerk(m0);
+    return m && typeof m === "object" && Array.isArray(m.personen) ? { ...m, personen: m.personen.map(ohne) } : m;
+  }) };
 }
 
 /** Zusammenführen für jede Rolle — das Ergebnis trägt session: null

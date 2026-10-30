@@ -448,7 +448,9 @@ describe("Betriebsrat (9., 10.)", () => {
     expect(m.kompetenzen[0].zugedacht).toEqual([0, 1]);
     expect(fremdePerson(m, 1).kompetenzNachweise).toHaveLength(1);
     expect(fremdePerson(m, 1).qualNachweise).toEqual([{ qualId: "pfk", ablauf: "2027-01-01" }]);
-    expect(m.erfassung["1|2026-10-01"]).toEqual({ start: "06:30", ende: "13:00", bestaetigt: true });
+    /* E1: keine personenbezogenen Ist-Zeiten mehr (vorher: Zeiten ohne Grund); die Oberfläche erfährt es. */
+    expect(m.erfassung).toEqual({});
+    expect(m.sichtIstDaten).toEqual({ umfang: "keine" });
   });
   it("bekommt keine fremden sensiblen Rohdaten", () => {
     for (const f of FREMD_WEG.filter((x) => x !== "kompetenzNachweise"))

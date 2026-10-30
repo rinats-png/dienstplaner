@@ -321,14 +321,6 @@ function standorte(w) {
   return liste(w).map((s) => nimm(s, ["id", "name", "land", "bundesland"]));
 }
 
-/* Zeiterfassung für den Betriebsrat: Zeiten für Prüfung und Verteilung,
-   ohne den freien Korrekturgrund. */
-function erfassungOhneGrund(w) {
-  const aus = {};
-  for (const [k, v] of Object.entries(w && typeof w === "object" ? w : {}))
-    aus[k] = nimm(v, ["start", "ende", "bestaetigt", "pause"]);
-  return aus;
-}
 
 /* ------------------------------------------------------------------------
    DER KATALOG DER BETRIEBSFELDER
@@ -373,7 +365,12 @@ export const BETRIEB = {
   selbstplanung: [R(selbstplanung), WEG],
   nachrichten: [NUR_EIGENE, NUR_EIGENE],
   notrufe: [NUR_EIGENE, NUR_EIGENE],
-  erfassung: [NUR_EIGENE, R(erfassungOhneGrund)],
+  /* Ist-Zeiten und Stempelereignisse sind personenbezogen (E1): Beschäftigte
+     nur die eigenen, der Betriebsrat keine — die Mitbestimmung betrifft das
+     Verfahren, nicht die Zeiten einzelner Personen. Eine aggregierte
+     Auswertung für den Betriebsrat ist ein eigenes Thema. Bis E1 bekam der
+     Betriebsrat die Zeiten aller Personen ohne Korrekturgrund. */
+  erfassung: [NUR_EIGENE, WEG],
   einstempeln: [NUR_EIGENE, WEG],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
@@ -449,7 +446,17 @@ export function betriebSicht(m, sitzung) {
     eigene Betrieb. */
 export function bestandSicht(bestand, sitzung, eigener) {
   const aus = nimm(bestand, OBEN);
-  if (eigener) aus.mandanten = [betriebSicht(eigener, sitzung)];
+  if (eigener) {
+    aus.mandanten = [betriebSicht(eigener, sitzung)];
+    /* Der Oberfläche sagen, dass Ist-Daten aus Datenschutzgründen fehlen (E1):
+       Sonst hielte sie eine fehlende Erfassung für „nicht erfasst" und rechnete
+       mit der Planzeit, als wäre sie die tatsächliche (src/istdaten.js). Das
+       Feld entsteht nur in der Antwort; ein gespeichertes zählt nie (es steht
+       in keinem Katalog). */
+    const ich = sitzung && sitzung.person;
+    aus.mandanten[0].sichtIstDaten = sitzung && sitzung.rolle === "mitarbeiter" && ich !== null && ich !== undefined
+      ? { umfang: "eigene", person: ich } : { umfang: "keine" };
+  }
   return aus;
 }
 
@@ -617,6 +624,12 @@ export function betriebSichtSchicht(m, ctx) {
     } else neu = /** @type {any} */ (regel).fn(wert, c);
     if (neu !== undefined) aus[feld] = neu;
   }
+  /* Ist-Zeiten bekommt die Schichtverantwortung nur für sich und den eigenen
+     Bereich (schichtErfassung). Für alle anderen fehlt die Erfassung aus
+     Datenschutzgründen — die Oberfläche darf dort nicht die Planzeit als
+     Ist-Zeit rechnen (E1, src/istdaten.js). Nur in der Antwort. */
+  aus.sichtIstDaten = { umfang: "personen", personen: liste(m.personen).filter(Boolean).map((p) => String(p.id))
+    .filter((id) => ["eigen", "bereich"].includes(umfangDer(c, id))) };
   return aus;
 }
 
