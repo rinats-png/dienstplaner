@@ -36,6 +36,8 @@ import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
 
 const ALT = (raum) => `bestand:${raum}`;
+/** Schlüssel eines noch nicht zerlegten Altbestands (für Leser, die Lesefehler selbst unterscheiden müssen). */
+export const altBestandSchluessel = ALT;
 const STAND = (raum, nr) => `stand:${raum}:${nr}`;
 const STAND_ZEIGER = (raum) => `stand:${raum}:aktuell`;
 
