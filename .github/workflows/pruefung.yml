@@ -48,6 +48,10 @@ jobs:
       - name: Stempel- und Ist-Daten unter Rollenschutz
         run: npm run pruefung:stempeldaten && npm run pruefung:istdaten
 
+      # Geo V1: Standortprüfung beim Stempeln — drei Zustände, Genauigkeit, gerundete Entfernung, Schalter (Vorgabe aus).
+      - name: Standortprüfung beim Stempeln
+        run: npm run pruefung:geo
+
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen

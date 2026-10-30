@@ -9,8 +9,9 @@ import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/cod
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { geoUrteil } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen, selbstauskunftPruefen } from "../lib/zeiterfassung.mjs";
+import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen } from "../lib/versand.mjs";
@@ -101,53 +102,7 @@ const neuAnmelden = () => antwort({ fehler: "Bitte neu anmelden.",
   text: "Für diesen Schritt muss die Anmeldung jünger als zwanzig Minuten sein.",
   neuAnmelden: true }, 403);
 
-/* --------------------------------------------------------------------------
-   ORTSPRÜFUNG
-
-   Dieselbe Rechnung wie bisher im Browser — nur an einer Stelle, an der sie
-   niemand umschreiben kann. Gespeichert wird weiterhin nur das Urteil, nie
-   die Koordinate: Der Betrieb muss wissen, ob jemand am Einsatzort war,
-   nicht wo er sich aufhält.
-   -------------------------------------------------------------------------- */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const bogen = (g) => (g * Math.PI) / 180;
-  const dLat = bogen(lat2 - lat1);
-  const dLon = bogen(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(bogen(lat1)) * Math.cos(bogen(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
-/** Welche Einheit hat die Person an diesem Tag? */
-function einheitAm(person, datum) {
-  const liste = (person.zugehoerigkeit || [])
-    .filter((z) => !z.ab || z.ab <= datum)
-    .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
-  return liste.length ? liste[liste.length - 1].einheitId : null;
-}
-
-function ortPruefen(m, person, datum, lat, lon) {
-  if (typeof lat !== "number" || typeof lon !== "number"
-      || !Number.isFinite(lat) || !Number.isFinite(lon))
-    return { geprueft: false, innerhalb: null, text: "Ohne Standortfreigabe erfasst" };
-
-  const eid = einheitAm(person, datum);
-  const einheit = (m.einheiten || []).find((x) => x.id === eid);
-  const st = einheit && (m.standorte || []).find((x) => x.id === einheit.standortId);
-  if (!st || typeof st.lat !== "number" || typeof st.lon !== "number")
-    return { geprueft: false, innerhalb: null, text: "Kein Standort hinterlegt" };
-
-  const d = abstandMeter(lat, lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return {
-    geprueft: true,
-    innerhalb: d <= radius,
-    abstand: d,
-    text: d <= radius ? `Am Einsatzort (${d} m)`
-      : `Abweichend, ${d > 1500 ? `${(d / 1000).toFixed(1)} km` : `${d} m`} entfernt`,
-  };
-}
+/* Die Ortsprüfung beim Stempeln steht in lib/geo.mjs (Geo V1). */
 
 /* --------------------------------------------------------------------------
    SICHERUNGEN AUSDÜNNEN
@@ -951,7 +906,7 @@ export default async (req, context) => {
       const bSt = await bremse("schreiben", kSt);
       if (!bSt.frei) return zuVielAntwort(bSt.wartet);
 
-      const { datum, art, lat, lon } = rumpf;
+      const { datum, art, lat, lon, accuracy } = rumpf;
       if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
         return antwort({ fehler: "Kein gültiges Datum." }, 400);
       if (art !== "start" && art !== "ende")
@@ -984,27 +939,45 @@ export default async (req, context) => {
       const zeit = jetzt.toLocaleTimeString("de-DE", {
         hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
 
-      const urteil = ortPruefen(m, person, datum, lat, lon);
+      /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
+         Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
+         mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
+         nie ab: Die Stempelzeit wird in jedem Fall gespeichert. */
+      const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy } });
 
       const k = `${person.id}|${datum}`;
       const alt = (m.einstempeln || {})[k] || {};
       /* Ein zweites Ein- oder Ausstempeln am selben Tag überschrieb bisher
          das erste — ein erneutes Einstempeln löschte dabei sogar das schon
          gestempelte Ende. Gestempeltes bleibt; korrigieren kann die Leitung. */
-      if ((art === "start" && alt.start) || (art === "ende" && alt.ende)) {
+      /* Auch ein Start nach einem schon gestempelten Ende (START_FEHLT) ersetzte
+         sonst den Eintrag samt Ende — Gestempeltes bleibt. */
+      if ((art === "start" && (alt.start || alt.ende)) || (art === "ende" && alt.ende)) {
         await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
-        return antwort({ fehler: art === "start" ? "Für diesen Tag ist schon eingestempelt."
+        return antwort({ fehler: art === "start" && alt.start ? "Für diesen Tag ist schon eingestempelt."
+          : art === "start" ? "Für diesen Tag ist schon ausgestempelt — den Beginn trägt die Leitung nach."
           : "Für diesen Tag ist schon ausgestempelt.",
-        code: art === "start" ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
+        code: art === "start" && alt.start ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
       }
+      /* Kennzeichen statt Ablehnung (E5, E10): Einstempeln ohne geplanten
+         Dienst ist erlaubt (UNGEPLANTER_DIENST); ein Ende ohne Start wird
+         gespeichert (START_FEHLT) — ohne erfundene Startzeit und ohne
+         Ist-Dauer: Dann entsteht keine bestätigte Erfassung, die Zeit wird
+         über „Zeiten bestätigen" bzw. die Leitung vervollständigt. */
+      const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
+      const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
+      if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+      const startFehlt = art === "ende" && !alt.start;
+      if (startFehlt) markieren("START_FEHLT");
       const neu = art === "start"
         ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
-            geprueftStart: urteil.geprueft }
+            geprueftStart: urteil.geprueft, geoStart: urteil.geo }
         : { ...alt, ende: zeit, ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
-            geprueftEnde: urteil.geprueft };
+            geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
+      if (markierungen.length) neu.markierungen = markierungen;
 
       let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-      if (art === "ende") {
+      if (art === "ende" && !startFehlt) {
         neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
           [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
       }
@@ -1025,8 +998,8 @@ export default async (req, context) => {
       /* Zurück geht der gespeicherte Stand, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, etag: ergSt.stand || null, datum, eintrag: neu,
-        erfassung: art === "ende" ? neuerMandant.erfassung[k] : null });
+        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
+        erfassung: art === "ende" && !startFehlt ? neuerMandant.erfassung[k] : null });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------

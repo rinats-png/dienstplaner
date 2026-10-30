@@ -232,12 +232,15 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
   bb.mandanten[0].einheiten = [{ id: "e1", name: "Wohnbereich 1", standortId: "st1" }];
   bb.mandanten[0].personen = bb.mandanten[0].personen.map((p) => p.id === 0
     ? { ...p, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] } : p);
+  /* Seit Geo V1 prüft der Server nur bei eingeschaltetem Betriebsschalter
+     (Vorgabe aus, schalten darf die Leitung) und mit Genauigkeit der Messung. */
+  bb.mandanten[0].einstellungen = { ...(bb.mandanten[0].einstellungen || {}), geoPruefung: true };
   await schreib(tL, bb, rL2.etag);
 
   const stempel = async (art, lat, lon) => {
     const a = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
       headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
-      body: JSON.stringify({ datum: heute, art, lat, lon }) });
+      body: JSON.stringify({ datum: heute, art, lat, lon, accuracy: 10 }) });
     return { status: a.status, ...(await a.json()) };
   };
 
@@ -252,7 +255,7 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
   const gelogen = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
     headers: { authorization: `Bearer ${tS}`, "content-type": "application/json" },
     body: JSON.stringify({ datum: heute, art: "ende",
-      lat: 52.5200, lon: 13.4050, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
+      lat: 52.5200, lon: 13.4050, accuracy: 10, innerhalb: true, ort: "Am Einsatzort (0 m)" }) });
   const gelogenD = await gelogen.json();
   pruef("Weit entfernt wird als abweichend erkannt",
     gelogen.status === 200 && gelogenD.innerhalbEnde !== true && gelogenD.innerhalb === false,
