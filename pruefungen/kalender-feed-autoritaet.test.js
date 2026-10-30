@@ -13,7 +13,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -41,7 +41,7 @@ const person = (id, rolle = "mitarbeiter", extra = {}) => ({ id, vorname: `V${id
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
 const betrieb = (id, personen) => ({ id, name: `Betrieb ${id}`, status: "aktiv", einheiten: [{ id: "e1" }], standorte: [],
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }], personen, abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [] });
-const IDS = ["ok", "weg", "anon", "gesperrt", "aus", "heute", "rolle", "ohnestatus"];
+const IDS = ["ok", "weg", "anon", "gesperrt", "aus", "heute", "rolle", "ohnestatus", "reakt", "lesefehler"];
 const start = () => ({ version: 9, mandanten: [
   betrieb("m-a", [person("l1", "leitung"), ...IDS.map((i) => person(i))]),
   betrieb("m-b", [person("b1")]),
@@ -122,22 +122,69 @@ describe("Entzug: jeweils 404", () => {
     /* Raum nicht mehr vorhanden */
     await laden().delete(S.kernSchluessel(RAUM2));
   });
-  for (const [k, warum] of [["weg", "Person entfernt"], ["anon", "Person anonymisiert"], ["gesperrt", "Person deaktiviert"],
-    ["aus", "Person ausgetreten"], ["rolle", "unbekannte Personenrolle"], ["b1", "Betrieb entfernt"], ["x1", "Raum nicht mehr vorhanden"]]) {
-    it(`${warum}: 404`, async () => {
+  /* Seit D1g endgültig widerrufen: feed:, feeddaten: und der genau zugehörige Index sind danach weg. */
+  const weg = async (k, raum, mid) => {
+    const h = hash(G[k].geheim);
+    expect(await laden().get(`feed:${h}`, { type: "json" }), `feed: ${k}`).toBeNull();
+    expect(await laden().get(`feeddaten:${h}`, { type: "json" }), `feeddaten: ${k}`).toBeNull();
+    expect(await laden().get(`feedperson:${raum}:${mid}:${k}`, { type: "json" }), `Index ${k}`).toBeNull();
+  };
+  for (const [k, warum, raum, mid] of [["weg", "Person entfernt", RAUM, "m-a"], ["anon", "Person anonymisiert", RAUM, "m-a"],
+    ["gesperrt", "Person deaktiviert", RAUM, "m-a"], ["aus", "Person ausgetreten (gestern)", RAUM, "m-a"],
+    ["rolle", "unbekannte Personenrolle", RAUM, "m-a"], ["b1", "Betrieb entfernt", RAUM, "m-b"], ["x1", "Raum nicht mehr vorhanden", RAUM2, "m-x"]]) {
+    it(`${warum}: 404 und endgültig widerrufen`, async () => {
+      expect(await laden().get(`feed:${hash(G[k].geheim)}`, { type: "json" }), `vorher ${k}`).toBeTruthy();
       const f = await feed(G[k].geheim);
       expect(f.status).toBe(404);
       expect(f.text).not.toContain("BEGIN:VCALENDAR");
+      await weg(k, raum, mid);
     });
   }
   it("gültig bleiben: unverändert, Austritt heute (zählt noch), ohne Status", async () => {
     for (const k of ["ok", "heute", "ohnestatus"]) expect((await feed(G[k].geheim)).status, k).toBe(200);
   });
-  it("entzogen heißt nicht gelöscht: Rückkehr der Person macht den Feed wieder gültig", async () => {
-    await aendern(RAUM, (b) => { pers(b, "gesperrt").status = "aktiv"; });
-    expect((await feed(G.gesperrt.geheim)).status).toBe(200);
-    await aendern(RAUM, (b) => { pers(b, "gesperrt").status = "gesperrt"; });
-    expect((await feed(G.gesperrt.geheim)).status).toBe(404);
+  it("gültig bleiben die Feeds unverändert gültiger Personen auch nach den Widerrufen", async () => {
+    for (const k of ["ok", "heute", "ohnestatus"]) expect(await laden().get(`feed:${hash(G[k].geheim)}`, { type: "json" }), k).toBeTruthy();
+  });
+});
+
+describe("Reaktivierung (D1g): ein widerrufener Verweis wird nie wieder gültig", () => {
+  it("aktiv 200 → gesperrt 404, gelöscht → wieder aktiv: alter Verweis 404 → neuer Feed 200", async () => {
+    expect((await feed(G.reakt.geheim)).status).toBe(200);
+    await aendern(RAUM, (b) => { pers(b, "reakt").status = "gesperrt"; });
+    expect((await feed(G.reakt.geheim)).status).toBe(404);
+    const h = hash(G.reakt.geheim);
+    expect(await laden().get(`feed:${h}`, { type: "json" })).toBeNull();
+    expect(await laden().get(`feeddaten:${h}`, { type: "json" })).toBeNull();
+    expect(await laden().get("feedperson:feedraum:m-a:reakt", { type: "json" })).toBeNull();
+    await aendern(RAUM, (b) => { pers(b, "reakt").status = "aktiv"; });
+    expect((await feed(G.reakt.geheim)).status).toBe(404);              // der alte Bearer-Link bleibt tot
+    const e = await anfrage(kalender, "/kalender/einrichten", { token: G.reakt.token, rumpf: {} });
+    expect(e.status, e.text).toBe(200);
+    expect(e.geheim).not.toBe(G.reakt.geheim);
+    const dt = await anfrage(kalender, "/kalender/daten", { token: G.reakt.token, rumpf: { geheim: e.geheim, name: "reakt", betrieb: "B", termine: TERMIN } });
+    expect(dt.status, dt.text).toBe(200);
+    expect((await feed(e.geheim)).status).toBe(200);
+    expect((await feed(G.reakt.geheim)).status).toBe(404);
+  });
+});
+
+describe("Technischer Lesefehler (D1g): kein Widerruf", () => {
+  it("beschädigter Bestandskern: 500, der Feed bleibt erhalten und gilt nach der Reparatur wieder", async () => {
+    const { ablageWurzel } = await import("../server/lib/ablage.mjs");
+    const datei = path.join(ablageWurzel(), "centric", "kern%3Afeedraum.json");
+    const vorher = await readFile(datei, "utf8");
+    try {
+      await writeFile(datei, "{ kaputt");
+      const f = await feed(G.lesefehler.geheim);
+      expect(f.status).toBe(500);
+      expect(f.text).not.toContain("BEGIN:VCALENDAR");
+      expect(await laden().get(`feed:${hash(G.lesefehler.geheim)}`, { type: "json" })).toBeTruthy();
+      expect(await laden().get(`feeddaten:${hash(G.lesefehler.geheim)}`, { type: "json" })).toBeTruthy();
+    } finally {
+      await writeFile(datei, vorher);
+    }
+    expect((await feed(G.lesefehler.geheim)).status).toBe(200);
   });
 });
 

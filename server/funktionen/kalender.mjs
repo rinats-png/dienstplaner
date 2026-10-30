@@ -2,7 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
-import { bestandLesen } from "../lib/bestand.mjs";
+import { bestandLesen, altBestandSchluessel } from "../lib/bestand.mjs";
 import { eigenerMandant, rolleBekannt } from "../lib/rechte.mjs";
 import { kernSchluessel } from "../lib/scherben.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
@@ -86,17 +86,29 @@ function gehoertMir(eintrag, b) {
    Angabe „mitarbeiter" wie in der Oberfläche; „betreiber" und „kunde" sind
    keine Rollen von Personen).
 
+   Fehlt die Berechtigung, wird der Feed endgültig widerrufen (Commit D1g):
+   feed:, feeddaten: und der genau zugehörige feedperson:-Index werden
+   gelöscht. Kehrt die Person später zurück, gilt der alte Verweis nicht
+   wieder — sie richtet einen neuen Feed ein. Ein weitergegebener Bearer-Link
+   lebt damit nicht über einen Autoritätsentzug hinaus.
+
+   Widerrufen wird nur bei eindeutigem fachlichem Befund. Ein Lesefehler der
+   Ablage (nicht erreichbar, beschädigter Umschlag) ist keiner: Er wirft,
+   endet im allgemeinen Fehlerzweig (500, protokolliert) und lässt den Feed
+   unangetastet.
+
    Noch nicht geprüft: Konto, Mitgliedschaft, Sperre des Zugangscodes. Dafür
    müsste ein Feed seine Herkunft tragen (Zugangscode bzw. accountId und
    Generation) — ein späterer Schritt; Feeds ohne diese Angabe würden dann
    weiterhin nur über Person und Betrieb geprüft.
    -------------------------------------------------------------------------- */
 async function feedBetrieb(raum) {
-  const kern = await store().get(kernSchluessel(raum), { type: "json" }).catch(() => null);
+  /* Kein .catch: Ein Lesefehler soll werfen (kein Widerruf), nur ein
+     fehlender Schlüssel ergibt null (Raum gibt es nicht mehr). */
+  const kern = await store().get(kernSchluessel(raum), { type: "json" });
   if (kern) return kern;
   /* Ein noch nicht zerlegter Altbestand liegt als ein Blob vor. */
-  const gelesen = await bestandLesen(store(), raum).catch(() => null);
-  return gelesen && gelesen.bestand;
+  return (await store().get(altBestandSchluessel(raum), { type: "json" })) || null;
 }
 
 export function feedPersonGilt(bestand, eintrag, heute = heuteBerlin()) {
@@ -113,9 +125,10 @@ export function feedPersonGilt(bestand, eintrag, heute = heuteBerlin()) {
   return typeof rolle === "string" && rolleBekannt(rolle) && rolle !== "betreiber" && rolle !== "kunde";
 }
 
-/** Altfeed ohne Betriebskennung (vor Commit 3 war die Person frei wählbar):
-    widerrufen, samt Index — nur der Index, der genau auf diesen Hash zeigt. */
-async function altfeedWiderrufen(h, eintrag) {
+/** Einen Feed endgültig widerrufen: feed:, feeddaten: und nur der
+    feedperson:-Index, der genau auf diesen Hash zeigt (Altfeed ohne
+    Betriebskennung, Commit D1f; fehlende Berechtigung, Commit D1g). */
+async function feedEndgueltigWiderrufen(h, eintrag) {
   await feedWiderrufen(h);
   if (!eintrag || typeof eintrag.bestand !== "string" || !eintrag.bestand) return;
   const { blobs } = await store().list({ prefix: `feedperson:${eintrag.bestand}:` }).catch(() => ({ blobs: [] }));
@@ -326,11 +339,16 @@ export default async (req) => {
          bei einem unbekannten Geheimnis. Ein Altfeed ohne Betriebskennung
          wird dabei widerrufen — keine Zuordnung zu einem Betrieb geraten. */
       if (!eintrag.mandantId) {
-        await altfeedWiderrufen(hash(geheim), eintrag);
+        await feedEndgueltigWiderrufen(hash(geheim), eintrag);
         return new Response("Nicht gefunden", { status: 404 });
       }
-      if (!feedPersonGilt(await feedBetrieb(eintrag.bestand), eintrag))
+      /* Commit D1g: Fehlt die Berechtigung, ist der Verweis endgültig
+         verbraucht — auch wenn die Person später zurückkehrt. Ein Lesefehler
+         wirft vorher (feedBetrieb) und widerruft nichts. */
+      if (!feedPersonGilt(await feedBetrieb(eintrag.bestand), eintrag)) {
+        await feedEndgueltigWiderrufen(hash(geheim), eintrag);
         return new Response("Nicht gefunden", { status: 404 });
+      }
 
       const daten = await store().get(`feeddaten:${hash(geheim)}`, { type: "json" });
       if (!daten) return new Response("Noch keine Daten", { status: 404 });
