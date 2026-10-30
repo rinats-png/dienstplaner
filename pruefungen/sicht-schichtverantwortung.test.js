@@ -193,6 +193,9 @@ describe("Rundweg und Rückfüllung", () => {
   it("ohne Rückfüllung scheitert derselbe Rundweg — mit ihr nicht", () => {
     const g = bestand();
     const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SUB))).mandanten[0];
+    /* sichtIstDaten (E1) ist ein Antwortvermerk; zusammenfuehren entfernt ihn
+       vorab (abgeleiteteEntfernen). Hier wird einheitZusammen direkt geprüft. */
+    delete sicht.sichtIstDaten;
     sicht.abweichungen[`a1|${tag(3)}`] = "F";
     expect(einheitZusammen(g.mandanten[0], sicht, SUB).ok).toBe(false);
     expect(einheitZusammen(g.mandanten[0], personenRueckfuellen(g.mandanten[0], sicht, SUB), SUB).ok).toBe(true);

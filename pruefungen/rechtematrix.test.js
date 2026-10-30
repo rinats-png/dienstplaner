@@ -43,7 +43,7 @@ const bestand = () => ({
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), A1, B1],
     abweichungen: { "b1|2026-12-01": "F" },
-    erfassung: { "b1|2026-10-01": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "MK-ERFASSUNGSGRUND" } },
+    erfassung: { "b1|2026-10-01": { start: "MK-ERFASSUNGSZEIT", ende: "14:00", bestaetigt: true, grund: "MK-ERFASSUNGSGRUND" } },
     einstempeln: { "b1|2026-10-01": { start: "06:00", ortStart: "MK-ORTSURTEIL", innerhalbStart: false } },
     abwesenheiten: [{ id: "ab", personId: "b1", art: "krank", von: "2026-12-01", bis: "2026-12-02", notiz: "MK-ABWESENHEITSNOTIZ" }],
     anfragen: [{ id: "an", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: "2026-12-10", bis: "2026-12-11", text: "MK-ANTRAG" }],
@@ -101,6 +101,8 @@ const MATRIX = [
   ["Push-Schlüssel",             "MK-PUSH",                  0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["Zustelleinstellungen",       "MK-ZUSTELLUNG",            0, 0, 0, 0, 0, 0, 0, 0, "A"],
   ["unbekanntes Personenfeld",   "MK-UNBEKANNT-PERSON",      0, 0, 0, 0, 0, 0, 0, 0, "A"],
+  /* E1: fremde Ist-Zeiten auch nicht mehr für den Betriebsrat (vorher: Zeiten ohne Grund). */
+  ["Zeiterfassung: Zeiten (fremd)", "MK-ERFASSUNGSZEIT",     0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["Zeiterfassung: Grund",       "MK-ERFASSUNGSGRUND",       0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["Stempel: Ortsurteil",        "MK-ORTSURTEIL",            0, 0, 0, 1, 1, 0, 1, 1, "A"],
   ["Abwesenheit: Anmerkung",     "MK-ABWESENHEITSNOTIZ",     0, 0, 0, 1, 1, 0, 1, 1, "A"],

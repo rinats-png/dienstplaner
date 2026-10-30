@@ -267,6 +267,58 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
   pruef("Die Uhrzeit stammt vom Server",
     typeof amOrt.zeit === "string" && /^\d{2}:\d{2}$/.test(amOrt.zeit),
     `zeit=${amOrt.zeit}`);
+
+  const rL3 = await lies(tL);
+  const bb2 = JSON.parse(JSON.stringify(rL3.bestand));
+  bb2.mandanten[0].erfassung = {
+    "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
+    "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
+  };
+  bb2.mandanten[0].einstempeln = {
+    "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
+    "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
+  };
+  const wS2 = await schreib(tL, bb2, rL3.etag);
+  pruef("S2: Leitung legt Stempelereignisse an", wS2.status === 200, `Status ${wS2.status}`);
+
+  /* Die Sitzung der Stempeluhr (tS) und der vorhandene Betriebsratscode:
+     weitere Zugänge anzulegen, träfe die Bremse. */
+  const tMs = tS;
+  const tBs = await anmelden(CODES.betriebsrat);
+  const eM = (await lies(tMs)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Mitarbeiter sieht den eigenen Stempel", !!eM["0|2026-09-01"] && eM["0|2026-09-01"].start === "06:01",
+    JSON.stringify(Object.keys(eM)));
+  pruef("S2: Mitarbeiter sieht den Stempel einer Kollegin nicht",
+    eM["1|2026-09-01"] === undefined && !JSON.stringify(eM).includes("3,2 km"), JSON.stringify(Object.keys(eM)));
+  const eB = (await lies(tBs)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Betriebsrat erhält keine Roh-Stempel", Object.keys(eB).length === 0, JSON.stringify(Object.keys(eB)));
+  const eL = (await lies(tL)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Leitung sieht weiterhin alle Stempel", !!eL["0|2026-09-01"] && !!eL["1|2026-09-01"],
+    JSON.stringify(Object.keys(eL)));
+
+  const fM = (await lies(tMs)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Mitarbeiter sieht die eigene Erfassung", !!fM["0|2026-09-01"] && fM["0|2026-09-01"].ende === "14:05",
+    JSON.stringify(Object.keys(fM)));
+  pruef("S2: Mitarbeiter sieht die Erfassung einer Kollegin nicht",
+    fM["1|2026-09-01"] === undefined && !JSON.stringify(fM).includes("Übergabe"), JSON.stringify(Object.keys(fM)));
+  const fB = (await lies(tBs)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Betriebsrat erhält keine personenbezogene Erfassung", Object.keys(fB).length === 0, JSON.stringify(Object.keys(fB)));
+  const fL = (await lies(tL)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Leitung sieht die Erfassung unverändert", !!fL["0|2026-09-01"] && !!fL["1|2026-09-01"],
+    JSON.stringify(Object.keys(fL)));
+
+  /* Speichert eine beschäftigte Person ihre gefilterte Sicht zurück, darf
+     das fremde Stempel und fremde Erfassung nicht löschen. */
+  const rMs = await lies(tMs);
+  const wM = await schreib(tMs, rMs.bestand, rMs.etag);
+  const nachher = (await lies(tL)).bestand.mandanten[0].einstempeln || {};
+  const fNachher = (await lies(tL)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Speichern einer gefilterten Sicht löscht keine fremde Erfassung",
+    wM.status === 200 && !!fNachher["1|2026-09-01"] && fNachher["1|2026-09-01"].grund === "Übergabe länger",
+    `Status ${wM.status}, ${JSON.stringify(Object.keys(fNachher))}`);
+  pruef("S2: Speichern einer gefilterten Sicht löscht keine fremden Stempel",
+    wM.status === 200 && !!nachher["1|2026-09-01"] && !!nachher["0|2026-09-01"],
+    `Status ${wM.status}, ${JSON.stringify(Object.keys(nachher))}`);
 }
 
 

@@ -41,7 +41,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zeiterfassung (fremd; Grund) | – | Zeiten ohne Grund | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten, Ortsurteil | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -110,6 +110,10 @@ Bestand. Lesen: `bestandFuerRolle` liefert jeder Rolle `session: null` (GET und 
 `zusammenfuehren` und — für jeden Schreibweg — `bestandSchreiben` setzen `session: null`; ein mitgeschickter Inhalt
 wird verworfen, ein gespeicherter Altinhalt beim nächsten Schreiben bereinigt. Vorher konnte eine Rolle in Betrieb A
 dort Daten ablegen, die Rollen in Betrieb B desselben Raums zurückbekamen.
+¹⁴ Commit E1: Der Betriebsrat bekommt keine personenbezogenen Ist-Zeiten und Stempelereignisse mehr, Beschäftigte nur die
+eigenen. Die Antwort trägt für beide `sichtIstDaten` (`{umfang: "eigene", person}` bzw. `{umfang: "keine"}`); die Oberfläche
+zeigt dann „nicht verfügbar" statt die Planzeit als Ist-Zeit (`src/istdaten.js`). Eine aggregierte Auswertung für den
+Betriebsrat ist ein eigenes Thema.
 ¹³ Commit D1c: `mandanten[].session` hatte keinen Schreiber; die Oberfläche las daraus nur irrtümlich die eigene
 Person (`bewirbDich`, `ziehBewerbungZurueck`, jetzt nur `sitz.person.id`). Planung und Leitung konnten dort
 beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betriebsrat eingeschlossen — und die
