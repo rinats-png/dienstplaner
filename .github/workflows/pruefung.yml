@@ -656,6 +656,16 @@ jobs:
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.1.
 
+      # Geo V1 über HTTP: Schalter mit Bestätigung, drei Zustände, Standortvalidierung, keine Rohkoordinate.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Standortprüfung beim Stempeln (HTTP)
+        run: npm run pruefung:geo-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.0.
+
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den
       # Betrieb geschafft hätte.

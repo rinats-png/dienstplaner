@@ -7,13 +7,13 @@
    Befund angezeigt wird.
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
-import { entfernungText, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
+import { entfernungText, geoAktiv, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
 
 /** Eine frische, möglichst genaue Messung je Stempelereignis (Geo-Spezifikation B4). */
 export const POSITION_OPTIONEN = Object.freeze({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 
-/** Ist die Geo-Prüfung im Betrieb eingeschaltet? Fehlt das Feld: aus. */
-export const geoPruefungAn = (m) => !!(m && m.einstellungen && m.einstellungen.geoPruefung === true);
+/** Ist die Geo-Prüfung im Betrieb eingeschaltet? Dieselbe Regel wie auf dem Server (geo.mjs). */
+export const geoPruefungAn = geoAktiv;
 
 /**
  * Position für ein Stempelereignis holen — nur, wenn die Prüfung an ist.

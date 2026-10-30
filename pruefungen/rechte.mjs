@@ -234,7 +234,7 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     ? { ...p, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] } : p);
   /* Seit Geo V1 prüft der Server nur bei eingeschaltetem Betriebsschalter
      (Vorgabe aus, schalten darf die Leitung) und mit Genauigkeit der Messung. */
-  bb.mandanten[0].einstellungen = { ...(bb.mandanten[0].einstellungen || {}), geoPruefung: true };
+  bb.mandanten[0].einstellungen = { ...(bb.mandanten[0].einstellungen || {}), geoPruefung: true, geoPruefungBestaetigt: true };
   await schreib(tL, bb, rL2.etag);
 
   const stempel = async (art, lat, lon) => {

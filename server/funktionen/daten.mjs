@@ -9,7 +9,7 @@ import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/cod
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
-import { geoUrteil } from "../lib/geo.mjs";
+import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
@@ -818,6 +818,14 @@ export default async (req, context) => {
       /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
          fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
          ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
+      /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
+         nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
+      const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
+      if (standortGrund) {
+        await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
+        return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
+      }
+
       const form = pruefeGestalt(zuSchreiben);
       if (!form.ok) {
         await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);

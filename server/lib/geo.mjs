@@ -53,6 +53,55 @@ export const koordinateGueltig = (lat, lon) => zahl(lat) && zahl(lon)
 export const genauigkeitGueltig = (a) => zahl(a) && a > 0 && a <= GENAUIGKEIT_MAX;
 export const radiusGueltig = (r) => zahl(r) && r >= RADIUS_MIN && r <= RADIUS_MAX;
 
+/* --------------------------------------------------------------------------
+   STANDORTANGABEN BEIM SCHREIBEN
+
+   Dieselben Wertebereiche wie in der Prüfung, an einer Stelle: Breite
+   −90…90, Länge −180…180, Umkreis 25…5000 m, jeweils als endliche Zahl.
+   Fehlende Werte (undefined, null) sind erlaubt — ein Standort ohne
+   Koordinaten ist gültig, er ist nur nicht prüfbar.
+
+   Geprüft wird nur, was neu ist oder sich ändert. Ein früher gespeicherter
+   ungültiger Wert blockiert keinen unabhängigen Schreibvorgang; die Prüfung
+   beim Stempeln behandelt ihn als NICHT_BEWERTBAR. Ungültiges wird
+   abgewiesen, nicht still korrigiert.
+   -------------------------------------------------------------------------- */
+const STANDORT_FELDER = {
+  lat: { gueltig: (x) => zahl(x) && x >= -90 && x <= 90, text: "Der Breitengrad muss eine Zahl zwischen −90 und 90 sein." },
+  lon: { gueltig: (x) => zahl(x) && x >= -180 && x <= 180, text: "Der Längengrad muss eine Zahl zwischen −180 und 180 sein." },
+  radius: { gueltig: radiusGueltig, text: `Der Umkreis muss eine Zahl zwischen ${RADIUS_MIN} und ${RADIUS_MAX} Metern sein.` },
+};
+const gesetzt = (x) => x !== undefined && x !== null;
+
+/** Grund, warum eine neue oder geänderte Standortangabe ungültig ist — oder null. */
+export function standorteFehler(alteStandorte, neueStandorte) {
+  const alt = new Map((Array.isArray(alteStandorte) ? alteStandorte : []).filter((s) => s && typeof s === "object")
+    .map((s) => [String(s.id), s]));
+  for (const st of Array.isArray(neueStandorte) ? neueStandorte : []) {
+    if (!st || typeof st !== "object") continue;
+    const vorher = alt.get(String(st.id));
+    for (const [feld, regel] of Object.entries(STANDORT_FELDER)) {
+      const wert = st[feld];
+      if (!gesetzt(wert)) continue;
+      if (vorher && Object.is(vorher[feld], wert)) continue;          // unverändert: Altbestand blockiert nicht
+      if (!regel.gueltig(wert)) return `Standort „${st.name || st.id}": ${regel.text}`;
+    }
+  }
+  return null;
+}
+
+/** Dasselbe über alle Betriebe eines Bestands (zugeordnet über die Betriebskennung). */
+export function bestandStandorteFehler(altBestand, neuBestand) {
+  const alt = new Map((altBestand && Array.isArray(altBestand.mandanten) ? altBestand.mandanten : [])
+    .filter((m) => m && typeof m === "object").map((m) => [String(m.id), m]));
+  for (const m of neuBestand && Array.isArray(neuBestand.mandanten) ? neuBestand.mandanten : []) {
+    if (!m || typeof m !== "object") continue;
+    const grund = standorteFehler((alt.get(String(m.id)) || {}).standorte, m.standorte);
+    if (grund) return grund;
+  }
+  return null;
+}
+
 /** Ist die Geo-Prüfung in diesem Betrieb eingeschaltet? Fehlt das Feld: aus. */
 export const geoAktiv = (m) => !!(m && m.einstellungen && m.einstellungen.geoPruefung === true);
 

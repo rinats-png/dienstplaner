@@ -21742,8 +21742,13 @@ function AppInnen() {
       setzeStandortFelder: (id, felder) => mUpd((m) => ({ ...m, standorte: (m.standorte || []).map((s2) => s2.id === id ? { ...s2, ...felder } : s2) }), null),
       /* Geo-Prüfung beim Stempeln: schalten darf nur die Leitung; wann und von
          wem eingeschaltet wurde, setzt der Server. */
-      setzeGeoPruefung: (an) => mUpd((m) => ({ ...m, einstellungen: { ...(m.einstellungen || {}), geoPruefung: !!an } }),
-        an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Einschalten nur mit der Bestätigung der betrieblichen Prüfung; der
+         Server verlangt das Merkmal in derselben Anfrage und speichert es nie. */
+      setzeGeoPruefung: (an) => mUpd((m) => {
+        const e = { ...(m.einstellungen || {}), geoPruefung: !!an };
+        if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
+        return { ...m, einstellungen: e };
+      }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
       loescheStandort: (id) => mUpd((m) => {
         const n = m.einheiten.filter((e) => e.standortId === id).length;
         if (n) { melde(`Dem Standort sind noch ${n} Einheiten zugeordnet.`); return m; }

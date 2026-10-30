@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   geoUrteil, entfernungRunden, entfernungText, koordinateGueltig, radiusGueltig, abstandMeter, standortBundesland,
+  standorteFehler, bestandStandorteFehler,
   INNERHALB, AUSSERHALB, NICHT_BEWERTBAR,
 } from "../server/lib/geo.mjs";
 import { stempelVorgang, positionHolen, geoAnzeige, POSITION_OPTIONEN, geoPruefungAn } from "../src/stempelvorgang.js";
@@ -66,6 +67,34 @@ describe("geo.mjs: Standort und Referenzort", () => {
     expect([nachher.geo.status, nachher.geo.grund, nachher.geo.referenz.id]).toEqual([NICHT_BEWERTBAR, "keine_koordinate_am_referenzort", "st2"]);
     expect(standortBundesland({ land: "NI" })).toBe("NI");
     expect(standortBundesland({ bundesland: "HE", land: "NI" })).toBe("HE");
+  });
+});
+
+describe("geo.mjs: Standortangaben beim Schreiben", () => {
+  const st = (x) => ({ id: "st1", name: "Zentrale", ...x });
+  it("ungültige neue Werte: abgewiesen, nicht still korrigiert", () => {
+    for (const x of [{ lat: 450 }, { lat: -91 }, { lon: -220 }, { lon: 181 }, { radius: 0 }, { radius: -5 }, { radius: 24 },
+      { radius: 10000 }, { lat: "50" }, { lon: NaN }, { radius: "200" }])
+      expect(standorteFehler([], [st(x)]), JSON.stringify(x)).toBeTruthy();
+  });
+  it("gültige Werte und fehlende Koordinaten: zulässig", () => {
+    for (const x of [{}, { lat: undefined, lon: undefined }, { lat: null, lon: null, radius: null }, { lat: 90, lon: -180, radius: 25 },
+      { lat: -90, lon: 180, radius: 5000 }, { lat: 50.1109, lon: 8.6821, radius: 200 }])
+      expect(standorteFehler([], [st(x)]), JSON.stringify(x)).toBeNull();
+  });
+  it("Altbestand: ein unverändert gespeicherter ungültiger Wert blockiert nicht — eine Änderung daran wird geprüft", () => {
+    const alt = [st({ lat: 450, radius: 0 })];
+    expect(standorteFehler(alt, [st({ lat: 450, radius: 0, name: "Zentrale neu" })])).toBeNull();
+    expect(standorteFehler(alt, [st({ lat: 451, radius: 0 })])).toBeTruthy();
+    expect(standorteFehler(alt, [st({ lat: 50, radius: 0 })])).toBeNull();
+    expect(standorteFehler(alt, [st({ lat: 450, radius: 9000 })])).toBeTruthy();
+    expect(standorteFehler(alt, [st({ lat: 450, radius: 0 }), { id: "st2", name: "Neu", lon: -220 }])).toBeTruthy();
+  });
+  it("über den ganzen Bestand, zugeordnet über die Betriebskennung", () => {
+    const alt = { mandanten: [{ id: "m-a", standorte: [st({ lat: 450 })] }] };
+    expect(bestandStandorteFehler(alt, { mandanten: [{ id: "m-a", standorte: [st({ lat: 450 })] }] })).toBeNull();
+    expect(bestandStandorteFehler(alt, { mandanten: [{ id: "m-b", standorte: [st({ lat: 450 })] }] })).toBeTruthy();
+    expect(bestandStandorteFehler(null, { mandanten: [{ id: "m-a", standorte: [st({ radius: 0 })] }] })).toBeTruthy();
   });
 });
 
@@ -248,24 +277,41 @@ describe("Handler: Schalter aus (Vorgabe)", () => {
 });
 
 describe("Handler: Schalter — nur die Leitung, Zeitpunkt und Person setzt der Server", () => {
-  const schalten = async (t, an, extra = {}) => {
+  const schalten = async (t, an, extra = { geoPruefungBestaetigt: true }) => {
     const r = await lies(t);
     const b = JSON.parse(JSON.stringify(r.bestand));
     b.mandanten[0].einstellungen = { ...(b.mandanten[0].einstellungen || {}), geoPruefung: an, ...extra };
     return anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
   };
+  it("Leitung ohne Bestätigung: aus → an abgewiesen, nichts gespeichert", async () => {
+    const w = await schalten(T.l1, true, {});
+    expect(w.status, w.roh).toBe(403);
+    expect(w.roh).toContain("betrieblich geprüft");
+    expect((await gespeichert()).einstellungen.geoPruefung).not.toBe(true);
+    const w2 = await schalten(T.l1, true, { geoPruefungBestaetigt: "ja" });
+    expect(w2.status).toBe(403);
+  });
   it("Planung kann nicht einschalten (wirkungslos)", async () => {
     const w = await schalten(T.p1, true);
     expect(w.status, w.roh).toBe(200);
     expect((await gespeichert()).einstellungen.geoPruefung).not.toBe(true);
   });
   it("Leitung schaltet ein; mitgeschickte Angaben zu Zeitpunkt und Person zählen nicht", async () => {
-    const w = await schalten(T.l1, true, { geoPruefungAktiviertAm: "1999-01-01", geoPruefungAktiviertVon: "p1" });
+    const w = await schalten(T.l1, true, { geoPruefungBestaetigt: true, geoPruefungAktiviertAm: "1999-01-01", geoPruefungAktiviertVon: "p1" });
     expect(w.status, w.roh).toBe(200);
     const e = (await gespeichert()).einstellungen;
     expect(e.geoPruefung).toBe(true);
     expect(e.geoPruefungAktiviertVon).toBe("l1");
     expect(e.geoPruefungAktiviertAm.slice(0, 10)).toBe(new Date().toISOString().slice(0, 10));
+    expect(e).not.toHaveProperty("geoPruefungBestaetigt");                 // nie gespeichert
+  });
+  it("an → an braucht keine neue Bestätigung; Zeitpunkt und Person bleiben", async () => {
+    const vorher = (await gespeichert()).einstellungen;
+    const w = await schalten(T.l1, true, {});
+    expect(w.status, w.roh).toBe(200);
+    const e = (await gespeichert()).einstellungen;
+    expect([e.geoPruefung, e.geoPruefungAktiviertAm, e.geoPruefungAktiviertVon])
+      .toEqual([true, vorher.geoPruefungAktiviertAm, vorher.geoPruefungAktiviertVon]);
   });
   it("Planung kann nicht ausschalten (wirkungslos)", async () => {
     await schalten(T.p1, false);
@@ -274,20 +320,62 @@ describe("Handler: Schalter — nur die Leitung, Zeitpunkt und Person setzt der 
 });
 
 describe("Schalter über die übrigen Schreibwege", () => {
-  it("Schichtverantwortung abgewiesen, Beschäftigte wirkungslos, Kundenrolle wie die Leitung", async () => {
+  it("Schichtverantwortung abgewiesen, Beschäftigte wirkungslos, Kundenrolle wie die Leitung (mit Bestätigung)", async () => {
     const { bestandFuerRolle, zusammenfuehren } = await import("../server/lib/rechte.mjs");
     const g = () => ({ version: 9, mandanten: [{ id: "m-a", einstellungen: { geoPruefung: false }, einheiten: [{ id: "e1" }], standorte: [], dienstarten: [],
       personen: [person("l1", "leitung", { bereich: "ALLE" }), person("s1", "subplaner"), person("a1", "mitarbeiter")], abweichungen: {}, anfragen: [], notrufe: [], nachrichten: [] }] });
-    const versuch = (rolle, pid) => {
+    const versuch = (rolle, pid, bestaetigt = true) => {
       const s = { rolle, person: pid, betrieb: 0, mandantId: "m-a" };
       const b = JSON.parse(JSON.stringify(bestandFuerRolle(g(), s)));
-      b.mandanten[0].einstellungen = { ...(b.mandanten[0].einstellungen || {}), geoPruefung: true };
+      b.mandanten[0].einstellungen = { ...(b.mandanten[0].einstellungen || {}), geoPruefung: true, ...(bestaetigt ? { geoPruefungBestaetigt: true } : {}) };
       return zusammenfuehren(g(), b, s);
     };
     expect(versuch("subplaner", "s1").verweigert).toBeTruthy();
     expect(versuch("mitarbeiter", "a1").mandanten[0].einstellungen.geoPruefung).toBe(false);
     const k = versuch("kunde", "l1").mandanten[0].einstellungen;
     expect([k.geoPruefung, k.geoPruefungAktiviertVon]).toEqual([true, "l1"]);
+    expect(k).not.toHaveProperty("geoPruefungBestaetigt");
+    expect(versuch("kunde", "l1", false).verweigert).toMatch(/betrieblich geprüft/);
+  });
+});
+
+describe("Handler: Standortangaben — direkter Aufruf am Schreibweg vorbei", () => {
+  const setze = async (felder) => {
+    const r = await lies(T.l1);
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    b.mandanten[0].standorte = b.mandanten[0].standorte.map((s) => (s.id === "st1" ? { ...s, ...felder } : s));
+    return anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+  };
+  it("lat 450, lon −220, Umkreis 0 und 10000: 422, nichts gespeichert", async () => {
+    for (const f of [{ lat: 450 }, { lon: -220 }, { radius: 0 }, { radius: 10000 }]) {
+      const w = await setze(f);
+      expect(w.status, JSON.stringify(f) + w.roh).toBe(422);
+      const st = (await gespeichert()).standorte.find((s) => s.id === "st1");
+      expect([st.lat, st.lon, st.radius], JSON.stringify(f)).toEqual([50, 8, 200]);
+    }
+  });
+  it("gültige Änderung: gespeichert; Koordinaten entfernen ist erlaubt", async () => {
+    expect((await setze({ radius: 250 })).status).toBe(200);
+    expect((await gespeichert()).standorte.find((s) => s.id === "st1").radius).toBe(250);
+    expect((await setze({ radius: 200 })).status).toBe(200);
+  });
+  it("Altbestand: ein gespeicherter ungültiger Wert blockiert keinen unabhängigen Schreibvorgang", async () => {
+    const roh = await B.bestandLesen(laden(), RAUM);
+    const b = JSON.parse(JSON.stringify(roh.bestand));
+    b.mandanten[0].standorte.push({ id: "st-alt", name: "Alt", lat: 450, lon: 8, radius: 0 });
+    expect((await B.bestandSchreiben(laden(), RAUM, b, { durch: "Altbestand" })).ok).toBe(true);
+    const r = await lies(T.l1);
+    const n = JSON.parse(JSON.stringify(r.bestand));
+    n.mandanten[0].dienstarten = [...n.mandanten[0].dienstarten, { id: "S", name: "Spät", start: "14:00", ende: "22:00" }];
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: n, etag: r.etag, durch: "Test" } });
+    expect(w.status, w.roh).toBe(200);
+    const g = await gespeichert();
+    expect(g.dienstarten.some((x) => x.id === "S")).toBe(true);
+    expect(g.standorte.find((s) => s.id === "st-alt").lat).toBe(450);
+    /* … und die Prüfung beim Stempeln behandelt ihn als nicht bewertbar */
+    const u = geoUrteil({ m: { ...g, einheiten: [{ id: "e1", standortId: "st-alt" }] }, person: { id: "x", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] },
+      datum: HEUTE, messung: { lat: 50, lon: 8, accuracy: 5 } });
+    expect(u.geo.status).toBe(NICHT_BEWERTBAR);
   });
 });
 
@@ -355,8 +443,23 @@ describe("Handler: Kennzeichen", () => {
   });
 });
 
+describe("Handler: Ausschalten", () => {
+  it("an → aus ohne Bestätigung erlaubt (nur Leitung)", async () => {
+    const r = await lies(T.l1);
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    b.mandanten[0].einstellungen = { ...b.mandanten[0].einstellungen, geoPruefung: false };
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+    expect(w.status, w.roh).toBe(200);
+    expect((await gespeichert()).einstellungen.geoPruefung).toBe(false);
+  });
+});
+
 describe("Handler: Nachtdienst und Altbestand", () => {
   it("offener Beginn von gestern: Ausstempeln für gestern gelingt (Serverregel unverändert)", async () => {
+    const r = await lies(T.l1);
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    b.mandanten[0].einstellungen = { ...b.mandanten[0].einstellungen, geoPruefung: true, geoPruefungBestaetigt: true };
+    expect((await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } })).status).toBe(200);
     const e = await stempeln(T.a6, { datum: GESTERN, art: "ende", lat: nord(10), lon: 8, accuracy: 9 });
     expect(e.status, e.roh).toBe(200);
     expect(e.eintrag.start).toBe("21:57");
