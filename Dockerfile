@@ -54,6 +54,11 @@ COPY server.mjs package.json ./
 # Sicherung und Wiederherstellung der Ablage (BEREITSTELLUNG.md, 5.4) — im Bild,
 # damit der VPS kein eigenes Node braucht.
 COPY werkzeug/ablage-sicherung.mjs ./werkzeug/
+# Feste Proben für das Pre-Production-Gate (docs/PRE-PRODUCTION-GATE.md, 8).
+# Kein Endpunkt, kein Start, keine Argumente: Sie laufen nur, wenn jemand
+# ausdrücklich `node /app/werkzeug/staging-….mjs` im Container aufruft, und
+# sprechen fest http://127.0.0.1:3000 an. Genau diese drei Dateien.
+COPY werkzeug/staging-smoke.mjs werkzeug/staging-geo.mjs werkzeug/staging-aufraeumen.mjs ./werkzeug/
 
 # Datenverzeichnis gehört dem unprivilegierten Benutzer `node` (uid 1000).
 # Im Betrieb wird es durch einen Bind-Mount ersetzt (./data:/data).

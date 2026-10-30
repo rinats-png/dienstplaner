@@ -48,6 +48,10 @@ jobs:
       - name: Stempel- und Ist-Daten unter Rollenschutz
         run: npm run pruefung:stempeldaten && npm run pruefung:istdaten
 
+      # Geo V1: Standortprüfung beim Stempeln — drei Zustände, Genauigkeit, gerundete Entfernung, Schalter (Vorgabe aus).
+      - name: Standortprüfung beim Stempeln
+        run: npm run pruefung:geo
+
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen
@@ -413,6 +417,14 @@ jobs:
       - name: Sicherung und Wiederherstellung
         run: npm run pruefung:sicherung-ablage
 
+      # Die festen Gate-Proben (werkzeug/staging-*.mjs) gegen einen frisch
+      # gestarteten Server auf 127.0.0.1:3000 mit leerer Ablage: Smoke, Geo,
+      # Aufräumen samt Nachweis in der Ablage, Altlasten-Abbruch, Schutz
+      # fremder und namensähnlicher Räume, kein untergeschobenes Ziel.
+      # Läuft vor dem Container-Teil, der Port 3000 danach belegt.
+      - name: Gate-Proben gegen frischen Server
+        run: npm run pruefung:staging-proben
+
       - name: Übersetzen
         run: npm run build
 
@@ -468,6 +480,26 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.9
+
+      # Dieselben Gate-Proben im gebauten Bild, so aufgerufen wie später auf
+      # Staging: docker exec, gehärteter Container (read-only, 1000:1000),
+      # eigener frischer Container — die Rechteprüfung hat das Kontingent
+      # für /einrichten gerade verbraucht.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Gate-Proben im Bild (docker exec)
+        run: |
+          docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs
+          docker exec centric-pruefung node /app/werkzeug/staging-geo.mjs
+          docker exec centric-pruefung node /app/werkzeug/staging-aufraeumen.mjs
+          # Kein untergeschobenes Ziel; im Bild nur die drei Proben aus werkzeug/.
+          if docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs http://192.0.2.1:3000; then
+            echo "Probe nahm ein Argument an"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/werkzeug/zugaenge-anlegen.sh; then
+            echo "werkzeug/zugaenge-anlegen.sh im Bild"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/pruefungen; then
+            echo "pruefungen/ im Bild"; exit 1; fi
+          docker exec centric-pruefung ls /app/werkzeug
 
       # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
       # den echten Anfrageweg, im eigenen frischen Container.
@@ -651,6 +683,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.1.
+
+      # Geo V1 über HTTP: Schalter mit Bestätigung, drei Zustände, Standortvalidierung, keine Rohkoordinate.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Standortprüfung beim Stempeln (HTTP)
+        run: npm run pruefung:geo-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.0.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

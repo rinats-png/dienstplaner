@@ -725,6 +725,43 @@ function einzigerEigenerBetrieb(uebermittelt, id) {
   return null;
 }
 
+/* Der Betriebsschalter für die Geo-Prüfung beim Stempeln (E7). Schalten
+   darf nur, wer org.edit hat (Leitung, Kundenrolle) — die Planung schreibt
+   die übrigen Einstellungen, diesen Schalter nicht. Wann und von wem
+   zuletzt eingeschaltet wurde, setzt der Server; mitgeschickte Werte zählen
+   nicht. Fehlt der Schalter, gilt er als aus.
+
+   Einschalten (aus → an) verlangt zusätzlich die ausdrückliche Bestätigung
+   der betrieblichen Prüfung in derselben Anfrage: geoPruefungBestaetigt:
+   true in den mitgeschickten Einstellungen. Das Merkmal wirkt nur für diese
+   Anfrage und wird nie gespeichert. Ausschalten und „bleibt an" brauchen
+   keine Bestätigung. Eine juristische Einwilligung ist das nicht — nur der
+   technische Nachweis, dass die Leitung die Freigabe bestätigt hat. */
+const GEO_SCHALTER = ["geoPruefung", "geoPruefungAktiviertAm", "geoPruefungAktiviertVon"];
+export const GEO_BESTAETIGUNG_TEXT = "Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.";
+function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
+  const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  const e = { ...neuM.einstellungen };
+  const bestaetigt = e.geoPruefungBestaetigt === true;
+  delete e.geoPruefungBestaetigt;                                   // nur für diese Anfrage
+  for (const feld of GEO_SCHALTER) {
+    if (Object.prototype.hasOwnProperty.call(altE, feld)) e[feld] = altE[feld];
+    else delete e[feld];
+  }
+  const gewuenscht = neuM.einstellungen.geoPruefung === true;
+  if (gewuenscht !== (altE.geoPruefung === true) && darf(rolle, "org.edit")) {
+    if (gewuenscht && !bestaetigt)
+      return { grund: `Die Standortprüfung lässt sich nur mit der Bestätigung einschalten: „${GEO_BESTAETIGUNG_TEXT}"` };
+    e.geoPruefung = gewuenscht;
+    if (gewuenscht) {
+      e.geoPruefungAktiviertAm = new Date().toISOString();
+      e.geoPruefungAktiviertVon = sitzung.person === undefined ? null : sitzung.person;
+    }
+  }
+  return { mandant: { ...neuM, einstellungen: e } };
+}
+
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
 export function eigenerMandant(bestand, sitzung) {
   if (!bestand || !Array.isArray(bestand.mandanten) || !bestand.mandanten.length) return null;
@@ -910,6 +947,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     /* Planung und Leitung: verborgene Felder aus dem gespeicherten Stand. */
     if (umfang === SCHREIBEN_VOLL) {
       geschickt = vollRueckfuellen(ort.betrieb, geschickt, sitzung);
+      /* Geo-Prüfung beim Stempeln (E7): schalten darf nur die Leitung. */
+      const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      if (schalter.grund) return { verweigert: schalter.grund };
+      geschickt = schalter.mandant;
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
