@@ -183,6 +183,36 @@ describe("1 — Verzeichnis der Scherben nicht lesbar", () => {
   });
 });
 
+describe("H1 — GET mit beschädigter Scherbe gibt keinen Bestand mit Lücke heraus", () => {
+  it("GET 503; nach der Reparatur speichert die Oberfläche, und der Monat ist noch da", async () => {
+    const RAUM = "lese-get-luecke";
+    await raumAnlegen(RAUM);
+    const t = await sitzungFuer(RAUM, "l1", "leitung");
+    const datei = scherbenDatei(RAUM, FREMD);
+    const heil = await readFile(datei, "utf8");
+    await writeFile(datei, "{kaputt");
+
+    /* Die Oberfläche lädt, während die Scherbe unlesbar ist. */
+    const g1 = await anfrage("/api/bestand", { methode: "GET", token: t });
+    const status = g1.status;
+
+    /* Die Scherbe wird repariert; die Oberfläche speichert eine Änderung
+       im laufenden Monat — mit dem, was sie zuletzt bekommen hat. */
+    await writeFile(datei, heil);
+    const basis = status === 200 ? g1 : await anfrage("/api/bestand", { methode: "GET", token: t });
+    const b = JSON.parse(JSON.stringify(basis.bestand));
+    b.mandanten[0].abweichungen[`a2|${HEUTE}`] = "F";
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: basis.etag } });
+    expect(w.status, JSON.stringify(w).slice(0, 200)).toBe(200);
+
+    const m = (await B.bestandLesen(laden(), RAUM)).bestand.mandanten[0];
+    expect(m.abweichungen[`a1|${FREMD}-10`], "Monat mit der beschädigten Scherbe verloren").toBe("F");
+    expect(m.einstempeln[`b1|${FREMD}-11`]).toBeTruthy();
+    expect(m.abweichungen[`a2|${HEUTE}`]).toBe("F");
+    expect(status, "GET lieferte einen Bestand mit Lücke").toBe(503);
+  });
+});
+
 describe("4 — Abbruch zwischen Kern und Standzeiger", () => {
   it("nächster Stempel 200, nichts verloren — weder vorher Gespeichertes noch der halbe Schreibvorgang", async () => {
     const RAUM = "lese-abbruch";

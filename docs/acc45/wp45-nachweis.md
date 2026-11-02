@@ -114,3 +114,36 @@ geo 14/14, rechte 147/147, sicherungen 28/28, erstbefuellung 29/29, zustellung-r
 eslint 0 Fehler (331 Warnungen wie vorher); `tsc` sauber. R7 erneut: 200 × 200, 0 Verluste, Median 358 ms,
 p95 1243 ms, max 2554 ms. Gegenüber 988 ms beim letzten Lauf streut der Wert unter Windows; der Lesepfad hat sich nur
 bei Fehlern geändert.
+
+## Auflage H1 (Nachprüfung): kein Bestand mit Lücke an die Oberfläche
+
+`bestandJetzt` in `daten.mjs` liest jetzt **streng**. Davon betroffen sind GET /api/bestand, die Rollenermittlung,
+die Vollausgabe, die Sicherungsschlüssel und das Vorab-Lesen beim Anlegen einer Sicherung. Bei einer unlesbaren
+Scherbe antworten diese Wege mit 503 statt mit einem Bestand mit Lücke und gültigem etag.
+
+Antworten mit 409 bei PUT und Wiederherstellen kamen schon vorher aus dem strengen Lesen (`bestandSchreibenGesperrt`
+bzw. unter der Sperre).
+
+Mild gelesen wird weiterhin nur, wo nie ein Bestand zurückgeschrieben wird und nur Felder des Kerns zählen:
+
+- `daten.mjs`: Codebindung bei Zugängen, Demo und Anmeldung; eigener Betrieb beim Sperren von Zugängen; Zustellung
+  nach dem Speichern.
+- `kalender.mjs` und `zustellung.mjs`.
+- `betriebsauswahl.mjs`, `arbeitssitzung.mjs` (ohne Lader), `provisionierung.mjs` und `einrichten.mjs`.
+
+Ein Lesefehler an Kern oder Journal wird dort seit N1/N3 trotzdem zu 503.
+
+Schutz in der Tiefe in `bestandSchreiben` (eine fehlende, im Vermerk bekannte Scherbe ablehnen) ist **nicht**
+umgesetzt. Ein Client, der alle Einträge eines Monats bewusst löscht, schickt genau denselben Bestand wie ein Client,
+dem der Monat wegen einer Lücke fehlte: In beiden Fällen gibt es nach `zerlegen` keine Scherbe für diesen Monat. Die
+beiden Fälle sind also nicht sauber unterscheidbar. Eine Ablehnung würde das bewusste Leeren eines Monats unmöglich
+machen. Deshalb gilt nur (a): Eine Lücke gelangt gar nicht erst zum Client.
+
+Test `lesefehler.test.js` „H1“: Oktober-Scherbe beschädigt, GET, Scherbe repariert, PUT mit einer Änderung im
+laufenden Monat.
+
+- Auf 633aa5e **rot**: GET liefert 200 ohne Oktober, nach dem PUT ist der Oktober gelöscht.
+- Jetzt **grün**: GET liefert 503; nach der Reparatur lädt die Oberfläche neu, und der Oktober bleibt.
+
+Regression: 35 vitest-Dateien 890/890; Serverlauf zeiterfassung 38/38, rechte 147/147, sicherungen 28/28,
+vollausgabe 12/12.
