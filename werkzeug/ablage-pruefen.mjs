@@ -134,8 +134,11 @@ function scherbeAusKennung(raum, id) {
  *
  * Fehlend heißt: Der Raum hat Scherben oder Vermerke, aber keinen Kern; oder
  * der Vermerk des aktuellen Stands nennt eine Scherbe, die nicht da ist.
- * Liegt ein Journal, wird nicht gegen den Vermerk geprüft — dann gilt das
- * Journal, und der nächste Schreibvorgang führt es zu Ende.
+ * Liegt ein GÜLTIGES Journal, wird nicht gegen den Vermerk geprüft — dann
+ * gilt das Journal, und der nächste Schreibvorgang führt es zu Ende. Ein
+ * beschädigtes Journal wird beiseitegelegt und gilt nie; dann muss der
+ * Abgleich laufen, sonst fiele eine fehlende Scherbe beim Angleichen still
+ * heraus.
  *
  * @returns {Promise<Map<string, Array<{schluessel: string, art: string, grund: string, fehlt?: boolean}>>>}
  */
@@ -173,7 +176,8 @@ export async function befund(store, { raeume = [], journalPruefen }) {
         grund: "fehlt — es liegen aber Scherben oder Vermerke des Raums" });
       continue;
     }
-    if (!arten.has("Kern") || arten.has("Journal") || unlesbar.has(`kern:${raum}`)) continue;
+    const journalGueltig = arten.has("Journal") && !unlesbar.has(`journal:${raum}`);
+    if (!arten.has("Kern") || journalGueltig || unlesbar.has(`kern:${raum}`)) continue;
     /* Gegen den Vermerk des aktuellen Stands: der größere aus Kern und Zeiger,
        wie beim Wiederanlauf (bestand.mjs). Fehlt der Vermerk oder ist er
        unlesbar, gibt es nichts zu vergleichen — er wird neu berechnet. */
@@ -411,7 +415,12 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
       }
       if (abbruch) continue;
 
-      for (const { d, aktion, eintrag, inhalt } of plan) {
+      /* Rückholungen zuerst, Beiseitelegen und Hinnehmen danach: Bricht der
+         Lauf dazwischen ab, ist der Raum entweder noch gesperrt (unlesbarer
+         Zeiger, Journal …) oder vollständig — nie lesbar mit einem Monat,
+         der noch zurückgeholt werden sollte. */
+      const reihe = (x) => (x.aktion === "zurueck" ? 0 : 1);
+      for (const { d, aktion, eintrag, inhalt } of [...plan].sort((a, b) => reihe(a) - reihe(b))) {
         const ziel = path.join(ordner, dateiname(d.schluessel));
         const name = beiseiteName(raum, d.schluessel, marke);
         halten();

@@ -245,6 +245,56 @@ describe("B2 — Abbruch im Rückholfenster, Befund gegen den Vermerk", () => {
     expect(r.code, r.aus).toBe(0);
     expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen).toEqual({ "p1|2025-11-03": "S" });
   });
+
+  it("N4: kaputtes Journal plus fehlende Scherbe — der Abgleich läuft, ohne Sicherung bleibt der Raum unangetastet", async () => {
+    const RAUM = "rw-n4";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const okt = await readFile(datei(`scherbe:${RAUM}:m1:2025-10`));
+    await writeFile(datei(`journal:${RAUM}`), "{kaputt");
+    await unlink(datei(`scherbe:${RAUM}:m1:2025-10`));
+
+    const t = await lauf([RAUM]);
+    expect(t.code, t.aus).toBe(1);
+    expect(t.aus).toMatch(/Journal .*journal:rw-n4/);
+    expect(t.aus).toMatch(/scherbe:rw-n4:m1:2025-10 — fehlt/);
+
+    const r = await lauf(["--beiseitelegen", RAUM]);
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).not.toMatch(/Stand angeglichen/);
+    expect(await readFile(datei(`journal:${RAUM}`), "utf8")).toBe("{kaputt");            // nichts angefasst
+    expect((await lauf([RAUM])).aus).toMatch(/scherbe:rw-n4:m1:2025-10 — fehlt/);
+    await writeFile(datei(`scherbe:${RAUM}:m1:2025-10`), okt);
+    await unlink(datei(`journal:${RAUM}`));
+  });
+
+  it("N4: kaputtes Journal plus fehlende Scherbe, Oktober in der Sicherung — zurückgeholt, nicht verloren", async () => {
+    const RAUM = "rw-n4-sich";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const pfad = await sichern();
+    await writeFile(datei(`journal:${RAUM}`), "{kaputt");
+    await unlink(datei(`scherbe:${RAUM}:m1:2025-10`));
+    const r = await lauf(["--aus-sicherung", pfad, RAUM]);
+    expect(r.code, r.aus).toBe(0);
+    expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen["p1|2025-10-10"]).toBe("F");
+    expect((await B.journalPruefen(store, RAUM)).zustand).toBe("keins");
+  });
+
+  it("N5: Rückholung vor dem Beiseitelegen — ein Abbruch dazwischen lässt den Raum gesperrt, nicht lückenhaft", async () => {
+    const RAUM = "rw-n5";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const pfad = await sichern();
+    await writeFile(datei(`stand:${RAUM}:aktuell`), "{kaputt");
+    await unlink(datei(`scherbe:${RAUM}:m1:2025-10`));
+    const r = await lauf(["--aus-sicherung", pfad, RAUM],
+      { schritt: async (name) => { if (name === "rueckholung-geschrieben") throw new Error("simulierter Abbruch"); } });
+    expect(r.code, r.aus).toBe(2);
+    expect(await readFile(datei(`stand:${RAUM}:aktuell`), "utf8")).toBe("{kaputt");   // Zeiger noch nicht beiseite
+    const t = await lauf([RAUM]);
+    expect(t.aus).toMatch(/scherbe:rw-n5:m1:2025-10 — fehlt/);
+    const zwei = await lauf(["--aus-sicherung", pfad, RAUM]);
+    expect(zwei.code, zwei.aus).toBe(0);
+    expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen["p1|2025-10-10"]).toBe("F");
+  });
 });
 
 describe("B4 — Kern aus der Sicherung nur ausdrücklich", () => {

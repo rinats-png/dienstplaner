@@ -116,3 +116,15 @@ Auf 7841419 lokal: 5 der 17 Tests der Prüfdatei rot (die vier neuen und der Ker
 liegengebliebenen Zustands), mit der Korrektur 24/24 grün mit `ablage-pruefen.test.js` (1 übersprungen, Windows).
 Zwei Erwartungen in den B1-Tests sind an das neue Ausgabeformat angepasst (gleicher Inhalt: „beiseitegelegt … nie aus
 der Sicherung“), nicht abgeschwächt.
+
+## 2. Nachprüfung (N4, N5)
+
+CI auf 9bee93f grün: Prüfung 41532375386, Sicherheit 41532375420, Betrieb: Deploy-Skripte 41532375439.
+
+| Befund | Umsetzung | Test (rot auf 9bee93f → grün) |
+|---|---|---|
+| **N4** Vermerk-Abgleich übersprungen, sobald ein Journal liegt — auch ein kaputtes; fehlende Scherbe fiel beim Angleichen still heraus (Umgehung von `--fehlende-hinnehmen`) | Der Abgleich wird nur bei einem **gültigen** Journal übersprungen (das dann gilt). Ein kaputtes Journal gilt nie und wird beiseitegelegt; der Abgleich läuft, die fehlende Scherbe erscheint im Plan: aus der Sicherung zurückholen, sonst nur mit `--fehlende-hinnehmen`, sonst „Raum NICHT angefasst“ (Rückgabe 1). | „N4: kaputtes Journal plus fehlende Scherbe … ohne Sicherung bleibt der Raum unangetastet“ (Trockenlauf meldet beides, `--beiseitelegen` → 1, Journal unverändert); „… Oktober in der Sicherung — zurückgeholt“. |
+| **N5** Reihenfolge im Raum | Rückholungen vor Beiseitelegen und Hinnehmen. Ein Abbruch dazwischen lässt den Raum gesperrt (z. B. Zeiger noch unlesbar), nie lesbar mit fehlendem Monat. | „N5: Rückholung vor dem Beiseitelegen“ (fehlender Oktober + unlesbarer Zeiger, Abbruch per `schritt`-Haken bei der Rückholung: Zeiger noch unverändert, Oktober weiter gemeldet, zweiter Lauf vollständig). |
+
+Auf 9bee93f lokal: 4 von 20 Tests der Prüfdatei rot (die drei neuen und der Kern-Test als Folgefehler des
+liegengebliebenen Zustands); mit der Korrektur 27/27 grün mit `ablage-pruefen.test.js` (1 übersprungen, Windows).
