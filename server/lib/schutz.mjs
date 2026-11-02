@@ -174,6 +174,11 @@ export const GRENZEN = {
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
+  /* Sicherungen je Betrieb: sechs je Stunde reichen für jedes „vorher
+     sichern“ — und niemand verdrängt damit die Wiederherstellungspunkte. */
+  sicherung:  { versuche: 6,   fenster: 3600, sperre: 3600 },
+  /* Wiederherstellen ist der schwerste Eingriff: wenige je Stunde. */
+  wiederherstellen: { versuche: 5, fenster: 3600, sperre: 3600 },
   /* Selbstbedienung: drei Betriebe je Stunde. Ohne diese Bremse legt jemand
      über Nacht zehntausend Räume an, und die Kosten laufen mit. */
   starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
@@ -619,7 +624,7 @@ export async function spurLesen(tage) {
   const heute = new Date();
   for (let i = 0; i < (tage || 7); i++) {
     const d = new Date(heute.getTime() - i * 86400000).toISOString().slice(0, 10);
-    for (const art of ["anmelden", "demo", "einrichten", "schreiben", "zustellen",
+    for (const art of ["anmelden", "demo", "einrichten", "schreiben", "zustellen", "sicherung",
       "zugaenge", "starten", "fehler"]) {
       try {
         /* Altbestand: ein Array je Tag und Art. */

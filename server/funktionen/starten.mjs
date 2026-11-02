@@ -97,7 +97,7 @@ export default async (req) => {
     });
     if (!erstellt.ok)
       return antwort({ fehler: "Bitte noch einmal versuchen." }, 409);
-    const { raum, laeuftAb, angelegt } = erstellt;
+    const { raum, laeuftAb, angelegt, mandantId } = erstellt;
 
     /* Zugänge erzeugen */
     const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
@@ -108,7 +108,7 @@ export default async (req) => {
       const code = `${block()}-${block()}-${block()}`;
       await kontoSchreiben(store(), ablageSchluessel(code), {
         name: String(name).trim(), bestand: raum, rolle,
-        person: null, betrieb: 0, demo: false, gruppe: null, hinweis: null,
+        person: null, betrieb: 0, mandantId, demo: false, gruppe: null, hinweis: null,
         selbstAngelegt: true, laeuftAb,
         angelegt,
       });

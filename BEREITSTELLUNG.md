@@ -210,7 +210,8 @@ gilt der Weg oben.
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
 **Keine Migration.** Ein leeres `/data` ist ein leerer Betrieb; die
-Anwendung legt beim ersten Schreiben an, was sie braucht.
+Anwendung legt Konten und Sitzungen beim ersten Schreiben an. Einen
+Datenraum richtet erst der Betreiber ein (siehe 5.0).
 
 **Dienstarbeiter.** Beim ersten Aufruf richtet sich der Offlinebetrieb ein.
 Danach startet die Anwendung auch ohne Netz, und der zuletzt geladene Plan
@@ -240,8 +241,59 @@ genauso.
 | Was | Wie | Wodurch |
 |---|---|---|
 | Betreiberkonsole | Code, Rolle `betreiber` | `/einrichten` |
-| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite | `/einrichten`, `demo: true` |
+| Drei Demobetriebe | ohne Code offen auf der Anmeldeseite | `/einrichten`, `demo: true` — erst nach dem Einrichten des Raums |
 | Ein leerer Testbetrieb | eigener Raum, 30 Tage | `/starten` |
+
+**Leere Räume richtet nur der Betreiber ein (seit Oktober 2026).** Vorher
+entstand über `/einrichten` ein Code auch für einen Raum, den es noch nicht
+gab, und der erste Client, der sich damit anmeldete, befüllte ihn mit einem
+selbst gebauten Bestand. Jetzt gilt:
+
+- `/einrichten` legt Codes für Kundenrollen (leitung, planer, kunde,
+  subplaner, mitarbeiter, betriebsrat) nur für einen eingerichteten Raum an,
+  sonst `409` „Raum ist noch nicht eingerichtet.". Ein Betreibercode darf
+  vorher entstehen.
+- `PUT /api/bestand` auf einen leeren Raum wird für jede Rolle abgewiesen —
+  auch für den Betreiber.
+- Der einzige Weg ist `POST /api/bestand-anlegen` mit einer
+  Betreibersitzung: Vorlage `leer` oder `test` baut der Server selbst
+  (`baueLeerenBetrieb()`), Vorlage `demo` wird übermittelt und geprüft:
+  genau drei Betriebe mit den Kennungen `m-nordwacht`, `m-lindenhof`,
+  `m-steinbach` in dieser Reihenfolge. Ein belegter Raum: `409`.
+- Jeder neue Code trägt Position **und** Kennung seines Betriebs
+  (`betrieb`, `mandantId`). Passt beides nicht mehr zusammen — etwa weil
+  der Betreiber Betriebe umsortiert hat —, endet die laufende Sitzung und
+  die Anmeldung wird abgewiesen („Bitte wende dich an die
+  Organisationsleitung.").
+
+**Ablauf für den Demoraum.** Erster Lauf des Skripts: Betreibercode und
+Testbetrieb entstehen, die Demo wird als „ausstehend" gemeldet. Dann mit dem
+Betreibercode anmelden; die Anwendung zeigt „Dieser Raum ist noch nicht
+eingerichtet." und bietet „Demo-Bestand anlegen" an. Danach das Skript
+erneut aufrufen — es legt die drei Demozugänge an, gebunden an
+Nordwacht, Lindenhof und Steinbach, und überspringt Vorhandenes.
+
+**Offener Architekturpunkt.** Den Inhalt der Demo baut heute noch der
+Client (`startbestand()` in `src/App.jsx`); der Server prüft nur die
+Gestalt. Eine serverseitige Demo-Erzeugung verlangt, `baueMandant` aus der
+Oberfläche herauszulösen, und ist bewusst auf später verschoben.
+
+**Alte Codes (vor Oktober 2026)** kennen ihren Betrieb nur über die
+Position. In einem Raum mit genau einem Betrieb ergänzt die nächste
+Anmeldung die Kennung selbst. In Räumen mit mehreren Betrieben — also
+`demo-schau` — wird **nicht** automatisch gebunden:
+
+    curl -s -H "authorization: Bearer $CENTRIC_ADMIN"       "$SITE/einrichten/bindung?bestand=demo-schau" | jq
+
+zeigt im Trockenlauf je Code Name, Rolle, Position, den Betrieb, auf den die
+Position heute zeigt, und ob eine gespeicherte Kennung passt — ohne Codes
+und ohne etwas zu ändern. Erst nach menschlicher Prüfung bindet
+
+    curl -s -X POST -H "authorization: Bearer $CENTRIC_ADMIN"       -H "content-type: application/json" "$SITE/einrichten/bindung"       -d '{"bestand":"demo-schau","zuordnung":[{"kennung":"<8 Zeichen>","mandantId":"m-lindenhof"}]}'
+
+einzelne Codes — und nur, wenn die Position noch genau auf diesen Betrieb
+zeigt. Zeigt ein Democode heute auf den falschen Betrieb, nicht binden,
+sondern zurückziehen und neu anlegen.
 
 **Abgelaufene Testbetriebe löscht der Server selbst.** Ein selbst angelegter
 Testbetrieb läuft 30 Tage; danach weist die Anmeldung ab, die Daten bleiben
@@ -255,12 +307,12 @@ wird nie angefasst. Jeder Lauf hinterlässt `aufraeumen:letzter` in der Ablage
 ein Raum, bei dem etwas liegen blieb, behält seinen Kern und wird beim
 nächsten Lauf erneut versucht.
 
-**Warum der Testbetrieb über `/starten` läuft.** Nur dieser Weg legt den
+**Warum der Testbetrieb über `/starten` läuft.** Dieser Weg legt den
 Betrieb mit `baueLeerenBetrieb()` an — kein Beispielpersonal, keine
-erfundenen Dienstpläne, nur Name, Branche und Bundesland. Ein über
-`/einrichten` angelegter Code zeigt auf einen Raum, den die Anwendung beim
-ersten Öffnen mit den drei Beispielmandanten aus `startbestand()` füllt.
-Für einen Testzugang „ohne Demodaten" ist das genau das Falsche.
+erfundenen Dienstpläne, nur Name, Branche und Bundesland — und die Codes
+gleich mit. Über `/einrichten` allein entsteht für einen leeren Raum kein
+Kundencode mehr; dafür bräuchte es vorher `/api/bestand-anlegen` mit
+Vorlage `leer` oder `test`.
 
 **Warum der Demoraum `demo-schau` heißen muss.** `/api/demo` lässt einen
 Zugang ohne Code nur durch, wenn sein Raum mit `demo-` beginnt. Der Raumname
@@ -355,9 +407,36 @@ Sicherungsschlüssel anlegen, dann auf einem eigenen Rechner täglich
       -o centric-$(date +%F).json
 
 Der Schlüssel darf ausschließlich lesen. Er kann nichts ändern, nichts
-löschen und sich nicht anmelden. Unabhängig davon gehört `/data` auf dem
+löschen und sich nicht anmelden. Er ist an den Betrieb gebunden, für den er angelegt
+wurde, und die Ausgabe enthält nur diesen Betrieb (Fassung 2). Ältere Schlüssel
+ohne Bindung gelten nur in einem Raum mit genau einem Betrieb. Unabhängig davon gehört `/data` auf dem
 VPS in die Sicherung des Servers — es ist der einzige Ort, an dem die Daten
 liegen.
+
+**Was die Vollausgabe ist — und was nicht (seit Oktober 2026).** Sie ist ein
+**Datenexport / eine Datenmitnahme des Kunden**, kein roher Serverbestand und
+**kein Wiederherstellungsformat**. Zurückgespielt wird aus den Sicherungen auf
+dem Server (`/api/sicherung`, `/api/wiederherstellen`, je Betrieb) bzw. bei Verlust des Servers
+mit `werkzeug/ablage-sicherung.mjs` (5.4). Die Ausgabe trägt im Feld
+`inhalt`, welcher Umfang geliefert wurde; beide sind Positivlisten
+(`server/lib/sicherungen.mjs`), ein neues Feld geht erst hinaus, wenn es dort
+eingetragen ist:
+
+| | Leitung (angemeldet, `inhalt: "leitung"`) | Sicherungsschlüssel (`inhalt: "sicherung"`) |
+|---|---|---|
+| Plan, Regelwerk, Sammlungen (Abwesenheiten, Anträge, Nachrichten, Dienstbuch, Übergaben, Notizen, Ausschreibungen, Zeiterfassung …) | vollständig | vollständig |
+| Personen: Plan-, Qualifikations-, Kontakt- und Planungsangaben, Personalnummer | ja | ja |
+| Personen: Bank, Steuer-ID, Sozialversicherung, Lohn/Gehalt, Notfallkontakt, frühere Anmeldeadresse | **nein** (wie in ihrer normalen Sicht) | ja |
+| Technische Geheimnisse: Kalendergeheimnis und -verweis, Push-Schlüssel, Zustelleinstellungen | **nie** | **nie** |
+| Betreiberinterna: Konditionen, Vertrag, Rechnungsangaben, interne Notiz, Raumkennung, Preisliste, Rechnungen, Betreiberstamm | **nie** | **nie** |
+| andere Betriebe des Raums | nie | nie |
+
+**Den Sicherungsschlüssel besonders schützen.** Seine Ausgabe enthält
+Personaldaten (Bank, Steuer, Sozialversicherung, Lohn, Notfallkontakte). Die
+Datei gehört auf einen verschlüsselten Datenträger, der Schlüssel in einen
+Passwortspeicher; ein Schlüssel, der im Klartext in einem Skript oder Chat
+stand, wird zurückgezogen. Die rechtliche Einordnung des Exports erfolgt
+separat.
 
 ### 5.4 Sicherung und Wiederherstellung der gesamten Ablage
 

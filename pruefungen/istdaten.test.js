@@ -41,14 +41,6 @@ const bestand = () => ({
   }],
 });
 const sicht = (rolle, person) => bestandFuerRolle(bestand(), { rolle, person, betrieb: 0 }).mandanten[0];
-/* Schichtverantwortung „ps" im Bereich A; p17 in A, p18 in B. */
-const svSicht = () => {
-  const b = bestand();
-  b.mandanten[0].personen.push({ id: "ps", rolle: "subplaner", bereich: "A" });
-  b.mandanten[0].personen[0].bereich = "A";
-  b.mandanten[0].personen[1].bereich = "B";
-  return bestandFuerRolle(b, { rolle: "subplaner", person: "ps", betrieb: 0 }).mandanten[0];
-};
 const person = (m, id) => m.personen.find((p) => p.id === id);
 const PLAN = 7.5, IST17 = 10, IST18 = 10.5;   // 06:00–14:00 −30 min · 06:00–16:30 −30 · 06:00–17:00 −30
 
@@ -77,11 +69,8 @@ describe("Der Server vermerkt den Rollenschutz", () => {
     expect(sicht("mitarbeiter", null).sichtIstDaten).toEqual({ umfang: "keine" });
     expect(sicht("betriebsrat", "pb").sichtIstDaten).toEqual({ umfang: "keine" });
     for (const r of ["leitung", "planer", "kunde"]) expect(sicht(r, "pl"), r).not.toHaveProperty("sichtIstDaten");
-  });
-  it("Schichtverantwortung: Auswahl aus eigener Person und Bereich", () => {
-    const m = svSicht();
-    expect(m.sichtIstDaten.umfang).toBe("auswahl");
-    expect([...m.sichtIstDaten.personen].sort()).toEqual(["p17", "ps"]);
+    /* Schichtverantwortung: Vermerk mit den Personen, deren Ist-Zeiten sie bekommt (siehe 8.). */
+    expect(sicht("subplaner", "pl").sichtIstDaten.umfang).toBe("personen");
   });
   it("ein gespeicherter Vermerk zählt nicht (Leitung sieht ihn nie)", () => {
     const b = bestand(); b.mandanten[0].sichtIstDaten = { umfang: "keine" };
@@ -118,28 +107,27 @@ describe("Ist-Zeit je Rolle — die gemeinsame Stelle aller Stunden (istDauer)",
     const m = sicht("mitarbeiter", "p17");
     expect(istZeitFuer(m, person(m, "p18"), TAG, FRUEH).std).toBeNull();
   });
+  it("8. Schichtverantwortung: Ist-Zeit für sich und den eigenen Bereich, sonst nicht verfügbar statt Planzeit", () => {
+    const b = bestand();
+    const m0 = b.mandanten[0];
+    m0.einheiten = [{ id: "e1" }, { id: "e2" }];
+    const zu = (e) => ({ bereich: e, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: e }], status: "aktiv" });
+    Object.assign(m0.personen[0], zu("e1"));                       // p17: Bereich
+    Object.assign(m0.personen[1], zu("e2"));                       // p18: fremd
+    m0.personen.push({ id: "ps", vorname: "Sina", nachname: "Schicht", rolle: "subplaner", ...zu("e1") });
+    const m = bestandFuerRolle(b, { rolle: "subplaner", person: "ps", betrieb: 0 }).mandanten[0];
+    expect(m.sichtIstDaten.umfang).toBe("personen");
+    expect(istZeitFuer(m, person(m, "p17"), TAG, FRUEH)).toEqual({ std: IST17, erfasst: true, abweichung: IST17 - PLAN });
+    expect(istZeitFuer(m, person(m, "p18"), TAG, FRUEH)).toEqual({ std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true });
+    expect(pruefZeitFuer(m, person(m, "p18"), TAG, FRUEH)).toBeNull();
+  });
   it("7. Leitung und Planung unverändert: erfasst schlägt Plan, ohne Erfassung gilt der Plan", () => {
-    for (const r of ["leitung", "planer", "kunde"]) {
+    for (const r of ["leitung", "planer"]) {
       const m = sicht(r, "pl");
       expect(istZeitFuer(m, person(m, "p17"), TAG, FRUEH), r).toEqual({ std: IST17, erfasst: true, abweichung: IST17 - PLAN });
       expect(istZeitFuer(m, person(m, "p18"), TAG, FRUEH).std, r).toBe(IST18);
       expect(istZeitFuer(m, person(m, "p17"), "2026-10-22", FRUEH), r).toEqual({ std: PLAN, erfasst: false, abweichung: 0 });
     }
-  });
-});
-
-describe("Schichtverantwortung: Ist-Zeit im Bereich, sonst nicht verfügbar — nie Planzeit", () => {
-  it("Person im Bereich: die erfasste Zeit, ohne Grund", () => {
-    const m = svSicht();
-    expect(istZeitFuer(m, person(m, "p17"), TAG, FRUEH)).toEqual({ std: IST17, erfasst: true, abweichung: IST17 - PLAN });
-    expect(m.erfassung["p17|" + TAG]).not.toHaveProperty("grund");
-  });
-  it("Person aus fremdem Bereich: nicht verfügbar statt Planzeit", () => {
-    const m = svSicht();
-    const z = istZeitFuer(m, person(m, "p18"), TAG, FRUEH);
-    expect(z.std).toBeNull();
-    expect(z.nichtVerfuegbar).toBe(true);
-    expect(pruefZeitFuer(m, person(m, "p18"), TAG, FRUEH)).toBeNull();
   });
 });
 

@@ -26,6 +26,11 @@ let token = null;
 let etag = null;
 let offen = null;            // ausstehender Schreibvorgang
 let uhr = null;
+let unterwegs = false;       // ein PUT ist abgeschickt, die Antwort steht aus
+
+/** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
+    Stand nicht der gespeicherte. */
+export const schreibenAusstehend = () => !!offen || unterwegs;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -154,8 +159,8 @@ export async function lies() {
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -205,10 +210,35 @@ function fehlerart(e, status) {
   return "unbekannt";
 }
 
-async function jetztSchreiben(beimSchliessen) {
+/* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
+let laufend = null;
+function jetztSchreiben(beimSchliessen) {
+  const lauf = schreibenAusfuehren(beimSchliessen);
+  laufend = lauf;
+  lauf.finally(() => { if (laufend === lauf) laufend = null; });
+  return lauf;
+}
+
+/**
+ * Schreibt, was noch aussteht, sofort — und wartet auf einen laufenden
+ * Vorgang. Vor dem Stempeln: Der Server ändert den Bestand dabei selbst;
+ * wartete noch eine eigene Änderung mit dem alten ETag, liefe sie danach
+ * in einen 409. Scheitert sie, bleibt sie wie jeder gescheiterte Versuch
+ * erhalten (ausstehend, nochmalSchreiben) — das Stempeln hängt nicht davon ab.
+ */
+export async function schreibenAbschliessen() {
+  if (laufend) await laufend.catch(() => {});
+  if (offen) {
+    if (uhr) { clearTimeout(uhr); uhr = null; }
+    await jetztSchreiben().catch(() => {});
+  }
+}
+
+async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
+  unterwegs = true;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
@@ -232,12 +262,15 @@ async function jetztSchreiben(beimSchliessen) {
     if (status !== 200) throw new Error(daten?.fehler || "Speichern fehlgeschlagen.");
     etag = daten.etag;
     gescheitert = null;
+    if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);
     /* Der Auftrag bleibt liegen, damit er sich wiederholen lässt. */
     gescheitert = { auftrag, lage: { art, text: String(e && e.message || e), status,
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
+  } finally {
+    unterwegs = false;
   }
 }
 
@@ -291,7 +324,10 @@ if (typeof window !== "undefined") {
 
 /* --------------------------- Sicherungskopien ---------------------------- */
 export async function sicherung() {
-  const { daten } = await ruf("sicherung", { method: "POST" });
+  const { status, daten } = await ruf("sicherung", { method: "POST" });
+  /* Eine Absage ist keine angelegte Sicherung — vorher meldete die
+     Oberfläche „Sicherung angelegt“, gleich was der Server sagte. */
+  if (status !== 200) throw new Error(daten?.fehler || "Die Sicherung wurde nicht angelegt.");
   return daten;
 }
 export async function sicherungen() {
@@ -314,12 +350,14 @@ export async function zustellwerte() {
   } catch { return { vapid: null, mail: false }; }
 }
 
-/** Aufträge an den Server geben. Fehler werden gemeldet, nicht geworfen. */
-export async function zustellen(auftraege) {
-  if (!auftraege || !auftraege.length) return { ergebnis: [] };
+/** Zustellung gespeicherter Mitteilungen anstoßen — nur ihre Kennungen
+    (Commit 4). Empfänger, Wege und Texte bestimmt der Server. Fehler werden
+    gemeldet, nicht geworfen. */
+export async function zustellen(nachrichten) {
+  if (!nachrichten || !nachrichten.length) return { ergebnis: [] };
   try {
     const a = await fetch("/zustellung/senden", { method: "POST", headers: kopf(),
-      body: JSON.stringify({ auftraege }) });
+      body: JSON.stringify({ nachrichten }) });
     if (!a.ok) return { ergebnis: [], fehler: `Status ${a.status}` };
     return await a.json();
   } catch (e) { return { ergebnis: [], fehler: String(e.message) }; }
@@ -424,16 +462,34 @@ export async function zugaengeErzeugen(bestand, eintraege) {
 /**
  * Ein- oder ausstempeln.
  *
- * Es gehen nur die Rohkoordinaten hinaus. Standort, Radius, Uhrzeit und das
- * Urteil liegen auf dem Server — im Browser wäre alles davon manipulierbar,
- * und eine Zeiterfassung, die sich manipulieren lässt, belegt nichts.
+ * Hinaus geht höchstens eine Messung (Breite, Länge, Genauigkeit) — und nur,
+ * wenn die Geo-Prüfung im Betrieb eingeschaltet ist (sonst koord = null).
+ * Standort, Radius, Uhrzeit und das Urteil liegen auf dem Server — im
+ * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
+ * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord) {
   const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
     body: JSON.stringify({ datum, art,
-      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null }) });
+      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
+      accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
+  return d;
+}
+
+/**
+ * Die eigene Zeit für einen vergangenen Diensttag bestätigen — „wie geplant"
+ * (start und ende null) oder abweichend. Der Server prüft und antwortet
+ * ausdrücklich; eine verworfene Angabe kommt als Fehler mit Grund zurück,
+ * statt im allgemeinen Speichern still zu verschwinden.
+ */
+export async function zeitBestaetigen(datum, start, ende, grund) {
+  const a = await fetch("/api/zeit-bestaetigen", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, start: start || null, ende: ende || null, grund: grund || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
   return d;
 }
 
@@ -468,9 +524,9 @@ export async function zugaengeUebersicht(raum) {
   return daten;
 }
 
-export async function bestandAnlegen(bestand, inhalt) {
+export async function bestandAnlegen(bestand, inhalt, vorlage) {
   const a = await fetch("/api/bestand-anlegen", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ bestand, inhalt }) });
+    body: JSON.stringify({ bestand, inhalt, vorlage }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Der Betrieb konnte nicht angelegt werden.");
   return d;

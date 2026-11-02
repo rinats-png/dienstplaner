@@ -132,6 +132,10 @@ export async function raumLoeschen(store, sitzungen, raum) {
         zuordnen konnte. Das Präfix endet auf einem Doppelpunkt, damit ein Raum
         „t-ab" nicht die Anmeldungen von „t-a" mitnimmt. */
   await praefixWeg(`push:${raum}:`);
+  /* Seit Commit 4 auch push:<raum>:<mandantId>:<personId> (dasselbe Präfix)
+     und der Zustellstatus samt Versand-Claims je Mitteilung (versand.mjs). */
+  await praefixWeg(`zustellung:${raum}:`);
+  await praefixWeg(`zustellclaim:${raum}:`);
 
   /* 3. Sitzungen des Raums — die gewöhnlichen (t:) und die
         Sicherungsschlüssel (sk:). Letztere fehlten bisher: Ein

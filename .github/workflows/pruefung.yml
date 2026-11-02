@@ -44,15 +44,13 @@ jobs:
       - name: Regelwerk
         run: npm run pruefung:regeln
 
-      # Stempelereignisse sind personenbezogen: Beschäftigte sehen nur die
-      # eigenen, der Betriebsrat keine.
-      - name: Stempeldaten
-        run: npm run pruefung:stempeldaten
+      # E1: Stempel und Ist-Zeiten nur für die eigene Person, Betriebsrat keine; keine Planzeit als Ist-Zeit.
+      - name: Stempel- und Ist-Daten unter Rollenschutz
+        run: npm run pruefung:stempeldaten && npm run pruefung:istdaten
 
-      # Fehlen Ist-Daten aus Datenschutzgründen, wird nie die Planzeit als
-      # tatsächliche Arbeitszeit gezeigt, geprüft oder ausgegeben.
-      - name: Ist-Daten
-        run: npm run pruefung:istdaten
+      # Geo V1: Standortprüfung beim Stempeln — drei Zustände, Genauigkeit, gerundete Entfernung, Schalter (Vorgabe aus).
+      - name: Standortprüfung beim Stempeln
+        run: npm run pruefung:geo
 
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
@@ -115,6 +113,153 @@ jobs:
       # Die Rechtetabellen in Oberfläche und Server dürfen nicht driften.
       - name: Rechtetabellen vergleichen
         run: npm run pruefung:matrix
+
+      # Was Beschäftigte und Betriebsrat von anderen Personen lesen: keine
+      # fremden Mitteilungen, Notrufe, Zustellwege oder Kalender-Geheimnisse.
+      - name: Leserechte
+        run: npm run pruefung:leserechte
+
+      # Das View-Modell für Beschäftigte und Betriebsrat: Jedes Feld braucht
+      # eine Entscheidung im Katalog (server/lib/sicht.mjs).
+      - name: Sicht der Beschäftigten
+        run: npm run pruefung:sicht
+
+      # Krankmeldung, Selbstplanung und Notruf von Beschäftigten: genau der
+      # vorgesehene Vorgang wird gespeichert, sonst nichts.
+      - name: Selbstservice der Beschäftigten
+        run: npm run pruefung:selbstservice
+
+      # Die Oberfläche benutzt den Selbstservice richtig und verspricht keine
+      # Zustellung, die es nicht gibt (Quelltextprüfung, kein Browser).
+      - name: Oberfläche Selbstservice
+        run: npm run pruefung:oberflaeche
+
+      # Gerenderte Ansichten (react-dom/server, echte Komponenten): ohne
+      # Ist-Daten kein Absturz und keine 0 (F1); ein offener Beginn bleibt
+      # unabhängig vom Plan sichtbar und beendbar (F2).
+      - name: Oberfläche gerendert
+        run: npm run pruefung:render
+
+      # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
+      # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
+      # Lesen nur in der Antwort angeglichen (gestalt.mjs).
+      - name: Personendaten
+        run: npm run pruefung:personendaten
+
+      # Mandantenstruktur beim Schreiben: genau ein Betrieb, der eigene, an
+      # seiner Stelle. Doppelte und ungültige Kennungen werden abgewiesen.
+      - name: Mandanten-Integrität
+        run: npm run pruefung:mandanten
+
+      # Sicherung, Vollausgabe und Wiederherstellung: nur der eigene Betrieb,
+      # getrennte Kontingente, sicheres Zurückspielen.
+      - name: Sicherungen
+        run: npm run pruefung:sicherungen
+
+      # Wiederherstellen mit derselben Grenze wie Speichern: Betreiberstamm, verborgene Personen- und Betriebsfelder aus dem jetzigen Stand.
+      - name: Wiederherstellung schützt Verborgenes
+        run: npm run pruefung:wiederherstellung-schutz
+
+      # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
+      - name: Preisanzeige nach Rolle
+        run: npm run pruefung:preisanzeige
+
+      # Leere Räume richtet nur der Betreiber ein (Demo mit fester Gestalt);
+      # Zugangscodes tragen die Kennung ihres Betriebs, alte werden gebunden.
+      - name: Erstbefüllung
+        run: npm run pruefung:erstbefuellung
+
+      # Die Schichtverantwortung schreibt nur in ihrem Bereich: Plan, Anträge,
+      # Krankmeldungen; Protokoll und Änderungen nur anhängend; keine
+      # Stempelzeiten, keine Zeiterfassung, kein Dienstbuch.
+      - name: Schichtverantwortung
+        run: npm run pruefung:schichtverantwortung
+
+      # Zeiten: Selbstauskunft nur neu, vergangen, mit geplantem Dienst;
+      # Stempeluhr nur heute oder gestern mit Nachtdienstbezug.
+      - name: Zeiterfassung
+        run: npm run pruefung:zeiterfassung
+
+      # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
+      # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
+      - name: Sicht der Schichtverantwortung
+        run: npm run pruefung:sicht-schicht
+
+      # Betreiberfelder oben und im Betrieb: für alle außer dem Betreiber
+      # wirkungslos; Notruf-Mitteilungen nur mit eigenem Notruf.
+      - name: Betreiberfelder
+        run: npm run pruefung:betreiberfelder
+
+      # Planung und Leitung: Positivkatalog, keine Geheimnisse fremder Personen,
+      # keine Betreiber- und Rechnungsdaten; Zustellfelder bis Commit 4.
+      - name: Sicht von Planung und Leitung
+        run: npm run pruefung:sicht-pl
+
+      # Vollausgabe: Umfang Leitung und Sicherungsschlüssel, keine Geheimnisse,
+      # keine Betreiberinterna.
+      - name: Vollausgabe
+        run: npm run pruefung:vollausgabe
+
+      # Sicherungsschlüssel und Zugang sperren: nur der eigene Betrieb.
+      - name: Verwaltungswege
+        run: npm run pruefung:verwaltungswege
+
+      # Rechtematrix: jede Datenklasse je Rolle und Lesepfad (RECHTEMATRIX.md).
+      - name: Rechtematrix
+        run: npm run pruefung:rechtematrix
+
+      # Kalender: nur die eigene Person, Rotation, keine Wirkung fremder Geheimnisse.
+      - name: Kalender-Rechte
+        run: npm run pruefung:kalender-rechte
+
+      # Versand und Zustellung auf dem Server: Rollen, Mandanten, kein Orakel,
+      # Notruf und Tausch vom Server, genau einmal je Kanal (Commit 4).
+      - name: Zustellung-Rechte
+        run: npm run pruefung:zustellung-rechte
+
+      # Ausschreibungen: verantwortende Einheit, Bewerbungen nur bei eigener Einheit (C1).
+      - name: Bereich Ausschreibungen
+        run: npm run pruefung:bereich-ausschreibungen
+
+      # Dienstbuch und Übergaben: nur die eigene Einheit, Übergabe je Tag, Dienst und Einheit (C2).
+      - name: Bereich Dienstbuch und Übergaben
+        run: npm run pruefung:bereich-dienstbuch-uebergaben
+
+      # Tagesnotizen: nur die eigene Einheit, Rückfüllung je Tagesliste (C3).
+      - name: Bereich Tagesnotizen
+        run: npm run pruefung:bereich-tagesnotizen
+
+      # Schutzmerkmale: Einsatzregeln statt Rohdaten für die Schichtverantwortung (S1).
+      - name: Schutzmerkmale Sicht
+        run: npm run pruefung:schutzmerkmale-sicht
+
+      # Ersatzsuche: harte Schutzregeln sperren, auf Rohdaten und Einsatzregeln (S2).
+      - name: Schutzregeln Ersatzsuche
+        run: npm run pruefung:schutzregeln-ersatzsuche
+
+      # Betreiber: Positivliste statt des ganzen Raums, keine Personaldaten (D1).
+      - name: Betreibersicht
+        run: npm run pruefung:betreiber-sicht
+
+      # session ganz oben ist kein Bestandsfeld: verworfen, null für jede Rolle, Altbestand bereinigt (D1b).
+      - name: Session-Kanal
+        run: npm run pruefung:session-kanal
+
+      # session am Betrieb ebenso: nie ausgeliefert, verworfen, Altbestand bereinigt — auch Vollausgabe, Wiederherstellung (D1c).
+      - name: Session am Betrieb
+        run: npm run pruefung:mandanten-session
+
+      # Unbekannte Rolle: kein Bestand, 403 außer Abmelden; /einrichten nur bekannte Rollen (D1d).
+      - name: Unbekannte Rollen
+        run: npm run pruefung:rollen-failclosed
+
+      # Unbekannte Rolle schon an den Eintrittspunkten: keine Sitzung; Kalender und Zustellung 403 (D1e).
+      - name: Unbekannte Rollen an Eintrittspunkten
+        run: npm run pruefung:rollen-eintritt
+
+      # Kalenderfeed: bei jedem Abruf Raum, Betrieb, Person, Status und Rolle prüfen; Altfeeds widerrufen (D1f, #14).
+      - name: Kalenderfeed-Autorität
+        run: npm run pruefung:kalender-feed-autoritaet
 
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,
@@ -284,6 +429,14 @@ jobs:
       - name: Sicherung und Wiederherstellung
         run: npm run pruefung:sicherung-ablage
 
+      # Die festen Gate-Proben (werkzeug/staging-*.mjs) gegen einen frisch
+      # gestarteten Server auf 127.0.0.1:3000 mit leerer Ablage: Smoke, Geo,
+      # Aufräumen samt Nachweis in der Ablage, Altlasten-Abbruch, Schutz
+      # fremder und namensähnlicher Räume, kein untergeschobenes Ziel.
+      # Läuft vor dem Container-Teil, der Port 3000 danach belegt.
+      - name: Gate-Proben gegen frischen Server
+        run: npm run pruefung:staging-proben
+
       - name: Übersetzen
         run: npm run build
 
@@ -339,6 +492,219 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.9.8.9
+
+      # Dieselben Gate-Proben im gebauten Bild, so aufgerufen wie später auf
+      # Staging: docker exec, gehärteter Container (read-only, 1000:1000),
+      # eigener frischer Container — die Rechteprüfung hat das Kontingent
+      # für /einrichten gerade verbraucht.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Gate-Proben im Bild (docker exec)
+        run: |
+          docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs
+          docker exec centric-pruefung node /app/werkzeug/staging-geo.mjs
+          docker exec centric-pruefung node /app/werkzeug/staging-aufraeumen.mjs
+          # Kein untergeschobenes Ziel; im Bild nur die drei Proben aus werkzeug/.
+          if docker exec centric-pruefung node /app/werkzeug/staging-smoke.mjs http://192.0.2.1:3000; then
+            echo "Probe nahm ein Argument an"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/werkzeug/zugaenge-anlegen.sh; then
+            echo "werkzeug/zugaenge-anlegen.sh im Bild"; exit 1; fi
+          if docker exec centric-pruefung test -e /app/pruefungen; then
+            echo "pruefungen/ im Bild"; exit 1; fi
+          docker exec centric-pruefung ls /app/werkzeug
+
+      # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
+      # den echten Anfrageweg, im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Mandanten-Integrität (HTTP)
+        run: npm run pruefung:mandanten-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.8.6
+
+      # Rollen, Umfang, Bremse, Konfliktschutz und Protokoll von Sicherung und
+      # Wiederherstellung — im eigenen frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicherungen (HTTP)
+        run: npm run pruefung:sicherungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.7.
+
+      # Kein Code für Kundenrollen im leeren Raum, kein PUT auf den leeren
+      # Raum, Demo-Prüfung und Bindung an die Kennung — im frischen Container.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Erstbefüllung (HTTP)
+        run: npm run pruefung:erstbefuellung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.6.
+
+      # Zwei Bereiche, echte Schreibwege, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schichtverantwortung (HTTP)
+        run: npm run pruefung:schichtverantwortung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.5.
+
+      # Selbstauskunft und Stempeln über die echten Wege, Angriffe per PUT.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zeiterfassung (HTTP)
+        run: npm run pruefung:zeiterfassung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.4.
+
+      # Lesen als Schichtverantwortung, Rundweg der gekürzten Sicht, Nachlesen als Leitung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht der Schichtverantwortung (HTTP)
+        run: npm run pruefung:sicht-schicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.3.
+
+      # Planung und Leitung schicken veränderte Betreiberfelder; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreiberfelder (HTTP)
+        run: npm run pruefung:betreiberfelder-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.2.
+
+      # Lesen als Planung und Leitung, Rundweg, Nachlesen als Betreiber.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Sicht von Planung und Leitung (HTTP)
+        run: npm run pruefung:sicht-pl-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.1.
+
+      # Leitung und Sicherungsschlüssel holen die Vollausgabe; der Betreiber liest nach.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Vollausgabe (HTTP)
+        run: npm run pruefung:vollausgabe-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.9.0.
+
+      # Zwei Betriebe in einem Raum: A greift nicht in B ein.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Verwaltungswege (HTTP)
+        run: npm run pruefung:verwaltungswege-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.9.
+
+      # Kalender über echte Anmeldung: zwei Betriebe, fremde Geheimnisse, Rotation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Kalender-Rechte (HTTP)
+        run: npm run pruefung:kalender-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.8.
+
+      # Versand über echte Anmeldung: zwei Betriebe, Notruf, Tausch, Sichten.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Zustellung-Rechte (HTTP)
+        run: npm run pruefung:zustellung-rechte-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.7.
+
+      # Ausschreibungen über echte Anmeldung: Sicht, Anlegen, Vergeben, Rundweg.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Ausschreibungen (HTTP)
+        run: npm run pruefung:bereich-ausschreibungen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.6.
+
+      # Dienstbuch und Übergaben über echte Anmeldung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Dienstbuch und Übergaben (HTTP)
+        run: npm run pruefung:bereich-dienstbuch-uebergaben-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.5.
+
+      # Tagesnotizen über echte Anmeldung.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Bereich Tagesnotizen (HTTP)
+        run: npm run pruefung:bereich-tagesnotizen-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.4.
+
+      # Schutzmerkmale über echte Anmeldung: Sicht, Rundweg, Manipulation.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Schutzmerkmale Sicht (HTTP)
+        run: npm run pruefung:schutzmerkmale-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.3.
+
+      # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Betreibersicht (HTTP)
+        run: npm run pruefung:betreiber-sicht-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.2.
+
+      # session ganz oben: Betrieb A schreibt, B und Betreiber sehen nichts; 409 ebenso (D1b).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Session-Kanal (HTTP)
+        run: npm run pruefung:session-kanal-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.1.
+
+      # Geo V1 über HTTP: Schalter mit Bestätigung, drei Zustände, Standortvalidierung, keine Rohkoordinate.
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Standortprüfung beim Stempeln (HTTP)
+        run: npm run pruefung:geo-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.8.0.
 
       # Der Sicherungsschlüssel lebt außerhalb des Browsers und muss genau
       # eines können. Die Prüfung fand hier eine Lücke, die es fast in den

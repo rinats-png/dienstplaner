@@ -1,13 +1,15 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
-import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT } from "./istdaten.js";
+import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText } from "./istdaten.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
   dauer, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefunde, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzBefundeFuer, stundengrenzeAusRegeln, einsatzSchutz, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -591,7 +593,11 @@ const fDatum = (s) => (s ? s.split("-").reverse().join(".") : "—");
 const n1 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const n2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sgn = (v) => (v >= 0 ? "+" : "−") + n1(Math.abs(v));
-const eur = (v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
+/* Ist-Stunden, Stundenkonto und Nachtstunden dürfen aus Datenschutzgründen
+   fehlen (E1, src/istdaten.js): null wird „–", nie 0 und nie ein Absturz. */
+const n1Ist = (v) => stundenText(v, n1);
+const sgnIst = (v) => stundenText(v, sgn);
+const eur =(v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
 const eur0 = (v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const zahl = (v) => v.toLocaleString("de-DE");
 const uid = (p) => `${p}_${Math.random().toString(36).slice(2, 9)}`;
@@ -1173,6 +1179,15 @@ function baueMandant(cfg, seed) {
   };
 }
 
+/* Die Demo für /api/bestand-anlegen: der Startbestand mit festen Kennungen
+   in fester Reihenfolge. Der Server prüft genau diese Gestalt
+   (server/lib/erstbefuellung.mjs, DEMO_KENNUNGEN). */
+const DEMO_KENNUNGEN = ["m-nordwacht", "m-lindenhof", "m-steinbach"];
+function demobestand() {
+  const b = startbestand();
+  return { ...b, mandanten: b.mandanten.map((m, i) => ({ ...m, id: DEMO_KENNUNGEN[i] })) };
+}
+
 function startbestand() {
   const j = new Date().getFullYear();
   const mandanten = [
@@ -1716,6 +1731,8 @@ const RECHTSQUELLE = {
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
 function rechtsquelle(b) {
   if (!b) return null;
+  /* Einsatzregeln ohne Rohdaten (S1): keine Fundstelle — sie verriete den Grund. */
+  if (b.neutral) return null;
   if (b.art === "schutz")
     return { norm: String(b.titel || "").split(" — ")[0], satz: null };
   /* Bei einer Sperre steht die Grundlage an der Qualifikation, nicht in
@@ -1914,7 +1931,10 @@ function pruefen(m, von, bis) {
           letzte: p.nachtvorsorge || null,
           stichtag: letzterSo,
         });
-        if (vs.nachtarbeitnehmer && vs.faellig)
+        /* Ohne Rohdaten (Sicht der Schichtverantwortung, Commit S1) gibt es
+           weder Untersuchungsdatum noch Alter — und die Pflicht liegt bei
+           Planung und Leitung. Kein Befund statt eines falschen. */
+        if (vs.nachtarbeitnehmer && vs.faellig && !("sichtbereich" in p))
           push({ art: "vorsorge", schwere: "warn", datum: letzterSo, ref: `${p.id}|vs${jahr}`, personId: p.id,
             titel: `Arbeitsmedizinische Untersuchung anzubieten — ${p.nachname}`,
             text: vs.letzte
@@ -1939,14 +1959,16 @@ function pruefen(m, von, bis) {
               titel: `Alleindienst nicht zulässig — ${p.nachname}`,
               text: `${da.name}: keine weitere eingewiesene Person eingeteilt` });
         }
-        const w = ein.wiedereingliederung;
+        /* Ohne Rohdaten kommt die Grenze neutral aus planungsregeln (S1). */
+        const wNeutral = !ein.wiedereingliederung ? stundengrenzeAusRegeln(p.planungsregeln) : null;
+        const w = ein.wiedereingliederung || wNeutral;
         if (w && w.von <= d && w.bis >= d && dow(d) === 0) {
           let std = 0;
           for (let i = 0; i < 7; i++) { const tt = personTag(m, p, addDays(d, i));
             if (!tt.dienstId) continue; const xx = m.dienstarten.find((y) => y.id === tt.dienstId); if (xx) std += dauer(xx); }
           if (std > w.maxStundenWoche)
-            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id,
-              titel: `Wiedereingliederung überschritten — ${p.nachname}`,
+            push({ art: "einschraenkung", schwere: "warn", datum: d, ref: p.id, personId: p.id, neutral: !!wNeutral,
+              titel: wNeutral ? `Wochenstundengrenze überschritten — ${p.nachname}` : `Wiedereingliederung überschritten — ${p.nachname}`,
               text: `${n1(std)} h geplant, zulässig sind ${n1(w.maxStundenWoche)} h je Woche` });
         }
       }
@@ -2031,22 +2053,35 @@ function pruefen(m, von, bis) {
 
        Die Regeln stehen in src/regelwerk.js und sind dort geprüft; hier
        werden sie nur auf den Plan angewendet. */
+    /* Drei Wege, nie zwei zugleich (Commit S1):
+       - Rohdaten (Planung, Leitung): schutzBefunde, mit Fundstelle;
+       - Einsatzregeln (Schichtverantwortung, Bereich und Pool): regelBefunde,
+         neutral — ohne Diagnose, ohne Gesetz;
+       - die Sicht erwartet Einsatzregeln, sie fehlen: Die Prüfung ist nicht
+         möglich, und das sperrt (fail-closed). Eine Person ohne Daten ist
+         nicht frei planbar. */
     for (const p of m.personen) {
       if (!imDienst(p, von) && !imDienst(p, bis)) continue;
-      /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-         ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
-      const alterHeute = alterAm(p.geburtstag, bis);
-      if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      const abgeleitet = Array.isArray(p.planungsregeln);
+      const erwartet = p.sichtbereich === "bereich" || p.sichtbereich === "pool";
+      if (!abgeleitet && !erwartet) {
+        /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
+           ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
+        const alterHeute = alterAm(p.geburtstag, bis);
+        if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+      }
+      if (abgeleitet && !p.planungsregeln.some((x) => x && x.regel !== "stundengrenzeWoche")) continue;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefunde(p, da, d)) {
+        for (const b of schutzBefundeFuer(p, da, d)) {
           push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
-            ref: `${p.id}|${b.regel}`, personId: p.id,
-            titel: `${b.regel} — ${p.nachname}`,
+            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: !!b.neutral,
+            titel: b.regel === "pruefungNichtMoeglich" ? `Schutzprüfung nicht möglich — ${p.nachname}`
+              : b.neutral ? `Einsatzregel verletzt — ${p.nachname}` : `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
         }
       }
@@ -2079,6 +2114,28 @@ function pruefen(m, von, bis) {
     return out;
   });
 }
+
+/* Befunde, die auf Personendaten beruhen, die der Server Beschäftigten und
+   dem Betriebsrat nicht ausliefert (server/lib/sicht.mjs): Mutterschutz,
+   Schwerbehinderung, Geburtsdatum, arbeitsmedizinische Vorsorge und
+   Einschränkungen. Aus den gekürzten Daten entstünden falsche Befunde mit
+   Namen — etwa „Untersuchung anzubieten“ für jede Kollegin im Nachtdienst,
+   weil das Datum der letzten Untersuchung fehlt. Wer plan.edit.unit hat,
+   bekommt den Betrieb vollständig und sieht sie wie bisher. */
+const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];
+/* Seit Commit 1e.1 bekommt auch die Schichtverantwortung Personen anderer
+   Bereiche gekürzt (sichtbereich "fremd", siehe server/lib/sicht.mjs). Für
+   diese Personen fehlen die Merkmale; ihre Befunde wären falsch. */
+const personFremd = (m, pid) => { const p = (m.personen || []).find((x) => x.id === pid); return !!p && p.sichtbereich === "fremd"; };
+function befundeFuer(sitz, befunde) {
+  if (darf(sitz, "plan.edit.unit"))
+    return befunde.filter((b) => !(BEFUNDE_AUS_PERSONENDATEN.includes(b.art) && personFremd(sitz.mandant, b.personId)));
+  return befunde.filter((b) => !BEFUNDE_AUS_PERSONENDATEN.includes(b.art));
+}
+/** Konten einer Person: mit account.view.all — außer für Personen, deren
+    Kontodaten die Sicht nicht enthält (fremder Bereich, Springer-Pool). */
+const kontoSichtbar = (sitz, p) => sitz.person.id === p.id
+  || (darf(sitz, "account.view.all") && p.sichtbereich !== "fremd" && p.sichtbereich !== "pool");
 function simulation(m) {
   return memo(m, "sim", () => {
     const len = zyklusLaenge(m);
@@ -2128,7 +2185,27 @@ function darf(sitz, recht, einheitId) {
   return sitz.person.bereich === einheitId;
 }
 const darfEinheit = (s, eid) => darf(s, "plan.edit.all") || darf(s, "plan.edit.unit", eid);
+/* Mitteilungen an Personen außerhalb des eigenen Bereichs nimmt der Server
+   von der Schichtverantwortung nicht an (rechte.mjs, einheitZusammen) —
+   dieselbe Bestimmung des eigenen Bereichs wie dort (eigeneEinheit). */
+const anBereichErlaubt = (s, p) => darf(s, "plan.edit.all") || !p || p.id === s.person.id
+  || einheitAm(p, heute()) === (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
 const darfEntscheiden = (s, eid) => darf(s, "req.approve.all") || darf(s, "req.approve.unit", eid);
+/* Dienstbuch und Übergaben tragen eine Einheit (Commit C2). Die
+   Schichtverantwortung schreibt immer für ihre eigene — der Server setzt sie
+   ohnehin; Planung und Leitung (plan.edit.all) wählen eine Einheit oder
+   „betriebsweit" (null). */
+const eigeneEinheitVon = (s) => (s.person.bereich && s.person.bereich !== "ALLE" ? s.person.bereich : einheitAm(s.person, heute()));
+const waehltEinheit = (s) => darf(s, "plan.edit.all");
+/** Einheit oder „Betriebsweit" — nur für Planung und Leitung. */
+function EinheitWahl({ m, wert, setWert, style }) {
+  return (
+    <Sel value={wert ?? ""} onChange={(e) => setWert(e.target.value || null)} style={{ width: 190, ...style }}>
+      <option value="">Betriebsweit</option>
+      {(m.einheiten || []).map((e) => <option key={e.id} value={e.id}>{e.name || e.id}</option>)}
+    </Sel>);
+}
+const einheitName = (m, eid) => (eid ? ((m.einheiten || []).find((e) => e.id === eid) || {}).name || eid : "betriebsweit");
 
 /* ------------------------------ Preisrechnung ----------------------------- */
 /** Zählt Zugänge aus dem laufenden Personalbestand — daher automatisch aktuell. */
@@ -2458,6 +2535,19 @@ const offeneErfassung = (m, p, bis) => {
  * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten darf.
  * Liefert eine Liste von Hinderungsgründen — leer bedeutet zulässig.
  */
+/** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
+function wochenStundenGeplant(m, p, d) {
+  const mo = montag(d);
+  let std = 0;
+  for (let i = 0; i < 7; i++) {
+    const t = personTag(m, p, addDays(mo, i));
+    if (!t.dienstId) continue;
+    const x = m.dienstarten.find((y) => y.id === t.dienstId);
+    if (x) std += dauer(x);
+  }
+  return std;
+}
+
 function hindernisse(m, p, d, da) {
   const g = [];
   const e = einschr(p);
@@ -2510,20 +2600,21 @@ function hindernisse(m, p, d, da) {
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
     if (n >= e.maxDiensteWoche) g.push(`bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
   }
-  // Wiedereingliederung
-  const w = e.wiedereingliederung;
-  if (w && w.von <= d && w.bis >= d) {
-    const mo = montag(d);
-    let std = 0;
-    for (let i = 0; i < 7; i++) {
-      const t = personTag(m, p, addDays(mo, i));
-      if (!t.dienstId) continue;
-      const x = m.dienstarten.find((y) => y.id === t.dienstId);
-      if (x) std += dauer(x);
-    }
-    if (std + dauer(da) > w.maxStundenWoche)
-      g.push(`Wiedereingliederung: höchstens ${n1(w.maxStundenWoche)} h je Woche`);
+  /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
+     eingeteilt werden darf, braucht im Dienst jemanden ohne diese
+     Einschränkung (Commit S2). */
+  if (e.keinAlleindienst) {
+    const b = besetzung(m, d)[da.id];
+    const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
+    if (mit.length === 0) g.push("darf nicht allein eingeteilt werden");
   }
+  /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
+     die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
+     (Schichtverantwortung); fehlen diese, sperrt sie. Harte Befunde sind
+     Hindernisse; weiche — auch die Wochenstundengrenze (S2a) — sind
+     Hinweise in Ersatzsuche und folgenPruefen. */
+  const schutz = einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d));
+  g.push(...schutz.hindernisse);
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
@@ -2594,6 +2685,8 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
     if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
       punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
+    /* Weiche Schutzregeln sperren nicht, stehen aber dabei (Commit S2). */
+    for (const h of einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d)).hinweise) gruende.push(`Hinweis: ${h}`);
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -3446,31 +3539,7 @@ function nachweisLage(m) {
 }
 
 /* ------------------------ Standortprüfung beim Stempeln ------------------ */
-/** Abstand zweier Koordinaten in Metern (Haversine). */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000, rad = (x) => (x * Math.PI) / 180;
-  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-/**
- * Bewertet einen Stempelvorgang gegen den hinterlegten Einsatzort.
- * Bewusst nur als Ereignis: kein Verlauf, keine Hintergrundortung.
- * Gespeichert wird ausschließlich das Ergebnis, nicht die Koordinate.
- */
-function stempelPruefen(m, p, datum, koord) {
-  const t = personTag(m, p, datum);
-  const da = t.dienstId && m.dienstarten.find((x) => x.id === t.dienstId);
-  const eid = einheitAm(p, datum);
-  const e = m.einheiten.find((x) => x.id === eid);
-  const st = e && m.standorte.find((x) => x.id === e.standortId);
-  if (!koord || !st || st.lat === undefined)
-    return { geprueft: false, text: "Ohne Standortfreigabe erfasst" };
-  const d = abstandMeter(koord.lat, koord.lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return { geprueft: true, abstand: d, radius, innerhalb: d <= radius, standort: st.name,
-    text: d <= radius ? `Am Einsatzort (${d} m)` : `Abweichend, ${d > 1500 ? `${n1(d / 1000)} km` : `${d} m`} entfernt` };
-}
+/* Die Ortsprüfung beim Stempeln liegt allein auf dem Server (server/lib/geo.mjs). */
 const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] || null;
 
 /* -------------------------------- Auslastung ----------------------------- */
@@ -3525,14 +3594,25 @@ function tagesaufgaben(sitz) {
   // --- Für alle im Schichtdienst ---
   if (p.imSchichtdienst !== false) {
     const t = personTag(m, p, d0);
-    if (t.dienstId) {
+    /* Dienst über Mitternacht: Ein offener Beginn von gestern wird zuerst
+       ausgestempelt — kein neuer Start für heute (stempelvorgang.js). */
+    const vorgang = stempelVorgang(m, p, d0);
+    if (vorgang.vortag) push({ art: "stempel", dringend: true, ziel: "meine",
+      titel: `Im Dienst seit gestern ${vorgang.st.start}`, text: "Noch nicht ausgestempelt", aktion: "Ausstempeln" });
+    else if (t.dienstId) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId);
       const st = stempelStand(m, p, d0);
       if (da && !st) push({ art: "stempel", dringend: true, ziel: "meine",
         titel: `Heute ${da.name}`, text: `${da.start}–${da.ende} · noch nicht eingestempelt`, aktion: "Einstempeln" });
-      else if (da && st && !st.ende) push({ art: "stempel", dringend: false, ziel: "meine",
+      else if (da && st && !st.ende && !vorgang.veraltet) push({ art: "stempel", dringend: false, ziel: "meine",
         titel: `Im Dienst seit ${st.start}`, text: da.name, aktion: "Ausstempeln" });
     }
+    /* Offener Beginn ohne (noch) geplanten Dienst: bleibt sichtbar. */
+    if (!vorgang.vortag && vorgang.offen && !(t.dienstId && !vorgang.veraltet))
+      push({ art: "stempel", dringend: true, ziel: "meine",
+        titel: vorgang.veraltet ? `Beginn ${vorgang.st.start} nicht zugeordnet` : `Im Dienst seit ${vorgang.st.start}`,
+        text: vorgang.veraltet ? MARKIERUNG_TEXT.START_VERALTET : "Kein Dienst im Plan · noch nicht ausgestempelt",
+        aktion: vorgang.veraltet ? "Ende erfassen" : "Ausstempeln" });
     const offen = offeneErfassung(m, p, addDays(d0, -1));
     if (offen.length) push({ art: "zeiten", dringend: false, ziel: "meine",
       titel: `${offen.length} Zeiten bestätigen`, text: "Solange offen, bleibt das Stundenkonto eine Hochrechnung", anzahl: offen.length });
@@ -3567,7 +3647,7 @@ function tagesaufgaben(sitz) {
   }
 
   if (darf(sitz, "plan.view.unit")) {
-    const kommend = pruefen(m, d0, addDays(d0, 13));
+    const kommend = befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13)));
     const heuteOffen = kommend.filter((b) => b.datum === d0 && (b.art === "besetzung" || b.art === "qualifikation"));
     if (heuteOffen.length) push({ art: "besetzung", dringend: true, ziel: "lage",
       titel: `Heute ${heuteOffen.length}× unterbesetzt`, text: heuteOffen.map((b) => b.titel).slice(0, 2).join(" · "),
@@ -3602,7 +3682,7 @@ function tagesaufgaben(sitz) {
 
   if (darf(sitz, "account.view.all")) {
     const grenze = m.einstellungen.ausgleichGrenze || 40;
-    const ueber = m.personen.filter((x) => imDienst(x, d0) && stundenkonto(m, x, ym) > grenze);
+    const ueber = m.personen.filter((x) => imDienst(x, d0) && kontoSichtbar(sitz, x) && stundenkonto(m, x, ym) > grenze);
     if (ueber.length) push({ art: "konto", dringend: false, ziel: "abrechnung",
       titel: `${ueber.length}× Stundenkonto über der Grenze`,
       text: `Freizeitausgleich einplanen · Grenze ${n1(grenze)} h`, anzahl: ueber.length });
@@ -4389,10 +4469,14 @@ const UEBERGABE_FELDER = [
   { id: "material", label: "Material und Betriebsmittel", pflicht: false,
     hinweis: "Fehlendes, Defektes, Übergebenes." },
 ];
-const uebergabeAm = (m, datum, dienstId) =>
-  (m.uebergaben || []).find((u) => u.datum === datum && u.dienstId === dienstId) || null;
+/* Ältere Betriebe trugen `uebergaben: {}` (siehe leererMandant). */
+const uebergabenVon = (m) => (Array.isArray(m.uebergaben) ? m.uebergaben : []);
+/* Eine Übergabe je Tag, Dienstart und Einheit (Commit C2; fehlend wie null). */
+const uebergabeAm = (m, datum, dienstId, einheitId = null) =>
+  uebergabenVon(m).find((u) => u.datum === datum && u.dienstId === dienstId
+    && (u.einheitId ?? null) === (einheitId ?? null)) || null;
 /** Übergaben, die fällig, aber nicht erfolgt sind. */
-function offeneUebergaben(m, tage = 3) {
+function offeneUebergaben(m, tage = 3, einheitId = null) {
   if (!kann(m, "uebergabe")) return [];
   const out = [];
   for (let i = tage; i >= 1; i--) {
@@ -4400,8 +4484,10 @@ function offeneUebergaben(m, tage = 3) {
     for (const da of m.dienstarten) {
       if (da.posten || da.form === "ruf") continue;
       const b = besetzung(m, d)[da.id];
-      if (!b.personen.length) continue;
-      if (!uebergabeAm(m, d, da.id)) out.push({ datum: d, dienstart: da, personen: b.personen });
+      /* Fällig je Einheit: nur, wenn jemand aus ihr im Dienst war. */
+      const personen = einheitId ? b.personen.filter((p) => einheitAm(p, d) === einheitId) : b.personen;
+      if (!personen.length) continue;
+      if (!uebergabeAm(m, d, da.id, einheitId)) out.push({ datum: d, dienstart: da, personen });
     }
   }
   return out;
@@ -5051,8 +5137,12 @@ const H1 = ({ children, rubrik, sub, right, style }) => (
       <h1 className="titel">{children}</h1>
       {sub && <p className="untertitel">{sub}</p>}
     </div>
+    {/* maxWidth: Die Gruppe schrumpft nicht (flexShrink 0), durfte aber
+        bisher breiter werden als die Seite — eine Knopfzeile mit fünf
+        Aktionen schob „Meine Schichten" bei 390 px auf 528 bis 822 px.
+        Jetzt endet sie am Rand, und was darin umbricht, bricht um. */}
     {right && <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-      flexShrink: 0 }}>{right}</div>}
+      flexShrink: 0, maxWidth: "100%", minWidth: 0 }}>{right}</div>}
   </div>)
 
 function Kpi({ label, value, unit, tone = "text", sub }) {
@@ -7424,7 +7514,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         <span style={NUM}>{uk.rest} von {uk.anspruch} Tagen</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: C.dim }}>Stundenkonto</span>
-                        <span style={NUM}>{sgn(stundenkonto(m, p, aktueller.von.slice(0, 7)))} h</span></div>
+                        <span style={NUM}>{sgnIst(stundenkonto(m, p, aktueller.von.slice(0, 7)))} h</span></div>
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
                         <span style={{ color: C.dim }}>Auslastung</span>
                         <span style={NUM}>{auslastung(m, p, aktueller.von.slice(0, 7)).pct} %</span></div>
@@ -8093,7 +8183,7 @@ function MeineSchichten({ sitz, akt, ym }) {
   return (
     <div>
       <H1 sub={`${ich.vorname} ${ich.nachname} · ${einheit ? einheit.name : "ohne Zuordnung"} · ${rolle(ich.rolle).label}`}
-        right={<div style={{ display: "flex", gap: 9 }}>
+        right={<div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
           <Btn onClick={() => akt.oeffneWunsch(ich.id)}>Wunschdienste</Btn>
           <Btn onClick={() => akt.oeffneVerfuegbarkeit(ich.id)}>Verfügbarkeit</Btn>
           <Btn kind="danger" onClick={() => akt.oeffneKrankmeldung(ich.id)}>Krank melden</Btn>
@@ -8104,11 +8194,15 @@ function MeineSchichten({ sitz, akt, ym }) {
         </div>}>Meine Schichten</H1>
 
       <KpiRow min={200}>
-        <Kpi label="Stunden im Monat" value={n1(ist.gesamt)} unit="h" sub={`Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`}
-          tone={Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"} />
-        <Kpi label="Stundenkonto" value={sgn(kto)} unit="h" tone={Math.abs(kto) < 18 ? "ok" : "warn"} sub="kumuliert seit Jahresbeginn" />
+        {/* Ohne Ist-Daten (Betriebsrat, E1) steht „–" und der Grund — keine 0. */}
+        <Kpi label="Stunden im Monat" value={n1Ist(ist.gesamt)} unit="h"
+          sub={ist.nichtVerfuegbar ? `Soll ${n1(soll)} h · ${ISTDATEN_TEXT}` : `Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`}
+          tone={ist.nichtVerfuegbar ? undefined : Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"} />
+        <Kpi label="Stundenkonto" value={sgnIst(kto)} unit="h" tone={kto === null ? undefined : Math.abs(kto) < 18 ? "ok" : "warn"}
+          sub={kto === null ? ISTDATEN_TEXT : "kumuliert seit Jahresbeginn"} />
         <Kpi label="Resturlaub" value={url.rest} unit="Tage" tone={url.rest < 5 ? "warn" : "ok"} sub={`von ${url.anspruch} Tagen`} />
-        <Kpi label="Nachtstunden" value={n1(ist.nacht)} unit="h" sub={`${ist.naechte} Nachtdienste im Monat`} />
+        <Kpi label="Nachtstunden" value={n1Ist(ist.nacht)} unit="h"
+          sub={ist.nichtVerfuegbar ? ISTDATEN_TEXT : `${ist.naechte} Nachtdienste im Monat`} />
       </KpiRow>
 
       {einsatz.length > 0 && (
@@ -8133,8 +8227,10 @@ function MeineSchichten({ sitz, akt, ym }) {
       <Card style={{ marginTop: 20 }}>
         <CardHead right={<Lab>zwölf Monate</Lab>}>Mein Stundenkonto</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
-          <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
-            hoehe={140} farbe={stundenkonto(m, ich, ym) > 0 ? C.warn : C.ok} />
+          {kto === null
+            ? <div style={{ fontSize: 13.5, color: C.dim }}>{ISTDATEN_TEXT}</div>
+            : <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
+                hoehe={140} farbe={kto > 0 ? C.warn : C.ok} />}
           <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
             Steigt die Linie über Monate, steht Freizeitausgleich an. Sprich das mit der Planung ab.
           </div>
@@ -8187,7 +8283,10 @@ function MeineSchichten({ sitz, akt, ym }) {
         <div>{tage.map((d) => {
           const t = personTag(m, ich, d), da = map[t.dienstId], fei = feiertag(d, m.bundesland);
           return (
-            <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, padding: "14px 22px",
+            /* flexWrap: Bei 320 px passten Datum, Dienst und die Marken
+               „Nacht" und „geändert" nicht in eine Zeile und schoben die
+               Seite in die Breite. Umgebrochen wird nur, wenn es eng wird. */
+            <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, rowGap: 8, flexWrap: "wrap", padding: "14px 22px",
               borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? "rgba(43,52,64,.055)" : "transparent" }}>
               <div style={{ width: 104, flexShrink: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: d === heute() ? 650 : 500, ...NUM }}>{fKurz(d)}</div>
@@ -8275,16 +8374,17 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const m = sitz.mandant;
   const d0 = heute();
   const bes = useMemo(() => besetzung(m, d0), [m]);
-  const kommend = useMemo(() => pruefen(m, d0, addDays(d0, 13)), [m]);
+  const kommend = useMemo(() => befundeFuer(sitz, pruefen(m, d0, addDays(d0, 13))), [m, sitz]);
   const sim = useMemo(() => simulation(m), [m]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const aktiv = aktive(m, d0);
   const abwesend = aktiv.filter((p) => abwesenheitAm(m, p.id, d0)).length;
   const kritisch = kommend.filter((b) => b.schwere === "danger").length;
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
-  /* Ohne Ist-Daten (Rollenschutz) gibt es keine Konten — „0 über der Grenze" wäre falsch. */
-  const kontenHoch = aktiv.some((p) => !istVerfuegbar(m, p)) ? null
-    : aktiv.filter((p) => stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
+  /* Ohne Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine Konten — „0 über der Grenze" wäre falsch.
+     Gezählt wird weiterhin nur, wessen Konto die Rolle sehen darf (kontoSichtbar). */
+  const kontenHoch = aktiv.some((p) => kontoSichtbar(sitz, p) && !istVerfuegbar(m, p)) ? null
+    : aktiv.filter((p) => kontoSichtbar(sitz, p) && stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
 
   return (
@@ -8328,10 +8428,12 @@ function Lagebild({ sitz, oeffneTag, akt }) {
           <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
           <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
           <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
-          <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />
-          <Kpi label="Konten über Grenze" value={kontenHoch === null ? "–" : kontenHoch}
+          {/* Beide Zahlen rechnen mit fremden Anträgen bzw. Stundenkonten — die
+              liefert der Server nur Rollen, die sie bearbeiten (sicht.mjs). */}
+          {darf(sitz, "req.approve.unit") && <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />}
+          {darf(sitz, "account.view.all") && <Kpi label="Konten über Grenze" value={kontenHoch === null ? "–" : kontenHoch}
             tone={kontenHoch === null ? "text" : kontenHoch ? "warn" : "ok"}
-            sub={kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />
+            sub={kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`} />}
         </KpiRow>
         <Card>
           <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
@@ -8888,7 +8990,8 @@ function Tagesdetail({ sitz, datum, onClose, akt }) {
         </div>
       </div>
 
-      {darf(sitz, "plan.view.unit") && (
+      {/* Tagesnotizen sind Planungswissen — „sichtbar für alle mit Planungsrecht“. */}
+      {darf(sitz, "plan.edit.unit") && (
         <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Btn size="sm" kind="quiet" onClick={() => akt.oeffneNotizen(`tag|${datum}`, `Notizen zum ${fDatum(datum)}`)}>
             Notizen{notizenZu(m, `tag|${datum}`).length ? ` (${notizenZu(m, `tag|${datum}`).length})` : ""}</Btn>
@@ -9453,17 +9556,17 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                   {p.qualifikationen.map((qid) => { const qq = m.qualifikationen.find((x) => x.id === qid);
                     return qq ? <Pill key={qid} size="sm">{qq.kurz}</Pill> : null; })}</div></td>
-              {zeigt ? (<>
+              {zeigt && kontoSichtbar(sitz, p) ? (<>
                 <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right" }}>
                   <div style={{ fontSize: 14, color: url.rest < 5 ? C.warn : C.text, ...NUM }}>{url.rest}</div>
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>von {url.anspruch}</div></td>
                 <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 14,
-                  color: Math.abs(kto) < 12 ? C.dim : kto > 0 ? C.warn : C.accent, ...NUM }}>{sgn(kto)} h</td>
+                  color: kto === null || Math.abs(kto) < 12 ? C.dim : kto > 0 ? C.warn : C.accent, ...NUM }}>{sgnIst(kto)} h</td>
                 <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right" }}>
-                  <div style={{ fontSize: 14, ...NUM }}>{n1(nacht.stunden)} h</div>
-                  <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{nacht.anzahl} Dienste</div></td>
+                  <div style={{ fontSize: 14, ...NUM }}>{n1Ist(nacht.stunden)} h</div>
+                  <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{stundenText(nacht.anzahl, String)} Dienste</div></td>
               </>) : <td colSpan={3} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 12.5, color: C.dimmer }}>
-                Konten nur für die Planung sichtbar</td>}
+                {zeigt ? "Konten dieser Person nicht im eigenen Bereich" : "Konten nur für die Planung sichtbar"}</td>}
               <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}>›</td>
             </tr>); })}</tbody>
         </table>
@@ -9507,6 +9610,23 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
 }
 
 /* ============================== PERSONALAKTE ============================= */
+/** Die Einsatzregeln einer Person — neutral, ohne Grund (Commit S1). */
+function EinsatzregelListe({ regeln }) {
+  if (!Array.isArray(regeln)) return null;
+  const zeitraum = (r) => (r.von || r.bis
+    ? ` (${r.von ? `ab ${fKurz(r.von)}` : ""}${r.von && r.bis ? " " : ""}${r.bis ? `bis ${fKurz(r.bis)}` : ""})` : "");
+  const zeilen = [...new Set(regeln.filter((r) => r && r.regel).map((r) => r.regel === "stundengrenzeWoche"
+    ? `Wochenstundengrenze: höchstens ${n1(Number(r.wert) || 0)} h${zeitraum(r)}`
+    : `${(EINSATZREGEL_TEXTE[r.regel] || EINSATZREGEL_TEXTE.unbekannt).replace(/\.$/, "")}${zeitraum(r)}`))];
+  return (
+    <div>
+      <Lab style={{ marginBottom: 8 }}>Einsatzregeln</Lab>
+      {zeilen.length === 0
+        ? <div style={{ fontSize: 13, color: C.dim }}>Keine besonderen Einsatzregeln.</div>
+        : zeilen.map((z) => <div key={z} style={{ fontSize: 13.5, lineHeight: 1.6 }}>{z}</div>)}
+    </div>);
+}
+
 function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const m = sitz.mandant;
   const p = m.personen.find((x) => x.id === personId);
@@ -9519,7 +9639,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
   const url = urlaubskonto(m, p, jahr), ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
   const kto = stundenkonto(m, p, ym), nacht = nachtJahr(m, p, jahr);
   const editierbar = darf(sitz, "staff.edit") || darfEinheit(sitz, einheitAm(p, d0));
-  const zeigt = darf(sitz, "account.view.all") || sitz.person.id === p.id;
+  const zeigt = kontoSichtbar(sitz, p);
   const nm = Array.from({ length: 12 }, (_, i) => istStunden(m, p, `${jahr}-${pad(i + 1)}`).nacht);
   const maxN = Math.max(1, ...nm);
 
@@ -9545,16 +9665,17 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
       {zeigt && (<>
         <KpiRow min={170}>
           <Kpi label="Resturlaub" value={url.rest} unit="Tage" tone={url.rest < 5 ? "warn" : "ok"} sub={`${url.genommen} von ${url.anspruch} genommen`} />
-          <Kpi label={`Stunden ${MON[Number(ym.slice(5)) - 1]}`} value={sgn(ist.gesamt - soll)} unit="h"
-            tone={Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"} sub={`${n1(ist.gesamt)} von ${n1(soll)} h`} />
-          <Kpi label="Konto kumuliert" value={sgn(kto)} unit="h" tone={Math.abs(kto) < 18 ? "ok" : "warn"} />
-          <Kpi label={`Nachtstunden ${jahr}`} value={n1(nacht.stunden)} unit="h" sub={`${nacht.anzahl} Nachtdienste`} />
+          <Kpi label={`Stunden ${MON[Number(ym.slice(5)) - 1]}`} value={ist.nichtVerfuegbar ? "–" : sgn(ist.gesamt - soll)} unit="h"
+            tone={ist.nichtVerfuegbar ? undefined : Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"}
+            sub={ist.nichtVerfuegbar ? ISTDATEN_TEXT : `${n1(ist.gesamt)} von ${n1(soll)} h`} />
+          <Kpi label="Konto kumuliert" value={sgnIst(kto)} unit="h" tone={kto === null ? undefined : Math.abs(kto) < 18 ? "ok" : "warn"} />
+          <Kpi label={`Nachtstunden ${jahr}`} value={n1Ist(nacht.stunden)} unit="h" sub={`${stundenText(nacht.anzahl, String)} Nachtdienste`} />
         </KpiRow>
         <div style={{ margin: "24px 0" }}>
           <Lab style={{ marginBottom: 11 }}>Nachtarbeit im Jahresverlauf</Lab>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 72 }}>
             {nm.map((v, i) => (<div key={i} style={{ flex: 1, textAlign: "center" }}>
-              <div title={`${MON[i]}: ${n1(v)} h`} style={{ height: Math.max(3, (v / maxN) * 56),
+              <div title={`${MON[i]}: ${n1Ist(v)} h`} style={{ height: Math.max(3, ((v || 0) / maxN) * 56),
                 background: i === Number(ym.slice(5)) - 1 ? C.accent : "rgba(43,52,64,.24)", borderRadius: "5px 5px 0 0",
                 transition: "height .4s" }} />
               <div style={{ fontSize: 10, color: C.dimmer, marginTop: 5 }}>{MON[i].slice(0, 1)}</div></div>))}
@@ -9587,6 +9708,10 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   <option value="springer">Springerpool · keine Rotation</option>
                 </Sel></Field>
             </div>
+            {/* Die Rohdaten pflegt, wer Personal bearbeitet (staff.edit). Die
+                Schichtverantwortung bekommt sie nicht mehr (Commit S1) und sieht
+                stattdessen die neutralen Einsatzregeln. */}
+            {!darf(sitz, "staff.edit") ? <EinsatzregelListe regeln={p.planungsregeln} /> : (<>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -9621,6 +9746,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
                 Die Prüfung meldet Verstöße unter „Schutzvorschriften".
               </div>)}
+            </>)}
 
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
               <div>
@@ -9708,13 +9834,13 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
               <Field label="Höchstzahl Dienste je Woche" hint="Leer bedeutet keine Begrenzung.">
                 <Inp type="number" min={0} value={(p.einschraenkungen || {}).maxDiensteWoche || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "maxDiensteWoche", e.target.value ? Number(e.target.value) : null)} /></Field>
-              <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
+              {darf(sitz, "staff.edit") && <Field label="Wiedereingliederung bis" hint="Leer beendet die Stufenregelung.">
                 <Inp type="date" value={((p.einschraenkungen || {}).wiedereingliederung || {}).bis || ""}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung", e.target.value
                     ? { von: heute(), bis: e.target.value, maxStundenWoche: ((p.einschraenkungen || {}).wiedereingliederung || {}).maxStundenWoche || 20 }
-                    : null)} /></Field>
+                    : null)} /></Field>}
             </div>
-            {(p.einschraenkungen || {}).wiedereingliederung && (
+            {darf(sitz, "staff.edit") && (p.einschraenkungen || {}).wiedereingliederung && (
               <Field label="Zulässige Wochenstunden während der Wiedereingliederung">
                 <Inp type="number" step="0.5" value={p.einschraenkungen.wiedereingliederung.maxStundenWoche}
                   onChange={(e) => akt.setzeEinschraenkung(p.id, "wiedereingliederung",
@@ -10331,7 +10457,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
   const [y, mo] = ym.split("-").map(Number);
   const von = `${ym}-01`, bis = `${ym}-${pad(dim_(y, mo - 1))}`;
   const [f, setF] = useState("alle");
-  const befunde = useMemo(() => pruefen(m, von, bis), [m, ym]);
+  const befunde = useMemo(() => befundeFuer(sitz, pruefen(m, von, bis)), [m, ym, sitz]);
   const arten = [["alle", "Alle"], ["besetzung", "Besetzung"], ["qualifikation", "Qualifikation"], ["ruhezeit", "Ruhezeit"],
     ["aufgabe", "Vorbehaltene Aufgaben"], ["folge", "Dienstfolge"], ["nachtfolge", "Nachtfolge"], ["abwesend", "Abwesenheit"], ["ueberlappung", "Überlappung"], ["urlaub", "Urlaub"], ["schutz", "Schutzvorschriften"]];
   const gez = befunde.filter((b) => f === "alle" || b.art === f);
@@ -10604,7 +10730,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
       if (t.dienstId) offen.push({ datum: d, dienstId: t.dienstId });
     }
     akt.krankmelden(f.personId, f.von, f.bis, f.notiz);
-    setLuecken(offen); setIdx(0); setSchritt(offen.length ? 3 : 4);
+    /* Wer nur die eigene Abwesenheit melden darf, teilt keinen Ersatz ein —
+       das ist Sache der Planung, und der Server nähme es ohnehin nicht an. */
+    setLuecken(offen); setIdx(0); setSchritt(offen.length && !eigene ? 3 : 4);
   };
 
   const kandidaten = m.personen.filter((p) => imDienst(p, heute()) &&
@@ -10625,7 +10753,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <Field label="Anmerkung" hint="Kein Grund, keine Diagnose — nur was für die Planung nötig ist.">
             <Inp value={f.notiz} onChange={(e) => setF({ ...f, notiz: e.target.value })} /></Field>
           <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
-            Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor.
+            {eigene
+              ? "Die Meldung wirkt sofort. Betroffene Dienste erscheinen für die Planung in der Prüfung."
+              : "Die Meldung wirkt sofort. Anschließend zeigt die App jede entstandene Lücke und schlägt Ersatz vor."}
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
             <Btn kind="quiet" onClick={onClose}>Abbrechen</Btn>
@@ -10653,7 +10783,7 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 20, lineHeight: 1.5 }}>
             {luecken.length === 0
               ? "Es waren keine Dienste betroffen."
-              : "Die Planung wurde benachrichtigt. Verbliebene Lücken erscheinen in der Prüfung."}
+              : `${anzahlWort(luecken.length, "Dienst")} betroffen. Verbliebene Lücken erscheinen in der Prüfung.`}
           </div>
           <Btn kind="primary" onClick={onClose}>Schließen</Btn>
         </div>)}
@@ -11037,11 +11167,59 @@ function Urlaubsrunde({ sitz, akt }) {
 }
 
 /* ===================== ABRECHNUNGSDATEN: ZUSCHLÄGE UND KONTEN ============ */
+/**
+ * Stempelbefunde eines Monats für die Leitung: je Stempel Start, Ende,
+ * Geo-Befund, gerundete Entfernung, Genauigkeit, Referenzstandort und
+ * Kennzeichen. Keine Karte, keine Koordinate, kein Verlauf.
+ */
+function StempelBefunde({ sitz, ym }) {
+  const m = sitz.mandant;
+  const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
+  const zeilen = Object.entries(m.einstempeln || {})
+    .map(([k, e]) => { const [pid, datum] = k.split("|"); return { pid, datum, e }; })
+    .filter((z) => z.datum && z.datum.startsWith(ym) && z.e)
+    .sort((a, b) => (b.datum.localeCompare(a.datum)) || String(name(a.pid)).localeCompare(String(name(b.pid))));
+  const Befund = ({ e, phase }) => {
+    const g = geoAnzeige(e, phase);
+    if (!g) return <span style={{ color: C.dimmer }}>–</span>;
+    return (<span title={g.text} style={{ ...NUM }}>
+      <b style={{ color: g.ton === "ok" ? C.ok : g.ton === "warn" ? C.warn : C.dim }}>{g.symbol}</b>
+      {g.entfernung ? ` ${g.entfernung}` : ""}
+      {g.genauigkeit !== null ? <span style={{ color: g.warnung ? C.warn : C.dimmer }}>{` ±${g.genauigkeit} m`}</span> : null}
+    </span>);
+  };
+  return (
+    <Card>
+      <CardHead right={<Lab>✓ bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
+      {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr style={{ textAlign: "left" }}>{["Person", "Tag", "Start", "Befund Start", "Ende", "Befund Ende", "Standort", "Kennzeichen"]
+            .map((h) => <th key={h} style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}` }}><Lab>{h}</Lab></th>)}</tr></thead>
+          <tbody>{zeilen.map(({ pid, datum, e }) => {
+            const ref = (e.geoStart && e.geoStart.referenz) || (e.geoEnde && e.geoEnde.referenz);
+            return (<tr key={`${pid}|${datum}`} className="row">
+              <td style={{ padding: "8px 14px" }}>{name(pid)}</td>
+              <td style={{ padding: "8px 14px", ...NUM }}>{fKurz(datum)}</td>
+              <td style={{ padding: "8px 14px", ...NUM }}>{e.start || "–"}</td>
+              <td style={{ padding: "8px 14px" }}><Befund e={e} phase="Start" /></td>
+              <td style={{ padding: "8px 14px", ...NUM }}>{e.ende || "–"}</td>
+              <td style={{ padding: "8px 14px" }}><Befund e={e} phase="Ende" /></td>
+              <td style={{ padding: "8px 14px" }}>{ref && ref.name ? ref.name : "–"}</td>
+              <td style={{ padding: "8px 14px" }}>{[...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])].map((x) => (
+                <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}</td>
+            </tr>);
+          })}</tbody>
+        </table>)}
+    </Card>);
+}
+
 function Abrechnungsdaten({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const [reiter, setReiter] = useState("zuschlaege");
-  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`))
-    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym]);
+  /* Nur Personen, deren Kontodaten die Sicht enthält (kontoSichtbar) — für
+     andere Bereiche fehlt der Schichtverantwortung die Erfassung seit 1e.2. */
+  const zeilen = useMemo(() => m.personen.filter((p) => imDienst(p, `${ym}-28`) && kontoSichtbar(sitz, p))
+    .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym, sitz]);
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
 
@@ -11050,7 +11228,8 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
       <H1 sub="Was die Lohnstelle braucht — und was das Stundenkonto verlangt. Entgelte bleiben bewusst außerhalb: Löhne gehören in die Lohnabrechnung, nicht in die Dienstplanung."
         right={<div style={{ display: "flex", gap: 10 }}>
           <Seg value={reiter} onChange={setReiter} options={[{ id: "zuschlaege", label: "Zuschläge" },
-            { id: "ausgleich", label: "Freizeitausgleich" }, { id: "lohn", label: "Lohnausgabe" }]} />
+            { id: "ausgleich", label: "Freizeitausgleich" }, { id: "lohn", label: "Lohnausgabe" },
+            { id: "stempel", label: "Stempelbefunde" }]} />
           <Btn onClick={() => akt.exportZuschlaege(ym)}>Export</Btn></div>}>
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
@@ -11109,6 +11288,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
       </>)}
 
       {reiter === "lohn" && <Lohnausgabe sitz={sitz} ym={ym} akt={akt} />}
+      {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} />}
       {reiter === "ausgleich" && (<>
         <KpiRow min={190}>
           <Kpi label="Über der Ausgleichsgrenze" value={faellig.length} tone={faellig.length ? "warn" : "ok"}
@@ -11154,7 +11334,7 @@ function AusgleichPlanen({ sitz, personId, akt, onClose }) {
   return (
     <Sheet open onClose={onClose} titel={`Freizeitausgleich · ${p.vorname} ${p.nachname}`} width={620}>
       <div className="karte" style={{ padding: 16, marginBottom: 18, display: "flex", gap: 22, flexWrap: "wrap" }}>
-        <div><Lab>Stundenkonto</Lab><div style={{ fontSize: 22, fontWeight: 650, color: C.warn, ...NUM }}>{sgn(a.kto)} h</div></div>
+        <div><Lab>Stundenkonto</Lab><div style={{ fontSize: 22, fontWeight: 650, color: C.warn, ...NUM }}>{sgnIst(a.kto)} h</div></div>
         <div><Lab>Über der Grenze</Lab><div style={{ fontSize: 22, fontWeight: 650, ...NUM }}>{n1(a.ueber)} h</div></div>
         <div><Lab>Freischichten nötig</Lab><div style={{ fontSize: 22, fontWeight: 650, ...NUM }}>{Math.ceil(a.ueber / (a.mittel || 8))}</div></div>
       </div>
@@ -11714,6 +11894,7 @@ function Dienstbuch({ sitz, akt }) {
   const arten = [["uebergabe", "Übergabe"], ["vorkommnis", "Vorkommnis"], ["hinweis", "Hinweis"]];
   const eintraege = (m.dienstbuch || []).filter((e) => e.datum === datum);
   const darfSchreiben = darf(sitz, "plan.view.unit");
+  const [einheitId, setEinheitId] = useState(null);
 
   return (
     <div>
@@ -11734,8 +11915,9 @@ function Dienstbuch({ sitz, akt }) {
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
               placeholder="Kurz und sachlich. Keine Gesundheitsdaten, keine Bewertungen von Personen." />
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
               <Btn kind="primary" disabled={!text.trim()}
-                onClick={() => { akt.dienstbuchEintrag(datum, art, text); setText(""); }}>Eintragen</Btn>
+                onClick={() => { akt.dienstbuchEintrag(datum, art, text, einheitId); setText(""); }}>Eintragen</Btn>
             </div>
           </div>
         </Card>)}
@@ -11753,7 +11935,7 @@ function Dienstbuch({ sitz, akt }) {
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill size="sm" tone={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"}>
                     {(arten.find((a) => a[0] === e.art) || [])[1]}</Pill>
-                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}</span>
+                  <span style={{ fontSize: 12.5, color: C.dimmer }}>{e.zeit} · {e.durch}{waehltEinheit(sitz) ? ` · ${einheitName(m, e.einheitId)}` : ""}</span>
                 </div>
                 <div style={{ fontSize: 14, color: C.text, marginTop: 6, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{e.text}</div>
               </div>
@@ -11772,7 +11954,8 @@ function folgenPruefen(m, person, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { hindernisse: [], hinweise: [] };
   const hind = hindernisse(m, person, datum, da);
-  const hinweise = [];
+  /* Weiche Schutzregeln als Hinweis (Commit S2). */
+  const hinweise = einsatzSchutz(person, da, datum, () => wochenStundenGeplant(m, person, datum)).hinweise.map((text) => ({ art: "warn", text }));
   const map = Object.fromEntries(m.dienstarten.map((x) => [x.id, x]));
 
   // Folgeschichten in beide Richtungen ausdrücklich benennen
@@ -11808,7 +11991,8 @@ function folgenPruefen(m, person, datum, dienstId) {
   else if (std > 44) hinweise.push({ art: "warn", text: `Ergibt ${n1(std)} h in dieser Kalenderwoche` });
 
   const kto = stundenkonto(m, person, datum.slice(0, 7));
-  hinweise.push({ art: "info", text: `Stundenkonto danach etwa ${sgn(kto + dauer(da))} h` });
+  /* Ohne Ist-Daten keine Hochrechnung — null + Dauer wäre eine erfundene Zahl. */
+  hinweise.push({ art: "info", text: kto === null ? `Stundenkonto: ${ISTDATEN_TEXT}` : `Stundenkonto danach etwa ${sgn(kto + dauer(da))} h` });
   return { hindernisse: hind, hinweise, dienstart: da };
 }
 
@@ -12063,9 +12247,49 @@ function Tauschboerse({ sitz, akt }) {
 const AUFGABE_SYMBOL = { stempel: "◷", zeiten: "◷", nachweis: "⚠", nachweise: "⚠", post: "✉",
   einsatz: "!", antrag: "✓", boerse: "⇄", besetzung: "!", pruefung: "⚠", freigabe: "◎", konto: "Σ" };
 
+/**
+ * Der eigene Dienst heute mit der Stempeluhr — am Rechner das Gegenstück zur
+ * Karte in MHeute. Sichtbar bei geplantem Dienst und bei jedem offenen Beginn
+ * (stempelVorgang: auch ohne Plan, auch vom Vortag). Ob jemand stempelt,
+ * entscheidet dasselbe wie überall: Die Person steht im Schichtdienst
+ * (`vorgang` ist sonst null), und /api/stempeln nimmt nur die eigene Person
+ * der Sitzung an. Geo, 20-Stunden-Grenze und Doppelstart regeln Stempeluhr
+ * und Server — hier entsteht keine eigene Logik.
+ */
+function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
+  if (!meineDa && !(vorgang && vorgang.offen)) return null;
+  return (
+    <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", ...style }}>
+      {vorgang && vorgang.vortag ? (
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Offener Dienst von gestern</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>Eingestempelt gestern {vorgang.st.start}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Bitte ausstempeln, wenn der Dienst endet.</div>
+        </div>
+      ) : !meineDa ? (
+        /* Offener Beginn, aber heute kein Dienst (mehr) im Plan. */
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Offener Dienst ohne Plan</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5, ...NUM }}>Eingestempelt {vorgang.st.start}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Für heute ist kein Dienst (mehr) geplant.</div>
+        </div>
+      ) : (<>
+        <Zelle da={meineDa} size={54} />
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Dein Dienst heute</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>{meineDa.name}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
+            {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
+        </div></>)}
+      {vorgang && <Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} />}
+      {children}
+    </Card>);
+}
+
 function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
+  const vorgang = p.imSchichtdienst !== false ? stempelVorgang(m, p, d0) : null;
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const dringend = aufgaben.filter((a) => a.dringend);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -12134,18 +12358,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
           </Card>);
       })()}
 
-      {meineDa && (
-        <Card style={{ padding: 24, marginBottom: 20, display: "flex", alignItems: "center",
-          gap: 20, flexWrap: "wrap" }}>
-          <Zelle da={meineDa} size={54} />
-          <div style={{ flex: 1, minWidth: 190 }}>
-            <Rubrik>Dein Dienst heute</Rubrik>
-            <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>{meineDa.name}</div>
-            <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
-              {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
-          </div>
-          <Stempeluhr sitz={sitz} akt={akt} datum={d0} />
-        </Card>)}
+      <DienstKarte sitz={sitz} akt={akt} vorgang={vorgang} meineDa={meineDa} style={{ marginBottom: 20 }} />
 
       {aufgaben.length === 0
         ? <Card style={{ padding: 44, textAlign: "center" }}>
@@ -12201,41 +12414,50 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
 }
 
 /* ------------------------------- Stempeluhr ------------------------------ */
-function Stempeluhr({ sitz, akt, datum }) {
+/* Was bei eingeschalteter Geo-Prüfung gespeichert wird — und was nicht. */
+const GEO_HINWEIS = "Beim Stempeln wird einmalig geprüft, ob du am Standort bist. Gespeichert werden das Ergebnis, "
+  + "die Entfernung grob gerundet und die Messgenauigkeit — keine Koordinate, kein Verlauf.";
+
+function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const st = stempelStand(m, p, datum);
+  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
 
+  /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
   const stempeln = (art) => {
     setLaeuft(true);
-    const fertig = (koord) => { akt.stempeln(p.id, datum, art, koord); setLaeuft(false); };
-    if (!navigator.geolocation) return fertig(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => fertig({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => fertig(null), { timeout: 6000, maximumAge: 60000 });
+    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, datum, art, koord); setLaeuft(false); });
   };
+  const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
   if (!st) return (
     <div style={{ textAlign: "right" }}>
       <Btn kind="primary" disabled={laeuft} onClick={() => stempeln("start")}>
-        {laeuft ? "Standort wird geprüft …" : "Einstempeln"}</Btn>
-      <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 7, maxWidth: 210, lineHeight: 1.4 }}>
-        Der Standort wird einmalig geprüft. Gespeichert wird nur, ob du am Einsatzort warst — keine Koordinate,
-        kein Verlauf.
-      </div>
+        {laeuft ? wartet : "Einstempeln"}</Btn>
+      {geoAn && <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 7, maxWidth: 230, lineHeight: 1.4 }}>
+        {GEO_HINWEIS}</div>}
+    </div>);
+  /* Wie MStempel: ein veralteter Beginn ist kein normaler Abschluss. */
+  if (!st.ende && veraltet) return (
+    <div style={{ textAlign: "right", maxWidth: 280 }}>
+      <div style={{ fontSize: 13, color: C.warn, marginBottom: 8, lineHeight: 1.4, ...NUM }}>
+        {MARKIERUNG_TEXT.START_VERALTET} (Beginn {st.start}). Die Arbeitszeit ergänzt die Leitung.</div>
+      <Btn kind="quiet" disabled={laeuft} onClick={() => stempeln("ende")}>
+        {laeuft ? wartet : "Ende trotzdem erfassen"}</Btn>
     </div>);
   if (!st.ende) return (
     <div style={{ textAlign: "right" }}>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, ...NUM }}>
-        Eingestempelt {st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
+        Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
       <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
-        {laeuft ? "Standort wird geprüft …" : "Ausstempeln"}</Btn>
+        {laeuft ? wartet : "Ausstempeln"}</Btn>
     </div>);
   return (
     <div style={{ textAlign: "right" }}>
       <Pill tone="ok">Dienst erfasst</Pill>
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, ...NUM }}>
-        {st.start} – {st.ende}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
+        {st.start || "–"} – {st.ende}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
     </div>);
 }
 
@@ -13053,7 +13275,10 @@ function Lenkzeiten({ sitz, akt }) {
   const m = sitz.mandant;
   const darfPflegen = darf(sitz, "plan.edit.unit");
   const [woche, setWoche] = useState(montag(heute()));
-  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)), [m, woche]);
+  /* Fremde Lenkzeiten bekommt nur, wer sie pflegt — Beschäftigte sehen die
+     eigenen (sicht.mjs), alle anderen Einträge wären leer. */
+  const fahrer = useMemo(() => m.personen.filter((p) => imDienst(p, woche)
+    && (darfPflegen || (sitz.person && p.id === sitz.person.id))), [m, woche, darfPflegen, sitz.person]);
   const [personId, setPersonId] = useState((fahrer[0] || {}).id || "");
   const person = fahrer.find((p) => p.id === personId) || fahrer[0] || null;
   const tage = useMemo(() => fahrWochentage(woche), [woche]);
@@ -14046,7 +14271,11 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
 function Notizen({ sitz, akt, schluessel, titel, onClose }) {
   const m = sitz.mandant;
   const [text, setText] = useState("");
+  const [einheitId, setEinheitId] = useState(null);
   const liste = notizenZu(m, schluessel);
+  /* Tagesnotizen tragen eine Einheit (Commit C3): Planung und Leitung wählen,
+     die Schichtverantwortung schreibt für ihre eigene und löscht nur eigene. */
+  const darfLoeschen = (x) => waehltEinheit(sitz) || x.vonId === sitz.person.id;
   return (
     <Sheet open onClose={onClose} titel={titel} width={540}>
       <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 18 }}>
@@ -14058,8 +14287,8 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
           <div key={x.id} className="karte" style={{ padding: 14, marginBottom: 9 }}>
             <div style={{ fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{x.text}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 }}>
-              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}</span>
-              <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>
+              <span style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{x.von} · {x.zeit}{waehltEinheit(sitz) ? ` · ${einheitName(m, x.einheitId)}` : ""}</span>
+              {darfLoeschen(x) && <Btn size="sm" kind="quiet" onClick={() => akt.loescheNotiz(schluessel, x.id)}>Löschen</Btn>}
             </div>
           </div>))}
       </div>}
@@ -14067,9 +14296,10 @@ function Notizen({ sitz, akt, schluessel, titel, onClose }) {
         <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
           placeholder="z. B. neu im Team, bis Ende Mai nicht allein einteilen" /></Field>
       <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+        {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
         <Btn kind="quiet" onClick={onClose}>Schließen</Btn>
         <Btn kind="primary" disabled={!text.trim()}
-          onClick={() => { akt.neueNotiz(schluessel, text); setText(""); }}>Hinzufügen</Btn>
+          onClick={() => { akt.neueNotiz(schluessel, text, einheitId); setText(""); }}>Hinzufügen</Btn>
       </div>
     </Sheet>);
 }
@@ -14163,8 +14393,9 @@ function Schichtuebergabe({ sitz, akt }) {
   const [datum, setDatum] = useState(heute());
   const [dienstId, setDienstId] = useState(m.dienstarten.find((d) => !d.posten) ?.id || "");
   const [f, setF] = useState({ lage: "", offen: "", vorkommnis: "", material: "" });
-  const offeneListe = useMemo(() => offeneUebergaben(m, 3), [m]);
-  const vorhanden = uebergabeAm(m, datum, dienstId);
+  const [einheitId, setEinheitId] = useState(() => (waehltEinheit(sitz) ? null : eigeneEinheitVon(sitz)));
+  const offeneListe = useMemo(() => offeneUebergaben(m, 3, einheitId), [m, einheitId]);
+  const vorhanden = uebergabeAm(m, datum, dienstId, einheitId);
   const b = dienstId ? besetzung(m, datum)[dienstId] : null;
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const darfSchreiben = darfEinheit(sitz, sitz.person.bereich) || darf(sitz, "plan.edit.unit");
@@ -14179,7 +14410,9 @@ function Schichtuebergabe({ sitz, akt }) {
     <div>
       <H1 rubrik={begriff(m, "einheit")}
         sub={`Die ${begriff(m, "uebergabe").toLowerCase()} hält fest, was die übernehmende Schicht wissen muss. Sie ist nachträglich nicht mehr änderbar — Ergänzungen werden angehängt.`}
-        right={<div style={{ display: "flex", gap: 10 }}>
+        /* flexWrap: Einheit, Datum und Dienst passten bei 320 px (mit Einheitswahl bis 430 px) nicht in eine Zeile. */
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} />}
           <Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 160 }} />
           <Sel value={dienstId} onChange={(e) => setDienstId(e.target.value)} style={{ width: 170 }}>
             {m.dienstarten.filter((d) => !d.posten && d.form !== "ruf")
@@ -14227,13 +14460,13 @@ function Schichtuebergabe({ sitz, akt }) {
                   <Inp placeholder="Ergänzung anhängen …" value={f.nachtrag || ""}
                     onChange={(e) => setF({ ...f, nachtrag: e.target.value })} />
                   <Btn disabled={!(f.nachtrag || "").trim()}
-                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag);
+                    onClick={() => { akt.uebergabeErgaenzen(datum, dienstId, f.nachtrag, einheitId);
                       setF({ ...f, nachtrag: "" }); }}>Anhängen</Btn>
                 </div>)}
             </>) : darfSchreiben && (
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <Btn kind="primary" disabled={!f.lage.trim()}
-                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f)}>
+                  onClick={() => akt.uebergabeSpeichern(datum, dienstId, f, einheitId)}>
                   Übergabe abschließen</Btn>
               </div>)}
           </div>
@@ -14784,6 +15017,8 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const meinDienst = p.imSchichtdienst !== false ? personTag(m, p, d0) : null;
   const meineDa = meinDienst && meinDienst.dienstId ? map[meinDienst.dienstId] : null;
+  /* Eigene Zeiterfassung: wie in Tagesstart und MHeute — wer im Schichtdienst steht. */
+  const vorgang = p.imSchichtdienst !== false ? stempelVorgang(m, p, d0) : null;
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen"
     : stunde < 18 ? "Guten Tag" : "Guten Abend";
@@ -14935,20 +15170,16 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         </div>)}
 
       {/* ------------------------ Mein Dienst ------------------------ */}
-      {meineDa && (
+      {/* Bisher nur Anzeige und Verweis — am Rechner gab es keine Stempeluhr
+          (Tagesstart, die sie trug, ist nicht eingebunden). Jetzt dieselbe
+          Karte wie dort: geplanter Dienst oder offener Beginn, mit Stempeluhr. */}
+      {(meineDa || (vorgang && vorgang.offen)) && (
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Mein Dienst heute</h2>
           <p className="abschnitt-sub">Was für dich persönlich ansteht.</p>
-          <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-            <Zelle da={meineDa} size={48} />
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 19, fontWeight: 620 }}>{meineDa.name}</div>
-              <div style={{ fontSize: 14.5, color: C.dim, marginTop: 4, ...NUM }}>
-                {meineDa.start} – {meineDa.ende} · {n1(dauer(meineDa))} h
-                {meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
-            </div>
+          <DienstKarte sitz={sitz} akt={akt} vorgang={vorgang} meineDa={meineDa}>
             <Btn onClick={() => gehZu("meine")}>Meine Schichten</Btn>
-          </Card>
+          </DienstKarte>
         </div>)}
 
       {/* --------------------- Alles Weitere, eingeklappt ------------- */}
@@ -15386,21 +15617,26 @@ function zustellwege(person, art) {
   };
 }
 
+/* Kennungen der Mitteilungen, die diese Oberfläche angelegt hat und deren
+   Zustellung sie nach dem Speichern anstößt (siehe zustellungAnstossen). */
+const zustellungAusstehend = new Set();
+
 /**
- * Baut eine Mitteilung samt Zustellaufträgen. Der Versand selbst geschieht
- * auf dem Server — hier entsteht nur die Warteschlange, damit die Anwendung
- * auch ohne Netz weiterarbeitet und nichts verloren geht.
+ * Baut eine Mitteilung fürs Postfach. Ob und wie sie per E-Mail oder Push
+ * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
+ * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
+ * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
  */
 function baueMitteilung(m, personId, art, titel, text, ziel) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
-  const w = zustellwege(p, art);
+  const id = uid("n");
+  zustellungAusstehend.add(id);
   return {
-    id: uid("n"), personId, art, titel, text, ziel: ziel || null,
+    id, personId, art, titel: String(titel ?? "").slice(0, 120), text: String(text ?? "").slice(0, 500),
+    ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
-    gelesen: false, dringend: w.dringend,
-    wege: { mail: w.mail ? p.email : null, push: w.push ? p.pushSchluessel : null },
-    zugestellt: { mail: null, push: null },
+    gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
   };
 }
 
@@ -15424,31 +15660,6 @@ function urlaubshinweiseFaellig(m, stichtag) {
     if (h.faellig) aus.push({ person: p, ...h });
   }
   return aus;
-}
-
-/** Alle Mitteilungen, für die noch etwas hinausgehen muss. */
-const offeneZustellungen = (m) => (m.nachrichten || []).filter((n) =>
-  (n.wege && n.wege.mail && !(n.zugestellt || {}).mail) ||
-  (n.wege && n.wege.push && !(n.zugestellt || {}).push));
-
-/* --------------------------------------------------------------------------
-   E-MAIL-TEXTE
-   Keine Werbung, keine Bilder, keine Zählpixel. Wer im Nachtdienst auf ein
-   Telefon schaut, will drei Zeilen und einen Verweis.
-   -------------------------------------------------------------------------- */
-function mailText(m, n, p) {
-  const anrede = `Hallo ${p.vorname},`;
-  const fuss = [
-    "",
-    "———",
-    `${m.name} · Dienstplanung mit CENTRIC`,
-    "Diese Nachricht wurde ausgelöst durch eine Änderung in deinem Dienstplan.",
-    "Einstellungen zu Benachrichtigungen findest du in der Anwendung unter Mehr.",
-  ].join("\n");
-  return {
-    betreff: `${n.titel} — ${m.name}`,
-    text: [anrede, "", n.text, "", "Öffnen: " + (m.adresse || ANWENDUNG_URL), fuss].join("\n"),
-  };
 }
 
 /* ==========================================================================
@@ -15666,7 +15877,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                     <span style={{ display: "block", fontSize: 14, fontWeight: an ? 640 : 550 }}>
                       {fKurz(x.datum)} · {da ? da.name : x.dienstId}</span>
                     <span style={{ display: "block", fontSize: 12, color: C.dim, marginTop: 3 }}>
-                      {l.anzahl === 0
+                      {!darfVergeben ? (l.dringend ? "offen · dringend" : "offen")
+                        : l.anzahl === 0
                         ? l.dringend ? "noch niemand · dringend" : "noch niemand"
                         : `${zahl(l.anzahl)} ${l.anzahl === 1 ? "Meldung" : "Meldungen"}`}</span>
                   </span>
@@ -15693,8 +15905,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                       lineHeight: 1.55 }}>{a.hinweis}</p>}
                     <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13,
                       color: C.dim, marginTop: 12 }}>
-                      <span>{zahl(lage.moeglich)} kämen infrage</span>
-                      <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>
+                      {darfVergeben && <span>{zahl(lage.moeglich)} kämen infrage</span>}
+                      {darfVergeben && <span>{zahl(lage.anzahl)} {lage.anzahl === 1 ? "Meldung" : "Meldungen"}</span>}
                       <span>{lage.tage <= 0 ? "heute" : `in ${zahl(lage.tage)} Tagen`}</span>
                     </div>
                     {darfVergeben && (
@@ -15705,7 +15917,9 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                   </div>
                 </Card>
 
-                {lage.anzahl === 0 ? (
+                {/* Wer sich gemeldet hat und in welcher Rangfolge, sieht nur, wer vergibt.
+                    Beschäftigte bekommen fremde Meldungen vom Server nicht (sicht.mjs). */}
+                {!darfVergeben ? null : lage.anzahl === 0 ? (
                   <Card><Leer titel="Noch niemand hat sich gemeldet"
                     text={lage.moeglich === 0
                       ? "Niemand darf diese Schicht übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Hier hilft nur die Ersatzsuche mit Begründung."
@@ -16615,8 +16829,11 @@ function leererMandant(name, branche, anschrift, kontakt) {
     tarif: "basis", pakete: [], rabattGrund: 0,
     version: 5, stand: 1,
 
+    /* Keine erfundenen Koordinaten: Ein neuer Betrieb wird nie gegen einen
+       Ort geprüft, den niemand eingetragen hat. Die Leitung setzt sie in
+       „Standorte". */
     standorte: [{ id: standortId, name: name, bundesland: "HE",
-      lat: 50.11, lon: 8.68, radius: 200 }],
+      lat: undefined, lon: undefined, radius: RADIUS_VORGABE }],
 
     /* Gesetzliche Grundwerte. Sie stehen bewusst da, wo sie hingehören —
        nicht auf null, denn null heißt „keine Prüfung", und das merkt
@@ -16656,7 +16873,7 @@ function leererMandant(name, branche, anschrift, kontakt) {
     zyklusLaenge: 7, gruppen: 1, versatzTageVon: 0, anker: montag(jetzt),
     abwesenheiten: [], abweichungen: {}, erfassung: {}, anfragen: [],
     nachrichten: [], aenderungen: [], freigaben: {}, aushaenge: [],
-    uebergaben: {}, ausschreibungen: [], checklisten: [], listeneintraege: {},
+    uebergaben: [], ausschreibungen: [], checklisten: [], listeneintraege: {},
     betriebsmittel: [], protokoll: [], adressAenderungen: [],
     einheitLabel: "Schichtgruppe",
   };
@@ -17302,7 +17519,7 @@ function auftraggeberBericht(m, von, bis, einheitId) {
      ausnahmslos „keine besonderen Vorkommnisse" — gleichgültig, wie viel im
      Betrieb tatsächlich dokumentiert war. */
   const zeilen = [];
-  for (const u of (m.uebergaben || [])) {
+  for (const u of uebergabenVon(m)) {
     if (!u || !u.datum || u.datum < von || u.datum > bis) continue;
     if (!u.vorkommnis) continue;
     /* Eine Übergabe gehört zu der Einheit, aus der jemand an der übergebenen
@@ -17669,7 +17886,7 @@ function Auftraggeberbericht({ sitz, akt }) {
   const e = m.einheiten.find((x) => x.id === einheit);
   /* Wie viele Übergaben es im Zeitraum überhaupt gibt — die Antwort auf
      „warum steht hier nichts". */
-  const uebergabenImZeitraum = (m.uebergaben || [])
+  const uebergabenImZeitraum = uebergabenVon(m)
     .filter((u) => u && u.datum >= von && u.datum <= bis).length;
 
   const alsText = () => {
@@ -17958,7 +18175,7 @@ function ermuedung(m, personId, tage) {
   return { stufe, punkte, gruende: gruende.sort((a, b) => b.punkte - a.punkte),
     dienste: gearbeitet.length, tage: n,
     nachtanteil: Math.round(nachtanteil * 100), serie, wechsel,
-    wochenendanteil: Math.round(weAnteil * 100), konto: n1(konto) };
+    wochenendanteil: Math.round(weAnteil * 100), konto: n1Ist(konto) };
 }
 
 /** Wer im Betrieb ist auffällig? Für die Übersicht der Planung. */
@@ -18784,6 +19001,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const t = personTag(m, p, d0);
   const da = t.dienstId && map[t.dienstId];
+  const vorgang = stempelVorgang(m, p, d0);
   const morgen = personTag(m, p, addDays(d0, 1));
   const morgenDa = morgen.dienstId && map[morgen.dienstId];
   const aufgaben = useMemo(() => tagesaufgaben(sitz).filter((a) => a.art !== "stempel"), [m, p.id]);
@@ -18802,8 +19020,16 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
         </h1>
       </div>
 
-      {/* Der Dienst des Tages — die wichtigste Karte */}
-      {da ? (
+      {/* Der Dienst des Tages — die wichtigste Karte. Ein offener Dienst von
+          gestern (über Mitternacht) geht vor: zuerst ausstempeln. */}
+      {vorgang.vortag ? (
+        <MKarte style={{ padding: 22 }}>
+          <Rubrik>Offener Dienst von gestern</Rubrik>
+          <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
+            Eingestempelt gestern {vorgang.st.start}</div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+        </MKarte>
+      ) : da ? (
         <MKarte style={{ padding: 22, background: `${da.farbe}0E`, border: `1px solid ${da.farbe}33` }}>
           <Rubrik style={{ color: da.farbe }}>Dein Dienst heute</Rubrik>
           <div style={{ fontSize: 27, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
@@ -18811,7 +19037,16 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
             {da.start} – {da.ende} · {n1(dauer(da))} h</div>
           {da.ort && <div style={{ fontSize: 14, color: C.dimmer, marginTop: 5 }}>{da.ort}</div>}
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} datum={d0} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+        </MKarte>
+      ) : vorgang.offen ? (
+        /* Eingestempelt, aber heute kein Dienst (mehr) im Plan — etwa nach
+           einer Planänderung. Der Beginn bleibt sichtbar und beendbar. */
+        <MKarte style={{ padding: 22 }}>
+          <Rubrik>Offener Dienst ohne Plan</Rubrik>
+          <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px", ...NUM }}>
+            Eingestempelt {vorgang.st.start}</div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
         </MKarte>
       ) : (
         <MKarte style={{ padding: 22, textAlign: "center" }}>
@@ -18872,36 +19107,38 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
 }
 
 /** Große Stempelfläche — das häufigste Tippen überhaupt. */
-function MStempel({ sitz, akt, datum }) {
+function MStempel({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const st = stempelStand(m, p, datum);
+  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
   const stempeln = (art) => {
     setLaeuft(true);
-    const fertig = (k) => { akt.stempeln(p.id, datum, art, k); setLaeuft(false); };
-    if (!navigator.geolocation) return fertig(null);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => fertig({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => fertig(null), { timeout: 6000, maximumAge: 60000 });
+    positionHolen(geoAn, (k) => { akt.stempeln(p.id, datum, art, k); setLaeuft(false); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
       style={{ width: "100%", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}>
-      {laeuft ? "Standort wird geprüft …" : children}</button>);
+      {laeuft ? (geoAn ? "Standort wird geprüft …" : "Wird gespeichert …") : children}</button>);
 
   if (!st) return (<>
     <Flaeche kind="primary" onClick={() => stempeln("start")}>Einstempeln</Flaeche>
-    <div style={{ fontSize: 12, color: C.dimmer, marginTop: 9, lineHeight: 1.45 }}>
-      Der Standort wird einmal geprüft. Gespeichert wird nur, ob du am Einsatzort warst.
-    </div></>);
+    {geoAn && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 9, lineHeight: 1.45 }}>{GEO_HINWEIS}</div>}</>);
+  /* Beginn über 20 Stunden alt: kein normaler Abschluss. Das Ende lässt sich
+     trotzdem erfassen (der Server markiert es START_VERALTET), damit nichts
+     verloren geht; die Arbeitszeit ergänzt die Leitung. */
+  if (!st.ende && veraltet) return (<>
+    <div style={{ fontSize: 14, color: C.warn, marginBottom: 11, lineHeight: 1.45, ...NUM }}>
+      {MARKIERUNG_TEXT.START_VERALTET} (Beginn {st.start}). Die Arbeitszeit ergänzt die Leitung.</div>
+    <Flaeche kind="quiet" onClick={() => stempeln("ende")}>Ende trotzdem erfassen</Flaeche></>);
   if (!st.ende) return (<>
     <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, ...NUM }}>
-      Eingestempelt {st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
+      Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
     <Flaeche kind="ok" onClick={() => stempeln("ende")}>Ausstempeln</Flaeche></>);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
       <Pill tone="ok">Dienst erfasst</Pill>
-      <span style={{ fontSize: 14, color: C.dim, ...NUM }}>{st.start} – {st.ende}</span>
+      <span style={{ fontSize: 14, color: C.dim, ...NUM }}>{st.start || "–"} – {st.ende}</span>
     </div>);
 }
 
@@ -19551,8 +19788,10 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
       {/* --------------------------- Notruf -------------------------- */}
       <MBlatt offen={blatt === "notruf"} onClose={() => setBlatt(null)} titel="Hilfe anfordern">
         <div style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, marginBottom: 22 }}>
-          Deine Schichtverantwortung wird sofort unterrichtet, danach die Planung.
-          Standort und Dienst werden mitgeschickt.
+          {/* Bis der Server selbst zustellt, wird niemand aktiv benachrichtigt —
+              der Text verspricht nur, was geschieht. */}
+          Dein Hilferuf wird erfasst und ist für Schichtverantwortung, Planung und
+          Leitung in CENTRIC sichtbar. Dienst und Einsatzort werden vermerkt.
         </div>
         {Object.entries(NOTRUF_ARTEN).map(([id, a]) => (
           <button key={id} onClick={() => { akt.notrufSenden(id, ""); setBlatt(null); }}
@@ -19976,9 +20215,76 @@ function Tarifwerk({ sitz, akt }) {
    in `standorte.js` hinauswächst. Das zeigt diese Seite an, ohne
    irgendetwas zu blockieren — es gibt nichts mehr zu bestätigen.
    ========================================================================== */
+/**
+ * Standortprüfung beim Stempeln ein- und ausschalten (Geo-Spezifikation E7).
+ * Vorgabe: aus. Einschalten nur mit der ausdrücklichen Bestätigung; die
+ * Arbeitszeit wird in jedem Fall erfasst.
+ */
+function GeoSchalter({ sitz, akt }) {
+  const e = sitz.mandant.einstellungen || {};
+  const an = e.geoPruefung === true;
+  const [geprueft, setGeprueft] = useState(false);
+  const durch = e.geoPruefungAktiviertVon
+    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.geoPruefungAktiviertVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "eingeschaltet" : "aus"}</Pill>}>
+        Standortprüfung beim Stempeln</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        Ist sie eingeschaltet, prüft der Server beim Ein- und Ausstempeln einmalig, ob die Person am Standort
+        ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit —
+        keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst, auch ohne Position oder außerhalb des
+        Umkreises.
+        {an && e.geoPruefungAktiviertAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Eingeschaltet am {fDatum(String(e.geoPruefungAktiviertAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+          {an ? <Btn onClick={() => akt.setzeGeoPruefung(false)}>Ausschalten</Btn> : (<>
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", color: C.text, maxWidth: 560 }}>
+              <input type="checkbox" checked={geprueft} onChange={(x) => setGeprueft(x.target.checked)} />
+              <span>Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.</span>
+            </label>
+            <Btn kind="primary" disabled={!geprueft} onClick={() => { akt.setzeGeoPruefung(true); setGeprueft(false); }}>
+              Einschalten</Btn></>)}
+        </div>
+      </div>
+    </Card>);
+}
+
+/** Zahlenfeld, das nur gültige Werte speichert (beim Verlassen). Leer = nicht gesetzt. */
+function GeoZahl({ label, wert, gueltig, hinweis, onCommit }) {
+  const [text, setText] = useState(wert === undefined || wert === null ? "" : String(wert));
+  useEffect(() => { setText(wert === undefined || wert === null ? "" : String(wert)); }, [wert]);
+  const roh = text.trim().replace(",", ".");
+  const zahl = roh === "" ? undefined : Number(roh);
+  const ok = zahl === undefined || gueltig(zahl);
+  return (
+    <Field label={label} hint={ok ? hinweis : "Ungültig — wird nicht gespeichert."}>
+      <Inp value={text} inputMode="decimal" onChange={(e) => setText(e.target.value)}
+        onBlur={() => { if (ok && zahl !== wert) onCommit(zahl); }}
+        style={ok ? undefined : { borderColor: C.danger }} /></Field>);
+}
+
 function Standorte({ sitz, akt }) {
   const m = sitz.mandant;
+  const [ortung, setOrtung] = useState(null);
+  /* „Aktuelle Position übernehmen": Positionsabfrage nur nach diesem Klick. */
+  const positionUebernehmen = (st) => {
+    if (!navigator.geolocation) { akt.melde("Dieses Gerät gibt keine Position heraus."); return; }
+    setOrtung(st.id);
+    navigator.geolocation.getCurrentPosition((pos) => {
+      setOrtung(null);
+      const lat = Math.round(pos.coords.latitude * 1e6) / 1e6, lon = Math.round(pos.coords.longitude * 1e6) / 1e6;
+      if (!koordinateGueltig(lat, lon)) { akt.melde("Die Position war ungültig und wurde nicht übernommen."); return; }
+      akt.setzeStandortFelder(st.id, { lat, lon });
+      akt.melde(`Position übernommen · Genauigkeit ca. ${Math.round(pos.coords.accuracy)} m`);
+    }, () => { setOrtung(null); akt.melde("Keine Position erhalten — Standortfreigabe prüfen oder Werte eintragen."); },
+    POSITION_OPTIONEN);
+  };
   const p = preis(sitz.db, m);
+  /* Preise nur mit billing.view (B2): Die Planung führt Standorte, die
+     Kosten sieht sie nicht — ihr fehlt auch die Preisgrundlage. */
+  const preiseSichtbar = darf(sitz, "billing.view");
 
   const [name, setName] = useState("");
   const [land, setLand] = useState(m.bundesland);
@@ -19998,17 +20304,18 @@ function Standorte({ sitz, akt }) {
 
   return (
     <Card style={{ marginBottom: 20 }}>
-      <CardHead right={p.summeStandorte > 0
+      <CardHead right={!preiseSichtbar ? null : p.summeStandorte > 0
         ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
         : <Pill tone="ok">kostenlos enthalten</Pill>}>
         Standorte</CardHead>
       <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
         Standorte arbeiten unabhängig: eigene Einheiten, eigene Besetzung, oft
-        eigenes Bundesland und damit eigene Feiertage. Anlegen kostet nichts —
+        eigenes Bundesland und damit eigene Feiertage.
+        {preiseSichtbar && (<>{" "}Anlegen kostet nichts —
         {" "}{zahl(p.stufe.standorteInklusive)} der größten Standorte sind in der
         Stufe {p.stufe.name} enthalten, unabhängig von ihrer Größe. Ein
         zusätzlicher, kleinerer Standort kostet erst ab {zahl(STANDORT_BAENDER[0].bis + 1)} Personen —
-        siehe die Aufstellung unten.
+        siehe die Aufstellung unten.</>)}
       </div>
 
       <div style={{ padding: 22, display: "grid", gap: 10 }}>
@@ -20024,9 +20331,31 @@ function Standorte({ sitz, akt }) {
                 <Field label="Name">
                   <Inp value={st.name} onChange={(e) => akt.setzeStandort(st.id, "name", e.target.value)} /></Field>
                 <Field label="Bundesland" hint="Bestimmt die Feiertage dieses Standorts.">
-                  <Sel value={st.bundesland || m.bundesland}
+                  <Sel value={standortBundesland(st) || m.bundesland}
                     onChange={(e) => akt.setzeStandort(st.id, "bundesland", e.target.value)}>
                     {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
+              </div>
+              {/* Adresse ist Anzeigetext; geprüft wird gegen Koordinate und Umkreis. */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 12, marginTop: 12 }}>
+                {[["strasse", "Straße"], ["hausnummer", "Hausnummer"], ["plz", "PLZ"], ["ort", "Ort"]].map(([k, l]) => (
+                  <Field key={k} label={l}>
+                    <Inp value={(st.adresse || {})[k] || ""}
+                      onChange={(e) => akt.setzeStandort(st.id, "adresse", { ...(st.adresse || {}), [k]: e.target.value })} /></Field>))}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginTop: 12 }}>
+                <GeoZahl label="Breitengrad" wert={st.lat} hinweis="−90 bis 90, z. B. 50.1109"
+                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeStandort(st.id, "lat", x)} />
+                <GeoZahl label="Längengrad" wert={st.lon} hinweis="−180 bis 180, z. B. 8.6821"
+                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeStandort(st.id, "lon", x)} />
+                <GeoZahl label="Umkreis in Metern" wert={st.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}; 200 m sind ein guter Anfang`}
+                  gueltig={radiusGueltig} onCommit={(x) => akt.setzeStandort(st.id, "radius", x)} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                <Btn size="sm" disabled={ortung === st.id} onClick={() => positionUebernehmen(st)}>
+                  {ortung === st.id ? "Position wird ermittelt …" : "Aktuelle Position übernehmen"}</Btn>
+                {koordinateGueltig(st.lat, st.lon) && radiusGueltig(st.radius ?? RADIUS_VORGABE)
+                  ? <Pill size="sm" tone="ok">Standortprüfung möglich</Pill>
+                  : <Pill size="sm">Standortprüfung nicht möglich — Stempel gelten als „nicht bewertbar"</Pill>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
@@ -20034,8 +20363,8 @@ function Standorte({ sitz, akt }) {
                 </span>
                 {a && Object.entries(a.rollen).filter(([, n]) => n > 0).map(([r, n]) => (
                   <Pill key={r} size="sm">{n}× {rollenName(m, r)}</Pill>))}
-                <Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
-                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>
+                {preiseSichtbar && (<Pill size="sm" tone={zuschlag > 0 ? "warn" : "ok"}>
+                  {inklusive ? "im Kontingent" : zuschlag > 0 ? `+${eur(zuschlag)} / Monat` : "unter der Schwelle"}</Pill>)}
                 <span style={{ flex: 1 }} />
                 {liste.length > 1 && (
                   <Btn size="sm" kind="danger" onClick={() => akt.loescheStandort(st.id)}>Entfernen</Btn>)}
@@ -20053,11 +20382,11 @@ function Standorte({ sitz, akt }) {
                 {LAENDER.map(([id, n]) => <option key={id} value={id}>{n}</option>)}</Sel></Field>
             <Btn kind="primary" disabled={name.trim().length < 2} onClick={anlegen}>Anlegen</Btn>
           </div>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+          {preiseSichtbar && (<div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
             Ein neuer Standort ist leer und kostet nichts. Erst wenn Personal
             zugeordnet wird und er über die Schwelle wächst, entsteht ein
             Zuschlag — sichtbar oben an der jeweiligen Karte.
-          </div>
+          </div>)}
         </div>
       </div>
     </Card>);
@@ -20189,6 +20518,8 @@ function Betrieb({ sitz, akt }) {
       <Tarifwerk sitz={sitz} akt={akt} />
 
       <Standorte sitz={sitz} akt={akt} />
+
+      <GeoSchalter sitz={sitz} akt={akt} />
 
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
         Stammdaten</Abschnitt>
@@ -20405,8 +20736,9 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
       farbe: PALETTE[i % PALETTE.length], gueltigMonate: q.gueltigMonate ?? null,
       nachweisPflicht: !!q.nachweisPflicht }));
   const standorte = (f.standorte || [{ name: "Hauptstandort", land: "HE" }])
+    /* Koordinaten trägt erst die Leitung ein — nie ein verschobener Platzhalterpunkt. */
     .map((x, i) => ({ id: `st${i + 1}`, name: x.name || `Standort ${i + 1}`, bundesland: x.land || "HE",
-      lat: 50.11 + i * 1.3, lon: 8.68 + i * 1.1, radius: x.radius || 200 }));
+      lat: undefined, lon: undefined, radius: x.radius || RADIUS_VORGABE }));
   // Dienstarten aus dem gewählten Modell ableiten
   const dienstarten = mo.dienste.map((k, i) => {
     const v = DIENST_VORLAGEN[k];
@@ -20500,7 +20832,10 @@ const BEREICHE = [
     ["ablauf", "Ablauf", null],
     ["handbuch", "Handbuch", null],
     ["hilfe", "Hilfe", null],
-    ["uebergabe", "Übergabe", "PAKET:uebergabe"],
+    /* Übergaben, Dienstbuch und Belastbarkeit brauchen den vollständigen
+       Betrieb. Beschäftigte und Betriebsrat bekommen ihn nicht (sicht.mjs) —
+       die Ansichten wären für sie leer oder falsch gerechnet. */
+    ["uebergabe", "Übergabe", "PAKET:uebergabe|plan.edit.unit"],
     ["meine", "Meine Schichten", "SCHICHT"],
     ["lage", "Lagebild", "plan.view.unit"],
     ["zeitachse", "Zeitachse", "plan.view.unit"],
@@ -20521,7 +20856,7 @@ const BEREICHE = [
     ["boerse", "Tauschbörse", "req.create"],
     ["wuensche", "Wunschdienste", "SCHICHT"],
     ["aushang", "Schwarzes Brett", null],
-    ["buch", "Dienstbuch", "plan.view.unit"],
+    ["buch", "Dienstbuch", "plan.edit.unit"],
   ]},
   { id: "team", label: "Wer mitfährt", views: [
     ["personal", "Personal", "staff.view"],
@@ -20537,7 +20872,7 @@ const BEREICHE = [
     ["untergrenzen", "Untergrenzen", "plan.view.unit"],
     ["lenkzeiten", "Lenkzeiten", "plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
-    ["belastbarkeit", "Belastbarkeit", "plan.view.unit"],
+    ["belastbarkeit", "Belastbarkeit", "plan.edit.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
     ["nachweis", "Leistungsnachweis", "plan.view.unit"],
     ["abrechnung", "Abrechnungsdaten", "account.view.all"],
@@ -20559,6 +20894,20 @@ const BEREICHE = [
 ];
 const NAV_KUNDE = BEREICHE.flatMap((b) => b.views);
 
+
+/**
+ * Darf diese Sitzung die Urlaubshinweise anlegen? Der Lauf ändert fremde
+ * Personen (`urlaubshinweis`) und legt Mitteilungen an — das darf nur, wem
+ * der Server den vollen Schreibumfang meldet (`zugang.schreiben`, aus
+ * GET /api/bestand: Leitung, Planung). Vorher genügte das Recht
+ * req.approve.unit; damit lief der Lauf auch bei der Schichtverantwortung
+ * (Schreibumfang „einheit"), und jede ihrer Anmeldungen endete mit
+ * 403 „Keine Schreibberechtigung" — der Server lehnte zu Recht ab.
+ */
+function urlaubshinweiseAnlegen(sitz, zugang) {
+  if (!sitz || sitz.rolle === "betreiber" || !zugang || zugang.schreiben !== "voll") return false;
+  return darf(sitz, "req.approve.unit") || darf(sitz, "org.edit");
+}
 
 function AppInnen() {
   const [db, setDb] = useState(null);
@@ -20660,7 +21009,16 @@ function AppInnen() {
          beides gleich behandelt: durch Beispieldaten ersetzt. */
       let b;
       if (!bestand) {
-        b = startbestand();
+        /* Einen leeren Raum befüllt die Oberfläche nicht mehr selbst — bis
+           Oktober 2026 schrieb hier der erste Client den Startbestand. Den
+           Raum richtet der Betreiber ein (/api/bestand-anlegen). */
+        setLadefehler({ titel: "Dieser Raum ist noch nicht eingerichtet.",
+          text: zugang && zugang.rolle === "betreiber"
+            ? "Als Betreiber kannst du ihn mit dem Demo-Bestand einrichten (Nordwacht, Lindenhof, Steinbach)."
+            : "Bitte wende dich an die Organisationsleitung oder an den Betreiber.",
+          demoAnlegen: !!(zugang && zugang.rolle === "betreiber") });
+        setLaedt(false);
+        return;
       } else {
         const erg = migriere(bestand);
         if (!erg.ok) {
@@ -20777,42 +21135,28 @@ function AppInnen() {
   useEffect(() => { ref.current = db; }, [db]);
 
 
-  /* Offene Zustellungen abarbeiten. Läuft nach dem Speichern, gebündelt und
-     ohne die Bedienung aufzuhalten. Was nicht hinausgeht, bleibt offen und
-     wird beim nächsten Mal erneut versucht — das Postfach trägt die
-     Mitteilung ohnehin, es geht nichts verloren. */
-  const zustellLauf = useRef(false);
-  useEffect(() => {
-    if (!db || zustellLauf.current) return;
-    const m = db.mandanten.find((x) => x.id === (db.session || {}).mandantId);
+  /* Zustellung anstoßen — erst nachdem gespeichert ist (Commit 4). Der
+     Server stellt nur zu, was in seinem gespeicherten Stand steht; vorher
+     lief dieser Lauf schon beim Ändern los und schickte Adresse, Betreff,
+     Text und Push-Titel selbst mit. Jetzt gehen nur die Kennungen der hier
+     angelegten Mitteilungen hinaus. Was der Server als „offen" meldet
+     (vorübergehender Fehler), wird beim nächsten Speichern erneut
+     angestoßen; doppelt geht nichts hinaus — das verhindert der Server.
+     Notruf und Tauschmeldung stellt der Server beim Speichern selbst zu. */
+  const zustellungAnstossen = useCallback(async (geschrieben) => {
+    const mid = (ref.current && ref.current.session || {}).mandantId;
+    const m = (geschrieben.mandanten || []).find((x) => x && x.id === mid);
     if (!m) return;
-    const offen = offeneZustellungen(m);
-    if (!offen.length) return;
-    zustellLauf.current = true;
-    (async () => {
-      try {
-        /* Es geht nur noch die Kennung der Person hinaus, nicht deren
-           Adresse. Der Server schlägt sie im eigenen Betrieb nach — über
-           diesen Weg lässt sich damit niemand Betriebsfremdes anschreiben. */
-        const auftraege = offen.slice(0, 100).map((n) => {
-          const p = m.personen.find((x) => x.id === n.personId);
-          const mt = p && n.wege.mail ? mailText(m, n, p) : null;
-          return { id: n.id, personId: n.personId,
-            betreff: mt ? mt.betreff : null, text: mt ? mt.text : null,
-            titel: n.wege.push ? n.titel : null, kurz: n.text, ziel: n.ziel };
-        });
-        const { ergebnis } = await SP.zustellen(auftraege);
-        if (ergebnis && ergebnis.length) {
-          const nach = {};
-          for (const e of ergebnis) nach[e.id] = { mail: e.mail, push: e.push };
-          setDb((s2) => ({ ...s2, mandanten: s2.mandanten.map((mm) => mm.id !== m.id ? mm
-            : { ...mm, nachrichten: (mm.nachrichten || []).map((n) => nach[n.id]
-              ? { ...n, zugestellt: { ...n.zugestellt, ...nach[n.id] } } : n) }) }));
-        }
-      } catch (e) { /* Zustellung ist nie kritisch */ }
-      finally { zustellLauf.current = false; }
-    })();
-  }, [db]);
+    const da = new Set((m.nachrichten || []).map((n) => n && n.id));
+    const ids = [...zustellungAusstehend].filter((id) => da.has(id)).slice(0, 200);
+    if (!ids.length) return;
+    for (const id of ids) zustellungAusstehend.delete(id);
+    try {
+      const { ergebnis, fehler } = await SP.zustellen(ids);
+      if (fehler) { for (const id of ids) zustellungAusstehend.add(id); return; }
+      for (const e of ergebnis || []) if (e && e.stand === "offen") zustellungAusstehend.add(e.id);
+    } catch (e) { for (const id of ids) zustellungAusstehend.add(id); }   // Zustellung ist nie kritisch
+  }, []);
 
   /* Zurückschreiben, verzögert gebündelt. Bei einem Konflikt wird nicht
      stillschweigend überschrieben — die Person erfährt davon. */
@@ -20861,8 +21205,9 @@ function AppInnen() {
         : "Betreiber",
       onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
       onFehler: (lage) => setNichtGespeichert(lage),
+      onGespeichert: (b) => { zustellungAnstossen(b); },
     });
-  }, [db]);
+  }, [db, zustellungAnstossen]);
 
   const melde = useCallback((t) => { setHinweis(t); setTimeout(() => setHinweis(null), 3000); }, []);
 
@@ -20910,8 +21255,8 @@ function AppInnen() {
      selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel. */
   const urlaubsLauf = useRef(false);
   useEffect(() => {
-    if (!db || !sitz || sitz.rolle === "betreiber" || urlaubsLauf.current) return;
-    if (!darf(sitz, "req.approve.unit") && !darf(sitz, "org.edit")) return;
+    if (!db || urlaubsLauf.current) return;
+    if (!urlaubshinweiseAnlegen(sitz, SP.zugangsdaten())) return;
     const m = sitz.mandant;
     let faellig = [];
     try { faellig = urlaubshinweiseFaellig(m, heute()); }
@@ -21314,8 +21659,26 @@ function AppInnen() {
           planstaende: { ...(m.planstaende || {}), [ym2]: planAbbild(m, ym2) },
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Plan freigegeben"),
-      bestaetigeZeit: (pid, d, start, ende, grund) => mUpd((m) => ({ ...m,
-        erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null),
+      /* Die eigene Zeit bestätigt der Server über einen eigenen Weg und sagt,
+         ob es geklappt hat; erst dann wird hier nachgezogen. Vorher verschwand
+         der Tag aus „Zeiten bestätigen", auch wenn der Server die Angabe
+         verworfen hatte. Für andere Personen (Leitung, Planung) bleibt es beim
+         gewöhnlichen Speichern. */
+      bestaetigeZeit: async (pid, d, start, ende, grund) => {
+        if (!sitz.person || pid !== sitz.person.id) {
+          mUpd((m) => ({ ...m,
+            erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null);
+          return;
+        }
+        try {
+          const erg = await SP.zeitBestaetigen(d, start, ende, grund);
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: erg.eintrag } }) }));
+          melde("Zeit bestätigt.");
+        } catch (e) {
+          melde(e.message || "Die Zeit ließ sich nicht bestätigen.");
+        }
+      },
       setzeEinschraenkung: (pid, k, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) => p.id === pid
         ? { ...p, einschraenkungen: { ...(p.einschraenkungen || {}), [k]: v } } : p) }), "Einsatzeinschränkung geändert"),
       alleGelesen: () => mUpd((m) => ({ ...m, nachrichten: (m.nachrichten || []).map((n) =>
@@ -21454,9 +21817,21 @@ function AppInnen() {
       standortAnlegen: (name, bundesland) => mUpd((m) => ({
         ...m,
         standorte: [...(m.standorte || []),
-          { id: uid("st"), name: String(name).trim(), bundesland: bundesland || m.bundesland }],
+          { id: uid("st"), name: String(name).trim(), bundesland: bundesland || m.bundesland, radius: RADIUS_VORGABE }],
       }), `Standort „${String(name).trim()}" angelegt`),
       setzeStandort: (id, k, v) => mUpd((m) => ({ ...m, standorte: (m.standorte || []).map((s2) => s2.id === id ? { ...s2, [k]: v } : s2) }), null),
+      /* Mehrere Felder in einem Speichervorgang — etwa beide Koordinaten aus
+         „Aktuelle Position übernehmen". */
+      setzeStandortFelder: (id, felder) => mUpd((m) => ({ ...m, standorte: (m.standorte || []).map((s2) => s2.id === id ? { ...s2, ...felder } : s2) }), null),
+      /* Geo-Prüfung beim Stempeln: schalten darf nur die Leitung; wann und von
+         wem eingeschaltet wurde, setzt der Server. */
+      /* Einschalten nur mit der Bestätigung der betrieblichen Prüfung; der
+         Server verlangt das Merkmal in derselben Anfrage und speichert es nie. */
+      setzeGeoPruefung: (an) => mUpd((m) => {
+        const e = { ...(m.einstellungen || {}), geoPruefung: !!an };
+        if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
+        return { ...m, einstellungen: e };
+      }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
       loescheStandort: (id) => mUpd((m) => {
         const n = m.einheiten.filter((e) => e.standortId === id).length;
         if (n) { melde(`Dem Standort sind noch ${n} Einheiten zugeordnet.`); return m; }
@@ -21487,25 +21862,30 @@ function AppInnen() {
         melde(`${neue.length} Personen übernommen.`);
         return { ...m, einheiten, qualifikationen: quals, personen: [...m.personen, ...neue] };
       }, "Personal importiert"),
-      dienstbuchEintrag: (datum, art, text) => mUpd((m) => ({ ...m, dienstbuch: [
+      dienstbuchEintrag: (datum, art, text, einheitId = null) => mUpd((m) => ({ ...m, dienstbuch: [
         { id: uid("db"), datum, art, text, zeit: new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }),
-          durch: `${sitz.person.vorname} ${sitz.person.nachname}` }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
+          durch: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...(m.dienstbuch || [])] }), "Dienstbucheintrag"),
 
       melden: melde,
       /* --- Schichtübergabe --- */
-      uebergabeSpeichern: (datum, dienstId, f) => mUpd((m) => {
+      uebergabeSpeichern: (datum, dienstId, f, einheitWahl = null) => mUpd((m) => {
         const jetzt = new Date().toLocaleString("de-DE");
+        const einheitId = waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz);
+        if (uebergabeAm(m, datum, dienstId, einheitId)) { melde("Für diese Schicht und Einheit gibt es schon eine Übergabe."); return m; }
         const b = besetzung(m, datum)[dienstId];
+        const beteiligt = einheitId ? b.personen.filter((p) => einheitAm(p, datum) === einheitId) : b.personen;
         const folge = m.dienstarten.find((d) => !d.posten && d.id !== dienstId);
         melde("Übergabe abgeschlossen. Sie ist ab jetzt unveränderlich.");
-        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId,
+        return { ...m, uebergaben: [{ id: uid("u"), datum, dienstId, einheitId,
           lage: f.lage, offen: f.offen, vorkommnis: f.vorkommnis, material: f.material,
           von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          an: folge ? folge.name : null, zeit: jetzt, personen: b.personen.map((p) => p.id),
-          ergaenzungen: [] }, ...(m.uebergaben || [])] };
+          an: folge ? folge.name : null, zeit: jetzt, personen: beteiligt.map((p) => p.id),
+          ergaenzungen: [] }, ...uebergabenVon(m)] };
       }, "Übergabe erfasst"),
-      uebergabeErgaenzen: (datum, dienstId, text) => mUpd((m) => ({ ...m,
-        uebergaben: (m.uebergaben || []).map((u) => u.datum === datum && u.dienstId === dienstId
+      uebergabeErgaenzen: (datum, dienstId, text, einheitWahl = null) => mUpd((m) => ({ ...m,
+        uebergaben: uebergabenVon(m).map((u) => u === uebergabeAm(m, datum, dienstId,
+          waehltEinheit(sitz) ? einheitWahl : eigeneEinheitVon(sitz))
           ? { ...u, ergaenzungen: [...(u.ergaenzungen || []),
               { zeit: new Date().toLocaleString("de-DE"),
                 von: `${sitz.person.vorname} ${sitz.person.nachname}`, text }] }
@@ -21619,7 +21999,7 @@ function AppInnen() {
 
       selbstEintragen: (datum, dienstId) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         const pruef = darfSelbstEintragen(m, r, pid, datum, dienstId);
         if (!pruef.darf) { melde(`Nicht möglich: ${pruef.grund}.`); return m; }
@@ -21630,7 +22010,7 @@ function AppInnen() {
 
       selbstAustragen: (datum) => mUpd((m) => {
         const r = laufendeRunde(m);
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         if (!r || !pid) return m;
         return { ...m, selbstplanung: m.selbstplanung.map((x) => x.id !== r.id ? x
           : { ...x, eintraege: (x.eintraege || []).filter((e) =>
@@ -21666,10 +22046,9 @@ function AppInnen() {
 
       /* --- Notruf --- */
       notrufSenden: (art, notiz) => mUpd((m) => {
-        const pid = (m.session || {}).personId;
+        const pid = sitz.person ? sitz.person.id : null;   // die Sitzung liegt über dem Betrieb, nicht in ihm
         const p = m.personen.find((x) => x.id === pid);
         if (!p) return m;
-        const a = NOTRUF_ARTEN[art] || NOTRUF_ARTEN.hilfe;
         const empf = notrufEmpfaenger(m, pid, heute());
         const t = personTag(m, p, heute());
         const da = t && t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : null;
@@ -21677,13 +22056,11 @@ function AppInnen() {
           zeit: new Date().toISOString(), datum: heute(),
           dienst: da ? da.name : null, ort: da ? da.ort : null,
           empfaenger: empf.map((x) => x.id), bestaetigt: null };
-        const nachr = empf.map((x) => baueMitteilung(m, x.id, "einspringen",
-          `NOTRUF: ${a.label}`,
-          `${p.vorname} ${p.nachname}${da ? ` · ${da.name}` : ""}${da && da.ort ? ` · ${da.ort}` : ""}${notiz ? ` · ${notiz}` : ""}`,
-          "notruf")).filter(Boolean);
-        melde(`Notruf abgesetzt · ${empf.length} unterrichtet.`);
-        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200),
-          nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
+        /* Die Mitteilungen an die Empfänger erzeugt und verschickt der Server
+           beim Speichern (Commit 4) — auch für Beschäftigte, deren Notruf
+           vorher ohne E-Mail und Push blieb. */
+        melde("Hilferuf erfasst. Er ist für die zuständigen Rollen in CENTRIC sichtbar.");
+        return { ...m, notrufe: [n, ...(m.notrufe || [])].slice(0, 200) };
       }, "Notruf abgesetzt"),
 
       notrufBestaetigen: (id) => mUpd((m) => ({ ...m,
@@ -21826,9 +22203,11 @@ function AppInnen() {
         /* Nur die unterrichten, die sich tatsächlich bewerben dürfen —
            eine Mitteilung über einen Dienst, den man nicht nehmen kann,
            ist Lärm. */
+        /* Die Schichtverantwortung unterrichtet nur ihren Bereich (Commit C1);
+           die verantwortende Einheit setzt der Server. */
         const nachr = m.personen
           .filter((p) => darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
-            p.id, a).darf)
+            p.id, a).darf && anBereichErlaubt(sitz, p))
           .map((p) => baueMitteilung(m, p.id, "offeneSchicht",
             `Offene Schicht am ${fKurz(datum)}`,
             `${da ? da.name : dienstId}${da ? ` · ${da.start}–${da.ende}` : ""}${hinweis ? ` · ${hinweis}` : ""}`,
@@ -21840,7 +22219,8 @@ function AppInnen() {
 
       bewirbDich: (asId, text) => mUpd((m) => {
         const a = (m.ausschreibungen || []).find((x) => x.id === asId);
-        const pid = (m.session || {}).personId || sitz.person.id;
+        /* Die eigene Person aus der Sitzung — nie aus dem Betrieb (Commit D1c). */
+        const pid = sitz.person.id;
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const pruef = darfSichBewerben(m, pid, a);
         if (!pruef.darf) { melde(`Bewerbung nicht möglich: ${pruef.grund}.`); return m; }
@@ -21851,7 +22231,7 @@ function AppInnen() {
       }, "Auf offene Schicht beworben"),
 
       ziehBewerbungZurueck: (asId) => mUpd((m) => {
-        const pid = (m.session || {}).personId || sitz.person.id;
+        const pid = sitz.person.id;
         melde("Bewerbung zurückgezogen.");
         return { ...m, ausschreibungen: (m.ausschreibungen || []).map((x) => x.id !== asId ? x
           : { ...x, bewerbungen: (x.bewerbungen || []).filter((b) => b.personId !== pid) }) };
@@ -21874,7 +22254,8 @@ function AppInnen() {
             `Du hast die Schicht am ${fKurz(a.datum)}`,
             `${da ? da.name : a.dienstId}${da ? ` · ${da.start}–${da.ende}` : ""} — du bist eingeteilt.`,
             "meine"),
-          ...abgelehnt.map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
+          ...abgelehnt.filter((b) => anBereichErlaubt(sitz, m.personen.find((x) => x.id === b.personId)))
+            .map((b) => baueMitteilung(m, b.personId, "antragEntschieden",
             `Schicht am ${fKurz(a.datum)} anderweitig vergeben`,
             "Danke für die Meldung — beim nächsten Mal hast du Vorrang.", "offene")),
         ].filter(Boolean);
@@ -21905,9 +22286,11 @@ function AppInnen() {
         if (!pid) return;
         try {
           if (ein) {
-            const anm = await SP.pushEinschalten(pid);
+            /* Die Anmeldung selbst liegt nur im Push-Register des Servers;
+               an der Person steht ein Merker (Commit 4). */
+            await SP.pushEinschalten(pid);
             mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
-              p.id === pid ? { ...p, pushSchluessel: anm } : p) }), null);
+              p.id === pid ? { ...p, pushSchluessel: true } : p) }), null);
             melde("Mitteilungen eingeschaltet.");
           } else {
             await SP.pushAusschalten(pid);
@@ -21968,9 +22351,10 @@ function AppInnen() {
       }, null),
 
       /* --- Notizen --- */
-      neueNotiz: (k, text) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
-        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`,
-          zeit: new Date().toLocaleString("de-DE") }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
+      neueNotiz: (k, text, einheitId = null) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
+        [k]: [{ id: uid("nz"), text, von: `${sitz.person.vorname} ${sitz.person.nachname}`, vonId: sitz.person.id,
+          zeit: new Date().toLocaleString("de-DE"),
+          einheitId: waehltEinheit(sitz) ? einheitId : eigeneEinheitVon(sitz) }, ...((m.notizen || {})[k] || [])] } }), "Notiz gespeichert"),
       loescheNotiz: (k, id) => mUpd((m) => ({ ...m, notizen: { ...(m.notizen || {}),
         [k]: ((m.notizen || {})[k] || []).filter((x) => x.id !== id) } }), null),
 
@@ -22055,23 +22439,72 @@ function AppInnen() {
          liegen auf dem Server, und von dort kommt das Ergebnis zurück. */
       stempeln: async (pid, datum, art, koord) => {
         try {
+          /* Was noch zum Schreiben ansteht, geht zuerst regulär hinaus —
+             sonst liefe es nach dem Stempeln mit dem alten ETag in einen 409. */
+          await SP.schreibenAbschliessen();
+          /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
+             zuletzt gesendete — nur dann darf er durch den Serverstand
+             ersetzt werden, ohne dass Arbeit verloren geht. (Ein
+             gescheiterter Versuch bleibt in SP.ausstehend und im Hinweis
+             „nicht gespeichert" erhalten.) */
+          const ohneOffenes = !!ref.current && !SP.schreibenAusstehend()
+            && abbildVon(ref.current) === zuletztGeschrieben.current;
           const erg = await SP.stempeln(datum, art, koord);
-          /* Den zurückgemeldeten Stand lokal nachziehen, damit die Ansicht
-             sofort stimmt — geschrieben hat ihn bereits der Server. */
-          upd((s2) => {
+          const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
+          const meldung = `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}${kz.length ? ` · ${kz.join(", ")}` : ""}`;
+          /* Geschrieben hat der Server. Bisher wurde seine Antwort lokal
+             eingetragen — das änderte den Bestand, der Speicher-Effekt
+             schickte daraufhin den ganzen Bestand per PUT mit dem alten
+             ETag hinterher, und der Server wies ihn mit 409 ab. Jetzt wird
+             der gespeicherte Stand samt ETag nachgeladen und als
+             geschrieben vermerkt: kein zweiter Schreibvorgang, und die
+             Versionskontrolle bleibt unangetastet (Bestand und ETag
+             gehören zusammen). */
+          if (ohneOffenes) {
+            try {
+              const neu = await SP.lies();
+              const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
+              const jetzt = ref.current;
+              /* Nur wenn sich zwischendurch lokal nichts getan hat und kein Schreiben ansteht. */
+              if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
+                && abbildVon(jetzt) === zuletztGeschrieben.current) {
+                const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
+                zuletztGeschrieben.current = abbildVon(naechster);
+                setDb(naechster);
+                melde(meldung);
+                return;
+              }
+            } catch { /* nachladen gescheitert: unten wie bisher lokal nachziehen */ }
+          }
+          /* Sonst: die Serverantwort lokal nachziehen, damit die Ansicht
+             sofort stimmt. Lag Ungespeichertes vor, geht es wie jede andere
+             Änderung auf den regulären Schreibweg — ein 409 führt dann in
+             den Konfliktdialog, nichts wird verworfen. */
+          const spiegeln = (s2) => {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
             const k = `${pid}|${datum}`;
-            const alt = (m.einstempeln || {})[k] || {};
-            const neu = art === "start"
-              ? { start: erg.zeit, ortStart: erg.ort, innerhalbStart: erg.innerhalb }
-              : { ...alt, ende: erg.zeit, ortEnde: erg.ort, innerhalbEnde: erg.innerhalb };
-            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-            if (art === "ende") mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
-              [k]: { start: neu.start, ende: erg.zeit, bestaetigt: true, grund: "" } } };
+            /* Übernommen wird, was der Server gespeichert hat (eintrag,
+               erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
+               409 bei gleichzeitigem Speichern) landet unten im catch und
+               ändert lokal nichts. */
+            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag } };
+            if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+              [k]: erg.erfassung } };
             return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
-          });
-          melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}`);
+          };
+          const jetzt = ref.current;
+          if (ohneOffenes && jetzt && !SP.schreibenAusstehend() && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            /* Nachladen ging nicht (etwa offline): Der Eintrag ist trotzdem
+               nur das Spiegelbild dessen, was der Server schon hat — als
+               geschrieben vermerkt, kein PUT. Der ETag bleibt der alte; die
+               nächste echte Änderung läuft damit regulär in die
+               Konfliktprüfung, statt fremde Änderungen zu überschreiben. */
+            const naechster = { ...spiegeln(jetzt), stand: (jetzt.stand || 0) + 1 };
+            zuletztGeschrieben.current = abbildVon(naechster);
+            setDb(naechster);
+          } else upd(spiegeln);
+          melde(meldung);
         } catch (e) {
           melde(e.message || "Das Stempeln hat nicht geklappt.");
         }
@@ -22332,12 +22765,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const jetzt = new Date().toLocaleString("de-DE");
         melde("Meldung eingegangen. Die Planung entscheidet.");
+        /* Die Mitteilung an die Person des Gesuchs erzeugt der Server (Commit 4). */
         return { ...m,
           anfragen: m.anfragen.map((x) => x.id === id
-            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x),
-          nachrichten: [baueMitteilung(m, a.personId, "tauschAngebot", `Meldung auf dein Tauschgesuch`,
-            `${sitz.person.vorname} ${sitz.person.nachname} bietet an, den Dienst am ${fKurz(a.von)} zu übernehmen.`, "tausch"),
-            ...(m.nachrichten || [])].slice(0, 400) };
+            ? { ...x, interessenten: [...new Set([...(x.interessenten || []), sitz.person.id])] } : x) };
       }, "Meldung auf Tauschgesuch"),
       tauschAbmelden: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.map((x) => x.id === id
         ? { ...x, interessenten: (x.interessenten || []).filter((p) => p !== sitz.person.id) } : x) }), null),
@@ -22555,7 +22986,6 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       },
       exportJSON: () => { const s = ref.current; const inhalt = JSON.stringify(s, null, 2);
         if (lade(`centric_sicherung_${heute()}.json`, inhalt, "application/json")) melde("Sicherung erstellt."); else setAusgabe({ titel: "Sicherung", inhalt }); },
-      zuruecksetzen: () => { if (window.confirm("Alle Eingaben verwerfen?")) { verlauf.current = []; setDb(startbestand()); melde("Zurückgesetzt."); } },
     };
   }, [melde, ym, sitz]);
 
@@ -22571,7 +23001,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       if (boerse) z.boerse = boerse;
       const nl = nachweisLage(m);
       if (nl.abgelaufen.length) { z.nachweise = nl.abgelaufen.length; w.nachweise = true; }
-      const bef = pruefen(m, heute(), addDays(heute(), 13)).filter((b) => b.schwere === "danger").length;
+      const bef = befundeFuer(sitz, pruefen(m, heute(), addDays(heute(), 13))).filter((b) => b.schwere === "danger").length;
       if (bef) { z.pruef = bef; w.pruef = true; }
       const heuteOffen = Object.values(besetzung(m, heute())).filter((b) => b.diff < 0).length;
       if (heuteOffen) { z.lage = heuteOffen; w.lage = true; }
@@ -22601,6 +23031,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>{f.text}</p>
           <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
             {f.neuladen && <Btn kind="primary" onClick={() => window.location.reload()}>Neu laden</Btn>}
+            {f.demoAnlegen && <Btn kind="primary" onClick={async () => {
+              try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
+              catch (e) { setLadefehler(String(e.message || e)); }
+            }}>Demo-Bestand anlegen</Btn>}
             <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
           </div>
         </Card></div></div></>);
@@ -22638,7 +23072,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const istBetreiber = sitz.rolle === "betreiber";
   const erlaubt = ([, , recht]) => {
     if (recht === "SCHICHT") return sitz.person.imSchichtdienst !== false;   // Geschäftszimmer fährt keine Schicht
-    if (recht && recht.startsWith("PAKET:")) return kann(sitz.mandant, recht.slice(6));
+    if (recht && recht.startsWith("PAKET:")) {
+      const [paket, zusatz] = recht.slice(6).split("|");
+      return kann(sitz.mandant, paket) && (!zusatz || darf(sitz, zusatz));
+    }
     return !recht || darf(sitz, recht);
   };
   const nav = istBetreiber ? NAV_BETREIBER : NAV_KUNDE.filter(erlaubt);
@@ -23011,3 +23448,9 @@ export default function App() {
       </ZiehAnbieter>
     </Fehlerauffang>);
 }
+
+/* Für die Render-Prüfung (pruefungen/oberflaeche-render.test.js): die
+   Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
+   Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
+   echten Daten rendert statt den Quelltext zu durchsuchen. */
+export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen };

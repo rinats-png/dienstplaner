@@ -43,7 +43,10 @@ pruef("Ablauf wird gesetzt", !!ad.laeuftAb);
 /* --- Das benannte Konto kann, was der Ursprungsschlüssel kann --- */
 const z = await ruf("", "POST",
   { verwaltung: ad.schluessel, name: "Prüfbetrieb", bestand: `demo-pruef-${Date.now()}`,
-    rolle: "leitung" });
+    /* Ein Betreiberzugang: Für Kundenrollen gibt es seit Oktober 2026 nur in
+       einem eingerichteten Raum einen Code. Geprüft wird hier, dass das
+       benannte Konto überhaupt Zugänge anlegen darf. */
+    rolle: "betreiber" });
 const zd = await z.json();
 pruef("benanntes Konto legt Zugänge an", z.status === 200 && !!zd.zugangscode,
   zd.fehler || zd.zugangscode?.slice(0, 4));
@@ -137,7 +140,7 @@ pruef("Übersicht mit unzulässigem Raumnamen abgewiesen", ueKaputt.status === 4
 const ueAntwort = await ruf(`/uebersicht?bestand=${raumU}`, "GET", { verwaltung: URSPRUNG });
 const ue = await ueAntwort.json();
 pruef("Übersicht mit Schlüssel", ueAntwort.status === 200, ue.fehler || "");
-const ueMeiner = (ue.zugaenge || []).find((z) => z.rolle === "leitung");
+const ueMeiner = (ue.zugaenge || []).find((z) => z.rolle === "betreiber");
 pruef("nennt den vorher angelegten Zugang", !!ueMeiner, JSON.stringify(ueMeiner));
 pruef("mit gekürzter Kennung aus acht Zeichen", /^[0-9a-f]{8}$/i.test(ueMeiner?.kennung || ""),
   ueMeiner?.kennung);

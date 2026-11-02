@@ -20,7 +20,80 @@ const PFLICHT = ["mandanten"];
 
 /** Listen je Betrieb, die ein Array sein müssen, wenn sie vorhanden sind. */
 const LISTEN = ["personen", "einheiten", "dienstarten", "abwesenheiten",
-  "anfragen", "qualifikationen", "standorte"];
+  "anfragen", "qualifikationen", "standorte", "uebergaben"];
+
+/**
+ * Altform angleichen (Commit C2): Über die Betreiberkonsole angelegte
+ * Betriebe trugen `uebergaben: {}` statt einer Liste. Inhalt konnte darin
+ * nie stehen — das Speichern einer Übergabe scheiterte daran schon im
+ * Browser. Ein leeres Objekt wird zur leeren Liste, bevor die Gestalt
+ * geprüft wird; alles andere bleibt, wie es ist (und fällt dann auf).
+ * @param {any} bestand
+ */
+export function uebergabenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const leer = (u) => !!u && typeof u === "object" && !Array.isArray(u) && Object.keys(u).length === 0;
+  if (!bestand.mandanten.some((m) => m && leer(m.uebergaben))) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
+}
+
+/* --------------------------------------------------------------------------
+   PERSONEN: qualifikationen
+
+   Die Oberfläche liest `person.qualifikationen` an vielen Stellen als Liste
+   (Tagesaufgaben, Nachweise, Personal). Fehlte das Feld — eine über die
+   Schnittstelle angelegte Person —, stürzte die Startseite jeder Rolle ab
+   („reading 'map'"). Die Gestaltprüfung sah es nicht: Sie prüft die Listen
+   eines Betriebs, nicht die Felder einer Person.
+
+   Zwei Fälle, bewusst getrennt:
+   - fehlt oder null: eine fehlende optionale Liste → []. Das ist keine
+     Aussage, die verloren ginge.
+   - ein anderer Typ in einer Eingabe (Text, Zahl, Objekt): ein Fehler des
+     Absenders. Er wird abgewiesen (personenFehler), nicht still zu []
+     gemacht — sonst verschwänden Angaben, ohne dass es jemand merkt.
+   Ein schon gespeicherter Altbestand mit falschem Typ ist keine Eingabe:
+   Beim Lesen und beim Zusammenführen wird er zu [], damit er weder die
+   Oberfläche abstürzen lässt noch jeden künftigen Schreibvorgang sperrt.
+   -------------------------------------------------------------------------- */
+
+/** Ist das eine Person, deren Liste angeglichen werden muss? */
+const qualAngleichen = (p) => !!p && typeof p === "object" && !Array.isArray(p.qualifikationen);
+
+/**
+ * Setzt bei jeder Person ohne gültige Liste `qualifikationen: []`.
+ * Gültige Listen und alle anderen Felder bleiben unverändert; ohne Bedarf
+ * kommt dasselbe Objekt zurück (nichts wird verändert, nichts kopiert).
+ * @param {any} bestand
+ */
+export function personenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const braucht = (m) => !!m && Array.isArray(m.personen) && m.personen.some(qualAngleichen);
+  if (!bestand.mandanten.some(braucht)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (braucht(m)
+    ? { ...m, personen: m.personen.map((p) => (qualAngleichen(p) ? { ...p, qualifikationen: [] } : p)) }
+    : m)) };
+}
+
+/**
+ * Prüft eine übermittelte Eingabe: `qualifikationen` darf fehlen, null oder
+ * eine Liste sein — jeder andere Typ ist ein Fehler des Absenders.
+ * Gibt null oder { grund, feld } zurück.
+ * @param {any} bestand
+ */
+export function personenFehler(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return null;
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || !Array.isArray(m.personen)) continue;
+    for (const [j, p] of m.personen.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const q = p.qualifikationen;
+      if (q !== undefined && q !== null && !Array.isArray(q))
+        return { grund: `Bei Person ${p.id ?? j} ist qualifikationen keine Liste.`, feld: `mandanten[${i}].personen[${j}].qualifikationen` };
+    }
+  }
+  return null;
+}
 
 /**
  * Prüft die Form eines Bestands.
@@ -43,11 +116,10 @@ export function pruefeGestalt(bestand) {
   if (!bestand.mandanten.length)
     return { ok: false, grund: "Ein Bestand ohne Betrieb wird nicht gespeichert.", feld: "mandanten" };
 
+  const ids = mandantenKennungenGeprueft(bestand.mandanten);
+  if (ids) return ids;
+
   for (const m of bestand.mandanten) {
-    if (!m || typeof m !== "object")
-      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
-    if (!m.id)
-      return { ok: false, grund: "Einem Betrieb fehlt die Kennung.", feld: "mandanten[].id" };
     for (const liste of LISTEN) {
       if (liste in m && !Array.isArray(m[liste]))
         return { ok: false, grund: `${m.id}.${liste} ist keine Liste.`, feld: liste };
@@ -73,6 +145,36 @@ export function pruefeGestalt(bestand) {
   if (uferlos) return uferlos;
 
   return { ok: true };
+}
+
+/* --------------------------------------------------------------------------
+   KENNUNGEN DER BETRIEBE
+
+   Zwei Betriebe mit derselben Kennung hielt bis Oktober 2026 nichts auf.
+   Genau das ließ sich ausnutzen: Neben dem eigenen Betrieb ein zweites
+   Exemplar mit derselben Kennung mitschicken — die Einheitsprüfung sah nur
+   das erste, beim Zerlegen in Monatsscherben verschmolzen beide, und die
+   Änderungen am zweiten standen danach im echten Betrieb.
+
+   Kennungen sind im ganzen Produkt Zeichenketten (uid, Raumname, „m-…").
+   Alles andere wird abgewiesen, ebenso leere. Verglichen wird ohne
+   Leerraum am Rand, damit „A" und „ A " nicht als zwei Betriebe
+   durchgehen. Die Kennung selbst wird nicht verändert.
+   -------------------------------------------------------------------------- */
+export function mandantenKennungenGeprueft(mandanten) {
+  if (!Array.isArray(mandanten)) return null;
+  const gesehen = new Set();
+  for (const m of mandanten) {
+    if (!m || typeof m !== "object" || Array.isArray(m))
+      return { ok: false, grund: "Ein Betrieb ist kein Objekt.", feld: "mandanten" };
+    if (typeof m.id !== "string" || !m.id.trim())
+      return { ok: false, grund: "Einem Betrieb fehlt eine gültige Kennung.", feld: "mandanten[].id" };
+    const vergleich = m.id.trim();
+    if (gesehen.has(vergleich))
+      return { ok: false, grund: "Zwei Betriebe tragen dieselbe Kennung.", feld: "mandanten[].id" };
+    gesehen.add(vergleich);
+  }
+  return null;
 }
 
 /* --------------------------------------------------------------------------

@@ -297,3 +297,137 @@ Keine Änderung an Caddy oder DNS.
 ## 7. Urteil
 
 **PRE-PRODUCTION GATE BESTANDEN**
+
+---
+
+## 8. Feste Gate-Proben im Bild (ab dem Geo-Kandidaten)
+
+Bis hierher liefen die Staging-Proben als Skripte, die über die Standardeingabe in den
+Container gegeben wurden (`docker exec -i … node --input-type=module -`). Ein Staging-Zugang,
+der das erlaubt, kann beliebigen Code im Container ausführen. Deshalb gibt es jetzt drei
+feste, versionierte Proben im Bild — und keinen anderen Weg.
+
+| Datei | Zweck | Wegwerfdaten |
+|---|---|---|
+| `werkzeug/staging-smoke.mjs` | allgemeine Gate-Fälle | Räume `ppg-gate-a`, `ppg-gate-b` |
+| `werkzeug/staging-geo.mjs` | nur Geo V1 | Raum `ppg-gate-geo` |
+| `werkzeug/staging-aufraeumen.mjs` | entfernt genau diese drei Räume | — |
+
+Aufruf nur so, im laufenden Staging-Container:
+
+    docker exec centric-staging-web node /app/werkzeug/staging-smoke.mjs
+    docker exec centric-staging-web node /app/werkzeug/staging-geo.mjs
+    docker exec centric-staging-web node /app/werkzeug/staging-aufraeumen.mjs
+
+Exit 0 nur, wenn alle Prüfungen der Probe bestanden sind; letzte Zeile
+`STAGING-SMOKE: n/n bestanden`, `STAGING-GEO: n/n bestanden` bzw.
+`STAGING-AUFRAEUMEN: n/n bestanden`. Exit 1: Prüfung fehlgeschlagen, 2: falscher Aufruf,
+3: Altlasten bzw. unklare Lage — dann wurde nichts geschrieben oder gelöscht.
+
+### Abdeckung Smoke (API)
+
+- `/gesund`; Code-Anmeldung aller Rollen; unbekannter Code 401; Abmelden → 401 auf Bestand
+  und Kalender, zweites Gerät gültig (F1).
+- Unbekannte Rolle: kein Zugang mit Sitzung. Unbekanntes Merkmal: 401 auf Bestand, Kalender,
+  Stempeln (F3).
+- Rollen: Planung ohne Sicherung und ohne Zugangssperre, Beschäftigte ohne Vollausgabe,
+  Leitung A ohne Raumlöschung und ohne Zugänge für B; Beschäftigte ohne fremde Stammdaten,
+  können sich nicht zur Leitung machen.
+- Lesen und erlaubtes Speichern: Person „Ömer-Jürgen Äßling-Weiß“ und Dienst, nach dem
+  Neuladen byte-gleich.
+- Mandantentrennung mit zwei Wegwerfbetrieben: fremder Raum im Lesen bleibt A, Schreiben von
+  B abgewiesen, Vollausgabe ohne B, Kalenderdaten mit fremdem Verweis 404, B bit-gleich.
+- Zeiterfassung Start/Ende, zweiter Start 409; E1: Beschäftigte sieht nur eigene Ist-Zeiten,
+  Betriebsrat keine personenbezogenen, Plan wird nicht zur Ist-Zeit.
+- Kalender gültig (Dienst, Nachtdienst, ganztägig, 24:00 → 00:00 Folgetag, Umlaute), ungültig
+  (10 Fälle, je 400 mit Feld, Feed unverändert), Manipulation (keine eingeschleusten
+  ICS-Zeilen).
+- D1g: Sperre → Feed 404; Reaktivierung → alter Verweis bleibt 404, neuer Feed 200; Antwort
+  gleich der für unbekannt.
+- B2: Leitung liest die Preisgrundlage, Planung nicht, die interne Notiz keine von beiden.
+- B1: ein für die Leitung verborgenes Feld (Notfallkontakt, nach der Sicherung von der
+  Beschäftigten geändert) wird durch die Wiederherstellung nicht zurückgedreht.
+
+### Abdeckung Geo (API)
+
+Geo aus: Zeit gespeichert, keine Auswertung · Planung kann nicht einschalten · Leitung ohne
+Bestätigung 403 · mit Bestätigung an, AktiviertAm/Von vom Server, Bestätigung nicht
+gespeichert · Standort lat 450, lon −220, Umkreis 0 und 10000: je 422, unverändert ·
+INNERHALB, AUSSERHALB, NICHT_BEWERTBAR (Grenzfall), Genauigkeit > 100 m Warnung, > 1000 m
+nicht bewertbar, ungültige Koordinate · UNGEPLANTER_DIENST, START_FEHLT, Start danach 409 ·
+Nachtdienst mit offenem Beginn von gestern · alter Stempel ohne `geoStart`/`geoEnde` lesbar ·
+keine Rohkoordinate, Entfernung nur gerundet.
+
+### Nicht durch die Proben abgedeckt
+
+Braucht einen Browser: Dialog „Person hinzufügen“ (Fokus, Tab), Ansichten ohne Fehlerseite
+und Konsolenfehler, 390 px, Service Worker, Manifest, Stempeluhr mit Standortabfrage,
+Befunde-Reiter, Schalter-Dialog, Nachtdienst-Anzeige nach Mitternacht. Außerdem nicht:
+Konto-Anmeldung mit E-Mail/Passwort (braucht eine bestätigte Adresse), Sitzungsinterna R1/F4,
+Kalender-Fehlerlogging (braucht eine beschädigte Ablage). Die Ablage-Sicherung bleibt ein
+eigener Gate-Schritt.
+
+### Schutz beim Aufräumen
+
+- Feste Liste `ppg-gate-a`, `ppg-gate-b`, `ppg-gate-geo` — kein Muster, keine Suche.
+  Namensähnliche Räume (z. B. `ppg-gate-ab`) bleiben unberührt.
+- Vor dem Löschen je Raum: genau der erwartete Betrieb (`ppg-gate-…-m`) mit Namen
+  „PPG-GATE …“; jeder Zugang des Raums mit „PPG-GATE“; keine persönlichen Mitgliedschaften.
+  Eine Abweichung in irgendeinem Raum: nichts gelöscht, Exit 3.
+- Gelöscht wird mit `raumLoeschen` (lib/raumloeschung.mjs), dazu der Index
+  `feedperson:<raum>:*`, den diese Funktion nicht kennt (siehe unten).
+- Nachweis danach: kein Betrieb, keine Zugänge, Feeds, Feeddaten, Feed-Index, Sitzungen,
+  Scherben, Stände, Sicherungen und Zustellvermerke dieser Räume — und alle anderen Räume und
+  Zugänge unverändert vorhanden.
+- Smoke und Geo erkennen Reste eines abgebrochenen Laufs in ihren Räumen und brechen vor dem
+  ersten Schreibvorgang ab. Sie übernehmen nichts und räumen nichts selbst weg.
+
+### Ziel und Code
+
+- Ziel fest `http://127.0.0.1:3000`, Anfragen ohne Weiterleitung, jede Anfrage auf diesen
+  Ursprung geprüft. Kein Argument erlaubt (Exit 2). Gesetzte Ziel-Variablen
+  (`CENTRIC_PROBE_BASIS`, `STAGING_PROBE_BASIS`, `PROBE_BASIS`, `PROBE_URL`,
+  `NODE_USE_ENV_PROXY`) führen zum Abbruch. `CENTRIC_BASIS` ist die Link-Adresse des Servers
+  (`.env.example`) und wird von den Proben nicht gelesen.
+- Kein `eval`, kein `Function`, kein `child_process`, keine dynamischen Importe, kein
+  Dateipfad aus einer Eingabe. Gelesen werden nur der Verwaltungsschlüssel (`CENTRIC_ADMIN`,
+  für die Anlage) und die Ablage des Servers (`CENTRIC_DATEN`) — beides ohnehin in der
+  Umgebung des Containers.
+- Ausgaben ohne Zugangscodes, Sitzungsmerkmale, Feed-Geheimnisse und Verwaltungsschlüssel;
+  alles, was die Probe davon kennt, wird vor jeder Ausgabe geschwärzt.
+
+### Angriffsfläche im Produktionsbild
+
+Dasselbe Bild kann später Produktion werden. Die drei Dateien:
+
+- sind über keinen HTTP-Weg erreichbar: `server.mjs` liefert statisch nur `dist/` aus und
+  leitet die Funktionswege an `server/funktionen/`; `werkzeug/` ist weder statisch noch als
+  Funktion eingebunden;
+- werden nirgends gestartet: nicht im `CMD`, nicht im `HEALTHCHECK`, nicht im Löschlauf, von
+  keiner Datei importiert;
+- enthalten keine Geheimnisse und keine Zugangsdaten;
+- können nichts, was der Verwaltungsschlüssel nicht ohnehin kann — und starten kann sie nur,
+  wer im Container `node /app/werkzeug/…` aufrufen darf. Wer das darf, hat ohnehin Zugriff auf
+  die Umgebung und die Ablage des Containers;
+- schreiben nur in die Wegwerfräume `ppg-gate-*` und räumen nur diese.
+
+In Produktion ruft sie niemand auf. Eine Anlage dort erzeugte nur Räume `ppg-gate-*`, die das
+Aufräumwerkzeug wieder entfernt.
+
+### Prüfung in der CI
+
+- `npm run pruefung:staging-proben` (`pruefungen/staging-proben.mjs`, nicht im Bild): frischer
+  Server auf Port 3000, leere Ablage; Smoke, Geo, Aufräumen; Altlasten-Abbruch; Nachweis in
+  der Ablage; fremder und namensähnlicher Kontrollraum byte-gleich; zweites Aufräumen
+  folgenlos; fremder Inhalt unter `ppg-gate-b` → Aufräumen verweigert; untergeschobenes Ziel
+  → Exit 2.
+- Im Container-Teil von `pruefung.yml`: dieselben drei Proben per `docker exec` im gebauten,
+  gehärteten Bild.
+
+### Beobachtungen (nicht blockierend, nicht geändert)
+
+- `raumLoeschen` entfernt den Kalender-Index `feedperson:<raum>:*` nicht. Er zeigt danach auf
+  gelöschte Feeds und erlaubt nichts. Das Aufräumwerkzeug entfernt ihn für die Gate-Räume
+  selbst; im Produkt ist das ein Folgepunkt.
+- `POST /api/zugaenge` nimmt eine unbekannte Rolle an. Die Anmeldung mit einem solchen Code
+  scheitert (fail-closed); die Probe prüft genau das.

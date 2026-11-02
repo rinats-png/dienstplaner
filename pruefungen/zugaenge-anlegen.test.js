@@ -78,36 +78,74 @@ afterAll(async () => {
   await rm(arbeit, { recursive: true, force: true });
 });
 
-describe("Bereitstellungsskript", () => {
-  let erster, zweiter, ersteDatei;
+/* Seit Oktober 2026 entstehen Codes nur für einen eingerichteten Raum. Den
+   Demobestand legt der Betreiber an („Demo-Bestand anlegen" in der
+   Oberfläche, /api/bestand-anlegen mit Vorlage demo). Der erste Lauf legt
+   deshalb nur Betreiber und Testbetrieb an und meldet die Demo als
+   ausstehend; danach richtet der Test den Raum so ein, wie es die
+   Oberfläche täte, und der zweite Lauf legt die drei Demozugänge an. */
+const demoInhalt = () => ({ version: 9, stand: 1, mandanten: [
+  { id: "m-nordwacht", name: "Nordwacht", personen: [] },
+  { id: "m-lindenhof", name: "Lindenhof", personen: [] },
+  { id: "m-steinbach", name: "Steinbach", personen: [] }] });
 
-  it("legt beim ersten Lauf alles an", async () => {
+describe("Bereitstellungsskript", () => {
+  let erster, zweiter, ersteDatei, zweiteDatei, betreiberCode;
+
+  it("legt beim ersten Lauf Betreiber und Testbetrieb an, die Demo steht aus", async () => {
     erster = await lauf(1);
     expect(erster.status, erster.stderr).toBe(0);
-    expect(erster.stdout).toContain("5 angelegt, 0 übersprungen");
+    expect(erster.stdout).toContain("2 angelegt, 0 übersprungen");
+    expect(erster.stdout).toContain("noch nicht eingerichtet");
     ersteDatei = await readFile(erster.datei, "utf8");
     expect(ersteDatei).toContain("BETREIBERKONSOLE");
+    expect(ersteDatei).toContain("DEMO — ausstehend");
     expect(ersteDatei).toMatch(/Code:\s+[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/);
-    expect(ersteDatei).toContain("Ergebnis: 5 angelegt, 0 übersprungen.");
+    expect(ersteDatei).toContain("Ergebnis: 2 angelegt, 0 übersprungen.");
     /* Nur der Eigentümer darf die Codes lesen. */
     expect(((await stat(erster.datei)).mode & 0o777).toString(8)).toBe("600");
-
     const ue = await uebersicht();
     expect(ue.zugaenge.filter((z) => z.rolle === "betreiber" && !z.gesperrt)).toHaveLength(1);
-    expect(ue.zugaenge.filter((z) => z.demo && !z.gesperrt)).toHaveLength(3);
+    expect(ue.zugaenge.filter((z) => z.demo)).toHaveLength(0);
     expect(ue.selbststarts).toHaveLength(1);
     expect(ue.selbststarts[0].name).toBe("Eigener Testbetrieb");
+    expect(await demos()).toHaveLength(0);
+  }, 30000);
+
+  it("der Betreiber richtet den Demoraum ein — mit genau der Demo-Gestalt", async () => {
+    betreiberCode = ersteDatei.match(/BETREIBERKONSOLE\n\s+Code:\s+(\S+)/)[1];
+    const anm = await (await fetch(`${B}/api/anmelden`, { method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ zugangscode: betreiberCode }) })).json();
+    expect(anm.token, JSON.stringify(anm)).toBeTruthy();
+    const anlegen = (inhalt) => fetch(`${B}/api/bestand-anlegen`, { method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${anm.token}` },
+      body: JSON.stringify({ inhalt, vorlage: "demo" }) });
+    const falsch = demoInhalt();
+    falsch.mandanten.reverse();
+    expect((await anlegen(falsch)).status).toBe(422);
+    expect((await anlegen(demoInhalt())).status).toBe(200);
+  }, 30000);
+
+  it("legt beim zweiten Lauf die drei Demozugänge an, gebunden an ihre Betriebe", async () => {
+    zweiter = await lauf(2);
+    expect(zweiter.status, zweiter.stderr).toBe(0);
+    expect(zweiter.stdout).toContain("3 angelegt, 2 übersprungen");
+    zweiteDatei = await readFile(zweiter.datei, "utf8");
+    const ue = await uebersicht();
+    const demo = ue.zugaenge.filter((z) => z.demo && !z.gesperrt)
+      .sort((a, b) => a.betrieb - b.betrieb).map((z) => [z.betrieb, z.mandantId]);
+    expect(demo).toEqual([[0, "m-nordwacht"], [1, "m-lindenhof"], [2, "m-steinbach"]]);
     expect(await demos()).toHaveLength(3);
   }, 30000);
 
-  it("legt beim zweiten Lauf nichts mehr an", async () => {
-    zweiter = await lauf(2);
-    expect(zweiter.status, zweiter.stderr).toBe(0);
-    expect(zweiter.stdout).toContain("0 angelegt, 5 übersprungen");
-    const zweiteDatei = await readFile(zweiter.datei, "utf8");
-    expect(zweiteDatei).toContain("bereits vorhanden");
-    expect(zweiteDatei).not.toMatch(/Code:\s+[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/);
-
+  it("legt beim dritten Lauf nichts mehr an", async () => {
+    const dritter = await lauf(3);
+    expect(dritter.status, dritter.stderr).toBe(0);
+    expect(dritter.stdout).toContain("0 angelegt, 5 übersprungen");
+    const dritteDatei = await readFile(dritter.datei, "utf8");
+    expect(dritteDatei).toContain("bereits vorhanden");
+    expect(dritteDatei).not.toMatch(/Code:\s+[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}/);
     /* Der Kern: genau 1 · 3 · 1 — nicht 2 · 6 · 2. */
     const ue = await uebersicht();
     expect(ue.zugaenge.filter((z) => z.rolle === "betreiber" && !z.gesperrt)).toHaveLength(1);
@@ -116,32 +154,29 @@ describe("Bereitstellungsskript", () => {
     expect(ue.selbststarts).toHaveLength(1);
     const liste = await demos();
     expect(liste).toHaveLength(3);
-    /* Und keiner doppelt: je Betrieb genau ein Eintrag. */
     expect(new Set(liste.map((d) => d.betrieb)).size).toBe(3);
   }, 30000);
 
   it("überschreibt die Ausgabe des ersten Laufs nicht", async () => {
     expect(await readFile(erster.datei, "utf8")).toBe(ersteDatei);
-    /* Ein Lauf auf eine vorhandene Datei bricht ab, bevor er etwas anlegt. */
-    const dritter = await ausfuehren("bash", [SKRIPT], { cwd: arbeit,
+    const nochmal = await ausfuehren("bash", [SKRIPT], { cwd: arbeit,
       env: { ...process.env, SITE: B, CENTRIC_ADMIN: ADMIN, RAUM, AUSGABE: erster.datei } })
       .then(() => ({ status: 0 }), (e) => ({ status: e.code ?? 1, stderr: e.stderr || "" }));
-    expect(dritter.status).not.toBe(0);
-    expect(dritter.stderr).toContain("gibt es schon");
+    expect(nochmal.status).not.toBe(0);
+    expect(nochmal.stderr).toContain("gibt es schon");
     expect(await readFile(erster.datei, "utf8")).toBe(ersteDatei);
   }, 30000);
 
   it("die Übersicht verrät weder Codes noch Prüfsummen", async () => {
     const text = JSON.stringify(await uebersicht());
-    const codes = [...ersteDatei.matchAll(/Code:\s+([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/g)].map((m) => m[1]);
-    expect(codes.length).toBeGreaterThanOrEqual(4);
+    const codes = [...`${ersteDatei}\n${zweiteDatei}`.matchAll(/Code:\s+([A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4})/g)]
+      .map((m) => m[1]);
+    expect(codes.length).toBeGreaterThanOrEqual(5);
     for (const c of codes) expect(text).not.toContain(c);
     expect(text).not.toMatch(/[0-9a-f]{64}/i);
   });
 
   it("legt nach einem Zurückziehen genau das Fehlende neu an", async () => {
-    /* Der Betreiber zieht einen Demozugang über seine Kennung zurück. */
-    const betreiberCode = ersteDatei.match(/BETREIBERKONSOLE\n\s+Code:\s+(\S+)/)[1];
     const anm = await (await fetch(`${B}/api/anmelden`, { method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ zugangscode: betreiberCode }) })).json();

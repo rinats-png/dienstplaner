@@ -2,15 +2,25 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
-import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText,
-  wirksameRolle, SCHREIBEN_NEIN } from "../lib/rechte.mjs";
-import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE } from "../lib/gestalt.mjs";
+import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
+  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
+import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
+  personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
+import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
+import { zustellen } from "../lib/versand.mjs";
+import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
+  from "../lib/erstbefuellung.mjs";
+import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
+  betriebsSicherung, auszuduennen, listenEintrag, betriebWiederherstellen,
+  vollausgabeBetrieb } from "../lib/sicherungen.mjs";
 /* Sitzungen liegen in lib/sitzungen.mjs — dieselbe Logik wie vorher hier,
    nur an einer Stelle: Künftig legen auch Einladung und Passwort-Reset
    Sitzungen an, und eine zweite Kopie wäre der Anfang von zwei Wahrheiten. */
@@ -93,53 +103,7 @@ const neuAnmelden = () => antwort({ fehler: "Bitte neu anmelden.",
   text: "Für diesen Schritt muss die Anmeldung jünger als zwanzig Minuten sein.",
   neuAnmelden: true }, 403);
 
-/* --------------------------------------------------------------------------
-   ORTSPRÜFUNG
-
-   Dieselbe Rechnung wie bisher im Browser — nur an einer Stelle, an der sie
-   niemand umschreiben kann. Gespeichert wird weiterhin nur das Urteil, nie
-   die Koordinate: Der Betrieb muss wissen, ob jemand am Einsatzort war,
-   nicht wo er sich aufhält.
-   -------------------------------------------------------------------------- */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000;
-  const bogen = (g) => (g * Math.PI) / 180;
-  const dLat = bogen(lat2 - lat1);
-  const dLon = bogen(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(bogen(lat1)) * Math.cos(bogen(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-
-/** Welche Einheit hat die Person an diesem Tag? */
-function einheitAm(person, datum) {
-  const liste = (person.zugehoerigkeit || [])
-    .filter((z) => !z.ab || z.ab <= datum)
-    .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
-  return liste.length ? liste[liste.length - 1].einheitId : null;
-}
-
-function ortPruefen(m, person, datum, lat, lon) {
-  if (typeof lat !== "number" || typeof lon !== "number"
-      || !Number.isFinite(lat) || !Number.isFinite(lon))
-    return { geprueft: false, innerhalb: null, text: "Ohne Standortfreigabe erfasst" };
-
-  const eid = einheitAm(person, datum);
-  const einheit = (m.einheiten || []).find((x) => x.id === eid);
-  const st = einheit && (m.standorte || []).find((x) => x.id === einheit.standortId);
-  if (!st || typeof st.lat !== "number" || typeof st.lon !== "number")
-    return { geprueft: false, innerhalb: null, text: "Kein Standort hinterlegt" };
-
-  const d = abstandMeter(lat, lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return {
-    geprueft: true,
-    innerhalb: d <= radius,
-    abstand: d,
-    text: d <= radius ? `Am Einsatzort (${d} m)`
-      : `Abweichend, ${d > 1500 ? `${(d / 1000).toFixed(1)} km` : `${d} m`} entfernt`,
-  };
-}
+/* Die Ortsprüfung beim Stempeln steht in lib/geo.mjs (Geo V1). */
 
 /* --------------------------------------------------------------------------
    SICHERUNGEN AUSDÜNNEN
@@ -153,18 +117,17 @@ function ortPruefen(m, person, datum, lat, lon) {
    -------------------------------------------------------------------------- */
 async function sicherungenAusduennen(store, raum) {
   try {
+    /* Je Kontingent getrennt (lib/sicherungen.mjs): automatische, je Betrieb
+       manuelle und ältere raumweite. Vorher teilten sich alle einen Topf —
+       zwanzig manuelle Sicherungen verdrängten jeden automatischen
+       Schutzpunkt des Tages. */
     const { blobs } = await store.list({ prefix: `sicherung:${raum}:` });
-    const marken = blobs.map((b) => ({ key: b.key, marke: b.key.split(":").pop() }))
-      .sort((a, b) => b.marke.localeCompare(a.marke));
-    const behalten = new Set(marken.slice(0, 20).map((x) => x.key));
-    const tageGesehen = new Set();
-    for (const m of marken.slice(20)) {
-      const tag = String(m.marke).slice(0, 10);
-      if (!tageGesehen.has(tag)) { tageGesehen.add(tag); behalten.add(m.key); }
+    const eintraege = [];
+    for (const b of blobs) {
+      const meta = await store.getMetadata(b.key).catch(() => null);
+      eintraege.push({ key: b.key, marke: b.key.split(":").pop(), meta: meta?.metadata || {} });
     }
-    for (const m of marken) {
-      if (!behalten.has(m.key)) await store.delete(m.key).catch(() => {});
-    }
+    for (const key of auszuduennen(eintraege)) await store.delete(key).catch(() => {});
   } catch { /* Aufräumen darf nie eine Anfrage scheitern lassen */ }
 }
 
@@ -245,6 +208,11 @@ export default async (req, context) => {
       if (ohnePerson)
         return antwort({ fehler: `Ein Zugang der Rolle „${ohnePerson.rolle}" braucht eine Person.` }, 400);
 
+      /* Codes gibt es nur für einen eingerichteten Raum, gebunden an die
+         Kennung seines Betriebs (erstbefuellung.mjs). */
+      const zielGelesen = await bestandLesen(store, ziel);
+      const bindungZ = betriebFuerNeuenCode(zielGelesen && zielGelesen.bestand, 0);
+      if (bindungZ.grund) return antwort({ fehler: bindungZ.grund }, 409);
       const alphabet = "ACDEFGHJKLMNPQRTUVWXY34679";
       const block = () => Array.from(randomBytes(4))
         .map((b) => alphabet[b % alphabet.length]).join("");
@@ -255,7 +223,8 @@ export default async (req, context) => {
            einander nicht mehr, und kein ausgelieferter Code geht verloren. */
         await kontoSchreiben(store, ablageSchluessel(code), {
           name: e.name || ziel, bestand: ziel,
-          rolle: e.rolle || "kunde", person: e.personId || null, betrieb: 0,
+          rolle: e.rolle || "kunde", person: e.personId || null,
+          betrieb: bindungZ.betrieb, mandantId: bindungZ.mandantId,
           demo: false, gruppe: null, hinweis: null,
           angelegt: new Date().toISOString() });
         erzeugt.push({ rolle: e.rolle, personId: e.personId || null, code });
@@ -368,8 +337,33 @@ export default async (req, context) => {
         return zuVielAntwort(bS.wartet); }
 
       const { code, pruefsumme, id, kennung: kurz, alleDesBetriebs } = rumpf;
+      const kurzGueltig = !!kurz && /^[0-9a-f]{8}$/i.test(String(kurz));
+      /* Ob etwas angegeben wurde, entscheidet die Eingabe — nicht, ob es
+         gefunden wurde. Sonst verriete die Antwort, ob eine Kennung existiert. */
+      if (!code && !pruefsumme && !id && !kurzGueltig && !alleDesBetriebs)
+        return antwort({ fehler: "Kein Zugang angegeben." }, 400);
       const konten = await alleKonten(store);
       const ziele = [];
+
+      /* Die Leitung handelt für ihren Betrieb, nicht für den Raum. Bis
+         Oktober 2026 genügte derselbe Raum: In einem Raum mit mehreren
+         Betrieben sperrte die Leitung von A mit „alle des Betriebs" auch die
+         Zugänge von B und beendete deren Sitzungen, einzeln ebenso. Ein Code
+         gehört zum Betrieb über seine Kennung (mandantId, seit 1g), ältere
+         Codes ohne Kennung über ihre Position. Betreibercodes gehören keinem
+         Betrieb. Der Betreiber sperrt weiter raumweit. */
+      let eigenerOrt = null;
+      if (sB.rolle !== "betreiber") {
+        const gelesenS = await bestandLesen(store, sB.bestand).catch(() => null);
+        eigenerOrt = gelesenS && gelesenS.bestand ? eigenerBetrieb(gelesenS.bestand, sB) : null;
+      }
+      const imEigenenBetrieb = (k) => {
+        if (!k || k.bestand !== sB.bestand) return false;
+        if (sB.rolle === "betreiber") return true;
+        if (!eigenerOrt || k.rolle === "betreiber") return false;
+        if (k.mandantId) return k.mandantId === eigenerOrt.betrieb.id;
+        return Number(k.betrieb ?? 0) === eigenerOrt.index;
+      };
 
       /* Beide Schlüssel — ein Konto kann noch unter dem alten liegen. */
       if (code) { ziele.push(ablageSchluessel(code)); ziele.push(altHash(code)); }
@@ -386,7 +380,7 @@ export default async (req, context) => {
       /* Die gekürzte Kennung aus /einrichten/uebersicht — die letzten acht
          Zeichen der Prüfsumme, wie bei den Verwalterkonten. Nur genau acht
          Hexzeichen; ein leerer oder kürzerer Wert träfe sonst alles. */
-      if (kurz && /^[0-9a-f]{8}$/i.test(String(kurz))) {
+      if (kurzGueltig) {
         const ende = String(kurz).toLowerCase();
         /* Nicht den eigenen. Die Konsole bietet ihn nicht an, aber die
            Kennung steht in derselben Liste wie alle anderen — ein Tippfehler
@@ -402,18 +396,22 @@ export default async (req, context) => {
       if (alleDesBetriebs) {
         const eigenerHash = sB.konto || null;
         for (const [h, k] of Object.entries(konten)) {
-          if (k.bestand === sB.bestand && k.rolle !== "betreiber" && h !== eigenerHash) ziele.push(h);
+          if (k && k.bestand === sB.bestand && k.rolle !== "betreiber" && h !== eigenerHash) ziele.push(h);
         }
       }
-      if (!ziele.length) return antwort({ fehler: "Kein Zugang angegeben." }, 400);
 
-      let gesperrt = 0;
-      for (const h of ziele) {
+      /* Nur, was zum eigenen Betrieb gehört (der Betreiber: alles). Fremdes
+         fällt still heraus — die Antwort gleicht der für eine unbekannte
+         Kennung. */
+      const erlaubt = [...new Set(ziele)].filter((h) => {
         const k = konten[h];
-        if (!k) continue;
-        /* Nur im eigenen Betrieb — die Leitung eines Hauses darf nicht die
-           Zugänge eines anderen abschalten. */
-        if (sB.rolle !== "betreiber" && k.bestand !== sB.bestand) continue;
+        if (!k) return false;
+        if (sB.rolle === "betreiber") return true;
+        return imEigenenBetrieb(k);
+      });
+      let gesperrt = 0;
+      for (const h of erlaubt) {
+        const k = konten[h];
         if (k.gesperrt) continue;
         konten[h] = { ...k, gesperrt: true,
           gesperrtAm: new Date().toISOString(), gesperrtDurch: sB.name || sB.rolle };
@@ -421,7 +419,7 @@ export default async (req, context) => {
       }
       /* Einzeln zurückschreiben — der Sammelblob wird nicht mehr gepflegt. */
       if (gesperrt) {
-        for (const h of ziele) {
+        for (const h of erlaubt) {
           if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
         }
       }
@@ -429,7 +427,7 @@ export default async (req, context) => {
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
       let beendet = 0;
-      const gesperrteHashes = new Set(ziele);
+      const gesperrteHashes = new Set(erlaubt);
       try {
         beendet = (await sitzungenBeendenWenn((sit) => {
           /* Die Leitung sieht nur die Sitzungen des eigenen Hauses. Der
@@ -457,12 +455,38 @@ export default async (req, context) => {
         await protokoll("zugaenge", kennung(req, null), "abgewiesen", "Raumanlage ohne Recht");
         return antwort({ fehler: "Nur für den Betreiber." }, 403);
       }
-      const { bestand: ziel, inhalt } = rumpf;
-      if (!ziel || !inhalt) return antwort({ fehler: "Unvollständig." }, 400);
+      /* Der einzige Weg, einen leeren Raum einzurichten (erstbefuellung.mjs).
+         Ohne Angabe der eigene Raum der Betreibersitzung. „leer" und „test"
+         baut der Server selbst; „demo" und ein eigener Inhalt werden
+         übermittelt und geprüft — Betreiber heißt nicht ungeprüft. */
+      const { bestand: zielAngabe, inhalt, vorlage, name: nameV, branche: brancheV } = rumpf;
+      const ziel = zielAngabe || sB.bestand;
+      if (!ziel || !/^[a-z0-9][a-z0-9_-]{2,79}$/i.test(String(ziel)))
+        return antwort({ fehler: "Kein gültiger Raumname." }, 400);
+      if (vorlage !== undefined && !VORLAGEN.includes(vorlage))
+        return antwort({ fehler: "Unbekannte Vorlage." }, 400);
       if (await raumBelegt(store, ziel))
         return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
-      await bestandSchreiben(store, ziel, inhalt, { durch: "Betreiber" });
-      return antwort({ ok: true });
+      const roh = (vorlage === "leer" || vorlage === "test")
+        ? vorlageBestand(vorlage, { raum: ziel, name: nameV, branche: brancheV })
+        : inhalt;
+      if (!roh || typeof roh !== "object")
+        return antwort({ fehler: "Unvollständig." }, 400);
+      /* Personen: ein falscher Typ wird abgewiesen, eine fehlende Liste ergänzt (gestalt.mjs). */
+      const personA = personenFehler(roh);
+      if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
+      const neuerBestand = personenAngleichen(roh);
+      const formA = pruefeGestalt(neuerBestand);
+      if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
+      if (vorlage === "demo") {
+        const demoGrund = demoGestaltPruefen(neuerBestand);
+        if (demoGrund) return antwort({ fehler: "Das ist nicht die Demo.", text: demoGrund }, 422);
+      }
+      await bestandSchreiben(store, ziel, neuerBestand, { durch: "Betreiber" });
+      await protokoll("zugaenge", kennung(req, sB), "erfolg",
+        `Raum ${ziel} eingerichtet (${vorlage || "eigener Inhalt"}, ${neuerBestand.mandanten.length} Betrieb(e))`);
+      return antwort({ ok: true, bestand: ziel, vorlage: vorlage || null,
+        mandanten: neuerBestand.mandanten.map((m) => m.id) });
     }
 
     /* ------------------------- Demozugänge auflisten ----------------- */
@@ -517,9 +541,19 @@ export default async (req, context) => {
          könnte jeder Datenräume anlegen und Zugangscodes erzeugen. */
       if (eintrag.rolle === "betreiber")
         return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
+      /* Ebenso keine Rolle, die es nicht gibt (Commit D1e). */
+      if (!rolleBekannt(eintrag.rolle))
+        return antwort({ fehler: "Dieser Zugang steht nicht als Demo bereit." }, 403);
+      const gelesenD = await bestandLesen(store, eintrag.bestand);
+      const bindungD = codeBindung(gelesenD && gelesenD.bestand, eintrag);
+      if (!bindungD.ok) {
+        await protokoll("demo", kd, "abgewiesen", bindungD.grund);
+        return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb." }, 403);
+      }
       const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle,
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        mandantId: bindungD.mandantId,
         /* Die Prüfsumme des Zugangs mitführen — wie beim Anmelden mit Code.
            Sie fehlte hier, und damit lief die Sitzung eines zurückgezogenen
            Demozugangs bis zu zwölf Stunden weiter. */
@@ -588,12 +622,39 @@ export default async (req, context) => {
           text: "Melde dich bei uns, wenn du weitermachen möchtest — die Daten sind noch da." }, 403);
       }
 
+      /* Eine Rolle, die es nicht gibt (Commit D1e): keine Sitzung. Vor dem
+         Nachtragen der Betriebsbindung und vor dem Umschlüsseln — die
+         Absage verändert nichts. Die Antwort nennt die Rolle nicht. */
+      if (!rolleBekannt(eintrag.rolle)) {
+        await protokoll("anmelden", k, "abgewiesen", "unbekannte Rolle");
+        return antwort({ fehler: "Dieser Zugang ist nicht nutzbar.",
+          text: "Bitte wende dich an die Organisationsleitung." }, 403);
+      }
+
       /* Eine Betreitersitzung läuft kürzer ab. Wer Datenräume anlegen kann,
          soll nicht zwölf Stunden lang auf einem fremden Rechner offen sein —
          die Dauer zur Rolle steht in lib/sitzungen.mjs (dauerFuer). */
+      /* Der Code trägt die Kennung seines Betriebs. Zeigt seine Position
+         nicht mehr darauf, gilt er nicht. Ein alter Code ohne Kennung in
+         einem Raum mit genau einem Betrieb bekommt sie hier einmalig;
+         in Räumen mit mehreren Betrieben wird nicht geraten. */
+      const gelesenC = eintrag.rolle === "betreiber" ? null : await bestandLesen(store, eintrag.bestand);
+      const bindungC = codeBindung(gelesenC && gelesenC.bestand, eintrag);
+      if (!bindungC.ok) {
+        await protokoll("anmelden", k, "abgewiesen", bindungC.grund);
+        return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb.",
+          text: "Bitte wende dich an die Organisationsleitung." }, 403);
+      }
+      if (bindungC.migrieren) {
+        try {
+          await kontoSchreiben(store, fund.schluessel, { ...eintrag, mandantId: bindungC.mandantId,
+            gebunden: new Date().toISOString() });
+        } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
+      }
       const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
+        mandantId: bindungC.mandantId,
         /* Die Prüfsumme des eigenen Zugangs mitführen: Nur so lässt sich
            beim Sperren aller Zugänge der eigene aussparen. */
         konto: fund.schluessel,
@@ -681,6 +742,19 @@ export default async (req, context) => {
     }
 
 
+    /* Eine Sitzung mit einer Rolle, die es nicht gibt (Commit D1d), darf
+       nichts außer sich abmelden. Entstehen konnte sie über /einrichten,
+       das bis dahin jede Rollenbezeichnung annahm; ältere Konten mit einer
+       solchen Rolle gibt es womöglich noch. Wie beim Sicherungsschlüssel:
+       erlaubt ist, was ausdrücklich erlaubt ist. */
+    /* Geprüft wird die gespeicherte Rolle der Sitzung und die wirksame
+       (Commit D1e): Eine unbekannte Kontorolle wird nicht dadurch gültig,
+       dass die gebundene Person im Betrieb eine bekannte Rolle hat. */
+    if ((!rolleBekannt(s0.rolle) || !rolleBekannt(s.rolle)) && !(pfad === "abmelden" && req.method === "POST")) {
+      await protokoll("schreiben", kennung(req, s), "abgewiesen", "unbekannte Rolle", wer);
+      return antwort({ fehler: "Keine Berechtigung.", text: absageText(s.rolle) }, 403);
+    }
+
     /* ------------------------------ Lesen ---------------------------- */
     /* Was hinausgeht, hängt an der Rolle. Eine Pflegekraft bekommt den Plan,
        aber nicht die Anschriften und Krankheitsgründe ihrer Kolleginnen —
@@ -692,7 +766,9 @@ export default async (req, context) => {
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
-      return antwort({ bestand: bestandFuerRolle(mit.bestand, s), etag: mit.stand,
+      /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
+         nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
+      return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle),
         geaendert: mit.zeit, durch: mit.durch });
@@ -716,12 +792,30 @@ export default async (req, context) => {
       if (!bestand || typeof bestand !== "object")
         return antwort({ fehler: "Kein Bestand übergeben." }, 400);
 
+      /* Doppelte oder ungültige Kennungen der Betriebe sind ein Strukturfehler,
+         kein Rechtefall — und werden vor jeder Zusammenführung abgewiesen, für
+         jede Rolle. Ein zweites Exemplar des eigenen Betriebs war der Weg an
+         der Einheitsprüfung vorbei (siehe gestalt.mjs). */
+      const kennungen = mandantenKennungenGeprueft(bestand.mandanten);
+      if (kennungen) {
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${kennungen.grund}`, wer);
+        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+          text: `${kennungen.grund} Es wurde nichts geändert.`, feld: kennungen.feld }, 422);
+      }
+      /* Eine falsch getypte Personenangabe des Absenders wird abgewiesen, nicht still zu [] gemacht. */
+      const personS = personenFehler(bestand);
+      if (personS) {
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${personS.grund}`, wer);
+        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+          text: `${personS.grund} Es wurde nichts geändert.`, feld: personS.feld }, 422);
+      }
+
       const jetzt = await bestandJetzt();
 
       /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
          eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
          Lesen gar nicht bekommen hat. */
-      const zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
+      let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
       if (!zuSchreiben) {
         await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
         return antwort({ fehler: "Keine Schreibberechtigung.",
@@ -733,9 +827,19 @@ export default async (req, context) => {
           text: zuSchreiben.verweigert }, 403);
       }
 
+      zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+
       /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
          fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
          ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
+      /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
+         nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
+      const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
+      if (standortGrund) {
+        await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
+        return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
+      }
+
       const form = pruefeGestalt(zuSchreiben);
       if (!form.ok) {
         await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
@@ -750,11 +854,12 @@ export default async (req, context) => {
       if (jetzt) {
         const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
         if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
-          const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+          const marke = markeNeu();
           await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
             { metadata: { zeit: new Date().toISOString(),
               durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
               automatisch: "ja" } }).catch(() => {});
+          await sicherungenAusduennen(store, s.bestand);
           await protokoll("schreiben", ks, "gesichert",
             `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
         }
@@ -786,6 +891,23 @@ export default async (req, context) => {
       await protokoll("schreiben", ks, "erfolg",
         `${erg.geschrieben} Stücke · ${s.rolle}`
         + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
+
+      /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
+         stellt er selbst zu (Commit 4) — nach dem Speichern, aus dem
+         gespeicherten Stand. Ein Versandfehler ändert nichts am gespeicherten
+         Vorgang und nichts an dieser Antwort; der Status je Kanal liegt in
+         der Ablage (lib/versand.mjs). */
+      try {
+        const altM = jetzt ? eigenerMandant(jetzt.bestand, s) : null;
+        const ids = neueServermitteilungen(altM, eigenerMandant(zuSchreiben, s));
+        if (ids.length) {
+          const danach = await bestandLesen(store, s.bestand);
+          const mD = danach && danach.bestand ? eigenerMandant(danach.bestand, s) : null;
+          if (mD) await zustellen(store, { raum: s.bestand, bestand: danach.bestand, m: mD, ids });
+        }
+      } catch (e) {
+        await protokoll("fehler", ks, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
+      }
       return antwort({ ok: true, etag: erg.stand,
         zusammengefuehrt: erg.zusammengefuehrt || null });
     }
@@ -806,7 +928,7 @@ export default async (req, context) => {
       const bSt = await bremse("schreiben", kSt);
       if (!bSt.frei) return zuVielAntwort(bSt.wartet);
 
-      const { datum, art, lat, lon } = rumpf;
+      const { datum, art, lat, lon, accuracy } = rumpf;
       if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
         return antwort({ fehler: "Kein gültiges Datum." }, 400);
       if (art !== "start" && art !== "ende")
@@ -825,23 +947,73 @@ export default async (req, context) => {
       const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
       if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-      /* Die eigene Zeit, nicht die des Geräts. */
+      /* Die eigene Zeit, nicht die des Geräts — einmal gelesen, für Datum,
+         Uhrzeit und die 20-Stunden-Grenze. */
       const jetzt = new Date();
-      const zeit = jetzt.toLocaleTimeString("de-DE", {
-        hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+      const heute = heuteBerlin(jetzt);
+      /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
+         Beginn), nie künftig und nie älter — Nachträge laufen über
+         „Zeiten bestätigen" (zeiterfassung.mjs). */
+      const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
+      if (datumGrund) {
+        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
+        return antwort({ fehler: datumGrund }, 422);
+      }
+      const zeit = uhrzeitBerlin(jetzt);
 
-      const urteil = ortPruefen(m, person, datum, lat, lon);
+      /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
+         Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
+         mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
+         nie ab: Die Stempelzeit wird in jedem Fall gespeichert. */
+      const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy } });
 
       const k = `${person.id}|${datum}`;
       const alt = (m.einstempeln || {})[k] || {};
+      /* Ein zweites Ein- oder Ausstempeln am selben Tag überschrieb bisher
+         das erste — ein erneutes Einstempeln löschte dabei sogar das schon
+         gestempelte Ende. Gestempeltes bleibt; korrigieren kann die Leitung. */
+      /* Auch ein Start nach einem schon gestempelten Ende (START_FEHLT) ersetzte
+         sonst den Eintrag samt Ende — Gestempeltes bleibt. */
+      if ((art === "start" && (alt.start || alt.ende)) || (art === "ende" && alt.ende)) {
+        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
+        return antwort({ fehler: art === "start" && alt.start ? "Für diesen Tag ist schon eingestempelt."
+          : art === "start" ? "Für diesen Tag ist schon ausgestempelt — den Beginn trägt die Leitung nach."
+          : "Für diesen Tag ist schon ausgestempelt.",
+        code: art === "start" && alt.start ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
+      }
+      /* Kennzeichen statt Ablehnung (E5, E10): Einstempeln ohne geplanten
+         Dienst ist erlaubt (UNGEPLANTER_DIENST); ein Ende ohne Start wird
+         gespeichert (START_FEHLT) — ohne erfundene Startzeit und ohne
+         Ist-Dauer: Dann entsteht keine bestätigte Erfassung, die Zeit wird
+         über „Zeiten bestätigen" bzw. die Leitung vervollständigt. */
+      const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
+      const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
+      if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+      const startFehlt = art === "ende" && !alt.start;
+      if (startFehlt) markieren("START_FEHLT");
+      /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
+         Beginn mehr als 20 Stunden zurück, gehört dieses Ende nicht
+         automatisch zu ihm. Beginn und Ende bleiben gespeichert, aber es
+         entsteht keine bestätigte Erfassung — sonst würde aus 06:00 Uhr und
+         06:01 Uhr am Folgetag eine 24-Stunden-Schicht. Vervollständigt wird
+         wie bei START_FEHLT über „Zeiten bestätigen" bzw. die Leitung. */
+      const startVeraltet = art === "ende" && !!alt.start
+        && !startZuordenbar(String(datum), alt.start, jetzt, alt.startAm);
+      if (startVeraltet) markieren("START_VERALTET");
+      /* startAm/endeAm: der eindeutige Zeitpunkt (UTC) neben der Berliner
+         Uhrzeit — in der Rückstellnacht ist „02:30" sonst zweideutig. */
       const neu = art === "start"
-        ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
-            geprueftStart: urteil.geprueft }
-        : { ...alt, ende: zeit, ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
-            geprueftEnde: urteil.geprueft };
+        ? { start: zeit, startAm: jetzt.toISOString(), ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
+            geprueftStart: urteil.geprueft, geoStart: urteil.geo }
+        : { ...alt, ende: zeit, endeAm: jetzt.toISOString(), ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
+            geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
+      /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
+         fehlt das Feld, ist es der Tag des Vorgangs. */
+      if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
+      if (markierungen.length) neu.markierungen = markierungen;
 
       let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-      if (art === "ende") {
+      if (art === "ende" && !startFehlt && !startVeraltet) {
         neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
           [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
       }
@@ -850,9 +1022,69 @@ export default async (req, context) => {
 
       const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
         erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
-      await protokoll("schreiben", kSt, ergSt.ok ? "erfolg" : "konflikt", `stempeln ${art}`, wer);
+      /* Bis Oktober 2026 kam hier auch nach einem gescheiterten Schreiben
+         (gleichzeitige Änderung desselben Monats) „ok: true" zurück — die
+         Oberfläche zeigte eine Stempelzeit, die es auf dem Server nicht gab. */
+      if (!ergSt.ok) {
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
+        return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
+          + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
+      }
+      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`, wer);
+      /* Zurück geht der gespeicherte Stand, damit die Oberfläche ihn
+         übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, etag: ergSt.stand || null });
+        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
+        erfassung: art === "ende" && !startFehlt && !startVeraltet ? neuerMandant.erfassung[k] : null });
+    }
+
+    /* ------------------------- Zeiten bestätigen ----------------------
+       Die Selbstauskunft „Zeiten bestätigen": für einen vergangenen Tag mit
+       geplantem Dienst, an dem noch keine Zeit erfasst ist, „wie geplant"
+       oder „abweichend". Bis Oktober 2026 lief das über das allgemeine
+       Speichern, und eine unzulässige Angabe verschwand dort still — die
+       Oberfläche zeigte den Tag trotzdem als bestätigt. Hier gibt es eine
+       Antwort: 200 mit dem gespeicherten Eintrag oder 4xx mit dem Grund.
+       Nur für die eigene Person; die Regeln stehen in zeiterfassung.mjs. */
+    if (pfad === "zeit-bestaetigen" && req.method === "POST") {
+      const kZ = kennung(req, s);
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: absageText(s.rolle) }, 403);
+      }
+      const bZ = await bremse("schreiben", kZ);
+      if (!bZ.frei) return zuVielAntwort(bZ.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      const { datum, start = null, ende = null, grund = "" } = rumpf || {};
+
+      const mitZ = await bestandJetzt();
+      if (!mitZ) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      const mZ = eigenerMandant(mitZ.bestand, s);
+      if (!mZ) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const personZ = (mZ.personen || []).find((x) => String(x.id) === String(s.person));
+      if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
+
+      const kTag = `${personZ.id}|${datum}`;
+      if ((mZ.erfassung || {})[kTag]) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
+        return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
+      }
+      const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund });
+      if (urteilZ.grund) {
+        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
+        return antwort({ fehler: urteilZ.grund }, 422);
+      }
+      const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
+      const ergZ = await bestandSchreiben(store, s.bestand,
+        { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
+        { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
+      if (!ergZ.ok) {
+        await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen ${datum}`, wer);
+        return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+      }
+      await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
+      return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null });
     }
 
     /* ------------------------------ Abmelden ------------------------- */
@@ -880,15 +1112,24 @@ export default async (req, context) => {
       if (!bv.frei) return zuVielAntwort(bv.wartet);
       const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      await protokoll("vollausgabe", kennung(req, s), "erfolg", s.nurSicherung ? "Schlüssel" : "Sitzung");
+      /* Der eigene Betrieb, nicht der Raum. Bis Oktober 2026 bekam die
+         Leitung eines Betriebs hier die Rohdaten aller Betriebe des Raums. */
+      const va = vollausgabeBetrieb(mit.bestand, s);
+      if (va.verweigert) return antwort({ fehler: va.verweigert }, va.status);
+      await protokoll("vollausgabe", kennung(req, s), "erfolg",
+        `${s.nurSicherung ? "Schlüssel" : "Sitzung"} · ${va.betrieb.id}`);
       const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
       return antwort({
         centric: "vollausgabe",
-        fassung: 1,
+        fassung: 2,
+        umfang: "betrieb",
+        /* leitung oder sicherung — die beiden Exportkataloge (sicherungen.mjs) */
+        inhalt: va.modus,
         erzeugt: new Date().toISOString(),
         raum: s.bestand,
+        mandantId: va.betrieb.id,
         stand: mit.stand,
-        bestand: mit.bestand,
+        bestand: { version: mit.bestand.version, stand: mit.bestand.stand, mandanten: [va.betrieb] },
       }, 200, { "content-disposition": `attachment; filename="centric-${s.bestand}-${marke}.json"` });
     }
 
@@ -908,10 +1149,15 @@ export default async (req, context) => {
       /* Ein Schlüssel ohne Ablauf ist ein Schlüssel, der irgendwann in
          einem alten Skript vergessen wird. Höchstens ein Jahr. */
       const gueltig = Math.min(365, Math.max(1, Number(tage) || 90));
+      /* Seit Oktober 2026 an den Betrieb gebunden, nicht nur an den Raum. */
+      const skMit = await bestandJetzt();
+      const skOrt = skMit ? eigenerBetrieb(skMit.bestand, s) : null;
+      if (!skOrt) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
       const roh = randomBytes(24).toString("base64url");
       const bis = Date.now() + gueltig * 86400000;
       await sitzungen().setJSON(`sk:${hash(roh)}`, {
         bestand: s.bestand, rolle: "leitung", nurSicherung: true,
+        betrieb: skOrt.index, mandantId: skOrt.betrieb.id,
         name: `Sicherungsschlüssel (${s.name || "Leitung"})`,
         angelegt: new Date().toISOString(), bis,
       });
@@ -921,14 +1167,28 @@ export default async (req, context) => {
         hinweis: "Dieser Schlüssel erscheint genau einmal. Er darf ausschließlich lesen." });
     }
 
+    /* Auflisten und Widerrufen nur für den eigenen Betrieb. Bis Oktober 2026
+       genügte derselbe Raum: Die Leitung von A sah die Schlüssel von B und
+       konnte sie widerrufen — mit einer beliebig kurzen Kennung als Präfix.
+       Ein Schlüssel gehört zum Betrieb über seine Kennung (mandantId, seit
+       1f); ältere ohne Kennung nur in einem Raum mit genau einem Betrieb. */
+    const schluesselImBetrieb = async () => {
+      const mitS = await bestandJetzt();
+      const ortS = mitS ? eigenerBetrieb(mitS.bestand, s) : null;
+      const einBetrieb = !!(mitS && Array.isArray(mitS.bestand.mandanten) && mitS.bestand.mandanten.length === 1);
+      return (k) => !!k && !!ortS && k.bestand === s.bestand
+        && (k.mandantId ? k.mandantId === ortS.betrieb.id : einBetrieb);
+    };
+
     if (pfad === "sicherungsschluessel" && req.method === "GET") {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
+      const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: "sk:" }).catch(() => ({ blobs: [] }));
       const liste = [];
       for (const b of blobs) {
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-        if (!k || k.bestand !== s.bestand) continue;
+        if (!gehoert(k)) continue;
         liste.push({ kennung: b.key.slice(3, 11), angelegt: k.angelegt,
           gueltigBis: new Date(k.bis).toISOString(), abgelaufen: k.bis < Date.now() });
       }
@@ -939,12 +1199,16 @@ export default async (req, context) => {
       if (s.rolle !== "leitung" || s.nurSicherung)
         return antwort({ fehler: "Nur die Organisationsleitung." }, 403);
       const { kennung: kz } = rumpf;
-      if (!kz) return antwort({ fehler: "Keine Kennung angegeben." }, 400);
+      /* Genau die achtstellige Kennung aus der Liste — keine Präfixsuche. */
+      if (!kz || !/^[0-9a-f]{8}$/.test(String(kz)))
+        return antwort({ fehler: "Keine gültige Kennung angegeben (acht Zeichen aus der Liste)." }, 400);
+      const gehoert = await schluesselImBetrieb();
       const { blobs } = await sitzungen().list({ prefix: `sk:${kz}` }).catch(() => ({ blobs: [] }));
       let weg = 0;
       for (const b of blobs) {
+        if (b.key.slice(3, 11) !== kz) continue;
         const k = await sitzungen().get(b.key, { type: "json" }).catch(() => null);
-        if (!k || k.bestand !== s.bestand) continue;
+        if (!gehoert(k)) continue;           // fremd: wie nicht gefunden
         await sitzungen().delete(b.key); weg++;
       }
       await protokoll("sicherungsschluessel", kennung(req, s), "widerrufen", String(weg), wer);
@@ -952,24 +1216,39 @@ export default async (req, context) => {
     }
 
     /* -------------------------- Sicherungskopien --------------------- */
+    /* Bis Oktober 2026 durfte jede angemeldete Rolle beides, ohne Bremse,
+       und gesichert wurde der ganze Raum. Jetzt: Leitung (und der eigene
+       Probierraum), nur der eigene Betrieb, gebremst und protokolliert. */
     if (pfad === "sicherung" && req.method === "POST") {
+      if (!SICHERUNG_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Sicherungen legt die Leitung an.", text: absageText(s.rolle) }, 403);
       const mit = await bestandJetzt();
       if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const marke = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-      await store.setJSON(`sicherung:${s.bestand}:${marke}`, mit.bestand,
-        { metadata: { zeit: new Date().toISOString(), durch: s.name } });
+      const ort = eigenerBetrieb(mit.bestand, s);
+      if (!ort) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const bS = await bremse("sicherung", `${s.bestand}:${ort.betrieb.id}`);
+      if (!bS.frei) return zuVielAntwort(bS.wartet);
+      const marke = markeNeu();
+      await store.setJSON(`sicherung:${s.bestand}:${marke}`,
+        betriebsSicherung(mit.bestand, ort, { stand: mit.stand, durch: s.name || null }),
+        { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
+          mandantId: ort.betrieb.id, rolle: s.rolle } });
+      await protokoll("sicherung", kennung(req, s), "erfolg", `${ort.betrieb.id} · ${marke}`, wer);
       await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
     }
     if (pfad === "sicherungen" && req.method === "GET") {
+      if (!SICHERUNG_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Sicherungen sieht die Leitung.", text: absageText(s.rolle) }, 403);
+      const mit = await bestandJetzt();
+      const ort = mit ? eigenerBetrieb(mit.bestand, s) : null;
+      if (!ort) return antwort({ sicherungen: [] });
       const { blobs } = await store.list({ prefix: `sicherung:${s.bestand}:` });
       const liste = [];
       for (const b of blobs) {
         const meta = await store.getMetadata(b.key).catch(() => null);
-        liste.push({ marke: b.key.split(":").pop(),
-          zeit: meta?.metadata?.zeit || null,
-          durch: meta?.metadata?.durch || null,
-          automatisch: meta?.metadata?.automatisch === "ja" });
+        const e = listenEintrag(b.key.split(":").pop(), meta?.metadata, ort.betrieb.id);
+        if (e) liste.push(e);
       }
       return antwort({ sicherungen: liste.sort((a, b) => b.marke.localeCompare(a.marke)) });
     }
@@ -982,37 +1261,65 @@ export default async (req, context) => {
        Vor dem Einspielen wird der jetzige Stand gesichert — sonst tauscht
        man einen Verlust gegen den nächsten. */
     if (pfad === "wiederherstellen" && req.method === "POST") {
-      if (schreibumfang(s.rolle) !== "voll")
-        return antwort({ fehler: "Nur die Planung darf wiederherstellen.",
+      /* Bis Oktober 2026 spielte das den ganzen Raum zurück — alle Betriebe,
+         Reihenfolge, Rollen, Vertragsfelder, Protokolle — an jeder Prüfung
+         des Schreibwegs vorbei, und ohne Rücksicht auf inzwischen
+         Gespeichertes. Jetzt: nur die Leitung, nur der eigene Betrieb an
+         seiner Stelle, mit Rollen- und Vertragsschutz (lib/sicherungen.mjs)
+         und nur auf den Stand, den sie zuletzt gesehen hat. */
+      if (!WIEDERHERSTELLEN_ROLLEN.includes(s.rolle))
+        return antwort({ fehler: "Wiederherstellen darf nur die Leitung.",
           text: absageText(s.rolle) }, 403);
       if (!frisch(s)) return neuAnmelden();
       const kW = kennung(req, s);
       const bW = await bremse("schreiben", kW);
       if (!bW.frei) return zuVielAntwort(bW.wartet);
+      const bW2 = await bremse("wiederherstellen", kW);
+      if (!bW2.frei) return zuVielAntwort(bW2.wartet);
 
-      const { marke } = rumpf;
-      if (!marke || !/^[\d-]{10,25}$/.test(String(marke)))
+      const { marke, etag: etagW } = rumpf;
+      if (!marke || !MARKE.test(String(marke)))
         return antwort({ fehler: "Keine gültige Marke." }, 400);
+
+      const jetztGelesen = await bestandJetzt();
+      if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
+        return antwort({ fehler: "konflikt",
+          text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
+          etag: jetztGelesen.stand }, 409);
 
       const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
       if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
-      const form = pruefeGestalt(alt2);
+      const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
+
+      const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
+        { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
+      if (w.verweigert) {
+        await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
+        return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
+      }
+      w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
+      const form = pruefeGestalt(w.bestand);
       if (!form.ok)
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
       /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-      const jetztGelesen = await bestandJetzt();
-      const jetztStand = jetztGelesen ? jetztGelesen.bestand : null;
-      if (jetztStand) {
-        const m2 = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-        await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztStand,
-          { metadata: { zeit: new Date().toISOString(),
-            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
-          .catch(() => {});
-      }
+      const m2 = markeNeu();
+      await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
+        { metadata: { zeit: new Date().toISOString(),
+          durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+        .catch(() => {});
+      await sicherungenAusduennen(store, s.bestand);
 
-      const ergW = await bestandSchreiben(store, s.bestand, alt2, {
+      const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {
+        erwarteterStand: jetztGelesen.stand,
         durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
+      if (!ergW.ok) {
+        await protokoll("schreiben", kW, "konflikt", `wiederherstellen ${marke}`, wer);
+        return antwort({ fehler: "konflikt",
+          text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
+          etag: ergW.stand }, 409);
+      }
       await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
       return antwort({ ok: true, etag: ergW.stand, marke });
     }

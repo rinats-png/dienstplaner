@@ -4,7 +4,7 @@ import {
 } from "./accounts.mjs";
 import { HERKUNFT_KONTO } from "./arbeitssitzung.mjs";
 import { bestandLesen } from "./bestand.mjs";
-import { wirksameRolle, eigenerMandant } from "./rechte.mjs";
+import { wirksameRolle, eigenerMandant, rolleBekannt } from "./rechte.mjs";
 import { sitzungAnlegen, sitzungBeenden, sitzungsSchluessel, dauerFuer } from "./sitzungen.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerAnlegen, markerLoeschen }
   from "./accountsitzungen.mjs";
@@ -174,6 +174,10 @@ export async function betriebWaehlen(store,
   if (!m) return absage("keine-mitgliedschaft");
   if (m.status !== "aktiv") return absage(`status:${m.status}`);
   if (!m.person) return absage("ohne-person");
+  /* Eine Mitgliedschaft mit einer Rolle, die es nicht gibt (Altbestand),
+     ergibt keine Arbeitssitzung (Commit D1e). Nach außen dieselbe Absage
+     wie jede andere. */
+  if (!rolleBekannt(m.rolle)) return absage("rolle");
 
   /* Die Generation dieser Beziehung muss stimmen, bevor irgendetwas
      entsteht: Eine Mitgliedschaft, deren Generation nicht die aktuelle ist,
