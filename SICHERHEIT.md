@@ -6,10 +6,12 @@
 > (`pruefungen/rechtematrix-zeilen.test.js` u. a.). Wo diese Datei etwas anderes sagt, gilt die
 > Rechtematrix; die Abschnitte hier sind bei Gelegenheit zu überarbeiten und neu zu datieren.
 >
-> **Bekannte Lücke (Stand 2. November 2026):** Sperrende Schutzregeln (Jugendarbeitsschutz, Mutterschutz,
-> Einschränkungen an der Person, gesetzliche Qualifikationen, Einweisung je Gerät, Ruhezeit unter 11 Stunden) werden
-> derzeit **nur in der Oberfläche** durchgesetzt. Der Server weist Bestätigungen solcher Befunde ab, nicht aber eine
-> Einteilung, die über die API direkt in `abweichungen` geschrieben wird. Die Server-Durchsetzung folgt in WP-11.
+> **Bekannte Lücke (Stand 2. November 2026, WP-11):** Der Server weist neue oder geänderte Einteilungen ab, die die
+> Schutzprüfung hart sperrt (Jugendarbeitsschutz, Mutterschutz, neutrale Einsatzregeln) oder die außerhalb des
+> Beschäftigungsverhältnisses liegen. **Nur in der Oberfläche** durchgesetzt sind weiterhin: Einschränkungen an der
+> Person (keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät
+> und Ruhezeit unter 11 Stunden — eine Einteilung, die über die API direkt in `abweichungen` geschrieben wird, kommt
+> daran vorbei. Die Server-Durchsetzung dieser Regeln braucht die Planlogik auf dem Server und ist offen.
 
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security
 Master Checkliste" für KI-gestützt entwickelte Anwendungen und dem

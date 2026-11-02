@@ -195,9 +195,14 @@ Zählwerte** je Monat, Regel und Stufe (`{monat, regel, stufe, anzahl}`, Nachpr�
 Mindestgruppengröße 3 steht „<3". Keine Einträge, keine Kennungen, kein Name, kein Freitext; Schutz- und
 Einschränkungsbefunde nur als `schutz`, Altbestand mit Text nie im Wortlaut (`sonstiges`). Fachlich offen: Reicht das
 der Mitbestimmung, und welche Mindestgröße? Geprüft zusätzlich in `pruefungen/review-wp10.test.js`.
-**Sperrende Schutzregeln werden derzeit nur in der Oberfläche durchgesetzt** (Warndialog, Bewerbung, Selbstplanung,
-Zuschlag, Übernahme, Einsprung, Tausch); der Server weist nur Bestätigungen sperrender Befunde ab, nicht die
-Einteilung selbst in `abweichungen`. Die Server-Durchsetzung folgt in WP-11.
+**Server-Durchsetzung (WP-11):** Der Server prüft jede neue oder geänderte Einteilung in `abweichungen` mit derselben
+Schutzprüfung wie die Oberfläche (`schutzEinsatz`, `server/lib/schutzpruefung.mjs`, auf den gespeicherten Rohdaten —
+für die Schichtverantwortung gleichwertig zu ihren Einsatzregeln) und weist ab, was hart sperrt, ebenso „nicht im
+Bestand" (`server/lib/schutzdurchsetzung.mjs`); bestehende Einteilungen bleiben unberührt. Eine Bestätigung zu einer
+solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
+durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
+`einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
+Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen

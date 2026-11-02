@@ -90,6 +90,10 @@ jobs:
       - name: Auslieferung ohne Entwürfe
         run: npm run pruefung:auslieferung
 
+      # Genau eine Schutzprüfung im Code, und der Server setzt sie durch (WP-11).
+      - name: Eine Schutzprüfung
+        run: npm run pruefung:schutz-eine
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.

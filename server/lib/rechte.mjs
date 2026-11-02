@@ -22,6 +22,7 @@ import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NA
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
   BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { abweichungenSchutzPruefen, sperrendeBefunde } from "./schutzdurchsetzung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1001,6 +1002,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
     }
+    /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
+       oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
+       nicht nur im Warndialog der Oberfläche. */
+    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    if (schutzGrund) return { verweigert: schutzGrund };
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
@@ -1383,6 +1389,11 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
        sperrender Befund lässt sich nicht bestätigen (H1). */
     if (!befunde.every((b) => b && typeof b === "object" && Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, b.regel))) return null;
     if (befunde.some((b) => sperrtBefund(b.regel))) return SPERRT;
+    /* Der Server prüft selbst (WP-11, B2): Sperrt die Schutzprüfung diese
+       Einteilung, hilft keine Bestätigung — auch nicht, wenn der Client den
+       Befund verschweigt. */
+    const daObj = (Array.isArray(altM.dienstarten) ? altM.dienstarten : []).find((d) => d && String(d.id) === String(e.dienstId));
+    if (daObj && daObj.start && daObj.ende && sperrendeBefunde(personen.get(String(e.personId)), daObj, e.datum).length) return SPERRT;
     const katalogStufen = befunde.map((b) => BEFUND_KATALOG[b.regel].stufe);
     const stufe = katalogStufen.includes("recht") ? "recht" : katalogStufen.includes("achtung") ? "achtung" : null;
     if (!PROTOKOLL_STUFEN.includes(stufe)) return null;           // ein Hinweis braucht keine Bestätigung
