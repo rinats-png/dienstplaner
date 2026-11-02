@@ -22,6 +22,7 @@
 
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -357,23 +358,33 @@ function standorte(w) {
    nicht hinaus. */
 export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde",
   "grundArt", "grund", "ohneGrund", "gelesen", "durch", "durchId", "rolle", "zeit", "regelstand", "behoben"];
-const BESTAETIGUNG_BR = ["id", "datum", "dienstId", "aktion", "stufe", "grundArt", "ohneGrund", "gelesen",
-  "rolle", "zeit", "regelstand", "behoben"];
-export const SCHUTZ_NEUTRAL_TEXT = "individuelle Schutz- oder Einsatzregel betroffen";
-const schutzBefund = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
+/* Review WP-10, M1: Der Betriebsrat sieht abweichungen (den Plan)
+   vollständig. Mit Tag und Dienst einer Bestätigung ließe sich die Person
+   wiederfinden. Deshalb nur Regel, Stufe und Monat — kein Tag, kein Dienst,
+   keine Bestätigungszeit (aenderungen tragen eine Zeit), kein Freitext,
+   kein Name. Befunde nur als Kennung aus dem Befundkatalog; alle Schutz-
+   und Einschränkungsbefunde heißen „schutz" (ohne Gesetz, ohne Merkmal);
+   Altbestand mit Text wird nie im Wortlaut gezeigt. Fachlich offen: Reicht
+   dem Betriebsrat der Monat? */
+const BESTAETIGUNG_BR = ["id", "aktion", "stufe", "grundArt", "ohneGrund", "gelesen", "rolle", "regelstand", "behoben"];
+export const SCHUTZ_NEUTRAL = "schutz";
+const schutzText = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
   .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
-const abwesenheitBefund = (b) => /^abwesend\b/i.test(String(b && b.text || "")) || (b && b.quelle) === "Abwesenheit";
+function regelFuerBetriebsrat(x) {
+  const k = BEFUND_KATALOG[x.regel];
+  if (k) return k.schutz ? SCHUTZ_NEUTRAL : x.regel;
+  /* Altbestand ohne Kennung: nie der Wortlaut. */
+  if (schutzText(x)) return SCHUTZ_NEUTRAL;
+  if (/^abwesend\b/i.test(String(x.text || "")) || x.quelle === "Abwesenheit") return "abwesend";
+  return "sonstiges";
+}
 export function bestaetigungenBetriebsrat(w) {
   return liste(w).filter((b) => b && typeof b === "object").map((b) => ({
     ...nimm(b, BESTAETIGUNG_BR),
+    monat: typeof b.datum === "string" ? b.datum.slice(0, 7) : null,
     personId: null, durchId: null, durch: typeof b.rolle === "string" ? b.rolle : null,
-    befunde: liste(b.befunde).filter((x) => x && typeof x === "object").map((x) => (schutzBefund(x)
-      ? { stufe: x.stufe, text: SCHUTZ_NEUTRAL_TEXT, quelle: "" }
-      /* Eine aufgehobene Abwesenheit (WP-10 d.5) nennt im Befund ihre Art
-         („abwesend (Krank)"). Der Betriebsrat sieht Abwesenheiten anderer
-         nur als „abwesend" (abwesenheiten oben) — hier ebenso. */
-      : abwesenheitBefund(x) ? { stufe: x.stufe, text: "abwesend", quelle: "Abwesenheit" }
-        : nimm(x, ["stufe", "text", "quelle"]))),
+    befunde: liste(b.befunde).filter((x) => x && typeof x === "object")
+      .map((x) => ({ regel: regelFuerBetriebsrat(x), stufe: x.stufe })),
   }));
 }
 

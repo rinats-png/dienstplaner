@@ -184,7 +184,7 @@ import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende,
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { sperrtArt, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+import { sperrtArt, befundText, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
@@ -9158,7 +9158,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                     {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
                       if (!b) return null;
                       /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
-                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${b.befunde.map((x) => x.text).join(" · ")}`}
+                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${(b.befunde || []).map((x) => x.text || befundText(x.regel)).join(" · ")}`}
                         aria-label={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt`}
                         style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,
                           background: b.stufe === "recht" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }} />; })()}
@@ -10800,7 +10800,9 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         /* Bewusst bestätigte Abweichungen (E-19): getrennt von den
            unentdeckten Befunden. Sie stehen hier, bis der Monat abgelaufen
            ist — wer bestätigt hat, aus welchem Grund, mit welchem Regelstand. */
-        const best = (m.bestaetigungen || []).filter((x) => x.datum >= von && x.datum <= bis);
+        /* Der Betriebsrat bekommt nur den Monat, keinen Tag (Review M1). */
+        const best = (m.bestaetigungen || []).filter((x) => x.datum ? x.datum >= von && x.datum <= bis
+          : x.monat && x.monat >= von.slice(0, 7) && x.monat <= bis.slice(0, 7));
         if (!best.length) return null;
         const recht = best.filter((x) => x.stufe === "recht");
         const ohneGrund = recht.filter((x) => x.ohneGrund).length;
@@ -10816,16 +10818,16 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
                 const da = m.dienstarten.find((y) => y.id === x.dienstId);
                 const g = ABWEICHUNG_GRUENDE.find((y) => y.id === x.grundArt);
                 return (
-                  <div key={x.id} className="klick" {...klickbar(() => oeffneTag(x.datum))}
+                  <div key={x.id} className={x.datum ? "klick" : undefined} {...(x.datum ? klickbar(() => oeffneTag(x.datum)) : {})}
                     style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
                     <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
                     <div style={{ minWidth: 150, fontSize: 13.5, ...NUM }}>
-                      {fKurz(x.datum)} · {da ? da.kurz : x.dienstId}
+                      {x.datum ? `${fKurz(x.datum)} · ${da ? da.kurz : x.dienstId}` : (x.monat || "")}
                       <div style={{ fontSize: 12, color: C.dim }}>{pp ? `${pp.nachname}, ${pp.vorname}` : "Person"}</div></div>
                     <div style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.45 }}>
-                      {x.befunde.map((b) => b.text).join(" · ")}
+                      {(x.befunde || []).map((b) => b.text || befundText(b.regel)).join(" · ")}
                       <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>
-                        bestätigt von {x.durch || "?"} · {x.zeit ? fKurz(x.zeit.slice(0, 10)) : ""}
+                        bestätigt von {x.durch || "?"}{x.zeit ? ` · ${fKurz(x.zeit.slice(0, 10))}` : ""}
                         {" · "}{g ? `${g.label}${x.grund ? `: ${x.grund}` : ""}` : "ohne Grund"}</div>
                     </div>
                   </div>);

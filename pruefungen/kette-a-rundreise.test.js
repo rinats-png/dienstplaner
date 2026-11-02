@@ -20,7 +20,7 @@
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
-import { ABWEICHUNG_GRUENDE as GRUENDE_SERVER } from "../server/lib/bestaetigungen.mjs";
+import { ABWEICHUNG_GRUENDE as GRUENDE_SERVER, bestaetigungMitteilungen } from "../server/lib/bestaetigungen.mjs";
 import { ABWEICHUNG_GRUENDE as GRUENDE_OBERFLAECHE } from "../src/warnstufen.js";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
@@ -32,8 +32,12 @@ const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: "V", nachname
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }], ...extra });
 
 /* m0 und a1 im Bereich e1 der Schichtverantwortung s1, b1 in e2. */
+/* Seit Review M1/H1: Befunde nur als Kennung aus dem Befundkatalog, und nur
+   warnende lassen sich bestätigen — hier die Ruhezeit unter der Vorgabe des
+   Betriebs (über dem Gesetz). Ein „recht"-Befund sperrt in der strengen
+   Variante immer (siehe d.4 unten). */
 const eintrag = (id, personId, extra = {}) => ({ id, personId, datum: tag(3), dienstId: "F", aktion: "einsprung",
-  stufe: "recht", gelesen: true, befunde: [{ stufe: "recht", text: `Ruhezeit 8 h (${id})`, quelle: "§ 5 ArbZG" }],
+  stufe: "achtung", gelesen: true, befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }],
   grundArt: null, grund: "", ohneGrund: true, durch: "Client", durchId: "x", rolle: "x", zeit: "2000-01-01", regelstand: "2026.10",
   behoben: null, ...extra });
 
@@ -169,8 +173,10 @@ describe("d.1 Bestätigungsprotokoll: Rundreise je Rolle", () => {
   });
   it("ungültige neue Einträge werden abgewiesen", () => {
     const falsch = [
-      { personId: "unbekannt" }, { datum: "morgen" }, { dienstId: "X" }, { stufe: "hinweis" }, { gelesen: false },
-      { befunde: [] }, { befunde: [{ stufe: "recht", text: "x".repeat(301) }] }, { grundArt: "erfunden" },
+      { personId: "unbekannt" }, { datum: "morgen" }, { dienstId: "X" }, { stufe: "hinweis" }, { stufe: "recht", gelesen: false, befunde: [{ regel: "ruhezeitBetrieb", stufe: "recht" }] },
+      { befunde: [] }, { befunde: [{ stufe: "achtung", text: "Frau X ist schwanger" }] },
+      { befunde: [{ regel: "erfunden", stufe: "achtung" }] }, { befunde: [{ regel: "ruhezeitBetrieb", stufe: "hinweis" }] },
+      { grundArt: "erfunden" },
       { aktion: "<script>" }, { grundArt: "sonstiges", grund: "x".repeat(201) }];
     for (const f of falsch) {
       const e = rundreise(bestand(), "PL", (m) => { m.bestaetigungen.unshift(eintrag("neu", "b1", f)); });
@@ -187,9 +193,21 @@ describe("d.1 Bestätigungsprotokoll: Rundreise je Rolle", () => {
    ------------------------------------------------------------------------ */
 describe("d.4 Mitteilung an die Leitung bei bestätigtem Rechtsverstoß", () => {
   const leitungsMitteilungen = (b) => (betrieb(b).nachrichten || []).filter((n) => /^n-bestaetigung-/.test(n.id));
+  /* In der strengen Variante (Review H1) sperrt jeder Befund der Stufe
+     „recht" — ein bestätigter Rechtsverstoß kann gar nicht entstehen; der
+     Server weist ihn ab. Die Mitteilung bleibt für den Fall, dass die
+     Fachentscheidung eine Regel auf „warnen" setzt; geprüft wird sie direkt. */
+  const rechtEintrag = (id, personId) => eintrag(id, personId, { stufe: "recht", befunde: [{ regel: "ruhezeitGesetz", stufe: "recht" }] });
+  it("ein Rechtsverstoß lässt sich heute nicht bestätigen — jede schreibende Rolle", () => {
+    for (const r of [...SCHREIBEND_VOLL, "SV"]) {
+      const e = rundreise(bestand(), r, (m) => { m.bestaetigungen.unshift(rechtEintrag("neu", "a1")); });
+      expect(e.verweigert, r).toMatch(/sperrender Befund/);
+    }
+  });
   it("die Schichtverantwortung bestätigt — beide Leitungen werden unterrichtet, vom Server", () => {
-    const e = rundreise(bestand(), "SV", (m) => { m.bestaetigungen.unshift(eintrag("neu", "a1")); });
-    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+    const g = bestand();
+    const e = { mandanten: [bestaetigungMitteilungen(betrieb(g), { ...betrieb(g), bestaetigungen: [
+      { ...rechtEintrag("neu", "a1"), ohneGrund: true }, ...betrieb(g).bestaetigungen] }, "s1")] };
     const n = leitungsMitteilungen(e);
     expect(n.map((x) => x.personId).sort()).toEqual(["l1", "l2"]);
     for (const x of n) {
@@ -197,18 +215,23 @@ describe("d.4 Mitteilung an die Leitung bei bestätigtem Rechtsverstoß", () => 
       expect(x.titel).toBe("Rechtsverstoß bewusst bestätigt");
       expect(x.text).toContain("V Na1");
       expect(x.text).toContain("ohne Grund");
+      /* Der Text kommt aus dem Befundkatalog (Review N1), nicht vom Client. */
+      expect(x.text).toContain("Ruhezeit unter 11 Stunden");
     }
   });
   it("die Leitung selbst wird nicht über die eigene Bestätigung unterrichtet", () => {
-    const e = rundreise(bestand(), "LT", (m) => { m.bestaetigungen.unshift(eintrag("neu", "b1")); });
-    expect(leitungsMitteilungen(e).map((x) => x.personId)).toEqual(["l2"]);
+    const g = bestand();
+    const neu = { ...betrieb(g), bestaetigungen: [rechtEintrag("neu", "b1"), ...betrieb(g).bestaetigungen] };
+    expect(leitungsMitteilungen({ mandanten: [bestaetigungMitteilungen(betrieb(g), neu, "l1")] }).map((x) => x.personId)).toEqual(["l2"]);
   });
-  it("„Achtung“ allein erzeugt keine Mitteilung; ein zweites Speichern auch nicht", () => {
-    const e = rundreise(bestand(), "PL", (m) => { m.bestaetigungen.unshift(eintrag("neu", "b1", { stufe: "achtung" })); });
+  it("„Achtung“ erzeugt keine Mitteilung; vorhandene entstehen nicht noch einmal", () => {
+    const e = rundreise(bestand(), "PL", (m) => { m.bestaetigungen.unshift(eintrag("neu", "b1")); });
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
     expect(leitungsMitteilungen(e)).toEqual([]);
-    const e1 = rundreise(bestand(), "PL", (m) => { m.bestaetigungen.unshift(eintrag("neu", "b1")); });
-    const e2 = rundreise(e1, "PL");
-    expect(leitungsMitteilungen(e2)).toHaveLength(2);
+    const g = bestand();
+    const neu = { ...betrieb(g), bestaetigungen: [rechtEintrag("neu", "b1"), ...betrieb(g).bestaetigungen] };
+    const einmal = bestaetigungMitteilungen(betrieb(g), neu, "p1");
+    expect(bestaetigungMitteilungen(betrieb(g), einmal, "p1").nachrichten).toHaveLength(2);
   });
   it("eine vom Client mitgeschickte Servermitteilung wird verworfen", () => {
     const e = rundreise(bestand(), "PL", (m) => {
@@ -335,7 +358,7 @@ describe("d.5 Abwesenheit für einen Tag aufheben", () => {
       { ...m.abwesenheiten[i], id: "abw-a1-rest", von: tag(4) });
   };
   const bestaetigung = eintrag("auf-a1", "a1", { stufe: "achtung", gelesen: true,
-    befunde: [{ stufe: "achtung", text: "abwesend (Krank)", quelle: "Abwesenheit" }] });
+    befunde: [{ regel: "abwesend", stufe: "achtung" }] });
   const abw = (b) => betrieb(b).abwesenheiten.filter((a) => a.personId === "a1").map((a) => [a.id, a.von, a.bis]);
 
   it("Planung, Leitung, Kundenrolle: geteilt gespeichert, mit Protokolleintrag, beim Lesen wieder da", () => {
@@ -362,9 +385,9 @@ describe("d.5 Abwesenheit für einen Tag aufheben", () => {
   it("der Betriebsrat sieht im Protokoll nur „abwesend“, nicht die Art", () => {
     const e = rundreise(bestand(), "PL", (m) => { teilen(m); m.bestaetigungen.unshift(bestaetigung); });
     const br = betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen.find((b) => b.id === "auf-a1");
-    expect(br.befunde).toEqual([{ stufe: "achtung", text: "abwesend", quelle: "Abwesenheit" }]);
+    expect(br.befunde).toEqual([{ regel: "abwesend", stufe: "achtung" }]);
     expect(JSON.stringify(betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen)).not.toContain("Krank");
     /* Planung und Leitung sehen den Befund im Wortlaut. */
-    expect(betrieb(bestandFuerRolle(e, SITZ.LT)).bestaetigungen[0].befunde[0].text).toBe("abwesend (Krank)");
+    expect(betrieb(bestandFuerRolle(e, SITZ.LT)).bestaetigungen[0].befunde[0]).toEqual({ regel: "abwesend", stufe: "achtung" });
   });
 });

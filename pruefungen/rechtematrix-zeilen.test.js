@@ -384,8 +384,14 @@ const ZEILEN = {
     sonden: [mk("BEST-BEFUND-B1"), mk("BEST-SCHUTZ-B1"), mk("BEST-GRUND-B1"), mk("BEST-DURCH-B1"),
       mk("BEST-BEFUND-A1"), mk("BEST-DURCH-A1")],
     bedingt: {
-      "ohne Namen": (s) => {
+      "nur Regel, Stufe und Monat": (s) => {
         const liste = s.betrieb.bestaetigungen || [];
+        /* Review M1: kein Tag, kein Dienst, keine Bestätigungszeit, kein Wortlaut. */
+        for (const b of liste) {
+          for (const f of ["datum", "dienstId", "zeit", "grund"]) expect(b[f], f).toBeUndefined();
+          expect(b.monat).toBe(tag(1).slice(0, 7));
+          for (const x of b.befunde) expect(Object.keys(x).sort()).toEqual(["regel", "stufe"]);
+        }
         expect(liste.map((b) => b.id).sort()).toEqual(["bs-a1", "bs-b1"]);
         for (const b of liste) {
           expect(b.personId, "Person").toBe(null);
@@ -396,10 +402,10 @@ const ZEILEN = {
         expect(mk("BEST-DURCH-A1")(s), "Name der bestätigenden Person").toBe(false);
         expect(mk("BEST-GRUND-B1")(s), "Freitext zum Grund").toBe(false);
         expect(liste.find((b) => b.id === "bs-b1").grundArt, "Grundart bleibt").toBe("sonstiges");
-        expect(mk("BEST-BEFUND-B1")(s), "Regelbefund").toBe(true);
-        expect(mk("BEST-BEFUND-A1")(s), "Regelbefund").toBe(true);
+        expect(mk("BEST-BEFUND-B1")(s), "Befund im Wortlaut (Altbestand)").toBe(false);
+        expect(mk("BEST-BEFUND-A1")(s), "Befund im Wortlaut (Altbestand)").toBe(false);
         expect(mk("BEST-SCHUTZ-B1")(s), "Schutzbefund im Wortlaut").toBe(false);
-        expect(JSON.stringify(liste)).toContain("individuelle Schutz- oder Einsatzregel betroffen");
+        expect(liste.find((b) => b.id === "bs-b1").befunde.map((x) => x.regel)).toEqual(["sonstiges", "schutz"]);
       },
       "nur eigener Bereich am Tag": (s) => {
         expect((s.betrieb.bestaetigungen || []).map((b) => b.id)).toEqual(["bs-a1"]);

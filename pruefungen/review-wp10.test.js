@@ -139,3 +139,56 @@ describe("H1: was sperrt, steht an einer Stelle und ist streng", () => {
     expect(APP).toContain("const schutzSperre = (m, p, d, da) => (p && da && hindernisBefunde(m, p, d, da).find((b) => b.sperrt)) || null;");
   });
 });
+
+/* ------------------------------------------------------------------------
+   M1, N1 — Bestätigungsprotokoll ohne Freitext, Betriebsrat nur Monat
+   ------------------------------------------------------------------------ */
+describe("M1/N1: Befunde nur als Katalogkennung, Betriebsrat ohne Tag und Dienst, Grenzen", () => {
+  const neu = (id, extra = {}) => ({ id, personId: "b1", datum: tag(3), dienstId: "F", aktion: "einsprung", stufe: "achtung",
+    gelesen: true, befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }], grundArt: null, ...extra });
+  const speichern = (g, rolle, liste) => {
+    const s = kopie(bestandFuerRolle(g, SITZ[rolle]));
+    s.mandanten[0].bestaetigungen = [...liste, ...(s.mandanten[0].bestaetigungen || [])];
+    return zusammenfuehren(g, s, SITZ[rolle]);
+  };
+  it("ein Befund mit Freitext wird abgewiesen, gespeichert wird nur Kennung und Stufe", () => {
+    const frei = speichern(bestand(), "PL", [neu("x1", { befunde: [{ stufe: "achtung", text: "Frau N b1 ist schwanger", quelle: "MuSchG" }] })]);
+    expect(frei.verweigert).toBeTruthy();
+    const e = speichern(bestand(), "PL", [neu("x2", { befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung", text: "Frau N b1 ist schwanger" }] })]);
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+    expect(e.mandanten[0].bestaetigungen[0].befunde).toEqual([{ regel: "ruhezeitBetrieb", stufe: "achtung" }]);
+    expect(JSON.stringify(e.mandanten[0].bestaetigungen)).not.toContain("schwanger");
+  });
+  it("ein sperrender Befund lässt sich nicht bestätigen (Server)", () => {
+    for (const regel of ["schutz", "keineNacht", "maxDiensteWoche", "keinAlleindienst", "qualifikationGesetzlich",
+      "kompetenz", "ruhezeitGesetz", "bestand"]) {
+      const e = speichern(bestand(), "PL", [neu("x3", { stufe: "recht", befunde: [{ regel, stufe: "recht" }] })]);
+      expect(e.verweigert, regel).toMatch(/sperrender Befund/);
+    }
+  });
+  it("der Betriebsrat sieht nur Regel, Stufe und Monat — keinen Tag, Dienst, keine Zeit", () => {
+    const e = speichern(bestand(), "PL", [neu("x4")]);
+    const br = bestandFuerRolle(e, SITZ.BR).mandanten[0].bestaetigungen[0];
+    expect(br).toMatchObject({ id: "x4", monat: tag(3).slice(0, 7), stufe: "achtung", personId: null,
+      befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }] });
+    for (const f of ["datum", "dienstId", "zeit", "grund"]) expect(br[f], f).toBeUndefined();
+  });
+  it("höchstens 50 neue Einträge je Speichern", () => {
+    const viele = Array.from({ length: 51 }, (_, i) => neu(`v${i}`));
+    expect(speichern(bestand(), "PL", viele).verweigert).toMatch(/höchstens 50/);
+    expect(speichern(bestand(), "PL", viele.slice(0, 50)).verweigert).toBeUndefined();
+  });
+  it("insgesamt höchstens 5000 Einträge, die ältesten fallen weg", () => {
+    const g = bestand({ bestaetigungen: Array.from({ length: 5000 }, (_, i) => ({ ...neu(`alt${i}`), durch: "P", rolle: "planer" })) });
+    const e = speichern(g, "PL", [neu("ganzneu")]);
+    const l = e.mandanten[0].bestaetigungen;
+    expect(l).toHaveLength(5000);
+    expect(l[0].id).toBe("ganzneu");
+    expect(l.map((b) => b.id)).not.toContain("alt4999");
+  });
+  it("die Mitteilung an die Leitung baut der Server aus dem Katalog, nicht aus Client-Text", () => {
+    const quelle = readFileSync(path.join(process.cwd(), "server/lib/bestaetigungen.mjs"), "utf8");
+    expect(quelle).toContain("befundText(");
+    expect(quelle).not.toMatch(/b\.befunde\[0\]\.text/);
+  });
+});

@@ -13,6 +13,8 @@
    Geprüft in pruefungen/warnen.test.js.
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
+import { BEFUND_KATALOG, sperrtBefund, befundText } from "../server/lib/bestaetigungen.mjs";
+export { BEFUND_KATALOG, befundText };
 
 export const WARNSTUFEN = {
   hinweis: { rang: 1, label: "Hinweis", ton: "neutral" },
@@ -32,24 +34,17 @@ export const WARNSTUFEN = {
  * betriebliche Vorgabe oder ein Wunsch ist, wird zur Warnung. Wer das ändern
  * will, ändert es hier — und nur hier (pruefungen/review-wp10.test.js).
  */
-export const SPERR_REGELN = Object.freeze({
-  bestand: true,                 // nicht im Bestand (ausgetreten, gesperrt): technisch
-  schutz: true,                  // harte Schutzbefunde (JArbSchG, MuSchG, Einsatzregeln)
-  keineNacht: true,              // Einschränkung an der Person
-  keinAlleindienst: true,        // Einschränkung an der Person
-  maxDiensteWoche: true,         // Einschränkung an der Person
-  qualifikationGesetzlich: true, // gesetzlich verbindliche Qualifikation (§ 34a GewO u. ä.)
-  kompetenz: true,               // Einweisung je Gerät (§ 4 MPBetreibV, § 12 BetrSichV)
-  ruhezeitGesetz: true,          // Ruhezeit unter 11 h (§ 5 ArbZG)
-  qualifikationBetrieblich: false, // betriebliche Vorgabe
-  ruhezeitBetrieb: false,        // Tarif oder Betrieb über dem Gesetz
-  verfuegbarkeit: false,         // Wunsch der Person
-  teilzeit: false,               // Teilzeitvereinbarung
-  folge: false,                  // Dienste in Folge (Einstellung des Betriebs)
-  abwesend: false,               // Abwesenheit: der Dialog bietet das Aufheben an
-});
+/* Die Tabelle steht im Befundkatalog des Servers (server/lib/bestaetigungen.mjs),
+   damit Oberfläche und Server dieselbe Entscheidung treffen: Der Server weist
+   eine Bestätigung ab, die einen sperrenden Befund wegbestätigen soll.
+   Sperrend: nicht im Bestand, harte Schutzbefunde, keine Nacht, kein
+   Alleindienst, Höchstzahl Dienste je Woche, gesetzliche Qualifikation,
+   Einweisung je Gerät, Ruhezeit unter 11 h. Warnend: betriebliche
+   Qualifikation, Ruhezeit über dem Gesetz, Verfügbarkeit, Teilzeit, Dienste
+   in Folge, Abwesenheit (der Dialog bietet das Aufheben an). */
+export const SPERR_REGELN = Object.freeze(Object.fromEntries(Object.entries(BEFUND_KATALOG).map(([k, v]) => [k, v.sperrt])));
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
-export const sperrtArt = (art) => (Object.prototype.hasOwnProperty.call(SPERR_REGELN, art) ? SPERR_REGELN[art] : true);
+export const sperrtArt = sperrtBefund;
 
 /** Rang einer Stufe; Unbekanntes zählt als Hinweis. */
 export const stufeRang = (s) => (WARNSTUFEN[s] || WARNSTUFEN.hinweis).rang;
@@ -125,7 +120,9 @@ export function bestaetigungsEintraege(best, wer, aktion, opt) {
     .map(({ e, ernst }) => ({
       id: opt.neueId(), personId: e.personId, datum: e.datum, dienstId: e.dienstId, aktion,
       stufe: hoechsteStufe(ernst),
-      befunde: ernst.map((b) => ({ stufe: b.stufe, text: b.text, quelle: b.quelle || "" })),
+      /* Nur Kennung und Stufe (Review M1): Der Text steht im Befundkatalog,
+         ein Wortlaut des Clients ginge sonst ungeprüft ins Protokoll. */
+      befunde: ernst.map((b) => ({ regel: b.regel || "unbekannt", stufe: b.stufe })),
       grundArt: best.grundArt || null, grund: best.grundArt ? String(best.grundText || "").trim() : "",
       ohneGrund: !best.grundArt, gelesen: !!best.gelesen,
       durch: w.name || null, durchId: w.personId || null, rolle: w.rolle || null,

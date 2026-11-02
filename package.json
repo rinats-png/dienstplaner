@@ -84,7 +84,7 @@
     "pruefung:staging-proben": "node pruefungen/staging-proben.mjs",
     "pruefung:geo-http": "node pruefungen/geo.mjs",
     "pruefung:istdaten": "vitest run pruefungen/istdaten.test.js",
-    "pruefung:warnen": "vitest run pruefungen/warnen.test.js pruefungen/kette-a-rundreise.test.js",
+    "pruefung:warnen": "vitest run pruefungen/warnen.test.js pruefungen/kette-a-rundreise.test.js pruefungen/review-wp10.test.js",
     "pruefung:aufbewahrung": "vitest run pruefungen/aufbewahrung.test.js",
     "pruefung:tarife": "vitest run pruefungen/tarifwerke.test.js",
     "pruefung:demo": "node pruefungen/demozugang.mjs",

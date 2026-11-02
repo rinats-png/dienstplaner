@@ -71,7 +71,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Selbstplanung: Einträge anderer samt `hinweise` | nur Tag und Dienst ²² | – | nur eigener Bereich am Tag ¹⁵ ²² | ✓ | ✓ | – | ✓ | ✓ | A |
 | Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | ohne Namen ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Regel, Stufe und Monat ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -179,7 +179,18 @@ unveränderlich; geändert oder weggelassen mitgeschickt bleibt der gespeicherte
 für sich und Personen ihres Bereichs am Tag; Beschäftigte und Betriebsrat schreiben das Protokoll nicht. Bei einem
 bestätigten Rechtsverstoß erzeugt der Server die Mitteilung an die Leitung (`server/lib/bestaetigungen.mjs`, Kennung
 `n-bestaetigung-…`, Zustellung nach dem Speichern) — nicht die Oberfläche. Geprüft in
-`pruefungen/rechtematrix-zeilen.test.js`, `pruefungen/bestaetigungen.test.js` und `pruefungen/warnen.test.js`.
+`pruefungen/rechtematrix-zeilen.test.js`, `pruefungen/kette-a-rundreise.test.js` und `pruefungen/warnen.test.js`.
+**Nach dem Review (M1, N1, H1) gilt abweichend davon:** Befunde werden nur als Kennung aus dem Befundkatalog
+(`BEFUND_KATALOG`, `server/lib/bestaetigungen.mjs`) mit Stufe angenommen und gespeichert — kein Text, keine
+Fundstelle vom Client; angezeigt wird der Text des Katalogs. Ein sperrender Befund (Katalogspalte `sperrt`, dieselbe
+Tabelle wie `SPERR_REGELN` der Oberfläche) lässt sich nicht bestätigen; der Server weist ab. In der strengen Variante
+sperrt jeder Befund der Stufe „Rechtsverstoß" — ein bestätigter Rechtsverstoß entsteht derzeit nicht. Höchstens 50 neue
+Einträge je Speichern, höchstens 5000 insgesamt (darüber fallen die ältesten weg). Die Mitteilung an die Leitung nimmt
+den Text aus dem Katalog. Der **Betriebsrat** sieht, weil ihm der Plan (`abweichungen`) vollständig vorliegt und Tag und
+Dienst die Person wiederfinden ließen, nur Regel, Stufe und **Monat**: kein Tag, kein Dienst, keine Bestätigungszeit,
+kein Grund-Freitext, kein Name; Schutz- und Einschränkungsbefunde nur als `schutz`, Altbestand mit Text nie im
+Wortlaut (`sonstiges`). Fachlich offen: Reicht dem Betriebsrat der Monat? Geprüft zusätzlich in
+`pruefungen/review-wp10.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
