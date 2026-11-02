@@ -2722,8 +2722,8 @@ const abwesenheitTagAufheben = (m, personId, datum) =>
   abwTagAufheben(m.abwesenheiten, personId, datum, () => uid("a"));
 
 /**
- * Hält eine bestätigte Abweichung fest (Bestätigungsprotokoll) und
- * unterrichtet die Leitung, wenn eine gesetzliche Vorgabe betroffen ist.
+ * Hält eine bestätigte Abweichung fest (Bestätigungsprotokoll). Ist eine
+ * gesetzliche Vorgabe betroffen, unterrichtet der Server die Leitung.
  *
  * @param best   was der Warndialog zurückgibt: eintraege mit befunden, grund
  * @param wer    { personId, name, rolle } der bestätigenden Person
@@ -2733,17 +2733,11 @@ function bestaetigungVermerken(m, best, wer, aktion) {
   const neu = bestaetigungsEintraege(best, wer, aktion,
     { neueId: () => uid("bs"), zeit: new Date().toISOString(), regelstand: REGELSTAND.version });
   if (!neu.length) return m;
-  const recht = neu.filter((x) => x.stufe === "recht");
-  const leitung = recht.length
-    ? m.personen.filter((x) => x.rolle === "leitung" && x.id !== wer.personId && imDienst(x, heute())) : [];
-  const namen = (pid) => { const x = m.personen.find((y) => y.id === pid); return x ? `${x.vorname} ${x.nachname}` : "?"; };
-  const nachr = leitung.map((l) => baueMitteilung(m, l.id, "planGeaendert",
-    recht.length === 1 ? "Rechtsverstoß bewusst bestätigt" : `${recht.length} Rechtsverstöße bewusst bestätigt`,
-    recht.slice(0, 3).map((x) => `${namen(x.personId)} · ${fKurz(x.datum)} · ${x.befunde[0].text}`).join("; ")
-      + ` — bestätigt von ${wer.name}${best.grundArt ? "" : ", ohne Grund"}`,
-    "pruef")).filter(Boolean);
-  return { ...m, bestaetigungen: [...neu, ...(m.bestaetigungen || [])].slice(0, 2000),
-    nachrichten: nachr.length ? [...nachr, ...(m.nachrichten || [])].slice(0, 400) : m.nachrichten };
+  /* Die Mitteilung an die Leitung bei einem Rechtsverstoß erzeugt der Server
+     beim Speichern (server/lib/bestaetigungen.mjs, WP-10 d.4) — auch für die
+     Schichtverantwortung, deren Mitteilungen sonst nur in den eigenen
+     Bereich gehen dürfen. Wer und Zeit des Eintrags setzt ebenfalls der Server. */
+  return { ...m, bestaetigungen: [...neu, ...(m.bestaetigungen || [])].slice(0, 2000) };
 }
 
 /**

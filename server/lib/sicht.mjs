@@ -327,6 +327,35 @@ function standorte(w) {
   return liste(w).map((s) => nimm(s, ["id", "name", "land", "bundesland"]));
 }
 
+/* BESTÄTIGUNGSPROTOKOLL (Warnen statt sperren, Kette A; WP-10 d.1).
+   Wer eine Einteilung trotz Befund bestätigt, hinterlässt hier einen
+   Eintrag: Person, Tag, Dienst, Stufe, Befunde, freiwilliger Grund, wer
+   bestätigt hat, Regelstand. Beschäftigte sehen das Protokoll nicht — es
+   nennt fremde Personen und Gründe. Der Betriebsrat sieht es je Regel und
+   Tag ohne Namen (Muster-BV, Anlage 5): keine Person, kein Name der
+   bestätigenden Person (nur ihre Rolle), kein Freitext zum Grund (nur die
+   Art) — ein Freitext kann Namen tragen. Befunde aus individuellen Schutz-
+   oder Einsatzregeln werden neutral („individuelle Schutz- oder Einsatzregel
+   betroffen"): Zusammen mit Tag und Dienst ließe sich in einem kleinen Team
+   sonst auf das Merkmal schließen. Positivliste — was nicht hier steht, geht
+   nicht hinaus. */
+export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde",
+  "grundArt", "grund", "ohneGrund", "gelesen", "durch", "durchId", "rolle", "zeit", "regelstand", "behoben"];
+const BESTAETIGUNG_BR = ["id", "datum", "dienstId", "aktion", "stufe", "grundArt", "ohneGrund", "gelesen",
+  "rolle", "zeit", "regelstand", "behoben"];
+export const SCHUTZ_NEUTRAL_TEXT = "individuelle Schutz- oder Einsatzregel betroffen";
+const schutzBefund = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
+  .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
+export function bestaetigungenBetriebsrat(w) {
+  return liste(w).filter((b) => b && typeof b === "object").map((b) => ({
+    ...nimm(b, BESTAETIGUNG_BR),
+    personId: null, durchId: null, durch: typeof b.rolle === "string" ? b.rolle : null,
+    befunde: liste(b.befunde).filter((x) => x && typeof x === "object").map((x) => (schutzBefund(x)
+      ? { stufe: x.stufe, text: SCHUTZ_NEUTRAL_TEXT, quelle: "" }
+      : nimm(x, ["stufe", "text", "quelle"]))),
+  }));
+}
+
 
 /* ------------------------------------------------------------------------
    DER KATALOG DER BETRIEBSFELDER
@@ -393,6 +422,8 @@ export const BETRIEB = {
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
   /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
   aenderungen: [WEG, VOLL],
+  /* Bestätigungsprotokoll (WP-10 d.1): Beschäftigte nicht, Betriebsrat ohne Namen. */
+  bestaetigungen: [WEG, R(bestaetigungenBetriebsrat)],
 
   /* Inhalte ohne belegten Bedarf dieser Rollen. Übergaben und Dienstbuch
      tragen Bewohner- und Vorfallsangaben ohne Bereichsbezug; das
@@ -644,6 +675,13 @@ Object.assign(SCHICHT, {
   nachrichten: NUR_EIGENE,
   notrufe: R(schichtNotrufe),
   aenderungen: R(schichtAenderungen),
+  /* Bestätigungsprotokoll (WP-10 d.1): Einträge zu Personen, die am Tag des
+     Eintrags zum eigenen Bereich gehören (oder sie selbst sind) — dieselben,
+     für die sie Abweichungen bestätigen darf (einheitZusammen). Fremde,
+     Pool und Einträge ohne gültigen Tag nicht. Nur die bekannten Felder. */
+  bestaetigungen: R((w, ctx) => liste(w)
+    .filter((e) => e && typeof e === "object" && imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]))
+    .map((e) => nimm(e, BESTAETIGUNG_FELDER))),
   selbstplanung: R(schichtSelbstplanung),
   ausschreibungen: R(schichtAusschreibungen),
   urlaubsrunde: R(schichtUrlaubsrunde),

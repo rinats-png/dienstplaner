@@ -10,7 +10,9 @@
 import { describe, it, expect } from "vitest";
 import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, RUHEZEIT_GESETZ,
   ABWEICHUNG_GRUENDE, abwesenheitTagAufheben, bestaetigungsEintraege } from "../src/warnstufen.js";
-import { eigenesZusammen, bestandFuerRolle, einheitDarf } from "../server/lib/rechte.mjs";
+/* Seit WP-10 prüft der Server die Schichtverantwortung Feld für Feld in
+   einheitZusammen (Kette B); einheitDarf gibt es nicht mehr. */
+import { eigenesZusammen, bestandFuerRolle, einheitZusammen } from "../server/lib/rechte.mjs";
 
 let zaehler = 0;
 const neueId = () => `id${++zaehler}`;
@@ -116,33 +118,43 @@ describe("Bestätigungsprotokoll", () => {
 describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
   const person = (id, einheitId, rolle = "mitarbeiter") =>
     ({ id, vorname: id, nachname: id.toUpperCase(), rolle, zugehoerigkeit: [{ ab: "2020-01-01", einheitId }] });
+  /* Die Dienstarten gehören zum Betrieb: Der Server nimmt seit Kette B nur
+     Einträge mit bekannter Dienstart an (Selbstplanung, Protokoll), und der
+     Bereich der Schichtverantwortung muss eine Einheit des Betriebs sein. */
   const mandant = () => ({
     id: "m1",
     personen: [person("s1", "e1", "subplaner"), person("p1", "e1"), person("p2", "e2"), person("l1", "e1", "leitung")],
+    dienstarten: [{ id: "F" }, { id: "S" }, { id: "N" }], einheiten: [{ id: "e1" }, { id: "e2" }],
     abweichungen: {}, nachrichten: [], bestaetigungen: [],
     selbstplanung: [{ id: "sp1", monat: "2026-11", status: "offen", eintraege: [
       { personId: "p2", datum: "2026-11-03", dienstId: "F" }] }],
   });
-  const eintrag = (personId) => ({ id: `b-${personId}`, personId, datum: "2026-11-12", dienstId: "N",
-    stufe: "recht", befunde: [{ stufe: "recht", text: "Ruhezeit 8 h" }], durch: "S1", durchId: "s1", rolle: "subplaner" });
+  const eintrag = (personId) => ({ id: `b-${personId}`, personId, datum: "2026-11-12", dienstId: "N", aktion: "einsprung",
+    stufe: "recht", gelesen: true, befunde: [{ stufe: "recht", text: "Ruhezeit 8 h" }], durch: "S1", durchId: "s1", rolle: "subplaner" });
 
   it("Schichtverantwortung darf Abweichungen im eigenen Bereich bestätigen", () => {
     const alt = mandant();
-    const neu = { ...alt, bestaetigungen: [eintrag("p1")] };
-    expect(einheitDarf(alt, neu, { person: "s1", rolle: "subplaner" }).ok).toBe(true);
+    const neu = { ...alt, bestaetigungen: [{ ...eintrag("p1"), durch: "Jemand anderes", durchId: "l1", rolle: "leitung" }] };
+    const r = einheitZusammen(alt, neu, { person: "s1", rolle: "subplaner" });
+    expect(r.ok).toBe(true);
+    /* Wer bestätigt hat, setzt der Server — nicht die Übermittlung. */
+    expect(r.mandant.bestaetigungen).toHaveLength(1);
+    expect(r.mandant.bestaetigungen[0]).toMatchObject({ personId: "p1", durch: "s1 S1", durchId: "s1", rolle: "subplaner" });
   });
 
   it("… aber nicht für eine Person aus einem fremden Bereich", () => {
     const alt = mandant();
     const neu = { ...alt, bestaetigungen: [eintrag("p2")] };
-    expect(einheitDarf(alt, neu, { person: "s1", rolle: "subplaner" }).ok).toBe(false);
+    expect(einheitZusammen(alt, neu, { person: "s1", rolle: "subplaner" }).ok).toBe(false);
   });
 
   it("Beschäftigte sehen das Protokoll nicht", () => {
     const alt = mandant();
     alt.bestaetigungen = [eintrag("p1")];
     const aus = bestandFuerRolle({ mandanten: [alt] }, { rolle: "mitarbeiter", person: "p1", betrieb: 0 });
-    expect(aus.mandanten[0].bestaetigungen).toBeUndefined();
+    /* Kette B liefert weggelassene Listen als leere Liste aus (sicht.mjs, leerFuer). */
+    expect(aus.mandanten[0].bestaetigungen || []).toEqual([]);
+    expect(JSON.stringify(aus)).not.toContain("Ruhezeit 8 h");
   });
 
   it("der Betriebsrat sieht es ohne Namen", () => {

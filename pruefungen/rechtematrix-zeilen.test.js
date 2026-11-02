@@ -139,6 +139,17 @@ const bestand = () => ({
       { id: "t-b1", personId: "b1", typ: "tausch", status: "offen", partnerId: null, von: tag(9), bis: tag(9), text: M("ANTRAG-TAUSCH-B1"), interessenten: [] },
       { id: "an-a1", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-A1") }],
     nachrichten: [{ id: "n", personId: "b1", art: "info", titel: M("NACHRICHT-B1") }],
+    /* Bestätigungsprotokoll (WP-10 d.1): b1 fremd, a1 im Bereich der SV. */
+    bestaetigungen: [
+      { id: "bs-b1", personId: "b1", datum: tag(1), dienstId: "F", aktion: "einsprung", stufe: "recht",
+        befunde: [{ stufe: "recht", text: M("BEST-BEFUND-B1"), quelle: "§ 5 ArbZG" },
+          { stufe: "recht", text: M("BEST-SCHUTZ-B1"), quelle: "Schutzvorschrift oder Einsatzregel für diese Person" }],
+        grundArt: "sonstiges", grund: M("BEST-GRUND-B1"), ohneGrund: false, gelesen: true,
+        durch: M("BEST-DURCH-B1"), durchId: "p1", rolle: "planer", zeit: "2026-01-01T00:00:00.000Z", regelstand: "x", behoben: null },
+      { id: "bs-a1", personId: "a1", datum: tag(1), dienstId: "F", aktion: "einsprung", stufe: "achtung",
+        befunde: [{ stufe: "achtung", text: M("BEST-BEFUND-A1"), quelle: "Teilzeitvereinbarung" }],
+        grundArt: null, grund: "", ohneGrund: true, gelesen: true,
+        durch: M("BEST-DURCH-A1"), durchId: "s1", rolle: "subplaner", zeit: "2026-01-01T00:00:00.000Z", regelstand: "x", behoben: null }],
     notrufe: [
       { id: "nr-b1", personId: "b1", datum: HEUTE, art: "medizin", notiz: M("NOTRUF-B1"), empfaenger: ["l1"], bestaetigt: null },
       { id: "nr-b1-sv", personId: "b1", datum: HEUTE, art: "hilfe", notiz: M("NOTRUF-AN-SV"), empfaenger: ["s1"], bestaetigt: null },
@@ -322,6 +333,35 @@ const ZEILEN = {
       "nur bei Ausschreibung der eigenen Einheit": (s) => {
         expect(mk("BEWERBUNG-FREMD")(s), "Ausschreibung ohne Einheit").toBe(false);
         expect(mk("BEWERBUNG-E1")(s), "Ausschreibung der eigenen Einheit").toBe(true);
+      },
+    } },
+  "Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen)": {
+    sonden: [mk("BEST-BEFUND-B1"), mk("BEST-SCHUTZ-B1"), mk("BEST-GRUND-B1"), mk("BEST-DURCH-B1"),
+      mk("BEST-BEFUND-A1"), mk("BEST-DURCH-A1")],
+    bedingt: {
+      "ohne Namen": (s) => {
+        const liste = s.betrieb.bestaetigungen || [];
+        expect(liste.map((b) => b.id).sort()).toEqual(["bs-a1", "bs-b1"]);
+        for (const b of liste) {
+          expect(b.personId, "Person").toBe(null);
+          expect(b.durchId, "bestätigt von (Kennung)").toBe(null);
+        }
+        expect(liste.find((b) => b.id === "bs-b1").durch, "statt des Namens die Rolle").toBe("planer");
+        expect(mk("BEST-DURCH-B1")(s), "Name der bestätigenden Person").toBe(false);
+        expect(mk("BEST-DURCH-A1")(s), "Name der bestätigenden Person").toBe(false);
+        expect(mk("BEST-GRUND-B1")(s), "Freitext zum Grund").toBe(false);
+        expect(liste.find((b) => b.id === "bs-b1").grundArt, "Grundart bleibt").toBe("sonstiges");
+        expect(mk("BEST-BEFUND-B1")(s), "Regelbefund").toBe(true);
+        expect(mk("BEST-BEFUND-A1")(s), "Regelbefund").toBe(true);
+        expect(mk("BEST-SCHUTZ-B1")(s), "Schutzbefund im Wortlaut").toBe(false);
+        expect(JSON.stringify(liste)).toContain("individuelle Schutz- oder Einsatzregel betroffen");
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        expect((s.betrieb.bestaetigungen || []).map((b) => b.id)).toEqual(["bs-a1"]);
+        expect(mk("BEST-BEFUND-A1")(s), "Bereich").toBe(true);
+        expect(mk("BEST-DURCH-A1")(s), "Bereich").toBe(true);
+        for (const x of ["BEST-BEFUND-B1", "BEST-SCHUTZ-B1", "BEST-GRUND-B1", "BEST-DURCH-B1"])
+          expect(mk(x)(s), `fremd: ${x}`).toBe(false);
       },
     } },
   "Kalendergeheimnis, -verweis, -stand": { sonden: [mk("KALGEHEIM-B1"), mk("KALVERWEIS-B1"), mk("KALSTAND-B1")] },

@@ -19,6 +19,7 @@ import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
+import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen } from "./bestaetigungen.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -955,6 +956,12 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
       geschickt = bezug.mandant;
+      /* Bestätigungsprotokoll (WP-10 d.1): nur anhängen, Wer und Zeit vom Server. */
+      if (hat(geschickt, "bestaetigungen")) {
+        const best = bestaetigungenZusammen(ort.betrieb, geschickt.bestaetigungen, sitzung, null);
+        if (best.grund) return { verweigert: best.grund };
+        geschickt = { ...geschickt, bestaetigungen: best.liste };
+      }
     }
 
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
@@ -967,6 +974,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     }
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
+    /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
+    geschickt = bestaetigungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
 
@@ -1285,6 +1294,92 @@ function anhaengen(feld, alt, neu, { neuerEintrag = () => null, aenderung = () =
       return { grund: `${feld}: Bestehende Einträge lassen sich nicht löschen.` };
   }
   return { liste: [...neue, ...altL.map((e) => (kennungGueltig(e.id) && ersetzt.get(String(e.id))) || e)] };
+}
+
+/* --------------------------------------------------------------------------
+   BESTÄTIGUNGSPROTOKOLL (Warnen statt sperren, Kette A; WP-10 d.1)
+
+   Bis WP-10 kannte der Server das Feld nicht: Die Positivkataloge (Kette B)
+   verwarfen es für Planung und Leitung still (vollRueckfuellen), für die
+   Schichtverantwortung lehnte einheitZusammen die ganze Speicherung ab.
+
+   Jetzt ein Protokoll, an das nur angehängt wird — für jede schreibende
+   Rolle gleich:
+   - neu: Person des Betriebs, gültiger Tag, bekannte Dienstart, Stufe
+     „achtung" oder „recht" (Hinweise brauchen keine Bestätigung), bei
+     „recht" ausdrücklich gelesen; Befunde, Aktion, Grundart (bekannte
+     Kennung oder keine) und Regelstand in festen Grenzen;
+   - Wer (Name, Kennung, Rolle) und Zeit setzt der Server, nie der Client;
+   - Bestehendes ist unveränderlich und lässt sich nicht löschen: geändert
+     oder gar nicht mitgeschickt, es bleibt der gespeicherte Eintrag (die
+     Oberfläche übernimmt Wer und Zeit des Servers erst beim nächsten Laden;
+     ihre eigene Kopie darf das Speichern nicht blockieren);
+   - die Schichtverantwortung bestätigt nur für sich und Personen, die am
+     Tag des Eintrags zu ihrem Bereich gehören (wie bei abweichungen);
+   - Beschäftigte schreiben das Protokoll nicht (eigenesZusammen kennt es
+     nicht), der Betriebsrat schreibt gar nicht.
+   Die Mitteilung an die Leitung erzeugt danach der Server
+   (bestaetigungen.mjs, d.4).
+   -------------------------------------------------------------------------- */
+const BEFUND_STUFEN = ["hinweis", "achtung", "recht"];
+const PROTOKOLL_STUFEN = ["achtung", "recht"];
+const kurzText = (t, max) => typeof t === "string" && t.length <= max;
+/**
+ * @param {any} altM gespeicherter Betrieb
+ * @param {any} n übermittelte Liste
+ * @param {any} sitzung
+ * @param {null | ((pid: any, tag: string) => boolean)} imBereich nur für die Schichtverantwortung
+ * @returns {{liste?: any[], grund?: string}}
+ */
+function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
+  const personen = new Map((Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
+  const dienste = new Set((Array.isArray(altM.dienstarten) ? altM.dienstarten : []).filter(Boolean).map((d) => String(d.id)));
+  const ich = sitzung.person === null || sitzung.person === undefined ? null : personen.get(String(sitzung.person));
+  const meinName = ich ? `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || String(ich.id) : null;
+  const altL = (Array.isArray(altM.bestaetigungen) ? altM.bestaetigungen : []).filter((e) => e && typeof e === "object");
+  if (n === undefined) return { liste: altL };
+  if (!Array.isArray(n)) return { grund: "bestaetigungen: ungültige Form." };
+  const bekannt = new Set(altL.filter((e) => kennungGueltig(e.id)).map((e) => String(e.id)));
+  const gesehen = new Set();
+  const neue = [];
+  const neuerEintrag = (e) => {
+    if (!personen.has(String(e.personId))) return null;
+    if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+    if (!dienste.has(String(e.dienstId))) return null;
+    if (imBereich && !(ich && String(e.personId) === String(ich.id)) && !imBereich(e.personId, e.datum)) return null;
+    if (!PROTOKOLL_STUFEN.includes(e.stufe)) return null;
+    if (e.stufe === "recht" && e.gelesen !== true) return null;
+    const befunde = Array.isArray(e.befunde) ? e.befunde : [];
+    if (!befunde.length || befunde.length > 20) return null;
+    if (!befunde.every((b) => b && typeof b === "object" && BEFUND_STUFEN.includes(b.stufe) && kurzText(b.text, 300)
+      && (b.quelle === undefined || b.quelle === null || kurzText(b.quelle, 200)))) return null;
+    if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
+    const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
+    if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
+    if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
+    if (e.regelstand !== undefined && e.regelstand !== null && !kurzText(e.regelstand, 40)) return null;
+    return { id: e.id, personId: personen.get(String(e.personId)).id, datum: e.datum, dienstId: e.dienstId, aktion: e.aktion,
+      stufe: e.stufe, befunde: befunde.map((b) => ({ stufe: b.stufe, text: b.text, quelle: typeof b.quelle === "string" ? b.quelle : "" })),
+      grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
+      gelesen: e.gelesen === true,
+      durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
+      zeit: new Date().toISOString(), regelstand: typeof e.regelstand === "string" ? e.regelstand : null, behoben: null };
+  };
+  for (const e of n) {
+    if (!e || typeof e !== "object" || !kennungGueltig(e.id)) return { grund: "bestaetigungen: Eintrag ohne Kennung." };
+    const id = String(e.id);
+    if (gesehen.has(id)) return { grund: "bestaetigungen: doppelte Kennung." };
+    gesehen.add(id);
+    /* Bestehend: immer der gespeicherte Eintrag. Was der Client daran
+       geändert mitschickt (etwa seine eigene Zeit statt der des Servers),
+       ist wirkungslos — das Protokoll ändert sich nur durch Anhängen. */
+    if (bekannt.has(id)) continue;
+    const sauber = neuerEintrag(e);
+    if (!sauber) return { grund: "bestaetigungen: Dieser Eintrag ist über diesen Zugang nicht möglich." };
+    neue.push(sauber);
+  }
+  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts. */
+  return { liste: [...neue, ...altL] };
 }
 
 /* Was ein Antrag ist, bestimmt der gespeicherte Stand: Person, Art,
@@ -1742,6 +1837,15 @@ export function einheitZusammen(altM, neuM, sitzung) {
           } else return nein("ausschreibungen: unbekannter Status.");
         }
         aus.ausschreibungen = [...neue, ...altL.map((x) => (kennungGueltig(x.id) && ersetzt.get(String(x.id))) || x)];
+        break;
+      }
+
+      /* --- Bestätigungsprotokoll (WP-10 d.1): nur anhängen, nur für Personen
+             des eigenen Bereichs am Tag; Wer und Zeit setzt der Server. --- */
+      case "bestaetigungen": {
+        const r = bestaetigungenZusammen(altM, n, sitzung, imBereich);
+        if (r.grund) return nein(r.grund);
+        aus.bestaetigungen = r.liste;
         break;
       }
 
