@@ -11,6 +11,7 @@ import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, PAKETE, preisFuer, passendeStufe } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
+import { ZweifaktorFeld } from "./betreiber-2fa.jsx";
 
 /* ==========================================================================
    EINSTIEG
@@ -612,6 +613,9 @@ function Einstieg() {
   const [selbst, setSelbst] = useState(false);
   const [preise, setPreise] = useState(false);
   const [merken, setMerken] = useState(SP.wirdGemerkt());
+  /* WP-32b: Betreibercode mit zweitem Faktor — erst nach Rückfrage des Servers sichtbar. */
+  const [zfNoetig, setZfNoetig] = useState(false);
+  const [zfCode, setZfCode] = useState("");
   /* § 5 DDG verlangt „leicht erkennbar, unmittelbar erreichbar und
      ständig verfügbar". Das gilt für die öffentliche Seite zuerst — hier
      steht jemand, der die Anwendung noch gar nicht betreten hat. */
@@ -631,10 +635,11 @@ function Einstieg() {
     setLaeuft(true); setFehler(null);
     versprechen
       .then((d) => { setBegruessung(d); setTimeout(() => setAn(true), 800); })
-      .catch((e) => { setFehler(e.message); setLaeuft(false); });
+      .catch((e) => { setFehler(e.message); setLaeuft(false);
+        if (e && e.zweifaktor) { setZfNoetig(true); setZfCode(""); } });
   };
   const senden = () => { if (code.trim() && !laeuft)
-    oeffne(SP.anmelden(code.trim().toUpperCase(), merken)); };
+    oeffne(SP.anmelden(code.trim().toUpperCase(), merken, zfNoetig ? zfCode.trim() : undefined)); };
 
   /* Die Seite wird gebaut, während die Startsequenz noch darüberliegt.
      Sie ist damit fertig, sobald die Sequenz hochfährt — der Sinn der
@@ -820,6 +825,7 @@ function Einstieg() {
                   border: `1px solid ${fehler ? F.danger : F.line}`, fontFamily: "inherit",
                   letterSpacing: ".06em", fontVariantNumeric: "tabular-nums", boxSizing: "border-box",
                   background: F.bg, color: F.text }} />
+              {zfNoetig && <ZweifaktorFeld wert={zfCode} setWert={setZfCode} senden={senden} F={F} />}
               {fehler && (
                 <div role="alert" style={{ display: "flex", gap: 8, marginTop: 10, fontSize: 13,
                   color: F.danger, lineHeight: 1.45 }}>

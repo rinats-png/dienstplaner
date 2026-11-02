@@ -1,36 +1,55 @@
 /* ==========================================================================
-   ZWEI-FAKTOR FÜR VERWALTERSCHLÜSSEL — Ansicht in der Betreiberkonsole (WP-32)
+   ZWEI-FAKTOR — Ansicht in der Betreiberkonsole (WP-32, WP-32b)
 
-   Ein Verwalterschlüssel öffnet /einrichten. Diese Ansicht richtet für einen
-   solchen Schlüssel einen zweiten Faktor ein (TOTP, jede Authenticator-App),
-   zeigt seinen Stand und schaltet ihn ab. Die Prüfung selbst steht im Server
-   (server/funktionen/einrichten.mjs, server/lib/zweifaktor.mjs) — hier wird
-   nur gefragt und angezeigt.
+   Zwei Arten von Betreiberzugang, je ein Abschnitt:
 
-   Der Schlüssel und die Codes bleiben im Zustand dieser Ansicht, nicht im
-   Speicher des Browsers. Geheimnis und Wiederherstellungscodes zeigt der
-   Server genau einmal; diese Ansicht zeigt sie, bis sie verlassen wird.
+     Betreibercode         der Zugangscode, mit dem man sich an der Konsole
+                           anmeldet. Eingerichtet und abgeschaltet über
+                           /api/anmelden (server/lib/betreiber-zweifaktor.mjs);
+                           danach verlangt die Anmeldemaske den Code aus der
+                           App (ZweifaktorFeld, unten, in main.jsx eingehängt).
+     Verwalterschlüssel    der Schlüssel für /einrichten (Skripte).
 
-   Eigenes Modul, damit App.jsx nur den Einhängepunkt trägt. Die Bausteine
-   der Oberfläche (H1, Card, Btn …) kommen als `ui` herein — so sieht die
-   Ansicht aus wie der Rest der Konsole, ohne sie zu importieren.
+   Die Prüfung steht im Server; hier wird nur gefragt und angezeigt. Code und
+   Schlüssel bleiben im Zustand dieser Ansicht, nicht im Speicher des
+   Browsers. Geheimnis und Wiederherstellungscodes zeigt der Server genau
+   einmal; diese Ansicht zeigt sie, bis sie verlassen wird.
+
+   Eigenes Modul, damit App.jsx und main.jsx nur Einhängepunkte tragen. Die
+   Bausteine der Konsole (H1, Card, Btn …) kommen als `ui` herein.
    ========================================================================== */
 
 import { useState } from "react";
 
-async function rufe(methode, pfad, schluessel, { rumpf, code } = {}) {
-  const kopf = { authorization: `Bearer ${schluessel}` };
-  if (methode !== "GET") kopf["content-type"] = "application/json";
-  if (code && methode === "GET") kopf["x-centric-zweifaktor"] = code;
-  const r = await fetch(pfad, { method: methode, headers: kopf,
-    ...(methode === "GET" ? {} : { body: JSON.stringify({ ...(rumpf || {}), ...(code ? { zweifaktor: code } : {}) }) }) });
+async function antwortLesen(r) {
   let d = {};
   try { d = await r.json(); } catch { /* leer */ }
   return { status: r.status, ...d };
 }
 
-export default function BetreiberZweifaktor({ ui }) {
-  const [schluessel, setSchluessel] = useState("");
+/** Verwalterschlüssel: /einrichten/zweifaktor. */
+async function verwalterRufen(aktion, schluessel, code) {
+  const kopf = { authorization: `Bearer ${schluessel}` };
+  if (aktion === "stand") {
+    if (code) kopf["x-centric-zweifaktor"] = code;
+    return antwortLesen(await fetch("/einrichten/zweifaktor", { headers: kopf }));
+  }
+  kopf["content-type"] = "application/json";
+  const methode = aktion === "abschalten" ? "DELETE" : "POST";
+  return antwortLesen(await fetch("/einrichten/zweifaktor", { method: methode, headers: kopf,
+    body: JSON.stringify({ ...(methode === "POST" ? { aktion } : {}), ...(code ? { zweifaktor: code } : {}) }) }));
+}
+
+/** Betreibercode: /api/anmelden mit zweifaktorAktion — es entsteht dabei keine Sitzung. */
+async function betreiberRufen(aktion, zugangscode, code) {
+  return antwortLesen(await fetch("/api/anmelden", { method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ zugangscode: zugangscode.trim().toUpperCase(), zweifaktorAktion: aktion,
+      ...(code ? { zweifaktor: code } : {}) }) }));
+}
+
+function Abschnitt({ ui, titel, feld, feldHinweis, rufen, pflichtText }) {
+  const [ausweis, setAusweis] = useState("");
   const [code, setCode] = useState("");
   const [stand, setStand] = useState(null);
   const [einrichtung, setEinrichtung] = useState(null);
@@ -38,76 +57,98 @@ export default function BetreiberZweifaktor({ ui }) {
   const [meldung, setMeldung] = useState("");
   const [laeuft, setLaeuft] = useState(false);
 
-  const schritt = async (arbeit) => {
+  const schritt = (aktion, nachher) => async () => {
     setLaeuft(true); setMeldung("");
-    try { await arbeit(); } catch { setMeldung("Keine Verbindung zum Server."); }
+    try {
+      const a = await rufen(aktion, ausweis, code.trim() || undefined);
+      if (a.status === 200) nachher(a); else setMeldung(a.fehler || a.text || `Fehler ${a.status}`);
+    } catch { setMeldung("Keine Verbindung zum Server."); }
     finally { setLaeuft(false); setCode(""); }
   };
-  const fehler = (a) => setMeldung(a.fehler || a.text || `Fehler ${a.status}`);
-
-  const pruefen = () => schritt(async () => {
-    const a = await rufe("GET", "/einrichten/zweifaktor", schluessel, { code: code || undefined });
-    if (a.status === 200) setStand(a); else fehler(a);
+  const pruefen = schritt("stand", setStand);
+  const beginnen = schritt("beginnen", (a) => { setEinrichtung({ geheimnis: a.geheimnis, otpauth: a.otpauth }); setWiederherstellung(null); });
+  const bestaetigen = schritt("bestaetigen", (a) => {
+    setEinrichtung(null); setWiederherstellung(a.wiederherstellung || []);
+    setStand((s) => ({ ...(s || {}), aktiv: true, ausstehend: false }));
   });
-  const beginnen = () => schritt(async () => {
-    const a = await rufe("POST", "/einrichten/zweifaktor", schluessel, { rumpf: { aktion: "beginnen" } });
-    if (a.status === 200) { setEinrichtung({ geheimnis: a.geheimnis, otpauth: a.otpauth }); setWiederherstellung(null); }
-    else fehler(a);
-  });
-  const bestaetigen = () => schritt(async () => {
-    const a = await rufe("POST", "/einrichten/zweifaktor", schluessel, { rumpf: { aktion: "bestaetigen" }, code });
-    if (a.status === 200) {
-      setEinrichtung(null); setWiederherstellung(a.wiederherstellung || []);
-      setStand((s) => ({ ...(s || {}), aktiv: true, ausstehend: false }));
-    } else fehler(a);
-  });
-  const abschalten = () => schritt(async () => {
-    const a = await rufe("DELETE", "/einrichten/zweifaktor", schluessel, { code });
-    if (a.status === 200) { setStand((s) => ({ ...(s || {}), aktiv: false })); setWiederherstellung(null); setMeldung("Zweiter Faktor abgeschaltet."); }
-    else fehler(a);
+  const abschalten = schritt("abschalten", () => {
+    setStand((s) => ({ ...(s || {}), aktiv: false })); setWiederherstellung(null); setMeldung("Zweiter Faktor abgeschaltet.");
   });
 
   const mono = { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", wordBreak: "break-all" };
   return (
+    <ui.Card>
+      <ui.CardHead>{titel}</ui.CardHead>
+      <div style={{ padding: 22, display: "grid", gap: 13, maxWidth: 560 }}>
+        <ui.Field label={feld} hint={feldHinweis}>
+          <ui.Inp type="password" autoComplete="off" value={ausweis} onChange={(e) => setAusweis(e.target.value)} /></ui.Field>
+        <ui.Field label="Code aus der App" hint="Sechs Ziffern — oder ein Wiederherstellungscode. Jeder Code gilt einmal.">
+          <ui.Inp inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></ui.Field>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <ui.Btn onClick={pruefen} disabled={laeuft || !ausweis}>Stand abfragen</ui.Btn>
+          {stand && !stand.aktiv && !einrichtung &&
+            <ui.Btn kind="primary" onClick={beginnen} disabled={laeuft || !ausweis}>Einrichten</ui.Btn>}
+          {einrichtung &&
+            <ui.Btn kind="primary" onClick={bestaetigen} disabled={laeuft || !code}>Mit Code bestätigen</ui.Btn>}
+          {stand && stand.aktiv &&
+            <ui.Btn onClick={abschalten} disabled={laeuft || !code}>Abschalten</ui.Btn>}
+        </div>
+        {meldung && <div role="status">{meldung}</div>}
+        {stand && <div>
+          Stand: {stand.aktiv ? "eingerichtet" : stand.ausstehend ? "begonnen, nicht bestätigt" : "nicht eingerichtet"}
+          {stand.aktiv && typeof stand.wiederherstellungUebrig === "number" && ` · ${stand.wiederherstellungUebrig} Wiederherstellungscodes übrig`}
+          {stand.pflicht && pflichtText}
+        </div>}
+        {einrichtung && <div style={{ display: "grid", gap: 8 }}>
+          <div>In der App erfassen (erscheint nur dieses eine Mal):</div>
+          <div style={mono}>{einrichtung.geheimnis}</div>
+          <div style={{ ...mono, fontSize: 12 }}>{einrichtung.otpauth}</div>
+        </div>}
+        {wiederherstellung && wiederherstellung.length > 0 && <div style={{ display: "grid", gap: 6 }}>
+          <div>Wiederherstellungscodes — jetzt sicher ablegen, sie erscheinen nur dieses eine Mal:</div>
+          <div style={{ ...mono, display: "grid", gridTemplateColumns: "repeat(2, max-content)", gap: "4px 24px" }}>
+            {wiederherstellung.map((w) => <span key={w}>{w}</span>)}
+          </div>
+        </div>}
+      </div>
+    </ui.Card>
+  );
+}
+
+export default function BetreiberZweifaktor({ ui }) {
+  return (
     <div>
       <ui.H1 rubrik="Betreiber"
-        sub="Ein Verwalterschlüssel öffnet /einrichten. Mit einem zweiten Faktor reicht der Schlüssel allein nicht mehr: Jeder Aufruf braucht zusätzlich einen Code aus einer Authenticator-App.">
+        sub="Mit einem zweiten Faktor reicht der Code oder Schlüssel allein nicht mehr: Anmeldung und jeder Verwaltungsaufruf brauchen zusätzlich einen Code aus einer Authenticator-App.">
         Zwei-Faktor</ui.H1>
-      <ui.Card>
-        <ui.CardHead>Verwalterschlüssel</ui.CardHead>
-        <div style={{ padding: 22, display: "grid", gap: 13, maxWidth: 560 }}>
-          <ui.Field label="Schlüssel" hint="Bleibt nur in dieser Ansicht und wird nirgends gespeichert.">
-            <ui.Inp type="password" autoComplete="off" value={schluessel} onChange={(e) => setSchluessel(e.target.value)} /></ui.Field>
-          <ui.Field label="Code aus der App" hint="Sechs Ziffern — oder ein Wiederherstellungscode. Jeder Code gilt einmal.">
-            <ui.Inp inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} /></ui.Field>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <ui.Btn onClick={pruefen} disabled={laeuft || !schluessel}>Stand abfragen</ui.Btn>
-            {stand && !stand.aktiv && !einrichtung &&
-              <ui.Btn kind="primary" onClick={beginnen} disabled={laeuft || !schluessel}>Einrichten</ui.Btn>}
-            {einrichtung &&
-              <ui.Btn kind="primary" onClick={bestaetigen} disabled={laeuft || !code}>Mit Code bestätigen</ui.Btn>}
-            {stand && stand.aktiv &&
-              <ui.Btn onClick={abschalten} disabled={laeuft || !code}>Abschalten</ui.Btn>}
-          </div>
-          {meldung && <div role="status">{meldung}</div>}
-          {stand && <div>
-            Stand: {stand.aktiv ? "eingerichtet" : stand.ausstehend ? "begonnen, nicht bestätigt" : "nicht eingerichtet"}
-            {stand.aktiv && typeof stand.wiederherstellungUebrig === "number" && ` · ${stand.wiederherstellungUebrig} Wiederherstellungscodes übrig`}
-            {stand.pflicht && " · Pflicht für alle Verwalterschlüssel"}
-          </div>}
-          {einrichtung && <div style={{ display: "grid", gap: 8 }}>
-            <div>In der App erfassen (erscheint nur dieses eine Mal):</div>
-            <div style={mono}>{einrichtung.geheimnis}</div>
-            <div style={{ ...mono, fontSize: 12 }}>{einrichtung.otpauth}</div>
-          </div>}
-          {wiederherstellung && wiederherstellung.length > 0 && <div style={{ display: "grid", gap: 6 }}>
-            <div>Wiederherstellungscodes — jetzt sicher ablegen, sie erscheinen nur dieses eine Mal:</div>
-            <div style={{ ...mono, display: "grid", gridTemplateColumns: "repeat(2, max-content)", gap: "4px 24px" }}>
-              {wiederherstellung.map((w) => <span key={w}>{w}</span>)}
-            </div>
-          </div>}
-        </div>
-      </ui.Card>
+      <div style={{ display: "grid", gap: 18 }}>
+        <Abschnitt ui={ui} titel="Betreibercode (Anmeldung an der Konsole)" feld="Betreibercode"
+          feldHinweis="Der Zugangscode, mit dem du dich hier angemeldet hast. Wird nirgends gespeichert."
+          rufen={betreiberRufen} pflichtText="" />
+        <Abschnitt ui={ui} titel="Verwalterschlüssel (/einrichten)" feld="Schlüssel"
+          feldHinweis="Bleibt nur in dieser Ansicht und wird nirgends gespeichert."
+          rufen={verwalterRufen} pflichtText=" · Pflicht für alle Verwalterschlüssel" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Das Code-Feld der Anmeldemaske (main.jsx). Erscheint erst, wenn der Server
+ * für einen Betreibercode `zweifaktor: "erforderlich"` meldet.
+ */
+export function ZweifaktorFeld({ wert, setWert, senden, F }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label htmlFor="zweifaktor" style={{ display: "block", fontSize: 12.5, fontWeight: 600,
+        color: F.dim, marginBottom: 7 }}>Code aus der Authenticator-App</label>
+      <input id="zweifaktor" value={wert} autoFocus inputMode="numeric" autoComplete="one-time-code"
+        onChange={(e) => setWert(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && senden()}
+        placeholder="123456"
+        style={{ width: "100%", padding: "13px 15px", fontSize: 17, borderRadius: 12,
+          border: `1px solid ${F.line}`, fontFamily: "inherit", letterSpacing: ".06em",
+          fontVariantNumeric: "tabular-nums", boxSizing: "border-box", background: F.bg, color: F.text }} />
     </div>
   );
 }

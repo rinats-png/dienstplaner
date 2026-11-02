@@ -303,6 +303,10 @@ jobs:
       - name: Herkunft und X-Forwarded-For
         run: npm run pruefung:herkunft
 
+      # WP-32b: Zweiter Faktor für die Anmeldung mit Betreibercode.
+      - name: Zwei-Faktor für Betreibercodes
+        run: npm run pruefung:betreiber-zweifaktor
+
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
       - name: Sitzungen
