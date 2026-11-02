@@ -154,7 +154,9 @@ cat "$T/status/status.json"
 
 # Klasse C und flüchtige Präfixe dürfen nicht in der Sicherung sein
 LOKAL1="$(find "$T/status/lokal" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' | sort | tail -n1)"
-[[ ! -e "$LOKAL1/daten/centric-takt" && ! -e "$LOKAL1/daten/centric-accountsitzungen" ]] || fehl "Klasse C gesichert"
+# (das Werkzeug legt für Klasse C leere Verzeichnisse an — es zählen Dateien)
+[[ -z "$(find "$LOKAL1/daten/centric-takt" "$LOKAL1/daten/centric-accountsitzungen" -type f 2>/dev/null)" ]] ||
+  fehl "Klasse C gesichert"
 ! find "$LOKAL1/daten" -name 't%3A*' -o -name 'token%3A*' | grep -q . || fehl "flüchtige Schlüssel gesichert"
 ok "Klasse C (takt, accountsitzungen) sowie t:/token: nicht in der Sicherung"
 
