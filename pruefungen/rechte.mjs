@@ -247,6 +247,170 @@ pruef("Unbekannte personId wird abgewiesen", z.x3 && z.x3.mail === "abgewiesen",
   pruef("Die Uhrzeit stammt vom Server",
     typeof amOrt.zeit === "string" && /^\d{2}:\d{2}$/.test(amOrt.zeit),
     `zeit=${amOrt.zeit}`);
+
+  const rL3 = await lies(tL);
+  const bb2 = JSON.parse(JSON.stringify(rL3.bestand));
+  bb2.mandanten[0].erfassung = {
+    "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
+    "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
+  };
+  bb2.mandanten[0].einstempeln = {
+    "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
+    "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
+  };
+  const wS2 = await schreib(tL, bb2, rL3.etag);
+  pruef("S2: Leitung legt Stempelereignisse an", wS2.status === 200, `Status ${wS2.status}`);
+
+  /* Die Sitzung der Stempeluhr (tS) und der vorhandene Betriebsratscode:
+     weitere Zugänge anzulegen, träfe die Bremse. */
+  const tMs = tS;
+  const tBs = await anmelden(CODES.betriebsrat);
+  const eM = (await lies(tMs)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Mitarbeiter sieht den eigenen Stempel", !!eM["0|2026-09-01"] && eM["0|2026-09-01"].start === "06:01",
+    JSON.stringify(Object.keys(eM)));
+  pruef("S2: Mitarbeiter sieht den Stempel einer Kollegin nicht",
+    eM["1|2026-09-01"] === undefined && !JSON.stringify(eM).includes("3,2 km"), JSON.stringify(Object.keys(eM)));
+  const eB = (await lies(tBs)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Betriebsrat erhält keine Roh-Stempel", Object.keys(eB).length === 0, JSON.stringify(Object.keys(eB)));
+  const eL = (await lies(tL)).bestand.mandanten[0].einstempeln || {};
+  pruef("S2: Leitung sieht weiterhin alle Stempel", !!eL["0|2026-09-01"] && !!eL["1|2026-09-01"],
+    JSON.stringify(Object.keys(eL)));
+
+  const fM = (await lies(tMs)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Mitarbeiter sieht die eigene Erfassung", !!fM["0|2026-09-01"] && fM["0|2026-09-01"].ende === "14:05",
+    JSON.stringify(Object.keys(fM)));
+  pruef("S2: Mitarbeiter sieht die Erfassung einer Kollegin nicht",
+    fM["1|2026-09-01"] === undefined && !JSON.stringify(fM).includes("Übergabe"), JSON.stringify(Object.keys(fM)));
+  const fB = (await lies(tBs)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Betriebsrat erhält keine personenbezogene Erfassung", Object.keys(fB).length === 0, JSON.stringify(Object.keys(fB)));
+  const fL = (await lies(tL)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Leitung sieht die Erfassung unverändert", !!fL["0|2026-09-01"] && !!fL["1|2026-09-01"],
+    JSON.stringify(Object.keys(fL)));
+
+  /* Speichert eine beschäftigte Person ihre gefilterte Sicht zurück, darf
+     das fremde Stempel und fremde Erfassung nicht löschen. */
+  const rMs = await lies(tMs);
+  const wM = await schreib(tMs, rMs.bestand, rMs.etag);
+  const nachher = (await lies(tL)).bestand.mandanten[0].einstempeln || {};
+  const fNachher = (await lies(tL)).bestand.mandanten[0].erfassung || {};
+  pruef("S2: Speichern einer gefilterten Sicht löscht keine fremde Erfassung",
+    wM.status === 200 && !!fNachher["1|2026-09-01"] && fNachher["1|2026-09-01"].grund === "Übergabe länger",
+    `Status ${wM.status}, ${JSON.stringify(Object.keys(fNachher))}`);
+  pruef("S2: Speichern einer gefilterten Sicht löscht keine fremden Stempel",
+    wM.status === 200 && !!nachher["1|2026-09-01"] && !!nachher["0|2026-09-01"],
+    `Status ${wM.status}, ${JSON.stringify(Object.keys(nachher))}`);
+
+  /* ---- S2b: Schichtverantwortung, Konfliktantwort, eigener Stempel des Betriebsrats ----
+     Ohne neue Zugänge (Bremse): Die Leitung macht Person 0 vorübergehend zur
+     Schichtverantwortung — die Rolle folgt der Person (wirksameRolle) — und
+     legt eine Person im zweiten Bereich an. Am Ende wird zurückgestellt. */
+  const rS2b = await lies(tL);
+  const bS2b = JSON.parse(JSON.stringify(rS2b.bestand));
+  const mS2b = bS2b.mandanten[0];
+  mS2b.einheiten = [...(mS2b.einheiten || []).filter((e) => e.id !== "e2"), { id: "e2", name: "Wohnbereich 2" }];
+  mS2b.personen = mS2b.personen.filter((p) => p.id !== 4).map((p) => (p.id === 0 ? { ...p, rolle: "subplaner" } : p));
+  mS2b.personen.push({ id: 4, vorname: "Frieda", nachname: "Fremd", rolle: "mitarbeiter", bereich: "e2",
+    zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e2" }] });
+  mS2b.erfassung = { ...(mS2b.erfassung || {}),
+    "4|2026-09-01": { start: "07:00", ende: "15:00", bestaetigt: true, grund: "Bereich zwei privat" } };
+  mS2b.einstempeln = { ...(mS2b.einstempeln || {}),
+    "4|2026-09-01": { start: "07:00", ortStart: "Abweichend, 9,9 km entfernt", innerhalbStart: false } };
+  const wS2b = await schreib(tL, bS2b, rS2b.etag);
+  pruef("S2b: Leitung richtet Schichtverantwortung und zweiten Bereich ein", wS2b.status === 200, `Status ${wS2b.status}`);
+
+  const tSV = tS;
+  const rSV = await lies(tSV);
+  const mSV = rSV.bestand.mandanten[0];
+  const textSV = JSON.stringify(rSV.bestand);
+  pruef("S2b: Rolle der Sitzung ist Schichtverantwortung", rSV.rolle === "subplaner", `rolle=${rSV.rolle}`);
+  pruef("S2b: Schichtverantwortung sieht nur den eigenen Stempel",
+    JSON.stringify(Object.keys(mSV.einstempeln || {})) === JSON.stringify(["0|2026-09-01"]), JSON.stringify(Object.keys(mSV.einstempeln || {})));
+  pruef("S2b: keine Standortdetails anderer Personen", !textSV.includes("3,2 km") && !textSV.includes("9,9 km"));
+  pruef("S2b: Erfassung im Bereich ohne freien Grund",
+    !!(mSV.erfassung || {})["1|2026-09-01"] && !("grund" in mSV.erfassung["1|2026-09-01"]) && !textSV.includes("Übergabe länger"),
+    JSON.stringify((mSV.erfassung || {})["1|2026-09-01"]));
+  pruef("S2b: fremder Bereich: keine Erfassung, kein Grund",
+    !(mSV.erfassung || {})["4|2026-09-01"] && !textSV.includes("Bereich zwei privat"));
+  pruef("S2b: Ist-Vermerk nennt nur eigene Person und Bereich",
+    mSV.sichtIstDaten && mSV.sichtIstDaten.umfang === "auswahl" && !mSV.sichtIstDaten.personen.includes(4),
+    JSON.stringify(mSV.sichtIstDaten));
+
+  /* Unverändert zurückspeichern: nichts geht verloren, nichts wird gespeichert, was nur Antwort war. */
+  const wSV = await schreib(tSV, rSV.bestand, rSV.etag);
+  const nachSV = (await lies(tL)).bestand.mandanten[0];
+  pruef("S2b: Rückspeichern der Sicht der Schichtverantwortung: Status 200", wSV.status === 200, `Status ${wSV.status} ${wSV.fehler || ""}`);
+  pruef("S2b: … fremde Stempel und Gründe bleiben erhalten",
+    Object.keys(nachSV.einstempeln || {}).length === 3
+    && nachSV.erfassung["1|2026-09-01"].grund === "Übergabe länger"
+    && nachSV.erfassung["4|2026-09-01"].grund === "Bereich zwei privat",
+    JSON.stringify(Object.keys(nachSV.einstempeln || {})));
+  pruef("S2b: … der Ist-Vermerk wird nicht gespeichert", !("sichtIstDaten" in nachSV));
+
+  /* Änderung im Bereich kommt an; Grund und fremder Bereich bleiben unberührt. */
+  const rSV2 = await lies(tSV);
+  const bSV2 = JSON.parse(JSON.stringify(rSV2.bestand));
+  bSV2.mandanten[0].erfassung["1|2026-09-01"] = { ...bSV2.mandanten[0].erfassung["1|2026-09-01"], ende: "15:00", grund: "überschrieben" };
+  bSV2.mandanten[0].erfassung["4|2026-09-01"] = { start: "00:00", ende: "23:59", bestaetigt: true };
+  bSV2.mandanten[0].einstempeln["1|2026-09-01"] = { start: "01:00", innerhalbStart: true };
+  const wSV2 = await schreib(tSV, bSV2, rSV2.etag);
+  const nachSV2 = (await lies(tL)).bestand.mandanten[0];
+  pruef("S2b: Schichtverantwortung ändert eine Zeit im Bereich", wSV2.status === 200 && nachSV2.erfassung["1|2026-09-01"].ende === "15:00",
+    `Status ${wSV2.status}`);
+  pruef("S2b: … der freie Grund bleibt, wie er war", nachSV2.erfassung["1|2026-09-01"].grund === "Übergabe länger");
+  pruef("S2b: … fremder Bereich unverändert", nachSV2.erfassung["4|2026-09-01"].start === "07:00");
+  pruef("S2b: … Stempel über den Bestand unverändert", nachSV2.einstempeln["1|2026-09-01"].start === "05:58");
+
+  /* Echter Versionskonflikt: Die Konfliktantwort trägt denselben Schutz. */
+  const rAltSV = await lies(tSV);
+  const rAltM = await lies(tL);
+  const bLK = JSON.parse(JSON.stringify(rAltM.bestand));
+  bLK.mandanten[0].erfassung["0|2026-09-01"] = { ...bLK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:10" };
+  const wLK = await schreib(tL, bLK, rAltM.etag);
+  const bSK = JSON.parse(JSON.stringify(rAltSV.bestand));
+  bSK.mandanten[0].erfassung["0|2026-09-01"] = { ...bSK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:20" };
+  const wSK = await schreib(tSV, bSK, rAltSV.etag);
+  const kText = JSON.stringify(wSK.bestand || {});
+  pruef("S2b: Konflikt entsteht (Leitung schrieb dazwischen)", wLK.status === 200 && wSK.status === 409,
+    `Leitung ${wLK.status}, Schichtverantwortung ${wSK.status}`);
+  pruef("S2b: 409-Antwort an die Schichtverantwortung ohne fremde Stempel, Gründe, Standortdetails",
+    wSK.status === 409 && !!wSK.bestand && !kText.includes("Übergabe länger") && !kText.includes("Bereich zwei privat")
+    && !kText.includes("3,2 km") && !kText.includes("9,9 km")
+    && JSON.stringify(Object.keys(wSK.bestand.mandanten[0].einstempeln || {})) === JSON.stringify(["0|2026-09-01"]));
+  const nachK = (await lies(tL)).bestand.mandanten[0];
+  pruef("S2b: … der abgewiesene Stand hat nichts verändert", nachK.erfassung["0|2026-09-01"].ende === "14:10");
+
+  /* Betriebsrat: eigener Stempel ja, fremde nein, keine Erfassung. */
+  const brSt = await fetch(`${BASIS}/api/stempeln`, { method: "POST",
+    headers: { authorization: `Bearer ${tBs}`, "content-type": "application/json" },
+    body: JSON.stringify({ datum: "2026-09-02", art: "start" }) });
+  const rBr = await lies(tBs);
+  const eBr = rBr.bestand.mandanten[0].einstempeln || {};
+  pruef("S2b: Betriebsrat sieht den eigenen Stempel und keinen fremden",
+    brSt.status === 200 && JSON.stringify(Object.keys(eBr)) === JSON.stringify(["2|2026-09-02"]), JSON.stringify(Object.keys(eBr)));
+  pruef("S2b: Betriebsrat erhält weiterhin keine Erfassung", Object.keys(rBr.bestand.mandanten[0].erfassung || {}).length === 0);
+
+  /* Konfliktantwort an eine beschäftigte Person (Person 1 bekommt einen eigenen Zugang nicht —
+     deshalb über den Rückstellschritt: Person 0 wieder Mitarbeiterin, dann Konflikt). */
+  const rZur = await lies(tL);
+  const bZur = JSON.parse(JSON.stringify(rZur.bestand));
+  bZur.mandanten[0].personen = bZur.mandanten[0].personen.map((p) => (p.id === 0 ? { ...p, rolle: "mitarbeiter" } : p));
+  const wZur = await schreib(tL, bZur, rZur.etag);
+  const rMa = await lies(tSV);
+  pruef("S2b: Person 0 ist wieder Mitarbeiterin", wZur.status === 200 && rMa.rolle === "mitarbeiter", `rolle=${rMa.rolle}`);
+  const rL4 = await lies(tL);
+  const bL4 = JSON.parse(JSON.stringify(rL4.bestand));
+  bL4.mandanten[0].erfassung["0|2026-09-01"] = { ...bL4.mandanten[0].erfassung["0|2026-09-01"], ende: "14:15" };
+  const wL4 = await schreib(tL, bL4, rL4.etag);
+  const bMK = JSON.parse(JSON.stringify(rMa.bestand));
+  bMK.mandanten[0].erfassung["0|2026-09-01"] = { ...bMK.mandanten[0].erfassung["0|2026-09-01"], ende: "14:25" };
+  const wMK = await schreib(tSV, bMK, rMa.etag);
+  const mText = JSON.stringify(wMK.bestand || {});
+  pruef("S2b: 409-Antwort an Beschäftigte ohne fremde Stempel, Erfassung, Gründe",
+    wL4.status === 200 && wMK.status === 409 && !!wMK.bestand
+    && !mText.includes("Übergabe länger") && !mText.includes("Bereich zwei privat") && !mText.includes("3,2 km")
+    && Object.keys(wMK.bestand.mandanten[0].erfassung || {}).every((k) => k.startsWith("0|"))
+    && Object.keys(wMK.bestand.mandanten[0].einstempeln || {}).every((k) => k.startsWith("0|")),
+    `Leitung ${wL4.status}, Mitarbeiter ${wMK.status}`);
 }
 
 
