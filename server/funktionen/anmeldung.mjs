@@ -268,17 +268,17 @@ async function anmeldung(req, k) {
   }
 
   /* Die zweite Grenze, und die einzige, die nicht ausfallen kann: Sie zählt
-     im Prozessspeicher. `bremse()` lässt bei einem Fehler der Ablage durch
-     (schutz.mjs, Verfügbarkeit vor Schutz) — für einen Dienstplan richtig,
-     für eine Passwortprüfung nicht: Jeder Versuch kostet einen
-     scrypt-Durchlauf, und eine blinde Bremse hieße unbegrenzt viele davon.
+     im Prozessspeicher. `bremse()` lässt bei einem Fehler der Ablage nicht
+     mehr durch (seit WP-46): Ein Lesefehler der Sperre gilt als Sperre,
+     andere Fehler zählen im Prozessspeicher weiter. Degradiert zählt sie
+     aber nur je Herkunft — Ziel und Gesamtaufkommen fallen weg, und jeder
+     Versuch kostet einen scrypt-Durchlauf.
 
      Und sie gilt immer, nicht erst bei einem gemeldeten Fehler: Eine
-     kaputte Ablage fällt nicht auf: Sie liefert „nicht vorhanden" statt zu
-     werfen, und die Hauptbremse zählt dann still null (schutz.mjs). Es gibt
-     also kein Signal, auf das sich ein Umschalten stützen könnte. Damit ist
-     der schlimmste Fall beziffert statt offen: rund NOTGRENZEN.gesamt
-     scrypt-Durchläufe je Fenster und Prozess. */
+     kaputte Ablage, die „nicht vorhanden" liefert statt zu werfen, bemerkt
+     auch die Hauptbremse nicht. Es gibt dann kein Signal, auf das sich ein
+     Umschalten stützen könnte. Damit ist der schlimmste Fall beziffert statt
+     offen: rund NOTGRENZEN.gesamt scrypt-Durchläufe je Fenster und Prozess. */
   if (b.fehler) await protokoll("anmelden-konto", k, "bremse-ausfall", b.fehler);
   const n = notbremse("anmelden-konto", k);
   if (!n.frei) {

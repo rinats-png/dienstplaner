@@ -218,6 +218,35 @@ async function versucheLoeschen(s, praefix) {
   } catch { /* egal */ }
 }
 
+/** Atomare Zähler löschen, falls ein Fremddienst hinterlegt ist. */
+async function atomarLoeschen(schluesselListe) {
+  const url = process.env.REDIS_REST_URL;
+  const token = process.env.REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  try {
+    const basis = String(url).replace(/\/+$/, "");
+    await fetch(`${basis}/pipeline`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(schluesselListe.map((k) => ["DEL", encodeURIComponent(`centric:takt:${k}`)])),
+      signal: AbortSignal.timeout(1500),
+    });
+  } catch { /* Ausfall: Die Schlüssel laufen über EXPIRE ab. */ }
+}
+
+/** Zählstand einer Kennung leeren — Speicher, Ablage und atomarer Zähler,
+    laufendes und voriges Fenster. Für entlasten() und beim Sperren. */
+async function zaehlerLeeren(s, art, kennung, fenster) {
+  const laufend = `${art}:${kennung}:${fenster}`;
+  const vorig = `${art}:${kennung}:${fenster - 1}`;
+  lokal.delete(laufend);
+  lokal.delete(vorig);
+  /* Alle Fenster dieser Kennung — der Doppelpunkt am Ende des Präfixes
+     (versucheLoeschen) trennt sie von längeren Kennungen. */
+  await versucheLoeschen(s, `${art}:${kennung}`);
+  await atomarLoeschen([laufend, vorig]);
+}
+
 /** Grenzen je Endpunkt: wie viele Versuche in wie vielen Sekunden. */
 export const GRENZEN = {
   /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung */
@@ -523,8 +552,15 @@ export async function bremse(art, kennung, ziel) {
     try {
       gesperrt = await s.get(sperreSchluessel, { type: "json" });
     } catch (e) {
-      /* Plattenfehler (mit Fehlercode): unten im Speicher weiterzählen. */
-      if (e && /** @type {any} */ (e).code) throw e;
+      /* Plattenfehler (EIO, EACCES …): Ob hier eine Langzeitsperre steht,
+         ist unbekannt — im Speicher ist sie nach einem Neustart nicht mehr.
+         Also gilt die Kennung als gesperrt. Überschrieben wird nichts: Eine
+         lesbare Sperre käme sonst kürzer zurück, als sie war. */
+      if (e && /** @type {any} */ (e).code) {
+        const fehler = String(/** @type {any} */ (e).message || e).slice(0, 120);
+        ausfallMelden(art, fehler);
+        return { frei: false, wartet: g.sperre, grund: "gesperrt", fehler };
+      }
       gesperrt = undefined;
     }
     if (gesperrt === undefined || (gesperrt !== null
@@ -617,6 +653,13 @@ export async function bremse(art, kennung, ziel) {
       await s.setJSON(sperreSchluessel, { bis: jetzt + dauer, seit: jetzt, stufe });
       if (g.steigend) await s.setJSON(`stufe:${art}:${kennung}`,
         { n: Math.min(stufe + 1, 12), zuletzt: jetzt });
+      /* Die Strafe tragen Sperre und Stufe. Der Zählstand wird geleert —
+         sonst zählte das vorige Fenster nach Ablauf der Sperre gleitend
+         weiter, und wer Retry-After befolgt, wäre mit dem ersten Versuch
+         wieder gesperrt, doppelt so lange. Erst NACH dem Schreiben der
+         Sperre: Scheitert es, bleibt der Speicherzähler die einzige
+         Erinnerung (catch unten). */
+      await zaehlerLeeren(s, art, kennung, fenster);
       return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe };
     }
     /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
@@ -645,17 +688,14 @@ export async function entlasten(art, kennung) {
   const g = GRENZEN[art];
   if (!g) return;
   const fenster = fensterLage(Date.now(), g.fenster).index;
-  /* Auch den prozesslokalen Zähler zurücksetzen. In einem dauerhaften Prozess
-     (eigener Server statt kurzlebiger Funktionsinstanz) zählte er sonst
-     erfolgreiche Anmeldungen weiter mit und sperrte nach acht Anmeldungen
-     hinter derselben Adresse — Büro, Station, Wache — auch die richtigen.
-     Das vorige Fenster zählt gleitend mit, also wird es mit entlastet. */
-  lokal.delete(`${art}:${kennung}:${fenster}`);
-  lokal.delete(`${art}:${kennung}:${fenster - 1}`);
+  /* Alle drei Zähler zurücksetzen, auch den prozesslokalen. In einem
+     dauerhaften Prozess (eigener Server statt kurzlebiger Funktionsinstanz)
+     zählte er sonst erfolgreiche Anmeldungen weiter mit und sperrte nach
+     acht Anmeldungen hinter derselben Adresse — Büro, Station, Wache — auch
+     die richtigen. Das vorige Fenster zählt gleitend mit, also wird es mit
+     entlastet. */
+  await zaehlerLeeren(takt(), art, kennung, fenster);
   try {
-    /* Alle Fenster dieser Kennung — der Doppelpunkt am Ende des Präfixes
-       (versucheLoeschen) trennt sie von längeren Kennungen. */
-    await versucheLoeschen(takt(), `${art}:${kennung}`);
     await takt().delete(`sperre:${art}:${kennung}`);
     /* Auch die Steigerungsstufe zurücksetzen — wer sich erfolgreich
        anmeldet, hat sich offenbar nur vertippt. */
@@ -783,8 +823,8 @@ export async function spurAufraeumen() {
    wirklich wirft.
 
    Seit WP-46 werfen `versucheZaehlen` und `versuchVermerken`, und `bremse()`
-   zählt bei jedem Ablagefehler im Prozessspeicher weiter, statt
-   durchzulassen. Was bleibt: Eine Ablage, die „nicht vorhanden“ liefert
+   lässt bei keinem Ablagefehler mehr durch: Ein Lesefehler der Sperre gilt
+   als Sperre, jeder andere Fehler zählt im Prozessspeicher weiter. Was bleibt: Eine Ablage, die „nicht vorhanden“ liefert
    statt zu werfen, bemerkt auch sie nicht — und degradiert zählt sie nur je
    Herkunft, nicht je Ziel und gesamt. Für beides bleibt diese Grenze.
 

@@ -197,6 +197,62 @@ describe("Die Bremse an der Fenstergrenze", () => {
     }
   });
 
+  it("nach Ablauf der Sperre ist der erste Versuch frei — erneuter Missbrauch steigert weiter", async () => {
+    /* Review N1: Das vorige Fenster zählte nach der Sperre gewichtet weiter.
+       Wer Retry-After befolgte, wurde sofort wieder gesperrt, doppelt so
+       lange. Die Sperre trägt die Strafe, der Zählstand wird beim Sperren
+       geleert. */
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const g = GRENZEN.anmelden;
+    const k = "a:retry-after";
+    const p = g.fenster * 1000;
+    const start = Math.ceil((Date.now() + 10 * p) / p) * p + 10000;   // 10 s nach Fensterbeginn
+    let b;
+    for (let i = 0; i <= g.versuche; i++) {
+      vi.setSystemTime(start + i * 100);
+      b = await bremse("anmelden", k);
+    }
+    expect(b.frei).toBe(false);
+    expect(b.wartet).toBe(g.sperre);
+    const nach = start + g.versuche * 100 + (b.wartet + 1) * 1000;
+    vi.setSystemTime(nach);
+    const erster = await bremse("anmelden", k);
+    expect(erster.frei, JSON.stringify(erster)).toBe(true);
+    /* Wer danach wieder anrennt, wird wieder gesperrt — mit doppelter Dauer. */
+    let zweite = erster, n = 1;
+    while (zweite.frei && n < 3 * g.versuche) {
+      vi.setSystemTime(nach + n * 100);
+      zweite = await bremse("anmelden", k);
+      n++;
+    }
+    expect(zweite.frei).toBe(false);
+    expect(n).toBe(g.versuche + 1);
+    expect(zweite.wartet).toBe(g.sperre * 2);
+  });
+
+  it("entlastet auch den atomaren Zähler (laufendes und voriges Fenster)", async () => {
+    /* Review N3: entlasten() ließ die Redis-Schlüssel stehen. */
+    const aufrufe = [];
+    vi.stubGlobal("fetch", async (url, init) => {
+      aufrufe.push({ url: String(url), rumpf: JSON.parse(init.body) });
+      return new Response(JSON.stringify([{ result: 1 }, { result: 1 }, { result: null }]),
+        { status: 200, headers: { "content-type": "application/json" } });
+    });
+    process.env.REDIS_REST_URL = "https://redis.invalid";
+    process.env.REDIS_REST_TOKEN = "nur-pruefung";
+    try {
+      await entlasten("anmelden", "a:redis");
+    } finally {
+      delete process.env.REDIS_REST_URL;
+      delete process.env.REDIS_REST_TOKEN;
+      vi.unstubAllGlobals();
+    }
+    const f = Math.floor(Date.now() / 1000 / GRENZEN.anmelden.fenster);
+    const geloescht = aufrufe.flatMap((a) => a.rumpf).filter((c) => c[0] === "DEL").map((c) => c[1]);
+    expect(geloescht).toContain(encodeURIComponent(`centric:takt:anmelden:a:redis:${f}`));
+    expect(geloescht).toContain(encodeURIComponent(`centric:takt:anmelden:a:redis:${f - 1}`));
+  });
+
   it("gilt auch für die Notbremse", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const n = NOTGRENZEN["anmelden-konto"];
@@ -246,15 +302,35 @@ describe("Die Bremse bei kaputter Ablage", () => {
       JSON.stringify(stati.slice(GRENZEN.anmelden.versuche))).toBe(true);
   });
 
-  it("zählt bei ganz ausgefallener Ablage im Prozessspeicher weiter", async () => {
+  it("zählt bei Schreib- und Listenausfall im Prozessspeicher weiter", async () => {
     const k = "a:ablage-weg";
-    stoerung.wirft = () => true;
+    stoerung.wirft = (methode) => methode !== "get";
     const stati = [];
     for (let i = 0; i < GRENZEN.anmelden.versuche + 6; i++) stati.push(await bremse("anmelden", k));
     expect(stati.slice(0, GRENZEN.anmelden.versuche).every((b) => b.frei)).toBe(true);
     expect(stati.slice(GRENZEN.anmelden.versuche).every((b) => b.frei === false)).toBe(true);
     /* Der Ausfall bleibt nicht stumm. */
     expect(stati.every((b) => typeof b.fehler === "string" && b.fehler.length > 0)).toBe(true);
+  });
+
+  it("lässt nichts durch, wenn sich der Sperreintrag nicht lesen lässt (Plattenfehler)", async () => {
+    /* Eine Langzeitsperre aus einem früheren Prozess: Im Speicher ist von
+       ihr nichts bekannt. Ein Lesefehler darf sie nicht übergehen. */
+    const k = "a:sperre-unlesbar-eio";
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const jetzt = Math.floor(Date.now() / 1000);
+    await getStore({ name: "centric-takt" }).setJSON(`sperre:anmelden:${k}`, { bis: jetzt + 7200, seit: jetzt, stufe: 4 });
+    stoerung.wirft = (methode, key) => methode === "get" && key.startsWith("sperre:");
+    const stati = [];
+    for (let i = 0; i < 5; i++) stati.push(await bremse("anmelden", k));
+    expect(stati.every((b) => b.frei === false), JSON.stringify(stati[0])).toBe(true);
+    expect(stati.every((b) => typeof b.fehler === "string")).toBe(true);
+    /* Ist die Ablage wieder da, gilt die gespeicherte Sperre — sie wurde
+       nicht durch eine kürzere ersetzt. */
+    stoerung.wirft = null;
+    const b = await bremse("anmelden", k);
+    expect(b.frei).toBe(false);
+    expect(b.wartet).toBeGreaterThan(GRENZEN.anmelden.sperre);
   });
 
   it("zählt Versuche vor dem Ausfall mit", async () => {
