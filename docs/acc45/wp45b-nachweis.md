@@ -101,3 +101,18 @@ mit allen sieben Proben), Sicherheit 41529512178, Betrieb: Deploy-Skripte 415295
 - Ein harter Abbruch (SIGKILL, Stromausfall) des Werkzeugs zwischen Rückholung und Umbenennen ist durch die
   Reihenfolge abgedeckt, aber nur als geworfener Fehler simuliert (`schritt`-Haken), nicht als echter Prozessabbruch.
 - Die „Andere Dateien“ werden nur gemeldet; das Verschieben in die Quarantäne ist Handarbeit nach §4a.
+
+## Nachprüfung (N1–N3)
+
+Nachprüfung auf 7841419: B1–B7 erledigt, drei neue Befunde.
+
+| Befund | Umsetzung | Test (rot auf 7841419 → grün) |
+|---|---|---|
+| **N1** Angleichen trotz offener Einträge — eine fehlende Scherbe fiel still aus dem neuen Vermerk, Rückgabe 0 | Je Raum erst planen, dann handeln: Bleibt nach dem Plan auch nur eine Datei offen, wird im Raum **nichts** angefasst und nicht angeglichen („Raum NICHT angefasst“, Rückgabe 1, Befund bleibt sichtbar). Strenger als „nur nicht angleichen“: Auch ein beiseitegelegter Zeiger allein ließe den Wiederanlauf des Servers den Vermerk ohne die offene Scherbe neu rechnen. Damit ein Raum trotzdem in einem Lauf lösbar ist, dürfen `--aus-sicherung` und `--beiseitelegen` jetzt zusammen stehen (zurückholen, was in der Sicherung liegt, Rest beiseite). Die Prüfsummen der Sicherung werden vor der ersten Änderung im Raum geprüft. | „N1: bleibt im Raum etwas offen, wird nichts angefasst und nicht angeglichen“ (genau der Fall: Zeiger unlesbar, Oktober fehlt, Sicherung ohne Oktober); „--aus-sicherung mit --beiseitelegen“. |
+| **N2** `--beiseitelegen` nahm fehlende Scherben still hin, auch ohne Raumangabe | Fehlende Scherben nur mit `--fehlende-hinnehmen <raum>:<monat>` (oder `<raum>:<betrieb>:<monat>`, Raum Pflicht, sonst Rückgabe 2). Spur in der Ablage: `beiseite:<raum>:<zeit>:<schlüssel>` mit `{ fehlte: true, durch, zeit }`. `--beiseitelegen` allein nennt den passenden Aufruf. | „fehlende Scherbe nimmt nur --fehlende-hinnehmen hin — mit Spur“; „N2: --beiseitelegen ohne Raum leert keinen fehlenden Monat eines anderen Raums“ (Raum A kaputtes Journal, Raum B ohne Oktober). |
+| **N3** §4a-Hinweise | (a) Beiseitegelegtes Journal eines abgebrochenen Schreibvorgangs: Zwischenstand wird beim Angleichen festgeschrieben — jetzt ausdrücklich, mit Folge und Ausweg (§4). (b) Abgebrochene Raumlöschung (Scherben und Vermerke vor dem Kern) sieht aus wie „fehlt“: vor `--aus-sicherung` klären, ob der Raum gelöscht werden sollte. Dazu der Abschnitt „ganz oder gar nicht“. | Dokumentation |
+
+Auf 7841419 lokal: 5 der 17 Tests der Prüfdatei rot (die vier neuen und der Kern-Test als Folgefehler des
+liegengebliebenen Zustands), mit der Korrektur 24/24 grün mit `ablage-pruefen.test.js` (1 übersprungen, Windows).
+Zwei Erwartungen in den B1-Tests sind an das neue Ausgabeformat angepasst (gleicher Inhalt: „beiseitegelegt … nie aus
+der Sicherung“), nicht abgeschwächt.

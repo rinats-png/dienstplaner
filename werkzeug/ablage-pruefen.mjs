@@ -39,11 +39,25 @@
      node werkzeug/ablage-pruefen.mjs [--daten /data] --beiseitelegen [raum …]
          Legt jede unlesbare Datei beiseite als beiseite:<raum>:<zeit>:<schlüssel>
          — die Rohbytes unverändert darin (beiseiteSicher). Verloren geht
-         nichts. Danach gilt für eine Scherbe: dieser Monat ist leer (eine
-         fehlende Scherbe wird ebenso hingenommen). Vermerke, Zeiger und
-         Journale werden neu berechnet. Einen unlesbaren KERN legt das
-         Werkzeug nicht beiseite — ohne Kern gäbe es den Raum nicht mehr, und
-         eine neue Anlage könnte ihn überschreiben.
+         nichts. Danach gilt für eine Scherbe: dieser Monat ist leer.
+         Vermerke, Zeiger und Journale werden neu berechnet. Einen unlesbaren
+         KERN legt das Werkzeug nicht beiseite — ohne Kern gäbe es den Raum
+         nicht mehr, und eine neue Anlage könnte ihn überschreiben. Mit
+         --aus-sicherung zusammen: zurückholen, was in der Sicherung liegt,
+         den Rest beiseitelegen.
+
+     node werkzeug/ablage-pruefen.mjs [--daten /data] --fehlende-hinnehmen <raum>:<monat> […]
+         Eine FEHLENDE Scherbe (laut Vermerk erwartet, aber nicht da) wird
+         nur so als leerer Monat hingenommen — ausdrücklich, je Raum und
+         Monat (auch <raum>:<betrieb>:<monat>), nie durch --beiseitelegen
+         allein. In der Ablage bleibt eine Spur: beiseite:<raum>:<zeit>:
+         <schlüssel> mit { fehlte: true, durch, zeit }. Kombinierbar mit den
+         anderen Schaltern.
+
+   Ein Raum wird nur ganz oder gar nicht bearbeitet: Bliebe nach dem Plan
+   auch nur eine Datei des Raums offen, wird im Raum nichts angefasst
+   (Rückgabe 1). Sonst rechnete der nächste Schreibvorgang den Vermerk ohne
+   die offene Scherbe neu, und sie fiele still aus dem Stand.
 
    Nach jeder Änderung an einem Raum schreibt das Werkzeug dessen Stand
    einmal auf dem gewöhnlichen Weg neu (bestandSchreiben, mit Journal):
@@ -277,9 +291,24 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
   const sicherung = wert("--aus-sicherung");
   const beiseite = argv.includes("--beiseitelegen");
   const kernZurueck = argv.includes("--kern-zurueck");
-  const raeume = argv.filter((a, i) => !a.startsWith("--") && !["--daten", "--aus-sicherung"].includes(argv[i - 1]));
-  if (sicherung && beiseite) { say("FEHLER: --aus-sicherung und --beiseitelegen nicht zusammen — erst zurückholen, dann prüfen, dann ggf. beiseitelegen."); return 2; }
+  /* --fehlende-hinnehmen <raum>:<monat> oder <raum>:<betrieb>:<monat>, beliebig oft. */
+  const hinnehmen = argv.filter((a, i) => argv[i - 1] === "--fehlende-hinnehmen");
+  const MIT_WERT = ["--daten", "--aus-sicherung", "--fehlende-hinnehmen"];
+  const raeume = argv.filter((a, i) => !a.startsWith("--") && !MIT_WERT.includes(argv[i - 1]));
   if (kernZurueck && !sicherung) { say("FEHLER: --kern-zurueck nur zusammen mit --aus-sicherung <ordner>."); return 2; }
+  if (argv.includes("--fehlende-hinnehmen")
+    && (hinnehmen.length !== argv.filter((a) => a === "--fehlende-hinnehmen").length
+      || hinnehmen.some((h) => !/^[^:\s-][^:\s]*(:[^\s]+)?:\d{4}-\d{2}$/.test(h)))) {
+    say("FEHLER: --fehlende-hinnehmen braucht <raum>:<monat> (z. B. haus-nord:2025-10) oder <raum>:<betrieb>:<monat> — der Raum ist Pflicht.");
+    return 2;
+  }
+  /** Passt eine Angabe zu --fehlende-hinnehmen auf diesen Scherbenschlüssel? */
+  const passt = (h, schluessel) => {
+    const teile = h.split(":");
+    const raum = teile[0], monat = teile[teile.length - 1], betrieb = teile.slice(1, -1).join(":");
+    if (!schluessel.startsWith(`scherbe:${raum}:`) || !schluessel.endsWith(`:${monat}`)) return false;
+    return !betrieb || schluessel === `scherbe:${raum}:${betrieb}:${monat}`;
+  };
   if (daten) process.env.CENTRIC_DATEN = daten;
   process.env.CENTRIC_ABLAGE = process.env.CENTRIC_ABLAGE || "dateien";
 
@@ -323,32 +352,81 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
     await schritt("nach-befund");
     if (!b.size && !sonst.length) say("Keine unlesbaren oder fehlenden Dateien gefunden.");
     const marke = zeitmarke();
-    const geaendert = new Set();
 
     for (const [raum, liste] of b) {
       say(`${raum}: ${liste.length} unlesbare oder fehlende Datei(en)`);
+
+      /* Erst planen, dann handeln — und zwar nur, wenn für den Raum danach
+         nichts offen bleibt. Ein halb bearbeiteter Raum ist gefährlich: Der
+         nächste Schreibvorgang (unser Angleichen ebenso wie der Wiederanlauf
+         des Servers) rechnet den Vermerk aus dem, was auf der Platte liegt —
+         eine noch fehlende Scherbe fiele dabei still heraus, und kein
+         späterer Befund fände sie mehr. Deshalb: ganz oder gar nicht. */
+      const plan = [];
       for (const d of liste) {
         say(`  ${d.art.padEnd(12)} ${d.schluessel} — ${d.grund}`);
+        const eintrag = sicherung
+          ? manifest.dateien.find((x) => x.pfad === `${STORE}/${dateiname(d.schluessel)}`) : null;
+        let aktion = "offen", hinweis = "";
+        if (NIE_ZURUECK.has(d.art)) {
+          if (sicherung || beiseite) aktion = "beiseite";
+        } else if (GANZER_RAUM.has(d.art)) {
+          if (!sicherung && !beiseite && !hinnehmen.length) { /* Trockenlauf */ }
+          else if (!sicherung || !kernZurueck)
+            hinweis = `NICHT beiseitegelegt und nicht zurückgeholt. ${KERN_FOLGEN} Nur mit --aus-sicherung … --kern-zurueck.`;
+          else if (!eintrag) hinweis = "nicht in der Sicherung";
+          else aktion = "zurueck";
+        } else if (sicherung && eintrag) {
+          aktion = "zurueck";
+        } else if (d.fehlt) {
+          if (hinnehmen.some((h) => passt(h, d.schluessel))) aktion = "hinnehmen";
+          else if (sicherung || beiseite || hinnehmen.length)
+            hinweis = `fehlt${sicherung ? " und ist nicht in der Sicherung" : ""} — als leeren Monat nur ausdrücklich: `
+              + `--fehlende-hinnehmen ${raum}:${d.schluessel.split(":").pop()}`;
+        } else if (beiseite) {
+          aktion = "beiseite";
+        } else if (sicherung) {
+          hinweis = "nicht in der Sicherung — ggf. zusätzlich --beiseitelegen (dieser Monat gilt dann als leer)";
+        }
+        if (hinweis) say(`    ${hinweis}`);
+        plan.push({ d, aktion, eintrag });
+      }
+      const nochOffen = plan.filter((x) => x.aktion === "offen").length;
+      if (nochOffen) {
+        offen += nochOffen;
+        if (plan.some((x) => x.aktion !== "offen"))
+          say(`  Raum NICHT angefasst: ${nochOffen} Datei(en) blieben offen. Ein Raum wird nur ganz oder gar nicht `
+            + "bearbeitet — sonst fiele eine offene Scherbe beim nächsten Schreiben still aus dem Stand.");
+        continue;
+      }
+
+      /* Die Sicherung jeder zurückzuholenden Datei vorab lesen und prüfen. */
+      let abbruch = false;
+      for (const x of plan.filter((y) => y.aktion === "zurueck")) {
+        x.inhalt = await readFile(path.join(path.resolve(sicherung), "daten", x.eintrag.pfad));
+        if (sha256(x.inhalt) !== x.eintrag.sha256) {
+          say(`  FEHLER: Prüfsumme der Sicherung weicht beim Lesen ab (${x.d.schluessel}) — Raum nicht angefasst`);
+          fehler += 1; abbruch = true;
+        }
+      }
+      if (abbruch) continue;
+
+      for (const { d, aktion, eintrag, inhalt } of plan) {
         const ziel = path.join(ordner, dateiname(d.schluessel));
         const name = beiseiteName(raum, d.schluessel, marke);
-        if (sicherung) {
-          if (NIE_ZURUECK.has(d.art)) {
-            halten();
-            await beiseiteSicher(store, ordner, dateiname, d.schluessel, name, d.grund);
-            geaendert.add(raum);
-            say(`    nicht aus der Sicherung (${d.art === "Journal" ? "Festschreibepunkt — es überschriebe Neueres" : "abgeleitet"}); `
-              + `beiseitegelegt als ${name}, wird neu berechnet`);
-            continue;
-          }
-          if (GANZER_RAUM.has(d.art) && !kernZurueck) {
-            say(`    NICHT zurückgeholt. ${KERN_FOLGEN} Nur mit --kern-zurueck.`);
-            offen += 1; continue;
-          }
-          const eintrag = manifest.dateien.find((x) => x.pfad === `${STORE}/${dateiname(d.schluessel)}`);
-          if (!eintrag) { say(`    nicht in der Sicherung — bleibt${d.fehlt ? "" : "; ggf. --beiseitelegen"}`); offen += 1; continue; }
-          const inhalt = await readFile(path.join(path.resolve(sicherung), "daten", eintrag.pfad));
-          if (sha256(inhalt) !== eintrag.sha256) { say("    FEHLER: Prüfsumme der Sicherung weicht beim Lesen ab — nichts verändert"); fehler += 1; continue; }
-          halten();
+        halten();
+        if (aktion === "beiseite") {
+          await beiseiteSicher(store, ordner, dateiname, d.schluessel, name, d.grund);
+          say(`  ${d.schluessel}: beiseitegelegt als ${name}`
+            + (NIE_ZURUECK.has(d.art) ? " — wird neu berechnet" + (sicherung ? " (nie aus der Sicherung: "
+              + (d.art === "Journal" ? "Festschreibepunkt, es überschriebe Neueres)" : "abgeleitet)") : "")
+              : " — dieser Monat gilt jetzt als leer"));
+        } else if (aktion === "hinnehmen") {
+          /* Eine Spur in der Ablage: wer, wann, was fehlte. */
+          await store.setJSON(name, { beiseite: true, original: d.schluessel, fehlte: true, grund: d.grund,
+            durch: "Werkzeug ablage-pruefen --fehlende-hinnehmen", zeit: new Date().toISOString() });
+          say(`  ${d.schluessel}: als leerer Monat hingenommen, vermerkt als ${name}`);
+        } else if (aktion === "zurueck") {
           /* Erst daneben, dann die kaputte als Kopie beiseite, dann umbenennen:
              Bis zum Umbenennen liegt die alte Datei unverändert da. */
           const tmp = await danebenSchreiben(ziel, inhalt);
@@ -365,44 +443,26 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
             if (!umbenannt) await unlink(tmp).catch(() => {});
           }
           const zurueck = await readFile(ziel);
-          if (sha256(zurueck) !== eintrag.sha256) { say("    FEHLER: zurückgeschriebene Datei stimmt nicht"); fehler += 1; continue; }
-          geaendert.add(raum);
-          say(`    aus der Sicherung zurückgeholt (Stand ${manifest.erstellt})${d.fehlt ? "" : `; die kaputte liegt als ${name}`}`);
+          if (sha256(zurueck) !== eintrag.sha256) throw new Error(`${d.schluessel}: zurückgeschriebene Datei stimmt nicht`);
+          say(`  ${d.schluessel}: aus der Sicherung zurückgeholt (Stand ${manifest.erstellt})`
+            + (d.fehlt ? "" : `; die kaputte liegt als ${name}`));
           if (GANZER_RAUM.has(d.art)) say(`    ACHTUNG: ${KERN_FOLGEN}`);
-        } else if (beiseite) {
-          if (GANZER_RAUM.has(d.art)) {
-            say("    NICHT beiseitegelegt: Ohne Kern gäbe es den Raum nicht mehr. Bitte --aus-sicherung … --kern-zurueck verwenden.");
-            offen += 1; continue;
-          }
-          if (d.fehlt) {
-            geaendert.add(raum);
-            say("    nichts beiseitezulegen — dieser Monat gilt jetzt als leer (Stand wird angeglichen)");
-            continue;
-          }
-          halten();
-          await beiseiteSicher(store, ordner, dateiname, d.schluessel, name, d.grund);
-          geaendert.add(raum);
-          say(`    beiseitegelegt als ${name}${d.art === "Scherbe" ? " — dieser Monat gilt jetzt als leer" : ""}`);
-        } else {
-          offen += 1;
         }
       }
 
       /* Den Stand einmal auf dem gewöhnlichen Weg neu schreiben: Vermerk und
          Zeiger aus dem, was jetzt auf der Platte liegt, und der Stand zählt
-         weiter (siehe Kopf). Geht es nicht — es ist noch etwas unlesbar —,
-         bleibt es beim Befund unten. */
-      if (geaendert.has(raum)) {
-        halten();
-        try {
-          const ist = await bestandLesenStreng(store, raum);
-          if (ist && !ist.unzerlegt) {
-            const r = await bestandSchreiben(store, raum, ist.bestand, { durch: "Werkzeug ablage-pruefen" });
-            say(`  Stand angeglichen: ${r.ok ? r.stand : "nicht möglich"}`);
-          }
-        } catch (e) {
-          say(`  Stand nicht angeglichen: ${fehlerText(e)}`);
+         weiter (siehe Kopf). Nur hier, wo für den Raum nichts mehr offen ist.
+         Geht es nicht, bleibt es beim Befund unten. */
+      halten();
+      try {
+        const ist = await bestandLesenStreng(store, raum);
+        if (ist && !ist.unzerlegt) {
+          const r = await bestandSchreiben(store, raum, ist.bestand, { durch: "Werkzeug ablage-pruefen" });
+          say(`  Stand angeglichen: ${r.ok ? r.stand : "nicht möglich"}`);
         }
+      } catch (e) {
+        say(`  Stand nicht angeglichen: ${fehlerText(e)}`);
       }
     }
 
@@ -412,10 +472,12 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
       say("  Diese fasst das Werkzeug nicht an. Vorgehen je Art: docs/BETRIEB-SICHERUNG.md, §4a „Andere Dateien“.");
     }
 
-    if (!sicherung && !beiseite && (offen || sonst.length))
-      say("Trockenlauf: nichts verändert. Zurückholen mit --aus-sicherung <ordner>, sonst --beiseitelegen.");
+    const handeln = !!(sicherung || beiseite || hinnehmen.length);
+    if (!handeln && (offen || sonst.length))
+      say("Trockenlauf: nichts verändert. Zurückholen mit --aus-sicherung <ordner>, sonst --beiseitelegen; "
+        + "fehlende Monate nur mit --fehlende-hinnehmen <raum>:<monat>.");
     /* Nach jeder Änderung noch einmal hinsehen: Was jetzt noch unlesbar ist oder fehlt, zählt. */
-    if (sicherung || beiseite) {
+    if (handeln) {
       const nach = await befund(store, { raeume, journalPruefen });
       offen = [...nach.values()].reduce((n, l) => n + l.length, 0);
       if (offen) say(`Noch unlesbar oder fehlend: ${offen} Datei(en).`);

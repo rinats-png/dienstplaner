@@ -79,7 +79,7 @@ describe("B1 — Journal, Vermerk und Zeiger kommen nie aus der Sicherung", () =
 
     const r = await lauf(["--aus-sicherung", pfad, RAUM]);
     expect(r.code, r.aus).toBe(0);
-    expect(r.aus).toMatch(/Journal .*\n\s+nicht aus der Sicherung/);
+    expect(r.aus).toMatch(/journal:rw-journal: beiseitegelegt .*nie aus der Sicherung: Festschreibepunkt/);
     expect(await personen(RAUM)).toEqual(["p1", "p3"]);                       // nichts Neueres verloren
     expect((await B.journalPruefen(store, RAUM)).zustand).toBe("keins");
     const { blobs } = await store.list({ prefix: `beiseite:${RAUM}:` });
@@ -100,7 +100,7 @@ describe("B1 — Journal, Vermerk und Zeiger kommen nie aus der Sicherung", () =
 
     const r = await lauf(["--aus-sicherung", pfad, RAUM]);
     expect(r.code, r.aus).toBe(0);
-    expect(r.aus).toMatch(/Standzeiger .*\n\s+nicht aus der Sicherung/);
+    expect(r.aus).toMatch(/stand:rw-vermerk:aktuell: beiseitegelegt .*nie aus der Sicherung/);
     const zeiger = await store.get(`stand:${RAUM}:aktuell`, { type: "json" });
     expect(zeiger.nr).toBeGreaterThan(stand);                                  // nie der alte Zeiger
     expect(await personen(RAUM)).toEqual(["p1", "p3"]);
@@ -166,14 +166,84 @@ describe("B2 — Abbruch im Rückholfenster, Befund gegen den Vermerk", () => {
     expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen["p1|2025-10-10"]).toBe("F");
   }, 30000);
 
-  it("--beiseitelegen nimmt eine fehlende Scherbe als leeren Monat hin und gleicht den Stand an", async () => {
+  it("eine fehlende Scherbe nimmt nur --fehlende-hinnehmen <raum>:<monat> hin — mit Spur in der Ablage", async () => {
     const RAUM = "rw-fehlt-hin";
     await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
     await unlink(datei(`scherbe:${RAUM}:m1:2025-10`));
-    const r = await lauf(["--beiseitelegen", RAUM]);
+    const nurBeiseite = await lauf(["--beiseitelegen", RAUM]);
+    expect(nurBeiseite.code, nurBeiseite.aus).toBe(1);
+    expect(nurBeiseite.aus).toMatch(/--fehlende-hinnehmen rw-fehlt-hin:2025-10/);
+    expect((await lauf([RAUM])).aus).toMatch(/scherbe:rw-fehlt-hin:m1:2025-10 — fehlt/);
+    expect((await lauf(["--fehlende-hinnehmen", "2025-10"])).code).toBe(2);                 // Raum ist Pflicht
+
+    const r = await lauf(["--fehlende-hinnehmen", `${RAUM}:2025-10`]);
     expect(r.code, r.aus).toBe(0);
-    expect(r.aus).toMatch(/leer/);
+    const { blobs } = await store.list({ prefix: `beiseite:${RAUM}:` });
+    expect(blobs).toHaveLength(1);
+    const spur = await store.get(blobs[0].key, { type: "json" });
+    expect(spur).toMatchObject({ fehlte: true, original: `scherbe:${RAUM}:m1:2025-10` });
+    expect(spur.durch).toMatch(/--fehlende-hinnehmen/);
+    expect(spur.zeit).toBeTruthy();
     expect((await lauf([RAUM])).code).toBe(0);
+  });
+
+  it("N2: --beiseitelegen ohne Raum leert keinen fehlenden Monat eines anderen Raums", async () => {
+    const A_ = "rw-n2-journal", B_ = "rw-n2-fehlt";
+    await B.bestandSchreiben(store, A_, bestandMit(), { durch: "Pruefung" });
+    await B.bestandSchreiben(store, B_, bestandMit(), { durch: "Pruefung" });
+    await writeFile(datei(`journal:${A_}`), "{kaputt");
+    const okt = await readFile(datei(`scherbe:${B_}:m1:2025-10`));
+    await unlink(datei(`scherbe:${B_}:m1:2025-10`));
+    const r = await lauf(["--beiseitelegen"]);
+    expect(r.code, r.aus).toBe(1);
+    expect((await B.journalPruefen(store, A_)).zustand).toBe("keins");                    // A erledigt
+    const t = await lauf([B_]);
+    expect(t.code, t.aus).toBe(1);
+    expect(t.aus).toMatch(new RegExp(`scherbe:${B_}:m1:2025-10 — fehlt`));               // B weiter sichtbar
+    await writeFile(datei(`scherbe:${B_}:m1:2025-10`), okt);
+    expect((await lauf([])).code).toBe(0);
+  });
+
+  it("N1: bleibt im Raum etwas offen, wird nichts angefasst und nicht angeglichen", async () => {
+    const RAUM = "rw-n1";
+    const ohneOkt = bestandMit();
+    delete ohneOkt.mandanten[0].abweichungen["p1|2025-10-10"];
+    await B.bestandSchreiben(store, RAUM, ohneOkt, { durch: "Pruefung" });
+    const pfad = await sichern();                                                       // Sicherung ohne Oktober
+    const g = await B.bestandLesen(store, RAUM);
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { erwarteterStand: g.stand, durch: "Pruefung" });
+    const okt = await readFile(datei(`scherbe:${RAUM}:m1:2025-10`));
+    await writeFile(datei(`stand:${RAUM}:aktuell`), "{kaputt");
+    await unlink(datei(`scherbe:${RAUM}:m1:2025-10`));
+
+    const r = await lauf(["--aus-sicherung", pfad, RAUM]);
+    expect(r.code, r.aus).toBe(1);
+    expect(r.aus).not.toMatch(/Stand angeglichen/);
+    expect(r.aus).not.toMatch(/wieder lesbar/);
+    expect(await readFile(datei(`stand:${RAUM}:aktuell`), "utf8")).toBe("{kaputt");    // nichts angefasst
+    const t = await lauf([RAUM]);
+    expect(t.code, t.aus).toBe(1);
+    expect(t.aus).toMatch(new RegExp(`scherbe:${RAUM}:m1:2025-10 — fehlt`));
+    expect(t.aus).toMatch(/Standzeiger/);
+    await writeFile(datei(`scherbe:${RAUM}:m1:2025-10`), okt);
+    const fertig = await lauf(["--aus-sicherung", pfad, RAUM]);
+    expect(fertig.code, fertig.aus).toBe(0);
+    expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen["p1|2025-10-10"]).toBe("F");
+  });
+
+  it("--aus-sicherung mit --beiseitelegen: zurück, was in der Sicherung liegt, Rest beiseite", async () => {
+    const RAUM = "rw-gemischt";
+    const ohneOkt = bestandMit();
+    delete ohneOkt.mandanten[0].abweichungen["p1|2025-10-10"];
+    await B.bestandSchreiben(store, RAUM, ohneOkt, { durch: "Pruefung" });
+    const pfad = await sichern();                                                       // nur November
+    const g = await B.bestandLesen(store, RAUM);
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { erwarteterStand: g.stand, durch: "Pruefung" });
+    await writeFile(datei(`scherbe:${RAUM}:m1:2025-10`), "{kaputt");
+    await writeFile(datei(`scherbe:${RAUM}:m1:2025-11`), "{kaputt");
+    const r = await lauf(["--aus-sicherung", pfad, "--beiseitelegen", RAUM]);
+    expect(r.code, r.aus).toBe(0);
+    expect((await B.bestandLesen(store, RAUM)).bestand.mandanten[0].abweichungen).toEqual({ "p1|2025-11-03": "S" });
   });
 });
 

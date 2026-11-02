@@ -219,6 +219,18 @@ per Digest genau dieser Digest):
      Dateien“).
 
    Rückgabe 1 heißt „Unlesbares oder Fehlendes gefunden“, 2 „Fehler“ (Ablage belegt, Sicherung kaputt, Abbruch).
+
+   **Fehlt der Kern oder fehlen Scherben, zuerst klären, ob der Raum gelöscht werden sollte.** Die Raumlöschung
+   (`server/lib/raumloeschung.mjs`) entfernt Journal, Scherben, Vermerke und App-Sicherungen zuerst und den Kern erst
+   danach. Eine abgebrochene Löschung sieht deshalb genauso aus wie ein Schaden: Scherben „fehlen“, oder der Kern fehlt
+   neben übriggebliebenen Vermerken. Sollte der Raum weg, nicht zurückholen, sondern die Löschung in der App wiederholen.
+
+   **Ein Raum wird nur ganz oder gar nicht bearbeitet.** Bliebe nach dem Plan des Werkzeugs auch nur eine Datei des
+   Raums offen (nicht in der Sicherung, Kern ohne `--kern-zurueck`, fehlende Scherbe ohne `--fehlende-hinnehmen`),
+   fasst es im Raum nichts an und meldet „Raum NICHT angefasst“ (Rückgabe 1). Sonst rechnete der nächste
+   Schreibvorgang — das Angleichen ebenso wie der Wiederanlauf des Servers — den Vermerk ohne die offene Scherbe neu,
+   und kein späterer Befund fände sie mehr. Die Schalter dürfen deshalb kombiniert werden, damit sich ein Raum in einem
+   Lauf vollständig lösen lässt.
 3. **Aus der Sicherung zurückholen (erste Wahl für Scherben):** die jüngste *vollständige* Sicherung vor dem Schaden
    holen (wie in §4, Schritte 2–4: proben, `restic restore` nach `~/notfall`), dann zusätzlich einbinden:
 
@@ -239,20 +251,32 @@ per Digest genau dieser Digest):
      nennt die Folgen.
    - **Wirkung:** Für den zurückgeholten Monat gilt der Stand der Sicherung; was seitdem in diesem Monat eingetragen
      wurde, fehlt.
-4. **Sonst beiseitelegen:** wenn die Datei in keiner Sicherung liegt.
+4. **Sonst beiseitelegen:** wenn die Datei in keiner Sicherung liegt. Zusammen mit `--aus-sicherung` wird
+   zurückgeholt, was in der Sicherung liegt, und nur der Rest beiseitegelegt.
 
         W "$BILD" node /app/werkzeug/ablage-pruefen.mjs --beiseitelegen [raum]
 
    Die Rohbytes wandern unverändert in einen Eintrag `beiseite:…`; gelöscht wird nichts.
-   - **Scherbe:** **Dieser Monat gilt danach als leer** (Plan-Abweichungen, Ist-Zeiten, Stempel des Monats). Eine
-     *fehlende* Scherbe wird ebenso als leerer Monat hingenommen.
-   - **Vermerk, Zeiger, Journal:** werden neu berechnet. Ein beiseitegelegtes Journal kann einen Monat im
-     Zwischenstand hinterlassen.
+   - **Scherbe (unlesbar):** **Dieser Monat gilt danach als leer** (Plan-Abweichungen, Ist-Zeiten, Stempel des
+     Monats).
+   - **Scherbe (fehlend):** `--beiseitelegen` nimmt sie **nie** hin. Ist sie in keiner Sicherung, nur ausdrücklich je
+     Raum und Monat — der Raum ist Pflicht:
+
+         W "$BILD" node /app/werkzeug/ablage-pruefen.mjs --fehlende-hinnehmen <raum>:<monat>   # oder <raum>:<betrieb>:<monat>
+
+     Der Monat gilt dann als leer. In der Ablage bleibt eine Spur `beiseite:<raum>:<zeit>:<schlüssel>` mit
+     `fehlte: true`, wer (`durch`) und wann (`zeit`).
+   - **Vermerk, Zeiger, Journal:** werden neu berechnet. **Ein beiseitegelegtes Journal eines abgebrochenen
+     Schreibvorgangs:** Dessen Zieldateien können teils schon geschrieben sein. Beim Angleichen (unten) wird dieser
+     Zwischenstand als neuer Stand **festgeschrieben** — ein Eintrag, der von einem Monat in einen anderen wanderte,
+     kann in beiden oder in keinem stehen. Den Raum danach fachlich prüfen lassen; im Zweifel stattdessen die
+     vollständige Wiederherstellung (§4).
    - **Kern:** Einen unlesbaren Kern legt das Werkzeug **nicht** beiseite. Ohne Kern gäbe es den Raum nicht mehr, und
      eine neue Anlage könnte ihn überschreiben. Hier hilft nur Schritt 3 mit `--kern-zurueck` oder die vollständige
      Wiederherstellung (§4).
 
-   **Stand angleichen:** Nach jeder Änderung an einem Raum (Schritt 3 oder 4) schreibt das Werkzeug dessen Stand
+   **Stand angleichen:** Nach jeder Änderung an einem Raum (Schritt 3 oder 4), und nur wenn im Raum nichts offen
+   bleibt, schreibt das Werkzeug dessen Stand
    einmal auf dem gewöhnlichen Weg neu (mit Journal). Kern, Vermerk und Zeiger passen dann wieder zu dem, was auf der
    Platte liegt, und die Standnummer zählt weiter: Wer den Raum noch mit einem alten Stand im Browser offen hat,
    bekommt beim Speichern einen Abgleich, statt einen zurückgeholten oder geleerten Monat still zu überschreiben.
