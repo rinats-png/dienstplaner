@@ -29,6 +29,12 @@ jobs:
 
       - run: npm ci
 
+      # Sammelkette (package.json "pruefung") und diese Schritte müssen
+      # dieselben Suiten nennen. Läuft eine Suite nur hier oder nur dort,
+      # wird es rot — siehe werkzeug/pruefkette-abgleich.mjs.
+      - name: Prüfkette abgleichen
+        run: npm run pruefung:pruefkette
+
       # Findet undefinierte Bezeichner und Verstöße gegen die Hook-Regeln.
       - name: Linter
         run: npm run lint
