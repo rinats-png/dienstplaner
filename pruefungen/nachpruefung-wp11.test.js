@@ -194,8 +194,8 @@ describe("N1 / WP-22: Laufzeit der Nachrechnung", () => {
   };
   it("WP-22: 300 Personen, 120 Tage, Schichtfolge geändert: unter 300 ms", () => {
     expect(szenario(300, 60)).toBeLessThan(300);
-  });
+  }, 60000);
   it("Nachprüfung WP-11: 2000 Personen, davon 300 geschützt — gemessen", () => {
     expect(szenario(2000, 300)).toBeGreaterThan(0);
-  });
+  }, 120000);
 });

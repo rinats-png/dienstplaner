@@ -684,6 +684,28 @@ describe("Rundreise: gefilterte Sicht zurück — nichts verloren, nichts Verbor
   }
 });
 
+/* Abschnitt 2, WP-22: Dienstarten legt an und ändert nur, wer org.edit hat
+   (Leitung, Kundenrolle). Für alle anderen schreibenden Rollen: abgewiesen
+   oder wirkungslos — gespeichert bleibt der alte Name. */
+describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten nur mit org.edit (WP-22)", () => {
+  it("die Zeile steht in der Matrix", () => {
+    const text = fs.readFileSync(MATRIX_DATEI, "utf8");
+    expect(text.split(/^## 2\./m)[1]).toMatch(/Dienstarten \(`dienstarten`\)[^\n]*org\.edit/);
+  });
+  const umbenennen = (m) => { const d = (m.dienstarten || []).find((x) => x && x.id); if (d) d.name = "SONDE-ORG-EDIT"; return !!d; };
+  for (const k of ["MA", "BR", "SV", "PL", "LT", "KU"]) {
+    it(`${k}: Dienstart umbenennen — ${["LT", "KU"].includes(k) ? "gespeichert" : "abgewiesen oder wirkungslos"}`, () => {
+      const g = bestand();
+      const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ[k])));
+      const m = sicht.mandanten.find((x) => x && x.id === "m1");
+      expect(umbenennen(m), "eine Dienstart steht in jeder Sicht").toBe(true);
+      const e = zusammenfuehren(g, sicht, SITZ[k]);
+      const gespeichert = !!e && !e.verweigert && JSON.stringify(e).includes("SONDE-ORG-EDIT");
+      expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(["LT", "KU"].includes(k));
+    });
+  }
+});
+
 /* Zuletzt (alle Sonden sind jetzt angelegt, auch die in den Wortlaut-Prüfungen):
    Jeder abgefragte Marker steht im Testbestand — ein Tippfehler im Marker
    machte „fehlt im Payload" sonst trivial wahr. */

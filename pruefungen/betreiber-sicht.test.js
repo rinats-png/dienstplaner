@@ -18,6 +18,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { jeStandort } from "../src/standorte.js";
+/* einheitAm und imDienst stehen seit WP-22 in server/lib/fachpruefung.mjs (die Oberfläche importiert sie). */
+import { einheitAm as fpEinheitAm, imDienst as fpImDienst } from "../server/lib/fachpruefung.mjs";
 
 const BT = { rolle: "betreiber", person: null, betrieb: 0 };
 const LT = { rolle: "leitung", person: "l1", betrieb: 0 };
@@ -161,7 +163,7 @@ describe("Kennzahlen: aus dem Gerüst dasselbe wie aus dem vollen Bestand", () =
     const zeile = app.indexOf("\n", i);
     return app.slice(i, app.slice(i, zeile).trim().endsWith("}") ? zeile : j + 2);
   };
-  const F = new Function(`${quelle("einheitAm")}\n${quelle("imDienst")}\n${quelle("rolleAm")}\nreturn { einheitAm, imDienst, rolleAm };`)();
+  const F = { einheitAm: fpEinheitAm, imDienst: fpImDienst, ...new Function(`${quelle("rolleAm")}\nreturn { rolleAm };`)() };
   const TAGE = ["2026-10-01", "2026-10-12", "2026-10-16", "2026-10-21", "2026-11-01"];
   const kennzahlen = (m) => TAGE.map((d) => {
     const aktiv = m.personen.filter((p) => F.imDienst(p, d));

@@ -208,10 +208,10 @@ jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichu
 wenn dadurch ein sperrender Befund **neu** entsteht (Review F2); ein schon bestehender blockiert nicht. Grenzen dieser
 Nachrechnung: Teilzeit und Posten bleiben außer Acht (im Zweifel streng), Abwesenheiten zählen nicht als frei, Tage
 jenseits von 120 prüft nur die Planprüfung der Oberfläche. Eine Bestätigung zu einer
-solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
-durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
+solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Seit WP-22 überholt (Abschnitt 2):** Bis dahin nur in der Oberfläche
+durchgesetzt waren: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
 `einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
-Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
+Besetzung, Nachtfenster des Betriebs) auf dem Server — jetzt `server/lib/fachpruefung.mjs`. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
 **Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
 20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
 `{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben nur Rollen mit
@@ -288,6 +288,8 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 
 | Weg | Wer | Was | |
 |---|---|---|---|
+| `PUT /api/bestand`: Dienstarten (`dienstarten`) anlegen, ändern, löschen | Leitung, Kundenrolle (`org.edit`) | WP-22: Planung und alle anderen Rollen werden abgewiesen (403), eine unveränderte Kopie stört nicht; die Checkliste einer Dienstart pflegt die Planung weiter. Eine noch verwendete Dienstart (Schichtfolge, Einteilung ab heute) lässt sich nicht löschen. Die Oberfläche zeigt Bearbeiten, Vorlagenzeiten und die Einrichtung nur mit `org.edit` | A |
+| `PUT /api/bestand`: Einteilungen (`abweichungen`, mittelbar über Dienstzeiten, Schichtfolge, Einheiten, Zugehörigkeit) | jede schreibende Rolle im eigenen Umfang | WP-22: Der Server prüft neue Befunde mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`, `server/lib/fachpruefung.mjs`): sperrende (Katalogspalte `sperrt`) weist er ab (403); warnende nur mit einem neuen Eintrag im Bestätigungsprotokoll zu Person, Tag und Regel im selben Speichervorgang, sonst 409 mit `fachbefunde` (Person, Tag, Dienst, Regel, Stufe, neutraler Text aus dem Katalog — für Schutzbefunde immer „Schutz- oder Einsatzregel der Person"). Siehe ²¹ | A |
 | `/api/vollausgabe` | Leitung; Sicherungsschlüssel | eigener Betrieb nach Exportkatalog (`server/lib/sicherungen.mjs`), Spalten VA-LT/VA-SK oben; kein Wiederherstellungsformat | A |
 | `/api/sicherungsschluessel` (GET/POST/DELETE) | Leitung | nur Schlüssel des eigenen Betriebs; Widerruf nur über die vollständige Kennung; fremd wie unbekannt | A |
 | `/api/sicherung`, `/api/sicherungen`, `/api/wiederherstellen` | Leitung | Sicherungen und Wiederherstellen je Betrieb, Kontingente je Betrieb, Geheimnisse und Vertrag aus dem heutigen Stand; ebenso Betreiberstamm und alles außerhalb der Sicht der Leitung (an bestehenden Personen etwa Bank-, Steuer- und Lohnangaben) — dieselbe Grenze wie beim Speichern | A |
