@@ -44,16 +44,27 @@ done
 # Gibt "<status> <neustarts> <bild-id>" aus. Nur ein ausdrücklich nicht
 # vorhandener Container gilt als "fehlt 0 -"; jeder andere Fehler von
 # docker inspect (Docker nicht erreichbar, Rechte, …) liefert 1.
+# stdout und stderr werden getrennt erfasst: Warnungen der CLI auf stderr
+# dürfen das Parsen nicht verfälschen, und die Ausgabe muss genau die Form
+# "<status> <zahl> <bild>" haben.
 zustand() {
-  local aus
-  if aus="$(docker inspect --format '{{.State.Status}} {{.RestartCount}} {{.Image}}' "$CENTRIC_DIENST" 2>&1)"; then
-    printf '%s\n' "$aus"
-    return 0
+  local aus err errdatei rc=0
+  errdatei="$(mktemp)"
+  aus="$(docker inspect --format '{{.State.Status}} {{.RestartCount}} {{.Image}}' "$CENTRIC_DIENST" 2>"$errdatei")" || rc=$?
+  err="$(cat "$errdatei")"
+  rm -f "$errdatei"
+  if ((rc == 0)); then
+    if [[ "$aus" =~ ^[a-z]+\ [0-9]+\ [^[:space:]]+$ ]]; then
+      printf '%s\n' "$aus"
+      return 0
+    fi
+    fehler "docker inspect $CENTRIC_DIENST lieferte Unerwartetes: '$aus' ${err:+(stderr: $err)}"
+    return 1
   fi
-  case "$aus" in
-    *"No such object"* | *"No such container"*) printf 'fehlt 0 -\n'; return 0 ;;
+  case "${err,,}" in
+    *"no such object"* | *"no such container"*) printf 'fehlt 0 -\n'; return 0 ;;
   esac
-  fehler "docker inspect $CENTRIC_DIENST scheiterte: $aus"
+  fehler "docker inspect $CENTRIC_DIENST scheiterte: ${err:-$aus}"
   return 1
 }
 
@@ -111,14 +122,19 @@ pruefen_angehalten() {
     fehler "docker ps -a scheiterte — Zustand nicht gegengeprüft."
     return 1
   fi
-  case "$ps" in
-    Up* | Restarting*) fehler "docker ps meldet '$ps' — nicht angehalten."; return 1 ;;
-  esac
-  if [[ "$status" == "fehlt" && -n "$ps" ]]; then
-    fehler "inspect meldet keinen Container, docker ps aber '$ps' — widersprüchlich."
-    return 1
+  if [[ "$status" == "fehlt" ]]; then
+    if [[ -n "$ps" ]]; then
+      fehler "inspect meldet keinen Container, docker ps aber '$ps' — widersprüchlich."
+      return 1
+    fi
+    return 0
   fi
-  return 0
+  # Container vorhanden: docker ps muss ihn als angehalten bestätigen.
+  case "$ps" in
+    Exited* | Created*) return 0 ;;
+    "") fehler "docker ps -a kennt $CENTRIC_DIENST nicht, inspect meldet '$status' — widersprüchlich."; return 1 ;;
+    *) fehler "docker ps meldet '$ps' — nicht angehalten."; return 1 ;;
+  esac
 }
 
 if ! pruefen_angehalten; then

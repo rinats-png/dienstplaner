@@ -83,3 +83,11 @@ P0-BLOCK §2.1 sah vor, `IMAGE_TAG=<sha>@sha256:<d>` übergangsweise gültig zu 
 `digest-pruefen.sh` hat dazu den Exit-Code 7 (Docker nicht erreichbar) bekommen; vorher wäre das als „nicht lokal vorhanden“ (5) gemeldet worden.
 8. Ein Revision-Label im neu gebauten Bild ist erst nach dem nächsten Lauf „Auslieferung“ nachweisbar (`docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'`).
 9. Gesperrte Bilder lokal entfernen / Tag `latest` lösen (BEREITSTELLUNG.md 3.3, Pflichtschritt) — gesondert freizugeben.
+
+## Nachtrag nach der Nachprüfung (Branch `acc45/infra/wp03-nachtrag`, Basis `3d7dd3f`)
+
+| | Restpunkt | Umsetzung | Test |
+|---|---|---|---|
+| 1 | `zustand()` in `abschalten.sh` | stdout und stderr getrennt erfasst; Ausgabe muss genau `<status> <zahl> <bild>` sein, sonst Exit 1; „no such object/container“ ohne Beachtung der Groß-/Kleinschreibung (`${err,,}`) | stderr-Warnung bei Erfolg → weiterhin R0 erreicht; `error: no such container` (klein) bei vorher fehlendem Container → 0 |
+| 2 | `pruefen_angehalten` | bei vorhandenem Container verlangt `docker ps -a` eine nicht leere Antwort `Exited…`/`Created…`; leer, `Paused`, `Removal In Progress` → Exit 1 | 5 Varianten |
+| 3 | BEREITSTELLUNG §3.3 | Pflichtschritt löst **alle** Tags und Digest-Referenzen gesperrter Bilder (auch `:64d08a4…`, `:1a56988…`), Befehle werden erst erzeugt und gelesen, Kontrolle mit `docker image ls --digests --no-trunc` muss leer sein; Migration prüft den Digest mit `neu-wp03/digest-pruefen.sh`, **bevor** die neue `compose.yml` kopiert wird | – (Doku) |

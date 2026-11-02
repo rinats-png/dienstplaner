@@ -58,6 +58,7 @@ case "$1" in
   ps)
     c="$z/container"
     if [[ -f "$z/ps_luegt" ]]; then echo "Up 3 seconds"; exit 0; fi
+    if [[ -f "$z/ps_ausgabe" ]]; then cat "$z/ps_ausgabe"; exit 0; fi
     if [[ -f "$c/status" ]]; then
       case "$(cat "$c/status")" in
         running) echo "Up 5 minutes (healthy)" ;;
@@ -75,7 +76,11 @@ case "$1" in
   inspect)
     fmt="$3"; c="$z/container"
     if [[ -f "$z/inspect_fehler" ]]; then echo "permission denied while trying to connect" >&2; exit 1; fi
-    if [[ ! -f "$c/status" ]]; then echo "Error: No such object: $4" >&2; exit 1; fi
+    [[ -f "$z/inspect_warnung" ]] && echo 'WARNING: Error loading config file: "/root/.docker/config.json"' >&2
+    if [[ ! -f "$c/status" ]]; then
+      if [[ -f "$z/klein_nicht_da" ]]; then echo "error: no such container: $4" >&2; else echo "Error: No such object: $4" >&2; fi
+      exit 1
+    fi
     case "$fmt" in
       *Health*) cat "$c/health" ;;
       *State.Status*)
@@ -646,6 +651,37 @@ describe.skipIf(!BASH)("abschalten.sh (R0)", { timeout: 60_000 }, () => {
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/docker ps meldet/);
     expect(aufrufe()).toMatch(/^ps -a --filter name=\^centric-dp-web\$ --format/m);
+  });
+
+  it("CLI-Warnungen auf stderr verfälschen das Parsen nicht", () => {
+    writeFileSync(path.join(stubDir, "inspect_warnung"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).toMatch(/R0 erreicht/);
+  });
+
+  it("erkennt „no such container“ unabhängig von der Schreibweise (Container fehlte schon vorher)", () => {
+    rmSync(path.join(stubDir, "container"), { recursive: true, force: true });
+    writeFileSync(path.join(stubDir, "klein_nicht_da"), "");
+    writeFileSync(path.join(stubDir, "verschwindet_nach_stop"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code, r.alles).toBe(0);
+    expect(r.out).toMatch(/R0 erreicht/);
+  });
+
+  it("verlangt bei vorhandenem Container eine docker-ps-Antwort Exited/Created", () => {
+    for (const [ausgabe, erwartet] of [
+      ["", 1],
+      ["Paused\n", 1],
+      ["Removal In Progress\n", 1],
+      ["Created\n", 0],
+      ["Exited (137) 2 seconds ago\n", 0],
+    ]) {
+      container({ image: ID_B });
+      writeFileSync(path.join(stubDir, "ps_ausgabe"), ausgabe);
+      const r = lauf("abschalten.sh");
+      expect(r.code, JSON.stringify(ausgabe) + r.alles).toBe(erwartet);
+    }
   });
 
   it("lehnt unbekannte Schalter ab, ohne etwas anzuhalten", () => {
