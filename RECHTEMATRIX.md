@@ -160,6 +160,14 @@ Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` un
 ¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
 ²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
 und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
+²¹ WP-26, Präzisierung, keine neue Leserecht-Spalte: **Auskunft nach Art. 15 DSGVO** (`GET /api/auskunft`,
+`server/lib/auskunft.mjs`). Eine Person mit Personenbezug in der Sitzung bekommt dort *über sich selbst* alle zu ihr
+gespeicherten Daten. Dazu gehören auch die Felder, die sie in `GET /api/bestand` nicht sieht (z. B. Notfallkontakt,
+Bank, Steuer), außerdem die eigenen Stempel mit Ortsbefund, Ist-Zeiten, Abwesenheiten mit Anmerkung, Anträge,
+Planänderungen, Mitteilungen, die Protokolleinträge zur eigenen Personenkennung und ob Push-Anmeldung und
+Kalenderverweis bestehen. Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre
+eigene Sicht (`bestandFuerRolle`), nicht mehr. Für andere Rollen gilt das nur für die eigene Person; der Betreiber
+bekommt keine Auskunft. Jede Auskunft steht im Protokoll.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

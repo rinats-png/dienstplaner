@@ -16,7 +16,8 @@ import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen } from "../lib/versand.mjs";
+import { zustellen, pushSchluessel } from "../lib/versand.mjs";
+import { auskunftBauen, protokollZurPerson, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -1195,6 +1196,49 @@ export default async (req, context) => {
     if (pfad === "abmelden" && req.method === "POST") {
       await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
+    }
+
+    /* ------------------- Auskunft nach Artikel 15 -------------------
+       Serverseitig, vollständig, maschinenlesbar (lib/auskunft.mjs).
+       Ohne Angabe die eigene Person der Sitzung. Mit ?person=<id> nur für
+       Leitung und „kunde" (dieselben Rollen wie bei Sicherungen) und nur
+       für eine Person des eigenen Betriebs — mit genau dem, was diese Rolle
+       ohnehin sieht. Jede Auskunft steht im Protokoll.                  */
+    if (pfad === "auskunft" && req.method === "GET") {
+      const kA = kennung(req, s);
+      const bA = await bremse("lesen", kA);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.rolle === "betreiber")
+        return antwort({ fehler: "Der Betreiber erstellt keine Auskunft aus einem Betrieb." }, 403);
+      const angefragt = new URL(req.url).searchParams.get("person");
+      const selbst = angefragt === null || angefragt === "" || String(angefragt) === String(s.person);
+      if (selbst && (s.person === null || s.person === undefined))
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      if (!selbst && !AUSKUNFT_FUER_ANDERE.includes(s.rolle)) {
+        await protokoll("auskunft", kA, "abgewiesen", `fremde Person · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Auskunft über andere Personen erstellt nur die Leitung.",
+          text: absageText(s.rolle) }, 403);
+      }
+      const mitA = await bestandJetzt();
+      if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      /* Die Person selbst bekommt ihren vollständigen Datensatz; die Leitung
+         den Betrieb in ihrer eigenen Sicht — keine Erweiterung der Rechte. */
+      const quelle = selbst ? mitA.bestand : bestandFuerRolle(mitA.bestand, s);
+      const mA = eigenerMandant(quelle, s);
+      if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const pid = selbst ? s.person : angefragt;
+      const personA = (mA.personen || []).find((x) => x && String(x.id) === String(pid));
+      if (!personA) return antwort({ fehler: "Diese Person gibt es im eigenen Betrieb nicht." }, 404);
+      const spurA = getStore({ name: "centric-spur" });
+      const protokollA = await protokollZurPerson(spurA, kennung(null, s), personA.id);
+      const push = !!(await store.getMetadata(pushSchluessel(s.bestand, mA.id, personA.id)).catch(() => null));
+      const kalender = !!(await store.getMetadata(`feedperson:${s.bestand}:${mA.id}:${personA.id}`).catch(() => null));
+      const erstellt = new Date().toISOString();
+      const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
+        protokoll: protokollA, push, kalender });
+      await protokoll("auskunft", kA, "erfolg", `${selbst ? "selbst" : "durch Leitung"} · Person ${personA.id}`, wer);
+      return antwort(inhalt, 200, { "content-disposition":
+        `attachment; filename="auskunft-${String(personA.id).replace(/[^A-Za-z0-9_-]/g, "_")}-${erstellt.slice(0, 10)}.json"` });
     }
 
     /* ------------------------- Vollausgabe --------------------------
