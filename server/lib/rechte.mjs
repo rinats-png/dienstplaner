@@ -22,7 +22,7 @@ import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NA
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
   BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
-import { abweichungenSchutzPruefen, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1006,6 +1006,11 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
       geschickt = bezug.mandant;
+      /* Dienstarten (WP-22): anlegen, ändern und löschen nur mit org.edit
+         (Leitung, Kundenrolle) — die Planung nicht (RECHTEMATRIX, Abschnitt 2).
+         Eine unveränderte Kopie stört nicht. */
+      if (!darf(rolle, "org.edit") && hat(geschickt, "dienstarten") && !gleichJson(geschickt.dienstarten, ort.betrieb.dienstarten))
+        return { verweigert: "Dienstarten legt die Leitung an und ändert sie (org.edit)." };
       /* Bestätigungsprotokoll (WP-10 d.1): nur anhängen, Wer und Zeit vom Server. */
       if (hat(geschickt, "bestaetigungen")) {
         const best = bestaetigungenZusammen(ort.betrieb, geschickt.bestaetigungen, sitzung, null);
@@ -1041,12 +1046,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
-    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    const fach = fachpruefungUebermittlung(ort.betrieb, geschickt);
     /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
        nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
     if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
-      console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} geschützte Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
-    if (schutzGrund) return { verweigert: schutzGrund };
+      console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
+    if (fach && fach.sperre) return { verweigert: fach.sperre };
+    /* Warnende Befunde (WP-22): nur mit Bestätigung im selben Speichervorgang —
+       sonst 409 mit der Befundliste (neutrale Texte aus dem Katalog). */
+    if (fach && fach.warnungen) return { verweigert: "Diese Änderung braucht eine Bestätigung.", status: 409, fachbefunde: fach.warnungen };
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */

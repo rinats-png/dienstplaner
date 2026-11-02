@@ -878,6 +878,14 @@ export default async (req, context) => {
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: absageText(s.rolle) }, 403);
         }
+        if (zuSchreiben.verweigert && zuSchreiben.status === 409 && Array.isArray(zuSchreiben.fachbefunde)) {
+          /* WP-22: Warnende Befunde ohne Bestätigung — 409 mit der Befundliste
+             (Texte neutral aus dem Befundkatalog). Der Stand bleibt; die
+             Oberfläche fragt nach und schickt die Bestätigung mit. */
+          await protokoll("schreiben", ks, "bestaetigung-noetig", `${zuSchreiben.fachbefunde.length} Einteilungen`, wer);
+          return antwort({ fehler: zuSchreiben.verweigert, fachbefunde: zuSchreiben.fachbefunde,
+            etag: jetzt ? jetzt.stand : null }, 409);
+        }
         if (zuSchreiben.verweigert) {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",

@@ -266,7 +266,8 @@ describe("über den Handler", () => {
     const r1 = await lies(T.al);
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
     b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät" }];
-    expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
+    /* Dienstarten ändert seit WP-22 nur, wer org.edit hat — der erste Schreiber ist deshalb die Leitung. */
+    expect((await schreib(T.al, b2, r1.etag)).status).toBe(200);
     await altbestand();
     const b1 = JSON.parse(JSON.stringify(r1.bestand));
     b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht" }];
@@ -280,7 +281,8 @@ describe("über den Handler", () => {
     const r1 = await lies(T.al);
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
     b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "Z", name: "Zwischen" }];
-    expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
+    /* Dienstarten ändert seit WP-22 nur, wer org.edit hat — der erste Schreiber ist deshalb die Leitung. */
+    expect((await schreib(T.al, b2, r1.etag)).status).toBe(200);
     await altbestand();
     const b1 = JSON.parse(JSON.stringify(r1.bestand));
     b1.mandanten[0].abweichungen = { ...b1.mandanten[0].abweichungen, "am|2026-12-07": "F" };

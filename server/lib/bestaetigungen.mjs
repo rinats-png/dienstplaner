@@ -61,6 +61,12 @@ export const BEFUND_KATALOG = Object.freeze({
   teilzeit: { text: "arbeitet an diesem Wochentag nicht", quelle: "Teilzeitvereinbarung", stufe: "achtung", sperrt: false },
   folge: { text: "Höchstzahl Dienste in Folge erreicht", quelle: "Einstellung des Betriebs", stufe: "achtung", sperrt: false },
   abwesend: { text: "abwesend", quelle: "Abwesenheit", stufe: "achtung", sperrt: false },
+  /* WP-22: Höchstarbeitszeit und Mindestbesetzung. Ein Dienst über zehn
+     Stunden ist ein Rechtsverstoß, sperrte in der Oberfläche aber bisher
+     nicht (nur die Planprüfung meldete ihn) — vorläufig bestätigungspflichtig.
+     Die Mindestbesetzung warnt (Vorgabe des Betriebs). */
+  tagesgrenze: { text: "Dienst über zehn Stunden", quelle: "§ 3 ArbZG", stufe: "recht", sperrt: false },
+  untergrenze: { text: "Mindestbesetzung unterschritten", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);

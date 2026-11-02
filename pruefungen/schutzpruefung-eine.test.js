@@ -49,10 +49,13 @@ describe("genau eine Schutzprüfung im Code", () => {
     expect(app).not.toMatch(/einsatzSchutz\(/);                           // keine zweite Abfrage daneben
     expect(alle.find(([p]) => p === "server/lib/schutzdurchsetzung.mjs")[1]).toContain("schutzEinsatz(person, dienstart, datum, einst)");
   });
-  it("src/regelwerk.js definiert keine eigene Fassung, sondern reicht weiter", () => {
-    const rw = alle.find(([p]) => p === "src/regelwerk.js")[1];
-    expect(rw).toMatch(/from "\.\.\/server\/lib\/schutzpruefung\.mjs"/);
-    expect(rw).not.toMatch(/function (schutzEinsatz|schutzBefunde|regelBefunde)\(/);
+  it("das Regelwerk definiert keine eigene Fassung, sondern reicht weiter", () => {
+    /* Seit WP-22 steht das Regelwerk in server/lib/regelwerk.mjs; src/regelwerk.js reicht es weiter. */
+    const src = alle.find(([p]) => p === "src/regelwerk.js")[1];
+    expect(src).toMatch(/export \* from "\.\.\/server\/lib\/regelwerk\.mjs"/);
+    const rw = alle.find(([p]) => p === "server/lib/regelwerk.mjs")[1];
+    expect(rw).toMatch(/from "\.\/schutzpruefung\.mjs"/);
+    for (const q of [src, rw]) expect(q).not.toMatch(/function (schutzEinsatz|schutzBefunde|regelBefunde)\(/);
   });
 });
 

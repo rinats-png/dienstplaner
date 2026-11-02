@@ -16,11 +16,31 @@
 export const pad = (n) => String(n).padStart(2, "0");
 export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-export const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
 /** Ein Kalendertag als Millisekunden in UTC — ohne Zeitzone, deshalb schnell
     (Nachprüfung WP-11, N1: `new Date(j, m, t)` kostet unter Windows je Aufruf
     eine Zeitzonenauflösung, die Nachrechnung rief es zehntausendfach). */
-export const tagUTC = (s) => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const UTC_SPEICHER = new Map();
+export const tagUTC = (s) => {
+  let v = UTC_SPEICHER.get(s);
+  if (v === undefined) {
+    const [y, m, d] = s.split("-").map(Number);
+    v = Date.UTC(y, m - 1, d);
+    if (UTC_SPEICHER.size > 20000) UTC_SPEICHER.clear();
+    UTC_SPEICHER.set(s, v);
+  }
+  return v;
+};
+/** n Kalendertage weiter — in UTC gerechnet, dasselbe Ergebnis wie über die
+    Ortszeit; zwischengespeichert, weil die Prüfungen dieselben Tage immer
+    wieder verschieben (WP-22). */
+const TAGE_SPEICHER = new Map();
+export const addDays = (s, n) => {
+  let je = TAGE_SPEICHER.get(s);
+  if (!je) { if (TAGE_SPEICHER.size > 20000) TAGE_SPEICHER.clear(); je = new Map(); TAGE_SPEICHER.set(s, je); }
+  let v = je.get(n);
+  if (v === undefined) { v = new Date(tagUTC(s) + n * 86400000).toISOString().slice(0, 10); je.set(n, v); }
+  return v;
+};
 /** Montag ist 0 — im deutschen Arbeitsrecht beginnt die Woche dort. */
 const DOW = new Map();
 export const dow = (s) => {
@@ -29,7 +49,13 @@ export const dow = (s) => {
   return w;
 };
 
-export const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+/* „HH:MM" ohne Zwischenzeichenketten (WP-22, Laufzeit); alles andere wie bisher. */
+const ziffer = (c) => c >= 48 && c <= 57;
+export const toMin = (t) => {
+  const a = t.charCodeAt(0), b = t.charCodeAt(1), c = t.charCodeAt(3), d = t.charCodeAt(4);
+  if (t.charCodeAt(2) === 58 && ziffer(a) && ziffer(b) && ziffer(c) && ziffer(d)) return (a - 48) * 600 + (b - 48) * 60 + (c - 48) * 10 + (d - 48);
+  return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+};
 
 /** Bezahlte Stunden eines Dienstes, Pause abgezogen. */
 export function dauer(d) {
