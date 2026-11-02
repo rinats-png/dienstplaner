@@ -204,7 +204,9 @@ bisher="$(env_wert "$envdatei" IMAGE_DIGEST)"
 stempel="$(date -u +%Y%m%dT%H%M%SZ)"
 env_kopie="$envdatei.vor-deploy-$stempel"
 BEHALTEN="${CENTRIC_DEPLOY_BEHALTEN:-5}"
-[[ "$BEHALTEN" =~ ^[0-9]+$ ]] && ((BEHALTEN >= 1)) || abbruch 2 "CENTRIC_DEPLOY_BEHALTEN=$BEHALTEN — mindestens 1"
+if [[ ! "$BEHALTEN" =~ ^[0-9]+$ ]] || ((BEHALTEN < 1)); then
+  abbruch 2 "CENTRIC_DEPLOY_BEHALTEN=$BEHALTEN — mindestens 1"
+fi
 
 # Darf der bisherige Stand wieder gestartet werden (H1)? Nur, wenn er
 # freigegeben, nicht gesperrt und aktiv/vorherig ist — dieselbe Prüfung wie
