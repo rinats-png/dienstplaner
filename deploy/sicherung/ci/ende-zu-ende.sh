@@ -18,7 +18,16 @@
 #    T7  Fehlalarm: falsches Repository-Passwort → Fehler UND Fail-Ping
 #    T8  Probe mit falschem Pfeffer → Fehler UND Fail-Ping
 #    T9  zweiter gleichzeitiger Lauf wird durch die Sperre abgewiesen (75)
-#    T10 keine Geheimnisse in Logs und Ausgaben
+#    T11 Status-/Lokalordner im Datenpfad: abgelehnt, nichts angelegt
+#    T12 Ping-URL mit unzulässigen Zeichen: abgelehnt
+#    T13 leere Quelle → Abbruch + Fail-Ping, kein Snapshot
+#    T14 geschrumpfte Quelle (> 20 %) → Abbruch + Fail-Ping, kein Snapshot
+#    T15 Fehler in pruefen / backup / forget / check (Wrapper) → Fail-Ping
+#    T16 hängendes restic → Zeitgrenze, Exit 124, Fail-Ping
+#    T17 hängender Container → Zeitgrenze, Fail-Ping
+#    T18 keine Geheimnisse in Kommandozeilen und docker inspect
+#    T10 keine Geheimnisse in Logs und Ausgaben, Pfeffer-Temp-Datei gelöscht
+#  Die Haupt-Konfiguration nutzt eine .env mit Pfeffer in Anführungszeichen.
 # =====================================================================
 set -Eeuo pipefail
 
@@ -57,9 +66,14 @@ printf 'CENTRIC_PFEFFER=%s\nCENTRIC_ADMIN=%s\nCENTRIC_BASIS=http://127.0.0.1:300
   "$PFEFFER" "$ADMIN" >"$T/prod.env"
 printf 'CENTRIC_PFEFFER=%s\nCENTRIC_ADMIN=%s\nCENTRIC_BASIS=http://127.0.0.1:3000\n' \
   "$(openssl rand -base64 32)" "$ADMIN" >"$T/prod-falscher-pfeffer.env"
+# Wie eine von Hand gepflegte .env: Pfeffer in Anführungszeichen. docker
+# compose entfernt sie, docker run --env-file nicht — die Skripte müssen
+# denselben Pfeffer wie der Dienst sehen (sonst scheitert die Probe).
+printf 'CENTRIC_PFEFFER="%s"\nCENTRIC_ADMIN=%s\nCENTRIC_BASIS=http://127.0.0.1:3000\n' \
+  "$PFEFFER" "$ADMIN" >"$T/prod-anfuehrung.env"
 printf '%s\n' "$RESTIC_PW" >"$T/restic-pw"
 printf '%s\n' "$FALSCH_PW" >"$T/restic-pw-falsch"
-chmod 600 "$T/prod.env" "$T/prod-falscher-pfeffer.env" "$T/restic-pw" "$T/restic-pw-falsch"
+chmod 600 "$T/prod.env" "$T/prod-anfuehrung.env" "$T/prod-falscher-pfeffer.env" "$T/restic-pw" "$T/restic-pw-falsch"
 
 # --- Testdaten über die echte Anwendungsschicht im Bild -----------------
 testdaten() {
@@ -92,8 +106,9 @@ for _ in $(seq 1 30); do curl -fsS -o /dev/null "http://127.0.0.1:$PORT/bereit" 
 zaehle() { grep -c -x "$1" "$PINGS" || true; }
 
 # --- Konfiguration ---------------------------------------------------------
-konfig() { # datei passwortdatei env-datei
-  cat >"$1" <<EOF
+konfig() { # datei passwortdatei env-datei [zusätzliche Zeilen …] (spätere überschreiben)
+  local datei="$1"
+  cat >"$datei" <<EOF
 # CI-Testkonfiguration
 CENTRIC_PROD_IMAGE=$BILD_ID
 CENTRIC_DATEN_PFAD=$T/daten
@@ -105,10 +120,13 @@ PROBE_PING_URL=http://127.0.0.1:$PORT/ping/$PROBE_ID
 LOKAL_BEHALTEN=2
 STATUS_VERZEICHNIS=$T/status
 EOF
-  chmod 600 "$1"
+  shift 3
+  local z
+  for z in "$@"; do printf '%s\n' "$z" >>"$datei"; done
+  chmod 600 "$datei"
 }
 KONFIG="$T/konfig.env"
-konfig "$KONFIG" "$T/restic-pw" "$T/prod.env"
+konfig "$KONFIG" "$T/restic-pw" "$T/prod-anfuehrung.env"
 konfig "$T/konfig-falsches-pw.env" "$T/restic-pw-falsch" "$T/prod.env"
 konfig "$T/konfig-falscher-pfeffer.env" "$T/restic-pw" "$T/prod-falscher-pfeffer.env"
 
@@ -248,7 +266,100 @@ wait "$HALTER" 2>/dev/null || true
 grep -q "hält die Sperre" "$AUS/t9-sperre.txt" || fehl "T9: Meldung fehlt"
 ok "T9 zweiter gleichzeitiger Lauf (Sicherung und Probe) durch Sperre abgewiesen (Exit 75, kein Ping)"
 
+fails() { grep -c "^POST /ping/$PING_ID/fail " "$PINGS" || true; }
+# Ein Lauf, der scheitern muss: Fehlercode, Fail-Ping, Schritt in status.json.
+fehlerlauf() { # name erwarteter-schritt status-verzeichnis konfig [VAR=wert …]
+  local name="$1" schritt="$2" status="$3" konf="$4" vorher
+  shift 4
+  vorher="$(fails)"
+  lauf "$name" fehler env "$@" "$SICH/sicherung-ausser-haus.sh" "$konf"
+  [[ "$(fails)" -eq $((vorher + 1)) ]] || fehl "$name: Fail-Ping fehlt"
+  [[ "$(status_feld "$status/status.json" ergebnis)" == "fehler" ]] || fehl "$name: status.json nicht ergebnis=fehler"
+  [[ "$(status_feld "$status/status.json" schritt)" == "$schritt" ]] ||
+    fehl "$name: Schritt $(status_feld "$status/status.json" schritt), erwartet $schritt"
+}
+
+# === T11 Arbeitsordner im Datenpfad: abgelehnt, bevor etwas angelegt wird ===
+konfig "$T/konfig-im-datenpfad.env" "$T/restic-pw" "$T/prod.env" "STATUS_VERZEICHNIS=$T/daten/sicherung"
+lauf t11-im-datenpfad 78 "$SICH/sicherung-ausser-haus.sh" "$T/konfig-im-datenpfad.env"
+[[ ! -e "$T/daten/sicherung" ]] || fehl "T11: Ordner im Datenpfad wurde trotzdem angelegt"
+konfig "$T/konfig-gleich-datenpfad.env" "$T/restic-pw" "$T/prod.env" "LOKAL_ZIEL=$T/daten"
+lauf t11-gleich-datenpfad 78 "$SICH/sicherung-ausser-haus.sh" "$T/konfig-gleich-datenpfad.env"
+ok "T11 Statusordner im Datenpfad bzw. Ziel = Datenpfad abgelehnt (Exit 78), nichts angelegt"
+
+# === T12 Ping-URL mit unzulässigen Zeichen ===================================
+konfig "$T/konfig-url.env" "$T/restic-pw" "$T/prod.env" "ALARM_PING_URL=http://127.0.0.1:$PORT/a\"b"
+lauf t12-ping-url 78 "$SICH/sicherung-ausser-haus.sh" "$T/konfig-url.env"
+ok "T12 Ping-URL mit Anführungszeichen abgelehnt (Exit 78)"
+
+# === T13 leere Quelle =========================================================
+mkdir -m 700 "$T/daten-leer" "$T/status-leer"
+konfig "$T/konfig-leer.env" "$T/restic-pw" "$T/prod.env" \
+  "CENTRIC_DATEN_PFAD=$T/daten-leer" "STATUS_VERZEICHNIS=$T/status-leer"
+SNAP_VORHER="$(snap_anzahl)"
+fehlerlauf t13-leer plausibilitaet "$T/status-leer" "$T/konfig-leer.env"
+grep -q "Leere Sicherung" "$AUS/t13-leer.txt" || fehl "T13: Meldung fehlt"
+[[ "$(snap_anzahl)" -eq "$SNAP_VORHER" ]] || fehl "T13: leere Sicherung ins Repository geschrieben"
+ok "T13 leere Quelle: Abbruch (plausibilitaet), Fail-Ping, kein Snapshot"
+
+# === T14 geschrumpfte Quelle ==================================================
+cp -a "$T/daten" "$T/daten-klein"
+rm -f "$T/daten-klein/centric-spur/"* "$T/daten-klein/centric-sitzungen/"*
+konfig "$T/konfig-klein.env" "$T/restic-pw" "$T/prod-anfuehrung.env" "CENTRIC_DATEN_PFAD=$T/daten-klein"
+fehlerlauf t14-schwund plausibilitaet "$T/status" "$T/konfig-klein.env"
+grep -q "Rückgang über 20 %" "$AUS/t14-schwund.txt" || fehl "T14: Meldung fehlt"
+[[ "$(snap_anzahl)" -eq "$SNAP_VORHER" ]] || fehl "T14: geschrumpfte Sicherung ins Repository geschrieben"
+ok "T14 Dateizahl um mehr als 20 % gefallen: Abbruch (plausibilitaet), Fail-Ping, kein Snapshot"
+
+# === T15 Fehler in pruefen, backup, forget, check =============================
+konfig "$T/konfig-fake.env" "$T/restic-pw" "$T/prod-anfuehrung.env" \
+  "RESTIC_BIN=$HIER/fake-restic.sh" "DOCKER_BIN=$HIER/fake-docker.sh" \
+  "ZEITGRENZE_RESTIC=10" "ZEITGRENZE_CONTAINER=10"
+fehlerlauf t15-pruefen pruefen "$T/status" "$T/konfig-fake.env" FAKE_DOCKER=pruefen-fehler
+for befehl in backup forget check; do
+  fehlerlauf "t15-$befehl" "restic-$befehl" "$T/status" "$T/konfig-fake.env" FAKE_RESTIC=fehler "FAKE_BEFEHL=$befehl"
+done
+ok "T15 Fehler in pruefen / restic backup / forget / check: je Fehlercode, Fail-Ping, richtiger Schritt in status.json"
+
+# === T16 Zeitgrenze: hängendes restic ========================================
+T0="$(date +%s)"
+fehlerlauf t16-haengt-restic restic-backup "$T/status" "$T/konfig-fake.env" FAKE_RESTIC=haengt FAKE_BEFEHL=backup
+[[ "$LETZTER_CODE" -eq 124 ]] || fehl "T16: Exit $LETZTER_CODE, erwartet 124"
+[[ $(($(date +%s) - T0)) -lt 60 ]] || fehl "T16: Zeitgrenze griff nicht rechtzeitig"
+grep -q "ZEITÜBERSCHREITUNG: restic backup" "$AUS/t16-haengt-restic.txt" || fehl "T16: Meldung fehlt"
+ok "T16 hängendes restic backup nach 10 s abgebrochen (Exit 124), Fail-Ping, Sperre wieder frei"
+
+# === T17 Zeitgrenze: hängender Container =====================================
+T0="$(date +%s)"
+fehlerlauf t17-haengt-container sichern "$T/status" "$T/konfig-fake.env" FAKE_DOCKER=haengt-sichern
+[[ $(($(date +%s) - T0)) -lt 60 ]] || fehl "T17: Zeitgrenze griff nicht rechtzeitig"
+grep -q "ZEITÜBERSCHREITUNG: Container" "$AUS/t17-haengt-container.txt" || fehl "T17: Meldung fehlt"
+ok "T17 hängender Sicherungs-Container nach 10 s abgebrochen, Fail-Ping"
+
+# === T18 keine Geheimnisse in argv und docker inspect ========================
+: >"$T/argv.txt"
+: >"$T/inspect.txt"
+ohne_umgebung "$SICH/sicherung-ausser-haus.sh" "$KONFIG" >"$AUS/t18-beobachtet.txt" 2>&1 &
+LAEUFER=$!
+INSPIZIERT=0
+while kill -0 "$LAEUFER" 2>/dev/null; do
+  ps -eww -o args= >>"$T/argv.txt" 2>/dev/null || true
+  for c in $(docker ps -q); do
+    docker inspect "$c" >>"$T/inspect.txt" 2>/dev/null && INSPIZIERT=$((INSPIZIERT + 1))
+  done
+  sleep 0.1
+done
+wait "$LAEUFER" || fehl "T18: beobachteter Lauf scheiterte"
+for g in "$PFEFFER" "$ADMIN" "$RESTIC_PW" "$PING_ID" "$PROBE_ID"; do
+  if grep -qF -- "$g" "$T/argv.txt"; then fehl "T18: Geheimnis in einer Kommandozeile"; fi
+done
+for g in "$ADMIN" "$RESTIC_PW" "$PING_ID" "$PROBE_ID"; do
+  if grep -qF -- "$g" "$T/inspect.txt"; then fehl "T18: Geheimnis in docker inspect"; fi
+done
+ok "T18 $(sort -u "$T/argv.txt" | wc -l) Kommandozeilen und $INSPIZIERT Container-Inspektionen ohne Passwort, Admin-Schlüssel, Ping-IDs; Pfeffer in keiner Kommandozeile (im Container-Env zwangsläufig, nur er)"
+
 # === T10 keine Geheimnisse in Logs/Ausgaben ==================================
+[[ -z "$(find "$T"/status* -name '.pfeffer-*' -print -quit)" ]] || fehl "T10: gefilterte Pfeffer-Datei nicht gelöscht"
 for g in "$PFEFFER" "$ADMIN" "$RESTIC_PW" "$FALSCH_PW" "$PING_ID" "$PROBE_ID"; do
   if grep -rqF -- "$g" "$AUS" "$T/status/log" "$T/status/status.json" "$T/status/probe-status.json"; then
     fehl "T10: Geheimnis in Log/Ausgabe gefunden"

@@ -15,16 +15,20 @@ on:
       - "deploy/sicherung/**"
       - ".github/workflows/betrieb-sicherung.yml"
       - "werkzeug/ablage-sicherung.mjs"
-      - "server/lib/ablage.mjs"
-      - "server/lib/bestand.mjs"
+      - "server/**"
+      - "server.mjs"
+      - "package.json"
+      - "package-lock.json"
       - "Dockerfile"
   pull_request:
     paths:
       - "deploy/sicherung/**"
       - ".github/workflows/betrieb-sicherung.yml"
       - "werkzeug/ablage-sicherung.mjs"
-      - "server/lib/ablage.mjs"
-      - "server/lib/bestand.mjs"
+      - "server/**"
+      - "server.mjs"
+      - "package.json"
+      - "package-lock.json"
       - "Dockerfile"
   workflow_dispatch:
 
@@ -34,7 +38,7 @@ permissions:
 jobs:
   sicherung:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       BILD: centric-sicherung:${{ github.sha }}
       RESTIC_VERSION: "0.18.1"

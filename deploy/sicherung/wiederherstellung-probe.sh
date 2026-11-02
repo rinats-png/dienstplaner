@@ -55,7 +55,7 @@ BESTAENDE_ERWARTET=0 BESTAENDE_LESBAR=0 KONTEN=0
 GESUND="nein"
 
 aufraeumen() {
-  if [[ -n "$PROBE_NAME" ]]; then docker rm -fv "$PROBE_NAME" >/dev/null 2>&1 || true; fi
+  if [[ -n "$PROBE_NAME" ]]; then docker_lauf rm -fv "$PROBE_NAME" >/dev/null 2>&1 || true; fi
   if [[ -n "$ARBEIT" && -d "$ARBEIT" ]]; then
     chmod -R u+rwX "$ARBEIT" 2>/dev/null || true
     rm -rf -- "$ARBEIT"
@@ -75,10 +75,11 @@ beenden() {
   local code=$?
   trap - EXIT
   set +e
+  pfeffer_env_weg
   if [[ "$ERGEBNIS" == "gesperrt" ]]; then exit "$CODE_GESPERRT"; fi
   if [[ "$ERGEBNIS" != "ok" && -n "$PROBE_NAME" ]]; then
     log "Letzte Zeilen des Probe-Containers:"
-    docker logs --tail 30 "$PROBE_NAME" 2>&1 | sed 's/^/  | /'
+    docker_lauf logs --tail 30 "$PROBE_NAME" 2>&1 | sed 's/^/  | /'
   fi
   aufraeumen
   if [[ "$ERGEBNIS" != "ok" ]]; then
@@ -112,7 +113,8 @@ mkdir -m 700 "$RESTIC_ZIEL" "$DATEN_ZIEL"
 # --- 1. restic restore ---------------------------------------------------
 SCHRITT="snapshot-waehlen"
 if [[ "$SNAPSHOT" == "latest" ]]; then
-  SNAPSHOT_ID="$("$RESTIC_BIN" snapshots --json --host "$RESTIC_HOST" --tag centric --latest 1 |
+  # --group-by host: sonst gälte --latest 1 je Pfad (jeder Lauf hat einen eigenen)
+  SNAPSHOT_ID="$(restic_lauf snapshots --json --host "$RESTIC_HOST" --tag centric --group-by host --latest 1 |
     grep -o '"id":"[0-9a-f]\{64\}"' | tail -n1 | cut -d'"' -f4 || true)"
   [[ -n "$SNAPSHOT_ID" ]] || { log "Kein Snapshot mit Host-Kennung $RESTIC_HOST und Tag centric gefunden"; exit 1; }
 else
@@ -121,7 +123,7 @@ fi
 log "Snapshot: $SNAPSHOT_ID"
 
 SCHRITT="restic-restore"
-"$RESTIC_BIN" restore "$SNAPSHOT_ID" --target "$RESTIC_ZIEL"
+restic_lauf restore "$SNAPSHOT_ID" --target "$RESTIC_ZIEL"
 mapfile -t FERTIGE < <(find "$RESTIC_ZIEL" -type f -name FERTIG -path '*/centric-sicherung-*/FERTIG')
 [[ ${#FERTIGE[@]} -eq 1 ]] || { log "Im Snapshot genau eine Sicherung erwartet, gefunden: ${#FERTIGE[@]}"; exit 1; }
 SICHERUNG_ORDNER="$(dirname "${FERTIGE[0]}")"
@@ -129,6 +131,7 @@ log "Sicherung im Snapshot: $(basename "$SICHERUNG_ORDNER")"
 
 # --- 2. pruefen ----------------------------------------------------------
 SCHRITT="pruefen"
+pfeffer_env_anlegen
 im_bild -v "$SICHERUNG_ORDNER:/sicherung:ro" -- \
   werkzeug/ablage-sicherung.mjs pruefen --sicherung /sicherung
 
@@ -160,14 +163,16 @@ log "Manifest-Abgleich: $GLEICH gleich, $ABWEICHEND abweichend, $FEHLEND fehlend
 # --- 5. Probe-Container ohne Netz ----------------------------------------
 SCHRITT="probe-container"
 PROBE_NAME="centric-probe-$(date -u +%Y%m%d%H%M%S)-$$"
-docker run -d --name "$PROBE_NAME" --network none --read-only --tmpfs /tmp --cap-drop ALL \
+# Nur der Pfeffer geht hinein (gefilterte Env-Datei), nicht die ganze .env:
+# Der Probe-Server braucht weder Admin-Schlüssel noch Mail-Zugang.
+docker_lauf run -d --name "$PROBE_NAME" --network none --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true --memory 512m \
-  --user "$(id -u):$(id -g)" --env-file "$CENTRIC_ENV_DATEI" \
+  --user "$(id -u):$(id -g)" --env-file "$PFEFFER_ENV" \
   -v "$DATEN_ZIEL:/data" -v "$HILFEN_VERZ:/hilfen:ro" \
   --health-interval 3s --health-start-period 5s --health-retries 3 \
   "$CENTRIC_PROD_IMAGE" >/dev/null
 for _ in $(seq 1 60); do
-  zustand="$(docker inspect -f '{{.State.Health.Status}}' "$PROBE_NAME" 2>/dev/null || echo fehlt)"
+  zustand="$(docker_lauf inspect -f '{{.State.Health.Status}}' "$PROBE_NAME" 2>/dev/null || echo fehlt)"
   [[ "$zustand" == "healthy" ]] && break
   [[ "$zustand" == "unhealthy" || "$zustand" == "fehlt" ]] && break
   sleep 2
@@ -177,7 +182,7 @@ GESUND="ja"
 log "Probe-Container healthy (ohne Netz)"
 
 SCHRITT="bestaende-lesen"
-ZAEHLUNG="$(docker exec "$PROBE_NAME" node /hilfen/bestaende-zaehlen.mjs | tail -n1)" || true
+ZAEHLUNG="$(docker_lauf exec "$PROBE_NAME" node /hilfen/bestaende-zaehlen.mjs | tail -n1)" || true
 BESTAENDE_LESBAR="$(printf '%s' "$ZAEHLUNG" | json_zahl lesbar)"
 KONTEN="$(printf '%s' "$ZAEHLUNG" | json_zahl konten)"
 FEHLER_N="$(printf '%s' "$ZAEHLUNG" | json_zahl fehler)"
