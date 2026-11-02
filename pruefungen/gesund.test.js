@@ -54,7 +54,7 @@ describe("Stufen", () => {
     expect(G.oeffentlich(e)).toEqual({ status: 200, inhalt: { status: "ok" } });
   });
 
-  it("Platz: Warnschwelle → warnung (200), Kritisch-Schwelle → kritisch (503); nach außen nur die Stufe", async () => {
+  it("Platz: Warnschwelle → warnung; Kritisch-Schwelle → Alarmstufe kritisch, nach außen aber warnung/200 (N1)", async () => {
     process.env.CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT = "101";
     let e = await G.zustand({ frisch: true });
     expect(e.pruefungen.platz.stufe).toBe("warnung");
@@ -62,18 +62,60 @@ describe("Stufen", () => {
     process.env.CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT = "101";
     e = await G.zustand({ frisch: true });
     expect(e.pruefungen.platz.stufe).toBe("kritisch");
-    expect(G.oeffentlich(e)).toEqual({ status: 503, inhalt: { status: "kritisch" } });
+    expect(e.stufe).toBe("kritisch");                       // für den Alarm
+    expect(G.oeffentlich(e)).toEqual({ status: 200, inhalt: { status: "warnung" } });
   });
 
-  it("Ablage nicht beschreibbar → kritisch", async () => {
-    const ort = path.join(wurzel, "centric-gesund");
+  it("Ablage nicht beschreibbar → kritisch, nach außen 503", async () => {
+    const ort = path.join(wurzel, ".gesund");
     await rm(ort, { recursive: true, force: true });
     await writeFile(ort, "kein Verzeichnis");
     try {
       const e = await G.zustand({ frisch: true });
       expect(e.pruefungen.ablage.stufe).toBe("kritisch");
-      expect(e.stufe).toBe("kritisch");
+      expect(G.oeffentlich(e)).toEqual({ status: 503, inhalt: { status: "kritisch" } });
     } finally { await rm(ort, { force: true }); }
+  });
+
+  it("H1: 25 parallele Prüfungen — eine geteilte Probe, keine kritisch, keine Probedatei bleibt liegen", async () => {
+    const alle = await Promise.all(Array.from({ length: 25 }, (_, i) => G.zustand({ frisch: i % 2 === 0 })));
+    expect(alle.filter((e) => e.pruefungen.ablage.stufe !== "ok")).toEqual([]);
+    expect(new Set(alle).size).toBe(1);
+    for (let runde = 0; runde < 5; runde++) {
+      G.zustandVergessen();
+      const r = await Promise.all(Array.from({ length: 25 }, () => G.zustand({ frisch: true })));
+      expect(r.filter((e) => e.stufe === "kritisch")).toEqual([]);
+    }
+    const { readdir } = await import("node:fs/promises");
+    expect((await readdir(path.join(wurzel, ".gesund"))).filter((n) => n.startsWith("probe"))).toEqual([]);
+  });
+
+  it("M2: die Probe ist kein Store — ablage-sicherung von 6e6d582 (vor WP-05) sichert die Ablage weiter", async () => {
+    const { execFileSync } = await import("node:child_process");
+    let alt;
+    try { alt = execFileSync("git", ["show", "6e6d582:werkzeug/ablage-sicherung.mjs"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { return; }                                        // ohne Verlauf nicht prüfbar
+    await G.zustand({ frisch: true });                       // legt .gesund an
+    const werkzeug = await mkdtemp(path.join(tmpdir(), "centric-altsich-"));
+    const ziel = await mkdtemp(path.join(tmpdir(), "centric-altsich-ziel-"));
+    try {
+      await writeFile(path.join(werkzeug, "ablage-sicherung.mjs"), alt);
+      const lauf = (quelle, nach = ziel) => spawnSync(process.execPath, [path.join(werkzeug, "ablage-sicherung.mjs"), "sichern",
+        "--quelle", quelle, "--ziel", nach], { encoding: "utf8", env: { ...process.env, CENTRIC_PFEFFER: "g" } });
+      const r = lauf(wurzel);
+      expect(r.status, r.stdout + r.stderr).toBe(0);
+      /* Befund belegt: ein Store-Ordner centric-gesund (Stand 01b55ba) ließ die alte Fassung abbrechen. */
+      const mitStore = await mkdtemp(path.join(tmpdir(), "centric-altsich-q-"));
+      await mkdir(path.join(mitStore, "centric-gesund"));
+      await writeFile(path.join(mitStore, "centric-gesund", "probe.json"), "{}");
+      const r2 = lauf(mitStore, await mkdtemp(path.join(tmpdir(), "centric-altsich-ziel2-")));
+      expect(r2.status).not.toBe(0);
+      expect(r2.stderr + r2.stdout).toMatch(/nicht eingeordnet/);
+      await rm(mitStore, { recursive: true, force: true });
+    } finally {
+      await rm(werkzeug, { recursive: true, force: true });
+      await rm(ziel, { recursive: true, force: true });
+    }
   });
 
   it("Sicherung: jung ok, alt warnung, unlesbar warnung, nicht eingerichtet ok", async () => {
@@ -179,11 +221,12 @@ describe("Alarm", () => {
     expect(gesendet.at(-1)).toMatchObject({ dienst: "CENTRIC", art: "alarm", stufe: "warnung", betroffen: ["platz"] });
     /* Gleichbleibend: nichts Neues. */
     expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
-    /* Verschärfung: erneut, nach Entprellung. */
-    expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBeNull();
-    expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBeNull();
+    /* Verschärfung während der laufenden Störung: sofort erneut (die Störung
+       ist längst entprellt), mit allen bisher betroffenen Prüfungen. */
     expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBe("alarm");
-    expect(gesendet.at(-1)).toMatchObject({ stufe: "kritisch", betroffen: ["ablage"] });
+    expect(gesendet.at(-1)).toMatchObject({ stufe: "kritisch", betroffen: ["ablage", "platz"] });
+    /* Zurück auf warnung: keine neue Meldung (schlimmste bleibt kritisch). */
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
     /* Erinnerung nach 6 h. */
     expect(await schritt(ergebnis("kritisch", ["ablage"]), 6 * 3600000)).toBe("erinnerung");
     /* Entwarnung nach stabiler Rückkehr. */
@@ -196,6 +239,20 @@ describe("Alarm", () => {
       expect(Object.keys(n).sort()).toEqual(["art", "betroffen", "dienst", "stufe", "zeit"]);
       for (const b of n.betroffen) expect(["sperre", "ablage", "platz", "sicherung", "loeschlauf", "fehler"]).toContain(b);
     }
+  });
+
+  it("M1: Pendeln warnung ↔ kritisch gibt einen Alarm (schlimmste Stufe), nicht keinen", async () => {
+    const gesendet = [];
+    const g = G.alarmGeber({ entprellungMs: 120000, wiederholungMs: 6 * 3600000, senden: async (n) => { gesendet.push(n); } });
+    let t = 1_000_000;
+    await g.beobachten(ergebnis("ok"), t);
+    for (let i = 0; i < 60; i++) {
+      t += 60000;
+      await g.beobachten(i % 2 ? ergebnis("kritisch", ["ablage"]) : ergebnis("warnung", ["platz"]), t);
+    }
+    expect(gesendet.length).toBeGreaterThanOrEqual(1);
+    expect(gesendet[0]).toMatchObject({ art: "alarm", stufe: "kritisch" });
+    expect(gesendet[0].zeit <= new Date(1_000_000 + 5 * 60000).toISOString()).toBe(true);
   });
 
   it("≤ 5 min: mit Vorgabe-Takt (60 s) und -Entprellung (120 s), Eintritt zu ungünstigster Zeit", async () => {
@@ -232,6 +289,22 @@ describe("Alarm", () => {
       await G.webhookSender("http://127.0.0.1:1/nix")({ a: 1 });   // wirft nicht
     } finally { await new Promise((f) => srv.close(f)); }
   });
+
+  it("N2: der Webhook folgt keiner Umleitung", async () => {
+    const { createServer } = await import("node:http");
+    let umgeleitetErreicht = 0;
+    const ziel = createServer((_q, a) => { umgeleitetErreicht++; a.end("ok"); });
+    await new Promise((f) => ziel.listen(0, "127.0.0.1", f));
+    const umleiter = createServer((_q, a) => { a.writeHead(307, { location: `http://127.0.0.1:${ziel.address().port}/x` }); a.end(); });
+    await new Promise((f) => umleiter.listen(0, "127.0.0.1", f));
+    try {
+      await G.webhookSender(`http://127.0.0.1:${umleiter.address().port}/haken`)({ dienst: "CENTRIC" });
+      expect(umgeleitetErreicht).toBe(0);
+    } finally {
+      await new Promise((f) => ziel.close(f));
+      await new Promise((f) => umleiter.close(f));
+    }
+  });
 });
 
 /* ---------- über den echten Server ---------- */
@@ -244,10 +317,12 @@ describe("server.mjs: /gesund und Healthcheck", () => {
     for (const d of [statik, daten]) if (d) await rm(d, { recursive: true, force: true });
   });
 
-  async function starten(env) {
+  async function starten(env, { probeKaputt = false } = {}) {
     const port = 30000 + Math.floor(Math.random() * 20000);
+    const datenOrt = await mkdtemp(path.join(tmpdir(), "centric-gesund-d-"));
+    if (probeKaputt) await writeFile(path.join(datenOrt, ".gesund"), "kein Verzeichnis");
     const k = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
-      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: await mkdtemp(path.join(tmpdir(), "centric-gesund-d-")),
+      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: datenOrt,
         CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: "g", NODE_ENV: "production", CENTRIC_AUFRAEUMEN: "aus",
         CENTRIC_GESUND_PLATZ_KRITISCH_MB: "0", ...env } });
     kinder.push(k);
@@ -288,13 +363,18 @@ describe("server.mjs: /gesund und Healthcheck", () => {
     expect([0, "windows"]).toContain(await healthcheck(port));
   }, 30000);
 
-  it("warnung: 200 und Healthcheck bleibt grün; kritisch: 503 und Healthcheck rot — ohne Einzelheiten", async () => {
+  it("warnung und Platz kritisch: 200, Healthcheck grün; Ablage kritisch: 503, Healthcheck rot — ohne Einzelheiten", async () => {
     const pw = await starten({ CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT: "101" });
     const w = await fetch(`http://127.0.0.1:${pw}/gesund`);
     expect(w.status).toBe(200);
     expect(await w.json()).toEqual({ status: "warnung" });
     expect([0, "windows"]).toContain(await healthcheck(pw));
-    const pk = await starten({ CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT: "101" });
+    const pp = await starten({ CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT: "101" });
+    const pl = await fetch(`http://127.0.0.1:${pp}/gesund`);
+    expect(pl.status).toBe(200);
+    expect(await pl.json()).toEqual({ status: "warnung" });
+    expect([0, "windows"]).toContain(await healthcheck(pp));
+    const pk = await starten({}, { probeKaputt: true });
     const k = await fetch(`http://127.0.0.1:${pk}/gesund`);
     expect(k.status).toBe(503);
     expect(await k.json()).toEqual({ status: "kritisch" });

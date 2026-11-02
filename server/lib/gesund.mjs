@@ -8,10 +8,13 @@
    Drei Stufen:
      ok        alles in Ordnung
      warnung   Aufmerksamkeit nötig, der Dienst arbeitet (HTTP 200)
-     kritisch  der Dienst arbeitet nicht verlässlich (HTTP 503)
-   Nur „kritisch“ macht den Container unhealthy. Eine knappe Platte, eine
-   alte Sicherung oder gehäufte Fehler sind Warnungen — ein Neustart hilft
-   gegen keines davon, und eine Neustart-Schleife machte es schlimmer.
+     kritisch  Alarmstufe; HTTP 503 und unhealthy NUR, wenn Sperre oder
+               Ablage kritisch sind — dann arbeitet der Dienst nicht
+               verlässlich. Eine kritisch volle Platte alarmiert als
+               „kritisch“, nach außen steht „warnung“ mit 200: Ein Neustart
+               schafft keinen Platz, und eine Neustart-Schleife oder ein R0
+               im Deploy machte es schlimmer. Alte Sicherung und gehäufte
+               Fehler sind Warnungen.
 
    Nach außen (anmeldefrei, über Caddy) steht nur die Stufe:
      {"status":"ok"} · {"status":"warnung"} · {"status":"kritisch"}
@@ -23,9 +26,10 @@
 
    Prüfungen:
      sperre      Raumsperre ohne hängende Arbeit, kein Schreibstopp  → kritisch
-     ablage      Probe schreiben und lesen im eigenen Store
-                 „centric-gesund“ (keine Kundendaten, keine Raumsperre)  → kritisch
-     platz       freier Platz unter CENTRIC_DATEN — Warn-/Kritisch-Schwelle
+     ablage      Probe schreiben, zurücklesen, löschen in <Daten>/.gesund
+                 (keine Kundendaten, keine Raumsperre, kein Store)       → kritisch
+     platz       freier Platz unter CENTRIC_DATEN — Warn-/Kritisch-Schwelle;
+                 kritisch alarmiert als kritisch, nach außen aber „warnung“
      sicherung   Alter der letzten erfolgreichen Sicherung (WP-04), wenn
                  CENTRIC_SICHERUNG_STATUS auf deren Statusdatei zeigt  → warnung
      loeschlauf  letzter Lauf des Löschlaufs (aufraeumen:letzter)      → warnung
@@ -35,7 +39,9 @@
    anmeldefrei, und ein Ansturm soll nicht je Anfrage eine Probe schreiben.
    ========================================================================== */
 
-import { statfs, readFile } from "node:fs/promises";
+import { statfs, readFile, writeFile, mkdir, unlink, open } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
 import { sperrZustand } from "./raumsperre.mjs";
 import { zaehlung, FENSTER_MS } from "./gesund-zaehler.mjs";
@@ -66,17 +72,37 @@ const START = Date.now();
 
 /* ------------------------------------------------------------------ */
 
-async function ablagePruefen() {
+/* Die Probe liegt in <CENTRIC_DATEN>/.gesund/ — einem Punkt-Ordner, kein
+   Store. Ältere und neue Fassungen von werkzeug/ablage-sicherung.mjs
+   überspringen Punkt-Einträge im Wurzelverzeichnis; ein neuer Store-Ordner
+   hätte die Sicherung eines älteren Bildes abbrechen lassen (Review M2).
+   Je Lauf ein eigener Dateiname (schreiben, synchronisieren, zurücklesen,
+   löschen): Parallele Läufe stören sich nicht (Review H1). */
+const PROBE_ORDNER = () => path.join(ablageWurzel(), ".gesund");
+
+async function ablageEinmal() {
+  const marke = randomBytes(12).toString("hex");
+  const datei = path.join(PROBE_ORDNER(), `probe-${marke}.json`);
   try {
-    const s = getStore({ name: "centric-gesund", consistency: "strong" });
-    const wert = { zeit: Date.now(), zufall: Math.random() };
-    await s.setJSON("probe", wert);
-    const zurueck = await s.get("probe", { type: "json" });
-    if (!zurueck || zurueck.zufall !== wert.zufall) return { stufe: "kritisch", text: "Probe nicht zurückgelesen" };
+    await mkdir(PROBE_ORDNER(), { recursive: true, mode: 0o700 });
+    await writeFile(datei, JSON.stringify({ marke }), { mode: 0o600 });
+    const h = await open(datei, "r+");
+    try { await h.sync(); } finally { await h.close(); }
+    const zurueck = JSON.parse(await readFile(datei, "utf8"));
+    if (!zurueck || zurueck.marke !== marke) return { stufe: "kritisch", text: "Probe nicht zurückgelesen" };
     return { stufe: "ok" };
   } catch (e) {
     return { stufe: "kritisch", text: `Probe gescheitert (${String(e && /** @type {any} */ (e).code || "Fehler")})` };
+  } finally {
+    await unlink(datei).catch(() => {});
   }
+}
+
+/** Einmal wiederholen, bevor „kritisch“ gilt — ein einzelner Ausreißer soll
+    nicht 10 s lang als kritisch zwischengespeichert werden. */
+async function ablagePruefen() {
+  const erst = await ablageEinmal();
+  return erst.stufe === "ok" ? erst : ablageEinmal();
 }
 
 async function platzPruefen(g) {
@@ -137,14 +163,24 @@ function fehlerPruefen(g, jetzt) {
 /* ------------------------------------------------------------------ */
 
 let letzte = null;
+/** Die gerade laufende Prüfung — alle gleichzeitigen Aufrufer teilen sie
+    (single-flight, Review H1), auch die mit frisch = true. */
+let laufend = null;
 
 /**
  * Alle Prüfungen. Ergebnis: { stufe, pruefungen: { name: {stufe, …} } }.
- * Zwischengespeichert für cacheMs (frisch = true erzwingt eine neue Prüfung).
+ * Zwischengespeichert für cacheMs (frisch = true erzwingt eine neue Prüfung,
+ * teilt aber eine schon laufende).
  */
 export async function zustand({ jetzt = Date.now(), frisch = false } = {}) {
   const g = grenzwerte();
   if (!frisch && letzte && jetzt - letzte.zeit < g.cacheMs) return letzte.ergebnis;
+  if (laufend) return laufend;
+  laufend = pruefenAlle(g, jetzt).finally(() => { laufend = null; });
+  return laufend;
+}
+
+async function pruefenAlle(g, jetzt) {
   const sp = sperrZustand();
   const pruefungen = {
     sperre: sp.gesund ? { stufe: "ok" }
@@ -164,9 +200,19 @@ export async function zustand({ jetzt = Date.now(), frisch = false } = {}) {
 /** Nur für Prüfungen. */
 export function zustandVergessen() { letzte = null; }
 
-/** Was nach außen geht: nur die Stufe. HTTP 503 nur bei kritisch. */
+/** Prüfungen, deren „kritisch“ den Dienst wirklich stört — nur sie machen
+    /gesund 503 und den Container unhealthy (Review N1). Eine kritisch volle
+    Platte alarmiert als „kritisch“, nach außen aber „warnung“ mit 200: ein
+    Neustart schafft keinen Platz, und ein R0 im Deploy wäre die falsche
+    Antwort darauf. */
+const STOERT_DIENST = ["sperre", "ablage"];
+
+/** Was nach außen geht: nur die Stufe. HTTP 503 nur bei kritischer Sperre oder Ablage. */
 export function oeffentlich(ergebnis) {
-  return { status: ergebnis.stufe === "kritisch" ? 503 : 200, inhalt: { status: ergebnis.stufe } };
+  const p = ergebnis.pruefungen || {};
+  const dienstKritisch = STOERT_DIENST.some((n) => p[n] && p[n].stufe === "kritisch");
+  if (dienstKritisch) return { status: 503, inhalt: { status: "kritisch" } };
+  return { status: 200, inhalt: { status: ergebnis.stufe === "ok" ? "ok" : "warnung" } };
 }
 
 /** Darf diese Anfrage die Einzelheiten sehen? Nur direkt von der eigenen Maschine. */
@@ -208,29 +254,45 @@ export function alarmEinstellungen() {
  * Nachricht aufgerufen, wenn alarmiert werden soll.
  */
 export function alarmGeber({ entprellungMs, wiederholungMs, senden }) {
-  let gemeldet = "ok";          // was zuletzt gesendet wurde
+  /* Entprellt wird „ok“ gegen „nicht ok“, nicht die genaue Stufe — sonst
+     gäbe ein Pendeln warnung ↔ kritisch nie einen Alarm (Review M1).
+     Gemeldet wird die schlimmste Stufe der laufenden Störung. */
+  let gemeldet = "ok";          // zuletzt gesendete Stufe
   let gemeldetUm = 0;
-  let kandidat = "ok";          // was gerade beobachtet wird
+  let schlecht = false;         // gerade beobachtet: nicht ok?
   let seit = 0;
+  let schlimmste = "ok";        // schlimmste Stufe seit Beginn der Störung
+  /** @type {Set<string>} */
+  let betroffenAlle = new Set();
 
   return {
     /** @param {{stufe: string, pruefungen: Record<string, {stufe: string}>}} e */
     async beobachten(e, jetzt = Date.now()) {
-      if (e.stufe !== kandidat) { kandidat = e.stufe; seit = jetzt; }
-      const stabil = jetzt - seit >= entprellungMs;
-      const betroffen = Object.entries(e.pruefungen || {})
-        .filter(([, p]) => p.stufe !== "ok").map(([n]) => n).sort();
-      const nachricht = (art) => ({ dienst: "CENTRIC", art, stufe: kandidat, betroffen,
-        zeit: new Date(jetzt).toISOString() });
-      if (stabil && kandidat !== gemeldet) {
-        const art = kandidat === "ok" ? "entwarnung" : "alarm";
-        gemeldet = kandidat; gemeldetUm = jetzt;
-        await senden(nachricht(art));
-        return art;
+      const jetztSchlecht = e.stufe !== "ok";
+      if (jetztSchlecht !== schlecht) {
+        schlecht = jetztSchlecht; seit = jetzt;
+        if (schlecht) { schlimmste = "ok"; betroffenAlle = new Set(); }
       }
-      if (stabil && gemeldet !== "ok" && jetzt - gemeldetUm >= wiederholungMs) {
+      if (schlecht) {
+        schlimmste = schlimmer(schlimmste, e.stufe);
+        for (const [n, p] of Object.entries(e.pruefungen || {})) if (p.stufe !== "ok") betroffenAlle.add(n);
+      }
+      const stabil = jetzt - seit >= entprellungMs;
+      const nachricht = (art, stufe) => ({ dienst: "CENTRIC", art, stufe,
+        betroffen: art === "entwarnung" ? [] : [...betroffenAlle].sort(), zeit: new Date(jetzt).toISOString() });
+      if (stabil && schlecht && rang(schlimmste) > rang(gemeldet)) {
+        gemeldet = schlimmste; gemeldetUm = jetzt;
+        await senden(nachricht("alarm", schlimmste));
+        return "alarm";
+      }
+      if (stabil && !schlecht && gemeldet !== "ok") {
+        gemeldet = "ok"; gemeldetUm = jetzt;
+        await senden(nachricht("entwarnung", "ok"));
+        return "entwarnung";
+      }
+      if (stabil && schlecht && jetzt - gemeldetUm >= wiederholungMs) {
         gemeldetUm = jetzt;
-        await senden(nachricht("erinnerung"));
+        await senden(nachricht("erinnerung", gemeldet));
         return "erinnerung";
       }
       return null;
@@ -242,8 +304,10 @@ export function alarmGeber({ entprellungMs, wiederholungMs, senden }) {
 export function webhookSender(url) {
   return async (nachricht) => {
     try {
+      /* redirect: "error" (Review N2) — ein Alarm folgt keiner Umleitung zu
+         einem anderen Ziel. */
       const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(nachricht), signal: AbortSignal.timeout(10000) });
+        body: JSON.stringify(nachricht), redirect: "error", signal: AbortSignal.timeout(10000) });
       if (!r.ok) console.error(`Alarm: Webhook antwortete ${r.status}`);
     } catch (e) {
       console.error(`Alarm: Webhook nicht erreichbar (${e && /** @type {any} */ (e).name || "Fehler"})`);

@@ -401,7 +401,7 @@ const server = createServer(async (req, res) => {
     if (pfad === "/gesund") {
       const e = await zustand();
       if (url.searchParams.get("detail") === "1" && detailErlaubt(req.socket.remoteAddress, req.headers)) {
-        json(res, e.stufe === "kritisch" ? 503 : 200, e);
+        json(res, oeffentlich(e).status, e);
         return;
       }
       const o = oeffentlich(e);

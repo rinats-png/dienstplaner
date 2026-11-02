@@ -13,12 +13,16 @@ Zahlen oder Fehlertexte:
 |---|---|---|---|
 | `{"status":"ok"}` | 200 | alles in Ordnung | healthy |
 | `{"status":"warnung"}` | 200 | Aufmerksamkeit nötig, der Dienst arbeitet | healthy |
-| `{"status":"kritisch"}` | 503 | arbeitet nicht verlässlich | unhealthy |
+| `{"status":"kritisch"}` | 503 | Sperre oder Ablage kritisch: arbeitet nicht verlässlich | unhealthy |
 
-Nur **kritisch** macht den Container unhealthy (Healthcheck im Dockerfile und
-in `deploy/compose.yml`: `r.ok`). Eine knappe Platte, eine alte Sicherung oder
-gehäufte Fehler sind Warnungen: Ein Neustart behebt keines davon, und mit
-einem Werkzeug, das unhealthy Container neu startet, entstünde eine Schleife.
+Nur eine **kritische Sperre oder Ablage** macht /gesund 503 und den Container
+unhealthy (Healthcheck im Dockerfile und in `deploy/compose.yml`: `r.ok`).
+**Kritisch wenig Platz** löst die Alarmstufe „kritisch“ aus (Alarm, Detail),
+nach außen steht aber `{"status":"warnung"}` mit 200: Ein Neustart schafft
+keinen Platz, eine Neustart-Schleife oder ein R0 im Deploy machte es
+schlimmer (Review-Entscheidung N1). Stattdessen wechselt `deploy.sh` bei
+kritisch wenig Platz nach der Sicherung gar nicht erst (docs/DEPLOY-AUTOMATISIERUNG.md).
+Alte Sicherung oder gehäufte Fehler sind Warnungen.
 `deploy-smoke.mjs` (WP-31) verlangt 200 und bleibt damit bei „warnung“ grün.
 
 ### Prüfungen
@@ -26,8 +30,8 @@ einem Werkzeug, das unhealthy Container neu startet, entstünde eine Schleife.
 | Prüfung | warnung | kritisch |
 |---|---|---|
 | `sperre` — Raumsperre, Schreibstopp (raumsperre.mjs) | — | hängende Schreibarbeit oder Schreibstopp |
-| `ablage` — Probe schreiben und lesen im eigenen Store `centric-gesund` (keine Kundendaten, keine Raumsperre, daher kein Konflikt mit WP-02) | — | Probe scheitert |
-| `platz` — freier Platz unter `CENTRIC_DATEN` | < `CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT` (15) | < `CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT` (3) oder < `CENTRIC_GESUND_PLATZ_KRITISCH_MB` (200) |
+| `ablage` — Probe schreiben, synchronisieren, zurücklesen, löschen in `<Daten>/.gesund/` mit eigenem Dateinamen je Lauf (keine Kundendaten, keine Raumsperre, kein Store — daher kein Konflikt mit WP-02 und keiner mit älteren Fassungen von `ablage-sicherung`, die Punkt-Ordner überspringen); vor „kritisch“ einmal wiederholt | — | Probe scheitert zweimal |
+| `platz` — freier Platz unter `CENTRIC_DATEN` | < `CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT` (15) | < `CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT` (3) oder < `CENTRIC_GESUND_PLATZ_KRITISCH_MB` (200) — nur Alarmstufe, nach außen „warnung“ |
 | `sicherung` — Alter der letzten erfolgreichen Sicherung außer Haus (WP-04) | älter als `CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN` (26) oder Statusdatei unlesbar | — |
 | `loeschlauf` — letzter Lauf des Löschlaufs (`aufraeumen:letzter`) | älter als `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` (26) oder mit Fehlern | — |
 | `fehler` — gleitend über 15 min: 5xx-Antworten, unlesbare Räume, Journal-Wiederanläufe, Bremse fail-closed | 5xx ≥ `CENTRIC_GESUND_5XX_WARNUNG` (10) oder eines der anderen ≥ 1 | — |
@@ -38,17 +42,19 @@ einem Werkzeug, das unhealthy Container neu startet, entstünde eine Schleife.
 (`CENTRIC_SICHERUNG_STATUS` und den Mount `:ro`). Ohne sie meldet die Prüfung
 „nicht eingerichtet“ und bleibt ok.
 
-Ergebnisse werden 10 s zwischengespeichert (`CENTRIC_GESUND_CACHE_MS`) — ein
-Ansturm auf den anmeldefreien Endpunkt schreibt nicht je Anfrage eine Probe.
-Der Store `centric-gesund` ist flüchtig (Klasse C in
-`werkzeug/ablage-sicherung.mjs`) und wird nicht gesichert.
+Ergebnisse werden 10 s zwischengespeichert (`CENTRIC_GESUND_CACHE_MS`), und
+gleichzeitige Aufrufe teilen sich eine laufende Prüfung (single-flight) — ein
+Ansturm auf den anmeldefreien Endpunkt schreibt nicht je Anfrage eine Probe
+und kann die Probe nicht gegen sich selbst laufen lassen (Review H1).
+`<Daten>/.gesund/` wird nicht gesichert (Punkt-Ordner).
 
 ### Einzelheiten: nur von der eigenen Maschine
 
 `GET /gesund?detail=1` liefert alle Prüfungen mit Werten (freier Platz,
 Alter, Zählerstände) — aber nur, wenn die Gegenstelle `127.0.0.1`/`::1` ist
 und kein `X-Forwarded-For`/`Forwarded` mitkommt. Sonst dieselbe Antwort wie
-ohne `detail`.
+ohne `detail`. Im Betrieb heißt das: **nur per `docker exec` im Container**
+(der Container veröffentlicht keinen Port; Caddy kommt über das Netz `proxy`).
 
     docker exec centric-dp-web node -e "fetch('http://127.0.0.1:3000/gesund?detail=1').then(r=>r.text()).then(console.log)"
 
@@ -70,9 +76,12 @@ Fenster 15 min, gleitend.
 ## 3. Alarm
 
 Im Serverprozess: alle `CENTRIC_GESUND_TAKT_S` (60) eine frische Prüfung.
-Entprellung `CENTRIC_ALARM_ENTPRELLUNG_S` (120): Eine Stufe über „ok“ muss so
-lange anhalten, bevor alarmiert wird; ebenso die Rückkehr vor der
-Entwarnung. Verschärfung (warnung → kritisch) alarmiert erneut. Bleibt es
+Entprellung `CENTRIC_ALARM_ENTPRELLUNG_S` (120): „nicht ok“ muss so lange
+anhalten, bevor alarmiert wird — entprellt wird ok gegen nicht ok, nicht die
+genaue Stufe, sonst gäbe ein Pendeln warnung ↔ kritisch nie einen Alarm
+(Review M1). Gemeldet wird die schlimmste Stufe der laufenden Störung; eine
+Verschärfung alarmiert sofort erneut. Ebenso muss „ok“ so lange anhalten,
+bevor entwarnt wird. Der Webhook folgt keiner Umleitung (`redirect: "error"`). Bleibt es
 schlecht: Erinnerung nach `CENTRIC_ALARM_WIEDERHOLUNG_S` (6 h).
 **Spätestens nach Takt + Entprellung + Takt ≈ 4 min** liegt der Alarm beim
 Kanal (Prüfung `≤ 5 min` in `pruefungen/gesund.test.js`).
