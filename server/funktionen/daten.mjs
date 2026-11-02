@@ -13,7 +13,7 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
+import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen } from "../lib/versand.mjs";
@@ -978,9 +978,9 @@ export default async (req, context) => {
       const bSt = await bremse("schreiben", kSt);
       if (!bSt.frei) return zuVielAntwort(bSt.wartet);
 
-      const { datum, art, lat, lon, accuracy } = rumpf;
-      if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
-        return antwort({ fehler: "Kein gültiges Datum." }, 400);
+      /* `datum` des Geräts nur noch zur Plausibilität — den Tag bestimmt der
+         Server (zeiterfassung.mjs, stempelZiel; Geo-Spezifikation B7). */
+      const { datum: geraeteDatum, art, lat, lon, accuracy } = rumpf;
       if (art !== "start" && art !== "ende")
         return antwort({ fehler: "Nur start oder ende." }, 400);
       if (s.person === null || s.person === undefined)
@@ -1010,6 +1010,7 @@ export default async (req, context) => {
          klarer Meldung, nie „ok: true" (bis Oktober 2026 kam auch nach
          einem gescheiterten Schreiben ein Erfolg zurück, und die Oberfläche
          zeigte eine Stempelzeit, die es auf dem Server nicht gab). */
+      let zielDatum = null;
       const ergebnis = await unterRaumsperre(s.bestand, async () => {
         for (let versuch = 0; versuch <= STEMPEL_WIEDERHOLUNGEN; versuch++) {
           const mit = await bestandLesenStreng(store, s.bestand);
@@ -1023,14 +1024,19 @@ export default async (req, context) => {
           const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
           if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-          /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
-             Beginn), nie künftig und nie älter — Nachträge laufen über
-             „Zeiten bestätigen" (zeiterfassung.mjs). */
-          const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
-          if (datumGrund) {
-            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
-            return antwort({ fehler: datumGrund }, 422);
+          /* Der Tag des Stempels kommt vom Server: Beginn heute, Ende beim
+             offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze).
+             Ein Gerätedatum, das dazu nicht passt, wird abgelehnt (400) —
+             zeiterfassung.mjs, stempelZiel. Bestimmt am frischen Stand, unter
+             der Sperre. */
+          const ziel = stempelZiel(m, person, art, jetzt, geraeteDatum);
+          if (ziel.status) {
+            await protokoll("schreiben", kSt, "abgewiesen",
+              `stempeln ${art} ${geraeteDatum ?? "-"}: ${ziel.code}`, wer);
+            return antwort({ fehler: ziel.grund, code: ziel.code, datum: ziel.datum || null }, ziel.status);
           }
+          const datum = ziel.datum;
+          zielDatum = datum;
 
           /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
              Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
@@ -1107,7 +1113,7 @@ export default async (req, context) => {
             await protokoll("schreiben", kSt, "wiederholt",
               `stempeln ${art} ${datum} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, wer);
         }
-        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${zielDatum}`, wer);
         return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
           + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
       });
@@ -1119,7 +1125,7 @@ export default async (req, context) => {
          erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
+        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum: zielDatum, eintrag: neu,
         erfassung });
     }
 

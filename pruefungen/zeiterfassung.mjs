@@ -134,13 +134,23 @@ pruef("/api/stempeln zweites Einstempeln am selben Tag: 409, nichts überschrieb
 pruef("/api/stempeln liefert den gespeicherten Eintrag", sEnde.eintrag && sEnde.eintrag.geprueftEnde !== undefined
   && sEnde.erfassung && sEnde.erfassung.bestaetigt === true);
 const sZukunft = await rufe(tA, "stempeln", "POST", { datum: tag(1), art: "start" });
-pruef("/api/stempeln morgen: abgewiesen", sZukunft.status === 422, `Status ${sZukunft.status}`);
+/* Seit WP-17 (B7) bestimmt der Server den Tag; ein Gerätedatum, das weder
+   heute noch der Tag eines offenen Beginns ist, wird mit 400 abgelehnt
+   (vorher 422 nach der alten Datumsregel). */
+pruef("/api/stempeln morgen: abgewiesen", sZukunft.status === 400 && sZukunft.code === "STEMPEL_DATUM_UNPASSEND", `Status ${sZukunft.status}`);
 const sAlt = await rufe(tA, "stempeln", "POST", { datum: tag(-5), art: "start" });
-pruef("/api/stempeln vor fünf Tagen: abgewiesen", sAlt.status === 422, `Status ${sAlt.status}`);
+pruef("/api/stempeln vor fünf Tagen: abgewiesen", sAlt.status === 400, `Status ${sAlt.status}`);
 const sGesternFrueh = await rufe(tA, "stempeln", "POST", { datum: tag(-1), art: "ende" });
-pruef("/api/stempeln gestern ohne Nachtdienst: abgewiesen", sGesternFrueh.status === 422, `Status ${sGesternFrueh.status}`);
-const sNacht = await rufe(tN, "stempeln", "POST", { datum: tag(-1), art: "ende" });
-pruef("/api/stempeln gestern mit Nachtdienst: 200", sNacht.status === 200, `Status ${sNacht.status}`);
+pruef("/api/stempeln gestern ohne Nachtdienst: abgewiesen", sGesternFrueh.status === 400, `Status ${sGesternFrueh.status}`);
+/* Ein geplanter Nachtdienst gestern ohne gestempelten Beginn macht „gestern"
+   nicht mehr zum Stempeltag: Das Gerätedatum gestern wird abgelehnt, ein
+   Ende ohne Datum landet als Ende ohne Start auf heute — nicht still auf
+   dem Vortag. */
+const sNachtGestern = await rufe(tN, "stempeln", "POST", { datum: tag(-1), art: "ende" });
+pruef("/api/stempeln gestern mit Nachtdienst, ohne offenen Beginn: 400", sNachtGestern.status === 400, `Status ${sNachtGestern.status}`);
+const sNacht = await rufe(tN, "stempeln", "POST", { art: "ende" });
+pruef("/api/stempeln Ende ohne Datum und ohne offenen Beginn: 200, heute, START_FEHLT",
+  sNacht.status === 200 && sNacht.datum === HEUTE && (sNacht.markierungen || []).includes("START_FEHLT"), `Status ${sNacht.status} ${sNacht.datum}`);
 
 /* --- Autosave nach dem Stempeln: die lokale Kopie ohne geprueftStart --- */
 {
@@ -187,7 +197,7 @@ pruef("… gestempelte Zeit vom Server bestätigt", nachher[`a1|${HEUTE}`] && na
     .then((x) => x.json()).catch(() => ({}));
   const zeilen = JSON.stringify(lage.letzte || []);
   pruef("Protokoll vermerkt die Selbstauskünfte", zeilen.includes("Selbstauskunft Zeiten") && zeilen.includes(tag(-2)));
-  pruef("… und abgewiesene Stempelversuche", /stempeln start .*künftig/.test(zeilen) || zeilen.includes("künftigen Tag"));
+  pruef("… und abgewiesene Stempelversuche", /stempeln start .*STEMPEL_DATUM_UNPASSEND/.test(zeilen));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

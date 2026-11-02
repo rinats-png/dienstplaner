@@ -37,7 +37,7 @@
     "pruefung:erstbefuellung-http": "node pruefungen/erstbefuellung.mjs",
     "pruefung:schichtverantwortung": "vitest run pruefungen/schichtverantwortung.test.js",
     "pruefung:schichtverantwortung-http": "node pruefungen/schichtverantwortung.mjs",
-    "pruefung:zeiterfassung": "vitest run pruefungen/zeiterfassung.test.js pruefungen/stempeln.test.js",
+    "pruefung:zeiterfassung": "vitest run pruefungen/zeiterfassung.test.js pruefungen/stempeln.test.js pruefungen/serverdatum.test.js",
     "pruefung:datenintegritaet": "vitest run pruefungen/datenintegritaet.test.js pruefungen/lesefehler.test.js pruefungen/loeschsperre.test.js pruefungen/atomar.test.js pruefungen/journal-lesen.test.js",
     "pruefung:prozesssperre": "vitest run pruefungen/prozesssperre.test.js",
     "pruefung:last-stempeln": "node pruefungen/last-stempeln.mjs",

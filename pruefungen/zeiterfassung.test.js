@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
-import { heuteBerlin, tagePlus, geplanterDienst, stempelDatumPruefen, selbstauskunftPruefen }
+import { heuteBerlin, tagePlus, geplanterDienst, stempelZiel, selbstauskunftPruefen }
   from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -229,25 +229,81 @@ describe("16. Leitung und Planung behalten das Korrekturrecht", () => {
   });
 });
 
-describe("/api/stempeln: Datum", () => {
+/* Seit WP-17 (Geo-Spezifikation B7) bestimmt der Server den Tag
+   (stempelZiel); das Gerätedatum dient nur der Plausibilität. Die Fälle
+   20–24 von früher gelten weiter — mit dem neuen Vertrag: Statt „gestern
+   mit geplantem Nachtdienst erlaubt" zählt allein der offene Beginn. Die
+   Serverzeit wird hier fest vorgegeben, damit die 20-Stunden-Grenze nicht
+   von der Uhrzeit des Prüflaufs abhängt. */
+describe("/api/stempeln: Datum vom Server (stempelZiel)", () => {
   const m = () => bestand().mandanten[0];
   const p = (mm) => mm.personen[0];
-  it("20. heute: erlaubt", () => { const mm = m(); expect(stempelDatumPruefen(mm, p(mm), HEUTE, "start")).toBeNull(); });
-  it("21. künftig: abgewiesen", () => { const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(1), "start")).toMatch(/künftig/); });
-  it("22. gestern mit Nachtdienst: erlaubt", () => {
-    const mm = m(); mm.abweichungen[`a1|${tag(-1)}`] = "N";
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toBeNull();
+  /* 2026-11-02 10:00 Berlin (MEZ, UTC+1). */
+  const JETZT = new Date("2026-11-02T09:00:00Z");
+  const H = "2026-11-02", G = "2026-11-01";
+  it("20. heute: Beginn ohne oder mit heutigem Gerätedatum → heute", () => {
+    const mm = m();
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toEqual({ datum: H });
+    expect(stempelZiel(mm, p(mm), "start", JETZT, H)).toEqual({ datum: H });
   });
-  it("… gestern mit offenem gestempeltem Beginn: Ausstempeln erlaubt, Einstempeln nicht", () => {
-    const mm = m(); mm.einstempeln[`a1|${tag(-1)}`] = { start: "13:00", innerhalbStart: true };
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toBeNull();
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "start")).toBeTruthy();
+  it("21. künftig: 400", () => {
+    const mm = m();
+    expect(stempelZiel(mm, p(mm), "start", JETZT, "2026-11-03")).toMatchObject({ status: 400, code: "STEMPEL_DATUM_UNPASSEND" });
   });
-  it("23. gestern ohne Bezug (Frühdienst): abgewiesen", () => {
-    const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toMatch(/Mitternacht/);
+  it("22. gestern mit geplantem Nachtdienst, aber ohne offenen Beginn: 400 — Beginn gehört auf heute", () => {
+    const mm = m(); mm.abweichungen[`a1|${G}`] = "N";
+    expect(stempelZiel(mm, p(mm), "start", JETZT, G)).toMatchObject({ status: 400 });
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toMatchObject({ status: 400 });
+    expect(stempelZiel(mm, p(mm), "ende", JETZT)).toEqual({ datum: H });         // Ende ohne Start: heute, START_FEHLT
   });
-  it("24. älter: abgewiesen, auch mit Nachtdienst", () => {
-    const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(-4), "ende")).toMatch(/Ältere/);
+  it("… offener Beginn gestern 22:00 (12 h): Ende → gestern, auch mit heutigem Gerätedatum; Einstempeln 409", () => {
+    const mm = m(); mm.einstempeln[`a1|${G}`] = { start: "22:00", startAm: "2026-11-01T21:00:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT)).toEqual({ datum: G });
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, H)).toEqual({ datum: G });
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toEqual({ datum: G });
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toMatchObject({ status: 409, code: "STEMPEL_SCHON_EINGESTEMPELT", datum: G });
+  });
+  it("… offener Beginn gestern 06:00 (28 h, vergessen): Ende → heute (START_FEHLT); mit Datum gestern → dorthin (START_VERALTET); Einstempeln heute", () => {
+    const mm = m(); mm.einstempeln[`a1|${G}`] = { start: "06:00", startAm: "2026-11-01T05:00:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT)).toEqual({ datum: H });
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toEqual({ datum: G });
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toEqual({ datum: H });
+  });
+  it("23. gestern ohne jeden Bezug: 400", () => {
+    const mm = m(); expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toMatchObject({ status: 400 });
+  });
+  it("24. älter: 400, auch mit offenem Beginn", () => {
+    const mm = m(); mm.einstempeln[`a1|2026-10-29`] = { start: "22:00" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, "2026-10-29")).toMatchObject({ status: 400 });
+  });
+  it("ungültiges Gerätedatum: 400", () => {
+    const mm = m(); expect(stempelZiel(mm, p(mm), "start", JETZT, "02.11.2026")).toMatchObject({ status: 400, code: "STEMPEL_DATUM_UNGUELTIG" });
+  });
+  it("Mitternacht: zwei Minuten Spiel für das Gerätedatum, der Tag bleibt der des Servers", () => {
+    const mm = m();
+    const kurzNach = new Date("2026-11-01T23:01:00Z");                 // 00:01 Berlin am 2.11.
+    expect(stempelZiel(mm, p(mm), "start", kurzNach, G)).toEqual({ datum: H });
+    const spaeter = new Date("2026-11-01T23:05:00Z");                  // 00:05 — Gerät noch auf gestern
+    expect(stempelZiel(mm, p(mm), "start", spaeter, G)).toMatchObject({ status: 400 });
+  });
+  it("Zeitumstellung Herbst (25.10.2026): Beginn 24.10. 22:00 MESZ, Ende 25.10. 05:30 MEZ → zugeordnet (8,5 h)", () => {
+    const mm = m(); mm.einstempeln["a1|2026-10-24"] = { start: "22:00", startAm: "2026-10-24T20:00:00.000Z" };
+    const ende = new Date("2026-10-25T04:30:00Z");                     // 05:30 MEZ
+    expect(heuteBerlin(ende)).toBe("2026-10-25");
+    expect(stempelZiel(mm, p(mm), "ende", ende)).toEqual({ datum: "2026-10-24" });
+  });
+  it("Zeitumstellung Frühjahr (28.3.2027): Beginn 27.3. 12:00 MEZ, Ende 28.3. 09:30 MESZ → 20,5 h, nicht zugeordnet", () => {
+    const mm = m(); mm.einstempeln["a1|2027-03-27"] = { start: "12:00", startAm: "2027-03-27T11:00:00.000Z" };
+    const ende = new Date("2027-03-28T07:30:00Z");                     // 09:30 MESZ = 19,5 h Wanduhr, 20,5 h echt
+    expect(stempelZiel(mm, p(mm), "ende", ende)).toEqual({ datum: "2027-03-28" });
+    const frueher = new Date("2027-03-28T06:30:00Z");                  // 08:30 MESZ = 19,5 h echt
+    expect(stempelZiel(mm, p(mm), "ende", frueher)).toEqual({ datum: "2027-03-27" });
+  });
+  it("Beginn kurz nach Mitternacht in der Rückstellnacht gehört zum neuen Tag", () => {
+    const mm = m();
+    const t = new Date("2026-10-25T00:30:00Z");                        // 02:30 MESZ (erste 02:30)
+    expect(stempelZiel(mm, p(mm), "start", t)).toEqual({ datum: "2026-10-25" });
+    expect(stempelZiel(mm, p(mm), "start", t, "2026-10-24")).toMatchObject({ status: 400 });
   });
 });
 

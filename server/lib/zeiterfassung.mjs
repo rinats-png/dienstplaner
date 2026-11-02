@@ -251,21 +251,86 @@ export function erfassungZusammen(m, geschickt, ich) {
   return { erfassung: alt, fremd };
 }
 
+/* --- Wohin gehört ein Stempel? (Geo-Spezifikation B6, B7) ---
+
+   Bis November 2026 bestimmte das Gerät den Tag: /api/stempeln nahm das
+   mitgeschickte `datum` und prüfte nur, ob es heute oder — mit Bezug —
+   gestern war. Folgen: Ein Gerät mit falscher Uhr oder Zeitzone stempelte
+   auf den falschen Tag; ein Nachtdienst, der um 22 Uhr begann, endete nach
+   Mitternacht als „Ende ohne Start" auf dem neuen Tag, wenn die Oberfläche
+   das heutige Datum schickte; und ein Beginn nach Mitternacht ließ sich
+   dem Vortag zuschlagen, weil dort ein Nachtdienst geplant war.
+
+   Jetzt bestimmt der Server den Tag aus seiner eigenen Uhr in der Zeitzone
+   des Betriebs (Europe/Berlin; eine Zeitzone je Betrieb gibt es noch nicht):
+
+   - Beginn: das heutige Datum. Ein Beginn nach Mitternacht gehört zum neuen
+     Tag — die Leitung kann die Zuordnung korrigieren (B7).
+   - Ende: der offene Vorgang. Steht heute ein Vorgang, gilt er. Sonst ein
+     offener Beginn von gestern, solange er höchstens 20 Stunden zurückliegt
+     (B6, startZuordenbar) — der Nachtdienst endet auf seinem Starttag, mit
+     `endeDatum` = heute. Ein älterer offener Beginn ist ein vergessenes
+     Ausstempeln: Das Ende kommt als eigenes Ereignis auf heute
+     (START_FEHLT), der alte Vorgang bleibt für die Korrektur offen.
+   - Die Zeitumstellung zählt richtig, weil Datum und Abstand aus dem
+     eindeutigen Zeitpunkt gerechnet werden (heuteBerlin, startAm).
+
+   Das `datum` des Geräts dient nur noch der Plausibilität. Fehlt es, ist
+   das in Ordnung. Ist es da, muss es heute sein (mit zwei Minuten Spiel
+   um Mitternacht, B7) oder — beim Ende — der Tag des offenen Beginns; ein
+   Ende mit dem Datum eines veralteten offenen Beginns wird wie bisher an
+   diesen gehängt (START_VERALTET). Jedes andere Datum wird abgelehnt (400),
+   statt still auf heute umgebogen zu werden: Die Oberfläche hat dann
+   einen falschen Stand oder eine falsche Uhr, und das soll sie erfahren.
+   --------------------------------------------------------------------------- */
+
+/** Toleranz um Mitternacht für das mitgeschickte Gerätedatum (B7: zwei Minuten). */
+export const GERAETE_TOLERANZ_MS = 2 * 60 * 1000;
+
 /**
- * Darf /api/stempeln an diesem Datum stempeln? Heute ja. Gestern nur mit
- * Bezug: ein geplanter Dienst über Mitternacht, oder zum Ausstempeln ein
- * bereits gestempelter Beginn ohne Ende. Künftige und ältere Tage nie —
- * dafür gibt es „Zeiten bestätigen".
+ * Bestimmt den Tag eines Stempels.
+ * @param {object} m  der Betrieb
+ * @param {object} person
+ * @param {"start"|"ende"} art
+ * @param {Date} jetzt  Serverzeit
+ * @param {string|null|undefined} geraeteDatum  das mitgeschickte `datum`, nur zur Plausibilität
+ * @returns {{ datum: string, status?: undefined } | { status: number, code: string, grund: string, datum?: string }}
  */
-export function stempelDatumPruefen(m, person, datum, art, heute = heuteBerlin()) {
-  if (datum === heute) return null;
-  if (datum > heute) return "Für einen künftigen Tag lässt sich nicht stempeln.";
-  if (datum !== tagePlus(heute, -1))
-    return "Ältere Tage lassen sich nicht nachstempeln. Bitte „Zeiten bestätigen\" verwenden.";
-  const dienstId = geplanterDienst(m, person, datum);
-  const da = dienstId ? (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId)) : null;
-  if (uebernacht(da)) return null;
-  const st = (m.einstempeln || {})[`${person.id}|${datum}`];
-  if (art === "ende" && st && st.start && !st.ende) return null;
-  return "Für gestern lässt sich nur ein Dienst über Mitternacht stempeln.";
+export function stempelZiel(m, person, art, jetzt = new Date(), geraeteDatum = null) {
+  const heute = heuteBerlin(jetzt);
+  const gestern = tagePlus(heute, -1);
+  const tab = (m && m.einstempeln) || {};
+  const eintrag = (d) => tab[`${person.id}|${d}`] || null;
+  const offen = (e) => !!e && !!e.start && !e.ende;
+  const vonGestern = offen(eintrag(gestern)) ? eintrag(gestern) : null;
+  const gesternZuordenbar = !!vonGestern && startZuordenbar(gestern, vonGestern.start, jetzt, vonGestern.startAm);
+
+  if (geraeteDatum !== null && geraeteDatum !== undefined && geraeteDatum !== "") {
+    const g = String(geraeteDatum);
+    if (!TAG.test(g)) return { status: 400, code: "STEMPEL_DATUM_UNGUELTIG", grund: "Kein gültiges Datum." };
+    const heuteRund = new Set([heute, heuteBerlin(new Date(jetzt.getTime() - GERAETE_TOLERANZ_MS)),
+      heuteBerlin(new Date(jetzt.getTime() + GERAETE_TOLERANZ_MS))]);
+    const offenerTag = art === "ende" && vonGestern ? gestern : null;
+    if (!heuteRund.has(g) && g !== offenerTag) {
+      return { status: 400, code: "STEMPEL_DATUM_UNPASSEND",
+        grund: `Gestempelt wird immer auf heute (${heute}) bzw. auf einen offenen Dienstbeginn — `
+          + `das Datum ${g} passt dazu nicht. Bitte die Seite neu laden und die Uhrzeit des Geräts prüfen. `
+          + "Vergangene Tage über „Zeiten bestätigen\"." };
+    }
+    /* Ausdrücklich der Tag des offenen Beginns von gestern: an diesen
+       Vorgang — liegt er über 20 Stunden zurück, wie bisher mit
+       START_VERALTET (siehe /api/stempeln). */
+    if (g === offenerTag) return { datum: gestern };
+  }
+
+  if (art === "start") {
+    if (!eintrag(heute) && gesternZuordenbar) {
+      return { status: 409, code: "STEMPEL_SCHON_EINGESTEMPELT", datum: gestern,
+        grund: `Du bist seit gestern ${vonGestern.start} Uhr eingestempelt — bitte zuerst ausstempeln.` };
+    }
+    return { datum: heute };
+  }
+  if (eintrag(heute)) return { datum: heute };
+  if (gesternZuordenbar) return { datum: gestern };
+  return { datum: heute };
 }

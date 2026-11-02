@@ -32,7 +32,7 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * Welcher Vorgang wird gestempelt? Ein offener Beginn von gestern (Dienst
  * über Mitternacht) geht vor: Dann heißt es „Ausstempeln" für gestern, nicht
  * „Einstempeln" für heute. Der Server lässt genau das zu
- * (stempelDatumPruefen: gestern, Ende, offener Beginn).
+ * (zeiterfassung.mjs, stempelZiel: Ende beim offenen Beginn von gestern).
  *
  * Aber nur, solange der Beginn höchstens 20 Stunden zurückliegt — dieselbe
  * Grenze wie auf dem Server (startZuordenbar). Ein älterer offener Beginn
