@@ -14410,7 +14410,8 @@ function Schichtuebergabe({ sitz, akt }) {
     <div>
       <H1 rubrik={begriff(m, "einheit")}
         sub={`Die ${begriff(m, "uebergabe").toLowerCase()} hält fest, was die übernehmende Schicht wissen muss. Sie ist nachträglich nicht mehr änderbar — Ergänzungen werden angehängt.`}
-        right={<div style={{ display: "flex", gap: 10 }}>
+        /* flexWrap: Einheit, Datum und Dienst passten bei 320 px (mit Einheitswahl bis 430 px) nicht in eine Zeile. */
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} />}
           <Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 160 }} />
           <Sel value={dienstId} onChange={(e) => setDienstId(e.target.value)} style={{ width: 170 }}>
@@ -20894,6 +20895,20 @@ const BEREICHE = [
 const NAV_KUNDE = BEREICHE.flatMap((b) => b.views);
 
 
+/**
+ * Darf diese Sitzung die Urlaubshinweise anlegen? Der Lauf ändert fremde
+ * Personen (`urlaubshinweis`) und legt Mitteilungen an — das darf nur, wem
+ * der Server den vollen Schreibumfang meldet (`zugang.schreiben`, aus
+ * GET /api/bestand: Leitung, Planung). Vorher genügte das Recht
+ * req.approve.unit; damit lief der Lauf auch bei der Schichtverantwortung
+ * (Schreibumfang „einheit"), und jede ihrer Anmeldungen endete mit
+ * 403 „Keine Schreibberechtigung" — der Server lehnte zu Recht ab.
+ */
+function urlaubshinweiseAnlegen(sitz, zugang) {
+  if (!sitz || sitz.rolle === "betreiber" || !zugang || zugang.schreiben !== "voll") return false;
+  return darf(sitz, "req.approve.unit") || darf(sitz, "org.edit");
+}
+
 function AppInnen() {
   const [db, setDb] = useState(null);
   const [view, setView] = useState("start");
@@ -21240,8 +21255,8 @@ function AppInnen() {
      selben Jahr angeschrieben, auch nicht nach einem Gerätewechsel. */
   const urlaubsLauf = useRef(false);
   useEffect(() => {
-    if (!db || !sitz || sitz.rolle === "betreiber" || urlaubsLauf.current) return;
-    if (!darf(sitz, "req.approve.unit") && !darf(sitz, "org.edit")) return;
+    if (!db || urlaubsLauf.current) return;
+    if (!urlaubshinweiseAnlegen(sitz, SP.zugangsdaten())) return;
     const m = sitz.mandant;
     let faellig = [];
     try { faellig = urlaubshinweiseFaellig(m, heute()); }
@@ -23438,4 +23453,4 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson };
+export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen };

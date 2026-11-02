@@ -43,6 +43,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -114,6 +115,14 @@ dort Daten ablegen, die Rollen in Betrieb B desselben Raums zurückbekamen.
 eigenen. Die Antwort trägt für beide `sichtIstDaten` (`{umfang: "eigene", person}` bzw. `{umfang: "keine"}`); die Oberfläche
 zeigt dann „nicht verfügbar" statt die Planzeit als Ist-Zeit (`src/istdaten.js`). Eine aggregierte Auswertung für den
 Betriebsrat ist ein eigenes Thema.
+**Ausnahme (Commit 6bd706b, fachlich bestätigt am 2026-11-02):** Ein Betriebsratsmitglied im Schichtdienst stempelt die
+eigene Arbeitszeit (`/api/stempeln` nimmt nur die eigene Person der Sitzung an) und bekommt dafür die **eigenen**
+Stempelereignisse (`sicht.mjs`: `einstempeln` `NUR_EIGENE`, wie Beschäftigte) — sonst sähe es den eigenen offenen
+Beginn nicht und bekäme erneut „Einstempeln" angeboten. Ausdrücklich **nicht** dazu gehören: fremde Stempelvorgänge,
+personenbezogene Ist-Zeiten anderer, personenbezogene Ist-Auswertungen (auch die eigene Erfassung bleibt weg,
+`sichtIstDaten` bleibt `{umfang: "keine"}`) und zusätzliche Verwaltungsrechte (Schreibumfang weiter „nein"; gestempelt
+wird nur über `/api/stempeln`). Geprüft in `pruefungen/rechtematrix.test.js` (Zeilen „Stempel: eigener (Betriebsrat)",
+„Zeiterfassung: eigene (Betriebsrat)"), `stempel-datenschutz.test.js`, `geo.test.js` und `oberflaeche-render.test.js`.
 ¹³ Commit D1c: `mandanten[].session` hatte keinen Schreiber; die Oberfläche las daraus nur irrtümlich die eigene
 Person (`bewirbDich`, `ziehBewerbungZurueck`, jetzt nur `sitz.person.id`). Planung und Leitung konnten dort
 beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betriebsrat eingeschlossen — und die

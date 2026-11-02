@@ -374,7 +374,8 @@ export const BETRIEB = {
      Schichtdienst steht, stempelt (/api/stempeln nimmt nur die eigene
      Person an) — und muss den eigenen offenen Beginn sehen, sonst bietet
      die Oberfläche erneut „Einstempeln" an. Fremde Stempel und jede
-     Ist-Erfassung, auch die eigene, bleiben weg (sichtIstDaten „keine"). */
+     Ist-Erfassung, auch die eigene, bleiben weg (sichtIstDaten „keine").
+     Fachlich bestätigt am 2026-11-02; dokumentiert in RECHTEMATRIX.md ¹⁴. */
   erfassung: [NUR_EIGENE, WEG],
   einstempeln: [NUR_EIGENE, NUR_EIGENE],
   fahrzeiten: [NUR_EIGENE, WEG],

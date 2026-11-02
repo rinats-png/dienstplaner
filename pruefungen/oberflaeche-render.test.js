@@ -25,7 +25,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ISTDATEN_TEXT } from "../src/istdaten.js";
 import { MARKIERUNG_TEXT } from "../src/stempelvorgang.js";
 import { berlinZeitpunkt } from "../server/lib/zeiterfassung.mjs";
-import { bestandFuerRolle } from "../server/lib/rechte.mjs";
+import { bestandFuerRolle, schreibumfang } from "../server/lib/rechte.mjs";
 import { migriere } from "../src/migration.js";
 import { personenAngleichen } from "../server/lib/gestalt.mjs";
 
@@ -283,3 +283,29 @@ describe("P1 — Altbestand ohne qualifikationen", () => {
   });
 });
 const mHeuteRoh = (m) => text(h(A.MHeute, { sitz: sitzFuer(m, "mitarbeiter", { angleichen: false }), akt, setTab: () => {}, oeffnen: () => {} }));
+
+/* ==========================================================================
+   P1 — Urlaubshinweise nach der Anmeldung: Der Lauf ändert fremde Personen
+   und legt Mitteilungen an. Nur mit vollem Schreibumfang (vom Server) —
+   sonst wies der Server die Schichtverantwortung bei jeder Anmeldung mit
+   403 „Keine Schreibberechtigung" ab.
+   ========================================================================== */
+describe("P1 — Urlaubshinweise nur mit vollem Schreibumfang", () => {
+  it("je Rolle mit dem Schreibumfang, den der Server meldet: nur Leitung und Planung", () => {
+    const erwartet = { leitung: true, planer: true, subplaner: false, mitarbeiter: false, betriebsrat: false };
+    for (const [rolle, soll] of Object.entries(erwartet)) {
+      const sitz = sitzFuer(betrieb(), rolle);
+      expect(A.urlaubshinweiseAnlegen(sitz, { rolle, schreiben: schreibumfang(rolle) }), rolle).toBe(soll);
+    }
+  });
+  it("ohne bekannten Schreibumfang oder als Betreiber: nie", () => {
+    expect(A.urlaubshinweiseAnlegen(sitzFuer(betrieb(), "leitung"), null)).toBe(false);
+    expect(A.urlaubshinweiseAnlegen(sitzFuer(betrieb(), "leitung"), { schreiben: "einheit" })).toBe(false);
+    expect(A.urlaubshinweiseAnlegen({ rolle: "betreiber", db: {} }, { schreiben: "voll" })).toBe(false);
+    expect(A.urlaubshinweiseAnlegen(null, { schreiben: "voll" })).toBe(false);
+  });
+  it("Schichtverantwortung hat das Recht req.approve.unit — gerade deshalb lief der Lauf bisher bei ihr", () => {
+    expect(schreibumfang("subplaner")).toBe("einheit");
+    expect(A.urlaubshinweiseAnlegen(sitzFuer(betrieb(), "subplaner"), { schreiben: "voll" })).toBe(true);
+  });
+});
