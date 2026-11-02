@@ -1,0 +1,89 @@
+# WP-04: Sicherung außer Haus und Wiederherstellungsprobe — Nachweis in CI.
+#
+# Baut das App-Bild lokal (wie pruefung.yml), erzeugt eine Wegwerf-Ablage
+# über die echte Anwendungsschicht im Bild, legt ein lokales restic-
+# Repository mit Zufallspasswort an und fährt deploy/sicherung/*.sh gegen
+# beides — samt Aufbewahrung, Wiederherstellungsprobe, Fehlalarm und Sperre
+# (deploy/sicherung/ci/ende-zu-ende.sh). Kein echtes Speicherziel, keine
+# echten Geheimnisse, kein Zugriff auf den VPS.
+name: Betrieb Sicherung
+
+on:
+  push:
+    branches: ["acc45/infra/wp04-backup", "wp/04-sicherung", "feature/geo-zeiterfassung", "main"]
+    paths:
+      - "deploy/sicherung/**"
+      - ".github/workflows/betrieb-sicherung.yml"
+      - "werkzeug/ablage-sicherung.mjs"
+      - "server/**"
+      - "server.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+  pull_request:
+    paths:
+      - "deploy/sicherung/**"
+      - ".github/workflows/betrieb-sicherung.yml"
+      - "werkzeug/ablage-sicherung.mjs"
+      - "server/**"
+      - "server.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sicherung:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BILD: centric-sicherung:${{ github.sha }}
+      RESTIC_VERSION: "0.18.1"
+      # SHA-256 von restic_0.18.1_linux_amd64.bz2 (SHA256SUMS des Releases)
+      RESTIC_SHA256: "680838f19d67151adba227e1570cdd8af12c19cf1735783ed1ba928bc41f363d"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Werkzeuge (shellcheck, jq, flock)
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q shellcheck; }
+          shellcheck --version | head -n2
+          jq --version
+          flock --version
+
+      - name: Shellcheck und Syntax
+        run: |
+          for f in deploy/sicherung/*.sh deploy/sicherung/ci/*.sh; do bash -n "$f"; done
+          shellcheck -x deploy/sicherung/*.sh deploy/sicherung/ci/*.sh
+          node --check deploy/sicherung/hilfen/abgleich.mjs
+          node --check deploy/sicherung/hilfen/bestaende-zaehlen.mjs
+          node --check deploy/sicherung/ci/testdaten.mjs
+          python3 -m py_compile deploy/sicherung/ci/ping-empfaenger.py deploy/sicherung/ci/aufbewahrung-erwartet.py
+
+      - name: restic installieren (gepinnt, Prüfsumme)
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -fsSL -o "$RUNNER_TEMP/restic.bz2" \
+            "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_amd64.bz2"
+          echo "${RESTIC_SHA256}  $RUNNER_TEMP/restic.bz2" | sha256sum -c -
+          bunzip2 -c "$RUNNER_TEMP/restic.bz2" >"$RUNNER_TEMP/bin/restic"
+          chmod 755 "$RUNNER_TEMP/bin/restic"
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/restic" version
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Bild bauen (lokal, wie pruefung.yml)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.BILD }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Ende-zu-Ende-Nachweis
+        run: deploy/sicherung/ci/ende-zu-ende.sh
