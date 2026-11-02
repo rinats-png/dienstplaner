@@ -74,7 +74,7 @@ export function nachtAnteil(d, einst) {
 /* ------------------------------------------------------------------------
    QUALIFIKATIONEN UND NACHWEISE
    ------------------------------------------------------------------------ */
-const NACHWEIS_VORLAUF = 60;   // Tage, ab denen gewarnt wird
+export const NACHWEIS_VORLAUF = 60;   // Tage, ab denen gewarnt wird
 /** Gültigkeitsstand eines einzelnen Nachweises (am Tag `heute`). */
 export function nachweisStand(m, p, qualId, heute) {
   const n = liste(p.qualNachweise).find((x) => x.qualId === qualId);

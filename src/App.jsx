@@ -681,33 +681,8 @@ const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
 
    Die Vorgabe bleibt das Gesetz. Wer ein Tarifwerk anwendet, bekommt dessen
    Fenster — siehe src/tarifwerke.js. */
-const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
-
-const nachtFenster = (einst) => ({
-  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
-  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
-});
-
-/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
-const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
-
-/**
- * Nachtstunden eines Dienstes.
- *
- * @param d      Dienstart mit start und ende
- * @param einst  Einstellungen des Betriebs; ohne sie gilt das Gesetz
- */
-function nachtAnteil(d, einst) {
-  const f = nachtFenster(einst);
-  const von = toMin(f.von), bis = toMin(f.bis);
-  const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
-  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
-     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
-  const fenster = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
-  let sum = 0;
-  for (const [a, b] of fenster) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
-  return Math.round(sum / 60 * 100) / 100;
-}
+/* nachtFenster, nachtschwelle und nachtAnteil stehen seit WP-22 in
+   server/lib/fachpruefung.mjs — dieselbe Fassung prüft der Server. */
 
 /**
  * Nachtstunden an einem bestimmten Tag — mit der Sommerzeit.
@@ -1463,8 +1438,7 @@ function absIdx(m) {
   c.abs = x; return x;
 }
 
-function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (z.ab <= d) t = z; return t ? t.einheitId : null; }
-function imDienst(p, d) { if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
+/* einheitAm und imDienst: server/lib/fachpruefung.mjs (WP-22). */
 const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 
 function abwesenheitAm(m, pid, d) {
@@ -1473,29 +1447,9 @@ function abwesenheitAm(m, pid, d) {
   for (const a of l) if (a.von <= d && a.bis >= d && (!best || abwArt(a.art).rang > abwArt(best.art).rang)) best = a;
   return best;
 }
-/** Versatz einer Einheit in Tagen. Wochenversatz bleibt als Sonderfall gültig. */
-function versatzTageVon(e) {
-  return e.versatzTage !== undefined && e.versatzTage !== null ? e.versatzTage : (e.versatz || 0) * 7;
-}
-/** Zykluslänge in Tagen — bei Tagesversatz nicht zwingend ein Vielfaches von 7. */
-function zyklusLaenge(m) {
-  return m.zyklus.tage ? m.zyklus.tage.length : m.zyklus.wochen * 7;
-}
-function einheitDienst(m, eid, d) {
-  const e = m.einheiten.find((x) => x.id === eid); if (!e || e.pool) return null;
-  /* zyklusLaenge() fängt einen fehlenden Tagesplan ab und rechnet dann mit
-     wochen × 7 — hier stand der Zugriff ungeschützt daneben. Ein Betrieb
-     ohne zyklus.tage ließ damit die gesamte Personalakte abstürzen
-     („Cannot read properties of undefined"), und mit ihr jede Ansicht, die
-     Stunden über ein Jahr rechnet. Ein frisch angelegter Betrieb ist genau
-     dieser Fall, solange die Schichtfolge noch nicht steht. */
-  const tage = (m.zyklus && m.zyklus.tage) || null;
-  if (!tage || !tage.length) return null;
-  const len = zyklusLaenge(m);
-  const i = (((between(m.anker, d) + versatzTageVon(e)) % len) + len) % len;
-  const id = tage[i];
-  return id && id !== "-" ? id : null;
-}
+/* versatzTageVon, zyklusLaenge und einheitDienst (Schichtfolge einer Einheit)
+   stehen seit WP-22 in server/lib/fachpruefung.mjs — der Server rechnet
+   damit dieselbe Folge. Ein Betrieb ohne zyklus.tage liefert dort null. */
 /** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
 function mindestFuer(m, da, d) {
   const w = dow(d);
@@ -3269,15 +3223,7 @@ async function fremdstandPruefen(schluessel, eigenerStand) {
    ========================================================================== */
 
 /* --------------------- Standortbezogene Feiertage ------------------------ */
-/** Bundesland einer Einheit — Betriebe mit mehreren Standorten rechnen sonst falsch. */
-function landFuerEinheit(m, einheitId) {
-  const e = m.einheiten.find((x) => x.id === einheitId);
-  if (e && e.standortId && m.standorte) {
-    const st = m.standorte.find((s) => s.id === e.standortId);
-    if (st && st.bundesland) return st.bundesland;
-  }
-  return m.bundesland;
-}
+/* landFuerEinheit: server/lib/fachpruefung.mjs (WP-22). */
 /** Feiertag aus Sicht einer bestimmten Person an einem Tag. */
 function feiertagFuer(m, datum, p) {
   return feiertag(datum, p ? landFuerEinheit(m, einheitAm(p, datum)) : m.bundesland);
@@ -3286,49 +3232,9 @@ function feiertagFuer(m, datum, p) {
 const laenderImBetrieb = (m) => [...new Set([m.bundesland, ...((m.standorte || []).map((s) => s.bundesland))])].filter(Boolean);
 
 /* --------------------------- Teilzeit in der Rotation -------------------- */
-/** Stabiler Streuwert je Person, damit Teilzeitkräfte nicht alle dieselben Tage haben. */
-function idStreu(id) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
-/**
- * Wandelt den Gruppendienst in den tatsächlichen Teilzeitdienst um.
- * Zwei Betriebsarten:
- *   quote      — die Person leistet nur den ihrem Stundenanteil entsprechenden
- *                Teil der Zyklusdienste, gleichmäßig über den Zyklus verteilt.
- *   wochentage — die Person arbeitet nur an festgelegten Wochentagen.
- * Ohne Teilzeit bleibt der Dienst unverändert.
- */
-function teilzeitDienst(m, p, datum, plan) {
-  const tz = p.teilzeit;
-  if (!tz || !tz.aktiv || !plan) return plan;
-  if (tz.modus === "wochentage") return (tz.wochentage || []).includes(dow(datum)) ? plan : null;
-
-  const soll = m.einstellungen.sollWochenstunden || 40;
-  const quote = Math.max(0.05, Math.min(1, (p.wochenstunden || soll) / soll));
-  if (quote >= 0.999) return plan;
-
-  const len = zyklusLaenge(m);
-  const e = m.einheiten.find((x) => x.id === einheitAm(p, datum));
-  if (!e) return plan;
-
-  // Fortlaufende Nummer dieses Dienstes seit dem Ankerdatum — nicht nur innerhalb
-  // eines Zyklus. Nur so lässt sich ein Anteil wie 50 % exakt einhalten:
-  // 21 Dienste je Zyklus sind nicht halbierbar, über mehrere Zyklen aber schon.
-  const tage = between(m.anker, datum) + versatzTageVon(e);
-  const zyklen = Math.floor(tage / len);
-  const rest = ((tage % len) + len) % len;
-  let gesamt = 0;
-  for (const t of m.zyklus.tage) if (t && t !== "-") gesamt++;
-  if (!gesamt) return plan;
-  let vor = 0;
-  for (let i = 0; i < rest; i++) { const t = m.zyklus.tage[i]; if (t && t !== "-") vor++; }
-  const nr = zyklen * gesamt + vor;
-
-  const versatz = (idStreu(p.id) % 997) / 997;
-  return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
-}
+/* teilzeitDienst — der Gruppendienst als Teilzeitdienst (Quote oder feste
+   Wochentage) — steht seit WP-22 in server/lib/fachpruefung.mjs, damit der
+   Server dieselben Tage rechnet. */
 
 /** Wie viele Dienste je Zyklus leistet die Person tatsächlich? */
 function teilzeitProfil(m, p) {
@@ -3592,29 +3498,9 @@ function verfuegbarkeitQuote(p) {
 }
 
 /* --------------------------- Nachweise und Ablauf ------------------------ */
-const NACHWEIS_VORLAUF = 60;   // Tage, ab denen gewarnt wird
-
-/** Gültigkeitsstand eines einzelnen Nachweises. */
-function nachweisStand(m, p, qualId) {
-  const n = (p.qualNachweise || []).find((x) => x.qualId === qualId);
-  const q = m.qualifikationen.find((x) => x.id === qualId);
-  if (!q) return { stand: "unbekannt" };
-  /* Nur-Status-Nachweise (etwa der Masernschutz nach § 20 IfSG): Erfasst
-     wird allein, ob er vorliegt — kein Datum, keine Datei, kein Grund. Das
-     ist keine Bequemlichkeit, sondern Datenschutz: Mehr darf der Betrieb
-     dazu gar nicht festhalten. Bisher galt so eine Qualifikation als
-     „unbefristet gültig", sobald sie an der Person stand — ohne dass je
-     jemand bestätigt hatte, dass der Nachweis vorliegt. */
-  if (q.nurStatus) {
-    if (n && n.vorhanden) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true, nurStatus: true };
-    return { stand: "fehlt", ablauf: null, qual: q, nurStatus: true };
-  }
-  if (!q.gueltigMonate) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true };
-  if (!n || !n.ablauf) return { stand: "fehlt", ablauf: null, qual: q };
-  const tage = between(heute(), n.ablauf);
-  return { stand: tage < 0 ? "abgelaufen" : tage <= NACHWEIS_VORLAUF ? "laeuft_ab" : "gueltig",
-    ablauf: n.ablauf, tage, qual: q, datei: n.datei };
-}
+/* Gültigkeitsstand eines Nachweises: server/lib/fachpruefung.mjs (WP-22),
+   dort mit dem Tag als Argument — hier immer heute. */
+const nachweisStand = (m, p, qualId) => fpNachweisStand(m, p, qualId, heute());
 /* --------------------------------------------------------------------------
    KOMPETENZEN AN DER PERSON
 
@@ -3667,32 +3553,9 @@ function kompetenzLage(m) {
   });
 }
 
-/** Zählt eine Qualifikation für die Besetzung nur, wenn der Nachweis gültig ist. */
-/**
- * Wirkt die harte Sperre dieser Qualifikation hier — und aus welchem Grund?
- *
- * Gesetzliche Sperren (Bundes- und Landesrecht) gehören in den Kern: Wer
- * ohne die vorbehaltene Qualifikation eingeteilt ist, muss das erfahren,
- * unabhängig von der gebuchten Stufe. Eigene Vorgaben — Tarif, Betriebs-
- * oder Dienstvereinbarung — durchzusetzen ist dagegen das Merkmal, für das
- * bezahlt wird.
- *
- * Zurück kommt die Verbindlichkeit, wenn die Sperre greift, sonst null.
- */
-function sperreWirkt(m, q, land) {
-  if (!q || !q.harteSperre) return null;
-  const v = verbindlichkeit(q, { land });
-  if (!v.sperrt) return null;
-  /* Seit E-21 warnen eigene Vorgaben in jeder Stufe. Gesperrt wird ohnehin
-     nichts mehr; die Verbindlichkeit bestimmt nur die Warnstufe. */
-  return v;
-}
-
-function qualGueltig(m, p, qualId) {
-  if (!p.qualifikationen.includes(qualId)) return false;
-  const s = nachweisStand(m, p, qualId);
-  return s.stand === "gueltig" || s.stand === "laeuft_ab";
-}
+/* sperreWirkt: server/lib/fachpruefung.mjs (WP-22). Seit E-21 warnen eigene
+   Vorgaben in jeder Stufe; die Verbindlichkeit bestimmt nur die Warnstufe. */
+const qualGueltig = (m, p, qualId) => fpQualGueltig(m, p, qualId, heute());
 /** Alle Nachweise eines Betriebs, die Aufmerksamkeit brauchen. */
 function nachweisLage(m) {
   return memo(m, "nachweise", () => {
