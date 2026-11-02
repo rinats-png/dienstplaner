@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText } from "../src/istdaten.js";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
+import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const funktion = (name) => {
@@ -211,5 +212,58 @@ describe("6. Exporte: keine Planzeit als Ist-Zeit", () => {
   });
   it("Zuschlagsstunden ohne Ist-Daten: gearbeitete Stunden null", () => {
     expect(funktion("zuschlagStunden")).toContain("if (ohneIst) { r.gesamt = null; r.nichtVerfuegbar = true; }");
+  });
+});
+
+/* WP-43, Auflage B1: Nach einer Versetzung bekommt die Schichtverantwortung die
+   Erfassung nur für Tage im eigenen Bereich. Für die übrigen Tage fehlt sie aus
+   Datenschutzgründen — die Oberfläche darf dort nicht mit der Planzeit rechnen.
+   Rot auf dem Stand vor B1: {std: 7.5, erfasst: false} ohne nichtVerfuegbar. */
+describe("9. Schichtverantwortung tagesgenau: Tage im anderen Bereich nicht verfügbar, nie Planzeit", () => {
+  const heute = heuteBerlin();
+  const T_E1 = tagePlus(heute, -12), T_E2 = tagePlus(heute, -3), WECHSEL = tagePlus(heute, -10);
+  const versetzt = () => {
+    const b = bestand();
+    const m0 = b.mandanten[0];
+    m0.einheiten = [{ id: "e1" }, { id: "e2" }];
+    const zu = (e) => ({ bereich: e, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: e }], status: "aktiv" });
+    Object.assign(m0.personen[0], { bereich: "e2", status: "aktiv",                // p17: e1 → e2
+      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }, { ab: WECHSEL, einheitId: "e2" }] });
+    Object.assign(m0.personen[1], zu("e1"));                                       // p18: immer e1
+    m0.personen.push({ id: "ps", vorname: "Sina", nachname: "Schicht", rolle: "subplaner", ...zu("e1") });
+    m0.abweichungen = { [`p17|${T_E1}`]: "F", [`p17|${T_E2}`]: "F", [`p18|${T_E2}`]: "F" };
+    m0.erfassung = {
+      [`p17|${T_E1}`]: { start: "06:00", ende: "16:30", bestaetigt: true },
+      [`p17|${T_E2}`]: { start: "06:00", ende: "16:30", bestaetigt: true },
+      [`p18|${T_E2}`]: { start: "06:00", ende: "17:00", bestaetigt: true },
+    };
+    return bestandFuerRolle(b, { rolle: "subplaner", person: "ps", betrieb: 0 }).mandanten[0];
+  };
+  it("der Server nennt die zugänglichen Tage der versetzten Person — nur ihr Abschnitt in e1", () => {
+    const s = versetzt().sichtIstDaten;
+    expect(s.personen).toEqual(expect.arrayContaining(["p17", "p18", "ps"]));
+    expect(s.zeitraeume).toEqual({ p17: [{ von: "2020-01-01", bis: tagePlus(WECHSEL, -1) }] });
+  });
+  it("Tag in e1: erfasste Ist-Zeit; Tag in e2: nicht verfügbar statt Planzeit", () => {
+    const m = versetzt();
+    expect(istZeitFuer(m, person(m, "p17"), T_E1, FRUEH)).toEqual({ std: IST17, erfasst: true, abweichung: IST17 - PLAN });
+    const z = istZeitFuer(m, person(m, "p17"), T_E2, FRUEH);
+    expect(z).toEqual({ std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true });
+    expect(pruefZeitFuer(m, person(m, "p17"), T_E2, FRUEH)).toBeNull();
+    expect(pruefZeitFuer(m, person(m, "p17"), T_E1, FRUEH)).toEqual({ start: "06:00", ende: "16:30", pause: 30 });
+  });
+  it("Auswertungen über Zeiträume (Konto, Monat, Ausgleich: istVerfuegbar ohne Tag): nicht verfügbar", () => {
+    const m = versetzt();
+    expect(istVerfuegbar(m, person(m, "p17"))).toBe(false);
+    expect(istVerfuegbar(m, person(m, "p17"), T_E1)).toBe(true);
+    expect(istVerfuegbar(m, person(m, "p17"), T_E2)).toBe(false);
+    /* Wer immer im Bereich war, bleibt ganz verfügbar. */
+    expect(istVerfuegbar(m, person(m, "p18"))).toBe(true);
+    expect(istZeitFuer(m, person(m, "p18"), T_E2, FRUEH).std).toBe(IST18);
+  });
+  it("ein Vermerk mit kaputten Zeiträumen: fail-closed", () => {
+    const m = { sichtIstDaten: { umfang: "personen", personen: ["p1"], zeitraeume: { p1: "kaputt" } } };
+    expect(istVerfuegbar(m, { id: "p1" }, "2026-01-01")).toBe(false);
+    expect(istVerfuegbar(m, { id: "p1" })).toBe(false);
   });
 });

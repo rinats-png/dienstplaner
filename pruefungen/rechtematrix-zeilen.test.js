@@ -28,6 +28,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { vollausgabeBetrieb } from "../server/lib/sicherungen.mjs";
+import { PERSONENFELDER } from "../server/lib/sicht.mjs";
+import { ABGELEITETE_PERSONENFELDER } from "../server/lib/planungsregeln.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -78,11 +80,26 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   kalenderGeheim: M("KALGEHEIM-B1"), kalenderVerweis: M("KALVERWEIS-B1"), kalenderStand: M("KALSTAND-B1"),
   pushSchluessel: { endpoint: M("PUSH-B1") }, zustellung: { planGeaendert: { mail: M("ZUSTELLUNG-B1") } },
   notiz: M("LEITUNGSNOTIZ-B1"), unbekanntesPersonenfeld: M("UNBEKANNT-PERSON"),
+  /* Auflage B3: jedes übrige Feld aus PERSONENFELDER, damit jede Zuordnung geprüft wird. */
+  vorname: M("VORNAME-B1"), imSchichtdienst: true, springer: false, teilzeit: false, wochenstunden: 38.5, anonym: false,
+  austritt: M("AUSTRITT-B1"),
+  qualNachweise: [{ qualId: "pfk", ablauf: "2030-01-01", datei: M("DATEI-B1") }, { qualId: "masern", vorhanden: true }],
+  kompetenzNachweise: [{ id: M("KOMPETENZ-B1") }], verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-B1") },
+  wunschfrei: [M("WUNSCHFREI-B1")], stundenuebertrag: M("STUNDEN-B1"), urlaubsanspruch: M("URLAUB-B1"),
+  urlaubsuebertrag: M("URLAUBSUEBERTRAG-B1"), einarbeitung: { bis: M("EINARBEITUNG-B1") },
+  notizen: [{ text: M("NOTIZEN-AN-B1") }], urlaubshinweis: M("URLAUBSHINWEIS-B1"), personalnummer: M("PERSONALNUMMER-B1"),
+  zuschlaege: [{ art: M("ZUSCHLAG-B1") }], nachweise: [M("NACHWEISE-B1")], neuerZugang: M("NEUERZUGANG-B1"),
+  anonymSeit: M("ANONYMSEIT-B1"),
+  ...Object.fromEntries(["weckzeit", "benachrichtigung", "thema", "dichte", "kontrastmodus", "feldmodus", "tour",
+    "einfuehrung", "handbuch", "startansicht", "wenigerBewegung"].map((f) => [f, M(`EINSTELLUNG-${f}-B1`)])),
 });
 /* a1 im Bereich der Schichtverantwortung (e1): echte Schutzmerkmale, aus denen Einsatzregeln entstehen. */
 const A1 = () => person("a1", "mitarbeiter", "e1", {
   telefon: M("TELEFON-A1"), mobil: M("MOBIL-A1"), anschrift: M("ANSCHRIFT-A1"), email: `${M("EMAIL-A1")}@x.de`,
   notfallkontakt: M("NOTFALL-A1"), iban: M("IBAN-A1"),
+  stundenuebertrag: M("STUNDEN-A1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-A1") },
+  kompetenzNachweise: [{ id: M("KOMPETENZ-A1") }],
+  qualNachweise: [{ qualId: "masern", vorhanden: true, datei: M("DATEI-A1") }],
   mutterschutz: true, schwerbehindert: true, geburtstag: "2010-07-17", nachtvorsorge: "2024-11-13",
   einschraenkungen: { keineNacht: true, wiedereingliederung: { von: tag(-5), bis: tag(30), stundenWoche: 20 } },
 });
@@ -100,7 +117,8 @@ const bestand = () => ({
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
       person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE"), person("ku1", "kunde", "ALLE"),
-      person("sp1", "mitarbeiter", "pool", { springer: true, telefon: M("TELEFON-SP1") }), A1(), B1()],
+      person("sp1", "mitarbeiter", "pool", { springer: true, telefon: M("TELEFON-SP1"),
+        stundenuebertrag: M("STUNDEN-SP1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-SP1") }, kompetenzNachweise: [{ id: M("KOMPETENZ-SP1") }] }), A1(), B1()],
     abweichungen: { [`b1|${tag(1)}`]: "F" },
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
@@ -114,6 +132,7 @@ const bestand = () => ({
     },
     abwesenheiten: [
       { id: M("ABW-ID-B1"), personId: "b1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-B1") },
+      { id: M("ABW-URLAUB-ID-B1"), personId: "b1", art: "urlaub", von: tag(20), bis: tag(22), notiz: M("ABW-URLAUB-NOTIZ-B1") },
       { id: "ab-a1", personId: "a1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-A1") }],
     anfragen: [
       { id: "an-b1", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-B1") },
@@ -180,8 +199,11 @@ const sichten = Object.fromEntries(Object.entries(PFADE).map(([k, f]) => {
 const hat = (o, k) => !!o && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);
 const personIn = (b, id) => (b && Array.isArray(b.personen) ? b.personen.find((p) => p && p.id === id) : null);
 
-/* Sonden: (Sicht) → steht der Wert im Payload? */
-const mk = (x) => Object.assign((s) => s.json.includes(M(x)), { titel: x });
+/* Sonden: (Sicht) → steht der Wert im Payload? Jeder Marker wird vermerkt;
+   am Ende prüft ein Test, dass er im Testbestand wirklich steht — sonst wäre
+   „fehlt im Payload" trivial wahr. */
+const MARKER = new Set();
+const mk = (x) => { MARKER.add(x); return Object.assign((s) => s.json.includes(M(x)), { titel: x }); };
 const feld = (pid, f) => Object.assign((s) => hat(personIn(s.betrieb, pid), f), { titel: `${pid}.${f}` });
 const wiedereingliederung = (pid) => Object.assign((s) => {
   const p = personIn(s.betrieb, pid);
@@ -207,7 +229,8 @@ const ZEILEN = {
     bedingt: { "ohne Rollenverlauf": (s) => {
       expect(mk("EINTRITT-B1")(s), "Eintritt").toBe(true);
       const b1 = personIn(s.betrieb, "b1");
-      for (const f of ["rolle", "status", "zugehoerigkeit"]) expect(hat(b1, f), f).toBe(true);
+      for (const f of ["id", "rolle", "status", "eintritt", "austritt", "zugehoerigkeit"]) expect(hat(b1, f), f).toBe(true);
+      for (const f of ["rolleSeit", "rolleVerlauf"]) expect(hat(b1, f), f).toBe(false);
       expect(mk("ROLLESEIT-B1")(s), "rolleSeit").toBe(false);
       expect(mk("ROLLEVERLAUF-B1")(s), "rolleVerlauf").toBe(false);
     } } },
@@ -232,6 +255,23 @@ const ZEILEN = {
   "Qualifikationen": {
     sonden: [Object.assign((s) => { const p = personIn(s.betrieb, "b1"); return !!p && (p.qualifikationen || []).includes("pfk"); },
       { titel: "b1.qualifikationen pfk" })] },
+  "Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise)": {
+    sonden: [mk("DATEI-B1")],
+    bedingt: { "nur Qualifikation und Ablauf": (s) => {
+      expect(personIn(s.betrieb, "b1").qualNachweise).toEqual([{ qualId: "pfk", ablauf: "2030-01-01" }]);
+      expect(mk("DATEI-B1")(s), "Datei").toBe(false);
+    } } },
+  "Kompetenznachweise (`kompetenzNachweise`)": { sonden: [mk("KOMPETENZ-B1")] },
+  "Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung)": {
+    sonden: [mk("VERFUEGBARKEIT-B1")] },
+  "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)": {
+    sonden: [mk("STUNDEN-B1"), mk("URLAUB-B1"), mk("URLAUBSUEBERTRAG-B1"), mk("WUNSCHFREI-B1"), mk("EINARBEITUNG-B1")] },
+  "Personalnummer (`personalnummer`, Lohnexport)": { sonden: [mk("PERSONALNUMMER-B1")] },
+  "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": { sonden: [mk("ZUSCHLAG-B1")] },
+  "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)": {
+    sonden: [mk("NACHWEISE-B1"), mk("URLAUBSHINWEIS-B1"), mk("NEUERZUGANG-B1"), mk("ANONYMSEIT-B1")] },
+  "Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`)": {
+    sonden: [mk("EINSTELLUNG-weckzeit-B1"), mk("EINSTELLUNG-wenigerBewegung-B1")] },
   "Zeiterfassung (fremd; Grund)": { sonden: [mk("ERF-ZEIT-B1"), mk("ERF-GRUND-B1")] },
   "Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten)": {
     sonden: [mk("ORTSURTEIL-B1"), mk("GEO-B1")] },
@@ -239,12 +279,16 @@ const ZEILEN = {
     sondenFuer: (spalte) => (EIGENE_STEMPEL[spalte] ? [mk(`STEMPEL-EIGEN-${EIGENE_STEMPEL[spalte]}`)]
       : Object.values(EIGENE_STEMPEL).map((id) => mk(`STEMPEL-EIGEN-${id}`))) },
   "Abwesenheiten mit Anmerkung": {
-    sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1")],
-    bedingt: { "„abwesend\"": (s) => {
+    sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1"), mk("ABW-URLAUB-ID-B1"), mk("ABW-URLAUB-NOTIZ-B1")],
+    /* Auflage B2: Krankheit und jede andere Kategorie werden zu „abwesend";
+       Urlaub und frei bleiben als solche lesbar (bisheriger Stand, sicht.mjs
+       abwesenheiten). Keine Anmerkung. */
+    bedingt: { "„abwesend\" (Urlaub/frei offen)": (s) => {
       expect(mk("ABW-NOTIZ-B1")(s), "Anmerkung").toBe(false);
-      const a = (s.betrieb.abwesenheiten || []).find((x) => x.id === M("ABW-ID-B1"));
-      expect(a, "Abwesenheit vorhanden").toBeDefined();
-      expect(a.art).toBe("abwesend");
+      expect(mk("ABW-URLAUB-NOTIZ-B1")(s), "Anmerkung zum Urlaub").toBe(false);
+      const art = (id) => ((s.betrieb.abwesenheiten || []).find((x) => x.id === M(id)) || {}).art;
+      expect(art("ABW-ID-B1"), "krank").toBe("abwesend");
+      expect(art("ABW-URLAUB-ID-B1"), "urlaub").toBe("urlaub");
     } } },
   "Anträge (fremd)": {
     sonden: [mk("ANTRAG-URLAUB-B1"), mk("ANTRAG-TAUSCH-B1")],
@@ -265,7 +309,7 @@ const ZEILEN = {
   "Tagesnotizen (`notizen` „tag|…\")": einheitZeile("TAGESNOTIZ"),
   "`tagesnotizen` (totes Feld, keine Ansicht)": { sonden: [mk("TOTFELD")] },
   "Personennotizen (`notizen` „person|…\"; Notiz der Leitung `notiz` an der Person)": {
-    sonden: [mk("PERSONENNOTIZ-B1"), mk("LEITUNGSNOTIZ-B1")] },
+    sonden: [mk("PERSONENNOTIZ-B1"), mk("LEITUNGSNOTIZ-B1"), mk("NOTIZEN-AN-B1")] },
   "Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit)": { sonden: [mk("AUSSCHREIBUNG-KOPF")] },
   "Ausschreibungen: Bewerbungen anderer": {
     sonden: [mk("BEWERBUNG-FREMD"), mk("BEWERBUNG-E1")],
@@ -320,9 +364,76 @@ function einheitZeile(name) {
 }
 
 /* ------------------------------------------------------------------------
+   Auflage B3: Jedes Personenfeld (PERSONENFELDER) gehört zu genau einer
+   Zeile. Die Zelle prüft dann zusätzlich, ob das Feld an b1 in der Antwort
+   steht. Ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind
+   nur die abgeleiteten Felder (sichtbereich, planungsregeln): Sie entstehen
+   in der Antwort und werden beim Schreiben entfernt, nie gespeichert.
+   ------------------------------------------------------------------------ */
+const FELD_ZEILE = {
+  "Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …)":
+    ["vorname", "nachname", "funktion", "imSchichtdienst", "springer", "teilzeit", "wochenstunden", "anonym"],
+  "Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit)":
+    ["id", "rolle", "status", "eintritt", "austritt", "zugehoerigkeit", "rolleSeit", "rolleVerlauf"],
+  "Kontakt: Telefon, Anschrift": ["telefon", "mobil", "anschrift"],
+  "Kontakt: E-Mail (Kontaktangabe für Planung und Leitung)": ["email"],
+  "Notfallkontakt": ["notfallkontakt", "notfall"],
+  "Bank, Steuer, Sozialversicherung, Lohn/Gehalt": ["iban", "steuerId", "sozialversicherung", "lohn", "gehalt"],
+  "frühere Anmeldeadresse": ["emailVorher", "emailGeaendert"],
+  "Gesundheits-/Schutzmerkmale (fremder Bereich)":
+    ["mutterschutz", "schwerbehindert", "geburtstag", "geburtsdatum", "nachtvorsorge", "schutz"],
+  "Qualifikationen": ["qualifikationen"],
+  "Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise)": ["qualNachweise"],
+  "Kompetenznachweise (`kompetenzNachweise`)": ["kompetenzNachweise"],
+  "Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung)":
+    ["bereich", "verfuegbarkeit", "einschraenkungen"],
+  "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)":
+    ["stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag", "wunschfrei", "einarbeitung"],
+  "Personalnummer (`personalnummer`, Lohnexport)": ["personalnummer"],
+  "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": ["zuschlaege"],
+  "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)":
+    ["nachweise", "urlaubshinweis", "neuerZugang", "anonymSeit"],
+  "Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`)":
+    ["weckzeit", "benachrichtigung", "thema", "dichte", "kontrastmodus", "feldmodus", "tour", "einfuehrung", "handbuch",
+      "startansicht", "wenigerBewegung"],
+  "Personennotizen (`notizen` „person|…\"; Notiz der Leitung `notiz` an der Person)": ["notiz", "notizen"],
+  "Kalendergeheimnis, -verweis, -stand": ["kalenderGeheim", "kalenderVerweis", "kalenderStand"],
+  "Push-Schlüssel, Zustelleinstellungen": ["pushSchluessel", "zustellung"],
+};
+const feldSonden = (klasse) => (FELD_ZEILE[klasse] || []).map((f) => feld("b1", f));
+
+/* ------------------------------------------------------------------------
    Die Prüfung
    ------------------------------------------------------------------------ */
 const ZEILEN_MD = matrixZeilen();
+
+describe("Auflage B3: jedes Personenfeld gehört zu genau einer Matrixzeile", () => {
+  const zuordnung = Object.entries(FELD_ZEILE).flatMap(([z, felder]) => felder.map((f) => [f, z]));
+  it("jedes Feld aus PERSONENFELDER ist zugeordnet (außer den abgeleiteten)", () => {
+    const zugeordnet = new Set(zuordnung.map(([f]) => f));
+    const ohne = PERSONENFELDER.filter((f) => !zugeordnet.has(f) && !ABGELEITETE_PERSONENFELDER.includes(f));
+    expect(ohne, "Personenfelder ohne Matrixzeile — Zeile in RECHTEMATRIX.md und Zuordnung hier ergänzen").toEqual([]);
+  });
+  it("kein Feld doppelt, kein unbekanntes Feld, jede Zeile gibt es", () => {
+    const felder = zuordnung.map(([f]) => f);
+    expect(felder.length).toBe(new Set(felder).size);
+    expect(felder.filter((f) => !PERSONENFELDER.includes(f))).toEqual([]);
+    const klassen = new Set(ZEILEN_MD.map((z) => z.klasse));
+    expect(Object.keys(FELD_ZEILE).filter((k) => !klassen.has(k) || !ZEILEN[k])).toEqual([]);
+  });
+  it("b1 trägt jedes zugeordnete Feld (sonst prüfte die Sonde nichts)", () => {
+    const b1 = B1();
+    expect(zuordnung.map(([f]) => f).filter((f) => !hat(b1, f))).toEqual([]);
+  });
+  it("die abgeleiteten Felder werden beim Schreiben entfernt", () => {
+    const g = bestand();
+    const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ.LT)));
+    for (const f of ABGELEITETE_PERSONENFELDER) sicht.mandanten[0].personen.find((p) => p.id === "b1")[f] = "gespeichert?";
+    const e = zusammenfuehren(g, sicht, SITZ.LT);
+    const b1 = e.mandanten[0].personen.find((p) => p.id === "b1");
+    for (const f of ABGELEITETE_PERSONENFELDER) expect(hat(b1, f), f).toBe(false);
+  });
+});
 
 describe("RECHTEMATRIX.md, Abschnitt 1: jede Zeile hat eine Prüfung und umgekehrt", () => {
   it("die Tabelle ist da", () => {
@@ -351,7 +462,7 @@ describe("RECHTEMATRIX.md, Abschnitt 1: jede Zelle gegen die Antwort des Servers
       const wert = z.zellen[matrixSpalte(spalte)];
       it(`${z.klasse} · ${spalte}: ${wert}`, () => {
         const s = sichten[spalte];
-        const sonden = def.sondenFuer ? def.sondenFuer(spalte) : def.sonden;
+        const sonden = [...(def.sondenFuer ? def.sondenFuer(spalte) : def.sonden), ...feldSonden(z.klasse)];
         if (wert === "✓") erwarte(sonden, s, true, `${spalte} ✓`);
         else if (wert === "–") erwarte(sonden, s, false, `${spalte} –`);
         else {
@@ -390,6 +501,19 @@ describe("RECHTEMATRIX.md, Fußnoten", () => {
     const a = sv.betrieb.abwesenheiten.find((x) => x.id === "ab-a1");
     expect(a.art).toBe("krank");
     expect(mk("ABW-NOTIZ-A1")(sv)).toBe(false);
+  });
+  it("¹⁸ Bereich und Pool: Zuständigkeitsbereich, Verfügbarkeit, Kompetenznachweise", () => {
+    for (const x of ["VERFUEGBARKEIT-A1", "VERFUEGBARKEIT-SP1", "KOMPETENZ-A1", "KOMPETENZ-SP1"]) expect(mk(x)(sv), x).toBe(true);
+    expect(personIn(sv.betrieb, "a1").bereich).toBe("e1");
+    expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({ keineNacht: true });
+  });
+  it("¹⁹ Konten im eigenen Bereich, nicht im Pool", () => {
+    expect(mk("STUNDEN-A1")(sv)).toBe(true);
+    expect(mk("STUNDEN-SP1")(sv)).toBe(false);
+  });
+  it("²⁰ Nachweise im Bereich: Qualifikation, Ablauf, vorhanden — nie die Datei", () => {
+    expect(personIn(sv.betrieb, "a1").qualNachweise).toEqual([{ qualId: "masern", vorhanden: true }]);
+    expect(mk("DATEI-A1")(sv)).toBe(false);
   });
   it("⁵ Anträge im eigenen Bereich vollständig", () => {
     expect(mk("ANTRAG-URLAUB-A1")(sv)).toBe(true);
@@ -467,4 +591,15 @@ describe("Rundreise: gefilterte Sicht zurück — nichts verloren, nichts Verbor
       });
     }
   }
+});
+
+/* Zuletzt (alle Sonden sind jetzt angelegt, auch die in den Wortlaut-Prüfungen):
+   Jeder abgefragte Marker steht im Testbestand — ein Tippfehler im Marker
+   machte „fehlt im Payload" sonst trivial wahr. */
+describe("Sonden: jeder Marker steht im Testbestand", () => {
+  it("kein Marker ohne Gegenstück", () => {
+    const roh = JSON.stringify(bestand());
+    expect([...MARKER].filter((x) => !roh.includes(M(x)))).toEqual([]);
+    expect(MARKER.size).toBeGreaterThan(90);
+  });
 });

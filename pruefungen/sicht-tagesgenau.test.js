@@ -102,6 +102,8 @@ const bestand = () => ({ version: 3, stand: 1, session: null, mandanten: [{
   urlaubsrunde: { jahr: 2026, phase: "offen", wuensche: [
     { id: "uw-v1-e1", personId: "v1", von: tag(-13), bis: tag(-11) },
     { id: "uw-v1-e2", personId: "v1", von: tag(10), bis: tag(14) }], vorjahrZurueck: [] },
+  sondereinsaetze: [{ id: "se-v1-e1", datum: tag(-12), zugeteilt: ["v1"] }, { id: "se-v1-e2", datum: tag(-3), zugeteilt: ["v1"] },
+    { id: "se-a1-ohne", zugeteilt: ["a1"] }, { id: "se-s1-ohne", zugeteilt: [{ personId: "s1" }] }],
   einstempeln: {}, nachrichten: [], protokoll: [],
 }] });
 
@@ -139,6 +141,9 @@ describe("Versetzung mitten im Monat (v1: e1 → e2 ab tag(-10))", () => {
     /* Anträge: Bereich am ersten Tag (wie beim Entscheiden); sonst wie für Beschäftigte. */
     expect(ids(m.anfragen)).toEqual(["an-v1-e1"]);
     expect(ids(m.urlaubsrunde.wuensche)).toEqual(["uw-v1-e1"]);
+  });
+  it("Sondereinsätze (Auflage B4): nur am Tag in e1; ohne Tag nur der eigene", () => {
+    expect(ids(sicht().sondereinsaetze)).toEqual(["se-s1-ohne", "se-v1-e1"]);
   });
   it("die Person selbst bleibt im Sichtfenster in der Personenliste des Bereichs (personenbezogen, nicht tagesbezogen)", () => {
     const v1 = sicht().personen.find((p) => p.id === "v1");
@@ -222,7 +227,7 @@ describe("Rundweg: verborgene Tage gehen nicht verloren und lassen sich nicht ü
     const roh = g.mandanten[0], neu = e.mandanten[0];
     expect(neu.abweichungen[`a1|${tag(3)}`]).toBe("F");
     for (const f of ["erfassung", "fahrzeiten", "wuensche", "einspruenge", "aenderungen", "notrufe", "abwesenheiten",
-      "anfragen", "selbstplanung", "urlaubsrunde", "personen"])
+      "anfragen", "selbstplanung", "urlaubsrunde", "sondereinsaetze", "personen"])
       expect(neu[f], f).toEqual(roh[f]);
   });
   const angriffe = {
@@ -246,5 +251,52 @@ describe("Rundweg: verborgene Tage gehen nicht verloren und lassen sich nicht ü
       delete m.erfassung[`v1|${tag(-12)}`];       // auch ein sichtbarer fehlt nicht unbemerkt: Erfassung ist ohne Rohzugriff
     });
     if (!e.verweigert) expect(e.mandanten[0].erfassung).toEqual(g.mandanten[0].erfassung);
+  });
+});
+
+/* Auflage B5: Der Schreibweg der Schichtverantwortung (einheitZusammen) prüft
+   dieselbe Zugehörigkeit am Tag wie die Lesesicht. Bis dahin galt ohne gültigen
+   Tag der heutige, und vor dem ersten Zugehörigkeitsabschnitt `bereich` — die
+   Schichtverantwortung konnte so Einträge quittieren, entscheiden oder planen,
+   die sie gar nicht sieht. */
+describe("Schreibweg fail-closed wie die Lesesicht (B5)", () => {
+  const mitSonderfaellen = () => {
+    const g = bestand();
+    const m = g.mandanten[0];
+    m.notrufe.push({ id: "nr-a1-alt", personId: "a1", art: "hilfe", empfaenger: ["l1"], bestaetigt: null });
+    m.anfragen.push({ id: "an-a1-ohne-tag", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", text: "ohne Tag" });
+    /* z1 gehört erst ab tag(5) zu e1; davor keiner Einheit (bereich e1 zählt dann nicht). */
+    m.personen.push(person("z1", "mitarbeiter", "e1", [{ ab: tag(5), einheitId: "e1" }]));
+    return g;
+  };
+  const schreiben = (aendern) => {
+    const g = mitSonderfaellen();
+    const gelesen = JSON.parse(JSON.stringify(bestandFuerRolle(g, SUB)));
+    aendern(gelesen.mandanten[0], g.mandanten[0]);
+    return zusammenfuehren(g, gelesen, SUB);
+  };
+  it("die Lesesicht zeigt keinen der Fälle", () => {
+    const m = bestandFuerRolle(mitSonderfaellen(), SUB).mandanten[0];
+    expect(ids(m.notrufe)).not.toContain("nr-a1-alt");
+    expect(ids(m.anfragen)).not.toContain("an-a1-ohne-tag");
+  });
+  it("Notruf ohne Datum (nicht an sie gerichtet) quittieren: abgelehnt", () => {
+    const e = schreiben((m, roh) => {
+      m.notrufe.push({ ...roh.notrufe.find((n) => n.id === "nr-a1-alt"), bestaetigt: "jetzt" });
+    });
+    expect(e.verweigert).toBeTruthy();
+  });
+  it("Antrag ohne gültigen Tag entscheiden: abgelehnt", () => {
+    const e = schreiben((m, roh) => {
+      m.anfragen.push({ ...roh.anfragen.find((a) => a.id === "an-a1-ohne-tag"), status: "genehmigt" });
+    });
+    expect(e.verweigert).toBeTruthy();
+  });
+  it("Plan vor dem ersten Zugehörigkeitsabschnitt: abgelehnt; ab dem Abschnitt angenommen", () => {
+    expect(schreiben((m) => { m.abweichungen[`z1|${tag(-2)}`] = "F"; }).verweigert).toBeTruthy();
+    expect(schreiben((m) => { m.abweichungen[`z1|${tag(6)}`] = "F"; }).verweigert).toBeFalsy();
+  });
+  it("Planänderung ohne gültigen Tag im Schlüssel: abgelehnt (wie bisher)", () => {
+    expect(schreiben((m) => { m.abweichungen["a1|morgen"] = "F"; }).verweigert).toBeTruthy();
   });
 });

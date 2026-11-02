@@ -62,3 +62,17 @@ weiterhin unabhängig vom Tag.
 5. Sondereinsätze, Kompetenzen, Einarbeitung, Betriebsmittel bleiben beim Sichtfenster (keine Ist- oder
    Gesundheitsdaten); Sondereinsätze tragen ein Datum — tagesgenau gewünscht?
 6. Rundreise der Beschäftigten stellt verborgene Anträge hinter die sichtbaren (Reihenfolge, kein Verlust).
+
+## Review-Auflagen B1–B5 (Freigabe mit Auflagen)
+
+| Auflage | Umsetzung | Test (rot auf 57da139) |
+|---|---|---|
+| B1 Ist-Zeit tagesgenau | `sichtIstDaten.zeitraeume` (`server/lib/sicht.mjs`, `betriebSichtSchicht`): für Personen des Bereichs mit Abschnitten in anderen Einheiten genau die Tage im eigenen Bereich. `istVerfuegbar(m, p, d)` (`src/istdaten.js`) prüft den Tag; `istZeitFuer`/`pruefZeitFuer` geben ihn mit. Aufrufer ohne Tag (Monat, Konto, Ausgleich, Jahr, Auslastung, Zuschläge) bekommen für solche Personen „nicht verfügbar" — nie die Planzeit. `src/App.jsx` unverändert: Die Aggregationen rufen schon `istVerfuegbar(m, p)` und behandeln „nicht verfügbar". | `pruefungen/istdaten.test.js` Block 9: 4 rot |
+| B2 Abwesenheiten | Matrix-Wortlaut „abwesend" (Urlaub/frei offen) — bisheriger Stand, Code unverändert; Sonde mit `art: "urlaub"` | Präzisierung, kein Fehler (auf altem Stand grün) |
+| B3 Personenfelder | Jedes Feld aus `PERSONENFELDER` ist genau einer Matrixzeile zugeordnet (`FELD_ZEILE`), die Zelle prüft das Feld an b1; neue Zeilen mit dem heutigen Verhalten: Qualifikationsnachweise, Kompetenznachweise, Zuständigkeitsbereich/Verfügbarkeit/Einschränkungen, Konten/Wünsche/Einarbeitung, Personalnummer, Zuschläge an der Person (B, fachlich offen), Verwaltungsangaben, Einstellungen; Fußnoten ¹⁸–²⁰. Ausgenommen nur `sichtbereich`/`planungsregeln` (abgeleitet, beim Schreiben entfernt — geprüft). Dazu: jeder Sondenmarker steht im Testbestand. | Präzisierung (auf altem Stand grün) |
+| B4 Sondereinsätze | `schichtSondereinsaetze` tagesgenau am `datum`; ohne Tag nur der eigene; Fußnote ¹⁵ | `sicht-tagesgenau.test.js`: 1 rot |
+| B5 Schreibweg | `einheitAm` (`server/lib/rechte.mjs`) rechnet mit denselben Abschnitten wie die Lesesicht (`zugehoerigkeitsAbschnitte`): vor dem ersten Abschnitt keine Einheit, ohne gültigen Tag keine; `imBereich` fällt nicht mehr auf heute zurück | `sicht-tagesgenau.test.js` „Schreibweg fail-closed": 3 rot (Notruf ohne Datum quittieren, Antrag ohne Tag entscheiden, Plan vor dem ersten Abschnitt) |
+
+Fixture-Anpassung: Der Sondereinsatz `se-a` in `sicht-schichtverantwortung.test.js` trägt jetzt `datum` (die Oberfläche setzt es).
+
+Bekannte Grenze B1: Tage vor dem ersten Zugehörigkeitsabschnitt einer Person, die nie in einer anderen Einheit war, stehen nicht in `zeitraeume`; die Lesesicht verschließt ihre Erfassung, die Oberfläche würde dort — nur bei einem geplanten Dienst vor dem Eintritt in den Bereich — mit der Planzeit rechnen. Praktisch ohne Daten; ein Folgeschritt kann `zeitraeume` für jede Person mit datierter Zugehörigkeit liefern.

@@ -158,17 +158,23 @@ const nachweiseBereich = (p) => liste(p.qualNachweise).map((n) => nimm(n, ["qual
 
 const tagPlus = (s, n) => new Date(new Date(`${s}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
 
+/** Die Zugehörigkeit als lückenlose Abschnitte {von, bis, einheitId} — oder
+    null, wenn die Person keine trägt (dann zählt `bereich`). Vor dem ersten
+    Abschnitt gehört die Person keiner Einheit an. Lesesicht (imFenster) und
+    Schreibweg (einheitAm in rechte.mjs) rechnen mit denselben Abschnitten. */
+export function zugehoerigkeitsAbschnitte(p) {
+  const z = liste(p && p.zugehoerigkeit).filter((x) => x && x.einheitId !== undefined)
+    .map((x) => ({ ab: typeof x.ab === "string" && x.ab ? x.ab : "0000-01-01", einheitId: String(x.einheitId) }))
+    .sort((a, b) => a.ab.localeCompare(b.ab));
+  if (!z.length) return null;
+  return z.map((x, i) => ({ von: x.ab, bis: z[i + 1] ? tagPlus(z[i + 1].ab, -1) : "9999-12-31", einheitId: x.einheitId }));
+}
+
 /** War die Person im Fenster [von, bis] irgendwann einer dieser Einheiten zugeordnet? */
 function imFenster(p, einheiten, von, bis) {
-  const z = liste(p.zugehoerigkeit).filter((x) => x && x.einheitId !== undefined)
-    .map((x) => ({ ab: x.ab || "0000-01-01", einheitId: String(x.einheitId) }))
-    .sort((a, b) => a.ab.localeCompare(b.ab));
-  if (!z.length) return p.bereich !== undefined && einheiten.has(String(p.bereich));
-  for (let i = 0; i < z.length; i++) {
-    const ende = z[i + 1] ? tagPlus(z[i + 1].ab, -1) : "9999-12-31";
-    if (z[i].ab <= bis && ende >= von && einheiten.has(z[i].einheitId)) return true;
-  }
-  return false;
+  const z = zugehoerigkeitsAbschnitte(p);
+  if (!z) return p.bereich !== undefined && p.bereich !== null && einheiten.has(String(p.bereich));
+  return z.some((x) => x.von <= bis && x.bis >= von && einheiten.has(x.einheitId));
 }
 
 /** Der Kontext der Personensicht: eigener Bereich (aus rechte.mjs), Pool, Fenster. */
@@ -581,8 +587,11 @@ const schichtEinarbeitung = (w, ctx) => liste(w).filter((e) => e
   && (imScope(ctx, e.personId, ["eigen", "bereich"]) || gleich(e.mentorId, ctx.ich)));
 const schichtBetriebsmittel = (w, ctx) => liste(w).filter((b) => b && (b.personId === null
   || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"])));
+/* Sondereinsätze: sichtbar, wenn sie selbst oder eine Person ihres Bereichs
+   zugeteilt ist — tagesgenau am Tag des Einsatzes (WP-43); ohne gültigen Tag
+   nur der eigene. */
 const schichtSondereinsaetze = (w, ctx) => liste(w).filter((s) => s && liste(s.zugeteilt)
-  .some((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"])));
+  .some((x) => imScopeAm(ctx, x && x.personId !== undefined ? x.personId : x, s.datum, s.datum, ["eigen", "bereich"])));
 /* Ausschreibungen (Commit C1): fachlich betriebsweit, der Kopf ist für alle
    sichtbar wie bei Beschäftigten. `einheitId` ist allein die verantwortende
    Einheit. Nur bei einer Ausschreibung der eigenen Einheit gehen alle
@@ -672,9 +681,23 @@ export function betriebSichtSchicht(m, ctx) {
   /* Ist-Zeiten bekommt die Schichtverantwortung nur für sich und den eigenen
      Bereich (schichtErfassung). Für alle anderen fehlt die Erfassung aus
      Datenschutzgründen — die Oberfläche darf dort nicht die Planzeit als
-     Ist-Zeit rechnen (E1, src/istdaten.js). Nur in der Antwort. */
-  aus.sichtIstDaten = { umfang: "personen", personen: liste(m.personen).filter(Boolean).map((p) => String(p.id))
-    .filter((id) => ["eigen", "bereich"].includes(umfangDer(c, id))) };
+     Ist-Zeit rechnen (E1, src/istdaten.js). Nur in der Antwort.
+     Tagesgenau (WP-43): Gehörte eine Person des Bereichs zeitweise einer
+     anderen Einheit an, sieht die Schichtverantwortung ihre Erfassung nur an
+     den Tagen im eigenen Bereich. Für diese Personen steht in `zeitraeume`,
+     an welchen Tagen die Ist-Daten zugänglich sind ({von, bis}, genau die
+     Abschnitte, die schichtErfassung durchlässt); an allen anderen Tagen
+     und für Auswertungen über Zeiträume sind sie „nicht verfügbar". */
+  const personen = liste(m.personen).filter(Boolean).map((p) => String(p.id))
+    .filter((id) => ["eigen", "bereich"].includes(umfangDer(c, id)));
+  const zeitraeume = {};
+  for (const id of personen) {
+    if (umfangDer(c, id) !== "bereich") continue;
+    const z = zugehoerigkeitsAbschnitte(c.personen.get(id));
+    if (!z || z.every((x) => x.einheitId === String(c.eigene))) continue;
+    zeitraeume[id] = z.filter((x) => x.einheitId === String(c.eigene) && x.von <= x.bis).map((x) => ({ von: x.von, bis: x.bis }));
+  }
+  aus.sichtIstDaten = { umfang: "personen", personen, ...(Object.keys(zeitraeume).length ? { zeitraeume } : {}) };
   return aus;
 }
 

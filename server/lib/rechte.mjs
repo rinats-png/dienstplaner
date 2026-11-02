@@ -20,7 +20,7 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
-  betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON } from "./sicht.mjs";
+  betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
 /* Die Rechtetabelle. Wortgleich zu MATRIX_STD in src/App.jsx — Änderungen
    dort müssen hier nachgezogen werden. */
@@ -1116,12 +1116,18 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
    betroffenen Tag.
    -------------------------------------------------------------------------- */
 
-/** Welcher Einheit gehört die Person an diesem Tag an? */
+/** Welcher Einheit gehört die Person an diesem Tag an?
+    Dieselben Abschnitte wie die Lesesicht (zugehoerigkeitsAbschnitte in
+    sicht.mjs, WP-43): Ohne Zugehörigkeit zählt `bereich`; trägt die Person
+    eine, gehört sie vor dem ersten Abschnitt keiner Einheit an — bis WP-43
+    fiel der Schreibweg dort auf `bereich` zurück, während die Lesesicht den
+    Tag schon verschloss. Ohne gültigen Tag: keiner. */
 function einheitAm(person, datum) {
-  const liste = (person.zugehoerigkeit || [])
-    .filter((z) => !z.ab || z.ab <= datum)
-    .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
-  return liste.length ? liste[liste.length - 1].einheitId : (person.bereich || null);
+  if (!person || typeof datum !== "string" || !TAG.test(datum)) return null;
+  const z = zugehoerigkeitsAbschnitte(person);
+  if (!z) return person.bereich === undefined || person.bereich === null || person.bereich === "" ? null : String(person.bereich);
+  const a = z.find((x) => x.von <= datum && datum <= x.bis);
+  return a ? a.einheitId : null;
 }
 
 /** Der eigene Bereich einer Schichtverantwortung — aus der gespeicherten Person. */
@@ -1304,11 +1310,14 @@ export function einheitZusammen(altM, neuM, sitzung) {
   const meinName = `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || ichId;
   const heute = new Date().toISOString().slice(0, 10);
 
-  /** Gehört die Person am Tag zum eigenen Bereich? */
+  /** Gehört die Person am Tag zum eigenen Bereich? Ohne gültigen Tag nein
+      (WP-43, wie die Lesesicht) — bis dahin galt dann der heutige Tag, und
+      ein Notruf oder Antrag ohne Datum ließ sich für eine Person quittieren
+      oder entscheiden, deren Eintrag die Schichtverantwortung nicht sieht. */
   const imBereich = (pid, tag) => {
     const p = personen.get(String(pid));
     if (!p) return false;
-    return einheitAm(p, typeof tag === "string" && TAG.test(tag) ? tag : heute) === eigene;
+    return einheitAm(p, tag) === eigene;
   };
   const eigen = (pid) => String(pid) === ichId;
 

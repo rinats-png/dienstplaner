@@ -46,10 +46,18 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Qualifikationen | ✓ ² | ✓ ² | ✓ ² | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise) | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf ²⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Kompetenznachweise (`kompetenzNachweise`) | – | ✓ | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung) | – | – | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`) | – | – | – ¹⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personalnummer (`personalnummer`, Lohnexport) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Notrufe anderer | – | – | nur Bereich und an sie ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -138,12 +146,23 @@ und bei der Wiederherstellung).
 ¹⁵ WP-43, tagesgenau: Zum eigenen Bereich (und Pool) der Schichtverantwortung gehört eine Person im Sichtfenster
 (`SICHTFENSTER`, 60 Tage zurück, 90 voraus) — das gilt für die Person selbst (Personenliste, Telefon, Konten,
 Einsatzregeln). Für Einträge, die an einem Tag hängen — Zeiterfassung, Fahrzeiten, Wünsche, Einsprünge, Notrufe,
-Planänderungen (`aenderungen`), Selbstplanung —, zählt zusätzlich die Zugehörigkeit an genau diesem Tag
+Planänderungen (`aenderungen`), Selbstplanung, Sondereinsätze (ohne Tag nur die eigenen) —, zählt zusätzlich die Zugehörigkeit an genau diesem Tag
 (`zugehoerigkeit[{einheitId, ab}]`); bei Zeiträumen (Abwesenheiten, Wünsche der Urlaubsrunde) an mindestens einem
 Tag darin, bei Anträgen am ersten Tag (wie beim Entscheiden). Nach einer Versetzung sieht die Schichtverantwortung
 des alten Bereichs die Tage im neuen Bereich also wie bei einer fremden Person. Tagesgenau schränkt nur ein: Was
 das Sichtfenster verschließt, bleibt zu; ohne gültigen Tag gilt ein Eintrag als fremd. Ein Bereich „ALLE" ist kein
-Bereich. Geprüft in `pruefungen/sicht-tagesgenau.test.js`.
+Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume` die Tage mit zugänglicher
+Erfassung; an allen anderen Tagen und in Auswertungen über Zeiträume zeigt die Oberfläche „nicht verfügbar", nie
+die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
+Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
+¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
+`maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
+¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
+²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
+und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
+Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
+Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
+`sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
 ¹⁶ WP-43, Präzisierung (vorher stand hier ✓, geprüft war schon immer –): Beschäftigte, Betriebsrat und
 Schichtverantwortung bekommen von fremden Personen Rolle, Status, Ein-/Austritt und Zugehörigkeit (Katalog `PLAN`),
 nicht aber `rolleSeit` und `rolleVerlauf`. Ob sie den Verlauf brauchen, ist offen; geöffnet wird er nicht ohne Entscheidung.
