@@ -53,3 +53,55 @@ Branch `acc45/infra/wp32b-xff-betreiber2fa`, Basis `acc45/infra/wp32-lieferkette
   senden") fragt nicht nach dem zweiten Faktor und zeigt bei Betreibercodes mit 2FA die
   Meldung des Servers; volle Anmeldung über die Startseite. `App.jsx` bewusst nicht
   angefasst (paralleler Agent).
+
+## 3. Folgecommit (Review-Auflagen B2 und Option Pflicht)
+
+- **B2:** Bestätigen und Abschalten des zweiten Faktors eines Betreibercodes
+  beenden alle Sitzungen dieses Codes (`sitzungenBeendenWenn`, Abgleich über
+  `sitzung.konto` = Ablageschlüssel des Codes, auch der alte bei Altcodes).
+  Sitzungen anderer Codes bleiben. Die Antwort nennt `sitzungenBeendet`; ließ
+  sich eine nicht beenden, dazu `sitzungenNichtBeendet` und eine Warnung.
+  Abschalten antwortet bei einem Ablagefehler 503 statt ihn zu schlucken.
+- **Option `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1`** (Vorgabe **aus**,
+  Entscheidung beim Inhaber): Ein Betreibercode ohne eingerichteten zweiten
+  Faktor bekommt keine Sitzung mehr (403, `zweifaktor: "einrichten"`), nur die
+  Aktionen `stand`, `beginnen`, `bestaetigen`. Andere Rollen unberührt.
+  Vor dem Einschalten den eigenen Betreibercode einrichten — sonst ist die
+  Konsole nur noch über die Einrichtungsaktion erreichbar (Einrichten geht
+  auch ohne Sitzung, direkt über `/api/anmelden`).
+- Tests in `pruefungen/betreiber-zweifaktor.test.js` (jetzt 14); rot auf dem
+  Stand vor dem Folgecommit: 2 (B2, Pflicht).
+
+## 4. Review-Auflagen WP-32c (B-M1, B-M2, B-N1, B-N2)
+
+- **B-M1:** Die Beenden-Menge enthält immer auch den alten, ungepfefferten
+  Schlüssel des Codes (`altHash`). Sitzungen aus der Zeit vor dem
+  Umschlüsseln enden damit ebenfalls.
+- **B-M2:** Erst werden die Sitzungen beendet, dann wird aktiviert bzw.
+  abgeschaltet. Lassen sie sich nicht alle beenden: 503,
+  `zweifaktor: "sitzungen"`, der Zustand bleibt (beim Bestätigen weiter
+  „ausstehend“, beim Abschalten weiter „aktiv“); eine Wiederholung mit dem
+  nächsten Code klappt. Nach der Aktivierung ein zweiter Durchgang für eine
+  Sitzung, die im Zwischenraum entstand.
+- **B-N1 (dokumentiert):** `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` wirkt bei
+  der nächsten Anmeldung; **bestehende** Betreibersitzungen ohne zweiten
+  Faktor laufen bis zu ihrem Ende weiter (höchstens zwei Stunden,
+  `DAUER_BETREIBER`). Wer das nicht abwarten will: für jeden Betreibercode
+  den Faktor einrichten (Bestätigen beendet die Sitzungen, B2) — das ist
+  ohnehin Schritt 1 der Einführung. Ein Verwerfen beim Start wurde nicht
+  umgesetzt: dafür müsste die Sitzungsprüfung den Faktor kennen
+  (`daten.mjs`, außerhalb des Anmeldepfads).
+- **B-N2:** Ein `beginnen`, das eine laufende Einrichtung überschreibt, läuft
+  durch die Zwei-Faktor-Bremse und wird protokolliert („laufende Einrichtung
+  überschrieben“).
+
+**Einführungsreihenfolge (empfohlen):**
+1. Für jeden genutzten Betreibercode den zweiten Faktor einrichten (Konsole →
+   Zwei-Faktor → Betreibercode). Bestätigen beendet alte Sitzungen dieses Codes.
+2. Erst dann `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` setzen und den Container
+   neu erstellen; höchstens zwei Stunden warten, bis Restsitzungen ohne
+   Faktor abgelaufen sind.
+3. Betreibercodes, die keinen Faktor bekommen (nicht mehr genutzt, unklarer
+   Besitz), sperren und bei Bedarf durch neue ersetzen.
+
+Tests: `betreiber-zweifaktor.test.js` jetzt 17; rot auf dem Stand davor: 3.

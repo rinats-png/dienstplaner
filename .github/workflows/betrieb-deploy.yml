@@ -100,3 +100,7 @@ jobs:
       - run: npm ci
       - name: Deploy-Skripte gegen Docker-Stub
         run: npx vitest run pruefungen/deploy-skripte.test.js --reporter=verbose
+      # WP-31: deploy.sh (Stub), deploy-smoke.mjs (echter server.mjs),
+      # deploy-abgleich.mjs (echte Sicherung).
+      - name: Deploy-Automatik gegen Docker-Stub
+        run: npx vitest run pruefungen/deploy-automatik.test.js --reporter=verbose
