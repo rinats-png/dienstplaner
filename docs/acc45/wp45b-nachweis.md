@@ -84,6 +84,11 @@ Neue Prüfdatei `pruefungen/ablage-pruefen-rueckweg.test.js` (14 Tests, einer nu
 Regression lokal (Windows): `ablage-pruefen`, `ablage-pruefen-rueckweg`, `journal-lesen`, `sicherung-ablage`,
 `prozesssperre` mit 50/50 grün (1 übersprungen); `eslint` und `tsc` ohne Befund.
 
+CI: Der erste Lauf auf 394e30f (Prüfung 41528860871) scheiterte am Bildbau — `.dockerignore` ließ die beiden
+Werkzeuge nicht in den Bau-Kontext; behoben in e71233f. Auf e71233f grün: Prüfung 41529512245 (darin
+„Datenintegrität“ 57/57 ohne Übersprungenes, also auch der Rechte-Test unter Linux, und „Rückweg-Werkzeuge im Bild“
+mit allen sieben Proben), Sicherheit 41529512178, Betrieb: Deploy-Skripte 41529512213.
+
 ## Offen
 
 - Die nächtliche Sicherung bricht bei einer unlesbaren Datei ab. Das ist gewollt, weil es Alarm auslöst. Zum
