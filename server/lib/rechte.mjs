@@ -1009,7 +1009,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       /* Dienstarten (WP-22): anlegen, ändern und löschen nur mit org.edit
          (Leitung, Kundenrolle) — die Planung nicht (RECHTEMATRIX, Abschnitt 2).
          Eine unveränderte Kopie stört nicht. */
-      if (!darf(rolle, "org.edit") && hat(geschickt, "dienstarten") && !gleichJson(geschickt.dienstarten, ort.betrieb.dienstarten))
+      const ohneCheckliste = (l) => (Array.isArray(l) ? l : []).map((d) => (d && typeof d === "object" ? { ...d, checkliste: undefined } : d));
+      /* Die Checkliste einer Dienstart (Arbeitsablauf, keine Planungsregel) pflegt die Planung weiter. */
+      if (!darf(rolle, "org.edit") && hat(geschickt, "dienstarten")
+        && !gleichJson(ohneCheckliste(geschickt.dienstarten), ohneCheckliste(ort.betrieb.dienstarten)))
         return { verweigert: "Dienstarten legt die Leitung an und ändert sie (org.edit)." };
       /* Bestätigungsprotokoll (WP-10 d.1): nur anhängen, Wer und Zeit vom Server. */
       if (hat(geschickt, "bestaetigungen")) {

@@ -155,12 +155,13 @@ export async function lies() {
  * einzigen Aufruf zusammengefasst — sonst ginge bei jedem Tastendruck ein
  * Netzaufruf hinaus.
  *
- * onKonflikt wird gerufen, wenn jemand anderes inzwischen gespeichert hat.
+ * onKonflikt wird gerufen, wenn jemand anderes inzwischen gespeichert hat;
+ * onFachbefunde, wenn der Server warnende Befunde bestätigt haben will (WP-22).
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -254,6 +255,17 @@ async function schreibenAusfuehren(beimSchliessen) {
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
+    if (status === 409 && daten && Array.isArray(daten.fachbefunde)) {
+      /* WP-22: kein Konflikt mit einem fremden Stand, sondern warnende
+         Befunde, die der Server bestätigt haben will. Der Auftrag bleibt
+         liegen; die Anwendung fragt nach und speichert mit Bestätigung neu. */
+      if (daten.etag) etag = daten.etag;
+      gescheitert = { auftrag, lage: { art: "bestaetigung", text: String(daten.fehler || "Bestätigung nötig."), status,
+        zeit: new Date().toISOString() } };
+      if (auftrag.onFachbefunde) auftrag.onFachbefunde(daten);
+      else if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+      return;
+    }
     if (status === 409) {
       etag = daten.etag;
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);

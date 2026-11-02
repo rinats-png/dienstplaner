@@ -161,17 +161,27 @@ function tagGueltig(s) {
   }
   return ok;
 }
+/* Alter je Geburtsdatum und Tag, zwischengespeichert (WP-22, Laufzeit). */
+const ALTER = new Map();
 export function alterAm(geburtstag, datum) {
-  if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
+  if (!geburtstag) return null;
+  const g = String(geburtstag);
+  let je = ALTER.get(g);
+  if (!je) { if (ALTER.size > 5000) ALTER.clear(); je = new Map(); ALTER.set(g, je); }
+  let v = je.get(datum);
+  if (v !== undefined) return v;
+  v = null;
   /* Einen Tag, den es nicht gibt (30.02.), rechnet Date auf den 02.03. weiter —
      das wäre ein falsches Alter statt keines. */
-  const g = String(geburtstag);
-  if (!tagGueltig(g)) return null;
-  const gj = Number(g.slice(0, 4)), gm = Number(g.slice(5, 7)), gt = Number(g.slice(8, 10));
-  const j = Number(datum.slice(0, 4)), m = Number(datum.slice(5, 7)), t = Number(datum.slice(8, 10));
-  let jahre = j - gj;
-  if (m < gm || (m === gm && t < gt)) jahre--;                       // vor dem Geburtstag
-  return jahre;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(g) && tagGueltig(g)) {
+    const gj = Number(g.slice(0, 4)), gm = Number(g.slice(5, 7)), gt = Number(g.slice(8, 10));
+    const j = Number(datum.slice(0, 4)), m = Number(datum.slice(5, 7)), t = Number(datum.slice(8, 10));
+    v = j - gj;
+    if (m < gm || (m === gm && t < gt)) v--;                         // vor dem Geburtstag
+  }
+  if (je.size > 2000) je.clear();
+  je.set(datum, v);
+  return v;
 }
 
 /**
@@ -253,7 +263,7 @@ export function schutzBefunde(person, dienstart, datum, einst) {
  *
  * Zusammengeführt aus schutzEinsatz (Kette A: Bewertung, „nicht bewertbar")
  * und schutzBefundeFuer/einsatzSchutz (Kette B: Datenweg, Sperre).
- * @returns {{regel: string, text: string, offen: boolean, neutral: boolean, hart: boolean, sperrt: boolean, stufe: string, schwere: string}[]}
+ * @returns {{regel: string, text: string, offen: boolean, neutral: boolean, hart: boolean, hinweis: boolean, sperrt: boolean, stufe: string, schwere: string}[]}
  */
 export function schutzEinsatz(person, dienstart, datum, einst) {
   return /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum, einst)).map((b) => ({

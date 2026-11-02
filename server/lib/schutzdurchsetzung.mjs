@@ -163,7 +163,8 @@ function planrechner(m, personen) {
         const eid = einheitAm(p, d);
         basis = eid && !p.springer && p.imSchichtdienst !== false ? teilzeitDienst(m, p, d, folgeAm(eid, d)) : null;
       }
-      if (basis && !(fehlt.get(pid) || []).some((a) => a.von <= d && a.bis >= d)) v = basis;
+      const ab2 = basis ? fehlt.get(pid) : undefined;
+      if (basis && !(ab2 && ab2.some((a) => a.von <= d && a.bis >= d))) v = basis;
     }
     je.set(d, v);
     return v;
@@ -197,7 +198,7 @@ const nameVon = (p) => (p ? [p.vorname, p.nachname].filter(Boolean).join(" ") ||
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter, schon zusammengeführter Betrieb
  * @param {string} [heute] JJJJ-MM-TT
- * @returns {null | { sperre: string } | { warnungen: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[] }}
+ * @returns {null | { sperre?: string, warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[] }}
  */
 export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOString().slice(0, 10)) {
   const t0 = performance.now();
@@ -214,7 +215,7 @@ export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOSt
  * @param {any} neuM
  * @param {string} heute
  * @param {{ mittelbar: boolean, personen: number, geprueft: number }} zaehler
- * @returns {null | { sperre: string } | { warnungen: any[] }}
+ * @returns {null | { sperre?: string, warnungen?: any[] }}
  */
 function pruefen(altM, neuM, heute, zaehler) {
   if (!istObjekt(neuM)) return null;

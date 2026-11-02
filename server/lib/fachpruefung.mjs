@@ -237,9 +237,11 @@ export function einteilungsBefunde(m, p, da, d, k) {
     push("keineNacht", "keine Nachtdienste zugelassen", SCHUTZ_QUELLE_EINSCHRAENKUNG, "schutz");
   /* Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung. */
   if (da.form !== "ruf") {
+    let land;                                                                // erst, wenn eine Qualifikation sperren kann
     for (const q of (Array.isArray(m.qualifikationen) ? m.qualifikationen : [])) {
-      if (!q || typeof q !== "object") continue;
-      const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
+      if (!q || typeof q !== "object" || !q.harteSperre) continue;
+      if (land === undefined) land = landFuerEinheit(m, einheitAm(p, d));
+      const v = sperreWirkt(m, q, land);
       if (!v || qualGueltig(m, p, q.id, k.heute)) continue;
       push(v.gesetzlich ? "qualifikationGesetzlich" : "qualifikationBetrieblich",
         `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
