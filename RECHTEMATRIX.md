@@ -215,8 +215,8 @@ und `stundenGrenzeMonat` sind Vertragsangaben mit Lohnbezug (Entgeltgrenze). Die
 schreiben sie (`VOLL_PERSON`), beide Vollausgaben enthalten sie. Die Schichtverantwortung bekommt sie — im Zweifel
 restriktiv — auch im eigenen Bereich nicht; ob sie für die Einteilung eine neutrale Monatsgrenze braucht (wie die
 Wochenstundengrenze in `planungsregeln`, ¹⁰), ist eine offene fachliche Frage. Beschäftigte und Betriebsrat sehen sie
-bei fremden Personen nicht. Die Felder schreibt bisher nur der Folgestand von Kette A (`claude/regelwerk-registry`);
-die Kataloge stehen vorab, damit sie dort nicht still verworfen werden.
+bei fremden Personen nicht. Seit WP-11 pflegt die Oberfläche die Felder (Personalakte, nur mit `staff.edit`);
+die Kataloge (WP-10 d.2) nehmen sie auf, Rundreisen in `pruefungen/kette-a-rundreise.test.js`.
 ²⁴ WP-10 d.5 (Kette A): **Abwesenheit für einen Tag aufheben.** Teilt der Warndialog eine Abwesenheit, um eine
 Person an einem Tag einzuteilen (`abwesenheitTagAufheben`, `src/warnstufen.js`), ändert das einen bestehenden
 Eintrag in `abwesenheiten` und legt für den Rest einen neuen an. Schreibumfang: Planung, Leitung und Kundenrolle

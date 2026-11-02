@@ -709,6 +709,10 @@ export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0) {
  * Die Wochenstundengrenze bei einer Einteilung (S2a): weich, ein Hinweis.
  * Allein für Stellen, die die Schutzbefunde schon aus schutzEinsatz haben
  * (Warndialog) und nur die Grenze dazunehmen — so steht kein Befund doppelt.
+ * @param {any} person
+ * @param {any} dienstart
+ * @param {string} datum
+ * @param {number | (() => number)} [wochenStunden]
  * @returns {null | { text: string, grenze: { maxStundenWoche: number, neutral: boolean } }}
  */
 export function stundengrenzeHinweis(person, dienstart, datum, wochenStunden = 0) {

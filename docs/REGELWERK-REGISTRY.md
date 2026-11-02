@@ -1,6 +1,6 @@
 # Regelwerk-Registry und Regelbaukasten
 
-Stand: Oktober 2026 · Regelstand der Anwendung: `REGELSTAND.version` in `src/regelwerk.js`
+Stand: Oktober 2026, ergänzt 2. November 2026 (Anhang H) · Regelstand der Anwendung: `REGELSTAND.version` in `src/regelwerk.js`
 
 Dieses Dokument beschreibt, wie CENTRIC Regeln mit Herkunft, Prüfstatus und Gültigkeit führt und wie neue Regeln gerechnet werden. Es ist die Fortsetzung von `docs/intelligence/PLAN-WARNEN-VORGABEN-PLANVORSCHLAG.md` (Abschnitt 5.2, Regelbaukasten) und ändert keine Entscheidung daraus — insbesondere nicht E-19 bis E-21 in `docs/intelligence/CENTRIC-INTELLIGENCE.md`.
 
@@ -11,7 +11,10 @@ Code:
 | `src/regelregister.js` | Metadaten aller Regeln (Registry Light), Prüfstatus, Gültigkeit, Stufenbegrenzung |
 | `src/regelbaukasten.js` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel |
 | `src/beschaeftigung.js` | Beschäftigungsmodelle, an die sich Regeln binden |
-| `src/regelwerk.js` | Bestand: Konstanten, `REGELSTAND`, Schutz- und Besetzungsprüfungen (unverändert) |
+| `src/regelwerk.js` | Bestand: Konstanten, `REGELSTAND`, Besetzungsprüfungen; reicht die Schutzprüfung weiter |
+| `server/lib/schutzpruefung.mjs` | die eine Schutzprüfung (`schutzEinsatz`) samt Zeit-Helfern — für Oberfläche und Server (WP-11) |
+| `server/lib/schutzdurchsetzung.mjs` | Server weist sperrende Einteilungen in `abweichungen` ab (WP-11) |
+| `server/lib/bestaetigungen.mjs` | Befundkatalog (Kennung, Stufe, sperrt) und Mitteilung an die Leitung |
 | `src/warnstufen.js` | Hinweis / Achtung / Rechtsverstoß, Bestätigungsprotokoll (E-19), trägt jetzt die Regelkennungen |
 
 Prüfungen: `npm run pruefung:register`, `pruefung:baukasten`, `pruefung:beschaeftigung` (Teil von `npm run pruefung`).
@@ -210,3 +213,49 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 - **Schutzstatus bei fremden Personen:** `mutterschutz` und `schwerbehindert` stehen in `PERSON_PRIVAT` (`server/lib/rechte.mjs`). Beschäftigte und Betriebsrat sehen sie bei anderen Personen nicht; die eigene Person und die Planungsrollen unverändert.
 - **Betriebsratsprotokoll:** Bestätigte Abweichungen mit MuSchG oder SGB IX erscheinen dort als `SCHUTZ-INDIVIDUELL` / „Individuelle Schutzregel" (Stufe, Datum, Dienst und Bestätigungszeit bleiben; Regel-ID, Fundstelle, Text und der Freitext des Grundes entfallen). Jugendarbeitsschutz bleibt sichtbar. Die Planungsrollen sehen das Protokoll vollständig.
 - **Fehlendes Geburtsdatum:** Ist es leer oder ungültig (auch ein Tag wie der 30.02.), meldet die Schutzprüfung bei einem Dienst, den Jugendliche nicht leisten dürften (Nacht, vor 6 Uhr, über 8,5 Stunden), „nicht bewertbar" als Hinweis (`JARBSCHG-DATEN-01`, vorläufig, höchstens Hinweis). Kein Verstoß, aber auch nicht stillschweigend zulässig. In der Prüfansicht einmal je Person. Bekannte Geburtsdaten verhalten sich wie vorher.
+
+
+## Anhang H — Zusammenführung mit Kette B (WP-11, Stand 2. November 2026)
+
+Dieser Anhang ersetzt die Aussagen von Anhang G, wo sie abweichen. Maßgeblich für Lese- und Schreibrechte ist
+`RECHTEMATRIX.md` (Fußnoten ²¹–²⁵) mit ihren Prüfungen.
+
+**Rechtsstand, Quellen, Datum.** Die Prüflogik rechnet nach `REGELSTAND.version` **2026.09** (Rechtsstand
+`stand` **2026-09-09**); die Quellenliste wurde am **2026-10-22** vervollständigt (`quellenstand`), ohne dass sich eine
+Prüfregel änderte. Jede Regel im Register trägt Quelle, Fundstelle, Prüfstatus, `geprueftAm` und Gültigkeit; der
+Regelstand steht in jedem Protokolleintrag. Gesetzesänderungen nach dem 09.09.2026 sind nicht berücksichtigt, solange
+`REGELSTAND` nicht neu gesetzt ist; die Beobachtungsliste steht in `docs/legal/WATCHLIST.md`.
+
+**Grenzen der automatischen Bewertung.** CENTRIC prüft einen erklärten, begrenzten Umfang (`REGELSTAND.quellen`) und
+leistet **keine Rechtsberatung**. Ein Plan ohne Befund ist nicht „rechtssicher", sondern ohne Befund in diesem Umfang.
+Was nicht bewertbar ist (etwa ein fehlendes Geburtsdatum), meldet die Prüfung als „nicht bewertbar", nie als
+„erfüllt". Vorläufige Regeln (`provisional`) erzeugen höchstens einen Hinweis. Tarifliche und betriebliche Vorgaben
+gibt der Betrieb vor; ihre Richtigkeit prüft CENTRIC nicht. Betriebsvereinbarungen, behördliche Ausnahmen (§ 15
+ArbZG) und Einwilligungen (§§ 5, 6 MuSchG) kennt die Anwendung nur, soweit der Betrieb sie als Grund bei einer
+Bestätigung angibt — sie werden nicht geprüft.
+
+**Eine Schutzprüfung.** `schutzEinsatz` (`server/lib/schutzpruefung.mjs`) ist die einzige Bewertung für
+Jugendarbeitsschutz, Mutterschutz, Schwerbehinderung und die neutralen Einsatzregeln. Sie wählt den Datenweg
+(Rohdaten mit Fundstelle für Planung und Leitung, Einsatzregeln ohne Merkmal für die Schichtverantwortung, ohne
+Einsatzregeln sperrend) und bewertet: hart → Rechtsverstoß und **sperrt**, weich → Achtung, nicht bewertbar → Hinweis.
+Planprüfung, Warndialog, Ersatzsuche und der Server lesen sie; `src/regelwerk.js` reicht sie nur weiter. Ein fehlendes
+Geburtsdatum wird auch für die Schichtverantwortung als neutrale Regel `alterNichtBewertbar` abgeleitet
+(`server/lib/planungsregeln.mjs`). Prüfung: `pruefungen/schutzpruefung-eine.test.js`.
+
+**Warnen oder sperren.** Bis zur Fachentscheidung gilt die strenge Variante des Integrationsstands: Sperrend sind
+harte Schutzbefunde, „nicht im Bestand", keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche, gesetzliche
+Qualifikationen, Einweisung je Gerät und Ruhezeit unter 11 Stunden (`BEFUND_KATALOG.sperrt`,
+`server/lib/bestaetigungen.mjs`; die Oberfläche liest dieselbe Spalte als `SPERR_REGELN`). Eine sperrende Regel lässt
+sich nicht bestätigen. Der Server weist sperrende Einteilungen aus der Schutzprüfung und „nicht im Bestand" selbst ab;
+Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die Oberfläche durch (offen).
+
+**Betriebsratsprotokoll.** Abweichend von Anhang G: Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe,
+unter 3 als „<3"; jede Schutzregel — auch der Jugendarbeitsschutz — heißt dort `schutz` (Kette B behandelt das Alter
+als Schutzmerkmal). Die eigene Person bekommt die Rohfelder `mutterschutz`/`schwerbehindert` nicht über die
+Planungsansicht; die Schichtverantwortung nur neutrale Einsatzregeln. `PERSON_PRIVAT` gibt es nicht mehr — die
+Positivkataloge in `server/lib/sicht.mjs` entscheiden.
+
+**Beschäftigungsmodell.** `beschaeftigungsmodell` und `stundenGrenzeMonat` sind einmal definiert: in
+`EIGENE_PERSON` (`server/lib/sicht.mjs`, damit in `PERSONENFELDER`/`VOLL_PERSON`); die eigene Person sieht sie,
+Planung und Leitung lesen und schreiben sie, sonst niemand (RECHTEMATRIX ²³). Die Oberfläche bietet die Felder nur mit
+`staff.edit` an.
