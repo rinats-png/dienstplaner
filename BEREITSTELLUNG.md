@@ -300,7 +300,9 @@ Einführen, in dieser Reihenfolge — **nicht vorher und nicht ohne Freigabe**:
 
 Jeder Schritt hängt mit `&&` am vorigen; bricht einer ab, passiert danach nichts.
 Neue Dateien aus `deploy/` (compose.yml, Liste, Skripte) liegen vorher in einem
-Unterordner `neu-wp03/`.
+Unterordner `neu-wp03/`. Der Digest wird **aus `neu-wp03/` heraus** geprüft
+(Liste und Skripte dort), **bevor** irgendetwas, insbesondere die neue
+`compose.yml`, ins Dienstverzeichnis kopiert wird.
 
     cd /opt/apps/centric-dienstplanung && unset IMAGE_DIGEST IMAGE_TAG
     stempel=$(date -u +%Y%m%dT%H%M%SZ) \
@@ -309,8 +311,9 @@ Unterordner `neu-wp03/`.
       && [ "$(grep -c '^IMAGE_TAG=' .env)" = 1 ] \
       && digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env) \
       && [ -n "$digest" ] && echo "$digest" \
+      && chmod +x neu-wp03/digest-pruefen.sh neu-wp03/ruecksprung.sh neu-wp03/abschalten.sh \
+      && ./neu-wp03/digest-pruefen.sh "$digest" --ohne-label \
       && cp neu-wp03/compose.yml neu-wp03/FREIGEGEBENE-IMAGES.md neu-wp03/*.sh . \
-      && chmod +x digest-pruefen.sh ruecksprung.sh abschalten.sh \
       && ./digest-pruefen.sh "$digest" --ohne-label \
       && sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env \
       && [ "$(grep -cE '^(export[[:space:]]+)?IMAGE_(TAG|DIGEST)=' .env)" = 1 ] \
@@ -333,20 +336,31 @@ Konfiguration) — wenige Sekunden Unterbrechung einplanen. Zurück: beide
 **Pflichtschritt nach der Migration (gesondert freizugeben, hier nur beschrieben):**
 gesperrte Bilder lokal unerreichbar machen, damit sie auch von Hand nicht
 versehentlich gestartet werden. Die Sperre in den Skripten ist nur prozedural;
-ein `docker run …:latest` an ihnen vorbei bliebe sonst möglich.
+ein `docker run …:latest` oder `docker run …:64d08a4…` an ihnen vorbei bliebe
+sonst möglich. Gelöst werden **alle** Referenzen gesperrter Bilder — jedes Tag
+(`latest`, die Commit-Tags `:64d08a4957c5…` und `:1a56988d…`, jedes andere) und
+jede Digest-Referenz (`…@sha256:f03a8514…`), nicht nur `latest`.
 
-    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # Bestand ansehen
-    docker image rm ghcr.io/rinats-png/dienstplaner:latest        # löst nur das Tag latest (0861adee)
-    # oder, wie im Plan vorgesehen, erst umbenennen und dann das Tag latest lösen:
-    #   docker tag ghcr.io/rinats-png/dienstplaner:latest ghcr.io/rinats-png/dienstplaner:alt-0861adee
-    #   docker image rm ghcr.io/rinats-png/dienstplaner:latest
-    docker image rm ghcr.io/rinats-png/dienstplaner@sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79
-    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # danach: kein latest, kein f03a8514
+    # 1. Bestand: alle Referenzen gesperrter Bilder (Digest ODER Bild-ID)
+    docker image ls --digests --no-trunc \
+      --format '{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}' \
+      | grep -E 'sha256:(f03a8514|0861adee)' | tee gesperrte-referenzen.txt
+    # 2. Befehle erzeugen und LESEN (erst Tags, dann Digest-Referenzen) — noch nichts gelöscht
+    awk '$2 != "<none>" { print "docker image rm " $1 ":" $2 }' gesperrte-referenzen.txt
+    awk '$3 != "<none>" { print "docker image rm " $1 "@" $3 }' gesperrte-referenzen.txt
+    # 3. nach Prüfung der Liste ausführen (je Zeile; kein --force)
+    # 4. Kontrolle — muss LEER sein:
+    docker image ls --digests --no-trunc \
+      --format '{{.Repository}} {{.Tag}} {{.Digest}} {{.ID}}' | grep -E 'sha256:(f03a8514|0861adee)'
+    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # übrig: nur freigegebene Digests
 
-Ein Bild, das noch von einem Container (auch einem angehaltenen) benutzt wird,
-lässt Docker nicht entfernen — dann erst den Container prüfen, nicht `--force`.
-Soll ein gesperrtes Bild zur Beweissicherung bleiben, nur das Tag lösen und den
-Grund im Abnahmebericht vermerken.
+Sind alle Referenzen gelöst, entfernt Docker das Bild selbst. Ein Bild, das noch
+von einem Container (auch einem angehaltenen, etwa `centric-dienstplanung-test`)
+benutzt wird, lässt Docker nicht entfernen — dann erst den Container prüfen, nicht
+`--force`. Soll ein gesperrtes Bild zur Beweissicherung erhalten bleiben, vorher
+als Datei sichern (`docker save … | gzip > gesperrt-<digest>.tar.gz`, außerhalb des
+Dienstverzeichnisses) und den Ablageort im Abnahmebericht vermerken; ein
+zusätzliches Tag wie `alt-0861adee` ist **keine** Lösung, weil es startbar bliebe.
 
 **Job `vps` in `deploy.yml` — gesperrt.** Der Schritt auf den VPS aus GitHub
 Actions heraus (Job `vps` über SSH und `/opt/bin/deploy.sh`) darf **nicht**
