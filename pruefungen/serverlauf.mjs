@@ -100,6 +100,10 @@ const server = spawn(process.execPath, ["server.mjs"], {
   cwd: WURZEL,
   env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
     CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: PFEFFER,
+    /* Die Proben schicken je Fall ein eigenes X-Forwarded-For, damit sie sich
+       nicht gegenseitig in die Bremse treiben. Das gilt nur von einem
+       vertrauten Absender (B-XFF-1) — hier die eigene Maschine. */
+    CENTRIC_VERTRAUTE_PROXYS: "127.0.0.1,::1",
     NODE_ENV: "production" },
   stdio: ["ignore", "pipe", "pipe"],
 });
