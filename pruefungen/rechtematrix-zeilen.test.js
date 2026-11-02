@@ -90,6 +90,7 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   notizen: [{ text: M("NOTIZEN-AN-B1") }], urlaubshinweis: M("URLAUBSHINWEIS-B1"), personalnummer: M("PERSONALNUMMER-B1"),
   zuschlaege: [{ art: M("ZUSCHLAG-B1") }], nachweise: [M("NACHWEISE-B1")], neuerZugang: M("NEUERZUGANG-B1"),
   anonymSeit: M("ANONYMSEIT-B1"),
+  beschaeftigungsmodell: M("MODELL-B1"), stundenGrenzeMonat: M("MONATSGRENZE-B1"),
   ...Object.fromEntries(["weckzeit", "benachrichtigung", "thema", "dichte", "kontrastmodus", "feldmodus", "tour",
     "einfuehrung", "handbuch", "startansicht", "wenigerBewegung"].map((f) => [f, M(`EINSTELLUNG-${f}-B1`)])),
 });
@@ -281,6 +282,8 @@ const ZEILEN = {
     sonden: [mk("VERFUEGBARKEIT-B1")] },
   "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)": {
     sonden: [mk("STUNDEN-B1"), mk("URLAUB-B1"), mk("URLAUBSUEBERTRAG-B1"), mk("WUNSCHFREI-B1"), mk("EINARBEITUNG-B1")] },
+  "Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`)": {
+    sonden: [mk("MODELL-B1"), mk("MONATSGRENZE-B1")] },
   "Personalnummer (`personalnummer`, Lohnexport)": { sonden: [mk("PERSONALNUMMER-B1")] },
   "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": { sonden: [mk("ZUSCHLAG-B1")] },
   "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)": {
@@ -448,6 +451,8 @@ const FELD_ZEILE = {
     ["bereich", "verfuegbarkeit", "einschraenkungen"],
   "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)":
     ["stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag", "wunschfrei", "einarbeitung"],
+  "Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`)":
+    ["beschaeftigungsmodell", "stundenGrenzeMonat"],
   "Personalnummer (`personalnummer`, Lohnexport)": ["personalnummer"],
   "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": ["zuschlaege"],
   "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)":

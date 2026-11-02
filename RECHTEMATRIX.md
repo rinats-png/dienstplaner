@@ -50,6 +50,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Kompetenznachweise (`kompetenzNachweise`) | – | ✓ | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung) | – | – | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`) | – | – | – ¹⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`) | – | – | – ²³ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Personalnummer (`personalnummer`, Lohnexport) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
 | Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -183,6 +184,14 @@ trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialo
 von anderen nur Tag und Dienst, die Schichtverantwortung Einträge aus ihrem Bereich am Tag vollständig. Schreiben:
 Beschäftigte und Schichtverantwortung nur die eigenen Einträge einer offenen Runde (`selbstplanungZusammen`); `hinweise`
 nur als Liste von höchstens 12 Texten mit je höchstens 300 Zeichen, sonst fällt das Feld weg (die Eintragung bleibt).
+²³ WP-10 d.2 (Kette A, Beschäftigungsmodelle): `beschaeftigungsmodell` (Minijob, Midijob, Werkstudent, kurzfristig …)
+und `stundenGrenzeMonat` sind Vertragsangaben mit Lohnbezug (Entgeltgrenze). Die eigene Person sieht sie
+(`EIGENE_PERSON`), ändern kann sie sie nicht (nicht in `SELBST_FELDER`); Planung, Leitung und Kundenrolle lesen und
+schreiben sie (`VOLL_PERSON`), beide Vollausgaben enthalten sie. Die Schichtverantwortung bekommt sie — im Zweifel
+restriktiv — auch im eigenen Bereich nicht; ob sie für die Einteilung eine neutrale Monatsgrenze braucht (wie die
+Wochenstundengrenze in `planungsregeln`, ¹⁰), ist eine offene fachliche Frage. Beschäftigte und Betriebsrat sehen sie
+bei fremden Personen nicht. Die Felder schreibt bisher nur der Folgestand von Kette A (`claude/regelwerk-registry`);
+die Kataloge stehen vorab, damit sie dort nicht still verworfen werden.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

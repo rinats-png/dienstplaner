@@ -261,3 +261,64 @@ describe("d.3 Selbstplanung: Hinweise an der eigenen Eintragung", () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------------
+   d.2 Beschäftigungsmodell und Monatsstundengrenze an der Person
+   ------------------------------------------------------------------------ */
+describe("d.2 beschaeftigungsmodell, stundenGrenzeMonat", () => {
+  const MIT = (g) => { for (const p of betrieb(g).personen) if (["m0", "a1", "b1", "s1"].includes(p.id))
+    Object.assign(p, { beschaeftigungsmodell: "minijob", stundenGrenzeMonat: 43 }); return g; };
+  const felder = (b, pid) => { const p = betrieb(b).personen.find((x) => x.id === pid) || {};
+    return { modell: p.beschaeftigungsmodell, grenze: p.stundenGrenzeMonat }; };
+  const LEER = { modell: undefined, grenze: undefined };
+  const GESETZT = { modell: "minijob", grenze: 43 };
+
+  it("stehen im Katalog der Personenfelder und der eigenen Person", async () => {
+    const { PERSONENFELDER, VOLL_PERSON } = await import("../server/lib/sicht.mjs");
+    for (const f of ["beschaeftigungsmodell", "stundenGrenzeMonat"]) {
+      expect(PERSONENFELDER, f).toContain(f);
+      expect(VOLL_PERSON, f).toContain(f);
+    }
+  });
+  it("Lesen: eigene Person ja, fremde nur Planung, Leitung, Kundenrolle", () => {
+    const g = MIT(bestand());
+    expect(felder(bestandFuerRolle(g, SITZ.MA), "m0"), "MA eigene").toEqual(GESETZT);
+    expect(felder(bestandFuerRolle(g, SITZ.MA), "b1"), "MA fremd").toEqual(LEER);
+    expect(felder(bestandFuerRolle(g, SITZ.BR), "b1"), "BR fremd").toEqual(LEER);
+    expect(felder(bestandFuerRolle(g, SITZ.SV), "s1"), "SV eigene").toEqual(GESETZT);
+    expect(felder(bestandFuerRolle(g, SITZ.SV), "a1"), "SV Bereich").toEqual(LEER);
+    expect(felder(bestandFuerRolle(g, SITZ.SV), "b1"), "SV fremd").toEqual(LEER);
+    for (const r of SCHREIBEND_VOLL) expect(felder(bestandFuerRolle(g, SITZ[r]), "b1"), r).toEqual(GESETZT);
+  });
+  it("Planung, Leitung, Kundenrolle setzen sie, und sie kommen beim Lesen wieder", () => {
+    for (const r of SCHREIBEND_VOLL) {
+      const e = rundreise(bestand(), r, (m) => { Object.assign(m.personen.find((p) => p.id === "b1"),
+        { beschaeftigungsmodell: "werkstudent", stundenGrenzeMonat: 80 }); });
+      expect(e && !e.verweigert, r).toBe(true);
+      expect(felder(e, "b1"), r).toEqual({ modell: "werkstudent", grenze: 80 });
+      expect(felder(bestandFuerRolle(e, SITZ.LT), "b1"), r).toEqual({ modell: "werkstudent", grenze: 80 });
+    }
+  });
+  it("unverändert zurückgespeichert gehen sie für keine Rolle verloren", () => {
+    for (const r of [...SCHREIBEND_VOLL, "SV", "MA"]) {
+      const g = MIT(bestand());
+      const e = rundreise(g, r);
+      expect(e && !e.verweigert, `${r}: ${e && e.verweigert}`).toBe(true);
+      for (const pid of ["m0", "a1", "b1", "s1"]) expect(felder(e, pid), `${r} ${pid}`).toEqual(GESETZT);
+    }
+  });
+  it("Beschäftigte ändern die eigenen Angaben nicht", () => {
+    const g = MIT(bestand());
+    const e = rundreise(g, "MA", (m) => { Object.assign(m.personen.find((p) => p.id === "m0"),
+      { beschaeftigungsmodell: "vollzeit", stundenGrenzeMonat: 999 }); });
+    expect(felder(e, "m0")).toEqual(GESETZT);
+  });
+  it("die Schichtverantwortung überschreibt verborgene Angaben nicht", () => {
+    const g = MIT(bestand());
+    const e = rundreise(g, "SV", (m) => { Object.assign(m.personen.find((p) => p.id === "a1"),
+      { beschaeftigungsmodell: "vollzeit", stundenGrenzeMonat: 999 }); });
+    if (e && !e.verweigert) expect(felder(e, "a1")).toEqual(GESETZT);
+    else expect(e.verweigert).toBeTruthy();
+    expect(felder(g, "a1")).toEqual(GESETZT);
+  });
+});
