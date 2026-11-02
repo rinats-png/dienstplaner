@@ -172,6 +172,175 @@ Ausgangslage: Daten verloren/beschädigt oder neuer Server. Benötigt: restic-Pa
 
 **Bild beschaffen, wenn der VPS verloren ist.** Das Bild liegt in GHCR: `docker pull ghcr.io/rinats-png/dienstplaner@sha256:<digest aus dem Tag bild=…>` (vorher `docker login ghcr.io` mit einem Token, das Pakete lesen darf). Ist der Digest dort nicht mehr verfügbar: aus dem Commit des Releases neu bauen (`docker build` wie im Dockerfile beschrieben, gleiche `VITE_*`-Werte) — das Werkzeug `ablage-sicherung.mjs` muss dieselbe Formatfassung haben (`FORMAT = 1`). Danach der neue Server: Docker und Compose wie in BEREITSTELLUNG, `.env` mit **demselben** Pfeffer aus dem Passwortmanager, 2.2/2.3 (neuer Schlüssel), dann Schritte 2–6.
 
+## 4a. Unlesbare Datei (ein Raum antwortet nur noch mit 503)
+
+**Woran man es erkennt:** Für einen Raum antworten Anzeige, Speichern, Stempeln und auch das Wiederherstellen in der
+App mit 503 („Der gespeicherte Stand ist gerade nicht vollständig lesbar“, Code `BESTAND_UNLESBAR`). Im
+Serverprotokoll steht, welche Datei betroffen ist (`Kern`, `Scherbe …`, `Schreibjournal`, `Vermerk …`). Die nächtliche
+Sicherung bricht dann ebenfalls ab (`… ist kein gültiger JSON-Umschlag`) — gewollt, damit niemand eine kaputte Ablage
+für gesichert hält.
+
+Das ist Absicht. Ein Bestand mit Lücke würde beim nächsten Speichern den fehlenden Monat löschen (WP-45, H1). Andere
+Räume arbeiten normal weiter.
+
+**Das Werkzeug läuft im Bild des Dienstes.** Auf dem VPS gibt es kein Node; `ablage-pruefen.mjs` und
+`journal-pruefen.mjs` liegen unter `/app/werkzeug/` im Bild (Dockerfile). Aufruf immer so — im Verzeichnis
+`/opt/apps/centric-dienstplanung`, mit **demselben Bild wie der Dienst** (`docker compose images`; bei Auslieferung
+per Digest genau dieser Digest):
+
+    W() { docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --user 1000:1000 \
+            -v "$PWD/data:/data" "$@"; }
+    BILD=ghcr.io/rinats-png/dienstplaner@sha256:<digest des Dienstes>
+
+    W "$BILD" node /app/werkzeug/ablage-pruefen.mjs [raum]
+
+- **Nie als root** (`--user 1000:1000` nie weglassen, kein `sudo node …` auf dem Host). Das Werkzeug legt Dateien mit
+  Modus 0600 an; als root angelegt, gehörten sie root, der Dienst (uid 1000) könnte sie nicht lesen — und der Raum
+  antwortete wieder mit 503.
+- `--network none`: Das Werkzeug braucht kein Netz und kann nichts senden. `/data` ist wie beim Dienst `./data`.
+- **„Ablage … ist belegt“ direkt nach `docker compose stop`:** Hat der Dienst seine Sperre `data/.prozess` nicht selbst
+  freigegeben (harter Abbruch), sieht das Werkzeug die Sperre eines anderen Rechnernamens (jeder Container hat seinen
+  eigenen) und bleibt draußen, solange sie jünger als **45 Sekunden** ist. Dann 45 Sekunden warten und erneut
+  aufrufen. Läuft der Dienst in Wahrheit noch, bleibt es bei „belegt“ — dann erst R0. Die Sperre nie von Hand löschen.
+- Solange das Werkzeug arbeitet, frischt es die Sperre auf (Puls wie der Server). Ein versehentlich gestarteter
+  Dienst sieht das und verweigert den Start.
+
+**Ablauf**
+
+1. **R0 – Anhalten:** `docker compose stop -t 30`.
+2. **Prüfen (Trockenlauf, ändert nichts):** `W "$BILD" node /app/werkzeug/ablage-pruefen.mjs [raum]`
+
+   Ohne Raumangabe werden alle Räume geprüft. Gemeldet wird je Raum:
+   - jede **unlesbare** Datei: Kern, Altbestand, Scherbe (= ein Monat), Standvermerk, Standzeiger, Journal;
+   - jede **fehlende** Datei: ein Kern, wenn es Scherben oder Vermerke des Raums gibt; der Vermerk des aktuellen
+     Stands; und jede Scherbe, die der **Bezugsvermerk** nennt, die aber nicht da ist. Bezug ist bei einem gültigen
+     Journal dessen Vermerk, sonst der jüngste *lesbare* Vermerk bis zum aktuellen Stand — auf der Platte oder, mit
+     `--aus-sicherung`, in der Sicherung. Ein unlesbarer Kern, Zeiger oder aktueller Vermerk verhindert den Abgleich
+     also nicht.
+   - **„kein vollständiger Abgleich“:** Ist kein Vermerk lesbar, oder nur einer, der älter ist als der aktuelle Stand,
+     wären Monate, die danach angelegt wurden, nicht erkennbar. Dann wird der Raum nicht angeglichen (Rückgabe 1).
+     Abhilfe: eine Sicherung, die den aktuellen Vermerk enthält (`--aus-sicherung`), oder ausdrücklich
+     `--ohne-vermerk <raum>` (Spur `beiseite:<raum>:<zeit>:stand:<raum>:ohne-abgleich` in der Ablage) — dann bleibt ein
+     fehlender Monat unerkannt; die Leitung muss den Raum fachlich prüfen. Ein älterer Bezugsvermerk kann eine Scherbe
+     nennen, die seitdem bewusst entfernt wurde; sie wird trotzdem als fehlend gemeldet (lieber einmal zu viel).
+     Die Scherbenliste der Sicherung selbst ist kein Bezug: Sie enthielte auch Monate, die seit der Sicherung bewusst
+     entfernt wurden, und holte sie zurück.
+   - darunter jede **andere Datei** der Ablage, an der die nächtliche Sicherung scheitern würde (unten, „Andere
+     Dateien“).
+
+   Rückgabe 1 heißt „Unlesbares oder Fehlendes gefunden“, 2 „Fehler“ (Ablage belegt, Sicherung kaputt, Abbruch).
+
+   **Fehlt der Kern oder fehlen Scherben, zuerst klären, ob der Raum gelöscht werden sollte.** Die Raumlöschung
+   (`server/lib/raumloeschung.mjs`) entfernt Journal, Scherben, Vermerke und App-Sicherungen zuerst und den Kern erst
+   danach. Eine abgebrochene Löschung sieht deshalb genauso aus wie ein Schaden: Scherben „fehlen“, oder der Kern fehlt
+   neben übriggebliebenen Vermerken. Sollte der Raum weg, nicht zurückholen, sondern die Löschung in der App wiederholen.
+
+   **Ein Raum wird nur ganz oder gar nicht bearbeitet.** Bliebe nach dem Plan des Werkzeugs auch nur eine Datei des
+   Raums offen (nicht in der Sicherung, Kern ohne `--kern-zurueck`, fehlende Scherbe ohne `--fehlende-hinnehmen`),
+   fasst es im Raum nichts an und meldet „Raum NICHT angefasst“ (Rückgabe 1). Sonst rechnete der nächste
+   Schreibvorgang — das Angleichen ebenso wie der Wiederanlauf des Servers — den Vermerk ohne die offene Scherbe neu,
+   und kein späterer Befund fände sie mehr. Die Schalter dürfen deshalb kombiniert werden, damit sich ein Raum in einem
+   Lauf vollständig lösen lässt.
+3. **Aus der Sicherung zurückholen (erste Wahl für Scherben):** die jüngste *vollständige* Sicherung vor dem Schaden
+   holen (wie in §4, Schritte 2–4: proben, `restic restore` nach `~/notfall`), dann zusätzlich einbinden:
+
+        W -v "$S:/s/sicherung:ro" "$BILD" node /app/werkzeug/ablage-pruefen.mjs --aus-sicherung /s/sicherung [raum]
+
+   Die Sicherung wird vorher ganz geprüft (FERTIG, Manifest, Prüfsumme jeder Datei); stimmt etwas nicht, wird nichts
+   angefasst.
+   - **Scherben** (auch fehlende) werden byte-gleich zurückgeholt. Reihenfolge je Datei: Rückholung daneben schreiben
+     und auf die Platte zwingen, die kaputte Datei als Kopie `beiseite:<raum>:<zeit>:<schlüssel>` ablegen, dann
+     umbenennen und noch einmal vergleichen. Ein Abbruch (Strg-C, voller Datenträger, Stromausfall) an jeder Stelle
+     lässt die alte Datei liegen; der Trockenlauf meldet sie weiter, ein zweiter Lauf macht weiter.
+   - **Schreibjournal, Standvermerke und Standzeiger kommen nie aus der Sicherung.** Ein Journal ist der
+     Festschreibepunkt eines Schreibvorgangs: Zurückgeholt, legte der nächste Zugriff es über Kern und Scherben, und
+     alte Daten überschrieben neuere — ohne dass es jemand merkt. Vermerke und Zeiger sind aus Kern und Scherben
+     abgeleitet; ein alter Vermerk verfälschte jeden späteren Abgleich. Das Werkzeug legt sie beiseite und lässt sie
+     neu berechnen.
+   - **Kern nur mit `--kern-zurueck`** (unten, „Kern aus der Sicherung“). Ohne dieses Flag bleibt er, und das Werkzeug
+     nennt die Folgen.
+   - **Wirkung:** Für den zurückgeholten Monat gilt der Stand der Sicherung; was seitdem in diesem Monat eingetragen
+     wurde, fehlt.
+4. **Sonst beiseitelegen:** wenn die Datei in keiner Sicherung liegt. Zusammen mit `--aus-sicherung` wird
+   zurückgeholt, was in der Sicherung liegt, und nur der Rest beiseitegelegt.
+
+        W "$BILD" node /app/werkzeug/ablage-pruefen.mjs --beiseitelegen [raum]
+
+   Die Rohbytes wandern unverändert in einen Eintrag `beiseite:…`; gelöscht wird nichts.
+   - **Scherbe (unlesbar):** **Dieser Monat gilt danach als leer** (Plan-Abweichungen, Ist-Zeiten, Stempel des
+     Monats).
+   - **Scherbe (fehlend):** `--beiseitelegen` nimmt sie **nie** hin. Ist sie in keiner Sicherung, nur ausdrücklich je
+     Raum und Monat — der Raum ist Pflicht:
+
+         W "$BILD" node /app/werkzeug/ablage-pruefen.mjs --fehlende-hinnehmen <raum>:<monat>   # oder <raum>:<betrieb>:<monat>
+
+     Der Monat gilt dann als leer. In der Ablage bleibt eine Spur `beiseite:<raum>:<zeit>:<schlüssel>` mit
+     `fehlte: true`, wer (`durch`) und wann (`zeit`).
+   - **Vermerk, Zeiger, Journal:** werden neu berechnet. **Ein beiseitegelegtes Journal eines abgebrochenen
+     Schreibvorgangs:** Dessen Zieldateien können teils schon geschrieben sein. Beim Angleichen (unten) wird dieser
+     Zwischenstand als neuer Stand **festgeschrieben** — ein Eintrag, der von einem Monat in einen anderen wanderte,
+     kann in beiden oder in keinem stehen. Den Raum danach fachlich prüfen lassen; im Zweifel stattdessen die
+     vollständige Wiederherstellung (§4).
+   - **Kern:** Einen unlesbaren Kern legt das Werkzeug **nicht** beiseite. Ohne Kern gäbe es den Raum nicht mehr, und
+     eine neue Anlage könnte ihn überschreiben. Hier hilft nur Schritt 3 mit `--kern-zurueck` oder die vollständige
+     Wiederherstellung (§4).
+
+   **Stand angleichen:** Nach jeder Änderung an einem Raum (Schritt 3 oder 4) schreibt das Werkzeug dessen Stand
+   einmal auf dem gewöhnlichen Weg neu (mit Journal) — **nur**, wenn ein nach allen Änderungen frisch erhobener
+   Befund des Raums leer ist und der Abgleich gegen einen lesbaren Vermerk stattgefunden hat (ausgenommen nur der
+   fehlende aktuelle Vermerk, den das Angleichen schreibt, und mit `--ohne-vermerk` der fehlende Abgleich). Sonst
+   meldet es „Stand NICHT angeglichen“ mit dem, was offen ist (Rückgabe 1). Kern, Vermerk und Zeiger passen dann wieder zu dem, was auf der
+   Platte liegt, und die Standnummer zählt weiter: Wer den Raum noch mit einem alten Stand im Browser offen hat,
+   bekommt beim Speichern einen Abgleich, statt einen zurückgeholten oder geleerten Monat still zu überschreiben.
+5. **Erneut prüfen** (Schritt 2, Rückgabe 0), dann `docker compose up -d --pull never`, anmelden, den Raum öffnen.
+6. **Leitung informieren:** welcher Raum, welcher Monat, ob aus der Sicherung (Stand vom …) oder beiseitegelegt
+   (Monat leer). Die Leitung prüft den Monat fachlich, trägt Fehlendes nach und bestätigt Ist-Zeiten erneut. Nach einer
+   Kern-Rückholung zusätzlich der Text unten.
+7. **Eine Sicherung von Hand anstoßen.** Sie muss wieder durchlaufen (Totmannschalter grün). Die `beiseite:`-Einträge
+   werden mitgesichert und mit dem Raum gelöscht. Nach Abschluss der Klärung können sie beim Löschen des Raums oder im
+   Rahmen der Aufbewahrung verschwinden.
+
+**Kern aus der Sicherung (`--kern-zurueck`).** Der Kern trägt **alle nicht-monatlichen Daten** des Raums: Personen,
+Dienstarten, Einheiten, Einstellungen, Zugänge im Betrieb. Wird er aus der Sicherung zurückgeholt, fällt all das auf
+den Stand der Sicherung zurück — die Monate (Scherben) aber bleiben auf dem jetzigen Stand. Neuere Monate können dann
+auf Personen oder Dienstarten verweisen, die es im Kern nicht mehr gibt (etwa eine nach der Sicherung eingestellte
+Person mit Einträgen im laufenden Monat). Deshalb verlangt das Werkzeug das Flag ausdrücklich und gibt die Folgen aus.
+Für einen unzerlegten Altbestand (`bestand:<raum>`) gilt dasselbe. Wer das nicht will, nimmt die vollständige
+Wiederherstellung (§4) — dann ist alles auf einem Stand, auch die Monate.
+
+*Text für die Leitung nach einer Kern-Rückholung:* „Für den Raum … wurden Personen, Dienstarten, Einheiten und
+Einstellungen auf den Stand vom … (Sicherung) zurückgesetzt. Bitte prüfen: Wer wurde seitdem neu angelegt, geändert
+oder entfernt? Gibt es Einträge im Plan, die auf eine Person oder Dienstart verweisen, die jetzt fehlt? Fehlendes bitte
+neu anlegen. Monatsdaten (Plan, Ist-Zeiten, Stempel) sind nicht zurückgesetzt.“
+
+**Andere Dateien, an denen die Sicherung scheitert.** Das Werkzeug meldet unter „Ablage: … weitere Datei(en)“ jede
+Datei außerhalb der Bestände, die die nächtliche Sicherung abbrechen ließe: kein gültiger Umschlag, nicht lesbar
+(Dateirechte), fremde Datei oder unerwartetes Verzeichnis in `data/`. Es **fasst sie nicht an** (Rückgabe 1). Je Art:
+
+| Art (Schlüssel/Ort) | Wirkung, wenn sie fehlt | Vorgehen |
+|---|---|---|
+| App-Sicherung `centric/sicherung:<raum>:…` | Ein Wiederherstellungspunkt in der App fehlt; der Raum selbst ist nicht betroffen. | In Quarantäne verschieben (unten). |
+| Konto, Passwort, Mitgliedschaft, Zugangscode, Token (`centric/konto:…`, `pw:…`, `az:…`, `t:…`, `ta:…` u. ä.) | Betroffene können sich nicht anmelden bzw. der Code gilt nicht. | In Quarantäne verschieben; Zugang oder Code in der App neu vergeben bzw. Passwort zurücksetzen. **Nicht** aus einer alten Sicherung zurückholen — das könnte widerrufene Zugänge oder alte Passwörter wiederbeleben. |
+| Sitzung `centric-sitzungen/sk:…` | Die Person muss sich neu anmelden. | In Quarantäne verschieben. |
+| Protokoll `centric-spur/…` | Lücke im Protokoll. | In Quarantäne verschieben, Lücke im Betriebsprotokoll vermerken. |
+| Kalender, Zustellung, Push (`feed:…`, `zustellung:…`, `push:…`) | Wird bei Bedarf neu erzeugt bzw. neu abonniert. | In Quarantäne verschieben. |
+| Fremde Datei oder Verzeichnis in `data/` | — | Herkunft klären; in Quarantäne verschieben. |
+| Nicht lesbar wegen Dateirechten (`EACCES`) | — | Meist ein Aufruf als root. Besitz zurückgeben: `sudo chown 1000:1000 <datei> && sudo chmod 600 <datei>`, dann erneut prüfen. |
+
+*Quarantäne:* bei gestopptem Dienst neben `data/` einen Ordner `install -d -m 700 quarantaene-$(date -u
++%Y%m%dT%H%M%SZ)` anlegen und die Datei mit `mv` dorthin verschieben. Nichts löschen; den Ordner nach der Klärung wie
+eine Sicherung behandeln (er enthält Personaldaten). Danach Schritt 2 (Rückgabe 0) und Schritt 7.
+
+**Warum das Wiederherstellen in der App eine unlesbare Scherbe nicht übergeht:** Das Wiederherstellen ersetzt nur den
+*eigenen* Betrieb. Den Rest des Raums übernimmt es aus dem jetzigen Stand, also auch andere Betriebe desselben Raums.
+Würde es dabei eine unlesbare Scherbe übergehen, schriebe es den Raum ohne diesen Monat zurück. Trifft es einen
+anderen Betrieb, wäre dessen Monat gelöscht, ohne dass jemand es merkt. Außerdem wäre die automatische Sicherung vor
+dem Wiederherstellen unvollständig. Deshalb bleibt es bei 503, und der Rückweg ist dieses Werkzeug.
+
+`journal-pruefen.mjs` (nur Journale) wird genauso aufgerufen: `W "$BILD" node /app/werkzeug/journal-pruefen.mjs
+[--beiseitelegen] [raum]`. `ablage-pruefen.mjs` deckt Journale mit ab.
+
 ## 5. Grenzen (ehrlich)
 
 - **Löschschutz:** Der VPS hat Schreibzugriff auf das Repository (für `forget --prune`). Ein Angreifer mit `admin`-Rechten könnte die Sicherungen löschen. Abhilfe (deine Entscheidung): Storage Box mit Snapshots/Unterkonto ohne Löschrecht, S3 mit Object Lock, oder `rest-server --append-only` und Prune von einem zweiten Rechner.
