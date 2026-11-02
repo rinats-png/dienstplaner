@@ -74,6 +74,9 @@ jobs:
           context: .
           load: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Labels aus metadata-action, u. a. org.opencontainers.image.revision
+          # (= Commit). digest-pruefen.sh gleicht es mit FREIGEGEBENE-IMAGES.md ab.
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
             VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
@@ -127,6 +130,9 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Labels aus metadata-action, u. a. org.opencontainers.image.revision
+          # (= Commit). digest-pruefen.sh gleicht es mit FREIGEGEBENE-IMAGES.md ab.
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
             VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}

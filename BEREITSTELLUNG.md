@@ -18,8 +18,10 @@ zu bringen — in der Reihenfolge, in der es zu tun ist.
     GitHub (main)
       → Actions „Prüfung" (jeder Push)             Linter, Typen, alle Prüfungen, Bild bauen
       → Actions „Auslieferung" (von Hand)          Bild bauen, gegen den Container prüfen, nach GHCR
-      → ghcr.io/rinats-png/dienstplaner:<sha>, :latest
-      → VPS: docker compose pull && docker compose up -d
+      → ghcr.io/rinats-png/dienstplaner:<sha>   (Label org.opencontainers.image.revision = <sha>)
+      → deploy/FREIGEGEBENE-IMAGES.md            Digest, Commit, Bericht, Status aktiv/vorherig/gesperrt
+      → VPS: docker pull …@sha256:<digest> → ./digest-pruefen.sh → IMAGE_DIGEST in .env
+             → docker compose up -d --pull never      (nie latest, nie ein Tag)
 
 Ein einziger Node-Prozess je Container, kein Port nach außen: Caddy erreicht
 ihn über das Docker-Netz `proxy` als `centric-dp-web:3000`. Der Container
@@ -29,6 +31,8 @@ und `/tmp` sind beschreibbar (`deploy/compose.yml`).
 | Ort auf dem VPS | Inhalt | Im Git? |
 |---|---|---|
 | `/opt/apps/centric-dienstplanung/compose.yml` | Container-Definition (Kopie von `deploy/compose.yml`) | ja |
+| `/opt/apps/centric-dienstplanung/FREIGEGEBENE-IMAGES.md`, `*.sh` | Freigabeliste und Betriebsskripte (`digest-pruefen.sh`, `ruecksprung.sh`, `abschalten.sh`, `freigabe-lib.sh`; Kopien aus `deploy/`) | ja |
+| `/opt/apps/centric-dienstplanung/betrieb-protokoll.log` | Protokoll von Rücksprung und R0 | nein |
 | `/opt/apps/centric-dienstplanung/.env` | Laufzeitumgebung, Rechte 600 | **nie** |
 | `/opt/apps/centric-dienstplanung/data/` | alle Anwendungsdaten | **nie** |
 | `/opt/proxy/Caddyfile`, `/opt/proxy/sites/app.centric-dienstplanung.de.caddy` | Caddy: `reverse_proxy centric-dp-web:3000`, Sicherheitsköpfe | nein |
@@ -84,7 +88,12 @@ Der Lauf baut das Bild mit `VITE_ANWENDUNG_URL` und `VITE_KONTAKT_MAIL` aus
 den Repository-Variablen, startet es genau so gehärtet wie auf dem VPS,
 lässt die Rechteprüfung dagegen laufen und lädt es dann nach GHCR — als
 `<vollständiger Commit-Hash>` und als `latest`. Erst wenn beide Kennzeichen
-da sind, geht es weiter mit Schritt 3.
+da sind, geht es weiter mit Schritt 3. Das Bild trägt das Label
+`org.opencontainers.image.revision` = Commit (seit WP-03; ältere Bilder haben
+es nicht). **Betrieben wird nie über ein Kennzeichen**, sondern nur über den
+Digest aus dem Lauf (Schritt 3, „Freigegebene Images pflegen“). Das Kennzeichen
+`latest` in GHCR ist bequem zum Nachsehen, auf dem VPS aber ohne Bedeutung — das
+lokale `latest` dort zeigte 2026-11 auf ein altes Bild (`0861adee…`).
 
 Zu jedem veröffentlichten Stand gehört damit ein Commit. Ob das laufende Bild
 wirklich zu ihm gehört, lässt sich auf dem VPS belegen:
@@ -102,7 +111,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 |---|---|---|
 | `CENTRIC_PFEFFER` | **ja** | `openssl rand -base64 32` — **vor dem ersten Zugangscode setzen, danach nie ändern** |
 | `CENTRIC_DATEN`, `CENTRIC_ABLAGE`, `PORT`, `NODE_ENV` | gesetzt durch Compose | `/data`, `dateien`, `3000`, `production` |
-| `IMAGE_TAG` | nein | Kennzeichen des Bilds, Vorgabe `latest`; für einen Rollback der Commit-Hash |
+| `IMAGE_DIGEST` | **ja** | `sha256:<64 hex>` — Manifest-Digest des Bilds, muss in `FREIGEGEBENE-IMAGES.md` als `aktiv` (oder beim Rücksprung `vorherig`) stehen. Keine Vorgabe: fehlt er, startet Compose nicht. Das frühere `IMAGE_TAG` wird nicht mehr gelesen (Migration in Schritt 3) |
 | `CENTRIC_ADMIN` | **nur vorübergehend** | `openssl rand -base64 24` — nur bis das erste benannte Verwalterkonto angelegt ist (Schritt 5.1), dann entfernen |
 | `VAPID_PUBLIC`, `VAPID_PRIVATE`, `VAPID_KONTAKT` | nein | aus `npx web-push generate-vapid-keys`; beide Hälften gehören zusammen |
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | nein | E-Mail-Versand; der Absender braucht eine bei Resend verifizierte Domain |
@@ -178,15 +187,38 @@ erst, wenn nach Ablauf erneut fünf Fehlversuche zusammenkommen.
 
 ## Schritt 3 — Auf den VPS ausliefern
 
-Im Verzeichnis `/opt/apps/centric-dienstplanung`:
+**Grundsatz (WP-03):** Auf der Produktion läuft nur ein Bild, das per Digest
+benannt ist und in `deploy/FREIGEGEBENE-IMAGES.md` steht. Nie `latest`, nie ein
+Kennzeichen, nie ein Bild mit Status `gesperrt`. `deploy/compose.yml` verlangt
+`IMAGE_DIGEST` ohne Vorgabe — fehlt er, startet Compose gar nicht.
 
-    docker compose pull
-    docker compose up -d
+Neben `compose.yml` liegen in `/opt/apps/centric-dienstplanung` (Kopien aus
+`deploy/`, ausführbar): `FREIGEGEBENE-IMAGES.md`, `freigabe-lib.sh`,
+`digest-pruefen.sh`, `ruecksprung.sh`, `abschalten.sh`. Die Skripte schreiben ihr
+Protokoll nach `betrieb-protokoll.log` im selben Verzeichnis.
+
+Im Verzeichnis `/opt/apps/centric-dienstplanung`, Digest aus dem Lauf
+„Auslieferung“ (`sha256:…`, Kennzeichen = Commit):
+
+    # 0. vorher: Zeile in FREIGEGEBENE-IMAGES.md (Status aktiv) im Repo, Kopie hier
+    docker pull ghcr.io/rinats-png/dienstplaner@sha256:<digest>     # bewusst, nur per Digest
+    ./digest-pruefen.sh sha256:<digest>                               # muss „in Ordnung“ melden
+    cp -p .env .env.vor-<UTC>                                         # Kopie der .env
+    # in .env: IMAGE_DIGEST=sha256:<digest>   (Editor; Rechte 600 bleiben)
+    docker compose up -d --pull never centric-dp-web
     docker compose ps            # centric-dp-web … (healthy)
+
+`digest-pruefen.sh` prüft Format, Eintrag und Status in der Liste, Sperre (auch
+per Präfix und auf die Bild-ID), ob das Bild lokal liegt, und ob das Label
+`org.opencontainers.image.revision` zum Commit der Liste passt. Bilder vor WP-03
+haben kein Label; sie gehen nur mit `--ohne-label` durch, nachdem die Herkunft
+anders belegt ist (Registry-Kennzeichen, Dateivergleich wie in Schritt 1). Ein
+**abweichendes** Label lässt nichts durch.
 
 Danach prüfen — jeder Punkt einzeln:
 
     docker inspect centric-dp-web --format '{{.State.Health.Status}} {{.Image}}'
+    docker image inspect --format '{{.Id}}' ghcr.io/rinats-png/dienstplaner@sha256:<digest>   # = .Image oben
     docker run --rm --network proxy curlimages/curl -sS http://centric-dp-web:3000/gesund
     curl -sS https://app.centric-dienstplanung.de/gesund
     curl -sS -o /dev/null -w '%{http_code}\n' https://app.centric-dienstplanung.de/
@@ -196,16 +228,91 @@ Danach prüfen — jeder Punkt einzeln:
 `/gesund` antwortet `{"status":"ok"}`; die Startseite 200; das Startlog des
 Containers nennt die Funktionen und „Ablage: Dateien unter /data".
 
-**Rollback:** Das vorige Bild bleibt lokal liegen. `IMAGE_TAG=<voriger
-Commit-Hash>` in die `.env`, `docker compose up -d`, nach dem Prüfen wieder
-auf `latest`. Die Daten unter `/data` sind von einem Bildwechsel nie
+### 3.1 Wenn ein Release schiefgeht: R0 oder Rücksprung
+
+Die vereinbarte Fehlerstrategie ist **R0: Dienst anhalten.** Lieber kein Dienst
+als ein Bild mit bekannter Lücke. Es gibt **keinen** automatischen Rücksprung und
+keinen Weg zurück auf `latest`.
+
+    ./abschalten.sh --trocken     # zeigt Zustand und was geschähe
+    ./abschalten.sh               # docker compose stop centric-dp-web, prüft „exited“, beobachtet
+
+`abschalten.sh` hält den Container an (scheitert Compose — etwa weil `.env` noch
+kein `IMAGE_DIGEST` hat —, mit `docker stop`), prüft, dass er angehalten ist und
+nicht wieder anläuft, schreibt ins Protokoll und nennt die Schritte zur
+Wiederinbetriebnahme. Daten und `.env` bleiben unberührt.
+
+Ein **Rücksprung** ist nur auf den Eintrag `vorherig` der Liste möglich und nur,
+wenn er nicht gesperrt ist:
+
+    ./ruecksprung.sh --trocken    # zeigt Ziel, .env-Änderung, Befehl — ändert nichts
+    ./ruecksprung.sh              # .env sichern, IMAGE_DIGEST=<vorherig>, up -d --pull never,
+                                  # warten auf healthy, Bild-ID vergleichen, Protokoll
+
+Gibt es keinen Eintrag `vorherig`, ist er gesperrt oder fällt er in
+`digest-pruefen.sh` durch, verweigert das Skript mit Verweis auf R0. Schlägt der
+Start fehl (unhealthy, Zeitüberschreitung, falsches Bild), meldet es den Fehlschlag
+und verweist ebenfalls auf R0 — es hält nicht selbst an. Danach die Liste
+anpassen (Ziel → `aktiv`, verlassenes Bild → `gesperrt` mit Grund).
+
+**Stand 2026-11-02:** Es gibt **keinen** Eintrag `vorherig`. Das einzige ältere
+Produktivbild `f03a8514…` (`64d08a4`) hat die Datenschutzlücke P0-0 und ist
+gesperrt, ebenso `0861adee…` (auf das das lokale `latest` des VPS zeigt). Im
+Fehlerfall gilt also R0. Die Daten unter `/data` sind von einem Bildwechsel nie
 betroffen.
 
+### 3.2 Freigegebene Images pflegen
+
+`deploy/FREIGEGEBENE-IMAGES.md` ist die einzige Quelle für zulässige Bilder; die
+Tabelle hat eine feste Spaltenreihenfolge (`Digest | Commit | Datum |
+Abnahmebericht | Status | Grund`) und wird von den Skripten und der CI gelesen.
+Bei jedem Produktivwechsel, **vor** dem Wechsel, im Repository:
+
+1. bisherige Zeile `aktiv` → `vorherig` — nur wenn sie ein zulässiges Rücksprungziel
+   ist; sonst → `gesperrt` mit Grund;
+2. bisherige Zeile `vorherig` → `gesperrt` (Grund z. B. „überholt“);
+3. neue Zeile: voller Digest, voller Commit, Datum, Abnahmebericht, `aktiv`;
+4. PR, CI grün („Betrieb: Deploy-Skripte“ prüft die Liste mit), Kopie auf den VPS.
+
+Höchstens eine Zeile `aktiv`, höchstens eine `vorherig`; Zeilen werden nie
+gelöscht. Wird an einem Bild ein Befund bekannt, wird es **sofort** `gesperrt`,
+auch wenn es `vorherig` war. Bei `gesperrt` darf ein Digest-Präfix stehen, wenn
+der volle Digest nicht belegt ist (`0861adee`); gesperrt ist dann jedes Bild,
+dessen Digest oder Bild-ID damit beginnt.
+
+### 3.3 Migration der Produktions-`.env` (IMAGE_TAG → IMAGE_DIGEST)
+
+Die neue `compose.yml` liest `IMAGE_TAG` nicht mehr. Bis zur Einführung (im
+nächsten Deploy-Fenster, gesondert freizugeben) läuft die Produktion mit der
+alten `compose.yml` und `IMAGE_TAG=<commit>@sha256:<digest>` weiter. Beim
+Einführen, in dieser Reihenfolge — **nicht vorher und nicht ohne Freigabe**:
+
+    cd /opt/apps/centric-dienstplanung
+    stempel=$(date -u +%Y%m%dT%H%M%SZ)
+    cp -p .env ".env.vor-wp03-$stempel"; cp -p compose.yml "compose.yml.vor-wp03-$stempel"
+    grep -c '^IMAGE_TAG=' .env                      # erwartet: 1
+    # Digest aus IMAGE_TAG übernehmen (Teil nach dem @):
+    digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env)
+    echo "$digest"                                   # erwartet: sha256:0b192927…e452f
+    # neue Dateien aus deploy/ hierher kopieren (compose.yml, Liste, Skripte), dann:
+    ./digest-pruefen.sh "$digest" --ohne-label       # H8+-Bild hat noch kein Label
+    sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env
+    grep -E '^IMAGE_(TAG|DIGEST)=' .env              # erwartet: genau IMAGE_DIGEST=…
+    docker compose config --no-env-resolution | grep image:   # zeigt die Variable, keine Secrets
+    docker compose up -d --pull never centric-dp-web          # gleiches Bild → kein Bildwechsel
+
+Auch bei unverändertem Digest kann Compose den Container neu erzeugen (geänderte
+Konfiguration) — wenige Sekunden Unterbrechung einplanen. Zurück: beide
+`.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`. Das
+lokale VPS-Kennzeichen `latest` (`0861adee`) wird davon nicht berührt; es
+umzubenennen (`alt-0861adee`) ist ein eigener, gesondert freizugebender Schritt.
+
 Der Schritt auf den VPS aus GitHub Actions heraus (`deploy.yml`, Job `vps`
-über SSH und `/opt/bin/deploy.sh` mit Healthcheck und Rollback) ist
-vorbereitet, aber nicht scharf: Er läuft erst, wenn `DEPLOY_HOST` und
-`DEPLOY_SSH_KEY` hinterlegt sind und das Skript auf dem VPS liegt. Bis dahin
-gilt der Weg oben.
+über SSH und `/opt/bin/deploy.sh`) ist vorbereitet, aber nicht scharf: Er läuft
+erst, wenn `DEPLOY_HOST` und `DEPLOY_SSH_KEY` hinterlegt sind und das Skript auf
+dem VPS liegt. `deploy.sh` bekommt heute ein Kennzeichen und sieht einen
+automatischen Rollback vor; bevor der Job scharf wird, muss es auf Digest,
+`digest-pruefen.sh` und R0 umgestellt sein. Bis dahin gilt der Weg oben.
 
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 
@@ -602,7 +709,10 @@ Ordner zurückspielen (nicht in `data/`) und dort ansehen.
       --sicherung /sicherungen/centric-sicherung-<Zeit> --ziel /restore --ohne-serverpruefung
     docker run --rm -p 127.0.0.1:3001:3000 --env-file .env \
       -e CENTRIC_DATEN=/data -v "$PWD/restore-test:/data" \
-      ghcr.io/rinats-png/dienstplaner:latest
+      "ghcr.io/rinats-png/dienstplaner@$(sed -n 's/^IMAGE_DIGEST=//p' .env)"
+
+(Dasselbe Bild wie der Dienst, per Digest aus der `.env` — nie `latest`: das lokale
+`latest` auf dem VPS ist ein altes, gesperrtes Bild.)
 
 Gegen `127.0.0.1:3001` (SSH-Tunnel) anmelden und einen Betrieb öffnen; danach
 Container beenden und `restore-test/` löschen.
@@ -645,7 +755,8 @@ Regeln, die sich bewährt haben:
   `docker compose` Container der Produktion.
 - **Bild per Digest** in der `compose.yml`, Start mit `docker compose up -d --pull never`.
   Ein Update ist dann der bewusste Austausch des Digests, ein Rollback der Austausch
-  zurück.
+  zurück — wie in der Produktion nur auf Digests, die `digest-pruefen.sh` zulässt
+  (Schritt 3).
 - **Container erneuern heißt neu erzeugen**: `docker compose rm -f -s <Dienst>` und
   `up -d --pull never`. Ein Neustart prüft weder die Konfiguration noch das Bild.
 - **`docker compose config` zeigt aufgelöste Werte, also Secrets.** Zum Prüfen der
