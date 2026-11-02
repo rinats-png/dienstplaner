@@ -296,6 +296,18 @@ describe("Schreibweg fail-closed wie die Lesesicht (B5)", () => {
     expect(schreiben((m) => { m.abweichungen[`z1|${tag(-2)}`] = "F"; }).verweigert).toBeTruthy();
     expect(schreiben((m) => { m.abweichungen[`z1|${tag(6)}`] = "F"; }).verweigert).toBeFalsy();
   });
+  /* Nachtrag N1c: Die Ablehnung sagt, woran es liegt — sonst hieße es nur
+     „gehört nicht zu deinem Bereich", obwohl die Person dort eingetragen ist. */
+  it("vor dem ersten Abschnitt: klare Meldung „keiner Einheit zugeordnet“ (Plan und Antrag)", () => {
+    expect(schreiben((m) => { m.abweichungen[`z1|${tag(-2)}`] = "F"; }).verweigert)
+      .toBe("Person ist an diesem Tag keiner Einheit zugeordnet – Zugehörigkeit prüfen.");
+    const e = schreiben((m) => {
+      m.anfragen.push({ id: "an-z1-neu", personId: "z1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(1), bis: tag(2) });
+    });
+    expect(e.verweigert).toBe("Person ist an diesem Tag keiner Einheit zugeordnet – Zugehörigkeit prüfen.");
+    /* eine Person mit Abschnitt in einer anderen Einheit bekommt weiter die Bereichsmeldung */
+    expect(schreiben((m) => { m.abweichungen[`v1|${tag(2)}`] = "F"; }).verweigert).toMatch(/gehört am .* nicht zu deinem Bereich/);
+  });
   it("Planänderung ohne gültigen Tag im Schlüssel: abgelehnt (wie bisher)", () => {
     expect(schreiben((m) => { m.abweichungen["a1|morgen"] = "F"; }).verweigert).toBeTruthy();
   });

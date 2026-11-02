@@ -11,7 +11,8 @@
    ========================================================================== */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText } from "../src/istdaten.js";
+import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "../src/istdaten.js";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
@@ -149,13 +150,19 @@ describe("4. Ist-Zeit-Prüfungen ohne zugängliche Ist-Daten: nicht bewertbar", 
     expect(f).not.toMatch(/const ist = e && e\.bestaetigt/);
   });
   it("Ausgleichszeitraum: ohne Ist-Daten weder eingehalten noch verletzt", () => {
-    expect(funktion("ausgleichPruefen")).toMatch(/istVerfuegbar\(m, p\)\) return \{ nichtVerfuegbar: true, eingehalten: null \}/);
+    /* WP-43 N1: mit dem betrachteten Zeitraum (24 Wochen bis `bis`). */
+    expect(funktion("ausgleichPruefen")).toMatch(
+      /istVerfuegbar\(m, p, \{ von: addDays\(bis, -\(ausglWochen \* 7 - 1\)\), bis \}\)\) return \{ nichtVerfuegbar: true, eingehalten: null \}/);
     expect(funktion("ausgleichVerstoesse")).toContain("if (e.nichtVerfuegbar) continue;");
   });
   it("alle Stundenrechnungen gehen über dieselbe Stelle", () => {
     expect(app).toMatch(/const istDauer = \(m, p, d, da\) => istZeitFuer\(m, p, d, da\);/);
-    for (const name of ["istStunden", "stundenkonto", "nachtJahr", "auslastung"])
-      expect(funktion(name), name).toContain("istVerfuegbar(m, p)");
+    /* WP-43 N1: jede Auswertung nennt ihren Zeitraum. */
+    const zeitraum = { istStunden: "zeitraumMonat(ym)", stundenkonto: "zeitraumBisMonat(ym)", nachtJahr: "zeitraumJahr(jahr)",
+      auslastung: "zeitraumMonat(ym)", zuschlagStunden: "zeitraumMonat(ym)" };
+    for (const [name, z] of Object.entries(zeitraum))
+      expect(funktion(name), name).toContain(`istVerfuegbar(m, p, ${z})`);
+    expect(app).not.toMatch(/istVerfuegbar\(m, p\)/);              // keine Auswertung ohne Zeitraum
     expect(IST_NICHT_VERFUEGBAR.gesamt).toBeNull();
     expect(Object.isFrozen(IST_NICHT_VERFUEGBAR)).toBe(true);
   });
@@ -169,8 +176,12 @@ describe("Darstellung: nie 0, nie Plan als Ist", () => {
   });
   it("Monatsplan, Jahresansicht, Lagebild, Team-Auslastung behandeln „nicht verfügbar\"", () => {
     expect(funktion("Einsatzplan")).toContain("ist.nichtVerfuegbar");
-    expect(funktion("Jahresansicht")).toContain("!istVerfuegbar(m, p)");
-    expect(funktion("Lagebild")).toContain("!istVerfuegbar(m, p)");
+    expect(funktion("Jahresansicht")).toContain("!istVerfuegbar(m, p, zeitraumJahr(jahr))");
+    /* WP-43 N1: nicht verfügbare Konten ausklammern und nennen, nur ohne jedes verfügbare Konto „–". */
+    const lage = funktion("Lagebild");
+    expect(lage).toContain("!istVerfuegbar(m, p, kontenZeitraum)");
+    expect(lage).toContain("kontenOhneIst === kontenMit.length ? null");
+    expect(lage).toContain("(Ist-Daten nicht verfügbar)");
     expect(funktion("TeamAuslastungLeiste")).toContain("ta.nichtVerfuegbar");
     expect(funktion("teamAuslastung")).toContain("nichtVerfuegbar: true");
   });
@@ -265,5 +276,69 @@ describe("9. Schichtverantwortung tagesgenau: Tage im anderen Bereich nicht verf
     const m = { sichtIstDaten: { umfang: "personen", personen: ["p1"], zeitraeume: { p1: "kaputt" } } };
     expect(istVerfuegbar(m, { id: "p1" }, "2026-01-01")).toBe(false);
     expect(istVerfuegbar(m, { id: "p1" })).toBe(false);
+  });
+});
+
+/* WP-43 Nachtrag N1: Auswertungen nennen ihren Zeitraum. Verfügbar ist eine
+   Person, wenn der Zeitraum ganz in ihren zugänglichen Tagen liegt — eine alte
+   oder künftige Versetzung außerhalb stört nicht mehr. Rot auf dcc0f7c: Dort
+   galt jede Person mit irgendeinem fremden Abschnitt für jede Auswertung als
+   „nicht verfügbar" (Konten, Monat, Jahr dauerhaft „–"). */
+describe("10. Zeitraumbezug: Konten und Monate nach alter oder künftiger Versetzung", () => {
+  const heute = heuteBerlin();
+  const MONAT = heute.slice(0, 7);
+  const sv = (zugP17) => {
+    const b = bestand();
+    const m0 = b.mandanten[0];
+    m0.einheiten = [{ id: "e1" }, { id: "e2" }];
+    Object.assign(m0.personen[0], { bereich: "e1", status: "aktiv", zugehoerigkeit: zugP17 });
+    m0.personen.push({ id: "ps", vorname: "Sina", nachname: "Schicht", rolle: "subplaner", bereich: "e1", status: "aktiv",
+      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
+    const T = tagePlus(heute, -1);
+    m0.abweichungen = { [`p17|${T}`]: "F" };
+    m0.erfassung = { [`p17|${T}`]: { start: "06:00", ende: "16:30", bestaetigt: true } };
+    return bestandFuerRolle(b, { rolle: "subplaner", person: "ps", betrieb: 0 }).mandanten[0];
+  };
+  it("alte Versetzung (2019 e2, seit 2021 e1): aktueller Monat, Kontojahr und Jahr verfügbar", () => {
+    const m = sv([{ ab: "2019-01-01", einheitId: "e2" }, { ab: "2021-01-01", einheitId: "e1" }]);
+    const p = person(m, "p17");
+    expect(m.sichtIstDaten.zeitraeume.p17).toEqual([{ von: "2021-01-01", bis: "9999-12-31" }]);
+    expect(istVerfuegbar(m, p, zeitraumMonat(MONAT))).toBe(true);
+    expect(istVerfuegbar(m, p, zeitraumBisMonat(MONAT))).toBe(true);
+    expect(istVerfuegbar(m, p, zeitraumJahr(heute.slice(0, 4)))).toBe(true);
+    expect(istVerfuegbar(m, p, zeitraumJahr("2020"))).toBe(false);                 // damals e2
+    expect(istVerfuegbar(m, p)).toBe(false);                                      // ohne Zeitraum: fail-closed
+  });
+  it("künftige Versetzung (in 200 Tagen nach e2): aktueller Monat verfügbar, ein Zeitraum über den Wechsel nicht", () => {
+    const wechsel = tagePlus(heute, 200);
+    const m = sv([{ ab: "2020-01-01", einheitId: "e1" }, { ab: wechsel, einheitId: "e2" }]);
+    const p = person(m, "p17");
+    expect(istVerfuegbar(m, p, zeitraumMonat(MONAT))).toBe(true);
+    expect(istVerfuegbar(m, p, zeitraumBisMonat(MONAT))).toBe(true);
+    expect(istVerfuegbar(m, p, zeitraumMonat(wechsel.slice(0, 7)))).toBe(false);
+    expect(istVerfuegbar(m, p, { von: heute, bis: wechsel })).toBe(false);
+  });
+  it("Versetzung im betrachteten Monat: der Monat nicht verfügbar, die Tage davor und danach tagesgenau", () => {
+    const wechsel = `${MONAT}-15`;
+    const m = sv([{ ab: "2020-01-01", einheitId: "e2" }, { ab: wechsel, einheitId: "e1" }]);
+    const p = person(m, "p17");
+    expect(istVerfuegbar(m, p, zeitraumMonat(MONAT))).toBe(false);
+    expect(istVerfuegbar(m, p, `${MONAT}-14`)).toBe(false);
+    expect(istVerfuegbar(m, p, wechsel)).toBe(true);
+    /* nie Planzeit als Ist: am Tag vor dem Wechsel „nicht verfügbar" */
+    const z = istZeitFuer(m, p, `${MONAT}-14`, FRUEH);
+    expect(z).toEqual({ std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true });
+    expect(pruefZeitFuer(m, p, `${MONAT}-14`, FRUEH)).toBeNull();
+    const ab = istZeitFuer(m, p, wechsel, FRUEH);
+    expect(ab.nichtVerfuegbar).toBeUndefined();
+  });
+  it("Zeiträume: Monatsende und Jahre richtig, Lücken zwischen Abschnitten zählen", () => {
+    expect(zeitraumMonat("2028-02")).toEqual({ von: "2028-02-01", bis: "2028-02-29" });
+    expect(zeitraumBisMonat("2026-11")).toEqual({ von: "2026-01-01", bis: "2026-11-30" });
+    const m = { sichtIstDaten: { umfang: "personen", personen: ["p1"],
+      zeitraeume: { p1: [{ von: "2026-01-01", bis: "2026-01-31" }, { von: "2026-02-01", bis: "2026-02-10" }, { von: "2026-02-12", bis: "2026-12-31" }] } } };
+    expect(istVerfuegbar(m, { id: "p1" }, { von: "2026-01-15", bis: "2026-02-10" })).toBe(true);   // aneinander anschließend
+    expect(istVerfuegbar(m, { id: "p1" }, zeitraumMonat("2026-02"))).toBe(false);                 // Lücke am 11.
+    expect(istVerfuegbar(m, { id: "p1" }, { von: "2026-03-01", bis: "2026-02-01" })).toBe(false);  // verkehrt herum
   });
 });
