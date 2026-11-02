@@ -17,8 +17,9 @@
      node werkzeug/journal-pruefen.mjs [--daten /data] --beiseitelegen [raum …]
 
    Ohne --beiseitelegen wird nur berichtet, nichts verändert. Mit
-   --beiseitelegen wird jedes beschädigte Journal umbenannt in
-   journal-beiseite:<raum>:<zeit> — gelöscht wird nichts. Danach gilt der
+   --beiseitelegen wird jedes beschädigte Journal beiseitegelegt als
+   journal-beiseite:<raum>:<zeit> (Rohbytes unverändert darin, werkzeug/ablage-
+   pruefen.mjs, beiseiteSicher) — verloren geht nichts. Danach gilt der
    Stand auf der Platte; der nächste Schreibvorgang gleicht Kern, Zeiger und
    Vermerk daraus an (bestand.mjs, Wiederanlauf). Weil ein beschädigtes
    Journal nach einem Abbruch mitten im Schreiben liegen kann, KANN dieser
@@ -35,7 +36,6 @@
    ========================================================================== */
 
 import path from "node:path";
-import { rename } from "node:fs/promises";
 
 const argumente = process.argv.slice(2);
 const wert = (name) => { const i = argumente.indexOf(name); return i >= 0 ? argumente[i + 1] : null; };
@@ -46,13 +46,22 @@ const beiseitelegen = argumente.includes("--beiseitelegen");
 const raeume = argumente.filter((a, i) => !a.startsWith("--") && argumente[i - 1] !== "--daten");
 
 const { getStore, ablageWurzel, dateiname } = await import("../server/lib/ablage.mjs");
+/* Beiseitelegen wie werkzeug/ablage-pruefen.mjs: Rohbytes in einen gültigen
+   Eintrag gepackt statt umbenannt — eine umbenannte kaputte Datei brächte
+   sonst jede folgende Sicherung (ablage-sicherung.mjs) zum Abbruch. */
+const { beiseiteSicher } = await import("./ablage-pruefen.mjs");
 const { journalPruefen, bestandLesenStreng } = await import("../server/lib/bestand.mjs");
-const { ablageBelegen } = await import("../server/lib/prozesssperre.mjs");
+const { ablageBelegen, VERALTET_MS } = await import("../server/lib/prozesssperre.mjs");
 
 const wurzel = ablageWurzel();
-const sperre = await ablageBelegen(wurzel, { puls: false, wartenMs: 0 });
+/* Mit Puls wie der Server (siehe ablage-pruefen.mjs): Ein Server, der
+   währenddessen startet, sieht die Sperre vorrücken und bleibt draußen.
+   Eine fremde, frische Sperre heißt hier „belegt" — ohne Wartezeit. */
+let verloren = null;
+const sperre = await ablageBelegen(wurzel, { puls: true, wartenMs: 0, verloren: (g) => { verloren = g; } });
 if (!sperre.ok) {
-  console.error(`${sperre.grund} Erst den Server anhalten — das Werkzeug arbeitet nur auf einer ruhenden Ablage.`);
+  console.error(`${sperre.grund} Erst den Server anhalten — das Werkzeug arbeitet nur auf einer ruhenden Ablage. `
+    + `Gehört die Sperre einem gerade gestoppten Container, ${Math.round(VERALTET_MS / 1000)} Sekunden warten und erneut aufrufen.`);
   process.exit(2);
 }
 
@@ -76,9 +85,10 @@ try {
     console.log(`${raum}: Journal beschädigt — ${p.grund}`);
     if (!beiseitelegen) { console.log(`  Trockenlauf: nichts verändert. Mit --beiseitelegen ${raum} beiseitelegen.`); continue; }
 
+    if (verloren) throw new Error(`Prozesssperre verloren (${verloren}) — abgebrochen`);
     const ziel = `journal-beiseite:${raum}:${new Date().toISOString().replace(/[:.]/g, "-")}`;
     const ordner = path.join(wurzel, "centric");
-    await rename(path.join(ordner, dateiname(`journal:${raum}`)), path.join(ordner, dateiname(ziel)));
+    await beiseiteSicher(store, ordner, dateiname, `journal:${raum}`, ziel, p.grund);
     console.log(`  beiseitegelegt als ${ziel}`);
     try {
       const g = await bestandLesenStreng(store, raum);
