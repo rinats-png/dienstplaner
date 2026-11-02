@@ -539,12 +539,19 @@ describe("Speicherfehler", () => {
     if (!e.ok) expect(e.grund).toBe("lauf");
   }, LIMIT);
 
-  it("weist ab, wenn der Bestand nicht lesbar ist", async () => {
+  it("weist ab, wenn der Bestand nicht lesbar ist — als vorübergehender Fehler, nicht als „Bestand fehlt“", async () => {
+    /* Seit WP-45 (N3): Ein unlesbarer Kern ist „gerade nicht lesbar"
+       (BESTAND_UNLESBAR → 503), nicht „Bestand fehlt". Bis dahin wurde er
+       zu „fehlt", und die Absage räumte eine gültige Sitzung weg, weil die
+       Platte kurz hakte. Die Tür bleibt trotzdem zu: Die Prüfung wirft,
+       durchgelassen wird nichts — und mit lesbarem Bestand gilt dieselbe
+       Sitzung danach wieder. */
     const { token } = await arbeitsbereich("fehler-bestand");
-    const e = await AS.arbeitssitzungPruefen(/** @type {any} */ (blind(/^kern:/)),
-      await satz(token));
-    expect(e.ok).toBe(false);
-    if (!e.ok) expect(e.grund).toBe("bestand-fehlt");
+    const kaputt = { ...blind(/^kern:/), getMetadata: async () => { throw new Error("Platte kaputt"); } };
+    await expect(AS.arbeitssitzungPruefen(/** @type {any} */ (kaputt), await satz(token)))
+      .rejects.toMatchObject({ code: "BESTAND_UNLESBAR" });
+    const danach = await AS.arbeitssitzungPruefen(laden(), await satz(token));
+    expect(danach.ok).toBe(true);
   }, LIMIT);
 
   it("verweigert bei einem Fehler im durchgegebenen Bestandslader", async () => {

@@ -34,9 +34,10 @@ import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
-import { ablageBelegen } from "./server/lib/prozesssperre.mjs";
+import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
 import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
+import { voruebergehend } from "./server/lib/bestand.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
 const WURZEL = path.dirname(fileURLToPath(import.meta.url));
@@ -353,7 +354,6 @@ async function statisch(req, res, pfad) {
    schreibstopp), die laufenden höchstens VERLUST_WARTEN_MS lang zu Ende
    kommen lassen, dann beenden. Die Prozesssperre selbst wartet ohnehin
    drei Fehlschläge ab, bevor sie „verloren" meldet (prozesssperre.mjs). */
-const VERLUST_WARTEN_MS = 10_000;
 const ablagesperre = await ablageBelegen(ablageWurzel(), {
   verloren: async (grund) => {
     console.error(`Ablagesperre verloren (${grund}) — keine neuen Schreibvorgänge, `
@@ -414,6 +414,15 @@ const server = createServer(async (req, res) => {
        Antwort oder ein Protokolleintrag nützen würde. */
     if (req.destroyed || res.destroyed) return;
     console.error(`${new Date().toISOString()} ${req.method} ${req.url}:`, e && e.stack ? e.stack : e);
+    /* Vorübergehend nicht lesbar oder gerade gesperrt (lib/bestand.mjs,
+       voruebergehend): 503 mit Wiederholungshinweis, nicht 500 — und erst
+       recht nicht „gibt es nicht". Für alle Funktionen, die solche Fehler
+       nicht selbst beantworten (Kalender, Zustellung, Anmeldung …). */
+    if (!res.headersSent && voruebergehend(e)) {
+      json(res, 503, { fehler: "Gerade nicht verfügbar.", text: "Bitte in einigen Sekunden noch einmal versuchen.",
+        code: e.code });
+      return;
+    }
     if (!res.headersSent) json(res, 500, { fehler: "Interner Fehler." });
     else res.destroy();
   }

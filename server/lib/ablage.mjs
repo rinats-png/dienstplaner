@@ -69,8 +69,10 @@ function ablagePruefen() {
    Die Schlüssel der Anwendung sind höchstens rund 90 Zeichen lang. */
 const NAME_MAX = 200;
 
-/** @param {string} schluessel */
-function dateiname(schluessel) {
+/** Der Dateiname eines Schlüssels (exportiert für Werkzeuge, die eine Datei
+    beiseitelegen müssen, die sich nicht mehr lesen lässt).
+    @param {string} schluessel */
+export function dateiname(schluessel) {
   if (typeof schluessel !== "string" || !schluessel.length)
     throw new Error("Ablage: leerer Schlüssel");
   let aus = "";
@@ -140,6 +142,30 @@ async function anlegen(verzeichnis) {
 }
 
 /**
+ * Umbenennen über eine bestehende Datei. Unter Windows scheitert das mit
+ * EPERM, EACCES oder EBUSY, solange ein Leser die Zieldatei gerade offen hat
+ * — ein Leser ohne Sperre (bestand.mjs) liest jederzeit. Dann kurz warten
+ * und erneut versuchen — aber nur wenige Male (zusammen rund 50 ms): Hält
+ * ein Virenscanner eine frisch geschriebene Datei länger fest, würde ein
+ * langes Warten jeden Schreibvorgang auf einen viel benutzten Schlüssel
+ * (Bremszähler) um Sekunden verzögern. Unter Linux ersetzt rename() auch
+ * eine offene Datei; dort greift das nie.
+ * @param {string} von
+ * @param {string} nach
+ */
+async function umbenennen(von, nach) {
+  for (let versuch = 0; ; versuch++) {
+    try { await rename(von, nach); return; }
+    catch (e) {
+      const voruebergehend = process.platform === "win32"
+        && e && (e.code === "EPERM" || e.code === "EACCES" || e.code === "EBUSY");
+      if (!voruebergehend || versuch >= 4) throw e;
+      await new Promise((r) => setTimeout(r, 5 * (versuch + 1)));
+    }
+  }
+}
+
+/**
  * Schreibt erst daneben, dann um. Niemand sieht eine halbe Datei.
  * @param {string} ziel
  * @param {string} inhalt
@@ -154,7 +180,7 @@ async function atomarSchreiben(ziel, inhalt) {
     await fh.close();
   }
   try {
-    await rename(tmp, ziel);
+    await umbenennen(tmp, ziel);
   } catch (e) {
     await unlink(tmp).catch(() => {});
     throw e;

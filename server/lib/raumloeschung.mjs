@@ -31,10 +31,10 @@
    gelöschten Raum ist folgenlos.
    ========================================================================== */
 
-import { unterRaumsperre } from "./raumsperre.mjs";
+import { unterRaumsperre, KONTEN_SPERRE } from "./raumsperre.mjs";
+import { journalSchluessel } from "./bestand.mjs";
 
-/** Die raumübergreifende Sperre für den Sammelblob „konten". */
-export const KONTEN_SPERRE = "@konten";
+export { KONTEN_SPERRE };
 
 /**
  * @typedef {{ raum: string, geloescht: number, vollstaendig: boolean,
@@ -69,32 +69,37 @@ export async function raumLoeschen(store, sitzungen, raum) {
     return blobs;
   };
 
-  /* 1. Scherben, Stände, Sicherungen */
-  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`])
+  /* 1. Ein liegengebliebenes Schreibjournal zuerst (bestand.mjs). Bliebe es
+        stehen, legte jeder Leser es über das, was noch da ist — und der
+        Kern des gelöschten Raums erschiene wieder. Dann Scherben, Stände,
+        Sicherungen. */
+  try { await store.delete(journalSchluessel(raum)); }                // fehlt es, ist nichts zu tun
+  catch (e) { fehler.push({ schluessel: journalSchluessel(raum), grund: grundVon(e) }); }
+  for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`,
+    `journal-beiseite:${raum}:`])          // beiseitegelegte Journale (werkzeug/journal-pruefen.mjs)
     await praefixWeg(praefix);
 
-  /* 2. Zugangscodes des Raums — einzeln abgelegte und die im Sammelblob.
-        Gelesen wird gezielt über das Präfix, nicht über alleKonten(): Ein
-        unlesbares Konto darf den Lauf nicht beenden, es landet als Fehler. */
-  const zuLoeschen = [];
-  try {
-    const { blobs } = await store.list({ prefix: "konto:" });
-    for (const b of blobs) {
-      let k = null;
-      try { k = await store.get(b.key, { type: "json" }); }
-      catch (e) { fehler.push({ schluessel: b.key, grund: grundVon(e) }); continue; }
-      if (k && k.bestand === raum) zuLoeschen.push(b.key.slice("konto:".length));
-    }
-  } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
-  for (const schl of zuLoeschen) await weg(`konto:${schl}`);
-  /* Der Sammelblob „konten" gehört allen Räumen zugleich. Lesen, Ändern und
-     Zurückschreiben unter einer festen, raumübergreifenden Sperre: Zwei
-     gleichzeitige Löschungen (Konsole und Löschlauf, oder zwei Räume im
-     selben Lauf über verschiedene Wege) lasen sonst beide den alten Blob,
-     und der zweite schrieb die Codes des ersten Raums wieder hinein. Der
-     Schlüssel beginnt mit „@" und kann so mit keinem Raumnamen
-     zusammenfallen. Reihenfolge stets Raum, dann „@konten" — nie umgekehrt,
-     damit sich zwei Löschungen nicht gegenseitig festhalten. */
+  /* 2. Zugangscodes des Raums — erst der Sammelblob, dann die einzeln
+        abgelegten.
+
+        Der Sammelblob „konten" gehört allen Räumen zugleich. Lesen, Ändern
+        und Zurückschreiben unter einer festen, raumübergreifenden Sperre
+        (KONTEN_SPERRE): Zwei gleichzeitige Löschungen lasen sonst beide den
+        alten Blob, und der zweite schrieb die Codes des ersten Raums wieder
+        hinein. Reihenfolge stets Raum, dann „@konten" — nie umgekehrt,
+        damit sich zwei Löschungen nicht gegenseitig festhalten.
+
+        Erst der Sammelblob, weil die Anmeldung aus ihm Einzelkonten macht
+        (kontoVereinzeln, konten.mjs — ebenfalls unter „@konten"). In der
+        umgekehrten Reihenfolge konnte eine Anmeldung zwischen den beiden
+        Schritten konto:X aus dem noch vollen Sammelblob neu anlegen, und der
+        Code zeigte danach auf einen gelöschten Raum. So entsteht ein
+        Einzelkonto nur noch vor der Bereinigung des Sammelblobs — und wird
+        dann im nächsten Schritt mit gelöscht.
+
+        Die Einzelkonten gezielt über das Präfix, nicht über alleKonten():
+        Ein unlesbares Konto darf den Lauf nicht beenden, es landet als
+        Fehler. */
   try {
     await unterRaumsperre(KONTEN_SPERRE, async () => {
       const sammel = await store.get("konten", { type: "json" });
@@ -108,6 +113,17 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     });
   } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
+  const zuLoeschen = [];
+  try {
+    const { blobs } = await store.list({ prefix: "konto:" });
+    for (const b of blobs) {
+      let k = null;
+      try { k = await store.get(b.key, { type: "json" }); }
+      catch (e) { fehler.push({ schluessel: b.key, grund: grundVon(e) }); continue; }
+      if (k && k.bestand === raum) zuLoeschen.push(b.key.slice("konto:".length));
+    }
+  } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
+  for (const schl of zuLoeschen) await weg(`konto:${schl}`);
 
   /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.
 

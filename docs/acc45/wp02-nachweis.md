@@ -87,7 +87,7 @@ p95 778 ms, max 1372 ms.
   nicht zurückgeschrieben: Jeder Schreibweg liest unter der Sperre neu.
 - Durchsatz: Unter der Sperre wird der ganze Bestand gelesen und geschrieben. Bei Bündeln zu 10 liegt p95 unter Windows
   bei 778–848 ms. Unter Linux/ext4 ist es vermutlich schneller, gemessen wurde das nicht.
-- Prozesssperre nach hartem Ende des Vorgänger-Containers: Der Start verzögert sich um bis zu ~35 s, weil der Herzschlag
-  beobachtet wird. Die Wartezeit in `deploy.sh` muss deshalb ≥ 60 s sein (gehört zu WP-31).
+- Prozesssperre nach hartem Ende des Vorgänger-Containers: Der Start verzögert sich um bis zu ~50 s (WP-45: Übernahmegrenze
+  45 s), weil der Herzschlag beobachtet wird. Die Wartezeit in `deploy.sh` muss deshalb ≥ 75 s sein (gehört zu WP-31).
 - `/gesund` meldet jetzt 503, solange eine Schreibarbeit über dem Wächter hängt oder ein Schreibstopp gilt. Wie Docker
   oder Caddy darauf reagieren (Neustart?), steht in `deploy/`, das nicht zu diesem Paket gehört.

@@ -1,6 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
-import { bestandLesen } from "../lib/bestand.mjs";
+import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, rolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden } from "../lib/versand.mjs";
@@ -93,7 +93,7 @@ export default async (req) => {
       if (ids.some((x) => typeof x !== "string" || !NUR_KENNUNG.test(x)))
         return antwort({ fehler: "Nur Kennungen gespeicherter Mitteilungen." }, 400);
 
-      const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+      const gelesen = await bestandLesen(store(), s.bestand);    // nicht lesbar → 503, nie „keine Person"
       const bestand = gelesen && gelesen.bestand;
       const m = bestand && s.person !== null && s.person !== undefined ? eigenerMandant(bestand, s) : null;
       const regel = m ? anstossRegel(wirksameRolle(s, bestand), m, s.person) : null;
@@ -118,7 +118,7 @@ export default async (req) => {
       if (s.person === null || s.person === undefined)
         return pfad === "abmelden" ? antwort({ ok: true })
           : antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
-      const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+      const gelesen = await bestandLesen(store(), s.bestand);    // nicht lesbar → 503, nie „keine Person"
       const bestand = gelesen && gelesen.bestand;
       const m = bestand ? eigenerMandant(bestand, s) : null;
       const da = m && Array.isArray(m.personen) && m.personen.some((p) => p && String(p.id) === String(s.person));
@@ -138,6 +138,10 @@ export default async (req) => {
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   } catch (e) {
+    /* Gerade nicht lesbar oder gerade gesperrt (bestand.mjs, voruebergehend):
+       503 statt „Serverfehler" — und nie als „gibt es nicht" gewertet. */
+    if (voruebergehend(e)) return antwort({ fehler: "Gerade nicht verfügbar.",
+      text: "Bitte in einigen Sekunden noch einmal versuchen.", code: e.code }, 503);
     /* Dieselbe Zurückhaltung wie in daten.mjs: Nach außen nur, dass es
        schiefging. Die Einzelheiten stehen im Protokoll. */
     await protokoll("fehler", kennung(req, null), "zustellung",
