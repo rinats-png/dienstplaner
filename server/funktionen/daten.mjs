@@ -13,7 +13,8 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
+import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
+  offenSeitMinuten, LANGER_DIENST_MINUTEN } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen } from "../lib/versand.mjs";
@@ -1025,10 +1026,11 @@ export default async (req, context) => {
           if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
           /* Der Tag des Stempels kommt vom Server: Beginn heute, Ende beim
-             offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze).
-             Ein Gerätedatum, das dazu nicht passt, wird abgelehnt (400) —
-             zeiterfassung.mjs, stempelZiel. Bestimmt am frischen Stand, unter
-             der Sperre. */
+             offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze,
+             vergessenes Einstempeln vor einem Nachtdienst). Das Gerätedatum wird
+             ignoriert; weicht es ab, trägt der Eintrag GERAETEDATUM_ABWEICHEND —
+             nie eine Absage (zeiterfassung.mjs, stempelZiel). Bestimmt am
+             frischen Stand, unter der Sperre. */
           const ziel = stempelZiel(m, person, art, jetzt, geraeteDatum);
           if (ziel.status) {
             await protokoll("schreiben", kSt, "abgewiesen",
@@ -1068,6 +1070,7 @@ export default async (req, context) => {
           const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
           const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
           if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+          for (const x of ziel.markierungen) markieren(x);
           const startFehlt = art === "ende" && !alt.start;
           if (startFehlt) markieren("START_FEHLT");
           /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
@@ -1089,13 +1092,37 @@ export default async (req, context) => {
           /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
              fehlt das Feld, ist es der Tag des Vorgangs. */
           if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
+
+          /* Ein langer Dienst (über LANGER_DIENST_MINUTEN, zeiterfassung.mjs)
+             ergibt keine automatisch bestätigte Ist-Zeit, sondern eine zur
+             Prüfung durch die Leitung. */
+          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
+          const langerDienst = dauerMin !== null && dauerMin > LANGER_DIENST_MINUTEN;
+          if (langerDienst) markieren("LANGER_DIENST");
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          /* B6.3: Ein Ende zu einem über 20 Stunden alten Beginn von gestern
+             wird nicht angehängt (stempelZiel: eigenes START_FEHLT auf heute).
+             Der alte Vorgang bekommt KONFLIKT und bleibt für die Korrektur
+             durch die Leitung offen. */
+          if (ziel.konfliktAm) {
+            const kAlt = `${person.id}|${ziel.konfliktAm}`;
+            const vorgang = neuerMandant.einstempeln[kAlt];
+            if (vorgang) {
+              const mk = Array.isArray(vorgang.markierungen) ? vorgang.markierungen : [];
+              neuerMandant = { ...neuerMandant, einstempeln: { ...neuerMandant.einstempeln,
+                [kAlt]: { ...vorgang, markierungen: mk.includes("KONFLIKT") ? mk : [...mk, "KONFLIKT"],
+                  konfliktGrund: "vorgang_veraltet" } } };
+            }
+          }
           if (mitErfassung) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+              [k]: langerDienst
+                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                  grund: `LANGER_DIENST: ${Math.round(dauerMin / 6) / 10} Stunden — bitte prüfen` }
+                : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
           }
           const neuerBestand = { ...bestand,
             mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };

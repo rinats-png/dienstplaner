@@ -43,8 +43,10 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * Dienst geplant ist; ein offener Beginn muss beendbar bleiben, auch wenn
  * der Dienst nach dem Einstempeln aus dem Plan genommen wurde.
  * `veraltet`: offen, aber nach derselben 20-Stunden-Grenze wie auf dem Server
- * nicht mehr zuordenbar — ein Ende dazu speichert der Server mit
- * START_VERALTET, ohne Erfassung. Das ist kein normaler Abschluss.
+ * nicht mehr zuordenbar. Ein Ende dazu speichert der Server am selben Tag
+ * mit START_VERALTET; liegt der Beginn auf gestern, als eigenes Ende auf
+ * heute (START_FEHLT), und der alte Vorgang wird KONFLIKT (zeiterfassung.mjs,
+ * stempelZiel). Beides ist kein normaler Abschluss.
  */
 export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   const tab = (m && m.einstempeln) || {};
@@ -66,6 +68,9 @@ export const MARKIERUNG_TEXT = Object.freeze({
   START_VERALTET: "Beginn über 20 Stunden alt — nicht zugeordnet",
   ENDE_FEHLT: "Ende fehlt",
   UNGEPLANTER_DIENST: "ohne geplanten Dienst",
+  KONFLIKT: "Konflikt — bitte durch die Leitung klären",
+  GERAETEDATUM_ABWEICHEND: "Datum des Geräts wich ab",
+  LANGER_DIENST: "über 12 Stunden — Ist-Zeit zur Prüfung",
 });
 
 /**

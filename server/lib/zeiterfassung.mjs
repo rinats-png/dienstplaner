@@ -251,7 +251,7 @@ export function erfassungZusammen(m, geschickt, ich) {
   return { erfassung: alt, fremd };
 }
 
-/* --- Wohin gehört ein Stempel? (Geo-Spezifikation B6, B7) ---
+/* --- Wohin gehört ein Stempel? (Geo-Spezifikation B5, B6, B7) ---
 
    Bis November 2026 bestimmte das Gerät den Tag: /api/stempeln nahm das
    mitgeschickte `datum` und prüfte nur, ob es heute oder — mit Bezug —
@@ -265,36 +265,49 @@ export function erfassungZusammen(m, geschickt, ich) {
    des Betriebs (Europe/Berlin; eine Zeitzone je Betrieb gibt es noch nicht):
 
    - Beginn: das heutige Datum. Ein Beginn nach Mitternacht gehört zum neuen
-     Tag — die Leitung kann die Zuordnung korrigieren (B7).
-   - Ende: der offene Vorgang. Steht heute ein Vorgang, gilt er. Sonst ein
-     offener Beginn von gestern, solange er höchstens 20 Stunden zurückliegt
-     (B6, startZuordenbar) — der Nachtdienst endet auf seinem Starttag, mit
-     `endeDatum` = heute. Ein älterer offener Beginn ist ein vergessenes
-     Ausstempeln: Das Ende kommt als eigenes Ereignis auf heute
-     (START_FEHLT), der alte Vorgang bleibt für die Korrektur offen.
+     Tag — die Leitung kann die Zuordnung korrigieren (B7). Läuft noch ein
+     offener Beginn von gestern innerhalb der 20-Stunden-Grenze (Nachtdienst),
+     ist ein neuer Beginn ein doppelter Start: 409 (B5).
+   - Ende, in dieser Reihenfolge:
+       1. Es gibt einen Eintrag von heute → dorthin.
+       2. Offener Beginn von gestern, höchstens 20 Stunden alt → dorthin
+          (Nachtdienst), mit `endeDatum` = heute.
+       3. Offener Beginn von gestern, älter (vergessenes Ausstempeln, B6.3)
+          → nie still anhängen: eigenes Ende ohne Start auf heute
+          (START_FEHLT), der alte Vorgang wird als KONFLIKT markiert und
+          bleibt für die Korrektur offen — unabhängig vom Gerätedatum.
+       4. Kein offener Vorgang, aber gestern war ein Dienst über Mitternacht
+          geplant, für gestern gibt es noch keinen Stempeleintrag, und jetzt
+          ist es vor dem geplanten Dienstende + NACHT_TOLERANZ_MS → gestern,
+          als START_FEHLT. Wer das Einstempeln am Abend vergessen hat, landet
+          so beim richtigen Dienst und nicht als loses Ende am Folgetag.
+       5. Sonst heute, START_FEHLT.
    - Die Zeitumstellung zählt richtig, weil Datum und Abstand aus dem
-     eindeutigen Zeitpunkt gerechnet werden (heuteBerlin, startAm).
+     eindeutigen Zeitpunkt gerechnet werden (heuteBerlin, startAm,
+     berlinZeitpunkt).
 
-   Das `datum` des Geräts dient nur noch der Plausibilität. Fehlt es, ist
-   das in Ordnung. Ist es da, muss es heute sein (mit zwei Minuten Spiel
-   um Mitternacht, B7) oder — beim Ende — der Tag des offenen Beginns; ein
-   Ende mit dem Datum eines veralteten offenen Beginns wird wie bisher an
-   diesen gehängt (START_VERALTET). Jedes andere Datum wird abgelehnt (400),
-   statt still auf heute umgebogen zu werden: Die Oberfläche hat dann
-   einen falschen Stand oder eine falsche Uhr, und das soll sie erfahren.
+   Das `datum` des Geräts wird angenommen und ignoriert (B7). Weicht es ab —
+   außerhalb von zwei Minuten um Mitternacht und nicht der Tag, den der
+   Server gewählt hat —, oder ist es kein Datum, trägt der Eintrag die
+   Markierung GERAETEDATUM_ABWEICHEND für die Leitung. Nie eine Absage
+   deswegen: Eine Stempelung darf nicht an einer falsch gestellten Uhr
+   verloren gehen.
    --------------------------------------------------------------------------- */
 
 /** Toleranz um Mitternacht für das mitgeschickte Gerätedatum (B7: zwei Minuten). */
 export const GERAETE_TOLERANZ_MS = 2 * 60 * 1000;
+/** Ein Ende ohne Beginn gehört noch bis so lange nach dem geplanten Ende des Nachtdiensts zu gestern. */
+export const NACHT_TOLERANZ_MS = 4 * 60 * 60 * 1000;
 
 /**
- * Bestimmt den Tag eines Stempels.
+ * Bestimmt den Tag eines Stempels und die Markierungen, die sich daraus ergeben.
  * @param {object} m  der Betrieb
  * @param {object} person
  * @param {"start"|"ende"} art
  * @param {Date} jetzt  Serverzeit
- * @param {string|null|undefined} geraeteDatum  das mitgeschickte `datum`, nur zur Plausibilität
- * @returns {{ datum: string, status?: undefined } | { status: number, code: string, grund: string, datum?: string }}
+ * @param {any} geraeteDatum  das mitgeschickte `datum` — wird ignoriert, nur verglichen
+ * @returns {{ datum: string, markierungen: string[], konfliktAm: string|null }
+ *   | { status: 409, code: string, grund: string, datum: string }}
  */
 export function stempelZiel(m, person, art, jetzt = new Date(), geraeteDatum = null) {
   const heute = heuteBerlin(jetzt);
@@ -305,32 +318,52 @@ export function stempelZiel(m, person, art, jetzt = new Date(), geraeteDatum = n
   const vonGestern = offen(eintrag(gestern)) ? eintrag(gestern) : null;
   const gesternZuordenbar = !!vonGestern && startZuordenbar(gestern, vonGestern.start, jetzt, vonGestern.startAm);
 
-  if (geraeteDatum !== null && geraeteDatum !== undefined && geraeteDatum !== "") {
-    const g = String(geraeteDatum);
-    if (!TAG.test(g)) return { status: 400, code: "STEMPEL_DATUM_UNGUELTIG", grund: "Kein gültiges Datum." };
-    const heuteRund = new Set([heute, heuteBerlin(new Date(jetzt.getTime() - GERAETE_TOLERANZ_MS)),
-      heuteBerlin(new Date(jetzt.getTime() + GERAETE_TOLERANZ_MS))]);
-    const offenerTag = art === "ende" && vonGestern ? gestern : null;
-    if (!heuteRund.has(g) && g !== offenerTag) {
-      return { status: 400, code: "STEMPEL_DATUM_UNPASSEND",
-        grund: `Gestempelt wird immer auf heute (${heute}) bzw. auf einen offenen Dienstbeginn — `
-          + `das Datum ${g} passt dazu nicht. Bitte die Seite neu laden und die Uhrzeit des Geräts prüfen. `
-          + "Vergangene Tage über „Zeiten bestätigen\"." };
-    }
-    /* Ausdrücklich der Tag des offenen Beginns von gestern: an diesen
-       Vorgang — liegt er über 20 Stunden zurück, wie bisher mit
-       START_VERALTET (siehe /api/stempeln). */
-    if (g === offenerTag) return { datum: gestern };
-  }
-
+  const markierungen = [];
+  let konfliktAm = null;
+  let datum;
   if (art === "start") {
     if (!eintrag(heute) && gesternZuordenbar) {
       return { status: 409, code: "STEMPEL_SCHON_EINGESTEMPELT", datum: gestern,
         grund: `Du bist seit gestern ${vonGestern.start} Uhr eingestempelt — bitte zuerst ausstempeln.` };
     }
-    return { datum: heute };
+    datum = heute;
+  } else if (eintrag(heute)) {
+    datum = heute;
+  } else if (gesternZuordenbar) {
+    datum = gestern;
+  } else if (vonGestern) {
+    datum = heute;                                   // B6.3: nicht anhängen
+    konfliktAm = gestern;
+  } else if (!eintrag(gestern) && nachtdienstNochNichtVorbei(m, person, gestern, heute, jetzt)) {
+    datum = gestern;                                 // F1: vergessenes Einstempeln am Abend
+  } else {
+    datum = heute;
   }
-  if (eintrag(heute)) return { datum: heute };
-  if (gesternZuordenbar) return { datum: gestern };
-  return { datum: heute };
+
+  if (geraeteDatum !== null && geraeteDatum !== undefined && geraeteDatum !== "") {
+    const g = String(geraeteDatum);
+    const heuteRund = new Set([heute, heuteBerlin(new Date(jetzt.getTime() - GERAETE_TOLERANZ_MS)),
+      heuteBerlin(new Date(jetzt.getTime() + GERAETE_TOLERANZ_MS))]);
+    if (!TAG.test(g) || (!heuteRund.has(g) && g !== datum)) markierungen.push("GERAETEDATUM_ABWEICHEND");
+  }
+  return { datum, markierungen, konfliktAm };
 }
+
+/** War gestern ein Dienst über Mitternacht geplant, dessen Ende (+ Toleranz) noch nicht vorbei ist? */
+function nachtdienstNochNichtVorbei(m, person, gestern, heute, jetzt) {
+  const dienstId = geplanterDienst(m, person, gestern);
+  const da = dienstId ? (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId)) : null;
+  if (!uebernacht(da)) return false;
+  const ende = berlinZeitpunkt(heute, da.ende === "24:00" ? "00:00" : da.ende);
+  return ende !== null && jetzt.getTime() <= ende + NACHT_TOLERANZ_MS;
+}
+
+/* --- Ein langer Dienst wird nicht automatisch bestätigt ---
+
+   Ergibt ein Ende eine Dauer über LANGER_DIENST_MINUTEN, entsteht keine
+   bestätigte Ist-Zeit, sondern eine zur Prüfung (bestaetigt: false,
+   Markierung LANGER_DIENST). Zwölf Stunden: die Höchstarbeitszeit nach
+   § 3 ArbZG (zehn Stunden) plus zwei Stunden für Pausen und Übergaben.
+   Länger ist fast immer ein vergessenes Ausstempeln innerhalb der
+   20-Stunden-Grenze — oder ein Fall, den die Leitung ohnehin sehen muss. */
+export const LANGER_DIENST_MINUTEN = 12 * 60;

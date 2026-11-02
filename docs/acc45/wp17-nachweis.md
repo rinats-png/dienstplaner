@@ -78,3 +78,53 @@ Diese Prüfungen hielten die alte Datumsregel fest:
   sich im Tag unterscheiden. Gehört dem Agenten, der `App.jsx` bearbeitet: dort `erg.datum` verwenden.
 - Eine Zeitzone je Betrieb ist im Bestand nicht vorgesehen; es gilt Europe/Berlin.
 - Offline-Ereignisse mit `clientErfasstAm` (B7/B8) gehören zu WP-07.
+
+## Review-Auflagen F1–F4 (Entscheidungen des Integrationsverantwortlichen)
+
+Diese Auflagen ersetzen die oben beschriebene Ablehnung mit 400. Gilt ab dem Commit nach 6a57cff.
+
+| Nr | Regel jetzt | Spezifikation |
+|---|---|---|
+| F1 | Ende ohne offenen Vorgang: War gestern ein Dienst über Mitternacht geplant, gibt es für gestern noch keinen Stempeleintrag, und ist es jetzt höchstens geplantes Dienstende + **4 h** (`NACHT_TOLERANZ_MS`), dann wird auf **gestern** gestempelt, mit START_FEHLT. Sonst auf heute, START_FEHLT. | Präzisierung zu B5/E10 (Zuordnung eines Endes ohne Start) |
+| F2 | Gerätedatum wird **angenommen und ignoriert**; der Tag kommt immer vom Server. Weicht es ab (außerhalb ±2 min um Mitternacht und nicht der vom Server gewählte Tag) oder ist es kein Datum, bekommt der Eintrag die Markierung **`GERAETEDATUM_ABWEICHEND`**. Es gibt **nie** ein 400 deswegen. Ein Beginn mit Gerätedatum gestern landet trotzdem auf heute. | B7 („Feld wird ignoriert“) plus die Markierung als Präzisierung |
+| F3 | Ein Ende zu einem offenen Beginn von gestern, der älter als 20 h ist, wird **nie angehängt**, auch nicht mit Gerätedatum gestern. Es entsteht ein eigenes Ende auf dem Server-Tag (START_FEHLT). Der alte Vorgang bekommt die Markierung `KONFLIKT` mit `konfliktGrund: "vorgang_veraltet"` und bleibt offen für die Korrektur. | B6.3 |
+| F4 | Ergibt ein Ende mehr als **12 h** (`LANGER_DIENST_MINUTEN`), dann wird die Erfassung mit `bestaetigt: false` geschrieben, mit Markierung `LANGER_DIENST` und einem Grund mit Stundenangabe. Die Leitung muss sie prüfen. Begründung für 12 h: Höchstarbeitszeit nach § 3 ArbZG (10 h) plus 2 h für Pausen und Übergaben. | Präzisierung (in der Spezifikation nicht geregelt) |
+
+**Präzisierung zu F3, Beginn am selben Tag:** Liegt ein offener Beginn von heute über 20 h zurück (Beginn kurz nach
+Mitternacht, Ende am späten Abend), gibt es keinen zweiten Schlüssel, denn der Server-Tag ist derselbe. Dann bleibt
+es beim bisherigen Verhalten: Das Ende kommt an den Vorgang, markiert als `START_VERALTET` und ohne Erfassung.
+
+**Auswirkung von F4 auf die Ist-Stunden:** `src/istdaten.js` (`istZeitFuer`) rechnet eine unbestätigte Erfassung wie
+eine fehlende, also mit der **Planzeit**. Ein langer, ungeprüfter Dienst zählt deshalb mit der geplanten Dauer, bis
+die Leitung bestätigt oder korrigiert. Für diesen Fall „nicht verfügbar/prüfen“ anzuzeigen statt der Planzeit,
+erfordert eine Änderung an `src/istdaten.js` und an der Anzeige in `App.jsx`: Dort wird `std` summiert, und `null`
+ist dafür nicht vorbereitet. Beides liegt außerhalb dieses Pakets. **Folgepunkt** für den Agenten, der `App.jsx` und
+`istdaten` bearbeitet: Erfassung mit `bestaetigt: false` und Grund `LANGER_DIENST…` als „prüfen“ ausweisen.
+
+**Oberfläche:** `src/stempelvorgang.js` hat Anzeigetexte für `KONFLIKT`, `GERAETEDATUM_ABWEICHEND` und
+`LANGER_DIENST` bekommen. `src/speicher.js` bleibt unverändert, weil es kein 400 wegen des Datums mehr gibt.
+
+### Tests
+
+Auf 6a57cff liefen `serverdatum.test.js` und `zeiterfassung.test.js`: **20 rot**.
+
+- Die neuen HTTP-Fälle sind aus dem gemeinten Grund rot:
+  - F2: 400 statt 200 mit Markierung.
+  - F3: Das Ende wurde an den veralteten Beginn gehängt (START_VERALTET), es entstand kein KONFLIKT.
+  - F1: Das Ende kam auf heute.
+  - F4: `bestaetigt: true`.
+- Die Unit-Tests zu `stempelZiel` sind außerdem wegen der neuen Rückgabeform rot.
+
+Nachher: 12 vitest-Dateien **296/296**; Serverlauf zeiterfassung 38/38, geo 14/14, rechte 147/147,
+schichtverantwortung 25/25; eslint 0 Fehler; `tsc` sauber.
+
+Angepasste bestehende Prüfungen:
+
+- **`geo.test.js`:** 20-Stunden-Grenze bei 19:59 und 20:00 jetzt „zugeordnet, zur Prüfung (LANGER_DIENST)“; die Fälle
+  24 h und `startAm` jetzt „eigenes Ende + KONFLIKT“. Der Fall „offener Beginn gestern 21:57“ ist von der Uhrzeit des
+  Prüflaufs abhängig; beide Ausgänge werden geprüft.
+- **`pruefungen/geo.mjs`:** „Beginn vor 24 h“ jetzt nach B6.3.
+- **`pruefungen/zeiterfassung.mjs`:**
+  - Gerätedatum morgen, vor fünf Tagen oder gestern ergibt nie einen Stempel an jenem Tag. Weil heute schon gestempelt
+    ist, antwortet der Server mit 409.
+  - Ende ohne offenen Beginn: 200 mit START_FEHLT, auf heute oder (F1, abhängig von der Uhrzeit) auf gestern.

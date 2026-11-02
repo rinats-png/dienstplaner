@@ -137,9 +137,15 @@ pruef("Ungültige Standortwerte: 422, nichts gespeichert", abgewiesen.every(([s]
 /* Vergessenes Ausstempeln: 20-Stunden-Grenze */
 const vergessen = merke(await stempeln(T.v1, { datum: VOR24.tag, art: "ende" }));
 const nachV = (await rufe(T.l1, "/api/bestand", "GET")).bestand.mandanten[0];
-pruef("Beginn vor 24 h: Ende gespeichert, START_VERALTET, keine bestätigte Erfassung", vergessen.status === 200
-  && (vergessen.markierungen || []).includes("START_VERALTET") && vergessen.erfassung === null
-  && nachV.einstempeln[`v1|${VOR24.tag}`].start === VOR24.zeit && !!nachV.einstempeln[`v1|${VOR24.tag}`].ende
+/* Seit WP-17 (B6.3): nie still angehängt. Das Ende wird ein eigenes Ereignis
+   auf dem Server-Tag (START_FEHLT), der alte Vorgang bleibt offen und trägt
+   KONFLIKT für die Korrektur durch die Leitung. */
+const heuteV = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+pruef("Beginn vor 24 h: Ende als eigenes Ereignis (START_FEHLT), alter Vorgang KONFLIKT und offen, keine bestätigte Erfassung",
+  vergessen.status === 200 && vergessen.datum === heuteV
+  && (vergessen.markierungen || []).includes("START_FEHLT") && vergessen.erfassung === null
+  && nachV.einstempeln[`v1|${VOR24.tag}`].start === VOR24.zeit && !nachV.einstempeln[`v1|${VOR24.tag}`].ende
+  && (nachV.einstempeln[`v1|${VOR24.tag}`].markierungen || []).includes("KONFLIKT")
   && nachV.erfassung[`v1|${VOR24.tag}`] === undefined, `${vergessen.status} ${vergessen.text}`);
 const frisch = merke(await stempeln(T.v2, { datum: VOR1.tag, art: "ende" }));
 pruef("Beginn vor 1 h: zugeordnet, bestätigte Erfassung", frisch.status === 200
