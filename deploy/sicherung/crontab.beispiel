@@ -1,6 +1,8 @@
 # =====================================================================
 #  Crontab des Benutzers admin (kein sudo nötig) — Vorlage
-#  Einrichten:  crontab -e   und die Zeilen unten übernehmen.
+#  Einrichten:  mkdir -p -m 700 ~/sicherung    (Ziel von cron.log)
+#               crontab -e   und die Zeilen unten übernehmen.
+#  cron.log kürzen die Skripte selbst (letzte 5000 Zeilen ab 1 MiB).
 #
 #  Voraussetzung: Systemzeit des VPS ist UTC (timedatectl). Sonst die
 #  Uhrzeiten umrechnen — Debians/Ubuntus cron kennt kein CRON_TZ.
