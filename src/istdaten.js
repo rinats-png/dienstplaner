@@ -8,6 +8,8 @@
 
      { umfang: "eigene", person: <id> }   Beschäftigte
      { umfang: "keine" }                  Betriebsrat
+     { umfang: "auswahl", person: <id>,   Schichtverantwortung: die eigene
+       personen: [<id>, …] }              Person und die des Bereichs
      (fehlt)                              alle Ist-Daten vorhanden
 
    Fehlt eine Erfassung, rechnet die Anwendung sonst mit der geplanten Zeit —
@@ -30,6 +32,8 @@ export function istVerfuegbar(m, p) {
   if (!s) return true;
   if (s.umfang === "eigene") return !!p && s.person !== null && s.person !== undefined
     && String(p.id) === String(s.person);
+  if (s.umfang === "auswahl") return !!p && Array.isArray(s.personen)
+    && s.personen.some((id) => String(id) === String(p.id));
   return false;
 }
 

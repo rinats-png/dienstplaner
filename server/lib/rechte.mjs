@@ -378,10 +378,15 @@ export function bestandFuerRolle(bestand, sitzung) {
        Personen (siehe Muster-BV, Anlage 5). Eine Auswertung für den
        Betriebsrat ist ein eigenes Thema. Die Schlüssel lauten
        „personId|JJJJ-MM-TT" — dieselbe Regel wie beim Schreiben
-       (eigenerSchluessel), damit Lesen und Schreiben nie auseinanderlaufen. */
+       (eigenerSchluessel), damit Lesen und Schreiben nie auseinanderlaufen.
+
+       Ausnahme: Die eigenen Stempel bekommt auch der Betriebsrat. Er stempelt
+       für sich selbst; ohne den eigenen offenen Beginn böte ihm die Oberfläche
+       erneut „Einstempeln" an (RECHTEMATRIX, Fußnote 14). */
+    const darfEigene = (feld) => rolle === "mitarbeiter" || feld === "einstempeln";
     for (const feld of ["einstempeln", "erfassung"]) {
       if (!m[feld] || typeof m[feld] !== "object") continue;
-      m[feld] = (rolle === "mitarbeiter" && ich !== null && ich !== undefined)
+      m[feld] = (darfEigene(feld) && ich !== null && ich !== undefined)
         ? Object.fromEntries(Object.entries(m[feld]).filter(([k]) => eigenerSchluessel(k, ich)))
         : {};
     }
@@ -397,6 +402,34 @@ export function bestandFuerRolle(bestand, sitzung) {
       delete m.protokoll;
       delete m.aenderungen;
     }
+  }
+
+  /* Die Schichtverantwortung führt einen Bereich, nicht den Betrieb. Sie
+     bekommt die eigenen Stempel und die eigene Zeiterfassung vollständig,
+     von den Personen ihres Bereichs nur Beginn, Ende, Pause und Bestätigung —
+     ohne freien Grund und ohne Stempel samt Standorturteil. Fremde Bereiche
+     sieht sie nicht. Dieselbe Regel gilt beim Schreiben
+     (schichtTagesfelderZurueck), und sie entspricht der RECHTEMATRIX. */
+  if (rolle === "subplaner") {
+    const ich = sitzung.person;
+    const sicht = schichtSicht(eigener, sitzung);
+    if (m.einstempeln && typeof m.einstempeln === "object") {
+      m.einstempeln = Object.fromEntries(Object.entries(m.einstempeln)
+        .filter(([k]) => sicht(k) === "eigen"));
+    }
+    if (m.erfassung && typeof m.erfassung === "object") {
+      m.erfassung = Object.fromEntries(Object.entries(m.erfassung).flatMap(([k, v]) => {
+        const u = sicht(k);
+        if (u === "eigen") return [[k, v]];
+        if (u === "bereich") return [[k, nurFelder(v, ERFASSUNG_BEREICH)]];
+        return [];
+      }));
+    }
+    const heute = new Date().toISOString().slice(0, 10);
+    m.sichtIstDaten = { umfang: "auswahl", person: ich ?? null,
+      personen: (eigener.personen || [])
+        .filter((p) => p && sicht(`${p.id}|${heute}`) !== null)
+        .map((p) => p.id) };
   }
 
   kopie.mandanten = [m];
@@ -527,13 +560,18 @@ export function zusammenfuehren(gespeichert, uebermittelt, sitzung) {
 
   if (umfang === SCHREIBEN_EINHEIT) {
     const alt = eigenerMandant(gespeichert, sitzung);
-    const neu = eigenerMandant(uebermittelt, sitzung);
-    if (!alt || !neu) return uebermittelt;
+    const geschickt = eigenerMandant(uebermittelt, sitzung);
+    if (!alt || !geschickt) return uebermittelt;
+    /* Erst auf den eigenen Ausschnitt zurückführen, dann prüfen: Was sie nicht
+       sehen konnte, darf weder als Löschung zählen noch verloren gehen. */
+    const neu = schichtTagesfelderZurueck(alt, geschickt, sitzung);
+    const ergebnis = { ...uebermittelt,
+      mandanten: uebermittelt.mandanten.map((x) => (x === geschickt ? neu : x)) };
     const urteil = einheitDarf(alt, neu, sitzung);
     if (!urteil.ok) return { verweigert: urteil.grund };
-    const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
+    const rw = rollenwechselErlaubt(gespeichert, ergebnis, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
-    return verlorenesZurueck(gespeichert, uebermittelt);
+    return verlorenesZurueck(gespeichert, ergebnis);
   }
 
   /* --------------------------- Der Betreiber ---------------------------
@@ -649,6 +687,79 @@ function einheitAm(person, datum) {
     .filter((z) => !z.ab || z.ab <= datum)
     .sort((a, b) => String(a.ab || "").localeCompare(String(b.ab || "")));
   return liste.length ? liste[liste.length - 1].einheitId : (person.bereich || null);
+}
+
+/* ------------------- Zeiten im Blick der Schichtverantwortung -------------------
+   Lesen (bestandFuerRolle) und Schreiben (schichtTagesfelderZurueck) teilen
+   sich eine Einordnung je Schlüssel „personId|JJJJ-MM-TT":
+     "eigen"    die Person der Sitzung — vollständig
+     "bereich"  am betroffenen Tag im eigenen Bereich — nur ERFASSUNG_BEREICH
+     null       alles andere — weder sichtbar noch änderbar
+   Der Bereich wird wie in einheitDarf bestimmt; „ALLE" heißt jeder Bereich. */
+const ERFASSUNG_BEREICH = ["start", "ende", "pause", "bestaetigt"];
+
+const nurFelder = (v, felder) => (v && typeof v === "object"
+  ? Object.fromEntries(felder.filter((f) => Object.prototype.hasOwnProperty.call(v, f)).map((f) => [f, v[f]]))
+  : v);
+
+function schichtSicht(m, sitzung) {
+  const personen = new Map((m.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
+  const ich = sitzung.person;
+  const meine = ich !== null && ich !== undefined ? personen.get(String(ich)) : undefined;
+  const alle = !!meine && meine.bereich === "ALLE";
+  const eigene = alle ? null : (sitzung.einheit
+    || (meine && meine.bereich ? meine.bereich : null)
+    || (meine ? einheitAm(meine, new Date().toISOString().slice(0, 10)) : null));
+  return (k) => {
+    const [pid, tag] = String(k).split("|");
+    if (ich !== null && ich !== undefined && pid === String(ich)) return "eigen";
+    const p = personen.get(pid);
+    if (!p || !tag) return null;
+    if (alle) return "bereich";
+    return eigene && einheitAm(p, tag) === eigene ? "bereich" : null;
+  };
+}
+
+/**
+ * Was die Schichtverantwortung an Stempeln und Zeiterfassung zurückschickt,
+ * auf das zurückführen, was sie sehen und ändern darf.
+ *
+ * Sie bekommt nur einen Ausschnitt (bestandFuerRolle). Ohne diesen Schritt
+ * sähe jeder Schlüssel, der in ihrem Ausschnitt fehlt, beim Speichern wie
+ * gelöscht aus — und jedes Feld, das sie nicht sieht (der freie Grund), wie
+ * geleert. Deshalb:
+ *   - Stempel kommen nur über /api/stempeln zustande; über den Bestand
+ *     ändert sie keinen, auch keinen eigenen.
+ *   - Unsichtbare Erfassungen bleiben, wie sie gespeichert sind.
+ *   - Im Bereich wandern nur Beginn, Ende, Pause und Bestätigung hinein; die
+ *     übrigen Felder bleiben gespeichert.
+ *   - Schickt sie das Feld gar nicht, bleibt die Zeiterfassung unverändert.
+ */
+function schichtTagesfelderZurueck(altM, neuM, sitzung) {
+  const aus = { ...neuM };
+  delete aus.sichtIstDaten;
+  if (Object.prototype.hasOwnProperty.call(altM, "einstempeln")) aus.einstempeln = altM.einstempeln;
+  else delete aus.einstempeln;
+
+  if (!Object.prototype.hasOwnProperty.call(neuM, "erfassung")) {
+    if (Object.prototype.hasOwnProperty.call(altM, "erfassung")) aus.erfassung = altM.erfassung;
+    return aus;
+  }
+  const sicht = schichtSicht(altM, sitzung);
+  const a = altM.erfassung && typeof altM.erfassung === "object" ? altM.erfassung : {};
+  const n = neuM.erfassung && typeof neuM.erfassung === "object" ? neuM.erfassung : {};
+  const e = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
+    const u = sicht(k);
+    const imAlten = Object.prototype.hasOwnProperty.call(a, k);
+    const imNeuen = Object.prototype.hasOwnProperty.call(n, k);
+    if (u === null) { if (imAlten) e[k] = a[k]; continue; }
+    if (!imNeuen) continue;                       // sichtbar und entfernt: gelöscht
+    e[k] = u === "eigen" ? n[k]
+      : { ...(imAlten && a[k] && typeof a[k] === "object" ? a[k] : {}), ...nurFelder(n[k], ERFASSUNG_BEREICH) };
+  }
+  aus.erfassung = e;
+  return aus;
 }
 
 /* Felder, deren Schlüssel die Form "personId|JJJJ-MM-TT" tragen. */
