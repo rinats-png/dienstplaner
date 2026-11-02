@@ -279,6 +279,26 @@ describe("Review-Auflagen WP-32c", () => {
     expect(await lebt(alt)).toBe(false);
   });
 
+  it("Nachprüfung: falscher Code beim Bestätigen oder Abschalten beendet keine Sitzung", async () => {
+    const CODE_F = "BTR2-FALS-CHC0";
+    await anlegen(C.ablageSchluessel(CODE_F), "Betreiber falsch");
+    uhr(jetzt + 60_000);
+    const s1 = (await anmelden({ zugangscode: CODE_F })).token;
+    const b = await anmelden({ zugangscode: CODE_F, zweifaktorAktion: "beginnen" });
+    const falsch = await anmelden({ zugangscode: CODE_F, zweifaktorAktion: "bestaetigen", zweifaktor: "000000" });
+    expect(falsch.status).toBe(401);
+    expect(await lebt(s1)).toBe(true);
+    const gut = await anmelden({ zugangscode: CODE_F, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
+    expect(gut.status, gut.roh).toBe(200);
+    expect(await lebt(s1)).toBe(false);
+    uhr(jetzt + 30_000);
+    const s2 = (await anmelden({ zugangscode: CODE_F, zweifaktor: code(b.geheimnis) })).token;
+    expect(await lebt(s2)).toBe(true);
+    const abF = await anmelden({ zugangscode: CODE_F, zweifaktorAktion: "abschalten", zweifaktor: "000000" });
+    expect(abF.status).toBe(401);
+    expect(await lebt(s2)).toBe(true);
+  });
+
   it("B-N2: überschreibendes „beginnen“ wird gebremst", async () => {
     const CODE_N2 = "BTR2-UEBE-RS09";
     await anlegen(C.ablageSchluessel(CODE_N2), "Betreiber N2");

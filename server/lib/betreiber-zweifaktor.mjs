@@ -31,7 +31,8 @@
 import { createHash } from "node:crypto";
 import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
-import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
+import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorBestaetigenVorpruefen,
+  zweifaktorPruefen,
   zweifaktorAbschalten } from "./zweifaktor.mjs";
 
 /** Die id, unter der der zweite Faktor eines Betreibercodes liegt. */
@@ -145,10 +146,17 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     if (!stand.ausstehend) return { antwort: json({ fehler: "Es ist keine Einrichtung begonnen." }, 409) };
     if (!code) return { antwort: json({ fehler: "Bitte den ersten Code aus der App angeben." }, 400) };
     const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
-    /* B-M2: ERST die bisherigen Sitzungen beenden. Gelingt das nicht
-       vollständig, wird nicht aktiviert (fail-closed) — sonst stünde der
-       Faktor, die alten Sitzungen liefen weiter, und eine Wiederholung
-       bekäme nur noch 409. */
+    /* Reihenfolge (Nachprüfung): 1. Code prüfen, ohne zu speichern — ein
+       falscher Code beendet keine Sitzung. 2. Die bisherigen Sitzungen
+       beenden; gelingt das nicht vollständig, wird nicht aktiviert
+       (fail-closed, B-M2). 3. Aktivieren (prüft erneut und speichert). */
+    const vor = await zweifaktorBestaetigenVorpruefen(store, id, code);
+    if (vor.fehler === "pfeffer") return { antwort: nichtPruefbar() };
+    if (!vor.ok) {
+      await new Promise((r) => setTimeout(r, 400));
+      await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Bestätigung");
+      return { antwort: json({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401) };
+    }
     const vorher = await sitzungenBeenden();
     if (vorher.fehler) return { antwort: nichtAlleBeendet("der zweite Faktor wurde NICHT aktiviert") };
     const erg = await zweifaktorBestaetigen(store, id, code);

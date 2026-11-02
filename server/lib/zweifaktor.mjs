@@ -286,6 +286,21 @@ export async function zweifaktorBeginnen(store, id, konto) {
 }
 
 /**
+ * Würde dieser Code die laufende Einrichtung bestätigen? Prüft nur, speichert
+ * nichts (kein letzter Schritt, keine Aktivierung) — für Aufrufer, die vor
+ * dem Bestätigen noch etwas tun müssen, das nur bei richtigem Code
+ * geschehen darf (Betreiber-2FA: Sitzungen beenden).
+ * @returns {Promise<{ok: boolean, fehler?: string}>}
+ */
+export async function zweifaktorBestaetigenVorpruefen(store, id, code, ms = Date.now()) {
+  const e = await store.get(SCHLUESSEL(id), { type: "json" });
+  if (!e || e.stand !== "ausstehend") return { ok: false, fehler: "nichts-ausstehend" };
+  const roh = entschluesseln(e.geheimnis, id);
+  if (!roh) return { ok: false, fehler: "pfeffer" };
+  return codePruefen(roh, code, ms, e.letzterSchritt ?? -1).ok ? { ok: true } : { ok: false, fehler: "code" };
+}
+
+/**
  * Einrichtung mit dem ersten Code bestätigen. Gibt die Wiederherstellungscodes
  * einmal zurück. Jede Einrichtung bekommt eine eigene Generation; Nachweise
  * sind an sie gebunden und gelten nach Abschalten und Neueinrichten nicht mehr.
