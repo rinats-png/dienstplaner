@@ -5137,8 +5137,12 @@ const H1 = ({ children, rubrik, sub, right, style }) => (
       <h1 className="titel">{children}</h1>
       {sub && <p className="untertitel">{sub}</p>}
     </div>
+    {/* maxWidth: Die Gruppe schrumpft nicht (flexShrink 0), durfte aber
+        bisher breiter werden als die Seite — eine Knopfzeile mit fünf
+        Aktionen schob „Meine Schichten" bei 390 px auf 528 bis 822 px.
+        Jetzt endet sie am Rand, und was darin umbricht, bricht um. */}
     {right && <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
-      flexShrink: 0 }}>{right}</div>}
+      flexShrink: 0, maxWidth: "100%", minWidth: 0 }}>{right}</div>}
   </div>)
 
 function Kpi({ label, value, unit, tone = "text", sub }) {
@@ -8179,7 +8183,7 @@ function MeineSchichten({ sitz, akt, ym }) {
   return (
     <div>
       <H1 sub={`${ich.vorname} ${ich.nachname} · ${einheit ? einheit.name : "ohne Zuordnung"} · ${rolle(ich.rolle).label}`}
-        right={<div style={{ display: "flex", gap: 9 }}>
+        right={<div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
           <Btn onClick={() => akt.oeffneWunsch(ich.id)}>Wunschdienste</Btn>
           <Btn onClick={() => akt.oeffneVerfuegbarkeit(ich.id)}>Verfügbarkeit</Btn>
           <Btn kind="danger" onClick={() => akt.oeffneKrankmeldung(ich.id)}>Krank melden</Btn>
@@ -8279,7 +8283,10 @@ function MeineSchichten({ sitz, akt, ym }) {
         <div>{tage.map((d) => {
           const t = personTag(m, ich, d), da = map[t.dienstId], fei = feiertag(d, m.bundesland);
           return (
-            <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, padding: "14px 22px",
+            /* flexWrap: Bei 320 px passten Datum, Dienst und die Marken
+               „Nacht" und „geändert" nicht in eine Zeile und schoben die
+               Seite in die Breite. Umgebrochen wird nur, wenn es eng wird. */
+            <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, rowGap: 8, flexWrap: "wrap", padding: "14px 22px",
               borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? "rgba(43,52,64,.055)" : "transparent" }}>
               <div style={{ width: 104, flexShrink: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: d === heute() ? 650 : 500, ...NUM }}>{fKurz(d)}</div>
@@ -12240,6 +12247,45 @@ function Tauschboerse({ sitz, akt }) {
 const AUFGABE_SYMBOL = { stempel: "◷", zeiten: "◷", nachweis: "⚠", nachweise: "⚠", post: "✉",
   einsatz: "!", antrag: "✓", boerse: "⇄", besetzung: "!", pruefung: "⚠", freigabe: "◎", konto: "Σ" };
 
+/**
+ * Der eigene Dienst heute mit der Stempeluhr — am Rechner das Gegenstück zur
+ * Karte in MHeute. Sichtbar bei geplantem Dienst und bei jedem offenen Beginn
+ * (stempelVorgang: auch ohne Plan, auch vom Vortag). Ob jemand stempelt,
+ * entscheidet dasselbe wie überall: Die Person steht im Schichtdienst
+ * (`vorgang` ist sonst null), und /api/stempeln nimmt nur die eigene Person
+ * der Sitzung an. Geo, 20-Stunden-Grenze und Doppelstart regeln Stempeluhr
+ * und Server — hier entsteht keine eigene Logik.
+ */
+function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
+  if (!meineDa && !(vorgang && vorgang.offen)) return null;
+  return (
+    <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", ...style }}>
+      {vorgang && vorgang.vortag ? (
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Offener Dienst von gestern</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>Eingestempelt gestern {vorgang.st.start}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Bitte ausstempeln, wenn der Dienst endet.</div>
+        </div>
+      ) : !meineDa ? (
+        /* Offener Beginn, aber heute kein Dienst (mehr) im Plan. */
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Offener Dienst ohne Plan</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5, ...NUM }}>Eingestempelt {vorgang.st.start}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Für heute ist kein Dienst (mehr) geplant.</div>
+        </div>
+      ) : (<>
+        <Zelle da={meineDa} size={54} />
+        <div style={{ flex: 1, minWidth: 190 }}>
+          <Rubrik>Dein Dienst heute</Rubrik>
+          <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>{meineDa.name}</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
+            {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
+        </div></>)}
+      {vorgang && <Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} />}
+      {children}
+    </Card>);
+}
+
 function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
@@ -12312,32 +12358,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
           </Card>);
       })()}
 
-      {(meineDa || (vorgang && vorgang.offen)) && (
-        <Card style={{ padding: 24, marginBottom: 20, display: "flex", alignItems: "center",
-          gap: 20, flexWrap: "wrap" }}>
-          {vorgang && vorgang.vortag ? (
-            <div style={{ flex: 1, minWidth: 190 }}>
-              <Rubrik>Offener Dienst von gestern</Rubrik>
-              <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>Eingestempelt gestern {vorgang.st.start}</div>
-              <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Bitte ausstempeln, wenn der Dienst endet.</div>
-            </div>
-          ) : !meineDa ? (
-            /* Offener Beginn, aber heute kein Dienst (mehr) im Plan. */
-            <div style={{ flex: 1, minWidth: 190 }}>
-              <Rubrik>Offener Dienst ohne Plan</Rubrik>
-              <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5, ...NUM }}>Eingestempelt {vorgang.st.start}</div>
-              <div style={{ fontSize: 14, color: C.dim, marginTop: 3 }}>Für heute ist kein Dienst (mehr) geplant.</div>
-            </div>
-          ) : (<>
-            <Zelle da={meineDa} size={54} />
-            <div style={{ flex: 1, minWidth: 190 }}>
-              <Rubrik>Dein Dienst heute</Rubrik>
-              <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5 }}>{meineDa.name}</div>
-              <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
-                {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
-            </div></>)}
-          <Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} />
-        </Card>)}
+      <DienstKarte sitz={sitz} akt={akt} vorgang={vorgang} meineDa={meineDa} style={{ marginBottom: 20 }} />
 
       {aufgaben.length === 0
         ? <Card style={{ padding: 44, textAlign: "center" }}>
@@ -14995,6 +15016,8 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
   const meinDienst = p.imSchichtdienst !== false ? personTag(m, p, d0) : null;
   const meineDa = meinDienst && meinDienst.dienstId ? map[meinDienst.dienstId] : null;
+  /* Eigene Zeiterfassung: wie in Tagesstart und MHeute — wer im Schichtdienst steht. */
+  const vorgang = p.imSchichtdienst !== false ? stempelVorgang(m, p, d0) : null;
   const stunde = new Date().getHours();
   const gruss = stunde < 5 ? "Gute Nacht" : stunde < 11 ? "Guten Morgen"
     : stunde < 18 ? "Guten Tag" : "Guten Abend";
@@ -15146,20 +15169,16 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         </div>)}
 
       {/* ------------------------ Mein Dienst ------------------------ */}
-      {meineDa && (
+      {/* Bisher nur Anzeige und Verweis — am Rechner gab es keine Stempeluhr
+          (Tagesstart, die sie trug, ist nicht eingebunden). Jetzt dieselbe
+          Karte wie dort: geplanter Dienst oder offener Beginn, mit Stempeluhr. */}
+      {(meineDa || (vorgang && vorgang.offen)) && (
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Mein Dienst heute</h2>
           <p className="abschnitt-sub">Was für dich persönlich ansteht.</p>
-          <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
-            <Zelle da={meineDa} size={48} />
-            <div style={{ flex: 1, minWidth: 200 }}>
-              <div style={{ fontSize: 19, fontWeight: 620 }}>{meineDa.name}</div>
-              <div style={{ fontSize: 14.5, color: C.dim, marginTop: 4, ...NUM }}>
-                {meineDa.start} – {meineDa.ende} · {n1(dauer(meineDa))} h
-                {meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
-            </div>
+          <DienstKarte sitz={sitz} akt={akt} vorgang={vorgang} meineDa={meineDa}>
             <Btn onClick={() => gehZu("meine")}>Meine Schichten</Btn>
-          </Card>
+          </DienstKarte>
         </div>)}
 
       {/* --------------------- Alles Weitere, eingeklappt ------------- */}
@@ -22405,10 +22424,48 @@ function AppInnen() {
          liegen auf dem Server, und von dort kommt das Ergebnis zurück. */
       stempeln: async (pid, datum, art, koord) => {
         try {
+          /* Was noch zum Schreiben ansteht, geht zuerst regulär hinaus —
+             sonst liefe es nach dem Stempeln mit dem alten ETag in einen 409. */
+          await SP.schreibenAbschliessen();
+          /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
+             zuletzt gesendete — nur dann darf er durch den Serverstand
+             ersetzt werden, ohne dass Arbeit verloren geht. (Ein
+             gescheiterter Versuch bleibt in SP.ausstehend und im Hinweis
+             „nicht gespeichert" erhalten.) */
+          const ohneOffenes = !!ref.current && !SP.schreibenAusstehend()
+            && abbildVon(ref.current) === zuletztGeschrieben.current;
           const erg = await SP.stempeln(datum, art, koord);
-          /* Den zurückgemeldeten Stand lokal nachziehen, damit die Ansicht
-             sofort stimmt — geschrieben hat ihn bereits der Server. */
-          upd((s2) => {
+          const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
+          const meldung = `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}${kz.length ? ` · ${kz.join(", ")}` : ""}`;
+          /* Geschrieben hat der Server. Bisher wurde seine Antwort lokal
+             eingetragen — das änderte den Bestand, der Speicher-Effekt
+             schickte daraufhin den ganzen Bestand per PUT mit dem alten
+             ETag hinterher, und der Server wies ihn mit 409 ab. Jetzt wird
+             der gespeicherte Stand samt ETag nachgeladen und als
+             geschrieben vermerkt: kein zweiter Schreibvorgang, und die
+             Versionskontrolle bleibt unangetastet (Bestand und ETag
+             gehören zusammen). */
+          if (ohneOffenes) {
+            try {
+              const neu = await SP.lies();
+              const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
+              const jetzt = ref.current;
+              /* Nur wenn sich zwischendurch lokal nichts getan hat und kein Schreiben ansteht. */
+              if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
+                && abbildVon(jetzt) === zuletztGeschrieben.current) {
+                const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
+                zuletztGeschrieben.current = abbildVon(naechster);
+                setDb(naechster);
+                melde(meldung);
+                return;
+              }
+            } catch { /* nachladen gescheitert: unten wie bisher lokal nachziehen */ }
+          }
+          /* Sonst: die Serverantwort lokal nachziehen, damit die Ansicht
+             sofort stimmt. Lag Ungespeichertes vor, geht es wie jede andere
+             Änderung auf den regulären Schreibweg — ein 409 führt dann in
+             den Konfliktdialog, nichts wird verworfen. */
+          const spiegeln = (s2) => {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
             const k = `${pid}|${datum}`;
@@ -22420,9 +22477,19 @@ function AppInnen() {
             if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
               [k]: erg.erfassung } };
             return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
-          });
-          const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
-          melde(`${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}${kz.length ? ` · ${kz.join(", ")}` : ""}`);
+          };
+          const jetzt = ref.current;
+          if (ohneOffenes && jetzt && !SP.schreibenAusstehend() && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            /* Nachladen ging nicht (etwa offline): Der Eintrag ist trotzdem
+               nur das Spiegelbild dessen, was der Server schon hat — als
+               geschrieben vermerkt, kein PUT. Der ETag bleibt der alte; die
+               nächste echte Änderung läuft damit regulär in die
+               Konfliktprüfung, statt fremde Änderungen zu überschreiben. */
+            const naechster = { ...spiegeln(jetzt), stand: (jetzt.stand || 0) + 1 };
+            zuletztGeschrieben.current = abbildVon(naechster);
+            setDb(naechster);
+          } else upd(spiegeln);
+          melde(meldung);
         } catch (e) {
           melde(e.message || "Das Stempeln hat nicht geklappt.");
         }
@@ -23371,4 +23438,4 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { MeineSchichten, Personalakte, MHeute, Tagesstart, leererMandant, zugangsPerson };
+export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson };

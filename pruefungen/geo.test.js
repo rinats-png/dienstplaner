@@ -745,3 +745,26 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     else expect(e.eintrag.endeDatum).toBeUndefined();
   });
 });
+
+/* Wer im Schichtdienst steht, stempelt die eigene Zeit — auch im Betriebsrat
+   (Desktop-Stempeluhr, Prioritaeten). Der Server nimmt nur die eigene Person
+   der Sitzung an; zurück kommt nur der eigene Stempel, keine Erfassung. */
+describe("Handler: Betriebsrat stempelt die eigene Zeit", () => {
+  it("Beginn 200, sieht nur den eigenen Stempel, keine Erfassung; Doppelstart 409", async () => {
+    const s = await stempeln(T.r1, { datum: HEUTE, art: "start" });
+    expect(s.status).toBe(200);
+    expect(s.eintrag.start).toBeTruthy();
+    const r = await lies(T.r1);
+    const m = r.bestand.mandanten[0];
+    expect(Object.keys(m.einstempeln)).toEqual([`r1|${HEUTE}`]);
+    expect(m.erfassung).toEqual({});
+    expect(m.sichtIstDaten).toEqual({ umfang: "keine" });
+    const d = await stempeln(T.r1, { datum: HEUTE, art: "start" });
+    expect(d.status).toBe(409);
+    expect(d.code).toBe("STEMPEL_SCHON_EINGESTEMPELT");
+    const e = await stempeln(T.r1, { datum: HEUTE, art: "ende" });
+    expect(e.status).toBe(200);
+    expect(e.eintrag.start).toBe(s.eintrag.start);
+    expect((await lies(T.r1)).bestand.mandanten[0].erfassung).toEqual({});
+  });
+});

@@ -27,6 +27,7 @@ import { MARKIERUNG_TEXT } from "../src/stempelvorgang.js";
 import { berlinZeitpunkt } from "../server/lib/zeiterfassung.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { migriere } from "../src/migration.js";
+import { personenAngleichen } from "../server/lib/gestalt.mjs";
 
 const HEUTE = "2026-11-04", GESTERN = "2026-11-03", MONAT = "2026-11";
 const uhr = (datum, zeit) => new Date(berlinZeitpunkt(datum, zeit));
@@ -51,13 +52,16 @@ function betrieb() {
   m.einstempeln = {};
   return m;
 }
-/** Die Sicht der Rolle, so wie der Server sie ausliefert — nach derselben
-    Migration, die die Oberfläche auf jeden geladenen Bestand anwendet
-    (leererMandant legt Version 5 an). */
-function sitzFuer(m, rolle) {
+/** Die Sicht der Rolle, so wie der Server sie ausliefert (GET /api/bestand:
+    personenAngleichen, dann bestandFuerRolle) — nach derselben Migration,
+    die die Oberfläche auf jeden geladenen Bestand anwendet (leererMandant
+    legt Version 5 an). `angleichen: false` ist die Gegenprobe ohne den
+    Schutz an der Datenmodellgrenze. */
+function sitzFuer(m, rolle, { angleichen = true } = {}) {
   const mig = migriere({ version: 5, stand: 1, mandanten: [m] });
   if (!mig.ok) throw new Error(`Migration: ${mig.grund}`);
-  const ms = bestandFuerRolle(mig.bestand, { rolle, person: rolle, betrieb: 0 }).mandanten[0];
+  const gelesen = angleichen ? personenAngleichen(mig.bestand) : mig.bestand;
+  const ms = bestandFuerRolle(gelesen, { rolle, person: rolle, betrieb: 0 }).mandanten[0];
   const person = ms.personen.find((p) => p.id === rolle);
   return { rolle: "kunde", db: { mandanten: [ms], session: { mandantId: ms.id, personId: rolle, rolle } }, mandant: ms, person };
 }
@@ -66,6 +70,7 @@ const text = (el) => renderToStaticMarkup(el).replace(/<[^>]+>/g, " ").replace(/
 const meineSchichten = (m, rolle) => text(h(A.MeineSchichten, { sitz: sitzFuer(m, rolle), akt, ym: MONAT }));
 const personalakte = (m, rolle) => text(h(A.Personalakte, { sitz: sitzFuer(m, rolle), personId: rolle, ym: MONAT, akt, onClose: () => {} }));
 const mHeute = (m) => text(h(A.MHeute, { sitz: sitzFuer(m, "mitarbeiter"), akt, setTab: () => {}, oeffnen: () => {} }));
+const prio = (m, rolle, opt) => text(h(A.Prioritaeten, { sitz: sitzFuer(m, rolle, opt), akt, gehZu: () => {}, oeffneTag: () => {} }));
 const tagesstart = (m) => text(h(A.Tagesstart, { sitz: sitzFuer(m, "mitarbeiter"), akt, gehZu: () => {}, oeffneTag: () => {} }));
 
 describe("F1 — „Meine Schichten\" ohne Ist-Daten", () => {
@@ -176,3 +181,105 @@ describe("F2 — offener Stempel unabhängig vom Plan", () => {
     } finally { vi.setSystemTime(uhr(HEUTE, "11:00")); }
   });
 });
+
+/* ==========================================================================
+   P1 — Stempeln am Rechner: Prioritaeten ist die gerenderte Startseite
+   (Tagesstart mit der Stempeluhr war nie eingebunden). Wer im Schichtdienst
+   steht, stempelt — unabhängig von Rolle und Gerät; der Server nimmt nur
+   die eigene Person der Sitzung an.
+   ========================================================================== */
+describe("P1 — Zeiterfassung am Rechner (Prioritaeten)", () => {
+  const mit = (eintraege, plan = {}) => { const m = betrieb(); m.einstempeln = eintraege; Object.assign(m.abweichungen, plan); return m; };
+  const ROLLEN_IM_DIENST = ["subplaner", "betriebsrat", "mitarbeiter"];
+
+  it("Geplanter Dienst: Schichtverantwortung, Betriebsrat und Beschäftigte (Rechneransicht) sehen Dienst und Einstempeln", () => {
+    for (const rolle of ROLLEN_IM_DIENST) {
+      const t = prio(mit({}, { [`${rolle}|${HEUTE}`]: "F" }), rolle);
+      expect(t, rolle).toContain("Mein Dienst heute");
+      expect(t, rolle).toContain("Einstempeln");
+      expect(t, rolle).not.toContain("Ausstempeln");
+    }
+  });
+  it("Nicht im Schichtdienst (Leitung, Planung — Vorgabe der Oberfläche): keine Stempeluhr, auch mit Plan", () => {
+    for (const rolle of ["leitung", "planer"]) {
+      const t = prio(mit({}, { [`${rolle}|${HEUTE}`]: "F" }), rolle);
+      expect(t, rolle).not.toContain("Einstempeln");
+      expect(t, rolle).not.toContain("Mein Dienst heute");
+    }
+  });
+  it("Offener Beginn mit Plan — auch beim Betriebsrat: Ausstempeln, kein zweites Einstempeln", () => {
+    for (const rolle of ROLLEN_IM_DIENST) {
+      const t = prio(mit({ [`${rolle}|${HEUTE}`]: { start: "06:02", startAm: uhr(HEUTE, "06:02").toISOString() } },
+        { [`${rolle}|${HEUTE}`]: "F" }), rolle);
+      expect(t, rolle).toContain("Eingestempelt 06:02");
+      expect(t, rolle).toContain("Ausstempeln");
+      expect(t, rolle).not.toContain("Einstempeln");
+    }
+  });
+  it("Offener Beginn ohne Plan und Nachtdienst vom Vortag (≤ 20 h): sichtbar und beendbar", () => {
+    for (const rolle of ROLLEN_IM_DIENST) {
+      const ohne = prio(mit({ [`${rolle}|${HEUTE}`]: { start: "06:02", startAm: uhr(HEUTE, "06:02").toISOString() } }), rolle);
+      expect(ohne, rolle).toContain("Offener Dienst ohne Plan");
+      expect(ohne, rolle).toContain("Ausstempeln");
+      const nacht = prio(mit({ [`${rolle}|${GESTERN}`]: { start: "22:01", startAm: uhr(GESTERN, "22:01").toISOString() } }), rolle);
+      expect(nacht, rolle).toContain("Offener Dienst von gestern");
+      expect(nacht, rolle).toContain("Eingestempelt gestern 22:01");
+      expect(nacht, rolle).toContain("Ausstempeln");
+    }
+  });
+  it("Veralteter Beginn (> 20 h): kein normales Ausstempeln, „Ende trotzdem erfassen\"; Vortag > 20 h erscheint nicht", () => {
+    vi.setSystemTime(uhr(HEUTE, "20:30"));
+    try {
+      for (const rolle of ROLLEN_IM_DIENST) {
+        const t = prio(mit({ [`${rolle}|${HEUTE}`]: { start: "00:04", startAm: uhr(HEUTE, "00:04").toISOString() } },
+          { [`${rolle}|${HEUTE}`]: "F" }), rolle);
+        expect(t, rolle).toContain(MARKIERUNG_TEXT.START_VERALTET);
+        expect(t, rolle).toContain("Ende trotzdem erfassen");
+        expect(t, rolle).not.toContain("Ausstempeln");
+      }
+    } finally { vi.setSystemTime(uhr(HEUTE, "11:00")); }
+    const alt = prio(mit({ [`betriebsrat|${GESTERN}`]: { start: "12:04", startAm: uhr(GESTERN, "12:04").toISOString() } }), "betriebsrat");
+    expect(alt).not.toContain("Ausstempeln");
+    expect(alt).not.toContain("Eingestempelt gestern");
+  });
+  it("Datenschutz: Betriebsrat und Schichtverantwortung bekommen nur die eigenen Stempel, keine fremden Ist-Daten", () => {
+    const m = mit({ [`betriebsrat|${HEUTE}`]: { start: "06:02" }, [`subplaner|${HEUTE}`]: { start: "06:11" },
+      [`mitarbeiter|${HEUTE}`]: { start: "05:47", ortStart: "Am Standort" } }, { [`betriebsrat|${HEUTE}`]: "F", [`subplaner|${HEUTE}`]: "F" });
+    const br = sitzFuer(m, "betriebsrat").mandant;
+    expect(Object.keys(br.einstempeln)).toEqual([`betriebsrat|${HEUTE}`]);
+    expect(br.erfassung).toEqual({});
+    expect(br.sichtIstDaten).toEqual({ umfang: "keine" });
+    expect(prio(m, "betriebsrat")).not.toContain("05:47");
+    const sv = sitzFuer(m, "subplaner").mandant;
+    expect(Object.keys(sv.einstempeln)).toEqual([`subplaner|${HEUTE}`]);
+    expect(prio(m, "subplaner")).not.toContain("05:47");
+    /* F1 bleibt: Der eigene Stempel macht beim Betriebsrat keine Ist-Stunden. */
+    expect(meineSchichten(m, "betriebsrat")).toMatch(/Stunden im Monat – h/);
+  });
+});
+
+/* ==========================================================================
+   P1 — Personendaten: eine gespeicherte Person ohne (oder mit falsch
+   getypter) qualifikationen ließ die Startseite jeder Rolle abstürzen.
+   ========================================================================== */
+describe("P1 — Altbestand ohne qualifikationen", () => {
+  const kaputt = () => {
+    const m = betrieb();
+    m.abweichungen[`mitarbeiter|${HEUTE}`] = "F";
+    for (const p of m.personen) {
+      if (p.id === "mitarbeiter" || p.id === "leitung") delete p.qualifikationen;
+      if (p.id === "planer") p.qualifikationen = "Pflegefachkraft";
+    }
+    return m;
+  };
+  it("Gegenprobe ohne Angleichen: die Startseite stürzt ab (der bisherige Fehler)", () => {
+    expect(() => prio(kaputt(), "leitung", { angleichen: false })).toThrow();
+    expect(() => mHeuteRoh(kaputt())).toThrow();
+  });
+  it("Mit dem Angleichen beim Lesen: Startseiten aller Rollen und die Beschäftigtenansicht rendern", () => {
+    for (const rolle of ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat"])
+      expect(prio(kaputt(), rolle), rolle).toContain("Gute");
+    expect(mHeute(kaputt())).toContain("Dein Dienst heute");
+  });
+});
+const mHeuteRoh = (m) => text(h(A.MHeute, { sitz: sitzFuer(m, "mitarbeiter", { angleichen: false }), akt, setTab: () => {}, oeffnen: () => {} }));

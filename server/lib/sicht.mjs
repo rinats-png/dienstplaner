@@ -369,9 +369,14 @@ export const BETRIEB = {
      nur die eigenen, der Betriebsrat keine — die Mitbestimmung betrifft das
      Verfahren, nicht die Zeiten einzelner Personen. Eine aggregierte
      Auswertung für den Betriebsrat ist ein eigenes Thema. Bis E1 bekam der
-     Betriebsrat die Zeiten aller Personen ohne Korrekturgrund. */
+     Betriebsrat die Zeiten aller Personen ohne Korrekturgrund.
+     Die eigenen Stempelereignisse bekommt er wie jede Beschäftigte: Wer im
+     Schichtdienst steht, stempelt (/api/stempeln nimmt nur die eigene
+     Person an) — und muss den eigenen offenen Beginn sehen, sonst bietet
+     die Oberfläche erneut „Einstempeln" an. Fremde Stempel und jede
+     Ist-Erfassung, auch die eigene, bleiben weg (sichtIstDaten „keine"). */
   erfassung: [NUR_EIGENE, WEG],
-  einstempeln: [NUR_EIGENE, WEG],
+  einstempeln: [NUR_EIGENE, NUR_EIGENE],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
   ansichten: [NUR_EIGENE, NUR_EIGENE],

@@ -4,7 +4,8 @@ import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
-import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen } from "../lib/gestalt.mjs";
+import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
+  personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
@@ -466,11 +467,15 @@ export default async (req, context) => {
         return antwort({ fehler: "Unbekannte Vorlage." }, 400);
       if (await raumBelegt(store, ziel))
         return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
-      const neuerBestand = (vorlage === "leer" || vorlage === "test")
+      const roh = (vorlage === "leer" || vorlage === "test")
         ? vorlageBestand(vorlage, { raum: ziel, name: nameV, branche: brancheV })
         : inhalt;
-      if (!neuerBestand || typeof neuerBestand !== "object")
+      if (!roh || typeof roh !== "object")
         return antwort({ fehler: "Unvollständig." }, 400);
+      /* Personen: ein falscher Typ wird abgewiesen, eine fehlende Liste ergänzt (gestalt.mjs). */
+      const personA = personenFehler(roh);
+      if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
+      const neuerBestand = personenAngleichen(roh);
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       if (vorlage === "demo") {
@@ -761,7 +766,9 @@ export default async (req, context) => {
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
-      return antwort({ bestand: bestandFuerRolle(mit.bestand, s), etag: mit.stand,
+      /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
+         nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
+      return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle),
         geaendert: mit.zeit, durch: mit.durch });
@@ -795,6 +802,13 @@ export default async (req, context) => {
         return antwort({ fehler: "Der Stand sieht unvollständig aus.",
           text: `${kennungen.grund} Es wurde nichts geändert.`, feld: kennungen.feld }, 422);
       }
+      /* Eine falsch getypte Personenangabe des Absenders wird abgewiesen, nicht still zu [] gemacht. */
+      const personS = personenFehler(bestand);
+      if (personS) {
+        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${personS.grund}`, wer);
+        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+          text: `${personS.grund} Es wurde nichts geändert.`, feld: personS.feld }, 422);
+      }
 
       const jetzt = await bestandJetzt();
 
@@ -813,7 +827,7 @@ export default async (req, context) => {
           text: zuSchreiben.verweigert }, 403);
       }
 
-      zuSchreiben = uebergabenAngleichen(zuSchreiben);
+      zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
 
       /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
          fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
@@ -1284,7 +1298,7 @@ export default async (req, context) => {
         await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
         return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
       }
-      w.bestand = uebergabenAngleichen(w.bestand);
+      w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
       const form = pruefeGestalt(w.bestand);
       if (!form.ok)
         return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
