@@ -9,7 +9,10 @@
      { umfang: "eigene", person: <id> }   Beschäftigte
      { umfang: "keine" }                  Betriebsrat
      { umfang: "personen", personen: [] } Schichtverantwortung: sie selbst und
-                                          der eigene Bereich
+                                          der eigene Bereich; dazu zeitraeume:
+                                          { id: [{von, bis}] } für Personen,
+                                          die nur an diesen Tagen zum
+                                          Bereich gehörten (WP-43)
      (fehlt)                              alle Ist-Daten vorhanden
 
    Fehlt eine Erfassung, rechnet die Anwendung sonst mit der geplanten Zeit —
@@ -26,13 +29,30 @@ import { dauerAm } from "./regelwerk.js";
 
 export const ISTDATEN_TEXT = "Ist-Arbeitszeit für diese Rolle nicht personenbezogen verfügbar.";
 
-/** Sind die Ist-Daten dieser Person in diesem Bestand vollständig zugänglich? */
-export function istVerfuegbar(m, p) {
+/**
+ * Sind die Ist-Daten dieser Person in diesem Bestand zugänglich — an einem
+ * Tag `d` oder, ohne Tag, für Auswertungen über Zeiträume (Konten, Monate,
+ * Ausgleichszeitraum)?
+ *
+ * Tagesgenau (WP-43): Für eine Person, die zeitweise einer anderen Einheit
+ * angehörte, nennt der Server in `sichtIstDaten.zeitraeume[id]` die Tage, an
+ * denen die Schichtverantwortung ihre Erfassung bekommt. An allen anderen
+ * Tagen fehlt sie aus Datenschutzgründen — dort „nicht verfügbar", nie die
+ * Planzeit. Eine Auswertung ohne Tag gilt für solche Personen als nicht
+ * verfügbar, weil sie Tage ohne Zugang einschließen kann.
+ */
+export function istVerfuegbar(m, p, d) {
   const s = m && m.sichtIstDaten;
   if (!s) return true;
   if (s.umfang === "eigene") return !!p && s.person !== null && s.person !== undefined
     && String(p.id) === String(s.person);
-  if (s.umfang === "personen") return !!p && Array.isArray(s.personen) && s.personen.includes(String(p.id));
+  if (s.umfang === "personen") {
+    if (!p || !Array.isArray(s.personen) || !s.personen.includes(String(p.id))) return false;
+    const z = s.zeitraeume && typeof s.zeitraeume === "object" ? s.zeitraeume[String(p.id)] : undefined;
+    if (z === undefined) return true;
+    if (typeof d !== "string" || !Array.isArray(z)) return false;
+    return z.some((x) => x && typeof x.von === "string" && typeof x.bis === "string" && x.von <= d && d <= x.bis);
+  }
   return false;
 }
 
@@ -41,7 +61,7 @@ export function istVerfuegbar(m, p) {
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
  */
 export function istZeitFuer(m, p, d, da) {
-  if (!istVerfuegbar(m, p)) return { std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true };
+  if (!istVerfuegbar(m, p, d)) return { std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true };
   /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
      ein Nachtdienst sieben oder neun Stunden, nicht acht. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
@@ -57,7 +77,7 @@ export function istZeitFuer(m, p, d, da) {
  * ist dann nicht bewertbar.
  */
 export function pruefZeitFuer(m, p, d, da) {
-  if (!istVerfuegbar(m, p)) return null;
+  if (!istVerfuegbar(m, p, d)) return null;
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
   return e && e.bestaetigt
     ? { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 }

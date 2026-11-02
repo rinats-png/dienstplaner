@@ -4,7 +4,9 @@ Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1
 Commit 4 (Versand und Zustellung auf dem Server) und C-Block C1–C3 (Bereichsbezug: Ausschreibungen,
 Dienstbuch, Übergaben, Tagesnotizen).
 Regressionstest: `pruefungen/rechtematrix.test.js` — jede Zeile der Tabelle unten ist dort ein Marker
-mit Erwartung je Rolle und Lesepfad. **Matrix und Test werden zusammen geändert.**
+mit Erwartung je Rolle und Lesepfad. Dazu liest `pruefungen/rechtematrix-zeilen.test.js` (WP-43) die Tabelle
+in Abschnitt 1 aus dieser Datei und prüft jede Zelle gegen die Antwort des Servers — eine Zeile oder ein
+Zellenwortlaut ohne Prüfung macht ihn rot. **Matrix und Test werden zusammen geändert.**
 
 Einordnung je Zeile:
 
@@ -23,7 +25,10 @@ fremd), Planung und Leitung samt Kundenrolle (`VOLL_BETRIEB`, `VOLL_PERSON`). De
 Commit D1 ebenfalls eine Positivliste (`BETREIBER_*`, Fußnote ¹¹).
 
 Die Spalten beziehen sich auf eine **fremde Person aus einem anderen Bereich** (für die
-Schichtverantwortung also außerhalb ihres Bereichs). Die eigene Person bekommt jede Rolle vollständig.
+Schichtverantwortung also außerhalb ihres Bereichs). Die eigene Person bekommen Planung, Leitung und
+Kundenrolle vollständig; Beschäftigte, Betriebsrat und Schichtverantwortung den Katalog `EIGENE_PERSON`
+(Plan, Konten, Nachweise, Kontakt- und Notfallangaben, Einstellungen — ohne die Notiz der Leitung, die
+frühere Anmeldeadresse, Rohfelder der Schutzmerkmale und Bank-, Steuer- und Lohnangaben).
 
 Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortung · **PL** Planung ·
 **LT** Leitung (ebenso Kundenrolle) · **BT** Betreiber · **VA-LT** Vollausgabe der Leitung ·
@@ -32,7 +37,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Datenklasse | MA | BR | SV | PL | LT | BT | VA-LT | VA-SK | |
 |---|---|---|---|---|---|---|---|---|---|
 | Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …) | ✓ | ✓ | ✓ | ✓ | ✓ | – ¹¹ | ✓ | ✓ | A |
-| Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | A |
+| Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit) | ohne Rollenverlauf ¹⁶ | ohne Rollenverlauf ¹⁶ | ohne Rollenverlauf ¹⁶ | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | A |
 | Kontakt: Telefon, Anschrift | – | – | – ¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kontakt: E-Mail (Kontaktangabe für Planung und Leitung) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Notfallkontakt | – | – | – | – | – | – | – | ✓ | A |
@@ -40,19 +45,27 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | frühere Anmeldeadresse | – | – | – | – | – | – | – | ✓ | A |
 | Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationen | ✓ ² | ✓ ² | ✓ ² | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise) | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf ²⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Kompetenznachweise (`kompetenzNachweise`) | – | ✓ | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung) | – | – | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`) | – | – | – ¹⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personalnummer (`personalnummer`, Lohnexport) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
-| Notrufe anderer | – | – | nur Bereich und an sie | ✓ | ✓ | – | ✓ | ✓ | A |
+| Notrufe anderer | – | – | nur Bereich und an sie ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Dienstbuch | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Übergaben | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Tagesnotizen (`notizen` „tag\|…") | – | – | nur eigene Einheit ⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | `tagesnotizen` (totes Feld, keine Ansicht) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
-| Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personennotizen (`notizen` „person\|…"; Notiz der Leitung `notiz` an der Person) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
@@ -71,7 +84,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | andere Betriebe des Raums | – | – | – | – | – | ✓ (gekürzt ¹¹) | – | – | A |
 | unbekannte neue Felder (Person, Betrieb, oben) | – | – | – | – | – | – | – | – | A |
 
-¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen.
+¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen (für die Schichtverantwortung
+bei fremden Personen; im eigenen Bereich und Pool vollständig).
 ³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung.
 ⁵ im eigenen Bereich vollständig (zum Entscheiden). ⁶ Die Oberfläche schreibt sie beim Ändern der eigenen
 Anmeldeadresse fort; ein Umbau dieses Schreibwegs steht aus. ⁷ Commit C1: `einheitId` ist die verantwortende
@@ -129,6 +143,29 @@ beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betr
 Vollausgabe zurückgaben. Jetzt: nie ausgeliefert (jede Rolle, Vollausgabe, 409, neue Sicherung), beim Schreiben
 verworfen ohne Ablehnung der übrigen Änderung, Altinhalt beim nächsten Schreiben entfernt (auch im Drei-Wege-Abgleich
 und bei der Wiederherstellung).
+¹⁵ WP-43, tagesgenau: Zum eigenen Bereich (und Pool) der Schichtverantwortung gehört eine Person im Sichtfenster
+(`SICHTFENSTER`, 60 Tage zurück, 90 voraus) — das gilt für die Person selbst (Personenliste, Telefon, Konten,
+Einsatzregeln). Für Einträge, die an einem Tag hängen — Zeiterfassung, Fahrzeiten, Wünsche, Einsprünge, Notrufe,
+Planänderungen (`aenderungen`), Selbstplanung, Sondereinsätze (ohne Tag nur die eigenen) —, zählt zusätzlich die Zugehörigkeit an genau diesem Tag
+(`zugehoerigkeit[{einheitId, ab}]`); bei Zeiträumen (Abwesenheiten, Wünsche der Urlaubsrunde) an mindestens einem
+Tag darin, bei Anträgen am ersten Tag (wie beim Entscheiden). Nach einer Versetzung sieht die Schichtverantwortung
+des alten Bereichs die Tage im neuen Bereich also wie bei einer fremden Person. Tagesgenau schränkt nur ein: Was
+das Sichtfenster verschließt, bleibt zu; ohne gültigen Tag gilt ein Eintrag als fremd. Ein Bereich „ALLE" ist kein
+Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume` die Tage mit zugänglicher
+Erfassung; an allen anderen Tagen und in Auswertungen über Zeiträume zeigt die Oberfläche „nicht verfügbar", nie
+die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
+Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
+¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
+`maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
+¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
+²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
+und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
+Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
+Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
+`sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
+¹⁶ WP-43, Präzisierung (vorher stand hier ✓, geprüft war schon immer –): Beschäftigte, Betriebsrat und
+Schichtverantwortung bekommen von fremden Personen Rolle, Status, Ein-/Austritt und Zugehörigkeit (Katalog `PLAN`),
+nicht aber `rolleSeit` und `rolleVerlauf`. Ob sie den Verlauf brauchen, ist offen; geöffnet wird er nicht ohne Entscheidung.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).

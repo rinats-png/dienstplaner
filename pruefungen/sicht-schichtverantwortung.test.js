@@ -289,7 +289,9 @@ function sammlungen() {
       { id: "c-b", personId: "b1", datum: tag(1), von: "-", nach: "F" }, { id: "c-0", personId: null, datum: tag(1), von: "-", nach: "Anfrage Telefon" }],
     nachrichten: [{ id: "n-a", personId: "a1", art: "info", titel: "fremde Nachricht" },
       { id: "n-s", personId: "s1", art: "info", titel: "an mich" }],
-    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", empfaenger: [], bestaetigt: null },
+    /* WP-43: Notrufe tragen ihren Tag (die Oberfläche setzt ihn immer); ohne Tag
+       bekommt die Schichtverantwortung einen Bereichsnotruf nicht (fail-closed). */
+    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", datum: tag(0), empfaenger: [], bestaetigt: null },
       { id: "nr-b-an-mich", personId: "b1", art: "hilfe", empfaenger: ["s1"], bestaetigt: null },
       { id: "nr-b", personId: "b1", art: "bedrohung", empfaenger: ["l1"], bestaetigt: null }],
     selbstplanung: [{ id: "sp-r", monat: tag(40).slice(0, 7), status: "offen", eintraege: [
@@ -300,7 +302,9 @@ function sammlungen() {
     einarbeitung: [{ id: "ea", personId: "a1", mentorId: "s1" }, { id: "eb", personId: "b1", mentorId: "x" }],
     betriebsmittel: [{ id: "bm0", name: "Schlüssel frei", personId: null }, { id: "bm-a", name: "Schlüssel A", personId: "a1" },
       { id: "bm-b", name: "Schlüssel B", personId: "b1" }],
-    sondereinsaetze: [{ id: "se-a", zugeteilt: ["a1"], auftraggeber: "Stadt" }, { id: "se-b", zugeteilt: ["b1"], auftraggeber: "Messe" }],
+    /* WP-43: Sondereinsätze tragen ihren Tag (die Oberfläche setzt ihn); ohne Tag sieht die
+       Schichtverantwortung nur die eigenen (fail-closed). */
+    sondereinsaetze: [{ id: "se-a", datum: tag(4), zugeteilt: ["a1"], auftraggeber: "Stadt" }, { id: "se-b", datum: tag(4), zugeteilt: ["b1"], auftraggeber: "Messe" }],
     protokoll: [{ id: "l2", zeit: "2", text: "Lohn geändert für b1" }, { id: "l1", zeit: "1", text: "erster" }],
     adressAenderungen: [{ alt: "alt@x", neu: "neu@x" }],
     notizen: { [`tag|${tag(1)}`]: [{ id: "tn", text: "Tagesnotiz" }], "person|a1": [{ id: "pn", text: "interne Leitungsnotiz zur Person" }] },
