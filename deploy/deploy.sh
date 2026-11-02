@@ -316,7 +316,7 @@ unerwartet() {
   # set -E vererbt den Trap auch in Subshells ($(…), <(…)). Dort darf er
   # nichts auslösen — nur die Subshell beenden; den Fehler sieht dann die
   # Hauptshell (A2).
-  [[ "$BASHPID" == "$" ]] || exit 1
+  [[ "$BASHPID" == "$$" ]] || exit 1
   case "$phase" in
     vor) abbruch 4 "unerwarteter Fehler in Zeile $zeile" ;;
     angehalten) alt_wieder_starten "unerwarteter Fehler in Zeile $zeile" ;;

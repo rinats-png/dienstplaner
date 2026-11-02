@@ -31,7 +31,7 @@ const BASH = bashFinden();
 /* Git Bash unter Windows stellt /usr/bin vor den PATH — Ersatz für mv, cp,
    touch, df aus dem Stub-Verzeichnis greift dort nicht. Diese Prüfungen
    laufen in der CI (Linux). */
-const FAKES_FEHLEN = process.platform === "win32";
+const FAKES_FEHLEN = process.platform === "win32" && !process.env.CENTRIC_BASH_OHNE_PFAD;
 const FLOCK = BASH ? spawnSync(BASH, ["-c", "command -v flock"], { encoding: "utf8" }).status === 0 : false;
 const p = (x) => x.replace(/\\/g, "/");
 
@@ -482,7 +482,7 @@ exec /usr/bin/find "$@"
     expect(r.alles).toMatch(/Aufbewahrung übersprungen/);
     expect(r.alles).not.toMatch(/Vor dem Wechsel gescheitert|unerwarteter Fehler/);
     expect(aufrufe().split("\n").filter((z) => z.includes(" up -d"))).toHaveLength(1);
-    expect(readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-2026110"))).toHaveLength(6);
+    expect(readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-20261101"))).toHaveLength(6);
     expect(containerBild()).toBe(ID_A);
   });
 
