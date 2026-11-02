@@ -9,6 +9,14 @@
 #   - er beim Start ausdrücklich angefordert wird (Eingabe „ausliefern") und
 #   - Repository-Variable DEPLOY_HOST sowie Secret DEPLOY_SSH_KEY gesetzt sind.
 #
+# SPERRE (WP-03): Der Job `vps` darf NICHT ausgelöst werden (Eingabe
+# „ausliefern" bleibt aus) und DEPLOY_HOST darf NICHT gesetzt werden, bis
+# /opt/bin/deploy.sh auf Digest (IMAGE_DIGEST), deploy/digest-pruefen.sh und
+# die Fehlerstrategie R0 (deploy/abschalten.sh, kein automatischer Rücksprung)
+# umgestellt ist. Heute übergibt der Job ein Kennzeichen, und deploy.sh rollt
+# auf ein voriges Kennzeichen zurück — das kann ein gesperrtes Bild treffen.
+# Bis dahin gilt BEREITSTELLUNG.md Schritt 3 (von Hand, per Digest).
+#
 # Um ihn später bei jedem Push nach main laufen zu lassen: den Block
 # `push:` unter `on:` einkommentieren.
 name: Auslieferung
@@ -74,6 +82,9 @@ jobs:
           context: .
           load: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Labels aus metadata-action, u. a. org.opencontainers.image.revision
+          # (= Commit). digest-pruefen.sh gleicht es mit FREIGEGEBENE-IMAGES.md ab.
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
             VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
@@ -127,6 +138,9 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # Labels aus metadata-action, u. a. org.opencontainers.image.revision
+          # (= Commit). digest-pruefen.sh gleicht es mit FREIGEGEBENE-IMAGES.md ab.
+          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VITE_ANWENDUNG_URL=${{ env.VITE_ANWENDUNG_URL }}
             VITE_KONTAKT_MAIL=${{ env.VITE_KONTAKT_MAIL }}
@@ -134,6 +148,8 @@ jobs:
 
   # -------------------------------------------------------------------
   # 2. Auf den VPS — nur auf Anforderung und nur mit hinterlegtem Zugang
+  #    GESPERRT bis deploy.sh auf Digest + digest-pruefen.sh + R0 umgestellt
+  #    ist: nicht auslösen, DEPLOY_HOST nicht setzen (siehe Kopf).
   # -------------------------------------------------------------------
   vps:
     needs: bild

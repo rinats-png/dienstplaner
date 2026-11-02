@@ -1,0 +1,102 @@
+# Betrieb: Deploy-Skripte (WP-03) — Rücksprung nur über verifizierte Digests.
+#
+# Läuft bei jedem Push und jedem Pull Request. Prüft ohne echten VPS, ohne
+# Pull realer Bilder und ohne Secrets:
+#   - shellcheck über alle Skripte unter deploy/ (außer deploy/sicherung/)
+#   - compose.yml: ohne IMAGE_DIGEST scheitert `config`, mit Digest nicht;
+#     die alte compose.yml (Kette B, a379095) fiel ohne Variable auf latest
+#     (Nachweis „rot vorher“)
+#   - digest-pruefen.sh, ruecksprung.sh, abschalten.sh gegen einen
+#     Docker-Stub (pruefungen/deploy-skripte.test.js)
+name: "Betrieb: Deploy-Skripte"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shopt -s nullglob
+          skripte=(deploy/*.sh)
+          printf 'prüfe: %s\n' "${skripte[@]}"
+          shellcheck -x "${skripte[@]}"
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      H8_DIGEST: sha256:0b1929273a79d6c010c9a0303b0d624a8e61e3555df77c08773bd573dd3e452f
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # env_file: .env muss existieren, sonst scheitert config aus anderem Grund.
+      - name: Leere .env für die Konfigurationsprüfung
+        run: touch deploy/.env
+
+      - name: Ohne IMAGE_DIGEST muss config scheitern
+        run: |
+          unset IMAGE_DIGEST IMAGE_TAG
+          if docker compose -f deploy/compose.yml config >ausgabe.txt 2>&1; then
+            cat ausgabe.txt
+            echo "::error::docker compose config lief ohne IMAGE_DIGEST durch"
+            exit 1
+          fi
+          cat ausgabe.txt
+          grep -q "IMAGE_DIGEST fehlt" ausgabe.txt
+
+      - name: IMAGE_TAG allein reicht nicht mehr
+        run: |
+          if IMAGE_TAG="274bfa0baca5681f383eea334aab69875f31d5c1@${H8_DIGEST}" \
+             docker compose -f deploy/compose.yml config >ausgabe.txt 2>&1; then
+            cat ausgabe.txt
+            echo "::error::IMAGE_TAG wird noch ausgewertet"
+            exit 1
+          fi
+          grep -q "IMAGE_DIGEST fehlt" ausgabe.txt
+
+      - name: Mit gültigem Digest läuft config durch
+        run: |
+          IMAGE_DIGEST="$H8_DIGEST" docker compose -f deploy/compose.yml config >ausgabe.txt
+          grep -E "^\s+image: ghcr.io/rinats-png/dienstplaner@${H8_DIGEST}$" ausgabe.txt
+          grep -E "^\s+pull_policy: never$" ausgabe.txt
+          if grep -q "latest" ausgabe.txt; then
+            echo "::error::latest in der aufgelösten Konfiguration"; exit 1
+          fi
+
+      # Rot vorher: dieselbe Prüfung gegen die compose.yml von Kette B.
+      - name: "Nachweis rot vorher: alte compose.yml ergibt ohne Variable latest"
+        run: |
+          mkdir -p "$RUNNER_TEMP/alt"
+          git show a379095:deploy/compose.yml >"$RUNNER_TEMP/alt/compose.yml"
+          touch "$RUNNER_TEMP/alt/.env"
+          (unset IMAGE_DIGEST IMAGE_TAG; docker compose -f "$RUNNER_TEMP/alt/compose.yml" config) >ausgabe.txt
+          grep -E "image: ghcr.io/rinats-png/dienstplaner:latest$" ausgabe.txt
+          echo "Befund bestätigt: alte compose.yml fiel stillschweigend auf :latest zurück."
+
+  skripte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Deploy-Skripte gegen Docker-Stub
+        run: npx vitest run pruefungen/deploy-skripte.test.js --reporter=verbose
