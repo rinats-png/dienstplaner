@@ -333,6 +333,31 @@ describe("Die Bremse bei kaputter Ablage", () => {
     expect(b.wartet).toBeGreaterThan(GRENZEN.anmelden.sperre);
   });
 
+  it("Plattenfehler am Sperreintrag: lesen bleibt frei (gezählt), anmelden gesperrt", async () => {
+    /* Nur sicherheitskritische Arten (failClosed) sperren bei einem
+       Lesefehler der Sperre. Lesen, Schreiben und Co. zählen degradiert im
+       Speicher weiter — ein Plattenfehler im Zählerstore soll nicht die
+       ganze Anwendung lahmlegen. */
+    stoerung.wirft = (methode, key) => methode === "get" && key.startsWith("sperre:");
+    const lesen = [];
+    for (let i = 0; i < 5; i++) lesen.push(await bremse("lesen", "s:platte-lesen"));
+    expect(lesen.every((b) => b.frei === true), JSON.stringify(lesen[0])).toBe(true);
+    expect(lesen.every((b) => typeof b.fehler === "string")).toBe(true);
+    /* Gezählt wird trotzdem: über der Grenze ist auch Lesen zu. */
+    let b = lesen[4], n = 5;
+    while (b.frei && n < GRENZEN.lesen.versuche + 5) { b = await bremse("lesen", "s:platte-lesen"); n++; }
+    expect(b.frei).toBe(false);
+    expect(n).toBe(GRENZEN.lesen.versuche + 1);
+
+    const anm = await bremse("anmelden", "a:platte-anmelden");
+    expect(anm.frei).toBe(false);
+    expect(typeof anm.fehler).toBe("string");
+    for (const art of ["anmelden", "anmelden-konto", "registrierung", "starten", "einrichten", "zugaenge", "demo"])
+      expect(GRENZEN[art].failClosed, art).toBe(true);
+    for (const art of ["lesen", "schreiben", "zustellen", "sicherung", "wiederherstellen"])
+      expect(GRENZEN[art].failClosed, art).toBeFalsy();
+  });
+
   it("zählt Versuche vor dem Ausfall mit", async () => {
     const k = "a:ablage-faellt-aus";
     const stati = [];
