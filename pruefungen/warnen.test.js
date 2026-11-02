@@ -8,6 +8,8 @@
    Aufruf: npx vitest run pruefungen/warnen.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, RUHEZEIT_GESETZ,
   ABWEICHUNG_GRUENDE, abwesenheitTagAufheben, bestaetigungsEintraege } from "../src/warnstufen.js";
 /* Seit WP-10 prüft der Server die Schichtverantwortung Feld für Feld in
@@ -186,5 +188,36 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
     alt.selbstplanung[0].status = "geschlossen";
     const geschickt = { selbstplanung: [{ ...alt.selbstplanung[0], eintraege: [{ personId: "p1", datum: "2026-11-05", dienstId: "N" }] }] };
     expect(eigenesZusammen(alt, geschickt, "p1").selbstplanung).toEqual(alt.selbstplanung);
+  });
+});
+
+/* Kette B ist maßgeblich (WP-10): Harte Schutzbefunde (einsatzSchutz) und
+   der Alleindienst lassen sich im Warndialog nicht wegbestätigen, und jede
+   Planungsaktion prüft sie selbst noch einmal. Gelesen wird der Quelltext —
+   App.jsx exportiert diese Teile nicht. */
+describe("Warnen statt sperren — außer bei harten Schutzbefunden (Kette B)", () => {
+  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
+  const funktion = (kopf) => { const a = app.indexOf(kopf); expect(a, kopf).toBeGreaterThan(0); return app.slice(a, app.indexOf("\n}\n", a)); };
+  it("der Warndialog gibt „dennoch“ bei sperrt: true nicht frei", () => {
+    const w = funktion("function Warndialog({ sitz, vorgang, onClose }) {");
+    expect(w).toContain("const geschuetzt = gewaehlt.filter((e) => e.befunde.some((b) => b.sperrt));");
+    expect(w).toMatch(/const kann = [^;]*!geschuetzt\.length[^;]*;/);
+  });
+  it("Einsprung, Vergabe, Selbstplanung und Tausch prüfen schutzSperre selbst", () => {
+    expect(app).toContain("const schutzSperre = (m, p, d, da) => (p && da && hindernisBefunde(m, p, d, da).find((b) => b.sperrt)) || null;");
+    for (const aktion of ["setzeEinsprung: (pid, d, dienstId, best) => mUpd((m0) => {", "vergibSchicht: (asId, personId, best) => mUpd((m0) => {",
+      "tauschZuteilen: (id, interessentId, best) => mUpd((m0) => {"]) {
+      const a = app.indexOf(aktion);
+      expect(a, aktion).toBeGreaterThan(0);
+      const rumpf = app.slice(a, app.indexOf("bestaetigungVermerken(", a));
+      expect(rumpf, aktion).toMatch(/schutzSperre\(/);
+    }
+    const runde = app.slice(app.indexOf("rundeUebernehmen: (id, best) => mUpd((m0) => {"));
+    expect(runde.slice(0, runde.indexOf("bestaetigungVermerken("))).toContain("const sperre = bef.find((b) => b.sperrt);");
+  });
+  it("die Mitteilung an die Leitung baut die Oberfläche nicht mehr (d.4: der Server)", () => {
+    const v = funktion("function bestaetigungVermerken(m, best, wer, aktion) {");
+    expect(v).not.toContain("baueMitteilung");
+    expect(v).not.toContain("nachrichten");
   });
 });
