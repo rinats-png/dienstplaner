@@ -6,7 +6,9 @@
    NICHT_BEWERTBAR (Grenzfall, Genauigkeit > 1000 m, ungültige Koordinate) —
    die Arbeitszeit wird in jedem Fall gespeichert. Ungültige Standortwerte
    am Schreibweg vorbei: 422. Datenschutz: keine Rohkoordinate, keine exakte
-   Entfernung in Antworten und im gespeicherten Stand.
+   Entfernung in Antworten und im gespeicherten Stand. Vergessenes
+   Ausstempeln: Ein offener Beginn, der mehr als 20 Stunden zurückliegt,
+   wird nicht zur bestätigten Erfassung (Geo-Spezifikation B6).
 
    Aufruf: node pruefungen/serverlauf.mjs geo
    Schreibt in den Raum "geo-probe".
@@ -54,6 +56,11 @@ const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).fo
 const REF = { lat: 50, lon: 8 };
 const nord = (m) => REF.lat + m / ((2 * Math.PI * 6371000) / 360);
 const IDS = ["a1", "a2", "a3", "a4", "a5", "a6"];
+/* Offene Beginne relativ zur Serverzeit: v1 vor 24 Stunden (vergessen), v2 vor einer Stunde. */
+const BERLIN = (d) => ({ tag: new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d),
+  zeit: d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" }) });
+const VOR24 = BERLIN(new Date(Date.now() - 24 * 3600000));
+const VOR1 = BERLIN(new Date(Date.now() - 3600000));
 const person = (id, rolle) => ({ id, vorname: `V${id}`, nachname: `N${id}`, rolle, bereich: rolle === "leitung" ? "ALLE" : "e1",
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 
@@ -62,14 +69,14 @@ const anl = await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: { versio
   id: "m-a", name: "Geobetrieb", status: "aktiv", einstellungen: {},
   einheiten: [{ id: "e1", name: "WB", standortId: "st1" }], standorte: [{ id: "st1", name: "Zentrale", bundesland: "HE", lat: REF.lat, lon: REF.lon, radius: 200 }],
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
-  personen: [person("l1", "leitung"), person("p1", "planer"), ...IDS.map((i) => person(i, "mitarbeiter"))],
+  personen: [person("l1", "leitung"), person("p1", "planer"), ...[...IDS, "v1", "v2"].map((i) => person(i, "mitarbeiter"))],
   abweichungen: Object.fromEntries(IDS.map((i) => [`${i}|${HEUTE}`, "F"])),
-  anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [], einstempeln: {}, erfassung: {},
+  anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [], einstempeln: { [`v1|${VOR24.tag}`]: { start: VOR24.zeit }, [`v2|${VOR1.tag}`]: { start: VOR1.zeit } }, erfassung: {},
 }] } });
 pruef("Raum mit Standort angelegt", anl.status === 200, `Status ${anl.status} ${anl.text}`);
 const T = {};
 T.l1 = await anmelden(await zugang("leitung", "l1", 0));
-for (const id of IDS) T[id] = await anmelden(await zugang("mitarbeiter", id, 0));
+for (const id of [...IDS, "v1", "v2"]) T[id] = await anmelden(await zugang("mitarbeiter", id, 0));
 
 const stempeln = (t, rumpf) => rufe(t, "/api/stempeln", "POST", { datum: HEUTE, ...rumpf });
 const antworten = [];
@@ -126,6 +133,18 @@ for (const f of [{ lat: 450 }, { lon: -220 }, { radius: 0 }, { radius: 10000 }])
 const st = (await rufe(T.l1, "/api/bestand", "GET")).bestand.mandanten[0].standorte[0];
 pruef("Ungültige Standortwerte: 422, nichts gespeichert", abgewiesen.every(([s]) => s === 422)
   && st.lat === REF.lat && st.lon === REF.lon && st.radius === 200, JSON.stringify(abgewiesen));
+
+/* Vergessenes Ausstempeln: 20-Stunden-Grenze */
+const vergessen = merke(await stempeln(T.v1, { datum: VOR24.tag, art: "ende" }));
+const nachV = (await rufe(T.l1, "/api/bestand", "GET")).bestand.mandanten[0];
+pruef("Beginn vor 24 h: Ende gespeichert, START_VERALTET, keine bestätigte Erfassung", vergessen.status === 200
+  && (vergessen.markierungen || []).includes("START_VERALTET") && vergessen.erfassung === null
+  && nachV.einstempeln[`v1|${VOR24.tag}`].start === VOR24.zeit && !!nachV.einstempeln[`v1|${VOR24.tag}`].ende
+  && nachV.erfassung[`v1|${VOR24.tag}`] === undefined, `${vergessen.status} ${vergessen.text}`);
+const frisch = merke(await stempeln(T.v2, { datum: VOR1.tag, art: "ende" }));
+pruef("Beginn vor 1 h: zugeordnet, bestätigte Erfassung", frisch.status === 200
+  && !(frisch.markierungen || []).includes("START_VERALTET") && !!frisch.erfassung && frisch.erfassung.start === VOR1.zeit
+  && frisch.erfassung.bestaetigt === true, `${frisch.status} ${frisch.text}`);
 
 /* Datenschutz */
 const gespeichert = (await rufe(T.l1, "/api/bestand", "GET")).roh;

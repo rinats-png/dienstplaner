@@ -1,7 +1,7 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT } from "./istdaten.js";
-import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
@@ -11181,7 +11181,7 @@ function StempelBefunde({ sitz, ym }) {
               <td style={{ padding: "8px 14px", ...NUM }}>{e.ende || "–"}</td>
               <td style={{ padding: "8px 14px" }}><Befund e={e} phase="Ende" /></td>
               <td style={{ padding: "8px 14px" }}>{ref && ref.name ? ref.name : "–"}</td>
-              <td style={{ padding: "8px 14px" }}>{(e.markierungen || []).map((x) => (
+              <td style={{ padding: "8px 14px" }}>{[...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])].map((x) => (
                 <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}</td>
             </tr>);
           })}</tbody>

@@ -17,7 +17,13 @@ import {
   standorteFehler, bestandStandorteFehler,
   INNERHALB, AUSSERHALB, NICHT_BEWERTBAR,
 } from "../server/lib/geo.mjs";
-import { stempelVorgang, positionHolen, geoAnzeige, POSITION_OPTIONEN, geoPruefungAn } from "../src/stempelvorgang.js";
+import { stempelVorgang, positionHolen, geoAnzeige, POSITION_OPTIONEN, geoPruefungAn, endeFehlt } from "../src/stempelvorgang.js";
+import {
+  berlinZeitpunkt, offenSeitMinuten, startZuordenbar, uhrzeitBerlin, heuteBerlin, OFFEN_MAX_MINUTEN,
+} from "../server/lib/zeiterfassung.mjs";
+
+/* Ein Zeitpunkt nach Berliner Wanduhr. */
+const um = (datum, uhrzeit) => new Date(berlinZeitpunkt(datum, uhrzeit));
 
 /* Ein Punkt n Meter nördlich des Referenzorts (auf der Kugel mit R = 6 371 km exakt). */
 const REF = { lat: 50, lon: 8 };
@@ -160,13 +166,14 @@ describe("Oberfläche: Position, offener Vorgang, Befund", () => {
   });
   it("Nachtdienst: offener Beginn von gestern → Ausstempeln für gestern, kein neuer Start für heute", () => {
     const p = { id: "a1" };
+    const frueh = um("2026-10-30", "06:04");
     const offen = { einstempeln: { "a1|2026-10-29": { start: "21:58" } } };
-    expect(stempelVorgang(offen, p, "2026-10-30")).toEqual({ datum: "2026-10-29", st: { start: "21:58" }, vortag: true });
+    expect(stempelVorgang(offen, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-29", st: { start: "21:58" }, vortag: true });
     const fertig = { einstempeln: { "a1|2026-10-29": { start: "21:58", ende: "06:04" } } };
-    expect(stempelVorgang(fertig, p, "2026-10-30")).toEqual({ datum: "2026-10-30", st: null, vortag: false });
+    expect(stempelVorgang(fertig, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-30", st: null, vortag: false });
     const heute = { einstempeln: { "a1|2026-10-30": { start: "06:00" } } };
-    expect(stempelVorgang(heute, p, "2026-10-30").datum).toBe("2026-10-30");
-    expect(stempelVorgang({}, p, "2026-11-01")).toEqual({ datum: "2026-11-01", st: null, vortag: false });
+    expect(stempelVorgang(heute, p, "2026-10-30", frueh).datum).toBe("2026-10-30");
+    expect(stempelVorgang({}, p, "2026-11-01", um("2026-11-01", "06:00"))).toEqual({ datum: "2026-11-01", st: null, vortag: false });
   });
   it("Befundanzeige: ✓ ! ? ○ — und alte Einträge ohne geoStart/geoEnde bleiben lesbar", () => {
     const e = { start: "06:00", ende: "14:00",
@@ -198,6 +205,76 @@ describe("Oberfläche: Position, offener Vorgang, Befund", () => {
       expect(b, name).toContain("stempelVorgang(");
       expect(b, name).not.toContain("navigator.geolocation");
     }
+  });
+});
+
+/* ---------- 20-Stunden-Grenze für offene Vorgänge (Geo-Spezifikation B6) ---------- */
+
+describe("zeiterfassung.mjs: offener Beginn höchstens 20 Stunden", () => {
+  const dauer = (d1, z1, d2, z2) => offenSeitMinuten(d1, z1, um(d2, z2));
+  it("Berliner Wanduhr ↔ Zeitpunkt, auch über die Zeitumstellung", () => {
+    expect(new Date(berlinZeitpunkt("2026-07-01", "12:00")).toISOString()).toBe("2026-07-01T10:00:00.000Z");
+    expect(new Date(berlinZeitpunkt("2026-12-01", "12:00")).toISOString()).toBe("2026-12-01T11:00:00.000Z");
+    expect(new Date(berlinZeitpunkt("2026-10-25", "02:30")).toISOString()).toBe("2026-10-25T01:30:00.000Z");   // doppelt: die spätere
+    expect(new Date(berlinZeitpunkt("2026-10-25", "01:30")).toISOString()).toBe("2026-10-24T23:30:00.000Z");
+    expect(uhrzeitBerlin(um("2027-03-28", "03:05"))).toBe("03:05");
+    expect(heuteBerlin(um("2027-01-01", "00:10"))).toBe("2027-01-01");
+    expect([berlinZeitpunkt("2026-13-01", "06:00"), berlinZeitpunkt("2026-10-22", "6:00"), berlinZeitpunkt("2026-10-22", null)])
+      .toEqual([null, null, null]);
+  });
+  it("1. Tagdienst und 2. Nachtdienst über Mitternacht", () => {
+    expect(dauer("2026-10-22", "06:00", "2026-10-22", "14:05")).toBe(8 * 60 + 5);
+    expect(dauer("2026-10-22", "20:15", "2026-10-23", "06:03")).toBe(9 * 60 + 48);
+    expect(startZuordenbar("2026-10-22", "20:15", um("2026-10-23", "06:03"))).toBe(true);
+    /* 16 Stunden: technisch zugeordnet; ob zulässig, sagt das Regelwerk. */
+    expect(dauer("2026-10-22", "18:00", "2026-10-23", "10:00")).toBe(16 * 60);
+    expect(startZuordenbar("2026-10-22", "18:00", um("2026-10-23", "10:00"))).toBe(true);
+  });
+  it("3.–5. Grenze: 19:59 und genau 20:00 zugeordnet, 20:01 nicht", () => {
+    expect(OFFEN_MAX_MINUTEN).toBe(1200);
+    expect(startZuordenbar("2026-10-22", "06:00", um("2026-10-23", "01:59"))).toBe(true);
+    expect(dauer("2026-10-22", "06:00", "2026-10-23", "02:00")).toBe(1200);
+    expect(startZuordenbar("2026-10-22", "06:00", um("2026-10-23", "02:00"))).toBe(true);
+    expect(startZuordenbar("2026-10-22", "06:00", um("2026-10-23", "02:01"))).toBe(false);
+    /* Sekunden zählen nicht: gespeichert und angezeigt werden Minuten. */
+    expect(startZuordenbar("2026-10-22", "06:00", new Date(um("2026-10-23", "02:00").getTime() + 59000))).toBe(true);
+    /* Am selben Tag gilt dieselbe Grenze. */
+    expect(startZuordenbar("2026-10-22", "02:00", um("2026-10-22", "22:00"))).toBe(true);
+    expect(startZuordenbar("2026-10-22", "02:00", um("2026-10-22", "22:01"))).toBe(false);
+  });
+  it("6. vergessenes Ausstempeln: 06:00 → 06:01 am Folgetag ist kein zugehöriger Vorgang", () => {
+    expect(dauer("2026-10-22", "06:00", "2026-10-23", "06:01")).toBe(24 * 60 + 1);
+    expect(startZuordenbar("2026-10-22", "06:00", um("2026-10-23", "06:01"))).toBe(false);
+    /* Ein Beginn in der Zukunft (falsch gestellte Daten) ist ebenfalls nicht zuordenbar. */
+    expect(startZuordenbar("2026-10-23", "08:00", um("2026-10-23", "06:00"))).toBe(false);
+  });
+  it("7. Monatswechsel und 8. Jahreswechsel", () => {
+    expect(dauer("2026-10-31", "22:00", "2026-11-01", "06:00")).toBe(480);
+    expect(startZuordenbar("2026-10-31", "22:00", um("2026-11-01", "06:00"))).toBe(true);
+    expect(startZuordenbar("2026-10-31", "06:00", um("2026-11-01", "06:00"))).toBe(false);
+    expect(dauer("2026-12-31", "22:00", "2027-01-01", "06:00")).toBe(480);
+    expect(startZuordenbar("2026-12-31", "22:00", um("2027-01-01", "06:00"))).toBe(true);
+    expect(startZuordenbar("2026-12-31", "06:00", um("2027-01-01", "06:30"))).toBe(false);
+  });
+  it("Zeitumstellung: Nacht 24./25.10.2026 eine Stunde länger, 27./28.3.2027 eine kürzer — die Grenze zählt echte Zeit", () => {
+    expect(dauer("2026-10-24", "22:00", "2026-10-25", "06:00")).toBe(9 * 60);
+    expect(dauer("2027-03-27", "22:00", "2027-03-28", "06:00")).toBe(7 * 60);
+    /* 11:00 → 06:00 sind auf der Wanduhr 19 h, tatsächlich 20 h: noch zugeordnet; eine Minute früher nicht. */
+    expect(startZuordenbar("2026-10-24", "11:00", um("2026-10-25", "06:00"))).toBe(true);
+    expect(startZuordenbar("2026-10-24", "10:59", um("2026-10-25", "06:00"))).toBe(false);
+    /* Frühjahr: 09:00 → 06:00 sind auf der Wanduhr 21 h, tatsächlich 20 h. */
+    expect(startZuordenbar("2027-03-27", "09:00", um("2027-03-28", "06:00"))).toBe(true);
+  });
+  it("Oberfläche: „Ausstempeln für gestern“ nur innerhalb der Grenze, sonst heute einstempeln und „Ende fehlt“", () => {
+    const p = { id: "a1" };
+    const m = { einstempeln: { "a1|2026-10-22": { start: "06:00" } } };
+    expect(stempelVorgang(m, p, "2026-10-23", um("2026-10-23", "02:00"))).toMatchObject({ datum: "2026-10-22", vortag: true });
+    expect(stempelVorgang(m, p, "2026-10-23", um("2026-10-23", "06:01")))
+      .toEqual({ datum: "2026-10-23", st: null, vortag: false });
+    expect(endeFehlt("2026-10-22", m.einstempeln["a1|2026-10-22"], um("2026-10-23", "02:00"))).toBe(false);
+    expect(endeFehlt("2026-10-22", m.einstempeln["a1|2026-10-22"], um("2026-10-23", "06:01"))).toBe(true);
+    expect(endeFehlt("2026-10-22", { start: "06:00", ende: "14:00" }, um("2026-10-25", "06:00"))).toBe(false);
+    expect(endeFehlt("2026-10-22", null)).toBe(false);
   });
 });
 
@@ -243,19 +320,21 @@ beforeAll(async () => {
   HEUTE = Z.heuteBerlin();
   GESTERN = new Date(new Date(`${HEUTE}T12:00:00Z`).getTime() - 86400000).toISOString().slice(0, 10);
   const ids = ["a1", "a2", "a3", "a4", "a5", "a6"];
+  /* z1…z9: ohne geplanten Dienst, nur für die 20-Stunden-Grenze (eigene Schlüssel, keine Überschneidung). */
+  const zs = ["z1", "z2", "z3", "z4", "z5", "z6", "z7", "z8", "z9"];
   await B.bestandSchreiben(laden(), RAUM, { version: 9, mandanten: [{
     id: "m-a", name: "A", status: "aktiv", einstellungen: {},
     einheiten: [{ id: "e1", standortId: "st1" }], standorte: [{ id: "st1", name: "Zentrale", bundesland: "HE", lat: 50, lon: 8, radius: 200 }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" }],
     personen: [person("l1", "leitung", { bereich: "ALLE" }), person("p1", "planer", { bereich: "ALLE" }), person("r1", "betriebsrat", { bereich: "ALLE" }),
-      ...ids.map((i) => person(i, "mitarbeiter"))],
+      ...ids.map((i) => person(i, "mitarbeiter")), ...zs.map((i) => person(i, "mitarbeiter"))],
     /* a2 hat heute keinen geplanten Dienst; alle anderen Frühdienst, a6 gestern Nachtdienst */
     abweichungen: Object.fromEntries([...ids.filter((i) => i !== "a2").map((i) => [`${i}|${HEUTE}`, "F"]), [`a6|${GESTERN}`, "N"]]),
     einstempeln: { [`a6|${GESTERN}`]: { start: "21:57", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true, geprueftStart: true } },
     erfassung: {}, anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [],
   }] }, { durch: "Pruefung" });
   let c = 0;
-  for (const [id, rolle] of [["l1", "leitung"], ["p1", "planer"], ["r1", "betriebsrat"], ...ids.map((i) => [i, "mitarbeiter"])]) {
+  for (const [id, rolle] of [["l1", "leitung"], ["p1", "planer"], ["r1", "betriebsrat"], ...[...ids, ...zs].map((i) => [i, "mitarbeiter"])]) {
     c += 1;
     const code = `GEO${c}-AAAA-${String(c).padStart(4, "0")}`;
     await kontoSchreiben(laden(), ablageSchluessel(code), { name: id, bestand: RAUM, rolle, person: id, betrieb: 0, mandantId: "m-a",
@@ -471,5 +550,130 @@ describe("Handler: Nachtdienst und Altbestand", () => {
     expect(alt.ortStart).toBe("Am Einsatzort (12 m)");
     expect(alt.geoStart).toBeUndefined();
     expect(geoAnzeige(alt, "Start").symbol).toBe("✓");
+  });
+});
+
+describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () => {
+  /* Der Handler rechnet mit der echten Serverzeit. Der offene Beginn wird
+     deshalb relativ zu „jetzt" angelegt; damit Anlegen und Ausstempeln in
+     dieselbe Minute fallen, wird ein Minutenwechsel abgewartet. */
+  const minutenSicher = async () => {
+    const s = new Date().getSeconds();
+    if (s >= 50) await new Promise((r) => setTimeout(r, (61 - s) * 1000));
+  };
+  const offenSeit = async (pid, minuten) => {
+    const beginn = new Date(Math.floor(Date.now() / 60000) * 60000 - minuten * 60000);
+    const datum = heuteBerlin(beginn), start = uhrzeitBerlin(beginn);
+    const { bestand } = await B.bestandLesen(laden(), RAUM);
+    const m = bestand.mandanten[0];
+    m.einstempeln = { ...(m.einstempeln || {}), [`${pid}|${datum}`]: { start } };
+    const erf = { ...(m.erfassung || {}) };
+    delete erf[`${pid}|${datum}`];
+    m.erfassung = erf;
+    await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+    return { datum, start, k: `${pid}|${datum}` };
+  };
+  const ausstempeln = (pid, datum) => stempeln(T[pid], { datum, art: "ende", lat: nord(10), lon: 8, accuracy: 9 });
+
+  it("19:59 Stunden: zugeordnet, bestätigte Erfassung", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z1", 1199);
+    const e = await ausstempeln("z1", o.datum);
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).not.toContain("START_VERALTET");
+    expect(e.erfassung).toMatchObject({ start: o.start, ende: e.zeit, bestaetigt: true });
+    expect((await gespeichert()).erfassung[o.k]).toMatchObject({ start: o.start, bestaetigt: true });
+  });
+  it("genau 20:00 Stunden: noch zugeordnet (Grenze eingeschlossen)", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z2", 1200);
+    const e = await ausstempeln("z2", o.datum);
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).not.toContain("START_VERALTET");
+    expect(e.erfassung).toMatchObject({ start: o.start, bestaetigt: true });
+  });
+  it("20:01 Stunden: Ende gespeichert, Beginn unverändert, keine Erfassung, START_VERALTET", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z3", 1201);
+    const e = await ausstempeln("z3", o.datum);
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).toContain("START_VERALTET");
+    expect(e.erfassung).toBeNull();
+    const g = await gespeichert();
+    expect(g.einstempeln[o.k]).toMatchObject({ start: o.start, ende: e.zeit, markierungen: ["START_VERALTET"] });
+    expect(g.erfassung[o.k]).toBeUndefined();
+  });
+  it("vergessenes Ausstempeln: 24 Stunden später wird keine bestätigte 24-Stunden-Schicht", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z4", 24 * 60);
+    expect(o.datum).toBe(GESTERN);
+    const e = await ausstempeln("z4", GESTERN);
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).toContain("START_VERALTET");
+    expect(e.erfassung).toBeNull();
+    const g = await gespeichert();
+    /* Nichts geht verloren: Beginn und Ende stehen am Vorgang, das Ende mit seinem Kalendertag. */
+    expect(g.einstempeln[o.k]).toMatchObject({ start: o.start, ende: e.zeit, endeDatum: HEUTE });
+    expect(g.erfassung[o.k]).toBeUndefined();
+    /* Auch unter keinem anderen Schlüssel dieser Person. */
+    expect(Object.keys(g.erfassung).filter((k) => k.startsWith("z4|"))).toEqual([]);
+  });
+  it("Korrektur bleibt möglich: die Leitung trägt die tatsächliche Zeit nach, der Stempel bleibt erhalten", async () => {
+    const k = `z4|${GESTERN}`;
+    const r = await lies(T.l1);
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    const stempel = b.mandanten[0].einstempeln[k];
+    b.mandanten[0].erfassung = { ...(b.mandanten[0].erfassung || {}),
+      [k]: { start: stempel.start, ende: "14:00", bestaetigt: true, grund: "Ausstempeln vergessen" } };
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+    expect(w.status, w.roh).toBe(200);
+    const g = await gespeichert();
+    expect(g.erfassung[k]).toMatchObject({ ende: "14:00", grund: "Ausstempeln vergessen" });
+    expect(g.einstempeln[k]).toEqual(stempel);
+  });
+  it("nach vergessenem Ausstempeln lässt sich heute einstempeln; der alte Vorgang bleibt unberührt", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z5", 24 * 60);
+    const vorher = (await gespeichert()).einstempeln[o.k];
+    const s = await stempeln(T.z5, { datum: HEUTE, art: "start", lat: nord(10), lon: 8, accuracy: 9 });
+    expect(s.status, s.roh).toBe(200);
+    const g = await gespeichert();
+    expect(g.einstempeln[o.k]).toEqual(vorher);
+    expect(g.einstempeln[`z5|${HEUTE}`].start).toBe(s.zeit);
+    expect(endeFehlt(o.datum, g.einstempeln[o.k])).toBe(true);
+  });
+  it("doppelter Start überschreibt nicht (409)", async () => {
+    const s1 = await stempeln(T.z6, { datum: HEUTE, art: "start" });
+    expect(s1.status, s1.roh).toBe(200);
+    const s2 = await stempeln(T.z6, { datum: HEUTE, art: "start" });
+    expect(s2.status).toBe(409);
+    expect(s2.code).toBe("STEMPEL_SCHON_EINGESTEMPELT");
+    expect((await gespeichert()).einstempeln[`z6|${HEUTE}`].start).toBe(s1.zeit);
+  });
+  it("Ende ohne Start: keine erfundene Startzeit, keine Planzeit, keine Erfassung", async () => {
+    const e = await stempeln(T.z7, { datum: HEUTE, art: "ende" });
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).toContain("START_FEHLT");
+    expect(e.markierungen).not.toContain("START_VERALTET");
+    const g = await gespeichert();
+    expect(g.einstempeln[`z7|${HEUTE}`].start).toBeUndefined();
+    expect(g.erfassung[`z7|${HEUTE}`]).toBeUndefined();
+  });
+  it("Tagdienst: Start und Ende am selben Tag, zugeordnet, kein endeDatum", async () => {
+    const s = await stempeln(T.z8, { datum: HEUTE, art: "start" });
+    expect(s.status, s.roh).toBe(200);
+    const e = await stempeln(T.z8, { datum: HEUTE, art: "ende" });
+    expect(e.status, e.roh).toBe(200);
+    expect(e.erfassung).toMatchObject({ start: s.zeit, ende: e.zeit, bestaetigt: true });
+    expect(e.eintrag.endeDatum).toBeUndefined();
+  });
+  it("Nachtdienst: offener Beginn von gestern innerhalb der Grenze wird zugeordnet und trägt endeDatum", async () => {
+    await minutenSicher();
+    const o = await offenSeit("z9", 9 * 60 + 48);
+    const e = await ausstempeln("z9", o.datum);
+    expect(e.status, e.roh).toBe(200);
+    expect(e.erfassung).toMatchObject({ start: o.start, bestaetigt: true });
+    if (o.datum !== HEUTE) expect(e.eintrag.endeDatum).toBe(HEUTE);
+    else expect(e.eintrag.endeDatum).toBeUndefined();
   });
 });

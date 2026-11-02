@@ -57,6 +57,62 @@ export function heuteBerlin(jetzt = new Date()) {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
 }
 
+/* --- Offener Stempelvorgang: technische Zuordnungsgrenze (Geo-Spezifikation B6) ---
+
+   Ein Ende gehört nur dann automatisch zum offenen Beginn, wenn dieser
+   höchstens 20 Stunden zurückliegt. Sonst hat die Person das Ausstempeln
+   vergessen: Aus 06:00 Uhr Beginn und 06:01 Uhr am Folgetag würde sonst
+   eine bestätigte 24-Stunden-Schicht. Die Grenze ist eine Zuordnungsregel,
+   keine Aussage darüber, dass 20 Stunden Arbeitszeit zulässig wären — das
+   bewertet das Regelwerk.
+
+   Gerechnet wird mit den gespeicherten Minuten (HH:MM, Europe/Berlin), also
+   genau mit dem, was Leitung und Person sehen: 06:00 → 02:00 am Folgetag
+   sind 20:00 Stunden und werden noch zugeordnet, 02:01 nicht mehr. Die
+   Zeitumstellung zählt mit (Nacht 25./26.10.: eine Stunde mehr, 28./29.3.:
+   eine weniger). Eine in der Rückstellnacht doppelt vorkommende Uhrzeit
+   (02:00–02:59) gilt als die spätere (Winterzeit). */
+export const OFFEN_MAX_MINUTEN = 20 * 60;
+
+const BERLIN_TEILE = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Berlin", hourCycle: "h23",
+  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+/** Abstand der Berliner Wanduhr zu UTC in Millisekunden, zum Zeitpunkt ms. */
+function berlinVersatz(ms) {
+  const t = Object.fromEntries(BERLIN_TEILE.formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  const wand = Date.UTC(Number(t.year), Number(t.month) - 1, Number(t.day), Number(t.hour), Number(t.minute));
+  return wand - Math.floor(ms / 60000) * 60000;
+}
+
+/** Zeitpunkt (ms) einer Berliner Wanduhrzeit „JJJJ-MM-TT" + „HH:MM" — oder null. */
+export function berlinZeitpunkt(datum, uhrzeit) {
+  if (!TAG.test(String(datum)) || typeof uhrzeit !== "string" || !UHRZEIT.test(uhrzeit)) return null;
+  const [y, mo, d] = datum.split("-").map(Number);
+  if (iso(new Date(Date.UTC(y, mo - 1, d))) !== datum) return null;          // 2026-13-01, 2026-02-30
+  const wand = Date.UTC(y, mo - 1, d, Number(uhrzeit.slice(0, 2)), Number(uhrzeit.slice(3, 5)));
+  const erst = wand - berlinVersatz(wand);
+  return wand - berlinVersatz(erst);
+}
+
+/** Die Berliner Uhrzeit (HH:MM, Minuten abgeschnitten) — dieselbe, die /api/stempeln speichert. */
+export function uhrzeitBerlin(jetzt = new Date()) {
+  return jetzt.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+}
+
+/** Minuten seit einem offenen Beginn (Tag des Vorgangs + Uhrzeit), auf ganze Minuten der Berliner Uhr. */
+export function offenSeitMinuten(datum, start, jetzt = new Date()) {
+  const beginn = berlinZeitpunkt(datum, start);
+  const nun = berlinZeitpunkt(heuteBerlin(jetzt), uhrzeitBerlin(jetzt));
+  if (beginn === null || nun === null) return null;
+  return Math.round((nun - beginn) / 60000);
+}
+
+/** Darf ein Ende jetzt automatisch diesem offenen Beginn zugeordnet werden? Höchstens 20:00 Stunden. */
+export function startZuordenbar(datum, start, jetzt = new Date()) {
+  const min = offenSeitMinuten(datum, start, jetzt);
+  return min !== null && min >= 0 && min <= OFFEN_MAX_MINUTEN;
+}
+
 /* --- Dieselbe Planrechnung wie im Client --- */
 function einheitAm(p, d) {
   let t = null;

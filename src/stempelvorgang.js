@@ -8,6 +8,7 @@
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
 import { entfernungText, geoAktiv, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
+import { startZuordenbar } from "../server/lib/zeiterfassung.mjs";
 
 /** Eine frische, möglichst genaue Messung je Stempelereignis (Geo-Spezifikation B4). */
 export const POSITION_OPTIONEN = Object.freeze({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
@@ -32,17 +33,29 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * über Mitternacht) geht vor: Dann heißt es „Ausstempeln" für gestern, nicht
  * „Einstempeln" für heute. Der Server lässt genau das zu
  * (stempelDatumPruefen: gestern, Ende, offener Beginn).
+ *
+ * Aber nur, solange der Beginn höchstens 20 Stunden zurückliegt — dieselbe
+ * Grenze wie auf dem Server (startZuordenbar). Ein älterer offener Beginn
+ * ist ein vergessenes Ausstempeln; dann wird heute neu eingestempelt, und
+ * der alte Vorgang bleibt offen für die Korrektur.
  */
-export function stempelVorgang(m, p, heute) {
+export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   const tab = (m && m.einstempeln) || {};
   const gestern = addDays(heute, -1);
   const offen = p ? tab[`${p.id}|${gestern}`] : null;
-  if (offen && offen.start && !offen.ende) return { datum: gestern, st: offen, vortag: true };
+  if (offen && offen.start && !offen.ende && startZuordenbar(gestern, offen.start, jetzt))
+    return { datum: gestern, st: offen, vortag: true };
   return { datum: heute, st: p ? tab[`${p.id}|${heute}`] || null : null, vortag: false };
 }
 
+/** Ein offener Beginn, zu dem kein Ende mehr automatisch passt (für die Anzeige der Leitung). */
+export const endeFehlt = (datum, e, jetzt = new Date()) =>
+  !!e && !!e.start && !e.ende && !startZuordenbar(datum, e.start, jetzt);
+
 export const MARKIERUNG_TEXT = Object.freeze({
   START_FEHLT: "Start fehlt",
+  START_VERALTET: "Beginn über 20 Stunden alt — nicht zugeordnet",
+  ENDE_FEHLT: "Ende fehlt",
   UNGEPLANTER_DIENST: "ohne geplanten Dienst",
 });
 

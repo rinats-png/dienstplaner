@@ -11,7 +11,7 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
 import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst } from "../lib/zeiterfassung.mjs";
+import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen } from "../lib/versand.mjs";
@@ -933,19 +933,19 @@ export default async (req, context) => {
       const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
       if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
+      /* Die eigene Zeit, nicht die des Geräts — einmal gelesen, für Datum,
+         Uhrzeit und die 20-Stunden-Grenze. */
+      const jetzt = new Date();
+      const heute = heuteBerlin(jetzt);
       /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
          Beginn), nie künftig und nie älter — Nachträge laufen über
          „Zeiten bestätigen" (zeiterfassung.mjs). */
-      const datumGrund = stempelDatumPruefen(m, person, String(datum), art);
+      const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
       if (datumGrund) {
         await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
         return antwort({ fehler: datumGrund }, 422);
       }
-
-      /* Die eigene Zeit, nicht die des Geräts. */
-      const jetzt = new Date();
-      const zeit = jetzt.toLocaleTimeString("de-DE", {
-        hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+      const zeit = uhrzeitBerlin(jetzt);
 
       /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
          Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
@@ -977,15 +977,26 @@ export default async (req, context) => {
       if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
       const startFehlt = art === "ende" && !alt.start;
       if (startFehlt) markieren("START_FEHLT");
+      /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
+         Beginn mehr als 20 Stunden zurück, gehört dieses Ende nicht
+         automatisch zu ihm. Beginn und Ende bleiben gespeichert, aber es
+         entsteht keine bestätigte Erfassung — sonst würde aus 06:00 Uhr und
+         06:01 Uhr am Folgetag eine 24-Stunden-Schicht. Vervollständigt wird
+         wie bei START_FEHLT über „Zeiten bestätigen" bzw. die Leitung. */
+      const startVeraltet = art === "ende" && !!alt.start && !startZuordenbar(String(datum), alt.start, jetzt);
+      if (startVeraltet) markieren("START_VERALTET");
       const neu = art === "start"
         ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
             geprueftStart: urteil.geprueft, geoStart: urteil.geo }
         : { ...alt, ende: zeit, ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
             geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
+      /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
+         fehlt das Feld, ist es der Tag des Vorgangs. */
+      if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
       if (markierungen.length) neu.markierungen = markierungen;
 
       let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-      if (art === "ende" && !startFehlt) {
+      if (art === "ende" && !startFehlt && !startVeraltet) {
         neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
           [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
       }
@@ -1007,7 +1018,7 @@ export default async (req, context) => {
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
-        erfassung: art === "ende" && !startFehlt ? neuerMandant.erfassung[k] : null });
+        erfassung: art === "ende" && !startFehlt && !startVeraltet ? neuerMandant.erfassung[k] : null });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------
