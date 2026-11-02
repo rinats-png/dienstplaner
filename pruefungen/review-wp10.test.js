@@ -166,25 +166,45 @@ describe("M1/N1: Befunde nur als Katalogkennung, Betriebsrat ohne Tag und Dienst
       expect(e.verweigert, regel).toMatch(/sperrender Befund/);
     }
   });
-  it("der Betriebsrat sieht nur Regel, Stufe und Monat — keinen Tag, Dienst, keine Zeit", () => {
-    const e = speichern(bestand(), "PL", [neu("x4")]);
-    const br = bestandFuerRolle(e, SITZ.BR).mandanten[0].bestaetigungen[0];
-    expect(br).toMatchObject({ id: "x4", monat: tag(3).slice(0, 7), stufe: "achtung", personId: null,
-      befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }] });
-    for (const f of ["datum", "dienstId", "zeit", "grund"]) expect(br[f], f).toBeUndefined();
+  it("der Betriebsrat sieht nur Zählwerte je Monat, Regel und Stufe, unter 3 als „<3“ (Nachprüfung M1-Rest)", () => {
+    const e = speichern(bestand(), "PL", [neu("x4"), neu("x5", { personId: "a1" }), neu("x6", { personId: "m0" }),
+      neu("x7", { befunde: [{ regel: "abwesend", stufe: "achtung" }] })]);
+    const br = bestandFuerRolle(e, SITZ.BR).mandanten[0].bestaetigungen;
+    expect(br).toEqual([
+      { monat: tag(3).slice(0, 7), regel: "abwesend", stufe: "achtung", anzahl: "<3" },
+      { monat: tag(3).slice(0, 7), regel: "ruhezeitBetrieb", stufe: "achtung", anzahl: 3 }]);
+    for (const x of br) expect(Object.keys(x).sort()).toEqual(["anzahl", "monat", "regel", "stufe"]);
+  });
+  it("die Stufe bestimmt der Katalog, nicht der Client (Nachprüfung N3)", () => {
+    const e = speichern(bestand(), "PL", [neu("x8", { stufe: "recht", befunde: [{ regel: "ruhezeitBetrieb", stufe: "recht" }] })]);
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+    expect(e.mandanten[0].bestaetigungen[0]).toMatchObject({ stufe: "achtung", befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }] });
+    expect(speichern(bestand(), "PL", [neu("x9", { stufe: "hinweis" })]).mandanten[0].bestaetigungen[0].stufe).toBe("achtung");
   });
   it("höchstens 50 neue Einträge je Speichern", () => {
     const viele = Array.from({ length: 51 }, (_, i) => neu(`v${i}`));
     expect(speichern(bestand(), "PL", viele).verweigert).toMatch(/höchstens 50/);
     expect(speichern(bestand(), "PL", viele.slice(0, 50)).verweigert).toBeUndefined();
   });
-  it("insgesamt höchstens 5000 Einträge, die ältesten fallen weg", () => {
+  it("Fluten verdrängt nichts: an der Gesamtgrenze werden neue abgewiesen, alte bleiben (Nachprüfung B1)", () => {
     const g = bestand({ bestaetigungen: Array.from({ length: 5000 }, (_, i) => ({ ...neu(`alt${i}`), durch: "P", rolle: "planer" })) });
-    const e = speichern(g, "PL", [neu("ganzneu")]);
-    const l = e.mandanten[0].bestaetigungen;
-    expect(l).toHaveLength(5000);
-    expect(l[0].id).toBe("ganzneu");
-    expect(l.map((b) => b.id)).not.toContain("alt4999");
+    for (const r of ["PL", "SV"]) {
+      const e = speichern(g, r, [neu("ganzneu", { personId: "a1" })]);
+      expect(e.verweigert, r).toMatch(/Grenze von 5000/);
+    }
+    const zurueck = speichern(g, "PL", []);
+    expect(zurueck.mandanten[0].bestaetigungen).toHaveLength(5000);
+    expect(zurueck.mandanten[0].bestaetigungen.map((b) => b.id)).toContain("alt4999");
+  });
+  it("Bremse: höchstens 200 Bestätigungen je Person und Tag", () => {
+    let g = bestand();
+    for (let runde = 0; runde < 4; runde++) {
+      const e = speichern(g, "PL", Array.from({ length: 50 }, (_, i) => neu(`r${runde}-${i}`)));
+      expect(e && !e.verweigert, `Runde ${runde}: ${e && e.verweigert}`).toBe(true);
+      g = e;
+    }
+    expect(speichern(g, "PL", [neu("zuviel")]).verweigert).toMatch(/je Person und Tag/);
+    expect(g.mandanten[0].bestaetigungen).toHaveLength(200);
   });
   it("die Mitteilung an die Leitung baut der Server aus dem Katalog, nicht aus Client-Text", () => {
     const quelle = readFileSync(path.join(process.cwd(), "server/lib/bestaetigungen.mjs"), "utf8");

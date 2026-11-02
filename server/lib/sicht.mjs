@@ -366,7 +366,6 @@ export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "akti
    und Einschränkungsbefunde heißen „schutz" (ohne Gesetz, ohne Merkmal);
    Altbestand mit Text wird nie im Wortlaut gezeigt. Fachlich offen: Reicht
    dem Betriebsrat der Monat? */
-const BESTAETIGUNG_BR = ["id", "aktion", "stufe", "grundArt", "ohneGrund", "gelesen", "rolle", "regelstand", "behoben"];
 export const SCHUTZ_NEUTRAL = "schutz";
 const schutzText = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
   .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
@@ -378,14 +377,28 @@ function regelFuerBetriebsrat(x) {
   if (/^abwesend\b/i.test(String(x.text || "")) || x.quelle === "Abwesenheit") return "abwesend";
   return "sonstiges";
 }
+/* Nachprüfung WP-10 (M1-Rest): Auch einzelne Einträge ohne Tag ließen sich
+   über Monat, Aktion, Rolle und Reihenfolge noch einer Person zuordnen. Der
+   Betriebsrat bekommt deshalb nur Zählwerte je Monat, Regel und Stufe —
+   keine Einträge, keine Kennungen, keine Aktion, keine Rolle, keine
+   Reihenfolge der Bestätigungen (sortiert nach Monat, Regel, Stufe). Unter
+   der Mindestgruppengröße steht „<3" statt der Zahl. Fachlich offen: Ist
+   das für die Mitbestimmung ausreichend, und welche Mindestgröße? */
+export const BR_MINDESTGRUPPE = 3;
 export function bestaetigungenBetriebsrat(w) {
-  return liste(w).filter((b) => b && typeof b === "object").map((b) => ({
-    ...nimm(b, BESTAETIGUNG_BR),
-    monat: typeof b.datum === "string" ? b.datum.slice(0, 7) : null,
-    personId: null, durchId: null, durch: typeof b.rolle === "string" ? b.rolle : null,
-    befunde: liste(b.befunde).filter((x) => x && typeof x === "object")
-      .map((x) => ({ regel: regelFuerBetriebsrat(x), stufe: x.stufe })),
-  }));
+  const zaehler = new Map();
+  for (const b of liste(w)) {
+    if (!b || typeof b !== "object" || typeof b.datum !== "string") continue;
+    const monat = b.datum.slice(0, 7);
+    for (const regel of new Set(liste(b.befunde).filter((x) => x && typeof x === "object").map(regelFuerBetriebsrat))) {
+      const stufe = typeof b.stufe === "string" ? b.stufe : null;
+      const k = `${monat}|${regel}|${stufe}`;
+      zaehler.set(k, { monat, regel, stufe, n: ((zaehler.get(k) || {}).n || 0) + 1 });
+    }
+  }
+  return [...zaehler.values()]
+    .sort((a, b) => a.monat.localeCompare(b.monat) || a.regel.localeCompare(b.regel) || String(a.stufe).localeCompare(String(b.stufe)))
+    .map(({ monat, regel, stufe, n }) => ({ monat, regel, stufe, anzahl: n < BR_MINDESTGRUPPE ? `<${BR_MINDESTGRUPPE}` : n }));
 }
 
 

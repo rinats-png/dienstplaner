@@ -35,32 +35,37 @@ export const ABWEICHUNG_GRUENDE = ["notfall", "bewilligung", "tarif", "sonstiges
  * zur Entscheidung des Nutzers gilt die strenge Variante des Integrations-
  * stands (Kette B). Ein sperrender Befund lässt sich nicht bestätigen — der
  * Server weist eine solche Bestätigung ab.
- * `schutz` markiert, was der Betriebsrat nur neutral sieht.
+ * `schutz` markiert, was der Betriebsrat nur neutral sieht. `stufe` ist die
+ * Stufe des Befunds — der Server übernimmt sie von hier, nicht vom Client
+ * (Nachprüfung N3).
  */
 export const BEFUND_KATALOG = Object.freeze({
-  bestand: { text: "nicht im Bestand", quelle: "Beschäftigungsverhältnis", sperrt: true },
-  schutz: { text: "Schutz- oder Einsatzregel der Person", quelle: "Schutzvorschrift", sperrt: true, schutz: true },
-  keineNacht: { text: "keine Nachtdienste zugelassen", quelle: "Einsatzeinschränkung", sperrt: true, schutz: true },
-  keinAlleindienst: { text: "darf nicht allein eingeteilt werden", quelle: "Einsatzeinschränkung", sperrt: true, schutz: true },
-  maxDiensteWoche: { text: "Höchstzahl Dienste je Woche erreicht", quelle: "Einsatzeinschränkung", sperrt: true, schutz: true },
-  qualifikationGesetzlich: { text: "gesetzlich verbindliche Qualifikation fehlt", quelle: "Rechtsvorschrift", sperrt: true },
-  kompetenz: { text: "Einweisung am Gerät fehlt", quelle: "§ 4 MPBetreibV / § 12 BetrSichV", sperrt: true },
-  ruhezeitGesetz: { text: "Ruhezeit unter 11 Stunden", quelle: "§ 5 ArbZG", sperrt: true },
-  qualifikationBetrieblich: { text: "betrieblich verbindliche Qualifikation fehlt", quelle: "Vorgabe des Betriebs", sperrt: false },
-  ruhezeitBetrieb: { text: "Ruhezeit unter der Vorgabe von Tarif oder Betrieb", quelle: "Tarif oder Betrieb", sperrt: false },
-  verfuegbarkeit: { text: "nicht verfügbar", quelle: "Verfügbarkeit der Person", sperrt: false },
-  teilzeit: { text: "arbeitet an diesem Wochentag nicht", quelle: "Teilzeitvereinbarung", sperrt: false },
-  folge: { text: "Höchstzahl Dienste in Folge erreicht", quelle: "Einstellung des Betriebs", sperrt: false },
-  abwesend: { text: "abwesend", quelle: "Abwesenheit", sperrt: false },
+  bestand: { text: "nicht im Bestand", quelle: "Beschäftigungsverhältnis", stufe: "recht", sperrt: true },
+  schutz: { text: "Schutz- oder Einsatzregel der Person", quelle: "Schutzvorschrift", stufe: "recht", sperrt: true, schutz: true },
+  keineNacht: { text: "keine Nachtdienste zugelassen", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },
+  keinAlleindienst: { text: "darf nicht allein eingeteilt werden", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },
+  maxDiensteWoche: { text: "Höchstzahl Dienste je Woche erreicht", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },
+  qualifikationGesetzlich: { text: "gesetzlich verbindliche Qualifikation fehlt", quelle: "Rechtsvorschrift", stufe: "recht", sperrt: true },
+  kompetenz: { text: "Einweisung am Gerät fehlt", quelle: "§ 4 MPBetreibV / § 12 BetrSichV", stufe: "recht", sperrt: true },
+  ruhezeitGesetz: { text: "Ruhezeit unter 11 Stunden", quelle: "§ 5 ArbZG", stufe: "recht", sperrt: true },
+  qualifikationBetrieblich: { text: "betrieblich verbindliche Qualifikation fehlt", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
+  ruhezeitBetrieb: { text: "Ruhezeit unter der Vorgabe von Tarif oder Betrieb", quelle: "Tarif oder Betrieb", stufe: "achtung", sperrt: false },
+  verfuegbarkeit: { text: "nicht verfügbar", quelle: "Verfügbarkeit der Person", stufe: "achtung", sperrt: false },
+  teilzeit: { text: "arbeitet an diesem Wochentag nicht", quelle: "Teilzeitvereinbarung", stufe: "achtung", sperrt: false },
+  folge: { text: "Höchstzahl Dienste in Folge erreicht", quelle: "Einstellung des Betriebs", stufe: "achtung", sperrt: false },
+  abwesend: { text: "abwesend", quelle: "Abwesenheit", stufe: "achtung", sperrt: false },
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);
 /** Anzeigetext eines Befunds aus dem Katalog. */
 export const befundText = (regel) => (BEFUND_KATALOG[regel] || { text: "Befund" }).text;
 
-/** Höchstens so viele neue Einträge je Speichern, so viele insgesamt (N1). */
+/** Höchstens so viele neue Einträge je Speichern, so viele insgesamt (N1) —
+    über der Gesamtgrenze werden neue abgewiesen, nie alte verdrängt (B1) —,
+    und so viele je bestätigender Person und Tag (Bremse). */
 export const BESTAETIGUNGEN_JE_SPEICHERN = 50;
 export const BESTAETIGUNGEN_GESAMT = 5000;
+export const BESTAETIGUNGEN_JE_TAG = 200;
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleichId = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);

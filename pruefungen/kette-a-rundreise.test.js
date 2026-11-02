@@ -100,12 +100,10 @@ describe("d.1 Bestätigungsprotokoll: Lesen je Rolle", () => {
     betrieb(g).personen.find((p) => p.id === "a1").zugehoerigkeit.push({ ab: tag(1), einheitId: "e2" });
     expect(ids(betrieb(bestandFuerRolle(g, SITZ.SV)).bestaetigungen)).toEqual([]);
   });
-  it("der Betriebsrat sieht Einträge ohne Person, ohne Namen, ohne Freitext", () => {
+  it("der Betriebsrat sieht nur Zählwerte — keine Person, keinen Namen, keinen Freitext, keine Einträge", () => {
+    /* Nachprüfung M1-Rest: je Monat, Regel und Stufe, unter 3 als „<3“. */
     const b = betrieb(bestandFuerRolle(bestand(), SITZ.BR)).bestaetigungen;
-    expect(ids(b)).toEqual(["alt-a1", "alt-b1"]);
-    for (const x of b) { expect(x.personId).toBe(null); expect(x.durchId).toBe(null); expect(x.durch).toBe("planer"); }
-    expect(b[1].grund).toBeUndefined();
-    expect(b[1].grundArt).toBe("sonstiges");
+    expect(b).toEqual([{ monat: tag(3).slice(0, 7), regel: "ruhezeitBetrieb", stufe: "achtung", anzahl: "<3" }]);
     expect(JSON.stringify(b)).not.toContain("Planung P");
     expect(JSON.stringify(b)).not.toContain("Frau N b1");
   });
@@ -173,9 +171,9 @@ describe("d.1 Bestätigungsprotokoll: Rundreise je Rolle", () => {
   });
   it("ungültige neue Einträge werden abgewiesen", () => {
     const falsch = [
-      { personId: "unbekannt" }, { datum: "morgen" }, { dienstId: "X" }, { stufe: "hinweis" }, { stufe: "recht", gelesen: false, befunde: [{ regel: "ruhezeitBetrieb", stufe: "recht" }] },
+      { personId: "unbekannt" }, { datum: "morgen" }, { dienstId: "X" }, { befunde: [{ regel: "schutzOffen", stufe: "hinweis" }] },
       { befunde: [] }, { befunde: [{ stufe: "achtung", text: "Frau X ist schwanger" }] },
-      { befunde: [{ regel: "erfunden", stufe: "achtung" }] }, { befunde: [{ regel: "ruhezeitBetrieb", stufe: "hinweis" }] },
+      { befunde: [{ regel: "erfunden", stufe: "achtung" }] },
       { grundArt: "erfunden" },
       { aktion: "<script>" }, { grundArt: "sonstiges", grund: "x".repeat(201) }];
     for (const f of falsch) {
@@ -384,8 +382,8 @@ describe("d.5 Abwesenheit für einen Tag aufheben", () => {
   });
   it("der Betriebsrat sieht im Protokoll nur „abwesend“, nicht die Art", () => {
     const e = rundreise(bestand(), "PL", (m) => { teilen(m); m.bestaetigungen.unshift(bestaetigung); });
-    const br = betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen.find((b) => b.id === "auf-a1");
-    expect(br.befunde).toEqual([{ regel: "abwesend", stufe: "achtung" }]);
+    const br = betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen.find((b) => b.regel === "abwesend");
+    expect(br).toEqual({ monat: tag(3).slice(0, 7), regel: "abwesend", stufe: "achtung", anzahl: "<3" });
     expect(JSON.stringify(betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen)).not.toContain("Krank");
     /* Planung und Leitung sehen den Befund im Wortlaut. */
     expect(betrieb(bestandFuerRolle(e, SITZ.LT)).bestaetigungen[0].befunde[0]).toEqual({ regel: "abwesend", stufe: "achtung" });

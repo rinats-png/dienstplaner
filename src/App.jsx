@@ -10804,6 +10804,22 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         const best = (m.bestaetigungen || []).filter((x) => x.datum ? x.datum >= von && x.datum <= bis
           : x.monat && x.monat >= von.slice(0, 7) && x.monat <= bis.slice(0, 7));
         if (!best.length) return null;
+        /* Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe
+           (Nachprüfung M1-Rest) — keine einzelnen Einträge. */
+        if (best.some((x) => x.anzahl !== undefined)) return (
+          <Card style={{ marginBottom: 18 }}>
+            <CardHead>Bewusst bestätigte Abweichungen (Zählwerte)</CardHead>
+            <div style={{ padding: "0 var(--pad-x) 16px" }}>
+              {best.map((x, i) => (
+                <div key={`${x.monat}|${x.regel}|${x.stufe}|${i}`}
+                  style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "center", flexWrap: "wrap" }}>
+                  <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+                  <span style={{ minWidth: 80, fontSize: 13.5, ...NUM }}>{x.monat}</span>
+                  <span style={{ flex: 1, fontSize: 13 }}>{x.regel === "schutz" ? "Schutz- oder Einsatzregel" : befundText(x.regel)}</span>
+                  <span style={{ fontSize: 13.5, ...NUM }}>{x.anzahl}</span>
+                </div>))}
+            </div>
+          </Card>);
         const recht = best.filter((x) => x.stufe === "recht");
         const ohneGrund = recht.filter((x) => x.ohneGrund).length;
         return (
