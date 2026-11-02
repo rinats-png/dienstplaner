@@ -34,6 +34,11 @@
 
 import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
+import { unterRaumsperre } from "./raumsperre.mjs";
+
+/* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
+   (Stempeln, PUT, Wiederherstellen …): dieselbe Sperre, dieselbe Reihe. */
+export { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE } from "./raumsperre.mjs";
 
 const ALT = (raum) => `bestand:${raum}`;
 /** Schlüssel eines noch nicht zerlegten Altbestands (für Leser, die Lesefehler selbst unterscheiden müssen). */
@@ -127,7 +132,19 @@ function ohneSitzung(b) {
   return aus;
 }
 
-export async function bestandSchreiben(store, raum, neuerBestandRoh, {
+export function bestandSchreiben(store, raum, neuerBestandRoh, opt = {}) {
+  /* Die ganze Folge — Standzeiger lesen, abgleichen, Kern und Scherben
+     schreiben, Standzeiger setzen — läuft unter der Sperre des Raums
+     (raumsperre.mjs). Vorher konnten zwei Schreiber mit demselben
+     erwarteten Stand beide bestehen: Beide lasen Stand N, beide schrieben
+     N+1, und die Monatsscherbe des einen ging verloren, obwohl beide 200
+     bekamen. Wer die Sperre schon hält (ein Endpunkt, der Lesen, Prüfen und
+     Schreiben gemeinsam schützt), kommt ohne Warten durch. */
+  return unterRaumsperre(raum, () => bestandSchreibenGesperrt(store, raum, neuerBestandRoh, opt));
+}
+
+/** Der eigentliche Schreibvorgang — nur unter der Sperre des Raums aufrufen. */
+async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   erwarteterStand = null, durch = "unbekannt",
 } = {}) {
   /* session ist kein Bestandsfeld (Commit D1b): Die Sitzung lebt im Browser

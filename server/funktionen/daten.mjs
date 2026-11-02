@@ -9,7 +9,8 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { bestandLesen, bestandSchreiben, raumBelegt } from "../lib/bestand.mjs";
+import { bestandLesen, bestandSchreiben, raumBelegt, unterRaumsperre, SPERRE_ZEITGRENZE }
+  from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
@@ -70,6 +71,12 @@ const antwort = (daten, status = 200, kopf = {}) =>
    abschneidet. Wer darüber liegt, bekommt 413 und den Rat, zu zerlegen.
    -------------------------------------------------------------------------- */
 const RUMPF_MAX = 6 * 1024 * 1024;
+
+/* Wie oft /api/stempeln nach einem echten Konflikt noch einmal versucht,
+   jedes Mal aus dem frisch gelesenen Stand. Unter der Raumsperre kann ein
+   Konflikt nur von einem Schreiber kommen, der an ihr vorbeischreibt —
+   drei Wiederholungen sind dafür reichlich; danach eine klare Absage. */
+const STEMPEL_WIEDERHOLUNGEN = 3;
 
 async function rumpfLesen(req) {
   const laenge = Number(req.headers.get("content-length") || 0);
@@ -272,7 +279,11 @@ export default async (req, context) => {
          Funktion, die der Löschlauf für abgelaufene Testbetriebe nutzt.
          Was sich nicht löschen ließ, kommt mit Schlüssel und Grund zurück;
          der Kern bleibt dann stehen, damit ein zweiter Versuch ihn findet. */
-      const ergebnis = await raumLoeschen(store, sitzungen(), raum);
+      /* Unter der Sperre des Raums: Ein Schreiber, der gerade mitten in
+         seiner Folge steckt, legte sonst nach dem Löschen wieder Scherben
+         und Standvermerke ab — Waisen ohne Kern. Der Löschlauf für
+         abgelaufene Testbetriebe (aufraeumen.mjs) geht noch ohne sie. */
+      const ergebnis = await unterRaumsperre(raum, () => raumLoeschen(store, sitzungen(), raum));
       if (!ergebnis.vollstaendig) {
         await protokoll("loeschen", kR, "fehler",
           `${raum}: ${ergebnis.fehler.length} Fehler, ${ergebnis.geloescht} Einträge`);
@@ -482,7 +493,16 @@ export default async (req, context) => {
         const demoGrund = demoGestaltPruefen(neuerBestand);
         if (demoGrund) return antwort({ fehler: "Das ist nicht die Demo.", text: demoGrund }, 422);
       }
-      await bestandSchreiben(store, ziel, neuerBestand, { durch: "Betreiber" });
+      /* „Noch nicht belegt" und das Anlegen gehören unter eine Sperre: Zwei
+         gleichzeitige Anlagen desselben Raums sahen sonst beide einen freien
+         Raum, und die zweite überschrieb die erste. Die Prüfung oben bleibt
+         als schnelle Absage; hier wird sie unter der Sperre wiederholt. */
+      const angelegt = await unterRaumsperre(ziel, async () => {
+        if (await raumBelegt(store, ziel)) return false;
+        await bestandSchreiben(store, ziel, neuerBestand, { durch: "Betreiber" });
+        return true;
+      });
+      if (!angelegt) return antwort({ fehler: "Dieser Raum ist bereits belegt." }, 409);
       await protokoll("zugaenge", kennung(req, sB), "erfolg",
         `Raum ${ziel} eingerichtet (${vorlage || "eigener Inhalt"}, ${neuerBestand.mandanten.length} Betrieb(e))`);
       return antwort({ ok: true, bestand: ziel, vorlage: vorlage || null,
@@ -810,87 +830,99 @@ export default async (req, context) => {
           text: `${personS.grund} Es wurde nichts geändert.`, feld: personS.feld }, 422);
       }
 
-      const jetzt = await bestandJetzt();
+      /* Ab hier unter der Sperre des Raums (lib/raumsperre.mjs): Lesen,
+         Zusammenführen, Prüfen und Schreiben als eine Folge. Gelesen wird
+         deshalb hier noch einmal frisch, nicht der zwischengespeicherte
+         Stand vom Anfang der Anfrage — der kann inzwischen von einem
+         anderen Schreiber überholt sein, und dann rechnete das
+         Zusammenführen mit einem Bestand, der nicht mehr gilt. Die
+         Zustellung danach braucht die Sperre nicht. */
+      const gesperrt = await unterRaumsperre(s.bestand, async () => {
+        const jetzt = await bestandLesen(store, s.bestand);
 
-      /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
-         eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
-         Lesen gar nicht bekommen hat. */
-      let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
-      if (!zuSchreiben) {
-        await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
-        return antwort({ fehler: "Keine Schreibberechtigung.",
-          text: absageText(s.rolle) }, 403);
-      }
-      if (zuSchreiben.verweigert) {
-        await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
-        return antwort({ fehler: "Keine Schreibberechtigung.",
-          text: zuSchreiben.verweigert }, 403);
-      }
-
-      zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
-
-      /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
-         fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
-         ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
-      /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
-         nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
-      const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
-      if (standortGrund) {
-        await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
-        return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
-      }
-
-      const form = pruefeGestalt(zuSchreiben);
-      if (!form.ok) {
-        await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
-        return antwort({ fehler: "Der Stand sieht unvollständig aus.",
-          text: `${form.grund} Es wurde nichts geändert — bitte lade die Seite neu `
-            + "und versuch es erneut.", feld: form.feld || null }, 422);
-      }
-
-      /* Auffälliger Verlust wird nicht abgelehnt — es gibt gute Gründe, viel
-         zu löschen —, aber vorher gesichert. Eine Sicherung, die niemand
-         angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah. */
-      if (jetzt) {
-        const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
-        if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
-          const marke = markeNeu();
-          await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
-            { metadata: { zeit: new Date().toISOString(),
-              durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
-              automatisch: "ja" } }).catch(() => {});
-          await sicherungenAusduennen(store, s.bestand);
-          await protokoll("schreiben", ks, "gesichert",
-            `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
+        /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
+           eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
+           Lesen gar nicht bekommen hat. */
+        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
+        if (!zuSchreiben) {
+          await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
+          return antwort({ fehler: "Keine Schreibberechtigung.",
+            text: absageText(s.rolle) }, 403);
         }
-      }
+        if (zuSchreiben.verweigert) {
+          await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
+          return antwort({ fehler: "Keine Schreibberechtigung.",
+            text: zuSchreiben.verweigert }, 403);
+        }
 
-      /* Geschrieben wird je Monat. Zwei Planer, die an verschiedenen Monaten
-         arbeiten, kollidieren dadurch nicht mehr — und wenn sie es doch tun,
-         sagt die Absage, welcher Monat betroffen ist. */
-      const erg = await bestandSchreiben(store, s.bestand, zuSchreiben, {
-        erwarteterStand: etag ?? null,
-        durch: durch || s.name || "unbekannt",
+        zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+
+        /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
+           fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
+           ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
+        /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
+           nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
+        const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
+        if (standortGrund) {
+          await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
+          return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
+        }
+
+        const form = pruefeGestalt(zuSchreiben);
+        if (!form.ok) {
+          await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
+          return antwort({ fehler: "Der Stand sieht unvollständig aus.",
+            text: `${form.grund} Es wurde nichts geändert — bitte lade die Seite neu `
+              + "und versuch es erneut.", feld: form.feld || null }, 422);
+        }
+
+        /* Auffälliger Verlust wird nicht abgelehnt — es gibt gute Gründe, viel
+           zu löschen —, aber vorher gesichert. Eine Sicherung, die niemand
+           angefordert hat, ist genau dann wertvoll, wenn es niemand kommen sah. */
+        if (jetzt) {
+          const schrumpf = schrumpfung(jetzt.bestand, zuSchreiben);
+          if (schrumpf.anteil >= SICHERUNGSSCHWELLE) {
+            const marke = markeNeu();
+            await store.setJSON(`sicherung:${s.bestand}:${marke}`, jetzt.bestand,
+              { metadata: { zeit: new Date().toISOString(),
+                durch: `automatisch vor Verlust von ${Math.round(schrumpf.anteil * 100)} %`,
+                automatisch: "ja" } }).catch(() => {});
+            await sicherungenAusduennen(store, s.bestand);
+            await protokoll("schreiben", ks, "gesichert",
+              `${schrumpf.vorher} → ${schrumpf.nachher} Datensätze`, wer);
+          }
+        }
+
+        /* Geschrieben wird je Monat. Zwei Planer, die an verschiedenen Monaten
+           arbeiten, kollidieren dadurch nicht mehr — und wenn sie es doch tun,
+           sagt die Absage, welcher Monat betroffen ist. */
+        const erg = await bestandSchreiben(store, s.bestand, zuSchreiben, {
+          erwarteterStand: etag ?? null,
+          durch: durch || s.name || "unbekannt",
+        });
+
+        if (!erg.ok) {
+          await protokoll("schreiben", ks, "konflikt",
+            (erg.monate || []).join(", ") || "unbestimmt", wer);
+          const monate = erg.monate || [];
+          return antwort({ fehler: "konflikt",
+            text: erg.kernBetroffen
+              ? "Jemand anderes hat inzwischen die Stammdaten geändert."
+              : monate.length
+                ? `Jemand anderes hat inzwischen ${monate.length > 1 ? "dieselben Monate" : "denselben Monat"} bearbeitet: ${monate.join(", ")}.`
+                : "Jemand anderes hat inzwischen gespeichert.",
+            monate, kernBetroffen: !!erg.kernBetroffen,
+            bestand: bestandFuerRolle(erg.bestand, s), etag: erg.stand,
+            durch: erg.durch, zeit: erg.zeit }, 409);
+        }
+
+        await protokoll("schreiben", ks, "erfolg",
+          `${erg.geschrieben} Stücke · ${s.rolle}`
+          + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
+        return { erg, jetzt, zuSchreiben };
       });
-
-      if (!erg.ok) {
-        await protokoll("schreiben", ks, "konflikt",
-          (erg.monate || []).join(", ") || "unbestimmt", wer);
-        const monate = erg.monate || [];
-        return antwort({ fehler: "konflikt",
-          text: erg.kernBetroffen
-            ? "Jemand anderes hat inzwischen die Stammdaten geändert."
-            : monate.length
-              ? `Jemand anderes hat inzwischen ${monate.length > 1 ? "dieselben Monate" : "denselben Monat"} bearbeitet: ${monate.join(", ")}.`
-              : "Jemand anderes hat inzwischen gespeichert.",
-          monate, kernBetroffen: !!erg.kernBetroffen,
-          bestand: bestandFuerRolle(erg.bestand, s), etag: erg.stand,
-          durch: erg.durch, zeit: erg.zeit }, 409);
-      }
-
-      await protokoll("schreiben", ks, "erfolg",
-        `${erg.geschrieben} Stücke · ${s.rolle}`
-        + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
+      if (gesperrt instanceof Response) return gesperrt;
+      const { erg, jetzt, zuSchreiben } = gesperrt;
 
       /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
          stellt er selbst zu (Commit 4) — nach dem Speichern, aus dem
@@ -936,106 +968,141 @@ export default async (req, context) => {
       if (s.person === null || s.person === undefined)
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
 
-      const mit = await bestandJetzt();
-      if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const bestand = mit.bestand;
-      const i = Number(s.betrieb);
-      const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
-        ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
-      if (!m) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
-
-      const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
-      if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
-
       /* Die eigene Zeit, nicht die des Geräts — einmal gelesen, für Datum,
-         Uhrzeit und die 20-Stunden-Grenze. */
+         Uhrzeit und die 20-Stunden-Grenze. Gelesen beim Eintreffen der
+         Anfrage, nicht erst, wenn die Sperre frei ist: Gestempelt hat der
+         Mensch, als er gedrückt hat, nicht als der Server dazu kam. Eine
+         Wiederholung nach einem Konflikt behält dieselbe Zeit. */
       const jetzt = new Date();
       const heute = heuteBerlin(jetzt);
-      /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
-         Beginn), nie künftig und nie älter — Nachträge laufen über
-         „Zeiten bestätigen" (zeiterfassung.mjs). */
-      const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
-      if (datumGrund) {
-        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
-        return antwort({ fehler: datumGrund }, 422);
-      }
       const zeit = uhrzeitBerlin(jetzt);
 
-      /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
-         Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
-         mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
-         nie ab: Die Stempelzeit wird in jedem Fall gespeichert. */
-      const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy } });
+      /* Gebaut wird der Stempel unter der Sperre des Raums, aus dem frisch
+         gelesenen Stand (WP-02). Vorher entstand er aus dem Stand vom Anfang
+         der Anfrage und wurde mit diesem Stand als Erwartung geschrieben.
+         Stempelten zwei Menschen in derselben Minute, schrieben beide in
+         dieselbe Monatsscherbe — ohne Sperre ging einer still verloren, mit
+         Sperre allein bekäme der zweite einen Konflikt, obwohl sich die
+         beiden Stempel gar nicht berühren. Aus dem frischen Stand gebaut,
+         reiht sich jeder Stempel einfach hinter den vorigen.
 
-      const k = `${person.id}|${datum}`;
-      const alt = (m.einstempeln || {})[k] || {};
-      /* Ein zweites Ein- oder Ausstempeln am selben Tag überschrieb bisher
-         das erste — ein erneutes Einstempeln löschte dabei sogar das schon
-         gestempelte Ende. Gestempeltes bleibt; korrigieren kann die Leitung. */
-      /* Auch ein Start nach einem schon gestempelten Ende (START_FEHLT) ersetzte
-         sonst den Eintrag samt Ende — Gestempeltes bleibt. */
-      if ((art === "start" && (alt.start || alt.ende)) || (art === "ende" && alt.ende)) {
-        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
-        return antwort({ fehler: art === "start" && alt.start ? "Für diesen Tag ist schon eingestempelt."
-          : art === "start" ? "Für diesen Tag ist schon ausgestempelt — den Beginn trägt die Leitung nach."
-          : "Für diesen Tag ist schon ausgestempelt.",
-        code: art === "start" && alt.start ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
-      }
-      /* Kennzeichen statt Ablehnung (E5, E10): Einstempeln ohne geplanten
-         Dienst ist erlaubt (UNGEPLANTER_DIENST); ein Ende ohne Start wird
-         gespeichert (START_FEHLT) — ohne erfundene Startzeit und ohne
-         Ist-Dauer: Dann entsteht keine bestätigte Erfassung, die Zeit wird
-         über „Zeiten bestätigen" bzw. die Leitung vervollständigt. */
-      const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
-      const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
-      if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
-      const startFehlt = art === "ende" && !alt.start;
-      if (startFehlt) markieren("START_FEHLT");
-      /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
-         Beginn mehr als 20 Stunden zurück, gehört dieses Ende nicht
-         automatisch zu ihm. Beginn und Ende bleiben gespeichert, aber es
-         entsteht keine bestätigte Erfassung — sonst würde aus 06:00 Uhr und
-         06:01 Uhr am Folgetag eine 24-Stunden-Schicht. Vervollständigt wird
-         wie bei START_FEHLT über „Zeiten bestätigen" bzw. die Leitung. */
-      const startVeraltet = art === "ende" && !!alt.start
-        && !startZuordenbar(String(datum), alt.start, jetzt, alt.startAm);
-      if (startVeraltet) markieren("START_VERALTET");
-      /* startAm/endeAm: der eindeutige Zeitpunkt (UTC) neben der Berliner
-         Uhrzeit — in der Rückstellnacht ist „02:30" sonst zweideutig. */
-      const neu = art === "start"
-        ? { start: zeit, startAm: jetzt.toISOString(), ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
-            geprueftStart: urteil.geprueft, geoStart: urteil.geo }
-        : { ...alt, ende: zeit, endeAm: jetzt.toISOString(), ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
-            geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
-      /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
-         fehlt das Feld, ist es der Tag des Vorgangs. */
-      if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
-      if (markierungen.length) neu.markierungen = markierungen;
+         Ein echter Konflikt kann dann nur noch von einem Schreiber kommen,
+         der an der Sperre vorbeischreibt. Dafür bis zu drei Wiederholungen,
+         jede wieder aus dem frischen Stand. Bleibt es erfolglos: 409 mit
+         klarer Meldung, nie „ok: true" (bis Oktober 2026 kam auch nach
+         einem gescheiterten Schreiben ein Erfolg zurück, und die Oberfläche
+         zeigte eine Stempelzeit, die es auf dem Server nicht gab). */
+      const ergebnis = await unterRaumsperre(s.bestand, async () => {
+        for (let versuch = 0; versuch <= STEMPEL_WIEDERHOLUNGEN; versuch++) {
+          const mit = await bestandLesen(store, s.bestand);
+          if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+          const bestand = mit.bestand;
+          const i = Number(s.betrieb);
+          const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
+            ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
+          if (!m) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
 
-      let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-      if (art === "ende" && !startFehlt && !startVeraltet) {
-        neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-          [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
-      }
-      const neuerBestand = { ...bestand,
-        mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
+          const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
+          if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-      const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
-        erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
-      /* Bis Oktober 2026 kam hier auch nach einem gescheiterten Schreiben
-         (gleichzeitige Änderung desselben Monats) „ok: true" zurück — die
-         Oberfläche zeigte eine Stempelzeit, die es auf dem Server nicht gab. */
-      if (!ergSt.ok) {
+          /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
+             Beginn), nie künftig und nie älter — Nachträge laufen über
+             „Zeiten bestätigen" (zeiterfassung.mjs). */
+          const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
+          if (datumGrund) {
+            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
+            return antwort({ fehler: datumGrund }, 422);
+          }
+
+          /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
+             Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
+             mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
+             nie ab: Die Stempelzeit wird in jedem Fall gespeichert. */
+          const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy } });
+
+          const k = `${person.id}|${datum}`;
+          const alt = (m.einstempeln || {})[k] || {};
+          /* Ein zweites Ein- oder Ausstempeln am selben Tag überschrieb bisher
+             das erste — ein erneutes Einstempeln löschte dabei sogar das schon
+             gestempelte Ende. Gestempeltes bleibt; korrigieren kann die Leitung. */
+          /* Auch ein Start nach einem schon gestempelten Ende (START_FEHLT) ersetzte
+             sonst den Eintrag samt Ende — Gestempeltes bleibt. Geprüft am
+             frischen Stand: Zwei gleichzeitige Einstempelversuche derselben
+             Person ergeben genau einen Stempel und eine Absage. */
+          if ((art === "start" && (alt.start || alt.ende)) || (art === "ende" && alt.ende)) {
+            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
+            return antwort({ fehler: art === "start" && alt.start ? "Für diesen Tag ist schon eingestempelt."
+              : art === "start" ? "Für diesen Tag ist schon ausgestempelt — den Beginn trägt die Leitung nach."
+              : "Für diesen Tag ist schon ausgestempelt.",
+            code: art === "start" && alt.start ? "STEMPEL_SCHON_EINGESTEMPELT" : "STEMPEL_SCHON_AUSGESTEMPELT" }, 409);
+          }
+          /* Kennzeichen statt Ablehnung (E5, E10): Einstempeln ohne geplanten
+             Dienst ist erlaubt (UNGEPLANTER_DIENST); ein Ende ohne Start wird
+             gespeichert (START_FEHLT) — ohne erfundene Startzeit und ohne
+             Ist-Dauer: Dann entsteht keine bestätigte Erfassung, die Zeit wird
+             über „Zeiten bestätigen" bzw. die Leitung vervollständigt. */
+          const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
+          const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
+          if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+          const startFehlt = art === "ende" && !alt.start;
+          if (startFehlt) markieren("START_FEHLT");
+          /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
+             Beginn mehr als 20 Stunden zurück, gehört dieses Ende nicht
+             automatisch zu ihm. Beginn und Ende bleiben gespeichert, aber es
+             entsteht keine bestätigte Erfassung — sonst würde aus 06:00 Uhr und
+             06:01 Uhr am Folgetag eine 24-Stunden-Schicht. Vervollständigt wird
+             wie bei START_FEHLT über „Zeiten bestätigen" bzw. die Leitung. */
+          const startVeraltet = art === "ende" && !!alt.start
+            && !startZuordenbar(String(datum), alt.start, jetzt, alt.startAm);
+          if (startVeraltet) markieren("START_VERALTET");
+          /* startAm/endeAm: der eindeutige Zeitpunkt (UTC) neben der Berliner
+             Uhrzeit — in der Rückstellnacht ist „02:30" sonst zweideutig. */
+          const neu = art === "start"
+            ? { start: zeit, startAm: jetzt.toISOString(), ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
+                geprueftStart: urteil.geprueft, geoStart: urteil.geo }
+            : { ...alt, ende: zeit, endeAm: jetzt.toISOString(), ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
+                geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
+          /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
+             fehlt das Feld, ist es der Tag des Vorgangs. */
+          if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
+          if (markierungen.length) neu.markierungen = markierungen;
+
+          let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
+          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          if (mitErfassung) {
+            neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
+              [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+          }
+          const neuerBestand = { ...bestand,
+            mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
+
+          /* Unter der gehaltenen Sperre kommt bestandSchreiben ohne Warten
+             durch (Wiedereintritt, lib/raumsperre.mjs). */
+          const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
+            erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
+          if (ergSt.ok) {
+            return { ergSt, urteil, neu, erfassung: mitErfassung ? neuerMandant.erfassung[k] : null };
+          }
+          /* Jeder gescheiterte Versuch steht im Protokoll — „wiederholt",
+             solange noch einer folgt; erst der letzte ist ein Konflikt. */
+          if (versuch < STEMPEL_WIEDERHOLUNGEN)
+            await protokoll("schreiben", kSt, "wiederholt",
+              `stempeln ${art} ${datum} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, wer);
+        }
         await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
         return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
           + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
-      }
+      });
+      if (ergebnis instanceof Response) return ergebnis;
+
+      const { ergSt, urteil, neu, erfassung } = ergebnis;
       await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`, wer);
-      /* Zurück geht der gespeicherte Stand, damit die Oberfläche ihn
+      /* Zurück geht der gespeicherte Stempel — genau der Eintrag, den der
+         erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
-        erfassung: art === "ende" && !startFehlt && !startVeraltet ? neuerMandant.erfassung[k] : null });
+        erfassung });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------
@@ -1058,33 +1125,41 @@ export default async (req, context) => {
         return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
       const { datum, start = null, ende = null, grund = "" } = rumpf || {};
 
-      const mitZ = await bestandJetzt();
-      if (!mitZ) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const mZ = eigenerMandant(mitZ.bestand, s);
-      if (!mZ) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
-      const personZ = (mZ.personen || []).find((x) => String(x.id) === String(s.person));
-      if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
+      /* Lesen, Prüfen und Schreiben unter der Sperre des Raums, aus dem
+         frisch gelesenen Stand (WP-02) — wie beim Stempeln: Eine
+         gleichzeitige Änderung desselben Monats durch jemand anderen ist
+         dann kein Konflikt mehr, sondern kommt einfach davor. „return
+         await", nicht nur „return": Sonst ginge eine überschrittene
+         Zeitgrenze am catch unten vorbei und endete nicht in einer 503. */
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitZ = await bestandLesen(store, s.bestand);
+        if (!mitZ) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mZ = eigenerMandant(mitZ.bestand, s);
+        if (!mZ) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const personZ = (mZ.personen || []).find((x) => String(x.id) === String(s.person));
+        if (!personZ) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-      const kTag = `${personZ.id}|${datum}`;
-      if ((mZ.erfassung || {})[kTag]) {
-        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
-        return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
-      }
-      const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund });
-      if (urteilZ.grund) {
-        await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
-        return antwort({ fehler: urteilZ.grund }, 422);
-      }
-      const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
-      const ergZ = await bestandSchreiben(store, s.bestand,
-        { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
-        { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
-      if (!ergZ.ok) {
-        await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen ${datum}`, wer);
-        return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
-      }
-      await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
-      return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null });
+        const kTag = `${personZ.id}|${datum}`;
+        if ((mZ.erfassung || {})[kTag]) {
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
+          return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
+        }
+        const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund });
+        if (urteilZ.grund) {
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
+          return antwort({ fehler: urteilZ.grund }, 422);
+        }
+        const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
+        const ergZ = await bestandSchreiben(store, s.bestand,
+          { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
+          { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
+        if (!ergZ.ok) {
+          await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen ${datum}`, wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
+        return antwort({ ok: true, datum, eintrag: urteilZ.eintrag, etag: ergZ.stand || null });
+      });
     }
 
     /* ------------------------------ Abmelden ------------------------- */
@@ -1281,51 +1356,66 @@ export default async (req, context) => {
       if (!marke || !MARKE.test(String(marke)))
         return antwort({ fehler: "Keine gültige Marke." }, 400);
 
-      const jetztGelesen = await bestandJetzt();
-      if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
-        return antwort({ fehler: "konflikt",
-          text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
-          etag: jetztGelesen.stand }, 409);
+      /* Unter der Sperre des Raums: Die Prüfung „Stand unverändert", die
+         Sicherung des jetzigen Stands und der Tausch bilden eine Folge.
+         Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
+         seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
+      return await unterRaumsperre(s.bestand, async () => {
+        const jetztGelesen = await bestandLesen(store, s.bestand);
+        if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
+          return antwort({ fehler: "konflikt",
+            text: "Der Bestand hat sich geändert. Bitte neu laden und die Wiederherstellung erneut bestätigen.",
+            etag: jetztGelesen.stand }, 409);
 
-      const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
-      if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
-      const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
+        const alt2 = await store.get(`sicherung:${s.bestand}:${marke}`, { type: "json" });
+        if (!alt2) return antwort({ fehler: "Diese Sicherung gibt es nicht." }, 404);
+        const metaW = await store.getMetadata(`sicherung:${s.bestand}:${marke}`).catch(() => null);
 
-      const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
-        { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
-      if (w.verweigert) {
-        await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
-        return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
-      }
-      w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
-      const form = pruefeGestalt(w.bestand);
-      if (!form.ok)
-        return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
+        const w = betriebWiederherstellen(jetztGelesen.bestand, alt2, s,
+          { marke, sicherungsZeit: metaW?.metadata?.zeit || alt2.erzeugt || null });
+        if (w.verweigert) {
+          await protokoll("schreiben", kW, "abgewiesen", `wiederherstellen ${marke}: ${w.verweigert}`, wer);
+          return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
+        }
+        w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
+        const form = pruefeGestalt(w.bestand);
+        if (!form.ok)
+          return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
-      /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
-      const m2 = markeNeu();
-      await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
-        { metadata: { zeit: new Date().toISOString(),
-          durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
-        .catch(() => {});
-      await sicherungenAusduennen(store, s.bestand);
+        /* Erst den jetzigen Stand wegschreiben, dann tauschen. */
+        const m2 = markeNeu();
+        await store.setJSON(`sicherung:${s.bestand}:${m2}`, jetztGelesen.bestand,
+          { metadata: { zeit: new Date().toISOString(),
+            durch: `automatisch vor Wiederherstellung von ${marke}`, automatisch: "ja" } })
+          .catch(() => {});
+        await sicherungenAusduennen(store, s.bestand);
 
-      const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {
-        erwarteterStand: jetztGelesen.stand,
-        durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
-      if (!ergW.ok) {
-        await protokoll("schreiben", kW, "konflikt", `wiederherstellen ${marke}`, wer);
-        return antwort({ fehler: "konflikt",
-          text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
-          etag: ergW.stand }, 409);
-      }
-      await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
-      return antwort({ ok: true, etag: ergW.stand, marke });
+        const ergW = await bestandSchreiben(store, s.bestand, w.bestand, {
+          erwarteterStand: jetztGelesen.stand,
+          durch: `${s.name || "unbekannt"} · wiederhergestellt aus ${marke}` });
+        if (!ergW.ok) {
+          await protokoll("schreiben", kW, "konflikt", `wiederherstellen ${marke}`, wer);
+          return antwort({ fehler: "konflikt",
+            text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
+            etag: ergW.stand }, 409);
+        }
+        await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
+        return antwort({ ok: true, etag: ergW.stand, marke });
+      });
     }
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   } catch (e) {
+    /* Die Raumsperre wurde nicht rechtzeitig frei (lib/raumsperre.mjs):
+       Es wurde nichts geschrieben, und das soll die Antwort auch sagen —
+       ein Stempel ist dann nicht erfasst, kein „ok", kein stiller Verlust. */
+    if (e && /** @type {any} */ (e).code === SPERRE_ZEITGRENZE) {
+      await protokoll("fehler", kennung(req, null), pfad, "Raumsperre: Zeitgrenze").catch(() => {});
+      return antwort({ fehler: "Gerade wird sehr viel gespeichert.",
+        text: "Es wurde nichts gespeichert. Bitte in einigen Sekunden noch einmal versuchen.",
+        code: "SPEICHERN_BELEGT" }, 503, { "retry-after": "5" });
+    }
     /* Nach außen nur, dass es schiefging. Die Einzelheiten bleiben im
        Protokoll — eine Fehlermeldung mit Innenleben ist eine Landkarte
        für den nächsten Angriff. */
