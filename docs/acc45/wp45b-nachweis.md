@@ -64,9 +64,35 @@ rot, weil die alte Umbenennung jede folgende Sicherung abbrach.
 Regression lokal: `ablage-pruefen`, `journal-lesen`, `aufraeumen` und `sicherung-ablage` mit 64/64 grün.
 CI („Prüfung“, „Sicherheit“, „Betrieb: Deploy-Skripte“) ist grün.
 
+## Review-Auflagen (unabhängiges Review, B1–B7)
+
+Stand vor den Auflagen: 10e5da4. Umsetzung in e8c4359 (Werkzeug, Tests) und 394e30f (Bild, CI, §4a).
+Neue Prüfdatei `pruefungen/ablage-pruefen-rueckweg.test.js` (14 Tests, einer nur unter Linux ohne root), im CI-Gate
+über `pruefung:datenintegritaet`. Auf dem alten Werkzeug (10e5da4) lokal: **12 rot, 1 grün, 1 übersprungen**
+(Linux-Test); auf dem neuen: **13 grün, 1 übersprungen** (Windows). In CI (Linux) läuft auch der Rechte-Test.
+
+| Befund | Umsetzung | Test (rot → grün) |
+|---|---|---|
+| **B1** Journal aus der Sicherung überschreibt Neueres | `--aus-sicherung` holt Journal, Standvermerke und Standzeiger **nie** zurück, sondern legt sie beiseite. Nach jeder Änderung an einem Raum schreibt das Werkzeug den Stand einmal über `bestandSchreiben` neu (mit Journal): Vermerk und Zeiger passen zur Platte, die Standnummer zählt weiter. Das ist nötig, weil der Wiederanlauf in `bestand.mjs` eine fehlende, aber im Vermerk genannte Scherbe nicht erkennt, und weil ein stehengebliebener Stand einen alten Browser-Stand still über den zurückgeholten Monat schreiben ließe. | „ein Journal aus der Sicherung überschreibt keine neueren Daten (p3 bleibt)“ — vorher verschwand p3 bei Rückgabe 0. „Standvermerk und Standzeiger werden beiseitegelegt und neu berechnet“ — vorher stand der Zeiger wieder auf 1. |
+| **B2** Original vor der Rückholung gelöscht; Fehlendes nicht erkannt | Rückholung daneben schreiben (0600, fsync), Hülle als **Kopie** ablegen, dann `rename` über das Original, Ordner-fsync, Vergleich. Ein Abbruch lässt die alte Datei liegen; die Zwischendatei wird bei einem Fehler entfernt, nach einem harten Abbruch übergeht sie die Sicherung (`.tmp`) und räumt der Server beim Start weg. Der Befund prüft gegen den Vermerk des aktuellen Stands (größerer aus Kern und Zeiger, wie der Wiederanlauf) und meldet fehlenden Kern und fehlende Scherben (Rückgabe 1). Fehlende Scherben: aus der Sicherung zurückholbar oder mit `--beiseitelegen` als leerer Monat hinnehmbar. Unlesbare Dateien (auch wegen Dateirechten) bekommen eine Hülle mit Lesefehler statt Bytes. | „Abbruch bei ‚rueckholung-geschrieben‘ / ‚huelle-abgelegt‘“ (je: Datei bleibt, Trockenlauf meldet, zweiter Lauf holt zurück, Sicherung danach in Ordnung); „Trockenlauf meldet fehlende Scherbe und fehlenden Kern“; „fehlende Scherbe aus der Sicherung“; „--beiseitelegen nimmt fehlende Scherbe hin“. |
+| **B3** Werkzeuge nicht im Bild | Dockerfile kopiert `ablage-pruefen.mjs` und `journal-pruefen.mjs` (Abhängigkeiten `ablage-sicherung.mjs` und `server/` sind schon im Bild). §4a: Aufruf `docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges:true --user 1000:1000 -v "$PWD/data:/data" <bild@digest> node /app/werkzeug/ablage-pruefen.mjs …` (Pfade aus `deploy/compose.yml`: `./data:/data`, uid 1000), Sicherung zusätzlich `:ro` unter `/s/sicherung`; nie als root (0600-Dateien sonst für uid 1000 unlesbar → 503); 45 s nach `compose stop`, wenn die Sperre eines anderen Rechnernamens noch frisch ist. | CI-Schritt „Rückweg-Werkzeuge im Bild“ (`pruefungen/werkzeuge-im-bild.sh`): im Bild vorhanden, Trockenlauf 0, kaputte Scherbe → 1, `--beiseitelegen` → 0, alle Dateien uid 1000/0600, laufender Dienst-Container → beide Werkzeuge 2, nach sauberem Stopp 0. Vorher fehlten die Dateien im Bild. |
+| **B4** Kern-Rückholung falsch beschrieben | Kern und Altbestand aus der Sicherung nur mit `--kern-zurueck`; ohne Flag bleibt er, das Werkzeug nennt die Folgen (alle nicht-monatlichen Daten — Personen, Dienstarten, Einheiten, Einstellungen — auf Sicherungsstand; neuere Monate können auf Fehlendes verweisen), mit Flag ebenfalls. §4a: eigener Abschnitt und Text für die Leitung. | „ohne --kern-zurueck bleibt der Kern, mit Flag kommt er zurück“; „--kern-zurueck ohne --aus-sicherung wird abgelehnt“. |
+| **B5** Nur Bestandsdateien geprüft | Zusätzlich jede Datei, an der `ablage-sicherung` abbräche (gleiche Logik: `quelleAnsehen` und `umschlagPruefen`, dafür exportiert): App-Sicherungen, Konten, Codes, Sitzungen, Protokoll, fremde Dateien. Nur gemeldet (Rückgabe 1), nie angefasst. §4a: Tabelle je Art mit Vorgehen (Quarantäne neben `data/`, Zugänge neu vergeben statt alte zurückholen, Rechte zurückgeben). | „meldet unlesbare App-Sicherung und Sitzung, fasst sie nicht an“. |
+| **B6** Sperre ohne Puls | `puls: true` (auch `journal-pruefen`), Verlust der Sperre bricht vor der nächsten Änderung ab. Eine fremde, frische Sperre bleibt zu (`wartenMs: 0` → „belegt“, Rückgabe 2); die Meldung nennt die 45 s. | „fremde, frische Sperre (anderer Rechner) bleibt zu“ — das Verweigern war schon vorher so, rot war nur der fehlende Hinweis auf die Wartezeit; Übernahme einer über 45 s alten Sperre geprüft. „hält die Sperre mit Puls“ — vorher stand die Änderungszeit still. Mit echtem anderem Rechnernamen: CI-Schritt aus B3. |
+| **B7** fehlende Tests | Journal/Kern aus der Sicherung, Abbruch im Rückholfenster, fremder Rechner, mehrere Räume ohne Raumangabe („alle betroffenen Räume in einem Lauf“), Dateirechte (`chmod 000` gemeldet, Rückgeholtes 0600, keine `.tmp`-Reste; nur Linux ohne root, also in CI). Testtitel „benennt um (nie löschen)“ ersetzt durch eine Beschreibung des tatsächlichen Verhaltens (Hülle mit Rohbytes, dann verschwindet das Original). | siehe oben |
+
+Regression lokal (Windows): `ablage-pruefen`, `ablage-pruefen-rueckweg`, `journal-lesen`, `sicherung-ablage`,
+`prozesssperre` mit 50/50 grün (1 übersprungen); `eslint` und `tsc` ohne Befund.
+
 ## Offen
 
 - Die nächtliche Sicherung bricht bei einer unlesbaren Datei ab. Das ist gewollt, weil es Alarm auslöst. Zum
   Zurückholen braucht es deshalb die letzte Sicherung *vor* dem Schaden.
 - Wird ein Monat aus einer älteren Sicherung zurückgeholt, gilt für ihn deren Stand. Was seitdem in diesem Monat
   eingetragen wurde, fehlt und muss von der Leitung nachgetragen werden.
+- Kern-Rückholung: Hat bei einem Wiederanlauf ein Browser noch einen Stand von *vor* dem Schaden offen, kann er nach
+  dem Angleichen einen Abgleich-Konflikt bekommen statt eines stillen Überschreibens — gewollt, aber für die
+  Betroffenen erklärungsbedürftig (Leitungsinformation in §4a).
+- Ein harter Abbruch (SIGKILL, Stromausfall) des Werkzeugs zwischen Rückholung und Umbenennen ist durch die
+  Reihenfolge abgedeckt, aber nur als geworfener Fehler simuliert (`schritt`-Haken), nicht als echter Prozessabbruch.
+- Die „Andere Dateien“ werden nur gemeldet; das Verschieben in die Quarantäne ist Handarbeit nach §4a.
