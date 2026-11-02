@@ -35,8 +35,10 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
-import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
+import { schreibstopp, alleFrei } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
+import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./server/lib/gesund.mjs";
+import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
 import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden } from "./server/lib/schutz.mjs";
 
@@ -392,14 +394,18 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://x");
     const pfad = url.pathname;
 
-    /* Gesund heißt auch: keine Schreibarbeit hängt über dem Wächter der
-       Raumsperre, und es gilt kein Schreibstopp (raumsperre.mjs). Dann
-       antwortet /gesund 503 — der Prozess läuft, aber er schreibt nicht
-       verlässlich. */
+    /* /gesund (WP-05, server/lib/gesund.mjs): Stufen ok/warnung/kritisch.
+       Nach außen nur die Stufe; 503 nur bei kritisch (Raumsperre hängt,
+       Schreibstopp, Ablage nicht beschreibbar, Platz kritisch). Die
+       Einzelheiten (?detail=1) nur direkt von der eigenen Maschine. */
     if (pfad === "/gesund") {
-      const z = sperrZustand();
-      if (z.gesund) json(res, 200, { status: "ok" });
-      else json(res, 503, { status: "gestört", haengend: z.haengend.length, schreibstopp: !!z.gestoppt });
+      const e = await zustand();
+      if (url.searchParams.get("detail") === "1" && detailErlaubt(req.socket.remoteAddress, req.headers)) {
+        json(res, e.stufe === "kritisch" ? 503 : 200, e);
+        return;
+      }
+      const o = oeffentlich(e);
+      json(res, o.status, o.inhalt);
       return;
     }
 
@@ -417,6 +423,7 @@ const server = createServer(async (req, res) => {
       const kontext = { ip: anfrage.headers.get("x-forwarded-for") };
       const antwort = await route.handler(anfrage, kontext);
       if (!(antwort instanceof Response)) throw new Error(`Funktion ${route.name}: keine Response`);
+      if (antwort.status >= 500) ereignis("5xx");
       await antwortSenden(antwort, res, req.method === "HEAD");
       return;
     }
@@ -426,6 +433,7 @@ const server = createServer(async (req, res) => {
     /* Hat der Aufrufer selbst aufgelegt, gibt es niemanden mehr, dem eine
        Antwort oder ein Protokolleintrag nützen würde. */
     if (req.destroyed || res.destroyed) return;
+    ereignis("5xx");
     console.error(`${new Date().toISOString()} ${req.method} ${req.url}:`, e && e.stack ? e.stack : e);
     /* Vorübergehend nicht lesbar oder gerade gesperrt (lib/bestand.mjs,
        voruebergehend): 503 mit Wiederholungshinweis, nicht 500 — und erst
@@ -456,6 +464,10 @@ server.keepAliveTimeout = 65_000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`CENTRIC läuft auf Port ${PORT}, Daten: ${process.env.CENTRIC_DATEN || "/data"}`);
 });
+
+/* Regelmäßige Zustandsprüfung mit Alarm (WP-05). Vorgabe: prüfen und im Log
+   vermerken; ein Alarmkanal erst mit CENTRIC_ALARM_WEBHOOK. */
+if ((process.env.CENTRIC_UEBERWACHUNG || "an").trim().toLowerCase() !== "aus") ueberwachungStarten();
 
 /* ---------------------------------------------------------------------------
    Täglicher Löschlauf für abgelaufene Testbetriebe

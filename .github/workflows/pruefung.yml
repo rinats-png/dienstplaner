@@ -351,6 +351,11 @@ jobs:
       - name: Zwei-Faktor für Verwalterschlüssel
         run: npm run pruefung:zweifaktor
 
+      # WP-05: /gesund-Stufen, Fehlerzählung, Alarm-Entprellung,
+      # Healthcheck-Kompatibilität.
+      - name: Überwachung (/gesund, Alarm)
+        run: npm run pruefung:gesund
+
       # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
       # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.
       - name: Herkunft und X-Forwarded-For

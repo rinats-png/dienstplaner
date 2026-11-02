@@ -94,6 +94,7 @@ export const STORES = {
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
   "centric-takt":             { klasse: "C" },
+  "centric-gesund":           { klasse: "C" },   // Probe von /gesund (WP-05), flüchtig
 };
 
 const sha256 = (/** @type {Buffer|string} */ b) => createHash("sha256").update(b).digest("hex");

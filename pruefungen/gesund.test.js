@@ -1,0 +1,311 @@
+/* ==========================================================================
+   /gesund — STUFEN, FEHLERZÄHLUNG, ALARM (WP-05)
+
+   Bis WP-05 kannte /gesund nur „ok“ oder „gestört“ (Raumsperre). Volle
+   Platte, nicht beschreibbare Ablage, alte Sicherung, gehäufte Fehler
+   blieben unsichtbar; einen Alarm gab es nicht.
+
+   Geprüft:
+     - Stufen ok/warnung/kritisch je Prüfung, Grenzwerte über die Umgebung
+     - nach außen nur {"status": …}, 503 nur bei kritisch
+     - Einzelheiten nur direkt von der eigenen Maschine
+     - gleitende Fehlerzählung (5xx, unlesbare Räume)
+     - Alarm: Entprellung, Verschärfung, Entwarnung, Erinnerung, ≤ 5 min,
+       keine personenbezogenen Daten — mit Fake-Timern
+     - Healthcheck aus dem Dockerfile: warnung bleibt healthy, kritisch nicht
+
+   Rot vorher: server/lib/gesund.mjs und gesund-zaehler.mjs fehlten.
+   ========================================================================== */
+
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+let wurzel, G, Z;
+
+const UMGEBUNG = ["CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT", "CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT",
+  "CENTRIC_GESUND_PLATZ_KRITISCH_MB", "CENTRIC_SICHERUNG_STATUS", "CENTRIC_GESUND_5XX_WARNUNG", "CENTRIC_AUFRAEUMEN"];
+
+beforeAll(async () => {
+  wurzel = await mkdtemp(path.join(tmpdir(), "centric-gesund-"));
+  process.env.CENTRIC_DATEN = wurzel;
+  process.env.CENTRIC_ABLAGE = "dateien";
+  process.env.CENTRIC_GESUND_PLATZ_KRITISCH_MB = "0";
+  G = await import("../server/lib/gesund.mjs");
+  Z = await import("../server/lib/gesund-zaehler.mjs");
+});
+afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const n of UMGEBUNG) if (n !== "CENTRIC_GESUND_PLATZ_KRITISCH_MB") delete process.env[n];
+  process.env.CENTRIC_GESUND_PLATZ_KRITISCH_MB = "0";
+  Z.zaehlungLeeren();
+  G.zustandVergessen();
+});
+
+describe("Stufen", () => {
+  it("alles in Ordnung: ok, nach außen genau {status: ok}, 200", async () => {
+    const e = await G.zustand({ frisch: true });
+    expect(e.stufe, JSON.stringify(e)).toBe("ok");
+    for (const n of ["sperre", "ablage", "platz", "sicherung", "loeschlauf", "fehler"]) expect(e.pruefungen[n].stufe, n).toBe("ok");
+    expect(G.oeffentlich(e)).toEqual({ status: 200, inhalt: { status: "ok" } });
+  });
+
+  it("Platz: Warnschwelle → warnung (200), Kritisch-Schwelle → kritisch (503); nach außen nur die Stufe", async () => {
+    process.env.CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT = "101";
+    let e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.platz.stufe).toBe("warnung");
+    expect(G.oeffentlich(e)).toEqual({ status: 200, inhalt: { status: "warnung" } });
+    process.env.CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT = "101";
+    e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.platz.stufe).toBe("kritisch");
+    expect(G.oeffentlich(e)).toEqual({ status: 503, inhalt: { status: "kritisch" } });
+  });
+
+  it("Ablage nicht beschreibbar → kritisch", async () => {
+    const ort = path.join(wurzel, "centric-gesund");
+    await rm(ort, { recursive: true, force: true });
+    await writeFile(ort, "kein Verzeichnis");
+    try {
+      const e = await G.zustand({ frisch: true });
+      expect(e.pruefungen.ablage.stufe).toBe("kritisch");
+      expect(e.stufe).toBe("kritisch");
+    } finally { await rm(ort, { force: true }); }
+  });
+
+  it("Sicherung: jung ok, alt warnung, unlesbar warnung, nicht eingerichtet ok", async () => {
+    const datei = path.join(wurzel, "letzte-erfolgreiche.json");
+    process.env.CENTRIC_SICHERUNG_STATUS = datei;
+    await writeFile(datei, JSON.stringify({ zeit: new Date(Date.now() - 3600000).toISOString(), dateien: 5 }));
+    expect((await G.zustand({ frisch: true })).pruefungen.sicherung.stufe).toBe("ok");
+    await writeFile(datei, JSON.stringify({ zeit: new Date(Date.now() - 30 * 3600000).toISOString() }));
+    const e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.sicherung).toMatchObject({ stufe: "warnung" });
+    expect(e.stufe).toBe("warnung");
+    await writeFile(datei, "{kaputt");
+    expect((await G.zustand({ frisch: true })).pruefungen.sicherung.stufe).toBe("warnung");
+    delete process.env.CENTRIC_SICHERUNG_STATUS;
+    expect((await G.zustand({ frisch: true })).pruefungen.sicherung.stufe).toBe("ok");
+  });
+
+  it("Löschlauf: alter Vermerk oder Fehler im Vermerk → warnung; abgeschaltet → ok", async () => {
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const s = getStore({ name: "centric", consistency: "strong" });
+    await s.setJSON("aufraeumen:letzter", { zeit: new Date(Date.now() - 50 * 3600000).toISOString(), fehler: [] });
+    expect((await G.zustand({ frisch: true })).pruefungen.loeschlauf.stufe).toBe("warnung");
+    await s.setJSON("aufraeumen:letzter", { zeit: new Date().toISOString(), fehler: [{ raum: "x", grund: "y" }] });
+    const e = await G.zustand({ frisch: true });
+    expect(e.pruefungen.loeschlauf.stufe).toBe("warnung");
+    expect(JSON.stringify(e.pruefungen.loeschlauf)).not.toContain("\"x\"");   // kein Raumname im Detail
+    process.env.CENTRIC_AUFRAEUMEN = "aus";
+    expect((await G.zustand({ frisch: true })).pruefungen.loeschlauf.stufe).toBe("ok");
+    await s.delete("aufraeumen:letzter");
+  });
+
+  it("zwischengespeichert: innerhalb der Cachezeit keine neue Probe", async () => {
+    const a = await G.zustand({ frisch: true });
+    const b = await G.zustand();
+    expect(b).toBe(a);
+  });
+});
+
+describe("Fehlerzählung (gleitend)", () => {
+  it("5xx ab der Schwelle → warnung; nach dem Fenster wieder ok", async () => {
+    const t0 = Date.now();
+    for (let i = 0; i < 9; i++) Z.ereignis("5xx", t0);
+    expect((await G.zustand({ frisch: true, jetzt: t0 })).pruefungen.fehler.stufe).toBe("ok");
+    Z.ereignis("5xx", t0);
+    const e = await G.zustand({ frisch: true, jetzt: t0 + 1000 });
+    expect(e.pruefungen.fehler).toMatchObject({ stufe: "warnung", "5xx": 10 });
+    expect(Z.zaehlung(t0 + Z.FENSTER_MS + 1)["5xx"]).toBe(0);
+  });
+
+  it("ein unlesbarer Raum zählt — über den Haken in bestand.mjs", async () => {
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const B = await import("../server/lib/bestand.mjs");
+    const s = getStore({ name: "centric", consistency: "strong" });
+    await s.setJSON("journal:kaputtraum", { schritte: [] });
+    await writeFile(path.join(wurzel, "centric", "journal%3Akaputtraum.json"), "{kein json");
+    await expect(B.bestandLesenStreng(s, "kaputtraum")).rejects.toThrow();
+    expect(Z.zaehlung().unlesbar).toBeGreaterThanOrEqual(1);
+    expect((await G.zustand({ frisch: true })).pruefungen.fehler.stufe).toBe("warnung");
+    await s.delete("journal:kaputtraum").catch(() => {});
+  });
+
+  it("unbekannte Arten werden ignoriert, keine Zusatzdaten", () => {
+    Z.ereignis("raum-nordwacht");
+    expect(Object.keys(Z.zaehlung()).sort()).toEqual(["5xx", "bremse-ausfall", "journal", "unlesbar"]);
+  });
+});
+
+describe("Einzelheiten nur lokal", () => {
+  it("nur Gegenstelle 127.0.0.1/::1 ohne Weiterleitungskopf", () => {
+    expect(G.detailErlaubt("127.0.0.1", {})).toBe(true);
+    expect(G.detailErlaubt("::1", {})).toBe(true);
+    expect(G.detailErlaubt("::ffff:127.0.0.1", {})).toBe(true);
+    expect(G.detailErlaubt("127.0.0.1", { "x-forwarded-for": "203.0.113.5" })).toBe(false);
+    expect(G.detailErlaubt("127.0.0.1", { forwarded: "for=1.2.3.4" })).toBe(false);
+    expect(G.detailErlaubt("172.18.0.2", {})).toBe(false);
+    expect(G.detailErlaubt(undefined, {})).toBe(false);
+  });
+});
+
+describe("Alarm", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  const ergebnis = (stufe, betroffen = []) => ({ stufe,
+    pruefungen: Object.fromEntries(["sperre", "ablage", "platz", "sicherung", "loeschlauf", "fehler"]
+      .map((n) => [n, { stufe: betroffen.includes(n) ? stufe : "ok" }])) });
+
+  it("Entprellung, Verschärfung, Entwarnung, Erinnerung — mit Fake-Timern", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.UTC(2026, 10, 3, 8, 0, 0));
+    const gesendet = [];
+    const g = G.alarmGeber({ entprellungMs: 120000, wiederholungMs: 6 * 3600000, senden: async (n) => { gesendet.push(n); } });
+    const schritt = async (e, ms = 60000) => { vi.advanceTimersByTime(ms); return g.beobachten(e, Date.now()); };
+
+    expect(await g.beobachten(ergebnis("ok"), Date.now())).toBeNull();
+    /* Flattern unter der Entprellung: kein Alarm. */
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
+    expect(await schritt(ergebnis("ok"))).toBeNull();
+    expect(gesendet).toEqual([]);
+    /* Anhaltend: Alarm nach ≥ 120 s. */
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBe("alarm");
+    expect(gesendet.at(-1)).toMatchObject({ dienst: "CENTRIC", art: "alarm", stufe: "warnung", betroffen: ["platz"] });
+    /* Gleichbleibend: nichts Neues. */
+    expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
+    /* Verschärfung: erneut, nach Entprellung. */
+    expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBeNull();
+    expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBeNull();
+    expect(await schritt(ergebnis("kritisch", ["ablage"]))).toBe("alarm");
+    expect(gesendet.at(-1)).toMatchObject({ stufe: "kritisch", betroffen: ["ablage"] });
+    /* Erinnerung nach 6 h. */
+    expect(await schritt(ergebnis("kritisch", ["ablage"]), 6 * 3600000)).toBe("erinnerung");
+    /* Entwarnung nach stabiler Rückkehr. */
+    expect(await schritt(ergebnis("ok"))).toBeNull();
+    expect(await schritt(ergebnis("ok"))).toBeNull();
+    expect(await schritt(ergebnis("ok"))).toBe("entwarnung");
+    expect(gesendet.map((n) => n.art)).toEqual(["alarm", "alarm", "erinnerung", "entwarnung"]);
+    /* Keine personenbezogenen Daten: nur diese Schlüssel, nur Prüfungsnamen. */
+    for (const n of gesendet) {
+      expect(Object.keys(n).sort()).toEqual(["art", "betroffen", "dienst", "stufe", "zeit"]);
+      for (const b of n.betroffen) expect(["sperre", "ablage", "platz", "sicherung", "loeschlauf", "fehler"]).toContain(b);
+    }
+  });
+
+  it("≤ 5 min: mit Vorgabe-Takt (60 s) und -Entprellung (120 s), Eintritt zu ungünstigster Zeit", async () => {
+    const a = G.alarmEinstellungen();
+    expect(a.taktMs).toBe(60000);
+    expect(a.entprellungMs).toBe(120000);
+    expect(a.webhook).toBe("");                     // Vorgabe: kein Kanal
+    for (const versatz of [1, 30000, 59999]) {
+      const gesendet = [];
+      const g = G.alarmGeber({ entprellungMs: a.entprellungMs, wiederholungMs: a.wiederholungMs,
+        senden: async (n) => { gesendet.push(n); } });
+      const t0 = 1_000_000;
+      await g.beobachten(ergebnis("ok"), t0);
+      const eintritt = t0 + versatz;                // zwischen zwei Prüfungen
+      let t = t0;
+      while (!gesendet.length && t < t0 + 3600000) {
+        t += a.taktMs;
+        await g.beobachten(t >= eintritt ? ergebnis("kritisch", ["ablage"]) : ergebnis("ok"), t);
+      }
+      expect(t - eintritt, `Versatz ${versatz}`).toBeLessThanOrEqual(5 * 60000);
+    }
+  });
+
+  it("Webhook-Sender: POST JSON an die URL, Fehler werfen nicht", async () => {
+    const { createServer } = await import("node:http");
+    const empfangen = [];
+    const srv = createServer((q, a) => { let t = ""; q.on("data", (d) => { t += d; }); q.on("end", () => { empfangen.push({ m: q.method, t }); a.end("ok"); }); });
+    await new Promise((f) => srv.listen(0, "127.0.0.1", f));
+    try {
+      await G.webhookSender(`http://127.0.0.1:${srv.address().port}/haken`)({ dienst: "CENTRIC", art: "alarm" });
+      expect(empfangen).toHaveLength(1);
+      expect(empfangen[0].m).toBe("POST");
+      expect(JSON.parse(empfangen[0].t)).toEqual({ dienst: "CENTRIC", art: "alarm" });
+      await G.webhookSender("http://127.0.0.1:1/nix")({ a: 1 });   // wirft nicht
+    } finally { await new Promise((f) => srv.close(f)); }
+  });
+});
+
+/* ---------- über den echten Server ---------- */
+
+describe("server.mjs: /gesund und Healthcheck", () => {
+  let statik, daten;
+  const kinder = [];
+  afterAll(async () => {
+    for (const k of kinder) k.kill();
+    for (const d of [statik, daten]) if (d) await rm(d, { recursive: true, force: true });
+  });
+
+  async function starten(env) {
+    const port = 30000 + Math.floor(Math.random() * 20000);
+    const k = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
+      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: await mkdtemp(path.join(tmpdir(), "centric-gesund-d-")),
+        CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: "g", NODE_ENV: "production", CENTRIC_AUFRAEUMEN: "aus",
+        CENTRIC_GESUND_PLATZ_KRITISCH_MB: "0", ...env } });
+    kinder.push(k);
+    for (let i = 0; i < 100; i++) {
+      const ok = await fetch(`http://127.0.0.1:${port}/gesund`).then(() => true).catch(() => false);
+      if (ok) return port;
+      await new Promise((w) => setTimeout(w, 100));
+    }
+    throw new Error("Server startet nicht");
+  }
+  const healthcheck = async (port) => {
+    const docker = await readFile(path.join(WURZEL, "Dockerfile"), "utf8");
+    const befehl = docker.match(/CMD node -e "(.*)"\s*$/m)[1];
+    /* Unter Windows bricht node bei process.exit() mit offenem fetch-Handle ab
+       (libuv-Assertion) — der Exit-Code ist dort nicht aussagekräftig. */
+    if (process.platform === "win32") return "windows";
+    return spawnSync(process.execPath, ["-e", befehl], { env: { ...process.env, PORT: String(port) } }).status;
+  };
+
+  beforeAll(async () => {
+    statik = await mkdtemp(path.join(tmpdir(), "centric-gesund-s-"));
+    await mkdir(path.join(statik, "assets"));
+    await writeFile(path.join(statik, "index.html"), "<!doctype html>");
+  });
+
+  it("ok: {status: ok}, no-store; Einzelheiten nur lokal ohne XFF", async () => {
+    const port = await starten({});
+    const r = await fetch(`http://127.0.0.1:${port}/gesund`);
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ status: "ok" });
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    const d = await (await fetch(`http://127.0.0.1:${port}/gesund?detail=1`)).json();
+    expect(d.stufe).toBe("ok");
+    expect(Object.keys(d.pruefungen)).toContain("platz");
+    const ueberProxy = await (await fetch(`http://127.0.0.1:${port}/gesund?detail=1`,
+      { headers: { "x-forwarded-for": "203.0.113.9" } })).json();
+    expect(ueberProxy).toEqual({ status: "ok" });
+    expect([0, "windows"]).toContain(await healthcheck(port));
+  }, 30000);
+
+  it("warnung: 200 und Healthcheck bleibt grün; kritisch: 503 und Healthcheck rot — ohne Einzelheiten", async () => {
+    const pw = await starten({ CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT: "101" });
+    const w = await fetch(`http://127.0.0.1:${pw}/gesund`);
+    expect(w.status).toBe(200);
+    expect(await w.json()).toEqual({ status: "warnung" });
+    expect([0, "windows"]).toContain(await healthcheck(pw));
+    const pk = await starten({ CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT: "101" });
+    const k = await fetch(`http://127.0.0.1:${pk}/gesund`);
+    expect(k.status).toBe(503);
+    expect(await k.json()).toEqual({ status: "kritisch" });
+    expect([1, "windows"]).toContain(await healthcheck(pk));
+  }, 30000);
+
+  it("deploy-smoke.mjs bleibt grün bei Stufe warnung", async () => {
+    const pw = await starten({ CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT: "101" });
+    const r = spawnSync(process.execPath, ["--input-type=module", "-"], {
+      input: await readFile(path.join(WURZEL, "deploy", "deploy-smoke.mjs")), encoding: "utf8",
+      env: { ...process.env, CENTRIC_SMOKE_BASIS: `http://127.0.0.1:${pw}` } });
+    expect(r.stdout).toContain("ok      GET /gesund: 200");
+  }, 30000);
+});
