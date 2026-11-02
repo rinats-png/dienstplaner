@@ -76,7 +76,8 @@ export async function raumLoeschen(store, sitzungen, raum) {
   try { await store.delete(journalSchluessel(raum)); }                // fehlt es, ist nichts zu tun
   catch (e) { fehler.push({ schluessel: journalSchluessel(raum), grund: grundVon(e) }); }
   for (const praefix of [`scherbe:${raum}:`, `stand:${raum}:`, `sicherung:${raum}:`,
-    `journal-beiseite:${raum}:`])          // beiseitegelegte Journale (werkzeug/journal-pruefen.mjs)
+    `journal-beiseite:${raum}:`,           // beiseitegelegte Journale (werkzeug/journal-pruefen.mjs)
+    `beiseite:${raum}:`])                  // beiseitegelegte Dateien (werkzeug/ablage-pruefen.mjs)
     await praefixWeg(praefix);
 
   /* 2. Zugangscodes des Raums — erst der Sammelblob, dann die einzeln

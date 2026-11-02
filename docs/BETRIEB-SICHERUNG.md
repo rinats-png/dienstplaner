@@ -172,6 +172,60 @@ Ausgangslage: Daten verloren/beschädigt oder neuer Server. Benötigt: restic-Pa
 
 **Bild beschaffen, wenn der VPS verloren ist.** Das Bild liegt in GHCR: `docker pull ghcr.io/rinats-png/dienstplaner@sha256:<digest aus dem Tag bild=…>` (vorher `docker login ghcr.io` mit einem Token, das Pakete lesen darf). Ist der Digest dort nicht mehr verfügbar: aus dem Commit des Releases neu bauen (`docker build` wie im Dockerfile beschrieben, gleiche `VITE_*`-Werte) — das Werkzeug `ablage-sicherung.mjs` muss dieselbe Formatfassung haben (`FORMAT = 1`). Danach der neue Server: Docker und Compose wie in BEREITSTELLUNG, `.env` mit **demselben** Pfeffer aus dem Passwortmanager, 2.2/2.3 (neuer Schlüssel), dann Schritte 2–6.
 
+## 4a. Unlesbare Datei (ein Raum antwortet nur noch mit 503)
+
+**Woran man es erkennt:** Für einen Raum antworten Anzeige, Speichern, Stempeln und auch das Wiederherstellen in der
+App mit 503 („Der gespeicherte Stand ist gerade nicht vollständig lesbar“, Code `BESTAND_UNLESBAR`). Im
+Serverprotokoll steht, welche Datei betroffen ist (`Kern`, `Scherbe …`, `Schreibjournal`, `Vermerk …`). Die nächtliche
+Sicherung bricht dann ebenfalls ab (`… ist kein gültiger JSON-Umschlag`) — gewollt, damit niemand eine kaputte Ablage
+für gesichert hält.
+
+Das ist Absicht. Ein Bestand mit Lücke würde beim nächsten Speichern den fehlenden Monat löschen (WP-45, H1). Andere
+Räume arbeiten normal weiter.
+
+**Ablauf**
+
+1. **R0 – Anhalten:** `docker compose stop -t 30`. Das Werkzeug arbeitet nur auf einer ruhenden Ablage; es belegt
+   `data/.prozess` und verweigert die Arbeit, solange der Server läuft.
+2. **Prüfen (Trockenlauf, ändert nichts):**
+
+        node werkzeug/ablage-pruefen.mjs --daten ./data [raum]
+
+   Es listet je Raum jede unlesbare Datei: Kern, Scherbe (= ein Monat), Standvermerk, Standzeiger, Journal.
+   Rückgabe 1 heißt „Unlesbares gefunden“.
+3. **Aus der Sicherung zurückholen (erste Wahl):** die jüngste *vollständige* Sicherung vor dem Schaden holen (wie in
+   §4, Schritte 2–4: proben, `restic restore` nach `~/notfall`), dann
+
+        node werkzeug/ablage-pruefen.mjs --daten ./data --aus-sicherung "$S" [raum]
+
+   Die Sicherung wird vorher ganz geprüft (FERTIG, Manifest, Prüfsumme jeder Datei); stimmt etwas nicht, wird nichts
+   angefasst. Jede unlesbare Datei wird byte-gleich zurückgeholt und nach dem Schreiben noch einmal verglichen. Die
+   kaputte Datei geht nicht verloren, sie liegt als `beiseite:<raum>:<zeit>:<schlüssel>`.
+   **Wirkung:** Für den zurückgeholten Monat gilt der Stand der Sicherung; was seitdem in diesem Monat eingetragen
+   wurde, fehlt.
+4. **Sonst beiseitelegen:** wenn die Datei in keiner Sicherung liegt.
+
+        node werkzeug/ablage-pruefen.mjs --daten ./data --beiseitelegen [raum]
+
+   Die Rohbytes wandern unverändert in einen Eintrag `beiseite:…`; gelöscht wird nichts.
+   - **Scherbe:** **Dieser Monat gilt danach als leer** (Plan-Abweichungen, Ist-Zeiten, Stempel des Monats).
+   - **Vermerk, Zeiger, Journal:** Der nächste Schreibvorgang gleicht den Stand aus dem Gespeicherten an. Ein
+     beiseitegelegtes Journal kann einen Monat im Zwischenstand hinterlassen.
+   - **Kern:** Einen unlesbaren Kern legt das Werkzeug **nicht** beiseite. Ohne Kern gäbe es den Raum nicht mehr, und
+     eine neue Anlage könnte ihn überschreiben. Hier hilft nur Schritt 3 oder die vollständige Wiederherstellung (§4).
+5. **Erneut prüfen** (Schritt 2, Rückgabe 0), dann `docker compose up -d`, anmelden, den Raum öffnen.
+6. **Leitung informieren:** welcher Raum, welcher Monat, ob aus der Sicherung (Stand vom …) oder beiseitegelegt
+   (Monat leer). Die Leitung prüft den Monat fachlich, trägt Fehlendes nach und bestätigt Ist-Zeiten erneut.
+7. **Eine Sicherung von Hand anstoßen.** Sie muss wieder durchlaufen (Totmannschalter grün). Die `beiseite:`-Einträge
+   werden mitgesichert und mit dem Raum gelöscht. Nach Abschluss der Klärung können sie beim Löschen des Raums oder im
+   Rahmen der Aufbewahrung verschwinden.
+
+**Warum das Wiederherstellen in der App eine unlesbare Scherbe nicht übergeht:** Das Wiederherstellen ersetzt nur den
+*eigenen* Betrieb. Den Rest des Raums übernimmt es aus dem jetzigen Stand, also auch andere Betriebe desselben Raums.
+Würde es dabei eine unlesbare Scherbe übergehen, schriebe es den Raum ohne diesen Monat zurück. Trifft es einen
+anderen Betrieb, wäre dessen Monat gelöscht, ohne dass jemand es merkt. Außerdem wäre die automatische Sicherung vor
+dem Wiederherstellen unvollständig. Deshalb bleibt es bei 503, und der Rückweg ist dieses Werkzeug.
+
 ## 5. Grenzen (ehrlich)
 
 - **Löschschutz:** Der VPS hat Schreibzugriff auf das Repository (für `forget --prune`). Ein Angreifer mit `admin`-Rechten könnte die Sicherungen löschen. Abhilfe (deine Entscheidung): Storage Box mit Snapshots/Unterkonto ohne Löschrecht, S3 mit Object Lock, oder `rest-server --append-only` und Prune von einem zweiten Rechner.
