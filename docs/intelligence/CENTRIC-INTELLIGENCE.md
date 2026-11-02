@@ -4,6 +4,8 @@
 **Status:** Planung. Es gibt noch keinen Intelligence-Code.  
 **Zweck:** Alles an einer Stelle: wofür Intelligence da ist, was sie kann und was nicht, wie sie gebaut, eingeführt, abgesichert und bezahlt wird.
 
+> **Hinweis Regelregister (Oktober 2026):** Intelligence erklärt nur. Sie darf Regel-ID, Quelle, Fundstelle, Regelstand und Prüfstatus nennen, behandelt eine vorläufige Regel (`provisional`) oder einen Watchlist-Eintrag nie als geltendes Recht und stuft keinen Hinweis hoch. Siehe `docs/REGELWERK-REGISTRY.md`. E-19 bis E-21 bleiben unberührt.
+
 **Neu in Fassung 7 (Entscheidungen E-19 bis E-21 vom 16.10.2026):**
 - **Warnen statt sperren** im ganzen Produkt: keine Regel verhindert eine Planungsentscheidung; drei Warnstufen, Warndialog mit „Dennoch fortfahren“, Bestätigungsprotokoll. Kern ohne KI, Grundlage für alles Weitere (Abschnitt 4.4)
 - **Interne Vorgaben** mit deterministischem Regelbaukasten; der Rechenkern prüft sie wie Gesetz und Tarif, nur mit eigener Stufe (Abschnitt 4.4)

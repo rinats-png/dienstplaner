@@ -32,6 +32,9 @@
    ========================================================================== */
 
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
+/** Ein Kalendertag, den es gibt (kein 30.02.). */
+const gueltigesDatum = (s) => typeof s === "string" && DATUM.test(s)
+  && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
 /** Der letzte Tag vor dem 18. Geburtstag (29.2. in Nicht-Schaltjahren: 28.2.). */
 export function letzterTagMinderjaehrig(geburtstag) {
@@ -50,7 +53,13 @@ export function letzterTagMinderjaehrig(geburtstag) {
 export function planungsregelnAbleiten(p, fenster = {}) {
   const aus = [];
   if (!p || typeof p !== "object") return aus;
-  const bis = letzterTagMinderjaehrig(p.geburtstag || p.geburtsdatum);
+  const geb = p.geburtstag || p.geburtsdatum;
+  /* Fehlt das Geburtsdatum oder gibt es den Tag nicht (30.02.), ist das Alter
+     nicht bewertbar (Kette A, WP-11): Für Jugendliche wären Nacht, Beginn vor
+     6 Uhr und über acht Stunden unzulässig. Ein Hinweis, keine Sperre —
+     dieselbe Aussage wie schutzBefunde mit Rohdaten, ohne das Merkmal. */
+  if (!gueltigesDatum(geb)) aus.push({ regel: "alterNichtBewertbar", hart: false, offen: true });
+  const bis = gueltigesDatum(geb) ? letzterTagMinderjaehrig(geb) : null;
   if (bis && (!fenster.von || bis >= fenster.von)) {
     aus.push({ regel: "nachtNichtZulaessig", hart: true, bis },
       { regel: "hoechstens8hTag", hart: true, bis },
