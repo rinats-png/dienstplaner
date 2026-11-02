@@ -249,11 +249,17 @@ async function zaehlerLeeren(s, art, kennung, fenster) {
 
 /** Grenzen je Endpunkt: wie viele Versuche in wie vielen Sekunden. */
 export const GRENZEN = {
-  /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung */
-  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200 },
-  demo:       { versuche: 20,  fenster: 300,  sperre: 300 },
-  einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400 },
-  zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400 },
+  /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung
+     failClosed: Lässt sich der Sperreintrag wegen eines Plattenfehlers
+       nicht lesen, gilt die Kennung als gesperrt — eine Langzeitsperre darf
+       nicht übergangen werden. Nur für Arten, bei denen es um Raten,
+       Anlegen oder Versand geht. Alle anderen zählen dann degradiert im
+       Speicher weiter, damit ein Fehler im Zählerstore nicht die ganze
+       Anwendung lahmlegt (bremse()). */
+  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true },
+  demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
+  einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
+  zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
@@ -264,13 +270,14 @@ export const GRENZEN = {
   wiederherstellen: { versuche: 5, fenster: 3600, sperre: 3600 },
   /* Selbstbedienung: drei Betriebe je Stunde. Ohne diese Bremse legt jemand
      über Nacht zehntausend Räume an, und die Kosten laufen mit. */
-  starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400, failClosed: true },
   /* Eine Registrierung kostet zunächst nichts — aber sie schickt eine Mail.
      Ohne Bremse wäre der Endpunkt ein Werkzeug, mit dem sich fremde
      Postfächer zuschütten lassen, und der Versanddienst rechnet mit. Fünf
      Versuche je Stunde und Herkunft reichen für jeden Tippfehler; die
      Sperre verdoppelt sich wie beim Anmelden. */
-  registrierung: { versuche: 5, fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  registrierung: { versuche: 5, fenster: 3600, sperre: 3600, steigend: true, max: 86400,
+    failClosed: true },
   /* Ein Bestätigungslink wird auch von Mailprogrammen vorab geladen und von
      Menschen mehrfach angeklickt. Deshalb großzügiger: Das Raten eines
      256-Bit-Tokens verhindert seine Länge, nicht diese Bremse. Sie hält nur
@@ -289,7 +296,7 @@ export const GRENZEN = {
      aus demselben Grund steigend: Wer wiederholt anrennt, wartet jedes Mal
      doppelt so lange. */
   "anmelden-konto": { versuche: 8, fenster: 300, sperre: 300, steigend: true,
-    max: 7200 },
+    max: 7200, failClosed: true },
   /* Sitzung prüfen und abmelden. Kein Geheimnis zu raten — ein Merkmal hat
      256 Bit —, also großzügig wie das Lesen. Gebremst wird, damit ein
      Ansturm nicht die Ablage beschäftigt: Jede Prüfung liest zwei
@@ -554,9 +561,12 @@ export async function bremse(art, kennung, ziel) {
     } catch (e) {
       /* Plattenfehler (EIO, EACCES …): Ob hier eine Langzeitsperre steht,
          ist unbekannt — im Speicher ist sie nach einem Neustart nicht mehr.
-         Also gilt die Kennung als gesperrt. Überschrieben wird nichts: Eine
-         lesbare Sperre käme sonst kürzer zurück, als sie war. */
+         Bei sicherheitskritischen Arten (failClosed) gilt die Kennung
+         deshalb als gesperrt; überschrieben wird nichts, eine lesbare
+         Sperre käme sonst kürzer zurück, als sie war. Alle anderen Arten
+         zählen unten im Speicher weiter (degradiert, mit `fehler`). */
       if (e && /** @type {any} */ (e).code) {
+        if (!g.failClosed) throw e;
         const fehler = String(/** @type {any} */ (e).message || e).slice(0, 120);
         ausfallMelden(art, fehler);
         return { frei: false, wartet: g.sperre, grund: "gesperrt", fehler };

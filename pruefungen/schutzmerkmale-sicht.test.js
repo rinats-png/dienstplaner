@@ -65,16 +65,22 @@ describe("Sicht der Schichtverantwortung", () => {
   it("planungsregeln mit den erwarteten Regeln und Zeiträumen", () => {
     const m = sicht(SUB);
     const regeln = (id) => (pers(m, id).planungsregeln || []).map((r) => r.regel).sort();
-    expect(regeln("mu")).toEqual(["nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
-    expect(regeln("sb")).toEqual(["ueber8hNurAbsprache"]);
+    /* WP-11 (Kette A): Ohne gültiges Geburtsdatum ist das Alter nicht
+       bewertbar — ein Hinweis-Regel „alterNichtBewertbar" (offen, nicht hart),
+       wie schutzBefunde mit Rohdaten. Hier fehlt es bei allen außer ju. */
+    expect(regeln("mu")).toEqual(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
+    expect(regeln("sb")).toEqual(["alterNichtBewertbar", "ueber8hNurAbsprache"]);
     expect(regeln("ju")).toEqual(["hoechstens8hTag", "nachtNichtZulaessig", "wochenendePruefen"]);
     expect(pers(m, "ju").planungsregeln.every((r) => r.bis === tagPlus(29))).toBe(true);
-    expect(regeln("vo")).toEqual([]);                                   // Vorsorge: keine Ableitung
-    expect(pers(m, "we").planungsregeln).toEqual([{ regel: "stundengrenzeWoche", hart: false, von: WIEDER.von, bis: WIEDER.bis, wert: 17.25 }]);
+    expect(regeln("vo")).toEqual(["alterNichtBewertbar"]);              // Vorsorge: keine Ableitung
+    expect(pers(m, "we").planungsregeln).toEqual([{ regel: "alterNichtBewertbar", hart: false, offen: true },
+      { regel: "stundengrenzeWoche", hart: false, von: WIEDER.von, bis: WIEDER.bis, wert: 17.25 }]);
+    for (const id of ["mu", "sb", "vo", "we", "kn", "oh", "po"])
+      expect(pers(m, id).planungsregeln.find((r) => r.regel === "alterNichtBewertbar"), id).toEqual({ regel: "alterNichtBewertbar", hart: false, offen: true });
     expect(pers(m, "we").einschraenkungen).toEqual({ keineNacht: false, maxDiensteWoche: 4 });
     expect(pers(m, "kn").einschraenkungen).toEqual({ keineNacht: true, keinAlleindienst: true });
-    expect(regeln("oh")).toEqual([]);
-    expect(regeln("po")).toEqual(["nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
+    expect(regeln("oh")).toEqual(["alterNichtBewertbar"]);
+    expect(regeln("po")).toEqual(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
     expect(pers(m, "fr").planungsregeln).toBeUndefined();               // fremder Bereich: weder Roh noch Ableitung
   });
   it("Mutterschutz und Schwerbehinderung ohne erfundenen Zeitraum", () => {
@@ -109,7 +115,9 @@ describe("andere Rollen unverändert", () => {
 
 describe("Gleichwertigkeit: Rohdaten + schutzBefunde = Ableitung + regelBefunde", () => {
   const REGEL = { "JArbSchG § 14": "nachtNichtZulaessig", "MuSchG § 5": "nachtNichtZulaessig", "JArbSchG § 8": "hoechstens8hTag",
-    "JArbSchG §§ 16–17": "wochenendePruefen", "MuSchG § 6": "sonntagNurMitFreigabe", "SGB IX § 207": "ueber8hNurAbsprache" };
+    "JArbSchG §§ 16–17": "wochenendePruefen", "MuSchG § 6": "sonntagNurMitFreigabe", "SGB IX § 207": "ueber8hNurAbsprache",
+    /* WP-11: fehlendes Geburtsdatum, nicht bewertbar — auf beiden Wegen. */
+    "JArbSchG (Geburtsdatum)": "alterNichtBewertbar" };
   const DIENSTE = {
     frueh: { start: "06:00", ende: "14:00", pause: 30 }, vor6: { start: "05:30", ende: "13:30", pause: 30 },
     spaet: { start: "14:00", ende: "22:00", pause: 30 }, nacht: { start: "22:00", ende: "06:00", pause: 30 },
@@ -161,7 +169,7 @@ describe("Prüfung mit der Sicht der Schichtverantwortung", () => {
   });
   it("Nachtdienst der Mutterschutz-Person: hart; zulässiger Frühdienst: kein Befund", () => {
     const mu = pers(sicht(SUB), "mu");
-    expect(RW.schutzBefundeFuer(mu, nacht, "2026-11-04").map((b) => [b.regel, b.hart])).toEqual([["nachtNichtZulaessig", true]]);
+    expect(RW.schutzBefundeFuer(mu, nacht, "2026-11-04").map((b) => [b.regel, b.hart])).toEqual([["alterNichtBewertbar", false], ["nachtNichtZulaessig", true]]);
     expect(RW.schutzBefundeFuer(mu, { start: "06:00", ende: "14:00", pause: 30 }, "2026-11-04")).toEqual([]);
   });
   it("neutrale Texte: keine Diagnose, kein Gesetz", () => {
@@ -178,7 +186,10 @@ describe("Prüfung mit der Sicht der Schichtverantwortung", () => {
     }
   });
   it("leere planungsregeln: geprüft, keine Regel — kein Befund", () => {
-    expect(RW.schutzBefundeFuer(pers(sicht(SUB), "oh"), nacht, "2026-11-08")).toEqual([]);
+    expect(RW.schutzBefundeFuer({ ...pers(sicht(SUB), "oh"), planungsregeln: [] }, nacht, "2026-11-08")).toEqual([]);
+    /* oh hat kein Geburtsdatum: nur der Hinweis, kein harter Befund (WP-11). */
+    expect(RW.schutzBefundeFuer(pers(sicht(SUB), "oh"), nacht, "2026-11-08"))
+      .toEqual([expect.objectContaining({ regel: "alterNichtBewertbar", hart: false, offen: true })]);
   });
   it("unbekannte Regel: sperrt", () => {
     expect(RW.regelBefunde([{ regel: "neuInZukunft", hart: false }], nacht, "2026-11-04")).toEqual([expect.objectContaining({ hart: true })]);

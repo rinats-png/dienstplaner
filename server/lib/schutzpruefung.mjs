@@ -165,6 +165,7 @@ export const EINSATZREGEL_TEXTE = {
   ueber8hNurAbsprache: "Dienst über 8 Stunden nur nach Absprache.",
   stundengrenzeWoche: "Wochenstundengrenze überschritten.",
   unbekannt: "Einsatzregel nicht auswertbar — Planungsprüfung erforderlich.",
+  alterNichtBewertbar: "Alter nicht hinterlegt — ob dieser Einsatz zulässig ist (Nacht, vor 6 Uhr, über acht Stunden), lässt sich nicht prüfen.",
 };
 
 /**
@@ -188,6 +189,13 @@ export function regelBefunde(planungsregeln, dienstart, datum) {
       case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
       case "ueber8hNurAbsprache": treffer(dauer(dienstart) > 8); break;
       case "stundengrenzeWoche": break;
+      /* Geburtsdatum fehlt (planungsregeln.mjs): nicht bewertbar — ein
+         Hinweis bei den Diensten, die für Jugendliche unzulässig wären,
+         wie schutzBefunde mit Rohdaten (WP-11). */
+      case "alterNichtBewertbar":
+        if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60 || dauer(dienstart) > 8.5)
+          aus.push({ regel: r.regel, hart: false, offen: true, text: EINSATZREGEL_TEXTE.alterNichtBewertbar });
+        break;
       default: aus.push({ regel: "unbekannt", hart: true, text: EINSATZREGEL_TEXTE.unbekannt });
     }
   }

@@ -86,6 +86,9 @@ jobs:
       # und im Betriebsratsprotokoll.
       - name: Schutzdaten
         run: npm run pruefung:schutzdaten
+      # Auslieferung: Entwürfe, Marketing und Dokumente bleiben aus dem Produkt.
+      - name: Auslieferung ohne Entwürfe
+        run: npm run pruefung:auslieferung
 
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf

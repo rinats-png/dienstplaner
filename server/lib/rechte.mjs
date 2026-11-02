@@ -19,7 +19,9 @@ import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
-import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen } from "./bestaetigungen.mjs";
+import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT } from "./bestaetigungen.mjs";
+import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -973,6 +975,22 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
         if (best.grund) return { verweigert: best.grund };
         geschickt = { ...geschickt, bestaetigungen: best.liste };
       }
+      /* Selbstplanung, „nicht übernommen" (Review K1): nur Person, Tag, Dienst
+         und eine Grund-Kennung — nie ein Befundtext. Unbekannte Gründe werden
+         „befund", Ungültiges fällt weg (selbstplanung.mjs). */
+      /* Unverändert Zurückgeschicktes bleibt der gespeicherte Stand (ein
+         Rundweg ändert nichts); Altbestand mit Text geht ohnehin nur an Planung
+         und Leitung — Beschäftigte und Schichtverantwortung lesen Kennungen. */
+      if (Array.isArray(geschickt.selbstplanung) && geschickt.selbstplanung.some((r) => r && Array.isArray(r.nichtUebernommen))) {
+        const gespeichert = new Map((Array.isArray(ort.betrieb.selbstplanung) ? ort.betrieb.selbstplanung : [])
+          .filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
+        geschickt = { ...geschickt, selbstplanung: geschickt.selbstplanung.map((r) => {
+          if (!r || typeof r !== "object" || !Array.isArray(r.nichtUebernommen)) return r;
+          const vorher = gespeichert.get(String(r.id));
+          if (vorher && gleich(vorher.nichtUebernommen, r.nichtUebernommen)) return r;
+          return { ...r, nichtUebernommen: nichtUebernommenNormal(r.nichtUebernommen) };
+        }) };
+      }
     }
 
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
@@ -1332,7 +1350,7 @@ function anhaengen(feld, alt, neu, { neuerEintrag = () => null, aenderung = () =
    Die Mitteilung an die Leitung erzeugt danach der Server
    (bestaetigungen.mjs, d.4).
    -------------------------------------------------------------------------- */
-const BEFUND_STUFEN = ["hinweis", "achtung", "recht"];
+const SPERRT = Symbol("sperrt");
 const PROTOKOLL_STUFEN = ["achtung", "recht"];
 const kurzText = (t, max) => typeof t === "string" && t.length <= max;
 /**
@@ -1362,15 +1380,18 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
     if (e.stufe === "recht" && e.gelesen !== true) return null;
     const befunde = Array.isArray(e.befunde) ? e.befunde : [];
     if (!befunde.length || befunde.length > 20) return null;
-    if (!befunde.every((b) => b && typeof b === "object" && BEFUND_STUFEN.includes(b.stufe) && kurzText(b.text, 300)
-      && (b.quelle === undefined || b.quelle === null || kurzText(b.quelle, 200)))) return null;
+    /* Nur Kennung aus dem Befundkatalog und Stufe (Review M1) — kein Freitext.
+       Ein sperrender Befund lässt sich nicht bestätigen (H1, BEFUND_KATALOG). */
+    if (!befunde.every((b) => b && typeof b === "object" && PROTOKOLL_STUFEN.includes(b.stufe)
+      && Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, b.regel))) return null;
+    if (befunde.some((b) => sperrtBefund(b.regel))) return SPERRT;
     if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
     const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
     if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
     if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
     if (e.regelstand !== undefined && e.regelstand !== null && !kurzText(e.regelstand, 40)) return null;
     return { id: e.id, personId: personen.get(String(e.personId)).id, datum: e.datum, dienstId: e.dienstId, aktion: e.aktion,
-      stufe: e.stufe, befunde: befunde.map((b) => ({ stufe: b.stufe, text: b.text, quelle: typeof b.quelle === "string" ? b.quelle : "" })),
+      stufe: e.stufe, befunde: befunde.map((b) => ({ regel: b.regel, stufe: b.stufe })),
       grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
       gelesen: e.gelesen === true,
       durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
@@ -1386,11 +1407,15 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
        ist wirkungslos — das Protokoll ändert sich nur durch Anhängen. */
     if (bekannt.has(id)) continue;
     const sauber = neuerEintrag(e);
+    if (sauber === SPERRT) return { grund: "bestaetigungen: Ein sperrender Befund (Schutz, Einschränkung, gesetzliche Qualifikation, Einweisung, Ruhezeit unter 11 Stunden, Bestand) lässt sich nicht bestätigen." };
     if (!sauber) return { grund: "bestaetigungen: Dieser Eintrag ist über diesen Zugang nicht möglich." };
     neue.push(sauber);
+    if (neue.length > BESTAETIGUNGEN_JE_SPEICHERN) return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_SPEICHERN} neue Einträge je Speichern.` };
   }
-  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts. */
-  return { liste: [...neue, ...altL] };
+  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts —
+     außer über der Gesamtgrenze (Review N1): Dann fallen die ältesten weg
+     (die Liste ist neueste zuerst). */
+  return { liste: [...neue, ...altL].slice(0, BESTAETIGUNGEN_GESAMT) };
 }
 
 /* Was ein Antrag ist, bestimmt der gespeicherte Stand: Person, Art,

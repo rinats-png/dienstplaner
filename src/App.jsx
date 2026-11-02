@@ -3,6 +3,7 @@ import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
@@ -189,7 +190,7 @@ import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende,
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+import { sperrtArt, befundText, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
@@ -2568,20 +2569,16 @@ const SCHUTZ_QUELLE_NEUTRAL = "Schutzvorschrift oder Einsatzregel für diese Per
 const SCHUTZ_QUELLE_EINSCHRAENKUNG = "Schutzvorschrift oder Einsatzeinschränkung für diese Person";
 
 /**
- * Wie schwer eine Einschränkung an der Person wiegt — eine Tabelle für
- * Planprüfung (pruefen: schwere) und Einteilung (hindernisBefunde: stufe,
- * sperrt), WP-11. Bis dahin meldete die Planprüfung „keine Nacht" als
- * Verstoß (danger), der Warndialog aber nur „Achtung" zum Wegklicken.
- * Entschieden nach der strengeren Seite (Kette B): Nacht und Alleindienst
- * sperren; die Höchstzahl Dienste je Woche ist eine Vereinbarung — Achtung.
- * Fachlich offen (Nutzerfrage): ob „keine Nacht" bei einer bloßen Absprache
- * nicht nur warnen sollte.
+ * Wie schwer eine Einschränkung an der Person wiegt — für Planprüfung
+ * (pruefen: schwere) und Einteilung (hindernisBefunde: stufe) aus derselben
+ * Quelle: der Spalte `sperrt` im Befundkatalog (SPERR_REGELN, WP-11). Bis
+ * dahin meldete die Planprüfung „keine Nacht" als Verstoß (danger), der
+ * Warndialog nur „Achtung" zum Wegklicken, und die Höchstzahl Dienste je
+ * Woche war hier „warn", im Dialog „recht". Bis zur Fachentscheidung gilt
+ * die strenge Variante (Review H1): alle drei sperren.
  */
-const EINSCHRAENKUNG_BEWERTUNG = {
-  keineNacht: { stufe: "recht", sperrt: true, schwere: "danger" },
-  keinAlleindienst: { stufe: "recht", sperrt: true, schwere: "danger" },
-  maxDiensteWoche: { stufe: "achtung", sperrt: false, schwere: "warn" },
-};
+const EINSCHRAENKUNG_BEWERTUNG = Object.fromEntries(["keineNacht", "keinAlleindienst", "maxDiensteWoche"]
+  .map((k) => [k, sperrtArt(k) ? { stufe: "recht", schwere: "danger" } : { stufe: "achtung", schwere: "warn" }]));
 
 /** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
 function wochenStundenGeplant(m, p, d) {
@@ -2599,20 +2596,26 @@ function wochenStundenGeplant(m, p, d) {
 /**
  * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten kann,
  * und liefert die Befunde mit Stufe, Quelle und Text — leer bedeutet
- * regelkonform. Die Befunde gehen in den Warndialog. Gesperrt wird nur,
- * was technisch nicht geht (nicht im Bestand) und was die Schutzregeln
- * hart ausschließen (sperrt: true, Kette B).
+ * regelkonform. Die Befunde gehen in den Warndialog. Ob ein Befund sperrt
+ * (kein „dennoch", Bewerbung, Selbstplanung, Zuschlag, Übernahme blockiert)
+ * oder warnt, steht an genau einer Stelle: SPERR_REGELN in src/warnstufen.js
+ * (Review WP-10, H1 — bis zur Fachentscheidung die strenge Kette-B-Variante).
+ * `regel` ist der Schlüssel dort.
  */
 function hindernisBefunde(m, p, d, da) {
   const g = [];
-  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel",
-    regelId: regelIdFuerBefund({ art: art || "regel", quelle }) });
+  /* regel: Schlüssel im Befundkatalog (sperrt oder warnt, BEFUND_KATALOG);
+     regelId: Kennung im Regelregister (Fundstelle, Quellenstand) — beides
+     Kennungen, kein Text. */
+  const push = (stufe, text, quelle, art, regel, regelId) => g.push({ stufe, text, quelle, art: art || "regel",
+    regel: regel || art || "regel", sperrt: sperrtArt(regel || art || "regel"),
+    regelId: regelId === undefined ? regelIdFuerBefund({ art: art || "regel", quelle }) : regelId });
   const e = einschr(p);
-  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand");
+  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand", "bestand");
   const abw = abwesenheitAm(m, p.id, d);
   /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
      bietet an, sie für diesen Tag aufzuheben. */
-  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
+  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend", "abwesend");
   /* Die eine Schutzprüfung (WP-11): schutzEinsatz in src/regelwerk.js —
      dieselbe wie in der Planprüfung, auf dem Weg, den die Daten zulassen
      (Rohdaten mit Fundstelle, Einsatzregeln neutral, ohne Einsatzregeln
@@ -2622,20 +2625,23 @@ function hindernisBefunde(m, p, d, da) {
      Einsatzregel nennt der Befund nie. */
   for (const b of schutzEinsatz(p, da, d)) {
     const quelle = b.neutral ? SCHUTZ_QUELLE_NEUTRAL : b.regel;
-    g.push({ stufe: b.stufe, text: b.text, quelle, art: "schutz", sperrt: b.sperrt, offen: b.offen,
-      regelId: b.neutral ? null : regelIdFuerBefund({ art: "schutz", quelle }) });
+    /* Katalogschlüssel aus der Bewertung von schutzEinsatz: hart → „schutz"
+       (sperrt), weich → „schutzWeich" (Achtung), nicht bewertbar →
+       „schutzOffen" (Hinweis). Sperrt folgt so derselben Tabelle wie alles
+       andere und sagt nie etwas anderes als schutzEinsatz. */
+    push(b.stufe, b.text, quelle, "schutz", b.sperrt ? "schutz" : b.offen ? "schutzOffen" : "schutzWeich",
+      b.neutral ? null : regelIdFuerBefund({ art: "schutz", quelle }));
   }
-  /* Einschränkungen an der Person: dieselbe Bewertung wie in der
-     Planprüfung (EINSCHRAENKUNG_BEWERTUNG). Den Grund nennt CENTRIC nie — es
-     kann Mutterschutz, ein ärztliches Attest oder eine Absprache sein. */
-  const einschraenkung = (art, text) => {
-    const w = EINSCHRAENKUNG_BEWERTUNG[art];
-    g.push({ stufe: w.stufe, text, quelle: SCHUTZ_QUELLE_EINSCHRAENKUNG, art: "schutz", sperrt: w.sperrt, regelId: null });
-  };
+  /* Einschränkungen an der Person: Stufe und Sperre aus dem Befundkatalog
+     (EINSCHRAENKUNG_BEWERTUNG), wie in der Planprüfung. Den Grund nennt
+     CENTRIC nie — es kann Mutterschutz, ein ärztliches Attest oder eine
+     Absprache sein. */
+  const einschraenkung = (art, text) =>
+    push(EINSCHRAENKUNG_BEWERTUNG[art].stufe, text, SCHUTZ_QUELLE_EINSCHRAENKUNG, "schutz", art, null);
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
     einschraenkung("keineNacht", "keine Nachtdienste zugelassen");
   if (!verfuegbarFuer(p, d, da))
-    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person");
+    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person", "regel", "verfuegbarkeit");
   // Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung
   if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
@@ -2645,7 +2651,7 @@ function hindernisBefunde(m, p, d, da) {
       if (!v || qualGueltig(m, p, q.id)) continue;
       push(v.gesetzlich ? "recht" : "achtung",
         `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
-        q.grundlage || v.label, "qualifikation");
+        q.grundlage || v.label, "qualifikation", v.gesetzlich ? "qualifikationGesetzlich" : "qualifikationBetrieblich");
     }
   }
   /* Kompetenzen, die diese Dienstart voraussetzt.
@@ -2658,11 +2664,11 @@ function hindernisBefunde(m, p, d, da) {
      diesen. */
   for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
     (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
-    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz");
+    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz", "kompetenz");
 
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
-    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung");
+    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   // Ruhezeit vor und nach dem Dienst
   const [nStart, nEnde] = fenster(d, da);
   for (const off of [-2, -1, 1, 2]) {
@@ -2676,7 +2682,8 @@ function hindernisBefunde(m, p, d, da) {
     const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
     if (rs) {
       push(rs, `Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`,
-        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit");
+        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit",
+        rs === "recht" ? "ruhezeitGesetz" : "ruhezeitBetrieb");
       break;
     }
   }
@@ -2704,7 +2711,8 @@ function hindernisBefunde(m, p, d, da) {
     if (personTag(m, p, addDays(d, -i)).dienstId) lauf++; else break;
   }
   if (lauf >= m.einstellungen.maxFolge)
-    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`);
+    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`,
+      "regel", "folge");
   return g;
 }
 
@@ -9179,7 +9187,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                     {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
                       if (!b) return null;
                       /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
-                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${b.befunde.map((x) => x.text).join(" · ")}`}
+                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${(b.befunde || []).map((x) => x.text || befundText(x.regel)).join(" · ")}`}
                         aria-label={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt`}
                         style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,
                           background: b.stufe === "recht" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }} />; })()}
@@ -10841,7 +10849,9 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
         /* Bewusst bestätigte Abweichungen (E-19): getrennt von den
            unentdeckten Befunden. Sie stehen hier, bis der Monat abgelaufen
            ist — wer bestätigt hat, aus welchem Grund, mit welchem Regelstand. */
-        const best = (m.bestaetigungen || []).filter((x) => x.datum >= von && x.datum <= bis);
+        /* Der Betriebsrat bekommt nur den Monat, keinen Tag (Review M1). */
+        const best = (m.bestaetigungen || []).filter((x) => x.datum ? x.datum >= von && x.datum <= bis
+          : x.monat && x.monat >= von.slice(0, 7) && x.monat <= bis.slice(0, 7));
         if (!best.length) return null;
         const recht = best.filter((x) => x.stufe === "recht");
         const ohneGrund = recht.filter((x) => x.ohneGrund).length;
@@ -10857,16 +10867,16 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
                 const da = m.dienstarten.find((y) => y.id === x.dienstId);
                 const g = ABWEICHUNG_GRUENDE.find((y) => y.id === x.grundArt);
                 return (
-                  <div key={x.id} className="klick" {...klickbar(() => oeffneTag(x.datum))}
+                  <div key={x.id} className={x.datum ? "klick" : undefined} {...(x.datum ? klickbar(() => oeffneTag(x.datum)) : {})}
                     style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
                     <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
                     <div style={{ minWidth: 150, fontSize: 13.5, ...NUM }}>
-                      {fKurz(x.datum)} · {da ? da.kurz : x.dienstId}
+                      {x.datum ? `${fKurz(x.datum)} · ${da ? da.kurz : x.dienstId}` : (x.monat || "")}
                       <div style={{ fontSize: 12, color: C.dim }}>{pp ? `${pp.nachname}, ${pp.vorname}` : "Person"}</div></div>
                     <div style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.45 }}>
-                      {x.befunde.map((b) => b.text).join(" · ")}
+                      {(x.befunde || []).map((b) => b.text || befundText(b.regel)).join(" · ")}
                       <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>
-                        bestätigt von {x.durch || "?"} · {x.zeit ? fKurz(x.zeit.slice(0, 10)) : ""}
+                        bestätigt von {x.durch || "?"}{x.zeit ? ` · ${fKurz(x.zeit.slice(0, 10))}` : ""}
                         {" · "}{g ? `${g.label}${x.grund ? `: ${x.grund}` : ""}` : "ohne Grund"}</div>
                     </div>
                   </div>);
@@ -12645,7 +12655,8 @@ function Warndialog({ sitz, vorgang, onClose }) {
 
       {geschuetzt.length > 0 && !technisch.length && (
         <div style={{ fontSize: 13, color: C.danger, margin: "6px 0 14px", lineHeight: 1.5 }}>
-          Für diese Einteilung gilt eine Schutzregel der Person. Sie lässt sich nicht bestätigen — bitte einen anderen Weg wählen.
+          Für diese Einteilung gilt eine sperrende Regel (Schutz, Einschränkung, gesetzliche Qualifikation,
+          Einweisung oder Ruhezeit unter 11 Stunden). Sie lässt sich nicht bestätigen — bitte einen anderen Weg wählen.
         </div>)}
 
       {recht && !technisch.length && !geschuetzt.length && (
@@ -16437,11 +16448,15 @@ function darfSichBewerben(m, personId, a) {
   if (eigen && eigen.dienstId && m.dienstarten.some((x) => x.id === eigen.dienstId))
     return { darf: false, grund: "an diesem Tag bereits eingeteilt" };
 
-  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein Befund
-     die Bewerbung nicht mehr: Die Person sieht den Hinweis und darf sich
-     trotzdem melden; die Planung entscheidet mit dem Warndialog. */
+  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein
+     warnender Befund die Bewerbung nicht: Die Person sieht den Hinweis und
+     darf sich trotzdem melden; die Planung entscheidet mit dem Warndialog.
+     Ein sperrender Befund (SPERR_REGELN) hindert — wie im Integrationsstand. */
   const da = m.dienstarten.find((x) => x.id === a.dienstId);
-  const h = da ? hindernisse(m, p, a.datum, da) : [];
+  const bef = da ? hindernisBefunde(m, p, a.datum, da) : [];
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text, hindernisse: [sperre.text] };
+  const h = bef.map((b) => b.text);
   return h.length ? { darf: true, hinweise: h } : { darf: true };
 }
 
@@ -18154,8 +18169,25 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
       hinweise.push("zu wenig Ruhezeit vor dem Folgetag");
   }
 
-  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie sonst */
-  hinweise.push(...hindernisse(m, p, datum, da));
+  /* Unter 11 Stunden zu den eigenen Eintragungen sperrt (SPERR_REGELN.ruhezeitGesetz,
+     Review H1): Bei der Übernahme wird gegen den Plan geprüft, nicht gegen die
+     übrigen Eintragungen derselben Runde. */
+  const ruheGesetz = (dA, daA, daB) => {
+    const [, aEnde] = fenster(dA, daA);
+    const [bStart] = fenster(addDays(dA, 1), daB);
+    return ruhezeitStufe((bStart - aEnde) / 60, m.einstellungen.ruhezeit) === "recht";
+  };
+  const dvG = vortag && m.dienstarten.find((x) => x.id === vortag.dienstId);
+  const dfG = folgetag && m.dienstarten.find((x) => x.id === folgetag.dienstId);
+  if (sperrtArt("ruhezeitGesetz") && ((dvG && ruheGesetz(addDays(datum, -1), dvG, da)) || (dfG && ruheGesetz(datum, da, dfG))))
+    return { darf: false, grund: "weniger als 11 Stunden Ruhezeit zu deiner anderen Eintragung (§ 5 ArbZG)" };
+
+  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie
+     sonst. Ein sperrender Befund (SPERR_REGELN) hindert die Eintragung. */
+  const bef = hindernisBefunde(m, p, datum, da);
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text };
+  hinweise.push(...bef.map((b) => b.text));
 
   /* Ist der Dienst schon voll? Über die Mindestbesetzung hinaus soll sich
      niemand eintragen, ohne es zu wissen. */
@@ -18474,7 +18506,7 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                       const pp = m.personen.find((x) => x.id === e.personId);
                       return (
                         <div key={k} style={{ fontSize: 12.5, color: C.dim, padding: "4px 0", lineHeight: 1.45 }}>
-                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {e.grund}</div>);
+                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {NICHT_UEBERNOMMEN_GRUENDE[e.grund] || NICHT_UEBERNOMMEN_GRUENDE.befund}</div>);
                     })}
                   </details>)}
                 {r.status === "geschlossen" && (
@@ -22857,16 +22889,21 @@ function AppInnen() {
         const neu = { ...m.abweichungen };
         let uebernommen = 0;
         const nicht = [];
+        /* Der Grund ist eine Kennung, nie der Befundtext (Review K1): Der
+           Rundenkopf geht an Beschäftigte und Schichtverantwortung; ein
+           Wortlaut wie „MuSchG § 5“ oder „abwesend (Krank)“ verriete Dritten
+           Gesundheitsangaben (server/lib/selbstplanung.mjs). */
+        const nichtEintrag = (e, grund) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, grund });
         (r.eintraege || []).forEach((e, i) => {
           const p = m.personen.find((x) => x.id === e.personId);
           const da = m.dienstarten.find((x) => x.id === e.dienstId);
-          if (!p || !da) { nicht.push({ ...e, grund: "Person oder Dienstart nicht mehr vorhanden" }); return; }
+          if (!p || !da) { nicht.push(nichtEintrag(e, "fehlt")); return; }
           const bef = hindernisBefunde(m, p, e.datum, da);
           const ernst = bef.filter((b) => stufeRang(b.stufe) >= 2);
           const sperre = bef.find((b) => b.sperrt);
-          if (sperre) { nicht.push({ ...e, grund: sperre.text }); return; }
+          if (sperre) { nicht.push(nichtEintrag(e, grundKennung(sperre))); return; }
           const nehmen = gewaehlt ? gewaehlt.has(i) : ernst.length === 0;
-          if (!nehmen) { nicht.push({ ...e, grund: ernst.length ? ernst[0].text : "nicht ausgewählt" }); return; }
+          if (!nehmen) { nicht.push(nichtEintrag(e, ernst.length ? grundKennung(ernst[0]) : "auswahl")); return; }
           if (bef.some((b) => b.art === "abwesend") && best && best.abwesenheitAufheben)
             m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, e.personId, e.datum).abwesenheiten };
           neu[`${e.personId}|${e.datum}`] = e.dienstId;

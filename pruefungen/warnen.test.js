@@ -93,7 +93,7 @@ describe("Bestätigungsprotokoll", () => {
     const best = { gelesen: true, grundArt: null, eintraege: [
       { personId: "p1", datum: "2026-11-12", dienstId: "N", befunde: [{ stufe: "hinweis", text: "Wunsch nicht erfüllt" }] },
       { personId: "p2", datum: "2026-11-12", dienstId: "F", befunde: [
-        { stufe: "recht", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG" },
+        { stufe: "recht", regel: "ruhezeitGesetz", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG" },
         { stufe: "hinweis", text: "ersetzt Spätdienst" }] },
     ] };
     const e = bestaetigungsEintraege(best, wer, "einsprung", opt);
@@ -101,7 +101,8 @@ describe("Bestätigungsprotokoll", () => {
     expect(e[0]).toMatchObject({ personId: "p2", stufe: "recht", aktion: "einsprung",
       ohneGrund: true, grund: "", gelesen: true, durch: "Sina Sub", rolle: "subplaner",
       regelstand: "2026.10", zeit: opt.zeit });
-    expect(e[0].befunde).toEqual([{ stufe: "recht", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG" }]);
+    /* Nur Kennung und Stufe, kein Text (Review M1). */
+    expect(e[0].befunde).toEqual([{ regel: "ruhezeitGesetz", stufe: "recht" }]);
   });
 
   it("nimmt den freiwilligen Grund mit, wenn einer gewählt ist", () => {
@@ -132,7 +133,7 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
       { personId: "p2", datum: "2026-11-03", dienstId: "F" }] }],
   });
   const eintrag = (personId) => ({ id: `b-${personId}`, personId, datum: "2026-11-12", dienstId: "N", aktion: "einsprung",
-    stufe: "recht", gelesen: true, befunde: [{ stufe: "recht", text: "Ruhezeit 8 h" }], durch: "S1", durchId: "s1", rolle: "subplaner" });
+    stufe: "achtung", gelesen: true, befunde: [{ regel: "ruhezeitBetrieb", stufe: "achtung" }], durch: "S1", durchId: "s1", rolle: "subplaner" });
 
   it("Schichtverantwortung darf Abweichungen im eigenen Bereich bestätigen", () => {
     const alt = mandant();
@@ -156,7 +157,7 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
     const aus = bestandFuerRolle({ mandanten: [alt] }, { rolle: "mitarbeiter", person: "p1", betrieb: 0 });
     /* Kette B liefert weggelassene Listen als leere Liste aus (sicht.mjs, leerFuer). */
     expect(aus.mandanten[0].bestaetigungen || []).toEqual([]);
-    expect(JSON.stringify(aus)).not.toContain("Ruhezeit 8 h");
+    expect(JSON.stringify(aus)).not.toContain("ruhezeitBetrieb");
   });
 
   it("der Betriebsrat sieht es ohne Namen", () => {
@@ -167,7 +168,9 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
     expect(b.personId).toBe(null);
     expect(b.durchId).toBe(null);
     expect(b.durch).toBe("subplaner");
-    expect(b.befunde[0].text).toBe("Ruhezeit 8 h");
+    expect(b.befunde[0]).toEqual({ regel: "ruhezeitBetrieb", stufe: "achtung" });
+    expect(b.datum).toBeUndefined();     // Review M1: nur der Monat
+    expect(b.monat).toBe("2026-11");
   });
 
   it("Selbstplanung: eigene Eintragungen kommen an, fremde bleiben unberührt", () => {

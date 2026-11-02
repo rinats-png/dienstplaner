@@ -13,12 +13,38 @@
    Geprüft in pruefungen/warnen.test.js.
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
+import { BEFUND_KATALOG, sperrtBefund, befundText } from "../server/lib/bestaetigungen.mjs";
+export { BEFUND_KATALOG, befundText };
 
 export const WARNSTUFEN = {
   hinweis: { rang: 1, label: "Hinweis", ton: "neutral" },
   achtung: { rang: 2, label: "Achtung", ton: "warn" },
   recht: { rang: 3, label: "Rechtsverstoß", ton: "danger" },
 };
+
+/**
+ * WARNEN ODER SPERREN — die eine Stelle für die Fachentscheidung (Review
+ * WP-10, H1). Je Befundart: true = sperrt (Warndialog ohne „dennoch",
+ * Bewerbung, Selbstplanung, Zuschlag, Übernahme, Einsprung und Tausch
+ * blockiert), false = warnt (Bestätigung mit Protokoll).
+ *
+ * Bis zur fachlichen Entscheidung des Nutzers gilt die strenge Variante des
+ * Integrationsstands (Kette B): Was dort eine Einteilung verhinderte und
+ * rechtlich oder technisch begründet ist, sperrt weiter. Nur, was eine
+ * betriebliche Vorgabe oder ein Wunsch ist, wird zur Warnung. Wer das ändern
+ * will, ändert es hier — und nur hier (pruefungen/review-wp10.test.js).
+ */
+/* Die Tabelle steht im Befundkatalog des Servers (server/lib/bestaetigungen.mjs),
+   damit Oberfläche und Server dieselbe Entscheidung treffen: Der Server weist
+   eine Bestätigung ab, die einen sperrenden Befund wegbestätigen soll.
+   Sperrend: nicht im Bestand, harte Schutzbefunde, keine Nacht, kein
+   Alleindienst, Höchstzahl Dienste je Woche, gesetzliche Qualifikation,
+   Einweisung je Gerät, Ruhezeit unter 11 h. Warnend: betriebliche
+   Qualifikation, Ruhezeit über dem Gesetz, Verfügbarkeit, Teilzeit, Dienste
+   in Folge, Abwesenheit (der Dialog bietet das Aufheben an). */
+export const SPERR_REGELN = Object.freeze(Object.fromEntries(Object.entries(BEFUND_KATALOG).map(([k, v]) => [k, v.sperrt])));
+/** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
+export const sperrtArt = sperrtBefund;
 
 /** Rang einer Stufe; Unbekanntes zählt als Hinweis. */
 export const stufeRang = (s) => (WARNSTUFEN[s] || WARNSTUFEN.hinweis).rang;
@@ -94,10 +120,11 @@ export function bestaetigungsEintraege(best, wer, aktion, opt) {
     .map(({ e, ernst }) => ({
       id: opt.neueId(), personId: e.personId, datum: e.datum, dienstId: e.dienstId, aktion,
       stufe: hoechsteStufe(ernst),
-      befunde: ernst.map((b) => ({ stufe: b.stufe, text: b.text, quelle: b.quelle || "" })),
-      /* Welche Regeln dahinterstehen (Regelregister). Auf Eintragsebene, damit
-         die Form der Befunde unverändert bleibt; leer, wo ein Befund keiner
-         registrierten Regel zugeordnet ist. */
+      /* Nur Kennung und Stufe (Review M1): Der Text steht im Befundkatalog,
+         ein Wortlaut des Clients ginge sonst ungeprüft ins Protokoll. */
+      befunde: ernst.map((b) => ({ regel: b.regel || "unbekannt", stufe: b.stufe })),
+      /* Welche Regeln des Regelregisters dahinterstehen (Kette A, WP-11):
+         Kennungen, kein Text; der Betriebsrat sieht sensible neutral. */
       regelIds: [...new Set(ernst.map((b) => b.regelId).filter(Boolean))],
       grundArt: best.grundArt || null, grund: best.grundArt ? String(best.grundText || "").trim() : "",
       ohneGrund: !best.grundArt, gelesen: !!best.gelesen,

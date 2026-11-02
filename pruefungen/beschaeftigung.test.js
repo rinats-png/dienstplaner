@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import { BESCHAEFTIGUNGSMODELLE, beschaeftigungsmodell, modellVon, modellHinterlegt } from "../src/beschaeftigung.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "../src/abwesenheitsarten.js";
 import { regelnFuer, REGELN } from "../src/regelregister.js";
+import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 
 const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const arten = readFileSync(new URL("../src/abwesenheitsarten.js", import.meta.url), "utf8");
@@ -86,10 +87,26 @@ describe("Regeln binden sich an das Modell", () => {
 });
 
 describe("Datenschutz der neuen Personenfelder", () => {
+  /* Seit WP-10/11 (Kette B) entscheidet ein Positivkatalog je Rolle
+     (server/lib/sicht.mjs) statt einer Liste privater Felder in rechte.mjs.
+     Geprüft wird deshalb die Antwort des Servers: Die eigene Person sieht
+     beide Felder, fremde Beschäftigte, Betriebsrat und Schichtverantwortung
+     nicht, Planung und Leitung schon (RECHTEMATRIX.md ²³). */
   it("Modell und Stundengrenze gehören zu den privaten Feldern, die anderen nicht erhalten", () => {
-    const block = rechte.slice(rechte.indexOf("const PERSON_PRIVAT"), rechte.indexOf("]", rechte.indexOf("const PERSON_PRIVAT")));
-    expect(block).toContain('"beschaeftigungsmodell"');
-    expect(block).toContain('"stundenGrenzeMonat"');
+    const p = (id, rolle, extra = {}) => ({ id, vorname: id, nachname: id, rolle, bereich: "e1",
+      zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }], ...extra });
+    const g = { mandanten: [{ id: "m1", einheiten: [{ id: "e1" }], dienstarten: [], personen: [
+      p("m0", "mitarbeiter", { beschaeftigungsmodell: "minijob", stundenGrenzeMonat: 43 }),
+      p("a1", "mitarbeiter", { beschaeftigungsmodell: "werkstudent", stundenGrenzeMonat: 80 }),
+      p("s1", "subplaner"), p("r1", "betriebsrat"), p("l1", "leitung")] }] };
+    const sicht = (rolle, ich) => bestandFuerRolle(g, { rolle, person: ich, betrieb: 0 }).mandanten[0].personen;
+    const felder = (liste, id) => { const x = liste.find((y) => y.id === id); return [x.beschaeftigungsmodell, x.stundenGrenzeMonat]; };
+    expect(felder(sicht("mitarbeiter", "m0"), "m0")).toEqual(["minijob", 43]);
+    expect(felder(sicht("mitarbeiter", "m0"), "a1")).toEqual([undefined, undefined]);
+    expect(felder(sicht("betriebsrat", "r1"), "a1")).toEqual([undefined, undefined]);
+    expect(felder(sicht("subplaner", "s1"), "a1")).toEqual([undefined, undefined]);
+    expect(felder(sicht("leitung", "l1"), "a1")).toEqual(["werkstudent", 80]);
+    expect(rechte).not.toMatch(/SELBST_FELDER = \[[^\]]*beschaeftigungsmodell/);   // nicht selbst änderbar
   });
 });
 
