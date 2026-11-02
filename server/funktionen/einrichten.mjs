@@ -7,7 +7,8 @@ import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
 import { BEKANNTE_ROLLEN, rolleBekannt } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
-import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
+import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv,
+  verwalterZweifaktorIrgendwo }
   from "../lib/verwalter.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
   zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich } from "../lib/zweifaktor.mjs";
@@ -86,13 +87,22 @@ export default async (req) => {
      Abschalten und das Holen eines Nachweises verlangen einen frischen
      Code, nie einen Nachweis.
 
-     Mit CENTRIC_ZWEIFAKTOR_PFLICHT=1 kommt ein Schlüssel OHNE zweiten
-     Faktor nur noch an /einrichten/zweifaktor heran — zum Einrichten. */
+     Ebenso Anlegen und Sperren von Verwalterschlüsseln (WP-32 M1): Wer
+     einen Nachweis abgreift, soll sich damit keinen eigenen Dauerzugang
+     anlegen können.
+
+     Pflicht für Schlüssel OHNE zweiten Faktor — sie kommen nur noch an
+     /einrichten/zweifaktor heran, zum Einrichten:
+       - sobald irgendein nutzbarer Verwalterschlüssel einen aktiven
+         zweiten Faktor hat (automatisch; sonst wäre ein neu angelegter
+         Schlüssel der Weg um ihn herum), oder
+       - mit CENTRIC_ZWEIFAKTOR_PFLICHT=1 von Anfang an. */
   const zfCode = (body && body.zweifaktor) || req.headers.get("x-centric-zweifaktor") || null;
   const zfNachweis = req.headers.get("x-centric-zweifaktor-nachweis") || null;
   const zfAktion = pfad === "zweifaktor" && req.method === "POST" ? String(body.aktion || "") : "";
   const zfAbschalten = pfad === "zweifaktor" && req.method === "DELETE";
-  const zfPflicht = (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  const zfPflichtUmgebung = (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  const zfVerwalterAenderung = pfad === "verwalter" && (req.method === "POST" || req.method === "DELETE");
   const zfKennungen = [`v:${wer.zweifaktorId.slice(0, 16)}`, k];
   /** Bremse für Code-Versuche: je Schlüssel und je Herkunft, fail-closed. */
   const zfBremse = async () => {
@@ -114,8 +124,9 @@ export default async (req) => {
     return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
       + "Bitte später erneut versuchen." }, 503);
   }
+  const zfPflicht = zfPflichtUmgebung || zfStand.aktiv || await verwalterZweifaktorIrgendwo(s0);
   if (zfStand.aktiv) {
-    const nurCode = zfAbschalten || zfAktion === "nachweis";
+    const nurCode = zfAbschalten || zfAktion === "nachweis" || zfVerwalterAenderung;
     if (!zfCode && (nurCode || !zfNachweis)) {
       await protokoll("zweifaktor", k, "abgewiesen", `fehlt · ${wer.name}`);
       return antwort({ fehler: nurCode
@@ -154,7 +165,11 @@ export default async (req) => {
 
     if (req.method === "DELETE") {
       if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
-      await zweifaktorAbschalten(s0, id);
+      try { await zweifaktorAbschalten(s0, id); }
+      catch {
+        return antwort({ fehler: "Abschalten gerade nicht möglich — die Ablage antwortet nicht. "
+          + "Der zweite Faktor bleibt eingerichtet." }, 503);
+      }
       await protokoll("zweifaktor", k, "erfolg", `abgeschaltet · ${wer.name}`);
       return antwort({ ok: true, aktiv: false });
     }

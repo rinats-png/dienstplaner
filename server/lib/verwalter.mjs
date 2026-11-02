@@ -135,6 +135,34 @@ export async function verwalterSperren(store, kennung) {
   return n;
 }
 
+/**
+ * Hat irgendein nutzbarer Verwalterschlüssel einen aktiven zweiten Faktor?
+ * Dann gilt die Pflicht für alle (einrichten.mjs, WP-32 M1): Ein Schlüssel
+ * ohne zweiten Faktor wäre sonst der Weg um ihn herum. Gezählt werden
+ * benannte Konten, die weder gesperrt noch abgelaufen sind, und der
+ * Ursprungsschlüssel, solange er gesetzt ist.
+ *
+ * Fail-closed: Wirft die Ablage, gilt die Pflicht.
+ */
+export async function verwalterZweifaktorIrgendwo(store) {
+  try {
+    const { blobs } = await store.list({ prefix: "verwalter:" });
+    for (const b of blobs) {
+      const e = await store.get(b.key, { type: "json" });
+      if (!e || e.gesperrt) continue;
+      if (e.laeuftAb && new Date(e.laeuftAb).getTime() < Date.now()) continue;
+      const zf = await store.get(`zweifaktor:${b.key.slice("verwalter:".length)}`, { type: "json" });
+      if (zf && zf.stand === "aktiv") return true;
+    }
+    const ursprung = process.env.CENTRIC_ADMIN;
+    if (ursprung) {
+      const zf = await store.get(`zweifaktor:${hash(ursprung)}`, { type: "json" });
+      if (zf && zf.stand === "aktiv") return true;
+    }
+    return false;
+  } catch { return true; }
+}
+
 /** Wie viele Konten gibt es, die nicht gesperrt und nicht abgelaufen sind? */
 export async function verwalterAktiv(store) {
   return (await verwalterListe(store)).filter((v) => !v.gesperrt && !v.abgelaufen).length;

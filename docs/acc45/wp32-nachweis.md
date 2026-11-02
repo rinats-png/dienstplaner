@@ -120,7 +120,7 @@ E-Mail). `daten.mjs` liegt außerhalb dieses Pakets. Der Baustein
 ### Prüfungen
 
 `pruefungen/zweifaktor.test.js` (`npm run pruefung:zweifaktor`, CI-Schritt
-„Zwei-Faktor für Verwalterschlüssel“), 25 Tests:
+„Zwei-Faktor für Verwalterschlüssel“), 30 Tests (25 in 83c019b, 5 aus den Review-Auflagen):
 
 | Gruppe | Inhalt |
 |---|---|
@@ -150,6 +150,17 @@ Lokal zusätzlich grün: `rollen-failclosed`, `altcodes`, `sitzungsinventar`,
 
 `Betrieb Sicherung` startet auf diesem Branch nicht (Pfad- und Branchfilter des
 Workflows).
+
+## Review-Auflagen (M1, N1, N2, H1)
+
+| Auflage | Umsetzung | Test (rot auf 83c019b) |
+|---|---|---|
+| **M1a** Nachweis/Code konnte Verwalterschlüssel anlegen | `POST`/`DELETE /einrichten/verwalter` verlangen einen frischen Code oder Wiederherstellungscode, nie einen Nachweis (`nurCode`). | „Nachweis: …“ — Anlegen und Sperren mit Nachweis → 401, kein Schlüssel entsteht |
+| **M1b** neuer Schlüssel ohne 2FA = Weg um den zweiten Faktor | Automatische Pflicht: Sobald irgendein nutzbarer Verwalterschlüssel (nicht gesperrt, nicht abgelaufen, oder der gesetzte Ursprungsschlüssel) einen aktiven zweiten Faktor hat, kommt jeder Schlüssel ohne eigenen nur noch an `/einrichten/zweifaktor` (`verwalterZweifaktorIrgendwo`, fail-closed bei Ablagefehler). Unabhängig von `CENTRIC_ZWEIFAKTOR_PFLICHT`, das die Pflicht schon vor dem ersten eingerichteten Faktor setzt. | „M1: Anlegen mit frischem Code; der neue Schlüssel …“ — GET/POST auf allen Pfaden 403 `einrichten`; „Abschalten …“ — nach dem eigenen Abschalten bleibt die Pflicht, solange ein anderer Schlüssel 2FA hat |
+| **N1** Nachweise in der Sicherung, Altlasten | `werkzeug/ablage-sicherung.mjs`: `centric.ohne` um `zweifaktor-nachweis:`. Abgelaufene Nachweise werden beim Ausstellen und bei jeder fehlgeschlagenen Nachweisprüfung gelöscht. | „N1: Nachweise gehen nicht in die Sicherung“; „Nachweis …“ — nach Ablauf keine Nachweisdatei mehr |
+| **N2** Nachweis überlebt Neueinrichtung; Abschalten schluckt Listenfehler | Jede Bestätigung erzeugt eine `generation`; der Nachweis trägt sie und gilt nur, solange sie gleich ist. `zweifaktorAbschalten` liest zuerst die Nachweise und wirft bei einem Listenfehler, bevor etwas gelöscht wird; `/einrichten` antwortet dann 503, der Faktor bleibt. | „N2: ein Nachweis gilt nach Abschalten und Neueinrichten nicht mehr“ (alter Nachweis-Eintrag zurückgespielt → 401); „N2: Abschalten scheitert …“ |
+| **H1** prozesslokale Sperre | Dokumentiert in `zweifaktor.mjs`: Ein Prozess je Ablage sichert `lib/prozesssperre.mjs` (O_EXCL plus Puls); mehrere Instanzen bräuchten Vergleichen-und-Setzen. | — |
+| **H1** GCM ohne AAD | Umgesetzt: Kapsel Fassung 2 mit AAD `zweifaktor:<id>`; Fassung 1 bleibt lesbar und wird beim nächsten Schreiben (Code-Prüfung, Bestätigung) auf Fassung 2 gehoben. | „H1: Kapsel ist an ihre id gebunden …“ |
 
 ## Nötige Nutzerfreigaben
 

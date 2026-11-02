@@ -153,27 +153,45 @@ function schluesselAusPfeffer() {
 
 export const zweifaktorMoeglich = () => !!process.env.CENTRIC_PFEFFER;
 
-/** @param {Buffer} klar */
-export function verschluesseln(klar) {
+/* Fassung 2 bindet die Kapsel an ihre id (GCM mit AAD = id): Eine Kapsel,
+   die jemand mit Schreibzugriff auf die Ablage unter eine andere id
+   kopiert, entschlüsselt dort nicht. Fassung 1 (ohne AAD) wird noch
+   gelesen und beim nächsten Schreiben des Eintrags als Fassung 2 abgelegt
+   (zweifaktorPruefen, zweifaktorBestaetigen). */
+
+/**
+ * @param {Buffer} klar
+ * @param {string} id
+ */
+export function verschluesseln(klar, id) {
   const s = schluesselAusPfeffer();
   if (!s) throw new Error("CENTRIC_PFEFFER fehlt");
   const iv = randomBytes(12);
   const c = createCipheriv("aes-256-gcm", s, iv);
+  c.setAAD(Buffer.from(`zweifaktor:${id}`));
   const daten = Buffer.concat([c.update(klar), c.final()]);
-  return { v: 1, iv: iv.toString("base64"), tag: c.getAuthTag().toString("base64"),
+  return { v: 2, iv: iv.toString("base64"), tag: c.getAuthTag().toString("base64"),
     daten: daten.toString("base64") };
 }
 
-/** @returns {Buffer|null}  null = nicht entschlüsselbar (Pfeffer fehlt oder anders) */
-export function entschluesseln(kapsel) {
+/**
+ * @param {any} kapsel
+ * @param {string} id
+ * @returns {Buffer|null}  null = nicht entschlüsselbar (Pfeffer fehlt oder anders, falsche id)
+ */
+export function entschluesseln(kapsel, id) {
   const s = schluesselAusPfeffer();
-  if (!s || !kapsel || kapsel.v !== 1) return null;
+  if (!s || !kapsel || (kapsel.v !== 1 && kapsel.v !== 2)) return null;
   try {
     const d = createDecipheriv("aes-256-gcm", s, Buffer.from(kapsel.iv, "base64"));
+    if (kapsel.v === 2) d.setAAD(Buffer.from(`zweifaktor:${id}`));
     d.setAuthTag(Buffer.from(kapsel.tag, "base64"));
     return Buffer.concat([d.update(Buffer.from(kapsel.daten, "base64")), d.final()]);
   } catch { return null; }
 }
+
+/** Kapsel der Fassung 1 beim Schreiben auf Fassung 2 heben. */
+const kapselNeu = (kapsel, roh, id) => (kapsel && kapsel.v === 2 ? kapsel : verschluesseln(roh, id));
 
 /* --------------------------------------------------------------------------
    Wiederherstellungscodes und Nachweis
@@ -214,7 +232,13 @@ const NACHWEIS = (h) => `zweifaktor-nachweis:${h}`;
 /* Prüfen und Fortschreiben unter einer Sperre je Schlüssel. Der Dienst
    läuft als ein Prozess je Container (deploy/compose.yml) — zwei
    gleichzeitige Anfragen mit demselben Code dürfen nicht beide den alten
-   Stand lesen und beide durchkommen. */
+   Stand lesen und beide durchkommen.
+
+   Grenze (H1): Die Sperre wirkt nur im Prozess. Dass es genau einen gibt,
+   sichert die Prozesssperre der Ablage (lib/prozesssperre.mjs,
+   ablageBelegen): Ein zweiter Prozess auf demselben /data startet nicht.
+   Wer je mehrere Instanzen auf getrennten Ablagen betreibt, braucht hier
+   ein atomares Vergleichen-und-Setzen der Ablage. */
 /** @type {Map<string, Promise<any>>} */
 const sperren = new Map();
 async function unterSperre(id, arbeit) {
@@ -254,27 +278,42 @@ export async function zweifaktorBeginnen(store, id, konto) {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (e && e.stand === "aktiv") return { fehler: "aktiv" };
     const roh = randomBytes(20);
-    await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh),
+    await store.setJSON(SCHLUESSEL(id), { stand: "ausstehend", geheimnis: verschluesseln(roh, id),
       letzterSchritt: -1, wiederherstellung: [], begonnen: new Date().toISOString() });
     const b32 = base32Kodieren(roh);
     return { geheimnis: b32, otpauth: otpauthAdresse(b32, konto) };
   });
 }
 
-/** Einrichtung mit dem ersten Code bestätigen. Gibt die Wiederherstellungscodes einmal zurück. */
+/**
+ * Einrichtung mit dem ersten Code bestätigen. Gibt die Wiederherstellungscodes
+ * einmal zurück. Jede Einrichtung bekommt eine eigene Generation; Nachweise
+ * sind an sie gebunden und gelten nach Abschalten und Neueinrichten nicht mehr.
+ */
 export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
   return unterSperre(id, async () => {
     const e = await store.get(SCHLUESSEL(id), { type: "json" });
     if (!e || e.stand !== "ausstehend") return { fehler: "nichts-ausstehend" };
-    const roh = entschluesseln(e.geheimnis);
+    const roh = entschluesseln(e.geheimnis, id);
     if (!roh) return { fehler: "pfeffer" };
     const p = codePruefen(roh, code, ms, e.letzterSchritt ?? -1);
     if (!p.ok) return { fehler: "code" };
     const w = wiederherstellungErzeugen();
     await store.setJSON(SCHLUESSEL(id), { ...e, stand: "aktiv", letzterSchritt: p.schritt,
-      wiederherstellung: w.hashes, aktiviert: new Date().toISOString() });
+      geheimnis: kapselNeu(e.geheimnis, roh, id), wiederherstellung: w.hashes,
+      aktiviert: new Date().toISOString(), generation: randomBytes(16).toString("hex") });
     return { ok: true, wiederherstellung: w.klar };
   });
+}
+
+/** Abgelaufene Nachweise entfernen — beim Ausstellen und Prüfen, nebenbei. */
+async function nachweiseRaeumen(store, ms) {
+  const jetzt = Math.floor(ms / 1000);
+  const { blobs } = await store.list({ prefix: "zweifaktor-nachweis:" });
+  for (const b of blobs) {
+    const n = await store.get(b.key, { type: "json" }).catch(() => null);
+    if (!n || !Number.isFinite(n.bis) || n.bis <= jetzt) await store.delete(b.key).catch(() => {});
+  }
 }
 
 /**
@@ -288,10 +327,17 @@ export async function zweifaktorBestaetigen(store, id, code, ms = Date.now()) {
  */
 export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErlaubt = true, ms = Date.now() }) {
   if (nachweisErlaubt && nachweis && !code) {
-    const h = nachweisHash(String(nachweis));
-    const n = await store.get(NACHWEIS(h), { type: "json" });
-    if (n && n.id === id && Number.isFinite(n.bis) && n.bis > Math.floor(ms / 1000))
-      return { ok: true, art: "nachweis" };
+    const schl = NACHWEIS(nachweisHash(String(nachweis)));
+    const n = await store.get(schl, { type: "json" });
+    const abgelaufen = n && !(Number.isFinite(n.bis) && n.bis > Math.floor(ms / 1000));
+    if (abgelaufen) await store.delete(schl).catch(() => {});
+    if (n && !abgelaufen && n.id === id) {
+      /* Nur für die Einrichtung, für die er ausgestellt wurde. */
+      const e = await store.get(SCHLUESSEL(id), { type: "json" });
+      if (e && e.stand === "aktiv" && e.generation && n.generation === e.generation)
+        return { ok: true, art: "nachweis" };
+    }
+    nachweiseRaeumen(store, ms).catch(() => {});
     return { ok: false, grund: "nachweis" };
   }
   if (!code) return { ok: false, grund: "fehlt" };
@@ -300,11 +346,12 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
     if (!e || e.stand !== "aktiv") return { ok: false, grund: "nicht-aktiv" };
     const c = String(code).trim();
     if (/^\d[\d\s]*$/.test(c)) {
-      const roh = entschluesseln(e.geheimnis);
+      const roh = entschluesseln(e.geheimnis, id);
       if (!roh) return { ok: false, grund: "pfeffer" };
       const p = codePruefen(roh, c, ms, e.letzterSchritt ?? -1);
       if (!p.ok) return { ok: false, grund: p.wiederholt ? "wiederholt" : "code" };
-      await store.setJSON(SCHLUESSEL(id), { ...e, letzterSchritt: p.schritt });
+      await store.setJSON(SCHLUESSEL(id), { ...e, letzterSchritt: p.schritt,
+        geheimnis: kapselNeu(e.geheimnis, roh, id) });
       return { ok: true, art: "totp" };
     }
     /* Wiederherstellungscode: verbraucht, sobald er passt. */
@@ -321,21 +368,29 @@ export async function zweifaktorPruefen(store, id, { code, nachweis, nachweisErl
 
 /** Einen Nachweis ausstellen — nur nach einer bestandenen Code-Prüfung aufrufen. */
 export async function nachweisAusstellen(store, id, ms = Date.now()) {
+  const e = await store.get(SCHLUESSEL(id), { type: "json" });
+  if (!e || e.stand !== "aktiv" || !e.generation) throw new Error("kein aktiver zweiter Faktor");
+  await nachweiseRaeumen(store, ms).catch(() => {});
   const t = randomBytes(32).toString("base64url");
   const bis = Math.floor(ms / 1000) + NACHWEIS_DAUER;
-  await store.setJSON(NACHWEIS(nachweisHash(t)), { id, bis });
+  await store.setJSON(NACHWEIS(nachweisHash(t)), { id, bis, generation: e.generation });
   return { nachweis: t, gueltigBis: new Date(bis * 1000).toISOString() };
 }
 
-/** Abschalten: Eintrag und alle Nachweise dieses Schlüssels entfernen. */
+/**
+ * Abschalten: alle Nachweise dieses Schlüssels und den Eintrag entfernen.
+ * Lässt sich die Liste der Nachweise nicht lesen, wird NICHT abgeschaltet —
+ * der Fehler geht an den Aufrufer. (Die Generation macht übrig gebliebene
+ * Nachweise ohnehin wertlos; abgeschaltet wird trotzdem nur sauber.)
+ */
 export async function zweifaktorAbschalten(store, id) {
   return unterSperre(id, async () => {
-    await store.delete(SCHLUESSEL(id));
-    const { blobs } = await store.list({ prefix: "zweifaktor-nachweis:" }).catch(() => ({ blobs: [] }));
+    const { blobs } = await store.list({ prefix: "zweifaktor-nachweis:" });
     for (const b of blobs) {
       const n = await store.get(b.key, { type: "json" }).catch(() => null);
-      if (n && n.id === id) await store.delete(b.key).catch(() => {});
+      if (n && n.id === id) await store.delete(b.key);
     }
+    await store.delete(SCHLUESSEL(id));
     return { ok: true };
   });
 }

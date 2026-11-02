@@ -242,6 +242,15 @@ describe("Ablauf über /einrichten/zweifaktor", () => {
     expect(merke(await anfrage("/einrichten/verwalter", { kopf })).status).toBe(200);
     expect(merke(await anfrage("/einrichten/verwalter", { kopf })).status).toBe(200);
     expect(merke(await anfrage("/einrichten/zweifaktor", { methode: "DELETE", kopf })).status).toBe(401);
+    /* M1: Mit einem Nachweis lässt sich kein Verwalterschlüssel anlegen oder sperren. */
+    const anlegenN = merke(await anfrage("/einrichten/verwalter", { methode: "POST", kopf,
+      rumpf: { neuerName: "Hintertür" } }));
+    expect(anlegenN.status).toBe(401);
+    expect(anlegenN.schluessel).toBeUndefined();
+    expect(merke(await anfrage("/einrichten/verwalter", { methode: "DELETE", kopf,
+      rumpf: { kennung: "00000000" } })).status).toBe(401);
+    const liste = (await anfrage("/einrichten/verwalter", { kopf })).verwalter;
+    expect(liste.map((v) => v.name)).not.toContain("Hintertür");
     /* Ein anderer Schlüssel kann mit diesem Nachweis nichts anfangen. */
     const fremd = await verwalterAnlegen(laden(), { name: "Fremd", durch: "Pruefung" });
     const zf = merke(await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: fremd.schluessel,
@@ -250,9 +259,66 @@ describe("Ablauf über /einrichten/zweifaktor", () => {
       rumpf: { aktion: "bestaetigen", zweifaktor: code(zf.geheimnis) } }));
     expect(zfB.status).toBe(200);
     expect(merke(await anfrage("/einrichten/verwalter", { schluessel: fremd.schluessel, kopf })).status).toBe(401);
-    /* Nach 15 Minuten: abgelaufen. */
+    /* Nach 15 Minuten: abgelaufen — und beim Prüfen aus der Ablage geräumt (N1). */
     uhr(jetzt + 15 * 60_000 + 1000);
     expect(merke(await anfrage("/einrichten/verwalter", { kopf })).status).toBe(401);
+    expect((await readdir(path.join(wurzel, "centric"))).filter((f) => f.startsWith("zweifaktor-nachweis")))
+      .toEqual([]);
+  });
+
+  it("M1: Anlegen mit frischem Code; der neue Schlüssel ohne zweiten Faktor bekommt nur die Einrichtung", async () => {
+    uhr(jetzt + 30_000);
+    const a = merke(await anfrage("/einrichten/verwalter", { methode: "POST",
+      rumpf: { neuerName: "Neu ohne 2FA", zweifaktor: code(geheimnis) } }));
+    expect(a.status, a.roh).toBe(200);
+    const neu = a.schluessel;
+    for (const [p, m] of [["/einrichten/verwalter", "GET"], ["/einrichten/umgebung", "GET"],
+      ["/einrichten/uebersicht?bestand=raum-a", "GET"], ["/einrichten", "POST"], ["/einrichten/verwalter", "POST"]]) {
+      const r = await anfrage(p, { methode: m, schluessel: neu, rumpf: { name: "X", bestand: "raum-a", neuerName: "Y" } });
+      expect(r.status, `${m} ${p}`).toBe(403);
+      expect(r.zweifaktor, `${m} ${p}`).toBe("einrichten");
+      expect(r.zugangscode).toBeUndefined();
+      expect(r.schluessel).toBeUndefined();
+    }
+    const st = await anfrage("/einrichten/zweifaktor", { schluessel: neu });
+    expect(st.status).toBe(200);
+    expect(st).toMatchObject({ aktiv: false, pflicht: true });
+    /* Den neuen Schlüssel aufräumen — mit frischem Code, nicht mit Nachweis. */
+    uhr(jetzt + 30_000);
+    const kennungNeu = (await anfrage("/einrichten/verwalter", { kopf: { "x-centric-zweifaktor": code(geheimnis) } }))
+      .verwalter.find((v) => v.name === "Neu ohne 2FA").kennung;
+    uhr(jetzt + 30_000);
+    expect((await anfrage("/einrichten/verwalter", { methode: "DELETE",
+      rumpf: { kennung: kennungNeu, zweifaktor: code(geheimnis) } })).status).toBe(200);
+  });
+
+  it("N2: ein Nachweis gilt nach Abschalten und Neueinrichten nicht mehr", async () => {
+    const fremdKonto = await verwalterAnlegen(laden(), { name: "Generation", durch: "Pruefung" });
+    const s = fremdKonto.schluessel;
+    uhr(jetzt + 30_000);
+    const b1 = await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: s, rumpf: { aktion: "beginnen" } });
+    expect((await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: s,
+      rumpf: { aktion: "bestaetigen", zweifaktor: code(b1.geheimnis) } })).status).toBe(200);
+    uhr(jetzt + 30_000);
+    const n = await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: s,
+      rumpf: { aktion: "nachweis", zweifaktor: code(b1.geheimnis) } });
+    expect(n.status, n.roh).toBe(200);
+    const kopf = { "x-centric-zweifaktor-nachweis": n.nachweis };
+    expect((await anfrage("/einrichten/verwalter", { schluessel: s, kopf })).status).toBe(200);
+    /* Den Nachweis-Eintrag sichern, wie ihn jemand mit Lesezugriff auf eine Sicherung hätte. */
+    const dateien = (await readdir(path.join(wurzel, "centric"))).filter((f) => f.startsWith("zweifaktor-nachweis"));
+    expect(dateien.length).toBeGreaterThan(0);
+    const kopien = await Promise.all(dateien.map(async (f) => [f, await readFile(path.join(wurzel, "centric", f), "utf8")]));
+    uhr(jetzt + 30_000);
+    expect((await anfrage("/einrichten/zweifaktor", { methode: "DELETE", schluessel: s,
+      rumpf: { zweifaktor: code(b1.geheimnis) } })).status).toBe(200);
+    const b2 = await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: s, rumpf: { aktion: "beginnen" } });
+    expect((await anfrage("/einrichten/zweifaktor", { methode: "POST", schluessel: s,
+      rumpf: { aktion: "bestaetigen", zweifaktor: code(b2.geheimnis) } })).status).toBe(200);
+    /* Alten Nachweis zurückspielen: Er gehört zur vorigen Einrichtung. */
+    const { writeFile } = await import("node:fs/promises");
+    for (const [f, t] of kopien) await writeFile(path.join(wurzel, "centric", f), t);
+    expect((await anfrage("/einrichten/verwalter", { schluessel: s, kopf })).status).toBe(401);
   });
 
   it("die Verwalterliste sagt ja oder nein, nie mehr", async () => {
@@ -285,8 +351,47 @@ describe("Ablauf über /einrichten/zweifaktor", () => {
     const a = merke(await anfrage("/einrichten/zweifaktor", { methode: "DELETE",
       rumpf: { zweifaktor: code(geheimnis) } }));
     expect(a.status, a.roh).toBe(200);
-    expect(merke(await anfrage("/einrichten/verwalter")).status).toBe(200);
-    expect(merke(await anfrage("/einrichten/zweifaktor")).aktiv).toBe(false);
+    /* Andere Schlüssel haben ihren zweiten Faktor noch: Ohne eigenen bleibt
+       nur die Einrichtung (M1, automatische Pflicht). */
+    const v = merke(await anfrage("/einrichten/verwalter"));
+    expect(v.status).toBe(403);
+    expect(v.zweifaktor).toBe("einrichten");
+    const st = merke(await anfrage("/einrichten/zweifaktor"));
+    expect(st).toMatchObject({ aktiv: false, pflicht: true });
+  });
+});
+
+describe("Ablage und Verschlüsselung", () => {
+  it("N1: Nachweise gehen nicht in die Sicherung", async () => {
+    const { STORES } = await import("../werkzeug/ablage-sicherung.mjs");
+    expect(STORES.centric.ohne).toContain("zweifaktor-nachweis:");
+  });
+
+  it("N2: Abschalten scheitert, wenn die Nachweise nicht lesbar sind — und löscht dann nichts", async () => {
+    const { zweifaktorAbschalten } = await import("../server/lib/zweifaktor.mjs");
+    const geloescht = [];
+    const kaputt = { list: async () => { throw new Error("EIO"); },
+      get: async () => null, delete: async (k) => { geloescht.push(k); } };
+    await expect(zweifaktorAbschalten(kaputt, "x")).rejects.toThrow("EIO");
+    expect(geloescht).toEqual([]);
+  });
+
+  it("H1: Kapsel ist an ihre id gebunden; Fassung 1 (ohne AAD) bleibt lesbar", async () => {
+    const z = await import("../server/lib/zweifaktor.mjs");
+    const roh = Buffer.from("0123456789abcdefghij");
+    const k = z.verschluesseln(roh, "id-a");
+    expect(k.v).toBe(2);
+    expect(z.entschluesseln(k, "id-a").equals(roh)).toBe(true);
+    expect(z.entschluesseln(k, "id-b")).toBeNull();
+    /* Fassung 1 nachbauen, wie WP-32 sie schrieb. */
+    const { createCipheriv, hkdfSync, randomBytes } = await import("node:crypto");
+    const s = Buffer.from(hkdfSync("sha256", Buffer.from(process.env.CENTRIC_PFEFFER),
+      Buffer.from("centric-zweifaktor"), Buffer.from("totp-geheimnis-v1"), 32));
+    const iv = randomBytes(12);
+    const c = createCipheriv("aes-256-gcm", s, iv);
+    const daten = Buffer.concat([c.update(roh), c.final()]);
+    const alt = { v: 1, iv: iv.toString("base64"), tag: c.getAuthTag().toString("base64"), daten: daten.toString("base64") };
+    expect(z.entschluesseln(alt, "beliebig").equals(roh)).toBe(true);
   });
 });
 

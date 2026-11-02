@@ -89,7 +89,7 @@ const FORMAT = 1;
  * Ohne Angabe wird der Store ganz gesichert; `klasse: "C"` heißt: gar nicht.
  */
 export const STORES = {
-  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:"] },
+  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:", "zweifaktor-nachweis:"] },
   "centric-sitzungen":        { klasse: "B", nur: ["sk:"] },
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
