@@ -40,7 +40,8 @@ SNAPSHOT_ID=""
 DATEN_HINZU=0
 STATUS_DATEI=""
 
-# shellcheck disable=SC2329  # wird über trap aufgerufen
+# beenden wird über trap aufgerufen
+# shellcheck disable=SC2317,SC2329
 beenden() {
   local code=$?
   trap - EXIT

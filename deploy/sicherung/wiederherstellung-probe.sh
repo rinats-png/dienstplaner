@@ -69,7 +69,8 @@ status_schreiben() {
     "$BESTAENDE_ERWARTET" "$BESTAENDE_LESBAR" "$KONTEN" "$GESUND" "$dauer" "${CENTRIC_PROD_IMAGE##*@}")"
 }
 
-# shellcheck disable=SC2329  # wird über trap aufgerufen
+# beenden wird über trap aufgerufen
+# shellcheck disable=SC2317,SC2329
 beenden() {
   local code=$?
   trap - EXIT
