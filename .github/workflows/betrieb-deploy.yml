@@ -71,6 +71,7 @@ jobs:
         run: |
           IMAGE_DIGEST="$H8_DIGEST" docker compose -f deploy/compose.yml config >ausgabe.txt
           grep -E "^\s+image: ghcr.io/rinats-png/dienstplaner@${H8_DIGEST}$" ausgabe.txt
+          grep -E "^\s+pull_policy: never$" ausgabe.txt
           if grep -q "latest" ausgabe.txt; then
             echo "::error::latest in der aufgelösten Konfiguration"; exit 1
           fi

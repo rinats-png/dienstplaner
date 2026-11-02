@@ -201,6 +201,7 @@ Im Verzeichnis `/opt/apps/centric-dienstplanung`, Digest aus dem Lauf
 „Auslieferung“ (`sha256:…`, Kennzeichen = Commit):
 
     # 0. vorher: Zeile in FREIGEGEBENE-IMAGES.md (Status aktiv) im Repo, Kopie hier
+    printenv IMAGE_DIGEST IMAGE_TAG                 # muss LEER sein, sonst: unset IMAGE_DIGEST IMAGE_TAG
     docker pull ghcr.io/rinats-png/dienstplaner@sha256:<digest>     # bewusst, nur per Digest
     ./digest-pruefen.sh sha256:<digest>                               # muss „in Ordnung“ melden
     cp -p .env .env.vor-<UTC>                                         # Kopie der .env
@@ -213,7 +214,17 @@ per Präfix und auf die Bild-ID), ob das Bild lokal liegt, und ob das Label
 `org.opencontainers.image.revision` zum Commit der Liste passt. Bilder vor WP-03
 haben kein Label; sie gehen nur mit `--ohne-label` durch, nachdem die Herkunft
 anders belegt ist (Registry-Kennzeichen, Dateivergleich wie in Schritt 1). Ein
-**abweichendes** Label lässt nichts durch.
+**abweichendes** Label lässt nichts durch, ein Label auf einen gesperrten Commit
+gilt als gesperrt. Zusätzlich zur Liste kennen die Skripte eine fest eingebaute
+Mindest-Sperrliste (`f03a8514…`, `0861adee…`), die auch bei fehlender oder
+bearbeiteter Liste gilt.
+
+**Shell-Variablen gehen der `.env` vor.** Docker Compose nimmt `IMAGE_DIGEST` aus
+der Shell, wenn es dort gesetzt ist, und ignoriert dann die `.env`. Deshalb
+`IMAGE_DIGEST` nie exportieren (`printenv` oben). `ruecksprung.sh` bricht ab, wenn
+die Variable in der Shell steht, und setzt sie für seinen eigenen Aufruf
+ausdrücklich auf das Ziel. `compose.yml` hat `pull_policy: never`: Compose zieht
+nie selbst, ein fehlendes Bild lässt den Start scheitern.
 
 Danach prüfen — jeder Punkt einzeln:
 
@@ -287,32 +298,64 @@ nächsten Deploy-Fenster, gesondert freizugeben) läuft die Produktion mit der
 alten `compose.yml` und `IMAGE_TAG=<commit>@sha256:<digest>` weiter. Beim
 Einführen, in dieser Reihenfolge — **nicht vorher und nicht ohne Freigabe**:
 
-    cd /opt/apps/centric-dienstplanung
-    stempel=$(date -u +%Y%m%dT%H%M%SZ)
-    cp -p .env ".env.vor-wp03-$stempel"; cp -p compose.yml "compose.yml.vor-wp03-$stempel"
-    grep -c '^IMAGE_TAG=' .env                      # erwartet: 1
-    # Digest aus IMAGE_TAG übernehmen (Teil nach dem @):
-    digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env)
-    echo "$digest"                                   # erwartet: sha256:0b192927…e452f
-    # neue Dateien aus deploy/ hierher kopieren (compose.yml, Liste, Skripte), dann:
-    ./digest-pruefen.sh "$digest" --ohne-label       # H8+-Bild hat noch kein Label
-    sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env
-    grep -E '^IMAGE_(TAG|DIGEST)=' .env              # erwartet: genau IMAGE_DIGEST=…
-    docker compose config --no-env-resolution | grep image:   # zeigt die Variable, keine Secrets
-    docker compose up -d --pull never centric-dp-web          # gleiches Bild → kein Bildwechsel
+Jeder Schritt hängt mit `&&` am vorigen; bricht einer ab, passiert danach nichts.
+Neue Dateien aus `deploy/` (compose.yml, Liste, Skripte) liegen vorher in einem
+Unterordner `neu-wp03/`.
+
+    cd /opt/apps/centric-dienstplanung && unset IMAGE_DIGEST IMAGE_TAG
+    stempel=$(date -u +%Y%m%dT%H%M%SZ) \
+      && cp -p .env ".env.vor-wp03-$stempel" \
+      && cp -p compose.yml "compose.yml.vor-wp03-$stempel" \
+      && [ "$(grep -c '^IMAGE_TAG=' .env)" = 1 ] \
+      && digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env) \
+      && [ -n "$digest" ] && echo "$digest" \
+      && cp neu-wp03/compose.yml neu-wp03/FREIGEGEBENE-IMAGES.md neu-wp03/*.sh . \
+      && chmod +x digest-pruefen.sh ruecksprung.sh abschalten.sh \
+      && ./digest-pruefen.sh "$digest" --ohne-label \
+      && sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env \
+      && [ "$(grep -cE '^(export[[:space:]]+)?IMAGE_(TAG|DIGEST)=' .env)" = 1 ] \
+      && grep -q "^IMAGE_DIGEST=$digest\$" .env \
+      && docker compose config --no-env-resolution | grep -E '^\s+image: .*@sha256:' \
+      && docker compose up -d --pull never centric-dp-web \
+      && docker compose ps
+
+Erwartet: `echo` zeigt `sha256:0b192927…e452f`; `digest-pruefen.sh` meldet „in
+Ordnung“ mit Warnung (das H8+-Bild hat noch kein Revision-Label); die Prüfung mit
+`config` zeigt die Zeile `image: …@sha256:0b192927…`. `--no-env-resolution` löst
+nur die Werte aus `env_file` nicht auf; Interpolation (wie `image:`) und die Werte
+unter `environment:` erscheinen trotzdem — die Ausgabe daher nicht weitergeben,
+nur die `image:`-Zeile ansehen.
 
 Auch bei unverändertem Digest kann Compose den Container neu erzeugen (geänderte
 Konfiguration) — wenige Sekunden Unterbrechung einplanen. Zurück: beide
-`.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`. Das
-lokale VPS-Kennzeichen `latest` (`0861adee`) wird davon nicht berührt; es
-umzubenennen (`alt-0861adee`) ist ein eigener, gesondert freizugebender Schritt.
+`.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`.
 
-Der Schritt auf den VPS aus GitHub Actions heraus (`deploy.yml`, Job `vps`
-über SSH und `/opt/bin/deploy.sh`) ist vorbereitet, aber nicht scharf: Er läuft
-erst, wenn `DEPLOY_HOST` und `DEPLOY_SSH_KEY` hinterlegt sind und das Skript auf
-dem VPS liegt. `deploy.sh` bekommt heute ein Kennzeichen und sieht einen
-automatischen Rollback vor; bevor der Job scharf wird, muss es auf Digest,
-`digest-pruefen.sh` und R0 umgestellt sein. Bis dahin gilt der Weg oben.
+**Pflichtschritt nach der Migration (gesondert freizugeben, hier nur beschrieben):**
+gesperrte Bilder lokal unerreichbar machen, damit sie auch von Hand nicht
+versehentlich gestartet werden. Die Sperre in den Skripten ist nur prozedural;
+ein `docker run …:latest` an ihnen vorbei bliebe sonst möglich.
+
+    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # Bestand ansehen
+    docker image rm ghcr.io/rinats-png/dienstplaner:latest        # löst nur das Tag latest (0861adee)
+    # oder, wie im Plan vorgesehen, erst umbenennen und dann das Tag latest lösen:
+    #   docker tag ghcr.io/rinats-png/dienstplaner:latest ghcr.io/rinats-png/dienstplaner:alt-0861adee
+    #   docker image rm ghcr.io/rinats-png/dienstplaner:latest
+    docker image rm ghcr.io/rinats-png/dienstplaner@sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79
+    docker image ls --digests ghcr.io/rinats-png/dienstplaner     # danach: kein latest, kein f03a8514
+
+Ein Bild, das noch von einem Container (auch einem angehaltenen) benutzt wird,
+lässt Docker nicht entfernen — dann erst den Container prüfen, nicht `--force`.
+Soll ein gesperrtes Bild zur Beweissicherung bleiben, nur das Tag lösen und den
+Grund im Abnahmebericht vermerken.
+
+**Job `vps` in `deploy.yml` — gesperrt.** Der Schritt auf den VPS aus GitHub
+Actions heraus (Job `vps` über SSH und `/opt/bin/deploy.sh`) darf **nicht**
+ausgelöst werden (Eingabe „ausliefern“ bleibt aus), und `DEPLOY_HOST` darf
+**nicht** gesetzt werden, bis `deploy.sh` auf Digest (`IMAGE_DIGEST`),
+`digest-pruefen.sh` und R0 umgestellt ist. Heute übergibt der Job ein
+Kennzeichen, und `deploy.sh` rollt bei Fehler automatisch auf ein voriges
+Kennzeichen zurück — das kann ein gesperrtes Bild treffen. Bis dahin gilt
+ausschließlich der Weg von Hand oben.
 
 ## Schritt 4 — Was beim ersten Öffnen geschieht
 

@@ -49,7 +49,21 @@ const STUB = `#!/usr/bin/env bash
 # Docker-Stub für die Deploy-Prüfungen. Zustand liegt in $STUB_DIR.
 z="$STUB_DIR"
 printf '%s\\n' "$*" >>"$z/aufrufe.log"
+if [[ -f "$z/docker_tot" ]]; then
+  echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2
+  exit 1
+fi
 case "$1" in
+  info) echo "stub-info" ;;
+  ps)
+    c="$z/container"
+    if [[ -f "$z/ps_luegt" ]]; then echo "Up 3 seconds"; exit 0; fi
+    if [[ -f "$c/status" ]]; then
+      case "$(cat "$c/status")" in
+        running) echo "Up 5 minutes (healthy)" ;;
+        *) echo "Exited (0) 1 second ago" ;;
+      esac
+    fi ;;
   image)
     fmt="$4"; ref="$5"; hex="\${ref##*@sha256:}"; d="$z/bilder/$hex"
     if [[ ! -d "$d" ]]; then echo "Error: No such image: $ref" >&2; exit 1; fi
@@ -60,10 +74,16 @@ case "$1" in
     esac ;;
   inspect)
     fmt="$3"; c="$z/container"
+    if [[ -f "$z/inspect_fehler" ]]; then echo "permission denied while trying to connect" >&2; exit 1; fi
     if [[ ! -f "$c/status" ]]; then echo "Error: No such object: $4" >&2; exit 1; fi
     case "$fmt" in
       *Health*) cat "$c/health" ;;
-      *State.Status*) echo "$(cat "$c/status") $(cat "$c/restarts") $(cat "$c/image")" ;;
+      *State.Status*)
+        if [[ -f "$z/spaet_zaehler" ]]; then
+          n=$(( $(cat "$z/spaet_zaehler") + 1 )); echo "$n" >"$z/spaet_zaehler"
+          if (( n >= 2 )); then echo running >"$c/status"; echo 1 >"$c/restarts"; fi
+        fi
+        echo "$(cat "$c/status") $(cat "$c/restarts") $(cat "$c/image")" ;;
       *.Image*) cat "$c/image" ;;
       *) echo "stub: unbekanntes Format $fmt" >&2; exit 9 ;;
     esac ;;
@@ -80,14 +100,19 @@ case "$1" in
     case "$1" in
       up)
         [[ -f "$z/up_fehler" ]] && { echo "stub: up scheitert" >&2; exit 1; }
-        dg="$(grep '^IMAGE_DIGEST=' "$proj/.env" | tail -n1 | cut -d= -f2)"
+        printf '%s\\n' "\${IMAGE_DIGEST:-<nicht gesetzt>}" >"$z/up_env"
+        # wie Compose: eine Variable aus der Umgebung geht der .env vor
+        if [[ -n "\${IMAGE_DIGEST:-}" ]]; then dg="$IMAGE_DIGEST"; else dg="$(grep '^IMAGE_DIGEST=' "$proj/.env" | tail -n1 | cut -d= -f2)"; fi
         hex="\${dg#sha256:}"
         if [[ -f "$z/falsches_bild" ]]; then cat "$z/falsches_bild" >"$c/image"; else cat "$z/bilder/$hex/id" >"$c/image"; fi
         echo running >"$c/status"; [[ -f "$c/restarts" ]] || echo 0 >"$c/restarts"
         if [[ -f "$z/health_nach_up" ]]; then cp "$z/health_nach_up" "$c/health"; else echo healthy >"$c/health"; fi ;;
       stop)
         [[ -f "$z/stop_fehler" ]] && { echo "stub: compose stop scheitert" >&2; exit 1; }
-        if [[ -f "$z/neustart_nach_stop" ]]; then echo running >"$c/status"; echo 1 >"$c/restarts"; else echo exited >"$c/status"; fi ;;
+        if [[ -f "$z/neustart_nach_stop" ]]; then echo running >"$c/status"; echo 1 >"$c/restarts"; else echo exited >"$c/status"; fi
+        [[ -f "$z/neustart_spaeter" ]] && echo 0 >"$z/spaet_zaehler"
+        [[ -f "$z/verschwindet_nach_stop" ]] && rm -f "$c/status"
+        true ;;
       *) echo "stub: compose $1 nicht nachgebildet" >&2; exit 9 ;;
     esac ;;
   stop)
@@ -128,20 +153,19 @@ function container({ status = "running", health = "healthy", image = ID_A, resta
 }
 
 function lauf(skript, args = [], { freigaben, env = {} } = {}) {
-  const r = spawnSync(BASH, [p(path.join(DEPLOY, skript)), ...args], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: bin + path.delimiter + process.env.PATH,
-      STUB_DIR: p(stubDir),
-      CENTRIC_VERZ: p(verz),
-      CENTRIC_FREIGABEN: p(freigaben ?? path.join(verz, "FREIGEGEBENE-IMAGES.md")),
-      CENTRIC_WARTEZEIT: "4",
-      CENTRIC_TAKT: "1",
-      CENTRIC_NACHBEOBACHTUNG: "0",
-      ...env,
-    },
-  });
+  const umgebung = {
+    ...process.env,
+    PATH: bin + path.delimiter + process.env.PATH,
+    STUB_DIR: p(stubDir),
+    CENTRIC_VERZ: p(verz),
+    CENTRIC_FREIGABEN: p(freigaben ?? path.join(verz, "FREIGEGEBENE-IMAGES.md")),
+    CENTRIC_WARTEZEIT: "4",
+    CENTRIC_TAKT: "1",
+    CENTRIC_NACHBEOBACHTUNG: "0",
+    ...env,
+  };
+  for (const n of ["IMAGE_DIGEST", "IMAGE_TAG"]) if (!(n in env)) delete umgebung[n];
+  const r = spawnSync(BASH, [p(path.join(DEPLOY, skript)), ...args], { encoding: "utf8", env: umgebung });
   return { code: r.status, out: r.stdout, err: r.stderr, alles: r.stdout + r.stderr };
 }
 
@@ -174,6 +198,17 @@ describe("compose.yml: Bild nur per Digest", () => {
 
   it("verlangt IMAGE_DIGEST ohne Default", () => {
     expect(compose).toMatch(/image: ghcr\.io\/rinats-png\/dienstplaner@\$\{IMAGE_DIGEST:\?[^}]+\}/);
+  });
+
+  it("zieht nie selbst (pull_policy: never)", () => {
+    expect(compose).toMatch(/^\s+pull_policy: never\s*$/m);
+  });
+
+  it(".env.example kennt kein IMAGE_TAG/latest mehr, nur IMAGE_DIGEST", () => {
+    const beispiel = readFileSync(path.join(WURZEL, ".env.example"), "utf8");
+    expect(beispiel).not.toMatch(/^\s*IMAGE_TAG=/m);
+    expect(beispiel).toMatch(/^IMAGE_DIGEST=sha256:/m);
+    expect(beispiel).not.toMatch(/^[^#]*latest/m);
   });
 
   it("kennt weder IMAGE_TAG noch latest als Bildquelle", () => {
@@ -304,6 +339,66 @@ describe.skipIf(!BASH)("digest-pruefen.sh", { timeout: 60_000 }, () => {
     expect(lauf("digest-pruefen.sh", [A]).code).toBe(4);
   });
 
+  it("meldet Docker nicht erreichbar (Exit 7) statt „nicht lokal“", () => {
+    bild(H8, ID_A, H8_COMMIT);
+    writeFileSync(path.join(stubDir, "docker_tot"), "");
+    const r = lauf("digest-pruefen.sh", [H8], { freigaben: echt });
+    expect(r.code).toBe(7);
+    expect(r.err).toMatch(/Docker antwortet nicht/);
+  });
+
+  it("sperrt f03a8514 auch, wenn die Liste es nicht (mehr) führt — eingebaute Sperrliste", () => {
+    writeFileSync(path.join(verz, "FREIGEGEBENE-IMAGES.md"), liste([[A, COMMIT_A, "aktiv"]]));
+    bild(P00, ID_B, "64d08a4957c5374e1f04c17be2b75162c07573d2");
+    const r = lauf("digest-pruefen.sh", [P00]);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/fest eingebaut/);
+    expect(lauf("digest-pruefen.sh", [ALT_PRAEFIX + "e".repeat(56)]).code).toBe(3);
+  });
+
+  it("sperrt f03a8514 auch, wenn es in der Liste als aktiv eingetragen wurde", () => {
+    writeFileSync(path.join(verz, "FREIGEGEBENE-IMAGES.md"), liste([[P00, "64d08a4957c5374e1f04c17be2b75162c07573d2", "aktiv"]]));
+    bild(P00, ID_B, "64d08a4957c5374e1f04c17be2b75162c07573d2");
+    const r = lauf("digest-pruefen.sh", [P00]);
+    expect([3, 4]).toContain(r.code);
+    expect(r.err).toMatch(/gesperrt/i);
+  });
+
+  it("lehnt die ganze Liste ab, wenn eine sha256-Zeile nicht dem Format entspricht (fail-closed)", () => {
+    bild(A, ID_A, COMMIT_A);
+    const basis = liste([[A, COMMIT_A, "aktiv"]]);
+    for (const kaputt of [
+      `| sha256:${"d".repeat(64)} | \`${COMMIT_B}\` | 2026-11-01 | x | gesperrt | ohne Backticks |`,
+      `| \`sha256:${"d".repeat(64)}\` | \`${COMMIT_B}\` | 2026-11-01 | gesperrt |`,
+      `| \`sha256:${"d".repeat(64)}\` | \`${COMMIT_B}\` | 2026-11-01 | x | gesperrt | Grund | zu viel |`,
+      `|\`sha256:XYZ\`| \`${COMMIT_B}\` | 2026-11-01 | x | gesperrt | Grund |`,
+    ]) {
+      writeFileSync(path.join(verz, "FREIGEGEBENE-IMAGES.md"), basis + kaputt + "\n");
+      const r = lauf("digest-pruefen.sh", [A]);
+      expect(r.code, kaputt).toBe(4);
+      expect(r.err).toMatch(/Format/);
+    }
+  });
+
+  it("lehnt aktiv/vorherig mit dem Commit eines gesperrten Standes ab", () => {
+    writeFileSync(
+      path.join(verz, "FREIGEGEBENE-IMAGES.md"),
+      liste([[A, "64d08a4957c5374e1f04c17be2b75162c07573d2", "aktiv"]]),
+    );
+    bild(A, ID_A, "64d08a4957c5374e1f04c17be2b75162c07573d2");
+    const r = lauf("digest-pruefen.sh", [A]);
+    expect(r.code).toBe(4);
+    expect(r.err).toMatch(/gesperrten Commit/);
+  });
+
+  it("lehnt ein Bild ab, dessen Label auf einen gesperrten Commit zeigt (auch mit --ohne-label)", () => {
+    writeFileSync(path.join(verz, "FREIGEGEBENE-IMAGES.md"), liste([[A, COMMIT_A, "aktiv"]]));
+    bild(A, ID_A, "64d08a4957c5374e1f04c17be2b75162c07573d2");
+    const r = lauf("digest-pruefen.sh", [A, "--ohne-label"]);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/GESPERRTEN Stand/);
+  });
+
   it("verweigert bei fehlender Liste", () => {
     bild(A, ID_A, COMMIT_A);
     expect(lauf("digest-pruefen.sh", [A], { freigaben: path.join(verz, "gibt-es-nicht.md") }).code).toBe(4);
@@ -418,6 +513,57 @@ describe.skipIf(!BASH)("ruecksprung.sh", { timeout: 60_000 }, () => {
     expect(r.code).toBe(1);
     expect(r.err).toMatch(/nicht healthy/);
   });
+
+  it("meldet einen Fehlschlag bei einem Container ohne Healthcheck", () => {
+    writeFileSync(path.join(stubDir, "health_nach_up"), "ohne-healthcheck\n");
+    const r = lauf("ruecksprung.sh");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/ohne-healthcheck/);
+  });
+
+  it("bricht ab, wenn IMAGE_DIGEST in der Shell gesetzt ist (ginge der .env vor)", () => {
+    const vorher = lesen(".env");
+    for (const wert of [B, ""]) {
+      const r = lauf("ruecksprung.sh", [], { env: { IMAGE_DIGEST: wert } });
+      expect(r.code).toBe(4);
+      expect(r.err).toMatch(/in der Shell gesetzt/);
+    }
+    expect(lesen(".env")).toBe(vorher);
+    expect(aufrufe()).not.toMatch(/^compose/m);
+  });
+
+  it("übergibt IMAGE_DIGEST beim Start ausdrücklich (Ziel läuft, auch wenn .env-Lesen abwiche)", () => {
+    const r = lauf("ruecksprung.sh");
+    expect(r.code, r.alles).toBe(0);
+    expect(readFileSync(path.join(stubDir, "up_env"), "utf8").trim()).toBe(A);
+    expect(readFileSync(path.join(stubDir, "container", "image"), "utf8").trim()).toBe(ID_A);
+  });
+
+  it("ersetzt export- und mehrfache IMAGE_DIGEST-Zeilen durch genau eine", () => {
+    writeFileSync(
+      path.join(verz, ".env"),
+      `CENTRIC_PFEFFER=nur-probe\nexport IMAGE_DIGEST=${B}\nX=1\n  IMAGE_DIGEST=${C}\nCENTRIC_AUFRAEUMEN=aus\n`,
+    );
+    const r = lauf("ruecksprung.sh");
+    expect(r.code, r.alles).toBe(0);
+    expect(lesen(".env")).toBe(`CENTRIC_PFEFFER=nur-probe\nIMAGE_DIGEST=${A}\nX=1\nCENTRIC_AUFRAEUMEN=aus\n`);
+    expect(protokoll()).toMatch(new RegExp(`start von=${C} nach=${A}`)); // letzte Zuweisung galt
+  });
+
+  it("hinterlässt keine .env.neu.*-Reste, weder nach Erfolg noch nach Fehlschlag", () => {
+    expect(lauf("ruecksprung.sh").code).toBe(0);
+    writeFileSync(path.join(stubDir, "up_fehler"), "");
+    expect(lauf("ruecksprung.sh").code).toBe(1);
+    expect(readdirSync(verz).filter((f) => f.startsWith(".env.neu."))).toEqual([]);
+  });
+
+  it("verweigert, wenn Docker nicht erreichbar ist — .env bleibt unverändert", () => {
+    const vorher = lesen(".env");
+    writeFileSync(path.join(stubDir, "docker_tot"), "");
+    const r = lauf("ruecksprung.sh");
+    expect(r.code).toBe(3);
+    expect(lesen(".env")).toBe(vorher);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -459,6 +605,47 @@ describe.skipIf(!BASH)("abschalten.sh (R0)", { timeout: 60_000 }, () => {
     expect(aufrufe()).not.toMatch(/^stop/m);
     expect(readFileSync(path.join(stubDir, "container", "status"), "utf8").trim()).toBe("running");
     expect(protokoll()).toBe("");
+  });
+
+  it("Docker nicht erreichbar → Exit 1, nie „R0 erreicht“", () => {
+    writeFileSync(path.join(stubDir, "docker_tot"), "");
+    for (const args of [[], ["--trocken"]]) {
+      const r = lauf("abschalten.sh", args);
+      expect(r.code, args.join(" ")).toBe(1);
+      expect(r.alles).not.toMatch(/R0 erreicht/);
+      expect(r.err).toMatch(/Docker antwortet nicht/);
+    }
+  });
+
+  it("inspect scheitert aus anderem Grund als „nicht vorhanden“ → Exit 1", () => {
+    writeFileSync(path.join(stubDir, "inspect_fehler"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code).toBe(1);
+    expect(r.alles).not.toMatch(/R0 erreicht/);
+    expect(aufrufe()).not.toMatch(/^compose/m);
+  });
+
+  it("erkennt einen verzögerten Wiederanlauf während der Nachbeobachtung", () => {
+    writeFileSync(path.join(stubDir, "neustart_spaeter"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/wieder angelaufen|nicht angehalten/);
+    expect(protokoll()).toMatch(/wieder angelaufen/);
+  });
+
+  it("ein nach dem Stopp verschwundener Container gilt nicht als angehalten", () => {
+    writeFileSync(path.join(stubDir, "verschwindet_nach_stop"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/verschwunden/);
+  });
+
+  it("docker ps meldet „Up“, obwohl inspect „exited“ sagt → Exit 1", () => {
+    writeFileSync(path.join(stubDir, "ps_luegt"), "");
+    const r = lauf("abschalten.sh");
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/docker ps meldet/);
+    expect(aufrufe()).toMatch(/^ps -a --filter name=\^centric-dp-web\$ --format/m);
   });
 
   it("lehnt unbekannte Schalter ab, ohne etwas anzuhalten", () => {

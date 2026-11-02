@@ -13,10 +13,14 @@
 #    6. Bild-ID ist nicht gesperrt
 #    7. Label org.opencontainers.image.revision = Commit aus der Liste.
 #       Fehlt das Label (Bilder vor WP-03), nur mit --ohne-label zulässig,
-#       dann mit Warnung. Ein abweichendes Label ist nie zulässig.
+#       dann mit Warnung. Ein abweichendes Label ist nie zulässig; ein
+#       Label, das auf einen gesperrten Commit zeigt, gilt als gesperrt.
+#    Gesperrt ist, was in der Liste gesperrt steht, und zusätzlich die
+#    fest eingebaute Mindest-Sperrliste (f03a8514…, 0861adee…).
 #
 #  Rückgabe: 0 in Ordnung · 2 Aufruf/Format · 3 gesperrt · 4 nicht
 #  freigegeben/Liste fehlerhaft · 5 nicht lokal vorhanden · 6 Label
+#  · 7 Docker nicht erreichbar
 #
 #  Ändert nichts: liest nur die Liste und fragt Docker.
 # =====================================================================
@@ -76,7 +80,11 @@ if [[ "$status" != "aktiv" && "$status" != "vorherig" ]]; then
   exit 4
 fi
 
-# 5. lokal vorhanden?
+# 5. Docker erreichbar? lokal vorhanden?
+if ! docker_erreichbar; then
+  fehler "Docker antwortet nicht (docker info) — nichts geprüft, nichts starten."
+  exit 7
+fi
 ref="$CENTRIC_BILD_REPO@$digest"
 id="$(bild_id "$ref")"
 if [[ -z "$id" ]]; then
@@ -95,6 +103,11 @@ fi
 # 7. Revision-Label
 label="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$ref" 2>/dev/null || true)"
 if [[ "$label" == "<no value>" ]]; then label=""; fi
+if [[ -n "$label" ]] && grund="$(commit_gesperrt_grund "$label")"; then
+  fehler "Label org.opencontainers.image.revision=$label gehört zu einem GESPERRTEN Stand: $grund"
+  fehler "$R0_HINWEIS"
+  exit 3
+fi
 if [[ -z "$label" ]]; then
   if ((ohne_label)); then
     warnung "Bild $ref hat kein Label org.opencontainers.image.revision; zugelassen nur wegen --ohne-label."

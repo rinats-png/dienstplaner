@@ -45,23 +45,11 @@ Abgedeckte Fälle (Stub): aktives H8+-Bild mit passendem Label zugelassen; `f03a
 
 ## Migrationsschritt Produktions-`.env` (nur beschrieben, NICHT ausgeführt)
 
-Gesondert freizugeben, im nächsten Deploy-Fenster (BEREITSTELLUNG.md 3.3):
-
-    cd /opt/apps/centric-dienstplanung
-    stempel=$(date -u +%Y%m%dT%H%M%SZ)
-    cp -p .env ".env.vor-wp03-$stempel"; cp -p compose.yml "compose.yml.vor-wp03-$stempel"
-    grep -c '^IMAGE_TAG=' .env                      # erwartet: 1
-    digest=$(sed -n 's/^IMAGE_TAG=[0-9a-f]\{40\}@\(sha256:[0-9a-f]\{64\}\)$/\1/p' .env)
-    echo "$digest"                                   # erwartet: sha256:0b192927…e452f
-    # compose.yml, FREIGEGEBENE-IMAGES.md, freigabe-lib.sh, digest-pruefen.sh,
-    # ruecksprung.sh, abschalten.sh aus deploy/ hierher kopieren (chmod +x *.sh)
-    ./digest-pruefen.sh "$digest" --ohne-label       # H8+-Bild hat noch kein Revision-Label
-    sed -i "s/^IMAGE_TAG=.*/IMAGE_DIGEST=$digest/" .env
-    grep -E '^IMAGE_(TAG|DIGEST)=' .env              # erwartet: genau IMAGE_DIGEST=…
-    docker compose config --no-env-resolution | grep image:
-    docker compose up -d --pull never centric-dp-web # gleiches Bild; Neuerzeugung möglich (Sekunden)
-
-Zurück: beide `.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`.
+Gesondert freizugeben, im nächsten Deploy-Fenster. Maßgeblich ist der mit `&&`
+verkettete Block in **BEREITSTELLUNG.md 3.3** (seit dem Review: Abbruch bei jedem
+Fehlschritt, `unset IMAGE_DIGEST IMAGE_TAG`, Pflichtschritt danach: gesperrte
+Bilder lokal entfernen bzw. Tag `latest` lösen). Zurück: beide
+`.vor-wp03-…`-Dateien zurückkopieren, `docker compose up -d --pull never`.
 
 ## Abweichung vom Plan
 
@@ -74,6 +62,24 @@ P0-BLOCK §2.1 sah vor, `IMAGE_TAG=<sha>@sha256:<d>` übergangsweise gültig zu 
 3. **Lokales VPS-Tag `latest` → `alt-0861adee`** umbenennen — gesondert freizugeben.
 4. **Voller Digest von `0861adee`** ist nicht belegt; gesperrt per Präfix (trifft Digest und Bild-ID). Bei der nächsten lesenden Prüfung auf dem VPS (`docker image inspect … --format '{{.Id}} {{.RepoDigests}}'`) nachtragen.
 5. **H8+-Bild hat kein Revision-Label** (vor WP-03 gebaut) → bis zum nächsten Bau nur mit `--ohne-label`; Herkunft ist im H8-Bericht anders belegt.
-6. **`.env.example`** enthält noch `IMAGE_TAG=latest` — nicht in meinem Dateibesitz; sollte auf `IMAGE_DIGEST=sha256:<aus FREIGEGEBENE-IMAGES.md>` geändert werden (ohne Folge für den Start: ohne `IMAGE_DIGEST` startet Compose ohnehin nicht).
-7. **`/opt/bin/deploy.sh`** (Job `vps`, nicht im Repo) arbeitet laut Kommentar mit Kennzeichen und automatischem Rollback — vor dem Scharfschalten auf Digest, `digest-pruefen.sh` und R0 umstellen. Job `vps` bewusst unverändert.
+6. ~~`.env.example` enthält noch `IMAGE_TAG=latest`~~ — erledigt im Review (F10).
+7. **`/opt/bin/deploy.sh`** (Job `vps`, nicht im Repo) arbeitet laut Kommentar mit Kennzeichen und automatischem Rollback — vor dem Scharfschalten auf Digest, `digest-pruefen.sh` und R0 umstellen. Job-Bedingung bewusst unverändert; Sperrvermerk in `deploy.yml` und BEREITSTELLUNG.md (F4).
+
+## Review-Auflagen (Freigabe mit Auflagen) — umgesetzt
+
+| | Befund | Umsetzung | Test |
+|---|---|---|---|
+| F1 hoch | R0 meldete Erfolg, wenn Docker nicht erreichbar / `inspect` scheitert | `docker info` vorab (sonst Exit 1, auch bei `--trocken`); nur „No such object/container“ gilt als `fehlt`; `fehlt` nach dem Stopp nur, wenn vorher schon fehlend; Gegenprüfung `docker ps -a --filter name=^<dienst>$` (kein `Up`/`Restarting`, kein Widerspruch) | Docker tot → 1; inspect-Fehler → 1; verschwunden → 1; `ps` meldet `Up` → 1 |
+| F2 mittel | `IMAGE_DIGEST` aus der Shell überstimmt `.env` | `ruecksprung.sh` bricht ab, wenn gesetzt (auch leer), und ruft `IMAGE_DIGEST="$ziel" … up` auf; BEREITSTELLUNG §3 (`printenv`, Hinweis) | Variable gesetzt → 4, kein compose; Stub sieht beim `up` `IMAGE_DIGEST=<Ziel>` |
+| F3 mittel | Sperre nur prozedural | `pull_policy: never` in `compose.yml` (CI prüft aufgelöst); §3.3 Pflichtschritt: gesperrte Bilder entfernen / Tag `latest` lösen (nur beschrieben) | statischer Test + CI-`config` |
+| F4 mittel | `vps`-Job/`deploy.sh` | Sperrvermerk im Kopf und am Job in `deploy.yml`, BEREITSTELLUNG §3.3; Bedingung unverändert | – |
+| F5 niedrig | Migration nicht verkettet; Kommentar `--no-env-resolution` falsch | Block mit `&&`, `[ -n "$digest" ]`, Zählprüfungen; Kommentar berichtigt (löst nur `env_file` nicht auf, Interpolation und `environment:` erscheinen) | – |
+| F6 niedrig | fehlerhafte sha256-Zeilen still übergangen; Sperre nur aus Datei | jede Tabellenzeile mit `sha256`, deren erste Zelle nicht genau ein Digest in Backticks ist oder die nicht genau 6 Zellen hat, → Listenfehler (Exit 4); fest eingebaute Mindest-Sperrliste (`f03a8514…`, `0861adee`) | 4 Formvarianten → 4; f03a8514 ohne Listeneintrag → 3; f03a8514 als aktiv eingetragen → abgelehnt |
+| F7 niedrig | gesperrte Commits | aktiv/vorherig mit gesperrtem Digest oder Commit → Listenfehler; Label auf gesperrten Commit → Exit 3 (auch mit `--ohne-label`) | beide |
+| F8 niedrig | `export IMAGE_DIGEST=`, Rechte, Reste | alle (auch `export`, auch mehrfache) Zuweisungen → genau eine an der ersten Stelle; `chmod/chown --reference` (ohne Root best effort); `trap` räumt `.env.neu.*` auf | export+mehrfach; keine Reste nach Erfolg und Fehlschlag |
+| F9 niedrig | Testlücken | ergänzt: verzögerter Wiederanlauf, Docker tot (alle drei Skripte), Umgebungs-`IMAGE_DIGEST`, ohne Healthcheck, export/mehrfach | 50 Tests statt 31 |
+| F10 niedrig | `.env.example` | `IMAGE_DIGEST=sha256:<aus FREIGEGEBENE-IMAGES.md>`, Hinweis „nie exportieren“ | statischer Test |
+
+`digest-pruefen.sh` hat dazu den Exit-Code 7 (Docker nicht erreichbar) bekommen; vorher wäre das als „nicht lokal vorhanden“ (5) gemeldet worden.
 8. Ein Revision-Label im neu gebauten Bild ist erst nach dem nächsten Lauf „Auslieferung“ nachweisbar (`docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}'`).
+9. Gesperrte Bilder lokal entfernen / Tag `latest` lösen (BEREITSTELLUNG.md 3.3, Pflichtschritt) — gesondert freizugeben.

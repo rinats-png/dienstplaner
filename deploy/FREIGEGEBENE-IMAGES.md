@@ -26,6 +26,11 @@ kommt sie als Kopie, so wie `compose.yml`.
   - `gesperrt`: darf nie wieder gestartet werden. Grund ist Pflicht.
 - **Grund**: frei, ohne `|`.
 - Einträge werden nie gelöscht, nur auf `gesperrt` gesetzt.
+- Jede Tabellenzeile mit `sha256`, die nicht genau diesem Format folgt, macht die
+  ganze Liste ungültig — die Skripte starten dann nichts.
+- `f03a8514…` und `0861adee…` sind zusätzlich fest in `freigabe-lib.sh` gesperrt;
+  das gilt auch, wenn diese Datei fehlt oder anders lautet. Ein `aktiv`/`vorherig`
+  mit gesperrtem Digest oder Commit macht die Liste ungültig.
 
 | Digest | Commit | Datum | Abnahmebericht | Status | Grund |
 |---|---|---|---|---|---|

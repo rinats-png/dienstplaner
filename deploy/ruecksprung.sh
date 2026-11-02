@@ -42,6 +42,14 @@ for arg in "$@"; do
   esac
 done
 
+# Docker Compose bevorzugt Variablen aus der Shell vor der .env. Ein dort
+# gesetztes IMAGE_DIGEST würde den Rücksprung still überstimmen.
+if [[ -n "${IMAGE_DIGEST+x}" ]]; then
+  fehler "IMAGE_DIGEST ist in der Shell gesetzt (${IMAGE_DIGEST:-leer}) und ginge der .env vor."
+  fehler "Erst 'unset IMAGE_DIGEST', dann erneut aufrufen."
+  exit 4
+fi
+
 verweigern() {
   fehler "Rücksprung VERWEIGERT: $*"
   fehler "$R0_HINWEIS"
@@ -99,15 +107,21 @@ fi
 
 cp -p "$envdatei" "$sicherung"
 neu="$(mktemp "$CENTRIC_VERZ/.env.neu.XXXXXX")"
+trap 'rm -f "$neu"' EXIT
 chmod 600 "$neu"
-if grep -Eq '^[[:space:]]*IMAGE_DIGEST=' "$envdatei"; then
-  awk -v z="$ziel" '
-    /^[[:space:]]*IMAGE_DIGEST=/ { print "IMAGE_DIGEST=" z; next }
-    { print }
-  ' "$envdatei" >"$neu"
-else
-  { cat "$envdatei"; printf 'IMAGE_DIGEST=%s\n' "$ziel"; } >"$neu"
-fi
+# Alle Zuweisungen (auch "export IMAGE_DIGEST=", auch mehrfache) durch genau
+# eine ersetzen, an der Stelle der ersten; fehlt sie, anhängen.
+awk -v z="$ziel" '
+  /^[[:space:]]*(export[[:space:]]+)?IMAGE_DIGEST=/ {
+    if (!gesetzt) { print "IMAGE_DIGEST=" z; gesetzt = 1 }
+    next
+  }
+  { print }
+  END { if (!gesetzt) print "IMAGE_DIGEST=" z }
+' "$envdatei" >"$neu"
+# Rechte und (soweit ohne Root möglich) Eigentümer der bisherigen .env übernehmen.
+chmod --reference="$envdatei" "$neu" 2>/dev/null || chmod 600 "$neu"
+chown --reference="$envdatei" "$neu" 2>/dev/null || true
 mv -f "$neu" "$envdatei"
 protokoll "start von=${bisher:-leer} nach=$ziel sicherung=$(basename "$sicherung")"
 hinweis ".env: IMAGE_DIGEST=$ziel (vorher ${bisher:-leer}, Kopie $(basename "$sicherung"))"
@@ -120,8 +134,9 @@ fehlschlag() {
   exit 1
 }
 
-# 4. starten (kein Pull)
-if ! compose up -d --pull never "$CENTRIC_DIENST"; then
+# 4. starten (kein Pull). IMAGE_DIGEST ausdrücklich setzen: eine Variable
+# aus der Shell ginge sonst der .env vor (oben bereits ausgeschlossen).
+if ! IMAGE_DIGEST="$ziel" compose up -d --pull never "$CENTRIC_DIENST"; then
   fehlschlag "docker compose up -d --pull never $CENTRIC_DIENST"
 fi
 

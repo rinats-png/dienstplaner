@@ -25,6 +25,9 @@ name: centric-dienstplanung
 services:
   centric-dp-web:
     image: ghcr.io/rinats-png/dienstplaner@${IMAGE_DIGEST:?IMAGE_DIGEST fehlt – nur verifizierte Digests (FREIGEGEBENE-IMAGES.md)}
+    # Nie selbst ziehen: das Bild muss lokal liegen und vorher mit
+    # ./digest-pruefen.sh geprüft sein (docker pull nur bewusst, per Digest).
+    pull_policy: never
     container_name: centric-dp-web
     restart: unless-stopped
     env_file: .env

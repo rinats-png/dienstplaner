@@ -8,12 +8,15 @@
 #  lieber kein Dienst als ein unsicheres Bild. Kein Rücksprung, keine
 #  Änderung an .env, keine Daten angefasst.
 #
+#    0. Docker muss antworten (docker info), sonst Exit 1 — ein
+#       unbekannter Zustand gilt nie als "angehalten"
 #    1. docker compose stop <dienst>
 #       (scheitert Compose — etwa weil .env noch kein IMAGE_DIGEST hat —
 #       dann docker stop <container>; beides markiert den Container als
 #       vom Menschen angehalten, restart: unless-stopped startet ihn
 #       nicht wieder)
-#    2. prüft: Status exited, kein Neustart
+#    2. prüft: Status exited (inspect) und nicht "Up" (docker ps -a),
+#       kein Neustart
 #    3. beobachtet ${CENTRIC_NACHBEOBACHTUNG:-10}s, ob er wieder anläuft
 #    4. Protokoll: betrieb-protokoll.log
 #
@@ -33,17 +36,44 @@ trocken=0
 for arg in "$@"; do
   case "$arg" in
     --trocken) trocken=1 ;;
-    -h | --hilfe) sed -n '2,24p' "$0"; exit 0 ;;
+    -h | --hilfe) sed -n '2,27p' "$0"; exit 0 ;;
     *) fehler "unbekannter Aufruf: $arg"; exit 2 ;;
   esac
 done
 
+# Gibt "<status> <neustarts> <bild-id>" aus. Nur ein ausdrücklich nicht
+# vorhandener Container gilt als "fehlt 0 -"; jeder andere Fehler von
+# docker inspect (Docker nicht erreichbar, Rechte, …) liefert 1.
 zustand() {
-  docker inspect --format '{{.State.Status}} {{.RestartCount}} {{.Image}}' "$CENTRIC_DIENST" 2>/dev/null || true
+  local aus
+  if aus="$(docker inspect --format '{{.State.Status}} {{.RestartCount}} {{.Image}}' "$CENTRIC_DIENST" 2>&1)"; then
+    printf '%s\n' "$aus"
+    return 0
+  fi
+  case "$aus" in
+    *"No such object"* | *"No such container"*) printf 'fehlt 0 -\n'; return 0 ;;
+  esac
+  fehler "docker inspect $CENTRIC_DIENST scheiterte: $aus"
+  return 1
 }
 
-vorher="$(zustand)"
-read -r status_vorher neustarts_vorher bild_vorher <<<"${vorher:-fehlt 0 -}"
+# Status laut "docker ps -a" (zweite, unabhängige Quelle); leer = kein Container.
+ps_status() {
+  docker ps -a --filter "name=^${CENTRIC_DIENST}\$" --format '{{.Status}}'
+}
+
+if ! docker_erreichbar; then
+  fehler "Docker antwortet nicht (docker info) — Zustand unbekannt, R0 NICHT erreicht."
+  fehler "Von Hand prüfen: systemctl status docker; docker ps -a"
+  ((trocken)) || protokoll "R0 FEHLGESCHLAGEN: Docker nicht erreichbar"
+  exit 1
+fi
+
+if ! vorher="$(zustand)"; then
+  ((trocken)) || protokoll "R0 FEHLGESCHLAGEN: Zustand nicht lesbar"
+  exit 1
+fi
+read -r status_vorher neustarts_vorher bild_vorher <<<"$vorher"
 
 if ((trocken)); then
   hinweis "TROCKENLAUF — es wird nichts angehalten."
@@ -61,15 +91,31 @@ if ! compose stop "$CENTRIC_DIENST"; then
 fi
 
 pruefen_angehalten() {
-  local z status neustarts _bild
-  z="$(zustand)"
-  read -r status neustarts _bild <<<"${z:-fehlt 0 -}"
+  local z status neustarts _bild ps
+  z="$(zustand)" || return 1
+  read -r status neustarts _bild <<<"$z"
   case "$status" in
-    exited | created | fehlt) ;;
+    exited | created) ;;
+    fehlt)
+      if [[ "$status_vorher" != "fehlt" ]]; then
+        fehler "Container $CENTRIC_DIENST ist nach dem Anhalten verschwunden — unerwartet, von Hand prüfen."
+        return 1
+      fi ;;
     *) fehler "Container $CENTRIC_DIENST ist '$status', nicht angehalten."; return 1 ;;
   esac
-  if [[ "$neustarts" != "$neustarts_vorher" ]]; then
+  if [[ "$status" != "fehlt" && "$neustarts" != "$neustarts_vorher" ]]; then
     fehler "Neustartzähler hat sich geändert ($neustarts_vorher → $neustarts)."
+    return 1
+  fi
+  if ! ps="$(ps_status)"; then
+    fehler "docker ps -a scheiterte — Zustand nicht gegengeprüft."
+    return 1
+  fi
+  case "$ps" in
+    Up* | Restarting*) fehler "docker ps meldet '$ps' — nicht angehalten."; return 1 ;;
+  esac
+  if [[ "$status" == "fehlt" && -n "$ps" ]]; then
+    fehler "inspect meldet keinen Container, docker ps aber '$ps' — widersprüchlich."
     return 1
   fi
   return 0
