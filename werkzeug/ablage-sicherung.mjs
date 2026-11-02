@@ -124,7 +124,7 @@ async function ordnerFest(/** @type {string} */ ordner) {
 }
 
 /** @param {string} datei @param {Buffer} inhalt */
-function umschlagPruefen(datei, inhalt) {
+export function umschlagPruefen(datei, inhalt) {
   let u;
   try { u = JSON.parse(inhalt.toString("utf8")); }
   catch { throw new SicherungsFehler(`${datei} ist kein gültiger JSON-Umschlag (beschädigt?)`); }
@@ -137,10 +137,12 @@ function umschlagPruefen(datei, inhalt) {
    --------------------------------------------------------------------------- */
 
 /**
- * Listet, was in die Sicherung gehört, und was bewusst fehlt.
+ * Listet, was in die Sicherung gehört, und was bewusst fehlt. Auch für
+ * werkzeug/ablage-pruefen.mjs: Was hier oder in umschlagPruefen scheitert,
+ * bricht die Sicherung ab.
  * @param {string} quelle
  */
-async function quelleAnsehen(quelle) {
+export async function quelleAnsehen(quelle) {
   let eintraege;
   try { eintraege = await readdir(quelle, { withFileTypes: true }); }
   catch (e) { throw new SicherungsFehler(`Quelle ${quelle} nicht lesbar: ${/** @type {any} */ (e).message}`); }

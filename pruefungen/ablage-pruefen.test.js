@@ -74,7 +74,7 @@ describe("Trockenlauf", () => {
 });
 
 describe("--beiseitelegen", () => {
-  it("benennt um (nie löschen), der Raum ist wieder lesbar, der Monat leer, Schreiben geht weiter", async () => {
+  it("legt die Rohbytes als gültigen beiseite-Eintrag ab (kein Byte verloren), dann verschwindet das Original; der Raum ist wieder lesbar, der Monat leer, Schreiben geht weiter", async () => {
     const r = await lauf("--beiseitelegen", "ap-befund");
     expect(r.code, r.aus).toBe(0);
     const { blobs } = await store.list({ prefix: "beiseite:ap-befund:" });

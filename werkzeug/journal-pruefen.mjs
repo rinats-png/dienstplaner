@@ -51,12 +51,17 @@ const { getStore, ablageWurzel, dateiname } = await import("../server/lib/ablage
    sonst jede folgende Sicherung (ablage-sicherung.mjs) zum Abbruch. */
 const { beiseiteSicher } = await import("./ablage-pruefen.mjs");
 const { journalPruefen, bestandLesenStreng } = await import("../server/lib/bestand.mjs");
-const { ablageBelegen } = await import("../server/lib/prozesssperre.mjs");
+const { ablageBelegen, VERALTET_MS } = await import("../server/lib/prozesssperre.mjs");
 
 const wurzel = ablageWurzel();
-const sperre = await ablageBelegen(wurzel, { puls: false, wartenMs: 0 });
+/* Mit Puls wie der Server (siehe ablage-pruefen.mjs): Ein Server, der
+   währenddessen startet, sieht die Sperre vorrücken und bleibt draußen.
+   Eine fremde, frische Sperre heißt hier „belegt" — ohne Wartezeit. */
+let verloren = null;
+const sperre = await ablageBelegen(wurzel, { puls: true, wartenMs: 0, verloren: (g) => { verloren = g; } });
 if (!sperre.ok) {
-  console.error(`${sperre.grund} Erst den Server anhalten — das Werkzeug arbeitet nur auf einer ruhenden Ablage.`);
+  console.error(`${sperre.grund} Erst den Server anhalten — das Werkzeug arbeitet nur auf einer ruhenden Ablage. `
+    + `Gehört die Sperre einem gerade gestoppten Container, ${Math.round(VERALTET_MS / 1000)} Sekunden warten und erneut aufrufen.`);
   process.exit(2);
 }
 
@@ -80,6 +85,7 @@ try {
     console.log(`${raum}: Journal beschädigt — ${p.grund}`);
     if (!beiseitelegen) { console.log(`  Trockenlauf: nichts verändert. Mit --beiseitelegen ${raum} beiseitelegen.`); continue; }
 
+    if (verloren) throw new Error(`Prozesssperre verloren (${verloren}) — abgebrochen`);
     const ziel = `journal-beiseite:${raum}:${new Date().toISOString().replace(/[:.]/g, "-")}`;
     const ordner = path.join(wurzel, "centric");
     await beiseiteSicher(store, ordner, dateiname, `journal:${raum}`, ziel, p.grund);
