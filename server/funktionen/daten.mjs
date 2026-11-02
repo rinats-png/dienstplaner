@@ -365,7 +365,8 @@ export default async (req, context) => {
          Betrieb. Der Betreiber sperrt weiter raumweit. */
       let eigenerOrt = null;
       if (sB.rolle !== "betreiber") {
-        const gelesenS = await bestandLesen(store, sB.bestand).catch(() => null);
+        /* Kein .catch: Ein unlesbarer Bestand ist ein Fehler (→ 503), kein leerer Betrieb. */
+        const gelesenS = await bestandLesen(store, sB.bestand);
         eigenerOrt = gelesenS && gelesenS.bestand ? eigenerBetrieb(gelesenS.bestand, sB) : null;
       }
       const imEigenenBetrieb = (k) => {
@@ -721,8 +722,25 @@ export default async (req, context) => {
        und dafür braucht es ihn schon, bevor ein Endpunkt ihn selbst holt. */
     let s0 = null;
     let bestandGelesen;
+    /* Streng gelesen (H1, WP-45): Was hier gelesen wird, geht als Bestand mit
+       Stand (etag) an die Oberfläche — und kommt mit demselben Stand zurück.
+       Bis November 2026 las dieser Weg mild: Eine einzelne unlesbare Scherbe
+       fehlte in der Antwort, der etag war trotzdem gültig. War die Scherbe
+       beim Speichern wieder lesbar, galt der Stand als unverändert, und der
+       Client-Stand ohne diesen Monat ersetzte den gespeicherten — der Monat
+       war gelöscht. Jetzt: lieber 503 als ein Bestand mit Lücke. Für den
+       ganzen Raum, solange die Scherbe unlesbar ist; so fällt der Schaden
+       auch auf, statt still Monate zu verschlucken.
+
+       Mild gelesen wird nur noch, wo nie ein Bestand zurückgeschrieben wird
+       und nur Kern-Felder gebraucht werden: Codebindung beim Anmelden und
+       bei Demo und Zugängen (unten/oben in dieser Datei), die Zustellung
+       nach dem Speichern, Kalender, Zustellung, Betriebsauswahl,
+       Arbeitssitzung, Provisionierung und Einrichten — dort führt ein
+       Lesefehler über `voruebergehend` zu 503, eine Lücke in den Monaten
+       spielt keine Rolle. */
     const bestandJetzt = async () => {
-      if (bestandGelesen === undefined) bestandGelesen = await bestandLesen(store, s0.bestand);
+      if (bestandGelesen === undefined) bestandGelesen = await bestandLesenStreng(store, s0.bestand);
       return bestandGelesen;
     };
 

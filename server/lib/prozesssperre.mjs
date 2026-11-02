@@ -20,12 +20,12 @@
    Ein anderer Rechner (ein zweiter Container auf demselben Datenordner):
    Dessen PIDs lassen sich von hier aus nicht prüfen. Dafür gibt es den
    Puls — der Halter frischt alle fünf Sekunden die Änderungszeit der Datei
-   auf. Bleibt sie länger als dreißig Sekunden stehen, gilt die Sperre als
+   auf. Bleibt sie länger als 45 Sekunden stehen, gilt die Sperre als
    veraltet. Ist sie frischer, wird eine Weile beobachtet: Rückt sie vor,
    lebt der Halter, und der Start wird verweigert; bleibt sie stehen, bis
    sie veraltet ist, wird übernommen. Damit kommt ein neuer Container nach
-   einem harten Abbruch des alten nach spätestens einer halben Minute hoch,
-   statt für immer zu warten.
+   einem harten Abbruch des alten nach spätestens 50 Sekunden hoch, statt
+   für immer zu warten (die Wartezeit beim Ausrollen muss darüber liegen).
 
    Das Wegräumen einer veralteten Sperre ist selbst ein Rennen: Zwei
    Prozesse, die gleichzeitig starten, könnten beide dieselbe tote Sperre
@@ -50,8 +50,21 @@ export const SPERRDATEI = ".prozess";
 export const PULS_MS = 5_000;
 /** So viele Herzschläge in Folge dürfen scheitern, bevor die Sperre als verloren gilt. */
 export const FEHLVERSUCHE = 3;
-/** Älter als das, und der Puls ist ausgeblieben. */
-export const VERALTET_MS = 30_000;
+/** So lange wartet ein Prozess, der seine Sperre verloren hat, höchstens auf
+    laufende Schreibvorgänge, bevor er sich beendet (server.mjs). */
+export const VERLUST_WARTEN_MS = 10_000;
+/* Älter als das, und der Puls ist ausgeblieben.
+
+   Die Grenze muss deutlich über der Zeit liegen, die ein Halter nach
+   seinem letzten gelungenen Herzschlag schlimmstenfalls noch schreibt:
+   drei gescheiterte Herzschläge (PULS_MS × FEHLVERSUCHE = 15 s), dann
+   höchstens VERLUST_WARTEN_MS (10 s) für laufende Schreibvorgänge — 25 s.
+   Bis November 2026 lag sie bei 30 s; fünf Sekunden Abstand frisst ein
+   träger Ereignistakt oder eine langsame Platte. Jetzt 45 s: 20 s Abstand.
+   Geprüft in pruefungen/prozesssperre.test.js. */
+export const VERALTET_MS = 45_000;
+/** Mindestabstand zwischen dem spätesten Schreiben eines Halters und der Übernahme. */
+export const SICHERHEITSABSTAND_MS = 15_000;
 /** So lange wird eine fremde, noch frische Sperre höchstens beobachtet. */
 export const WARTEN_MS = VERALTET_MS + 5_000;
 

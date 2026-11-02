@@ -4,7 +4,7 @@ import {
 import { getStore } from "./ablage.mjs";
 import { kontoSitzungFuerArbeit, kennungBrauchbar, markerListe, markerLoeschen }
   from "./accountsitzungen.mjs";
-import { bestandLesen } from "./bestand.mjs";
+import { bestandLesen, voruebergehend } from "./bestand.mjs";
 import { eigenerMandant } from "./rechte.mjs";
 import { mandantPruefen } from "./erstbefuellung.mjs";
 import { sitzungBeenden, sitzungBeendenPerId, sitzungLesen, merkmalAus } from "./sitzungen.mjs";
@@ -282,7 +282,11 @@ export async function arbeitssitzungPruefen(store, sitzung,
       let gelesen;
       try {
         gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, sitzung.bestand);
-      } catch { return { ok: false, grund: "bestand-fehler" }; }
+      } catch (e) {
+        /* Vorübergehend nicht lesbar: weiterreichen (→ 503), die Sitzung bleibt. */
+        if (voruebergehend(e)) throw e;
+        return { ok: false, grund: "bestand-fehler" };
+      }
       const bestand = gelesen && gelesen.bestand;
       const grund = bestand ? mandantPruefen(bestand, sitzung.betrieb, sitzung.mandantId) : null;
       if (grund) {
@@ -354,7 +358,13 @@ export async function arbeitssitzungPruefen(store, sitzung,
   let gelesen;
   try {
     gelesen = bestandLader ? await bestandLader() : await bestandLesen(store, raum);
-  } catch { return absage("bestand-fehler"); }
+  } catch (e) {
+    /* Vorübergehend nicht lesbar oder gesperrt: kein Grund, die Sitzung
+       wegzuräumen — weiterreichen (→ 503). Erst ein wirklich fehlender
+       Bestand ist eine Absage. */
+    if (voruebergehend(e)) throw e;
+    return absage("bestand-fehler");
+  }
   const bestand = gelesen && gelesen.bestand;
   if (!bestand) return absage("bestand-fehlt");
   const grundM = mandantPruefen(bestand, sitzung.betrieb, m.mandantId);
