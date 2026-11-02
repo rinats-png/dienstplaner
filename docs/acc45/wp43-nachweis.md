@@ -76,3 +76,18 @@ weiterhin unabhängig vom Tag.
 Fixture-Anpassung: Der Sondereinsatz `se-a` in `sicht-schichtverantwortung.test.js` trägt jetzt `datum` (die Oberfläche setzt es).
 
 Bekannte Grenze B1: Tage vor dem ersten Zugehörigkeitsabschnitt einer Person, die nie in einer anderen Einheit war, stehen nicht in `zeitraeume`; die Lesesicht verschließt ihre Erfassung, die Oberfläche würde dort — nur bei einem geplanten Dienst vor dem Eintritt in den Bereich — mit der Planzeit rechnen. Praktisch ohne Daten; ein Folgeschritt kann `zeitraeume` für jede Person mit datierter Zugehörigkeit liefern.
+
+## Nachtrag N1 (vor Produktion)
+
+- **N1 Zeitraumbezug** (`src/istdaten.js`, `src/App.jsx`): `istVerfuegbar(m, p, {von, bis})` ist verfügbar, wenn der
+  Zeitraum lückenlos in `zeitraeume` liegt; ohne Tag/Zeitraum weiter fail-closed. Die Auswertungen übergeben ihren
+  Zeitraum: `istStunden`, `zuschlagStunden`, `auslastung` den Monat (`zeitraumMonat`), `stundenkonto` 1. Januar bis
+  Monatsende (`zeitraumBisMonat`), `nachtJahr` und die Jahresansicht das Jahr (`zeitraumJahr`), `ausgleichPruefen`
+  die 24 Wochen bis zum Stichtag. Lagebild „Konten über Grenze": nicht verfügbare Konten werden ausgeklammert und
+  genannt („ohne N Konten (Ist-Daten nicht verfügbar)"); nur wenn kein Konto verfügbar ist, „–". Eine alte (2019 e2,
+  seit 2021 e1) oder künftige Versetzung lässt den aktuellen Monat und das Kontojahr verfügbar; eine Versetzung im
+  betrachteten Monat macht ihn „nicht verfügbar", die Tage bleiben tagesgenau.
+- **N1c Meldung** (`server/lib/rechte.mjs`, `einheitZusammen`): Plan oder Antrag an einem Tag vor dem ersten
+  Zugehörigkeitsabschnitt: „Person ist an diesem Tag keiner Einheit zugeordnet – Zugehörigkeit prüfen."
+- Tests: `istdaten.test.js` Block 10 (+ Quelltextprüfungen der Aufrufer), `sicht-tagesgenau.test.js` (Meldung).
+  Rot auf dcc0f7c: 8.

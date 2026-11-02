@@ -1,6 +1,7 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
-import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText } from "./istdaten.js";
+import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
@@ -1569,7 +1570,7 @@ function sollStunden(m, p, ym) {
 function istStunden(m, p, ym) {
   /* Ohne Zugang zu den Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine
      Ist-Stunden — auch nicht aus dem Plan. */
-  if (!istVerfuegbar(m, p)) return IST_NICHT_VERFUEGBAR;
+  if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
     let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0;
@@ -1601,7 +1602,8 @@ function istStunden(m, p, ym) {
    selbst steht in src/regelwerk.js und ist dort geprüft.
    -------------------------------------------------------------------------- */
 function ausgleichPruefen(m, p, bis) {
-  if (!istVerfuegbar(m, p)) return { nichtVerfuegbar: true, eingehalten: null };
+  const ausglWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
+  if (!istVerfuegbar(m, p, { von: addDays(bis, -(ausglWochen * 7 - 1)), bis })) return { nichtVerfuegbar: true, eingehalten: null };
   return memo(m, `ausgl|${p.id}|${bis}`, () => {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
@@ -1667,7 +1669,7 @@ function urlaubskonto(m, p, jahr) {
   });
 }
 function stundenkonto(m, p, ym) {
-  if (!istVerfuegbar(m, p)) return null;
+  if (!istVerfuegbar(m, p, zeitraumBisMonat(ym))) return null;
   return memo(m, `kto|${p.id}|${ym}`, () => {
     const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
     for (let x = 1; x <= bis; x++) { const k = `${j}-${pad(x)}`; d += istStunden(m, p, k).gesamt - sollStunden(m, p, k); }
@@ -1675,7 +1677,7 @@ function stundenkonto(m, p, ym) {
   });
 }
 function nachtJahr(m, p, jahr) {
-  if (!istVerfuegbar(m, p)) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
+  if (!istVerfuegbar(m, p, zeitraumJahr(jahr))) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
   return memo(m, `nacht|${p.id}|${jahr}`, () => {
     let h = 0, n = 0;
     for (let x = 1; x <= 12; x++) { const r = istStunden(m, p, `${jahr}-${pad(x)}`); h += r.nacht; n += r.naechte; }
@@ -2953,7 +2955,7 @@ function tagesanteile(datum, da) {
 }
 /** Zuschlagsrelevante Stunden einer Person in einem Monat. */
 function zuschlagStunden(m, p, ym) {
-  const ohneIst = !istVerfuegbar(m, p);
+  const ohneIst = !istVerfuegbar(m, p, zeitraumMonat(ym));
   return memo(m, `zus|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number);
     const n = dim_(y, mo - 1);
@@ -3684,7 +3686,7 @@ const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] 
  * Eine Zahl, an der sofort ablesbar ist, wer noch Luft hat.
  */
 function auslastung(m, p, ym) {
-  if (!istVerfuegbar(m, p))
+  if (!istVerfuegbar(m, p, zeitraumMonat(ym)))
     return { ist: null, soll: sollStunden(m, p, ym), pct: null, stand: "nicht_verfuegbar", nichtVerfuegbar: true };
   return memo(m, `ausl|${p.id}|${ym}`, () => {
     const ist = istStunden(m, p, ym).gesamt;
@@ -8552,7 +8554,14 @@ function Lagebild({ sitz, oeffneTag, akt }) {
   const offen = m.anfragen.filter((a) => a.status === "offen").length;
   /* Ohne Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine Konten — „0 über der Grenze" wäre falsch.
      Gezählt wird weiterhin nur, wessen Konto die Rolle sehen darf (kontoSichtbar). */
-  const kontenHoch = aktiv.some((p) => kontoSichtbar(sitz, p) && !istVerfuegbar(m, p)) ? null
+  /* WP-43 (N1): Konten, die für den Kontozeitraum nicht verfügbar sind (etwa nach
+     einer Versetzung in diesem Jahr), werden ausgeklammert und genannt, statt die
+     ganze Zahl zu verwerfen. Ist kein Konto verfügbar, bleibt es bei „–". */
+  const kontenZeitraum = zeitraumBisMonat(d0.slice(0, 7));
+  const kontenMit = aktiv.filter((p) => kontoSichtbar(sitz, p));
+  const kontenOhneIst = kontenMit.filter((p) => !istVerfuegbar(m, p, kontenZeitraum)).length;
+  const kontenHoch = kontenMit.length && kontenOhneIst === kontenMit.length ? null
+    /* stundenkonto ist für nicht verfügbare Konten null und zählt damit nicht mit. */
     : aktiv.filter((p) => kontoSichtbar(sitz, p) && stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
   const darfBesetzen = darfEinheit(sitz, sitz.person.bereich);
@@ -8686,7 +8695,8 @@ function Lagebild({ sitz, oeffneTag, akt }) {
         darf(sitz, "req.approve.unit") && { label: "Offene Anträge", wert: offen, ton: offen ? "warn" : "ok" },
         darf(sitz, "account.view.all") && { label: "Konten über Grenze", wert: kontenHoch === null ? "–" : kontenHoch,
           ton: kontenHoch === null ? undefined : kontenHoch ? "warn" : "ok",
-          sub: kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich` }]} />
+          sub: kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`
+            + (kontenOhneIst ? ` · ohne ${kontenOhneIst} ${kontenOhneIst === 1 ? "Konto" : "Konten"} (Ist-Daten nicht verfügbar)` : "") }]} />
     </div>);
 }
 
@@ -12101,7 +12111,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
         <div style={{ padding: 20, display: "grid", gap: "22px 40px",
           gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,540px),1fr))" }}>
           {leute.map((p) => {
-            const ohneIst = !istVerfuegbar(m, p);
+            const ohneIst = !istVerfuegbar(m, p, zeitraumJahr(jahr));
             const jahresIst = ohneIst ? null : monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
             const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
             const url = urlaubskonto(m, p, jahr);

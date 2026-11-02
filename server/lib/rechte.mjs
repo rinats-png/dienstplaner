@@ -1427,7 +1427,14 @@ export function einheitZusammen(altM, neuM, sitzung) {
   };
   const eigen = (pid) => String(pid) === ichId;
 
-  const fremdText = (pid) => `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`;
+  /* Ohne Zugehörigkeit an diesem Tag (vor dem ersten Abschnitt, WP-43 N1c) eine eigene, klare Meldung. */
+  const ohneEinheit = (pid, tag) => {
+    const p = personen.get(String(pid));
+    return !!p && typeof tag === "string" && TAG.test(tag) && einheitAm(p, tag) === null;
+  };
+  const OHNE_EINHEIT = "Person ist an diesem Tag keiner Einheit zugeordnet – Zugehörigkeit prüfen.";
+  const fremdText = (pid, tag) => (ohneEinheit(pid, tag) ? OHNE_EINHEIT
+    : `${(personen.get(String(pid)) || {}).nachname || "Diese Person"} gehört nicht zu deinem Bereich.`);
 
   const aus = { ...altM };
   const felder = new Set([...Object.keys(altM), ...Object.keys(neuM)]);
@@ -1450,7 +1457,7 @@ export function einheitZusammen(altM, neuM, sitzung) {
           if (!pid || !TAG.test(tag || "")) return nein("abweichungen: ungültiger Schlüssel.");
           if (!personen.has(pid)) return nein("Eine geänderte Person gehört nicht zum Betrieb.");
           if (!imBereich(pid, tag))
-            return nein(`${personen.get(pid).nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.`);
+            return nein(ohneEinheit(pid, tag) ? OHNE_EINHEIT : `${personen.get(pid).nachname || "Diese Person"} gehört am ${tag} nicht zu deinem Bereich.`);
         }
         aus.abweichungen = neuO;
         break;
@@ -1630,7 +1637,7 @@ export function einheitZusammen(altM, neuM, sitzung) {
           const vorher = altNachId.get(id);
           if (!vorher) {
             /* Neu: der eigene Antrag (offen) oder eine Anfrage an den eigenen Bereich (offen). */
-            if (!eigen(x.personId) && !imBereich(x.personId, x.von)) return nein(fremdText(x.personId));
+            if (!eigen(x.personId) && !imBereich(x.personId, x.von)) return nein(fremdText(x.personId, x.von));
             if ((x.status || "offen") !== "offen")
               return nein("Ein neuer Antrag ist offen — entschieden wird er danach.");
             ergebnis.push({ ...x, status: "offen", freigaben: undefined, entschieden: undefined, durch: undefined });
@@ -1654,7 +1661,7 @@ export function einheitZusammen(altM, neuM, sitzung) {
             && gleich(ohneMich(vorher.interessenten), ohneMich(x.interessenten));
           if (nurInteresse) { ergebnis.push(x); continue; }   // eigene Meldung auf ein Tauschgesuch
           if (!imBereich(vorher.personId, vorher.von))
-            return nein(`${fremdText(vorher.personId)} Der Antrag ist Sache der Leitung.`);
+            return nein(`${fremdText(vorher.personId, vorher.von)} Der Antrag ist Sache der Leitung.`);
           if (!ANTRAG_STATUS.includes(x.status)) return nein("anfragen: unbekannter Status.");
           /* Freigaben: höchstens die eigene kommt hinzu, Bestehendes bleibt. */
           const fV = Array.isArray(vorher.freigaben) ? vorher.freigaben : [];
