@@ -130,12 +130,14 @@ describe("--aus-sicherung", () => {
     const { pfad } = await S.sichern({ quelle: wurzel, ziel: sicherungen, jetzt: new Date(Date.now() + 5000) });
     const inSicherung = path.join(pfad, "daten", "centric", A.dateiname(`scherbe:${RAUM}:m1:2025-10`));
     await writeFile(inSicherung, (await readFile(inSicherung, "utf8")).replace("F", "S"));
+    const heil = await readFile(datei(`scherbe:${RAUM}:m1:2025-10`));
     await writeFile(datei(`scherbe:${RAUM}:m1:2025-10`), "{kaputt");
 
     const r = await lauf("--aus-sicherung", pfad, RAUM);
     expect(r.code).toBe(2);
     expect(r.aus).toMatch(/Sicherung ist nicht in Ordnung/);
     expect(await readFile(datei(`scherbe:${RAUM}:m1:2025-10`), "utf8")).toBe("{kaputt");
+    await writeFile(datei(`scherbe:${RAUM}:m1:2025-10`), heil);              // für die folgenden Sicherungen
   }, 30000);
 });
 
@@ -146,4 +148,25 @@ describe("Raumlöschung", () => {
     await raumLoeschen(store, sitzungen, "ap-befund");
     expect((await store.list({ prefix: "beiseite:ap-befund:" })).blobs).toEqual([]);
   });
+});
+
+describe("journal-pruefen.mjs legt so beiseite, dass Sicherungen weiterlaufen", () => {
+  it("nach --beiseitelegen eines kaputten Journals gelingt die Sicherung", async () => {
+    const { spawn } = await import("node:child_process");
+    const { fileURLToPath } = await import("node:url");
+    const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const RAUM = "ap-journal";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    await writeFile(datei(`journal:${RAUM}`), "{kaputt");
+    const code = await new Promise((fertig) => {
+      const k = spawn(process.execPath, ["werkzeug/journal-pruefen.mjs", "--daten", wurzel, "--beiseitelegen", RAUM],
+        { cwd: WURZEL, env: { ...process.env, CENTRIC_ABLAGE: "dateien" }, stdio: "ignore" });
+      k.on("exit", fertig);
+    });
+    expect(code).toBe(0);
+    const huelle = (await store.list({ prefix: `journal-beiseite:${RAUM}:` })).blobs[0];
+    expect(Buffer.from((await store.get(huelle.key, { type: "json" })).inhaltBase64, "base64").toString()).toBe("{kaputt");
+    const { pfad } = await S.sichern({ quelle: wurzel, ziel: sicherungen, jetzt: new Date(Date.now() + 60000) });
+    expect((await S.pruefen(pfad)).ok).toBe(true);
+  }, 30000);
 });
