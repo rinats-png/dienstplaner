@@ -19,6 +19,8 @@ CENTRIC_BILD_REPO="${CENTRIC_BILD_REPO:-ghcr.io/rinats-png/dienstplaner}"
 CENTRIC_DIENST="${CENTRIC_DIENST:-centric-dp-web}"
 CENTRIC_PROTOKOLL="${CENTRIC_PROTOKOLL:-$CENTRIC_VERZ/betrieb-protokoll.log}"
 
+# Wird von den einbindenden Skripten benutzt.
+# shellcheck disable=SC2034
 R0_HINWEIS="Fehlerstrategie R0: Dienst anhalten mit ./abschalten.sh (erst ./abschalten.sh --trocken)."
 
 fehler() { printf 'FEHLER: %s\n' "$*" >&2; }
@@ -64,12 +66,12 @@ freigaben_lesen() {
 # Prüft die Liste selbst: gültige Status, höchstens ein aktiv/vorherig,
 # volle Digests und Commits außer bei gesperrt, Grund bei gesperrt.
 freigaben_pruefen() {
-  local digest commit datum bericht status grund aktiv=0 vorherig=0 ok=0
+  local digest commit status grund aktiv=0 vorherig=0 ok=0
   if [[ ! -r "$CENTRIC_FREIGABEN" ]]; then
     fehler "Freigabeliste nicht lesbar: $CENTRIC_FREIGABEN"
     return 1
   fi
-  while IFS=$'\t' read -r digest commit datum bericht status grund; do
+  while IFS=$'\t' read -r digest commit _ _ status grund; do
     case "$status" in
       aktiv) aktiv=$((aktiv + 1)) ;;
       vorherig) vorherig=$((vorherig + 1)) ;;
@@ -98,9 +100,9 @@ freigaben_pruefen() {
 # Gibt den Sperrgrund aus und liefert 0, wenn der Wert (Digest oder Bild-ID)
 # zu einem gesperrten Eintrag gehört (auch per Präfix).
 gesperrt_grund() {
-  local wert="$1" digest commit datum bericht status grund
+  local wert="$1" digest commit status grund
   [[ -n "$wert" ]] || return 1
-  while IFS=$'\t' read -r digest commit datum bericht status grund; do
+  while IFS=$'\t' read -r digest commit _ _ status grund; do
     [[ "$status" == "gesperrt" ]] || continue
     if [[ "$wert" == "$digest"* ]]; then
       printf '%s (Eintrag %s, Commit %s)\n' "$grund" "$digest" "$commit"
@@ -124,8 +126,8 @@ eintrag_zu_digest() {
 
 # Gibt alle Digests mit dem Status $1 aus (eine Zeile je Treffer).
 digests_mit_status() {
-  local gesucht="$1" digest commit datum bericht status grund
-  while IFS=$'\t' read -r digest commit datum bericht status grund; do
+  local gesucht="$1" digest status
+  while IFS=$'\t' read -r digest _ _ _ status _; do
     [[ "$status" == "$gesucht" ]] && printf '%s\n' "$digest"
   done < <(freigaben_lesen)
   return 0

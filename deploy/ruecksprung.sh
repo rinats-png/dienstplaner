@@ -76,7 +76,7 @@ if [[ ! -f "$envdatei" ]]; then
 fi
 if grep -Eq '^[[:space:]]*(export[[:space:]]+)?IMAGE_TAG=' "$envdatei"; then
   fehler "$envdatei enthält noch IMAGE_TAG — wird nicht mehr unterstützt."
-  fehler "Erst die Migration auf IMAGE_DIGEST durchführen (BEREITSTELLUNG.md, „Bild per Digest“)."
+  fehler "Erst die Migration auf IMAGE_DIGEST durchführen (BEREITSTELLUNG.md, Schritt 3.3)."
   exit 4
 fi
 bisher="$(env_wert "$envdatei" IMAGE_DIGEST)"
