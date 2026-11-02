@@ -14,10 +14,27 @@
 #  VITE_*-Werte werden beim Bauen in die Oberfläche eingesetzt und sind
 #  nicht geheim. Geheimnisse kommen NIE hier hinein, sondern zur Laufzeit
 #  über die Umgebung (siehe .env.example).
+#
+#  Basisbild per Digest (WP-32). Ein Tag wie `node:22-alpine` zeigt jede
+#  Woche auf ein anderes Bild — zwei Bauten desselben Commits konnten so
+#  verschiedene Systempakete enthalten, und niemand sah es. Der Digest ist
+#  der Inhalt selbst; das Tag davor steht nur zur Lesbarkeit und wird beim
+#  Ziehen ignoriert.
+#
+#    Stand      2026-11-02 ermittelt (Bild vom 2026-10-21, Node 22 auf
+#               Alpine 3.24), Multi-Arch-Index, nicht ein einzelnes Bild
+#    Ermittelt  docker buildx imagetools inspect node:22-alpine
+#               (oder ohne Docker: Registry-API von Docker Hub, Kopf
+#               docker-content-digest der Manifestliste)
+#    Erneuern   Dependabot (.github/dependabot.yml, Ökosystem docker)
+#               schlägt neue Digests wöchentlich als Pull Request vor; der
+#               Trivy-Lauf (.github/workflows/lieferkette.yml) prüft das
+#               neue Bild, bevor es gemergt wird. Alle drei FROM-Zeilen
+#               tragen denselben Digest und werden gemeinsam geändert.
 # =====================================================================
 
 # ---------------------------------------------------------------------
-FROM node:22-alpine AS bauen
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS bauen
 WORKDIR /app
 ENV CI=true
 COPY package.json package-lock.json ./
@@ -34,13 +51,13 @@ ENV VITE_ANWENDUNG_URL=$VITE_ANWENDUNG_URL \
 RUN npm run build
 
 # ---------------------------------------------------------------------
-FROM node:22-alpine AS laufzeit
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS laufzeit
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 # ---------------------------------------------------------------------
-FROM node:22-alpine AS bild
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS bild
 ENV NODE_ENV=production \
     PORT=3000 \
     CENTRIC_DATEN=/data \
