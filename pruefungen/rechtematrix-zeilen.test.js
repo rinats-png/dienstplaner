@@ -90,6 +90,7 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   notizen: [{ text: M("NOTIZEN-AN-B1") }], urlaubshinweis: M("URLAUBSHINWEIS-B1"), personalnummer: M("PERSONALNUMMER-B1"),
   zuschlaege: [{ art: M("ZUSCHLAG-B1") }], nachweise: [M("NACHWEISE-B1")], neuerZugang: M("NEUERZUGANG-B1"),
   anonymSeit: M("ANONYMSEIT-B1"),
+  beschaeftigungsmodell: M("MODELL-B1"), stundenGrenzeMonat: M("MONATSGRENZE-B1"),
   ...Object.fromEntries(["weckzeit", "benachrichtigung", "thema", "dichte", "kontrastmodus", "feldmodus", "tour",
     "einfuehrung", "handbuch", "startansicht", "wenigerBewegung"].map((f) => [f, M(`EINSTELLUNG-${f}-B1`)])),
 });
@@ -133,12 +134,38 @@ const bestand = () => ({
     abwesenheiten: [
       { id: M("ABW-ID-B1"), personId: "b1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-B1") },
       { id: M("ABW-URLAUB-ID-B1"), personId: "b1", art: "urlaub", von: tag(20), bis: tag(22), notiz: M("ABW-URLAUB-NOTIZ-B1") },
-      { id: "ab-a1", personId: "a1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-A1") }],
+      { id: "ab-a1", personId: "a1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-A1") },
+      /* Review WP-11, F1: Arten aus src/abwesenheitsarten.js, die die SV im
+         Bereich nicht im Klartext sehen darf. */
+      ...["mutterschutz", "pflegezeit", "familienpflegezeit", "elternzeit", "arbeitsverhinderung", "berufsschule"]
+        .map((art, i) => ({ id: `ab-a1-neu${i}`, personId: "a1", art, von: tag(3 + i), bis: tag(3 + i) }))],
     anfragen: [
       { id: "an-b1", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-B1") },
       { id: "t-b1", personId: "b1", typ: "tausch", status: "offen", partnerId: null, von: tag(9), bis: tag(9), text: M("ANTRAG-TAUSCH-B1"), interessenten: [] },
       { id: "an-a1", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-A1") }],
     nachrichten: [{ id: "n", personId: "b1", art: "info", titel: M("NACHRICHT-B1") }],
+    /* Selbstplanung mit Hinweisen (WP-10 d.3): b1 fremd, a1 im Bereich der SV. */
+    selbstplanung: [{ id: "spr", monat: tag(1).slice(0, 7), status: "offen",
+      /* Review K1: Gründe noch als Text gespeichert (Altbestand) und ein unbekanntes Kopffeld. */
+      kopfGeheim: M("RUNDENKOPF-UNBEKANNT"),
+      nichtUebernommen: [
+        { personId: "b1", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-B1") },
+        { personId: "a1", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-A1") },
+        { personId: "m0", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-M0") }],
+      eintraege: [
+      { personId: "b1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-B1")] },
+      { personId: "a1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-A1")] }] }],
+    /* Bestätigungsprotokoll (WP-10 d.1): b1 fremd, a1 im Bereich der SV. */
+    bestaetigungen: [
+      { id: "bs-b1", personId: "b1", datum: tag(1), dienstId: "F", aktion: "einsprung", stufe: "recht",
+        befunde: [{ stufe: "recht", text: M("BEST-BEFUND-B1"), quelle: "§ 5 ArbZG" },
+          { stufe: "recht", text: M("BEST-SCHUTZ-B1"), quelle: "Schutzvorschrift oder Einsatzregel für diese Person" }],
+        grundArt: "sonstiges", grund: M("BEST-GRUND-B1"), ohneGrund: false, gelesen: true,
+        durch: M("BEST-DURCH-B1"), durchId: "p1", rolle: "planer", zeit: "2026-01-01T00:00:00.000Z", regelstand: "x", behoben: null },
+      { id: "bs-a1", personId: "a1", datum: tag(1), dienstId: "F", aktion: "einsprung", stufe: "achtung",
+        befunde: [{ stufe: "achtung", text: M("BEST-BEFUND-A1"), quelle: "Teilzeitvereinbarung" }],
+        grundArt: null, grund: "", ohneGrund: true, gelesen: true,
+        durch: M("BEST-DURCH-A1"), durchId: "s1", rolle: "subplaner", zeit: "2026-01-01T00:00:00.000Z", regelstand: "x", behoben: null }],
     notrufe: [
       { id: "nr-b1", personId: "b1", datum: HEUTE, art: "medizin", notiz: M("NOTRUF-B1"), empfaenger: ["l1"], bestaetigt: null },
       { id: "nr-b1-sv", personId: "b1", datum: HEUTE, art: "hilfe", notiz: M("NOTRUF-AN-SV"), empfaenger: ["s1"], bestaetigt: null },
@@ -266,6 +293,8 @@ const ZEILEN = {
     sonden: [mk("VERFUEGBARKEIT-B1")] },
   "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)": {
     sonden: [mk("STUNDEN-B1"), mk("URLAUB-B1"), mk("URLAUBSUEBERTRAG-B1"), mk("WUNSCHFREI-B1"), mk("EINARBEITUNG-B1")] },
+  "Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`)": {
+    sonden: [mk("MODELL-B1"), mk("MONATSGRENZE-B1")] },
   "Personalnummer (`personalnummer`, Lohnexport)": { sonden: [mk("PERSONALNUMMER-B1")] },
   "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": { sonden: [mk("ZUSCHLAG-B1")] },
   "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)": {
@@ -289,6 +318,12 @@ const ZEILEN = {
       const art = (id) => ((s.betrieb.abwesenheiten || []).find((x) => x.id === M(id)) || {}).art;
       expect(art("ABW-ID-B1"), "krank").toBe("abwesend");
       expect(art("ABW-URLAUB-ID-B1"), "urlaub").toBe("urlaub");
+      /* F1: auch im eigenen Bereich der SV keine neuen Arten im Klartext. */
+      for (const [i, x] of ["mutterschutz", "pflegezeit", "familienpflegezeit", "elternzeit", "arbeitsverhinderung", "berufsschule"].entries()) {
+        const e = (s.betrieb.abwesenheiten || []).find((y) => y.id === `ab-a1-neu${i}`);
+        expect(e && e.art, x).toBe("abwesend");
+      }
+      expect(JSON.stringify(s.betrieb.abwesenheiten)).not.toMatch(/mutterschutz|pflegezeit|elternzeit|arbeitsverhinderung|berufsschule/);
     } } },
   "Anträge (fremd)": {
     sonden: [mk("ANTRAG-URLAUB-B1"), mk("ANTRAG-TAUSCH-B1")],
@@ -322,6 +357,60 @@ const ZEILEN = {
       "nur bei Ausschreibung der eigenen Einheit": (s) => {
         expect(mk("BEWERBUNG-FREMD")(s), "Ausschreibung ohne Einheit").toBe(false);
         expect(mk("BEWERBUNG-E1")(s), "Ausschreibung der eigenen Einheit").toBe(true);
+      },
+    } },
+  "Selbstplanung: Einträge anderer samt `hinweise`": {
+    sonden: [mk("SP-HINWEIS-B1"), mk("SP-HINWEIS-A1")],
+    bedingt: {
+      "nur Tag und Dienst": (s) => {
+        const e = (s.betrieb.selbstplanung || [])[0].eintraege;
+        expect(e).toHaveLength(2);
+        for (const x of e) expect(Object.keys(x).sort()).toEqual(["datum", "dienstId"]);
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        expect(mk("SP-HINWEIS-A1")(s), "Bereich").toBe(true);
+        expect(mk("SP-HINWEIS-B1")(s), "fremd").toBe(false);
+        const fremd = (s.betrieb.selbstplanung || [])[0].eintraege.find((x) => !x.personId);
+        expect(Object.keys(fremd).sort()).toEqual(["datum", "dienstId"]);
+      },
+    } },
+  "Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf": {
+    sonden: [mk("NU-GRUND-B1"), mk("NU-GRUND-A1"), mk("NU-GRUND-M0"), mk("RUNDENKOPF-UNBEKANNT")],
+    bedingt: {
+      "nur eigene": (s) => {
+        const r = (s.betrieb.selbstplanung || [])[0];
+        expect(r.nichtUebernommen).toEqual([{ personId: "m0", datum: tag(1), dienstId: "F", grund: "befund" }]);
+        for (const x of ["NU-GRUND-B1", "NU-GRUND-A1", "NU-GRUND-M0", "RUNDENKOPF-UNBEKANNT"]) expect(mk(x)(s), x).toBe(false);
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        const r = (s.betrieb.selbstplanung || [])[0];
+        /* a1 und m0 gehören zum Bereich e1, b1 nicht. */
+        expect(r.nichtUebernommen).toEqual([{ personId: "a1", datum: tag(1), dienstId: "F", grund: "befund" },
+          { personId: "m0", datum: tag(1), dienstId: "F", grund: "befund" }]);
+        for (const x of ["NU-GRUND-B1", "NU-GRUND-A1", "NU-GRUND-M0", "RUNDENKOPF-UNBEKANNT"]) expect(mk(x)(s), x).toBe(false);
+      },
+    } },
+  "Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen)": {
+    sonden: [mk("BEST-BEFUND-B1"), mk("BEST-SCHUTZ-B1"), mk("BEST-GRUND-B1"), mk("BEST-DURCH-B1"),
+      mk("BEST-BEFUND-A1"), mk("BEST-DURCH-A1")],
+    bedingt: {
+      "nur Zählwerte je Monat, Regel und Stufe": (s) => {
+        /* Nachprüfung WP-10 (M1-Rest): keine Einträge — nur Zählwerte, unter 3
+           als „<3“; keine Kennung, keine Aktion, keine Rolle, kein Wortlaut. */
+        const monat = tag(1).slice(0, 7);
+        expect(s.betrieb.bestaetigungen).toEqual([
+          { monat, regel: "schutz", stufe: "recht", anzahl: "<3" },
+          { monat, regel: "sonstiges", stufe: "achtung", anzahl: "<3" },
+          { monat, regel: "sonstiges", stufe: "recht", anzahl: "<3" }]);
+        for (const x of ["BEST-DURCH-B1", "BEST-DURCH-A1", "BEST-GRUND-B1", "BEST-BEFUND-B1", "BEST-BEFUND-A1", "BEST-SCHUTZ-B1"])
+          expect(mk(x)(s), x).toBe(false);
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        expect((s.betrieb.bestaetigungen || []).map((b) => b.id)).toEqual(["bs-a1"]);
+        expect(mk("BEST-BEFUND-A1")(s), "Bereich").toBe(true);
+        expect(mk("BEST-DURCH-A1")(s), "Bereich").toBe(true);
+        for (const x of ["BEST-BEFUND-B1", "BEST-SCHUTZ-B1", "BEST-GRUND-B1", "BEST-DURCH-B1"])
+          expect(mk(x)(s), `fremd: ${x}`).toBe(false);
       },
     } },
   "Kalendergeheimnis, -verweis, -stand": { sonden: [mk("KALGEHEIM-B1"), mk("KALVERWEIS-B1"), mk("KALSTAND-B1")] },
@@ -389,6 +478,8 @@ const FELD_ZEILE = {
     ["bereich", "verfuegbarkeit", "einschraenkungen"],
   "Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`)":
     ["stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag", "wunschfrei", "einarbeitung"],
+  "Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`)":
+    ["beschaeftigungsmodell", "stundenGrenzeMonat"],
   "Personalnummer (`personalnummer`, Lohnexport)": ["personalnummer"],
   "Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?)": ["zuschlaege"],
   "Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`)":

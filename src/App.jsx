@@ -3,6 +3,7 @@ import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
@@ -10,7 +11,8 @@ import {
   dauer, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzBefundeFuer, stundengrenzeAusRegeln, einsatzSchutz, EINSATZREGEL_TEXTE, alterAm, urlaubshinweisFaellig, istNachtdienst,
+  schutzEinsatz, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
+  alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
   verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
@@ -18,6 +20,10 @@ import {
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
   fehlendeKompetenzen, REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "./regelwerk.js";
+import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
+import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
+import { addMonate } from "./regelbaukasten.js";
+import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -100,20 +106,22 @@ class Fehlerauffang extends Component {
     if (!this.state.fehler) return this.props.children;
     const meldung = String(this.state.fehler && this.state.fehler.message || this.state.fehler);
     return (
-      <div style={{ minHeight: "100vh", background: MARKE.creme, color: "#111827", fontFamily: FONT,
+      <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: FONT,
         display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ maxWidth: 620, width: "100%", background: "rgba(255,255,255,.8)",
-          border: "1px solid rgba(255,255,255,.9)", borderRadius: 22, padding: 30,
-          boxShadow: "0 20px 60px rgba(24,26,30,.14)" }}>
+        {/* Die Fehlerseite ersetzt die ganze Anwendung, auch deren Stilblock — ohne ihn wären die Knöpfe unformatiert. */}
+        <style>{bauStyles()}</style>
+        <div style={{ maxWidth: 620, width: "100%", background: C.flaeche,
+          border: `1px solid ${C.line}`, borderRadius: "var(--r-gross)", padding: 30,
+          boxShadow: "var(--schatten-blatt)" }}>
           <div style={{ marginBottom: 18 }}><Logo size={38} /></div>
           <h1 style={{ fontSize: 22, fontWeight: 650, margin: "0 0 10px", letterSpacing: "-.02em" }}>
             Da ist etwas schiefgegangen</h1>
-          <p style={{ fontSize: 14.5, color: "#5A5F66", lineHeight: 1.55, margin: "0 0 18px" }}>
+          <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.55, margin: "0 0 18px" }}>
             Die Anwendung konnte diese Ansicht nicht darstellen. Deine Daten sind gespeichert und
             gehen nicht verloren. Bitte melde den folgenden Text zusammen mit dem, was du zuletzt
             gemacht hast.
           </p>
-          <pre style={{ background: "rgba(20,20,25,.05)", borderRadius: 12, padding: 14, fontSize: 12,
+          <pre style={{ background: C.flaecheStill, borderRadius: 12, padding: 14, fontSize: 12,
             overflowX: "auto", margin: "0 0 20px", whiteSpace: "pre-wrap" }}>{meldung}</pre>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button onClick={() => window.location.reload()} className="btn btn-primary">Neu laden</button>
@@ -153,6 +161,7 @@ class Fehlerauffang extends Component {
      eintritt, austritt, wochenstunden, urlaubsanspruch, urlaubsuebertrag,
      stundenuebertrag, qualifikationen[],
      teilzeit { aktiv, modus: "quote"|"wochentage", wochentage[] },
+     beschaeftigungsmodell (optional, src/beschaeftigung.js), stundenGrenzeMonat (optional),
      springer (bool), einschraenkungen{}, rolle, rolleSeit, rolleVerlauf[],
      bereich ("ALLE" oder einheitId), status
 
@@ -172,8 +181,17 @@ class Fehlerauffang extends Component {
    Branchenneutral für jeden Betrieb im durchgehenden Schichtbetrieb.
    ========================================================================== */
 
-import { C, C_DUNKEL, C_HELL, alsVariablen } from "./farben.js";
+import { C, C_DUNKEL, C_HELL, alsVariablen, avatarToene } from "./farben.js";
+import { Icon } from "./gestalt/icons.jsx";
+import { aufhellenBis } from "./gestalt/lesbar.js";
+import { Pille, Trend, Sparkline, Bogen, Fortschritt, Checkliste, Erklaerkasten } from "./gestalt/bausteine.jsx";
+import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende, Namenschip, Ablaufschritte,
+  Abschnittskopf, Punkt, Grosszahl, Zeitwahl, Statuszeile, Fehlerband } from "./gestalt/ansichten.jsx";
+import { Kopfblock } from "./gestalt/rahmen.jsx";
+import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
+import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+  abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
   PAKETE, paketVon, paketkosten, preisFuer } from "./stufen.js";
@@ -234,8 +252,13 @@ function themaVomSystem() {
 /* Dienstarten: entsättigte Tönungen mit dünner Akzentlinie — keine Farbflächen. */
 const TON = (farbe, staerke = 1) => ({
   background: `${farbe}${staerke > 1 ? "1F" : "12"}`,
-  borderLeft: `2.5px solid ${farbe}`,
+  borderLeft: `2.5px solid ${lesbar(farbe, 3)}`,
 });
+
+/** Farben von Dienstarten und Einheiten sind Daten, gewählt für hellen Grund. Als Schrift
+ *  oder Kante auf dem dunklen Kartengrund werden sie aufgehellt (nur Darstellung, siehe
+ *  gestalt/lesbar.js). Im hellen Erscheinungsbild bleibt die Farbe, wie sie ist. */
+const lesbar = (farbe, mindest = 4.5) => (_dunkel ? aufhellenBis(farbe, C.flaeche, mindest) : farbe);
 
 const FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, system-ui, sans-serif";
 const NUM = { fontVariantNumeric: "tabular-nums", fontFeatureSettings: "'tnum'" };
@@ -247,13 +270,20 @@ const bauStyles = () => `
   /* Dichte — systemweit umschaltbar zwischen Komfortabel und Kompakt */
   --zeile: 48px; --pad-y: 14px; --pad-x: 20px; --luft: 32px; --schrift: 14.5px;
   --block: 48px;                 /* Abstand zwischen Abschnitten — bewusst großzügig */
-  --r: 12px; --r-gross: 16px;
-  --schatten: 0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);
+  --r: 12px; --r-gross: 18px; --r-pille: 999px;
+  /* Ebenen: E2 Karte, E3 Karte im Hover, E5 Blatt und Menü, E6 Toast */
+  --schatten: 0 1px 2px rgba(7,19,23,.04), 0 8px 22px rgba(7,19,23,.05);
   --schatten-hoch: 0 4px 12px -2px rgba(7,19,23,.10), 0 16px 32px -12px rgba(7,19,23,.14);
+  --schatten-blatt: 0 20px 48px rgba(7,19,23,.18);
+  --schatten-toast: 0 12px 32px rgba(7,19,23,.28);
   --sidebar-breite: 252px;
+  --kopf-hoehe: 64px; --unter-hoehe: 48px;
 }
-/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen. */
-:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)} }
+/* Die dunkle Palette als eigener Satz. Das Attribut setzt themaSetzen.
+   Auf Dunkel trägt der Rand die Karte, nicht der Schatten. */
+:root[data-thema="dunkel"]{ ${alsVariablen(C_DUNKEL)}
+  --schatten: 0 1px 2px rgba(0,0,0,.30); --schatten-hoch: 0 1px 2px rgba(0,0,0,.30);
+  --schatten-blatt: 0 20px 48px rgba(0,0,0,.5); --schatten-toast: 0 12px 32px rgba(0,0,0,.5); }
 .dicht{ --zeile: 36px; --pad-y: 8px; --pad-x: 14px; --luft: 20px; --block: 26px; --schrift: 13.5px; }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -263,7 +293,7 @@ const bauStyles = () => `
 .nurLeser{position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
   clip:rect(0,0,0,0); white-space:nowrap; border:0;}
 /* Sprungmarke zum Inhalt */
-.sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:#fff;
+.sprung{position:absolute; left:8px; top:-48px; z-index:100; background:${C.accent}; color:${C.aufAkzent};
   padding:10px 16px; border-radius:8px; font-size:13.5px; font-weight:600; text-decoration:none;
   transition:top .16s;}
 .sprung:focus{top:8px;}
@@ -280,11 +310,8 @@ body{margin:0;}
   display:flex; flex-direction:column; position:fixed; left:0; top:0; bottom:0; z-index:40;
   transition:transform .24s cubic-bezier(.4,0,.2,1);
 }
-.inhalt{flex:1; margin-left:var(--sidebar-breite); min-width:0; display:flex; flex-direction:column;
-  transition:margin-left .24s cubic-bezier(.4,0,.2,1);}
+.inhalt{flex:1; margin-left:0; min-width:0; display:flex; flex-direction:column;}
 .fokus .seitenleiste{transform:translateX(-100%);}
-.fokus .inhalt{margin-left:0;}
-.fokus .kopfleiste{display:none;}
 
 .marke{padding:22px 20px 18px; display:flex; align-items:center; gap:11px;
   border-bottom:1px solid rgba(255,255,255,.08);}
@@ -312,20 +339,19 @@ body{margin:0;}
 .sfuss{padding:14px 16px; border-top:1px solid rgba(255,255,255,.08); font-size:12px;
   color:rgba(255,255,255,.55);}
 
+/* Die Kopfzeile sitzt im klebenden .kopfblock (gestalt/stil.js), zusammen mit der Unterleiste. */
 .kopfleiste{
-  position:sticky; top:0; z-index:30; background:rgba(255,255,255,.92);
-  backdrop-filter:saturate(180%) blur(12px); -webkit-backdrop-filter:saturate(180%) blur(12px);
-  border-bottom:1px solid ${C.line}; padding:0 var(--luft); height:56px;
-  display:flex; align-items:center; gap:14px;
+  padding:0 16px; height:var(--kopf-hoehe);
+  display:flex; align-items:center; gap:12px;
 }
 .suchknopf{
-  display:flex; align-items:center; gap:9px; border:1px solid ${C.line}; background:${C.bg};
-  border-radius:var(--r); padding:7px 12px; cursor:pointer; font-family:inherit;
-  font-size:13px; color:${C.dim}; min-width:210px; transition:border-color .14s;
+  display:flex; align-items:center; gap:9px; border:1px solid ${C.line}; background:${C.flaeche};
+  border-radius:var(--r-pille); height:40px; padding:0 8px 0 14px; cursor:pointer; font-family:inherit;
+  font-size:13px; color:${C.dim}; min-width:0; flex-shrink:0; transition:border-color .14s;
 }
-.suchknopf:hover{border-color:${C.lineStark};}
-.suchknopf kbd{margin-left:auto; font-size:10.5px; font-family:inherit; padding:2px 6px;
-  border-radius:5px; background:#fff; border:1px solid ${C.line}; color:${C.dim};}
+.suchknopf:hover{border-color:${C.steuer};}
+.suchknopf kbd{margin-left:6px; font-size:10.5px; font-family:inherit; padding:2px 6px;
+  border-radius:6px; background:${C.flaecheStill}; border:1px solid ${C.lineSoft}; color:${C.dim};}
 
 main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; width:100%;}
 
@@ -333,7 +359,9 @@ main.bereich{flex:1; padding:var(--luft) var(--luft) 96px; max-width:1720px; wid
 /* Auf Sea Salt hebt sich Weiß nur mit 1,3:1 ab. Der Rand macht die Kante
    sichtbar, der Schatten gibt die Ebene — beides zusammen trägt. */
 .karte{background:${C.flaeche}; border:1px solid ${C.line}; border-radius:var(--r-gross);
-  box-shadow:0 1px 3px rgba(7,19,23,.06), 0 1px 2px rgba(7,19,23,.04);}
+  box-shadow:var(--schatten);}
+/* E1: eingelassene Gruppe — Tabellenkopf, Hinweiskasten, Einsatzfläche */
+.karte-still{background:${C.flaecheStill}; border:1px solid ${C.lineSoft}; border-radius:var(--r-gross);}
 /* Typografische Sprünge statt gleichmäßiger Stufen — das Auge soll sofort
    wissen, wo es anfängt. */
 h1.titel{font-size:38px; font-weight:300; letter-spacing:-.045em; line-height:1.08;
@@ -356,30 +384,32 @@ h1.titel b{font-weight:680;}
 
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:7px;
-  padding:10px 18px; font-size:13.5px; font-weight:560; font-family:inherit; cursor:pointer;
-  border-radius:10px; border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
+  min-height:40px; padding:0 18px; font-size:13.5px; font-weight:560; font-family:inherit; cursor:pointer;
+  border-radius:var(--r-pille); border:1px solid ${C.line}; background:${C.flaeche}; color:${C.text};
   transition:background .14s, border-color .14s, color .14s; white-space:nowrap; line-height:1.2;
 }
-.btn:hover{background:${C.bg}; border-color:${C.lineStark};}
+.btn:hover{background:${C.bg}; border-color:${C.steuer};}
 .btn:active{transform:translateY(.5px);}
 .btn:disabled{opacity:.45; cursor:not-allowed; transform:none;}
 .btn:focus-visible{outline:2px solid ${C.accent}; outline-offset:2px;}
-.btn-primary{background:${C.accent}; border-color:${C.accent}; color:#fff;}
-.btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi};}
+.btn-primary{background:${C.accent}; border-color:${C.accent}; color:${C.aufAkzent};}
+.btn-primary:hover{background:${C.accentHi}; border-color:${C.accentHi}; color:${C.aufAkzent};}
 .btn-quiet{background:transparent; border-color:transparent; color:${C.dim};}
 .btn-quiet:hover{background:${C.bg}; color:${C.text};}
-.btn-danger{background:#fff; border-color:${C.danger}; color:${C.danger};}
-.btn-danger:hover{background:${C.dangerLight};}
-.btn-ok{background:${C.ok}; border-color:${C.ok}; color:#fff;}
+.btn-danger{background:${C.dangerLight}; border-color:${C.dangerLight}; color:${C.danger};}
+.btn-danger:hover{background:${C.flaeche}; border-color:${C.danger};}
+.btn-ok{background:${C.ok}; border-color:${C.ok}; color:${C.aufAkzent};}
 .btn-ok:hover{filter:brightness(1.08);}
-.btn-sm{padding:7px 14px; font-size:12.5px; border-radius:8px;}
+.btn-warn{background:${C.warnLight}; border-color:${C.warnLight}; color:${C.text};}
+.btn-warn:hover{background:${C.flaeche}; border-color:${C.warn};}
+.btn-sm{min-height:34px; padding:0 14px; font-size:12.5px;}
 
 .inp,.sel,textarea.inp{
-  width:100%; padding:9px 12px; border-radius:var(--r); border:1px solid ${C.line};
+  width:100%; min-height:40px; padding:9px 12px; border-radius:var(--r); border:1px solid ${C.line};
   background:${C.flaeche}; color:${C.text}; font-size:13.5px; font-family:inherit;
   transition:border-color .14s, box-shadow .14s;
 }
-.inp:hover,.sel:hover{border-color:${C.lineStark};}
+.inp:hover,.sel:hover{border-color:${C.steuer};}
 .inp:focus,.sel:focus,textarea.inp:focus{outline:none; border-color:${C.accent};
   box-shadow:0 0 0 3px ${C.accentLight};}
 .inp::placeholder{color:${C.dim}; opacity:.72;}
@@ -387,13 +417,15 @@ h1.titel b{font-weight:680;}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 11 7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%236B7280' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat:no-repeat; background-position:right 12px center;}
 
-.pille{display:inline-flex; align-items:center; gap:5px; padding:5px 12px; border-radius:999px;
-  font-size:12px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
-  border:1px solid transparent; white-space:nowrap;}
-.pille-ok{background:${C.okLight}; color:${C.ok}; border-color:#BBF7D0;}
-.pille-warn{background:${C.warnLight}; color:${C.warn}; border-color:#FEF08A;}
-.pille-danger{background:${C.dangerLight}; color:${C.danger}; border-color:#FECACA;}
-.pille-accent{background:${C.accentLight}; color:${C.accent}; border-color:#9FC2AC;}
+.pille{display:inline-flex; align-items:center; gap:5px; padding:4px 11px; border-radius:999px;
+  font-size:12.5px; font-weight:600; background:${C.flaecheStill}; color:${C.dim};
+  white-space:nowrap; font-variant-numeric:tabular-nums;}
+.pille-sm{padding:2px 9px; font-size:11.5px;}
+/* Ohne Rand: die Tönung trägt, das Wort daneben ist die Aussage. */
+.pille-ok{background:${C.okLight}; color:${C.ok};}
+.pille-warn{background:${C.warnLight}; color:${C.warn};}
+.pille-danger{background:${C.dangerLight}; color:${C.danger};}
+.pille-accent{background:${C.accentLight}; color:${C.accent};}
 
 /* Rundes Namenszeichen — ersetzt Fotos, die wir nicht haben */
 .avatar{width:38px; height:38px; border-radius:50%; flex-shrink:0; display:flex;
@@ -427,7 +459,7 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
   font-family:inherit; font-size:13px; font-weight:550; color:${C.dim};
   padding:8px 16px; border-radius:999px; white-space:nowrap; flex-shrink:0;
   transition:background .14s, color .14s, border-color .14s;}
-.seg button:hover{border-color:${C.lineStark};}
+.seg button:hover{border-color:${C.steuer};}
 .seg button.on{background:${C.accentLight}; color:${C.accent}; border-color:${C.accent}; font-weight:620;}
 
 .reiterreihe{display:flex; gap:7px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:5px;
@@ -438,13 +470,12 @@ table.raster tbody tr[data-gewaehlt="1"] td{background:${C.accentLight};}
 
 .hakenliste{list-style:none; padding:0; margin:0;}
 .hakenliste li{display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13.5px;}
-.hakenliste li::before{content:"✓"; color:${C.ok}; font-weight:700; flex-shrink:0;}
 
 .schalter{width:40px; height:23px; border-radius:999px; border:none; cursor:pointer; padding:0;
-  position:relative; transition:background .18s; flex-shrink:0; background:${C.lineStark};}
+  position:relative; transition:background .18s; flex-shrink:0; background:${C.steuer};}
 .schalter.on{background:${C.accent};}
 .schalter i{position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%;
-  background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
+  background:${C.aufAkzent}; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .18s;}
 .schalter.on i{transform:translateX(17px);}
 
 /* Tastaturkürzel als Marke im Text */
@@ -453,7 +484,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
   font-family:inherit; font-size:11px; font-weight:600; color:${C.dim};}
 
 /* Blätter und Überlagerungen */
-.blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:0 20px 48px rgba(17,24,39,.18);
+.blatt{background:${C.flaeche}; border-radius:var(--r-gross); box-shadow:var(--schatten-blatt);
   border:1px solid ${C.line};}
 /* Der Rücken hinter einem Blatt.
 
@@ -469,7 +500,7 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
    oben abgeschnitten, und der abgeschnittene Teil ist nicht erreichbar.
    So zentriert er, solange Platz ist, und lässt sonst scrollen. */
 .sheet-back{position:fixed; inset:0; z-index:90; display:flex; justify-content:center;
-  background:rgba(20,20,28,.32); backdrop-filter:blur(6px);
+  background:var(--c-ueberlagerung); backdrop-filter:blur(6px);
   padding:24px; overflow-y:auto; overscroll-behavior:contain;
   animation:blattauf .16s cubic-bezier(.4,0,.2,1);}
 .sheet-back > .blatt{width:100%; margin:auto; outline:none;}
@@ -478,14 +509,14 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 
 /* Meldungsstreifen mit Rücknahme */
 .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:95;
-  background:${C.text}; color:#fff; padding:12px 16px; border-radius:var(--r); font-size:13.5px;
-  box-shadow:0 12px 32px rgba(17,24,39,.28); display:flex; align-items:center; gap:14px;
+  background:${C.text}; color:${C.flaeche}; padding:12px 16px; border-radius:var(--r); font-size:13.5px;
+  box-shadow:var(--schatten-toast); display:flex; align-items:center; gap:14px;
   max-width:92vw; animation:auf .2s cubic-bezier(.4,0,.2,1);}
 @keyframes auf{from{opacity:0; transform:translate(-50%,10px);} to{opacity:1; transform:translate(-50%,0);}}
 .toast button{border:none; background:transparent; color:${C.accentGlanz}; font-family:inherit;
   font-size:13px; font-weight:650; cursor:pointer; padding:0;}
 /* Fünf Sekunden Rücknahmefrist, sichtbar als schrumpfender Ring */
-.toast-uhr{width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,.22);
+.toast-uhr{width:16px; height:16px; border-radius:50%; border:2px solid ${C.steuer};
   position:relative; flex-shrink:0;}
 .toast-uhr i{position:absolute; inset:-2px; border-radius:50%; border:2px solid ${C.accentGlanz};
   border-right-color:transparent; border-bottom-color:transparent;
@@ -560,11 +591,12 @@ kbd.taste{display:inline-flex; align-items:center; justify-content:center; min-w
 }
 
 @media print{
-  .seitenleiste,.kopfleiste,.noprint,.toast{display:none !important;}
+  .seitenleiste,.kopfblock,.kopfleiste,.noprint,.toast{display:none !important;}
   .inhalt{margin-left:0;}
   .sw-root{background:#fff;}
   .karte{border-color:#D1D5DB; box-shadow:none; break-inside:avoid;}
 }
+${gestaltStil()}
 `;
 
 /* --------------------------------- Datum --------------------------------- */
@@ -845,6 +877,7 @@ const ABW = [
   { id: "frei", label: "Freistellung", kurz: "F", farbe: "#878C93", urlaub: false, bezahlt: false, rang: 1 },
   { id: "sonst", label: "Sonstiges", kurz: "X", farbe: "#8A5A00", urlaub: false, bezahlt: true, rang: 2 },
   { id: "ausgleich", label: "Freizeitausgleich", kurz: "A", farbe: "#0369A1", urlaub: false, bezahlt: false, rang: 2 },
+  ...ABW_WEITERE,
 ];
 const abwArt = (id) => ABW.find((a) => a.id === id) || ABW[4];
 
@@ -965,7 +998,7 @@ function baueMandant(cfg, seed) {
     gueltigMonate: q[2] === undefined ? null : q[2],
     nachweisPflicht: !!q[3],
     fachkraft: !!q[4],            // zählt für die Fachkraftquote
-    harteSperre: !!q[5],          // ohne sie ist keine Einteilung möglich
+    harteSperre: !!q[5],          // verbindlich: ohne sie warnt jede Einteilung (seit E-19 keine Sperre mehr)
     /* Ebene und Bezug: Wer eine Einteilung verhindert, muss sagen können,
        worauf er sich stützt. In den Vorführdaten ist die einzige harte
        Sperre die Sachkunde nach § 34a GewO — Bundesrecht, aber nur für
@@ -1160,6 +1193,7 @@ function baueMandant(cfg, seed) {
     ],
     urlaubsrunde: null,      // { jahr, phase, frist, kontingent, wuensche }
     unterschreitungen: [],   // dokumentierte Unterdeckung mit Begründung
+    bestaetigungen: [],      // bewusst bestätigte Abweichungen (Warnen statt sperren)
     stand: 0,                // Fortschreibungszähler für die Konflikterkennung
     betriebsmittel: [],      // Schlüssel, Fahrzeuge, Geräte, Dienstkleidung
     kompetenzen: [],         // was jemand an einer bestimmten Sache darf
@@ -1549,10 +1583,17 @@ function istStunden(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
-      if (t.abwesenheit) { if (abwArt(t.abwesenheit.art).bezahlt && t.plan) gg += proTag; continue; }
+      if (t.abwesenheit) {
+        /* Ungeklärt ist nicht unbezahlt: nichts gutschreiben, aber zählen, damit
+           die Prüfansicht sagen kann, dass das Konto dort unvollständig ist. */
+        const es = entgeltStatus(abwArt(t.abwesenheit.art));
+        if (es === "bezahlt" && t.plan) gg += proTag;
+        else if (es === "ungeklaert" && t.plan) ungeklaert++;
+        continue;
+      }
       if (!t.dienstId) continue;
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
@@ -1561,7 +1602,7 @@ function istStunden(m, p, ym) {
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert };
   });
 }
 /* --------------------------------------------------------------------------
@@ -1677,63 +1718,23 @@ function nachtJahr(m, p, jahr) {
    liefert schutzBefunde() in src/regelwerk.js die Fundstelle je Befund mit,
    weil sie dort je nach Merkmal verschieden ist.
    ========================================================================== */
-const RECHTSQUELLE = {
-  ruhezeit: { norm: "§ 5 Abs. 1 ArbZG",
-    satz: "Nach Beendigung der Arbeitszeit eine ununterbrochene Ruhezeit von mindestens elf Stunden." },
-  pause: { norm: "§ 4 ArbZG",
-    satz: "Ruhepausen von mindestens 30 Minuten bei mehr als sechs, 45 Minuten bei mehr als neun Stunden." },
-  /* Die Zahl zulässiger Dienste in Folge steht in keinem Gesetz. Sie kommt
-     aus dem Tarifvertrag, der Betriebsvereinbarung oder der eigenen
-     Festlegung — hier ist sie eine betriebliche Grenze, und das muss dabei
-     stehen. Sonst behauptet die Anwendung ein Gesetz, das es nicht gibt.
-     Die gesetzliche Anknüpfung nebenan ist echt, aber eine andere Frage. */
-  folge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Das Arbeitszeitgesetz begrenzt die Dienstfolge nicht unmittelbar. Gesetzlich gebunden ist der Sonntag: § 11 Abs. 1 ArbZG verlangt mindestens 15 beschäftigungsfreie Sonntage im Jahr." },
-  nachtfolge: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Anknüpfung ist § 6 Abs. 1 ArbZG: Die Arbeitszeit der Nachtarbeitnehmer ist nach gesicherten arbeitswissenschaftlichen Erkenntnissen festzulegen. Die Zahl selbst legt der Betrieb fest." },
-  abwesend: { norm: "§ 3 EFZG, § 7 BUrlG",
-    satz: "Wer arbeitsunfähig oder im Urlaub ist, steht für einen Dienst nicht zur Verfügung." },
-  ueberlappung: { norm: "§ 7 BUrlG",
-    satz: "Ein Zeitraum kann nicht zugleich Urlaub und eine andere Abwesenheit sein." },
-  urlaub: { norm: "§ 7 Abs. 1 BUrlG",
-    satz: "Urlaubswünsche sind zu berücksichtigen, soweit keine dringenden betrieblichen Belange entgegenstehen." },
-  nachweis: { norm: "§ 12 ArbSchG",
-    satz: "Beschäftigte sind vor Aufnahme der Tätigkeit ausreichend zu unterweisen; Nachweise sind zu erneuern." },
-  /* Hier stand: „Bewachungstätigkeit setzt den Sachkundenachweis voraus."
-     Das stimmt so nicht — § 34a Abs. 1a GewO verlangt die Sachkunde nur für
-     bestimmte Tätigkeiten, für die übrigen genügt die Unterrichtung. Der
-     Satz erschien zudem unter jeder Sperre, auch unter einer betrieblichen.
-     Er greift jetzt nur noch, wenn die Qualifikation gar keine Grundlage
-     nennt — und sagt dann genau das. */
-  sperre: { norm: "Keine Grundlage hinterlegt", betrieblich: true,
-    satz: "Zu dieser Anforderung ist keine Rechtsgrundlage erfasst. Worauf sie sich stützt, "
-      + "steht unter Betrieb → Qualifikationen." },
-  qualifikation: { norm: "§ 5 ArbSchG",
-    satz: "Der Arbeitgeber hat die Gefährdungen zu beurteilen und den Einsatz danach auszurichten." },
-  fachkraft: { norm: "Landesheimpersonalverordnung",
-    satz: "Die Fachkraftquote richtet sich nach Landesrecht und ist je Bundesland verschieden; der hinterlegte Wert ist die betriebliche Vorgabe." },
-  besetzung: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Die Mindestbesetzung legt der Betrieb fest. Bleibt sie dauerhaft unerreicht, ist das nach § 5 ArbSchG als Gefährdung zu beurteilen." },
-  urlaubsgrenze: { norm: "Betriebliche Grenze", betrieblich: true,
-    satz: "Wie viele gleichzeitig Urlaub haben dürfen, legt der Betrieb fest." },
-  einschraenkung: { norm: "§ 164 Abs. 4 SGB IX, § 74 SGB V",
-    satz: "Vereinbarte Einsatzbeschränkungen und Wiedereingliederungspläne sind bindend." },
-  ausgleich: { norm: "§ 3 Satz 2 ArbZG",
-    satz: "Zehn Stunden werktäglich nur, wenn im Durchschnitt von 24 Wochen acht Stunden nicht überschritten werden." },
-  tagesgrenze: { norm: "§ 3 Satz 1 und 2 ArbZG",
-    satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
-  ersatzruhe: { norm: "§ 11 Abs. 3 ArbZG",
-    satz: "Für Sonntagsarbeit ist ein Ersatzruhetag innerhalb von zwei Wochen zu gewähren, für Feiertagsarbeit an einem Werktag innerhalb von acht Wochen." },
-  sonntagsfrei: { norm: "§ 11 Abs. 1 ArbZG",
-    satz: "Mindestens fünfzehn Sonntage im Jahr müssen beschäftigungsfrei bleiben." },
-  regelsatz: { norm: "Konfiguration", betrieblich: true,
-    satz: "Geprüft wird hier nicht der Plan, sondern die hinterlegte Regel — worauf sie sich stützt und wofür sie gilt." },
-  vorsorge: { norm: "§ 6 Abs. 3 ArbZG",
-    satz: "Nachtarbeitnehmer haben das Recht, sich arbeitsmedizinisch untersuchen zu lassen — regelmäßig nach höchstens drei Jahren, nach dem fünfzigsten Lebensjahr jährlich." },
-};
+/* Die Tabelle steht im Regelregister (src/regelregister.js), je Eintrag mit
+   Regelkennung, Prüfstatus und Gültigkeit. Hier wird sie nur gelesen: Gleiche
+   Schlüssel, gleicher Wortlaut wie vorher. */
+const RECHTSQUELLE = rechtsquelleTabelle();
+
+/**
+ * Fundstelle zu einem Befund samt der Kennung der Regel aus dem Regelregister,
+ * soweit der Befund einer Regel zugeordnet ist (Feld `regelId`).
+ */
+function rechtsquelle(b) {
+  const q = rechtsquelleDirekt(b);
+  const regelId = regelIdFuerBefund(b);
+  return q && regelId ? { ...q, regelId } : q;
+}
 
 /** Fundstelle zu einem Befund — bei Schutzvorschriften aus dem Befund selbst. */
-function rechtsquelle(b) {
+function rechtsquelleDirekt(b) {
   if (!b) return null;
   /* Einsatzregeln ohne Rohdaten (S1): keine Fundstelle — sie verriete den Grund. */
   if (b.neutral) return null;
@@ -1782,10 +1783,22 @@ function pruefen(m, von, bis) {
            hängt. */
         for (const a of (m.aufgaben || []).filter((x) => (x.dienstarten || []).includes(k))) {
           const u = aufgabeGedeckt(a, e.personen, (p, qid) => qualGueltig(m, p, qid));
-          if (u.gedeckt) continue;
-          push({ art: "aufgabe", schwere: u.offen ? "warn" : "danger", datum: d, ref: `${k}|${a.id}`,
-            titel: `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
+          const schwere = aufgabeSchwere(u);
+          if (!schwere) continue;
+          push({ art: "aufgabe", schwere, datum: d, ref: `${k}|${a.id}`,
+            titel: u.offen ? `${e.da.name}: ${a.name} nicht prüfbar` : `${e.da.name}: ${a.name} nicht abgedeckt`, text: u.text });
         }
+      }
+    }
+    /* Abwesenheiten, deren Entgeltstatus nicht geklärt ist: Das Stundenkonto
+       schreibt dafür nichts gut — und sagt es, statt still zu kürzen. */
+    for (const p of m.personen) {
+      for (let ym = von.slice(0, 7); ym <= bis.slice(0, 7); ym = addMonate(ym + "-01", 1).slice(0, 7)) {
+        const n = istStunden(m, p, ym).ungeklaert;
+        if (n > 0)
+          push({ art: "entgelt", schwere: "warn", datum: `${ym}-01`, ref: `${p.id}|${ym}`, personId: p.id,
+            titel: `${p.nachname}: Entgeltstatus der Abwesenheit nicht geklärt`,
+            text: `${n} geplante Abwesenheitstag(e) im ${ym} haben keinen geprüften Entgeltstatus. Das Stundenkonto schreibt dafür nichts gut; bitte Lohnbuchhaltung oder Tarif klären.` });
       }
     }
     const vor = addDays(von, -10);
@@ -1953,13 +1966,13 @@ function pruefen(m, von, bis) {
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
         if (ein.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-          push({ art: "einschraenkung", schwere: "danger", datum: d, ref: p.id, personId: p.id,
+          push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.keineNacht.schwere, datum: d, ref: p.id, personId: p.id,
             titel: `Nachtdienst trotz Einschränkung — ${p.nachname}`,
             text: `${da.name} eingeteilt, obwohl keine Nachtdienste zugelassen sind` });
         if (ein.keinAlleindienst) {
           const mit = besetzung(m, d)[t.dienstId].personen.filter((x) => x.id !== p.id && !(x.einschraenkungen || {}).keinAlleindienst);
           if (mit.length === 0)
-            push({ art: "einschraenkung", schwere: "danger", datum: d, ref: p.id, personId: p.id,
+            push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.keinAlleindienst.schwere, datum: d, ref: p.id, personId: p.id,
               titel: `Alleindienst nicht zulässig — ${p.nachname}`,
               text: `${da.name}: keine weitere eingewiesene Person eingeteilt` });
         }
@@ -1981,7 +1994,7 @@ function pruefen(m, von, bis) {
           let n = 0;
           for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(d, i)).dienstId) n++;
           if (n > ein.maxDiensteWoche)
-            push({ art: "einschraenkung", schwere: "warn", datum: d < von ? von : d, ref: `${p.id}|w`, personId: p.id,
+            push({ art: "einschraenkung", schwere: EINSCHRAENKUNG_BEWERTUNG.maxDiensteWoche.schwere, datum: d < von ? von : d, ref: `${p.id}|w`, personId: p.id,
               titel: `${n} Dienste in der Woche — ${p.nachname}`,
               text: `vereinbart sind höchstens ${ein.maxDiensteWoche}` });
         }
@@ -2069,21 +2082,27 @@ function pruefen(m, von, bis) {
       const abgeleitet = Array.isArray(p.planungsregeln);
       const erwartet = p.sichtbereich === "bereich" || p.sichtbereich === "pool";
       if (!abgeleitet && !erwartet) {
-        /* Ohne Merkmal gibt es nichts zu prüfen — das spart bei einem Betrieb
-           ohne Jugendliche und ohne Mutterschutz den ganzen Durchlauf. */
-        const alterHeute = alterAm(p.geburtstag, bis);
-        if (!p.mutterschutz && !p.schwerbehindert && (alterHeute === null || alterHeute >= 18)) continue;
+        /* Ohne Merkmal und mit bekanntem Alter ab 18 gibt es nichts zu prüfen —
+           das spart bei einem Betrieb ohne Jugendliche und ohne Mutterschutz
+           den ganzen Durchlauf. Ein unbekanntes Alter (Geburtsdatum fehlt oder
+           ungültig) überspringt die Prüfung nicht: Es wird einmal je Person als
+           „nicht bewertbar" gemeldet (Kette A). */
+        const alterHeute = alterAm(p.geburtstag || p.geburtsdatum, bis);
+        if (!p.mutterschutz && !p.schwerbehindert && alterHeute !== null && alterHeute >= 18) continue;
       }
       if (abgeleitet && !p.planungsregeln.some((x) => x && x.regel !== "stundengrenzeWoche")) continue;
+      let datenGemeldet = false;
 
       for (let d = von; d <= bis; d = addDays(d, 1)) {
         const t = personTag(m, p, d);
         if (t.abwesenheit || !t.dienstId) continue;
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
-        for (const b of schutzBefundeFuer(p, da, d)) {
-          push({ art: "schutz", schwere: b.hart ? "danger" : "warn", datum: d,
-            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: !!b.neutral,
+        /* Die eine Schutzprüfung (schutzEinsatz), wie im Warndialog. */
+        for (const b of schutzEinsatz(p, da, d)) {
+          if (b.offen) { if (datenGemeldet) continue; datenGemeldet = true; }
+          push({ art: "schutz", schwere: b.schwere, datum: d,
+            ref: `${p.id}|${b.regel}`, personId: p.id, neutral: b.neutral,
             titel: b.regel === "pruefungNichtMoeglich" ? `Schutzprüfung nicht möglich — ${p.nachname}`
               : b.neutral ? `Einsatzregel verletzt — ${p.nachname}` : `${b.regel} — ${p.nachname}`,
             text: `${b.text} Eingeteilt ist ${da.name} am ${fKurz(d)}.` });
@@ -2535,10 +2554,34 @@ const offeneErfassung = (m, p, bis) => {
 };
 
 /* ------------------ Personenbezogene Einschränkungen --------------------- */
+/* Warnen statt sperren (E-19).
+
+   Keine Regel verhindert die Entscheidung eines berechtigten Menschen.
+   Jeder Befund trägt eine Stufe:
+   - hinweis:  Information, nichts zu bestätigen
+   - achtung:  betriebliche Vorgabe, Tarif oder Personalkonflikt — ein Klick
+   - recht:    gesetzliche Vorgabe — „gelesen" ankreuzen, Grund freiwillig
+   Die Maschine selbst (Planungsassistent) setzt weiter nur Einteilungen
+   ohne Befund; der Mensch darf über den Warndialog abweichen. */
+/* Stufen, Gründe und Protokolleinträge stehen in src/warnstufen.js. */
+
+/* Quellenangaben für Schutzbefunde ohne Fundstelle: Den Grund einer
+   Einsatzregel oder Einschränkung nennt CENTRIC nie. */
+const SCHUTZ_QUELLE_NEUTRAL = "Schutzvorschrift oder Einsatzregel für diese Person";
+const SCHUTZ_QUELLE_EINSCHRAENKUNG = "Schutzvorschrift oder Einsatzeinschränkung für diese Person";
+
 /**
- * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten darf.
- * Liefert eine Liste von Hinderungsgründen — leer bedeutet zulässig.
+ * Wie schwer eine Einschränkung an der Person wiegt — für Planprüfung
+ * (pruefen: schwere) und Einteilung (hindernisBefunde: stufe) aus derselben
+ * Quelle: der Spalte `sperrt` im Befundkatalog (SPERR_REGELN, WP-11). Bis
+ * dahin meldete die Planprüfung „keine Nacht" als Verstoß (danger), der
+ * Warndialog nur „Achtung" zum Wegklicken, und die Höchstzahl Dienste je
+ * Woche war hier „warn", im Dialog „recht". Bis zur Fachentscheidung gilt
+ * die strenge Variante (Review H1): alle drei sperren.
  */
+const EINSCHRAENKUNG_BEWERTUNG = Object.fromEntries(["keineNacht", "keinAlleindienst", "maxDiensteWoche"]
+  .map((k) => [k, sperrtArt(k) ? { stufe: "recht", schwere: "danger" } : { stufe: "achtung", schwere: "warn" }]));
+
 /** Die in der Kalenderwoche von d schon geplanten Stunden einer Person. */
 function wochenStundenGeplant(m, p, d) {
   const mo = montag(d);
@@ -2552,22 +2595,65 @@ function wochenStundenGeplant(m, p, d) {
   return std;
 }
 
-function hindernisse(m, p, d, da) {
+/**
+ * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten kann,
+ * und liefert die Befunde mit Stufe, Quelle und Text — leer bedeutet
+ * regelkonform. Die Befunde gehen in den Warndialog. Ob ein Befund sperrt
+ * (kein „dennoch", Bewerbung, Selbstplanung, Zuschlag, Übernahme blockiert)
+ * oder warnt, steht an genau einer Stelle: SPERR_REGELN in src/warnstufen.js
+ * (Review WP-10, H1 — bis zur Fachentscheidung die strenge Kette-B-Variante).
+ * `regel` ist der Schlüssel dort.
+ */
+function hindernisBefunde(m, p, d, da) {
   const g = [];
+  /* regel: Schlüssel im Befundkatalog (sperrt oder warnt, BEFUND_KATALOG);
+     regelId: Kennung im Regelregister (Fundstelle, Quellenstand) — beides
+     Kennungen, kein Text. */
+  const push = (stufe, text, quelle, art, regel, regelId) => g.push({ stufe, text, quelle, art: art || "regel",
+    regel: regel || art || "regel", sperrt: sperrtArt(regel || art || "regel"),
+    regelId: regelId === undefined ? regelIdFuerBefund({ art: art || "regel", quelle }) : regelId });
   const e = einschr(p);
-  if (!imDienst(p, d)) g.push("nicht im Bestand");
-  if (abwesenheitAm(m, p.id, d)) g.push(`abwesend (${abwArt(abwesenheitAm(m, p.id, d).art).label})`);
+  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand", "bestand");
+  const abw = abwesenheitAm(m, p.id, d);
+  /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
+     bietet an, sie für diesen Tag aufzuheben. */
+  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend", "abwesend");
+  /* Die eine Schutzprüfung (WP-11): schutzEinsatz in src/regelwerk.js —
+     dieselbe wie in der Planprüfung, auf dem Weg, den die Daten zulassen
+     (Rohdaten mit Fundstelle, Einsatzregeln neutral, ohne Einsatzregeln
+     sperrend). Harte Befunde sperren (sperrt: true): Schutz besonderer
+     Personengruppen lässt sich nicht wegbestätigen (Kette B). Weiche sind
+     „Achtung", nicht bewertbare ein Hinweis. Den Grund einer neutralen
+     Einsatzregel nennt der Befund nie. */
+  for (const b of schutzEinsatz(p, da, d)) {
+    const quelle = b.neutral ? SCHUTZ_QUELLE_NEUTRAL : b.regel;
+    /* Katalogschlüssel aus der Bewertung von schutzEinsatz: hart → „schutz"
+       (sperrt), weich → „schutzWeich" (Achtung), nicht bewertbar →
+       „schutzOffen" (Hinweis). Sperrt folgt so derselben Tabelle wie alles
+       andere und sagt nie etwas anderes als schutzEinsatz. */
+    push(b.stufe, b.text, quelle, "schutz", b.sperrt ? "schutz" : b.offen ? "schutzOffen" : "schutzWeich",
+      b.neutral ? null : regelIdFuerBefund({ art: "schutz", quelle }));
+  }
+  /* Einschränkungen an der Person: Stufe und Sperre aus dem Befundkatalog
+     (EINSCHRAENKUNG_BEWERTUNG), wie in der Planprüfung. Den Grund nennt
+     CENTRIC nie — es kann Mutterschutz, ein ärztliches Attest oder eine
+     Absprache sein. */
+  const einschraenkung = (art, text) =>
+    push(EINSCHRAENKUNG_BEWERTUNG[art].stufe, text, SCHUTZ_QUELLE_EINSCHRAENKUNG, "schutz", art, null);
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-    g.push("keine Nachtdienste zugelassen");
-  if (!verfuegbarFuer(p, d, da)) g.push(`nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`);
-  // Qualifikationen mit harter Sperre schließen die Einteilung ganz aus
+    einschraenkung("keineNacht", "keine Nachtdienste zugelassen");
+  if (!verfuegbarFuer(p, d, da))
+    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person", "regel", "verfuegbarkeit");
+  // Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung
   if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
       /* Der Grund nennt die Ebene. Vorher stand unter jeder Sperre
          „gesetzlich zwingend" — auch unter einer Betriebsvereinbarung. */
       const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
       if (!v || qualGueltig(m, p, q.id)) continue;
-      g.push(`${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`);
+      push(v.gesetzlich ? "recht" : "achtung",
+        `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
+        q.grundlage || v.label, "qualifikation", v.gesetzlich ? "qualifikationGesetzlich" : "qualifikationBetrieblich");
     }
   }
   /* Kompetenzen, die diese Dienstart voraussetzt.
@@ -2580,11 +2666,11 @@ function hindernisse(m, p, d, da) {
      diesen. */
   for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
     (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
-    g.push(f.text);
+    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz", "kompetenz");
 
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
-    g.push("arbeitet an diesem Wochentag nicht");
+    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   // Ruhezeit vor und nach dem Dienst
   const [nStart, nEnde] = fenster(d, da);
   for (const off of [-2, -1, 1, 2]) {
@@ -2595,37 +2681,114 @@ function hindernisse(m, p, d, da) {
     if (!other) continue;
     const [oStart, oEnde] = fenster(dd, other);
     const ruhe = oStart > nStart ? (oStart - nEnde) / 60 : (nStart - oEnde) / 60;
-    if (ruhe < m.einstellungen.ruhezeit) { g.push(`Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`); break; }
+    const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
+    if (rs) {
+      push(rs, `Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`,
+        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit",
+        rs === "recht" ? "ruhezeitGesetz" : "ruhezeitBetrieb");
+      break;
+    }
   }
   // Dienste je Woche
   if (e.maxDiensteWoche) {
     const mo = montag(d);
     let n = 0;
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
-    if (n >= e.maxDiensteWoche) g.push(`bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
+    if (n >= e.maxDiensteWoche)
+      einschraenkung("maxDiensteWoche", `bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
   }
   /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
      eingeteilt werden darf, braucht im Dienst jemanden ohne diese
-     Einschränkung (Commit S2). */
+     Einschränkung (Commit S2). Die Wochenstundengrenze (S2a) ist kein Befund
+     hier, sondern ein Hinweis in befundeFuerEinteilung, Ersatzsuche und
+     folgenPruefen (stundengrenzeHinweis). */
   if (e.keinAlleindienst) {
     const b = besetzung(m, d)[da.id];
     const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
-    if (mit.length === 0) g.push("darf nicht allein eingeteilt werden");
+    if (mit.length === 0) einschraenkung("keinAlleindienst", "darf nicht allein eingeteilt werden");
   }
-  /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
-     die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
-     (Schichtverantwortung); fehlen diese, sperrt sie. Harte Befunde sind
-     Hindernisse; weiche — auch die Wochenstundengrenze (S2a) — sind
-     Hinweise in Ersatzsuche und folgenPruefen. */
-  const schutz = einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d));
-  g.push(...schutz.hindernisse);
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
     if (personTag(m, p, addDays(d, -i)).dienstId) lauf++; else break;
   }
-  if (lauf >= m.einstellungen.maxFolge) g.push(`${lauf} Dienste in Folge davor`);
+  if (lauf >= m.einstellungen.maxFolge)
+    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`,
+      "regel", "folge");
   return g;
+}
+
+/** Die Befunde als Text — für alle Stellen, die nur den Wortlaut brauchen. */
+/* Nur was ab „Achtung" wiegt; ein Hinweis (etwa „nicht bewertbar") hindert nicht. */
+const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
+
+/** Der erste harte Schutzbefund (sperrt: true) oder null. Die Planungsaktionen
+    prüfen ihn selbst noch einmal — der Warndialog ist nicht die einzige
+    Schranke (Kette B; Vereinheitlichung WP-11). */
+const schutzSperre = (m, p, d, da) => (p && da && hindernisBefunde(m, p, d, da).find((b) => b.sperrt)) || null;
+
+/**
+ * Befunde für eine geplante Einteilung, wie der Warndialog sie braucht.
+ * Ergänzt die Regelbefunde um den Hinweis, dass ein bestehender Dienst
+ * ersetzt würde.
+ */
+function befundeFuerEinteilung(m, personId, datum, dienstId) {
+  const p = m.personen.find((x) => x.id === personId);
+  const da = m.dienstarten.find((x) => x.id === dienstId);
+  if (!p || !da) return { person: p || null, da: da || null, befunde: [], technisch: "Person oder Dienstart nicht gefunden" };
+  const befunde = hindernisBefunde(m, p, datum, da);
+  const vorher = personTag(m, p, datum).dienstId;
+  if (vorher && vorher !== dienstId) {
+    const alt = m.dienstarten.find((x) => x.id === vorher);
+    befunde.push({ stufe: "hinweis", text: `ersetzt den geplanten ${alt ? alt.name : vorher}`, quelle: "Plan", art: "umteilung" });
+  }
+  /* Die Wochenstundengrenze (S2a): ein Hinweis, nichts zu bestätigen. Die
+     Schutzbefunde selbst stehen schon in hindernisBefunde (schutzEinsatz) —
+     nicht noch einmal (WP-11). */
+  const grenze = stundengrenzeHinweis(p, da, datum, () => wochenStundenGeplant(m, p, datum));
+  if (grenze) befunde.push({ stufe: "hinweis", text: grenze.text, quelle: SCHUTZ_QUELLE_NEUTRAL, art: "schutzhinweis" });
+  return { person: p, da, befunde };
+}
+
+/** Hebt eine Abwesenheit für genau einen Tag auf (src/warnstufen.js). */
+const abwesenheitTagAufheben = (m, personId, datum) =>
+  abwTagAufheben(m.abwesenheiten, personId, datum, () => uid("a"));
+
+/**
+ * Hält eine bestätigte Abweichung fest (Bestätigungsprotokoll). Ist eine
+ * gesetzliche Vorgabe betroffen, unterrichtet der Server die Leitung.
+ *
+ * @param best   was der Warndialog zurückgibt: eintraege mit befunden, grund
+ * @param wer    { personId, name, rolle } der bestätigenden Person
+ * @param aktion Kennung der Planungsaktion, z. B. „einsprung"
+ */
+function bestaetigungVermerken(m, best, wer, aktion) {
+  const neu = bestaetigungsEintraege(best, wer, aktion,
+    { neueId: () => uid("bs"), zeit: new Date().toISOString(), regelstand: REGELSTAND.version });
+  if (!neu.length) return m;
+  /* Die Mitteilung an die Leitung bei einem Rechtsverstoß erzeugt der Server
+     beim Speichern (server/lib/bestaetigungen.mjs, WP-10 d.4) — auch für die
+     Schichtverantwortung, deren Mitteilungen sonst nur in den eigenen
+     Bereich gehen dürfen. Wer und Zeit des Eintrags setzt ebenfalls der Server. */
+  return { ...m, bestaetigungen: [...neu, ...(m.bestaetigungen || [])].slice(0, 2000) };
+}
+
+/**
+ * Bestätigte Abweichungen, die im Plan noch wirken: Die Person hat an dem
+ * Tag weiter genau diesen Dienst. Ist die Einteilung inzwischen geändert,
+ * ist die Abweichung behoben und verschwindet von der Markierung.
+ * Schlüssel „personId|Datum".
+ */
+function offeneAbweichungen(m, von, bis) {
+  const aus = new Map();
+  for (const b of m.bestaetigungen || []) {
+    if (!b || !b.personId || b.datum < von || b.datum > bis) continue;
+    const p = m.personen.find((x) => x.id === b.personId);
+    if (!p || personTag(m, p, b.datum).dienstId !== b.dienstId) continue;
+    const k = `${b.personId}|${b.datum}`;
+    if (!aus.has(k) || stufeRang(b.stufe) > stufeRang(aus.get(k).stufe)) aus.set(k, b);
+  }
+  return aus;
 }
 
 /**
@@ -2659,7 +2822,10 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
   for (const p of m.personen) {
     const t = personTag(m, p, d);
     if (t.dienstId) continue;                      // hat bereits Dienst
-    const g = hindernisse(m, p, d, da);
+    /* Einmal prüfen (WP-11): was ab „Achtung" wiegt, hindert; Hinweise
+       (nicht bewertbar) stehen bei den Gründen. */
+    const bef = hindernisBefunde(m, p, d, da);
+    const g = bef.filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
     const kto = ctx ? (ctx.konten.has(p.id) ? ctx.konten.get(p.id) : 0) : stundenkonto(m, p, ym);
     const eigene = ctx ? (ctx.einspruenge[p.id] || 0) : (einspruengeJe[p.id] || 0);
     const passendeQuals = fehlendeQuals.filter((q) => qualGueltig(m, p, q));
@@ -2689,8 +2855,12 @@ function ersatzVorschlaege(m, d, dienstId, ctx) {
     const nj = ctx ? (ctx.nachtAnzahl.get(p.id) || 0) : nachtJahr(m, p, jahr).anzahl;
     if (nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen) && nj > nachtMittel + 3) {
       punkte -= 8; gruende.push(`${nj} Nachtdienste im Jahr`); }
-    /* Weiche Schutzregeln sperren nicht, stehen aber dabei (Commit S2). */
-    for (const h of einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d)).hinweise) gruende.push(`Hinweis: ${h}`);
+    /* Weiche Schutzregeln sind seit WP-11 „Achtung" (oben in g, wie im
+       Warndialog); hier nur, was nichts zu bestätigen hat: nicht Bewertbares
+       und die Wochenstundengrenze (S2a). Kein Befund steht doppelt. */
+    for (const b of bef) if (b.stufe === "hinweis") gruende.push(`Hinweis: ${b.text}`);
+    const grenze = stundengrenzeHinweis(p, da, d, () => wochenStundenGeplant(m, p, d));
+    if (grenze) gruende.push(`Hinweis: ${grenze.text}`);
     out.push({ person: p, punkte: Math.round(punkte), gruende, hindernisse: g, moeglich: g.length === 0 });
   }
   out.sort((a, b2) => (a.moeglich !== b2.moeglich) ? (a.moeglich ? -1 : 1) : b2.punkte - a.punkte);
@@ -3515,7 +3685,9 @@ function sperreWirkt(m, q, land) {
   if (!q || !q.harteSperre) return null;
   const v = verbindlichkeit(q, { land });
   if (!v.sperrt) return null;
-  return kann(m, v.gesetzlich ? "sperreGesetz" : "sperreEigen") ? v : null;
+  /* Seit E-21 warnen eigene Vorgaben in jeder Stufe. Gesperrt wird ohnehin
+     nichts mehr; die Verbindlichkeit bestimmt nur die Warnstufe. */
+  return v;
 }
 
 function qualGueltig(m, p, qualId) {
@@ -4942,11 +5114,11 @@ function tabelleCSV(zeilen) {
     ...zeilen.map((z) => spalten.map((s) => feld(z[s])).join(";"))].join("\r\n");
 }
 /** Einheitlicher Leerzustand — mit Symbol, Erklärung und optionalem Weg. */
-const Leer = ({ titel, text, symbol = "◌", aktion }) => (
+const Leer = ({ titel, text, symbol = "kreis-leer", aktion }) => (
   <div style={{ padding: "56px 28px", textAlign: "center" }}>
     <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "flex",
-      alignItems: "center", justifyContent: "center", background: C.bg, color: C.dim, fontSize: 20 }}>
-      {symbol}</div>
+      alignItems: "center", justifyContent: "center", background: C.flaecheStill, color: C.dim }}>
+      <Icon n={symbol} size={22} /></div>
     <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 7 }}>{titel}</div>
     {text && <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, maxWidth: 380,
       margin: "0 auto" }}>{text}</div>}
@@ -5001,6 +5173,14 @@ function klickbar(onClick, label) {
     ...(label ? { "aria-label": label } : {}),
     onKeyDown: (e) => {
       if (e.key !== "Enter" && e.key !== " " && e.key !== "Spacebar") return;
+      /* Manche dieser Flächen tragen ein eigenes Bedienelement in sich — ein
+         Kästchen in der Antragsliste, eine Schaltfläche auf einer Karte.
+         Tastendrücke steigen auf: Ohne diese Abfrage schluckte die Zeile die
+         Leertaste, und das Kästchen ließe sich nicht mehr mit der Tastatur
+         setzen. Wer das nächstgelegene bedienbare Element ist, entscheidet. */
+      const eigen = e.target.closest
+        && e.target.closest("button, a[href], input, select, textarea, [tabindex]");
+      if (eigen && eigen !== e.currentTarget) return;
       /* Die Leertaste rollt sonst die Seite weiter, während man drückt. */
       e.preventDefault();
       e.stopPropagation();
@@ -5009,8 +5189,9 @@ function klickbar(onClick, label) {
   };
 }
 
-const Card = ({ children, style, hover, glanz, className = "", ...p }) => (
-  <div {...p} className={`karte ${hover ? "karte-hover" : ""} ${className}`}
+/** `still`: eingelassene Fläche (E1) statt Karte — Hinweiskasten, Einsatzfläche. */
+const Card = ({ children, style, hover, glanz, still, className = "", ...p }) => (
+  <div {...p} className={`${still ? "karte-still" : "karte"} ${hover ? "karte-hover" : ""} ${className}`}
     style={style}>{children}</div>);
 const CardHead = ({ children, right }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
@@ -5019,9 +5200,9 @@ const CardHead = ({ children, right }) => (
   </div>);
 const Lab = ({ children, style }) => (<div style={{ fontSize: 12, fontWeight: 500, color: C.dim, ...style }}>{children}</div>);
 const Rubrik = ({ children, style }) => (<div className="rubrik" style={style}>{children}</div>);
-const Schalter = ({ an, onChange }) => (
-  <button type="button" className={`schalter${an ? " on" : ""}`} onClick={onChange}
-    style={{ background: an ? C.ok : C.lineStark }} aria-pressed={an}><i /></button>);
+const Schalter = ({ an, onChange, label }) => (
+  <button type="button" className={`schalter${an ? " on" : ""}`} onClick={() => onChange(!an)}
+    role="switch" aria-checked={!!an} aria-label={label}><i /></button>);
 const Haken = ({ punkte }) => (
   <ul className="hakenliste">{punkte.map((p, i) => <li key={i}>{p}</li>)}</ul>);
 const Fussleiste = ({ children }) => <div className="fussleiste noprint">{children}</div>;
@@ -5029,12 +5210,15 @@ const Fussleiste = ({ children }) => <div className="fussleiste noprint">{childr
  * Filterleiste sitzt unmittelbar über der Tabelle, nicht in der Kopfzeile —
  * dort wird gesucht, und dort erwartet man die Bedienelemente.
  */
-const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, rechts }) => (
+const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", label, children, rechts }) => (
   <div className="filterleiste noprint">
     {setSuche && (
       <div className="suchfeld">
-        <span className="lupe">⌕</span>
-        <input className="inp" value={suche} placeholder={platzhalter}
+        <span className="lupe"><Icon n="suche" size={16} /></span>
+        {/* Ein Platzhalter verschwindet, sobald etwas im Feld steht — er
+            ist deshalb keine Beschriftung (WCAG 3.3.2). Beides zu setzen
+            kostet nichts und trägt auch dann noch. */}
+        <input className="inp" value={suche} placeholder={platzhalter} aria-label={label || platzhalter}
           onChange={(e) => setSuche(e.target.value)} />
       </div>)}
     {children}
@@ -5043,12 +5227,15 @@ const Filterleiste = ({ suche, setSuche, platzhalter = "Suchen …", children, r
   </div>);
 /** Verdichtete Planzelle: Dienst und Person in einem Block statt zwei Zeilen. */
 const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
+  /* Die leere Zelle trägt keinen Text. Ohne eigene Beschriftung meldet eine
+     Vorlesesoftware nur „Schaltfläche" und lässt offen, wofür. */
   if (!da) return (
-    <div onClick={onClick} title={title} className="planzelle"
+    <div {...klickbar(onClick, title || "Freie Zelle besetzen")} title={title} className="planzelle"
       style={{ background: C.bg, cursor: onClick ? "pointer" : "default", minHeight: 34 }} />);
   return (
-    <div onClick={onClick} title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
-      style={{ background: `${da.farbe}1C`, color: da.farbe, cursor: onClick ? "pointer" : "default",
+    <div {...klickbar(onClick, title || `${da.name}${unten ? ` · ${unten}` : ""}`)}
+      title={title || `${da.name}${unten ? ` · ${unten}` : ""}`} className="planzelle"
+      style={{ background: `${da.farbe}1C`, color: lesbar(da.farbe), cursor: onClick ? "pointer" : "default",
         minHeight: 34, outline: aktiv ? `2px solid ${C.accent}` : "none",
         textDecoration: ausfall ? "line-through" : "none", opacity: ausfall ? .5 : 1 }}>
       <div className="oben">{da.kurz}</div>
@@ -5061,23 +5248,19 @@ const Planzelle = ({ da, unten, aktiv, ausfall, onClick, title }) => {
  * Die Farbe leitet sich vom Namen ab — dieselbe Person bekommt immer
  * dieselbe, ohne dass etwas gespeichert werden muss.
  */
-const AV_TOENE = [
-  ["#F0FDFA", "#0F766E"], ["#EFF6FF", "#1D4ED8"], ["#FAF5FF", "#6D28D9"],
-  ["#FEF2F2", "#B91C1C"], ["#FFF7ED", "#C2410C"], ["#F0FDF4", "#15803D"],
-  ["#FDF2F8", "#BE185D"], ["#FEFCE8", "#A16207"],
-];
 const Avatar = ({ person, size, style }) => {
   const n = `${person.vorname || ""} ${person.nachname || ""}`.trim();
   const kuerzel = ((person.vorname || " ")[0] + (person.nachname || " ")[0]).toUpperCase();
   let summe = 0; for (let i = 0; i < n.length; i++) summe = (summe * 31 + n.charCodeAt(i)) % 997;
-  const [flaeche, farbe] = AV_TOENE[summe % AV_TOENE.length];
+  const toene = avatarToene();
+  const [flaeche, farbe] = toene[summe % toene.length];
   return (
     <span className={`avatar${size === "sm" ? " avatar-sm" : ""}`} aria-hidden="true"
       style={{ background: flaeche, color: farbe, ...style }}>{kuerzel}</span>);
 };
 
-const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, className = "" }) => (
-  <button type="button" onClick={onClick} disabled={disabled} title={title}
+const Btn = ({ children, kind = "plain", size, onClick, disabled, style, title, className = "", ...rest }) => (
+  <button type="button" onClick={onClick} disabled={disabled} title={title} {...rest}
     className={`btn btn-${kind}${size === "sm" ? " btn-sm" : ""} ${className}`} style={style}>
     {children}</button>);
 
@@ -5149,15 +5332,27 @@ const H1 = ({ children, rubrik, sub, right, style }) => (
       flexShrink: 0, maxWidth: "100%", minWidth: 0 }}>{right}</div>}
   </div>)
 
-function Kpi({ label, value, unit, tone = "text", sub }) {
+/**
+ * Kennzahl. `trend` und `bild` sind optional; ohne sie bleibt die Karte, wie
+ * sie war.
+ *
+ * @param {{text:string, ton?:string, richtung?:"auf"|"ab"|"gleich"}} [trend]
+ *   Trendpille — nur übergeben, wenn beide Zeiträume vorliegen. Fehlt der
+ *   Vergleich, steht dort nichts (kein Strich, kein Platzhalter).
+ * @param {React.ReactNode} [bild] Mikro-Diagramm (Sparkline) unter der Zahl;
+ *   die Zahl daneben bleibt die Aussage.
+ */
+function Kpi({ label, value, unit, tone = "text", sub, trend, bild }) {
   const col = { ok: C.ok, warn: C.warn, danger: C.danger, accent: C.accent, text: C.text }[tone];
-  return (<div style={{ padding: "22px 24px" }}>
-    <Lab>{label}</Lab>
-    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 9 }}>
+  return (<div style={{ padding: "calc(var(--pad-y) + 8px) calc(var(--pad-x) + 4px)" }}>
+    <Lab style={{ color: C.aus }}>{label}</Lab>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
       <span style={{ fontSize: 31, fontWeight: 650, letterSpacing: "-.035em", color: col, ...NUM }}>{value}</span>
-      {unit && <span style={{ fontSize: 14, color: C.dimmer, fontWeight: 500 }}>{unit}</span>}
+      {unit && <span style={{ fontSize: 14, color: C.aus, fontWeight: 500 }}>{unit}</span>}
+      {trend && trend.text && <Trend ton={trend.ton} richtung={trend.richtung}>{trend.text}</Trend>}
     </div>
     {sub && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 6, lineHeight: 1.4 }}>{sub}</div>}
+    {bild && <div style={{ marginTop: 14 }}>{bild}</div>}
   </div>);
 }
 const KpiRow = ({ children, min = 190 }) => (
@@ -5259,13 +5454,9 @@ function Standortleiste({ m, wert, setWert }) {
       {zeilen.map((z) => {
         const hier = wert === z.standort.id;
         return (
-          <button key={z.standort.id} type="button"
+          <button key={z.standort.id} type="button" className="standortkarte"
             onClick={() => setWert(hier ? ALLE_STANDORTE : z.standort.id)}
-            aria-pressed={hier}
-            style={{ textAlign: "left", padding: "13px 15px", borderRadius: 10, cursor: "pointer",
-              fontFamily: "inherit", color: C.text,
-              border: `1px solid ${hier ? C.accent : C.lineSoft}`,
-              background: hier ? C.accentLight : C.flaeche }}>
+            aria-pressed={hier}>
             <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap",
               overflow: "hidden", textOverflow: "ellipsis" }}>{z.standort.name}</div>
             <div style={{ fontSize: 12, color: C.dim, marginTop: 4, ...NUM }}>
@@ -5303,34 +5494,26 @@ function Sprung({ vorher, nachher, differenz, ton = "neutral", einheit, gross = 
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
       <span style={{ fontSize: gross ? 30 : 20, fontWeight: 300, color: C.dimmer, ...NUM }}>{vorher}</span>
-      <span style={{ fontSize: gross ? 18 : 14, color: C.dimmer }} aria-label="wird zu">→</span>
+      <span style={{ fontSize: gross ? 18 : 14, color: C.dimmer }} aria-label="wird zu"><Icon n="pfeil-rechts" size={gross ? 20 : 16} /></span>
       <span style={{ fontSize: gross ? 34 : 23, fontWeight: 650, ...NUM }}>{nachher}</span>
       {einheit && <span style={{ fontSize: 13.5, color: C.dimmer }}>{einheit}</span>}
       {differenz && <Pill tone={ton}>{differenz}</Pill>}
     </div>);
 }
 
-function Pill({ children, tone = "neutral", size }) {
-  const t = { neutral: ["rgba(20,20,25,.06)", C.dim], ok: [C.okLight, C.ok],
-    warn: ["rgba(179,91,0,.12)", C.warn], danger: ["rgba(211,36,56,.11)", C.danger],
-    accent: ["rgba(43,52,64,.09)", C.accent], violet: ["rgba(76,70,104,.12)", C.violet] }[tone]
-    /* Ein ausdrückliches null bedeutet „unauffällig" und soll nicht abstürzen —
-       der Vorgabewert greift nur bei fehlendem Argument, nicht bei null. */
-    || { neutral: ["rgba(20,20,25,.06)", C.dim] }.neutral;
-  return <span style={{ background: t[0], color: t[1], borderRadius: 20, padding: size === "sm" ? "2px 9px" : "4px 11px",
-    fontSize: size === "sm" ? 11.5 : 12.5, fontWeight: 600, whiteSpace: "nowrap", ...NUM }}>{children}</span>;
-}
+/* Die Pille selbst steht in gestalt/bausteine.jsx; hier der bisherige Name. */
+const Pill = Pille;
 function Zelle({ da, abw, size = 28, blass }) {
   if (abw) { const m = abwArt(abw.art);
     return <div title={m.label}  style={{ width: size, height: size, borderRadius: Math.round(size * .3),
       display: "flex", alignItems: "center", justifyContent: "center", border: `1.5px dashed ${m.farbe}88`,
-      color: m.farbe, fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{m.kurz}</div>; }
+      color: lesbar(m.farbe), fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{m.kurz}</div>; }
   if (!da) return <div style={{ width: size, height: size, borderRadius: Math.round(size * .3),
     background: "rgba(20,20,25,.045)", display: "flex", alignItems: "center", justifyContent: "center",
     color: C.dimmer, fontSize: 13 }}>·</div>;
   return <div title={`${da.name} ${da.start}–${da.ende}`} 
     style={{ width: size, height: size, borderRadius: Math.round(size * .3), display: "flex", alignItems: "center",
-      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: da.farbe,
+      justifyContent: "center", background: blass ? `${da.farbe}18` : `${da.farbe}22`, color: lesbar(da.farbe),
       fontSize: size < 24 ? 10 : 12, fontWeight: 700, ...NUM }}>{da.kurz}</div>;
 }
 function Balken({ ist, soll, tone }) {
@@ -5523,7 +5706,8 @@ function Anmeldung({ db, onLogin }) {
             </div>
           </div>
 
-          <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }} onClick={() => onLogin({ rolle: "betreiber" })}>
+          <Card hover style={{ padding: 26, marginBottom: 18, cursor: "pointer" }}
+            {...klickbar(() => onLogin({ rolle: "betreiber" }), "Zur Betreiberkonsole")}>
             <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
               <div style={{ width: 46, height: 46, borderRadius: 14, background: C.accent, color: "#fff",
                 display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, flexShrink: 0 }}>BE</div>
@@ -5533,7 +5717,7 @@ function Anmeldung({ db, onLogin }) {
                   Mandanten, Tarife, Zugangszahlen und Rechnungen. Ohne Einsicht in Namen oder Pläne.
                 </div>
               </div>
-              <span style={{ color: C.dimmer, fontSize: 22 }}>›</span>
+              <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={22} /></span>
             </div>
           </Card>
 
@@ -5546,12 +5730,14 @@ function Anmeldung({ db, onLogin }) {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12 }}>
               {proRolle.map(({ r, person }) => person && (
-                <div key={r.id} className="karte" onClick={() => onLogin({ rolle: "kunde", mandantId: m.id, personId: person.id })}
+                <div key={r.id} className="karte"
+                  {...klickbar(() => onLogin({ rolle: "kunde", mandantId: m.id, personId: person.id }),
+                    `Als ${r.label} anmelden: ${person.vorname} ${person.nachname}`)}
                   style={{ padding: 16, cursor: "pointer", transition: "transform .2s, box-shadow .2s" }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = "0 10px 26px rgba(16,16,24,.12)"; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = ""; }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: r.farbe,
+                    <span style={{ width: 30, height: 30, borderRadius: 10, background: `${r.farbe}1E`, color: lesbar(r.farbe),
                       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{r.kurz}</span>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{r.label}</div>
                   </div>
@@ -5651,9 +5837,9 @@ function ZiehAnbieter({ children }) {
       {last && (
         <div style={{ position: "fixed", left: zeiger.x, top: zeiger.y, zIndex: 999,
           transform: "translate(-50%,-140%)", pointerEvents: "none",
-          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: "#fff",
+          background: last.farbe ? `${last.farbe}` : C.accentDeep, color: last.farbe ? "#fff" : C.aufAkzent,
           padding: "8px 14px", borderRadius: 12, fontSize: 13.5, fontWeight: 600,
-          boxShadow: "0 10px 26px rgba(17,24,39,.28)", whiteSpace: "nowrap" }}>
+          boxShadow: "var(--schatten-toast)", whiteSpace: "nowrap" }}>
           {last.beschriftung}
           {last.zeit && <span style={{ opacity: .75, marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
             {last.zeit}</span>}
@@ -5724,8 +5910,8 @@ function ZiehHinweis({ text }) {
   if (!ctx || !ctx.last) return null;
   return (
     <div style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", zIndex: 998,
-      background: C.text, color: "#fff", padding: "11px 20px", borderRadius: 999,
-      fontSize: 13.5, boxShadow: "0 12px 34px rgba(24,26,30,.30)", pointerEvents: "none" }}>
+      background: C.text, color: C.flaeche, padding: "11px 20px", borderRadius: 999,
+      fontSize: 13.5, boxShadow: "var(--schatten-toast)", pointerEvents: "none" }}>
       {text || "Auf ein Ziel ziehen und loslassen"}
     </div>);
 }
@@ -5771,12 +5957,15 @@ function LinienDiagramm({ daten, hoehe = 168, wert = "y", label = "label", nulll
         <polygon points={flaeche} fill={`url(#${id})`} />
         <polyline points={punkte} fill="none" stroke={farbe} strokeWidth="2"
           strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-        {daten.map((d, i) => (
-          <circle key={i} cx={x(i)} cy={y(d[wert])} r={aktiv === i ? 4 : 2.4} fill="#fff"
-            stroke={farbe} strokeWidth="2" vectorEffect="non-scaling-stroke"
-            onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
-            style={{ cursor: "pointer" }} />))}
       </svg>
+      {/* Die Punkte sind HTML, nicht SVG: In einem gestreckten SVG
+          (preserveAspectRatio="none") würde jeder Kreis zur Ellipse. */}
+      {daten.map((d, i) => (
+        <span key={i} onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
+          style={{ position: "absolute", left: `${x(i)}%`, top: (y(d[wert]) / H) * hoehe,
+            width: aktiv === i ? 11 : 8, height: aktiv === i ? 11 : 8, boxSizing: "border-box",
+            transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+            border: `2px solid ${farbe}`, cursor: "pointer" }} />))}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
         {daten.map((d, i) => (
           <span key={i} style={{ fontSize: 10.5, color: aktiv === i ? C.text : C.dimmer,
@@ -5811,7 +6000,10 @@ function BalkenDiagramm({ daten, hoehe = 150, wert = "y", label = "label", einhe
           const farbe = farbeVon ? farbeVon(d) : C.accent;
           return (
             <div key={i} onMouseEnter={() => setAktiv(i)} onMouseLeave={() => setAktiv(null)}
-              onClick={() => klick && klick(d)}
+              /* Ein Balken hat keinen sichtbaren Text — der Wert steht nur im
+                 Hinweisfenster, das beim Überfahren erscheint. */
+              {...klickbar(klick ? () => klick(d) : null, `${d[label]}: ${n1(d[wert])}${einheit}`)}
+              title={`${d[label]} · ${n1(d[wert])}${einheit}`}
               style={{ flex: 1, height: `${h}%`, background: farbe, borderRadius: "5px 5px 2px 2px",
                 opacity: aktiv === null || aktiv === i ? 1 : .45, transition: "opacity .15s",
                 cursor: klick ? "pointer" : "default", position: "relative", minWidth: 4 }}>
@@ -5903,8 +6095,8 @@ function Schritte({ aktuell, schritte }) {
             <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
               alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
               background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
-              color: i <= aktuell ? "#fff" : C.dim }}>
-              {i < aktuell ? "✓" : i + 1}</span>
+              color: i <= aktuell ? C.aufAkzent : C.dim }}>
+              {i < aktuell ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
             <span style={{ fontSize: 13, fontWeight: i === aktuell ? 650 : 500,
               color: i === aktuell ? C.text : C.dimmer, whiteSpace: "nowrap" }}>{s}</span>
           </div>
@@ -6123,7 +6315,8 @@ function Assistent2({ sitz, akt, onClose }) {
               <div key={mo.id}>
                 {!eigeneBranche && i === vorschlaege.length && vorschlaege.length > 0 && (
                   <Lab style={{ margin: "20px 0 12px" }}>Weitere Modelle</Lab>)}
-                <div onClick={() => modellWaehlen(mo)} className="karte"
+                <div {...klickbar(() => modellWaehlen(mo), `Modell wählen: ${mo.name}`)} className="karte"
+                  aria-pressed={an}
                   style={{ padding: 18, marginBottom: 12, cursor: "pointer",
                     outline: an ? `2px solid ${C.accent}` : "none", opacity: passend ? 1 : .82 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -6160,7 +6353,7 @@ function Assistent2({ sitz, akt, onClose }) {
                 </div>
               </div>);
           })}
-          <div onClick={freiStarten} className="karte"
+          <div {...klickbar(freiStarten)} className="karte" aria-pressed={modellId === "frei"}
             style={{ padding: 18, cursor: "pointer", outline: modellId === "frei" ? `2px solid ${C.accent}` : "none" }}>
             <div style={{ fontSize: 15.5, fontWeight: 650 }}>Eigenes Modell aufbauen</div>
             <div style={{ fontSize: 13, color: C.dim, marginTop: 5 }}>
@@ -6220,7 +6413,7 @@ function Assistent2({ sitz, akt, onClose }) {
                   <td style={{ padding: "8px 12px", borderBottom: `1px solid ${C.lineSoft}` }}>
                     {dienste.length > 1 && <Btn size="sm" kind="danger"
                       onClick={() => { setDienste(dienste.filter((_, k) => k !== i));
-                        setTage(tage.map((t) => t === d.id ? "-" : t)); }}>×</Btn>}</td>
+                        setTage(tage.map((t) => t === d.id ? "-" : t)); }} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}</td>
                 </tr>))}</tbody>
             </table>
           </Card>
@@ -6258,7 +6451,8 @@ function Assistent2({ sitz, akt, onClose }) {
                     <div style={{ fontSize: 9.5, color: C.dimmer, marginBottom: 3 }}>{DOW[i % 7]}</div>
                     <Ablage id={`zt:${i}`} nimmt={(l) => l.art === "dienstart"}
                       ablegen={(l) => setzeTag(i, l.dienstId)} style={{ borderRadius: 12 }}>
-                      <div onClick={() => setzeTag(i, pinsel)} 
+                      <div {...klickbar(() => setzeTag(i, pinsel),
+                        `Tag ${i + 1}: ${d ? d.name : "frei"} — mit dem gewählten Dienst belegen`)}
                         style={{ width: 34, height: 34, borderRadius: 10, cursor: "pointer", fontSize: 12, fontWeight: 700, ...NUM,
                           display: "flex", alignItems: "center", justifyContent: "center",
                           background: d ? `${d.farbe}22` : C.bg, color: d ? d.farbe : C.dimmer }}>
@@ -6308,7 +6502,7 @@ function Assistent2({ sitz, akt, onClose }) {
               return (
                 <Card key={g.id} style={{ padding: 16, marginBottom: 12 }}>
                   <div style={{ display: "flex", gap: 13, alignItems: "flex-end", flexWrap: "wrap" }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 5, background: g.farbe, marginBottom: 12 }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 5, background: lesbar(g.farbe, 3), marginBottom: 12 }} />
                     <Field label="Bezeichnung">
                       <Inp value={g.name} style={{ width: 190 }}
                         onChange={(e) => setGruppen(gruppen.map((x, k) => k === gi ? { ...x, name: e.target.value } : x))} /></Field>
@@ -6329,7 +6523,7 @@ function Assistent2({ sitz, akt, onClose }) {
                       </div>
                     </div>
                     {gruppen.length > 1 && <Btn size="sm" kind="danger" style={{ marginBottom: 8 }}
-                      onClick={() => setGruppen(gruppen.filter((_, k) => k !== gi))}>×</Btn>}
+                      onClick={() => setGruppen(gruppen.filter((_, k) => k !== gi))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
                   </div>
                 </Card>);
             })}
@@ -6537,7 +6731,7 @@ function MandantAnlegen({ db, akt, onClose }) {
                 <Field label="Umkreis in Metern"><Inp type="number" value={s.radius}
                   onChange={(e) => setz("standorte", f.standorte.map((x, k) => k === i ? { ...x, radius: Number(e.target.value) } : x))} /></Field>
                 {f.standorte.length > 1 && <Btn size="sm" kind="danger" style={{ marginBottom: 8 }}
-                  onClick={() => setz("standorte", f.standorte.filter((_, k) => k !== i))}>×</Btn>}
+                  onClick={() => setz("standorte", f.standorte.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>
             </Card>))}
           <Btn onClick={() => setz("standorte", [...f.standorte, { name: `Standort ${f.standorte.length + 1}`, land: "HE", radius: 200 }])}>
@@ -6560,7 +6754,9 @@ function MandantAnlegen({ db, akt, onClose }) {
                 const r = modellPruefen(mo);
                 const an = f.modellId === mo.id;
                 return (
-                  <div key={mo.id} onClick={() => setF((x) => ({ ...x, modellId: mo.id, gruppen: mo.gruppen }))}
+                  <div key={mo.id} aria-pressed={an}
+                    {...klickbar(() => setF((x) => ({ ...x, modellId: mo.id, gruppen: mo.gruppen })),
+                      `Modell wählen: ${mo.name}`)}
                     className="karte" style={{ padding: 16, cursor: "pointer",
                       outline: an ? `2px solid ${C.accent}` : "none" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
@@ -6631,7 +6827,7 @@ function MandantAnlegen({ db, akt, onClose }) {
                       ? { ...x, nurStatus: e.target.checked, ...(e.target.checked ? { gueltigMonate: null } : {}) } : x))} />
                   nur Status</label>
                 <Btn size="sm" kind="danger"
-                  onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))}>×</Btn>
+                  onClick={() => setz("qualifikationen", f.qualifikationen.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
                 {/* Die Rechtsgrundlage steht über die volle Breite unter der
                     Zeile. Sie ist der Unterschied zwischen „das Gesetz
                     verlangt es" und „so haben wir das festgelegt" — und
@@ -6663,10 +6859,10 @@ function MandantAnlegen({ db, akt, onClose }) {
             <Btn size="sm" onClick={() => setz("qualifikationen", [...f.qualifikationen,
               { name: "", kurz: "", gueltigMonate: null, nachweisPflicht: false, grundlage: "" }])}>Qualifikation hinzufügen</Btn>
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12, lineHeight: 1.55 }}>
-              Ein Nachweis mit Ablauf sperrt den Einsatz nicht von selbst. Wer eine
-              Qualifikation als gesetzlich zwingend führen will — etwa die Sachkunde nach
-              § 34a GewO für die Tätigkeiten, die sie verlangen —, setzt das unter
-              Qualifikationen als harte Sperre.
+              Ein Nachweis mit Ablauf warnt nicht von selbst. Wer eine Qualifikation als
+              verbindlich führen will — etwa die Sachkunde nach § 34a GewO für die
+              Tätigkeiten, die sie verlangen —, setzt das unter Qualifikationen. CENTRIC
+              sperrt dann nicht, sondern warnt bei jedem Einsatz ohne sie.
             </div>
           </Card>
 
@@ -6674,18 +6870,20 @@ function MandantAnlegen({ db, akt, onClose }) {
           <Card style={{ padding: 18 }}>
             {f.zuschlaege.map((z, i) => (
               <div key={i} style={{ display: "flex", gap: 11, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
-                <input type="checkbox" checked={z.aktiv}
+                <input type="checkbox" checked={z.aktiv} aria-label={`Zuschlag ${z.name} berücksichtigen`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, aktiv: e.target.checked } : x))} />
                 <Inp value={z.name} style={{ flex: 1, minWidth: 150 }}
+                  aria-label={`Bezeichnung des Zuschlags (${z.name})`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, name: e.target.value } : x))} />
-                <Sel value={z.art} style={{ width: 150 }}
+                <Sel value={z.art} style={{ width: 150 }} aria-label={`Anlass des Zuschlags ${z.name}`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, art: e.target.value } : x))}>
                   {[["nacht", "Nachtarbeit"], ["sonntag", "Sonntag"], ["feiertag", "Feiertag"], ["samstag", "Samstag"]]
                     .map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
                 <Inp type="number" value={z.prozent} style={{ width: 92 }}
+                  aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => setz("zuschlaege", f.zuschlaege.map((x, k) => k === i ? { ...x, prozent: Number(e.target.value) } : x))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
-                <Btn size="sm" kind="danger" onClick={() => setz("zuschlaege", f.zuschlaege.filter((_, k) => k !== i))}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => setz("zuschlaege", f.zuschlaege.filter((_, k) => k !== i))} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
             <Btn size="sm" onClick={() => setz("zuschlaege", [...f.zuschlaege,
               { name: "Neue Regel", art: "nacht", prozent: 0, aktiv: false }])}>Regel hinzufügen</Btn>
@@ -6755,8 +6953,8 @@ function Schrittleiste({ aktuell, schritte }) {
           <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "flex",
             alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...NUM,
             background: i < aktuell ? C.accentDeep : i === aktuell ? C.accent : C.lineSoft,
-            color: i <= aktuell ? "#fff" : C.dim }}>
-            {i < aktuell ? "✓" : i + 1}</span>
+            color: i <= aktuell ? C.aufAkzent : C.dim }}>
+            {i < aktuell ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
           <span style={{ fontSize: 13, fontWeight: i === aktuell ? 650 : 500,
             color: i === aktuell ? C.text : C.dimmer, whiteSpace: "nowrap" }}>{s}</span>
           {i < schritte.length - 1 && <span style={{ width: 24, height: 1.5,
@@ -6836,7 +7034,12 @@ const ABLAUF = [
   },
 ];
 
-const ROLLE_FARBE = { leitung: "#2C5A8A", planer: "#5B4A87", subplaner: "#2C6B63", alle: "#4A6B2E" };
+/* Die Farbe der Rolle im Ablauf. Als Zugriffsfunktion, nicht als fester Wert:
+   C wird beim Umschalten des Erscheinungsbildes ausgetauscht, und ein beim
+   Laden eingefrorener Ton bliebe hell. */
+const ROLLE_FARBE = {
+  get leitung() { return C.accentDeep; }, get planer() { return C.violet; },
+  get subplaner() { return C.accent; }, get alle() { return C.ok; } };
 const ROLLE_KURZ = { leitung: "Organisationsleitung", planer: "Planung", subplaner: "Schichtverantwortung", alle: "Alle Beteiligten" };
 
 /** Ist diese Station Sache der angemeldeten Person? */
@@ -6863,7 +7066,9 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
           const f = ROLLE_FARBE[st.rolle];
           return (
             <Fragment key={st.id}>
-              <div onClick={() => setOffen(offen === st.id ? null : st.id)}
+              <div {...klickbar(() => setOffen(offen === st.id ? null : st.id),
+                `${st.titel} — ${st.ok ? "erledigt" : "offen"}`)}
+                aria-expanded={offen === st.id}
                 style={{ minWidth: kompakt ? 132 : 168, padding: kompakt ? "12px 13px" : "15px 16px",
                   borderRadius: 16, cursor: "pointer", position: "relative",
                   background: st.ok ? C.okLight : aktuell ? `${f}12` : C.bg,
@@ -6873,7 +7078,7 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
                   <span style={{ width: 20, height: 20, borderRadius: 10, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, ...NUM,
                     background: st.ok ? C.ok : aktuell ? f : C.lineStark,
-                    color: st.ok || aktuell ? "#fff" : C.dimmer }}>{st.ok ? "✓" : i + 1}</span>
+                    color: st.ok || aktuell ? C.aufAkzent : C.dimmer }}>{st.ok ? <Icon n="haken" size={12} strokeWidth={2.4} /> : i + 1}</span>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em",
                     textTransform: "uppercase", color: f }}>{ROLLE_KURZ[st.rolle]}</span>
                 </div>
@@ -6884,8 +7089,8 @@ function Ablaufdiagramm({ sitz, gehZu, kompakt }) {
                   nicht dein Bereich</div>}
               </div>
               {i < stationen.length - 1 && (
-                <div style={{ display: "flex", alignItems: "center", color: C.dimmer, fontSize: 16,
-                  flexShrink: 0, padding: "0 2px" }}>→</div>)}
+                <div aria-hidden="true" style={{ display: "flex", alignItems: "center", color: C.dimmer,
+                  flexShrink: 0, padding: "0 2px" }}><Icon n="pfeil-rechts" size={16} /></div>)}
             </Fragment>);
         })}
       </div>
@@ -7017,7 +7222,7 @@ function Einfuehrung({ sitz, akt, gehZu, onClose }) {
   const springen = () => { if (s.ziel) { akt.einfuehrungSchritt(i); gehZu(s.ziel); onClose(); } };
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 96, background: "rgba(24,24,20,.42)",
+    <div style={{ position: "fixed", inset: 0, zIndex: 96, background: "var(--c-ueberlagerung)",
       backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 18 }}>
       <div className="blatt" style={{ width: "min(760px,96vw)", maxHeight: "92vh", overflowY: "auto",
         padding: "28px 30px 26px" }}>
@@ -7035,7 +7240,9 @@ function Einfuehrung({ sitz, akt, gehZu, onClose }) {
         {/* Fortschrittsbalken aus Punkten */}
         <div style={{ display: "flex", gap: 5, marginBottom: 24 }}>
           {schritte.map((_, k) => (
-            <div key={k} onClick={() => { setI(k); akt.einfuehrungSchritt(k); }}
+            <div key={k} aria-current={k === i ? "step" : undefined}
+              {...klickbar(() => { setI(k); akt.einfuehrungSchritt(k); },
+                `Schritt ${k + 1} von ${schritte.length}: ${schritte[k].titel}`)}
               style={{ flex: 1, height: 4, borderRadius: 2, cursor: "pointer",
                 background: k <= i ? C.accentDeep : C.line, transition: "background .25s" }} />))}
         </div>
@@ -7077,22 +7284,20 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
         right={<Btn onClick={akt.starteEinfuehrung}>Rundgang starten</Btn>}>
         Ablauf</H1>
 
-      <KpiRow min={175}>
-        <Kpi label="Stationen erledigt" value={`${stationen.filter((x) => x.ok).length} / ${stationen.length}`}
-          tone={stationen.every((x) => x.ok) ? "ok" : "text"} />
-        <Kpi label="Deine Stationen" value={meine.length} sub={ROLLE_KURZ[
+      <Kennzahlen min={175} kacheln={[
+        { label: "Stationen erledigt", wert: `${stationen.filter((x) => x.ok).length} / ${stationen.length}`,
+          ton: stationen.every((x) => x.ok) ? "ok" : undefined },
+        { label: "Deine Stationen", wert: meine.length, sub: ROLLE_KURZ[
           darf(sitz, "org.edit") ? "leitung" : darf(sitz, "pattern.edit") ? "planer"
-            : darf(sitz, "plan.edit.unit") ? "subplaner" : "alle"]} />
-        <Kpi label="Offen bei dir" value={meineOffen.length}
-          tone={meineOffen.length ? "warn" : "ok"}
-          sub={meineOffen.length ? meineOffen[0].titel : "nichts zu tun"} />
-      </KpiRow>
+            : darf(sitz, "plan.edit.unit") ? "subplaner" : "alle"] },
+        { label: "Offen bei dir", wert: meineOffen.length, ton: meineOffen.length ? "warn" : "ok",
+          sub: meineOffen.length ? meineOffen[0].titel : "nichts zu tun" }]} />
 
-      <div style={{ marginTop: 24 }}>
+      <Card style={{ padding: "22px 22px 12px", marginBottom: 16 }}>
         <Ablaufdiagramm sitz={sitz} gehZu={gehZu} />
-      </div>
+      </Card>
 
-      <Card style={{ marginTop: 8 }}>
+      <Card>
         <CardHead right={<Lab>Antippen für Erklärungen</Lab>}>Alle Stationen im Einzelnen</CardHead>
         {stationen.map((st, i) => (
           <div key={st.id} style={{ padding: "18px 22px",
@@ -7101,8 +7306,8 @@ function Ablaufansicht({ sitz, akt, gehZu }) {
             <div style={{ display: "flex", alignItems: "center", gap: 13, flexWrap: "wrap", marginBottom: 9 }}>
               <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 11.5, fontWeight: 700, ...NUM,
-                background: st.ok ? C.ok : C.line, color: st.ok ? "#fff" : C.dimmer }}>
-                {st.ok ? "✓" : i + 1}</span>
+                background: st.ok ? C.ok : C.line, color: st.ok ? C.aufAkzent : C.dimmer }}>
+                {st.ok ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
               <span style={{ fontSize: 16, fontWeight: 650, letterSpacing: "-.015em" }}>{st.titel}</span>
               <Pill size="sm" style={{ background: `${ROLLE_FARBE[st.rolle]}18`, color: ROLLE_FARBE[st.rolle] }}>
                 {ROLLE_KURZ[st.rolle]}</Pill>
@@ -7380,7 +7585,7 @@ function AntraegeGeteilt({ sitz, akt }) {
           alignItems: "start" }}>
 
           {/* ------------------------- Liste ------------------------- */}
-          <Card>
+          <Card style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
               borderBottom: `1px solid ${C.line}`, flexWrap: "wrap" }}>
               <Seg value={filter} onChange={setFilter} options={[
@@ -7416,8 +7621,8 @@ function AntraegeGeteilt({ sitz, akt }) {
                   const amZeiger = i === zeiger;
                   const tage = between(a.von, a.bis) + 1;
                   return (
-                    <div key={a.id} onClick={() => setZeiger(i)}
-                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                    <div key={a.id} {...klickbar(() => setZeiger(i))}
+                      style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", flexWrap: "wrap",
                         borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer",
                         background: amZeiger ? C.accentLight : anGewaehlt ? C.bg : "transparent",
                         borderLeft: amZeiger ? `3px solid ${C.accent}` : "3px solid transparent" }}>
@@ -7427,6 +7632,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         style={{ width: 15, height: 15, flexShrink: 0, accentColor: C.accent }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                          {p && <Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}
                           <span style={{ fontSize: 13.5, fontWeight: 600 }}>
                             {p ? `${p.nachname}, ${p.vorname}` : "?"}</span>
                           {e && <span style={{ fontSize: 11.5, color: C.dim }}>{e.name}</span>}
@@ -7442,7 +7648,7 @@ function AntraegeGeteilt({ sitz, akt }) {
                         const st = genehmigungsStand(m, a);
                         const darfIch = darfStufe(sitz, a, st);
                         return (
-                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                             {st.noetig > 1 && (
                               <Pill size="sm" tone={st.erteilt ? "accent" : "warn"}>
                                 Stufe {st.erteilt + 1} von {st.noetig}</Pill>)}
@@ -7588,7 +7794,7 @@ function BetreiberMandanten({ db, akt, oeffne }) {
                   return (
                     <div key={r.id} className="karte" style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
-                        <span style={{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: r.farbe,
+                        <span style={{ width: 21, height: 21, borderRadius: 7, background: `${r.farbe}1E`, color: lesbar(r.farbe),
                           display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{r.kurz}</span>
                         <span style={{ fontSize: 11.5, color: C.dim }}>{r.label}</span>
                       </div>
@@ -7868,7 +8074,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
   const rgs = db.rechnungen.filter((r) => r.mandantId === m.id);
   return (
     <div>
-      <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}>‹ Alle Mandanten</Btn>
+      <Btn size="sm" kind="quiet" onClick={zurueck} style={{ marginBottom: 16 }}><Icon n="chevron-links" size={14} /> Alle Mandanten</Btn>
       <H1 sub={`${(BRANCHEN.find((b) => b[0] === s.branche) || [])[1]} · Tarif ${p.t.name} · ${stat(s.status).label}`}
         right={<div style={{ display: "flex", gap: 9 }}>
           <Btn kind="primary" onClick={() => akt.rechnungStellen(m.id)}>Rechnung erzeugen</Btn>
@@ -7924,7 +8130,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 9 }}>
               <span style={{ width: 24, height: 24, borderRadius: 8, background: C.accentLight,
                 color: C.accent, display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700 }}>◉</span>
+                fontSize: 11, fontWeight: 700 }}><Icon n="kreis-haken" size={14} /></span>
               <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Grundgebühr {p.stufe.name}</span>
               <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(p.grund)}</span>
             </div>
@@ -8008,7 +8214,7 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
               <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
                 <Lab style={{ marginBottom: 10 }}>Im Tarif enthalten</Lab>
                 {p.t.leistungen.map((f) => <div key={f} style={{ fontSize: 13.5, color: C.dim, marginBottom: 7 }}>
-                  <span style={{ color: C.ok, marginRight: 9 }}>✓</span>{f}</div>)}
+                  <span style={{ color: C.ok, marginRight: 9, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
               </div>
             </div>
           </Card>
@@ -8121,7 +8327,7 @@ function BetreiberTarife({ db, akt }) {
               <div style={{ paddingTop: 12, borderTop: `1px solid ${C.lineSoft}` }}>
                 <Lab style={{ marginBottom: 8 }}>Enthalten</Lab>
                 {t.leistungen.map((f) => <div key={f} style={{ fontSize: 13, color: C.dim, marginBottom: 5 }}>
-                  <span style={{ color: C.ok, marginRight: 8 }}>✓</span>{f}</div>)}
+                  <span style={{ color: C.ok, marginRight: 8, display: "inline-flex", verticalAlign: "-2px" }}><Icon n="haken" size={14} strokeWidth={2.2} /></span>{f}</div>)}
               </div>
             </div>
           </Card>))}
@@ -8197,20 +8403,19 @@ function MeineSchichten({ sitz, akt, ym }) {
           <Btn kind="quiet" onClick={() => akt.kalenderAbo(ich.id)}>Kalender</Btn>
         </div>}>Meine Schichten</H1>
 
-      <KpiRow min={200}>
-        {/* Ohne Ist-Daten (Betriebsrat, E1) steht „–" und der Grund — keine 0. */}
-        <Kpi label="Stunden im Monat" value={n1Ist(ist.gesamt)} unit="h"
-          sub={ist.nichtVerfuegbar ? `Soll ${n1(soll)} h · ${ISTDATEN_TEXT}` : `Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`}
-          tone={ist.nichtVerfuegbar ? undefined : Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn"} />
-        <Kpi label="Stundenkonto" value={sgnIst(kto)} unit="h" tone={kto === null ? undefined : Math.abs(kto) < 18 ? "ok" : "warn"}
-          sub={kto === null ? ISTDATEN_TEXT : "kumuliert seit Jahresbeginn"} />
-        <Kpi label="Resturlaub" value={url.rest} unit="Tage" tone={url.rest < 5 ? "warn" : "ok"} sub={`von ${url.anspruch} Tagen`} />
-        <Kpi label="Nachtstunden" value={n1Ist(ist.nacht)} unit="h"
-          sub={ist.nichtVerfuegbar ? ISTDATEN_TEXT : `${ist.naechte} Nachtdienste im Monat`} />
-      </KpiRow>
+      {/* Ohne Ist-Daten (Betriebsrat, E1) steht „–" und der Grund — keine 0. */}
+      <Kennzahlen min={200} kacheln={[
+        { label: "Stunden im Monat", wert: n1Ist(ist.gesamt), einheit: "h",
+          sub: ist.nichtVerfuegbar ? `Soll ${n1(soll)} h · ${ISTDATEN_TEXT}` : `Soll ${n1(soll)} h · ${sgn(ist.gesamt - soll)} h`,
+          ton: ist.nichtVerfuegbar ? undefined : Math.abs(ist.gesamt - soll) < 7 ? "ok" : "warn" },
+        { label: "Stundenkonto", wert: sgnIst(kto), einheit: "h", ton: kto === null ? undefined : Math.abs(kto) < 18 ? "ok" : "warn",
+          sub: kto === null ? ISTDATEN_TEXT : "kumuliert seit Jahresbeginn" },
+        { label: "Resturlaub", wert: url.rest, einheit: "Tage", ton: url.rest < 5 ? "warn" : "ok", sub: `von ${url.anspruch} Tagen` },
+        { label: "Nachtstunden", wert: n1Ist(ist.nacht), einheit: "h",
+          sub: ist.nichtVerfuegbar ? ISTDATEN_TEXT : `${ist.naechte} Nachtdienste im Monat` }]} />
 
       {einsatz.length > 0 && (
-        <Card style={{ marginTop: 20, background: C.dangerLight }}>
+        <Card style={{ marginBottom: 16, borderColor: C.danger, borderWidth: 2 }}>
           <CardHead right={<Pill tone="danger">{einsatz.length}</Pill>}>Einsatzanfragen</CardHead>
           {einsatz.map((a) => {
             const da = map[a.dienstId];
@@ -8228,7 +8433,7 @@ function MeineSchichten({ sitz, akt, ym }) {
               </div>); })}
         </Card>)}
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Lab>zwölf Monate</Lab>}>Mein Stundenkonto</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
           {kto === null
@@ -8242,7 +8447,7 @@ function MeineSchichten({ sitz, akt, ym }) {
       </Card>
 
       {offen.length > 0 && (
-        <Card style={{ marginTop: 20 }}>
+        <Card style={{ marginBottom: 16 }}>
           <CardHead right={<Pill tone="warn">{offen.length}</Pill>}>Zeiten bestätigen</CardHead>
           <div style={{ padding: "14px 22px 6px", fontSize: 13, color: C.dim, lineHeight: 1.5 }}>
             Solange die tatsächliche Zeit nicht bestätigt ist, bleibt das Stundenkonto eine Hochrechnung.
@@ -8263,7 +8468,7 @@ function MeineSchichten({ sitz, akt, ym }) {
         </Card>)}
 
       {meine.length > 0 && (
-        <Card style={{ marginTop: 20 }}>
+        <Card style={{ marginBottom: 16 }}>
           <CardHead>Meine Anträge</CardHead>
           <div>{meine.slice(0, 6).map((a) => (
             <div key={a.id} className="row" style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 22px", borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -8281,7 +8486,7 @@ function MeineSchichten({ sitz, akt, ym }) {
             </div>))}</div>
         </Card>)}
 
-      <Card style={{ marginTop: 20 }}>
+      <Card>
         <CardHead right={<Pill size="sm" tone={frei ? "ok" : "warn"}>{frei ? "freigegeben" : "Entwurf"}</Pill>}>
           Kommende Dienste</CardHead>
         <div>{tage.map((d) => {
@@ -8291,7 +8496,7 @@ function MeineSchichten({ sitz, akt, ym }) {
                „Nacht" und „geändert" nicht in eine Zeile und schoben die
                Seite in die Breite. Umgebrochen wird nur, wenn es eng wird. */
             <div key={d} className="row" style={{ display: "flex", alignItems: "center", gap: 18, rowGap: 8, flexWrap: "wrap", padding: "14px 22px",
-              borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? "rgba(43,52,64,.055)" : "transparent" }}>
+              borderBottom: `1px solid ${C.lineSoft}`, background: d === heute() ? C.accentLight : "transparent" }}>
               <div style={{ width: 104, flexShrink: 0 }}>
                 <div style={{ fontSize: 14.5, fontWeight: d === heute() ? 650 : 500, ...NUM }}>{fKurz(d)}</div>
                 <div style={{ fontSize: 11.5, color: fei ? C.danger : C.dimmer }}>{DOW[dow(d)]}{fei ? " · Feiertag" : ""}</div>
@@ -8333,13 +8538,13 @@ function MeineSchichten({ sitz, akt, ym }) {
         {antrag === "abwesenheit" ? (
           <div style={{ display: "grid", gap: 15 }}>
             <Field label="Art"><Sel value={form.art} onChange={(e) => setForm({ ...form, art: e.target.value })}>
-              {ABW.filter((a) => a.id !== "krank").map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+              {ABW.filter((a) => a.id !== "krank" && a.selbst !== false).map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
               <Field label="Von"><Inp type="date" value={form.von} onChange={(e) => setForm({ ...form, von: e.target.value })} /></Field>
               <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e) => setForm({ ...form, bis: e.target.value })} /></Field>
             </div>
             <Field label="Anmerkung"><Inp value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="freiwillig" /></Field>
-            {fehler && <div style={{ padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+            {fehler && <Fehlerband>{fehler}</Fehlerband>}
             <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
               Beim Urlaub werden nur Tage angerechnet, an denen laut Schichtfolge Dienst gewesen wäre.
               Der Antrag geht an die Planung der eigenen Einheit.
@@ -8361,7 +8566,7 @@ function MeineSchichten({ sitz, akt, ym }) {
                 {m.personen.filter((p) => p.id !== ich.id && imDienst(p, heute()))
                   .map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel></Field>
             <Field label="Anmerkung"><Inp value={tausch.text} onChange={(e) => setTausch({ ...tausch, text: e.target.value })} /></Field>
-            {fehler && <div style={{ padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+            {fehler && <Fehlerband>{fehler}</Fehlerband>}
             <div style={{ fontSize: 12.5, color: C.dimmer, lineHeight: 1.5 }}>
               Bei Genehmigung werden beide Dienste getauscht. Ruhezeit und Besetzung werden dabei geprüft.
             </div>
@@ -8397,92 +8602,139 @@ function Lagebild({ sitz, oeffneTag, akt }) {
     /* stundenkonto ist für nicht verfügbare Konten null und zählt damit nicht mit. */
     : aktiv.filter((p) => kontoSichtbar(sitz, p) && stundenkonto(m, p, d0.slice(0, 7)) > (m.einstellungen.ausgleichGrenze || 40)).length;
   const woche = Array.from({ length: 14 }, (_, i) => addDays(d0, i));
+  const darfBesetzen = darfEinheit(sitz, sitz.person.bereich);
+
+  /* Wer heute eingeteilt ist, nach Einheit. Dieselbe Antwort wie im Plan
+     (personTag), nur nach Einheiten gruppiert; eine Uhrzeit wird nicht
+     unterstellt — „im Dienst" heißt hier: für heute eingeteilt. */
+  const imDienstHeute = useMemo(() => {
+    const je = m.einheiten.map((e) => ({ einheit: e, personen: [] }));
+    for (const p of aktive(m, d0)) {
+      if (p.imSchichtdienst === false) continue;
+      const t = personTag(m, p, d0);
+      if (!t.dienstId || t.abwesenheit) continue;
+      const g = je.find((x) => x.einheit.id === einheitAm(p, d0));
+      if (g) g.personen.push({ person: p, da: map[t.dienstId] });
+    }
+    for (const g of je) g.personen.sort((a, b) => a.person.nachname.localeCompare(b.person.nachname, "de"));
+    return je.filter((g) => g.personen.length);
+  }, [m]);
+  const summeImDienst = imDienstHeute.reduce((a, g) => a + g.personen.length, 0);
 
   return (
     <div>
       <H1 sub={fLang(d0)} right={darfEinheit(sitz, sitz.person.bereich) &&
         <Btn kind="danger" onClick={() => akt.oeffneKrankmeldung(null)}>Krankmeldung erfassen</Btn>}>Lagebild</H1>
-      <Card style={{ marginBottom: 20, overflow: "hidden" }}>
-        <CardHead right={<Btn size="sm" onClick={() => oeffneTag(d0)}>Tag öffnen</Btn>}>Besetzung heute</CardHead>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(215px,1fr))" }}>
-          {m.dienstarten.map((d) => {
-            const b = bes[d.id];
-            const e = m.einheiten.find((x) => einheitDienst(m, x.id, d0) === (d.posten ? d.quelle : d.id));
-            return (
-              <div key={d.id} className={b.diff < 0 || b.qualFehlt ? "row" : ""}
-                onClick={() => (b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0)}
-                style={{ padding: "20px 22px", cursor: "pointer" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                  <Zelle da={d} size={24} />
-                  <div><div style={{ fontSize: 13.5, fontWeight: 500 }}>{d.name}</div>
-                    <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{d.start}–{d.ende}</div></div>
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-                  <span style={{ fontSize: 30, fontWeight: 650, color: b.diff < 0 ? C.danger : C.text, ...NUM }}>{b.anzahl}</span>
-                  <span style={{ fontSize: 14, color: C.dimmer, ...NUM }}>/ {b.soll}</span></div>
-                <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.soll} tone={b.status} /></div>
-                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 9 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
-                {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
-                {(b.diff < 0 || b.qualFehlt) && darfEinheit(sitz, sitz.person.bereich) && (
-                  <div style={{ marginTop: 11 }}>
-                    <Btn size="sm" kind="primary" onClick={(ev) => { if (ev) ev.stopPropagation();
-                      akt.oeffneSchnellbesetzung(d0, d.id); }}>Besetzen oder anfragen</Btn>
-                  </div>)}
-              </div>);
-          })}
-        </div>
-      </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 20, marginBottom: 20 }}>
-        <KpiRow min={150}>
-          <Kpi label="Personalstärke" value={aktiv.length} sub={`${m.einheiten.length} ${mehrzahl(m.einheitLabel)}`} />
-          <Kpi label="Heute abwesend" value={abwesend} tone={abwesend > aktiv.length * .2 ? "warn" : "ok"} />
-          <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h" sub="aus dem Modell" />
-          {/* Beide Zahlen rechnen mit fremden Anträgen bzw. Stundenkonten — die
-              liefert der Server nur Rollen, die sie bearbeiten (sicht.mjs). */}
-          {darf(sitz, "req.approve.unit") && <Kpi label="Offene Anträge" value={offen} tone={offen ? "warn" : "ok"} />}
-          {darf(sitz, "account.view.all") && <Kpi label="Konten über Grenze" value={kontenHoch === null ? "–" : kontenHoch}
-            tone={kontenHoch === null ? "text" : kontenHoch ? "warn" : "ok"}
-            sub={kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`
-              + (kontenOhneIst ? ` · ohne ${kontenOhneIst} ${kontenOhneIst === 1 ? "Konto" : "Konten"} (Ist-Daten nicht verfügbar)` : "")} />}
-        </KpiRow>
-        <Card>
-          <CardHead right={<Lab>{kommend.length} Befunde</Lab>}>Nächste 14 Tage</CardHead>
-          <div style={{ maxHeight: 300, overflowY: "auto" }}>
-            {kommend.length === 0 && <div style={{ padding: 28, fontSize: 13.5, color: C.ok }}>
-              Keine Befunde. Besetzung, Qualifikationen, Ruhezeiten und Urlaubsgrenzen sind eingehalten.</div>}
-            {kommend.slice(0, 40).map((b, i) => (
-              <div key={b.id + i} className="row"
-                onClick={() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
-                  ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum)}
-                style={{ display: "flex", gap: 12, padding: "12px 22px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <span style={{ width: 4, borderRadius: 2, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: C.dimmer, minWidth: 52, ...NUM }}>{fKurz(b.datum)}</span>
-                <span style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.warn, flex: 1 }}>{b.titel}</span>
-              </div>))}
-          </div>
-        </Card>
+      <Abschnittskopf titel="Besetzung heute"
+        rechts={<Btn size="sm" onClick={() => oeffneTag(d0)}>Tag öffnen</Btn>} />
+      <div className="schichtreihe">
+        {m.dienstarten.map((d) => {
+          const b = bes[d.id];
+          const e = m.einheiten.find((x) => einheitDienst(m, x.id, d0) === (d.posten ? d.quelle : d.id));
+          const luecke = b.diff < 0 || b.qualFehlt;
+          return (
+            <div key={d.id} className={`karte schichtkarte${luecke ? " luecke" : ""}`}
+              {...klickbar(() => (luecke) && darfBesetzen
+                ? akt.oeffneSchnellbesetzung(d0, d.id) : oeffneTag(d0))}>
+              <div className="kopf">
+                <Zelle da={d} size={24} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="name">{d.name}</div>
+                  <div className="zeit" style={NUM}>{d.start}–{d.ende}</div>
+                </div>
+                {b.soll > 0 && (b.diff < 0
+                  ? <Pill size="sm" tone={b.status === "danger" ? "danger" : "warn"}>{Math.abs(b.diff)} offen</Pill>
+                  : <Pill size="sm" tone="ok">vollständig</Pill>)}
+              </div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 5, marginTop: 14 }}>
+                <span style={{ fontSize: 32, fontWeight: 450, letterSpacing: "-.035em",
+                  color: b.diff < 0 ? C.danger : C.text, ...NUM }}>{b.anzahl}</span>
+                <span style={{ fontSize: 14, color: C.dim, ...NUM }}>/ {b.soll}</span></div>
+              <div style={{ marginTop: 10 }}><Balken ist={b.anzahl} soll={b.soll} tone={b.status} /></div>
+              <div style={{ fontSize: 12, color: C.dim, marginTop: 10 }}>{e ? `${e.name} im Regeldienst` : "aus Abweichungen besetzt"}</div>
+              {b.qualFehlt && <div style={{ marginTop: 9 }}><Pill size="sm" tone="danger">Qualifikation fehlt</Pill></div>}
+              {luecke && darfBesetzen && (
+                <div style={{ marginTop: 11 }}>
+                  <Btn size="sm" kind="primary" onClick={(ev) => { if (ev) ev.stopPropagation();
+                    akt.oeffneSchnellbesetzung(d0, d.id); }}>Besetzen oder anfragen</Btn>
+                </div>)}
+            </div>);
+        })}
       </div>
 
-      <Card>
-        <CardHead>Schichtfolge der kommenden zwei Wochen</CardHead>
-        <div style={{ padding: 22, overflowX: "auto" }}>
-          <table style={{ borderCollapse: "collapse" }}>
-            <thead><tr><th />{woche.map((d) => (
-              <th key={d} style={{ padding: "0 4px 11px", minWidth: 40 }}>
-                <div style={{ fontSize: 10.5, color: feiertag(d, m.bundesland) ? C.danger : C.dimmer }}>{DOW[dow(d)]}</div>
-                <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
-              </th>))}</tr></thead>
-            <tbody>{m.einheiten.map((e) => (
-              <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, display: "inline-block", marginRight: 9 }} />{e.name}</td>
-                {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
-              </tr>))}</tbody>
-          </table>
-        </div>
-      </Card>
+      <Leitraster seiteBreite={380}
+        haupt={<>
+          {imDienstHeute.length > 0 && (
+            <Seitenkarte titel="Heute im Dienst"
+              rechts={<span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{summeImDienst} Personen</span>}>
+              <div className="dienstliste">
+                {imDienstHeute.map((g) => (
+                  <div key={g.einheit.id} className="zeile">
+                    <div className="einheit">
+                      <div className="n">{g.einheit.name}</div>
+                      <div className="s">{g.personen.length} im Dienst</div>
+                    </div>
+                    <div className="chips">
+                      {g.personen.map(({ person: p, da }) => (
+                        <Namenschip key={p.id} title={da ? `${da.name} ${da.start}–${da.ende}` : undefined}
+                          avatar={<Avatar person={p} size="sm" style={{ width: 24, height: 24, fontSize: 10 }} />}
+                          rechts={da ? <span className="kurz">{da.kurz}</span> : null}>
+                          {p.nachname}, {(p.vorname || " ").slice(0, 1)}.</Namenschip>))}
+                    </div>
+                  </div>))}
+              </div>
+            </Seitenkarte>)}
+
+          <Card>
+            <CardHead>Schichtfolge der kommenden zwei Wochen</CardHead>
+            <div style={{ padding: 22, overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse" }}>
+                <thead><tr><th />{woche.map((d) => (
+                  <th key={d} style={{ padding: "0 4px 11px", minWidth: 40 }}>
+                    <div style={{ fontSize: 10.5, color: feiertag(d, m.bundesland) ? C.danger : C.dim }}>{DOW[dow(d)]}</div>
+                    <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div>
+                  </th>))}</tr></thead>
+                <tbody>{m.einheiten.map((e) => (
+                  <tr key={e.id}><td style={{ paddingRight: 18, whiteSpace: "nowrap", fontSize: 13.5 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), display: "inline-block", marginRight: 9 }} />{e.name}</td>
+                    {woche.map((d) => <td key={d} style={{ padding: 3, textAlign: "center" }}>
+                      <div style={{ display: "flex", justifyContent: "center" }}><Zelle da={map[einheitDienst(m, e.id, d)]} size={25} /></div></td>)}
+                  </tr>))}</tbody>
+              </table>
+            </div>
+          </Card>
+        </>}
+        seite={
+          <Seitenkarte titel="Nächste 14 Tage"
+            rechts={<Pill size="sm" tone={kritisch ? "danger" : kommend.length ? "warn" : "ok"}>{kommend.length} Befunde</Pill>}
+            className="achtung">
+            <div style={{ maxHeight: 420, overflowY: "auto" }}>
+              {kommend.length === 0 && <div style={{ padding: "4px 0 8px", fontSize: 13.5, color: C.ok }}>
+                Keine Befunde. Besetzung, Qualifikationen, Ruhezeiten und Urlaubsgrenzen sind eingehalten.</div>}
+              {kommend.slice(0, 40).map((b, i) => (
+                <div key={b.id + i} className="achtungszeile"
+                  {...klickbar(() => (b.art === "besetzung" || b.art === "qualifikation") && b.ref && darfEinheit(sitz, sitz.person.bereich)
+                    ? akt.oeffneSchnellbesetzung(b.datum, String(b.ref).split("|")[0]) : oeffneTag(b.datum),
+                    `${fKurz(b.datum)}: ${b.titel}`)}>
+                  <Punkt ton={b.schwere === "danger" ? "danger" : "warn"} />
+                  <span className="t">{b.titel}</span>
+                  <span className="d" style={NUM}>{fKurz(b.datum)}</span>
+                </div>))}
+            </div>
+          </Seitenkarte>} />
+
+      <Kennzahlen style={{ marginTop: 16, marginBottom: 0 }} min={170} kacheln={[
+        { label: "Personalstärke", wert: aktiv.length, ton: "accent", sub: `${m.einheiten.length} ${mehrzahl(m.einheitLabel)}` },
+        { label: "Heute abwesend", wert: abwesend, ton: abwesend > aktiv.length * .2 ? "warn" : "ok" },
+        { label: "Wochenarbeitszeit", wert: n2(sim.wochenstunden), einheit: "h", sub: "aus dem Modell" },
+        /* Beide Zahlen rechnen mit fremden Anträgen bzw. Stundenkonten — die
+           liefert der Server nur Rollen, die sie bearbeiten (sicht.mjs). */
+        darf(sitz, "req.approve.unit") && { label: "Offene Anträge", wert: offen, ton: offen ? "warn" : "ok" },
+        darf(sitz, "account.view.all") && { label: "Konten über Grenze", wert: kontenHoch === null ? "–" : kontenHoch,
+          ton: kontenHoch === null ? undefined : kontenHoch ? "warn" : "ok",
+          sub: kontenHoch === null ? ISTDATEN_TEXT : `ab ${n1(m.einstellungen.ausgleichGrenze || 40)} h · Freizeitausgleich`
+            + (kontenOhneIst ? ` · ohne ${kontenOhneIst} ${kontenOhneIst === 1 ? "Konto" : "Konten"} (Ist-Daten nicht verfügbar)` : "") }]} />
     </div>);
 }
 
@@ -8533,12 +8785,8 @@ function monatsLage(m, tage, bes) {
 function Tagesfazit({ lage, onTag }) {
   if (!lage.tage.length) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
-        background: C.okLight, borderLeft: `3px solid ${C.ok}`, borderRadius: "0 6px 6px 0",
-        marginBottom: 16 }}>
-        <span style={{ fontSize: 14.5 }}>
-          <b>Der Monat ist durchgehend besetzt.</b> Keine Unterschreitung, keine offene Quote.</span>
-      </div>);
+      <Hinweisband ton="ok" titel={<>Der Monat ist durchgehend besetzt.{" "}
+        <span style={{ fontWeight: 400, color: C.dim }}>Keine Unterschreitung, keine offene Quote.</span></>} />);
   }
   const satz = lage.dringend && lage.knapp
     ? `${lage.dringend} Tag${lage.dringend > 1 ? "e sind" : " ist"} unterbesetzt, ${lage.knapp} weitere${lage.knapp > 1 ? "" : "r"} knapp.`
@@ -8546,25 +8794,19 @@ function Tagesfazit({ lage, onTag }) {
       ? `${lage.dringend} Tag${lage.dringend > 1 ? "e brauchen" : " braucht"} Aufmerksamkeit.`
       : `${lage.knapp} Tag${lage.knapp > 1 ? "e sind" : " ist"} knapp besetzt.`;
   return (
-    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      padding: "13px 16px", background: lage.dringend ? C.dangerLight : C.warnLight,
-      borderLeft: `3px solid ${lage.dringend ? C.danger : C.warn}`, borderRadius: "0 6px 6px 0",
-      marginBottom: 16 }}>
-      <span style={{ fontSize: 14.5, flex: "1 1 220px" }}><b>{satz}</b></span>
-      {lage.tage.slice(0, 8).map((t) => (
-        <button key={t.datum} type="button" onClick={() => onTag(t.datum)}
-          title={`${fLang(t.datum)} · ${t.text}`}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, background: C.flaeche,
-            border: `1px solid ${C.line}`, borderRadius: 6, padding: "5px 11px", fontSize: 12.5,
-            fontFamily: "inherit", color: C.text, cursor: "pointer", ...NUM }}>
-          <span style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-            background: t.stufe === 2 ? C.danger : C.warn }} />
-          {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
-          <span style={{ color: C.dimmer }}>{t.text}</span>
-        </button>))}
-      {lage.tage.length > 8 && (
-        <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
-    </div>);
+    <Hinweisband ton={lage.dringend ? "danger" : "warn"} titel={satz}>
+      <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+        {lage.tage.slice(0, 8).map((t) => (
+          <button key={t.datum} type="button" className="chip" onClick={() => onTag(t.datum)}
+            title={`${fLang(t.datum)} · ${t.text}`}>
+            <span className="punkt" style={{ background: t.stufe === 2 ? C.danger : C.warn }} />
+            {DOW[dow(t.datum)]} <b>{pISO(t.datum).getDate()}.</b>
+            <span style={{ color: C.dim }}>{t.text}</span>
+          </button>))}
+        {lage.tage.length > 8 && (
+          <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>+{lage.tage.length - 8} weitere</span>)}
+      </div>
+    </Hinweisband>);
 }
 
 /**
@@ -8581,14 +8823,12 @@ function TeamAuslastungLeiste({ ta }) {
   if (ta.ueber) teile.push(`${ta.ueber} überplant`);
   if (ta.unter) teile.push(`${ta.unter} unterausgelastet`);
   return (
-    <div className="noprint" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-      padding: "13px 16px", background: C.flaecheStill, borderRadius: 6, marginBottom: 12, fontSize: 13.5 }}>
-      <span style={{ width: 90, height: 6, borderRadius: 3, background: C.line, overflow: "hidden", flexShrink: 0 }}>
-        <span style={{ display: "block", height: "100%", width: `${Math.min(100, ta.pct)}%`,
-          background: ta.pct > 105 ? C.warn : ta.pct < 85 ? C.dim : C.ok }} /></span>
+    <Statuszeile>
+      <Fortschritt wert={Math.min(100, ta.pct)} hoehe={6} ton={ta.pct > 105 ? "warn" : ta.pct < 85 ? "neutral" : "ok"}
+        label="Team-Auslastung" />
       <b style={{ ...NUM }}>{teile.join(" · ")}</b>
-      <span style={{ color: C.dimmer }}>{ta.personen} Personen im Schichtdienst</span>
-    </div>);
+      <span style={{ color: C.dim }}>{ta.personen} Personen im Schichtdienst</span>
+    </Statuszeile>);
 }
 
 /* --------------------------------------------------------------------------
@@ -8621,11 +8861,11 @@ function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
         gap: 10, marginBottom: 12 }}>
-        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}>‹ davor</Btn>
+        <Btn size="sm" onClick={() => setAb(Math.max(1, ab - 7))} disabled={ab <= 1}><Icon n="chevron-links" size={14} /> davor</Btn>
         <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
           {pISO(tage[0]).getDate()}. – {pISO(tage[tage.length - 1]).getDate()}. {MON[mo - 1]}</span>
         <Btn size="sm" onClick={() => setAb(Math.min(n - 6 > 0 ? n - 6 : 1, ab + 7))}
-          disabled={ab + 7 > n}>danach ›</Btn>
+          disabled={ab + 7 > n}>danach <Icon n="chevron-rechts" size={14} /></Btn>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -8635,7 +8875,8 @@ function Wochenliste({ sitz, ym, oeffneTag, bes, lage }) {
           const t = lage.tage.find((x) => x.datum === d);
           const istHeute = d === d0;
           return (
-            <Card key={d} onClick={() => oeffneTag(d)}
+            <Card key={d} {...klickbar(() => oeffneTag(d),
+              `${pISO(d).getDate()}. ${DOW_LANG[dow(d)]}${istHeute ? ", heute" : ""}${t ? `, ${t.text}` : ""}`)}
               style={{ padding: 0, overflow: "hidden", cursor: "pointer",
                 borderLeft: `3px solid ${t ? (t.stufe === 2 ? C.danger : C.warn) : istHeute ? C.accent : "transparent"}` }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 9, padding: "11px 14px 8px",
@@ -8715,8 +8956,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           {darf(sitz, "plan.edit.unit") && <Btn onClick={akt.oeffneMehrfach}>Mehrfach ändern</Btn>}
           {darf(sitz, "pattern.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
           {darf(sitz, "plan.edit.all") && <Btn kind="primary" onClick={akt.oeffneAssistent}>Planungsassistent</Btn>}
-          <Btn onClick={() => shift(-1)}>‹</Btn><Btn onClick={() => setYm(d0.slice(0, 7))}>Heute</Btn>
-          <Btn onClick={() => shift(1)}>›</Btn></div>}>{MON[mo - 1]} {y}</H1>
+          <Zeitwahl onZurueck={() => shift(-1)} onHeute={() => setYm(d0.slice(0, 7))} onWeiter={() => shift(1)} /></div>}>{MON[mo - 1]} {y}</H1>
 
       <Freigabeleiste sitz={sitz} ym={ym} akt={akt} />
 
@@ -8733,7 +8973,8 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
 
       <Filterleiste suche={suche} setSuche={setSuche} platzhalter={`${m.einheitLabel} oder Dienstart …`}
         rechts={<>
-          <Sel value={filterDienst} onChange={(ev) => setFilterDienst(ev.target.value)} style={{ minWidth: 150 }}>
+          <Sel value={filterDienst} aria-label="Nach Dienstart filtern"
+            onChange={(ev) => setFilterDienst(ev.target.value)} style={{ minWidth: 150 }}>
             <option value="">alle Dienstarten</option>
             {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel>
           <label style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer" }}>
@@ -8791,7 +9032,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
                 <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "11px 20px",
                   borderBottom: `1px solid ${C.lineSoft}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe, flexShrink: 0 }} />
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3), flexShrink: 0 }} />
                     <div><div style={{ fontSize: 14, fontWeight: 500 }}>{e.name}</div>
                       <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>
                         {aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === e.id).length} Pers. · Versatz {e.versatz}</div></div>
@@ -8817,7 +9058,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
               && (!suche.trim() || da.name.toLowerCase().includes(suche.trim().toLowerCase())
                 || da.kurz.toLowerCase().includes(suche.trim().toLowerCase()))).map((da, i) => (
               <tr key={da.id}>
-                <td style={{ position: "sticky", left: 0, zIndex: 1, background: "rgba(246,247,251,.97)", padding: "9px 20px",
+                <td style={{ position: "sticky", left: 0, zIndex: 1, background: C.flaeche, padding: "9px 20px",
                   borderTop: i === 0 ? `2px solid ${C.line}` : `1px solid ${C.lineSoft}` }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Zelle da={da} size={21} />
                     <div><div style={{ fontSize: 12.5 }}>{da.name}</div>
@@ -8875,6 +9116,8 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const editierbar = darfEinheit(sitz, eid);
   const [suche, setSuche] = useState("");
   const [nurAbw, setNurAbw] = useState(false);
+  const planVon = tage[0], planBis = tage[tage.length - 1];
+  const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -8898,17 +9141,18 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} className="noprint">
           <Seg value={eid} onChange={setEid} options={m.einheiten.filter((e) => darf(sitz, "plan.view.all") || e.id === sitz.person.bereich || sitz.person.bereich === "ALLE")
             .map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}>‹</Btn>
-          <span style={{ fontSize: 13.5, color: C.dim, minWidth: 112, textAlign: "center", ...NUM }}>{MON[mo - 1]} {y}</span>
-          <Btn size="sm" onClick={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}>›</Btn>
+          <Zeitwahl mitte={`${MON[mo - 1]} ${y}`}
+            onZurueck={() => { const d = new Date(y, mo - 2, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }}
+            onWeiter={() => { const d = new Date(y, mo, 1); setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} />
         </div>}>Personaleinsatz</H1>
 
       {editierbar && (
         <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 16, flexWrap: "wrap" }} className="noprint">
           <Lab>Abweichung eintragen als</Lab>
           {m.dienstarten.map((d) => (
-            <button key={d.id} onClick={() => setPinsel(d.id)} className="btn btn-sm"
-              style={{ background: pinsel === d.id ? `${d.farbe}22` : C.bg, color: pinsel === d.id ? d.farbe : C.dim, fontWeight: 600 }}>
+            <button key={d.id} type="button" onClick={() => setPinsel(d.id)} className="chip" aria-pressed={pinsel === d.id}
+              style={{ background: pinsel === d.id ? `${d.farbe}22` : C.flaeche, color: pinsel === d.id ? d.farbe : C.dim,
+                borderColor: pinsel === d.id ? d.farbe : undefined, fontWeight: 600 }}>
               {d.kurz}</button>))}
         </div>)}
 
@@ -8919,7 +9163,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
               padding: "15px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 200 }}><Lab>Person</Lab></th>
             {tage.map((d) => { const fei = feiertag(d, m.bundesland);
               return (<th key={d} style={{ padding: "9px 0 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 29,
-                background: d === d0 ? "rgba(43,52,64,.075)" : fei ? C.dangerLight : dow(d) >= 5 ? "rgba(20,20,25,.03)" : "transparent" }}>
+                background: d === d0 ? C.accentLight : fei ? C.dangerLight : dow(d) >= 5 ? C.flaecheStill : "transparent" }}>
                 <div style={{ fontSize: 9.5, color: C.dimmer }}>{DOW[dow(d)]}</div>
                 <div style={{ fontSize: 12, color: d === d0 ? C.accent : C.dim, fontWeight: 500, ...NUM }}>{pad(pISO(d).getDate())}</div></th>); })}
             <th style={{ padding: "9px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}` }}><Lab>Ist/Soll</Lab></th>
@@ -8928,16 +9172,28 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
             const ist = istStunden(m, p, ym), soll = sollStunden(m, p, ym);
             const diff = ist.nichtVerfuegbar ? null : ist.gesamt - soll;
             return (<tr key={p.id} className="row">
-              <td onClick={() => oeffnePerson(p.id)} style={{ position: "sticky", left: 0, background: C.flaeche,
+              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                style={{ position: "sticky", left: 0, background: C.flaeche,
                 zIndex: 1, padding: "8px 20px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ fontSize: 13.5, whiteSpace: "nowrap" }}>{p.nachname}, {p.vorname}</div>
                 <div style={{ fontSize: 11.5, color: C.dimmer }}>{p.funktion} · {rolle(p.rolle).kurz}</div></td>
               {tage.map((d) => { const t = personTag(m, p, d);
-                return (<td key={d} onClick={() => klick(p, d)} style={{ padding: "4px 1px", textAlign: "center",
+                return (<td key={d}
+                  {...klickbar(editierbar ? () => klick(p, d) : null,
+                    `${p.nachname}, ${p.vorname} am ${fKurz(d)}: ${map[t.dienstId] ? map[t.dienstId].name : "frei"}`)}
+                  style={{ padding: "4px 1px", textAlign: "center",
                   borderBottom: `1px solid ${C.lineSoft}`, cursor: editierbar ? "pointer" : "default",
-                  background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? "rgba(43,52,64,.05)" : "transparent" }}>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} /></div></td>); })}
+                  background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>
+                  <div style={{ display: "flex", justifyContent: "center", position: "relative" }}>
+                    <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} />
+                    {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
+                      if (!b) return null;
+                      /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
+                      return <span title={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt: ${(b.befunde || []).map((x) => x.text || befundText(x.regel)).join(" · ")}`}
+                        aria-label={`${(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label} bestätigt`}
+                        style={{ position: "absolute", top: -2, right: 1, width: 7, height: 7, borderRadius: 4,
+                          background: b.stufe === "recht" ? C.danger : C.warn, border: `1px solid ${C.flaeche}` }} />; })()}
+                  </div></td>); })}
               <td style={{ padding: "8px 16px", borderBottom: `1px solid ${C.lineSoft}`, borderLeft: `1px solid ${C.lineSoft}`, whiteSpace: "nowrap" }}>
                 {ist.nichtVerfuegbar ? (
                   <div title={ISTDATEN_TEXT} style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>–/{n1(soll)}</div>
@@ -9080,36 +9336,38 @@ function Schichtfolge({ sitz, akt }) {
       <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)} mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
         right={editierbar && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
 
-      <KpiRow>
-        <Kpi label="Wochenarbeitszeit" value={n2(sim.wochenstunden)} unit="h"
-          tone={Math.abs(abw) < .5 ? "ok" : Math.abs(abw) < 1.5 ? "warn" : "danger"} sub={`Soll ${n2(soll)} h · ${sgn(abw)} h`} />
-        <Kpi label="Deckungslücken" value={sim.luecken.length} tone={sim.luecken.length ? "danger" : "ok"}
-          sub={sim.luecken.length ? "Zyklus deckt nicht jeden Tag" : "jeder Tag vollständig gedeckt"} />
-        <Kpi label="Dienste am Stück" value={sim.maxFolge} unit="max."
-          tone={sim.maxFolge <= 5 ? "ok" : sim.maxFolge <= 7 ? "warn" : "danger"} sub={`Grenzwert ${m.einstellungen.maxFolge}`} />
-        <Kpi label="Nächte am Stück" value={sim.maxNacht} unit="max." tone={sim.maxNacht <= 4 ? "ok" : "danger"} sub="empfohlen 3 bis 4" />
-        <Kpi label="Einzeldienste" value={sim.einzel} tone={sim.einzel === 0 ? "ok" : "warn"} sub="isolierte Diensttage" />
-      </KpiRow>
+      <Kennzahlen min={170} kacheln={[
+        { label: "Wochenarbeitszeit", wert: n2(sim.wochenstunden), einheit: "h",
+          ton: Math.abs(abw) < .5 ? "ok" : Math.abs(abw) < 1.5 ? "warn" : "danger", sub: `Soll ${n2(soll)} h · ${sgn(abw)} h` },
+        { label: "Deckungslücken", wert: sim.luecken.length, ton: sim.luecken.length ? "danger" : "ok",
+          hervor: sim.luecken.length ? "danger" : undefined,
+          sub: sim.luecken.length ? "Zyklus deckt nicht jeden Tag" : "jeder Tag vollständig gedeckt" },
+        { label: "Dienste am Stück", wert: sim.maxFolge, einheit: "max.",
+          ton: sim.maxFolge <= 5 ? "ok" : sim.maxFolge <= 7 ? "warn" : "danger", sub: `Grenzwert ${m.einstellungen.maxFolge}` },
+        { label: "Nächte am Stück", wert: sim.maxNacht, einheit: "max.", ton: sim.maxNacht <= 4 ? "ok" : "danger", sub: "empfohlen 3 bis 4" },
+        { label: "Einzeldienste", wert: sim.einzel, ton: sim.einzel === 0 ? "ok" : "warn", sub: "isolierte Diensttage" }]} />
 
       {(sim.luecken.length > 0 || sim.konflikte.length > 0) && (
-        <Card style={{ marginTop: 18, padding: 20, background: C.dangerLight }}>
-          {sim.luecken.map((l) => <div key={l.da.id} style={{ fontSize: 13.5, color: C.danger, marginBottom: 6 }}>
+        <Hinweisband ton="danger">
+          {sim.luecken.map((l) => <div key={l.da.id} style={{ color: C.danger, marginBottom: 6 }}>
             <b>{l.da.name}</b> ist an {l.tage} von {sim.len} Zyklustagen von keiner {m.einheitLabel} besetzt.</div>)}
-          {sim.konflikte.slice(0, 5).map((k, i) => <div key={i} style={{ fontSize: 13.5, color: C.danger, marginBottom: 6 }}>
+          {sim.konflikte.slice(0, 5).map((k, i) => <div key={i} style={{ color: C.danger, marginBottom: 6 }}>
             Tag {k.tag + 1}: {k.von} → {k.nach} lässt nur {n1(k.ruhe)} h Ruhezeit. Das trifft jede {m.einheitLabel}.</div>)}
-        </Card>)}
+        </Hinweisband>)}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 20, marginTop: 20 }}>
-        <Card>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,360px),1fr))", gap: 16 }}>
+        <Card style={{ minWidth: 0 }}>
           <CardHead right={editierbar && <Seg value={String(m.zyklus.wochen)}
             options={[3, 4, 5, 6].map((w) => ({ id: String(w), label: `${w} Wo.` }))}
             onChange={(v) => akt.setzeZyklusWochen(Number(v))} />}>Zyklusraster</CardHead>
           {editierbar && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "16px 22px 0" }}>
             {m.dienstarten.filter((d) => !d.posten).map((d) => (
-              <button key={d.id} onClick={() => setPinsel(d.id)} className="btn btn-sm"
-                style={{ background: pinsel === d.id ? `${d.farbe}22` : C.bg, color: pinsel === d.id ? d.farbe : C.dim, fontWeight: 600 }}>{d.kurz}</button>))}
-            <button onClick={() => setPinsel("-")} className="btn btn-sm"
-              style={{ background: pinsel === "-" ? "rgba(20,20,25,.10)" : C.bg, color: C.dim, fontWeight: 600 }}>frei</button>
+              <button key={d.id} type="button" onClick={() => setPinsel(d.id)} className="chip" aria-pressed={pinsel === d.id}
+                style={{ background: pinsel === d.id ? `${d.farbe}22` : C.flaeche, color: pinsel === d.id ? d.farbe : C.dim,
+                  borderColor: pinsel === d.id ? d.farbe : undefined, fontWeight: 600 }}>{d.kurz}</button>))}
+            <button type="button" onClick={() => setPinsel("-")} className="chip" aria-pressed={pinsel === "-"}
+              style={{ background: pinsel === "-" ? C.flaecheStill : C.flaeche, color: C.dim,
+                borderColor: pinsel === "-" ? C.steuer : undefined, fontWeight: 600 }}>frei</button>
           </div>}
           <div style={{ padding: 22, overflowX: "auto" }}>
             <table style={{ borderCollapse: "collapse" }}>
@@ -9122,7 +9380,8 @@ function Schichtfolge({ sitz, akt }) {
                 return (<tr key={w}>
                   <td style={{ paddingRight: 14, fontSize: 13, color: C.dimmer, ...NUM }}>{pad(w + 1)}</td>
                   {woche.map((id, di) => (<td key={di} style={{ padding: 4, textAlign: "center" }}>
-                    <div onClick={() => editierbar && akt.setzeZyklusTag(w * 7 + di, pinsel)}
+                    <div {...klickbar(editierbar ? () => akt.setzeZyklusTag(w * 7 + di, pinsel) : null,
+                      `Woche ${w + 1}, ${DOW[di]}: ${map[id] ? map[id].name : "frei"} — mit dem gewählten Dienst belegen`)}
                       style={{ display: "inline-block", cursor: editierbar ? "pointer" : "default" }}>
                       <Zelle da={map[id]} size={38} /></div></td>))}
                   <td style={{ paddingLeft: 18, fontSize: 13, color: std > 0 ? C.text : C.dimmer, ...NUM }}>{n1(std)} h</td>
@@ -9131,12 +9390,13 @@ function Schichtfolge({ sitz, akt }) {
           </div>
         </Card>
 
-        <Card>
+        <Card style={{ minWidth: 0 }}>
           <CardHead>Vorlagen und Versatz</CardHead>
           <div style={{ padding: 22 }}>
             {VORLAGEN.map((v) => (
               <div key={v.id} className="karte" style={{ padding: 16, marginBottom: 13,
-                background: m.zyklus.vorlage === v.id ? "rgba(43,52,64,.07)" : undefined }}>
+                background: m.zyklus.vorlage === v.id ? C.accentLight : undefined,
+                borderColor: m.zyklus.vorlage === v.id ? C.accent : undefined }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 600 }}>{v.name}</div>
                   <Btn size="sm" kind={m.zyklus.vorlage === v.id ? "quiet" : "primary"} disabled={!editierbar}
@@ -9147,15 +9407,16 @@ function Schichtfolge({ sitz, akt }) {
                   {n2(v.wochenstunden)} h/Woche · benötigt {v.einheiten} {mehrzahl(m.einheitLabel)}</div>
               </div>))}
             {m.einheiten.length !== m.zyklus.wochen && (
-              <div style={{ padding: 14, borderRadius: 12, background: C.warnLight, color: C.warn, fontSize: 13, marginBottom: 14, lineHeight: 1.45 }}>
+              <Hinweisband ton="warn" style={{ marginBottom: 14, boxShadow: "none" }}>
                 Der Zyklus hat {m.zyklus.wochen} Wochen, es gibt {m.einheiten.length} {m.einheitLabel}n.
-                Für lückenlose Deckung müssen beide Zahlen übereinstimmen.</div>)}
+                Für lückenlose Deckung müssen beide Zahlen übereinstimmen.</Hinweisband>)}
             <Lab style={{ margin: "20px 0 12px" }}>Startpunkt je {m.einheitLabel}</Lab>
             {m.einheiten.map((e) => (
-              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 13, marginBottom: 10 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 4, background: e.farbe }} />
-                <span style={{ fontSize: 13.5, flex: 1 }}>{e.name}</span>
+              <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "8px 13px", marginBottom: 10, flexWrap: "wrap" }}>
+                <span style={{ width: 8, height: 8, borderRadius: 4, background: lesbar(e.farbe, 3) }} />
+                <span style={{ fontSize: 13.5, flex: "1 1 120px", minWidth: 0 }}>{e.name}</span>
                 <Sel value={versatzTageVon(e)} disabled={!editierbar}
+                  aria-label={`Startpunkt im Zyklus für ${e.name}`}
                   onChange={(ev) => akt.setzeVersatz(e.id, Number(ev.target.value))} style={{ width: 210 }}>
                   {m.zyklus.tage.map((t2, i) => {
                     const dd = map[t2];
@@ -9193,7 +9454,7 @@ function Dienstarten({ sitz, akt }) {
       <H1 sub="Dienstarten sind vollständig frei gestaltbar: Zeiten, Pause, Farbe, Ort, Mindestbesetzung je Wochentag und geforderte Qualifikationen. Ein Außenposten wird automatisch aus der Einheit besetzt, die den Quelldienst fährt."
         right={editierbar && <Btn kind="primary" onClick={() => oeffnen(null)}>Dienstart anlegen</Btn>}>Dienstarten</H1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 16 }}>
         {m.dienstarten.map((d) => {
           const verwendet = m.zyklus.tage.filter((t) => t === d.id).length
             + Object.values(m.abweichungen).filter((v) => v === d.id).length;
@@ -9242,7 +9503,7 @@ function Dienstarten({ sitz, akt }) {
             <Field label="Ende" hint="Früher als der Beginn bedeutet Folgetag."><Inp type="time" value={f.ende} onChange={(e) => setF({ ...f, ende: e.target.value })} /></Field>
             <Field label="Pause in Minuten"><Inp type="number" min={0} value={f.pause || 0} onChange={(e) => setF({ ...f, pause: Number(e.target.value) })} /></Field>
           </div>
-          <div className="karte" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
+          <div className="karte-still" style={{ padding: 14, display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center", borderRadius: "var(--r)" }}>
             <div><Lab>Dauer</Lab><div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>{n1(dauer(f))} h</div></div>
             <div><Lab>Brutto</Lab><div style={{ fontSize: 19, fontWeight: 650, color: C.dim, ...NUM }}>{n1(brutto(f))} h</div></div>
             <div><Lab>Nachtanteil {nachtFenster(m.einstellungen).von.slice(0, 2)}–{nachtFenster(m.einstellungen).bis.slice(0, 2)} Uhr</Lab>
@@ -9289,7 +9550,7 @@ function Dienstarten({ sitz, akt }) {
               ihr Name, sondern die Bindung. Diese drei Angaben sind die,
               nach denen im Streitfall gefragt wird. */}
           {(f.form === "ruf" || f.form === "bereitschaft") && (
-            <div className="karte" style={{ padding: 16 }}>
+            <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
               <Lab style={{ marginBottom: 12 }}>Ausgestaltung der Bereitschaft</Lab>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 13 }}>
                 <Field label="Aufenthalt" hint={aufenthaltVon(f.aufenthalt).text}>
@@ -9312,18 +9573,18 @@ function Dienstarten({ sitz, akt }) {
               {bereitschaftHinweise(f).map((h, i) => (
                 <div key={i} style={{ marginTop: 11, fontSize: 12.5, lineHeight: 1.55,
                   color: h.schwere === "warn" ? C.warn : C.dim }}>{h.text}</div>))}
-              <div style={{ marginTop: 12, fontSize: 12, color: C.dimmer, lineHeight: 1.55 }}>
+              <Erklaerkasten style={{ marginTop: 12 }}>
                 Die Anwendung stuft nicht selbst ein — sie kennt weder den Tarifvertrag noch
                 die tatsächliche Belastung. Sie hält fest, was für die Einstufung zählt, und
                 sagt, wo die Angaben in eine andere Richtung zeigen als die gewählte Form.
-              </div>
+              </Erklaerkasten>
             </div>)}
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 13 }}>
             <Field label="Ort oder Objekt"><Inp value={f.ort} onChange={(e) => setF({ ...f, ort: e.target.value })} /></Field>
             <Field label="Farbe">
               <Farbwahl wert={f.farbe} onChange={(c) => setF({ ...f, farbe: c })} /></Field>
           </div>
-          <div className="karte" style={{ padding: 16 }}>
+          <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
               <input type="checkbox" checked={!!f.posten} onChange={(e) => setF({ ...f, posten: e.target.checked, quelle: e.target.checked ? (f.quelle || m.dienstarten[0].id) : null })} />
               <span style={{ fontSize: 14, fontWeight: 500 }}>Außenposten — wird automatisch besetzt</span>
@@ -9494,7 +9755,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
             Beides lässt sich jederzeit ergänzen.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
-            <div className="karte" onClick={akt.oeffneImport}
+            <div className="karte" {...klickbar(akt.oeffneImport, "Liste einlesen")}
               style={{ padding: 20, cursor: "pointer" }}>
               <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 6 }}>Liste einlesen</div>
               <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
@@ -9502,7 +9763,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
               </div>
               <span className="btn btn-sm btn-primary">Importieren</span>
             </div>
-            <div className="karte" onClick={() => setNeu(true)}
+            <div className="karte" {...klickbar(() => setNeu(true), "Person einzeln anlegen")}
               style={{ padding: 20, cursor: "pointer" }}>
               <div style={{ fontSize: 16, fontWeight: 650, marginBottom: 6 }}>Einzeln anlegen</div>
               <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
@@ -9517,12 +9778,11 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
           </div>
         </Card>)}
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
-        <Inp value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name suchen" style={{ width: 210 }} />
+      <Filterleiste suche={q} setSuche={setQ} platzhalter="Name suchen">
         <Seg value={filter} onChange={setFilter} options={[{ id: "alle", label: "Alle" },
           ...einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name })),
           { id: "aus", label: "Ausgetreten" }]} />
-      </div>
+      </Filterleiste>
 
       <Card style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 980 }}>
@@ -9532,7 +9792,8 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
             const e = m.einheiten.find((x) => x.id === einheitAm(p, d0));
             const r = rolle(p.rolle);
             return (<tr key={p.id} className="row">
-              <td onClick={() => oeffnePerson(p.id)} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
+              <td {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <Avatar person={p} style={{ opacity: p.austritt ? .45 : 1 }} />
                   <div style={{ minWidth: 0 }}>
@@ -9579,7 +9840,7 @@ function Personal({ sitz, ym, akt, oeffnePerson, standortId = ALLE_STANDORTE, se
                   <div style={{ fontSize: 11.5, color: C.dimmer, ...NUM }}>{stundenText(nacht.anzahl, String)} Dienste</div></td>
               </>) : <td colSpan={3} style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", fontSize: 12.5, color: C.dimmer }}>
                 {zeigt ? "Konten dieser Person nicht im eigenen Bereich" : "Konten nur für die Planung sichtbar"}</td>}
-              <td style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}>›</td>
+              <td aria-hidden="true" style={{ padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right", color: C.dimmer }}><Icon n="chevron-rechts" size={16} /></td>
             </tr>); })}</tbody>
         </table>
       </Card>
@@ -9700,7 +9961,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         {m.qualifikationen.map((q) => { const an = p.qualifikationen.includes(q.id);
           return (<button key={q.id} disabled={!editierbar} onClick={() => akt.toggleQual(p.id, q.id)} className="btn btn-sm"
             style={{ background: an ? `${q.farbe}1C` : C.bg, color: an ? q.farbe : C.dimmer, fontWeight: 600 }}>
-            {an ? "✓ " : ""}{q.name}</button>); })}
+            {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{q.name}</button>); })}
       </div>
 
       {editierbar && (<>
@@ -9724,6 +9985,26 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                 Schichtverantwortung bekommt sie nicht mehr (Commit S1) und sieht
                 stattdessen die neutralen Einsatzregeln. */}
             {!darf(sitz, "staff.edit") ? <EinsatzregelListe regeln={p.planungsregeln} /> : (<>
+            {/* Das Modell ist optional. Fehlt es, leitet die Anwendung es aus der
+                Verteilung ab (Voll- oder Teilzeit); hinterlegt wird nur, was von
+                Regeln gebraucht wird — etwa Werkstudent. Nur mit staff.edit:
+                Die Schichtverantwortung bekommt beide Felder nicht
+                (RECHTEMATRIX.md ²³). */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <Field label="Beschäftigungsmodell"
+                hint={p.beschaeftigungsmodell ? "Regeln, die an dieses Modell gebunden sind, wirken auf diese Person."
+                  : `Nicht angegeben — gilt als ${(BESCHAEFTIGUNGSMODELLE.find((x) => x.id === modellVon(p)) || {}).label}.`}>
+                <Sel value={p.beschaeftigungsmodell || ""}
+                  onChange={(e) => akt.setzePerson(p.id, "beschaeftigungsmodell", e.target.value || null)}>
+                  <option value="">Nicht angegeben</option>
+                  {BESCHAEFTIGUNGSMODELLE.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                </Sel></Field>
+              {(p.beschaeftigungsmodell === "minijob" || p.beschaeftigungsmodell === "midijob") && (
+                <Field label="Zulässige Stunden je Monat"
+                  hint="Aus der Verdienstgrenze und dem Stundenlohn zu berechnen. CENTRIC kennt keinen Lohn.">
+                  <Inp type="number" step="0.5" value={p.stundenGrenzeMonat == null ? "" : p.stundenGrenzeMonat}
+                    onChange={(e) => akt.setzePerson(p.id, "stundenGrenzeMonat", e.target.value === "" ? null : Number(e.target.value))} /></Field>)}
+            </div>
             {/* --- Schutzvorschriften ---
 
                 Ohne diese drei Angaben kann die Prüfung nicht wissen, dass
@@ -9872,7 +10153,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         return (<div key={a.id} className="karte" style={{ display: "flex", justifyContent: "space-between",
           alignItems: "center", padding: "11px 14px", marginBottom: 8 }}>
           <div style={{ fontSize: 13.5 }}>
-            <span style={{ color: meta.farbe, fontWeight: 600 }}>{meta.label}</span>
+            <span style={{ color: lesbar(meta.farbe), fontWeight: 600 }}>{meta.label}</span>
             <span style={{ color: C.dim, marginLeft: 11, ...NUM }}>{fKurz(a.von)} – {fKurz(a.bis)}</span>
             {z && z.tage > 0 && <span style={{ color: C.dimmer, marginLeft: 11, ...NUM }}>{z.tage} Urlaubstage</span>}</div>
           {editierbar && <Btn size="sm" kind="danger" onClick={() => akt.loescheAbwesenheit(a.id)}>Löschen</Btn>}
@@ -9882,13 +10163,13 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <div style={{ paddingTop: 20, marginTop: 14, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 13 }}>Abwesenheit eintragen</Lab>
           <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr auto", gap: 11, alignItems: "end" }}>
-            <Field label="Art"><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
-              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
+            <Field label="Art" hint={entgeltHinweis(abwArt(form.art)) || undefined}><Sel value={form.art} onChange={(e2) => setForm({ ...form, art: e2.target.value })}>
+              {ABW.map((a) => <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={form.von} onChange={(e2) => setForm({ ...form, von: e2.target.value })} /></Field>
             <Field label="Bis"><Inp type="date" value={form.bis} onChange={(e2) => setForm({ ...form, bis: e2.target.value })} /></Field>
             <Btn kind="primary" onClick={eintragen}>Eintragen</Btn>
           </div>
-          {fehler && <div style={{ marginTop: 11, padding: "11px 14px", borderRadius: 11, background: C.dangerLight, color: C.danger, fontSize: 13 }}>{fehler}</div>}
+          {fehler && <Fehlerband style={{ marginTop: 11 }}>{fehler}</Fehlerband>}
         </div>
         <div style={{ paddingTop: 20, marginTop: 20, borderTop: `1px solid ${C.lineSoft}` }}>
           <Lab style={{ marginBottom: 13 }}>Versetzung und Austritt</Lab>
@@ -9991,10 +10272,11 @@ function Hilfe({ sitz, gehZu }) {
   const rollenName = sitz.rolle === "betreiber"
     ? "Betreiber" : (rolle(sitz.person.rolle) || {}).label || sitz.person.rolle;
 
-  const Weg = ({ titel, text, knopf, aufKlick, href }) => (
-    <div className="karte" style={{ padding: "16px 18px", display: "flex", gap: 16,
-      alignItems: "flex-start", flexWrap: "wrap", marginBottom: 10 }}>
-      <div style={{ flex: 1, minWidth: 240 }}>
+  /* Eine Zeile: Symbol (nur bei den Wegen im Haus), Titel, Satz, Knopf. */
+  const Weg = ({ titel, text, knopf, aufKlick, href, symbol }) => (
+    <div className="wegzeile">
+      {symbol && <span className="wegsymbol" aria-hidden="true"><Icon n={symbol} size={20} /></span>}
+      <div style={{ flex: 1, minWidth: 220 }}>
         <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 4 }}>{titel}</div>
         <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.55 }}>{text}</div>
       </div>
@@ -10006,58 +10288,61 @@ function Hilfe({ sitz, gehZu }) {
 
   return (
     <div>
-      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns.">
+      <H1 sub="Zuerst das Handbuch — es beantwortet die meisten Fragen an Ort und Stelle. Was dort nicht steht, geht an uns."
+        right={<Btn kind="primary" onClick={() => gehZu("handbuch")}>Handbuch öffnen</Btn>}>
         Hilfe</H1>
 
       {KONTAKT_UNGESETZT && (
-        <div style={{ padding: "12px 16px", borderRadius: 10, marginBottom: 18,
-          background: C.warnLight, border: `1px solid ${C.warn}33`, fontSize: 13, lineHeight: 1.55 }}>
-          <strong style={{ fontWeight: 640 }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
+        <Hinweisband ton="warn">
+          <strong style={{ fontWeight: 640, color: C.text }}>Kontaktadresse noch nicht gesetzt.</strong>{" "}
           Die Anwendung zeigt den Platzhalter aus den Rechtstexten. Die richtige
           Adresse kommt aus der Umgebungsvariablen VITE_KONTAKT_MAIL — siehe
           rechtliches/PLATZHALTER.md.
-        </div>)}
+        </Hinweisband>)}
 
-      <Card style={{ marginBottom: 18 }}>
-        <CardHead>Selbst nachsehen</CardHead>
-        <div style={{ padding: 18 }}>
-          <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")}
-            text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
-          <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")}
-            text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
-          <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")}
-            text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
-        </div>
-      </Card>
+      <Leitraster seiteBreite={1}
+        haupt={<>
+          <Card>
+            <CardHead>Selbst nachsehen</CardHead>
+            <div className="wegliste">
+              <Weg titel="Handbuch" knopf="Öffnen" aufKlick={() => gehZu("handbuch")} symbol="buch"
+                text="Jede Ansicht, jeder Begriff, jede Regel — nach Aufgaben geordnet und durchsuchbar." />
+              <Weg titel="Ablauf einrichten" knopf="Öffnen" aufKlick={() => gehZu("ablauf")} symbol="pruefliste"
+                text="Was für einen einsatzbereiten Betrieb noch fehlt, in der Reihenfolge, in der es zu tun ist." />
+              <Weg titel="Rechtliche Angaben" knopf="Öffnen" aufKlick={() => gehZu("rechtliches")} symbol="schild"
+                text="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung." />
+            </div>
+          </Card>
 
-      <Card>
-        <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
-        <div style={{ padding: 18 }}>
-          <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
-              rolle: rollenName, ansicht: "Hilfe",
-              zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
-            text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
-          <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
-            href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
-              zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
-            text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
-          <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
-            text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
-          <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
-            href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
-              zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
-            text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
+          <Card>
+            <CardHead right={<Lab>{HILFE_ZEITEN}</Lab>}>Uns fragen</CardHead>
+            <div className="wegliste">
+              <Weg titel="Etwas funktioniert nicht" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Störung", betrieb: m.name,
+                  rolle: rollenName, ansicht: "Hilfe",
+                  zusatz: "Was ich getan habe:\n\nWas ich erwartet habe:\n\nWas stattdessen geschah:\n" })}
+                text="Betrieb, Rolle und Fassung werden mitgeschickt — das spart die erste Rückfrage." />
+              <Weg titel="Etwas fehlt oder soll anders sein" knopf="Vorschlag senden"
+                href={hilfeVerweis({ betreff: "CENTRIC — Vorschlag", betrieb: m.name, rolle: rollenName,
+                  zusatz: "Mein Vorschlag:\n\nWarum das im Betrieb hilft:\n" })}
+                text="Was im Alltag hakt, ist der beste Hinweis darauf, was als Nächstes zu bauen ist." />
+              <Weg titel="Vertrag, Tarif, Rechnung" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Vertrag", betrieb: m.name, rolle: rollenName })}
+                text="Verlängern, wechseln, kündigen, Rechnungsanschrift ändern." />
+              <Weg titel="Auskunft, Löschung, Datenschutz" knopf="E-Mail schreiben"
+                href={hilfeVerweis({ betreff: "CENTRIC — Datenschutz", betrieb: m.name, rolle: rollenName,
+                  zusatz: "Anliegen nach Artikel 15 bis 21 DSGVO:\n" })}
+                text="Anträge betroffener Personen beantwortet der Betrieb selbst — unter Verwaltung → Datenschutz. Was dort nicht geht, geht an uns." />
 
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.lineSoft}`,
-            fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
-            E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
-            {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
-              style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
-          </div>
-        </div>
-      </Card>
+              <div style={{ marginTop: 6, padding: "14px var(--pad-x) 2px", borderTop: `1px solid ${C.lineSoft}`,
+                fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+                E-Mail: <a href={`mailto:${HILFE_MAIL}`} style={{ color: C.accent }}>{HILFE_MAIL}</a>
+                {HILFE_TELEFON && <> · Telefon: <a href={`tel:${HILFE_TELEFON.replace(/[^+0-9]/g, "")}`}
+                  style={{ color: C.accent }}>{HILFE_TELEFON}</a></>}
+              </div>
+            </div>
+          </Card>
+        </>} />
     </div>);
 }
 
@@ -10328,7 +10613,7 @@ function Fenster({ titel, breit = 520, onClose, children }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label={titel}
-      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+      style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
       <div ref={rahmen} tabIndex={-1} className="blatt"
@@ -10361,7 +10646,7 @@ function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Gleichzeitig bearbeitet"
-      style={{ position: "fixed", inset: 0, background: "rgba(20,20,28,.32)",
+      style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
         backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
         justifyContent: "center", padding: 20 }}>
       <div ref={rahmen} tabIndex={-1} className="blatt"
@@ -10488,25 +10773,12 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
       <H1 sub={`Geprüft werden Mindestbesetzung, Qualifikationen, Ruhezeit (${m.einstellungen.ruhezeit} h), Dienst- und Nachtfolgen, Dienst trotz Abwesenheit, überlappende Abwesenheiten, gleichzeitige Urlaube und die Schutzvorschriften für Jugendliche, Schwangere und schwerbehinderte Menschen.`}
         right={setYm ? (<div style={{ display: "flex", gap: 9 }} className="noprint">
           <Btn onClick={() => { const d = new Date(y, mo - 2, 1);
-            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück">‹</Btn>
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat zurück"><Icon n="chevron-links" size={16} /></Btn>
           <Btn onClick={() => setYm(heute().slice(0, 7))}>Heute</Btn>
           <Btn onClick={() => { const d = new Date(y, mo, 1);
-            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor">›</Btn>
+            setYm(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`); }} aria-label="Monat vor"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>) : null}>
         Prüfung · {MON[mo - 1]} {y}</H1>
-
-      {/* Nach welchem Stand geurteilt wurde.
-
-          Ein Befund ohne Regelstand ist eine Behauptung. Bei einer Prüfung
-          durch die Aufsicht ist die erste Frage, wonach gerechnet wurde —
-          und die zweite, ob das damals schon so galt. Beides steht hier. */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap",
-        margin: "0 0 18px", fontSize: 12.5, color: C.dim }}>
-        <Pill size="sm">Regelstand {REGELSTAND.version}</Pill>
-        <span>Geprüft nach {REGELSTAND.quellen.slice(0, 4).join(" · ")}
-          {REGELSTAND.quellen.length > 4 ? ` und ${REGELSTAND.quellen.length - 4} weiteren` : ""}.
-          Jede Planänderung wird mit diesem Stand festgehalten.</span>
-      </div>
 
       {/* --- Zeitumstellung ---
           Zwei Tage im Jahr, an denen die gerechneten Stunden von der Uhr
@@ -10575,46 +10847,137 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
               </div>}
         </div>
       </Card>
-      <KpiRow min={200}>
-        <Kpi label="Befunde" value={befunde.length} tone={befunde.length ? "warn" : "ok"} />
-        <Kpi label="Kritisch" value={krit} tone={krit ? "danger" : "ok"} sub="sofort klären" />
-        <Kpi label="Betroffene Tage" value={new Set(befunde.map((b) => b.datum)).size} sub={`von ${dim_(y, mo - 1)}`} />
-      </KpiRow>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "20px 0 16px" }}>
-        {arten.map(([id, l]) => { const n = id === "alle" ? befunde.length : befunde.filter((b) => b.art === id).length;
-          return <Btn key={id} size="sm" kind={f === id ? "primary" : "plain"} onClick={() => setF(id)}>{l}{n > 0 ? ` · ${n}` : ""}</Btn>; })}
-      </div>
-      <Card>
-        {gez.length === 0
-          ? <Leer titel="Keine Befunde" text="Der Monat erfüllt in dieser Kategorie alle hinterlegten Regeln." />
-          : gez.map((b, i) => (
-            <div key={b.id + i} className="row" onClick={() => oeffneTag(b.datum)}
-              style={{ display: "flex", gap: 15, padding: "15px 22px", cursor: "pointer",
-                borderBottom: i < gez.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-              <span style={{ width: 5, borderRadius: 3, background: b.schwere === "danger" ? C.danger : C.warn, flexShrink: 0 }} />
-              <div style={{ minWidth: 84 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500, ...NUM }}>{fKurz(b.datum)}</div>
-                <div style={{ fontSize: 11.5, color: C.dimmer }}>{DOW[dow(b.datum)]}</div></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
-                {(() => {
-                  /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
-                     Meinung der Software; mit ihr ist er eine Vorschrift. */
-                  const q = rechtsquelle(b);
-                  if (!q || !q.norm) return null;
-                  return (
-                    <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 5,
-                      display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
-                      <span style={{ padding: "1px 7px", borderRadius: 5,
-                        background: q.betrieblich ? "transparent" : C.flaecheStill,
-                        border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
-                        color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
-                      {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
-                    </div>);
-                })()}</div>
-            </div>))}
-      </Card>
+      {(() => {
+        /* Füllstand des Bestätigungsprotokolls (Nachprüfung WP-10): ab 80 %
+           sieht die Leitung (und Planung) eine Warnung; an der Grenze werden
+           neue Bestätigungen abgewiesen, alte nie verdrängt. Der Betriebsrat
+           bekommt nur Zählwerte und braucht sie nicht. */
+        if (sitz.rolle === "betriebsrat" || !darf(sitz, "plan.edit.all")) return null;
+        const f = protokollFuellstand((m.bestaetigungen || []).length);
+        return f.warnung ? <Hinweisband ton={f.voll ? "danger" : "warn"} titel={f.text} /> : null;
+      })()}
+      {(() => {
+        /* Bewusst bestätigte Abweichungen (E-19): getrennt von den
+           unentdeckten Befunden. Sie stehen hier, bis der Monat abgelaufen
+           ist — wer bestätigt hat, aus welchem Grund, mit welchem Regelstand. */
+        /* Der Betriebsrat bekommt nur den Monat, keinen Tag (Review M1). */
+        const best = (m.bestaetigungen || []).filter((x) => x.datum ? x.datum >= von && x.datum <= bis
+          : x.monat && x.monat >= von.slice(0, 7) && x.monat <= bis.slice(0, 7));
+        if (!best.length) return null;
+        /* Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe
+           (Nachprüfung M1-Rest) — keine einzelnen Einträge. */
+        if (best.some((x) => x.anzahl !== undefined)) return (
+          <Card style={{ marginBottom: 18 }}>
+            <CardHead>Bewusst bestätigte Abweichungen (Zählwerte)</CardHead>
+            <div style={{ padding: "0 var(--pad-x) 16px" }}>
+              {best.map((x, i) => (
+                <div key={`${x.monat}|${x.regel}|${x.stufe}|${i}`}
+                  style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "center", flexWrap: "wrap" }}>
+                  <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+                  <span style={{ minWidth: 80, fontSize: 13.5, ...NUM }}>{x.monat}</span>
+                  <span style={{ flex: 1, fontSize: 13 }}>{x.regel === "schutz" ? "Schutz- oder Einsatzregel" : befundText(x.regel)}</span>
+                  <span style={{ fontSize: 13.5, ...NUM }}>{x.anzahl}</span>
+                </div>))}
+            </div>
+          </Card>);
+        const recht = best.filter((x) => x.stufe === "recht");
+        const ohneGrund = recht.filter((x) => x.ohneGrund).length;
+        return (
+          <Card style={{ marginBottom: 18 }}>
+            <CardHead right={<div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {recht.length > 0 && <Pill size="sm" tone="danger">{recht.length} {recht.length === 1 ? "Rechtsverstoß" : "Rechtsverstöße"}</Pill>}
+              {ohneGrund > 0 && <Pill size="sm">{ohneGrund} ohne Grund</Pill>}</div>}>
+              Bewusst bestätigte Abweichungen</CardHead>
+            <div style={{ padding: "0 var(--pad-x) 16px" }}>
+              {best.slice(0, 40).map((x) => {
+                const pp = m.personen.find((y) => y.id === x.personId);
+                const da = m.dienstarten.find((y) => y.id === x.dienstId);
+                const g = ABWEICHUNG_GRUENDE.find((y) => y.id === x.grundArt);
+                return (
+                  <div key={x.id} className={x.datum ? "klick" : undefined} {...(x.datum ? klickbar(() => oeffneTag(x.datum)) : {})}
+                    style={{ display: "flex", gap: 12, padding: "10px 0", borderTop: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <Pill size="sm" tone={(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[x.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+                    <div style={{ minWidth: 150, fontSize: 13.5, ...NUM }}>
+                      {x.datum ? `${fKurz(x.datum)} · ${da ? da.kurz : x.dienstId}` : (x.monat || "")}
+                      <div style={{ fontSize: 12, color: C.dim }}>{pp ? `${pp.nachname}, ${pp.vorname}` : "Person"}</div></div>
+                    <div style={{ flex: 1, minWidth: 200, fontSize: 13, lineHeight: 1.45 }}>
+                      {(x.befunde || []).map((b) => b.text || befundText(b.regel)).join(" · ")}
+                      <div style={{ fontSize: 12, color: C.dim, marginTop: 3 }}>
+                        bestätigt von {x.durch || "?"}{x.zeit ? ` · ${fKurz(x.zeit.slice(0, 10))}` : ""}
+                        {" · "}{g ? `${g.label}${x.grund ? `: ${x.grund}` : ""}` : "ohne Grund"}</div>
+                    </div>
+                  </div>);
+              })}
+              {best.length > 40 && <div style={{ fontSize: 12.5, color: C.dim, paddingTop: 8 }}>und {best.length - 40} weitere.</div>}
+            </div>
+          </Card>);
+      })()}
+      <Kennzahlen kacheln={[
+        { label: "Befunde", wert: befunde.length, ton: befunde.length ? "warn" : "ok" },
+        { label: "Kritisch", wert: krit, ton: krit ? "danger" : "ok", hervor: krit ? "danger" : undefined, sub: "sofort klären" },
+        { label: "Betroffene Tage", wert: new Set(befunde.map((b) => b.datum)).size, sub: `von ${dim_(y, mo - 1)}` }]} />
+      <Leitraster seiteBreite={340}
+        haupt={<>
+          <div className="seg" role="group" aria-label="Befunde filtern" style={{ flexWrap: "wrap" }}>
+            {arten.map(([id, l]) => { const n = id === "alle" ? befunde.length : befunde.filter((b) => b.art === id).length;
+              return <button key={id} type="button" className={f === id ? "on" : ""} aria-pressed={f === id}
+                onClick={() => setF(id)}>{l}{n > 0 ? ` · ${n}` : ""}</button>; })}
+          </div>
+          <Card>
+            {gez.length === 0
+              ? <Leer titel="Keine Befunde" text="Der Monat erfüllt in dieser Kategorie alle hinterlegten Regeln." />
+              : gez.map((b, i) => (
+                <div key={b.id + i} className="listenzeile klick" {...klickbar(() => oeffneTag(b.datum))}
+                  style={{ alignItems: "flex-start", gap: 15 }}>
+                  <span style={{ paddingTop: 5 }}><Punkt ton={b.schwere === "danger" ? "danger" : "warn"} gross /></span>
+                  <div style={{ minWidth: 84 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, ...NUM }}>{fKurz(b.datum)}</div>
+                    <div style={{ fontSize: 11.5, color: C.dim }}>{DOW[dow(b.datum)]}</div></div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, color: b.schwere === "danger" ? C.danger : C.warn, fontWeight: 500 }}>{b.titel}</div>
+                    <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3 }}>{b.text}</div>
+                    {(() => {
+                      /* Woraus folgt das? Ohne diese Zeile ist ein Befund eine
+                         Meinung der Software; mit ihr ist er eine Vorschrift. */
+                      const q = rechtsquelle(b);
+                      if (!q || !q.norm) return null;
+                      return (
+                        <div style={{ fontSize: 11.5, color: C.dim, marginTop: 5,
+                          display: "flex", gap: 7, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <span style={{ padding: "1px 7px", borderRadius: 5,
+                            background: q.betrieblich ? "transparent" : C.flaecheStill,
+                            border: q.betrieblich ? `1px solid ${C.lineSoft}` : "none",
+                            color: C.dim, fontWeight: 550, whiteSpace: "nowrap" }}>{q.norm}</span>
+                          {q.satz && <span style={{ lineHeight: 1.45 }}>{q.satz}</span>}
+                          {q.regelId && <span style={{ fontSize: 10.5, color: C.dimmer, whiteSpace: "nowrap", ...NUM }}
+                            title={`Regel ${q.regelId} · Regelstand ${REGELSTAND.version}`}>{q.regelId}</span>}
+                        </div>);
+                    })()}</div>
+                </div>))}
+          </Card>
+        </>}
+        seite={<>
+          <Seitenkarte titel="Was geprüft wurde">
+            {arten.filter(([id]) => id !== "alle").map(([id, l]) => {
+              const n = befunde.filter((b) => b.art === id).length;
+              const hart = befunde.some((b) => b.art === id && b.schwere === "danger");
+              return (
+                <div key={id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", fontSize: 13.5 }}>
+                  <Punkt ton={n ? (hart ? "danger" : "warn") : "ok"} gross />
+                  <span style={{ flex: 1 }}>{l}</span>
+                  <span style={{ fontSize: 12, color: C.dim }}>{n ? `${n} ${n === 1 ? "Befund" : "Befunde"}` : "geprüft"}</span>
+                </div>);
+            })}
+          </Seitenkarte>
+          <Erklaerkasten>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", fontSize: 12.5 }}>
+              <Pill size="sm">Regelstand {REGELSTAND.version}</Pill>
+              <span>Geprüft nach {REGELSTAND.quellen.slice(0, 4).join(" · ")}
+                {REGELSTAND.quellen.length > 4 ? ` und ${REGELSTAND.quellen.length - 4} weiteren` : ""}.
+                Jede Planänderung wird mit diesem Stand festgehalten.</span>
+            </div>
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
@@ -10625,6 +10988,7 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
 function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
   const m = sitz.mandant;
   const [alle, setAlle] = useState(false);
+  const [alleGesperrt, setAlleGesperrt] = useState(false);
   const [begruendung, setBegruendung] = useState(null);
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const b = besetzung(m, datum)[dienstId];
@@ -10669,7 +11033,9 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
             <div style={{ fontSize: 12, color: C.dimmer, lineHeight: 1.4 }}>{x.gruende.slice(0, 3).join(" · ")}</div>
           </div>
           <Btn size="sm" kind={i === 0 ? "primary" : "plain"}
-            onClick={() => { akt.setzeEinsprung(x.person.id, datum, dienstId); if (onFertig) onFertig(); }}>
+            onClick={() => akt.mitWarnung(m, { titel: "Ersatz einteilen",
+              eintraege: [{ personId: x.person.id, datum, dienstId }], knopf: "Einteilen",
+              ausfuehren: (best) => { akt.setzeEinsprung(x.person.id, datum, dienstId, best); if (onFertig) onFertig(); } })}>
             Einteilen</Btn>
           <button onClick={() => setBegruendung(begruendung === x.person.id ? null : x.person.id)}
             aria-label="Warum steht diese Person hier?"
@@ -10698,11 +11064,10 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
 
       {moeglich.length === 0 && (
         <div style={{ marginTop: 16, padding: 16, borderRadius: 14, background: C.dangerLight }}>
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Keine Kraft einsetzbar</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Niemand ohne Befund einsetzbar</div>
           <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 14 }}>
-            Damit endet die automatische Suche. Der nächste Schritt ist die Eskalation:
-            erweiterte Anfrage an mehrere Personen oder — wenn auch das nicht trägt — die
-            dokumentierte Unterschreitung.
+            Regelkonform findet die Suche niemanden. Du kannst eskalieren — erweiterte Anfrage
+            oder dokumentierte Unterschreitung — oder unten jemanden mit Abweichung einteilen.
           </div>
           <Btn kind="danger" onClick={() => akt.oeffneEskalation(datum, dienstId)}>Eskalation öffnen</Btn>
         </div>)}
@@ -10713,14 +11078,22 @@ function Ersatzliste({ sitz, datum, dienstId, akt, onFertig }) {
 
       {gesperrt.length > 0 && (
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
-          <Lab style={{ marginBottom: 10 }}>Nicht einsetzbar · {gesperrt.length}</Lab>
-          {gesperrt.slice(0, 5).map((x) => (
-            <div key={x.person.id} style={{ display: "flex", gap: 10, padding: "6px 0", fontSize: 12.5 }}>
+          <Lab style={{ marginBottom: 6 }}>Nur mit Abweichung · {gesperrt.length}</Lab>
+          <div style={{ fontSize: 12, color: C.dimmer, marginBottom: 8, lineHeight: 1.45 }}>
+            CENTRIC sperrt niemanden. Wer hier steht, verletzt eine Regel; vor dem Einteilen zeigt der Warndialog, welche.</div>
+          {(alleGesperrt ? gesperrt : gesperrt.slice(0, 5)).map((x) => (
+            <div key={x.person.id} style={{ display: "flex", gap: 10, padding: "6px 0", fontSize: 12.5, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ color: C.dim, minWidth: 150 }}>{x.person.nachname}, {x.person.vorname}</span>
-              <span style={{ color: C.danger }}>{x.hindernisse[0]}</span>
+              <span style={{ color: C.danger, flex: 1, minWidth: 160 }}>{x.hindernisse[0]}</span>
+              <Btn size="sm" kind="quiet" onClick={() => akt.mitWarnung(m, { titel: "Ersatz einteilen",
+                eintraege: [{ personId: x.person.id, datum, dienstId }], knopf: "Einteilen",
+                alternative: (pid) => { akt.setzeEinsprung(pid, datum, dienstId); if (onFertig) onFertig(); },
+                ausfuehren: (best) => { akt.setzeEinsprung(x.person.id, datum, dienstId, best); if (onFertig) onFertig(); } })}>
+                Prüfen …</Btn>
             </div>))}
-          {gesperrt.length > 5 && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 6 }}>
-            und {gesperrt.length - 5} weitere</div>}
+          {gesperrt.length > 5 && (
+            <Btn size="sm" kind="quiet" onClick={() => setAlleGesperrt(!alleGesperrt)} style={{ marginTop: 6 }}>
+              {alleGesperrt ? "Weniger zeigen" : `und ${gesperrt.length - 5} weitere zeigen`}</Btn>)}
         </div>)}
     </div>);
 }
@@ -10780,9 +11153,9 @@ function Krankmeldung({ sitz, akt, onClose, vorauswahl }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
             <Pill tone="danger">Lücke {idx + 1} von {luecken.length}</Pill>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn size="sm" kind="quiet" disabled={idx === 0} onClick={() => setIdx(idx - 1)}>‹</Btn>
+              <Btn size="sm" kind="quiet" disabled={idx === 0} onClick={() => setIdx(idx - 1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
               <Btn size="sm" kind="quiet" onClick={() => (idx + 1 < luecken.length ? setIdx(idx + 1) : setSchritt(4))}>
-                {idx + 1 < luecken.length ? "Überspringen ›" : "Fertig"}</Btn>
+                {idx + 1 < luecken.length ? <>Überspringen <Icon n="chevron-rechts" size={14} /></> : "Fertig"}</Btn>
             </div>
           </div>
           <Ersatzliste sitz={sitz} datum={luecken[idx].datum} dienstId={luecken[idx].dienstId} akt={akt}
@@ -10832,6 +11205,9 @@ function Freigabeleiste({ sitz, ym, akt }) {
   const f = freigabeStand(m, ym);
   const darfFreigeben = darf(sitz, "plan.publish");
   const sicher = planungssicherheit(m, ym);
+  const [y, mo] = ym.split("-").map(Number);
+  const offen = [...offeneAbweichungen(m, `${ym}-01`, `${ym}-${pad(dim_(y, mo - 1))}`).values()];
+  const offenRecht = offen.filter((b) => b.stufe === "recht").length;
   return (
     <Card style={{ padding: "14px 20px", marginBottom: 18, display: "flex", alignItems: "center",
       gap: 16, flexWrap: "wrap" }}>
@@ -10845,7 +11221,16 @@ function Freigabeleiste({ sitz, ym, akt }) {
         <Pill tone={sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok"}>
           {sicher.kurzfristig} von {sicher.gesamt} Änderungen kurzfristig
         </Pill>)}
-      {darfFreigeben && <Btn kind={f ? "plain" : "primary"} onClick={() => akt.freigeben(ym)}>
+      {offen.length > 0 && (
+        /* Die Freigabe bleibt immer möglich (E-19). Sie zeigt nur, was bewusst abweicht. */
+        <Pill tone={offenRecht ? "danger" : "warn"}>
+          {offen.length} bestätigte Abweichung{offen.length === 1 ? "" : "en"}{offenRecht ? `, davon ${offenRecht} ${offenRecht === 1 ? "Rechtsverstoß" : "Rechtsverstöße"}` : ""}
+        </Pill>)}
+      {darfFreigeben && <Btn kind={f ? "plain" : "primary"} onClick={() => {
+        if (offen.length && typeof window !== "undefined" && !window.confirm(
+          `Im Plan stehen ${offen.length} bewusst bestätigte Abweichungen${offenRecht ? `, davon ${offenRecht} gegen gesetzliche Vorgaben` : ""}. `
+          + "Sie sind in der Prüfung einzeln aufgeführt. Plan trotzdem freigeben?")) return;
+        akt.freigeben(ym); }}>
         {f ? "Erneut freigeben" : "Plan freigeben"}</Btn>}
     </Card>);
 }
@@ -10868,50 +11253,25 @@ function Verteilung({ sitz, ym }) {
           options={[{ id: "90", label: "90 Tage" }, { id: "180", label: "6 Monate" }, { id: "365", label: "12 Monate" }]} />}>
         Belastungsverteilung</H1>
 
-      <KpiRow min={200}>
-        <Kpi label="Planungssicherheit" value={`${100 - sicher.anteil} %`}
-          tone={sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok"}
-          sub={`${sicher.kurzfristig} von ${sicher.gesamt} Änderungen unter ${sicher.grenze} Tagen Vorlauf`} />
-        {spalten.slice(0, 3).map(([f, l]) => (
-          <Kpi key={f} label={`Spannweite ${l}`} value={spanne(f)} tone={spanne(f) > 4 ? "warn" : "ok"}
-            sub={`Mittel ${n1(v.mittel[f])}`} />))}
-      </KpiRow>
+      <Kennzahlen kacheln={[
+        { label: "Planungssicherheit", wert: `${100 - sicher.anteil} %`,
+          ton: sicher.anteil > 30 ? "danger" : sicher.anteil > 15 ? "warn" : "ok",
+          hervor: sicher.anteil > 15 ? (sicher.anteil > 30 ? "danger" : "warn") : undefined,
+          sub: `${sicher.kurzfristig} von ${sicher.gesamt} Änderungen unter ${sicher.grenze} Tagen Vorlauf` },
+        ...spalten.slice(0, 3).map(([fe, l]) => ({ label: `Spannweite ${l}`, wert: spanne(fe),
+          ton: spanne(fe) > 4 ? "warn" : "ok", hervor: spanne(fe) > 4 ? "warn" : undefined,
+          sub: `Mittel ${n1(v.mittel[fe])}` }))]} />
 
       {spanne("weNacht") <= 1 && spanne("feier") <= 1 && (
-        <Card style={{ marginTop: 18, padding: 18, background: C.okLight }}>
-          <div style={{ fontSize: 13.5, color: C.ok, lineHeight: 1.5 }}>
-            Die Belastung ist annähernd gleich verteilt. Das ist die Eigenschaft eines sauberen Rotationsmodells —
-            Ungleichheit entsteht erst durch Abweichungen, Einsprünge und kurzfristige Änderungen. Genau die zeigt
-            diese Ansicht, sobald sie auftreten.
-          </div>
-        </Card>)}
+        <Hinweisband ton="ok">
+          Die Belastung ist annähernd gleich verteilt. Das ist die Eigenschaft eines sauberen Rotationsmodells —
+          Ungleichheit entsteht erst durch Abweichungen, Einsprünge und kurzfristige Änderungen. Genau die zeigt
+          diese Ansicht, sobald sie auftreten.
+        </Hinweisband>)}
 
-      <Card style={{ marginTop: 18 }}>
-        <CardHead right={<Lab>Abweichung vom Mittel</Lab>}>Wochenendnächte je Person</CardHead>
-        <div style={{ padding: "22px 24px 18px", maxHeight: 420, overflowY: "auto" }}>
-          <AbweichungsDiagramm zeilen={v.zeilen.slice(0, 24).map((z) => ({ ...z, abwWeNacht: z.abw.weNacht }))}
-            wert="abwWeNacht" name={(z) => `${z.person.nachname}, ${z.person.vorname}`} />
-        </div>
-      </Card>
-
-      <Card style={{ marginTop: 18, padding: 24 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 28 }}>
-          {spalten.slice(0, 4).map(([f, l]) => (
-            <div key={f}>
-              <Lab style={{ marginBottom: 10 }}>{l}</Lab>
-              <AbweichungsDiagramm wert="abw" name={(z) => z.nm}
-                zeilen={v.zeilen.slice(0, 14).map((z) => ({
-                  nm: `${z.person.nachname}, ${z.person.vorname}`, abw: z.abw[f] }))} />
-            </div>))}
-        </div>
-        <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 18, lineHeight: 1.55 }}>
-          Jeder Punkt ist eine Person. Farbig hervorgehoben sind die Ausreißer — gelb bedeutet
-          überdurchschnittlich belastet, grün unterdurchschnittlich. Häufen sich die Punkte um die
-          Mittellinie, ist die Verteilung in Ordnung.
-        </div>
-      </Card>
-
-      <Card style={{ marginTop: 18, overflowX: "auto" }}>
+      <Leitraster seiteBreite={380}
+        haupt={<>
+      <Card style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 880 }}>
           <thead><tr>
             <th style={{ textAlign: "left", padding: "14px 20px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 200 }}>
@@ -10940,9 +11300,39 @@ function Verteilung({ sitz, ym }) {
             </tr>); })}</tbody>
         </table>
       </Card>
-      <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 14, lineHeight: 1.55, maxWidth: 760 }}>
+      <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
         Die kleine Zahl unter jedem Wert ist die Abweichung vom Mittel der Belegschaft. Hervorgehoben wird ab
         zwei Diensten Unterschied — darunter ist es Zufall, darüber wird es zur Frage.
+      </div>
+          </>}
+        seite={<>
+      <Card>
+        <CardHead right={<Lab>Abweichung vom Mittel</Lab>}>Wochenendnächte je Person</CardHead>
+        <div style={{ padding: "22px 24px 18px", maxHeight: 420, overflowY: "auto" }}>
+          <AbweichungsDiagramm zeilen={v.zeilen.slice(0, 24).map((z) => ({ ...z, abwWeNacht: z.abw.weNacht }))}
+            wert="abwWeNacht" name={(z) => `${z.person.nachname}, ${z.person.vorname}`} />
+        </div>
+      </Card>
+
+        </>} />
+      <div style={{ marginTop: 16 }}>
+      <Card style={{ padding: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 28 }}>
+          {spalten.slice(0, 4).map(([f, l]) => (
+            <div key={f}>
+              <Lab style={{ marginBottom: 10 }}>{l}</Lab>
+              <AbweichungsDiagramm wert="abw" name={(z) => z.nm}
+                zeilen={v.zeilen.slice(0, 14).map((z) => ({
+                  nm: `${z.person.nachname}, ${z.person.vorname}`, abw: z.abw[f] }))} />
+            </div>))}
+        </div>
+        <div style={{ fontSize: 12.5, color: C.dim, marginTop: 18, lineHeight: 1.55 }}>
+          Jeder Punkt ist eine Person. Farbig hervorgehoben sind die Ausreißer — gelb bedeutet
+          überdurchschnittlich belastet, grün unterdurchschnittlich. Häufen sich die Punkte um die
+          Mittellinie, ist die Verteilung in Ordnung.
+        </div>
+      </Card>
+
       </div>
     </div>);
 }
@@ -11121,7 +11511,7 @@ function Urlaubsrunde({ sitz, akt }) {
                   Priorität {x.prio}</Pill>
                 <span style={{ fontSize: 13.5, flex: 1, ...NUM }}>{fDatum(x.von)} bis {fDatum(x.bis)}</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer }}>{x.status}</span>
-                {x.status === "offen" && <Btn size="sm" kind="quiet" onClick={() => akt.wunschLoeschen(x.id)}>×</Btn>}
+                {x.status === "offen" && <Btn size="sm" kind="quiet" onClick={() => akt.wunschLoeschen(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>))}
           </div>}
         </Card>)}
@@ -11184,6 +11574,10 @@ function Urlaubsrunde({ sitz, akt }) {
  * Geo-Befund, gerundete Entfernung, Genauigkeit, Referenzstandort und
  * Kennzeichen. Keine Karte, keine Koordinate, kein Verlauf.
  */
+/* Die Befundkennung aus geoAnzeige (stempelvorgang.js) ist Daten; das
+   Häkchen zeigt die Oberfläche als Icon aus dem Satz, nicht als Textzeichen. */
+const GEO_SYMBOL_ICON = { "\u2713": "haken" };
+
 function StempelBefunde({ sitz, ym }) {
   const m = sitz.mandant;
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
@@ -11195,14 +11589,15 @@ function StempelBefunde({ sitz, ym }) {
     const g = geoAnzeige(e, phase);
     if (!g) return <span style={{ color: C.dimmer }}>–</span>;
     return (<span title={g.text} style={{ ...NUM }}>
-      <b style={{ color: g.ton === "ok" ? C.ok : g.ton === "warn" ? C.warn : C.dim }}>{g.symbol}</b>
+      <b style={{ color: g.ton === "ok" ? C.ok : g.ton === "warn" ? C.warn : C.dim }}>{GEO_SYMBOL_ICON[g.symbol]
+        ? <Icon n={GEO_SYMBOL_ICON[g.symbol]} size={14} style={{ verticalAlign: "-2px" }} /> : g.symbol}</b>
       {g.entfernung ? ` ${g.entfernung}` : ""}
       {g.genauigkeit !== null ? <span style={{ color: g.warnung ? C.warn : C.dimmer }}>{` ±${g.genauigkeit} m`}</span> : null}
     </span>);
   };
   return (
     <Card>
-      <CardHead right={<Lab>✓ bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
+      <CardHead right={<Lab><Icon n="haken" size={13} style={{ verticalAlign: "-2px" }} /> bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr style={{ textAlign: "left" }}>{["Person", "Tag", "Start", "Befund Start", "Ende", "Befund Ende", "Standort", "Kennzeichen"]
@@ -11238,7 +11633,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
   return (
     <div>
       <H1 sub="Was die Lohnstelle braucht — und was das Stundenkonto verlangt. Entgelte bleiben bewusst außerhalb: Löhne gehören in die Lohnabrechnung, nicht in die Dienstplanung."
-        right={<div style={{ display: "flex", gap: 10 }}>
+        right={<div style={{ display: "flex", gap: 10, flexWrap: "wrap", minWidth: 0 }}>
           <Seg value={reiter} onChange={setReiter} options={[{ id: "zuschlaege", label: "Zuschläge" },
             { id: "ausgleich", label: "Freizeitausgleich" }, { id: "lohn", label: "Lohnausgabe" },
             { id: "stempel", label: "Stempelbefunde" }]} />
@@ -11246,50 +11641,61 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
       {reiter === "zuschlaege" && (<>
-        <KpiRow min={170}>
-          <Kpi label="Nachtstunden" value={n1(summe("nacht"))} unit="h" sub="23 bis 6 Uhr" />
-          <Kpi label="Sonntagsstunden" value={n1(summe("sonntag"))} unit="h" />
-          <Kpi label="Feiertagsstunden" value={n1(summe("feiertag"))} unit="h" />
-          <Kpi label="Samstagsstunden" value={n1(summe("samstag"))} unit="h" />
-        </KpiRow>
+        <Kennzahlen min={170} kacheln={[
+          { label: "Nachtstunden", wert: n1(summe("nacht")), einheit: "h", ton: "accent", sub: "23 bis 6 Uhr" },
+          { label: "Sonntagsstunden", wert: n1(summe("sonntag")), einheit: "h", ton: "violet" },
+          { label: "Feiertagsstunden", wert: n1(summe("feiertag")), einheit: "h", ton: "warn" },
+          { label: "Samstagsstunden", wert: n1(summe("samstag")), einheit: "h" }]} />
 
-        <Card style={{ marginTop: 20, overflowX: "auto" }}>
+        <Leitraster seiteBreite={480}
+          haupt={<>
+        <Card style={{ overflowX: "auto" }}>
           <CardHead right={<Lab>Zuschlagswert in Stunden</Lab>}>Je Person</CardHead>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 840 }}>
+          <table className="raster" style={{ minWidth: 760 }}>
             <thead><tr>{["Person", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag", "Zuschlagswert"].map((h, i) => (
-              <th key={i} style={{ textAlign: i ? "right" : "left", padding: "13px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
-                <Lab>{h}</Lab></th>))}</tr></thead>
+              <th key={i} style={{ textAlign: i ? "right" : "left" }}>{h}</th>))}</tr></thead>
             <tbody>{zeilen.map(({ p, z }) => (
-              <tr key={p.id} className="row">
-                <td style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13.5 }}>
-                  {p.nachname}, {p.vorname}</td>
+              <tr key={p.id}>
+                <td style={{ fontSize: 13.5 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                    <Avatar person={p} size="sm" style={{ width: 26, height: 26, fontSize: 10 }} />
+                    {p.nachname}, {p.vorname}</span></td>
                 {["gesamt", "nacht", "sonntag", "feiertag", "samstag"].map((f) => (
-                  <td key={f} style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right",
-                    fontSize: 13, color: z.std[f] ? C.text : C.dimmer, ...NUM }}>{n1(z.std[f])}</td>))}
-                <td style={{ padding: "11px 18px", borderBottom: `1px solid ${C.lineSoft}`, textAlign: "right",
-                  fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
+                  <td key={f} style={{ textAlign: "right", fontSize: 13,
+                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1(z.std[f])}</td>))}
+                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
         </Card>
-
-        <Card style={{ marginTop: 20 }}>
+          </>}
+          seite={<>
+        <Card>
           <CardHead right={darf(sitz, "org.edit") && <Btn size="sm" onClick={akt.neueZuschlagsregel}>Regel hinzufügen</Btn>}>
             Zuschlagsregeln</CardHead>
           <div style={{ padding: 22 }}>
             {(m.zuschlaege || []).map((z) => (
               <div key={z.id} style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 11, flexWrap: "wrap" }}>
+                {/* Vier Felder nebeneinander, ohne eine einzige Beschriftung:
+                    Für das Auge trägt die Zeile ihren Namen im ersten Feld,
+                    einer Vorlesesoftware sagt sie nur „Kontrollkästchen,
+                    Eingabefeld, Auswahlfeld, Zahlenfeld". Jedes Feld nennt
+                    deshalb die Regel, zu der es gehört. */}
                 <input type="checkbox" checked={z.aktiv} disabled={!darf(sitz, "org.edit")}
+                  aria-label={`Zuschlag ${z.name} berücksichtigen`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "aktiv", e.target.checked)} />
                 <Inp value={z.name} disabled={!darf(sitz, "org.edit")} style={{ flex: 1, minWidth: 160 }}
+                  aria-label={`Bezeichnung des Zuschlags (${z.name})`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "name", e.target.value)} />
                 <Sel value={z.art} disabled={!darf(sitz, "org.edit")} style={{ width: 150 }}
+                  aria-label={`Anlass des Zuschlags ${z.name}`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "art", e.target.value)}>
                   {[["nacht", "Nachtarbeit"], ["sonntag", "Sonntag"], ["feiertag", "Feiertag"], ["samstag", "Samstag"]]
                     .map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Sel>
                 <Inp type="number" value={z.prozent} disabled={!darf(sitz, "org.edit")} style={{ width: 96 }}
+                  aria-label={`Zuschlag ${z.name} in Prozent`}
                   onChange={(e) => akt.setzeZuschlag(z.id, "prozent", Number(e.target.value))} />
                 <span style={{ fontSize: 13, color: C.dimmer }}>%</span>
-                {darf(sitz, "org.edit") && <Btn size="sm" kind="danger" onClick={() => akt.loescheZuschlag(z.id)}>×</Btn>}
+                {darf(sitz, "org.edit") && <Btn size="sm" kind="danger" onClick={() => akt.loescheZuschlag(z.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </div>))}
             <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
               Der Zuschlagswert wird in Stunden ausgegeben: geleistete Stunden mal Prozentsatz. Die Umrechnung
@@ -11297,18 +11703,18 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
             </div>
           </div>
         </Card>
+          </>} />
       </>)}
 
       {reiter === "lohn" && <Lohnausgabe sitz={sitz} ym={ym} akt={akt} />}
       {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} />}
       {reiter === "ausgleich" && (<>
-        <KpiRow min={190}>
-          <Kpi label="Über der Ausgleichsgrenze" value={faellig.length} tone={faellig.length ? "warn" : "ok"}
-            sub={`Grenze ${n1(m.einstellungen.ausgleichGrenze || 40)} h`} />
-          <Kpi label="Summe Überhang" value={n1(faellig.reduce((a, z) => a + z.a.ueber, 0))} unit="h" />
-          <Kpi label="Entspricht Freischichten" value={faellig.reduce((a, z) => a + Math.ceil(z.a.ueber / (z.a.mittel || 8)), 0)} />
-        </KpiRow>
-        <Card style={{ marginTop: 20 }}>
+        <Kennzahlen min={190} kacheln={[
+          { label: "Über der Ausgleichsgrenze", wert: faellig.length, ton: faellig.length ? "warn" : "ok",
+            hervor: faellig.length ? "warn" : undefined, sub: `Grenze ${n1(m.einstellungen.ausgleichGrenze || 40)} h` },
+          { label: "Summe Überhang", wert: n1(faellig.reduce((a, z) => a + z.a.ueber, 0)), einheit: "h" },
+          { label: "Entspricht Freischichten", wert: faellig.reduce((a, z) => a + Math.ceil(z.a.ueber / (z.a.mittel || 8)), 0) }]} />
+        <Card>
           <CardHead>Konten mit Ausgleichsbedarf</CardHead>
           {faellig.length === 0
             ? <Leer titel="Alle Konten im Rahmen" text="Kein Stundenkonto liegt über der eingestellten Ausgleichsgrenze." />
@@ -11443,87 +11849,90 @@ function Datenschutz({ sitz, akt }) {
     <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "7px 0",
       borderBottom: `1px solid ${C.lineSoft}` }}>
       <span style={{ fontSize: 15, fontWeight: 640, minWidth: 44, textAlign: "right",
-        color: zahl ? C.text : C.dimmer, ...NUM }}>{zahl}</span>
+        color: zahl ? C.text : C.dim, ...NUM }}>{zahl}</span>
       <span style={{ fontSize: 13.5, flex: 1 }}>{was}</span>
       <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>vor {fDatum(ab)}</span>
     </div>);
 
   return (
-    <Card>
-      <CardHead right={<Lab>{f.zuletztGeraeumt
-        ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
-      <div style={{ padding: 22, display: "grid", gap: 18 }}>
+    <Leitraster seiteBreite={380}
+      haupt={<>
+      <Card>
+        <CardHead right={<Lab>{f.zuletztGeraeumt
+          ? `zuletzt ${fDatum(f.zuletztGeraeumt)}` : "noch nie ausgeführt"}</Lab>}>Datenschutz</CardHead>
+        <div style={{ padding: "var(--pad-y) var(--pad-x) calc(var(--pad-y) + 8px)", display: "grid", gap: 18 }}>
 
-        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6 }}>
-          Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
-          sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
-          und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+          <Erklaerkasten>
+            Artikel 17 DSGVO verlangt, dass personenbezogene Daten gelöscht werden,
+            sobald der Zweck entfällt. Drei Fristen, drei verschiedene Eingriffe —
+            und alle drei sind hier nachrechenbar, bevor etwas geschieht.
+          </Erklaerkasten>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
+            <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
+              label="Plandaten in Monaten"
+              hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
+            <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
+              label="Stammdaten nach Austritt"
+              hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
+            <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
+              label="Abwesenheitsgründe in Monaten"
+              hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
+          </div>
+
+          {v.warnung && <Hinweisband ton="danger" style={{ boxShadow: "none", marginBottom: 0 }}>{v.warnung}</Hinweisband>}
         </div>
+      </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-          <FristFeld schluessel="plandatenMonate" wert={f.plandatenMonate}
-            label="Plandaten in Monaten"
-            hint={`Schichten, Zeiten, Stempelungen. § 16 Abs. 2 ArbZG verlangt mindestens ${PLANDATEN_MINDEST} Monate.`} />
-          <FristFeld schluessel="stammdatenMonate" wert={f.stammdatenMonate}
-            label="Stammdaten nach Austritt"
-            hint="Danach wird die Person anonymisiert, nicht gelöscht — sonst zerfallen alte Pläne." />
-          <FristFeld schluessel="gruendeMonate" wert={f.gruendeMonate}
-            label="Abwesenheitsgründe in Monaten"
-            hint="Freitexte sind Gesundheitsangaben nach Artikel 9 DSGVO und gehören am kürzesten aufbewahrt." />
-        </div>
+      <Card>
+        <CardHead right={<Pill size="sm" tone={v.gesamt ? "warn" : "ok"}>{v.gesamt ? `${v.gesamt} fällig` : "nichts fällig"}</Pill>}>
+          Löschlauf</CardHead>
+        <div style={{ padding: "var(--pad-y) var(--pad-x) calc(var(--pad-y) + 8px)", display: "grid", gap: 18 }}>
+          <div>
+            <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
+            {v.gesamt === 0
+              ? <div style={{ fontSize: 13, color: C.dim }}>
+                  Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
+              : (<div>
+                {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
+                  was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
+                {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
+                  was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
+                {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
+                  was="Änderungsvermerke werden gelöscht" />}
+                {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
+                  was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
+                  <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
+                  <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
+                </div>
+              </div>)}
+          </div>
 
-        {v.warnung && (
-          <div style={{ padding: "12px 15px", borderRadius: 10, background: C.dangerLight,
-            border: `1px solid ${C.danger}33`, fontSize: 13, lineHeight: 1.55 }}>
-            {v.warnung}</div>)}
-
-        <div>
-          <Lab style={{ marginBottom: 8 }}>Heute fällig · {v.gesamt}</Lab>
-          {v.gesamt === 0
-            ? <div style={{ fontSize: 13, color: C.dimmer }}>
-                Nichts über der Frist. Alle Aufbewahrungsfristen sind eingehalten.</div>
-            : (<div>
-              {v.personen.length > 0 && <Posten zahl={v.personen.length} ab={v.stichtage.stamm}
-                was={`${v.personen.length === 1 ? "Person wird" : "Personen werden"} anonymisiert — Name, Kontakt und Schutzangaben`} />}
-              {v.planSumme > 0 && <Posten zahl={v.planSumme} ab={v.stichtage.plan}
-                was="Plan-, Zeit- und Stempeleinträge werden gelöscht" />}
-              {v.aenderungen > 0 && <Posten zahl={v.aenderungen} ab={v.stichtage.plan}
-                was="Änderungsvermerke werden gelöscht" />}
-              {v.gruende > 0 && <Posten zahl={v.gruende} ab={v.stichtage.grund}
-                was="Abwesenheitsgründe werden entfernt — Art und Zeitraum bleiben" />}
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 14 }}>
-                <Btn kind="danger" onClick={akt.loeschlauf}>Löschlauf ausführen</Btn>
-                <Btn kind="quiet" onClick={async () => { await akt.sicherungAnlegen(); }}>Vorher sichern</Btn>
-              </div>
+          {v.personen.length > 0 && (
+            <div>
+              <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
+              {v.personen.map((p) => (
+                <div key={p.id} className="karte-still" style={{ display: "flex", alignItems: "center", gap: 12,
+                  padding: "10px 13px", marginBottom: 7, borderRadius: "var(--r)" }}>
+                  <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
+                  <span style={{ fontSize: 12, color: C.dim, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
+                  <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
+                </div>))}
             </div>)}
         </div>
-
-        {v.personen.length > 0 && (
-          <div>
-            <Lab style={{ marginBottom: 8 }}>Einzeln anonymisieren</Lab>
-            {v.personen.map((p) => (
-              <div key={p.id} className="karte" style={{ display: "flex", alignItems: "center", gap: 12,
-                padding: "10px 13px", marginBottom: 7 }}>
-                <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
-                <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>ausgetreten {fDatum(p.austritt)}</span>
-                <Btn size="sm" kind="danger" onClick={() => akt.anonymisiere(p.id)}>Anonymisieren</Btn>
-              </div>))}
-          </div>)}
-
-        <div style={{ paddingTop: 16, borderTop: `1px solid ${C.lineSoft}` }}>
-          <Lab style={{ marginBottom: 8 }}>Datenauskunft nach Artikel 15</Lab>
-          <div style={{ fontSize: 12.5, color: C.dimmer, marginBottom: 12, lineHeight: 1.5 }}>
-            Vollständige Aufstellung aller zu einer Person gespeicherten Daten, als Datei zur Aushändigung.
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Sel value={pid} onChange={(e) => setPid(e.target.value)} style={{ flex: 1, minWidth: 220 }}>
-              <option value="">— Person wählen —</option>
-              {m.personen.map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel>
-            <Btn kind="primary" disabled={!pid} onClick={() => akt.datenauskunft(pid)}>Auskunft erzeugen</Btn>
-          </div>
+      </Card>
+      </>}
+      seite={
+      <Seitenkarte titel="Datenauskunft nach Artikel 15"
+        sub="Vollständige Aufstellung aller zu einer Person gespeicherten Daten, als Datei zur Aushändigung.">
+        <div style={{ display: "grid", gap: 12 }}>
+          <Sel value={pid} onChange={(e) => setPid(e.target.value)} aria-label="Person für die Datenauskunft">
+            <option value="">— Person wählen —</option>
+            {m.personen.map((p) => <option key={p.id} value={p.id}>{p.nachname}, {p.vorname}</option>)}</Sel>
+          <Btn kind="primary" disabled={!pid} onClick={() => akt.datenauskunft(pid)}>Auskunft erzeugen</Btn>
         </div>
-      </div>
-    </Card>);
+      </Seitenkarte>} />);
 }
 
 
@@ -11739,7 +12148,7 @@ function Import({ sitz, akt, onClose }) {
                   <span style={{ width: 20, height: 20, borderRadius: 10, display: "flex", alignItems: "center",
                     justifyContent: "center", fontSize: 11, fontWeight: 700,
                     background: z.ok ? "rgba(46,107,79,.14)" : "rgba(179,38,30,.12)",
-                    color: z.ok ? C.ok : C.danger }}>{z.ok ? "✓" : "✕"}</span></td>
+                    color: z.ok ? C.ok : C.danger }}>{z.ok ? <><Icon n="haken" size={13} strokeWidth={2.4} /><span className="nurLeser">ja</span></> : <><Icon n="x" size={13} strokeWidth={2.4} /><span className="nurLeser">nein</span></>}</span></td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 13 }}>
                   {z.nachname}, {z.vorname}{z.teilzeit && <Pill size="sm" style={{ marginLeft: 6 }}>TZ</Pill>}</td>
                 <td style={{ padding: "9px 14px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 12.5,
@@ -11782,21 +12191,21 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={eid} onChange={setEid}
             options={m.einheiten.map((e) => ({ id: e.id, label: e.name.replace(m.einheitLabel, "").trim() || e.name }))} />
-          <Btn size="sm" onClick={() => setJahr(jahr - 1)}>‹</Btn>
-          <span style={{ fontSize: 14, fontWeight: 600, minWidth: 52, textAlign: "center", ...NUM }}>{jahr}</span>
-          <Btn size="sm" onClick={() => setJahr(jahr + 1)}>›</Btn>
+          <Zeitwahl mitte={String(jahr)} onZurueck={() => setJahr(jahr - 1)} onWeiter={() => setJahr(jahr + 1)} />
         </div>}>Jahresansicht</H1>
 
       <Card style={{ overflowX: "auto" }}>
-        <div style={{ padding: 20, minWidth: 1080 }}>
+        <div style={{ padding: 20, display: "grid", gap: "22px 40px",
+          gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,540px),1fr))" }}>
           {leute.map((p) => {
             const ohneIst = !istVerfuegbar(m, p, zeitraumJahr(jahr));
             const jahresIst = ohneIst ? null : monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
             const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
             const url = urlaubskonto(m, p, jahr);
             return (
-              <div key={p.id} style={{ marginBottom: 18 }}>
-                <div onClick={() => oeffnePerson(p.id)} style={{ display: "flex", alignItems: "baseline",
+              <div key={p.id} style={{ minWidth: 0 }}>
+                <div {...klickbar(() => oeffnePerson(p.id), `${p.nachname}, ${p.vorname} öffnen`)}
+                  style={{ display: "flex", alignItems: "baseline",
                   gap: 12, marginBottom: 7, cursor: "pointer", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{p.nachname}, {p.vorname}</span>
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
@@ -11852,7 +12261,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                         + (soll > 0 ? ` (${prozent} %, ${sgn(Math.round(ist - soll))} h)` : " (kein Soll)"))
                         + (abwTage ? ` · ${abwTage} Tage abwesend${urlaubTage ? `, davon ${urlaubTage} Urlaub` : ""}` : "")}
                         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, cursor: "default" }}>
-                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 3,
+                        <div style={{ width: 40, height: 36, background: C.flaecheStill, borderRadius: 6,
                           position: "relative", overflow: "hidden" }}>
                           {/* Die Nulllinie: hundert Prozent des Monatssolls */}
                           <span style={{ position: "absolute", left: 0, right: 0, top: 18, height: 1,
@@ -11875,25 +12284,14 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           })}
         </div>
       </Card>
-      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.accent, opacity: .6 }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>im Rahmen</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.warn }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>über Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.danger }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>deutlich über Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 12, borderRadius: 3, background: C.violet }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>unter Soll</span></div>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ width: 12, height: 3, borderRadius: 2, background: C.ok }} />
-          <span style={{ fontSize: 12.5, color: C.dim }}>Abwesenheit</span></div>
-        <span style={{ fontSize: 12.5, color: C.dimmer }}>
-          Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</span>
-      </div>
+      <Legende style={{ marginTop: 16 }} punkte={[
+        { ton: "accent", label: "im Rahmen", farbig: false },
+        { ton: "warn", label: "über Soll", farbig: false },
+        { ton: "danger", label: "deutlich über Soll", farbig: false },
+        { ton: "violet", label: "unter Soll", farbig: false },
+        { ton: "ok", label: "Abwesenheit", farbig: false }]} />
+      <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
+        Die Mittellinie ist das Monatssoll. Nach oben Mehrarbeit, nach unten Unterdeckung.</div>
     </div>);
 }
 
@@ -11911,7 +12309,8 @@ function Dienstbuch({ sitz, akt }) {
   return (
     <div>
       <H1 sub="Was die nächste Schicht wissen muss. Ersetzt den Zettel am Wachtisch und bleibt nachvollziehbar."
-        right={<Inp type="date" value={datum} onChange={(e) => setDatum(e.target.value)} style={{ width: 180 }} />}>
+        right={<Inp type="date" value={datum} aria-label="Tag des Dienstbuchs"
+          onChange={(e) => setDatum(e.target.value)} style={{ width: 180 }} />}>
         Dienstbuch</H1>
 
       {darfSchreiben && (
@@ -11920,11 +12319,13 @@ function Dienstbuch({ sitz, akt }) {
           <div style={{ padding: 22, display: "grid", gap: 13 }}>
             <div style={{ display: "flex", gap: 8 }}>
               {arten.map(([id, l]) => (
-                <button key={id} onClick={() => setArt(id)} className="btn btn-sm"
-                  style={{ background: art === id ? "rgba(43,52,64,.10)" : C.bg,
-                    color: art === id ? C.text : C.dim, fontWeight: 600 }}>{l}</button>))}
+                <button key={id} onClick={() => setArt(id)} className="btn btn-sm" aria-pressed={art === id}
+                  style={{ background: art === id ? C.accentLight : C.flaeche,
+                    borderColor: art === id ? C.accent : undefined,
+                    color: art === id ? C.accent : C.dim, fontWeight: 600 }}>{l}</button>))}
             </div>
             <textarea className="inp" rows={3} value={text} onChange={(e) => setText(e.target.value)}
+              aria-label="Eintrag ins Dienstbuch"
               placeholder="Kurz und sachlich. Keine Gesundheitsdaten, keine Bewertungen von Personen." />
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               {waehltEinheit(sitz) && <EinheitWahl m={m} wert={einheitId} setWert={setEinheitId} style={{ marginRight: "auto" }} />}
@@ -11934,6 +12335,8 @@ function Dienstbuch({ sitz, akt }) {
           </div>
         </Card>)}
 
+      <Leitraster seiteBreite={340}
+        haupt={<>
       <Card>
         <CardHead right={<Lab>{eintraege.length} Einträge</Lab>}>{fLang(datum)}</CardHead>
         {eintraege.length === 0
@@ -11941,8 +12344,7 @@ function Dienstbuch({ sitz, akt }) {
           : eintraege.map((e, i) => (
             <div key={e.id} style={{ display: "flex", gap: 15, padding: "15px 22px",
               borderBottom: i < eintraege.length - 1 ? `1px solid ${C.lineSoft}` : "none" }}>
-              <span style={{ width: 4, borderRadius: 2, flexShrink: 0,
-                background: e.art === "vorkommnis" ? C.danger : e.art === "hinweis" ? C.warn : C.accent }} />
+              <span style={{ paddingTop: 6 }}><Punkt gross ton={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
                   <Pill size="sm" tone={e.art === "vorkommnis" ? "danger" : e.art === "hinweis" ? "warn" : "accent"}>
@@ -11953,6 +12355,15 @@ function Dienstbuch({ sitz, akt }) {
               </div>
             </div>))}
       </Card>
+        </>}
+        seite={eintraege.length > 0 ? (
+          <Seitenkarte titel="Einträge nach Art" sub={fLang(datum)}>
+            {arten.map(([id, l]) => {
+              const n = eintraege.filter((x) => x.art === id).length;
+              return <Balkenzeile key={id} label={l} wert={n} anteil={(n / eintraege.length) * 100}
+                ton={id === "vorkommnis" ? "danger" : id === "hinweis" ? "warn" : "accent"} punkt />;
+            })}
+          </Seitenkarte>) : null} />
     </div>);
 }
 
@@ -11965,9 +12376,14 @@ function Dienstbuch({ sitz, akt }) {
 function folgenPruefen(m, person, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { hindernisse: [], hinweise: [] };
-  const hind = hindernisse(m, person, datum, da);
-  /* Weiche Schutzregeln als Hinweis (Commit S2). */
-  const hinweise = einsatzSchutz(person, da, datum, () => wochenStundenGeplant(m, person, datum)).hinweise.map((text) => ({ art: "warn", text }));
+  /* Einmal geprüft (WP-11): Hindernisse ab „Achtung" — darin auch die
+     weichen Schutzregeln, wie im Warndialog —, als Hinweis nur nicht
+     Bewertbares und die Wochenstundengrenze. Kein Befund doppelt. */
+  const bef = hindernisBefunde(m, person, datum, da);
+  const hind = bef.filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);
+  const hinweise = bef.filter((b) => b.stufe === "hinweis").map((b) => ({ art: "warn", text: b.text }));
+  const grenze = stundengrenzeHinweis(person, da, datum, () => wochenStundenGeplant(m, person, datum));
+  if (grenze) hinweise.push({ art: "warn", text: grenze.text });
   const map = Object.fromEntries(m.dienstarten.map((x) => [x.id, x]));
 
   // Folgeschichten in beide Richtungen ausdrücklich benennen
@@ -11980,7 +12396,11 @@ function folgenPruefen(m, person, datum, dienstId) {
     const [nS, nE] = fenster(datum, da);
     const [oS, oE] = fenster(dd, other);
     const ruhe = off > 0 ? (oS - nE) / 60 : (nS - oE) / 60;
-    hinweise.push({ art: ruhe < m.einstellungen.ruhezeit ? "danger" : "info",
+    /* Dieselbe Bewertung wie in hindernisBefunde (ruhezeitStufe): Gesetz
+       unterschritten → danger, nur Betriebsgrenze → warn. Bis WP-11 rechnete
+       folgenPruefen mit eigener Grenze und meldete beides als danger. */
+    const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
+    hinweise.push({ art: rs === "recht" ? "danger" : rs ? "warn" : "info",
       text: off > 0
         ? `Am Folgetag ${fKurz(dd)} bereits ${other.name} (${other.start}–${other.ende}) — Ruhezeit ${n1(Math.max(0, ruhe))} h`
         : `Am Vortag ${fKurz(dd)} bereits ${other.name} (${other.start}–${other.ende}) — Ruhezeit ${n1(Math.max(0, ruhe))} h` });
@@ -12030,7 +12450,9 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   const b = besetzung(m, datum)[dienstId];
   const liste = useMemo(() => ersatzVorschlaege(m, datum, dienstId), [m, datum, dienstId]);
-  const moeglich = liste.filter((x) => x.moeglich);
+  const [mitAbweichung, setMitAbweichung] = useState(false);
+  const moeglich = liste.filter((x) => x.moeglich || mitAbweichung);
+  const anzahlAbweichung = liste.filter((x) => !x.moeglich).length;
   const folgen = gewaehlt ? folgenPruefen(m, gewaehlt, datum, dienstId) : null;
   const nachricht = anfrageText(m, datum, dienstId, Math.max(0, -b.diff));
 
@@ -12062,14 +12484,16 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
       <Lab style={{ marginBottom: 10 }}>Direkt eintragen · nach Eignung sortiert</Lab>
       {moeglich.length === 0 && (
         <div style={{ padding: 14, borderRadius: 12, background: C.dangerLight, color: C.danger, fontSize: 13.5, marginBottom: 16 }}>
-          Niemand einsetzbar, ohne Ruhezeit oder Einschränkungen zu verletzen. Nutze die Anfrage unten
-          oder die Eskalation im Tagesdetail.
+          Niemand einsetzbar, ohne Ruhezeit oder Einschränkungen zu verletzen. Nutze die Anfrage unten,
+          die Eskalation im Tagesdetail oder wähle unten jemanden mit Abweichung.
         </div>)}
       <div style={{ maxHeight: 220, overflowY: "auto", marginBottom: 18 }}>
-        {moeglich.slice(0, 8).map((x, i) => {
+        {moeglich.slice(0, mitAbweichung ? 30 : 8).map((x, i) => {
           const an = gewaehlt && gewaehlt.id === x.person.id;
           return (
-            <div key={x.person.id} onClick={() => setGewaehlt(an ? null : x.person)}
+            <div key={x.person.id} aria-pressed={an}
+              {...klickbar(() => setGewaehlt(an ? null : x.person),
+                `${x.person.nachname}, ${x.person.vorname} — Vorschlag ${i + 1}`)}
               className="karte" style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 13px",
                 marginBottom: 7, cursor: "pointer", outline: an ? `2px solid ${C.accent}` : "none" }}>
               <span style={{ width: 25, height: 25, borderRadius: 9, flexShrink: 0, display: "flex",
@@ -12077,7 +12501,8 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
                 background: i === 0 ? C.okLight : C.bg, color: i === 0 ? C.ok : C.dimmer }}>{i + 1}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 500 }}>{x.person.vorname} {x.person.nachname}</div>
-                <div style={{ fontSize: 12, color: C.dimmer }}>{x.gruende.slice(0, 2).join(" · ")}</div>
+                <div style={{ fontSize: 12, color: x.moeglich ? C.dimmer : C.danger }}>
+                  {x.moeglich ? x.gruende.slice(0, 2).join(" · ") : `mit Abweichung: ${x.hindernisse[0]}`}</div>
               </div>
               <span style={{ fontSize: 12, color: C.dimmer }}>{an ? "gewählt" : "prüfen"}</span>
             </div>);
@@ -12090,22 +12515,29 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
             Folgen für {gewaehlt.vorname} {gewaehlt.nachname}</div>
           {folgen.hindernisse.length > 0 && folgen.hindernisse.map((h, i) => (
             <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 7 }}>
-              <span style={{ color: C.danger, fontWeight: 700, fontSize: 13 }}>✕</span>
+              <span style={{ color: C.danger, display: "flex", marginTop: 2 }}><Icon n="x" size={14} strokeWidth={2.2} /></span>
               <span style={{ fontSize: 13, color: C.danger }}>{h}</span></div>))}
           {folgen.hinweise.map((h, i) => (
             <div key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 7 }}>
               <span style={{ fontSize: 13, fontWeight: 700,
                 color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dimmer }}>
-                {h.art === "danger" ? "✕" : h.art === "warn" ? "!" : "·"}</span>
+                {h.art === "danger" ? <Icon n="x" size={14} strokeWidth={2.2} /> : h.art === "warn" ? <Icon n="warnung" size={14} /> : "·"}</span>
               <span style={{ fontSize: 13, color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dim }}>{h.text}</span>
             </div>))}
           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
             <Btn kind="quiet" onClick={() => setGewaehlt(null)}>Andere wählen</Btn>
             <Btn kind={folgen.hindernisse.length ? "danger" : "primary"}
-              onClick={() => { akt.setzeEinsprung(gewaehlt.id, datum, dienstId); onClose(); }}>
-              {folgen.hindernisse.length ? "Trotzdem eintragen" : "Eintragen"}</Btn>
+              onClick={() => akt.mitWarnung(m, { titel: "Dienst besetzen",
+                eintraege: [{ personId: gewaehlt.id, datum, dienstId }], knopf: "Eintragen",
+                alternative: (pid) => { akt.setzeEinsprung(pid, datum, dienstId); onClose(); },
+                ausfuehren: (best) => { akt.setzeEinsprung(gewaehlt.id, datum, dienstId, best); onClose(); } })}>
+              {folgen.hindernisse.length ? "Trotzdem eintragen …" : "Eintragen"}</Btn>
           </div>
         </div>)}
+
+      {anzahlAbweichung > 0 && (
+        <Btn size="sm" kind="quiet" onClick={() => setMitAbweichung(!mitAbweichung)} style={{ marginTop: -8, marginBottom: 16 }}>
+          {mitAbweichung ? "Nur regelkonforme zeigen" : `Auch ${anzahlAbweichung} mit Abweichung zeigen`}</Btn>)}
 
       {/* Weg 2: offene Anfrage versenden */}
       <div style={{ paddingTop: 18, borderTop: `1px solid ${C.lineSoft}` }}>
@@ -12130,6 +12562,161 @@ function Schnellbesetzung({ sitz, datum, dienstId, akt, onClose }) {
 }
 
 /* ==========================================================================
+   WARNDIALOG — warnen statt sperren (E-19)
+
+   Ein Dialog für alle Stellen, an denen eine Einteilung gegen eine Regel
+   verstoßen würde. Er zeigt Was, Wo, Warum, Grundlage, Folgen und andere
+   Wege. Entscheiden tut der Mensch: ändern oder dennoch fortfahren.
+   Bei einem Rechtsverstoß ist „gelesen" anzukreuzen; der Grund ist
+   freiwillig und lässt sich überspringen.
+   ========================================================================== */
+function Warndialog({ sitz, vorgang, onClose }) {
+  const m = sitz.mandant;
+  const eintraege = vorgang.geprueft;
+  const mehrere = eintraege.length > 1;
+  const ernst = (e) => e.technisch || e.befunde.some((b) => stufeRang(b.stufe) >= 2);
+  const [auswahl, setAuswahl] = useState(() => new Set(eintraege
+    .map((e, i) => i).filter((i) => !mehrere || !ernst(eintraege[i]))));
+  const [gelesen, setGelesen] = useState(false);
+  const [grundArt, setGrundArt] = useState("");
+  const [grundText, setGrundText] = useState("");
+  const [uebersprungen, setUebersprungen] = useState(false);
+
+  const gewaehlt = eintraege.filter((_, i) => auswahl.has(i));
+  const alleBefunde = gewaehlt.flatMap((e) => e.befunde);
+  const stufe = hoechsteStufe(alleBefunde);
+  const technisch = gewaehlt.filter((e) => e.technisch || e.befunde.some((b) => b.art === "bestand"));
+  /* Harte Schutzbefunde (Kette B) lassen sich nicht wegbestätigen. */
+  const geschuetzt = gewaehlt.filter((e) => e.befunde.some((b) => b.sperrt));
+  const abwesend = gewaehlt.some((e) => e.befunde.some((b) => b.art === "abwesend"));
+  const recht = stufe === "recht";
+  /* Rechte bleiben (E-19, Grenzen): Eine Abwesenheit hebt nur auf, wer
+     Abwesenheiten pflegen darf — die Schichtverantwortung nicht. */
+  const abwesenheitGesperrt = abwesend && sitz.rolle === "subplaner";
+  const kann = gewaehlt.length > 0 && !technisch.length && !geschuetzt.length && !abwesenheitGesperrt && (!recht || gelesen);
+  const knopf = recht ? "Dennoch fortfahren" : stufe === "achtung" ? "Dennoch übernehmen" : (vorgang.knopf || "Übernehmen");
+  const grund = ABWEICHUNG_GRUENDE.find((g) => g.id === grundArt);
+  const einzel = !mehrere ? eintraege[0] : null;
+  const folgen = einzel && einzel.person && einzel.da ? folgenPruefen(m, einzel.person, einzel.datum, einzel.dienstId).hinweise : [];
+  const andere = einzel && vorgang.alternative && einzel.da
+    ? ersatzVorschlaege(m, einzel.datum, einzel.dienstId).filter((x) => x.moeglich && x.person.id !== einzel.personId).slice(0, 3) : [];
+
+  const umschalten = (i) => setAuswahl((s) => { const n = new Set(s); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const ausfuehren = () => {
+    vorgang.ausfuehren({
+      eintraege: gewaehlt.map((e) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, idx: e.idx, befunde: e.befunde })),
+      indizes: gewaehlt.map((e) => e.idx).filter((x) => x !== undefined),
+      gelesen, grundArt: uebersprungen ? null : (grundArt || null), grundText: uebersprungen ? "" : grundText.trim(),
+      abwesenheitAufheben: abwesend,
+    });
+    onClose();
+  };
+  const name = (e) => e.person ? `${e.person.vorname} ${e.person.nachname}` : "Unbekannte Person";
+  const farbe = (s) => s === "recht" ? C.danger : s === "achtung" ? C.warn : C.dim;
+
+  const Befund = ({ b }) => (
+    <div style={{ display: "flex", gap: 9, alignItems: "flex-start", marginBottom: 8 }}>
+      <Pill size="sm" tone={(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).ton}>{(WARNSTUFEN[b.stufe] || WARNSTUFEN.hinweis).label}</Pill>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, color: farbe(b.stufe), lineHeight: 1.45 }}>{b.text}</div>
+        {b.quelle && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 2 }}>Grundlage: {b.quelle}</div>}
+      </div>
+    </div>);
+
+  return (
+    <Sheet open onClose={onClose} titel={vorgang.titel || "Bitte prüfen"} width={720}>
+      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, marginBottom: 16 }}>
+        {mehrere
+          ? `${eintraege.filter((e) => !ernst(e)).length} von ${eintraege.length} Einträgen sind regelkonform und vorausgewählt. Einträge mit Befund kannst du einzeln dazunehmen.`
+          : "CENTRIC sperrt nicht. Lies, was gegen die Einteilung spricht, und entscheide: ändern oder dennoch fortfahren."}
+      </div>
+
+      {eintraege.map((e, i) => (!mehrere || ernst(e) || e.befunde.length > 0) && (
+        <div key={i} className="karte" style={{ padding: 14, marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: e.befunde.length ? 10 : 0 }}>
+            {mehrere && (
+              <input type="checkbox" checked={auswahl.has(i)} onChange={() => umschalten(i)}
+                aria-label={`${name(e)} am ${fKurz(e.datum)} übernehmen`} />)}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14.5, fontWeight: 600 }}>{name(e)}</div>
+              <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
+                {fLang(e.datum)} · {e.da ? `${e.da.name} ${e.da.start}–${e.da.ende}` : e.dienstId}</div>
+            </div>
+          </div>
+          {e.technisch && <div style={{ fontSize: 13, color: C.danger }}>{e.technisch}</div>}
+          {e.befunde.map((b, k) => <Befund key={k} b={b} />)}
+        </div>))}
+
+      {mehrere && eintraege.every((e) => !ernst(e) && !e.befunde.length) && (
+        <div style={{ fontSize: 13.5, color: C.ok, marginBottom: 12 }}>Alle Einträge sind regelkonform.</div>)}
+
+      {folgen.length > 0 && (
+        <div style={{ margin: "6px 0 14px" }}>
+          <Lab style={{ marginBottom: 8 }}>Folgen</Lab>
+          {folgen.map((h, k) => (
+            <div key={k} style={{ fontSize: 13, marginBottom: 5,
+              color: h.art === "danger" ? C.danger : h.art === "warn" ? C.warn : C.dim }}>{h.text}</div>))}
+        </div>)}
+
+      {andere.length > 0 && stufe && stufeRang(stufe) >= 2 && (
+        <div style={{ margin: "6px 0 14px" }}>
+          <Lab style={{ marginBottom: 8 }}>Andere Wege ohne Befund</Lab>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {andere.map((x) => (
+              <Btn key={x.person.id} size="sm" onClick={() => { vorgang.alternative(x.person.id); onClose(); }}>
+                {x.person.vorname} {x.person.nachname} einteilen</Btn>))}
+          </div>
+        </div>)}
+
+      {abwesend && (
+        <div style={{ fontSize: 13, color: abwesenheitGesperrt ? C.danger : C.dim, background: C.bg, borderRadius: 10, padding: "10px 12px", margin: "6px 0 14px", lineHeight: 1.5 }}>
+          {abwesenheitGesperrt
+            ? "Eine Abwesenheit kann nur die Planung oder die Leitung aufheben. Bitte dort melden oder einen anderen Weg wählen."
+            : "Die Abwesenheit wird für diesen Tag aufgehoben und die Person benachrichtigt. Der übrige Zeitraum bleibt bestehen."}
+        </div>)}
+
+      {technisch.length > 0 && (
+        <div style={{ fontSize: 13, color: C.danger, margin: "6px 0 14px", lineHeight: 1.5 }}>
+          Das geht technisch nicht: Die Person ist an diesem Tag nicht beschäftigt. Prüfe Eintritt und Austritt unter Personal.
+        </div>)}
+
+      {geschuetzt.length > 0 && !technisch.length && (
+        <div style={{ fontSize: 13, color: C.danger, margin: "6px 0 14px", lineHeight: 1.5 }}>
+          Für diese Einteilung gilt eine sperrende Regel (Schutz, Einschränkung, gesetzliche Qualifikation,
+          Einweisung oder Ruhezeit unter 11 Stunden). Sie lässt sich nicht bestätigen — bitte einen anderen Weg wählen.
+        </div>)}
+
+      {recht && !technisch.length && !geschuetzt.length && (
+        <div className="karte" style={{ padding: 14, margin: "6px 0 14px" }}>
+          <label style={{ display: "flex", gap: 9, alignItems: "flex-start", fontSize: 13.5, lineHeight: 1.45, cursor: "pointer" }}>
+            <input type="checkbox" checked={gelesen} onChange={(e) => setGelesen(e.target.checked)} />
+            Ich habe den Hinweis gelesen. Die Einteilung verstößt gegen eine gesetzliche Vorgabe; die Verantwortung liegt beim Arbeitgeber.
+          </label>
+          {!uebersprungen && (
+            <div style={{ marginTop: 12 }}>
+              <Lab style={{ marginBottom: 6 }}>Grund (freiwillig)</Lab>
+              <Sel value={grundArt} onChange={(e) => setGrundArt(e.target.value)} aria-label="Grund für die Abweichung">
+                <option value="">Grund wählen …</option>
+                {ABWEICHUNG_GRUENDE.map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}</Sel>
+              {grund && <Inp value={grundText} onChange={(e) => setGrundText(e.target.value)}
+                placeholder={grund.feld} aria-label={grund.feld} style={{ marginTop: 8 }} />}
+            </div>)}
+          <div style={{ marginTop: 10 }}>
+            <Btn size="sm" kind="quiet" onClick={() => setUebersprungen(!uebersprungen)}>
+              {uebersprungen ? "Doch einen Grund angeben" : "Überspringen"}</Btn>
+          </div>
+        </div>)}
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap", marginTop: 8 }}>
+        <Btn kind="quiet" onClick={onClose}>Ändern</Btn>
+        <Btn kind={recht ? "danger" : stufe === "achtung" ? "warn" : "primary"} disabled={!kann} onClick={ausfuehren}>
+          {mehrere ? `${knopf} (${gewaehlt.length})` : knopf}</Btn>
+      </div>
+      {vorgang.fussnote && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>{vorgang.fussnote}</div>}
+    </Sheet>);
+}
+
+/* ==========================================================================
    TAUSCHBÖRSE — offene Gesuche ohne festen Partner
    ========================================================================== */
 function Tauschboerse({ sitz, akt }) {
@@ -12139,7 +12726,20 @@ function Tauschboerse({ sitz, akt }) {
   const [neu, setNeu] = useState(false);
   const [f, setF] = useState({ datum: "", partnerId: "", text: "" });
   const boerse = m.anfragen.filter((a) => a.typ === "tausch" && a.status === "offen" && !a.partnerId);
-  const meine = m.anfragen.filter((a) => a.typ === "tausch" && a.personId === ich.id);
+  /* Wer über Anträge der Einheit entscheiden darf, sieht auch deren
+     Tauschvorgänge — nicht nur die eigenen (Entscheidung C7). Es ist eine
+     Frage der Anzeige: m.anfragen liefert der Server allen Rollen ohnehin
+     vollständig aus (bestandFuerRolle filtert Personen und Abwesenheiten,
+     nicht die Anfragen), und die Anträge-Ansicht filtert genauso. Alle
+     anderen sehen weiter nur ihre eigenen. */
+  const imUmfang = (a) => {
+    if (a.personId === ich.id) return true;
+    const pp = m.personen.find((x) => x.id === a.personId);
+    return !!pp && darfEntscheiden(sitz, einheitAm(pp, a.von));
+  };
+  const meine = m.anfragen.filter((a) => a.typ === "tausch" && imUmfang(a))
+    .sort((a, b) => (a.von < b.von ? 1 : a.von > b.von ? -1 : 0));
+  const fremde = meine.some((a) => a.personId !== ich.id);
   const eigeneDienste = Array.from({ length: 45 }, (_, i) => addDays(heute(), i))
     .filter((d) => personTag(m, ich, d).dienstId);
 
@@ -12149,7 +12749,9 @@ function Tauschboerse({ sitz, akt }) {
         right={darf(sitz, "req.create") && ich.imSchichtdienst !== false &&
           <Btn kind="primary" onClick={() => setNeu(true)}>Gesuch einstellen</Btn>}>Tauschbörse</H1>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Leitraster seiteBreite={360}
+        haupt={<>
+      <Card>
         <CardHead right={<Pill tone={boerse.length ? "accent" : "neutral"}>{boerse.length} offen</Pill>}>
           Offene Gesuche</CardHead>
         {boerse.length === 0
@@ -12186,8 +12788,14 @@ function Tauschboerse({ sitz, akt }) {
                         return (
                           <Btn key={iid} size="sm" kind={konflikt ? "danger" : "ok"}
                             title={konflikt ? "Einteilung würde Vorgaben verletzen" : "Tausch mit dieser Person bestätigen"}
-                            onClick={() => akt.tauschZuteilen(a.id, iid)}>
-                            {konflikt ? "! " : "✓ "}{ip.nachname}
+                            onClick={() => akt.mitWarnung(m, { titel: "Tausch bestätigen",
+                              eintraege: [...(t && t.dienstId ? [{ personId: iid, datum: a.von, dienstId: t.dienstId }] : []),
+                                ...(() => { const t2 = personTag(m, ip, a.von);
+                                  return t2 && t2.dienstId && m.dienstarten.some((x) => x.id === t2.dienstId)
+                                    ? [{ personId: a.personId, datum: a.von, dienstId: t2.dienstId }] : []; })()],
+                              knopf: "Tausch bestätigen", immerZeigen: false,
+                              ausfuehren: (best) => akt.tauschZuteilen(a.id, iid, best) })}>
+                            {konflikt ? <Icon n="warnung" size={14} /> : <Icon n="haken" size={14} />}{ip.nachname}
                           </Btn>);
                       })}
                     </div>)}
@@ -12209,19 +12817,27 @@ function Tauschboerse({ sitz, akt }) {
           })}
       </Card>
 
+        </>}
+        seite={<>
       {meine.length > 0 && (
         <Card>
-          <CardHead>Meine Tauschvorgänge</CardHead>
-          {meine.map((a) => (
-            <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 13, padding: "13px 22px",
-              borderBottom: `1px solid ${C.lineSoft}` }}>
-              <Pill size="sm" tone={a.status === "offen" ? "warn" : a.status === "genehmigt" ? "ok" : "danger"}>{a.status}</Pill>
-              <span style={{ fontSize: 13.5, flex: 1, ...NUM }}>
-                {fKurz(a.von)}{a.partnerId ? ` · mit ${(m.personen.find((x) => x.id === a.partnerId) || {}).nachname}` : " · offenes Gesuch"}
-              </span>
-              {a.antwort && <span style={{ fontSize: 12.5, color: C.dim }}>{a.antwort}</span>}
-            </div>))}
+          <CardHead right={fremde ? <Lab>Stand der Entscheidung</Lab> : undefined}>
+            {fremde ? "Tauschvorgänge" : "Meine Tauschvorgänge"}</CardHead>
+          {meine.map((a) => {
+            const wer = a.personId === ich.id ? null : m.personen.find((x) => x.id === a.personId);
+            return (
+              <div key={a.id} className="listenzeile" style={{ padding: "13px 22px", flexWrap: "wrap" }}>
+                <Pill size="sm" tone={a.status === "offen" ? "warn" : a.status === "genehmigt" ? "ok" : "danger"}>{a.status}</Pill>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160, ...NUM }}>
+                  {fKurz(a.von)}{a.partnerId ? ` · mit ${(m.personen.find((x) => x.id === a.partnerId) || {}).nachname}` : " · offenes Gesuch"}
+                  {wer && <span style={{ color: C.dim }}> · {wer.vorname} {wer.nachname}</span>}
+                </span>
+                {a.antwort && <span style={{ fontSize: 12.5, color: C.dim }}>{a.antwort}</span>}
+              </div>);
+          })}
         </Card>)}
+
+        </>} />
 
       <Sheet open={neu} onClose={() => setNeu(false)} titel="Tauschgesuch einstellen" width={560}>
         <div style={{ display: "grid", gap: 15 }}>
@@ -12256,8 +12872,11 @@ function Tauschboerse({ sitz, akt }) {
    TAGESSTART — der Einstieg für jede Rolle
    Nicht was alles existiert, sondern was heute ansteht.
    ========================================================================== */
-const AUFGABE_SYMBOL = { stempel: "◷", zeiten: "◷", nachweis: "⚠", nachweise: "⚠", post: "✉",
-  einsatz: "!", antrag: "✓", boerse: "⇄", besetzung: "!", pruefung: "⚠", freigabe: "◎", konto: "Σ" };
+const AUFGABE_SYMBOL = { stempel: "uhr", zeiten: "uhr", nachweis: "warnung", nachweise: "warnung", post: "brief",
+  einsatz: "warnung", antrag: "haken", boerse: "tausch", besetzung: "warnung", pruefung: "warnung",
+  freigabe: "kreis-haken", konto: "saeulen" };
+const AufgabeSymbol = ({ art }) => AUFGABE_SYMBOL[art]
+  ? <Icon n={AUFGABE_SYMBOL[art]} size={18} /> : <span aria-hidden="true">·</span>;
 
 /**
  * Der eigene Dienst heute mit der Stempeluhr — am Rechner das Gegenstück zur
@@ -12352,20 +12971,20 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
               <div style={{ width: `${es.anteil}%`, height: "100%", background: C.ok, transition: "width .4s" }} />
             </div>
             {es.schritte.map((x) => (
-              <div key={x.id} onClick={() => !x.erledigt && gehZu(x.ziel)}
+              <div key={x.id} {...klickbar(x.erledigt ? null : () => gehZu(x.ziel))}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "11px 0",
                   cursor: x.erledigt ? "default" : "pointer", opacity: x.erledigt ? .5 : 1,
                   borderBottom: `1px solid ${C.lineSoft}` }}>
                 <span style={{ width: 24, height: 24, borderRadius: 12, flexShrink: 0, display: "flex",
                   alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700,
                   background: x.erledigt ? C.okLight : C.lineSoft,
-                  color: x.erledigt ? C.ok : C.dimmer }}>{x.erledigt ? "✓" : "·"}</span>
+                  color: x.erledigt ? C.ok : C.dimmer }}>{x.erledigt ? <Icon n="haken" size={14} strokeWidth={2.4} /> : "·"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: x.erledigt ? 400 : 600,
                     textDecoration: x.erledigt ? "line-through" : "none" }}>{x.titel}</div>
                   <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 2 }}>{x.text}</div>
                 </div>
-                {!x.erledigt && <span style={{ color: C.dimmer, fontSize: 19 }}>›</span>}
+                {!x.erledigt && <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={19} /></span>}
               </div>))}
           </Card>);
       })()}
@@ -12374,7 +12993,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
 
       {aufgaben.length === 0
         ? <Card style={{ padding: 44, textAlign: "center" }}>
-            <div style={{ fontSize: 34, marginBottom: 12, color: C.ok }}>✓</div>
+            <div style={{ marginBottom: 12, color: C.ok, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={40} /></div>
             <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 7 }}>Alles erledigt</div>
             <div style={{ fontSize: 14, color: C.dim, maxWidth: 380, margin: "0 auto", lineHeight: 1.5 }}>
               Nichts erfordert derzeit eine Entscheidung. Über die Navigation kommst du zu allen Ansichten.
@@ -12382,7 +13001,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
           </Card>
         : <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 14 }}>
             {aufgaben.map((a, i) => (
-              <Card key={i} hover onClick={() => gehZu(a.ziel)}
+              <Card key={i} hover {...klickbar(() => gehZu(a.ziel))}
                 style={{ padding: 20, cursor: "pointer", position: "relative", overflow: "hidden" }}>
                 {a.dringend && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4,
                   background: C.danger }} />}
@@ -12390,14 +13009,14 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
                   <span style={{ width: 38, height: 38, borderRadius: 13, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                     background: a.dringend ? C.dangerLight : C.bg,
-                    color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                    color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 15.5, fontWeight: 620, letterSpacing: "-.01em" }}>{a.titel}</div>
                     <div style={{ fontSize: 13, color: C.dim, marginTop: 5, lineHeight: 1.45 }}>{a.text}</div>
                     {a.aktion && <div style={{ marginTop: 12 }}>
                       <span className="btn btn-sm btn-primary">{a.aktion}</span></div>}
                   </div>
-                  <span style={{ color: C.dimmer, fontSize: 19, flexShrink: 0 }}>›</span>
+                  <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={19} /></span>
                 </div>
               </Card>))}
           </div>}
@@ -12516,10 +13135,11 @@ function Verfuegbarkeit({ sitz, akt, personId, onClose }) {
             {DOW.map((_, d) => {
               const i = d * 3 + f.id, an = v.raster[i];
               return (
-                <button key={d} onClick={() => um(i)} 
+                <button key={d} onClick={() => um(i)} aria-label={`${DOW[d]}, ${f.name}`} aria-pressed={!!an}
                   style={{ height: 46, borderRadius: 12, border: "none", cursor: "pointer",
                     background: an ? C.okLight : C.bg,
-                    color: an ? C.ok : "transparent", fontSize: 17, fontWeight: 700 }}>✓</button>);
+                    color: C.ok, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {an && <Icon n="haken" size={20} strokeWidth={2.4} />}</button>);
             })}
           </div>))}
         <div style={{ display: "flex", gap: 18, marginTop: 16, alignItems: "center", flexWrap: "wrap" }}>
@@ -12563,19 +13183,18 @@ function Nachweise({ sitz, akt }) {
         sub="Sachkunde, Erste Hilfe, Führungszeugnis und Fahrerlaubnis laufen ab. Ein abgelaufener Nachweis zählt für die Besetzung nicht mehr mit — die Prüfung schlägt an, bevor jemand ohne gültige Qualifikation im Dienst steht.">
         Nachweise</H1>
 
-      <KpiRow min={190}>
-        <Kpi label="Abgelaufen" value={nl.abgelaufen.length} tone={nl.abgelaufen.length ? "danger" : "ok"}
-          sub="zählen nicht mehr für die Besetzung" />
-        <Kpi label="Laufen bald ab" value={nl.bald.length} tone={nl.bald.length ? "warn" : "ok"}
-          sub={`in den nächsten ${NACHWEIS_VORLAUF} Tagen`} />
-        <Kpi label="Fehlen" value={nl.fehlt.length} tone={nl.fehlt.length ? "warn" : "ok"} sub="pflichtig, aber nicht hinterlegt" />
-        <Kpi label="Gültig" value={alleZeilen.filter((x) => x.stand === "gueltig").length} tone="ok" />
-      </KpiRow>
+      <Kennzahlen min={190} kacheln={[
+        { label: "Abgelaufen", wert: nl.abgelaufen.length, ton: nl.abgelaufen.length ? "danger" : "ok",
+          hervor: nl.abgelaufen.length ? "danger" : undefined, sub: "zählen nicht mehr für die Besetzung" },
+        { label: "Laufen bald ab", wert: nl.bald.length, ton: nl.bald.length ? "warn" : "ok",
+          sub: `in den nächsten ${NACHWEIS_VORLAUF} Tagen` },
+        { label: "Fehlen", wert: nl.fehlt.length, ton: nl.fehlt.length ? "warn" : "ok", sub: "pflichtig, aber nicht hinterlegt" },
+        { label: "Gültig", wert: alleZeilen.filter((x) => x.stand === "gueltig").length, ton: "ok" }]} />
 
-      <div className="reiterreihe" style={{ margin: "22px 0 16px" }}>
-        {[["alle", "Alle"], ["kritisch", `Kritisch · ${nl.abgelaufen.length + nl.fehlt.length}`],
-          ["bald", `Bald · ${nl.bald.length}`], ["gueltig", "Gültig"]].map(([id, l]) => (
-          <Btn key={id} size="sm" kind={f === id ? "primary" : "plain"} onClick={() => setF(id)}>{l}</Btn>))}
+      <div style={{ margin: "0 0 14px" }}>
+        <Seg value={f} onChange={setF} options={[{ id: "alle", label: "Alle" },
+          { id: "kritisch", label: `Kritisch · ${nl.abgelaufen.length + nl.fehlt.length}` },
+          { id: "bald", label: `Bald · ${nl.bald.length}` }, { id: "gueltig", label: "Gültig" }]} />
       </div>
 
       <Card>
@@ -12706,14 +13325,15 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
     const breite = 100 / Math.max(1, spalten);
     const namen = s.personen.slice(0, 3).map((p) => p.nachname).join(", ");
     return (
-      <div onClick={() => oeffneTag(tag)}
+      <div {...klickbar(() => oeffneTag(tag),
+        `${s.da.name} ${s.da.start}–${s.da.ende}, ${s.anzahl} von ${s.soll} besetzt${namen ? ` · ${namen}` : ""}`)}
         title={`${s.da.name} ${s.da.start}–${s.da.ende} · ${s.anzahl} von ${s.soll}${namen ? ` · ${namen}` : ""}`}
         style={{ position: "absolute", top: oben, height: hoehe,
           left: `calc(${index * breite}% + 2px)`, width: `calc(${breite}% - 4px)`,
           background: `${s.da.farbe}1C`, borderLeft: `3px solid ${s.da.farbe}`,
-          borderRadius: 9, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
+          borderRadius: 8, padding: "5px 7px", overflow: "hidden", cursor: "pointer",
           outline: s.status === "danger" ? `2px solid ${C.danger}` : s.status === "warn" ? `2px solid ${C.warn}` : "none" }}>
-        <div style={{ fontSize: 11.5, fontWeight: 700, color: s.da.farbe, lineHeight: 1.2,
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: lesbar(s.da.farbe), lineHeight: 1.2,
           whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.da.kurz}</div>
         {hoehe > 40 && (
           <div style={{ fontSize: 10.5, marginTop: 2, lineHeight: 1.25,
@@ -12759,9 +13379,9 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
         right={<div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <Seg value={modus} onChange={setModus} options={[{ id: "tag", label: "Tag" },
             { id: "woche", label: "Woche" }, { id: "personen", label: "Personen" }]} />
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))}>‹</Btn>
-          <Btn size="sm" onClick={() => setDatum(heute())}>Heute</Btn>
-          <Btn size="sm" onClick={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))}>›</Btn>
+          <Zeitwahl onZurueck={() => setDatum(addDays(datum, modus === "tag" ? -1 : -7))}
+            onHeute={() => setDatum(heute())}
+            onWeiter={() => setDatum(addDays(datum, modus === "tag" ? 1 : 7))} />
         </div>}>
         {modus === "tag" ? fLang(datum) : `Woche ab ${fDatum(montag(datum))}`}</H1>
 
@@ -12809,13 +13429,14 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
                         <div key={k} style={{ position: "absolute", left: `${(k / 12) * 100}%`,
                           top: 0, bottom: 0, width: 1, background: C.lineSoft }} />))}
                       {z.da ? (
-                        <div onClick={() => oeffneTag(datum)}
+                        <div {...klickbar(() => oeffneTag(datum),
+                          `${fKurz(datum)}: ${z.da.name} ${z.da.start}–${z.da.ende}`)}
                           title={`${z.da.name} ${z.da.start}–${z.da.ende}`}
                           style={{ position: "absolute", left: `${links}%`, width: `${breite}%`,
                             top: 6, bottom: 6, borderRadius: 9, cursor: "pointer",
                             background: `${z.da.farbe}14`, borderLeft: `3px solid ${z.da.farbe}`,
                             display: "flex", alignItems: "center", padding: "0 10px", overflow: "hidden" }}>
-                          <span style={{ fontSize: 11.5, fontWeight: 650, color: z.da.farbe,
+                          <span style={{ fontSize: 11.5, fontWeight: 650, color: lesbar(z.da.farbe),
                             whiteSpace: "nowrap" }}>{z.da.kurz}</span>
                           <span style={{ fontSize: 11, color: C.dim, marginLeft: 8,
                             whiteSpace: "nowrap", ...NUM }}>{z.da.start}–{z.da.ende}</span>
@@ -12859,7 +13480,8 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
               const eng = eintrag && knapp(eintrag.b);
               const aus = nurKnapp && !eng;
               return (
-                <div key={d} onClick={() => oeffneTag(d)} style={{ flex: 1, textAlign: "center",
+                <div key={d} {...klickbar(() => oeffneTag(d), `${fKurz(d)} öffnen`)}
+                  style={{ flex: 1, textAlign: "center",
                   cursor: "pointer", opacity: aus ? .3 : 1, padding: "0 3px" }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: dow(d) >= 5 ? C.dim : C.text }}>
                     {DOW[dow(d)]}</div>
@@ -12884,7 +13506,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
               {/* Waagerechte Stundenlinien über die ganze Breite */}
               {STD.map((h) => (
                 <div key={h} style={{ position: "absolute", left: 0, right: 0, top: (h - VON) * ZH,
-                  height: 1, background: h % 6 === 0 ? "rgba(30,30,22,.13)" : C.bg,
+                  height: 1, background: h % 6 === 0 ? C.lineStark : C.bg,
                   pointerEvents: "none" }} />))}
               {(modus === "tag" ? [datum] : woche).map((d) => {
                 const eintrag = spuren.find((x) => x.d === d) || { b: [] };
@@ -12901,7 +13523,7 @@ function Zeitachse({ sitz, oeffneTag, akt }) {
                 const anzahlLagen = Math.max(1, lagen.length);
                 return (
                   <div key={d} style={{ flex: 1, position: "relative", opacity: aus ? .22 : 1,
-                    background: d === heute() ? "rgba(43,44,37,.035)" : "transparent", borderRadius: 9 }}>
+                    background: d === heute() ? C.flaecheStill : "transparent", borderRadius: 8 }}>
                     {lagen.map((lage, li) => lage.map((sp) => (
                       <Balken key={`${d}${sp.da.id}`} s={sp} spalten={anzahlLagen} index={li} tag={d} />)))}
                   </div>);
@@ -12941,7 +13563,12 @@ function SchwarzesBrett({ sitz, akt }) {
 
       {eintraege.length === 0
         ? <Card><Leer titel="Nichts angeschlagen" text="Hier stehen Mitteilungen, die alle im Betrieb betreffen — Termine, Änderungen, Hinweise." /></Card>
-        : <div style={{ display: "grid", gap: 14 }}>
+        : <>
+          <Abschnittskopf titel="Angeschlagen"
+            sub={`${eintraege.filter((x) => !(x.bis && x.bis < heute())).length} gelten · ${eintraege.filter((x) => x.wichtig).length} wichtig · ${eintraege.filter((x) => x.bis && x.bis < heute()).length} abgelaufen`}
+            rechts="Wichtige zuerst, danach nach Eingang" />
+          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill,minmax(min(100%,420px),1fr))",
+            alignItems: "start" }}>
             {eintraege.map((x) => {
               const abgelaufen = x.bis && x.bis < heute();
               return (
@@ -12962,7 +13589,7 @@ function SchwarzesBrett({ sitz, akt }) {
                   </div>
                 </Card>);
             })}
-          </div>}
+          </div></>}
 
       <Sheet open={neu} onClose={() => setNeu(false)} titel="Aushang verfassen" width={580}>
         <div style={{ display: "grid", gap: 16 }}>
@@ -13007,14 +13634,13 @@ function Betriebsmittel({ sitz, akt }) {
         right={darfPflegen && <Btn kind="primary" onClick={() => setNeu(true)}>Betriebsmittel anlegen</Btn>}>
         Betriebsmittel</H1>
 
-      <KpiRow min={160}>
-        <Kpi label="Erfasst" value={liste.length} />
-        <Kpi label="Ausgegeben" value={ausgegeben} tone={ausgegeben ? "accent" : "text"}
-          sub={`${liste.length - ausgegeben} im Bestand`} />
-        {MITTEL_ARTEN.slice(0, 3).map(([id, l]) => <Kpi key={id} label={l} value={jeArt[id] || 0} />)}
-      </KpiRow>
+      <Kennzahlen min={160} kacheln={[
+        { label: "Erfasst", wert: liste.length },
+        { label: "Ausgegeben", wert: ausgegeben, ton: ausgegeben ? "accent" : undefined,
+          sub: `${liste.length - ausgegeben} im Bestand` },
+        ...MITTEL_ARTEN.slice(0, 3).map(([id, l]) => ({ label: l, wert: jeArt[id] || 0 }))]} />
 
-      <Card style={{ marginTop: 22 }}>
+      <Card>
         {liste.length === 0
           ? <Leer titel="Noch nichts erfasst" text="Lege Schlüssel, Fahrzeuge oder Geräte an und weise sie Personen zu." />
           : liste.map((x, i) => {
@@ -13039,7 +13665,7 @@ function Betriebsmittel({ sitz, akt }) {
                     </Sel>
                   : <Pill size="sm" tone={p ? "accent" : "neutral"}>{p ? `${p.nachname}` : "im Bestand"}</Pill>}
                 {x.seit && <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>seit {fKurz(x.seit)}</span>}
-                {darfPflegen && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)}>×</Btn>}
+                {darfPflegen && <Btn size="sm" kind="danger" onClick={() => akt.loescheMittel(x.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>}
               </Ziehbar>);
           })}
       </Card>
@@ -13140,16 +13766,24 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
   };
 
   if (!offen) return null;
-  const SYM = { ansicht: "▸", person: "◍", datum: "▤", aktion: "⚡", satz: "→", unklar: "?" };
+  const SYM = { ansicht: "pfeil-rechts", person: "person", datum: "kalender", aktion: "stift", satz: "pfeil-rechts", unklar: "info" };
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 95, padding: "12vh 20px 20px",
-      background: "rgba(24,24,20,.30)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
+      background: "var(--c-ueberlagerung)", backdropFilter: "blur(7px)", WebkitBackdropFilter: "blur(7px)" }}>
       <div onClick={(e) => e.stopPropagation()} className="blatt"
         style={{ maxWidth: 620, margin: "0 auto", padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${C.lineSoft}`, display: "flex",
           alignItems: "center", gap: 13 }}>
-          <span style={{ fontSize: 17, color: C.dimmer }}>⌕</span>
+          <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}><Icon n="suche" size={18} /></span>
+          {/* Die Trefferliste wird mit Pfeiltasten bedient, nicht mit der
+              Tabulatortaste. Für eine Vorlesesoftware ist das nur dann
+              nachvollziehbar, wenn Feld und Liste als zusammengehörig
+              ausgezeichnet sind: Das Feld nennt die Liste, die Liste nennt
+              die gerade hervorgehobene Zeile. */}
           <input ref={feld} value={q} onChange={(e) => setQ(e.target.value)}
+            role="combobox" aria-expanded={treffer.length > 0} aria-controls="suchtreffer"
+            aria-autocomplete="list" aria-label="Ansicht, Person, Datum oder Aktion suchen"
+            aria-activedescendant={treffer.length ? `suchtreffer-${i}` : undefined}
             onKeyDown={(e) => {
               if (e.key === "ArrowDown") { e.preventDefault(); setI(Math.min(treffer.length - 1, i + 1)); }
               else if (e.key === "ArrowUp") { e.preventDefault(); setI(Math.max(0, i - 1)); }
@@ -13162,18 +13796,20 @@ function Kommandoleiste({ sitz, nav, akt, offen, onClose, gehZu, oeffneTag, oeff
           <kbd style={{ fontSize: 11, color: C.dimmer, background: C.lineSoft,
             padding: "3px 7px", borderRadius: 6, ...NUM }}>Esc</kbd>
         </div>
-        <div style={{ maxHeight: "52vh", overflowY: "auto" }}>
+        <div id="suchtreffer" role="listbox" aria-label="Treffer"
+          style={{ maxHeight: "52vh", overflowY: "auto" }}>
           {treffer.length === 0
             ? <div style={{ padding: 30, textAlign: "center", color: C.dimmer, fontSize: 14 }}>
                 Nichts gefunden. Suche nach einer Ansicht, einem Nachnamen oder einem Datum wie 16.9.
               </div>
             : treffer.map((t, k) => (
-              <div key={k} onMouseEnter={() => setI(k)} onClick={() => waehlen(t)}
+              <div key={k} id={`suchtreffer-${k}`} role="option" aria-selected={i === k}
+                onMouseEnter={() => setI(k)} onClick={() => waehlen(t)}
                 style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 22px", cursor: "pointer",
                   background: i === k ? "rgba(43,44,37,.07)" : "transparent" }}>
                 <span style={{ width: 27, height: 27, borderRadius: 9, flexShrink: 0, fontSize: 13,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  background: C.bg, color: C.dim }}>{SYM[t.art]}</span>
+                  background: C.bg, color: C.dim }}><Icon n={SYM[t.art] || "info"} size={15} /></span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: i === k ? 620 : 500 }}>{t.titel}</div>
                   <div style={{ fontSize: 12, color: C.dimmer }}>{t.unter}</div>
@@ -13205,34 +13841,54 @@ function Planstand({ sitz, ym, akt }) {
       </div>
     </Card>);
 
+  const kurz = v.zeilen.filter((z) => z.vorlauf < 14).length;
+  const summe = Math.max(1, v.wechsel + v.zusatz + v.entfall);
   return (
     <div>
-      <KpiRow min={165}>
-        <Kpi label="Änderungen seit Freigabe" value={v.zeilen.length}
-          tone={v.zeilen.length > 20 ? "warn" : "text"} sub={fg ? `Stand ${fg.stand} · ${v.zeit}` : ""} />
-        <Kpi label="Zusätzlich" value={v.zusatz} tone={v.zusatz ? "warn" : "ok"} />
-        <Kpi label="Entfallen" value={v.entfall} />
-        <Kpi label="Getauscht" value={v.wechsel} />
-        <Kpi label="Kurzfristig" value={v.zeilen.filter((z) => z.vorlauf < 14).length}
-          tone={v.zeilen.filter((z) => z.vorlauf < 14).length ? "danger" : "ok"} sub="unter 14 Tagen Vorlauf" />
-      </KpiRow>
+      <Kennzahlen min={165} kacheln={[
+        { label: "Änderungen seit Freigabe", wert: v.zeilen.length, ton: v.zeilen.length > 20 ? "warn" : "accent",
+          sub: fg ? `Stand ${fg.stand} · ${v.zeit}` : "" },
+        { label: "Zusätzlich", wert: v.zusatz, ton: v.zusatz ? "warn" : "ok" },
+        { label: "Entfallen", wert: v.entfall },
+        { label: "Getauscht", wert: v.wechsel, ton: "accent" },
+        { label: "Kurzfristig", wert: kurz, ton: kurz ? "danger" : "ok", hervor: kurz ? "danger" : undefined,
+          sub: "unter 14 Tagen Vorlauf" }]} />
 
-      <Card style={{ marginTop: 20 }}>
-        <CardHead right={<Lab>nach Datum</Lab>}>Was sich geändert hat</CardHead>
-        {v.zeilen.length === 0
-          ? <Leer titel="Unverändert" text="Seit der Freigabe wurde nichts am Plan geändert." />
-          : v.zeilen.slice(0, 80).map((z, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 22px",
-              borderBottom: `1px solid ${C.lineSoft}`, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12.5, color: C.dim, minWidth: 82, ...NUM }}>{fKurz(z.datum)}</span>
-              <span style={{ fontSize: 13.5, flex: 1, minWidth: 150 }}>{z.person.nachname}, {z.person.vorname}</span>
-              <span style={{ fontSize: 13, color: C.dimmer }}>{z.von}</span>
-              <span style={{ color: C.dimmer }}>→</span>
-              <span style={{ fontSize: 13, fontWeight: 600,
-                color: z.richtung === "zusatz" ? C.warn : z.richtung === "entfall" ? C.dim : C.accent }}>{z.nach}</span>
-              {z.vorlauf < 14 && z.vorlauf >= 0 && <Pill size="sm" tone="danger">{z.vorlauf} Tage Vorlauf</Pill>}
-            </div>))}
-      </Card>
+      <Leitraster seiteBreite={340}
+        haupt={
+          <Card>
+            <CardHead right={<Lab>nach Datum</Lab>}>Was sich geändert hat</CardHead>
+            {v.zeilen.length === 0
+              ? <Leer titel="Unverändert" text="Seit der Freigabe wurde nichts am Plan geändert." />
+              : v.zeilen.slice(0, 80).map((z, i) => (
+                <div key={i} className="listenzeile" style={{ padding: "11px 22px", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, color: C.dim, minWidth: 82, ...NUM }}>{fKurz(z.datum)}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 190 }}>
+                    <Avatar person={z.person} size="sm" style={{ width: 26, height: 26, fontSize: 10 }} />
+                    <span style={{ fontSize: 13.5 }}>{z.person.nachname}, {z.person.vorname}</span></span>
+                  <span style={{ fontSize: 13, color: C.dim }}>{z.von}</span>
+                  <span style={{ color: C.dim, display: "flex" }}><Icon n="pfeil-rechts" size={15} /></span>
+                  <span style={{ fontSize: 13, fontWeight: 600,
+                    color: z.richtung === "zusatz" ? C.warn : z.richtung === "entfall" ? C.dim : C.accent }}>{z.nach}</span>
+                  {z.vorlauf < 14 && z.vorlauf >= 0 && <Pill size="sm" tone="danger">{z.vorlauf} Tage Vorlauf</Pill>}
+                </div>))}
+          </Card>}
+        seite={<>
+          {fg && (
+            <Seitenkarte titel="Stand der Freigabe" rechts={<Pill size="sm" tone="ok">festgehalten</Pill>}>
+              <div style={{ fontSize: 26, fontWeight: 350, letterSpacing: "-.03em", ...NUM }}>{fg.stand}</div>
+              <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.5 }}>
+                Veröffentlicht {fg.zeit} durch {fg.durch}.</div>
+            </Seitenkarte>)}
+          <Seitenkarte titel="Nach Art der Änderung">
+            <Balkenzeile label="Getauscht" wert={v.wechsel} anteil={(v.wechsel / summe) * 100} ton="accent" />
+            <Balkenzeile label="Zusätzlich" wert={v.zusatz} anteil={(v.zusatz / summe) * 100} ton="warn" />
+            <Balkenzeile label="Entfallen" wert={v.entfall} anteil={(v.entfall / summe) * 100} ton="neutral" />
+            <Erklaerkasten style={{ marginTop: 12 }}>
+              Kurzfristig heißt: weniger als 14 Tage zwischen der Änderung und dem betroffenen Diensttag.
+            </Erklaerkasten>
+          </Seitenkarte>
+        </>} />
     </div>);
 }
 
@@ -13314,13 +13970,13 @@ function Lenkzeiten({ sitz, akt }) {
       <H1 rubrik="Auswertung"
         sub="Lenkzeit, Unterbrechung und Ruhezeit nach der Verordnung (EG) 561/2006 und der FPersV. Erfasst wird, was der Tachograf aufgezeichnet hat — aus dem Dienstplan lässt sich keine Lenkzeit ableiten."
         right={(<div style={{ display: "flex", gap: 9 }} className="noprint">
-          <Btn onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+          <Btn onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück"><Icon n="chevron-links" size={16} /></Btn>
           <Btn onClick={() => setWoche(montag(heute()))}>Diese Woche</Btn>
-          <Btn onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+          <Btn onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor"><Icon n="chevron-rechts" size={16} /></Btn>
         </div>)}>
         Lenkzeiten · {fKurz(woche)} bis {fKurz(addDays(woche, 6))}</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", maxWidth: 420 }}>
           <Field label="Fahrerin oder Fahrer">
             <Sel value={person ? person.id : ""} onChange={(e) => setPersonId(e.target.value)}>
@@ -13333,99 +13989,99 @@ function Lenkzeiten({ sitz, akt }) {
         <Card><Leer titel="Niemand im Bestand"
           text="Für diese Woche ist keine Person im Dienst." /></Card>
       ) : (<>
-        <KpiRow min={190}>
-          <Kpi label="Lenkzeit der Woche" value={`${n1(lage.summe / 60)} h`}
-            tone={lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.wocheLenkzeit / 60} h`} />
-          <Kpi label="Verlängerte Tage" value={lage.verlaengerungen}
-            tone={lage.verlaengerungen > FAHR_GRENZEN.tagVerlaengerungenJeWoche ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.tagVerlaengerungenJeWoche} auf zehn Stunden`} />
-          <Kpi label="Verkürzte Ruhezeiten" value={lage.verkuerzungen}
-            tone={lage.verkuerzungen > FAHR_GRENZEN.verkuerzungenJeWoche ? "danger" : "ok"}
-            sub={`höchstens ${FAHR_GRENZEN.verkuerzungenJeWoche} auf neun Stunden`} />
-          <Kpi label="Nicht erfasst" value={lage.fehlend}
-            tone={lage.fehlend ? "warn" : "ok"} sub="Tage ohne Aufzeichnung" />
-        </KpiRow>
+        <Kennzahlen kacheln={[
+          { label: "Lenkzeit der Woche", wert: `${n1(lage.summe / 60)} h`,
+            ton: lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : "ok",
+            hervor: lage.summe > FAHR_GRENZEN.wocheLenkzeit ? "danger" : undefined,
+            sub: `höchstens ${FAHR_GRENZEN.wocheLenkzeit / 60} h` },
+          { label: "Verlängerte Tage", wert: lage.verlaengerungen,
+            ton: lage.verlaengerungen > FAHR_GRENZEN.tagVerlaengerungenJeWoche ? "danger" : "ok",
+            sub: `höchstens ${FAHR_GRENZEN.tagVerlaengerungenJeWoche} auf zehn Stunden` },
+          { label: "Verkürzte Ruhezeiten", wert: lage.verkuerzungen,
+            ton: lage.verkuerzungen > FAHR_GRENZEN.verkuerzungenJeWoche ? "danger" : "ok",
+            sub: `höchstens ${FAHR_GRENZEN.verkuerzungenJeWoche} auf neun Stunden` },
+          { label: "Nicht erfasst", wert: lage.fehlend, ton: lage.fehlend ? "warn" : "ok",
+            hervor: lage.fehlend ? "warn" : undefined, sub: "Tage ohne Aufzeichnung" }]} />
 
-        {lage.befunde.length > 0 && (
-          <Card style={{ marginTop: 22, borderColor: C.danger }}>
-            <CardHead>Wochenbefunde</CardHead>
-            {lage.befunde.map((b, i) => (
-              <div key={i} style={{ padding: "12px 22px", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
-                <div style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.dim,
-                  lineHeight: 1.55 }}>{b.text}</div>
-                <div style={{ fontSize: 11.5, color: C.dimmer, marginTop: 4 }}>{b.regel}</div>
-              </div>))}
-          </Card>)}
+        <Leitraster seiteBreite={340}
+          haupt={<>
+            {lage.befunde.length > 0 && (
+              <Card style={{ borderColor: C.danger }}>
+                <CardHead>Wochenbefunde</CardHead>
+                {lage.befunde.map((b, i) => (
+                  <div key={i} style={{ padding: "12px 22px", borderTop: i ? `1px solid ${C.lineSoft}` : "none" }}>
+                    <div style={{ fontSize: 13.5, color: b.schwere === "danger" ? C.danger : C.dim,
+                      lineHeight: 1.55 }}>{b.text}</div>
+                    <div style={{ fontSize: 11.5, color: C.dim, marginTop: 4 }}>{b.regel}</div>
+                  </div>))}
+              </Card>)}
 
-        <Card style={{ marginTop: 22 }}>
-          <CardHead right={<Lab>Minuten, wie vom Kontrollgerät gelesen</Lab>}>Die Woche</CardHead>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ textAlign: "left", color: C.dim }}>
-                {["Tag", "Kennzeichen", "Lenkzeit", "Unterbrechungen", "Ruhe davor", "Urteil"].map((h) => (
-                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
-              </tr></thead>
-              <tbody>
-                {tage.map((d, i) => {
-                  const e = eintrag(d);
-                  const r = lage.tage[i];
-                  const ton = r.urteil === "rot" ? C.danger : r.urteil === "grau" ? C.dimmer : C.ok;
-                  return (
-                    <tr key={d} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>
-                        {DOW[dow(d)]} {fKurz(d)}</td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp style={{ width: 110, padding: "6px 8px" }} disabled={!darfPflegen}
-                          value={e.kennzeichen || ""} placeholder="—"
-                          onChange={(ev) => setz(d, "kennzeichen", ev.target.value)}
-                          aria-label={`Kennzeichen am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" step="5" style={{ width: 84, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={e.lenkzeit ?? ""} placeholder="—"
-                          onChange={(ev) => setz(d, "lenkzeit", ev.target.value)}
-                          aria-label={`Lenkzeit in Minuten am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp style={{ width: 120, padding: "6px 8px" }} disabled={!darfPflegen}
-                          value={(e.unterbrechungen || []).join(", ")} placeholder="45 oder 15, 30"
-                          onChange={(ev) => setz(d, "unterbrechungen", ev.target.value)}
-                          aria-label={`Unterbrechungen in Minuten am ${d}`} /></td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" step="15" style={{ width: 84, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={e.ruhezeitDavor ?? ""} placeholder="—"
-                          onChange={(ev) => setz(d, "ruhezeitDavor", ev.target.value)}
-                          aria-label={`Ruhezeit vor dem Dienst am ${d}`} /></td>
-                      <td style={{ padding: "8px 14px", minWidth: 240 }}>
-                        <div style={{ color: ton, fontWeight: 600, fontSize: 12.5 }}>
-                          {r.urteil === "rot" ? "unzulässig"
-                            : r.urteil === "grau" ? "nicht erfasst" : "zulässig"}</div>
-                        {r.befunde.map((b, j) => (
-                          <div key={j} style={{ fontSize: 11.5, marginTop: 3, lineHeight: 1.45,
-                            color: b.schwere === "danger" ? C.danger : C.dimmer }}>{b.text}</div>))}
-                      </td>
-                    </tr>);
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            Täglich neun Stunden am Steuer, höchstens zweimal je Woche zehn (Art. 6 Abs. 1).
-            56 Stunden je Woche, 90 in zwei aufeinanderfolgenden Wochen (Art. 6 Abs. 2, 3).
-            Nach viereinhalb Stunden 45 Minuten Unterbrechung — teilbar in 15 und danach
-            30 Minuten, nicht umgekehrt (Art. 7). Elf Stunden tägliche Ruhe, dreimal
-            zwischen zwei Wochenruhezeiten neun (Art. 8).
-            <div style={{ marginTop: 10 }}>
-              Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im
-              Streitfall gilt die Aufzeichnung des Tachografen.
-            </div>
-          </div>
-        </Card>
+            <Card>
+              <CardHead right={<Lab>Minuten, wie vom Kontrollgerät gelesen</Lab>}>Die Woche</CardHead>
+              <div style={{ overflowX: "auto" }}>
+                <table className="raster" style={{ minWidth: 820 }}>
+                  <thead><tr>
+                    {["Tag", "Kennzeichen", "Lenkzeit", "Unterbrechungen", "Ruhe davor", "Urteil"].map((h) => (
+                      <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>))}
+                  </tr></thead>
+                  <tbody>
+                    {tage.map((d, i) => {
+                      const e = eintrag(d);
+                      const r = lage.tage[i];
+                      return (
+                        <tr key={d} style={r.urteil === "rot" ? { background: C.dangerLight } : undefined}>
+                          <td style={{ whiteSpace: "nowrap", ...NUM }}>
+                            {DOW[dow(d)]} {fKurz(d)}</td>
+                          <td>
+                            <Inp style={{ width: 110, padding: "6px 8px", minHeight: 34 }} disabled={!darfPflegen}
+                              value={e.kennzeichen || ""} placeholder="—"
+                              onChange={(ev) => setz(d, "kennzeichen", ev.target.value)}
+                              aria-label={`Kennzeichen am ${d}`} /></td>
+                          <td>
+                            <Inp type="number" min="0" step="5" style={{ width: 84, padding: "6px 8px", minHeight: 34 }}
+                              disabled={!darfPflegen}
+                              value={e.lenkzeit ?? ""} placeholder="—"
+                              onChange={(ev) => setz(d, "lenkzeit", ev.target.value)}
+                              aria-label={`Lenkzeit in Minuten am ${d}`} /></td>
+                          <td>
+                            <Inp style={{ width: 120, padding: "6px 8px", minHeight: 34 }} disabled={!darfPflegen}
+                              value={(e.unterbrechungen || []).join(", ")} placeholder="45 oder 15, 30"
+                              onChange={(ev) => setz(d, "unterbrechungen", ev.target.value)}
+                              aria-label={`Unterbrechungen in Minuten am ${d}`} /></td>
+                          <td>
+                            <Inp type="number" min="0" step="15" style={{ width: 84, padding: "6px 8px", minHeight: 34 }}
+                              disabled={!darfPflegen}
+                              value={e.ruhezeitDavor ?? ""} placeholder="—"
+                              onChange={(ev) => setz(d, "ruhezeitDavor", ev.target.value)}
+                              aria-label={`Ruhezeit vor dem Dienst am ${d}`} /></td>
+                          <td style={{ minWidth: 240, height: "auto", padding: "10px var(--pad-x)" }}>
+                            <Pill size="sm" tone={r.urteil === "rot" ? "danger" : r.urteil === "grau" ? "neutral" : "ok"}>
+                              {r.urteil === "rot" ? "unzulässig"
+                                : r.urteil === "grau" ? "nicht erfasst" : "zulässig"}</Pill>
+                            {r.befunde.map((b, j) => (
+                              <div key={j} style={{ fontSize: 11.5, marginTop: 4, lineHeight: 1.45,
+                                color: b.schwere === "danger" ? C.danger : C.dim }}>{b.text}</div>))}
+                          </td>
+                        </tr>);
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </>}
+          seite={
+            <Erklaerkasten>
+              <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+              Täglich neun Stunden am Steuer, höchstens zweimal je Woche zehn (Art. 6 Abs. 1).
+              56 Stunden je Woche, 90 in zwei aufeinanderfolgenden Wochen (Art. 6 Abs. 2, 3).
+              Nach viereinhalb Stunden 45 Minuten Unterbrechung — teilbar in 15 und danach
+              30 Minuten, nicht umgekehrt (Art. 7). Elf Stunden tägliche Ruhe, dreimal
+              zwischen zwei Wochenruhezeiten neun (Art. 8).
+              <div style={{ marginTop: 10 }}>
+                Diese Ansicht ersetzt kein Kontrollgerät. Sie plant und dokumentiert; im
+                Streitfall gilt die Aufzeichnung des Tachografen.
+              </div>
+            </Erklaerkasten>} />
       </>)}
     </div>);
 }
@@ -13469,9 +14125,9 @@ function Therapieminuten({ sitz, akt, einheit }) {
               {PPP_ARTEN.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Sel></Field>
           <Field label="Woche">
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <Btn size="sm" onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück">‹</Btn>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, -7))} aria-label="Woche zurück"><Icon n="chevron-links" size={16} /></Btn>
               <span style={{ fontSize: 13, ...NUM }}>{fKurz(woche)}–{fKurz(addDays(woche, 6))}</span>
-              <Btn size="sm" onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor">›</Btn>
+              <Btn size="sm" onClick={() => setWoche(addDays(woche, 7))} aria-label="Woche vor"><Icon n="chevron-rechts" size={16} /></Btn>
             </div>
           </Field>
           <Field label="Patientinnen und Patienten"
@@ -13486,19 +14142,17 @@ function Therapieminuten({ sitz, akt, einheit }) {
         <Card><Leer titel="Kein Bereich der PPP-RL hinterlegt"
           text="Die Richtlinie gilt für die stationäre Psychiatrie, die Kinder- und Jugendpsychiatrie und die Psychosomatik. Wähle oben den Bereich, dann wird geprüft." /></Card>
       ) : (<>
-        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${ton === "danger" ? C.danger
-          : ton === "warn" ? C.warn : C.accent}` }}>
-          <div style={{ padding: "18px 22px" }}>
-            <Pill size="sm" tone={ton}>
-              {lage.urteil === "rot" ? "unter der Mindesterfüllung"
-                : lage.urteil === "gelb" ? "unter der Vorgabe"
-                : lage.urteil === "grau" ? "nicht bewertbar" : "erfüllt"}</Pill>
-            <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10, lineHeight: 1.6 }}>{lage.text}</div>
-            {lage.luecken && lage.luecken.length > 0 && (
-              <div style={{ fontSize: 12.5, color: C.warn, marginTop: 8 }}>
-                Nicht erfasst: {lage.luecken.join(", ")}.</div>)}
-          </div>
-        </Card>
+        <Hinweisband ton={ton === "danger" ? "danger" : ton === "warn" ? "warn" : ton === "ok" ? "ok" : "accent"}
+          icon={ton === "ok" ? "kreis-haken" : ton ? "warnung" : "info"}
+          titel={<Pill size="sm" tone={ton}>
+            {lage.urteil === "rot" ? "unter der Mindesterfüllung"
+              : lage.urteil === "gelb" ? "unter der Vorgabe"
+              : lage.urteil === "grau" ? "nicht bewertbar" : "erfüllt"}</Pill>}>
+          <div style={{ fontSize: 13.5, marginTop: 2, lineHeight: 1.6 }}>{lage.text}</div>
+          {lage.luecken && lage.luecken.length > 0 && (
+            <div style={{ fontSize: 12.5, color: C.warn, marginTop: 8 }}>
+              Nicht erfasst: {lage.luecken.join(", ")}.</div>)}
+        </Hinweisband>
 
         <Card>
           <CardHead right={<Lab>Minuten in dieser Woche</Lab>}>Berufsgruppen</CardHead>
@@ -13523,8 +14177,15 @@ function Therapieminuten({ sitz, akt, einheit }) {
                           value={(e.minuten || {})[z.gruppe.id] ?? ""} placeholder="—"
                           onChange={(ev) => akt.setzeTherapie(einheit.id, woche, z.gruppe.id, ev.target.value)}
                           aria-label={`Minuten ${z.gruppe.name} in der Woche ab ${woche}`} /></td>
-                      <td style={{ padding: "8px 14px", color: farbe, fontWeight: 600, ...NUM }}>
-                        {z.quote === null ? "nicht erfasst" : `${Math.round(z.quote * 100)} %`}</td>
+                      <td style={{ padding: "8px 14px", minWidth: 150 }}>
+                        <div style={{ color: farbe, fontWeight: 600, ...NUM }}>
+                          {z.quote === null ? "nicht erfasst" : `${Math.round(z.quote * 100)} %`}</div>
+                        {z.quote !== null && (
+                          <div style={{ marginTop: 5 }}>
+                            <Fortschritt wert={Math.min(100, z.quote * 100)} hoehe={5}
+                              ton={z.quote >= 1 ? "ok" : z.quote >= PPP_MINDEST ? "warn" : "danger"}
+                              label={`${z.gruppe.name}: ${Math.round(z.quote * 100)} Prozent Erfüllung`} /></div>)}
+                      </td>
                     </tr>);
                 })}
               </tbody>
@@ -13532,24 +14193,54 @@ function Therapieminuten({ sitz, akt, einheit }) {
           </div>
         </Card>
 
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            Die PPP-RL gibt Minuten je Patientin und Woche vor, getrennt nach
-            Berufsgruppen. Unter {Math.round(PPP_MINDEST * 100)} Prozent Erfüllung drohen
-            Vergütungsabschläge; dazwischen liegt der Bereich, in dem die Vorgabe verfehlt,
-            die Mindesterfüllung aber gehalten ist.
-            <div style={{ marginTop: 10 }}>
-              Grundlage: {lage.richtwerte ? lage.richtwerte.fassung : "—"}
-              {lage.richtwerte && lage.richtwerte.eigen ? " · von der Einrichtung angepasst" : ""}.
-              Das Nachweisverfahren gegenüber den Kassen wurde zum 1. Januar 2026 umgestellt
-              und läuft jährlich über eine eigene Spezifikation — was hier entsteht, ist die
-              Grundlage dafür, nicht die Meldung selbst.
-            </div>
+        <Erklaerkasten style={{ marginTop: 16 }}>
+          <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+          Die PPP-RL gibt Minuten je Patientin und Woche vor, getrennt nach
+          Berufsgruppen. Unter {Math.round(PPP_MINDEST * 100)} Prozent Erfüllung drohen
+          Vergütungsabschläge; dazwischen liegt der Bereich, in dem die Vorgabe verfehlt,
+          die Mindesterfüllung aber gehalten ist.
+          <div style={{ marginTop: 10 }}>
+            Grundlage: {lage.richtwerte ? lage.richtwerte.fassung : "—"}
+            {lage.richtwerte && lage.richtwerte.eigen ? " · von der Einrichtung angepasst" : ""}.
+            Das Nachweisverfahren gegenüber den Kassen wurde zum 1. Januar 2026 umgestellt
+            und läuft jährlich über eine eigene Spezifikation — was hier entsteht, ist die
+            Grundlage dafür, nicht die Meldung selbst.
           </div>
-        </Card>
+        </Erklaerkasten>
       </>)}
     </div>);
+}
+
+/** Die Schicht-für-Schicht-Prüfung einer Einheit für die Tage eines Monats.
+ *  Steht als eigene Funktion, weil Untergrenzen und Startseite dieselbe
+ *  Antwort brauchen — gerechnet wird nur in ppugv.js. */
+function ppugvZeilen(m, einheit, tage) {
+  if (!einheit) return [];
+  /* Welche Dienstart zählt als Tag-, welche als Nachtschicht? Der Betrieb
+     entscheidet das über das Nachtkennzeichen der Dienstart. */
+  const schichtVon = (da) => (istNachtdienst(da) ? "nacht" : "tag");
+  const aus = [];
+  for (const d of tage) {
+    for (const schicht of ["tag", "nacht"]) {
+      const imDienstHeute = m.personen.filter((p) => {
+        if (!imDienst(p, d)) return false;
+        if (einheitAm(p, d) !== einheit.id) return false;
+        const t = personTag(m, p, d);
+        if (!t.dienstId) return false;
+        const da = m.dienstarten.find((x) => x.id === t.dienstId);
+        return da && schichtVon(da) === schicht;
+      });
+      const fach = imDienstHeute.filter((p) => istFachkraft(m, p)).length;
+      const hilf = imDienstHeute.length - fach;
+      const b = (m.belegung || {})[`${einheit.id}|${d}|${schicht}`] || {};
+      aus.push({ datum: d, schicht,
+        ...ppugvPruefen({ bereich: einheit.ppugvBereich || null, schicht, datum: d,
+          patienten: b.patienten === undefined ? null : b.patienten,
+          fachkraefte: fach, hilfskraefte: hilf }),
+        erfasst: b.patienten !== undefined && b.patienten !== null && b.patienten !== "" });
+    }
+  }
+  return aus;
 }
 
 function Untergrenzen({ sitz, akt, ym }) {
@@ -13567,36 +14258,7 @@ function Untergrenzen({ sitz, akt, ym }) {
     return Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
   }, [ym]);
 
-  /* Welche Dienstart zählt als Tag-, welche als Nachtschicht? Der Betrieb
-     entscheidet das über das Nachtkennzeichen der Dienstart. */
-  const schichtVon = (da) => (istNachtdienst(da) ? "nacht" : "tag");
-
-  const zeilen = useMemo(() => {
-    if (!einheit) return [];
-    const aus = [];
-    for (const d of tage) {
-      for (const schicht of ["tag", "nacht"]) {
-        const imDienstHeute = m.personen.filter((p) => {
-          if (!imDienst(p, d)) return false;
-          if (einheitAm(p, d) !== einheit.id) return false;
-          const t = personTag(m, p, d);
-          if (!t.dienstId) return false;
-          const da = m.dienstarten.find((x) => x.id === t.dienstId);
-          return da && schichtVon(da) === schicht;
-        });
-        const fach = imDienstHeute.filter((p) => istFachkraft(m, p)).length;
-        const hilf = imDienstHeute.length - fach;
-        const b = (m.belegung || {})[`${einheit.id}|${d}|${schicht}`] || {};
-        aus.push({ datum: d, schicht,
-          ...ppugvPruefen({ bereich: einheit.ppugvBereich || null, schicht, datum: d,
-            patienten: b.patienten === undefined ? null : b.patienten,
-            fachkraefte: fach, hilfskraefte: hilf }),
-          erfasst: b.patienten !== undefined && b.patienten !== null && b.patienten !== "" });
-      }
-    }
-    return aus;
-  }, [m, einheit, tage]);
-
+  const zeilen = useMemo(() => ppugvZeilen(m, einheit, tage), [m, einheit, tage]);
   const lage = useMemo(() => ppugvMonatslage(zeilen), [zeilen]);
   const bereich = einheit && einheit.ppugvBereich ? ppugvBereich(einheit.ppugvBereich) : null;
 
@@ -13606,7 +14268,7 @@ function Untergrenzen({ sitz, akt, ym }) {
         sub="Die Pflegepersonaluntergrenzen gelten je Schicht, nicht im Monatsmittel. Geprüft wird gegen die Ist-Belegung — ohne sie steht „nicht bewertbar“, nie „eingehalten“.">
         Untergrenzen · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", display: "grid",
           gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 16 }}>
           <Field label={m.einheitLabel || "Einheit"}>
@@ -13622,10 +14284,9 @@ function Untergrenzen({ sitz, akt, ym }) {
         </div>
       </Card>
 
-      <div className="reiterreihe" style={{ margin: "0 0 20px" }}>
-        {[["ppugv", "Pflegepersonaluntergrenzen"], ["ppprl", "PPP-RL Psychiatrie"]].map(([id, l]) => (
-          <Btn key={id} size="sm" kind={reiter === id ? "primary" : "plain"}
-            aria-pressed={reiter === id} onClick={() => setReiter(id)}>{l}</Btn>))}
+      <div className="reiterreihe" style={{ margin: "0 0 16px" }}>
+        <Seg value={reiter} onChange={setReiter}
+          options={[{ id: "ppugv", label: "Pflegepersonaluntergrenzen" }, { id: "ppprl", label: "PPP-RL Psychiatrie" }]} />
       </div>
 
       {reiter === "ppprl" && (einheit
@@ -13636,75 +14297,81 @@ function Untergrenzen({ sitz, akt, ym }) {
         <Card><Leer titel="Kein pflegesensitiver Bereich hinterlegt"
           text="Die PpUGV gilt für bestimmte Krankenhausbereiche — Intensivmedizin, Geriatrie, Kardiologie und weitere. Wähle oben den Bereich dieser Einheit, dann wird geprüft." /></Card>
       ) : (<>
-        <KpiRow min={190}>
-          <Kpi label="Eingehalten" value={lage.gruen} tone="ok"
-            sub={`von ${zahl(lage.gesamt)} Schichten`} />
-          <Kpi label="Unterschritten" value={lage.rot} tone={lage.rot ? "danger" : "ok"}
-            sub="meldepflichtig gegenüber den Kassen" />
-          <Kpi label="Nicht bewertbar" value={lage.grau} tone={lage.grau ? "warn" : "ok"}
-            sub="Belegung fehlt" />
-          <Kpi label="Schlüssel" value={`${(bereich.name || "").slice(0, 18)}`}
-            sub={bereich.paragraf} />
-        </KpiRow>
+        <Kennzahlen kacheln={[
+          { label: "Eingehalten", wert: lage.gruen, ton: "ok", sub: `von ${zahl(lage.gesamt)} Schichten` },
+          { label: "Unterschritten", wert: lage.rot, ton: lage.rot ? "danger" : "ok",
+            hervor: lage.rot ? "danger" : undefined, sub: "meldepflichtig gegenüber den Kassen" },
+          { label: "Nicht bewertbar", wert: lage.grau, ton: "neutral", sub: "Belegung fehlt" },
+          { label: "Schlüssel", wert: `${(bereich.name || "").slice(0, 18)}`, sub: bereich.paragraf }]} />
 
-        <Card style={{ marginTop: 22 }}>
-          <CardHead right={<Lab>Belegung eintragen, auch nachträglich</Lab>}>
-            {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</CardHead>
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr style={{ textAlign: "left", color: C.dim }}>
-                {["Tag", "Schicht", "Patienten", "Fachkräfte", "Hilfskräfte", "Nötig", "Urteil"].map((h) => (
-                  <th key={h} style={{ padding: "10px 14px", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>))}
-              </tr></thead>
-              <tbody>
-                {zeilen.map((z) => {
-                  const ton = z.urteil === "rot" ? C.danger : z.urteil === "grau" ? C.warn : C.ok;
-                  return (
-                    <tr key={`${z.datum}|${z.schicht}`} style={{ borderTop: `1px solid ${C.lineSoft}` }}>
-                      <td style={{ padding: "8px 14px", whiteSpace: "nowrap", ...NUM }}>{fKurz(z.datum)}</td>
-                      <td style={{ padding: "8px 14px" }}>{z.schicht === "nacht" ? "Nacht" : "Tag"}</td>
-                      <td style={{ padding: "6px 14px" }}>
-                        <Inp type="number" min="0" style={{ width: 82, padding: "6px 8px" }}
-                          disabled={!darfPflegen}
-                          value={(m.belegung || {})[`${einheit.id}|${z.datum}|${z.schicht}`]?.patienten ?? ""}
-                          onChange={(e) => akt.setzeBelegung(einheit.id, z.datum, z.schicht, e.target.value)}
-                          aria-label={`Patienten am ${z.datum}, ${z.schicht === "nacht" ? "Nacht" : "Tag"}`} />
-                      </td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>{z.fachkraefte ?? "—"}</td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>
-                        {z.hilfskraefte ?? "—"}
-                        {z.hilfskraefteNichtAngerechnet > 0 && (
-                          <span style={{ color: C.warn, fontSize: 11.5 }}>
-                            {" "}(−{z.hilfskraefteNichtAngerechnet})</span>)}
-                      </td>
-                      <td style={{ padding: "8px 14px", ...NUM }}>{z.noetig ?? "—"}</td>
-                      <td style={{ padding: "8px 14px" }}>
-                        <span title={z.text} style={{ color: ton, fontWeight: 600, whiteSpace: "nowrap" }}>
-                          {z.urteil === "rot" ? `unterschritten um ${z.fehlend}`
-                            : z.urteil === "grau" ? "nicht bewertbar" : "eingehalten"}</span>
-                      </td>
-                    </tr>);
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card style={{ marginTop: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
-            {bereich.paragraf}: höchstens {(zeilen[0] || {}).grenze?.patientenJeKraft ?? "—"} Patienten
-            je Pflegekraft in der Tagschicht, in der Nacht entsprechend weniger.
-            Pflegehilfskräfte zählen nur bis zu
-            {" "}{Math.round(((zeilen[0] || {}).grenze?.hilfskraftAnteil ?? 0) * 100)} Prozent
-            des Personals mit. Aufgerundet wird immer zur nächsten ganzen Kraft.
-            <div style={{ marginTop: 10 }}>
-              Die Fassung ist datiert hinterlegt: {(zeilen[0] || {}).grenze?.fassung || "—"}.
-              Ändert sich die Verordnung, kommt ein neuer Satz dazu — der alte bleibt
-              stehen, damit vergangene Monate nach dem Recht ihrer Zeit beurteilt werden.
-            </div>
-          </div>
-        </Card>
+        <Leitraster seiteBreite={340}
+          haupt={
+            <Card>
+              <CardHead right={<Lab>Belegung eintragen, auch nachträglich</Lab>}>
+                {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</CardHead>
+              <div style={{ overflowX: "auto" }}>
+                <table className="raster" style={{ minWidth: 640 }}>
+                  <thead><tr>
+                    {["Tag", "Schicht", "Patienten", "Fachkräfte", "Hilfskräfte", "Nötig", "Urteil"].map((h) => (
+                      <th key={h} style={{ whiteSpace: "nowrap" }}>{h}</th>))}
+                  </tr></thead>
+                  <tbody>
+                    {zeilen.map((z) => (
+                      <tr key={`${z.datum}|${z.schicht}`}
+                        style={z.urteil === "rot" ? { background: C.dangerLight } : undefined}>
+                        <td style={{ whiteSpace: "nowrap", ...NUM }}>{fKurz(z.datum)}</td>
+                        <td>{z.schicht === "nacht" ? "Nacht" : "Tag"}</td>
+                        <td>
+                          <Inp type="number" min="0" style={{ width: 82, padding: "6px 8px", minHeight: 34 }}
+                            disabled={!darfPflegen}
+                            value={(m.belegung || {})[`${einheit.id}|${z.datum}|${z.schicht}`]?.patienten ?? ""}
+                            onChange={(e) => akt.setzeBelegung(einheit.id, z.datum, z.schicht, e.target.value)}
+                            aria-label={`Patienten am ${z.datum}, ${z.schicht === "nacht" ? "Nacht" : "Tag"}`} />
+                        </td>
+                        <td style={NUM}>{z.fachkraefte ?? "—"}</td>
+                        <td style={NUM}>
+                          {z.hilfskraefte ?? "—"}
+                          {z.hilfskraefteNichtAngerechnet > 0 && (
+                            <span style={{ color: C.warn, fontSize: 11.5 }}>
+                              {" "}(−{z.hilfskraefteNichtAngerechnet})</span>)}
+                        </td>
+                        <td style={NUM}>{z.noetig ?? "—"}</td>
+                        <td>
+                          {/* Nicht bewertbar ist ein eigener Zustand: grau, kein Verstoß und keine Einhaltung. */}
+                          <span title={z.text} style={{ display: "inline-flex" }}>
+                            <Pill size="sm" ton={z.urteil === "rot" ? "danger" : z.urteil === "grau" ? "neutral" : "ok"}>
+                              {z.urteil === "rot" ? `unterschritten um ${z.fehlend}`
+                                : z.urteil === "grau" ? "nicht bewertbar" : "eingehalten"}</Pill></span>
+                        </td>
+                      </tr>))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>}
+          seite={<>
+            <Seitenkarte titel="Schichten im Monat"
+              sub={`${zahl(zeilen.length)} Schichten, Tag und Nacht`}>
+              <Sparkline art="punkte" hoehe={60}
+                daten={zeilen.map((z) => (z.urteil === "gruen" ? "ok" : z.urteil === "rot" ? "danger" : ""))}
+                beschriftung={`${lage.gruen} Schichten eingehalten, ${lage.rot} unterschritten, ${lage.grau} nicht bewertbar`} />
+              <Legende style={{ marginTop: 12 }} punkte={[
+                { ton: "ok", label: "eingehalten" }, { ton: "danger", label: "unterschritten" },
+                { ton: "neutral", label: "nicht bewertbar", farbig: false }]} />
+            </Seitenkarte>
+            <Erklaerkasten>
+              <b style={{ color: C.text }}>Wonach gerechnet wird.</b>{" "}
+              {bereich.paragraf}: höchstens {(zeilen[0] || {}).grenze?.patientenJeKraft ?? "—"} Patienten
+              je Pflegekraft in der Tagschicht, in der Nacht entsprechend weniger.
+              Pflegehilfskräfte zählen nur bis zu
+              {" "}{Math.round(((zeilen[0] || {}).grenze?.hilfskraftAnteil ?? 0) * 100)} Prozent
+              des Personals mit. Aufgerundet wird immer zur nächsten ganzen Kraft.
+              <div style={{ marginTop: 10 }}>
+                Die Fassung ist datiert hinterlegt: {(zeilen[0] || {}).grenze?.fassung || "—"}.
+                Ändert sich die Verordnung, kommt ein neuer Satz dazu — der alte bleibt
+                stehen, damit vergangene Monate nach dem Recht ihrer Zeit beurteilt werden.
+              </div>
+            </Erklaerkasten>
+          </>} />
       </>))}
     </div>);
 }
@@ -13729,27 +14396,23 @@ function Kompetenzen({ sitz, akt }) {
         right={darfPflegen && <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>}>
         Kompetenzen</H1>
 
-      <KpiRow min={180}>
-        <Kpi label="Kompetenzen" value={liste.length} />
-        <Kpi label="Abgelaufen" value={lage.abgelaufen.length}
-          tone={lage.abgelaufen.length ? "danger" : "ok"} sub="Einsatz gesperrt, wo verlangt" />
-        <Kpi label="Laufen bald ab" value={lage.bald.length}
-          tone={lage.bald.length ? "warn" : "ok"} sub={`in ${KOMPETENZ_VORLAUF} Tagen`} />
-        <Kpi label="Fehlen" value={lage.fehlt.length}
-          tone={lage.fehlt.length ? "warn" : "ok"} sub="zugedacht, aber nicht erteilt" />
-      </KpiRow>
+      <Kennzahlen min={180} kacheln={[
+        { label: "Kompetenzen", wert: liste.length },
+        { label: "Abgelaufen", wert: lage.abgelaufen.length, ton: lage.abgelaufen.length ? "danger" : "ok",
+          hervor: lage.abgelaufen.length ? "danger" : undefined, sub: "Einsatz gesperrt, wo verlangt" },
+        { label: "Laufen bald ab", wert: lage.bald.length, ton: lage.bald.length ? "warn" : "ok",
+          sub: `in ${KOMPETENZ_VORLAUF} Tagen` },
+        { label: "Fehlen", wert: lage.fehlt.length, ton: lage.fehlt.length ? "warn" : "ok",
+          sub: "zugedacht, aber nicht erteilt" }]} />
 
       {liste.length === 0 ? (
-        <Card style={{ marginTop: 22 }}>
+        <Card>
           <Leer titel="Noch keine Kompetenz angelegt"
-            text="Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie." />
-          {darfPflegen && (
-            <div style={{ padding: "0 22px 22px" }}>
-              <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>
-            </div>)}
+            text="Typische Fälle: die Einweisung auf ein Beatmungsgerät, die Schaltberechtigung für eine Anlage, die Freigabe für eine Tour. Wer eine Kompetenz an eine Dienstart hängt, verhindert die Einteilung ohne sie."
+            aktion={darfPflegen && <Btn kind="primary" onClick={() => setNeu(leer)}>Kompetenz anlegen</Btn>} />
         </Card>
       ) : (
-        <Card style={{ marginTop: 22 }}>
+        <Card>
           <CardHead right={<Lab>{zahl(liste.length)} angelegt</Lab>}>Übersicht</CardHead>
           {liste.map((k, i) => {
             const bm = mittelZuKompetenz(m, k);
@@ -13779,7 +14442,7 @@ function Kompetenzen({ sitz, akt }) {
                     ? <Pill size="sm">alle {k.wiederholungMonate} Monate</Pill>
                     : <Pill size="sm">ohne Frist</Pill>}
                   {maengel.some((x) => x.schwere === "warn") && <Pill size="sm" tone="warn">unvollständig</Pill>}
-                  <span style={{ color: C.dimmer, fontSize: 18 }}>{auf ? "▾" : "›"}</span>
+                  <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}>{auf ? <Icon n="chevron-unten" size={18} /> : <Icon n="chevron-rechts" size={18} />}</span>
                 </div>
 
                 {auf && (
@@ -13805,7 +14468,10 @@ function Kompetenzen({ sitz, akt }) {
                             title={st.stand === "fehlt" ? "Kompetenz erteilen"
                               : st.bis ? `gültig bis ${fDatum(st.bis)}` : "unbefristet gültig"}
                             onClick={() => akt.setzeKompetenz(p.id, k.id, st.stand === "fehlt")}>
-                            {beschriftung}{st.stand === "abgelaufen" ? " ✕" : st.stand === "fehlt" ? "" : " ✓"}</Btn>);
+                            {beschriftung}
+                            {st.stand === "abgelaufen" ? <><Icon n="x" size={13} strokeWidth={2.2} /><span className="nurLeser"> abgelaufen</span></>
+                              : st.stand === "fehlt" ? null
+                              : <><Icon n="haken" size={13} strokeWidth={2.2} /><span className="nurLeser"> {st.stand === "laeuft_ab" ? "läuft ab" : "gültig"}</span></>}</Btn>);
                       })}
                     </div>
 
@@ -13824,7 +14490,7 @@ function Kompetenzen({ sitz, akt }) {
           Sie stehen hier, weil sie dieselbe Frage beantworten wie eine
           Kompetenz — wer darf was —, nur eine Ebene höher: nicht an einem
           Gerät, sondern kraft Berufserlaubnis. */}
-      <Card style={{ marginTop: 22 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead right={darfPflegen && !(m.aufgaben || []).length
           ? <Btn size="sm" onClick={akt.legeAufgabenVor}>Die drei aus § 4 PflBG anlegen</Btn>
           : <Lab>{zahl((m.aufgaben || []).length)} angelegt</Lab>}>
@@ -13890,11 +14556,11 @@ function Kompetenzen({ sitz, akt }) {
                 {m.dienstarten.map((d) => {
                   const an = (aufgabe.dienstarten || []).includes(d.id);
                   return (
-                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"} aria-pressed={an}
                       onClick={() => setAufgabe({ ...aufgabe, dienstarten: an
                         ? aufgabe.dienstarten.filter((x) => x !== d.id)
                         : [...(aufgabe.dienstarten || []), d.id] })}>
-                      {an ? "✓ " : ""}{d.name}</Btn>);
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{d.name}</Btn>);
                 })}
               </div>
             </div>
@@ -13963,11 +14629,11 @@ function Kompetenzen({ sitz, akt }) {
                 {m.dienstarten.map((d) => {
                   const an = (neu.pflichtFuer || []).includes(d.id);
                   return (
-                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"}
+                    <Btn key={d.id} size="sm" kind={an ? "primary" : "plain"} aria-pressed={an}
                       onClick={() => setNeu({ ...neu, pflichtFuer: an
                         ? neu.pflichtFuer.filter((x) => x !== d.id)
                         : [...(neu.pflichtFuer || []), d.id] })}>
-                      {an ? "✓ " : ""}{d.name}</Btn>);
+                      {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{d.name}</Btn>);
                 })}
               </div>
             </div>
@@ -13993,22 +14659,20 @@ function Qualifikationsmatrix({ sitz, akt }) {
         sub="Wer kann was — und wo hängt eine Qualifikation an zu wenigen Personen. Der Engpass zeigt sich sonst erst bei der Krankmeldung."
         >Qualifikationen</H1>
 
-      <KpiRow min={180}>
-        <Kpi label="Qualifikationen" value={qm.spalten.length} />
-        <Kpi label="Engpässe" value={qm.engpaesse} tone={qm.engpaesse ? "warn" : "ok"}
-          sub="knapp über dem Bedarf" />
-        <Kpi label="Kritisch" value={qm.kritische} tone={qm.kritische ? "danger" : "ok"}
-          sub="unter dem Bedarf in einer Einheit" />
-        <Kpi label="Im Schichtdienst" value={qm.personen.length} />
-      </KpiRow>
+      <Kennzahlen min={180} kacheln={[
+        { label: "Qualifikationen", wert: qm.spalten.length },
+        { label: "Engpässe", wert: qm.engpaesse, ton: qm.engpaesse ? "warn" : "ok", sub: "knapp über dem Bedarf" },
+        { label: "Kritisch", wert: qm.kritische, ton: qm.kritische ? "danger" : "ok",
+          hervor: qm.kritische ? "danger" : undefined, sub: "unter dem Bedarf in einer Einheit" },
+        { label: "Im Schichtdienst", wert: qm.personen.length }]} />
 
-      <Card style={{ marginTop: 22 }}>
+      <Card>
         <CardHead right={<Lab>gültige Nachweise je {m.einheitLabel}</Lab>}>Abdeckung</CardHead>
         <div style={{ padding: 22 }}>
           {qm.spalten.map((s) => (
             <div key={s.qual.id} style={{ marginBottom: 22 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 9, flexWrap: "wrap" }}>
-                <span style={{ width: 9, height: 9, borderRadius: 5, background: s.qual.farbe }} />
+                <span style={{ width: 9, height: 9, borderRadius: 5, background: lesbar(s.qual.farbe, 3) }} />
                 <span style={{ fontSize: 14.5, fontWeight: 620 }}>{s.qual.name}</span>
                 <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{s.anzahl} Personen</span>
                 {s.bedarf > 0 && <Pill size="sm">Bedarf {s.bedarf} je Dienst</Pill>}
@@ -14017,15 +14681,15 @@ function Qualifikationsmatrix({ sitz, akt }) {
                 {!s.kritisch && s.engpass && <Pill size="sm" tone="warn">
                   knapp in {s.schwaechsteEinheit ? s.schwaechsteEinheit.name : ""}</Pill>}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(einheiten.length, 6)},1fr)`, gap: 9 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,108px),1fr))", gap: 9 }}>
                 {einheiten.map((e) => {
                   const n = s.jeEinheit[e.id] || 0;
                   const kritisch = s.bedarf > 0 && n < s.bedarf;
                   const knapp = s.bedarf > 0 && n === s.bedarf;
                   return (
-                    <div key={e.id} className="karte" style={{ padding: "11px 13px",
-                      background: kritisch ? C.dangerLight : knapp ? C.warnLight : undefined }}>
-                      <div style={{ fontSize: 11.5, color: e.farbe, fontWeight: 600, overflow: "hidden",
+                    <div key={e.id} className="karte-still" style={{ padding: "11px 13px", borderRadius: "var(--r)",
+                      background: kritisch ? C.dangerLight : knapp ? C.warnLight : C.flaecheStill }}>
+                      <div style={{ fontSize: 11.5, color: lesbar(e.farbe), fontWeight: 600, overflow: "hidden",
                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.name}</div>
                       <div style={{ fontSize: 19, fontWeight: 650, marginTop: 3, ...NUM,
                         color: kritisch ? C.danger : knapp ? C.warn : C.text }}>{n}</div>
@@ -14039,7 +14703,7 @@ function Qualifikationsmatrix({ sitz, akt }) {
         </div>
       </Card>
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead>Wann laufen Nachweise ab</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
           <BalkenDiagramm daten={nachweisVerlauf(m, 12)} wert="anzahl" label="label" hoehe={130}
@@ -14124,9 +14788,9 @@ function Einarbeitung({ sitz, akt }) {
             </Sel></Field>
           {f.personId && f.mentorId && einheitAm(m.personen.find((p) => p.id === f.personId), heute())
             !== einheitAm(m.personen.find((p) => p.id === f.mentorId), heute()) && (
-            <div style={{ padding: 13, borderRadius: 11, background: C.warnLight, color: C.warn, fontSize: 13 }}>
+            <Hinweisband ton="warn" style={{ marginBottom: 0, boxShadow: "none" }}>
               Beide gehören verschiedenen {mehrzahl(m.einheitLabel)} an. Sie werden dadurch kaum gemeinsam Dienst haben.
-            </div>)}
+            </Hinweisband>)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
             <Field label="Von"><Inp type="date" value={f.von} onChange={(e) => setF({ ...f, von: e.target.value })} /></Field>
             <Field label="Bis"><Inp type="date" value={f.bis} onChange={(e) => setF({ ...f, bis: e.target.value })} /></Field>
@@ -14151,13 +14815,14 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
   const m = sitz.mandant;
   const plan = useMemo(() => bereitschaftsplan(m, heute(), 21), [m]);
   if (!plan) return (
-    <Card style={{ padding: 30 }}>
-      <div style={{ fontSize: 15.5, fontWeight: 620, marginBottom: 8 }}>Keine Rufbereitschaft eingerichtet</div>
-      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 560 }}>
-        Lege unter Dienstarten eine Dienstart mit dem Kennzeichen „Rufbereitschaft" an. Sie wird anteilig
-        auf die Arbeitszeit angerechnet und unterbricht die Ruhezeit nicht.
-      </div>
-    </Card>);
+    <div>
+      <H1 rubrik="Planung" sub="Wer ist erreichbar und wer ist Rückfallebene. Rufbereitschaft zählt anteilig auf die Arbeitszeit und unterbricht die Ruhezeit nicht.">
+        Bereitschaft</H1>
+      <Card>
+        <Leer titel="Keine Rufbereitschaft eingerichtet"
+          text={'Lege unter Dienstarten eine Dienstart mit dem Kennzeichen „Rufbereitschaft" an. Sie wird anteilig auf die Arbeitszeit angerechnet und unterbricht die Ruhezeit nicht.'} />
+      </Card>
+    </div>);
 
   return (
     <div>
@@ -14167,10 +14832,10 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
         {plan.tage.map((t, i) => {
           const fei = feiertag(t.datum, m.bundesland);
           return (
-            <div key={t.datum} className="row" onClick={() => oeffneTag(t.datum)}
+            <div key={t.datum} className="row" {...klickbar(() => oeffneTag(t.datum), `${fKurz(t.datum)} öffnen`)}
               style={{ display: "flex", alignItems: "center", gap: 16, padding: "13px 22px", cursor: "pointer",
                 borderBottom: i < plan.tage.length - 1 ? `1px solid ${C.lineSoft}` : "none",
-                background: t.datum === heute() ? "rgba(43,44,37,.045)" : undefined, flexWrap: "wrap" }}>
+                background: t.datum === heute() ? C.accentLight : undefined, flexWrap: "wrap" }}>
               <div style={{ minWidth: 116 }}>
                 <div style={{ fontSize: 13.5, fontWeight: t.datum === heute() ? 700 : 500, ...NUM }}>
                   {DOW[dow(t.datum)]} {fKurz(t.datum)}</div>
@@ -14180,7 +14845,7 @@ function Bereitschaft({ sitz, akt, oeffneTag }) {
                 <div key={e.da.id} style={{ flex: 1, minWidth: 210, display: "flex", alignItems: "center", gap: 11 }}>
                   <Zelle da={e.da} size={26} />
                   {e.personen.length === 0
-                    ? <span style={{ fontSize: 13, color: C.danger, fontWeight: 600 }}>nicht besetzt</span>
+                    ? <Pill size="sm" tone="danger">nicht besetzt</Pill>
                     : <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {e.personen.map((p, k) => (
                           <Pill key={p.id} size="sm" tone={k === 0 ? "accent" : "neutral"}>
@@ -14222,9 +14887,9 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+        <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
         <span style={{ fontSize: 16, fontWeight: 620 }}>{MON[mo - 1]} {y}</span>
-        <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+        <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6, marginBottom: 8 }}>
@@ -14259,7 +14924,7 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
         {WUNSCH_ARTEN.map((a) => (
           <span key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.dim }}>
             <span style={{ width: 17, height: 17, borderRadius: 6, background: `${a.farbe}1C`,
-              color: a.farbe, fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center",
+              color: lesbar(a.farbe), fontSize: 12, fontWeight: 800, display: "flex", alignItems: "center",
               justifyContent: "center" }}>{a.zeichen}</span>{a.label}</span>))}
         <span style={{ fontSize: 13, color: C.dimmer, marginLeft: "auto", ...NUM }}>
           {meine.length} Wünsche in diesem Monat</span>
@@ -14272,10 +14937,40 @@ function Wunschdienste({ sitz, akt, personId, onClose }) {
   </>);
 
   if (onClose) return <Sheet open onClose={onClose} titel={titel} width={640}>{kern}</Sheet>;
+  /* Was der Plan aus den Wünschen gemacht hat: Ein „möchte arbeiten" ist
+     getroffen, wenn an dem Tag ein Dienst steht, ein „lieber nicht", wenn
+     keiner steht. Gezählt wird nur, was im Plan steht — nichts geschätzt. */
+  const bilanz = meine.slice().sort((a, b) => (a.datum < b.datum ? -1 : 1)).map((w) => {
+    const t = personTag(m, p, w.datum);
+    const da = t.dienstId ? map[t.dienstId] : null;
+    const art = WUNSCH_ARTEN.find((a) => a.id === w.art);
+    const getroffen = w.art === "moechte" ? !!da : !da;
+    return { w, da, art, getroffen };
+  });
+  const treffer = bilanz.filter((x) => x.getroffen).length;
   return (
     <div>
       <H1 sub="Wünsche sind keine Anträge — die Planung berücksichtigt sie, soweit die Besetzung es zulässt.">{titel}</H1>
-      <Card style={{ padding: 22, maxWidth: 680 }}>{kern}</Card>
+      <Leitraster seiteBreite={360}
+        haupt={<Card style={{ padding: 22 }}>{kern}</Card>}
+        seite={bilanz.length > 0 ? (
+          <Seitenkarte titel="Wünsche und Plan" rechts={<span style={{ fontSize: 12.5, color: C.dim }}>{MON[mo - 1]} {y}</span>}
+            sub={`${treffer} von ${bilanz.length} Wünschen trifft der Plan`}>
+            <Fortschritt wert={(treffer / bilanz.length) * 100} hoehe={7} label="Anteil der getroffenen Wünsche" />
+            <div style={{ marginTop: 10 }}>
+              {bilanz.map(({ w, da, art, getroffen }) => (
+                <div key={w.datum} className="listenzeile" style={{ padding: "9px 0", gap: 10 }}>
+                  <span style={{ width: 24, height: 24, borderRadius: 8, flexShrink: 0, display: "flex",
+                    alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13,
+                    background: `${art.farbe}1C`, color: lesbar(art.farbe) }}>{art.zeichen}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 550 }}>{fKurz(w.datum)}</div>
+                    <div style={{ fontSize: 12, color: C.dim }}>{art.label} · im Plan {da ? da.name : "frei"}</div>
+                  </div>
+                  <Pill size="sm" tone={getroffen ? "ok" : "warn"}>{getroffen ? "erfüllt" : "nicht erfüllt"}</Pill>
+                </div>))}
+            </div>
+          </Seitenkarte>) : null} />
     </div>);
 }
 
@@ -14347,10 +15042,10 @@ function Mehrfach({ sitz, akt, onClose }) {
               <Sel value={f.dienstId} onChange={(e) => setF({ ...f, dienstId: e.target.value })}>
                 <option value="-">frei</option>
                 {m.dienstarten.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Sel></Field>
-          : <Field label="Art der Abwesenheit">
+          : <Field label="Art der Abwesenheit" hint={entgeltHinweis(abwArt(abwArtId)) || undefined}>
               <Sel value={abwArtId} onChange={(e) => setAbwArtId(e.target.value)}>
                 {ABW.filter((a) => a.id !== "krank").map((a) => (
-                  <option key={a.id} value={a.id}>{a.label}</option>))}</Sel></Field>}
+                  <option key={a.id} value={a.id}>{a.label}{entgeltZusatz(a)}</option>))}</Sel></Field>}
       </div>
 
       <Lab style={{ marginBottom: 10 }}>Personen · {f.personen.length} gewählt</Lab>
@@ -14433,18 +15128,17 @@ function Schichtuebergabe({ sitz, akt }) {
         {begriff(m, "uebergabe")}</H1>
 
       {offeneListe.length > 0 && (
-        <Card style={{ padding: 18, marginBottom: 18, background: C.warnLight, borderColor: "#FDE68A" }}>
-          <div style={{ fontSize: 14.5, fontWeight: 620, color: C.warn, marginBottom: 8 }}>
-            {offeneListe.length} {offeneListe.length === 1 ? "Übergabe fehlt" : "Übergaben fehlen"}</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Hinweisband ton="warn"
+          titel={`${offeneListe.length} ${offeneListe.length === 1 ? "Übergabe fehlt" : "Übergaben fehlen"}`}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
             {offeneListe.slice(0, 8).map((x, i) => (
               <Btn key={i} size="sm" onClick={() => { setDatum(x.datum); setDienstId(x.dienstart.id); }}>
                 {fKurz(x.datum)} · {x.dienstart.kurz}</Btn>))}
           </div>
-        </Card>)}
+        </Hinweisband>)}
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(280px,1fr)", gap: 18,
-        alignItems: "start" }}>
+      <Leitraster seiteBreite={380}
+        haupt={
         <Card>
           <CardHead right={vorhanden
             ? <Pill tone="ok">erfasst {vorhanden.zeit}</Pill>
@@ -14463,7 +15157,7 @@ function Schichtuebergabe({ sitz, akt }) {
                 Übergeben von <b>{vorhanden.von}</b> an <b>{vorhanden.an || "die Folgeschicht"}</b> am {vorhanden.zeit}.
               </div>
               {(vorhanden.ergaenzungen || []).map((e, i) => (
-                <div key={i} className="karte" style={{ padding: 13, background: C.bg }}>
+                <div key={i} className="karte-still" style={{ padding: 13, borderRadius: "var(--r)" }}>
                   <div style={{ fontSize: 12, color: C.dim, marginBottom: 4, ...NUM }}>{e.zeit} · {e.von}</div>
                   <div style={{ fontSize: 13.5, lineHeight: 1.5 }}>{e.text}</div>
                 </div>))}
@@ -14482,9 +15176,8 @@ function Schichtuebergabe({ sitz, akt }) {
                   Übergabe abschließen</Btn>
               </div>)}
           </div>
-        </Card>
-
-        <div>
+        </Card>}
+        seite={<>
           <Card>
             <CardHead>Besetzung dieser Schicht</CardHead>
             {b && b.personen.length ? b.personen.map((p) => (
@@ -14493,24 +15186,24 @@ function Schichtuebergabe({ sitz, akt }) {
                 <span style={{ fontSize: 13.5, flex: 1 }}>{p.nachname}, {p.vorname}</span>
                 <span style={{ fontSize: 12, color: C.dim }}>{p.funktion}</span>
               </div>))
-              : <Leer titel="Niemand eingeteilt" symbol="◌" />}
+              : <Leer titel="Niemand eingeteilt" />}
           </Card>
 
           {kann(m, "fachkraftquote") && (() => {
             const fl = fachkraftLage(m, datum, dienstId);
             if (!fl) return null;
             return (
-              <Card style={{ marginTop: 14, padding: 18 }}>
+              <Card style={{ padding: 18 }}>
                 <Rubrik style={{ marginBottom: 10 }}>Fachkraftquote</Rubrik>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                   <span style={{ fontSize: 28, fontWeight: 300, letterSpacing: "-.03em", ...NUM,
                     color: fl.erfuellt ? C.ok : C.danger }}>{fl.ist} %</span>
                   <span style={{ fontSize: 13, color: C.dim, ...NUM }}>gefordert {fl.soll} %</span>
                 </div>
-                <div style={{ height: 6, borderRadius: 3, background: C.bg, marginTop: 12, position: "relative" }}>
-                  <div style={{ width: `${Math.min(100, fl.ist)}%`, height: "100%", borderRadius: 3,
-                    background: fl.erfuellt ? C.ok : C.danger }} />
-                  <div style={{ position: "absolute", left: `${fl.soll}%`, top: -3, bottom: -3, width: 2,
+                <div style={{ position: "relative", marginTop: 12 }}>
+                  <Fortschritt wert={fl.ist} ton={fl.erfuellt ? "ok" : "danger"} hoehe={6}
+                    label={`Fachkraftquote ${fl.ist} Prozent, gefordert ${fl.soll} Prozent`} />
+                  <div aria-hidden="true" style={{ position: "absolute", left: `${fl.soll}%`, top: -3, bottom: -3, width: 2,
                     background: C.text, opacity: .5 }} />
                 </div>
                 <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.5 }}>
@@ -14519,8 +15212,7 @@ function Schichtuebergabe({ sitz, akt }) {
                 </div>
               </Card>);
           })()}
-        </div>
-      </div>
+        </>} />
     </div>);
 }
 
@@ -14541,7 +15233,7 @@ function Pakete({ db, akt }) {
         <Card>
           <CardHead>Betriebe</CardHead>
           {db.mandanten.map((x) => (
-            <div key={x.id} onClick={() => setGewaehlt(x.id)}
+            <div key={x.id} aria-pressed={x.id === gewaehlt} {...klickbar(() => setGewaehlt(x.id), x.name)}
               style={{ padding: "12px 16px", cursor: "pointer", borderBottom: `1px solid ${C.lineSoft}`,
                 background: x.id === gewaehlt ? C.accentLight : "transparent",
                 borderLeft: x.id === gewaehlt ? `3px solid ${C.accent}` : "3px solid transparent" }}>
@@ -14622,7 +15314,7 @@ function AnsichtLeiste({ sitz, akt, bereich, aktuell, anwenden }) {
           <Btn size="sm" onClick={() => anwenden(a.zustand)}>{a.name}</Btn>
           <button onClick={() => akt.loescheAnsicht(a.id)} aria-label={`${a.name} löschen`}
             style={{ border: "none", background: "transparent", color: C.dim, cursor: "pointer",
-              fontSize: 15, padding: "0 4px" }}>×</button>
+              padding: "0 4px", display: "flex" }}><Icon n="x" size={14} strokeWidth={2.2} /></button>
         </div>))}
       {neu ? (
         <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
@@ -14670,35 +15362,24 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
         Belastbarkeit</H1>
 
       {/* Der Befund in Worten, bevor die erste Zahl kommt. */}
-      <Card style={{ marginBottom: 18, borderLeft: `3px solid ${
-        befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok}`,
-        background: befund.ton === "danger" ? C.dangerLight
-          : befund.ton === "warn" ? C.warnLight : C.okLight }}>
-        <div style={{ padding: "18px 22px" }}>
-          <div style={{ fontSize: 15.5, fontWeight: 600, lineHeight: 1.5,
-            color: befund.ton === "danger" ? C.danger : befund.ton === "warn" ? C.warn : C.ok }}>
-            {befund.satz}</div>
-          <div style={{ fontSize: 13, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
-            {befund.dazu}</div>
-        </div>
-      </Card>
+      <Hinweisband ton={befund.ton === "danger" ? "danger" : befund.ton === "warn" ? "warn" : "ok"}
+        titel={befund.satz}>{befund.dazu}</Hinweisband>
 
-      <KpiRow min={180}>
-        <Kpi label="Wochen ohne Reserve" value={kritisch.length}
-          tone={kritisch.length ? "danger" : "ok"}
-          sub={kritisch.length
-            ? `ab ${fKurz(kritisch[0].von)} — dort ist kein Ausfall mehr auffangbar`
-            : "keine Woche steht ohne Reserve da"} />
-        <Kpi label="Knappe Wochen" value={knapp.length} tone={knapp.length ? "warn" : "text"}
-          sub="höchstens zwei gleichzeitige Ausfälle auffangbar" />
-        <Kpi label="Belastungsgrenze" value={grenze ? `${Math.round(grenze.anteil * 100)}` : "über 30"}
-          unit="% der Belegschaft"
-          tone={grenze && grenze.anteil <= 0.1 ? "danger" : grenze && grenze.anteil <= 0.2 ? "warn" : "ok"}
-          sub="fallen so viele gleichzeitig aus, reißt der Plan" />
-      </KpiRow>
+      <Kennzahlen kacheln={[
+        { label: "Wochen ohne Reserve", wert: kritisch.length, ton: kritisch.length ? "danger" : "ok",
+          hervor: kritisch.length ? "danger" : undefined,
+          sub: kritisch.length ? `ab ${fKurz(kritisch[0].von)} — dort ist kein Ausfall mehr auffangbar`
+            : "keine Woche steht ohne Reserve da" },
+        { label: "Knappe Wochen", wert: knapp.length, ton: knapp.length ? "warn" : "ok", hervor: knapp.length ? "warn" : undefined,
+          sub: "höchstens zwei gleichzeitige Ausfälle auffangbar" },
+        { label: "Belastungsgrenze", wert: grenze ? `${Math.round(grenze.anteil * 100)}` : "über 30", einheit: "% der Belegschaft",
+          ton: grenze && grenze.anteil <= 0.1 ? "danger" : grenze && grenze.anteil <= 0.2 ? "warn" : "ok",
+          hervor: grenze && grenze.anteil <= 0.2 ? "warn" : undefined,
+          sub: "fallen so viele gleichzeitig aus, reißt der Plan" }]} />
 
-      {/* ------------------------ Wochenbild ------------------------ */}
-      <Card style={{ marginTop: 20 }}>
+      <Leitraster seiteBreite={370}
+        haupt={<>
+            <Card>
         <CardHead right={<Lab>Reserve je Woche</Lab>}>Wo bricht es zuerst</CardHead>
 
         {/* Was die Zahlen bedeuten, steht vor den Zahlen — nicht als Fußnote
@@ -14730,7 +15411,8 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
               Wochentag steht unter <b style={{ color: C.text }}>Dienstarten</b>.
             </div>)}
           {bl.map((w) => w.zeilen.length === 0 ? null : (
-            <div key={w.kw} onClick={() => setGewaehlt(gewaehlt === w.kw ? null : w.kw)}
+            <div key={w.kw} aria-expanded={gewaehlt === w.kw}
+              {...klickbar(() => setGewaehlt(gewaehlt === w.kw ? null : w.kw), `Kalenderwoche ${w.kw}`)}
               style={{ marginBottom: 6, borderRadius: 10, cursor: "pointer",
                 background: gewaehlt === w.kw ? flaeche(w.stufe) : "transparent",
                 outline: gewaehlt === w.kw ? `1.5px solid ${farbe(w.stufe)}` : "none" }}>
@@ -14783,45 +15465,44 @@ function Belastbarkeit({ sitz, akt, oeffneTag }) {
         </div>
       </Card>
 
-      {/* ---------------------- Ausfallszenarien --------------------- */}
-      <Lab style={{ margin: "24px 0 6px" }}>Was passiert bei einer Krankheitswelle</Lab>
-      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginBottom: 12, maxWidth: 760 }}>
-        Vier Durchrechnungen für die nächsten vierzehn Tage: Was bricht, wenn 5, 10, 20 oder
-        30 Prozent der Belegschaft gleichzeitig krank werden? „Hält" heißt, dass keine Schicht
-        ganz unbesetzt bliebe und kaum neue Regelverstöße entstünden.
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 14 }}>
-        {szenarien.map((s) => (
-          <Card key={s.anteil} style={{ padding: 20,
-            borderColor: s.haltbar ? C.line : C.danger }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-              marginBottom: 12 }}>
-              <Rubrik>{Math.round(s.anteil * 100)} % fallen aus</Rubrik>
-              <Pill size="sm" tone={s.haltbar ? "ok" : "danger"}>{s.haltbar ? "hält" : "reißt"}</Pill>
+        </>}
+        seite={<>
+          <Seitenkarte titel="Was passiert bei einer Krankheitswelle"
+            sub={'Vier Durchrechnungen für die nächsten vierzehn Tage: Was bricht, wenn 5, 10, 20 oder 30 Prozent der Belegschaft gleichzeitig krank werden? „Hält" heißt, dass keine Schicht ganz unbesetzt bliebe und kaum neue Regelverstöße entstünden.'}>
+            <div style={{ display: "grid", gap: 10 }}>
+              {szenarien.map((s) => (
+                <div key={s.anteil} className="karte-still" style={{ padding: "14px 16px",
+                  borderColor: s.haltbar ? undefined : C.danger }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Rubrik>{Math.round(s.anteil * 100)} % fallen aus</Rubrik>
+                    <Pill size="sm" tone={s.haltbar ? "ok" : "danger"}>{s.haltbar ? "hält" : "reißt"}</Pill>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                    <span style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-.04em", ...NUM,
+                      color: s.haltbar ? C.text : C.danger }}>{s.neu < 0 ? "−" : "+"}{Math.abs(s.neu)}</span>
+                    <span style={{ fontSize: 12.5, color: C.dim }}>zusätzliche Regelverstöße gegenüber heute</span>
+                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.lineSoft}`,
+                    display: "grid", gap: 4, fontSize: 12.5 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Betroffene</span><span style={NUM}>{s.betroffen} Personen</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Unterbesetzte Dienste</span>
+                      <span style={{ ...NUM, color: s.unter ? C.warn : C.dim }}>{s.unter}</span></div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ color: C.dim }}>Ganz ohne Besetzung</span>
+                      <span style={{ ...NUM, color: s.leer ? C.danger : C.dim }}>{s.leer}</span></div>
+                  </div>
+                </div>))}
             </div>
-            <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.04em", ...NUM,
-              color: s.haltbar ? C.text : C.danger }}>+{s.neu}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>
-              zusätzliche Regelverstöße gegenüber heute</div>
-            <div style={{ marginTop: 16, paddingTop: 13, borderTop: `1px solid ${C.lineSoft}`,
-              display: "grid", gap: 6, fontSize: 12.5 }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Betroffene</span><span style={NUM}>{s.betroffen} Personen</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Unterbesetzte Dienste</span>
-                <span style={{ ...NUM, color: s.unter ? C.warn : C.dim }}>{s.unter}</span></div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: C.dim }}>Ganz ohne Besetzung</span>
-                <span style={{ ...NUM, color: s.leer ? C.danger : C.dim }}>{s.leer}</span></div>
-            </div>
-          </Card>))}
-      </div>
-      <div style={{ fontSize: 12.5, color: C.dim, marginTop: 14, lineHeight: 1.55, maxWidth: 760 }}>
-        Gerechnet über die nächsten vierzehn Tage. Der Ausfall wird gleichmäßig über die Belegschaft
-        verteilt, nicht zufällig — ein Zufallsergebnis wäre bei jedem Aufruf anders und damit
-        wertlos. Eine echte Welle trifft meist eine Einheit stärker; der reale Verlauf ist also
-        eher schlechter als hier gezeigt.
-      </div>
+          </Seitenkarte>
+          <Erklaerkasten>
+            Gerechnet über die nächsten vierzehn Tage. Der Ausfall wird gleichmäßig über die Belegschaft
+            verteilt, nicht zufällig — ein Zufallsergebnis wäre bei jedem Aufruf anders und damit
+            wertlos. Eine echte Welle trifft meist eine Einheit stärker; der reale Verlauf ist also
+            eher schlechter als hier gezeigt.
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
@@ -14888,7 +15569,7 @@ function SicherungAusserHaus({ sitz, melde }) {
     + `-o centric-$(date +%F).json`;
 
   return (
-    <Card style={{ marginTop: 18 }}>
+    <Card>
       <CardHead right={<Lab>{schluessel.filter((k) => !k.abgelaufen).length} gültig</Lab>}>
         Sicherung außer Haus</CardHead>
       <div style={{ padding: 22 }}>
@@ -14912,17 +15593,17 @@ function SicherungAusserHaus({ sitz, melde }) {
           </p>
 
           {neu && (
-            <div style={{ padding: "14px 16px", borderRadius: 10, marginBottom: 16,
+            <div style={{ padding: "14px 16px", borderRadius: "var(--r)", marginBottom: 16,
               background: C.okLight, border: `1px solid ${C.ok}44` }}>
               <div style={{ fontSize: 14, fontWeight: 640, marginBottom: 8 }}>
                 Schlüssel angelegt — gültig bis {fDatum(neu.gueltigBis.slice(0, 10))}</div>
               <code style={{ display: "block", fontFamily: "ui-monospace, monospace",
                 fontSize: 12.5, wordBreak: "break-all", background: C.flaeche,
-                padding: "9px 11px", borderRadius: 7, marginBottom: 10 }}>{neu.schluessel}</code>
+                padding: "9px 11px", borderRadius: 8, marginBottom: 10 }}>{neu.schluessel}</code>
               <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 8 }}>
                 Jetzt notieren. Er wird nicht wieder angezeigt.</div>
-              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 7,
-                background: C.sidebar, color: "#DCE6EA", fontSize: 12,
+              <pre style={{ margin: 0, padding: "10px 12px", borderRadius: 8,
+                background: C.flaecheStill, color: C.text, border: `1px solid ${C.lineSoft}`, fontSize: 12,
                 overflowX: "auto", lineHeight: 1.5 }}>{befehl(neu.schluessel)}</pre>
               <div style={{ marginTop: 10 }}>
                 <Btn size="sm" onClick={() => setNeu(null)}>Verstanden, ausblenden</Btn></div>
@@ -14938,8 +15619,8 @@ function SicherungAusserHaus({ sitz, melde }) {
 
           {schluessel.length > 0 && (<div>
             {schluessel.map((k) => (
-              <div key={k.kennung} className="karte" style={{ display: "flex", gap: 12,
-                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap" }}>
+              <div key={k.kennung} className="karte-still" style={{ display: "flex", gap: 12,
+                alignItems: "center", padding: "10px 13px", marginBottom: 7, flexWrap: "wrap", borderRadius: "var(--r)" }}>
                 <code style={{ fontFamily: "ui-monospace, monospace", fontSize: 12.5 }}>
                   {k.kennung}…</code>
                 <span style={{ fontSize: 12.5, color: C.dim, flex: 1, minWidth: 160 }}>
@@ -14977,13 +15658,13 @@ function Datenmitnahme({ sitz, akt }) {
         right={<Btn kind="primary" onClick={akt.exportAlles}>Alles herunterladen</Btn>}>
         Datenmitnahme</H1>
 
+      <Leitraster seiteBreite={420}
+        haupt={<>
       <Card>
         <CardHead right={<Lab>{Object.values(tabellen).reduce((a, t) => a + t.length, 0)} Zeilen insgesamt</Lab>}>
           Was ausgegeben wird</CardHead>
         {Object.entries(tabellen).map(([k, t], i) => (
-          <div key={k} style={{ display: "flex", alignItems: "center", gap: 16, padding: "15px 20px",
-            borderBottom: i < Object.keys(tabellen).length - 1 ? `1px solid ${C.lineSoft}` : "none",
-            flexWrap: "wrap" }}>
+          <div key={k} className="listenzeile" style={{ flexWrap: "wrap", padding: "15px var(--pad-x)" }}>
             <div style={{ flex: 1, minWidth: 240 }}>
               <div style={{ fontSize: 14.5, fontWeight: 600 }}>{namen[k] || k}</div>
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 3, lineHeight: 1.45 }}>
@@ -14996,22 +15677,21 @@ function Datenmitnahme({ sitz, akt }) {
           </div>))}
       </Card>
 
-      <SicherungAusserHaus sitz={sitz} melde={akt.melde} />
-
-      <Card style={{ marginTop: 18, padding: 22 }}>
-        <Lab style={{ marginBottom: 11 }}>Was das bedeutet</Lab>
+      <Seitenkarte titel="Was das bedeutet">
         <Haken punkte={[
           "Alle Dateien sind CSV mit Semikolon und Byte-Reihenfolge-Markierung — Excel öffnet sie ohne Nachfrage.",
           "Der Dienstplan ist Tag für Tag ausgeschrieben, nicht als Regel. Er lässt sich in jedes andere System einlesen.",
           "Personalnummern bleiben erhalten, damit die Zuordnung zur Lohnabrechnung nicht verloren geht.",
           "Die Ausgabe ist jederzeit möglich, ohne Ankündigung und ohne zusätzliche Kosten.",
         ]} />
-        <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.6, maxWidth: 740 }}>
+        <Erklaerkasten style={{ marginTop: 14, maxWidth: 740 }}>
           Eine Dienstplanung ist betriebskritisch. Die Frage, wie man wieder herauskommt, gehört
           deshalb an den Anfang eines Vertragsgesprächs und nicht an dessen Ende. Wer sie nicht
           beantworten kann, sollte kein betriebskritisches System verkaufen.
-        </div>
-      </Card>
+        </Erklaerkasten>
+      </Seitenkarte>
+        </>}
+        seite={<SicherungAusserHaus sitz={sitz} melde={akt.melde} />} />
     </div>);
 }
 
@@ -15114,9 +15794,9 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         </p>
       </div>
 
-      {/* Vier Kennzahlen als große, ruhige Kacheln — wie im Entwurf.
-          Sie stehen vor den Handlungskarten, damit die Lage klar ist,
-          bevor es ans Erledigen geht. */}
+      {/* Kennzahlen als einzelne Karten. Jede hat ihre Quelle in einer
+          bestehenden Funktion (besetzung, pruefen, ppugv); fehlt die Grundlage
+          (kein Soll, keine Untergrenzen-Bereiche), fehlt die Karte. */}
       {darf(sitz, "plan.view.unit") && (() => {
         const bes = besetzung(m, d0);
         const offen = Object.values(bes).filter((b) => b.soll > 0 && b.diff < 0)
@@ -15127,31 +15807,87 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
           for (let i = 1; i <= 7; i++) { const d = addDays(d0, i);
             n += Object.values(besetzung(m, d)).filter((b) => b.soll > 0 && b.diff < 0).length; }
           return n; })();
-        const kacheln = [
-          ["Offene Schichten", offen, offen ? "Plätze heute" : "alles besetzt", offen ? "danger" : "ok"],
-          ["Freigaben warten", frei, frei ? "zu entscheiden" : "nichts offen", frei ? "warn" : "ok"],
-          ["Abwesenheiten heute", abw, "Urlaub, krank, Schulung", "text"],
-          ["Nächste 7 Tage", kommend, kommend ? "Lücken erwartet" : "durchgehend gedeckt", kommend ? "warn" : "ok"],
-        ];
+        const sollHeute = Object.values(bes).reduce((a, b) => a + b.soll, 0);
+        const istHeute = Object.values(bes).reduce((a, b) => a + Math.min(b.anzahl, b.soll), 0);
+        const verlauf = besetzungsVerlauf(m, addDays(d0, -13), 14).filter((x) => x.soll > 0);
+        /* Ruhezeit-Befunde der letzten 28 Tage gegen die 28 davor — beide
+           Zeiträume kommen aus derselben Prüfung, sonst gäbe es keinen Trend. */
+        const ruheJetzt = pruefen(m, addDays(d0, -27), d0).filter((x) => x.art === "ruhezeit").length;
+        const ruheVorher = pruefen(m, addDays(d0, -55), addDays(d0, -28)).filter((x) => x.art === "ruhezeit").length;
+        const diff = ruheJetzt - ruheVorher;
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-            gap: 16, marginBottom: 40 }}>
-            {kacheln.map(([label, wert, sub, ton]) => (
-              <Card key={label} style={{ padding: "22px 24px 24px" }}>
-                <div style={{ fontSize: 13.5, color: C.dim, marginBottom: 16, lineHeight: 1.4,
-                  minHeight: 38 }}>{label}</div>
-                <div style={{ fontSize: 40, fontWeight: 300, letterSpacing: "-.045em", lineHeight: 1,
-                  color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                    : ton === "ok" ? C.ok : C.text, ...NUM }}>{wert}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 9 }}>{sub}</div>
-              </Card>))}
+          <Kennzahlen style={{ marginBottom: 40 }} kacheln={[
+            sollHeute > 0 && { label: "Besetzung heute", wert: Math.round((istHeute / sollHeute) * 100), einheit: "%",
+              ton: istHeute >= sollHeute ? "ok" : "warn", sub: `${istHeute} von ${sollHeute} Plätzen besetzt`,
+              bild: verlauf.length > 1 && (
+                <Sparkline art="saeulen" daten={verlauf.map((x) => x.quote)} hoehe={34}
+                  beschriftung={`Besetzungsgrad der letzten ${verlauf.length} Tage, heute ${verlauf[verlauf.length - 1].quote} Prozent`} />) },
+            { label: "Offene Schichten", wert: offen, ton: offen ? "danger" : "ok", hervor: offen ? "danger" : undefined,
+              sub: offen ? "Plätze heute" : "alles besetzt" },
+            { label: "Freigaben warten", wert: frei, ton: frei ? "warn" : "ok", sub: frei ? "zu entscheiden" : "nichts offen" },
+            { label: "Abwesenheiten heute", wert: abw, sub: "Urlaub, krank, Schulung" },
+            { label: "Nächste 7 Tage", wert: kommend, ton: kommend ? "warn" : "ok",
+              sub: kommend ? "Lücken erwartet" : "durchgehend gedeckt" },
+            { label: "Ruhezeit-Befunde", wert: ruheJetzt, ton: ruheJetzt ? "warn" : "ok",
+              sub: "letzte 28 Tage, gegen die 28 davor",
+              trend: ruheJetzt + ruheVorher === 0 ? undefined
+                : { text: diff === 0 ? "wie zuvor" : `${diff > 0 ? "+" : "−"}${Math.abs(diff)}`,
+                  ton: diff > 0 ? "warn" : diff < 0 ? "ok" : "neutral",
+                  richtung: diff > 0 ? "auf" : diff < 0 ? "ab" : "gleich" } },
+          ]} />);
+      })()}
+
+      {/* Einrichtung und Untergrenzen: nur, wo es etwas zu zeigen gibt. */}
+      {(() => {
+        const es = einrichtungsstand(m);
+        const zeigEinr = !es.fertig && darf(sitz, "org.edit");
+        const ugEinh = darf(sitz, "plan.view.unit")
+          ? (m.einheiten || []).filter((e) => !e.pool && e.ppugvBereich) : [];
+        if (!zeigEinr && !ugEinh.length) return null;
+        const [y0, mo0] = d0.split("-").map(Number);
+        const tageMonat = Array.from({ length: dim_(y0, mo0 - 1) }, (_, i) => `${d0.slice(0, 7)}-${pad(i + 1)}`);
+        const ug = ugEinh.map((e) => ({ e, l: ppugvMonatslage(ppugvZeilen(m, e, tageMonat)) }));
+        const gesamt = ug.reduce((a, x) => a + x.l.gesamt, 0);
+        const gruen = ug.reduce((a, x) => a + x.l.gruen, 0);
+        const rot = ug.reduce((a, x) => a + x.l.rot, 0);
+        const grau = ug.reduce((a, x) => a + x.l.grau, 0);
+        return (
+          <div className="startpaar">
+            {zeigEinr && (
+              <Seitenkarte titel="Einrichtung" sub="Diese Schritte fehlen noch für den vollständigen Betrieb.">
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}><Fortschritt wert={es.anteil} hoehe={8} label="Einrichtung" /></div>
+                  <b style={{ color: C.accent, fontSize: 13, ...NUM }}>{es.anteil} %</b>
+                </div>
+                <Checkliste punkte={es.schritte.map((st) => ({
+                  text: st.titel, erledigt: st.erledigt, onClick: st.erledigt ? undefined : () => gehZu(st.ziel) }))} />
+              </Seitenkarte>)}
+            {ug.length > 0 && (
+              <Seitenkarte titel="Untergrenzen im Monat" sub="Schichten je Bereich nach PpUGV, Stand dieses Monats.">
+                <Bogen segmente={[{ wert: gruen, ton: "ok", label: `${gruen} eingehalten` },
+                  { wert: rot, ton: "danger", label: `${rot} unterschritten` },
+                  { wert: grau, label: `${grau} nicht bewertbar` }]}
+                  zahl={gesamt ? `${Math.round((gruen / gesamt) * 100)} %` : "—"} kopf="Eingehalten"
+                  beschriftung={`${gruen} von ${gesamt} Schichten eingehalten, ${rot} unterschritten, ${grau} nicht bewertbar`} />
+                <div style={{ marginTop: 14 }}>
+                  {ug.map(({ e, l }) => (
+                    <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                      gap: 10, padding: "6px 0", fontSize: 13.5 }}>
+                      <span>{e.name}</span>
+                      <Pill size="sm" tone={l.rot ? "danger" : l.grau ? "neutral" : "ok"}>
+                        {l.rot ? `${l.rot} unterschritten` : l.grau ? `${l.grau} nicht bewertbar` : "eingehalten"}</Pill>
+                    </div>))}
+                </div>
+                <div style={{ marginTop: 10 }}>
+                  <Btn size="sm" onClick={() => gehZu("untergrenzen")}>Untergrenzen öffnen</Btn></div>
+              </Seitenkarte>)}
           </div>);
       })()}
 
       {/* ------------------------ Die drei Karten -------------------- */}
       {oben.length === 0 ? (
         <Card style={{ padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 34, color: C.ok, marginBottom: 14 }}>✓</div>
+          <div style={{ color: C.ok, marginBottom: 14, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={38} /></div>
           <div style={{ fontSize: 19, fontWeight: 620, marginBottom: 8 }}>Alles im Lauf</div>
           <div style={{ fontSize: 14.5, color: C.dim, maxWidth: 420, margin: "0 auto", lineHeight: 1.6 }}>
             Keine offenen Entscheidungen, keine Lücken, keine abgelaufenen Nachweise.
@@ -15199,13 +15935,13 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         <div className="abschnitt">
           <button className={`mehr${alles ? " auf" : ""}`} onClick={() => setAlles(!alles)}
             aria-expanded={alles}>
-            <span aria-hidden="true">›</span>
+            <span aria-hidden="true" style={{ display: "flex" }}><Icon n="chevron-rechts" size={14} /></span>
             {alles ? "Weniger anzeigen" : `Alles Weitere anzeigen (${rest.length})`}
           </button>
           {alles && (
             <Card style={{ marginTop: 14 }}>
               {rest.map((a, i) => (
-                <div key={i} onClick={() => a.ziel && gehZu(a.ziel)}
+                <div key={i} {...klickbar(a.ziel ? () => gehZu(a.ziel) : null)}
                   className="zeile-hover"
                   style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 22px",
                     cursor: a.ziel ? "pointer" : "default",
@@ -15213,12 +15949,12 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
                   <span style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex",
                     alignItems: "center", justifyContent: "center", fontSize: 14,
                     background: a.dringend ? C.dangerLight : C.bg,
-                    color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                    color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 550 }}>{a.titel}</div>
                     <div style={{ fontSize: 13, color: C.dim, marginTop: 3, lineHeight: 1.5 }}>{a.text}</div>
                   </div>
-                  {a.ziel && <span style={{ color: C.dim, fontSize: 18 }}>›</span>}
+                  {a.ziel && <span aria-hidden="true" style={{ color: C.dim, display: "flex" }}><Icon n="chevron-rechts" size={18} /></span>}
                 </div>))}
             </Card>)}
         </div>)}
@@ -15228,22 +15964,39 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         <div className="abschnitt">
           <h2 className="abschnitt-titel">Die Lage in Zahlen</h2>
           <p className="abschnitt-sub">Stand heute, über alle {mehrzahl(m.einheitLabel)}.</p>
-          <KpiRow min={200}>
-            {(() => {
-              const bes = besetzung(m, d0);
-              const eingeteilt = Object.values(bes).reduce((a, b) => a + b.anzahl, 0);
-              const abw = m.personen.filter((x) => imDienst(x, d0) && abwesenheitAm(m, x.id, d0)).length;
-              const bl = belastbarkeit(m, 4);
-              const schwach = bl.filter((w) => w.stufe !== "robust").length;
-              return (<>
-                <Kpi label="Heute im Dienst" value={eingeteilt} sub={`von ${aktive(m, d0).length} Beschäftigten`} />
-                <Kpi label="Abwesend" value={abw} sub="Urlaub, krank, Schulung" />
-                <Kpi label="Wochen ohne Puffer" value={schwach} tone={schwach ? "warn" : "ok"}
-                  sub="in den nächsten vier" />
-              </>);
-            })()}
-          </KpiRow>
+          {(() => {
+            const bes = besetzung(m, d0);
+            const eingeteilt = Object.values(bes).reduce((a, b) => a + b.anzahl, 0);
+            const abw = m.personen.filter((x) => imDienst(x, d0) && abwesenheitAm(m, x.id, d0)).length;
+            const bl = belastbarkeit(m, 4);
+            const schwach = bl.filter((w) => w.stufe !== "robust").length;
+            return (
+              <Kennzahlen style={{ marginBottom: 0 }} kacheln={[
+                { label: "Heute im Dienst", wert: eingeteilt, ton: "accent", sub: `von ${aktive(m, d0).length} Beschäftigten` },
+                { label: "Abwesend", wert: abw, sub: "Urlaub, krank, Schulung" },
+                { label: "Wochen ohne Puffer", wert: schwach, ton: schwach ? "warn" : "ok", sub: "in den nächsten vier" }]} />);
+          })()}
         </div>)}
+
+      {/* ------------------------ Dienstbuch ------------------------- */}
+      {darf(sitz, "plan.view.unit") && (m.dienstbuch || []).length > 0 && (() => {
+        const arten = { uebergabe: ["Übergabe", "accent"], vorkommnis: ["Vorkommnis", "danger"], hinweis: ["Hinweis", "warn"] };
+        const letzte = [...m.dienstbuch].sort((a, b) => (a.datum < b.datum ? 1 : a.datum > b.datum ? -1 : 0)).slice(0, 5);
+        return (
+          <div className="abschnitt">
+            <Abschnittskopf titel="Dienstbuch" sub="Die letzten Einträge."
+              rechts={<Btn size="sm" onClick={() => gehZu("buch")}>Dienstbuch öffnen</Btn>} />
+            <Card>
+              {letzte.map((e) => (
+                <div key={e.id} className="listenzeile" style={{ alignItems: "flex-start" }}>
+                  <Pill size="sm" tone={(arten[e.art] || [])[1]}>{(arten[e.art] || [e.art])[0]}</Pill>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 1.5,
+                    overflowWrap: "anywhere" }}>{e.text}</div>
+                  <span style={{ fontSize: 12, color: C.dim, whiteSpace: "nowrap", ...NUM }}>{fKurz(e.datum)}</span>
+                </div>))}
+            </Card>
+          </div>);
+      })()}
     </div>);
 }
 
@@ -15320,25 +16073,20 @@ function Handbuch({ sitz, akt, gehZu }) {
   if (ladefehler) return (
     <div>
       <H1>Handbuch</H1>
-      <Card style={{ padding: 24 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600, marginBottom: 6 }}>
-          Das Handbuch ließ sich nicht nachladen</div>
-        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 16px" }}>
-          Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung
-          abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen.</p>
-        <Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
-          .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>
+      <Card>
+        <Leer titel="Das Handbuch ließ sich nicht nachladen" symbol="offline"
+          text="Der Inhalt wird beim Öffnen geholt; dabei ist die Verbindung abgebrochen. Alles andere in der Anwendung ist davon nicht betroffen."
+          aktion={<Btn kind="primary" onClick={() => { setLadefehler(null); handbuchLaden()
+            .then(setAlle).catch(() => setLadefehler(true)); }}>Erneut versuchen</Btn>} />
       </Card>
     </div>);
 
   if (!alle) return (
     <div>
       <H1 sub="Wird geholt …">Handbuch</H1>
-      <div style={{ display: "grid", gridTemplateColumns: "230px 1fr", gap: 26 }}>
-        <div className="pulsiert" style={{ height: 300, borderRadius: 12,
-          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
-        <div className="pulsiert" style={{ height: 420, borderRadius: 12,
-          background: C.flaeche, border: `1px solid ${C.lineSoft}` }} />
+      <div className="handbuchraster">
+        <div className="pulsiert karte" style={{ height: 300 }} />
+        <div className="pulsiert karte" style={{ height: 420 }} />
       </div>
       <div className="nurLeser" role="status" aria-live="polite">Handbuch wird geladen</div>
     </div>);
@@ -15353,13 +16101,13 @@ function Handbuch({ sitz, akt, gehZu }) {
     return (
       <Card style={{ padding: 26, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 14 }}>
-          <button onClick={() => akt.handbuchHaken(schluessel)}
+          <button type="button" onClick={() => akt.handbuchHaken(schluessel)}
             aria-label={ok ? "Als ungelesen markieren" : "Als erledigt markieren"}
             style={{ width: 26, height: 26, borderRadius: 8, flexShrink: 0, cursor: "pointer",
-              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.lineStark}`,
-              background: ok ? C.ok : "transparent", color: "#fff", fontSize: 13,
+              marginTop: 2, border: `1.5px solid ${ok ? C.ok : C.steuer}`,
+              background: ok ? C.ok : "transparent", color: C.aufAkzent, padding: 0,
               display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
-            {ok ? "✓" : ""}</button>
+            {ok ? <Icon n="haken" size={15} strokeWidth={2.4} /> : null}</button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h3 style={{ fontSize: 18, fontWeight: 640, letterSpacing: "-.02em", margin: 0,
               opacity: ok ? .6 : 1 }}>{a.titel}</h3>
@@ -15382,18 +16130,13 @@ function Handbuch({ sitz, akt, gehZu }) {
           </ol>)}
 
         {a.pruefen && (
-          <div style={{ padding: "13px 16px", borderRadius: 10, background: C.okLight,
-            border: `1px solid #BBF7D0`, marginBottom: 12 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".08em",
-              textTransform: "uppercase", color: C.ok, marginBottom: 6 }}>Woran du merkst, dass es geklappt hat</div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.6, color: C.text }}>{a.pruefen}</div>
-          </div>)}
+          <Hinweisband ton="ok" style={{ boxShadow: "none", marginBottom: 12, background: C.okLight }}
+            titel={<span style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".08em",
+              textTransform: "uppercase", color: C.ok }}>Woran du merkst, dass es geklappt hat</span>}>
+            <span style={{ fontSize: 13.5, lineHeight: 1.6, color: C.text }}>{a.pruefen}</span>
+          </Hinweisband>)}
 
-        {a.merke && (
-          <div style={{ padding: "13px 16px", borderRadius: 10, background: C.bg,
-            borderLeft: `3px solid ${C.accent}` }}>
-            <div style={{ fontSize: 13.5, lineHeight: 1.6, color: C.dim }}>{a.merke}</div>
-          </div>)}
+        {a.merke && <Erklaerkasten style={{ fontSize: 13.5, lineHeight: 1.6 }}>{a.merke}</Erklaerkasten>}
 
         {(kapZiel || a.ziel) && !suche && (
           <div style={{ marginTop: 16 }}>
@@ -15411,32 +16154,27 @@ function Handbuch({ sitz, akt, gehZu }) {
         </div>}>
         Handbuch</H1>
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap",
-        marginBottom: 26 }}>
-        <Inp value={suche} onChange={(e) => setSuche(e.target.value)}
-          placeholder="Im Handbuch suchen …" style={{ maxWidth: 320 }} />
-        {treffer && <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
-          {treffer.length} {treffer.length === 1 ? "Abschnitt" : "Abschnitte"}</span>}
-        {suche && <Btn size="sm" kind="quiet" onClick={() => setSuche("")}>Zurücksetzen</Btn>}
-        <div style={{ flex: 1 }} />
-        {gelesen.length > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <div style={{ width: 90, height: 5, borderRadius: 3, background: C.bg, overflow: "hidden" }}>
-              <div style={{ width: `${anteil}%`, height: "100%", background: C.ok }} /></div>
-            <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{anteil} % durch</span>
-          </div>)}
-      </div>
+      <Filterleiste suche={suche} setSuche={setSuche} platzhalter="Im Handbuch suchen …" label="Im Handbuch suchen"
+        rechts={<>
+          {treffer && <span style={{ fontSize: 13, color: C.dim, ...NUM }}>
+            {treffer.length} {treffer.length === 1 ? "Abschnitt" : "Abschnitte"}</span>}
+          {suche && <Btn size="sm" kind="quiet" onClick={() => setSuche("")}>Zurücksetzen</Btn>}
+          {gelesen.length > 0 && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 11 }}>
+              <span style={{ width: 90 }}><Fortschritt wert={anteil} ton="ok" hoehe={6} label="Handbuch gelesen" /></span>
+              <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>{anteil} % durch</span>
+            </span>)}
+        </>} />
 
       {treffer ? (
         treffer.length === 0
           ? <Leer titel="Nichts gefunden" text="Versuch einen anderen Begriff — etwa „Ruhezeit“, „Urlaub“ oder „Zuschlag“." />
           : treffer.map((a, i) => <Abschnitt key={i} a={a} kapId={a.kapitelId} kapZiel={a.ziel} />)
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(230px,280px) minmax(0,1fr)",
-          gap: 24, alignItems: "start" }}>
+        <div className="handbuchraster">
 
           {/* --------------------- Kapitelliste --------------------- */}
-          <Card style={{ position: "sticky", top: 76 }}>
+          <Card className="kapitelliste">
             {kapitel.map((x, i) => {
               const fertig = x.abschnitte.every((a) => gelesen.includes(`${x.id}:${a.titel}`));
               const an = x.id === offen;
@@ -15451,8 +16189,8 @@ function Handbuch({ sitz, akt, gehZu }) {
                   <span style={{ width: 22, height: 22, borderRadius: 11, flexShrink: 0, marginTop: 1,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 11, fontWeight: 700, ...NUM,
-                    background: fertig ? C.ok : an ? C.accent : C.bg,
-                    color: fertig || an ? "#fff" : C.dim }}>{fertig ? "✓" : i + 1}</span>
+                    background: fertig ? C.ok : an ? C.accent : C.flaecheStill,
+                    color: fertig || an ? C.aufAkzent : C.dim }}>{fertig ? <Icon n="haken" size={13} strokeWidth={2.4} /> : i + 1}</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13.5, fontWeight: an ? 640 : 550,
                       lineHeight: 1.35 }}>{x.titel}</span>
@@ -15484,6 +16222,17 @@ function Handbuch({ sitz, akt, gehZu }) {
               </div>
             </>)}
           </div>
+
+          {/* ------------------ Stand in diesem Kapitel ------------------ */}
+          {k && (
+            <div className="rechts">
+              <Seitenkarte titel="In diesem Kapitel"
+                sub={`${k.abschnitte.filter((a) => gelesen.includes(`${k.id}:${a.titel}`)).length} von ${k.abschnitte.length} als erledigt markiert`}>
+                <Checkliste punkte={k.abschnitte.map((a) => ({ text: a.titel,
+                  erledigt: gelesen.includes(`${k.id}:${a.titel}`),
+                  onClick: () => akt.handbuchHaken(`${k.id}:${a.titel}`) }))} />
+              </Seitenkarte>
+            </div>)}
         </div>)}
     </div>);
 }
@@ -15718,20 +16467,31 @@ function darfSichBewerben(m, personId, a) {
   if ((a.bewerbungen || []).some((b) => b.personId === personId))
     return { darf: false, grund: "bereits beworben" };
 
-  /* Dieselbe Prüfung wie bei der Ersatzsuche — was dort sperrt, sperrt hier. */
-  const da = m.dienstarten.find((x) => x.id === a.dienstId);
-  const h = hindernisse(m, p, a.datum, da);
-  if (h.length) return { darf: false, grund: h[0], hindernisse: h };
-
   /* Wer an dem Tag schon eingeteilt ist, kann nicht zusätzlich. Geprüft wird
      gegen die Dienstarten des Betriebs — eine feste Kennung wie „F" wäre
-     falsch, weil sie in vielen Betrieben der Frühdienst ist. */
+     falsch, weil sie in vielen Betrieben der Frühdienst ist. Das ist keine
+     Regel, sondern technisch: Eine Person hat je Tag einen Planeintrag. */
   const eigen = personTag(m, p, a.datum);
   if (eigen && eigen.dienstId && m.dienstarten.some((x) => x.id === eigen.dienstId))
     return { darf: false, grund: "an diesem Tag bereits eingeteilt" };
 
-  return { darf: true };
+  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein
+     warnender Befund die Bewerbung nicht: Die Person sieht den Hinweis und
+     darf sich trotzdem melden; die Planung entscheidet mit dem Warndialog.
+     Ein sperrender Befund (SPERR_REGELN) hindert — wie im Integrationsstand. */
+  const da = m.dienstarten.find((x) => x.id === a.dienstId);
+  const bef = da ? hindernisBefunde(m, p, a.datum, da) : [];
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text, hindernisse: [sperre.text] };
+  const h = bef.map((b) => b.text);
+  return h.length ? { darf: true, hinweise: h } : { darf: true };
 }
+
+/** Darf sich bewerben, und nichts spricht dagegen — wer so steht, wird benachrichtigt. */
+const bewerbbarOhneHinweis = (m, personId, a) => {
+  const r = darfSichBewerben(m, personId, a);
+  return r.darf && !(r.hinweise || []).length;
+};
 
 /** Die Ausschreibungen, die einer Person offenstehen. */
 const meineOffenenSchichten = (m, personId) =>
@@ -15784,7 +16544,7 @@ function bewerbungsPunkte(m, p, a) {
 function ausschreibungLage(m, a) {
   const bew = bewerbungenGeordnet(m, a);
   const moeglich = m.personen.filter((p) => imDienst(p, a.datum)
-    && darfSichBewerben(m, p.id, { ...a, bewerbungen: [] }).darf).length;
+    && bewerbbarOhneHinweis(m, p.id, { ...a, bewerbungen: [] })).length;
   const tage = between(heute(), a.datum);
   return { bewerbungen: bew, anzahl: bew.length, moeglich, tage,
     dringend: tage <= 2 && !bew.length,
@@ -15865,7 +16625,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
         <Card><Leer titel="Nichts ausgeschrieben"
           text="Wenn jemand ausfällt, kannst du die Lücke hier zur Bewerbung freigeben statt herumzutelefonieren." /></Card>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,340px) minmax(0,1fr)",
+        <div className="zweispaltig" style={{ display: "grid", gridTemplateColumns: "minmax(280px,340px) minmax(0,1fr)",
           gap: 24, alignItems: "start" }}>
 
           {/* ------------------------ Die Liste ------------------------ */}
@@ -15907,7 +16667,10 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
               <div>
                 <Card style={{ marginBottom: 18 }}>
                   <div style={{ padding: "22px var(--pad-x)" }}>
-                    <Rubrik>{fLang(a.datum)}</Rubrik>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <Rubrik>{fLang(a.datum)}</Rubrik>
+                      {lage.dringend && <Pill size="sm" tone="danger">dringend</Pill>}
+                    </div>
                     <h2 style={{ fontSize: 24, fontWeight: 300, letterSpacing: "-.035em",
                       margin: "9px 0 8px" }}>
                       {da ? da.name : a.dienstId}
@@ -15934,7 +16697,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                 {!darfVergeben ? null : lage.anzahl === 0 ? (
                   <Card><Leer titel="Noch niemand hat sich gemeldet"
                     text={lage.moeglich === 0
-                      ? "Niemand darf diese Schicht übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Hier hilft nur die Ersatzsuche mit Begründung."
+                      ? "Niemand kann diese Schicht ohne Befund übernehmen — Ruhezeit, Qualifikation oder Abwesenheit stehen im Weg. Die Ersatzsuche zeigt, wer nur mit Abweichung infrage kommt."
                       : `${zahl(lage.moeglich)} Personen wurden unterrichtet. Bei kurzem Vorlauf lohnt zusätzlich die gezielte Anfrage.`} />
                     {lage.moeglich > 0 && (
                       <div style={{ padding: "0 var(--pad-x) 22px" }}>
@@ -15960,11 +16723,19 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
                           </div>
                           {darfVergeben && (
                             <Btn size="sm" kind={i === 0 ? "primary" : undefined}
-                              onClick={() => akt.vergibSchicht(a.id, b.personId)}>Einteilen</Btn>)}
+                              onClick={() => akt.mitWarnung(m, { titel: "Offene Schicht vergeben",
+                                eintraege: [{ personId: b.personId, datum: a.datum, dienstId: a.dienstId }],
+                                knopf: "Einteilen",
+                                ausfuehren: (best) => akt.vergibSchicht(a.id, b.personId, best) })}>Einteilen</Btn>)}
                         </div>
                         {b.text && (
                           <div style={{ fontSize: 13.5, color: C.dim, marginTop: 10,
                             paddingLeft: 52, lineHeight: 1.5, fontStyle: "italic" }}>„{b.text}"</div>)}
+                        {(() => { const dx = m.dienstarten.find((x) => x.id === a.dienstId);
+                          const h = dx ? hindernisse(m, b.person, a.datum, dx) : [];
+                          return h.length > 0 && (
+                            <div style={{ display: "flex", gap: 7, fontSize: 12.5, color: C.warn, marginTop: 8, paddingLeft: 52, lineHeight: 1.45 }}>
+                              <Icon n="warnung" size={14} /><span>mit Hinweis: {h.join(" · ")}</span></div>); })()}
                         {b.gruende && b.gruende.length > 0 && (
                           <div style={{ marginTop: 12, paddingLeft: 52, display: "grid", gap: 5 }}>
                             {b.gruende.slice(0, 3).map((g, gi) => (
@@ -16012,8 +16783,8 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
           {(() => {
             const da = m.dienstarten.find((x) => x.id === neu.dienstId);
             const moeglich = m.personen.filter((p) => imDienst(p, neu.datum)
-              && darfSichBewerben(m, p.id, { datum: neu.datum, dienstId: neu.dienstId,
-                status: "offen", bewerbungen: [] }).darf).length;
+              && bewerbbarOhneHinweis(m, p.id, { datum: neu.datum, dienstId: neu.dienstId,
+                status: "offen", bewerbungen: [] })).length;
             return (
               <div style={{ display: "grid", gap: 18 }}>
                 <div>
@@ -16026,7 +16797,7 @@ function OffeneSchichten({ sitz, akt, gehZu }) {
 
                 <div style={{ padding: "14px 16px", borderRadius: 10,
                   background: moeglich > 0 ? C.okLight : C.warnLight,
-                  border: `1px solid ${moeglich > 0 ? "#BBF7D0" : "#FEF08A"}` }}>
+                  border: `1px solid ${moeglich > 0 ? C.ok : C.warn}66` }}>
                   <div style={{ fontSize: 14, lineHeight: 1.55,
                     color: moeglich > 0 ? C.text : C.warn }}>
                     {moeglich > 0
@@ -16354,8 +17125,8 @@ function TourLeiste({ sitz, akt, gehZu }) {
   const rahmen = {
     position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 900,
     maxWidth: eingeklappt ? 560 : 940, margin: "0 auto",
-    background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: 14,
-    overflow: "hidden", boxShadow: "0 14px 40px -14px rgba(7,19,23,.28)",
+    background: C.flaeche, border: `1px solid ${C.lineStark}`, borderRadius: "var(--r-gross)",
+    overflow: "hidden", boxShadow: "var(--schatten-blatt)",
   };
 
   /* ---------------------------- Eingeklappt ---------------------------
@@ -16384,7 +17155,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
           <button type="button" onClick={() => akt.tourSchliessen(false)} aria-label="Tour schließen"
             title="Tour schließen — unter Einstellungen fortsetzbar"
             style={{ border: "none", background: "transparent", color: C.dim, cursor: "pointer",
-              fontFamily: "inherit", fontSize: 17, lineHeight: 1, padding: "6px 8px", flexShrink: 0 }}>×</button>
+              fontFamily: "inherit", padding: "6px 8px", flexShrink: 0, display: "flex" }}><Icon n="x" size={18} strokeWidth={2.2} /></button>
         </div>
       </div>);
   }
@@ -16428,7 +17199,7 @@ function TourLeiste({ sitz, akt, gehZu }) {
                     background: hier ? C.accentLight : "transparent",
                     color: hier ? C.accentDeep : k.fertig ? C.ok : C.dim,
                     fontWeight: hier ? 620 : 500 }}>
-                  {k.fertig && !hier ? "✓ " : ""}{k.name}
+                  {k.fertig && !hier && <Icon n="haken" size={13} strokeWidth={2.4} />}{k.name}
                 </button>);
             })}
           </div>
@@ -16441,14 +17212,14 @@ function TourLeiste({ sitz, akt, gehZu }) {
           {punkt.tun && (
             <div style={{ display: "flex", gap: 9, marginTop: 12, fontSize: 14,
               alignItems: "flex-start" }}>
-              <span style={{ color: C.accent, fontWeight: 700, flexShrink: 0 }}>▸</span>
+              <span aria-hidden="true" style={{ color: C.accent, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={14} /></span>
               <span style={{ fontWeight: 550 }}>{punkt.tun}</span>
             </div>)}
 
           {punkt.pruefen && (
             <div style={{ display: "flex", gap: 9, marginTop: 8, fontSize: 13.5,
               color: C.ok, alignItems: "flex-start", lineHeight: 1.5 }}>
-              <span style={{ fontWeight: 700, flexShrink: 0 }}>✓</span>
+              <span style={{ flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={16} strokeWidth={2.2} /></span>
               <span>{punkt.pruefen}</span>
             </div>)}
 
@@ -16508,30 +17279,26 @@ function Einstellungen({ sitz, akt, gehZu }) {
   const melde = (was) => { setGespeichert(was); setTimeout(() => setGespeichert(null), 2200); };
   /* Eine schlichte Rückmeldung am oberen Rand — die Anwendung hat dafür
      keinen eigenen Baustein, und für zwei Zeilen lohnt keiner. */
-  const Hinweis = ({ children }) => (
-    <div role="status" style={{ position: "fixed", top: 68, left: "50%",
-      transform: "translateX(-50%)", zIndex: 800, background: C.sidebar, color: "#fff",
-      padding: "11px 20px", borderRadius: 10, fontSize: 13.5, fontWeight: 550,
-      boxShadow: "0 8px 24px -8px rgba(7,19,23,.4)" }}>{children}</div>);
+  const Hinweis = ({ children }) => <div role="status" className="toast">{children}</div>;
 
-  const Zeile = ({ titel, text, children }) => (
-    <div style={{ display: "flex", gap: 20, padding: "18px var(--pad-x)",
-      borderBottom: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div style={{ flex: 1, minWidth: 220 }}>
-        <div style={{ fontSize: 14.5, fontWeight: 600 }}>{titel}</div>
-        {text && <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
-          {text}</div>}
-      </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
-    </div>);
+  /* Die Beschriftung steht links, das Bedienelement rechts — für das Auge
+     eindeutig, für eine Vorlesesoftware zunächst nicht: Sie liest den Titel
+     als Fließtext und danach ein namenloses Feld. Die Verbindung entsteht
+     erst durch die Auszeichnung als Gruppe mit benanntem Titel. */
+  const Zeile = ({ titel, text, children }) => {
+    const kennung = `einst-${String(titel).replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}`;
+    return (
+      <div style={{ display: "flex", gap: 20, padding: "18px var(--pad-x)",
+        borderBottom: `1px solid ${C.lineSoft}`, alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div id={kennung} style={{ fontSize: 14.5, fontWeight: 600 }}>{titel}</div>
+          {text && <div style={{ fontSize: 13, color: C.dim, marginTop: 4, lineHeight: 1.55 }}>
+            {text}</div>}
+        </div>
+        <div role="group" aria-labelledby={kennung} style={{ flexShrink: 0, maxWidth: "100%" }}>{children}</div>
+      </div>);
+  };
 
-  const Schalter = ({ an, onChange, label }) => (
-    <button onClick={() => onChange(!an)} role="switch" aria-checked={an} aria-label={label}
-      style={{ width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
-        background: an ? C.accent : C.lineStark, position: "relative", transition: "background .16s" }}>
-      <span style={{ position: "absolute", top: 3, left: an ? 23 : 3, width: 22, height: 22,
-        borderRadius: 11, background: "#fff", transition: "left .16s",
-        boxShadow: "0 1px 3px rgba(7,19,23,.25)" }} /></button>);
 
   return (
     <div>
@@ -16541,8 +17308,10 @@ function Einstellungen({ sitz, akt, gehZu }) {
 
       {gespeichert && <Hinweis>{gespeichert}</Hinweis>}
 
+      <div className="spalten2">
+      <div>
       {/* ------------------------- Darstellung ------------------------- */}
-      <Card style={{ marginBottom: 20 }}>
+      <Card>
         <CardHead>Darstellung</CardHead>
         <Zeile titel="Dichte"
           text="Kompakt zeigt mehr auf einmal, komfortabel ist ruhiger zu lesen.">
@@ -16572,7 +17341,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
         </Zeile>
         <Zeile titel="Startansicht"
           text="Womit die Anwendung nach dem Anmelden öffnet.">
-          <Sel value={p.startansicht || "start"}
+          <Sel value={p.startansicht || "start"} aria-label="Startansicht"
             onChange={(e) => { akt.setzeMeineEinstellung("startansicht", e.target.value);
               melde("Startansicht geändert."); }}>
             {(sitz.mandant ? NAV_KUNDE.filter((v) => !v[2] || darf(sitz, v[2])) : [])
@@ -16583,13 +17352,13 @@ function Einstellungen({ sitz, akt, gehZu }) {
       </Card>
 
       {/* --------------------------- Zugang ---------------------------- */}
-      <Card style={{ marginBottom: 20 }}>
+      <Card>
         <CardHead>Zugang</CardHead>
         <Zeile titel="Anmeldeadresse"
           text="Unter dieser Adresse erreichen dich Mitteilungen. Eine Änderung wird dem Betreiber angezeigt.">
-          <div style={{ display: "flex", gap: 9, alignItems: "center" }}>
-            <Inp type="email" defaultValue={p.email || ""} id="ein-mail"
-              placeholder="name@betrieb.de" style={{ minWidth: 220 }} />
+          <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
+            <Inp type="email" defaultValue={p.email || ""} id="ein-mail" aria-label="Anmeldeadresse"
+              placeholder="name@betrieb.de" style={{ minWidth: 0, flex: "1 1 200px" }} />
             <Btn size="sm" onClick={() => {
               const el = document.getElementById("ein-mail");
               if (!el) return;
@@ -16614,7 +17383,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
       {/* ------------------------ Geführte Tour ------------------------
           Der Inhalt kommt nachgeladen. Bis er da ist, bleibt die Karte weg —
           eine Karte mit leeren Feldern sieht aus wie ein Fehler. */}
-      {t && (<Card style={{ marginBottom: 20 }}>
+      {t && (<Card>
         <CardHead right={st.anteil > 0 ? <Lab>{st.anteil} % durch</Lab> : null}>
           Geführte Tour</CardHead>
         <Zeile titel={t.titel}
@@ -16647,11 +17416,11 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <div style={{ display: "grid", gap: 7 }}>
             {tourKapitel(tour, rolleId, st.gesehen).map((k) => (
               <div key={k.idx} style={{ display: "flex", gap: 12, alignItems: "center",
-                padding: "9px 12px", borderRadius: 9, border: `1px solid ${C.lineSoft}`,
+                padding: "9px 12px", borderRadius: "var(--r)", border: `1px solid ${C.lineSoft}`,
                 flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160,
-                  color: k.fertig ? C.dim : C.text }}>
-                  {k.fertig ? "✓ " : ""}{k.name}</span>
+                <span style={{ fontSize: 13.5, flex: 1, minWidth: 160, display: "inline-flex", gap: 7,
+                  alignItems: "center", color: k.fertig ? C.dim : C.text }}>
+                  {k.fertig && <Icon n="haken" size={14} strokeWidth={2.3} />}{k.name}</span>
                 <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
                   {k.gesehen} von {k.anzahl}</span>
                 <Btn size="sm" kind={k.fertig ? "plain" : "quiet"}
@@ -16664,7 +17433,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
 
       {/* ------------------- Kalender und Weckzeiten ------------------- */}
       {sitz.mandant && sitz.person && sitz.person.imSchichtdienst !== false && (
-        <Card style={{ marginBottom: 20 }}>
+        <Card>
           <CardHead>Kalender und Weckzeiten</CardHead>
 
           <Zeile titel="Dienstplan im eigenen Kalender"
@@ -16746,51 +17515,6 @@ function Einstellungen({ sitz, akt, gehZu }) {
           </Zeile>
         </Card>)}
 
-      {/* ---------------------- Benachrichtigungen --------------------- */}
-      {sitz.mandant && <Card style={{ marginBottom: 20 }}>
-        <CardHead>Benachrichtigungen</CardHead>
-        <Zeile titel="Mitteilungen auf diesem Gerät"
-          text={SP.pushMoeglich()
-            ? "Bei kurzfristigen Änderungen wirst du sofort unterrichtet."
-            : "Dieses Gerät unterstützt keine Mitteilungen. Auf dem iPhone muss CENTRIC dafür auf dem Startbildschirm liegen."}>
-          <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
-            onChange={(v) => akt.pushUmschalten(v)} />
-        </Zeile>
-        {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
-          const w = zustellwege(p, id);
-          return (
-            <Zeile key={id} titel={a.titel} text={a.text}>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[["mail", "E-Mail", w.mail], ["push", "Gerät", w.push]].map(([weg, label, an]) => (
-                  <button key={weg} onClick={() => akt.setzeZustellung(p.id, id, weg, !an)}
-                    style={{ padding: "7px 14px", borderRadius: 999, minWidth: 82,
-                      border: `1px solid ${an ? C.accent : C.line}`, cursor: "pointer",
-                      background: an ? C.accentLight : "transparent", color: an ? C.accent : C.dim,
-                      fontFamily: "inherit", fontSize: 12.5, fontWeight: 600 }}>
-                    {an ? "✓ " : ""}{label}</button>))}
-              </div>
-            </Zeile>);
-        })}
-      </Card>}
-
-      {/* ------------------- Nur für die Leitung ----------------------- */}
-      {sitz.mandant && darf(sitz, "mandant.edit") && (
-        <Card style={{ marginBottom: 20 }}>
-          <CardHead>Für den Betrieb</CardHead>
-          <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
-            text="Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.">
-            <Btn size="sm" onClick={() => gehZu("betrieb")}>Zum Betrieb</Btn>
-          </Zeile>
-          <Zeile titel="Datenmitnahme"
-            text="Alle Daten als CSV, jederzeit, ohne Gebühr.">
-            <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
-          </Zeile>
-          <Zeile titel="Sicherung anlegen"
-            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
-            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
-              Jetzt sichern</Btn>
-          </Zeile>
-        </Card>)}
 
       {/* ----------------------- Datenschutz --------------------------- */}
       {sitz.mandant ? (<Card>
@@ -16815,6 +17539,56 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <Btn size="sm" onClick={() => akt.verbindungTrennen()}>Abmelden</Btn>
         </Zeile>
       </Card>)}
+      </div>
+      <div>
+      {/* ---------------------- Benachrichtigungen --------------------- */}
+      {sitz.mandant && <Card>
+        <CardHead>Benachrichtigungen</CardHead>
+        <Zeile titel="Mitteilungen auf diesem Gerät"
+          text={SP.pushMoeglich()
+            ? "Bei kurzfristigen Änderungen wirst du sofort unterrichtet."
+            : "Dieses Gerät unterstützt keine Mitteilungen. Auf dem iPhone muss CENTRIC dafür auf dem Startbildschirm liegen."}>
+          <Schalter an={SP.pushErlaubt()} label="Mitteilungen"
+            onChange={(v) => akt.pushUmschalten(v)} />
+        </Zeile>
+        {Object.entries(ZUSTELLARTEN).map(([id, a]) => {
+          const w = zustellwege(p, id);
+          return (
+            <Zeile key={id} titel={a.titel} text={a.text}>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[["mail", "E-Mail", w.mail], ["push", "Gerät", w.push]].map(([weg, label, an]) => (
+                  <button key={weg} type="button" className="chip" aria-pressed={!!an}
+                    onClick={() => akt.setzeZustellung(p.id, id, weg, !an)}
+                    style={{ minWidth: 82, justifyContent: "center", fontWeight: 600,
+                      borderColor: an ? C.accent : undefined,
+                      background: an ? C.accentLight : C.flaeche, color: an ? C.accent : C.dim }}>
+                    {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{label}</button>))}
+              </div>
+            </Zeile>);
+        })}
+      </Card>}
+
+      {/* ------------------- Nur für die Leitung ----------------------- */}
+      {sitz.mandant && darf(sitz, "mandant.edit") && (
+        <Card>
+          <CardHead>Für den Betrieb</CardHead>
+          <Zeile titel="Arbeitszeitregeln, Standorte, Dienstarten"
+            text="Betriebliche Festlegungen stehen getrennt — sie gelten für alle, nicht nur für dich.">
+            <Btn size="sm" onClick={() => gehZu("betrieb")}>Zum Betrieb</Btn>
+          </Zeile>
+          <Zeile titel="Datenmitnahme"
+            text="Alle Daten als CSV, jederzeit, ohne Gebühr.">
+            <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
+          </Zeile>
+          <Zeile titel="Sicherung anlegen"
+            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
+            <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
+              Jetzt sichern</Btn>
+          </Zeile>
+        </Card>)}
+
+      </div>
+      </div>
     </div>);
 }
 
@@ -17392,7 +18166,6 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
   if (datum.slice(0, 7) !== runde.monat)
     return { darf: false, grund: "liegt außerhalb des Planungsmonats" };
   if (!imDienst(p, datum)) return { darf: false, grund: "an diesem Tag nicht beschäftigt" };
-  if (abwesenheitAm(m, p.id, datum)) return { darf: false, grund: "an diesem Tag abwesend" };
 
   const schon = (runde.eintraege || []).find((e) =>
     e.personId === personId && e.datum === datum);
@@ -17401,40 +18174,63 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
   const da = m.dienstarten.find((x) => x.id === dienstId);
   if (!da) return { darf: false, grund: "Dienstart unbekannt" };
 
+  /* Seit E-19 hindert keine Regel die Eintragung. Was dagegen spricht,
+     wird als Hinweis mitgegeben; die Person darf sich trotzdem eintragen,
+     und die Planung entscheidet bei der Übernahme mit dem Warndialog. */
+  const hinweise = [];
+
   /* Ruhezeit gegen die eigenen bisherigen Eintragungen prüfen — nicht nur
      gegen den bestehenden Plan. Sonst trägt sich jemand Nacht und Früh
-     hintereinander ein, und die Planung muss es hinterher auflösen. */
+     hintereinander ein, ohne es zu merken. */
   const eigene = (runde.eintraege || []).filter((e) => e.personId === personId);
   const vortag = eigene.find((e) => e.datum === addDays(datum, -1));
   if (vortag) {
     const dv = m.dienstarten.find((x) => x.id === vortag.dienstId);
     if (dv && ruhezeitVerletzt(m, dv, da, addDays(datum, -1)))
-      return { darf: false, grund: "zu wenig Ruhezeit nach dem Vortag" };
+      hinweise.push("zu wenig Ruhezeit nach dem Vortag");
   }
   const folgetag = eigene.find((e) => e.datum === addDays(datum, 1));
   if (folgetag) {
     const df = m.dienstarten.find((x) => x.id === folgetag.dienstId);
     if (df && ruhezeitVerletzt(m, da, df, datum))
-      return { darf: false, grund: "zu wenig Ruhezeit vor dem Folgetag" };
+      hinweise.push("zu wenig Ruhezeit vor dem Folgetag");
   }
 
-  /* Qualifikationen und harte Sperren — dieselbe Prüfung wie sonst */
-  const h = hindernisse(m, p, datum, da);
-  if (h.length) return { darf: false, grund: h[0] };
+  /* Unter 11 Stunden zu den eigenen Eintragungen sperrt (SPERR_REGELN.ruhezeitGesetz,
+     Review H1): Bei der Übernahme wird gegen den Plan geprüft, nicht gegen die
+     übrigen Eintragungen derselben Runde. */
+  const ruheGesetz = (dA, daA, daB) => {
+    const [, aEnde] = fenster(dA, daA);
+    const [bStart] = fenster(addDays(dA, 1), daB);
+    return ruhezeitStufe((bStart - aEnde) / 60, m.einstellungen.ruhezeit) === "recht";
+  };
+  const dvG = vortag && m.dienstarten.find((x) => x.id === vortag.dienstId);
+  const dfG = folgetag && m.dienstarten.find((x) => x.id === folgetag.dienstId);
+  if (sperrtArt("ruhezeitGesetz") && ((dvG && ruheGesetz(addDays(datum, -1), dvG, da)) || (dfG && ruheGesetz(datum, da, dfG))))
+    return { darf: false, grund: "weniger als 11 Stunden Ruhezeit zu deiner anderen Eintragung (§ 5 ArbZG)" };
+
+  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie
+     sonst. Ein sperrender Befund (SPERR_REGELN) hindert die Eintragung. */
+  const bef = hindernisBefunde(m, p, datum, da);
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text };
+  hinweise.push(...bef.map((b) => b.text));
 
   /* Ist der Dienst schon voll? Über die Mindestbesetzung hinaus soll sich
-     niemand eintragen, solange andere Tage leer sind. */
+     niemand eintragen, ohne es zu wissen. */
   const drin = (runde.eintraege || []).filter((e) =>
     e.datum === datum && e.dienstId === dienstId).length;
   const soll = mindestFuer(m, da, datum);
   if (runde.deckelung !== false && soll > 0 && drin >= soll)
-    return { darf: false, grund: "dieser Dienst ist bereits gedeckt" };
+    hinweise.push("dieser Dienst ist bereits gedeckt");
 
-  /* Wer sein Stundenziel deutlich überschreitet, tritt zurück */
+  /* Wer sein Stundenziel deutlich überschreitet, erfährt es */
   const st = selbstplanStand(m, runde, personId);
-  if (st && st.zuViel) return { darf: false, grund: "dein Stundenziel ist erreicht" };
+  if (st && st.zuViel) hinweise.push("dein Stundenziel ist erreicht");
 
-  return { darf: true, offen: Math.max(0, soll - drin) };
+  return hinweise.length
+    ? { darf: true, hinweise, offen: Math.max(0, soll - drin) }
+    : { darf: true, offen: Math.max(0, soll - drin) };
 }
 
 /** Wie viele fehlen noch je Tag und Dienst? Die Karte der Runde. */
@@ -17664,30 +18460,20 @@ function Selbstplanung({ sitz, akt, gehZu }) {
 
       {runden.length === 0 ? (
         <Card><Leer titel="Noch keine Runde"
-          text="Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest." />
-          {darfFuehren && (
-            <div style={{ padding: "0 var(--pad-x) 22px" }}>
-              <Btn kind="primary" onClick={() => setNeu(true)}>Erste Runde öffnen</Btn>
-            </div>)}
+          text="Öffne eine Runde für einen kommenden Monat. Die Belegschaft trägt sich ein, danach übernimmst du den Entwurf und füllst den Rest."
+          aktion={darfFuehren && <Btn kind="primary" onClick={() => setNeu(true)}>Erste Runde öffnen</Btn>} />
         </Card>
       ) : (<>
         {/* ---------------------- Der Stand ------------------------- */}
         {r && f && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
-            gap: 16, marginBottom: 26 }}>
-            {[["Belegt", `${f.belegt} von ${f.gesamt}`, `${f.anteil} %`, f.anteil >= 80 ? "ok" : f.anteil >= 50 ? "warn" : "danger"],
-              ["Beteiligung", `${f.beteiligt} von ${f.moeglich}`, `${f.beteiligung} %`, f.beteiligung >= 60 ? "ok" : "warn"],
-              ["Eintragungen", zahl(f.eintraege), "insgesamt", "text"],
-              ["Noch offen", zahl(f.offen), f.offen ? "Dienste" : "nichts", f.offen ? "warn" : "ok"]].map(
-              ([label, wert, sub, ton]) => (
-              <Card key={label} style={{ padding: "20px 22px" }}>
-                <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-                <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM,
-                  color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                    : ton === "ok" ? C.ok : C.text }}>{wert}</div>
-                <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>{sub}</div>
-              </Card>))}
-          </div>)}
+          <Kennzahlen min={180} kacheln={[
+            { label: "Belegt", wert: `${f.belegt} von ${f.gesamt}`, sub: `${f.anteil} %`,
+              ton: f.anteil >= 80 ? "ok" : f.anteil >= 50 ? "warn" : "danger" },
+            { label: "Beteiligung", wert: `${f.beteiligt} von ${f.moeglich}`, sub: `${f.beteiligung} %`,
+              ton: f.beteiligung >= 60 ? "ok" : "warn" },
+            { label: "Eintragungen", wert: zahl(f.eintraege), sub: "insgesamt" },
+            { label: "Noch offen", wert: zahl(f.offen), sub: f.offen ? "Dienste" : "nichts",
+              ton: f.offen ? "warn" : "ok" }]} />)}
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(240px,300px) minmax(0,1fr)",
           gap: 24, alignItems: "start" }}>
@@ -17729,17 +18515,31 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                   {r.status === "offen" && (
                     <Btn size="sm" onClick={() => akt.rundeSchliessen(r.id)}>Schließen</Btn>)}
                   {r.status === "geschlossen" && (
-                    <Btn size="sm" kind="primary" onClick={() => akt.rundeUebernehmen(r.id)}>
+                    <Btn size="sm" kind="primary" onClick={() => akt.mitWarnung(m, { titel: "Selbstplanung übernehmen",
+                      eintraege: (r.eintraege || []).map((e, idx) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, idx })),
+                      knopf: "Übernehmen",
+                      fussnote: "Was du nicht auswählst, wird nicht übernommen und bleibt mit Grund an der Runde sichtbar.",
+                      ausfuehren: (best) => akt.rundeUebernehmen(r.id, best) })}>
                       In den Plan übernehmen</Btn>)}
                   {r.status === "uebernommen" && (
                     <div style={{ fontSize: 13, color: C.ok }}>
                       {zahl(r.uebernommen || 0)} übernommen
-                      {r.verworfen ? `, ${zahl(r.verworfen)} verworfen` : ""}</div>)}
+                      {r.verworfen ? `, ${zahl(r.verworfen)} nicht übernommen` : ""}</div>)}
                 </div>
+                {r.status === "uebernommen" && (r.nichtUebernommen || []).length > 0 && (
+                  <details style={{ marginTop: 12 }}>
+                    <summary style={{ fontSize: 12.5, color: C.dim, cursor: "pointer" }}>Nicht übernommen, mit Grund</summary>
+                    {r.nichtUebernommen.map((e, k) => {
+                      const pp = m.personen.find((x) => x.id === e.personId);
+                      return (
+                        <div key={k} style={{ fontSize: 12.5, color: C.dim, padding: "4px 0", lineHeight: 1.45 }}>
+                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {NICHT_UEBERNOMMEN_GRUENDE[e.grund] || NICHT_UEBERNOMMEN_GRUENDE.befund}</div>);
+                    })}
+                  </details>)}
                 {r.status === "geschlossen" && (
                   <div style={{ fontSize: 12.5, color: C.dim, marginTop: 12, lineHeight: 1.5 }}>
-                    Beim Übernehmen wird jeder Eintrag noch einmal geprüft. Was inzwischen
-                    nicht mehr geht, wird verworfen statt stillschweigend eingetragen.
+                    Beim Übernehmen wird jeder Eintrag noch einmal geprüft. Einträge mit Befund
+                    zeigt der Warndialog; du entscheidest je Eintrag. Nichts wird still verworfen.
                   </div>)}
               </Card>)}
           </div>
@@ -17772,7 +18572,7 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                                 <span style={{ color: C.aus, fontSize: 12 }}>—</span>
                               ) : (
                                 <span style={{ display: "inline-block", minWidth: 44,
-                                  padding: "3px 8px", borderRadius: 6, fontSize: 12.5,
+                                  padding: "3px 8px", borderRadius: 8, fontSize: 12.5,
                                   fontWeight: 600, ...NUM,
                                   background: x.gedeckt ? C.okLight : x.drin > 0 ? C.warnLight : C.dangerLight,
                                   color: x.gedeckt ? C.ok : x.drin > 0 ? C.warn : C.danger }}>
@@ -17800,12 +18600,11 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                 {[3, 5, 7, 10, 14].map((v) => (
                   <option key={v} value={v}>{v} Tage</option>))}</Sel></Field>
 
-            <div style={{ padding: "14px 16px", borderRadius: 10, background: C.accentLight,
-              fontSize: 13.5, lineHeight: 1.55, color: C.text }}>
+            <Erklaerkasten>
               Alle Beschäftigten im Schichtdienst werden unterrichtet. Beim Eintragen
               prüft CENTRIC Ruhezeit, Qualifikation, Abwesenheit und das Stundenziel —
               wer sich einträgt, bekommt den Dienst auch.
-            </div>
+            </Erklaerkasten>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <Btn kind="quiet" onClick={() => setNeu(false)}>Abbrechen</Btn>
@@ -17866,20 +18665,50 @@ function Notrufe({ sitz, akt }) {
       {offen.length === 0 && erledigt.length === 0 ? (
         <Card><Leer titel="Keine Notrufe"
           text="Beschäftigte im Alleindienst können über die Telefonansicht Hilfe anfordern. Die Meldung geht zuerst an die Schichtverantwortung, dann an die Planung." /></Card>
-      ) : (<>
-        {offen.length > 0 && (
-          <Card style={{ marginBottom: 22, borderColor: C.danger }}>
-            <CardHead right={<Pill tone="danger">{zahl(offen.length)} offen</Pill>}>
-              Nicht bestätigt</CardHead>
-            {offen.map((n) => <Zeile key={n.id} n={n} offen />)}
-          </Card>)}
+      ) : (
+        <Leitraster seiteBreite={340}
+          haupt={<>
+            {offen.length > 0 && (
+              <Card style={{ borderColor: C.danger, borderWidth: 2 }}>
+                <CardHead right={<Pill tone="danger">{zahl(offen.length)} offen</Pill>}>
+                  Nicht bestätigt</CardHead>
+                {offen.map((n) => <Zeile key={n.id} n={n} offen />)}
+              </Card>)}
 
-        {erledigt.length > 0 && (
-          <Card>
-            <CardHead right={<Lab>letzte {zahl(erledigt.length)}</Lab>}>Bestätigt</CardHead>
-            {erledigt.map((n) => <Zeile key={n.id} n={n} offen={false} />)}
-          </Card>)}
-      </>)}
+            {erledigt.length > 0 && (
+              <Card>
+                <CardHead right={<Lab>letzte {zahl(erledigt.length)}</Lab>}>Bestätigt</CardHead>
+                {erledigt.map((n) => <Zeile key={n.id} n={n} offen={false} />)}
+              </Card>)}
+          </>}
+          seite={(() => {
+            /* Der Rückblick zählt, was im Bestand steht — sieben Tage,
+               nach Art. Die Quittierzeit ist der Abstand zwischen Meldung
+               und Bestätigung, wo beides vorliegt. */
+            const grenze = Date.now() - 7 * 86400000;
+            const woche = (m.notrufe || []).filter((n) => new Date(n.zeit).getTime() >= grenze);
+            if (!woche.length) return null;
+            const nachArt = Object.entries(NOTRUF_ARTEN).map(([id, a]) => ({ id, a,
+              n: woche.filter((n) => (NOTRUF_ARTEN[n.art] ? n.art : "hilfe") === id).length })).filter((x) => x.n > 0);
+            const hoechst = Math.max(...nachArt.map((x) => x.n));
+            const zeiten = woche.filter((n) => n.bestaetigt).map((n) =>
+              (new Date(n.bestaetigt).getTime() - new Date(n.zeit).getTime()) / 1000).filter((x) => x >= 0);
+            const mittel = zeiten.length ? zeiten.reduce((x, y) => x + y, 0) / zeiten.length : null;
+            const text = (sek) => sek < 90 ? `${Math.round(sek)} s` : sek < 5400 ? `${Math.round(sek / 60)} min`
+              : `${n1(sek / 3600)} h`;
+            return (<>
+              <Seitenkarte titel="Sieben Tage im Rückblick" sub={`${zahl(woche.length)} ${woche.length === 1 ? "Meldung" : "Meldungen"}`}>
+                {nachArt.map((x) => (
+                  <Balkenzeile key={x.id} label={x.a.label} wert={x.n} anteil={(x.n / hoechst) * 100}
+                    ton={x.a.dringend ? "danger" : "warn"} punkt />))}
+              </Seitenkarte>
+              {mittel !== null && (
+                <Seitenkarte titel="Mittlere Quittierzeit" sub={`aus ${zahl(zeiten.length)} bestätigten Meldungen`}>
+                  <Grosszahl wert={text(mittel)} />
+                </Seitenkarte>)}
+            </>);
+          })()} />
+      )}
     </div>);
 }
 
@@ -17935,7 +18764,7 @@ function Auftraggeberbericht({ sitz, akt }) {
         sub="Ein Blatt zum Weitergeben an den Auftraggeber: Wie zuverlässig war die Besetzung im Zeitraum, und was ist vorgefallen? Ohne Namen, ohne interne Aufgaben, ohne Krankmeldungen — ein Auftraggeber bekommt Nachweis, keine Personalakte.">
         Leistungsnachweis</H1>
 
-      <Card style={{ marginBottom: 22 }}>
+      <Card style={{ marginBottom: 16 }}>
         <div style={{ padding: "20px var(--pad-x)", display: "grid",
           gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 16 }}>
           <Field label="Von"><Inp type="date" value={von}
@@ -17950,62 +18779,22 @@ function Auftraggeberbericht({ sitz, akt }) {
       </Card>
 
       {b && (<>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-          gap: 16, marginBottom: 22 }}>
-          {[["Zeitraum", `${zahl(b.tage)} Tage`, ""],
-            ["Vollständig besetzt", `${zahl(b.vollstaendig)}`,
-              `von ${zahl(b.tage)} Tagen${b.betriebsweit ? " · Betrieb gesamt" : ""}`],
-            ["Deckungsquote", b.quote === null ? "—" : `${b.quote} %`,
-              (b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken")
-                + (b.betriebsweit ? " · Mindestbesetzung gilt je Dienstart, nicht je Einheit" : "")],
-            [`Dienste aus ${e ? e.name : "der Einheit"}`, zahl(b.diensteEinheit),
-              b.tageOhneEinheit ? `${zahl(b.tageOhneEinheit)} Tage ohne Dienst aus dieser Einheit` : "an jedem Tag im Dienst"],
-            ["Vorkommnisse", zahl(b.eintraege.length), "aus den Übergaben"]]
-            .map(([label, wert, sub]) => (
-            <Card key={label} style={{ padding: "20px 22px" }}>
-              <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-              <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em",
-                ...NUM }}>{wert}</div>
-              {sub && <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6 }}>{sub}</div>}
-            </Card>))}
-        </div>
+        <Kennzahlen min={180} kacheln={[
+          { label: "Zeitraum", wert: `${zahl(b.tage)} Tage`, sub: `${fKurz(b.von)} bis ${fKurz(b.bis)}` },
+          { label: "Vollständig besetzt", wert: `${zahl(b.vollstaendig)}`, ton: "ok",
+            sub: `von ${zahl(b.tage)} Tagen${b.betriebsweit ? " · Betrieb gesamt" : ""}` },
+          { label: "Deckungsquote", wert: b.quote === null ? "—" : `${b.quote} %`,
+            ton: b.quote === null ? undefined : b.quote >= 95 ? "ok" : "warn",
+            sub: (b.quote !== null && b.quote >= 98 ? "sehr gut" : b.quote >= 95 ? "gut" : "mit Lücken")
+              + (b.betriebsweit ? " · Mindestbesetzung gilt je Dienstart, nicht je Einheit" : "") },
+          { label: `Dienste aus ${e ? e.name : "der Einheit"}`, wert: zahl(b.diensteEinheit),
+            sub: b.tageOhneEinheit ? `${zahl(b.tageOhneEinheit)} Tage ohne Dienst aus dieser Einheit` : "an jedem Tag im Dienst" },
+          { label: "Vorkommnisse", wert: zahl(b.eintraege.length), ton: b.eintraege.length ? "warn" : "ok",
+            sub: "aus den Übergaben" }]} />
 
-        {/* Woher die Vorkommnisse kommen — und was zu tun ist, wenn keine
-            da sind. Ohne diesen Hinweis wirkt ein leerer Nachweis wie ein
-            Fehler der Anwendung. */}
-        <Card style={{ marginBottom: 22, borderLeft: `3px solid ${C.accent}` }}>
-          <div style={{ padding: "18px 22px", fontSize: 13.5, color: C.dim, lineHeight: 1.65 }}>
-            <b style={{ color: C.text }}>Der Nachweis wird nicht geschrieben, sondern abgeleitet.</b>{" "}
-            Die Besetzungszahlen kommen aus dem Plan, die Vorkommnisse ausschließlich aus dem
-            Feld „Vorkommnis" der abgeschlossenen Schichtübergaben. Das ist Absicht: Was einem
-            Auftraggeber als Nachweis vorgelegt wird, soll niemand nachträglich hineinschreiben
-            können.
-            <div style={{ marginTop: 10 }}>
-              {uebergabenImZeitraum === 0
-                ? <>Im gewählten Zeitraum ist <b style={{ color: C.text }}>keine einzige Übergabe</b> erfasst —
-                    deshalb steht hier nichts. Erfasst werden sie unter <b style={{ color: C.text }}>Übergabe</b>.</>
-                : <>Im Zeitraum sind {anzahlWort(uebergabenImZeitraum, "Übergabe")} erfasst,
-                    davon {zahl(b.eintraege.length)} mit einem Vorkommnis.</>}
-            </div>
-          </div>
-        </Card>
-
-        {/* Freie Anmerkung — bewusst getrennt, bewusst nicht gespeichert. */}
-        <Card style={{ marginBottom: 22 }}>
-          <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
-          <div style={{ padding: "16px var(--pad-x) 20px" }}>
-            <textarea className="inp" rows={3} value={anmerkung}
-              placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
-              onChange={(ev) => setAnmerkung(ev.target.value)} />
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
-              Erscheint im Nachweis unter eigener Überschrift und ausdrücklich als nachträglich
-              erfasst — getrennt von den Vorkommnissen aus den Übergaben. Sie wird nicht
-              gespeichert, sondern gilt nur für dieses eine Blatt.
-            </div>
-          </div>
-        </Card>
-
-        <Card style={{ marginBottom: 22 }}>
+        <Leitraster seiteBreite={370}
+          haupt={<>
+        <Card>
           <CardHead right={<div style={{ display: "flex", gap: 9 }}>
             <Btn size="sm" onClick={() => {
               try { navigator.clipboard.writeText(alsText()); } catch { /* egal */ }
@@ -18023,7 +18812,44 @@ function Auftraggeberbericht({ sitz, akt }) {
             color: C.text }}>{alsText()}</pre>
         </Card>
 
-        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, maxWidth: 660 }}>
+          </>}
+          seite={<>
+        {/* Woher die Vorkommnisse kommen — und was zu tun ist, wenn keine
+            da sind. Ohne diesen Hinweis wirkt ein leerer Nachweis wie ein
+            Fehler der Anwendung. */}
+        <Erklaerkasten>
+          <div>
+            <b style={{ color: C.text }}>Der Nachweis wird nicht geschrieben, sondern abgeleitet.</b>{" "}
+            Die Besetzungszahlen kommen aus dem Plan, die Vorkommnisse ausschließlich aus dem
+            Feld „Vorkommnis" der abgeschlossenen Schichtübergaben. Das ist Absicht: Was einem
+            Auftraggeber als Nachweis vorgelegt wird, soll niemand nachträglich hineinschreiben
+            können.
+            <div style={{ marginTop: 10 }}>
+              {uebergabenImZeitraum === 0
+                ? <>Im gewählten Zeitraum ist <b style={{ color: C.text }}>keine einzige Übergabe</b> erfasst —
+                    deshalb steht hier nichts. Erfasst werden sie unter <b style={{ color: C.text }}>Übergabe</b>.</>
+                : <>Im Zeitraum sind {anzahlWort(uebergabenImZeitraum, "Übergabe")} erfasst,
+                    davon {zahl(b.eintraege.length)} mit einem Vorkommnis.</>}
+            </div>
+          </div>
+        </Erklaerkasten>
+
+        {/* Freie Anmerkung — bewusst getrennt, bewusst nicht gespeichert. */}
+        <Card>
+          <CardHead right={<Lab>freiwillig</Lab>}>Eigene Anmerkung</CardHead>
+          <div style={{ padding: "16px var(--pad-x) 20px" }}>
+            <textarea className="inp" rows={3} value={anmerkung} aria-label="Eigene Anmerkung zum Nachweis"
+              placeholder="Zum Beispiel: Hinweis auf eine Absprache, eine geplante Maßnahme, eine Einordnung."
+              onChange={(ev) => setAnmerkung(ev.target.value)} />
+            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 10, lineHeight: 1.55 }}>
+              Erscheint im Nachweis unter eigener Überschrift und ausdrücklich als nachträglich
+              erfasst — getrennt von den Vorkommnissen aus den Übergaben. Sie wird nicht
+              gespeichert, sondern gilt nur für dieses eine Blatt.
+            </div>
+          </div>
+        </Card>
+
+        <Erklaerkasten>
           Nicht enthalten sind Namen, Stundenkonten, Krankmeldungen und die internen
           Felder der Übergabe. Wer einem Auftraggeber mehr geben will, sollte es
           bewusst tun — nicht, weil eine Ausgabe es versehentlich mitliefert.
@@ -18034,7 +18860,8 @@ function Auftraggeberbericht({ sitz, akt }) {
             {m.einheitLabel || "Einheit"}. Die Auswahl oben grenzt die Vorkommnisse ein,
             nicht die Besetzungszahlen.
           </div>
-        </div>
+        </Erklaerkasten>
+          </>} />
       </>)}
     </div>);
 }
@@ -18355,92 +19182,102 @@ function Belastung({ sitz, akt, gehZu }) {
             { id: "56", label: "8 Wochen" }]} />}>
         Belastung</H1>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))",
-        gap: 16, marginBottom: 26 }}>
-        {[["Hoch", zaehl.hoch, "vor weiteren Einsätzen ansprechen", zaehl.hoch ? "danger" : "ok"],
-          ["Erhöht", zaehl.erhoeht, "bei der nächsten Planung beachten", zaehl.erhoeht ? "warn" : "ok"],
-          ["Unauffällig", zaehl.normal, "im üblichen Rahmen", "ok"],
-          ["Betrachtet", bild.length, `Personen über ${tage} Tage`, "text"]].map(
-          ([label, wert, sub, ton]) => (
-          <Card key={label} style={{ padding: "20px 22px" }}>
-            <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 12 }}>{label}</div>
-            <div style={{ fontSize: 30, fontWeight: 300, letterSpacing: "-.035em", ...NUM,
-              color: ton === "danger" ? C.danger : ton === "warn" ? C.warn
-                : ton === "ok" ? C.ok : C.text }}>{zahl(wert)}</div>
-            <div style={{ fontSize: 12.5, color: C.dim, marginTop: 6, lineHeight: 1.4 }}>{sub}</div>
-          </Card>))}
-      </div>
+      <Kennzahlen kacheln={[
+        { label: "Hoch", wert: zahl(zaehl.hoch), ton: "danger", hervor: zaehl.hoch ? "danger" : undefined,
+          sub: "vor weiteren Einsätzen ansprechen" },
+        { label: "Erhöht", wert: zahl(zaehl.erhoeht), ton: "warn", hervor: zaehl.erhoeht ? "warn" : undefined,
+          sub: "bei der nächsten Planung beachten" },
+        { label: "Unauffällig", wert: zahl(zaehl.normal), ton: "ok", sub: "im üblichen Rahmen" },
+        { label: "Betrachtet", wert: zahl(bild.length), sub: `Personen über ${tage} Tage` }]} />
 
-      {bild.length === 0 ? (
-        <Card><Leer titel="Keine Daten"
-          text="Sobald Dienste geplant und gefahren wurden, entsteht hier das Bild." /></Card>
-      ) : (
-        <Card>
-          <CardHead right={<Lab>nach Belastung geordnet</Lab>}>Personen</CardHead>
-          {bild.map(({ person: p, e }, i) => {
-            const st = ERMUEDUNG_STUFEN[e.stufe];
-            const auf = offen === p.id;
-            return (
-              <div key={p.id} style={{ borderBottom: i < bild.length - 1
-                ? `1px solid ${C.lineSoft}` : "none" }}>
-                <button onClick={() => setOffen(auf ? null : p.id)}
-                  style={{ display: "flex", alignItems: "center", gap: 14, width: "100%",
-                    padding: "15px var(--pad-x)", border: "none", cursor: "pointer",
-                    textAlign: "left", fontFamily: "inherit", color: C.text,
-                    background: e.stufe === "hoch" ? C.dangerLight
-                      : e.stufe === "erhoeht" ? C.warnLight : "transparent" }}>
-                  <Avatar person={p} size="sm" />
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: "block", fontSize: 14.5, fontWeight: 550 }}>
-                      {p.nachname}, {p.vorname}</span>
-                    <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 3 }}>
-                      {zahl(e.dienste)} Dienste · {e.nachtanteil} % nachts
-                      {e.serie > 0 ? ` · längste Serie ${e.serie} Tage` : ""}</span>
-                  </span>
-                  {/* Ein Balken sagt mehr als eine Zahl */}
-                  <span style={{ width: 90, height: 6, borderRadius: 3, background: C.bg,
-                    overflow: "hidden", flexShrink: 0 }}>
-                    <span style={{ display: "block", height: "100%",
-                      width: `${Math.min(100, e.punkte)}%`,
-                      background: e.stufe === "hoch" ? C.danger
-                        : e.stufe === "erhoeht" ? C.warn : C.ok }} /></span>
-                  <Pill size="sm" tone={st.ton}>{st.label}</Pill>
-                </button>
+      <Leitraster seiteBreite={340}
+        haupt={bild.length === 0 ? (
+          <Card><Leer titel="Keine Daten"
+            text="Sobald Dienste geplant und gefahren wurden, entsteht hier das Bild." /></Card>
+        ) : (
+          <Card>
+            <CardHead right={<Lab>nach Belastung geordnet</Lab>}>Personen</CardHead>
+            {bild.map(({ person: p, e }, i) => {
+              const st = ERMUEDUNG_STUFEN[e.stufe];
+              const auf = offen === p.id;
+              return (
+                <div key={p.id} style={{ borderBottom: i < bild.length - 1
+                  ? `1px solid ${C.lineSoft}` : "none" }}>
+                  <button onClick={() => setOffen(auf ? null : p.id)} aria-expanded={auf}
+                    style={{ display: "flex", alignItems: "center", gap: 14, width: "100%",
+                      padding: "13px var(--pad-x)", border: "none", cursor: "pointer",
+                      textAlign: "left", fontFamily: "inherit", color: C.text,
+                      background: e.stufe === "hoch" ? C.dangerLight
+                        : e.stufe === "erhoeht" ? C.warnLight : "transparent" }}>
+                    <Avatar person={p} size="sm" />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 14.5, fontWeight: 550 }}>
+                        {p.nachname}, {p.vorname}</span>
+                      <span style={{ display: "block", fontSize: 12.5, color: C.dim, marginTop: 3 }}>
+                        {zahl(e.dienste)} Dienste · {e.nachtanteil} % nachts
+                        {e.serie > 0 ? ` · längste Serie ${e.serie} Tage` : ""}</span>
+                    </span>
+                    {/* Ein Balken sagt mehr als eine Zahl */}
+                    <span style={{ width: 110, flexShrink: 0 }}>
+                      <Fortschritt wert={Math.min(100, e.punkte)} hoehe={7}
+                        ton={e.stufe === "hoch" ? "danger" : e.stufe === "erhoeht" ? "warn" : "ok"}
+                        label={`Belastung ${Math.round(e.punkte)} von 100 Punkten`} /></span>
+                    <Pill size="sm" tone={st.ton}>{st.label}</Pill>
+                  </button>
 
-                {auf && (
-                  <div style={{ padding: "0 var(--pad-x) 20px 62px" }}>
-                    <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6,
-                      marginBottom: 14 }}>{st.text}</div>
-                    {e.gruende.length === 0 ? (
-                      <div style={{ fontSize: 13.5, color: C.dim }}>
-                        Keine auffälligen Einzelwerte.</div>
-                    ) : (
-                      <div style={{ display: "grid", gap: 9 }}>
-                        {e.gruende.map((g, gi) => (
-                          <div key={gi} style={{ display: "flex", alignItems: "center", gap: 12,
-                            fontSize: 13.5 }}>
-                            <span style={{ minWidth: 200, fontWeight: 550 }}>{g.was}</span>
-                            <span style={{ flex: 1, color: C.dim }}>{g.wert}</span>
-                            <span style={{ color: C.dim, ...NUM }}>+{g.punkte}</span>
-                          </div>))}
-                      </div>)}
-                    <div style={{ display: "flex", gap: 20, marginTop: 16, fontSize: 12.5,
-                      color: C.dim, flexWrap: "wrap" }}>
-                      <span>Nachtanteil {e.nachtanteil} %</span>
-                      <span>Wochenenden {e.wochenendanteil} %</span>
-                      <span>Rückwärtswechsel {zahl(e.wechsel)}</span>
-                      <span>Stundenkonto {e.konto} h</span>
-                    </div>
-                  </div>)}
-              </div>);
-          })}
-        </Card>)}
-
-      <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6, marginTop: 24, maxWidth: 640 }}>
-        Die Bewertung sperrt niemanden. Wer sperrt, wo das Gesetz es nicht verlangt,
-        erzeugt Umgehungen — und dann steht die Belastung nirgends mehr. Sie ist als
-        Hinweis vor der nächsten Planungsrunde gedacht, nicht als Urteil.
-      </div>
+                  {auf && (
+                    <div style={{ padding: "0 var(--pad-x) 20px 62px" }}>
+                      <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6,
+                        marginBottom: 14 }}>{st.text}</div>
+                      {e.gruende.length === 0 ? (
+                        <div style={{ fontSize: 13.5, color: C.dim }}>
+                          Keine auffälligen Einzelwerte.</div>
+                      ) : (
+                        <div style={{ display: "grid", gap: 9 }}>
+                          {e.gruende.map((g, gi) => (
+                            <div key={gi} style={{ display: "flex", alignItems: "center", gap: 12,
+                              fontSize: 13.5 }}>
+                              <span style={{ minWidth: 200, fontWeight: 550 }}>{g.was}</span>
+                              <span style={{ flex: 1, color: C.dim }}>{g.wert}</span>
+                              <span style={{ color: C.dim, ...NUM }}>+{g.punkte}</span>
+                            </div>))}
+                        </div>)}
+                      <div style={{ display: "flex", gap: 20, marginTop: 16, fontSize: 12.5,
+                        color: C.dim, flexWrap: "wrap" }}>
+                        <span>Nachtanteil {e.nachtanteil} %</span>
+                        <span>Wochenenden {e.wochenendanteil} %</span>
+                        <span>Rückwärtswechsel {zahl(e.wechsel)}</span>
+                        <span>Stundenkonto {e.konto} h</span>
+                      </div>
+                    </div>)}
+                </div>);
+            })}
+          </Card>)}
+        seite={<>
+          {bild.length > 0 && (
+            <Seitenkarte titel="Verteilung im Betrieb" sub="Personen je Punktebereich, von 0 bis 100.">
+              <Sparkline art="saeulen" hoehe={70} hervor={10}
+                daten={Array.from({ length: 10 }, (_, k) => bild.filter((x) =>
+                  Math.min(99, Math.floor(x.e.punkte)) >= k * 10 && Math.min(99, Math.floor(x.e.punkte)) < (k + 1) * 10).length)}
+                beschriftung={`Verteilung der Belastungspunkte auf zehn Bereiche: ${zaehl.normal} unauffällig, ${zaehl.erhoeht} erhöht, ${zaehl.hoch} hoch`} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: C.dim, marginTop: 6 }}>
+                <span>0 Punkte</span><span>100 Punkte</span></div>
+            </Seitenkarte>)}
+          <Seitenkarte titel="Was die Stufen bedeuten">
+            {Object.entries(ERMUEDUNG_STUFEN).map(([id, st]) => (
+              <div key={id} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+                  <Punkt ton={st.ton || "ok"} /><b>{st.label}</b>
+                  <span style={{ fontSize: 12, color: C.dim }}>ab {st.ab} Punkte</span></div>
+                <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.5, marginTop: 3, paddingLeft: 16 }}>{st.text}</div>
+              </div>))}
+          </Seitenkarte>
+          <Erklaerkasten>
+            Die Bewertung sperrt niemanden. Wer sperrt, wo das Gesetz es nicht verlangt,
+            erzeugt Umgehungen — und dann steht die Belastung nirgends mehr. Sie ist als
+            Hinweis vor der nächsten Planungsrunde gedacht, nicht als Urteil.
+          </Erklaerkasten>
+        </>} />
     </div>);
 }
 
@@ -18474,8 +19311,7 @@ function Sondereinsaetze({ sitz, akt }) {
           <Field label="Bis"><Inp type="date" value={bis}
             onChange={(e) => setBis(e.target.value)} /></Field>
           <div style={{ marginLeft: "auto", textAlign: "right" }}>
-            <div style={{ fontSize: 12.5, color: C.dim }}>Stunden im Zeitraum</div>
-            <div style={{ fontSize: 24, fontWeight: 300, ...NUM }}>{n1(summe)}</div>
+            <Grosszahl wert={n1(summe)} label="Stunden im Zeitraum" />
           </div>
         </div>
       </Card>
@@ -18506,7 +19342,7 @@ function Sondereinsaetze({ sitz, akt }) {
                         <Pill key={pid} size="sm">{p.nachname}, {p.vorname.slice(0, 1)}.</Pill>) : null;
                     })}
                     {!(s.zugeteilt || []).length && (
-                      <span style={{ fontSize: 12.5, color: C.warn }}>niemand zugeteilt</span>)}
+                      <Pill size="sm" tone="warn">niemand zugeteilt</Pill>)}
                   </div>
                 </div>
                 <div style={{ textAlign: "right", minWidth: 90 }}>
@@ -18952,17 +19788,17 @@ function Demozugaenge() {
    ========================================================================== */
 
 const M_TABS = [
-  { id: "heute", label: "Heute", glyph: "◉" },
-  { id: "plan", label: "Mein Plan", glyph: "▤" },
-  { id: "anliegen", label: "Anliegen", glyph: "✎" },
-  { id: "mehr", label: "Mehr", glyph: "☰" },
+  { id: "heute", label: "Heute", icon: "heute" },
+  { id: "plan", label: "Mein Plan", icon: "kalender" },
+  { id: "anliegen", label: "Anliegen", icon: "stift" },
+  { id: "mehr", label: "Mehr", icon: "menue" },
 ];
 
 /* ------------------------------- Bausteine ------------------------------- */
 const MKarte = ({ children, onClick, ton, style }) => (
   <div {...klickbar(onClick)} style={{ background: C.flaeche,
-    border: `1px solid ${ton === "danger" ? "#FECACA" : ton === "warn" ? "#FDE68A" : C.line}`,
-    borderRadius: 14, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
+    border: `1px solid ${ton === "danger" ? `${C.danger}66` : ton === "warn" ? `${C.warn}66` : C.line}`,
+    borderRadius: 18, padding: 16, marginBottom: 10, cursor: onClick ? "pointer" : "default",
     boxShadow: "var(--schatten)", ...style }}>{children}</div>);
 
 const MZeile = ({ links, rechts, unten, onClick, ton }) => (
@@ -18974,7 +19810,7 @@ const MZeile = ({ links, rechts, unten, onClick, ton }) => (
       {unten && <div style={{ fontSize: 13, color: C.dimmer, marginTop: 3, lineHeight: 1.4 }}>{unten}</div>}
     </div>
     {rechts}
-    {onClick && <span style={{ color: C.dimmer, fontSize: 20, flexShrink: 0 }}>›</span>}
+    {onClick && <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>}
   </div>);
 
 const MTitel = ({ children, rubrik, rechts }) => (
@@ -18992,15 +19828,10 @@ const MTitel = ({ children, rubrik, rechts }) => (
 const MBlatt = ({ offen, onClose, titel, children }) => {
   if (!offen) return null;
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 80,
-      background: "rgba(17,24,39,.42)", backdropFilter: "blur(5px)", display: "flex", alignItems: "flex-end" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "92vh", overflowY: "auto",
-        background: C.flaeche, borderRadius: "26px 26px 0 0",
-        padding: "10px 20px calc(28px + env(safe-area-inset-bottom))" }}>
-        <div style={{ width: 42, height: 4.5, borderRadius: 3, background: C.lineStark,
-          margin: "6px auto 16px" }} />
-        {titel && <div style={{ fontSize: 20, fontWeight: 650, letterSpacing: "-.02em", marginBottom: 18 }}>
-          {titel}</div>}
+    <div onClick={onClose} className="m-blattrahmen" role="dialog" aria-modal="true" aria-label={titel || "Blatt"}>
+      <div onClick={(e) => e.stopPropagation()} className="m-blatt">
+        <div className="m-griff" aria-hidden="true" />
+        {titel && <div className="m-blatttitel">{titel}</div>}
         {children}
       </div>
     </div>);
@@ -19043,7 +19874,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
         </MKarte>
       ) : da ? (
         <MKarte style={{ padding: 22, background: `${da.farbe}0E`, border: `1px solid ${da.farbe}33` }}>
-          <Rubrik style={{ color: da.farbe }}>Dein Dienst heute</Rubrik>
+          <Rubrik style={{ color: lesbar(da.farbe) }}>Dein Dienst heute</Rubrik>
           <div style={{ fontSize: 27, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
             {da.name}</div>
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
@@ -19100,19 +19931,19 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
               <span style={{ width: 40, height: 40, borderRadius: 14, flexShrink: 0, display: "flex",
                 alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700,
                 background: a.dringend ? C.dangerLight : C.bg,
-                color: a.dringend ? C.danger : C.dim }}>{AUFGABE_SYMBOL[a.art] || "·"}</span>
+                color: a.dringend ? C.danger : C.dim }}><AufgabeSymbol art={a.art} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 15.5, fontWeight: 620 }}>{a.titel}</div>
                 <div style={{ fontSize: 13, color: C.dim, marginTop: 3, lineHeight: 1.4 }}>{a.text}</div>
               </div>
-              <span style={{ color: C.dimmer, fontSize: 20 }}>›</span>
+              <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
             </div>
           </MKarte>))}
       </>)}
 
       {aufgaben.length === 0 && (
         <MKarte style={{ textAlign: "center", padding: 30 }}>
-          <div style={{ fontSize: 30, color: C.ok, marginBottom: 8 }}>✓</div>
+          <div style={{ color: C.ok, marginBottom: 8, display: "flex", justifyContent: "center" }}><Icon n="kreis-haken" size={36} /></div>
           <div style={{ fontSize: 15.5, fontWeight: 600 }}>Nichts zu erledigen</div>
         </MKarte>)}
     </div>);
@@ -19229,7 +20060,7 @@ function MPlan({ sitz, akt, oeffnen }) {
                   <div style={{ fontSize: 10.5, color: C.dimmer, ...NUM }}>{MON[Number(d.slice(5, 7)) - 1].slice(0, 3)}</div>
                 </div>
                 <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2,
-                  background: da ? da.farbe : t.abwesenheit ? abwArt(t.abwesenheit.art).farbe : "transparent" }} />
+                  background: da ? lesbar(da.farbe, 3) : t.abwesenheit ? lesbar(abwArt(t.abwesenheit.art).farbe, 3) : "transparent" }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 16.5, fontWeight: 600, letterSpacing: "-.015em" }}>
                     {da ? da.name : abwArt(t.abwesenheit.art).label}</div>
@@ -19238,15 +20069,15 @@ function MPlan({ sitz, akt, oeffnen }) {
                   </div>
                   {da && da.ort && <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 2 }}>{da.ort}</div>}
                 </div>
-                <span style={{ color: C.dimmer, fontSize: 20 }}>›</span>
+                <span aria-hidden="true" style={{ color: C.dimmer, display: "flex", flexShrink: 0 }}><Icon n="chevron-rechts" size={20} /></span>
               </MKarte>);
           })
       ) : (
         <MKarte style={{ padding: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+            <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
             <span style={{ fontSize: 16, fontWeight: 600 }}>{MON[mo - 1]} {y}</span>
-            <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+            <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
             {DOW.map((d, i) => <div key={d} style={{ textAlign: "center", fontSize: 11,
@@ -19258,14 +20089,15 @@ function MPlan({ sitz, akt, oeffnen }) {
               const t = personTag(m, ich, d);
               const da = t.dienstId && map[t.dienstId];
               return (
-                <div key={d} onClick={() => setGewaehlt({ datum: d, t })}
+                <div key={d} {...klickbar(() => setGewaehlt({ datum: d, t }),
+                  `${fKurz(d)}: ${da ? da.name : t.abwesenheit ? abwArt(t.abwesenheit.art).label : "frei"}`)}
                   style={{ aspectRatio: "1", borderRadius: 12, display: "flex", flexDirection: "column",
                     alignItems: "center", justifyContent: "center", cursor: "pointer", gap: 2,
                     background: da ? `${da.farbe}1C` : t.abwesenheit ? `${abwArt(t.abwesenheit.art).farbe}1C` : C.bg,
                     outline: d === heute() ? `2px solid ${C.accent}` : "none" }}>
                   <span style={{ fontSize: 12, color: C.dim, ...NUM }}>{Number(String(d).slice(8))}</span>
                   {(da || t.abwesenheit) && <span style={{ fontSize: 11, fontWeight: 700, ...NUM,
-                    color: da ? da.farbe : abwArt(t.abwesenheit.art).farbe }}>
+                    color: da ? lesbar(da.farbe) : lesbar(abwArt(t.abwesenheit.art).farbe) }}>
                     {da ? da.kurz : abwArt(t.abwesenheit.art).kurz}</span>}
                 </div>);
             })}
@@ -19442,16 +20274,21 @@ function Kontoblatt({ m, verlauf, jetzt, trend }) {
       </div>
 
       {/* Eine dünne Linie, sonst nichts */}
+      <div style={{ position: "relative", marginTop: 26 }}>
       <svg viewBox={`0 0 ${W} ${H + 14}`} preserveAspectRatio="none"
-        style={{ width: "100%", height: 104, display: "block", marginTop: 26, overflow: "visible" }}>
+        style={{ width: "100%", height: 104, display: "block", overflow: "visible" }}>
         {min < 0 && max > 0 && (
           <line x1="0" y1={y(0)} x2={W} y2={y(0)} stroke={C.line} strokeWidth=".8"
             vectorEffect="non-scaling-stroke" />)}
         <path d={linie} fill="none" stroke={ueber ? C.warn : C.accentHi} strokeWidth="1.8"
           strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        <circle cx={letzterX} cy={letzterY} r="4" fill={C.flaeche}
-          stroke={ueber ? C.warn : C.accentHi} strokeWidth="2" vectorEffect="non-scaling-stroke" />
       </svg>
+      {/* Endpunkt als HTML-Punkt (im gestreckten SVG würde er zur Ellipse) */}
+      <span aria-hidden="true" style={{ position: "absolute", left: `${(letzterX / W) * 100}%`,
+        top: (letzterY / (H + 14)) * 104, width: 10, height: 10, boxSizing: "border-box",
+        transform: "translate(-50%, -50%)", borderRadius: "50%", background: C.flaeche,
+        border: `2px solid ${ueber ? C.warn : C.accentHi}` }} />
+      </div>
 
       {/* Monatsnamen nur an den Enden — der Rest ist selbsterklärend */}
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12,
@@ -19497,7 +20334,7 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
           if (!st) return null;
           return (
             <MZeile links="Checkliste heute"
-              rechts={st.vollstaendig ? "✓" : `${st.fertig}/${st.gesamt}`}
+              rechts={st.vollstaendig ? <span style={{ color: C.ok, display: "flex" }}><Icon n="haken" size={18} strokeWidth={2.2} /></span> : `${st.fertig}/${st.gesamt}`}
               unten={st.vollstaendig ? "alles erledigt"
                 : `noch ${st.pflichtGesamt - st.pflichtFertig} Pflichtpunkte`}
               onClick={() => oeffnen("checkliste")} />);
@@ -19565,19 +20402,14 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
     von: d || heute(), bis: d || heute(), text: "" }) };
 
   return (
-    <div style={{ minHeight: "100vh", paddingBottom: 92 }}>
-      <header style={{ position: "sticky", top: 0, zIndex: 40, padding: "12px 18px",
-        background: "rgba(255,255,255,.94)", backdropFilter: "saturate(200%) blur(24px)",
-        WebkitBackdropFilter: "saturate(200%) blur(24px)", borderBottom: `1px solid ${C.line}`,
-        display: "flex", alignItems: "center", gap: 12 }}>
+    <div className="m-schale">
+      <header className="m-kopf">
         <Logo size={24} />
-        <span style={{ fontSize: 15.5, fontWeight: 800, letterSpacing: "-.02em", flex: 1 }}>CENTRIC</span>
-        <button onClick={() => oeffnen("post")} style={{ position: "relative", border: "none",
-          background: C.bg, width: 38, height: 38, borderRadius: 13, cursor: "pointer",
-          fontSize: 15, color: C.dim }}>✉︎
-          {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 18, height: 18,
-            borderRadius: 9, background: C.danger, color: "#fff", fontSize: 10.5, fontWeight: 700,
-            display: "flex", alignItems: "center", justifyContent: "center" }}>{ungelesen}</span>}
+        <span className="m-wort">CENTRIC</span>
+        <button onClick={() => oeffnen("post")} className="m-postknopf"
+          aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}>
+          <Icon n="brief" size={19} />
+          {ungelesen > 0 && <span className="m-zahl">{ungelesen}</span>}
         </button>
       </header>
 
@@ -19588,18 +20420,11 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
         {tab === "mehr" && <MMehr sitz={sitz} akt={akt} oeffnen={oeffnen} aufRechner={aufRechner} />}
       </main>
 
-      <nav style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 50, display: "flex",
-        background: "rgba(255,255,255,.96)", backdropFilter: "saturate(200%) blur(28px)",
-        WebkitBackdropFilter: "saturate(200%) blur(28px)", borderTop: `1px solid ${C.line}`,
-        padding: "8px 6px calc(8px + env(safe-area-inset-bottom))" }}>
+      <nav className="m-tabs" aria-label="Bereiche">
         {M_TABS.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ flex: 1, border: "none", background: tab === t.id ? C.accentLight : "transparent",
-              cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column",
-              alignItems: "center", gap: 4, padding: "8px 2px", borderRadius: 15, minHeight: 52,
-              color: tab === t.id ? C.text : C.dimmer, fontSize: 11, fontWeight: 600,
-              boxShadow: tab === t.id ? `inset 0 -2px 0 ${C.accent}` : "none" }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{t.glyph}</span>{t.label}
+          <button key={t.id} onClick={() => setTab(t.id)} className={tab === t.id ? "on" : ""}
+            aria-current={tab === t.id ? "page" : undefined}>
+            <Icon n={t.icon} size={22} />{t.label}
           </button>))}
       </nav>
 
@@ -19661,8 +20486,8 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0,
                         marginTop: 1, display: "flex", alignItems: "center", justifyContent: "center",
                         border: `1.5px solid ${z.erledigt ? C.ok : C.lineStark}`,
-                        background: z.erledigt ? C.ok : "transparent", color: "#fff",
-                        fontSize: 14 }}>{z.erledigt ? "✓" : ""}</span>
+                        background: z.erledigt ? C.ok : "transparent", color: C.aufAkzent,
+                        fontSize: 14 }}>{z.erledigt ? <Icon n="haken" size={14} strokeWidth={2.4} /> : ""}</span>
                       <span style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ display: "block", fontSize: 15.5,
                           fontWeight: z.erledigt ? 500 : 600,
@@ -19784,14 +20609,19 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                           <span style={{ display: "block", fontSize: 12, color: C.dim,
                             marginTop: 2 }}>{da.start}–{da.ende}
                             {pruef.offen ? ` · ${pruef.offen} frei` : ""}</span>
+                          {(pruef.hinweise || []).length > 0 && (
+                            <span style={{ display: "flex", gap: 5, alignItems: "flex-start", fontSize: 12, color: C.warn,
+                              marginTop: 5, lineHeight: 1.35 }}>
+                              <Icon n="warnung" size={13} />{pruef.hinweise[0]}</span>)}
                         </button>))}
                     </div>
                   </MKarte>);
               })}
             <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.55,
               paddingBottom: 20 }}>
-              Hier steht nur, was du auch wirklich übernehmen darfst — Ruhezeit,
-              Qualifikationen und deine Abwesenheiten sind bereits geprüft.
+              Ruhezeit, Qualifikationen und deine Abwesenheiten sind bereits geprüft. Spricht
+              etwas dagegen, steht ein Hinweis am Dienst. Du kannst dich trotzdem eintragen;
+              die Planung entscheidet.
             </div>
           </>);
         })()}
@@ -19874,6 +20704,13 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       {da ? ` · ${n1(dauer(da))} h` : ""}</div>
                     {a.hinweis && <div style={{ fontSize: 13.5, color: C.dim, marginTop: 8,
                       lineHeight: 1.5, fontStyle: "italic" }}>„{a.hinweis}"</div>}
+                    {(() => { const h = darfSichBewerben(m, p.id, a).hinweise || [];
+                      return h.length > 0 && (
+                        <div style={{ display: "flex", gap: 7, alignItems: "flex-start", fontSize: 13.5, color: C.warn,
+                          marginTop: 8, lineHeight: 1.45 }}>
+                          <Icon n="warnung" size={15} />
+                          <span>{h[0]}{h.length > 1 ? ` (und ${h.length - 1} weitere)` : ""}. Du kannst dich trotzdem melden; die Planung entscheidet.</span>
+                        </div>); })()}
                     <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 8 }}>
                       {tage <= 1 ? "morgen" : `in ${tage} Tagen`}
                       {(a.bewerbungen || []).length > 0
@@ -19887,8 +20724,8 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
               })}
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 16, lineHeight: 1.55,
                 paddingBottom: 20 }}>
-                Hier steht nur, was du auch wirklich übernehmen darfst — Ruhezeit,
-                Qualifikationen und deine Abwesenheiten sind bereits geprüft.
+                Ruhezeit, Qualifikationen und deine Abwesenheiten sind bereits geprüft. Spricht
+                etwas dagegen, steht es dabei — melden kannst du dich trotzdem.
               </div>
             </>)}
           </>);
@@ -19904,7 +20741,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
         {/* Push zuerst: ohne Erlaubnis nützt jede Einstellung nichts */}
         <MKarte style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <span style={{ fontSize: 20, lineHeight: 1.2 }}>◈</span>
+            <span aria-hidden="true" style={{ color: C.accent, display: "flex" }}><Icon n="glocke" size={22} /></span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 15.5, fontWeight: 620 }}>Mitteilungen auf diesem Gerät</div>
               <div style={{ fontSize: 13.5, color: C.dim, marginTop: 5, lineHeight: 1.5 }}>
@@ -19955,7 +20792,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
                       border: `1px solid ${an ? C.accent : C.line}`, cursor: "pointer",
                       background: an ? C.accentLight : "transparent", color: an ? C.accent : C.dim,
                       fontFamily: "inherit", fontSize: 13.5, fontWeight: 600 }}>
-                    {an ? "✓ " : ""}{label}</button>))}
+                    {an && <Icon n="haken" size={13} strokeWidth={2.4} />}{label}</button>))}
               </div>
             </MKarte>);
         })}
@@ -20029,7 +20866,7 @@ function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
           <div style={{ display: "grid", gap: 14 }}>
             <Field label="Art">
               <Sel value={antrag.art} onChange={(e) => setAntrag({ ...antrag, art: e.target.value })}>
-                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich")
+                {ABW.filter((a) => a.id !== "krank" && a.id !== "ausgleich" && a.selbst !== false)
                   .map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}</Sel></Field>
             <Field label="Von"><Inp type="date" value={antrag.von}
               onChange={(e) => setAntrag({ ...antrag, von: e.target.value })} /></Field>
@@ -20067,9 +20904,9 @@ function MWuensche({ sitz, akt }) {
       an die Planung.
     </div>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-      <Btn size="sm" onClick={() => shift(-1)}>‹</Btn>
+      <Btn size="sm" onClick={() => shift(-1)} aria-label="Zurück"><Icon n="chevron-links" size={16} /></Btn>
       <span style={{ fontSize: 16, fontWeight: 600 }}>{MON[mo - 1]} {y}</span>
-      <Btn size="sm" onClick={() => shift(1)}>›</Btn>
+      <Btn size="sm" onClick={() => shift(1)} aria-label="Weiter"><Icon n="chevron-rechts" size={16} /></Btn>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
       {DOW.map((d, i) => <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 600,
@@ -20091,9 +20928,9 @@ function MWuensche({ sitz, akt }) {
               background: w ? (w.art === "moechte" ? C.okLight : C.warnLight)
                 : C.bg }}>
             <span style={{ fontSize: 12, color: C.dim, ...NUM }}>{Number(d.slice(8))}</span>
-            {w ? <span style={{ fontSize: 13, fontWeight: 700, color: w.art === "moechte" ? C.ok : C.warn }}>
-              {w.art === "moechte" ? "✓" : "✕"}</span>
-              : da && <span style={{ fontSize: 9.5, color: da.farbe, fontWeight: 700 }}>{da.kurz}</span>}
+            {w ? <span style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", color: w.art === "moechte" ? C.ok : C.warn }}>
+              {w.art === "moechte" ? <><Icon n="haken" size={13} strokeWidth={2.4} /><span className="nurLeser">möchte arbeiten</span></> : <><Icon n="x" size={13} strokeWidth={2.4} /><span className="nurLeser">lieber nicht</span></>}</span>
+              : da && <span style={{ fontSize: 9.5, color: lesbar(da.farbe), fontWeight: 700 }}>{da.kurz}</span>}
           </div>);
       })}
     </div>
@@ -20124,7 +20961,7 @@ function Tarifwerk({ sitz, akt }) {
   const aktuell = m.tarifwerk || null;
 
   return (
-    <Card style={{ marginBottom: 20 }}>
+    <Card style={{ marginBottom: 16 }}>
       <CardHead right={aktuell
         ? <Lab>{aktuell.name} · Stand {aktuell.stand}</Lab>
         : <Lab>keines hinterlegt</Lab>}>Tarifwerk</CardHead>
@@ -20138,18 +20975,17 @@ function Tarifwerk({ sitz, akt }) {
         </p>
 
         {aktuell && (
-          <div style={{ padding: "11px 14px", borderRadius: 9, marginBottom: 16,
-            background: C.flaecheStill, fontSize: 13, color: C.dim, lineHeight: 1.55 }}>
+          <Erklaerkasten style={{ marginBottom: 16 }}>
             Angewendet am {fDatum(aktuell.angewendet)} · Stand der Werte {aktuell.stand} ·{" "}
             <a href={aktuell.quelle} target="_blank" rel="noreferrer"
               style={{ color: C.accent }}>Fundstelle</a>
-          </div>)}
+          </Erklaerkasten>)}
 
         <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
           {vorlagen.map((v) => (
             <div key={v.id} className="karte"
               style={{ padding: "14px 16px", display: "flex", gap: 14, alignItems: "flex-start",
-                flexWrap: "wrap",
+                flexWrap: "wrap", boxShadow: "none", borderRadius: "var(--r)",
                 borderColor: gewaehlt === v.id ? C.accent : undefined }}>
               <div style={{ flex: 1, minWidth: 240 }}>
                 <div style={{ fontSize: 14.5, fontWeight: 620, display: "flex", gap: 8,
@@ -20183,7 +21019,7 @@ function Tarifwerk({ sitz, akt }) {
                     <span style={{ fontSize: 13.5, flex: 1, minWidth: 200 }}>
                       {TARIF_FELD[g.feld] || g.feld}</span>
                     <span style={{ fontSize: 13, color: C.dimmer, ...NUM }}>{tarifWert(g.von)}</span>
-                    <span style={{ fontSize: 13, color: C.dimmer }}>→</span>
+                    <span aria-hidden="true" style={{ color: C.dimmer, display: "flex" }}><Icon n="pfeil-rechts" size={14} /></span>
                     <span style={{ fontSize: 13, fontWeight: 620, ...NUM }}>{tarifWert(g.nach)}</span>
                   </div>))}
               </div>)}
@@ -20315,7 +21151,7 @@ function Standorte({ sitz, akt }) {
   };
 
   return (
-    <Card style={{ marginBottom: 20 }}>
+    <Card style={{ marginBottom: 16 }}>
       <CardHead right={!preiseSichtbar ? null : p.summeStandorte > 0
         ? <Pill tone="warn">+{eur(p.summeStandorte)} / Monat</Pill>
         : <Pill tone="ok">kostenlos enthalten</Pill>}>
@@ -20338,7 +21174,7 @@ function Standorte({ sitz, akt }) {
           const inklusive = rang > -1 && rang < p.stufe.standorteInklusive;
           const zuschlag = inklusive ? 0 : standortZuschlag(a ? a.personen : 0);
           return (
-            <div key={st.id} style={{ border: `1px solid ${C.lineSoft}`, borderRadius: 12, padding: 16 }}>
+            <div key={st.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 12 }}>
                 <Field label="Name">
                   <Inp value={st.name} onChange={(e) => akt.setzeStandort(st.id, "name", e.target.value)} /></Field>
@@ -20536,7 +21372,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
         Stammdaten</Abschnitt>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Pill tone="accent">{eur(p.gesamt)} / Monat</Pill>}>Stammdaten</CardHead>
         <div style={{ padding: 22, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 15 }}>
           <Field label="Name des Betriebs"><Inp value={m.name} onChange={(e) => akt.setzeFeld("name", e.target.value)} /></Field>
@@ -20556,7 +21392,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub={`Woraus der Betrieb besteht und welche Grenzen für die Planung gelten. Das Regelwerk ist die Grundlage jeder Prüfung — was hier steht, meldet die Prüfung später als Verstoß.`}>
         Struktur und Regelwerk</Abschnitt>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,320px),1fr))", gap: 16 }}>
         <Card>
           <CardHead right={<Btn size="sm" onClick={akt.neueEinheit}>Hinzufügen</Btn>}>{mehrzahl(m.einheitLabel)}</CardHead>
           <div style={{ padding: 22 }}>
@@ -20567,7 +21403,7 @@ function Betrieb({ sitz, akt }) {
                 <Inp value={e.name} onChange={(ev) => akt.setzeEinheit(e.id, "name", ev.target.value)} style={{ flex: 1 }} />
                 <span style={{ fontSize: 12.5, color: C.dimmer, width: 64, ...NUM }}>
                   {aktive(m, heute()).filter((x) => einheitAm(x, heute()) === e.id).length} Pers.</span>
-                <Btn size="sm" kind="danger" onClick={() => akt.loescheEinheit(e.id)}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => akt.loescheEinheit(e.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
           </div>
         </Card>
@@ -20581,12 +21417,12 @@ function Betrieb({ sitz, akt }) {
                   titel={`Farbe von ${q.name}`} />
                 <Inp value={q.name} onChange={(e) => akt.setzeQual(q.id, "name", e.target.value)} style={{ flex: 1 }} />
                 <Inp value={q.kurz} maxLength={4} onChange={(e) => akt.setzeQual(q.id, "kurz", e.target.value.toUpperCase())} style={{ width: 76 }} />
-                <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)}>×</Btn>
+                <Btn size="sm" kind="danger" onClick={() => akt.loescheQual(q.id)} aria-label="Entfernen" title="Entfernen"><Icon n="x" size={14} strokeWidth={2.2} /></Btn>
               </div>))}
-            <div style={{ fontSize: 12.5, color: C.dimmer, marginTop: 12, lineHeight: 1.5 }}>
+            <Erklaerkasten style={{ marginTop: 12 }}>
               Qualifikationen werden in den Dienstarten als Anforderung hinterlegt und in der Prüfung ausgewertet.
               Eine Kopfzahl ohne Funktionsnachweis ist keine besetzte Schicht.
-            </div>
+            </Erklaerkasten>
           </div>
         </Card>
 
@@ -20625,7 +21461,7 @@ function Betrieb({ sitz, akt }) {
           </div>
         </Card>)}
 
-      <Card style={{ marginTop: 20, overflowX: "auto" }}>
+      <Card style={{ marginTop: 16, overflowX: "auto" }}>
         <CardHead right={<Btn size="sm" onClick={akt.matrixZuruecksetzen}>Auf Standard zurücksetzen</Btn>}>Rollen und Rechte</CardHead>
         <div style={{ padding: "16px 22px 0", fontSize: 13.5, color: C.dim, lineHeight: 1.5, maxWidth: 720 }}>
           Eine Rolle allein ist keine Berechtigung. Erst Rolle plus Geltungsbereich ergibt eine:
@@ -20644,7 +21480,7 @@ function Betrieb({ sitz, akt }) {
               const zahl = r.id === "leitung" ? ALLE_RECHTE.length : hat.length;
               return (
                 <th key={r.id} style={{ padding: "13px 8px", borderBottom: `1px solid ${C.lineSoft}`, minWidth: 86 }}>
-                  <Lab style={{ color: r.farbe, textAlign: "center", fontWeight: 700 }}>{r.kurz}</Lab>
+                  <Lab style={{ color: lesbar(r.farbe), textAlign: "center", fontWeight: 700 }}>{r.kurz}</Lab>
                   <div title={`${rollenName(m, r.id)} — ${zahl} von ${ALLE_RECHTE.length} Rechten`}
                     style={{ fontSize: 11, color: C.dimmer, textAlign: "center", marginTop: 3, ...NUM }}>
                     {zahl}/{ALLE_RECHTE.length}</div>
@@ -20652,7 +21488,7 @@ function Betrieb({ sitz, akt }) {
           </tr></thead>
           <tbody>{RECHTE_GRUPPEN.map(([g, items]) => (
             <Fragment key={g}>
-              <tr><td colSpan={6} style={{ padding: "13px 22px 6px", background: "rgba(20,20,25,.025)" }}><Lab>{g}</Lab></td></tr>
+              <tr><td colSpan={6} style={{ padding: "13px 22px 6px", background: C.flaecheStill }}><Lab>{g}</Lab></td></tr>
               {items.map(([id, label]) => (
                 <tr key={id} className="row">
                   <td style={{ padding: "10px 22px", borderBottom: `1px solid ${C.lineSoft}` }}>
@@ -20673,10 +21509,11 @@ function Betrieb({ sitz, akt }) {
                         title={fest ? "Die Organisationsleitung hat immer alle Rechte."
                           : `${rollenName(m, r.id)}: ${an ? "erlaubt" : "nicht erlaubt"}`}
                         style={{ width: 25, height: 25, borderRadius: 8, cursor: fest ? "not-allowed" : "pointer",
-                          display: "inline-flex", alignItems: "center", justifyContent: "center",
-                          border: an ? "none" : `1.5px solid ${C.line}`,
-                          background: an ? r.farbe : "transparent", color: an ? "#fff" : "transparent",
-                          fontSize: 13, fontWeight: 700, opacity: fest ? .55 : 1 }}>✓</button></td>);
+                          display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 0,
+                          border: an ? "none" : `1.5px solid ${C.steuer}`,
+                          background: an ? r.farbe : "transparent", color: an ? "white" : "transparent",
+                          opacity: fest ? .55 : 1 }}>
+                        <Icon n="haken" size={14} strokeWidth={2.5} /></button></td>);
                   })}
                 </tr>))}
             </Fragment>))}</tbody>
@@ -20686,7 +21523,7 @@ function Betrieb({ sitz, akt }) {
       <Abschnitt sub="Ausgabe, Prüfung und Nachweis. Nichts hiervon verändert den Betrieb — es liest ihn nur aus.">
         Werkzeuge und Nachweis</Abschnitt>
 
-      <Card style={{ marginBottom: 20 }}>
+      <Card style={{ marginBottom: 16 }}>
         <CardHead>Daten</CardHead>
         <div style={{ padding: 22, display: "flex", gap: 11, flexWrap: "wrap" }}>
           <Btn onClick={akt.exportCSV}>Monatsplan als CSV</Btn>
@@ -20712,8 +21549,10 @@ function Betrieb({ sitz, akt }) {
             {tests.map((t, i) => (
               <div key={i} style={{ display: "flex", gap: 13, alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.lineSoft}` }}>
                 <span style={{ width: 23, height: 23, borderRadius: 12, flexShrink: 0, display: "flex", alignItems: "center",
-                  justifyContent: "center", background: t.ok ? C.okLight : "rgba(179,38,30,.11)",
-                  color: t.ok ? C.ok : C.danger, fontSize: 12, fontWeight: 700 }}>{t.ok ? "✓" : "✕"}</span>
+                  justifyContent: "center", background: t.ok ? C.okLight : C.dangerLight,
+                  color: t.ok ? C.ok : C.danger }}>
+                  <Icon n={t.ok ? "haken" : "x"} size={13} strokeWidth={2.5} />
+                  <span className="nurLeser">{t.ok ? "bestanden" : "nicht bestanden"}</span></span>
                 <span style={{ fontSize: 13.5, flex: 1 }}>{t.name}</span>
                 <span style={{ fontSize: 12.5, color: t.ok ? C.dim : C.danger, fontWeight: 600, ...NUM }}>{t.ist}</span>
               </div>))}
@@ -20721,7 +21560,7 @@ function Betrieb({ sitz, akt }) {
         </div>
       </Card>
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ marginTop: 16 }}>
         <CardHead>Protokoll</CardHead>
         <div style={{ maxHeight: 300, overflowY: "auto" }}>
           {m.protokoll.length === 0 && <div style={{ padding: 26, fontSize: 13.5, color: C.dimmer }}>Noch keine Änderungen.</div>}
@@ -20938,6 +21777,7 @@ function AppInnen() {
   const [krank, setKrank] = useState(null);
   const [assist, setAssist] = useState(false);
   const [eskal, setEskal] = useState(null);
+  const [warnung, setWarnung] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
   /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
@@ -21363,6 +22203,10 @@ function AppInnen() {
     });
     const bLog = (s, text) => ({ ...s, protokoll: [{ id: uid("l"), zeit: new Date().toLocaleString("de-DE"), text }, ...(s.protokoll || [])].slice(0, 300) });
     const jetzt = () => new Date().toLocaleString("de-DE");
+    /** Wer gerade bestätigt — für das Bestätigungsprotokoll. */
+    const wer = () => ({ personId: sitz && sitz.person ? sitz.person.id : null,
+      name: sitz && sitz.person ? `${sitz.person.vorname} ${sitz.person.nachname}` : "unbekannt",
+      rolle: sitz ? sitz.rolle : null });
 
     return {
       /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
@@ -21473,7 +22317,8 @@ function AppInnen() {
       rechnungStellen: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);
         /* Eine Rechnung über null Euro ist keine Freundlichkeit, sondern ein
-           Beleg, den jemand ablegen, prüfen und zehn Jahre aufbewahren muss. */
+           Beleg, den jemand ablegen, prüfen und acht Jahre aufbewahren muss
+           (Buchungsbeleg, § 147 Abs. 3 AO). */
         const f = rechnungFaellig(m, ym);
         if (!f.faellig) {
           melde(f.grund === "ausgesetzt"
@@ -21633,22 +22478,41 @@ function AppInnen() {
         return { ...m, abwesenheiten: [...m.abwesenheiten, { id: uid("a"), personId: pid, art: "krank", von, bis, notiz }],
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Krankmeldung erfasst"),
-      setzeEinsprung: (pid, d, dienstId) => mUpd((m) => {
+      setzeEinsprung: (pid, d, dienstId, best) => mUpd((m0) => {
+        let m = m0;
         const p = m.personen.find((x) => x.id === pid);
         const da = m.dienstarten.find((x) => x.id === dienstId);
         if (!p) { melde("Person nicht gefunden."); return m; }
-        // Eine bestehende Abwesenheit schlägt jede Einteilung — sonst wird die
-        // Zuteilung angenommen, wirkt aber nicht und die Besetzung bleibt stehen.
+        const sperre = schutzSperre(m, p, d, da);
+        if (sperre) { melde(`Nicht möglich: ${sperre.text}.`); return m; }
+        /* Eine bestehende Abwesenheit schlägt jede Einteilung — sonst wird
+           die Zuteilung angenommen, wirkt aber nicht. Gesperrt wird nicht:
+           Der Warndialog bietet an, die Abwesenheit für diesen Tag
+           aufzuheben (best.abwesenheitAufheben). */
         const abw = abwesenheitAm(m, pid, d);
-        if (abw) {
-          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(d)} ${abwArt(abw.art).label.toLowerCase()} — Einteilung nicht möglich.`);
+        if (abw && !(best && best.abwesenheitAufheben)) {
+          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(d)} ${abwArt(abw.art).label.toLowerCase()}. Erst die Abwesenheit für diesen Tag aufheben.`);
           return m;
         }
+        let nachrAbw = [];
+        if (abw) {
+          const r = abwesenheitTagAufheben(m, pid, d);
+          m = { ...m, abwesenheiten: r.abwesenheiten };
+          nachrAbw = [baueMitteilung(m, pid, "antragEntschieden", `${abwArt(abw.art).label} am ${fKurz(d)} aufgehoben`,
+            `Die Planung hat dich für ${da ? da.name : dienstId} eingeteilt. Der übrige Zeitraum bleibt bestehen.`, "meine")].filter(Boolean);
+        }
         const vorher = personTag(m, p, d).dienstId;
-        if (vorher === dienstId) { melde(`${p.nachname} ist bereits eingeteilt.`); return m; }
-        melde(vorher
-          ? `${p.vorname} ${p.nachname} für ${fKurz(d)} umgeteilt.`
-          : `${p.vorname} ${p.nachname} für ${fKurz(d)} eingeteilt.`);
+        /* War die Person ohne die Abwesenheit ohnehin für diesen Dienst
+           geplant, ist sie mit dem Aufheben wieder eingeteilt — das ist
+           kein „bereits eingeteilt", und die Bestätigung gehört ins Protokoll. */
+        if (vorher === dienstId && !abw) { melde(`${p.nachname} ist bereits eingeteilt.`); return m; }
+        melde(abw && vorher === dienstId
+          ? `${p.vorname} ${p.nachname} für ${fKurz(d)} wieder eingeteilt.`
+          : vorher
+            ? `${p.vorname} ${p.nachname} für ${fKurz(d)} umgeteilt.`
+            : `${p.vorname} ${p.nachname} für ${fKurz(d)} eingeteilt.`);
+        m = bestaetigungVermerken(m, best, wer(), "einsprung");
+        if (nachrAbw.length) m = { ...m, nachrichten: [...nachrAbw, ...(m.nachrichten || [])].slice(0, 400) };
         return { ...m,
           abweichungen: { ...m.abweichungen, [`${pid}|${d}`]: dienstId },
           einspruenge: [{ id: uid("s"), personId: pid, datum: d, dienstId, zeit: new Date().toLocaleString("de-DE") }, ...(m.einspruenge || [])].slice(0, 500),
@@ -22016,9 +22880,13 @@ function AppInnen() {
         if (!r || !pid) return m;
         const pruef = darfSelbstEintragen(m, r, pid, datum, dienstId);
         if (!pruef.darf) { melde(`Nicht möglich: ${pruef.grund}.`); return m; }
+        /* Mit Hinweis eintragen ist erlaubt (E-19). Der Eintrag trägt den
+           Hinweis, die Planung entscheidet bei der Übernahme. */
+        if ((pruef.hinweise || []).length) melde(`Eingetragen, mit Hinweis: ${pruef.hinweise[0]}. Die Planung entscheidet.`);
         return { ...m, selbstplanung: m.selbstplanung.map((x) => x.id !== r.id ? x
           : { ...x, eintraege: [...(x.eintraege || []),
-              { personId: pid, datum, dienstId, zeit: new Date().toISOString() }] }) };
+              { personId: pid, datum, dienstId, zeit: new Date().toISOString(),
+                ...((pruef.hinweise || []).length ? { hinweise: pruef.hinweise } : {}) }] }) };
       }, "Selbst eingetragen"),
 
       selbstAustragen: (datum) => mUpd((m) => {
@@ -22035,26 +22903,46 @@ function AppInnen() {
           ? { ...r, status: "geschlossen", geschlossen: new Date().toISOString() } : r) }),
         "Selbstplanung geschlossen"),
 
-      rundeUebernehmen: (id) => mUpd((m) => {
+      rundeUebernehmen: (id, best) => mUpd((m0) => {
+        let m = m0;
         const r = (m.selbstplanung || []).find((x) => x.id === id);
         if (!r) return m;
-        /* Jeder Eintrag wird zur Abweichung. Vor dem Übernehmen noch einmal
-           prüfen — zwischen Eintragung und Übernahme können Tage liegen. */
+        /* Jeder Eintrag wird zur Abweichung. Vor dem Übernehmen wird noch
+           einmal geprüft — zwischen Eintragung und Übernahme können Tage
+           liegen. Nichts wird mehr still verworfen: Was die Planung im
+           Warndialog nicht ausgewählt hat, steht mit Grund an der Runde.
+           Ohne Auswahl (best fehlt) gilt die alte Vorauswahl: alles
+           Regelkonforme. */
+        const gewaehlt = best && Array.isArray(best.indizes) ? new Set(best.indizes) : null;
         const neu = { ...m.abweichungen };
-        let uebernommen = 0, verworfen = 0;
-        for (const e of (r.eintraege || [])) {
+        let uebernommen = 0;
+        const nicht = [];
+        /* Der Grund ist eine Kennung, nie der Befundtext (Review K1): Der
+           Rundenkopf geht an Beschäftigte und Schichtverantwortung; ein
+           Wortlaut wie „MuSchG § 5“ oder „abwesend (Krank)“ verriete Dritten
+           Gesundheitsangaben (server/lib/selbstplanung.mjs). */
+        const nichtEintrag = (e, grund) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, grund });
+        (r.eintraege || []).forEach((e, i) => {
           const p = m.personen.find((x) => x.id === e.personId);
           const da = m.dienstarten.find((x) => x.id === e.dienstId);
-          if (!p || !da) { verworfen++; continue; }
-          if (hindernisse(m, p, e.datum, da).length) { verworfen++; continue; }
+          if (!p || !da) { nicht.push(nichtEintrag(e, "fehlt")); return; }
+          const bef = hindernisBefunde(m, p, e.datum, da);
+          const ernst = bef.filter((b) => stufeRang(b.stufe) >= 2);
+          const sperre = bef.find((b) => b.sperrt);
+          if (sperre) { nicht.push(nichtEintrag(e, grundKennung(sperre))); return; }
+          const nehmen = gewaehlt ? gewaehlt.has(i) : ernst.length === 0;
+          if (!nehmen) { nicht.push(nichtEintrag(e, ernst.length ? grundKennung(ernst[0]) : "auswahl")); return; }
+          if (bef.some((b) => b.art === "abwesend") && best && best.abwesenheitAufheben)
+            m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, e.personId, e.datum).abwesenheiten };
           neu[`${e.personId}|${e.datum}`] = e.dienstId;
           uebernommen++;
-        }
-        melde(`${uebernommen} übernommen${verworfen ? `, ${verworfen} verworfen` : ""}.`);
+        });
+        m = bestaetigungVermerken(m, best, wer(), "selbstplanung");
+        melde(`${uebernommen} übernommen${nicht.length ? `, ${nicht.length} nicht übernommen` : ""}.`);
         return { ...m, abweichungen: neu,
           selbstplanung: m.selbstplanung.map((x) => x.id === id
             ? { ...x, status: "uebernommen", uebernommenAm: new Date().toISOString(),
-                uebernommen, verworfen } : x) };
+                uebernommen, verworfen: nicht.length, nichtUebernommen: nicht } : x) };
       }, "Selbstplanung übernommen"),
 
       /* --- Notruf --- */
@@ -22219,8 +23107,8 @@ function AppInnen() {
         /* Die Schichtverantwortung unterrichtet nur ihren Bereich (Commit C1);
            die verantwortende Einheit setzt der Server. */
         const nachr = m.personen
-          .filter((p) => darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
-            p.id, a).darf && anBereichErlaubt(sitz, p))
+          .filter((p) => { const r = darfSichBewerben({ ...m, ausschreibungen: [...(m.ausschreibungen || []), a] },
+            p.id, a); return r.darf && !(r.hinweise || []).length && anBereichErlaubt(sitz, p); })
           .map((p) => baueMitteilung(m, p.id, "offeneSchicht",
             `Offene Schicht am ${fKurz(datum)}`,
             `${da ? da.name : dienstId}${da ? ` · ${da.start}–${da.ende}` : ""}${hinweis ? ` · ${hinweis}` : ""}`,
@@ -22237,10 +23125,13 @@ function AppInnen() {
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const pruef = darfSichBewerben(m, pid, a);
         if (!pruef.darf) { melde(`Bewerbung nicht möglich: ${pruef.grund}.`); return m; }
-        melde("Bewerbung eingegangen. Die Planung entscheidet.");
+        const hinw = pruef.hinweise || [];
+        melde(hinw.length ? `Bewerbung eingegangen, mit Hinweis: ${hinw[0]}. Die Planung entscheidet.`
+          : "Bewerbung eingegangen. Die Planung entscheidet.");
         return { ...m, ausschreibungen: m.ausschreibungen.map((x) => x.id !== asId ? x
           : { ...x, bewerbungen: [...(x.bewerbungen || []),
-              { personId: pid, zeit: new Date().toISOString(), text: text || "" }] }) };
+              { personId: pid, zeit: new Date().toISOString(), text: text || "",
+                ...(hinw.length ? { hinweise: hinw } : {}) }] }) };
       }, "Auf offene Schicht beworben"),
 
       ziehBewerbungZurueck: (asId) => mUpd((m) => {
@@ -22250,16 +23141,25 @@ function AppInnen() {
           : { ...x, bewerbungen: (x.bewerbungen || []).filter((b) => b.personId !== pid) }) };
       }, "Bewerbung zurückgezogen"),
 
-      vergibSchicht: (asId, personId) => mUpd((m) => {
+      vergibSchicht: (asId, personId, best) => mUpd((m0) => {
+        let m = m0;
         const a = (m.ausschreibungen || []).find((x) => x.id === asId);
         if (!a) { melde("Ausschreibung nicht gefunden."); return m; }
         const p = m.personen.find((x) => x.id === personId);
         const da = m.dienstarten.find((x) => x.id === a.dienstId);
         if (!p) { melde("Person nicht gefunden."); return m; }
-        /* Vor dem Eintragen noch einmal prüfen — zwischen Bewerbung und
-           Zuschlag können Tage liegen, in denen sich etwas geändert hat. */
-        const h = hindernisse(m, p, a.datum, da);
-        if (h.length) { melde(`Nicht möglich: ${h[0]}.`); return m; }
+        const sperre = schutzSperre(m, p, a.datum, da);
+        if (sperre) { melde(`Nicht möglich: ${sperre.text}.`); return m; }
+        /* Zwischen Bewerbung und Zuschlag können Tage liegen. Geprüft wird
+           im Warndialog vor dem Aufruf; hier wird nicht mehr abgebrochen,
+           sondern die Bestätigung festgehalten (E-19). */
+        const abw = abwesenheitAm(m, personId, a.datum);
+        if (abw && !(best && best.abwesenheitAufheben)) {
+          melde(`${p.vorname} ${p.nachname} ist am ${fKurz(a.datum)} abwesend. Erst die Abwesenheit für diesen Tag aufheben.`);
+          return m;
+        }
+        if (abw) m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, personId, a.datum).abwesenheiten };
+        m = bestaetigungVermerken(m, best, wer(), "ausschreibung");
         const jetzt = new Date().toLocaleString("de-DE");
         const abgelehnt = (a.bewerbungen || []).filter((b) => b.personId !== personId);
         const nachr = [
@@ -22785,7 +23685,14 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       }, "Meldung auf Tauschgesuch"),
       tauschAbmelden: (id) => mUpd((m) => ({ ...m, anfragen: m.anfragen.map((x) => x.id === id
         ? { ...x, interessenten: (x.interessenten || []).filter((p) => p !== sitz.person.id) } : x) }), null),
-      tauschZuteilen: (id, interessentId) => mUpd((m) => {
+      tauschZuteilen: (id, interessentId, best) => mUpd((m0) => {
+        const a0 = m0.anfragen.find((x) => x.id === id); if (!a0) return m0;
+        /* Harte Schutzbefunde sperren auch beim Tausch (Kette B), in beide Richtungen. */
+        const pA = m0.personen.find((x) => x.id === a0.personId), pI = m0.personen.find((x) => x.id === interessentId);
+        const daVon = (p) => p ? m0.dienstarten.find((x) => x.id === personTag(m0, p, a0.von).dienstId) : null;
+        const sperre = schutzSperre(m0, pI, a0.von, daVon(pA)) || schutzSperre(m0, pA, a0.von, daVon(pI));
+        if (sperre) { melde(`Nicht möglich: ${sperre.text}.`); return m0; }
+        const m = bestaetigungVermerken(m0, best, wer(), "tausch");
         const a = m.anfragen.find((x) => x.id === id); if (!a) return m;
         const t1 = personTag(m, m.personen.find((x) => x.id === a.personId), a.von);
         const t2 = personTag(m, m.personen.find((x) => x.id === interessentId), a.von);
@@ -22851,6 +23758,22 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
           aenderungen: [...aend, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [...nachr, ...(m.nachrichten || [])].slice(0, 400) };
       }, "Planungsvorschlag übernommen"),
+
+      /* --- Warnen statt sperren (E-19) ---
+         Prüft die Einträge eines Vorgangs. Ohne ernsten Befund läuft die
+         Aktion sofort, sonst öffnet der Warndialog. Gesperrt wird nie. */
+      mitWarnung: (m, vorgang) => {
+        const geprueft = (vorgang.eintraege || []).map((e) => ({ ...e,
+          ...befundeFuerEinteilung(m, e.personId, e.datum, e.dienstId) }));
+        const ernst = geprueft.some((e) => e.technisch || e.befunde.some((b) => stufeRang(b.stufe) >= 2));
+        if (!ernst && !vorgang.immerZeigen) {
+          vorgang.ausfuehren({ eintraege: geprueft.map((e) => ({ personId: e.personId, datum: e.datum,
+            dienstId: e.dienstId, idx: e.idx, befunde: e.befunde })),
+          indizes: geprueft.map((e) => e.idx).filter((x) => x !== undefined), gelesen: false, grundArt: null });
+          return;
+        }
+        setWarnung({ ...vorgang, geprueft });
+      },
 
       /* --- Eskalation --- */
       oeffneEskalation: (d, dienstId) => setEskal({ datum: d, dienstId }),
@@ -23114,11 +24037,11 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const MOBIL = ["meine", "plan", "antraege", "lage", "hilfe", "rechtliches"];
   const mobilOk = istBetreiber ? false : MOBIL.includes(aktiveView);
   const tabs = istBetreiber
-    ? [["mandanten", "Mandanten", "▤"], ["rechnungen", "Rechnungen", "€"],
-       ["tarife", "Tarife", "◈"], ["rechner", "Rechner", "∑"]]
-    : [["meine", "Schichten", "◧"],
-    ...(darf(sitz, "req.approve.unit") ? [["antraege", "Anträge", "✓"]] : []),
-    ...(darf(sitz, "plan.view.unit") ? [["lage", "Lage", "◉"]] : [])];
+    ? [["mandanten", "Mandanten", "raster"], ["rechnungen", "Rechnungen", "euro"],
+       ["tarife", "Tarife", "tarif"], ["rechner", "Rechner", "rechner"]]
+    : [["meine", "Schichten", "kalender"],
+    ...(darf(sitz, "req.approve.unit") ? [["antraege", "Anträge", "haken"]] : []),
+    ...(darf(sitz, "plan.view.unit") ? [["lage", "Lage", "raster"]] : [])];
 
   /**
    * Mobil zuerst: Beschäftigte im Schichtdienst ohne Planungsrechte sehen die
@@ -23133,9 +24056,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const dialogBlock = (<>
     {verfDlg && <Verfuegbarkeit sitz={sitz} akt={akt} personId={verfDlg} onClose={() => setVerfDlg(null)} />}
     {krank && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
+    {warnung && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
     {hinweis && <div style={{ position: "fixed", bottom: 104, left: "50%", transform: "translateX(-50%)",
-      zIndex: 90, background: C.accentDeep, color: "#fff", padding: "12px 20px", borderRadius: 999,
-      fontSize: 14, boxShadow: "0 10px 30px rgba(24,26,30,.28)", maxWidth: "90vw", textAlign: "center" }}>
+      zIndex: 90, background: C.accentDeep, color: C.aufAkzent, padding: "12px 20px", borderRadius: 999,
+      fontSize: 14, boxShadow: "var(--schatten-toast)", maxWidth: "90vw", textAlign: "center" }}>
       {hinweis}</div>}
   </>);
 
@@ -23200,57 +24124,34 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
                   {istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`}</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>{r.label}</div>
               </div>
-              <button onClick={akt.abmelden} title="Abmelden"
+              <button onClick={akt.abmelden} title="Abmelden" aria-label="Abmelden"
                 style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.55)",
-                  cursor: "pointer", fontSize: 15, padding: 4 }}><span aria-hidden="true">⏻</span></button>
+                  cursor: "pointer", padding: 4, display: "flex" }}><Icon n="abmelden" size={18} /></button>
             </div>
           </div>
         </aside>
 
         {/* ------------------------- Inhalt --------------------------- */}
         <div className="inhalt">
-          <header className="kopfleiste">
-            <button className="btn btn-sm btn-quiet nur-schmal" onClick={() => setSeiteOffen(!seiteOffen)}
-              aria-label="Navigation öffnen" aria-expanded={seiteOffen} title="Navigation">
-              <span aria-hidden="true">☰</span></button>
-
-            {!istBetreiber && (
-              <button className="suchknopf" onClick={() => setKmd(true)}>
-                <span>⌕</span><span>Suchen …</span><kbd>Strg K</kbd>
-              </button>)}
-
-            <div style={{ flex: 1 }} />
-
-            {/* Auf dem Telefon treten diese Werkzeuge ab — sie schoben die
-                Kopfleiste über die Gerätebreite hinaus. Das Postfach bleibt,
-                weil dort Mitteilungen zum Dienst ankommen. */}
-            {!istBetreiber && (
-              <button onClick={() => setPostfach(true)} className="btn btn-sm btn-quiet"
-                title="Mitteilungen" aria-label={`Mitteilungen${ungelesen ? `, ${ungelesen} ungelesen` : ""}`}
-                style={{ position: "relative" }}>
-                <span aria-hidden="true">✉︎</span>
-                {ungelesen > 0 && <span style={{ position: "absolute", top: -3, right: -3, minWidth: 16,
-                  height: 16, borderRadius: 8, background: C.danger, color: "#fff", fontSize: 10,
-                  fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  {ungelesen}</span>}
-              </button>)}
-            <div className="kopf-werkzeuge" style={{ display: "contents" }}>
-            <Btn size="sm" kind="quiet" onClick={() => setDicht(!dicht)}
-              title="Zeilenhöhe und Abstände umschalten">
-              {dicht ? "Komfortabel" : "Kompakt"}</Btn>
-            <Btn size="sm" kind="quiet" onClick={() => setFokus(!fokus)}
-              title="Seitenleiste ausblenden für maximale Breite">
-              {fokus ? "Fokus beenden" : "Fokus"}</Btn>
-            {!istBetreiber && <Btn size="sm" kind="quiet" onClick={akt.zurueck}
-              title="Letzte Änderung zurücknehmen">Rückgängig</Btn>}
-            {!istBetreiber && <Btn size="sm" kind="quiet"
-              onClick={() => akt.setzeKontrastmodus(!sitz.person.kontrastmodus)}
-              title="Größere Schrift und maximaler Kontrast">
-              {sitz.person.kontrastmodus ? "Feldmodus aus" : "Feldmodus"}</Btn>}
-            </div>
-            {nurMitarbeiter && rechnerAnsicht && (
-              <Btn size="sm" kind="quiet" onClick={() => setRechnerAnsicht(false)}>Telefonansicht</Btn>)}
-          </header>
+          <Kopfblock istBetreiber={istBetreiber}
+            betrieb={istBetreiber ? "Betreiberkonsole" : sitz.mandant.name}
+            bereiche={istBetreiber ? [{ id: "betreiber", label: "Betreiberkonsole", views: nav }] : bereiche}
+            aktiveView={aktiveView} zaehler={zaehler} zaehlerWarn={zaehlerWarn}
+            konto={{
+              name: istBetreiber ? "Betreiber" : `${sitz.person.vorname} ${sitz.person.nachname}`,
+              kurz: istBetreiber ? "BE" : (((sitz.person.vorname || " ")[0] + (sitz.person.nachname || " ")[0]).toUpperCase().trim() || r.kurz),
+              rolle: r.label }}
+            ungelesen={ungelesen}
+            dicht={dicht} onDicht={setDicht} fokus={fokus} onFokus={setFokus}
+            feldmodus={!istBetreiber && !!sitz.person.kontrastmodus}
+            onFeldmodus={istBetreiber ? undefined : (an) => akt.setzeKontrastmodus(an)}
+            thema={istBetreiber ? undefined : sitz.person.thema}
+            onThema={istBetreiber ? undefined : (v) => akt.setzeMeineEinstellung("thema", v)}
+            onAnsicht={(id) => { setView(id); setDetail(null); setSeiteOffen(false); }}
+            onSuche={() => setKmd(true)} onZurueck={akt.zurueck} onPostfach={() => setPostfach(true)}
+            onDrawer={() => setSeiteOffen(!seiteOffen)} drawerOffen={seiteOffen}
+            onAbmelden={akt.abmelden}
+            telefonansicht={nurMitarbeiter && rechnerAnsicht ? () => setRechnerAnsicht(false) : null} />
 
           {fokus && (
             <div style={{ padding: "10px 24px", background: C.accentLight,
@@ -23336,7 +24237,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "rechtliches" && <div>
               <H1 sub="Impressum, Datenschutzerklärung, Geschäftsbedingungen und die Unterlagen zur Auftragsverarbeitung. Änderungen an diesen Texten geschehen an einer Stelle — im Ordner rechtliches/ — und erscheinen hier.">
                 Rechtliches</H1>
-              <Rechtliches /></div>}
+              <Rechtliches flaeche /></div>}
             {aktiveView === "selbstplan" && <Selbstplanung sitz={sitz} akt={akt} gehZu={setView} />}
             {aktiveView === "notrufe" && <Notrufe sitz={sitz} akt={akt} />}
             {aktiveView === "belastung" && <Belastung sitz={sitz} akt={akt} gehZu={setView} />}
@@ -23403,6 +24304,9 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       {krank && !istBetreiber && <Krankmeldung sitz={sitz} akt={akt} vorauswahl={krank.pid} onClose={() => setKrank(null)} />}
       {postfach && !istBetreiber && <Nachrichten sitz={sitz} akt={akt} onClose={() => { akt.alleGelesen(); setPostfach(false); }} />}
       {person && !istBetreiber && <Personalakte sitz={sitz} personId={person} ym={ym} onClose={() => setPerson(null)} akt={akt} />}
+      {/* Der Warndialog steht zuletzt: Er öffnet sich aus anderen Blättern
+          heraus (Krankmeldung, Personalakte) und muss über ihnen liegen. */}
+      {warnung && !istBetreiber && <Warndialog sitz={sitz} vorgang={warnung} onClose={() => setWarnung(null)} />}
 
       <Sheet open={!!ausgabe} onClose={() => setAusgabe(null)} titel={ausgabe ? ausgabe.titel : ""} width={740}>
         {ausgabe && (<>
@@ -23416,15 +24320,15 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         <nav className="tabbar">
           {tabs.map(([id, label, glyph]) => (
             <button key={id} className={aktiveView === id ? "on" : ""} onClick={() => { setView(id); setDetail(null); }}>
-              <span className="glyph">{glyph}</span>{label}</button>))}
+              <Icon n={glyph} size={20} />{label}</button>))}
           {!istBetreiber && <button onClick={() => setPostfach(true)}>
-            <span className="glyph" style={{ position: "relative" }}>✉︎
+            <span className="glyph" style={{ position: "relative", display: "flex" }}><Icon n="brief" size={20} />
               {ungelesen > 0 && <span style={{ position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
                 borderRadius: 8, background: C.danger, color: "#fff", fontSize: 9.5, fontWeight: 700,
                 display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px" }}>{ungelesen}</span>}
             </span>Post</button>}
           {!istBetreiber && <button onClick={() => akt.oeffneKrankmeldung(sitz.person.id)}>
-            <span className="glyph" style={{ color: C.danger }}>✚</span>Krank</button>}
+            <span className="glyph" style={{ color: C.danger, display: "flex" }}><Icon n="krank" size={20} /></span>Krank</button>}
         </nav>)}
 
       {konflikt && (
