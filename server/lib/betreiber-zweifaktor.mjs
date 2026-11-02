@@ -49,24 +49,30 @@ const nichtPruefbar = () => json({ fehler: "Der zweite Faktor lässt sich gerade
  *
  * `kontoSchluessel`: der Ablageschlüssel, unter dem der Code gefunden wurde
  * (bei Altcodes der alte) — so steht er als `konto` in seinen Sitzungen.
+ * `altSchluessel`: der alte, ungepfefferte Schlüssel des Codes, IMMER —
+ * auch wenn der Code längst umgeschlüsselt ist: Sitzungen aus der Zeit davor
+ * tragen ihn noch (B-M1).
  *
- * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string, name: string}} a
+ * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string,
+ *   altSchluessel?: string, name: string}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  *   `antwort` gesetzt: genau diese zurückgeben, keine Sitzung anlegen.
  */
-export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, name }) {
+export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, altSchluessel, name }) {
   const id = betreiberZweifaktorId(codeSchluessel);
   /* B2: Wechselt der zweite Faktor (eingerichtet oder abgeschaltet), enden
      alle Sitzungen dieses Codes. Eine Sitzung, die vorher mit dem Code
      allein entstand — vielleicht auf einem fremden Gerät —, überlebt die
      Einrichtung sonst bis zu ihrer Frist. */
-  const schluessel = new Set([codeSchluessel, kontoSchluessel].filter(Boolean));
+  const schluessel = new Set([codeSchluessel, kontoSchluessel, altSchluessel].filter(Boolean));
+  /** Sitzungen dieses Codes beenden. { beendet, fehler } — fehler > 0 heißt: nicht alle. */
   const sitzungenBeenden = async () => {
     const r = await sitzungenBeendenWenn((sit) => schluessel.has(sit.konto));
     if (r.fehler) await protokoll("zweifaktor", k, "fehler", `Betreiber · ${r.fehler} Sitzungen nicht beendet`);
-    return { sitzungenBeendet: r.beendet, ...(r.fehler ? { sitzungenNichtBeendet: r.fehler,
-      warnung: "Nicht alle bisherigen Sitzungen ließen sich beenden — bitte erneut versuchen." } : {}) };
+    return r;
   };
+  const nichtAlleBeendet = (wann) => json({ fehler: `Bisherige Sitzungen dieses Zugangs ließen sich nicht `
+    + `alle beenden — ${wann}. Bitte erneut versuchen.`, zweifaktor: "sitzungen" }, 503);
   /* Option: Pflicht für alle Betreibercodes (Vorgabe aus). Ohne
      eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung. */
   const pflicht = (process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
@@ -116,6 +122,13 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
   if (aktion === "beginnen") {
     if (stand.aktiv) return { antwort: json({ fehler: "Der zweite Faktor ist schon eingerichtet. "
       + "Zum Neueinrichten erst abschalten." }, 409) };
+    /* Eine laufende Einrichtung zu überschreiben ist ein Eingriff in fremde
+       Absicht (jemand anderes mit dem Code richtet gerade ein): gebremst
+       und protokolliert (B-N2). */
+    if (stand.ausstehend) {
+      const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
+      await protokoll("zweifaktor", k, "warnung", "Betreiber · laufende Einrichtung überschrieben");
+    }
     const erg = await zweifaktorBeginnen(store, id, name || "Betreiber");
     if (erg.fehler === "pfeffer") return { antwort: json({ fehler: "Der zweite Faktor lässt sich auf "
       + "diesem Server nicht einrichten (CENTRIC_PFEFFER fehlt)." }, 503) };
@@ -132,6 +145,12 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     if (!stand.ausstehend) return { antwort: json({ fehler: "Es ist keine Einrichtung begonnen." }, 409) };
     if (!code) return { antwort: json({ fehler: "Bitte den ersten Code aus der App angeben." }, 400) };
     const gebremst = await bremsen(); if (gebremst) return { antwort: gebremst };
+    /* B-M2: ERST die bisherigen Sitzungen beenden. Gelingt das nicht
+       vollständig, wird nicht aktiviert (fail-closed) — sonst stünde der
+       Faktor, die alten Sitzungen liefen weiter, und eine Wiederholung
+       bekäme nur noch 409. */
+    const vorher = await sitzungenBeenden();
+    if (vorher.fehler) return { antwort: nichtAlleBeendet("der zweite Faktor wurde NICHT aktiviert") };
     const erg = await zweifaktorBestaetigen(store, id, code);
     if (erg.fehler === "pfeffer") return { antwort: nichtPruefbar() };
     if (erg.fehler) {
@@ -141,21 +160,28 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kon
     }
     await entlastenAlle();
     await codeRichtig();
-    const beendet = await sitzungenBeenden();
-    await protokoll("zweifaktor", k, "erfolg", `Betreiber · eingerichtet · ${beendet.sitzungenBeendet} Sitzungen beendet`);
-    return { antwort: json({ ok: true, aktiv: true, ...beendet, wiederherstellung: erg.wiederherstellung,
+    /* Zweiter Durchgang: eine Sitzung, die zwischen dem ersten und der
+       Aktivierung mit dem Code allein entstand. */
+    const danach = await sitzungenBeenden();
+    const beendet = vorher.beendet + danach.beendet;
+    await protokoll("zweifaktor", k, "erfolg", `Betreiber · eingerichtet · ${beendet} Sitzungen beendet`);
+    return { antwort: json({ ok: true, aktiv: true, sitzungenBeendet: beendet,
+      ...(danach.fehler ? { warnung: "Eine eben entstandene Sitzung ließ sich nicht beenden; sie endet spätestens nach zwei Stunden." } : {}),
+      wiederherstellung: erg.wiederherstellung,
       hinweis: "Die Wiederherstellungscodes erscheinen genau einmal. Jeder gilt einmal." }) };
   }
 
   if (aktion === "abschalten") {
     if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
     const r = await pruefen(); if (r) return { antwort: r };
+    /* B-M2: erst Sitzungen beenden; scheitert das, bleibt der Faktor. */
+    const vorher = await sitzungenBeenden();
+    if (vorher.fehler) return { antwort: nichtAlleBeendet("der zweite Faktor bleibt eingerichtet") };
     try { await zweifaktorAbschalten(store, id); }
     catch { return { antwort: nichtPruefbar() }; }
     await codeRichtig();
-    const beendet = await sitzungenBeenden();
-    await protokoll("zweifaktor", k, "erfolg", `Betreiber · abgeschaltet · ${beendet.sitzungenBeendet} Sitzungen beendet`);
-    return { antwort: json({ ok: true, aktiv: false, ...beendet }) };
+    await protokoll("zweifaktor", k, "erfolg", `Betreiber · abgeschaltet · ${vorher.beendet} Sitzungen beendet`);
+    return { antwort: json({ ok: true, aktiv: false, sitzungenBeendet: vorher.beendet }) };
   }
 
   if (aktion === "stand") {

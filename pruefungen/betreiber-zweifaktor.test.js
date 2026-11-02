@@ -228,6 +228,69 @@ describe("B2: Wechsel des zweiten Faktors beendet die Sitzungen dieses Codes", (
   });
 });
 
+describe("Review-Auflagen WP-32c", () => {
+  let S, C, K;
+  const lebt = async (token) => !!(await S.sitzungsSpeicher().get(S.sitzungsSchluessel(token), { type: "json" }));
+  const anlegen = (schl, n) => K.kontoSchreiben(laden(), schl, { name: n, bestand: "betreiber-probe",
+    rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+  beforeAll(async () => {
+    S = await import("../server/lib/sitzungen.mjs");
+    C = await import("../server/lib/codes.mjs");
+    K = await import("../server/lib/konten.mjs");
+  });
+
+  it("B-M1: Sitzung aus der Zeit vor dem Umschlüsseln endet beim Bestätigen", async () => {
+    const ALT = "BTR2-ALTC-ODE7";
+    expect(C.altHash(ALT)).not.toBe(C.ablageSchluessel(ALT));
+    await anlegen(C.altHash(ALT), "Betreiber Altcode");
+    uhr(jetzt + 60_000);
+    const alt = await anmelden({ zugangscode: ALT });          // über den alten Schlüssel gefunden, umgeschlüsselt
+    expect(alt.status, alt.roh).toBe(200);
+    expect(await lebt(alt.token)).toBe(true);
+    const b = await anmelden({ zugangscode: ALT, zweifaktorAktion: "beginnen" });   // jetzt über den neuen
+    const best = await anmelden({ zugangscode: ALT, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
+    expect(best.status, best.roh).toBe(200);
+    expect(best.sitzungenBeendet).toBeGreaterThanOrEqual(1);
+    expect(await lebt(alt.token)).toBe(false);
+  });
+
+  it("B-M2: lassen sich die Sitzungen nicht beenden, wird NICHT aktiviert (503), Wiederholung klappt", async () => {
+    const CODE_M2 = "BTR2-TEIL-FEH8";
+    await anlegen(C.ablageSchluessel(CODE_M2), "Betreiber M2");
+    uhr(jetzt + 60_000);
+    const alt = (await anmelden({ zugangscode: CODE_M2 })).token;
+    const b = await anmelden({ zugangscode: CODE_M2, zweifaktorAktion: "beginnen" });
+    const { rename, writeFile, rm: rmF } = await import("node:fs/promises");
+    const ort = path.join(wurzel, "centric-sitzungen");
+    await rename(ort, ort + ".weg");
+    await writeFile(ort, "kein Verzeichnis");
+    try {
+      const r = await anmelden({ zugangscode: CODE_M2, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
+      expect(r.status, r.roh).toBe(503);
+      expect(r.wiederherstellung).toBeUndefined();
+    } finally {
+      await rmF(ort, { force: true });
+      await rename(ort + ".weg", ort);
+    }
+    expect(await anmelden({ zugangscode: CODE_M2, zweifaktorAktion: "stand" })).toMatchObject({ aktiv: false, ausstehend: true });
+    uhr(jetzt + 30_000);
+    const r2 = await anmelden({ zugangscode: CODE_M2, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
+    expect(r2.status, r2.roh).toBe(200);
+    expect(await lebt(alt)).toBe(false);
+  });
+
+  it("B-N2: überschreibendes „beginnen“ wird gebremst", async () => {
+    const CODE_N2 = "BTR2-UEBE-RS09";
+    await anlegen(C.ablageSchluessel(CODE_N2), "Betreiber N2");
+    expect((await anmelden({ zugangscode: CODE_N2, zweifaktorAktion: "beginnen" }, "10.88.0.1")).status).toBe(200);
+    const st = [];
+    for (let i = 0; i < 7; i++)
+      st.push((await anmelden({ zugangscode: CODE_N2, zweifaktorAktion: "beginnen" }, `10.88.1.${i}`)).status);
+    expect(st.slice(0, 5)).toEqual([200, 200, 200, 200, 200]);
+    expect(st).toContain(429);
+  });
+});
+
 describe("CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1", () => {
   const CODE_P = "BTR2-PFLI-CHT5";
   beforeAll(async () => {

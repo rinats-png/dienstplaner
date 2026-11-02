@@ -683,7 +683,7 @@ export default async (req, context) => {
       let zfAktiv = null;
       if (eintrag.rolle === "betreiber") {
         const zf = await betreiberZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
-          kontoSchluessel: fund.schluessel, name: eintrag.name });
+          kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {
