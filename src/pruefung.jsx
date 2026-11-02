@@ -13,6 +13,8 @@ import { ANWENDUNG_URL } from "./kontakt.js";
    zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
    genau der Fehler, den das Merkmal verhindern soll. */
 import { verbindlichkeit } from "./regelwerk.js";
+/* Die Ortsprüfung beim Stempeln gibt es nur einmal (server/lib/geo.mjs). */
+import { abstandMeter, geoUrteil } from "../server/lib/geo.mjs";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 function themaSetzen(dunkel) {
@@ -2516,31 +2518,10 @@ function nachweisLage(m) {
 }
 
 /* ------------------------ Standortprüfung beim Stempeln ------------------ */
-/** Abstand zweier Koordinaten in Metern (Haversine). */
-function abstandMeter(lat1, lon1, lat2, lon2) {
-  const R = 6371000, rad = (x) => (x * Math.PI) / 180;
-  const dLat = rad(lat2 - lat1), dLon = rad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-}
-/**
- * Bewertet einen Stempelvorgang gegen den hinterlegten Einsatzort.
- * Bewusst nur als Ereignis: kein Verlauf, keine Hintergrundortung.
- * Gespeichert wird ausschließlich das Ergebnis, nicht die Koordinate.
- */
-function stempelPruefen(m, p, datum, koord) {
-  const t = personTag(m, p, datum);
-  const da = t.dienstId && m.dienstarten.find((x) => x.id === t.dienstId);
-  const eid = einheitAm(p, datum);
-  const e = m.einheiten.find((x) => x.id === eid);
-  const st = e && m.standorte.find((x) => x.id === e.standortId);
-  if (!koord || !st || st.lat === undefined)
-    return { geprueft: false, text: "Ohne Standortfreigabe erfasst" };
-  const d = abstandMeter(koord.lat, koord.lon, st.lat, st.lon);
-  const radius = st.radius || 200;
-  return { geprueft: true, abstand: d, radius, innerhalb: d <= radius, standort: st.name,
-    text: d <= radius ? `Am Einsatzort (${d} m)` : `Abweichend, ${d > 1500 ? `${n1(d / 1000)} km` : `${d} m`} entfernt` };
-}
+/* Selbsttest gegen die eine Prüfung (server/lib/geo.mjs), mit eingeschaltetem
+   Betriebsschalter — keine eigene Kopie mehr. */
+const stempelPruefen = (m, p, datum, messung) => geoUrteil({
+  m: { ...m, einstellungen: { ...(m.einstellungen || {}), geoPruefung: true } }, person: p, datum, messung });
 const stempelStand = (m, p, datum) => (m.einstempeln || {})[`${p.id}|${datum}`] || null;
 
 /* -------------------------------- Auslastung ----------------------------- */
@@ -6801,9 +6782,9 @@ function selbsttest() {
     const km = abstandMeter(50.1109, 8.6821, 52.3759, 9.7320) / 1000;
     return km > 255 && km < 270; })());
   ok("Stempel am Einsatzort wird erkannt", true,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.1112, lon: 8.6825, accuracy: 10 }).innerhalb);
   ok("Stempel abseits wird erkannt", false,
-    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72 }).innerhalb);
+    stempelPruefen(m, m.personen[3], heute(), { lat: 50.15, lon: 8.72, accuracy: 10 }).innerhalb);
   ok("Ohne Standortfreigabe wird nicht geprueft", false,
     stempelPruefen(m, m.personen[3], heute(), null).geprueft);
 

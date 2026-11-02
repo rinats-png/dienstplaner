@@ -37,6 +37,64 @@ export function uebergabenAngleichen(bestand) {
   return { ...bestand, mandanten: bestand.mandanten.map((m) => (m && leer(m.uebergaben) ? { ...m, uebergaben: [] } : m)) };
 }
 
+/* --------------------------------------------------------------------------
+   PERSONEN: qualifikationen
+
+   Die Oberfläche liest `person.qualifikationen` an vielen Stellen als Liste
+   (Tagesaufgaben, Nachweise, Personal). Fehlte das Feld — eine über die
+   Schnittstelle angelegte Person —, stürzte die Startseite jeder Rolle ab
+   („reading 'map'"). Die Gestaltprüfung sah es nicht: Sie prüft die Listen
+   eines Betriebs, nicht die Felder einer Person.
+
+   Zwei Fälle, bewusst getrennt:
+   - fehlt oder null: eine fehlende optionale Liste → []. Das ist keine
+     Aussage, die verloren ginge.
+   - ein anderer Typ in einer Eingabe (Text, Zahl, Objekt): ein Fehler des
+     Absenders. Er wird abgewiesen (personenFehler), nicht still zu []
+     gemacht — sonst verschwänden Angaben, ohne dass es jemand merkt.
+   Ein schon gespeicherter Altbestand mit falschem Typ ist keine Eingabe:
+   Beim Lesen und beim Zusammenführen wird er zu [], damit er weder die
+   Oberfläche abstürzen lässt noch jeden künftigen Schreibvorgang sperrt.
+   -------------------------------------------------------------------------- */
+
+/** Ist das eine Person, deren Liste angeglichen werden muss? */
+const qualAngleichen = (p) => !!p && typeof p === "object" && !Array.isArray(p.qualifikationen);
+
+/**
+ * Setzt bei jeder Person ohne gültige Liste `qualifikationen: []`.
+ * Gültige Listen und alle anderen Felder bleiben unverändert; ohne Bedarf
+ * kommt dasselbe Objekt zurück (nichts wird verändert, nichts kopiert).
+ * @param {any} bestand
+ */
+export function personenAngleichen(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  const braucht = (m) => !!m && Array.isArray(m.personen) && m.personen.some(qualAngleichen);
+  if (!bestand.mandanten.some(braucht)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => (braucht(m)
+    ? { ...m, personen: m.personen.map((p) => (qualAngleichen(p) ? { ...p, qualifikationen: [] } : p)) }
+    : m)) };
+}
+
+/**
+ * Prüft eine übermittelte Eingabe: `qualifikationen` darf fehlen, null oder
+ * eine Liste sein — jeder andere Typ ist ein Fehler des Absenders.
+ * Gibt null oder { grund, feld } zurück.
+ * @param {any} bestand
+ */
+export function personenFehler(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return null;
+  for (const [i, m] of bestand.mandanten.entries()) {
+    if (!m || !Array.isArray(m.personen)) continue;
+    for (const [j, p] of m.personen.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const q = p.qualifikationen;
+      if (q !== undefined && q !== null && !Array.isArray(q))
+        return { grund: `Bei Person ${p.id ?? j} ist qualifikationen keine Liste.`, feld: `mandanten[${i}].personen[${j}].qualifikationen` };
+    }
+  }
+  return null;
+}
+
 /**
  * Prüft die Form eines Bestands.
  * Gibt { ok: true } oder { ok: false, grund, feld } zurück.

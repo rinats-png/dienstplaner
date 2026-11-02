@@ -7,6 +7,9 @@ dist
 marketing
 werkzeug/*
 !werkzeug/ablage-sicherung.mjs
+!werkzeug/staging-smoke.mjs
+!werkzeug/staging-geo.mjs
+!werkzeug/staging-aufraeumen.mjs
 pruefungen
 deploy
 .env

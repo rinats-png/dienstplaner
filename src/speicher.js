@@ -26,6 +26,11 @@ let token = null;
 let etag = null;
 let offen = null;            // ausstehender Schreibvorgang
 let uhr = null;
+let unterwegs = false;       // ein PUT ist abgeschickt, die Antwort steht aus
+
+/** Wartet ein Schreibvorgang oder ist einer unterwegs? Dann ist der lokale
+    Stand nicht der gespeicherte. */
+export const schreibenAusstehend = () => !!offen || unterwegs;
 let name = null;
 let zugang = null;         // Rolle, Person und Betrieb aus dem Zugangscode
 
@@ -205,10 +210,35 @@ function fehlerart(e, status) {
   return "unbekannt";
 }
 
-async function jetztSchreiben(beimSchliessen) {
+/* Der laufende Schreibvorgang, damit man auf ihn warten kann (schreibenAbschliessen). */
+let laufend = null;
+function jetztSchreiben(beimSchliessen) {
+  const lauf = schreibenAusfuehren(beimSchliessen);
+  laufend = lauf;
+  lauf.finally(() => { if (laufend === lauf) laufend = null; });
+  return lauf;
+}
+
+/**
+ * Schreibt, was noch aussteht, sofort — und wartet auf einen laufenden
+ * Vorgang. Vor dem Stempeln: Der Server ändert den Bestand dabei selbst;
+ * wartete noch eine eigene Änderung mit dem alten ETag, liefe sie danach
+ * in einen 409. Scheitert sie, bleibt sie wie jeder gescheiterte Versuch
+ * erhalten (ausstehend, nochmalSchreiben) — das Stempeln hängt nicht davon ab.
+ */
+export async function schreibenAbschliessen() {
+  if (laufend) await laufend.catch(() => {});
+  if (offen) {
+    if (uhr) { clearTimeout(uhr); uhr = null; }
+    await jetztSchreiben().catch(() => {});
+  }
+}
+
+async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
   let status = null;
+  unterwegs = true;
   try {
     /* keepalive lässt die Anfrage das Schließen des Reiters überleben.
        Ohne das bricht der Browser sie ab, und die letzte Änderung ist
@@ -239,6 +269,8 @@ async function jetztSchreiben(beimSchliessen) {
     gescheitert = { auftrag, lage: { art, text: String(e && e.message || e), status,
       zeit: new Date().toISOString() } };
     if (auftrag.onFehler) auftrag.onFehler({ ...gescheitert.lage, fehler: e });
+  } finally {
+    unterwegs = false;
   }
 }
 
@@ -430,14 +462,17 @@ export async function zugaengeErzeugen(bestand, eintraege) {
 /**
  * Ein- oder ausstempeln.
  *
- * Es gehen nur die Rohkoordinaten hinaus. Standort, Radius, Uhrzeit und das
- * Urteil liegen auf dem Server — im Browser wäre alles davon manipulierbar,
- * und eine Zeiterfassung, die sich manipulieren lässt, belegt nichts.
+ * Hinaus geht höchstens eine Messung (Breite, Länge, Genauigkeit) — und nur,
+ * wenn die Geo-Prüfung im Betrieb eingeschaltet ist (sonst koord = null).
+ * Standort, Radius, Uhrzeit und das Urteil liegen auf dem Server — im
+ * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
+ * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord) {
   const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
     body: JSON.stringify({ datum, art,
-      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null }) });
+      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
+      accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
   return d;

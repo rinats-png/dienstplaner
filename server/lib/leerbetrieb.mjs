@@ -105,7 +105,9 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       { id: "z2", name: "Sonntagsarbeit", art: "sonntag", prozent: 50, aktiv: true },
       { id: "z3", name: "Feiertagsarbeit", art: "feiertag", prozent: 125, aktiv: true },
     ],
-    standorte: [{ id: "st1", name: `${String(name).trim()}`, land: land || "HE",
+    /* bundesland wie in der Oberfläche; land bleibt für ältere Leser. Keine
+       Koordinaten — die trägt die Leitung ein (Geo V1). */
+    standorte: [{ id: "st1", name: `${String(name).trim()}`, bundesland: land || "HE", land: land || "HE",
       lat: undefined, lon: undefined, radius: 200 }],
     einheiten,
 
@@ -125,6 +127,8 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     /* Gesetzliche Grundwerte. Bewusst die Mindestanforderungen des
        Arbeitszeitgesetzes, damit die Prüfung von Anfang an etwas prüft. */
     einstellungen: {
+      /* Geo-Prüfung beim Stempeln: Vorgabe aus (E7); einschalten nur die Leitung. */
+      geoPruefung: false,
       wochenstunden: 40,
       /* Dieselbe Größe unter zwei Namen: Die Oberfläche liest fast überall
          sollWochenstunden, angelegt wurde nur wochenstunden. Folge: Das Feld

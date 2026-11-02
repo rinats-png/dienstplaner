@@ -42,7 +42,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Stempeldaten, Ortsurteil | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -114,6 +115,14 @@ dort Daten ablegen, die Rollen in Betrieb B desselben Raums zurückbekamen.
 eigenen. Die Antwort trägt für beide `sichtIstDaten` (`{umfang: "eigene", person}` bzw. `{umfang: "keine"}`); die Oberfläche
 zeigt dann „nicht verfügbar" statt die Planzeit als Ist-Zeit (`src/istdaten.js`). Eine aggregierte Auswertung für den
 Betriebsrat ist ein eigenes Thema.
+**Ausnahme (Commit 6bd706b, fachlich bestätigt am 2026-11-02):** Ein Betriebsratsmitglied im Schichtdienst stempelt die
+eigene Arbeitszeit (`/api/stempeln` nimmt nur die eigene Person der Sitzung an) und bekommt dafür die **eigenen**
+Stempelereignisse (`sicht.mjs`: `einstempeln` `NUR_EIGENE`, wie Beschäftigte) — sonst sähe es den eigenen offenen
+Beginn nicht und bekäme erneut „Einstempeln" angeboten. Ausdrücklich **nicht** dazu gehören: fremde Stempelvorgänge,
+personenbezogene Ist-Zeiten anderer, personenbezogene Ist-Auswertungen (auch die eigene Erfassung bleibt weg,
+`sichtIstDaten` bleibt `{umfang: "keine"}`) und zusätzliche Verwaltungsrechte (Schreibumfang weiter „nein"; gestempelt
+wird nur über `/api/stempeln`). Geprüft in `pruefungen/rechtematrix.test.js` (Zeilen „Stempel: eigener (Betriebsrat)",
+„Zeiterfassung: eigene (Betriebsrat)"), `stempel-datenschutz.test.js`, `geo.test.js` und `oberflaeche-render.test.js`.
 ¹³ Commit D1c: `mandanten[].session` hatte keinen Schreiber; die Oberfläche las daraus nur irrtümlich die eigene
 Person (`bewirbDich`, `ziehBewerbungZurueck`, jetzt nur `sitz.person.id`). Planung und Leitung konnten dort
 beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betriebsrat eingeschlossen — und die
@@ -154,7 +163,7 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | `/api/sicherungsschluessel` (GET/POST/DELETE) | Leitung | nur Schlüssel des eigenen Betriebs; Widerruf nur über die vollständige Kennung; fremd wie unbekannt | A |
 | `/api/sicherung`, `/api/sicherungen`, `/api/wiederherstellen` | Leitung | Sicherungen und Wiederherstellen je Betrieb, Kontingente je Betrieb, Geheimnisse und Vertrag aus dem heutigen Stand; ebenso Betreiberstamm und alles außerhalb der Sicht der Leitung (an bestehenden Personen etwa Bank-, Steuer- und Lohnangaben) — dieselbe Grenze wie beim Speichern | A |
 | `/api/zugang-sperren` | Leitung (eigener Betrieb), Betreiber (raumweit) | ohne Existenz-Orakel | A |
-| `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag | A |
+| `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag. Geo V1: Urteil nur bei eingeschaltetem Betriebsschalter `einstellungen.geoPruefung` (Vorgabe aus; schalten nur Rollen mit `org.edit`, Zeitpunkt und Person setzt der Server); Rohkoordinate und exakte Entfernung werden nicht gespeichert | A |
 | `/api/anmelden`, `/api/demo`, `/api/demos` | öffentlich | Sitzung bzw. Name/Kennung der Demozugänge, keine Codes | A |
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |

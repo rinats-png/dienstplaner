@@ -58,10 +58,26 @@ describe("Stempelereignisse nach Rolle", () => {
     const e = bestandFuerRolle(b, { rolle: "mitarbeiter", person: 0, betrieb: 0 }).mandanten[0].einstempeln;
     expect(Object.keys(e)).toEqual(["0|2026-10-22"]);
   });
-  it("Betriebsrat bekommt keine Roh-Stempel", () => {
+  it("Betriebsrat bekommt keine fremden Roh-Stempel", () => {
     expect(sicht("betriebsrat", "pb").einstempeln).toEqual({});
     expect(sicht("betriebsrat", null).einstempeln).toEqual({});
     expect(JSON.stringify(sicht("betriebsrat", "pb"))).not.toContain("Am Einsatzort");
+  });
+  /* Wer im Schichtdienst steht, stempelt (/api/stempeln nimmt nur die eigene
+     Person an) und muss den eigenen offenen Beginn sehen — auch im Betriebsrat.
+     Fremde Stempel und jede Ist-Erfassung, auch die eigene, bleiben weg. */
+  it("Betriebsrat bekommt den eigenen Stempel — nur diesen, keine Erfassung", () => {
+    const b = bestand();
+    b.mandanten[0].einstempeln["pb|2026-10-22"] = stempel("06:20");
+    b.mandanten[0].einstempeln["pbx|2026-10-22"] = stempel("06:30");
+    b.mandanten[0].erfassung["pb|2026-10-22"] = { start: "06:20", ende: "14:00", bestaetigt: true, grund: "" };
+    const m = bestandFuerRolle(b, { rolle: "betriebsrat", person: "pb", betrieb: 0 }).mandanten[0];
+    expect(Object.keys(m.einstempeln)).toEqual(["pb|2026-10-22"]);
+    expect(m.erfassung).toEqual({});
+    expect(m.sichtIstDaten).toEqual({ umfang: "keine" });
+    expect(JSON.stringify(m)).not.toContain("05:58");
+    expect(JSON.stringify(m)).not.toContain("06:30");
+    expect(bestandFuerRolle(b, { rolle: "betriebsrat", person: null, betrieb: 0 }).mandanten[0].einstempeln).toEqual({});
   });
   /* Die Schichtverantwortung sieht seit 1e.2 nur sich und ihren Bereich
      (schichtverantwortung- und sicht-schichtverantwortung-Tests). */
