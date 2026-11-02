@@ -486,6 +486,33 @@ exec /usr/bin/find "$@"
     expect(containerBild()).toBe(ID_A);
   });
 
+  const ALT_DEPLOY_A2 = (() => {
+    try {
+      return execFileSync("git", ["show", "8dde67b:deploy/deploy.sh"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch { return null; }
+  })();
+  it.skipIf(FAKES_FEHLEN || ALT_DEPLOY_A2 === null)("A2: derselbe find-Fehler gegen deploy.sh von 8dde67b — dort Wiederanlauf aus der Subshell (Befund belegt)", () => {
+    const altVerz = path.join(tmp, "deploy-alt-a2");
+    mkdirSync(altVerz);
+    for (const f of readdirSync(DEPLOY)) if (/\.(sh|mjs)$/.test(f)) writeFileSync(path.join(altVerz, f), readFileSync(path.join(DEPLOY, f)));
+    writeFileSync(path.join(altVerz, "deploy.sh"), ALT_DEPLOY_A2);
+    for (const f of readdirSync(altVerz)) chmodSync(path.join(altVerz, f), 0o755);
+    writeFileSync(path.join(bin, "find"), `#!/usr/bin/env bash
+case "$*" in *"centric-sicherung-*"*) echo "stub: find scheitert" >&2; exit 1 ;; esac
+exec /usr/bin/find "$@"
+`);
+    chmodSync(path.join(bin, "find"), 0o755);
+    const umgebung = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, STUB_DIR: p(stubDir),
+      CENTRIC_VERZ: p(verz), CENTRIC_FREIGABEN: p(path.join(verz, "FREIGEGEBENE-IMAGES.md")),
+      CENTRIC_WARTEZEIT: "90", CENTRIC_TAKT: "1", CENTRIC_NACHBEOBACHTUNG: "0",
+      ...(FLOCK ? {} : { CENTRIC_OHNE_FLOCK: "1" }) };
+    delete umgebung.IMAGE_DIGEST;
+    const r = spawnSync(BASH, [p(path.join(altVerz, "deploy.sh")), A], { encoding: "utf8", env: umgebung });
+    const ups = aufrufe().split("\n").filter((z) => z.includes(" up -d")).length;
+    expect(ups > 1 || /Vor dem Wechsel gescheitert|unerwarteter Fehler/.test(r.stdout + r.stderr),
+      `alt: ${ups} up-Aufrufe\n${r.stdout}${r.stderr}`).toBe(true);
+  });
+
   it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {
     const halter = spawn(BASH, ["-c", `exec 9>"${p(path.join(verz, ".deploy.lock"))}"; flock 9; echo bereit; sleep 30`]);
     await new Promise((fertig) => halter.stdout.once("data", fertig));
