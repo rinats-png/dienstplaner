@@ -53,3 +53,21 @@ Branch `acc45/infra/wp32b-xff-betreiber2fa`, Basis `acc45/infra/wp32-lieferkette
   senden") fragt nicht nach dem zweiten Faktor und zeigt bei Betreibercodes mit 2FA die
   Meldung des Servers; volle Anmeldung über die Startseite. `App.jsx` bewusst nicht
   angefasst (paralleler Agent).
+
+## 3. Folgecommit (Review-Auflagen B2 und Option Pflicht)
+
+- **B2:** Bestätigen und Abschalten des zweiten Faktors eines Betreibercodes
+  beenden alle Sitzungen dieses Codes (`sitzungenBeendenWenn`, Abgleich über
+  `sitzung.konto` = Ablageschlüssel des Codes, auch der alte bei Altcodes).
+  Sitzungen anderer Codes bleiben. Die Antwort nennt `sitzungenBeendet`; ließ
+  sich eine nicht beenden, dazu `sitzungenNichtBeendet` und eine Warnung.
+  Abschalten antwortet bei einem Ablagefehler 503 statt ihn zu schlucken.
+- **Option `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1`** (Vorgabe **aus**,
+  Entscheidung beim Inhaber): Ein Betreibercode ohne eingerichteten zweiten
+  Faktor bekommt keine Sitzung mehr (403, `zweifaktor: "einrichten"`), nur die
+  Aktionen `stand`, `beginnen`, `bestaetigen`. Andere Rollen unberührt.
+  Vor dem Einschalten den eigenen Betreibercode einrichten — sonst ist die
+  Konsole nur noch über die Einrichtungsaktion erreichbar (Einrichten geht
+  auch ohne Sitzung, direkt über `/api/anmelden`).
+- Tests in `pruefungen/betreiber-zweifaktor.test.js` (jetzt 14); rot auf dem
+  Stand vor dem Folgecommit: 2 (B2, Pflicht).

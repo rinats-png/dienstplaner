@@ -29,6 +29,7 @@
    ========================================================================== */
 
 import { createHash } from "node:crypto";
+import { sitzungenBeendenWenn } from "./sitzungen.mjs";
 import { bremse, entlasten, notentlasten, protokoll, zuVielAntwort, GRENZEN } from "./schutz.mjs";
 import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
   zweifaktorAbschalten } from "./zweifaktor.mjs";
@@ -46,12 +47,29 @@ const nichtPruefbar = () => json({ fehler: "Der zweite Faktor lässt sich gerade
  * Für einen bereits als gültig erkannten Betreibercode: Aktion ausführen oder
  * den zweiten Faktor der Anmeldung prüfen.
  *
- * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, name: string}} a
+ * `kontoSchluessel`: der Ablageschlüssel, unter dem der Code gefunden wurde
+ * (bei Altcodes der alte) — so steht er als `konto` in seinen Sitzungen.
+ *
+ * @param {{store: any, k: string, rumpf: any, codeSchluessel: string, kontoSchluessel?: string, name: string}} a
  * @returns {Promise<{antwort?: Response, aktiv?: boolean}>}
  *   `antwort` gesetzt: genau diese zurückgeben, keine Sitzung anlegen.
  */
-export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, name }) {
+export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, kontoSchluessel, name }) {
   const id = betreiberZweifaktorId(codeSchluessel);
+  /* B2: Wechselt der zweite Faktor (eingerichtet oder abgeschaltet), enden
+     alle Sitzungen dieses Codes. Eine Sitzung, die vorher mit dem Code
+     allein entstand — vielleicht auf einem fremden Gerät —, überlebt die
+     Einrichtung sonst bis zu ihrer Frist. */
+  const schluessel = new Set([codeSchluessel, kontoSchluessel].filter(Boolean));
+  const sitzungenBeenden = async () => {
+    const r = await sitzungenBeendenWenn((sit) => schluessel.has(sit.konto));
+    if (r.fehler) await protokoll("zweifaktor", k, "fehler", `Betreiber · ${r.fehler} Sitzungen nicht beendet`);
+    return { sitzungenBeendet: r.beendet, ...(r.fehler ? { sitzungenNichtBeendet: r.fehler,
+      warnung: "Nicht alle bisherigen Sitzungen ließen sich beenden — bitte erneut versuchen." } : {}) };
+  };
+  /* Option: Pflicht für alle Betreibercodes (Vorgabe aus). Ohne
+     eingerichteten zweiten Faktor gibt es dann nur die Aktionen, keine Sitzung. */
+  const pflicht = (process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
   const aktion = String((rumpf && rumpf.zweifaktorAktion) || "");
   const code = rumpf && rumpf.zweifaktor ? String(rumpf.zweifaktor) : "";
   const kennungen = [`b:${id.slice(0, 16)}`, k];
@@ -123,24 +141,27 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, nam
     }
     await entlastenAlle();
     await codeRichtig();
-    await protokoll("zweifaktor", k, "erfolg", "Betreiber · eingerichtet");
-    return { antwort: json({ ok: true, aktiv: true, wiederherstellung: erg.wiederherstellung,
+    const beendet = await sitzungenBeenden();
+    await protokoll("zweifaktor", k, "erfolg", `Betreiber · eingerichtet · ${beendet.sitzungenBeendet} Sitzungen beendet`);
+    return { antwort: json({ ok: true, aktiv: true, ...beendet, wiederherstellung: erg.wiederherstellung,
       hinweis: "Die Wiederherstellungscodes erscheinen genau einmal. Jeder gilt einmal." }) };
   }
 
   if (aktion === "abschalten") {
     if (!stand.aktiv) return { antwort: json({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409) };
     const r = await pruefen(); if (r) return { antwort: r };
-    await zweifaktorAbschalten(store, id);
+    try { await zweifaktorAbschalten(store, id); }
+    catch { return { antwort: nichtPruefbar() }; }
     await codeRichtig();
-    await protokoll("zweifaktor", k, "erfolg", "Betreiber · abgeschaltet");
-    return { antwort: json({ ok: true, aktiv: false }) };
+    const beendet = await sitzungenBeenden();
+    await protokoll("zweifaktor", k, "erfolg", `Betreiber · abgeschaltet · ${beendet.sitzungenBeendet} Sitzungen beendet`);
+    return { antwort: json({ ok: true, aktiv: false, ...beendet }) };
   }
 
   if (aktion === "stand") {
     await codeRichtig();
     return { antwort: json({ aktiv: stand.aktiv, ausstehend: stand.ausstehend,
-      wiederherstellungUebrig: stand.aktiv ? stand.wiederherstellungUebrig : 0 }) };
+      wiederherstellungUebrig: stand.aktiv ? stand.wiederherstellungUebrig : 0, pflicht }) };
   }
 
   if (aktion) return { antwort: json({ fehler: "Unbekannte Aktion. Erlaubt: stand, beginnen, "
@@ -148,5 +169,10 @@ export async function betreiberZweifaktor({ store, k, rumpf, codeSchluessel, nam
 
   /* Gewöhnliche Anmeldung. */
   if (stand.aktiv) { const r = await pruefen(); if (r) return { antwort: r }; }
+  else if (pflicht) {
+    await protokoll("zweifaktor", k, "abgewiesen", "Betreiber · Pflicht, nicht eingerichtet");
+    return { antwort: json({ fehler: "Für Betreiberzugänge ist ein zweiter Faktor Pflicht. Bitte zuerst "
+      + "einrichten (zweifaktorAktion: beginnen, dann bestaetigen).", zweifaktor: "einrichten" }, 403) };
+  }
   return { aktiv: stand.aktiv };
 }

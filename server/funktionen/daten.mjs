@@ -682,7 +682,8 @@ export default async (req, context) => {
          Andere Rollen kennen keine Aktion. */
       let zfAktiv = null;
       if (eintrag.rolle === "betreiber") {
-        const zf = await betreiberZweifaktor({ store, k, rumpf, codeSchluessel: neuS, name: eintrag.name });
+        const zf = await betreiberZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
+          kontoSchluessel: fund.schluessel, name: eintrag.name });
         if (zf.antwort) return zf.antwort;
         zfAktiv = !!zf.aktiv;
       } else if (rumpf.zweifaktorAktion) {

@@ -188,6 +188,87 @@ describe("Betreibercode mit zweitem Faktor über /api/anmelden", () => {
   });
 });
 
+describe("B2: Wechsel des zweiten Faktors beendet die Sitzungen dieses Codes", () => {
+  const CODE_B2 = "BTR2-SITZ-UNG3";
+  const CODE_ANDERS = "BTR2-ANDE-RER4";
+  let S;
+  const lebt = async (token) => !!(await S.sitzungsSpeicher().get(S.sitzungsSchluessel(token), { type: "json" }));
+
+  beforeAll(async () => {
+    S = await import("../server/lib/sitzungen.mjs");
+    const { kontoSchreiben } = await import("../server/lib/konten.mjs");
+    const { ablageSchluessel } = await import("../server/lib/codes.mjs");
+    for (const [c, n] of [[CODE_B2, "Betreiber B2"], [CODE_ANDERS, "Betreiber anders"]])
+      await kontoSchreiben(laden(), ablageSchluessel(c), { name: n, bestand: "betreiber-probe",
+        rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+  });
+
+  it("Bestätigen beendet ältere Sitzungen dieses Codes, nicht die eines anderen", async () => {
+    uhr(jetzt + 60_000);
+    const alt = (await anmelden({ zugangscode: CODE_B2 })).token;
+    const fremd = (await anmelden({ zugangscode: CODE_ANDERS })).token;
+    expect(await lebt(alt)).toBe(true);
+    const b = await anmelden({ zugangscode: CODE_B2, zweifaktorAktion: "beginnen" });
+    const best = await anmelden({ zugangscode: CODE_B2, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) });
+    expect(best.status, best.roh).toBe(200);
+    expect(best.sitzungenBeendet).toBe(1);
+    expect(await lebt(alt)).toBe(false);
+    expect(await lebt(fremd)).toBe(true);
+
+    /* Abschalten: die mit zweitem Faktor entstandene Sitzung endet ebenfalls. */
+    uhr(jetzt + 30_000);
+    const mit = await anmelden({ zugangscode: CODE_B2, zweifaktor: code(b.geheimnis) });
+    expect(mit.token).toBeTruthy();
+    uhr(jetzt + 30_000);
+    const ab = await anmelden({ zugangscode: CODE_B2, zweifaktorAktion: "abschalten", zweifaktor: code(b.geheimnis) });
+    expect(ab.status, ab.roh).toBe(200);
+    expect(ab.sitzungenBeendet).toBe(1);
+    expect(await lebt(mit.token)).toBe(false);
+    expect(await lebt(fremd)).toBe(true);
+  });
+});
+
+describe("CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1", () => {
+  const CODE_P = "BTR2-PFLI-CHT5";
+  beforeAll(async () => {
+    const { kontoSchreiben } = await import("../server/lib/konten.mjs");
+    const { ablageSchluessel } = await import("../server/lib/codes.mjs");
+    await kontoSchreiben(laden(), ablageSchluessel(CODE_P), { name: "Betreiber Pflicht", bestand: "betreiber-probe",
+      rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+  });
+
+  it("ohne eingerichteten Faktor keine Sitzung, nur die Einrichtung; danach Anmeldung mit Code", async () => {
+    process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT = "1";
+    try {
+      const ohne = await anmelden({ zugangscode: CODE_P });
+      expect(ohne.status).toBe(403);
+      expect(ohne.zweifaktor).toBe("einrichten");
+      expect(ohne.token).toBeUndefined();
+      expect(await anmelden({ zugangscode: CODE_P, zweifaktorAktion: "stand" })).toMatchObject({ aktiv: false, pflicht: true });
+      uhr(jetzt + 60_000);
+      const b = await anmelden({ zugangscode: CODE_P, zweifaktorAktion: "beginnen" });
+      expect(b.geheimnis).toBeTruthy();
+      expect((await anmelden({ zugangscode: CODE_P, zweifaktorAktion: "bestaetigen", zweifaktor: code(b.geheimnis) })).status).toBe(200);
+      uhr(jetzt + 30_000);
+      const mit = await anmelden({ zugangscode: CODE_P, zweifaktor: code(b.geheimnis) });
+      expect(mit.status, mit.roh).toBe(200);
+      expect(mit.token).toBeTruthy();
+      /* Andere Rollen bleiben unberührt. */
+      expect((await anmelden({ zugangscode: CODE_LEITUNG })).status).toBe(200);
+    } finally { delete process.env.CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT; }
+  });
+
+  it("ohne den Schalter: Vorgabe aus", async () => {
+    const { kontoSchreiben } = await import("../server/lib/konten.mjs");
+    const { ablageSchluessel } = await import("../server/lib/codes.mjs");
+    await kontoSchreiben(laden(), ablageSchluessel("BTR2-OHNE-PFL6"), { name: "Betreiber ohne", bestand: "betreiber-probe",
+      rolle: "betreiber", person: null, betrieb: 0, mandantId: null, angelegt: "2026-01-01T00:00:00.000Z" });
+    const a = await anmelden({ zugangscode: "BTR2-OHNE-PFL6" });
+    expect(a.status).toBe(200);
+    expect(a.token).toBeTruthy();
+  });
+});
+
 describe("Oberfläche", () => {
   it("Code-Feld der Anmeldemaske und beide Abschnitte der Konsole rendern", async () => {
     const React = (await import("react")).default;
