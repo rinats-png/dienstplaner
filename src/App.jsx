@@ -11,7 +11,7 @@ import {
   dauer, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
-  schutzEinsatz, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
+  schutzEinsatz, jugendMehrschichtig, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
   alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
@@ -2097,7 +2097,7 @@ function pruefen(m, von, bis) {
         const da = m.dienstarten.find((x) => x.id === t.dienstId);
         if (!da) continue;
         /* Die eine Schutzprüfung (schutzEinsatz), wie im Warndialog. */
-        for (const b of schutzEinsatz(p, da, d)) {
+        for (const b of schutzEinsatz(p, da, d, m.einstellungen)) {
           if (b.offen) { if (datenGemeldet) continue; datenGemeldet = true; }
           push({ art: "schutz", schwere: b.schwere, datum: d,
             ref: `${p.id}|${b.regel}`, personId: p.id, neutral: b.neutral,
@@ -2623,13 +2623,13 @@ function hindernisBefunde(m, p, d, da) {
      Personengruppen lässt sich nicht wegbestätigen (Kette B). Weiche sind
      „Achtung", nicht bewertbare ein Hinweis. Den Grund einer neutralen
      Einsatzregel nennt der Befund nie. */
-  for (const b of schutzEinsatz(p, da, d)) {
+  for (const b of schutzEinsatz(p, da, d, m.einstellungen)) {
     const quelle = b.neutral ? SCHUTZ_QUELLE_NEUTRAL : b.regel;
     /* Katalogschlüssel aus der Bewertung von schutzEinsatz: hart → „schutz"
        (sperrt), weich → „schutzWeich" (Achtung), nicht bewertbar →
        „schutzOffen" (Hinweis). Sperrt folgt so derselben Tabelle wie alles
        andere und sagt nie etwas anderes als schutzEinsatz. */
-    push(b.stufe, b.text, quelle, "schutz", b.sperrt ? "schutz" : b.offen ? "schutzOffen" : "schutzWeich",
+    push(b.stufe, b.text, quelle, "schutz", b.sperrt ? "schutz" : b.offen ? "schutzOffen" : b.hinweis ? "schutzHinweis" : "schutzWeich",
       b.neutral ? null : regelIdFuerBefund({ art: "schutz", quelle }));
   }
   /* Einschränkungen an der Person: Stufe und Sperre aus dem Befundkatalog
@@ -21097,6 +21097,40 @@ function GeoSchalter({ sitz, akt }) {
     </Card>);
 }
 
+/**
+ * Jugendarbeitsschutz: mehrschichtiger Betrieb (§ 14 Abs. 2 Nr. 2 JArbSchG,
+ * Nachprüfung WP-11). Eingeschaltet dürfen Jugendliche ab 16 Jahren bis 23 Uhr
+ * eingeteilt werden — die Prüfung meldet dann nur einen Hinweis. Aus: Einsätze
+ * 20–23 Uhr sind „Achtung" und brauchen eine Bestätigung. Unter 16 Jahren und
+ * 23–6 Uhr sperrt die Prüfung in jedem Fall. Schalten darf nur, wer org.edit
+ * hat; wann und von wem, setzt der Server.
+ */
+function JugendschutzSchalter({ sitz, akt }) {
+  const e = sitz.mandant.einstellungen || {};
+  const an = jugendMehrschichtig(e);
+  const j = e.jugendschutz || {};
+  const durch = j.geaendertVon ? (sitz.mandant.personen.find((x) => String(x.id) === String(j.geaendertVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={an ? "ok" : undefined}>{an ? "mehrschichtig" : "nicht hinterlegt"}</Pill>}>
+        Jugendarbeitsschutz: mehrschichtiger Betrieb</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        In mehrschichtigen Betrieben dürfen Jugendliche ab 16 Jahren bis 23 Uhr beschäftigt werden
+        (§ 14 Abs. 2 Nr. 2 JArbSchG). Ist das hinterlegt, meldet die Prüfung einen Einsatz bis 23 Uhr nur als
+        Hinweis; sonst ist er „Achtung" und braucht eine Bestätigung. Unter 16 Jahren und zwischen 23 und 6 Uhr
+        bleibt jeder Einsatz gesperrt. Weitere Branchenausnahmen (Gaststätten, Bäckereien, Landwirtschaft) kennt
+        die Prüfung nicht.
+        {j.geaendertAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(j.geaendertAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        <div style={{ marginTop: 14 }}>
+          <Btn kind={an ? undefined : "primary"} onClick={() => akt.setzeJugendMehrschichtig(!an)}>
+            {an ? "Nicht mehr als mehrschichtig führen" : "Als mehrschichtigen Betrieb hinterlegen"}</Btn>
+        </div>
+      </div>
+    </Card>);
+}
+
 /** Zahlenfeld, das nur gültige Werte speichert (beim Verlassen). Leer = nicht gesetzt. */
 function GeoZahl({ label, wert, gueltig, hinweis, onCommit }) {
   const [text, setText] = useState(wert === undefined || wert === null ? "" : String(wert));
@@ -21366,6 +21400,8 @@ function Betrieb({ sitz, akt }) {
       <Standorte sitz={sitz} akt={akt} />
 
       <GeoSchalter sitz={sitz} akt={akt} />
+
+      <JugendschutzSchalter sitz={sitz} akt={akt} />
 
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
         Stammdaten</Abschnitt>
@@ -22706,6 +22742,11 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit;
+         wann und von wem, setzt der Server. */
+      setzeJugendMehrschichtig: (an) => mUpd((m) => ({ ...m,
+        einstellungen: { ...(m.einstellungen || {}), jugendschutz: { mehrschichtig: !!an } } }),
+        an ? "Als mehrschichtiger Betrieb hinterlegt" : "Nicht mehr als mehrschichtiger Betrieb hinterlegt"),
       loescheStandort: (id) => mUpd((m) => {
         const n = m.einheiten.filter((e) => e.standortId === id).length;
         if (n) { melde(`Dem Standort sind noch ${n} Einheiten zugeordnet.`); return m; }

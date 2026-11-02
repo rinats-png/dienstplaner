@@ -263,6 +263,17 @@ mit Einwilligung, ärztlicher Unbedenklichkeit und Genehmigung) bildet die Anwen
 sperrenden Befund, der rechtlich zulässig sein kann. Ob eine Einwilligung hinterlegt werden soll, ist eine offene
 Fachentscheidung. Der Prüfstatus beider Regeln bleibt Bestand (sie sperren); die Grenze steht in `pruefhinweis`.
 
+**Nachprüfung WP-11 (F3-Fehlalarm).** Ein Spätdienst 13–21 Uhr für eine 17-Jährige wurde hart gesperrt, obwohl § 14
+Abs. 2 Nr. 2 JArbSchG Jugendlichen über 16 Jahren im mehrschichtigen Betrieb Arbeit bis 23 Uhr erlaubt (Pflege-
+Auszubildende). Jetzt (`jugendNachtBewertung`, `server/lib/schutzpruefung.mjs`): unter 16 Jahren sperrt jede
+Überschneidung mit 20–6 Uhr (`JARBSCHG-14`); ab 16 Jahren sperrt 23–6 Uhr einschließlich eines Beginns vor 6 Uhr
+(`JARBSCHG-14`), 20–23 Uhr meldet `JARBSCHG-14-02` — ohne Einstellung „Achtung" mit Bestätigungspflicht, mit der
+Betriebseinstellung `jugendschutz.mehrschichtig` (nur `org.edit`) einen Hinweis. Ob der Betrieb tatsächlich
+mehrschichtig arbeitet, prüft CENTRIC nicht. **Bekannte Grenze:** Die Branchenfenster des § 14 Abs. 2 bis 7
+(Gaststätten und Schaustellergewerbe bis 22 Uhr, Bäckereien und Konditoreien ab 5 Uhr bzw. über 17 Jahren ab 4 Uhr,
+Landwirtschaft ab 5 oder bis 21 Uhr, Bewilligungen nach Abs. 6 und 7) sind nicht modelliert; ein Bäckereibeginn um
+5 Uhr sperrt weiterhin. Mutterschutz (`MUSCHG-05`) bleibt unverändert hart (Fachfrage B2 beim Nutzer).
+
 **Betriebsratsprotokoll.** Abweichend von Anhang G: Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe,
 unter 3 als „<3"; jede Schutzregel — auch der Jugendarbeitsschutz — heißt dort `schutz` (Kette B behandelt das Alter
 als Schutzmerkmal). Die eigene Person bekommt die Rohfelder `mutterschutz`/`schwerbehindert` nicht über die

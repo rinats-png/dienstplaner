@@ -70,7 +70,8 @@ describe("Sicht der Schichtverantwortung", () => {
        wie schutzBefunde mit Rohdaten. Hier fehlt es bei allen außer ju. */
     expect(regeln("mu")).toEqual(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
     expect(regeln("sb")).toEqual(["alterNichtBewertbar", "ueber8hNurAbsprache"]);
-    expect(regeln("ju")).toEqual(["hoechstens8hTag", "nachtNichtZulaessig", "wochenendePruefen"]);
+    /* Nachprüfung WP-11: ju ist 17 — ab 16 Jahren die Regel 23–6 Uhr (20–23 je nach Betrieb). */
+    expect(regeln("ju")).toEqual(["hoechstens8hTag", "nachtAb23NichtZulaessig", "wochenendePruefen"]);
     expect(pers(m, "ju").planungsregeln.every((r) => r.bis === tagPlus(29))).toBe(true);
     expect(regeln("vo")).toEqual(["alterNichtBewertbar"]);              // Vorsorge: keine Ableitung
     expect(pers(m, "we").planungsregeln).toEqual([{ regel: "alterNichtBewertbar", hart: false, offen: true },
@@ -115,7 +116,7 @@ describe("andere Rollen unverändert", () => {
 
 describe("Gleichwertigkeit: Rohdaten + schutzBefunde = Ableitung + regelBefunde", () => {
   const REGEL = { "JArbSchG § 14": "nachtNichtZulaessig", "MuSchG § 5": "nachtNichtZulaessig", "JArbSchG § 8": "hoechstens8hTag",
-    "JArbSchG §§ 16–17": "wochenendePruefen", "MuSchG § 6": "sonntagNurMitFreigabe", "SGB IX § 207": "ueber8hNurAbsprache",
+    "JArbSchG § 14 Abs. 2": "nachtSpaetPruefen", "JArbSchG §§ 16–17": "wochenendePruefen", "MuSchG § 6": "sonntagNurMitFreigabe", "SGB IX § 207": "ueber8hNurAbsprache",
     /* WP-11: fehlendes Geburtsdatum, nicht bewertbar — auf beiden Wegen. */
     "JArbSchG (Geburtsdatum)": "alterNichtBewertbar" };
   const DIENSTE = {
@@ -128,6 +129,8 @@ describe("Gleichwertigkeit: Rohdaten + schutzBefunde = Ableitung + regelBefunde"
   const PERSONEN = {
     mutterschutz: { mutterschutz: true }, schwerbehindert: { schwerbehindert: true },
     unter18: { geburtstag: "2008-11-05" }, schaltjahr: { geburtstag: "2008-02-29" },
+    /* Nachprüfung WP-11: 16. Geburtstag am 5.11.2026 — vorher 20–6, ab dann 23–6 Uhr. */
+    um16: { geburtstag: "2010-11-05" }, unter16: { geburtstag: "2012-03-01" },
     beides: { mutterschutz: true, geburtstag: "2008-11-05", schwerbehindert: true },
     wiedereingliederung: { einschraenkungen: { wiedereingliederung: { von: "2026-11-02", bis: "2026-11-06", maxStundenWoche: 20 } } },
     ohne: {},

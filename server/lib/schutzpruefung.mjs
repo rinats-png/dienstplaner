@@ -17,8 +17,17 @@ export const pad = (n) => String(n).padStart(2, "0");
 export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 export const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
+/** Ein Kalendertag als Millisekunden in UTC — ohne Zeitzone, deshalb schnell
+    (Nachprüfung WP-11, N1: `new Date(j, m, t)` kostet unter Windows je Aufruf
+    eine Zeitzonenauflösung, die Nachrechnung rief es zehntausendfach). */
+export const tagUTC = (s) => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
 /** Montag ist 0 — im deutschen Arbeitsrecht beginnt die Woche dort. */
-export const dow = (s) => (pISO(s).getDay() + 6) % 7;
+const DOW = new Map();
+export const dow = (s) => {
+  let w = DOW.get(s);
+  if (w === undefined) { w = (new Date(tagUTC(s)).getUTCDay() + 6) % 7; if (DOW.size > 10000) DOW.clear(); DOW.set(s, w); }
+  return w;
+};
 
 export const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
@@ -58,40 +67,99 @@ export function istNachtdienst(d) {
  * Bis dahin prüfte CENTRIC „Nachtdienst" (mehr als zwei Stunden zwischen 23
  * und 6 Uhr) oder Beginn vor 6 Uhr — ein Spätdienst 14–22 Uhr einer
  * Sechzehnjährigen blieb ohne Befund, obwohl der Text „20 bis 6 Uhr" sagte.
- * Jede Überschneidung zählt. Die gesetzlichen Ausnahmen (§ 14 Abs. 2 ff.
- * JArbSchG je Alter und Branche, § 5 Abs. 2 MuSchG: 20–22 Uhr mit
- * Einwilligung und behördlicher Genehmigung) kennt die Prüfung nicht; sie
- * meldet auch dann einen Befund — dokumentiert im Regelregister.
+ * Jede Überschneidung zählt. Für Jugendliche ab 16 Jahren unterscheidet
+ * schutzBefunde 20–23 Uhr (§ 14 Abs. 2 JArbSchG, Nachprüfung WP-11) von
+ * 23–6 Uhr; die Branchenfenster (§ 14 Abs. 2 bis 7: Gaststätten bis 22 Uhr,
+ * Bäckereien ab 5 bzw. 4 Uhr, Landwirtschaft) und § 5 Abs. 2 MuSchG (20–22
+ * Uhr mit Einwilligung und behördlicher Genehmigung) kennt die Prüfung
+ * nicht — dokumentiert im Regelregister.
  */
 export function imNachtfenster20bis6(d) {
+  return ueberschneidet(d, [[0, 360], [1200, 1800], [2640, 2880]]);
+}
+
+/** Liegt ein Teil des Dienstes zwischen 23 und 6 Uhr (Grenze für Jugendliche ab 16 im mehrschichtigen Betrieb)? */
+export function imNachtfenster23bis6(d) {
+  return ueberschneidet(d, [[0, 360], [1380, 1800], [2820, 2880]]);
+}
+
+/** Überschneidet der Dienst eines der Fenster (Minuten ab Mitternacht des Dienstbeginns)? */
+function ueberschneidet(d, fenster) {
   const s = toMin(d.start);
   let e = toMin(d.ende);
   if (e <= s) e += 1440;
-  for (const [a, b] of [[0, 360], [1200, 1800], [2640, 2880]]) if (Math.min(e, b) > Math.max(s, a)) return true;
+  for (const [a, b] of fenster) if (Math.min(e, b) > Math.max(s, a)) return true;
   return false;
 }
 
+/**
+ * Betriebseinstellung „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2 JArbSchG):
+ * Jugendliche über 16 Jahre dürfen dort bis 23 Uhr beschäftigt werden. Setzen
+ * darf sie nur, wer org.edit hat (server/lib/rechte.mjs, jugendschutzZusammen).
+ * @param {any} [einst] Einstellungen des Betriebs
+ */
+export const jugendMehrschichtig = (einst) =>
+  !!(einst && typeof einst === "object" && einst.jugendschutz && typeof einst.jugendschutz === "object"
+    && einst.jugendschutz.mehrschichtig === true);
+
+/**
+ * Die Nachtruhe Jugendlicher (§ 14 JArbSchG) für einen Dienst — dieselbe
+ * Bewertung für Rohdaten (schutzBefunde) und Einsatzregeln (regelBefunde):
+ *   unter 16 Jahren:  jede Überschneidung mit 20–6 Uhr hart;
+ *   ab 16 Jahren:     23–6 Uhr hart (auch Beginn vor 6 Uhr);
+ *                     20–23 Uhr mit Einstellung „mehrschichtig" ein Hinweis,
+ *                     ohne sie „Achtung" (bestätigungspflichtig) — die
+ *                     Ausnahme kann je nach Betrieb gelten oder nicht.
+ * @param {boolean} ab16
+ * @returns {null | "hart" | "achtung" | "hinweis"}
+ */
+export function jugendNachtBewertung(dienstart, ab16, einst) {
+  if (!ab16) return imNachtfenster20bis6(dienstart) ? "hart" : null;
+  if (imNachtfenster23bis6(dienstart)) return "hart";
+  if (!imNachtfenster20bis6(dienstart)) return null;
+  return jugendMehrschichtig(einst) ? "hinweis" : "achtung";
+}
+
 /** Alter in Jahren am Stichtag. Ohne Geburtsdatum: null. */
+/* Gibt es den Kalendertag? Zwischengespeichert — die Nachrechnung fragt je
+   Person und Tag (Nachprüfung WP-11, N1). */
+const GUELTIG = new Map();
+function tagGueltig(s) {
+  let ok = GUELTIG.get(s);
+  if (ok === undefined) {
+    const [j, m, t] = s.split("-").map(Number);
+    const echt = new Date(Date.UTC(j, m - 1, t));
+    ok = echt.getUTCFullYear() === j && echt.getUTCMonth() === m - 1 && echt.getUTCDate() === t;
+    if (GUELTIG.size > 10000) GUELTIG.clear();
+    GUELTIG.set(s, ok);
+  }
+  return ok;
+}
 export function alterAm(geburtstag, datum) {
   if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
   /* Einen Tag, den es nicht gibt (30.02.), rechnet Date auf den 02.03. weiter —
      das wäre ein falsches Alter statt keines. */
-  if (iso(pISO(geburtstag)) !== String(geburtstag)) return null;
-  const g = pISO(geburtstag), d = pISO(datum);
-  let jahre = d.getFullYear() - g.getFullYear();
-  const vorGeburtstag = d.getMonth() < g.getMonth()
-    || (d.getMonth() === g.getMonth() && d.getDate() < g.getDate());
-  if (vorGeburtstag) jahre--;
+  const g = String(geburtstag);
+  if (!tagGueltig(g)) return null;
+  const gj = Number(g.slice(0, 4)), gm = Number(g.slice(5, 7)), gt = Number(g.slice(8, 10));
+  const j = Number(datum.slice(0, 4)), m = Number(datum.slice(5, 7)), t = Number(datum.slice(8, 10));
+  let jahre = j - gj;
+  if (m < gm || (m === gm && t < gt)) jahre--;                       // vor dem Geburtstag
   return jahre;
 }
 
 /**
  * Prüft einen geplanten Dienst gegen die Schutzvorschriften.
  *
- * @returns Liste von Befunden: { regel, text, hart }
- *   hart = die Zuweisung ist unzulässig, nicht nur bedenklich.
+ * @param {any} person
+ * @param {any} dienstart
+ * @param {string} datum
+ * @param {any} [einst] Einstellungen des Betriebs (jugendschutz.mehrschichtig)
+ * @returns Liste von Befunden: { regel, text, hart, hinweis? }
+ *   hart = die Zuweisung ist unzulässig, nicht nur bedenklich;
+ *   hinweis = zulässig nach einer hinterlegten Ausnahme, nur zur Kenntnis.
  */
-export function schutzBefunde(person, dienstart, datum) {
+export function schutzBefunde(person, dienstart, datum, einst) {
   const aus = [];
   const alter = alterAm(person.geburtstag || person.geburtsdatum, datum);
 
@@ -105,9 +173,17 @@ export function schutzBefunde(person, dienstart, datum) {
       text: "Das Geburtsdatum fehlt oder ist ungültig. Ob das Jugendarbeitsschutzgesetz gilt, lässt sich nicht prüfen — "
         + "für Jugendliche wäre dieser Dienst nicht zulässig (zwischen 20 und 6 Uhr oder über acht Stunden)." });
   if (alter !== null && alter < 18) {
-    if (imNachtfenster20bis6(dienstart))
+    const nacht = jugendNachtBewertung(dienstart, alter >= 16, einst);
+    if (nacht === "hart")
       aus.push({ regel: "JArbSchG § 14", hart: true,
-        text: "Jugendliche dürfen nicht zwischen 20 und 6 Uhr beschäftigt werden." });
+        text: alter >= 16 ? "Jugendliche dürfen auch ab 16 Jahren nicht zwischen 23 und 6 Uhr beschäftigt werden."
+          : "Jugendliche dürfen nicht zwischen 20 und 6 Uhr beschäftigt werden." });
+    else if (nacht === "achtung")
+      aus.push({ regel: "JArbSchG § 14 Abs. 2", hart: false,
+        text: "Zwischen 20 und 23 Uhr nur mit einer gesetzlichen Ausnahme für Jugendliche ab 16 Jahren (etwa im mehrschichtigen Betrieb) — bitte prüfen." });
+    else if (nacht === "hinweis")
+      aus.push({ regel: "JArbSchG § 14 Abs. 2", hart: false, hinweis: true,
+        text: "Bis 23 Uhr zulässig: Der Betrieb ist als mehrschichtig hinterlegt (Ausnahme für Jugendliche ab 16 Jahren)." });
     if (dauer(dienstart) > 8.5)
       aus.push({ regel: "JArbSchG § 8", hart: true,
         text: "Für Jugendliche gelten höchstens acht Stunden täglich." });
@@ -153,12 +229,14 @@ export function schutzBefunde(person, dienstart, datum) {
  * und schutzBefundeFuer/einsatzSchutz (Kette B: Datenweg, Sperre).
  * @returns {{regel: string, text: string, offen: boolean, neutral: boolean, hart: boolean, sperrt: boolean, stufe: string, schwere: string}[]}
  */
-export function schutzEinsatz(person, dienstart, datum) {
-  return /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum)).map((b) => ({
-    regel: b.regel, text: b.text, offen: !!b.offen, neutral: !!b.neutral, hart: !!b.hart,
-    /* offen = nicht bewertbar: ein Hinweis, nichts zu bestätigen, nichts zu sperren */
+export function schutzEinsatz(person, dienstart, datum, einst) {
+  return /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum, einst)).map((b) => ({
+    regel: b.regel, text: b.text, offen: !!b.offen, neutral: !!b.neutral, hart: !!b.hart, hinweis: !!b.hinweis,
+    /* offen = nicht bewertbar, hinweis = Ausnahme des Betriebs hinterlegt:
+       beides nur zur Kenntnis, nichts zu bestätigen, nichts zu sperren */
     sperrt: !!b.hart && !b.offen,
-    stufe: b.offen ? "hinweis" : b.hart ? "recht" : "achtung", schwere: b.hart ? "danger" : "warn",
+    stufe: b.offen || b.hinweis ? "hinweis" : b.hart ? "recht" : "achtung",
+    schwere: b.hart ? "danger" : b.hinweis ? "info" : "warn",
   }));
 }
 
@@ -178,6 +256,9 @@ export function schutzEinsatz(person, dienstart, datum) {
    -------------------------------------------------------------------------- */
 export const EINSATZREGEL_TEXTE = {
   nachtNichtZulaessig: "Nachteinsatz 20–6 Uhr nicht zulässig.",
+  nachtAb23NichtZulaessig: "Nachteinsatz 23–6 Uhr nicht zulässig.",
+  nachtSpaetPruefen: "Einsatz 20–23 Uhr nur mit einer betrieblichen Ausnahme — bitte prüfen.",
+  nachtSpaetAusnahme: "Einsatz bis 23 Uhr: Ausnahme des Betriebs hinterlegt.",
   hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
   wochenendePruefen: "Wochenendeinsatz prüfen.",
   sonntagNurMitFreigabe: "Sonntagseinsatz nur mit Freigabe der Planung.",
@@ -194,7 +275,7 @@ export const EINSATZREGEL_TEXTE = {
  * liest stundengrenzeAusRegeln.
  * @returns Liste von Befunden: { regel, text, hart }
  */
-export function regelBefunde(planungsregeln, dienstart, datum) {
+export function regelBefunde(planungsregeln, dienstart, datum, einst) {
   const aus = [];
   for (const r of Array.isArray(planungsregeln) ? planungsregeln : []) {
     if (!r || typeof r !== "object") continue;
@@ -203,6 +284,17 @@ export function regelBefunde(planungsregeln, dienstart, datum) {
     const treffer = (bed) => { if (bed) aus.push({ regel: r.regel, hart: r.hart === true, text: EINSATZREGEL_TEXTE[r.regel] }); };
     switch (r.regel) {
       case "nachtNichtZulaessig": treffer(imNachtfenster20bis6(dienstart)); break;
+      /* Ab 16 Jahren (Nachprüfung WP-11): 23–6 Uhr hart, 20–23 Uhr je nach
+         Einstellung des Betriebs — dieselbe Bewertung wie schutzBefunde
+         (jugendNachtBewertung). Die Treffer heißen wie die Regel mit
+         Rohdaten: hart „nachtNichtZulaessig", sonst „nachtSpaetPruefen". */
+      case "nachtAb23NichtZulaessig": {
+        const n = jugendNachtBewertung(dienstart, true, einst);
+        if (n === "hart") aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.nachtAb23NichtZulaessig });
+        else if (n === "achtung") aus.push({ regel: "nachtSpaetPruefen", hart: false, text: EINSATZREGEL_TEXTE.nachtSpaetPruefen });
+        else if (n === "hinweis") aus.push({ regel: "nachtSpaetPruefen", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.nachtSpaetAusnahme });
+        break;
+      }
       case "hoechstens8hTag": treffer(dauer(dienstart) > 8.5); break;
       case "wochenendePruefen": treffer(dow(datum) >= 5); break;
       case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
@@ -231,11 +323,11 @@ export function regelBefunde(planungsregeln, dienstart, datum) {
  * - sonst die Rohdaten: schutzBefunde, mit Fundstelle.
  * @returns Liste von Befunden: { regel, text, hart, neutral? }
  */
-export function schutzBefundeFuer(person, dienstart, datum) {
+export function schutzBefundeFuer(person, dienstart, datum, einst) {
   if (Array.isArray(person.planungsregeln))
-    return regelBefunde(person.planungsregeln, dienstart, datum).map((b) => ({ ...b, neutral: true }));
+    return regelBefunde(person.planungsregeln, dienstart, datum, einst).map((b) => ({ ...b, neutral: true }));
   if (person.sichtbereich === "bereich" || person.sichtbereich === "pool")
     return [{ regel: "pruefungNichtMoeglich", hart: true, neutral: true,
       text: "Für diese Person fehlen die Einsatzregeln; sie gilt nicht als frei planbar." }];
-  return schutzBefunde(person, dienstart, datum);
+  return schutzBefunde(person, dienstart, datum, einst);
 }

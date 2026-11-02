@@ -133,12 +133,12 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
    F3 — gesetzliches Fenster 20–6 Uhr
    ------------------------------------------------------------------------ */
 describe("F3: Nachtruhe 20–6 Uhr, jede Überschneidung", () => {
-  const jugend = { geburtstag: tagePlus(HEUTE, -16 * 366) };
+  const jugend = { geburtstag: tagePlus(HEUTE, -15 * 366) };                 // 15 Jahre (Nachprüfung WP-11: ab 16 gilt 23–6 Uhr)
   const mutter = { mutterschutz: true, geburtstag: "1990-01-01" };
   const spaet = { id: "S", start: "14:00", ende: "22:00", pause: 30 };
   const frueh = { id: "F", start: "06:00", ende: "14:00", pause: 30 };
   const bis2030 = { id: "X", start: "12:00", ende: "20:30", pause: 30 };
-  it("Spätdienst 14–22 für eine Sechzehnjährige: Rechtsverstoß, sperrt", () => {
+  it("Spätdienst 14–22 für eine Fünfzehnjährige: Rechtsverstoß, sperrt", () => {
     expect(schutzBefunde(jugend, spaet, MITTWOCH).map((b) => b.regel)).toContain("JArbSchG § 14");
     expect(schutzEinsatz(jugend, spaet, MITTWOCH).some((b) => b.sperrt)).toBe(true);
   });

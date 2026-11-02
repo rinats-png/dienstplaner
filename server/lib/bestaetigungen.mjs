@@ -46,6 +46,9 @@ export const BEFUND_KATALOG = Object.freeze({
      bewertbare (Daten fehlen) — aus derselben Schutzprüfung (schutzEinsatz, WP-11). */
   schutzWeich: { text: "Schutzvorschrift: Ausnahme oder Freistellung auf Verlangen", quelle: "Schutzvorschrift", stufe: "achtung", sperrt: false, schutz: true },
   schutzOffen: { text: "Schutzprüfung nicht bewertbar (Daten fehlen)", quelle: "Schutzvorschrift", stufe: "hinweis", sperrt: false, schutz: true },
+  /* Nachprüfung WP-11: zulässig nach einer hinterlegten Ausnahme des Betriebs
+     (etwa § 14 Abs. 2 Nr. 2 JArbSchG, mehrschichtig) — nur zur Kenntnis. */
+  schutzHinweis: { text: "Schutzvorschrift: Ausnahme des Betriebs hinterlegt", quelle: "Schutzvorschrift", stufe: "hinweis", sperrt: false, schutz: true },
   keineNacht: { text: "keine Nachtdienste zugelassen", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },
   keinAlleindienst: { text: "darf nicht allein eingeteilt werden", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },
   maxDiensteWoche: { text: "Höchstzahl Dienste je Woche erreicht", quelle: "Einsatzeinschränkung", stufe: "recht", sperrt: true, schutz: true },

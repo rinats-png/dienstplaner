@@ -26,6 +26,17 @@
       abgewiesen. Altbestand — ein Befund, der schon vorher bestand — blockiert
       nicht.
 
+   0. Vorab (Nachprüfung WP-11, N1): Eine Dienstart, die noch verwendet wird
+      (Schichtfolge oder Einteilung ab heute), lässt sich nicht löschen — für
+      alle Personen gleich, die Meldung nennt Person und Tag, kein Merkmal.
+
+   Laufzeit (N1): Schichtfolge je Einheit einmal je Aufruf, Abweichungen der
+   geschützten Personen in einem Durchlauf, gerechnet wird nur, wo sich Dienst,
+   Dienstart, Person oder Einstellungen geändert haben. Gemessen: 2000
+   Personen, 300 geschützt, 20 000 Abweichungen, Schichtfolge geändert — rund
+   130 ms warm (pruefungen/nachpruefung-wp11.test.js); rechte.mjs gibt die
+   Laufzeit jeder Nachrechnung ohne Personenbezug aus.
+
    Grenzen (dokumentiert in RECHTEMATRIX ²¹, SICHERHEIT.md und
    docs/REGELWERK-REGISTRY.md, Anhang H):
    - Die Rechnung für den mittelbaren Weg ist vereinfacht: Teilzeit und
@@ -38,7 +49,7 @@
 
    Rein: keine Ablage.
    ========================================================================== */
-import { schutzEinsatz, alterAm, addDays, pISO } from "./schutzpruefung.mjs";
+import { schutzEinsatz, alterAm, addDays, tagUTC } from "./schutzpruefung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 
 /** Wie weit der Server mittelbare Änderungen voraus nachrechnet (Tage ab heute). */
@@ -48,7 +59,11 @@ const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const liste = (w) => (Array.isArray(w) ? w : []).filter(istObjekt);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const zwischen = (a, b) => Math.round((pISO(b).getTime() - pISO(a).getTime()) / 86400000);
+/* Tagesnummern zwischengespeichert: Dieselben gut 120 Tage werden je Person
+   und Stand nachgeschlagen (Nachprüfung WP-11, N1). */
+const TAGNR = new Map();
+const tagNr = (s) => { let n = TAGNR.get(s); if (n === undefined) { n = Math.round(tagUTC(s) / 86400000); if (TAGNR.size > 5000) TAGNR.clear(); TAGNR.set(s, n); } return n; };
+const zwischen = (a, b) => tagNr(b) - tagNr(a);
 
 /** „Nicht im Bestand" — dieselbe Regel wie imDienst in der Oberfläche. */
 export function nichtImBestand(p, d) {
@@ -63,27 +78,38 @@ export function nichtImBestand(p, d) {
  * verantwortung gehen).
  * @returns {{regel: string, text: string}[]}
  */
-export function sperrendeBefunde(person, dienstart, datum) {
+export function sperrendeBefunde(person, dienstart, datum, einst) {
   const aus = [];
   if (BEFUND_KATALOG.bestand.sperrt && nichtImBestand(person, datum))
     aus.push({ regel: "bestand", text: BEFUND_KATALOG.bestand.text });
-  if (BEFUND_KATALOG.schutz.sperrt && schutzEinsatz(person, dienstart, datum).some((b) => b.sperrt))
+  if (BEFUND_KATALOG.schutz.sperrt && schutzEinsatz(person, dienstart, datum, einst).some((b) => b.sperrt))
     aus.push({ regel: "schutz", text: BEFUND_KATALOG.schutz.text });
   return aus;
+}
+
+/* Einheiten je Betrieb einmal als Map (Nachprüfung WP-11, N1: Laufzeit). */
+const EINHEITEN = new WeakMap();
+function einheitenVon(m) {
+  const quelle = Array.isArray(m.einheiten) ? m.einheiten : null;
+  if (!quelle) return new Map();
+  let x = EINHEITEN.get(quelle);
+  if (!x) { x = new Map(liste(quelle).map((e) => [String(e.id), e])); EINHEITEN.set(quelle, x); }
+  return x;
 }
 
 /* --- Die Schichtfolge, wie die Oberfläche sie rechnet (einheitDienst,
        einheitAm in src/App.jsx), ohne Teilzeit und Posten. --- */
 function einheitAm(p, d) {
   let t = null;
-  for (const z of liste(p.zugehoerigkeit)) if (z.ab <= d) t = z;
+  if (!Array.isArray(p.zugehoerigkeit)) return null;
+  for (const z of p.zugehoerigkeit) if (istObjekt(z) && z.ab <= d) t = z;
   return t ? t.einheitId : null;
 }
 function versatzTage(e) {
   return e.versatzTage !== undefined && e.versatzTage !== null ? e.versatzTage : (e.versatz || 0) * 7;
 }
 function rotationsDienst(m, eid, d) {
-  const e = liste(m.einheiten).find((x) => String(x.id) === String(eid));
+  const e = einheitenVon(m).get(String(eid));
   if (!e || e.pool) return null;
   const tage = m.zyklus && Array.isArray(m.zyklus.tage) ? m.zyklus.tage : null;
   if (!tage || !tage.length || typeof m.anker !== "string" || !TAG.test(m.anker)) return null;
@@ -93,12 +119,41 @@ function rotationsDienst(m, eid, d) {
   return id && id !== "-" ? id : null;
 }
 /** Der Dienst einer Person an einem Tag: Abweichung, sonst Schichtfolge. */
-export function dienstAm(m, p, d) {
-  const ab = istObjekt(m.abweichungen) ? m.abweichungen[`${p.id}|${d}`] : undefined;
+export function dienstAm(m, p, d, folge = rotationsDienst, abwTage = undefined) {
+  const ab = abwTage !== undefined ? (abwTage ? abwTage.get(d) : undefined)
+    : istObjekt(m.abweichungen) ? m.abweichungen[`${p.id}|${d}`] : undefined;
   if (ab !== undefined) return ab === "-" || ab === "" || ab === null ? null : ab;
   if (p.springer || p.imSchichtdienst === false) return null;
   const eid = einheitAm(p, d);
-  return eid ? rotationsDienst(m, eid, d) : null;
+  return eid ? folge(m, eid, d) : null;
+}
+/** Die Abweichungen der gesuchten Personen, je Person nach Tag — ein Durchlauf
+    statt eines Schlüssels je Person und Tag (N1). Schlüssel: „Person|JJJJ-MM-TT". */
+function abweichungenJePerson(abw, ids) {
+  const x = new Map();
+  for (const k in abw) {
+    const n = k.length - 11;
+    if (n <= 0 || k.charCodeAt(n) !== 124) continue;                     // „|"
+    const pid = k.slice(0, n);
+    if (!ids.has(pid)) continue;
+    let tage = x.get(pid);
+    if (!tage) { tage = new Map(); x.set(pid, tage); }
+    tage.set(k.slice(n + 1), abw[k]);
+  }
+  return x;
+}
+/** Die Schichtfolge je Einheit und Tag einmal je Aufruf rechnen (N1) — sie
+    hängt nicht an der Person. */
+function folgeImHorizont(m, horizont) {
+  const proEinheit = new Map();
+  const index = new Map(horizont.map((d, i) => [d, i]));
+  return (_m, eid, d) => {
+    const i = index.get(d);
+    if (i === undefined) return rotationsDienst(m, eid, d);
+    let a = proEinheit.get(eid);
+    if (!a) { a = horizont.map((t) => rotationsDienst(m, eid, t)); proEinheit.set(eid, a); }
+    return a[i];
+  };
 }
 
 const dienstartenVon = (m) => new Map(liste(m && m.dienstarten).map((d) => [String(d.id), d]));
@@ -125,6 +180,17 @@ function planStrukturGeaendert(altM, neuM) {
 }
 
 /**
+ * Die zuletzt gemessene Laufzeit von abweichungenSchutzPruefen (Nachprüfung
+ * WP-11, N1) — rechte.mjs protokolliert sie, wenn nachgerechnet wurde.
+ * Ohne Personenbezug: nur Millisekunden und Mengen.
+ * @type {null | { ms: number, mittelbar: boolean, personen: number, geprueft: number }}
+ */
+export let letzteLaufzeit = null;
+
+/** Name einer Person für eine Meldung — ohne jedes Merkmal. */
+const nameVon = (p) => (p ? [p.vorname, p.nachname].filter(Boolean).join(" ") || String(p.id) : "unbekannt");
+
+/**
  * Prüft die neuen oder geänderten Einteilungen einer Übermittlung —
  * ausdrücklich und mittelbar (siehe oben).
  * @param {any} altM gespeicherter Betrieb
@@ -133,17 +199,60 @@ function planStrukturGeaendert(altM, neuM) {
  * @returns {null | string} der Grund der Absage oder null
  */
 export function abweichungenSchutzPruefen(altM, neuM, heute = new Date().toISOString().slice(0, 10)) {
+  const t0 = performance.now();
+  const zaehler = { mittelbar: false, personen: 0, geprueft: 0 };
+  try {
+    return pruefen(altM, neuM, heute, zaehler);
+  } finally {
+    letzteLaufzeit = { ms: Math.round((performance.now() - t0) * 10) / 10, ...zaehler };
+  }
+}
+
+function pruefen(altM, neuM, heute, zaehler) {
   if (!istObjekt(neuM)) return null;
+  const hat = (o, f) => !!o && Object.prototype.hasOwnProperty.call(o, f);
   const altAbw = istObjekt(altM && altM.abweichungen) ? altM.abweichungen : {};
   const neuAbw = istObjekt(neuM.abweichungen) ? neuM.abweichungen : altAbw;
   const personenNeu = new Map(liste(neuM.personen || (altM && altM.personen)).map((p) => [String(p.id), p]));
   const personenAlt = new Map(liste(altM && altM.personen).map((p) => [String(p.id), p]));
-  const daNeu = dienstartenVon(Object.prototype.hasOwnProperty.call(neuM, "dienstarten") ? neuM : altM);
+  const daNeu = dienstartenVon(hat(neuM, "dienstarten") ? neuM : altM);
   const daAlt = dienstartenVon(altM);
+  const einstNeu = hat(neuM, "einstellungen") ? neuM.einstellungen : altM && altM.einstellungen;
+  const einstAlt = altM && altM.einstellungen;
   const absage = (tag, text) => `Einteilung am ${tag} nicht möglich: ${text}. Sperrende Regeln lassen sich nicht bestätigen.`;
 
+  /* 0. Eine Dienstart löschen, die noch verwendet wird (Nachprüfung WP-11,
+        N1): für alle Personen gleich abgewiesen, mit Person und Tag — ohne
+        Merkmal. Vorher kam nur bei geschützten Personen „nicht bekannt",
+        bei allen anderen ging das Löschen durch. Verwendet heißt: in der
+        Schichtfolge oder als Einteilung ab heute; vergangene Einteilungen
+        bleiben, wie sie sind. */
+  if (altM && hat(neuM, "dienstarten")) {
+    const weg = new Set([...daAlt.keys()].filter((id) => !daNeu.has(id)));
+    if (weg.size) {
+      const name = (id) => { const d = daAlt.get(String(id)); return (d && d.name) || String(id); };
+      const zyklus = hat(neuM, "zyklus") ? neuM.zyklus : altM.zyklus;
+      const inFolge = zyklus && Array.isArray(zyklus.tage) ? zyklus.tage.find((t) => weg.has(String(t))) : undefined;
+      if (inFolge !== undefined)
+        return `Die Dienstart „${name(inFolge)}" wird noch verwendet (Schichtfolge). Erst die Schichtfolge ändern, dann löschen.`;
+      let erster = null;
+      for (const [k, wert] of Object.entries(neuAbw)) {
+        if (!weg.has(String(wert))) continue;
+        const [pid, tag] = String(k).split("|");
+        if (!TAG.test(tag || "") || tag < heute) continue;
+        if (!erster || tag < erster.tag) erster = { pid, tag, wert };
+      }
+      if (erster) {
+        const p = personenNeu.get(String(erster.pid)) || personenAlt.get(String(erster.pid));
+        return `Die Dienstart „${name(erster.wert)}" wird noch verwendet (${nameVon(p)}, ${erster.tag}). Erst umplanen, dann löschen.`;
+      }
+    }
+  }
+
   /* 1. Ausdrücklich gesetzte Einteilungen */
-  for (const [k, wert] of Object.entries(neuAbw)) {
+  if (neuAbw !== altAbw) for (const k in neuAbw) {                         // ohne Zwischenliste (N1)
+    if (!Object.prototype.hasOwnProperty.call(neuAbw, k)) continue;
+    const wert = neuAbw[k];
     if (altAbw[k] === wert) continue;                                       // unverändert
     if (wert === "-" || wert === "" || wert === null || wert === undefined) continue;   // frei
     const [pid, tag] = String(k).split("|");
@@ -152,29 +261,48 @@ export function abweichungenSchutzPruefen(altM, neuM, heute = new Date().toISOSt
     const da = daNeu.get(String(wert));
     if (!da) return absage(tag, "Die Dienstart ist nicht bekannt");        // fail-closed
     if (!hatZeiten(da)) continue;                                           // Posten ohne eigene Zeiten
-    const sperre = sperrendeBefunde(p, da, tag);
+    zaehler.geprueft++;
+    const sperre = sperrendeBefunde(p, da, tag, einstNeu);
     if (sperre.length) return absage(tag, sperre[0].text);
   }
 
-  /* 2. Mittelbar: Dienstzeiten, Schichtfolge, Einheiten, Zugehörigkeit */
+  /* 2. Mittelbar: Dienstzeiten, Schichtfolge, Einheiten, Zugehörigkeit.
+        Gerechnet wird nur, wo sich etwas geändert haben kann (N1): gleicher
+        Dienst, gleiche Dienstart, gleiche Person und gleiche Einstellungen
+        ergeben denselben Befund wie vorher — Altbestand, kein neuer. */
   if (!altM || !planStrukturGeaendert(altM, neuM)) return null;
+  zaehler.mittelbar = true;
   const mAlt = { ...altM, abweichungen: altAbw };
   const mNeu = { ...altM, ...neuM, abweichungen: neuAbw };
-  for (const p of personenNeu.values()) {
-    if (!geschuetzt(p, heute)) continue;
+  const einstGleich = gleich(einstAlt, einstNeu);
+  const daGleich = new Map();
+  const dienstartGleich = (id) => {
+    if (!daGleich.has(id)) daGleich.set(id, gleich(daAlt.get(id), daNeu.get(id)));
+    return daGleich.get(id);
+  };
+  const horizont = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i));   // einmal je Aufruf
+  const folgeNeu = folgeImHorizont(mNeu, horizont), folgeAlt = folgeImHorizont(mAlt, horizont);
+  const geschuetzte = [...personenNeu.values()].filter((p) => geschuetzt(p, heute));
+  const ids = new Set(geschuetzte.map((p) => String(p.id)));
+  const mitAbwNeu = abweichungenJePerson(neuAbw, ids), mitAbwAlt = neuAbw === altAbw ? mitAbwNeu : abweichungenJePerson(altAbw, ids);
+  for (const p of geschuetzte) {
+    zaehler.personen++;
     const pAlt = personenAlt.get(String(p.id)) || p;
-    for (let i = 0; i <= SCHUTZ_HORIZONT_TAGE; i++) {
-      const d = addDays(heute, i);
-      const idNeu = dienstAm(mNeu, p, d);
+    const personGleich = pAlt === p || gleich(pAlt, p);
+    const abwNeu = mitAbwNeu.get(String(p.id)) || null, abwAlt = mitAbwAlt.get(String(p.id)) || null;
+    for (const d of horizont) {
+      const idNeu = dienstAm(mNeu, p, d, folgeNeu, abwNeu);
       if (!idNeu) continue;
+      const idAlt = dienstAm(mAlt, pAlt, d, folgeAlt, abwAlt);
+      if (personGleich && einstGleich && String(idAlt) === String(idNeu) && dienstartGleich(String(idNeu))) continue;
       const da = daNeu.get(String(idNeu));
       if (!da) return absage(d, "Die Dienstart ist nicht bekannt");
       if (!hatZeiten(da)) continue;
-      const neu = sperrendeBefunde(p, da, d);
+      zaehler.geprueft++;
+      const neu = sperrendeBefunde(p, da, d, einstNeu);
       if (!neu.length) continue;
-      const idAlt = dienstAm(mAlt, pAlt, d);
       const daA = idAlt ? daAlt.get(String(idAlt)) : null;
-      const vorher = daA && hatZeiten(daA) ? sperrendeBefunde(pAlt, daA, d) : [];
+      const vorher = daA && hatZeiten(daA) ? sperrendeBefunde(pAlt, daA, d, einstAlt) : [];
       if (vorher.length) continue;                                          // Altbestand
       return absage(d, `${neu[0].text} (durch geänderte Dienstzeiten, Schichtfolge oder Zugehörigkeit)`);
     }
