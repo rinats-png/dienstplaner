@@ -50,8 +50,12 @@ export function neuerSchluessel() {
  *   ein benanntes Verwalterkonto — dann steht sein Name im Protokoll
  *   der Ursprungsschlüssel CENTRIC_ADMIN — solange er gesetzt ist
  *
+ * `zweifaktorId` ist die volle Prüfsumme des Schlüssels — der Ort seines
+ * zweiten Faktors (zweifaktor.mjs). Nur für den Server; sie gehört in keine
+ * Antwort.
+ *
  * @returns {Promise<{art: string, name: string, kennung: string,
- *   email: (string|null)}|null>}
+ *   email: (string|null), zweifaktorId: string}|null>}
  */
 export async function verwalterPruefen(store, roh) {
   if (!roh) return null;
@@ -62,14 +66,15 @@ export async function verwalterPruefen(store, roh) {
     if (eintrag.gesperrt) return null;
     if (eintrag.laeuftAb && new Date(eintrag.laeuftAb).getTime() < Date.now()) return null;
     return { art: "konto", name: eintrag.name, kennung: hash(roh).slice(0, 8),
-      email: eintrag.email || null };
+      email: eintrag.email || null, zweifaktorId: hash(roh) };
   }
 
   const ursprung = process.env.CENTRIC_ADMIN;
   /* Nur vergleichen, wenn überhaupt einer gesetzt ist. Ein leerer
      Ursprungsschlüssel darf nicht auf eine leere Eingabe passen. */
   if (ursprung && gleich(roh, ursprung))
-    return { art: "ursprung", name: "Ursprungsschlüssel", kennung: "ursprung", email: null };
+    return { art: "ursprung", name: "Ursprungsschlüssel", kennung: "ursprung", email: null,
+      zweifaktorId: hash(roh) };
 
   return null;
 }
@@ -98,8 +103,12 @@ export async function verwalterListe(store) {
   for (const b of blobs) {
     const e = await store.get(b.key, { type: "json" }).catch(() => null);
     if (!e) continue;
+    /* Ob ein zweiter Faktor eingerichtet ist — ja oder nein, nie mehr. */
+    const zf = await store.get(`zweifaktor:${b.key.slice("verwalter:".length)}`, { type: "json" })
+      .catch(() => null);
     aus.push({
       kennung: b.key.slice("verwalter:".length, "verwalter:".length + 8),
+      zweifaktor: !!(zf && zf.stand === "aktiv"),
       name: e.name, email: e.email || null,
       angelegt: e.angelegt, angelegtVon: e.angelegtVon || null,
       laeuftAb: e.laeuftAb || null, gesperrt: !!e.gesperrt,

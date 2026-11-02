@@ -302,6 +302,13 @@ export const GRENZEN = {
      Dreißig je fünf Minuten reichen für jeden Wechsel zwischen
      Arbeitsbereichen und für keinen Ansturm. */
   "betrieb-waehlen": { versuche: 30, fenster: 300, sperre: 300 },
+  /* Zweiter Faktor der Verwalterschlüssel (zweifaktor.mjs, WP-32). Sechs
+     Stellen sind schnell geraten, wenn niemand bremst: Fünf Versuche je
+     fünf Minuten, gezählt je Schlüssel UND je Herkunft, Sperre steigend
+     bis zu einem Tag. failClosed: Meldet die Bremse einen Ausfall der
+     Ablage, weist /einrichten ab, statt im Prozessspeicher weiterzuzählen. */
+  zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
+    failClosed: true },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */

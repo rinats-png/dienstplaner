@@ -202,6 +202,8 @@ import {
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
   berichtstext as loeschBericht, PLANDATEN_MINDEST,
 } from "./aufbewahrung.js";
+/* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
+import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
 
@@ -20831,7 +20833,8 @@ function lade(name, inhalt, typ) {
 const NAV_BETREIBER = [
   ["mandanten", "Mandanten"], ["selbststarts", "Selbststarts"], ["demos", "Demozugänge"],
   ["neu", "Neuer Mandant"], ["adressen", "Adressänderungen"],
-  ["rechnungen", "Rechnungen"], ["tarife", "Tarife"], ["rechner", "Rechner"], ["pakete", "Pakete"]];
+  ["rechnungen", "Rechnungen"], ["tarife", "Tarife"], ["rechner", "Rechner"], ["pakete", "Pakete"],
+  ["zweifaktor", "Zwei-Faktor"]];
 /**
  * Navigation in sechs Bereichen statt neunzehn Einzelpunkten.
  * Jeder Bereich hat Unterreiter — die Kopfzeile bleibt lesbar, nichts ist versteckt.
@@ -23298,6 +23301,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               {aktiveView === "rechner" && <Mandantenrechner db={db} />}
             {aktiveView === "pakete" && <Pakete db={db} akt={akt} />}
             {aktiveView === "tarife" && <BetreiberTarife db={db} akt={akt} />}
+            {aktiveView === "zweifaktor" && <BetreiberZweifaktor ui={{ H1, Card, CardHead, Btn, Inp, Field }} />}
             </>
           ) : (<>
             {aktiveView === "meine" && <MeineSchichten sitz={sitz} akt={akt} ym={ym} />}

@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
-  protokoll } from "../lib/schutz.mjs";
+  protokoll, GRENZEN } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
@@ -9,6 +9,8 @@ import { BEKANNTE_ROLLEN, rolleBekannt } from "../lib/rechte.mjs";
 import { betriebFuerNeuenCode, bindungsVorschau } from "../lib/erstbefuellung.mjs";
 import { verwalterPruefen, verwalterAnlegen, verwalterListe, verwalterSperren, verwalterAktiv }
   from "../lib/verwalter.mjs";
+import { zweifaktorStand, zweifaktorBeginnen, zweifaktorBestaetigen, zweifaktorPruefen,
+  zweifaktorAbschalten, nachweisAusstellen, zweifaktorMoeglich } from "../lib/zweifaktor.mjs";
 
 /* ==========================================================================
    EINRICHTUNG
@@ -29,7 +31,7 @@ const antwort = (d, status = 200) => new Response(JSON.stringify(d, null, 2),
 export default async (req) => {
   const url = new URL(req.url);
   const pfad = url.pathname.replace(/^\/einrichten\/?/, "");
-  if (!["", "verwalter", "umgebung", "uebersicht", "bindung"].includes(pfad))
+  if (!["", "verwalter", "umgebung", "uebersicht", "bindung", "zweifaktor"].includes(pfad))
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   if (pfad === "" && req.method !== "POST") return antwort({ fehler: "Nur POST." }, 405);
 
@@ -74,6 +76,132 @@ export default async (req) => {
     return antwort({ fehler: "Verwaltungsschlüssel stimmt nicht." }, 401);
   }
   await entlasten("einrichten", k);
+
+  /* ---------------------------- Zweiter Faktor (WP-32) ---------------
+     Ist für diesen Schlüssel ein zweiter Faktor eingerichtet, gilt er für
+     JEDEN Aufruf von /einrichten — Lesen eingeschlossen. Mitzuschicken ist
+     ein Code der App (Rumpf `zweifaktor` oder Kopf `x-centric-zweifaktor`),
+     ein Wiederherstellungscode oder ein Nachweis
+     (Kopf `x-centric-zweifaktor-nachweis`, siehe zweifaktor.mjs).
+     Abschalten und das Holen eines Nachweises verlangen einen frischen
+     Code, nie einen Nachweis.
+
+     Mit CENTRIC_ZWEIFAKTOR_PFLICHT=1 kommt ein Schlüssel OHNE zweiten
+     Faktor nur noch an /einrichten/zweifaktor heran — zum Einrichten. */
+  const zfCode = (body && body.zweifaktor) || req.headers.get("x-centric-zweifaktor") || null;
+  const zfNachweis = req.headers.get("x-centric-zweifaktor-nachweis") || null;
+  const zfAktion = pfad === "zweifaktor" && req.method === "POST" ? String(body.aktion || "") : "";
+  const zfAbschalten = pfad === "zweifaktor" && req.method === "DELETE";
+  const zfPflicht = (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1";
+  const zfKennungen = [`v:${wer.zweifaktorId.slice(0, 16)}`, k];
+  /** Bremse für Code-Versuche: je Schlüssel und je Herkunft, fail-closed. */
+  const zfBremse = async () => {
+    for (const kk of zfKennungen) {
+      const bz = await bremse("zweifaktor", kk);
+      if (!bz.frei) { await protokoll("zweifaktor", k, "gebremst", bz.grund);
+        return zuVielAntwort(bz.wartet); }
+      if (bz.fehler && GRENZEN.zweifaktor.failClosed)
+        return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+          + "Bitte später erneut versuchen." }, 503);
+    }
+    return null;
+  };
+  const zfEntlasten = async () => { for (const kk of zfKennungen) await entlasten("zweifaktor", kk); };
+
+  let zfStand;
+  try { zfStand = await zweifaktorStand(s0, wer.zweifaktorId); }
+  catch {
+    return antwort({ fehler: "Der zweite Faktor lässt sich gerade nicht prüfen. "
+      + "Bitte später erneut versuchen." }, 503);
+  }
+  if (zfStand.aktiv) {
+    const nurCode = zfAbschalten || zfAktion === "nachweis";
+    if (!zfCode && (nurCode || !zfNachweis)) {
+      await protokoll("zweifaktor", k, "abgewiesen", `fehlt · ${wer.name}`);
+      return antwort({ fehler: nurCode
+        ? "Dafür ist ein frischer Code aus der App nötig."
+        : "Für diesen Schlüssel ist ein zweiter Faktor eingerichtet. Bitte den Code aus der App mitschicken.",
+      zweifaktor: "erforderlich" }, 401);
+    }
+    if (zfCode) { const gebremst = await zfBremse(); if (gebremst) return gebremst; }
+    const p = await zweifaktorPruefen(s0, wer.zweifaktorId,
+      { code: zfCode || undefined, nachweis: zfNachweis || undefined, nachweisErlaubt: !nurCode });
+    if (!p.ok) {
+      await new Promise((r) => setTimeout(r, 400));
+      await protokoll("zweifaktor", k, "abgewiesen", `${p.grund} · ${wer.name}`);
+      return antwort({ fehler: p.grund === "wiederholt"
+        ? "Dieser Code wurde schon verwendet. Bitte den nächsten abwarten."
+        : "Der zweite Faktor stimmt nicht.", zweifaktor: "falsch" }, 401);
+    }
+    if (zfCode) await zfEntlasten();
+    if (p.art === "wiederherstellung")
+      await protokoll("zweifaktor", k, "erfolg", `Wiederherstellungscode verbraucht · ${wer.name}`);
+  } else if (zfPflicht && pfad !== "zweifaktor") {
+    await protokoll("zweifaktor", k, "abgewiesen", `Pflicht, nicht eingerichtet · ${wer.name}`);
+    return antwort({ fehler: "Ein zweiter Faktor ist Pflicht und für diesen Schlüssel noch nicht "
+      + "eingerichtet. Zuerst unter /einrichten/zweifaktor einrichten.", zweifaktor: "einrichten" }, 403);
+  }
+
+  if (pfad === "zweifaktor") {
+    const id = wer.zweifaktorId;
+    if (req.method === "GET") {
+      /* Neu gelesen: Ein eben verbrauchter Wiederherstellungscode zählt mit. */
+      const st = await zweifaktorStand(s0, id);
+      return antwort({ aktiv: st.aktiv, ausstehend: st.ausstehend,
+        wiederherstellungUebrig: st.wiederherstellungUebrig, pflicht: zfPflicht,
+        moeglich: zweifaktorMoeglich(), ich: wer.name });
+    }
+
+    if (req.method === "DELETE") {
+      if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
+      await zweifaktorAbschalten(s0, id);
+      await protokoll("zweifaktor", k, "erfolg", `abgeschaltet · ${wer.name}`);
+      return antwort({ ok: true, aktiv: false });
+    }
+
+    if (req.method !== "POST") return antwort({ fehler: "Nur GET, POST oder DELETE." }, 405);
+
+    if (zfAktion === "beginnen") {
+      if (zfStand.aktiv) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet. "
+        + "Zum Neueinrichten erst abschalten." }, 409);
+      const erg = await zweifaktorBeginnen(s0, id, wer.name);
+      if (erg.fehler === "pfeffer") return antwort({ fehler: "CENTRIC_PFEFFER fehlt. Ohne ihn lässt "
+        + "sich das Geheimnis nicht verschlüsselt ablegen." }, 503);
+      if (erg.fehler) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet." }, 409);
+      await protokoll("zweifaktor", k, "erfolg", `Einrichtung begonnen · ${wer.name}`);
+      return antwort({ ok: true, geheimnis: erg.geheimnis, otpauth: erg.otpauth,
+        hinweis: "Geheimnis und Adresse erscheinen genau einmal. In der App erfassen und "
+          + "mit dem ersten Code bestätigen (aktion: bestaetigen)." });
+    }
+
+    if (zfAktion === "bestaetigen") {
+      if (zfStand.aktiv) return antwort({ fehler: "Der zweite Faktor ist schon eingerichtet." }, 409);
+      if (!zfStand.ausstehend) return antwort({ fehler: "Es ist keine Einrichtung begonnen." }, 409);
+      if (!zfCode) return antwort({ fehler: "Bitte den ersten Code aus der App angeben." }, 400);
+      const gebremst = await zfBremse(); if (gebremst) return gebremst;
+      const erg = await zweifaktorBestaetigen(s0, id, zfCode);
+      if (erg.fehler === "pfeffer") return antwort({ fehler: "Das Geheimnis lässt sich nicht "
+        + "entschlüsseln (CENTRIC_PFEFFER fehlt oder wurde geändert). Neu beginnen." }, 503);
+      if (erg.fehler) {
+        await new Promise((r) => setTimeout(r, 400));
+        await protokoll("zweifaktor", k, "abgewiesen", `Bestätigung · ${wer.name}`);
+        return antwort({ fehler: "Der Code stimmt nicht.", zweifaktor: "falsch" }, 401);
+      }
+      await zfEntlasten();
+      await protokoll("zweifaktor", k, "erfolg", `eingerichtet · ${wer.name}`);
+      return antwort({ ok: true, aktiv: true, wiederherstellung: erg.wiederherstellung,
+        hinweis: "Die Wiederherstellungscodes erscheinen genau einmal. Jeder gilt einmal. "
+          + "Gespeichert ist nur ihre Prüfsumme." });
+    }
+
+    if (zfAktion === "nachweis") {
+      if (!zfStand.aktiv) return antwort({ fehler: "Es ist kein zweiter Faktor eingerichtet." }, 409);
+      return antwort({ ok: true, ...(await nachweisAusstellen(s0, id)),
+        hinweis: "Im Kopf x-centric-zweifaktor-nachweis mitschicken. Gilt 15 Minuten, nur für "
+          + "diesen Schlüssel, nicht zum Abschalten." });
+    }
+    return antwort({ fehler: "Unbekannte Aktion. Erlaubt: beginnen, bestaetigen, nachweis." }, 400);
+  }
 
   /* Beschäftigte und Schichtverantwortung schreiben nur, was zu ihrer
      Person gehört — ein Code dieser Rollen ohne Person kann deshalb nichts
@@ -176,6 +304,7 @@ export default async (req) => {
         pushOeffentlich: gesetzt("VAPID_PUBLIC"),
         pushPrivat: gesetzt("VAPID_PRIVATE"),
         bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
+        zweifaktorPflicht: (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
       },
       verwalterkonten: await verwalterAktiv(s0),
       warnungen,

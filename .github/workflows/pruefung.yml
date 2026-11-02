@@ -292,6 +292,12 @@ jobs:
       - name: Einmal-Token
         run: npm run pruefung:token
 
+      # WP-32: Zweiter Faktor (TOTP, RFC 6238) für Verwalterschlüssel —
+      # Referenzvektoren, Fenster ±1, keine Wiederverwendung, Bremse,
+      # Pflicht, Abschalten nur mit Code, kein Geheimnis in Antworten.
+      - name: Zwei-Faktor für Verwalterschlüssel
+        run: npm run pruefung:zweifaktor
+
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
       - name: Sitzungen
