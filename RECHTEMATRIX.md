@@ -168,7 +168,8 @@ vornimmt, hinterlässt einen Eintrag im Bestätigungsprotokoll (Person, Tag, Die
 wer bestätigt hat, Regelstand). **Lesen:** Beschäftigte nicht (es nennt fremde Personen und Gründe). Der Betriebsrat je
 Regel und Tag ohne Namen (Muster-BV, Anlage 5): `personId` und `durchId` leer, statt des Namens nur die Rolle, kein
 Freitext zum Grund (nur die Grundart — ein Freitext kann Namen tragen); Befunde aus individuellen Schutz- oder
-Einsatzregeln nur als „individuelle Schutz- oder Einsatzregel betroffen". Die Schichtverantwortung sieht Einträge zu
+Einsatzregeln nur als „individuelle Schutz- oder Einsatzregel betroffen", Befunde zu einer aufgehobenen Abwesenheit
+nur als „abwesend" (wie Abwesenheiten anderer, ²⁴). Die Schichtverantwortung sieht Einträge zu
 sich und zu Personen, die am Tag des Eintrags zu ihrem Bereich gehören (tagesgenau wie ¹⁵; Pool und fremd nicht).
 **Schreiben:** nur anhängen, für jede schreibende Rolle gleich (`bestaetigungenZusammen` in `server/lib/rechte.mjs`):
 Person des Betriebs, gültiger Tag, bekannte Dienstart, Stufe „achtung" oder „recht" (bei „recht" ausdrücklich gelesen),
@@ -192,6 +193,14 @@ restriktiv — auch im eigenen Bereich nicht; ob sie für die Einteilung eine ne
 Wochenstundengrenze in `planungsregeln`, ¹⁰), ist eine offene fachliche Frage. Beschäftigte und Betriebsrat sehen sie
 bei fremden Personen nicht. Die Felder schreibt bisher nur der Folgestand von Kette A (`claude/regelwerk-registry`);
 die Kataloge stehen vorab, damit sie dort nicht still verworfen werden.
+²⁴ WP-10 d.5 (Kette A): **Abwesenheit für einen Tag aufheben.** Teilt der Warndialog eine Abwesenheit, um eine
+Person an einem Tag einzuteilen (`abwesenheitTagAufheben`, `src/warnstufen.js`), ändert das einen bestehenden
+Eintrag in `abwesenheiten` und legt für den Rest einen neuen an. Schreibumfang: Planung, Leitung und Kundenrolle
+(wie jede Pflege von Abwesenheiten). Die Schichtverantwortung nicht — der Server lehnt Änderungen bestehender
+Abwesenheiten über ihren Zugang ab (`einheitZusammen`, Fall `abwesenheiten`), der Warndialog bietet es ihr nicht
+an. Beschäftigte nicht (nur neue eigene Krankmeldungen). Protokoll: der Eintrag im Bestätigungsprotokoll (Befund
+„abwesend", Stufe Achtung, ²¹), die Planänderung (`aenderungen`) und die Mitteilung an die Person. Der Server
+erzwingt den Protokolleintrag zu einer geteilten Abwesenheit bisher nicht (offen, WP-11).
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

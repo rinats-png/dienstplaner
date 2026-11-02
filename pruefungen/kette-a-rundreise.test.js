@@ -317,8 +317,54 @@ describe("d.2 beschaeftigungsmodell, stundenGrenzeMonat", () => {
     const g = MIT(bestand());
     const e = rundreise(g, "SV", (m) => { Object.assign(m.personen.find((p) => p.id === "a1"),
       { beschaeftigungsmodell: "vollzeit", stundenGrenzeMonat: 999 }); });
-    if (e && !e.verweigert) expect(felder(e, "a1")).toEqual(GESETZT);
-    else expect(e.verweigert).toBeTruthy();
+    /* Mitgeschickte verborgene Felder einer anderen Person: einheitZusammen weist ab. */
+    expect(e.verweigert).toBeTruthy();
     expect(felder(g, "a1")).toEqual(GESETZT);
+  });
+});
+
+/* ------------------------------------------------------------------------
+   d.5 Abwesenheit für einen Tag aufheben
+   ------------------------------------------------------------------------ */
+describe("d.5 Abwesenheit für einen Tag aufheben", () => {
+  /* So teilt der Warndialog (src/warnstufen.js, abwesenheitTagAufheben):
+     Urlaub tag(2)…tag(6), aufgehoben am tag(3). */
+  const teilen = (m) => {
+    const i = m.abwesenheiten.findIndex((a) => a.id === "abw-a1");
+    m.abwesenheiten.splice(i, 1, { ...m.abwesenheiten[i], bis: tag(2) },
+      { ...m.abwesenheiten[i], id: "abw-a1-rest", von: tag(4) });
+  };
+  const bestaetigung = eintrag("auf-a1", "a1", { stufe: "achtung", gelesen: true,
+    befunde: [{ stufe: "achtung", text: "abwesend (Krank)", quelle: "Abwesenheit" }] });
+  const abw = (b) => betrieb(b).abwesenheiten.filter((a) => a.personId === "a1").map((a) => [a.id, a.von, a.bis]);
+
+  it("Planung, Leitung, Kundenrolle: geteilt gespeichert, mit Protokolleintrag, beim Lesen wieder da", () => {
+    for (const r of SCHREIBEND_VOLL) {
+      const e = rundreise(bestand(), r, (m) => { teilen(m); m.bestaetigungen.unshift(bestaetigung); });
+      expect(e && !e.verweigert, `${r}: ${e && e.verweigert}`).toBe(true);
+      expect(abw(e), r).toEqual([["abw-a1", tag(2), tag(2)], ["abw-a1-rest", tag(4), tag(6)]]);
+      expect(ids(betrieb(e).bestaetigungen)[0], r).toBe("auf-a1");
+      expect(abw(rundreise(e, r)), `${r} zurück`).toEqual(abw(e));
+    }
+  });
+  it("die Schichtverantwortung hebt nicht auf — auch nicht mit Bestätigung", () => {
+    const g = bestand();
+    const e = rundreise(g, "SV", (m) => { teilen(m); m.bestaetigungen.unshift(bestaetigung); });
+    expect(e.verweigert).toBeTruthy();
+    const ohne = rundreise(g, "SV", teilen);
+    expect(ohne.verweigert).toBeTruthy();
+  });
+  it("Beschäftigte heben nicht auf — der gespeicherte Stand bleibt", () => {
+    const g = bestand();
+    const e = rundreise(g, "MA", teilen);
+    expect(abw(e)).toEqual(abw(g));
+  });
+  it("der Betriebsrat sieht im Protokoll nur „abwesend“, nicht die Art", () => {
+    const e = rundreise(bestand(), "PL", (m) => { teilen(m); m.bestaetigungen.unshift(bestaetigung); });
+    const br = betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen.find((b) => b.id === "auf-a1");
+    expect(br.befunde).toEqual([{ stufe: "achtung", text: "abwesend", quelle: "Abwesenheit" }]);
+    expect(JSON.stringify(betrieb(bestandFuerRolle(e, SITZ.BR)).bestaetigungen)).not.toContain("Krank");
+    /* Planung und Leitung sehen den Befund im Wortlaut. */
+    expect(betrieb(bestandFuerRolle(e, SITZ.LT)).bestaetigungen[0].befunde[0].text).toBe("abwesend (Krank)");
   });
 });

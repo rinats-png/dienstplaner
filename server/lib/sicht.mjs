@@ -350,13 +350,18 @@ const BESTAETIGUNG_BR = ["id", "datum", "dienstId", "aktion", "stufe", "grundArt
 export const SCHUTZ_NEUTRAL_TEXT = "individuelle Schutz- oder Einsatzregel betroffen";
 const schutzBefund = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
   .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
+const abwesenheitBefund = (b) => /^abwesend\b/i.test(String(b && b.text || "")) || (b && b.quelle) === "Abwesenheit";
 export function bestaetigungenBetriebsrat(w) {
   return liste(w).filter((b) => b && typeof b === "object").map((b) => ({
     ...nimm(b, BESTAETIGUNG_BR),
     personId: null, durchId: null, durch: typeof b.rolle === "string" ? b.rolle : null,
     befunde: liste(b.befunde).filter((x) => x && typeof x === "object").map((x) => (schutzBefund(x)
       ? { stufe: x.stufe, text: SCHUTZ_NEUTRAL_TEXT, quelle: "" }
-      : nimm(x, ["stufe", "text", "quelle"]))),
+      /* Eine aufgehobene Abwesenheit (WP-10 d.5) nennt im Befund ihre Art
+         („abwesend (Krank)"). Der Betriebsrat sieht Abwesenheiten anderer
+         nur als „abwesend" (abwesenheiten oben) — hier ebenso. */
+      : abwesenheitBefund(x) ? { stufe: x.stufe, text: "abwesend", quelle: "Abwesenheit" }
+        : nimm(x, ["stufe", "text", "quelle"]))),
   }));
 }
 
