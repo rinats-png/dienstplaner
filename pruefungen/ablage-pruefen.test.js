@@ -75,11 +75,17 @@ describe("Trockenlauf", () => {
 
 describe("--beiseitelegen", () => {
   it("legt die Rohbytes als gültigen beiseite-Eintrag ab (kein Byte verloren), dann verschwindet das Original; der Raum ist wieder lesbar, der Monat leer, Schreiben geht weiter", async () => {
-    const r = await lauf("--beiseitelegen", "ap-befund");
+    /* Der einzige Vermerk ist selbst unlesbar: kein Abgleich möglich, also
+       nichts angefasst (Nachprüfung 3, V1) — erst mit --ohne-vermerk. */
+    const ohne = await lauf("--beiseitelegen", "ap-befund");
+    expect(ohne.code, ohne.aus).toBe(1);
+    expect(ohne.aus).toMatch(/kein lesbarer Vermerk/);
+    expect(await readFile(datei("scherbe:ap-befund:m1:2025-10"), "utf8")).toBe("{kaputt");
+    const r = await lauf("--beiseitelegen", "--ohne-vermerk", "ap-befund", "ap-befund");
     expect(r.code, r.aus).toBe(0);
     const { blobs } = await store.list({ prefix: "beiseite:ap-befund:" });
     expect(blobs.map((b) => b.key.split(":").slice(3).join(":")).sort())
-      .toEqual(["journal:ap-befund", "scherbe:ap-befund:m1:2025-10", "stand:ap-befund:1"]);
+      .toEqual(["journal:ap-befund", "scherbe:ap-befund:m1:2025-10", "stand:ap-befund:1", "stand:ap-befund:ohne-abgleich"]);
     const kaputt = blobs.find((b) => b.key.endsWith("scherbe:ap-befund:m1:2025-10")).key;
     const huelle = await store.get(kaputt, { type: "json" });
     expect(Buffer.from(huelle.inhaltBase64, "base64").toString("utf8")).toBe("{kaputt");    // kein Byte verloren

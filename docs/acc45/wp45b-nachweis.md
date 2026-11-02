@@ -128,3 +128,52 @@ CI auf 9bee93f grün: Prüfung 41532375386, Sicherheit 41532375420, Betrieb: Dep
 
 Auf 9bee93f lokal: 4 von 20 Tests der Prüfdatei rot (die drei neuen und der Kern-Test als Folgefehler des
 liegengebliebenen Zustands); mit der Korrektur 27/27 grün mit `ablage-pruefen.test.js` (1 übersprungen, Windows).
+
+## 3. Nachprüfung (V1, K1, V2) — strukturell
+
+CI auf 7bf8303 grün: Prüfung 41533293130, Sicherheit 41533293014, Betrieb: Deploy-Skripte 41533293187.
+
+Dieselbe Fehlerklasse (ein fehlender Monat wird still als leer festgeschrieben, Rückgabe 0) trat in der dritten Runde
+noch an zwei Stellen auf: beim unlesbaren aktuellen Vermerk (V1) und beim unlesbaren Kern (K1); bei fehlendem Vermerk
+war eine fehlende Scherbe gar nicht erkennbar (V2). Ursache: `befund` übersprang den Abgleich, sobald Kern oder
+aktueller Vermerk nicht lesbar waren, und das Angleichen lief trotzdem.
+
+**Umsetzung (strukturell):**
+
+1. **Invariante vor dem Angleichen.** Ein Raum wird nur angeglichen, wenn ein nach allen Aktionen *frisch* erhobener
+   `befund(store, { raeume: [raum] })` leer ist und der Abgleich gegen einen lesbaren Vermerk stattgefunden hat.
+   Ausgenommen sind nur der fehlende aktuelle Vermerk (das Angleichen schreibt ihn) und, mit `--ohne-vermerk <raum>`,
+   der fehlende Abgleich. Ausdrücklich geleerte Monate (`--fehlende-hinnehmen`, beiseitegelegte unlesbare Scherben)
+   zählen nicht. Sonst „Stand NICHT angeglichen“ mit dem Offenen, Rückgabe 1.
+2. **Bezugsvermerk.** Bei gültigem Journal dessen Vermerk (was es setzt, zählt als vorhanden). Sonst der jüngste
+   *lesbare* Vermerk bis zum aktuellen Stand (größter aus Kern, Zeiger und Vermerknummern): auf der Platte oder, mit
+   `--aus-sicherung`, in der Sicherung. Ein unlesbarer Kern, Zeiger oder aktueller Vermerk verhindert den Abgleich
+   nicht mehr. Der fehlende aktuelle Vermerk wird gemeldet (V2).
+   - Ist nur ein *älterer* Vermerk lesbar, wären danach angelegte Monate nicht erkennbar. Das gilt als „kein
+     vollständiger Abgleich“: Gemeldet wird, was der ältere Vermerk vermisst, aber angeglichen wird nur mit
+     `--ohne-vermerk <raum>` (ausdrücklich, mit Spur in der Ablage). Ein älterer Vermerk kann eine seitdem bewusst
+     entfernte Scherbe nennen; sie wird trotzdem gemeldet (sicher statt still).
+   - Abweichung von der Anregung „Scherben der Sicherung als Referenz“: Die Scherbenliste der Sicherung enthielte
+     auch Monate, die seit der Sicherung bewusst entfernt wurden, und `--aus-sicherung` holte sie zurück. Bezug sind
+     deshalb die *Vermerke* der Sicherung, nicht ihre Scherbenliste.
+3. **Kern-Rückholung (K1).** Der Abgleich läuft auch bei unlesbarem Kern; die fehlende Scherbe steht damit im Plan und
+   wird mit zurückgeholt. Zusätzlich prüft der frische Befund nach der Rückholung noch einmal.
+4. **Testmatrix** `pruefungen/ablage-pruefen-matrix.test.js` (im CI-Gate über `pruefung:datenintegritaet`), 140 Fälle:
+   Schaden {Kern, Journal, aktueller Vermerk, Zeiger, keiner} × Oktober von m1 fehlt {ja, nein} × Sicherung enthält
+   ihn {ja, nein} × Modus {Trockenlauf, `--beiseitelegen`, `--aus-sicherung`, `+ --kern-zurueck`,
+   `--aus-sicherung --beiseitelegen --kern-zurueck`, `--beiseitelegen --fehlende-hinnehmen`, alles zusammen}, je Raum
+   zwei Betriebe. Invarianten: kein Monat verschwindet ohne `--fehlende-hinnehmen` (sonst bleibt er im Befund); kein
+   Exit 0, solange etwas fehlt; Rückholung, wenn in der Sicherung; vorhandene Monate und Betrieb m2 bleiben; nie
+   Rückgabe 2; was lösbar ist, wird gelöst. Jede Gruppe hat eine eigene kleine Ablage und Sicherung (lokal 132 s).
+
+**Rot → grün:** Die Matrix gegen das Werkzeug von 7bf8303: **28 von 140 rot** — genau alle Fälle „Kern“ und
+„aktueller Vermerk“ mit fehlendem Oktober (V1, K1; im Trockenlauf war der fehlende Monat nicht sichtbar). Mit der
+Korrektur 140/140 grün. Dazu `ablage-pruefen` und `ablage-pruefen-rueckweg` 27/27 grün (1 übersprungen, Windows),
+eslint und tsc ohne Befund.
+
+**Angepasster Test:** In `ablage-pruefen.test.js` war „Beiseitelegen“ (Scherbe, einziger Vermerk 1 und Journal
+unlesbar) mit Rückgabe 0 erwartet. Ohne lesbaren Vermerk ist dort kein Abgleich möglich; der Test erwartet jetzt
+zuerst Rückgabe 1 und nichts angefasst, dann mit `--ohne-vermerk ap-befund` Rückgabe 0 (und die Spur
+`stand:ap-befund:ohne-abgleich`). Das ist das neue, strengere Verhalten, keine Abschwächung.
+
+**Neu in §4a:** Bezugsvermerk, „kein vollständiger Abgleich“, `--ohne-vermerk`, Invariante beim Angleichen.

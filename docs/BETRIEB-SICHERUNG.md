@@ -213,8 +213,19 @@ per Digest genau dieser Digest):
 
    Ohne Raumangabe werden alle Räume geprüft. Gemeldet wird je Raum:
    - jede **unlesbare** Datei: Kern, Altbestand, Scherbe (= ein Monat), Standvermerk, Standzeiger, Journal;
-   - jede **fehlende** Datei: ein Kern, wenn es Scherben oder Vermerke des Raums gibt, und jede Scherbe, die der
-     Standvermerk des aktuellen Stands nennt, die aber nicht da ist;
+   - jede **fehlende** Datei: ein Kern, wenn es Scherben oder Vermerke des Raums gibt; der Vermerk des aktuellen
+     Stands; und jede Scherbe, die der **Bezugsvermerk** nennt, die aber nicht da ist. Bezug ist bei einem gültigen
+     Journal dessen Vermerk, sonst der jüngste *lesbare* Vermerk bis zum aktuellen Stand — auf der Platte oder, mit
+     `--aus-sicherung`, in der Sicherung. Ein unlesbarer Kern, Zeiger oder aktueller Vermerk verhindert den Abgleich
+     also nicht.
+   - **„kein vollständiger Abgleich“:** Ist kein Vermerk lesbar, oder nur einer, der älter ist als der aktuelle Stand,
+     wären Monate, die danach angelegt wurden, nicht erkennbar. Dann wird der Raum nicht angeglichen (Rückgabe 1).
+     Abhilfe: eine Sicherung, die den aktuellen Vermerk enthält (`--aus-sicherung`), oder ausdrücklich
+     `--ohne-vermerk <raum>` (Spur `beiseite:<raum>:<zeit>:stand:<raum>:ohne-abgleich` in der Ablage) — dann bleibt ein
+     fehlender Monat unerkannt; die Leitung muss den Raum fachlich prüfen. Ein älterer Bezugsvermerk kann eine Scherbe
+     nennen, die seitdem bewusst entfernt wurde; sie wird trotzdem als fehlend gemeldet (lieber einmal zu viel).
+     Die Scherbenliste der Sicherung selbst ist kein Bezug: Sie enthielte auch Monate, die seit der Sicherung bewusst
+     entfernt wurden, und holte sie zurück.
    - darunter jede **andere Datei** der Ablage, an der die nächtliche Sicherung scheitern würde (unten, „Andere
      Dateien“).
 
@@ -275,9 +286,11 @@ per Digest genau dieser Digest):
      eine neue Anlage könnte ihn überschreiben. Hier hilft nur Schritt 3 mit `--kern-zurueck` oder die vollständige
      Wiederherstellung (§4).
 
-   **Stand angleichen:** Nach jeder Änderung an einem Raum (Schritt 3 oder 4), und nur wenn im Raum nichts offen
-   bleibt, schreibt das Werkzeug dessen Stand
-   einmal auf dem gewöhnlichen Weg neu (mit Journal). Kern, Vermerk und Zeiger passen dann wieder zu dem, was auf der
+   **Stand angleichen:** Nach jeder Änderung an einem Raum (Schritt 3 oder 4) schreibt das Werkzeug dessen Stand
+   einmal auf dem gewöhnlichen Weg neu (mit Journal) — **nur**, wenn ein nach allen Änderungen frisch erhobener
+   Befund des Raums leer ist und der Abgleich gegen einen lesbaren Vermerk stattgefunden hat (ausgenommen nur der
+   fehlende aktuelle Vermerk, den das Angleichen schreibt, und mit `--ohne-vermerk` der fehlende Abgleich). Sonst
+   meldet es „Stand NICHT angeglichen“ mit dem, was offen ist (Rückgabe 1). Kern, Vermerk und Zeiger passen dann wieder zu dem, was auf der
    Platte liegt, und die Standnummer zählt weiter: Wer den Raum noch mit einem alten Stand im Browser offen hat,
    bekommt beim Speichern einen Abgleich, statt einen zurückgeholten oder geleerten Monat still zu überschreiben.
 5. **Erneut prüfen** (Schritt 2, Rückgabe 0), dann `docker compose up -d --pull never`, anmelden, den Raum öffnen.
