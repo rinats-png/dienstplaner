@@ -17,9 +17,9 @@ const STATUS = ["BLOCKED", "READY", "IN_PROGRESS", "REVIEW", "CI_FAILED", "INTEG
 /* id, name, prio, aufwand, abh, agent, status, akzeptanz (kurz), tests (kurz), dateien (kurz) */
 const P = [
   ["WP-01", "E1-Datenschutz-Hotfix Produktion", "P0", 1, [], "0", "DONE", "Beschäftigte/BR/SV erhalten keine fremden Stempel/Ist; produktiv geprüft", "Unit, HTTP 155/155, isoliert 59/59, Prod anmeldefrei", "server/lib/rechte.mjs, src/istdaten.js", { pr: "#20", integration: "274bfa0", nachweis: "H8+-Bericht (lokal), Prod-Digest 0b192927" }],
-  ["WP-02", "Schreibserialisierung je Raum, kein Stempelverlust", "P0", 2.5, [], "A", "IN_PROGRESS", "50 parallele Stempel = 50 gespeichert; gleicher Stand → 1×200/1×409; nie ok:true bei Konflikt; zweiter Prozess abgewiesen", "R1–R7 Renn-/Lasttests (rot vorher), HTTP im Container", "server/lib/bestand.mjs, server/funktionen/daten.mjs, server.mjs"],
-  ["WP-03", "Rücksprung nur über verifizierte Digests, R0", "P0", 1.5, [], "B", "IN_PROGRESS", "Compose ohne Digest startet nicht; gesperrte Digests als Ziel abgelehnt; Revisions-Label gesetzt; Probe A→B→A", "Skripttests mit Docker-Stub, compose config, CI betrieb-deploy", "deploy/, .github/workflows/deploy.yml, BEREITSTELLUNG.md"],
-  ["WP-04", "Automatische verschlüsselte Offsite-Sicherung", "P0", 3.5, [], "B", "IN_PROGRESS", "Täglicher Lauf, restic-verschlüsselt extern, Aufbewahrung 7/4/12, Restore-Probe gleich, Fehlalarm kommt an", "CI: Sicherung→Restore→Manifest gleich, Fehlalarm-Probe, Doppellauf-Sperre", "deploy/sicherung/, werkzeug/ablage-sicherung.mjs"],
+  ["WP-02", "Schreibserialisierung je Raum, kein Stempelverlust", "P0", 2.5, [], "A", "INTEGRATED", "50 parallele Stempel = 50 gespeichert; gleicher Stand → 1×200/1×409; nie ok:true bei Konflikt; zweiter Prozess abgewiesen", "R1–R7 Renn-/Lasttests (rot vorher), HTTP im Container", "server/lib/bestand.mjs, server/funktionen/daten.mjs, server.mjs"],
+  ["WP-03", "Rücksprung nur über verifizierte Digests, R0", "P0", 1.5, [], "B", "INTEGRATED", "Compose ohne Digest startet nicht; gesperrte Digests als Ziel abgelehnt; Revisions-Label gesetzt; Probe A→B→A", "Skripttests mit Docker-Stub, compose config, CI betrieb-deploy", "deploy/, .github/workflows/deploy.yml, BEREITSTELLUNG.md"],
+  ["WP-04", "Automatische verschlüsselte Offsite-Sicherung", "P0", 3.5, [], "B", "INTEGRATED", "Täglicher Lauf, restic-verschlüsselt extern, Aufbewahrung 7/4/12, Restore-Probe gleich, Fehlalarm kommt an", "CI: Sicherung→Restore→Manifest gleich, Fehlalarm-Probe, Doppellauf-Sperre", "deploy/sicherung/, werkzeug/ablage-sicherung.mjs"],
   ["WP-05", "Überwachung und Alarme", "P0", 3, ["WP-04", "WP-30"], "B", "BLOCKED", "/gesund prüft Ablage/Platz; externer Check; Alarm ≤5 min; Fehlerzählung", "vitest /gesund, Alarmprobe", "server.mjs, server/lib/gesund.mjs, deploy/"],
   ["WP-06", "Stempel-Integrität (Originale unveränderlich, Korrekturereignisse)", "P0", 4, ["WP-02"], "A", "BLOCKED", "Änderung an Originalstempel → 403 für jede Rolle; Korrektur als Ereignis mit vorher/nachher", "Rechtematrix-Erweiterung, Negativtest", "server/lib/rechte.mjs, daten.mjs, zeiterfassung.mjs"],
   ["WP-07", "Offline-Stempeln (clientEventId, Idempotenz, Sync)", "P0", 7, ["WP-02", "WP-06", "WP-17"], "D", "BLOCKED", "Flugmodus→Stempel→Neustart→Netz: genau ein Stempel, als offline gekennzeichnet; vorläufig bis Serverbestätigung angezeigt", "vitest Idempotenz, Playwright setOffline, Gerätetest Android/iOS", "public/sw.js, src/speicher.js, src/stempelvorgang.js, server"],
@@ -48,7 +48,7 @@ const P = [
   ["WP-30", "Mail und Push in Produktion", "P2", 2, [], "B", "READY", "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest", "Zustelltest", "deploy, Doku (Freigaben DNS/Secrets)"],
   ["WP-31", "Deploy-Automatisierung mit Freigabe", "P2", 4, ["WP-03"], "B", "BLOCKED", "deploy.sh mit Digest, Smoke, R0; Umgebungsfreigabe; Netlify-Rolle geklärt", "Probe isoliert", "deploy/, .github/workflows"],
   ["WP-32", "Lieferkette, Infrastruktur, Betreiber-2FA", "P2", 3, [], "B", "READY", "Basisbild per Digest; Trivy; Dependabot; Branch-Schutz; Caddy versioniert; 2FA Betreiber", "CI, Unit 2FA", "Dockerfile, .github, server"],
-  ["WP-33", "Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe)", "P2", 5, [], "F", "READY", "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline", "CI-Job e2e", "e2e/, package.json, pruefung.yml"],
+  ["WP-33", "Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe)", "P2", 5, [], "F", "IN_PROGRESS", "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline", "CI-Job e2e", "e2e/, package.json, pruefung.yml"],
   ["WP-34", "Branches aufräumen, Spezifikationen integrieren", "P2", 1, ["WP-09"], "0", "BLOCKED", "Geo-Spec und Migrationsbericht in docs; Altbranches archiviert", "–", "docs/"],
   ["WP-35", "Darstellungsbefunde", "P3", 2, ["WP-39"], "E", "BLOCKED", "Kein Querscrollen bei ≤430 px für Abrechnungsdaten/Handbuch; Geo-Schalter sofort", "Playwright-Viewport", "src"],
   ["WP-36", "Rechtstexte ohne Platzhalter", "P3", 1, [], "E", "BLOCKED", "37 Platzhalter ersetzt (Inhalte vom Nutzer); externe juristische Prüfung als eigene Abnahme", "Prüfskript Platzhalter=0", "src/rechtstexte.jsx"],
@@ -57,8 +57,10 @@ const P = [
   ["WP-39", "App.jsx modularisieren", "P3", 4, ["WP-12"], "E", "BLOCKED", "Aufteilung ohne Verhaltensänderung; alle Tests grün", "voll + E2E", "src/"],
   ["WP-40", "Barrierefreiheit WCAG 2.2 AA", "P3", 3, ["WP-39"], "E", "BLOCKED", "axe ohne Verstöße; Tastatur; Fokus; Kontrast", "axe in CI", "src"],
   ["WP-41", "Betriebs- und Nutzerdokumentation", "P3", 2, ["WP-04", "WP-05", "WP-31"], "B", "BLOCKED", "Betriebshandbuch, Incident-Runbook, Restore-Anleitung, Handbuch je Rolle", "Review", "docs/"],
-  ["WP-42", "Endabnahme und Produktions-Rollout", "P1", 3, ["WP-07", "WP-12", "WP-16", "WP-19", "WP-21", "WP-33", "WP-40", "WP-41", "WP-44", "WP-43"], "0", "BLOCKED", "Testplan Abschnitt 5 vollständig; externer Pentest; Rollout mit Rücksprung/R0", "alle Gates", "–"],
-  ["WP-43", "Personaldaten-Filter vollständig (Matrix ↔ Code, tagesgenau)", "P0", 2, ["WP-09"], "A", "BLOCKED", "Jede RECHTEMATRIX-Zeile hat Test je Rolle; Tagesfelder tagesgenau nach Bereich; keine sensiblen Felder an nicht berechtigte Rollen", "rechtematrix.test je Zeile, Rundreise", "server/lib/sicht.mjs, pruefungen"],
+  ["WP-42", "Endabnahme und Produktions-Rollout", "P1", 3, ["WP-07", "WP-12", "WP-16", "WP-19", "WP-21", "WP-33", "WP-40", "WP-41", "WP-44", "WP-43", "WP-45", "WP-46"], "0", "BLOCKED", "Testplan Abschnitt 5 vollständig; externer Pentest; Rollout mit Rücksprung/R0", "alle Gates", "–"],
+  ["WP-43", "Personaldaten-Filter vollständig (Matrix ↔ Code, tagesgenau)", "P0", 2, ["WP-09"], "A", "INTEGRATED", "Jede RECHTEMATRIX-Zeile hat Test je Rolle; Tagesfelder tagesgenau nach Bereich; keine sensiblen Felder an nicht berechtigte Rollen", "rechtematrix.test je Zeile, Rundreise", "server/lib/sicht.mjs, pruefungen"],
+  ["WP-45", "Atomarer Mehrdatei-Schreibvorgang (Journal), Kontovereinzelung", "P0", 2, ["WP-02"], "A", "IN_PROGRESS", "Abbruch nach jeder Teilschreibung → vollständig alter oder neuer Stand, nie gemischt; kein Code auf gelöschten Raum", "Abbruch-Testhaken je Datei, Leser während Schreiben, R7", "server/lib/bestand.mjs, ablage.mjs, konten.mjs"],
+  ["WP-46", "Bremse fail-closed, gleitendes Fenster, Notbremse Zugangscode", "P0", 1, ["WP-02"], "A", "IN_PROGRESS", "Ablagefehler/kaputte Sperre → nie Durchlass; an Fenstergrenze ≤ Grenzwert; Notbremse für /api/anmelden", "bremse-lokal (Fake-Timer, kaputte Sperrdatei), HTTP bremse", "server/lib/schutz.mjs, daten.mjs (Anmeldung)"],
   ["WP-44", "Zugangscodes bewerten, rotieren, Klartext beseitigen (A9)", "P0", 0.5, [], "0", "BLOCKED", "Kein Code aus Klartextdateien aktiv; Betreiberzugang rotiert; Nachweise gesichert; Dateien beseitigt", "lesender Abgleich ohne Anmeldung", "Betrieb (Freigaben/Nutzerhandlungen nötig)"],
 ];
 
@@ -76,7 +78,7 @@ const pakete = P.map(([id, name, prio, aufwand, abh, agent, status, akzeptanz, t
 });
 /* Die drei laufenden Branches tragen die tatsächlichen Namen. */
 const ist = { "WP-02": "acc45/security/wp02-datenintegritaet", "WP-03": "acc45/infra/wp03-digest-rollback", "WP-04": "acc45/infra/wp04-backup",
-  "WP-09": "integration/centric-complete", "WP-01": "hotfix/stempel-datenschutz-sv" };
+  "WP-09": "integration/centric-complete", "WP-43": "acc45/security/wp43-personaldaten-filter", "WP-45": "acc45/security/wp45-atomares-schreiben", "WP-46": "acc45/security/wp46-bremse-failclosed", "WP-33": "acc45/qa/wp33-testinfrastruktur", "WP-01": "hotfix/stempel-datenschutz-sv" };
 for (const p of pakete) if (ist[p.id]) p.branch = ist[p.id];
 
 /* Kritischer Pfad: längste Kette nach Aufwand. */

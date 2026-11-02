@@ -3,14 +3,14 @@
 Erzeugt von `werkzeug/acc45-backlog.mjs` (nicht von Hand ändern) · Stand 2026-11-02
 
 **Kritischer Pfad** (offener Aufwand, menschliches Äquivalent): WP-02 → WP-09 → WP-10 → WP-11 → WP-22 → WP-19 → WP-42 = **48.5 PT**
-**Offener Gesamtaufwand:** 162.5 PT in 42 Paketen
+**Offener Gesamtaufwand:** 165.5 PT in 44 Paketen
 
 | Paket | Prio | PT | hängt ab von | Agent | Status |
 |---|---|---|---|---|---|
 | WP-01 | P0 | 1 | – | Agent 0 | DONE |
-| WP-02 | P0 | 2.5 | – | Agent A | IN_PROGRESS |
-| WP-03 | P0 | 1.5 | – | Agent B | IN_PROGRESS |
-| WP-04 | P0 | 3.5 | – | Agent B | IN_PROGRESS |
+| WP-02 | P0 | 2.5 | – | Agent A | INTEGRATED |
+| WP-03 | P0 | 1.5 | – | Agent B | INTEGRATED |
+| WP-04 | P0 | 3.5 | – | Agent B | INTEGRATED |
 | WP-05 | P0 | 3 | WP-04, WP-30 | Agent B | BLOCKED |
 | WP-06 | P0 | 4 | WP-02 | Agent A | BLOCKED |
 | WP-07 | P0 | 7 | WP-02, WP-06, WP-17 | Agent D | BLOCKED |
@@ -39,7 +39,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` (nicht von Hand ändern) · Stand 2026-
 | WP-30 | P2 | 2 | – | Agent B | READY |
 | WP-31 | P2 | 4 | WP-03 | Agent B | BLOCKED |
 | WP-32 | P2 | 3 | – | Agent B | READY |
-| WP-33 | P2 | 5 | – | Agent F | READY |
+| WP-33 | P2 | 5 | – | Agent F | IN_PROGRESS |
 | WP-34 | P2 | 1 | WP-09 | Agent 0 | BLOCKED |
 | WP-35 | P3 | 2 | WP-39 | Agent E | BLOCKED |
 | WP-36 | P3 | 1 | – | Agent E | BLOCKED |
@@ -48,6 +48,8 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` (nicht von Hand ändern) · Stand 2026-
 | WP-39 | P3 | 4 | WP-12 | Agent E | BLOCKED |
 | WP-40 | P3 | 3 | WP-39 | Agent E | BLOCKED |
 | WP-41 | P3 | 2 | WP-04, WP-05, WP-31 | Agent B | BLOCKED |
-| WP-42 | P1 | 3 | WP-07, WP-12, WP-16, WP-19, WP-21, WP-33, WP-40, WP-41, WP-44, WP-43 | Agent 0 | BLOCKED |
-| WP-43 | P0 | 2 | WP-09 | Agent A | BLOCKED |
+| WP-42 | P1 | 3 | WP-07, WP-12, WP-16, WP-19, WP-21, WP-33, WP-40, WP-41, WP-44, WP-43, WP-45, WP-46 | Agent 0 | BLOCKED |
+| WP-43 | P0 | 2 | WP-09 | Agent A | INTEGRATED |
+| WP-45 | P0 | 2 | WP-02 | Agent A | IN_PROGRESS |
+| WP-46 | P0 | 1 | WP-02 | Agent A | IN_PROGRESS |
 | WP-44 | P0 | 0.5 | – | Agent 0 | BLOCKED |

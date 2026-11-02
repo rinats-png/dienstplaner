@@ -1,17 +1,17 @@
 {
   "stand": "2026-11-02",
-  "anzahl": 44,
+  "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 35,
-    "READY": 3,
+    "BLOCKED": 34,
+    "READY": 2,
     "IN_PROGRESS": 4,
     "REVIEW": 0,
     "CI_FAILED": 0,
-    "INTEGRATED": 0,
+    "INTEGRATED": 4,
     "VERIFIED": 0,
     "DONE": 2
   },
-  "offenerAufwandPT": 162.5,
+  "offenerAufwandPT": 165.5,
   "kritischerPfad": {
     "summe": 48.5,
     "kette": [
@@ -52,7 +52,7 @@
       "dateien": "server/lib/bestand.mjs, server/funktionen/daten.mjs, server.mjs",
       "akzeptanz": "50 parallele Stempel = 50 gespeichert; gleicher Stand → 1×200/1×409; nie ok:true bei Konflikt; zweiter Prozess abgewiesen",
       "tests": "R1–R7 Renn-/Lasttests (rot vorher), HTTP im Container",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -68,7 +68,7 @@
       "dateien": "deploy/, .github/workflows/deploy.yml, BEREITSTELLUNG.md",
       "akzeptanz": "Compose ohne Digest startet nicht; gesperrte Digests als Ziel abgelehnt; Revisions-Label gesetzt; Probe A→B→A",
       "tests": "Skripttests mit Docker-Stub, compose config, CI betrieb-deploy",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -84,7 +84,7 @@
       "dateien": "deploy/sicherung/, werkzeug/ablage-sicherung.mjs",
       "akzeptanz": "Täglicher Lauf, restic-verschlüsselt extern, Aufbewahrung 7/4/12, Restore-Probe gleich, Fehlalarm kommt an",
       "tests": "CI: Sicherung→Restore→Manifest gleich, Fehlalarm-Probe, Doppellauf-Sperre",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -602,11 +602,11 @@
       "aufwandPT": 5,
       "abhaengigkeiten": [],
       "agent": "Agent F – QA & Review",
-      "branch": "acc45/qa/wp33-testinfrastruktur-vollstandi",
+      "branch": "acc45/qa/wp33-testinfrastruktur",
       "dateien": "e2e/, package.json, pruefung.yml",
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
-      "status": "READY",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -770,7 +770,9 @@
         "WP-40",
         "WP-41",
         "WP-44",
-        "WP-43"
+        "WP-43",
+        "WP-45",
+        "WP-46"
       ],
       "agent": "Agent 0 – Integration",
       "branch": "acc45/integration/wp42-endabnahme-und-produktions-r",
@@ -791,11 +793,47 @@
         "WP-09"
       ],
       "agent": "Agent A – Security & Data Integrity",
-      "branch": "acc45/security/wp43-personaldaten-filter-vollsta",
+      "branch": "acc45/security/wp43-personaldaten-filter",
       "dateien": "server/lib/sicht.mjs, pruefungen",
       "akzeptanz": "Jede RECHTEMATRIX-Zeile hat Test je Rolle; Tagesfelder tagesgenau nach Bereich; keine sensiblen Felder an nicht berechtigte Rollen",
       "tests": "rechtematrix.test je Zeile, Rundreise",
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-45",
+      "name": "Atomarer Mehrdatei-Schreibvorgang (Journal), Kontovereinzelung",
+      "prioritaet": "P0",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp45-atomares-schreiben",
+      "dateien": "server/lib/bestand.mjs, ablage.mjs, konten.mjs",
+      "akzeptanz": "Abbruch nach jeder Teilschreibung → vollständig alter oder neuer Stand, nie gemischt; kein Code auf gelöschten Raum",
+      "tests": "Abbruch-Testhaken je Datei, Leser während Schreiben, R7",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-46",
+      "name": "Bremse fail-closed, gleitendes Fenster, Notbremse Zugangscode",
+      "prioritaet": "P0",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp46-bremse-failclosed",
+      "dateien": "server/lib/schutz.mjs, daten.mjs (Anmeldung)",
+      "akzeptanz": "Ablagefehler/kaputte Sperre → nie Durchlass; an Fenstergrenze ≤ Grenzwert; Notbremse für /api/anmelden",
+      "tests": "bremse-lokal (Fake-Timer, kaputte Sperrdatei), HTTP bremse",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
