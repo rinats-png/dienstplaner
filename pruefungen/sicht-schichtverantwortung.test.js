@@ -17,6 +17,11 @@ import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
+/* Ein Werktag ab sechs Tagen voraus. a1 ist minderjährig und im
+   Mutterschutz (privat() unten); an einem Sonntag sperrt die Schutzprüfung
+   seit WP-11 auch auf dem Server (B2). Der Rundweg prüft die Rückfüllung,
+   nicht den Schutz — deshalb ein zulässiger Tag. */
+const WERKTAG6 = (() => { for (let n = 6; n < 13; n++) { const t = tag(n); const w = new Date(`${t}T12:00:00Z`).getUTCDay(); if (w >= 1 && w <= 5) return t; } return tag(6); })();
 
 /* Alles, was eine Person an Privatem, Gesundheitlichem und Geheimem tragen kann. */
 const privat = (id) => ({
@@ -437,12 +442,12 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
   }
   it("gekürzte Sicht + Planänderung + Protokolleintrag zurück: angenommen, alles Verborgene unverändert", () => {
     const { g, e } = rundweg((m) => {
-      m.abweichungen[`a1|${tag(6)}`] = "F";
+      m.abweichungen[`a1|${WERKTAG6}`] = "F";
       m.protokoll = [{ id: "l-neu", zeit: "x", text: "Plan geändert" }, ...(m.protokoll || [])];
     });
     expect(e.verweigert).toBeFalsy();
     const roh = g.mandanten[0], neu = e.mandanten[0];
-    expect(neu.abweichungen[`a1|${tag(6)}`]).toBe("F");
+    expect(neu.abweichungen[`a1|${WERKTAG6}`]).toBe("F");
     expect(neu.protokoll.map((l) => l.id)).toEqual(["l-neu", "l2", "l1"]);
     const ohne = (m) => { const { abweichungen, protokoll, ...rest } = m; return rest; };
     expect(ohne(neu)).toEqual(ohne(roh));                                     // jede verborgene Angabe wertgleich
@@ -456,7 +461,7 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
   it("ohne Rückfüllung scheitert derselbe Rundweg — mit ihr nicht", () => {
     const g = sammlungen();
     const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SUB))).mandanten[0];
-    sicht.abweichungen[`a1|${tag(6)}`] = "F";
+    sicht.abweichungen[`a1|${WERKTAG6}`] = "F";
     expect(einheitZusammen(g.mandanten[0], personenRueckfuellen(g.mandanten[0], sicht, SUB), SUB).ok).toBe(false);
     expect(zusammenfuehren(g, { ...bestandFuerRolle(g, SUB), mandanten: [sicht] }, SUB).verweigert).toBeFalsy();
   });

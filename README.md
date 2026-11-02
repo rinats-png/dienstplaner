@@ -5,12 +5,13 @@ Dienstplanung für rotierende Schichtbetriebe.
 ## Aufbau
 
     src/App.jsx          die Anwendung
+    src/gestalt/         Gestaltung: Symbole, Bausteine, Kopfzeile, Stilregeln
     src/main.jsx         Einstieg mit Anmeldung, Preisen und Selbststart
     src/speicher.js      Anbindung an den Server
     server.mjs           der Node-Prozess: liefert dist/ aus und ruft die Funktionen
     server/funktionen/   die Endpunkte (/api, /einrichten, /lage, /starten, /kalender, /zustellung)
     server/lib/          Ablage, Rechte, Bremse, Zugangscodes, Verwalterkonten
-    pruefungen/          alle Prüfungen (npm run pruefung)
+    pruefungen/          alle Prüfungen (npm run pruefung), Oberflächenvergleich, Bildersatz
     deploy/compose.yml   Betrieb als Container
 
 Im Betrieb läuft alles auf einem Server:

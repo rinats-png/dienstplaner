@@ -219,8 +219,8 @@ export function Rechtstext({ id }) {
   return (
     <div style={{ maxWidth: 760 }}>
       {hatPlatzhalter(eintrag.text) && (
-        <div style={{ padding: "12px 16px", borderRadius: 10, marginBottom: 24,
-          background: C.warnLight || "#FFF7E6", border: `1px solid ${C.warn || "#D08700"}44`,
+        <div role="note" style={{ padding: "12px 16px", borderRadius: "var(--r, 12px)", marginBottom: 24,
+          background: C.warnLight, border: `1px solid ${C.warn}44`, borderLeft: `3px solid ${C.warn}`,
           fontSize: 13.5, lineHeight: 1.6, color: C.text }}>
           <strong style={{ fontWeight: 640 }}>Entwurf mit Beispieldaten.</strong>{" "}
           Angaben zu Firmensitz, Registernummer und Umsatzsteuer-Identifikationsnummer
@@ -236,7 +236,7 @@ export function Rechtstext({ id }) {
  * Wird sowohl in der angemeldeten Anwendung als auch im Vorschaltfenster
  * verwendet, damit es nur eine Darstellung gibt.
  */
-export function Rechtliches({ start = "impressum", eingebettet = false }) {
+export function Rechtliches({ start = "impressum", eingebettet = false, flaeche = false }) {
   const [offen, setOffen] = useState(start);
   const inhalt = useRef(null);
 
@@ -249,12 +249,12 @@ export function Rechtliches({ start = "impressum", eingebettet = false }) {
       className={eingebettet ? undefined : "rechtsraster"}>
       <nav aria-label="Rechtstexte" style={{ display: "flex",
         flexDirection: eingebettet ? "row" : "column", flexWrap: "wrap", gap: 4,
-        position: eingebettet ? undefined : "sticky", top: eingebettet ? undefined : 12 }}>
+        position: eingebettet ? undefined : "sticky", top: eingebettet ? undefined : (flaeche ? 128 : 12) }}>
         {RECHTSTEXTE.map((t) => (
           <button key={t.id} type="button" onClick={() => setOffen(t.id)}
             aria-current={offen === t.id ? "page" : undefined}
-            style={{ textAlign: "left", padding: eingebettet ? "7px 12px" : "9px 12px",
-              borderRadius: 9, border: `1px solid ${offen === t.id ? C.accent + "55" : "transparent"}`,
+            style={{ textAlign: "left", padding: eingebettet ? "7px 12px" : "10px 14px",
+              borderRadius: "var(--r, 12px)", border: `1px solid ${offen === t.id ? C.accent + "55" : "transparent"}`,
               background: offen === t.id ? C.accentLight : "transparent",
               color: offen === t.id ? C.accentDeep : C.dim, cursor: "pointer",
               fontSize: 13.5, fontWeight: offen === t.id ? 620 : 500, fontFamily: "inherit",
@@ -265,7 +265,9 @@ export function Rechtliches({ start = "impressum", eingebettet = false }) {
                 fontWeight: 400, marginTop: 2 }}>{t.kurz}</span>)}
           </button>))}
       </nav>
-      <div ref={inhalt} style={{ minWidth: 0 }}>
+      <div ref={inhalt}
+        style={{ minWidth: 0, ...(flaeche ? { padding: "28px 32px 34px", background: C.flaeche,
+          border: `1px solid ${C.line}`, borderRadius: "var(--r-gross, 18px)" } : {}) }}>
         <Rechtstext id={offen} />
       </div>
     </div>);
@@ -289,12 +291,13 @@ export function RechtFenster({ start, onClose }) {
   return (
     <div role="dialog" aria-modal="true" aria-label="Rechtliche Angaben"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(24,26,30,.42)",
+      style={{ position: "fixed", inset: 0, zIndex: 400, background: "var(--c-ueberlagerung, rgba(7,19,23,.36))",
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         padding: "4vh 16px", overflowY: "auto" }}>
       <div ref={rahmen} tabIndex={-1}
-        style={{ background: C.flaeche, borderRadius: 14, maxWidth: 880, width: "100%",
-          padding: "26px 30px 34px", boxShadow: "0 24px 70px rgba(17,24,39,.30)",
+        style={{ background: C.flaeche, borderRadius: "var(--r-gross, 18px)", maxWidth: 880, width: "100%",
+          padding: "26px 30px 34px", boxShadow: "var(--schatten-blatt, 0 20px 48px rgba(7,19,23,.18))",
+          border: `1px solid ${C.line}`,
           outline: "none" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
           marginBottom: 20, gap: 16 }}>

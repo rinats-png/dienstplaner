@@ -25,6 +25,8 @@ const bestand = () => ({
   pakete: [{ id: "pflege" }], adressaenderungen: [{ alt: "a@x", neu: "b@x" }], selbststarts: [{ raum: "t-1" }],
   mandanten: [{
     id: "m1", name: "Haus", einheiten: [{ id: "e1" }, { id: "e2" }],
+    /* Seit WP-11 (Review F2) weist der Server eine unbekannte Dienstart ab — der Plan-PUT braucht „F“. */
+    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("l1", "leitung", "ALLE"), person("p1", "planer", "ALLE"), person("s1", "subplaner", "e1"),
       person("a1", "mitarbeiter", "e1"), person("b1", "mitarbeiter", "e2")],
     abweichungen: {}, anfragen: [], nachrichten: [], notrufe: [],

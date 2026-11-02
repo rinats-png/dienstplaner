@@ -30,8 +30,11 @@ const tagPlus = (n) => { const d = new Date(); d.setUTCDate(d.getUTCDate() + n);
 const GEB = (() => { const d = new Date(`${tagPlus(30)}T00:00:00Z`); d.setUTCFullYear(d.getUTCFullYear() - 18); return d.toISOString().slice(0, 10); })();
 const WIEDER = { von: tagPlus(-10), bis: tagPlus(60), maxStundenWoche: 20 };
 
+/* Erwachsene mit bekanntem Geburtsdatum: Seit WP-11 ist ein fehlendes
+   Geburtsdatum „nicht bewertbar" (ein eigener Hinweis, geprüft in
+   konsistenz und schutzmerkmale-sicht). Hier geht es um die Merkmale. */
 const person = (id, rolle, einheit, extra = {}) => ({ id, vorname: `V${id}`, nachname: `N${id}`, rolle, bereich: einheit,
-  zugehoerigkeit: einheit === "ALLE" ? [] : [{ ab: "2020-01-01", einheitId: einheit }], ...extra });
+  geburtstag: "1980-01-01", zugehoerigkeit: einheit === "ALLE" ? [] : [{ ab: "2020-01-01", einheitId: einheit }], ...extra });
 const bestand = () => ({
   version: 9, stand: 1, session: null,
   mandanten: [{
@@ -164,17 +167,36 @@ describe("Wochenstundengrenze: weich, auf beiden Sichten gleich", () => {
 
 describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
   const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
-  const start = app.indexOf("function hindernisse(m, p, d, da) {");
+  /* Seit WP-10 (Warnen statt sperren, Kette A) liefert hindernisBefunde die
+     Befunde mit Stufe; hindernisse() ist nur noch ihr Wortlaut. Harte
+     Schutzbefunde und der Alleindienst tragen sperrt: true — der Warndialog
+     bietet dafür kein „dennoch“ an (Kette B maßgeblich). */
+  const start = app.indexOf("function hindernisBefunde(m, p, d, da) {");
   const block = app.slice(start, app.indexOf("\n}\n", start));
+  /* WP-11: Es gibt genau eine Schutzprüfung, schutzEinsatz (server/lib/
+     schutzpruefung.mjs). hindernisBefunde liest sie; einsatzSchutz ist nur
+     ihre Zusammenfassung (hindernisse/hinweise) und wird in der Oberfläche
+     nicht mehr zusätzlich gefragt — sonst stünde jeder Befund doppelt. */
   it("Schutz, Wochenstundengrenze und Alleindienst stehen in hindernisse()", () => {
     expect(start).toBeGreaterThan(0);
-    expect(block).toContain("einsatzSchutz(p, da, d,");
-    expect(block).toContain("g.push(...schutz.hindernisse)");
+    /* Nur ab „Achtung“ hindert ein Befund; ein Hinweis (nicht bewertbar) nicht. */
+    expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);");
+    expect(block).toContain("schutzEinsatz(p, da, d)");
+    expect(block).not.toContain("einsatzSchutz(");
+    /* Ob sperrt, entscheidet die Tabelle SPERR_REGELN (Befundkatalog) über
+       den Schlüssel am Befund; harte Schutzbefunde heißen „schutz“. */
+    expect(block).toMatch(/sperrt: sperrtArt\(/);
+    expect(block).toMatch(/b\.sperrt \? "schutz" : b\.offen \? "schutzOffen" : "schutzWeich"/);
     expect(block).toContain("e.keinAlleindienst");
+    expect(block).toContain("einschraenkung(\"keinAlleindienst\", \"darf nicht allein eingeteilt werden\")");
     expect(block).not.toContain("e.wiedereingliederung");                // nicht mehr nur aus den Rohdaten
     expect(block).not.toContain("schutz.grenze");                        // S2a: die Grenze sperrt nicht
   });
-  it("weiche Schutzregeln erscheinen als Hinweis in der Ersatzsuche", () => {
-    expect(app).toContain("for (const h of einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d)).hinweise) gruende.push(`Hinweis: ${h}`);");
+  it("weiche Schutzregeln erscheinen in der Ersatzsuche — einmal, als Befund, die Grenze als Hinweis", () => {
+    const a = app.indexOf("function ersatzVorschlaege(");
+    const e = app.slice(a, app.indexOf("\n}\n", a));
+    expect(e).toContain("const bef = hindernisBefunde(m, p, d, da);");
+    expect(e).toContain("stundengrenzeHinweis(p, da, d,");
+    expect(e).not.toContain("einsatzSchutz(");
   });
 });

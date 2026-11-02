@@ -68,6 +68,10 @@ export const MARKIERUNG_TEXT = Object.freeze({
   UNGEPLANTER_DIENST: "ohne geplanten Dienst",
 });
 
+/* Kennung für „bestätigt“. Als Escape geschrieben: Die Oberfläche zeigt sie
+   als Icon (App.jsx, GEO_SYMBOL_ICON), nicht als Textzeichen (Gestaltprüfung). */
+const HAKEN = "\u2713";
+
 /**
  * Anzeige eines gespeicherten Befunds für Start oder Ende — auch für alte
  * Einträge ohne geoStart/geoEnde (aus innerhalb… und geprueft… abgeleitet).
@@ -80,7 +84,7 @@ export function geoAnzeige(eintrag, phase) {
   if (geo && typeof geo === "object") {
     const basis = { entfernung: entfernungText(geo.entfernungGerundet), genauigkeit: geo.genauigkeitM ?? null,
       warnung: !!geo.genauigkeitWarnung, referenz: geo.referenz && geo.referenz.name ? geo.referenz.name : null };
-    if (geo.status === INNERHALB) return { symbol: "✓", ton: "ok", text: "Standort bestätigt", ...basis };
+    if (geo.status === INNERHALB) return { symbol: HAKEN, ton: "ok", text: "Standort bestätigt", ...basis };
     if (geo.status === AUSSERHALB) return { symbol: "!", ton: "warn", text: "Standort abweichend", ...basis };
     if (geo.grund === "pruefung_aus") return { symbol: "○", ton: "text", text: "Geo-Prüfung aus", ...basis };
     return { symbol: "?", ton: "text", text: "Standort nicht bewertbar", ...basis };
@@ -89,7 +93,7 @@ export function geoAnzeige(eintrag, phase) {
      Entfernung; er wird nicht angezeigt. */
   const innerhalb = eintrag[`innerhalb${phase}`];
   const leer = { entfernung: "", genauigkeit: null, warnung: false, referenz: null };
-  if (innerhalb === true) return { symbol: "✓", ton: "ok", text: "Standort bestätigt", ...leer };
+  if (innerhalb === true) return { symbol: HAKEN, ton: "ok", text: "Standort bestätigt", ...leer };
   if (innerhalb === false) return { symbol: "!", ton: "warn", text: "Standort abweichend", ...leer };
   return { symbol: "?", ton: "text", text: "Standort nicht bewertbar", ...leer };
 }

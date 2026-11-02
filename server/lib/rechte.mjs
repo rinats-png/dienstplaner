@@ -19,6 +19,10 @@ import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
+import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
+import { nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { abweichungenSchutzPruefen, sperrendeBefunde } from "./schutzdurchsetzung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -259,6 +263,9 @@ function krankmeldungenZusammen(alt, neu, ich) {
   return [...gespeichert, ...neue];
 }
 
+const HINWEISE_MAX = 12;
+const HINWEIS_LAENGE = 300;
+
 /** Selbstplanung: die eigenen Einträge in einer offenen Runde, sonst nichts. */
 function selbstplanungZusammen(alt, neu, ich, dienstarten) {
   if (!Array.isArray(alt)) return alt;
@@ -282,6 +289,14 @@ function selbstplanungZusammen(alt, neu, ich, dienstarten) {
       tage.add(e.datum);
       const sauber = { personId: e.personId, datum: e.datum, dienstId: e.dienstId };
       if (typeof e.zeit === "string" && e.zeit.length <= 40) sauber.zeit = e.zeit;
+      /* Hinweise (Warnen statt sperren, Kette A; WP-10 d.3): Was bei der
+         Eintragung gegen den Dienst sprach, nimmt die Person mit — die
+         Planung entscheidet bei der Übernahme mit dem Warndialog und prüft
+         dort neu. Nur kurze Texte; anderes fällt weg, ohne die Eintragung
+         abzuweisen. Fremde sehen sie nicht (sicht.mjs: selbstplanung). */
+      if (Array.isArray(e.hinweise) && e.hinweise.length && e.hinweise.length <= HINWEISE_MAX
+        && e.hinweise.every((h) => typeof h === "string" && h.length > 0 && h.length <= HINWEIS_LAENGE))
+        sauber.hinweise = [...e.hinweise];
       eigene.push(sauber);
     }
     return { ...r, eintraege: [...fremde, ...eigene] };
@@ -955,6 +970,28 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
       geschickt = bezug.mandant;
+      /* Bestätigungsprotokoll (WP-10 d.1): nur anhängen, Wer und Zeit vom Server. */
+      if (hat(geschickt, "bestaetigungen")) {
+        const best = bestaetigungenZusammen(ort.betrieb, geschickt.bestaetigungen, sitzung, null);
+        if (best.grund) return { verweigert: best.grund };
+        geschickt = { ...geschickt, bestaetigungen: best.liste };
+      }
+      /* Selbstplanung, „nicht übernommen" (Review K1): nur Person, Tag, Dienst
+         und eine Grund-Kennung — nie ein Befundtext. Unbekannte Gründe werden
+         „befund", Ungültiges fällt weg (selbstplanung.mjs). */
+      /* Unverändert Zurückgeschicktes bleibt der gespeicherte Stand (ein
+         Rundweg ändert nichts); Altbestand mit Text geht ohnehin nur an Planung
+         und Leitung — Beschäftigte und Schichtverantwortung lesen Kennungen. */
+      if (Array.isArray(geschickt.selbstplanung) && geschickt.selbstplanung.some((r) => r && Array.isArray(r.nichtUebernommen))) {
+        const gespeichert = new Map((Array.isArray(ort.betrieb.selbstplanung) ? ort.betrieb.selbstplanung : [])
+          .filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
+        geschickt = { ...geschickt, selbstplanung: geschickt.selbstplanung.map((r) => {
+          if (!r || typeof r !== "object" || !Array.isArray(r.nichtUebernommen)) return r;
+          const vorher = gespeichert.get(String(r.id));
+          if (vorher && gleich(vorher.nichtUebernommen, r.nichtUebernommen)) return r;
+          return { ...r, nichtUebernommen: nichtUebernommenNormal(r.nichtUebernommen) };
+        }) };
+      }
     }
 
     /* Die Schichtverantwortung: Feld für Feld gegen den gespeicherten Stand
@@ -965,8 +1002,15 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
     }
+    /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
+       oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
+       nicht nur im Warndialog der Oberfläche. */
+    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    if (schutzGrund) return { verweigert: schutzGrund };
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
+    /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
+    geschickt = bestaetigungMitteilungen(ort.betrieb, geschickt, sitzung.person);
     const rw = rollenwechselErlaubt(gespeichert, uebermittelt, sitzung);
     if (!rw.ok) return { verweigert: rw.grund };
 
@@ -1285,6 +1329,124 @@ function anhaengen(feld, alt, neu, { neuerEintrag = () => null, aenderung = () =
       return { grund: `${feld}: Bestehende Einträge lassen sich nicht löschen.` };
   }
   return { liste: [...neue, ...altL.map((e) => (kennungGueltig(e.id) && ersetzt.get(String(e.id))) || e)] };
+}
+
+/* --------------------------------------------------------------------------
+   BESTÄTIGUNGSPROTOKOLL (Warnen statt sperren, Kette A; WP-10 d.1)
+
+   Bis WP-10 kannte der Server das Feld nicht: Die Positivkataloge (Kette B)
+   verwarfen es für Planung und Leitung still (vollRueckfuellen), für die
+   Schichtverantwortung lehnte einheitZusammen die ganze Speicherung ab.
+
+   Jetzt ein Protokoll, an das nur angehängt wird — für jede schreibende
+   Rolle gleich:
+   - neu: Person des Betriebs, gültiger Tag, bekannte Dienstart, Stufe
+     „achtung" oder „recht" (Hinweise brauchen keine Bestätigung), bei
+     „recht" ausdrücklich gelesen; Befunde, Aktion, Grundart (bekannte
+     Kennung oder keine) und Regelstand in festen Grenzen;
+   - Wer (Name, Kennung, Rolle) und Zeit setzt der Server, nie der Client;
+   - Bestehendes ist unveränderlich und lässt sich nicht löschen: geändert
+     oder gar nicht mitgeschickt, es bleibt der gespeicherte Eintrag (die
+     Oberfläche übernimmt Wer und Zeit des Servers erst beim nächsten Laden;
+     ihre eigene Kopie darf das Speichern nicht blockieren);
+   - die Schichtverantwortung bestätigt nur für sich und Personen, die am
+     Tag des Eintrags zu ihrem Bereich gehören (wie bei abweichungen);
+   - Beschäftigte schreiben das Protokoll nicht (eigenesZusammen kennt es
+     nicht), der Betriebsrat schreibt gar nicht.
+   Die Mitteilung an die Leitung erzeugt danach der Server
+   (bestaetigungen.mjs, d.4).
+   -------------------------------------------------------------------------- */
+const SPERRT = Symbol("sperrt");
+const PROTOKOLL_STUFEN = ["achtung", "recht"];
+const kurzText = (t, max) => typeof t === "string" && t.length <= max;
+/**
+ * @param {any} altM gespeicherter Betrieb
+ * @param {any} n übermittelte Liste
+ * @param {any} sitzung
+ * @param {null | ((pid: any, tag: string) => boolean)} imBereich nur für die Schichtverantwortung
+ * @returns {{liste?: any[], grund?: string}}
+ */
+function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
+  const personen = new Map((Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
+  const dienste = new Set((Array.isArray(altM.dienstarten) ? altM.dienstarten : []).filter(Boolean).map((d) => String(d.id)));
+  const ich = sitzung.person === null || sitzung.person === undefined ? null : personen.get(String(sitzung.person));
+  const meinName = ich ? `${ich.vorname || ""} ${ich.nachname || ""}`.trim() || String(ich.id) : null;
+  const altL = (Array.isArray(altM.bestaetigungen) ? altM.bestaetigungen : []).filter((e) => e && typeof e === "object");
+  if (n === undefined) return { liste: altL };
+  if (!Array.isArray(n)) return { grund: "bestaetigungen: ungültige Form." };
+  const bekannt = new Set(altL.filter((e) => kennungGueltig(e.id)).map((e) => String(e.id)));
+  const gesehen = new Set();
+  const neue = [];
+  const neuerEintrag = (e) => {
+    if (!personen.has(String(e.personId))) return null;
+    if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
+    if (!dienste.has(String(e.dienstId))) return null;
+    if (imBereich && !(ich && String(e.personId) === String(ich.id)) && !imBereich(e.personId, e.datum)) return null;
+    const befunde = Array.isArray(e.befunde) ? e.befunde : [];
+    if (!befunde.length || befunde.length > 20) return null;
+    /* Nur Kennung aus dem Befundkatalog (Review M1) — kein Freitext. Die
+       Stufe bestimmt der Katalog, nicht der Client (Nachprüfung N3). Ein
+       sperrender Befund lässt sich nicht bestätigen (H1). */
+    if (!befunde.every((b) => b && typeof b === "object" && Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, b.regel))) return null;
+    if (befunde.some((b) => sperrtBefund(b.regel))) return SPERRT;
+    /* Der Server prüft selbst (WP-11, B2): Sperrt die Schutzprüfung diese
+       Einteilung, hilft keine Bestätigung — auch nicht, wenn der Client den
+       Befund verschweigt. */
+    const daObj = (Array.isArray(altM.dienstarten) ? altM.dienstarten : []).find((d) => d && String(d.id) === String(e.dienstId));
+    if (daObj && daObj.start && daObj.ende && sperrendeBefunde(personen.get(String(e.personId)), daObj, e.datum).length) return SPERRT;
+    const katalogStufen = befunde.map((b) => BEFUND_KATALOG[b.regel].stufe);
+    const stufe = katalogStufen.includes("recht") ? "recht" : katalogStufen.includes("achtung") ? "achtung" : null;
+    if (!PROTOKOLL_STUFEN.includes(stufe)) return null;           // ein Hinweis braucht keine Bestätigung
+    if (stufe === "recht" && e.gelesen !== true) return null;
+    if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
+    const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
+    if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
+    if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
+    if (e.regelstand !== undefined && e.regelstand !== null && !kurzText(e.regelstand, 40)) return null;
+    /* Kennungen des Regelregisters (Kette A, WP-11): nur das Kennungsformat,
+       kein Text — der Betriebsrat sieht ohnehin nur Zählwerte. */
+    const regelIds = e.regelIds === undefined || e.regelIds === null ? [] : e.regelIds;
+    if (!Array.isArray(regelIds) || regelIds.length > 20 || !regelIds.every((x) => typeof x === "string" && /^[A-Z0-9][A-Z0-9-]{0,39}$/.test(x))) return null;
+    return { id: e.id, personId: personen.get(String(e.personId)).id, datum: e.datum, dienstId: e.dienstId, aktion: e.aktion,
+      stufe, befunde: [...new Set(befunde.map((b) => b.regel))].map((regel) => ({ regel, stufe: BEFUND_KATALOG[regel].stufe })),
+      regelIds: [...new Set(regelIds)],
+      grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
+      gelesen: e.gelesen === true,
+      durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
+      zeit: new Date().toISOString(), regelstand: typeof e.regelstand === "string" ? e.regelstand : null, behoben: null };
+  };
+  for (const e of n) {
+    if (!e || typeof e !== "object" || !kennungGueltig(e.id)) return { grund: "bestaetigungen: Eintrag ohne Kennung." };
+    const id = String(e.id);
+    if (gesehen.has(id)) return { grund: "bestaetigungen: doppelte Kennung." };
+    gesehen.add(id);
+    /* Bestehend: immer der gespeicherte Eintrag. Was der Client daran
+       geändert mitschickt (etwa seine eigene Zeit statt der des Servers),
+       ist wirkungslos — das Protokoll ändert sich nur durch Anhängen. */
+    if (bekannt.has(id)) continue;
+    const sauber = neuerEintrag(e);
+    if (sauber === SPERRT) return { grund: "bestaetigungen: Ein sperrender Befund (Schutz, Einschränkung, gesetzliche Qualifikation, Einweisung, Ruhezeit unter 11 Stunden, Bestand) lässt sich nicht bestätigen." };
+    if (!sauber) return { grund: "bestaetigungen: Dieser Eintrag ist über diesen Zugang nicht möglich." };
+    neue.push(sauber);
+    if (neue.length > BESTAETIGUNGEN_JE_SPEICHERN) return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_SPEICHERN} neue Einträge je Speichern.` };
+  }
+  /* Nie verdrängen (Nachprüfung B1): Bis WP-10-Review fielen über der
+     Gesamtgrenze die ältesten Einträge weg — wer schreiben durfte, konnte
+     das Protokoll durch Fluten leeren. Jetzt: Ist die Grenze erreicht,
+     werden neue Einträge abgewiesen; gelöscht wird nichts. Dazu eine Bremse
+     je bestätigender Person und Tag. Ältere Einträge auszulagern (Archiv je
+     Monat) oder nach Frist zu löschen (§ 16 Abs. 2 ArbZG: zwei Jahre) ist
+     ein eigener, protokollierter Aufbewahrungslauf — noch offen. */
+  if (neue.length && altL.length + neue.length > BESTAETIGUNGEN_GESAMT)
+    return { grund: `bestaetigungen: Das Bestätigungsprotokoll hat seine Grenze von ${BESTAETIGUNGEN_GESAMT} Einträgen erreicht. Bitte die Leitung ansprechen — ältere Einträge werden nicht verdrängt.` };
+  if (neue.length && ich) {
+    const heute = new Date().toISOString().slice(0, 10);
+    const heuteVonMir = altL.filter((x) => String(x.durchId) === String(ich.id) && typeof x.zeit === "string" && x.zeit.startsWith(heute)).length;
+    if (heuteVonMir + neue.length > BESTAETIGUNGEN_JE_TAG)
+      return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_TAG} Bestätigungen je Person und Tag.` };
+  }
+  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts. */
+  return { liste: [...neue, ...altL] };
 }
 
 /* Was ein Antrag ist, bestimmt der gespeicherte Stand: Person, Art,
@@ -1749,6 +1911,15 @@ export function einheitZusammen(altM, neuM, sitzung) {
           } else return nein("ausschreibungen: unbekannter Status.");
         }
         aus.ausschreibungen = [...neue, ...altL.map((x) => (kennungGueltig(x.id) && ersetzt.get(String(x.id))) || x)];
+        break;
+      }
+
+      /* --- Bestätigungsprotokoll (WP-10 d.1): nur anhängen, nur für Personen
+             des eigenen Bereichs am Tag; Wer und Zeit setzt der Server. --- */
+      case "bestaetigungen": {
+        const r = bestaetigungenZusammen(altM, n, sitzung, imBereich);
+        if (r.grund) return nein(r.grund);
+        aus.bestaetigungen = r.liste;
         break;
       }
 
