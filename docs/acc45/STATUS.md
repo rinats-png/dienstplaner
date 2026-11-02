@@ -25,6 +25,9 @@ Stand: 2026-11-02 (Tag 1) · Quelle der Zahlen: `docs/acc45/work-packages.json` 
   - 7 Abweichungen sind strengere B-Regeln: Fremde Ist-Zeiten ändert nur die Leitung; „ALLE“ ohne fremde Ist-Zeiten; anderer Feldname im Ist-Vermerk.
   - 1 Abweichung ist weniger streng: Die Bereichszuordnung nach Sichtfenster ist nicht tagesgenau. Nach einer Versetzung sind Beginn/Ende fremder Tage sichtbar (ohne Grund). → **WP-43**.
 
+- CI auf `integration/centric-complete` (`e6418bd`): Prüfung grün (2146 vitest-Tests bestanden, HTTP-/Skriptprüfungen 649/649), Sicherheit grün.
+- Kette-A-Konfliktmatrix auf dem Integrationsstand: #7 und #6 kollidieren weiterhin nur in `App.jsx`, `server/lib/rechte.mjs`, `package.json`, `pruefung.yml` (wie im Audit).
+
 ## Laufende Arbeitsstränge
 
 | Strang | Paket | Branch |
