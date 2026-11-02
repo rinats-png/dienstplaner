@@ -1,0 +1,18 @@
+# =====================================================================
+#  Crontab des Benutzers admin (kein sudo nötig) — Vorlage
+#  Einrichten:  crontab -e   und die Zeilen unten übernehmen.
+#
+#  Voraussetzung: Systemzeit des VPS ist UTC (timedatectl). Sonst die
+#  Uhrzeiten umrechnen — Debians/Ubuntus cron kennt kein CRON_TZ.
+#  Beide Skripte teilen eine Sperre: Läuft die Sicherung noch, wenn die
+#  Probe startet, wird die Probe abgewiesen (Exit 75, kein Ping) — dann
+#  meldet der Totmannschalter der Probe das Ausbleiben.
+# =====================================================================
+PATH=/home/admin/.local/bin:/usr/local/bin:/usr/bin:/bin
+SHELL=/bin/bash
+
+# täglich 02:30 UTC: Sicherung außer Haus
+30 2 * * * /home/admin/centric-sicherung/sicherung-ausser-haus.sh >>/home/admin/sicherung/cron.log 2>&1
+
+# monatlich am 3., 04:15 UTC: Wiederherstellungsprobe (neuester Snapshot)
+15 4 3 * * /home/admin/centric-sicherung/wiederherstellung-probe.sh >>/home/admin/sicherung/cron.log 2>&1
