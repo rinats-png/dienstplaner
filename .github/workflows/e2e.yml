@@ -1,0 +1,59 @@
+# E2E-Suite (WP-33): Rollen × Bildschirme im echten Browser, axe, Offline.
+# Siehe docs/TESTEN-E2E.md. Läuft neben pruefung.yml, nicht als Teil davon.
+name: E2E
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Chromium installieren
+        run: npx playwright install --with-deps chromium
+
+      - name: Übersetzen
+        run: npm run build
+
+      # Server, Wegwerfablage und Testdaten legt e2e/global-setup.mjs an.
+      # Der Verwalterschlüssel ist ein Zufallswert dieses Laufs.
+      - name: E2E-Suite
+        run: npm run e2e
+
+      - name: Bericht hochladen
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-bericht
+          path: |
+            e2e/ergebnisse/bericht
+            e2e/ergebnisse/ergebnis.json
+          retention-days: 14
+
+      - name: axe-Befunde hochladen
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-axe
+          path: e2e/ergebnisse/axe
+          retention-days: 14
+          if-no-files-found: warn

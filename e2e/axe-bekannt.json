@@ -1,0 +1,7 @@
+{
+  "_hinweis": "Bekannte critical-Verstöße je Ansicht (Regel-IDs), Stand WP-33 2026-11-02. select-name: Auswahlfeld ohne zugängliche Beschriftung (Monatsplan-Kopf, Betreiberkonsole). Behobene Einträge streichen.",
+  "leitung-monatsplan": ["select-name"],
+  "planer-monatsplan": ["select-name"],
+  "betriebsrat-monatsplan": ["select-name"],
+  "betreiber-mandanten": ["select-name"]
+}
