@@ -38,7 +38,7 @@ import { unterRaumsperre } from "./raumsperre.mjs";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
    (Stempeln, PUT, Wiederherstellen …): dieselbe Sperre, dieselbe Reihe. */
-export { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE } from "./raumsperre.mjs";
+export { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 
 const ALT = (raum) => `bestand:${raum}`;
 /** Schlüssel eines noch nicht zerlegten Altbestands (für Leser, die Lesefehler selbst unterscheiden müssen). */
@@ -59,24 +59,66 @@ const VERMERKE = 10;
  * Holt den vollständigen Bestand.
  * @returns {Promise<object|null>} — { bestand, stand, zeit, durch } oder null
  */
-export async function bestandLesen(store, raum) {
-  const kernMit = await store.getWithMetadata(kernSchluessel(raum), { type: "json" })
-    .catch(() => null);
+export function bestandLesen(store, raum) {
+  return lesen(store, raum, false);
+}
+
+/** Fehlercode, wenn ein Schreibweg den Bestand nicht vollständig lesen kann. */
+export const BESTAND_UNLESBAR = "BESTAND_UNLESBAR";
+
+/**
+ * Holt den vollständigen Bestand — oder wirft, wenn auch nur ein Teil davon
+ * nicht lesbar ist. Für jeden Schreibweg.
+ *
+ * bestandLesen übergeht eine unlesbare Scherbe oder ein unlesbares
+ * Verzeichnis: Zum Anzeigen ist ein Bestand mit Lücke besser als keiner.
+ * Zum Schreiben ist er tödlich. Wer aus ihm einen neuen Stand baut, baut
+ * ihn ohne die Lücke — und das Schreiben räumte bis November 2026 die
+ * „verwaiste" Scherbe weg: Eine beschädigte Oktober-Scherbe war nach dem
+ * nächsten Stempel gelöscht. Hier wird stattdessen abgebrochen (→ 503, es
+ * wird nichts geschrieben), und die Datei bleibt, wie sie ist.
+ *
+ * @returns {Promise<object|null>} wie bestandLesen; null nur, wenn es den Raum nicht gibt
+ */
+export function bestandLesenStreng(store, raum) {
+  return lesen(store, raum, true);
+}
+
+function unlesbar(raum, was, e) {
+  const f = /** @type {Error & {code?: string}} */ (new Error(
+    `Bestand ${raum}: ${was} nicht lesbar${e ? ` (${String(e && e.message || e).slice(0, 120)})` : ""}`));
+  f.code = BESTAND_UNLESBAR;
+  return f;
+}
+
+async function lesen(store, raum, streng) {
+  /* Im strengen Lesen wird jeder Fehler zum Abbruch, im milden zur Lücke. */
+  const versuch = async (was, arbeit, ersatz) => {
+    try { return await arbeit(); }
+    catch (e) { if (streng) throw unlesbar(raum, was, e); return ersatz; }
+  };
+  const kernMit = await versuch("Kern",
+    () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }), null);
 
   if (!kernMit) {
     /* Noch nicht zerlegt? Dann liegt der Betrieb als ein Blob vor. Er wird
        hier gelesen, aber nicht angefasst — das Zerlegen geschieht beim
        ersten Schreiben, damit ein reiner Lesezugriff nichts verändert. */
-    const alt = await store.getWithMetadata(ALT(raum), { type: "json" }).catch(() => null);
+    const alt = await versuch("Altbestand",
+      () => store.getWithMetadata(ALT(raum), { type: "json" }), null);
     if (!alt) return null;
     return { bestand: alt.data, stand: "alt", zeit: alt.metadata?.zeit || null,
       durch: alt.metadata?.durch || null, unzerlegt: true };
   }
 
-  const { blobs } = await store.list({ prefix: `scherbe:${raum}:` }).catch(() => ({ blobs: [] }));
+  const { blobs } = await versuch("Verzeichnis der Scherben",
+    () => store.list({ prefix: `scherbe:${raum}:` }), { blobs: [] });
   const scherben = [];
   for (const b of blobs) {
-    const s = await store.get(b.key, { type: "json" }).catch(() => null);
+    const s = await versuch(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }), null);
+    /* Gelistet, aber nicht (mehr) da: im strengen Lesen ebenfalls ein
+       Abbruch — unter der Raumsperre löscht niemand nebenher. */
+    if (!s && streng) throw unlesbar(raum, `Scherbe ${b.key}`, "verschwunden oder leer");
     if (s) scherben.push(s);
   }
 
@@ -139,7 +181,10 @@ export function bestandSchreiben(store, raum, neuerBestandRoh, opt = {}) {
      erwarteten Stand beide bestehen: Beide lasen Stand N, beide schrieben
      N+1, und die Monatsscherbe des einen ging verloren, obwohl beide 200
      bekamen. Wer die Sperre schon hält (ein Endpunkt, der Lesen, Prüfen und
-     Schreiben gemeinsam schützt), kommt ohne Warten durch. */
+     Schreiben gemeinsam schützt), kommt ohne Warten durch — deshalb darf
+     eine solche gesperrte Arbeit bestandSchreiben nie nebeneinander
+     aufrufen (Promise.all), sondern nur nacheinander: Der Wiedereintritt
+     lässt beide sofort durch, und sie liefen gegeneinander. */
   return unterRaumsperre(raum, () => bestandSchreibenGesperrt(store, raum, neuerBestandRoh, opt));
 }
 
@@ -155,36 +200,87 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
      wird sie verworfen; ein Altinhalt verschwindet beim nächsten Schreiben.
      Ebenso session am Betrieb (Commit D1c). */
   const neuerBestand = ohneSitzung(neuerBestandRoh);
-  const zeigerRoh = await store.get(STAND_ZEIGER(raum), { type: "json" }).catch(() => null);
-  const aktuellerStand = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr))
-    ? Number(zeigerRoh.nr) : null;
+
+  /* Alles, was hier über den gespeicherten Stand gelesen wird, wird streng
+     gelesen: Ein unlesbarer Zeiger, Kern oder Vermerk bricht ab, statt als
+     „gibt es nicht" durchzugehen. Bis November 2026 machte `.catch(() =>
+     null)` aus einem beschädigten Zeiger einen ersten Schreibvorgang. */
+  const streng = async (was, arbeit) => {
+    try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
+  };
+  const zeigerRoh = await streng("Standzeiger", () => store.get(STAND_ZEIGER(raum), { type: "json" }));
+  const zeiger = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr)) ? Number(zeigerRoh.nr) : null;
+  const kernMeta = await streng("Kern", () => store.getMetadata(kernSchluessel(raum)));
+  const kernStand = kernMeta && Number.isFinite(Number(kernMeta.metadata?.stand))
+    ? Number(kernMeta.metadata.stand) : null;
 
   const zNeu = zerlegen(neuerBestand);
   const abdNeu = abdruecke(zNeu);
 
   /* --- Erster Schreibvorgang oder Übernahme eines unzerlegten Betriebs --- */
-  if (aktuellerStand === null) {
-    return schreibeAlles(store, raum, zNeu, abdNeu, 1, durch, { neuAngelegt: true });
+  if (!kernMeta) {
+    return schreibeAlles(store, raum, zNeu, abdNeu, (zeiger ?? 0) + 1, durch,
+      { neuAngelegt: true, abdVorher: null });
   }
 
-  const abdAktuell = (await store.get(STAND(raum, aktuellerStand), { type: "json" })
-    .catch(() => null))?.abdruecke || null;
+  /* --- Wiederanlauf nach einem Abbruch ---
+
+     Geschrieben wird in der Reihenfolge Kern (mit dem neuen Stand in den
+     Metadaten), Scherben, Vermerk, Zeiger. Bricht der Prozess dazwischen ab
+     (Absturz, Stromausfall, harter Neustart), steht im Kern Stand N+1, der
+     Zeiger aber noch auf N, und der Vermerk N+1 fehlt. Die Leser bekamen
+     danach N+1 als Stand, das Schreiben verglich mit N — und jeder einzelne
+     Stempel endete von da an in einem Konflikt, für immer.
+
+     Jetzt gilt: Was auf der Platte liegt, ist der Stand. Passen Kern,
+     Zeiger, Vermerk und die vorhandenen Scherben nicht zusammen, wird der
+     Vermerk aus dem tatsächlich Gespeicherten neu berechnet und der Zeiger
+     nachgezogen. Verloren geht dabei nichts: Weder wird etwas gelöscht noch
+     etwas zurückgesetzt, und der abgebrochene Schreibvorgang hat nie eine
+     Erfolgsmeldung bekommen. Unter der Raumsperre und der Prozesssperre
+     kann eine solche Lücke nur von einem Abbruch stammen. */
+  let aktuellerStand = Math.max(kernStand ?? 0, zeiger ?? 0);
+  let abdAktuell = aktuellerStand > 0
+    ? (await streng(`Vermerk ${aktuellerStand}`,
+      () => store.get(STAND(raum, aktuellerStand), { type: "json" })))?.abdruecke || null
+    : null;
+  const { blobs: vorhandene } = await streng("Verzeichnis der Scherben",
+    () => store.list({ prefix: `scherbe:${raum}:` }));
+  const unbekannt = abdAktuell
+    ? vorhandene.some((b) => !(scherbenKennung(raum, b.key) in abdAktuell)) : true;
+  if (aktuellerStand === 0 || kernStand !== aktuellerStand || zeiger !== aktuellerStand
+      || !abdAktuell || unbekannt) {
+    if (aktuellerStand === 0) aktuellerStand = 1;
+    const ist = await bestandLesenStreng(store, raum);
+    const zIst = zerlegen(ohneSitzung(ist.bestand));
+    abdAktuell = abdruecke(zIst);
+    const zeit = new Date().toISOString();
+    if (kernStand !== aktuellerStand) {
+      await store.setJSON(kernSchluessel(raum), zIst.kern,
+        { metadata: { ...(kernMeta.metadata || {}), stand: aktuellerStand } });
+    }
+    await store.setJSON(STAND(raum, aktuellerStand),
+      { abdruecke: abdAktuell, zeit, durch: "Wiederanlauf nach Abbruch" });
+    await store.setJSON(STAND_ZEIGER(raum), { nr: aktuellerStand, zeit });
+    console.warn(`Bestand ${raum}: Stand nach Abbruch angeglichen (Kern ${kernStand}, Zeiger ${zeiger} → ${aktuellerStand})`);
+  }
 
   /* --- Kein Stand mitgeschickt: schreiben ohne Abgleich --- */
   if (erwarteterStand === null || erwarteterStand === undefined
       || String(erwarteterStand) === String(aktuellerStand)) {
-    const geaendert = abdAktuell ? abweichende(abdAktuell, abdNeu) : null;
     return schreibeAlles(store, raum, zNeu, abdNeu, aktuellerStand + 1, durch,
-      { nurDiese: geaendert });
+      { nurDiese: abweichende(abdAktuell, abdNeu), abdVorher: abdAktuell });
   }
 
   /* --- Der Stand ist veraltet: Drei-Wege-Abgleich --- */
-  const abdBasis = (await store.get(STAND(raum, Number(erwarteterStand)), { type: "json" })
-    .catch(() => null))?.abdruecke || null;
+  const abdBasis = Number.isFinite(Number(erwarteterStand))
+    ? (await streng(`Vermerk ${erwarteterStand}`,
+      () => store.get(STAND(raum, Number(erwarteterStand)), { type: "json" })))?.abdruecke || null
+    : null;
 
-  const jetzt = await bestandLesen(store, raum);
+  const jetzt = await bestandLesenStreng(store, raum);
 
-  if (!abdBasis || !abdAktuell) {
+  if (!abdBasis) {
     /* Ohne Ausgangspunkt lässt sich nichts abgleichen — dann gilt die alte,
        strenge Regel. Passiert nur, wenn jemand sehr lange offen hatte. */
     return { ok: false, grund: "konflikt", streit: null,
@@ -220,8 +316,21 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   const zusammen = { kern: kernNimmt, scherben };
   const abdZusammen = abdruecke(zusammen);
   const erg = await schreibeAlles(store, raum, zusammen, abdZusammen,
-    aktuellerStand + 1, durch, { nurDiese: abweichende(abdAktuell, abdZusammen) });
+    aktuellerStand + 1, durch, { nurDiese: abweichende(abdAktuell, abdZusammen), abdVorher: abdAktuell });
   return { ...erg, zusammengefuehrt: [...meine].map(monatAusKennung) };
+}
+
+/** Aus dem Ablageschlüssel einer Scherbe ihre Kennung „mandantId::monat". */
+function scherbenKennung(raum, schluessel) {
+  const rest = String(schluessel).slice(`scherbe:${raum}:`.length);
+  const i = rest.lastIndexOf(":");
+  return i < 0 ? rest : `${rest.slice(0, i)}::${rest.slice(i + 1)}`;
+}
+
+/** Aus der Kennung „mandantId::monat" der Ablageschlüssel. */
+function scherbenSchluesselAus(raum, id) {
+  const i = id.lastIndexOf("::");
+  return scherbenSchluessel(raum, id.slice(0, i), id.slice(i + 2));
 }
 
 /** Schreibt Kern und Scherben. `nurDiese` begrenzt auf das Geänderte. */
@@ -229,6 +338,33 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
   const zeit = new Date().toISOString();
   const nur = opt.nurDiese ? new Set(opt.nurDiese) : null;
   let geschrieben = 0;
+
+  /* Welche Scherben dieser Schreibvorgang bewusst entfernt: nur solche, die
+     im bisherigen Stand (abdVorher) bekannt waren und im neuen fehlen.
+
+     Bis November 2026 wurde stattdessen alles gelöscht, was im Verzeichnis
+     lag und im neuen Stand fehlte. Las ein Schreiber eine Scherbe nicht —
+     beschädigt, kurz nicht erreichbar —, baute er den neuen Stand ohne sie,
+     und hier verschwand sie dann endgültig. Jetzt geht nur weg, was der
+     vorige Stand kannte; eine Scherbe, die niemand kennt, bleibt liegen.
+     Und jede zu löschende wird vorher noch einmal gelesen: Ist sie nicht
+     lesbar, bricht der Vorgang ab, bevor irgendetwas geschrieben ist.
+
+     Warum überhaupt löschen: Wird ein Betrieb ersetzt und der neue Stand
+     berührt einen Monat gar nicht, bliebe dessen alte Scherbe liegen und
+     würde beim nächsten Lesen wieder mit zusammengesetzt — gelöschte
+     Einträge tauchten wieder auf (aufgefallen an einem Planer, der nur den
+     September bearbeitete und einen Konflikt für den August gemeldet bekam). */
+  const weg = [];
+  if (opt.abdVorher) {
+    for (const id of Object.keys(opt.abdVorher)) {
+      if (id === "kern" || zerlegt.scherben.has(id)) continue;
+      const schluessel = scherbenSchluesselAus(raum, id);
+      try { await store.get(schluessel, { type: "json" }); }
+      catch (e) { throw unlesbar(raum, `Scherbe ${schluessel}`, e); }
+      weg.push(schluessel);
+    }
+  }
 
   if (!nur || nur.has("kern")) {
     await store.setJSON(kernSchluessel(raum), zerlegt.kern,
@@ -247,22 +383,7 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
     geschrieben++;
   }
 
-  /* Verwaiste Scherben entfernen — immer, nicht nur beim vollständigen
-     Schreiben.
-
-     Das stand zuerst hinter `if (!nur)`, und der Fehler war heimtückisch:
-     Wird ein Betrieb ersetzt und der neue Stand berührt einen Monat gar
-     nicht, blieb dessen alte Scherbe liegen. Beim nächsten Lesen wurde sie
-     mit zusammengesetzt — gelöschte Einträge tauchten wieder auf, und der
-     Abgleich meldete Konflikte in Monaten, die niemand angefasst hatte.
-
-     Aufgefallen ist es an genau dieser Stelle: Ein Planer, der nur den
-     September bearbeitete, bekam einen Konflikt für den August gemeldet. */
-  const { blobs } = await store.list({ prefix: `scherbe:${raum}:` })
-    .catch(() => ({ blobs: [] }));
-  const behalten = new Set([...zerlegt.scherben.values()]
-    .map((s) => scherbenSchluessel(raum, s.mandantId, s.monat)));
-  for (const b of blobs) if (!behalten.has(b.key)) await store.delete(b.key).catch(() => {});
+  for (const schluessel of weg) await store.delete(schluessel);
 
   await store.setJSON(STAND(raum, neuerStand), { abdruecke: abd, zeit, durch });
   await store.setJSON(STAND_ZEIGER(raum), { nr: neuerStand, zeit });
@@ -290,8 +411,10 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
 
 /** Gibt es diesen Betrieb schon? Für die Raumanlage. */
 export async function raumBelegt(store, raum) {
-  const kern = await store.getMetadata(kernSchluessel(raum)).catch(() => null);
+  /* Nicht lesbar heißt belegt: Ein beschädigter Kern ist ein Raum, den es
+     gibt — „frei" würde ihn beim Anlegen überschreiben. */
+  const kern = await store.getMetadata(kernSchluessel(raum)).catch(() => true);
   if (kern) return true;
-  const alt = await store.getMetadata(ALT(raum)).catch(() => null);
+  const alt = await store.getMetadata(ALT(raum)).catch(() => true);
   return !!alt;
 }

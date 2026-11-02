@@ -59,12 +59,35 @@ PID übernommen, lebende nicht, fremder Rechner nach Puls, Freigabe nur der eige
 Konflikt → 200, Stempel und fremde Änderung gespeichert. Protokollzählung angepasst (3 konflikt, 10 wiederholt,
 5 erfolg, 2 abgewiesen). Vorher (alter Code) schlagen C, H und die Protokollzählung fehl.
 
+## Auflagen aus dem unabhängigen Review (Runde 2)
+
+Alle neuen Tests auf dem Stand vor dieser Runde (063b021) ausgeführt: **14 von 14 rot**, jeweils aus dem
+gemeinten Grund. Für den Rückbau-Test wurde im alten `provisionierung.mjs` nur `export` vor `zurueckrollen` gesetzt,
+damit er die Sperre prüft und nicht an einem fehlenden Export scheitert. Nachher alle grün.
+
+| Nr | Befund | Umsetzung | Test (vorher → nachher) |
+|---|---|---|---|
+| 1 | `bestandLesen` übergeht Lese-/List-Fehler; der Schreibweg baut ohne die Scherbe, die Waisenbereinigung löscht sie | `bestandLesenStreng` (wirft `BESTAND_UNLESBAR` → 503, es wird nichts geschrieben) in allen Schreibwegen und im Abgleich; Zeiger, Kern und Vermerk werden streng gelesen. Gelöscht werden nur Scherben, die der bisherige Stand-Abdruck kennt und die der Schreiber weglässt; jede wird vorher noch einmal gelesen (unlesbar → Abbruch vor dem ersten Schreiben). `raumBelegt`: unlesbar heißt belegt. | `lesefehler.test.js`: beschädigte Scherbe + Stempel / PUT / Zeit bestätigen: 200 und Datei weg → 503, Datei unverändert. List-Fehler + Stempel / PUT: 200 und Monat überschrieben → 503, nichts verloren |
+| 2 | Löschlauf ungesperrt | `aufraeumen.mjs`: `unterRaumsperre(raum, () => raumLoeschen(…))` | `loeschsperre.test.js`: Löschlauf während eines Schreibers: Waisen `stand:…` → keine |
+| 3 | Provisionierung: Belegt-Prüfung, Anlegen und Rückbau ungesperrt | Prüfen und Anlegen zusammen unter der Sperre; `zurueckrollen` unter der Sperre (für den Test exportiert) | zwei gleichzeitige Anlagen: `[true, true]` → genau eine, die andere `belegt`. Rückbau während eines Schreibers: Waisen → keine |
+| 4 | Abbruch zwischen Kern und Zeiger → danach jeder Stempel 409; Herzschlag-Fehler → sofortiges `exit` | (a) „verloren“ erst nach 3 Fehlschlägen in Folge (Takt 5 s statt 10 s, also 15 s < 30 s Veraltungsgrenze); eine Sperre, die nachweislich einem anderen gehört, sofort. (b) Bei Verlust: `schreibstopp` (neue Schreibvorgänge → 503), laufende höchstens 10 s abwarten (`alleFrei`), dann `exit(1)`. (c) Beim Schreiben unter der Sperre: Kern-Stand, Zeiger, Vermerk und vorhandene Scherben müssen zusammenpassen; sonst wird der Vermerk aus dem tatsächlich Gespeicherten (streng gelesen) neu berechnet und der Zeiger nachgezogen. Es wird nichts gelöscht und nichts zurückgesetzt. | simulierter Abbruch vor Vermerk/Zeiger, danach Stempel: 409 → 200; der frühere Stempel und die halb geschriebene Leitungsänderung bleiben, der nächste Stempel ebenfalls 200. Herzschlag-Aussetzer: sofort verloren → toleriert; dauerhaft weg → genau eine Meldung. Schreibstopp/alleFrei (neu) |
+| 5 | Kein Wächter für lange gehaltene Sperren | Wächter (30 s): Fehlerprotokoll und `sperrZustand().gesund = false`; `/gesund` antwortet dann 503 `{status: "gestört"}`, ebenso während eines Schreibstopps | Baustein-Test Wächter (neu) |
+| 6 | Grenze des Wiedereintritts | Kommentar in `raumsperre.mjs` und `bestandSchreiben`: in einer gesperrten Arbeit nie parallel schreiben (kein `Promise.all`) | — |
+| 9 | `konten` (Sammelblob) ohne Sperre; Sicherung ohne konsistente Momentaufnahme | `raumloeschung.mjs`: Lesen, Ändern, Schreiben von `konten` unter der festen Sperre `@konten` (Reihenfolge immer erst der Raum, dann `@konten`). `POST /api/sicherung`: strenges Lesen und Ablegen unter der Raumsperre | zwei gleichzeitige Löschungen: `['c1','c3']` → `['c3']`. Sicherung während eines PUT: `{a:false, b:true}` (Mischstand) → beide neu |
+
+Regression nachher (lokal): 33 vitest-Dateien **950/950**; `scherben.mjs` 19/19; Serverlauf zeiterfassung 38/38, geo
+14/14, rechte 147/147, sicherungen 28/28, erstbefuellung 29/29; `server.test.js` 17/18 (bekannter Windows-Fall SIGTERM);
+`tsc` sauber; eslint 0 Fehler (331 Warnungen wie vorher). Lastprobe R7 erneut: 200 × 200, 0 Verluste, Median 304 ms,
+p95 778 ms, max 1372 ms.
+
 ## Offene Punkte
 
-- `server/lib/aufraeumen.mjs` (Löschlauf Testbetriebe) und `server/lib/provisionierung.mjs` (Rückbau) rufen
-  `raumLoeschen` ohne Raumsperre (Dateien außerhalb des Pakets). `bestandSchreiben` in der Provisionierung ist gesperrt.
 - Werkzeuge unter `werkzeug/` schreiben direkt in die Ablage, an Raum- und Prozesssperre vorbei.
-- Lesen bleibt sperrfrei; ein Leser kann einen halb geschriebenen Stand sehen (wie bisher).
-- Durchsatz: unter der Sperre wird der ganze Bestand gelesen und geschrieben; p95 von 848 ms bei Bündeln zu 10 unter
-  Windows. Auf Linux/ext4 schneller zu erwarten, nicht gemessen.
-- Prozesssperre bei hart beendetem Vorgänger-Container: Start bis ~35 s verzögert (Beobachtung des Pulses).
+- Lesen bleibt sperrfrei; ein Leser (GET) kann einen halb geschriebenen Stand sehen. Er wird dabei nur angezeigt,
+  nicht zurückgeschrieben: Jeder Schreibweg liest unter der Sperre neu.
+- Durchsatz: Unter der Sperre wird der ganze Bestand gelesen und geschrieben. Bei Bündeln zu 10 liegt p95 unter Windows
+  bei 778–848 ms. Unter Linux/ext4 ist es vermutlich schneller, gemessen wurde das nicht.
+- Prozesssperre nach hartem Ende des Vorgänger-Containers: Der Start verzögert sich um bis zu ~35 s, weil der Herzschlag
+  beobachtet wird. Die Wartezeit in `deploy.sh` muss deshalb ≥ 60 s sein (gehört zu WP-31).
+- `/gesund` meldet jetzt 503, solange eine Schreibarbeit über dem Wächter hängt oder ein Schreibstopp gilt. Wie Docker
+  oder Caddy darauf reagieren (Neustart?), steht in `deploy/`, das nicht zu diesem Paket gehört.

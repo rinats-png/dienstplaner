@@ -304,6 +304,38 @@ describe("Raumsperre — Bausteine", () => {
     expect(await R.unterRaumsperre("f", async () => "weiter", { zeitgrenzeMs: 200 })).toBe("weiter");
   });
 
+  it("Wächter: eine Arbeit, die die Sperre zu lange hält, macht den Zustand ungesund — bis sie fertig ist", async () => {
+    expect(R.sperrZustand().gesund).toBe(true);
+    const lang = R.unterRaumsperre("w", async () => { await warte(120); }, { waechterMs: 30 });
+    await warte(70);
+    const mitten = R.sperrZustand();
+    expect(mitten.gesund).toBe(false);
+    expect(mitten.haengend).toEqual(["w"]);
+    await lang;
+    expect(R.sperrZustand().gesund).toBe(true);
+  });
+
+  it("Schreibstopp: neue Sperren werden abgewiesen, laufende dürfen fertig werden, alleFrei wartet auf sie", async () => {
+    const spur = [];
+    const laufend = R.unterRaumsperre("s", async () => {
+      await warte(80);
+      /* Wiedereintritt in der laufenden Arbeit bleibt erlaubt. */
+      await R.unterRaumsperre("s", async () => spur.push("innen"));
+      spur.push("fertig");
+    });
+    await warte(10);
+    R.schreibstopp("Prüfung");
+    try {
+      await expect(R.unterRaumsperre("anderer", async () => spur.push("neu")))
+        .rejects.toMatchObject({ code: R.SPERRE_GESTOPPT });
+      expect(R.sperrZustand().gesund).toBe(false);
+      expect(await R.alleFrei(2000)).toBe(true);
+      await laufend;
+      expect(spur).toEqual(["innen", "fertig"]);
+    } finally { R.schreibstoppAufheben(); }
+    expect(await R.unterRaumsperre("anderer", async () => "wieder")).toBe("wieder");
+  });
+
   it("nach getaner Arbeit gilt die Sperre nicht mehr als gehalten — auch nicht in später laufenden Folgen", async () => {
     let spaeter;
     await R.unterRaumsperre("h", async () => {

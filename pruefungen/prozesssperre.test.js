@@ -153,4 +153,27 @@ describe("Bausteine der Prozesssperre", () => {
     const inhalt = JSON.parse(await readFile(path.join(ordner, ".prozess"), "utf8"));
     expect(inhalt.pid).toBe(process.ppid);
   });
+
+  it("Herzschlag: ein kurzer Aussetzer ist kein Verlust, drei Fehlschläge in Folge sind einer", async () => {
+    const datei = path.join(ordner, ".prozess");
+    await rm(datei, { force: true });
+    const verloren = [];
+    const s = await P.ablageBelegen(ordner, { pulsMs: 40, verloren: (g) => verloren.push(g) });
+    expect(s.ok).toBe(true);
+    const inhalt = await readFile(datei, "utf8");
+
+    /* Ein Aussetzer: Die Datei ist für etwa einen Herzschlag nicht lesbar. */
+    await rm(datei);
+    await new Promise((w) => setTimeout(w, 50));
+    await writeFile(datei, inhalt);
+    await new Promise((w) => setTimeout(w, 200));
+    expect(verloren, "ein einzelner Fehlschlag beendete den Herzschlag").toEqual([]);
+
+    /* Dauerhaft weg: nach drei Fehlschlägen verloren — genau einmal gemeldet. */
+    await rm(datei);
+    await new Promise((w) => setTimeout(w, 400));
+    expect(verloren).toHaveLength(1);
+    expect(verloren[0]).toMatch(/3 Herzschläge/);
+    await s.freigeben();
+  });
 });

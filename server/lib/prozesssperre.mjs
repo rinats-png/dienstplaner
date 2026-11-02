@@ -19,7 +19,7 @@
 
    Ein anderer Rechner (ein zweiter Container auf demselben Datenordner):
    Dessen PIDs lassen sich von hier aus nicht prüfen. Dafür gibt es den
-   Puls — der Halter frischt alle zehn Sekunden die Änderungszeit der Datei
+   Puls — der Halter frischt alle fünf Sekunden die Änderungszeit der Datei
    auf. Bleibt sie länger als dreißig Sekunden stehen, gilt die Sperre als
    veraltet. Ist sie frischer, wird eine Weile beobachtet: Rückt sie vor,
    lebt der Halter, und der Start wird verweigert; bleibt sie stehen, bis
@@ -47,7 +47,9 @@ import path from "node:path";
 
 export const SPERRDATEI = ".prozess";
 /** Alle so viele Millisekunden frischt der Halter die Änderungszeit auf. */
-export const PULS_MS = 10_000;
+export const PULS_MS = 5_000;
+/** So viele Herzschläge in Folge dürfen scheitern, bevor die Sperre als verloren gilt. */
+export const FEHLVERSUCHE = 3;
 /** Älter als das, und der Puls ist ausgeblieben. */
 export const VERALTET_MS = 30_000;
 /** So lange wird eine fremde, noch frische Sperre höchstens beobachtet. */
@@ -115,14 +117,14 @@ const beschreibung = (h) => (h
  * Belegt die Ablage für diesen Prozess.
  *
  * @param {string} wurzel  CENTRIC_DATEN
- * @param {{ puls?: boolean, pulsMs?: number, veraltetMs?: number, wartenMs?: number,
+ * @param {{ puls?: boolean, pulsMs?: number, veraltetMs?: number, wartenMs?: number, fehlversuche?: number,
  *   verloren?: (grund: string) => void }} [o]
  * @returns {Promise<{ ok: boolean, grund?: string, halter?: any, datei?: string, uebernommen?: boolean,
  *   freigeben?: () => Promise<void>, freigebenSofort?: () => void }>}
  *   ok: true mit freigeben/freigebenSofort, sonst ok: false mit grund und halter
  */
 export async function ablageBelegen(wurzel, { puls = true, pulsMs = PULS_MS, veraltetMs = VERALTET_MS,
-  wartenMs = WARTEN_MS, verloren = null } = {}) {
+  wartenMs = WARTEN_MS, fehlversuche = FEHLVERSUCHE, verloren = null } = {}) {
   await mkdir(wurzel, { recursive: true });
   const datei = path.join(wurzel, SPERRDATEI);
   const eigen = { pid: process.pid, start: new Date().toISOString(), rechner: hostname() };
@@ -133,7 +135,7 @@ export async function ablageBelegen(wurzel, { puls = true, pulsMs = PULS_MS, ver
     try {
       const fh = await open(datei, "wx");
       try { await fh.writeFile(JSON.stringify(eigen)); } finally { await fh.close(); }
-      return belegt(datei, eigen, uebernommen, { puls, pulsMs, verloren });
+      return belegt(datei, eigen, uebernommen, { puls, pulsMs, fehlversuche, verloren });
     } catch (e) {
       if (/** @type {any} */ (e).code !== "EEXIST") throw e;
     }
@@ -166,25 +168,52 @@ export async function ablageBelegen(wurzel, { puls = true, pulsMs = PULS_MS, ver
     grund: `Ablage ${wurzel} ist belegt: Die Sperre ließ sich nicht übernehmen.` };
 }
 
-function belegt(datei, eigen, uebernommen, { puls, pulsMs, verloren }) {
+function belegt(datei, eigen, uebernommen, { puls, pulsMs, fehlversuche, verloren }) {
   const istMeine = (roh) => {
     try { const h = JSON.parse(roh); return h.pid === eigen.pid && h.start === eigen.start; }
     catch { return false; }
   };
   let uhr = null;
   if (puls) {
+    /* Ein einzelner Lesefehler ist noch kein Verlust — ein kurzer Aussetzer
+       der Platte würde sonst den ganzen Server beenden, womöglich mitten in
+       einem Schreibvorgang. Erst nach `fehlversuche` Fehlschlägen in Folge
+       gilt die Sperre als verloren; bei fünf Sekunden Takt sind das fünfzehn
+       Sekunden, also deutlich vor der Grenze, ab der ein anderer Prozess die
+       Sperre als veraltet übernähme (VERALTET_MS). Sofort verloren ist sie
+       nur, wenn sie nachweislich einem anderen Prozess gehört. */
+    let fehlschlaege = 0;
     uhr = setInterval(async () => {
+      let roh;
       try {
-        const roh = await readFile(datei, "utf8");
-        if (!istMeine(roh)) throw new Error("Sperre gehört einem anderen Prozess");
+        roh = await readFile(datei, "utf8");
+      } catch (e) {
+        roh = null;
+        fehlschlaege += 1;
+        if (fehlschlaege < fehlversuche) return;
+        clearInterval(uhr);
+        if (verloren) verloren(`${fehlschlaege} Herzschläge in Folge gescheitert: `
+          + String(/** @type {any} */ (e).message || e));
+        return;
+      }
+      if (!istMeine(roh)) {
+        /* Die Sperre gehört jemand anderem — dann schreiben womöglich zwei
+           Prozesse. Das meldet der Aufrufer (server.mjs hält das Schreiben
+           an und beendet sich); hier wird nur nicht weiter gepulst. */
+        clearInterval(uhr);
+        if (verloren) verloren("Sperre gehört einem anderen Prozess");
+        return;
+      }
+      try {
         const t = new Date();
         await utimes(datei, t, t);
+        fehlschlaege = 0;
       } catch (e) {
-        /* Die Sperre ist weg oder gehört jemand anderem — dann schreiben
-           womöglich zwei Prozesse. Das meldet der Aufrufer (server.mjs
-           beendet sich); hier wird nur nicht weiter gepulst. */
+        fehlschlaege += 1;
+        if (fehlschlaege < fehlversuche) return;
         clearInterval(uhr);
-        if (verloren) verloren(String(/** @type {any} */ (e).message || e));
+        if (verloren) verloren(`${fehlschlaege} Herzschläge in Folge gescheitert: `
+          + String(/** @type {any} */ (e).message || e));
       }
     }, pulsMs);
     uhr.unref();

@@ -35,6 +35,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen } from "./server/lib/prozesssperre.mjs";
+import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -344,10 +345,22 @@ async function statisch(req, res, pfad) {
    Hält ein lebender Prozess die Ablage, startet dieser hier nicht: kein
    Port, kein Löschlauf, kein einziger Schreibvorgang. Geht die Sperre im
    Betrieb verloren (übernommen, weil der Puls ausblieb), beendet sich der
-   Prozess lieber, als neben einem zweiten weiterzuschreiben. */
+   Prozess lieber, als neben einem zweiten weiterzuschreiben.
+
+   Aber nicht mitten in einem Schreibvorgang: Ein sofortiges process.exit
+   zwischen Kern und Standzeiger hinterließ einen halben Stand. Deshalb in
+   drei Schritten — keine neuen Schreibvorgänge mehr (503, raumsperre.mjs
+   schreibstopp), die laufenden höchstens VERLUST_WARTEN_MS lang zu Ende
+   kommen lassen, dann beenden. Die Prozesssperre selbst wartet ohnehin
+   drei Fehlschläge ab, bevor sie „verloren" meldet (prozesssperre.mjs). */
+const VERLUST_WARTEN_MS = 10_000;
 const ablagesperre = await ablageBelegen(ablageWurzel(), {
-  verloren: (grund) => {
-    console.error(`Ablagesperre verloren (${grund}) — Prozess wird beendet, damit nicht zwei schreiben.`);
+  verloren: async (grund) => {
+    console.error(`Ablagesperre verloren (${grund}) — keine neuen Schreibvorgänge, `
+      + "laufende werden abgewartet, dann wird der Prozess beendet.");
+    schreibstopp(`Ablagesperre verloren: ${grund}`);
+    const frei = await alleFrei(VERLUST_WARTEN_MS);
+    if (!frei) console.error(`Nach ${VERLUST_WARTEN_MS} ms noch Schreibvorgänge offen — Beenden trotzdem.`);
     process.exit(1);
   },
 });
@@ -366,7 +379,16 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://x");
     const pfad = url.pathname;
 
-    if (pfad === "/gesund") { json(res, 200, { status: "ok" }); return; }
+    /* Gesund heißt auch: keine Schreibarbeit hängt über dem Wächter der
+       Raumsperre, und es gilt kein Schreibstopp (raumsperre.mjs). Dann
+       antwortet /gesund 503 — der Prozess läuft, aber er schreibt nicht
+       verlässlich. */
+    if (pfad === "/gesund") {
+      const z = sperrZustand();
+      if (z.gesund) json(res, 200, { status: "ok" });
+      else json(res, 503, { status: "gestört", haengend: z.haengend.length, schreibstopp: !!z.gestoppt });
+      return;
+    }
 
     const route = routeFuer(routen, pfad);
     if (route) {

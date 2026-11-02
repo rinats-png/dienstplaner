@@ -12,7 +12,7 @@
 
    Hier steht die Reihe dagegen: je Raum ein Versprechen, an das sich jeder
    Schreiber hinten anhängt. Dasselbe Muster wie `nacheinander` in
-   accounts.mjs, mit drei Ergänzungen:
+   accounts.mjs, mit diesen Ergänzungen:
 
    Eine Zeitgrenze. Wer zu lange auf seinen Vorgänger wartet, bekommt einen
    Fehler statt zu hängen. Sein Platz in der Reihe wird dabei sofort frei —
@@ -27,6 +27,22 @@
    erlöst. Die Kennzeichnung erlischt mit dem Ende der Arbeit: Ein
    Hintergrundvorgang, der aus der gesperrten Arbeit heraus gestartet wurde
    und später schreibt, reiht sich wieder gewöhnlich ein.
+
+   Die Grenze des Wiedereintritts: Er schützt vor dem Warten auf sich selbst,
+   nicht vor Parallelität INNERHALB einer gesperrten Arbeit. Startet die
+   Arbeit zwei Schreibvorgänge desselben Raums nebeneinander (etwa mit
+   Promise.all), kommen beide sofort durch — und laufen gegeneinander wie
+   früher zwei ungesperrte Schreiber. Innerhalb einer gesperrten Arbeit wird
+   deshalb immer nacheinander geschrieben (await für await).
+
+   Ein Wächter. Hält eine Arbeit die Sperre länger als WAECHTER_MS, steht
+   das im Fehlerprotokoll des Prozesses, und /gesund meldet „nicht gesund"
+   (sperrZustand), bis sie fertig ist. Eine hängende Arbeit hält ihren Raum
+   auf; alle anderen Schreiber dieses Raums laufen in die Zeitgrenze.
+
+   Ein Schreibstopp. Geht die Prozesssperre verloren (prozesssperre.mjs),
+   darf dieser Prozess nichts Neues mehr anfangen: schreibstopp() weist jede
+   neue Sperre ab (→ 503), alleFrei() wartet, bis die laufenden fertig sind.
 
    Nur dieser Prozess. Die Reihe lebt im Speicher. Gegen einen zweiten
    Prozess auf derselben Ablage steht die Prozesssperre beim Start
@@ -44,14 +60,26 @@ import { AsyncLocalStorage } from "node:async_hooks";
    das hängt — und dann ist eine klare Absage besser als ein offener Browser. */
 export const SPERRE_ZEITGRENZE_MS = 15_000;
 
+/* Dreißig Sekunden hält keine gesunde Arbeit eine Raumsperre. */
+export const WAECHTER_MS = 30_000;
+
 /** Fehlercode, wenn die Zeitgrenze überschritten wurde. */
 export const SPERRE_ZEITGRENZE = "RAUMSPERRE_ZEITGRENZE";
+/** Fehlercode nach schreibstopp(): Dieser Prozess schreibt nichts Neues mehr. */
+export const SPERRE_GESTOPPT = "RAUMSPERRE_GESTOPPT";
 
 /** raum → das Versprechen, das sich erfüllt, wenn der letzte in der Reihe fertig ist */
 const reihe = new Map();
 
 /** Welche Räume der laufende Ablauf gerade hält: Map raum → { aktiv } */
 const gehalten = new AsyncLocalStorage();
+
+/** Wartende und laufende Arbeiten — für alleFrei(). */
+let offen = 0;
+/** Arbeiten, die länger als der Wächter erlaubt die Sperre halten. */
+const haengend = new Set();
+/** Grund des Schreibstopps oder null. */
+let gestoppt = null;
 
 /** Hält der laufende Ablauf die Sperre dieses Raums? */
 export function sperreGehalten(raum) {
@@ -64,21 +92,60 @@ export function sperreGehalten(raum) {
 export const offeneReihen = () => reihe.size;
 
 /**
+ * Für /gesund: gesund, solange keine Arbeit über dem Wächter hängt und
+ * kein Schreibstopp gilt.
+ * @returns {{ gesund: boolean, haengend: string[], gestoppt: string|null, offen: number }}
+ */
+export function sperrZustand() {
+  return { gesund: haengend.size === 0 && !gestoppt,
+    haengend: [...haengend].map((h) => h.raum), gestoppt, offen };
+}
+
+/** Ab jetzt keine neue Sperre mehr — laufende dürfen fertig werden. */
+export function schreibstopp(grund = "Schreibstopp") {
+  if (!gestoppt) gestoppt = String(grund);
+}
+
+/** Nur für Prüfungen: Schreibstopp aufheben. */
+export function schreibstoppAufheben() { gestoppt = null; }
+
+/**
+ * Wartet, bis keine Arbeit mehr wartet oder läuft — höchstens `maxMs`.
+ * @returns {Promise<boolean>} true, wenn alles frei ist
+ */
+export async function alleFrei(maxMs = SPERRE_ZEITGRENZE_MS) {
+  const bis = Date.now() + maxMs;
+  while (offen > 0 && Date.now() < bis) await new Promise((r) => setTimeout(r, 20));
+  return offen === 0;
+}
+
+const fehler = (text, code) => {
+  const e = /** @type {Error & {code?: string}} */ (new Error(text));
+  e.code = code;
+  return e;
+};
+
+/**
  * Führt `arbeit` unter der Sperre des Raums aus — nach allen, die vorher
  * kamen, und vor allen, die danach kommen.
  *
  * @template T
  * @param {string} raum
  * @param {() => Promise<T>|T} arbeit
- * @param {{ zeitgrenzeMs?: number }} [o]
+ * @param {{ zeitgrenzeMs?: number, waechterMs?: number }} [o]
  * @returns {Promise<T>}
  */
-export function unterRaumsperre(raum, arbeit, { zeitgrenzeMs = SPERRE_ZEITGRENZE_MS } = {}) {
+export function unterRaumsperre(raum, arbeit, { zeitgrenzeMs = SPERRE_ZEITGRENZE_MS,
+  waechterMs = WAECHTER_MS } = {}) {
   const schluessel = String(raum);
 
   /* Wiedereintritt: Der Ablauf hält diesen Raum schon. Sofort ausführen —
-     warten hieße, auf sich selbst zu warten. */
+     warten hieße, auf sich selbst zu warten. Auch nach einem Schreibstopp:
+     Das ist die laufende Arbeit, nicht eine neue. */
   if (sperreGehalten(schluessel)) return Promise.resolve().then(arbeit);
+
+  if (gestoppt)
+    return Promise.reject(fehler(`Raumsperre: ${gestoppt} — keine neuen Schreibvorgänge`, SPERRE_GESTOPPT));
 
   const davor = reihe.get(schluessel) || Promise.resolve();
   /** @type {(wert?: any) => void} */
@@ -89,16 +156,16 @@ export function unterRaumsperre(raum, arbeit, { zeitgrenzeMs = SPERRE_ZEITGRENZE
   const kette = davor.then(() => meinEnde);
   reihe.set(schluessel, kette);
   kette.then(() => { if (reihe.get(schluessel) === kette) reihe.delete(schluessel); });
+  offen += 1;
 
   return new Promise((erfuellen, verwerfen) => {
     let aufgegeben = false;
     const uhr = setTimeout(() => {
       aufgegeben = true;
+      offen -= 1;
       freigeben();
-      const e = /** @type {Error & {code?: string}} */ (new Error(
-        `Raumsperre: ${schluessel} nach ${zeitgrenzeMs} ms nicht frei geworden`));
-      e.code = SPERRE_ZEITGRENZE;
-      verwerfen(e);
+      verwerfen(fehler(`Raumsperre: ${schluessel} nach ${zeitgrenzeMs} ms nicht frei geworden`,
+        SPERRE_ZEITGRENZE));
     }, zeitgrenzeMs);
 
     davor.then(async () => {
@@ -108,12 +175,23 @@ export function unterRaumsperre(raum, arbeit, { zeitgrenzeMs = SPERRE_ZEITGRENZE
       const meine = { aktiv: true };
       const neu = new Map(aussen || []);
       neu.set(schluessel, meine);
+      const beginn = Date.now();
+      const wache = { raum: schluessel };
+      const waechter = setTimeout(() => {
+        haengend.add(wache);
+        console.error(`Raumsperre: ${schluessel} seit ${waechterMs} ms gehalten — Arbeit hängt?`);
+      }, waechterMs);
+      waechter.unref();
       try {
         erfuellen(await gehalten.run(neu, arbeit));
       } catch (e) {
         verwerfen(e);
       } finally {
+        clearTimeout(waechter);
+        if (haengend.delete(wache))
+          console.error(`Raumsperre: ${schluessel} nach ${Date.now() - beginn} ms wieder frei`);
         meine.aktiv = false;
+        offen -= 1;
         freigeben();
       }
     });

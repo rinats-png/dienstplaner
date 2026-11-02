@@ -9,8 +9,8 @@ import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGepru
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { bestandLesen, bestandSchreiben, raumBelegt, unterRaumsperre, SPERRE_ZEITGRENZE }
-  from "../lib/bestand.mjs";
+import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre,
+  SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
@@ -838,7 +838,7 @@ export default async (req, context) => {
          Zusammenführen mit einem Bestand, der nicht mehr gilt. Die
          Zustellung danach braucht die Sperre nicht. */
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
-        const jetzt = await bestandLesen(store, s.bestand);
+        const jetzt = await bestandLesenStreng(store, s.bestand);
 
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
@@ -994,7 +994,7 @@ export default async (req, context) => {
          zeigte eine Stempelzeit, die es auf dem Server nicht gab). */
       const ergebnis = await unterRaumsperre(s.bestand, async () => {
         for (let versuch = 0; versuch <= STEMPEL_WIEDERHOLUNGEN; versuch++) {
-          const mit = await bestandLesen(store, s.bestand);
+          const mit = await bestandLesenStreng(store, s.bestand);
           if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
           const bestand = mit.bestand;
           const i = Number(s.betrieb);
@@ -1132,7 +1132,7 @@ export default async (req, context) => {
          await", nicht nur „return": Sonst ginge eine überschrittene
          Zeitgrenze am catch unten vorbei und endete nicht in einer 503. */
       return await unterRaumsperre(s.bestand, async () => {
-        const mitZ = await bestandLesen(store, s.bestand);
+        const mitZ = await bestandLesenStreng(store, s.bestand);
         if (!mitZ) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         const mZ = eigenerMandant(mitZ.bestand, s);
         if (!mZ) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
@@ -1297,17 +1297,30 @@ export default async (req, context) => {
     if (pfad === "sicherung" && req.method === "POST") {
       if (!SICHERUNG_ROLLEN.includes(s.rolle))
         return antwort({ fehler: "Sicherungen legt die Leitung an.", text: absageText(s.rolle) }, 403);
-      const mit = await bestandJetzt();
-      if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
-      const ort = eigenerBetrieb(mit.bestand, s);
-      if (!ort) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
-      const bS = await bremse("sicherung", `${s.bestand}:${ort.betrieb.id}`);
+      const vorab = await bestandJetzt();
+      if (!vorab) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      const ortVorab = eigenerBetrieb(vorab.bestand, s);
+      if (!ortVorab) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const bS = await bremse("sicherung", `${s.bestand}:${ortVorab.betrieb.id}`);
       if (!bS.frei) return zuVielAntwort(bS.wartet);
       const marke = markeNeu();
-      await store.setJSON(`sicherung:${s.bestand}:${marke}`,
-        betriebsSicherung(mit.bestand, ort, { stand: mit.stand, durch: s.name || null }),
-        { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
-          mandantId: ort.betrieb.id, rolle: s.rolle } });
+      /* Die Momentaufnahme unter der Sperre des Raums und streng gelesen:
+         Ohne Sperre konnte sie mitten in einen Schreibvorgang fallen — Kern
+         und erster Monat schon neu, zweiter Monat noch alt —, und ohne
+         strenges Lesen fehlte einer unlesbaren Scherbe still in der
+         Sicherung. Eine Sicherung, die keinen Stand abbildet, den es je gab,
+         ist im Ernstfall wertlos. */
+      const ort = await unterRaumsperre(s.bestand, async () => {
+        const mit = await bestandLesenStreng(store, s.bestand);
+        const o = mit ? eigenerBetrieb(mit.bestand, s) : null;
+        if (!o) return null;
+        await store.setJSON(`sicherung:${s.bestand}:${marke}`,
+          betriebsSicherung(mit.bestand, o, { stand: mit.stand, durch: s.name || null }),
+          { metadata: { zeit: new Date().toISOString(), durch: s.name || null,
+            mandantId: o.betrieb.id, rolle: s.rolle } });
+        return o;
+      });
+      if (!ort) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
       await protokoll("sicherung", kennung(req, s), "erfolg", `${ort.betrieb.id} · ${marke}`, wer);
       await sicherungenAusduennen(store, s.bestand);
       return antwort({ ok: true, marke });
@@ -1361,7 +1374,7 @@ export default async (req, context) => {
          Ohne Sperre konnte zwischen Prüfung und Tausch jemand speichern —
          seine Arbeit fehlte dann in der Sicherung „vor Wiederherstellung". */
       return await unterRaumsperre(s.bestand, async () => {
-        const jetztGelesen = await bestandLesen(store, s.bestand);
+        const jetztGelesen = await bestandLesenStreng(store, s.bestand);
         if (!jetztGelesen) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
         if (etagW === undefined || etagW === null || String(etagW) !== String(jetztGelesen.stand))
           return antwort({ fehler: "konflikt",
@@ -1415,6 +1428,24 @@ export default async (req, context) => {
       return antwort({ fehler: "Gerade wird sehr viel gespeichert.",
         text: "Es wurde nichts gespeichert. Bitte in einigen Sekunden noch einmal versuchen.",
         code: "SPEICHERN_BELEGT" }, 503, { "retry-after": "5" });
+    }
+    /* Der Prozess hat seine Ablagesperre verloren und nimmt keine neuen
+       Schreibvorgänge mehr an (server.mjs, lib/prozesssperre.mjs). */
+    if (e && /** @type {any} */ (e).code === SPERRE_GESTOPPT) {
+      await protokoll("fehler", kennung(req, null), pfad, "Raumsperre: Schreibstopp").catch(() => {});
+      return antwort({ fehler: "Der Server startet gerade neu.",
+        text: "Es wurde nichts gespeichert. Bitte in einigen Sekunden noch einmal versuchen.",
+        code: "SPEICHERN_GESTOPPT" }, 503, { "retry-after": "10" });
+    }
+    /* Ein Teil des gespeicherten Bestands ist nicht lesbar (lib/bestand.mjs,
+       bestandLesenStreng). Geschrieben wurde nichts — wer jetzt schriebe,
+       schriebe einen Bestand ohne diesen Teil, und der Teil ginge verloren. */
+    if (e && /** @type {any} */ (e).code === BESTAND_UNLESBAR) {
+      await protokoll("fehler", kennung(req, null), pfad, String(e.message || e).slice(0, 200)).catch(() => {});
+      console.error(`${pfad}: ${String(e.message || e).slice(0, 300)}`);
+      return antwort({ fehler: "Der gespeicherte Stand ist gerade nicht vollständig lesbar.",
+        text: "Es wurde nichts gespeichert. Bitte die Betriebsleitung bzw. den Betreiber verständigen.",
+        code: "BESTAND_UNLESBAR" }, 503);
     }
     /* Nach außen nur, dass es schiefging. Die Einzelheiten bleiben im
        Protokoll — eine Fehlermeldung mit Innenleben ist eine Landkarte
