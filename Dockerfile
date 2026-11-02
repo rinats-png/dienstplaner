@@ -54,6 +54,12 @@ COPY server.mjs package.json ./
 # Sicherung und Wiederherstellung der Ablage (BEREITSTELLUNG.md, 5.4) — im Bild,
 # damit der VPS kein eigenes Node braucht.
 COPY werkzeug/ablage-sicherung.mjs ./werkzeug/
+# Rückweg bei unlesbarer Datei (docs/BETRIEB-SICHERUNG.md, §4a) — ebenfalls im
+# Bild, aus demselben Grund. journal-pruefen braucht ablage-pruefen, beide die
+# Ablage-Bibliothek unter server/ und ablage-sicherung (oben). Aufruf nur mit
+# angehaltenem Dienst: docker run --rm --network none --user 1000:1000 \
+#   -v "$PWD/data:/data" <bild@digest> node /app/werkzeug/ablage-pruefen.mjs …
+COPY werkzeug/ablage-pruefen.mjs werkzeug/journal-pruefen.mjs ./werkzeug/
 # Feste Proben für das Pre-Production-Gate (docs/PRE-PRODUCTION-GATE.md, 8).
 # Kein Endpunkt, kein Start, keine Argumente: Sie laufen nur, wenn jemand
 # ausdrücklich `node /app/werkzeug/staging-….mjs` im Container aufruft, und

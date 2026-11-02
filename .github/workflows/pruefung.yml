@@ -524,6 +524,12 @@ jobs:
             echo "pruefungen/ im Bild"; exit 1; fi
           docker exec centric-pruefung ls /app/werkzeug
 
+      # Rückweg bei unlesbarer Datei (WP-45b, B3): ablage-pruefen und
+      # journal-pruefen im Bild, aufgerufen wie in BETRIEB-SICHERUNG §4a
+      # (docker run, uid 1000, ohne Netz) — eigenes Wegwerf-Volume.
+      - name: Rückweg-Werkzeuge im Bild
+        run: bash pruefungen/werkzeuge-im-bild.sh "$BILD"
+
       # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
       # den echten Anfrageweg, im eigenen frischen Container.
       - name: Container frisch starten
