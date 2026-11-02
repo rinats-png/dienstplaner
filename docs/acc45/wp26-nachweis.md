@@ -17,7 +17,7 @@ Branch `acc45/security/wp26-dsgvo-server`, Basis `origin/integration/centric-com
 
 ### Auskunft (`GET /api/auskunft[?person=<id>]`)
 
-Umgesetzt in `server/funktionen/daten.mjs` und `server/lib/auskunft.mjs`.
+Umgesetzt in `server/funktionen/daten.mjs` und `server/lib/auskunft.mjs`. Die Aufbewahrungsrechnung liegt jetzt unter `server/lib/aufbewahrung.mjs`, weil das Serverbild `src/` nicht enthält; `src/aufbewahrung.js` verweist für die Oberfläche darauf.
 
 - **Ohne Angabe:** die eigene Person der Sitzung, vollständig. Dazu gehören der Personendatensatz, Stempel mit Ortsbefund
   (Koordinaten werden nicht gespeichert), Ist-Zeiten, Planabweichungen, Abwesenheiten mit Anmerkung, Anträge,

@@ -26,7 +26,7 @@
    - Niemand sonst. Der Betreiber nicht, andere Rollen nur für sich selbst.
    ========================================================================== */
 
-import { fristen } from "../../src/aufbewahrung.js";
+import { fristen } from "./aufbewahrung.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 1;

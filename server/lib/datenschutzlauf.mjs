@@ -32,7 +32,7 @@
    datenschutzlauf:letzter.
    ========================================================================== */
 
-import { raeumen, berichtstext } from "../../src/aufbewahrung.js";
+import { raeumen, berichtstext } from "./aufbewahrung.mjs";
 import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand.mjs";
 import { kontingent } from "./sicherungen.mjs";
 import { protokoll, spurAufraeumen } from "./schutz.mjs";
