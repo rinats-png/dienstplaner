@@ -164,13 +164,19 @@ describe("Wochenstundengrenze: weich, auf beiden Sichten gleich", () => {
 
 describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
   const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8").replace(/\r\n/g, "\n");
-  const start = app.indexOf("function hindernisse(m, p, d, da) {");
+  /* Seit WP-10 (Warnen statt sperren, Kette A) liefert hindernisBefunde die
+     Befunde mit Stufe; hindernisse() ist nur noch ihr Wortlaut. Harte
+     Schutzbefunde und der Alleindienst tragen sperrt: true — der Warndialog
+     bietet dafür kein „dennoch“ an (Kette B maßgeblich). */
+  const start = app.indexOf("function hindernisBefunde(m, p, d, da) {");
   const block = app.slice(start, app.indexOf("\n}\n", start));
   it("Schutz, Wochenstundengrenze und Alleindienst stehen in hindernisse()", () => {
     expect(start).toBeGreaterThan(0);
+    expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).map((b) => b.text);");
     expect(block).toContain("einsatzSchutz(p, da, d,");
-    expect(block).toContain("g.push(...schutz.hindernisse)");
+    expect(block).toMatch(/for \(const text of schutz\.hindernisse\)\s*g\.push\(\{ stufe: "recht", text, [^}]*sperrt: true \}\)/);
     expect(block).toContain("e.keinAlleindienst");
+    expect(block).toMatch(/darf nicht allein eingeteilt werden",[^}]*sperrt: true \}\)/);
     expect(block).not.toContain("e.wiedereingliederung");                // nicht mehr nur aus den Rohdaten
     expect(block).not.toContain("schutz.grenze");                        // S2a: die Grenze sperrt nicht
   });
