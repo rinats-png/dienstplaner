@@ -313,6 +313,10 @@ fehlschlag() {
 
 unerwartet() {
   local zeile="$1"
+  # set -E vererbt den Trap auch in Subshells ($(…), <(…)). Dort darf er
+  # nichts auslösen — nur die Subshell beenden; den Fehler sieht dann die
+  # Hauptshell (A2).
+  [[ "$BASHPID" == "$" ]] || exit 1
   case "$phase" in
     vor) abbruch 4 "unerwarteter Fehler in Zeile $zeile" ;;
     angehalten) alt_wieder_starten "unerwarteter Fehler in Zeile $zeile" ;;
@@ -343,13 +347,28 @@ protokoll "gesichert digest=$digest sicherung=$name"
 
 # Aufbewahrung (N4): die jüngsten BEHALTEN vollständigen Sicherungen bleiben,
 # die eben geprüfte immer; ältere vollständige werden entfernt.
-mapfile -t vollstaendig < <(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' \
-  -exec test -f '{}/FERTIG' ';' -print | sort)
-if ((${#vollstaendig[@]} > BEHALTEN)); then
-  for alt in "${vollstaendig[@]:0:${#vollstaendig[@]}-BEHALTEN}"; do
-    [[ "$(basename "$alt")" == "$name" ]] && continue
-    rm -rf -- "$alt" && protokoll "sicherung entfernt $(basename "$alt") (behalten $BEHALTEN)"
-  done
+# Robust (A2): Scheitert die Auflistung, wird übersprungen — nie gelöscht.
+# Gelöscht wird nur, was als Name genau dem Muster entspricht, direkt unter
+# $SICHERUNGEN liegt und ein FERTIG trägt.
+vollstaendig=()
+if liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' -print)"; then
+  while IFS= read -r eintrag_pfad; do
+    [[ -n "$eintrag_pfad" ]] || continue
+    kurz="$(basename -- "$eintrag_pfad")"
+    [[ "$kurz" =~ ^centric-sicherung-[0-9]{8}T[0-9]{6}Z$ ]] || continue
+    [[ -f "$SICHERUNGEN/$kurz/FERTIG" ]] || continue
+    vollstaendig+=("$kurz")
+  done <<<"$liste"
+  if ((${#vollstaendig[@]} > BEHALTEN)); then
+    mapfile -t vollstaendig < <(printf '%s\n' "${vollstaendig[@]}" | LC_ALL=C sort)
+    for kurz in "${vollstaendig[@]:0:${#vollstaendig[@]}-BEHALTEN}"; do
+      [[ "$kurz" == "$name" ]] && continue
+      rm -rf -- "${SICHERUNGEN:?}/$kurz" && protokoll "sicherung entfernt $kurz (behalten $BEHALTEN)"
+    done
+  fi
+else
+  warnung "Aufbewahrung übersprungen: Liste der Sicherungen nicht lesbar."
+  protokoll "aufbewahrung uebersprungen: find scheiterte"
 fi
 
 # --- 5. .env: nur IMAGE_DIGEST ------------------------------------------

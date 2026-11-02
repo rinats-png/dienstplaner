@@ -11,7 +11,7 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -104,7 +104,7 @@ case "$1" in
     cat >/dev/null
     if [[ -f "$z/smoke_fehler" ]]; then echo "FEHLER  GET /gesund: 500"; echo "SMOKE FEHLGESCHLAGEN (1)"; exit 1; fi
     echo "SMOKE OK" ;;
-  logs) [[ -f "$z/logs" ]] && cat "$z/logs"; true ;;
+  logs) if [[ -f "$z/logs" ]]; then exec cat "$z/logs"; fi ;;
   run)
     shift; ep=""; sich=""; alles="$*"
     while [[ $# -gt 0 ]]; do
@@ -439,6 +439,51 @@ describe.skipIf(!BASH)("Review-Auflagen WP-31", { timeout: 180000 }, () => {
     expect(r.code, r.alles).toBe(1);
     expect(r.alles).toMatch(/Log meldet X-Forwarded-For/);
     expect(containerStatus()).toBe("exited");
+  });
+
+  /* A1: Nachweis „rot vorher“ — dieselbe Lage gegen deploy.sh aus 06bdc53
+     (vor M3): Der Treffer wird dort übersehen, die Auslieferung meldet
+     Erfolg. Braucht Linux (SIGPIPE) und den Verlauf (fetch-depth: 0). */
+  const ALT_DEPLOY = (() => {
+    try {
+      return execFileSync("git", ["show", "06bdc53:deploy/deploy.sh"], { cwd: WURZEL, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    } catch { return null; }
+  })();
+  it.skipIf(FAKES_FEHLEN || ALT_DEPLOY === null)("A1: derselbe große Log gegen deploy.sh von 06bdc53 — dort übersehen (Befund belegt)", () => {
+    const altVerz = path.join(tmp, "deploy-alt");
+    mkdirSync(altVerz);
+    for (const f of readdirSync(DEPLOY)) if (/\.(sh|mjs)$/.test(f)) writeFileSync(path.join(altVerz, f), readFileSync(path.join(DEPLOY, f)));
+    writeFileSync(path.join(altVerz, "deploy.sh"), ALT_DEPLOY);
+    for (const f of readdirSync(altVerz)) chmodSync(path.join(altVerz, f), 0o755);
+    setze("logs", "WARNUNG: Anfrage mit X-Forwarded-For, aber CENTRIC_VERTRAUTE_PROXYS ist leer.\n"
+      + "x".repeat(200).concat("\n").repeat(50000));
+    const umgebung = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, STUB_DIR: p(stubDir),
+      CENTRIC_VERZ: p(verz), CENTRIC_FREIGABEN: p(path.join(verz, "FREIGEGEBENE-IMAGES.md")),
+      CENTRIC_WARTEZEIT: "90", CENTRIC_TAKT: "1", CENTRIC_NACHBEOBACHTUNG: "0" };
+    delete umgebung.IMAGE_DIGEST;
+    const r = spawnSync(BASH, [p(path.join(altVerz, "deploy.sh")), A], { encoding: "utf8", env: umgebung });
+    expect(r.status, r.stdout + r.stderr).toBe(0);                 // alt: Erfolg trotz Warnung
+    expect(r.stdout + r.stderr).not.toMatch(/Log meldet X-Forwarded-For/);
+  });
+
+  it.skipIf(FAKES_FEHLEN)("A2: find scheitert bei der Aufbewahrung — übersprungen, kein Wiederanlauf, nichts gelöscht", () => {
+    const sich = path.join(verz, "deploy-sicherungen");
+    for (let i = 1; i <= 6; i++) {
+      mkdirSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`), { recursive: true });
+      writeFileSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`, "FERTIG"), "");
+    }
+    writeFileSync(path.join(bin, "find"), `#!/usr/bin/env bash
+case "$*" in *"centric-sicherung-*"*) echo "stub: find scheitert" >&2; exit 1 ;; esac
+exec /usr/bin/find "$@"
+`);
+    chmodSync(path.join(bin, "find"), 0o755);
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.alles).toMatch(/Aufbewahrung übersprungen/);
+    expect(r.alles).not.toMatch(/Vor dem Wechsel gescheitert|unerwarteter Fehler/);
+    expect(aufrufe().split("\n").filter((z) => z.includes(" up -d"))).toHaveLength(1);
+    expect(readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-2026110"))).toHaveLength(6);
+    expect(containerBild()).toBe(ID_A);
   });
 
   it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {
