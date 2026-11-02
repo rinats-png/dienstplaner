@@ -151,3 +151,32 @@ describe("9 — Sammelblob „konten“ bei gleichzeitigen Löschungen", () => {
     expect(Object.keys(await store.get("konten", { type: "json" })).sort()).toEqual(["c3"]);
   });
 });
+
+describe("WP-45/2 — Anmeldung während der Raumlöschung", () => {
+  it("kontoVereinzeln legt kein Einzelkonto für einen gerade gelöschten Raum an", async () => {
+    const { kontoVereinzeln } = await import("../server/lib/konten.mjs");
+    await store.setJSON("konten", { x1: { bestand: "t-anmeldung", name: "X" }, x2: { bestand: "fremd", name: "Y" } });
+    /* Die Löschung hält an, sobald sie den Sammelblob liest — genau dann
+       meldet sich jemand mit dem Code x1 an. */
+    let lesend;
+    const angehalten = new Promise((r) => { lesend = r; });
+    let einmal = false;
+    const langsam = { ...store,
+      get: async (k, o) => {
+        if (k === "konten" && !einmal) {
+          einmal = true;
+          lesend();
+          await warte(150);
+        }
+        return store.get(k, o);
+      } };
+    const loeschen = L.raumLoeschen(langsam, sitzungen, "t-anmeldung");
+    await angehalten;
+    /* Aus dem Prüfablauf selbst, nicht aus der Löschung heraus — eine
+       eigene Anfrage, die die Sperren der Löschung nicht hält. */
+    const anmeldung = kontoVereinzeln(store, "x1");
+    await Promise.all([loeschen, anmeldung]);
+    expect(await store.get("konto:x1", { type: "json" }), "Code zeigt auf gelöschten Raum").toBeNull();
+    expect(Object.keys(await store.get("konten", { type: "json" }))).toEqual(["x2"]);
+  });
+});

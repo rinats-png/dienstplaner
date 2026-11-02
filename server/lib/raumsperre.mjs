@@ -68,6 +68,10 @@ export const SPERRE_ZEITGRENZE = "RAUMSPERRE_ZEITGRENZE";
 /** Fehlercode nach schreibstopp(): Dieser Prozess schreibt nichts Neues mehr. */
 export const SPERRE_GESTOPPT = "RAUMSPERRE_GESTOPPT";
 
+/** Die raumübergreifende Sperre für den Sammelblob „konten" (raumloeschung.mjs,
+    konten.mjs). Das „@" kommt in keinem Raumnamen vor. */
+export const KONTEN_SPERRE = "@konten";
+
 /** raum → das Versprechen, das sich erfüllt, wenn der letzte in der Reihe fertig ist */
 const reihe = new Map();
 

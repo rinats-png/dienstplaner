@@ -34,7 +34,7 @@ import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
-import { ablageBelegen } from "./server/lib/prozesssperre.mjs";
+import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
 import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 
@@ -353,7 +353,6 @@ async function statisch(req, res, pfad) {
    schreibstopp), die laufenden höchstens VERLUST_WARTEN_MS lang zu Ende
    kommen lassen, dann beenden. Die Prozesssperre selbst wartet ohnehin
    drei Fehlschläge ab, bevor sie „verloren" meldet (prozesssperre.mjs). */
-const VERLUST_WARTEN_MS = 10_000;
 const ablagesperre = await ablageBelegen(ablageWurzel(), {
   verloren: async (grund) => {
     console.error(`Ablagesperre verloren (${grund}) — keine neuen Schreibvorgänge, `

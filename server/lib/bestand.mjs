@@ -34,7 +34,8 @@
 
 import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
-import { unterRaumsperre } from "./raumsperre.mjs";
+import { unterRaumsperre, sperreGehalten } from "./raumsperre.mjs";
+import { createHash, randomBytes } from "node:crypto";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
    (Stempeln, PUT, Wiederherstellen …): dieselbe Sperre, dieselbe Reihe. */
@@ -91,42 +92,172 @@ function unlesbar(raum, was, e) {
   return f;
 }
 
+/* ---------------------------------------------------------------------------
+   Das Schreibjournal
+
+   Ein Schreibvorgang berührt mehrere Dateien: Kern, eine oder mehrere
+   Scherben, den Standvermerk und den Zeiger. Jede einzelne Datei schreibt
+   die Ablage atomar (ablage.mjs: Zwischendatei, fsync, umbenennen) — die
+   Folge aber war es nicht. Brach der Prozess zwischen zwei Scherben ab,
+   blieb ein Stand, den es nie gab: Ein Eintrag, der von Monat A nach
+   Monat B verschoben wurde, war in A schon weg und in B noch nicht da.
+
+   Jetzt wird jeder Schreibvorgang zuerst vollständig als eine Datei
+   abgelegt — journal:<raum>, mit allen neuen Werten, allen Löschungen und
+   einer Prüfsumme. Diese eine Datei ist der Festschreibepunkt: Liegt sie
+   da, gilt der neue Stand, auch wenn danach noch keine einzige Zieldatei
+   geschrieben ist. Dann werden die Zieldateien geschrieben und das Journal
+   gelöscht.
+
+   - Abbruch, bevor das Journal liegt: Es gilt der alte Stand, vollständig.
+   - Abbruch danach: Es gilt der neue Stand, vollständig. Jeder Leser legt
+     das Journal über das, was er gelesen hat; der nächste Schreiber
+     schreibt es zu Ende (journalAbschliessen) und löscht es.
+
+   Leser kommen ohne Sperre aus und dürfen trotzdem nie einen halben Stand
+   sehen. Sie lesen deshalb Journal, Kern und Scherben, dann noch einmal
+   Journal und Stand des Kerns. Hat sich dazwischen etwas bewegt, lesen sie
+   neu; nach einigen Versuchen warten sie auf die Sperre des Raums.
+   --------------------------------------------------------------------------- */
+
+const JOURNAL = (raum) => `journal:${raum}`;
+/** Schlüssel des Schreibjournals eines Raums (für die Raumlöschung). */
+export const journalSchluessel = JOURNAL;
+
+const pruefsummeVon = (schritte) => createHash("sha256").update(JSON.stringify(schritte)).digest("hex");
+
+/** Das Journal lesen — null, wenn keines liegt. Unlesbar oder falsche Prüfsumme: Fehler. */
+async function journalLesen(store, raum) {
+  const j = await store.get(JOURNAL(raum), { type: "json" });
+  if (!j) return null;
+  if (!j || typeof j.id !== "string" || !Array.isArray(j.schritte) || j.pruefsumme !== pruefsummeVon(j.schritte))
+    throw new Error("Journal beschädigt (Prüfsumme)");
+  return j;
+}
+
+/**
+ * Schreibt ein liegengebliebenes Journal zu Ende und löscht es. Nur unter der
+ * Sperre des Raums. Jeder Schritt ist wiederholbar — ein zweiter Abbruch
+ * mittendrin schadet nicht, der nächste Aufruf fängt einfach von vorn an.
+ * @returns {Promise<boolean>} ob es etwas zu Ende zu schreiben gab
+ */
+async function journalAbschliessen(store, raum) {
+  let j;
+  try { j = await journalLesen(store, raum); }
+  catch (e) { throw unlesbar(raum, "Schreibjournal", e); }
+  if (!j) return false;
+  await schritteAusfuehren(store, j.schritte);
+  await store.delete(JOURNAL(raum));
+  return true;
+}
+
+async function schritteAusfuehren(store, schritte) {
+  for (const s of schritte) {
+    if (s.art === "setzen") await store.setJSON(s.schluessel, s.wert, s.metadata ? { metadata: s.metadata } : undefined);
+    else if (s.art === "loeschen") await store.delete(s.schluessel);
+  }
+}
+
+/** Kern, Altbestand und Scherben so lesen, wie sie gerade auf der Platte liegen. */
+async function rohLesen(store, raum, versuch) {
+  const kern = await versuch("Kern",
+    () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }), null);
+  const alt = kern ? null : await versuch("Altbestand",
+    () => store.getWithMetadata(ALT(raum), { type: "json" }), null);
+  /** @type {Map<string, any>} */
+  const scherben = new Map();
+  if (kern) {
+    const { blobs } = await versuch("Verzeichnis der Scherben",
+      () => store.list({ prefix: `scherbe:${raum}:` }), { blobs: [] });
+    for (const b of blobs) {
+      const s = await versuch(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }), null);
+      if (s) scherben.set(b.key, s);
+      else scherben.set(b.key, undefined);           // gelistet, aber nicht (mehr) da
+    }
+  }
+  return { kern, alt, scherben };
+}
+
+/** Das Journal über das Gelesene legen: Ergebnis ist der neue, vollständige Stand. */
+function ueberlagern(roh, raum, journal) {
+  let kern = roh.kern;
+  const scherben = new Map(roh.scherben);
+  for (const s of journal.schritte) {
+    if (s.schluessel === kernSchluessel(raum)) {
+      kern = s.art === "setzen" ? { data: s.wert, metadata: s.metadata || {} } : null;
+    } else if (s.schluessel.startsWith(`scherbe:${raum}:`)) {
+      if (s.art === "setzen") scherben.set(s.schluessel, s.wert); else scherben.delete(s.schluessel);
+    }
+  }
+  return { kern, alt: kern ? null : roh.alt, scherben };
+}
+
 async function lesen(store, raum, streng) {
   /* Im strengen Lesen wird jeder Fehler zum Abbruch, im milden zur Lücke. */
   const versuch = async (was, arbeit, ersatz) => {
     try { return await arbeit(); }
     catch (e) { if (streng) throw unlesbar(raum, was, e); return ersatz; }
   };
-  const kernMit = await versuch("Kern",
-    () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }), null);
+  const journal = () => versuch("Schreibjournal", () => journalLesen(store, raum), null);
+  const kernStand = () => versuch("Kern",
+    () => store.getMetadata(kernSchluessel(raum)), null).then((m) => (m ? m.metadata?.stand ?? null : null));
 
-  if (!kernMit) {
+  /* Ein einziger Durchgang, wenn kein Schreiber dazwischenkommen kann. */
+  const einmal = async () => {
+    const j = await journal();
+    const roh = await rohLesen(store, raum, versuch);
+    return zusammenbauen(j ? ueberlagern(roh, raum, j) : roh, raum, streng);
+  };
+  if (sperreGehalten(raum)) return einmal();
+
+  /* Die Reihenfolge ist wesentlich: Stand, Journal, Inhalt, Journal, Stand.
+     Ein Schreiber legt erst das Journal, dann den Kern (mit neuem Stand),
+     dann die Scherben, und löscht das Journal zuletzt. Begann er nach dem
+     ersten Blick ins Journal, schrieb er seinen Kern auch nach dem ersten
+     Stand — dann ist er beim zweiten Blick entweder noch da (Journal) oder
+     fertig (anderer Stand). Lag sein Journal schon beim ersten Blick da und
+     ist beim zweiten noch dasselbe, ist das Gelesene samt Journal der neue
+     Stand, gleich wie weit er gekommen ist. */
+  for (let n = 0; n < 4; n++) {
+    const k1 = await kernStand();
+    const j1 = await journal();
+    const roh = await rohLesen(store, raum, versuch);
+    const j2 = await journal();
+    const k2 = await kernStand();
+    if ((j1 && j1.id) !== (j2 && j2.id)) continue;            // ein Schreibvorgang begann oder endete
+    if (j1) return zusammenbauen(ueberlagern(roh, raum, j1), raum, streng);
+    const kRoh = roh.kern ? roh.kern.metadata?.stand ?? null : null;
+    if (k1 !== k2 || kRoh !== k2) continue;                    // ein ganzer lief durch
+    return zusammenbauen(roh, raum, streng);
+  }
+  /* Es wird gerade sehr viel geschrieben: einmal unter der Sperre lesen. */
+  return unterRaumsperre(raum, einmal);
+}
+
+function zusammenbauen({ kern, alt, scherben }, raum, streng) {
+  if (!kern) {
     /* Noch nicht zerlegt? Dann liegt der Betrieb als ein Blob vor. Er wird
        hier gelesen, aber nicht angefasst — das Zerlegen geschieht beim
        ersten Schreiben, damit ein reiner Lesezugriff nichts verändert. */
-    const alt = await versuch("Altbestand",
-      () => store.getWithMetadata(ALT(raum), { type: "json" }), null);
     if (!alt) return null;
     return { bestand: alt.data, stand: "alt", zeit: alt.metadata?.zeit || null,
       durch: alt.metadata?.durch || null, unzerlegt: true };
   }
-
-  const { blobs } = await versuch("Verzeichnis der Scherben",
-    () => store.list({ prefix: `scherbe:${raum}:` }), { blobs: [] });
-  const scherben = [];
-  for (const b of blobs) {
-    const s = await versuch(`Scherbe ${b.key}`, () => store.get(b.key, { type: "json" }), null);
-    /* Gelistet, aber nicht (mehr) da: im strengen Lesen ebenfalls ein
-       Abbruch — unter der Raumsperre löscht niemand nebenher. */
-    if (!s && streng) throw unlesbar(raum, `Scherbe ${b.key}`, "verschwunden oder leer");
-    if (s) scherben.push(s);
+  const liste = [];
+  for (const [schluessel, s] of scherben) {
+    /* Gelistet, aber nicht (mehr) da: im strengen Lesen ein Abbruch —
+       unter der Raumsperre löscht niemand nebenher. */
+    if (s === undefined || s === null) {
+      if (streng) throw unlesbar(raum, `Scherbe ${schluessel}`, "verschwunden oder leer");
+      continue;
+    }
+    liste.push(s);
   }
-
   return {
-    bestand: zusammensetzen(kernMit.data, scherben),
-    stand: String(kernMit.metadata?.stand ?? 0),
-    zeit: kernMit.metadata?.zeit || null,
-    durch: kernMit.metadata?.durch || null,
+    bestand: zusammensetzen(kern.data, liste),
+    stand: String(kern.metadata?.stand ?? 0),
+    zeit: kern.metadata?.zeit || null,
+    durch: kern.metadata?.durch || null,
   };
 }
 
@@ -208,6 +339,10 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   const streng = async (was, arbeit) => {
     try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
   };
+  /* Liegt noch ein Journal von einem abgebrochenen Schreibvorgang, gilt
+     dessen Stand — er wird zuerst zu Ende geschrieben. */
+  if (await journalAbschliessen(store, raum))
+    console.warn(`Bestand ${raum}: abgebrochenen Schreibvorgang aus dem Journal zu Ende geschrieben`);
   const zeigerRoh = await streng("Standzeiger", () => store.get(STAND_ZEIGER(raum), { type: "json" }));
   const zeiger = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr)) ? Number(zeigerRoh.nr) : null;
   const kernMeta = await streng("Kern", () => store.getMetadata(kernSchluessel(raum)));
@@ -366,27 +501,29 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
     }
   }
 
-  if (!nur || nur.has("kern")) {
-    await store.setJSON(kernSchluessel(raum), zerlegt.kern,
-      { metadata: { zeit, durch, stand: neuerStand } });
-    geschrieben++;
-  } else {
-    /* Auch wenn der Kern unverändert bleibt, muss der Stand mitwandern —
-       er steht in dessen Metadaten. */
-    await store.setJSON(kernSchluessel(raum), zerlegt.kern,
-      { metadata: { zeit, durch, stand: neuerStand } });
-  }
-
+  /* Alles, was dieser Schreibvorgang ändert, als eine Liste von Schritten —
+     erst vollständig ins Journal, dann ausgeführt (siehe „Das
+     Schreibjournal" oben). Auch wenn der Kern unverändert bleibt, wird er
+     geschrieben: Der Stand steht in seinen Metadaten. */
+  /** @type {Array<{art: "setzen"|"loeschen", schluessel: string, wert?: any, metadata?: object}>} */
+  const schritte = [{ art: "setzen", schluessel: kernSchluessel(raum), wert: zerlegt.kern,
+    metadata: { zeit, durch, stand: neuerStand } }];
+  if (!nur || nur.has("kern")) geschrieben++;
   for (const [id, s] of zerlegt.scherben) {
     if (nur && !nur.has(id)) continue;
-    await store.setJSON(scherbenSchluessel(raum, s.mandantId, s.monat), s);
+    schritte.push({ art: "setzen", schluessel: scherbenSchluessel(raum, s.mandantId, s.monat), wert: s });
     geschrieben++;
   }
+  for (const schluessel of weg) schritte.push({ art: "loeschen", schluessel });
+  schritte.push({ art: "setzen", schluessel: STAND(raum, neuerStand), wert: { abdruecke: abd, zeit, durch } });
+  schritte.push({ art: "setzen", schluessel: STAND_ZEIGER(raum), wert: { nr: neuerStand, zeit } });
 
-  for (const schluessel of weg) await store.delete(schluessel);
-
-  await store.setJSON(STAND(raum, neuerStand), { abdruecke: abd, zeit, durch });
-  await store.setJSON(STAND_ZEIGER(raum), { nr: neuerStand, zeit });
+  /* Festschreiben: eine Datei, atomar und auf der Platte (ablage.mjs). Ab
+     hier gilt der neue Stand — auch nach einem Absturz. */
+  await store.setJSON(JOURNAL(raum), { id: randomBytes(8).toString("hex"), stand: neuerStand, zeit,
+    schritte, pruefsumme: pruefsummeVon(schritte) });
+  await schritteAusfuehren(store, schritte);
+  await store.delete(JOURNAL(raum));
 
   /* Alte Vermerke wegräumen — sie sind klein, aber unbegrenzt wären sie
      trotzdem falsch. */
