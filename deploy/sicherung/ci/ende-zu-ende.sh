@@ -214,9 +214,9 @@ docker ps -a --format '{{.Names}}' | grep -q '^centric-probe-' && fehl "T5: Prob
 ok "T5 Wiederherstellungsprobe: $S3_DATEIEN gleich, 0 abweichend, 0 fehlend; Probe-Container healthy ohne Netz; 3/3 Bestände lesbar, 4 Konten; aufgeräumt"
 
 # === T6 Probe mit angegebenem Snapshot =======================================
-lauf t6-probe-snapshot 0 "$SICH/wiederherstellung-probe.sh" "$KONFIG" --snapshot "$S2_ID"
+lauf t6-probe-snapshot 0 "$SICH/wiederherstellung-probe.sh" "$KONFIG" --snapshot "${S3_ID:0:8}"
 grep -q "gleich, 0 abweichend, 0 fehlend, 0 überzählig" "$AUS/t6-probe-snapshot.txt" || fehl "T6: Abgleich"
-ok "T6 Wiederherstellungsprobe mit --snapshot ${S2_ID:0:8} bestanden"
+ok "T6 Wiederherstellungsprobe mit --snapshot ${S3_ID:0:8} (Kurz-ID) bestanden; Snapshot von Sicherung 2 ist nach Sicherung 3 desselben Tages bewusst entfallen"
 
 # === T7 Fehlalarm: falsches Repository-Passwort =============================
 FAIL_VORHER="$(grep -c "^POST /ping/$PING_ID/fail" "$PINGS" || true)"
