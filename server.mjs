@@ -16,7 +16,9 @@
 
    Umgebung
      PORT                Vorgabe 3000
-     CENTRIC_DATEN       Ablage der Daten, Vorgabe /data (siehe server/lib/ablage.mjs)
+     CENTRIC_DATEN       Ablage der Daten, Vorgabe /data (siehe server/lib/ablage.mjs);
+                         beim Start belegt mit CENTRIC_DATEN/.prozess — ein
+                         Prozess je Ablage (server/lib/prozesssperre.mjs)
      CENTRIC_STATIK      Ordner der gebauten Oberfläche, Vorgabe dist/ (nur für Prüfungen)
      CENTRIC_AUFRAEUMEN  „aus" schaltet den täglichen Löschlauf für abgelaufene
                          Testbetriebe ab (Vorgabe: an, siehe server/lib/aufraeumen.mjs)
@@ -31,7 +33,8 @@ import { readdir, stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { getStore } from "./server/lib/ablage.mjs";
+import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
+import { ablageBelegen } from "./server/lib/prozesssperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -334,6 +337,26 @@ async function statisch(req, res, pfad) {
 /* ---------------------------------------------------------------------------
    Zusammenbau
    --------------------------------------------------------------------------- */
+
+/* Erst die Ablage belegen, dann alles andere (server/lib/prozesssperre.mjs).
+   Die Sperre je Raum, die verlorene Änderungen verhindert, gilt nur in
+   diesem Prozess — ein zweiter auf derselben Ablage höbe sie wieder auf.
+   Hält ein lebender Prozess die Ablage, startet dieser hier nicht: kein
+   Port, kein Löschlauf, kein einziger Schreibvorgang. Geht die Sperre im
+   Betrieb verloren (übernommen, weil der Puls ausblieb), beendet sich der
+   Prozess lieber, als neben einem zweiten weiterzuschreiben. */
+const ablagesperre = await ablageBelegen(ablageWurzel(), {
+  verloren: (grund) => {
+    console.error(`Ablagesperre verloren (${grund}) — Prozess wird beendet, damit nicht zwei schreiben.`);
+    process.exit(1);
+  },
+});
+if (!ablagesperre.ok) {
+  console.error(`${ablagesperre.grund} Start verweigert — es darf nur ein Prozess je Ablage laufen.`);
+  process.exit(1);
+}
+if (ablagesperre.uebernommen) console.log("Ablagesperre: veraltete Sperre eines beendeten Prozesses übernommen");
+process.on("exit", () => ablagesperre.freigebenSofort());
 
 const routen = await funktionenLaden();
 console.log("Funktionen: " + routen.map((r) => `${r.name} ${r.muster}`).join(", "));
