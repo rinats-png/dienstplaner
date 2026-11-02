@@ -1,5 +1,11 @@
 # Sicherheit — Stand und Nachweis
 
+> **Einordnung (2. November 2026, Review WP-10):** Die Bewertungen unten stammen überwiegend aus
+> **September 2026** (Netlify-Zeit) und sind **kein aktueller Nachweis**. Maßgeblich für Lese- und
+> Schreibrechte ist heute `RECHTEMATRIX.md` mit den zugehörigen Prüfungen
+> (`pruefungen/rechtematrix-zeilen.test.js` u. a.). Wo diese Datei etwas anderes sagt, gilt die
+> Rechtematrix; die Abschnitte hier sind bei Gelegenheit zu überarbeiten und neu zu datieren.
+
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security
 Master Checkliste" für KI-gestützt entwickelte Anwendungen und dem
 „Master Web Application Security & QA Handbook"
