@@ -9,6 +9,14 @@
 
    Der Konflikt wird hier gezielt erzeugt: Unmittelbar bevor /api/stempeln
    schreibt, speichert eine Leitung eine Änderung im selben Monat.
+
+   Seit WP-02 (November 2026) baut /api/stempeln den Stempel unter der
+   Sperre des Raums aus dem frischen Stand und versucht es nach einem
+   Konflikt bis zu dreimal erneut. Eine EINMALIGE fremde Änderung führt
+   deshalb nicht mehr zur Absage, sondern zu einem gespeicherten Stempel
+   neben der fremden Änderung (Fall H). Die Absage mit 409 bleibt für den
+   Fall, dass der Konflikt bei jedem Versuch wieder auftritt (C, D, G) —
+   und dort gilt unverändert: nichts gespeichert, nie „ok: true".
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
@@ -17,12 +25,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 /* Der Eingriff: vor dem nächsten Schreibvorgang eine fremde Änderung. */
-const zwischen = { vorher: null };
+const zwischen = { vorher: null, immer: null };
 vi.mock("../server/lib/bestand.mjs", async (original) => {
   const echt = await original();
   return { ...echt,
     bestandSchreiben: async (store, raum, bestand, opt) => {
-      const f = zwischen.vorher;
+      const f = zwischen.immer || zwischen.vorher;
       zwischen.vorher = null;
       if (f) await f(echt, store, raum);
       return echt.bestandSchreiben(store, raum, bestand, opt);
@@ -60,12 +68,13 @@ const stand = async () => (await B.bestandLesen(laden(), RAUM)).bestand.mandante
 const leitungAendertMonat = (schluessel) => async (echt, store, raum) => {
   const g = await echt.bestandLesen(store, raum);
   const b = JSON.parse(JSON.stringify(g.bestand));
-  b.mandanten[0].abweichungen[schluessel] = "F";
+  /* Jedes Mal ein anderer Wert — sonst wäre die zweite „Änderung" keine. */
+  b.mandanten[0].abweichungen[schluessel] = (b.mandanten[0].abweichungen[schluessel] || "") + "F";
   const e = await echt.bestandSchreiben(store, raum, b, { erwarteterStand: g.stand, durch: "Leitung" });
   expect(e.ok).toBe(true);
 };
 
-let tA, tS, tB;
+let tA, tS, tB, tX;
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-stempeln-"));
   process.env.CENTRIC_DATEN = wurzel;
@@ -85,15 +94,18 @@ beforeAll(async () => {
   tA = await sitzung("STMP-AAAA-0001", "mitarbeiter", "a1");
   tS = await sitzung("STMP-SSSS-0002", "subplaner", "s1");
   tB = await sitzung("STMP-BBBB-0003", "mitarbeiter", "b1");
+  tX = await sitzung("STMP-XXXX-0004", "mitarbeiter", "a2");
 });
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 
 describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
-  it("C. Einstempeln mit gleichzeitiger Änderung desselben Monats: 409, nichts gespeichert", async () => {
-    zwischen.vorher = leitungAendertMonat(`x1|${HEUTE}`);
-    const a = await anfrage("/api/stempeln", { token: tA, rumpf: { datum: HEUTE, art: "start" } });
+  it("C. Einstempeln mit bei jedem Versuch gleichzeitiger Änderung desselben Monats: 409, nichts gespeichert", async () => {
+    zwischen.immer = leitungAendertMonat(`x1|${HEUTE}`);
+    let a;
+    try { a = await anfrage("/api/stempeln", { token: tA, rumpf: { datum: HEUTE, art: "start" } }); }
+    finally { zwischen.immer = null; }
     const m = await stand();
-    expect(m.abweichungen[`x1|${HEUTE}`]).toBe("F");                     // die fremde Änderung ist da
+    expect(m.abweichungen[`x1|${HEUTE}`]).toBe("FFFF");                  // alle vier fremden Änderungen sind da
     expect((m.einstempeln || {})[`a1|${HEUTE}`]).toBeUndefined();          // der Stempel nicht
     expect(a.ok, "Erfolg gemeldet, obwohl nichts gespeichert wurde").not.toBe(true);
     expect(a.status).toBe(409);
@@ -105,9 +117,11 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     const m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(a.eintrag);
   });
-  it("D. Ausstempeln mit Konflikt: 409, kein Ende und keine Erfassung gespeichert", async () => {
-    zwischen.vorher = leitungAendertMonat(`a2|${HEUTE}`);
-    const a = await anfrage("/api/stempeln", { token: tA, rumpf: { datum: HEUTE, art: "ende" } });
+  it("D. Ausstempeln mit dauerhaftem Konflikt: 409, kein Ende und keine Erfassung gespeichert", async () => {
+    zwischen.immer = leitungAendertMonat(`a2|${HEUTE}`);
+    let a;
+    try { a = await anfrage("/api/stempeln", { token: tA, rumpf: { datum: HEUTE, art: "ende" } }); }
+    finally { zwischen.immer = null; }
     const m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`].ende).toBeUndefined();
     expect((m.erfassung || {})[`a1|${HEUTE}`]).toBeUndefined();
@@ -145,14 +159,26 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
     expect(m.personen.find((p) => p.id === "a1").telefon).toBe("0151");
   });
-  it("G. Schichtverantwortung, eigener Stempel: Konflikt 409, dann 200", async () => {
-    zwischen.vorher = leitungAendertMonat(`b1|${HEUTE}`);
-    const k = await anfrage("/api/stempeln", { token: tS, rumpf: { datum: HEUTE, art: "start" } });
+  it("G. Schichtverantwortung, eigener Stempel: dauerhafter Konflikt 409, dann 200", async () => {
+    zwischen.immer = leitungAendertMonat(`b1|${HEUTE}`);
+    let k;
+    try { k = await anfrage("/api/stempeln", { token: tS, rumpf: { datum: HEUTE, art: "start" } }); }
+    finally { zwischen.immer = null; }
     expect([k.status, k.code, k.ok]).toEqual([409, "STEMPEL_KONFLIKT", undefined]);
     expect(((await stand()).einstempeln || {})[`s1|${HEUTE}`]).toBeUndefined();
     const ok = await anfrage("/api/stempeln", { token: tS, rumpf: { datum: HEUTE, art: "start" } });
     expect(ok.status).toBe(200);
     expect((await stand()).einstempeln[`s1|${HEUTE}`]).toEqual(ok.eintrag);
+  });
+  it("H. einmalige gleichzeitige Änderung desselben Monats: Wiederholung, 200, beides gespeichert", async () => {
+    zwischen.vorher = leitungAendertMonat(`x1|${HEUTE}`);
+    const vorher = (await stand()).abweichungen[`x1|${HEUTE}`];
+    const a = await anfrage("/api/stempeln", { token: tX, rumpf: { datum: HEUTE, art: "start" } });
+    expect(a.status, JSON.stringify(a)).toBe(200);
+    expect(a.ok).toBe(true);
+    const m = await stand();
+    expect(m.abweichungen[`x1|${HEUTE}`]).toBe(`${vorher}F`);              // die fremde Änderung ist da
+    expect(m.einstempeln[`a2|${HEUTE}`]).toEqual(a.eintrag);              // und der Stempel auch
   });
   it("eine Änderung an einem anderen Monat ist kein Konflikt", async () => {
     zwischen.vorher = leitungAendertMonat("x1|2020-01-15");
@@ -171,9 +197,11 @@ describe("Protokoll", () => {
     const zeilen = [];
     for (const b of blobs) zeilen.push(await spur.get(b.key, { type: "json" }));
     const stempel = zeilen.filter((z) => /^stempeln /.test(z.zusatz || ""));
-    /* C, D, G: drei Konflikte; A, B, G, anderer Monat: vier Erfolge; E: zwei Absagen. */
+    /* C, D, G: drei Konflikte (nach je drei Wiederholungen); H: eine
+       Wiederholung; A, B, G, H, anderer Monat: fünf Erfolge; E: zwei Absagen. */
     expect(stempel.filter((z) => z.ausgang === "konflikt")).toHaveLength(3);
-    expect(stempel.filter((z) => z.ausgang === "erfolg")).toHaveLength(4);
+    expect(stempel.filter((z) => z.ausgang === "wiederholt")).toHaveLength(10);
+    expect(stempel.filter((z) => z.ausgang === "erfolg")).toHaveLength(5);
     expect(stempel.filter((z) => z.ausgang === "abgewiesen")).toHaveLength(2);
   });
 });

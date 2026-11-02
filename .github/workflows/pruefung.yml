@@ -180,6 +180,17 @@ jobs:
       - name: Zeiterfassung
         run: npm run pruefung:zeiterfassung
 
+      # WP-02: Schreiben unter der Sperre je Raum. Gleichzeitige Stempel und
+      # Speichervorgänge verlieren nichts; ein Konflikt endet in 409, nie in
+      # einem stillen „ok". Unlesbares wird nie überschrieben oder gelöscht
+      # (503), ein Abbruch mitten im Schreiben heilt beim nächsten Schreiben,
+      # Löschungen und Sicherungen laufen unter derselben Sperre.
+      # Dazu die Prozesssperre: ein Prozess je Ablage.
+      - name: Datenintegrität bei gleichzeitigem Schreiben
+        run: npm run pruefung:datenintegritaet
+      - name: Prozesssperre der Ablage
+        run: npm run pruefung:prozesssperre
+
       # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
       # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
       - name: Sicht der Schichtverantwortung

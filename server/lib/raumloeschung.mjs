@@ -31,6 +31,11 @@
    gelöschten Raum ist folgenlos.
    ========================================================================== */
 
+import { unterRaumsperre } from "./raumsperre.mjs";
+
+/** Die raumübergreifende Sperre für den Sammelblob „konten". */
+export const KONTEN_SPERRE = "@konten";
+
 /**
  * @typedef {{ raum: string, geloescht: number, vollstaendig: boolean,
  *   fehler: Array<{ schluessel: string, grund: string }> }} Loeschergebnis
@@ -82,16 +87,26 @@ export async function raumLoeschen(store, sitzungen, raum) {
     }
   } catch (e) { fehler.push({ schluessel: "konto:*", grund: grundVon(e) }); }
   for (const schl of zuLoeschen) await weg(`konto:${schl}`);
+  /* Der Sammelblob „konten" gehört allen Räumen zugleich. Lesen, Ändern und
+     Zurückschreiben unter einer festen, raumübergreifenden Sperre: Zwei
+     gleichzeitige Löschungen (Konsole und Löschlauf, oder zwei Räume im
+     selben Lauf über verschiedene Wege) lasen sonst beide den alten Blob,
+     und der zweite schrieb die Codes des ersten Raums wieder hinein. Der
+     Schlüssel beginnt mit „@" und kann so mit keinem Raumnamen
+     zusammenfallen. Reihenfolge stets Raum, dann „@konten" — nie umgekehrt,
+     damit sich zwei Löschungen nicht gegenseitig festhalten. */
   try {
-    const sammel = await store.get("konten", { type: "json" });
-    if (sammel && typeof sammel === "object") {
-      const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
-      if (eigene.length) {
-        for (const s of eigene) delete sammel[s];
-        await store.setJSON("konten", sammel);
-        geloescht += eigene.length;
+    await unterRaumsperre(KONTEN_SPERRE, async () => {
+      const sammel = await store.get("konten", { type: "json" });
+      if (sammel && typeof sammel === "object") {
+        const eigene = Object.entries(sammel).filter(([, k]) => k && k.bestand === raum).map(([s]) => s);
+        if (eigene.length) {
+          for (const s of eigene) delete sammel[s];
+          await store.setJSON("konten", sammel);
+          geloescht += eigene.length;
+        }
       }
-    }
+    });
   } catch (e) { fehler.push({ schluessel: "konten", grund: grundVon(e) }); }
 
   /* 2b. Persönliche Mitgliedschaften dieses Raums — und der Raumindex dazu.

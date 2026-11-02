@@ -66,6 +66,7 @@ import { randomBytes } from "node:crypto";
 import { baueLeerenBetrieb } from "./leerbetrieb.mjs";
 import { bestandSchreiben, bestandLesen, raumBelegt } from "./bestand.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
+import { unterRaumsperre } from "./raumsperre.mjs";
 import { TESTTAGE } from "./aufraeumen.mjs";
 import {
   accountLesenPerId, accountAendern, testbetriebOffen, testbetriebVerbrauchen,
@@ -145,10 +146,6 @@ export async function testbetriebAnlegen(store, { name, branche, email, land,
   const start = new Date(jetzt());
   const laeuftAb = new Date(start.getTime() + TESTTAGE * TAG_MS);
 
-  /* Bei fünf Zufallszeichen praktisch ausgeschlossen, aber geprüft wird
-     trotzdem — und ein belegter Raum wird niemals überschrieben. */
-  if (await raumBelegt(store, kennung)) return { ok: false, grund: "belegt" };
-
   const leer = baueLeerenBetrieb({
     name: /** @type {string} */ (name), branche,
     email: /** @type {string} */ (email), land,
@@ -157,7 +154,17 @@ export async function testbetriebAnlegen(store, { name, branche, email, land,
   const personen = personenBauen ? personenBauen(leer.mandanten[0]) : null;
   if (personen && personen.length) leer.mandanten[0].personen = personen;
 
-  await bestandSchreiben(store, kennung, leer, { durch });
+  /* Bei fünf Zufallszeichen praktisch ausgeschlossen, aber geprüft wird
+     trotzdem — und ein belegter Raum wird niemals überschrieben. Prüfung
+     und Anlegen unter einer Sperre (raumsperre.mjs): Zwei gleichzeitige
+     Anlagen desselben Raums sahen sonst beide einen freien Raum, und die
+     zweite überschrieb die erste — beide meldeten Erfolg. */
+  const angelegt = await unterRaumsperre(kennung, async () => {
+    if (await raumBelegt(store, kennung)) return false;
+    await bestandSchreiben(store, kennung, leer, { durch });
+    return true;
+  });
+  if (!angelegt) return { ok: false, grund: "belegt" };
 
   return { ok: true, raum: kennung,
     mandantId: leer.mandanten[0].id,
@@ -249,12 +256,15 @@ const textVon = (e) => String((e && e.message) || e || "unbekannt").slice(0, 200
  * Der Account selbst wird nicht angefasst: kein Passwort, kein
  * Verifizierungsstand, kein Status, keine Kennung.
  *
+ * Exportiert nur für die Prüfungen (pruefungen/loeschsperre.test.js).
+ *
  * @returns {Promise<{ok: boolean, grund?: string}>}
  */
-async function zurueckrollen(store, sitzungen, accountId, raum) {
+export async function zurueckrollen(store, sitzungen, accountId, raum) {
   let fehler = null;
   try {
-    const e = await raumLoeschen(store, sitzungen, raum);
+    /* Unter der Sperre des Raums — wie jede Löschung (raumsperre.mjs). */
+    const e = await unterRaumsperre(raum, () => raumLoeschen(store, sitzungen, raum));
     if (!e.vollstaendig) {
       fehler = e.fehler.map((f) => `${f.schluessel}: ${f.grund}`).join("; ").slice(0, 300);
     }
