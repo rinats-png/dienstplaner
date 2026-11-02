@@ -260,6 +260,9 @@ function krankmeldungenZusammen(alt, neu, ich) {
   return [...gespeichert, ...neue];
 }
 
+const HINWEISE_MAX = 12;
+const HINWEIS_LAENGE = 300;
+
 /** Selbstplanung: die eigenen Einträge in einer offenen Runde, sonst nichts. */
 function selbstplanungZusammen(alt, neu, ich, dienstarten) {
   if (!Array.isArray(alt)) return alt;
@@ -283,6 +286,14 @@ function selbstplanungZusammen(alt, neu, ich, dienstarten) {
       tage.add(e.datum);
       const sauber = { personId: e.personId, datum: e.datum, dienstId: e.dienstId };
       if (typeof e.zeit === "string" && e.zeit.length <= 40) sauber.zeit = e.zeit;
+      /* Hinweise (Warnen statt sperren, Kette A; WP-10 d.3): Was bei der
+         Eintragung gegen den Dienst sprach, nimmt die Person mit — die
+         Planung entscheidet bei der Übernahme mit dem Warndialog und prüft
+         dort neu. Nur kurze Texte; anderes fällt weg, ohne die Eintragung
+         abzuweisen. Fremde sehen sie nicht (sicht.mjs: selbstplanung). */
+      if (Array.isArray(e.hinweise) && e.hinweise.length && e.hinweise.length <= HINWEISE_MAX
+        && e.hinweise.every((h) => typeof h === "string" && h.length > 0 && h.length <= HINWEIS_LAENGE))
+        sauber.hinweise = [...e.hinweise];
       eigene.push(sauber);
     }
     return { ...r, eintraege: [...fremde, ...eigene] };

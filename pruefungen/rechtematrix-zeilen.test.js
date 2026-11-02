@@ -139,6 +139,10 @@ const bestand = () => ({
       { id: "t-b1", personId: "b1", typ: "tausch", status: "offen", partnerId: null, von: tag(9), bis: tag(9), text: M("ANTRAG-TAUSCH-B1"), interessenten: [] },
       { id: "an-a1", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-A1") }],
     nachrichten: [{ id: "n", personId: "b1", art: "info", titel: M("NACHRICHT-B1") }],
+    /* Selbstplanung mit Hinweisen (WP-10 d.3): b1 fremd, a1 im Bereich der SV. */
+    selbstplanung: [{ id: "spr", monat: tag(1).slice(0, 7), status: "offen", eintraege: [
+      { personId: "b1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-B1")] },
+      { personId: "a1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-A1")] }] }],
     /* Bestätigungsprotokoll (WP-10 d.1): b1 fremd, a1 im Bereich der SV. */
     bestaetigungen: [
       { id: "bs-b1", personId: "b1", datum: tag(1), dienstId: "F", aktion: "einsprung", stufe: "recht",
@@ -333,6 +337,21 @@ const ZEILEN = {
       "nur bei Ausschreibung der eigenen Einheit": (s) => {
         expect(mk("BEWERBUNG-FREMD")(s), "Ausschreibung ohne Einheit").toBe(false);
         expect(mk("BEWERBUNG-E1")(s), "Ausschreibung der eigenen Einheit").toBe(true);
+      },
+    } },
+  "Selbstplanung: Einträge anderer samt `hinweise`": {
+    sonden: [mk("SP-HINWEIS-B1"), mk("SP-HINWEIS-A1")],
+    bedingt: {
+      "nur Tag und Dienst": (s) => {
+        const e = (s.betrieb.selbstplanung || [])[0].eintraege;
+        expect(e).toHaveLength(2);
+        for (const x of e) expect(Object.keys(x).sort()).toEqual(["datum", "dienstId"]);
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        expect(mk("SP-HINWEIS-A1")(s), "Bereich").toBe(true);
+        expect(mk("SP-HINWEIS-B1")(s), "fremd").toBe(false);
+        const fremd = (s.betrieb.selbstplanung || [])[0].eintraege.find((x) => !x.personId);
+        expect(Object.keys(fremd).sort()).toEqual(["datum", "dienstId"]);
       },
     } },
   "Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen)": {

@@ -217,3 +217,47 @@ describe("d.4 Mitteilung an die Leitung bei bestätigtem Rechtsverstoß", () => 
     expect((betrieb(e).nachrichten || []).map((n) => n.id)).not.toContain("n-x");
   });
 });
+
+/* ------------------------------------------------------------------------
+   d.3 Selbstplanung: hinweise
+   ------------------------------------------------------------------------ */
+describe("d.3 Selbstplanung: Hinweise an der eigenen Eintragung", () => {
+  const meinEintrag = (pid, extra = {}) => ({ personId: pid, datum: tag(3), dienstId: "N",
+    hinweise: ["dieser Dienst ist bereits gedeckt", "zu wenig Ruhezeit nach dem Vortag"], ...extra });
+  const runde = (b) => betrieb(b).selbstplanung[0].eintraege;
+  for (const [r, pid] of [["MA", "m0"], ["SV", "s1"]]) {
+    it(`${r}: die eigene Eintragung kommt mit Hinweisen an und bleibt beim Zurückspeichern`, () => {
+      const e = rundreise(bestand(), r, (m) => { m.selbstplanung[0].eintraege.push(meinEintrag(pid)); });
+      expect(e && !e.verweigert, `${r}: ${e && e.verweigert}`).toBe(true);
+      expect(runde(e)).toEqual([meinEintrag(pid)]);
+      const zurueck = rundreise(e, r);
+      expect(runde(zurueck)).toEqual([meinEintrag(pid)]);
+      /* … und die Planung sieht sie. */
+      expect(betrieb(bestandFuerRolle(e, SITZ.PL)).selbstplanung[0].eintraege).toEqual([meinEintrag(pid)]);
+    });
+  }
+  it("andere Beschäftigte sehen die Hinweise nicht, nur Tag und Dienst", () => {
+    const e = rundreise(bestand(), "MA", (m) => { m.selbstplanung[0].eintraege.push(meinEintrag("m0")); });
+    const fremd = betrieb(bestandFuerRolle(e, { rolle: "mitarbeiter", person: "a1", betrieb: 0 })).selbstplanung[0].eintraege;
+    expect(fremd).toEqual([{ datum: tag(3), dienstId: "N" }]);
+  });
+  it("Hinweise in falscher Form fallen weg, die Eintragung bleibt", () => {
+    for (const hinweise of [["x".repeat(301)], Array(13).fill("x"), [{ text: "x" }], "x", [""]]) {
+      const e = rundreise(bestand(), "MA", (m) => { m.selbstplanung[0].eintraege.push(meinEintrag("m0", { hinweise })); });
+      expect(runde(e), JSON.stringify(hinweise).slice(0, 40)).toEqual([{ personId: "m0", datum: tag(3), dienstId: "N" }]);
+    }
+  });
+  it("fremde Eintragungen und ihre Hinweise lassen sich nicht überschreiben", () => {
+    const g = bestand();
+    betrieb(g).selbstplanung[0].eintraege = [meinEintrag("a1")];
+    const e = rundreise(g, "MA", (m) => { m.selbstplanung[0].eintraege = [{ personId: "a1", datum: tag(3), dienstId: "N", hinweise: ["gefälscht"] }]; });
+    expect(runde(e)).toEqual([meinEintrag("a1")]);
+  });
+  it("Planung und Leitung: unverändert zurückgespeichert bleiben die Hinweise", () => {
+    for (const r of SCHREIBEND_VOLL) {
+      const g = bestand();
+      betrieb(g).selbstplanung[0].eintraege = [meinEintrag("a1"), meinEintrag("b1")];
+      expect(runde(rundreise(g, r)), r).toEqual([meinEintrag("a1"), meinEintrag("b1")]);
+    }
+  });
+});

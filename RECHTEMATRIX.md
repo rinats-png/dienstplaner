@@ -68,6 +68,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Personennotizen (`notizen` „person\|…"; Notiz der Leitung `notiz` an der Person) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Selbstplanung: Einträge anderer samt `hinweise` | nur Tag und Dienst ²² | – | nur eigener Bereich am Tag ¹⁵ ²² | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | ohne Namen ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
@@ -176,6 +177,12 @@ für sich und Personen ihres Bereichs am Tag; Beschäftigte und Betriebsrat schr
 bestätigten Rechtsverstoß erzeugt der Server die Mitteilung an die Leitung (`server/lib/bestaetigungen.mjs`, Kennung
 `n-bestaetigung-…`, Zustellung nach dem Speichern) — nicht die Oberfläche. Geprüft in
 `pruefungen/rechtematrix-zeilen.test.js`, `pruefungen/bestaetigungen.test.js` und `pruefungen/warnen.test.js`.
+²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
+Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
+trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
+von anderen nur Tag und Dienst, die Schichtverantwortung Einträge aus ihrem Bereich am Tag vollständig. Schreiben:
+Beschäftigte und Schichtverantwortung nur die eigenen Einträge einer offenen Runde (`selbstplanungZusammen`); `hinweise`
+nur als Liste von höchstens 12 Texten mit je höchstens 300 Zeichen, sonst fällt das Feld weg (die Eintragung bleibt).
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
