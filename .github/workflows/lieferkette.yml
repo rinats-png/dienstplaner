@@ -1,0 +1,101 @@
+# Lieferkette — das Bild, das ausgeliefert würde, auf bekannte Schwachstellen
+# prüfen (WP-32).
+#
+# `npm audit` (sicherheit.yml) sieht nur package-lock.json. Im Bild steckt
+# mehr: Alpine mit seinen Systempaketen, Node selbst, das mitgelieferte npm.
+# Trivy liest das fertige Bild und findet alles davon.
+#
+# Gate: CRITICAL und HIGH, aber nur, wenn es eine behobene Fassung gibt
+# (ignore-unfixed). Ein Befund ohne Fix lässt sich mit keinem Commit
+# beheben — er wird angezeigt, hält aber nicht auf. Bekannte Ausnahmen nur
+# in .trivyignore, jede mit Begründung und Ablaufdatum (exp:JJJJ-MM-TT);
+# nach dem Datum gilt der Befund wieder.
+#
+# Wöchentlich zusätzlich: Neue Meldungen erscheinen, ohne dass sich am
+# Quelltext etwas ändert. Der Montagslauf zeigt sie, auch wenn eine Woche
+# lang niemand pusht.
+#
+# Jede fremde Action ist per Commit-SHA gepinnt (Kommentar: Version). Ein Tag
+# lässt sich umhängen — bei trivy-action ist genau das im März 2026
+# geschehen. v0.36.0 ist danach erschienen, signiert, und pinnt seine
+# eigenen Abhängigkeiten (setup-trivy, actions/cache) ebenfalls per SHA.
+name: Lieferkette
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Die Caddy-Vorlage (deploy/caddy/Caddyfile.vorlage) muss sich übersetzen
+  # lassen — sonst ist sie im Ernstfall eine Fehlerquelle mehr. Geprüft mit
+  # dem offiziellen Bild, per Digest gepinnt (caddy:2-alpine, 2.11.7, Stand
+  # 2026-11-02). `caddy validate` lädt die Konfiguration samt Modulen, holt
+  # aber kein Zertifikat und erreicht kein Upstream.
+  caddy-vorlage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: caddy validate
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/deploy/caddy/Caddyfile.vorlage:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5 \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+  bild-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BILD: centric-lieferkette:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      # Dasselbe Dockerfile wie in pruefung.yml und deploy.yml, nur geladen,
+      # nie geschoben.
+      - name: Bild bauen (lokal)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ env.BILD }}
+
+      # Erst der volle Bericht über alle Schweregrade, ohne Abbruch — damit
+      # im Protokoll steht, was es gibt, nicht nur, was aufhält.
+      - name: Bericht (alle Schweregrade, hält nicht auf)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.70.0
+          scan-type: image
+          image-ref: ${{ env.BILD }}
+          format: table
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: "0"
+
+      # Das Gate.
+      - name: Gate (CRITICAL/HIGH mit verfügbarem Fix)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.70.0
+          skip-setup-trivy: true
+          scan-type: image
+          image-ref: ${{ env.BILD }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: "1"

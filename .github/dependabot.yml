@@ -1,0 +1,65 @@
+# Dependabot (WP-32): wöchentliche Vorschläge für Abhängigkeiten, Actions und
+# das Basisbild — gruppiert, damit pro Woche und Ökosystem höchstens ein Pull
+# Request entsteht. Ziel ist der Integrationsstand, nicht main: Auf main
+# kommt nur, was dort durch Prüfung, Sicherheit und Lieferkette gelaufen ist.
+#
+# Sicherheitsupdates (Dependabot security updates) laufen unabhängig von
+# diesem Zeitplan; sie richten sich nach der Einstellung im Repository.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    target-branch: integration/centric-complete
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "Abhängigkeiten"
+    groups:
+      laufzeit:
+        dependency-type: production
+        update-types: ["minor", "patch"]
+      entwicklung:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: integration/centric-complete
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "Actions"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Das Basisbild im Dockerfile ist per Digest gepinnt. Dependabot erkennt
+  # `node:22-alpine@sha256:…` und schlägt den neuen Digest desselben Tags vor
+  # — alle drei FROM-Zeilen in einem Pull Request.
+  - package-ecosystem: docker
+    directory: "/"
+    target-branch: integration/centric-complete
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "Basisbild"
+    groups:
+      basisbild:
+        patterns: ["*"]
+    ignore:
+      # Nur innerhalb von Node 22 nachziehen; ein Wechsel der Hauptversion
+      # ist eine eigene Entscheidung (package.json, setup-node, Prüfungen).
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]

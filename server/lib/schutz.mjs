@@ -1,5 +1,6 @@
 import { getStore } from "./ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
+import { BlockList, isIP } from "node:net";
 
 /* ==========================================================================
    SCHUTZ UND PROTOKOLL
@@ -309,6 +310,13 @@ export const GRENZEN = {
      Dreißig je fünf Minuten reichen für jeden Wechsel zwischen
      Arbeitsbereichen und für keinen Ansturm. */
   "betrieb-waehlen": { versuche: 30, fenster: 300, sperre: 300 },
+  /* Zweiter Faktor der Verwalterschlüssel (zweifaktor.mjs, WP-32). Sechs
+     Stellen sind schnell geraten, wenn niemand bremst: Fünf Versuche je
+     fünf Minuten, gezählt je Schlüssel UND je Herkunft, Sperre steigend
+     bis zu einem Tag. failClosed: Meldet die Bremse einen Ausfall der
+     Ablage, weist /einrichten ab, statt im Prozessspeicher weiterzuzählen. */
+  zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
+    failClosed: true },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
@@ -344,11 +352,123 @@ export function kennung(req, sitzung) {
 }
 
 /** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte.
-    Caddy trägt sie als X-Forwarded-For ein; der erste Eintrag ist der Client. */
+
+    Hinter server.mjs steht in `x-forwarded-for` genau EINE Adresse: die,
+    die `herkunftBestimmen()` aus Gegenstelle, Kopf und Vertrauensliste
+    ermittelt hat (B-XFF-1, WP-32b). Was der Client mitschickte, ist dort
+    schon ersetzt. Ruft jemand einen Handler ohne server.mjs auf — die
+    Prüfungen tun das —, gilt der erste Eintrag wie bisher. */
 export function herkunft(req) {
   const adresse = req.headers.get("x-forwarded-for") || "unbekannt";
   return String(adresse).split(",")[0].trim();
 }
+
+/* --------------------------------------------------------------------------
+   VERTRAUTE PROXYS (B-XFF-1)
+
+   Bis WP-32b nahm der Server `X-Forwarded-For` von jedem Absender, und
+   herkunft() den ERSTEN Eintrag — den, den der Client selbst bestimmt. Wer
+   den Dienst am Proxy vorbei erreichte (aus dem Docker-Netz, in Staging),
+   bekam mit jedem erfundenen Wert einen frischen Zähler der Bremse.
+
+   Jetzt:
+     CENTRIC_VERTRAUTE_PROXYS  Liste von Adressen und Netzen (CIDR), durch
+                               Komma oder Leerzeichen getrennt. IPv4 und IPv6.
+     leer / nicht gesetzt      niemandem vertrauen: `X-Forwarded-For` wird
+                               verworfen, es zählt die Adresse der Gegenstelle.
+     Gegenstelle vertraut      die Kette wird von RECHTS gelesen; die erste
+                               Adresse, die nicht selbst vertraut ist, ist der
+                               Client. Links davon kann der Client schreiben,
+                               was er will — es wird nie gelesen.
+
+   Achtung im Betrieb: Ohne Liste sieht der Server hinter Caddy nur noch die
+   Adresse des Caddy-Containers — alle Nutzer teilten sich dann EINE Herkunft
+   und EINEN Bremszähler. Deshalb meldet der Server das laut
+   (xffOhneVertrauen) und /einrichten/umgebung als Warnung.
+   -------------------------------------------------------------------------- */
+
+/** IPv4-gemappte IPv6-Adressen (::ffff:10.0.0.1) als IPv4 behandeln. */
+export function adresseNormieren(a) {
+  let s = String(a || "").trim();
+  if (s.startsWith("[") && s.includes("]")) s = s.slice(1, s.indexOf("]"));
+  const z = s.indexOf("%");
+  if (z > 0) s = s.slice(0, z);
+  const m = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(s);
+  if (m) return m[1];
+  /* IPv4 mit Port (1.2.3.4:5678), wie manche Proxys schreiben. */
+  const p = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(s);
+  if (p) return p[1];
+  return s.toLowerCase();
+}
+
+/**
+ * Die Vertrauensliste als BlockList. Ungültige Einträge werfen — eine
+ * vertippte Liste soll den Start anhalten, nicht still niemandem oder allen
+ * vertrauen.
+ * @param {string} [text]
+ */
+export function vertrauteListe(text) {
+  const liste = new BlockList();
+  let anzahl = 0;
+  for (const roh of String(text || "").split(/[\s,]+/).filter(Boolean)) {
+    const [adr, bits] = roh.split("/");
+    const a = adresseNormieren(adr);
+    const art = isIP(a);
+    if (!art) throw new Error(`CENTRIC_VERTRAUTE_PROXYS: „${roh}" ist keine Adresse.`);
+    const typ = art === 4 ? "ipv4" : "ipv6";
+    if (bits === undefined) liste.addAddress(a, typ);
+    else {
+      const n = Number(bits);
+      if (!Number.isInteger(n) || n < 0 || n > (art === 4 ? 32 : 128))
+        throw new Error(`CENTRIC_VERTRAUTE_PROXYS: „${roh}" hat keine gültige Präfixlänge.`);
+      liste.addSubnet(a, n, typ);
+    }
+    anzahl++;
+  }
+  return { liste, anzahl };
+}
+
+/** @param {{liste: BlockList, anzahl: number}} v */
+function vertraut(v, adresse) {
+  if (!v || !v.anzahl) return false;
+  const a = adresseNormieren(adresse);
+  const art = isIP(a);
+  if (!art) return false;
+  return v.liste.check(a, art === 4 ? "ipv4" : "ipv6");
+}
+
+/**
+ * Wer ist der Client? Reine Funktion — server.mjs ruft sie für jede Anfrage.
+ *
+ * @param {string|undefined} gegenstelle  req.socket.remoteAddress
+ * @param {string|null|undefined} xff     mitgeschickter Kopf (Komma-Liste)
+ * @param {{liste: BlockList, anzahl: number}} v  aus vertrauteListe()
+ * @returns {string}
+ */
+export function herkunftBestimmen(gegenstelle, xff, v) {
+  const direkt = adresseNormieren(gegenstelle) || "unbekannt";
+  if (!xff || !vertraut(v, direkt)) return direkt;
+  const kette = String(xff).split(",").map((x) => adresseNormieren(x)).filter(Boolean);
+  for (let i = kette.length - 1; i >= 0; i--) {
+    if (!isIP(kette[i])) return direkt;   // Unsinn in der Kette: nicht weiterlesen
+    if (!vertraut(v, kette[i])) return kette[i];
+  }
+  /* Alle Einträge vertraut (Proxy hinter Proxy im selben Netz): der äußerste. */
+  return kette[0] || direkt;
+}
+
+let xffOhneListe = 0;
+/** Zählt Anfragen mit X-Forwarded-For bei leerer Vertrauensliste und meldet die erste laut. */
+export function xffOhneVertrauenMelden() {
+  xffOhneListe++;
+  if (xffOhneListe === 1)
+    console.warn("WARNUNG: Anfrage mit X-Forwarded-For, aber CENTRIC_VERTRAUTE_PROXYS ist leer. "
+      + "Der Kopf wird ignoriert; alle Anfragen zählen unter der Adresse der Gegenstelle. "
+      + "Hinter Caddy heißt das: EINE Herkunft für alle Nutzer — die Bremse träfe alle gemeinsam. "
+      + "Das Netz des Caddy-Containers in CENTRIC_VERTRAUTE_PROXYS eintragen (docs/CADDY-UND-XFF.md).");
+}
+/** Wie oft kam X-Forwarded-For ohne Vertrauensliste an? Für /einrichten/umgebung. */
+export const xffOhneVertrauen = () => xffOhneListe;
 
 /* --------------------------------------------------------------------------
    HERKUNFT EINER SCHREIBENDEN ANFRAGE
