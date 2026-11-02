@@ -3,6 +3,7 @@ import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
@@ -18415,7 +18416,7 @@ function Selbstplanung({ sitz, akt, gehZu }) {
                       const pp = m.personen.find((x) => x.id === e.personId);
                       return (
                         <div key={k} style={{ fontSize: 12.5, color: C.dim, padding: "4px 0", lineHeight: 1.45 }}>
-                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {e.grund}</div>);
+                          {pp ? `${pp.nachname}, ${pp.vorname}` : "?"} · {fKurz(e.datum)} · {NICHT_UEBERNOMMEN_GRUENDE[e.grund] || NICHT_UEBERNOMMEN_GRUENDE.befund}</div>);
                     })}
                   </details>)}
                 {r.status === "geschlossen" && (
@@ -22797,16 +22798,21 @@ function AppInnen() {
         const neu = { ...m.abweichungen };
         let uebernommen = 0;
         const nicht = [];
+        /* Der Grund ist eine Kennung, nie der Befundtext (Review K1): Der
+           Rundenkopf geht an Beschäftigte und Schichtverantwortung; ein
+           Wortlaut wie „MuSchG § 5“ oder „abwesend (Krank)“ verriete Dritten
+           Gesundheitsangaben (server/lib/selbstplanung.mjs). */
+        const nichtEintrag = (e, grund) => ({ personId: e.personId, datum: e.datum, dienstId: e.dienstId, grund });
         (r.eintraege || []).forEach((e, i) => {
           const p = m.personen.find((x) => x.id === e.personId);
           const da = m.dienstarten.find((x) => x.id === e.dienstId);
-          if (!p || !da) { nicht.push({ ...e, grund: "Person oder Dienstart nicht mehr vorhanden" }); return; }
+          if (!p || !da) { nicht.push(nichtEintrag(e, "fehlt")); return; }
           const bef = hindernisBefunde(m, p, e.datum, da);
           const ernst = bef.filter((b) => stufeRang(b.stufe) >= 2);
           const sperre = bef.find((b) => b.sperrt);
-          if (sperre) { nicht.push({ ...e, grund: sperre.text }); return; }
+          if (sperre) { nicht.push(nichtEintrag(e, grundKennung(sperre))); return; }
           const nehmen = gewaehlt ? gewaehlt.has(i) : ernst.length === 0;
-          if (!nehmen) { nicht.push({ ...e, grund: ernst.length ? ernst[0].text : "nicht ausgewählt" }); return; }
+          if (!nehmen) { nicht.push(nichtEintrag(e, ernst.length ? grundKennung(ernst[0]) : "auswahl")); return; }
           if (bef.some((b) => b.art === "abwesend") && best && best.abwesenheitAufheben)
             m = { ...m, abwesenheiten: abwesenheitTagAufheben(m, e.personId, e.datum).abwesenheiten };
           neu[`${e.personId}|${e.datum}`] = e.dienstId;

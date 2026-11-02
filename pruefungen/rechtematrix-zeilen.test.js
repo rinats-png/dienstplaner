@@ -141,7 +141,14 @@ const bestand = () => ({
       { id: "an-a1", personId: "a1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-A1") }],
     nachrichten: [{ id: "n", personId: "b1", art: "info", titel: M("NACHRICHT-B1") }],
     /* Selbstplanung mit Hinweisen (WP-10 d.3): b1 fremd, a1 im Bereich der SV. */
-    selbstplanung: [{ id: "spr", monat: tag(1).slice(0, 7), status: "offen", eintraege: [
+    selbstplanung: [{ id: "spr", monat: tag(1).slice(0, 7), status: "offen",
+      /* Review K1: Gründe noch als Text gespeichert (Altbestand) und ein unbekanntes Kopffeld. */
+      kopfGeheim: M("RUNDENKOPF-UNBEKANNT"),
+      nichtUebernommen: [
+        { personId: "b1", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-B1") },
+        { personId: "a1", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-A1") },
+        { personId: "m0", datum: tag(1), dienstId: "F", grund: M("NU-GRUND-M0") }],
+      eintraege: [
       { personId: "b1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-B1")] },
       { personId: "a1", datum: tag(1), dienstId: "F", hinweise: [M("SP-HINWEIS-A1")] }] }],
     /* Bestätigungsprotokoll (WP-10 d.1): b1 fremd, a1 im Bereich der SV. */
@@ -355,6 +362,22 @@ const ZEILEN = {
         expect(mk("SP-HINWEIS-B1")(s), "fremd").toBe(false);
         const fremd = (s.betrieb.selbstplanung || [])[0].eintraege.find((x) => !x.personId);
         expect(Object.keys(fremd).sort()).toEqual(["datum", "dienstId"]);
+      },
+    } },
+  "Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf": {
+    sonden: [mk("NU-GRUND-B1"), mk("NU-GRUND-A1"), mk("NU-GRUND-M0"), mk("RUNDENKOPF-UNBEKANNT")],
+    bedingt: {
+      "nur eigene": (s) => {
+        const r = (s.betrieb.selbstplanung || [])[0];
+        expect(r.nichtUebernommen).toEqual([{ personId: "m0", datum: tag(1), dienstId: "F", grund: "befund" }]);
+        for (const x of ["NU-GRUND-B1", "NU-GRUND-A1", "NU-GRUND-M0", "RUNDENKOPF-UNBEKANNT"]) expect(mk(x)(s), x).toBe(false);
+      },
+      "nur eigener Bereich am Tag": (s) => {
+        const r = (s.betrieb.selbstplanung || [])[0];
+        /* a1 und m0 gehören zum Bereich e1, b1 nicht. */
+        expect(r.nichtUebernommen).toEqual([{ personId: "a1", datum: tag(1), dienstId: "F", grund: "befund" },
+          { personId: "m0", datum: tag(1), dienstId: "F", grund: "befund" }]);
+        for (const x of ["NU-GRUND-B1", "NU-GRUND-A1", "NU-GRUND-M0", "RUNDENKOPF-UNBEKANNT"]) expect(mk(x)(s), x).toBe(false);
       },
     } },
   "Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen)": {

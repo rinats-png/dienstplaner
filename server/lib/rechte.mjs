@@ -20,6 +20,7 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen } from "./bestaetigungen.mjs";
+import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -972,6 +973,22 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
         const best = bestaetigungenZusammen(ort.betrieb, geschickt.bestaetigungen, sitzung, null);
         if (best.grund) return { verweigert: best.grund };
         geschickt = { ...geschickt, bestaetigungen: best.liste };
+      }
+      /* Selbstplanung, „nicht übernommen" (Review K1): nur Person, Tag, Dienst
+         und eine Grund-Kennung — nie ein Befundtext. Unbekannte Gründe werden
+         „befund", Ungültiges fällt weg (selbstplanung.mjs). */
+      /* Unverändert Zurückgeschicktes bleibt der gespeicherte Stand (ein
+         Rundweg ändert nichts); Altbestand mit Text geht ohnehin nur an Planung
+         und Leitung — Beschäftigte und Schichtverantwortung lesen Kennungen. */
+      if (Array.isArray(geschickt.selbstplanung) && geschickt.selbstplanung.some((r) => r && Array.isArray(r.nichtUebernommen))) {
+        const gespeichert = new Map((Array.isArray(ort.betrieb.selbstplanung) ? ort.betrieb.selbstplanung : [])
+          .filter((r) => r && typeof r === "object").map((r) => [String(r.id), r]));
+        geschickt = { ...geschickt, selbstplanung: geschickt.selbstplanung.map((r) => {
+          if (!r || typeof r !== "object" || !Array.isArray(r.nichtUebernommen)) return r;
+          const vorher = gespeichert.get(String(r.id));
+          if (vorher && gleich(vorher.nichtUebernommen, r.nichtUebernommen)) return r;
+          return { ...r, nichtUebernommen: nichtUebernommenNormal(r.nichtUebernommen) };
+        }) };
       }
     }
 
