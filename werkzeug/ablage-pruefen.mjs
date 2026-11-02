@@ -210,7 +210,7 @@ export async function befund(store, { raeume = [], journalPruefen, referenz = nu
     if (!arten.has("Kern") && !arten.has("Scherbe") && !arten.has("Standvermerk") && !arten.has("Standzeiger")) continue;
 
     /* Ein gültiges Journal ist der Bezug. */
-    let bezug = null, bezugText = "";
+    let bezug = null, bezugText = "", unvollstaendig = false;
     const vorhanden = new Set(schluessel);
     if (arten.has("Journal") && !unlesbar.has(`journal:${raum}`)) {
       const j = await store.get(`journal:${raum}`, { type: "json" }).catch(() => null);
@@ -256,10 +256,12 @@ export async function befund(store, { raeume = [], journalPruefen, referenz = nu
           + (k.n < stand ? ` (älter als der aktuelle Stand ${stand} — kann seitdem bewusst entfernt worden sein)` : "");
         /* Ein älterer Vermerk kennt keine Monate, die danach angelegt wurden:
            Der Abgleich ist unvollständig, angeglichen wird nur ausdrücklich. */
-        if (k.n < stand)
+        if (k.n < stand) {
+          unvollstaendig = true;
           melden(raum, { schluessel: `stand:${raum}:${stand}`, art: "Standvermerk", fehlt: true, keinAbgleich: true,
             grund: `nur Vermerk ${k.n} lesbar, aktueller Stand ${stand} — danach angelegte Monate wären nicht erkennbar `
               + "(--aus-sicherung mit dem aktuellen Vermerk oder --ohne-vermerk <raum>)" });
+        }
         break;
       }
     }
@@ -269,6 +271,19 @@ export async function befund(store, { raeume = [], journalPruefen, referenz = nu
         grund: "kein lesbarer Vermerk — ob Monate fehlen, ist nicht erkennbar (--aus-sicherung oder --ohne-vermerk <raum>)" });
       continue;
     }
+    /* Liegt eine Scherbe auf der Platte, die der Bezug nicht kennt, ist er
+       älter als das, was geschrieben wurde — auch wenn seine Nummer die
+       höchste lesbare ist (Kern unlesbar, aktueller Vermerk und Zeiger weg).
+       Was in derselben Zeit angelegt und dann verloren wurde, wäre nicht
+       erkennbar: unvollständig. Im gesunden Stand nennt der aktuelle
+       Vermerk jede vorhandene Scherbe. */
+    const vorn = `scherbe:${raum}:`;
+    const fremd = [...vorhanden].filter((k) => k.startsWith(vorn) && !ignorieren.has(k))
+      .filter((k) => { const i = k.lastIndexOf(":"); return !(`${k.slice(vorn.length, i)}::${k.slice(i + 1)}` in bezug); });
+    if (fremd.length && !unvollstaendig)
+      melden(raum, { schluessel: `stand:${raum}:${stand}`, art: "Standvermerk", fehlt: true, keinAbgleich: true,
+        grund: `Bezug unvollständig: ${fremd.length} Scherbe(n) auf der Platte kennt er nicht (z. B. ${fremd[0]}) — `
+          + "später angelegte Monate wären nicht erkennbar (--aus-sicherung mit dem aktuellen Vermerk oder --ohne-vermerk <raum>)" });
     for (const id of Object.keys(bezug)) {
       if (id === "kern") continue;
       const s = scherbeAusKennung(raum, id);
@@ -413,6 +428,20 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
     const p = await pruefen(path.resolve(sicherung));
     if (!p.ok) { say(`FEHLER: Die Sicherung ist nicht in Ordnung — nichts verändert.\n  ${p.fehler.join("\n  ")}`); return 2; }
     manifest = p.manifest;
+    /* Nach einer vollständigen Wiederherstellung (§4) zählen die
+       Standnummern ab dem Stand der damals benutzten Sicherung neu. Eine
+       Sicherung, die danach, aber vor der Wiederherstellung entstand,
+       gehört zur verworfenen Folge: gleiche Nummer, anderer Inhalt. */
+    let wh = null;
+    try { wh = JSON.parse(await readFile(path.join(ablageWurzel(), ".wiederhergestellt.json"), "utf8")); }
+    catch { /* keine Wiederherstellung vermerkt */ }
+    const t = (x) => Date.parse(String(x || ""));
+    if (wh && t(manifest.erstellt) > t(wh.sicherungErstellt) && t(manifest.erstellt) < t(wh.zeit)) {
+      say(`FEHLER: Diese Sicherung (erstellt ${manifest.erstellt}) stammt aus der Zeit vor der Wiederherstellung vom `
+        + `${wh.zeit}, ist aber jünger als die damals benutzte Sicherung (${wh.sicherungErstellt}). Ihre Standnummern `
+        + "gehören zu einer verworfenen Folge. Nichts verändert. Eine Sicherung nach der Wiederherstellung verwenden.");
+      return 2;
+    }
   }
   /* Die Sicherung als Bezug für den Abgleich: ihre Vermerke (siehe befund). */
   let referenz = null;

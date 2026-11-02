@@ -177,3 +177,22 @@ zuerst Rückgabe 1 und nichts angefasst, dann mit `--ohne-vermerk ap-befund` Rü
 `stand:ap-befund:ohne-abgleich`). Das ist das neue, strengere Verhalten, keine Abschwächung.
 
 **Neu in §4a:** Bezugsvermerk, „kein vollständiger Abgleich“, `--ohne-vermerk`, Invariante beim Angleichen.
+
+## WP-45c Nachtrag (4. Nachprüfung: K2, Matrix-Erweiterung, Standfolge)
+
+Branch `acc45/security/wp45c-rueckweg-nachtrag` von `origin/merge/wp45b` (0ec43fd), weil PR #33 bei Beginn noch nicht
+in `integration/centric-complete` war. CI auf 52016ea grün: Prüfung 41538379238, Sicherheit 41538379187,
+Betrieb: Deploy-Skripte 41538379185.
+
+| Befund | Umsetzung | Test (rot auf 52016ea → grün) |
+|---|---|---|
+| **K2** Dreifachschaden (Kern kaputt, aktueller Vermerk und Zeiger gelöscht, Dezember m1 gelöscht) — Vermerk 1 galt als aktuell, Exit 0, Dezember still weg | Liegt auf der Platte eine Scherbe, die der Bezugsvermerk nicht kennt (hier Dezember m2), ist der Bezug unvollständig (`keinAbgleich`, „Bezug unvollständig“). Angeglichen wird dann nur mit einer passenden Sicherung oder ausdrücklich `--ohne-vermerk`. Im gesunden Stand nennt der aktuelle Vermerk jede vorhandene Scherbe; bei gültigem Journal zählt, was es setzt oder löscht. | „K2: … Bezug unvollständig, nichts angeglichen“ (Trockenlauf meldet, `--aus-sicherung --kern-zurueck` → 1, Kern unverändert, Dezember m2 da, Befund bleibt). |
+| **Matrix-Erweiterung** | `pruefungen/ablage-pruefen-matrix2.test.js`, 54 Fälle: Schaden {Kern + aktueller Vermerk, Zeiger + aktueller Vermerk, K2} × fehlend {m1-Januar (nach dem jüngsten lesbaren Vermerk angelegt), m1-Oktober + m2-November (zwei Betriebe), nichts} × Modus {Trockenlauf, `--beiseitelegen`, `--aus-sicherung --beiseitelegen --kern-zurueck`, dasselbe + `--fehlende-hinnehmen` je Monat, `--beiseitelegen --ohne-vermerk`, alles + `--ohne-vermerk`}. Historie über drei Stände (Sicherung bei Stand 1, Dezember in Stand 2, Januar in Stand 3). Invarianten wie in der Grundmatrix; ein Monatsverlust ist nur mit Spur (`fehlte` bzw. `ohneAbgleich`) und Rückgabe 0 zulässig; mit allen Schaltern ist jeder Fall lösbar. Eigene kleine Ablage je Gruppe: lokal 46 s. | Gegen 52016ea: 6 von 54 rot — alle K2-Fälle mit fehlendem Januar (auch `--ohne-vermerk`: ohne erkannten Mangel keine Spur). Jetzt 54/54. |
+| **§4a / Standfolge nach Wiederherstellung** | `ablage-sicherung.mjs wiederherstellen` legt `data/.wiederhergestellt.json` an (Zeitpunkt, `erstellt` der benutzten Sicherung; Punktdatei: nicht gesichert, für die Anwendung unsichtbar). `ablage-pruefen --aus-sicherung` lehnt eine Sicherung ab, die nach der benutzten, aber vor der Wiederherstellung entstand (Rückgabe 2, nichts verändert). Ältere Wiederherstellungen ohne Vermerk: nur die Regel in §4a. §4a ergänzt (Standfolge, „Bezug unvollständig“). | „nach einer vollständigen Wiederherstellung: Sicherungen aus der verworfenen Folge werden abgelehnt“ (Y → 2, X → 0, nächste Sicherung mit der Punktdatei in Ordnung). |
+
+Lokal: Grundmatrix 140, Erweiterung 54, `ablage-pruefen-rueckweg`, `ablage-pruefen`, `sicherung-ablage` zusammen
+237/237 grün (1 übersprungen, Windows); eslint und tsc ohne Befund. Gegen 52016ea: 8 rot (K2-Test, Standfolge-Test,
+6 Matrixfälle).
+
+Grenze: Die Erkennung der verworfenen Folge braucht den Vermerk der Wiederherstellung. Wer `data/` von Hand aus einer
+Sicherung kopiert statt `wiederherstellen` zu benutzen, hat keinen — dann gilt nur die Regel in §4a.
