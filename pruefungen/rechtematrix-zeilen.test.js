@@ -134,7 +134,11 @@ const bestand = () => ({
     abwesenheiten: [
       { id: M("ABW-ID-B1"), personId: "b1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-B1") },
       { id: M("ABW-URLAUB-ID-B1"), personId: "b1", art: "urlaub", von: tag(20), bis: tag(22), notiz: M("ABW-URLAUB-NOTIZ-B1") },
-      { id: "ab-a1", personId: "a1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-A1") }],
+      { id: "ab-a1", personId: "a1", art: "krank", von: tag(1), bis: tag(2), notiz: M("ABW-NOTIZ-A1") },
+      /* Review WP-11, F1: Arten aus src/abwesenheitsarten.js, die die SV im
+         Bereich nicht im Klartext sehen darf. */
+      ...["mutterschutz", "pflegezeit", "familienpflegezeit", "elternzeit", "arbeitsverhinderung", "berufsschule"]
+        .map((art, i) => ({ id: `ab-a1-neu${i}`, personId: "a1", art, von: tag(3 + i), bis: tag(3 + i) }))],
     anfragen: [
       { id: "an-b1", personId: "b1", typ: "abwesenheit", art: "urlaub", status: "offen", von: tag(10), bis: tag(11), text: M("ANTRAG-URLAUB-B1") },
       { id: "t-b1", personId: "b1", typ: "tausch", status: "offen", partnerId: null, von: tag(9), bis: tag(9), text: M("ANTRAG-TAUSCH-B1"), interessenten: [] },
@@ -314,6 +318,12 @@ const ZEILEN = {
       const art = (id) => ((s.betrieb.abwesenheiten || []).find((x) => x.id === M(id)) || {}).art;
       expect(art("ABW-ID-B1"), "krank").toBe("abwesend");
       expect(art("ABW-URLAUB-ID-B1"), "urlaub").toBe("urlaub");
+      /* F1: auch im eigenen Bereich der SV keine neuen Arten im Klartext. */
+      for (const [i, x] of ["mutterschutz", "pflegezeit", "familienpflegezeit", "elternzeit", "arbeitsverhinderung", "berufsschule"].entries()) {
+        const e = (s.betrieb.abwesenheiten || []).find((y) => y.id === `ab-a1-neu${i}`);
+        expect(e && e.art, x).toBe("abwesend");
+      }
+      expect(JSON.stringify(s.betrieb.abwesenheiten)).not.toMatch(/mutterschutz|pflegezeit|elternzeit|arbeitsverhinderung|berufsschule/);
     } } },
   "Anträge (fremd)": {
     sonden: [mk("ANTRAG-URLAUB-B1"), mk("ANTRAG-TAUSCH-B1")],

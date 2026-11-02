@@ -90,7 +90,10 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 
 ¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen (für die Schichtverantwortung
 bei fremden Personen; im eigenen Bereich und Pool vollständig).
-³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung.
+³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung — und nur die Kategorien von vor
+Kette A (Urlaub, Krank, Schulung, Freistellung, Sonstiges, Freizeitausgleich; `ABWESENHEITSARTEN_SV`). Die neuen Arten
+(Mutterschutz/Beschäftigungsverbot, Eltern-, Pflege-, Familienpflegezeit, Arbeitsverhinderung, Berufsschule u. a.)
+sieht sie nur als „abwesend", auch in Hinweisen der Selbstplanung (Review WP-11, F1).
 ⁵ im eigenen Bereich vollständig (zum Entscheiden). ⁶ Die Oberfläche schreibt sie beim Ändern der eigenen
 Anmeldeadresse fort; ein Umbau dieses Schreibwegs steht aus. ⁷ Commit C1: `einheitId` ist die verantwortende
 Einheit (legt die Schichtverantwortung an, setzt der Server ihre eigene; Planung/Leitung auch `null` = betriebsweit).
@@ -198,7 +201,13 @@ der Mitbestimmung, und welche Mindestgröße? Geprüft zusätzlich in `pruefunge
 **Server-Durchsetzung (WP-11):** Der Server prüft jede neue oder geänderte Einteilung in `abweichungen` mit derselben
 Schutzprüfung wie die Oberfläche (`schutzEinsatz`, `server/lib/schutzpruefung.mjs`, auf den gespeicherten Rohdaten —
 für die Schichtverantwortung gleichwertig zu ihren Einsatzregeln) und weist ab, was hart sperrt, ebenso „nicht im
-Bestand" (`server/lib/schutzdurchsetzung.mjs`); bestehende Einteilungen bleiben unberührt. Eine Bestätigung zu einer
+Bestand" (`server/lib/schutzdurchsetzung.mjs`); bestehende Einteilungen bleiben unberührt. Die Dienstart kommt aus
+dem neuen Stand; eine unbekannte sperrt (fail-closed). Ändert eine Übermittlung Dienstzeiten, Schichtfolge (`zyklus`,
+`anker`), Einheiten (Versatz) oder Zugehörigkeit, Springer oder Schichtdienst einer Person, rechnet der Server für
+jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichung, sonst Schichtfolge) und weist ab,
+wenn dadurch ein sperrender Befund **neu** entsteht (Review F2); ein schon bestehender blockiert nicht. Grenzen dieser
+Nachrechnung: Teilzeit und Posten bleiben außer Acht (im Zweifel streng), Abwesenheiten zählen nicht als frei, Tage
+jenseits von 120 prüft nur die Planprüfung der Oberfläche. Eine Bestätigung zu einer
 solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
 durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
 `einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,

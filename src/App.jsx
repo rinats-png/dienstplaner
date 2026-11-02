@@ -190,7 +190,7 @@ import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende,
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { sperrtArt, befundText, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
@@ -10845,6 +10845,15 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
               </div>}
         </div>
       </Card>
+      {(() => {
+        /* Füllstand des Bestätigungsprotokolls (Nachprüfung WP-10): ab 80 %
+           sieht die Leitung (und Planung) eine Warnung; an der Grenze werden
+           neue Bestätigungen abgewiesen, alte nie verdrängt. Der Betriebsrat
+           bekommt nur Zählwerte und braucht sie nicht. */
+        if (sitz.rolle === "betriebsrat" || !darf(sitz, "plan.edit.all")) return null;
+        const f = protokollFuellstand((m.bestaetigungen || []).length);
+        return f.warnung ? <Hinweisband ton={f.voll ? "danger" : "warn"} titel={f.text} /> : null;
+      })()}
       {(() => {
         /* Bewusst bestätigte Abweichungen (E-19): getrennt von den
            unentdeckten Befunden. Sie stehen hier, bis der Monat abgelaufen

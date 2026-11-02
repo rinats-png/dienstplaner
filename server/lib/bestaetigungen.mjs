@@ -70,6 +70,24 @@ export const befundText = (regel) => (BEFUND_KATALOG[regel] || { text: "Befund" 
 export const BESTAETIGUNGEN_JE_SPEICHERN = 50;
 export const BESTAETIGUNGEN_GESAMT = 5000;
 export const BESTAETIGUNGEN_JE_TAG = 200;
+/** Ab diesem Füllstand wird die Leitung gewarnt (80 % der Gesamtgrenze). */
+export const BESTAETIGUNGEN_WARNUNG_AB = Math.floor(BESTAETIGUNGEN_GESAMT * 0.8);
+
+/**
+ * Füllstand des Bestätigungsprotokolls. Ab 80 % warnt die Anwendung die
+ * Leitung — an der Grenze werden neue Bestätigungen abgewiesen, alte nie
+ * verdrängt (Nachprüfung WP-10, B1). Archiv und Aufbewahrungslauf sind ein
+ * eigenes Paket.
+ * @returns {{ anzahl: number, grenze: number, warnung: boolean, voll: boolean, text: string | null }}
+ */
+export function protokollFuellstand(anzahl) {
+  const n = Number.isFinite(anzahl) ? anzahl : 0;
+  const voll = n >= BESTAETIGUNGEN_GESAMT, warnung = n >= BESTAETIGUNGEN_WARNUNG_AB;
+  return { anzahl: n, grenze: BESTAETIGUNGEN_GESAMT, warnung, voll,
+    text: voll ? `Das Bestätigungsprotokoll ist voll (${n} von ${BESTAETIGUNGEN_GESAMT}). Neue Bestätigungen werden abgewiesen, bis ältere archiviert sind.`
+      : warnung ? `Das Bestätigungsprotokoll ist zu ${Math.floor(n / BESTAETIGUNGEN_GESAMT * 100)} % gefüllt (${n} von ${BESTAETIGUNGEN_GESAMT}). An der Grenze werden neue Bestätigungen abgewiesen — bitte die Archivierung planen.`
+        : null };
+}
 
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleichId = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
@@ -84,6 +102,26 @@ export function leitungFuerBestaetigung(personen, ich, heute = new Date().toISOS
     && !gleichId(p.id, ich) && !p.anonym && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute));
 }
 
+/** Überschreitet das Protokoll mit dieser Übermittlung 80 %, bekommt die
+    Leitung einmalig eine Mitteilung (feste Kennung je Betrieb). */
+function fuellstandMitteilung(altM, neuM, ich) {
+  const vorher = (Array.isArray(altM && altM.bestaetigungen) ? altM.bestaetigungen : []).length;
+  const jetzt = neuM.bestaetigungen.length;
+  if (vorher >= BESTAETIGUNGEN_WARNUNG_AB || jetzt < BESTAETIGUNGEN_WARNUNG_AB) return neuM;
+  const f = protokollFuellstand(jetzt);
+  const personen = (Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
+  const vorhanden = new Set([...(Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : []),
+    ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten : [])].filter(istObjekt).map((n) => String(n.id)));
+  const jetztZeit = new Date();
+  const neue = leitungFuerBestaetigung(personen, null).map((l) => ({ id: `n-protokoll80-${l.id}`, personId: l.id, art: "planGeaendert",
+    titel: kuerzen("Bestätigungsprotokoll zu 80 % gefüllt", TITEL_MAX), text: kuerzen(f.text, TEXT_MAX), ziel: "pruef",
+    zeit: jetztZeit.toLocaleString("de-DE"), erstellt: jetztZeit.toISOString(), gelesen: false,
+    dringend: false, quelle: { art: "protokollFuellstand", anzahl: jetzt, von: ich } })).filter((n) => !vorhanden.has(n.id));
+  if (!neue.length) return neuM;
+  return { ...neuM, nachrichten: [...neue, ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten
+    : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
+}
+
 /**
  * Hängt die Mitteilungen an die Leitung für neu bestätigte Rechtsverstöße
  * an. Eine Mitteilung je Leitungsperson und Speichervorgang; die Kennung
@@ -92,6 +130,7 @@ export function leitungFuerBestaetigung(personen, ich, heute = new Date().toISOS
  */
 export function bestaetigungMitteilungen(altM, neuM, ich) {
   if (!istObjekt(neuM) || !Array.isArray(neuM.bestaetigungen)) return neuM;
+  neuM = fuellstandMitteilung(altM, neuM, ich);
   const alt = new Set((Array.isArray(altM && altM.bestaetigungen) ? altM.bestaetigungen : [])
     .filter(istObjekt).map((b) => String(b.id)));
   const recht = neuM.bestaetigungen.filter((b) => istObjekt(b) && !alt.has(String(b.id)) && b.stufe === "recht");

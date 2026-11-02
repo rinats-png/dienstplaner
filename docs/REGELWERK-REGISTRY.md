@@ -208,11 +208,14 @@ Ein Rechtsverstoß heißt: „das Gesetz wird gebrochen" und löst Bestätigung,
 | Branchenpakete später nach Kundenbedarf, zuerst ambulante Pflege nach Pilotbestätigung; Mitbestimmungsworkflow | Roadmap | ja (je Branche) |
 | Bereinigung von `marketing/` auf `main` (35 Dateien; Inhalt liegt auf `marketing/material`) in einem eigenen Cleanup-PR, nicht in #7 | Repository | nein |
 
-## Anhang G — Datenschutz und Fail-open (nach dem Review)
+## Anhang G — Datenschutz und Fail-open (nach dem Review) — ÜBERHOLT
 
-- **Schutzstatus bei fremden Personen:** `mutterschutz` und `schwerbehindert` stehen in `PERSON_PRIVAT` (`server/lib/rechte.mjs`). Beschäftigte und Betriebsrat sehen sie bei anderen Personen nicht; die eigene Person und die Planungsrollen unverändert.
-- **Betriebsratsprotokoll:** Bestätigte Abweichungen mit MuSchG oder SGB IX erscheinen dort als `SCHUTZ-INDIVIDUELL` / „Individuelle Schutzregel" (Stufe, Datum, Dienst und Bestätigungszeit bleiben; Regel-ID, Fundstelle, Text und der Freitext des Grundes entfallen). Jugendarbeitsschutz bleibt sichtbar. Die Planungsrollen sehen das Protokoll vollständig.
-- **Fehlendes Geburtsdatum:** Ist es leer oder ungültig (auch ein Tag wie der 30.02.), meldet die Schutzprüfung bei einem Dienst, den Jugendliche nicht leisten dürften (Nacht, vor 6 Uhr, über 8,5 Stunden), „nicht bewertbar" als Hinweis (`JARBSCHG-DATEN-01`, vorläufig, höchstens Hinweis). Kein Verstoß, aber auch nicht stillschweigend zulässig. In der Prüfansicht einmal je Person. Bekannte Geburtsdaten verhalten sich wie vorher.
+> **Überholt seit WP-11 (2. November 2026), maßgeblich ist Anhang H und `RECHTEMATRIX.md`.** Es gibt kein
+> `PERSON_PRIVAT` mehr (die Positivkataloge in `server/lib/sicht.mjs` entscheiden), und das Betriebsratsprotokoll
+> zeigt weder Datum noch Dienst noch Bestätigungszeit, sondern nur Zählwerte je Monat, Regel und Stufe. Der frühere
+> Wortlaut ist hier nicht mehr wiedergegeben, damit er nicht für den aktuellen Stand gehalten wird.
+
+- **Fehlendes Geburtsdatum** (gilt weiter, präzisiert): Ist es leer oder ungültig (auch ein Tag wie der 30.02.), meldet die Schutzprüfung bei einem Dienst, den Jugendliche nicht leisten dürften (zwischen 20 und 6 Uhr oder über 8,5 Stunden), „nicht bewertbar" als Hinweis (`JARBSCHG-DATEN-01`, vorläufig, höchstens Hinweis) — seit WP-11 auch für die Schichtverantwortung (Einsatzregel `alterNichtBewertbar`).
 
 
 ## Anhang H — Zusammenführung mit Kette B (WP-11, Stand 2. November 2026)
@@ -246,8 +249,19 @@ Geburtsdatum wird auch für die Schichtverantwortung als neutrale Regel `alterNi
 harte Schutzbefunde, „nicht im Bestand", keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche, gesetzliche
 Qualifikationen, Einweisung je Gerät und Ruhezeit unter 11 Stunden (`BEFUND_KATALOG.sperrt`,
 `server/lib/bestaetigungen.mjs`; die Oberfläche liest dieselbe Spalte als `SPERR_REGELN`). Eine sperrende Regel lässt
-sich nicht bestätigen. Der Server weist sperrende Einteilungen aus der Schutzprüfung und „nicht im Bestand" selbst ab;
-Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die Oberfläche durch (offen).
+sich nicht bestätigen. Der Server weist sperrende Einteilungen aus der Schutzprüfung und „nicht im Bestand" selbst ab
+— ausdrücklich gesetzte (Dienstart aus dem neuen Stand, unbekannte sperrt) und mittelbar entstehende: Ändern sich
+Dienstzeiten, Schichtfolge, Versatz oder Zugehörigkeit, rechnet er die nächsten 120 Tage für geschützte Personen nach
+und weist ab, wenn ein sperrender Befund neu entsteht (Review F2; Teilzeit und Posten vereinfacht, im Zweifel streng;
+Altbestand blockiert nicht). Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die
+Oberfläche durch (offen).
+
+**Nachtruhe 20–6 Uhr (Review F3).** `JARBSCHG-14` und `MUSCHG-05` prüfen jede Überschneidung eines Dienstes mit 20
+bis 6 Uhr — vorher nur „Nachtdienst" (über zwei Stunden zwischen 23 und 6) oder Beginn vor 6 Uhr, obwohl der Text „20
+bis 6 Uhr" sagte. **Bekannte Grenze:** Die Ausnahmen nach § 14 Abs. 2 bis 7 JArbSchG und § 5 Abs. 2 MuSchG (20–22 Uhr
+mit Einwilligung, ärztlicher Unbedenklichkeit und Genehmigung) bildet die Anwendung nicht ab; sie meldet dann einen
+sperrenden Befund, der rechtlich zulässig sein kann. Ob eine Einwilligung hinterlegt werden soll, ist eine offene
+Fachentscheidung. Der Prüfstatus beider Regeln bleibt Bestand (sie sperren); die Grenze steht in `pruefhinweis`.
 
 **Betriebsratsprotokoll.** Abweichend von Anhang G: Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe,
 unter 3 als „<3"; jede Schutzregel — auch der Jugendarbeitsschutz — heißt dort `schutz` (Kette B behandelt das Alter

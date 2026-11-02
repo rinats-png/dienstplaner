@@ -8,7 +8,9 @@
 >
 > **Bekannte Lücke (Stand 2. November 2026, WP-11):** Der Server weist neue oder geänderte Einteilungen ab, die die
 > Schutzprüfung hart sperrt (Jugendarbeitsschutz, Mutterschutz, neutrale Einsatzregeln) oder die außerhalb des
-> Beschäftigungsverhältnisses liegen. **Nur in der Oberfläche** durchgesetzt sind weiterhin: Einschränkungen an der
+> Beschäftigungsverhältnisses liegen — auch mittelbar über neue Dienstarten, geänderte Dienstzeiten, Schichtfolge,
+> Versatz oder Zugehörigkeit (Nachrechnung 120 Tage voraus für geschützte Personen; Teilzeit und Posten vereinfacht,
+> im Zweifel streng; unbekannte Dienstart sperrt). **Nur in der Oberfläche** durchgesetzt sind weiterhin: Einschränkungen an der
 > Person (keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät
 > und Ruhezeit unter 11 Stunden — eine Einteilung, die über die API direkt in `abweichungen` geschrieben wird, kommt
 > daran vorbei. Die Server-Durchsetzung dieser Regeln braucht die Planlogik auf dem Server und ist offen.

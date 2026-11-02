@@ -5,8 +5,12 @@
    (Rechtsrecherche Oktober 2026). `ABW` in src/App.jsx hängt sie an.
 
    `selbst: false` — Beschäftigte stellen dafür keinen Antrag in der App; die
-   Leitung trägt sie ein. Der Server zeigt anderen Personen nur „abwesend"
-   (abwesenheitSaeubern in server/lib/rechte.mjs), nie die Art.
+   Leitung trägt sie ein. Der Server zeigt anderen Personen nur „abwesend",
+   nie die Art: Beschäftigten und Betriebsrat außer Urlaub und Freistellung
+   (abwesenheiten in server/lib/sicht.mjs), der Schichtverantwortung im
+   eigenen Bereich nur die Arten aus ABWESENHEITSARTEN_SV (schichtAbwesenheiten,
+   ebenda) — keine dieser neuen. Planung und Leitung sehen sie. Eine neue Art
+   ist damit verborgen, bis sie dort ausdrücklich freigegeben wird.
    `bezahlt` entscheidet nur, ob geplante Stunden dem Ist gutgeschrieben
    werden. Es hat drei Zustände (siehe entgeltStatus): true, false und
    „ungeklaert". Die neuen Arten sind nicht rechtlich geprüft und stehen auf

@@ -604,11 +604,24 @@ const objektFilter = (w, fn) => Object.fromEntries(Object.entries(w && typeof w 
 
 /* Abwesenheiten: eigene ganz; im Bereich Zeitraum und Kategorie, keine
    Anmerkung; sonst wie für Beschäftigte („abwesend"). */
+/* Welche Abwesenheitsarten die Schichtverantwortung im eigenen Bereich im
+   Klartext sieht (RECHTEMATRIX ⁴): genau die Arten, die es vor Kette A
+   (Regelregister, #6) gab. Die neuen Arten aus src/abwesenheitsarten.js —
+   Mutterschutz/Beschäftigungsverbot, Elternzeit, Pflegezeit,
+   Familienpflegezeit, Arbeitsverhinderung, Berufsschule u. a. — verraten
+   Gesundheit, Schwangerschaft, Familie oder Alter; sie gehen nur als
+   „abwesend" hinaus (Review WP-11, F1). Neue Arten sind damit verborgen,
+   bis jemand sie hier ausdrücklich freigibt. */
+export const ABWESENHEITSARTEN_SV = Object.freeze(["urlaub", "krank", "schulung", "frei", "sonst", "ausgleich"]);
+const artFuerSV = (art) => (ABWESENHEITSARTEN_SV.includes(art) ? art : "abwesend");
+/* Hinweistexte aus der Oberfläche nennen eine Abwesenheit mit ihrer Art
+   („abwesend (Pflegezeit)"); für die Schichtverantwortung ohne Art. */
+export const hinweisOhneArt = (h) => (typeof h === "string" ? h.replace(/abwesend \([^)]*\)/g, "abwesend") : h);
 const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
   if (!a) return a;
   const u = umfangImZeitraum(ctx, a.personId, a.von, a.bis);
   if (u === "eigen") return a;
-  if (u === "bereich") return nimm(a, ["id", "personId", "art", "von", "bis"]);
+  if (u === "bereich") { const r = nimm(a, ["id", "personId", "art", "von", "bis"]); r.art = artFuerSV(a.art); return r; }
   return abwesenheiten([a], { ...ctx, ich: undefined })[0];
 });
 /* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst
@@ -647,7 +660,9 @@ const schichtNotrufe = (w, ctx) => liste(w).filter((n) => n && (imScopeAm(ctx, n
 /* Selbstplanung: Einträge aus dem Bereich mit Person, sonst wie für Beschäftigte. */
 const schichtSelbstplanung = (w, ctx) => {
   const sichtbar = (e) => imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]);
-  return liste(w).map((r) => rundeSicht(r, sichtbar, sichtbar));
+  return liste(w).map((r) => rundeSicht(r, sichtbar, sichtbar)).map((r) => (r && Array.isArray(r.eintraege) ? { ...r,
+    eintraege: r.eintraege.map((e) => (e && !gleich(e.personId, ctx.ich) && Array.isArray(e.hinweise)
+      ? { ...e, hinweise: e.hinweise.map(hinweisOhneArt) } : e)) } : r));
 };
 /* Urlaubsrunde: Kopf, Wünsche aus dem Bereich und die eigenen
    (Überschneidungen im Bereich), ohne andere Bereiche. */

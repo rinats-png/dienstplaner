@@ -13,8 +13,8 @@
    Geprüft in pruefungen/warnen.test.js.
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
-import { BEFUND_KATALOG, sperrtBefund, befundText } from "../server/lib/bestaetigungen.mjs";
-export { BEFUND_KATALOG, befundText };
+import { BEFUND_KATALOG, sperrtBefund, befundText, protokollFuellstand } from "../server/lib/bestaetigungen.mjs";
+export { BEFUND_KATALOG, befundText, protokollFuellstand };
 
 export const WARNSTUFEN = {
   hinweis: { rang: 1, label: "Hinweis", ton: "neutral" },

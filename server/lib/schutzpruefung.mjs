@@ -52,6 +52,25 @@ export function istNachtdienst(d) {
   return nachtMinuten(d) > 120;
 }
 
+/**
+ * Liegt ein Teil des Dienstes zwischen 20 und 6 Uhr? Das gesetzliche
+ * Fenster von § 14 Abs. 1 JArbSchG und § 5 Abs. 1 MuSchG (Review WP-11, F3).
+ * Bis dahin prüfte CENTRIC „Nachtdienst" (mehr als zwei Stunden zwischen 23
+ * und 6 Uhr) oder Beginn vor 6 Uhr — ein Spätdienst 14–22 Uhr einer
+ * Sechzehnjährigen blieb ohne Befund, obwohl der Text „20 bis 6 Uhr" sagte.
+ * Jede Überschneidung zählt. Die gesetzlichen Ausnahmen (§ 14 Abs. 2 ff.
+ * JArbSchG je Alter und Branche, § 5 Abs. 2 MuSchG: 20–22 Uhr mit
+ * Einwilligung und behördlicher Genehmigung) kennt die Prüfung nicht; sie
+ * meldet auch dann einen Befund — dokumentiert im Regelregister.
+ */
+export function imNachtfenster20bis6(d) {
+  const s = toMin(d.start);
+  let e = toMin(d.ende);
+  if (e <= s) e += 1440;
+  for (const [a, b] of [[0, 360], [1200, 1800], [2640, 2880]]) if (Math.min(e, b) > Math.max(s, a)) return true;
+  return false;
+}
+
 /** Alter in Jahren am Stichtag. Ohne Geburtsdatum: null. */
 export function alterAm(geburtstag, datum) {
   if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
@@ -81,12 +100,12 @@ export function schutzBefunde(person, dienstart, datum) {
      das Gesetz gilt. Das ist „nicht bewertbar" — kein Verstoß, aber auch nicht
      stillschweigend zulässig. Gemeldet wird nur, wo es darauf ankäme: bei einem
      Dienst, den eine minderjährige Person nicht leisten dürfte. */
-  if (alter === null && (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60 || dauer(dienstart) > 8.5))
+  if (alter === null && (imNachtfenster20bis6(dienstart) || dauer(dienstart) > 8.5))
     aus.push({ regel: "JArbSchG (Geburtsdatum)", hart: false, offen: true,
       text: "Das Geburtsdatum fehlt oder ist ungültig. Ob das Jugendarbeitsschutzgesetz gilt, lässt sich nicht prüfen — "
-        + "für Jugendliche wäre dieser Dienst nicht zulässig (Nacht, vor 6 Uhr oder über acht Stunden)." });
+        + "für Jugendliche wäre dieser Dienst nicht zulässig (zwischen 20 und 6 Uhr oder über acht Stunden)." });
   if (alter !== null && alter < 18) {
-    if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
+    if (imNachtfenster20bis6(dienstart))
       aus.push({ regel: "JArbSchG § 14", hart: true,
         text: "Jugendliche dürfen nicht zwischen 20 und 6 Uhr beschäftigt werden." });
     if (dauer(dienstart) > 8.5)
@@ -99,7 +118,7 @@ export function schutzBefunde(person, dienstart, datum) {
 
   /* --- Mutterschutzgesetz --- */
   if (person.mutterschutz) {
-    if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
+    if (imNachtfenster20bis6(dienstart))
       aus.push({ regel: "MuSchG § 5", hart: true,
         text: "Nachtarbeit zwischen 20 und 6 Uhr nur mit Einwilligung und behördlicher Genehmigung." });
     if (dow(datum) === 6)
@@ -165,7 +184,7 @@ export const EINSATZREGEL_TEXTE = {
   ueber8hNurAbsprache: "Dienst über 8 Stunden nur nach Absprache.",
   stundengrenzeWoche: "Wochenstundengrenze überschritten.",
   unbekannt: "Einsatzregel nicht auswertbar — Planungsprüfung erforderlich.",
-  alterNichtBewertbar: "Alter nicht hinterlegt — ob dieser Einsatz zulässig ist (Nacht, vor 6 Uhr, über acht Stunden), lässt sich nicht prüfen.",
+  alterNichtBewertbar: "Alter nicht hinterlegt — ob dieser Einsatz zulässig ist (zwischen 20 und 6 Uhr, über acht Stunden), lässt sich nicht prüfen.",
 };
 
 /**
@@ -183,7 +202,7 @@ export function regelBefunde(planungsregeln, dienstart, datum) {
     if (r.bis && datum > r.bis) continue;
     const treffer = (bed) => { if (bed) aus.push({ regel: r.regel, hart: r.hart === true, text: EINSATZREGEL_TEXTE[r.regel] }); };
     switch (r.regel) {
-      case "nachtNichtZulaessig": treffer(istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60); break;
+      case "nachtNichtZulaessig": treffer(imNachtfenster20bis6(dienstart)); break;
       case "hoechstens8hTag": treffer(dauer(dienstart) > 8.5); break;
       case "wochenendePruefen": treffer(dow(datum) >= 5); break;
       case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
@@ -193,7 +212,7 @@ export function regelBefunde(planungsregeln, dienstart, datum) {
          Hinweis bei den Diensten, die für Jugendliche unzulässig wären,
          wie schutzBefunde mit Rohdaten (WP-11). */
       case "alterNichtBewertbar":
-        if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60 || dauer(dienstart) > 8.5)
+        if (imNachtfenster20bis6(dienstart) || dauer(dienstart) > 8.5)
           aus.push({ regel: r.regel, hart: false, offen: true, text: EINSATZREGEL_TEXTE.alterNichtBewertbar });
         break;
       default: aus.push({ regel: "unbekannt", hart: true, text: EINSATZREGEL_TEXTE.unbekannt });

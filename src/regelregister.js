@@ -218,13 +218,17 @@ const REGELN_BESTAND = [
      diese Zeichenkette — damit lässt sich ein Befund seiner Regel zuordnen,
      ohne regelwerk.js anzufassen. */
   bestand({ id: "JARBSCHG-14", art: null, regeltext: "JArbSchG § 14", typ: "bestandsregel", bezeichnung: "Jugendliche: Nachtruhe",
-    ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 14" }),
+    ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 14 Abs. 1",
+    /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr. */
+    pruefhinweis: "Bekannte Grenze: Die Ausnahmen nach § 14 Abs. 2 bis 7 JArbSchG (je nach Alter und Branche, z. B. bis 22 oder 23 Uhr, Beginn ab 5 Uhr) kennt die Prüfung nicht; sie meldet dann einen Befund, der rechtlich zulässig sein kann. Stand der Prüflogik: 2. November 2026." }),
   bestand({ id: "JARBSCHG-08", art: null, regeltext: "JArbSchG § 8", typ: "grenzregel", bezeichnung: "Jugendliche: tägliche Höchstarbeitszeit",
     ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 8" }),
   bestand({ id: "JARBSCHG-16", art: null, regeltext: "JArbSchG §§ 16–17", typ: "bestandsregel", bezeichnung: "Jugendliche: Samstag und Sonntag",
     ebene: "bund", quelle: "JArbSchG", fundstelle: "§§ 16–17" }),
   bestand({ id: "MUSCHG-05", art: null, regeltext: "MuSchG § 5", typ: "bestandsregel", bezeichnung: "Mutterschutz: Nachtarbeit",
-    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5" }),
+    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5 Abs. 1",
+    /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr. */
+    pruefhinweis: "Bekannte Grenze: § 5 Abs. 2 MuSchG (20–22 Uhr mit ausdrücklicher Einwilligung, ärztlicher Unbedenklichkeit und behördlicher Genehmigung) bildet die Anwendung nicht ab; eine Einwilligung lässt sich nicht hinterlegen (Fachentscheidung offen). Die Prüfung meldet deshalb auch dann einen sperrenden Befund. Stand der Prüflogik: 2. November 2026." }),
   bestand({ id: "MUSCHG-06", art: null, regeltext: "MuSchG § 6", typ: "bestandsregel", bezeichnung: "Mutterschutz: Sonntagsarbeit",
     ebene: "bund", quelle: "MuSchG", fundstelle: "§ 6" }),
   bestand({ id: "SGBIX-207-01", art: null, regeltext: "SGB IX § 207", typ: "grenzregel", bezeichnung: "Schwerbehinderung: Mehrarbeit",
