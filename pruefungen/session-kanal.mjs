@@ -99,7 +99,8 @@ for (const [name, t] of [["Planung A", tAP], ["Beschäftigte A", tAM], ["Leitung
   const r1 = await rufe(tAL, "/api/bestand", "GET");
   const b2 = JSON.parse(JSON.stringify(r1.bestand));
   b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät" }];
-  const w2 = await rufe(tAP, "/api/bestand", "PUT", { bestand: b2, etag: r1.etag, durch: "Test" });
+  /* WP-22: Dienstarten ändert nur, wer org.edit hat — hier die Leitung in einer früheren Sitzung. */
+  const w2 = await rufe(tAL, "/api/bestand", "PUT", { bestand: b2, etag: r1.etag, durch: "Test" });
   const b1 = JSON.parse(JSON.stringify(r1.bestand));
   b1.session = SESSION();
   b1.mandanten[0].dienstarten = [...b1.mandanten[0].dienstarten, { id: "N", name: "Nacht" }];
