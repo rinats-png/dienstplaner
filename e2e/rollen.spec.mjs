@@ -40,8 +40,8 @@ const KERN = {
    Wird einer behoben, meldet Playwright „unerwartet bestanden“ (rot): dann
    die Zeile hier streichen. Schlüssel: "<projekt>:<prüfung>".
    -------------------------------------------------------------------------- */
-const FELDMODUS = "Kopfleiste bei 768 px: Knopf „Feldmodus“ ragt 3 px über den Rand "
-  + "(Seite 771 px). Gefunden mit WP-33, nicht behoben.";
+const FELDMODUS = "Kopfleiste bei 768 px: Knopf „Feldmodus“ ragt 3–4 px über den Rand "
+  + "(Seite 771–772 px). Gefunden mit WP-33, nicht behoben.";
 const BEKANNT = {
   "tablet:leitung": FELDMODUS,
   "tablet:planer": FELDMODUS,
