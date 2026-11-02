@@ -168,12 +168,38 @@ describe("Oberfläche: Position, offener Vorgang, Befund", () => {
     const p = { id: "a1" };
     const frueh = um("2026-10-30", "06:04");
     const offen = { einstempeln: { "a1|2026-10-29": { start: "21:58" } } };
-    expect(stempelVorgang(offen, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-29", st: { start: "21:58" }, vortag: true });
+    expect(stempelVorgang(offen, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-29", st: { start: "21:58" }, vortag: true, offen: true, veraltet: false });
     const fertig = { einstempeln: { "a1|2026-10-29": { start: "21:58", ende: "06:04" } } };
-    expect(stempelVorgang(fertig, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-30", st: null, vortag: false });
+    expect(stempelVorgang(fertig, p, "2026-10-30", frueh)).toEqual({ datum: "2026-10-30", st: null, vortag: false, offen: false, veraltet: false });
     const heute = { einstempeln: { "a1|2026-10-30": { start: "06:00" } } };
     expect(stempelVorgang(heute, p, "2026-10-30", frueh).datum).toBe("2026-10-30");
-    expect(stempelVorgang({}, p, "2026-11-01", um("2026-11-01", "06:00"))).toEqual({ datum: "2026-11-01", st: null, vortag: false });
+    expect(stempelVorgang({}, p, "2026-11-01", um("2026-11-01", "06:00"))).toEqual({ datum: "2026-11-01", st: null, vortag: false, offen: false, veraltet: false });
+  });
+  it("F2: offener Beginn bleibt offen und beendbar — unabhängig vom Plan; veraltet nur nach der 20-Stunden-Grenze", () => {
+    const p = { id: "a1" };
+    const tag = "2026-11-02", mittag = um(tag, "12:00");
+    /* stempelVorgang liest den Plan nicht: mit, ohne und nach gelöschtem Dienst dasselbe Ergebnis. */
+    const mitPlan = { abweichungen: { [`a1|${tag}`]: "F" }, einstempeln: { [`a1|${tag}`]: { start: "06:02" } } };
+    const ohnePlan = { abweichungen: {}, einstempeln: { [`a1|${tag}`]: { start: "06:02" } } };
+    for (const m of [mitPlan, ohnePlan])
+      expect(stempelVorgang(m, p, tag, mittag)).toEqual({ datum: tag, st: { start: "06:02" }, vortag: false, offen: true, veraltet: false });
+    /* Beginn heute 00:04, jetzt 20:04 → genau 20 h, noch zuordenbar; 20:05 → veraltet. */
+    const frueh = { einstempeln: { [`a1|${tag}`]: { start: "00:04" } } };
+    expect(stempelVorgang(frueh, p, tag, um(tag, "20:04"))).toMatchObject({ offen: true, veraltet: false });
+    expect(stempelVorgang(frueh, p, tag, um(tag, "20:05"))).toMatchObject({ offen: true, veraltet: true, vortag: false });
+    /* Mit eindeutigem Zeitpunkt (startAm) zählt dieser, nicht die Uhrzeit. */
+    const mitAm = { einstempeln: { [`a1|${tag}`]: { start: "00:04", startAm: um(tag, "00:04").toISOString() } } };
+    expect(stempelVorgang(mitAm, p, tag, um(tag, "20:05")).veraltet).toBe(true);
+    /* Nachtdienst vom Vortag innerhalb von 20 h: Vortag, offen, nicht veraltet. */
+    const nacht = { einstempeln: { "a1|2026-11-01": { start: "22:01" } } };
+    expect(stempelVorgang(nacht, p, tag, um(tag, "09:14"))).toEqual({ datum: "2026-11-01", st: { start: "22:01" }, vortag: true, offen: true, veraltet: false });
+    /* Vortag über 20 h: kein Ausstempeln für gestern; heute ist nichts offen (Korrektur über die Leitung). */
+    const alt = { einstempeln: { "a1|2026-11-01": { start: "12:04" } } };
+    expect(stempelVorgang(alt, p, tag, um(tag, "09:14"))).toEqual({ datum: tag, st: null, vortag: false, offen: false, veraltet: false });
+    /* Abgeschlossen: nicht offen. Ende ohne Start (START_FEHLT): nicht offen. Kein Eintrag: nicht offen. */
+    expect(stempelVorgang({ einstempeln: { [`a1|${tag}`]: { start: "06:00", ende: "14:00" } } }, p, tag, mittag)).toMatchObject({ offen: false, veraltet: false });
+    expect(stempelVorgang({ einstempeln: { [`a1|${tag}`]: { ende: "09:13", markierungen: ["START_FEHLT"] } } }, p, tag, mittag)).toMatchObject({ offen: false, veraltet: false });
+    expect(stempelVorgang({}, p, tag, mittag)).toMatchObject({ offen: false, veraltet: false, st: null });
   });
   it("Befundanzeige: ✓ ! ? ○ — und alte Einträge ohne geoStart/geoEnde bleiben lesbar", () => {
     const e = { start: "06:00", ende: "14:00",
@@ -290,7 +316,7 @@ describe("zeiterfassung.mjs: offener Beginn höchstens 20 Stunden", () => {
     const m = { einstempeln: { "a1|2026-10-22": { start: "06:00" } } };
     expect(stempelVorgang(m, p, "2026-10-23", um("2026-10-23", "02:00"))).toMatchObject({ datum: "2026-10-22", vortag: true });
     expect(stempelVorgang(m, p, "2026-10-23", um("2026-10-23", "06:01")))
-      .toEqual({ datum: "2026-10-23", st: null, vortag: false });
+      .toEqual({ datum: "2026-10-23", st: null, vortag: false, offen: false, veraltet: false });
     expect(endeFehlt("2026-10-22", m.einstempeln["a1|2026-10-22"], um("2026-10-23", "02:00"))).toBe(false);
     expect(endeFehlt("2026-10-22", m.einstempeln["a1|2026-10-22"], um("2026-10-23", "06:01"))).toBe(true);
     expect(endeFehlt("2026-10-22", { start: "06:00", ende: "14:00" }, um("2026-10-25", "06:00"))).toBe(false);

@@ -110,7 +110,8 @@ describe("Ansichten mit gekürzten Daten", () => {
     expect(von).toBeGreaterThan(0);
     expect(bis).toBeGreaterThan(von);
     /* Jede Anzeige von Urlaubsanspruch und Stundenkonto liegt im zeigt-Block. */
-    for (const stelle of ["url.rest", "url.anspruch", "url.genommen", "sgn(kto)", "kontoVerlauf(m, p"]) {
+    /* sgnIst: das Konto darf null sein (E1) und erscheint dann als „–". */
+    for (const stelle of ["url.rest", "url.anspruch", "url.genommen", "sgnIst(kto)", "kontoVerlauf(m, p"]) {
       const orte = [];
       for (let o = q.indexOf(stelle); o >= 0; o = q.indexOf(stelle, o + 1)) orte.push(o);
       expect(orte.length, stelle).toBeGreaterThan(0);

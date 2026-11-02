@@ -38,14 +38,23 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * Grenze wie auf dem Server (startZuordenbar). Ein älterer offener Beginn
  * ist ein vergessenes Ausstempeln; dann wird heute neu eingestempelt, und
  * der alte Vorgang bleibt offen für die Korrektur.
+ *
+ * `offen`: Beginn ohne Ende — unabhängig davon, ob für den Tag (noch) ein
+ * Dienst geplant ist; ein offener Beginn muss beendbar bleiben, auch wenn
+ * der Dienst nach dem Einstempeln aus dem Plan genommen wurde.
+ * `veraltet`: offen, aber nach derselben 20-Stunden-Grenze wie auf dem Server
+ * nicht mehr zuordenbar — ein Ende dazu speichert der Server mit
+ * START_VERALTET, ohne Erfassung. Das ist kein normaler Abschluss.
  */
 export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   const tab = (m && m.einstempeln) || {};
   const gestern = addDays(heute, -1);
-  const offen = p ? tab[`${p.id}|${gestern}`] : null;
-  if (offen && offen.start && !offen.ende && startZuordenbar(gestern, offen.start, jetzt, offen.startAm))
-    return { datum: gestern, st: offen, vortag: true };
-  return { datum: heute, st: p ? tab[`${p.id}|${heute}`] || null : null, vortag: false };
+  const vom = p ? tab[`${p.id}|${gestern}`] : null;
+  if (vom && vom.start && !vom.ende && startZuordenbar(gestern, vom.start, jetzt, vom.startAm))
+    return { datum: gestern, st: vom, vortag: true, offen: true, veraltet: false };
+  const st = p ? tab[`${p.id}|${heute}`] || null : null;
+  const offen = !!st && !!st.start && !st.ende;
+  return { datum: heute, st, vortag: false, offen, veraltet: offen && !startZuordenbar(heute, st.start, jetzt, st.startAm) };
 }
 
 /** Ein offener Beginn, zu dem kein Ende mehr automatisch passt (für die Anzeige der Leitung). */

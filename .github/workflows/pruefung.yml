@@ -134,6 +134,12 @@ jobs:
       - name: Oberfläche Selbstservice
         run: npm run pruefung:oberflaeche
 
+      # Gerenderte Ansichten (react-dom/server, echte Komponenten): ohne
+      # Ist-Daten kein Absturz und keine 0 (F1); ein offener Beginn bleibt
+      # unabhängig vom Plan sichtbar und beendbar (F2).
+      - name: Oberfläche gerendert
+        run: npm run pruefung:render
+
       # Mandantenstruktur beim Schreiben: genau ein Betrieb, der eigene, an
       # seiner Stelle. Doppelte und ungültige Kennungen werden abgewiesen.
       - name: Mandanten-Integrität
