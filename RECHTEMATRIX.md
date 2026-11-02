@@ -152,8 +152,8 @@ Tag darin, bei Anträgen am ersten Tag (wie beim Entscheiden). Nach einer Verset
 des alten Bereichs die Tage im neuen Bereich also wie bei einer fremden Person. Tagesgenau schränkt nur ein: Was
 das Sichtfenster verschließt, bleibt zu; ohne gültigen Tag gilt ein Eintrag als fremd. Ein Bereich „ALLE" ist kein
 Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume` die Tage mit zugänglicher
-Erfassung; an allen anderen Tagen und in Auswertungen über Zeiträume zeigt die Oberfläche „nicht verfügbar", nie
-die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
+Erfassung; an allen anderen Tagen und in Auswertungen, deren Zeitraum (Monat, Kontojahr, Jahr, Ausgleichszeitraum)
+nicht ganz darin liegt, zeigt die Oberfläche „nicht verfügbar", nie die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
 Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
 ¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
 `maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
