@@ -42,6 +42,14 @@ afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 
 const warte = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* Zeitgrenze je Prüfung: 30 s statt der Vorgabe von 5 s. Der Löschlauf geht
+   alle Testräume, Konten, Mitgliedschaften und Sitzungen der Ablage durch
+   und wartet hier zusätzlich auf einen gebremsten Schreiber; unter Windows
+   mit Virenscanner und parallelen Prüfläufen dauerte das einmal über fünf
+   Sekunden. Die Grenzen der Anwendung (Raumsperre 15 s) bleiben unberührt —
+   gemessen wird hier Richtigkeit, nicht Geschwindigkeit. */
+const LAST_GRENZE = 30_000;
+
 /** Ein abgelaufener, selbst angelegter Testbetrieb ohne Zugangscodes. */
 const testbetrieb = (raum, monat = "2026-01") => ({ version: 9, mandanten: [{ id: raum, name: raum,
   selbstAngelegt: true, status: "test", laeuftAb: "2026-01-01T00:00:00.000Z",
@@ -96,7 +104,7 @@ describe("2 — Löschlauf parallel zu einem Schreiber", () => {
 
     expect(vermerk.geloescht).toContain(RAUM);
     expect(await reste(RAUM), "Waisen nach dem Löschlauf").toEqual([]);
-  });
+  }, LAST_GRENZE);
 });
 
 describe("3 — Provisionierung unter der Raumsperre", () => {
@@ -111,7 +119,7 @@ describe("3 — Provisionierung unter der Raumsperre", () => {
     expect(verlierer.grund).toBe("belegt");
     const gewinnerName = a.ok ? "Erster" : "Zweiter";
     expect((await B.bestandLesen(store, raum)).bestand.mandanten[0].name).toBe(gewinnerName);
-  });
+  }, LAST_GRENZE);
 
   it("Rückbau parallel zu einem Schreiber hinterlässt keine Waisen", async () => {
     const RAUM = "t-rueckbau";
@@ -128,7 +136,7 @@ describe("3 — Provisionierung unter der Raumsperre", () => {
     await Promise.all([schreiben.catch((e) => e), rueckbau]);
 
     expect(await reste(RAUM), "Waisen nach dem Rückbau").toEqual([]);
-  });
+  }, LAST_GRENZE);
 });
 
 describe("9 — Sammelblob „konten“ bei gleichzeitigen Löschungen", () => {
@@ -149,7 +157,7 @@ describe("9 — Sammelblob „konten“ bei gleichzeitigen Löschungen", () => {
       L.raumLoeschen(langsam, sitzungen, "t-sammel-b"),
     ]);
     expect(Object.keys(await store.get("konten", { type: "json" })).sort()).toEqual(["c3"]);
-  });
+  }, LAST_GRENZE);
 });
 
 describe("WP-45/2 — Anmeldung während der Raumlöschung", () => {
@@ -178,5 +186,5 @@ describe("WP-45/2 — Anmeldung während der Raumlöschung", () => {
     await Promise.all([loeschen, anmeldung]);
     expect(await store.get("konto:x1", { type: "json" }), "Code zeigt auf gelöschten Raum").toBeNull();
     expect(Object.keys(await store.get("konten", { type: "json" }))).toEqual(["x2"]);
-  });
+  }, LAST_GRENZE);
 });

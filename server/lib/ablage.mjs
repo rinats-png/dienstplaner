@@ -69,8 +69,10 @@ function ablagePruefen() {
    Die Schlüssel der Anwendung sind höchstens rund 90 Zeichen lang. */
 const NAME_MAX = 200;
 
-/** @param {string} schluessel */
-function dateiname(schluessel) {
+/** Der Dateiname eines Schlüssels (exportiert für Werkzeuge, die eine Datei
+    beiseitelegen müssen, die sich nicht mehr lesen lässt).
+    @param {string} schluessel */
+export function dateiname(schluessel) {
   if (typeof schluessel !== "string" || !schluessel.length)
     throw new Error("Ablage: leerer Schlüssel");
   let aus = "";

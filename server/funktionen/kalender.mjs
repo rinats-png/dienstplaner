@@ -2,7 +2,7 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
-import { bestandLesen, altBestandSchluessel } from "../lib/bestand.mjs";
+import { bestandLesen, altBestandSchluessel, voruebergehend } from "../lib/bestand.mjs";
 import { eigenerMandant, rolleBekannt } from "../lib/rechte.mjs";
 import { kernSchluessel } from "../lib/scherben.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
@@ -52,7 +52,8 @@ const indexSchluessel = (b) => `feedperson:${b.raum}:${b.mandantId}:${b.personId
 /** Die Bindung der Sitzung: Raum, eigener Betrieb, eigene Person — oder null. */
 async function eigeneBindung(s) {
   if (!s || s.person === null || s.person === undefined || s.rolle === "betreiber") return null;
-  const gelesen = await bestandLesen(store(), s.bestand).catch(() => null);
+  /* Kein .catch: „nicht lesbar" ist nicht „nicht deine Person" (→ 503). */
+  const gelesen = await bestandLesen(store(), s.bestand);
   const bestand = gelesen && gelesen.bestand;
   const m = bestand ? eigenerMandant(bestand, s) : null;
   if (!m || !Array.isArray(m.personen) || !m.personen.some((p) => p && String(p.id) === String(s.person))) return null;
@@ -444,6 +445,10 @@ export default async (req) => {
 
     return antwort({ fehler: "Unbekannter Pfad." }, 404);
   } catch (e) {
+    /* Gerade nicht lesbar oder gerade gesperrt (bestand.mjs, voruebergehend):
+       503 statt „Serverfehler" — und nie als „gibt es nicht" gewertet. */
+    if (voruebergehend(e)) return antwort({ fehler: "Gerade nicht verfügbar.",
+      text: "Bitte in einigen Sekunden noch einmal versuchen.", code: e.code }, 503);
     /* Nach außen nur, dass es schiefging; die Ursache ins Protokoll wie in
        daten.mjs. Bisher verschwand sie spurlos. Der Pfad des Feeds trägt das
        Geheimnis — protokolliert wird nur „feed". */

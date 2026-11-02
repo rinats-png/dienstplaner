@@ -34,7 +34,7 @@
 
 import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
-import { unterRaumsperre, sperreGehalten } from "./raumsperre.mjs";
+import { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
 /* Für Endpunkte, die Lesen, Prüfen und Schreiben gemeinsam schützen müssen
@@ -136,6 +136,21 @@ async function journalLesen(store, raum) {
 }
 
 /**
+ * Für das Werkzeug werkzeug/journal-pruefen.mjs: Wie steht es um das Journal
+ * eines Raums? „keins", „gueltig" (wird beim nächsten Schreiben zu Ende
+ * geführt) oder „beschaedigt" (sperrt den Raum, bis es beiseitegelegt ist).
+ * @returns {Promise<{ zustand: "keins"|"gueltig"|"beschaedigt", grund?: string, schritte?: number }>}
+ */
+export async function journalPruefen(store, raum) {
+  try {
+    const j = await journalLesen(store, raum);
+    return j ? { zustand: "gueltig", schritte: j.schritte.length } : { zustand: "keins" };
+  } catch (e) {
+    return { zustand: "beschaedigt", grund: String((e && e.message) || e).slice(0, 200) };
+  }
+}
+
+/**
  * Schreibt ein liegengebliebenes Journal zu Ende und löscht es. Nur unter der
  * Sperre des Raums. Jeder Schritt ist wiederholbar — ein zweiter Abbruch
  * mittendrin schadet nicht, der nächste Aufruf fängt einfach von vorn an.
@@ -159,11 +174,11 @@ async function schritteAusfuehren(store, schritte) {
 }
 
 /** Kern, Altbestand und Scherben so lesen, wie sie gerade auf der Platte liegen. */
-async function rohLesen(store, raum, versuch) {
-  const kern = await versuch("Kern",
-    () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }), null);
-  const alt = kern ? null : await versuch("Altbestand",
-    () => store.getWithMetadata(ALT(raum), { type: "json" }), null);
+async function rohLesen(store, raum, versuch, kritisch) {
+  const kern = await kritisch("Kern",
+    () => store.getWithMetadata(kernSchluessel(raum), { type: "json" }));
+  const alt = kern ? null : await kritisch("Altbestand",
+    () => store.getWithMetadata(ALT(raum), { type: "json" }));
   /** @type {Map<string, any>} */
   const scherben = new Map();
   if (kern) {
@@ -193,19 +208,29 @@ function ueberlagern(roh, raum, journal) {
 }
 
 async function lesen(store, raum, streng) {
-  /* Im strengen Lesen wird jeder Fehler zum Abbruch, im milden zur Lücke. */
+  /* Im strengen Lesen wird jeder Fehler zum Abbruch, im milden zur Lücke —
+     aber nur bei einer einzelnen Scherbe oder ihrem Verzeichnis. */
   const versuch = async (was, arbeit, ersatz) => {
     try { return await arbeit(); }
     catch (e) { if (streng) throw unlesbar(raum, was, e); return ersatz; }
   };
-  const journal = () => versuch("Schreibjournal", () => journalLesen(store, raum), null);
-  const kernStand = () => versuch("Kern",
-    () => store.getMetadata(kernSchluessel(raum)), null).then((m) => (m ? m.metadata?.stand ?? null : null));
+  /* Journal, Kern und Altbestand sind in beiden Arten kritisch: Ein Fehler
+     beim Lesen heißt „unbekannt", nie „nicht da". Bis November 2026 machte
+     das milde Lesen aus einem unlesbaren Journal „kein Journal" — nach einem
+     Abbruch mitten im Schreiben zeigte die Anzeige dann den neuen Kern mit
+     einem Eintrag im März UND im April. Aus einem unlesbaren Kern wurde „den
+     Raum gibt es nicht", und manche Aufrufer räumten daraufhin ab. */
+  const kritisch = async (was, arbeit) => {
+    try { return await arbeit(); } catch (e) { throw unlesbar(raum, was, e); }
+  };
+  const journal = () => kritisch("Schreibjournal", () => journalLesen(store, raum));
+  const kernStand = () => kritisch("Kern", () => store.getMetadata(kernSchluessel(raum)))
+    .then((m) => (m ? m.metadata?.stand ?? null : null));
 
   /* Ein einziger Durchgang, wenn kein Schreiber dazwischenkommen kann. */
   const einmal = async () => {
     const j = await journal();
-    const roh = await rohLesen(store, raum, versuch);
+    const roh = await rohLesen(store, raum, versuch, kritisch);
     return zusammenbauen(j ? ueberlagern(roh, raum, j) : roh, raum, streng);
   };
   if (sperreGehalten(raum)) return einmal();
@@ -217,21 +242,45 @@ async function lesen(store, raum, streng) {
      Stand — dann ist er beim zweiten Blick entweder noch da (Journal) oder
      fertig (anderer Stand). Lag sein Journal schon beim ersten Blick da und
      ist beim zweiten noch dasselbe, ist das Gelesene samt Journal der neue
-     Stand, gleich wie weit er gekommen ist. */
+     Stand, gleich wie weit er gekommen ist.
+
+     Ein Lesefehler (EMFILE, ein Aussetzer der Platte, eine Datei, die ein
+     Schreiber unter Windows gerade ersetzt) ist oft vorübergehend: noch ein
+     Versuch, kurz versetzt. Bleibt er, gilt BESTAND_UNLESBAR (→ 503). */
+  let fehler = null;
   for (let n = 0; n < 4; n++) {
-    const k1 = await kernStand();
-    const j1 = await journal();
-    const roh = await rohLesen(store, raum, versuch);
-    const j2 = await journal();
-    const k2 = await kernStand();
-    if ((j1 && j1.id) !== (j2 && j2.id)) continue;            // ein Schreibvorgang begann oder endete
-    if (j1) return zusammenbauen(ueberlagern(roh, raum, j1), raum, streng);
-    const kRoh = roh.kern ? roh.kern.metadata?.stand ?? null : null;
-    if (k1 !== k2 || kRoh !== k2) continue;                    // ein ganzer lief durch
-    return zusammenbauen(roh, raum, streng);
+    if (n > 0) await new Promise((r) => setTimeout(r, 10 * n));
+    try {
+      const k1 = await kernStand();
+      const j1 = await journal();
+      const roh = await rohLesen(store, raum, versuch, kritisch);
+      const j2 = await journal();
+      const k2 = await kernStand();
+      fehler = null;
+      if ((j1 && j1.id) !== (j2 && j2.id)) continue;            // ein Schreibvorgang begann oder endete
+      if (j1) return zusammenbauen(ueberlagern(roh, raum, j1), raum, streng);
+      const kRoh = roh.kern ? roh.kern.metadata?.stand ?? null : null;
+      if (k1 !== k2 || kRoh !== k2) continue;                    // ein ganzer lief durch
+      return zusammenbauen(roh, raum, streng);
+    } catch (e) {
+      if (!e || e.code !== BESTAND_UNLESBAR) throw e;
+      fehler = e;
+    }
   }
+  if (fehler) throw fehler;
   /* Es wird gerade sehr viel geschrieben: einmal unter der Sperre lesen. */
   return unterRaumsperre(raum, einmal);
+}
+
+/**
+ * Ist dieser Fehler vorübergehend — „gerade nicht lesbar" oder „gerade
+ * gesperrt" — statt „gibt es nicht"? Aufrufer, die einen fehlenden Bestand
+ * anders behandeln als einen Fehler (Sitzung beenden, Vorgang abräumen,
+ * „nicht deine Person"), müssen solche Fehler weiterreichen: Am Ende steht
+ * eine 503, und nichts wird auf Grund einer Lücke entschieden.
+ */
+export function voruebergehend(e) {
+  return !!e && [BESTAND_UNLESBAR, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT].includes(/** @type {any} */ (e).code);
 }
 
 function zusammenbauen({ kern, alt, scherben }, raum, streng) {

@@ -365,7 +365,8 @@ export default async (req, context) => {
          Betrieb. Der Betreiber sperrt weiter raumweit. */
       let eigenerOrt = null;
       if (sB.rolle !== "betreiber") {
-        const gelesenS = await bestandLesen(store, sB.bestand).catch(() => null);
+        /* Kein .catch: Ein unlesbarer Bestand ist ein Fehler (→ 503), kein leerer Betrieb. */
+        const gelesenS = await bestandLesen(store, sB.bestand);
         eigenerOrt = gelesenS && gelesenS.bestand ? eigenerBetrieb(gelesenS.bestand, sB) : null;
       }
       const imEigenenBetrieb = (k) => {
