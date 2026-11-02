@@ -788,7 +788,11 @@ export function bestandSichtBetreiber(bestand) {
 /** Was Planung und Leitung an fremden Personen nicht bekommen. */
 export const VOLL_PERSON_WEG = ["kalenderGeheim", "kalenderVerweis", "kalenderStand", "pushSchluessel", "zustellung",
   "emailVorher", "emailGeaendert", "iban", "steuerId", "sozialversicherung", "lohn", "gehalt",
-  "notfallkontakt"];
+  /* `notfall` steht als Notfallangabe in PERSONENFELDER (keine Oberfläche
+     schreibt es, ein Import oder Altbestand kann es tragen). Bis WP-43 fehlte
+     es hier und ging an Planung, Leitung und die Vollausgabe der Leitung — die
+     Rechtematrix gibt Notfallkontakte nur der Sicherung heraus. */
+  "notfallkontakt", "notfall"];
 /** Fremde Personen: alle bekannten Felder ohne die obigen. */
 export const VOLL_PERSON = PERSONENFELDER.filter((f) => !VOLL_PERSON_WEG.includes(f));
 /** Was Planung und Leitung im Betrieb nicht bekommen: Vertrag, Rechnungsangaben

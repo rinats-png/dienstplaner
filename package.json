@@ -49,7 +49,7 @@
     "pruefung:vollausgabe-http": "node pruefungen/vollausgabe.mjs",
     "pruefung:verwaltungswege": "vitest run pruefungen/verwaltungswege.test.js",
     "pruefung:verwaltungswege-http": "node pruefungen/verwaltungswege.mjs",
-    "pruefung:rechtematrix": "vitest run pruefungen/rechtematrix.test.js",
+    "pruefung:rechtematrix": "vitest run pruefungen/rechtematrix.test.js pruefungen/rechtematrix-zeilen.test.js pruefungen/sicht-tagesgenau.test.js",
     "pruefung:kalender-rechte": "vitest run pruefungen/kalender-rechte.test.js",
     "pruefung:kalender-rechte-http": "node pruefungen/kalender-rechte.mjs",
     "pruefung:zustellung-rechte": "vitest run pruefungen/zustellung-rechte.test.js",
