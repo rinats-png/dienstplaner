@@ -983,12 +983,15 @@ export default async (req, context) => {
          entsteht keine bestätigte Erfassung — sonst würde aus 06:00 Uhr und
          06:01 Uhr am Folgetag eine 24-Stunden-Schicht. Vervollständigt wird
          wie bei START_FEHLT über „Zeiten bestätigen" bzw. die Leitung. */
-      const startVeraltet = art === "ende" && !!alt.start && !startZuordenbar(String(datum), alt.start, jetzt);
+      const startVeraltet = art === "ende" && !!alt.start
+        && !startZuordenbar(String(datum), alt.start, jetzt, alt.startAm);
       if (startVeraltet) markieren("START_VERALTET");
+      /* startAm/endeAm: der eindeutige Zeitpunkt (UTC) neben der Berliner
+         Uhrzeit — in der Rückstellnacht ist „02:30" sonst zweideutig. */
       const neu = art === "start"
-        ? { start: zeit, ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
+        ? { start: zeit, startAm: jetzt.toISOString(), ortStart: urteil.text, innerhalbStart: urteil.innerhalb,
             geprueftStart: urteil.geprueft, geoStart: urteil.geo }
-        : { ...alt, ende: zeit, ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
+        : { ...alt, ende: zeit, endeAm: jetzt.toISOString(), ortEnde: urteil.text, innerhalbEnde: urteil.innerhalb,
             geprueftEnde: urteil.geprueft, geoEnde: urteil.geo };
       /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
          fehlt das Feld, ist es der Tag des Vorgangs. */

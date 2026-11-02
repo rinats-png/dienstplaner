@@ -265,6 +265,26 @@ describe("zeiterfassung.mjs: offener Beginn höchstens 20 Stunden", () => {
     /* Frühjahr: 09:00 → 06:00 sind auf der Wanduhr 21 h, tatsächlich 20 h. */
     expect(startZuordenbar("2027-03-27", "09:00", um("2027-03-28", "06:00"))).toBe(true);
   });
+  it("Rückstellnacht: „02:30“ ist zweideutig — mit startAm zählt die tatsächlich verstrichene Zeit", () => {
+    const jetzt = new Date("2026-10-25T20:45:00Z");                       // 21:45 Winterzeit
+    /* Beginn 02:30 Sommerzeit (erstes Vorkommen) = 00:30Z: tatsächlich 20:15 h. */
+    expect(offenSeitMinuten("2026-10-25", "02:30", jetzt, "2026-10-25T00:30:00.000Z")).toBe(1215);
+    expect(startZuordenbar("2026-10-25", "02:30", jetzt, "2026-10-25T00:30:00.000Z")).toBe(false);
+    /* Beginn 02:30 Winterzeit (zweites Vorkommen) = 01:30Z: 19:15 h. */
+    expect(startZuordenbar("2026-10-25", "02:30", jetzt, "2026-10-25T01:30:00.000Z")).toBe(true);
+    /* Altbestand ohne startAm: als Winterzeit gelesen (dokumentierte Grenze der Rückwärtskompatibilität). */
+    expect(offenSeitMinuten("2026-10-25", "02:30", jetzt)).toBe(1155);
+    /* Auch „jetzt" in der Doppelstunde ist eindeutig: 02:30 Sommerzeit am Ende, Beginn 06:31 am Vortag = 20:59 h. */
+    expect(offenSeitMinuten("2026-10-24", "06:31", new Date("2026-10-25T00:30:00Z"))).toBe(20 * 60 - 1);
+    expect(offenSeitMinuten("2026-10-24", "06:31", new Date("2026-10-25T01:30:00Z"))).toBe(20 * 60 + 59);
+    /* Sommerzeitbeginn: startAm und Wanduhr ergeben dasselbe. */
+    const fj = new Date("2027-03-28T04:00:00Z");                          // 06:00 Sommerzeit
+    expect(offenSeitMinuten("2027-03-27", "09:00", fj, "2027-03-27T08:00:00Z")).toBe(offenSeitMinuten("2027-03-27", "09:00", fj));
+    /* Sekunden im startAm zählen nicht; ungültiges startAm fällt auf Tag + Uhrzeit zurück. */
+    expect(offenSeitMinuten("2026-10-22", "06:00", um("2026-10-23", "02:00"), "2026-10-22T04:00:59.999Z")).toBe(1200);
+    for (const kaputt of ["gestern", "2026-10-22 04:00", "2026-10-22T04:00:00+02:00", 17, null])
+      expect(offenSeitMinuten("2026-10-22", "06:00", um("2026-10-23", "02:00"), kaputt)).toBe(1200);
+  });
   it("Oberfläche: „Ausstempeln für gestern“ nur innerhalb der Grenze, sonst heute einstempeln und „Ende fehlt“", () => {
     const p = { id: "a1" };
     const m = { einstempeln: { "a1|2026-10-22": { start: "06:00" } } };
@@ -275,6 +295,10 @@ describe("zeiterfassung.mjs: offener Beginn höchstens 20 Stunden", () => {
     expect(endeFehlt("2026-10-22", m.einstempeln["a1|2026-10-22"], um("2026-10-23", "06:01"))).toBe(true);
     expect(endeFehlt("2026-10-22", { start: "06:00", ende: "14:00" }, um("2026-10-25", "06:00"))).toBe(false);
     expect(endeFehlt("2026-10-22", null)).toBe(false);
+    /* Mit startAm entscheidet der eindeutige Zeitpunkt, auch in der Oberfläche. */
+    const doppel = { einstempeln: { "a1|2026-10-25": { start: "02:30", startAm: "2026-10-25T00:30:00.000Z" } } };
+    expect(stempelVorgang(doppel, p, "2026-10-26", new Date("2026-10-25T23:15:00Z")).vortag).toBe(false);
+    expect(endeFehlt("2026-10-25", doppel.einstempeln["a1|2026-10-25"], new Date("2026-10-25T20:45:00Z"))).toBe(true);
   });
 });
 
@@ -666,6 +690,24 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     expect(e.status, e.roh).toBe(200);
     expect(e.erfassung).toMatchObject({ start: s.zeit, ende: e.zeit, bestaetigt: true });
     expect(e.eintrag.endeDatum).toBeUndefined();
+    /* Neue Ereignisse tragen den eindeutigen Zeitpunkt (UTC) neben der Uhrzeit; die Erfassung bleibt unverändert. */
+    const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+    expect(s.eintrag.startAm).toMatch(iso);
+    expect(e.eintrag).toMatchObject({ startAm: s.eintrag.startAm });
+    expect(e.eintrag.endeAm).toMatch(iso);
+    expect(uhrzeitBerlin(new Date(s.eintrag.startAm))).toBe(s.zeit);
+    expect(Object.keys(e.erfassung).sort()).toEqual(["bestaetigt", "ende", "grund", "start"]);
+  });
+  it("startAm ist maßgeblich: ein Beginn mit Uhrzeit von eben, aber startAm vor 21 Stunden, ist veraltet", async () => {
+    const { bestand } = await B.bestandLesen(laden(), RAUM);
+    const m = bestand.mandanten[0];
+    const k = `z8|${GESTERN}`;
+    m.einstempeln = { ...m.einstempeln, [k]: { start: uhrzeitBerlin(new Date()), startAm: new Date(Date.now() - 21 * 3600000).toISOString() } };
+    await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+    const e = await stempeln(T.z8, { datum: GESTERN, art: "ende" });
+    expect(e.status, e.roh).toBe(200);
+    expect(e.markierungen).toContain("START_VERALTET");
+    expect(e.erfassung).toBeNull();
   });
   it("Nachtdienst: offener Beginn von gestern innerhalb der Grenze wird zugeordnet und trägt endeDatum", async () => {
     await minutenSicher();

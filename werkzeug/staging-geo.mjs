@@ -19,6 +19,7 @@
 
 import { getStore } from "../server/lib/ablage.mjs";
 import { raumBelegt } from "../server/lib/bestand.mjs";
+import { heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../server/lib/zeiterfassung.mjs";
 
 const BASIS = "http://127.0.0.1:3000";
 const RAUM = "ppg-gate-geo";
@@ -94,7 +95,13 @@ async function altlasten() {
 
 const REF = { lat: 50, lon: 8 };
 const nord = (m) => REF.lat + m / ((2 * Math.PI * 6371000) / 360);
-const MA = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11"];
+const MA = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13"];
+/* 20-Stunden-Grenze: offene Beginne relativ zu jetzt — a12 vor 21 Stunden
+   (immer veraltet), a13 vor 9 Stunden (immer zugeordnet). Tag und Uhrzeit
+   wie /api/stempeln sie schreibt, dazu der eindeutige Zeitpunkt startAm. */
+const vorStunden = (h) => { const d = new Date(Math.floor(Date.now() / 60000) * 60000 - h * 3600000);
+  return { tag: heuteBerlin(d), start: uhrzeitBerlin(d), startAm: d.toISOString() }; };
+const VOR21 = vorStunden(21), VOR9 = vorStunden(9);
 const person = (id, rolle) => ({ id, vorname: "PPG", nachname: `Gate-${id}`, rolle, bereich: rolle === "mitarbeiter" ? "e1" : "ALLE",
   status: "aktiv", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const BETRIEB = { id: `${RAUM}-m`, name: `${MARKE} Geobetrieb (Wegwerf)`, status: "aktiv", einstellungen: {},
@@ -103,10 +110,12 @@ const BETRIEB = { id: `${RAUM}-m`, name: `${MARKE} Geobetrieb (Wegwerf)`, status
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" }],
   personen: [person("l1", "leitung"), person("p1", "planer"), ...MA.map((i) => person(i, "mitarbeiter"))],
   /* a8 ohne Dienst (UNGEPLANTER_DIENST), a10 Nachtdienst seit gestern mit offenem Beginn,
-     a11 ein alter Stempel von gestern ohne geoStart/geoEnde. */
-  abweichungen: { ...Object.fromEntries(MA.filter((i) => i !== "a8" && i !== "a10" && i !== "a11").map((i) => [`${i}|${HEUTE}`, "F"])),
+     a11 ein alter Stempel von gestern ohne geoStart/geoEnde, a12/a13 ohne Dienst. */
+  abweichungen: { ...Object.fromEntries(MA.filter((i) => !["a8", "a10", "a11", "a12", "a13"].includes(i)).map((i) => [`${i}|${HEUTE}`, "F"])),
     [`a10|${GESTERN}`]: "N", [`a11|${GESTERN}`]: "F" },
   einstempeln: { [`a10|${GESTERN}`]: { start: "22:01" },
+    [`a12|${VOR21.tag}`]: { start: VOR21.start, startAm: VOR21.startAm },
+    [`a13|${VOR9.tag}`]: { start: VOR9.start, startAm: VOR9.startAm },
     [`a11|${GESTERN}`]: { start: "06:02", ende: "14:03", ortStart: "Am Standort", innerhalbStart: true, geprueftStart: true } },
   erfassung: { [`a11|${GESTERN}`]: { start: "06:02", ende: "14:03", bestaetigt: true, grund: "" } },
   anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [], protokoll: [] };
@@ -140,7 +149,7 @@ await abschnitt("Anlage", async () => {
     eintraege: [["leitung", "l1"], ["planer", "p1"], ...MA.map((i) => ["mitarbeiter", i])]
       .map(([rolle, personId]) => ({ rolle, personId, name: `${MARKE} Geo ${rolle} ${personId}` })) } });
   const codes = (z.d.zugaenge || []).map((x) => merken(x.code));
-  pruef("Zugänge angelegt (Leitung, Planung, 11 Beschäftigte)", z.status === 200 && codes.length === 13, `Status ${z.status}`);
+  pruef("Zugänge angelegt (Leitung, Planung, 13 Beschäftigte)", z.status === 200 && codes.length === 15, `Status ${z.status}`);
   const ids = ["l1", "p1", ...MA];
   for (let i = 0; i < codes.length; i++) T[ids[i]] = await anmelden(codes[i]);
 });
@@ -227,8 +236,23 @@ await abschnitt("Markierungen", async () => {
 
 await abschnitt("Nachtdienst und Altbestand", async () => {
   const n = merke(await stempeln(T.a10, { datum: GESTERN, art: "ende", lat: nord(10), lon: REF.lon, accuracy: 5 }));
-  pruef("offener Beginn von gestern (Nachtdienst): Ausstempeln für gestern 200, Erfassung entsteht", n.status === 200
-    && !!n.d.erfassung && n.d.erfassung.start === "22:01" && geoVon(n).status === "INNERHALB", `Status ${n.status} ${n.text}`);
+  /* „gestern 22:01" ist ab 18:01 Uhr älter als 20 Stunden: Dann gehört das
+     Ende nicht mehr automatisch dazu. Erwartet wird, was die Regel jetzt sagt. */
+  if (startZuordenbar(GESTERN, "22:01", new Date()))
+    pruef("offener Beginn von gestern (Nachtdienst): Ausstempeln für gestern 200, Erfassung entsteht", n.status === 200
+      && !!n.d.erfassung && n.d.erfassung.start === "22:01" && geoVon(n).status === "INNERHALB", `Status ${n.status} ${n.text}`);
+  else
+    pruef("offener Beginn von gestern 22:01, jetzt über 20 Stunden: Ende gespeichert, START_VERALTET, keine Erfassung", n.status === 200
+      && n.d.erfassung === null && (n.d.markierungen || []).includes("START_VERALTET"), `Status ${n.status} ${n.text}`);
+  const v = merke(await stempeln(T.a12, { datum: VOR21.tag, art: "ende" }));
+  const nachV = (await lies(T.l1)).d.bestand.mandanten[0];
+  pruef("vergessenes Ausstempeln (Beginn vor 21 h): Ende gespeichert, Beginn unverändert, START_VERALTET, keine Erfassung",
+    v.status === 200 && v.d.erfassung === null && (v.d.markierungen || []).includes("START_VERALTET")
+    && (nachV.einstempeln || {})[`a12|${VOR21.tag}`].start === VOR21.start
+    && (nachV.erfassung || {})[`a12|${VOR21.tag}`] === undefined, `Status ${v.status} ${v.text}`);
+  const f = merke(await stempeln(T.a13, { datum: VOR9.tag, art: "ende" }));
+  pruef("offener Beginn vor 9 h: zugeordnet, bestätigte Erfassung", f.status === 200 && !!f.d.erfassung
+    && f.d.erfassung.start === VOR9.start && f.d.erfassung.bestaetigt === true, `Status ${f.status} ${f.text}`);
   const m = (await lies(T.l1)).d.bestand.mandanten[0];
   const alt = (m.einstempeln || {})[`a11|${GESTERN}`];
   pruef("alter Stempel ohne geoStart/geoEnde bleibt für die Leitung lesbar", !!alt && alt.start === "06:02" && alt.ende === "14:03"

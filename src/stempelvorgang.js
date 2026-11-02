@@ -43,14 +43,14 @@ export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   const tab = (m && m.einstempeln) || {};
   const gestern = addDays(heute, -1);
   const offen = p ? tab[`${p.id}|${gestern}`] : null;
-  if (offen && offen.start && !offen.ende && startZuordenbar(gestern, offen.start, jetzt))
+  if (offen && offen.start && !offen.ende && startZuordenbar(gestern, offen.start, jetzt, offen.startAm))
     return { datum: gestern, st: offen, vortag: true };
   return { datum: heute, st: p ? tab[`${p.id}|${heute}`] || null : null, vortag: false };
 }
 
 /** Ein offener Beginn, zu dem kein Ende mehr automatisch passt (für die Anzeige der Leitung). */
 export const endeFehlt = (datum, e, jetzt = new Date()) =>
-  !!e && !!e.start && !e.ende && !startZuordenbar(datum, e.start, jetzt);
+  !!e && !!e.start && !e.ende && !startZuordenbar(datum, e.start, jetzt, e.startAm);
 
 export const MARKIERUNG_TEXT = Object.freeze({
   START_FEHLT: "Start fehlt",
