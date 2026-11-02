@@ -384,28 +384,16 @@ const ZEILEN = {
     sonden: [mk("BEST-BEFUND-B1"), mk("BEST-SCHUTZ-B1"), mk("BEST-GRUND-B1"), mk("BEST-DURCH-B1"),
       mk("BEST-BEFUND-A1"), mk("BEST-DURCH-A1")],
     bedingt: {
-      "nur Regel, Stufe und Monat": (s) => {
-        const liste = s.betrieb.bestaetigungen || [];
-        /* Review M1: kein Tag, kein Dienst, keine Bestätigungszeit, kein Wortlaut. */
-        for (const b of liste) {
-          for (const f of ["datum", "dienstId", "zeit", "grund"]) expect(b[f], f).toBeUndefined();
-          expect(b.monat).toBe(tag(1).slice(0, 7));
-          for (const x of b.befunde) expect(Object.keys(x).sort()).toEqual(["regel", "stufe"]);
-        }
-        expect(liste.map((b) => b.id).sort()).toEqual(["bs-a1", "bs-b1"]);
-        for (const b of liste) {
-          expect(b.personId, "Person").toBe(null);
-          expect(b.durchId, "bestätigt von (Kennung)").toBe(null);
-        }
-        expect(liste.find((b) => b.id === "bs-b1").durch, "statt des Namens die Rolle").toBe("planer");
-        expect(mk("BEST-DURCH-B1")(s), "Name der bestätigenden Person").toBe(false);
-        expect(mk("BEST-DURCH-A1")(s), "Name der bestätigenden Person").toBe(false);
-        expect(mk("BEST-GRUND-B1")(s), "Freitext zum Grund").toBe(false);
-        expect(liste.find((b) => b.id === "bs-b1").grundArt, "Grundart bleibt").toBe("sonstiges");
-        expect(mk("BEST-BEFUND-B1")(s), "Befund im Wortlaut (Altbestand)").toBe(false);
-        expect(mk("BEST-BEFUND-A1")(s), "Befund im Wortlaut (Altbestand)").toBe(false);
-        expect(mk("BEST-SCHUTZ-B1")(s), "Schutzbefund im Wortlaut").toBe(false);
-        expect(liste.find((b) => b.id === "bs-b1").befunde.map((x) => x.regel)).toEqual(["sonstiges", "schutz"]);
+      "nur Zählwerte je Monat, Regel und Stufe": (s) => {
+        /* Nachprüfung WP-10 (M1-Rest): keine Einträge — nur Zählwerte, unter 3
+           als „<3“; keine Kennung, keine Aktion, keine Rolle, kein Wortlaut. */
+        const monat = tag(1).slice(0, 7);
+        expect(s.betrieb.bestaetigungen).toEqual([
+          { monat, regel: "schutz", stufe: "recht", anzahl: "<3" },
+          { monat, regel: "sonstiges", stufe: "achtung", anzahl: "<3" },
+          { monat, regel: "sonstiges", stufe: "recht", anzahl: "<3" }]);
+        for (const x of ["BEST-DURCH-B1", "BEST-DURCH-A1", "BEST-GRUND-B1", "BEST-BEFUND-B1", "BEST-BEFUND-A1", "BEST-SCHUTZ-B1"])
+          expect(mk(x)(s), x).toBe(false);
       },
       "nur eigener Bereich am Tag": (s) => {
         expect((s.betrieb.bestaetigungen || []).map((b) => b.id)).toEqual(["bs-a1"]);

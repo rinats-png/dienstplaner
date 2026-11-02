@@ -177,3 +177,16 @@ describe("Bausteine der Prozesssperre", () => {
     await s.freigeben();
   });
 });
+
+describe("WP-45/3 — Abstand zwischen Ende eines Halters und Übernahme", () => {
+  it("drei Fehlschläge plus Wartezeit für laufende Schreibvorgänge liegen mindestens 15 s unter der Übernahmegrenze", async () => {
+    const P = await import("../server/lib/prozesssperre.mjs");
+    /* Spätestes Schreiben eines Halters nach seinem letzten gelungenen
+       Herzschlag: drei gescheiterte Herzschläge, dann die Wartezeit für
+       laufende Schreibvorgänge (server.mjs). */
+    const spaetestesSchreiben = P.PULS_MS * P.FEHLVERSUCHE + P.VERLUST_WARTEN_MS;
+    expect(spaetestesSchreiben).toBeGreaterThan(0);
+    expect(P.VERALTET_MS - spaetestesSchreiben).toBeGreaterThanOrEqual(15_000);
+    expect(P.WARTEN_MS).toBeGreaterThan(P.VERALTET_MS);
+  });
+});

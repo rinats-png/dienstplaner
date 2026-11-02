@@ -20,7 +20,7 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
-  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT } from "./bestaetigungen.mjs";
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
@@ -1376,22 +1376,24 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
     if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
     if (!dienste.has(String(e.dienstId))) return null;
     if (imBereich && !(ich && String(e.personId) === String(ich.id)) && !imBereich(e.personId, e.datum)) return null;
-    if (!PROTOKOLL_STUFEN.includes(e.stufe)) return null;
-    if (e.stufe === "recht" && e.gelesen !== true) return null;
     const befunde = Array.isArray(e.befunde) ? e.befunde : [];
     if (!befunde.length || befunde.length > 20) return null;
-    /* Nur Kennung aus dem Befundkatalog und Stufe (Review M1) — kein Freitext.
-       Ein sperrender Befund lässt sich nicht bestätigen (H1, BEFUND_KATALOG). */
-    if (!befunde.every((b) => b && typeof b === "object" && PROTOKOLL_STUFEN.includes(b.stufe)
-      && Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, b.regel))) return null;
+    /* Nur Kennung aus dem Befundkatalog (Review M1) — kein Freitext. Die
+       Stufe bestimmt der Katalog, nicht der Client (Nachprüfung N3). Ein
+       sperrender Befund lässt sich nicht bestätigen (H1). */
+    if (!befunde.every((b) => b && typeof b === "object" && Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, b.regel))) return null;
     if (befunde.some((b) => sperrtBefund(b.regel))) return SPERRT;
+    const katalogStufen = befunde.map((b) => BEFUND_KATALOG[b.regel].stufe);
+    const stufe = katalogStufen.includes("recht") ? "recht" : katalogStufen.includes("achtung") ? "achtung" : null;
+    if (!PROTOKOLL_STUFEN.includes(stufe)) return null;           // ein Hinweis braucht keine Bestätigung
+    if (stufe === "recht" && e.gelesen !== true) return null;
     if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
     const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
     if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
     if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
     if (e.regelstand !== undefined && e.regelstand !== null && !kurzText(e.regelstand, 40)) return null;
     return { id: e.id, personId: personen.get(String(e.personId)).id, datum: e.datum, dienstId: e.dienstId, aktion: e.aktion,
-      stufe: e.stufe, befunde: befunde.map((b) => ({ regel: b.regel, stufe: b.stufe })),
+      stufe, befunde: [...new Set(befunde.map((b) => b.regel))].map((regel) => ({ regel, stufe: BEFUND_KATALOG[regel].stufe })),
       grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
       gelesen: e.gelesen === true,
       durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
@@ -1412,10 +1414,23 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
     neue.push(sauber);
     if (neue.length > BESTAETIGUNGEN_JE_SPEICHERN) return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_SPEICHERN} neue Einträge je Speichern.` };
   }
-  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts —
-     außer über der Gesamtgrenze (Review N1): Dann fallen die ältesten weg
-     (die Liste ist neueste zuerst). */
-  return { liste: [...neue, ...altL].slice(0, BESTAETIGUNGEN_GESAMT) };
+  /* Nie verdrängen (Nachprüfung B1): Bis WP-10-Review fielen über der
+     Gesamtgrenze die ältesten Einträge weg — wer schreiben durfte, konnte
+     das Protokoll durch Fluten leeren. Jetzt: Ist die Grenze erreicht,
+     werden neue Einträge abgewiesen; gelöscht wird nichts. Dazu eine Bremse
+     je bestätigender Person und Tag. Ältere Einträge auszulagern (Archiv je
+     Monat) oder nach Frist zu löschen (§ 16 Abs. 2 ArbZG: zwei Jahre) ist
+     ein eigener, protokollierter Aufbewahrungslauf — noch offen. */
+  if (neue.length && altL.length + neue.length > BESTAETIGUNGEN_GESAMT)
+    return { grund: `bestaetigungen: Das Bestätigungsprotokoll hat seine Grenze von ${BESTAETIGUNGEN_GESAMT} Einträgen erreicht. Bitte die Leitung ansprechen — ältere Einträge werden nicht verdrängt.` };
+  if (neue.length && ich) {
+    const heute = new Date().toISOString().slice(0, 10);
+    const heuteVonMir = altL.filter((x) => String(x.durchId) === String(ich.id) && typeof x.zeit === "string" && x.zeit.startsWith(heute)).length;
+    if (heuteVonMir + neue.length > BESTAETIGUNGEN_JE_TAG)
+      return { grund: `bestaetigungen: höchstens ${BESTAETIGUNGEN_JE_TAG} Bestätigungen je Person und Tag.` };
+  }
+  /* Nicht mitgeschickte Einträge bleiben gespeichert: gelöscht wird nichts. */
+  return { liste: [...neue, ...altL] };
 }
 
 /* Was ein Antrag ist, bestimmt der gespeicherte Stand: Person, Art,

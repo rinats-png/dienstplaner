@@ -64,7 +64,7 @@
 
 import { randomBytes } from "node:crypto";
 import { baueLeerenBetrieb } from "./leerbetrieb.mjs";
-import { bestandSchreiben, bestandLesen, raumBelegt } from "./bestand.mjs";
+import { bestandSchreiben, bestandLesen, raumBelegt, voruebergehend } from "./bestand.mjs";
 import { raumLoeschen } from "./raumloeschung.mjs";
 import { unterRaumsperre } from "./raumsperre.mjs";
 import { TESTTAGE } from "./aufraeumen.mjs";
@@ -418,7 +418,10 @@ export async function testbetriebFuerAccountAnlegen(store, sitzungen,
  */
 async function wiederaufnehmen(store, sitzungen, konto) {
   const raum = konto.testbetriebRaum;
-  const gelesen = await bestandLesen(store, raum).catch(() => null);
+  /* Nur ein Raum, den es wirklich nicht gibt, wird abgeräumt. Ein
+     vorübergehender Lesefehler hätte sonst den Vermerk gelöscht und einen
+     zweiten Testbetrieb angelegt (bestand.mjs, voruebergehend). */
+  const gelesen = await bestandLesen(store, raum).catch((e) => { if (voruebergehend(e)) throw e; return null; });
   if (!gelesen) {
     /* Der Raum ist nicht (mehr) da: Der Vermerk ist eine Absicht, die nie
        Wirklichkeit wurde. Abräumen und neu beginnen. */

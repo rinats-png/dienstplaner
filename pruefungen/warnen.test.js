@@ -164,13 +164,9 @@ describe("Server: Rechte rund um Abweichungen und Selbstplanung", () => {
     const alt = mandant();
     alt.bestaetigungen = [eintrag("p1")];
     const aus = bestandFuerRolle({ mandanten: [alt] }, { rolle: "betriebsrat", person: null, betrieb: 0 });
-    const b = aus.mandanten[0].bestaetigungen[0];
-    expect(b.personId).toBe(null);
-    expect(b.durchId).toBe(null);
-    expect(b.durch).toBe("subplaner");
-    expect(b.befunde[0]).toEqual({ regel: "ruhezeitBetrieb", stufe: "achtung" });
-    expect(b.datum).toBeUndefined();     // Review M1: nur der Monat
-    expect(b.monat).toBe("2026-11");
+    /* Nachprüfung WP-10 (M1-Rest): nur Zählwerte je Monat, Regel und Stufe —
+       keine Person, kein Name, keine Rolle, kein Tag; unter 3 als „<3“. */
+    expect(aus.mandanten[0].bestaetigungen).toEqual([{ monat: "2026-11", regel: "ruhezeitBetrieb", stufe: "achtung", anzahl: "<3" }]);
   });
 
   it("Selbstplanung: eigene Eintragungen kommen an, fremde bleiben unberührt", () => {

@@ -5,6 +5,11 @@
 > Schreibrechte ist heute `RECHTEMATRIX.md` mit den zugehörigen Prüfungen
 > (`pruefungen/rechtematrix-zeilen.test.js` u. a.). Wo diese Datei etwas anderes sagt, gilt die
 > Rechtematrix; die Abschnitte hier sind bei Gelegenheit zu überarbeiten und neu zu datieren.
+>
+> **Bekannte Lücke (Stand 2. November 2026):** Sperrende Schutzregeln (Jugendarbeitsschutz, Mutterschutz,
+> Einschränkungen an der Person, gesetzliche Qualifikationen, Einweisung je Gerät, Ruhezeit unter 11 Stunden) werden
+> derzeit **nur in der Oberfläche** durchgesetzt. Der Server weist Bestätigungen solcher Befunde ab, nicht aber eine
+> Einteilung, die über die API direkt in `abweichungen` geschrieben wird. Die Server-Durchsetzung folgt in WP-11.
 
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security
 Master Checkliste" für KI-gestützt entwickelte Anwendungen und dem

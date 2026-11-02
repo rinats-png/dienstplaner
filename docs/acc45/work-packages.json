@@ -2,12 +2,12 @@
   "stand": "2026-11-02",
   "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 34,
-    "READY": 2,
-    "IN_PROGRESS": 4,
-    "REVIEW": 0,
+    "BLOCKED": 31,
+    "READY": 1,
+    "IN_PROGRESS": 5,
+    "REVIEW": 1,
     "CI_FAILED": 0,
-    "INTEGRATED": 4,
+    "INTEGRATED": 6,
     "VERIFIED": 0,
     "DONE": 2
   },
@@ -189,11 +189,11 @@
         "WP-09"
       ],
       "agent": "Agent C – Rule Engine",
-      "branch": "acc45/rules/wp10-kette-a-basis-7-auf-b-portie",
+      "branch": "acc45/rules/wp10-kette-a-basis",
       "dateien": "src/App.jsx, server/lib/rechte.mjs, sicht.mjs",
       "akzeptanz": "Alle A- und B-Tests grün; A-Felder überstehen PUT/GET je Rolle",
       "tests": "Rundreise je Feld/Rolle, A-Tests angepasst, Rechtematrix",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -207,11 +207,11 @@
         "WP-10"
       ],
       "agent": "Agent C – Rule Engine",
-      "branch": "acc45/rules/wp11-regelregister-6-portieren-ei",
+      "branch": "acc45/rules/wp11-regelregister",
       "dateien": "src/regelwerk*, server/lib",
       "akzeptanz": "Eine einzige Schutzprüfung im Code; Tests grün",
       "tests": "git grep, schutzmerkmale-sicht",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -316,11 +316,11 @@
         "WP-02"
       ],
       "agent": "Agent D – Time/Offline/Geo",
-      "branch": "acc45/time/wp17-stempelkonflikt-retry-server",
+      "branch": "acc45/time/wp17-serverdatum",
       "dateien": "server/funktionen/daten.mjs, zeiterfassung.mjs",
       "akzeptanz": "20 parallele Stempel ohne 409 für Nutzende; datum vom Server",
       "tests": "Renntest, Datumsgrenzen/Nacht/DST",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -586,11 +586,11 @@
       "aufwandPT": 3,
       "abhaengigkeiten": [],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp32-lieferkette-infrastruktur-be",
+      "branch": "acc45/infra/wp32-lieferkette-2fa",
       "dateien": "Dockerfile, .github, server",
       "akzeptanz": "Basisbild per Digest; Trivy; Dependabot; Branch-Schutz; Caddy versioniert; 2FA Betreiber",
       "tests": "CI, Unit 2FA",
-      "status": "READY",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -606,7 +606,7 @@
       "dateien": "e2e/, package.json, pruefung.yml",
       "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
       "tests": "CI-Job e2e",
-      "status": "IN_PROGRESS",
+      "status": "REVIEW",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -815,7 +815,7 @@
       "dateien": "server/lib/bestand.mjs, ablage.mjs, konten.mjs",
       "akzeptanz": "Abbruch nach jeder Teilschreibung → vollständig alter oder neuer Stand, nie gemischt; kein Code auf gelöschten Raum",
       "tests": "Abbruch-Testhaken je Datei, Leser während Schreiben, R7",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -833,7 +833,7 @@
       "dateien": "server/lib/schutz.mjs, daten.mjs (Anmeldung)",
       "akzeptanz": "Ablagefehler/kaputte Sperre → nie Durchlass; an Fenstergrenze ≤ Grenzwert; Notbremse für /api/anmelden",
       "tests": "bremse-lokal (Fake-Timer, kaputte Sperrdatei), HTTP bremse",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
