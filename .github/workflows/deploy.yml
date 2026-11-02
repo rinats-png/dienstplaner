@@ -1,35 +1,58 @@
-# Auslieferung als Container — VORBEREITET, noch nicht scharf.
+# Auslieferung als Container (WP-31).
 #
-# Weg:  GitHub → Prüfungen → Docker-Bild → GHCR → VPS (SSH, Forced Command
-#       → deploy.sh → Healthcheck → Rollback bei Fehler)
+# Zwei getrennte Teile, beide nur von Hand (workflow_dispatch):
 #
-# Heute läuft dieser Ablauf nur von Hand (workflow_dispatch). Er baut das
-# Bild, prüft es mit der Rechteprüfung gegen den laufenden Container und
-# lädt es nach GHCR. Der Schritt auf den VPS läuft erst, wenn
-#   - er beim Start ausdrücklich angefordert wird (Eingabe „ausliefern") und
-#   - Repository-Variable DEPLOY_HOST sowie Secret DEPLOY_SSH_KEY gesetzt sind.
+#   bild  baut das Bild, prüft es mit der Rechteprüfung gegen den laufenden
+#         Container und lädt es nach GHCR (Eingabe „bauen“, Vorgabe an).
+#   vps   liefert einen DIGEST aus — nie ein Kennzeichen, nie latest —, nur
+#         nach Freigabe in der GitHub-Umgebung „produktion“. Auf dem VPS
+#         läuft deploy/deploy.sh als Forced Command: Freigabeliste, Sperre,
+#         Pull nur dieses Digests, Sicherung, Wechsel, healthy, Smoke,
+#         Manifestabgleich, bei Fehler R0 (abschalten.sh) oder — nur auf
+#         ausdrücklichen Wunsch — Rücksprung auf „vorherig“.
 #
-# SPERRE (WP-03): Der Job `vps` darf NICHT ausgelöst werden (Eingabe
-# „ausliefern" bleibt aus) und DEPLOY_HOST darf NICHT gesetzt werden, bis
-# /opt/bin/deploy.sh auf Digest (IMAGE_DIGEST), deploy/digest-pruefen.sh und
-# die Fehlerstrategie R0 (deploy/abschalten.sh, kein automatischer Rücksprung)
-# umgestellt ist. Heute übergibt der Job ein Kennzeichen, und deploy.sh rollt
-# auf ein voriges Kennzeichen zurück — das kann ein gesperrtes Bild treffen.
+# Sperrvermerk WP-03 — Stand WP-31: Die Bedingungen, unter denen der Job
+# `vps` gesperrt war (Kennzeichen statt Digest, Rollback auf ein beliebiges
+# voriges Kennzeichen, kein digest-pruefen.sh, kein R0), sind mit
+# deploy/deploy.sh behoben. Der Job ist TROTZDEM erst nutzbar, wenn der
+# Inhaber
+#   - die Umgebung „produktion“ mit Pflicht-Prüfer anlegt,
+#   - dort DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY und DEPLOY_KNOWN_HOSTS
+#     hinterlegt,
+#   - deploy.sh, deploy-smoke.mjs, deploy-abgleich.mjs auf den VPS kopiert
+#     und die Forced-Command-Zeile einträgt,
+#   - CENTRIC_VERTRAUTE_PROXYS in der Produktions-.env setzt.
 # Bis dahin gilt BEREITSTELLUNG.md Schritt 3 (von Hand, per Digest).
-#
-# Um ihn später bei jedem Push nach main laufen zu lassen: den Block
-# `push:` unter `on:` einkommentieren.
+# Anleitung: docs/DEPLOY-AUTOMATISIERUNG.md. Nichts davon legt dieser
+# Workflow an.
 name: Auslieferung
 
 on:
   workflow_dispatch:
     inputs:
+      bauen:
+        description: "Bild bauen, prüfen und nach GHCR laden?"
+        type: boolean
+        default: true
       ausliefern:
-        description: "Nach dem Bau auf den VPS ausliefern?"
+        description: "Einen freigegebenen Digest auf den VPS ausliefern? (braucht Freigabe in der Umgebung produktion)"
         type: boolean
         default: false
-  # push:
-  #   branches: ["main"]
+      digest:
+        description: "Digest aus FREIGEGEBENE-IMAGES.md (sha256:<64 hex>), kein Tag"
+        type: string
+        default: ""
+      bei_fehler:
+        description: "Bei Fehler: r0 = Dienst anhalten (Standard); ruecksprung = auf vorherig, sonst R0"
+        type: choice
+        options: ["r0", "ruecksprung"]
+        default: "r0"
+      trocken:
+        description: "Nur Trockenlauf auf dem VPS (prüft und zeigt den Plan, ändert nichts)"
+        type: boolean
+        default: false
+  # Bewusst KEIN push-Auslöser: Ausgeliefert wird nur ein abgenommener
+  # Digest, nach menschlicher Freigabe.
 
 permissions:
   contents: read
@@ -58,6 +81,7 @@ jobs:
   # -------------------------------------------------------------------
   bild:
     needs: [pruefung, sicherheit]
+    if: ${{ inputs.bauen }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -147,24 +171,70 @@ jobs:
           cache-from: type=gha
 
   # -------------------------------------------------------------------
-  # 2. Auf den VPS — nur auf Anforderung und nur mit hinterlegtem Zugang
-  #    GESPERRT bis deploy.sh auf Digest + digest-pruefen.sh + R0 umgestellt
-  #    ist: nicht auslösen, DEPLOY_HOST nicht setzen (siehe Kopf).
+  # 2. Auf den VPS (WP-31) — nur mit Freigabe in der GitHub-Umgebung
+  #    „produktion“ und nur per Digest aus FREIGEGEBENE-IMAGES.md.
+  #
+  #    Unabhängig vom Bau: ausgeliefert wird nicht das eben gebaute Bild,
+  #    sondern ein Digest, der abgenommen und auf dem VPS in der
+  #    Freigabeliste als aktiv (oder vorherig) steht. deploy.sh prüft das
+  #    selbst noch einmal — dieser Job reicht nur den Digest durch.
+  #
+  #    Der SSH-Schlüssel darf auf dem VPS genau eines: deploy.sh --ssh
+  #    (Forced Command, docs/DEPLOY-AUTOMATISIERUNG.md). Was hier als Befehl
+  #    geschickt wird, prüft deploy.sh gegen eine feste Form; alles andere
+  #    wird abgewiesen.
+  #
+  #    Läuft nur, wenn (a) beim Start ausdrücklich angefordert, (b) die
+  #    Umgebung „produktion“ den Lauf freigibt (Pflicht-Prüfer in den
+  #    Repository-Einstellungen) und (c) DEPLOY_HOST dort gesetzt ist.
+  #    Nichts davon legt dieser Workflow selbst an.
   # -------------------------------------------------------------------
   vps:
-    needs: bild
-    if: ${{ inputs.ausliefern && vars.DEPLOY_HOST != '' }}
+    needs: [pruefung, sicherheit]
+    if: ${{ inputs.ausliefern }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    environment: produktion
+    concurrency:
+      group: produktion
+      cancel-in-progress: false
+    env:
+      DIGEST: ${{ inputs.digest }}
+      BEI_FEHLER: ${{ inputs.bei_fehler }}
+      TROCKEN: ${{ inputs.trocken }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
     steps:
-      # Der Schlüssel darf auf dem VPS genau eines: /opt/bin/deploy.sh
-      # aufrufen (Forced Command in authorized_keys). Das Skript zieht das
-      # Bild, startet es, wartet auf den Healthcheck und rollt bei Fehler
-      # auf das vorige Kennzeichen zurück.
-      - name: deploy.sh auf dem VPS aufrufen
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: deploy
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          script: centric-dienstplanung ${{ needs.bild.outputs.tag }}
+      - name: Eingaben prüfen (Digest, kein Tag)
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Digest erwartet (sha256:<64 hex>), kein Tag: '$DIGEST'"; exit 1; }
+          [[ "$BEI_FEHLER" == "r0" || "$BEI_FEHLER" == "ruecksprung" ]] || { echo "::error::bei_fehler unbekannt"; exit 1; }
+          [[ -n "$DEPLOY_HOST" ]] || { echo "::error::Variable DEPLOY_HOST der Umgebung produktion fehlt"; exit 1; }
+          [[ -n "$DEPLOY_USER" ]] || { echo "::error::Variable DEPLOY_USER der Umgebung produktion fehlt"; exit 1; }
+
+      - name: SSH-Zugang (Schlüssel und festgelegter Host-Schlüssel)
+        env:
+          SCHLUESSEL: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ -n "$SCHLUESSEL" && -n "$HOSTS" ]] || { echo "::error::DEPLOY_SSH_KEY oder DEPLOY_KNOWN_HOSTS fehlt"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SCHLUESSEL" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+
+      - name: deploy.sh auf dem VPS (Forced Command)
+        run: |
+          set -euo pipefail
+          befehl="deploy $DIGEST"
+          [[ "$TROCKEN" == "true" ]] && befehl="$befehl --trocken"
+          befehl="$befehl --bei-fehler=$BEI_FEHLER"
+          echo "Befehl: $befehl"
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$befehl"
+
+      - name: Schlüssel entfernen
+        if: always()
+        run: rm -f ~/.ssh/deploy
