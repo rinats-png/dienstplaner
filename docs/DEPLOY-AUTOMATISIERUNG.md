@@ -37,11 +37,35 @@ nicht sicher erreicht — sofort von Hand nachsehen.
 **Trockenlauf** (`--trocken` bzw. Eingabe `trocken`): Schritte 1–3 ohne Pull,
 dann der Plan. Kein Stop, keine Sicherung, keine `.env`, kein Protokoll.
 
+**Sperre (N1):** Eine zweite gleichzeitige Auslieferung bricht ab
+(`flock` auf `.deploy.lock` neben `compose.yml`; ohne `flock` keine
+Auslieferung).
+
+**Fehler vor dem Wechsel (H1, M1):** Scheitert nach dem Anhalten etwas vor
+dem Austausch der `.env` (Sicherung, Prüfung, `.env`-Kopie, unerwarteter
+Fehler über einen ERR-Trap), wird der bisherige Stand nur dann wieder
+gestartet, wenn er `digest-pruefen.sh` besteht (freigegeben, aktiv/vorherig,
+nicht gesperrt). Sonst R0.
+
+**Abgleich (M2):** verglichen wird gegen den Stand vor dem Start. Dateien,
+die nach dem Start geändert oder entfernt wurden (Caddy leitet schon vor
+„healthy“ weiter; der Löschlauf läuft eine Minute nach dem Start), sind eine
+Warnung im Protokoll, kein R0. Hat das neue Bild schon geschrieben
+(außer Spur, Takt, Punktdateien), wird ein Rücksprung verweigert — R0.
+
+**Log (M3):** erst vollständig in eine Datei, dann durchsucht.
+
+**Aufbewahrung und Platz (N4):** Vor dem Anhalten wird geprüft, dass im
+Sicherungsverzeichnis mindestens das Doppelte der Daten frei ist. Nach einer
+geprüften neuen Sicherung bleiben die jüngsten `CENTRIC_DEPLOY_BEHALTEN`
+(Vorgabe 5) vollständigen Sicherungen, die neue immer; unvollständige
+(ohne `FERTIG`) werden nicht angefasst.
+
 **Datenkonsistenz:** Gesichert wird nach dem Anhalten, damit Sicherung und
 Abgleich denselben Stand sehen. Die Auszeit ist damit Sicherung + Start
 (Größenordnung Sekunden bis gut eine Minute). Die Sicherungen unter
-`deploy-sicherungen/` räumt deploy.sh nicht auf — sie sind der Rückweg für
-die Daten; alte von Hand löschen (oder in die Sicherung außer Haus, WP-04,
+`deploy-sicherungen/` hält deploy.sh nach der Regel oben klein; sie sind der
+Rückweg für die Daten (zusätzlich ggf. in die Sicherung außer Haus, WP-04,
 aufnehmen).
 
 ## 2. Auf dem VPS einrichten (Inhaber)
@@ -98,8 +122,15 @@ aufnehmen).
 | `DEPLOY_SSH_KEY` | privater Schlüssel `deploy_ed25519` |
 | `DEPLOY_KNOWN_HOSTS` | Zeile(n) aus `ssh-keyscan` (2.6) |
 
-Die alte Repository-Variable `DEPLOY_HOST` wird nicht mehr gelesen; der Job
-nimmt nur die Werte der Umgebung.
+Achtung (Review N3): Variablen und Secrets der Umgebung haben Vorrang, aber
+FEHLT ein Wert in der Umgebung, greift GitHub auf einen gleichnamigen Wert
+auf Repository-Ebene zurück. Eine alte Repository-Variable `DEPLOY_HOST`
+oder ein altes Repository-Secret `DEPLOY_SSH_KEY` würde also still
+mitbenutzt. Empfehlung: diese Werte auf Repository-Ebene **löschen**, damit
+nur die Umgebung `produktion` sie hält.
+
+Der Job `vps` läuft nur von `main` (`github.ref == 'refs/heads/main'`) und hat
+nur `contents: read`.
 
 ## 4. Ablauf einer Auslieferung
 

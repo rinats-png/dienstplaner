@@ -18,11 +18,15 @@
 #    3. Vorprüfung: CENTRIC_VERTRAUTE_PROXYS muss in der .env gesetzt sein
 #       (Auflage B1, immer — schon in Schritt 1); zusätzlich wird vermerkt,
 #       ob das Bild die Liste kennt. Sonst Abbruch vor jedem Wechsel.
+#   3b. Platz: im Sicherungsverzeichnis mindestens 2 × Daten frei
 #    4. alten Container anhalten (compose stop), Ablage sichern
 #       (werkzeug/ablage-sicherung.mjs im neuen Bild, Daten read-only, kein
-#       Netz) und die Sicherung prüfen. Scheitert das: alten Container
-#       wieder starten, nichts gewechselt, Exit 1
+#       Netz) und die Sicherung prüfen; ältere Sicherungen über
+#       CENTRIC_DEPLOY_BEHALTEN hinaus entfernen (die neue bleibt immer)
 #    5. .env kopieren (.env.vor-deploy-<UTC>), NUR IMAGE_DIGEST ändern
+#       Scheitert 4 oder 5 (auch unerwartet, ERR-Trap): den bisherigen Stand
+#       NUR wieder starten, wenn er digest-pruefen.sh besteht — sonst R0.
+#       Exit 1, nichts gewechselt.
 #    6. docker compose up -d --pull never <dienst>
 #    7. warten auf healthy (CENTRIC_WARTEZEIT, mindestens 90 s — die
 #       Prozesssperre übernimmt nach hartem Abbruch erst nach bis zu ~50 s),
@@ -30,13 +34,17 @@
 #    8. anmeldefreier Smoke im Container (deploy-smoke.mjs)
 #    9. Log ohne „WARNUNG: Anfrage mit X-Forwarded-For“
 #   10. Daten-Manifestabgleich gegen die Sicherung aus 4, ohne Spur und
-#       Takt (deploy-abgleich.mjs)
+#       Takt (deploy-abgleich.mjs --start): nach dem Start geänderte Dateien
+#       sind eine Warnung, alles andere Abweichende ein Fehler
 #   11. Protokoll betrieb-protokoll.log
 #
 #  Fehler ab Schritt 5: Standard R0 (abschalten.sh). Rücksprung
 #  (ruecksprung.sh) nur mit --bei-fehler=ruecksprung, und nur wenn das Ziel
-#  „vorherig“ ist, nicht gesperrt und nicht das eben gescheiterte Bild;
-#  scheitert auch er, R0.
+#  „vorherig“ ist, nicht gesperrt und nicht das eben gescheiterte Bild, und
+#  das neue Bild noch nichts in die Ablage geschrieben hat; scheitert auch
+#  er, R0. Unerwartete Fehler fängt ein ERR-Trap je nach Phase ab.
+#
+#  Nur eine Auslieferung zugleich: flock auf $CENTRIC_VERZ/.deploy.lock.
 #
 #  --trocken   prüft 1–3 (ohne Pull; fehlt das Bild lokal, entfallen 2b/3)
 #              und zeigt den Plan. Ändert nichts: kein Pull, kein Stop, keine
@@ -49,6 +57,7 @@
 #    CENTRIC_DATEN_PFAD    ($CENTRIC_VERZ/data)
 #    CENTRIC_DEPLOY_SICHERUNGEN  ($CENTRIC_VERZ/deploy-sicherungen)
 #    CENTRIC_WARTEZEIT     (150, mindestens 90)   CENTRIC_TAKT (2)
+#    CENTRIC_DEPLOY_BEHALTEN  (5) vollständige Sicherungen, die bleiben
 #
 #  Rückgabe: 0 ausgeliefert (oder Trockenlauf in Ordnung) · 1 fehlgeschlagen,
 #  R0 bzw. Rücksprung erfolgt · 2 Aufruf · 3 gesperrt · 4 nicht freigegeben,
@@ -94,7 +103,7 @@ for arg in "${args[@]}"; do
     --bei-fehler=r0) bei_fehler="r0" ;;
     --bei-fehler=ruecksprung) bei_fehler="ruecksprung" ;;
     --ohne-label) pruef_args+=(--ohne-label) ;;
-    -h | --hilfe) sed -n '2,55p' "$0"; exit 0 ;;
+    -h | --hilfe) sed -n '2,66p' "$0"; exit 0 ;;
     -*) fehler "unbekannter Schalter: $arg"; nutzung; exit 2 ;;
     *)
       [[ -z "$digest" ]] || { fehler "nur ein Digest erlaubt"; nutzung; exit 2; }
@@ -124,6 +133,20 @@ abbruch() { # vor jedem Wechsel: nichts angefasst
   ((trocken)) || protokoll "abgebrochen digest=$digest: $*"
   exit "$code"
 }
+
+# --- Nur eine Auslieferung zugleich (N1) --------------------------------
+# flock auf eine Sperrdatei neben compose.yml. Der Trockenlauf ändert nichts
+# und braucht sie nicht. Ohne flock wird nicht ausgeliefert — außer in den
+# Prüfungen unter Windows (CENTRIC_OHNE_FLOCK=1).
+if ((!trocken)); then
+  if command -v flock >/dev/null 2>&1; then
+    exec 9>"$CENTRIC_VERZ/.deploy.lock"
+    flock -n 9 || { fehler "Eine andere Auslieferung läuft bereits ($CENTRIC_VERZ/.deploy.lock) — abgebrochen, nichts verändert."; exit 4; }
+  elif [[ "${CENTRIC_OHNE_FLOCK:-}" != "1" ]]; then
+    fehler "flock fehlt — ohne Sperre gegen eine zweite gleichzeitige Auslieferung wird nicht ausgeliefert."
+    exit 4
+  fi
+fi
 
 # --- 1. Liste, Sperre, Status -------------------------------------------
 freigaben_pruefen || abbruch 4 "Freigabeliste $CENTRIC_FREIGABEN ist fehlerhaft"
@@ -165,14 +188,13 @@ if ((bild_da)); then
   soll_id="$(bild_id "$ref")"
 fi
 
-# --- 3. Vorprüfung: Vertrauensliste für X-Forwarded-For -----------------
+# --- 3. Vorprüfung: kennt das Bild die Vertrauensliste? ------------------
+# Die Liste selbst ist nach Schritt 1 Pflicht (B1); hier nur der Vermerk.
 kennt_xff="unbekannt"
 if ((bild_da)); then
   if docker run --rm --network none --read-only --cap-drop ALL --entrypoint grep "$ref" \
        -q CENTRIC_VERTRAUTE_PROXYS /app/server.mjs >/dev/null 2>&1; then
     kennt_xff="ja"
-    [[ -n "$(env_wert "$envdatei" CENTRIC_VERTRAUTE_PROXYS)" ]] ||
-      abbruch 4 "Das Bild wertet X-Forwarded-For nur mit CENTRIC_VERTRAUTE_PROXYS aus, die .env setzt sie nicht. Ohne Liste teilten sich alle Nutzer hinter Caddy eine Herkunft (docs/CADDY-UND-XFF.md, Abschnitt 7)."
   else
     kennt_xff="nein"
   fi
@@ -181,36 +203,126 @@ fi
 bisher="$(env_wert "$envdatei" IMAGE_DIGEST)"
 stempel="$(date -u +%Y%m%dT%H%M%SZ)"
 env_kopie="$envdatei.vor-deploy-$stempel"
+BEHALTEN="${CENTRIC_DEPLOY_BEHALTEN:-5}"
+[[ "$BEHALTEN" =~ ^[0-9]+$ ]] && ((BEHALTEN >= 1)) || abbruch 2 "CENTRIC_DEPLOY_BEHALTEN=$BEHALTEN — mindestens 1"
+
+# Darf der bisherige Stand wieder gestartet werden (H1)? Nur, wenn er
+# freigegeben, nicht gesperrt und aktiv/vorherig ist — dieselbe Prüfung wie
+# für jedes Ziel. Sonst gilt im Fehlerfall vor dem Wechsel R0.
+bisher_startbar() {
+  [[ -n "$bisher" ]] && digest_format_ok "$bisher" &&
+    "$FREIGABE_SKRIPT_VERZ/digest-pruefen.sh" "$bisher" "${pruef_args[@]}" >/dev/null 2>&1
+}
+
+# --- 3b. Platz für die Sicherung (N4) ----------------------------------
+# Vor dem Anhalten: Die Sicherung braucht etwa so viel Platz wie die Daten;
+# verlangt wird das Doppelte, damit danach noch etwas übrig ist.
+daten_bytes="$(du -sb "$DATEN_PFAD" 2>/dev/null | cut -f1)" || daten_bytes=""
+mkdir -p "$SICHERUNGEN" 2>/dev/null || abbruch 4 "Sicherungsverzeichnis $SICHERUNGEN lässt sich nicht anlegen"
+frei_bytes="$(df -P -B1 "$SICHERUNGEN" 2>/dev/null | awk 'NR == 2 { print $4 }')" || frei_bytes=""
+if [[ ! "$daten_bytes" =~ ^[0-9]+$ || ! "$frei_bytes" =~ ^[0-9]+$ ]]; then
+  abbruch 4 "Platzbedarf nicht ermittelbar (du/df)"
+fi
+if ((frei_bytes < 2 * daten_bytes)); then
+  abbruch 4 "zu wenig Platz in $SICHERUNGEN: frei $frei_bytes Bytes, gebraucht mindestens $((2 * daten_bytes)) (2 × Daten)"
+fi
 
 if ((trocken)); then
   hinweis "TROCKENLAUF — es wird nichts verändert."
   hinweis "  Ziel:         $digest (Status $status, Commit $commit)"
   hinweis "  Bild lokal:   $([[ $bild_da == 1 ]] && echo "ja, geprüft" || echo "nein — würde gezogen und dann geprüft")"
-  hinweis "  XFF-Liste:    Bild kennt sie: $kennt_xff"
+  hinweis "  XFF-Liste:    gesetzt; Bild kennt sie: $kennt_xff"
+  hinweis "  Bisher:       ${bisher:-<leer>} — bei Sicherungsfehler $(bisher_startbar && echo "wieder starten" || echo "R0 (nicht startbar)")"
+  hinweis "  Platz:        Daten $daten_bytes Bytes, frei $frei_bytes Bytes"
   hinweis "  Ablauf:       compose stop $CENTRIC_DIENST → Sicherung nach $SICHERUNGEN → prüfen"
   hinweis "  .env:         IMAGE_DIGEST=${bisher:-<leer>} → $digest (Kopie $(basename "$env_kopie"))"
   hinweis "  Start:        docker compose up -d --pull never $CENTRIC_DIENST"
   hinweis "  Danach:       healthy (höchstens ${WARTEZEIT}s), Smoke, Log, Manifestabgleich"
-  hinweis "  Bei Fehler:   $([[ $bei_fehler == ruecksprung ]] && echo "Rücksprung auf vorherig, sonst R0" || echo "R0 (abschalten.sh)")"
+  hinweis "  Bei Fehler:   $([[ $bei_fehler == ruecksprung ]] && echo "Rücksprung auf vorherig (nur wenn das neue Bild noch nichts geschrieben hat), sonst R0" || echo "R0 (abschalten.sh)")"
   exit 0
 fi
 
 protokoll "start digest=$digest von=${bisher:-leer} bei-fehler=$bei_fehler"
 
-# --- 4. anhalten, sichern, prüfen ---------------------------------------
+# Phase steuert, was ein unerwarteter Fehler auslöst (M1): vor dem Anhalten
+# Abbruch, zwischen Anhalten und Wechsel Wiederanlauf (oder R0), nach dem
+# Wechsel fehlschlag (R0 bzw. Rücksprung).
+phase="vor"
+name=""
+marke=""
+
+r0() { # Dienst anhalten; Exit 1, oder 8 wenn auch das nicht sicher gelingt
+  if "$FREIGABE_SKRIPT_VERZ/abschalten.sh"; then
+    protokoll "$1, R0 erreicht"
+    exit 1
+  fi
+  protokoll "$1, R0 NICHT sicher erreicht"
+  exit 8
+}
+
 alt_wieder_starten() {
-  fehler "Sicherung gescheitert: $* — der alte Stand wird wieder gestartet, nichts gewechselt."
+  trap - ERR
+  fehler "Vor dem Wechsel gescheitert: $* — nichts gewechselt."
   protokoll "abgebrochen vor wechsel digest=$digest: $*"
+  if ! bisher_startbar; then
+    fehler "Der bisherige Stand (${bisher:-<leer>}) ist nicht startbar (gesperrt, nicht freigegeben oder fehlt) — R0 statt Neustart."
+    r0 "abgebrochen vor wechsel, bisher nicht startbar"
+  fi
   if compose up -d --pull never "$CENTRIC_DIENST"; then
+    hinweis "Der bisherige Stand ${bisher} läuft wieder."
     exit 1
   fi
   fehler "Alter Stand startet nicht — R0."
-  "$FREIGABE_SKRIPT_VERZ/abschalten.sh" || exit 8
-  exit 1
+  r0 "abgebrochen vor wechsel, alter Stand startet nicht"
 }
 
+# Hat das neue Bild schon in die Ablage geschrieben? (M2) Spur, Takt und
+# Punktdateien (.prozess) zählen nicht.
+neu_geschrieben() {
+  [[ -n "$marke" && -f "$marke" ]] || return 0
+  [[ -n "$(find "$DATEN_PFAD" -type f -newer "$marke" ! -name '.*' \
+      ! -path '*/centric-spur/*' ! -path '*/centric-takt/*' -print -quit 2>/dev/null)" ]]
+}
+
+fehlschlag() {
+  trap - ERR
+  fehler "Auslieferung FEHLGESCHLAGEN: $*"
+  fehler "Sicherung vor dem Wechsel: $SICHERUNGEN/${name:-?} · vorige .env: $env_kopie"
+  protokoll "fehlgeschlagen digest=$digest: $*"
+  if [[ "$bei_fehler" == "ruecksprung" ]]; then
+    local ziel
+    ziel="$(digests_mit_status vorherig | head -n1)"
+    if neu_geschrieben; then
+      fehler "Das neue Bild hat bereits Daten geschrieben — ein Rücksprung könnte sie verlieren oder falsch lesen. R0."
+      protokoll "ruecksprung verweigert: neues Bild hat geschrieben"
+    elif [[ -n "$ziel" && "$ziel" != "$digest" ]] && ! gesperrt_grund "$ziel" >/dev/null; then
+      hinweis "Rücksprung auf vorherig $ziel (--bei-fehler=ruecksprung)"
+      if "$FREIGABE_SKRIPT_VERZ/ruecksprung.sh" "${pruef_args[@]}"; then
+        protokoll "fehlgeschlagen, ruecksprung erfolgreich nach=$ziel"
+        exit 1
+      fi
+      fehler "Rücksprung gescheitert — R0."
+    else
+      fehler "Kein zulässiges Rücksprungziel (vorherig fehlt, gesperrt oder = $digest) — R0."
+    fi
+  fi
+  r0 "fehlgeschlagen"
+}
+
+unerwartet() {
+  local zeile="$1"
+  case "$phase" in
+    vor) abbruch 4 "unerwarteter Fehler in Zeile $zeile" ;;
+    angehalten) alt_wieder_starten "unerwarteter Fehler in Zeile $zeile" ;;
+    *) fehlschlag "unerwarteter Fehler in Zeile $zeile" ;;
+  esac
+}
+set -E
+trap 'unerwartet $LINENO' ERR
+
+# --- 4. anhalten, sichern, prüfen ---------------------------------------
 compose stop "$CENTRIC_DIENST" || alt_wieder_starten "compose stop scheiterte"
-mkdir -p "$SICHERUNGEN"
+phase="angehalten"
 chmod 700 "$SICHERUNGEN" 2>/dev/null || true
 ausgabe="$(CENTRIC_PFEFFER="$pfeffer" docker run --rm --network none --read-only --tmpfs /tmp \
   --cap-drop ALL --security-opt no-new-privileges:true --user "$(id -u):$(id -g)" \
@@ -227,11 +339,22 @@ CENTRIC_PFEFFER="$pfeffer" docker run --rm --network none --read-only --tmpfs /t
   alt_wieder_starten "ablage-sicherung pruefen"
 protokoll "gesichert digest=$digest sicherung=$name"
 
+# Aufbewahrung (N4): die jüngsten BEHALTEN vollständigen Sicherungen bleiben,
+# die eben geprüfte immer; ältere vollständige werden entfernt.
+mapfile -t vollstaendig < <(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' \
+  -exec test -f '{}/FERTIG' ';' -print | sort)
+if ((${#vollstaendig[@]} > BEHALTEN)); then
+  for alt in "${vollstaendig[@]:0:${#vollstaendig[@]}-BEHALTEN}"; do
+    [[ "$(basename "$alt")" == "$name" ]] && continue
+    rm -rf -- "$alt" && protokoll "sicherung entfernt $(basename "$alt") (behalten $BEHALTEN)"
+  done
+fi
+
 # --- 5. .env: nur IMAGE_DIGEST ------------------------------------------
-cp -p "$envdatei" "$env_kopie"
-neu="$(mktemp "$CENTRIC_VERZ/.env.neu.XXXXXX")"
+cp -p "$envdatei" "$env_kopie" || alt_wieder_starten ".env-Kopie scheiterte"
+neu="$(mktemp "$CENTRIC_VERZ/.env.neu.XXXXXX")" || alt_wieder_starten "mktemp scheiterte"
 trap 'rm -f "$neu"' EXIT
-chmod 600 "$neu"
+chmod 600 "$neu" || alt_wieder_starten "chmod scheiterte"
 awk -v z="$digest" '
   /^[[:space:]]*(export[[:space:]]+)?IMAGE_DIGEST=/ {
     if (!gesetzt) { print "IMAGE_DIGEST=" z; gesetzt = 1 }
@@ -239,38 +362,17 @@ awk -v z="$digest" '
   }
   { print }
   END { if (!gesetzt) print "IMAGE_DIGEST=" z }
-' "$envdatei" >"$neu"
-chmod --reference="$envdatei" "$neu" 2>/dev/null || chmod 600 "$neu"
-mv -f "$neu" "$envdatei"
+' "$envdatei" >"$neu" || alt_wieder_starten ".env neu schreiben scheiterte"
+chmod --reference="$envdatei" "$neu" 2>/dev/null || chmod 600 "$neu" || true
+mv -f "$neu" "$envdatei" || alt_wieder_starten ".env ersetzen scheiterte (.env unverändert)"
+phase="gewechselt"
 protokoll "env digest=$digest kopie=$(basename "$env_kopie")"
 
-fehlschlag() {
-  fehler "Auslieferung FEHLGESCHLAGEN: $*"
-  fehler "Sicherung vor dem Wechsel: $SICHERUNGEN/$name · vorige .env: $env_kopie"
-  protokoll "fehlgeschlagen digest=$digest: $*"
-  if [[ "$bei_fehler" == "ruecksprung" ]]; then
-    local ziel
-    ziel="$(digests_mit_status vorherig | head -n1)"
-    if [[ -n "$ziel" && "$ziel" != "$digest" ]] && ! gesperrt_grund "$ziel" >/dev/null; then
-      hinweis "Rücksprung auf vorherig $ziel (--bei-fehler=ruecksprung)"
-      if "$FREIGABE_SKRIPT_VERZ/ruecksprung.sh" "${pruef_args[@]}"; then
-        protokoll "fehlgeschlagen, ruecksprung erfolgreich nach=$ziel"
-        exit 1
-      fi
-      fehler "Rücksprung gescheitert — R0."
-    else
-      fehler "Kein zulässiges Rücksprungziel (vorherig fehlt, gesperrt oder = $digest) — R0."
-    fi
-  fi
-  if "$FREIGABE_SKRIPT_VERZ/abschalten.sh"; then
-    protokoll "fehlgeschlagen, R0 erreicht"
-    exit 1
-  fi
-  protokoll "fehlgeschlagen, R0 NICHT sicher erreicht"
-  exit 8
-}
-
 # --- 6. starten ---------------------------------------------------------
+# Marke für „hat das neue Bild geschrieben?“ und den Abgleich (M2).
+marke="$SICHERUNGEN/$name/.start-marke"
+touch "$marke"
+start_ms="$(date +%s%3N)"
 start_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 IMAGE_DIGEST="$digest" compose up -d --pull never "$CENTRIC_DIENST" ||
   fehlschlag "docker compose up -d --pull never $CENTRIC_DIENST"
@@ -295,19 +397,35 @@ docker exec -i "$CENTRIC_DIENST" node --input-type=module - <"$SMOKE" ||
   fehlschlag "Smoke im Container fehlgeschlagen (siehe oben)"
 
 # --- 9. Log -------------------------------------------------------------
-if docker logs --since "$start_utc" "$CENTRIC_DIENST" 2>&1 | grep -q "$XFF_WARNUNG"; then
+# Erst vollständig in eine Datei, dann suchen (M3): `docker logs | grep -q`
+# bricht unter pipefail bei großen Logs mit SIGPIPE ab und übersähe Treffer.
+logdatei="$(mktemp)"
+docker logs --since "$start_utc" "$CENTRIC_DIENST" >"$logdatei" 2>&1 ||
+  { rm -f "$logdatei"; fehlschlag "docker logs scheiterte"; }
+if grep -q -- "$XFF_WARNUNG" "$logdatei"; then
+  rm -f "$logdatei"
   fehlschlag "Log meldet X-Forwarded-For ohne Vertrauensliste — alle Nutzer teilten sich eine Herkunft"
 fi
+rm -f "$logdatei"
 
 # --- 10. Manifestabgleich ----------------------------------------------
-docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL \
+# Verglichen wird gegen den Stand VOR dem Start (M2). Was nach dem Start
+# geändert wurde — Caddy leitet schon vor „healthy“ weiter, der Löschlauf
+# läuft eine Minute nach dem Start —, ist kein Fehler, sondern eine Warnung.
+abgleich_aus="$(docker run --rm --network none --read-only --tmpfs /tmp --cap-drop ALL \
   --security-opt no-new-privileges:true --user "$(id -u):$(id -g)" \
   -v "$DATEN_PFAD:/data:ro" -v "$SICHERUNGEN/$name:/sicherung:ro" \
   -v "$ABGLEICH:/deploy-abgleich.mjs:ro" --entrypoint node "$ref" \
-  /deploy-abgleich.mjs /sicherung /data ||
-  fehlschlag "Daten weichen von der Sicherung vor dem Wechsel ab"
+  /deploy-abgleich.mjs /sicherung /data --start "$start_ms")" ||
+  { printf '%s\n' "$abgleich_aus"; fehlschlag "Daten weichen von der Sicherung vor dem Wechsel ab"; }
+printf '%s\n' "$abgleich_aus"
+if [[ "$abgleich_aus" =~ \"nachStart\":([1-9][0-9]*) ]]; then
+  warnung "${BASH_REMATCH[1]} Dateien wurden nach dem Start geändert (Nutzer oder Löschlauf) — nicht abgeglichen."
+  protokoll "abgleich warnung: ${BASH_REMATCH[1]} nach dem Start geändert"
+fi
 
 # --- 11. Protokoll ------------------------------------------------------
+trap - ERR
 protokoll "erfolgreich digest=$digest bild-id=$lauf_id sicherung=$name"
 hinweis "Ausgeliefert: $CENTRIC_DIENST läuft healthy auf $digest (Commit $commit)."
 hinweis "FREIGEGEBENE-IMAGES.md: $digest → aktiv, bisher ${bisher:-<leer>} → vorherig (falls nicht schon so)."

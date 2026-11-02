@@ -28,6 +28,11 @@ function bashFinden() {
   return existsSync(git) ? git : null;
 }
 const BASH = bashFinden();
+/* Git Bash unter Windows stellt /usr/bin vor den PATH — Ersatz für mv, cp,
+   touch, df aus dem Stub-Verzeichnis greift dort nicht. Diese Prüfungen
+   laufen in der CI (Linux). */
+const FAKES_FEHLEN = process.platform === "win32";
+const FLOCK = BASH ? spawnSync(BASH, ["-c", "command -v flock"], { encoding: "utf8" }).status === 0 : false;
 const p = (x) => x.replace(/\\/g, "/");
 
 const P00 = "sha256:f03a8514db6f07db5617e6818edd6505f0607d52ffcf5f985c862cfefc9c5a79";
@@ -85,7 +90,8 @@ case "$1" in
         hex="\${dg#sha256:}"
         cat "$z/bilder/$hex/id" >"$c/image"
         echo running >"$c/status"; [[ -f "$c/restarts" ]] || echo 0 >"$c/restarts"
-        if [[ -f "$z/health_nach_up" && "$dg" == "$(cat "$z/neues_digest" 2>/dev/null)" ]]; then cp "$z/health_nach_up" "$c/health"; else echo healthy >"$c/health"; fi ;;
+        if [[ -f "$z/health_nach_up" && "$dg" == "$(cat "$z/neues_digest" 2>/dev/null)" ]]; then cp "$z/health_nach_up" "$c/health"; else echo healthy >"$c/health"; fi
+        if [[ -f "$z/schreibt_nach_up" ]]; then mkdir -p "$proj/data/centric"; echo neu >"$proj/data/centric/neu.json"; fi ;;
       stop) echo exited >"$c/status" ;;
       *) echo "stub: compose $1 nicht nachgebildet" >&2; exit 9 ;;
     esac ;;
@@ -119,7 +125,7 @@ case "$1" in
           *" pruefen "*) [[ -f "$z/pruefen_fehler" ]] && exit 1; echo "In Ordnung: 3 Dateien" ;;
           *deploy-abgleich*)
             if [[ -f "$z/abgleich_fehler" ]]; then echo '{"ok":false,"abweichend":1}'; exit 1; fi
-            echo '{"ok":true,"gleich":3}' ;;
+            if [[ -f "$z/abgleich_nachstart" ]]; then echo '{"ok":true,"gleich":3,"nachStart":2}'; else echo '{"ok":true,"gleich":3,"nachStart":0}'; fi ;;
           *) echo "stub: run node unbekannt: $alles" >&2; exit 9 ;;
         esac ;;
       *) echo "stub: run $ep unbekannt" >&2; exit 9 ;;
@@ -147,7 +153,8 @@ function bild(ort, digest, id, label) {
 function lauf(args = [], env = {}) {
   const umgebung = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, STUB_DIR: p(stubDir),
     CENTRIC_VERZ: p(verz), CENTRIC_FREIGABEN: p(path.join(verz, "FREIGEGEBENE-IMAGES.md")),
-    CENTRIC_WARTEZEIT: "90", CENTRIC_TAKT: "1", CENTRIC_NACHBEOBACHTUNG: "0", ...env };
+    CENTRIC_WARTEZEIT: "90", CENTRIC_TAKT: "1", CENTRIC_NACHBEOBACHTUNG: "0",
+    ...(FLOCK ? {} : { CENTRIC_OHNE_FLOCK: "1" }), ...env };
   for (const n of ["IMAGE_DIGEST", "IMAGE_TAG", "SSH_ORIGINAL_COMMAND"]) if (!(n in env)) delete umgebung[n];
   const r = spawnSync(BASH, [p(path.join(DEPLOY, "deploy.sh")), ...args], { encoding: "utf8", env: umgebung });
   return { code: r.status, alles: r.stdout + r.stderr };
@@ -157,6 +164,15 @@ const env = () => readFileSync(path.join(verz, ".env"), "utf8");
 const protokoll = () => (existsSync(path.join(verz, "betrieb-protokoll.log")) ? readFileSync(path.join(verz, "betrieb-protokoll.log"), "utf8") : "");
 const containerStatus = () => readFileSync(path.join(stubDir, "container", "status"), "utf8").trim();
 const containerBild = () => readFileSync(path.join(stubDir, "container", "image"), "utf8").trim();
+/** Ein Befehl im Stub-PATH, der scheitert, wenn sein letztes Argument passt; sonst der echte. */
+function scheitert(befehl, muster) {
+  writeFileSync(path.join(bin, befehl), `#!/usr/bin/env bash
+for a in "$@"; do letzt="$a"; done
+if [[ "$letzt" == ${muster} ]]; then echo "stub: ${befehl} scheitert" >&2; exit 1; fi
+exec /usr/bin/${befehl} "$@"
+`);
+  chmodSync(path.join(bin, befehl), 0o755);
+}
 const kopien = () => readdirSync(verz).filter((f) => f.startsWith(".env.vor-deploy-"));
 const ENV_START = `CENTRIC_PFEFFER=nur-probe\nIMAGE_DIGEST=${B}\nCENTRIC_VERTRAUTE_PROXYS=172.18.0.0/16\n`;
 
@@ -349,6 +365,123 @@ describe.skipIf(!BASH)("deploy.sh gegen Docker-Stub", { timeout: 180000 }, () =>
   });
 });
 
+describe.skipIf(!BASH)("Review-Auflagen WP-31", { timeout: 180000 }, () => {
+  it("H1: Sicherung scheitert und der bisherige Stand ist gesperrt → R0 statt Neustart", () => {
+    writeFileSync(path.join(verz, ".env"), ENV_START.replace(`IMAGE_DIGEST=${B}`, `IMAGE_DIGEST=${P00}`));
+    setze("sichern_fehler");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/nicht startbar/);
+    expect(containerStatus()).toBe("exited");
+    expect(aufrufe()).not.toMatch(/ up -d/);
+    expect(protokoll()).toMatch(/bisher nicht startbar, R0 erreicht/);
+  });
+
+  it("H1: … und der bisherige Stand ist nicht freigegeben → R0", () => {
+    const X = "sha256:" + "d".repeat(64);
+    writeFileSync(path.join(verz, ".env"), ENV_START.replace(`IMAGE_DIGEST=${B}`, `IMAGE_DIGEST=${X}`));
+    setze("sichern_fehler");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(containerStatus()).toBe("exited");
+  });
+
+  it.skipIf(FAKES_FEHLEN)("M1: .env ersetzen scheitert (Schritt 5) → .env unverändert, alter Stand läuft, protokolliert", () => {
+    scheitert("mv", "*/.env");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(env()).toBe(ENV_START);
+    expect(containerStatus()).toBe("running");
+    expect(containerBild()).toBe(ID_B);
+    expect(protokoll()).toMatch(/abgebrochen vor wechsel .*\.env ersetzen/);
+  });
+
+  it.skipIf(FAKES_FEHLEN)("M1: .env-Kopie scheitert (Schritt 5) → alter Stand läuft", () => {
+    scheitert("cp", "*.env.vor-deploy-*");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(env()).toBe(ENV_START);
+    expect(containerStatus()).toBe("running");
+  });
+
+  it.skipIf(FAKES_FEHLEN)("M1: unerwarteter Fehler nach dem Wechsel (ERR-Trap) → R0 mit Protokoll", () => {
+    scheitert("touch", "*/.start-marke");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/unerwarteter Fehler in Zeile/);
+    expect(containerStatus()).toBe("exited");
+    expect(protokoll()).toMatch(/fehlgeschlagen, R0 erreicht/);
+  });
+
+  it("M2: Änderungen nach dem Start sind eine Warnung, kein R0", () => {
+    setze("abgleich_nachstart");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.alles).toMatch(/2 Dateien wurden nach dem Start geändert/);
+    expect(protokoll()).toMatch(/abgleich warnung: 2/);
+    expect(aufrufe()).toMatch(/deploy-abgleich\.mjs \/sicherung \/data --start \d{13}/);
+  });
+
+  it("M2: hat das neue Bild geschrieben, wird der Rücksprung verweigert → R0", () => {
+    setze("schreibt_nach_up");
+    setze("smoke_fehler");
+    const r = lauf([A, "--bei-fehler=ruecksprung"]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/bereits Daten geschrieben/);
+    expect(containerStatus()).toBe("exited");
+    expect(protokoll()).toMatch(/ruecksprung verweigert/);
+  });
+
+  it("M3: Treffer am Anfang eines großen Logs wird gefunden → R0", () => {
+    setze("logs", "WARNUNG: Anfrage mit X-Forwarded-For, aber CENTRIC_VERTRAUTE_PROXYS ist leer.\n"
+      + "x".repeat(200) .concat("\n").repeat(50000));
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/Log meldet X-Forwarded-For/);
+    expect(containerStatus()).toBe("exited");
+  });
+
+  it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {
+    const halter = spawn(BASH, ["-c", `exec 9>"${p(path.join(verz, ".deploy.lock"))}"; flock 9; echo bereit; sleep 30`]);
+    await new Promise((fertig) => halter.stdout.once("data", fertig));
+    try {
+      const r = lauf([A]);
+      expect(r.code, r.alles).toBe(4);
+      expect(r.alles).toMatch(/läuft bereits/);
+      expect(env()).toBe(ENV_START);
+    } finally { halter.kill(); }
+  });
+
+  it("N4: Aufbewahrung — die jüngsten 5 vollständigen bleiben, die neue immer", () => {
+    const sich = path.join(verz, "deploy-sicherungen");
+    for (let i = 1; i <= 6; i++) {
+      const d = path.join(sich, `centric-sicherung-2026110${i < 3 ? 1 : 2}T00000${i}Z`);
+      mkdirSync(d, { recursive: true });
+      writeFileSync(path.join(d, "FERTIG"), "");
+    }
+    mkdirSync(path.join(sich, "centric-sicherung-20261001T000000Z"));   // unvollständig: bleibt unangetastet
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(0);
+    const rest = readdirSync(sich).sort();
+    expect(rest).toContain("centric-sicherung-20261103T000000Z");
+    expect(rest).toContain("centric-sicherung-20261001T000000Z");
+    expect(rest.filter((n) => existsSync(path.join(sich, n, "FERTIG")))).toHaveLength(5);
+    expect(rest).not.toContain("centric-sicherung-20261101T000001Z");
+    expect(rest).not.toContain("centric-sicherung-20261101T000002Z");
+  });
+
+  it.skipIf(FAKES_FEHLEN)("N4: zu wenig Platz → Abbruch vor dem Anhalten", () => {
+    writeFileSync(path.join(bin, "df"), "#!/usr/bin/env bash\necho 'Filesystem 1-blocks Used Available Capacity Mounted'\necho 'x 100 99 1 99% /'\n");
+    chmodSync(path.join(bin, "df"), 0o755);
+    writeFileSync(path.join(verz, "data", "probe.json"), "x".repeat(1000));
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(4);
+    expect(r.alles).toMatch(/zu wenig Platz/);
+    expect(aufrufe()).not.toMatch(/ stop /);
+    expect(containerStatus()).toBe("running");
+  });
+});
+
 /* ---------- Smoke und Abgleich gegen das Echte ---------- */
 
 describe("deploy-smoke.mjs gegen server.mjs", () => {
@@ -426,6 +559,19 @@ describe("deploy-abgleich.mjs gegen eine echte Sicherung", { timeout: 60000 }, (
       r = abgleich();
       expect(r.status).toBe(1);
       expect(JSON.parse(r.stdout).fehlend).toBe(1);
+      /* M2: mit --start zählt, was nach dem Start geändert oder entfernt wurde, nur als Warnung. */
+      await s.setJSON("kern:probe", { a: 1 });
+      const vorStart = Date.now();
+      await new Promise((w) => setTimeout(w, 30));
+      await s.setJSON("konto:x", { b: 42 });
+      const mitStart = spawnSync(process.execPath, [path.join(DEPLOY, "deploy-abgleich.mjs"), name, daten, "--start", String(vorStart)], { encoding: "utf8" });
+      expect(mitStart.status, mitStart.stdout + mitStart.stderr).toBe(0);
+      expect(JSON.parse(mitStart.stdout)).toMatchObject({ ok: true, nachStart: 1, abweichend: 0 });
+      /* Ohne --start bleibt es ein Fehler. */
+      expect(abgleich().status).toBe(1);
+      /* Vor dem Start verändert (Start liegt in der Zukunft der Änderung): Fehler. */
+      const spaeter = spawnSync(process.execPath, [path.join(DEPLOY, "deploy-abgleich.mjs"), name, daten, "--start", String(Date.now() + 60000)], { encoding: "utf8" });
+      expect(spaeter.status).toBe(1);
     } finally {
       rmSync(daten, { recursive: true, force: true });
       rmSync(ziel, { recursive: true, force: true });

@@ -54,9 +54,9 @@ on:
   # Bewusst KEIN push-Auslöser: Ausgeliefert wird nur ein abgenommener
   # Digest, nach menschlicher Freigabe.
 
+# Vorgabe für alle Jobs: nur lesen. Schreibrechte bekommt nur `bild` (GHCR).
 permissions:
   contents: read
-  packages: write
 
 env:
   BILD: ghcr.io/${{ github.repository }}
@@ -68,7 +68,8 @@ jobs:
   # 0. Das volle Gate — dieselben Workflows, die bei jedem Push laufen.
   #    Schlägt einer fehl, entsteht kein Bild, geht nichts nach GHCR und
   #    läuft kein Schritt auf den VPS. Es gibt keinen Weg um das Gate:
-  #    `bild` hängt daran, `vps` hängt an `bild`.
+  #    `bild` und `vps` hängen beide daran (`vps` nicht an `bild` — er
+  #    liefert einen abgenommenen Digest aus, nicht das eben gebaute Bild).
   # -------------------------------------------------------------------
   pruefung:
     uses: ./.github/workflows/pruefung.yml
@@ -82,6 +83,9 @@ jobs:
   bild:
     needs: [pruefung, sicherheit]
     if: ${{ inputs.bauen }}
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     outputs:
@@ -191,7 +195,10 @@ jobs:
   # -------------------------------------------------------------------
   vps:
     needs: [pruefung, sicherheit]
-    if: ${{ inputs.ausliefern }}
+    # Nur von main (N2) — zusätzlich zur Einschränkung der Umgebung auf main.
+    if: ${{ inputs.ausliefern && github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: produktion
@@ -208,7 +215,7 @@ jobs:
       - name: Eingaben prüfen (Digest, kein Tag)
         run: |
           set -euo pipefail
-          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Digest erwartet (sha256:<64 hex>), kein Tag: '$DIGEST'"; exit 1; }
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::Eingabe digest ist kein Digest (sha256:<64 hex>); Tags sind nicht zulässig."; exit 1; }
           [[ "$BEI_FEHLER" == "r0" || "$BEI_FEHLER" == "ruecksprung" ]] || { echo "::error::bei_fehler unbekannt"; exit 1; }
           [[ -n "$DEPLOY_HOST" ]] || { echo "::error::Variable DEPLOY_HOST der Umgebung produktion fehlt"; exit 1; }
           [[ -n "$DEPLOY_USER" ]] || { echo "::error::Variable DEPLOY_USER der Umgebung produktion fehlt"; exit 1; }
