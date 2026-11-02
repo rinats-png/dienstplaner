@@ -136,15 +136,19 @@ describe("Zuordnung von Befunden zu Regeln", () => {
     expect(regelIdFuerBefund({ art: "ruhezeit", regelId: "AZ-TAG-01" })).toBe("AZ-TAG-01");
   });
 
-  it("das Bestätigungsprotokoll hält die Kennungen fest, ohne die Befunde zu verändern", () => {
+  /* Seit der Nachprüfung WP-10 (M1) trägt ein Protokolleintrag Befunde nur
+     als Kennung aus dem Befundkatalog mit Stufe — kein Text, keine Fundstelle
+     vom Client (ein Freitext ginge sonst ungeprüft ins Protokoll). Die
+     Kennungen des Regelregisters bleiben daneben erhalten. */
+  it("das Bestätigungsprotokoll hält die Register-Kennungen fest, Befunde nur als Katalogkennung", () => {
     const best = { gelesen: true, grundArt: null, eintraege: [{ personId: "p1", datum: "2026-11-12", dienstId: "N",
-      befunde: [{ stufe: "recht", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG", art: "ruhezeit", regelId: "AZ-RUHE-01" },
-        { stufe: "achtung", text: "x", quelle: "y", art: "regel", regelId: null }] }] };
+      befunde: [{ stufe: "recht", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG", art: "ruhezeit", regel: "ruhezeitGesetz", regelId: "AZ-RUHE-01" },
+        { stufe: "achtung", text: "x", quelle: "y", art: "regel", regel: "folge", regelId: null }] }] };
     const [e] = bestaetigungsEintraege(best, { personId: "s1", name: "S", rolle: "subplaner" },
       "einsprung", { neueId: () => "id", zeit: "2026-10-22T08:00:00.000Z", regelstand: REGELSTAND.version });
     expect(e.regelIds).toEqual(["AZ-RUHE-01"]);
-    expect(e.befunde).toEqual([{ stufe: "recht", text: "Ruhezeit 8 h", quelle: "§ 5 ArbZG" },
-      { stufe: "achtung", text: "x", quelle: "y" }]);
+    expect(e.befunde).toEqual([{ regel: "ruhezeitGesetz", stufe: "recht" }, { regel: "folge", stufe: "achtung" }]);
+    expect(JSON.stringify(e)).not.toContain("Ruhezeit 8 h");
   });
 });
 

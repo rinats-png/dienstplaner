@@ -356,7 +356,7 @@ function standorte(w) {
    betroffen"): Zusammen mit Tag und Dienst ließe sich in einem kleinen Team
    sonst auf das Merkmal schließen. Positivliste — was nicht hier steht, geht
    nicht hinaus. */
-export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde",
+export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde", "regelIds",
   "grundArt", "grund", "ohneGrund", "gelesen", "durch", "durchId", "rolle", "zeit", "regelstand", "behoben"];
 /* Review WP-10, M1: Der Betriebsrat sieht abweichungen (den Plan)
    vollständig. Mit Tag und Dienst einer Bestätigung ließe sich die Person

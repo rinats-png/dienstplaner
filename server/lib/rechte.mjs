@@ -1392,8 +1392,13 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
     if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
     if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
     if (e.regelstand !== undefined && e.regelstand !== null && !kurzText(e.regelstand, 40)) return null;
+    /* Kennungen des Regelregisters (Kette A, WP-11): nur das Kennungsformat,
+       kein Text — der Betriebsrat sieht ohnehin nur Zählwerte. */
+    const regelIds = e.regelIds === undefined || e.regelIds === null ? [] : e.regelIds;
+    if (!Array.isArray(regelIds) || regelIds.length > 20 || !regelIds.every((x) => typeof x === "string" && /^[A-Z0-9][A-Z0-9-]{0,39}$/.test(x))) return null;
     return { id: e.id, personId: personen.get(String(e.personId)).id, datum: e.datum, dienstId: e.dienstId, aktion: e.aktion,
       stufe, befunde: [...new Set(befunde.map((b) => b.regel))].map((regel) => ({ regel, stufe: BEFUND_KATALOG[regel].stufe })),
+      regelIds: [...new Set(regelIds)],
       grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
       gelesen: e.gelesen === true,
       durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
