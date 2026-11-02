@@ -289,7 +289,9 @@ function sammlungen() {
       { id: "c-b", personId: "b1", datum: tag(1), von: "-", nach: "F" }, { id: "c-0", personId: null, datum: tag(1), von: "-", nach: "Anfrage Telefon" }],
     nachrichten: [{ id: "n-a", personId: "a1", art: "info", titel: "fremde Nachricht" },
       { id: "n-s", personId: "s1", art: "info", titel: "an mich" }],
-    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", empfaenger: [], bestaetigt: null },
+    /* WP-43: Notrufe tragen ihren Tag (die Oberfläche setzt ihn immer); ohne Tag
+       bekommt die Schichtverantwortung einen Bereichsnotruf nicht (fail-closed). */
+    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", datum: tag(0), empfaenger: [], bestaetigt: null },
       { id: "nr-b-an-mich", personId: "b1", art: "hilfe", empfaenger: ["s1"], bestaetigt: null },
       { id: "nr-b", personId: "b1", art: "bedrohung", empfaenger: ["l1"], bestaetigt: null }],
     selbstplanung: [{ id: "sp-r", monat: tag(40).slice(0, 7), status: "offen", eintraege: [
