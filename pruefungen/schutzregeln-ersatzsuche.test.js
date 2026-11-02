@@ -174,9 +174,13 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
     expect(start).toBeGreaterThan(0);
     expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).map((b) => b.text);");
     expect(block).toContain("einsatzSchutz(p, da, d,");
-    expect(block).toMatch(/for \(const text of schutz\.hindernisse\)\s*g\.push\(\{ stufe: "recht", text, [^}]*sperrt: true \}\)/);
+    /* Ob sperrt, entscheidet seit Review H1 die Tabelle SPERR_REGELN
+       (src/warnstufen.js) über den Schlüssel am Befund; „schutz“ und
+       „keinAlleindienst“ sperren dort. */
+    expect(block).toMatch(/sperrt: sperrtArt\(/);
+    expect(block).toMatch(/for \(const text of schutz\.hindernisse\)\s*push\("recht", text, [^)]*"schutz", "schutz"\)/);
     expect(block).toContain("e.keinAlleindienst");
-    expect(block).toMatch(/darf nicht allein eingeteilt werden",[^}]*sperrt: true \}\)/);
+    expect(block).toMatch(/darf nicht allein eingeteilt werden",[^)]*"schutz", "keinAlleindienst"\)/);
     expect(block).not.toContain("e.wiedereingliederung");                // nicht mehr nur aus den Rohdaten
     expect(block).not.toContain("schutz.grenze");                        // S2a: die Grenze sperrt nicht
   });

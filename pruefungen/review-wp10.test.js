@@ -98,3 +98,44 @@ describe("K1: Rundenkopf der Selbstplanung", () => {
     }
   });
 });
+
+/* ------------------------------------------------------------------------
+   H1 — bis zur Fachentscheidung die strenge Kette-B-Variante
+   ------------------------------------------------------------------------ */
+describe("H1: was sperrt, steht an einer Stelle und ist streng", () => {
+  it("SPERR_REGELN: Einschränkungen, Bestand, gesetzliche Qualifikation, Einweisung, Ruhezeit < 11 h sperren", async () => {
+    const W = await import("../src/warnstufen.js");
+    expect(W.SPERR_REGELN, "die zentrale Tabelle fehlt").toBeTruthy();
+    for (const k of ["bestand", "schutz", "keineNacht", "keinAlleindienst", "maxDiensteWoche",
+      "qualifikationGesetzlich", "kompetenz", "ruhezeitGesetz"]) expect(W.SPERR_REGELN[k], k).toBe(true);
+    for (const k of ["qualifikationBetrieblich", "ruhezeitBetrieb", "verfuegbarkeit", "teilzeit", "folge", "abwesend"])
+      expect(W.SPERR_REGELN[k], k).toBe(false);
+    expect(W.sperrtArt("unbekannt"), "unbekannte Art sperrt").toBe(true);
+    expect(Object.isFrozen(W.SPERR_REGELN)).toBe(true);
+  });
+  it("jeder Befund in hindernisBefunde trägt seinen Schlüssel, sperrt kommt nur aus der Tabelle", () => {
+    const h = funktionAb("function hindernisBefunde(m, p, d, da) {");
+    expect(h).toContain("sperrt: sperrtArt(");
+    expect(h.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/sperrt: true/);
+    for (const k of ["\"bestand\", \"bestand\"", "\"keineNacht\"", "\"maxDiensteWoche\"", "\"keinAlleindienst\"",
+      "\"qualifikationGesetzlich\"", "\"kompetenz\", \"kompetenz\"", "\"ruhezeitGesetz\"", "\"schutz\", \"schutz\""])
+      expect(h, k).toContain(k);
+    /* keine Nacht und Höchstzahl Dienste sind Rechtsverstoß-Stufe wie in der Planprüfung (danger) */
+    expect(h).toMatch(/push\("recht", "keine Nachtdienste zugelassen"/);
+    expect(h).toMatch(/push\("recht", `bereits \$\{n\} von \$\{e\.maxDiensteWoche\}/);
+  });
+  it("Bewerbung und Selbstplanung sind bei einem sperrenden Befund nicht möglich", () => {
+    const bew = funktionAb("function darfSichBewerben(m, personId, a) {");
+    expect(bew).toMatch(/const sperre = bef\.find\(\(b\) => b\.sperrt\);\s*if \(sperre\) return \{ darf: false/);
+    const selbst = funktionAb("function darfSelbstEintragen(m, runde, personId, datum, dienstId) {");
+    expect(selbst).toMatch(/const sperre = bef\.find\(\(b\) => b\.sperrt\);\s*if \(sperre\) return \{ darf: false/);
+    expect(selbst).toContain("sperrtArt(\"ruhezeitGesetz\")");
+  });
+  it("Zuschlag, Übernahme, Einsprung und Tausch prüfen die Sperre selbst", () => {
+    for (const k of ["vergibSchicht: (asId, personId, best) => mUpd((m0) => {", "setzeEinsprung: (pid, d, dienstId, best) => mUpd((m0) => {",
+      "tauschZuteilen: (id, interessentId, best) => mUpd((m0) => {"])
+      expect(aktion(k), k).toMatch(/schutzSperre\(/);
+    expect(aktion("rundeUebernehmen: (id, best) => mUpd((m0) => {")).toContain("bef.find((b) => b.sperrt)");
+    expect(APP).toContain("const schutzSperre = (m, p, d, da) => (p && da && hindernisBefunde(m, p, d, da).find((b) => b.sperrt)) || null;");
+  });
+});

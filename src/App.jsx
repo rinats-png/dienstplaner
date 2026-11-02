@@ -184,7 +184,7 @@ import { Kennzahlen, Leitraster, Seitenkarte, Hinweisband, Balkenzeile, Legende,
 import { Kopfblock } from "./gestalt/rahmen.jsx";
 import { gestaltStil } from "./gestalt/stil.js";
 import { Rechtliches, RechtFenster, RechtLeiste } from "./rechtstexte.jsx";
-import { WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
+import { sperrtArt, WARNSTUFEN, stufeRang, hoechsteStufe, ruhezeitStufe, ABWEICHUNG_GRUENDE,
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
@@ -2587,25 +2587,28 @@ function wochenStundenGeplant(m, p, d) {
 /**
  * Prüft, ob eine Person an einem Tag einen bestimmten Dienst leisten kann,
  * und liefert die Befunde mit Stufe, Quelle und Text — leer bedeutet
- * regelkonform. Die Befunde gehen in den Warndialog. Gesperrt wird nur,
- * was technisch nicht geht (nicht im Bestand) und was die Schutzregeln
- * hart ausschließen (sperrt: true, Kette B).
+ * regelkonform. Die Befunde gehen in den Warndialog. Ob ein Befund sperrt
+ * (kein „dennoch", Bewerbung, Selbstplanung, Zuschlag, Übernahme blockiert)
+ * oder warnt, steht an genau einer Stelle: SPERR_REGELN in src/warnstufen.js
+ * (Review WP-10, H1 — bis zur Fachentscheidung die strenge Kette-B-Variante).
+ * `regel` ist der Schlüssel dort.
  */
 function hindernisBefunde(m, p, d, da) {
   const g = [];
-  const push = (stufe, text, quelle, art) => g.push({ stufe, text, quelle, art: art || "regel" });
+  const push = (stufe, text, quelle, art, regel) => g.push({ stufe, text, quelle, art: art || "regel",
+    regel: regel || art || "regel", sperrt: sperrtArt(regel || art || "regel") });
   const e = einschr(p);
-  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand");
+  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand", "bestand");
   const abw = abwesenheitAm(m, p.id, d);
   /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
      bietet an, sie für diesen Tag aufzuheben. */
-  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend");
+  if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend", "abwesend");
   /* Den Grund einer Einschränkung nennt CENTRIC nie — es kann Mutterschutz,
      ein ärztliches Attest oder eine Absprache sein. */
   if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-    push("achtung", "keine Nachtdienste zugelassen", "Schutzvorschrift oder Einsatzeinschränkung für diese Person");
+    push("recht", "keine Nachtdienste zugelassen", "Schutzvorschrift oder Einsatzeinschränkung für diese Person", "schutz", "keineNacht");
   if (!verfuegbarFuer(p, d, da))
-    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person");
+    push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person", "regel", "verfuegbarkeit");
   // Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung
   if (da.form !== "ruf") {
     for (const q of m.qualifikationen) {
@@ -2615,7 +2618,7 @@ function hindernisBefunde(m, p, d, da) {
       if (!v || qualGueltig(m, p, q.id)) continue;
       push(v.gesetzlich ? "recht" : "achtung",
         `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
-        q.grundlage || v.label, "qualifikation");
+        q.grundlage || v.label, "qualifikation", v.gesetzlich ? "qualifikationGesetzlich" : "qualifikationBetrieblich");
     }
   }
   /* Kompetenzen, die diese Dienstart voraussetzt.
@@ -2628,11 +2631,11 @@ function hindernisBefunde(m, p, d, da) {
      diesen. */
   for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
     (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
-    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz");
+    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz", "kompetenz");
 
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
-    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung");
+    push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   // Ruhezeit vor und nach dem Dienst
   const [nStart, nEnde] = fenster(d, da);
   for (const off of [-2, -1, 1, 2]) {
@@ -2646,7 +2649,8 @@ function hindernisBefunde(m, p, d, da) {
     const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
     if (rs) {
       push(rs, `Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`,
-        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit");
+        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit",
+        rs === "recht" ? "ruhezeitGesetz" : "ruhezeitBetrieb");
       break;
     }
   }
@@ -2656,7 +2660,8 @@ function hindernisBefunde(m, p, d, da) {
     let n = 0;
     for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
     if (n >= e.maxDiensteWoche)
-      push("achtung", `bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`, "Einsatzeinschränkung für diese Person");
+      push("recht", `bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`, "Schutzvorschrift oder Einsatzeinschränkung für diese Person",
+        "schutz", "maxDiensteWoche");
   }
   /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
      eingeteilt werden darf, braucht im Dienst jemanden ohne diese
@@ -2666,8 +2671,8 @@ function hindernisBefunde(m, p, d, da) {
   if (e.keinAlleindienst) {
     const b = besetzung(m, d)[da.id];
     const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
-    if (mit.length === 0) g.push({ stufe: "recht", text: "darf nicht allein eingeteilt werden",
-      quelle: "Schutzvorschrift oder Einsatzeinschränkung für diese Person", art: "schutz", sperrt: true });
+    if (mit.length === 0) push("recht", "darf nicht allein eingeteilt werden",
+      "Schutzvorschrift oder Einsatzeinschränkung für diese Person", "schutz", "keinAlleindienst");
   }
   /* Schutzregeln und Wochenstundengrenze (Commit S2): dieselbe Prüfung wie
      die Planprüfung, mit Rohdaten (Planung, Leitung) oder Einsatzregeln
@@ -2679,14 +2684,15 @@ function hindernisBefunde(m, p, d, da) {
      Ersatzsuche, folgenPruefen und befundeFuerEinteilung, kein Befund hier. */
   const schutz = einsatzSchutz(p, da, d, () => wochenStundenGeplant(m, p, d));
   for (const text of schutz.hindernisse)
-    g.push({ stufe: "recht", text, quelle: "Schutzvorschrift oder Einsatzregel für diese Person", art: "schutz", sperrt: true });
+    push("recht", text, "Schutzvorschrift oder Einsatzregel für diese Person", "schutz", "schutz");
   // Dienste in Folge
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
     if (personTag(m, p, addDays(d, -i)).dienstId) lauf++; else break;
   }
   if (lauf >= m.einstellungen.maxFolge)
-    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`);
+    push("achtung", `${lauf} Dienste in Folge davor`, `höchstens ${m.einstellungen.maxFolge} Dienste in Folge (Einstellung des Betriebs)`,
+      "regel", "folge");
   return g;
 }
 
@@ -12587,7 +12593,8 @@ function Warndialog({ sitz, vorgang, onClose }) {
 
       {geschuetzt.length > 0 && !technisch.length && (
         <div style={{ fontSize: 13, color: C.danger, margin: "6px 0 14px", lineHeight: 1.5 }}>
-          Für diese Einteilung gilt eine Schutzregel der Person. Sie lässt sich nicht bestätigen — bitte einen anderen Weg wählen.
+          Für diese Einteilung gilt eine sperrende Regel (Schutz, Einschränkung, gesetzliche Qualifikation,
+          Einweisung oder Ruhezeit unter 11 Stunden). Sie lässt sich nicht bestätigen — bitte einen anderen Weg wählen.
         </div>)}
 
       {recht && !technisch.length && !geschuetzt.length && (
@@ -16379,11 +16386,15 @@ function darfSichBewerben(m, personId, a) {
   if (eigen && eigen.dienstId && m.dienstarten.some((x) => x.id === eigen.dienstId))
     return { darf: false, grund: "an diesem Tag bereits eingeteilt" };
 
-  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein Befund
-     die Bewerbung nicht mehr: Die Person sieht den Hinweis und darf sich
-     trotzdem melden; die Planung entscheidet mit dem Warndialog. */
+  /* Dieselbe Prüfung wie bei der Ersatzsuche. Seit E-19 hindert ein
+     warnender Befund die Bewerbung nicht: Die Person sieht den Hinweis und
+     darf sich trotzdem melden; die Planung entscheidet mit dem Warndialog.
+     Ein sperrender Befund (SPERR_REGELN) hindert — wie im Integrationsstand. */
   const da = m.dienstarten.find((x) => x.id === a.dienstId);
-  const h = da ? hindernisse(m, p, a.datum, da) : [];
+  const bef = da ? hindernisBefunde(m, p, a.datum, da) : [];
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text, hindernisse: [sperre.text] };
+  const h = bef.map((b) => b.text);
   return h.length ? { darf: true, hinweise: h } : { darf: true };
 }
 
@@ -18096,8 +18107,25 @@ function darfSelbstEintragen(m, runde, personId, datum, dienstId) {
       hinweise.push("zu wenig Ruhezeit vor dem Folgetag");
   }
 
-  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie sonst */
-  hinweise.push(...hindernisse(m, p, datum, da));
+  /* Unter 11 Stunden zu den eigenen Eintragungen sperrt (SPERR_REGELN.ruhezeitGesetz,
+     Review H1): Bei der Übernahme wird gegen den Plan geprüft, nicht gegen die
+     übrigen Eintragungen derselben Runde. */
+  const ruheGesetz = (dA, daA, daB) => {
+    const [, aEnde] = fenster(dA, daA);
+    const [bStart] = fenster(addDays(dA, 1), daB);
+    return ruhezeitStufe((bStart - aEnde) / 60, m.einstellungen.ruhezeit) === "recht";
+  };
+  const dvG = vortag && m.dienstarten.find((x) => x.id === vortag.dienstId);
+  const dfG = folgetag && m.dienstarten.find((x) => x.id === folgetag.dienstId);
+  if (sperrtArt("ruhezeitGesetz") && ((dvG && ruheGesetz(addDays(datum, -1), dvG, da)) || (dfG && ruheGesetz(datum, da, dfG))))
+    return { darf: false, grund: "weniger als 11 Stunden Ruhezeit zu deiner anderen Eintragung (§ 5 ArbZG)" };
+
+  /* Abwesenheit, Qualifikationen, Ruhezeit zum Plan — dieselbe Prüfung wie
+     sonst. Ein sperrender Befund (SPERR_REGELN) hindert die Eintragung. */
+  const bef = hindernisBefunde(m, p, datum, da);
+  const sperre = bef.find((b) => b.sperrt);
+  if (sperre) return { darf: false, grund: sperre.text };
+  hinweise.push(...bef.map((b) => b.text));
 
   /* Ist der Dienst schon voll? Über die Mindestbesetzung hinaus soll sich
      niemand eintragen, ohne es zu wissen. */

@@ -20,6 +20,37 @@ export const WARNSTUFEN = {
   recht: { rang: 3, label: "Rechtsverstoß", ton: "danger" },
 };
 
+/**
+ * WARNEN ODER SPERREN — die eine Stelle für die Fachentscheidung (Review
+ * WP-10, H1). Je Befundart: true = sperrt (Warndialog ohne „dennoch",
+ * Bewerbung, Selbstplanung, Zuschlag, Übernahme, Einsprung und Tausch
+ * blockiert), false = warnt (Bestätigung mit Protokoll).
+ *
+ * Bis zur fachlichen Entscheidung des Nutzers gilt die strenge Variante des
+ * Integrationsstands (Kette B): Was dort eine Einteilung verhinderte und
+ * rechtlich oder technisch begründet ist, sperrt weiter. Nur, was eine
+ * betriebliche Vorgabe oder ein Wunsch ist, wird zur Warnung. Wer das ändern
+ * will, ändert es hier — und nur hier (pruefungen/review-wp10.test.js).
+ */
+export const SPERR_REGELN = Object.freeze({
+  bestand: true,                 // nicht im Bestand (ausgetreten, gesperrt): technisch
+  schutz: true,                  // harte Schutzbefunde (JArbSchG, MuSchG, Einsatzregeln)
+  keineNacht: true,              // Einschränkung an der Person
+  keinAlleindienst: true,        // Einschränkung an der Person
+  maxDiensteWoche: true,         // Einschränkung an der Person
+  qualifikationGesetzlich: true, // gesetzlich verbindliche Qualifikation (§ 34a GewO u. ä.)
+  kompetenz: true,               // Einweisung je Gerät (§ 4 MPBetreibV, § 12 BetrSichV)
+  ruhezeitGesetz: true,          // Ruhezeit unter 11 h (§ 5 ArbZG)
+  qualifikationBetrieblich: false, // betriebliche Vorgabe
+  ruhezeitBetrieb: false,        // Tarif oder Betrieb über dem Gesetz
+  verfuegbarkeit: false,         // Wunsch der Person
+  teilzeit: false,               // Teilzeitvereinbarung
+  folge: false,                  // Dienste in Folge (Einstellung des Betriebs)
+  abwesend: false,               // Abwesenheit: der Dialog bietet das Aufheben an
+});
+/** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
+export const sperrtArt = (art) => (Object.prototype.hasOwnProperty.call(SPERR_REGELN, art) ? SPERR_REGELN[art] : true);
+
 /** Rang einer Stufe; Unbekanntes zählt als Hinweis. */
 export const stufeRang = (s) => (WARNSTUFEN[s] || WARNSTUFEN.hinweis).rang;
 
