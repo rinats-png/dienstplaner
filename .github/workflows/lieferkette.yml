@@ -33,6 +33,25 @@ permissions:
   contents: read
 
 jobs:
+  # Die Caddy-Vorlage (deploy/caddy/Caddyfile.vorlage) muss sich übersetzen
+  # lassen — sonst ist sie im Ernstfall eine Fehlerquelle mehr. Geprüft mit
+  # dem offiziellen Bild, per Digest gepinnt (caddy:2-alpine, 2.11.7, Stand
+  # 2026-11-02). `caddy validate` lädt die Konfiguration samt Modulen, holt
+  # aber kein Zertifikat und erreicht kein Upstream.
+  caddy-vorlage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: caddy validate
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/deploy/caddy/Caddyfile.vorlage:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine@sha256:e70b164da81ef698b3ad19af799ea6086ce6d9e48ed4079eb9fe26f6fbf14ee5 \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
   bild-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 20

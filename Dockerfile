@@ -79,7 +79,16 @@ COPY werkzeug/staging-smoke.mjs werkzeug/staging-geo.mjs werkzeug/staging-aufrae
 
 # Datenverzeichnis gehört dem unprivilegierten Benutzer `node` (uid 1000).
 # Im Betrieb wird es durch einen Bind-Mount ersetzt (./data:/data).
-RUN mkdir -p /data && chown node:node /data && chmod 700 /data
+#
+# Paketwerkzeuge raus (WP-32). Das Basisbild bringt npm, npx, corepack und
+# yarn mit; zur Laufzeit braucht der Dienst keins davon (CMD und
+# HEALTHCHECK rufen nur `node`). Der erste Trivy-Lauf fand alle 23 Befunde
+# des Bildes — 10 davon HIGH — ausschließlich in den Abhängigkeiten des
+# mitgelieferten npm. Was nicht im Bild ist, braucht keinen Fix.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v* \
+ && mkdir -p /data && chown node:node /data && chmod 700 /data
 
 USER node
 EXPOSE 3000
