@@ -6,7 +6,11 @@ laufende Caddy-Konfiguration auf dem VPS (`/opt/proxy/Caddyfile`,
 gelesen — kein Zugriff auf den VPS in diesem Arbeitspaket. Aussagen über
 den laufenden Caddy sind deshalb Bedingungen, keine Befunde.
 
-## 1. Wie der Server die Herkunft bestimmt
+> **Nachtrag WP-32b:** B-XFF-1 ist behoben. Abschnitte 1–3 beschreiben den
+> Stand **vor** WP-32b und bleiben als Begründung stehen. Was jetzt gilt und
+> was beim Ausliefern **Pflicht** ist: Abschnitt 7.
+
+## 1. Wie der Server die Herkunft bestimmt (vor WP-32b)
 
 | Stelle | Was passiert |
 |---|---|
@@ -68,7 +72,7 @@ gezielter Angriff auf einen einzelnen Betriebscode bliebe unter
 
 ## 3. Befund
 
-**B-XFF-1 (mittel):** Der Anwendungsserver vertraut `X-Forwarded-For`
+**B-XFF-1 (mittel, behoben in WP-32b, Abschnitt 7):** Der Anwendungsserver vertraut `X-Forwarded-For`
 ungeprüft und nimmt den ersten (am leichtesten zu fälschenden) Eintrag.
 Ein Proxy-Netz-Vertrauen gibt es nicht. Hinter einem Caddy in der
 Grundeinstellung ist das unschädlich; jeder Absender im Netz `proxy` und
@@ -135,3 +139,57 @@ Nicht Teil von WP-32 — braucht Zugriff auf den VPS und eine Freigabe:
 
 Die Vorlage wird in CI mit `caddy validate` geprüft
 (`.github/workflows/lieferkette.yml`, Job `caddy-vorlage`).
+
+## 7. Seit WP-32b: Vertrauensliste `CENTRIC_VERTRAUTE_PROXYS`
+
+### Verhalten
+
+| Stelle | Was passiert |
+|---|---|
+| `server.mjs`, Start | `CENTRIC_VERTRAUTE_PROXYS` wird gelesen (Adressen und CIDR-Netze, IPv4/IPv6, durch Komma oder Leerzeichen getrennt). Ein ungültiger Eintrag hält den Start an. Leer: Warnung im Log. |
+| `server.mjs`, `webRequest()` | Ersetzt `x-forwarded-for` IMMER durch genau eine Adresse aus `herkunftBestimmen()` (`schutz.mjs`). |
+| `herkunftBestimmen()` | Gegenstelle nicht vertraut (oder Liste leer) → die Gegenstelle zählt, der mitgeschickte Kopf wird verworfen. Gegenstelle vertraut → die Kette wird **von rechts** gelesen; die erste nicht vertraute Adresse ist der Client. Steht rechts Unsinn, zählt die Gegenstelle. IPv4-gemappte IPv6-Adressen (`::ffff:a.b.c.d`), Klammern, Zonen und `a.b.c.d:port` werden vereinheitlicht. |
+| `herkunft()`, `kennung()`, Bremse, Protokoll | unverändert — sie sehen jetzt nur noch die bestimmte Adresse. |
+| Erste Anfrage mit XFF bei leerer Liste | lautes `WARNUNG:` im Log; `/einrichten/umgebung` meldet `vertrauteProxys: false` und eine Warnung, sobald so eine Anfrage kam. |
+
+Handler, die ohne `server.mjs` aufgerufen werden (Prüfungen), lesen wie
+bisher den ersten Eintrag — im Betrieb kommt keine Anfrage an `server.mjs`
+vorbei.
+
+### Pflichtschritt beim Ausliefern
+
+**Ohne Liste sieht der Server hinter Caddy nur die Adresse des
+Caddy-Containers. Alle Nutzer teilten sich eine Herkunft und einen
+Bremszähler: acht Fehlversuche irgendwo, und die Anmeldung ist für alle
+gesperrt.** Deshalb vor dem ersten Start dieses Stands:
+
+1. Subnetz des Docker-Netzes `proxy` ermitteln:
+   `docker network inspect proxy --format '{{(index .IPAM.Config 0).Subnet}}'`
+   (z. B. `172.18.0.0/16`).
+2. In `/opt/apps/centric-dienstplanung/.env` eintragen:
+   `CENTRIC_VERTRAUTE_PROXYS=<Subnetz>`.
+3. Nach dem Start im Log: `Herkunft: X-Forwarded-For wird von 1 vertrauten
+   Einträgen angenommen.` — und **keine** Zeile `WARNUNG: Anfrage mit
+   X-Forwarded-For`.
+4. `/einrichten/umgebung`: `vertrauteProxys: true`, keine Warnung dazu.
+
+Strenger (empfohlen, sobald Caddy eine feste Adresse hat): statt des ganzen
+Netzes nur Caddys Adresse eintragen. Mit dem Subnetz vertraut der Server
+jedem Container im Netz `proxy` — der kann seine Herkunft weiter frei
+wählen. Caddys Adresse festlegen geht in dessen Compose-Datei
+(`networks: proxy: ipv4_address: …`); das gehört zum Proxy, nicht zu
+diesem Repository.
+
+### Prüfungen und CI
+
+- `pruefungen/herkunft-xff.test.js`: reine Funktion (leere Liste, nicht
+  vertraute Gegenstelle, Kette von rechts, alle vertraut, Unsinn,
+  IPv4-gemappt, IPv6-Netze, ungültige Liste) und über den echten Server:
+  gefälschtes XFF ohne Liste → Bremse greift (rot vorher); vertrauter Proxy
+  mit verschiedenen Clients rechts → getrennt; links gefälscht → Bremse
+  greift (rot vorher); ungültige Liste → Start scheitert.
+- Die HTTP-Proben schicken je Fall ein eigenes `X-Forwarded-For`, um sich
+  nicht gegenseitig zu bremsen. Dafür ist die Liste dort ausdrücklich
+  gesetzt: `pruefungen/serverlauf.mjs` (`127.0.0.1,::1`), Container in
+  `pruefung.yml` und `deploy.yml` (`127.0.0.1,::1,172.16.0.0/12` — die
+  Docker-Bridge, über die der veröffentlichte Port ankommt).

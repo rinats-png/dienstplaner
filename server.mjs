@@ -37,8 +37,18 @@ import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen } from "./server/lib/prozesssperre.mjs";
 import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
+import { vertrauteListe, herkunftBestimmen, xffOhneVertrauenMelden } from "./server/lib/schutz.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
+
+/* Wem glaubt der Server X-Forwarded-For? (B-XFF-1, docs/CADDY-UND-XFF.md)
+   Eine ungültige Liste hält den Start an — lieber kein Dienst als einer,
+   der still jedem oder niemandem vertraut. */
+const VERTRAUT = vertrauteListe(process.env.CENTRIC_VERTRAUTE_PROXYS);
+if (!VERTRAUT.anzahl)
+  console.warn("Herkunft: CENTRIC_VERTRAUTE_PROXYS ist leer — X-Forwarded-For wird ignoriert, es zählt "
+    + "die Adresse der Gegenstelle. Hinter Caddy MUSS das Netz des Caddy-Containers eingetragen sein.");
+else console.log(`Herkunft: X-Forwarded-For wird von ${VERTRAUT.anzahl} vertrauten Einträgen angenommen.`);
 const WURZEL = path.dirname(fileURLToPath(import.meta.url));
 /* CENTRIC_STATIK gibt es nur, damit die Prüfung einen eigenen, kleinen
    Ordner statt dist/ unterschieben kann. Im Betrieb bleibt es bei dist/. */
@@ -203,11 +213,14 @@ function webRequest(req, url, rumpf) {
     if (Array.isArray(wert)) for (const w of wert) kopf.append(name, w);
     else kopf.set(name, wert);
   }
-  /* Hinter Caddy steht die Adresse des Aufrufers in x-forwarded-for. Läuft
-     der Server einmal ohne Proxy — in der Prüfung etwa — trägt er sie selbst
-     ein, damit die Bremse in schutz.mjs etwas zum Zählen hat. */
-  if (!kopf.has("x-forwarded-for") && req.socket.remoteAddress)
-    kopf.set("x-forwarded-for", req.socket.remoteAddress);
+  /* Die Herkunft bestimmt der Server, nicht der Client (B-XFF-1). Ein
+     mitgeschicktes x-forwarded-for zählt nur, wenn die Gegenstelle in
+     CENTRIC_VERTRAUTE_PROXYS steht, und dann von rechts gelesen. Danach
+     steht im Kopf genau eine Adresse — die, die Bremse und Protokoll
+     (schutz.mjs, herkunft()) verwenden. */
+  const xff = kopf.get("x-forwarded-for");
+  if (xff && !VERTRAUT.anzahl) xffOhneVertrauenMelden();
+  kopf.set("x-forwarded-for", herkunftBestimmen(req.socket.remoteAddress, xff, VERTRAUT));
 
   const proto = String(kopf.get("x-forwarded-proto") || "http").split(",")[0].trim();
   const host = String(kopf.get("host") || `localhost:${PORT}`).split(",")[0].trim();

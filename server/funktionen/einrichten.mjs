@@ -1,7 +1,7 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, entlasten, kennung, herkunftErlaubt, zuVielAntwort,
-  protokoll, GRENZEN } from "../lib/schutz.mjs";
+  protokoll, GRENZEN, xffOhneVertrauen } from "../lib/schutz.mjs";
 import { ablageSchluessel } from "../lib/codes.mjs";
 import { kontoSchreiben, alleKonten, raumUebersicht } from "../lib/konten.mjs";
 import { bestandLesen } from "../lib/bestand.mjs";
@@ -307,6 +307,11 @@ export default async (req) => {
     if (gesetzt("VAPID_PUBLIC") !== gesetzt("VAPID_PRIVATE"))
       warnungen.push("Vom VAPID-Paar ist nur eine Hälfte gesetzt. So lässt sich "
         + "keine Push-Mitteilung versenden.");
+    /* B-XFF-1: ohne Vertrauensliste teilen sich hinter Caddy alle Nutzer eine Herkunft. */
+    if (!gesetzt("CENTRIC_VERTRAUTE_PROXYS") && xffOhneVertrauen() > 0)
+      warnungen.push("CENTRIC_VERTRAUTE_PROXYS fehlt, aber Anfragen kommen mit X-Forwarded-For "
+        + "(also über einen Proxy). Alle Nutzer zählen unter der Adresse des Proxys — die Bremse "
+        + "je Herkunft träfe alle gemeinsam. Netz des Caddy-Containers eintragen.");
 
     return antwort({
       gepr: new Date().toISOString(),
@@ -319,6 +324,7 @@ export default async (req) => {
         pushOeffentlich: gesetzt("VAPID_PUBLIC"),
         pushPrivat: gesetzt("VAPID_PRIVATE"),
         bremseAtomar: gesetzt("REDIS_REST_URL") && gesetzt("REDIS_REST_TOKEN"),
+        vertrauteProxys: gesetzt("CENTRIC_VERTRAUTE_PROXYS"),
         zweifaktorPflicht: (process.env.CENTRIC_ZWEIFAKTOR_PFLICHT || "").trim() === "1",
       },
       verwalterkonten: await verwalterAktiv(s0),
