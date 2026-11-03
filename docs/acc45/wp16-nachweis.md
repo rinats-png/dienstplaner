@@ -254,6 +254,48 @@ Selbstauskunft mit Pause gleich und länger als die Anwesenheit (120/150 min bei
 - Abschluss mit laufendem Dienst vom Monatsletzten: Die Meldung (409 `ABSCHLUSS_PRUEFFAELLE`) erklärt, dass das Ausstempeln
   noch zu diesem Monat gehört und nach dem Abschluss abgewiesen würde (`offen.nachtOffen`).
 
+### Rot vorher (Stand 8be5f3a, vor den Änderungen H1/M2/M3/Niedrig; neue Prüfungen dagegen gelaufen)
+
+`git checkout 8be5f3a -- server src`, dann `monatsabschluss-ist`, `monatsabschluss-lib`, `stempel-429-client`:
+**20 rot, 21 grün** (41). Rot aus dem gemeinten Grund: kein `istEingefroren` nach dem Abschluss; Sonden P1/P2 ändern das
+Ist (29./30.10. 8,0 h, Urlaub gutgeschrieben); Selbstauskunft bietet Oktobertage an; BR-Ist ändert sich mit der Pause der
+Dienstart; kein `istNeu`; Fluten ohne Obergrenze (25 Einträge, kein Zähler), keine Zusammenfassung, kein `alt`;
+Vorschau/Löschlauf zählen und räumen nichts; Anonymisierung lässt die Einträge; Auskunft ohne abgewiesene Stempel und
+Freeze; Meldung ohne Hinweis auf den laufenden Dienst; NaN-Pause gesendet. Die Konsistenzprüfung Server ↔ `personTag`
+ist dort rot, weil es das Modul noch nicht gibt. Danach `git checkout HEAD -- server src`, Arbeitsstand sauber.
+
+### Mutanten (Auflagen)
+
+Skript im Arbeitsverzeichnis (nicht im Repo), je Mutante eine oder zwei Ersetzungen, gezielte Prüfdatei.
+**23 Mutanten, 23 gefangen** (H1-11 überlebte zuerst; Prüfung um die Bereitschafts-DATEV-Zeile ergänzt, danach gefangen).
+
+| Mutante | Ergebnis |
+|---|---|
+| H1-1 Freeze in `istTag` ignoriert (Konto, Lohn, DATEV, Zuschläge, Ausgleich) | gefangen (3) |
+| H1-2 Prüfsumme ohne Freeze | gefangen (2) |
+| H1-3 Wiederherstellen übernimmt den Freeze der Sicherung | gefangen (3) |
+| H1-4 Speichern übernimmt den Freeze aus der Übermittlung | gefangen (2) |
+| H1-5 Wiederöffnen verwirft den Freeze nicht | gefangen (1) |
+| H1-6 Abschluss friert nicht ein | gefangen |
+| H1-7 Sicht: Freeze an alle Rollen | gefangen (1) |
+| H1-8 Betriebsrat-Auswertung ignoriert den Freeze | gefangen (1) |
+| H1-9 Serverplanung ohne Posten | gefangen (1) |
+| H1-10 Selbstauskunft bietet Tage abgeschlossener Monate an | gefangen (1) |
+| H1-11 DATEV Bereitschaft/Ruf am Freeze vorbei | erst überlebt → Prüfung ergänzt → gefangen (1) |
+| M2-1 Vorschau zählt abgewiesene nicht | gefangen (1) |
+| M2-2 Löschlauf entfernt abgewiesene nicht | gefangen (2) |
+| M2-3 Anonymisierung/Entfernen lässt abgewiesene stehen | gefangen (1) |
+| M2-4 Auskunft ohne abgewiesene Stempel | gefangen (1) |
+| M2-5 Auskunft ohne eingefrorenes Ist | gefangen (1) |
+| M2-6 Freeze nicht im Plan-Löschlauf | gefangen (1) |
+| M3-1 keine Obergrenze je Person | gefangen (4) |
+| M3-2 nicht zusammengefasst | gefangen (1) |
+| M3-3 `anzahl` ohne Obergrenze | gefangen (1) |
+| M3-4 Zähler ohne Obergrenze | gefangen (1) |
+| N-1 `speicher.stempeln` sendet NaN-Pause | gefangen (1) |
+| N-2 Meldung ohne Hinweis auf laufenden Dienst | gefangen (1) |
+| M4: `abdruckGleich` immer true / KONFLIKT-Wächter entfernt / Selbstauskunft Pause ≥ Anwesenheit | je gefangen (1) |
+
 ### Angepasste bestehende Prüfungen
 
 - `monatsabschluss.test.js` (M1): Muster `"ma-1"` statt `ma-1` — schärfer, nicht schwächer (trifft die Kennung genau).

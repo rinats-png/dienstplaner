@@ -176,6 +176,12 @@ describe("Abgeschlossener Monat: Plan-, Dienstart- und Abwesenheitsänderungen �
     /* … das Ist des abgeschlossenen Monats nicht: Konto, Lohn, DATEV, Zuschläge, Ausgleich wie zum Abschluss. */
     expect(auswertungA1(m)).toEqual(vorher);
     expect(auswertungA1(m).ist.geleistet).toBe(7.5 * 7 + 8);
+    /* Auch die DATEV-Zeilen für Bereitschaft/Ruf: Die Frühdienstart wird nachträglich zur Bereitschaft — im
+       abgeschlossenen Monat zählt die Dienstart, wie sie zum Abschluss galt (Mutante H1-11). */
+    const bereit = { ...m, dienstarten: m.dienstarten.map((d) => (d.id === "F" ? { ...d, form: "bereitschaft" } : d)) };
+    expect(A.datevSaetze(bereit, OKT).filter((z) => z.nachname === "A1")).toEqual(vorher.datev);
+    const bereitOffen = { ...bereit, monatsabschluss: {} };
+    expect(A.datevSaetze(bereitOffen, OKT).filter((z) => z.nachname === "A1")).not.toEqual(vorher.datev);
     /* Gegenprobe: ohne den Freeze (Monat offen gerechnet) wären es 29./30. je 8,0 h und zwei Urlaubstage. */
     const ohne = { ...m, monatsabschluss: {} };
     expect(A.istStunden(ohne, person(ohne, "a1"), OKT).geleistet).toBe(7.5 * 3 + 8 + 8 + 8);
