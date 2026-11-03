@@ -4,9 +4,9 @@
   "anzahl": 141,
   "statusZaehlung": {
     "BLOCKED": 79,
-    "READY": 25,
+    "READY": 24,
     "IN_PROGRESS": 2,
-    "REVIEW": 3,
+    "REVIEW": 4,
     "INTEGRATED": 29,
     "DONE": 3
   },
@@ -31,8 +31,8 @@
       "pakete": 37,
       "offen": 37,
       "restPT": {
-        "min": 288,
-        "max": 505
+        "min": 286.4,
+        "max": 501.8
       }
     },
     "folge": {
@@ -53,13 +53,13 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 408.8,
-    "max": 697.2
+    "min": 407.20000000000005,
+    "max": 694
   },
   "kritischerPfad": {
-    "summe": 105,
-    "min": 77,
-    "max": 133,
+    "summe": 102.6,
+    "min": 75.4,
+    "max": 129.8,
     "kette": [
       "WP-I10",
       "WP-I12",
@@ -2415,9 +2415,9 @@
       "prio": "P3",
       "aufwandPT": {"min":2,"max":4},
       "abhaengigkeiten": ["E-21i"],
-      "status": "READY",
+      "status": "REVIEW",
       "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
+        "implementiert": {"wert":true,"beleg":"intelligence/wp-i10-architekturabgleich f7eea06"},
         "lokalGetestet": {"wert":false,"beleg":null},
         "reviewt": {"wert":false,"beleg":null},
         "integriert": {"wert":false,"beleg":null},
@@ -2425,12 +2425,12 @@
         "fachlichFreigegeben": {"wert":false,"beleg":null},
         "produktiv": {"wert":false,"beleg":null}
       },
-      "branch": "intelligence/wp-i10-architekturabgleich-spez",
+      "branch": "intelligence/wp-i10-architekturabgleich",
       "agent": "Intelligence (eigener Block)",
       "modell": "sonnet",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": "docs/acc45/INTELLIGENCE-ENTWICKLUNGSPLAN.md",
+      "nachweis": "docs/intelligence/ARCHITEKTUR-ABGLEICH.md",
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
