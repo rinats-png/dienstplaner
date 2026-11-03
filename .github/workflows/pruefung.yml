@@ -263,6 +263,10 @@ jobs:
         run: npm run pruefung:datenintegritaet
       - name: Prozesssperre der Ablage
         run: npm run pruefung:prozesssperre
+      # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
+      # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
+      - name: ACC45-Werkzeuge
+        run: npm run pruefung:acc45-werkzeuge
 
       # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
       # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
