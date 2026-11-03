@@ -48,8 +48,13 @@
 /** Kennzeichen, die nur der Server setzt; eine Kopie darf weniger tragen. */
 const KENNZEICHEN = new Set(["markierungen", "konfliktGrund"]);
 const KORREKTUREN = "korrekturen";
+/** Korrekturanträge (WP-14) liegen am Stempel; geschrieben werden sie nur von den Antrags-Wegen des Servers. */
+const ANTRAEGE = "antraege";
+const antragFest = (x) => (objekt(x) ? { id: x.id, von: x.von, gestellt: x.gestellt, vorschlag: x.vorschlag, grund: x.grund } : x);
 
 import { stichtage, aufbewahrungFehler } from "./aufbewahrung.mjs";
+import { geplanterDienst } from "./zeiterfassung.mjs";
+import { regelHinweise, pauseZuLang } from "./zeitregeln.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -138,6 +143,15 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
             const ak = Array.isArray(a[KORREKTUREN]) ? a[KORREKTUREN] : [];
             if (!Array.isArray(v) || v.length > ak.length || (o.vollSicht && weggelassenErkennbar(k) && v.length !== ak.length) || v.some((x, i) => !gleich(x, ak[i])))
               return nein("Korrekturen eines Stempels entstehen nur als Ereignis über die Stempelkorrektur.", k);
+            continue;
+          }
+          if (f === ANTRAEGE) {
+            /* Nur der unveränderliche Teil zählt: Status und Entscheidung setzt der Server
+               (eine ältere Kopie trägt noch „offen“). Anträge entstehen nur über /api/korrektur-antrag. */
+            const aa = Array.isArray(a[ANTRAEGE]) ? a[ANTRAEGE] : [];
+            if (!Array.isArray(v) || v.length > aa.length || (o.vollSicht && weggelassenErkennbar(k) && v.length !== aa.length)
+                || v.some((x, i) => !gleich(antragFest(x), antragFest(aa[i]))))
+              return nein("Korrekturanträge entstehen nur über den Korrekturantrag, nicht über das Speichern.", k);
             continue;
           }
           if (f === "markierungen") {
@@ -260,13 +274,20 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
 /**
  * Eine Korrektur prüfen und als Ereignis anhängen.
  * @param {object} m  gespeicherter Betrieb
- * @param {{personId: string, datum: string, start: string, ende: string, grund: string}} k
+ * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number}} k
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
- * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null)}}
+ * @param {string} id
+ * @param {{antrag?: {id: string, vonPersonId: (string|number|null)}}} [opt]  antrag: die Korrektur geht auf diesen Antrag zurück (WP-14)
+ * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null), hinweise: Array<{code: string, text: string}>}}
  */
-export function korrekturAnhaengen(m, k, wer, jetzt, id) {
+export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
   const { personId, datum, start, ende } = k || {};
+  const pauseRoh = k && k.pause;
+  const pauseGegeben = pauseRoh !== undefined && pauseRoh !== null && String(pauseRoh) !== "";
+  const pause = pauseGegeben ? Number(pauseRoh) : undefined;
+  if (pauseGegeben && !(Number.isInteger(pause) && pause >= 0 && pause <= 180))
+    return { status: 422, grund: "Die Pause in Minuten angeben (0 bis 180)." };
   const grund = typeof (k && k.grund) === "string" ? k.grund.trim() : "";
   if (typeof personId !== "string" && typeof personId !== "number") return { status: 400, grund: "Person fehlt." };
   if (!TAG.test(String(datum || ""))) return { status: 400, grund: "Tag fehlt oder ist ungültig (JJJJ-MM-TT)." };
@@ -286,27 +307,46 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id) {
     return { status: 409, grund: "Dieser Stempel ist so oft korrigiert worden, dass der Server keine weitere Korrektur mehr annimmt. "
       + "Bitte den Fall mit der Betriebsleitung klären." };
   const alt = (m.erfassung || {})[schluessel];
-  if (objekt(alt) && alt.bestaetigt && alt.start === start && alt.ende === ende)
+  /* Ein gestempelter Dienst ohne geplanten Dienst an diesem Tag (WP-13) trägt die Marke `ungeplant`.
+     Altbestand (vor WP-13 als bestätigt angelegt, C5) bekommt sie mit der Prüfung durch die Leitung:
+     Dann zählt der Tag — mit Prüfung und Ereignis, nicht still. */
+  const planDienst = geplanterDienst(m, (m.personen || []).find((p) => p && String(p.id) === String(personId)), datum);
+  const ohnePlan = !planDienst && Array.isArray(stempel.markierungen) && stempel.markierungen.includes("UNGEPLANTER_DIENST");
+  const altbestandUngeplant = ohnePlan && objekt(alt) && alt.bestaetigt === true && alt.ungeplant !== true;
+  const gleichePause = !pauseGegeben || (objekt(alt) && alt.pause === pause);
+  if (objekt(alt) && alt.bestaetigt && alt.start === start && alt.ende === ende && gleichePause && !altbestandUngeplant)
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
 
+  /** @type {any} */
   const ereignis = {
     id,
-    vorher: objekt(alt) ? { start: alt.start || null, ende: alt.ende || null, bestaetigt: !!alt.bestaetigt } : null,
-    nachher: { start, ende },
+    vorher: objekt(alt) ? { start: alt.start || null, ende: alt.ende || null, bestaetigt: !!alt.bestaetigt,
+      ...(alt.pause !== undefined ? { pause: alt.pause } : {}) } : null,
+    nachher: { start, ende, ...(pauseGegeben ? { pause } : {}) },
     wer: { personId: wer && wer.personId !== undefined ? wer.personId : null,
       name: (wer && wer.name) || null, rolle: (wer && wer.rolle) || null },
     wann: jetzt.toISOString(),
     grund,
+    ...(opt.antrag ? { antrag: opt.antrag } : {}),
   };
+  /* Die gültige Pause: die genannte, sonst die zuletzt erfasste, sonst die der geplanten Dienstart. */
+  const dienstart = planDienst ? (m.dienstarten || []).find((d) => d && String(d.id) === String(planDienst)) : null;
+  const gueltigePause = pauseGegeben ? pause : (objekt(alt) && alt.pause !== undefined ? alt.pause : (dienstart && Number(dienstart.pause)) || 0);
+  /* Auflage C1: auch die übernommene Pause (zuletzt erfasste oder der Dienstart) muss kleiner sein als die neue Anwesenheit. */
+  if (pauseZuLang(start, ende, gueltigePause))
+    return { status: 422, grund: `Die Pause (${gueltigePause} min) muss kürzer sein als die Anwesenheit von ${start} bis ${ende} Uhr.` };
+  const hinweise = regelHinweise(m, personId, datum, { start, ende, pause: gueltigePause });
+  if (hinweise.length) ereignis.hinweise = hinweise;
   const eintrag = { ...stempel, [KORREKTUREN]: [...bisher, ereignis] };
   /* Die Marke eines ungeplanten Dienstes (WP-13) bleibt: Mit ihr zählt der
      Tag nach der Bestätigung in Konto und Lohnausgabe. */
   const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true,
-    ...(objekt(alt) && alt.ungeplant === true ? { ungeplant: true } : {}) };
+    ...(pauseGegeben ? { pause } : (objekt(alt) && alt.pause !== undefined ? { pause: alt.pause } : {})),
+    ...((objekt(alt) && alt.ungeplant === true) || altbestandUngeplant || (ohnePlan && !objekt(alt)) ? { ungeplant: true } : {}) };
   /* Auffällig oft korrigiert: Die Leitung bekommt es in der Antwort gesagt. */
   const hinweis = bisher.length + 1 >= KORREKTUR_HINWEIS_AB
     ? `Dieser Stempel wurde jetzt ${bisher.length + 1}-mal korrigiert — bitte prüfen, ob etwas nicht stimmt.` : null;
-  return { ereignis, eintrag, erfassung, hinweis, mandant: { ...m,
+  return { ereignis, eintrag, erfassung, hinweis, hinweise, mandant: { ...m,
     einstempeln: { ...(m.einstempeln || {}), [schluessel]: eintrag },
     erfassung: { ...(m.erfassung || {}), [schluessel]: erfassung } } };
 }

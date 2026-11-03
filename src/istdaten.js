@@ -129,7 +129,9 @@ export function ungeplanterDienst(m, p, d) {
      Leitung bestätigt hat — nicht jede alte Erfassung an einem freien Tag
      (etwa nach einem Tausch). Die Marke setzt nur der Server. */
   if (!e || e.ungeplant !== true || e.bestaetigt !== true || !UHR.test(String(e.start)) || !UHR.test(String(e.ende))) return null;
-  return { id: "_ungeplant", name: UNGEPLANT_NAME, kurz: "U", start: e.start, ende: e.ende, pause: 0, ungeplant: true };
+  /* Die Pause trägt die Leitung bei der Bestätigung ein (WP-14, C4); ohne Angabe 0. */
+  const pause = Number.isFinite(Number(e.pause)) && e.pause !== null ? Number(e.pause) : 0;
+  return { id: "_ungeplant", name: UNGEPLANT_NAME, kurz: "U", start: e.start, ende: e.ende, pause, ungeplant: true };
 }
 
 /**
@@ -227,7 +229,9 @@ export function istZeitFuer(m, p, d, da) {
      nicht still: `zurPruefung` lässt Konto und Auswertung darauf hinweisen. */
   if (e && !e.bestaetigt && zurPruefung(e)) return { std: dauerAm(d, da), erfasst: false, abweichung: 0, zurPruefung: true };
   if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
-  const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
+  /* Eine bei der Korrektur genannte Pause (WP-14) gilt vor der der Dienstart. */
+  const roh = { start: e.start || da.start, ende: e.ende || da.ende,
+    pause: e.pause !== undefined && e.pause !== null && Number.isFinite(Number(e.pause)) ? Number(e.pause) : (da.pause || 0) };
   const std = dauerAm(d, roh);
   return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
 }

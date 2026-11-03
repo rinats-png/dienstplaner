@@ -535,12 +535,40 @@ export async function zeitBestaetigen(datum, start, ende, grund) {
  * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
  * abgeleitete Ist-Zeit (erfassung).
  */
-export async function stempelKorrektur(personId, datum, start, ende, grund) {
+export async function stempelKorrektur(personId, datum, start, ende, grund, pause) {
   const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "" }) });
+    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Korrektur ließ sich nicht speichern.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag stellen (WP-14): für den eigenen Stempel eines der letzten Tage
+ * gewünschter Beginn, gewünschtes Ende, Pause (optional) und Grund.
+ */
+export async function korrekturAntrag(datum, start, ende, pause, grund) {
+  const a = await fetch("/api/korrektur-antrag", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag entscheiden (WP-14): "genehmigt" und "abgelehnt" (Leitung, Planung;
+ * Ablehnung mit Begründung) oder "zurueckgezogen" (die antragstellende Person).
+ */
+export async function korrekturEntscheiden(personId, datum, antragId, entscheidung, begruendung) {
+  const a = await fetch("/api/korrektur-entscheiden", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, antragId, entscheidung, begruendung: begruendung || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Entscheidung ließ sich nicht speichern.");
   return d;
 }
 
