@@ -1,7 +1,9 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
-  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung, vormonateMitPruefung, exportWarnung } from "./istdaten.js";
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung,
+  vormonateMitPruefung, exportWarnung,
+  ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
@@ -1544,7 +1546,7 @@ function istStunden(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0, ungeplantTage = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
       if (t.abwesenheit) {
@@ -1555,8 +1557,11 @@ function istStunden(m, p, ym) {
         else if (es === "ungeklaert" && t.plan) ungeklaert++;
         continue;
       }
-      if (!t.dienstId) continue;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
+      /* Ohne geplanten Dienst zählt nur ein gestempelter und von der Leitung
+         bestätigter ungeplanter Dienst (WP-13) — mit seiner Ist-Dauer. */
+      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
+      if (!da) continue;
+      if (da.ungeplant) ungeplantTage++;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
       /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
@@ -1566,7 +1571,7 @@ function istStunden(m, p, ym) {
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
   });
 }
 /* --------------------------------------------------------------------------
@@ -1589,8 +1594,8 @@ function ausgleichPruefen(m, p, bis) {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
       const t = personTag(m, p, d);
-      if (t.abwesenheit || !t.dienstId) return 0;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      if (t.abwesenheit) return 0;
+      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
       if (!da) return 0;
       return istDauer(m, p, d, da).std;
     };
@@ -2509,6 +2514,10 @@ const einschr = (p) => p.einschraenkungen || {};
    in src/istdaten.js, mit dem Rollenschutz: Ohne Zugang zu den Ist-Daten
    ist std null, nie die Planzeit. */
 const istDauer = (m, p, d, da) => istZeitFuer(m, p, d, da);
+/* Der bestätigte ungeplante Dienst eines Tages (WP-13), sonst null — nur wo
+   die Person im Dienst und nichts geplant oder abwesend ist. Der Aufrufer hat
+   den Plan schon befragt (personTag.dienstId leer). */
+const ungeplantAm = (m, p, d) => (imDienst(p, d) && !abwesenheitAm(m, p.id, d) ? ungeplanterDienst(m, p, d) : null);
 const offeneErfassung = (m, p, bis) => {
   const out = [];
   for (let d = addDays(bis, -13); d <= bis; d = addDays(d, 1)) {
@@ -2958,8 +2967,7 @@ function zuschlagStunden(m, p, ym) {
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`;
       const t = personTag(m, p, d);
-      if (!t.dienstId) continue;
-      const da = m.dienstarten.find((x) => x.id === t.dienstId);
+      const da = t.dienstId ? m.dienstarten.find((x) => x.id === t.dienstId) : ungeplantAm(m, p, d);
       if (!da) continue;
       const gearbeitet = istDauer(m, p, d, da).std;
       r.gesamt += gearbeitet;
@@ -4645,7 +4653,7 @@ function lohnPruefZeilen(m, ym) {
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
     `ACHTUNG: ${h.text}`,
-    ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${ZUR_PRUEFUNG_TEXT}`),
+    ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${pruefFallText(f.art)}`),
     "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
     "",
   ];
@@ -4959,7 +4967,7 @@ function vollExport(m) {
     const p = m.personen.find((x) => x.id === pid);
     return { personId: pid, nachname: p ? p.nachname : "", datum,
       start: v.start || "", ende: v.ende || "", stunden: v.stunden != null ? n2(v.stunden) : "",
-      notiz: v.notiz || "", status: zurPruefung(v) ? ZUR_PRUEFUNG_TEXT : v.bestaetigt ? "bestätigt" : "offen" };
+      notiz: v.notiz || "", status: zurPruefung(v) ? pruefFallText(istUngeplant(v) ? "ungeplant" : "lang") : v.bestaetigt ? (istUngeplant(v) ? UNGEPLANT_TEXT + ", bestätigt" : "bestätigt") : "offen" };
   });
 
   tabellen.anfragen = m.anfragen.map((a) => {
@@ -8321,7 +8329,7 @@ function MeineSchichten({ sitz, akt, ym }) {
         <div style={{ padding: "22px 24px 18px" }}>
           {kto !== null && (() => { const h = pruefHinweis(m, ym, ich.id); return h && (
             <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
-              {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT} — die Leitung prüft die gestempelte Zeit.
+              {h.faelle.map((f) => `${fKurz(f.datum)} (${pruefFallText(f.art)})`).join(", ")} — die Leitung prüft die gestempelte Zeit.
             </div>); })()}
           {kto !== null && (() => { const v = vormonateMitPruefung(m, ym, ich.id); return v.length > 0 && (
             <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
@@ -10014,7 +10022,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         <Lab style={{ marginBottom: 11 }}>Stundenkonto über zwölf Monate</Lab>
         {zeigt && (() => { const h = pruefHinweis(m, ym, p.id); return h && (
           <Hinweisband ton="warn" titel={`${h.anzahl} Ist-Zeit${h.anzahl === 1 ? "" : "en"} zur Prüfung · ${h.monat}`} style={{ marginBottom: 14 }}>
-            {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT}. Bestätigen unter Abrechnungsdaten · Stempelbefunde.
+            {h.faelle.map((f) => `${fKurz(f.datum)} (${pruefFallText(f.art)})`).join(", ")}. Bestätigen unter Abrechnungsdaten · Stempelbefunde.
           </Hinweisband>); })()}
         {zeigt && (() => { const v = vormonateMitPruefung(m, ym, p.id); return v.length > 0 && (
           <Hinweisband ton="warn" titel="Vormonate mit offenen Prüffällen" style={{ marginBottom: 14 }}>
@@ -11624,12 +11632,15 @@ function StempelBefunde({ sitz, ym, akt }) {
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
             {pruef.length === 1 ? "1 Ist-Zeit zur Prüfung" : `${pruef.length} Ist-Zeiten zur Prüfung`}</div>
           <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.45 }}>
-            Gestempelt länger als geplant + 2 Stunden. Bis zur Bestätigung zählt im Stundenkonto die Planzeit — auch im
-            Export (Zuschläge) und in der Lohnausgabe; beide fragen vor dem Download noch einmal nach.</div>
+            Länger als geplant + 2 Stunden gestempelt: bis zur Bestätigung zählt im Stundenkonto die Planzeit. Ohne geplanten
+            Dienst gestempelt (ungeplant): bis zur Bestätigung zählt der Dienst nicht — danach mit der gestempelten Dauer.
+            Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download noch einmal nach.</div>
           {pruef.map(({ personId, datum, erfassung }) => (
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
-              <Pill size="sm" tone="warn">{MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              <Pill size="sm" tone="warn">{istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
+                <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
               {darfBestaetigen && akt && String(personId) !== eigene && (
                 <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
@@ -11694,7 +11705,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
         <Hinweisband ton="warn" titel={`${pruefOffen.anzahl} Ist-Zeit${pruefOffen.anzahl === 1 ? "" : "en"} zur Prüfung · ${pruefOffen.monat}`}
           style={{ marginBottom: 18 }}
           aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
-          {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe als „{ZUR_PRUEFUNG_TEXT}" gekennzeichnet.
+          {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe gekennzeichnet („{ZUR_PRUEFUNG_TEXT}" bzw. „{UNGEPLANT_PRUEFUNG_TEXT}").
           Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download nach.
         </Hinweisband>)}
 
@@ -12945,8 +12956,36 @@ const AufgabeSymbol = ({ art }) => AUFGABE_SYMBOL[art]
  * der Sitzung an. Geo, 20-Stunden-Grenze und Doppelstart regeln Stempeluhr
  * und Server — hier entsteht keine eigene Logik.
  */
+/**
+ * Der heute gestempelte Dienst ohne Plan (WP-13) in Worten: Zeiten, ob die
+ * Leitung ihn schon bestätigt hat, und was daraus im Stundenkonto wird. Ohne
+ * so einen Dienst null.
+ */
+function UngeplantHinweis({ m, p, d, ...rest }) {
+  const e = p ? (m.erfassung || {})[`${p.id}|${d}`] : null;
+  if (!istUngeplant(e)) return null;
+  const da = e.bestaetigt ? ungeplantAm(m, p, d) : null;
+  const std = da ? istDauer(m, p, d, da).std : null;
+  /* C1: An einem Tag mit Abwesenheit zählt auch ein bestätigter ungeplanter Dienst nicht (Konto, Lohn). */
+  const abwesend = !!abwesenheitAm(m, p.id, d);
+  return (
+    <div {...rest}>
+      <Rubrik>Ungeplanter Dienst</Rubrik>
+      <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5, ...NUM }}>{e.start}–{e.ende}{std !== null ? ` · ${n1(std)} h` : ""}</div>
+      <div style={{ fontSize: 14, color: C.dim, marginTop: 3, lineHeight: 1.45 }}>
+        {e.bestaetigt
+          ? (abwesend ? `Von der Leitung bestätigt — ${UNGEPLANT_ABWESEND_TEXT}.` : "Von der Leitung bestätigt — zählt im Stundenkonto.")
+          : (abwesend
+            ? "Ohne geplanten Dienst gestempelt, an einem Tag mit Abwesenheit. Die Leitung prüft die Zeit; sie zählt auch nach der Bestätigung nicht im Stundenkonto."
+            : "Ohne geplanten Dienst gestempelt. Die Leitung prüft die Zeit; erst nach ihrer Bestätigung zählt sie im Stundenkonto.")}</div>
+    </div>);
+}
+
 function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
-  if (!meineDa && !(vorgang && vorgang.offen)) return null;
+  if (!meineDa && !(vorgang && vorgang.offen)) {
+    const u = sitz.person && istUngeplant((sitz.mandant.erfassung || {})[`${sitz.person.id}|${heute()}`]);
+    return u ? <Card style={{ padding: 24, ...style }}><UngeplantHinweis m={sitz.mandant} p={sitz.person} d={heute()} /></Card> : null;
+  }
   return (
     <Card style={{ padding: 24, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", ...style }}>
       {vorgang && vorgang.vortag ? (
@@ -20088,6 +20127,8 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
             Eingestempelt {vorgang.st.start}</div>
           <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
         </MKarte>
+      ) : istUngeplant((m.erfassung || {})[`${p.id}|${d0}`]) ? (
+        <MKarte style={{ padding: 22 }}><UngeplantHinweis m={m} p={p} d={d0} /></MKarte>
       ) : (
         <MKarte style={{ padding: 22, textAlign: "center" }}>
           <div style={{ fontSize: 21, fontWeight: 600, marginBottom: 6 }}>
@@ -22810,7 +22851,7 @@ function AppInnen() {
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
         if (!e) return;
-        return akt.stempelKorrigieren(pid, d, e.start, e.ende, "Langer Dienst geprüft und bestätigt");
+        return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
         if (!sitz.person || pid !== sitz.person.id) {
@@ -24686,4 +24727,4 @@ export default function App() {
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
-  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde };
+  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis };
