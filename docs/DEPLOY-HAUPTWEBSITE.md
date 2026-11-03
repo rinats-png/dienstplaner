@@ -8,11 +8,11 @@ die die Ausgabe zeigen.
 ## Betreiber-Checkliste (VPS, in dieser Reihenfolge)
 
 1. Laptop: bauen, packen, uebertragen laut `dist-bauen.md`. Auf dem VPS entpacken nach `~/website-dist`.
-2. Angaben holen (Befehle unter "Vorab"): `CADDY_CONTAINER`, `SITES_DIR_HOST`. Ergebnis: zwei Werte.
-3. Verzeichnis anlegen: `sudo mkdir -p /opt/centric-website && sudo chown "$USER" /opt/centric-website`
-4. Verzeichnis im Caddy einhaengen (Variante A, Neustart von Caddy) oder Variante B (ohne Neustart) - siehe unten.
-5. `export CADDY_CONTAINER=<name> SITES_DIR_HOST=<pfad> WEB_DIR_HOST=/opt/centric-website`
-6. `cd ~/website-deploy && ./website-ausliefern.sh ~/website-dist`
+2. Vorpruefung (rein lesend): `cd ~/website-deploy && ./website-vorpruefung.sh caddy`. Sie zeigt die Mounts, prueft `import sites/*.caddy`, den Host-Pfad von `/etc/caddy/sites`, Schreibrechte und ob Variante B (ohne Caddy-Neustart) moeglich ist - und druckt die fertigen `export`-Zeilen.
+3. Bei `VARIANTE B IST MOEGLICH`: die ausgegebenen `export`-Zeilen uebernehmen, `mkdir -p "$WEB_DIR_HOST"` (liegt im bereits eingehaengten Sites-Ordner).
+4. Sonst Variante A (Mount, kurzer Caddy-Neustart, nur nach gesonderter Freigabe) - Ausgabe der Vorpruefung schicken.
+5. `./website-ausliefern.sh ~/website-dist` (sichert, validiert VOR dem Reload, laedt nur bei Erfolg neu, Rollback bei Fehler).
+6. Rueckweg jederzeit: `./website-zurueck.sh <stempel>` (Stempel steht am Ende der Ausgabe).
 7. Erfolg: letzte Zeilen `Versuch n: Hauptdomain 200, App 200, Hauptdomain/unbekannt 404`, dann `FERTIG`.
 8. Von aussen: `curl -sI https://centric-dienstplanung.de | head -3` -> `200`; `curl -sI https://app.centric-dienstplanung.de | head -1` -> `200`.
 9. Bei Fehler: das Skript rollt selbst zurueck und meldet die App-Antwort. Nach Erfolg zurueck: `./website-zurueck.sh` (Stempel steht am Ende der Ausgabe).
