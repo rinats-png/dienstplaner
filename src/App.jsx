@@ -24550,7 +24550,7 @@ function AppInnen() {
            Einheiten- und Dienstartnamen sind Freitext anderer Rollen. */
         const h = (x) => String(x == null ? "" : x).replace(/&/g, "&amp;").replace(/</g, "&lt;")
           .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-        const farbeSicher = (x) => (/^#[0-9a-f]{3,8}$/i.test(String(x || "")) ? x : "#111827");
+        const farbeSicher = (x) => (/^#[0-9a-f]{3,8}$/i.test(String(x || "")) ? x : "inherit");
         const html = `<!doctype html><html lang="de"><head><meta charset="utf-8">
 <title>Dienstplan ${MON[mo - 1]} ${y}</title><style>
 @page{size:A4 landscape;margin:12mm}
