@@ -800,6 +800,46 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
+/* Ortsangaben von Dienstarten und Einsatzorte (WP-20, Review M1). Wer Dienstarten pflegt (org.edit oder
+   pattern.edit, also auch die Planung), bestimmt mittelbar den Referenzort der Standortprüfung — auch bei
+   bestätigtem Pflichtmodus. Das Recht bleibt; nachvollziehbar wird es durch Wann/Wer, die der Server setzt:
+   ortGeaendertAm/-Von an der Dienstart (ortModus, einsatzortId), einsatzorteGeaendertAm/-Von am Betrieb
+   (Liste der Einsatzorte). Mitgeschickte Werte zählen nie; ohne Änderung bleibt der gespeicherte Vermerk. */
+function ortAngabenZusammen(altM, neuM, sitzung) {
+  if (!neuM || typeof neuM !== "object") return neuM;
+  const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+  const jetzt = new Date().toISOString();
+  const aus = { ...neuM };
+  const altD = new Map((Array.isArray(altM && altM.dienstarten) ? altM.dienstarten : [])
+    .filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+  if (Array.isArray(neuM.dienstarten)) {
+    aus.dienstarten = neuM.dienstarten.map((d) => {
+      if (!d || typeof d !== "object") return d;
+      const vorher = altD.get(String(d.id));
+      const neu = { ...d };
+      delete neu.ortGeaendertAm; delete neu.ortGeaendertVon;
+      const geaendert = vorher
+        ? !Object.is(vorher.ortModus, d.ortModus) || !Object.is(vorher.einsatzortId, d.einsatzortId)
+        : d.ortModus !== undefined || d.einsatzortId !== undefined;
+      if (geaendert) { neu.ortGeaendertAm = jetzt; neu.ortGeaendertVon = wer; }
+      else if (vorher) {
+        if (hat(vorher, "ortGeaendertAm")) neu.ortGeaendertAm = vorher.ortGeaendertAm;
+        if (hat(vorher, "ortGeaendertVon")) neu.ortGeaendertVon = vorher.ortGeaendertVon;
+      }
+      return neu;
+    });
+  }
+  delete aus.einsatzorteGeaendertAm; delete aus.einsatzorteGeaendertVon;
+  const altO = altM && altM.einsatzorte;
+  if (hat(neuM, "einsatzorte") && !gleichJson(neuM.einsatzorte, altO) && !(altO === undefined && Array.isArray(neuM.einsatzorte) && neuM.einsatzorte.length === 0)) {
+    aus.einsatzorteGeaendertAm = jetzt; aus.einsatzorteGeaendertVon = wer;
+  } else if (altM && hat(altM, "einsatzorteGeaendertAm")) {
+    aus.einsatzorteGeaendertAm = altM.einsatzorteGeaendertAm;
+    if (hat(altM, "einsatzorteGeaendertVon")) aus.einsatzorteGeaendertVon = altM.einsatzorteGeaendertVon;
+  }
+  return aus;
+}
+
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
    JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
    Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
@@ -1122,6 +1162,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };
       geschickt = schalter.mandant;
+      /* Ortsangaben der Dienstarten und Einsatzorte: Wann/Wer vom Server (WP-20, M1). */
+      geschickt = ortAngabenZusammen(ort.betrieb, geschickt, sitzung);
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit. */
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };

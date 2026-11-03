@@ -280,7 +280,7 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
-²⁸ WP-20, Präzisierung der Zeile „Stempeldaten, Ortsurteil“, keine neue Spalte: **Einsatzorte und Prüfmodus.** Eine Dienstart
+²⁸ WP-20, Präzisierung der Zeilen „Stempeldaten, Ortsurteil“ und „Einsatzorte“, keine neue Spalte: **Einsatzorte und Prüfmodus.** Eine Dienstart
 kann einen eigenen Referenzort haben (`ortModus`: `standort` = Standort der Einheit, `einsatzort`, `aussendienst`). Der
 Server entscheidet; die Koordinate des Geräts ist nur Eingabe und wird weder gespeichert noch zurückgegeben. Gespeichert
 werden Status, Grund, Genauigkeit, Referenz (Art, Kennung, Name) und die **Abstandsklasse** (innerhalb, bis 1 km, bis 5 km,
@@ -295,6 +295,11 @@ Stempelergebnisse fremder Personen sehen weiter nur Leitung und Planung (`einste
 und Betriebsrat ohne Zugriff). **Aufbewahrung:** Standort-Ergebnisse (`geoStart/-Ende`, `ortStart/-Ende`, `innerhalb…`,
 `geprueft…`) gehen mit der Frist der Gründe (`gruendeMonate`, Vorgabe 3 Monate) aus den Stempeln; Zeiten und Kennzeichen
 bleiben bis zur Plandatenfrist (`aufbewahrung.mjs`). Geprüft in `pruefungen/geo-einsatzorte*.test.js`.
+**Offenes Risiko (Review M1): Planung kann bestätigten Pflichtmodus über Dienstart-Zuordnung/Koordinaten aushebeln.** Dienstarten
+und Einsatzorte pflegen Planung und Leitung (`pattern.edit`/`org.edit`); die Planung kann dadurch den Referenzort einer
+Dienstart (`ortModus`, `einsatzortId`) oder Koordinate und Umkreis eines Einsatzorts ändern und so die Prüfung des
+Pflichtmodus umgehen. Das Recht bleibt unverändert (Entscheidung der Leitung offen); die Änderung trägt Wann/Wer vom Server
+(`ortGeaendertAm/-Von` an der Dienstart, `einsatzorteGeaendertAm/-Von` am Betrieb). Details: `docs/acc45/wp20-nachweis.md`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

@@ -253,3 +253,66 @@ describe("Datensparsamkeit: keine Rohkoordinate, keine Koordinate des Einsatzort
     expect(fremd(await lies(T.l1))).toContain("a2|");
   });
 });
+
+/* Review M1: Die Planung darf Dienstarten und Einsatzorte pflegen (pattern.edit) — und damit mittelbar
+   bestimmen, gegen welchen Ort ein Stempel geprüft wird. Das Recht bleibt (Entscheidung der Leitung);
+   nachvollziehbar wird es durch Wann/Wer, die der Server setzt (wie beim Prüfmodus). */
+describe("M1: Änderungen der Ortsangaben tragen Wann/Wer vom Server", () => {
+  const schreibe = async (t, aendere) => {
+    const r = await lies(t);
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    aendere(b.mandanten[0]);
+    return anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+  };
+  const heute = new Date().toISOString().slice(0, 10);
+  it("Planung ändert den Ortsmodus einer Dienstart: ortGeaendertAm/-Von (Person) vom Server, mitgeschickte Werte zählen nicht", async () => {
+    const w = await schreibe(T.p1, (m) => {
+      m.dienstarten = m.dienstarten.map((d) => d.id === "F"
+        ? { ...d, ortModus: "aussendienst", ortGeaendertAm: "1999-01-01T00:00:00.000Z", ortGeaendertVon: "l1" } : d);
+    });
+    expect(w.status, w.roh).toBe(200);
+    const d = (await gespeichert()).dienstarten.find((x) => x.id === "F");
+    expect([d.ortModus, d.ortGeaendertVon]).toEqual(["aussendienst", "p1"]);
+    expect(d.ortGeaendertAm.slice(0, 10)).toBe(heute);
+  });
+  it("unveränderte Dienstart: Wann/Wer bleiben, auch bei einer Kopie ohne oder mit gefälschten Feldern", async () => {
+    const vorher = (await gespeichert()).dienstarten.find((x) => x.id === "F");
+    const w = await schreibe(T.l1, (m) => {
+      m.dienstarten = m.dienstarten.map((d) => { if (d.id !== "F") return d; const { ortGeaendertAm, ortGeaendertVon, ...rest } = d; return rest; });
+    });
+    expect(w.status, w.roh).toBe(200);
+    let d = (await gespeichert()).dienstarten.find((x) => x.id === "F");
+    expect([d.ortGeaendertAm, d.ortGeaendertVon]).toEqual([vorher.ortGeaendertAm, vorher.ortGeaendertVon]);
+    await schreibe(T.l1, (m) => { m.dienstarten = m.dienstarten.map((x) => x.id === "F" ? { ...x, ortGeaendertVon: "erfunden" } : x); });
+    d = (await gespeichert()).dienstarten.find((x) => x.id === "F");
+    expect(d.ortGeaendertVon).toBe(vorher.ortGeaendertVon);
+  });
+  it("Zuordnung eines Einsatzorts ändern: ebenso gestempelt (Leitung: eigener Name)", async () => {
+    const w = await schreibe(T.l1, (m) => {
+      m.einsatzorte = [...m.einsatzorte, { id: "es2", name: "Kunde Süd", lat: 49.5, lon: 9, radius: 150 }];
+      m.dienstarten = m.dienstarten.map((d) => d.id === "F" ? { ...d, ortModus: "einsatzort", einsatzortId: "es2" } : d);
+    });
+    expect(w.status, w.roh).toBe(200);
+    const d = (await gespeichert()).dienstarten.find((x) => x.id === "F");
+    expect([d.einsatzortId, d.ortGeaendertVon]).toEqual(["es2", "l1"]);
+  });
+  it("Einsatzorte des Betriebs (Koordinate, Umkreis) geändert: einsatzorteGeaendertAm/-Von am Betrieb; unverändert bleiben sie", async () => {
+    const w = await schreibe(T.p1, (m) => {
+      m.einsatzorte = m.einsatzorte.map((s) => s.id === "es2" ? { ...s, radius: 900 } : s);
+      m.einsatzorteGeaendertVon = "l1";
+    });
+    expect(w.status, w.roh).toBe(200);
+    const g = await gespeichert();
+    expect([g.einsatzorte.find((s) => s.id === "es2").radius, g.einsatzorteGeaendertVon]).toEqual([900, "p1"]);
+    expect(g.einsatzorteGeaendertAm.slice(0, 10)).toBe(heute);
+    const stand = [g.einsatzorteGeaendertAm, g.einsatzorteGeaendertVon];
+    expect((await schreibe(T.l1, (m) => { m.name = m.name; })).status).toBe(200);
+    const h = await gespeichert();
+    expect([h.einsatzorteGeaendertAm, h.einsatzorteGeaendertVon]).toEqual(stand);
+  });
+  it("die Beschäftigten bekommen weder Einsatzorte noch den Vermerk dazu", async () => {
+    const r = await lies(T.a3);
+    expect(r.roh).not.toContain("einsatzorteGeaendert");
+    expect(r.roh).not.toContain("Kunde Süd");
+  });
+});

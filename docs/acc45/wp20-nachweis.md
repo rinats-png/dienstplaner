@@ -104,3 +104,43 @@ bestimmt die Dienstart aus Person und Datum und braucht dafür nichts vom Gerät
   die Anwendung verlangt sie, bewertet sie nicht.
 - RECHTEMATRIX fügt Fußnote ²⁸ ein; WP-23 nutzt ²⁷. Beim Zusammenführen kann dieselbe Stelle (vor „Jedes Feld aus
   PERSONENFELDER“) konfligieren: beide Fußnoten behalten.
+
+## Nachtrag zum unabhängigen Review (Auflagen und offene Risiken)
+
+Umgesetzt (je Punkt Test zuerst rot, danach Fix; Mutanten bestätigt):
+
+- **A1 (hoch, Funktionsregression):** Der tägliche Datenschutzlauf nimmt `STANDORT_FELDER` aus Stempeln älter als `gruendeMonate`
+  heraus. `stempelWiderspruch` lehnte jedes mitgeschickte Feld ab, das gespeichert fehlt; jede vor dem Lauf geladene Kopie bekam
+  deshalb beim nächsten Speichern 403 `STEMPEL_UNVERAENDERLICH` (Leitung und Planung für alle Stempel, Beschäftigte für eigene).
+  Jetzt werden Standortfelder bei Tagen vor `stichtage().standort` ignoriert, wenn sie gespeichert fehlen. `stempelSichern`
+  schreibt sie nie zurück (Datenschutz: Gelöschtes bleibt gelöscht); ein gleicher Ausgang von Nutzer und Löschlauf gilt im
+  Drei-Wege-Abgleich (`bestand.mjs`) nicht als Streit. Der Client behandelt `STEMPEL_UNVERAENDERLICH` nicht mehr wie ein
+  Rollenproblem, sondern meldet „Der Bestand ist veraltet — bitte neu laden“. Mutanten: Ausnahme entfernt ⇒ 3 rot;
+  Rückschreiben (Strip entfernt, `sicher` nimmt die Kopie) ⇒ rot; Abgleich ohne Gleichheitsprüfung ⇒ Handler rot;
+  Client ohne Code-Zuordnung ⇒ rot.
+- **M2:** Koordinatentest jetzt auch für einen Einsatzort-Stempel und für schlechte Genauigkeit (Marken-Koordinaten, Antwort,
+  Ablage und Leitungs-/Planungssicht). Mutanten (`posStart: [lat, lon]` nur für Einsatzort-Stempel; nur bei Genauigkeit über
+  Grenze) ⇒ rot; der frühere Test (nur Früh-Stempel) hätte sie nicht gefangen.
+- **M3:** Zeile „Einsatzorte (Koordinate, Umkreis)“ in der Rechtematrix mit Sonden je Spalte; Fußnote ²⁸ hängt an beiden
+  Zeilen (Stempeldaten, Ortsurteil; Einsatzorte). Mutant `einsatzorte: [VOLL, VOLL]` in `sicht.mjs` ⇒ `rechtematrix-zeilen`
+  rot (MA, BR, SV) und der Handlertest zur Koordinate.
+- **M1 (Rechte unverändert):** Änderungen an `ortModus`/`einsatzortId` einer Dienstart und an der Liste `einsatzorte` setzen
+  Wann/Wer vom Server (`ortGeaendertAm/-Von` an der Dienstart, `einsatzorteGeaendertAm/-Von` am Betrieb), mitgeschickte Werte
+  zählen nicht, ohne Änderung bleibt der Vermerk (`rechte.mjs`, `ortAngabenZusammen`). Gilt für jede Rolle mit
+  Schreibumfang voll. Der Vermerk enthält nur eine Personenkennung, keinen Namen.
+
+Offene Risiken und Entscheidungen (bewusst nicht umgesetzt, Entscheidung bei der Leitung):
+
+- **M1, Rechte:** Die Planung (`pattern.edit`) kann einen bestätigten Pflichtmodus über die Dienstart-Zuordnung
+  (`ortModus` auf `aussendienst`) oder über Koordinaten und Umkreis der Einsatzorte aushebeln. Es gibt keine Sperre; nur die
+  Nachvollziehbarkeit (Wann/Wer) ist neu. Wenn der Pflichtmodus betrieblich verbindlich sein soll, müssen die Ortsangaben auf
+  `org.edit` eingeschränkt werden — das wäre eine Rechteänderung und steht zur Entscheidung.
+- **N1:** `ORT_PRUEFEN` lebt als Kennzeichen am Stempel bis zur Plandatenfrist (mindestens 24 Monate), obwohl die
+  Standort-Ergebnisse selbst nach `gruendeMonate` gehen. Das Kennzeichen sagt, dass ein Ort nicht bestätigt wurde, und ist
+  ein Hinweis auf eine Person; ob es früher fallen soll, ist offen.
+- **N4:** `geoPruefungBestaetigt` ist ein einziges Flag für zwei Texte (Einschalten der Standortprüfung; Pflichtmodus mit
+  Hinweis auf die Mitbestimmung). Die Bestätigung des einen trägt formal auch den anderen Antrag derselben Anfrage. Außerdem
+  gibt es für den Pflichtmodus keinen Nachweis einer Betriebsvereinbarung: Er ist eine technische Bestätigung, keine Prüfung.
+  Der Pflichtmodus ohne Betriebsvereinbarung berührt die Mitbestimmung nach § 87 Abs. 1 Nr. 6 BetrVG (technische
+  Einrichtung zur Leistungs- und Verhaltenskontrolle). Ob ein Nachweisfeld (Datum, Aktenzeichen der Vereinbarung) oder zwei
+  getrennte Bestätigungen verlangt werden sollen, entscheidet die Leitung.
