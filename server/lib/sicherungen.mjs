@@ -228,6 +228,36 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
   }
 
+  /* Wann/Wer der Ortsangaben (WP-20, N8): Die Liste der Einsatzorte und die Ortsmodi der Dienstarten kommen aus
+     der Sicherung — mit deren Vermerk. Fehlt er (Sicherung vor dem Vermerk) und der Stand ändert sich dadurch,
+     ist die Wiederherstellung selbst die Änderung: jetzt, durch die zurückspielende Person. Bleibt der Stand
+     gleich, gilt der gespeicherte Vermerk weiter. */
+  {
+    const jetztIso = heute.toISOString();
+    const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+    const gleichJ = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    delete zurueck.einsatzorteGeaendertAm; delete zurueck.einsatzorteGeaendertVon;
+    if ("einsatzorteGeaendertAm" in aus) {
+      zurueck.einsatzorteGeaendertAm = aus.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in aus) zurueck.einsatzorteGeaendertVon = aus.einsatzorteGeaendertVon;
+    } else if (!gleichJ(aus.einsatzorte, alt.einsatzorte)) {
+      zurueck.einsatzorteGeaendertAm = jetztIso; zurueck.einsatzorteGeaendertVon = wer;
+    } else {
+      if ("einsatzorteGeaendertAm" in alt) zurueck.einsatzorteGeaendertAm = alt.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in alt) zurueck.einsatzorteGeaendertVon = alt.einsatzorteGeaendertVon;
+    }
+    const altD = new Map((Array.isArray(alt.dienstarten) ? alt.dienstarten : []).filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+    if (Array.isArray(zurueck.dienstarten)) {
+      zurueck.dienstarten = zurueck.dienstarten.map((d) => {
+        if (!d || typeof d !== "object" || "ortGeaendertAm" in d) return d;
+        const v = altD.get(String(d.id));
+        const geaendert = v ? !Object.is(v.ortModus, d.ortModus) || !Object.is(v.einsatzortId, d.einsatzortId)
+          : d.ortModus !== undefined || d.einsatzortId !== undefined;
+        return geaendert ? { ...d, ortGeaendertAm: jetztIso, ortGeaendertVon: wer } : d;
+      });
+    }
+  }
+
   /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
      Stempel zurück und setzt keinen auf einen älteren Stand. Was heute gespeichert ist, bleibt —
      mit Korrekturen und abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat.

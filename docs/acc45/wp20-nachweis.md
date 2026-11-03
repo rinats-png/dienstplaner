@@ -119,8 +119,10 @@ Umgesetzt (je Punkt Test zuerst rot, danach Fix; Mutanten bestätigt):
   Rückschreiben (Strip entfernt, `sicher` nimmt die Kopie) ⇒ rot; Abgleich ohne Gleichheitsprüfung ⇒ Handler rot;
   Client ohne Code-Zuordnung ⇒ rot.
 - **M2:** Koordinatentest jetzt auch für einen Einsatzort-Stempel und für schlechte Genauigkeit (Marken-Koordinaten, Antwort,
-  Ablage und Leitungs-/Planungssicht). Mutanten (`posStart: [lat, lon]` nur für Einsatzort-Stempel; nur bei Genauigkeit über
-  Grenze) ⇒ rot; der frühere Test (nur Früh-Stempel) hätte sie nicht gefangen.
+  Ablage und Leitungs-/Planungssicht), und zwar für Ende (a5, a4) **und Beginn** (c1, c2: Dienst E, gute und schlechte Genauigkeit).
+  Korrektur der ersten Fassung: Sie stempelte nur `ende`; der Mutant `posStart: [lat, lon]` für Einsatzort-Stempel überlebte.
+  Jetzt rot: `posStart` nur für Einsatzort-Stempel, `posStart` nur bei Genauigkeit über Grenze (jeweils `art: "start"`) sowie
+  die `posEnde`-Varianten; der frühere Test (nur Früh-Stempel) hätte keinen gefangen.
 - **M3:** Zeile „Einsatzorte (Koordinate, Umkreis)“ in der Rechtematrix mit Sonden je Spalte; Fußnote ²⁸ hängt an beiden
   Zeilen (Stempeldaten, Ortsurteil; Einsatzorte). Mutant `einsatzorte: [VOLL, VOLL]` in `sicht.mjs` ⇒ `rechtematrix-zeilen`
   rot (MA, BR, SV) und der Handlertest zur Koordinate.
@@ -144,3 +146,16 @@ Offene Risiken und Entscheidungen (bewusst nicht umgesetzt, Entscheidung bei der
   Der Pflichtmodus ohne Betriebsvereinbarung berührt die Mitbestimmung nach § 87 Abs. 1 Nr. 6 BetrVG (technische
   Einrichtung zur Leistungs- und Verhaltenskontrolle). Ob ein Nachweisfeld (Datum, Aktenzeichen der Vereinbarung) oder zwei
   getrennte Bestätigungen verlangt werden sollen, entscheidet die Leitung.
+
+Nachprüfung (Opus), niedrige Punkte:
+
+- **N7:** `einsatzorteGeaendertAm/-Von` stehen im Katalog `BETRIEB` (`sicht.mjs`, `[WEG, WEG]`) und damit in `VOLL_BETRIEB`: sichtbar für
+  Planung, Leitung, Kundenrolle und Vollausgabe/Sicherung, nicht für Beschäftigte, Betriebsrat, Schichtverantwortung. Matrix-Sonden
+  `EINSATZORTE-AM/-VON` in der Zeile „Einsatzorte“ (rot vorher für PL, LT, KU, VA-LT, VA-SK).
+- **N8:** Wiederherstellen (`sicherungen.mjs`): Hat die Sicherung einen Vermerk, gilt er mit der Liste von damals. Fehlt er und ändert
+  sich die Liste der Einsatzorte oder der Ortsmodus einer Dienstart, ist die Wiederherstellung die Änderung (Wann = jetzt, Wer = die
+  zurückspielende Leitung); bleibt der Stand gleich, bleibt der gespeicherte Vermerk. Test in `sicherungen.test.js`, Mutant ⇒ rot.
+- **N9 (nur dokumentiert):** `ortGeaendertVon` (eine Personenkennung, kein Name) hängt an den Dienstarten und geht wie diese an
+  Beschäftigte, Betriebsrat und Schichtverantwortung. Ausblenden ginge nur mit einer Rollensicht auf `dienstarten`; dann wäre die
+  zurückgeschickte Kopie dieser Rollen nicht mehr gleich dem gespeicherten Stand, und die Prüfung „Dienstarten legen Leitung und
+  Planung an“ (`rechte.mjs`) wiese jeden Speichervorgang dieser Rollen ab. Nicht ohne Funktionsverlust möglich, daher offen.

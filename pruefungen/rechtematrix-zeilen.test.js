@@ -133,6 +133,7 @@ const bestand = () => ({
     abweichungen: { [`b1|${tag(1)}`]: "F" },
     /* Einsatzorte (WP-20): Koordinate und Umkreis gehen nur an Planung und Leitung. */
     einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
+    einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
       [`a1|${tag(-2)}`]: { start: M("ERF-ZEIT-A1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-A1") },
@@ -317,7 +318,8 @@ const ZEILEN = {
   "Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten)": {
     sonden: [mk("ORTSURTEIL-B1"), mk("GEO-B1")] },
   "Einsatzorte (`einsatzorte`: Name, Koordinate, Umkreis; WP-20)": {
-    sonden: [mk("EINSATZORT-NAME"), mk("EINSATZORT-LAT"), mk("EINSATZORT-LON"), mk("EINSATZORT-UMKREIS")] },
+    sonden: [mk("EINSATZORT-NAME"), mk("EINSATZORT-LAT"), mk("EINSATZORT-LON"), mk("EINSATZORT-UMKREIS"),
+      mk("EINSATZORTE-AM"), mk("EINSATZORTE-VON")] },
   "Stempeldaten der eigenen Person (für die eigene Zeiterfassung)": {
     sondenFuer: (spalte) => (EIGENE_STEMPEL[spalte] ? [mk(`STEMPEL-EIGEN-${EIGENE_STEMPEL[spalte]}`)]
       : Object.values(EIGENE_STEMPEL).map((id) => mk(`STEMPEL-EIGEN-${id}`))) },

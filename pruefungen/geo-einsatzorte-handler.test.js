@@ -55,7 +55,7 @@ beforeAll(async () => {
   B = await import("../server/lib/bestand.mjs");
   Z = await import("../server/lib/zeiterfassung.mjs");
   HEUTE = Z.heuteBerlin();
-  const ma = ["a1", "a2", "a3", "a4", "a5", "b1"];
+  const ma = ["a1", "a2", "a3", "a4", "a5", "b1", "c1", "c2"];
   await B.bestandSchreiben(laden(), RAUM, { version: 9, mandanten: [{
     id: "m-a", name: "A", status: "aktiv", einstellungen: { geoPruefung: true },
     einheiten: [{ id: "e1", standortId: "st1" }],
@@ -66,7 +66,7 @@ beforeAll(async () => {
       { id: "A", name: "Außendienst", start: "08:00", ende: "16:00", ortModus: "aussendienst" }],
     personen: [person("l1", "leitung", { bereich: "ALLE" }), person("p1", "planer", { bereich: "ALLE" }), person("s1", "subplaner"),
       person("r1", "betriebsrat", { bereich: "ALLE" }), ...ma.map((i) => person(i, "mitarbeiter"))],
-    abweichungen: { [`a1|${HEUTE}`]: "E", [`a2|${HEUTE}`]: "A", [`a3|${HEUTE}`]: "F", [`a4|${HEUTE}`]: "E", [`a5|${HEUTE}`]: "E", [`b1|${HEUTE}`]: "F" },
+    abweichungen: { [`a1|${HEUTE}`]: "E", [`a2|${HEUTE}`]: "A", [`a3|${HEUTE}`]: "F", [`a4|${HEUTE}`]: "E", [`a5|${HEUTE}`]: "E", [`b1|${HEUTE}`]: "F", [`c1|${HEUTE}`]: "E", [`c2|${HEUTE}`]: "E" },
     einstempeln: {}, erfassung: {}, anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [],
   }] }, { durch: "Pruefung" });
   let c = 0;
@@ -215,18 +215,22 @@ describe("Datensparsamkeit: keine Rohkoordinate, keine Koordinate des Einsatzort
     /* Gesendet werden Marken, die sonst nirgends vorkommen. Der Einsatzort-Stempel (a5, Dienst E) liegt im Umkreis,
        der andere (a4, Dienst E) mit Genauigkeit über der Grenze (genauigkeit_zu_schlecht). */
     const marken = [
-      { t: T.a5, lat: 51.2345999, lon: 9.8766111, accuracy: 12 },
-      { t: T.a4, lat: 51.2347888, lon: 9.8767777, accuracy: 5000 },
+      { t: T.a5, art: "ende", lat: 51.2345999, lon: 9.8766111, accuracy: 12 },
+      { t: T.a4, art: "ende", lat: 51.2347888, lon: 9.8767777, accuracy: 5000 },
+      /* Einsatzort-BEGINN (c1, c2: Dienst E, noch nicht gestempelt): posStart und posEnde sind getrennte Wege. */
+      { t: T.c1, art: "start", lat: 51.2345444, lon: 9.8766222, accuracy: 12 },
+      { t: T.c2, art: "start", lat: 51.2347333, lon: 9.8767888, accuracy: 5000 },
     ];
     const antworten = [];
     for (const { t, ...messung } of marken) {
-      const s = await stempeln(t, { art: "ende", ...messung });
+      const s = await stempeln(t, messung);
       expect(s.status, s.roh).toBe(200);
       antworten.push(s.roh);
     }
     const roh = [...antworten, JSON.stringify(await gespeichert()), (await lies(T.l1)).roh, (await lies(T.p1)).roh];
     for (const r of roh) {
-      for (const x of ["51.2345999", "9.8766111", "51.2347888", "9.8767777", "2345999", "2347888"]) expect(r).not.toContain(x);
+      for (const x of ["51.2345999", "9.8766111", "51.2347888", "9.8767777", "2345999", "2347888",
+        "51.2345444", "9.8766222", "51.2347333", "9.8767888", "2345444", "2347333"]) expect(r).not.toContain(x);
     }
   });
   it("Beschäftigte, Schichtverantwortung und Betriebsrat: nie die Koordinate des Einsatzorts", async () => {
