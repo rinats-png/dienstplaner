@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 141,
+  "anzahl": 144,
   "statusZaehlung": {
     "BLOCKED": 79,
-    "READY": 24,
+    "READY": 27,
     "IN_PROGRESS": 2,
     "REVIEW": 4,
     "INTEGRATED": 29,
@@ -44,11 +44,11 @@
       }
     },
     "extern": {
-      "pakete": 32,
-      "offen": 31,
+      "pakete": 35,
+      "offen": 34,
       "restPT": {
-        "min": 18.85,
-        "max": 42.6
+        "min": 20.35,
+        "max": 46.1
       }
     }
   },
@@ -1126,7 +1126,7 @@
       "strang": "acc45",
       "prio": "P3",
       "aufwandPT": {"min":1,"max":1.5},
-      "abhaengigkeiten": [],
+      "abhaengigkeiten": ["E-32"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1146,7 +1146,7 @@
       "akzeptanz": "37 Platzhalter ersetzt (Inhalte vom Nutzer); externe juristische Prüfung als eigene Abnahme",
       "tests": "Prüfskript Platzhalter=0",
       "dateien": "src/rechtstexte.jsx",
-      "notiz": "Inhalte vom Betreiber, juristische Prüfung extern (E-18). Wartet auf Inhalte, obwohl keine Paketabhängigkeit offen ist."
+      "notiz": "Rechtstexte ERSTELLEN: Inhalte vom Betreiber (Impressum, Datenschutzerklärung, AV-Vertrag, AGB, Verarbeitungsverzeichnis; Dienstleisternamen aus E-32), Umsetzung durch den Agenten. Die externe Rechtsfreigabe ist ein eigenes Paket (E-18) und nicht Teil von WP-36. Wartet auf Inhalte, obwohl keine Paketabhängigkeit offen ist. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-13, Variante B 2026-10-30; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "WP-37",
@@ -1294,7 +1294,7 @@
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":3,"max":4.5},
-      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-11","E-12","E-13","E-14","E-15","E-17","E-18","E-21","E-22","E-9","E-10","E-29"],
+      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-11","E-12","E-13","E-14","E-15","E-17","E-18","E-21","E-22","E-9","E-10","E-29","E-30","E-32"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3220,7 +3220,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Liefert den eingefrorenen Prüfstand für E-17."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Liefert den eingefrorenen Prüfstand für E-17. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-11, Variante B 2026-11-11; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-2",
@@ -3249,7 +3249,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-11, Variante B 2026-11-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-3",
@@ -3278,7 +3278,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. iPhone beschaffen oder leihen (sofort anstoßen)."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. iPhone beschaffen oder leihen (sofort anstoßen). Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-30 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-4",
@@ -3307,7 +3307,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Geo bleibt Pflichtumfang, wird aber erst nach bestandenem E-4 produktiv aktiviert (Bedingung für die Aktivierung, nicht für die Code-Fertigstellung). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Geo bleibt Pflichtumfang, wird aber erst nach bestandenem E-4 produktiv aktiviert (Bedingung für die Aktivierung, nicht für die Code-Fertigstellung). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-04, Variante B 2026-11-20; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-5",
@@ -3336,7 +3336,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-11, Variante B 2026-11-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-6",
@@ -3365,7 +3365,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-11, Variante B 2026-11-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-7",
@@ -3394,7 +3394,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Speicherziel und Passwortverwahrung offen (zurückgestellt 2026-11-03)."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Speicherziel und Passwortverwahrung offen (zurückgestellt 2026-11-03). Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-27, Variante B 2026-11-13; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-8",
@@ -3423,7 +3423,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Alarmdienst offen (zurückgestellt 2026-11-03)."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Alarmdienst offen (zurückgestellt 2026-11-03). Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-04, Variante B 2026-11-20; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-9",
@@ -3452,7 +3452,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (Betreiberentscheidung 2026-11-03: Mail und Push verpflichtend). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (Betreiberentscheidung 2026-11-03: Mail und Push verpflichtend). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-23 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-10",
@@ -3481,7 +3481,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja bei echtem Betreiberzugriff (Betreiberentscheidung 2026-11-03). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht technisch: WP-32d."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja bei echtem Betreiberzugriff (Betreiberentscheidung 2026-11-03). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht technisch: WP-32d. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-15, Variante B 2026-12-01; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-11",
@@ -3510,7 +3510,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-04, Variante B 2026-11-20; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-12",
@@ -3539,7 +3539,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht vor jedem Produktiv-Deploy."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht vor jedem Produktiv-Deploy. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-11, Variante B 2026-11-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-13",
@@ -3568,7 +3568,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-11, Variante B 2026-11-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-14",
@@ -3597,7 +3597,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-15, Variante B 2026-12-01; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-15",
@@ -3626,7 +3626,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Zuerst in Welle 1."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Zuerst in Welle 1. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-04, Variante B 2026-11-04; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-16",
@@ -3655,7 +3655,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nur falls die WP-27-Vorgängerfassung auf Staging lief (nicht belegt)."
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nur falls die WP-27-Vorgängerfassung auf Staging lief (nicht belegt). Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-10, Variante B 2026-11-10; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-17a",
@@ -3684,7 +3684,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Sofort anstoßen; Vorlauf läuft parallel zur Entwicklung."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Sofort anstoßen; Vorlauf läuft parallel zur Entwicklung. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-09 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-17",
@@ -3713,11 +3713,11 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Aufwand = Befund-Nacharbeit (neue Pakete)."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Aufwand = Befund-Nacharbeit (neue Pakete). Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-09 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-18",
-      "titel": "Rechtstexte WP-36 (Kanzlei)",
+      "titel": "Rechtstexte: externe RECHTSFREIGABE durch die Kanzlei (getrennt von WP-36 = Erstellen)",
       "strang": "extern",
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
@@ -3742,7 +3742,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Inhalte vom Betreiber, juristische Prüfung durch Kanzlei."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nur die externe juristische Prüfung und Freigabe der durch WP-36 erstellten Texte; sie ist NICHT erteilt, keine Stufe ist belegt. Das Erstellen (Platzhalter ersetzen, Inhalte vom Betreiber) ist WP-36. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-10, Variante B 2026-10-27; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-19",
@@ -3771,7 +3771,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Kundenseitig; nicht als Release-Abhängigkeit modelliert."
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Kundenseitig; nicht als Release-Abhängigkeit modelliert. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-20",
@@ -3800,7 +3800,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Handstart braucht lasttest.yml auf dem Standardzweig oder einen temporären Branch."
+      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Handstart braucht lasttest.yml auf dem Standardzweig oder einen temporären Branch. Spätester Start (ANNAHME, Stand 2026-11-04): erst nach Merge der Workflow-Datei nach main (E-23); kein Blocker."
     },
     {
       "id": "E-21",
@@ -3829,7 +3829,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (JArbSchG/MuSchG). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Fragen 4/6/7 bewusst zurückgestellt (2026-11-03); spätestens vor E-23."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (JArbSchG/MuSchG). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Fragen 4/6/7 bewusst zurückgestellt (2026-11-03); spätestens vor E-23. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-05, Variante B 2026-11-05; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-21i",
@@ -3887,7 +3887,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: bedingt je Modul. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Ohne Freigabe nur Hinweisbetrieb (provisional); WP19-OFFENE-FACHNACHWEISE.md."
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt je Modul. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Ohne Freigabe nur Hinweisbetrieb (provisional); WP19-OFFENE-FACHNACHWEISE.md. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-09 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-23",
@@ -3916,7 +3916,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: Ziel. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Merge nach main und Deploy nur mit ausdrücklicher Betreiberfreigabe."
+      "notiz": "Produktionsblocker laut Übergabeliste: Ziel. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Merge nach main und Deploy nur mit ausdrücklicher Betreiberfreigabe. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-12-21, Variante B 2026-12-07; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-24",
@@ -3925,7 +3925,7 @@
       "prio": "P2",
       "aufwandPT": {"min":1,"max":3},
       "wartezeitAT": {"min":10,"max":15},
-      "abhaengigkeiten": ["E-23"],
+      "abhaengigkeiten": ["E-23","E-31"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3945,7 +3945,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (Testplan). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (Testplan). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04): Variante A Start nach dem Deploy (2026-12-22, Abschluss 2027-01-05, außerhalb des Ziels 2026-12-24), Variante B Start 2026-12-09 (Deploy bis 2026-12-09); Betreiberentscheidung nötig, siehe docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md Abschnitt 4."
     },
     {
       "id": "E-24i",
@@ -4003,7 +4003,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Keine Zugangsdaten durch Agenten."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Keine Zugangsdaten durch Agenten. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-26",
@@ -4032,7 +4032,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-30, Variante B 2026-10-16 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-27",
@@ -4061,7 +4061,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-28",
@@ -4090,7 +4090,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     },
     {
       "id": "E-29",
@@ -4119,7 +4119,94 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Aufbewahrungs- und Berichtigungspflichten, Revisionssicherheit des Korrekturexports; Anfrage sofort möglich, Prüfung des Beispielexports nach WP-16c. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Aufbewahrungs- und Berichtigungspflichten, Revisionssicherheit des Korrekturexports; Anfrage sofort möglich, Prüfung des Beispielexports nach WP-16c. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+    },
+    {
+      "id": "E-30",
+      "titel": "Arbeits- und datenschutzrechtliche Gesamtprüfung (Zeiterfassung, Geo, Betriebsrat-Auswertung, Beschäftigtendaten, Art. 9; JArbSchG/MuSchG; DSFA-Bedarf) durch Kanzlei/Datenschutzbeauftragte",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":15,"max":30},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md (E-30)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Neu (2026-11-04): in der Übergabeliste nicht als eigener Punkt geführt (nur Teilaspekte in E-18, E-19, E-21, E-26). Prüfauftrag, keine Rechtsaussage; nicht beauftragt, nichts freigegeben. Unterlagengerüste: docs/acc45/extern/DSFA-GLIEDERUNG.md, BETRIEBSVEREINBARUNG-THEMENLISTE.md. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-06, Variante B 2026-10-23; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+    },
+    {
+      "id": "E-31",
+      "titel": "Pilotvereinbarung und Testdatenschutz (Pilotvertrag, AV-Vertrag Pilot, Testdatenregeln, Beteiligung)",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":10,"max":20},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md (E-31)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Neu (2026-11-04): Voraussetzung für E-24, in der Übergabeliste nur als Vorbereitung genannt. Nicht beauftragt, nichts vereinbart. Der AV-Muster-Text braucht die Rechtsfreigabe E-18. Gerüst: docs/acc45/extern/DSFA-GLIEDERUNG.md Abschnitt 6. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-11-20, Variante B 2026-11-06; Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
+    },
+    {
+      "id": "E-32",
+      "titel": "Betriebsdienstleister: Auswahl und AV-Verträge (Hoster, Mailanbieter, Uptime/Alarm, Speicherziel Backup), Drittlandprüfung",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1.5},
+      "wartezeitAT": {"min":10,"max":15},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md (E-32)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Neu (2026-11-04): Die Dienstleisternamen sind Eingabe der Rechtstexte (WP-36/E-18) und der Auswahl in E-7, E-8, E-9. Anbieter sind nicht benannt, nichts beauftragt. Gerüst: docs/acc45/extern/KI-VO-UND-ANBIETER-PRUEFLISTE.md Teil B. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Spätester Start (ANNAHME, Stand 2026-11-04; Durchlaufzeit nicht belegt): Variante A 2026-10-23, Variante B 2026-10-23 (heute überfällig); Herleitung in docs/acc45/BETREIBER-AUFGABEN-WEIHNACHTEN.md."
     }
   ]
 }

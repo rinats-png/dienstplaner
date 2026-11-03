@@ -10,6 +10,10 @@ Stand: 2026-11-03 (Nachtrag: Betreiberentscheidungen zu E-4, E-9, E-10, neuer Ei
 weil sie Zugangsdaten, echte Geräte oder Dritte brauchen. Jeder Eintrag ist so geschrieben, dass der Betreiber ihn abarbeiten
 und einen Nachweis ablegen kann.
 
+**Termine (Nachtrag 2026-11-04).** Späteste Starttermine für eine Fertigstellung bis 2026-12-23 (mit ausgewiesenen Annahmen) und die neuen Punkte E-30 bis E-32
+stehen in [`BETREIBER-AUFGABEN-WEIHNACHTEN.md`](BETREIBER-AUFGABEN-WEIHNACHTEN.md); Unterlagengerüste unter [`extern/`](extern/). E-18 meint seitdem nur die externe
+**Rechtsfreigabe**; das Erstellen der Texte ist WP-36.
+
 **Regeln für dieses Dokument und für alle Nachweise**
 
 - Das Repository ist öffentlich. Hier stehen **nie** Zugangscodes, Passwörter, Schlüssel, Webhook-URLs, Hostnamen oder IP-Adressen.
