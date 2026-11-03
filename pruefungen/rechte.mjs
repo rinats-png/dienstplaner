@@ -900,8 +900,10 @@ let CODE_P2 = null;
 
   const r11 = await lies(tL9);
   const viele = JSON.parse(JSON.stringify(r11.bestand));
-  viele.mandanten[0].dienstarten = Array.from({ length: 501 },
-    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }));
+  /* Die bisherigen Dienstarten bleiben: Eine noch verwendete zu löschen weist
+     der Server schon vorher ab (Nachprüfung WP-11, N1) — geprüft wird hier die Obergrenze. */
+  viele.mandanten[0].dienstarten = [...viele.mandanten[0].dienstarten, ...Array.from({ length: 501 },
+    (_, i) => ({ id: `d${i}`, name: `D${i}`, kurz: "D" }))];
   const wViele = await schreib(tL9, viele, r11.etag);
   pruef("501 Dienstarten werden abgewiesen", wViele.status === 422, `Status ${wViele.status}`);
 

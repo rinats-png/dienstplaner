@@ -212,6 +212,15 @@ solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt.
 durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
 `einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
 Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
+**Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
+20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
+`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben nur Rollen mit
+`org.edit` (Leitung, Kundenrolle); für Planung und alle anderen bleibt der gespeicherte Wert, eine andere Form als
+`{ mehrschichtig: boolean }` weist der Server ab, Zeitpunkt und Person (`geaendertAm`, `geaendertVon`) setzt er selbst
+(`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
+`nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
+oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen

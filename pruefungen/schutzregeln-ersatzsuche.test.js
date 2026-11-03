@@ -181,12 +181,12 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
     expect(start).toBeGreaterThan(0);
     /* Nur ab „Achtung“ hindert ein Befund; ein Hinweis (nicht bewertbar) nicht. */
     expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);");
-    expect(block).toContain("schutzEinsatz(p, da, d)");
+    expect(block).toContain("schutzEinsatz(p, da, d, m.einstellungen)");
     expect(block).not.toContain("einsatzSchutz(");
     /* Ob sperrt, entscheidet die Tabelle SPERR_REGELN (Befundkatalog) über
        den Schlüssel am Befund; harte Schutzbefunde heißen „schutz“. */
     expect(block).toMatch(/sperrt: sperrtArt\(/);
-    expect(block).toMatch(/b\.sperrt \? "schutz" : b\.offen \? "schutzOffen" : "schutzWeich"/);
+    expect(block).toContain('b.sperrt ? "schutz" : b.offen ? "schutzOffen" : b.hinweis ? "schutzHinweis" : "schutzWeich"');   // Nachprüfung WP-11
     expect(block).toContain("e.keinAlleindienst");
     expect(block).toContain("einschraenkung(\"keinAlleindienst\", \"darf nicht allein eingeteilt werden\")");
     expect(block).not.toContain("e.wiedereingliederung");                // nicht mehr nur aus den Rohdaten
