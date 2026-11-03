@@ -362,8 +362,34 @@ protokoll "gesichert digest=$digest sicherung=$name"
 # Robust (A2): Scheitert die Auflistung, wird übersprungen — nie gelöscht.
 # Gelöscht wird nur, was als Name genau dem Muster entspricht, direkt unter
 # $SICHERUNGEN liegt und ein FERTIG trägt.
+#
+# Geschützt (WP-31b): Es bleiben die jüngsten BEHALTEN vollständigen
+# Sicherungen, die Sicherung dieses Laufs und die Sicherung der letzten
+# ERFOLGREICHEN Auslieferung (Marke $SICHERUNGEN/.letzte-erfolgreiche,
+# geschrieben am Ende eines erfolgreichen Laufs) — alles andere darf fallen,
+# auch Sicherungen gescheiterter Versuche (Review B-1). Sonst bestünden nach
+# einigen gescheiterten Versuchen alle behaltenen Sicherungen aus Kopien
+# desselben Stands, und der Stand vor der letzten erfolgreichen Auslieferung
+# wäre weg. Zeigt die Marke auf nichts Vollständiges oder in die Zukunft,
+# wird gewarnt und nichts entfernt (Review B-2).
+geschuetzt=""
+if [[ -f "$SICHERUNGEN/.letzte-erfolgreiche" ]]; then
+  geschuetzt="$(head -n1 "$SICHERUNGEN/.letzte-erfolgreiche" 2>/dev/null || true)"
+  if [[ ! "$geschuetzt" =~ ^centric-sicherung-[0-9]{8}T[0-9]{6}Z$ ]]; then
+    warnung "Marke .letzte-erfolgreiche unlesbar — Aufbewahrung übersprungen, nichts entfernt."
+    geschuetzt="UNGUELTIG"
+  elif [[ ! -f "$SICHERUNGEN/$geschuetzt/FERTIG" ]]; then
+    warnung "Marke .letzte-erfolgreiche zeigt auf keine vollständige Sicherung ($geschuetzt) — Aufbewahrung übersprungen, nichts entfernt."
+    geschuetzt="UNGUELTIG"
+  elif [[ "$geschuetzt" > "centric-sicherung-$(date -u +%Y%m%dT%H%M%SZ)" ]]; then
+    warnung "Marke .letzte-erfolgreiche liegt in der Zukunft ($geschuetzt) — Aufbewahrung übersprungen, nichts entfernt."
+    geschuetzt="UNGUELTIG"
+  fi
+fi
 vollstaendig=()
-if liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' -print)"; then
+if [[ "$geschuetzt" == "UNGUELTIG" ]]; then
+  protokoll "aufbewahrung uebersprungen: marke ungueltig"
+elif liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' -print)"; then
   while IFS= read -r eintrag_pfad; do
     [[ -n "$eintrag_pfad" ]] || continue
     kurz="$(basename -- "$eintrag_pfad")"
@@ -375,7 +401,8 @@ if liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-s
     mapfile -t vollstaendig < <(printf '%s\n' "${vollstaendig[@]}" | LC_ALL=C sort)
     for kurz in "${vollstaendig[@]:0:${#vollstaendig[@]}-BEHALTEN}"; do
       [[ "$kurz" == "$name" ]] && continue
-      rm -rf -- "${SICHERUNGEN:?}/$kurz" && protokoll "sicherung entfernt $kurz (behalten $BEHALTEN)"
+      [[ "$kurz" == "$geschuetzt" ]] && continue
+      rm -rf -- "${SICHERUNGEN:?}/$kurz" && protokoll "sicherung entfernt $kurz (behalten $BEHALTEN, geschützt ${geschuetzt:-keine})"
     done
   fi
 else
@@ -474,5 +501,13 @@ fi
 # --- 11. Protokoll ------------------------------------------------------
 trap - ERR
 protokoll "erfolgreich digest=$digest bild-id=$lauf_id sicherung=$name"
+# Marke der geschützten Sicherung (WP-31b): der Stand vor DIESER erfolgreichen
+# Auslieferung. Atomar ersetzen; scheitert es, bleibt die alte Marke.
+if printf '%s\n' "$name" >"$SICHERUNGEN/.letzte-erfolgreiche.neu" &&
+   mv -f "$SICHERUNGEN/.letzte-erfolgreiche.neu" "$SICHERUNGEN/.letzte-erfolgreiche"; then
+  protokoll "geschuetzt sicherung=$name"
+else
+  warnung "Marke der geschützten Sicherung nicht geschrieben — die vorige bleibt geschützt."
+fi
 hinweis "Ausgeliefert: $CENTRIC_DIENST läuft healthy auf $digest (Commit $commit)."
 hinweis "FREIGEGEBENE-IMAGES.md: $digest → aktiv, bisher ${bisher:-<leer>} → vorherig (falls nicht schon so)."
