@@ -18,22 +18,22 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` (nicht von Hand ändern) · Stand 2026-
 | WP-09 | P1 | 2 | WP-02 | Agent 0 | IN_PROGRESS |
 | WP-10 | P1 | 6 | WP-09 | Agent C | INTEGRATED |
 | WP-11 | P1 | 4 | WP-10 | Agent C | INTEGRATED |
-| WP-12 | P1 | 2 | WP-11 | Agent F | BLOCKED |
+| WP-12 | P1 | 2 | WP-11 | Agent F | IN_PROGRESS |
 | WP-13 | P1 | 3 | WP-06 | Agent D | BLOCKED |
 | WP-14 | P1 | 6 | WP-06 | Agent D | BLOCKED |
 | WP-15 | P1 | 3 | WP-14 | Agent D | BLOCKED |
 | WP-16 | P1 | 5 | WP-06, WP-14 | Agent D | BLOCKED |
 | WP-17 | P1 | 2 | WP-02 | Agent D | IN_PROGRESS |
 | WP-18 | P1 | 6 | WP-30, WP-09 | Agent E | BLOCKED |
-| WP-19 | P1 | 25 | WP-11, WP-22 | Agent E | BLOCKED |
+| WP-19 | P1 | 25 | WP-11, WP-22 | Agent E | IN_PROGRESS |
 | WP-20 | P1 | 6 | WP-06 | Agent D | BLOCKED |
 | WP-21 | P1 | 10 | WP-12, WP-39 | Agent E | BLOCKED |
 | WP-22 | P2 | 6 | WP-11 | Agent C | IN_PROGRESS |
-| WP-23 | P2 | 1 | WP-09 | Agent A | BLOCKED |
-| WP-24 | P2 | 2 | WP-09 | Agent E | BLOCKED |
-| WP-25 | P2 | 2 | WP-09 | Agent E | BLOCKED |
+| WP-23 | P2 | 1 | WP-43 | Agent A | READY |
+| WP-24 | P2 | 2 | WP-43 | Agent E | READY |
+| WP-25 | P2 | 2 | WP-43 | Agent E | READY |
 | WP-26 | P2 | 4 | WP-09 | Agent A | IN_PROGRESS |
-| WP-27 | P2 | 4 | WP-09 | Agent A | BLOCKED |
+| WP-27 | P2 | 4 | WP-43 | Agent A | READY |
 | WP-28 | P2 | 3 | WP-02, WP-17 | Agent B | BLOCKED |
 | WP-29 | P2 | 3 | WP-20 | Agent D | BLOCKED |
 | WP-30 | P2 | 2 | – | Agent B | READY |
@@ -43,7 +43,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` (nicht von Hand ändern) · Stand 2026-
 | WP-34 | P2 | 1 | WP-09 | Agent 0 | BLOCKED |
 | WP-35 | P3 | 2 | WP-39 | Agent E | BLOCKED |
 | WP-36 | P3 | 1 | – | Agent E | BLOCKED |
-| WP-37 | P3 | 1.5 | WP-09 | Agent E | BLOCKED |
+| WP-37 | P3 | 1.5 | WP-43 | Agent E | READY |
 | WP-38 | P3 | 2 | WP-12 | Agent E | BLOCKED |
 | WP-39 | P3 | 4 | WP-12 | Agent E | BLOCKED |
 | WP-40 | P3 | 3 | WP-39 | Agent E | BLOCKED |

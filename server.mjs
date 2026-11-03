@@ -37,6 +37,7 @@ import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
 import { schreibstopp, alleFrei } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
+import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.mjs";
 import { zustand, oeffentlich, detailErlaubt, ueberwachungStarten } from "./server/lib/gesund.mjs";
 import { ereignis } from "./server/lib/gesund-zaehler.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
@@ -493,6 +494,22 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
         + `${v.fehler.length} Fehler`);
     } catch (e) {
       console.error("Löschlauf fehlgeschlagen:", e && e.message ? e.message : e);
+    }
+    /* Datenschutzlauf (WP-26, server/lib/datenschutzlauf.mjs): Aufbewahrungs-
+       fristen jedes Betriebs, In-App-Sicherungen nach festem Plan, Spur nach
+       30 Tagen — auf dem Server, nicht erst, wenn jemand in der Oberfläche
+       den Löschlauf anstößt. */
+    try {
+      /* Schalter CENTRIC_DATENSCHUTZLAUF: aus | vorschau (Vorgabe) | an. In
+         der Vorschau wird nur berichtet — gelöscht wird erst nach bewusster
+         Aktivierung (.env.example). */
+      const modus = modusAusUmgebung();
+      const d = await datenschutzLauf(getStore({ name: "centric", consistency: "strong" }), { modus });
+      if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
+      else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
+        + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, ${d.fehler.length} Fehler`);
+    } catch (e) {
+      console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
     }
   };
   setTimeout(lauf, AUFRAEUMEN_START_MS).unref();
