@@ -46,7 +46,7 @@ const nimm = (o, felder) => {
    Oberfläche greift an vielen Stellen ungeprüft zu. */
 const OBJEKT_SAMMLUNGEN = new Set(["erfassung", "einstempeln", "fahrzeiten", "checks",
   "notizen", "tagesnotizen", "belegung", "therapie", "planstaende", "freigaben",
-  "abweichungen"]);
+  "abweichungen", "postenPlan", "bereichsPlan"]);
 
 /* ------------------------------------------------------------------------
    PERSONEN
@@ -417,6 +417,16 @@ export function bestaetigungenBetriebsrat(w) {
    ------------------------------------------------------------------------ */
 const R = (fn) => ({ art: REDUZIERT, fn });
 
+/* Objekte (WP-19, modul-posten.mjs), Sicht der Beschäftigten (Nutzerentscheidung W3 offen, bis dahin
+   konservativ): nur Objekte, auf deren Posten die Person selbst eingeteilt ist. */
+const objekteMitPosten = (objekte, postenIds) => liste(objekte)
+  .filter((o) => o && typeof o === "object" && liste(o.posten).some((p) => p && postenIds.has(p.id)));
+function objekteEigene(w, ctx) {
+  const plan = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+  const ids = new Set(Object.entries(plan).filter(([k]) => eigenerSchluessel(k, ctx.ich)).map(([, v]) => v));
+  return objekteMitPosten(w, ids);
+}
+
 export const BETRIEB = {
   /* Stammdaten und Regelwerk — ohne sie rechnet kein Plan. */
   id: [VOLL, VOLL], name: [VOLL, VOLL], branche: [VOLL, VOLL],
@@ -472,6 +482,13 @@ export const BETRIEB = {
   ansichten: [NUR_EIGENE, NUR_EIGENE],
   kompetenzen: [R(kompetenzenMitarbeiter), VOLL],
   einarbeitung: [R(einarbeitungEigen), VOLL],
+  /* Posten (WP-19, modul-posten.mjs): Objekte mit Posten enthalten keine Personendaten; Beschäftigte und die
+     Schichtverantwortung sehen nur Objekte mit Einteilung (W3 offen), der Betriebsrat keine. Die Einteilung auf Posten (`postenPlan`, „Person|Tag“) sieht die Person nur für sich selbst, die
+     Schichtverantwortung im eigenen Bereich am Tag, der Betriebsrat nicht. */
+  objekte: [R(objekteEigene), WEG],
+  postenPlan: [NUR_EIGENE, WEG],
+  /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
+  bereichsPlan: [NUR_EIGENE, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -521,6 +538,7 @@ export function betriebSicht(m, sitzung) {
   const ctx = {
     rolle, ich: sitzung.person,
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
+    betrieb: m,
   };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {
@@ -760,6 +778,15 @@ Object.assign(SCHICHT, {
   kompetenzen: R(schichtKompetenzen),
   einarbeitung: R(schichtEinarbeitung),
   betriebsmittel: R(schichtBetriebsmittel),
+  postenPlan: R(schichtSchluessel(["eigen", "bereich"])),
+  /* Objekte: nur die mit Einteilung der eigenen Person oder einer Person des eigenen Bereichs am Tag der Einteilung. */
+  objekte: R((w, ctx) => {
+    const plan = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+    const ids = new Set(Object.entries(plan)
+      .filter(([k]) => imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), ["eigen", "bereich"])).map(([, v]) => v));
+    return objekteMitPosten(w, ids);
+  }),
+  bereichsPlan: R(schichtSchluessel(["eigen", "bereich"])),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
   /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */
@@ -770,7 +797,7 @@ Object.assign(SCHICHT, {
 /** Der Betrieb in der Sicht der Schichtverantwortung. ctx aus schichtKontext. */
 export function betriebSichtSchicht(m, ctx) {
   if (!m || typeof m !== "object") return m;
-  const c = { ...ctx, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])),
+  const c = { ...ctx, betrieb: m, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])),
     personen: new Map(liste(m.personen).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p])) };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {
