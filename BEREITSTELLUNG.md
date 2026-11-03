@@ -109,6 +109,7 @@ Der Container liest sie beim Start; nach jeder Änderung `docker compose up -d`
 | `REDIS_REST_URL`, `REDIS_REST_TOKEN` | nein | atomare Bremse, siehe unten |
 | `CENTRIC_AUFRAEUMEN` | nein | `aus` schaltet den täglichen Löschlauf für abgelaufene Testbetriebe ab (Vorgabe: an) |
 | `CENTRIC_PUBLIC_REGISTRATION` | nein | **Vorgabe: aus.** Nur genau `true` öffnet die öffentliche Selbstregistrierung (`/api/registrierung*`); jeder andere Wert lässt sie zu. Erst setzen, wenn das Account-Onboarding steht — siehe 5.8 |
+| `CENTRIC_SELBSTSTART` | nein | **Vorgabe: aus.** Nur genau `true` öffnet den öffentlichen Selbststart (`/starten`, „Eigenen Betrieb anlegen"); jeder andere Wert lässt ihn aus. Im internen Piloten nicht setzen — siehe `docs/SELBSTSTART-SCHALTER.md` |
 
 Die Anwendung **läuft auch ohne die optionalen Variablen**. Was fehlt:
 
@@ -647,7 +648,8 @@ Wert und alles andere (`TRUE`, `1`, `yes`, Leerzeichen …) lassen ihn aus.
 Konto, Sitzungsstand, Mitgliedschaften, Betrieb öffnen, Abmelden). Sie legen kein Konto an und
 setzen ein bestehendes Konto bzw. eine Sitzung voraus. Ebenfalls unberührt bleiben der
 Zugangscode-Weg (`/api/anmelden`) und der bisherige Selbststart (`/starten`), der Zugangscodes
-ausgibt.
+ausgibt — Letzterer hat seit `CENTRIC_SELBSTSTART` einen eigenen Schalter (Vorgabe aus, siehe
+`docs/SELBSTSTART-SCHALTER.md`).
 
 **Erst einschalten, wenn das Account-Onboarding steht.** Voraussetzungen:
 
