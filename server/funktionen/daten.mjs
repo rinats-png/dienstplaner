@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
@@ -12,13 +12,14 @@ import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/cod
 import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre,
+import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
   offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -887,6 +888,30 @@ export default async (req, context) => {
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
         const jetzt = await bestandLesenStreng(store, s.bestand);
 
+        /* Stempel-Integrität (WP-06, lib/stempelintegritaet.mjs): Ein
+           gestempelter Wert ändert sich über diesen Weg nie — für keine
+           Rolle. Geprüft wird die Übermittlung selbst, vor jeder
+           Zusammenführung: Ein Widerspruch zum gespeicherten Stempel ist eine
+           Absage (403, STEMPEL_UNVERAENDERLICH), keine stille Korrektur.
+           Ausnahme: der Löschlauf der Leitung für Tage jenseits der
+           Aufbewahrungsfrist. */
+        const altNachId = new Map(((jetzt && jetzt.bestand && jetzt.bestand.mandanten) || [])
+          .filter(Boolean).map((x) => [x.id, x]));
+        const gesendetNachId = new Map((Array.isArray(bestand.mandanten) ? bestand.mandanten : [])
+          .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+        const voll = schreibumfang(s.rolle) === SCHREIBEN_VOLL;
+        const stempelO = { loeschlauf: voll, vollSicht: voll, heute: heuteBerlin(),
+          unveraendert: await unveraenderteScherben(store, s.bestand, etag ?? null, jetzt) };
+        for (const [id, gesendet] of gesendetNachId) {
+          const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
+          if (w) {
+            await protokoll("schreiben", ks, "abgewiesen",
+              `Stempel-Integrität${w.schluessel ? ` ${w.schluessel}` : ""}: ${w.grund}`, wer);
+            return antwort({ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH",
+              text: w.grund }, 403);
+          }
+        }
+
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
            Lesen gar nicht bekommen hat. */
@@ -914,12 +939,30 @@ export default async (req, context) => {
             text: zuSchreiben.verweigert }, 403);
         }
 
+        /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
+           vor jedem Umbau von zuSchreiben holen, sonst ginge sie verloren (die Sperren wären wirkungslos). */
+        const offen = fachpruefungOffen(zuSchreiben);
+
+        /* Gespeichert werden die gespeicherten Stempel (Stempel-Integrität,
+           siehe oben) — in den Monaten, die die Übermittlung unverändert
+           kennt; in den übrigen entscheidet der Drei-Wege-Abgleich. */
+        {
+          let geloescht = 0;
+          zuSchreiben = { ...zuSchreiben, mandanten: (zuSchreiben.mandanten || []).map((x) => {
+            if (!x || typeof x !== "object") return x;
+            const r = stempelSichern(altNachId.get(x.id) || null, gesendetNachId.get(x.id), x, stempelO);
+            geloescht += r.geloescht;
+            return r.mandant;
+          }) };
+          if (geloescht) await protokoll("schreiben", ks, "loeschlauf",
+            `${geloescht} Stempel nach Ablauf der Aufbewahrungsfrist gelöscht`, wer);
+        }
+
         /* Fachprüfung (WP-22) in Häppchen, damit eine große Nachrechnung keinen
            anderen Betrieb aufhält (Review B2): höchstens HAEPPCHEN_MS am Stück,
            insgesamt höchstens ZEITBUDGET_MS — sonst 503 „bitte erneut". Eine
            Strukturänderung (Schichtfolge, Dienstzeiten, Personen …) ist je
            Raum gebremst. */
-        const offen = fachpruefungOffen(zuSchreiben);
         if (offen) {
           if (strukturAenderung(offen.alt, offen.neu)) {
             const sb = strukturBremse(`${s.bestand}|${offen.mandantId}`);
@@ -1202,7 +1245,10 @@ export default async (req, context) => {
                   konfliktGrund: "vorgang_veraltet" } } };
             }
           }
-          if (mitErfassung) {
+          /* Gibt es zu diesem Stempel schon eine Korrektur (WP-06), gilt deren
+             Ist-Zeit — das nachgereichte Ende ändert sie nicht still. */
+          const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
+          if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
               [k]: langerDienst
                 ? { start: neu.start, ende: zeit, bestaetigt: false,
@@ -1217,7 +1263,7 @@ export default async (req, context) => {
           const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
             erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
           if (ergSt.ok) {
-            return { ergSt, urteil, neu, erfassung: mitErfassung ? neuerMandant.erfassung[k] : null };
+            return { ergSt, urteil, neu, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null };
           }
           /* Jeder gescheiterte Versuch steht im Protokoll — „wiederholt",
              solange noch einer folgt; erst der letzte ist ein Konflikt. */
@@ -1239,6 +1285,45 @@ export default async (req, context) => {
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
         geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum: zielDatum, eintrag: neu,
         erfassung });
+    }
+
+    /* ------------------------ Stempelkorrektur (WP-06) ---------------------
+       Der einzige Weg, die Ist-Zeit eines gestempelten Tages zu ändern: als
+       Ereignis { vorher, nachher, wer, wann, grund } am Stempel. Das Original
+       bleibt unverändert. Leitung und Planung (staff.edit) — nicht die
+       Schichtverantwortung, die fremde Stempel nicht sieht (H8+), nicht
+       Beschäftigte, Betriebsrat oder Betreiber. */
+    if (pfad === "stempel-korrektur" && req.method === "POST") {
+      const kK = kennung(req, s);
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit")) {
+        await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.",
+          text: "Stempelzeiten korrigieren Leitung und Planung." }, 403);
+      }
+      const bK = await bremse("schreiben", kK);
+      if (!bK.frei) return zuVielAntwort(bK.wartet);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitK = await bestandLesenStreng(store, s.bestand);
+        if (!mitK) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mK = eigenerMandant(mitK.bestand, s);
+        if (!mK) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
+          new Date(), `k-${randomBytes(6).toString("hex")}`);
+        if ("status" in r) {
+          await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergK = await bestandSchreiben(store, s.bestand,
+          { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? r.mandant : x)) },
+          { erwarteterStand: mitK.stand, durch: s.name || "Stempelkorrektur" });
+        if (!ergK.ok) {
+          await protokoll("schreiben", kK, "konflikt", "Stempelkorrektur", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kK, "erfolg",
+          `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
+        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, etag: ergK.stand || null });
+      });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------
@@ -1609,10 +1694,9 @@ export default async (req, context) => {
             text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
             etag: ergW.stand }, 409);
         }
-        /* Was die Fristen dabei bewirkt hätten oder bewirkt haben (N-3) —
-           bei „aus"/„vorschau" nur gemeldet, nichts gelöscht. */
         await protokoll("schreiben", kW, "erfolg",
-          `wiederhergestellt aus ${marke}${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
+          `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`
+          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
         return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
       });
     }

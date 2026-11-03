@@ -550,10 +550,14 @@ describe("Handler: Kennzeichen", () => {
     expect((await gespeichert()).einstempeln[`a2|${HEUTE}`].markierungen).toEqual(["UNGEPLANTER_DIENST"]);
   });
   it("START_FEHLT: das Ende bleibt, keine erfundene Startzeit, keine Ist-Erfassung", async () => {
-    const r = await lies(T.l1);
-    const b = JSON.parse(JSON.stringify(r.bestand));
-    delete b.mandanten[0].einstempeln[`a4|${HEUTE}`];       // Leitung entfernt den Start (Korrekturfall)
-    expect((await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } })).status).toBe(200);
+    /* Ausgangslage ohne Beginn. Seit WP-06 löscht auch die Leitung keinen
+       Stempel mehr über das Speichern (403, stempel-integritaet.test.js);
+       der Fall wird deshalb direkt in der Ablage hergestellt. */
+    {
+      const { bestand } = await B.bestandLesen(laden(), RAUM);
+      delete bestand.mandanten[0].einstempeln[`a4|${HEUTE}`];
+      await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+    }
     const e = await stempeln(T.a4, { datum: HEUTE, art: "ende" });
     expect(e.status, e.roh).toBe(200);
     expect(e.markierungen).toEqual(["START_FEHLT"]);
@@ -698,18 +702,22 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     /* Auch unter keinem anderen Schlüssel dieser Person. */
     expect(Object.keys(g.erfassung).filter((k) => k.startsWith("z4|"))).toEqual([]);
   });
+  /* Seit WP-06 als Korrekturereignis (/api/stempel-korrektur), nicht mehr
+     über das allgemeine Speichern: Das Original bleibt Feld für Feld, das
+     Ereignis hängt daran, die Ist-Zeit folgt der Korrektur. */
   it("Korrektur bleibt möglich: die Leitung trägt die tatsächliche Zeit nach, der Stempel bleibt erhalten", async () => {
     const k = `z4|${GESTERN}`;
-    const r = await lies(T.l1);
-    const b = JSON.parse(JSON.stringify(r.bestand));
-    const stempel = b.mandanten[0].einstempeln[k];
-    b.mandanten[0].erfassung = { ...(b.mandanten[0].erfassung || {}),
-      [k]: { start: stempel.start, ende: "14:00", bestaetigt: true, grund: "Ausstempeln vergessen" } };
-    const w = await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+    const stempel = (await gespeichert()).einstempeln[k];
+    const w = await anfrage("/api/stempel-korrektur", { methode: "POST", token: T.l1,
+      rumpf: { personId: "z4", datum: GESTERN, start: stempel.start, ende: "14:00", grund: "Ausstempeln vergessen" } });
     expect(w.status, w.roh).toBe(200);
     const g = await gespeichert();
-    expect(g.erfassung[k]).toMatchObject({ ende: "14:00", grund: "Ausstempeln vergessen" });
-    expect(g.einstempeln[k]).toEqual(stempel);
+    expect(g.erfassung[k]).toMatchObject({ start: stempel.start, ende: "14:00", bestaetigt: true });
+    const { korrekturen, ...original } = g.einstempeln[k];
+    expect(original).toEqual(stempel);
+    expect(korrekturen).toHaveLength(1);
+    expect(korrekturen[0]).toMatchObject({ vorher: null, nachher: { start: stempel.start, ende: "14:00" },
+      grund: "Ausstempeln vergessen", wer: { rolle: "leitung" } });
   });
   it("nach vergessenem Ausstempeln lässt sich heute einstempeln; der alte Vorgang bleibt unberührt", async () => {
     await minutenSicher();

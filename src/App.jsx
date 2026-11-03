@@ -11642,7 +11642,14 @@ function StempelBefunde({ sitz, ym, akt }) {
               <td style={{ padding: "8px 14px" }}><Befund e={e} phase="Ende" /></td>
               <td style={{ padding: "8px 14px" }}>{ref && ref.name ? ref.name : "–"}</td>
               <td style={{ padding: "8px 14px" }}>{[...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])].map((x) => (
-                <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}</td>
+                <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}
+                {/* Korrekturereignisse (WP-06): das Original steht links, die
+                    gültige Ist-Zeit nach der letzten Korrektur hier. */}
+                {Array.isArray(e.korrekturen) && e.korrekturen.length > 0 && (() => {
+                  const z = e.korrekturen[e.korrekturen.length - 1];
+                  return (<span title={e.korrekturen.map((x) => `${x.wann ? new Date(x.wann).toLocaleString("de-DE") : ""} · ${(x.wer && x.wer.name) || "–"}: ${x.vorher ? `${x.vorher.start || "–"}–${x.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${x.nachher.start}–${x.nachher.ende} (${x.grund})`).join("\n")}><Pill size="sm" tone="accent">
+                    {`korrigiert${e.korrekturen.length > 1 ? ` (${e.korrekturen.length}×)` : ""}: ${z.nachher.start}–${z.nachher.ende}`}</Pill></span>);
+                })()}</td>
             </tr>);
           })}</tbody>
         </table>)}
@@ -22655,15 +22662,35 @@ function AppInnen() {
          gewöhnlichen Speichern. */
       /* Lange Dienste zur Prüfung (WP-17, W1): Die Leitung bestätigt die
          gestempelte Zeit; danach zählt sie im Konto. Vermerk im Protokoll. */
-      langerDienstBestaetigen: (pid, d) => mUpd((m) => {
-        const k = `${pid}|${d}`;
-        const e = (m.erfassung || {})[k];
-        if (!e) return m;
-        return { ...m, erfassung: { ...(m.erfassung || {}), [k]: { ...e, bestaetigt: true,
-          grund: `geprüft: ${e.grund || ""}`.slice(0, 500) } } };
-      }, `Langer Dienst bestätigt: ${pid} am ${d}`),
+      /* Stempelkorrektur (WP-06): Die Ist-Zeit eines gestempelten Tages
+         ändert nur der Server, als Ereignis mit Grund am Stempel — das
+         Original bleibt. Übernommen wird, was er gespeichert hat. */
+      stempelKorrigieren: async (pid, d, start, ende, grund) => {
+        try {
+          const erg = await SP.stempelKorrektur(pid, d, start, ende, grund);
+          const k = `${pid}|${d}`;
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag },
+              erfassung: { ...(m.erfassung || {}), [k]: erg.erfassung } }) }));
+          melde(erg.hinweis || "Korrektur gespeichert — der Stempel bleibt unverändert.");
+          return true;
+        } catch (e) {
+          melde(e.message || "Die Korrektur ließ sich nicht speichern.");
+          return false;
+        }
+      },
+      /* Lange Dienste zur Prüfung (WP-17, W1): Die Leitung bestätigt die
+         gestempelte Zeit — seit WP-06 als Korrekturereignis mit Grund. */
+      langerDienstBestaetigen: (pid, d) => {
+        const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
+        if (!e) return;
+        return akt.stempelKorrigieren(pid, d, e.start, e.ende, "Langer Dienst geprüft und bestätigt");
+      },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
         if (!sitz.person || pid !== sitz.person.id) {
+          /* Gestempelter Tag: nur als Korrektur (WP-06). */
+          if ((sitz.mandant.einstempeln || {})[`${pid}|${d}`])
+            return akt.stempelKorrigieren(pid, d, start, ende, grund || "Zeit durch die Leitung bestätigt");
           mUpd((m) => ({ ...m,
             erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null);
           return;
