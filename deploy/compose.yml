@@ -36,12 +36,17 @@ services:
       PORT: "3000"
       CENTRIC_DATEN: /data
       CENTRIC_ABLAGE: dateien
+      # Überwachung (WP-05, docs/BETRIEB-UEBERWACHUNG.md): Alter der letzten
+      # Sicherung außer Haus. Erst einschalten, wenn die Sicherung (WP-04)
+      # eingerichtet ist — dann auch den Mount unten.
+      # CENTRIC_SICHERUNG_STATUS: /sicherung-status/letzte-erfolgreiche.json
 
     networks:
       - proxy
 
     volumes:
       - ./data:/data                          # persistent, überlebt Neuerstellung
+      # - /home/admin/sicherung:/sicherung-status:ro   # WP-05, nur lesen (STATUS_VERZEICHNIS)
 
     # --- Härtung ---
     user: "1000:1000"                         # = admin auf dem Host, = node im Image

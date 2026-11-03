@@ -94,6 +94,9 @@ async function altlasten() {
 /* ------------------------------ Testdaten ------------------------------- */
 
 const REF = { lat: 50, lon: 8 };
+/* Ungültige Breite für die Datenschutzprobe: eine Zeichenkette, die nirgends
+   zufällig vorkommt (vorher 410 — traf z. B. Millisekunden einer ISO-Zeit). */
+const UNGUELTIG_LAT = 412.3456789;
 const nord = (m) => REF.lat + m / ((2 * Math.PI * 6371000) / 360);
 const MA = ["a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10", "a11", "a12", "a13"];
 /* 20-Stunden-Grenze: offene Beginne relativ zu jetzt — a12 vor 21 Stunden
@@ -217,7 +220,7 @@ await abschnitt("Urteile beim Stempeln (Geo AN)", async () => {
   E.grob = merke(await stempeln(T.a6, { art: "start", lat: nord(0), lon: REF.lon, accuracy: 1500 }));
   pruef("Genauigkeit über 1000 m: NICHT_BEWERTBAR, auch am Standort", E.grob.status === 200
     && geoVon(E.grob).status === "NICHT_BEWERTBAR" && geoVon(E.grob).genauigkeitWarnung === true, JSON.stringify(geoVon(E.grob)));
-  E.kaputt = merke(await stempeln(T.a7, { art: "start", lat: REF.lat + 360, lon: REF.lon, accuracy: 5 }));
+  E.kaputt = merke(await stempeln(T.a7, { art: "start", lat: UNGUELTIG_LAT, lon: REF.lon, accuracy: 5 }));
   pruef("ungültige Koordinate: NICHT_BEWERTBAR, Zeit gespeichert", E.kaputt.status === 200
     && geoVon(E.kaputt).status === "NICHT_BEWERTBAR" && !!E.kaputt.d.eintrag.start, JSON.stringify(geoVon(E.kaputt)));
 });
@@ -264,7 +267,7 @@ await abschnitt("Nachtdienst und Altbestand", async () => {
 await abschnitt("Datenschutz", async () => {
   const gespeichert = (await lies(T.l1)).text;
   const alle = [...antworten, gespeichert].join("\n");
-  const roh = [nord(43), nord(2137), nord(251), nord(3000), REF.lat + 360].map((x) => String(x).slice(0, 9));
+  const roh = [nord(43), nord(2137), nord(251), nord(3000), UNGUELTIG_LAT].map((x) => String(x).slice(0, 9));
   pruef("keine Rohkoordinate in Antworten und im gespeicherten Stand", roh.every((x) => !alle.includes(x)),
     roh.filter((x) => alle.includes(x)).join(", "));
   pruef("Entfernung nur gerundet (2137 m → 2100, 43 m → 50), keine exakte Meterzahl",

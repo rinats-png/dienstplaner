@@ -1,4 +1,5 @@
 import { getStore } from "./ablage.mjs";
+import { ereignis } from "./gesund-zaehler.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { BlockList, isIP } from "node:net";
 
@@ -120,6 +121,7 @@ function lokalLesen(schluessel) {
    fluten: höchstens eine Meldung je Art und Minute. */
 const ausfallGemeldet = new Map();
 function ausfallMelden(art, fehler) {
+  ereignis("bremse-ausfall");   // Fehlerzählung für /gesund (WP-05), jeder Ausfall
   const jetzt = Date.now();
   if ((ausfallGemeldet.get(art) || 0) > jetzt - 60000) return;
   ausfallGemeldet.set(art, jetzt);
