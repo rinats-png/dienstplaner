@@ -258,6 +258,16 @@ describe("N2c — Modulprotokoll: Aufbewahrungsfrist statt Dauersperre", () => {
     const r = zus(alt, mitE(alt, { branchenmodule: { testmodul: { an: true } } }));
     expect(r.grund).toBeUndefined();
     expect(r.mandant.einstellungen.modulprotokoll).toEqual([expect.objectContaining({ art: "eingeschaltet", modul: "testmodul" })]);
+    /* Das Betriebsprotokoll erkennt den neuen Eintrag, obwohl das Protokoll kürzer wurde. */
+    expect(BM.modulProtokollZeilen({ mandanten: [alt] }, { mandanten: [r.mandant] })).toEqual(["Branchenmodul testmodul eingeschaltet"]);
+  });
+  it("der Löschlauf behält die gesetzte Frist des Modulprotokolls", () => {
+    const m = { id: "m1", personen: [], aufbewahrung: { modulprotokollMonate: 12 } };
+    expect(AUF.raeumen(m, "2026-11-03").mandant.aufbewahrung.modulprotokollMonate).toBe(12);
+    const mitFaelligem = { ...m, einstellungen: { modulprotokoll: [{ art: "parameter", modul: "posten", am: "2025-01-01T00:00:00.000Z", von: "l1" }] } };
+    const r = AUF.raeumen(mitFaelligem, "2026-11-03");
+    expect(r.mandant.aufbewahrung.modulprotokollMonate).toBe(12);
+    expect(r.mandant.einstellungen.modulprotokoll).toEqual([]);                // 22 Monate alt, Frist 12
   });
   it("Löschlauf: Vorschau zählt abgelaufene Protokolleinträge, der Lauf entfernt sie, jüngere bleiben", () => {
     const jung = { art: "eingeschaltet", modul: "posten", am: "2026-10-01T08:00:00.000Z", von: "l1" };
