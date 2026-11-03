@@ -50,7 +50,10 @@ const faelle = [
 
 describe("Planprüfung und Warndialog lesen dieselbe Schutzquelle", () => {
   it("beide Verbraucher gehen über schutzEinsatz, keiner hält eine eigene Fassung", () => {
-    expect(funktion("hindernisBefunde")).toContain("schutzEinsatz(");
+    /* WP-22: hindernisBefunde geht über einteilungsBefunde (server/lib/fachpruefung.mjs),
+       und die fragt schutzEinsatz — dieselbe Fassung wie der Server. */
+    expect(funktion("hindernisBefunde")).toContain("einteilungsBefunde(");
+    expect(readFileSync(new URL("../server/lib/fachpruefung.mjs", import.meta.url), "utf8")).toContain("schutzEinsatz(p, da, d, einst)");
     expect(funktion("pruefen")).toContain("schutzEinsatz(");
     const ohneKommentare = app.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     expect(ohneKommentare).not.toMatch(/\bschutzBefunde\(/);

@@ -61,6 +61,13 @@ export const BEFUND_KATALOG = Object.freeze({
   teilzeit: { text: "arbeitet an diesem Wochentag nicht", quelle: "Teilzeitvereinbarung", stufe: "achtung", sperrt: false },
   folge: { text: "Höchstzahl Dienste in Folge erreicht", quelle: "Einstellung des Betriebs", stufe: "achtung", sperrt: false },
   abwesend: { text: "abwesend", quelle: "Abwesenheit", stufe: "achtung", sperrt: false },
+  /* WP-22: Lange Dienste und Mindestbesetzung. Ein Dienst über zehn Stunden
+     ist nach Nutzerentscheidung automatisch erlaubt — nur ein Hinweis, keine
+     Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7
+     ArbZG ihn trägt, verantwortet der Betrieb. Die Mindestbesetzung warnt
+     (Vorgabe des Betriebs, bestätigungspflichtig). */
+  tagesgrenze: { text: "Dienst über zehn Stunden (Regelung nach § 7 ArbZG nötig)", quelle: "§ 3, § 7 ArbZG", stufe: "hinweis", sperrt: false },
+  untergrenze: { text: "Mindestbesetzung unterschritten", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
 export const sperrtBefund = (regel) => (Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, regel) ? BEFUND_KATALOG[regel].sperrt : true);
@@ -139,6 +146,41 @@ export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
     : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
 }
 
+/** Wie viele Personen haben Schutzangaben verloren (Mutterschutz, Schwerbehinderung, Geburtsdatum, Einwilligung)? */
+export function schutzEntferntAnzahl(altM, neuM) {
+  const alt = new Map((Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt).map((p) => [String(p.id), p]));
+  let n = 0;
+  for (const p of (Array.isArray(neuM && neuM.personen) ? neuM.personen : []).filter(istObjekt)) {
+    const a = alt.get(String(p.id));
+    if (!a) continue;
+    const weg = (f) => !!a[f] && !p[f];
+    const einw = (x) => (Array.isArray(x.mutterschutzEinwilligungen) ? x.mutterschutzEinwilligungen.length : 0);
+    if (weg("mutterschutz") || weg("schwerbehindert") || weg("geburtstag") || weg("geburtsdatum") || einw(p) < einw(a)) n++;
+  }
+  return n;
+}
+
+/**
+ * Empfehlung aus Nachprüfung 948a4ba: Werden Schutzangaben entfernt, erfährt
+ * es die Leitung — ohne Inhalt und ohne Person (wie viele, von wem).
+ */
+export function schutzEntferntMitteilungen(altM, neuM, ich) {
+  if (!istObjekt(neuM)) return neuM;
+  const n = schutzEntferntAnzahl(altM, neuM);
+  if (!n) return neuM;
+  const personen = (Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
+  const von = personen.find((p) => gleichId(p.id, ich));
+  const jetzt = new Date();
+  const neue = leitungFuerBestaetigung(personen, ich).map((l) => ({ id: `n-schutzentfernt-${jetzt.getTime()}-${l.id}`, personId: l.id,
+    art: "planGeaendert", titel: kuerzen("Schutzangaben entfernt", TITEL_MAX),
+    text: kuerzen(`Bei ${n} Person${n === 1 ? "" : "en"} wurden Schutzangaben entfernt — von ${name(von)}.`, TEXT_MAX),
+    ziel: "personal", zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false, dringend: false,
+    quelle: { art: "schutzentfernt", von: ich } }));
+  if (!neue.length) return neuM;
+  return { ...neuM, nachrichten: [...neue, ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten
+    : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
+}
+
 /** Überschreitet das Protokoll mit dieser Übermittlung 80 %, bekommt die
     Leitung einmalig eine Mitteilung (feste Kennung je Betrieb). */
 function fuellstandMitteilung(altM, neuM, ich) {
@@ -180,7 +222,7 @@ export function bestaetigungMitteilungen(altM, neuM, ich) {
   const titel = recht.length === 1 ? "Rechtsverstoß bewusst bestätigt" : `${recht.length} Rechtsverstöße bewusst bestätigt`;
   const ohneGrund = recht.some((b) => b.ohneGrund);
   /* Der Text kommt aus dem Befundkatalog, nicht vom Client (Review N1). */
-  const text = recht.slice(0, 3).map((b) => `${name(person(b.personId))} · ${tagKurz(b.datum)} · ${
+  const text = recht.slice(0, 3).map((b) => `${b.art === "sammel" ? `${b.anzahl || 0} Einteilungen ${tagKurz(b.von)}–${tagKurz(b.bis)}` : `${name(person(b.personId))} · ${tagKurz(b.datum)}`} · ${
     befundText(Array.isArray(b.befunde) && istObjekt(b.befunde[0]) ? b.befunde[0].regel : null)}`).join("; ")
     + ` — bestätigt von ${name(von)}${ohneGrund ? ", ohne Grund" : ""}`;
   const jetzt = new Date();
