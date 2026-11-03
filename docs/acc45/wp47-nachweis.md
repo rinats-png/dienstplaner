@@ -26,12 +26,13 @@ Alle aus dem Nachweis WP-28 (Linux-CI, zwei Läufe; Abschnitt 2.2 dort).
 
 | Grenze | Wert | Herleitung |
 |---|---|---|
-| `stempeln` je Person | **10/min**, Sperre 30 s | Eine Person stempelt zweimal am Tag; ein Stapel nach Funkloch ein paar Mal. Zehn je Minute lassen jeden ehrlichen Fall durch und halten ein Gerät in der Schleife auf sein eigenes Kontingent. |
+| `stempeln` je Person | **10/min**, Sperre 15 s (vorher 30 s, Review-Auflage M4, Abschnitt 9) | Eine Person stempelt zweimal am Tag; ein Stapel nach Funkloch ein paar Mal. Zehn je Minute lassen jeden ehrlichen Fall durch und halten ein Gerät in der Schleife auf sein eigenes Kontingent. |
 | `stempeln-raum`, bis 1000 Personen | **900/min** | Obergrenze je Raum ohne Bremse 1923–2062/min (Haltedauer 29–31 ms); **Hälfte der kleinsten Obergrenze** ≈ 960 → 900. |
 | … bis 2000 Personen | **240/min** | Obergrenze 483–1263/min (48–124 ms); Hälfte des schlechteren Laufs = 240. Ein Drittel der Belegschaft in 5 min (667 Personen) = 133/min liegt darunter. |
 | … darüber (gemessen 4000) | **200/min** | Obergrenze 403–736/min (82–149 ms); Hälfte des schlechteren Laufs ≈ 200. |
 | Größe unbekannt (Neustart, noch kein Zugriff) | 240/min | vorsichtige mittlere Stufe, bis der erste Zugriff die Personenzahl liefert (`raumGroesse` in `daten.mjs`, gemerkt beim Lesen, Schreiben und Stempeln; nur eine Zahl). |
 | `anmelden-erfolg` je Betrieb | **1000 je 5 min**, Sperre 60 s | Ein Betrieb mit 2000 Personen, ein Drittel am Schichtbeginn ≈ 670 in 5 min; Anmeldung kostet ohne scrypt ≈ 35 ms (WP-28 S4). Reine Lastbremse für die Sitzungsablage. |
+| `anmelden-code` je Code | **20 je 5 min**, Sperre 300 s | Review-Auflage M1 (Abschnitt 9): vor der Betriebsgrenze; niemand meldet sich zwanzigmal in fünf Minuten neu an. |
 | `gesund` `429-last` | Warnung ab 20 in 15 min | wenige Abweisungen sind kein Befund; eine Häufung ja. |
 
 Der Deckel ist nicht aus der Missbrauchsabwehr abgeleitet, sondern aus der **Rechenleistung des einen Prozesses**; er
@@ -80,14 +81,19 @@ begrenzte die Betriebsgrenze „ziel“ (40 je 5 min, auch gelungene Anmeldungen
 ehrliche Nutzende traf (WP-28 Befund 3). Die Herkunft wurde schon vorher durch Erfolge entlastet.
 Jetzt ist es begrenzt, sichtbar (`429-last`) und endet nach 60 s. Ein gültiger Code ist ohnehin ein Zugang.
 
+**Nach den Review-Auflagen (Abschnitt 9):** Ein einzelner Code kann die Betriebsgrenze nicht mehr erreichen — vorher greift
+die Grenze **je Code** (20 je 5 min). Dafür bräuchte es ≥ 50 gültige Codes desselben Betriebs. Eine Abweisung an einer
+Lastgrenze entlastet die **Herkunft nicht mehr** (vorher bei der Betriebsgrenze: volle Entlastung wie bei einem Erfolg);
+zurückgenommen werden nur die Vermerke dieses Versuchs bei Ziel und Gesamt und der Gesamtzähler der Notbremse.
+
 ## 5. Tests
 
 `npm run pruefung:bremse-wp47` (im CI-Schritt „Bremsen im Echtbetrieb (WP-47)“ und im Gesamtlauf `npm run pruefung`):
 
 | Datei | Prüfungen |
 |---|---|
-| `pruefungen/bremse-wp47.test.js` (19) | Gelungene Anmeldungen (30 in einen Betrieb bei Grenze 5) alle frei; danach Fehlversuche weiter gebremst (Ziel); Erfolg dazwischen löscht Fehlversuche nicht; Gesamtgrenze (40 Erfolge frei, 12 Fehlversuche, der 13. gebremst); Herkunft 8/9 unverändert; Altaufruf ohne Vermerke; Stempeln je Person (11. gebremst, andere Person frei); Kennung ohne Klartext; Raumdeckel (n frei, dann Sperre, nach Ablauf frei); **Lastbremse schreibt nichts in die Ablage**; Stufen 900/240/200 und Schichtwechsel-Rechnung; **HTTP:** Schichtwechsel mit 130 Personen eines Betriebs alle 200, danach PUT der Planung 200; je Person 429 mit Retry-After und `429-last`; Raumdeckel 429 und nichts gestempelt; Anmeldewelle 40 Anmeldungen bei Betriebsgrenze 10 alle 200; danach zurückgezogene Zugänge: 10 × 403, der 11. 429; falsche Codes 8 × 401, der 9. 429; Lastgrenze gelungener Anmeldungen (200, 200, 200, 429, 429, keine Sitzung) |
-| `pruefungen/stempel-429-client.test.js` (4) | Wiederholung nach Retry-After und Erfolg beim dritten Versuch; Wartezeit höchstens 15 s; nach drei 429 die ehrliche Meldung „NICHT erfasst“; andere Fehler werden nicht wiederholt |
+| `pruefungen/bremse-wp47.test.js` (24, davon 5 aus Abschnitt 9) | Gelungene Anmeldungen (30 in einen Betrieb bei Grenze 5) alle frei; danach Fehlversuche weiter gebremst (Ziel); Erfolg dazwischen löscht Fehlversuche nicht; Gesamtgrenze (40 Erfolge frei, 12 Fehlversuche, der 13. gebremst); Herkunft 8/9 unverändert; Altaufruf ohne Vermerke; Stempeln je Person (11. gebremst, andere Person frei); Kennung ohne Klartext; Raumdeckel (n frei, dann Sperre, nach Ablauf frei); **Lastbremse schreibt nichts in die Ablage**; Stufen 900/240/200 und Schichtwechsel-Rechnung; **HTTP:** Schichtwechsel mit 130 Personen eines Betriebs alle 200, danach PUT der Planung 200; je Person 429 mit Retry-After und `429-last`; Raumdeckel 429 und nichts gestempelt; Anmeldewelle 40 Anmeldungen bei Betriebsgrenze 10 alle 200; danach zurückgezogene Zugänge: 10 × 403, der 11. 429; falsche Codes 8 × 401, der 9. 429; Lastgrenze gelungener Anmeldungen (200, 200, 200, 429, 429, keine Sitzung) |
+| `pruefungen/stempel-429-client.test.js` (7, davon 3 aus Abschnitt 9) | Wiederholung nach Retry-After und Erfolg beim dritten Versuch; Wartezeit höchstens 15 s; nach drei 429 die ehrliche Meldung „NICHT erfasst“; andere Fehler werden nicht wiederholt |
 | `pruefungen/gesund.test.js` | `429-last` ab 20 → Warnung, vorher ok, nach dem Fenster wieder ok; Art-Liste |
 
 Die Tests mit Grenzwerten verkleinern sie vorübergehend (`WEITERE.anmelden.*`, `GRENZEN["anmelden-erfolg"]` sind Objekte,
@@ -155,10 +161,50 @@ Streuung zwischen Runnern ist das ein Lauf, keine Zusage.
 4. **429 an anderen Stellen der Oberfläche:** Wiederholt wird nur das Stempeln. Alle anderen Aufrufe zeigen den Satz des
    Servers („Bitte in … erneut versuchen“). Ein Offline-Stapel (WP-07) existiert in diesem Stand nicht; er sollte 429 wie
    hier behandeln (Retry-After abwarten, nicht verwerfen).
-5. **Stempelzeit bei Wiederholung:** Die Zeit ist die des Servers beim Eintreffen; nach zwei Wiederholungen bis ≈ 30 s
-   später als das Tippen. Für Schichtwechsel unerheblich, für Minutengenauigkeit im Streitfall zu erwähnen.
+5. **Stempelzeit bei Wiederholung:** Die Zeit ist die des Servers beim Eintreffen; nach zwei Wiederholungen bis ≈ 36 s
+   später als das Tippen (2 × 15 s + 20 % Streuung). Für Schichtwechsel unerheblich, für Minutengenauigkeit im Streitfall zu erwähnen.
 6. **Raumgröße:** Der Deckel kennt die Personenzahl erst nach dem ersten Zugriff seit dem Start (davor 240/min). Bei einem
    1000-Personen-Betrieb direkt nach einem Neustart und einer Spitze in der ersten Sekunde gilt kurz 240 statt 900;
    die erste Anfrage setzt die Größe, danach greift 900.
 7. **Mehr als eine Instanz:** Die Lastbremse zählt je Prozess. Mit mehreren Instanzen wäre jede für sich zuständig — wie die
    Raumsperre. Für den vorgesehenen Betrieb (eine Instanz) ohne Folge.
+
+## 9. Review-Auflagen (Opus-Review: integrierbar mit Auflagen)
+
+Stand: Merge von `integration/centric-complete` (442527b) in den Branch (A1), danach ein Commit mit Tests und Umsetzung.
+Für jeden Punkt liefen die neuen Tests **zuerst rot** gegen den Stand vor der Umsetzung (8 von 31 rot in
+`bremse-wp47` + `stempel-429-client`, jeweils aus dem erwarteten Grund), danach grün.
+
+| Auflage | Umsetzung | Test (rot vorher → grün) |
+|---|---|---|
+| **A1** Merge Integrationsstand | Einziger Konflikt `package.json`, Sammelzeile `pruefung`: Schritte **vereinigt** — Branch 91, Integration 92 (neu: `acc45-werkzeuge`, `wiederherstellen-ui`), Ergebnis **93** (`bremse-wp47` direkt nach `bremse-lokal`), keine verloren, keine doppelt | – |
+| **M1** Lastgrenze je Betrieb von einem Code ausschöpfbar | Neue Lastgrenze `anmelden-code` (20 je 5 min, Sperre 300 s) je Code (`kennungCode(fund.schluessel)`, Hashwert) **vor** der Betriebsgrenze. Abweisung: nur die eigenen Ziel-/Gesamtvermerke zurück (`vermerkeZuruecknehmen`) und der Gesamtzähler der Notbremse (`notentlasten(…, { nurGesamt: true })`); die **Herkunft bleibt gezählt**. Dasselbe jetzt auch an der Betriebsgrenze (vorher volle Entlastung) | „ein Code in der Schleife sperrt nur sich selbst“: 60 Anmeldungen eines Codes (Betriebs- und Zielgrenze auf 30 verkleinert) → 20 × 200, 40 × 429 mit Retry-After ohne Sitzung; danach anderer Code und Leitung desselben Betriebs 200. „Abweisung je Code entlastet die Herkunft nicht“: 8 Abweisungen aus einer Adresse, danach bremst `bremse("anmelden")` diese Herkunft |
+| **M2** Jede 429 der Stempel-Lastbremse schrieb eine Protokolldatei | `lastbremse` meldet `neu: true` nur für die Abweisung, die die Sperre setzt; nur dann `protokoll(…)`. `ereignis("429-last")` weiter bei jeder. Gleich bei den Lastgrenzen der Anmeldung | 40 Stempel einer Person bei festgehaltener Uhr → 30 × 429, **genau 1** Protokollzeile „stempeln (Person)“, `429-last` = 30 |
+| **M3** Lastgrenze der Anmeldung nach `bestandLesen` | Beide Lastgrenzen vor `bestandLesen`; Kennung des Betriebs aus dem Konto `bestand|mandantId` statt aus der Bindungsprüfung | Betriebsgrenze 2: der dritte Code bekommt 429, und `bestandLesen` wird für den Raum **nicht** aufgerufen (gezählt über `vi.mock` mit unveränderter Funktion) |
+| **M4** Sperre 30 s länger als die Wartezeit des Clients (15 s); keine Streuung | Sperre je Person **15 s**. Client: `wartezeitMitStreuung` = Retry-After (≤ 15 s) × (1 + 0,2 × Zufall) — nie kürzer als Retry-After, höchstens 20 % länger (vorher fest + 0–1 s) | Server: `GRENZEN.stempeln.sperre ≤ 15`, nicht steigend; Client: 10 s → 10 000/11 000/≤ 12 000 ms, an der Obergrenze 16 500 ms; `stempeln` wartet mit Streuung (≈ 12 s bei Zufall ≈ 1) |
+| **N1** Stempelknopf während der Wiederholung wieder frei | Stempeluhr und mobile Stempelfläche: `Promise.resolve(akt.stempeln(…)).finally(() => setLaeuft(false))` | Quelltextprüfung (wie die übrigen Oberflächenprüfungen): kein `akt.stempeln(…); setLaeuft(false)`, zwei Stellen mit Warten |
+| **N4** 130-Personen-Schichtwechseltest zeitabhängig | Uhr festgehalten (`imFrischenFenster`, nur `Date`), Stempeltag aus der festgehaltenen Uhr; der Test prüft, dass die Uhr stillstand | Gegen den Stand vor WP-47 (Stempeln über `bremse("schreiben")`) **rot**: alle 130 im selben Fenster, ab dem 121. 429 |
+
+**Brute-Force-Schutz:** nicht abgeschwächt. Herkunft 8/5 min, Ziel, Gesamt, Notbremse und Fail-closed unverändert; entlastet
+wird die Herkunft weiterhin **nur bei Erfolg** (an den Lastgrenzen jetzt strenger als vorher, Test oben). Die bestehenden Tests
+„acht … der neunte gebremst“, „Fehlversuche weiter gezählt“, „Gesamtgrenze“ bleiben unverändert grün.
+
+**Mutanten** (einzeln eingebaut, gezielter Test, danach zurückgenommen; alle getötet):
+
+| # | Mutant | Rot |
+|---|---|---|
+| R1 | Grenze je Code entfernt | M1 (beide Tests) |
+| R2 | Grenze je Code mit voller Entlastung (`entlasten` + `notentlasten`) statt nur Vermerken | M1 Herkunft |
+| R3 | Grenze je Code ohne Rücknahme der Vermerke | M1 Schleife (Ziel des Betriebs füllt sich) |
+| R4 | Grenze „je Code“ zählt je Betrieb | M1 Schleife |
+| R5 | Protokoll bei jeder 429 | M2 |
+| R6 | `lastbremse` meldet auch bei bestehender Sperre `neu` | M2 |
+| R7 | `bestandLesen` vor der Lastgrenze | M3 |
+| R8 | Sperre je Person wieder 30 s | M4 Server |
+| R9 | Client ohne Streuung (fest + 0–1 s) | M4 Client |
+| R10 | Streuung verkürzt die Wartezeit | M4 Client (3 Tests) |
+| R11 | mobile Stempelfläche gibt den Knopf sofort frei | N1 |
+| R12 | Stempeln wieder über `bremse("schreiben")` (Stand vor WP-47) | N4 Schichtwechsel (130) |
+
+Gezielte Tests nach der Umsetzung: `bremse-wp47` (24), `stempel-429-client` (7), `gesund`, `accountanmeldung`,
+`anmeldung-http` — 5 Dateien, 177 Tests grün.
