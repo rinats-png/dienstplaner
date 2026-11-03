@@ -3879,7 +3879,8 @@ const HANDBUCH = [
   /* ------------------------------------------------------------------ */
   {
     id: "sicherheit", titel: "Besonderheiten Sicherheitsdienst", dauer: "8 Minuten",
-    nurWenn: (m) => kann(m, "sperreEigen") || kann(m, "posten"),
+    /* Nur das Paketmerkmal des Bestands, kein Branchenmodul (G10, WP-19.0) — „posten" liegt im selben Paket. */
+    nurWenn: (m) => kann(m, "sperreEigen"),
     einleitung: "Was im Bewachungsgewerbe zusätzlich gilt.",
     abschnitte: [
       {

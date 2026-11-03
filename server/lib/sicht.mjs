@@ -497,7 +497,7 @@ export const BETRIEB = {
   zuschlaege: [VOLL, VOLL], rollennamen: [VOLL, VOLL],
   /* Einstellungen: alles wie bisher; nur die Branchenmodule (WP-19.0) gekürzt — Beschäftigte und
      Schichtverantwortung ohne Wer, Mitbestimmungsgrundlage und Modulprotokoll, der Betriebsrat ganz
-     (moduleinstellungenSicht, server/lib/branchenmodule.mjs; RECHTEMATRIX ²⁸). */
+     (moduleinstellungenSicht, server/lib/branchenmodule.mjs; RECHTEMATRIX ²⁹). */
   einstellungen: [R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle)), R((w, ctx) => moduleinstellungenSicht(w, ctx.rolle))],
   /* Die Oberfläche richtet Navigation und Knöpfe danach (darf → m.matrix). */
   matrix: [VOLL, VOLL],

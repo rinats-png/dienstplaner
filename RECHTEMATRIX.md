@@ -450,7 +450,7 @@ bleibt, Schichtverantwortung: abgewiesen (`einheitZusammen`). Wann/Wer, Prüfver
 fehlende Felder lassen den gespeicherten Stand stehen. Einschalten eines mitbestimmungsrelevanten Moduls (Wachbuch,
 Objektbericht) nur mit Bestätigung und Grundlage; ein Regelwert hebt eine Branchenregel höchstens auf „Achtung“, nur
 geprüft mit Quelle, Fundstelle, Fassung und Gültigkeit, nie auf „recht“ und nie zur Sperre. **Nach dem Abschalten** sind die
-Datenfelder des Moduls nur lesbar (`modulschreibwege.mjs`, `moduldatenZusammen`); gelöscht wird nur über die Fristen.
+Datenfelder des Moduls nur lesbar (`modulschreibwege.mjs`, `moduldatenZusammen`) — erst nach echtem Einschalten (`eingeschaltetAm`, ein Zeitpunkt ohne Person, für alle Rollen wie `geaendertAm`). Gelöscht wird über den Löschlauf (`aufbewahrung.mjs`: Zuordnungen anonymisierter Personen, Einträge hinter der Plandatenfrist, Modulprotokoll nach `MODULPROTOKOLL_FRIST`, Entwurfswert) und über den Ausnahmeweg Art. 16/17 DSGVO der Leitung (`moduldatenAusnahme`, nur genau benannte Einträge, protokolliert ohne Personenbezug). Neu angelegte Betriebe (Betreiber, `/api/bestand-anlegen`) bringen keine Moduleinstellungen mit (Nachtrag Opus-Review).
 **Wiederherstellen** lässt Schalter, Bestätigungen, Regelwerte und Modulprotokoll, wie sie heute sind. Die Selbstauskunft nach
 Art. 15 DSGVO nennt die eigenen Einträge im Modulprotokoll (`modulhandlungen`); das Betriebsprotokoll des Servers nur Modul
 und Art (WP-14b, M1). Geprüft in `pruefungen/modul-kern.test.js`, `pruefungen/rechtematrix-zeilen.test.js`.

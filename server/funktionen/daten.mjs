@@ -30,7 +30,7 @@ import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.m
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
-import { modulProtokollZeilen } from "../lib/branchenmodule.mjs";
+import { modulProtokollZeilen, bestandOhneModuleinstellungen } from "../lib/branchenmodule.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -539,7 +539,9 @@ export default async (req, context) => {
       /* Personen: ein falscher Typ wird abgewiesen, eine fehlende Liste ergänzt (gestalt.mjs). */
       const personA = personenFehler(roh);
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
-      const neuerBestand = personenAngleichen(roh);
+      /* Moduleinstellungen (Schalter, Bestätigungen, Regelwerte, Modulprotokoll) bringt kein
+         Inhalt mit — jeder Betrieb beginnt ohne (G1/G2/G6, WP-19.0 Nachtrag). */
+      const neuerBestand = bestandOhneModuleinstellungen(personenAngleichen(roh));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */

@@ -92,7 +92,8 @@ function ModulZeile({ m, mod, liste, darfSchalten, darfExport, setze }) {
           {nameVon(m, b.bestaetigtVon) ? ` von ${nameVon(m, b.bestaetigtVon)}` : ""}{b.grundlage ? ` · Grundlage: ${b.grundlage}` : ""}.</p>)}
       {nurLesen && (
         <p style={{ margin: "4px 0 0" }}>Ausgeschaltet: Die Daten des Moduls bleiben erhalten und sind nur lesbar; sie wirken nicht
-          auf Planung und Prüfungen. Gelöscht wird nur nach den Aufbewahrungsfristen.</p>)}
+          auf Planung und Prüfungen. Der Löschlauf entfernt Zuordnungen ausgeschiedener Personen und Einträge hinter der
+          Plandatenfrist; Berichtigung und Löschung nach Art. 16/17 DSGVO veranlasst die Leitung über den Ausnahmeweg.</p>)}
       {nurLesen && darfExport && hatModuldaten(m, mod.id, liste) && (
         <div style={{ marginTop: 8 }}><button type="button"
           onClick={() => herunterladen(`${mod.id}-daten.json`, moduldatenExport(m, mod.id, liste))}>Daten exportieren (JSON)</button></div>)}
@@ -105,17 +106,39 @@ function ModulZeile({ m, mod, liste, darfSchalten, darfExport, setze }) {
     </article>);
 }
 
+/**
+ * Der zu speichernde Regelwert aus dem Formular. Der Wert geht nicht verloren
+ * (Review-Nachtrag): Ein Wahrheitswert bleibt einer, eine Eingabe, die eine
+ * Zahl ist, wird Zahl, sonst Text; leer heißt ohne Wert.
+ * @param {Record<string, any>} f Formularstand
+ * @param {Record<string, any> | null} [vorher] gespeicherter Regelwert
+ */
+export function regelwertSauber(f, vorher = null) {
+  let wert = f.wert;
+  if (typeof wert === "string") {
+    const t = wert.trim();
+    if (!t) wert = undefined;
+    else if (vorher && typeof vorher.wert === "boolean" && (t === "true" || t === "false")) wert = t === "true";
+    else if (/^-?\d+(?:[.,]\d+)?$/.test(t)) wert = Number(t.replace(",", "."));
+    else wert = t;
+  } else if (wert === null) wert = undefined;
+  return { pruefstatus: f.pruefstatus, stufe: f.stufe,
+    ...(wert === undefined ? {} : { wert }),
+    ...Object.fromEntries(["quelle", "fundstelle", "version"].filter((k) => f[k]).map((k) => [k, f[k]])),
+    gueltigAb: f.gueltigAb || null, gueltigBis: f.gueltigBis || null };
+}
+
 /** Formular für einen betrieblichen Regelwert (nur org.edit). */
 function RegelwertFormular({ regel, wert, onSpeichern, onEntfernen }) {
   const [f, setF] = useState(() => ({ quelle: "", fundstelle: "", version: "", gueltigAb: "", gueltigBis: "",
-    pruefstatus: "provisional", stufe: "hinweis", ...(wert || {}) }));
+    pruefstatus: "provisional", stufe: "hinweis", ...(wert || {}),
+    wert: wert && wert.wert !== undefined && wert.wert !== null ? String(wert.wert) : "" }));
   const feld = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
-  const sauber = { pruefstatus: f.pruefstatus, stufe: f.stufe,
-    ...Object.fromEntries(["quelle", "fundstelle", "version"].filter((k) => f[k]).map((k) => [k, f[k]])),
-    gueltigAb: f.gueltigAb || null, gueltigBis: f.gueltigBis || null };
+  const sauber = regelwertSauber(f, wert);
   const fehler = pruefeRegelwert(regel.id, sauber);
   return (
     <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+      <label style={FELD}>Wert<input value={f.wert} onChange={feld("wert")} style={EINGABE} /></label>
       {[["quelle", "Quelle"], ["fundstelle", "Fundstelle"], ["version", "Fassung"]].map(([k, t]) => (
         <label key={k} style={FELD}>{t}<input value={f[k] || ""} onChange={feld(k)} style={EINGABE} /></label>))}
       <label style={FELD}>Gültig ab<input type="date" value={f.gueltigAb || ""} onChange={feld("gueltigAb")} style={EINGABE} /></label>

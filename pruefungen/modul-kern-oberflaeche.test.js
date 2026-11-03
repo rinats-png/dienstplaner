@@ -127,7 +127,7 @@ describe("Einhängepunkte: src/module/index.js", () => {
     const liste = BRANCHENMODULE.map((x) => (x.id === "posten" ? { ...x, status: "vorlaeufig" } : x));
     const an = { pakete: ["sicherheit"], einstellungen: { branchenmodule: { posten: { an: true } } }, objekte: [] };
     expect(IDX.oberflaechenFuer(an, "tag", { darf: () => false, liste }).map((x) => [x.eintrag.modul, x.modus])).toEqual([["posten", "aktiv"]]);
-    const aus = { pakete: ["sicherheit"], einstellungen: { branchenmodule: { posten: { an: false } } }, objekte: [{ id: "o" }] };
+    const aus = { pakete: ["sicherheit"], einstellungen: { branchenmodule: { posten: { an: false, eingeschaltetAm: "t0" } } }, objekte: [{ id: "o" }] };
     expect(IDX.oberflaechenFuer(aus, "tag", { darf: (r) => r === "export.data", liste }).map((x) => [x.eintrag.modul, x.modus])).toEqual([["posten", "nurLesen"]]);
     expect(IDX.oberflaechenFuer(aus, "tag", { darf: () => false, liste })).toEqual([]);
     expect(IDX.oberflaechenFuer({ ...aus, objekte: [] }, "tag", { darf: () => true, liste })).toEqual([]);

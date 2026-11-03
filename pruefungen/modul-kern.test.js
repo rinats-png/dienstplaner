@@ -43,9 +43,9 @@ const ZWOELF = ["posten", "wachbuch", "objektbericht", "bereichsplan", "pflegequ
 
 /* Zwei einschaltbare Testmodule: ohne und mit Mitbestimmungsbestätigung, je mit einem Datenfeld. */
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
-  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], regelIds: [],
+  abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], regelIds: [],
   parameter: { intervall: { typ: "zahl", standard: 120, min: 15, max: 720, vorlaeufig: true } } });
-const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true, datenfelder: ["testWache"], parameter: {} });
+const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true, datenfelder: ["testWache"], personenfelder: ["testWache"], parameter: {} });
 const LISTE = [...BRANCHENMODULE, TM, TMB];
 
 const kopie = (x) => JSON.parse(JSON.stringify(x));
@@ -295,16 +295,16 @@ describe("G3 — Abschalten: keine Löschung, kein Einfluss, nur lesbar", () => 
   });
   it("nur lesbar nach dem Ausschalten oder Abbestellen — nicht vorher, nicht für geplante Module ohne Schalter", () => {
     expect(typeof BM.modulNurLesen).toBe("function");
-    expect(BM.modulNurLesen(betrieb({ testmodul: { an: false } }), "testmodul", LISTE)).toBe(true);
-    expect(BM.modulNurLesen({ ...betrieb({ testmodul: { an: true } }), pakete: [] }, "testmodul", LISTE)).toBe(true);
+    expect(BM.modulNurLesen(betrieb({ testmodul: { an: false, eingeschaltetAm: "t0" } }), "testmodul", LISTE)).toBe(true);
+    expect(BM.modulNurLesen({ ...betrieb({ testmodul: { an: true, eingeschaltetAm: "t0" } }), pakete: [] }, "testmodul", LISTE)).toBe(true);
     expect(BM.modulNurLesen(betrieb({ testmodul: { an: true } }), "testmodul", LISTE)).toBe(false);
     expect(BM.modulNurLesen(betrieb(undefined), "testmodul", LISTE)).toBe(false);
     expect(BM.modulNurLesen(betrieb({ posten: { an: true } }), "posten")).toBe(false);          // geplant, Entwicklungsstand
-    expect(BM.modulNurLesen(betrieb({ posten: { an: false } }), "posten")).toBe(true);
+    expect(BM.modulNurLesen(betrieb({ posten: { an: false, eingeschaltetAm: "t0" } }), "posten")).toBe(true);
   });
   it("Moduldaten eines ausgeschalteten Moduls: Ändern und Löschen abgewiesen, Fehlen füllt der Server auf", () => {
     expect(typeof MS.moduldatenZusammen).toBe("function");
-    const alt = betrieb({ testmodul: { an: false, geaendertAm: "t", geaendertVon: "l1" } }, { testDaten: [{ id: "d1", text: "x" }] });
+    const alt = betrieb({ testmodul: { an: false, eingeschaltetAm: "t0", geaendertAm: "t", geaendertVon: "l1" } }, { testDaten: [{ id: "d1", text: "x" }] });
     expect(MS.moduldatenZusammen(alt, { ...alt, testDaten: [] }, LISTE).grund).toMatch(/Testmodul.*nur lesbar/);
     expect(MS.moduldatenZusammen(alt, { ...alt, testDaten: [{ id: "d1", text: "y" }] }, LISTE).grund).toMatch(/nur lesbar/);
     const fehlt = { ...alt }; delete fehlt.testDaten;
@@ -314,10 +314,10 @@ describe("G3 — Abschalten: keine Löschung, kein Einfluss, nur lesbar", () => 
     const an = betrieb({ testmodul: { an: true } }, { testDaten: [] });
     expect(MS.moduldatenZusammen(an, { ...an, testDaten: [{ id: "d2" }] }, LISTE).grund).toBeUndefined();
     /* Ausschalten und Ändern in einer Übermittlung: es zählt der neue Schalterstand. */
-    expect(MS.moduldatenZusammen(an, { ...betrieb({ testmodul: { an: false } }), testDaten: [{ id: "d2" }] }, LISTE).grund).toMatch(/nur lesbar/);
+    expect(MS.moduldatenZusammen(an, { ...betrieb({ testmodul: { an: false, eingeschaltetAm: "t0" } }), testDaten: [{ id: "d2" }] }, LISTE).grund).toMatch(/nur lesbar/);
   });
   it("über den Schreibweg des Servers: ausgeschalteter Posten — Objekte nicht änderbar, auch nicht für die Leitung", () => {
-    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: false, geaendertAm: "t", geaendertVon: "l1" } } });
+    const g = branchenbestand({ pakete: ["sicherheit"], branchenmodule: { posten: { an: false, eingeschaltetAm: "t0", geaendertAm: "t", geaendertVon: "l1" } } });
     g.mandanten[0].objekte = [{ id: "ob1", name: "Werk", posten: [{ id: "po1", name: "Tor", soll: { F: 1 } }] }];
     for (const r of ["LT", "PL"]) {
       const v = schreibeAls(g, r, (m) => { m.objekte = []; });

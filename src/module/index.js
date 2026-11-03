@@ -8,7 +8,7 @@
    nicht mehr.
 
    Orte und was der Kontext dort enthält (kern.jsx baut ihn):
-     betrieb    { m, heute, darf, sitz }
+     betrieb    { m, heute, darf }
      tag        dazu { datum, dienstId, einheitId, personenImDienst: Person[] }
      dienstart  dazu { da } — je Dienstart des Betriebs
 

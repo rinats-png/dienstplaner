@@ -55,6 +55,10 @@
    kürzer stellen will, muss wissen, welche der beiden ihn bindet.
    ========================================================================== */
 
+/* Branchenmodule (WP-19.0, Nachtrag G3): Personenfelder der Module („personId|Tag")
+   und das Modulprotokoll hängen am selben Lauf — siehe moduldatenFaellig unten. */
+import { BRANCHENMODULE, modulprotokollFaellig } from "./branchenmodule.mjs";
+
 /** Voreinstellungen, falls ein Betrieb sie noch nicht hat. */
 export const VORGABE = {
   plandatenMonate: 24,
@@ -114,7 +118,8 @@ const FRIST_FELDER = ["plandatenMonate", "stammdatenMonate", "gruendeMonate"];
 export function aufbewahrungFehler(a) {
   if (a === undefined || a === null) return null;
   if (typeof a !== "object" || Array.isArray(a)) return "Aufbewahrung: kein Objekt.";
-  for (const f of FRIST_FELDER) {
+  /* modulprotokollMonate: Frist des Modulprotokolls (Branchenmodule, MODULPROTOKOLL_FRIST) — gleiche Form. */
+  for (const f of [...FRIST_FELDER, "modulprotokollMonate"]) {
     const w = a[f];
     if (w === undefined || w === null || w === 0 || w === "") continue;
     const n = typeof w === "number" || typeof w === "string" ? Number(w) : NaN;
@@ -194,6 +199,38 @@ export function stichtage(m, heuteIso) {
   };
 }
 
+/**
+ * Moduldaten mit Personenbezug (Registry: `personenfelder`, Schlüssel
+ * „personId|JJJJ-MM-TT"), die fällig sind: Zuordnungen einer anonymisierten
+ * oder heute zur Anonymisierung fälligen Person — die Kennung bleibt im Plan,
+ * die Zuordnung zu Posten/Bereich hat ohne die Person keinen Zweck — und
+ * Einträge hinter der Plandatenfrist. Gilt unabhängig vom Schalter: Auch ein
+ * ausgeschaltetes Modul hält seine Daten nicht unbegrenzt (G3).
+ * @returns {{ anzahl: number, felder: Record<string, Set<string>> }}
+ */
+function moduldatenFaellig(m, st, faelligePersonen, module) {
+  const felder = [...new Set((module || []).flatMap((x) => (x && Array.isArray(x.personenfelder) ? x.personenfelder : [])))];
+  const ohnePerson = new Set([...faelligePersonen.map((p) => String(p.id)),
+    ...(m.personen || []).filter((p) => p && p.anonym).map((p) => String(p.id))]);
+  /** @type {Record<string, Set<string>>} */
+  const raus = {};
+  let anzahl = 0;
+  for (const f of felder) {
+    const inhalt = m[f];
+    if (!inhalt || typeof inhalt !== "object" || Array.isArray(inhalt)) continue;
+    for (const k of Object.keys(inhalt)) {
+      const i = k.lastIndexOf("|");
+      if (i < 1) continue;                                       // unerwartete Form: bleibt liegen
+      const tag = k.slice(i + 1);
+      if (ohnePerson.has(k.slice(0, i)) || (/^\d{4}-\d{2}-\d{2}$/.test(tag) && tag < st.plan)) {
+        (raus[f] = raus[f] || new Set()).add(k);
+        anzahl++;
+      }
+    }
+  }
+  return { anzahl, felder: raus };
+}
+
 /* --------------------------------------------------------------------------
    Vorschau
    -------------------------------------------------------------------------- */
@@ -204,18 +241,23 @@ export function stichtage(m, heuteIso) {
  * personen   zur Anonymisierung fällige Personen
  * plandaten  Anzahl je Feld
  * gruende    Freitexte, die entfallen
+ * moduldaten Zuordnungen in Modul-Personenfeldern (anonymisierte Person, hinter der Plandatenfrist)
+ * modulprotokoll  Einträge im Modulprotokoll nach dessen Frist
  * gesamt     Summe aller Eingriffe
  *
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, standort: number, gesamt: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, moduldaten: number,
+ *   modulprotokoll: number, gesamt: number,
  *   warnung: (string|null)}}
  */
-export function vorschau(m, heuteIso) {
+export function vorschau(m, heuteIso, { module = BRANCHENMODULE } = {}) {
   const st = stichtage(m, heuteIso);
   const personen = (m.personen || []).filter((p) => {
     if (!p || p.anonym || !p.austritt) return false;
     return String(p.austritt).slice(0, 10) <= st.stamm;
   });
+  const md = moduldatenFaellig(m, st, personen, module);
+  const modulprotokoll = modulprotokollFaellig(m, heuteIso).faellig;
 
   const plandaten = {};
   let planSumme = 0;
@@ -271,7 +313,9 @@ export function vorschau(m, heuteIso) {
     aenderungen,
     gruende,
     standort,
-    gesamt: personen.length + planSumme + aenderungen + gruende + standort,
+    moduldaten: md.anzahl,
+    modulprotokoll,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort + md.anzahl + modulprotokoll,
     warnung,
   };
 }
@@ -311,16 +355,23 @@ export function anonymisiere(p) {
  *
  * @returns {{mandant: object, bericht: object}}
  */
-export function raeumen(m, heuteIso) {
-  const plan = vorschau(m, heuteIso);
+export function raeumen(m, heuteIso, { module = BRANCHENMODULE } = {}) {
+  const plan = vorschau(m, heuteIso, { module });
+  /* Die Frist des Modulprotokolls (Branchenmodule) bleibt stehen, wenn der Betrieb sie gesetzt hat. */
+  const mpm = m.aufbewahrung && typeof m.aufbewahrung === "object" && m.aufbewahrung.modulprotokollMonate !== undefined
+    ? { modulprotokollMonate: m.aufbewahrung.modulprotokollMonate } : {};
   if (plan.gesamt === 0) {
     return {
-      mandant: { ...m, aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso } },
+      mandant: { ...m, aufbewahrung: { ...fristen(m), ...mpm, zuletztGeraeumt: heuteIso } },
       bericht: { ...plan, ausgefuehrt: true },
     };
   }
   const st = plan.stichtage;
   const faellig = new Set(plan.personen.map((p) => p.id));
+  /* Moduldaten (Personenfelder der Branchenmodule): fällige Schlüssel entfernen. */
+  const md = moduldatenFaellig(m, st, plan.personen, module);
+  const moduldatenGeraeumt = Object.fromEntries(Object.entries(md.felder)
+    .map(([f, raus]) => [f, Object.fromEntries(Object.entries(m[f]).filter(([k]) => !raus.has(k)))]));
 
   const gekuerzt = {};
   for (const feld of ["abweichungen", "erfassung", "einstempeln"]) {
@@ -361,7 +412,9 @@ export function raeumen(m, heuteIso) {
            keine Fehlzeitenstatistik mehr. */
         return { ...a, notiz: "", grund: "", grundGeloescht: heuteIso };
       }),
-      aufbewahrung: { ...fristen(m), zuletztGeraeumt: heuteIso },
+      ...moduldatenGeraeumt,
+      ...(plan.modulprotokoll ? { einstellungen: { ...m.einstellungen, modulprotokoll: modulprotokollFaellig(m, heuteIso).rest } } : {}),
+      aufbewahrung: { ...fristen(m), ...mpm, zuletztGeraeumt: heuteIso },
     },
     bericht: { ...plan, ausgefuehrt: true },
   };
@@ -384,5 +437,9 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)
     teile.push(`${zahlwort(b.gruende, "Abwesenheitsgrund", "Abwesenheitsgründe")} entfernt`);
+  if (b.moduldaten)
+    teile.push(`${zahlwort(b.moduldaten, "Modulzuordnung", "Modulzuordnungen")} entfernt`);
+  if (b.modulprotokoll)
+    teile.push(`${zahlwort(b.modulprotokoll, "Eintrag", "Einträge")} im Modulprotokoll entfernt`);
   return `${teile.join(", ")}.`;
 }
