@@ -1,39 +1,163 @@
 # ACC45 – Status
 
-Stand: 2026-11-03 (Tag 2, Nachmittag)
+Stand der Prosa: 2026-11-03 (Tag 2, Abend). **Alle Zahlen, Status und Statusstufen** stehen im erzeugten Block unten
+und kommen ausschließlich aus [`work-packages.json`](work-packages.json) (einzige Quelle). Gesamtplan, kritische Pfade,
+Wellen und Zeitprognosen: [`GESAMTPLAN.md`](GESAMTPLAN.md). Graph: [`DEPENDENCIES.md`](DEPENDENCIES.md).
 
-## Überblick
+Stränge: `acc45` (Audit-Pakete WP-01…WP-47, WP-42a), `folge` (Folgepakete aus Reviews: WP-07b, 14c, 16b, 24b, 27c, 28b,
+47b, S1), `wp19` (WP-19.0…19.13, [`WP19-MODULPLAN.md`](WP19-MODULPLAN.md)), `intelligence` (WP-I1…I37,
+[`INTELLIGENCE-ENTWICKLUNGSPLAN.md`](INTELLIGENCE-ENTWICKLUNGSPLAN.md)), `extern` (E-1…E-18: Abnahmen, Freigaben,
+Nutzerentscheidungen; Platzhalter bis `EXTERNE-ABNAHMEN-UEBERGABE.md` vorliegt).
 
-| | |
-|---|---|
-| Pakete gesamt | 46 (42 aus dem Audit + WP-43 Personaldaten-Filter, WP-44 Code-Rotation, WP-45 atomares Schreiben, WP-46 Bremse fail-closed) |
-| DONE | 2 (WP-01 H8+ produktiv, WP-08) |
-| INTEGRATED | 25 (WP-02, 03, 04, 05, 06, 07, 10, 11, 12, 13, 14, 17, 20, 22, 23, 25, 26, 27, 31, 32, 41, 43, 45, 46, 47) + Nachträge – im Integrationsstand, Abnahme in Produktion steht aus; WP-19 teilweise |
-| IN_PROGRESS / REVIEW | WP-24 (Nachprüfung), WP-28 (Lasttest), WP-19 (weitere Module, warten auf Fachentscheidungen), WP-09 |
-| BLOCKED / READY | 27 / 2 (READY: WP-06, WP-30) |
-| Offener Aufwand | 165,5 PT (integrierte Pakete zählen bis DONE weiter mit) |
-| Kritischer Pfad | WP-02 → WP-09 → WP-10 → WP-11 → WP-22 → WP-19 → WP-42 (48,5 PT); WP-19 aufteilbar |
+Statusstufen je Paket: implementiert · lokal getestet · unabhängig reviewt · integriert (nur bei Merge in
+`integration/centric-complete`) · Staging geprüft · fachlich/rechtlich freigegeben · produktiv. Werte `true`, `false`
+oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „vorbereitet“ oder „spezifiziert“ ist nie
+„fertig“.
 
-## Integrationsstand `integration/centric-complete`
+<!-- AUTO:BEGIN -->
+Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-| Merge | Inhalt | Review |
+**Pakete gesamt:** 126 · BLOCKED 72 · READY 19 · IN_PROGRESS 2 · REVIEW 2 · INTEGRATED 29 · DONE 2
+
+| Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
+|---|---|---|---|---|---|---|---|---|
+| ACC45 | 48 | 10 | 3 | 2 | 2 | 29 | 2 | 41–61,5 |
+| WP-19-Module | 14 | 13 | 1 | 0 | 0 | 0 | 0 | 63–98 |
+| Intelligence | 37 | 37 | 0 | 0 | 0 | 0 | 0 | 288–505 |
+| Folgepakete | 8 | 4 | 4 | 0 | 0 | 0 | 0 | 13–25,5 |
+| Extern/Entscheidungen | 19 | 8 | 11 | 0 | 0 | 0 | 0 | 16–38,5 |
+
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **405–690 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+
+**Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
+
+- gemeinsam: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
+- ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **28–43,5 PT**
+- ACC45: WP-39 → WP-21 → WP-42a → WP-42 = **18–25,5 PT**
+- Folgepakete: WP-14c = **3–5 PT**
+- WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **24–37 PT**
+- Intelligence: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
+
+### In Arbeit / Review
+
+| Paket | Status | Branch | Notiz |
+|---|---|---|---|
+| WP-09 Kette B nach main | IN_PROGRESS | `integration/centric-complete` | Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. |
+| WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1; Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
+| WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). |
+| WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. |
+
+### Bereit zum Start (9)
+
+WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-28b (folge, 1,5–3 PT) · WP-S1 (folge, 1–2 PT) · WP-19.0 (wp19, 4–6 PT)
+
+### Integriert in `integration/centric-complete` (29)
+
+| Paket | Beleg (PR, Merge-Commit) | Review |
 |---|---|---|
-| `65c1188` | main (H8+) + Kette B | H8+-Invarianten gegen B geprüft |
-| `5fd2696` (#21) | WP-04 verschlüsselte Offsite-Sicherung | Agent F: Auflagen → Freigabe |
-| `e748c70` (#22), `a063925` (#23) | WP-03 Digest-Rücksprung, R0, Nachtrag | Agent F: Auflagen → Freigabe |
-| `3722719` (#24) | WP-02 Schreibserialisierung, kein Stempelverlust, strenges Lesen | Agent F: Auflagen → Freigabe |
-| `eb5fc98` (#25) | WP-43 Personaldaten-Filter, Rechtematrix zeilenweise | Agent F: Auflagen → Freigabe (N1 vor Produktion offen) |
-| `f5bec0d` (#26) | WP-43 Nachtrag N1 | Agent F |
-| `56c73d0` (#27), `336788a` (#28) | WP-46 Bremse fail-closed, Nachtrag | Agent F: Auflagen → Freigabe |
-| `60818c0` (#29) | WP-45 atomares Schreiben (Journal) | Agent F: Auflagen → Freigabe |
-| `bb5ade8` (#30) | WP-32 + WP-32b Lieferkette, Betreiber-2FA, vertrauenswürdige Proxys | Agent F: Auflagen → Freigabe |
-| `4300f8d` (#32) | WP-31 Deploy-Automatisierung + WP-32c Betreiber-2FA | Agent F: Auflagen → Nachprüfung → Freigabe |
-| `737c453` (#33), `efdde6b` (#36) | WP-45b/c Rückweg bei unlesbarer Datei | Agent F: Ablehnung → vier Nachprüfungen → Freigabe |
-| `0ccf2ae` (#34), `6570858` (#37) | WP-05/05b Überwachung und Alarme | Agent F: Ablehnung → Nachprüfung → Freigabe |
-| `b84de34` (#35) | WP-11-Nachtrag: JArbSchG § 14 Abs. 2, Löschschutz Dienstarten, neue Personen nachgerechnet | Agent F: Freigabe |
-| `b32880c` (#31) | WP-10 Kette A Basis + WP-11 Regelregister, eine Schutzprüfung, Server-Durchsetzung | Agent F: Auflagen → Nachprüfung → integrierbar mit Auflagen (JArbSchG-Ausnahmen, MuSchG-Einwilligung vor Release) |
+| WP-02 Schreibserialisierung je Raum, kein Stempelverlust | #24 (3722719) | Agent F: Auflagen → Freigabe |
+| WP-03 Rücksprung nur über verifizierte Digests, R0 | #22 (e748c70), #23 (a063925) | Agent F: Auflagen → Freigabe |
+| WP-04 Automatische verschlüsselte Offsite-Sicherung | #21 (5fd2696) | Agent F: Auflagen → Freigabe |
+| WP-05 Überwachung und Alarme | #34 (0ccf2ae), #37 (6570858) | Agent F: Ablehnung → Nachprüfung → Freigabe |
+| WP-06 Stempel-Integrität (Originale unveränderlich, Korrekturereignisse) | #47 (b3707d8), #51 (d5fccbd) | Review mit Auflagen; Nachtrag 06b (#51) |
+| WP-07 Offline-Stempeln (clientEventId, Idempotenz, Sync) | #58 (7e7b6e4) | Review (Ablehnung → Nachbesserung) laut Nachweis |
+| WP-10 Kette A Basis (#7) auf B portieren, Datenmodell d.1–d.5 | #31 (b32880c) | Agent F: Auflagen → Nachprüfung → integrierbar mit Auflagen |
+| WP-11 Regelregister (#6) portieren, eine Schutzprüfung | #31 (b32880c), #35 (b84de34), #39 (85337ac) | Agent F: Freigabe der Nachträge (#35, #39) |
+| WP-12 Integrationsabnahme A+B | #43 (9d0ff51), #46 (7cacbf7) | Abnahmeprüfungen im Repo; 12b Regressionstest 409 |
+| WP-13 Stempeln ohne Plan, ungeplante Dienste im Ist | #51 (d5fccbd) | Review laut Nachweis |
+| WP-14 Korrekturworkflow Leitung/SV, Korrekturantrag | #52 (442527b), #66 (92a3b97) | Review abgelehnt → Nachbesserung; Opus-Delta-Review → Nachtrag 14b (#66) |
+| WP-17 Stempelkonflikt-Retry, Serverdatum | #47 (b3707d8) | Review (Ablehnung → Nachbesserung) laut Nachweis |
+| WP-20 Einsatzorte je Dienst, Geo-Modi, Außendienst | #56 (dd72a10) | Review laut Nachweis |
+| WP-22 Fachprüfungen auf dem Server, org.edit | #41 (cc19eb4), #45 (ca8c4bc), #54 (53b986a) | Review; Nachträge 22b (#45, #54) |
+| WP-23 Entwürfe nicht an Beschäftigte ausliefern | #53 (b6ee1cf), #64 (f2428aa) | Review abgelehnt → Nachbesserung; 23b (#64) |
+| WP-24 Kalender-Feed live und gebunden | #59 (741c844) | Nachprüfung abgeschlossen vor Merge |
+| WP-25 Wiederherstellen in der Oberfläche | #50 (a7d4020) | Review mit Nachbesserung |
+| WP-26 DSGVO serverseitig (Art. 15, Löschlauf, Ausdünnung) | #40 (9abf988) | Agent F: Ablehnung (2c1aa8e) → H1–H3 → Nachprüfung „integrierbar mit Auflagen“ → N-1…N-4 (7e6a4bb) umgesetzt; Freigabe nach den N-Auflagen nicht dokumentiert |
+| WP-27 Betriebsrat-Auswertung aggregiert, reduzierte Sichten | #57 (65e4e58), #65 (59b4ac2) | Review; Opus-Nachprüfung → 27b (#65) |
+| WP-28 Lasttest und Skalierungsentscheid | #60 (10f1ca4) | Review laut Nachweis |
+| WP-29 Geo-Spezifikationsreste | #63 (764b1ab) | Review laut Nachweis |
+| WP-31 Deploy-Automatisierung mit Freigabe | #32 (4300f8d), #42 (d2d3f7a) | Agent F: Auflagen → Nachprüfung → Freigabe; 31b (#42) |
+| WP-32 Lieferkette, Infrastruktur, Betreiber-2FA | #30 (bb5ade8), #32 (4300f8d) | Agent F: Auflagen → Freigabe (32b, 32c) |
+| WP-37 PWA-Feinschliff | #62 (9d4f383) | Review laut Nachweis |
+| WP-41 Betriebs- und Nutzerdokumentation | #42 (d2d3f7a) | Review mit Auflagen |
+| WP-43 Personaldaten-Filter vollständig (Matrix ↔ Code, tagesgenau) | #25 (eb5fc98), #26 (f5bec0d) | Agent F: Auflagen → Freigabe (N1 #26) |
+| WP-45 Atomarer Mehrdatei-Schreibvorgang (Journal), Kontovereinzelung | #29 (60818c0), #33 (737c453), #36 (efdde6b), #38 (57717df) | Agent F: 45b Ablehnung → vier Nachprüfungen → Freigabe |
+| WP-46 Bremse fail-closed, gleitendes Fenster, Notbremse Zugangscode | #27 (56c73d0), #28 (336788a) | Agent F: Auflagen → Freigabe |
+| WP-47 Bremsen: Lastgrenzen Stempeln und Anmeldung (je Person, je Raum, je Code) | #55 (2afab0c), #61 (006b036) | Review laut Nachweis; Flake-Fix #61 |
 
-Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests).
+### Statusstufen
+
+✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
+„prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
+67 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+
+| Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
+|---|---|---|---|---|---|---|---|---|
+| WP-01 | DONE | ✓ | ✓ | ✓ | ✓ | – | – | ✓ |
+| WP-02 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-03 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-04 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-05 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-06 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-07 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-08 | DONE | ✓ | – | – | – | – | – | ✓ |
+| WP-09 | IN_PROGRESS | T | – | – | – | – | – | – |
+| WP-10 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-11 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-12 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-13 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-14 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-16 | REVIEW | ✓ | ✓ | T | – | – | – | – |
+| WP-17 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-20 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-22 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-23 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-24 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-25 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-26 | INTEGRATED | ✓ | ✓ | T | ✓ | – | – | – |
+| WP-27 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-28 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-29 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-31 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-32 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-33 | REVIEW | ✓ | T | – | – | – | – | – |
+| WP-37 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-41 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-43 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-45 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-46 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-47 | INTEGRATED | ✓ | ✓ | ✓ | ✓ | – | – | – |
+| WP-19.1 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.4 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.7 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.10 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.11 | BLOCKED | T | T | T | T | – | – | – |
+| WP-19.12 | BLOCKED | T | T | T | T | – | – | – |
+<!-- AUTO:END -->
+
+## Klärungen und Widersprüche (2026-11-03)
+
+- **WP-26** stand hier bis heute als „Review abgelehnt … nicht integriert“. Das war veraltet: Ablehnung auf 2c1aa8e →
+  H1–H3 umgesetzt → Nachprüfung „integrierbar mit Auflagen“ → N-1…N-4 umgesetzt (7e6a4bb) → Merge #40 (9abf988,
+  2026-11-03 07:15). Belege: [`wp26-nachweis.md`](wp26-nachweis.md), `git log origin/integration/centric-complete`.
+  Offen bleibt nur, dass eine dokumentierte Freigabe *nach* den N-Auflagen im Nachweis fehlt. Damit ist auch Q-10 aus
+  `WP19-MODULPLAN.md` beantwortet.
+- **Drei Zählungen liefen auseinander:** `work-packages.json` (zuletzt erzeugt vor WP-47: 46 Pakete, 17 INTEGRATED),
+  Array `P` im Werkzeug (47 Pakete, 29 INTEGRATED) und diese Datei (46 Pakete, 25 INTEGRATED, „READY: WP-06, WP-30“,
+  WP-24/WP-28 „in Arbeit“, obwohl #59/#60 gemergt waren). Ursache: drei Stellen von Hand gepflegt. Jetzt: eine Quelle,
+  eine Prüfung (`pruefungen/acc45-status.test.js`) im CI-Gate.
+- **Risiken-Liste veraltet:** WP-11-Fehlalarm (#35), WP-45b-Nachprüfung (#33/#36/#38) und WP-26 waren als „in Arbeit“
+  geführt, sind aber integriert. WP-31 „Deploy startet bei Sicherungsfehler gesperrten Altstand“ steht als „Korrektur in
+  Arbeit“, die alte Merge-Tabelle als „Freigabe“; ein Nachweis fehlt im Repo → zu klären (Notiz bei WP-31).
+- **WP-05** ist integriert, seine Abhängigkeit WP-30 (Mail/Push) nicht; der externe Alarmweg fehlt (E-7).
+- **WP-12** ist integriert (Abnahmeprüfungen im Repo), die Akzeptanz „Testplan 3.1–3.4 auf Staging“ aber nicht erfüllt
+  (E-1). Commit 3f6f7c8 auf `acc45/qa/wp12b-409-test` ist nicht integriert.
+- **WP-33** steht seit 2026-11-02 19:03 auf REVIEW, ohne dokumentiertes Review und ohne Integration; der Branch liegt
+  rund 40 Merges hinter dem Integrationsstand.
+- **Offener Aufwand neu definiert:** bisher zählten integrierte Pakete bis DONE mit (165,5 PT). Jetzt zählt nur offene
+  Entwicklung; was integrierten Paketen bis zur Produktion fehlt, steht als Statusstufe und in den Paketen `E-*`.
+- **WP-19** war mit 25 PT geführt; der Modulplan schätzt 63–98 PT (WP-19.0…19.13). **Intelligence** war „kein
+  ACC45-Paket“ und nicht in der JSON; jetzt eigener Strang mit eigener Summe, ohne die ACC45-Zahlen zu verändern.
 
 ## Gefundene und behobene Fehler (Auswahl, alle mit Test rot → grün)
 
@@ -44,27 +168,33 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 - Bereichssicht der Schichtverantwortung nicht tagesgenau → behoben.
 - R0-Abschaltung konnte fälschlich Erfolg melden → behoben.
 - Leere Sicherung hätte als Erfolg gegolten → behoben.
+- Löschlauf ohne Fristprüfung (Server-Hänger, gesetzlich aufzubewahrende Zeiten löschbar) → behoben (WP-26, #40).
 
-## Neu erkannte Risiken (eigene Pakete)
+## Offene Risiken (je mit Paket)
 
-- WP-45: Abbruch mitten in einem Mehrdatei-Schreibvorgang kann einen gemischten Stand hinterlassen.
-- WP-46: Bremse lässt bei Ablagefehlern durch (fail-open); festes Zählfenster.
-- WP-43 N1: Konten/Monatswerte für Personen mit Versetzung „nicht verfügbar“ (Funktion) – behoben (#26).
-- WP-11: harter Fehlalarm JArbSchG (Spätdienst bis 21 Uhr für über 16-Jährige) – Korrektur in Arbeit, Release-Blocker.
-- WP-26 (Review abgelehnt): Löschlauf ohne Fristprüfung (Server-Hänger, gesetzlich aufzubewahrende Zeiten löschbar) – Korrektur in Arbeit, nicht integriert.
-- WP-45b (Review abgelehnt, nachgebessert): Rückhol-Werkzeug konnte still Daten verlieren – Nachprüfung läuft.
-- WP-31: Deploy konnte bei Sicherungsfehler gesperrten Altstand wieder starten – Korrektur in Arbeit.
+- Stempel „500 nach Speicherung“ unter langsamer Platte: Wiederholung könnte doppelt stempeln → WP-07b.
+- Stempel-/Korrekturkette: Folgebefunde F2, F4–F8 → WP-14c. Monatsabschluss und Pausen erst im Review → WP-16.
+- Lesebremse schützt große Bestände nicht; Feed liest den vollen Bestand → WP-47b.
+- Altfeeds ohne Herkunft, Passwortwechsel widerruft Feeds nicht → WP-24b (Entscheidung bis 2026-12-01, E-16).
+- Ältere Spur-Zeilen nennen den Tag → WP-16b.
+- WP-31-Befund (Altstand nach Sicherungsfehler) ohne Nachweis im Repo → klären.
 
 ## Offene Nutzerfreigaben und -entscheidungen
 
-1. WP-09: Merge des Integrationsstands nach `main` und Produktiv-Deploy (nach Staging-Abnahme).
-2. Isolierte VPS-Proben (WP-03 Rücksprung A→B→A, WP-04 Restore auf dem VPS).
-3. WP-04: Speicherziel, Verwahrung des restic-Passworts, Alarmdienst.
-4. WP-03-Einführung: Migration der Produktions-`.env`, gesperrte Bilder samt Tags entfernen.
-5. WP-44 (A9): Ablauf Z1–Z7.
-6. Fachlich: 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit, Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst).
-   Weiter fachlich: `zuschlaege` als Lohnbestandteil? Eigene Bank-/Lohndaten für Beschäftigte sichtbar (Art. 15)? `rolleSeit`/`rolleVerlauf` für MA/BR/SV? Sondereinsätze tagesgenau (umgesetzt) bestätigen.
-7. Externe Gates: Pentest beauftragen, iPhone/Tablet, Rechtstext-Inhalte, Kriterien je Branchenpaket.
+Als Pakete geführt (Strang `extern`): E-16 (ACC45-Entscheidungen vor dem Release), E-17 (Freigabe Intelligence-Block),
+E-18 (Code-Rotation Z1–Z7), dazu die externen Abnahmen E-1…E-15. Einzelheiten:
+
+1. WP-09: Merge des Integrationsstands nach `main` und Produktiv-Deploy (nach Staging-Abnahme E-1).
+2. Isolierte VPS-Proben (WP-03 Rücksprung A→B→A, WP-04 Restore auf dem VPS) → E-8.
+3. WP-04: Speicherziel, Verwahrung des restic-Passworts, Alarmdienst → E-8, E-7.
+4. WP-03-Einführung: Migration der Produktions-`.env`, gesperrte Bilder samt Tags entfernen → E-10.
+5. WP-44 (A9): Ablauf Z1–Z7 → E-18.
+6. Fachlich: 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit,
+   Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst); `zuschlaege` als Lohnbestandteil? Eigene Bank-/Lohndaten
+   für Beschäftigte sichtbar (Art. 15)? `rolleSeit`/`rolleVerlauf` für MA/BR/SV? Sondereinsätze tagesgenau bestätigen;
+   WP-14b N2 Vier-Augen, M4 24-h-Einsatz; WP-24 Passwortwechsel/Feeds → E-16.
+7. Externe Gates: Pentest beauftragen (E-4a), iPhone/Tablet (E-3), Rechtstext-Inhalte (E-5), Fachfreigaben je
+   Branchenmodul (E-15).
 
 ### Bewusst zurückgestellt (Nutzerentscheidung 2026-11-03, vor dem Produktiv-Release erneut vorlegen)
 
@@ -78,52 +208,22 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 - Planung darf die Einrichtung bearbeiten (Dienstarten, Zeiten, Mindestbesetzung, Vorlagen).
 - Lange Dienste (> 10 h) automatisch erlaubt, nur Hinweis.
 - Jugendschutz-Schalter „mehrschichtig“ auch für die Planung.
+- WP-19: 50 Produktentscheidungen ([`WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md`](WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md)).
 
-## WP-19 – Statusstufen je Modul
+## WP-19 – Module
 
-Stand 2026-11-03. Pläne: [`WP19-MODULPLAN.md`](WP19-MODULPLAN.md) (Stand, Lücken, Pakete WP-19.0–19.13, Aufwand 63–98 PT,
-kritischer Pfad) und [`WP19-OFFENE-FACHNACHWEISE.md`](WP19-OFFENE-FACHNACHWEISE.md) (Prüfvorbehalte, Blocker).
-Entscheidungen: [`WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md`](WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md).
+Pläne: [`WP19-MODULPLAN.md`](WP19-MODULPLAN.md) (Pakete WP-19.0…19.13) und
+[`WP19-OFFENE-FACHNACHWEISE.md`](WP19-OFFENE-FACHNACHWEISE.md) (Prüfvorbehalte, Blocker → E-15). Statusstufen je Modul
+stehen im erzeugten Block (Zeilen WP-19.x; „T“ = nur Server-Teilumfang). Alle zwölf Module stehen in der Registry auf
+`geplant` (nicht einschaltbar) – keines gilt als geliefert.
 
-Stufen: (1) implementiert · (2) lokal getestet · (3) unabhängig reviewed · (4) integriert · (5) Staging fachlich
-geprüft · (6) rechtlich/fachlich freigegeben · (7) produktiv. „T“ = nur Server-Teilumfang (Kernlogik, Schreibweg, Sicht,
-Unit-Tests), nicht der entschiedene Gesamtumfang. Alle zwölf Module stehen in der Registry auf `geplant`
-(nicht einschaltbar) – keines gilt als geliefert.
+## CENTRIC Intelligence – eigener Strang
 
-| Modul | (1) | (2) | (3) | (4) | (5) | (6) | (7) | Integration |
-|---|---|---|---|---|---|---|---|---|
-| 1 Posten | T | T | T | T | | | | #49 |
-| 2 Wachbuch | | | | | | | | – |
-| 3 Objektbericht | | | | | | | | – |
-| 4 Bereichsplan | T | T | T | T | | | | #49 |
-| 5 Pflegequalifikation | | | | | | | | – |
-| 6 Bereitschaftsdienst | | | | | | | | – |
-| 7 Geteilter Dienst | T | T | T | T | | | | #49 |
-| 8 Funktionsdienst | | | | | | | | – |
-| 9 Rotation | | | | | | | | – |
-| 10 Anlagen | T | T | T | T | | | | #44 |
-| 11 Maschinenqualifikation | T | T | T | T | | | | #44 |
-| 12 Kontinuierliche Schichtmodelle | T | T | T | T | | | | #44 |
+Abgleich: [`INTELLIGENCE-ABGLEICH.md`](INTELLIGENCE-ABGLEICH.md) · Plan: [`INTELLIGENCE-ENTWICKLUNGSPLAN.md`](INTELLIGENCE-ENTWICKLUNGSPLAN.md).
+Pakete WP-I1…WP-I37 stehen im Strang `intelligence` der JSON mit eigener Summe; der Plan ist ein Vorschlag zur Freigabe
+(E-17), nichts ist begonnen. Intelligence blockiert keinen ACC45-Schritt.
 
-Gemeinsamer Kern (Registry, Aktivierung, Branchenkatalog, Andockpunkte): Stufen 1–4 (#44). Es fehlen u. a.
-Aktivierungsoberfläche, Mitbestimmungsbestätigung (G6), betriebliche Regelwerte mit Metadaten und das Einhängen der
-Modul-Oberflächen in `src/App.jsx` (Paket WP-19.0).
-
-## Release-Risiken
-
-- Personaldaten-Filter in Produktion erst mit dem Integrationsstand (bis dahin keine echten Beschäftigtendaten).
-- WP-19 (25 PT) ohne fachliche Kriterien nicht abnahmefähig. Seit 2026-11-03 entschieden; Neuschätzung laut
-  Modulplan 63–98 PT, Blocker der Produktivfreigabe in `WP19-OFFENE-FACHNACHWEISE.md`.
-- Echte Geräte und externer Pentest sind nicht von Agenten erbringbar.
-
-## CENTRIC Intelligence – eigener Entwicklungsblock
-
-Intelligence ist **kein ACC45-Paket** und steht weder in den 46 Paketen noch in den 165,5 PT. Der Block wird getrennt geführt (Stand 2026-11-03, Vorschlag zur Freigabe, nichts begonnen):
-
-- Abgleich Spezifikation gegen Code: [`INTELLIGENCE-ABGLEICH.md`](INTELLIGENCE-ABGLEICH.md)
-- Entwicklungsplan (WP-I1 … WP-I37, Abhängigkeiten, Recht, Abnahme): [`INTELLIGENCE-ENTWICKLUNGSPLAN.md`](INTELLIGENCE-ENTWICKLUNGSPLAN.md)
-
-**Ehrliche Statuszahl, F1–F18 (Funktionskatalog Fassung 7):**
+**Ehrliche Statuszahl, F1–F18 (Funktionskatalog Fassung 7), Abgleich gegen den Code:**
 
 | Klasse | Funktionen |
 |---|---|
@@ -132,4 +232,11 @@ Intelligence ist **kein ACC45-Paket** und steht weder in den 46 Paketen noch in 
 | 3 nur spezifiziert | **11 von 18** (F1, F4, F5, F6, F8, F9, F10, F11, F12, F14, F15) |
 | 4 noch gar nicht umgesetzt (nur Konzept) | **4 von 18** (F13, F16, F17, F18) |
 
-Kein Gateway, kein Modell, kein Anbieter-Zugang im Code. Geschätzter Aufwand des gesamten Blocks: 288–505 PT (Schätzung, nicht belegt; ohne Anwalts-, Anbieter- und Pilotarbeit). Abhängigkeiten zu ACC45: WP-11, WP-22, WP-43 (integriert), WP-19 und WP-42 (offen); Intelligence blockiert keinen ACC45-Schritt.
+Kein Gateway, kein Modell, kein Anbieter-Zugang im Code.
+
+## Release-Risiken
+
+- Personaldaten-Filter in Produktion erst mit dem Integrationsstand (bis dahin keine echten Beschäftigtendaten).
+- WP-19-Module ohne Fachfreigaben (E-15) nur im Hinweisbetrieb; Blocker in `WP19-OFFENE-FACHNACHWEISE.md`.
+- Echte Geräte (E-2, E-3) und externer Pentest (E-4) sind nicht von Agenten erbringbar.
+- Konfliktzone `src/App.jsx` begrenzt die Parallelität über alle Stränge (siehe `GESAMTPLAN.md`).

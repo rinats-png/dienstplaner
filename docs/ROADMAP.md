@@ -3,6 +3,13 @@
 **Stand:** 11.10.2026 · **Grundlage:** [`IST-STAND.md`](IST-STAND.md) (geprüft gegen `main` @ `64d08a4`), Marktanalyse Phase 2–6, Deep-Research-Bericht und Gegenanalyse (beide nur, soweit belegt), Viability-Ladder.
 **Leitsatz:** CENTRIC hat mehr Produkt als Marktbeweis. Gebaut wird, was Kunden als Kaufbedingung nennen, nicht was Wettbewerber haben.
 
+**Entwicklungsstand (automatisch):**
+<!-- AUTO:BEGIN entwicklung -->
+Stand der Entwicklung aus [`docs/acc45/work-packages.json`](acc45/work-packages.json) (erzeugt, nicht von Hand ändern):
+126 Pakete, davon 29 integriert und 2 produktiv; offener Entwicklungsaufwand 405–690 PT (ACC45 41–61,5, Folgepakete 13–25,5, WP-19 63–98, Intelligence 288–505). Kritischer Pfad gemeinsam 77–133 PT.
+Prognosen (optimistisch / realistisch / bei Problemen, Arbeitstage ab 2026-11-04): A ACC45-Backlog 2026-11-06 / 2026-11-13 / 2026-12-01; B technische Vollumsetzung 2026-11-25 / 2027-01-13 / 2027-04-30; C Produktionsreife 2026-12-29 / 2027-02-22 / 2027-05-18. Rechnung und Annahmen: [`docs/acc45/GESAMTPLAN.md`](acc45/GESAMTPLAN.md).
+<!-- AUTO:END entwicklung -->
+
 ---
 
 ## 1. Ziel und Rechnung dahinter

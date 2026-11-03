@@ -671,7 +671,7 @@ zuzüglich Wartezeit auf WP-16 (Status BLOCKED/„in Zusammenführung“).
 liegt die Durchlaufzeit nahe der oberen Grenze des Abhängigkeitspfads, weil drei der vier Opus-Pakete (19.2, 19.6, 19.7)
 in denselben Wellen liegen. Damit ersetzt WP-19 mit **27–40 PT** den bisherigen Anteil von 25 PT im kritischen Pfad
 WP-02 → … → WP-22 → WP-19 → WP-42 (bisher 48,5 PT gesamt); der Gesamtpfad verlängert sich entsprechend.
-Backlog (`werkzeug/acc45-backlog.mjs`, Array `P`) sollte WP-19 in 19.0–19.13 aufteilen; nicht Teil dieses Auftrags.
+Seit 2026-11-03 ist WP-19 in `work-packages.json` in WP-19.0–19.13 aufgeteilt (Strang `wp19`); WP-19 bleibt als Sammelpaket. Q-10 ist geklärt: WP-26 ist integriert (#40, 9abf988).
 
 **Größte Hebel für den Pfad:** (1) 19.0 sofort und vollständig (alle Module warten auf Regelwerte/Einhängepunkte),
 (2) WP-16 zügig integrieren (blockiert 19.3, 19.6, 19.7), (3) Q-10 (WP-26-Stand) vor Welle 2 klären,

@@ -34,7 +34,7 @@ Laufende Agenten (Stand heute) behalten ihr Modell bis zum nächsten Übergabepu
 
 ## Kontextdisziplin (zusätzlich zum Modell)
 
-- `node werkzeug/acc45-backlog.mjs brief WP-xx` statt Gesamtanalyse; `bereit` statt Backlog lesen.
+- `node werkzeug/acc45-backlog.mjs brief WP-xx` statt Gesamtanalyse; `bereit` statt Backlog lesen. Modell je Paket steht im Feld `modell` von `work-packages.json` (Übersicht in `DEPENDENCIES.md`).
 - Tests über `werkzeug/test-kurz.mjs --sperre -- …`; Logs speichern und kompakt auswerten.
 - Vorab `werkzeug/vorpruefung.mjs`.
 - Vollregression nur in CI an den Integrations-/Release-Gates.
