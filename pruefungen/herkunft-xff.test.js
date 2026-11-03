@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { herkunftBestimmen, vertrauteListe, adresseNormieren } from "../server/lib/schutz.mjs";
+import { serverStarten } from "./hilfen/port.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -76,27 +77,19 @@ describe("herkunftBestimmen", () => {
 
 /* ---------- über den echten Server ---------- */
 
-let kind, statik, daten, log = "";
+let kind, statik, daten, log = () => "";
 async function starten(env) {
   statik = await mkdtemp(path.join(tmpdir(), "centric-xff-statik-"));
   daten = await mkdtemp(path.join(tmpdir(), "centric-xff-daten-"));
   await mkdir(path.join(statik, "assets"));
   await writeFile(path.join(statik, "index.html"), "<!doctype html><title>x</title>");
-  const port = 30000 + Math.floor(Math.random() * 20000);
-  log = "";
-  const umgebung = { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
+  /* Freier Port vom Betriebssystem, Bereitschaft am eigenen Prozess (hilfen/port.mjs). */
+  const st = await serverStarten({ cwd: WURZEL, env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
     CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: "xff-pfeffer", NODE_ENV: "production",
-    CENTRIC_AUFRAEUMEN: "aus", ...env };
-  if (env.CENTRIC_VERTRAUTE_PROXYS === undefined) delete umgebung.CENTRIC_VERTRAUTE_PROXYS;
-  kind = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, env: umgebung, stdio: ["ignore", "pipe", "pipe"] });
-  kind.stdout.on("data", (d) => { log += d; });
-  kind.stderr.on("data", (d) => { log += d; });
-  const B = `http://127.0.0.1:${port}`;
-  for (let i = 0; i < 100; i++) {
-    if (await fetch(`${B}/gesund`).then((r) => r.ok).catch(() => false)) return B;
-    await new Promise((w) => setTimeout(w, 100));
-  }
-  throw new Error(`Server startet nicht:\n${log}`);
+    CENTRIC_AUFRAEUMEN: "aus", ...env, CENTRIC_VERTRAUTE_PROXYS: env.CENTRIC_VERTRAUTE_PROXYS } });
+  kind = st.kind;
+  log = st.log;
+  return st.basis;
 }
 afterEach(async () => {
   if (kind) { kind.kill(); await new Promise((r) => kind.once("exit", r)); kind = null; }
@@ -120,8 +113,8 @@ describe("server.mjs mit echter Gegenstelle 127.0.0.1", () => {
     const B = await starten({ CENTRIC_VERTRAUTE_PROXYS: undefined });
     const st = await fehlversuche(B, (i) => `198.51.100.${i + 1}`);
     expect(st, JSON.stringify(st)).toContain(429);
-    expect(log).toMatch(/CENTRIC_VERTRAUTE_PROXYS ist leer/);
-    expect(log).toMatch(/WARNUNG: Anfrage mit X-Forwarded-For/);
+    expect(log()).toMatch(/CENTRIC_VERTRAUTE_PROXYS ist leer/);
+    expect(log()).toMatch(/WARNUNG: Anfrage mit X-Forwarded-For/);
   }, 30000);
 
   it("vertrauter Proxy: verschiedene Clients rechts zählen getrennt", async () => {

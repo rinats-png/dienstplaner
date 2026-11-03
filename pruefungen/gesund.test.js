@@ -18,11 +18,12 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serverStarten } from "./hilfen/port.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let wurzel, G, Z;
@@ -381,20 +382,15 @@ describe("server.mjs: /gesund und Healthcheck", () => {
   });
 
   async function starten(env, { probeKaputt = false } = {}) {
-    const port = 30000 + Math.floor(Math.random() * 20000);
     const datenOrt = await mkdtemp(path.join(tmpdir(), "centric-gesund-d-"));
     if (probeKaputt) await writeFile(path.join(datenOrt, ".gesund"), "kein Verzeichnis");
-    const k = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
-      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: datenOrt,
+    /* Freier Port vom Betriebssystem, Bereitschaft am eigenen Prozess (hilfen/port.mjs). */
+    const st = await serverStarten({ cwd: WURZEL,
+      env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: datenOrt,
         CENTRIC_ABLAGE: "dateien", CENTRIC_PFEFFER: "g", NODE_ENV: "production", CENTRIC_AUFRAEUMEN: "aus",
         CENTRIC_GESUND_PLATZ_KRITISCH_MB: "0", ...env } });
-    kinder.push(k);
-    for (let i = 0; i < 100; i++) {
-      const ok = await fetch(`http://127.0.0.1:${port}/gesund`).then(() => true).catch(() => false);
-      if (ok) return port;
-      await new Promise((w) => setTimeout(w, 100));
-    }
-    throw new Error("Server startet nicht");
+    kinder.push(st.kind);
+    return st.port;
   }
   const healthcheck = async (port) => {
     const docker = await readFile(path.join(WURZEL, "Dockerfile"), "utf8");
