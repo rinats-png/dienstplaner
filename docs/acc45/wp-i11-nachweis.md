@@ -8,9 +8,9 @@ Beschreibung des Verfahrens: [`../intelligence/FAKTENPAKET.md`](../intelligence/
 | Stufe | Stand | Beleg |
 |---|---|---|
 | implementiert | **ja** | Commit „WP-I11: Faktenpaket-Vertrag …" (siehe Commit-Liste unten) |
-| lokal getestet | **ja** — gezielt, einzeln, 167/167 grün | Abschnitt „Rot → Grün", „Regression" |
+| lokal getestet | **ja** — gezielt, einzeln; Erststand 167/167, nach Nachtrag 199/199 grün | Abschnitt „Rot → Grün", „Regression" |
 | CI Prüfung | siehe Abschnitt „CI" | Lauf-IDs |
-| reviewt | **nein** — unabhängige Opus-Sicherheitsprüfung steht aus (Betreiberanforderung) | – |
+| reviewt | **teilweise** — unabhängige Sicherheitsprüfung durchgeführt (Befunde F1–F10); Nachtrag umgesetzt, aber **nicht erneut unabhängig geprüft** | Abschnitt „Nachtrag" |
 | integriert | **nein** — kein PR, kein Merge | – |
 | Modellaufruf | **keiner** — kein Anbieter, kein Netz, keine Route, kein Schlüssel angelegt | statischer Test „Modulgrenzen" |
 
@@ -126,9 +126,84 @@ Keine Flakes beobachtet.
 | A13 | Falsch-Positive verhindern Funktion (fail closed) | bewusst keine Auflösung | faktenpaket › „Dienstart Anna" | Betrieb mit namensgleichem Fachvokabular kann eine Funktion nicht nutzen |
 | A14 | Fehlermeldungen/Audit tragen Personendaten | Meldungen ohne Werte, Audit nur Kategorien | vertraege › „Fehlermeldungen nennen nie den geprüften Wert"; faktenpaket › Audit | – |
 
+## Nachtrag: Befunde des unabhängigen Sicherheitsreviews (F1–F10)
+
+Branch `intelligence/wp-i11-nachtrag` (aus `intelligence/wp-i11-faktenpaket` @ `e35a681`), fast-forward nach `intelligence/wp-i11-faktenpaket`. Kein Modellaufruf, kein Netz, kein Schlüssel. `work-packages.json` nicht geändert.
+
+Commits: `6fbda76` rote Tests · `09fcd9c` Fixes (+ Anpassung bestehender Tests an die neue Form) · danach dieser Nachweis und `FAKTENPAKET.md`.
+
+### Rot → Grün
+
+Neue Datei `pruefungen/intelligence-nachtrag.test.js` (32 Fälle). Auf `6fbda76` (vor dem Fix) **26 von 31 rot**; die 5 grünen sind die zweiten Mutanten-Tests (M5a, M7b Bildner, M12, M13) und die Gegenprobe „E-Mail wird erkannt" — sie prüfen Bestehendes und sind bewusst grün. Der 32. Fall (lange Ziffern-/Punkt-/@-Läufe) kam bei der Nachmessung dazu: Das Muster `GRAD` (`\d+\s*°`) brauchte für 20 × 4000 Ziffern **≈ 7,3 s** (quadratisch) — vor dem Fix gemessen, Test danach grün (≈ 0,1 s). Nach dem Fix: **6 Dateien, 199/199 grün**, `eslint` ohne Befund in `server/lib/intelligence` und den Testdateien.
+
+| Befund | Fix (Datei) | Test (nachtrag › …) |
+|---|---|---|
+| F1 hoch: `bezug.schichtId` ungeprüfter Freitext-Kanal | nur Dienstart der Sicht, sonst `KI_NICHT_GEFUNDEN`; geht nur als Dienst-Alias; `bezug` bei Funktionen ohne Felder (F5, F9) → `KI_EINGABE` (`faktenpaket.mjs`); Doku-Satz in FAKTENPAKET 4.2 korrigiert | F1 (3 Fälle) |
+| F2 mittel: Homoglyphen / fremde Schrift / leere Einträge | NFKC + Doppelgänger-Tabelle (eingebaut, ohne Abhängigkeit); `SCHRIFT` für alles außerhalb Latin/Latin-1 (+ deutsche Typografie); Normalisierung auf `\p{L}\p{N}`; leerer Eintrag → `SPERRLISTE_LUECKE`; `KENNUNG_MUSTER` nur Latin/Latin-1 (`leckpruefung.mjs`, `schemas.mjs`) | F2 (4 Fälle) |
+| F3 mittel: Umlaut asymmetrisch | NFKC zuerst; Namen/Bezeichnungen in beiden Schreibweisen (ae und a) | F3 (2 Fälle) |
+| F4 mittel: rohe `{{person:…}}` aus der Modellausgabe | jede geschweifte Klammer außerhalb `{{typ:<Alias>}}` → `KI_PRUEFER`; Ersetzung in einem Durchgang (`alias.mjs`) | F4 |
+| F5 mittel: Abwesenheitskürzel als Dienstart; Schutzbefund an Person | Dienstarten paketweit opak (`D_…`, Alias-Typ `dienst`); unbekannter Dienst-Bezug der Faktenquelle verworfen; `modellOrt` (Vorgabe `extern`): Schutzbefund ohne Person, `kandidat.hinderung` „schutz" fällt weg; FAKTENPAKET §9 | F5 (4 Fälle) |
+| F6: Kurznamen nur ganzes Wort | Wortanfang + höchstens 2 Buchstaben | F6 |
+| F7: Musterlücken | Gesundheitsstämme (kranken…, Krebs, Reha, Klinik, Insulin, Chemo, Dialyse, Demenz …) mit Berufsausnahme „Krankenpfleger"; Geburtsdatum `TT.MM.JJ(JJ)`; Dezimalkomma-Koordinaten; `DRITTE` (Anrede + Großwort); **F7A-Fremdtext nicht freischaltbar** (`FREISCHALTUNG_GESPERRT`, `KI_FUNKTION`) | F7 (5 Fälle) |
+| F8: Index statt Betriebskennung; Karte ohne Integrität | `rueckuebersetzen(…, bestand)` prüft `mandanten[Index].id` = Betrieb der Karte, Index ohne Rückfall (gemeinsam mit dem Bildner: `betriebIndexAusSitzung`); Lauf-Store-Karte mit HMAC, MAC-Schlüssel vom Aufrufer, kein Vorgabewert | F8 (2 Fälle) |
+| F9: E-Mail-Muster quadratisch | Eingabe vorab zerlegt (Leerraum, „@"), linear; zusätzlich `GRAD` begrenzt | F9 (3 Fälle, < 500 ms) |
+| F10: `__proto__`; Schema-Schlüsselwörter nur bei Erreichen geprüft | `defineProperty` in der Rückübersetzung; `schemaPruefen` beim Laden für jeden Zweig, Export `SCHEMA_SCHLUESSELWOERTER`, statischer Test; Kommentar 48 Bit / ≈ 34,6 Bit korrigiert | F10 (2 Fälle) |
+
+**Angepasste bestehende Tests** (Form, keine Abschwächung): Rückübersetzung bekommt `bestand`, Lauf-Store `MAC`; Dienstart-`ref` und `bezug.ref` werden mit `aliasKarte.alias("dienst", …)` verglichen; der Determinismus-Test maskiert `D_…` wie andere Alias; der Schutzbefund-Test läuft mit `modellOrt: "lokal"` (die externe Vorgabe hat einen eigenen Test); „Dienstart Anna" ist jetzt „Qualifikation Anna" (eine Dienstart erreicht das Paket seit F5 nicht mehr als Name — zusätzlich geprüft, dass „Anna" nicht im Paket steht).
+
+### Mutanten (neu gelaufen)
+
+Läufer `scratchpad/wpi11-nachtrag/mutanten.mjs` (außerhalb des Repos), nur im eigenen Worktree, mit Sperrdatei, eine Mutation zur Zeit, Datei nach jedem Lauf zurückgeschrieben und gegen den Ausgangsinhalt verglichen; am Ende `git status` von `server/lib/intelligence` leer. Basis 199/199 grün.
+
+**48 Mutanten, 47 getötet, 1 überlebt (äquivalent).** rot = Anzahl roter Tests von 199.
+
+| Nr. | Mutation | rot | Nr. | Mutation | rot |
+|---|---|---|---|---|---|
+| M1a | Sicht-Felder ohne Registry | 2 | N1a | `schichtId` ungeprüft, roh | 3 |
+| M1b | Faktenquelle + Schlussfilter ohne Registry | 3 | N1b | Bezug bei F5/F9 zugelassen | 1 |
+| M1c | Positivliste ganz umgangen | 4 | N2a | Doppelgänger-Tabelle aus | 1 |
+| M2 | Sperrliste aus | 38 | N2b | `SCHRIFT` aus | 1 |
+| M3 | Alias ohne Schlüssel | 4 | N2c | Sperrlisten-Lücke ignoriert | 1 |
+| M4 | Rückübersetzung unberechtigte Rolle | 2 | N2d | Normalisierung nur a-z0-9 | 1 |
+| M5a | Freitext für alle Funktionen | **2** | N3a | ohne NFKC | 1 |
+| M5b | Abwesenheitsart statt „abwesend" | 19 | N3b | nur eine Umlaut-Schreibweise | 2 |
+| M6a | Leck-Ergebnis ignoriert | 6 | N4 | Klammerprüfung aus | 1 |
+| M6b | fehlende Sperrliste/Ausnahme = ok | 2 | N5a | Dienstarten nicht opak | 6 |
+| M7a | Alias raumübergreifend | 2 | N5b | Schutzbefund bleibt an Person | 1 |
+| M7b | Rückfall auf ersten Betrieb | **4** | N5c | unbekannter Dienst-Bezug angenommen | 1 |
+| M8 | Schema: unbekannte Felder durch | 4 | N6 | Kurznamen nur ganzes Wort | 1 |
+| M9 | Schutzbefunde nicht neutral | 3 | N7a | neue Gesundheitsstämme weg | 1 |
+| M10 | Statusnachweise nicht gefiltert | 19 | N7b | Berufsausnahme zu weit | 1 |
+| M11 | Rollenprüfung aus | 3 | N7c | `TT.MM.JJJJ` aus | 1 |
+| M12 | Rohbestand statt Sicht | **2** | N7d | nur Dezimalpunkt | 1 |
+| M13 | Karte serialisierbar (`toJSON`) | **2** | N7e | `DRITTE` aus | 1 |
+| M13b | Karteninhalt aufzählbar | 2 | N7f | F7A-Fremdtext frei | 1 |
+| M14 | nur Regex-Zweig „SGB IX" aus | **0** | N8a | Betriebskennung nicht geprüft | 1 |
+| M14c | SGB-IX-Erkennung ganz aus (Zweig + Stamm) | 1 | N8b | MAC nicht geprüft | 1 |
+| M14b | Gesundheitsprüfung ganz aus | 27 | N9a | altes E-Mail-Muster | 2 |
+| | | | N9b | altes `GRAD`-Muster | 1 |
+| | | | N10a | Zuweisung statt `defineProperty` | 1 |
+| | | | N10b | `schemaPruefen` ohne Unterzweige | 1 |
+
+- **M5a, M7b, M12, M13** (vorher je ein Test): jetzt je ein zweiter, unabhängiger Test (nachtrag › „zweite Tests"); M7b zusätzlich über die Rückübersetzung (4 Tests).
+- **M14 überlebt — äquivalent:** Der Regex-Zweig `\bsgb\s+ix\b` ist vollständig im Wortstamm `sgbix` (kompakter Text) enthalten; ihn zu entfernen ändert kein Verhalten. Gegenprobe M14c (beides aus) wird getötet („GESUNDHEIT: SGB IX"). Der redundante Zweig bleibt stehen (schadet nicht).
+- **Schwach getötet (genau ein Test):** fast alle N-Mutanten — jeweils durch ihren gezielten Befund-Test. Ein zweiter, unabhängiger Test fehlt dort; Kandidaten für die erneute Prüfung.
+
+### Neue und verbleibende Restrisiken (ehrlich)
+
+1. **Dienstart-Zeiten** stehen weiter im Paket: ein ganztägiger „Dienst" an einzelnen Tagen lässt sich als Abwesenheit deuten (nicht ihre Art). Ein Kürzel wie „KK" im **Fremdtext** erkennt die Leck-Prüfung nicht.
+2. **Schutzbefund extern:** `befund.stufe` mit Person und Datum desselben Befunds bleibt; über das Datum ist ein Zusammenhang vermutbar. `modellOrt: "lokal"` koppelt — wer „lokal" setzen darf, muss I13 festlegen; der Bildner vertraut dem Aufrufer.
+3. **Doppelgänger-Tabelle ist klein** (Kyrillisch, Griechisch, einige lateinische Sonderformen) — keine vollständige Unicode-Confusables-Liste. Außerhalb Latin-1 greift `SCHRIFT`; Ziffern-Verfremdung („W3berknecht") bleibt unerkannt.
+4. **Mehr Falsch-Positive (fail closed):** polnische/türkische Buchstaben (ł, ş) in Fremdtext und Kennungen → `SCHRIFT`; kurze Namen treffen Wortanfänge („Al"/„alle"); jedes großgeschriebene Wort nach Anrede/„Patient" → `DRITTE`; „Klinik", „Demenz", „Reha" auch als Bereichsnamen im Fremdtext; Tausenderpunkte als Koordinaten; ein leer normalisierender Name sperrt alle Pakete des Betriebs.
+5. **Berufsausnahme** „(Kinder-)Krankenpfleger…" nimmt diese Folge aus dem Gesundheitsabgleich — ein Satz wie „Krankenpflegerin kommt wegen …" wird nur über andere Stichworte erkannt.
+6. **F7A** ist bis zur serverseitigen Maskierung nicht nutzbar (Fremdtext → `KI_FUNKTION`).
+7. **Rückübersetzung** braucht den **aktuellen** Bestand vom Aufrufer; ein veralteter Bestand entwertet die Betriebsprüfung. MAC- und Alias-Schlüssel (Quelle, Trennung, Wechsel) legt I13 fest.
+8. **API geändert** (noch kein Aufrufer im Produkt): `rueckuebersetzen` verlangt `bestand`, `fuerServerSpeicher`/`ausServerSpeicher` verlangen den MAC-Schlüssel; Lauf-Store-Daten ohne MAC aus dem Erststand sind nicht mehr ladbar (es gibt keine).
+9. Die Laufzeitgrenze (< 500 ms) ist lokal gemessen; auf langsamen CI-Rechnern bleibt Abstand (gemessen 50–130 ms je Fall).
+
 ## Offene Punkte
 
-1. Unabhängige Opus-Sicherheitsprüfung (Betreiberanforderung) — ausstehend.
+1. Unabhängige Sicherheitsprüfung: durchgeführt; Nachtrag F1–F10 umgesetzt. Eine erneute unabhängige Prüfung des Nachtrags steht aus.
 2. B-5: Schichtverantwortung und Funktionen für Beschäftigte (vorerst: SV keine, Beschäftigte nur F9).
 3. Rechtlich zu prüfen: Pseudonymisierung, AVV, DSFA, Rechtsgrundlage, Mitbestimmung (keine Aussage hier).
 4. I13: Schlüsselquelle (Umgebungsvariable + `.env.example` + Betriebshandbuch), Weitergabe des Audits an `protokoll()`, Ablage der Alias-Karte (I14), Bereichsbegrenzung der Planung.
