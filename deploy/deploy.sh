@@ -363,23 +363,32 @@ protokoll "gesichert digest=$digest sicherung=$name"
 # Gelöscht wird nur, was als Name genau dem Muster entspricht, direkt unter
 # $SICHERUNGEN liegt und ein FERTIG trägt.
 #
-# Geschützt (WP-31b): Die Sicherung der letzten ERFOLGREICHEN Auslieferung
-# (Marke $SICHERUNGEN/.letzte-erfolgreiche, geschrieben am Ende eines
-# erfolgreichen Laufs) und alles, was jünger ist, wird nie entfernt —
-# entfernt werden nur ältere. Sonst bestünden nach einigen gescheiterten
-# Versuchen alle behaltenen Sicherungen aus Kopien desselben Stands, und
-# der Stand vor der letzten erfolgreichen Auslieferung wäre weg.
+# Geschützt (WP-31b): Es bleiben die jüngsten BEHALTEN vollständigen
+# Sicherungen, die Sicherung dieses Laufs und die Sicherung der letzten
+# ERFOLGREICHEN Auslieferung (Marke $SICHERUNGEN/.letzte-erfolgreiche,
+# geschrieben am Ende eines erfolgreichen Laufs) — alles andere darf fallen,
+# auch Sicherungen gescheiterter Versuche (Review B-1). Sonst bestünden nach
+# einigen gescheiterten Versuchen alle behaltenen Sicherungen aus Kopien
+# desselben Stands, und der Stand vor der letzten erfolgreichen Auslieferung
+# wäre weg. Zeigt die Marke auf nichts Vollständiges oder in die Zukunft,
+# wird gewarnt und nichts entfernt (Review B-2).
 geschuetzt=""
 if [[ -f "$SICHERUNGEN/.letzte-erfolgreiche" ]]; then
   geschuetzt="$(head -n1 "$SICHERUNGEN/.letzte-erfolgreiche" 2>/dev/null || true)"
-  [[ "$geschuetzt" =~ ^centric-sicherung-[0-9]{8}T[0-9]{6}Z$ ]] || {
+  if [[ ! "$geschuetzt" =~ ^centric-sicherung-[0-9]{8}T[0-9]{6}Z$ ]]; then
     warnung "Marke .letzte-erfolgreiche unlesbar — Aufbewahrung übersprungen, nichts entfernt."
     geschuetzt="UNGUELTIG"
-  }
+  elif [[ ! -f "$SICHERUNGEN/$geschuetzt/FERTIG" ]]; then
+    warnung "Marke .letzte-erfolgreiche zeigt auf keine vollständige Sicherung ($geschuetzt) — Aufbewahrung übersprungen, nichts entfernt."
+    geschuetzt="UNGUELTIG"
+  elif [[ "$geschuetzt" > "centric-sicherung-$(date -u +%Y%m%dT%H%M%SZ)" ]]; then
+    warnung "Marke .letzte-erfolgreiche liegt in der Zukunft ($geschuetzt) — Aufbewahrung übersprungen, nichts entfernt."
+    geschuetzt="UNGUELTIG"
+  fi
 fi
 vollstaendig=()
 if [[ "$geschuetzt" == "UNGUELTIG" ]]; then
-  protokoll "aufbewahrung uebersprungen: marke unlesbar"
+  protokoll "aufbewahrung uebersprungen: marke ungueltig"
 elif liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-sicherung-*' -print)"; then
   while IFS= read -r eintrag_pfad; do
     [[ -n "$eintrag_pfad" ]] || continue
@@ -392,8 +401,7 @@ elif liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric
     mapfile -t vollstaendig < <(printf '%s\n' "${vollstaendig[@]}" | LC_ALL=C sort)
     for kurz in "${vollstaendig[@]:0:${#vollstaendig[@]}-BEHALTEN}"; do
       [[ "$kurz" == "$name" ]] && continue
-      # die geschützte und alles Jüngere bleiben (Namen sind zeitlich sortierbar)
-      [[ -n "$geschuetzt" && ! "$kurz" < "$geschuetzt" ]] && continue
+      [[ "$kurz" == "$geschuetzt" ]] && continue
       rm -rf -- "${SICHERUNGEN:?}/$kurz" && protokoll "sicherung entfernt $kurz (behalten $BEHALTEN, geschützt ${geschuetzt:-keine})"
     done
   fi
