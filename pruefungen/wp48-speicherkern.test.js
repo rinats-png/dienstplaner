@@ -138,7 +138,7 @@ describe("Abdruck als SHA-256-Präfix", () => {
 
 describe("Standvermerk klein, Journal ohne zweite Kopie", { timeout: 120000 }, () => {
   it("Vermerk: nur Hash-Abdrücke, < 10 KB bei einem Bestand über 1 MB", async () => {
-    const b = betrieb({ personen: 40, monate: 12 });
+    const b = betrieb({ personen: 150, monate: 12 });
     expect(JSON.stringify(b).length).toBeGreaterThan(1_000_000);
     const { raum, g } = await angelegt("vermerk", b);
     const v = await vermerk(raum, Number(g.stand));
@@ -162,13 +162,13 @@ describe("Standvermerk klein, Journal ohne zweite Kopie", { timeout: 120000 }, (
 });
 
 describe("Alte Vermerke (Text) bleiben lesbar", { timeout: 120000 }, () => {
-  it("aktueller Stand mit altem Vermerk: geschrieben werden nur Kern und die geänderte Scherbe, danach Hash-Vermerk", async () => {
+  it("aktueller Stand mit altem Vermerk: geschrieben wird nur die geänderte Scherbe, danach Hash-Vermerk", async () => {
     const { raum, g } = await angelegt("alt-aktuell");
     await laden().setJSON(`stand:${raum}:${g.stand}`, altVermerk(g.bestand));
     const neu = kopie(g.bestand); neu.mandanten[0].abweichungen["p1|2025-02-03"] = "N";
     const erg = await B.bestandSchreiben(laden(), raum, neu, { erwarteterStand: g.stand, durch: "Pruefung" });
     expect(erg.ok).toBe(true);
-    expect(erg.geschrieben).toBe(2);
+    expect(erg.geschrieben).toBe(1);   // nur die Scherbe; der Kern ist unverändert (ohne Übersetzung: alle fünf)
     const v = await vermerk(raum, Number(erg.stand));
     expect(Object.values(v.abdruecke).every((x) => HASH.test(x))).toBe(true);
     /* Kein Wiederanlauf: die Epoche bleibt. */
@@ -207,12 +207,13 @@ describe("Alte Vermerke (Text) bleiben lesbar", { timeout: 120000 }, () => {
   });
   it("fail-closed: unbekanntes Format im Basisvermerk → Konflikt ohne Abgleich, unveraenderteScherben leer", async () => {
     const { raum, g } = await angelegt("alt-kaputt");
-    const v = await vermerk(raum, Number(g.stand));
-    v.abdruecke["m1::2025-03"] = "irgendwas";
-    await laden().setJSON(`stand:${raum}:${g.stand}`, v);
     const a = kopie(g.bestand); a.mandanten[0].abweichungen["p1|2025-02-03"] = "N";
     const b2 = kopie(g.bestand); b2.mandanten[0].abweichungen["p2|2025-04-04"] = "N";
     expect((await B.bestandSchreiben(laden(), raum, a, { erwarteterStand: g.stand, durch: "A" })).ok).toBe(true);
+    /* Danach ist der Basisvermerk unklar (ein fremdes Format). */
+    const v = await vermerk(raum, Number(g.stand));
+    v.abdruecke["m1::2025-03"] = "irgendwas";
+    await laden().setJSON(`stand:${raum}:${g.stand}`, v);
     const jetzt = await B.bestandLesenStreng(laden(), raum);
     expect((await B.unveraenderteScherben(laden(), raum, g.stand, jetzt)).size).toBe(0);
     const erg = await B.bestandSchreiben(laden(), raum, b2, { erwarteterStand: g.stand, durch: "B" });
@@ -363,7 +364,7 @@ describe("Segmentschreiber teileSchreiben", { timeout: 120000 }, () => {
     expect(b2.bestand).toEqual(a.bestand);
     expect(b2.stand).toBe(a.stand);
     expect((await vermerk(teil, Number(b2.stand))).abdruecke).toEqual((await vermerk(voll, Number(a.stand))).abdruecke);
-    const liste = async (r) => (await laden().list({ prefix: `scherbe:${r}:` })).blobs.map((x) => x.key.slice(r.length)).sort();
+    const liste = async (r) => (await laden().list({ prefix: `scherbe:${r}:` })).blobs.map((x) => x.key.slice(`scherbe:${r}:`.length)).sort();
     expect(await liste(teil)).toEqual(await liste(voll));
   }
 
@@ -528,7 +529,7 @@ describe("Epoche", { timeout: 120000 }, () => {
   it("Altbestand ohne Epoche: Lesen liefert null, das nächste Schreiben vergibt eine", async () => {
     const { raum, g } = await angelegt("epoche-alt");
     const k = await laden().getWithMetadata(`kern:${raum}`, { type: "json" });
-    const { epoche, ...meta } = k.metadata; // eslint-disable-line no-unused-vars
+    const meta = { ...k.metadata }; delete meta.epoche;
     await laden().setJSON(`kern:${raum}`, k.data, { metadata: meta });
     await laden().setJSON(`stand:${raum}:aktuell`, { nr: Number(g.stand), zeit: "x" });
     expect((await B.bestandLesen(laden(), raum)).epoche).toBe(null);

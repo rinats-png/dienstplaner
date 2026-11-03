@@ -28,12 +28,14 @@
    zwei Planer in verschiedenen Monaten stören einander nicht mehr.
    ========================================================================== */
 
+import { createHash } from "node:crypto";
+
 /** Felder, die je Monat abgelegt werden. Alle drei tragen Schlüssel der
     Form "personId|JJJJ-MM-TT". */
 export const MONATSFELDER = ["abweichungen", "erfassung", "einstempeln"];
 
-/** Aus "p3|2026-08-14" den Monat "2026-08" holen. */
-function monatVon(schluessel) {
+/** Aus "p3|2026-08-14" den Monat "2026-08" holen (null ohne erkennbares Datum). */
+export function monatVon(schluessel) {
   const teil = String(schluessel).split("|")[1] || "";
   return /^\d{4}-\d{2}/.test(teil) ? teil.slice(0, 7) : null;
 }
@@ -125,10 +127,50 @@ export function zusammensetzen(kern, scherbenListe) {
  * Fingerabdruck einer Scherbe. Wird zum Erkennen von Änderungen benutzt —
  * eine Scherbe, deren Abdruck gleich bleibt, wird nicht geschrieben.
  *
- * Bewusst kein Hash: Ein stabil sortierter JSON-Text genügt, ist billig zu
- * vergleichen und beim Nachsehen im Protokoll lesbar.
+ * Seit WP-48.2 ein SHA-256-Präfix (32 Hex-Zeichen) über den stabil
+ * sortierten Text (abdruckText). Vorher war der Abdruck der Text selbst
+ * („bewusst kein Hash") — damit war jeder Standvermerk so groß wie der
+ * Bestand, bis zu zehn davon lagen auf der Platte, und das Journal jedes
+ * Schreibvorgangs trug ihn noch einmal (docs/acc45/WP48-TEILSPEICHERUNG.md
+ * 1.2: 14 MB je Vermerk bei 150 Personen × 12 Monaten). Alte Vermerke mit
+ * Text übersetzt abdruckNormal in denselben Hash.
  */
 export function abdruck(scherbe) {
+  if (!scherbe) return "";
+  return praefix(abdruckText(scherbe));
+}
+
+/** Der Abdruck des Kerns: SHA-256-Präfix seines JSON-Texts (vorher der Text selbst). */
+export function kernAbdruck(kern) {
+  return praefix(JSON.stringify(kern) ?? "undefined");
+}
+
+const praefix = (text) => createHash("sha256").update(text).digest("hex").slice(0, 32);
+const ABDRUCK_FORM = /^[0-9a-f]{32}$/;
+
+/**
+ * Ein Abdruck aus einem gespeicherten Standvermerk in der heutigen Form —
+ * oder null, wenn er sich nicht sicher deuten lässt.
+ *
+ * - 32 Hex-Zeichen: schon ein Hash.
+ * - Ein Text, wie ihn der Server vor WP-48.2 schrieb: Scherbe
+ *   („abweichungen:…", siehe abdruckText) oder Kern (JSON eines Objekts,
+ *   „{…"). Er wird gehasht — derselbe Inhalt ergibt denselben Hash wie
+ *   abdruck/kernAbdruck heute, der Vergleich bleibt also gültig.
+ * - Alles andere: null. Der Aufrufer behandelt den ganzen Vermerk dann wie
+ *   einen fehlenden (fail-closed: Konflikt statt Abgleich, bzw. Neuberechnung
+ *   aus dem, was auf der Platte liegt).
+ * @returns {string|null}
+ */
+export function abdruckNormal(wert) {
+  if (typeof wert !== "string") return null;
+  if (ABDRUCK_FORM.test(wert)) return wert;
+  if (wert.startsWith(`${MONATSFELDER[0]}:`) || wert.startsWith("{")) return praefix(wert);
+  return null;
+}
+
+/** Der stabil sortierte Text einer Scherbe — die Grundlage des Abdrucks (und der Abdruck vor WP-48.2). */
+export function abdruckText(scherbe) {
   if (!scherbe) return "";
   const teile = [];
   for (const feld of MONATSFELDER) {
