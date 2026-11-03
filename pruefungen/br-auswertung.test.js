@@ -10,11 +10,13 @@
 
    Aufruf: npx vitest run pruefungen/br-auswertung.test.js
    ========================================================================== */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
-import { betriebsratAuswertung, BR_MINDESTGRUPPE } from "../server/lib/br-auswertung.mjs";
+import { bestandFuerRolle, zusammenfuehren, MATRIX } from "../server/lib/rechte.mjs";
+import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, BR_MINDESTGRUPPE, BR_HAEPPCHEN_MS } from "../server/lib/br-auswertung.mjs";
+import { median, urteil } from "./laufzeitmessung.mjs";
+import { aufbauen } from "./hilfen/szenario.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -47,24 +49,178 @@ describe("die Auswertung selbst", () => {
     expect(zeile(HEUTE.slice(0, 7), null)).toMatchObject({ gesperrt: true });
     expect(zeile(HEUTE.slice(0, 7), null).dienste).toBeUndefined();
   });
-  it("die große Einheit: Summen, Nacht und lange Dienste aus dem Plan, Ist-Stunden aus bestätigten Zeiten", () => {
+  it("die große Einheit: Summen, Nacht und lange Dienste aus dem Plan; das Ist einer einzelnen Person bleibt verborgen", () => {
     const monat = tag(-3).slice(0, 7);
     const z = zeile(monat, "gross");
     expect(z.gesperrt).toBe(false);
     expect(z.personen).toBe(3);
     expect(z.nachtdienste).toBeGreaterThanOrEqual(1);
     expect(z.langeDienste).toBeGreaterThanOrEqual(1);
-    if (tag(-10).slice(0, 7) === monat) expect(z.istErfasst).toBe(1);
+    expect(z.istErfasst).toBeNull();
+    expect(z.istStunden).toBeNull();
   });
   it("keine Person, kein Name, keine Kennung", () => {
     expect(JSON.stringify(a)).not.toMatch(/NAME-|"g1"|"k1"|"r1"/);
   });
 });
 
-describe("nur der Betriebsrat, nie gespeichert", () => {
-  it("der Betriebsrat bekommt sie, andere Rollen nicht", () => {
-    expect(bestandFuerRolle(bestand(), SITZ.BR).mandanten[0].auswertungBetriebsrat).toBeTruthy();
-    for (const k of ["PL", "LT", "MA", "SV"]) expect(bestandFuerRolle(bestand(), SITZ[k]).mandanten[0].auswertungBetriebsrat, k).toBeUndefined();
+/* Review F1: Das Ist zählt nur, wer bestätigt hat — eine eigene Mindestgruppe, eine Wartezeit, eine Zweitsperre. */
+describe("Ist-Zeiten: Mindestgruppe der Beitragenden, Wartezeit, Zweitsperre (F1)", () => {
+  const TAG = "2026-05-12";                                                // ein Dienstag im Mai 2026
+  const SPAET = "2026-06-20";                                              // Frist zum Nachbestätigen (14 Tage) nach Monatsende vorbei
+  const FRUEH = "2026-06-05";                                              // Monat vorbei, Frist läuft noch
+  const mit = (bestaetigt, { zweiteEinheit = 0, zweiteBestaetigt = 0 } = {}) => {
+    const personen = [], erfassung = {};
+    const neu = (pre, n, b, einheit) => {
+      for (let i = 0; i < n; i++) {
+        personen.push(person(`${pre}${i}`, "mitarbeiter", einheit));
+        if (i < b) erfassung[`${pre}${i}|${TAG}`] = { start: "06:00", ende: "15:00", bestaetigt: true };
+      }
+    };
+    neu("a", 4, bestaetigt, "A");
+    if (zweiteEinheit) neu("b", zweiteEinheit, zweiteBestaetigt, "B");
+    return { id: "m1", name: "Haus", einheiten: [{ id: "A", versatzTage: 0 }, { id: "B", versatzTage: 0 }],
+      dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+      zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {},
+      personen, abweichungen: {}, erfassung, abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  const z = (m, heute, eid) => betriebsratAuswertung(m, heute).zeilen.find((r) => r.monat === "2026-05" && r.einheitId === eid);
+
+  it("eine Einheit mit 4 Personen, nur eine bestätigt: kein Ist (vorher: 8,5 Stunden einer Person)", () => {
+    const r = z(mit(1), SPAET, "A");
+    expect(r.personen).toBe(4);
+    expect(r.gesperrt).toBe(false);
+    expect(r.istStunden).toBeNull();
+    expect(r.istErfasst).toBeNull();
+    expect(JSON.stringify(r)).not.toMatch(/8\.5|8,5/);
+  });
+  it("zwei bestätigt: weiter kein Ist; drei: die Summe", () => {
+    expect(z(mit(2), SPAET, "A").istStunden).toBeNull();
+    const r = z(mit(3), SPAET, "A");
+    expect(r.istErfasst).toBe(3);
+    expect(r.istStunden).toBe(25.5);
+  });
+  it("vor Ablauf der Frist zum Nachbestätigen: kein Ist, auch mit drei Beitragenden", () => {
+    expect(z(mit(3), FRUEH, "A").istStunden).toBeNull();
+    expect(z(mit(3), "2026-05-20", "A").istStunden).toBeNull();            // Monat noch nicht abgeschlossen
+    expect(z(mit(3), SPAET, "A").istStunden).toBe(25.5);
+  });
+  it("Differenzbildung: zwei Stände vor Ablauf der Frist (vorher drei, nachher vier Bestätigungen) ergeben dieselbe Ausgabe", () => {
+    const a = JSON.stringify(betriebsratAuswertung(mit(3), FRUEH));
+    const b = JSON.stringify(betriebsratAuswertung(mit(4), FRUEH));
+    expect(b).toBe(a);                                                     // die vierte Person ist nicht als Unterschied sichtbar
+  });
+  it("Zweitsperre für das Ist: trägt eine Einheit mit 1–2 Personen bei, fällt auch das Ist der Gesamtzeile weg", () => {
+    const m = mit(3, { zweiteEinheit: 3, zweiteBestaetigt: 2 });
+    expect(z(m, SPAET, "A").istStunden).toBe(25.5);
+    expect(z(m, SPAET, "B").istStunden).toBeNull();
+    const gesamt = z(m, SPAET, null);
+    expect(gesamt.gesperrt).toBe(false);
+    expect(gesamt.istStunden).toBeNull();                                  // sonst Gesamt minus A = B
+    expect(gesamt.istErfasst).toBeNull();
+  });
+  it("beide Einheiten mit je drei Beitragenden: die Gesamtzeile zeigt die Summe", () => {
+    const m = mit(3, { zweiteEinheit: 3, zweiteBestaetigt: 3 });
+    expect(z(m, SPAET, null).istStunden).toBe(51);
+  });
+  it("eine Einheit ganz ohne Ist sperrt die Gesamtzeile nicht", () => {
+    const m = mit(3, { zweiteEinheit: 3, zweiteBestaetigt: 0 });
+    expect(z(m, SPAET, null).istStunden).toBe(25.5);
+  });
+});
+
+/* Review F2: Der Schlüssel enthält den Raum und den Stand der Ablage. */
+describe("Hintergrundrechnung: Schlüssel Raum + Stand + Tag (F2)", () => {
+  const warte = async (a) => {
+    for (let i = 0; i < 400; i++) {
+      const r = auswertungHolen(a);
+      if (r.fertig) return r.wert;
+      await new Promise((w) => setTimeout(w, 5));
+    }
+    throw new Error("nicht fertig");
+  };
+  const mandant = (namen) => { const b = bestand().mandanten[0]; b.personen = b.personen.filter((p) => !namen.includes(p.id)); return b; };
+  beforeEach(() => auswertungenVergessen());
+
+  it("der erste Abruf blockiert nicht: noch nicht fertig, dann fertig", async () => {
+    const a = { raum: "raum-a", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] };
+    expect(auswertungHolen(a).fertig).toBe(false);
+    const w = await warte(a);
+    expect(w.zeilen.length).toBeGreaterThan(0);
+  });
+  it("zwei Räume mit gleicher Betriebskennung und gleichem Tag teilen nie ein Ergebnis", async () => {
+    const voll = { raum: "raum-1", stand: 7, heute: HEUTE, mandant: bestand().mandanten[0] };
+    const anders = { raum: "raum-2", stand: 7, heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]) };   // gleiche id „m1“, andere Leute
+    const a = await warte(voll);
+    const b = await warte(anders);
+    expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
+    expect(a.zeilen.some((z) => z.einheitId === "gross" && !z.gesperrt)).toBe(true);
+    expect(b.zeilen.some((z) => z.einheitId === "gross" && !z.gesperrt)).toBe(false);
+    expect(auswertungHolen(voll)).toMatchObject({ fertig: true });          // jeder Raum behält seins
+  });
+  it("ein neuer Stand der Ablage rechnet neu; der alte Stand desselben Raums wird verworfen", async () => {
+    const alt = { raum: "raum-3", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] };
+    const neu = { raum: "raum-3", stand: 2, heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]) };
+    const a = await warte(alt);
+    expect(auswertungHolen(neu).fertig).toBe(false);
+    const b = await warte(neu);
+    expect(JSON.stringify(b)).not.toBe(JSON.stringify(a));
+    expect(auswertungHolen(alt).fertig).toBe(false);                        // verworfen
+  });
+  it("ohne Raum oder Stand wird nichts gemerkt", () => {
+    expect(auswertungHolen({ raum: "", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
+    expect(auswertungHolen({ raum: "r", stand: undefined, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
+    expect(auswertungHolen({ raum: "r", stand: undefined, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
+  });
+  it("Quelltext: kein Schlüssel aus Betriebskennung und m.stand", () => {
+    const q = readFileSync(path.join(process.cwd(), "server/lib/br-auswertung.mjs"), "utf8");
+    expect(q).not.toMatch(/m\.stand|m && m\.stand/);
+    expect(q).toMatch(/schluesselVon\(raum, stand, heute\)/);
+  });
+});
+
+/* Review F3: 2000 Personen blockieren den gemeinsamen Prozess nicht. */
+describe("Event-Loop: 2000 Personen, kein Block über 50 ms (F3)", () => {
+  const gross = (n) => {
+    const personen = [];
+    for (let i = 0; i < n; i++) personen.push(person(`x${i}`, "mitarbeiter", `e${i % 20}`));
+    return { id: "m1", name: "Haus", einheiten: Array.from({ length: 20 }, (_, i) => ({ id: `e${i}`, versatzTage: i % 7 })),
+      dienstarten: [{ id: "F", name: "F", start: "06:00", ende: "14:00", pause: 30 }, { id: "S", name: "S", start: "12:00", ende: "19:00" }, { id: "N", name: "N", start: "22:00", ende: "06:00" }],
+      zyklus: { tage: ["F", "F", "S", "S", "N", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung: {},
+      abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  it("im Hintergrund in Häppchen: gleiche Zahlen wie am Stück, längster Block unter 50 ms (Median)", async () => {
+    const { monitorEventLoopDelay } = await import("node:perf_hooks");
+    const m = gross(2000);
+    const stueck = betriebsratAuswertung(m, HEUTE);                       // am Stück (Vergleich)
+    let nr = 0;
+    const messen = async () => {
+      const h = monitorEventLoopDelay({ resolution: 5 });
+      h.enable();
+      await new Promise((w) => setTimeout(w, 30));                       // erst ein Messtakt als Bezug — sonst fällt ein Block davor aus der Messung
+      const a = { raum: "gross", stand: ++nr, heute: HEUTE, mandant: m };
+      let r = auswertungHolen(a);
+      const t0 = performance.now();
+      while (!r.fertig) { await new Promise((w) => setTimeout(w, 2)); r = auswertungHolen(a); if (performance.now() - t0 > 120000) throw new Error("zu langsam"); }
+      h.disable();
+      return { wert: r.wert, block: h.max / 1e6 };
+    };
+    await messen();                                                       // aufwärmen
+    const laeufe = [await messen(), await messen(), await messen()];
+    expect(JSON.stringify(laeufe[0].wert)).toBe(JSON.stringify(stueck));
+    const med = median(laeufe.map((l) => l.block));
+    console.log(`Auswertung 2000 Personen: Event-Loop-Verzögerung ${laeufe.map((l) => l.block.toFixed(1)).join(" / ")} ms`);
+    const u = urteil(med, 50, BR_HAEPPCHEN_MS);
+    if (u.warnung) console.warn(u.warnung);
+    /* Lokal (belastete Maschine, Speicherbereinigung von 25–60 ms) nur eine Warnung bis 150 ms; in CI bleibt 50 ms hart. */
+    if (!process.env.CI && !u.ok && med < 150) console.warn(`WARNUNG: Median ${med.toFixed(1)} ms (in CI wäre ab 50 ms rot)`);
+    else expect(u.ok, `Median Event-Loop-Verzögerung ${med.toFixed(1)} ms`).toBe(true);
+  }, 300000);
+});
+
+describe("nur der Betriebsrat, nie gespeichert, nicht im Bestand", () => {
+  it("die Auswertung steht in keiner Sicht auf den Bestand (eigener Weg, F3)", () => {
+    for (const k of ["BR", "PL", "LT", "MA", "SV"]) expect(bestandFuerRolle(bestand(), SITZ[k]).mandanten[0].auswertungBetriebsrat, k).toBeUndefined();
   });
   it("mitgeschickt: nie gespeichert", () => {
     const g = bestand();
@@ -76,11 +232,72 @@ describe("nur der Betriebsrat, nie gespeichert", () => {
   });
 });
 
+/* Review F4: der Weg selbst, je Rolle; die Serverprüfung ist belegt (Mutanten). */
+describe("GET /api/br-auswertung je Rolle (F4)", () => {
+  let Z;
+  const LIMIT = 90000;
+  beforeAll(async () => { Z = await aufbauen("brauswertung"); }, LIMIT);
+  afterAll(async () => { await Z.abbauen(); });
+  beforeEach(async () => { await Z.taktLeeren(); });
+  const hole = (token) => Z.bearer(Z.daten, "/api/br-auswertung", token);
+  const bis = async (token) => {
+    for (let i = 0; i < 200; i++) {
+      const r = await hole(token);
+      if (r.status !== 202) return r;
+      await new Promise((w) => setTimeout(w, 20));
+    }
+    throw new Error("nicht fertig");
+  };
+  const fuerRolle = async (rolle) => {
+    const ich = await Z.arbeitsbereich(`br-${rolle}`, { rolle });
+    return ich.token;
+  };
+  it("Betriebsrat mit audit.view: erst „berechnet“ oder gleich fertig, am Ende die Aggregate ohne Personenbezug", async () => {
+    const t = await fuerRolle("betriebsrat");
+    const r = await bis(t);
+    expect(r.status).toBe(200);
+    expect(r.daten.status).toBe("fertig");
+    expect(Array.isArray(r.daten.auswertung.zeilen)).toBe(true);
+    expect(r.daten.auswertung.mindestgruppe).toBe(BR_MINDESTGRUPPE);
+    expect(JSON.stringify(r.daten)).not.toMatch(/Rina|Schmitt|Weber|p_1|p_2/);
+  }, LIMIT);
+  it("der Betriebsrat bekommt die Auswertung auch in GET /api/bestand nicht", async () => {
+    const t = await fuerRolle("betriebsrat");
+    const b = await Z.bearer(Z.daten, "/api/bestand", t);
+    expect(b.status).toBe(200);
+    expect(JSON.stringify(b.daten)).not.toContain("auswertungBetriebsrat");
+  }, LIMIT);
+  it.each(["leitung", "planer", "subplaner", "mitarbeiter"])("%s: 403", async (rolle) => {
+    const t = await fuerRolle(rolle);
+    const r = await hole(t);
+    expect(r.status).toBe(403);
+    expect(JSON.stringify(r.daten)).not.toContain("zeilen");
+  }, LIMIT);
+  it("ohne Anmeldung: 401", async () => {
+    expect((await hole(null)).status).toBe(401);
+  }, LIMIT);
+  it("Betriebsrat OHNE audit.view: 403 (die Serverprüfung wirkt)", async () => {
+    const t = await fuerRolle("betriebsrat");
+    const alt = [...MATRIX.betriebsrat];
+    MATRIX.betriebsrat = alt.filter((r) => r !== "audit.view");
+    try {
+      const r = await hole(t);
+      expect(r.status).toBe(403);
+    } finally { MATRIX.betriebsrat = alt; }
+    expect((await bis(t)).status).toBe(200);
+  }, LIMIT);
+});
+
 describe("Oberfläche: Auswertung für den Betriebsrat, falsche Ansichten gesperrt (Quelltext)", () => {
   const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
   it("audit.view öffnet die Auswertung, export.data den CSV-Export — nur Aggregate", () => {
     expect(app).toContain('["brauswertung", "Auswertung (Betriebsrat)", "BR:audit.view"]');
     expect(app).toMatch(/darf\(sitz, "export\.data"\) && <Btn onClick=\{csv\}>/);
+  });
+  it("die Ansicht holt die Auswertung vom eigenen Weg und wiederholt bei „wird berechnet“", () => {
+    expect(app).toContain("SP.brAuswertung()");
+    expect(app).toContain('r.status === "berechnet"');
+    expect(app).toContain("Die Auswertung wird berechnet");
   });
   it("Leistungsnachweis (ohne Übergaben falsch) und leere Ansichten sind für den Betriebsrat gesperrt", () => {
     for (const v of ['["nachweis", "Leistungsnachweis", "OHNE_BR:', '["sonder", "Sondereinsätze", "OHNE_BR:', '["mittel", "Betriebsmittel", "OHNE_BR:', '["lenkzeiten", "Lenkzeiten", "OHNE_BR:'])

@@ -24,7 +24,6 @@ import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBef
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
-import { betriebsratAuswertung } from "./br-auswertung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
@@ -504,12 +503,9 @@ function bestandFuerRolleKern(bestand, sitzung) {
   if (SICHT_ROLLEN.includes(rolle)) {
     const eigener = eigenerMandant(bestand, sitzung);
     const aus = bestandSicht(bestand, sitzung, eigener);
-    /* WP-27: Der Betriebsrat bekommt mit audit.view eine Auswertung aus dem
-       vollständigen Bestand — nur Aggregate je Monat und Einheit, unter der
-       Mindestgruppe gesperrt (br-auswertung.mjs). Ein abgeleitetes Feld, nie
-       gespeichert (rechte.mjs entfernt es beim Schreiben). */
-    if (rolle === "betriebsrat" && darf(rolle, "audit.view") && eigener && aus && Array.isArray(aus.mandanten) && aus.mandanten[0])
-      aus.mandanten[0].auswertungBetriebsrat = betriebsratAuswertung(eigener, heuteBerlin());
+    /* WP-27: Die Auswertung für den Betriebsrat steht NICHT im Bestand — sie hat
+       einen eigenen Weg (GET /api/br-auswertung, daten.mjs), der im Hintergrund
+       rechnet und nie den Prozess blockiert. */
     return aus;
   }
 

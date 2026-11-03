@@ -10,9 +10,7 @@ Bestand Summen je Monat und Einheit sowie für den Betrieb: Dienste, Nachtdienst
 Sonntagsdienste, Dienste über zehn Stunden, Ruhezeit unter 11 Stunden nach Plan, bestätigte Ist-Stunden und ihre Zahl —
 sechs Monate zurück, zwei voraus. Unter drei Personen stehen keine Zahlen, nur „<3"; ist in einem Monat eine Einheit
 gesperrt, fällt auch die Gesamtzeile weg (Zweitsperre gegen Differenzbildung). Keine Person, kein Name, keine Kennung.
-Der Server hängt die Auswertung als abgeleitetes Feld `auswertungBetriebsrat` nur an die Sicht des Betriebsrats mit
-`audit.view` (rechte.mjs, `bestandFuerRolleKern`); mitgeschickt wird es nie gespeichert. Zwischengespeichert je Betrieb,
-Stand und Tag.
+Der Server liefert die Auswertung auf einem eigenen Weg (`GET /api/br-auswertung`, nur Betriebsrat mit `audit.view`, sonst 403), nicht im Bestand. Sie wird im Hintergrund in Häppchen (höchstens 12 ms am Stück) gerechnet und je Raum, Stand der Ablage und Tag gemerkt; bis dahin antwortet der Weg 202 „wird berechnet“, und die Oberfläche wiederholt. Nichts davon wird gespeichert.
 
 **Leistungsnachweis/Belastung korrekt oder gesperrt.** Prüfung der für den Betriebsrat erreichbaren Ansichten:
 - Leistungsnachweis: ohne Übergaben (die der Betriebsrat nicht bekommt) stünde dort „keine besonderen Vorkommnisse" —
@@ -27,7 +25,14 @@ Stand und Tag.
 genau dieser Aggregate. Vorher hatten beide Rechte keine Wirkung. Leitung und Kundenrolle haben die Rechte auch, sehen
 aber ohnehin die Einzelwerte; die Ansicht ist dem Betriebsrat vorbehalten (`BR:`). RECHTEMATRIX Abschnitt 2.
 
-## Prüfungen
+## Nachbesserung nach dem Review (88cefbe)
+
+- **F1 Ist-Zeiten (Datenschutz):** Das Ist erscheint nur, wenn der Monat abgeschlossen und die Frist zum nachträglichen Bestätigen (`RUECKBLICK_TAGE`, 14 Tage) vorbei ist und mindestens 3 Personen zum Ist beitragen; trägt eine Einheit mit 1–2 Personen bei, fehlt das Ist auch in der Gesamtzeile. Vorher: Zeile `personen: 4, istErfasst: 1, istStunden: 8.5` machte die Zeit einer Person sichtbar, und zwei Abrufe an aufeinanderfolgenden Tagen ergaben sie als Differenz. Grenze: Korrekturen der Planung an bestätigten Zeiten nach Ablauf der Frist ändern die Summe weiterhin (befugte Änderung, keine Selbstauskunft).
+- **F2 Zwischenspeicher:** Schlüssel Raum + Stand der Ablage + Tag statt Betriebskennung + `m.stand` (das Feld gibt es nicht); ältere Stände eines Raums werden verworfen, Obergrenze 40 Einträge.
+- **F3 Blockieren:** Die Rechnung ist ein Generator und läuft im Hintergrund; 2000 Personen blockieren den Prozess nicht mehr (Test mit Ereignisschleifen-Messung, CI hart bei 50 ms Median).
+- **F4:** Test für Betriebsrat ohne `audit.view` und für jede andere Rolle (403); `export.data` schaltet nur die Schaltfläche (der Export enthält dieselben Zahlen) — dokumentiert in `RECHTEMATRIX.md`.
+
+## Prüfungen/
 
 `pruefungen/br-auswertung.test.js` (Skript `pruefung:br-auswertung`, CI-Schritt „Betriebsrat-Auswertung"):
 Mindestgruppe, Zweitsperre, Summen aus Plan und bestätigten Ist-Zeiten, kein Personenbezug, nur der Betriebsrat, nie

@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+  wirksameRolle, darf, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
@@ -18,6 +18,7 @@ import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -838,6 +839,27 @@ export default async (req, context) => {
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle),
         geaendert: mit.zeit, durch: mit.durch });
+    }
+
+    /* ----------------- Auswertung für den Betriebsrat (WP-27) ---------- */
+    /* Nur Aggregate, nur für den Betriebsrat mit audit.view. Gerechnet wird im
+       Hintergrund in Häppchen (br-auswertung.mjs); bis sie fertig ist, kommt 202
+       „wird berechnet" mit der Bitte, es gleich noch einmal zu versuchen — der
+       Prozess blockiert nie. export.data steuert nur die Schaltfläche der
+       Oberfläche: Der CSV-Export enthält genau diese Zahlen, nichts darüber hinaus. */
+    if (pfad === "br-auswertung" && req.method === "GET") {
+      const bl = await bremse("lesen", kennung(req, s));
+      if (!bl.frei) return zuVielAntwort(bl.wartet);
+      if (s.rolle !== "betriebsrat" || !darf(s.rolle, "audit.view")) {
+        await protokoll("lesen", kennung(req, s), "abgewiesen", `Auswertung Betriebsrat, Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Berechtigung.", text: "Die Auswertung gibt es nur für den Betriebsrat." }, 403);
+      }
+      const mit = await bestandJetzt();
+      const eigener = mit ? eigenerMandant(mit.bestand, s) : null;
+      if (!mit || !eigener) return antwort({ fehler: "Keine Daten." }, 404);
+      const r = auswertungHolen({ raum: s.bestand, stand: mit.stand, heute: heuteBerlin(), mandant: eigener });
+      if (!r.fertig) return antwort({ status: "berechnet", retryNachMs: r.ausgelastet ? 5000 : 1500 }, 202);
+      return antwort({ status: "fertig", auswertung: r.wert });
     }
 
     /* ----------------------------- Schreiben ------------------------- */

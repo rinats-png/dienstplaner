@@ -21695,12 +21695,29 @@ async function selbsttestLaden() {
  */
 function BetriebsratAuswertung({ sitz, melde }) {
   const m = sitz.mandant;
-  const a = m.auswertungBetriebsrat;
+  /* Der Server rechnet im Hintergrund (GET /api/br-auswertung): bis das Ergebnis da ist, kommt „wird berechnet“ — dann wiederholen. */
+  const [stand, setStand] = useState({ status: "laedt" });
+  useEffect(() => {
+    let vorbei = false, uhr = null;
+    const hole = async () => {
+      try {
+        const r = await SP.brAuswertung();
+        if (vorbei) return;
+        setStand(r);
+        if (r.status === "berechnet") uhr = setTimeout(hole, r.retryNachMs || 1500);
+      } catch (e) { if (!vorbei) setStand({ status: "fehler", text: e.message }); }
+    };
+    hole();
+    return () => { vorbei = true; if (uhr) clearTimeout(uhr); };
+  }, [m.id]);
+  const a = stand.status === "fertig" ? stand.auswertung : null;
   const einheit = (id) => (id === null ? "Betrieb gesamt" : ((m.einheiten || []).find((e) => e.id === id) || {}).name || id);
   const SPALTEN = [["personen", "Personen"], ["dienste", "Dienste"], ["nachtdienste", "Nachtdienste"], ["sonntagsdienste", "Sonntagsdienste"],
     ["langeDienste", "Dienste über 10 h"], ["ruhezeitUnter11", "Ruhezeit unter 11 h"], ["istStunden", "Ist-Stunden"], ["istErfasst", "Ist erfasst"]];
+  if (stand.status === "laedt" || stand.status === "berechnet")
+    return <Card><Leer titel="Die Auswertung wird berechnet" text="Das dauert bei großen Betrieben einen Moment. Die Seite aktualisiert sich von selbst." /></Card>;
   if (!a || !Array.isArray(a.zeilen))
-    return <Card><Leer titel="Keine Auswertung" text="Die Auswertung liefert der Server nur an den Betriebsrat." /></Card>;
+    return <Card><Leer titel="Keine Auswertung" text={stand.text || "Die Auswertung liefert der Server nur an den Betriebsrat."} /></Card>;
   const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–"));
   const csv = () => {
     const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].join(";");
@@ -21709,7 +21726,7 @@ function BetriebsratAuswertung({ sitz, melde }) {
   };
   return (
     <div>
-      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Personen werden nie genannt.`}
+      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.`}
         right={darf(sitz, "export.data") && <Btn onClick={csv}>Als CSV exportieren</Btn>}>Auswertung</H1>
       <Card style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

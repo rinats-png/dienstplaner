@@ -576,6 +576,14 @@ export async function kalenderLoeschen(geheim) {
     body: JSON.stringify({ geheim }) });
 }
 
+/** Auswertung für den Betriebsrat (WP-27): { status: "fertig", auswertung } oder { status: "berechnet", retryNachMs }. */
+export async function brAuswertung() {
+  const a = await fetch("/api/br-auswertung", { headers: kopf() });
+  const d = await a.json().catch(() => ({}));
+  if (!a.ok && a.status !== 202) throw new Error(d.fehler || "Die Auswertung konnte nicht geladen werden.");
+  return d;
+}
+
 /** Betriebslage und Selbststarts — nur für den Betreiber. */
 export async function lage(tage) {
   const a = await fetch(`/lage?tage=${tage || 30}`, { headers: kopf() });
