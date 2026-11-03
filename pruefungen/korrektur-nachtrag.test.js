@@ -211,6 +211,17 @@ describe("M2: Zeitumstellung — Pause gegen die wirkliche Anwesenheit, Ist nie 
     expect("status" in gut).toBe(false);
     expect(istZeitFuer(gut.mandant, gut.mandant.personen[0], "2026-10-25", DA[0]).std).toBeCloseTo(50 / 60, 2);
   });
+  it("F3: Herbst 25.10.: ein Antrag mit denselben Uhrzeiten wie der ZEITUMSTELLUNG-Prüffall wird schon beim Stellen abgewiesen (422), andere Zeiten gehen", () => {
+    const m = klein({ abweichungen: { "a|2026-10-25": "F" },
+      einstempeln: { "a|2026-10-25": { start: "02:30", startAm: "2026-10-25T00:30:00.000Z", ende: "02:20", endeAm: "2026-10-25T01:20:00.000Z", markierungen: ["ZEITUMSTELLUNG"] } },
+      erfassung: { "a|2026-10-25": { start: "02:30", ende: "02:20", bestaetigt: false, grund: "ZEITUMSTELLUNG: 0,8 Stunden gemessen" } } });
+    const stelle = (start, ende) => antragStellen(m, { personId: "a" }, { ...antrag("2026-10-25", start, ende, "Herbstnacht, Zeiten laut Übergabe"), pause: 0 },
+      new Date("2026-10-27T12:00:00Z"), "ka-1", "2026-10-27");
+    const r = stelle("02:30", "02:20");
+    expect(r.status).toBe(422);
+    expect(r.grund).toMatch(/Zeitumstellung/);
+    expect("status" in stelle("02:30", "03:20")).toBe(false);
+  });
   it("Herbst 25.10.: Direktkorrektur 02:30–02:30 (Pause 30) ⇒ 422 (Beginn = Ende), keine 23,5-h-Ist", async () => {
     const r = await anfrage("stempel-korrektur", { token: await token("l1"),
       rumpf: { personId: "a2", datum: "2026-10-25", start: "02:30", ende: "02:30", pause: 30, grund: "Ende laut Übergabe nachgetragen" } });

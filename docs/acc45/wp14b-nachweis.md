@@ -10,7 +10,8 @@ Commits:
 | a4fa027 | H1: Merge des WP-06b-Nachtrags (1638a4c) |
 | 8a44327 | Tests zu allen Befunden, **rot** auf a4fa027 |
 | 533adf5 | Fixes M1–M5, N1–N3 |
-| (dieser) | Nachweis, Klarstellung N4 (RECHTEMATRIX, `sicht.mjs`-Kommentar) |
+| df91661 | Nachweis, Klarstellung N4 (RECHTEMATRIX, `sicht.mjs`-Kommentar) |
+| (Folgecommit) | F3 (Antrag und Zeitumstellungssperre), Nachweis korrigiert, Folgearbeit WP-14c |
 
 ## H1 — WP-06b-Nachtrag fehlte in der Integration
 
@@ -117,6 +118,14 @@ Berliner Zeit „Zukunft“): Die Fixture bekam einen Stempel für a3 am Vorvort
 Bewertung: nur eigene Daten, unkritisch; die Sicht bleibt (Entfernen machte den eigenen Antrag unbenutzbar). Doku korrigiert:
 `RECHTEMATRIX.md` (Klarstellung zu ¹⁴) und Kommentar in `server/lib/sicht.mjs` — kein Codeeffekt.
 
+### F3 — Antrag mit denselben Uhrzeiten wie ein ZEITUMSTELLUNG-Prüffall (Delta-Review, niedrig)
+
+`antragStellen` prüfte die Sperre aus M2 nicht: Antrag 02:30–02:20 am 25.10. wurde angenommen, die Genehmigung gab 422, der offene Antrag
+blockierte den WP-16-Abschluss (`ABSCHLUSS_ANTRAEGE_OFFEN`) bis zur Ablehnung. Fix: die Sperre ist jetzt **eine** Funktion
+(`zeitumstellungSperre` in `stempelintegritaet.mjs`), benutzt von `korrekturAnhaengen` (Direktkorrektur, Genehmigung) und `antragStellen`
+(422 mit verständlichem Text, gleiches Muster wie N1). Test `korrektur-nachtrag` F3 (Antrag am Herbst-Umstellungstag; andere Zeiten gehen):
+rot vor dem Fix, grün danach; Mutant „Prüfung in `antragStellen` entfernt“ ⇒ rot.
+
 ### M3b-Test — stempelSichern
 
 Eigener Test in `stempel-integritaet.test.js`: unveränderter Monat ⇒ gespeicherter Stand (mit Korrektur), veränderter Monat ⇒ die Kopie
@@ -159,8 +168,11 @@ Je Mutant eine Ersetzung im Code von 533adf5, gezielter Testlauf (`-t`), danach 
   Korrekturwege; Import aus `zeitregeln.mjs`), `src/istdaten.js` (`istZeitFuer` Untergrenze, `zurPruefung`, `pruefHinweis`,
   `bestaetigungsGrund`), `server/lib/zeitregeln.mjs` (`pauseZuLang` mit Tag, `regelHinweise` mit `bruttoAm`, neue Helfer).
   Monatsabschluss-Protokollzeilen dort nach M1 (keine Person|Tag, Zeiten, Schutzkennungen) schreiben.
-- **WP-27b** (`acc45/rules/wp27b-nachtrag`, br-auswertung): keine Datei gemeinsam außer `package.json` (nur `pruefung:zeiterfassung` +1
-  Datei) und ggf. `RECHTEMATRIX.md` (Absatz zu ¹⁴ ergänzt).
+- **WP-27b** (`acc45/rules/wp27b-nachtrag`): **verschiebt `src/istdaten.js` nach `server/lib/istdaten.mjs`** (`src/istdaten.js` bleibt nur
+  Weiterleitung) ⇒ Konflikt über die ganze Datei, dazu `package.json` (`pruefung:zeiterfassung` +1 Datei) und ggf. `RECHTEMATRIX.md`.
+  **Beim Zusammenführen müssen diese WP-14b-Änderungen nach `server/lib/istdaten.mjs` übertragen werden:** `zurPruefung` mit
+  `ZEITUMSTELLUNG`, `bestaetigungsGrund`, `ohnePlanDauerNull`/`pruefHinweis`, `Math.max(0, …)` in `istZeitFuer` — sonst fehlt ein
+  ZEITUMSTELLUNG-Prüffall still in `erfassungenZurPruefung`. Ebenso gehört die WP-16-Änderung an `pruefZeitFuer` (Pause) dorthin.
 - `src/App.jsx`: drei Zeilen in den Stempelbefunden (Prüffall-Text, „Bestätigen“ nicht für ZEITUMSTELLUNG, Altbestandsbedingung) und
   eine in `langerDienstBestaetigen`; die Export-Zeile ist unberührt.
 
@@ -176,6 +188,21 @@ oberflaeche-render (22), rechtematrix + stempel-datenschutz (80), rechtematrix-z
 ## CI
 
 CI_LAEUFE
+
+## Folgearbeit WP-14c (offen aus dem Delta-Review)
+
+- **F2** Zu kurze Anwesenheit mit Dienstart-Pause zählt 0 h: 06:00–06:40 mit Pause 60 ⇒ 0 h bestätigt ohne Prüffall. Empfehlung: Prüffall, wenn
+  `pauseZuLang`, oder Pause auf die gesetzliche Mindestpause begrenzen; Altdaten mit negativem Ist ⇒ Prüffall statt 0.
+- **F4** Die ZEITUMSTELLUNG-Sperre ist mit 1 Minute Verschiebung umgehbar: 02:30–02:21 zählt 23:51 h. Abhilfe: `bruttoAm` mit der gemessenen
+  Dauer vergleichen.
+- **F5** Gemessene Dauer in den Stempelbefunden anzeigen. Datenmodell-Grenze: Beginn 22:00 und Dauer 4:01–4:59 h sind nicht darstellbar, die
+  Leitung muss den Beginn verschieben.
+- **F6** Ungeplanter echter 24-h-Einsatz ⇒ 422. Ein DAUER_NULL-Fehlstempel ohne Arbeit lässt sich nicht auf 0 h setzen ⇒ ausdrückliches
+  „verwerfen/0 h“ vorsehen.
+- **F7** Oberfläche „überholt“: „gilt bisher“ zeigt den Antragsstand statt der aktuellen Ist-Zeit, „Genehmigen“ bleibt aktiv, der Text
+  „neuen Antrag stellen“ greift erst nach dem Ablehnen.
+- **F8** Selbstauskunft (`zeiterfassung.mjs` ~227–233): Beginn = Ende über Mitternacht zählt 24 h; die WP-16-Pausenprüfung der Selbstauskunft
+  soll `pauseZuLang(…, datum)` benutzen.
 
 ## Offene Entscheidungen
 

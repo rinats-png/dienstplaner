@@ -345,6 +345,20 @@ export function pauseFuerKorrektur(m, personId, datum, genannt) {
 }
 
 /**
+ * F3 (WP-14b): Ein ZEITUMSTELLUNG-Prüffall lässt sich nicht mit denselben Uhrzeiten bestätigen — gilt für
+ * Direktkorrektur, Genehmigung und schon für den Antrag (sonst bliebe er hängen).
+ * @param {any} alt  aktuelle Erfassung des Tages
+ * @returns {{status: number, grund: string} | null}
+ */
+export function zeitumstellungSperre(alt, start, ende) {
+  if (objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG")
+      && alt.start === start && alt.ende === ende)
+    return { status: 422, grund: "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
+      + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben." };
+  return null;
+}
+
+/**
  * Eine Korrektur prüfen und als Ereignis anhängen.
  * @param {object} m  gespeicherter Betrieb
  * @param {{personId: string, datum: string, start: string, ende: string, grund: string, pause?: number}} k
@@ -392,10 +406,8 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id, opt = {}) {
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
   /* WP-14b (M2): Ein Stempel aus der Herbstnacht, dessen Uhrzeiten nicht zur gemessenen Dauer passen, lässt
      sich nicht „wie gestempelt" bestätigen — dieselben Uhrzeiten ergäben wieder die falsche Dauer. */
-  if (objekt(alt) && alt.bestaetigt !== true && typeof alt.grund === "string" && alt.grund.startsWith("ZEITUMSTELLUNG")
-      && alt.start === start && alt.ende === ende)
-    return { status: 422, grund: "In der Nacht der Zeitumstellung ergeben diese Uhrzeiten eine andere Dauer als gestempelt. "
-      + "Bitte Beginn und Ende so eintragen, dass sie die tatsächliche Arbeitszeit ergeben." };
+  const umstellung = zeitumstellungSperre(alt, start, ende);
+  if (umstellung) return umstellung;
 
   /** @type {any} */
   const ereignis = {

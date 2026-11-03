@@ -26,7 +26,7 @@
    ========================================================================== */
 
 import { pauseZuLang } from "./zeitregeln.mjs";
-import { korrekturAnhaengen, pauseFuerKorrektur, geplant24Stunden, BEGINN_GLEICH_ENDE, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
+import { korrekturAnhaengen, pauseFuerKorrektur, geplant24Stunden, zeitumstellungSperre, BEGINN_GLEICH_ENDE, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
 import { berlinZeitpunkt } from "./zeiterfassung.mjs";
 
 export const ANTRAG_RUECKBLICK_TAGE = 62;
@@ -91,6 +91,8 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   if (bisher.length >= ANTRAEGE_JE_STEMPEL_MAX)
     return { status: 409, grund: "Für diesen Stempel gibt es schon sehr viele Anträge — bitte die Leitung ansprechen." };
   const ist = (m.erfassung || {})[schluessel];
+  const umstellung = zeitumstellungSperre(ist, start, ende);   // F3 (WP-14b): dieselbe Sperre wie die Genehmigung
+  if (umstellung) return umstellung;
   if (objekt(ist) && ist.bestaetigt === true && ist.start === start && ist.ende === ende && (!pauseGegeben || ist.pause === pause))
     return { status: 409, grund: "Diese Zeit gilt schon so — nichts zu korrigieren." };
   const antrag = {
