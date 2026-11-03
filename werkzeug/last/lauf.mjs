@@ -69,8 +69,15 @@ async function messung(von, bis) {
   const im = zeilen.filter((m) => m.t >= von && m.t <= bis);
   if (!im.length) return null;
   const max = (k) => Math.max(...im.map((m) => m[k]));
+  const fsSumme = {};
+  for (const m of im) for (const [k, v] of Object.entries(m.fs || {})) {
+    const z = (fsSumme[k] ||= { n: 0, ms: 0 }); z.n += v.n; z.ms += v.ms;
+  }
+  for (const v of Object.values(fsSumme)) v.msJeAufruf = v.n ? Math.round((v.ms / v.n) * 100) / 100 : 0;
+  const cpus = im.map((m) => m.cpu || 0);
   return { eldP99Max: max("eldP99"), eldMax: max("eldMax"), rssStart: im[0].rss, rssEnde: im[im.length - 1].rss,
-    rssMax: max("rss"), heapMax: max("heap"), sekunden: im.length };
+    rssMax: max("rss"), heapMax: max("heap"), sekunden: im.length,
+    cpuMittel: Math.round(cpus.reduce((a, b) => a + b, 0) / cpus.length), cpuMax: Math.max(...cpus), fs: fsSumme };
 }
 
 async function ablageGroesse(daten) {
@@ -132,7 +139,7 @@ async function vorbereiten(daten) {
     // S2 und S5: fünf Räume, einer groß
     "plan-gross": 2000, "plan-1": 200, "plan-2": 200, "plan-3": 200, "plan-4": 200,
   };
-  const t = { stempel: {}, planer: {}, leser: {}, reihe: {}, codes: [] };
+  const t = { stempel: {}, planer: {}, leser: {}, reihe: {}, codes: [], codesB: [] };
   for (const [raum, n] of Object.entries(raeume)) {
     await B.bestandSchreiben(store, raum, betrieb(raum, n), { durch: "Lasttest" });
   }
@@ -162,7 +169,7 @@ async function vorbereiten(daten) {
     ["mitarbeiter", "p1"], ["betriebsrat", "br1"]]) t.leser[rolle] = await sitzung("lesen-gross", rolle, pid);
   for (const raum of ["groesse-250", "groesse-1000", "groesse-2000", "groesse-4000"]) {
     t.reihe[raum] = { leitung: await sitzung(raum, "leitung", "leitung1"), stempel: [] };
-    for (let i = 1; i <= 20; i++) t.reihe[raum].stempel.push(await sitzung(raum, "mitarbeiter", `p${i}`));
+    for (let i = 1; i <= 40; i++) t.reihe[raum].stempel.push(await sitzung(raum, "mitarbeiter", `p${i}`));
   }
   const codes = Math.min(300, Math.ceil((P.s4Sek * 1000) / 200) + 10);
   for (let i = 1; i <= codes; i += 16) {
@@ -174,6 +181,17 @@ async function vorbereiten(daten) {
       t.codes.push(code);
     }));
   }
+  /* Phase B der Anmeldung: 13 Betriebe à 35 Zugänge (455 Anmeldungen, je Betrieb unter 40). */
+  const raeumeB = [...Object.keys(raeume), "lesen-gross"];
+  for (let r = 0; r < raeumeB.length; r++) {
+    await Promise.all(Array.from({ length: 35 }, async (_, i) => {
+      const code = `LASB-${String(r).padStart(2, "0")}${String(i).padStart(3, "0")}-CODE`;
+      await kontoSchreiben(store, ablageSchluessel(code), { name: `q${i}`, bestand: raeumeB[r], rolle: "mitarbeiter",
+        person: `p${i + 1}`, betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
+      t.codesB.push(code);
+    }));
+  }
+  t.codesB.sort(() => Math.random() - 0.5);
   return { t, grossBytes };
 }
 
@@ -233,8 +251,18 @@ async function s0(t) {
     const lesen = [];
     for (let i = 0; i < 10; i++) lesen.push(await ruf("/api/bestand", { token: z.leitung }));
     const stempel = [];
-    for (const tok of z.stempel) stempel.push(await ruf("/api/stempeln", { methode: "POST", token: tok, rumpf: { datum: HEUTE, art: "start" } }));
-    aus[raum] = { lesen: auswerten(lesen), stempel: auswerten(stempel), bestandKB: Math.round((lesen[0].bytes || 0) / 1024) };
+    const stempeln = (tok) => ruf("/api/stempeln", { methode: "POST", token: tok, rumpf: { datum: HEUTE, art: "start" } });
+    const v0 = Date.now();
+    for (const tok of z.stempel.slice(0, 20)) stempel.push(await stempeln(tok));
+    const v1 = Date.now();
+    /* Zwanzig gleichzeitig in EINEM Raum: Sie laufen nacheinander durch die Raumsperre,
+       Gesamtdauer / 20 ist also die Haltedauer je Stempel. */
+    const burst = await Promise.all(z.stempel.slice(20, 40).map(stempeln));
+    const burstMs = Date.now() - v1;
+    const mess = await messung(v0, Date.now());
+    aus[raum] = { lesen: auswerten(lesen), stempel: auswerten(stempel), bestandKB: Math.round((lesen[0].bytes || 0) / 1024),
+      burst20: { ...auswerten(burst), gesamtMs: burstMs, haltedauerMs: Math.round(burstMs / 20),
+        stempelProMinute: Math.round(60000 / (burstMs / 20)) }, server: mess };
   }
   return aus;
 }
@@ -361,8 +389,21 @@ async function s4(t) {
   for (let k = 0; k < 30; k++) rater.push(await ruf("/api/anmelden", { methode: "POST", rumpf: { zugangscode: `FALS-CH${String(k).padStart(2, "0")}-XXXX` }, xff: "10.250.0.1" }));
   await gueltig;
   const erster429 = rater.findIndex((r) => r.status === 429);
-  return { gueltig: auswerten(gut), rater: { ...auswerten(rater), erster429: erster429 < 0 ? null : erster429 + 1 },
-    server: await messung(von, Date.now()) };
+  const phaseA = { gueltig: auswerten(gut), rater: { ...auswerten(rater), erster429: erster429 < 0 ? null : erster429 + 1 },
+    ok200: gut.filter((x) => x.status === 200).length, gebremst429: gut.filter((x) => x.status === 429).length };
+  /* Phase B: Gesamtaufkommen. Ehrliche Anmeldungen verteilt auf viele Betriebe (je Betrieb unter
+     dem Betriebslimit), aus lauter verschiedenen Herkünften — wo schlägt die Gesamtgrenze zu? */
+  const vonB = Date.now();
+  const antw = [];
+  const warteschlange = [...t.codesB];
+  await Promise.all(Array.from({ length: 8 }, async () => {
+    while (warteschlange.length) antw.push(await ruf("/api/anmelden", { methode: "POST", rumpf: { zugangscode: warteschlange.shift() } }));
+  }));
+  const ersteB429 = antw.findIndex((x) => x.status === 429);
+  const phaseB = { versuche: antw.length, ok200: antw.filter((x) => x.status === 200).length,
+    gebremst429: antw.filter((x) => x.status === 429).length, ersteB429: ersteB429 < 0 ? null : ersteB429 + 1,
+    sekunden: Math.round((Date.now() - vonB) / 100) / 10 };
+  return { ...phaseA, gesamtgrenze: phaseB, server: await messung(von, Date.now()) };
 }
 
 async function s5(t, daten, leitungFuer) {

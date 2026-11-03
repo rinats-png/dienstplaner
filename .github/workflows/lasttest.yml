@@ -1,12 +1,21 @@
-# Lasttest (WP-28) — nur von Hand, nicht in jedem Push oder PR.
+# Lasttest (WP-28) — nur auf Anforderung, nicht in jedem Push oder PR.
 #
 # Startet einen eigenen Server im Runner (127.0.0.1, Wegwerfablage,
 # synthetische Daten) und misst die Szenarien aus werkzeug/last/lauf.mjs.
 # Kein Ziel außerhalb des Runners, keine Secrets. Ergebnis als JSON in der
-# Zusammenfassung des Laufs.
+# Zusammenfassung des Laufs und als Artefakt.
+#
+# Auslöser: von Hand (workflow_dispatch) — sobald diese Datei auf dem
+# Standardzweig liegt. Solange sie nur auf dem Paketzweig liegt, kennt GitHub
+# sie für den Handstart nicht; dann löst ein Push auf EINE Anforderungsdatei
+# (werkzeug/last/ci-anforderung.txt, eine Zeile "profil nur", "-" = alle
+# Szenarien) den Lauf aus. Nie bei normalen Pushes oder PRs.
 name: Lasttest
 
 on:
+  push:
+    branches: ["acc45/infra/wp28-lasttest"]
+    paths: ["werkzeug/last/ci-anforderung.txt"]
   workflow_dispatch:
     inputs:
       profil:
@@ -37,24 +46,36 @@ jobs:
       - run: npm ci
       - name: Lasttest
         env:
-          PROFIL: ${{ inputs.profil }}
-          NUR: ${{ inputs.nur }}
+          EIN_PROFIL: ${{ inputs.profil }}
+          EIN_NUR: ${{ inputs.nur }}
         run: |
           set -euo pipefail
+          PROFIL="$EIN_PROFIL"; NUR="$EIN_NUR"
+          if [[ -z "$PROFIL" ]]; then
+            read -r PROFIL NUR < werkzeug/last/ci-anforderung.txt || true
+            NUR="${NUR:-}"
+            if [[ "$NUR" == "-" ]]; then NUR=""; fi
+          fi
           [[ "$PROFIL" == "voll" || "$PROFIL" == "kurz" ]] || { echo "::error::Profil unbekannt"; exit 1; }
           [[ -z "$NUR" || "$NUR" =~ ^S[0-5](,S[0-5])*$ ]] || { echo "::error::nur: z. B. S1,S3"; exit 1; }
+          echo "PROFIL=$PROFIL" >> "$GITHUB_ENV"
           args=(--profil "$PROFIL" --aus "$RUNNER_TEMP/last.json")
-          [[ -n "$NUR" ]] && args+=(--nur "$NUR")
+          if [[ -n "$NUR" ]]; then args+=(--nur "$NUR"); fi
           node werkzeug/last/lauf.mjs "${args[@]}" > "$RUNNER_TEMP/last.log"
           tail -n 5 "$RUNNER_TEMP/last.log"
       - name: Zusammenfassung
         if: always()
         run: |
           {
-            echo "## Lasttest ($PROFIL)"
+            echo "## Lasttest (${PROFIL:-?})"
             echo '```json'
             cat "$RUNNER_TEMP/last.json" 2>/dev/null || echo "kein Ergebnis"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-        env:
-          PROFIL: ${{ inputs.profil }}
+      - name: Ergebnis als Artefakt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lasttest-ergebnis
+          path: ${{ runner.temp }}/last.json
+          if-no-files-found: ignore
