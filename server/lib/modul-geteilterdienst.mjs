@@ -186,12 +186,17 @@ export function geteilterdienstBefunde(m, da, d, { person, dienstAm, auswerten, 
 }
 
 /**
- * Schreibweg: prüft die zweiten Abschnitte aller übermittelten Dienstarten.
+ * Schreibweg: prüft die zweiten Abschnitte der übermittelten Dienstarten.
+ * Mit `altM` nur Neues oder Geändertes streng (Review-Auflage 2).
  * @param {any} neuM
+ * @param {any} [altM]
  * @returns {{ grund?: string }}
  */
-export function geteilterdienstZusammen(neuM) {
+export function geteilterdienstZusammen(neuM, altM) {
+  const vorher = new Map((Array.isArray(altM && altM.dienstarten) ? altM.dienstarten : [])
+    .filter((x) => x && typeof x === "object").map((x) => [String(x.id), JSON.stringify(x)]));
   for (const da of Array.isArray(neuM && neuM.dienstarten) ? neuM.dienstarten : []) {
+    if (da && typeof da === "object" && vorher.get(String(da.id)) === JSON.stringify(da)) continue;
     const f = pruefeGeteiltenDienst(da);
     if (f) return { grund: f };
   }
