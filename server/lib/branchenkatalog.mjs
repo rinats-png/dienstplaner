@@ -115,6 +115,15 @@ export const REGELN_BRANCHEN = Object.freeze([
     scope: { branche: ["klinik", "pflege", "rettung", "gastronomie", "handel", "reinigung", "sonstiges"] },
     parameter: { groesse: "Spanne in Stunden", hoechstens: 24, grenzeAus: "modulParameter.hoechstSpanneStunden" },
     pruefhinweis: "Die Grenze trägt der Betrieb nach Tarif oder Betriebsvereinbarung ein; ohne Eintrag gilt keine. Keine Rechtsvorschrift mit fester Zahl bekannt (zu prüfen)." }),
+  /* Sicherheit — posten (Matrix P3 a). Die Instanzen tragen Soll und Qualifikation des Postens (modul-posten.mjs). */
+  branchenregel({ id: "POSTEN-BESETZUNG-01", modul: "posten", typ: "besetzungsregel",
+    bezeichnung: "Sollbesetzung eines Postens", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "objekte.posten.soll" },
+    pruefhinweis: "Die Sollbesetzung je Posten legt der Betrieb fest (Auftrag, Gefährdungsbeurteilung); keine Rechtsvorschrift mit festen Zahlen. Stufe nach Nutzerentscheidung G4." }),
+  branchenregel({ id: "POSTEN-QUAL-01", modul: "posten", typ: "besetzungsregel",
+    bezeichnung: "Qualifikation für einen Posten", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },
+    parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "qual", min: 1 }], bedarfAus: "objekte.posten.qualifikationen" },
+    pruefhinweis: "Welche Qualifikation ein Posten verlangt, trägt der Betrieb ein; ob die Sachkunde nach § 34a GewO für die Tätigkeit vorgeschrieben ist (Absatz 1a), an der Primärquelle und im Einzelfall prüfen. Stufe nach Nutzerentscheidung G4." }),
 ]);
 
 /**

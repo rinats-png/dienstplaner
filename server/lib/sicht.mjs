@@ -46,7 +46,7 @@ const nimm = (o, felder) => {
    Oberfläche greift an vielen Stellen ungeprüft zu. */
 const OBJEKT_SAMMLUNGEN = new Set(["erfassung", "einstempeln", "fahrzeiten", "checks",
   "notizen", "tagesnotizen", "belegung", "therapie", "planstaende", "freigaben",
-  "abweichungen"]);
+  "abweichungen", "postenPlan"]);
 
 /* ------------------------------------------------------------------------
    PERSONEN
@@ -472,6 +472,11 @@ export const BETRIEB = {
   ansichten: [NUR_EIGENE, NUR_EIGENE],
   kompetenzen: [R(kompetenzenMitarbeiter), VOLL],
   einarbeitung: [R(einarbeitungEigen), VOLL],
+  /* Posten (WP-19, modul-posten.mjs): Objekte mit Posten enthalten keine Personendaten und sind für alle Rollen
+     sichtbar. Die Einteilung auf Posten (`postenPlan`, „Person|Tag“) sieht die Person nur für sich selbst, die
+     Schichtverantwortung im eigenen Bereich am Tag, der Betriebsrat nicht. */
+  objekte: [VOLL, VOLL],
+  postenPlan: [NUR_EIGENE, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -760,6 +765,7 @@ Object.assign(SCHICHT, {
   kompetenzen: R(schichtKompetenzen),
   einarbeitung: R(schichtEinarbeitung),
   betriebsmittel: R(schichtBetriebsmittel),
+  postenPlan: R(schichtSchluessel(["eigen", "bereich"])),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
   /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */

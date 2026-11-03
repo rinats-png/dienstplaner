@@ -331,6 +331,15 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Hinweis, nur bei aktivem Modul; die Rechnung braucht nur die Dienstart und die Dienste der Nachbartage. Das Stempeln je Abschnitt ist
   rechnerisch vorbereitet (`istJeAbschnitt`), die Ablage zweier Stempelpaare je Tag noch nicht angebunden.
   Geprüft in `pruefungen/modul-geteilterdienst.test.js`.
+- *Posten* (`server/lib/modul-posten.mjs`): zwei neue Betriebsfelder. `objekte` (Objekte mit Posten, Sollbesetzung
+  und verlangten Qualifikationen; keine Personendaten) liefert der Server allen Rollen aus. `postenPlan`
+  (Einteilung auf Posten, Schlüssel „Person|Tag“) sehen Beschäftigte nur für sich selbst, die Schichtverantwortung
+  im eigenen Bereich am Tag (`schichtSchluessel`, tagesgenau), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Beide schreiben nur Planung und Leitung (Voll-Schreibweg); der Server prüft die Form
+  (`postenZusammen`: Kennungen, Soll 0 bis 99, Schlüssel mit echtem Tag, nur Neues oder Geändertes streng). Die
+  Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einteilungen auf Posten (`postenzuordnungen`). Befunde nur
+  als Hinweis und nur bei aktivem Modul. Die Posten-Dienstarten des Bestands (`posten: true`) bleiben unverändert.
+  Geprüft in `pruefungen/modul-posten.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

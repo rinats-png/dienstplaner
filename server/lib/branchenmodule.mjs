@@ -106,7 +106,10 @@ const modul = (e) => Object.freeze({ status: "geplant", abhaengigVon: [], mitbes
 export const BRANCHENMODULE = Object.freeze([
   /* Sicherheit */
   modul({ id: "posten", merkmal: "posten", name: "Objektbezogene Posten", pakete: ["sicherheit"],
-    beschreibung: "Objekte mit Posten, Sollbesetzung und Anforderungen je Posten; Einteilung auf Posten." }),
+    beschreibung: "Objekte mit Posten, Sollbesetzung und Anforderungen je Posten; Einteilung auf Posten.",
+    /* server/lib/modul-posten.mjs: zwei Betriebsfelder (Positivkatalog in sicht.mjs, RECHTEMATRIX). Die Posten-Dienstarten
+       des Bestands (posten:true/quelle) bleiben unverändert (Matrix G10 a). */
+    datenfelder: ["objekte", "postenPlan"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"] }),
   modul({ id: "wachbuch", merkmal: "wachbuch", name: "Wachbuch", pakete: ["sicherheit"], mitbestimmung: true,
     beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung." }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,

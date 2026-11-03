@@ -29,7 +29,7 @@ const liste = (w) => (Array.isArray(w) ? w.filter((x) => x && typeof x === "obje
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const hat = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
-const echterTag = (s) => TAG.test(s) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
+const echterTag = (s) => { if (!TAG.test(s)) return false; const t = new Date(`${s}T12:00:00Z`); return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === s; };
 const idOk = (s) => typeof s === "string" && s.length >= 1 && s.length <= POSTEN_GRENZEN.idMax;
 
 /**

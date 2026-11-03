@@ -28,6 +28,7 @@ import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
+import { postenZusammen } from "./modul-posten.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1121,6 +1122,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Geteilte Dienste (WP-19): Form des zweiten Abschnitts einer Dienstart. */
       const geteilt = geteilterdienstZusammen(geschickt, ort.betrieb);
       if (geteilt.grund) return { verweigert: geteilt.grund };
+      /* Posten (WP-19): Form von Objekten und Postenplan, nur Neues oder Geändertes streng. */
+      const posten = postenZusammen(geschickt, ort.betrieb);
+      if (posten.grund) return { verweigert: posten.grund };
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
