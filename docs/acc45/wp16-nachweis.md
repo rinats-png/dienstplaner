@@ -174,7 +174,11 @@ abgeschwächt, keine Funktion gekürzt.
 Stempel trägt legitim `nachWiederoeffnung: "ma-<Hex>"` — bei Hex-Beginn „1“ (etwa jeder 16. Lauf) rot. Jetzt
 `"ma-1"` mit Anführungszeichen (genau die Kennung des Oktober-Abschlusses). Rot bestätigt mit erzwungenem Präfix `ma-1`
 (Kennung im Server vorübergehend `ma-1<Hex>`), danach mit demselben erzwungenen Präfix grün — der schlechteste Fall ist
-damit abgedeckt, unabhängig vom Zufall. Wiederholungsnachweis: siehe „Läufe“ unten.
+damit abgedeckt, unabhängig vom Zufall. Wiederholungsnachweis: `monatsabschluss.test.js` 50-mal hintereinander (ganze
+Datei, weil die Prüfung am Ablauf davor hängt; nach dem Merge, Windows lokal): **50/50 grün**.
+
+CI (Linux) nach Merge von `integration/centric-complete` (Kopf 51c52bb): Prüfung 41677628577, Sicherheit 41677628599,
+Lieferkette 41677628847, Deploy-Skripte 41677629145 — alle grün, ohne Wiederholung.
 
 ### H1 — abgeschlossener Monat über den Plan änderbar (Blocker Produktion)
 
