@@ -208,7 +208,7 @@ describe("Texte B13 und Spoofing-Hinweis B14", () => {
       expect(GEO_DATENSCHUTZ_TEXT, w).toContain(w);
     for (const datei of ["src/handbuch-inhalt.js", "src/tour-inhalt.js"]) {
       const t = lies(datei).replace(/\s+/g, " ");
-      const i = t.indexOf("die Entfernung grob gerundet und die Messgenauigkeit");
+      const i = t.indexOf("die Entfernung grob gerundet");
       expect(i, datei).toBeGreaterThan(-1);
       expect(t.slice(i, i + 160), datei).toContain("Prüfort");
     }
@@ -219,7 +219,7 @@ describe("Texte B13 und Spoofing-Hinweis B14", () => {
   let A;
   beforeAll(async () => { A = await import("../src/App.jsx"); }, 120000);
   const text = (el) => renderToStaticMarkup(el).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  const sitz = (m) => ({ rolle: "kunde", db: { mandanten: [m] }, mandant: m, person: null });
+  const sitz = (m) => ({ rolle: "kunde", db: { mandanten: [m] }, mandant: m, person: { id: "l1", rolle: "leitung", bereich: "ALLE" } });
   const betr = (e = {}, extra = {}) => { const m = A.leererMandant("Geo-UI", "pflege"); m.einstellungen = { ...m.einstellungen, ...e }; return Object.assign(m, extra); };
   const akt = new Proxy({}, { get: () => () => {} });
   it("Schalter (Leitung) zeigt Datenschutztext und Spoofing-Hinweis — ein- wie ausgeschaltet", () => {
@@ -232,7 +232,7 @@ describe("Texte B13 und Spoofing-Hinweis B14", () => {
   it("Stempelbefunde (Leitung) tragen den Spoofing-Hinweis und deuten ✓ und ! nicht als Nachweis", () => {
     const m = betr({ geoPruefung: true }, { personen: [{ id: "p1", vorname: "A", nachname: "B", rolle: "mitarbeiter" }],
       einstempeln: { "p1|2026-10-30": { start: "08:00", geoStart: { status: INNERHALB, grund: null, genauigkeitM: 12, genauigkeitWarnung: false, referenz: { art: "standort", id: "s", name: "Haus" } } } } });
-    const t = text(h(A.StempelBefunde, { sitz: { ...sitz(m), rolle: "leitung" }, ym: "2026-10", akt }));
+    const t = text(h(A.StempelBefunde, { sitz: sitz(m), ym: "2026-10", akt }));
     expect(t).toContain(GEO_SPOOFING_TEXT);
   });
   it("Handbuch für die Leitung nennt den Spoofing-Hinweis", () => {

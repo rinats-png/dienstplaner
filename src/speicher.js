@@ -286,14 +286,14 @@ export function stempelSenden({ sofort = false } = {}) {
  * Ein Stempeln ablegen. Gibt das Ereignis zurück — oder null, wenn der
  * Inhaber unbekannt ist (dann stempelt die Oberfläche wie bisher direkt).
  */
-export async function stempelErfassen(datum, art, koord) {
+export async function stempelErfassen(datum, art, koord, positionGrund = null) {
   const inhaber = stempelInhaber();
   if (!inhaber) return null;
   /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund, inhaber,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -701,10 +701,12 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * Browser wäre alles davon manipulierbar, und eine Zeiterfassung, die sich
  * manipulieren lässt, belegt nichts.
  */
-export async function stempeln(datum, art, koord) {
+export async function stempeln(datum, art, koord, positionGrund = null) {
   const body = JSON.stringify({ datum, art,
     lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
-    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
+    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null,
+    /* Ohne Position nur der Grund als Code (keine_freigabe, timeout, nicht_verfuegbar); der Server prüft ihn gegen die Liste. */
+    ...(!koord && typeof positionGrund === "string" ? { positionGrund } : {}) });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
      Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
      Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s

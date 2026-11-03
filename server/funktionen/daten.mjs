@@ -1227,7 +1227,7 @@ export default async (req, context) => {
 
       /* `datum` des Geräts nur noch zur Plausibilität — den Tag bestimmt der
          Server (zeiterfassung.mjs, stempelZiel; Geo-Spezifikation B7). */
-      const { datum: geraeteDatum, art, lat, lon, accuracy } = rumpf;
+      const { datum: geraeteDatum, art, lat, lon, accuracy, positionGrund } = rumpf;
       if (art !== "start" && art !== "ende")
         return antwort({ fehler: "Nur start oder ende." }, 400);
       if (s.person === null || s.person === undefined)
@@ -1340,7 +1340,7 @@ export default async (req, context) => {
              Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
              mitgeschickte Koordinaten bleiben dann unbeachtet. Das Urteil lehnt
              nie ab: Die Stempelzeit wird in jedem Fall gespeichert. */
-          const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy } });
+          const urteil = geoUrteil({ m, person, datum: String(datum), messung: { lat, lon, accuracy, grund: positionGrund } });
 
           const k = `${person.id}|${datum}`;
           const alt = (m.einstempeln || {})[k] || {};

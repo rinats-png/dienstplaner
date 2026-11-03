@@ -67,9 +67,11 @@ describe("Referenzort je Dienst", () => {
   it("Einsatzort: der Umkreis des Einsatzorts gilt (100 m), nicht der des Standorts (200 m)", () => {
     expect(urteil("E", nord(KUNDE, 80)).geo.status).toBe(INNERHALB);
     expect(urteil("E", nord(KUNDE, 150)).geo.status).toBe(AUSSERHALB);    // innerhalb 200, außerhalb 100
-    /* Ohne Radius am Einsatzort gilt die Vorgabe 200 m. */
+    /* Ohne Radius am Einsatzort gilt die Vorgabe 100 m (Geo-Spezifikation B9; WP-29 — vorher 200 m,
+       der Wert des Standorts). */
     const o = [{ id: "es1", name: "Kunde Nord", ...KUNDE }];
-    expect(urteil("E", nord(KUNDE, 150), { einsatzorte: o }).geo.status).toBe(INNERHALB);
+    expect(urteil("E", nord(KUNDE, 80), { einsatzorte: o }).geo.status).toBe(INNERHALB);
+    expect(urteil("E", nord(KUNDE, 150), { einsatzorte: o }).geo.status).toBe(AUSSERHALB);
   });
   it("Einsatzort unbekannt oder ohne Koordinate: nicht bewertbar — nie ein Rückfall auf den Betriebsstandort", () => {
     const an = nord(ZENTRALE, 5);                                        // läge am Betriebsstandort innerhalb

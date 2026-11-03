@@ -31,6 +31,8 @@
    Browser prüfen lassen (pruefungen/stempelpuffer.test.js).
    ========================================================================== */
 
+import { POSITION_GRUENDE } from "../server/lib/geo.mjs";
+
 export const BESTAETIGT_HALTEN_MS = 24 * 60 * 60 * 1000;
 export const WARTEN_MIN_MS = 2000;
 export const WARTEN_MAX_MS = 5 * 60 * 1000;
@@ -115,7 +117,7 @@ export async function speicherWaehlen(umgebung = globalThis) {
  * Ein neues Stempelereignis. `koord` nur, wenn die Geo-Prüfung an ist
  * (stempelvorgang.js, positionHolen) — sonst null; mehr wird nicht abgelegt.
  */
-export async function erfassen(speicher, { art, datum = null, koord = null, inhaber, jetzt = new Date(), kennung = neueKennung,
+export async function erfassen(speicher, { art, datum = null, koord = null, positionGrund = null, inhaber, jetzt = new Date(), kennung = neueKennung,
   offline = false }) {
   if (art !== "start" && art !== "ende") throw new Error("Nur start oder ende.");
   if (!inhaber) throw new Error("Ohne Inhaber wird kein Stempel abgelegt.");
@@ -125,6 +127,8 @@ export async function erfassen(speicher, { art, datum = null, koord = null, inha
     koord: koord && typeof koord.lat === "number" && typeof koord.lon === "number"
       ? { lat: koord.lat, lon: koord.lon, accuracy: typeof koord.accuracy === "number" ? koord.accuracy : null } : null,
     zustand: "wartet", versuche: 0, naechsterVersuchAm: 0, fehler: null, quittung: null };
+  /* Ohne Position nur der Grund als Code (Spezifikation B4) — nie ein Freitext, nie neben einer Koordinate. */
+  if (!ev.koord && POSITION_GRUENDE.includes(positionGrund)) ev.positionGrund = positionGrund;
   await speicher.setzen(ev);
   return ev;
 }
@@ -252,7 +256,8 @@ export function rumpfFuer(ev, gesendet = new Date()) {
   return { art: ev.art, datum: ev.datum || null, clientEventId: ev.id, erfasstAm: ev.erfasstAm,
     gesendetAm: gesendet.toISOString(), offline: !!ev.offline, inhaber: ev.inhaber,
     lat: ev.koord ? ev.koord.lat : null, lon: ev.koord ? ev.koord.lon : null,
-    accuracy: ev.koord && typeof ev.koord.accuracy === "number" ? ev.koord.accuracy : null };
+    accuracy: ev.koord && typeof ev.koord.accuracy === "number" ? ev.koord.accuracy : null,
+    ...(!ev.koord && POSITION_GRUENDE.includes(ev.positionGrund) ? { positionGrund: ev.positionGrund } : {}) };
 }
 
 /** Wartezeit aus Retry-After (Sekunden oder HTTP-Datum) — oder null. */
