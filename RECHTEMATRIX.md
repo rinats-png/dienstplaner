@@ -319,10 +319,26 @@ Beschäftigte gehen nur die eigenen Einteilungen freigegebener Monate und vergan
 (`abweichungen`) ist für Beschäftigte VOLL und wird nur über diese Fußnote gefiltert; ihre Zellen in den Zeilen Posten und
 Bereiche tragen deshalb den Verweis ²⁷.
 **Übergangsregel und ihre Kehrseite:** Der Filter wirkt nur, solange der Betrieb die Pflicht eingeschaltet hat oder mindestens
-einen Monat freigegeben hat. Nimmt die Planung in einem Betrieb **ohne** Pflicht die letzte Freigabe zurück, ist der Filter
-danach aus und Beschäftigte sehen wieder Entwürfe. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
-bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. Ein Zurücknehmen von Freigaben gibt es heute nicht
-(künftiges Feature, siehe Nachweis).
+einen Monat freigegeben hat. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
+bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. **Freigaben zurücknehmen (WP-23b, M2):** Die Oberfläche
+hat keine Rücknahme, die API erlaubte sie aber bisher: Wer `freigaben` leer, als Liste oder gar nicht schickte, nahm einem
+Betrieb ohne Pflicht den Filter. Jetzt prüft der Server die Form (Objekt, neue Schlüssel `JJJJ-MM`, sonst abgewiesen),
+erhält entfernte Freigaben für alle ohne `org.edit` stillschweigend (Planung, Beschäftigte, Schichtverantwortung) und
+lässt den Filter einrasten: Nimmt die Leitung (`org.edit`) die letzte Freigabe zurück, setzt der Server
+`planFreigabePflicht` auf true, Wann/Wer vom Server; die Rücknahme steht im Betriebsprotokoll („freigabe-zurueckgenommen“,
+nur die Zahl). Ob ein Monat nach der Rücknahme für Beschäftigte, die ihn schon sahen, wieder Entwurf wird, ist fachlich
+offen (siehe Nachweis). **Einstellungen weglassen (Delta-Review):** Fehlt `einstellungen` in der Übermittlung oder ist es kein
+Objekt (null, Text, Zahl), gilt der gespeicherte Stand der Einstellungen (Pflicht samt Wann/Wer und alles Übrige); auch hier
+schaltet die Planung den Schutz nicht ab, und bei der Leitung entfällt die Pflicht nicht ohne Wann/Wer.
+**Bewusste Ausnahme (N1, offene Entscheidung):** Die eigene Vergabe einer Ausschreibung (`vergebenAn`/`vergebenZeit`) bleibt
+für die betroffene Person auch an Entwurfstagen sichtbar (Sonde MK-VERGEBEN-EIGEN, `rechtematrix.test.js`). Das passt nicht
+zum Wortlaut „weder eigenen noch fremden Entwurf“ oben; es ist nicht geändert, sondern wird fachlich entschieden.
+**Weitere Sammlungen mit Datum (WP-23b):** `ausschreibungen` — „vergeben an/Zeit“ nur, wenn es die eigene Person war
+(sonst null); `sondereinsaetze` — unter `zugeteilt` nur die eigene Person (ob Sondereinsätze der Planfreigabe unterliegen,
+ist fachlich offen und nicht entschieden); `unterschreitungen` — Einträge der Entwurfstage fehlen für Beschäftigte
+(freier Grund, kann Namen tragen); `einspruenge` und `selbstplanung` — nur die eigenen, bewusst auch an Entwurfstagen
+(keine Planung, sondern Äußerung der Person); der Betriebsrat sieht `unterschreitungen` unverändert (Entscheidung zu
+Betriebsrat/Schichtverantwortung offen).
 Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
 **Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
 oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen

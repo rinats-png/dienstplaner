@@ -284,7 +284,14 @@ function anfragen(w, ctx) {
 function ausschreibungen(w, ctx) {
   return liste(w).map((a) => {
     if (!a || typeof a !== "object") return a;
-    return { ...a, bewerbungen: liste(a.bewerbungen).filter((b) => eigen(b, ctx.ich)) };
+    /* Wer die Schicht bekam (und wann), gehört der Planung — für Beschäftigte nur, wenn sie es selbst waren
+       (WP-23b, M1: sonst verriet „vergeben an“ die Einteilung eines Entwurfstags, die abweichungen verbergen). */
+    const rein = { ...a, bewerbungen: liste(a.bewerbungen).filter((b) => eigen(b, ctx.ich)) };
+    if (!gleich(a.vergebenAn, ctx.ich)) {
+      if (Object.prototype.hasOwnProperty.call(a, "vergebenAn")) rein.vergebenAn = null;
+      if (Object.prototype.hasOwnProperty.call(a, "vergebenZeit")) rein.vergebenZeit = null;
+    }
+    return rein;
   });
 }
 function ausschreibungenOhneMeldungen(w) {
@@ -343,7 +350,16 @@ function betriebsmittelEigen(w, ctx) {
 function sondereinsaetzeEigen(w, ctx) {
   return liste(w)
     .filter((s) => s && liste(s.zugeteilt).some((x) => gleich(x && x.personId !== undefined ? x.personId : x, ctx.ich)))
-    .map((s) => { const r = { ...s }; delete r.auftraggeber; delete r.kostenstelle; return r; });
+    /* zugeteilt: nur die eigene Person (WP-23b, N1): die übrigen Zugeteilten sind fremde Einteilungen. */
+    .map((s) => { const r = { ...s }; delete r.auftraggeber; delete r.kostenstelle;
+      r.zugeteilt = liste(s.zugeteilt).filter((x) => gleich(x && x.personId !== undefined ? x.personId : x, ctx.ich)); return r; });
+}
+
+/* Dokumentierte Unterdeckung (WP-23b, N3): Datum, Dienst und ein freier Grund (kann Namen enthalten). Für
+   Beschäftigte fehlen die Einträge der Entwurfstage — sie verrieten die Planung eines Entwurfs. */
+function unterschreitungenOhneEntwurf(w, ctx) {
+  if (!ctx.entwurfVerbergen) return w;
+  return liste(w).filter((u) => !(u && typeof u === "object") || !istEntwurfstag(ctx.betrieb, u.datum, ctx.laufenderTag));
 }
 
 /* Standorte: Name und Land (Feiertage), keine Koordinaten und kein Radius.
@@ -492,7 +508,7 @@ export const BETRIEB = {
 
   /* Der Plan selbst. */
   abweichungen: [R(planOhneEntwurf), VOLL], planstaende: [VOLL, VOLL], freigaben: [VOLL, VOLL],
-  unterschreitungen: [VOLL, VOLL], belegung: [VOLL, VOLL], therapie: [VOLL, VOLL],
+  unterschreitungen: [R(unterschreitungenOhneEntwurf), VOLL], belegung: [VOLL, VOLL], therapie: [VOLL, VOLL],
   aushang: [VOLL, VOLL],
   standorte: [R(standorte), R(standorte)],
   /* Einsatzorte (WP-20): Koordinaten und Umkreis gehen nur an Planung und Leitung; ob ein Stempel am
