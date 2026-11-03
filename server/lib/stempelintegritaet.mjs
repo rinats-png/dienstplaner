@@ -263,7 +263,7 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
  * @param {{personId: string, datum: string, start: string, ende: string, grund: string}} k
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
- * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object}}
+ * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null)}}
  */
 export function korrekturAnhaengen(m, k, wer, jetzt, id) {
   const { personId, datum, start, ende } = k || {};

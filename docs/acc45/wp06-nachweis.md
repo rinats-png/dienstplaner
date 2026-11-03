@@ -144,3 +144,33 @@ Angepasste HTTP-Prüfungen:
 - `pruefungen/schichtverantwortung.mjs`: „Fremde Stempelzeit manipulieren“ und „Eigene Stempelzeit über PUT setzen“
   werden jetzt mit 403 abgewiesen statt still übergangen. Geprüft wird zusätzlich, dass der Stempel unverändert ist bzw.
   nichts angelegt wurde.
+
+## Review-Auflagen M1, B1–B4
+
+- **M1 Konflikte mit der Integration (hoch):**
+  - `server/funktionen/daten.mjs` (PUT): Die Stempelprüfung läuft vor der Zusammenführung, danach `stempelSichern`, danach
+    die Fachprüfung aus WP-22 — beide gelten.
+  - `server/lib/sicherungen.mjs` (Wiederherstellen): Zuerst `stempelBeiWiederherstellung`, danach die Fristen aus WP-26
+    (`raeumen`, Modus „an“). Sonst brächte das Wiederherstellen Stempel zurück, die der Datenschutzlauf gelöscht hat
+    (Art. 5 Abs. 1 lit. e DSGVO). Das Protokoll nennt beides: Stempel behalten und Fristen.
+  - Test der Reihenfolge in `sicherungen.test.js`: Im Modus „an“ bleiben Stempel jenseits der Frist gelöscht — sowohl der
+    heutige abgelaufene als auch der aus der Sicherung; junge bleiben. Im Modus „vorschau“ geht nichts verloren.
+  - Gemeinsam grün: stempel-integritaet, dsgvo-server, sicherungen, wiederherstellung-schutz, aufbewahrung.
+- **B1 Kopie von vor dem Datenschutzlauf:** Ein Stempel mit Tag vor dem Stichtag, den es gespeichert nicht mehr gibt
+  (Datenschutzlauf), wird ignoriert statt als „erfunden“ mit 403 abgewiesen — für jede Rolle. Er wird nicht wieder
+  gespeichert, auch seine Ist-Zeit nicht. Ein junger, nie gespeicherter Stempel bleibt „erfunden“ (403); ein bestehender
+  Stempel jenseits der Frist lässt sich weiter nicht ändern.
+- **B2 Eine Frist-Rechnung:** `loeschStichtag` ruft `stichtage(...).plan` aus `server/lib/aufbewahrung.mjs`. Frist des Betriebs,
+  nie unter 24 Monaten; eine ungültige Fristangabe ergibt keinen Stichtag (fail-closed, nichts wird gelöscht). Test
+  gegen `stichtage` für 1, 24, 36 und 120 Monate.
+- **B3 Folgepaket (WP-14, Korrekturworkflow):** Noch ohne Oberfläche sind
+  - der Korrekturdialog der Leitung für START_FEHLT, START_VERALTET und offenen Beginn über `/api/stempel-korrektur`,
+  - und die Selbstauskunft auf einem Stempel-Tag (heute 409 „schon erfasst“, ohne Korrekturereignis).
+  Bis dahin korrigiert die Leitung über „Bestätigen“ (WP-17) und den Server-Weg.
+- **B4 Grenzen:**
+  - Der Mindestgrund ist 10 Zeichen.
+  - Statt 50 Korrekturen je Stempel gilt eine hohe Obergrenze (200 Korrekturen, 20 000 Zeichen Gründe insgesamt, danach 409
+    mit Hinweis „Betriebsleitung klären“). Ab 20 Korrekturen meldet die Antwort der Leitung einen Hinweis. Damit ist der
+    Stempel nicht mehr durch 50 Mini-Korrekturen blockierbar. Die Bremse `schreiben` je Zugang gilt unverändert.
+  - Test: 60 abwechselnde Korrekturen gehen durch, der Hinweis erscheint ab der 20., die Gründe zusammen sind begrenzt.
+- Integration: WP-17 (3471ee8) und `origin/integration/centric-complete` (9d0ff51) sind hineingemergt.
