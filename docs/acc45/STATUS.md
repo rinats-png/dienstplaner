@@ -1,6 +1,6 @@
 # ACC45 – Status
 
-Stand: 2026-11-03 (Tag 2)
+Stand: 2026-11-03 (Tag 2, Vormittag; Wochenlimit bis 13:00)
 
 ## Überblick
 
@@ -8,8 +8,8 @@ Stand: 2026-11-03 (Tag 2)
 |---|---|
 | Pakete gesamt | 46 (42 aus dem Audit + WP-43 Personaldaten-Filter, WP-44 Code-Rotation, WP-45 atomares Schreiben, WP-46 Bremse fail-closed) |
 | DONE | 2 (WP-01 H8+ produktiv, WP-08) |
-| INTEGRATED | 11 (WP-02, 03, 04, 05, 10, 11, 31, 32, 43, 45, 46) + Nachträge WP-05b, WP-11 (Jugendschutz, U1), WP-32c, WP-45b/c – im Integrationsstand, Abnahme in Produktion steht aus |
-| IN_PROGRESS / REVIEW | WP-17, WP-22, WP-26, WP-41, WP-09; WP-11 MuSchG-Einwilligung (Auflagen), WP-45d; WP-33 Review pausiert |
+| INTEGRATED | 15 (WP-02, 03, 04, 05, 10, 11, 12, 22, 26, 31, 32, 41, 43, 45, 46) + Nachträge – im Integrationsstand, Abnahme in Produktion steht aus |
+| IN_PROGRESS / REVIEW | WP-17 (Auflagen), WP-06 (Auflagen M1/B1), WP-13, WP-19 (Kern + Strang C im Review, weitere Module folgen), WP-22b (Review-Befunde), WP-25, WP-27, WP-28, WP-09 |
 | BLOCKED / READY | 27 / 2 (READY: WP-06, WP-30) |
 | Offener Aufwand | 165,5 PT (integrierte Pakete zählen bis DONE weiter mit) |
 | Kritischer Pfad | WP-02 → WP-09 → WP-10 → WP-11 → WP-22 → WP-19 → WP-42 (48,5 PT); WP-19 aufteilbar |
