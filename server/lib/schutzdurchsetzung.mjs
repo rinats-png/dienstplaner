@@ -308,7 +308,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
   let abschnitt = performance.now();
   let schritt = 0;
   const zeitUm = () => {
-    if ((++schritt & 63) !== 0) return false;
+    if ((++schritt & 15) !== 0) return false;
     const jetzt = performance.now();
     if (jetzt - abschnitt < HAEPPCHEN_MS) return false;
     zaehler.blockMs = Math.max(zaehler.blockMs, Math.round(jetzt - abschnitt));
@@ -494,6 +494,14 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
   }
   if (!funde.size) return null;
 
+  /* Review B4: Die Schichtverantwortung kann nur für ihren Bereich bestätigen.
+     Entsteht ein neuer Befund außerhalb davon, sperrt die Änderung — ohne
+     Person, Tag, Regel oder Kennung aus dem fremden Bereich zu nennen. */
+  if (imBereich)
+    for (const f of funde.values())
+      if (!imBereich(f.personId, f.datum))
+        return { sperre: "Diese Änderung wirkt auf Einteilungen außerhalb deines Bereichs. Bitte mit der Planung klären." };
+
   /* Sperrend: abweisen. */
   for (const f of funde.values()) {
     const s = f.befunde.find((b) => sperrtBefund(b.regel));
@@ -501,14 +509,6 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
       ? `Bestehende Einteilung am ${f.datum} widerspricht der Änderung an der Person: ${s.text}. Bitte erst umplanen, dann ändern.`
       : `Einteilung am ${f.datum} nicht möglich: ${s.text}. Sperrende Regeln lassen sich nicht bestätigen.` };
   }
-  /* Review B4: Die Schichtverantwortung kann nur für ihren Bereich bestätigen.
-     Entsteht ein warnender Befund außerhalb davon, sperrt die Änderung — ohne
-     Person, Tag oder Kennung aus dem fremden Bereich zu nennen. */
-  if (imBereich)
-    for (const f of funde.values())
-      if (!imBereich(f.personId, f.datum))
-        return { sperre: "Diese Änderung wirkt auf Einteilungen außerhalb deines Bereichs. Bitte mit der Planung klären." };
-
   /* Warnend: nur mit Bestätigung im selben Speichervorgang — je Einteilung
      oder als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1). */
   const altIds = new Set(liste(altM && altM.bestaetigungen).map((b) => String(b.id)));

@@ -201,9 +201,8 @@ describe("Altbestand mit gespeicherter session", () => {
     const r1 = await lies(T.al);
     /* jemand anderes ändert den Kern … */
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
-    /* WP-22: Dienstarten ändert nur, wer org.edit hat — hier die Leitung in einer früheren Sitzung. */
     b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "S", name: "Spät" }];
-    expect((await schreib(T.al, b2, r1.etag)).status).toBe(200);
+    expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
     await altbestand();
     /* … und die Leitung schreibt mit dem alten Stand ebenfalls in den Kern */
     const b1 = JSON.parse(JSON.stringify(r1.bestand));
@@ -220,7 +219,7 @@ describe("Altbestand mit gespeicherter session", () => {
     const r1 = await lies(T.al);
     const b2 = JSON.parse(JSON.stringify(r1.bestand));
     b2.mandanten[0].dienstarten = [...b2.mandanten[0].dienstarten, { id: "Z", name: "Zwischen" }];
-    expect((await schreib(T.al, b2, r1.etag)).status).toBe(200);
+    expect((await schreib(T.ap, b2, r1.etag)).status).toBe(200);
     await altbestand();
     const b1 = JSON.parse(JSON.stringify(r1.bestand));
     b1.mandanten[0].abweichungen = { ...b1.mandanten[0].abweichungen, "am|2026-12-07": "F" };

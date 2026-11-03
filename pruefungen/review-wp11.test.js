@@ -69,9 +69,7 @@ describe("F1: die Schichtverantwortung sieht nur die Arten von vor #6", () => {
    F2 — Server-Durchsetzung nicht umgehbar
    ------------------------------------------------------------------------ */
 describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schichtfolge umgehen", () => {
-  /* Schichtfolge: 7 Tage, nur Frühdienst; Einheit e1. mu ist im Mutterschutz.
-     WP-22: Dienstarten ändert nur, wer org.edit hat (Leitung) — die Fälle, die eine
-     Dienstart anlegen oder ändern, laufen deshalb als LT. */
+  /* Schichtfolge: 7 Tage, nur Frühdienst; Einheit e1. mu ist im Mutterschutz. */
   const g = () => ({ version: 1, stand: 1, mandanten: [{ id: "m1", einheiten: [{ id: "e1", versatzTage: 0 }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "S", name: "Spät", start: "12:00", ende: "19:00" }],
     zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05",
@@ -79,7 +77,7 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
     personen: [person("mu", "mitarbeiter", "e1", { mutterschutz: true }), person("p1", "planer", "ALLE"), person("l1", "leitung", "ALLE")],
     abweichungen: {}, nachrichten: [], anfragen: [], abwesenheiten: [], bestaetigungen: [] }] });
   it("(a) neue Dienstart im selben Speichervorgang + Einteilung → abgewiesen", () => {
-    const e = schreiben(g(), "LT", (m) => {
+    const e = schreiben(g(), "PL", (m) => {
       m.dienstarten.push({ id: "N2", name: "Nacht 2", start: "22:00", ende: "06:00" });
       m.abweichungen[`mu|${MITTWOCH}`] = "N2";
     });
@@ -93,7 +91,7 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
     expect(e.verweigert).toMatch(/nicht möglich/);
   });
   it("(c) Schichtfolge oder Zugehörigkeit so geändert, dass die Person nachts eingeteilt ist → abgewiesen", () => {
-    const zyklus = schreiben(g(), "LT", (m) => {
+    const zyklus = schreiben(g(), "PL", (m) => {
       m.dienstarten.push({ id: "N", name: "Nacht", start: "22:00", ende: "06:00" });
       m.zyklus = { tage: ["N", "N", "N", "N", "N", "-", "-"] };
     });
@@ -112,7 +110,7 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
     /* Versatz der eigenen Einheit verschieben: ebenso. */
     const versatz = schreiben(g2, "PL", (m) => { m.einheiten.find((x) => x.id === "e1").versatzTage = 3; });
     expect(versatz.verweigert).toMatch(/nicht möglich/);
-    const anker = schreiben(g(), "LT", (m) => {
+    const anker = schreiben(g(), "PL", (m) => {
       m.dienstarten.push({ id: "N", name: "Nacht", start: "22:00", ende: "06:00" });
       m.zyklus = { tage: ["F", "F", "F", "F", "F", "N", "N"] };            // Wochenende nachts
     });
@@ -122,11 +120,11 @@ describe("F2: der Server lässt sich nicht über Dienstarten, Zeiten oder Schich
     const alt = g();
     alt.mandanten[0].dienstarten.push({ id: "N", name: "Nacht", start: "22:00", ende: "06:00" });
     alt.mandanten[0].abweichungen[`mu|${tag(10)}`] = "N";                    // Altbestand
-    const e = schreiben(alt, "LT", (m) => { m.dienstarten.find((d) => d.id === "S").ende = "18:00"; });
+    const e = schreiben(alt, "PL", (m) => { m.dienstarten.find((d) => d.id === "S").ende = "18:00"; });
     expect(e && !e.verweigert, e && e.verweigert).toBe(true);
   });
   it("zulässige Strukturänderungen gehen durch", () => {
-    const e = schreiben(g(), "LT", (m) => { m.dienstarten.find((d) => d.id === "F").ende = "13:30"; });
+    const e = schreiben(g(), "PL", (m) => { m.dienstarten.find((d) => d.id === "F").ende = "13:30"; });
     expect(e && !e.verweigert, e && e.verweigert).toBe(true);
   });
 });

@@ -374,3 +374,43 @@ describe("N1 / WP-22: Laufzeit der Nachrechnung", () => {
     expect(szenario(2000, 300)).toBeGreaterThan(0);
   }, 120000);
 });
+
+describe("Review B2: die Nachrechnung blockiert den gemeinsamen Prozess nicht", () => {
+  const gross = () => {
+    const personen = [];
+    for (let i = 0; i < 2000; i++)
+      personen.push(person(`x${i}`, "mitarbeiter", `e${i % 20}`, i < 300 ? (i % 2 ? { mutterschutz: true } : J17) : {}));
+    const altM = { id: "m1", einheiten: Array.from({ length: 20 }, (_, i) => ({ id: `e${i}`, versatzTage: i % 7 })),
+      dienstarten: [{ id: "F", start: "06:00", ende: "14:00" }, { id: "S", start: "12:00", ende: "19:00" }, { id: "N", start: "22:00", ende: "06:00" }],
+      zyklus: { tage: ["F", "F", "S", "S", "-", "-", "-"] }, anker: "2026-01-05", personen, abweichungen: {}, einstellungen: { ...MEHR, ruhezeit: 11, maxFolge: 6 },
+      qualifikationen: [] };
+    return { altM, neuM: { ...altM, zyklus: { tage: ["F", "S", "S", "F", "-", "-", "-"] } } };
+  };
+  it("2000 Personen: kein Block über 50 ms (perf_hooks.monitorEventLoopDelay), Ergebnis wie synchron", async () => {
+    const { monitorEventLoopDelay } = await import("node:perf_hooks");
+    const { altM, neuM } = gross();
+    const sync = SD.fachpruefungUebermittlung(altM, neuM, HEUTE);
+    const h = monitorEventLoopDelay({ resolution: 5 });
+    h.enable();
+    const r = await SD.fachpruefungUebermittlungAsync(altM, neuM, HEUTE, { budgetMs: 60000 });
+    h.disable();
+    const maxMs = h.max / 1e6;
+    console.log(`Event-Loop: längste Verzögerung ${maxMs.toFixed(1)} ms, längster Rechenblock ${SD.letzteLaufzeit.blockMs} ms, gesamt ${SD.letzteLaufzeit.ms} ms`);
+    expect(r).toEqual(sync);
+    expect(SD.letzteLaufzeit.blockMs).toBeLessThanOrEqual(50);
+    expect(maxMs).toBeLessThan(100);                                        // Messung inklusive Zeitgeber-Ungenauigkeit
+  }, 120000);
+  it("Zeitbudget überschritten: { zeitbudget: true } (der Server antwortet 503)", async () => {
+    const { altM, neuM } = gross();
+    expect(await SD.fachpruefungUebermittlungAsync(altM, neuM, HEUTE, { budgetMs: 1 })).toEqual({ zeitbudget: true });
+  }, 60000);
+  it("Bremse für Strukturänderungen: höchstens 10 je Raum und Minute", () => {
+    const t = 1_000_000;
+    for (let i = 0; i < SD.STRUKTUR_JE_MINUTE; i++) expect(SD.strukturBremse("raum-x|m1", t + i).frei).toBe(true);
+    const zu = SD.strukturBremse("raum-x|m1", t + 20);
+    expect(zu.frei).toBe(false);
+    expect(zu.wartet).toBeGreaterThan(0);
+    expect(SD.strukturBremse("raum-y|m1", t + 20).frei).toBe(true);           // anderer Raum
+    expect(SD.strukturBremse("raum-x|m1", t + 61000).frei).toBe(true);        // nach einer Minute wieder
+  });
+});
