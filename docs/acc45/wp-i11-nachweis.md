@@ -97,7 +97,15 @@ Schwach getötet (genau ein Test): M1a, M5a, M7b, M12, M13, M14 — jeweils ein 
 
 ## CI
 
-CI_ABSCHNITT
+Auf `c7b25c1` (Code-Stand identisch mit dem Kopf dieses Branches; danach nur dieser Nachweis geändert), alle grün im ersten Versuch, kein Neustart:
+
+| Workflow | Lauf-ID | Ergebnis |
+|---|---|---|
+| Prüfung | 41716587547 | success (Schritt „Intelligence-Faktenpaket": 5 Testdateien grün) |
+| Sicherheit | 41716587715 | success |
+| Lieferkette | 41716587542 | success |
+
+Keine Flakes beobachtet.
 
 ## Angriffsflächen für die Sicherheitsprüfung
 
