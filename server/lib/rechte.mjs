@@ -24,6 +24,7 @@ import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBef
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
+import { betriebsratAuswertung } from "./br-auswertung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -497,8 +498,17 @@ function bestandFuerRolleKern(bestand, sitzung) {
   /* Beschäftigte und Betriebsrat: nur, was der Katalog in sicht.mjs
      ausdrücklich freigibt. Unbekannte Felder gehen nicht hinaus — weder
      ganz oben noch im Betrieb noch an einer Person. */
-  if (SICHT_ROLLEN.includes(rolle))
-    return bestandSicht(bestand, sitzung, eigenerMandant(bestand, sitzung));
+  if (SICHT_ROLLEN.includes(rolle)) {
+    const eigener = eigenerMandant(bestand, sitzung);
+    const aus = bestandSicht(bestand, sitzung, eigener);
+    /* WP-27: Der Betriebsrat bekommt mit audit.view eine Auswertung aus dem
+       vollständigen Bestand — nur Aggregate je Monat und Einheit, unter der
+       Mindestgruppe gesperrt (br-auswertung.mjs). Ein abgeleitetes Feld, nie
+       gespeichert (rechte.mjs entfernt es beim Schreiben). */
+    if (rolle === "betriebsrat" && darf(rolle, "audit.view") && eigener && aus && Array.isArray(aus.mandanten) && aus.mandanten[0])
+      aus.mandanten[0].auswertungBetriebsrat = betriebsratAuswertung(eigener, heuteBerlin());
+    return aus;
+  }
 
   /* Die Schichtverantwortung: ebenso über einen Katalog (SCHICHT), gestuft
      nach eigener Person, eigenem Bereich, Springer-Pool und fremd. */
@@ -985,9 +995,10 @@ function abgeleiteteEntfernen(uebermittelt) {
     ? Object.fromEntries(Object.entries(p).filter(([k]) => !ABGELEITETE_PERSONENFELDER.includes(k))) : p);
   /* sichtIstDaten (E1) entsteht nur in der Antwort — wie die abgeleiteten
      Personenfelder wird es vor dem Zusammenführen entfernt, nie gespeichert. */
+  /* Ebenso die Auswertung für den Betriebsrat (WP-27). */
   const ohneVermerk = (m) => {
-    if (!m || typeof m !== "object" || !("sichtIstDaten" in m)) return m;
-    const { sichtIstDaten, ...rest } = m; // eslint-disable-line no-unused-vars
+    if (!m || typeof m !== "object" || (!("sichtIstDaten" in m) && !("auswertungBetriebsrat" in m))) return m;
+    const { sichtIstDaten, auswertungBetriebsrat, ...rest } = m; // eslint-disable-line no-unused-vars
     return rest;
   };
   return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m0) => {
