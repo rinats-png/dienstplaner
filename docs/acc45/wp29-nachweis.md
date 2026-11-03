@@ -32,7 +32,7 @@ Akzeptanz laut Backlog: Felder, Begründungscodes, Warnung über 100 m, Texte B1
 
 ## Lücken: Test rot, Fix grün
 
-Rot: Commit 26a65b8, Tests auf dem Stand von WP-20 (Basis 741c844): **25 von 30 neuen Tests rot**, die fünf grünen sind
+Rot: Commit 26a65b8, Tests auf dem Stand von WP-20 (Basis 741c844): **25 von 30 neuen Tests rot** (Test-Commit); mit der verschärften Testfassung und den Review-Tests zählt der Reviewer 27 von 32 rot, zusätzlich ein angepasster bestehender Test (geo-einsatzorte, siehe unten). Die übrigen grünen sind
 Regressionswächter (Rohkoordinate, Standort-Vorgabe 200 m, Stempel am Einsatzort ohne Koordinate in der Antwort, Rechte).
 Grün: Commit 89a4aee.
 
@@ -47,8 +47,8 @@ Grün: Commit 89a4aee.
 | G7 | Texte B13 | `GEO_DATENSCHUTZ_TEXT` (Ergebnis, grob gerundete Entfernung, Messgenauigkeit, Prüfort — keine Koordinate, kein Verlauf) an allen Stellen; die alten Sätze in `App.jsx`, `pruefung.jsx` (Selbsttest-Daten), Handbuch, Tour sind ersetzt |
 | G8 | Spoofing-Hinweis B14 | `GEO_SPOOFING_TEXT` im Schalter (Leitung), in den Stempelbefunden und im Handbuch der Leitung |
 
-Neue Dateien: `pruefungen/geo-spezifikation.test.js` (Unit und Oberfläche, 26), `pruefungen/geo-spezifikation-handler.test.js`
-(Handler, 6). Beide in `npm run pruefung:geo` (eine Zeile in `package.json`, Konfliktzone „scripts“: bei der Integration prüfen).
+Neue Dateien: `pruefungen/geo-spezifikation.test.js` (Unit, Oberfläche, Puffer, Texte: 31), `pruefungen/geo-spezifikation-handler.test.js`
+(Handler: 8). Beide in `npm run pruefung:geo` (eine Zeile in `package.json`, Konfliktzone „scripts“: bei der Integration prüfen).
 
 ## Mutanten
 
@@ -115,3 +115,16 @@ Einsatzorte ganz ohne Radius (etwa über die Schnittstelle) werden von 200 auf 1
 - `selbsttest.test.js` („Erster Aufbau unter 500 ms“) war auf dem lokalen, ausgelasteten Rechner rot (reine Rechenzeit von
   `stundenkonto`); der CI-Lauf ist maßgeblich.
 - Gerätetest GPS (echtes Gerät) ist nicht ausgeführt.
+
+## Review-Auflagen (Opus), umgesetzt: Test rot, Fix grün, Mutant
+
+Rot: Commit mit den Review-Tests (6 von 38 rot), grün im Folgecommit. Mutanten alle gefangen (je 1 rot):
+
+| Auflage | Fix | Mutant |
+| --- | --- | --- |
+| M1 Handbuch: Bestätigung als Bedingung der Prüfung beschrieben, `geoUrteil` liest `koordinatenGeprueftAm` nicht | Satz: Koordinate "bleibt als noch nicht bestätigt markiert, bis …" (die Prüfung wartet darauf nicht). Ob die Prüfung eine Bestätigung verlangen soll, ist Entscheidung der Leitung und nicht geändert | Satz zurück |
+| M2 Rechtstexte (`rechtliches/datenschutz.md`, `auftragsverarbeitung.md`) | Sachliche Ergänzung gemäß Code: Messgenauigkeit, Prüfort, Grund einer fehlenden Position (Codes). Keine rechtliche Bewertung: **rechtliche Prüfung durch Leitung/Kanzlei (WP-36)** | je ein Mutant (AV ohne Codes, DSE ohne Prüfort) |
+| N1 FAQ in `pruefung.jsx` | nennt den Prüfort | FAQ ohne Prüfort |
+| N2 Erstbefüllung (`bestand-anlegen`) und Wiederherstellen | prüfen `bestandStandorteFehler` (und Erstbefüllung auch Dienstart-Ort): 422, Bestand bleibt; Wiederherstellen vergleicht mit dem aktuellen Stand | je Weg ein Mutant |
+| N3 Puffer | `positionGrund` wird nach Quittung, Absage und beim Abmelden gelöscht | je Weg ein Mutant |
+| N5 Testzahlen | oben korrigiert | – |
