@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { swStempeln } from "./werkzeug/sw-fassung.mjs";
 
 /* Vendor-Bündel getrennt halten: React ändert sich selten, die Anwendung
    täglich. Getrennt kann der Browser React über Wochen zwischenspeichern,
@@ -35,8 +36,16 @@ const proxy = Object.fromEntries(
   ["/api", "/lage", "/starten", "/kalender", "/zustellung", "/einrichten", "/gesund"]
     .map((pfad) => [pfad, { target: SERVER, changeOrigin: false }]));
 
+/* WP-37: Die Fassung des Dienstarbeiters kommt aus dem Bau (Hashwert über das
+   Ergebnis), nicht aus einer von Hand gezählten Zeichenkette. */
+const swFassungAusBau = {
+  name: "sw-fassung",
+  apply: "build",
+  async closeBundle() { await swStempeln("dist"); },
+};
+
 export default defineConfig({
-  plugins: [react(), cspNurFuerEntwicklung],
+  plugins: [react(), cspNurFuerEntwicklung, swFassungAusBau],
   server: { proxy },
   build: {
     outDir: "dist",

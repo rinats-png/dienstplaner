@@ -12,6 +12,7 @@ import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzT
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
   einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
 import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte } from "./schutzkonflikte-hook.js";
+import { verknuepfungsZiel } from "./verknuepfung.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -24818,6 +24819,27 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   const [, setPufferStand] = useState(0);
   useEffect(() => SP.stempelBeobachten(() => setPufferStand((n) => n + 1)), []);
   useEffect(() => SP.stempelSyncEinrichten((ev, d) => { if (aktRef.current) aktRef.current.stempelQuittung(ev, d); }), []);
+
+  /* WP-37: Verknüpfungen des Manifests (/?ansicht=meine, /?ansicht=krank).
+     Einmal je Seitenaufruf, sobald die Person angemeldet ist; die Angabe
+     wird danach aus der Adresszeile entfernt. Es gilt dieselbe Navigation
+     samt Rechten wie sonst — eine nicht erlaubte Ansicht öffnet nichts. */
+  const verknuepfungErledigt = useRef(false);
+  useEffect(() => {
+    if (verknuepfungErledigt.current || !sitz || typeof window === "undefined") return;
+    verknuepfungErledigt.current = true;
+    const ziel = verknuepfungsZiel(window.location.search);
+    if (!ziel) return;
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("ansicht");
+      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+    } catch { /* Adresszeile bleibt, wie sie ist */ }
+    const istBetr = sitz.rolle === "betreiber";
+    const nav = istBetr ? NAV_BETREIBER : NAV_KUNDE.filter(([, , recht]) => ansichtErlaubt(sitz, recht));
+    if (ziel.art === "ansicht" && nav.some(([id]) => id === ziel.id)) { setView(ziel.id); setDetail(null); }
+    else if (ziel.art === "krank" && !istBetr && aktRef.current) aktRef.current.oeffneKrankmeldung(sitz.person.id);
+  }, [sitz]);
 
   /* Zähler an den Navigationspunkten — was Aufmerksamkeit braucht, ist sofort sichtbar.
      Muss vor jedem bedingten Return stehen: Hooks laufen in fester Reihenfolge. */

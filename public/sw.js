@@ -45,10 +45,13 @@
    sich ihr Inhalt ändert — und beim Aktivieren wirft der Dienstarbeiter dann
    jeden Speicher weg, der nicht auf die neue Fassung lautet.
 
-   v3 → v4, weil ein Telefon eine Fassung zeigte, die älter war als alles in
-   diesem Verlauf. Wer eine neue Fassung veröffentlicht und alte Bestände
-   verdächtigt, zählt hier hoch. */
-const FASSUNG = "v4";
+   Die Fassung wird nicht von Hand gezählt (WP-37): Beim Bauen ersetzt
+   werkzeug/sw-fassung.mjs den Platzhalter durch einen Hashwert über den
+   gesamten Bau (Dateinamen der Bauteile, Startseite, diese Datei). Jede neue
+   Auslieferung ist damit eine neue Fassung, und jeder Speicher der alten
+   wird beim Aktivieren verworfen. Im Entwicklungsbetrieb bleibt der
+   Platzhalter stehen — er ist ein gültiger Name. */
+const FASSUNG = "__CENTRIC_BUILD__";
 const SCHALE = `centric-schale-${FASSUNG}`;
 const DATEN = `centric-daten-${FASSUNG}`;
 
@@ -110,6 +113,18 @@ self.addEventListener("message", (e) => {
   }
 });
 
+/* Wem gehört ein gespeicherter Bestand? Abgelegt wird nur ein Hashwert der
+   Sitzungskennung, nie die Kennung selbst. */
+const SITZUNGSKOPF = "x-centric-sitzung";
+async function sitzungsmarke(req) {
+  try {
+    const a = req.headers && req.headers.get("authorization");
+    if (!a) return null;
+    const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(a));
+    return [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch { return null; }
+}
+
 const istBauteil = (url) =>
   url.pathname.startsWith("/assets/") || url.pathname.endsWith(".woff2");
 
@@ -126,11 +141,20 @@ self.addEventListener("fetch", (e) => {
      Netz zuerst, damit eine neue Fassung sofort ankommt. Der Rückfall
      greift nur, wenn wirklich nichts geht. */
   if (req.mode === "navigate") {
+    /* Nur die Anwendung selbst. Seiten, die der Server erzeugt (Einrichten,
+       Kalender-Feed, Zustellung, Lage, Starten), gehen unmittelbar ans Netz:
+       sie können Zugangsdaten oder Personendaten enthalten und dürfen weder
+       als Gerüst gespeichert noch offline an ihrer Stelle gezeigt werden. */
+    if (url.pathname !== "/" && url.pathname !== "/index.html") return;
     e.respondWith((async () => {
       try {
         const netz = await fetch(req);
-        const c = await caches.open(SCHALE);
-        c.put("/", netz.clone()).catch(() => {});
+        /* Nur eine erfolgreiche, unveränderte HTML-Antwort wird zum Gerüst —
+           keine Fehlerseite, keine Weiterleitung. */
+        if (netz.ok && !netz.redirected && /text\/html/i.test(netz.headers.get("content-type") || "")) {
+          const c = await caches.open(SCHALE);
+          c.put("/", netz.clone()).catch(() => {});
+        }
         return netz;
       } catch {
         const c = await caches.open(SCHALE);
@@ -162,13 +186,16 @@ self.addEventListener("fetch", (e) => {
      schlimmer als gar keiner. */
   if (url.pathname === "/api/bestand") {
     e.respondWith((async () => {
+      const sitzung = await sitzungsmarke(req);
       try {
         const netz = await fetch(req);
-        if (netz.ok) {
+        /* Nur eine erfolgreiche Antwort auf eine Anfrage mit Sitzung. */
+        if (netz.ok && sitzung) {
           const c = await caches.open(DATEN);
           const kopie = netz.clone();
           const kopf = new Headers(kopie.headers);
           kopf.set("x-centric-geholt", new Date().toISOString());
+          kopf.set(SITZUNGSKOPF, sitzung);
           c.put("bestand", new Response(await kopie.blob(), {
             status: kopie.status, headers: kopf })).catch(() => {});
         }
@@ -176,8 +203,12 @@ self.addEventListener("fetch", (e) => {
       } catch (fehler) {
         const c = await caches.open(DATEN);
         const alt = await c.match("bestand");
-        if (!alt) throw fehler;
+        /* Der Stand gehört der Sitzung, mit der er geholt wurde. Wer sich mit
+           einem anderen Zugang meldet (Rollenwechsel), bekommt ihn nie zu
+           sehen — auch dann nicht, wenn das Aufräumen beim Abmelden ausblieb. */
+        if (!alt || !sitzung || alt.headers.get(SITZUNGSKOPF) !== sitzung) throw fehler;
         const kopf = new Headers(alt.headers);
+        kopf.delete(SITZUNGSKOPF);
         kopf.set("x-centric-offline", "ja");
         return new Response(await alt.blob(), { status: 200, headers: kopf });
       }

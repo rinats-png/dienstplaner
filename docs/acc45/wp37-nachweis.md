@@ -1,0 +1,42 @@
+# WP-37 PWA-Feinschliff – Nachweis
+
+Branch `acc45/ui/wp37-pwa-feinschliff` (Basis `origin/integration/centric-complete`).
+Test: `pruefungen/pwa.test.js` (`npm run pruefung:pwa`, im Gate `npm run pruefung`).
+
+## Akzeptanzkriterien
+
+| Kriterium | Befund vorher | Umsetzung | Test |
+|---|---|---|---|
+| Verknüpfungen wirksam | Das Manifest nennt `/?ansicht=meine` und `/?ansicht=krank`, die Oberfläche wertete den Parameter nirgends aus: beide öffneten nur die Startansicht. | `src/verknuepfung.js` (feste Liste, genau ein Parameter, sonst nichts) und ein Effekt in `src/App.jsx` (einmal je Aufruf nach der Anmeldung, Parameter wird aus der Adresszeile entfernt). Ansicht nur, wenn sie in der eigenen Navigation samt Rechten steht; „krank“ öffnet die eigene Krankmeldung wie der Knopf der Tab-Leiste, nicht für den Betreiber. | jede Verknüpfung des Manifests führt zu einem Ziel; Fremdes/Doppeltes/Groß-/Kleinschreibung/Betreiber-Ansicht → kein Ziel; Quelltextprüfung der Einbindung |
+| SW-Fassung aus dem Bau | `FASSUNG = "v4"` von Hand gezählt. | Quelle trägt den Platzhalter `__CENTRIC_BUILD__`; `werkzeug/sw-fassung.mjs` (Vite-Plugin `closeBundle`) setzt einen SHA-256-Kurzhash über sw.js-Quelle, Dateinamen und Größen aller Bau-Dateien sowie index.html und Manifest ein. Fehlt der Platzhalter, bricht der Bau ab. `.dockerignore` gibt das Werkzeug für den Docker-Bau frei (sonst wäre `COPY . .` ohne die Datei gescheitert). Lokal gebaut: `dist/sw.js` trägt eine 12-stellige Fassung. | stabil bei gleichem Inhalt, anders bei anderem Bauteilnamen, Abbruch ohne Platzhalter, Einbindung in vite.config, Freigabe in .dockerignore |
+| Cache bei Rollenwechsel leer | Geleert wurde nur beim Abmelden. Wer ohne Abmelden (Reiter geschlossen, gemerktes Gerät) an eine andere Person ging, bekam bei fehlendem Netz den Bestand der vorherigen Person. Zudem brach das Löschen ab, wenn `navigator.serviceWorker` fehlt (die direkte Löschung stand im selben `try`). | (a) `offlineCacheLeeren()` in `src/speicher.js`, getrennte `try`-Blöcke, bei Anmeldung und Demozugang vor dem Setzen des Tokens und beim Abmelden. (b) Im Dienstarbeiter ist der Bestand an die Sitzung gebunden (nur SHA-256 des Authorization-Wertes im Kopf, nie die Kennung); offline wird er nur der gleichen Sitzung gezeigt, ohne Sitzung nie. | Anmeldung, Demozugang und Abmelden (ohne SW-Schnittstelle) leeren `centric-daten-*`; fremde/keine Sitzung erhält offline nichts; keine Kennung im Klartext im Speicher; Nachricht `daten-loeschen` |
+
+## Weitere Sicherheitsbefunde im Dienstarbeiter (gleiche Datei, mit behoben)
+
+- **Navigationsanfragen:** Jede Navigation (auch `/einrichten`, `/kalender/…`, `/zustellung`, `/lage`, `/starten`) wurde unter `/` als Gerüst gespeichert und offline an Stelle der App gezeigt, auch Fehlerseiten und Weiterleitungen. Jetzt nur `/` und `/index.html`, und nur bei `ok`, ohne Weiterleitung, `text/html`. Serverseitige Seiten gehen unmittelbar ans Netz.
+- **Bestand nur mit Sitzung und `ok`** gespeichert.
+- Unverändert (WP-07-Vertrag): `/api/` außer `GET /api/bestand` wird nie abgefangen; Nicht-GET nie; keine Authentifizierungs- oder Schreib-Antwort im Cache (getestet: `POST /api/anmelden`, `PUT /api/bestand`, `POST /api/abmelden`, `GET /api/anmelden`, `GET /api/stempeln`). `pruefungen/stempelpuffer.test.js` (Vertrag WP-07) läuft unverändert grün; kein bestehender Test wurde geändert.
+
+## Rot → grün
+
+Commit `bda8363`: Test zuerst, mit leeren Stubs für `verknuepfungsZiel`/`swStempeln` – 11 von 17 rot (dazu 1 weiterer erst nach Korrektur der Test-Attrappe: Eine Cache-Attrappe muss je Treffer eine Kopie liefern wie die echte Cache-API, sonst ist der Rückweg „fremde Sitzung“ nur wegen eines verbrauchten Körpers rot/grün). Danach Umsetzung: 17/17 grün.
+
+## Mutanten (je einer, jeweils getötet, Quelle danach wiederhergestellt)
+
+| Mutant | gestorben durch |
+|---|---|
+| Sitzungsbindung im SW entfernt | „Bestand nur dem Gerät derselben Sitzung“ |
+| Navigation für alle Pfade abfangen/speichern | „Seiten des Servers … nicht gespeichert“ |
+| Anmeldung leert Cache nicht | „Anmeldung leert … vorherigen Person“ |
+| Bestand auch bei Fehlerantwort speichern | „Fehlerantworten des Bestands werden nicht gespeichert“ |
+| Platzhalterprüfung im Bau entfernt | „swStempeln bricht ab …“ |
+
+## Berührte Dateien
+
+`public/sw.js`, `src/speicher.js`, `src/verknuepfung.js` (neu), `src/App.jsx` (Import + ein Effekt vor den bedingten Returns), `vite.config.js`, `werkzeug/sw-fassung.mjs` (neu), `.dockerignore`, `package.json` (Skript `pruefung:pwa` + Eintrag im Gate), `pruefungen/pwa.test.js` (neu).
+
+## Offene Abnahme (nicht im Labor prüfbar)
+
+- Echtgeräte iOS (Safari, „Zum Home-Bildschirm“) und Android (Chrome): Installierbarkeit, Langdruck-Verknüpfungen „Meine Schichten“ und „Krank melden“ (auf iOS werden Manifest-Verknüpfungen nicht angeboten), Maskierbare Icons, Start im Standalone-Modus.
+- Verhalten bei Aktualisierung der Fassung auf einem Gerät mit altem Dienstarbeiter (`v4`): `skipWaiting`/`claim` und Löschen alter `centric-*`-Speicher im `activate`; im Browser zu bestätigen.
+- Offline-Start mit echtem Funkloch nach Anmeldung als andere Person.

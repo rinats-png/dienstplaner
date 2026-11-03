@@ -88,6 +88,7 @@ export async function anmelden(zugangscode, merken, zweifaktor) {
     if (d.zweifaktor) /** @type {any} */ (f).zweifaktor = d.zweifaktor;
     throw f;
   }
+  await offlineCacheLeeren();   // Rollenwechsel: nichts von der vorherigen Person bleibt liegen (WP-37)
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis };
   tokenAblegen(token, merken);
@@ -109,6 +110,7 @@ export async function demoOeffnen(id, merken) {
     headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
   const d = await a.json();
   if (!a.ok) throw new Error(d.fehler || "Demozugang nicht verfügbar.");
+  await offlineCacheLeeren();   // Rollenwechsel (WP-37)
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name };
   /* Eine Betreibersitzung wird nie über das Schließen des Browsers hinaus
@@ -662,12 +664,23 @@ export async function offlineDatenLoeschen(inhaber = stempelInhaber()) {
     try { await PUF.abmeldenAufraeumen(await pufferSpeicher(), inhaber); } catch { /* weiter */ }
     stempelPufferMelden().catch(() => {});
   }
+  await offlineCacheLeeren();
+}
+
+/** Den gespeicherten Bestand wegräumen — beim Abmelden und bei jeder
+    Anmeldung (Rollenwechsel, WP-37): Ein Gerät, das ohne Abmelden an eine
+    andere Person ging, darf deren Bestand nicht offline zeigen. Beide Wege
+    laufen unabhängig voneinander; fehlt der Dienstarbeiter, wird trotzdem
+    gelöscht. */
+export async function offlineCacheLeeren() {
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const ziel = (reg && (reg.active || reg.waiting)) || navigator.serviceWorker.controller;
     if (ziel) ziel.postMessage({ art: "daten-loeschen" });
-    /* Zusätzlich unmittelbar — der Dienstarbeiter kann gerade neu starten,
-       und Personaldaten sollen dabei nicht liegen bleiben. */
+  } catch { /* kein Dienstarbeiter — weiter mit dem unmittelbaren Löschen */ }
+  /* Unmittelbar — der Dienstarbeiter kann gerade neu starten, und
+     Personaldaten sollen dabei nicht liegen bleiben. */
+  try {
     if (typeof caches !== "undefined")
       for (const n of await caches.keys()) if (n.startsWith("centric-daten-")) await caches.delete(n);
   } catch { /* egal */ }
