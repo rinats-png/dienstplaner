@@ -8,7 +8,7 @@ Stand 2026-11-03 (WP-41). Entscheidungshilfe; die Schritte selbst stehen in
 
 | Weg | Umfang | Wer | Wann |
 |---|---|---|---|
-| **A. Wiederherstellen eines Betriebs (In-App-Sicherung)** | ein Betrieb, aus seinen Sicherungen in der Ablage (`sicherung:<raum>:…`) | Leitung. Anlegen geht in der Oberfläche (Einstellungen → „Sicherung anlegen“, „Vorher sichern“); **Auflisten und Zurückgehen nur über die Schnittstelle** `GET /api/sicherungen`, `POST /api/wiederherstellen` — eine Oberfläche dafür gibt es im Integrationsstand nicht (Abweichung, [Nachweis](acc45/wp41-nachweis.md)) | fachlicher Fehler in einem Betrieb (versehentlich gelöscht, falscher Plan), Ablage lesbar |
+| **A. Wiederherstellen eines Betriebs (In-App-Sicherung)** | ein Betrieb, aus seinen Sicherungen in der Ablage (`sicherung:<raum>:…`) | Leitung. Anlegen geht in der Oberfläche (Einstellungen → „Sicherung anlegen“, „Vorher sichern“); **Auflisten und Zurückgehen nur über die Schnittstelle** `GET /api/sicherungen`, `POST /api/wiederherstellen` — eine Oberfläche dafür gibt es noch nicht (WP-25, [Nachweis](acc45/wp41-nachweis.md)) | fachlicher Fehler in einem Betrieb (versehentlich gelöscht, falscher Plan), Ablage lesbar |
 | **B. `ablage-pruefen`** | eine unlesbare Datei eines Raums | Betreiber auf dem VPS, Werkzeug im Bild | ein Raum antwortet mit 503 `BESTAND_UNLESBAR`, alle anderen arbeiten |
 | **C. Vollständige Wiederherstellung** | die ganze Ablage aus einer lokalen Sicherung | Betreiber, R0 vorher | Ablage großflächig beschädigt, Sicherung lokal vorhanden (`deploy-sicherungen/`, `~/sicherung/lokal`) |
 | **D. restic außer Haus** | die ganze Ablage aus dem Speicherziel | Betreiber, R0 vorher | VPS verloren, lokale Sicherungen unbrauchbar oder zu alt |

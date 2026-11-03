@@ -17581,7 +17581,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
             <Btn size="sm" onClick={() => gehZu("mitnahme")}>Öffnen</Btn>
           </Zeile>
           <Zeile titel="Sicherung anlegen"
-            text="Legt eine Kopie des heutigen Standes an, auf die sich später zurückgehen lässt.">
+            text="Legt eine Kopie des heutigen Standes an. Zurückspielen ist in der Oberfläche noch nicht möglich (in Vorbereitung).">
             <Btn size="sm" onClick={async () => { await akt.sicherungAnlegen(); melde("Sicherung angelegt."); }}>
               Jetzt sichern</Btn>
           </Zeile>

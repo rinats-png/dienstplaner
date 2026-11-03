@@ -4,7 +4,7 @@ Rolle `betriebsrat`. Rechte: Pläne sehen (eigener, Einheit, alle) und Personall
 Entscheiden und Zuweisen sind für diese Rolle ausgeschlossen ([Übersicht](README.md)). Die Rechtetabelle der Oberfläche
 nennt zusätzlich „Protokoll einsehen“ und „Daten exportieren“; beide haben im Integrationsstand keine Wirkung — das
 Betriebsprotokoll liefert der Server dem Betriebsrat nicht, Datenmitnahme und Vollausgabe sind der Leitung vorbehalten
-(Abweichung, siehe [Nachweis](../acc45/wp41-nachweis.md)).
+(Abweichung, Klärung in WP-27, siehe [Nachweis](../acc45/wp41-nachweis.md)).
 
 ## Was Sie tun können
 

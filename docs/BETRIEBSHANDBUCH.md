@@ -55,8 +55,8 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_ABLAGE` | nur `dateien` zulässig | `dateien` | ja |
 | `CENTRIC_BASIS` | öffentliche Adresse; Herkunftsprüfung, Links in Mails, Cookie | Adresse der Anwendung | ja |
 | `CENTRIC_PFEFFER` | Pfeffer für Code- und Konten-Prüfsummen, Schlüssel für Zwei-Faktor-Geheimnisse; **nie ändern** | — (Pflicht) | ja |
-| `CENTRIC_VERTRAUTE_PROXYS` | wem X-Forwarded-For geglaubt wird (Caddys feste Adresse); leer = niemandem; ungültig = kein Start | leer | ja |
-| `CENTRIC_ADMIN` | Ursprungsschlüssel für das erste Verwalterkonto; danach entfernen | — | ja |
+| `CENTRIC_VERTRAUTE_PROXYS` | wem X-Forwarded-For geglaubt wird: **nur Caddys feste Adresse** (das Subnetz ist nicht empfohlen); leer = niemandem, und `deploy.sh` liefert nicht aus; ungültig = kein Start | leer | ja |
+| `CENTRIC_ADMIN` | Ursprungsschlüssel für das erste Verwalterkonto. **Produktion:** nach dem ersten benannten Verwalterkonto entfernen. **Staging:** die Gate-Proben brauchen ihn — nur für deren Dauer setzen | — | ja |
 
 ### Funktionen
 
@@ -74,33 +74,44 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 
 | Variable | Bedeutung | Vorgabe | Vorlage |
 |---|---|---|---|
-| `CENTRIC_UEBERWACHUNG` | `aus` stellt den Prüftakt ab (/gesund prüft weiter) | an | **nein** |
-| `CENTRIC_GESUND_TAKT_S` | Prüftakt | 60 | **nein** |
-| `CENTRIC_GESUND_CACHE_MS` | Zwischenspeicher /gesund | 10000 | **nein** |
+| `CENTRIC_UEBERWACHUNG` | `aus` stellt den Prüftakt ab (/gesund prüft weiter) | an | ja (auskommentiert) |
+| `CENTRIC_GESUND_TAKT_S` | Prüftakt | 60 | ja (auskommentiert) |
+| `CENTRIC_GESUND_CACHE_MS` | Zwischenspeicher /gesund | 10000 | ja (auskommentiert) |
 | `CENTRIC_GESUND_PLATZ_WARNUNG_PROZENT` | freier Platz: Warnung | 15 | ja (auskommentiert) |
 | `CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT` | freier Platz: kritisch (auch deploy.sh) | 3 | ja (auskommentiert) |
 | `CENTRIC_GESUND_PLATZ_KRITISCH_MB` | freier Platz: kritisch absolut (auch deploy.sh) | 200 | ja (auskommentiert) |
 | `CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN` | Alter der letzten Sicherung | 26 | ja (auskommentiert) |
-| `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` | Alter des letzten Löschlaufs | 26 | **nein** |
-| `CENTRIC_GESUND_5XX_WARNUNG` | 5xx je 15 min bis zur Warnung | 10 | **nein** |
-| `CENTRIC_SICHERUNG_STATUS` | Pfad zur Statusdatei der Sicherung im Container | leer (Prüfung „nicht eingerichtet“) | **nein** (in `deploy/compose.yml` auskommentiert) |
+| `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` | Alter des letzten Löschlaufs | 26 | ja (auskommentiert) |
+| `CENTRIC_GESUND_5XX_WARNUNG` | 5xx je 15 min bis zur Warnung | 10 | ja (auskommentiert) |
+| `CENTRIC_SICHERUNG_STATUS` | Pfad zur Statusdatei der Sicherung im Container (mit dem Mount in `deploy/compose.yml`) | leer (Prüfung „nicht eingerichtet“) | ja (auskommentiert) |
 | `CENTRIC_ALARM_WEBHOOK` | Alarmkanal (nur https); Geheimnis | aus | ja (auskommentiert) |
+| `CENTRIC_GESUND_ZEITGRENZE_MS` | Zeitgrenze einer Zustandsprüfung (danach „Ablage kritisch: Zeitgrenze“) | 15000 | ja (auskommentiert) |
 | `CENTRIC_ALARM_ENTPRELLUNG_S` | Entprellung des Alarms | 120 | ja (auskommentiert) |
-| `CENTRIC_ALARM_WIEDERHOLUNG_S` | Erinnerung bei anhaltender Störung | 21600 | **nein** |
+| `CENTRIC_ALARM_WIEDERHOLUNG_S` | Erinnerung bei anhaltender Störung | 21600 | ja (auskommentiert) |
 
 ### Nur für Prüfungen und Werkzeuge (nicht in die Produktions-.env)
 
 | Variable | Zweck |
 |---|---|
-| `CENTRIC_STATIK` | anderes Verzeichnis statt `dist/` (Prüfungen) |
+| `CENTRIC_STATIK` | anderes Verzeichnis statt `dist/` (Prüfungen; in `.env.example` unter „nie in Produktion“) |
 | `CENTRIC_PRUEFLINK` | `ja`: Prüflink in Antworten — nur ohne Versandschlüssel und nie bei `NODE_ENV=production` |
 | `CENTRIC_PROBE_BASIS` | wird von den Gate-Proben (`werkzeug/staging-*.mjs`) bewusst **abgelehnt** (feste Adresse) |
 
 Der Umgebungsbericht `GET /einrichten/umgebung` (Verwalterschlüssel) sagt für die wichtigen Variablen „gesetzt
 ja/nein“ und warnt, nie mit Wert ([BEREITSTELLUNG.md](../BEREITSTELLUNG.md), Schritt 2a).
 
-**Lücken der Vorlage** (siehe [Nachweis](acc45/wp41-nachweis.md)): Die mit „nein“ markierten Variablen fehlen in
-`.env.example`. Sie haben brauchbare Vorgaben; nur `CENTRIC_SICHERUNG_STATUS` braucht man nach WP-04 tatsächlich.
+Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Variablen unter „nie in Produktion“);
+`pruefungen/doku.test.js` hält das fest.
+
+### Nur für deploy.sh (Shell, nicht die .env)
+
+| Variable | Bedeutung | Vorgabe |
+|---|---|---|
+| `CENTRIC_DEPLOY_BEHALTEN` | vollständige Auslieferungs-Sicherungen, die bleiben (die geschützte immer) | 5 |
+| `CENTRIC_DEPLOY_SICHERUNGEN` | Verzeichnis der Auslieferungs-Sicherungen | `deploy-sicherungen/` |
+| `CENTRIC_DATEN_PFAD` | Datenverzeichnis auf dem Host | `data/` |
+| `CENTRIC_WARTEZEIT` | Warten auf healthy (mindestens 90 s) | 150 |
+| `CENTRIC_TAKT` | Abfragetakt dabei | 2 |
 
 ## 3. Routinen
 

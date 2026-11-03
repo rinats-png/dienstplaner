@@ -23,17 +23,17 @@ liest, steht im Betriebshandbuch** (eine neue Variable ohne Doku macht den Test 
 127.0.0.1, keine Digests, Zugangscodes, Verwalterschlüssel oder privaten Schlüssel in den Dokumenten. Ein
 Markdown-Lint ist im Repository nicht eingerichtet.
 
-## Festgestellte Abweichungen Doku ↔ Code
+## Festgestellte Abweichungen Doku ↔ Code und ihr Stand
 
-| # | Befund | Wo | Vorschlag |
-|---|---|---|---|
-| 1 | `.env.example` fehlen sieben Variablen, die der Server liest: `CENTRIC_UEBERWACHUNG`, `CENTRIC_GESUND_TAKT_S`, `CENTRIC_GESUND_CACHE_MS`, `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN`, `CENTRIC_GESUND_5XX_WARNUNG`, `CENTRIC_ALARM_WIEDERHOLUNG_S`, `CENTRIC_SICHERUNG_STATUS` (letztere nur in `deploy/compose.yml`, auskommentiert). Mit WP-05b kommt `CENTRIC_GESUND_ZEITGRENZE_MS` hinzu. | `.env.example` | als auskommentierte Zeilen ergänzen (Vorgaben sind brauchbar) |
-| 2 | `.env.example` und BEREITSTELLUNG empfehlen für `CENTRIC_VERTRAUTE_PROXYS` das **Subnetz** des Netzes `proxy` (Platzhalter `<SUBNETZ_DES_NETZES_PROXY>`); die Review-Auflage B1 und `deploy.sh` empfehlen **nur Caddys feste Adresse** | `.env.example`, `BEREITSTELLUNG.md`, `docs/CADDY-UND-XFF.md` §7 | Platzhalter und Text auf „Caddys feste Adresse (Subnetz nur übergangsweise)“ vereinheitlichen |
-| 3 | Sicherungen eines Betriebs lassen sich in der Oberfläche **anlegen** („Sicherung anlegen“, „Vorher sichern“, Text: „auf die sich später zurückgehen lässt“), aber **nicht auflisten oder zurückspielen** — dafür gibt es nur die Schnittstelle (`GET /api/sicherungen`, `POST /api/wiederherstellen`); `SP.sicherungen()` hat keinen Aufrufer | `src/App.jsx`, `src/speicher.js` | Oberfläche für die Leitung ergänzen oder Text anpassen |
-| 4 | Die Rechtetabelle der Oberfläche gibt dem Betriebsrat `audit.view` und `export.data`; beide Rechte prüft die Oberfläche nirgends, der Server liefert dem Betriebsrat kein Betriebsprotokoll (RECHTEMATRIX: –), und Datenmitnahme/Vollausgabe verlangen `org.edit` bzw. Leitung | `src/App.jsx` `MATRIX_STD`, `RECHTE_GRUPPEN` | Rechte entfernen oder fachlich entscheiden; die Anzeige der Rechte irreführt sonst |
-| 5 | `werkzeug/staging-smoke.mjs` und `staging-geo.mjs` verlangen `CENTRIC_ADMIN` in der Umgebung des Servers; Betriebshandbuch, `.env.example` und `/einrichten/umgebung` raten, ihn nach dem ersten Verwalterkonto zu entfernen | `werkzeug/staging-*.mjs` | im Staging bewusst setzen und danach entfernen — in PRE-PRODUCTION-GATE festhalten, oder die Proben auf einen Verwalterschlüssel umstellen |
-| 6 | Die Zeitgrenze der Zustandsprüfung (WP-05b) ist im Integrationsstand b84de34 noch nicht enthalten; das Runbook beschreibt sie mit Hinweis | `server/lib/gesund.mjs` | erledigt sich mit der Integration von WP-05b |
-| 7 | Die Ansicht „Datenschutz“ verweist Anfragen betroffener Personen an den Betrieb; eine Auskunft aus der Anwendung ist erst in Vorbereitung (WP-26) | `src/App.jsx` | mit WP-26 |
+| # | Befund | Stand |
+|---|---|---|
+| 1 | `.env.example` fehlten Variablen, die der Server liest (`CENTRIC_UEBERWACHUNG`, `CENTRIC_GESUND_TAKT_S`, `CENTRIC_GESUND_CACHE_MS`, `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN`, `CENTRIC_GESUND_5XX_WARNUNG`, `CENTRIC_GESUND_ZEITGRENZE_MS`, `CENTRIC_ALARM_WIEDERHOLUNG_S`, `CENTRIC_SICHERUNG_STATUS`; Prüf-Variablen `CENTRIC_STATIK`, `CENTRIC_PRUEFLINK`) | **behoben:** alle ergänzt (auskommentiert, Vorgaben wie im Code; Prüf-Variablen unter „nie in Produktion“). Die Shell-Variablen von `deploy.sh` (`CENTRIC_DEPLOY_BEHALTEN` u. a.) stehen als Hinweis dabei und im Betriebshandbuch — die `.env` liest `deploy.sh` dafür nicht. `doku.test.js` prüft jetzt auch, dass jede vom Server gelesene Variable in `.env.example` steht. |
+| 2 | `CENTRIC_VERTRAUTE_PROXYS`: `.env.example`, BEREITSTELLUNG und CADDY-UND-XFF §7 empfahlen das Subnetz, B1/`deploy.sh` nur Caddys feste Adresse | **behoben:** überall nur Caddys feste Adresse; das Subnetz ist als „nicht empfohlen“ (nur Übergang) gekennzeichnet; Platzhalter `<FESTE_ADRESSE_DES_CADDY_CONTAINERS>`; Test |
+| 3 | Sicherungen eines Betriebs: Anlegen in der Oberfläche, Auflisten und Zurückspielen nur über die Schnittstelle | **→ WP-25.** Der Oberflächentext „auf die sich später zurückgehen lässt“ ist ehrlich angepasst: „Zurückspielen ist in der Oberfläche noch nicht möglich (in Vorbereitung).“ |
+| 4 | Rechtetabelle gibt dem Betriebsrat `audit.view` und `export.data` ohne Wirkung | **→ WP-27**; das Rollenhandbuch beschreibt den tatsächlichen Stand |
+| 5 | Staging-Proben verlangen `CENTRIC_ADMIN`, die Doku rät zum Entfernen | **behoben (Doku):** `.env.example`, Betriebshandbuch und PRE-PRODUCTION-GATE §8: nur auf Staging und nur für die Dauer der Proben; in Produktion nach dem ersten Verwalterkonto entfernen |
+| 6 | Zeitgrenze der Zustandsprüfung (WP-05b) | **erledigt:** mit #37 integriert, im Betriebshandbuch und in `.env.example` |
+| 7 | Auskunft nach Art. 15 DSGVO aus der Anwendung | in Vorbereitung (WP-26) |
 
 Keine der Abweichungen ist ein offener Sicherheitsbefund; die Dokumente enthalten keine Adressen, Codes oder
 Schlüssel.

@@ -59,6 +59,18 @@ describe("Konfiguration im Betriebshandbuch", () => {
     const fehlt = [...namen].filter((n) => !handbuch.includes(`\`${n}\``)).sort();
     expect(fehlt).toEqual([]);
     expect(namen.size).toBeGreaterThan(20);
+    /* … und steht auch in .env.example (als Zuweisung, gern auskommentiert). */
+    const vorlage = lies(".env.example");
+    const nichtInVorlage = [...namen].filter((n) => !new RegExp(`^#?\\s*${n}=`, "m").test(vorlage)).sort();
+    expect(nichtInVorlage).toEqual([]);
+  });
+
+  it("CENTRIC_VERTRAUTE_PROXYS: überall nur Caddys feste Adresse empfohlen, kein Subnetz-Platzhalter", () => {
+    const vorlage = lies(".env.example");
+    expect(vorlage).toMatch(/^CENTRIC_VERTRAUTE_PROXYS=<FESTE_ADRESSE_DES_CADDY_CONTAINERS>$/m);
+    expect(vorlage).not.toMatch(/SUBNETZ_DES_NETZES_PROXY/);
+    expect(lies("BEREITSTELLUNG.md")).toMatch(/nur\s+Caddys feste Adresse/);
+    expect(lies("docs/CADDY-UND-XFF.md")).not.toMatch(/CENTRIC_VERTRAUTE_PROXYS=<Subnetz>/);
   });
 });
 

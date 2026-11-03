@@ -158,9 +158,10 @@ Laufzeit — sie stehen als Repository-Variablen in GitHub, nicht in der
 
 Ab WP-32b wertet der Server `X-Forwarded-For` nur von vertrauten Proxys aus.
 Ohne diese Variable zählen alle Nutzer unter der Adresse des Caddy-Containers
-— die Bremse träfe alle gemeinsam. Vor dem Ausliefern dieses Stands das Netz
-`proxy` eintragen; Ermittlung, Wert und Probe: `docs/CADDY-UND-XFF.md`,
-Abschnitt 7.
+— die Bremse träfe alle gemeinsam. Vor dem Ausliefern dieses Stands **nur
+Caddys feste Adresse** im Netz `proxy` eintragen (das ganze Subnetz ist nicht
+empfohlen: jeder Container dort könnte seine Herkunft frei wählen);
+Festlegen, Wert und Probe: `docs/CADDY-UND-XFF.md`, Abschnitt 7.
 
 ### Optional, härtet die Fehlversuchsbremse
 
