@@ -19,7 +19,7 @@ Test: `pruefungen/pwa.test.js` (`npm run pruefung:pwa`, im Gate `npm run pruefun
 
 ## Rot → grün
 
-Commit `bda8363`: Test zuerst, mit leeren Stubs für `verknuepfungsZiel`/`swStempeln` – 11 von 17 rot (dazu 1 weiterer erst nach Korrektur der Test-Attrappe: Eine Cache-Attrappe muss je Treffer eine Kopie liefern wie die echte Cache-API, sonst ist der Rückweg „fremde Sitzung“ nur wegen eines verbrauchten Körpers rot/grün). Danach Umsetzung: 17/17 grün.
+Commit `bf194d6` (nur der Test, gegen den alten Stand): 13 von 17 rot, 4 grün (WP-07-Vertrag und Vorhandenes: Schreiben nie abfangen, Nachricht `daten-loeschen`, Fehlerantwort nicht speichern, keine Kennung im Klartext). Nach der Umsetzung: 17/17 grün. Lokal zusätzlich `auslieferung.test.js` und `stempelpuffer.test.js` grün (43 Tests).
 
 ## Mutanten (je einer, jeweils getötet, Quelle danach wiederhergestellt)
 
