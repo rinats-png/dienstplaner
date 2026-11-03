@@ -218,6 +218,8 @@ async function serverStarten(daten, statik, port) {
 /* Anfragen                                                            */
 
 let BASIS, xffNr = 0;
+/** Nur das Messergebnis behalten — die geparste Antwort (bis 5 MB) würde sonst in den Ergebnislisten hängen bleiben. */
+const schlank = (x) => ({ status: x.status, ms: x.ms, bytes: x.bytes });
 async function ruf(pfad, { methode = "GET", token, rumpf, xff } = {}) {
   const h = { origin: BASIS };
   if (token) h.authorization = `Bearer ${token}`;
@@ -249,7 +251,7 @@ async function s0(t) {
   const aus = {};
   for (const [raum, z] of Object.entries(t.reihe)) {
     const lesen = [];
-    for (let i = 0; i < 10; i++) lesen.push(await ruf("/api/bestand", { token: z.leitung }));
+    for (let i = 0; i < 10; i++) lesen.push(schlank(await ruf("/api/bestand", { token: z.leitung })));
     const stempel = [];
     const stempeln = (tok) => ruf("/api/stempeln", { methode: "POST", token: tok, rumpf: { datum: HEUTE, art: "start" } });
     const v0 = Date.now();
@@ -322,7 +324,7 @@ async function planerLauf(t, minuten, ergebnisse) {
         let k = 0;
         while (Date.now() < ende) {
           const g = await ruf("/api/bestand", { token: tok });
-          ergebnisse.get.push(g);
+          ergebnisse.get.push(schlank(g));
           if (g.status === 200 && g.d && g.d.bestand) {
             const b = g.d.bestand;
             const m = b.mandanten[0];
@@ -353,7 +355,7 @@ async function s3(t, grossBytes) {
   const aus = { bestandMB: Math.round((grossBytes / 1048576) * 100) / 100, jeRolle: {} };
   for (const [rolle, tok] of Object.entries(t.leser)) {
     const r = [];
-    for (let i = 0; i < 5; i++) r.push(await ruf("/api/bestand", { token: tok }));
+    for (let i = 0; i < 5; i++) r.push(schlank(await ruf("/api/bestand", { token: tok })));
     aus.jeRolle[rolle] = { ...auswerten(r), antwortKB: Math.round((r[0].bytes || 0) / 1024) };
   }
   /* Dauerlast: mehrere Leser, unter der Lesebremse (300/min je Raum): 4/s. */
@@ -363,7 +365,7 @@ async function s3(t, grossBytes) {
   await Promise.all(Array.from({ length: P.s3Leser }, async (_, i) => {
     await warte((i * 250) % 2500);
     while (Date.now() < ende) {
-      proben.push(await ruf("/api/bestand", { token: t.leser.leitung }));
+      proben.push(schlank(await ruf("/api/bestand", { token: t.leser.leitung })));
       await warte(P.s3Leser * 250);
     }
   }));
