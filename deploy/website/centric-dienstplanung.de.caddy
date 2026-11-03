@@ -1,0 +1,49 @@
+# =====================================================================
+#  CENTRIC - Caddy-Site fuer die oeffentliche Website (Hauptdomain)
+#  Ablage im Caddy-Container: /etc/caddy/sites/centric-dienstplanung.de.caddy
+#  (neben app.centric-dienstplanung.de.caddy, die dieses Skript NIE anfasst).
+#
+#  Die Website ist rein statisch (build.py -> dist/). Ausfall der App
+#  beruehrt sie nicht, und umgekehrt. Eingespielt wird die Datei nur durch
+#  website-ausliefern.sh (Sicherung, Pruefung, Reload, Rollback).
+#
+#  Der Pfad /srv/centric-website ist der Platz im Caddy-Container. Das
+#  Skript ersetzt ihn, falls WEB_ROOT_CONTAINER anders gesetzt ist.
+#  "aktuell" ist ein Link auf die jeweils ausgelieferte Fassung
+#  (releases/<stempel>); so ist der Austausch atomar.
+#
+#  Kopfpolitik wie bei der App-Vorlage (deploy/caddy/Caddyfile.vorlage):
+#  HSTS, nosniff, Referrer-Policy, Permissions-Policy, -Server. Die CSP ist
+#  gegen den echten dist/-Inhalt geprueft: keine Inline-Skripte, kein
+#  <style>-Block, keine externen Ressourcen (nur 'self'); style-src
+#  'unsafe-inline' wegen vereinzelter style="..."-Attribute, data: nur fuer
+#  Bilder. Das Kontaktformular baut eine mailto:-Nachricht (kein Versand).
+# =====================================================================
+
+www.centric-dienstplanung.de {
+	redir https://centric-dienstplanung.de{uri} permanent
+}
+
+centric-dienstplanung.de {
+	root * /srv/centric-website/aktuell
+	encode zstd gzip
+	file_server
+
+	# Eigene 404-Seite der Website (dist/404.html), Status bleibt 404.
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+		-Server
+	}
+
+	# Zugriffsprotokoll bewusst keines (Datenschutz, wie bei der App).
+}
