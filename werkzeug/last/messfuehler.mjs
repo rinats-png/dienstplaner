@@ -13,7 +13,8 @@
    im Bild und in der Produktion wird er nie geladen.
    ========================================================================== */
 import { monitorEventLoopDelay } from "node:perf_hooks";
-import { appendFileSync, syncBuiltinESMExports } from "node:fs";
+import { appendFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import fsp from "node:fs/promises";
 
 const datei = process.env.CENTRIC_LAST_MESSDATEI;
