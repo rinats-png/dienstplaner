@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 414,2–705 PT in 78 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 430,2–731 PT in 79 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -30,6 +30,7 @@ flowchart LR
     WP_16c["WP-16c<br/>BLOCKED"]
     WP_32d["WP-32d<br/>READY"]
     WP_42a["WP-42a<br/>BLOCKED"]
+    WP_48["WP-48<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -179,6 +180,7 @@ flowchart LR
   WP_16c --> WP_42a
   WP_32d --> WP_42a
   WP_30 --> WP_42a
+  WP_16 --> WP_48
   WP_16 --> WP_14c
   WP_16 --> WP_16b
   E_21 --> WP_24b
@@ -394,6 +396,7 @@ flowchart LR
 | WP-16c | acc45 | P0 | 6–10 | 6–10 | WP-16 | App.jsx, daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-32d | acc45 | P0 | 1–2 | 1–2 | WP-32 | – | opus | READY |
 | WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1, WP-16c, WP-32d, WP-30 | – | opus | BLOCKED |
+| WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 3–5 | WP-14, WP-16 | App.jsx, daten.mjs | opus | BLOCKED |
 | WP-27c | folge | P2 | 1,5–3 | 1,5–3 | WP-27 | – | opus | READY |
 | WP-47b | folge | P2 | 2–4 | 2–4 | WP-47, WP-24 | daten.mjs | opus | READY |
