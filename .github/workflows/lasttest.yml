@@ -57,7 +57,7 @@ jobs:
             if [[ "$NUR" == "-" ]]; then NUR=""; fi
           fi
           [[ "$PROFIL" == "voll" || "$PROFIL" == "kurz" ]] || { echo "::error::Profil unbekannt"; exit 1; }
-          [[ -z "$NUR" || "$NUR" =~ ^S[0-5](,S[0-5])*$ ]] || { echo "::error::nur: z. B. S1,S3"; exit 1; }
+          [[ -z "$NUR" || "$NUR" =~ ^S[0-6](,S[0-6])*$ ]] || { echo "::error::nur: z. B. S1,S3"; exit 1; }
           echo "PROFIL=$PROFIL" >> "$GITHUB_ENV"
           args=(--profil "$PROFIL" --aus "$RUNNER_TEMP/last.json")
           if [[ -n "$NUR" ]]; then args+=(--nur "$NUR"); fi

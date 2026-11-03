@@ -17,7 +17,9 @@
          (Ziel: p95 < 1,5 s, nur echte 409 — hier getrennte Monate, also 0)
      S3  Bestand nahe RUMPF_MAX (~5,5 MB): GET je Rolle (Ziel: p95 < 2 s, Speicher stabil)
      S4  Anmeldung mit Bremse: gültige Codes aus vielen Herkünften, Rateversuche
-     S5  Mischlast mehrerer Mandanten parallel, dazu ein Sicherungslauf (S6)
+     S5  Mischlast mehrerer Mandanten parallel, dazu ein Sicherungslauf (in der Last und danach ruhig)
+     S6  Breite: viele kleine Betriebe (50 Personen) — wie verhalten sich Stempeln, Lesen und
+         Dateizahl, wenn die Ablage von 50 auf 200 und 600 Betriebe wächst?
 
    Gemessen: p50/p95/p99, Fehlerquote, Statuscodes, Event-Loop-Verzögerung und
    Speicher des Servers (Messfühler), Dateien und Bytes der Ablage je Store.
@@ -41,8 +43,8 @@ const AUS = arg("--aus", null);
 const NUR = (arg("--nur", "") || "").split(",").filter(Boolean);
 const laeuft = (s) => !NUR.length || NUR.includes(s);
 const P = PROFIL === "voll"
-  ? { s1Min: 10, s2Min: 5, s3Min: 2, s4Sek: 60, s5Min: 3, s3Leser: 20 }
-  : { s1Min: 3, s2Min: 2, s3Min: 1, s4Sek: 30, s5Min: 1, s3Leser: 10 };
+  ? { s1Min: 10, s2Min: 5, s3Min: 2, s4Sek: 60, s5Min: 3, s3Leser: 20, s6Stufen: [50, 200, 600] }
+  : { s1Min: 3, s2Min: 2, s3Min: 1, s4Sek: 30, s5Min: 1, s3Leser: 10, s6Stufen: [50, 150, 300] };
 
 const PFEFFER = "lasttest-pfeffer-nur-synthetisch-0123456789";
 const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
@@ -192,8 +194,11 @@ async function vorbereiten(daten) {
     }));
   }
   t.codesB.sort(() => Math.random() - 0.5);
+  ablageWerkzeug = { B, store, sitzungAnlegen };
   return { t, grossBytes };
 }
+
+let ablageWerkzeug = null;
 
 /* ------------------------------------------------------------------ */
 /* Server                                                              */
@@ -408,6 +413,42 @@ async function s4(t) {
   return { ...phaseA, gesamtgrenze: phaseB, server: await messung(von, Date.now()) };
 }
 
+async function s6() {
+  const { B, store, sitzungAnlegen } = ablageWerkzeug;
+  const stufen = P.s6Stufen;
+  const aus = {};
+  const proben = [];
+  let angelegt = 0;
+  for (const ziel of stufen) {
+    for (; angelegt < ziel; angelegt += 10) {
+      await Promise.all(Array.from({ length: Math.min(10, ziel - angelegt) }, async (_, k) => {
+        const nr = angelegt + k;
+        const raum = `breit-${nr}`;
+        await B.bestandSchreiben(store, raum, betrieb(raum, 50), { durch: "Lasttest" });
+        /* Nur jeder zehnte Betrieb bekommt Sitzungen zum Messen. */
+        if (nr % 10 === 0 && proben.length < 30) {
+          const sit = async (rolle, pid) => (await sitzungAnlegen({ bestand: raum, name: pid, rolle, person: pid,
+            betrieb: 0, mandantId: "m1", einheit: null }, 6 * 3600 * 1000)).token;
+          proben.push({ raum, leitung: await sit("leitung", "leitung1"), ma: [await sit("mitarbeiter", "p1"), await sit("mitarbeiter", "p2"), await sit("mitarbeiter", "p3")], genutzt: 0 });
+        }
+      }));
+    }
+    const von = Date.now();
+    const stempel = [], lesen = [];
+    for (let i = 0; i < 20; i++) {
+      const pr = proben[i % proben.length];
+      lesen.push(schlank(await ruf("/api/bestand", { token: pr.leitung })));
+      const tok = pr.ma[pr.genutzt % 3]; pr.genutzt += 1;
+      stempel.push(await ruf("/api/stempeln", { methode: "POST", token: tok, rumpf: { datum: HEUTE, art: pr.genutzt <= 3 ? "start" : "ende" } }));
+    }
+    const m = await messung(von, Date.now());
+    aus[`betriebe_${ziel}`] = { dateienAblage: (await ablageGroesse(daten0)).dateien, lesen: auswerten(lesen),
+      stempel: auswerten(stempel), readdirMs: m && m.fs && m.fs.readdir ? m.fs.readdir.msJeAufruf : null,
+      readFileMs: m && m.fs && m.fs.readFile ? m.fs.readFile.msJeAufruf : null };
+  }
+  return aus;
+}
+
 async function s5(t, daten, leitungFuer) {
   const von = Date.now();
   const e = { get: [], put: [] };
@@ -460,6 +501,7 @@ console.log(`Daten vorbereitet in ${Math.round((Date.now() - t0) / 1000)} s`);
 const port = 30000 + Math.floor(Math.random() * 20000);
 BASIS = `http://127.0.0.1:${port}`;
 const server = await serverStarten(daten, statik, port);
+const daten0 = daten;
 
 /* Leitung je Stempelraum zum Nachzählen. */
 process.env.CENTRIC_DATEN = daten;
@@ -476,6 +518,7 @@ try {
   if (laeuft("S2")) { console.log(`S2 Planende ${P.s2Min} min …`); ergebnis.S2 = await s2(t); }
   if (laeuft("S3")) { console.log("S3 großer Bestand …"); ergebnis.S3 = await s3(t, grossBytes); }
   if (laeuft("S4")) { console.log("S4 Anmeldung …"); ergebnis.S4 = await s4(t); }
+  if (laeuft("S6")) { console.log(`S6 Breite ${P.s6Stufen.join("/")} Betriebe …`); ergebnis.S6 = await s6(); }
   if (laeuft("S5")) { console.log(`S5 Mischlast + Sicherung ${P.s5Min} min …`); ergebnis.S5 = await s5(t, daten, leitungFuer); }
 } finally {
   ergebnis.ablageNachher = await ablageGroesse(daten);
