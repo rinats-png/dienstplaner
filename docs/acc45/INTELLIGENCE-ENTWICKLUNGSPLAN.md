@@ -6,8 +6,8 @@ Alle Aufwandszahlen sind **SCHÄTZUNGEN (nicht belegt)**; Einheit PT = Personent
 
 ## 1. Abgrenzung zu ACC45
 
-- Intelligence ist **kein ACC45-Paket**. `work-packages.json` (46 Pakete, 165,5 PT offen laut `STATUS.md`) enthält sie nicht; der kritische Pfad endet bei WP-42 ohne Intelligence. Diese Zählung bleibt unverändert; die Pakete hier heißen **WP-I1 … WP-I37** und werden nirgends in die ACC45-Summe eingerechnet.
-- **Branch-Namensraum:** `intelligence/wp-iN-…` (nicht `acc45/…`). Statusführung in einer eigenen Tabelle (Abschnitt 11), nicht in `work-packages.json`.
+- Intelligence ist **kein ACC45-Paket**. Stand bei Abfassung: `work-packages.json` (46 Pakete, 165,5 PT offen laut damaligem `STATUS.md`) enthielt sie nicht; seit 2026-11-03 stehen die Pakete dort im eigenen Strang `intelligence` mit getrennter Summe (aktuelle Zahlen: `STATUS.md`, `GESAMTPLAN.md`); der kritische Pfad endet bei WP-42 ohne Intelligence. Diese Zählung bleibt unverändert; die Pakete hier heißen **WP-I1 … WP-I37** und werden nirgends in die ACC45-Summe eingerechnet.
+- **Branch-Namensraum:** `intelligence/wp-iN-…` (nicht `acc45/…`). Statusführung seit 2026-11-03 in `work-packages.json` im eigenen Strang `intelligence` mit eigener Summe (die ACC45-Zahlen bleiben getrennt); siehe `GESAMTPLAN.md`.
 - **Intelligence blockiert ACC45 nie.** Kein ACC45-Paket hängt an einem WP-I. Umgekehrt dürfen WP-I-Branches erst nach den ACC45-Gates, die sie berühren, in den Integrationsstand (Abschnitt 4).
 - Der **Kern ohne KI** (Block K) ist in Teilen ACC45-Arbeit gewesen (WP-10, WP-11, WP-22, Andockpunkt A3 in WP-19). Was dort fertig ist, wird nicht doppelt gebaut; Block K setzt genau auf dem Rest auf (laut Abgleich: 4 von 8 Regelarten, Verwaltung interner Vorgaben, Planer-Kern, Live-Prüfung im Schichtfolge-Editor).
 
@@ -211,7 +211,7 @@ Spezifiziert zu sein genügt nie. Intelligence ist erledigt, wenn **alle** Punkt
 
 ## 12. Statusführung
 
-Pro Paket: Status (offen/in Arbeit/Review/integriert/abgenommen), Branch `intelligence/wp-iN-…`, Nachweisdatei `docs/intelligence/wp-iN-nachweis.md`. Die Zählung „x von 18 Funktionen je Klasse“ steht in `docs/acc45/STATUS.md` (Abschnitt „CENTRIC Intelligence – eigener Entwicklungsblock“) und wird bei jeder Integration eines WP-I neu aus dem Code abgeglichen, nicht aus der Spezifikation fortgeschrieben.
+Pro Paket: Status und Statusstufen in `docs/acc45/work-packages.json` (Strang `intelligence`, Pakete `WP-I1` … `WP-I37`), Branch `intelligence/wp-iN-…`, Nachweisdatei `docs/intelligence/wp-iN-nachweis.md`. Die Zählung „x von 18 Funktionen je Klasse“ steht in `docs/acc45/STATUS.md` (Abschnitt „CENTRIC Intelligence – eigener Entwicklungsblock“) und wird bei jeder Integration eines WP-I neu aus dem Code abgeglichen, nicht aus der Spezifikation fortgeschrieben.
 
 ## 13. Entscheidungen, die vor Start nötig sind
 
