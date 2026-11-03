@@ -89,7 +89,12 @@ const EIGENE_PERSON = [...PLAN, "bereich", "qualNachweise", "kompetenzNachweise"
   /* Beschäftigungsmodell und Monatsstundengrenze (Kette A; WP-10 d.2,
      RECHTEMATRIX.md ²³): die eigene Person sieht sie, ändern kann sie sie
      nicht (rechte.mjs, SELBST_FELDER). Fremd nur Planung und Leitung. */
-  "beschaeftigungsmodell", "stundenGrenzeMonat"];
+  "beschaeftigungsmodell", "stundenGrenzeMonat",
+  /* Einwilligungen nach dem Mutterschutzgesetz (Nutzerentscheidung, WP-11): die
+     eigene Person sieht ihre eigenen, ändern kann sie sie nicht (nicht in
+     SELBST_FELDER); fremd nur Planung, Leitung und Kundenrolle wie die
+     Schutzmerkmale. */
+  "mutterschutzEinwilligungen"];
 
 /* Der Katalog der Personenfelder. Jedes Feld, das irgendwo an einer Person
    geschrieben wird, braucht hier eine Entscheidung — für die eigene Person

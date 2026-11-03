@@ -233,9 +233,16 @@ const REGELN_BESTAND = [
   bestand({ id: "MUSCHG-05", art: null, regeltext: "MuSchG § 5", typ: "bestandsregel", bezeichnung: "Mutterschutz: Nachtarbeit",
     ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5 Abs. 1",
     /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr. */
-    pruefhinweis: "Bekannte Grenze: § 5 Abs. 2 MuSchG (20–22 Uhr mit ausdrücklicher Einwilligung, ärztlicher Unbedenklichkeit und behördlicher Genehmigung) bildet die Anwendung nicht ab; eine Einwilligung lässt sich nicht hinterlegen (Fachentscheidung offen). Die Prüfung meldet deshalb auch dann einen sperrenden Befund. Stand der Prüflogik: 2. November 2026." }),
+    pruefhinweis: "Ohne gültige Einwilligung sperrt jede Überschneidung mit 20–6 Uhr, mit Einwilligung nach § 5 Abs. 2 jede mit 22–6 Uhr (MUSCHG-05-02). Stand der Prüflogik: 3. November 2026." }),
+  bestand({ id: "MUSCHG-05-02", art: null, regeltext: "MuSchG § 5 Abs. 2", typ: "bestandsregel", bezeichnung: "Mutterschutz: 20–22 Uhr mit Einwilligung",
+    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5 Abs. 2, § 28",
+    /* Nutzerentscheidung (WP-11): Einwilligung an der Person erfassbar. */
+    pruefhinweis: "Eine an der Person erfasste Einwilligung (mutterschutzEinwilligungen, Art „nacht\", Zeitraum, optional „behördliche Genehmigung liegt vor\") macht einen Einsatz bis 22 Uhr im Zeitraum zum Hinweis. Ob die ärztliche Unbedenklichkeit und die behördliche Genehmigung (§ 28) tatsächlich vorliegen und die Einwilligung nicht widerrufen ist, prüft CENTRIC nicht — das verantwortet der Betrieb. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "MUSCHG-06", art: null, regeltext: "MuSchG § 6", typ: "bestandsregel", bezeichnung: "Mutterschutz: Sonntagsarbeit",
     ebene: "bund", quelle: "MuSchG", fundstelle: "§ 6" }),
+  bestand({ id: "MUSCHG-06-01", art: null, regeltext: "MuSchG § 6 Abs. 1", typ: "bestandsregel", bezeichnung: "Mutterschutz: Sonntag mit Einwilligung",
+    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 6 Abs. 1",
+    pruefhinweis: "Eine an der Person erfasste Einwilligung (Art „sonntag\", Zeitraum) macht einen Sonntagseinsatz im Zeitraum zum Hinweis. Feiertage prüft die Schutzprüfung nicht gesondert; die übrigen Voraussetzungen des § 6 Abs. 1 (Ausnahme nach § 10 ArbZG, Ersatzruhetag, keine Alleinarbeit) verantwortet der Betrieb. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "SGBIX-207-01", art: null, regeltext: "SGB IX § 207", typ: "grenzregel", bezeichnung: "Schwerbehinderung: Mehrarbeit",
     ebene: "bund", quelle: "SGB IX", fundstelle: "§ 207" }),
 ];

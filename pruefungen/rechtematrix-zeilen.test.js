@@ -75,6 +75,7 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   emailVorher: M("EMAILVORHER-B1"), emailGeaendert: M("EMAILGEAENDERT-B1"),
   mutterschutz: M("MUTTERSCHUTZ-B1"), schwerbehindert: M("SCHWERBEHINDERT-B1"), geburtstag: M("GEBURTSTAG-B1"),
   geburtsdatum: M("GEBURTSDATUM-B1"), nachtvorsorge: M("NACHTVORSORGE-B1"), schutz: M("SCHUTZ-B1"),
+  mutterschutzEinwilligungen: [{ art: "nacht", ab: "2026-01-01", bis: null, geaendertVon: M("EINWILLIGUNG-B1") }],
   einschraenkungen: { wiedereingliederung: M("WIEDEREINGLIEDERUNG-B1") },
   qualifikationen: ["pfk", "masern"],
   kalenderGeheim: M("KALGEHEIM-B1"), kalenderVerweis: M("KALVERWEIS-B1"), kalenderStand: M("KALSTAND-B1"),
@@ -269,7 +270,7 @@ const ZEILEN = {
   "frühere Anmeldeadresse": { sonden: [mk("EMAILVORHER-B1"), mk("EMAILGEAENDERT-B1")] },
   "Gesundheits-/Schutzmerkmale (fremder Bereich)": {
     sonden: [mk("MUTTERSCHUTZ-B1"), mk("SCHWERBEHINDERT-B1"), mk("GEBURTSTAG-B1"), mk("GEBURTSDATUM-B1"),
-      mk("NACHTVORSORGE-B1"), mk("SCHUTZ-B1"), mk("WIEDEREINGLIEDERUNG-B1")] },
+      mk("NACHTVORSORGE-B1"), mk("SCHUTZ-B1"), mk("WIEDEREINGLIEDERUNG-B1"), mk("EINWILLIGUNG-B1")] },
   "Gesundheits-/Schutzmerkmale (eigener Bereich der SV)": {
     sonden: [feld("a1", "mutterschutz"), feld("a1", "schwerbehindert"), feld("a1", "geburtstag"),
       feld("a1", "nachtvorsorge"), wiedereingliederung("a1")],
@@ -470,7 +471,7 @@ const FELD_ZEILE = {
   "Bank, Steuer, Sozialversicherung, Lohn/Gehalt": ["iban", "steuerId", "sozialversicherung", "lohn", "gehalt"],
   "frühere Anmeldeadresse": ["emailVorher", "emailGeaendert"],
   "Gesundheits-/Schutzmerkmale (fremder Bereich)":
-    ["mutterschutz", "schwerbehindert", "geburtstag", "geburtsdatum", "nachtvorsorge", "schutz"],
+    ["mutterschutz", "schwerbehindert", "geburtstag", "geburtsdatum", "nachtvorsorge", "schutz", "mutterschutzEinwilligungen"],
   "Qualifikationen": ["qualifikationen"],
   "Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise)": ["qualNachweise"],
   "Kompetenznachweise (`kompetenzNachweise`)": ["kompetenzNachweise"],

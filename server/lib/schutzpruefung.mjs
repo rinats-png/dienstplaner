@@ -83,6 +83,27 @@ export function imNachtfenster23bis6(d) {
   return ueberschneidet(d, [[0, 360], [1380, 1800], [2820, 2880]]);
 }
 
+/** Liegt ein Teil des Dienstes zwischen 22 und 6 Uhr (Grenze mit Einwilligung, § 5 Abs. 2 MuSchG)? */
+export function imNachtfenster22bis6(d) {
+  return ueberschneidet(d, [[0, 360], [1320, 1800], [2760, 2880]]);
+}
+
+/** Arten einer Einwilligung nach dem Mutterschutzgesetz: 20–22 Uhr (§ 5 Abs. 2), Sonn- und Feiertag (§ 6 Abs. 1). */
+export const EINWILLIGUNG_ARTEN = Object.freeze(["nacht", "sonntag"]);
+
+/**
+ * Die am Tag gültige Einwilligung einer Person (Art „nacht" oder „sonntag") oder null.
+ * @param {any} person
+ * @param {string} art
+ * @param {string} datum
+ */
+export function einwilligungAm(person, art, datum) {
+  const l = person && Array.isArray(person.mutterschutzEinwilligungen) ? person.mutterschutzEinwilligungen : [];
+  for (const e of l)
+    if (e && typeof e === "object" && e.art === art && typeof e.ab === "string" && e.ab <= datum && (!e.bis || datum <= e.bis)) return e;
+  return null;
+}
+
 /** Überschneidet der Dienst eines der Fenster (Minuten ab Mitternacht des Dienstbeginns)? */
 function ueberschneidet(d, fenster) {
   const s = toMin(d.start);
@@ -192,14 +213,29 @@ export function schutzBefunde(person, dienstart, datum, einst) {
         text: "Samstags- und Sonntagsarbeit Jugendlicher ist nur in Ausnahmen zulässig — in der Pflege erlaubt, mit Ersatzruhetag." });
   }
 
-  /* --- Mutterschutzgesetz --- */
+  /* --- Mutterschutzgesetz ---
+     Nutzerentscheidung (WP-11): Eine an der Person erfasste Einwilligung
+     (mutterschutzEinwilligungen, § 5 Abs. 2 / § 6 Abs. 1 MuSchG) macht den
+     Befund im Gültigkeitszeitraum zum Hinweis: 20–22 Uhr bzw. Sonntag. Nach
+     22 Uhr bleibt Nachtarbeit hart; ohne gültige Einwilligung ebenso. */
   if (person.mutterschutz) {
-    if (imNachtfenster20bis6(dienstart))
-      aus.push({ regel: "MuSchG § 5", hart: true,
-        text: "Nachtarbeit zwischen 20 und 6 Uhr nur mit Einwilligung und behördlicher Genehmigung." });
-    if (dow(datum) === 6)
-      aus.push({ regel: "MuSchG § 6", hart: true,
-        text: "Sonntagsarbeit nur mit ausdrücklicher Einwilligung." });
+    if (imNachtfenster20bis6(dienstart)) {
+      const ew = einwilligungAm(person, "nacht", datum);
+      if (ew && !imNachtfenster22bis6(dienstart))
+        aus.push({ regel: "MuSchG § 5 Abs. 2", hart: false, hinweis: true,
+          text: ew.genehmigung ? "Arbeit bis 22 Uhr mit Einwilligung; die behördliche Genehmigung liegt vor."
+            : "Arbeit bis 22 Uhr mit Einwilligung; die behördliche Genehmigung (§ 28 MuSchG) muss vorliegen." });
+      else
+        aus.push({ regel: "MuSchG § 5", hart: true,
+          text: ew ? "Nach 22 Uhr auch mit Einwilligung nicht zulässig."
+            : "Nachtarbeit zwischen 20 und 6 Uhr nur mit Einwilligung und behördlicher Genehmigung." });
+    }
+    if (dow(datum) === 6) {
+      if (einwilligungAm(person, "sonntag", datum))
+        aus.push({ regel: "MuSchG § 6 Abs. 1", hart: false, hinweis: true, text: "Sonntagsarbeit mit ausdrücklicher Einwilligung." });
+      else
+        aus.push({ regel: "MuSchG § 6", hart: true, text: "Sonntagsarbeit nur mit ausdrücklicher Einwilligung." });
+    }
   }
 
   /* --- Schwerbehinderung --- */
@@ -259,6 +295,9 @@ export const EINSATZREGEL_TEXTE = {
   nachtAb23NichtZulaessig: "Nachteinsatz 23–6 Uhr nicht zulässig.",
   nachtSpaetPruefen: "Einsatz 20–23 Uhr nur mit einer betrieblichen Ausnahme — bitte prüfen.",
   nachtSpaetAusnahme: "Einsatz bis 23 Uhr: Ausnahme des Betriebs hinterlegt.",
+  nachtAb22NichtZulaessig: "Nachteinsatz 22–6 Uhr nicht zulässig.",
+  nachtMitFreigabe: "Einsatz 20–22 Uhr: Freigabe hinterlegt.",
+  sonntagMitFreigabe: "Sonntagseinsatz: Freigabe hinterlegt.",
   hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
   wochenendePruefen: "Wochenendeinsatz prüfen.",
   sonntagNurMitFreigabe: "Sonntagseinsatz nur mit Freigabe der Planung.",
@@ -298,6 +337,16 @@ export function regelBefunde(planungsregeln, dienstart, datum, einst) {
       case "hoechstens8hTag": treffer(dauer(dienstart) > 8.5); break;
       case "wochenendePruefen": treffer(dow(datum) >= 5); break;
       case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
+      /* Mit hinterlegter Einwilligung (Nutzerentscheidung, WP-11): dieselbe
+         Bewertung wie schutzBefunde — 22–6 Uhr hart, 20–22 Uhr bzw. Sonntag
+         nur ein Hinweis. Treffer heißen wie mit Rohdaten. */
+      case "nachtAb22NichtZulaessig":
+        if (imNachtfenster22bis6(dienstart)) aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.nachtAb22NichtZulaessig });
+        else if (imNachtfenster20bis6(dienstart)) aus.push({ regel: "nachtMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.nachtMitFreigabe });
+        break;
+      case "sonntagFreigegeben":
+        if (dow(datum) === 6) aus.push({ regel: "sonntagMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.sonntagMitFreigabe });
+        break;
       case "ueber8hNurAbsprache": treffer(dauer(dienstart) > 8); break;
       case "stundengrenzeWoche": break;
       /* Geburtsdatum fehlt (planungsregeln.mjs): nicht bewertbar — ein
