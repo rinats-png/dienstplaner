@@ -1,12 +1,13 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
-  protokoll } from "../lib/schutz.mjs";
+  protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
+import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre,
@@ -610,9 +611,19 @@ export default async (req, context) => {
         umschluesseln: mussUmschluesseln };
       const zielRaum = eintragV ? eintragV.bestand : null;
       const b = await bremse("anmelden", k, zielRaum);
+      /* Ein Ausfall der Zählerablage bleibt nicht stumm (WP-46). */
+      if (b.fehler) await protokoll("anmelden", k, "bremse-ausfall", b.fehler);
       if (!b.frei) { await protokoll("anmelden", k, "gebremst",
         `${b.grund}${b.dimension ? ` (${b.dimension})` : ""}`);
         return zuVielAntwort(b.wartet); }
+      /* Die zweite Grenze im Prozessspeicher, wie bei anmelden-konto: Sie
+         kann nicht ausfallen und deckelt auch das Gesamtaufkommen, wenn die
+         Hauptbremse degradiert nur noch je Herkunft zählt. */
+      const nb = notbremse("anmelden", k);
+      if (!nb.frei) {
+        await protokoll("anmelden", k, "notbremse", nb.dimension || null);
+        return zuVielAntwort(nb.wartet);
+      }
       if (!zugangscode || String(zugangscode).length < 6)
         return antwort({ fehler: "Zugangscode fehlt oder ist zu kurz." }, 400);
 
@@ -667,6 +678,18 @@ export default async (req, context) => {
         return antwort({ fehler: "Dieser Zugang passt nicht mehr zu seinem Betrieb.",
           text: "Bitte wende dich an die Organisationsleitung." }, 403);
       }
+      /* Zweiter Faktor für Betreibercodes (WP-32b, lib/betreiber-zweifaktor.mjs):
+         Einrichten, Abschalten und — wenn eingerichtet — Pflicht beim Anmelden.
+         Andere Rollen kennen keine Aktion. */
+      let zfAktiv = null;
+      if (eintrag.rolle === "betreiber") {
+        const zf = await betreiberZweifaktor({ store, k, rumpf, codeSchluessel: neuS,
+          kontoSchluessel: fund.schluessel, altSchluessel: altS, name: eintrag.name });
+        if (zf.antwort) return zf.antwort;
+        zfAktiv = !!zf.aktiv;
+      } else if (rumpf.zweifaktorAktion) {
+        return antwort({ fehler: "Einen zweiten Faktor gibt es nur für Betreiberzugänge." }, 400);
+      }
       if (bindungC.migrieren) {
         try {
           await kontoSchreiben(store, fund.schluessel, { ...eintrag, mandantId: bindungC.mandantId,
@@ -700,10 +723,12 @@ export default async (req, context) => {
       } catch { /* darf keine Anmeldung scheitern lassen */ }
 
       await entlasten("anmelden", k);
+      notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
-        hinweis: eintrag.hinweis || null, gueltigBis });
+        hinweis: eintrag.hinweis || null, gueltigBis,
+        ...(zfAktiv === null ? {} : { zweifaktor: zfAktiv }) });
     }
 
     /* ------------------------- Ab hier angemeldet -------------------- */

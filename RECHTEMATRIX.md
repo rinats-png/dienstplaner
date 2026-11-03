@@ -4,7 +4,9 @@ Stand: Abschluss des Blocks 1e (Commits 1e.1, 1e.2, 1e.2a, 1e.3, 1e.4a, 1e.4b, 1
 Commit 4 (Versand und Zustellung auf dem Server) und C-Block C1–C3 (Bereichsbezug: Ausschreibungen,
 Dienstbuch, Übergaben, Tagesnotizen).
 Regressionstest: `pruefungen/rechtematrix.test.js` — jede Zeile der Tabelle unten ist dort ein Marker
-mit Erwartung je Rolle und Lesepfad. **Matrix und Test werden zusammen geändert.**
+mit Erwartung je Rolle und Lesepfad. Dazu liest `pruefungen/rechtematrix-zeilen.test.js` (WP-43) die Tabelle
+in Abschnitt 1 aus dieser Datei und prüft jede Zelle gegen die Antwort des Servers — eine Zeile oder ein
+Zellenwortlaut ohne Prüfung macht ihn rot. **Matrix und Test werden zusammen geändert.**
 
 Einordnung je Zeile:
 
@@ -23,7 +25,10 @@ fremd), Planung und Leitung samt Kundenrolle (`VOLL_BETRIEB`, `VOLL_PERSON`). De
 Commit D1 ebenfalls eine Positivliste (`BETREIBER_*`, Fußnote ¹¹).
 
 Die Spalten beziehen sich auf eine **fremde Person aus einem anderen Bereich** (für die
-Schichtverantwortung also außerhalb ihres Bereichs). Die eigene Person bekommt jede Rolle vollständig.
+Schichtverantwortung also außerhalb ihres Bereichs). Die eigene Person bekommen Planung, Leitung und
+Kundenrolle vollständig; Beschäftigte, Betriebsrat und Schichtverantwortung den Katalog `EIGENE_PERSON`
+(Plan, Konten, Nachweise, Kontakt- und Notfallangaben, Einstellungen — ohne die Notiz der Leitung, die
+frühere Anmeldeadresse, Rohfelder der Schutzmerkmale und Bank-, Steuer- und Lohnangaben).
 
 Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortung · **PL** Planung ·
 **LT** Leitung (ebenso Kundenrolle) · **BT** Betreiber · **VA-LT** Vollausgabe der Leitung ·
@@ -32,7 +37,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Datenklasse | MA | BR | SV | PL | LT | BT | VA-LT | VA-SK | |
 |---|---|---|---|---|---|---|---|---|---|
 | Personendaten für den Plan (Name, Zugehörigkeit, Rolle, Qualifikationen …) | ✓ | ✓ | ✓ | ✓ | ✓ | – ¹¹ | ✓ | ✓ | A |
-| Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | A |
+| Personengerüst für die Betreiberabrechnung (Rolle auch im Verlauf, Status, Ein-/Austritt, Zugehörigkeit) | ohne Rollenverlauf ¹⁶ | ohne Rollenverlauf ¹⁶ | ohne Rollenverlauf ¹⁶ | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | A |
 | Kontakt: Telefon, Anschrift | – | – | – ¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kontakt: E-Mail (Kontaktangabe für Planung und Leitung) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Notfallkontakt | – | – | – | – | – | – | – | ✓ | A |
@@ -40,21 +45,33 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | frühere Anmeldeadresse | – | – | – | – | – | – | – | ✓ | A |
 | Gesundheits-/Schutzmerkmale (fremder Bereich) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Gesundheits-/Schutzmerkmale (eigener Bereich der SV) | – | – | nur abgeleitete Einsatzregeln ¹⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Qualifikationen | ✓ ² | ✓ ² | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationen | ✓ ² | ✓ ² | ✓ ² | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise) | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf | nur Qualifikation und Ablauf ²⁰ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Kompetenznachweise (`kompetenzNachweise`) | – | ✓ | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuständigkeitsbereich, Verfügbarkeit, operative Einschränkungen (`bereich`, `verfuegbarkeit`, `einschraenkungen` ohne Wiedereingliederung) | – | – | – ¹⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Konten, Wünsche, Einarbeitung (`stundenuebertrag`, `urlaubsanspruch`, `urlaubsuebertrag`, `wunschfrei`, `einarbeitung`) | – | – | – ¹⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Beschäftigungsmodell und Monatsstundengrenze (`beschaeftigungsmodell`, `stundenGrenzeMonat`) | – | – | – ²³ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personalnummer (`personalnummer`, Lohnexport) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuschläge an der Person (`zuschlaege`) — fachliche Entscheidung offen (Lohnbestandteil?) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | B |
+| Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Abwesenheiten mit Anmerkung | „abwesend" | „abwesend" | „abwesend" ⁴ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
-| Notrufe anderer | – | – | nur Bereich und an sie | ✓ | ✓ | – | ✓ | ✓ | A |
+| Notrufe anderer | – | – | nur Bereich und an sie ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Dienstbuch | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Übergaben | – | – | nur eigene Einheit ⁸ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Tagesnotizen (`notizen` „tag\|…") | – | – | nur eigene Einheit ⁹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | `tagesnotizen` (totes Feld, keine Ansicht) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
-| Personennotizen (`notizen` „person\|…") | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Personennotizen (`notizen` „person\|…"; Notiz der Leitung `notiz` an der Person) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Kopf (Tag, Dienst, Status, verantwortende Einheit) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Ausschreibungen: Bewerbungen anderer | nur eigene | – | nur bei Ausschreibung der eigenen Einheit ⁷ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Selbstplanung: Einträge anderer samt `hinweise` | nur Tag und Dienst ²² | – | nur eigener Bereich am Tag ¹⁵ ²² | ✓ | ✓ | – | ✓ | ✓ | A |
+| Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -71,8 +88,12 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | andere Betriebe des Raums | – | – | – | – | – | ✓ (gekürzt ¹¹) | – | – | A |
 | unbekannte neue Felder (Person, Betrieb, oben) | – | – | – | – | – | – | – | – | A |
 
-¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen.
-³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung.
+¹ im eigenen Bereich und Springer-Pool ✓ (Telefon, Mobil). ² ohne Status-Qualifikationen (für die Schichtverantwortung
+bei fremden Personen; im eigenen Bereich und Pool vollständig).
+³ im eigenen Bereich Zeiten ohne Grund. ⁴ im eigenen Bereich Kategorie ohne Anmerkung — und nur die Kategorien von vor
+Kette A (Urlaub, Krank, Schulung, Freistellung, Sonstiges, Freizeitausgleich; `ABWESENHEITSARTEN_SV`). Die neuen Arten
+(Mutterschutz/Beschäftigungsverbot, Eltern-, Pflege-, Familienpflegezeit, Arbeitsverhinderung, Berufsschule u. a.)
+sieht sie nur als „abwesend", auch in Hinweisen der Selbstplanung (Review WP-11, F1).
 ⁵ im eigenen Bereich vollständig (zum Entscheiden). ⁶ Die Oberfläche schreibt sie beim Ändern der eigenen
 Anmeldeadresse fort; ein Umbau dieses Schreibwegs steht aus. ⁷ Commit C1: `einheitId` ist die verantwortende
 Einheit (legt die Schichtverantwortung an, setzt der Server ihre eigene; Planung/Leitung auch `null` = betriebsweit).
@@ -129,6 +150,114 @@ beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betr
 Vollausgabe zurückgaben. Jetzt: nie ausgeliefert (jede Rolle, Vollausgabe, 409, neue Sicherung), beim Schreiben
 verworfen ohne Ablehnung der übrigen Änderung, Altinhalt beim nächsten Schreiben entfernt (auch im Drei-Wege-Abgleich
 und bei der Wiederherstellung).
+¹⁵ WP-43, tagesgenau: Zum eigenen Bereich (und Pool) der Schichtverantwortung gehört eine Person im Sichtfenster
+(`SICHTFENSTER`, 60 Tage zurück, 90 voraus) — das gilt für die Person selbst (Personenliste, Telefon, Konten,
+Einsatzregeln). Für Einträge, die an einem Tag hängen — Zeiterfassung, Fahrzeiten, Wünsche, Einsprünge, Notrufe,
+Planänderungen (`aenderungen`), Selbstplanung, Sondereinsätze (ohne Tag nur die eigenen) —, zählt zusätzlich die Zugehörigkeit an genau diesem Tag
+(`zugehoerigkeit[{einheitId, ab}]`); bei Zeiträumen (Abwesenheiten, Wünsche der Urlaubsrunde) an mindestens einem
+Tag darin, bei Anträgen am ersten Tag (wie beim Entscheiden). Nach einer Versetzung sieht die Schichtverantwortung
+des alten Bereichs die Tage im neuen Bereich also wie bei einer fremden Person. Tagesgenau schränkt nur ein: Was
+das Sichtfenster verschließt, bleibt zu; ohne gültigen Tag gilt ein Eintrag als fremd. Ein Bereich „ALLE" ist kein
+Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume` die Tage mit zugänglicher
+Erfassung; an allen anderen Tagen und in Auswertungen, deren Zeitraum (Monat, Kontojahr, Jahr, Ausgleichszeitraum)
+nicht ganz darin liegt, zeigt die Oberfläche „nicht verfügbar", nie die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
+Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
+¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
+`maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
+¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
+²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
+und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
+²¹ WP-10 (Kette A, Warnen statt sperren): Wer eine Einteilung trotz Befund der Stufe „Achtung" oder „Rechtsverstoß"
+vornimmt, hinterlässt einen Eintrag im Bestätigungsprotokoll (Person, Tag, Dienst, Stufe, Befunde, freiwilliger Grund,
+wer bestätigt hat, Regelstand). **Lesen:** Beschäftigte nicht (es nennt fremde Personen und Gründe). Der Betriebsrat je
+Regel und Tag ohne Namen (Muster-BV, Anlage 5): `personId` und `durchId` leer, statt des Namens nur die Rolle, kein
+Freitext zum Grund (nur die Grundart — ein Freitext kann Namen tragen); Befunde aus individuellen Schutz- oder
+Einsatzregeln nur als „individuelle Schutz- oder Einsatzregel betroffen", Befunde zu einer aufgehobenen Abwesenheit
+nur als „abwesend" (wie Abwesenheiten anderer, ²⁴). Die Schichtverantwortung sieht Einträge zu
+sich und zu Personen, die am Tag des Eintrags zu ihrem Bereich gehören (tagesgenau wie ¹⁵; Pool und fremd nicht).
+**Schreiben:** nur anhängen, für jede schreibende Rolle gleich (`bestaetigungenZusammen` in `server/lib/rechte.mjs`):
+Person des Betriebs, gültiger Tag, bekannte Dienstart, Stufe „achtung" oder „recht" (bei „recht" ausdrücklich gelesen),
+bekannte Grundart oder keine. Wer (Name, Kennung, Rolle) und Zeit setzt der Server. Bestehende Einträge sind
+unveränderlich; geändert oder weggelassen mitgeschickt bleibt der gespeicherte. Die Schichtverantwortung bestätigt nur
+für sich und Personen ihres Bereichs am Tag; Beschäftigte und Betriebsrat schreiben das Protokoll nicht. Bei einem
+bestätigten Rechtsverstoß erzeugt der Server die Mitteilung an die Leitung (`server/lib/bestaetigungen.mjs`, Kennung
+`n-bestaetigung-…`, Zustellung nach dem Speichern) — nicht die Oberfläche. Geprüft in
+`pruefungen/rechtematrix-zeilen.test.js`, `pruefungen/kette-a-rundreise.test.js` und `pruefungen/warnen.test.js`.
+**Nach dem Review (M1, N1, H1) gilt abweichend davon:** Befunde werden nur als Kennung aus dem Befundkatalog
+(`BEFUND_KATALOG`, `server/lib/bestaetigungen.mjs`) mit Stufe angenommen und gespeichert — kein Text, keine
+Fundstelle vom Client; angezeigt wird der Text des Katalogs. Die **Stufe** bestimmt der Katalog, nicht der Client
+(Nachprüfung N3). Ein sperrender Befund (Katalogspalte `sperrt`, dieselbe Tabelle wie `SPERR_REGELN` der Oberfläche)
+lässt sich nicht bestätigen; der Server weist ab. In der strengen Variante sperrt jeder Befund der Stufe
+„Rechtsverstoß" — ein bestätigter Rechtsverstoß entsteht derzeit nicht. Höchstens 50 neue Einträge je Speichern,
+höchstens 200 je bestätigender Person und Tag, höchstens 5000 insgesamt — an der Gesamtgrenze werden **neue Einträge
+abgewiesen, alte nie verdrängt** (Nachprüfung B1). Auslagern in ein Monatsarchiv und Löschen nach Frist (§ 16 Abs. 2
+ArbZG: zwei Jahre) sind ein eigener, protokollierter Aufbewahrungslauf — offen. Die Mitteilung an die Leitung nimmt
+den Text aus dem Katalog. Der **Betriebsrat** bekommt, weil ihm der Plan (`abweichungen`) vollständig vorliegt und
+schon Tag, Dienst, Aktion, Rolle oder die Reihenfolge einzelner Einträge die Person wiederfinden ließen, **nur
+Zählwerte** je Monat, Regel und Stufe (`{monat, regel, stufe, anzahl}`, Nachprüfung M1-Rest); unter der
+Mindestgruppengröße 3 steht „<3". Keine Einträge, keine Kennungen, kein Name, kein Freitext; Schutz- und
+Einschränkungsbefunde nur als `schutz`, Altbestand mit Text nie im Wortlaut (`sonstiges`). Fachlich offen: Reicht das
+der Mitbestimmung, und welche Mindestgröße? Geprüft zusätzlich in `pruefungen/review-wp10.test.js`.
+**Server-Durchsetzung (WP-11):** Der Server prüft jede neue oder geänderte Einteilung in `abweichungen` mit derselben
+Schutzprüfung wie die Oberfläche (`schutzEinsatz`, `server/lib/schutzpruefung.mjs`, auf den gespeicherten Rohdaten —
+für die Schichtverantwortung gleichwertig zu ihren Einsatzregeln) und weist ab, was hart sperrt, ebenso „nicht im
+Bestand" (`server/lib/schutzdurchsetzung.mjs`); bestehende Einteilungen bleiben unberührt. Die Dienstart kommt aus
+dem neuen Stand; eine unbekannte sperrt (fail-closed). Ändert eine Übermittlung Dienstzeiten, Schichtfolge (`zyklus`,
+`anker`), Einheiten (Versatz) oder Zugehörigkeit, Springer oder Schichtdienst einer Person, rechnet der Server für
+jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichung, sonst Schichtfolge) und weist ab,
+wenn dadurch ein sperrender Befund **neu** entsteht (Review F2); ein schon bestehender blockiert nicht. Grenzen dieser
+Nachrechnung: Teilzeit und Posten bleiben außer Acht (im Zweifel streng), Abwesenheiten zählen nicht als frei, Tage
+jenseits von 120 prüft nur die Planprüfung der Oberfläche. Eine Bestätigung zu einer
+solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
+durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
+`einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
+Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
+**Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
+20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
+`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben nur Rollen mit
+`org.edit` (Leitung, Kundenrolle); für Planung und alle anderen bleibt der gespeicherte Wert, eine andere Form als
+`{ mehrschichtig: boolean }` weist der Server ab, Zeitpunkt und Person (`geaendertAm`, `geaendertVon`) setzt er selbst
+(`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
+`nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
+oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
+²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
+Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
+trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
+von anderen nur Tag und Dienst, die Schichtverantwortung Einträge aus ihrem Bereich am Tag vollständig. Schreiben:
+Beschäftigte und Schichtverantwortung nur die eigenen Einträge einer offenen Runde (`selbstplanungZusammen`); `hinweise`
+nur als Liste von höchstens 12 Texten mit je höchstens 300 Zeichen, sonst fällt das Feld weg (die Eintragung bleibt).
+²³ WP-10 d.2 (Kette A, Beschäftigungsmodelle): `beschaeftigungsmodell` (Minijob, Midijob, Werkstudent, kurzfristig …)
+und `stundenGrenzeMonat` sind Vertragsangaben mit Lohnbezug (Entgeltgrenze). Die eigene Person sieht sie
+(`EIGENE_PERSON`), ändern kann sie sie nicht (nicht in `SELBST_FELDER`); Planung, Leitung und Kundenrolle lesen und
+schreiben sie (`VOLL_PERSON`), beide Vollausgaben enthalten sie. Die Schichtverantwortung bekommt sie — im Zweifel
+restriktiv — auch im eigenen Bereich nicht; ob sie für die Einteilung eine neutrale Monatsgrenze braucht (wie die
+Wochenstundengrenze in `planungsregeln`, ¹⁰), ist eine offene fachliche Frage. Beschäftigte und Betriebsrat sehen sie
+bei fremden Personen nicht. Seit WP-11 pflegt die Oberfläche die Felder (Personalakte, nur mit `staff.edit`);
+die Kataloge (WP-10 d.2) nehmen sie auf, Rundreisen in `pruefungen/kette-a-rundreise.test.js`.
+²⁴ WP-10 d.5 (Kette A): **Abwesenheit für einen Tag aufheben.** Teilt der Warndialog eine Abwesenheit, um eine
+Person an einem Tag einzuteilen (`abwesenheitTagAufheben`, `src/warnstufen.js`), ändert das einen bestehenden
+Eintrag in `abwesenheiten` und legt für den Rest einen neuen an. Schreibumfang: Planung, Leitung und Kundenrolle
+(wie jede Pflege von Abwesenheiten). Die Schichtverantwortung nicht — der Server lehnt Änderungen bestehender
+Abwesenheiten über ihren Zugang ab (`einheitZusammen`, Fall `abwesenheiten`), der Warndialog bietet es ihr nicht
+an. Beschäftigte nicht (nur neue eigene Krankmeldungen). Protokoll: der Eintrag im Bestätigungsprotokoll (Befund
+„abwesend", Stufe Achtung, ²¹), die Planänderung (`aenderungen`) und die Mitteilung an die Person. Der Server
+erzwingt den Protokolleintrag zu einer geteilten Abwesenheit bisher nicht (offen, WP-11).
+²⁵ Review WP-10, K1 (Art. 9 DSGVO): Beim Übernehmen einer Runde hielt die Oberfläche bis dahin „nicht übernommen"
+samt Wortlaut des Befunds fest („MuSchG § 5 …", „abwesend (Krank)"), und der Rundenkopf ging per `{...r}` an
+Beschäftigte und Schichtverantwortung — auch aus fremden Bereichen. Jetzt: Der Grund ist eine Kennung
+(`fehlt`, `schutz`, `abwesend`, `befund`, `auswahl`; `server/lib/selbstplanung.mjs`) — Schutz- und Einsatzregeln
+heißen alle „Schutz- oder Einsatzregel", eine Abwesenheit nur „abwesend". Der Server nimmt `nichtUebernommen` nur als
+`{personId, datum, dienstId, grund}` mit bekannter Kennung an (sonst `befund`). Gelesen wird der Rundenkopf für
+Beschäftigte und Schichtverantwortung per Positivliste (`RUNDENKOPF`); `nichtUebernommen` Beschäftigte nur die eigenen,
+die Schichtverantwortung nur eigene und Bereich am Tag (tagesgenau, ¹⁵), jeweils nur als Kennung — auch ältere,
+noch als Text gespeicherte Gründe gehen nur als „befund" hinaus. Der Betriebsrat bekommt die Selbstplanung nicht.
+Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
+Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
+`sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
+¹⁶ WP-43, Präzisierung (vorher stand hier ✓, geprüft war schon immer –): Beschäftigte, Betriebsrat und
+Schichtverantwortung bekommen von fremden Personen Rolle, Status, Ein-/Austritt und Zugehörigkeit (Katalog `PLAN`),
+nicht aber `rolleSeit` und `rolleVerlauf`. Ob sie den Verlauf brauchen, ist offen; geöffnet wird er nicht ohne Entscheidung.
 
 Ganz oben im Bestand bekommen alle Rollen außer dem Betreiber nur `version`, `stand`, `session` und
 genau den eigenen Betrieb (A).

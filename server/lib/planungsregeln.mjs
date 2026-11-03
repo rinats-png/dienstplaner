@@ -32,14 +32,21 @@
    ========================================================================== */
 
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
+/** Ein Kalendertag, den es gibt (kein 30.02.). */
+const gueltigesDatum = (s) => typeof s === "string" && DATUM.test(s)
+  && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
 
-/** Der letzte Tag vor dem 18. Geburtstag (29.2. in Nicht-Schaltjahren: 28.2.). */
-export function letzterTagMinderjaehrig(geburtstag) {
+/** Der letzte Tag vor dem Geburtstag mit `jahre` Jahren (29.2. in Nicht-Schaltjahren: 28.2.). */
+export function letzterTagVorAlter(geburtstag, jahre) {
   if (typeof geburtstag !== "string" || !DATUM.test(geburtstag)) return null;
   const [j, m, t] = geburtstag.split("-").map(Number);
-  const achtzehn = Date.UTC(j + 18, m - 1, t);           // 29.2. wird zum 1.3.
-  return new Date(achtzehn - 86400000).toISOString().slice(0, 10);
+  const stichtag = Date.UTC(j + jahre, m - 1, t);         // 29.2. wird zum 1.3.
+  return new Date(stichtag - 86400000).toISOString().slice(0, 10);
 }
+/** Der letzte Tag vor dem 18. Geburtstag. */
+export const letzterTagMinderjaehrig = (geburtstag) => letzterTagVorAlter(geburtstag, 18);
+/** Der Tag nach `tag` (JJJJ-MM-TT). */
+const folgetag = (tag) => new Date(Date.parse(`${tag}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
 
 /**
  * Die Einsatzregeln einer Person.
@@ -50,9 +57,21 @@ export function letzterTagMinderjaehrig(geburtstag) {
 export function planungsregelnAbleiten(p, fenster = {}) {
   const aus = [];
   if (!p || typeof p !== "object") return aus;
-  const bis = letzterTagMinderjaehrig(p.geburtstag || p.geburtsdatum);
+  const geb = p.geburtstag || p.geburtsdatum;
+  /* Fehlt das Geburtsdatum oder gibt es den Tag nicht (30.02.), ist das Alter
+     nicht bewertbar (Kette A, WP-11): Für Jugendliche wären Nacht, Beginn vor
+     6 Uhr und über acht Stunden unzulässig. Ein Hinweis, keine Sperre —
+     dieselbe Aussage wie schutzBefunde mit Rohdaten, ohne das Merkmal. */
+  if (!gueltigesDatum(geb)) aus.push({ regel: "alterNichtBewertbar", hart: false, offen: true });
+  const bis = gueltigesDatum(geb) ? letzterTagMinderjaehrig(geb) : null;
   if (bis && (!fenster.von || bis >= fenster.von)) {
-    aus.push({ regel: "nachtNichtZulaessig", hart: true, bis },
+    /* Nachtruhe (§ 14 JArbSchG, Nachprüfung WP-11): unter 16 Jahren 20–6 Uhr,
+       ab 16 Jahren 23–6 Uhr hart und 20–23 Uhr je nach Einstellung des
+       Betriebs (regelBefunde). Die Grenze ist der 16. Geburtstag. */
+    const bis16 = letzterTagVorAlter(geb, 16);
+    if (bis16 && (!fenster.von || bis16 >= fenster.von)) aus.push({ regel: "nachtNichtZulaessig", hart: true, bis: bis16 });
+    const von16 = bis16 ? folgetag(bis16) : null;
+    aus.push({ regel: "nachtAb23NichtZulaessig", hart: true, ...(von16 && fenster.von && von16 <= fenster.von ? {} : { von: von16 }), bis },
       { regel: "hoechstens8hTag", hart: true, bis },
       { regel: "wochenendePruefen", hart: false, bis });
   }

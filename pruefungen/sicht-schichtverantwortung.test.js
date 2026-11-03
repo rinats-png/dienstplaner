@@ -17,6 +17,11 @@ import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
+/* Ein Werktag ab sechs Tagen voraus. a1 ist minderjährig und im
+   Mutterschutz (privat() unten); an einem Sonntag sperrt die Schutzprüfung
+   seit WP-11 auch auf dem Server (B2). Der Rundweg prüft die Rückfüllung,
+   nicht den Schutz — deshalb ein zulässiger Tag. */
+const WERKTAG6 = (() => { for (let n = 6; n < 13; n++) { const t = tag(n); const w = new Date(`${t}T12:00:00Z`).getUTCDay(); if (w >= 1 && w <= 5) return t; } return tag(6); })();
 
 /* Alles, was eine Person an Privatem, Gesundheitlichem und Geheimem tragen kann. */
 const privat = (id) => ({
@@ -289,7 +294,9 @@ function sammlungen() {
       { id: "c-b", personId: "b1", datum: tag(1), von: "-", nach: "F" }, { id: "c-0", personId: null, datum: tag(1), von: "-", nach: "Anfrage Telefon" }],
     nachrichten: [{ id: "n-a", personId: "a1", art: "info", titel: "fremde Nachricht" },
       { id: "n-s", personId: "s1", art: "info", titel: "an mich" }],
-    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", empfaenger: [], bestaetigt: null },
+    /* WP-43: Notrufe tragen ihren Tag (die Oberfläche setzt ihn immer); ohne Tag
+       bekommt die Schichtverantwortung einen Bereichsnotruf nicht (fail-closed). */
+    notrufe: [{ id: "nr-a", personId: "a1", art: "medizin", datum: tag(0), empfaenger: [], bestaetigt: null },
       { id: "nr-b-an-mich", personId: "b1", art: "hilfe", empfaenger: ["s1"], bestaetigt: null },
       { id: "nr-b", personId: "b1", art: "bedrohung", empfaenger: ["l1"], bestaetigt: null }],
     selbstplanung: [{ id: "sp-r", monat: tag(40).slice(0, 7), status: "offen", eintraege: [
@@ -300,7 +307,9 @@ function sammlungen() {
     einarbeitung: [{ id: "ea", personId: "a1", mentorId: "s1" }, { id: "eb", personId: "b1", mentorId: "x" }],
     betriebsmittel: [{ id: "bm0", name: "Schlüssel frei", personId: null }, { id: "bm-a", name: "Schlüssel A", personId: "a1" },
       { id: "bm-b", name: "Schlüssel B", personId: "b1" }],
-    sondereinsaetze: [{ id: "se-a", zugeteilt: ["a1"], auftraggeber: "Stadt" }, { id: "se-b", zugeteilt: ["b1"], auftraggeber: "Messe" }],
+    /* WP-43: Sondereinsätze tragen ihren Tag (die Oberfläche setzt ihn); ohne Tag sieht die
+       Schichtverantwortung nur die eigenen (fail-closed). */
+    sondereinsaetze: [{ id: "se-a", datum: tag(4), zugeteilt: ["a1"], auftraggeber: "Stadt" }, { id: "se-b", datum: tag(4), zugeteilt: ["b1"], auftraggeber: "Messe" }],
     protokoll: [{ id: "l2", zeit: "2", text: "Lohn geändert für b1" }, { id: "l1", zeit: "1", text: "erster" }],
     adressAenderungen: [{ alt: "alt@x", neu: "neu@x" }],
     notizen: { [`tag|${tag(1)}`]: [{ id: "tn", text: "Tagesnotiz" }], "person|a1": [{ id: "pn", text: "interne Leitungsnotiz zur Person" }] },
@@ -433,12 +442,12 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
   }
   it("gekürzte Sicht + Planänderung + Protokolleintrag zurück: angenommen, alles Verborgene unverändert", () => {
     const { g, e } = rundweg((m) => {
-      m.abweichungen[`a1|${tag(6)}`] = "F";
+      m.abweichungen[`a1|${WERKTAG6}`] = "F";
       m.protokoll = [{ id: "l-neu", zeit: "x", text: "Plan geändert" }, ...(m.protokoll || [])];
     });
     expect(e.verweigert).toBeFalsy();
     const roh = g.mandanten[0], neu = e.mandanten[0];
-    expect(neu.abweichungen[`a1|${tag(6)}`]).toBe("F");
+    expect(neu.abweichungen[`a1|${WERKTAG6}`]).toBe("F");
     expect(neu.protokoll.map((l) => l.id)).toEqual(["l-neu", "l2", "l1"]);
     const ohne = (m) => { const { abweichungen, protokoll, ...rest } = m; return rest; };
     expect(ohne(neu)).toEqual(ohne(roh));                                     // jede verborgene Angabe wertgleich
@@ -452,7 +461,7 @@ describe("Sammlungen: Rundweg, Rückfüllung, Angriffe", () => {
   it("ohne Rückfüllung scheitert derselbe Rundweg — mit ihr nicht", () => {
     const g = sammlungen();
     const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SUB))).mandanten[0];
-    sicht.abweichungen[`a1|${tag(6)}`] = "F";
+    sicht.abweichungen[`a1|${WERKTAG6}`] = "F";
     expect(einheitZusammen(g.mandanten[0], personenRueckfuellen(g.mandanten[0], sicht, SUB), SUB).ok).toBe(false);
     expect(zusammenfuehren(g, { ...bestandFuerRolle(g, SUB), mandanten: [sicht] }, SUB).verweigert).toBeFalsy();
   });

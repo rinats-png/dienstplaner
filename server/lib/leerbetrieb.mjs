@@ -96,6 +96,7 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     /* Lenk- und Ruhezeiten des Fahrpersonals, aus dem Kontrollgerät. */
     fahrzeiten: {},
     unterschreitungen: [],
+    bestaetigungen: [],
     dienstbuch: [],
     erfassung: {},
     einstempeln: {},

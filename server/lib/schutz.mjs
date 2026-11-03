@@ -1,5 +1,7 @@
 import { getStore } from "./ablage.mjs";
+import { ereignis } from "./gesund-zaehler.mjs";
 import { createHash, randomBytes } from "node:crypto";
+import { BlockList, isIP } from "node:net";
 
 /* ==========================================================================
    SCHUTZ UND PROTOKOLL
@@ -68,11 +70,37 @@ const kurz = (s) => createHash("sha256").update(String(s)).digest("hex").slice(0
    -------------------------------------------------------------------------- */
 const lokal = new Map();
 
-function lokalZaehlen(schluessel, fensterSekunden) {
+/* --------------------------------------------------------------------------
+   GLEITENDES FENSTER
+
+   Ein festes Fenster beginnt an jeder Grenze bei null. Liegt die Grenze
+   mitten in einer Versuchsreihe, gehen bis zu zweimal so viele Versuche
+   durch, wie die Grenze nennt — belegt im CI-Lauf 41493388310: vierzehn
+   Fehlversuche nacheinander, keine Sperre.
+
+   Deshalb zählt das vorige Fenster anteilig mit: voll am Anfang des
+   laufenden Fensters, gar nicht mehr an seinem Ende. Bei gleichmäßigem
+   Aufkommen ist das genau die Rate; an der Grenze kann nichts mehr doppelt
+   durchgehen. Die Grenzwerte selbst bleiben unverändert.
+   -------------------------------------------------------------------------- */
+
+/** Lage eines Zeitpunkts in Fenstern von `fensterSekunden`. */
+function fensterLage(ms, fensterSekunden) {
+  const p = fensterSekunden * 1000;
+  const index = Math.floor(ms / p);
+  return { index, anteil: (ms - index * p) / p, ende: (index + 1) * p };
+}
+
+/** Gleitender Stand aus laufendem und vorigem Fenster. */
+const gewichtet = (laufend, vorig, anteil) => laufend + vorig * (1 - anteil);
+
+/** Zählt im Speicher hoch. `bis`: bis wann der Eintrag gebraucht wird —
+    das Ende des NÄCHSTEN Fensters, weil er dort noch als „voriges“ zählt. */
+function lokalZaehlen(schluessel, bis) {
   const jetzt = Date.now();
   const eintrag = lokal.get(schluessel);
   if (!eintrag || eintrag.bis < jetzt) {
-    lokal.set(schluessel, { n: 1, bis: jetzt + fensterSekunden * 1000 });
+    lokal.set(schluessel, { n: 1, bis });
     /* Beiläufig aufräumen, damit die Karte nicht wächst. */
     if (lokal.size > 500) {
       for (const [k, v] of lokal) if (v.bis < jetzt) lokal.delete(k);
@@ -81,6 +109,23 @@ function lokalZaehlen(schluessel, fensterSekunden) {
   }
   eintrag.n++;
   return eintrag.n;
+}
+
+/** Liest den Speicherzähler, ohne zu zählen. */
+function lokalLesen(schluessel) {
+  const eintrag = lokal.get(schluessel);
+  return eintrag && eintrag.bis >= Date.now() ? eintrag.n : 0;
+}
+
+/* Ein Ausfall der Ablage soll auffallen, aber das Serverprotokoll nicht
+   fluten: höchstens eine Meldung je Art und Minute. */
+const ausfallGemeldet = new Map();
+function ausfallMelden(art, fehler) {
+  ereignis("bremse-ausfall");   // Fehlerzählung für /gesund (WP-05), jeder Ausfall
+  const jetzt = Date.now();
+  if ((ausfallGemeldet.get(art) || 0) > jetzt - 60000) return;
+  ausfallGemeldet.set(art, jetzt);
+  console.error(`bremse-ausfall (${art}): ${fehler} — zähle im Prozessspeicher weiter`);
 }
 
 /* --------------------------------------------------------------------------
@@ -102,42 +147,54 @@ function lokalZaehlen(schluessel, fensterSekunden) {
    greift der Blob-Weg — schwächer, aber betriebsfähig. Ein Ausfall des
    Dienstes bremst die Anwendung nicht: Wir fallen still zurück.
    -------------------------------------------------------------------------- */
-async function atomarZaehlen(schluessel, fensterSekunden) {
+async function atomarZaehlen(schluessel, vorigSchluessel, fensterSekunden) {
   const url = process.env.REDIS_REST_URL;
   const token = process.env.REDIS_REST_TOKEN;
   if (!url || !token) return null;
   try {
     const basis = String(url).replace(/\/+$/, "");
     const k = encodeURIComponent(`centric:takt:${schluessel}`);
-    /* Ein Aufruf für beides: hochzählen und Ablauf setzen. */
+    const kv = encodeURIComponent(`centric:takt:${vorigSchluessel}`);
+    /* Ein Aufruf für alles: hochzählen, Ablauf setzen, voriges Fenster lesen. */
     const a = await fetch(`${basis}/pipeline`, {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify([["INCR", k], ["EXPIRE", k, String(fensterSekunden * 2)]]),
+      body: JSON.stringify([["INCR", k], ["EXPIRE", k, String(fensterSekunden * 2)], ["GET", kv]]),
       signal: AbortSignal.timeout(1500),
     });
     if (!a.ok) return null;
     const d = await a.json();
     const n = Array.isArray(d) && d[0] && Number(d[0].result);
-    return Number.isFinite(n) ? n : null;
+    if (!Number.isFinite(n)) return null;
+    const v = Array.isArray(d) && d[2] ? Number(d[2].result) : 0;
+    return { laufend: n, vorig: Number.isFinite(v) ? v : 0 };
   } catch {
     /* Zeitüberschreitung oder Ausfall: lieber der schwächere Weg als keiner. */
     return null;
   }
 }
 
-/** Wie viele Versuche liegen unter diesem Präfix? */
-async function versucheZaehlen(s, praefix) {
-  try {
-    const { blobs } = await s.list({ prefix: `v:${praefix}:` });
-    return blobs.length;
-  } catch { return 0; }
+/** Wie viele Versuche liegen unter `basis` im laufenden und im vorigen
+    Fenster? Ein Listenaufruf für beide. Wirft bei einem Fehler der Ablage —
+    still null zu zählen hieße, die Bremse unbemerkt zu öffnen. */
+async function versucheZaehlen(s, basis, fenster) {
+  const praefix = `v:${basis}:`;
+  const { blobs } = await s.list({ prefix: praefix });
+  const laufend = `${fenster}:`, vorig = `${fenster - 1}:`;
+  let l = 0, v = 0;
+  for (const b of blobs) {
+    const rest = b.key.slice(praefix.length);
+    if (rest.startsWith(laufend)) l++;
+    else if (rest.startsWith(vorig)) v++;
+  }
+  return { laufend: l, vorig: v };
 }
 
-/** Einen Versuch vermerken. Der Zufall im Namen verhindert Kollisionen. */
+/** Einen Versuch vermerken. Der Zufall im Namen verhindert Kollisionen.
+    Wirft bei einem Fehler der Ablage (siehe bremse()). */
 async function versuchVermerken(s, praefix) {
   const marke = `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
-  try { await s.setJSON(`v:${praefix}:${marke}`, 1); } catch { /* siehe unten */ }
+  await s.setJSON(`v:${praefix}:${marke}`, 1);
 }
 
 /* Alte Fenster wegräumen. Die Schlüssel tragen ihr Fenster im Namen, also
@@ -164,13 +221,48 @@ async function versucheLoeschen(s, praefix) {
   } catch { /* egal */ }
 }
 
+/** Atomare Zähler löschen, falls ein Fremddienst hinterlegt ist. */
+async function atomarLoeschen(schluesselListe) {
+  const url = process.env.REDIS_REST_URL;
+  const token = process.env.REDIS_REST_TOKEN;
+  if (!url || !token) return;
+  try {
+    const basis = String(url).replace(/\/+$/, "");
+    await fetch(`${basis}/pipeline`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(schluesselListe.map((k) => ["DEL", encodeURIComponent(`centric:takt:${k}`)])),
+      signal: AbortSignal.timeout(1500),
+    });
+  } catch { /* Ausfall: Die Schlüssel laufen über EXPIRE ab. */ }
+}
+
+/** Zählstand einer Kennung leeren — Speicher, Ablage und atomarer Zähler,
+    laufendes und voriges Fenster. Für entlasten() und beim Sperren. */
+async function zaehlerLeeren(s, art, kennung, fenster) {
+  const laufend = `${art}:${kennung}:${fenster}`;
+  const vorig = `${art}:${kennung}:${fenster - 1}`;
+  lokal.delete(laufend);
+  lokal.delete(vorig);
+  /* Alle Fenster dieser Kennung — der Doppelpunkt am Ende des Präfixes
+     (versucheLoeschen) trennt sie von längeren Kennungen. */
+  await versucheLoeschen(s, `${art}:${kennung}`);
+  await atomarLoeschen([laufend, vorig]);
+}
+
 /** Grenzen je Endpunkt: wie viele Versuche in wie vielen Sekunden. */
 export const GRENZEN = {
-  /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung */
-  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200 },
-  demo:       { versuche: 20,  fenster: 300,  sperre: 300 },
-  einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400 },
-  zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400 },
+  /* steigend: die Sperre verdoppelt sich mit jeder Wiederholung
+     failClosed: Lässt sich der Sperreintrag wegen eines Plattenfehlers
+       nicht lesen, gilt die Kennung als gesperrt — eine Langzeitsperre darf
+       nicht übergangen werden. Nur für Arten, bei denen es um Raten,
+       Anlegen oder Versand geht. Alle anderen zählen dann degradiert im
+       Speicher weiter, damit ein Fehler im Zählerstore nicht die ganze
+       Anwendung lahmlegt (bremse()). */
+  anmelden:   { versuche: 8,   fenster: 300,  sperre: 300,  steigend: true, max: 7200, failClosed: true },
+  demo:       { versuche: 20,  fenster: 300,  sperre: 300,  failClosed: true },
+  einrichten: { versuche: 5,   fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
+  zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
@@ -181,13 +273,14 @@ export const GRENZEN = {
   wiederherstellen: { versuche: 5, fenster: 3600, sperre: 3600 },
   /* Selbstbedienung: drei Betriebe je Stunde. Ohne diese Bremse legt jemand
      über Nacht zehntausend Räume an, und die Kosten laufen mit. */
-  starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400, failClosed: true },
   /* Eine Registrierung kostet zunächst nichts — aber sie schickt eine Mail.
      Ohne Bremse wäre der Endpunkt ein Werkzeug, mit dem sich fremde
      Postfächer zuschütten lassen, und der Versanddienst rechnet mit. Fünf
      Versuche je Stunde und Herkunft reichen für jeden Tippfehler; die
      Sperre verdoppelt sich wie beim Anmelden. */
-  registrierung: { versuche: 5, fenster: 3600, sperre: 3600, steigend: true, max: 86400 },
+  registrierung: { versuche: 5, fenster: 3600, sperre: 3600, steigend: true, max: 86400,
+    failClosed: true },
   /* Ein Bestätigungslink wird auch von Mailprogrammen vorab geladen und von
      Menschen mehrfach angeklickt. Deshalb großzügiger: Das Raten eines
      256-Bit-Tokens verhindert seine Länge, nicht diese Bremse. Sie hält nur
@@ -206,7 +299,7 @@ export const GRENZEN = {
      aus demselben Grund steigend: Wer wiederholt anrennt, wartet jedes Mal
      doppelt so lange. */
   "anmelden-konto": { versuche: 8, fenster: 300, sperre: 300, steigend: true,
-    max: 7200 },
+    max: 7200, failClosed: true },
   /* Sitzung prüfen und abmelden. Kein Geheimnis zu raten — ein Merkmal hat
      256 Bit —, also großzügig wie das Lesen. Gebremst wird, damit ein
      Ansturm nicht die Ablage beschäftigt: Jede Prüfung liest zwei
@@ -219,6 +312,13 @@ export const GRENZEN = {
      Dreißig je fünf Minuten reichen für jeden Wechsel zwischen
      Arbeitsbereichen und für keinen Ansturm. */
   "betrieb-waehlen": { versuche: 30, fenster: 300, sperre: 300 },
+  /* Zweiter Faktor der Verwalterschlüssel (zweifaktor.mjs, WP-32). Sechs
+     Stellen sind schnell geraten, wenn niemand bremst: Fünf Versuche je
+     fünf Minuten, gezählt je Schlüssel UND je Herkunft, Sperre steigend
+     bis zu einem Tag. failClosed: Meldet die Bremse einen Ausfall der
+     Ablage, weist /einrichten ab, statt im Prozessspeicher weiterzuzählen. */
+  zweifaktor: { versuche: 5, fenster: 300, sperre: 900, steigend: true, max: 86400,
+    failClosed: true },
 };
 
 /** Grenzen für die weiteren Zähldimensionen — großzügiger als je Herkunft. */
@@ -254,11 +354,123 @@ export function kennung(req, sitzung) {
 }
 
 /** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte.
-    Caddy trägt sie als X-Forwarded-For ein; der erste Eintrag ist der Client. */
+
+    Hinter server.mjs steht in `x-forwarded-for` genau EINE Adresse: die,
+    die `herkunftBestimmen()` aus Gegenstelle, Kopf und Vertrauensliste
+    ermittelt hat (B-XFF-1, WP-32b). Was der Client mitschickte, ist dort
+    schon ersetzt. Ruft jemand einen Handler ohne server.mjs auf — die
+    Prüfungen tun das —, gilt der erste Eintrag wie bisher. */
 export function herkunft(req) {
   const adresse = req.headers.get("x-forwarded-for") || "unbekannt";
   return String(adresse).split(",")[0].trim();
 }
+
+/* --------------------------------------------------------------------------
+   VERTRAUTE PROXYS (B-XFF-1)
+
+   Bis WP-32b nahm der Server `X-Forwarded-For` von jedem Absender, und
+   herkunft() den ERSTEN Eintrag — den, den der Client selbst bestimmt. Wer
+   den Dienst am Proxy vorbei erreichte (aus dem Docker-Netz, in Staging),
+   bekam mit jedem erfundenen Wert einen frischen Zähler der Bremse.
+
+   Jetzt:
+     CENTRIC_VERTRAUTE_PROXYS  Liste von Adressen und Netzen (CIDR), durch
+                               Komma oder Leerzeichen getrennt. IPv4 und IPv6.
+     leer / nicht gesetzt      niemandem vertrauen: `X-Forwarded-For` wird
+                               verworfen, es zählt die Adresse der Gegenstelle.
+     Gegenstelle vertraut      die Kette wird von RECHTS gelesen; die erste
+                               Adresse, die nicht selbst vertraut ist, ist der
+                               Client. Links davon kann der Client schreiben,
+                               was er will — es wird nie gelesen.
+
+   Achtung im Betrieb: Ohne Liste sieht der Server hinter Caddy nur noch die
+   Adresse des Caddy-Containers — alle Nutzer teilten sich dann EINE Herkunft
+   und EINEN Bremszähler. Deshalb meldet der Server das laut
+   (xffOhneVertrauen) und /einrichten/umgebung als Warnung.
+   -------------------------------------------------------------------------- */
+
+/** IPv4-gemappte IPv6-Adressen (::ffff:10.0.0.1) als IPv4 behandeln. */
+export function adresseNormieren(a) {
+  let s = String(a || "").trim();
+  if (s.startsWith("[") && s.includes("]")) s = s.slice(1, s.indexOf("]"));
+  const z = s.indexOf("%");
+  if (z > 0) s = s.slice(0, z);
+  const m = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(s);
+  if (m) return m[1];
+  /* IPv4 mit Port (1.2.3.4:5678), wie manche Proxys schreiben. */
+  const p = /^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/.exec(s);
+  if (p) return p[1];
+  return s.toLowerCase();
+}
+
+/**
+ * Die Vertrauensliste als BlockList. Ungültige Einträge werfen — eine
+ * vertippte Liste soll den Start anhalten, nicht still niemandem oder allen
+ * vertrauen.
+ * @param {string} [text]
+ */
+export function vertrauteListe(text) {
+  const liste = new BlockList();
+  let anzahl = 0;
+  for (const roh of String(text || "").split(/[\s,]+/).filter(Boolean)) {
+    const [adr, bits] = roh.split("/");
+    const a = adresseNormieren(adr);
+    const art = isIP(a);
+    if (!art) throw new Error(`CENTRIC_VERTRAUTE_PROXYS: „${roh}" ist keine Adresse.`);
+    const typ = art === 4 ? "ipv4" : "ipv6";
+    if (bits === undefined) liste.addAddress(a, typ);
+    else {
+      const n = Number(bits);
+      if (!Number.isInteger(n) || n < 0 || n > (art === 4 ? 32 : 128))
+        throw new Error(`CENTRIC_VERTRAUTE_PROXYS: „${roh}" hat keine gültige Präfixlänge.`);
+      liste.addSubnet(a, n, typ);
+    }
+    anzahl++;
+  }
+  return { liste, anzahl };
+}
+
+/** @param {{liste: BlockList, anzahl: number}} v */
+function vertraut(v, adresse) {
+  if (!v || !v.anzahl) return false;
+  const a = adresseNormieren(adresse);
+  const art = isIP(a);
+  if (!art) return false;
+  return v.liste.check(a, art === 4 ? "ipv4" : "ipv6");
+}
+
+/**
+ * Wer ist der Client? Reine Funktion — server.mjs ruft sie für jede Anfrage.
+ *
+ * @param {string|undefined} gegenstelle  req.socket.remoteAddress
+ * @param {string|null|undefined} xff     mitgeschickter Kopf (Komma-Liste)
+ * @param {{liste: BlockList, anzahl: number}} v  aus vertrauteListe()
+ * @returns {string}
+ */
+export function herkunftBestimmen(gegenstelle, xff, v) {
+  const direkt = adresseNormieren(gegenstelle) || "unbekannt";
+  if (!xff || !vertraut(v, direkt)) return direkt;
+  const kette = String(xff).split(",").map((x) => adresseNormieren(x)).filter(Boolean);
+  for (let i = kette.length - 1; i >= 0; i--) {
+    if (!isIP(kette[i])) return direkt;   // Unsinn in der Kette: nicht weiterlesen
+    if (!vertraut(v, kette[i])) return kette[i];
+  }
+  /* Alle Einträge vertraut (Proxy hinter Proxy im selben Netz): der äußerste. */
+  return kette[0] || direkt;
+}
+
+let xffOhneListe = 0;
+/** Zählt Anfragen mit X-Forwarded-For bei leerer Vertrauensliste und meldet die erste laut. */
+export function xffOhneVertrauenMelden() {
+  xffOhneListe++;
+  if (xffOhneListe === 1)
+    console.warn("WARNUNG: Anfrage mit X-Forwarded-For, aber CENTRIC_VERTRAUTE_PROXYS ist leer. "
+      + "Der Kopf wird ignoriert; alle Anfragen zählen unter der Adresse der Gegenstelle. "
+      + "Hinter Caddy heißt das: EINE Herkunft für alle Nutzer — die Bremse träfe alle gemeinsam. "
+      + "Das Netz des Caddy-Containers in CENTRIC_VERTRAUTE_PROXYS eintragen (docs/CADDY-UND-XFF.md).");
+}
+/** Wie oft kam X-Forwarded-For ohne Vertrauensliste an? Für /einrichten/umgebung. */
+export const xffOhneVertrauen = () => xffOhneListe;
 
 /* --------------------------------------------------------------------------
    HERKUNFT EINER SCHREIBENDEN ANFRAGE
@@ -430,21 +642,68 @@ export function herkunftStreng(req) {
 /**
  * Prüft und zählt in einem Zug. Gibt zurück, ob weitergemacht werden darf.
  *
- * Bewusst einfach gehalten: ein Zähler je Kennung und Fenster. Kein
- * gleitendes Fenster, kein Tokenbucket — für einen Dienst dieser Größe wäre
- * das Aufwand ohne Gewinn, und jede Zusatzabfrage kostet Antwortzeit.
+ * Ein Zähler je Kennung und Fenster, gleitend gelesen: das vorige Fenster
+ * zählt anteilig mit (siehe GLEITENDES FENSTER). Kein Tokenbucket — für
+ * einen Dienst dieser Größe wäre das Aufwand ohne Gewinn.
+ *
+ * Fail-closed: Ein Fehler der Ablage öffnet die Bremse nicht. Gezählt wird
+ * dann im Prozessspeicher weiter (degradiert — je Prozess statt je Dienst),
+ * und ein unlesbarer Sperreintrag gilt als Sperre. `fehler` im Ergebnis
+ * meldet den Ausfall an den Aufrufer.
  */
 export async function bremse(art, kennung, ziel) {
   const g = GRENZEN[art];
   if (!g) return { frei: true };
   const s = takt();
-  const jetzt = Math.floor(Date.now() / 1000);
-  const fenster = Math.floor(jetzt / g.fenster);
-  const schluessel = `${art}:${kennung}:${fenster}`;
+  const jetztMs = Date.now();
+  const jetzt = Math.floor(jetztMs / 1000);
+  const lage = fensterLage(jetztMs, g.fenster);
+  const fenster = lage.index;
+  const basis = `${art}:${kennung}`;
+  const schluessel = `${basis}:${fenster}`;
+  const vorigSchluessel = `${basis}:${fenster - 1}`;
+  const sperreSchluessel = `sperre:${art}:${kennung}`;
+
+  /* Der Speicherzähler zählt genau einmal je Aufruf — im Normalweg wie im
+     Ausfall, egal an welcher Stelle die Ablage wirft. */
+  let lokalStand = null;
+  const lokalGezaehlt = () => {
+    if (lokalStand === null) {
+      lokalZaehlen(schluessel, lage.ende + g.fenster * 1000);
+      lokalStand = gewichtet(lokalLesen(schluessel), lokalLesen(vorigSchluessel), lage.anteil);
+    }
+    return lokalStand;
+  };
 
   try {
     /* Steht eine Sperre? Die überdauert das Zählfenster. */
-    const gesperrt = await s.get(`sperre:${art}:${kennung}`, { type: "json" });
+    let gesperrt;
+    try {
+      gesperrt = await s.get(sperreSchluessel, { type: "json" });
+    } catch (e) {
+      /* Plattenfehler (EIO, EACCES …): Ob hier eine Langzeitsperre steht,
+         ist unbekannt — im Speicher ist sie nach einem Neustart nicht mehr.
+         Bei sicherheitskritischen Arten (failClosed) gilt die Kennung
+         deshalb als gesperrt; überschrieben wird nichts, eine lesbare
+         Sperre käme sonst kürzer zurück, als sie war. Alle anderen Arten
+         zählen unten im Speicher weiter (degradiert, mit `fehler`). */
+      if (e && /** @type {any} */ (e).code) {
+        if (!g.failClosed) throw e;
+        const fehler = String(/** @type {any} */ (e).message || e).slice(0, 120);
+        ausfallMelden(art, fehler);
+        return { frei: false, wartet: g.sperre, grund: "gesperrt", fehler };
+      }
+      gesperrt = undefined;
+    }
+    if (gesperrt === undefined || (gesperrt !== null
+        && (typeof gesperrt !== "object" || !Number.isFinite(gesperrt.bis)))) {
+      /* Der Eintrag ist da, aber unlesbar. Er war eine Sperre — also gilt er
+         als Sperre. Er wird durch eine frische ersetzt, damit er wie jede
+         andere abläuft, statt die Kennung für immer auszusperren. */
+      await s.setJSON(sperreSchluessel, { bis: jetzt + g.sperre, seit: jetzt, stufe: 0,
+        ersetzt: "unlesbar" }).catch(() => {});
+      return { frei: false, wartet: g.sperre, grund: "gesperrt" };
+    }
     if (gesperrt && gesperrt.bis > jetzt)
       return { frei: false, wartet: gesperrt.bis - jetzt, grund: "gesperrt" };
 
@@ -455,18 +714,22 @@ export async function bremse(art, kennung, ziel) {
     const w = WEITERE[art];
     if (w) {
       if (w.ziel && ziel) {
-        const zk = `${art}:ziel:${ziel}:${Math.floor(jetzt / w.ziel.fenster)}`;
-        if (await versucheZaehlen(s, zk) >= w.ziel.versuche)
+        const zl = fensterLage(jetztMs, w.ziel.fenster);
+        const zb = `${art}:ziel:${ziel}`;
+        const z = await versucheZaehlen(s, zb, zl.index);
+        if (gewichtet(z.laufend, z.vorig, zl.anteil) >= w.ziel.versuche)
           return { frei: false, wartet: w.ziel.fenster - (jetzt % w.ziel.fenster),
             grund: "ungewöhnlich viele Versuche für diesen Betrieb", dimension: "ziel" };
-        await versuchVermerken(s, zk);
+        await versuchVermerken(s, `${zb}:${zl.index}`);
       }
       if (w.gesamt) {
-        const gk = `${art}:gesamt:${Math.floor(jetzt / w.gesamt.fenster)}`;
-        if (await versucheZaehlen(s, gk) >= w.gesamt.versuche)
+        const gl = fensterLage(jetztMs, w.gesamt.fenster);
+        const gb = `${art}:gesamt`;
+        const z = await versucheZaehlen(s, gb, gl.index);
+        if (gewichtet(z.laufend, z.vorig, gl.anteil) >= w.gesamt.versuche)
           return { frei: false, wartet: w.gesamt.fenster - (jetzt % w.gesamt.fenster),
             grund: "ungewöhnlich hohes Aufkommen", dimension: "gesamt" };
-        await versuchVermerken(s, gk);
+        await versuchVermerken(s, `${gb}:${gl.index}`);
       }
     }
 
@@ -494,14 +757,21 @@ export async function bremse(art, kennung, ziel) {
        Restlücke: Ein wirklich gleichzeitiger Schwarm kann sich noch
        gegenseitig übersehen. Wer das dicht haben will, hinterlegt einen
        atomaren Zähler — siehe atomarZaehlen() unten. */
+    /* Zuerst im Speicher zählen: Wirft die Ablage gleich danach, ist dieser
+       Versuch trotzdem gezählt. */
+    const lokalN = lokalGezaehlt();
     await versuchVermerken(s, schluessel);
     /* Drei Quellen, absteigend nach Verlässlichkeit. Genommen wird der
        höchste Wert: Wer auf irgendeinem Weg über der Grenze liegt, ist
-       über der Grenze. */
-    const lokalN = lokalZaehlen(schluessel, g.fenster);
-    const atomarN = await atomarZaehlen(schluessel, g.fenster);
-    const blobN = atomarN === null ? await versucheZaehlen(s, schluessel) : 0;
-    const stand = { n: Math.max(lokalN, atomarN ?? 0, blobN) };
+       über der Grenze. Alle drei gleitend gelesen. */
+    const atomar = await atomarZaehlen(schluessel, vorigSchluessel, g.fenster);
+    const atomarN = atomar ? gewichtet(atomar.laufend, atomar.vorig, lage.anteil) : 0;
+    let blobN = 0;
+    if (atomar === null) {
+      const z = await versucheZaehlen(s, basis, fenster);
+      blobN = gewichtet(z.laufend, z.vorig, lage.anteil);
+    }
+    const stand = { n: Math.max(lokalN, atomarN, blobN) };
     if (stand.n > g.versuche) {
       /* Steigende Sperre: Wer wiederholt anrennt, wartet jedes Mal doppelt
          so lange. Für einen ehrlichen Nutzer, der sich einmal vertippt,
@@ -512,20 +782,36 @@ export async function bremse(art, kennung, ziel) {
       const dauer = g.steigend
         ? Math.min(g.max || 86400, g.sperre * Math.pow(2, stufe))
         : g.sperre;
-      await s.setJSON(`sperre:${art}:${kennung}`, { bis: jetzt + dauer, seit: jetzt, stufe });
+      await s.setJSON(sperreSchluessel, { bis: jetzt + dauer, seit: jetzt, stufe });
       if (g.steigend) await s.setJSON(`stufe:${art}:${kennung}`,
         { n: Math.min(stufe + 1, 12), zuletzt: jetzt });
+      /* Die Strafe tragen Sperre und Stufe. Der Zählstand wird geleert —
+         sonst zählte das vorige Fenster nach Ablauf der Sperre gleitend
+         weiter, und wer Retry-After befolgt, wäre mit dem ersten Versuch
+         wieder gesperrt, doppelt so lange. Erst NACH dem Schreiben der
+         Sperre: Scheitert es, bleibt der Speicherzähler die einzige
+         Erinnerung (catch unten). */
+      await zaehlerLeeren(s, art, kennung, fenster);
       return { frei: false, wartet: dauer, grund: "zu viele Versuche", stufe };
     }
     /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
     if (Math.random() < 0.02) alteFensterRaeumen(s, art, fenster).catch(() => {});
-    return { frei: true, uebrig: Math.max(0, g.versuche - stand.n) };
+    return { frei: true, uebrig: Math.max(0, Math.floor(g.versuche - stand.n)) };
   } catch (e) {
-    /* Fällt der Zähler aus, wird durchgelassen. Eine kaputte Bremse darf
-       den Betrieb nicht anhalten — Verfügbarkeit vor Schutz, solange die
-       Anmeldung selbst noch korrekt prüft. Der Grund wird mitgegeben,
-       damit ein Ausfall nicht unbemerkt bleibt. */
-    return { frei: true, fehler: String(e && e.message || e).slice(0, 120) };
+    /* Fällt die Ablage aus, wird NICHT durchgelassen, sondern im
+       Prozessspeicher weitergezählt. Vorher hieß es hier „Verfügbarkeit vor
+       Schutz“ und `{frei: true}` — damit öffnete schon ein beschädigter
+       Sperreintrag die Bremse dauerhaft, und eine Sperre, die sich nicht
+       schreiben ließ, ließ ausgerechnet den Versuch über der Grenze durch.
+       Degradiert heißt: Die Grenze gilt je Prozess, Ziel und Gesamtaufkommen
+       fallen weg (dafür gibt es die Notbremse). Der Betrieb läuft weiter,
+       solange niemand die Grenze reißt. */
+    const fehler = String(e && /** @type {any} */ (e).message || e).slice(0, 120);
+    ausfallMelden(art, fehler);
+    const n = lokalGezaehlt();
+    if (n > g.versuche)
+      return { frei: false, wartet: g.sperre, grund: "zu viele Versuche", fehler };
+    return { frei: true, uebrig: Math.max(0, Math.floor(g.versuche - n)), fehler };
   }
 }
 
@@ -533,15 +819,15 @@ export async function bremse(art, kennung, ziel) {
 export async function entlasten(art, kennung) {
   const g = GRENZEN[art];
   if (!g) return;
-  const jetzt = Math.floor(Date.now() / 1000);
-  const fenster = Math.floor(jetzt / g.fenster);
-  /* Auch den prozesslokalen Zähler zurücksetzen. In einem dauerhaften Prozess
-     (eigener Server statt kurzlebiger Funktionsinstanz) zählte er sonst
-     erfolgreiche Anmeldungen weiter mit und sperrte nach acht Anmeldungen
-     hinter derselben Adresse — Büro, Station, Wache — auch die richtigen. */
-  lokal.delete(`${art}:${kennung}:${fenster}`);
+  const fenster = fensterLage(Date.now(), g.fenster).index;
+  /* Alle drei Zähler zurücksetzen, auch den prozesslokalen. In einem
+     dauerhaften Prozess (eigener Server statt kurzlebiger Funktionsinstanz)
+     zählte er sonst erfolgreiche Anmeldungen weiter mit und sperrte nach
+     acht Anmeldungen hinter derselben Adresse — Büro, Station, Wache — auch
+     die richtigen. Das vorige Fenster zählt gleitend mit, also wird es mit
+     entlastet. */
+  await zaehlerLeeren(takt(), art, kennung, fenster);
   try {
-    await versucheLoeschen(takt(), `${art}:${kennung}:${fenster}`);
     await takt().delete(`sperre:${art}:${kennung}`);
     /* Auch die Steigerungsstufe zurücksetzen — wer sich erfolgreich
        anmeldet, hat sich offenbar nur vertippt. */
@@ -668,6 +954,12 @@ export async function spurAufraeumen() {
    ohne dass es jemand merkt. Der `fehler`-Fall in `bremse()` deckt nur, was
    wirklich wirft.
 
+   Seit WP-46 werfen `versucheZaehlen` und `versuchVermerken`, und `bremse()`
+   lässt bei keinem Ablagefehler mehr durch: Ein Lesefehler der Sperre gilt
+   als Sperre, jeder andere Fehler zählt im Prozessspeicher weiter. Was bleibt: Eine Ablage, die „nicht vorhanden“ liefert
+   statt zu werfen, bemerkt auch sie nicht — und degradiert zählt sie nur je
+   Herkunft, nicht je Ziel und gesamt. Für beides bleibt diese Grenze.
+
    Übrig bleibt dann der prozesslokale Zähler der Hauptbremse, und der zählt
    je Herkunft. Ein verteilter Versuch aus hundert Adressen hätte damit
    hundertmal acht scrypt-Durchläufe frei — und scrypt ist mit rund 32 MB und
@@ -700,23 +992,34 @@ export async function spurAufraeumen() {
 /** @type {Record<string, {versuche: number, fenster: number, gesamt: number}>} */
 export const NOTGRENZEN = {
   "anmelden-konto": { versuche: 20, fenster: 300, gesamt: 200 },
+  /* Zugangscode (daten.mjs, /api/anmelden). Kein scrypt, aber ein einziger
+     Treffer öffnet einen ganzen Betrieb. Je Herkunft wie beim Konto;
+     gesamt wie WEITERE.anmelden.gesamt — im Normalbetrieb unsichtbar. */
+  anmelden: { versuche: 20, fenster: 300, gesamt: 400 },
 };
 
 /** Der Zähler der Notbremse. Eigene Karte, damit sie sich mit der Zählung der
     Hauptbremse nicht vermischt. */
 const not = new Map();
 
-function notZaehlen(schluessel, fensterSekunden, schritt = 1) {
+/** `bis`: Ende des NÄCHSTEN Fensters — dort zählt der Eintrag noch gleitend
+    als „voriges“ mit. */
+function notZaehlen(schluessel, bis, schritt = 1) {
   const jetzt = Date.now();
   const eintrag = not.get(schluessel);
   if (!eintrag || eintrag.bis < jetzt) {
     if (schritt < 0) return 0;
-    not.set(schluessel, { n: schritt, bis: jetzt + fensterSekunden * 1000 });
+    not.set(schluessel, { n: schritt, bis });
     if (not.size > 500) for (const [k, v] of not) if (v.bis < jetzt) not.delete(k);
     return schritt;
   }
   eintrag.n = Math.max(0, eintrag.n + schritt);
   return eintrag.n;
+}
+
+function notLesen(schluessel) {
+  const eintrag = not.get(schluessel);
+  return eintrag && eintrag.bis >= Date.now() ? eintrag.n : 0;
 }
 
 /**
@@ -730,13 +1033,19 @@ function notZaehlen(schluessel, fensterSekunden, schritt = 1) {
 export function notbremse(art, kennung) {
   const g = NOTGRENZEN[art];
   if (!g) return { frei: true };
-  const jetzt = Math.floor(Date.now() / 1000);
-  const fenster = Math.floor(jetzt / g.fenster);
+  const ms = Date.now();
+  const jetzt = Math.floor(ms / 1000);
+  const lage = fensterLage(ms, g.fenster);
+  const f = lage.index;
+  const bis = lage.ende + g.fenster * 1000;
   const wartet = g.fenster - (jetzt % g.fenster);
 
-  const eigene = notZaehlen(`${art}:${kennung}:${fenster}`, g.fenster);
+  /* Gleitend wie die Hauptbremse: das vorige Fenster zählt anteilig mit. */
+  const eigene = gewichtet(notZaehlen(`${art}:${kennung}:${f}`, bis),
+    notLesen(`${art}:${kennung}:${f - 1}`), lage.anteil);
   if (eigene > g.versuche) return { frei: false, wartet, dimension: "herkunft" };
-  const alle = notZaehlen(`${art}:gesamt:${fenster}`, g.fenster);
+  const alle = gewichtet(notZaehlen(`${art}:gesamt:${f}`, bis),
+    notLesen(`${art}:gesamt:${f - 1}`), lage.anteil);
   if (alle > g.gesamt) return { frei: false, wartet, dimension: "gesamt" };
   return { frei: true };
 }
@@ -755,8 +1064,13 @@ export function notbremse(art, kennung) {
 export function notentlasten(art, kennung) {
   const g = NOTGRENZEN[art];
   if (!g) return;
-  const jetzt = Math.floor(Date.now() / 1000);
-  const fenster = Math.floor(jetzt / g.fenster);
-  notZaehlen(`${art}:${kennung}:${fenster}`, g.fenster, -1);
-  notZaehlen(`${art}:gesamt:${fenster}`, g.fenster, -1);
+  const lage = fensterLage(Date.now(), g.fenster);
+  const f = lage.index;
+  const bis = lage.ende + g.fenster * 1000;
+  /* Zurückgenommen wird im laufenden Fenster; lag der Versuch noch im
+     vorigen (Anmeldung über die Grenze hinweg), dort. */
+  for (const k of [`${art}:${kennung}`, `${art}:gesamt`]) {
+    if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
+    else notZaehlen(`${k}:${f - 1}`, bis, -1);
+  }
 }

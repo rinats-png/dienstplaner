@@ -1,0 +1,858 @@
+{
+  "stand": "2026-11-02",
+  "anzahl": 46,
+  "statusZaehlung": {
+    "BLOCKED": 27,
+    "READY": 2,
+    "IN_PROGRESS": 5,
+    "REVIEW": 1,
+    "CI_FAILED": 0,
+    "INTEGRATED": 9,
+    "VERIFIED": 0,
+    "DONE": 2
+  },
+  "offenerAufwandPT": 165.5,
+  "kritischerPfad": {
+    "summe": 48.5,
+    "kette": [
+      "WP-02",
+      "WP-09",
+      "WP-10",
+      "WP-11",
+      "WP-22",
+      "WP-19",
+      "WP-42"
+    ]
+  },
+  "pakete": [
+    {
+      "id": "WP-01",
+      "name": "E1-Datenschutz-Hotfix Produktion",
+      "prioritaet": "P0",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [],
+      "agent": "Agent 0 – Integration",
+      "branch": "hotfix/stempel-datenschutz-sv",
+      "dateien": "server/lib/rechte.mjs, src/istdaten.js",
+      "akzeptanz": "Beschäftigte/BR/SV erhalten keine fremden Stempel/Ist; produktiv geprüft",
+      "tests": "Unit, HTTP 155/155, isoliert 59/59, Prod anmeldefrei",
+      "status": "DONE",
+      "pr": "#20",
+      "integrationscommit": "274bfa0",
+      "abnahmenachweis": "H8+-Bericht (lokal), Prod-Digest 0b192927"
+    },
+    {
+      "id": "WP-02",
+      "name": "Schreibserialisierung je Raum, kein Stempelverlust",
+      "prioritaet": "P0",
+      "aufwandPT": 2.5,
+      "abhaengigkeiten": [],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp02-datenintegritaet",
+      "dateien": "server/lib/bestand.mjs, server/funktionen/daten.mjs, server.mjs",
+      "akzeptanz": "50 parallele Stempel = 50 gespeichert; gleicher Stand → 1×200/1×409; nie ok:true bei Konflikt; zweiter Prozess abgewiesen",
+      "tests": "R1–R7 Renn-/Lasttests (rot vorher), HTTP im Container",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-03",
+      "name": "Rücksprung nur über verifizierte Digests, R0",
+      "prioritaet": "P0",
+      "aufwandPT": 1.5,
+      "abhaengigkeiten": [],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp03-digest-rollback",
+      "dateien": "deploy/, .github/workflows/deploy.yml, BEREITSTELLUNG.md",
+      "akzeptanz": "Compose ohne Digest startet nicht; gesperrte Digests als Ziel abgelehnt; Revisions-Label gesetzt; Probe A→B→A",
+      "tests": "Skripttests mit Docker-Stub, compose config, CI betrieb-deploy",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-04",
+      "name": "Automatische verschlüsselte Offsite-Sicherung",
+      "prioritaet": "P0",
+      "aufwandPT": 3.5,
+      "abhaengigkeiten": [],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp04-backup",
+      "dateien": "deploy/sicherung/, werkzeug/ablage-sicherung.mjs",
+      "akzeptanz": "Täglicher Lauf, restic-verschlüsselt extern, Aufbewahrung 7/4/12, Restore-Probe gleich, Fehlalarm kommt an",
+      "tests": "CI: Sicherung→Restore→Manifest gleich, Fehlalarm-Probe, Doppellauf-Sperre",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-05",
+      "name": "Überwachung und Alarme",
+      "prioritaet": "P0",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-04",
+        "WP-30"
+      ],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp05-uberwachung-und-alarme",
+      "dateien": "server.mjs, server/lib/gesund.mjs, deploy/",
+      "akzeptanz": "/gesund prüft Ablage/Platz; externer Check; Alarm ≤5 min; Fehlerzählung",
+      "tests": "vitest /gesund, Alarmprobe",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-06",
+      "name": "Stempel-Integrität (Originale unveränderlich, Korrekturereignisse)",
+      "prioritaet": "P0",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp06-stempel-integritat-originale",
+      "dateien": "server/lib/rechte.mjs, daten.mjs, zeiterfassung.mjs",
+      "akzeptanz": "Änderung an Originalstempel → 403 für jede Rolle; Korrektur als Ereignis mit vorher/nachher",
+      "tests": "Rechtematrix-Erweiterung, Negativtest",
+      "status": "READY",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-07",
+      "name": "Offline-Stempeln (clientEventId, Idempotenz, Sync)",
+      "prioritaet": "P0",
+      "aufwandPT": 7,
+      "abhaengigkeiten": [
+        "WP-02",
+        "WP-06",
+        "WP-17"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp07-offline-stempeln-clientevent",
+      "dateien": "public/sw.js, src/speicher.js, src/stempelvorgang.js, server",
+      "akzeptanz": "Flugmodus→Stempel→Neustart→Netz: genau ein Stempel, als offline gekennzeichnet; vorläufig bis Serverbestätigung angezeigt",
+      "tests": "vitest Idempotenz, Playwright setOffline, Gerätetest Android/iOS",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-08",
+      "name": "Geheimnisprüfung Produktion",
+      "prioritaet": "P0",
+      "aufwandPT": 0.5,
+      "abhaengigkeiten": [],
+      "agent": "Agent 0 – Integration",
+      "branch": "acc45/integration/wp08-geheimnisprufung-produktion",
+      "dateien": "–",
+      "akzeptanz": "CENTRIC_ADMIN nicht gesetzt (nur Name geprüft)",
+      "tests": "lesende Prüfung",
+      "status": "DONE",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-09",
+      "name": "Kette B nach main",
+      "prioritaet": "P1",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent 0 – Integration",
+      "branch": "integration/centric-complete",
+      "dateien": "gesamte Kette B",
+      "akzeptanz": "Integrationsmerge B, Staging-Abnahme ohne Funktionsfehler, Produktiv-Deploy nach Freigabe",
+      "tests": "CI, Abnahmelauf 89+, H8+-Invarianten",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": "65c1188 (integration/centric-complete)",
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-10",
+      "name": "Kette A Basis (#7) auf B portieren, Datenmodell d.1–d.5",
+      "prioritaet": "P1",
+      "aufwandPT": 6,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent C – Rule Engine",
+      "branch": "acc45/rules/wp10-kette-a-basis",
+      "dateien": "src/App.jsx, server/lib/rechte.mjs, sicht.mjs",
+      "akzeptanz": "Alle A- und B-Tests grün; A-Felder überstehen PUT/GET je Rolle",
+      "tests": "Rundreise je Feld/Rolle, A-Tests angepasst, Rechtematrix",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-11",
+      "name": "Regelregister (#6) portieren, eine Schutzprüfung",
+      "prioritaet": "P1",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-10"
+      ],
+      "agent": "Agent C – Rule Engine",
+      "branch": "acc45/rules/wp11-regelregister",
+      "dateien": "src/regelwerk*, server/lib",
+      "akzeptanz": "Eine einzige Schutzprüfung im Code; Tests grün",
+      "tests": "git grep, schutzmerkmale-sicht",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-12",
+      "name": "Integrationsabnahme A+B",
+      "prioritaet": "P1",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-11"
+      ],
+      "agent": "Agent F – QA & Review",
+      "branch": "acc45/qa/wp12-integrationsabnahme-a-b",
+      "dateien": "–",
+      "akzeptanz": "Testplan 3.1–3.4 auf Staging ohne Funktionsfehler",
+      "tests": "Abnahmelauf alle Rollen/Viewports",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-13",
+      "name": "Stempeln ohne Plan, ungeplante Dienste im Ist",
+      "prioritaet": "P1",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-06"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp13-stempeln-ohne-plan-ungeplant",
+      "dateien": "src/App.jsx (MHeute/DienstKarte), src/istdaten.js",
+      "akzeptanz": "Ungeplanter Dienst 8 h in Konto und CSV",
+      "tests": "Unit istdaten, UI-E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-14",
+      "name": "Korrekturworkflow Leitung/SV, Korrekturantrag",
+      "prioritaet": "P1",
+      "aufwandPT": 6,
+      "abhaengigkeiten": [
+        "WP-06"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp14-korrekturworkflow-leitung-sv",
+      "dateien": "server, src",
+      "akzeptanz": "Antrag→Freigabe→Ist, Original sichtbar, Protokoll vollständig; START_FEHLT/VERALTET auflösbar",
+      "tests": "Rechtematrix, E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-15",
+      "name": "Selbstauskunft mit Freigabe und Stempelabgleich",
+      "prioritaet": "P1",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-14"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp15-selbstauskunft-mit-freigabe-",
+      "dateien": "server, src",
+      "akzeptanz": "Selbstauskunft wird Antrag; Abweichung markiert; erst nach Freigabe Ist",
+      "tests": "Unit, E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-16",
+      "name": "Pausen und Monatsabschluss",
+      "prioritaet": "P1",
+      "aufwandPT": 5,
+      "abhaengigkeiten": [
+        "WP-06",
+        "WP-14"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp16-pausen-und-monatsabschluss",
+      "dateien": "server, src",
+      "akzeptanz": "Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wiederöffnen protokolliert",
+      "tests": "Unit, E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-17",
+      "name": "Stempelkonflikt-Retry, Serverdatum",
+      "prioritaet": "P1",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp17-serverdatum",
+      "dateien": "server/funktionen/daten.mjs, zeiterfassung.mjs",
+      "akzeptanz": "20 parallele Stempel ohne 409 für Nutzende; datum vom Server",
+      "tests": "Renntest, Datumsgrenzen/Nacht/DST",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-18",
+      "name": "Zugänge: personengebundene Codes, Konto-UI, Einladungen",
+      "prioritaet": "P1",
+      "aufwandPT": 6,
+      "abhaengigkeiten": [
+        "WP-30",
+        "WP-09"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp18-zugange-personengebundene-co",
+      "dateien": "server/funktionen, src",
+      "akzeptanz": "Leitung lädt Testperson ein → Anmeldung → richtige Rolle; ein Code = eine Person",
+      "tests": "HTTP, E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-19",
+      "name": "Branchenpakete (12 Module)",
+      "prioritaet": "P1",
+      "aufwandPT": 25,
+      "abhaengigkeiten": [
+        "WP-11",
+        "WP-22"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp19-branchenpakete-12-module",
+      "dateien": "src/module/*, server",
+      "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
+      "tests": "je Modul Unit/HTTP/E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-20",
+      "name": "Einsatzorte je Dienst, Geo-Modi, Außendienst",
+      "prioritaet": "P1",
+      "aufwandPT": 6,
+      "abhaengigkeiten": [
+        "WP-06"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp20-einsatzorte-je-dienst-geo-mo",
+      "dateien": "server/lib/geo.mjs, src",
+      "akzeptanz": "Referenzort je Dienst im Server-Urteil; Modi Standort/Einsatzort/Außendienst",
+      "tests": "geo.test, E2E, Gerätetest GPS",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-21",
+      "name": "Smartphone/Tablet für alle Rollen",
+      "prioritaet": "P1",
+      "aufwandPT": 10,
+      "abhaengigkeiten": [
+        "WP-12",
+        "WP-39"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp21-smartphone-tablet-fur-alle-r",
+      "dateien": "src/ansichten/*",
+      "akzeptanz": "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix",
+      "tests": "Playwright-Viewports, Geräte",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-22",
+      "name": "Fachprüfungen auf dem Server, org.edit",
+      "prioritaet": "P2",
+      "aufwandPT": 6,
+      "abhaengigkeiten": [
+        "WP-11"
+      ],
+      "agent": "Agent C – Rule Engine",
+      "branch": "acc45/rules/wp22-fachpruefungen-server",
+      "dateien": "server/lib",
+      "akzeptanz": "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit",
+      "tests": "Unit, HTTP",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-23",
+      "name": "Entwürfe nicht an Beschäftigte ausliefern",
+      "prioritaet": "P2",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp23-entwurfe-nicht-an-beschaftig",
+      "dateien": "server/lib/sicht.mjs",
+      "akzeptanz": "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte",
+      "tests": "Unit, HTTP",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-24",
+      "name": "Kalender-Feed live und gebunden",
+      "prioritaet": "P2",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp24-kalender-feed-live-und-gebun",
+      "dateien": "server/funktionen/kalender.mjs",
+      "akzeptanz": "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes",
+      "tests": "HTTP",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-25",
+      "name": "Wiederherstellen in der Oberfläche",
+      "prioritaet": "P2",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp25-wiederherstellen-in-der-ober",
+      "dateien": "src",
+      "akzeptanz": "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)",
+      "tests": "E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-26",
+      "name": "DSGVO serverseitig (Art. 15, Löschlauf, Ausdünnung)",
+      "prioritaet": "P2",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp26-dsgvo-server",
+      "dateien": "server",
+      "akzeptanz": "Auskunft inkl. Stempel; serverseitiger Löschlauf nach Fristen; Ausdünnung Sicherungen/Spur",
+      "tests": "Unit, HTTP",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-27",
+      "name": "Betriebsrat-Auswertung aggregiert, reduzierte Sichten",
+      "prioritaet": "P2",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp27-betriebsrat-auswertung-aggre",
+      "dateien": "server, src",
+      "akzeptanz": "Aggregation ohne Personenbezug unter Mindestgruppe; Leistungsnachweis/Belastung korrekt oder gesperrt",
+      "tests": "Unit, E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-28",
+      "name": "Lasttest und Skalierungsentscheid",
+      "prioritaet": "P2",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-02",
+        "WP-17"
+      ],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp28-lasttest-und-skalierungsents",
+      "dateien": "werkzeug/last",
+      "akzeptanz": "Grenzwerte Testplan 3.6 gemessen; Entscheid Ablage/DB mit Zahlen",
+      "tests": "k6/autocannon",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-29",
+      "name": "Geo-Spezifikationsreste",
+      "prioritaet": "P2",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-20"
+      ],
+      "agent": "Agent D – Time/Offline/Geo",
+      "branch": "acc45/time/wp29-geo-spezifikationsreste",
+      "dateien": "server/lib/geo.mjs, src",
+      "akzeptanz": "Felder, Begründungscodes, Warnung >100 m, Texte B13, Spoofing-Hinweis",
+      "tests": "geo.test",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-30",
+      "name": "Mail und Push in Produktion",
+      "prioritaet": "P2",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp30-mail-und-push-in-produktion",
+      "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
+      "akzeptanz": "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest",
+      "tests": "Zustelltest",
+      "status": "READY",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-31",
+      "name": "Deploy-Automatisierung mit Freigabe",
+      "prioritaet": "P2",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-03"
+      ],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp31-deploy",
+      "dateien": "deploy/, .github/workflows",
+      "akzeptanz": "deploy.sh mit Digest, Smoke, R0; Umgebungsfreigabe; Netlify-Rolle geklärt",
+      "tests": "Probe isoliert",
+      "status": "IN_PROGRESS",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-32",
+      "name": "Lieferkette, Infrastruktur, Betreiber-2FA",
+      "prioritaet": "P2",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp32-lieferkette-2fa",
+      "dateien": "Dockerfile, .github, server",
+      "akzeptanz": "Basisbild per Digest; Trivy; Dependabot; Branch-Schutz; Caddy versioniert; 2FA Betreiber",
+      "tests": "CI, Unit 2FA",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-33",
+      "name": "Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe)",
+      "prioritaet": "P2",
+      "aufwandPT": 5,
+      "abhaengigkeiten": [],
+      "agent": "Agent F – QA & Review",
+      "branch": "acc45/qa/wp33-testinfrastruktur",
+      "dateien": "e2e/, package.json, pruefung.yml",
+      "akzeptanz": "npm run pruefung vollständig; Playwright-Suite im Repo; Viewports, axe, Offline",
+      "tests": "CI-Job e2e",
+      "status": "REVIEW",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-34",
+      "name": "Branches aufräumen, Spezifikationen integrieren",
+      "prioritaet": "P2",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent 0 – Integration",
+      "branch": "acc45/integration/wp34-branches-aufraumen-spezifika",
+      "dateien": "docs/",
+      "akzeptanz": "Geo-Spec und Migrationsbericht in docs; Altbranches archiviert",
+      "tests": "–",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-35",
+      "name": "Darstellungsbefunde",
+      "prioritaet": "P3",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-39"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp35-darstellungsbefunde",
+      "dateien": "src",
+      "akzeptanz": "Kein Querscrollen bei ≤430 px für Abrechnungsdaten/Handbuch; Geo-Schalter sofort",
+      "tests": "Playwright-Viewport",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-36",
+      "name": "Rechtstexte ohne Platzhalter",
+      "prioritaet": "P3",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp36-rechtstexte-ohne-platzhalter",
+      "dateien": "src/rechtstexte.jsx",
+      "akzeptanz": "37 Platzhalter ersetzt (Inhalte vom Nutzer); externe juristische Prüfung als eigene Abnahme",
+      "tests": "Prüfskript Platzhalter=0",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-37",
+      "name": "PWA-Feinschliff",
+      "prioritaet": "P3",
+      "aufwandPT": 1.5,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp37-pwa-feinschliff",
+      "dateien": "public/, src",
+      "akzeptanz": "Verknüpfungen wirksam; SW-Fassung aus Build; Cache bei Rollenwechsel leer",
+      "tests": "E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-38",
+      "name": "Toter Code, eine Planrechnung",
+      "prioritaet": "P3",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-12"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp38-toter-code-eine-planrechnung",
+      "dateien": "src, server",
+      "akzeptanz": "Tagesstart u. a. entfernt/eingebunden; eine Planrechnung",
+      "tests": "Unit",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-39",
+      "name": "App.jsx modularisieren",
+      "prioritaet": "P3",
+      "aufwandPT": 4,
+      "abhaengigkeiten": [
+        "WP-12"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp39-app-jsx-modularisieren",
+      "dateien": "src/",
+      "akzeptanz": "Aufteilung ohne Verhaltensänderung; alle Tests grün",
+      "tests": "voll + E2E",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-40",
+      "name": "Barrierefreiheit WCAG 2.2 AA",
+      "prioritaet": "P3",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-39"
+      ],
+      "agent": "Agent E – Business Modules & Frontend",
+      "branch": "acc45/frontend/wp40-barrierefreiheit-wcag-2-2-aa",
+      "dateien": "src",
+      "akzeptanz": "axe ohne Verstöße; Tastatur; Fokus; Kontrast",
+      "tests": "axe in CI",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-41",
+      "name": "Betriebs- und Nutzerdokumentation",
+      "prioritaet": "P3",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-04",
+        "WP-05",
+        "WP-31"
+      ],
+      "agent": "Agent B – Infrastructure & Reliability",
+      "branch": "acc45/infra/wp41-betriebs-und-nutzerdokumenta",
+      "dateien": "docs/",
+      "akzeptanz": "Betriebshandbuch, Incident-Runbook, Restore-Anleitung, Handbuch je Rolle",
+      "tests": "Review",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-42",
+      "name": "Endabnahme und Produktions-Rollout",
+      "prioritaet": "P1",
+      "aufwandPT": 3,
+      "abhaengigkeiten": [
+        "WP-07",
+        "WP-12",
+        "WP-16",
+        "WP-19",
+        "WP-21",
+        "WP-33",
+        "WP-40",
+        "WP-41",
+        "WP-44",
+        "WP-43",
+        "WP-45",
+        "WP-46"
+      ],
+      "agent": "Agent 0 – Integration",
+      "branch": "acc45/integration/wp42-endabnahme-und-produktions-r",
+      "dateien": "–",
+      "akzeptanz": "Testplan Abschnitt 5 vollständig; externer Pentest; Rollout mit Rücksprung/R0",
+      "tests": "alle Gates",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-43",
+      "name": "Personaldaten-Filter vollständig (Matrix ↔ Code, tagesgenau)",
+      "prioritaet": "P0",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-09"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp43-personaldaten-filter",
+      "dateien": "server/lib/sicht.mjs, pruefungen",
+      "akzeptanz": "Jede RECHTEMATRIX-Zeile hat Test je Rolle; Tagesfelder tagesgenau nach Bereich; keine sensiblen Felder an nicht berechtigte Rollen",
+      "tests": "rechtematrix.test je Zeile, Rundreise",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-45",
+      "name": "Atomarer Mehrdatei-Schreibvorgang (Journal), Kontovereinzelung",
+      "prioritaet": "P0",
+      "aufwandPT": 2,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp45-atomares-schreiben",
+      "dateien": "server/lib/bestand.mjs, ablage.mjs, konten.mjs",
+      "akzeptanz": "Abbruch nach jeder Teilschreibung → vollständig alter oder neuer Stand, nie gemischt; kein Code auf gelöschten Raum",
+      "tests": "Abbruch-Testhaken je Datei, Leser während Schreiben, R7",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-46",
+      "name": "Bremse fail-closed, gleitendes Fenster, Notbremse Zugangscode",
+      "prioritaet": "P0",
+      "aufwandPT": 1,
+      "abhaengigkeiten": [
+        "WP-02"
+      ],
+      "agent": "Agent A – Security & Data Integrity",
+      "branch": "acc45/security/wp46-bremse-failclosed",
+      "dateien": "server/lib/schutz.mjs, daten.mjs (Anmeldung)",
+      "akzeptanz": "Ablagefehler/kaputte Sperre → nie Durchlass; an Fenstergrenze ≤ Grenzwert; Notbremse für /api/anmelden",
+      "tests": "bremse-lokal (Fake-Timer, kaputte Sperrdatei), HTTP bremse",
+      "status": "INTEGRATED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    },
+    {
+      "id": "WP-44",
+      "name": "Zugangscodes bewerten, rotieren, Klartext beseitigen (A9)",
+      "prioritaet": "P0",
+      "aufwandPT": 0.5,
+      "abhaengigkeiten": [],
+      "agent": "Agent 0 – Integration",
+      "branch": "acc45/integration/wp44-zugangscodes-bewerten-rotier",
+      "dateien": "Betrieb (Freigaben/Nutzerhandlungen nötig)",
+      "akzeptanz": "Kein Code aus Klartextdateien aktiv; Betreiberzugang rotiert; Nachweise gesichert; Dateien beseitigt",
+      "tests": "lesender Abgleich ohne Anmeldung",
+      "status": "BLOCKED",
+      "pr": null,
+      "integrationscommit": null,
+      "abnahmenachweis": null
+    }
+  ]
+}

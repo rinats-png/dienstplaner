@@ -9,7 +9,10 @@
      { umfang: "eigene", person: <id> }   Beschäftigte
      { umfang: "keine" }                  Betriebsrat
      { umfang: "personen", personen: [] } Schichtverantwortung: sie selbst und
-                                          der eigene Bereich
+                                          der eigene Bereich; dazu zeitraeume:
+                                          { id: [{von, bis}] } für Personen,
+                                          die nur an diesen Tagen zum
+                                          Bereich gehörten (WP-43)
      (fehlt)                              alle Ist-Daten vorhanden
 
    Fehlt eine Erfassung, rechnet die Anwendung sonst mit der geplanten Zeit —
@@ -26,14 +29,72 @@ import { dauerAm } from "./regelwerk.js";
 
 export const ISTDATEN_TEXT = "Ist-Arbeitszeit für diese Rolle nicht personenbezogen verfügbar.";
 
-/** Sind die Ist-Daten dieser Person in diesem Bestand vollständig zugänglich? */
-export function istVerfuegbar(m, p) {
+/**
+ * Sind die Ist-Daten dieser Person in diesem Bestand zugänglich — an einem
+ * Tag `d` oder, ohne Tag, für Auswertungen über Zeiträume (Konten, Monate,
+ * Ausgleichszeitraum)?
+ *
+ * Tagesgenau (WP-43): Für eine Person, die zeitweise einer anderen Einheit
+ * angehörte, nennt der Server in `sichtIstDaten.zeitraeume[id]` die Tage, an
+ * denen die Schichtverantwortung ihre Erfassung bekommt. An allen anderen
+ * Tagen fehlt sie aus Datenschutzgründen — dort „nicht verfügbar", nie die
+ * Planzeit.
+ *
+ * `d` ist ein Tag („JJJJ-MM-TT") oder ein Zeitraum `{von, bis}` — den
+ * übergeben die Auswertungen (Monat, Jahr, Kontozeitraum, Ausgleich). Ein
+ * Zeitraum ist verfügbar, wenn er vollständig in den zugänglichen Tagen
+ * liegt; eine alte oder künftige Versetzung außerhalb des Zeitraums stört
+ * also nicht (WP-43, Nachtrag N1). Ohne Tag und ohne Zeitraum gilt eine
+ * solche Person als nicht verfügbar (fail-closed).
+ */
+export function istVerfuegbar(m, p, d) {
   const s = m && m.sichtIstDaten;
   if (!s) return true;
   if (s.umfang === "eigene") return !!p && s.person !== null && s.person !== undefined
     && String(p.id) === String(s.person);
-  if (s.umfang === "personen") return !!p && Array.isArray(s.personen) && s.personen.includes(String(p.id));
+  if (s.umfang === "personen") {
+    if (!p || !Array.isArray(s.personen) || !s.personen.includes(String(p.id))) return false;
+    const z = s.zeitraeume && typeof s.zeitraeume === "object" ? s.zeitraeume[String(p.id)] : undefined;
+    if (z === undefined) return true;
+    if (!Array.isArray(z)) return false;
+    if (typeof d === "string") return TAG.test(d) && abgedeckt(z, d, d);
+    if (d && typeof d === "object" && TAG.test(String(d.von)) && TAG.test(String(d.bis)) && d.von <= d.bis)
+      return abgedeckt(z, d.von, d.bis);
+    return false;
+  }
   return false;
+}
+
+const TAG = /^\d{4}-\d{2}-\d{2}$/;
+const naechsterTag = (t) => new Date(Date.parse(`${t}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+/** Liegt [von, bis] lückenlos in den Abschnitten z? */
+function abgedeckt(z, von, bis) {
+  const abschnitte = z.filter((x) => x && TAG.test(String(x.von)) && TAG.test(String(x.bis)) && x.von <= x.bis)
+    .sort((a, b) => a.von.localeCompare(b.von));
+  let ab = von;
+  for (const x of abschnitte) {
+    if (x.von > ab) return false;                       // Lücke vor diesem Abschnitt
+    if (x.bis >= ab) {
+      if (x.bis >= bis) return true;
+      ab = naechsterTag(x.bis);
+    }
+  }
+  return false;
+}
+
+const letzterTag = (j, mo) => new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10);
+/** Der Zeitraum eines Monats „JJJJ-MM". */
+export function zeitraumMonat(ym) {
+  const [j, mo] = String(ym).split("-").map(Number);
+  return { von: `${ym}-01`, bis: letzterTag(j, mo) };
+}
+/** Vom 1. Januar bis zum Ende des Monats „JJJJ-MM" (Stundenkonto des Jahres). */
+export function zeitraumBisMonat(ym) {
+  return { von: `${String(ym).slice(0, 4)}-01-01`, bis: zeitraumMonat(ym).bis };
+}
+/** Ein Kalenderjahr. */
+export function zeitraumJahr(jahr) {
+  return { von: `${jahr}-01-01`, bis: `${jahr}-12-31` };
 }
 
 /**
@@ -41,7 +102,7 @@ export function istVerfuegbar(m, p) {
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
  */
 export function istZeitFuer(m, p, d, da) {
-  if (!istVerfuegbar(m, p)) return { std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true };
+  if (!istVerfuegbar(m, p, d)) return { std: null, erfasst: false, abweichung: 0, nichtVerfuegbar: true };
   /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
      ein Nachtdienst sieben oder neun Stunden, nicht acht. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
@@ -57,7 +118,7 @@ export function istZeitFuer(m, p, d, da) {
  * ist dann nicht bewertbar.
  */
 export function pruefZeitFuer(m, p, d, da) {
-  if (!istVerfuegbar(m, p)) return null;
+  if (!istVerfuegbar(m, p, d)) return null;
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
   return e && e.bestaetigt
     ? { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 }

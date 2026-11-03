@@ -21,6 +21,8 @@
    ========================================================================== */
 
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
+import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -83,7 +85,11 @@ const EIGENE_PERSON = [...PLAN, "bereich", "qualNachweise", "kompetenzNachweise"
   "notfallkontakt", "zustellung", "pushSchluessel", "kalenderVerweis",
   "kalenderGeheim", "kalenderStand", "weckzeit", "benachrichtigung",
   "kontrastmodus", "feldmodus", "thema", "dichte", "tour", "einfuehrung",
-  "handbuch", "startansicht", "wenigerBewegung"];
+  "handbuch", "startansicht", "wenigerBewegung",
+  /* Beschäftigungsmodell und Monatsstundengrenze (Kette A; WP-10 d.2,
+     RECHTEMATRIX.md ²³): die eigene Person sieht sie, ändern kann sie sie
+     nicht (rechte.mjs, SELBST_FELDER). Fremd nur Planung und Leitung. */
+  "beschaeftigungsmodell", "stundenGrenzeMonat"];
 
 /* Der Katalog der Personenfelder. Jedes Feld, das irgendwo an einer Person
    geschrieben wird, braucht hier eine Entscheidung — für die eigene Person
@@ -158,17 +164,23 @@ const nachweiseBereich = (p) => liste(p.qualNachweise).map((n) => nimm(n, ["qual
 
 const tagPlus = (s, n) => new Date(new Date(`${s}T00:00:00Z`).getTime() + n * 86400000).toISOString().slice(0, 10);
 
+/** Die Zugehörigkeit als lückenlose Abschnitte {von, bis, einheitId} — oder
+    null, wenn die Person keine trägt (dann zählt `bereich`). Vor dem ersten
+    Abschnitt gehört die Person keiner Einheit an. Lesesicht (imFenster) und
+    Schreibweg (einheitAm in rechte.mjs) rechnen mit denselben Abschnitten. */
+export function zugehoerigkeitsAbschnitte(p) {
+  const z = liste(p && p.zugehoerigkeit).filter((x) => x && x.einheitId !== undefined)
+    .map((x) => ({ ab: typeof x.ab === "string" && x.ab ? x.ab : "0000-01-01", einheitId: String(x.einheitId) }))
+    .sort((a, b) => a.ab.localeCompare(b.ab));
+  if (!z.length) return null;
+  return z.map((x, i) => ({ von: x.ab, bis: z[i + 1] ? tagPlus(z[i + 1].ab, -1) : "9999-12-31", einheitId: x.einheitId }));
+}
+
 /** War die Person im Fenster [von, bis] irgendwann einer dieser Einheiten zugeordnet? */
 function imFenster(p, einheiten, von, bis) {
-  const z = liste(p.zugehoerigkeit).filter((x) => x && x.einheitId !== undefined)
-    .map((x) => ({ ab: x.ab || "0000-01-01", einheitId: String(x.einheitId) }))
-    .sort((a, b) => a.ab.localeCompare(b.ab));
-  if (!z.length) return p.bereich !== undefined && einheiten.has(String(p.bereich));
-  for (let i = 0; i < z.length; i++) {
-    const ende = z[i + 1] ? tagPlus(z[i + 1].ab, -1) : "9999-12-31";
-    if (z[i].ab <= bis && ende >= von && einheiten.has(z[i].einheitId)) return true;
-  }
-  return false;
+  const z = zugehoerigkeitsAbschnitte(p);
+  if (!z) return p.bereich !== undefined && p.bereich !== null && einheiten.has(String(p.bereich));
+  return z.some((x) => x.von <= bis && x.bis >= von && einheiten.has(x.einheitId));
 }
 
 /** Der Kontext der Personensicht: eigener Bereich (aus rechte.mjs), Pool, Fenster. */
@@ -282,10 +294,21 @@ function urlaubsrunde(w, ctx) {
 
 /* Selbstplanung: Die Runde für alle. Fremde Einträge ohne Person und Zeit —
    die Deckelung zählt sie je Tag und Dienst, wer es war, braucht sie nicht. */
+/* Selbstplanung (Review K1): Der Rundenkopf geht nur per Positivliste
+   hinaus (RUNDENKOPF) — bis dahin per {...r}, samt „nicht übernommen" mit
+   dem Befundtext Dritter. Einträge: eigene ganz, fremde nur Tag und Dienst.
+   nichtUebernommen: nur die eigenen, als Kennung (selbstplanung.mjs). */
+const SELBST_EINTRAG = ["personId", "datum", "dienstId", "zeit", "hinweise"];
+function rundeSicht(r, eintragSichtbar, nichtSichtbar) {
+  if (!r || typeof r !== "object") return r;
+  return { ...nimm(r, RUNDENKOPF),
+    eintraege: liste(r.eintraege).filter((e) => e && typeof e === "object")
+      .map((e) => (eintragSichtbar(e) ? nimm(e, SELBST_EINTRAG) : nimm(e, ["datum", "dienstId"]))),
+    ...(Array.isArray(r.nichtUebernommen)
+      ? { nichtUebernommen: nichtUebernommenNormal(r.nichtUebernommen.filter((e) => e && nichtSichtbar(e))) } : {}) };
+}
 function selbstplanung(w, ctx) {
-  return liste(w).map((r) => (r && typeof r === "object" ? { ...r,
-    eintraege: liste(r.eintraege).map((e) => (eigen(e, ctx.ich) ? e
-      : nimm(e, ["datum", "dienstId"]))) } : r));
+  return liste(w).map((r) => rundeSicht(r, (e) => eigen(e, ctx.ich), (e) => eigen(e, ctx.ich)));
 }
 
 /* Kompetenzen: der Katalog für alle, die Zuordnung `zugedacht` nur, soweit
@@ -319,6 +342,63 @@ function sondereinsaetzeEigen(w, ctx) {
    Ob ein Stempel am Einsatzort liegt, entscheidet der Server. */
 function standorte(w) {
   return liste(w).map((s) => nimm(s, ["id", "name", "land", "bundesland"]));
+}
+
+/* BESTÄTIGUNGSPROTOKOLL (Warnen statt sperren, Kette A; WP-10 d.1).
+   Wer eine Einteilung trotz Befund bestätigt, hinterlässt hier einen
+   Eintrag: Person, Tag, Dienst, Stufe, Befunde, freiwilliger Grund, wer
+   bestätigt hat, Regelstand. Beschäftigte sehen das Protokoll nicht — es
+   nennt fremde Personen und Gründe. Der Betriebsrat sieht es je Regel und
+   Tag ohne Namen (Muster-BV, Anlage 5): keine Person, kein Name der
+   bestätigenden Person (nur ihre Rolle), kein Freitext zum Grund (nur die
+   Art) — ein Freitext kann Namen tragen. Befunde aus individuellen Schutz-
+   oder Einsatzregeln werden neutral („individuelle Schutz- oder Einsatzregel
+   betroffen"): Zusammen mit Tag und Dienst ließe sich in einem kleinen Team
+   sonst auf das Merkmal schließen. Positivliste — was nicht hier steht, geht
+   nicht hinaus. */
+export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde", "regelIds",
+  "grundArt", "grund", "ohneGrund", "gelesen", "durch", "durchId", "rolle", "zeit", "regelstand", "behoben"];
+/* Review WP-10, M1: Der Betriebsrat sieht abweichungen (den Plan)
+   vollständig. Mit Tag und Dienst einer Bestätigung ließe sich die Person
+   wiederfinden. Deshalb nur Regel, Stufe und Monat — kein Tag, kein Dienst,
+   keine Bestätigungszeit (aenderungen tragen eine Zeit), kein Freitext,
+   kein Name. Befunde nur als Kennung aus dem Befundkatalog; alle Schutz-
+   und Einschränkungsbefunde heißen „schutz" (ohne Gesetz, ohne Merkmal);
+   Altbestand mit Text wird nie im Wortlaut gezeigt. Fachlich offen: Reicht
+   dem Betriebsrat der Monat? */
+export const SCHUTZ_NEUTRAL = "schutz";
+const schutzText = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
+  .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
+function regelFuerBetriebsrat(x) {
+  const k = BEFUND_KATALOG[x.regel];
+  if (k) return k.schutz ? SCHUTZ_NEUTRAL : x.regel;
+  /* Altbestand ohne Kennung: nie der Wortlaut. */
+  if (schutzText(x)) return SCHUTZ_NEUTRAL;
+  if (/^abwesend\b/i.test(String(x.text || "")) || x.quelle === "Abwesenheit") return "abwesend";
+  return "sonstiges";
+}
+/* Nachprüfung WP-10 (M1-Rest): Auch einzelne Einträge ohne Tag ließen sich
+   über Monat, Aktion, Rolle und Reihenfolge noch einer Person zuordnen. Der
+   Betriebsrat bekommt deshalb nur Zählwerte je Monat, Regel und Stufe —
+   keine Einträge, keine Kennungen, keine Aktion, keine Rolle, keine
+   Reihenfolge der Bestätigungen (sortiert nach Monat, Regel, Stufe). Unter
+   der Mindestgruppengröße steht „<3" statt der Zahl. Fachlich offen: Ist
+   das für die Mitbestimmung ausreichend, und welche Mindestgröße? */
+export const BR_MINDESTGRUPPE = 3;
+export function bestaetigungenBetriebsrat(w) {
+  const zaehler = new Map();
+  for (const b of liste(w)) {
+    if (!b || typeof b !== "object" || typeof b.datum !== "string") continue;
+    const monat = b.datum.slice(0, 7);
+    for (const regel of new Set(liste(b.befunde).filter((x) => x && typeof x === "object").map(regelFuerBetriebsrat))) {
+      const stufe = typeof b.stufe === "string" ? b.stufe : null;
+      const k = `${monat}|${regel}|${stufe}`;
+      zaehler.set(k, { monat, regel, stufe, n: ((zaehler.get(k) || {}).n || 0) + 1 });
+    }
+  }
+  return [...zaehler.values()]
+    .sort((a, b) => a.monat.localeCompare(b.monat) || a.regel.localeCompare(b.regel) || String(a.stufe).localeCompare(String(b.stufe)))
+    .map(({ monat, regel, stufe, n }) => ({ monat, regel, stufe, anzahl: n < BR_MINDESTGRUPPE ? `<${BR_MINDESTGRUPPE}` : n }));
 }
 
 
@@ -387,6 +467,8 @@ export const BETRIEB = {
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
   /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
   aenderungen: [WEG, VOLL],
+  /* Bestätigungsprotokoll (WP-10 d.1): Beschäftigte nicht, Betriebsrat ohne Namen. */
+  bestaetigungen: [WEG, R(bestaetigungenBetriebsrat)],
 
   /* Inhalte ohne belegten Bedarf dieser Rollen. Übergaben und Dienstbuch
      tragen Bewohner- und Vorfallsangaben ohne Bereichsbezug; das
@@ -483,56 +565,110 @@ export function bestandSicht(bestand, sitzung, eigener) {
 const umfangDer = (ctx, pid) => (gleich(pid, ctx.ich) ? "eigen" : (ctx.umfang.get(String(pid)) || "fremd"));
 const imScope = (ctx, pid, erlaubt) => erlaubt.includes(umfangDer(ctx, pid));
 const schluesselPerson = (k) => String(k).split("|")[0];
+const schluesselTag = (k) => String(k).split("|")[1];
+
+/* TAGESGENAU (WP-43). Das Sichtfenster entscheidet, welche Personen die
+   Schichtverantwortung überhaupt im Bereich führt (Personenliste, Telefon,
+   Konten). Für Einträge, die an einem Tag oder Zeitraum hängen — Ist-Zeiten,
+   Fahrzeiten, Wünsche, Einsprünge, Anträge, Abwesenheiten, Notrufe,
+   Planänderungen, Selbstplanung, Urlaubsrunde —, reicht das nicht: Nach einer
+   Versetzung von e1 nach e2 sah die Schichtverantwortung von e1 bis zu 60 Tage
+   lang auch die Zeiten, die die Person schon in e2 gearbeitet hatte.
+
+   Jetzt zählt für solche Einträge zusätzlich die Zugehörigkeit an genau
+   diesem Tag (bei Zeiträumen: an mindestens einem Tag darin). Der Umfang
+   eines Eintrags ist der kleinere aus Personenumfang und Tagesumfang
+   (fremd < pool < bereich) — tagesgenau schränkt nur ein, es öffnet nie
+   etwas, das das Sichtfenster verschließt (etwa Zeiten aus e1 von vor zwei
+   Jahren). Ohne gültigen Tag ist der Eintrag fremd (fail-closed). Zum Pool
+   gehört an einem Tag, wer dann einer Pool-Einheit zugeordnet ist oder
+   Springer ist. Die Rückfüllung (rechte.mjs, schichtRueckfuellen) rechnet mit
+   derselben Sicht — was hier verborgen bleibt, kommt beim Speichern aus dem
+   gespeicherten Stand. */
+const TAG_FORM = /^\d{4}-\d{2}-\d{2}$/;
+const RANG = { fremd: 0, pool: 1, bereich: 2 };
+const gueltigerTag = (t) => typeof t === "string" && TAG_FORM.test(t);
+/** Umfang der Person pid für einen Eintrag vom Tag von bis zum Tag bis — eigen, bereich, pool oder fremd. */
+export function umfangImZeitraum(ctx, pid, von, bis = von) {
+  const basis = umfangDer(ctx, pid);
+  if (basis === "eigen" || basis === "fremd") return basis;
+  const p = ctx.personen && ctx.personen.get(String(pid));
+  if (!p || !gueltigerTag(von) || !gueltigerTag(bis) || bis < von) return "fremd";
+  const amTag = imFenster(p, new Set([ctx.eigene]), von, bis) ? "bereich"
+    : (imFenster(p, ctx.pool, von, bis) || p.springer === true) ? "pool" : "fremd";
+  return RANG[amTag] < RANG[basis] ? amTag : basis;
+}
+const imScopeAm = (ctx, pid, von, bis, erlaubt) => erlaubt.includes(umfangImZeitraum(ctx, pid, von, bis));
 const objektFilter = (w, fn) => Object.fromEntries(Object.entries(w && typeof w === "object" ? w : {})
   .map(([k, v]) => [k, fn(k, v)]).filter(([, v]) => v !== undefined));
 
 /* Abwesenheiten: eigene ganz; im Bereich Zeitraum und Kategorie, keine
    Anmerkung; sonst wie für Beschäftigte („abwesend"). */
+/* Welche Abwesenheitsarten die Schichtverantwortung im eigenen Bereich im
+   Klartext sieht (RECHTEMATRIX ⁴): genau die Arten, die es vor Kette A
+   (Regelregister, #6) gab. Die neuen Arten aus src/abwesenheitsarten.js —
+   Mutterschutz/Beschäftigungsverbot, Elternzeit, Pflegezeit,
+   Familienpflegezeit, Arbeitsverhinderung, Berufsschule u. a. — verraten
+   Gesundheit, Schwangerschaft, Familie oder Alter; sie gehen nur als
+   „abwesend" hinaus (Review WP-11, F1). Neue Arten sind damit verborgen,
+   bis jemand sie hier ausdrücklich freigibt. */
+export const ABWESENHEITSARTEN_SV = Object.freeze(["urlaub", "krank", "schulung", "frei", "sonst", "ausgleich"]);
+const artFuerSV = (art) => (ABWESENHEITSARTEN_SV.includes(art) ? art : "abwesend");
+/* Hinweistexte aus der Oberfläche nennen eine Abwesenheit mit ihrer Art
+   („abwesend (Pflegezeit)"); für die Schichtverantwortung ohne Art. */
+export const hinweisOhneArt = (h) => (typeof h === "string" ? h.replace(/abwesend \([^)]*\)/g, "abwesend") : h);
 const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
   if (!a) return a;
-  const u = umfangDer(ctx, a.personId);
+  const u = umfangImZeitraum(ctx, a.personId, a.von, a.bis);
   if (u === "eigen") return a;
-  if (u === "bereich") return nimm(a, ["id", "personId", "art", "von", "bis"]);
+  if (u === "bereich") { const r = nimm(a, ["id", "personId", "art", "von", "bis"]); r.art = artFuerSV(a.art); return r; }
   return abwesenheiten([a], { ...ctx, ich: undefined })[0];
 });
 /* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst
-   wie für Beschäftigte (nur offene Tauschgesuche, Meldungen verborgen). */
+   wie für Beschäftigte (nur offene Tauschgesuche, Meldungen verborgen).
+   „Aus dem Bereich" heißt: am ersten Tag des Antrags — an demselben Tag
+   hängt auch das Entscheiden (einheitZusammen in rechte.mjs). */
 const schichtAnfragen = (w, ctx) => {
-  const eigeneOderBereich = (a) => imScope(ctx, a.personId, ["eigen", "bereich"]);
+  const eigeneOderBereich = (a) => imScopeAm(ctx, a.personId, a.von, a.von, ["eigen", "bereich"]);
   const rest = new Map(anfragen(liste(w).filter((a) => a && !eigeneOderBereich(a)), ctx).map((a) => [a.id, a]));
   return liste(w).filter((a) => a && (eigeneOderBereich(a) || rest.has(a.id)))
     .map((a) => (eigeneOderBereich(a) ? a : rest.get(a.id)));
 };
-/* Zeiterfassung: eigene ganz; im Bereich die Zeiten ohne freien Grund. */
+/* Zeiterfassung: eigene ganz; im Bereich — an genau diesem Tag — die Zeiten
+   ohne freien Grund. */
 const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
-  const u = umfangDer(ctx, schluesselPerson(k));
+  const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
   if (u === "eigen") return v;
   if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause"]);
   return undefined;
 });
 const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>
-  (imScope(ctx, schluesselPerson(k), erlaubt) ? v : undefined));
+  (imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), erlaubt) ? v : undefined));
 const schichtEintraege = (erlaubt, felder) => (w, ctx) => liste(w)
-  .filter((e) => e && imScope(ctx, e.personId, erlaubt))
+  .filter((e) => e && imScopeAm(ctx, e.personId, e.datum, e.datum, erlaubt))
   .map((e) => (gleich(e.personId, ctx.ich) ? e : nimm(e, felder)));
 /* Änderungen: zu Personen im Bereich oder Pool, und die ohne Person
    (Anfragen der Planung je Tag und Dienst). Nur die bekannten Felder. */
 const AENDERUNG = ["id", "personId", "datum", "von", "nach", "zeit", "regelstand", "vorlauf"];
 const schichtAenderungen = (w, ctx) => liste(w)
-  .filter((e) => e && (e.personId === null || e.personId === undefined || imScope(ctx, e.personId, ["eigen", "bereich", "pool"])))
+  .filter((e) => e && (e.personId === null || e.personId === undefined
+    || imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich", "pool"])))
   .map((e) => nimm(e, AENDERUNG));
-/* Notrufe: eigene, an sie gerichtete, aus dem eigenen Bereich. */
-const schichtNotrufe = (w, ctx) => liste(w).filter((n) => n && (imScope(ctx, n.personId, ["eigen", "bereich"])
+/* Notrufe: eigene, an sie gerichtete, aus dem eigenen Bereich (am Tag des Notrufs). */
+const schichtNotrufe = (w, ctx) => liste(w).filter((n) => n && (imScopeAm(ctx, n.personId, n.datum, n.datum, ["eigen", "bereich"])
   || liste(n.empfaenger).some((x) => gleich(x, ctx.ich))));
 /* Selbstplanung: Einträge aus dem Bereich mit Person, sonst wie für Beschäftigte. */
-const schichtSelbstplanung = (w, ctx) => liste(w).map((r) => (r && typeof r === "object" ? { ...r,
-  eintraege: liste(r.eintraege).map((e) => (e && imScope(ctx, e.personId, ["eigen", "bereich"]) ? e
-    : nimm(e, ["datum", "dienstId"]))) } : r));
+const schichtSelbstplanung = (w, ctx) => {
+  const sichtbar = (e) => imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]);
+  return liste(w).map((r) => rundeSicht(r, sichtbar, sichtbar)).map((r) => (r && Array.isArray(r.eintraege) ? { ...r,
+    eintraege: r.eintraege.map((e) => (e && !gleich(e.personId, ctx.ich) && Array.isArray(e.hinweise)
+      ? { ...e, hinweise: e.hinweise.map(hinweisOhneArt) } : e)) } : r));
+};
 /* Urlaubsrunde: Kopf, Wünsche aus dem Bereich und die eigenen
    (Überschneidungen im Bereich), ohne andere Bereiche. */
 const schichtUrlaubsrunde = (w, ctx) => {
   if (!w || typeof w !== "object") return w;
-  const rein = { ...w, wuensche: liste(w.wuensche).filter((x) => x && imScope(ctx, x.personId, ["eigen", "bereich"])) };
+  const rein = { ...w, wuensche: liste(w.wuensche).filter((x) => x && imScopeAm(ctx, x.personId, x.von, x.bis, ["eigen", "bereich"])) };
   if (Array.isArray(w.vorjahrZurueck))
     rein.vorjahrZurueck = w.vorjahrZurueck.filter((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"]));
   return rein;
@@ -543,8 +679,11 @@ const schichtEinarbeitung = (w, ctx) => liste(w).filter((e) => e
   && (imScope(ctx, e.personId, ["eigen", "bereich"]) || gleich(e.mentorId, ctx.ich)));
 const schichtBetriebsmittel = (w, ctx) => liste(w).filter((b) => b && (b.personId === null
   || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"])));
+/* Sondereinsätze: sichtbar, wenn sie selbst oder eine Person ihres Bereichs
+   zugeteilt ist — tagesgenau am Tag des Einsatzes (WP-43); ohne gültigen Tag
+   nur der eigene. */
 const schichtSondereinsaetze = (w, ctx) => liste(w).filter((s) => s && liste(s.zugeteilt)
-  .some((x) => imScope(ctx, x && x.personId !== undefined ? x.personId : x, ["eigen", "bereich"])));
+  .some((x) => imScopeAm(ctx, x && x.personId !== undefined ? x.personId : x, s.datum, s.datum, ["eigen", "bereich"])));
 /* Ausschreibungen (Commit C1): fachlich betriebsweit, der Kopf ist für alle
    sichtbar wie bei Beschäftigten. `einheitId` ist allein die verantwortende
    Einheit. Nur bei einer Ausschreibung der eigenen Einheit gehen alle
@@ -597,6 +736,13 @@ Object.assign(SCHICHT, {
   nachrichten: NUR_EIGENE,
   notrufe: R(schichtNotrufe),
   aenderungen: R(schichtAenderungen),
+  /* Bestätigungsprotokoll (WP-10 d.1): Einträge zu Personen, die am Tag des
+     Eintrags zum eigenen Bereich gehören (oder sie selbst sind) — dieselben,
+     für die sie Abweichungen bestätigen darf (einheitZusammen). Fremde,
+     Pool und Einträge ohne gültigen Tag nicht. Nur die bekannten Felder. */
+  bestaetigungen: R((w, ctx) => liste(w)
+    .filter((e) => e && typeof e === "object" && imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]))
+    .map((e) => nimm(e, BESTAETIGUNG_FELDER))),
   selbstplanung: R(schichtSelbstplanung),
   ausschreibungen: R(schichtAusschreibungen),
   urlaubsrunde: R(schichtUrlaubsrunde),
@@ -613,7 +759,8 @@ Object.assign(SCHICHT, {
 /** Der Betrieb in der Sicht der Schichtverantwortung. ctx aus schichtKontext. */
 export function betriebSichtSchicht(m, ctx) {
   if (!m || typeof m !== "object") return m;
-  const c = { ...ctx, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])) };
+  const c = { ...ctx, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])),
+    personen: new Map(liste(m.personen).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p])) };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {
     const regel = SCHICHT[feld];
@@ -633,9 +780,23 @@ export function betriebSichtSchicht(m, ctx) {
   /* Ist-Zeiten bekommt die Schichtverantwortung nur für sich und den eigenen
      Bereich (schichtErfassung). Für alle anderen fehlt die Erfassung aus
      Datenschutzgründen — die Oberfläche darf dort nicht die Planzeit als
-     Ist-Zeit rechnen (E1, src/istdaten.js). Nur in der Antwort. */
-  aus.sichtIstDaten = { umfang: "personen", personen: liste(m.personen).filter(Boolean).map((p) => String(p.id))
-    .filter((id) => ["eigen", "bereich"].includes(umfangDer(c, id))) };
+     Ist-Zeit rechnen (E1, src/istdaten.js). Nur in der Antwort.
+     Tagesgenau (WP-43): Gehörte eine Person des Bereichs zeitweise einer
+     anderen Einheit an, sieht die Schichtverantwortung ihre Erfassung nur an
+     den Tagen im eigenen Bereich. Für diese Personen steht in `zeitraeume`,
+     an welchen Tagen die Ist-Daten zugänglich sind ({von, bis}, genau die
+     Abschnitte, die schichtErfassung durchlässt); an allen anderen Tagen
+     und für Auswertungen über Zeiträume sind sie „nicht verfügbar". */
+  const personen = liste(m.personen).filter(Boolean).map((p) => String(p.id))
+    .filter((id) => ["eigen", "bereich"].includes(umfangDer(c, id)));
+  const zeitraeume = {};
+  for (const id of personen) {
+    if (umfangDer(c, id) !== "bereich") continue;
+    const z = zugehoerigkeitsAbschnitte(c.personen.get(id));
+    if (!z || z.every((x) => x.einheitId === String(c.eigene))) continue;
+    zeitraeume[id] = z.filter((x) => x.einheitId === String(c.eigene) && x.von <= x.bis).map((x) => ({ von: x.von, bis: x.bis }));
+  }
+  aus.sichtIstDaten = { umfang: "personen", personen, ...(Object.keys(zeitraeume).length ? { zeitraeume } : {}) };
   return aus;
 }
 
@@ -749,7 +910,11 @@ export function bestandSichtBetreiber(bestand) {
 /** Was Planung und Leitung an fremden Personen nicht bekommen. */
 export const VOLL_PERSON_WEG = ["kalenderGeheim", "kalenderVerweis", "kalenderStand", "pushSchluessel", "zustellung",
   "emailVorher", "emailGeaendert", "iban", "steuerId", "sozialversicherung", "lohn", "gehalt",
-  "notfallkontakt"];
+  /* `notfall` steht als Notfallangabe in PERSONENFELDER (keine Oberfläche
+     schreibt es, ein Import oder Altbestand kann es tragen). Bis WP-43 fehlte
+     es hier und ging an Planung, Leitung und die Vollausgabe der Leitung — die
+     Rechtematrix gibt Notfallkontakte nur der Sicherung heraus. */
+  "notfallkontakt", "notfall"];
 /** Fremde Personen: alle bekannten Felder ohne die obigen. */
 export const VOLL_PERSON = PERSONENFELDER.filter((f) => !VOLL_PERSON_WEG.includes(f));
 /** Was Planung und Leitung im Betrieb nicht bekommen: Vertrag, Rechnungsangaben

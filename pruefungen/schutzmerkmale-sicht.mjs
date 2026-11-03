@@ -85,10 +85,13 @@ const verboten = ["mutterschutz", "schwerbehindert", "nachtvorsorge", "wiederein
 pruef("SV: keine Rohmarker", verboten.length === 0, verboten.join(", "));
 pruef("SV: planungsregeln für Bereich und Pool", ["mu", "sb", "ju", "vo", "we", "po"].every((id) => Array.isArray(pers(mS, id).planungsregeln))
   && pers(mS, "fr").planungsregeln === undefined);
+/* WP-11: Ohne gültiges Geburtsdatum kommt die neutrale Hinweis-Regel
+   „alterNichtBewertbar" dazu (wie schutzBefunde mit Rohdaten). */
 pruef("SV: Mutterschutz-Person — Nacht und Sonntag als Einsatzregel", JSON.stringify(pers(mS, "mu").planungsregeln.map((r) => r.regel).sort())
-  === JSON.stringify(["nachtNichtZulaessig", "sonntagNurMitFreigabe"]));
-pruef("SV: Wochenstundengrenze neutral, keineNacht bleibt", pers(mS, "we").planungsregeln[0].regel === "stundengrenzeWoche"
-  && pers(mS, "we").planungsregeln[0].wert === 17.25 && pers(mS, "we").einschraenkungen.keineNacht === true);
+  === JSON.stringify(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]));
+const grenzeWe = (pers(mS, "we").planungsregeln || []).find((r) => r.regel === "stundengrenzeWoche");
+pruef("SV: Wochenstundengrenze neutral, keineNacht bleibt", !!grenzeWe && grenzeWe.wert === 17.25
+  && pers(mS, "we").einschraenkungen.keineNacht === true);
 pruef("Planung: Rohdaten unverändert", pers(vorher, "mu").mutterschutz === true && pers(vorher, "ju").geburtstag === GEB
   && pers(vorher, "vo").nachtvorsorge === VORSORGE && !vorher.personen.some((p) => "planungsregeln" in p));
 

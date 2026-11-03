@@ -7,15 +7,27 @@
 #  centric-dp-web:3000. Daten liegen unter ./data (Bind-Mount).
 #
 #  Befehle (im Verzeichnis /opt/apps/centric-dienstplanung):
-#    docker compose up -d          starten / nach Änderung neu erstellen
-#    docker compose logs -f        Logs
-#    docker compose ps             Status inkl. Healthcheck
+#    ./digest-pruefen.sh sha256:<digest>      vor jedem Start/Wechsel
+#    docker compose up -d --pull never        starten / nach Änderung neu erstellen
+#    docker compose logs -f                   Logs
+#    docker compose ps                        Status inkl. Healthcheck
+#    ./ruecksprung.sh --trocken | ./ruecksprung.sh    zurück auf „vorherig“
+#    ./abschalten.sh --trocken  | ./abschalten.sh     R0: Dienst anhalten
+#
+#  Bild NUR per Digest (WP-03). IMAGE_DIGEST kommt aus .env und muss in
+#  FREIGEGEBENE-IMAGES.md mit Status aktiv oder vorherig stehen. Ohne
+#  IMAGE_DIGEST bricht Compose ab — es gibt keinen Default, kein Tag und
+#  kein latest. Die frühere Variable IMAGE_TAG wird NICHT mehr gelesen
+#  (Migration: BEREITSTELLUNG.md, „Bild per Digest“).
 # =====================================================================
 name: centric-dienstplanung
 
 services:
   centric-dp-web:
-    image: ghcr.io/rinats-png/dienstplaner:${IMAGE_TAG:-latest}
+    image: ghcr.io/rinats-png/dienstplaner@${IMAGE_DIGEST:?IMAGE_DIGEST fehlt – nur verifizierte Digests (FREIGEGEBENE-IMAGES.md)}
+    # Nie selbst ziehen: das Bild muss lokal liegen und vorher mit
+    # ./digest-pruefen.sh geprüft sein (docker pull nur bewusst, per Digest).
+    pull_policy: never
     container_name: centric-dp-web
     restart: unless-stopped
     env_file: .env
@@ -24,12 +36,17 @@ services:
       PORT: "3000"
       CENTRIC_DATEN: /data
       CENTRIC_ABLAGE: dateien
+      # Überwachung (WP-05, docs/BETRIEB-UEBERWACHUNG.md): Alter der letzten
+      # Sicherung außer Haus. Erst einschalten, wenn die Sicherung (WP-04)
+      # eingerichtet ist — dann auch den Mount unten.
+      # CENTRIC_SICHERUNG_STATUS: /sicherung-status/letzte-erfolgreiche.json
 
     networks:
       - proxy
 
     volumes:
       - ./data:/data                          # persistent, überlebt Neuerstellung
+      # - /home/admin/sicherung:/sicherung-status:ro   # WP-05, nur lesen (STATUS_VERZEICHNIS)
 
     # --- Härtung ---
     user: "1000:1000"                         # = admin auf dem Host, = node im Image
