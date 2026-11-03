@@ -279,3 +279,44 @@ describe("Vollausgabe: der eigene Betrieb", () => {
     expect(vollausgabeBetrieb(einer, { nurSicherung: true }).betrieb.id).toBe("m-a");
   });
 });
+
+/* WP-20 Nachprüfung N8: Wann/Wer der Ortsangaben passt nach dem Wiederherstellen zur wiederhergestellten Liste.
+   Hat die Sicherung einen Vermerk, gilt er (die Liste ist der Stand von damals). Fehlt er (Sicherung aus der Zeit
+   vor dem Vermerk) und die Liste ändert sich durch das Zurückspielen, gilt die Wiederherstellung selbst als Änderung:
+   jetzt, durch die Leitung, die zurückspielt. Bleibt die Liste gleich, bleibt der gespeicherte Vermerk. */
+describe("Wiederherstellen: Vermerk der Ortsangaben (WP-20, N8)", () => {
+  const ort = (id, radius) => ({ id, name: id, lat: 50, lon: 8, radius });
+  const rest = (jetztZusatz, sicherungsZusatz, jetztDienst = [{ id: "F" }], sicherungsDienst = [{ id: "F" }]) => {
+    const jetzt = { version: 9, stand: 1, session: null, protokoll: [], mandanten: [
+      betrieb("m-b", "Lindenhof", [person("b-l", "leitung")], { dienstarten: jetztDienst, ...jetztZusatz })] };
+    const m = betrieb("m-b", "Lindenhof", [person("b-l", "leitung")], { dienstarten: sicherungsDienst, ...sicherungsZusatz });
+    const sicherung = { umfang: "betrieb", mandantId: "m-b", mandant: m, erzeugt: "2026-10-10T08:00:00Z" };
+    return betriebWiederherstellen(jetzt, sicherung, { rolle: "leitung", person: "b-l", betrieb: 0 },
+      { marke: "2026-10-10-08-00-00-0001", sicherungsZeit: "2026-10-10T08:00:00Z", heute: new Date("2026-10-18T10:00:00Z") }).bestand.mandanten[0];
+  };
+  it("Sicherung mit Vermerk: Liste und Wann/Wer von damals", () => {
+    const m = rest({ einsatzorte: [ort("b", 500)], einsatzorteGeaendertAm: "2026-10-15T00:00:00.000Z", einsatzorteGeaendertVon: "p-neu" },
+      { einsatzorte: [ort("a", 100)], einsatzorteGeaendertAm: "2026-01-01T00:00:00.000Z", einsatzorteGeaendertVon: "l-alt" });
+    expect(m.einsatzorte.map((o) => o.id)).toEqual(["a"]);
+    expect([m.einsatzorteGeaendertAm, m.einsatzorteGeaendertVon]).toEqual(["2026-01-01T00:00:00.000Z", "l-alt"]);
+  });
+  it("Sicherung ohne Vermerk, Liste ändert sich: Zeitpunkt der Wiederherstellung und die Leitung", () => {
+    const m = rest({ einsatzorte: [ort("b", 500)], einsatzorteGeaendertAm: "2026-10-15T00:00:00.000Z", einsatzorteGeaendertVon: "p-neu" },
+      { einsatzorte: [ort("a", 100)] });
+    expect(m.einsatzorte.map((o) => o.id)).toEqual(["a"]);
+    expect(m.einsatzorteGeaendertAm).toBe("2026-10-18T10:00:00.000Z");
+    expect(m.einsatzorteGeaendertVon).toBe("b-l");
+  });
+  it("Liste bleibt gleich: der gespeicherte Vermerk bleibt", () => {
+    const m = rest({ einsatzorte: [ort("a", 100)], einsatzorteGeaendertAm: "2026-10-15T00:00:00.000Z", einsatzorteGeaendertVon: "p-neu" },
+      { einsatzorte: [ort("a", 100)] });
+    expect([m.einsatzorteGeaendertAm, m.einsatzorteGeaendertVon]).toEqual(["2026-10-15T00:00:00.000Z", "p-neu"]);
+  });
+  it("Dienstart mit anderem Ortsmodus als heute und ohne Vermerk in der Sicherung: Wiederherstellung ist die Änderung; gleiche Dienstart bleibt unberührt", () => {
+    const m = rest({}, {}, [{ id: "F", ortModus: "standort" }, { id: "G" }],
+      [{ id: "F", ortModus: "aussendienst" }, { id: "G" }]);
+    const f = m.dienstarten.find((d) => d.id === "F"), g = m.dienstarten.find((d) => d.id === "G");
+    expect([f.ortModus, f.ortGeaendertAm, f.ortGeaendertVon]).toEqual(["aussendienst", "2026-10-18T10:00:00.000Z", "b-l"]);
+    expect(g).not.toHaveProperty("ortGeaendertAm");
+  });
+});

@@ -18,7 +18,9 @@ eigene Konten sehen ([Übersicht](README.md)).
 | Dienste in den eigenen Kalender holen (ICS-Feed, nur eigene Person) | „Einstellungen“ → Kalender |
 
 **Standortprüfung beim Stempeln** gibt es nur, wenn die Leitung sie eingeschaltet hat (Vorgabe aus). Gespeichert wird
-dann nur ein Urteil (innerhalb / außerhalb / nicht bewertbar) und eine gerundete Entfernung — nie Ihre Koordinaten.
+dann nur ein Urteil (innerhalb / außerhalb / nicht bewertbar) und eine gerundete Entfernung oder grobe Abstandsklasse — nie Ihre Koordinaten.
+Bei einem Dienst ohne festen Ort (Außendienst) wird nichts gemessen. Ist die Prüfung „verpflichtend“ gestellt, wird ein
+nicht bestätigter Ort für die Leitung markiert — Ihre Arbeitszeit wird trotzdem erfasst.
 
 ## Was Sie sehen — und was nicht
 

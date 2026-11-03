@@ -89,6 +89,7 @@ export const MARKIERUNG_TEXT = Object.freeze({
   KONFLIKT: "Konflikt — bitte durch die Leitung klären",
   GERAETEDATUM_ABWEICHEND: "Datum des Geräts wich ab",
   LANGER_DIENST: "länger als geplant + 2 Stunden — Ist-Zeit zur Prüfung",
+  ORT_PRUEFEN: "Ort nicht bestätigt — bitte klären",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });
 
@@ -106,11 +107,15 @@ export function geoAnzeige(eintrag, phase) {
   if (!eintrag || !eintrag[phase === "Start" ? "start" : "ende"]) return null;
   const geo = eintrag[`geo${phase}`];
   if (geo && typeof geo === "object") {
-    const basis = { entfernung: entfernungText(geo.entfernungGerundet), genauigkeit: geo.genauigkeitM ?? null,
+    /* Einsatzorte speichern nur die Abstandsklasse (WP-20), keine Entfernung. */
+    const KLASSE = { bis_1km: "weniger als 1 km", bis_5km: "1 bis 5 km", ueber_5km: "mehr als 5 km" };
+    const basis = { entfernung: geo.entfernungGerundet != null ? entfernungText(geo.entfernungGerundet) : KLASSE[geo.abstandsklasse] || "",
+      genauigkeit: geo.genauigkeitM ?? null,
       warnung: !!geo.genauigkeitWarnung, referenz: geo.referenz && geo.referenz.name ? geo.referenz.name : null };
     if (geo.status === INNERHALB) return { symbol: HAKEN, ton: "ok", text: "Standort bestätigt", ...basis };
     if (geo.status === AUSSERHALB) return { symbol: "!", ton: "warn", text: "Standort abweichend", ...basis };
     if (geo.grund === "pruefung_aus") return { symbol: "○", ton: "text", text: "Geo-Prüfung aus", ...basis };
+    if (geo.grund === "aussendienst") return { symbol: "○", ton: "text", text: "Außendienst — ohne festen Ort", ...basis };
     return { symbol: "?", ton: "text", text: "Standort nicht bewertbar", ...basis };
   }
   /* Altbestand: nur das bisherige Urteil. Der alte Text trug die exakte

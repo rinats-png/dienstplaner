@@ -15,7 +15,7 @@ import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht
   from "../lib/konten.mjs";
 import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
-import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
+import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
   offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
@@ -1058,7 +1058,8 @@ export default async (req, context) => {
            ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
         /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
            nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
-        const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
+        const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben)
+          || bestandDienstartOrtFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (standortGrund) {
           await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
@@ -1267,6 +1268,7 @@ export default async (req, context) => {
           const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
           if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
           for (const x of ziel.markierungen) markieren(x);
+          for (const x of urteil.markierungen || []) markieren(x);          // Geo-Modus „pflicht" (WP-20)
           const startFehlt = art === "ende" && !alt.start;
           if (startFehlt) markieren("START_FEHLT");
           /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene

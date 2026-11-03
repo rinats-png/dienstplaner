@@ -92,7 +92,7 @@
     "pruefung:typen": "tsc -p jsconfig.json",
     "pruefung:regeln": "vitest run pruefungen/regelwerk.test.js",
     "pruefung:stempeldaten": "vitest run pruefungen/stempel-datenschutz.test.js",
-    "pruefung:geo": "vitest run pruefungen/geo.test.js",
+    "pruefung:geo": "vitest run pruefungen/geo.test.js pruefungen/geo-einsatzorte.test.js pruefungen/geo-einsatzorte-handler.test.js pruefungen/geo-einsatzorte-ui.test.js",
     "pruefung:staging-proben": "node pruefungen/staging-proben.mjs",
     "pruefung:geo-http": "node pruefungen/geo.mjs",
     "pruefung:istdaten": "vitest run pruefungen/istdaten.test.js",

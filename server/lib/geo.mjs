@@ -24,6 +24,8 @@
    hier, nicht in einer zweiten Prüfung.
    ========================================================================== */
 
+import { geplanterDienst } from "./zeiterfassung.mjs";
+
 export const INNERHALB = "INNERHALB";
 export const AUSSERHALB = "AUSSERHALB";
 export const NICHT_BEWERTBAR = "NICHT_BEWERTBAR";
@@ -96,7 +98,8 @@ export function bestandStandorteFehler(altBestand, neuBestand) {
     .filter((m) => m && typeof m === "object").map((m) => [String(m.id), m]));
   for (const m of neuBestand && Array.isArray(neuBestand.mandanten) ? neuBestand.mandanten : []) {
     if (!m || typeof m !== "object") continue;
-    const grund = standorteFehler((alt.get(String(m.id)) || {}).standorte, m.standorte);
+    const vorher = alt.get(String(m.id)) || {};
+    const grund = standorteFehler(vorher.standorte, m.standorte) || standorteFehler(vorher.einsatzorte, m.einsatzorte);   // Einsatzorte: dieselben Wertebereiche (WP-20)
     if (grund) return grund;
   }
   return null;
@@ -138,15 +141,76 @@ export function einheitAm(person, datum) {
   return liste.length ? liste[liste.length - 1].einheitId : null;
 }
 
-/** Der Referenzort für ein Stempelereignis: heute der Standort der Einheit am Tag. */
-export function referenzOrt(m, person, datum) {
+/* --------------------------------------------------------------------------
+   ORT JE DIENST (WP-20)
+
+   Eine Dienstart kann ihren eigenen Referenzort haben (dienstart.ortModus):
+     standort      (Vorgabe) der Standort der Einheit am Tag
+     einsatzort    ein Einsatzort des Betriebs aus m.einsatzorte (dienstart.einsatzortId);
+                   getrennt von den Standorten, die Preis und Feiertage bestimmen
+     aussendienst  kein fester Ort — nichts wird gemessen oder verglichen
+   Der Betrieb wählt außerdem, wie streng geprüft wird (geoModus):
+     aus       Schalter geoPruefung aus: nichts wird gemessen
+     hinweis   (Vorgabe, wenn an) Ergebnis wird gespeichert und angezeigt
+     pflicht   dazu bekommt ein Stempel, dessen Ort nicht bestätigt ist, die
+               Markierung ORT_PRUEFEN — die Leitung klärt es. Abgelehnt wird
+               nie (E3): Die Arbeitszeit wird in jedem Fall erfasst.
+   -------------------------------------------------------------------------- */
+export const ORT_MODI = Object.freeze(["standort", "einsatzort", "aussendienst"]);
+export const GEO_MODI = Object.freeze(["aus", "hinweis", "pflicht"]);
+export const MARKIERUNG_ORT = "ORT_PRUEFEN";
+/** Die Bestätigung, die die Leitung für den Pflichtmodus gibt (Server verlangt sie in derselben Anfrage). */
+export const GEO_MODUS_TEXT = "Datenschutz und Mitbestimmung für die verpflichtende Standortprüfung (Markierung bei abweichendem Ort) wurden betrieblich geprüft.";
+
+/** Der Ortsmodus einer Dienstart; fehlend oder unbekannt: der Standort der Einheit. */
+export const dienstOrtModus = (da) => (da && typeof da === "object" && ORT_MODI.includes(da.ortModus) ? da.ortModus : "standort");
+
+/** Der Prüfmodus des Betriebs. „pflicht" wirkt nur bei eingeschaltetem Schalter. */
+export function geoModus(m) {
+  if (!geoAktiv(m)) return "aus";
+  return m.einstellungen.geoModus === "pflicht" ? "pflicht" : "hinweis";
+}
+
+/**
+ * Abstandsklasse statt Zahl: innerhalb | bis_1km | bis_5km | ueber_5km, oder
+ * null, wenn kein Abstand bekannt ist. Mehr als die Klasse braucht niemand,
+ * der den Befund liest — und bei Einsatzorten wird nur sie gespeichert.
+ */
+export function abstandsklasse(status, d) {
+  if (status === INNERHALB) return "innerhalb";
+  if (!zahl(d) || d < 0) return null;
+  return d <= 1000 ? "bis_1km" : d <= 5000 ? "bis_5km" : "ueber_5km";
+}
+const KLASSE_TEXT = { bis_1km: "weniger als 1 km", bis_5km: "1 bis 5 km", ueber_5km: "mehr als 5 km" };
+
+/** Die Dienstart, die an diesem Tag für die Person geplant ist (oder null). */
+function dienstartAm(m, person, datum) {
+  try {
+    const id = geplanterDienst(m, person, datum);
+    return id ? (Array.isArray(m.dienstarten) ? m.dienstarten : []).find((x) => x && x.id === id) || null : null;
+  } catch { return null; }
+}
+
+/**
+ * Der Referenzort für ein Stempelereignis: der Standort der Einheit am Tag,
+ * bei einer Dienstart mit ortModus „einsatzort" deren Einsatzort. Bei
+ * „aussendienst" gibt es keinen (null). Ist das Ziel eines Einsatzorts nicht
+ * auffindbar, gibt es ebenfalls keinen — nie einen Rückfall auf den Standort,
+ * der aus „irgendwo beim Kunden" ein falsches „außerhalb" machte.
+ */
+export function referenzOrt(m, person, datum, dienstart) {
+  const orte = m && Array.isArray(m.standorte) ? m.standorte : [];
+  const modus = dienstOrtModus(dienstart);
+  if (modus === "aussendienst") return null;
+  if (modus === "einsatzort") return (Array.isArray(m && m.einsatzorte) ? m.einsatzorte : []).find((x) => x && typeof dienstart.einsatzortId === "string" && x.id === dienstart.einsatzortId) || null;
   const eid = einheitAm(person, datum);
   const einheit = (m && Array.isArray(m.einheiten) ? m.einheiten : []).find((x) => x && x.id === eid);
-  const st = einheit && (Array.isArray(m.standorte) ? m.standorte : []).find((x) => x && x.id === einheit.standortId);
+  const st = einheit && orte.find((x) => x && x.id === einheit.standortId);
   return st || null;
 }
 
 const TEXTE = {
+  aussendienst: "Außendienst — ohne festen Ort",
   pruefung_aus: "Ohne Standortprüfung erfasst",
   keine_position: "Ohne Standortfreigabe erfasst",
   ungueltige_koordinate: "Standort nicht bewertbar (ungültige Position)",
@@ -159,20 +223,37 @@ const TEXTE = {
 
 /**
  * Das Geo-Urteil eines Stempelereignisses.
- * @param {{ m: any, person: any, datum: string, messung?: { lat?: any, lon?: any, accuracy?: any } | null }} e
- * @returns {{ geo: object, geprueft: boolean, innerhalb: (boolean|null), text: string }}
- *   geo: das gespeicherte Objekt; geprueft/innerhalb/text: die bisherigen Felder.
+ *
+ * Der Referenzort kommt von der Dienstart, die an dem Tag für die Person
+ * geplant ist (dienstId überschreibt das; undefined: aus dem Plan). Die
+ * Koordinate des Geräts ist nur Eingabe — das Urteil fällt der Server.
+ * @param {{ m: any, person: any, datum: string, messung?: { lat?: any, lon?: any, accuracy?: any } | null, dienstId?: (string|null) }} e
+ * @returns {{ geo: object, geprueft: boolean, innerhalb: (boolean|null), text: string, markierungen: string[] }}
+ *   geo: das gespeicherte Objekt; geprueft/innerhalb/text: die bisherigen Felder;
+ *   markierungen: Kennzeichen für den Stempel (nur im Modus „pflicht").
  */
-export function geoUrteil({ m, person, datum, messung }) {
-  const st = referenzOrt(m, person, datum);
-  const referenz = st ? { art: "standort", id: st.id, name: st.name || null } : null;
+export function geoUrteil({ m, person, datum, messung, dienstId }) {
+  const modus = geoModus(m);
+  const da = dienstId === undefined ? dienstartAm(m, person, datum)
+    : (Array.isArray(m && m.dienstarten) ? m.dienstarten : []).find((x) => x && x.id === dienstId) || null;
+  const ortModus = dienstOrtModus(da);
+  const st = referenzOrt(m, person, datum, da);
+  const referenz = ortModus === "aussendienst" ? { art: "aussendienst", id: null, name: "Außendienst" }
+    : ortModus === "einsatzort"
+      ? { art: "einsatzort", id: st ? st.id : (da && typeof da.einsatzortId === "string" ? da.einsatzortId : null), name: st ? st.name || null : null }
+      : st ? { art: "standort", id: st.id, name: st.name || null } : null;
+  const klar = (grund) => grund !== "pruefung_aus" && grund !== "aussendienst";
   const nicht = (grund, extra = {}) => ({
-    geo: { status: NICHT_BEWERTBAR, grund, entfernungGerundet: null, genauigkeitM: null,
+    geo: { status: NICHT_BEWERTBAR, grund, entfernungGerundet: null, abstandsklasse: null, genauigkeitM: null,
       genauigkeitWarnung: false, referenz, ...extra },
     geprueft: false, innerhalb: null, text: TEXTE[grund] || "Standort nicht bewertbar",
+    markierungen: modus === "pflicht" && klar(grund) ? [MARKIERUNG_ORT] : [],
   });
 
   if (!geoAktiv(m)) return nicht("pruefung_aus");
+  /* Außendienst: kein fester Ort. Die mitgeschickte Position wird weder
+     verglichen noch gespeichert. */
+  if (ortModus === "aussendienst") return nicht("aussendienst");
   const lat = messung && messung.lat, lon = messung && messung.lon, a = messung && messung.accuracy;
   if ((lat === null || lat === undefined) && (lon === null || lon === undefined)) return nicht("keine_position");
   if (!koordinateGueltig(lat, lon)) return nicht("ungueltige_koordinate");
@@ -185,13 +266,64 @@ export function geoUrteil({ m, person, datum, messung }) {
   if (!radiusGueltig(r)) return nicht("radius_ungueltig", { genauigkeitM, genauigkeitWarnung });
 
   const d = abstandMeter(lat, lon, st.lat, st.lon);            // exakt, nur hier
-  const entfernungGerundet = entfernungRunden(d);
+  /* Die gerundete Entfernung bleibt am Standort der Einheit (E4). Bei einem
+     Einsatzort — beim Kunden, vielleicht in der Wohnung — wird nur die Klasse gespeichert. */
+  const entfernungGerundet = ortModus === "standort" ? entfernungRunden(d) : null;
   if (a > GENAUIGKEIT_GRENZE) return nicht("genauigkeit_zu_schlecht", { entfernungGerundet, genauigkeitM, genauigkeitWarnung });
   const status = d + a <= r ? INNERHALB : d - a > r ? AUSSERHALB : NICHT_BEWERTBAR;
-  if (status === NICHT_BEWERTBAR) return nicht("genauigkeit_zu_schlecht", { entfernungGerundet, genauigkeitM, genauigkeitWarnung });
-  const geo = { status, grund: null, entfernungGerundet, genauigkeitM, genauigkeitWarnung, referenz };
+  const klasse = abstandsklasse(status, d);
+  if (status === NICHT_BEWERTBAR) return nicht("genauigkeit_zu_schlecht", { entfernungGerundet, abstandsklasse: klasse, genauigkeitM, genauigkeitWarnung });
+  const geo = { status, grund: null, entfernungGerundet, abstandsklasse: klasse, genauigkeitM, genauigkeitWarnung, referenz };
+  const ortWort = ortModus === "einsatzort" ? "Am Einsatzort" : "Am Standort";
   return {
     geo, geprueft: true, innerhalb: status === INNERHALB,
-    text: status === INNERHALB ? "Am Standort" : `Abweichend, ${entfernungText(entfernungGerundet)} entfernt`,
+    text: status === INNERHALB ? ortWort
+      : `Abweichend, ${ortModus === "standort" ? entfernungText(entfernungGerundet) : KLASSE_TEXT[klasse]} entfernt`,
+    markierungen: status === AUSSERHALB && modus === "pflicht" ? [MARKIERUNG_ORT] : [],
   };
+}
+
+/* --------------------------------------------------------------------------
+   DIENSTARTEN BEIM SCHREIBEN (WP-20)
+
+   ortModus nur aus ORT_MODI; „einsatzort" braucht einen vorhandenen Ort in
+   m.einsatzorte. Geprüft wird nur, was neu ist oder sich ändert (Altbestand
+   blockiert nichts) — außer einem Ort, der verschwindet, auf den eine
+   Dienstart noch zeigt: Das wäre ein neuer Fehler, den die Prüfung beim
+   Stempeln nur als „nicht bewertbar" sähe.
+   -------------------------------------------------------------------------- */
+/** Grund, warum die Ortsangaben der Dienstarten ungültig sind — oder null. */
+export function dienstartOrtFehler(alteDienstarten, neueDienstarten, einsatzorte, alteEinsatzorte) {
+  const alt = new Map((Array.isArray(alteDienstarten) ? alteDienstarten : []).filter((d) => d && typeof d === "object")
+    .map((d) => [String(d.id), d]));
+  const ids = new Set((Array.isArray(einsatzorte) ? einsatzorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
+  const idsAlt = new Set((Array.isArray(alteEinsatzorte) ? alteEinsatzorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
+  for (const d of Array.isArray(neueDienstarten) ? neueDienstarten : []) {
+    if (!d || typeof d !== "object") continue;
+    const vorher = alt.get(String(d.id));
+    const name = `Dienstart „${d.name || d.id}"`;
+    const geaendert = !vorher || !Object.is(vorher.ortModus, d.ortModus) || !Object.is(vorher.einsatzortId, d.einsatzortId);
+    if (geaendert) {
+      if (gesetzt(d.ortModus) && !ORT_MODI.includes(d.ortModus))
+        return `${name}: Der Ortsmodus muss „standort", „einsatzort" oder „aussendienst" sein.`;
+      if (d.ortModus === "einsatzort" && !(typeof d.einsatzortId === "string" && d.einsatzortId && ids.has(d.einsatzortId)))
+        return `${name}: Für einen Einsatzort muss ein vorhandener Ort gewählt sein.`;
+    } else if (d.ortModus === "einsatzort" && typeof d.einsatzortId === "string" && idsAlt.has(d.einsatzortId) && !ids.has(d.einsatzortId)) {
+      return `${name}: Der gewählte Einsatzort wird noch verwendet und lässt sich nicht entfernen.`;
+    }
+  }
+  return null;
+}
+
+/** Dasselbe über alle Betriebe eines Bestands. */
+export function bestandDienstartOrtFehler(altBestand, neuBestand) {
+  const alt = new Map((altBestand && Array.isArray(altBestand.mandanten) ? altBestand.mandanten : [])
+    .filter((m) => m && typeof m === "object").map((m) => [String(m.id), m]));
+  for (const m of neuBestand && Array.isArray(neuBestand.mandanten) ? neuBestand.mandanten : []) {
+    if (!m || typeof m !== "object") continue;
+    const vorher = alt.get(String(m.id)) || {};
+    const grund = dienstartOrtFehler(vorher.dienstarten, m.dienstarten, m.einsatzorte, vorher.einsatzorte);
+    if (grund) return grund;
+  }
+  return null;
 }
