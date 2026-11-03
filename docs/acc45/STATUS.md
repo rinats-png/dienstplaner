@@ -1,6 +1,6 @@
 # ACC45 – Status
 
-Stand: 2026-11-02 (Tag 1, spät) · Quelle der Zahlen: `docs/acc45/work-packages.json` (Generator `werkzeug/acc45-backlog.mjs`)
+Stand: 2026-11-03 (Tag 2)
 
 ## Überblick
 
@@ -8,8 +8,8 @@ Stand: 2026-11-02 (Tag 1, spät) · Quelle der Zahlen: `docs/acc45/work-packages
 |---|---|
 | Pakete gesamt | 46 (42 aus dem Audit + WP-43 Personaldaten-Filter, WP-44 Code-Rotation, WP-45 atomares Schreiben, WP-46 Bremse fail-closed) |
 | DONE | 2 (WP-01 H8+ produktiv, WP-08) |
-| INTEGRATED | 9 (WP-02, WP-03, WP-04, WP-10, WP-11, WP-32, WP-43, WP-45, WP-46) – im Integrationsstand, Abnahme in Produktion steht aus |
-| IN_PROGRESS / REVIEW | WP-17, WP-22, WP-26, WP-31, WP-09; WP-45b, WP-32c (Nachträge); WP-33 Review pausiert |
+| INTEGRATED | 11 (WP-02, 03, 04, 05, 10, 11, 31, 32, 43, 45, 46) + Nachträge WP-05b, WP-11 (Jugendschutz, U1), WP-32c, WP-45b/c – im Integrationsstand, Abnahme in Produktion steht aus |
+| IN_PROGRESS / REVIEW | WP-17, WP-22, WP-26, WP-41, WP-09; WP-11 MuSchG-Einwilligung (Auflagen), WP-45d; WP-33 Review pausiert |
 | BLOCKED / READY | 27 / 2 (READY: WP-06, WP-30) |
 | Offener Aufwand | 165,5 PT (integrierte Pakete zählen bis DONE weiter mit) |
 | Kritischer Pfad | WP-02 → WP-09 → WP-10 → WP-11 → WP-22 → WP-19 → WP-42 (48,5 PT); WP-19 aufteilbar |
@@ -27,6 +27,10 @@ Stand: 2026-11-02 (Tag 1, spät) · Quelle der Zahlen: `docs/acc45/work-packages
 | `56c73d0` (#27), `336788a` (#28) | WP-46 Bremse fail-closed, Nachtrag | Agent F: Auflagen → Freigabe |
 | `60818c0` (#29) | WP-45 atomares Schreiben (Journal) | Agent F: Auflagen → Freigabe |
 | `bb5ade8` (#30) | WP-32 + WP-32b Lieferkette, Betreiber-2FA, vertrauenswürdige Proxys | Agent F: Auflagen → Freigabe |
+| `4300f8d` (#32) | WP-31 Deploy-Automatisierung + WP-32c Betreiber-2FA | Agent F: Auflagen → Nachprüfung → Freigabe |
+| `737c453` (#33), `efdde6b` (#36) | WP-45b/c Rückweg bei unlesbarer Datei | Agent F: Ablehnung → vier Nachprüfungen → Freigabe |
+| `0ccf2ae` (#34), `6570858` (#37) | WP-05/05b Überwachung und Alarme | Agent F: Ablehnung → Nachprüfung → Freigabe |
+| `b84de34` (#35) | WP-11-Nachtrag: JArbSchG § 14 Abs. 2, Löschschutz Dienstarten, neue Personen nachgerechnet | Agent F: Freigabe |
 | `b32880c` (#31) | WP-10 Kette A Basis + WP-11 Regelregister, eine Schutzprüfung, Server-Durchsetzung | Agent F: Auflagen → Nachprüfung → integrierbar mit Auflagen (JArbSchG-Ausnahmen, MuSchG-Einwilligung vor Release) |
 
 Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests).
