@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **28–43,5 PT**
-**Offener Entwicklungsaufwand:** 405–690 PT in 75 Paketen (zuzüglich 19 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 405–690 PT in 75 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -97,29 +97,40 @@ flowchart LR
     E_1["E-1<br/>BLOCKED"]
     E_2["E-2<br/>BLOCKED"]
     E_3["E-3<br/>BLOCKED"]
-    E_4a["E-4a<br/>READY"]
     E_4["E-4<br/>BLOCKED"]
-    E_5["E-5<br/>READY"]
-    E_6["E-6<br/>READY"]
+    E_5["E-5<br/>BLOCKED"]
+    E_6["E-6<br/>BLOCKED"]
     E_7["E-7<br/>READY"]
     E_8["E-8<br/>READY"]
     E_9["E-9<br/>READY"]
     E_10["E-10<br/>READY"]
-    E_11["E-11<br/>BLOCKED"]
-    E_12["E-12<br/>BLOCKED"]
-    E_13["E-13<br/>BLOCKED"]
+    E_11["E-11<br/>READY"]
+    E_12["E-12<br/>READY"]
+    E_13["E-13<br/>READY"]
     E_14["E-14<br/>BLOCKED"]
     E_15["E-15<br/>READY"]
     E_16["E-16<br/>READY"]
-    E_17["E-17<br/>READY"]
-    E_18["E-18<br/>READY"]
+    E_17a["E-17a<br/>READY"]
+    E_17["E-17<br/>BLOCKED"]
+    E_18["E-18<br/>BLOCKED"]
+    E_19["E-19<br/>READY"]
+    E_20["E-20<br/>READY"]
+    E_21["E-21<br/>READY"]
+    E_21i["E-21i<br/>READY"]
+    E_22["E-22<br/>READY"]
+    E_23["E-23<br/>BLOCKED"]
+    E_24["E-24<br/>BLOCKED"]
+    E_24i["E-24i<br/>BLOCKED"]
+    E_25["E-25<br/>BLOCKED"]
+    E_26["E-26<br/>BLOCKED"]
+    E_27["E-27<br/>BLOCKED"]
+    E_28["E-28<br/>BLOCKED"]
   end
   WP_30 --> WP_18
   WP_19_13 --> WP_19
   WP_39 --> WP_21
-  E_6 --> WP_30
+  E_9 --> WP_30
   WP_39 --> WP_35
-  E_5 --> WP_36
   WP_39 --> WP_40
   WP_42a --> WP_42
   E_1 --> WP_42
@@ -130,23 +141,22 @@ flowchart LR
   E_6 --> WP_42
   E_7 --> WP_42
   E_8 --> WP_42
-  E_9 --> WP_42
-  E_10 --> WP_42
   E_11 --> WP_42
+  E_12 --> WP_42
+  E_13 --> WP_42
+  E_14 --> WP_42
   E_15 --> WP_42
-  E_16 --> WP_42
+  E_17 --> WP_42
   E_18 --> WP_42
-  E_18 --> WP_44
+  E_21 --> WP_42
+  E_22 --> WP_42
+  E_15 --> WP_44
   WP_15 --> WP_42a
   WP_16 --> WP_42a
-  WP_18 --> WP_42a
   WP_19 --> WP_42a
   WP_21 --> WP_42a
-  WP_30 --> WP_42a
   WP_33 --> WP_42a
-  WP_34 --> WP_42a
   WP_35 --> WP_42a
-  WP_36 --> WP_42a
   WP_38 --> WP_42a
   WP_39 --> WP_42a
   WP_40 --> WP_42a
@@ -161,7 +171,7 @@ flowchart LR
   WP_S1 --> WP_42a
   WP_16 --> WP_14c
   WP_16 --> WP_16b
-  E_16 --> WP_24b
+  E_21 --> WP_24b
   WP_16 --> WP_07b
   WP_19_0 --> WP_19_1
   WP_19_0 --> WP_19_2
@@ -197,21 +207,21 @@ flowchart LR
   WP_19_10 --> WP_19_13
   WP_19_11 --> WP_19_13
   WP_19_12 --> WP_19_13
-  E_16 --> WP_I1
-  E_17 --> WP_I1
-  E_17 --> WP_I2
-  E_17 --> WP_I3
+  E_21 --> WP_I1
+  E_21i --> WP_I1
+  E_21i --> WP_I2
+  E_21i --> WP_I3
   WP_I3 --> WP_I4
   WP_I3 --> WP_I5
   WP_I4 --> WP_I5
-  E_17 --> WP_I6
+  E_21i --> WP_I6
   WP_I3 --> WP_I7
   WP_I5 --> WP_I7
   WP_I6 --> WP_I7
   WP_I7 --> WP_I8
   WP_I7 --> WP_I9
   WP_I8 --> WP_I9
-  E_17 --> WP_I10
+  E_21i --> WP_I10
   WP_I10 --> WP_I11
   WP_I10 --> WP_I12
   WP_I11 --> WP_I13
@@ -222,7 +232,7 @@ flowchart LR
   WP_I15 --> WP_I16
   WP_I13 --> WP_I17
   WP_I13 --> WP_I18
-  E_12 --> WP_I18
+  E_25 --> WP_I18
   WP_I13 --> WP_I19
   WP_I17 --> WP_I19
   WP_I12 --> WP_I19
@@ -232,7 +242,7 @@ flowchart LR
   WP_I17 --> WP_I20
   WP_I19 --> WP_I21
   WP_I20 --> WP_I21
-  E_14 --> WP_I21
+  E_24i --> WP_I21
   WP_I12 --> WP_I22
   WP_I13 --> WP_I22
   WP_I17 --> WP_I22
@@ -249,8 +259,8 @@ flowchart LR
   WP_I13 --> WP_I26
   WP_I19 --> WP_I27
   WP_I16 --> WP_I27
-  E_12 --> WP_I27
-  E_13 --> WP_I27
+  E_25 --> WP_I27
+  E_26 --> WP_I27
   WP_I12 --> WP_I28
   WP_I13 --> WP_I28
   WP_I19 --> WP_I28
@@ -266,7 +276,7 @@ flowchart LR
   WP_I8 --> WP_I34
   WP_I9 --> WP_I34
   WP_I13 --> WP_I34
-  E_13 --> WP_I34
+  E_27 --> WP_I34
   WP_I9 --> WP_I36
   WP_I16 --> WP_I36
   WP_I1 --> WP_I37
@@ -304,18 +314,28 @@ flowchart LR
   WP_I33 --> WP_I37
   WP_I34 --> WP_I37
   WP_I36 --> WP_I37
+  E_28 --> WP_I37
+  E_24i --> WP_I37
   WP_42a --> E_1
   WP_S1 --> E_1
-  WP_42a --> E_2
-  WP_42a --> E_3
-  WP_42a --> E_4
-  E_4a --> E_4
-  WP_42a --> E_11
-  WP_28b --> E_11
-  E_17 --> E_12
-  E_17 --> E_13
-  WP_42 --> E_14
-  E_17 --> E_14
+  E_16 --> E_1
+  E_1 --> E_2
+  E_1 --> E_3
+  E_1 --> E_4
+  E_1 --> E_5
+  E_1 --> E_6
+  E_13 --> E_14
+  E_1 --> E_17
+  E_17a --> E_17
+  WP_36 --> E_18
+  WP_42 --> E_23
+  E_23 --> E_24
+  E_24 --> E_24i
+  E_21i --> E_24i
+  E_21i --> E_25
+  E_21i --> E_26
+  E_21i --> E_27
+  E_21i --> E_28
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -349,30 +369,30 @@ flowchart LR
 | WP-27 | acc45 | P2 | 4–5,5 | 0 | WP-43 | – | opus | INTEGRATED |
 | WP-28 | acc45 | P2 | 3–4,5 | 0 | WP-02, WP-17 | – | sonnet | INTEGRATED |
 | WP-29 | acc45 | P2 | 3–4,5 | 0 | WP-20 | – | sonnet | INTEGRATED |
-| WP-30 | acc45 | P2 | 2–3 | 2–3 | E-6 | – | sonnet | BLOCKED |
+| WP-30 | acc45 | P2 | 2–3 | 2–3 | E-9 | – | sonnet | BLOCKED |
 | WP-31 | acc45 | P2 | 4–5,5 | 0 | WP-03 | – | sonnet | INTEGRATED |
 | WP-32 | acc45 | P2 | 3–4,5 | 0 | – | – | sonnet | INTEGRATED |
 | WP-33 | acc45 | P2 | 5–7 | 1,5–3 | – | package.json | sonnet | REVIEW |
 | WP-34 | acc45 | P2 | 1–1,5 | 1–1,5 | WP-09 | – | sonnet | BLOCKED |
 | WP-35 | acc45 | P3 | 2–3 | 2–3 | WP-39 | App.jsx | sonnet | BLOCKED |
-| WP-36 | acc45 | P3 | 1–1,5 | 1–1,5 | E-5 | – | sonnet | BLOCKED |
+| WP-36 | acc45 | P3 | 1–1,5 | 1–1,5 | – | – | sonnet | BLOCKED |
 | WP-37 | acc45 | P3 | 1,5–2,5 | 0 | WP-43 | – | sonnet | INTEGRATED |
 | WP-38 | acc45 | P3 | 2–3 | 2–3 | WP-12 | App.jsx | sonnet | READY |
 | WP-39 | acc45 | P3 | 4–5,5 | 4–5,5 | WP-12 | App.jsx | sonnet | READY |
 | WP-40 | acc45 | P3 | 3–4,5 | 3–4,5 | WP-39 | App.jsx | sonnet | BLOCKED |
 | WP-41 | acc45 | P3 | 2–3 | 0 | WP-04, WP-05, WP-31 | – | sonnet | INTEGRATED |
-| WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-9, E-10, E-11, E-15, E-16, E-18 | – | opus | BLOCKED |
+| WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-11, E-12, E-13, E-14, E-15, E-17, E-18, E-21, E-22 | – | opus | BLOCKED |
 | WP-43 | acc45 | P0 | 2–3 | 0 | WP-09 | – | opus | INTEGRATED |
 | WP-45 | acc45 | P0 | 2–3 | 0 | WP-02 | – | opus | INTEGRATED |
 | WP-46 | acc45 | P0 | 1–1,5 | 0 | WP-02 | – | opus | INTEGRATED |
 | WP-47 | acc45 | P0 | 1–1,5 | 0 | WP-46 | – | opus | INTEGRATED |
-| WP-44 | acc45 | P0 | 0,5–1 | 0,5–1 | E-18 | – | opus | BLOCKED |
-| WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-18, WP-19, WP-21, WP-30, WP-33, WP-34, WP-35, WP-36, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1 | – | opus | BLOCKED |
+| WP-44 | acc45 | P0 | 0,5–1 | 0,5–1 | E-15 | – | opus | BLOCKED |
+| WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1 | – | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 3–5 | WP-14, WP-16 | App.jsx, daten.mjs | opus | BLOCKED |
 | WP-27c | folge | P2 | 1,5–3 | 1,5–3 | WP-27 | – | opus | READY |
 | WP-47b | folge | P2 | 2–4 | 2–4 | WP-47, WP-24 | daten.mjs | opus | READY |
 | WP-16b | folge | P2 | 0,5–1,5 | 0,5–1,5 | WP-16 | daten.mjs | opus | BLOCKED |
-| WP-24b | folge | P2 | 1,5–3 | 1,5–3 | WP-24, E-16 | – | opus | BLOCKED |
+| WP-24b | folge | P2 | 1,5–3 | 1,5–3 | WP-24, E-21 | – | opus | BLOCKED |
 | WP-28b | folge | P2 | 1,5–3 | 1,5–3 | WP-28, WP-47 | – | sonnet | READY |
 | WP-07b | folge | P1 | 2–4 | 2–4 | WP-07, WP-16 | daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
 | WP-S1 | folge | P1 | 1–2 | 1–2 | WP-12 | – | sonnet | READY |
@@ -390,16 +410,16 @@ flowchart LR
 | WP-19.11 | wp19 | P1 | 2–4 | 2–4 | WP-19.10, WP-19.0 | – | sonnet | BLOCKED |
 | WP-19.12 | wp19 | P1 | 2–4 | 2–4 | WP-19.0 | App.jsx | sonnet | BLOCKED |
 | WP-19.13 | wp19 | P1 | 3–5 | 3–5 | WP-19.0, WP-19.1, WP-19.2, WP-19.3, WP-19.4, WP-19.5, WP-19.6, WP-19.7, WP-19.8, WP-19.9, WP-19.10, WP-19.11, WP-19.12 | – | opus (Rechte/Daten) / sonnet | BLOCKED |
-| WP-I1 | intelligence | P2 | 2–6 | 2–6 | E-16, WP-22, E-17 | – | sonnet + opus-review | BLOCKED |
-| WP-I2 | intelligence | P2 | 3–6 | 3–6 | WP-11, E-17 | App.jsx | sonnet | BLOCKED |
-| WP-I3 | intelligence | P2 | 8–14 | 8–14 | WP-11, E-17 | – | sonnet | BLOCKED |
+| WP-I1 | intelligence | P2 | 2–6 | 2–6 | E-21, WP-22, E-21i | – | sonnet + opus-review | BLOCKED |
+| WP-I2 | intelligence | P2 | 3–6 | 3–6 | WP-11, E-21i | App.jsx | sonnet | BLOCKED |
+| WP-I3 | intelligence | P2 | 8–14 | 8–14 | WP-11, E-21i | – | sonnet | BLOCKED |
 | WP-I4 | intelligence | P2 | 8–14 | 8–14 | WP-I3, WP-22 | App.jsx, rechte.mjs | sonnet + opus-review | BLOCKED |
 | WP-I5 | intelligence | P2 | 4–8 | 4–8 | WP-I3, WP-I4 | App.jsx | sonnet | BLOCKED |
-| WP-I6 | intelligence | P2 | 3–5 | 3–5 | E-17 | App.jsx | sonnet | BLOCKED |
+| WP-I6 | intelligence | P2 | 3–5 | 3–5 | E-21i | App.jsx | sonnet | BLOCKED |
 | WP-I7 | intelligence | P2 | 14–26 | 14–26 | WP-I3, WP-I5, WP-I6 | – | sonnet | BLOCKED |
 | WP-I8 | intelligence | P2 | 8–14 | 8–14 | WP-I7 | App.jsx | sonnet | BLOCKED |
 | WP-I9 | intelligence | P2 | 7–12 | 7–12 | WP-I7, WP-I8 | App.jsx | sonnet + opus-review | BLOCKED |
-| WP-I10 | intelligence | P3 | 2–4 | 2–4 | E-17 | – | sonnet | BLOCKED |
+| WP-I10 | intelligence | P3 | 2–4 | 2–4 | E-21i | – | sonnet | BLOCKED |
 | WP-I11 | intelligence | P3 | 6–10 | 6–10 | WP-43, WP-I10 | – | opus | BLOCKED |
 | WP-I12 | intelligence | P3 | 14–24 | 14–24 | WP-11, WP-22, WP-I10 | App.jsx | sonnet | BLOCKED |
 | WP-I13 | intelligence | P3 | 14–24 | 14–24 | WP-I11, WP-I12 | – | sonnet + opus-review | BLOCKED |
@@ -407,42 +427,54 @@ flowchart LR
 | WP-I15 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-05 | – | sonnet + opus-review | BLOCKED |
 | WP-I16 | intelligence | P3 | 8–14 | 8–14 | WP-I13, WP-I15 | App.jsx, rechte.mjs | opus | BLOCKED |
 | WP-I17 | intelligence | P3 | 6–10 | 6–10 | WP-I13 | App.jsx | sonnet | BLOCKED |
-| WP-I18 | intelligence | P3 | 2–4 | 2–4 | WP-I13, E-12 | – | sonnet | BLOCKED |
+| WP-I18 | intelligence | P3 | 2–4 | 2–4 | WP-I13, E-25 | – | sonnet | BLOCKED |
 | WP-I19 | intelligence | P3 | 16–28 | 16–28 | WP-I13, WP-I17, WP-I12 | App.jsx | sonnet + opus-review | BLOCKED |
 | WP-I20 | intelligence | P3 | 16–28 | 16–28 | WP-I12, WP-I13, WP-I15, WP-I17 | App.jsx | sonnet + opus-review | BLOCKED |
-| WP-I21 | intelligence | P3 | 8–14 | 8–14 | WP-I19, WP-I20, E-14 | – | sonnet | BLOCKED |
+| WP-I21 | intelligence | P3 | 8–14 | 8–14 | WP-I19, WP-I20, E-24i | – | sonnet | BLOCKED |
 | WP-I22 | intelligence | P3 | 8–14 | 8–14 | WP-I12, WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
 | WP-I23 | intelligence | P3 | 4–7 | 4–7 | WP-I13, WP-I17 | – | haiku + sonnet | BLOCKED |
 | WP-I24 | intelligence | P3 | 5–9 | 5–9 | WP-I12, WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
 | WP-I25 | intelligence | P3 | 7–12 | 7–12 | WP-I3, WP-I4, WP-I13 | – | sonnet | BLOCKED |
 | WP-I26 | intelligence | P3 | 8–14 | 8–14 | WP-I3, WP-I8, WP-I13 | – | sonnet | BLOCKED |
-| WP-I27 | intelligence | P3 | 20–34 | 20–34 | WP-I19, WP-I16, E-12, E-13 | – | opus | BLOCKED |
+| WP-I27 | intelligence | P3 | 20–34 | 20–34 | WP-I19, WP-I16, E-25, E-26 | – | opus | BLOCKED |
 | WP-I28 | intelligence | P3 | 12–20 | 12–20 | WP-I12, WP-I13, WP-I19 | App.jsx | sonnet | BLOCKED |
 | WP-I29 | intelligence | P3 | 18–30 | 18–30 | WP-I13, WP-I15, WP-I12 | App.jsx | sonnet | BLOCKED |
 | WP-I30 | intelligence | P3 | 4–8 | 4–8 | WP-I13, WP-I17 | App.jsx | sonnet | BLOCKED |
 | WP-I31 | intelligence | P3 | 9–15 | 9–15 | WP-I12, WP-I13 | – | sonnet + opus-review | BLOCKED |
 | WP-I32 | intelligence | P3 | 5–9 | 5–9 | WP-I28 | App.jsx | sonnet | BLOCKED |
 | WP-I33 | intelligence | P3 | 8–14 | 8–14 | WP-I28 | App.jsx | sonnet | BLOCKED |
-| WP-I34 | intelligence | P3 | 8–14 | 8–14 | WP-I8, WP-I9, WP-I13, E-13 | – | sonnet + opus-review | BLOCKED |
-| WP-I35 | intelligence | P3 | 15–28 | 0 | WP-I15, E-17 | – | sonnet | BLOCKED |
+| WP-I34 | intelligence | P3 | 8–14 | 8–14 | WP-I8, WP-I9, WP-I13, E-27 | – | sonnet + opus-review | BLOCKED |
+| WP-I35 | intelligence | P3 | 15–28 | 0 | WP-I15, E-21i | – | sonnet | BLOCKED |
 | WP-I36 | intelligence | P3 | 5–9 | 5–9 | WP-I9, WP-I16 | App.jsx | sonnet | BLOCKED |
-| WP-I37 | intelligence | P3 | 5–9 | 5–9 | WP-I1, WP-I2, WP-I3, WP-I4, WP-I5, WP-I6, WP-I7, WP-I8, WP-I9, WP-I10, WP-I11, WP-I12, WP-I13, WP-I14, WP-I15, WP-I16, WP-I17, WP-I18, WP-I19, WP-I20, WP-I21, WP-I22, WP-I23, WP-I24, WP-I25, WP-I26, WP-I27, WP-I28, WP-I29, WP-I30, WP-I31, WP-I32, WP-I33, WP-I34, WP-I36 | – | opus (Review) / sonnet | BLOCKED |
-| E-1 | extern | P1 | 1–2 | 1–2 | WP-42a, WP-S1 | – | – | BLOCKED |
-| E-2 | extern | P1 | 0,5–1 | 0,5–1 | WP-42a | – | – | BLOCKED |
-| E-3 | extern | P1 | 0,5–1 | 0,5–1 | WP-42a | – | – | BLOCKED |
-| E-4a | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-4 | extern | P1 | 3–8 | 3–8 | WP-42a, E-4a | – | – | BLOCKED |
-| E-5 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-6 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-7 | extern | P1 | 0,5–1 | 0,5–1 | WP-05 | – | – | READY |
-| E-8 | extern | P1 | 1–2 | 1–2 | WP-03, WP-04 | – | – | READY |
-| E-9 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-32 | – | – | READY |
-| E-10 | extern | P1 | 1–2 | 1–2 | WP-31, WP-03 | – | – | READY |
-| E-11 | extern | P1 | 0,5–1,5 | 0,5–1,5 | WP-42a, WP-28b | – | – | BLOCKED |
-| E-12 | extern | P1 | 1–3 | 1–3 | E-17 | – | – | BLOCKED |
-| E-13 | extern | P1 | 1–3 | 1–3 | E-17 | – | – | BLOCKED |
-| E-14 | extern | P1 | 2–5 | 2–5 | WP-42, E-17 | – | – | BLOCKED |
-| E-15 | extern | P1 | 1–3 | 1–3 | – | – | – | READY |
-| E-16 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-17 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-18 | extern | P1 | 0,25–0,5 | 0,25–0,5 | – | – | – | READY |
+| WP-I37 | intelligence | P3 | 5–9 | 5–9 | WP-I1, WP-I2, WP-I3, WP-I4, WP-I5, WP-I6, WP-I7, WP-I8, WP-I9, WP-I10, WP-I11, WP-I12, WP-I13, WP-I14, WP-I15, WP-I16, WP-I17, WP-I18, WP-I19, WP-I20, WP-I21, WP-I22, WP-I23, WP-I24, WP-I25, WP-I26, WP-I27, WP-I28, WP-I29, WP-I30, WP-I31, WP-I32, WP-I33, WP-I34, WP-I36, E-28, E-24i | – | opus (Review) / sonnet | BLOCKED |
+| E-1 | extern | P1 | 1–2 | 1–2 | WP-42a, WP-S1, E-16 | – | – | BLOCKED |
+| E-2 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-1 | – | – | BLOCKED |
+| E-3 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-1 | – | – | BLOCKED |
+| E-4 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-1 | – | – | BLOCKED |
+| E-5 | extern | P1 | 0,5 | 0,5 | E-1 | – | – | BLOCKED |
+| E-6 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-1 | – | – | BLOCKED |
+| E-7 | extern | P1 | 0,5–1 | 0,5–1 | WP-04 | – | – | READY |
+| E-8 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-05 | – | – | READY |
+| E-9 | extern | P2 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-10 | extern | P2 | 0,25 | 0,25 | WP-32 | – | – | READY |
+| E-11 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-31 | – | – | READY |
+| E-12 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-32 | – | – | READY |
+| E-13 | extern | P1 | 0,25 | 0,25 | WP-03 | – | – | READY |
+| E-14 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-13 | – | – | BLOCKED |
+| E-15 | extern | P2 | 0,25–0,5 | 0,25–0,5 | – | – | – | READY |
+| E-16 | extern | P2 | 0,1 | 0,1 | WP-27 | – | – | READY |
+| E-17a | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-17 | extern | P1 | 3–8 | 3–8 | E-1, E-17a | – | – | BLOCKED |
+| E-18 | extern | P1 | 0,5–1 | 0,5–1 | WP-36 | – | – | BLOCKED |
+| E-19 | extern | P2 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-20 | extern | P2 | 0,25–0,5 | 0,25–0,5 | – | – | – | READY |
+| E-21 | extern | P2 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-21i | extern | P2 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-22 | extern | P2 | 1–3 | 1–3 | – | – | – | READY |
+| E-23 | extern | P2 | 0,25–0,5 | 0,25–0,5 | WP-42 | – | – | BLOCKED |
+| E-24 | extern | P2 | 1–3 | 1–3 | E-23 | – | – | BLOCKED |
+| E-24i | extern | P2 | 2–5 | 2–5 | E-24, E-21i | – | – | BLOCKED |
+| E-25 | extern | P2 | 1–3 | 1–3 | E-21i | – | – | BLOCKED |
+| E-26 | extern | P2 | 1–2 | 1–2 | E-21i | – | – | BLOCKED |
+| E-27 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |
+| E-28 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |

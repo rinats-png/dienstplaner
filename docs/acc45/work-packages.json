@@ -1,10 +1,10 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 126,
+  "anzahl": 138,
   "statusZaehlung": {
-    "BLOCKED": 72,
-    "READY": 19,
+    "BLOCKED": 80,
+    "READY": 23,
     "IN_PROGRESS": 2,
     "REVIEW": 2,
     "INTEGRATED": 29,
@@ -44,11 +44,11 @@
       }
     },
     "extern": {
-      "pakete": 19,
-      "offen": 19,
+      "pakete": 31,
+      "offen": 31,
       "restPT": {
-        "min": 16,
-        "max": 38.5
+        "min": 18.35,
+        "max": 41.6
       }
     }
   },
@@ -275,7 +275,7 @@
       "akzeptanz": "/gesund prüft Ablage/Platz; externer Check; Alarm ≤5 min; Fehlerzählung",
       "tests": "vitest /gesund, Alarmprobe",
       "dateien": "server.mjs, server/lib/gesund.mjs, deploy/",
-      "notiz": "Abhängigkeit WP-30 (Mail/Push) nicht erfüllt; externer Alarmweg fehlt (CENTRIC_ALARM_WEBHOOK leer, Alarme nur im Log) → E-7."
+      "notiz": "Abhängigkeit WP-30 (Mail/Push) nicht erfüllt; externer Alarmweg fehlt (CENTRIC_ALARM_WEBHOOK leer, Alarme nur im Log) → E-8."
     },
     {
       "id": "WP-06",
@@ -957,7 +957,7 @@
       "strang": "acc45",
       "prio": "P2",
       "aufwandPT": {"min":2,"max":3},
-      "abhaengigkeiten": ["E-6"],
+      "abhaengigkeiten": ["E-9"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -977,7 +977,7 @@
       "akzeptanz": "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
-      "notiz": "Wartet auf Einrichtung durch den Betreiber (E-6: DNS SPF/DKIM, Resend, VAPID); bisher als READY geführt."
+      "notiz": "Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“."
     },
     {
       "id": "WP-31",
@@ -1126,7 +1126,7 @@
       "strang": "acc45",
       "prio": "P3",
       "aufwandPT": {"min":1,"max":1.5},
-      "abhaengigkeiten": ["E-5"],
+      "abhaengigkeiten": [],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1146,7 +1146,7 @@
       "akzeptanz": "37 Platzhalter ersetzt (Inhalte vom Nutzer); externe juristische Prüfung als eigene Abnahme",
       "tests": "Prüfskript Platzhalter=0",
       "dateien": "src/rechtstexte.jsx",
-      "notiz": "Inhalte vom Nutzer, juristische Prüfung extern (E-5)."
+      "notiz": "Inhalte vom Betreiber, juristische Prüfung extern (E-18). Wartet auf Inhalte, obwohl keine Paketabhängigkeit offen ist."
     },
     {
       "id": "WP-37",
@@ -1294,7 +1294,7 @@
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":3,"max":4.5},
-      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-9","E-10","E-11","E-15","E-16","E-18"],
+      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-11","E-12","E-13","E-14","E-15","E-17","E-18","E-21","E-22"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1314,7 +1314,7 @@
       "akzeptanz": "Testplan Abschnitt 5 vollständig; externer Pentest; Rollout mit Rücksprung/R0",
       "tests": "alle Gates",
       "dateien": "–",
-      "notiz": "Endabnahme und Rollout; technischer Teil als WP-42a (Release-Kandidat). Hängt an WP-19 — ein Release ohne einschaltbare Module (Registry „geplant“) wäre eine Produktentscheidung (offen)."
+      "notiz": "Endabnahme (Freigabe-Checkliste) nach allen Blocker-Abnahmen; Deploy selbst ist E-23, Pilot E-24. Technischer Teil: WP-42a. Hängt an WP-19 — ein Release ohne einschaltbare Module (Registry „geplant“) wäre eine Produktentscheidung (offen)."
     },
     {
       "id": "WP-43",
@@ -1434,7 +1434,7 @@
       "strang": "acc45",
       "prio": "P0",
       "aufwandPT": {"min":0.5,"max":1},
-      "abhaengigkeiten": ["E-18"],
+      "abhaengigkeiten": ["E-15"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1454,7 +1454,7 @@
       "akzeptanz": "Kein Code aus Klartextdateien aktiv; Betreiberzugang rotiert; Nachweise gesichert; Dateien beseitigt",
       "tests": "lesender Abgleich ohne Anmeldung",
       "dateien": "Betrieb (Freigaben/Nutzerhandlungen nötig)",
-      "notiz": "Nur Nutzerhandlungen (E-18, Ablauf Z1–Z7)."
+      "notiz": "Nur Nutzerhandlungen (E-15, Ablauf Z1–Z7)."
     },
     {
       "id": "WP-42a",
@@ -1462,7 +1462,7 @@
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
-      "abhaengigkeiten": ["WP-07","WP-09","WP-12","WP-15","WP-16","WP-18","WP-19","WP-21","WP-30","WP-33","WP-34","WP-35","WP-36","WP-38","WP-39","WP-40","WP-41","WP-43","WP-44","WP-45","WP-46","WP-14c","WP-27c","WP-47b","WP-16b","WP-24b","WP-28b","WP-07b","WP-S1"],
+      "abhaengigkeiten": ["WP-07","WP-09","WP-12","WP-15","WP-16","WP-19","WP-21","WP-33","WP-35","WP-38","WP-39","WP-40","WP-41","WP-43","WP-44","WP-45","WP-46","WP-14c","WP-27c","WP-47b","WP-16b","WP-24b","WP-28b","WP-07b","WP-S1"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1482,7 +1482,7 @@
       "akzeptanz": "Vollregression CI grün, Testplan Abschnitt 5 intern vollständig, Rollout-/Rücksprungplan, Freigabeliste der externen Abnahmen",
       "tests": "alle CI-Gates",
       "dateien": "–",
-      "notiz": "Neu (2026-11-03): trennt den technischen Release-Kandidaten von den externen Abnahmen (E-*), damit Prognose A/B/C sauber getrennt rechnen."
+      "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Nicht enthalten: WP-18/WP-30 (E-9 ist kein Blocker), WP-34 (nach main), WP-36 (läuft über E-18)."
     },
     {
       "id": "WP-14c",
@@ -1602,7 +1602,7 @@
       "strang": "folge",
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":3},
-      "abhaengigkeiten": ["WP-24","E-16"],
+      "abhaengigkeiten": ["WP-24","E-21"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1622,11 +1622,11 @@
       "akzeptanz": "Stichtag-Regel für Feeds ohne Herkunft (Entscheidung bis 2026-12-01), Trockenlauf zählt je Raum, Codes ohne mandantId erfasst, Passwortwechsel-Verhalten nach Entscheidung",
       "tests": "kalender-feed-*",
       "dateien": "server/funktionen/kalender.mjs, RECHTEMATRIX.md",
-      "notiz": "SCHÄTZUNG; wartet auf Nutzerentscheidung (E-16)."
+      "notiz": "SCHÄTZUNG; wartet auf Nutzerentscheidung (E-21, Stichtag bis 2026-12-01)."
     },
     {
       "id": "WP-28b",
-      "titel": "Lasttest-Nachlauf S2/S5 nach WP-47, Befund 6 (Sicherung bricht unter Last mit ENOENT ab)",
+      "titel": "Lasttest-Befund 6: Sicherung bricht unter Last mit ENOENT ab (Wiederholung greift nicht); Auswertung des Nachlaufs S2/S5",
       "strang": "folge",
       "prio": "P2",
       "aufwandPT": {"min":1.5,"max":3},
@@ -1647,10 +1647,10 @@
       "konfliktzonen": [],
       "pr": [],
       "nachweis": "docs/acc45/wp28-nachweis.md",
-      "akzeptanz": "S2 (50 Planende, p95 < 1,5 s) und S5 (Mischlast mit Sicherung) erneut in Linux-CI gemessen; Sicherung wiederholt bei ENOENT",
+      "akzeptanz": "ablage-sicherung wiederholt bei ENOENT zwischen readdir und stat; Nachlauf S2/S5 (E-20) ausgewertet und in wp28-nachweis.md nachgetragen",
       "tests": "werkzeug/last (CI-Profil voll), ablage-sicherung",
       "dateien": "werkzeug/last, werkzeug/ablage-sicherung.mjs",
-      "notiz": "SCHÄTZUNG."
+      "notiz": "SCHÄTZUNG. Der Lauf selbst ist E-20 (Handstart durch den Betreiber)."
     },
     {
       "id": "WP-07b",
@@ -1790,7 +1790,7 @@
       "akzeptanz": "laut WP19-MODULPLAN.md (Abschnitt des Moduls) und Produktentscheidungen 2026-11-03",
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
-      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-15)."
+      "notiz": "Q-10 (WP-26-Stand) geklärt: WP-26 integriert (#40). Fristbetrieb blockiert bis Fachfreigabe FN-01/02 (E-22)."
     },
     {
       "id": "WP-19.3",
@@ -2106,7 +2106,7 @@
       "strang": "intelligence",
       "prio": "P2",
       "aufwandPT": {"min":2,"max":6},
-      "abhaengigkeiten": ["E-16","WP-22","E-17"],
+      "abhaengigkeiten": ["E-21","WP-22","E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2126,7 +2126,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I2",
@@ -2134,7 +2134,7 @@
       "strang": "intelligence",
       "prio": "P2",
       "aufwandPT": {"min":3,"max":6},
-      "abhaengigkeiten": ["WP-11","E-17"],
+      "abhaengigkeiten": ["WP-11","E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2154,7 +2154,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I3",
@@ -2162,7 +2162,7 @@
       "strang": "intelligence",
       "prio": "P2",
       "aufwandPT": {"min":8,"max":14},
-      "abhaengigkeiten": ["WP-11","E-17"],
+      "abhaengigkeiten": ["WP-11","E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2182,7 +2182,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I4",
@@ -2210,7 +2210,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I5",
@@ -2238,7 +2238,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I6",
@@ -2246,7 +2246,7 @@
       "strang": "intelligence",
       "prio": "P2",
       "aufwandPT": {"min":3,"max":5},
-      "abhaengigkeiten": ["E-17"],
+      "abhaengigkeiten": ["E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2266,7 +2266,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I7",
@@ -2294,7 +2294,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I8",
@@ -2322,7 +2322,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I9",
@@ -2350,7 +2350,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block K)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I10",
@@ -2358,7 +2358,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":2,"max":4},
-      "abhaengigkeiten": ["E-17"],
+      "abhaengigkeiten": ["E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2378,7 +2378,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I11",
@@ -2406,7 +2406,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I12",
@@ -2434,7 +2434,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I13",
@@ -2462,7 +2462,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I14",
@@ -2490,7 +2490,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I15",
@@ -2518,7 +2518,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I16",
@@ -2546,7 +2546,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I17",
@@ -2574,7 +2574,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block P)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I18",
@@ -2582,7 +2582,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":2,"max":4},
-      "abhaengigkeiten": ["WP-I13","E-12"],
+      "abhaengigkeiten": ["WP-I13","E-25"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2602,7 +2602,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I19",
@@ -2630,7 +2630,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I20",
@@ -2658,7 +2658,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I21",
@@ -2666,7 +2666,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":8,"max":14},
-      "abhaengigkeiten": ["WP-I19","WP-I20","E-14"],
+      "abhaengigkeiten": ["WP-I19","WP-I20","E-24i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2686,7 +2686,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I22",
@@ -2714,7 +2714,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I23",
@@ -2742,7 +2742,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I24",
@@ -2770,7 +2770,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I25",
@@ -2798,7 +2798,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I26",
@@ -2826,7 +2826,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I27",
@@ -2834,7 +2834,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":20,"max":34},
-      "abhaengigkeiten": ["WP-I19","WP-I16","E-12","E-13"],
+      "abhaengigkeiten": ["WP-I19","WP-I16","E-25","E-26"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -2854,7 +2854,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2b)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I28",
@@ -2882,7 +2882,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 2b)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I29",
@@ -2910,7 +2910,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I30",
@@ -2938,7 +2938,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I31",
@@ -2966,7 +2966,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I32",
@@ -2994,7 +2994,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I33",
@@ -3022,7 +3022,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I34",
@@ -3030,7 +3030,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":8,"max":14},
-      "abhaengigkeiten": ["WP-I8","WP-I9","WP-I13","E-13"],
+      "abhaengigkeiten": ["WP-I8","WP-I9","WP-I13","E-27"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3050,7 +3050,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I35",
@@ -3059,7 +3059,7 @@
       "prio": "P3",
       "aufwandPT": {"min":15,"max":28},
       "bedingt": true,
-      "abhaengigkeiten": ["WP-I15","E-17"],
+      "abhaengigkeiten": ["WP-I15","E-21i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3107,7 +3107,7 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "WP-I37",
@@ -3115,7 +3115,7 @@
       "strang": "intelligence",
       "prio": "P3",
       "aufwandPT": {"min":5,"max":9},
-      "abhaengigkeiten": ["WP-I1","WP-I2","WP-I3","WP-I4","WP-I5","WP-I6","WP-I7","WP-I8","WP-I9","WP-I10","WP-I11","WP-I12","WP-I13","WP-I14","WP-I15","WP-I16","WP-I17","WP-I18","WP-I19","WP-I20","WP-I21","WP-I22","WP-I23","WP-I24","WP-I25","WP-I26","WP-I27","WP-I28","WP-I29","WP-I30","WP-I31","WP-I32","WP-I33","WP-I34","WP-I36"],
+      "abhaengigkeiten": ["WP-I1","WP-I2","WP-I3","WP-I4","WP-I5","WP-I6","WP-I7","WP-I8","WP-I9","WP-I10","WP-I11","WP-I12","WP-I13","WP-I14","WP-I15","WP-I16","WP-I17","WP-I18","WP-I19","WP-I20","WP-I21","WP-I22","WP-I23","WP-I24","WP-I25","WP-I26","WP-I27","WP-I28","WP-I29","WP-I30","WP-I31","WP-I32","WP-I33","WP-I34","WP-I36","E-28","E-24i"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3135,16 +3135,16 @@
       "akzeptanz": "laut INTELLIGENCE-ENTWICKLUNGSPLAN.md Abschnitt 5 (Block 3)",
       "tests": "pruefungen/ki-*.test.js",
       "dateien": "siehe Plan Abschnitt 5",
-      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-17)."
+      "notiz": "SCHÄTZUNG laut Plan (nicht belegt); Plan ist Vorschlag zur Freigabe (E-21i)."
     },
     {
       "id": "E-1",
-      "titel": "Staging-Abnahme Testplan 3.1–3.4 (WP-12, WP-09) durch den Betreiber",
+      "titel": "Staging-Abnahme Integrationsstand inkl. WP-12 Prüfpunkte 3.1–3.4",
       "strang": "extern",
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
-      "wartezeitAT": {"min":2,"max":5},
-      "abhaengigkeiten": ["WP-42a","WP-S1"],
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["WP-42a","WP-S1","E-16"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3160,20 +3160,20 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-1)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Akzeptanz von WP-12/WP-09. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Liefert den eingefrorenen Prüfstand für E-17."
     },
     {
       "id": "E-2",
-      "titel": "Android-Gerätetest (Offline, GPS, PWA, Rollen)",
+      "titel": "Android: PWA (WP-37), Offline-Stempeln (WP-07)",
       "strang": "extern",
       "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":1,"max":5},
-      "abhaengigkeiten": ["WP-42a"],
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["E-1"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3189,49 +3189,136 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-2)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Nicht von Agenten erbringbar. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     },
     {
       "id": "E-3",
-      "titel": "iPhone/iPad-Gerätetest",
+      "titel": "iOS: PWA, Offline-Stempeln",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":2,"max":10},
+      "abhaengigkeiten": ["E-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-3)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. iPhone beschaffen oder leihen (sofort anstoßen)."
+    },
+    {
+      "id": "E-4",
+      "titel": "Geo/GPS am Einsatzort (WP-20/29)",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":5},
+      "abhaengigkeiten": ["E-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-4)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Offene Frage: Geo im ersten Release aus, falls nicht rechtzeitig?"
+    },
+    {
+      "id": "E-5",
+      "titel": "Tablet, Desktop, Viewports 360/390/430 px",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["E-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-5)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-6",
+      "titel": "Offline- und Wiederanlauf-Tests",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["E-1"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-6)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-7",
+      "titel": "Backup außer Haus und tatsächlicher Restore (WP-04)",
       "strang": "extern",
       "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "wartezeitAT": {"min":2,"max":10},
-      "abhaengigkeiten": ["WP-42a"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Gerät muss verfügbar sein. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-4a",
-      "titel": "Externen Pentest beauftragen und Termin sichern",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":10,"max":30},
-      "abhaengigkeiten": [],
+      "abhaengigkeiten": ["WP-04"],
       "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3247,105 +3334,18 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-7)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Kann sofort beginnen; Vorlauf läuft parallel zur Entwicklung. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Speicherziel und Passwortverwahrung offen (zurückgestellt 2026-11-03)."
     },
     {
-      "id": "E-4",
-      "titel": "Externer Pentest: Durchführung, Bericht, Nachtest",
+      "id": "E-8",
+      "titel": "Monitoring, externe Alarmierung (WP-05)",
       "strang": "extern",
       "prio": "P1",
-      "aufwandPT": {"min":3,"max":8},
-      "wartezeitAT": {"min":5,"max":15},
-      "abhaengigkeiten": ["WP-42a","E-4a"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Aufwand = Befund-Nacharbeit. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-5",
-      "titel": "Rechtstexte: Inhalte vom Nutzer und juristische Prüfung (WP-36)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":10,"max":30},
-      "abhaengigkeiten": [],
-      "status": "READY",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "37 Platzhalter. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-6",
-      "titel": "Mail und Push einrichten: DNS SPF/DKIM, Resend, VAPID (WP-30)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":1,"max":5},
-      "abhaengigkeiten": [],
-      "status": "READY",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Freigaben DNS/Secrets durch den Betreiber. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-7",
-      "titel": "Monitoring/Alarm extern: Uptime-Check, Webhook-Kanal (WP-05)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
+      "aufwandPT": {"min":0.25,"max":0.5},
       "wartezeitAT": {"min":1,"max":5},
       "abhaengigkeiten": ["WP-05"],
       "status": "READY",
@@ -3363,20 +3363,20 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-8)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Bewusst zurückgestellt (2026-11-03). Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Alarmdienst offen (zurückgestellt 2026-11-03)."
     },
     {
-      "id": "E-8",
-      "titel": "Backup-Restore-Probe und Rücksprung A→B→A auf dem VPS (WP-03, WP-04)",
+      "id": "E-9",
+      "titel": "E-Mail und Push (WP-30)",
       "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":1,"max":2},
-      "wartezeitAT": {"min":2,"max":10},
-      "abhaengigkeiten": ["WP-03","WP-04"],
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":2,"max":15},
+      "abhaengigkeiten": [],
       "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3392,15 +3392,73 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-9)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Speicherziel, Verwahrung restic-Passwort, isolierte VPS-Probe mit Freigabe. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: nein (blockiert WP-18). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Offene Frage: für das erste Release gebraucht?"
     },
     {
-      "id": "E-9",
-      "titel": "Betreiber-2FA verpflichtend einrichten",
+      "id": "E-10",
+      "titel": "Betreiber-2FA einrichten (WP-32c)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.25},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["WP-32"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-10)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-11",
+      "titel": "GitHub-Umgebung produktion, Forced-Command-Schlüssel (WP-31)",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["WP-31"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-11)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-12",
+      "titel": "CENTRIC_VERTRAUTE_PROXYS, Caddy, Branch-Schutz (WP-32b)",
       "strang": "extern",
       "prio": "P1",
       "aufwandPT": {"min":0.25,"max":0.5},
@@ -3421,20 +3479,20 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-12)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Bewusst zurückgestellt (2026-11-03). Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht vor jedem Produktiv-Deploy."
     },
     {
-      "id": "E-10",
-      "titel": "Produktionsumgebung und Deploy-Gates (GitHub-Umgebung produktion, Forced-Command-Schlüssel, CENTRIC_VERTRAUTE_PROXYS, .env-Migration, gesperrte Bilder, alte Netlify-Site)",
+      "id": "E-13",
+      "titel": "Produktions-.env migrieren, gesperrte Bilder/Tags entfernen (WP-03)",
       "strang": "extern",
       "prio": "P1",
-      "aufwandPT": {"min":1,"max":2},
-      "wartezeitAT": {"min":2,"max":8},
-      "abhaengigkeiten": ["WP-31","WP-03"],
+      "aufwandPT": {"min":0.25,"max":0.25},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["WP-03"],
       "status": "READY",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3450,107 +3508,20 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-13)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Pflicht vor dem nächsten Produktiv-Deploy. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-11",
-      "titel": "Lasttest auf dem Zielsystem (Linux-VPS, Produktionsgröße)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1.5},
-      "wartezeitAT": {"min":1,"max":5},
-      "abhaengigkeiten": ["WP-42a","WP-28b"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Freigabe für Last auf dem VPS nötig. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-12",
-      "titel": "Intelligence: Anbieterentscheidung, AVV, Zero-Data-Retention je Modell, API-Zugang (durch Betreiber)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":1,"max":3},
-      "wartezeitAT": {"min":15,"max":60},
-      "abhaengigkeiten": ["E-17"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Keine Zugangsdaten durch Agenten. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-13",
-      "titel": "Intelligence: Kanzlei (Muster-BV, DSFA F7B, externe KI-VO-Einordnung inkl. F13/F18, Art. 22 DSGVO)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":1,"max":3},
-      "wartezeitAT": {"min":20,"max":60},
-      "abhaengigkeiten": ["E-17"],
-      "status": "BLOCKED",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Keine Rechtsberatung durch Agenten. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     },
     {
       "id": "E-14",
-      "titel": "Intelligence: Piloten (≥ 2 Betriebe wöchentlich, Schmerzpunkt bestätigt, anonymisierte Altpläne)",
+      "titel": "Rücksprung-Probe A→B→A (WP-03)",
       "strang": "extern",
       "prio": "P1",
-      "aufwandPT": {"min":2,"max":5},
-      "wartezeitAT": {"min":20,"max":60},
-      "abhaengigkeiten": ["WP-42","E-17"],
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["E-13"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -3566,17 +3537,278 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-14)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Setzt CENTRIC in Produktion voraus. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     },
     {
       "id": "E-15",
-      "titel": "WP-19 Fachfreigaben (Blocker FN-01/02/04/06/12/15–19/22/26/29/32: Kanzlei, Fachberater, Tarif)",
+      "titel": "Code-Rotation Z1–Z7 (WP-44)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-15)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Zuerst in Welle 1."
+    },
+    {
+      "id": "E-16",
+      "titel": "brist:-Schlüssel auf Staging löschen vor WP-27b",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.1,"max":0.1},
+      "wartezeitAT": {"min":1,"max":2},
+      "abhaengigkeiten": ["WP-27"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-16)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nur falls die WP-27-Vorgängerfassung auf Staging lief (nicht belegt)."
+    },
+    {
+      "id": "E-17a",
+      "titel": "Pentest: Anbieter anfragen, auswählen, beauftragen, Scope (Teil von E-17)",
       "strang": "extern",
       "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":10,"max":30},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-17)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Sofort anstoßen; Vorlauf läuft parallel zur Entwicklung."
+    },
+    {
+      "id": "E-17",
+      "titel": "Externe Sicherheitsprüfung (Pentest): Durchführung, Bericht, Behebung, Nachprüfung",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":3,"max":8},
+      "wartezeitAT": {"min":5,"max":15},
+      "abhaengigkeiten": ["E-1","E-17a"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-17)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Aufwand = Befund-Nacharbeit (neue Pakete)."
+    },
+    {
+      "id": "E-18",
+      "titel": "Rechtstexte WP-36 (Kanzlei)",
+      "strang": "extern",
+      "prio": "P1",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":10,"max":30},
+      "abhaengigkeiten": ["WP-36"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-18)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Inhalte vom Betreiber, juristische Prüfung durch Kanzlei."
+    },
+    {
+      "id": "E-19",
+      "titel": "Mitbestimmung, Betriebsvereinbarungen",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":15,"max":45},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-19)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Kundenseitig; nicht als Release-Abhängigkeit modelliert."
+    },
+    {
+      "id": "E-20",
+      "titel": "Lasttest-Nachlauf S2/S5 (Linux, nach WP-47)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.25,"max":0.5},
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-20)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Handstart braucht lasttest.yml auf dem Standardzweig oder einen temporären Branch."
+    },
+    {
+      "id": "E-21",
+      "titel": "Fachliche Entscheidungen aus STATUS.md (warnen/sperren, Mindestbesetzung, Alarmweg, Vier-Augen, Feeds, WP-24-Stichtag, JArbSchG/MuSchG-Auflagen u. a.)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":1,"max":10},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-21)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (JArbSchG/MuSchG). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Fragen 4/6/7 bewusst zurückgestellt (2026-11-03); spätestens vor E-23."
+    },
+    {
+      "id": "E-21i",
+      "titel": "Freigabe des Intelligence-Blocks (Plan §13: Freigabe, Reihenfolge, Beginn Phase 1, Kanzlei/Anbieter beauftragen, W1–W9)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":1,"max":10},
+      "abhaengigkeiten": [],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-21)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nicht in der Übergabeliste; Betreiberentscheidung aus INTELLIGENCE-ENTWICKLUNGSPLAN.md §13, hier als Teil von E-21 geführt."
+    },
+    {
+      "id": "E-22",
+      "titel": "WP-19 Fachnachweise FN-01 bis FN-34 (Blocker laut Kurzliste)",
+      "strang": "extern",
+      "prio": "P2",
       "aufwandPT": {"min":1,"max":3},
       "wartezeitAT": {"min":15,"max":45},
       "abhaengigkeiten": [],
@@ -3595,79 +3827,21 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-22)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Ohne Freigabe nur Hinweisbetrieb (provisional); siehe WP19-OFFENE-FACHNACHWEISE.md. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: bedingt je Modul. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Ohne Freigabe nur Hinweisbetrieb (provisional); WP19-OFFENE-FACHNACHWEISE.md."
     },
     {
-      "id": "E-16",
-      "titel": "Nutzerentscheidungen ACC45 vor dem Produktiv-Release (warnen/sperren, Mindestbesetzung, Alarmweg, N2 Vier-Augen, Feeds/Passwortwechsel, WP-24-Stichtag, 120-Tage-Horizont, zuschlaege, Art. 15 Lohn/Bank)",
+      "id": "E-23",
+      "titel": "Produktions-Deployment mit Freigabe-Checkliste und Rücksprung",
       "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":1,"max":10},
-      "abhaengigkeiten": [],
-      "status": "READY",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Fragen 4/6/7 bewusst zurückgestellt (2026-11-03). Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-17",
-      "titel": "Freigabe Intelligence-Block (Plan §13: Freigabe, Reihenfolge, Beginn Phase 1, Anwalt/Anbieter beauftragen, W1–W9)",
-      "strang": "extern",
-      "prio": "P1",
-      "aufwandPT": {"min":0.5,"max":1},
-      "wartezeitAT": {"min":1,"max":10},
-      "abhaengigkeiten": [],
-      "status": "READY",
-      "stufen": {
-        "implementiert": {"wert":false,"beleg":null},
-        "lokalGetestet": {"wert":false,"beleg":null},
-        "reviewt": {"wert":false,"beleg":null},
-        "integriert": {"wert":false,"beleg":null},
-        "stagingGeprueft": {"wert":false,"beleg":null},
-        "fachlichFreigegeben": {"wert":false,"beleg":null},
-        "produktiv": {"wert":false,"beleg":null}
-      },
-      "branch": null,
-      "agent": "Betreiber / extern",
-      "modell": "–",
-      "konfliktzonen": [],
-      "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
-      "tests": "",
-      "dateien": "–",
-      "notiz": "Plan ist Vorschlag; nichts begonnen. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
-    },
-    {
-      "id": "E-18",
-      "titel": "Code-Rotation: Nutzerhandlungen Z1–Z7 (WP-44)",
-      "strang": "extern",
-      "prio": "P1",
+      "prio": "P2",
       "aufwandPT": {"min":0.25,"max":0.5},
-      "wartezeitAT": {"min":1,"max":5},
-      "abhaengigkeiten": [],
-      "status": "READY",
+      "wartezeitAT": {"min":1,"max":3},
+      "abhaengigkeiten": ["WP-42"],
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -3682,11 +3856,185 @@
       "modell": "–",
       "konfliktzonen": [],
       "pr": [],
-      "nachweis": null,
-      "akzeptanz": "",
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-23)",
+      "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Nur Betreiber. Platzhalter; maßgebliche Liste: docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (in Arbeit). Wartezeit = ANNAHME."
+      "notiz": "Produktionsblocker laut Übergabeliste: Ziel. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Merge nach main und Deploy nur mit ausdrücklicher Betreiberfreigabe."
+    },
+    {
+      "id": "E-24",
+      "titel": "Pilot nach Endabnahme (2 Wochen ohne P0/P1)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":3},
+      "wartezeitAT": {"min":10,"max":15},
+      "abhaengigkeiten": ["E-23"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-24)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (Testplan). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-24i",
+      "titel": "Intelligence-Piloten (≥ 2 Betriebe wöchentlich, Schmerzpunkt bestätigt, anonymisierte Altpläne)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":2,"max":5},
+      "wartezeitAT": {"min":20,"max":60},
+      "abhaengigkeiten": ["E-24","E-21i"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-24)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Nicht in der Übergabeliste; Voraussetzung laut INTELLIGENCE-ENTWICKLUNGSPLAN.md §9."
+    },
+    {
+      "id": "E-25",
+      "titel": "Intelligence: Anbieter, AVV, Zero-Data-Retention",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":3},
+      "wartezeitAT": {"min":15,"max":60},
+      "abhaengigkeiten": ["E-21i"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-25)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Keine Zugangsdaten durch Agenten."
+    },
+    {
+      "id": "E-26",
+      "titel": "Intelligence: DSFA (F7B)",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":1,"max":2},
+      "wartezeitAT": {"min":15,"max":45},
+      "abhaengigkeiten": ["E-21i"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-26)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-27",
+      "titel": "Intelligence: externe KI-VO-Einordnung, Art. 22 DSGVO",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":20,"max":60},
+      "abhaengigkeiten": ["E-21i"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-27)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-28",
+      "titel": "Intelligence: Anwaltsprüfung Muster-BV",
+      "strang": "extern",
+      "prio": "P2",
+      "aufwandPT": {"min":0.5,"max":1},
+      "wartezeitAT": {"min":15,"max":45},
+      "abhaengigkeiten": ["E-21i"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-28)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     }
   ]
 }

@@ -207,7 +207,8 @@ describe("Prognose: Simulation, Konfliktzonen, Kalender", () => {
     expect(BL.arbeitstag("2026-12-23", 2, ["2026-12-24", "2026-12-25"])).toBe("2026-12-28");
   });
 
-  it("Repo-Prognose: deterministisch, optimistisch ≤ realistisch ≤ Probleme, A ≤ B ≤ C, C1 ≤ C", () => {
+  /* Listenplanung kann Anomalien zeigen (Graham); geprüft wird nur, was die Parameter sicher erzwingen. */
+  it("Repo-Prognose: deterministisch, optimistisch ≤ realistisch ≤ Probleme, A ≤ B, Deploy ≤ C1 ≤ C, nie unter der Arbeitsgrenze", () => {
     const pakete = BL.paketeAus();
     const a = BL.quelleLesen().annahmen;
     const e1 = BL.prognosen(pakete, a);
@@ -219,9 +220,9 @@ describe("Prognose: Simulation, Konfliktzonen, Kalender", () => {
     }
     for (const s of ["optimistisch", "realistisch", "probleme"]) {
       expect(e1.A[s].at).toBeLessThanOrEqual(e1.B[s].at);
-      expect(e1.B[s].at).toBeLessThanOrEqual(e1.C[s].at);
+      expect(e1.C[s].deploy).toBeLessThanOrEqual(e1.C[s].c1);
       expect(e1.C[s].c1).toBeLessThanOrEqual(e1.C[s].at);
-      expect(e1[s === "optimistisch" ? "A" : "B"][s].at).toBeGreaterThanOrEqual(Math.floor(e1[s === "optimistisch" ? "A" : "B"][s].untergrenzeArbeit));
+      for (const u of ["A", "B", "C"]) expect(e1[u][s].at).toBeGreaterThanOrEqual(Math.floor(e1[u][s].untergrenzeArbeit));
     }
   });
 });

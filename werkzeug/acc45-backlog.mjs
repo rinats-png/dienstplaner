@@ -329,8 +329,8 @@ export function fortschritt(pakete, lokal = {}) {
    Je Szenario: Dauer eines Entwicklungspakets in Arbeitstagen (AT) =
    max(minDauerAT, Rest-PT × aufschlag / ptJeAgentTag). Höchstens `agenten`
    Pakete gleichzeitig; ein Paket je Konfliktzone zur selben Zeit. Externe
-   Pakete belegen keinen Agenten, dauern ihre Wartezeit. Vorrang hat das Paket
-   mit der längsten Restkette (kritischer Pfad zuerst). Abhängigkeiten außerhalb
+   Pakete belegen keinen Agenten, dauern ihre Wartezeit. Vorrang haben ACC45,
+   Folgepakete und WP-19 vor Intelligence, darin die längste Restkette. Abhängigkeiten außerhalb
    des Umfangs gelten als erfüllt.
    -------------------------------------------------------------------------- */
 export const UMFAENGE = Object.freeze({
@@ -363,6 +363,8 @@ export function simulieren(pakete, auswahl, sz, restFaktor = restFaktorStandard)
   const rk = (id) => { if (rang.has(id)) return rang.get(id); let m = 0; for (const n of nachfolger.get(id)) m = Math.max(m, rk(n)); const r = m + dauer.get(id); rang.set(id, r); return r; };
   for (const p of im) rk(p.id);
 
+  /* Vorrang: ACC45, Folgepakete und WP-19 vor Intelligence (Intelligence blockiert ACC45 nie), dann längste Restkette. */
+  const gruppe = (p) => (p.strang === "intelligence" ? 1 : 0);
   const ende = new Map();
   const start = new Map();
   const laufend = new Set();
@@ -373,7 +375,7 @@ export function simulieren(pakete, auswahl, sz, restFaktor = restFaktorStandard)
     if (runde > 100000) throw new Error("Simulation hängt");
     const fertigBis = (id) => ende.has(id) && ende.get(id) <= t + 1e-9;
     const kandidaten = im.filter((p) => !start.has(p.id) && abh(p).every(fertigBis))
-      .sort((a, b) => rang.get(b.id) - rang.get(a.id) || a.id.localeCompare(b.id));
+      .sort((a, b) => gruppe(a) - gruppe(b) || rang.get(b.id) - rang.get(a.id) || a.id.localeCompare(b.id));
     for (const p of kandidaten) {
       const istAgent = p.strang !== "extern" && dauer.get(p.id) > 0;
       if (istAgent) {
@@ -409,6 +411,23 @@ export function arbeitstag(startIso, n, feiertage = []) {
   return d.toISOString().slice(0, 10);
 }
 
+/** Treiberkette in einer Simulation: vom Ziel rückwärts über die zuletzt fertige Abhängigkeit.
+    „(wartet auf …)“, wenn ein Paket später startete, als seine Abhängigkeiten fertig waren. */
+export function treiberKette(pakete, sim, ziel) {
+  const nach = new Map(pakete.map((p) => [p.id, p]));
+  const kette = [];
+  let id = ziel;
+  while (id && sim.ende.has(id)) {
+    const p = nach.get(id);
+    const deps = p.abhaengigkeiten.filter((a) => sim.ende.has(a) && !NUR_REIHENFOLGE.includes(a));
+    const vor = deps.sort((a, b) => sim.ende.get(b) - sim.ende.get(a) || a.localeCompare(b))[0];
+    const fertigVor = vor ? sim.ende.get(vor) : 0;
+    if (sim.dauer.get(id) > 0) kette.unshift(`${id}${sim.start.get(id) > fertigVor + 1e-9 ? ` (wartet auf ${p.konfliktzonen.length ? `Zone ${p.konfliktzonen.join("/")}` : "freien Agenten"})` : ""}`);
+    id = vor;
+  }
+  return kette;
+}
+
 export function prognosen(pakete, annahmen) {
   const erg = {};
   for (const [u, def] of Object.entries(UMFAENGE)) {
@@ -419,7 +438,9 @@ export function prognosen(pakete, annahmen) {
       const zusatz = {};
       if (u === "C") {
         const e = (id) => r.ende.get(id) ?? 0;
-        zusatz.c1 = Math.ceil(e("WP-42") - 1e-9);
+        zusatz.deploy = Math.ceil(e("E-23") - 1e-9);
+        zusatz.deployDatum = arbeitstag(annahmen.start, zusatz.deploy, annahmen.feiertage);
+        zusatz.c1 = Math.ceil(e("E-24") - 1e-9);
         zusatz.c2 = Math.ceil(e("WP-I37") - 1e-9);
         zusatz.c1Datum = arbeitstag(annahmen.start, zusatz.c1, annahmen.feiertage);
         zusatz.c2Datum = arbeitstag(annahmen.start, zusatz.c2, annahmen.feiertage);
@@ -597,9 +618,16 @@ function blockPrognose(pakete, quelle) {
       zeilen.push(`| ${SZ_TITEL[s] ?? s} | ${zahl(e.arbeitPT)} | ${zahl(e.untergrenzeArbeit)} AT | **${e.at} AT** | **${e.datum}** |`);
     }
     if (u === "C") {
-      zeilen.push("", "| Szenario | C1: ACC45 + WP-19 produktiv (WP-42) | C2: Intelligence produktiv (WP-I37) |", "|---|---|---|");
-      for (const s of Object.keys(a.szenarien)) zeilen.push(`| ${SZ_TITEL[s] ?? s} | ${pr.C[s].c1} AT → ${pr.C[s].c1Datum} | ${pr.C[s].c2} AT → ${pr.C[s].c2Datum} |`);
+      zeilen.push("", "| Szenario | Produktiv-Deploy (E-23) | C1: ACC45 + WP-19 produktionsreif (Pilot E-24 bestanden) | C2: Intelligence produktionsreif (WP-I37) |", "|---|---|---|---|");
+      for (const s of Object.keys(a.szenarien)) zeilen.push(`| ${SZ_TITEL[s] ?? s} | ${pr.C[s].deploy} AT → ${pr.C[s].deployDatum} | ${pr.C[s].c1} AT → ${pr.C[s].c1Datum} | ${pr.C[s].c2} AT → ${pr.C[s].c2Datum} |`);
     }
+    const sim = pr[u].realistisch.sim;
+    const ziele = u === "A" ? [] : u === "B" ? [["B", null]] : [["C1", "E-24"], ["C2", "WP-I37"]];
+    if (u === "A" || u === "B") {
+      const letzt = [...sim.ende.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0]?.[0];
+      ziele.splice(0, ziele.length, [u, letzt]);
+    }
+    for (const [n, z] of ziele) zeilen.push("", `Treiberkette ${n} (realistisch): ${treiberKette(pakete, sim, z).join(" → ")}`);
     zeilen.push("");
   }
   zeilen.push("| Parameter | " + Object.keys(a.szenarien).map((s) => SZ_TITEL[s] ?? s).join(" | ") + " |");
@@ -741,7 +769,7 @@ function prognoseText(pakete, quelle) {
     for (const s of Object.keys(quelle.annahmen.szenarien)) {
       const e = pr[u][s];
       z.push(`  ${s.padEnd(13)} ${String(e.at).padStart(4)} AT → ${e.datum}  (Rest ${zahl(e.arbeitPT)} PT, Untergrenze ${zahl(e.untergrenzeArbeit)} AT)`
-        + (u === "C" ? `  C1 ${e.c1Datum}, C2 ${e.c2Datum}` : ""));
+        + (u === "C" ? `  Deploy ${e.deployDatum}, C1 ${e.c1Datum}, C2 ${e.c2Datum}` : ""));
     }
   }
   return z.join("\n");
