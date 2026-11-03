@@ -223,6 +223,10 @@ jobs:
       - name: Wiederherstellung schützt Verborgenes
         run: npm run pruefung:wiederherstellung-schutz
 
+      # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
+      - name: Integrationsabnahme Kette A + B
+        run: npm run pruefung:abnahme-ab
+
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle
         run: npm run pruefung:preisanzeige
@@ -365,6 +369,11 @@ jobs:
       # Healthcheck-Kompatibilität.
       - name: Überwachung (/gesund, Alarm)
         run: npm run pruefung:gesund
+
+      # WP-41: Verweise der Betriebs- und Nutzerdokumentation, jede
+      # Umgebungsvariable im Betriebshandbuch, keine Geheimnisse.
+      - name: Dokumentation
+        run: npm run pruefung:doku
 
       # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
       # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.

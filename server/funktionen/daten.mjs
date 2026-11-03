@@ -915,7 +915,11 @@ export default async (req, context) => {
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
            Lesen gar nicht bekommen hat. */
-        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s, { fachpruefung: "aussen" });
+        /* Gegen dieselbe Form zusammenführen, die GET ausgeliefert hat
+           (personenAngleichen, WP-12): Sonst gilt eine Person, die im Altstand
+           kein `qualifikationen` trägt, beim unveränderten Zurückschreiben als
+           geändert — und die Schichtverantwortung bekam 403. */
+        let zuSchreiben = zusammenfuehren(jetzt ? personenAngleichen(jetzt.bestand) : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",
@@ -1052,7 +1056,7 @@ export default async (req, context) => {
                 ? `Jemand anderes hat inzwischen ${monate.length > 1 ? "dieselben Monate" : "denselben Monat"} bearbeitet: ${monate.join(", ")}.`
                 : "Jemand anderes hat inzwischen gespeichert.",
             monate, kernBetroffen: !!erg.kernBetroffen,
-            bestand: bestandFuerRolle(erg.bestand, s), etag: erg.stand,
+            bestand: bestandFuerRolle(personenAngleichen(erg.bestand), s), etag: erg.stand,
             durch: erg.durch, zeit: erg.zeit }, 409);
         }
 

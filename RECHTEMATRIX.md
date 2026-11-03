@@ -265,6 +265,12 @@ Steuer). Dazu kommen:
   Betrieb) samt der Auskünfte, die die Leitung über sie erteilt hat;
 - ob Push-Anmeldung und Kalenderverweis bestehen.
 
+Zwei Einschränkungen der Selbstauskunft (WP-26): Zeilen „Auskunft durch die Leitung über mich“ gehen nur als
+`{ zeit, art, rolle }` hinaus — ohne Herkunft und ohne Person der Leitung (N-2). Bestätigungen aus dem
+Bestätigungsprotokoll (`bestaetigungen`, WP-10) **über** die Person kommen mit den Feldern des Eintrags, aber ohne die
+bestätigende Person (`durch`, `durchId`) — nur deren Rolle (N-4). Bestätigungen, die die Person selbst für andere
+abgab, und die Zählwerte des Betriebsrats sind nicht Teil der Auskunft.
+
 Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre eigene Sicht
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
