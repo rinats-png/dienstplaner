@@ -97,9 +97,10 @@ export function zeitraumJahr(jahr) {
   return { von: `${jahr}-01-01`, bis: `${jahr}-12-31` };
 }
 
-/** Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat (LANGER_DIENST). */
+/** Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat (LANGER_DIENST;
+    seit WP-07 auch OFFLINE_PRUEFEN: offline gestempelt mit abweichender Geräteuhr oder über 48 Stunden alt). */
 export const zurPruefung = (e) => !!e && e.bestaetigt === false && typeof e.grund === "string"
-  && e.grund.startsWith("LANGER_DIENST");
+  && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN"));
 
 /**
  * Stempel-Erfassungen eines Monats, die die Leitung noch prüfen muss.
