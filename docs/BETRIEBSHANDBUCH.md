@@ -63,7 +63,8 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | Variable | Bedeutung | Vorgabe | Vorlage |
 |---|---|---|---|
 | `CENTRIC_PUBLIC_REGISTRATION` | öffentliche Selbstregistrierung; nur genau `true` schaltet ein | aus | ja (auskommentiert) |
-| `CENTRIC_AUFRAEUMEN` | täglicher Löschlauf abgelaufener Testbetriebe; `aus` schaltet ab | an | ja (auskommentiert) |
+| `CENTRIC_AUFRAEUMEN` | täglicher Löschlauf abgelaufener Testbetriebe; `aus` schaltet ab — **und mit ihm den Datenschutzlauf** (gleicher Block) | an | ja (auskommentiert) |
+| `CENTRIC_DATENSCHUTZLAUF` | Aufbewahrungsfristen auf dem Server (WP-26), täglich mit dem Löschlauf: `aus` — gar nicht; `vorschau` — rechnet und berichtet (Protokoll, Vermerk `datenschutzlauf:letzter`), löscht nichts; `an` — löscht nach den Fristen, vorher je Raum eine automatische Sicherung. Erst `an`, wenn der Vorschau-Bericht geprüft und die Fristen mit der Leitung abgestimmt sind. **Achtung beim Zurückschalten:** Nach `an` → `vorschau` (oder `aus`) räumt auch das Zurückspielen einer Sicherung nicht mehr nach Fristen; eine ältere Sicherung bringt damit bereits fristgerecht gelöschte Angaben (z. B. Gründe) zurück, bis wieder `an` gilt (bewusst so, WP-26 N-3; das Ergebnis des Zurückspielens meldet, was fällig wäre). | vorschau | ja (auskommentiert) |
 | `CENTRIC_ZWEIFAKTOR_PFLICHT` | `1`: Verwalterschlüssel ohne zweiten Faktor nur zur Einrichtung (ab dem ersten eingerichteten Faktor ohnehin) | aus | ja (auskommentiert) |
 | `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT` | `1`: Betreibercode ohne zweiten Faktor bekommt keine Sitzung | aus | ja (auskommentiert) |
 | `RESEND_API_KEY`, `CENTRIC_ABSENDER` | E-Mail-Versand (ohne: Trockenlauf) | aus | ja |
@@ -119,6 +120,7 @@ Alle Variablen stehen in `.env.example` (die optionalen auskommentiert, Prüf-Va
 |---|---|---|
 | täglich (automatisch) | Sicherung außer Haus 02:30, Alarm per Totmannschalter, wenn sie ausbleibt | [BETRIEB-SICHERUNG.md](BETRIEB-SICHERUNG.md) §1–3 |
 | täglich (automatisch) | Löschlauf abgelaufener Testbetriebe (Start + 24 h) | `CENTRIC_AUFRAEUMEN` |
+| täglich (automatisch) | Datenschutzlauf: Aufbewahrungsfristen; in der Vorgabe `vorschau` nur Bericht, kein Löschen | `CENTRIC_DATENSCHUTZLAUF` |
 | laufend (automatisch) | Zustandsprüfung jede Minute, Alarm bei Störung | [BETRIEB-UEBERWACHUNG.md](BETRIEB-UEBERWACHUNG.md) |
 | täglich (Blick) | Alarme und externer Check; bei Bedarf Einzelheiten per `docker exec` (nur lesend) | [INCIDENT-RUNBOOK.md](INCIDENT-RUNBOOK.md) |
 | wöchentlich | Dependabot-Vorschläge und der Wochenlauf „Lieferkette“ (Trivy); `.trivyignore` auf abgelaufene Ausnahmen prüfen | `.github/dependabot.yml`, `.github/workflows/lieferkette.yml` |
