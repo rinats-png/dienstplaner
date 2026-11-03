@@ -708,8 +708,11 @@ ist ein Umbenennen.
 
     cd /opt/apps/centric-dienstplanung
     docker compose stop -t 30                      # sauberes Beenden (SIGTERM), Exitcode 0
-    mv data "data.vor-wiederherstellung-$(date -u +%Y%m%dT%H%M%SZ)"
+    ALT="data.vor-wiederherstellung-$(date -u +%Y%m%dT%H%M%SZ)"
+    mv data "$ALT"
     sudo install -d -m 700 -o 1000 -g 1000 data    # neu, leer, dem Benutzer node (uid 1000)
+    # Frühere Wiederherstellungen mitnehmen (BETRIEB-SICHERUNG §4a), falls vorhanden:
+    if [ -f "$ALT/.wiederhergestellt.json" ]; then sudo cp -p "$ALT/.wiederhergestellt.json" data/; fi
     docker run --rm --network none --read-only --user 1000:1000 --cap-drop ALL \
       --security-opt no-new-privileges:true --env-file .env \
       -v "$PWD/sicherungen/centric-sicherung-<Zeit>:/s/sicherung:ro" \
@@ -732,6 +735,11 @@ Dazu:
   Betrieb öffnen, Stichproben). Danach entweder verschlüsselt außerhalb des VPS
   archivieren oder bewusst löschen — sie enthält alles, auch Sitzungsdateien und
   Zugangsdaten.
+- `.wiederhergestellt.json` ist die fortgeschriebene Liste aller Wiederherstellungen
+  dieses Datenverzeichnisses. `wiederherstellen` hängt die neue an; `ablage-pruefen
+  --aus-sicherung` lehnt damit Sicherungen aus verworfenen Standfolgen ab. Ohne das
+  Übernehmen gingen die früheren Einträge mit dem alten `data/` beiseite. Die Punktdatei
+  stört die Prüfung „Ziel leer“ nicht; `cp -p` erhält Besitz (uid 1000) und Modus.
 - Geht etwas schief: `docker compose stop`, das neue `data/` in `data.fehlgeschlagen-<Zeit>`
   umbenennen, die Sicherheitskopie zurück nach `data/` benennen, `up -d`.
 - Nach dem Start läuft der tägliche Löschlauf erstmals eine Minute später und danach

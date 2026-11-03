@@ -215,3 +215,7 @@ Zusätzlich: Die Tests „ohne Raumangabe …“ und „Standfolge nach Wiederhe
 Last über 30 s). Der Standfolge-Test liest den Vermerk jetzt in Listenform (rot auf df4abe3 nur wegen der neuen Form).
 Auf df4abe3: 3 rot (W1, W2, Listenform); jetzt `ablage-pruefen-rueckweg`, `ablage-pruefen`, `sicherung-ablage` 45/45
 grün (1 übersprungen, Windows); eslint ohne Befund.
+
+Nachtrag: Der `cp -p`-Handgriff steht jetzt auch in der Befehlsfolge von Weg 1 in `BEREITSTELLUNG.md`.
+CI auf 58d32d9 grün: Prüfung 41579102084, Sicherheit 41579102062, Betrieb: Deploy-Skripte 41579102054, Lieferkette
+41579102048, Betrieb Sicherung 41579105936 (von Hand gestartet).
