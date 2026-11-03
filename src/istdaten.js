@@ -97,9 +97,40 @@ export function zeitraumJahr(jahr) {
   return { von: `${jahr}-01-01`, bis: `${jahr}-12-31` };
 }
 
-/** Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat (LANGER_DIENST). */
-export const zurPruefung = (e) => !!e && e.bestaetigt === false && typeof e.grund === "string"
-  && e.grund.startsWith("LANGER_DIENST");
+/**
+ * Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat:
+ * ein langer Dienst (LANGER_DIENST, WP-17) oder ein ungeplanter Dienst (WP-13).
+ */
+export const zurPruefung = (e) => !!e && e.bestaetigt === false
+  && ((typeof e.grund === "string" && e.grund.startsWith("LANGER_DIENST")) || e.ungeplant === true);
+
+/** Ein Dienst, der gestempelt wurde, ohne dass an diesem Tag einer geplant war (WP-13). */
+export const istUngeplant = (e) => !!e && e.ungeplant === true;
+
+const UHR = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Name des gestempelten Dienstes ohne Plan — in Listen und Auswertungen. */
+export const UNGEPLANT_NAME = "Ungeplanter Dienst";
+
+/**
+ * Der Dienst eines Tages, an dem nichts geplant war, die Person aber gestempelt
+ * hat und die Leitung die Ist-Zeit bestätigt hat (WP-13): eine Dienstart mit
+ * genau den gestempelten Zeiten, ohne Pause, ohne Zuschlagsvorgabe. So zählt
+ * der Tag in Konto, Zuschlägen und Lohnausgabe mit der Ist-Dauer — nie mit
+ * einer Planzeit, die es nicht gibt. Unbestätigte Fälle (zur Prüfung) zählen
+ * nicht; sie stehen im Hinweis (pruefHinweis). Ohne Zugang zu den Ist-Daten null.
+ * Der Aufrufer prüft, dass an dem Tag kein Dienst geplant und keine Abwesenheit ist.
+ * @returns {null | {id: string, name: string, kurz: string, start: string, ende: string, pause: number, ungeplant: true}}
+ */
+export function ungeplanterDienst(m, p, d) {
+  if (!m || !p || !istVerfuegbar(m, p, d)) return null;
+  const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
+  /* Nur, was der Server als ungeplant gestempelt hat (`ungeplant`) und die
+     Leitung bestätigt hat — nicht jede alte Erfassung an einem freien Tag
+     (etwa nach einem Tausch). Die Marke setzt nur der Server. */
+  if (!e || e.ungeplant !== true || e.bestaetigt !== true || !UHR.test(String(e.start)) || !UHR.test(String(e.ende))) return null;
+  return { id: "_ungeplant", name: UNGEPLANT_NAME, kurz: "U", start: e.start, ende: e.ende, pause: 0, ungeplant: true };
+}
 
 /**
  * Stempel-Erfassungen eines Monats, die die Leitung noch prüfen muss.
@@ -114,6 +145,12 @@ export function erfassungenZurPruefung(m, ym) {
 
 /** Kennzeichnung eines Tages, dessen Ist-Zeit noch geprüft werden muss (WP-17, W1). */
 export const ZUR_PRUEFUNG_TEXT = "zur Prüfung, Planzeit vorläufig";
+/** … und eines ungeplanten Dienstes, der noch nicht bestätigt und deshalb noch nicht gezählt ist (WP-13). */
+export const UNGEPLANT_PRUEFUNG_TEXT = "ungeplant, zur Prüfung, noch nicht gezählt";
+/** Kennzeichnung eines bestätigten ungeplanten Dienstes. */
+export const UNGEPLANT_TEXT = "ungeplant";
+/** Der Kennzeichnungstext eines Prüffalls (art aus pruefHinweis: "lang" | "ungeplant"). */
+export const pruefFallText = (art) => (art === "ungeplant" ? UNGEPLANT_PRUEFUNG_TEXT : ZUR_PRUEFUNG_TEXT);
 
 const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
   "Oktober", "November", "Dezember"];
@@ -127,14 +164,18 @@ const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "A
 export function pruefHinweis(m, ym, personId) {
   const faelle = erfassungenZurPruefung(m, ym)
     .filter((f) => personId === undefined || personId === null || String(f.personId) === String(personId))
-    .map(({ personId: pid, datum }) => ({ personId: pid, datum }));
+    .map(({ personId: pid, datum, erfassung }) => ({ personId: pid, datum, art: istUngeplant(erfassung) ? "ungeplant" : "lang" }));
   if (!faelle.length) return null;
   const [j, mo] = String(ym).split("-");
   const monat = `${MONATE[Number(mo) - 1] || mo} ${j}`;
   const n = faelle.length;
-  return { anzahl: n, monat, faelle,
-    text: `${n === 1 ? "1 Ist-Zeit" : `${n} Ist-Zeiten`} im ${monat} zur Prüfung: Bis zur Bestätigung zählen dort `
-      + "im Stundenkonto und in der Lohnausgabe vorläufig die Planzeiten." };
+  const lang = faelle.filter((f) => f.art === "lang").length, ungeplant = n - lang;
+  const teile = [];
+  if (lang) teile.push(`${lang === 1 ? "1 Ist-Zeit" : `${lang} Ist-Zeiten`} im ${monat} zur Prüfung: Bis zur Bestätigung zählen dort `
+    + "im Stundenkonto und in der Lohnausgabe vorläufig die Planzeiten.");
+  if (ungeplant) teile.push(`${ungeplant === 1 ? "1 ungeplanter Dienst" : `${ungeplant} ungeplante Dienste`} im ${monat} zur Prüfung: `
+    + "Bis zur Bestätigung durch die Leitung zählen sie nicht im Stundenkonto und nicht in der Lohnausgabe (es gibt keine Planzeit).");
+  return { anzahl: n, monat, faelle, lang, ungeplant, text: teile.join(" ") };
 }
 
 /**

@@ -89,6 +89,7 @@ export const MARKIERUNG_TEXT = Object.freeze({
   KONFLIKT: "Konflikt — bitte durch die Leitung klären",
   GERAETEDATUM_ABWEICHEND: "Datum des Geräts wich ab",
   LANGER_DIENST: "länger als geplant + 2 Stunden — Ist-Zeit zur Prüfung",
+  UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });
 
 /* Kennung für „bestätigt“. Als Escape geschrieben: Die Oberfläche zeigt sie

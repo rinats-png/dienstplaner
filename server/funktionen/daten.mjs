@@ -1165,6 +1165,15 @@ export default async (req, context) => {
           const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
           const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
           if (langerDienst) markieren("LANGER_DIENST");
+          /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
+             es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
+             Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
+             (`ungeplant`, bestaetigt: false): Sie zählt in Konto und Lohnausgabe
+             erst, wenn die Leitung sie über die Stempelkorrektur bestätigt hat
+             — dann mit der gestempelten Dauer. Der Stempel selbst bleibt das
+             unveränderte Original (WP-06). */
+          const ungeplant = mitErfassung && !geplanterDienst(m, person, String(datum));
+          if (ungeplant) markieren("UNGEPLANTER_DIENST");
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
@@ -1187,7 +1196,10 @@ export default async (req, context) => {
           const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
           if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: langerDienst
+              [k]: ungeplant
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
+                  grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
+                : langerDienst
                 ? { start: neu.start, ende: zeit, bestaetigt: false,
                   grund: `LANGER_DIENST: ${Math.round(dauerMin / 6) / 10} Stunden — bitte prüfen` }
                 : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };

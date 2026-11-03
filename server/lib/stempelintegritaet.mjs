@@ -280,7 +280,10 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id) {
     grund,
   };
   const eintrag = { ...stempel, [KORREKTUREN]: [...bisher, ereignis] };
-  const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true };
+  /* Die Marke eines ungeplanten Dienstes (WP-13) bleibt: Mit ihr zählt der
+     Tag nach der Bestätigung in Konto und Lohnausgabe. */
+  const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true,
+    ...(objekt(alt) && alt.ungeplant === true ? { ungeplant: true } : {}) };
   return { ereignis, eintrag, erfassung, mandant: { ...m,
     einstempeln: { ...(m.einstempeln || {}), [schluessel]: eintrag },
     erfassung: { ...(m.erfassung || {}), [schluessel]: erfassung } } };
