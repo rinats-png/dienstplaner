@@ -124,6 +124,13 @@ const bestand = () => ({
       { id: "ob4", name: M("OBJEKT-OHNE-EINTEILUNG"), posten: [] }],
     postenPlan: { [`m0|${tag(1)}`]: "po1", [`b1|${tag(1)}`]: "po2", [`a1|${tag(1)}`]: "po3" },
     bereichsPlan: { [`m0|${tag(1)}`]: "be1", [`b1|${tag(1)}`]: "be9", [`a1|${tag(1)}`]: "be1" },
+    /* Branchenmodule (WP-19.0): Schalter mit Mitbestimmungsbestätigung, betrieblicher Regelwert, Modulprotokoll. */
+    einstellungen: { ruhezeit: 11,
+      branchenmodule: { wachbuch: { an: false, geaendertAm: M("MODUL-AM"), geaendertVon: M("MODUL-VON"),
+        mitbestimmung: { grundlage: M("MB-GRUNDLAGE"), bestaetigtAm: M("MB-AM"), bestaetigtVon: M("MB-VON") } } },
+      regelwerte: { "POSTEN-QUAL-01": { quelle: M("RW-QUELLE"), fundstelle: "f", version: "1", gueltigAb: "2026-01-01", gueltigBis: null,
+        pruefstatus: "verified", stufe: "achtung", geprueftAm: M("RW-AM"), geprueftVon: M("RW-VON"), geaendertAm: "t", geaendertVon: M("RW-AENDERER") } },
+      modulprotokoll: [{ art: "eingeschaltet", modul: "wachbuch", am: "t", von: M("PROTOKOLL-VON"), grundlage: M("PROTOKOLL-GRUNDLAGE") }] },
     qualifikationen: [{ id: "pfk", name: "PFK" }, { id: "masern", name: "Masern", nurStatus: true }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
@@ -371,6 +378,16 @@ const ZEILEN = {
     } },
   "Einteilung auf Posten (`postenPlan`; Branchenmodul Posten)": planZeile("postenPlan"),
   "Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan)": planZeile("bereichsPlan"),
+  /* WP-19.0 (²⁹): Moduleinstellungen in `einstellungen`. */
+  "Branchenmodule: Schalter, Parameter, Zeitpunkte (`einstellungen.branchenmodule`: `an`, `parameter`, `geaendertAm`, `mitbestimmung.bestaetigtAm`)": {
+    sonden: [mk("MODUL-AM"), mk("MB-AM"), Object.assign((s) => {
+      const e = s.betrieb && s.betrieb.einstellungen;
+      return !!e && !!e.branchenmodule && hat(e.branchenmodule.wachbuch, "an");
+    }, { titel: "branchenmodule.wachbuch.an" })] },
+  "Branchenmodule: wer geschaltet, bestätigt oder geprüft hat, Grundlage der Mitbestimmung, Modulprotokoll (`geaendertVon`, `mitbestimmung.grundlage`/`bestaetigtVon`, `regelwerte[].geprueftVon`/`geaendertVon`, `einstellungen.modulprotokoll`)": {
+    sonden: [mk("MODUL-VON"), mk("MB-GRUNDLAGE"), mk("MB-VON"), mk("RW-VON"), mk("RW-AENDERER"), mk("PROTOKOLL-VON"), mk("PROTOKOLL-GRUNDLAGE")] },
+  "Betriebliche Regelwerte (`einstellungen.regelwerte`: Wert, Quelle, Fundstelle, Fassung, Gültigkeit, Prüfstatus, Stufe, Prüf- und Änderungszeitpunkt)": {
+    sonden: [mk("RW-QUELLE"), mk("RW-AM")] },
   "Dienstbuch": einheitZeile("DIENSTBUCH"),
   "Übergaben": einheitZeile("UEBERGABE"),
   "Tagesnotizen (`notizen` „tag|…\")": einheitZeile("TAGESNOTIZ"),

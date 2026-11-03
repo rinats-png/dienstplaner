@@ -30,6 +30,7 @@ import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.m
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
+import { modulProtokollZeilen } from "../lib/branchenmodule.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -1115,6 +1116,9 @@ export default async (req, context) => {
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
         const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        /* Branchenmodule (WP-19.0): geschaltet, Mitbestimmung bestätigt, Regelwert gesetzt — nur Modul und
+           Art, ohne Person, Grundlage oder Person|Tag (WP-14b, M1). Wer, steht im Modulprotokoll des Betriebs. */
+        for (const z of modulProtokollZeilen(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, "branchenmodul", z, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         {

@@ -31,6 +31,7 @@
    ========================================================================== */
 
 import { standortzuschlaege } from "./standorte.js";
+import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
 
 export const STUFEN = [
   { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
@@ -72,7 +73,7 @@ export const KONTAKT_AB_ZUSCHLAGSSTANDORTE = 9;
    der Liste, weil die Merkmalsprüfung (`kann()` in App.jsx) dieselbe
    Liste liest.
    ========================================================================== */
-export const PAKETE = [
+const PAKETE_ROH = [
   /* „sperreGesetz" steht bewusst im Kern und nicht in einem Zusatzpaket.
 
      Das gesetzliche Minimum ist kein Mehrwert, den man verkauft — es ist die
@@ -90,19 +91,33 @@ export const PAKETE = [
       + "Gesetzliche und eigene Vorgaben warnen in jeder Stufe, mit Bestätigungsprotokoll.",
     merkmale: ["plan", "antraege", "zeiten", "konten", "qualifikationen", "export", "sperreGesetz"] },
   { id: "sicherheit", name: "Sicherheitsdienst", aufpreis: 79,
-    beschreibung: "Objektbezogene Posten, Wachbuch, Standortprüfung beim Stempeln, "
-      + "und branchentypische Vorlagen für interne Vorgaben.",
+    verfuegbar: "Standortprüfung beim Stempeln und branchentypische Vorlagen für interne Vorgaben.",
     merkmale: ["posten", "wachbuch", "sperreEigen", "geofence", "objektbericht"] },
   { id: "pflege", name: "Pflege und Rettungsdienst", aufpreis: 89,
-    beschreibung: "Fachkraftquote je Dienst, Übergabeprotokoll, Bereichs- und Wachabteilungsplanung, Betreuungskräfte nach § 43b.",
+    verfuegbar: "Fachkraftquote je Dienst und Übergabeprotokoll.",
     merkmale: ["fachkraftquote", "uebergabe", "bereichsplan", "pflegequal"] },
   { id: "klinik", name: "Klinik", aufpreis: 129,
-    beschreibung: "Bereitschaftsdienst und Rufbereitschaft mit eigener Anrechnung, geteilte Dienste, Funktionsdienste, Rotationen.",
+    verfuegbar: "Übergabeprotokoll und Fachkraftquote je Dienst.",
     merkmale: ["bereitschaftsdienst", "geteilterdienst", "funktionsdienst", "rotation", "uebergabe", "fachkraftquote"] },
   { id: "industrie", name: "Industrie, Technik und Anlagen", aufpreis: 59,
-    beschreibung: "Anlagenbindung, Maschinenqualifikationen, Kontischichtmodelle mit Stufenversatz.",
+    verfuegbar: "Noch keine nutzbare Funktion.",
     merkmale: ["anlagen", "maschinenqual", "kontimodelle"] },
 ];
+
+/* Was ein Paket bewirbt, folgt dem Stand der Branchenmodule (Entscheidung G9,
+   WP-19.0): Ein Modul, das noch „geplant" ist (nicht einschaltbar,
+   server/lib/branchenmodule.mjs), steht nicht unter dem, was das Paket kann,
+   sondern ausdrücklich „In Vorbereitung". Die Kennzeichnung kommt aus dem
+   Registry-Status — keine zweite Liste, die driftet. `verfuegbar` ist der
+   Text für das heute Nutzbare. Preise und Merkmale bleiben unverändert; über
+   Zahlung und Buchbarkeit entscheidet diese Datei nicht. */
+function mitModulstand(p) {
+  if (p.pflicht) return { ...p, inVorbereitung: [] };
+  const geplant = BRANCHENMODULE.filter((x) => x.status === "geplant" && p.merkmale.includes(x.merkmal));
+  return { ...p, inVorbereitung: geplant.map((x) => x.id),
+    beschreibung: p.verfuegbar + (geplant.length ? ` In Vorbereitung: ${geplant.map((x) => x.name).join(", ")}.` : "") };
+}
+export const PAKETE = PAKETE_ROH.map(mitModulstand);
 
 export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
 

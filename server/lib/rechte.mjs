@@ -27,6 +27,7 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
+import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
@@ -1361,6 +1362,14 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const urteil = einheitZusammen(ort.betrieb, geschickt, sitzung);
       if (!urteil.ok) return { verweigert: urteil.grund };
       geschickt = urteil.mandant;
+    }
+    /* Branchenmodule (WP-19.0): Daten ausgeschalteter Module nur lesbar (G3), danach die Schreibwege
+       der Module aus MODUL_SCHREIBWEGE — der eine Einhängepunkt für Planung, Leitung und
+       Schichtverantwortung (server/lib/modulschreibwege.mjs). */
+    {
+      const modulweg = modulSchreibwegeAnwenden(ort.betrieb, geschickt, { sitzung, rolle, umfang });
+      if (modulweg.grund) return { verweigert: modulweg.grund };
+      geschickt = modulweg.mandant;
     }
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
