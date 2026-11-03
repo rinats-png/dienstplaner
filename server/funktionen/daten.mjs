@@ -4,6 +4,7 @@ import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+import { schutzKonfliktMitteilungen } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
@@ -936,6 +937,8 @@ export default async (req, context) => {
           }
           if (fach && fach.sammel && Array.isArray(zuSchreiben.mandanten))
             zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? sammelAnzahlSetzen(m, fach.sammel) : m)) };
+          if (fach && fach.konflikte && Array.isArray(zuSchreiben.mandanten))
+            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? schutzKonfliktMitteilungen(offen.alt, m, fach.konflikte, s.person) : m)) };
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));

@@ -78,8 +78,10 @@ describe("Sicht der Schichtverantwortung", () => {
       { regel: "stundengrenzeWoche", hart: false, von: WIEDER.von, bis: WIEDER.bis, wert: 17.25 }]);
     for (const id of ["mu", "sb", "vo", "we", "kn", "oh", "po"])
       expect(pers(m, id).planungsregeln.find((r) => r.regel === "alterNichtBewertbar"), id).toEqual({ regel: "alterNichtBewertbar", hart: false, offen: true });
-    expect(pers(m, "we").einschraenkungen).toEqual({ keineNacht: false, maxDiensteWoche: 4 });
-    expect(pers(m, "kn").einschraenkungen).toEqual({ keineNacht: true, keinAlleindienst: true });
+    /* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ nur noch als Einsatzregel nachtNichtZulaessig. */
+    expect(pers(m, "we").einschraenkungen).toEqual({ maxDiensteWoche: 4 });
+    expect(pers(m, "kn").einschraenkungen).toEqual({ keinAlleindienst: true });
+    expect(regeln("kn")).toEqual(["alterNichtBewertbar", "nachtNichtZulaessig"]);
     expect(regeln("oh")).toEqual(["alterNichtBewertbar"]);
     expect(regeln("po")).toEqual(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]);
     expect(pers(m, "fr").planungsregeln).toBeUndefined();               // fremder Bereich: weder Roh noch Ableitung

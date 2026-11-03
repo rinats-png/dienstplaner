@@ -46,7 +46,14 @@ Ergebnisse werden 10 s zwischengespeichert (`CENTRIC_GESUND_CACHE_MS`), und
 gleichzeitige Aufrufe teilen sich eine laufende Prüfung (single-flight) — ein
 Ansturm auf den anmeldefreien Endpunkt schreibt nicht je Anfrage eine Probe
 und kann die Probe nicht gegen sich selbst laufen lassen (Review H1).
-`<Daten>/.gesund/` wird nicht gesichert (Punkt-Ordner).
+`<Daten>/.gesund/` wird nicht gesichert (Punkt-Ordner). Proben, die ein
+abgebrochener Lauf liegen ließ, werden nach einer Stunde entfernt.
+
+**Zeitgrenze (WP-05b R2):** Eine Prüfung, die länger als
+`CENTRIC_GESUND_ZEITGRENZE_MS` (15000) braucht — etwa bei hängendem
+Dateisystem —, ergibt „Ablage kritisch: Zeitgrenze“ (503, Alarm). Der Alarmtakt
+hängt so nicht mit; solange die hängende Prüfung läuft, wird keine zweite
+gestartet.
 
 ### Einzelheiten: nur von der eigenen Maschine
 
@@ -81,7 +88,13 @@ anhalten, bevor alarmiert wird — entprellt wird ok gegen nicht ok, nicht die
 genaue Stufe, sonst gäbe ein Pendeln warnung ↔ kritisch nie einen Alarm
 (Review M1). Gemeldet wird die schlimmste Stufe der laufenden Störung; eine
 Verschärfung alarmiert sofort erneut. Ebenso muss „ok“ so lange anhalten,
-bevor entwarnt wird. Der Webhook folgt keiner Umleitung (`redirect: "error"`). Bleibt es
+bevor entwarnt wird.
+
+**Hysterese (WP-05b R1):** Eine Störung beginnt mit der ersten schlechten
+Messung und endet erst nach Entprellzeit ununterbrochenem „ok“. Ein kurzes
+„ok“ zwischendurch setzt die Entprellung nicht zurück — auch ein Pendeln
+ok ↔ kritisch jede Minute alarmiert damit binnen 5 min. Ein einzelner
+Ausreißer, auf den nur „ok“ folgt, alarmiert nicht. Der Webhook folgt keiner Umleitung (`redirect: "error"`). Bleibt es
 schlecht: Erinnerung nach `CENTRIC_ALARM_WIEDERHOLUNG_S` (6 h).
 **Spätestens nach Takt + Entprellung + Takt ≈ 4 min** liegt der Alarm beim
 Kanal (Prüfung `≤ 5 min` in `pruefungen/gesund.test.js`).

@@ -243,10 +243,11 @@ export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOSt
   const t0 = performance.now();
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
   try {
-    const it = pruefen(altM, neuM, heute, zaehler, opt);
+    const ausgabe = { konflikte: [] };
+    const it = pruefen(altM, neuM, heute, zaehler, opt, ausgabe);
     let r = it.next();
     while (!r.done) r = it.next();
-    return r.value;
+    return mitKonflikten(r.value, ausgabe);
   } finally {
     letzteLaufzeit = { ms: Math.round((performance.now() - t0) * 10) / 10, ...zaehler };
   }
@@ -268,14 +269,15 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Dat
   const budget = opt.budgetMs || ZEITBUDGET_MS;
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
   try {
-    const it = pruefen(altM, neuM, heute, zaehler, opt);
+    const ausgabe = { konflikte: [] };
+    const it = pruefen(altM, neuM, heute, zaehler, opt, ausgabe);
     let r = it.next();
     while (!r.done) {
       await new Promise((weiter) => setImmediate(weiter));
       if (performance.now() - t0 > budget) return { zeitbudget: true };
       r = it.next();
     }
-    return r.value;
+    return mitKonflikten(r.value, ausgabe);
   } finally {
     letzteLaufzeit = { ms: Math.round((performance.now() - t0) * 10) / 10, ...zaehler };
   }
@@ -285,8 +287,20 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Dat
  * @typedef {{ sperre?: string, zeitbudget?: boolean,
  *   warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[],
  *   sammelVorschlag?: { regel: string, stufe: string, text: string, einheitId: any, von: string, bis: string, anzahl: number }[],
- *   sammel?: Record<string, number> }} Fachergebnis
+ *   sammel?: Record<string, number>, konflikte?: { personId: any, datum: string, dienstId: any }[] }} Fachergebnis
  */
+
+/** Schutzangaben einer Person: ändern sie sich, wird gespeichert und nachgemeldet, nie abgewiesen (M2). */
+const SCHUTZ_FELDER = ["mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum", "schwerbehindert", "nachtvorsorge"];
+function nurSchutzGeaendert(a, b) {
+  const ohne = (p) => { const x = { ...p }; for (const f of SCHUTZ_FELDER) delete x[f]; return x; };
+  return gleich(ohne(a), ohne(b));
+}
+/** Ergebnis um die Konfliktliste ergänzen (nicht bei einer Absage). */
+function mitKonflikten(r, ausgabe) {
+  if (!ausgabe.konflikte.length || (r && (r.sperre || r.zeitbudget))) return r;
+  return { ...(r || {}), konflikte: ausgabe.konflikte.slice(0, 200) };
+}
 
 /** Deckt eine Sammelbestätigung (Review B1) diese Einteilung? */
 function sammelDeckt(b, p, d, regel) {
@@ -303,7 +317,7 @@ function sammelDeckt(b, p, d, regel) {
  * @param {{ imBereich?: (personId: any, tag: string) => boolean }} opt
  * @returns {Generator<void, null | Fachergebnis, void>}
  */
-function* pruefen(altM, neuM, heute, zaehler, opt) {
+function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) {
   /* Häppchen: nach HAEPPCHEN_MS nachgeben (im synchronen Lauf ohne Wirkung). */
   let abschnitt = performance.now();
   let schritt = 0;
@@ -453,8 +467,16 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
     const idA = pA ? rA.am(pA, d) : null;
     const daA = idA ? daAlt.get(String(idA)) : null;
     const vorher = new Set(pA && daA && hatZeiten(daA) ? einteilungsBefunde(mAlt, pA, daA, d, kA).map((b) => b.regel) : []);
+    /* Nachprüfung 9717ddf (M2, Schutzpflicht): Dieselbe Einteilung wie vorher,
+       nur die Schutzangaben der Person haben sich geändert — gespeichert wird
+       immer; die Einteilung kommt in die Konfliktliste (Mitteilung an Planung
+       und Leitung, Befund in der Planprüfung bis umgeplant). */
+    if (pA && String(idA) === String(id) && ausdruecklich === undefined && !gleich(pA, p) && nurSchutzGeaendert(pA, p)) {
+      if (neu.some((b) => !vorher.has(b.regel))) ausgabe.konflikte.push({ personId: p.id, datum: d, dienstId: id });
+      return null;
+    }
     for (const b of neu) if (!vorher.has(b.regel)) dazu(pid, d, id, { regel: b.regel, stufe: BEFUND_KATALOG[b.regel].stufe, text: neutralerText(b.regel) });
-    /* Review M2: dieselbe Einteilung wie vorher, nur die Person hat sich geändert. */
+    /* Review M2: dieselbe Einteilung wie vorher, die Person hat sich (nicht nur im Schutz) geändert. */
     if (pA && String(idA) === String(id) && !gleich(pA, p) && funde.has(`${pid}|${d}`)) funde.get(`${pid}|${d}`).bestehend = true;
     return null;
   };

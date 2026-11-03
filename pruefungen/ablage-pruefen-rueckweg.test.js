@@ -423,3 +423,68 @@ describe("B7 — mehrere Räume, Dateirechte", () => {
     expect(reste).toEqual([]);
   }, 30000);
 });
+
+describe("4. Nachprüfung — K2 und Standfolge nach einer Wiederherstellung", () => {
+  const zweiBetriebe = (mitDez) => ({ version: 9, mandanten: ["m1", "m2"].map((id) => ({ id, name: id,
+    einheiten: [], dienstarten: [], personen: [{ id: `${id}p`, name: id }],
+    abweichungen: { [`${id}p|2025-10-10`]: "F", ...(mitDez ? { [`${id}p|2025-12-01`]: "S" } : {}) },
+    abwesenheiten: [], erfassung: {}, einstempeln: {} })) });
+
+  it("K2: Kern kaputt, aktueller Vermerk und Zeiger weg, Dezember m1 weg — Bezug unvollständig, nichts angeglichen", async () => {
+    const RAUM = "rw-k2";
+    await B.bestandSchreiben(store, RAUM, zweiBetriebe(false), { durch: "Pruefung" });
+    const pfad = await sichern();                                                       // Stand 1, ohne Dezember
+    const g = await B.bestandLesen(store, RAUM);
+    await B.bestandSchreiben(store, RAUM, zweiBetriebe(true), { erwarteterStand: g.stand, durch: "Pruefung" });
+    await writeFile(datei(`kern:${RAUM}`), "{kaputt");
+    await unlink(datei(`stand:${RAUM}:2`));
+    await unlink(datei(`stand:${RAUM}:aktuell`));
+    await unlink(datei(`scherbe:${RAUM}:m1:2025-12`));
+    try {
+      const t = await lauf([RAUM]);
+      expect(t.code, t.aus).toBe(1);
+      expect(t.aus).toMatch(/Bezug unvollständig/);
+      const r = await lauf(["--aus-sicherung", pfad, "--kern-zurueck", RAUM]);
+      expect(r.code, r.aus).toBe(1);
+      expect(r.aus).not.toMatch(/Stand angeglichen/);
+      expect(await readFile(datei(`kern:${RAUM}`), "utf8")).toBe("{kaputt");              // Raum nicht angefasst
+      expect((await stat(datei(`scherbe:${RAUM}:m2:2025-12`))).isFile()).toBe(true);
+      expect((await lauf([RAUM])).aus).toMatch(/Bezug unvollständig/);                      // weiter sichtbar
+    } finally {
+      const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+      await raumLoeschen(store, A.getStore({ name: "centric-sitzungen", consistency: "strong" }), RAUM);
+    }
+  });
+
+  it("nach einer vollständigen Wiederherstellung: Sicherungen aus der verworfenen Folge werden abgelehnt", async () => {
+    const RAUM = "rw-folge";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const x = await sichern();                                                          // benutzt für die Wiederherstellung
+    const g = await B.bestandLesen(store, RAUM);
+    await B.bestandSchreiben(store, RAUM, bestandMit([{ id: "p1", name: "Erste" }, { id: "p3", name: "Dritte" }]),
+      { erwarteterStand: g.stand, durch: "Pruefung" });
+    const y = await sichern();                                                          // danach, vor der Wiederherstellung
+    const neu = await mkdtemp(path.join(tmpdir(), "centric-ablage-rueckweg-neu-"));
+    try {
+      await S.wiederherstellen({ sicherung: x, ziel: neu, serverPruefen: false });
+      const vermerk = JSON.parse(await readFile(path.join(neu, ".wiederhergestellt.json"), "utf8"));
+      expect(vermerk.sicherungErstellt).toBeTruthy();
+      const lauf2 = async (...argv) => {
+        const zeilen = [];
+        const code = await W.main(["--daten", neu, ...argv], (s) => zeilen.push(s));
+        return { code, aus: zeilen.join("\n") };
+      };
+      const abgelehnt = await lauf2("--aus-sicherung", y, RAUM);
+      expect(abgelehnt.code, abgelehnt.aus).toBe(2);
+      expect(abgelehnt.aus).toMatch(/verworfenen Folge/);
+      const erlaubt = await lauf2("--aus-sicherung", x, RAUM);
+      expect(erlaubt.code, erlaubt.aus).toBe(0);
+      /* Die Punktdatei stört die nächste Sicherung nicht. */
+      const z = await S.sichern({ quelle: neu, ziel: sicherungen, jetzt: naechsteZeit() });
+      expect((await S.pruefen(z.pfad)).ok).toBe(true);
+    } finally {
+      process.env.CENTRIC_DATEN = wurzel;
+      await rm(neu, { recursive: true, force: true });
+    }
+  });
+});

@@ -249,26 +249,63 @@ describe("Review 77ebfba: M1 (Art. 9), M2, N1", () => {
       if (r.bis) expect(r.bis >= heute, JSON.stringify(r)).toBe(true);
     }
   });
-  it("M2: Einwilligung entfernen, während ein Sonntag geplant ist — abgewiesen mit klarer Meldung", () => {
+  /* Nachprüfung 9717ddf (M2, Schutzpflicht): Die Erfassung des Schutzes wird
+     nie blockiert. Gespeichert wird; widersprechende bestehende Einteilungen
+     melden wir Planung und Leitung (dringend, neutral). Neue widersprechende
+     Einteilungen bleiben gesperrt. */
+  const meldungen = (e) => (e.mandanten[0].nachrichten || []).filter((n) => n.quelle && n.quelle.art === "schutzkonflikt");
+  it("M2: Einwilligung widerrufen, während ein Sonntag geplant ist — gespeichert, Mitteilung an Planung und Leitung", () => {
     const gg = gM();
     const m2 = gg.mandanten[0].personen.find((x) => x.id === "m2");
     m2.mutterschutzEinwilligungen = [{ art: "sonntag", ab: tag(0), bis: tag(60), geaendertAm: "x", geaendertVon: "l1" }];
     gg.mandanten[0].abweichungen[`m2|${SONNTAG}`] = "F";
     const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = []; });
-    expect(e.verweigert).toMatch(/Bestehende Einteilung am .* widerspricht/);
-    /* kürzen ebenso */
-    const k = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "sonntag", ab: tag(0), bis: tag(1) }]; });
-    expect(k.verweigert).toMatch(/widerspricht/);
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen).toEqual([]);
+    const n = meldungen(e);
+    expect(n.map((x) => x.personId).sort()).toEqual(["l1", "p1"]);
+    expect(n[0]).toMatchObject({ dringend: true, ziel: "pruef" });
+    expect(n[0].text).toMatch(/widerspricht einer Schutz- oder Einsatzregel/);
+    expect(JSON.stringify(n)).not.toMatch(/Mutter|MuSchG|Einwilligung|Sonntag/i);
+    /* der Befund bleibt sichtbar, bis umgeplant: die Schutzprüfung sperrt die Einteilung weiter */
+    expect(schutzEinsatz(e.mandanten[0].personen.find((x) => x.id === "m2"), { start: "06:00", ende: "14:00" }, SONNTAG).some((x) => x.sperrt)).toBe(true);
   });
-  it("M2: Mutterschutz eintragen, während Nachtdienste geplant sind — abgewiesen; ohne Konflikt angenommen", () => {
+  it("M2: Mutterschutz eintragen, während Nachtdienste geplant sind — gespeichert und gemeldet; ohne Konflikt ohne Mitteilung", () => {
     const gg = g();
     gg.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
     gg.mandanten[0].abweichungen[`x9|${MITTWOCH}`] = "N";
-    expect(schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; }).verweigert).toMatch(/widerspricht/);
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen.find((x) => x.id === "x9").mutterschutz).toBe(true);
+    expect(meldungen(e).length).toBe(2);
     const ohne = g();
     ohne.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
-    const e = schreiben(ohne, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
-    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+    const o = schreiben(ohne, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
+    expect(o && !o.verweigert, o && o.verweigert).toBe(true);
+    expect(meldungen(o)).toEqual([]);
+  });
+  it("M2: Geburtsdatum berichtigt (jetzt jugendlich) bei geplantem Nachtdienst — gespeichert und gemeldet", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x8", "mitarbeiter", "e1"));
+    gg.mandanten[0].abweichungen[`x8|${MITTWOCH}`] = "N";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x8").geburtstag = J15.geburtstag; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(meldungen(e).length).toBe(2);
+  });
+  it("M2: eine NEUE widersprechende Einteilung bleibt gesperrt — auch im selben Speichervorgang", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.abweichungen[`m2|${SONNTAG}`] = "F"; }).verweigert).toMatch(/nicht möglich/);
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    expect(schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; m.abweichungen[`x9|${MITTWOCH}`] = "N"; }).verweigert)
+      .toMatch(/nicht möglich/);
+  });
+  it("Einwilligung nicht rückwirkend: neu frühestens ab heute; Verlängern eines bestehenden Beginns erlaubt", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(30) }]; }).verweigert)
+      .toMatch(/frühestens heute/);
+    const gg = gM();
+    gg.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(10), geaendertAm: "x", geaendertVon: "l1" }];
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(40) }]; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
   });
   it("N1: Ende ist Pflicht; ein anders geformtes Datum gilt nicht", () => {
     expect(schreiben(gM(), "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0) }]; }).verweigert)

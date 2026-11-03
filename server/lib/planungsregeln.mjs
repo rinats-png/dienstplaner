@@ -86,6 +86,11 @@ export function planungsregelnAbleiten(p, fenster = {}) {
       ...abHeute(nachZeitraeumen(einwilligungsZeitraeume(p, "sonntag"), "sonntagNurMitFreigabe", "sonntagFreigegeben", false), ab));
   }
   if (p.schwerbehindert) aus.push({ regel: "ueber8hNurAbsprache", hart: false });
+  /* Einschränkung „keine Nacht“ (Nachprüfung 9717ddf, M1-Rest): als dieselbe Regel
+     wie jede andere Ursache, ohne Zeitraum — das Rohfeld geht an die
+     Schichtverantwortung nicht mehr hinaus. */
+  if (p.einschraenkungen && typeof p.einschraenkungen === "object" && p.einschraenkungen.keineNacht === true
+    && !aus.some((r) => r.regel === "nachtNichtZulaessig" && !r.von && !r.bis)) aus.push({ regel: "nachtNichtZulaessig", hart: true });
   const w = p.einschraenkungen && typeof p.einschraenkungen === "object" ? p.einschraenkungen.wiedereingliederung : null;
   if (w && typeof w === "object")
     aus.push({ regel: "stundengrenzeWoche", hart: false, von: w.von, bis: w.bis, wert: w.maxStundenWoche });

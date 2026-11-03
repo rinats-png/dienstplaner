@@ -39,7 +39,7 @@
    anmeldefrei, und ein Ansturm soll nicht je Anfrage eine Probe schreiben.
    ========================================================================== */
 
-import { statfs, readFile, writeFile, mkdir, unlink, open } from "node:fs/promises";
+import { statfs, readFile, writeFile, mkdir, unlink, open, readdir, stat } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { getStore, ablageWurzel } from "./ablage.mjs";
@@ -65,6 +65,7 @@ export function grenzwerte() {
     loeschlaufWarnungStunden: zahl("CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN", 26),
     fehler5xxWarnung: zahl("CENTRIC_GESUND_5XX_WARNUNG", 10),
     cacheMs: zahl("CENTRIC_GESUND_CACHE_MS", 10000),
+    zeitgrenzeMs: zahl("CENTRIC_GESUND_ZEITGRENZE_MS", 15000),
   };
 }
 
@@ -98,9 +99,23 @@ async function ablageEinmal() {
   }
 }
 
+/** Proben, die ein abgebrochener Lauf liegen ließ (Absturz zwischen
+    Schreiben und Löschen), nach einer Stunde entfernen (WP-05b R3). */
+const PROBE_ALT_MS = 60 * 60 * 1000;
+async function probenAufraeumen(jetzt = Date.now()) {
+  let namen;
+  try { namen = await readdir(PROBE_ORDNER()); } catch { return; }
+  for (const n of namen) {
+    if (!/^probe-[0-9a-f]+\.json$/.test(n)) continue;
+    const d = path.join(PROBE_ORDNER(), n);
+    try { if (jetzt - (await stat(d)).mtimeMs > PROBE_ALT_MS) await unlink(d); } catch { /* nächstes Mal */ }
+  }
+}
+
 /** Einmal wiederholen, bevor „kritisch“ gilt — ein einzelner Ausreißer soll
     nicht 10 s lang als kritisch zwischengespeichert werden. */
 async function ablagePruefen() {
+  await probenAufraeumen();
   const erst = await ablageEinmal();
   return erst.stufe === "ok" ? erst : ablageEinmal();
 }
@@ -176,8 +191,39 @@ export async function zustand({ jetzt = Date.now(), frisch = false } = {}) {
   const g = grenzwerte();
   if (!frisch && letzte && jetzt - letzte.zeit < g.cacheMs) return letzte.ergebnis;
   if (laufend) return laufend;
-  laufend = pruefenAlle(g, jetzt).finally(() => { laufend = null; });
+  laufend = mitZeitgrenze(g, jetzt).finally(() => { laufend = null; });
   return laufend;
+}
+
+/* Zeitgrenze (WP-05b R2): Hängt das Dateisystem, hinge sonst jede Prüfung —
+   und mit ihr der Alarmtakt, der gerade dann alarmieren soll. Nach
+   zeitgrenzeMs gilt die Ablage als kritisch („Zeitgrenze“); das geteilte
+   Promise ist danach frei. Die hängende Prüfung selbst läuft im Hintergrund
+   weiter; solange sie hängt, wird keine zweite gestartet (kein Aufstauen),
+   jede weitere Anfrage bekommt nach der Zeitgrenze dieselbe Antwort. */
+/** @type {Promise<any>|null} */
+let innen = null;
+/** Nur für Prüfungen: wird vor den Prüfungen abgewartet. */
+export const pruefHaken = { vorher: /** @type {null|(() => Promise<void>)} */ (null) };
+
+function zeitgrenzeErgebnis(jetzt) {
+  return { stufe: "kritisch", zeit: new Date(jetzt).toISOString(),
+    pruefungen: { ablage: { stufe: "kritisch", text: "Zeitgrenze" } } };
+}
+
+function mitZeitgrenze(g, jetzt) {
+  if (!innen) {
+    innen = (async () => {
+      if (pruefHaken.vorher) await pruefHaken.vorher();
+      return pruefenAlle(g, jetzt);
+    })().finally(() => { innen = null; });
+  }
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let uhr;
+  const grenze = new Promise((fertig) => {
+    uhr = setTimeout(() => fertig(zeitgrenzeErgebnis(jetzt)), g.zeitgrenzeMs);
+  });
+  return Promise.race([innen, grenze]).finally(() => clearTimeout(uhr));
 }
 
 async function pruefenAlle(g, jetzt) {
@@ -256,11 +302,19 @@ export function alarmEinstellungen() {
 export function alarmGeber({ entprellungMs, wiederholungMs, senden }) {
   /* Entprellt wird „ok“ gegen „nicht ok“, nicht die genaue Stufe — sonst
      gäbe ein Pendeln warnung ↔ kritisch nie einen Alarm (Review M1).
-     Gemeldet wird die schlimmste Stufe der laufenden Störung. */
+     Gemeldet wird die schlimmste Stufe der laufenden Störung.
+
+     Hysterese (WP-05b R1): Eine Störung beginnt mit der ersten schlechten
+     Messung und endet erst, wenn „ok“ entprellungMs lang ununterbrochen
+     anhält. Ein kurzes „ok“ setzt die Entprellung also nicht zurück —
+     sonst gäbe ein Pendeln ok ↔ kritisch nie einen Alarm. Alarmiert wird,
+     wenn die Störung entprellungMs alt ist UND die aktuelle Messung schlecht
+     ist; ein einzelner Ausreißer, auf den nur noch „ok“ folgt, alarmiert
+     nicht. */
   let gemeldet = "ok";          // zuletzt gesendete Stufe
   let gemeldetUm = 0;
-  let schlecht = false;         // gerade beobachtet: nicht ok?
-  let seit = 0;
+  let stoerungSeit = null;      // Beginn der laufenden Störung (oder null)
+  let okSeit = null;            // seit wann ununterbrochen „ok“ (in einer Störung)
   let schlimmste = "ok";        // schlimmste Stufe seit Beginn der Störung
   /** @type {Set<string>} */
   let betroffenAlle = new Set();
@@ -268,29 +322,30 @@ export function alarmGeber({ entprellungMs, wiederholungMs, senden }) {
   return {
     /** @param {{stufe: string, pruefungen: Record<string, {stufe: string}>}} e */
     async beobachten(e, jetzt = Date.now()) {
-      const jetztSchlecht = e.stufe !== "ok";
-      if (jetztSchlecht !== schlecht) {
-        schlecht = jetztSchlecht; seit = jetzt;
-        if (schlecht) { schlimmste = "ok"; betroffenAlle = new Set(); }
-      }
+      const schlecht = e.stufe !== "ok";
       if (schlecht) {
+        if (stoerungSeit === null) { stoerungSeit = jetzt; schlimmste = "ok"; betroffenAlle = new Set(); }
+        okSeit = null;
         schlimmste = schlimmer(schlimmste, e.stufe);
         for (const [n, p] of Object.entries(e.pruefungen || {})) if (p.stufe !== "ok") betroffenAlle.add(n);
+      } else if (stoerungSeit !== null) {
+        if (okSeit === null) okSeit = jetzt;
+        if (jetzt - okSeit >= entprellungMs) stoerungSeit = null;   // erholt
       }
-      const stabil = jetzt - seit >= entprellungMs;
       const nachricht = (art, stufe) => ({ dienst: "CENTRIC", art, stufe,
         betroffen: art === "entwarnung" ? [] : [...betroffenAlle].sort(), zeit: new Date(jetzt).toISOString() });
-      if (stabil && schlecht && rang(schlimmste) > rang(gemeldet)) {
+      const gestoert = stoerungSeit !== null && jetzt - stoerungSeit >= entprellungMs && schlecht;
+      if (gestoert && rang(schlimmste) > rang(gemeldet)) {
         gemeldet = schlimmste; gemeldetUm = jetzt;
         await senden(nachricht("alarm", schlimmste));
         return "alarm";
       }
-      if (stabil && !schlecht && gemeldet !== "ok") {
+      if (stoerungSeit === null && gemeldet !== "ok") {
         gemeldet = "ok"; gemeldetUm = jetzt;
         await senden(nachricht("entwarnung", "ok"));
         return "entwarnung";
       }
-      if (stabil && schlecht && jetzt - gemeldetUm >= wiederholungMs) {
+      if (gestoert && gemeldet !== "ok" && jetzt - gemeldetUm >= wiederholungMs) {
         gemeldetUm = jetzt;
         await senden(nachricht("erinnerung", gemeldet));
         return "erinnerung";

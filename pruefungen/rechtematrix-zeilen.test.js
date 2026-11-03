@@ -598,7 +598,9 @@ describe("RECHTEMATRIX.md, Fußnoten", () => {
   it("¹⁸ Bereich und Pool: Zuständigkeitsbereich, Verfügbarkeit, Kompetenznachweise", () => {
     for (const x of ["VERFUEGBARKEIT-A1", "VERFUEGBARKEIT-SP1", "KOMPETENZ-A1", "KOMPETENZ-SP1"]) expect(mk(x)(sv), x).toBe(true);
     expect(personIn(sv.betrieb, "a1").bereich).toBe("e1");
-    expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({ keineNacht: true });
+    /* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ nur noch als Einsatzregel. */
+    expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({});
+    expect(personIn(sv.betrieb, "a1").planungsregeln.map((r) => r.regel)).toContain("nachtNichtZulaessig");
   });
   it("¹⁹ Konten im eigenen Bereich, nicht im Pool", () => {
     expect(mk("STUNDEN-A1")(sv)).toBe(true);

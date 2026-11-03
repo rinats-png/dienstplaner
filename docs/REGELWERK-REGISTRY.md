@@ -293,7 +293,7 @@ Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor“ (§ 28). Im Z
 Hinweis (`MUSCHG-05-02`, `MUSCHG-06-01`); Nachtarbeit nach 22 Uhr bleibt hart, außerhalb des Zeitraums ist alles wieder
 hart. Schreiben nur Planung, Leitung und Kundenrolle (wie die Schutzmerkmale); der Server prüft die Form und setzt
 `geaendertAm`/`geaendertVon`. Sichtbar wie die Schutzmerkmale; die Person selbst sieht ihre eigenen. Die
-Schichtverantwortung bekommt neutrale Einsatzregeln mit Zeitraum (`einsatzfensterBis22`, `sonntagFreigegeben`).
+Schichtverantwortung bekommt Einsatzregeln mit Zeitraum, nur ab heute (`einsatzfensterBis22`, `sonntagFreigegeben`). Restrisiko: Diese Regeln entstehen heute nur aus dem Mutterschutz — bei Erwachsenen lässt sich aus ihnen auf ihn schließen (DSFA, Betriebsvereinbarung). Änderungen an Schutzangaben werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server Planung und Leitung (Nachprüfung 9717ddf).
 Ob ärztliche Unbedenklichkeit und Genehmigung tatsächlich vorliegen und die Einwilligung nicht widerrufen ist, prüft
 CENTRIC nicht — das verantwortet der Betrieb. Feiertage prüft die Schutzprüfung nicht gesondert.
 
