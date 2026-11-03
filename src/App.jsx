@@ -4,9 +4,11 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung,
   vormonateMitPruefung, exportWarnung,
   ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
-import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText } from "./stempelvorgang.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText,
+  positionsUebernahme, koordinatenFelder, koordMitGrund } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
-import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland, GEO_MODUS_TEXT } from "../server/lib/geo.mjs";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_MODUS_TEXT,
+  GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
@@ -7084,7 +7086,7 @@ const EINFUEHRUNG = {
     { titel: "Willkommen bei CENTRIC", ziel: null,
       text: "Hier findest du deinen Dienstplan, stempelst ein und stellst Anträge. Der Rundgang dauert eine Minute." },
     { titel: "Heute", ziel: null,
-      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert wird nur, ob du am Einsatzort warst, keine Koordinate und kein Verlauf." },
+      text: "Der Startbildschirm zeigt deinen Dienst des Tages mit einem großen Knopf zum Ein- und Ausstempeln. Beim Stempeln wird einmalig der Standort geprüft — gespeichert werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort, keine Koordinate und kein Verlauf." },
     { titel: "Mein Plan", ziel: null,
       text: "Kommende Dienste als Liste oder Monatsansicht. Ein Tipp auf einen Tag öffnet die Möglichkeiten: Tausch suchen, frei beantragen oder einen Wunsch hinterlegen." },
     { titel: "Anliegen", ziel: null,
@@ -11839,7 +11841,8 @@ function StempelBefunde({ sitz, ym, akt }) {
   const Befund = ({ e, phase }) => {
     const g = geoAnzeige(e, phase);
     if (!g) return <span style={{ color: C.dimmer }}>–</span>;
-    return (<span title={g.text} style={{ ...NUM }}>
+    const titel = [g.text, g.grundText, g.warnung ? "Genauigkeit schlechter als 100 m" : ""].filter(Boolean).join(" — ");
+    return (<span title={titel} style={{ ...NUM }}>
       <b style={{ color: g.ton === "ok" ? C.ok : g.ton === "warn" ? C.warn : C.dim }}>{GEO_SYMBOL_ICON[g.symbol]
         ? <Icon n={GEO_SYMBOL_ICON[g.symbol]} size={14} style={{ verticalAlign: "-2px" }} /> : g.symbol}</b>
       {g.entfernung ? ` ${g.entfernung}` : ""}
@@ -11849,6 +11852,8 @@ function StempelBefunde({ sitz, ym, akt }) {
   return (
     <Card>
       <CardHead right={<Lab><Icon n="haken" size={13} style={{ verticalAlign: "-2px" }} /> bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
+      <div style={{ padding: "10px 18px", borderBottom: `1px solid ${C.lineSoft}`, fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
+        {GEO_SPOOFING_TEXT}</div>
       {pruef.length > 0 && (
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
@@ -13374,8 +13379,7 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
 
 /* ------------------------------- Stempeluhr ------------------------------ */
 /* Was bei eingeschalteter Geo-Prüfung gespeichert wird — und was nicht. */
-const GEO_HINWEIS = "Beim Stempeln wird einmalig geprüft, ob du am Standort bist. Gespeichert werden das Ergebnis, "
-  + "die Entfernung grob gerundet und die Messgenauigkeit — keine Koordinate, kein Verlauf.";
+const GEO_HINWEIS = GEO_DATENSCHUTZ_TEXT;
 
 /* WP-07: Stempel im Puffer des Geräts — vorläufig (offline gespeichert),
    bestätigt oder abgelehnt mit Grund. Nur die eigenen (Inhaber der Sitzung);
@@ -13420,7 +13424,7 @@ function Stempeluhr({ sitz, akt, vorgang }) {
     setLaeuft(true);
     /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
        Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
-    positionHolen(geoAn, (koord) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -17914,7 +17918,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
             Erzeugen</Btn>
         </Zeile>
         <Zeile titel="Was gespeichert wird"
-          text="Dienste, Zeiten, Anträge, Qualifikationen und Nachweise. Beim Stempeln wird nur festgehalten, ob du am Einsatzort warst — keine Koordinate, kein Verlauf.">
+          text="Dienste, Zeiten, Anträge, Qualifikationen und Nachweise. Beim Stempeln werden Ergebnis, grob gerundete Entfernung, Messgenauigkeit und Prüfort festgehalten — keine Koordinate, kein Verlauf.">
           <Btn size="sm" kind="quiet" onClick={() => gehZu("handbuch")}>Im Handbuch</Btn>
         </Zeile>
         <Zeile titel="Verbindung trennen"
@@ -20430,7 +20434,7 @@ function MStempel({ sitz, akt, vorgang }) {
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
-    positionHolen(geoAn, (k) => { Promise.resolve(akt.stempeln(p.id, tag, art, k)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -21605,9 +21609,10 @@ function GeoSchalter({ sitz, akt }) {
         Standortprüfung beim Stempeln</CardHead>
       <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
         Ist sie eingeschaltet, prüft der Server beim Ein- und Ausstempeln einmalig, ob die Person am Standort
-        ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit —
-        keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst, auch ohne Position oder außerhalb des
-        Umkreises.
+        ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und
+        der Prüfort (Standort oder Einsatzort) — keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst,
+        auch ohne Position oder außerhalb des Umkreises.
+        <div style={{ marginTop: 10 }}>{GEO_SPOOFING_TEXT}</div>
         {an && (
           <div style={{ marginTop: 14, color: C.text }}>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>Prüfmodus: {pflicht ? "verpflichtend" : "Hinweis"}</div>
@@ -21642,6 +21647,22 @@ function GeoSchalter({ sitz, akt }) {
     </Card>);
 }
 
+const QUELLE_TEXT = { adresse: "Adresse", geraet: "Gerät", karte: "Karte", manuell: "von Hand" };
+const ART_TEXT = { kunde: "Kunde", objekt: "Objekt", patient: "Patient/in", baustelle: "Baustelle", sonstiger: "Sonstiger" };
+
+/** Herkunft und Bestätigung der Koordinate (Spezifikation B2): beschreibt, woher sie kommt, nicht wie gut sie ist. */
+function KoordinatenStatus({ ort, onBestaetigen }) {
+  if (!koordinateGueltig(ort.lat, ort.lon)) return null;
+  const quelle = QUELLE_TEXT[ort.koordinatenQuelle];
+  const am = typeof ort.koordinatenGeprueftAm === "string" ? ort.koordinatenGeprueftAm : null;
+  return (<>
+    <span style={{ fontSize: 12.5, color: C.dim }}>Quelle: {quelle || "nicht angegeben"}</span>
+    {am ? <Pill size="sm" tone="ok">bestätigt am {fDatum(am)}</Pill> : (<>
+      <Pill size="sm">noch nicht bestätigt</Pill>
+      <Btn size="sm" onClick={onBestaetigen}>Koordinate bestätigen</Btn></>)}
+  </>);
+}
+
 /**
  * Einsatzorte (WP-20): Orte außerhalb der Standorte — Kunde, Objekt, Baustelle —, auf die sich die
  * Standortprüfung einer Dienstart beziehen kann. Sie haben keinen Einfluss auf Preis oder Feiertage;
@@ -21667,15 +21688,22 @@ function Einsatzorte({ sitz, akt }) {
             <div key={o.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
                 <Field label="Bezeichnung"><Inp value={o.name} onChange={(e) => akt.setzeEinsatzort(o.id, { name: e.target.value })} /></Field>
+                <Field label="Art"><Sel value={o.art || "sonstiger"} onChange={(e) => akt.setzeEinsatzort(o.id, { art: e.target.value })}>
+                  {EINSATZORT_ARTEN.map((a) => <option key={a} value={a}>{ART_TEXT[a]}</option>)}</Sel></Field>
                 <GeoZahl label="Breitengrad" wert={o.lat} hinweis="−90 bis 90"
-                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lat: x })} />
+                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeEinsatzort(o.id, koordinatenFelder("lat", x))} />
                 <GeoZahl label="Längengrad" wert={o.lon} hinweis="−180 bis 180"
-                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lon: x })} />
-                <GeoZahl label="Umkreis in Metern" wert={o.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}`}
+                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeEinsatzort(o.id, koordinatenFelder("lon", x))} />
+                <GeoZahl label="Umkreis in Metern" wert={o.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}; ohne Angabe ${EINSATZORT_RADIUS_VORGABE} m`}
                   gueltig={radiusGueltig} onCommit={(x) => akt.setzeEinsatzort(o.id, { radius: x })} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
-                {koordinateGueltig(o.lat, o.lon) && radiusGueltig(o.radius ?? RADIUS_VORGABE)
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5 }}>
+                  <input type="checkbox" checked={o.aktiv !== false} onChange={(e) => akt.setzeEinsatzort(o.id, { aktiv: e.target.checked })} />
+                  <span>Aktiv</span></label>
+                <KoordinatenStatus ort={o} onBestaetigen={() => akt.setzeEinsatzort(o.id, { koordinatenGeprueftAm: heute() })} />
+                {o.aktiv === false && <Pill size="sm">Stempel gelten als „nicht bewertbar“</Pill>}
+                {koordinateGueltig(o.lat, o.lon) && radiusGueltig(o.radius ?? EINSATZORT_RADIUS_VORGABE)
                   ? <Pill size="sm" tone="ok">Prüfung möglich</Pill>
                   : <Pill size="sm">Ohne Koordinate „nicht bewertbar“</Pill>}
                 {verwendet.length > 0 && <Pill size="sm">verwendet von {verwendet.map((d) => d.name).join(", ")}</Pill>}
@@ -21783,10 +21811,10 @@ function Standorte({ sitz, akt }) {
     setOrtung(st.id);
     navigator.geolocation.getCurrentPosition((pos) => {
       setOrtung(null);
-      const lat = Math.round(pos.coords.latitude * 1e6) / 1e6, lon = Math.round(pos.coords.longitude * 1e6) / 1e6;
-      if (!koordinateGueltig(lat, lon)) { akt.melde("Die Position war ungültig und wurde nicht übernommen."); return; }
-      akt.setzeStandortFelder(st.id, { lat, lon });
-      akt.melde(`Position übernommen · Genauigkeit ca. ${Math.round(pos.coords.accuracy)} m`);
+      const u = positionsUebernahme(pos);
+      if (!u.ok) { akt.melde(u.meldung); return; }
+      akt.setzeStandortFelder(st.id, u.felder);
+      akt.melde(u.meldung);
     }, () => { setOrtung(null); akt.melde("Keine Position erhalten — Standortfreigabe prüfen oder Werte eintragen."); },
     POSITION_OPTIONEN);
   };
@@ -21853,9 +21881,9 @@ function Standorte({ sitz, akt }) {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginTop: 12 }}>
                 <GeoZahl label="Breitengrad" wert={st.lat} hinweis="−90 bis 90, z. B. 50.1109"
-                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeStandort(st.id, "lat", x)} />
+                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeStandortFelder(st.id, koordinatenFelder("lat", x))} />
                 <GeoZahl label="Längengrad" wert={st.lon} hinweis="−180 bis 180, z. B. 8.6821"
-                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeStandort(st.id, "lon", x)} />
+                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeStandortFelder(st.id, koordinatenFelder("lon", x))} />
                 <GeoZahl label="Umkreis in Metern" wert={st.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}; 200 m sind ein guter Anfang`}
                   gueltig={radiusGueltig} onCommit={(x) => akt.setzeStandort(st.id, "radius", x)} />
               </div>
@@ -21865,6 +21893,7 @@ function Standorte({ sitz, akt }) {
                 {koordinateGueltig(st.lat, st.lon) && radiusGueltig(st.radius ?? RADIUS_VORGABE)
                   ? <Pill size="sm" tone="ok">Standortprüfung möglich</Pill>
                   : <Pill size="sm">Standortprüfung nicht möglich — Stempel gelten als „nicht bewertbar"</Pill>}
+                <KoordinatenStatus ort={st} onBestaetigen={() => akt.setzeStandortFelder(st.id, { koordinatenGeprueftAm: heute() })} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 12, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>
@@ -23607,7 +23636,7 @@ function AppInnen() {
       }, modus === "pflicht" ? "Standortprüfung verpflichtend gestellt" : "Standortprüfung auf Hinweis gestellt"),
       /* Einsatzorte (WP-20): getrennt von den Standorten. */
       einsatzortAnlegen: (name) => mUpd((m) => ({ ...m,
-        einsatzorte: [...(m.einsatzorte || []), { id: uid("eo"), name, radius: RADIUS_VORGABE }] }), `Einsatzort „${name}“ angelegt`),
+        einsatzorte: [...(m.einsatzorte || []), { id: uid("eo"), name, art: "sonstiger", aktiv: true, radius: EINSATZORT_RADIUS_VORGABE }] }), `Einsatzort „${name}“ angelegt`),
       setzeEinsatzort: (id, felder) => mUpd((m) => ({ ...m,
         einsatzorte: (m.einsatzorte || []).map((o) => o.id === id ? { ...o, ...felder } : o) }), null),
       loescheEinsatzort: (id) => mUpd((m) => {
@@ -25330,4 +25359,4 @@ function abmeldenMitHinweis() {
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { verknuepfungFuer, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };

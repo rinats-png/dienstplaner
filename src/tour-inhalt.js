@@ -390,7 +390,7 @@ export const TOUR = {
           pruefen: "Steht dort „frei\", hast du heute keinen Dienst." },
         { titel: "Ein- und ausstempeln", ziel: "heute",
           text: "Der große Knopf auf der Startseite. Ist die Standortprüfung eingeschaltet, wird dabei einmalig geprüft, ob du am Standort bist.",
-          merke: "Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit — keine Koordinate, kein Verlauf, keine Dauerortung. Die Arbeitszeit wird immer erfasst." },
+          merke: "Gespeichert werden das Ergebnis, die Entfernung grob gerundet, die Messgenauigkeit und der Prüfort — keine Koordinate, kein Verlauf, keine Dauerortung. Die Arbeitszeit wird immer erfasst." },
         { titel: "Mein Plan", ziel: "meinplan",
           text: "Kommende Dienste als Liste oder Monatsansicht. Filter für nur Dienste, nur frei, Nachtdienste, Wochenende.",
           tun: "Wechsle einmal zwischen Liste und Monat." },

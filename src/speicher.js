@@ -295,7 +295,7 @@ export async function stempelErfassen(datum, art, koord) {
      Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
      eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
      localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
-  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber,
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, positionGrund: koord && koord.grund, inhaber,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();
   return ev;
@@ -715,9 +715,13 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord) {
+  /* Ohne Position kann koord nur den Grund als Code tragen ({ grund }: keine_freigabe, timeout, nicht_verfuegbar);
+     der Server prüft ihn gegen die Liste. Eine Koordinate geht nie zusammen mit einem Grund hinaus. */
+  const ort = koord && typeof koord.lat === "number" && typeof koord.lon === "number" ? koord : null;
   const body = JSON.stringify({ datum, art,
-    lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
-    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
+    lat: ort ? ort.lat : null, lon: ort ? ort.lon : null,
+    accuracy: ort && typeof ort.accuracy === "number" ? ort.accuracy : null,
+    ...(!ort && koord && typeof koord.grund === "string" ? { positionGrund: koord.grund } : {}) });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
      Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
      Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s
