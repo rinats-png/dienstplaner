@@ -107,7 +107,7 @@ describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", ()
     expect(blatt).toMatch(/\.\.\.lohnPruefZeilen\(m, ym\)/);
     expect(app).toMatch(/h\.faelle\.map\(\(f\) => `  \$\{f\.datum\}  \$\{nameVon\(f\.personId\)\}: \$\{ZUR_PRUEFUNG_TEXT\}`\)/);
     const csv = app.slice(app.indexOf("exportDATEV: (ym) => {"), app.indexOf("exportLohnBlatt: (ym) => {"));
-    expect(csv.indexOf("pruefHinweis(sitz.mandant, ym)")).toBeGreaterThan(-1);
+    expect(csv.indexOf("exportWarnung(sitz.mandant, ym)")).toBeGreaterThan(-1);
     expect(csv.indexOf("window.confirm")).toBeGreaterThan(-1);
     expect(csv.indexOf("window.confirm")).toBeLessThan(csv.indexOf("datevCSV(sitz.mandant, ym)"));
     const abr = app.slice(app.indexOf("function Abrechnungsdaten("), app.indexOf("function Lohnausgabe("));

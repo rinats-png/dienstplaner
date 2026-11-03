@@ -1,7 +1,7 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
-  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung } from "./istdaten.js";
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung, vormonateMitPruefung, exportWarnung } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
@@ -8308,6 +8308,10 @@ function MeineSchichten({ sitz, akt, ym }) {
             <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
               {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT} — die Leitung prüft die gestempelte Zeit.
             </div>); })()}
+          {kto !== null && (() => { const v = vormonateMitPruefung(m, ym, ich.id); return v.length > 0 && (
+            <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
+              Vormonate mit offenen Prüffällen: {v.map((x) => `${x.monat} (${x.anzahl})`).join(", ")} — dort zählt vorläufig die Planzeit.
+            </div>); })()}
           {kto === null
             ? <div style={{ fontSize: 13.5, color: C.dim }}>{ISTDATEN_TEXT}</div>
             : <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
@@ -9997,6 +10001,10 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
           <Hinweisband ton="warn" titel={`${h.anzahl} Ist-Zeit${h.anzahl === 1 ? "" : "en"} zur Prüfung · ${h.monat}`} style={{ marginBottom: 14 }}>
             {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT}. Bestätigen unter Abrechnungsdaten · Stempelbefunde.
           </Hinweisband>); })()}
+        {zeigt && (() => { const v = vormonateMitPruefung(m, ym, p.id); return v.length > 0 && (
+          <Hinweisband ton="warn" titel="Vormonate mit offenen Prüffällen" style={{ marginBottom: 14 }}>
+            {v.map((x) => `${x.monat} (${x.anzahl})`).join(", ")} — dort zählt im Stundenkonto vorläufig die Planzeit.
+          </Hinweisband>); })()}
       <Card style={{ padding: 22, marginBottom: 22 }}>
         {(() => {
           /* Hier stand kv.punkte[11].konto und kv.richtung — kontoVerlauf()
@@ -11601,7 +11609,8 @@ function StempelBefunde({ sitz, ym, akt }) {
           <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
             {pruef.length === 1 ? "1 Ist-Zeit zur Prüfung" : `${pruef.length} Ist-Zeiten zur Prüfung`}</div>
           <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.45 }}>
-            Gestempelt länger als geplant + 2 Stunden. Bis zur Bestätigung zählt im Stundenkonto die Planzeit.</div>
+            Gestempelt länger als geplant + 2 Stunden. Bis zur Bestätigung zählt im Stundenkonto die Planzeit — auch im
+            Export (Zuschläge) und in der Lohnausgabe; beide fragen vor dem Download noch einmal nach.</div>
           {pruef.map(({ personId, datum, erfassung }) => (
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
@@ -11642,6 +11651,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
   const pruefOffen = useMemo(() => pruefHinweis(m, ym), [m, ym]);
+  const pruefVor = useMemo(() => vormonateMitPruefung(m, ym), [m, ym]);
 
   return (
     <div>
@@ -11653,11 +11663,17 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
           <Btn onClick={() => akt.exportZuschlaege(ym)}>Export</Btn></div>}>
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
 
+      {!pruefOffen && pruefVor.length > 0 && reiter !== "stempel" && (
+        <Hinweisband ton="warn" titel="Vormonate mit offenen Prüffällen" style={{ marginBottom: 18 }}
+          aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
+          {pruefVor.map((v) => `${v.monat} (${v.anzahl})`).join(", ")}. Dort zählt im Stundenkonto vorläufig die Planzeit.
+        </Hinweisband>)}
       {pruefOffen && reiter !== "stempel" && (
         <Hinweisband ton="warn" titel={`${pruefOffen.anzahl} Ist-Zeit${pruefOffen.anzahl === 1 ? "" : "en"} zur Prüfung · ${pruefOffen.monat}`}
           style={{ marginBottom: 18 }}
           aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
           {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe als „{ZUR_PRUEFUNG_TEXT}" gekennzeichnet.
+          Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download nach.
         </Hinweisband>)}
 
       {reiter === "zuschlaege" && (<>
@@ -22899,8 +22915,8 @@ function AppInnen() {
       exportDATEV: (ym) => {
         /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
            mit der Planzeit — vor dem Download ausdrücklich sagen. */
-        const offen = pruefHinweis(sitz.mandant, ym);
-        if (offen && !window.confirm(`${offen.text}\n\nBetroffen: ${offen.faelle.map((f) => f.datum).join(", ")} (${ZUR_PRUEFUNG_TEXT}).\n\nTrotzdem jetzt ausgeben?`)) return;
+        const warnung = exportWarnung(sitz.mandant, ym);
+        if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
         if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
@@ -23980,6 +23996,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       },
       exportZuschlaege: (ym2) => {
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        /* Dieselbe Rückfrage wie bei der Lohnausgabe (Nachprüfung WP-17, A1):
+           Auch hier zählen Ist-Zeiten zur Prüfung vorläufig mit der Planzeit. */
+        const warnung = exportWarnung(m, ym2);
+        if (warnung && !window.confirm(warnung)) return;
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
           ...regeln.map((z) => `${z.name} (${z.prozent}%)`), "Zuschlagswert gesamt"];
@@ -24501,4 +24521,5 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen };
+export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde };
