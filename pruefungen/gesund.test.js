@@ -225,7 +225,18 @@ describe("Fehlerzählung (gleitend)", () => {
 
   it("unbekannte Arten werden ignoriert, keine Zusatzdaten", () => {
     Z.ereignis("raum-nordwacht");
-    expect(Object.keys(Z.zaehlung()).sort()).toEqual(["5xx", "bremse-ausfall", "journal", "unlesbar"]);
+    expect(Object.keys(Z.zaehlung()).sort()).toEqual(["429-last", "5xx", "bremse-ausfall", "journal", "unlesbar"]);
+  });
+
+  it("429-last (Lastgrenze lehnte ehrliche Anfragen ab) ab der Schwelle → warnung; vorher ok; nach dem Fenster wieder ok (WP-47)", async () => {
+    Z.zaehlungLeeren();
+    const t0 = Date.now();
+    for (let i = 0; i < 19; i++) Z.ereignis("429-last", t0);
+    expect((await G.zustand({ frisch: true, jetzt: t0 })).pruefungen.fehler.stufe).toBe("ok");
+    Z.ereignis("429-last", t0);
+    const e = await G.zustand({ frisch: true, jetzt: t0 + 1000 });
+    expect(e.pruefungen.fehler).toMatchObject({ stufe: "warnung", "429-last": 20 });
+    expect(Z.zaehlung(t0 + Z.FENSTER_MS + 1)["429-last"]).toBe(0);
   });
 });
 
