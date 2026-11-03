@@ -260,6 +260,17 @@ per Digest genau dieser Digest):
      neu berechnen.
    - **Kern nur mit `--kern-zurueck`** (unten, „Kern aus der Sicherung“). Ohne dieses Flag bleibt er, und das Werkzeug
      nennt die Folgen.
+   - **Nach einer vollständigen Wiederherstellung (§4)** beginnen die Standnummern wieder beim Stand der damals
+     benutzten Sicherung. Sicherungen, die *nach* dieser, aber *vor* der Wiederherstellung entstanden, gehören zu
+     einer verworfenen Folge: gleiche Nummer, anderer Inhalt. Für `--aus-sicherung` deshalb nur die damals benutzte,
+     ältere oder nach der Wiederherstellung entstandene Sicherungen verwenden. `ablage-sicherung.mjs wiederherstellen`
+     legt dafür `data/.wiederhergestellt.json` an (Zeitpunkt und Stand der benutzten Sicherung; nicht in der
+     Sicherung, für die Anwendung unsichtbar); `ablage-pruefen.mjs` lehnt eine Sicherung aus der verworfenen Folge
+     damit ab (Rückgabe 2, nichts verändert). Wiederherstellungen vor dieser Fassung haben keinen solchen Vermerk —
+     dann gilt die Regel ohne Prüfung durch das Werkzeug.
+   - **Bezug unvollständig:** Liegt auf der Platte eine Scherbe, die der jüngste lesbare Vermerk nicht kennt (z. B.
+     nach Kern- und Vermerkschaden mit gelöschtem Zeiger), ist er älter als das, was geschrieben wurde. Dann wird
+     nicht angeglichen (Rückgabe 1), bis eine passende Sicherung oder `--ohne-vermerk <raum>` vorliegt.
    - **Wirkung:** Für den zurückgeholten Monat gilt der Stand der Sicherung; was seitdem in diesem Monat eingetragen
      wurde, fehlt.
 4. **Sonst beiseitelegen:** wenn die Datei in keiner Sicherung liegt. Zusammen mit `--aus-sicherung` wird
