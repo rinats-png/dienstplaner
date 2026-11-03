@@ -127,6 +127,12 @@ jobs:
       - name: Aufbewahrung
         run: npm run pruefung:aufbewahrung
 
+      # WP-26: Auskunft nach Art. 15 serverseitig (vollständig, Rechte geprüft),
+      # Löschlauf nach Aufbewahrungsfristen auf dem Server, Sicherungen und Spur
+      # nach festem Plan.
+      - name: DSGVO serverseitig
+        run: npm run pruefung:dsgvo-server
+
       # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
       - name: Zugangscodes
         run: npm run pruefung:codes

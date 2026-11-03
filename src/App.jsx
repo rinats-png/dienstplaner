@@ -218,7 +218,7 @@ import {
 import {
   fristen as loeschFristen, vorschau as loeschVorschau,
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
-  berichtstext as loeschBericht, PLANDATEN_MINDEST,
+  berichtstext as loeschBericht, PLANDATEN_MINDEST, fristWert, FRIST_GRENZEN,
 } from "./aufbewahrung.js";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
@@ -9432,6 +9432,53 @@ function Schichtfolge({ sitz, akt }) {
     </div>);
 }
 
+/**
+ * Einwilligungen nach dem Mutterschutzgesetz (Nutzerentscheidung, WP-11):
+ * § 5 Abs. 2 (Arbeit 20–22 Uhr) und § 6 Abs. 1 (Sonn- und Feiertag), je mit
+ * Zeitraum und dem Vermerk, dass die behördliche Genehmigung (§ 28) vorliegt.
+ * Im Zeitraum meldet die Prüfung nur einen Hinweis; nach 22 Uhr bleibt
+ * Nachtarbeit gesperrt. Wann und von wem geändert, setzt der Server.
+ */
+function Einwilligungen({ p, akt }) {
+  const gespeichert = Array.isArray(p.mutterschutzEinwilligungen) ? p.mutterschutzEinwilligungen : [];
+  /* Ein Entwurf, der erst gespeichert wird, wenn er vollständig ist (Review N1):
+     Art, Beginn und Ende sind Pflicht, das Ende nicht vor dem Beginn. */
+  const [entwurf, setEntwurf] = useState(null);
+  const liste = entwurf || gespeichert;
+  const fehler = liste.map((e) => (!e.ab || !e.bis ? "Beginn und Ende angeben." : e.bis < e.ab ? "Das Ende liegt vor dem Beginn." : null));
+  const aendere = (i, k, v) => setEntwurf(liste.map((e, j) => (j === i ? { art: e.art, ab: e.ab, bis: e.bis || null,
+    ...(e.genehmigung ? { genehmigung: true } : {}), [k]: v } : e)));
+  const speichern = () => { akt.setzePerson(p.id, "mutterschutzEinwilligungen", liste); setEntwurf(null); };
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <Lab>Einwilligungen (Mutterschutz)</Lab>
+      {liste.map((e, i) => (
+        <div key={i} style={{ display: "grid", gap: 4 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Sel value={e.art} style={{ width: 190 }} onChange={(x) => aendere(i, "art", x.target.value)}>
+              <option value="nacht">20–22 Uhr (§ 5 Abs. 2)</option>
+              <option value="sonntag">Sonntag (§ 6 Abs. 1)</option></Sel>
+            <Inp type="date" value={e.ab || ""} style={{ width: 150 }} aria-label="gültig ab" onChange={(x) => aendere(i, "ab", x.target.value)} />
+            <Inp type="date" value={e.bis || ""} style={{ width: 150 }} aria-label="gültig bis" onChange={(x) => aendere(i, "bis", x.target.value || null)} />
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+              <input type="checkbox" checked={!!e.genehmigung} onChange={(x) => aendere(i, "genehmigung", x.target.checked)} />
+              behördliche Genehmigung liegt vor</label>
+            <Btn size="sm" kind="danger" onClick={() => setEntwurf(liste.filter((_, j) => j !== i))}>Entfernen</Btn>
+          </div>
+          {fehler[i] && <div role="alert" style={{ fontSize: 12, color: C.danger }}>{fehler[i]}</div>}
+        </div>))}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn size="sm" onClick={() => setEntwurf([...liste, { art: "nacht", ab: heute(), bis: null }])}>Einwilligung erfassen</Btn>
+        {entwurf && <Btn size="sm" kind="primary" disabled={fehler.some(Boolean)} onClick={speichern}>Speichern</Btn>}
+        {entwurf && <Btn size="sm" kind="quiet" onClick={() => setEntwurf(null)}>Verwerfen</Btn>}
+      </div>
+      <div style={{ fontSize: 12, color: C.dim, lineHeight: 1.5 }}>
+        Im Zeitraum meldet die Prüfung nur einen Hinweis. Arbeit nach 22 Uhr bleibt gesperrt. Feiertage prüft CENTRIC
+        nicht gesondert. Ob ärztliche Unbedenklichkeit und behördliche Genehmigung vorliegen, verantwortet der Betrieb.
+        Stehen bestehende Einteilungen einer Änderung entgegen, bitte erst umplanen.</div>
+    </div>);
+}
+
 /* ========================= DIENSTARTEN — frei gestaltbar ================== */
 function Dienstarten({ sitz, akt }) {
   const m = sitz.mandant;
@@ -10039,6 +10086,7 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
                   && "Schwerbehinderung: auf Verlangen von Mehrarbeit über acht Stunden freizustellen (§ 207 SGB IX). "}
                 Die Prüfung meldet Verstöße unter „Schutzvorschriften".
               </div>)}
+            {p.mutterschutz && <Einwilligungen p={p} akt={akt} />}
             </>)}
 
             {p.teilzeit && p.teilzeit.aktiv && p.teilzeit.modus === "wochentage" && (
@@ -11841,7 +11889,7 @@ function Datenschutz({ sitz, akt }) {
 
   const FristFeld = ({ schluessel, label, hint, wert }) => (
     <Field label={label} hint={hint}>
-      <Inp type="number" min="1" value={wert}
+      <Inp type="number" min={FRIST_GRENZEN.min} max={FRIST_GRENZEN.max} step="1" value={wert}
         onChange={(e) => akt.setzeAufbewahrung(schluessel, Number(e.target.value))} />
     </Field>);
 
@@ -21104,7 +21152,7 @@ function GeoSchalter({ sitz, akt }) {
  * Nachprüfung WP-11). Eingeschaltet dürfen Jugendliche ab 16 Jahren bis 23 Uhr
  * eingeteilt werden — die Prüfung meldet dann nur einen Hinweis. Aus: Einsätze
  * 20–23 Uhr sind „Achtung" und brauchen eine Bestätigung. Unter 16 Jahren und
- * 23–6 Uhr sperrt die Prüfung in jedem Fall. Schalten darf nur, wer org.edit
+ * 23–6 Uhr sperrt die Prüfung in jedem Fall. Schalten darf, wer org.edit oder pattern.edit
  * hat; wann und von wem, setzt der Server.
  */
 function JugendschutzSchalter({ sitz, akt }) {
@@ -21381,6 +21429,8 @@ function Betrieb({ sitz, akt }) {
         <div>
           <H1 sub="Standorte und Bezeichnungen. Stammdaten und Regelwerk führt die Organisationsleitung.">Betrieb</H1>
           <Standorte sitz={sitz} akt={akt} />
+          {/* Jugendarbeitsschutz „mehrschichtig“: auch die Planung (pattern.edit, Nutzerentscheidung). */}
+          {darf(sitz, "pattern.edit") && <JugendschutzSchalter sitz={sitz} akt={akt} />}
         </div>);
     return <Card><Leer titel="Kein Zugriff" text="Die Betriebsverwaltung ist der Organisationsleitung vorbehalten." /></Card>;
   }
@@ -22429,7 +22479,7 @@ function AppInnen() {
         melde(`${(tarifwerk(id) || {}).name || id} angewendet.`);
       },
       setzeAufbewahrung: (k, v) => mUpd((m) => ({ ...m,
-        aufbewahrung: { ...loeschFristen(m), [k]: Math.max(1, Number(v) || 1) } }), null),
+        aufbewahrung: { ...loeschFristen(m), [k]: fristWert(v) } }), null),
       setzeEinheit: (id, k, v) => mUpd((m) => ({ ...m, einheiten: m.einheiten.map((e) => e.id === id ? { ...e, [k]: v } : e) }), null),
       neueEinheit: () => mUpd((m) => ({ ...m, einheiten: [...m.einheiten, { id: uid("e"),
         name: `${m.einheitLabel} ${m.einheiten.length + 1}`, versatz: m.einheiten.length % m.zyklus.wochen,
@@ -22745,7 +22795,7 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
-      /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit;
+      /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): org.edit oder pattern.edit;
          wann und von wem, setzt der Server. */
       setzeJugendMehrschichtig: (an) => mUpd((m) => ({ ...m,
         einstellungen: { ...(m.einstellungen || {}), jugendschutz: { mehrschichtig: !!an } } }),
