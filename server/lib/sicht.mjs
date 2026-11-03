@@ -23,6 +23,7 @@
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
+import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -438,26 +439,18 @@ const R = (fn) => ({ art: REDUZIERT, fn });
      Leitung und Schichtverantwortung planen selbst und sehen den Entwurf.
    - Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen`
      nicht (eigenesZusammen), der gespeicherte Plan bleibt beim Speichern
-     unberührt. */
-const MONAT_FORM = /^\d{4}-\d{2}$/;
-/** Heute (JJJJ-MM-TT) in Berlin. */
-export function laufenderTag(jetzt = new Date()) {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
-}
-/** Die freigegebenen Monate eines Betriebs (m.freigaben, Schlüssel JJJJ-MM). */
-export function freigegebeneMonate(m) {
-  const f = m && istObj(m.freigaben) ? m.freigaben : {};
-  return new Set(Object.keys(f).filter((k) => MONAT_FORM.test(k) && f[k]));
-}
+     unberührt.
+   - Übergang: Der Filter wirkt nur, wenn der Betrieb die Freigabe benutzt
+     (mindestens ein freigegebener Monat) oder `einstellungen.planFreigabePflicht`
+     eingeschaltet ist (planfreigabe.mjs). Sonst bliebe nach dem Ausrollen kein
+     Einsatz mehr sichtbar. */
+export { laufenderTag, freigegebeneMonate } from "./planfreigabe.mjs";
 function planOhneEntwurf(w, ctx) {
   if (!istObj(w)) return {};
   if (!ctx.entwurfVerbergen) return w;
-  const heute = ctx.laufenderTag || laufenderTag();
-  return Object.fromEntries(Object.entries(w).filter(([k]) => {
-    const tag = schluesselTag(k);
-    if (!gueltigerTag(tag)) return false;
-    return tag <= heute || (ctx.freigegeben && ctx.freigegeben.has(tag.slice(0, 7)));
-  }));
+  /* Eine Entscheidung für Server und Oberfläche: planfreigabe.mjs (istEntwurfstag).
+     Ein Eintrag ohne gültigen Tag gilt dort als Entwurf und fällt weg. */
+  return Object.fromEntries(Object.entries(w).filter(([k]) => !istEntwurfstag(ctx.betrieb, schluesselTag(k), ctx.laufenderTag)));
 }
 
 export const BETRIEB = {
@@ -563,7 +556,7 @@ export function betriebSicht(m, sitzung) {
   const spalte = rolle === "betriebsrat" ? 1 : 0;
   const ctx = {
     rolle, ich: sitzung.person,
-    entwurfVerbergen: rolle === "mitarbeiter", freigegeben: freigegebeneMonate(m), laufenderTag: laufenderTag(),
+    entwurfVerbergen: rolle === "mitarbeiter" && planFreigabeAktiv(m), betrieb: m, laufenderTag: laufenderTag(),
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
   };
   const aus = {};
@@ -599,6 +592,12 @@ export function bestandSicht(bestand, sitzung, eigener) {
     const ich = sitzung && sitzung.person;
     aus.mandanten[0].sichtIstDaten = sitzung && sitzung.rolle === "mitarbeiter" && ich !== null && ich !== undefined
       ? { umfang: "eigene", person: ich } : { umfang: "keine" };
+    /* Entwürfe (WP-23): Der Oberfläche sagen, dass die Einteilungen nicht freigegebener
+       Monate nach `heute` fehlen. Sonst rechnete personTag für diese Tage die Schichtfolge und
+       zeigte einen Regeldienst, den die Planung vielleicht längst geändert hat. Das Feld entsteht
+       nur in der Antwort (wie sichtIstDaten), ein gespeichertes zählt nie. */
+    if (sitzung && sitzung.rolle === "mitarbeiter" && planFreigabeAktiv(eigener))
+      aus.mandanten[0].sichtEntwuerfe = { heute: laufenderTag() };
   }
   return aus;
 }

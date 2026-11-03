@@ -283,9 +283,21 @@ Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heut
 brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
 den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
 vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
-Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`). Offen: Der
-Kalender-Feed (WP-24) muss dieselbe Regel einhalten, sobald er Einteilungen liefert. Geprüft in
-`pruefungen/entwuerfe.test.js`.
+Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
+**Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
+oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen
+Beschäftigte eines bestehenden Betriebs ohne Freigaben nach dem Ausrollen keinen Einsatz mehr. Den Schalter setzt nur
+`org.edit` (Leitung, Kundenrolle); Form und Wann/Wer prüft und setzt der Server (`planFreigabeZusammen`,
+`planFreigabePflichtGeaendertAm/Von`). Neue Betriebe (Selbststart, Erstbefüllung, Provisionierung, Testräume) starten
+mit `true`. Solange der Filter bei einem bestehenden Betrieb aus ist, bekommt die Leitung die dringende Aufgabe
+„Planfreigabe aktivieren“. Die abgeleitete Antwortmarke `sichtEntwuerfe` (nie gespeichert) sagt der Oberfläche, dass
+der Filter wirkt; sie zeigt dann „noch nicht veröffentlicht“ statt eines aus der Schichtfolge gerechneten Dienstes.
+**Bewusst nicht gefiltert — Selbstauskunft (Art. 15):** `auskunft.mjs` liefert die eigenen Abweichungen und den Plan der
+nächsten 62 Tage auch aus Entwurfsmonaten. Es sind die eigenen Daten der Person, der Auskunftsanspruch ist nicht
+auf freigegebene Stände beschränkt (Alternative im Nachweis `docs/acc45/wp23-nachweis.md`). **Offen:** Der
+Kalender-Feed (`kalender.mjs`) hat keine Serversperre — der Client rechnet die Termine —, das ist ein Folgepunkt von
+WP-24. Der Betriebsrat behält den ganzen Plan (fachlich offen, siehe Nachweis). Geprüft in
+`pruefungen/entwuerfe.test.js` und `pruefungen/entwuerfe-oberflaeche.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

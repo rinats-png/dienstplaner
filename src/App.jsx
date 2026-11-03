@@ -224,6 +224,9 @@ import {
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
   berichtstext as loeschBericht, PLANDATEN_MINDEST, fristWert, FRIST_GRENZEN,
 } from "./aufbewahrung.js";
+/* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
+   Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
+import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 let _dunkel = false;
@@ -1104,7 +1107,8 @@ function baueMandant(cfg, seed) {
     anker: montag(`${jahr}-01-01`), zyklus: { wochen: v.wochen, tage: [...v.tage], vorlage: v.id },
     matrix: JSON.parse(JSON.stringify(MATRIX_STD)),
     einstellungen: { ruhezeit: 11, maxFolge: 6, maxNachtFolge: 4, maxUrlaubJeEinheit: 3,
-      sollWochenstunden: cfg.wochenstunden, ausgleichGrenze: 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24 },
+      sollWochenstunden: cfg.wochenstunden, ausgleichGrenze: 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24,
+      planFreigabePflicht: true },
     standorte, einheiten, qualifikationen: quals, dienstarten, personen, abwesenheiten,
     dienstbuch: [],
     // Springer werden regelmäßig eingesetzt — sonst liefe ihr Stundenkonto
@@ -1494,6 +1498,12 @@ function postenBesatzung(m, eid, d, pid) {
 }
 function personTag(m, p, d) {
   if (!imDienst(p, d)) return { dienstId: null, plan: null, abweichung: null, abwesenheit: null, quelle: "extern" };
+  /* Entwurf (WP-23): Der Server lässt die Einteilungen nicht freigegebener Monate nach heute für
+     Beschäftigte weg und sagt es in sichtEntwuerfe. Ohne diesen Zweig rechnete die Oberfläche für
+     solche Tage die Schichtfolge und zeigte einen Regeldienst, den die Planung vielleicht längst
+     geändert hat — falscher als gar nichts. */
+  if (m.sichtEntwuerfe && istEntwurfstag(m, d, m.sichtEntwuerfe.heute))
+    return { dienstId: null, plan: null, abweichung: null, abwesenheit: abwesenheitAm(m, p.id, d), quelle: "entwurf" };
   const eid = einheitAm(p, d);
   // Geschäftszimmer: Planung und Leitung fahren keine Rotation mit.
   // Sie erscheinen im Plan nur durch ausdrückliche Zuweisung.
@@ -3704,6 +3714,11 @@ function tagesaufgaben(sitz) {
       text: nl.bald.slice(0, 2).map((x) => `${x.person.nachname} · ${x.qual.name} in ${x.tage} Tagen`).join(" · "),
       anzahl: nl.bald.length });
   }
+
+  /* WP-23: Solange die Planfreigabe nicht gilt, sehen Beschäftigte auch Entwürfe. Nur die Leitung
+     (org.edit) schaltet das ein; sie bekommt den Hinweis als dringende Aufgabe. */
+  if (darf(sitz, "org.edit") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
+    titel: "Planfreigabe aktivieren", text: "Beschäftigte sehen sonst auch Entwürfe" });
 
   if (darf(sitz, "plan.publish")) {
     for (const off of [0, 1]) {
@@ -8363,8 +8378,9 @@ function MeineSchichten({ sitz, akt, ym }) {
               </div>
               <Zelle da={da} abw={t.abwesenheit} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 500 }}>
-                  {t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : "frei"}</div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: t.quelle === "entwurf" && !t.abwesenheit ? C.dimmer : undefined }}>
+                  {t.abwesenheit ? abwArt(t.abwesenheit.art).label
+                    : t.quelle === "entwurf" ? "noch nicht veröffentlicht" : da ? da.name : "frei"}</div>
                 {da && <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende} · {n1(dauer(da))} h · {da.ort}</div>}
               </div>
               {da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen)
@@ -17613,6 +17629,8 @@ function leererMandant(name, branche, anschrift, kontakt) {
       wochenstunden: 40, ruhezeit: 11, maxFolge: 6, ausgleichsgrenze: 40,
       urlaubsanspruch: 30, pausenregel: "gesetzlich",
       planungsvorlauf: 28, aenderungsvorlauf: 4,
+      /* Planfreigabe (WP-23): Beschäftigte sehen Entwürfe nicht. */
+      planFreigabePflicht: true,
     },
 
     einheiten: [{ id: einheitId, name: "Schichtgruppe A", standortId,
@@ -19882,7 +19900,8 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
             {t.abwesenheit ? abwArt(t.abwesenheit.art).label : "Heute frei"}</div>
           <div style={{ fontSize: 14.5, color: C.dim }}>
             {t.abwesenheit ? `bis ${fDatum(t.abwesenheit.bis)}`
-              : morgenDa ? `Nächster Dienst morgen: ${morgenDa.name} ab ${morgenDa.start}` : "Auch morgen kein Dienst."}
+              : morgenDa ? `Nächster Dienst morgen: ${morgenDa.name} ab ${morgenDa.start}`
+                : morgen.quelle === "entwurf" ? "Der Plan für morgen ist noch nicht veröffentlicht." : "Auch morgen kein Dienst."}
           </div>
         </MKarte>)}
 
@@ -21118,6 +21137,39 @@ function JugendschutzSchalter({ sitz, akt }) {
     </Card>);
 }
 
+/**
+ * Planfreigabe als Pflicht (WP-23). Eingeschaltet (oder sobald ein Monat freigegeben ist) sehen
+ * Beschäftigte die Einteilungen eines nicht freigegebenen Monats nicht — sie sehen dort „noch nicht
+ * veröffentlicht“. Schalten darf, wer org.edit hat; wann und von wem, setzt der Server.
+ */
+function PlanFreigabeSchalter({ sitz, akt }) {
+  const m = sitz.mandant;
+  const e = m.einstellungen || {};
+  const pflicht = planFreigabePflicht(m);
+  const wirkt = planFreigabeAktiv(m);
+  const durch = e.planFreigabePflichtGeaendertVon
+    ? (m.personen.find((x) => String(x.id) === String(e.planFreigabePflichtGeaendertVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={wirkt ? "ok" : "warn"}>{wirkt ? "Entwürfe verborgen" : "Beschäftigte sehen Entwürfe"}</Pill>}>
+        Planfreigabe</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        Ein Monatsplan ist ein Entwurf, bis er freigegeben wird. Ist die Planfreigabe eingeschaltet, sehen
+        Beschäftigte die Einteilungen eines nicht freigegebenen Monats nicht — dort steht „noch nicht
+        veröffentlicht“. Heute und frühere Tage zählen nie als Entwurf. Betriebsrat, Schichtverantwortung und
+        Planung sehen weiter alles. {!pflicht && wirkt && "Die Pflicht ist aus, wirkt aber, weil schon ein Monat freigegeben wurde. "}
+        {!wirkt && "Solange sie aus ist und noch kein Monat freigegeben wurde, sehen Beschäftigte auch Entwürfe."}
+        {e.planFreigabePflichtGeaendertAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.planFreigabePflichtGeaendertAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        <div style={{ marginTop: 14 }}>
+          <Btn kind={pflicht ? undefined : "primary"} onClick={() => akt.setzePlanFreigabePflicht(!pflicht)}>
+            {pflicht ? "Planfreigabe ausschalten" : "Planfreigabe aktivieren"}</Btn>
+        </div>
+      </div>
+    </Card>);
+}
+
 /** Zahlenfeld, das nur gültige Werte speichert (beim Verlassen). Leer = nicht gesetzt. */
 function GeoZahl({ label, wert, gueltig, hinweis, onCommit }) {
   const [text, setText] = useState(wert === undefined || wert === null ? "" : String(wert));
@@ -21390,6 +21442,8 @@ function Betrieb({ sitz, akt }) {
 
       <GeoSchalter sitz={sitz} akt={akt} />
 
+      <PlanFreigabeSchalter sitz={sitz} akt={akt} />
+
       <JugendschutzSchalter sitz={sitz} akt={akt} />
 
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
@@ -21639,7 +21693,8 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     matrix: JSON.parse(JSON.stringify(MATRIX_STD)),
     einstellungen: { ruhezeit: f.ruhezeit || 11, maxFolge: f.maxFolge || 6, maxNachtFolge: 4,
       maxUrlaubJeEinheit: 3, sollWochenstunden: f.wochenstunden || 40,
-      ausgleichGrenze: f.ausgleichGrenze || 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24 },
+      ausgleichGrenze: f.ausgleichGrenze || 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24,
+      planFreigabePflicht: true },
     standorte, einheiten, qualifikationen: quals, dienstarten,
     personen: [{ id: hauptId, vorname: (f.kontaktName || "Haupt Zugang").split(" ")[0],
       nachname: (f.kontaktName || "Haupt Zugang").split(" ").slice(1).join(" ") || "Zugang",
@@ -22735,6 +22790,10 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Planfreigabe als Pflicht (WP-23): nur org.edit; wann und von wem, setzt der Server. */
+      setzePlanFreigabePflicht: (an) => mUpd((m) => ({ ...m,
+        einstellungen: { ...(m.einstellungen || {}), planFreigabePflicht: !!an } }),
+        an ? "Planfreigabe aktiviert" : "Planfreigabe ausgeschaltet"),
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): org.edit oder pattern.edit;
          wann und von wem, setzt der Server. */
       setzeJugendMehrschichtig: (an) => mUpd((m) => ({ ...m,
@@ -24426,4 +24485,5 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen };
+export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+  PlanFreigabeSchalter, tagesaufgaben, personTag };

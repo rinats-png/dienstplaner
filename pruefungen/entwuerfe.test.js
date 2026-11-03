@@ -91,11 +91,43 @@ describe("Sonde je Rolle (bestandFuerRolle)", () => {
     expect(schluessel(sicht("betriebsrat", "r1"))).toEqual(alle);
   });
 
-  it("ohne freigaben im Betrieb: Beschäftigte sehen die Zukunft nicht, die Vergangenheit schon", () => {
-    const m = { ...betrieb(), freigaben: undefined };
-    delete m.freigaben;
-    const aus = rechte.bestandFuerRolle({ version: 9, mandanten: [m] }, { rolle: "mitarbeiter", person: "a1", betrieb: 0 }).mandanten[0];
-    expect(schluessel(aus)).toEqual([`a1|${tag(VORBEI)}`]);
+  /* Übergang (Review WP-23, Punkt 3): Der Filter wirkt nur, wenn der Betrieb die Freigabe benutzt
+     (mindestens ein freigegebener Monat) oder einstellungen.planFreigabePflicht === true. Sonst sähen
+     Beschäftigte eines bestehenden Betriebs ohne Freigaben nach dem Ausrollen keinen Einsatz mehr. */
+  describe("wann der Filter wirkt", () => {
+    const FUTUR = [`a1|${tag(ENTWURF)}`, `a1|${tag(FREI)}`];
+    const fall = [
+      ["ohne Freigaben, ohne Pflicht (bestehender Betrieb): altes Verhalten, alles sichtbar", {}, undefined, false],
+      ["Pflicht ausdrücklich aus, ohne Freigaben: alles sichtbar", {}, false, false],
+      ["Pflicht an, ohne jede Freigabe: Entwürfe verborgen", {}, true, true],
+      ["eine Freigabe, Pflicht nie gesetzt: Entwürfe verborgen (der Betrieb benutzt die Freigabe)", { [FREI]: { stand: 1 } }, undefined, true],
+      ["eine Freigabe, Pflicht ausdrücklich aus: Entwürfe verborgen", { [FREI]: { stand: 1 } }, false, true],
+      ["Pflicht kein Boolean („ja“): zählt nicht, alles sichtbar", {}, "ja", false],
+    ];
+    for (const [name, freigaben, pflicht, verborgen] of fall) {
+      it(name, () => {
+        const m = betrieb({ freigaben, einstellungen: pflicht === undefined ? {} : { planFreigabePflicht: pflicht } });
+        const roh = { version: 9, mandanten: [m] };
+        const ma = rechte.bestandFuerRolle(roh, { rolle: "mitarbeiter", person: "a1", betrieb: 0 }).mandanten[0];
+        const bestand = FUTUR.concat([`b1|${tag(ENTWURF, "11")}`]);
+        for (const k of bestand) {
+          const ist = ma.abweichungen[k] !== undefined;
+          const soll = !(verborgen && k.includes(ENTWURF));
+          const freigegeben = k.includes(FREI) && (freigaben[FREI] || !verborgen);
+          expect(ist, k).toBe(k.includes(ENTWURF) ? !verborgen : (freigegeben || !verborgen) && soll);
+        }
+        /* Die Oberfläche erfährt es nur, wenn der Filter wirkt (abgeleitet, nie gespeichert). */
+        expect(ma.sichtEntwuerfe !== undefined, "sichtEntwuerfe").toBe(verborgen);
+        if (verborgen) expect(ma.sichtEntwuerfe).toEqual({ heute: S.laufenderTag() });
+        /* Andere Rollen bekommen weder den Filter noch den Hinweis. */
+        const br = rechte.bestandFuerRolle(roh, { rolle: "betriebsrat", person: "r1", betrieb: 0 }).mandanten[0];
+        expect(br.abweichungen[`a1|${tag(ENTWURF)}`]).toBe("F");
+        expect(br.sichtEntwuerfe).toBeUndefined();
+        const pl = rechte.bestandFuerRolle(roh, { rolle: "planer", person: "p1", betrieb: 0 }).mandanten[0];
+        expect(pl.abweichungen[`a1|${tag(ENTWURF)}`]).toBe("F");
+        expect(pl.sichtEntwuerfe).toBeUndefined();
+      });
+    }
   });
 
   it("heute und früher sind in Kraft, kein Entwurf: der heutige Dienst bleibt (Einstempeln), morgen im nicht freigegebenen Monat nicht", () => {
@@ -105,7 +137,8 @@ describe("Sonde je Rolle (bestandFuerRolle)", () => {
     const verschoben = (t, n) => new Date(Date.parse(`${t}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
     const gestern = verschoben(heute, -1), morgen = verschoben(heute, 1);
     /* Ohne Freigabe im Betrieb: gestern und heute sichtbar, morgen (auch im laufenden Monat) Entwurf. */
-    const m = betrieb({ abweichungen: { [`a1|${gestern}`]: "F", [`a1|${heute}`]: "F", [`a1|${morgen}`]: "F" }, freigaben: {} });
+    const m = betrieb({ abweichungen: { [`a1|${gestern}`]: "F", [`a1|${heute}`]: "F", [`a1|${morgen}`]: "F" }, freigaben: {},
+      einstellungen: { planFreigabePflicht: true } });
     const aus = rechte.bestandFuerRolle({ version: 9, mandanten: [m] }, { rolle: "mitarbeiter", person: "a1", betrieb: 0 }).mandanten[0];
     expect(schluessel(aus)).toEqual([`a1|${gestern}`, `a1|${heute}`].sort());
     /* Ist der Monat von morgen freigegeben, sieht sie auch morgen. */
@@ -159,5 +192,80 @@ describe("über den Handler", () => {
     expect(p.status, JSON.stringify(p).slice(0, 300)).toBe(200);
     const ma = await anfrage("/api/bestand", { token: await sitzung("a1", "mitarbeiter") });
     expect(ma.bestand.mandanten[0].abweichungen[`a1|${tag(ENTWURF)}`]).toBe("F");
+  });
+});
+
+/* ---- Schalter „Planfreigabe“ (Review WP-23, Punkt 3): nur die Leitung, Form und Wann/Wer vom Server ---- */
+describe("einstellungen.planFreigabePflicht schreiben", () => {
+  const R2 = "wp23-schalter";
+  const sitz2 = async (pid, rolle) => (await sitzungAnlegen({ bestand: R2, name: pid, rolle, person: pid, betrieb: 0,
+    mandantId: "m1", einheit: null }, 60 * 60 * 1000)).token;
+  const setze = async (pid, rolle, wert, extra = {}) => {
+    const t = await sitz2(pid, rolle);
+    const g = await anfrage("/api/bestand", { token: t });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    b.mandanten[0].einstellungen = { ...(b.mandanten[0].einstellungen || {}), ...(wert === undefined ? {} : { planFreigabePflicht: wert }), ...extra };
+    const p = await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: g.etag } });
+    const e = (await B.bestandLesen(laden(), R2)).bestand.mandanten[0].einstellungen || {};
+    return { p, e };
+  };
+  beforeAll(async () => {
+    await B.bestandSchreiben(laden(), R2, { version: 9, mandanten: [betrieb({ freigaben: {}, einstellungen: {} })] }, { durch: "Pruefung" });
+  });
+
+  it("die Planung darf den Schalter nicht setzen (Wert fällt weg)", async () => {
+    const { e } = await setze("p1", "planer", true);
+    expect(e.planFreigabePflicht).toBeUndefined();
+    expect(e.planFreigabePflichtGeaendertAm).toBeUndefined();
+  });
+  it("Beschäftigte dürfen den Schalter nicht setzen", async () => {
+    const { e } = await setze("a1", "mitarbeiter", true);
+    expect(e.planFreigabePflicht).toBeUndefined();
+  });
+  it("kein Boolean wird abgelehnt, nichts gespeichert", async () => {
+    for (const falsch of ["ja", 1, "true", {}, []]) {
+      const { p, e } = await setze("l1", "leitung", falsch);
+      expect(p.status, JSON.stringify(falsch)).toBeGreaterThanOrEqual(400);
+      expect(e.planFreigabePflicht, JSON.stringify(falsch)).toBeUndefined();
+    }
+  });
+  it("die Leitung schaltet ein: Wert gespeichert, Wann und Wer setzt der Server (nicht der Client)", async () => {
+    const vor = Date.now();
+    const { p, e } = await setze("l1", "leitung", true, { planFreigabePflichtGeaendertAm: "1999-01-01T00:00:00Z", planFreigabePflichtGeaendertVon: "fremd" });
+    expect(p.status).toBe(200);
+    expect(e.planFreigabePflicht).toBe(true);
+    expect(e.planFreigabePflichtGeaendertVon).toBe("l1");
+    expect(Date.parse(e.planFreigabePflichtGeaendertAm)).toBeGreaterThanOrEqual(vor - 1000);
+  });
+  it("danach wirkt der Filter ohne eine einzige Freigabe", async () => {
+    const ma = await anfrage("/api/bestand", { token: await sitz2("a1", "mitarbeiter") });
+    const m = ma.bestand.mandanten[0];
+    expect(m.abweichungen[`a1|${tag(ENTWURF)}`]).toBeUndefined();
+    expect(m.sichtEntwuerfe).toBeDefined();
+  });
+  it("die Planung kann den Schalter danach nicht zurücknehmen", async () => {
+    const { e } = await setze("p1", "planer", false);
+    expect(e.planFreigabePflicht).toBe(true);
+  });
+  it("ein unveränderter Wert lässt Wann und Wer unberührt; die Leitung schaltet aus", async () => {
+    const vorher = (await B.bestandLesen(laden(), R2)).bestand.mandanten[0].einstellungen;
+    const gleich = await setze("l1", "leitung", true);
+    expect(gleich.e.planFreigabePflichtGeaendertAm).toBe(vorher.planFreigabePflichtGeaendertAm);
+    const aus = await setze("l1", "leitung", false);
+    expect(aus.e.planFreigabePflicht).toBe(false);
+    expect(aus.e.planFreigabePflichtGeaendertVon).toBe("l1");
+  });
+});
+
+/* ---- Neue Betriebe starten mit der Pflicht (Review WP-23, Punkt 3) ---- */
+describe("neue Betriebe", () => {
+  it("der Leerbetrieb (Provisionierung, Erstbefüllung, Testräume) hat planFreigabePflicht true", async () => {
+    const L = await import("../server/lib/leerbetrieb.mjs");
+    const m = L.baueLeerenBetrieb({ name: "Prüfung", branche: "pflege", email: "x@example.org", land: "DE", raum: "wp23-neu", laeuftAb: "2099-01-01" });
+    const betr = m.mandanten ? m.mandanten[0] : m;
+    expect(betr.einstellungen.planFreigabePflicht).toBe(true);
+    const roh = { version: 9, mandanten: [{ ...betr, abweichungen: { "x|2099-05-10": "F" }, personen: [person("x")] }] };
+    const sicht = rechte.bestandFuerRolle(roh, { rolle: "mitarbeiter", person: "x", betrieb: 0 }).mandanten[0];
+    expect(sicht.abweichungen["x|2099-05-10"]).toBeUndefined();
   });
 });

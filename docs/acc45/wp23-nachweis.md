@@ -24,18 +24,46 @@ Ein Dienst, den es morgen vielleicht nicht mehr gibt, stand auf dem Telefon.
   Arbeitszeit setzt voraus, dass er den Entwurf vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung
   und Kundenrolle planen selbst und sehen den Entwurf. Diese Entscheidung ist in RECHTEMATRIX ²⁷ festgehalten und
   fachlich zu bestätigen.
+- **Wann der Filter wirkt (Review, Punkt 3: Ausrollrisiko).** Die erste Fassung filterte immer. Ein bestehender Betrieb
+  mit leerem `freigaben` hätte danach seinen Beschäftigten ab morgen jeden Einsatz verborgen. Jetzt entscheidet
+  `server/lib/planfreigabe.mjs` (`planFreigabeAktiv`, eine Stelle für Server und Oberfläche): Der Filter wirkt, wenn der
+  Betrieb mindestens einen Monat freigegeben hat **oder** `einstellungen.planFreigabePflicht === true` ist. Sonst bleibt
+  das alte Verhalten (Beschäftigte sehen den ganzen Plan). Ein Nicht-Boolean zählt nicht.
+  - **Schalter:** Betriebsverwaltung, Karte „Planfreigabe“ (`PlanFreigabeSchalter`). Schreiben darf nur `org.edit`;
+    der Server prüft die Form (nur true/false, sonst 4xx), setzt `planFreigabePflichtGeaendertAm/Von` selbst und lässt
+    den Wert bei anderen Rollen fallen. Ein unveränderter Wert lässt Wann/Wer unberührt.
+  - **Neue Betriebe** (Selbststart, Erstbefüllung, Provisionierung, Testräume, Betrieb anlegen, Demo): `true`.
+  - **Bestehende Betriebe ohne Freigabe:** altes Verhalten plus dringende Aufgabe für die Leitung „Planfreigabe
+    aktivieren — Beschäftigte sehen sonst auch Entwürfe“ (nur `org.edit`), bis der Filter wirkt.
+  - **Antwortmarke:** `sichtEntwuerfe: { heute }` (abgeleitet, nie gespeichert) nur bei Beschäftigten, nur wenn der
+    Filter wirkt.
+- **Oberfläche (Review, Punkt 5).** `personTag` rechnet bei fehlender Abweichung den Dienst aus der Schichtfolge. Für
+  Beschäftigte an Entwurfstagen liefert es jetzt `quelle: "entwurf"` ohne Dienst und ohne Planwert. „Meine Schichten“
+  zeigt dort „noch nicht veröffentlicht“, „Heute“ sagt „Der Plan für morgen ist noch nicht veröffentlicht.“ statt
+  „Auch morgen kein Dienst.“. Planung und Leitung sehen unverändert.
 - **Speichern bleibt gleich:** Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`). Der gespeicherte
   Entwurf übersteht ihr Speichern (getestet).
 - RECHTEMATRIX: neue Fußnote ²⁷.
 
 ## Tests
 
-`pruefungen/entwuerfe.test.js` (14 Tests, `npm run pruefung:entwuerfe`, im CI-Gate), mit festen Monaten weit in der
-Zukunft bzw. Vergangenheit:
+`pruefungen/entwuerfe.test.js` (27 Tests) und `pruefungen/entwuerfe-oberflaeche.test.js` (18 Tests),
+`npm run pruefung:entwuerfe`, im CI-Gate. Der Server-Teil rechnet mit festen Monaten weit in der Zukunft bzw. Vergangenheit:
 
 - Sonde je Rolle über `bestandFuerRolle`: Beschäftigte ohne eigenen und fremden Entwurf; Betriebsrat, Schichtverantwortung,
   Planung, Leitung und Kundenrolle mit Entwurf.
-- Ohne `freigaben` im Betrieb sehen Beschäftigte die Zukunft nicht, die Vergangenheit schon.
+- **Fälle der Aktivierungsregel** (Betrieb ohne Freigabe/mit Freigabe/Pflicht an/Pflicht ausdrücklich aus/Pflicht kein
+  Boolean): ohne Freigabe und ohne Pflicht ist alles sichtbar; Pflicht an oder eine Freigabe verbirgt den Entwurf; die
+  Marke `sichtEntwuerfe` erscheint genau dann; Betriebsrat und Planung bekommen weder Filter noch Marke.
+- **Schalter schreiben:** Planung und Beschäftigte können ihn nicht setzen; Nicht-Boolean wird abgelehnt; die Leitung
+  setzt ihn, Wann/Wer kommt vom Server (vom Client geschickte Werte werden ignoriert); danach wirkt der Filter ohne
+  Freigabe; die Planung kann ihn nicht zurücknehmen; unveränderter Wert lässt den Zeitstempel in Ruhe.
+- **Neue Betriebe:** `baueLeerenBetrieb` setzt `planFreigabePflicht: true`, und die Beschäftigte dieses Betriebs sieht den
+  Entwurf nicht.
+- **Oberfläche gerendert (feste Uhr 2026-11-04):** `personTag` im Entwurf ohne Dienst/Planwert, heute und gestern nie
+  Entwurf, freigegebener Folgemonat nicht; „Meine Schichten“ mit/ohne Filter und bei der Planung; „Heute“ zu morgen;
+  Leitungsaufgabe in allen Fällen und für andere Rollen nicht; Schalter-Karte in drei Zuständen; Klick ruft
+  `setzePlanFreigabePflicht` mit dem umgekehrten Wert (Aufnahme-Proxy, echte Verdrahtung).
 - Gestern und heute sichtbar, morgen im nicht freigegebenen Monat nicht, im freigegebenen schon; Tageswechsel in
   Berliner Zeit.
 - Die Eingabe wird nicht verändert.
@@ -43,24 +71,44 @@ Zukunft bzw. Vergangenheit:
   Entwurf unberührt; nach der Freigabe durch die Planung ist der Monat sichtbar.
 
 **Rot vorher:** Gegen `sicht.mjs` ohne die Änderung 4 von 14 rot (Beschäftigte sehen den Entwurf in der Sicht, im
-Handler und ohne Freigaben; `laufenderTag` fehlt). Die übrigen 10 sind „bleibt erhalten“-Prüfungen und bestehen auf
-beiden Ständen. Jetzt 14/14.
+Handler und ohne Freigaben; `laufenderTag` fehlt). Zur Nachbesserung: Mutante im `personTag`-Zweig (Zweig abgeschaltet)
+macht 4 der 18 Oberflächen-Tests rot (Entwurfstag liefert Dienst, „noch nicht veröffentlicht“ fehlt, „Heute“ sagt
+„Auch morgen kein Dienst“); mit dem Zweig 18/18.
 
-Regression lokal: `rechtematrix`, `rechtematrix-zeilen`, `sicht`, `sicht-tagesgenau`, `sicht-planung-leitung`,
+Regression lokal (Nachbesserung): 14 Dateien, 909 Tests grün (`entwuerfe*`, `oberflaeche-render`, `erstbefuellung`,
+`provisionierung`, `rechtematrix`, `rechtematrix-zeilen`, `sicht*`, `gestalt`, `auslieferung`, `schutzmerkmale-sicht`).
+Frühere Regression: `rechtematrix`, `rechtematrix-zeilen`, `sicht`, `sicht-tagesgenau`, `sicht-planung-leitung`,
 `sicht-schichtverantwortung`, `kette-a-rundreise`, `review-wp10`, `personendaten`, `oberflaeche-render`,
 `oberflaeche-selbstservice`, `zeiterfassung`, `stempeln`, `stempeldaten` — ohne eine Anpassung bestehender Tests.
 Die erste, monatsgenaue Fassung machte 5 Fälle in `oberflaeche-render` rot (heutiger Dienst fehlt); die tagesgenaue
 Regel hält sie grün. eslint ohne Befund.
 
-## Offen
+**Testanpassungen (begründet, nichts abgeschwächt):** In `entwuerfe.test.js` (eigener WP-23-Test) ersetzt die Tabelle der
+Aktivierungsregel den Einzelfall „ohne freigaben im Betrieb: Zukunft verborgen“, der mit der Regel aus Punkt 3 nicht mehr
+gilt (ohne Freigabe und ohne Pflicht ist jetzt alles sichtbar; mit Pflicht bleibt der Fall abgedeckt). Der Test „heute und
+früher sind in Kraft“ trägt `planFreigabePflicht: true`, weil er den Filter ohne Freigabe prüft. Kein Test fremder Dateien
+wurde geändert.
 
-- **Kalender-Feed (WP-24):** Er liefert heute keine Einteilungen. Sobald er das tut, muss er dieselbe Regel einhalten
-  (nicht freigegebene Monate gehen nicht an die Person).
-- **Anzeige:** Die Oberfläche beschriftet einen nicht freigegebenen Monat bei „Kommende Dienste“ mit „Entwurf“. Für
-  Beschäftigte zeigt sie dort jetzt nur die Schichtfolge ohne die Einteilungen der Planung. Ob dort stattdessen
-  „noch nicht veröffentlicht“ stehen soll, ist eine fachliche Frage.
+## Offen und bewusst entschieden
+
+- **Selbstauskunft Art. 15 (bewusst unverändert).** `auskunft.mjs` (Zeilen ca. 105–114) liefert der Person ihre eigenen
+  Abweichungen und den Plan der nächsten 62 Tage, auch aus Entwurfsmonaten (`daten.mjs`, Selbstauskunft). Begründung: Es
+  sind ihre eigenen personenbezogenen Daten; der Auskunftsanspruch kennt die Unterscheidung Entwurf/freigegeben nicht,
+  und die Auskunft ist keine Planansicht. **Alternative**, falls fachlich gewünscht: in `auskunft.mjs` dieselbe
+  `istEntwurfstag`-Entscheidung anwenden und Entwurfstage mit dem Vermerk „noch nicht veröffentlicht“ aufführen. Kostet
+  einen Test je Pfad und nimmt der Person Daten, die über das Konto ohnehin bald sichtbar werden. Entscheidung offen.
+- **Kalender-Feed (Folgepunkt WP-24).** `kalender.mjs` (Zeilen ca. 410–433) hat keine Serversperre: Der Client rechnet
+  die Termine aus dem, was er hat. Sobald der Feed Einteilungen liefert, muss er `istEntwurfstag` serverseitig anwenden
+  (nicht freigegebene Monate nach heute gehen nicht an die Person). Diese Zeile gehört in die WP-24-Abnahme; WP-24 selbst
+  baut ein anderer Strang.
+- **„Freigabe zurückgenommen“ (künftiges Feature).** Nimmt die Planung eine Freigabe zurück, wird der Monat wieder zum
+  Entwurf: Beschäftigte verlieren die Einteilungen, die sie schon gesehen haben. Das Verfahren braucht dann eine
+  Mitteilung an die Betroffenen („Plan für Monat X wird überarbeitet“) und eine Regel, ob schon gesehene Dienste in
+  Kraft bleiben. Heute gibt es keine Rücknahme; der Filter ist darauf nicht vorbereitet.
+- **Betriebsrat sieht den ganzen Plan (fachlich offen, Punkt 7).** Begründet mit der Mitbestimmung nach § 87 BetrVG
+  (Beginn, Ende, Verteilung der Arbeitszeit). Ob der Betriebsrat Entwürfe sehen darf oder erst den freigegebenen Stand,
+  und ob dann ein getrennter Prüfstand nötig ist, entscheidet das Fachliche; der Code folgt der Rechtematrix ²⁷.
+- **Anzeige „Kommende Dienste“:** erledigt — Beschäftigte sehen im Entwurf „noch nicht veröffentlicht“.
 - **Mitteilungen:** Wer die Planung vor der Freigabe an einem Entwurf ändert, erzeugt dabei unter Umständen schon
   Mitteilungen an Betroffene (`planGeaendert`, z. B. beim Einspringen). Das gehört zur Freigabelogik und ist nicht Teil
   von WP-23.
-- Auskunft nach Art. 15 (WP-26) nennt die geplanten Dienste der Person, auch im Entwurf: Es sind ihre eigenen Daten, die
-  Auskunft dient nicht der Planansicht.

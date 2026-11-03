@@ -814,6 +814,36 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
+/* Planfreigabe als Pflicht (WP-23): `einstellungen.planFreigabePflicht`.
+   Eingeschaltet (oder mit mindestens einer Freigabe) sehen Beschäftigte die
+   Einteilungen eines nicht freigegebenen Monats nicht (planfreigabe.mjs,
+   sicht.mjs). Schalten darf, wer org.edit hat (Leitung, Kundenrolle); für alle
+   anderen — auch die Planung — bleibt der gespeicherte Wert. Erwartet wird
+   true oder false, alles andere weist der Server ab. Wann und von wem, setzt
+   der Server; mitgeschickte Werte dafür zählen nicht. Fehlt das Feld in der
+   Übermittlung, bleibt der gespeicherte Wert (ein Client, der `einstellungen`
+   ohne das Feld zurückschickt, schaltet nichts aus). */
+const PLANFREIGABE_ZEIT = ["planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"];
+function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
+  const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  const e = { ...neuM.einstellungen };
+  const zurueck = () => {
+    if ("planFreigabePflicht" in altE) e.planFreigabePflicht = altE.planFreigabePflicht; else delete e.planFreigabePflicht;
+    for (const k of PLANFREIGABE_ZEIT) { if (k in altE) e[k] = altE[k]; else delete e[k]; }
+    return { mandant: { ...neuM, einstellungen: e } };
+  };
+  const geschickt = Object.prototype.hasOwnProperty.call(e, "planFreigabePflicht") ? e.planFreigabePflicht : altE.planFreigabePflicht;
+  if (!darf(rolle, "org.edit")) return zurueck();
+  if (geschickt === undefined || geschickt === null) return zurueck();
+  if (typeof geschickt !== "boolean") return { grund: "Planfreigabe: erwartet wird true oder false." };
+  if (geschickt === (altE.planFreigabePflicht === true)) return zurueck();
+  e.planFreigabePflicht = geschickt;
+  e.planFreigabePflichtGeaendertAm = new Date().toISOString();
+  e.planFreigabePflichtGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
+  return { mandant: { ...neuM, einstellungen: e } };
+}
+
 /* Einwilligungen nach dem Mutterschutzgesetz an der Person (Nutzerentscheidung,
    WP-11): § 5 Abs. 2 (Art „nacht", 20–22 Uhr) und § 6 Abs. 1 (Art „sonntag"),
    Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor" (§ 28).
@@ -1107,6 +1137,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Planfreigabe als Pflicht (WP-23): nur org.edit; Form und Wann/Wer vom Server. */
+      const freigabe = planFreigabeZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      if (freigabe.grund) return { verweigert: freigabe.grund };
+      geschickt = freigabe.mandant;
       /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };
