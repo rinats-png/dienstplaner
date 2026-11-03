@@ -456,3 +456,68 @@ describe("Review A3/L2–L5: Fenster, Uhr vor, Art, Klemmen, Rohwerte, Inhaber",
     expect(b.inhaber).toBe(a.inhaber);
   });
 });
+
+/* ---------------------- Nachprüfung (Opus) B1: Dauer 0 ---------------------- */
+describe("Nachprüfung B1: Beginn gleich Ende ist nie automatisch bestätigt", () => {
+  const ist = async (raum, datum, daId) => {
+    const { istZeitFuer } = await import("../src/istdaten.js");
+    const m = await mandant(raum);
+    return istZeitFuer(m, m.personen.find((x) => x.id === "a1"), datum, m.dienstarten.find((x) => x.id === daId));
+  };
+
+  it("L3-Fall: Ende offline 05:57:30, Beginn online 06:00 → geklemmt, Dauer 0 zur Prüfung, Konto zählt die Planzeit (8 h, nicht 23,5 h)", async () => {
+    await raumAnlegen("b1-l3", ["a1"], { abweichungen: { "a1|2026-11-10": "F" } });
+    zeitAuf("2026-11-10T05:00:00Z");
+    expect((await stempeln("b1-l3", "a1", { art: "start", clientEventId: ID(201) })).zeit).toBe("06:00");
+    zeitAuf("2026-11-10T05:02:00Z");
+    const e = await stempeln("b1-l3", "a1", { art: "ende", clientEventId: ID(202), offline: true,
+      erfasstAm: "2026-11-10T04:57:30.000Z", gesendetAm: "2026-11-10T05:02:00.000Z" });
+    expect(e.status).toBe(200);
+    expect(e.markierungen).toContain("DAUER_NULL");
+    expect(e.erfassung).toMatchObject({ start: "06:00", ende: "06:00", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^DAUER_NULL/);
+    const r = await ist("b1-l3", "2026-11-10", "F");
+    expect([r.std, r.erfasst, r.zurPruefung]).toEqual([8, false, true]);
+  });
+
+  it("R16: Beginn und Ende online in derselben Minute → Dauer 0 zur Prüfung, nicht 23,5 h", async () => {
+    await raumAnlegen("b1-r16", ["a1"], { abweichungen: { "a1|2026-11-10": "F" } });
+    zeitAuf("2026-11-10T05:00:10Z");
+    expect((await stempeln("b1-r16", "a1", { art: "start", clientEventId: ID(203) })).status).toBe(200);
+    zeitAuf("2026-11-10T05:00:40Z");
+    const e = await stempeln("b1-r16", "a1", { art: "ende", clientEventId: ID(204) });
+    expect(e.erfassung).toMatchObject({ start: "06:00", ende: "06:00", bestaetigt: false });
+    expect(e.erfassung.grund).toMatch(/^DAUER_NULL/);
+    const r = await ist("b1-r16", "2026-11-10", "F");
+    expect([r.std, r.zurPruefung]).toEqual([8, true]);
+  });
+
+  it("echter 24-h-Dienst 07:00–07:00 mit Pause: kein Dauer-0-Alarm; über den Korrekturweg zählt er 23,5 h", async () => {
+    await raumAnlegen("b1-24h", [], { abweichungen: { "a1|2026-11-10": "D24" },
+      personen: [person("a1"), { ...person("l1"), rolle: "leitung" }],
+      dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" },
+        { id: "D24", name: "24-Stunden-Dienst", start: "07:00", ende: "07:00", pause: 30 }] });
+    zeitAuf("2026-11-10T06:00:00Z");                                       // 07:00 Berlin
+    expect((await stempeln("b1-24h", "a1", { art: "start", clientEventId: ID(205) })).status).toBe(200);
+    zeitAuf("2026-11-11T06:00:00Z");                                       // 07:00 am Folgetag
+    const e = await stempeln("b1-24h", "a1", { art: "ende", clientEventId: ID(206) });
+    expect(e.status).toBe(200);
+    /* 24 h liegen über der 20-Stunden-Zuordnung (WP-17, B6.3): eigenes Ende, kein Dauer-0-Fall. */
+    expect(e.markierungen).not.toContain("DAUER_NULL");
+    const tl = (await sitzungAnlegen({ bestand: "b1-24h", name: "L", rolle: "leitung", person: "l1", betrieb: 0,
+      mandantId: "m1", einheit: null }, 24 * 60 * 60 * 1000)).token;
+    const k = await anfrage("/api/stempel-korrektur", { token: tl, rumpf: { personId: "a1", datum: "2026-11-10",
+      start: "07:00", ende: "07:00", grund: "24-Stunden-Dienst wie geplant geleistet" } });
+    expect(k.status, JSON.stringify(k)).toBe(200);
+    const r = await ist("b1-24h", "2026-11-10", "D24");
+    expect([r.std, r.erfasst]).toEqual([23.5, true]);
+  });
+
+  it("Zukunft ohne Toleranz: Erfassungszeit 3 min nach dem Eingang wird auf den Eingang geklemmt", async () => {
+    await raumAnlegen("b1-zukunft", ["a1"], { abweichungen: { "a1|2026-11-10": "F" } });
+    zeitAuf("2026-11-10T07:00:00Z");
+    const s = await stempeln("b1-zukunft", "a1", { art: "start", clientEventId: ID(207), offline: true,
+      erfasstAm: "2026-11-10T07:03:00.000Z", gesendetAm: "2026-11-10T07:00:00.000Z" });
+    expect([s.status, s.zeit]).toEqual([200, "08:00"]);
+  });
+});
