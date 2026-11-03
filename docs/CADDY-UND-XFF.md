@@ -90,8 +90,8 @@ Nicht in WP-32 behoben — `server/lib/schutz.mjs` (`herkunft()`) und
 3. In `herkunft()`: den **letzten** Eintrag nehmen (den der vertraute Proxy
    angehängt hat), nicht den ersten.
 4. Ohne gesetzte Variable: niemandem vertrauen (fail-closed). Für den
-   heutigen Betrieb heißt das: Variable in `.env` auf das Proxy-Subnetz
-   setzen, **bevor** die Änderung ausgeliefert wird — sonst zählt die Bremse
+   heutigen Betrieb heißt das: Variable in `.env` setzen (seit WP-32b: nur
+   Caddys feste Adresse, Abschnitt 7), **bevor** die Änderung ausgeliefert wird — sonst zählt die Bremse
    alle Anfragen unter der Adresse des Caddy-Containers.
 5. Prüfung: Anfrage mit gefälschtem Kopf von nicht vertrauter Adresse →
    Zähler unter `remoteAddress`; von vertrauter Adresse → letzter Eintrag.
@@ -163,22 +163,22 @@ Caddy-Containers. Alle Nutzer teilten sich eine Herkunft und einen
 Bremszähler: acht Fehlversuche irgendwo, und die Anmeldung ist für alle
 gesperrt.** Deshalb vor dem ersten Start dieses Stands:
 
-1. Subnetz des Docker-Netzes `proxy` ermitteln:
-   `docker network inspect proxy --format '{{(index .IPAM.Config 0).Subnet}}'`
-   (z. B. `172.18.0.0/16`).
+1. Caddy im Netz `proxy` eine feste Adresse geben — in Caddys eigener
+   Compose-Datei (`networks: proxy: ipv4_address: …`; das gehört zum Proxy,
+   nicht zu diesem Repository) — und sie ablesen:
+   `docker inspect caddy --format '{{(index .NetworkSettings.Networks "proxy").IPAddress}}'`.
 2. In `/opt/apps/centric-dienstplanung/.env` eintragen:
-   `CENTRIC_VERTRAUTE_PROXYS=<Subnetz>`.
+   `CENTRIC_VERTRAUTE_PROXYS=<diese Adresse>` (Auflage B1; `deploy.sh` liefert
+   ohne die Variable nicht aus).
 3. Nach dem Start im Log: `Herkunft: X-Forwarded-For wird von 1 vertrauten
    Einträgen angenommen.` — und **keine** Zeile `WARNUNG: Anfrage mit
    X-Forwarded-For`.
 4. `/einrichten/umgebung`: `vertrauteProxys: true`, keine Warnung dazu.
 
-Strenger (empfohlen, sobald Caddy eine feste Adresse hat): statt des ganzen
-Netzes nur Caddys Adresse eintragen. Mit dem Subnetz vertraut der Server
-jedem Container im Netz `proxy` — der kann seine Herkunft weiter frei
-wählen. Caddys Adresse festlegen geht in dessen Compose-Datei
-(`networks: proxy: ipv4_address: …`); das gehört zum Proxy, nicht zu
-diesem Repository.
+**Nicht empfohlen:** das ganze Subnetz des Netzes `proxy` eintragen. Dann
+vertraut der Server jedem Container im Netz — der kann seine Herkunft weiter
+frei wählen. Nur als Übergang, solange Caddy noch keine feste Adresse hat,
+und dann so kurz wie möglich.
 
 ### Prüfungen und CI
 

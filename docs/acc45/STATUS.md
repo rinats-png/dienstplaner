@@ -1,6 +1,6 @@
 # ACC45 – Status
 
-Stand: 2026-11-03 (Tag 2)
+Stand: 2026-11-03 (Tag 2, Vormittag; Wochenlimit bis 13:00)
 
 ## Überblick
 
@@ -8,8 +8,8 @@ Stand: 2026-11-03 (Tag 2)
 |---|---|
 | Pakete gesamt | 46 (42 aus dem Audit + WP-43 Personaldaten-Filter, WP-44 Code-Rotation, WP-45 atomares Schreiben, WP-46 Bremse fail-closed) |
 | DONE | 2 (WP-01 H8+ produktiv, WP-08) |
-| INTEGRATED | 11 (WP-02, 03, 04, 05, 10, 11, 31, 32, 43, 45, 46) + Nachträge WP-05b, WP-11 (Jugendschutz, U1), WP-32c, WP-45b/c – im Integrationsstand, Abnahme in Produktion steht aus |
-| IN_PROGRESS / REVIEW | WP-17, WP-22, WP-26, WP-41, WP-09; WP-11 MuSchG-Einwilligung (Auflagen), WP-45d; WP-33 Review pausiert |
+| INTEGRATED | 15 (WP-02, 03, 04, 05, 10, 11, 12, 22, 26, 31, 32, 41, 43, 45, 46) + Nachträge – im Integrationsstand, Abnahme in Produktion steht aus |
+| IN_PROGRESS / REVIEW | WP-17 (Auflagen), WP-06 (Auflagen M1/B1), WP-13, WP-19 (Kern + Strang C im Review, weitere Module folgen), WP-22b (Review-Befunde), WP-25, WP-27, WP-28, WP-09 |
 | BLOCKED / READY | 27 / 2 (READY: WP-06, WP-30) |
 | Offener Aufwand | 165,5 PT (integrierte Pakete zählen bis DONE weiter mit) |
 | Kritischer Pfad | WP-02 → WP-09 → WP-10 → WP-11 → WP-22 → WP-19 → WP-42 (48,5 PT); WP-19 aufteilbar |
@@ -62,9 +62,22 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 3. WP-04: Speicherziel, Verwahrung des restic-Passworts, Alarmdienst.
 4. WP-03-Einführung: Migration der Produktions-`.env`, gesperrte Bilder samt Tags entfernen.
 5. WP-44 (A9): Ablauf Z1–Z7.
-6. Fachlich: Einwilligung/Genehmigung MuSchG (sonst harte Sperre 20–6 Uhr und sonntags); 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit, Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst).
+6. Fachlich: 120-Tage-Horizont der Server-Nachrechnung; Archiv Bestätigungsprotokoll; sperren oder warnen (Ruhezeit, Qualifikation, keineNacht, maxDiensteWoche, keinAlleindienst).
    Weiter fachlich: `zuschlaege` als Lohnbestandteil? Eigene Bank-/Lohndaten für Beschäftigte sichtbar (Art. 15)? `rolleSeit`/`rolleVerlauf` für MA/BR/SV? Sondereinsätze tagesgenau (umgesetzt) bestätigen.
 7. Externe Gates: Pentest beauftragen, iPhone/Tablet, Rechtstext-Inhalte, Kriterien je Branchenpaket.
+
+### Bewusst zurückgestellt (Nutzerentscheidung 2026-11-03, vor dem Produktiv-Release erneut vorlegen)
+
+- **Mindestbesetzung / PpUGV:** warnen mit Bestätigung oder sperren. Vorläufig umgesetzt: warnen.
+- **Alarmweg (WP-05):** externer Uptime-Check und interner Webhook-Kanal. Bis dahin `CENTRIC_ALARM_WEBHOOK` leer, Alarme nur im Log.
+- **Einrichtungen:** GitHub-Umgebung `produktion`; Deploy-Skripte und Forced-Command-Schlüssel auf dem Server; `CENTRIC_VERTRAUTE_PROXYS` (Pflicht vor dem nächsten Produktiv-Deploy); WP-30 Mail und Push; alte Netlify-Site; Pflicht-2FA für Betreibercodes.
+
+### Entschieden (2026-11-03)
+
+- Einwilligung/Genehmigung nach MuSchG an der Person erfassbar.
+- Planung darf die Einrichtung bearbeiten (Dienstarten, Zeiten, Mindestbesetzung, Vorlagen).
+- Lange Dienste (> 10 h) automatisch erlaubt, nur Hinweis.
+- Jugendschutz-Schalter „mehrschichtig“ auch für die Planung.
 
 ## Release-Risiken
 

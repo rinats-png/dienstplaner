@@ -20,9 +20,13 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
-  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen, schutzEntferntMitteilungen } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
-import { abweichungenSchutzPruefen, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
+import { branchenmoduleZusammen } from "./branchenmodule.mjs";
+import { anlagenZusammen } from "./modul-anlagen.mjs";
+import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -780,8 +784,9 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
    JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
    Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
-   Sie lockert eine Schutzprüfung — setzen darf sie deshalb nur, wer org.edit
-   hat (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Wert.
+   Sie lockert eine Schutzprüfung — setzen darf sie, wer org.edit oder
+   pattern.edit hat (Leitung, Kundenrolle, Planung; Nutzerentscheidung); für
+   alle anderen bleibt der gespeicherte Wert.
    Gespeichert wird nur { mehrschichtig: boolean } und, vom Server, wann und
    von wem zuletzt geändert; alles andere weist der Server ab. */
 const JUGENDSCHUTZ_FELDER = ["mehrschichtig"];
@@ -797,7 +802,7 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   };
   const wert = (j) => !!(j && typeof j === "object" && j.mehrschichtig === true);
   if (neu === alt || gleich(neu, alt)) return behalten();
-  if (!darf(rolle, "org.edit")) return behalten();
+  if (!darf(rolle, "org.edit") && !darf(rolle, "pattern.edit")) return behalten();
   if (neu === null || neu === undefined) { delete e.jugendschutz; return { mandant: { ...neuM, einstellungen: e } }; }
   if (typeof neu !== "object" || Array.isArray(neu)
     || Object.keys(neu).some((k) => !JUGENDSCHUTZ_FELDER.includes(k) && k !== "geaendertAm" && k !== "geaendertVon")
@@ -807,6 +812,60 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   e.jugendschutz = { mehrschichtig: neu.mehrschichtig, geaendertAm: new Date().toISOString(),
     geaendertVon: sitzung.person === undefined ? null : sitzung.person };
   return { mandant: { ...neuM, einstellungen: e } };
+}
+
+/* Einwilligungen nach dem Mutterschutzgesetz an der Person (Nutzerentscheidung,
+   WP-11): § 5 Abs. 2 (Art „nacht", 20–22 Uhr) und § 6 Abs. 1 (Art „sonntag"),
+   Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor" (§ 28).
+   Schreiben nur die Rollen, die Schutzmerkmale schreiben (Planung, Leitung,
+   Kundenrolle — der volle Schreibumfang; alle anderen bekommen das Feld nicht
+   und füllen es aus dem gespeicherten Stand). Der Server prüft die Form und
+   setzt an jedem neuen oder geänderten Eintrag, wann und von wem. */
+const EINWILLIGUNG_FELDER = ["art", "ab", "bis", "genehmigung", "geaendertAm", "geaendertVon"];
+/** @returns {{ grund?: string, mandant?: any }} */
+function einwilligungenZusammen(altM, neuM, sitzung) {
+  if (!neuM || !Array.isArray(neuM.personen)) return { mandant: neuM };
+  const alt = new Map((altM && Array.isArray(altM.personen) ? altM.personen : []).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p]));
+  const grund = "Einwilligungen (Mutterschutz): erwartet wird eine Liste aus { art: \"nacht\" oder \"sonntag\", ab, bis (Pflicht, nicht vor ab), genehmigung }.";
+  const istTag = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+  let fehler = null;
+  const personen = neuM.personen.map((p) => {
+    if (fehler || !p || typeof p !== "object" || !Object.prototype.hasOwnProperty.call(p, "mutterschutzEinwilligungen")) return p;
+    const a = alt.get(String(p.id));
+    const vorher = a && Array.isArray(a.mutterschutzEinwilligungen) ? a.mutterschutzEinwilligungen : [];
+    const l = p.mutterschutzEinwilligungen;
+    if (l === null || (Array.isArray(l) && !l.length)) { const q = { ...p }; if (vorher.length) q.mutterschutzEinwilligungen = []; else delete q.mutterschutzEinwilligungen; return q; }
+    if (gleich(l, vorher)) return p;
+    if (!Array.isArray(l) || l.length > 20) { fehler = grund; return p; }
+    const sauber = [];
+    for (const e of l) {
+      if (!e || typeof e !== "object" || Array.isArray(e) || Object.keys(e).some((k) => !EINWILLIGUNG_FELDER.includes(k))
+        || !EINWILLIGUNG_ARTEN.includes(e.art) || !istTag(e.ab)
+        || !(istTag(e.bis) && e.bis >= e.ab)                                   // Ende Pflicht (Review N1)
+        || !(e.genehmigung === undefined || typeof e.genehmigung === "boolean")) { fehler = grund; return p; }
+      const kern = { art: e.art, ab: e.ab, bis: e.bis || null, ...(e.genehmigung ? { genehmigung: true } : {}) };
+      const gleicherAlter = vorher.find((v) => v && v.art === kern.art && v.ab === kern.ab && (v.bis || null) === kern.bis && !!v.genehmigung === !!kern.genehmigung);
+      /* Nicht rückwirkend (Nachprüfung 9717ddf): Eine neue Einwilligung beginnt frühestens heute;
+         ein bestehender Beginn darf bleiben (etwa beim Verlängern), aber nicht vorverlegt werden. */
+      if (!gleicherAlter && kern.ab < heuteBerlin() && !vorher.some((v) => v && v.art === kern.art && v.ab === kern.ab)) {
+        fehler = "Einwilligungen (Mutterschutz): Eine neue Einwilligung beginnt frühestens heute — rückwirkend lässt sie sich nicht erfassen."; return p; }
+      sauber.push(gleicherAlter ? gleicherAlter
+        : { ...kern, geaendertAm: new Date().toISOString(), geaendertVon: sitzung.person === undefined ? null : sitzung.person });
+    }
+    return { ...p, mutterschutzEinwilligungen: sauber };
+  });
+  return fehler ? { grund: fehler } : { mandant: { ...neuM, personen } };
+}
+
+/** Wie viele Personen haben geänderte Einwilligungen (für das Betriebsprotokoll, ohne Inhalt)? */
+export function einwilligungsAenderungen(altB, neuB) {
+  const liste = (b) => (b && Array.isArray(b.mandanten) ? b.mandanten : []).filter((m) => m && typeof m === "object");
+  const altP = new Map();
+  for (const m of liste(altB)) for (const p of (Array.isArray(m.personen) ? m.personen : [])) if (p) altP.set(`${m.id}|${p.id}`, p.mutterschutzEinwilligungen || []);
+  let n = 0;
+  for (const m of liste(neuB)) for (const p of (Array.isArray(m.personen) ? m.personen : []))
+    if (p && !gleich(altP.get(`${m.id}|${p.id}`) || [], p.mutterschutzEinwilligungen || [])) n++;
+  return n;
 }
 
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
@@ -945,13 +1004,51 @@ function abgeleiteteEntfernen(uebermittelt) {
     Altinhalt beim Schreiben bereinigt. session am Betrieb (Commit D1c)
     verschwindet auf beiden Seiten schon vorher — sonst hielte die
     Einheitsprüfung einen Altinhalt für eine Änderung und wiese ab. */
-export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung) {
-  const aus = zusammenfuehrenKern(ohneBetriebsSession(gespeichert), ohneBetriebsSession(uebermitteltRoh), sitzung);
-  return aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert
+export function zusammenfuehren(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
+  offenePruefung = null;
+  const aus = zusammenfuehrenKern(ohneBetriebsSession(gespeichert), ohneBetriebsSession(uebermitteltRoh), sitzung, optionen);
+  const ergebnis = aus && typeof aus === "object" && !Array.isArray(aus) && !aus.verweigert
     ? { ...ohneBetriebsSession(aus), session: null } : aus;
+  if (offenePruefung && ergebnis && typeof ergebnis === "object" && !ergebnis.verweigert) OFFENE_PRUEFUNG.set(ergebnis, offenePruefung);
+  offenePruefung = null;
+  return ergebnis;
 }
 
-function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
+/* Fachprüfung außerhalb (Review B2): Mit { fachpruefung: "aussen" } prüft
+   zusammenfuehren nicht selbst, sondern legt die Eingaben ab; daten.mjs holt
+   sie mit fachpruefungOffen(ergebnis) und prüft in Häppchen
+   (fachpruefungUebermittlungAsync), ohne die Event-Loop zu blockieren. */
+const OFFENE_PRUEFUNG = new WeakMap();
+let offenePruefung = null;
+/** @returns {null | { alt: any, neu: any, mandantId: any, imBereich: null | ((pid: any, tag: string) => boolean) }} */
+export const fachpruefungOffen = (ergebnis) => (ergebnis && typeof ergebnis === "object" ? OFFENE_PRUEFUNG.get(ergebnis) || null : null);
+
+/** Der Schreibumfang der Schichtverantwortung für die Fachprüfung (Review B4): eigene Person oder eigener Bereich am Tag. */
+function schichtBereich(altM, sitzung) {
+  const personen = new Map((Array.isArray(altM.personen) ? altM.personen : []).filter(Boolean).map((p) => [String(p.id), p]));
+  const ich = sitzung.person === null || sitzung.person === undefined ? null : personen.get(String(sitzung.person));
+  const eigene = ich ? eigeneEinheit(altM, ich) : null;
+  return (pid, tag) => {
+    if (ich && String(pid) === String(ich.id)) return true;
+    const p = personen.get(String(pid));
+    return !!p && !!eigene && einheitAm(p, tag) === eigene;
+  };
+}
+
+/** Trägt die vom Server gezählte Anzahl in neue Sammelbestätigungen ein (Review B1). */
+export function sammelAnzahlSetzen(mandant, sammel, altM = null) {
+  if (!mandant || !Array.isArray(mandant.bestaetigungen)) return mandant;
+  /* Review S1: Anzahl und Zeitraum aus dem, was die Sammelbestätigung tatsächlich
+     deckt; eine neue, die nichts deckt, wird nicht gespeichert. */
+  const alt = new Set((altM && Array.isArray(altM.bestaetigungen) ? altM.bestaetigungen : []).filter(Boolean).map((b) => String(b.id)));
+  const s = sammel || {};
+  return { ...mandant, bestaetigungen: mandant.bestaetigungen
+    .filter((b) => !(b && b.art === "sammel" && !alt.has(String(b.id)) && !Object.prototype.hasOwnProperty.call(s, String(b.id))))
+    .map((b) => (b && b.art === "sammel" && Object.prototype.hasOwnProperty.call(s, String(b.id))
+      ? { ...b, anzahl: s[String(b.id)].anzahl, von: s[String(b.id)].von, bis: s[String(b.id)].bis, datum: s[String(b.id)].von } : b)) };
+}
+
+function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
   /* Unbekannte Rolle schreibt nicht (Commit D1d) — vorher machte
      „|| kunde" aus einer leeren Bezeichnung das volle Schreibrecht. */
   if (!sitzung || !rolleBekannt(sitzung.rolle)) return null;
@@ -984,6 +1081,14 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     if (abweichung) return { verweigert: abweichung };
     let geschickt = uebermittelt.mandanten[0];
 
+    /* Dienstarten (WP-22, Nutzerentscheidung): anlegen, ändern und löschen,
+       wer org.edit oder pattern.edit hat (Leitung, Kundenrolle, Planung — die
+       Planung behält die Einrichtung). Alle anderen Rollen weist der Server
+       ab; eine unveränderte Kopie stört nicht. */
+    if (!darf(rolle, "org.edit") && !darf(rolle, "pattern.edit") && geschickt && typeof geschickt === "object"
+      && hat(geschickt, "dienstarten") && !gleichJson(geschickt.dienstarten, ort.betrieb.dienstarten))
+      return { verweigert: "Dienstarten legen Leitung und Planung an und ändern sie (org.edit oder pattern.edit)." };
+
     /* Mitteilungen: Notruf- und Tauschmitteilungen des Clients verworfen,
        Zustellwege und -status aus dem gespeicherten Stand, Grenzen für
        Titel und Text (Commit 4, mitteilungen.mjs). */
@@ -1002,6 +1107,22 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
+      const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
+      if (module.grund) return { verweigert: module.grund };
+      geschickt = module.mandant;
+      /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
+      const anlagen = anlagenZusammen(geschickt);
+      if (anlagen.grund) return { verweigert: anlagen.grund };
+      /* Maschinenqualifikationen (WP-19): befähigte Person und Wiederholung an Kompetenzen zu Anlagen. */
+      const maschinen = maschinenqualZusammen(geschickt);
+      if (maschinen.grund) return { verweigert: maschinen.grund };
+      /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
+      const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
+      if (einw.grund) return { verweigert: einw.grund };
+      geschickt = einw.mandant;
+      /* Empfehlung 948a4ba: Schutzangaben entfernt — die Leitung erfährt es ohne Inhalt. */
+      geschickt = schutzEntferntMitteilungen(ort.betrieb, geschickt, sitzung.person);
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
@@ -1041,12 +1162,24 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
-    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
-    /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
-       nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
-    if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
-      console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} geschützte Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
-    if (schutzGrund) return { verweigert: schutzGrund };
+    const imBereich = umfang === SCHREIBEN_EINHEIT ? schichtBereich(ort.betrieb, sitzung) : null;
+    if (optionen.fachpruefung === "aussen") {
+      offenePruefung = { alt: ort.betrieb, neu: geschickt, mandantId: geschickt.id, imBereich };
+    } else {
+      const fach = fachpruefungUebermittlung(ort.betrieb, geschickt, undefined, { imBereich });
+      /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
+         nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
+      if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
+        console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
+      if (fach && fach.sperre) return { verweigert: fach.sperre };
+      /* Warnende Befunde (WP-22): nur mit Bestätigung im selben Speichervorgang —
+         sonst 409 mit der Befundliste (neutrale Texte aus dem Katalog). */
+      if (fach && fach.warnungen) return { verweigert: "Diese Änderung braucht eine Bestätigung.", status: 409, fachbefunde: fach.warnungen,
+        sammelVorschlag: fach.sammelVorschlag || [] };
+      geschickt = sammelAnzahlSetzen(geschickt, fach && fach.sammel, ort.betrieb);
+      /* Nachprüfung 9717ddf (M2): Schutzangaben immer gespeichert; widersprechende bestehende Einteilungen melden. */
+      if (fach && fach.konflikte) geschickt = schutzKonfliktMitteilungen(ort.betrieb, geschickt, fach.konflikte, sitzung.person);
+    }
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */
@@ -1417,7 +1550,38 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
   const bekannt = new Set(altL.filter((e) => kennungGueltig(e.id)).map((e) => String(e.id)));
   const gesehen = new Set();
   const neue = [];
+  /* Sammelbestätigung (Review B1): eine Bestätigung je Regel, Einheit und
+     Zeitraum statt je Einteilung — für strukturelle Änderungen, die viele
+     Einteilungen auf einmal treffen. Nur im vollen Schreibumfang (Planung,
+     Leitung, Kundenrolle); ein sperrender Befund lässt sich auch so nicht
+     bestätigen. Wie viele Einteilungen sie deckt, zählt der Server
+     (`anzahl`, schutzdurchsetzung.mjs). */
+  const einheiten = new Set((Array.isArray(altM.einheiten) ? altM.einheiten : []).filter(Boolean).map((x) => String(x.id)));
+  const sammelEintrag = (e) => {
+    if (imBereich) return null;
+    if (typeof e.regel !== "string" || !Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, e.regel)) return null;
+    if (sperrtBefund(e.regel)) return SPERRT;
+    if (BEFUND_KATALOG[e.regel].schutz) return null;                       // Review S1: Schutzregeln nur einzeln
+    const stufe = BEFUND_KATALOG[e.regel].stufe;
+    if (!PROTOKOLL_STUFEN.includes(stufe)) return null;
+    if (stufe === "recht" && e.gelesen !== true) return null;
+    if (typeof e.von !== "string" || !TAG.test(e.von) || typeof e.bis !== "string" || !TAG.test(e.bis) || e.bis < e.von) return null;
+    if ((Date.parse(e.bis) - Date.parse(e.von)) / 86400000 > 366) return null;
+    if (e.einheitId === undefined || e.einheitId === null) return null;   // Review S1: Einheit Pflicht
+    const einheitId = String(e.einheitId);
+    if (!einheiten.has(einheitId)) return null;
+    if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
+    const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
+    if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;
+    if (grundArt !== null && e.grund !== undefined && e.grund !== null && !kurzText(e.grund, 200)) return null;
+    return { id: e.id, art: "sammel", personId: null, datum: e.von, von: e.von, bis: e.bis, einheitId, dienstId: null, aktion: e.aktion,
+      stufe, befunde: [{ regel: e.regel, stufe }], regel: e.regel, regelIds: [], anzahl: 0,
+      grundArt, grund: grundArt !== null && typeof e.grund === "string" ? e.grund.trim() : "", ohneGrund: grundArt === null,
+      gelesen: e.gelesen === true, durch: meinName, durchId: ich ? ich.id : null, rolle: sitzung.rolle || null,
+      zeit: new Date().toISOString(), regelstand: typeof e.regelstand === "string" ? e.regelstand : null, behoben: null };
+  };
   const neuerEintrag = (e) => {
+    if (e.art === "sammel") return sammelEintrag(e);
     if (!personen.has(String(e.personId))) return null;
     if (typeof e.datum !== "string" || !TAG.test(e.datum)) return null;
     if (!dienste.has(String(e.dienstId))) return null;

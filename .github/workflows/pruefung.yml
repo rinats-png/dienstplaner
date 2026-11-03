@@ -94,6 +94,10 @@ jobs:
       - name: Eine Schutzprüfung
         run: npm run pruefung:schutz-eine
 
+      # Fachprüfungen auf dem Server: Qualifikation, Ruhezeit, Tagesgrenze, Mindestbesetzung, Dienstarten nur mit org.edit (WP-22).
+      - name: Fachprüfungen Server
+        run: npm run pruefung:fachpruefung
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
@@ -108,6 +112,12 @@ jobs:
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
         run: npm run pruefung:branchen
+
+      # Branchenmodule (WP-19): Registry, Aktivierung je Betrieb, Rechte,
+      # Katalog-Erweiterungspunkt — Vertrag zwischen Kern und Modul; dazu
+      # jede Modulprüfung pruefungen/modul-<id>.test.js (Filter „modul-“).
+      - name: Branchenmodule
+        run: npm run pruefung:branchenmodule
 
       # Pflegepersonaluntergrenzen: Verhältniszahlen, Hilfskraftanteil,
       # und der Unterschied zwischen „eingehalten" und „nicht bewertbar".
@@ -126,6 +136,12 @@ jobs:
       # oder zu wenig — beides ist nicht zurückzunehmen.
       - name: Aufbewahrung
         run: npm run pruefung:aufbewahrung
+
+      # WP-26: Auskunft nach Art. 15 serverseitig (vollständig, Rechte geprüft),
+      # Löschlauf nach Aufbewahrungsfristen auf dem Server, Sicherungen und Spur
+      # nach festem Plan.
+      - name: DSGVO serverseitig
+        run: npm run pruefung:dsgvo-server
 
       # Läuft ohne Server: Schlüsselwechsel der Zugangscodes.
       - name: Zugangscodes
@@ -212,6 +228,10 @@ jobs:
       # Wiederherstellen mit derselben Grenze wie Speichern: Betreiberstamm, verborgene Personen- und Betriebsfelder aus dem jetzigen Stand.
       - name: Wiederherstellung schützt Verborgenes
         run: npm run pruefung:wiederherstellung-schutz
+
+      # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
+      - name: Integrationsabnahme Kette A + B
+        run: npm run pruefung:abnahme-ab
 
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle
@@ -355,6 +375,11 @@ jobs:
       # Healthcheck-Kompatibilität.
       - name: Überwachung (/gesund, Alarm)
         run: npm run pruefung:gesund
+
+      # WP-41: Verweise der Betriebs- und Nutzerdokumentation, jede
+      # Umgebungsvariable im Betriebshandbuch, keine Geheimnisse.
+      - name: Dokumentation
+        run: npm run pruefung:doku
 
       # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
       # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.
@@ -766,6 +791,16 @@ jobs:
           CENTRIC_BASIS: http://127.0.0.1:3000
           CENTRIC_ADMIN: ci-geheim
           CENTRIC_HERKUNFT: 10.8.3.
+
+      # Fachprüfungen über echte Anmeldung: 403, 409 mit Befundliste, Bestätigung, org.edit (WP-22).
+      - name: Container frisch starten
+        run: "$RUNNER_TEMP/container-neu.sh"
+      - name: Fachprüfungen Server (HTTP)
+        run: npm run pruefung:fachpruefung-http
+        env:
+          CENTRIC_BASIS: http://127.0.0.1:3000
+          CENTRIC_ADMIN: ci-geheim
+          CENTRIC_HERKUNFT: 10.7.1.
 
       # Betreibersicht über echte Anmeldung: GET, 409, Rundweg, Anlegen und Löschen.
       - name: Container frisch starten

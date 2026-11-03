@@ -90,8 +90,9 @@ pruef("SV: planungsregeln für Bereich und Pool", ["mu", "sb", "ju", "vo", "we",
 pruef("SV: Mutterschutz-Person — Nacht und Sonntag als Einsatzregel", JSON.stringify(pers(mS, "mu").planungsregeln.map((r) => r.regel).sort())
   === JSON.stringify(["alterNichtBewertbar", "nachtNichtZulaessig", "sonntagNurMitFreigabe"]));
 const grenzeWe = (pers(mS, "we").planungsregeln || []).find((r) => r.regel === "stundengrenzeWoche");
-pruef("SV: Wochenstundengrenze neutral, keineNacht bleibt", !!grenzeWe && grenzeWe.wert === 17.25
-  && pers(mS, "we").einschraenkungen.keineNacht === true);
+/* Nachprüfung 9717ddf (M1-Rest) und 948a4ba (A1): „keine Nacht“ nur noch als Einsatzregel keinNachtdienst (Nachtfenster des Betriebs). */
+pruef("SV: Wochenstundengrenze neutral, keine Nacht als Einsatzregel", !!grenzeWe && grenzeWe.wert === 17.25
+  && !("keineNacht" in (pers(mS, "we").einschraenkungen || {})) && pers(mS, "we").planungsregeln.some((r) => r.regel === "keinNachtdienst"));
 pruef("Planung: Rohdaten unverändert", pers(vorher, "mu").mutterschutz === true && pers(vorher, "ju").geburtstag === GEB
   && pers(vorher, "vo").nachtvorsorge === VORSORGE && !vorher.personen.some((p) => "planungsregeln" in p));
 

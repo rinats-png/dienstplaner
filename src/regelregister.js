@@ -48,19 +48,17 @@
 import { REGELSTAND, HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, NACHT_TAGE_SCHWELLE,
   VORSORGE_MONATE, VORSORGE_MONATE_AB_50, FREIE_SONNTAGE_MIN, ERSATZ_TAGE_SONNTAG,
   ERSATZ_TAGE_FEIERTAG } from "./regelwerk.js";
-import { stufeRang, RUHEZEIT_GESETZ } from "./warnstufen.js";
+import { RUHEZEIT_GESETZ } from "./warnstufen.js";
+import { PRUEFSTATUS, FOLGEN, gilt, wirkung, begrenzeStufeRegel } from "../server/lib/regelgeltung.mjs";
 import { GRENZEN as FAHR_GRENZEN } from "./fahrzeit.js";
 import { MINDESTERFUELLUNG as PPP_MINDEST } from "./ppprl.js";
 import { TARIFWERKE } from "./tarifwerke.js";
+import { REGELN_BRANCHEN } from "../server/lib/branchenkatalog.mjs";
 
-/** Prüfstatus und was er der Regel erlaubt. wirkung: "voll" | "hinweis" | "keine". */
-export const PRUEFSTATUS = {
-  verified: { label: "geprüft", wirkung: "voll" },
-  legacy_verified: { label: "Bestand, geprüft", wirkung: "voll" },
-  provisional: { label: "vorläufig", wirkung: "hinweis" },
-  watchlist: { label: "beobachtet", wirkung: "keine" },
-  deprecated: { label: "abgelöst", wirkung: "keine" },
-};
+/* PRUEFSTATUS, FOLGEN, gilt, wirkung und der Stufendeckel stehen seit WP-19 in
+   server/lib/regelgeltung.mjs (der Regelbaukasten rechnet auch auf dem Server);
+   hier unverändert weitergereicht. */
+export { PRUEFSTATUS, FOLGEN, gilt, wirkung };
 
 /** Regelarten. Die ersten vier rechnet der Regelbaukasten heute; die übrigen sind geplant (PLAN, 5.2). */
 export const REGELARTEN = {
@@ -77,8 +75,6 @@ export const REGELARTEN = {
   bestandsregel: "Bestandsprüfung",
 };
 
-/** Folgen. „keine" heißt: nur anzeigen. */
-export const FOLGEN = ["keine", "bestaetigung", "nachweis", "berechnung", "bericht", "freigabe"];
 
 const OHNE_SCOPE = { branche: null, bundesland: null, beschaeftigungsmodell: null };
 
@@ -121,7 +117,9 @@ const REGELN_BESTAND = [
     ebene: "bund", quelle: "ArbZG", fundstelle: "§ 3 Satz 1 und 2",
     parameter: { regelStunden: DURCHSCHNITT_TAG, hoechstStunden: HOECHST_TAG },
     anzeige: { norm: "§ 3 Satz 1 und 2 ArbZG",
-      satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." } }),
+      satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
+    /* Nutzerentscheidung (WP-22, 3. November 2026): lange Dienste automatisch erlaubt. */
+    pruefhinweis: "Ein Dienst über zehn Stunden ist in Planung und Prüfansicht nur ein Hinweis — keine Sperre, keine Bestätigung, kein Protokoll. Zulässig ist er nur mit einer Regelung nach § 7 ArbZG (Tarifvertrag oder Betriebsvereinbarung auf Grund eines Tarifvertrags); ob sie besteht und eingehalten ist, prüft CENTRIC nicht — das verantwortet der Betrieb. Rufbereitschaft zählt nicht als Arbeitszeit. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "AZ-AUSGLEICH-01", art: "ausgleich", typ: "zaehlregel", bezeichnung: "Ausgleichszeitraum",
     ebene: "bund", quelle: "ArbZG", fundstelle: "§ 3 Satz 2",
     parameter: { fensterWochen: AUSGLEICH_WOCHEN, durchschnittStunden: DURCHSCHNITT_TAG },
@@ -233,9 +231,16 @@ const REGELN_BESTAND = [
   bestand({ id: "MUSCHG-05", art: null, regeltext: "MuSchG § 5", typ: "bestandsregel", bezeichnung: "Mutterschutz: Nachtarbeit",
     ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5 Abs. 1",
     /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr. */
-    pruefhinweis: "Bekannte Grenze: § 5 Abs. 2 MuSchG (20–22 Uhr mit ausdrücklicher Einwilligung, ärztlicher Unbedenklichkeit und behördlicher Genehmigung) bildet die Anwendung nicht ab; eine Einwilligung lässt sich nicht hinterlegen (Fachentscheidung offen). Die Prüfung meldet deshalb auch dann einen sperrenden Befund. Stand der Prüflogik: 2. November 2026." }),
+    pruefhinweis: "Ohne gültige Einwilligung sperrt jede Überschneidung mit 20–6 Uhr, mit Einwilligung nach § 5 Abs. 2 jede mit 22–6 Uhr (MUSCHG-05-02). Stand der Prüflogik: 3. November 2026." }),
+  bestand({ id: "MUSCHG-05-02", art: null, regeltext: "MuSchG § 5 Abs. 2", typ: "bestandsregel", bezeichnung: "Mutterschutz: 20–22 Uhr mit Einwilligung",
+    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 5 Abs. 2, § 28",
+    /* Nutzerentscheidung (WP-11): Einwilligung an der Person erfassbar. */
+    pruefhinweis: "Eine an der Person erfasste Einwilligung (mutterschutzEinwilligungen, Art „nacht\", Zeitraum, optional „behördliche Genehmigung liegt vor\") macht einen Einsatz bis 22 Uhr im Zeitraum zum Hinweis. Ob die ärztliche Unbedenklichkeit und die behördliche Genehmigung (§ 28) tatsächlich vorliegen und die Einwilligung nicht widerrufen ist, prüft CENTRIC nicht — das verantwortet der Betrieb. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "MUSCHG-06", art: null, regeltext: "MuSchG § 6", typ: "bestandsregel", bezeichnung: "Mutterschutz: Sonntagsarbeit",
     ebene: "bund", quelle: "MuSchG", fundstelle: "§ 6" }),
+  bestand({ id: "MUSCHG-06-01", art: null, regeltext: "MuSchG § 6 Abs. 1", typ: "bestandsregel", bezeichnung: "Mutterschutz: Sonntag mit Einwilligung",
+    ebene: "bund", quelle: "MuSchG", fundstelle: "§ 6 Abs. 1",
+    pruefhinweis: "Eine an der Person erfasste Einwilligung (Art „sonntag\", Zeitraum) macht einen Sonntagseinsatz im Zeitraum zum Hinweis. Feiertage prüft die Schutzprüfung nicht gesondert; die übrigen Voraussetzungen des § 6 Abs. 1 (Ausnahme nach § 10 ArbZG, Ersatzruhetag, keine Alleinarbeit) verantwortet der Betrieb. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "SGBIX-207-01", art: null, regeltext: "SGB IX § 207", typ: "grenzregel", bezeichnung: "Schwerbehinderung: Mehrarbeit",
     ebene: "bund", quelle: "SGB IX", fundstelle: "§ 207" }),
 ];
@@ -347,7 +352,9 @@ const REGELN_MODULE = [
 ];
 
 /** Alle Regeln. Die Reihenfolge ist die der Anzeige und der Prüfung. */
-export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE];
+/* Branchenregeln (WP-19): Erweiterungspunkt in server/lib/branchenkatalog.mjs —
+   dieselbe Liste, nur aus einem Modul, das auch der Server lesen kann. */
+export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE, ...REGELN_BRANCHEN];
 
 /* --------------------------------------------------------------------------
    Nachschlagen
@@ -395,25 +402,6 @@ export function rechtsquelleTabelle() {
    -------------------------------------------------------------------------- */
 
 /**
- * Gilt die Regel an diesem Tag? Ohne Datum gilt nur, was keine Grenzen hat —
- * Unklares gilt im Zweifel nicht.
- */
-export function gilt(r, datum) {
-  if (!r) return false;
-  const hatGrenze = !!(r.gueltigAb || r.gueltigBis);
-  if (!datum) return !hatGrenze;
-  if (r.gueltigAb && datum < r.gueltigAb) return false;
-  if (r.gueltigBis && datum > r.gueltigBis) return false;
-  return true;
-}
-
-/** „voll", „hinweis" oder „keine" — was der Prüfstatus der Regel erlaubt. Unbekanntes wirkt nicht. */
-export function wirkung(r) {
-  const s = r && PRUEFSTATUS[r.pruefstatus];
-  return s ? s.wirkung : "keine";
-}
-
-/**
  * Begrenzt die Stufe eines Befunds auf das, was die Regel darf.
  *
  *   keine Wirkung (watchlist, deprecated, unbekannt)  → null, kein Befund
@@ -429,20 +417,7 @@ export function wirkung(r) {
  * @param {string|null} stufe "hinweis" | "achtung" | "recht"
  */
 export function begrenzeStufe(regelOderId, stufe) {
-  const r = typeof regelOderId === "string" ? regel(regelOderId) : regelOderId;
-  if (!r) return stufe;
-  const w = wirkung(r);
-  if (w === "keine") return null;
-  if (stufe == null) return stufe;
-  /* Prüfstatus und Laufzeit sind zwei Fragen. „provisional" beschreibt, wie
-     gut die QUELLE geprüft ist, und bremst neu eingeführte Regeln. Eine
-     Regel, die ein getestetes Bestandsmodul schon rechnet (laufzeit
-     "bestand": Fahrzeit, PPP-RL, Tarifvorlagen), wird dadurch nicht
-     herabgestuft — ihre Stufe bestimmt weiter das Modul. */
-  if (r.laufzeit === "bestand") return stufe;
-  const grenze = w === "hinweis" ? "hinweis" : r.hoechsteStufe;
-  if (!grenze) return stufe;
-  return stufeRang(stufe) > stufeRang(grenze) ? grenze : stufe;
+  return begrenzeStufeRegel(typeof regelOderId === "string" ? regel(regelOderId) : regelOderId, stufe);
 }
 
 /**
