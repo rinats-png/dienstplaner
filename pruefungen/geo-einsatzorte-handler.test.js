@@ -211,6 +211,24 @@ describe("Datensparsamkeit: keine Rohkoordinate, keine Koordinate des Einsatzort
       for (const x of ["50.0012345", "8.0054321", "12.3456789", "23.4567891"]) expect(roh).not.toContain(x);
     }
   });
+  it("auch beim Einsatzort-Stempel und bei schlechter Genauigkeit: keine gesendete Koordinate in Antwort, Ablage oder Leitungssicht (M2)", async () => {
+    /* Gesendet werden Marken, die sonst nirgends vorkommen. Der Einsatzort-Stempel (a5, Dienst E) liegt im Umkreis,
+       der andere (a4, Dienst E) mit Genauigkeit über der Grenze (genauigkeit_zu_schlecht). */
+    const marken = [
+      { t: T.a5, lat: 51.2345999, lon: 9.8766111, accuracy: 12 },
+      { t: T.a4, lat: 51.2347888, lon: 9.8767777, accuracy: 5000 },
+    ];
+    const antworten = [];
+    for (const { t, ...messung } of marken) {
+      const s = await stempeln(t, { art: "ende", ...messung });
+      expect(s.status, s.roh).toBe(200);
+      antworten.push(s.roh);
+    }
+    const roh = [...antworten, JSON.stringify(await gespeichert()), (await lies(T.l1)).roh, (await lies(T.p1)).roh];
+    for (const r of roh) {
+      for (const x of ["51.2345999", "9.8766111", "51.2347888", "9.8767777", "2345999", "2347888"]) expect(r).not.toContain(x);
+    }
+  });
   it("Beschäftigte, Schichtverantwortung und Betriebsrat: nie die Koordinate des Einsatzorts", async () => {
     for (const id of ["a3", "s1", "r1", "b1"]) {
       const r = await lies(T[id]);
