@@ -141,9 +141,18 @@ async function vorbereiten(daten) {
   await B.bestandSchreiben(store, "lesen-gross", gross, { durch: "Lasttest" });
   const grossBytes = Buffer.byteLength(JSON.stringify(gross));
 
+  /* Nur so viele Sitzungen, wie die Szenarien brauchen (jede ist eine Datei
+     mit fsync — tausende davon kosten auf Windows Minuten), parallel zu 16. */
+  const bedarf = { "stempel-a": Math.ceil((200 * P.s1Min) / 2), "stempel-b": Math.ceil((200 * P.s1Min) / 2), "stempel-einzel": 200 };
   for (const raum of ["stempel-a", "stempel-b", "stempel-einzel"]) {
-    t.stempel[raum] = [];
-    for (let i = 1; i <= raeume[raum]; i++) t.stempel[raum].push({ id: `p${i}`, token: await sitzung(raum, "mitarbeiter", `p${i}`) });
+    const n = Math.min(raeume[raum], bedarf[raum]);
+    t.stempel[raum] = new Array(n);
+    for (let i = 0; i < n; i += 16) {
+      await Promise.all(Array.from({ length: Math.min(16, n - i) }, async (_, k) => {
+        const id = `p${i + k + 1}`;
+        t.stempel[raum][i + k] = { id, token: await sitzung(raum, "mitarbeiter", id) };
+      }));
+    }
   }
   for (const raum of ["plan-gross", "plan-1", "plan-2", "plan-3", "plan-4"]) {
     t.planer[raum] = [];
@@ -155,11 +164,15 @@ async function vorbereiten(daten) {
     t.reihe[raum] = { leitung: await sitzung(raum, "leitung", "leitung1"), stempel: [] };
     for (let i = 1; i <= 20; i++) t.reihe[raum].stempel.push(await sitzung(raum, "mitarbeiter", `p${i}`));
   }
-  for (let i = 1; i <= 300; i++) {
-    const code = `LAST-${String(i).padStart(4, "0")}-CODE`;
-    await kontoSchreiben(store, ablageSchluessel(code), { name: `p${i}`, bestand: "plan-1", rolle: "mitarbeiter",
-      person: `p${(i % 200) + 1}`, betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
-    t.codes.push(code);
+  const codes = Math.min(300, Math.ceil((P.s4Sek * 1000) / 200) + 10);
+  for (let i = 1; i <= codes; i += 16) {
+    await Promise.all(Array.from({ length: Math.min(16, codes - i + 1) }, async (_, k) => {
+      const nr = i + k;
+      const code = `LAST-${String(nr).padStart(4, "0")}-CODE`;
+      await kontoSchreiben(store, ablageSchluessel(code), { name: `p${nr}`, bestand: "plan-1", rolle: "mitarbeiter",
+        person: `p${(nr % 200) + 1}`, betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
+      t.codes.push(code);
+    }));
   }
   return { t, grossBytes };
 }
