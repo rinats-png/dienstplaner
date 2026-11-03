@@ -17,8 +17,7 @@ import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerli
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
-import { auskunftBauen, protokollZurPerson, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
-import { accountLesenPerId } from "../lib/accounts.mjs";
+import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -1244,16 +1243,8 @@ export default async (req, context) => {
            Beschäftigten — dieselbe Positivliste wie /api/bestand, also ohne
            Daten Dritter (sicht.mjs). */
         const eigeneSicht = eigenerMandant(bestandFuerRolle(mitA.bestand, { ...s, rolle: "mitarbeiter" }), s);
-        /* Das Konto, wenn die Sitzung aus einem stammt — ohne Passwort,
-           Token-Zähler und Epoche. */
-        let konto = null;
-        const accountId = s.herkunft && s.herkunft.accountId;
-        if (accountId) {
-          const k = await accountLesenPerId(store, accountId).catch(() => null);
-          if (k) konto = { email: k.email, emailVerifiziertAm: k.emailVerifiziertAm || null, status: k.status,
-            erstellt: k.erstellt, aktualisiert: k.aktualisiert, passwortGeaendert: k.passwortGeaendert || null,
-            letzteAnmeldung: k.letzteAnmeldung || null, profil: k.profil || null };
-        }
+        /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
+        const konto = await kontoFuerAuskunft(store, s);
         zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht };
       }
       const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",

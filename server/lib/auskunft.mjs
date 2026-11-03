@@ -36,6 +36,7 @@
 
 import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
+import { accountLesenPerId } from "./accounts.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
@@ -191,4 +192,21 @@ export async function protokollZurPerson(spurStore, { raumKennung, mandantId, pe
     }
   }
   return aus;
+}
+
+/**
+ * Das Konto der Sitzung für die eigene Auskunft — nur, wenn die Sitzung aus
+ * einem Konto stammt, und ohne Passwort, Token-Zähler und Epoche. Hier und
+ * nicht in daten.mjs: Der Code-Weg dort bindet die Accounts nicht ein
+ * (pruefungen/account-isolation.test.js).
+ * @returns {Promise<object|null>}
+ */
+export async function kontoFuerAuskunft(store, sitzung) {
+  const id = sitzung && sitzung.herkunft && sitzung.herkunft.accountId;
+  if (!id) return null;
+  const k = await accountLesenPerId(store, id).catch(() => null);
+  if (!k) return null;
+  return { email: k.email, emailVerifiziertAm: k.emailVerifiziertAm || null, status: k.status,
+    erstellt: k.erstellt, aktualisiert: k.aktualisiert, passwortGeaendert: k.passwortGeaendert || null,
+    letzteAnmeldung: k.letzteAnmeldung || null, profil: k.profil || null };
 }
