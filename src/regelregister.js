@@ -122,7 +122,9 @@ const REGELN_BESTAND = [
     ebene: "bund", quelle: "ArbZG", fundstelle: "§ 3 Satz 1 und 2",
     parameter: { regelStunden: DURCHSCHNITT_TAG, hoechstStunden: HOECHST_TAG },
     anzeige: { norm: "§ 3 Satz 1 und 2 ArbZG",
-      satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." } }),
+      satz: "Die werktägliche Arbeitszeit darf acht Stunden nicht überschreiten; auf zehn Stunden nur bei Ausgleich." },
+    /* Nutzerentscheidung (WP-22, 3. November 2026): lange Dienste automatisch erlaubt. */
+    pruefhinweis: "Ein Dienst über zehn Stunden ist in Planung und Prüfansicht nur ein Hinweis — keine Sperre, keine Bestätigung, kein Protokoll. Zulässig ist er nur mit einer Regelung nach § 7 ArbZG (Tarifvertrag oder Betriebsvereinbarung auf Grund eines Tarifvertrags); ob sie besteht und eingehalten ist, prüft CENTRIC nicht — das verantwortet der Betrieb. Rufbereitschaft zählt nicht als Arbeitszeit. Stand der Prüflogik: 3. November 2026." }),
   bestand({ id: "AZ-AUSGLEICH-01", art: "ausgleich", typ: "zaehlregel", bezeichnung: "Ausgleichszeitraum",
     ebene: "bund", quelle: "ArbZG", fundstelle: "§ 3 Satz 2",
     parameter: { fensterWochen: AUSGLEICH_WOCHEN, durchschnittStunden: DURCHSCHNITT_TAG },
