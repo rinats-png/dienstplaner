@@ -50,12 +50,15 @@ Ein Agent F prüft jede Korrektur selbst nach (Test auf altem Stand rot, auf neu
 Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder globale Einstellungen. Geprüft in
 `pruefungen/acc45-werkzeuge.test.js` (`npm run pruefung:acc45-werkzeuge`, im CI-Gate).
 
-**`werkzeug/acc45-backlog.mjs`**: eine Quelle bleibt das Array `P`.
+**`werkzeug/acc45-backlog.mjs`**: einzige Quelle ist `docs/acc45/work-packages.json` (Schema 2, seit 2026-11-03; Stränge acc45, folge, wp19, intelligence, extern; Statusstufen mit Beleg). Das frühere Array `P` wird daraus erzeugt (nur lesend). Status ändern = JSON ändern, dann `status-schreiben`. Prüfung: `pruefungen/acc45-status.test.js` (`npm run pruefung:acc45-status`, im CI-Gate). Gesamtplan und Prognosen: [`GESAMTPLAN.md`](GESAMTPLAN.md).
 
 | Aufruf | Wirkung |
 |---|---|
-| `node werkzeug/acc45-backlog.mjs` | schreibt `work-packages.json` und `DEPENDENCIES.md` (wie bisher) |
-| `… bereit` | Pakete mit Status READY/BLOCKED, deren Abhängigkeiten alle INTEGRATED/VERIFIED/DONE sind. Eine Abhängigkeit auf WP-09 gilt als erfüllt: WP-09 ist nur die Reihenfolge des Livegangs, keine Code-Abhängigkeit. Aufgeführt werden auch Pakete, die aus anderen Gründen warten, etwa WP-36 auf Inhalte. |
+| `node werkzeug/acc45-backlog.mjs` oder `… status-schreiben` | normalisiert `work-packages.json` (Kopfzahlen), schreibt `DEPENDENCIES.md` und die AUTO-Blöcke in `STATUS.md`, `GESAMTPLAN.md`, `ROADMAP.md`, `../ROADMAP.md` |
+| `… pruefen` | Quelle gültig und erzeugte Dateien aktuell? Rückgabe 1 mit Liste der Abweichungen |
+| `… kritischer-pfad [strang]` | längste Kette nach offenem Aufwand je Strang (acc45, folge, wp19, intelligence), gemeinsam und ohne Intelligence |
+| `… prognose` | Ablaufsimulation A/B/C je Szenario (Parameter in `annahmen` der JSON) |
+| `… bereit [--alle]` | Pakete mit Status READY/BLOCKED (ohne `--alle` ohne Strang extern), deren Abhängigkeiten alle INTEGRATED/VERIFIED/DONE sind. Eine Abhängigkeit auf WP-09 gilt als erfüllt: WP-09 ist nur die Reihenfolge des Livegangs, keine Code-Abhängigkeit. Aufgeführt werden auch Pakete, die aus anderen Gründen warten, etwa WP-36 auf Inhalte. |
 | `… brief WP-23` | Agentenauftrag als Text: Name, Akzeptanz, Tests, Dateien, Branch, Abhängigkeiten mit Status, Standardregeln, Vorab-Checkliste |
 | `… fortschritt` | Kurzstatus: Zählung, kritischer Pfad, was läuft, was bereit ist |
 | `… lokal WP-23 agentId=… letzterCheckpoint=… abbruch=…` | lokale Felder. Sie stehen nur in der Datei aus `ACC45_LOKAL`, und diese muss außerhalb des Repos liegen (sonst Abbruch). Sie kommen nie ins öffentliche JSON (`schreiben` bricht ab, falls doch). `fortschritt` zeigt sie, wenn die Variable gesetzt ist. |

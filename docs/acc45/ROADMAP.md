@@ -4,13 +4,20 @@ Aufwände: menschliches Äquivalent in Entwicklertagen (PT). Wie schnell Agenten
 
 ## Rechnung
 
-| Größe | Wert |
+Aktuelle Zahlen (erzeugt; die Tabelle vom 2026-11-02 mit 162,5 PT und 44 Paketen ist überholt):
+
+<!-- AUTO:BEGIN rechnung -->
+| Größe | Wert (erzeugt aus `work-packages.json`) |
 |---|---|
-| offener Aufwand | 162,5 PT (44 Pakete: 42 aus dem Audit + WP-43 Personaldaten-Filter + WP-44 Code-Rotation) |
-| kritischer Pfad laut Graph | 48,5 PT (WP-02 → 09 → 10 → 11 → 22 → 19 → 42) |
-| kritischer Pfad mit WP-19 auf 3 Stränge verteilt | ≈ 36,5 PT (dann: WP-02 → 09 → 10 → 11 → 12 → 39 → 21 → 40 → 42) |
-| nötige Parallelität für 45 Tage | 162,5 PT ÷ 45 Tage ≈ 3,6 parallel voll produktive Stränge bei 1 PT/Tag je Strang; mit Integrations- und Review-Aufschlag (~25 %) ≈ **4,5–5 Stränge** |
-| für 30 Tage | ≈ 7 Stränge, und der kritische Pfad (≥ 36,5 PT) müsste ≥ 1,2× beschleunigt sein |
+| Pakete | 141 (ACC45 50, Folge 8, WP-19 14, Intelligence 37, extern 32) |
+| integriert / produktiv | 29 / 3 |
+| offener Entwicklungsaufwand | 408,8–697,2 PT |
+| kritischer Pfad ohne Intelligence | WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT** |
+| kritischer Pfad gemeinsam | WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT** |
+| Zeitprognosen | [`GESAMTPLAN.md`](GESAMTPLAN.md) |
+<!-- AUTO:END rechnung -->
+
+Die Phasen unten sind der Plan vom 2026-11-02 (Ziel 30–45 Kalendertage) und bleiben als Ausgangspunkt stehen; maßgeblich für Reihenfolge, Wellen und Termine ist [`GESAMTPLAN.md`](GESAMTPLAN.md).
 
 ## Einschätzung
 
