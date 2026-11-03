@@ -549,6 +549,91 @@ ab 30 s, `/gesund` wird „kritisch“.
 
 ---
 
+## 7 Fortschritt der Umsetzung
+
+### 7.1 WP-48.1 Prüfnetz und WP-48.2 Speicherkern (Branch `acc45/backend/wp48-1-2-pruefnetz-speicherkern`)
+
+Stand 2026-11-03, Basis 219a5b0. Tests wurden zuerst geschrieben (Commit „Prüfnetz (rot vorher)"), danach
+umgesetzt. Kein Teilweg (48.3), keine Oberfläche, kein Löschlauf, keine Datenmigration.
+
+**Prüfnetz 48.1** (`pruefungen/wp48-rundweg.test.js`, über den echten Handler mit Dateiablage):
+- Der Prüfbetrieb belegt **jedes** Feld aus `sicht.mjs` `BETRIEB` (außer `session`) und `PERSONENFELDER` (außer den
+  abgeleiteten `planungsregeln`/`sichtbereich`); zwei Personen tragen alle Personenfelder (Schutzmerkmale,
+  Einwilligung, Kalender, Lohn). Plan, Ist und Stempel liegen in vier Monaten, für Personen im eigenen und im fremden
+  Bereich. Kommt ein Katalogfeld oder eine Rolle (`BEKANNTE_ROLLEN`) dazu, wird die Prüfung rot, bis der Prüfbetrieb
+  es trägt.
+- Für jede Rolle (Leitung, Planung, Kunde, Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber) gilt:
+  GET → unverändert zurück ist wirkungslos (gespeicherter Bestand tief gleich, dieselben Scherben; 200 bzw. 403 für
+  den Betriebsrat). Dasselbe mit veraltetem Stand nach einem Stempel im laufenden Monat (200 oder 409, nie ein
+  Verlust) und auf einem Altbestand ohne `qualifikationen` (Lehre WP-12). **Grün auf 219a5b0**: Die Invariante, auf
+  der der virtuelle Vollrumpf ruht, gilt heute für alle Rollen und alle Katalogfelder.
+- **Befund (Rolle, in der die Invariante bricht):** Trägt ein *gespeicherter* Altinhalt ein abgeleitetes
+  Personenfeld (`sichtbereich`, ebenso `planungsregeln`), ist das Zurückschreiben nicht wirkungslos — Planung,
+  Leitung und Kundenrolle entfernen das Feld (200), die **Schichtverantwortung bekommt 403** („Angaben anderer
+  Personen ändert die Leitung."). Gemessen 2026-11-03. Ebenso entfernt das Zurückschreiben durch Planung/Leitung eine gespeicherte *leere*
+  Einwilligungsliste (`mutterschutzEinwilligungen: []`). Beides verliert keine Daten (geprüft), wäre aber im Teilweg
+  ein 403 bzw. eine Änderung, die die Rolle nicht gemacht hat. **Auflage für 48.3:** den virtuellen Rumpf aus der
+  Sicht über einen angeglichenen gespeicherten Stand bauen (abgeleitete Felder und leere Einwilligungen vorher
+  entfernen, wie `personenAngleichen`), oder diese Altinhalte einmalig beim nächsten vollen Schreiben bereinigen.
+- Rennen und Konflikte im Speicherkern (`pruefungen/wp48-speicherkern.test.js`): zwei Teil-Schreiber und ein
+  Voll-Schreiber auf demselben Stand (höchstens ein Teil-Schreiber gewinnt, kein Verlust, Stand zählt genau die
+  Erfolge), compare-and-set, Epoche nach Wiederherstellen, Abbruch nach dem Journal bei mehreren Segmenten.
+- Mutanten: `werkzeug/wp48-mutanten.mjs` (25 Mutanten, 22 für 48.2, 3 für die Schreibkette unter dem Rundweg). Lauf 2026-11-03 auf b2622f9: **25 von 25 getötet** (je Mutant die erste rote Prüfung im Werkzeug-Ausdruck).
+
+**Speicherkern 48.2** (`server/lib/bestand.mjs`, `server/lib/scherben.mjs`):
+- **Hash-Vermerk.** `abdruck()` = SHA-256-Präfix (32 Hex) über den bisherigen sortierten Text (`abdruckText`),
+  Kern `kernAbdruck` = SHA-256-Präfix über `JSON.stringify(kern)`. Vermerk bei 150 × 12 unter 10 KB (Prüfung);
+  das Journal eines Schreibvorgangs ist kleiner als berührte Scherben + Kern + 10 KB und enthält den Vermerk genau
+  einmal.
+- **Alte Vermerke** (Text) liest `abdruckNormal`: 32 Hex = schon Hash; Text, der mit `abweichungen:` (Scherbe) oder
+  `{` (Kern) beginnt, wird gehasht und ist damit gleich dem neuen Abdruck desselben Inhalts; alles andere macht den
+  **ganzen Vermerk unbrauchbar** (fail-closed): als Basis → Konflikt ohne Abgleich, `unveraenderteScherben` leer;
+  als aktueller Vermerk → Neuberechnung aus der Platte (Wiederanlauf, neue Epoche). Geprüft: Schreiben auf aktuellem
+  Stand mit altem Vermerk schreibt nur die geänderte Scherbe; Drei-Wege über alten Basisvermerk führt verschiedene
+  Monate zusammen und meldet denselben Monat als Konflikt.
+- **Vermerk-Aufräumen.** Höchstens 10 Vermerke; nach einem Sprung des Stands (Wiederanlauf) räumt der nächste
+  Schreibvorgang über das Verzeichnis auf (vorher blieben ältere für immer liegen).
+- **Lesecache** nur unter der Raumsperre: Das Gedächtnis hängt am Sperrobjekt (`raumsperre.mjs` `sperrKontext`,
+  neu) und je Ablageobjekt, wird bei jedem Treffer gegen Journal, Kern-Stand/-Zeit/-Epoche und das
+  Scherbenverzeichnis geprüft, gibt Kopien heraus und wird von jedem Schreibvorgang geleert. Damit liest der
+  Drei-Wege-Abgleich im PUT den Bestand nicht mehr ein zweites Mal (Prüfung: 0 Scherbenzugriffe).
+- **Segmentschreiber** `teileSchreiben(store, raum, { kern?, scherben? }, { erwarteterStand, erwarteteEpoche?,
+  durch })`: ein Journal für Kern + berührte Scherben + Vermerk + Zeiger, unberührte Abdrücke aus dem Vermerk.
+  Ergebnis auf der Platte gleich dem vollen Schreiben (Prüfung „Gleichwertigkeit", auch neue und geleerte Scherbe).
+  Fail-closed: kein Abgleich (CAS auf den Stand, sonst `konflikt`), fremde Epoche → `epoche`, unklare Platte (kein
+  oder unklarer Vermerk, Zeiger ≠ Kern, unbekannte Scherbe, keine Epoche) → `unbestimmt` ohne Schreiben; falsche Form
+  (fremder Monat, unbekanntes Feld, unbekannter Betrieb, Kern mit Monatsdaten oder anderen Betrieben) → Fehler
+  `TEILE_UNGUELTIG` ohne Schreiben. Rechte und Prüfungen bleiben der Schreibkette (48.3).
+- **Epoche** in den Kern-Metadaten **und** im Zeiger. Neu beim ersten Schreiben, bei `neueEpoche` (Wiederherstellen,
+  `daten.mjs`, eine Zeile), beim Wiederanlauf und wenn Kern und Zeiger nicht dieselbe tragen (ein Server ohne Epoche
+  hat geschrieben). `bestandLesen` liefert `epoche` (null bei Altbestand).
+
+**Rückweg auf einen Server vor 48.2** (bewertet, nicht als Prüfung): Der alte Server vergleicht seine Text-Abdrücke
+mit den Hash-Abdrücken im Vermerk. Er hält dann jede Scherbe für geändert (schreibt alle, nimmt
+`unveraenderteScherben` als leer, meldet im Drei-Wege eher einen Konflikt) — mehr Konflikte und strengere
+Stempelprüfung, aber kein Verlust. Nach seinem ersten Schreiben trägt der Vermerk wieder Text, den 48.2 lesen kann;
+Kern und Zeiger verlieren die Epoche, und der nächste Schreibvorgang von 48.2 beginnt eine neue (fail-closed).
+
+**Abweichungen vom Entwurf:**
+- Die Epoche steht zusätzlich in den Kern-Metadaten: Leser sehen Stand und Epoche so aus einer Datei, ohne den
+  Zeiger außerhalb der Lesefolge zu lesen (2.2 nennt nur den Zeiger).
+- „`bestandSchreiben` übernimmt den schon gelesenen Stand" (2.8) ist über den Lesecache gelöst, ohne neue
+  Schnittstelle: Der zweite strenge Lesevorgang unter derselben Sperre ist ein Treffer.
+- Bestehende `mutanten-*.mjs` gibt es im Repo nicht (nur Mutantentabellen in Nachweisen); `wp48-mutanten.mjs` ist
+  deshalb ein eigenes, kleines Werkzeug (Textersetzung, gezielte Prüfdatei, Wiederherstellung).
+- `bestand-anlegen` und Raum-Ersetzen brauchen keine Option: Das erste Schreiben eines Raums vergibt immer eine neue
+  Epoche.
+
+**Dateien und WP-16:** `bestand.mjs` (neu: Vermerk/Epoche/Lesecache/Segmentschreiber), `scherben.mjs` (Abdruck;
+`MONATSFELDER` unverändert, WP-16 ergänzt dort nur `istEingefroren` — der Segmentschreiber übernimmt die Liste),
+`raumsperre.mjs` (+`sperrKontext`), `daten.mjs` **eine Zeile** (Wiederherstellen: `neueEpoche: true`), `package.json`
+(die zwei Prüfdateien in `pruefung:datenintegritaet`), `werkzeug/wp48-messung.mjs` (Spalte „Vermerk heute" über
+`abdruckText`). `monatsabschluss.mjs`/`aufbewahrung.mjs` nicht berührt. Bekannt lokal: `atomar.test.js` „sieht nie
+einen Mischstand" ist auf dem Laptop schon auf 219a5b0 rot (zu wenige Lesedurchgänge, Zeitgeber), unabhängig von
+dieser Änderung.
+
+---
+
 ### Anhang: Messskript
 
 `werkzeug/wp48-messung.mjs`, nur lesend und synthetisch. Es schreibt ausschließlich in ein frisches Temp-Verzeichnis
