@@ -62,6 +62,8 @@ const zu = (m, monat = OKT) => {
   if ("status" in r) throw new Error(r.grund);
   return r.mandant;
 };
+/* Überstimmung offener Vormonate beim Lohnexport (vierter Review A-1): Die Fälle hier schließen nur den Oktober ab. */
+const TROTZ = { trotzVormonat: true, vormonatKategorie: "vor_inbetriebnahme", vormonatGrund: "Vormonate ohne Zeitdaten vor dem Start" };
 const auf = (m, monat = OKT) => {
   const r = wiederoeffnen(m, { monat, grund: "Gegenprobe nach dem Wiederöffnen" }, WER_L, new Date(JETZT), `w-${monat}`);
   if ("status" in r) throw new Error(r.grund);
@@ -383,7 +385,11 @@ describe("Betreiberentscheidung (C): Lohnexport bestätigen — danach kein einf
     expect((await anfrage("monatsabschluss", { token: await token("a1", raum), rumpf: { aktion: "lohnexport", monat: OKT } })).status).toBe(403);
     /* Seit dem dritten Review (H-2) schickt die Oberfläche den Stand der ausgegebenen Datei mit. */
     const sicht = (await anfrage("bestand", { methode: "GET", token: tL })).bestand.mandanten[0];
-    const r = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...A.lohnexportStand(sicht, OKT) } });
+    /* Seit dem vierten Review (A-1): Vormonate offen → nur mit ausdrücklicher Überstimmung (Kategorie, Begründung). */
+    const vm = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...A.lohnexportStand(sicht, OKT) } });
+    expect(vm.status, vm.roh).toBe(409);
+    expect(vm.code).toBe("VORMONAT_OFFEN");
+    const r = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...A.lohnexportStand(sicht, OKT), ...TROTZ } });
     expect(r.status, r.roh).toBe(200);
     expect(r.eintrag.lohnexport).toMatchObject({ am: JETZT.replace("Z", ".000Z"), wer: { personId: "l1", rolle: "leitung" }, revision: 1 });
     expect(r.eintrag.lohnexport.abdruck).toBe(r.eintrag.abdruck);
@@ -408,7 +414,7 @@ describe("Betreiberentscheidung (C): Lohnexport bestätigen — danach kein einf
     expect(istAbdruck(nachher, OKT)).toBe(nachher.monatsabschluss[OKT].abdruck);
     const sp = (await spurZeilen()).filter((x) => x.ausgang === "erfolg" && /Lohnexport bestätigt/.test(x.zusatz || ""));
     expect(sp.length).toBe(1);
-    expect(sp[0].zusatz).toMatch(/^Monatsabschluss 2026-10 Lohnexport bestätigt ma-[0-9a-f]+ · Revision 1$/);
+    expect(sp[0].zusatz).toMatch(/^Monatsabschluss 2026-10 Lohnexport bestätigt ma-[0-9a-f]+ · Revision 1 · trotz Vormonat \(vor_inbetriebnahme\)$/);
   });
   it("Bibliothek: Prüfsumme weicht ab (am Server vorbei geändert) → 409, kein Export", () => {
     const m = zu(betrieb());
@@ -418,7 +424,7 @@ describe("Betreiberentscheidung (C): Lohnexport bestätigen — danach kein einf
     const r = lohnexportBestaetigen(x, { monat: OKT, ...A.lohnexportStand(m, OKT) }, WER_L, new Date(JETZT), "le-1");
     expect(r.status).toBe(409);
     expect(r.code).toBe("ABDRUCK_ABWEICHEND");
-    expect("status" in lohnexportBestaetigen(m, { monat: OKT, ...A.lohnexportStand(m, OKT) }, WER_L, new Date(JETZT), "le-2")).toBe(false);
+    expect("status" in lohnexportBestaetigen(m, { monat: OKT, ...A.lohnexportStand(m, OKT), ...TROTZ }, WER_L, new Date(JETZT), "le-2")).toBe(false);
   });
 });
 

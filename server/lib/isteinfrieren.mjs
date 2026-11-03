@@ -32,7 +32,7 @@
    Schichtverantwortung eigene und Bereich (sicht.mjs).
    ========================================================================== */
 import { einheitAm, imDienst, einheitDienst, teilzeitDienst, landFuerEinheit, nachtAnteil, nachtschwelle } from "./fachpruefung.mjs";
-import { between, dow, addDays, toMin, fenster, uhrversatz, dim_, pad, dauer } from "./regelwerk.mjs";
+import { between, dow, addDays, toMin, fenster, uhrversatz, dim_, pad, dauerAm } from "./regelwerk.mjs";
 import { gewertet, abwHoechste, abwBezahlt, LOHNARTEN_STD, RECHEN_STAND } from "./lohnrechnung.mjs";
 import { feiertag } from "./feiertage.mjs";
 import { istZeitFuer, ungeplanterDienst, istVerfuegbar, UNGEPLANT_NAME, zeitraumMonat } from "./istdaten.mjs";
@@ -228,6 +228,17 @@ export function zuschlagTagAddieren(m, p, d, da, r) {
    Ist „nicht verfügbar" (abschlussLuecke) — nie still 0 h oder live gerechnet.
    Schema 1 und 2 bleiben lesbar, sind aber als „nicht reproduzierbar"
    gekennzeichnet (Soll, Zuschläge oder Konto dort teils live).
+
+   NACHTRAG VIERTER OPUS-DELTA-REVIEW (WP-16, A-1/N-1) — ohne neue Version:
+     "*|JJJJ-MM"   vs: { Vormonat: Kennung des Abschlusses } — die Vormonate des
+                   Jahres, die beim Abschluss abgeschlossen waren, mit dem Stand,
+                   aus dem das Konto gerechnet ist. Wird ein Vormonat später
+                   wiederöffnet und neu abgeschlossen (neue Kennung), sagt die
+                   Lohnausgabe „Vormonat nach dem Abschluss geändert“, und der
+                   Lohnexport braucht die ausdrückliche Überstimmung.
+     br            Bereitschaft/Ruf aus dem eingefrorenen Ist des Tages (std:
+                   Sommerzeit, erfasste Zeit) statt aus der Plandauer
+                   (RECHEN_STAND 2).
    -------------------------------------------------------------------------- */
 export const FREEZE_SCHEMA = 3;
 const TAG_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -269,6 +280,9 @@ export function istEinfrieren(m, monat) {
   const tage = tageDes(monat);
   /* Die Vormonate des Jahres, die jetzt offen sind: Das Konto rechnet mit ihrem heutigen Stand (gekennzeichnet). */
   const vo = vormonate(monat).filter((x) => !abgeschlossenerEintrag(m, x));
+  /* Die abgeschlossenen Vormonate mit der Kennung ihres Abschlusses (WP-16, Nachtrag vierter Review A-1). */
+  const vs = Object.fromEntries(vormonate(monat).filter((x) => abgeschlossenerEintrag(m, x))
+    .map((x) => [x, abschlussKennung(abgeschlossenerEintrag(m, x))]));
   for (const p of liste(m.personen)) {
     const pm = personMonat(m, p, monat, tage, merk, ctx, ref);
     if (!pm) continue;
@@ -279,7 +293,7 @@ export function istEinfrieren(m, monat) {
     /* Die wirksamen Lohnarten (WP-16, Nachtrag dritter Review M-1/N-d): ohne eigene die Standardnummern — nie null,
        sonst griffen später angelegte Lohnarten rückwirkend. Zuschlagsregeln ohne Regeln: [] statt null. */
     la: objekt(m.lohnarten) ? m.lohnarten : LOHNARTEN_STD, zs: Array.isArray(m.zuschlaege) ? m.zuschlaege : [],
-    rv: RECHEN_STAND, ...(vo.length ? { vo } : {}) };
+    rv: RECHEN_STAND, ...(vo.length ? { vo } : {}), ...(Object.keys(vs).length ? { vs } : {}) };
   aus[betriebsSchluessel(monat)] = b;
   /* Zweiter Gang: Summen aus genau den eingefrorenen Tagen (dieselbe Rechnung wie die Oberfläche im abgeschlossenen
      Monat) und das Konto zum Monatsende. */
@@ -341,7 +355,8 @@ function vormonate(monat) {
 /**
  * Ist-Summen eines Monats aus den eingefrorenen Tagen — dieselbe Rechnung wie istStunden der Oberfläche im
  * abgeschlossenen Monat: Dienst gewertet (Anrechnungsfaktor), bezahlte Abwesenheit an geplanten Tagen mit
- * Wochenstunden / 5; dazu Bereitschafts- und Rufstunden (Dauer der Dienstart) für die Lohnausgabe.
+ * Wochenstunden / 5; dazu Bereitschafts- und Rufstunden für die Lohnausgabe — aus der eingefrorenen Ist-Zeit des
+ * Tages (Sommerzeit, erfasste Zeit; WP-16, Nachtrag vierter Review N-1), nur ohne sie aus der Dauer an dem Tag.
  */
 function summeAusTagen(w, monat, pid) {
   let g = 0, gg = 0, ber = 0, ruf = 0;
@@ -355,10 +370,11 @@ function summeAusTagen(w, monat, pid) {
     const x = aufgeloest(w, monat, pid, e).da;
     if (!objekt(x)) continue;
     g += gewertet(x, Number(e.std));
-    if (x.form === "bereitschaft") ber += dauer(x);
-    else if (x.form === "ruf" || x.rufbereitschaft) ruf += dauer(x);
+    const std = e.std !== null && e.std !== undefined && Number.isFinite(Number(e.std)) ? Number(e.std) : dauerAm(d, x);
+    if (x.form === "bereitschaft") ber += std;
+    else if (x.form === "ruf" || x.rufbereitschaft) ruf += std;
   }
-  return { g: r2(g), gg: r2(gg), ig: r2(g + gg), br: [ber, ruf] };
+  return { g: r2(g), gg: r2(gg), ig: r2(g + gg), br: [r2(ber), r2(ruf)] };
 }
 
 /**
@@ -432,6 +448,10 @@ const abgeschlossenerEintrag = (m, mon) => {
   const a = m && objekt(m.monatsabschluss) ? m.monatsabschluss[mon] : null;
   return objekt(a) && a.abgeschlossen === true ? a : null;
 };
+/** Kennung eines Abschlusses: `stand` (seit dem dritten Nachtrag), bei älteren Abschlüssen der Zeitpunkt. */
+const abschlussKennung = (a) => (a ? a.stand ?? a.am ?? null : null);
+/** Hat der Freeze irgendeinen Eintrag zu diesem Monat (Verzeichnis, Person, Tag)? */
+const monatImFreeze = (w, mon) => Object.keys(w).some((k) => String(k).split("|")[1]?.slice(0, 7) === mon);
 
 /** Gibt es zu dieser Person im Freeze des Monats irgendetwas (Monats- oder Tageseintrag)? */
 function personImFreeze(w, pid, mon) {
@@ -446,7 +466,9 @@ function personImFreeze(w, pid, mon) {
  *   { schema: 2 }  ohne Konto, Summen und Personalangaben — nicht reproduzierbar (Konto, Lohnausgabe teils live);
  *   { schema: 3, reproduzierbar: true };
  *   { unbekannt: true, grund }  Version unbekannt oder zu neu, Abschluss und Verzeichnis widersprechen sich oder das
- *                  Verzeichnis fehlt, obwohl der Abschluss Schema ≥ 2 sagt — dann ist nichts verfügbar (fail-closed).
+ *                  Verzeichnis fehlt, obwohl der Abschluss Schema ≥ 2 sagt — dann ist nichts verfügbar (fail-closed);
+ *                  grund "geloescht": Lohnexport bestätigt und der Freeze des Monats ist ganz weg (Löschlauf nach Ablauf
+ *                  der Aufbewahrungsfrist, Nachtrag vierter Review A-3) — kein Prüffall zum Wiederöffnen.
  * Die Version steht im Verzeichnis (`v`) und — für Planung und Leitung — am Abschluss (`schema`); andere Rollen sehen
  * am Abschluss nur den Status.
  */
@@ -464,6 +486,7 @@ export function freezeStatus(m, mon) {
     if (!objekt(b.da)) return { unbekannt: true, grund: "verzeichnis" };
     return b.v >= 3 ? { schema: b.v, reproduzierbar: true } : { schema: b.v };
   }
+  if (objekt(a.lohnexport) && !monatImFreeze(w, mon)) return { unbekannt: true, grund: "geloescht" };
   if (es !== undefined && es >= 2) return { unbekannt: true, grund: "verzeichnis" };
   return { schema: 1 };
 }
@@ -507,6 +530,14 @@ export function abschlussLuecken(m, mon) {
 }
 export const ABSCHLUSS_LUECKE_TEXT = "Im abgeschlossenen Monat fehlt das eingefrorene Ist — "
   + "Stunden nicht verfügbar (Prüffall: Monat wiederöffnen und erneut abschließen).";
+/** Bestätigter Lohnexport, Freeze nach Ablauf der Aufbewahrungsfrist gelöscht (Nachtrag vierter Review A-3). */
+export const FREEZE_GELOESCHT_TEXT = "Das eingefrorene Ist dieses Monats ist nach Frist gelöscht (Aufbewahrungsfrist abgelaufen) — "
+  + "Stunden nicht mehr verfügbar. Maßgeblich bleibt die bestätigte Lohnausgabe.";
+/** Der Text zur Lücke eines abgeschlossenen Monats: nach Frist gelöscht oder Prüffall. */
+export function abschlussLueckeText(m, mon) {
+  const st = freezeStatus(m, mon);
+  return st && st.grund === "geloescht" ? FREEZE_GELOESCHT_TEXT : ABSCHLUSS_LUECKE_TEXT;
+}
 /** Markierung eines Tages ohne Freeze im abgeschlossenen Monat. */
 export const LUECKE = Object.freeze({ luecke: true });
 
@@ -604,28 +635,61 @@ export function datevAusFreeze(m, mon) {
  *   entfernt          Personen im Freeze, die nicht mehr im Personalstamm stehen (Zeilen bleiben, aus dem Abschluss);
  *   kontoFehlt        Personen, deren Konto zum Abschluss nicht rechenbar war (keine Mehrarbeitszeile);
  *   vormonateOffen    Vormonate des Jahres, die beim Abschluss offen waren oder es heute sind (Konto vorläufig);
+ *   vormonatGeaendert Vormonate, die beim Abschluss abgeschlossen waren und seitdem wiederöffnet und neu
+ *                     abgeschlossen wurden (andere Kennung als in `vs`) — das Konto ist veraltet (Nachtrag vierter
+ *                     Review A-1);
+ *   ausgetreten       Personen im Freeze, die am 28. nicht im Dienst waren (Austritt oder Eintritt im Monat): keine
+ *                     Zeilen — offene Produktentscheidung, nur gesagt (A-5);
+ *   uebertragGeaendert  Personen, deren Übertrag sich seit einem früher abgeschlossenen Monat des Jahres geändert hat
+ *                     (`ue` dort anders) — der Übertrag hat keinen Jahresbezug (A-4), nichts umgerechnet;
+ *   uebertragJahreswechsel  der Monat wurde erst im Folgejahr abgeschlossen — der Übertrag könnte schon der des
+ *                     neuen Jahres sein (A-4);
  *   rechenstand       der Abschluss entstand mit einem anderen Rechenstand (Code-Konstanten, N-d).
  */
 export function datevHinweise(m, mon) {
   const st = freezeStatus(m, mon);
   if (!st) return null;
-  if (st.unbekannt) return { unbekannt: true, entfernt: [], kontoFehlt: [], vormonateOffen: [] };
+  const leer = { entfernt: [], kontoFehlt: [], vormonateOffen: [], vormonatGeaendert: [], ausgetreten: [], uebertragGeaendert: [],
+    uebertragJahreswechsel: false };
+  if (st.unbekannt) return { unbekannt: true, ...(st.grund === "geloescht" ? { geloescht: true } : {}), ...leer };
   const w = objekt(m[IST_EINGEFROREN]) ? m[IST_EINGEFROREN] : {};
   const b = w[betriebsSchluessel(mon)];
-  const personen = new Set(liste(m.personen).map((p) => String(p.id)));
-  const entfernt = [], kontoFehlt = [];
+  const stamm = new Map(liste(m.personen).map((p) => [String(p.id), p]));
+  const entfernt = [], kontoFehlt = [], ausgetreten = [], uebertragGeaendert = [];
+  /* Die abgeschlossenen Vormonate des Jahres, jüngster zuerst — für den Übertrag (A-4). */
+  const frueher = vormonate(mon).filter((x) => abgeschlossenerEintrag(m, x)).reverse();
   if (st.reproduzierbar) for (const [k, e] of Object.entries(w)) {
-    if (!istMonatsSchluessel(k) || String(k).split("|")[1] !== mon || !objekt(e) || e.i !== 1) continue;
+    if (!istMonatsSchluessel(k) || String(k).split("|")[1] !== mon || !objekt(e)) continue;
     const pid = String(k).split("|")[0];
     const nm = Array.isArray(e.nm) ? e.nm : [pid, null, null];
     const wer = { personId: pid, personalnummer: nm[0], nachname: nm[1], vorname: nm[2] };
-    if (!personen.has(pid)) entfernt.push(wer);
+    if (e.i !== 1) {
+      const p = stamm.get(pid);
+      const aus = p && typeof p.austritt === "string" && p.austritt.slice(0, 7) === mon ? p.austritt.slice(0, 10) : null;
+      if (e.i === 0) ausgetreten.push({ ...wer, austritt: aus });
+      continue;
+    }
+    if (!stamm.has(pid)) entfernt.push(wer);
     if (!Number.isFinite(e.k)) kontoFehlt.push(wer);
+    if (Number.isFinite(e.ue)) for (const x of frueher) {
+      const v = w[`${pid}|${x}`];
+      if (!objekt(v) || !Number.isFinite(v.ue)) continue;
+      if (v.ue !== e.ue) uebertragGeaendert.push({ ...wer, ue: e.ue, vorher: v.ue, seit: x });
+      break;
+    }
   }
   const offenHeute = vormonate(mon).filter((x) => !abgeschlossenerEintrag(m, x));
   const vormonateOffen = [...new Set([...(objekt(b) && Array.isArray(b.vo) ? b.vo : []), ...offenHeute])].sort();
+  const vs = objekt(b) && objekt(b.vs) ? b.vs : {};
+  const vormonatGeaendert = Object.keys(vs).filter((x) => {
+    const v = abgeschlossenerEintrag(m, x);
+    return !!v && abschlussKennung(v) !== vs[x];
+  }).sort();
+  const ab = abgeschlossenerEintrag(m, mon);
+  const uebertragJahreswechsel = !!st.reproduzierbar && !!ab && typeof ab.am === "string" && ab.am.slice(0, 4) > mon.slice(0, 4);
   return { unbekannt: false, nichtReproduzierbar: !st.reproduzierbar, schema: st.schema,
     lohnartenFehlen: st.schema >= 2 && objekt(b) && !objekt(b.la), entfernt, kontoFehlt, vormonateOffen,
+    vormonatGeaendert, ausgetreten, uebertragGeaendert, uebertragJahreswechsel,
     rechenstand: st.reproduzierbar && objekt(b) && b.rv !== RECHEN_STAND ? (b.rv ?? null) : undefined };
 }
 

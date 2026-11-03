@@ -23,9 +23,13 @@
    sagt dann, dass er mit einem anderen Rechenstand entstand (N-d). Die
    eingefrorenen Summen (Ist, Konto, Zuschläge, Bereitschaft) ändern sich
    dadurch nicht.
+
+   Stand 2 (WP-16, Nachtrag vierter Review N-1): Bereitschafts- und
+   Rufstunden der Lohnausgabe aus der Ist-Zeit des Tages (Sommerzeit,
+   erfasste Zeit) statt aus der Plandauer der Dienstart.
    ========================================================================== */
 
-export const RECHEN_STAND = 1;
+export const RECHEN_STAND = 2;
 
 /**
  * Dienstformen. Bereitschaftsdienst (Anwesenheit am Arbeitsplatz) und

@@ -18,7 +18,7 @@ import { verknuepfungsZiel, verknuepfungAnwenden, ohneVerknuepfung } from "./ver
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
-  dauer, brutto, fenster,
+  dauer, dauerAm, brutto, fenster,
   bruttoAm, uhrversatz, uhrsprung,
   ausgleichszeitraum, tagesgrenzeVerletzt, folgenUeberGrenze,
   schutzEinsatz, jugendMehrschichtig, aufgabeSchwere, stundengrenzeAusRegeln, stundengrenzeHinweis, EINSATZREGEL_TEXTE,
@@ -234,9 +234,10 @@ import {
 /* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
-import { monatAbgeschlossen, monatText, datevZeilenAbdruck } from "../server/lib/monatsabschluss.mjs";
+import { monatAbgeschlossen, monatText, datevZeilenAbdruck, datevReihenfolge, lohnexportVergleich,
+  VORMONAT_KATEGORIEN as VORMONAT_KATEGORIEN_SERVER } from "../server/lib/monatsabschluss.mjs";
 import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst, eingefrorenerMonat, eingefrorenerBetrieb,
-  abschlussLuecke, abschlussLuecken, ABSCHLUSS_LUECKE_TEXT, feiertagFuer, sollMonat, nachtAnteilAm, tagesanteile, zuschlagTagAddieren,
+  abschlussLuecke, abschlussLuecken, abschlussLueckeText, feiertagFuer, sollMonat, nachtAnteilAm, tagesanteile, zuschlagTagAddieren,
   eingefrorenFuerPerson, freezeStatus, datevAusFreeze, datevHinweise } from "../server/lib/isteinfrieren.mjs";
 /* Dienstformen, Anrechnungsfaktor und Standard-Lohnarten stehen seit WP-16 (Nachtrag dritter Review H-1/N-d) in
    server/lib/lohnrechnung.mjs: Der Monatsabschluss rechnet damit Ist-Summe und Konto zum Abschluss ein. */
@@ -4612,11 +4613,14 @@ function datevSaetze(m, ym) {
     const [y, mo] = ym.split("-").map(Number);
     for (let i = 1; i <= dim_(y, mo - 1); i++) {
       const d = `${ym}-${pad(i)}`;
-      /* Abgeschlossener Monat: der eingefrorene Dienst (WP-16, Review H1). */
-      const da = istTag(m, p, d).da;
+      /* Abgeschlossener Monat: der eingefrorene Dienst (WP-16, Review H1). Stunden aus dem Ist des Tages — Sommerzeit,
+         erfasste Zeit (Nachtrag vierter Review N-1, wie summeAusTagen im Freeze); ohne Ist-Zeit die Dauer an dem Tag. */
+      const t = istTag(m, p, d);
+      const da = t.da;
       if (!da) continue;
-      if (da.form === "bereitschaft") ber += dauer(da);
-      else if (da.form === "ruf" || da.rufbereitschaft) ruf += dauer(da);
+      const std = t.idn && t.idn.std !== null && t.idn.std !== undefined && Number.isFinite(Number(t.idn.std)) ? Number(t.idn.std) : dauerAm(d, da);
+      if (da.form === "bereitschaft") ber += std;
+      else if (da.form === "ruf" || da.rufbereitschaft) ruf += std;
     }
     eintrag("bereitschaft", ber);
     eintrag("ruf", ruf);
@@ -4647,6 +4651,52 @@ function lohnausgabeDateiname(m, ym, endung) {
   return `lohnausgabe_${String(m.name || "").replace(/\W+/g, "_")}_${ym}${s && s.abdruck ? `_r${s.revision}_${String(s.abdruck).slice(0, 12)}` : ""}.${endung}`;
 }
 
+/** Kategorien der Überstimmung offener oder geänderter Vormonate beim Lohnexport — dieselbe Liste wie der Server. */
+const VORMONAT_KATEGORIEN = Object.entries(VORMONAT_KATEGORIEN_SERVER).map(([id, text]) => ({ id, text }));
+/**
+ * Rückfrage vor dem Bestätigen des Lohnexports (WP-16, Nachtrag vierter Review A-2): Nennt die Vormonate des Jahres,
+ * die offen sind (oder beim Abschluss waren) oder seit dem Abschluss wiederöffnet und neu abgeschlossen wurden. Mit
+ * `vormonate: true` bestätigt der Server nur mit ausdrücklicher Überstimmung (Kategorie und Begründung).
+ */
+function lohnexportRueckfrage(m, ym) {
+  const h = datevHinweise(m, ym);
+  const offen = h ? h.vormonateOffen : [], geaendert = h ? h.vormonatGeaendert : [];
+  const teile = [
+    geaendert.length ? `Seit dem Abschluss wiederöffnet und neu abgeschlossen (geändert): ${geaendert.map(monatText).join(", ")} — das Konto (Mehrarbeit) dieses Monats ist veraltet.` : "",
+    offen.length ? `Vormonat offen oder beim Abschluss offen: ${offen.map(monatText).join(", ")} — das Konto (Mehrarbeit) ist vorläufig.` : ""].filter(Boolean);
+  return { vormonate: teile.length > 0, offen, geaendert, text: teile.join("\n") };
+}
+/** Die Lohnartennummer der Mehrarbeit (Kontostand) für einen Monat: im abgeschlossenen Monat aus dem Freeze. */
+function mehrarbeitNr(m, ym) {
+  const fb = eingefrorenerBetrieb(m, ym);
+  const la = (fb && fb.la && typeof fb.la === "object" ? fb.la : m.lohnarten) || LOHNARTEN_STD;
+  return String(((la && la.mehrarbeit) || LOHNARTEN_STD.mehrarbeit).nr);
+}
+const KONTOSTAND_TEXT = "Mehrarbeit = Stand des Stundenkontos zum Monatsende (Übertrag + alle Monate des Jahres), "
+  + "kein Zuwachs dieses Monats — nicht über mehrere Monate addieren.";
+/**
+ * Personen, die im Monat beschäftigt waren, aber am 28. nicht (Austritt oder Eintritt im Monat): Sie bekommen keine
+ * Zeilen (Produktentscheidung offen, WP-16 Nachtrag vierter Review A-5) — die Lohnausgabe sagt es. Abgeschlossen
+ * (Schema 3) aus dem Freeze, sonst aus dem Personalstamm.
+ */
+function ohneZeilenImMonat(m, ym) {
+  const h = datevHinweise(m, ym);
+  if (h && !h.unbekannt && !h.nichtReproduzierbar) return h.ausgetreten;
+  const [y, mo] = ym.split("-").map(Number);
+  const tage = Array.from({ length: dim_(y, mo - 1) }, (_, i) => `${ym}-${pad(i + 1)}`);
+  return m.personen.filter((p) => !imDienst(p, `${ym}-28`) && tage.some((d) => imDienst(p, d)))
+    .map((p) => ({ personId: p.id, personalnummer: p.personalnummer || p.id, nachname: p.nachname, vorname: p.vorname,
+      austritt: typeof p.austritt === "string" && p.austritt.slice(0, 7) === ym ? p.austritt.slice(0, 10) : null }));
+}
+function ohneZeilenText(m, ym) {
+  const l = ohneZeilenImMonat(m, ym);
+  if (!l.length) return [];
+  const datum = (x) => `${x.slice(8, 10)}.${x.slice(5, 7)}.${x.slice(0, 4)}`;
+  return [`HINWEIS: ${l.length === 1 ? "1 Person" : `${l.length} Personen`} am 28. nicht im Dienst — ausgetreten – Zeilen nicht ausgegeben `
+    + "(auch keine Zuschläge, Bereitschaft oder Mehrarbeit; offene Entscheidung, siehe Nachweis WP-16):",
+  ...l.map((x) => `  ${x.nachname || "?"}, ${x.vorname || "?"} (${x.personalnummer})${x.austritt ? `, Austritt ${datum(x.austritt)}` : ", Eintritt nach dem 28."}`), ""];
+}
+
 /**
  * Die Lohnausgabe als Trennzeichendatei.
  *
@@ -4666,9 +4716,8 @@ function datevCSV(m, ym) {
   /* Feste Reihenfolge: Personalnummer, dann Lohnart. Vorher kam die Reihenfolge
      aus der Personalliste — zwei Ausgaben desselben Monats konnten sich
      unterscheiden, ohne dass sich eine Zahl geändert hatte. */
-  const z = datevSaetze(m, ym).slice().sort((a, b) =>
-    String(a.personalnummer).localeCompare(String(b.personalnummer), "de", { numeric: true })
-    || String(a.lohnart).localeCompare(String(b.lohnart), "de", { numeric: true }));
+  /* Dieselbe Reihenfolge wie die Zeilen-Prüfsumme (datevReihenfolge, WP-16 Nachtrag vierter Review N-2). */
+  const z = datevSaetze(m, ym).slice().sort(datevReihenfolge);
   const [jahr, monat] = ym.split("-");
   const kopf = ["Personalnummer", "Nachname", "Vorname", "Lohnart", "Bezeichnung",
     "Stunden", "Monat", "Jahr"];
@@ -4689,10 +4738,12 @@ function datevCSV(m, ym) {
 function lohnPruefZeilen(m, ym) {
   const h = pruefHinweis(m, ym);
   /* Abgeschlossener Monat ohne Freeze einer Person (WP-16, Nachtrag N3): Prüffall statt still 0 h. */
-  const lu = abschlussLuecken(m, ym);
-  const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${ABSCHLUSS_LUECKE_TEXT}`,
+  /* Nach Frist gelöscht (Nachtrag vierter Review A-3): kein Prüffall je Person — freezeZeilen sagt es einmal. */
+  const lu = freezeGeloescht(m, ym) ? [] : abschlussLuecken(m, ym);
+  const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${abschlussLueckeText(m, ym)}`,
     ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
-  const fz = freezeZeilen(m, ym);
+  /* Austritt im Monat (A-5): keine Zeilen — gesagt, nicht still. */
+  const fz = [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)];
   if (!h) return [...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
@@ -4707,15 +4758,25 @@ function lohnPruefZeilen(m, ym) {
 /**
  * Hinweise aus dem Freeze eines abgeschlossenen Monats (WP-16, Nachtrag dritter Review H-1, M-1, N-d) — Prüffälle
  * statt stiller Zahlen: unbrauchbarer oder nicht reproduzierbarer Abschluss, Personen nicht mehr im Personalstamm
- * (Zeilen aus dem Abschluss), Konto nicht rechenbar, offene Vormonate, anderer Rechenstand.
+ * (Zeilen aus dem Abschluss), Konto nicht rechenbar, offene Vormonate, anderer Rechenstand. Seit dem vierten Review
+ * dazu: Vormonat nach dem Abschluss geändert (A-1), Abweichung von der bestätigten Ausgabe und Freeze nach Frist
+ * gelöscht (A-3), Übertrag ohne Jahresbezug (A-4).
  */
+const freezeGeloescht = (m, ym) => { const st = freezeStatus(m, ym); return !!st && st.grund === "geloescht"; };
 function freezeZeilen(m, ym) {
   const h = datevHinweise(m, ym);
   if (!h) return [];
   const name = (x) => `  ${x.nachname || "?"}, ${x.vorname || "?"} (${x.personalnummer})`;
   const aus = [];
-  if (h.unbekannt) aus.push("ACHTUNG: Der Abschluss dieses Monats ist in einem unbekannten oder unvollständigen Format — "
+  /* Bestätigte Ausgabe gegen die heutige (A-3): Zeilen-Prüfsumme vergleichen, gelöschten Freeze benennen. */
+  const vg = lohnexportVergleich(m, ym, datevSaetze(m, ym));
+  const bestaetigt = vg ? `bestätigt am ${zeitpunktText(vg.am)}, Zeilen-Prüfsumme ${vg.bestaetigt || "unbekannt"}${Number.isFinite(vg.n) ? `, ${vg.n} Zeilen` : ""}` : "";
+  if (h.unbekannt && h.geloescht) aus.push(`HINWEIS: Nach Frist gelöscht — ${abschlussLueckeText(m, ym)} Keine Lohnartensätze mehr; `
+    + `die Ausgabe von damals gilt (${bestaetigt}).`, "");
+  else if (h.unbekannt) aus.push("ACHTUNG: Der Abschluss dieses Monats ist in einem unbekannten oder unvollständigen Format — "
     + "keine Lohnartensätze (Prüffall: Monat wiederöffnen und erneut abschließen).", "");
+  if (vg && vg.status === "abweichend") aus.push("ACHTUNG: Diese Ausgabe weicht von der bestätigten Ausgabe ab (Anonymisierung/Softwarestand) — "
+    + `Zeilen-Prüfsumme heute ${vg.heute}, ${bestaetigt}. Maßgeblich bleibt die bestätigte Datei.`, "");
   if (h.nichtReproduzierbar) aus.push(`ACHTUNG: Abschluss im älteren Format (Schema ${h.schema}) — nicht reproduzierbar: `
     + "Soll, Zuschläge oder Konto teils mit heutigen Stammdaten gerechnet. Vor dem Lohnexport wiederöffnen und erneut abschließen.", "");
   if (h.lohnartenFehlen) aus.push("ACHTUNG: Im Abschluss fehlen die Lohnarten — keine Lohnartensätze (Prüffall).", "");
@@ -4725,6 +4786,17 @@ function freezeZeilen(m, ym) {
     + `${h.kontoFehlt.length === 1 ? "1 Person" : `${h.kontoFehlt.length} Personen`}:`, ...h.kontoFehlt.map(name), "");
   if (h.vormonateOffen.length) aus.push(`HINWEIS: Konto vorläufig — Vormonat offen (${h.vormonateOffen.map(monatText).join(", ")}). `
     + "Das Konto dieses Monats ist der Stand zum Abschluss; Änderungen in offenen Vormonaten wirken erst in späteren Monaten.", "");
+  if (h.vormonatGeaendert.length) aus.push(`ACHTUNG: Vormonat nach dem Abschluss geändert (${h.vormonatGeaendert.map(monatText).join(", ")}) — `
+    + "wiederöffnet und neu abgeschlossen. Das Konto (Mehrarbeit) dieses Monats ist der Stand vor der Änderung und damit veraltet; "
+    + "der Lohnexport lässt sich nur mit ausdrücklicher Begründung bestätigen.", "");
+  if (h.uebertragGeaendert.length) {
+    const seit = [...new Set(h.uebertragGeaendert.map((x) => x.seit))].sort();
+    for (const s of seit) aus.push(`HINWEIS: Übertrag seit ${monatText(s)} geändert — der Übertrag hat keinen Jahresbezug; `
+      + "das Konto rechnet mit dem Wert zum Abschluss, nichts umgerechnet. Bitte prüfen:",
+    ...h.uebertragGeaendert.filter((x) => x.seit === s).map((x) => `${name(x)}: ${zahl(x.vorher)} → ${zahl(x.ue)}`), "");
+  }
+  if (h.uebertragJahreswechsel) aus.push(`HINWEIS: Übertrag ohne Jahresbezug — der Monat wurde erst nach dem Jahreswechsel abgeschlossen. `
+    + `Bitte prüfen, ob der eingefrorene Übertrag noch der des Jahres ${ym.slice(0, 4)} war; nichts umgerechnet.`, "");
   if (h.rechenstand !== undefined) aus.push(`HINWEIS: Abschluss mit Rechenstand ${h.rechenstand ?? "unbekannt"} — die Software rechnet heute anders. `
     + "Die eingefrorenen Werte gelten unverändert.", "");
   return aus;
@@ -4732,10 +4804,10 @@ function freezeZeilen(m, ym) {
 
 /** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
 function lohnWarnung(m, ym, w) {
-  const l = abschlussLuecken(m, ym).length;
+  const l = freezeGeloescht(m, ym) ? 0 : abschlussLuecken(m, ym).length;
   const fz = freezeZeilen(m, ym).filter((z) => z.startsWith("ACHTUNG")).join("\n");
   if (!l && !fz) return w;
-  const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${ABSCHLUSS_LUECKE_TEXT} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
+  const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${abschlussLueckeText(m, ym)} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
   return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;
 }
 
@@ -4753,6 +4825,10 @@ function lohnausgabeText(m, ym) {
   const breite = (s, n) => String(s).padEnd(n).slice(0, n);
   /* Begleitprotokoll (WP-16, Nachtrag dritter Review H-2): Abschluss, Revision und Prüfsummen des ausgegebenen Standes. */
   const st = lohnexportStand(m, ym);
+  /* Mehrarbeit ist der Kontostand zum Monatsende, kein Monatszuwachs (Nachtrag vierter Review A-6) — im Blatt so benannt. */
+  const ma = mehrarbeitNr(m, ym);
+  const kontostand = summen.some((l) => String(l.nr) === ma);
+  for (const l of summen) if (String(l.nr) === ma) l.text = `${l.text} (Kontostand)`;
   return [
     `Lohnausgabe ${m.name}`,
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
@@ -4772,6 +4848,7 @@ function lohnausgabeText(m, ym) {
     "",
     `${zahl(z.length)} Lohnartensätze für ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
     "",
+    ...(kontostand ? [`Lohnart ${ma}: ${KONTOSTAND_TEXT}`, ""] : []),
     "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundensätze,",
     "Tarifgruppen und Steuerfreibeträge gehören in die Lohnabrechnung.",
   ].join("\n");
@@ -11738,11 +11815,15 @@ function Monatsabschluss({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const [grund, setGrund] = useState("");
   const [oeffnen, setOeffnen] = useState(false);
+  /* Überstimmung offener/geänderter Vormonate beim Lohnexport (WP-16, Nachtrag vierter Review A-2): Kategorie und Begründung. */
+  const [trotz, setTrotz] = useState(null);
   if (!darf(sitz, "staff.edit") || !ym) return null;
   const e = m.monatsabschluss && m.monatsabschluss[ym] && typeof m.monatsabschluss[ym] === "object" ? m.monatsabschluss[ym] : null;
   const zu = !!e && e.abgeschlossen === true;
   const exportiert = zu && !!e.lohnexport && typeof e.lohnexport === "object";
-  const luecken = zu ? abschlussLuecken(m, ym) : [];
+  const luecken = zu && !freezeGeloescht(m, ym) ? abschlussLuecken(m, ym) : [];
+  const rueckfrage = zu && !exportiert ? lohnexportRueckfrage(m, ym) : null;
+  const bestaetigen = () => { if (rueckfrage && rueckfrage.vormonate) setTrotz({ kategorie: "", grund: "" }); else akt.lohnexportBestaetigen(ym); };
   const laufend = ym >= heute().slice(0, 7);
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
   const verlauf = e && Array.isArray(e.verlauf) ? e.verlauf : [];
@@ -11759,14 +11840,29 @@ function Monatsabschluss({ sitz, ym, akt }) {
         {!zu && !laufend && akt && <Btn size="sm" kind="primary" onClick={() => akt.monatAbschliessen(ym)}>Monat abschließen</Btn>}
         {zu && akt && darf(sitz, "org.edit") && !oeffnen && !exportiert && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
         {/* Lohnexport bestätigen (Betreiberentscheidung 2026-11-03): danach kein einfaches Wiederöffnen mehr. */}
-        {zu && akt && akt.lohnexportBestaetigen && darf(sitz, "org.edit") && !exportiert && !oeffnen
-          && <Btn size="sm" onClick={() => akt.lohnexportBestaetigen(ym)}>Lohnexport bestätigen</Btn>}
+        {zu && akt && akt.lohnexportBestaetigen && darf(sitz, "org.edit") && !exportiert && !oeffnen && !trotz
+          && <Btn size="sm" onClick={bestaetigen}>Lohnexport bestätigen</Btn>}
         {exportiert && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>Lohnexport bestätigt am {zeitpunktText(e.lohnexport.am)}{e.lohnexport.wer && e.lohnexport.wer.name ? ` von ${e.lohnexport.wer.name}` : ""}</span>}
       </div>
       {exportiert && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
         Der Lohnexport ist bestätigt — der Abschluss lässt sich nicht mehr einfach wiederöffnen; eine Änderung braucht den Korrekturprozess.</div>}
       {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
-        {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {ABSCHLUSS_LUECKE_TEXT}</div>}
+        {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {abschlussLueckeText(m, ym)}</div>}
+      {trotz && zu && !exportiert && (
+        <div style={{ marginTop: 8, padding: "10px 12px", border: `1px solid ${C.warn}`, borderRadius: 6 }}>
+          <div style={{ fontSize: 12.5, color: C.warn, whiteSpace: "pre-line", lineHeight: 1.45 }}>{rueckfrage ? rueckfrage.text : ""}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4 }}>Bestätigen nur ausdrücklich: Kategorie wählen und begründen (steht im Verlauf).</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+            <Sel value={trotz.kategorie} aria-label="Kategorie der Begründung" onChange={(x) => setTrotz({ ...trotz, kategorie: x.target.value })}>
+              <option value="">— Kategorie wählen —</option>
+              {VORMONAT_KATEGORIEN.map((k) => <option key={k.id} value={k.id}>{k.text}</option>)}</Sel>
+            <Inp value={trotz.grund} maxLength={500} onChange={(x) => setTrotz({ ...trotz, grund: x.target.value })} aria-label="Begründung für den Lohnexport trotz Vormonat"
+              placeholder="Begründung (10–500 Zeichen)" style={{ flex: 1, minWidth: 240 }} />
+            <Btn size="sm" kind="danger" disabled={!trotz.kategorie || trotz.grund.trim().length < 10 || trotz.grund.trim().length > 500}
+              onClick={async () => { if (await akt.lohnexportBestaetigen(ym, { kategorie: trotz.kategorie, grund: trotz.grund.trim() })) setTrotz(null); }}>Trotz Vormonat bestätigen</Btn>
+            <Btn size="sm" onClick={() => setTrotz(null)}>Abbrechen</Btn>
+          </div>
+        </div>)}
       {/* Freeze-Hinweise (WP-16, Nachtrag dritter Review H-1/M-1/N-d): Format, offene Vormonate, Rechenstand, entfernte Personen. */}
       {zu && freezeZeilen(m, ym).filter(Boolean).map((t, i) => <div key={i} style={{ fontSize: 12.5, color: /^ACHTUNG/.test(t) ? C.warn : C.dim, marginTop: 4 }}>{t}</div>)}
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
@@ -12424,6 +12520,10 @@ function Lohnausgabe({ sitz, ym, akt }) {
     }
     return Object.values(g).sort((a, b) => (a.nr < b.nr ? -1 : 1));
   }, [saetze]);
+  /* Hinweise wie im Blatt zum Gegenlesen (WP-16, Nachtrag vierter Review A-1/A-3/A-4/A-5): Vormonate, Abweichung von der
+     bestätigten Ausgabe, Freeze nach Frist gelöscht, Übertrag, Austritt im Monat. Mehrarbeit heißt Kontostand (A-6). */
+  const hinweise = useMemo(() => [...freezeZeilen(m, ym), ...ohneZeilenText(m, ym)].filter(Boolean), [m, ym]);
+  const maNr = useMemo(() => mehrarbeitNr(m, ym), [m, ym]);
 
   return (
     <div>
@@ -12432,6 +12532,13 @@ function Lohnausgabe({ sitz, ym, akt }) {
         <Kpi label="Lohnarten" value={nachLohnart.length} />
         <Kpi label="Betroffene Personen" value={new Set(saetze.map((z) => z.personalnummer)).size} />
       </KpiRow>
+
+      {hinweise.length > 0 && (
+        <Card style={{ marginTop: 18, borderLeft: `3px solid ${C.warn}` }}>
+          <div style={{ padding: "14px 20px", fontSize: 13, lineHeight: 1.55 }}>
+            {hinweise.map((t, i) => <div key={i} style={{ color: /^ACHTUNG/.test(t) ? C.warn : /^ {2}/.test(t) ? C.dim : C.text }}>{t}</div>)}
+          </div>
+        </Card>)}
 
       {ohneNummer.length > 0 && (
         <Card style={{ marginTop: 18, borderLeft: `3px solid ${C.warn}`, background: C.warnLight }}>
@@ -12466,7 +12573,7 @@ function Lohnausgabe({ sitz, ym, akt }) {
               {nachLohnart.map((l) => (
                 <tr key={l.nr}>
                   <td style={NUM}>{l.nr}</td>
-                  <td>{l.text}</td>
+                  <td>{l.text}{String(l.nr) === maNr ? " (Kontostand)" : ""}</td>
                   <td style={{ textAlign: "right", ...NUM }}>{l.personen}</td>
                   <td style={{ textAlign: "right", fontWeight: 600, ...NUM }}>{n2(l.stunden)}</td>
                 </tr>))}
@@ -12486,6 +12593,9 @@ function Lohnausgabe({ sitz, ym, akt }) {
           Diese Datei ist eine klar benannte Spaltenliste, wie sie ein Lohnbüro einliest oder
           übernimmt. Vor dem ersten Lauf einmal mit der Lohnbuchhaltung abstimmen, welche
           Lohnartennummern dort geführt werden — sie lassen sich je Betrieb anpassen.
+          <div style={{ marginTop: 8 }}>
+            <b style={{ color: C.text }}>Lohnart {maNr}</b>: {KONTOSTAND_TEXT}
+          </div>
           <div style={{ marginTop: 8 }}>
             <b style={{ color: C.text }}>Das Blatt zum Gegenlesen</b> enthält dieselben Zahlen als
             lesbare Aufstellung mit Gesamtsumme — gedacht für den Blick darauf, bevor die Datei
@@ -23668,15 +23778,23 @@ function AppInnen() {
         }
       },
       /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): Wann, Wer, Prüfsumme — sperrt einfaches Wiederöffnen. */
-      lohnexportBestaetigen: async (monat) => {
+      lohnexportBestaetigen: async (monat, trotzVormonat = null) => {
         /* Bestätigt wird genau die ausgegebene Datei (WP-16, Nachtrag dritter Review H-2): Prüfsumme, Abschluss, Revision
-           und Zeilen-Prüfsumme des Standes, aus dem sie entstand. Der Server vergleicht mit dem heutigen Abschluss. */
+           und Zeilen-Prüfsumme des Standes, aus dem sie entstand. Der Server vergleicht mit dem heutigen Abschluss.
+           Der ausgegebene Stand gilt nur in dieser Sitzung — nach dem Neuladen erst die Lohnausgabe neu erzeugen
+           (sonst EXPORTSTAND_FEHLT, fail-closed). */
         const schluessel = `${sitz.mandant.id}|${monat}`;
         const exportStand = EXPORT_STAND.get(schluessel);
         if (!exportStand) { melde(`Bitte zuerst die Lohnausgabe für ${monatText(monat)} erzeugen — bestätigt wird genau die ausgegebene Datei.`); return false; }
-        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen (Revision ${exportStand.revision}, Prüfsumme ${String(exportStand.abdruck).slice(0, 12)})? Danach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.`)) return false;
+        /* Offene oder geänderte Vormonate (Nachtrag vierter Review A-2): Die Rückfrage nennt sie; ohne Überstimmung
+           (Kategorie und Begründung aus dem Monatsabschluss) bestätigt der Server nicht. */
+        const rf = lohnexportRueckfrage(sitz.mandant, monat);
+        if (rf.vormonate && !trotzVormonat) { melde(`${rf.text} Bestätigen nur mit Kategorie und Begründung.`); return false; }
+        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen (Revision ${exportStand.revision}, Prüfsumme ${String(exportStand.abdruck).slice(0, 12)})?`
+          + (rf.vormonate ? `\n\n${rf.text}\nBegründung: ${trotzVormonat.grund}` : "")
+          + "\n\nDanach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.")) return false;
         try {
-          const erg = await SP.monatsabschluss("lohnexport", monat, { exportStand });
+          const erg = await SP.monatsabschluss("lohnexport", monat, { exportStand, trotzVormonat });
           EXPORT_STAND.delete(schluessel);
           upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
             : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
@@ -25643,4 +25761,6 @@ export { verknuepfungFuer, Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte
   PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis,
   demobestand, sollStunden, ausgleichPruefen, offeneErfassung, datenauskunft, nachtJahr,
   /* WP-16, Nachtrag dritter Review: Abgleich der Rechenkonstanten mit dem Server, Exportstand, Dateiname, Hinweise. */
-  ABW, lohnexportStand, lohnausgabeDateiname, freezeZeilen };
+  ABW, lohnexportStand, lohnausgabeDateiname, freezeZeilen,
+  /* WP-16, Nachtrag vierter Review: Rückfrage mit Vormonaten, Kategorien der Überstimmung, Lohnart des Kontostands. */
+  lohnexportRueckfrage, VORMONAT_KATEGORIEN, mehrarbeitNr };

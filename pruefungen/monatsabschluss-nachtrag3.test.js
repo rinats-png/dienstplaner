@@ -73,10 +73,14 @@ const auf = (m, monat = OKT) => {
 };
 /** Der Stand der ausgegebenen Datei, wie ihn die Oberfläche beim Bestätigen mitschickt. */
 const standVon = (m, monat = OKT) => (typeof A.lohnexportStand === "function" ? A.lohnexportStand(m, monat) : {});
-const exportieren = (m, monat = OKT, stand = standVon(m, monat)) =>
-  MA.lohnexportBestaetigen(m, { monat, ...(stand || {}) }, WER_L, new Date(JETZT), `le-${monat}-${nrAbschluss}`);
+/* Seit dem vierten Review (A-1/A-2): Mit offenen Vormonaten bestätigt der Server nur mit ausdrücklicher Überstimmung
+   (409 VORMONAT_OFFEN ohne sie, geprüft in monatsabschluss-nachtrag4). Die Fälle hier mit absichtlich offenem
+   September (Q2, P6, Rennen) bestätigen deshalb mit Kategorie und Begründung. */
+const TROTZ = { trotzVormonat: true, vormonatKategorie: "vor_inbetriebnahme", vormonatGrund: "Vormonate ohne Zeitdaten vor dem Start" };
+const exportieren = (m, monat = OKT, stand = standVon(m, monat), extra = {}) =>
+  MA.lohnexportBestaetigen(m, { monat, ...(stand || {}), ...extra }, WER_L, new Date(JETZT), `le-${monat}-${nrAbschluss}`);
 const exportiert = (m, monat = OKT) => {
-  const r = exportieren(m, monat);
+  const r = exportieren(m, monat, standVon(m, monat), TROTZ);
   if ("status" in r) throw new Error(r.grund);
   return r.mandant;
 };
@@ -201,7 +205,7 @@ describe("H-2: Lohnexport bestätigen ist an die ausgegebene Datei gebunden", { 
     expect(MA.istAbdruck(gleich, OKT)).toBe(m.monatsabschluss[OKT].abdruck);
     expect(exportieren(gleich, OKT, stand).status).toBe(409);
     /* Mit dem neuen Stand: bestätigt, Zeilen-Prüfsumme gespeichert. */
-    const ok = exportieren(neu, OKT, standVon(neu));
+    const ok = exportieren(neu, OKT, standVon(neu), TROTZ);
     expect("status" in ok, ok.grund).toBe(false);
     expect(ok.eintrag.lohnexport).toMatchObject({ abdruck: neu.monatsabschluss[OKT].abdruck, stand: neu.monatsabschluss[OKT].stand,
       zeilen: standVon(neu).zeilen, revision: 1 });
@@ -214,7 +218,8 @@ describe("H-2: Lohnexport bestätigen ist an die ausgegebene Datei gebunden", { 
     const s = standVon(m);
     expect(exportieren(m, OKT, { ...s, zeilen: "0".repeat(32) }).code).toBe("EXPORTSTAND_ABWEICHEND");
     expect(exportieren(m, OKT, { ...s, revision: 2 }).code).toBe("EXPORTSTAND_ABWEICHEND");
-    expect("status" in exportieren(m, OKT, s)).toBe(false);
+    expect(exportieren(m, OKT, s).code).toBe("VORMONAT_OFFEN");
+    expect("status" in exportieren(m, OKT, s, TROTZ)).toBe(false);
   });
   it("Prüfsumme und Revision im Dateinamen und im Begleitblatt; das Spaltenformat der Datei bleibt", () => {
     const m = zu(betrieb());
@@ -227,7 +232,8 @@ describe("H-2: Lohnexport bestätigen ist an die ausgegebene Datei gebunden", { 
   it("Oberfläche: Ausgabe merkt den Stand, Bestätigen schickt ihn mit (nicht mehr {}), speicher.js überträgt ihn", async () => {
     const app = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
     expect(app).not.toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{\}\)/);
-    expect(app).toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{ exportStand \}\)/);
+    /* Seit dem vierten Review (A-2) zusätzlich die Überstimmung offener/geänderter Vormonate — der Stand bleibt Pflicht. */
+    expect(app).toMatch(/SP\.monatsabschluss\("lohnexport", monat, \{ exportStand, trotzVormonat \}\)/);
     expect(app).toMatch(/EXPORT_STAND\.set\(`\$\{sitz\.mandant\.id\}\|\$\{ym\}`, stand\)/);
     const sp = await readFile(path.join(process.cwd(), "src/speicher.js"), "utf8");
     expect(sp).toMatch(/abdruck: exportStand\.abdruck, stand: exportStand\.stand, revision: exportStand\.revision, zeilen: exportStand\.zeilen/);
@@ -439,7 +445,9 @@ describe("H-2 (Server): Rennen über die Schnittstelle", { timeout: 120000 }, ()
     expect(ohne.status).toBe(409);
     expect(ohne.code).toBe("EXPORTSTAND_FEHLT");
     const neu = standVon(await ansicht(raum));
-    const ok = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...neu } });
+    /* Vormonate offen (vierter Review A-1): ohne Überstimmung 409, mit ihr 200. */
+    expect((await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...neu } })).code).toBe("VORMONAT_OFFEN");
+    const ok = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...neu, ...TROTZ } });
     expect(ok.status, ok.roh).toBe(200);
     expect(ok.eintrag.lohnexport.zeilen).toBe(neu.zeilen);
   });

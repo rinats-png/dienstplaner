@@ -57,7 +57,7 @@
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
-import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze } from "./isteinfrieren.mjs";
+import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze, datevHinweise } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
 
 export { abschlussPersonenRaeumen };
@@ -116,6 +116,17 @@ export const EXPORTSTAND_FEHLT = "EXPORTSTAND_FEHLT";
 export const EXPORTSTAND_ABWEICHEND = "EXPORTSTAND_ABWEICHEND";
 /** Der Abschluss ist nicht reproduzierbar (Schema < 3 oder unbekannt): erst erneut abschließen. */
 export const FREEZE_NICHT_REPRODUZIERBAR = "FREEZE_NICHT_REPRODUZIERBAR";
+/** Lohnexport mit Vormonaten des Jahres, die offen sind oder beim Abschluss offen waren (Konto vorläufig; Nachtrag vierter Review A-1). */
+export const VORMONAT_OFFEN = "VORMONAT_OFFEN";
+/** Lohnexport, obwohl ein Vormonat seit dem Abschluss wiederöffnet und neu abgeschlossen wurde (Konto veraltet; A-1). */
+export const VORMONAT_GEAENDERT = "VORMONAT_GEAENDERT";
+/** Kategorien der ausdrücklichen Überstimmung (trotzVormonat) — die Spur nennt nur die Kategorie, nie den Freitext. */
+export const VORMONAT_KATEGORIEN = Object.freeze({
+  vor_inbetriebnahme: "Vormonate vor der Inbetriebnahme — keine Zeitdaten in CENTRIC",
+  abgestimmt: "Mit dem Lohnbüro abgestimmt",
+  ausgleich_folgemonat: "Abweichung wird im Folgemonat ausgeglichen",
+  sonstiges: "Sonstiges (siehe Begründung)",
+});
 export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
@@ -245,13 +256,45 @@ export function istAbdruck(m, monat) {
 }
 /**
  * Prüfsumme der Lohnausgabe-Zeilen (WP-16, Nachtrag dritter Review H-2): Personalnummer, Name, Lohnart, Bezeichnung,
- * Stunden, Monat in der Reihenfolge der Zeilen. Oberfläche (aus den Zeilen der Datei) und Server (aus dem Freeze,
- * datevAusFreeze) rechnen sie gleich; beim Bestätigen des Lohnexports müssen beide übereinstimmen.
+ * Stunden, Monat — in der Reihenfolge der Datei (datevReihenfolge: Personalnummer, dann Lohnart; WP-16, Nachtrag
+ * vierter Review N-2: vorher in der Reihenfolge der übergebenen Zeilen). Oberfläche (aus den Zeilen der Datei) und
+ * Server (aus dem Freeze, datevAusFreeze) rechnen sie gleich; beim Bestätigen des Lohnexports müssen beide übereinstimmen.
  */
 export function datevZeilenAbdruck(zeilen) {
-  const z = (Array.isArray(zeilen) ? zeilen : []).map((x) => [x.personalnummer ?? null, x.nachname ?? null, x.vorname ?? null,
-    x.lohnart ?? null, x.bezeichnung ?? null, x.stunden ?? null, x.monat ?? null]);
+  const z = (Array.isArray(zeilen) ? zeilen : []).slice().sort(datevReihenfolge).map((x) => [x.personalnummer ?? null,
+    x.nachname ?? null, x.vorname ?? null, x.lohnart ?? null, x.bezeichnung ?? null, x.stunden ?? null, x.monat ?? null]);
   return sha256Hex(JSON.stringify(z)).slice(0, 32);
+}
+/**
+ * Reihenfolge der Lohnausgabe (datevCSV der Oberfläche): Personalnummer, dann Lohnart, numerisch. Bei Gleichstand
+ * entscheidet die ganze Zeile — die Prüfsumme hängt so nie an der Reihenfolge der Eingabe.
+ */
+export function datevReihenfolge(a, b) {
+  const zeile = (x) => JSON.stringify([x.personalnummer ?? null, x.nachname ?? null, x.vorname ?? null, x.lohnart ?? null,
+    x.bezeichnung ?? null, x.stunden ?? null, x.monat ?? null]);
+  return String(a.personalnummer).localeCompare(String(b.personalnummer), "de", { numeric: true })
+    || String(a.lohnart).localeCompare(String(b.lohnart), "de", { numeric: true })
+    || (zeile(a) < zeile(b) ? -1 : zeile(a) > zeile(b) ? 1 : 0);
+}
+/**
+ * Die heute erzeugte Lohnausgabe eines Monats mit bestätigtem Lohnexport gegen die bestätigte Zeilen-Prüfsumme
+ * (WP-16, Nachtrag vierter Review A-3) — null ohne bestätigten Export.
+ *   gleich      dieselben Zeilen wie bestätigt;
+ *   abweichend  andere Zeilen (Anonymisierung im Löschlauf, anderer Softwarestand) — maßgeblich bleibt die bestätigte;
+ *   geloescht   der Freeze ist nach Frist gelöscht (keine Zeilen mehr).
+ * @param {any} m
+ * @param {string} mon
+ * @param {any[]} [zeilen] die Zeilen der Ausgabe (Oberfläche: datevSaetze); ohne Angabe aus dem Freeze
+ */
+export function lohnexportVergleich(m, mon, zeilen) {
+  const e = abschlussEintrag(m, mon);
+  if (!e || e.abgeschlossen !== true || !objekt(e.lohnexport)) return null;
+  const bestaetigt = typeof e.lohnexport.zeilen === "string" ? e.lohnexport.zeilen : null;
+  const st = freezeStatus(m, mon);
+  const basis = { bestaetigt, am: e.lohnexport.am ?? null, n: e.lohnexport.n ?? null };
+  if (st && st.grund === "geloescht") return { status: "geloescht", ...basis, heute: null };
+  const heute = datevZeilenAbdruck(Array.isArray(zeilen) ? zeilen : datevAusFreeze(m, mon) || []);
+  return { status: heute === bestaetigt ? "gleich" : "abweichend", ...basis, heute };
 }
 
 /* --------------------------------------------------------------------------
@@ -392,7 +435,9 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
  * Den Lohnexport eines abgeschlossenen Monats bestätigen (Betreiberentscheidung 2026-11-03): Wann, Wer und
  * die Prüfsumme des exportierten Standes. Danach ist einfaches Wiederöffnen gesperrt (KORREKTUR_ERFORDERLICH).
  * Nur der Status — der Revisions-/Korrekturprozess folgt mit WP-16c (Revision im Eintrag vorbereitet).
- * @returns {{status: number, grund: string, code?: string} | {mandant: object, eintrag: object, ereignis: object}}
+ * Offene oder seit dem Abschluss geänderte Vormonate: 409 VORMONAT_OFFEN / VORMONAT_GEAENDERT (mit `vormonate`), außer
+ * mit trotzVormonat: true, vormonatKategorie (VORMONAT_KATEGORIEN) und vormonatGrund (Nachtrag vierter Review A-1).
+ * @returns {{status: number, grund: string, code?: string, vormonate?: {offen: string[], geaendert: string[]}} | {mandant: object, eintrag: object, ereignis: object}}
  */
 export function lohnexportBestaetigen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
@@ -428,10 +473,34 @@ export function lohnexportBestaetigen(m, r, wer, jetzt, id) {
   if (x.abdruck !== alt.abdruck || String(x.stand) !== String(alt.stand) || Number(x.revision ?? 1) !== revision || x.zeilen !== zeilenAbdruck)
     return { status: 409, code: EXPORTSTAND_ABWEICHEND,
       grund: `Die ausgegebene Datei gehört nicht zum heutigen Abschluss von ${monatText(monat)} (Prüfsumme, Abschluss, Revision oder Zeilen weichen ab). Nichts bestätigt — bitte die Lohnausgabe neu erzeugen und prüfen.` };
+  /* Vormonate (WP-16, Nachtrag vierter Review A-1/A-2): Das Konto im Freeze rechnet mit den Vormonaten des Jahres, wie
+     sie beim Abschluss waren. Ist einer offen (oder war es beim Abschluss) oder seitdem wiederöffnet und neu
+     abgeschlossen, ist die Mehrarbeit vorläufig oder veraltet — bestätigt wird dann nur ausdrücklich: trotzVormonat
+     (genau true), eine Kategorie aus VORMONAT_KATEGORIEN und eine Begründung (Länge wie beim Wiederöffnen). Die
+     Begründung steht im Verlauf am Monat (nur Leitung und Planung), die Spur nennt nur die Kategorie. */
+  const h = datevHinweise(m, monat);
+  const vormonate = { offen: h ? h.vormonateOffen : [], geaendert: h ? h.vormonatGeaendert : [] };
+  let trotzVormonat = null, vormonatGrund = "";
+  if (vormonate.offen.length || vormonate.geaendert.length) {
+    const liste = (xs) => xs.map(monatText).join(", ");
+    if (x.trotzVormonat !== true)
+      return { status: 409, code: vormonate.geaendert.length ? VORMONAT_GEAENDERT : VORMONAT_OFFEN, vormonate,
+        grund: (vormonate.geaendert.length
+          ? `Seit dem Abschluss von ${monatText(monat)} wurde ein Vormonat wiederöffnet und neu abgeschlossen (${liste(vormonate.geaendert)}) — das Konto (Mehrarbeit) dieses Monats ist veraltet.`
+          : `Vormonat offen (${liste(vormonate.offen)}) — das Konto (Mehrarbeit) von ${monatText(monat)} ist vorläufig.`)
+          + " Bestätigen nur ausdrücklich, mit Kategorie und Begründung." };
+    const kategorie = typeof x.vormonatKategorie === "string" ? x.vormonatKategorie : "";
+    vormonatGrund = typeof x.vormonatGrund === "string" ? x.vormonatGrund.trim() : "";
+    if (!Object.prototype.hasOwnProperty.call(VORMONAT_KATEGORIEN, kategorie))
+      return { status: 422, grund: `Bitte eine Kategorie wählen (${Object.keys(VORMONAT_KATEGORIEN).join(", ")}).` };
+    if (vormonatGrund.length < WIEDEROEFFNEN_GRUND_MIN || vormonatGrund.length > ABSCHLUSS_GRUND_MAX)
+      return { status: 422, grund: `Die Begründung braucht ${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen.` };
+    trotzVormonat = { kategorie, offen: vormonate.offen, geaendert: vormonate.geaendert };
+  }
   const ereignis = { id, art: "lohnexport", am: jetzt.toISOString(), wer: werForm(wer), abdruck, revision, stand: alt.stand,
-    zeilen: zeilenAbdruck, n: zeilen.length };
+    zeilen: zeilenAbdruck, n: zeilen.length, ...(trotzVormonat ? { grund: vormonatGrund, trotzVormonat } : {}) };
   const eintrag = { ...alt, revision, lohnexport: { am: ereignis.am, wer: ereignis.wer, abdruck, revision, stand: alt.stand,
-    zeilen: zeilenAbdruck, n: zeilen.length }, verlauf: [...verlauf, ereignis] };
+    zeilen: zeilenAbdruck, n: zeilen.length, ...(trotzVormonat ? { trotzVormonat } : {}) }, verlauf: [...verlauf, ereignis] };
   return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
 }
 

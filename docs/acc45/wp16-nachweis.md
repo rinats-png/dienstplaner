@@ -847,3 +847,189 @@ Dateien ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
 ### CI
 
 Siehe Bericht (Kopf und Lauf-Kennungen nach dem Push).
+
+## Nachtrag vierter Opus-Delta-Review
+
+Review am Kopf 8182448 (Proben R1–R9, Mutantenlauf U1–U11). Befunde: A-1 (hoch) Folgemonat-Konto nach Wiederöffnen eines
+Vormonats veraltet, ohne Kennzeichnung, Lohnexport bestätigbar; A-2/A-3 (mittel) Bestätigung bei offenen Vormonaten ohne
+Rückfrage, bestätigte Zeilen-Prüfsumme nie verglichen; A-4/A-5/A-6 fachlich; N-1 bis N-5. Branch
+`acc45/time/wp16-nachtrag4` aus `acc45/time/wp16-pausen-und-monatsabschluss`. Keine Datenmigration, kein neues
+Freeze-Schema (alle Ergänzungen sind optionale Felder bzw. Hinweise); `work-packages.json` unverändert.
+
+### A-1 — Vormonat wiederöffnet und neu abgeschlossen: gekennzeichnet, Export nur ausdrücklich
+
+- **Freeze:** Das Verzeichnis `*|JJJJ-MM` trägt zusätzlich `vs: { Vormonat: Kennung }` — die zum Abschluss
+  **abgeschlossenen** Vormonate des Jahres mit der Kennung ihres Abschlusses (`stand`; bei Abschlüssen vor dem dritten
+  Nachtrag ersatzweise `am`). `vo` (beim Abschluss offene Vormonate) bleibt.
+- **Hinweis:** `datevHinweise(m, monat).vormonatGeaendert` nennt jeden Vormonat aus `vs`, dessen heutige Kennung abweicht
+  (wiederöffnet und neu abgeschlossen, auch ohne Zahlenänderung). Ein Vormonat, der heute offen ist, steht weiter unter
+  `vormonateOffen` (U3). Blatt zum Gegenlesen, Lohnausgabe-Ansicht und Monatsabschluss sagen „Vormonat nach dem Abschluss
+  geändert (…) — Konto veraltet“. Das eingefrorene Konto selbst bleibt (kein stilles Umrechnen; Probe R1: Mehrarbeit
+  Oktober vorher wie nachher 519 h).
+- **Lohnexport:** `lohnexportBestaetigen` prüft nach dem gebundenen Exportstand (H-2 unverändert zuerst) die Vormonate:
+  offen oder beim Abschluss offen → **409 `VORMONAT_OFFEN`**, seit dem Abschluss geändert → **409 `VORMONAT_GEAENDERT`**,
+  jeweils mit `vormonate: { offen, geaendert }` (auch über `POST /api/monatsabschluss`). Überstimmen nur ausdrücklich:
+  `trotzVormonat: true` (genau `true`), `vormonatKategorie` aus `VORMONAT_KATEGORIEN` (`vor_inbetriebnahme`,
+  `abgestimmt`, `ausgleich_folgemonat`, `sonstiges`) und `vormonatGrund` (10–500 Zeichen), sonst 422. Protokolliert:
+  Ereignis im Verlauf mit `grund` und `trotzVormonat: { kategorie, offen, geaendert }`, ebenso am `lohnexport`; die Spur
+  nennt nur „trotz Vormonat (Kategorie)“, nie den Freitext (geprüft).
+- **Nicht gebaut (nur erwähnt, Alternative des Reviews):** Kaskade „Wiederöffnen eines Monats sperren, solange ein späterer
+  Monat desselben Jahres abgeschlossen ist“. Sie würde A-1 an der Wurzel verhindern, zwingt aber bei jeder Korrektur zum
+  Wiederöffnen aller Folgemonate in umgekehrter Reihenfolge — Entscheidung beim Betreiber.
+
+### A-2 — Rückfrage nennt die Vormonate
+
+`lohnexportRueckfrage(m, monat)` (Oberfläche) nennt offene und geänderte Vormonate. Im Monatsabschluss öffnet „Lohnexport
+bestätigen“ dann ein Formular (Hinweistext, Kategorie, Begründung, „Trotz Vormonat bestätigen“); die Bestätigungsrückfrage
+(`window.confirm`) wiederholt Hinweis und Begründung. `speicher.js` überträgt `trotzVormonat`, Fehler tragen `vormonate`.
+Abschließen selbst bleibt mit offenen Vormonaten erlaubt (gekennzeichnet über `vo`).
+
+### A-3 — bestätigte Zeilen-Prüfsumme verglichen; „nach Frist gelöscht“
+
+- `lohnexportVergleich(m, monat, zeilen)` (`monatsabschluss.mjs`): `gleich` / `abweichend` / `geloescht` gegen
+  `lohnexport.zeilen`. Die Oberfläche vergleicht `datevZeilenAbdruck(datevSaetze)` damit (Lohnausgabe, Blatt zum
+  Gegenlesen, Monatsabschluss): „Diese Ausgabe weicht von der bestätigten Ausgabe ab (Anonymisierung/Softwarestand) —
+  maßgeblich bleibt die bestätigte Datei“ mit beiden Prüfsummen.
+- `freezeStatus`: Lohnexport bestätigt und kein Eintrag des Monats mehr im Freeze → `{ unbekannt: true, grund:
+  "geloescht" }` (Löschlauf nach Ablauf der Aufbewahrungsfrist; Probe R4 2030/2031). Texte: `abschlussLueckeText` /
+  `FREEZE_GELOESCHT_TEXT` „nach Frist gelöscht … maßgeblich bleibt die bestätigte Lohnausgabe“ statt „Monat wiederöffnen
+  und erneut abschließen“ (das ginge nach bestätigtem Export ohnehin nicht). Ohne bestätigten Export bleibt ein fehlendes
+  Verzeichnis der Prüffall `verzeichnis` (fail-closed, geprüft).
+
+### A-4 — Übertrag ohne Jahresbezug (nur Hinweis)
+
+Der Übertrag (`stundenuebertrag`) hat kein Jahr; ein Feld `stundenuebertragJahr` gibt es nicht (keine Datenmigration). Probe
+R6: Dezember im Januar abgeschlossen, Übertrag schon fürs neue Jahr gepflegt → Konto 1001,9 statt 502,9. Umgesetzt **nur**
+Hinweise, nichts umgerechnet: `uebertragJahreswechsel` (der Monat wurde erst im Folgejahr abgeschlossen — „Übertrag ohne
+Jahresbezug, bitte prüfen“) und `uebertragGeaendert` (der eingefrorene Übertrag weicht von dem des zuletzt abgeschlossenen
+Vormonats ab: „Übertrag seit … geändert: alt → neu“).
+
+**OFFENE ENTSCHEIDUNG A-4 (fachlich):** (a) Feld `stundenuebertragJahr` an der Person, das Konto nutzt den Übertrag nur im
+passenden Jahr (Pflege, Datenmigration); (b) Übertrag je Jahr als Liste (`uebertraege: { JJJJ: Stunden }`); (c) wie heute
++ Hinweise (umgesetzt). Vorschlag: (b) zusammen mit WP-16c.
+
+### A-5 — Austritt im Monat (Verhalten unverändert, ausdrücklich gesagt)
+
+Wer am 28. nicht im Dienst ist (Austritt vor dem 28., Eintritt danach), bekommt — offen wie abgeschlossen (`i: 0`) — keine
+Lohnzeilen, auch keine Zuschläge, Bereitschaft oder Mehrarbeit (Probe R2). Neu: Hinweis „ausgetreten – Zeilen nicht
+ausgegeben“ mit Name, Personalnummer und Austrittsdatum im Blatt, in der Lohnausgabe-Ansicht und `datevHinweise.ausgetreten`
+(aus dem Freeze, auch wenn die Person später aus dem Personalstamm entfernt ist).
+
+**OFFENE ENTSCHEIDUNG A-5 (Produktentscheidung):** (a) Zeilen bis zum Austrittstag (Zuschläge, Bereitschaft, Konto/Mehrarbeit
+zum Austritt); (b) nur Mehrarbeit und Zuschläge (Schlussabrechnung), keine Bereitschaft; (c) wie heute + Hinweis
+(umgesetzt). Fachlich naheliegend ist (a) — in der Schlussabrechnung fehlen sonst Zuschläge und ein Plus-Konto. Nicht
+stillschweigend geändert.
+
+### A-6 — Mehrarbeit ist der Kontostand
+
+Lohnart 1200 (`mehrarbeit`) ist das Stundenkonto zum Monatsende (Übertrag + alle Monate des Jahres), nicht der Zuwachs des
+Monats. Blatt zum Gegenlesen: „Mehrarbeit (Kontostand)“ und „Lohnart 1200: Mehrarbeit = Stand des Stundenkontos zum
+Monatsende … nicht über mehrere Monate addieren“; Lohnausgabe-Ansicht ebenso (Nummer aus den wirksamen bzw. eingefrorenen
+Lohnarten, `mehrarbeitNr`). Die Trennzeichendatei bleibt Spalte für Spalte unverändert (Bezeichnung aus den Lohnarten).
+
+**OFFENE ENTSCHEIDUNG A-6:** (a) Kontostand (wie heute, jetzt benannt); (b) Delta je Monat (Konto Monatsende minus Konto
+Vormonatsende) — bräuchte das Konto des Vormonats im Freeze bzw. die bereits ausgegebene Mehrarbeit. Mit dem Lohnbüro
+abstimmen; bis dahin (a).
+
+### N-1 — Bereitschaft/Ruf aus dem Ist (Rechenstand 2)
+
+Freeze (`summeAusTagen`) und Oberfläche (`datevSaetze`, offen und Schema 1/2) zählen Bereitschafts- und Rufstunden aus der
+Ist-Zeit des Tages (`std`: Sommerzeit, erfasste Zeit), nur ohne Ist-Zeit aus `dauerAm`. Probe R5: Bereitschaft 21–06 in der
+Nacht 24./25.10. = 10 h (vorher 9), Ruf erfasst 20–06 = 10 h (vorher Plan 12). `RECHEN_STAND` 1 → 2; ältere Abschlüsse
+(rv 1) sagen „Rechenstand 1“ und behalten ihre eingefrorenen Werte.
+
+### N-2 — Zeilen-Prüfsumme sortiert
+
+`datevZeilenAbdruck` sortiert vor dem Hash mit `datevReihenfolge` (Personalnummer, dann Lohnart, numerisch; bei Gleichstand
+die ganze Zeile) — dieselbe Ordnung wie `datevCSV`, die sie jetzt mitbenutzt. Die Prüfsumme hängt nicht mehr an der
+Reihenfolge der Eingabe. (Bestätigungen mit der alten Prüfsumme gibt es nur auf Prüfständen; dort meldet A-3 die
+Abweichung.)
+
+### N-3 — Mutanten und erweiterter Vergleich
+
+Prüfungen gegen die im Review überlebenden Mutanten U1, U3, U4, U5, U8, U10 (Tabelle unten). Vergleich „offen = Schema 1 =
+Schema 3“ (Ist, Konto, Zuschläge, Lohnausgabe) erweitert um Bereitschaft in der Sommerzeitnacht, Ruf mit erfasster Zeit,
+Austritt am 15. und ungeplante bezahlte Abwesenheit.
+
+### N-4 — Rechtematrix-Sonden für Schema 3
+
+`rechtematrix-zeilen.test.js`: Monatseintrag `pid|JJJJ-MM` einer fremden Person mit `k`, `ue`, `nm`, `g`, `br` als Sonden
+der Zeile „eingefrorenes Ist fremder Personen“ (nur PL, LT, VA); `la` im Verzeichnis `*|JJJJ-MM` als Sonde der Zeile
+„Lohnarten“ (MA, BR, SV, BT nicht). Matrix unverändert.
+
+### N-5 — Ehrliche Grenzen und offene Punkte
+
+- **Exportstand nur in der Sitzung:** Der Stand der ausgegebenen Datei (`EXPORT_STAND`) lebt nur im Speicher der
+  Oberfläche. Nach dem Neuladen muss die Lohnausgabe neu erzeugt werden; ohne sie antwortet der Server
+  `EXPORTSTAND_FEHLT` (fail-closed, nie eine Bestätigung ohne Datei).
+- **A-3:** Der Vergleich zeigt eine Abweichung an, verhindert sie nicht; maßgeblich ist die bestätigte Datei. Die Datei
+  selbst wird nicht aufbewahrt (nur ihre Prüfsumme) — nach Anonymisierung oder Fristablauf lässt sie sich aus CENTRIC nicht
+  mehr erzeugen.
+- **A-4, A-5, A-6:** offene Entscheidungen oben; umgesetzt nur Hinweise bzw. Benennung.
+- **Reviewer-Merge-Konfliktzonen** (Probemerge des Reviews mit `acc45/frontend/wp19-0-modulkern` und
+  `acc45/frontend/wp19-0b-g9-verkauf`; nicht aufgelöst — WP-19.0/G9 bleiben unberührt): `src/App.jsx` (Exportzeile am
+  Dateiende, mit diesem Nachtrag um `lohnexportRueckfrage`, `VORMONAT_KATEGORIEN`, `mehrarbeitNr` länger),
+  `server/funktionen/daten.mjs` (`bestand-anlegen`: Verwerfen von Abschluss/Freeze gegen `bestandOhneModuleinstellungen`;
+  dieser Nachtrag ändert dort nichts, nur den Monatsabschluss-Weg), `server/lib/sicht.mjs` (Importzeilen),
+  `src/speicher.js` (`ohneServerFelder` gegen `mitEinmaligerAngabe`; dieser Nachtrag ändert nur `monatsabschluss()`),
+  `server/lib/auskunft.mjs` (Importzeile), `server/lib/aufbewahrung.mjs` (vier Stellen: `abschlussPersonenRaeumen`,
+  Freeze-Felder im Löschlauf). Alle additiv; beim Zusammenführen beide Seiten behalten.
+
+### Rot → grün
+
+`pruefungen/monatsabschluss-nachtrag4.test.js` (18 Prüfungen) gegen den Kopf 8182448 (Quellen unverändert, nur die neue
+Prüfdatei): **15 rot, 3 grün** — grün die Wächter U5, U1, U8 (das Verhalten war richtig, nur ungeprüft; sie töten die
+Mutanten, siehe unten). Nach dem Nachtrag 18/18 grün.
+
+### Mutanten
+
+Je Mutante eine Ersetzung in diesem Worktree, Prüfdateien `monatsabschluss-nachtrag4` + `monatsabschluss-nachtrag3`
+(V20: `rechtematrix-zeilen`), danach Original zurückgeschrieben (Werkzeug im eigenen Scratchpad, nie in fremden Worktrees;
+Arbeitsstand vor und nach dem Lauf gleich). **Alle 31 rot.** Die im Review überlebenden U1, U3, U4, U5, U8, U10 sind jetzt
+rot (U10 auf die neue Stelle `ber += std` übertragen); U2, U6, U7, U9, U11 weiter rot.
+
+| # | Mutante | rot in |
+|---|---|---|
+| U1 | Schema-Widerspruch Abschluss/Verzeichnis ignoriert | U1 |
+| U3 | Vormonate nur aus dem Freeze (nicht „heute offen“) | U3 |
+| U4 | Zugehörigkeit `i` ignoriert | R2 Austritt, Vergleich offen = S1 = S3 |
+| U5 | bezahlte Abwesenheit ohne Plan gutgeschrieben | U5, Vergleich |
+| U8 | Schema am Abschluss beim Lohnexport nicht geprüft | U8 |
+| U10 | Bereitschaft doppelt | R5, Vergleich |
+| V1 | `vs` nicht eingefroren | A-1, A-2 |
+| V2 | `vormonatGeaendert` nie gemeldet | A-1, A-2 |
+| V3 | Lohnexport ohne Vormonatsprüfung | 6 Prüfungen |
+| V4/V5/V6 | Überstimmung ohne Kategorie / ohne Begründung / `trotzVormonat` nur „wahr“ statt `true` | A-1 |
+| V7 | Zeilen-Prüfsumme unsortiert | N-2 |
+| V8 | „nach Frist gelöscht“ nicht erkannt | A-3 Löschlauf |
+| V9 | Vergleich immer „gleich“ | A-3 (beide) |
+| V10/V11 | Bereitschaft/Ruf aus der Plandauer (Freeze / Oberfläche) | R5, Vergleich |
+| V12 | Spur mit Freitext statt Kategorie | A-1 Server |
+| V13/V19 | Austritt ohne Hinweis (Oberfläche / Freeze) | R2 |
+| V14/V15 | Übertrag geändert / Jahreswechsel nie gemeldet | A-4 |
+| V16 | Kontostand nicht benannt | A-6 |
+| V17 | Rechenstand nicht erhöht | R5 |
+| V18 | 409 ohne Liste der Vormonate | A-1 Server |
+| V20 | Beschäftigte sehen `la` im Verzeichnis | rechtematrix-zeilen: Lohnarten · MA, SV |
+
+### Angepasste bestehende Prüfungen (nicht abgeschwächt)
+
+- `monatsabschluss-nachtrag3.test.js`: Fälle mit absichtlich offenem September (Q2, P6, Rennen, „ohne Stand“,
+  Server-Rennen) bestätigen den Export jetzt mit `trotzVormonat` + Kategorie + Begründung; **zusätzlich** geprüft, dass sie
+  ohne Überstimmung 409 `VORMONAT_OFFEN` sind. Die Quelltextprüfung der Oberfläche verlangt jetzt
+  `{ exportStand, trotzVormonat }` (strenger).
+- `monatsabschluss-nachtrag.test.js` (Betreiberentscheidung C): zuerst 409 `VORMONAT_OFFEN` geprüft, dann mit Überstimmung
+  200; die Spurzeile wird exakt mit „ · trotz Vormonat (vor_inbetriebnahme)“ erwartet.
+- `rechtematrix-zeilen.test.js`: zusätzliche Sonden (N-4), keine entfernt.
+
+### Tests lokal (Windows, einzeln, `--testTimeout=120000 --hookTimeout=120000`)
+
+Alle grün: monatsabschluss-nachtrag4 18, monatsabschluss-nachtrag3 27, monatsabschluss-nachtrag 25, monatsabschluss 25,
+monatsabschluss-ist 10, monatsabschluss-lib 24, monatsabschluss-oberflaeche 6, rechtematrix-zeilen + rechtematrix
+(zusammen mit nachtrag/nachtrag3: 736), br-auswertung + istdaten + aufbewahrung 141, dsgvo-server 27, doku 5,
+oberflaeche-render 22. `tsc -p jsconfig.json` sauber; eslint der geänderten Dateien ohne Fehler. Neue Prüfdatei in
+`pruefung:zeiterfassung` aufgenommen.
+
+### CI
+
+Siehe Bericht (Kopf und Lauf-Kennungen nach dem Push).

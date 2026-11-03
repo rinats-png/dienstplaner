@@ -1794,7 +1794,8 @@ export default async (req, context) => {
             : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
-          return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}) }, r.status);
+          return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}),
+            ...(r.vormonate ? { vormonate: r.vormonate } : {}) }, r.status);
         }
         const ergM = await bestandSchreiben(store, s.bestand,
           { ...mitM.bestand, mandanten: mitM.bestand.mandanten.map((x) => (x === mM ? r.mandant : x)) },
@@ -1808,6 +1809,8 @@ export default async (req, context) => {
         await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
           ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
           : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
+            /* Überstimmung offener/geänderter Vormonate (WP-16, Nachtrag vierter Review A-1): nur die Kategorie aus der festen Liste. */
+            + (r.ereignis.trotzVormonat ? ` · trotz Vormonat (${r.ereignis.trotzVormonat.kategorie})` : "")
             : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
         return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null });
       });

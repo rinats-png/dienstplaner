@@ -138,7 +138,12 @@ const bestand = () => ({
     einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
     einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
     /* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung. */
-    istEingefroren: { [`b1|${tag(-2)}`]: { std: M("FREEZE-STD-B1"), a: [M("FREEZE-ART-B1")] } },
+    istEingefroren: { [`b1|${tag(-2)}`]: { std: M("FREEZE-STD-B1"), a: [M("FREEZE-ART-B1")] },
+      /* Schema 3 (WP-16, Nachtrag vierter Review N-4): Monatseintrag mit Konto, Übertrag, Personalangaben, Summen,
+         Bereitschaft/Ruf — wie das eingefrorene Ist fremder Personen; das Verzeichnis mit den Lohnarten wie `lohnarten`. */
+      [`b1|${tag(-2).slice(0, 7)}`]: { s: 1, i: 1, u: "e2", k: M("FREEZE-K-B1"), ue: M("FREEZE-UE-B1"),
+        nm: [M("FREEZE-NM-B1"), "B", "V"], g: M("FREEZE-G-B1"), br: [M("FREEZE-BR-B1"), 0] },
+      [`*|${tag(-2).slice(0, 7)}`]: { v: 3, da: {}, zs: [], rv: 2, la: { mehrarbeit: { nr: M("FREEZE-LA"), text: "Mehrarbeit" } } } },
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
       [`a1|${tag(-2)}`]: { start: M("ERF-ZEIT-A1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-A1") },
@@ -338,7 +343,8 @@ const ZEILEN = {
   "Monatsabschluss: Wer, Wann, Grund, Verlauf, Prüfsumme, abgewiesene Stempel": {
     sonden: [mk("ABSCHLUSS-AM"), mk("ABSCHLUSS-WER"), mk("ABSCHLUSS-ABDRUCK"), mk("ABSCHLUSS-GRUND"), mk("ABSCHLUSS-ABGEWIESEN")] },
   "Monatsabschluss: eingefrorenes Ist fremder Personen (`istEingefroren`, je Tag Dienst, Dauer, Abwesenheitsart)": {
-    sonden: [mk("FREEZE-STD-B1"), mk("FREEZE-ART-B1")] },
+    sonden: [mk("FREEZE-STD-B1"), mk("FREEZE-ART-B1"), mk("FREEZE-K-B1"), mk("FREEZE-UE-B1"), mk("FREEZE-NM-B1"), mk("FREEZE-G-B1"),
+      mk("FREEZE-BR-B1")] },
   "Abwesenheiten mit Anmerkung": {
     sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1"), mk("ABW-URLAUB-ID-B1"), mk("ABW-URLAUB-NOTIZ-B1")],
     /* Auflage B2: Krankheit und jede andere Kategorie werden zu „abwesend";
@@ -464,7 +470,8 @@ const ZEILEN = {
   "Kalendergeheimnis, -verweis, -stand": { sonden: [mk("KALGEHEIM-B1"), mk("KALVERWEIS-B1"), mk("KALSTAND-B1")] },
   "Push-Schlüssel, Zustelleinstellungen": { sonden: [mk("PUSH-B1"), mk("ZUSTELLUNG-B1")] },
   "Adressänderungen im Betrieb": { sonden: [mk("ADRESSE-ALT"), mk("ADRESSE-NEU")] },
-  "Lohnarten": { sonden: [mk("LOHNART")] },
+  /* Dazu die eingefrorenen Lohnarten im Verzeichnis „*|JJJJ-MM“ (`la`, WP-16 Nachtrag vierter Review N-4). */
+  "Lohnarten": { sonden: [mk("LOHNART"), mk("FREEZE-LA")] },
   "Betriebsprotokoll": { sonden: [mk("BETRIEBSPROTOKOLL")] },
   "Billing: Preisgrundlage des eigenen Betriebs (`tarif`, `preisgestaltung`, `rabattGrund`; oben nur der eigene Tarifeintrag) — nur lesend, für die Kostenanzeige (B2)": {
     sonden: [mk("KONDITION"), mk("RABATTGRUND"), mk("PREISLISTE-EIGEN"),

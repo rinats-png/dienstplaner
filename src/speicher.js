@@ -832,17 +832,25 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
 /**
  * Monatsabschluss (WP-16): "abschliessen" (Leitung, Planung; bei offenen Prüffällen nur mit trotzPrueffaellen)
  * oder "wiederoeffnen" (nur Leitung, mit Grund). Antwort: der Eintrag des Monats und das Ereignis im Verlauf.
- * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann.
+ * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann, beim Lohnexport
+ * dazu vormonate ({ offen, geaendert }: VORMONAT_OFFEN / VORMONAT_GEAENDERT, WP-16 Nachtrag vierter Review A-1).
+ * trotzVormonat: { kategorie, grund } — die ausdrückliche Überstimmung offener oder geänderter Vormonate.
  */
-export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null } = {}) {
+export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null, trotzVormonat = null } = {}) {
   /* Lohnexport bestätigen (WP-16, Nachtrag dritter Review H-2): der Stand der ausgegebenen Datei. */
   const stand = exportStand && typeof exportStand === "object"
     ? { abdruck: exportStand.abdruck, stand: exportStand.stand, revision: exportStand.revision, zeilen: exportStand.zeilen } : {};
+  const trotz = trotzVormonat && typeof trotzVormonat === "object"
+    ? { trotzVormonat: true, vormonatKategorie: trotzVormonat.kategorie, vormonatGrund: trotzVormonat.grund } : {};
   const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand }) });
+    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand, ...trotz }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
-  if (!a.ok) { const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern."); f.code = d.code || null; f.offen = d.offen || null; throw f; }
+  if (!a.ok) {
+    const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern.");
+    f.code = d.code || null; f.offen = d.offen || null; f.vormonate = d.vormonate || null;
+    throw f;
+  }
   return d;
 }
 
