@@ -2600,6 +2600,12 @@ function hindernisBefunde(m, p, d, da) {
       return !(b ? b.personen : []).some((y) => y.id !== x.id && !einschr(y).keinAlleindienst);
     },
     heute: heute(),
+    /* Branchenmodule (WP-19): die Besetzung des Dienstes so, wie sie mit dieser
+       Einteilung wäre. Befunde nur aus aktiven Modulen, höchstens Hinweis. */
+    branchen: { personenImDienst: (t, daId) => {
+      const l = ((besetzung(m, t) || {})[daId] || { personen: [] }).personen;
+      return l.some((y) => y.id === p.id) ? l : [...l, p];
+    } },
   });
   const fachPush = (b) => {
     const regelId = b.art === "schutz" ? (b.neutral || b.quelle === SCHUTZ_QUELLE_EINSCHRAENKUNG ? null
@@ -2621,6 +2627,8 @@ function hindernisBefunde(m, p, d, da) {
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
     push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
   for (const b of bis(["ruhezeitGesetz", "ruhezeitBetrieb", "maxDiensteWoche", "keinAlleindienst", "tagesgrenze"])) fachPush(b);
+  /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
+  for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId || null);
   // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
