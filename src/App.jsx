@@ -1,7 +1,7 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
-  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung } from "./istdaten.js";
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
@@ -1583,7 +1583,7 @@ function istStunden(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
       if (t.abwesenheit) {
@@ -1598,11 +1598,14 @@ function istStunden(m, p, ym) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
+      /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
+         damit Konto und Lohnausgabe es sagen können, statt still zu rechnen. */
+      if (idn.zurPruefung) pruefFaelle++;
       const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle };
   });
 }
 /* --------------------------------------------------------------------------
@@ -4769,6 +4772,22 @@ function datevCSV(m, ym) {
  * Dieselben Zahlen als lesbares Blatt \u2014 zum Gegenlesen, bevor die Datei das
  * Haus verl\u00E4sst. Eine Trennzeichendatei pr\u00FCft niemand gern am Bildschirm.
  */
+/**
+ * Ist-Zeiten zur Prüfung (WP-17, W1) im Blatt zum Gegenlesen: je betroffenem
+ * Tag eine Zeile „zur Prüfung, Planzeit vorläufig". Ohne offene Fälle leer.
+ */
+function lohnPruefZeilen(m, ym) {
+  const h = pruefHinweis(m, ym);
+  if (!h) return [];
+  const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
+  return [
+    `ACHTUNG: ${h.text}`,
+    ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${ZUR_PRUEFUNG_TEXT}`),
+    "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
+    "",
+  ];
+}
+
 function lohnausgabeText(m, ym) {
   const z = datevSaetze(m, ym);
   const [jahr, monat] = ym.split("-");
@@ -4786,6 +4805,7 @@ function lohnausgabeText(m, ym) {
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
     `Erstellt: ${new Date().toLocaleString("de-DE")}`,
     "",
+    ...lohnPruefZeilen(m, ym),
     "Summen je Lohnart",
     "\u2014".repeat(58),
     `${breite("Lohnart", 10)}${breite("Bezeichnung", 32)}${"Personen".padStart(9)}${"Stunden".padStart(11)}`,
@@ -5076,7 +5096,7 @@ function vollExport(m) {
     const p = m.personen.find((x) => x.id === pid);
     return { personId: pid, nachname: p ? p.nachname : "", datum,
       start: v.start || "", ende: v.ende || "", stunden: v.stunden != null ? n2(v.stunden) : "",
-      notiz: v.notiz || "" };
+      notiz: v.notiz || "", status: zurPruefung(v) ? ZUR_PRUEFUNG_TEXT : v.bestaetigt ? "bestätigt" : "offen" };
   });
 
   tabellen.anfragen = m.anfragen.map((a) => {
@@ -8436,6 +8456,10 @@ function MeineSchichten({ sitz, akt, ym }) {
       <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Lab>zwölf Monate</Lab>}>Mein Stundenkonto</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
+          {kto !== null && (() => { const h = pruefHinweis(m, ym, ich.id); return h && (
+            <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
+              {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT} — die Leitung prüft die gestempelte Zeit.
+            </div>); })()}
           {kto === null
             ? <div style={{ fontSize: 13.5, color: C.dim }}>{ISTDATEN_TEXT}</div>
             : <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
@@ -10065,6 +10089,10 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         </div>
 
         <Lab style={{ marginBottom: 11 }}>Stundenkonto über zwölf Monate</Lab>
+        {zeigt && (() => { const h = pruefHinweis(m, ym, p.id); return h && (
+          <Hinweisband ton="warn" titel={`${h.anzahl} Ist-Zeit${h.anzahl === 1 ? "" : "en"} zur Prüfung · ${h.monat}`} style={{ marginBottom: 14 }}>
+            {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT}. Bestätigen unter Abrechnungsdaten · Stempelbefunde.
+          </Hinweisband>); })()}
       <Card style={{ padding: 22, marginBottom: 22 }}>
         {(() => {
           /* Hier stand kv.punkte[11].konto und kv.richtung — kontoVerlauf()
@@ -11586,7 +11614,10 @@ function StempelBefunde({ sitz, ym, akt }) {
      Planung hier bestätigt, zählt im Konto die Planzeit — sichtbar, nicht
      still. Bestätigen steht im Betriebsprotokoll. */
   const pruef = erfassungenZurPruefung(m, ym);
-  const darfBestaetigen = darf(sitz, "plan.edit.unit") || darf(sitz, "staff.edit");
+  /* Bestätigen nur Leitung und Planung (staff.edit) — nicht die
+     Schichtverantwortung und nie die eigene Zeit (WP-17, Nachprüfung 3). */
+  const darfBestaetigen = darf(sitz, "staff.edit");
+  const eigene = sitz.person ? String(sitz.person.id) : null;
   const zeilen = Object.entries(m.einstempeln || {})
     .map(([k, e]) => { const [pid, datum] = k.split("|"); return { pid, datum, e }; })
     .filter((z) => z.datum && z.datum.startsWith(ym) && z.e)
@@ -11614,7 +11645,7 @@ function StempelBefunde({ sitz, ym, akt }) {
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
               <Pill size="sm" tone="warn">{MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
-              {darfBestaetigen && akt && (
+              {darfBestaetigen && akt && String(personId) !== eigene && (
                 <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
         </div>)}
@@ -11649,6 +11680,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
     .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym, sitz]);
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
+  const pruefOffen = useMemo(() => pruefHinweis(m, ym), [m, ym]);
 
   return (
     <div>
@@ -11659,6 +11691,13 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
             { id: "stempel", label: "Stempelbefunde" }]} />
           <Btn onClick={() => akt.exportZuschlaege(ym)}>Export</Btn></div>}>
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
+
+      {pruefOffen && reiter !== "stempel" && (
+        <Hinweisband ton="warn" titel={`${pruefOffen.anzahl} Ist-Zeit${pruefOffen.anzahl === 1 ? "" : "en"} zur Prüfung · ${pruefOffen.monat}`}
+          style={{ marginBottom: 18 }}
+          aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
+          {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe als „{ZUR_PRUEFUNG_TEXT}" gekennzeichnet.
+        </Hinweisband>)}
 
       {reiter === "zuschlaege" && (<>
         <Kennzahlen min={170} kacheln={[
@@ -22882,6 +22921,10 @@ function AppInnen() {
 
       /* --- DATEV --- */
       exportDATEV: (ym) => {
+        /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
+           mit der Planzeit — vor dem Download ausdrücklich sagen. */
+        const offen = pruefHinweis(sitz.mandant, ym);
+        if (offen && !window.confirm(`${offen.text}\n\nBetroffen: ${offen.faelle.map((f) => f.datum).join(", ")} (${ZUR_PRUEFUNG_TEXT}).\n\nTrotzdem jetzt ausgeben?`)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
         if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))

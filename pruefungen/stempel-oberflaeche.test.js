@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import { readFile } from "node:fs/promises";
 import { stempelVorgang, stempelSchluessel, MARKIERUNG_TEXT } from "../src/stempelvorgang.js";
-import { istZeitFuer, erfassungenZurPruefung, zurPruefung } from "../src/istdaten.js";
+import { istZeitFuer, erfassungenZurPruefung, zurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT } from "../src/istdaten.js";
 
 const person = { id: "a1", rolle: "mitarbeiter", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] };
 const betrieb = (extra = {}) => ({ id: "m1", einheiten: [{ id: "e1" }], einstellungen: {}, abwesenheiten: [],
@@ -76,5 +76,53 @@ describe("W1: langer Dienst zur Prüfung — nicht still", () => {
     expect(app).toMatch(/langerDienstBestaetigen: \(pid, d\) => mUpd\(/);
     expect(app).toMatch(/`Langer Dienst bestätigt: \$\{pid\} am \$\{d\}`/);
     expect(MARKIERUNG_TEXT.LANGER_DIENST).toBeTruthy();
+  });
+});
+
+/* Nachprüfung WP-17 (2): Solange im Monat Ist-Zeiten zur Prüfung offen sind,
+   sagen Lohnausgabe, Stundenkonto und Export es — vorher ging der Lohnexport
+   still mit der Planzeit hinaus. (3): Bestätigen nur Leitung/Planung, nie
+   die eigene Zeit. */
+describe("W1-Rest: Ist-Zeiten zur Prüfung in Lohnausgabe, Konto und Export", () => {
+  const lang = { start: "06:00", ende: "20:30", bestaetigt: false, grund: "LANGER_DIENST: 14,5 Stunden — bitte prüfen" };
+  const m = betrieb({ erfassung: { "a1|2026-11-02": lang, "b2|2026-11-05": lang,
+    "a1|2026-11-03": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" } } });
+  it("pruefHinweis: Monat, Anzahl, Fälle; je Person; ohne Fälle null", () => {
+    const h = pruefHinweis(m, "2026-11");
+    expect(h).toMatchObject({ anzahl: 2, monat: "November 2026",
+      faelle: [{ personId: "a1", datum: "2026-11-02" }, { personId: "b2", datum: "2026-11-05" }] });
+    expect(h.text).toMatch(/2 Ist-Zeiten im November 2026 zur Prüfung/);
+    expect(h.text).toMatch(/vorläufig die Planzeiten/);
+    expect(pruefHinweis(m, "2026-11", "a1").anzahl).toBe(1);
+    expect(pruefHinweis(m, "2026-11", "c3")).toBeNull();
+    expect(pruefHinweis(m, "2026-10")).toBeNull();
+    expect(ZUR_PRUEFUNG_TEXT).toBe("zur Prüfung, Planzeit vorläufig");
+  });
+  it("App: istStunden zählt, Lohnblatt kennzeichnet je Tag, CSV warnt vor dem Download, Band in Abrechnung und Konto", async () => {
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const ist = app.slice(app.indexOf("function istStunden("), app.indexOf("§ 3 ArbZG"));
+    expect(ist).toMatch(/if \(idn\.zurPruefung\) pruefFaelle\+\+;/);
+    expect(ist).toMatch(/zurPruefung: pruefFaelle \}/);
+    const blatt = app.slice(app.indexOf("function lohnausgabeText("), app.indexOf("BELASTBARKEIT UND ENTSCHEIDUNG"));
+    expect(blatt).toMatch(/\.\.\.lohnPruefZeilen\(m, ym\)/);
+    expect(app).toMatch(/h\.faelle\.map\(\(f\) => `  \$\{f\.datum\}  \$\{nameVon\(f\.personId\)\}: \$\{ZUR_PRUEFUNG_TEXT\}`\)/);
+    const csv = app.slice(app.indexOf("exportDATEV: (ym) => {"), app.indexOf("exportLohnBlatt: (ym) => {"));
+    expect(csv.indexOf("pruefHinweis(sitz.mandant, ym)")).toBeGreaterThan(-1);
+    expect(csv.indexOf("window.confirm")).toBeGreaterThan(-1);
+    expect(csv.indexOf("window.confirm")).toBeLessThan(csv.indexOf("datevCSV(sitz.mandant, ym)"));
+    const abr = app.slice(app.indexOf("function Abrechnungsdaten("), app.indexOf("function Lohnausgabe("));
+    expect(abr).toMatch(/pruefHinweis\(m, ym\)/);
+    expect(abr).toMatch(/onClick=\{\(\) => setReiter\("stempel"\)\}>Zur Prüfliste/);
+    expect(app).toMatch(/pruefHinweis\(m, ym, p\.id\)/);       // Personalakte, Stundenkonto
+    expect(app).toMatch(/pruefHinweis\(m, ym, ich\.id\)/);     // Mein Stundenkonto
+    expect(app).toMatch(/status: zurPruefung\(v\) \? ZUR_PRUEFUNG_TEXT/);  // Gesamtexport
+  });
+  it("Bestätigen: nur staff.edit (nicht Schichtverantwortung), nie die eigene Zeit", async () => {
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const sb = app.slice(app.indexOf("function StempelBefunde("), app.indexOf("function Abrechnungsdaten("));
+    expect(sb.length).toBeGreaterThan(100);
+    expect(sb).toMatch(/const darfBestaetigen = darf\(sitz, "staff\.edit"\);/);
+    expect(sb).not.toMatch(/plan\.edit\.unit/);
+    expect(sb).toMatch(/darfBestaetigen && akt && String\(personId\) !== eigene && \(/);
   });
 });

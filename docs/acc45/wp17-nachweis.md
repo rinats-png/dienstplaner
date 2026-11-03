@@ -157,3 +157,21 @@ zeiterfassung 39/39, rechte 147/147, schichtverantwortung 25/25, geo 14/14; stag
 Ein Geo-Serverlauf war einmal 13/14: „keine Rohkoordinate“ fand `410` (= 50 + 360, Probe für ungültige Breite) in
 einem zufälligen Millisekundenwert eines Zeitstempels — vorbestehende Zufallsabhängigkeit der Prüfung, nicht WP-17;
 Wiederholung 14/14.
+
+## Nachprüfung (fda8deb): Auflagen 1–3
+
+1. **Integrationsstand** erneut hineingemergt (bc58b97). `package.json`: beide Zeilen übernommen — `ablage-pruefen-matrix2`
+   (integration) in `pruefung:datenintegritaet`, `serverdatum` und `stempel-oberflaeche` (WP-17) in `pruefung:zeiterfassung`.
+2. **W1-Rest — nicht mehr still im Lohn:** `pruefHinweis(m, ym[, personId])` (src/istdaten.js) nennt Monat, Anzahl und
+   Fälle, `ZUR_PRUEFUNG_TEXT` = „zur Prüfung, Planzeit vorläufig".
+   - `istStunden` zählt die Tage (`zurPruefung`).
+   - Abrechnungsdaten (Zuschläge, Freizeitausgleich, Lohnausgabe): Hinweisband mit Anzahl, Monat und „Zur Prüfliste"
+     (öffnet Stempelbefunde).
+   - Stundenkonto in der Personalakte und „Mein Stundenkonto": betroffene Tage mit Kennzeichnung.
+   - Lohnblatt zum Gegenlesen: Abschnitt „ACHTUNG" mit einer Zeile je betroffenem Tag.
+   - CSV-Lohnausgabe: Warnung mit den Tagen vor dem Download (Abbruch möglich); das Dateiformat bleibt unverändert.
+   - Gesamtexport `erfassung`: Spalte `status` („zur Prüfung, Planzeit vorläufig" / „bestätigt" / „offen").
+3. **Bestätigen-Knopf** nur mit `staff.edit` (Leitung, Planung) — nicht für die Schichtverantwortung — und nie für die
+   eigene Person.
+
+Rot vorher (Export von fda8deb, neue Tests hineinkopiert): 3 von 11 in `stempel-oberflaeche.test.js` rot; nachher 11/11.

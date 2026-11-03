@@ -112,6 +112,31 @@ export function erfassungenZurPruefung(m, ym) {
     .sort((a, b) => a.datum.localeCompare(b.datum));
 }
 
+/** Kennzeichnung eines Tages, dessen Ist-Zeit noch geprüft werden muss (WP-17, W1). */
+export const ZUR_PRUEFUNG_TEXT = "zur Prüfung, Planzeit vorläufig";
+
+const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
+  "Oktober", "November", "Dezember"];
+
+/**
+ * Der Hinweis für Lohnausgabe und Stundenkonto, solange im Monat Ist-Zeiten
+ * zur Prüfung offen sind — dort zählt sonst still die Planzeit (WP-17, W1).
+ * Mit `personId` nur die Fälle dieser Person. Ohne offene Fälle null.
+ * @returns {null | {anzahl: number, monat: string, faelle: Array<{personId: string, datum: string}>, text: string}}
+ */
+export function pruefHinweis(m, ym, personId) {
+  const faelle = erfassungenZurPruefung(m, ym)
+    .filter((f) => personId === undefined || personId === null || String(f.personId) === String(personId))
+    .map(({ personId: pid, datum }) => ({ personId: pid, datum }));
+  if (!faelle.length) return null;
+  const [j, mo] = String(ym).split("-");
+  const monat = `${MONATE[Number(mo) - 1] || mo} ${j}`;
+  const n = faelle.length;
+  return { anzahl: n, monat, faelle,
+    text: `${n === 1 ? "1 Ist-Zeit" : `${n} Ist-Zeiten`} im ${monat} zur Prüfung: Bis zur Bestätigung zählen dort `
+      + "im Stundenkonto und in der Lohnausgabe vorläufig die Planzeiten." };
+}
+
 /**
  * Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante.
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
