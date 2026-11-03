@@ -1835,10 +1835,13 @@ function pruefen(m, von, bis) {
         }
 
         const std = istDauer(m, p, d, da).std;
+        /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — nur
+           ein Hinweis. Ob eine Regelung nach § 7 ArbZG (Tarifvertrag,
+           Betriebsvereinbarung) die Verlängerung trägt, verantwortet der Betrieb. */
         if (tagesgrenzeVerletzt(std)) {
-          push({ art: "tagesgrenze", schwere: "danger", datum: d, ref: `${p.id}|tag`, personId: p.id,
+          push({ art: "tagesgrenze", schwere: "info", datum: d, ref: `${p.id}|tag`, personId: p.id,
             titel: `Über zehn Stunden — ${p.nachname}`,
-            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich lässt § 3 auch mit Ausgleich nicht zu.` });
+            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich erlaubt § 3 nur mit einer Regelung nach § 7 ArbZG (Tarif oder Betriebsvereinbarung) — das verantwortet der Betrieb.` });
         }
       }
 
@@ -8762,7 +8765,7 @@ function Monatsplan({ sitz, ym, setYm, oeffneTag, akt, schmal,
           {darf(sitz, "plan.view.unit") && <Btn onClick={() => akt.aushangPDF(ym, sitz.person.bereich !== "ALLE"
             ? sitz.person.bereich : (einheiten.find((x) => !x.pool) || {}).id)}>Aushang</Btn>}
           {darf(sitz, "plan.edit.unit") && <Btn onClick={akt.oeffneMehrfach}>Mehrfach ändern</Btn>}
-          {darf(sitz, "pattern.edit") && darf(sitz, "org.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
+          {darf(sitz, "pattern.edit") && <Btn onClick={akt.oeffneWizard}>Einrichtung</Btn>}
           {darf(sitz, "plan.edit.all") && <Btn kind="primary" onClick={akt.oeffneAssistent}>Planungsassistent</Btn>}
           <Zeitwahl onZurueck={() => shift(-1)} onHeute={() => setYm(d0.slice(0, 7))} onWeiter={() => shift(1)} /></div>}>{MON[mo - 1]} {y}</H1>
 
@@ -9142,7 +9145,7 @@ function Schichtfolge({ sitz, akt }) {
   return (
     <div>
       <H1 sub={`Ein Zyklus über ${m.zyklus.tage.length} Tage, ${m.einheiten.filter((e) => !e.pool).length} ${mehrzahl(m.einheitLabel)} mit eigenem Startpunkt. Der Plan wird daraus für jeden Tag berechnet — nichts wird ausgerollt, es gibt keine Jahresgrenze.`}
-        right={editierbar && darf(sitz, "org.edit") && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
+        right={editierbar && <Btn kind="primary" onClick={akt.oeffneWizard}>Neu einrichten</Btn>}>Schichtfolge</H1>
 
       <Kennzahlen min={170} kacheln={[
         { label: "Wochenarbeitszeit", wert: n2(sim.wochenstunden), einheit: "h",
@@ -9278,9 +9281,9 @@ function Einwilligungen({ p, akt }) {
 function Dienstarten({ sitz, akt }) {
   const m = sitz.mandant;
   const [bearbeitet, setBearbeitet] = useState(null);
-  /* WP-22: Dienstarten legt nur an und ändert, wer org.edit hat (Leitung,
-     Kundenrolle) — der Server weist es sonst ab. Die Planung sieht sie. */
-  const editierbar = darf(sitz, "shift.edit") && darf(sitz, "org.edit");
+  /* WP-22: Dienstarten ändern Leitung und Planung (org.edit oder pattern.edit,
+     Nutzerentscheidung); der Server weist alle anderen Rollen ab. */
+  const editierbar = darf(sitz, "shift.edit") && (darf(sitz, "org.edit") || darf(sitz, "pattern.edit"));
   const leer = { name: "", kurz: "", start: "08:00", ende: "16:00", pause: 0, farbe: PALETTE[0], ort: "",
     posten: false, quelle: null, form: "regel", fachkraftQuote: null, zweiterAbschnitt: null,
     aufenthalt: null, abrufMinuten: null, einsatzAnteil: null,
@@ -22505,8 +22508,6 @@ function AppInnen() {
         tage: Array.from({ length: w * 7 }, (_, i) => m.zyklus.tage[i] || "-"), vorlage: null } }), "Zykluslänge geändert"),
       ladeVorlage: (vid) => mUpd((m) => {
         const v = VORLAGEN.find((x) => x.id === vid); if (!v) return m;
-        /* Die Zeiten der Vorlage übernimmt nur, wer Dienstarten ändern darf (org.edit, WP-22). */
-        if (!darf(sitz, "org.edit")) return { ...m, zyklus: { wochen: v.wochen, tage: [...v.tage], vorlage: v.id } };
         return { ...m, zyklus: { wochen: v.wochen, tage: [...v.tage], vorlage: v.id },
           dienstarten: m.dienstarten.map((d) => v.zeiten[d.id] ? { ...d, start: v.zeiten[d.id][0], ende: v.zeiten[d.id][1] } : d) };
       }, "Vorlage geladen"),
@@ -23659,8 +23660,6 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
 
       /* --- Einrichtungsassistent --- */
       assistentUebernehmen: (e) => mUpd((m) => {
-        /* Die Einrichtung legt Dienstarten an — nur mit org.edit (WP-22). */
-        if (!darf(sitz, "org.edit")) { melde("Die Einrichtung mit Dienstarten nimmt die Leitung vor."); return m; }
         const einheiten = e.gruppen.map((g) => ({ id: g.id, name: g.name, versatz: Math.round(g.versatzTage / 7),
           versatzTage: g.versatzTage, farbe: g.farbe, pool: false, standortId: (m.standorte[0] || {}).id }));
         const pool = m.einheiten.find((x) => x.pool);

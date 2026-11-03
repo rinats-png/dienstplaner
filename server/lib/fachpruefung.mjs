@@ -208,6 +208,8 @@ export function dienstAm(m, p, d) {
    ------------------------------------------------------------------------ */
 const SCHUTZ_QUELLE_NEUTRAL = "Schutzvorschrift oder Einsatzregel für diese Person";
 const SCHUTZ_QUELLE_EINSCHRAENKUNG = "Schutzvorschrift oder Einsatzeinschränkung für diese Person";
+/** Rufbereitschaft: keine Arbeitszeit, solange kein Einsatz erfasst ist. */
+const rufbereitschaft = (da) => !!da && (da.form === "ruf" || da.rufbereitschaft === true || da.ruhezeitNeutral === true);
 const stufeVon = (regel, sonst) => (BEFUND_KATALOG[regel] && BEFUND_KATALOG[regel].stufe) || sonst;
 
 /**
@@ -252,14 +254,17 @@ export function einteilungsBefunde(m, p, da, d, k) {
   for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
     (bmId) => { const bm = liste(m.betriebsmittel).find((x) => x.id === bmId); return bm ? bm.name : null; }))
     push("kompetenz", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz");
-  /* Ruhezeit vor und nach dem Dienst (zwei Tage in jede Richtung). */
+  /* Ruhezeit vor und nach dem Dienst (zwei Tage in jede Richtung).
+     Rufbereitschaft ist keine Arbeitszeit (ruhezeitNeutral, Nutzerentscheidung
+     WP-22): Sie unterbricht keine Ruhezeit und braucht keine. Tatsächliche
+     Einsätze aus einer Rufbereitschaft kennt die Planung nicht. */
   const [nStart, nEnde] = fenster(d, da);
-  for (const off of [-2, -1, 1, 2]) {
+  for (const off of rufbereitschaft(da) ? [] : [-2, -1, 1, 2]) {
     const dd = addDays(d, off);
     const id = k.dienstAm(p, dd);
     if (!id) continue;
     const other = finde(m.dienstarten, (x) => x.id === id);
-    if (!other || !other.start || !other.ende) continue;
+    if (!other || !other.start || !other.ende || rufbereitschaft(other)) continue;
     const [oStart, oEnde] = fenster(dd, other);
     const ruhe = oStart > nStart ? (oStart - nEnde) / 60 : (nStart - oEnde) / 60;
     const rs = ruhezeitStufe(ruhe, einst.ruhezeit);
@@ -280,12 +285,13 @@ export function einteilungsBefunde(m, p, da, d, k) {
   /* Alleindienst: im Dienst braucht es jemanden ohne diese Einschränkung. */
   if (e.keinAlleindienst && k.alleinOhnePartner(p, d, da.id))
     push("keinAlleindienst", "darf nicht allein eingeteilt werden", SCHUTZ_QUELLE_EINSCHRAENKUNG, "schutz");
-  /* Höchstarbeitszeit (§ 3 ArbZG): ein Dienst über zehn Stunden. Den
-     Durchschnitt von acht Stunden über sechs Monate prüft nur die
-     Planprüfung über den Monat — mit den Daten einer Einteilung ist er
-     nicht sicher zu rechnen. */
-  if (dauer(da) > HOECHST_TAG)
-    push("tagesgrenze", `Dienst über ${n1(HOECHST_TAG)} Stunden (${n1(dauer(da))} h)`, "§ 3 ArbZG", "tagesgrenze");
+  /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — ein
+     Dienst über zehn Stunden ist nur ein Hinweis (Katalog: Stufe hinweis),
+     keine Bestätigung, kein Protokoll. Ob ein Tarifvertrag oder eine
+     Betriebsvereinbarung nach § 7 ArbZG die Verlängerung trägt, verantwortet
+     der Betrieb. Rufbereitschaft zählt nicht. */
+  if (!rufbereitschaft(da) && dauer(da) > HOECHST_TAG)
+    push("tagesgrenze", `Dienst über ${n1(HOECHST_TAG)} Stunden (${n1(dauer(da))} h) — zulässig nur mit Regelung nach § 7 ArbZG`, "§ 3, § 7 ArbZG", "tagesgrenze");
   return g;
 }
 

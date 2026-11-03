@@ -61,11 +61,12 @@ export const BEFUND_KATALOG = Object.freeze({
   teilzeit: { text: "arbeitet an diesem Wochentag nicht", quelle: "Teilzeitvereinbarung", stufe: "achtung", sperrt: false },
   folge: { text: "Höchstzahl Dienste in Folge erreicht", quelle: "Einstellung des Betriebs", stufe: "achtung", sperrt: false },
   abwesend: { text: "abwesend", quelle: "Abwesenheit", stufe: "achtung", sperrt: false },
-  /* WP-22: Höchstarbeitszeit und Mindestbesetzung. Ein Dienst über zehn
-     Stunden ist ein Rechtsverstoß, sperrte in der Oberfläche aber bisher
-     nicht (nur die Planprüfung meldete ihn) — vorläufig bestätigungspflichtig.
-     Die Mindestbesetzung warnt (Vorgabe des Betriebs). */
-  tagesgrenze: { text: "Dienst über zehn Stunden", quelle: "§ 3 ArbZG", stufe: "recht", sperrt: false },
+  /* WP-22: Lange Dienste und Mindestbesetzung. Ein Dienst über zehn Stunden
+     ist nach Nutzerentscheidung automatisch erlaubt — nur ein Hinweis, keine
+     Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7
+     ArbZG ihn trägt, verantwortet der Betrieb. Die Mindestbesetzung warnt
+     (Vorgabe des Betriebs, bestätigungspflichtig). */
+  tagesgrenze: { text: "Dienst über zehn Stunden (Regelung nach § 7 ArbZG nötig)", quelle: "§ 3, § 7 ArbZG", stufe: "hinweis", sperrt: false },
   untergrenze: { text: "Mindestbesetzung unterschritten", quelle: "Vorgabe des Betriebs", stufe: "achtung", sperrt: false },
 });
 /** Sperrt diese Befundart? Unbekannte sperren (fail-closed). */
@@ -152,7 +153,7 @@ export function bestaetigungMitteilungen(altM, neuM, ich) {
   const titel = recht.length === 1 ? "Rechtsverstoß bewusst bestätigt" : `${recht.length} Rechtsverstöße bewusst bestätigt`;
   const ohneGrund = recht.some((b) => b.ohneGrund);
   /* Der Text kommt aus dem Befundkatalog, nicht vom Client (Review N1). */
-  const text = recht.slice(0, 3).map((b) => `${name(person(b.personId))} · ${tagKurz(b.datum)} · ${
+  const text = recht.slice(0, 3).map((b) => `${b.art === "sammel" ? `${b.anzahl || 0} Einteilungen ${tagKurz(b.von)}–${tagKurz(b.bis)}` : `${name(person(b.personId))} · ${tagKurz(b.datum)}`} · ${
     befundText(Array.isArray(b.befunde) && istObjekt(b.befunde[0]) ? b.befunde[0].regel : null)}`).join("; ")
     + ` — bestätigt von ${name(von)}${ohneGrund ? ", ohne Grund" : ""}`;
   const jetzt = new Date();

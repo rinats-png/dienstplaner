@@ -398,7 +398,9 @@ export function bestaetigungenBetriebsrat(w) {
     for (const regel of new Set(liste(b.befunde).filter((x) => x && typeof x === "object").map(regelFuerBetriebsrat))) {
       const stufe = typeof b.stufe === "string" ? b.stufe : null;
       const k = `${monat}|${regel}|${stufe}`;
-      zaehler.set(k, { monat, regel, stufe, n: ((zaehler.get(k) || {}).n || 0) + 1 });
+      /* Eine Sammelbestätigung (Review B1) zählt so viele Einteilungen, wie sie deckt. */
+      const zahl = b.art === "sammel" ? (Number.isInteger(b.anzahl) && b.anzahl >= 0 ? b.anzahl : 1) : 1;
+      zaehler.set(k, { monat, regel, stufe, n: ((zaehler.get(k) || {}).n || 0) + zahl });
     }
   }
   return [...zaehler.values()]

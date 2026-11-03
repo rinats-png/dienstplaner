@@ -62,7 +62,7 @@ export const SCHUTZ_HORIZONT_TAGE = 120;
     ohne Einstellung „mehrschichtig" — Achtung, bestätigungspflichtig. */
 export const SERVER_REGELN = Object.freeze(["bestand", "schutz", "schutzWeich", "keineNacht", "keinAlleindienst", "maxDiensteWoche",
   "qualifikationGesetzlich", "qualifikationBetrieblich", "kompetenz", "ruhezeitGesetz", "ruhezeitBetrieb",
-  "tagesgrenze", "untergrenze"]);
+  "untergrenze"]);                                                            // lange Dienste: nur ein Hinweis (Nutzerentscheidung)
 
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
@@ -187,39 +187,132 @@ function planrechner(m, personen) {
 
 /**
  * Die zuletzt gemessene Laufzeit der Prüfung (Nachprüfung WP-11, N1) —
- * rechte.mjs protokolliert sie, wenn nachgerechnet wurde. Ohne Personenbezug.
- * @type {null | { ms: number, mittelbar: boolean, personen: number, geprueft: number }}
+ * rechte.mjs und daten.mjs protokollieren sie, wenn nachgerechnet wurde.
+ * Ohne Personenbezug. `blockMs`: längster Abschnitt ohne Nachgeben (B2).
+ * @type {null | { ms: number, mittelbar: boolean, personen: number, geprueft: number, blockMs?: number }}
  */
 export let letzteLaufzeit = null;
 
 /** Name einer Person für eine Meldung — ohne jedes Merkmal. */
 const nameVon = (p) => (p ? [p.vorname, p.nachname].filter(Boolean).join(" ") || String(p.id) : "unbekannt");
 
+/** Längster Rechenabschnitt ohne Nachgeben an die Event-Loop (Review B2). */
+export const HAEPPCHEN_MS = 20;
+/** Höchstens so lange rechnet der Server an einer Übermittlung; danach 503 „bitte erneut". */
+export const ZEITBUDGET_MS = 8000;
+
+/* Bremse für Strukturänderungen je Raum (Review B2): Eine Schichtfolge im
+   Wechsel hin und her darf den gemeinsamen Prozess nicht dauerhaft
+   beschäftigen. Höchstens STRUKTUR_JE_MINUTE je Raum und Minute; im
+   Speicher dieses Prozesses (es gibt einen). */
+export const STRUKTUR_JE_MINUTE = 10;
+const STRUKTUR_ZEITEN = new Map();
+/** @returns {{ frei: boolean, wartet: number }} */
+export function strukturBremse(schluessel, jetztMs = Date.now()) {
+  const l = (STRUKTUR_ZEITEN.get(schluessel) || []).filter((t) => jetztMs - t < 60000);
+  if (l.length >= STRUKTUR_JE_MINUTE) {
+    STRUKTUR_ZEITEN.set(schluessel, l);
+    return { frei: false, wartet: Math.max(1, Math.ceil((60000 - (jetztMs - l[0])) / 1000)) };
+  }
+  l.push(jetztMs);
+  STRUKTUR_ZEITEN.set(schluessel, l);
+  if (STRUKTUR_ZEITEN.size > 5000) for (const k of STRUKTUR_ZEITEN.keys()) { STRUKTUR_ZEITEN.delete(k); if (STRUKTUR_ZEITEN.size <= 4000) break; }
+  return { frei: true, wartet: 0 };
+}
+
+/** Ist das eine Strukturänderung (mittelbare Nachrechnung über den Horizont)? */
+export function strukturAenderung(altM, neuM) {
+  return !!altM && istObjekt(neuM) && planStrukturGeaendert({ ...altM }, neuM);
+}
+
 /**
  * Prüft eine Übermittlung — ausdrücklich und mittelbar (siehe oben).
+ * Synchron, für Prüfungen und kleine Bestände; der Server nimmt
+ * fachpruefungUebermittlungAsync (gibt der Event-Loop nach).
  * @param {any} altM gespeicherter Betrieb
  * @param {any} neuM übermittelter, schon zusammengeführter Betrieb
  * @param {string} [heute] JJJJ-MM-TT
- * @returns {null | { sperre?: string, warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[] }}
+ * @param {{ imBereich?: (personId: any, tag: string) => boolean }} [opt]
+ *   imBereich: Schreibumfang der Schichtverantwortung (Review B4)
+ * @returns {null | Fachergebnis}
  */
-export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOString().slice(0, 10)) {
+export function fachpruefungUebermittlung(altM, neuM, heute = new Date().toISOString().slice(0, 10), opt = {}) {
   const t0 = performance.now();
-  const zaehler = { mittelbar: false, personen: 0, geprueft: 0 };
+  const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
   try {
-    return pruefen(altM, neuM, heute, zaehler);
+    const it = pruefen(altM, neuM, heute, zaehler, opt);
+    let r = it.next();
+    while (!r.done) r = it.next();
+    return r.value;
   } finally {
     letzteLaufzeit = { ms: Math.round((performance.now() - t0) * 10) / 10, ...zaehler };
   }
 }
 
 /**
+ * Dieselbe Prüfung in Häppchen (Review B2): Nach höchstens HAEPPCHEN_MS gibt
+ * sie der Event-Loop nach (setImmediate), damit andere Betriebe nicht warten.
+ * Nach ZEITBUDGET_MS bricht sie ab: { zeitbudget: true } — der Server
+ * antwortet 503 „bitte erneut", nichts wird geschrieben.
+ * @param {any} altM
+ * @param {any} neuM
+ * @param {string} [heute]
+ * @param {{ imBereich?: (personId: any, tag: string) => boolean, budgetMs?: number }} [opt]
+ * @returns {Promise<null | Fachergebnis>}
+ */
+export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Date().toISOString().slice(0, 10), opt = {}) {
+  const t0 = performance.now();
+  const budget = opt.budgetMs || ZEITBUDGET_MS;
+  const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
+  try {
+    const it = pruefen(altM, neuM, heute, zaehler, opt);
+    let r = it.next();
+    while (!r.done) {
+      await new Promise((weiter) => setImmediate(weiter));
+      if (performance.now() - t0 > budget) return { zeitbudget: true };
+      r = it.next();
+    }
+    return r.value;
+  } finally {
+    letzteLaufzeit = { ms: Math.round((performance.now() - t0) * 10) / 10, ...zaehler };
+  }
+}
+
+/**
+ * @typedef {{ sperre?: string, zeitbudget?: boolean,
+ *   warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[],
+ *   sammelVorschlag?: { regel: string, stufe: string, text: string, einheitId: any, von: string, bis: string, anzahl: number }[],
+ *   sammel?: Record<string, number> }} Fachergebnis
+ */
+
+/** Deckt eine Sammelbestätigung (Review B1) diese Einteilung? */
+function sammelDeckt(b, p, d, regel) {
+  return b.art === "sammel" && typeof b.von === "string" && typeof b.bis === "string" && b.von <= d && d <= b.bis
+    && liste(b.befunde).some((x) => x.regel === regel)
+    && (b.einheitId === null || b.einheitId === undefined || String(einheitAm(p, d)) === String(b.einheitId));
+}
+
+/**
  * @param {any} altM
  * @param {any} neuM
  * @param {string} heute
- * @param {{ mittelbar: boolean, personen: number, geprueft: number }} zaehler
- * @returns {null | { sperre?: string, warnungen?: any[] }}
+ * @param {{ mittelbar: boolean, personen: number, geprueft: number, blockMs: number }} zaehler
+ * @param {{ imBereich?: (personId: any, tag: string) => boolean }} opt
+ * @returns {Generator<void, null | Fachergebnis, void>}
  */
-function pruefen(altM, neuM, heute, zaehler) {
+function* pruefen(altM, neuM, heute, zaehler, opt) {
+  /* Häppchen: nach HAEPPCHEN_MS nachgeben (im synchronen Lauf ohne Wirkung). */
+  let abschnitt = performance.now();
+  let schritt = 0;
+  const zeitUm = () => {
+    if ((++schritt & 63) !== 0) return false;
+    const jetzt = performance.now();
+    if (jetzt - abschnitt < HAEPPCHEN_MS) return false;
+    zaehler.blockMs = Math.max(zaehler.blockMs, Math.round(jetzt - abschnitt));
+    return true;
+  };
+  const weiter = () => { abschnitt = performance.now(); };
+
   if (!istObjekt(neuM)) return null;
   const altAbw = istObjekt(altM && altM.abweichungen) ? altM.abweichungen : {};
   const neuAbw = istObjekt(neuM.abweichungen) ? neuM.abweichungen : altAbw;
@@ -231,6 +324,7 @@ function pruefen(altM, neuM, heute, zaehler) {
   const daNeu = new Map(liste(mNeu.dienstarten).map((d) => [String(d.id), d]));
   const daAlt = new Map(liste(mAlt.dienstarten).map((d) => [String(d.id), d]));
   const hatZeiten = (da) => !!da && typeof da.start === "string" && typeof da.ende === "string";
+  const imBereich = typeof opt.imBereich === "function" ? opt.imBereich : null;
 
   /* 0. Eine noch verwendete Dienstart löschen (N1) — für alle Personen gleich. */
   if (altM && hat(neuM, "dienstarten")) {
@@ -272,6 +366,7 @@ function pruefen(altM, neuM, heute, zaehler) {
   const struktur = [];                                                       // [Person, Tag] — mittelbar zu prüfen
   const strukturell = !!altM && planStrukturGeaendert(mAlt, neuM);
   zaehler.mittelbar = strukturell;
+  const horizont = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i));
   if (strukturell) {
     /* Nur Einteilungen, an denen sich etwas geändert haben kann: eigener
        Dienst oder Dienstart, Dienste zwei Tage davor und danach (Ruhezeit),
@@ -288,9 +383,9 @@ function pruefen(altM, neuM, heute, zaehler) {
       if (!daGleich.has(k)) daGleich.set(k, gleich(daAlt.get(k), daNeu.get(k)));
       return daGleich.get(k);
     };
-    const horizont = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i));
     const umfeld = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 15 }, (_, i) => addDays(heute, i - 7));   // Woche und ±2 Tage
     for (const p of personenNeu) {
+      if (zeitUm()) { yield; weiter(); }
       zaehler.personen++;
       const pA = altNach.get(String(p.id));
       const personGleich = !!pA && (pA === p || gleich(pA, p));
@@ -317,7 +412,9 @@ function pruefen(altM, neuM, heute, zaehler) {
   if (!zellen.size && !struktur.length) return null;
 
   /* Tage mit ausdrücklichen Änderungen: dort auch die Kolleginnen mit
-     „kein Alleindienst" — ihnen kann der Partner weggenommen worden sein. */
+     „kein Alleindienst" — ihnen kann der Partner weggenommen worden sein.
+     Für die Schichtverantwortung nur im eigenen Bereich am Tag (Review B4);
+     was außerhalb davon neu entsteht, sperrt unten ohne Kennung. */
   if (!strukturell) {
     const allein = personenNeu.filter((p) => p.einschraenkungen && p.einschraenkungen.keinAlleindienst);
     if (allein.length)
@@ -334,6 +431,9 @@ function pruefen(altM, neuM, heute, zaehler) {
     const f = funde.get(k);
     if (!f.befunde.some((x) => x.regel === b.regel)) f.befunde.push(b);
   };
+  /* Was der Server durchsetzt: sperrende und bestätigungspflichtige Regeln;
+     ein Hinweis (etwa ein langer Dienst) nicht. */
+  const zaehlt = (regel) => SERVER_REGELN.includes(regel) && (sperrtBefund(regel) || ["recht", "achtung"].includes(BEFUND_KATALOG[regel].stufe));
 
   /** Eine Einteilung prüfen; zurück kommt eine Absage oder null. */
   const zelle = (p, d, ausdruecklich) => {
@@ -343,7 +443,7 @@ function pruefen(altM, neuM, heute, zaehler) {
     if (!da) return { sperre: `Einteilung am ${d} nicht möglich: Die Dienstart ist nicht bekannt.` };
     if (!hatZeiten(da)) return null;
     zaehler.geprueft++;
-    const neu = einteilungsBefunde(mNeu, p, da, d, kN).filter((b) => SERVER_REGELN.includes(b.regel));
+    const neu = einteilungsBefunde(mNeu, p, da, d, kN).filter((b) => zaehlt(b.regel));
     if (!neu.length) return null;
     const pid = String(p.id);
     const pA = altNach.get(pid);
@@ -354,6 +454,7 @@ function pruefen(altM, neuM, heute, zaehler) {
     return null;
   };
   for (const [k, ausdruecklich] of zellen) {
+    if (zeitUm()) { yield; weiter(); }
     const i = k.lastIndexOf("|");
     const p = neuNach.get(k.slice(0, i));
     if (!p) continue;
@@ -361,6 +462,7 @@ function pruefen(altM, neuM, heute, zaehler) {
     if (r) return r;
   }
   for (const [p, d] of struktur) {
+    if (zeitUm()) { yield; weiter(); }
     const r = zelle(p, d, undefined);
     if (r) return r;
   }
@@ -371,9 +473,10 @@ function pruefen(altM, neuM, heute, zaehler) {
      Änderung alle Tage im Horizont (auch dort, wo jemand wegfiel). */
   const mitVorgabe = [...daNeu.values(), ...daAlt.values()].some((da) => istObjekt(da.mindest));
   const tage = !mitVorgabe ? new Set()
-    : strukturell ? new Set(Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i)))
+    : strukturell ? new Set(horizont)
       : new Set([...zellen.keys()].map((k) => k.slice(k.lastIndexOf("|") + 1)));
   for (const d of tage) {
+    yield; weiter();                                                         // je Tag eine ganze Besetzung: immer nachgeben
     const alt = rA.tag(d), neu = rN.tag(d);
     for (const [id, vorher] of alt) {
       const da = daNeu.get(String(id)) || daAlt.get(String(id));
@@ -391,17 +494,52 @@ function pruefen(altM, neuM, heute, zaehler) {
     const s = f.befunde.find((b) => sperrtBefund(b.regel));
     if (s) return { sperre: `Einteilung am ${f.datum} nicht möglich: ${s.text}. Sperrende Regeln lassen sich nicht bestätigen.` };
   }
-  /* Warnend: nur mit Bestätigung im selben Speichervorgang. */
+  /* Review B4: Die Schichtverantwortung kann nur für ihren Bereich bestätigen.
+     Entsteht ein warnender Befund außerhalb davon, sperrt die Änderung — ohne
+     Person, Tag oder Kennung aus dem fremden Bereich zu nennen. */
+  if (imBereich)
+    for (const f of funde.values())
+      if (!imBereich(f.personId, f.datum))
+        return { sperre: "Diese Änderung wirkt auf Einteilungen außerhalb deines Bereichs. Bitte mit der Planung klären." };
+
+  /* Warnend: nur mit Bestätigung im selben Speichervorgang — je Einteilung
+     oder als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1). */
   const altIds = new Set(liste(altM && altM.bestaetigungen).map((b) => String(b.id)));
   const neueBest = liste(neuM.bestaetigungen).filter((b) => !altIds.has(String(b.id)));
-  const bestaetigt = (pid, d, regel) => neueBest.some((b) => String(b.personId) === String(pid) && b.datum === d
-    && liste(b.befunde).some((x) => x.regel === regel));
+  const sammelBest = neueBest.filter((b) => b.art === "sammel");
+  const einzelBest = neueBest.filter((b) => b.art !== "sammel");
+  /** @type {Record<string, number>} */
+  const sammel = {};
+  const bestaetigt = (f, regel) => {
+    if (einzelBest.some((b) => String(b.personId) === String(f.personId) && b.datum === f.datum && liste(b.befunde).some((x) => x.regel === regel)))
+      return true;
+    const p = neuNach.get(String(f.personId));
+    const s = p ? sammelBest.find((b) => sammelDeckt(b, p, f.datum, regel)) : null;
+    if (!s) return false;
+    sammel[String(s.id)] = (sammel[String(s.id)] || 0) + 1;
+    return true;
+  };
   const offen = [];
   for (const f of funde.values()) {
-    const fehlt = f.befunde.filter((b) => !bestaetigt(f.personId, f.datum, b.regel));
+    const fehlt = f.befunde.filter((b) => !bestaetigt(f, b.regel));
     if (fehlt.length) offen.push({ ...f, befunde: fehlt });
   }
-  return offen.length ? { warnungen: offen.slice(0, 200) } : null;
+  if (!offen.length) return Object.keys(sammel).length ? { sammel } : null;
+  /* Vorschlag für Sammelbestätigungen: je Regel und Einheit mit Zeitraum und Anzahl. */
+  const gruppen = new Map();
+  for (const f of offen) {
+    const p = neuNach.get(String(f.personId));
+    const eid = p ? einheitAm(p, f.datum) : null;
+    for (const b of f.befunde) {
+      const k = `${b.regel}|${eid}`;
+      const g = gruppen.get(k) || { regel: b.regel, stufe: b.stufe, text: b.text, einheitId: eid, von: f.datum, bis: f.datum, anzahl: 0 };
+      if (f.datum < g.von) g.von = f.datum;
+      if (f.datum > g.bis) g.bis = f.datum;
+      g.anzahl++;
+      gruppen.set(k, g);
+    }
+  }
+  return { warnungen: offen.slice(0, 200), sammelVorschlag: [...gruppen.values()] };
 }
 
 /** Kompatibel zu WP-11: nur der Grund einer Absage (sperrend), sonst null. */

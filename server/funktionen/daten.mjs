@@ -3,7 +3,8 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen } from "../lib/rechte.mjs";
+import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
@@ -886,7 +887,7 @@ export default async (req, context) => {
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
            Lesen gar nicht bekommen hat. */
-        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
+        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",
@@ -904,6 +905,37 @@ export default async (req, context) => {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: zuSchreiben.verweigert }, 403);
+        }
+
+        /* Fachprüfung (WP-22) in Häppchen, damit eine große Nachrechnung keinen
+           anderen Betrieb aufhält (Review B2): höchstens HAEPPCHEN_MS am Stück,
+           insgesamt höchstens ZEITBUDGET_MS — sonst 503 „bitte erneut". Eine
+           Strukturänderung (Schichtfolge, Dienstzeiten, Personen …) ist je
+           Raum gebremst. */
+        const offen = fachpruefungOffen(zuSchreiben);
+        if (offen) {
+          if (strukturAenderung(offen.alt, offen.neu)) {
+            const sb = strukturBremse(`${s.bestand}|${offen.mandantId}`);
+            if (!sb.frei) return zuVielAntwort(sb.wartet);
+          }
+          const fach = await fachpruefungUebermittlungAsync(offen.alt, offen.neu, undefined, { imBereich: offen.imBereich });
+          if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
+            console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms (längster Block ${letzteLaufzeit.blockMs} ms), ${letzteLaufzeit.personen} Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
+          if (fach && fach.zeitbudget) {
+            await protokoll("schreiben", ks, "zeitbudget", "Fachprüfung abgebrochen", wer);
+            return antwort({ fehler: "Die Prüfung dauert gerade zu lange. Bitte gleich noch einmal speichern." }, 503);
+          }
+          if (fach && fach.sperre) {
+            await protokoll("schreiben", ks, "abgewiesen", fach.sperre, wer);
+            return antwort({ fehler: "Keine Schreibberechtigung.", text: fach.sperre }, 403);
+          }
+          if (fach && fach.warnungen) {
+            await protokoll("schreiben", ks, "bestaetigung-noetig", `${fach.warnungen.length} Einteilungen`, wer);
+            return antwort({ fehler: "Diese Änderung braucht eine Bestätigung.", fachbefunde: fach.warnungen,
+              sammelVorschlag: fach.sammelVorschlag || [], etag: jetzt ? jetzt.stand : null }, 409);
+          }
+          if (fach && fach.sammel && Array.isArray(zuSchreiben.mandanten))
+            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? sammelAnzahlSetzen(m, fach.sammel) : m)) };
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
