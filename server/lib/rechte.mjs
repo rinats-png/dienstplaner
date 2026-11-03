@@ -22,7 +22,7 @@ import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NA
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
   BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
-import { abweichungenSchutzPruefen, sperrendeBefunde } from "./schutzdurchsetzung.mjs";
+import { abweichungenSchutzPruefen, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -777,6 +777,38 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
+/* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
+   JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
+   Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
+   Sie lockert eine Schutzprüfung — setzen darf sie deshalb nur, wer org.edit
+   hat (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Wert.
+   Gespeichert wird nur { mehrschichtig: boolean } und, vom Server, wann und
+   von wem zuletzt geändert; alles andere weist der Server ab. */
+const JUGENDSCHUTZ_FELDER = ["mehrschichtig"];
+function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
+  const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  const e = { ...neuM.einstellungen };
+  const alt = altE.jugendschutz && typeof altE.jugendschutz === "object" ? altE.jugendschutz : null;
+  const neu = Object.prototype.hasOwnProperty.call(e, "jugendschutz") ? e.jugendschutz : alt;
+  const behalten = () => {
+    if (alt) e.jugendschutz = alt; else delete e.jugendschutz;
+    return { mandant: { ...neuM, einstellungen: e } };
+  };
+  const wert = (j) => !!(j && typeof j === "object" && j.mehrschichtig === true);
+  if (neu === alt || gleich(neu, alt)) return behalten();
+  if (!darf(rolle, "org.edit")) return behalten();
+  if (neu === null || neu === undefined) { delete e.jugendschutz; return { mandant: { ...neuM, einstellungen: e } }; }
+  if (typeof neu !== "object" || Array.isArray(neu)
+    || Object.keys(neu).some((k) => !JUGENDSCHUTZ_FELDER.includes(k) && k !== "geaendertAm" && k !== "geaendertVon")
+    || typeof neu.mehrschichtig !== "boolean")
+    return { grund: "Jugendarbeitsschutz: erwartet wird { mehrschichtig: true oder false }." };
+  if (alt && wert(alt) === neu.mehrschichtig) return behalten();
+  e.jugendschutz = { mehrschichtig: neu.mehrschichtig, geaendertAm: new Date().toISOString(),
+    geaendertVon: sitzung.person === undefined ? null : sitzung.person };
+  return { mandant: { ...neuM, einstellungen: e } };
+}
+
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
 export function eigenerMandant(bestand, sitzung) {
   if (!bestand || !Array.isArray(bestand.mandanten) || !bestand.mandanten.length) return null;
@@ -966,6 +998,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };
       geschickt = schalter.mandant;
+      /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit. */
+      const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      if (jugend.grund) return { verweigert: jugend.grund };
+      geschickt = jugend.mandant;
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
@@ -1006,6 +1042,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
     const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
+       nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
+    if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
+      console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} geschützte Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
     if (schutzGrund) return { verweigert: schutzGrund };
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
@@ -1393,7 +1433,7 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
        Einteilung, hilft keine Bestätigung — auch nicht, wenn der Client den
        Befund verschweigt. */
     const daObj = (Array.isArray(altM.dienstarten) ? altM.dienstarten : []).find((d) => d && String(d.id) === String(e.dienstId));
-    if (daObj && daObj.start && daObj.ende && sperrendeBefunde(personen.get(String(e.personId)), daObj, e.datum).length) return SPERRT;
+    if (daObj && daObj.start && daObj.ende && sperrendeBefunde(personen.get(String(e.personId)), daObj, e.datum, altM.einstellungen).length) return SPERRT;
     const katalogStufen = befunde.map((b) => BEFUND_KATALOG[b.regel].stufe);
     const stufe = katalogStufen.includes("recht") ? "recht" : katalogStufen.includes("achtung") ? "achtung" : null;
     if (!PROTOKOLL_STUFEN.includes(stufe)) return null;           // ein Hinweis braucht keine Bestätigung

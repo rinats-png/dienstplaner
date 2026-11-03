@@ -14,6 +14,9 @@
 > Person (keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät
 > und Ruhezeit unter 11 Stunden — eine Einteilung, die über die API direkt in `abweichungen` geschrieben wird, kommt
 > daran vorbei. Die Server-Durchsetzung dieser Regeln braucht die Planlogik auf dem Server und ist offen.
+> Nachprüfung WP-11: Jugendliche ab 16 sperrt der Server nur für 23–6 Uhr (20–23 Uhr „Achtung" oder, mit der nur per
+> `org.edit` schaltbaren Einstellung `jugendschutz.mehrschichtig`, ein Hinweis); eine noch verwendete Dienstart lässt
+> sich nicht löschen. Die Laufzeit jeder Nachrechnung gibt der Server ohne Personenbezug aus.
 
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security
 Master Checkliste" für KI-gestützt entwickelte Anwendungen und dem

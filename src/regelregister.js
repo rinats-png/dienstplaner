@@ -219,8 +219,13 @@ const REGELN_BESTAND = [
      ohne regelwerk.js anzufassen. */
   bestand({ id: "JARBSCHG-14", art: null, regeltext: "JArbSchG § 14", typ: "bestandsregel", bezeichnung: "Jugendliche: Nachtruhe",
     ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 14 Abs. 1",
-    /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr. */
-    pruefhinweis: "Bekannte Grenze: Die Ausnahmen nach § 14 Abs. 2 bis 7 JArbSchG (je nach Alter und Branche, z. B. bis 22 oder 23 Uhr, Beginn ab 5 Uhr) kennt die Prüfung nicht; sie meldet dann einen Befund, der rechtlich zulässig sein kann. Stand der Prüflogik: 2. November 2026." }),
+    /* Review WP-11, F3: geprüft wird jede Überschneidung mit 20–6 Uhr;
+       Nachprüfung WP-11: ab 16 Jahren sperrt nur 23–6 Uhr (JARBSCHG-14-02). */
+    pruefhinweis: "Unter 16 Jahren sperrt jede Überschneidung mit 20–6 Uhr, ab 16 Jahren jede mit 23–6 Uhr (auch ein Beginn vor 6 Uhr). 20–23 Uhr ab 16 Jahren: siehe JARBSCHG-14-02. Bekannte Grenze: Die Branchenausnahmen nach § 14 Abs. 2 bis 7 JArbSchG — Gaststätten und Schaustellergewerbe bis 22 Uhr, Bäckereien und Konditoreien ab 5 Uhr (über 17 Jahren ab 4 Uhr), Landwirtschaft ab 5 oder bis 21 Uhr, Abs. 3 bis 7 (Behördenbewilligung, Musik- und Theateraufführungen u. a.) — kennt die Prüfung nicht; sie meldet dann einen Befund, der rechtlich zulässig sein kann. Stand der Prüflogik: 2. November 2026." }),
+  bestand({ id: "JARBSCHG-14-02", art: null, regeltext: "JArbSchG § 14 Abs. 2", typ: "bestandsregel", bezeichnung: "Jugendliche ab 16: Einsatz bis 23 Uhr",
+    ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 14 Abs. 2 Nr. 2",
+    /* Nachprüfung WP-11 (F3-Fehlalarm): Spätdienst 13–21 für 17-Jährige. */
+    pruefhinweis: "Ab 16 Jahren ist ein Einsatz zwischen 20 und 23 Uhr im mehrschichtigen Betrieb zulässig. Mit der Betriebseinstellung „mehrschichtig\" (jugendschutz.mehrschichtig, nur org.edit) meldet die Prüfung einen Hinweis, ohne sie „Achtung\" mit Bestätigungspflicht. Ob der Betrieb tatsächlich mehrschichtig arbeitet, prüft CENTRIC nicht. Stand der Prüflogik: 2. November 2026." }),
   bestand({ id: "JARBSCHG-08", art: null, regeltext: "JArbSchG § 8", typ: "grenzregel", bezeichnung: "Jugendliche: tägliche Höchstarbeitszeit",
     ebene: "bund", quelle: "JArbSchG", fundstelle: "§ 8" }),
   bestand({ id: "JARBSCHG-16", art: null, regeltext: "JArbSchG §§ 16–17", typ: "bestandsregel", bezeichnung: "Jugendliche: Samstag und Sonntag",

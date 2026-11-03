@@ -14,10 +14,10 @@
    Betriebsvereinbarungen können strenger sein; deren Werte kommen aus den
    Einstellungen des Betriebs und überschreiben die Vorgaben.
    ========================================================================== */
-import { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer } from "../server/lib/schutzpruefung.mjs";
+import { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer, jugendMehrschichtig } from "../server/lib/schutzpruefung.mjs";
 /* Die Schutzprüfung und ihre Zeit-Helfer stehen seit WP-11 in
    server/lib/schutzpruefung.mjs — eine Fassung für Oberfläche und Server. */
-export { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer };
+export { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer, jugendMehrschichtig };
 
 /* --------------------------------------------------------------------------
    DATUM UND ZEIT
@@ -692,11 +692,12 @@ export function stundengrenzeFuer(person) {
  * @param {any} dienstart
  * @param {string} datum
  * @param {number | (() => number)} [wochenStunden]
+ * @param {any} [einst] Einstellungen des Betriebs (jugendschutz.mehrschichtig)
  * @returns {{ hindernisse: string[], hinweise: string[], grenze: null | { maxStundenWoche: number, neutral: boolean } }}
  */
-export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0) {
+export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0, einst = undefined) {
   const hindernisse = [], hinweise = [];
-  for (const b of schutzEinsatz(person, dienstart, datum)) {
+  for (const b of schutzEinsatz(person, dienstart, datum, einst)) {
     const satz = String(b.text || "").replace(/\.$/, "");
     (b.sperrt ? hindernisse : hinweise).push(b.neutral ? satz : `${b.regel}: ${satz}`);
   }

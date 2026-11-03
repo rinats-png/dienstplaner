@@ -44,10 +44,10 @@ describe("genau eine Schutzprüfung im Code", () => {
   it("Oberfläche und Server lesen schutzEinsatz", () => {
     const app = alle.find(([p]) => p === "src/App.jsx")[1];
     const fn = (kopf) => app.slice(app.indexOf(kopf), app.indexOf("\n}\n", app.indexOf(kopf)));
-    expect(fn("function hindernisBefunde(")).toContain("schutzEinsatz(p, da, d)");
-    expect(fn("function pruefen(")).toContain("schutzEinsatz(p, da, d)");
+    expect(fn("function hindernisBefunde(")).toContain("schutzEinsatz(p, da, d, m.einstellungen)");
+    expect(fn("function pruefen(")).toContain("schutzEinsatz(p, da, d, m.einstellungen)");
     expect(app).not.toMatch(/einsatzSchutz\(/);                           // keine zweite Abfrage daneben
-    expect(alle.find(([p]) => p === "server/lib/schutzdurchsetzung.mjs")[1]).toContain("schutzEinsatz(person, dienstart, datum)");
+    expect(alle.find(([p]) => p === "server/lib/schutzdurchsetzung.mjs")[1]).toContain("schutzEinsatz(person, dienstart, datum, einst)");
   });
   it("src/regelwerk.js definiert keine eigene Fassung, sondern reicht weiter", () => {
     const rw = alle.find(([p]) => p === "src/regelwerk.js")[1];
