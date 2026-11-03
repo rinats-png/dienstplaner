@@ -12,6 +12,7 @@ import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzT
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
   einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
 import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte } from "./schutzkonflikte-hook.js";
+import { verknuepfungsZiel, verknuepfungAnwenden, ohneVerknuepfung } from "./verknuepfung.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -20869,8 +20870,19 @@ function MMehr({ sitz, akt, oeffnen, aufRechner }) {
 }
 
 /* =========================== MOBILE SCHALE ============================== */
-function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge }) {
-  const [tab, setTab] = useState("heute");
+/** Verknüpfung des Manifests für diese Sitzung (WP-37): Navigation samt Rechten wie in der Oberfläche. */
+function verknuepfungFuer(sitz, ziel) {
+  if (!sitz || !ziel) return null;
+  const betreiber = sitz.rolle === "betreiber";
+  const nav = betreiber ? NAV_BETREIBER : NAV_KUNDE.filter(([, , recht]) => ansichtErlaubt(sitz, recht));
+  const mobil = !betreiber && sitz.person.rolle === "mitarbeiter" && sitz.person.imSchichtdienst !== false;
+  return verknuepfungAnwenden({ betreiber, navIds: nav.map(([id]) => id),
+    personId: betreiber ? null : sitz.person.id, mobil }, ziel);
+}
+
+function MobilSchale({ sitz, akt: aktRoh, aufRechner, dialoge, startTab }) {
+  const [tab, setTab] = useState(startTab || "heute");
+  useEffect(() => { if (startTab) setTab(startTab); }, [startTab]);   // Verknüpfung (WP-37)
   const [blatt, setBlatt] = useState(null);
   const [antrag, setAntrag] = useState(null);
   const m = sitz.mandant, p = sitz.person;
@@ -24819,6 +24831,25 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   useEffect(() => SP.stempelBeobachten(() => setPufferStand((n) => n + 1)), []);
   useEffect(() => SP.stempelSyncEinrichten((ev, d) => { if (aktRef.current) aktRef.current.stempelQuittung(ev, d); }), []);
 
+  /* WP-37: Verknüpfungen des Manifests (/?ansicht=meine, /?ansicht=krank).
+     Einmal je Seitenaufruf, sobald die Person angemeldet ist; die Angabe
+     wird danach aus der Adresszeile entfernt. Es gilt dieselbe Navigation
+     samt Rechten wie sonst — eine nicht erlaubte Ansicht öffnet nichts. */
+  const verknuepfungErledigt = useRef(false);
+  const [mobilStart, setMobilStart] = useState(null);
+  useEffect(() => {
+    if (verknuepfungErledigt.current || !sitz || typeof window === "undefined") return;
+    verknuepfungErledigt.current = true;
+    const ziel = verknuepfungsZiel(window.location.search);
+    if (!ziel) return;
+    try { window.history.replaceState(null, "", ohneVerknuepfung(window.location.href)); }
+    catch { /* Adresszeile bleibt, wie sie ist */ }
+    const e = verknuepfungFuer(sitz, ziel);
+    if (!e) return;
+    if (e.art === "ansicht") { setView(e.id); setDetail(null); if (e.mobilTab) setMobilStart(e.mobilTab); }
+    else if (aktRef.current) aktRef.current.oeffneKrankmeldung(e.personId);
+  }, [sitz]);
+
   /* Zähler an den Navigationspunkten — was Aufmerksamkeit braucht, ist sofort sichtbar.
      Muss vor jedem bedingten Return stehen: Hooks laufen in fester Reihenfolge. */
   const { zaehler, zaehlerWarn } = useMemo(() => {
@@ -24955,7 +24986,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       <style>{bauStyles()}</style>
       <div style={{display:"none"}}><i /><i /><i /><i /></div>
       <div>
-        <MobilSchale sitz={sitz} akt={akt} dialoge={dialogBlock}
+        <MobilSchale sitz={sitz} akt={akt} dialoge={dialogBlock} startTab={mobilStart}
           aufRechner={() => setRechnerAnsicht(true)} />
       </div>
     </div>);
@@ -25297,6 +25328,6 @@ function abmeldenMitHinweis() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+export { verknuepfungFuer, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
   PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };

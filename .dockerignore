@@ -12,6 +12,8 @@ werkzeug/*
 !werkzeug/staging-smoke.mjs
 !werkzeug/staging-geo.mjs
 !werkzeug/staging-aufraeumen.mjs
+# Der Bau setzt die Fassung des Dienstarbeiters (vite.config.js, WP-37).
+!werkzeug/sw-fassung.mjs
 pruefungen
 deploy
 .env

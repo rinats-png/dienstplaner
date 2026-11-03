@@ -287,6 +287,11 @@ jobs:
       - name: ACC45-Werkzeuge
         run: npm run pruefung:acc45-werkzeuge
 
+      # PWA (WP-37): Verknüpfungen, Fassung des Dienstarbeiters aus dem Bau,
+      # Zwischenspeicher je Sitzung und nach Anmeldung leer.
+      - name: PWA (Verknüpfungen, Dienstarbeiter, Zwischenspeicher)
+        run: npm run pruefung:pwa
+
       # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
       # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
       - name: Sicht der Schichtverantwortung
