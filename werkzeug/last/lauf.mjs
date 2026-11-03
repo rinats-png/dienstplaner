@@ -412,9 +412,8 @@ async function s5(t, daten, leitungFuer) {
   const von = Date.now();
   const e = { get: [], put: [] };
   const sicherungZiel = await mkdtemp(path.join(tmpdir(), "centric-last-sich-"));
-  let sicherung = null;
-  const sicherungLauf = (async () => {
-    await warte(15000);
+  let sicherung = null, sicherungRuhig = null;
+  const sichern = async () => {
     const t0 = Date.now();
     const r = await new Promise((fertig) => {
       const k = spawn(process.execPath, ["werkzeug/ablage-sicherung.mjs", "sichern", "--quelle", daten, "--ziel", sicherungZiel],
@@ -422,20 +421,26 @@ async function s5(t, daten, leitungFuer) {
       let o = ""; k.stdout.on("data", (d) => { o += d; }); k.stderr.on("data", (d) => { o += d; });
       k.on("close", (code) => fertig({ code, o }));
     });
-    sicherung = { exit: r.code, sekunden: Math.round((Date.now() - t0) / 100) / 10,
-      versuche: (r.o.match(/Versuch \d+\//g) || []).length + 1, letzteZeile: r.o.trim().split("\n").slice(-2).join(" | ").slice(0, 200) };
-  })();
+    return { exit: r.code, sekunden: Math.round((Date.now() - t0) / 100) / 10,
+      versuche: (r.o.match(/Versuch \d+\//g) || []).length + 1,
+      anfang: r.o.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300),
+      letzteZeile: r.o.trim().split("\n").slice(-2).join(" | ").slice(0, 200) };
+  };
+  /* Einmal mitten in der Last, einmal danach im Ruhezustand (derselbe Datenbestand). */
+  const sicherungLauf = (async () => { await warte(15000); sicherung = await sichern(); })();
   const [stempel] = await Promise.all([
     stempelLast({ "stempel-a": t.stempel["stempel-a"], "stempel-b": t.stempel["stempel-b"] }, 100, P.s5Min, "ende"),
     planerLauf(t, P.s5Min, e),
     sicherungLauf,
   ]);
   const bis = Date.now();
+  await warte(2000);
+  sicherungRuhig = await sichern();
   await rm(sicherungZiel, { recursive: true, force: true });
   const v = await verlusteZaehlen(["stempel-a", "stempel-b"], stempel.ergebnisse, "ende", leitungFuer);
   return { stempel: { auftraege: stempel.auftraege, ...auswerten(stempel.ergebnisse.map((x) => x.r)), ...v },
     put: auswerten(e.put), konflikte409: e.put.filter((p) => p.status === 409).length, get: auswerten(e.get),
-    sicherung, server: await messung(von, bis) };
+    sicherung, sicherungRuhig, server: await messung(von, bis) };
 }
 
 /* ------------------------------------------------------------------ */
