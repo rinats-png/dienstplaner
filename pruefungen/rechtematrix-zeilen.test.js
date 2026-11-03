@@ -85,7 +85,7 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   vorname: M("VORNAME-B1"), imSchichtdienst: true, springer: false, teilzeit: false, wochenstunden: 38.5, anonym: false,
   austritt: M("AUSTRITT-B1"),
   qualNachweise: [{ qualId: "pfk", ablauf: "2030-01-01", datei: M("DATEI-B1") }, { qualId: "masern", vorhanden: true }],
-  kompetenzNachweise: [{ id: M("KOMPETENZ-B1") }], verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-B1") },
+  kompetenzNachweise: [{ id: M("KOMPETENZ-B1"), qualifikationsgrundlage: { art: "schulung", bezug: M("QUALGRUNDLAGE-B1") } }], verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-B1") },
   wunschfrei: [M("WUNSCHFREI-B1")], stundenuebertrag: M("STUNDEN-B1"), urlaubsanspruch: M("URLAUB-B1"),
   urlaubsuebertrag: M("URLAUBSUEBERTRAG-B1"), einarbeitung: { bis: M("EINARBEITUNG-B1") },
   notizen: [{ text: M("NOTIZEN-AN-B1") }], urlaubshinweis: M("URLAUBSHINWEIS-B1"), personalnummer: M("PERSONALNUMMER-B1"),
@@ -100,7 +100,7 @@ const A1 = () => person("a1", "mitarbeiter", "e1", {
   telefon: M("TELEFON-A1"), mobil: M("MOBIL-A1"), anschrift: M("ANSCHRIFT-A1"), email: `${M("EMAIL-A1")}@x.de`,
   notfallkontakt: M("NOTFALL-A1"), iban: M("IBAN-A1"),
   stundenuebertrag: M("STUNDEN-A1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-A1") },
-  kompetenzNachweise: [{ id: M("KOMPETENZ-A1") }],
+  kompetenzNachweise: [{ id: M("KOMPETENZ-A1"), qualifikationsgrundlage: { art: "schulung", bezug: M("QUALGRUNDLAGE-A1") } }],
   qualNachweise: [{ qualId: "masern", vorhanden: true, datei: M("DATEI-A1") }],
   mutterschutz: true, schwerbehindert: true, geburtstag: "2010-07-17", nachtvorsorge: "2024-11-13",
   mutterschutzEinwilligungen: [{ art: "sonntag", ab: tag(-20), bis: tag(40) }],
@@ -360,6 +360,7 @@ const ZEILEN = {
       expect(mk("NOTRUF-BEREICH")(s), "aus dem Bereich").toBe(true);
     } } },
   "Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan)": { sonden: [mk("BEREICH-NAME-E1")] },
+  "Qualifikationsgrundlage der befähigten Person (`kompetenzNachweise[].qualifikationsgrundlage`; Branchenmodul Maschinenqualifikation) — fremde nur Planung, Leitung und Kundenrolle": { sonden: [mk("QUALGRUNDLAGE-B1"), mk("QUALGRUNDLAGE-A1")] },
   "Anlagen: Mindestbesetzung, Laufzeitkalender, Grundlage (`betriebsmittel` mit `art: \"anlage\"`; Branchenmodul Anlagen) — den Namen der Anlage sehen alle Ausgelieferten, den Bedarf nur Planung und Leitung": {
     sonden: [mk("ANLAGEN-GRUNDLAGE"), mk("ANLAGEN-AUSNAHME"), mk("ANLAGEN-DIENST")] },
   "Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen": {

@@ -108,7 +108,16 @@ FREMD_MITARBEITER.qualNachweise = nachweiseFremd;
 /* Der Betriebsrat sieht, was Personal, Qualifikationsmatrix, Nachweise und
    Kompetenzen zeigen — dieselben Nachweise wie Beschäftigte, dazu die
    Freigaben je Gerät. */
-const FREMD_BETRIEBSRAT = { ...FREMD_MITARBEITER, kompetenzNachweise: VOLL };
+const FREMD_BETRIEBSRAT = { ...FREMD_MITARBEITER, kompetenzNachweise: (p) => liste(p.kompetenzNachweise).map(nachweisOhneGrundlage) };
+
+/* Qualifikationsgrundlage der befähigten Person (WP-19.11, M3): Personenbezug am Nachweis. Fremde sehen sie nicht —
+   weder der Betriebsrat noch die Schichtverantwortung; Planung, Leitung, Kundenrolle und die Person selbst schon. */
+function nachweisOhneGrundlage(n) {
+  if (!n || typeof n !== "object" || !Object.prototype.hasOwnProperty.call(n, "qualifikationsgrundlage")) return n;
+  const r = { ...n };
+  delete r.qualifikationsgrundlage;
+  return r;
+}
 
 /** Alle bekannten Personenfelder — für die Katalogprüfung. Was hier steht
     und weder in EIGENE_PERSON noch in den Fremd-Listen, geht an niemanden
@@ -219,6 +228,7 @@ export function schichtPersonSicht(p, ctx) {
   if (umfang === "eigen") return { ...nimm(p, EIGENE_PERSON), sichtbereich: "eigen" };
   if (umfang === "fremd") return { ...personSicht(p, { ...ctx, rolle: "mitarbeiter" }), sichtbereich: "fremd" };
   const aus = nimm(p, umfang === "bereich" ? BEREICH_PERSON : POOL_PERSON);
+  if (Array.isArray(aus.kompetenzNachweise)) aus.kompetenzNachweise = aus.kompetenzNachweise.map(nachweisOhneGrundlage);
   if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
   if (aus.einschraenkungen && typeof aus.einschraenkungen === "object" && !Array.isArray(aus.einschraenkungen))
     aus.einschraenkungen = nimm(aus.einschraenkungen, EINSCHRAENKUNGEN_SCHICHT);

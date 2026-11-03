@@ -298,6 +298,10 @@ export function anonymisiere(p) {
        ausgeschiedenen Menschen ohne jeden Zweck. */
     einschraenkungen: {},
     schutz: undefined,
+    /* Qualifikationsgrundlage der befähigten Person (WP-19.11): Personenbezug, ohne Zweck nach dem Ausscheiden.
+       Kompetenz und Zeitraum bleiben, damit die Vergangenheit stimmt. */
+    ...(Array.isArray(p.kompetenzNachweise)
+      ? { kompetenzNachweise: p.kompetenzNachweise.map((n) => { if (!n || typeof n !== "object") return n; const r = { ...n }; delete r.qualifikationsgrundlage; return r; }) } : {}),
     anonym: true,
     anonymSeit: undefined,
   };

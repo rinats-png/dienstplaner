@@ -74,6 +74,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Qualifikationsgrundlage der befähigten Person (`kompetenzNachweise[].qualifikationsgrundlage`; Branchenmodul Maschinenqualifikation) — fremde nur Planung, Leitung und Kundenrolle | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anlagen: Mindestbesetzung, Laufzeitkalender, Grundlage (`betriebsmittel` mit `art: "anlage"`; Branchenmodul Anlagen) — den Namen der Anlage sehen alle Ausgelieferten, den Bedarf nur Planung und Leitung | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
 | Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -406,6 +407,15 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
   nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
   (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
+  *WP-19.11:* Neues Feld `qualifikationsgrundlage` (Art, Bezug, Datum) am Nachweis der Kompetenz „befähigte Person“: Personenbezug —
+  sehen dürfen es Planung, Leitung, Kundenrolle und die Person selbst, nicht Betriebsrat und Schichtverantwortung
+  (`nachweisOhneGrundlage` in `server/lib/sicht.mjs`; Matrixzeile oben); die Anonymisierung entfernt es
+  (`anonymisiere`). Das Unterweisungsintervall ist der Regelwert `MASCHQUAL-INTERVALL-01` unter `einstellungen.regelwerte`
+  (`server/lib/modul-regelwerte.mjs`): schreiben nur mit `org.edit`, für andere bleibt der Stand; Lesen wie die übrigen
+  Einstellungen. Formfehler und ein Intervall über einer geprüften Höchstgrenze meldet der Server mit 422. Die Matrix
+  zeigt je Rolle: Planung, Leitung, Kundenrolle alle Personen; Beschäftigte und Schichtverantwortung die eigene Zeile;
+  Betriebsrat Zahlen je Anlage (Gruppen unter 3 als „<3“, keine Person); jede andere Rolle nichts (`matrixAnsicht`).
+  Geprüft in `pruefungen/modul-maschinenqual-fertig.test.js`, `modul-maschinenqual-http.test.js`, `modul-regelwerte-industrie.test.js`.
 - *Geteilte Dienste* (`server/lib/modul-geteilterdienst.mjs`): keine neuen Betriebsfelder. Das Feld `zweiterAbschnitt` einer
   Dienstart gibt es im Bestand; Dienstarten ändern nur Rollen mit `org.edit` oder `pattern.edit` (WP-22). Der Server
   weist eine falsche Form des zweiten Abschnitts ab (`geteilterdienstZusammen`: Uhrzeiten, Lücke, höchstens 24 Stunden

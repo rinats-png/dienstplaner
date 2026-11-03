@@ -28,6 +28,7 @@ import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./s
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
+import { industrieRegelwerteZusammen } from "./modul-regelwerte.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { postenZusammen } from "./modul-posten.mjs";
@@ -1305,6 +1306,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };
       geschickt = module.mandant;
+      /* Regelwerte der Industriemodule (WP-19.11): nur org.edit, Form 422, Wer und Wann vom Server; Einträge des Kerns gehen durch. */
+      const regelwerte = industrieRegelwerteZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
+      if (regelwerte.grund) return { verweigert: regelwerte.grund, status: regelwerte.status };
+      geschickt = regelwerte.mandant;
       /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
       const anlagen = anlagenZusammen(geschickt, ort.betrieb);
       if (anlagen.grund) return { verweigert: anlagen.grund, status: anlagen.status };
