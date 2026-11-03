@@ -72,9 +72,9 @@ Strukturelle Änderung der Schichtfolge (ungünstigster Fall), warm, Minimum aus
 
 | Fall | lokal (Windows, belastet) | CI |
 |---|---|---|
-| 300 Personen, 121 Tage | 330–520 ms | siehe Bericht |
-| 2 000 Personen, 300 geschützt, 20 000 Abweichungen | 1,5–2,5 s | siehe Bericht |
-| Event-Loop bei 2 000 Personen (asynchron) | längster Block ≤ 50 ms | siehe Bericht |
+| 300 Personen, 121 Tage | 330–520 ms | **71,3 ms** warm, 136,9 ms kalt (20 520 Einteilungen) |
+| 2 000 Personen, 300 geschützt, 20 000 Abweichungen | 1,5–2,5 s | 429,8 ms warm, 448,4 ms kalt (136 800 Einteilungen) — synchron gerechnet |
+| Event-Loop bei 2 000 Personen (asynchron, wie der Server) | längster Block ≤ 50 ms | längste Verzögerung **23,7 ms**, längster Rechenblock 23 ms, gesamt 413 ms |
 
 ## Grenzen
 
