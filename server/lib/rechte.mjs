@@ -504,8 +504,14 @@ function bestandFuerRolleKern(bestand, sitzung) {
   /* Beschäftigte und Betriebsrat: nur, was der Katalog in sicht.mjs
      ausdrücklich freigibt. Unbekannte Felder gehen nicht hinaus — weder
      ganz oben noch im Betrieb noch an einer Person. */
-  if (SICHT_ROLLEN.includes(rolle))
-    return bestandSicht(bestand, sitzung, eigenerMandant(bestand, sitzung));
+  if (SICHT_ROLLEN.includes(rolle)) {
+    const eigener = eigenerMandant(bestand, sitzung);
+    const aus = bestandSicht(bestand, sitzung, eigener);
+    /* WP-27: Die Auswertung für den Betriebsrat steht NICHT im Bestand — sie hat
+       einen eigenen Weg (GET /api/br-auswertung, daten.mjs), der im Hintergrund
+       rechnet und nie den Prozess blockiert. */
+    return aus;
+  }
 
   /* Die Schichtverantwortung: ebenso über einen Katalog (SCHICHT), gestuft
      nach eigener Person, eigenem Bereich, Springer-Pool und fremd. */
@@ -1077,9 +1083,10 @@ function abgeleiteteEntfernen(uebermittelt) {
     ? Object.fromEntries(Object.entries(p).filter(([k]) => !ABGELEITETE_PERSONENFELDER.includes(k))) : p);
   /* sichtIstDaten (E1) entsteht nur in der Antwort — wie die abgeleiteten
      Personenfelder wird es vor dem Zusammenführen entfernt, nie gespeichert. */
+  /* Ebenso die Auswertung für den Betriebsrat (WP-27). */
   const ohneVermerk = (m) => {
-    if (!m || typeof m !== "object" || !("sichtIstDaten" in m)) return m;
-    const { sichtIstDaten, ...rest } = m; // eslint-disable-line no-unused-vars
+    if (!m || typeof m !== "object" || (!("sichtIstDaten" in m) && !("auswertungBetriebsrat" in m))) return m;
+    const { sichtIstDaten, auswertungBetriebsrat, ...rest } = m; // eslint-disable-line no-unused-vars
     return rest;
   };
   return { ...uebermittelt, mandanten: uebermittelt.mandanten.map((m0) => {

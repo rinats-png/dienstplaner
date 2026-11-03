@@ -867,7 +867,10 @@ const ABW = [
   { id: "ausgleich", label: "Freizeitausgleich", kurz: "A", farbe: "#0369A1", urlaub: false, bezahlt: false, rang: 2 },
   ...ABW_WEITERE,
 ];
-const abwArt = (id) => ABW.find((a) => a.id === id) || ABW[4];
+/* WP-27: Wer Abwesenheiten nur gekürzt bekommt (Betriebsrat, Beschäftigte für
+   fremde Personen), sieht „abwesend" — nicht „Sonstiges". */
+const ABW_NEUTRAL = { id: "abwesend", label: "abwesend", kurz: "–", farbe: ABW[3].farbe, urlaub: false, bezahlt: true, rang: 1 };   // Farbe wie „Freistellung“
+const abwArt = (id) => ABW.find((a) => a.id === id) || (id === "abwesend" ? ABW_NEUTRAL : ABW[4]);
 
 /* ------------------------------- Zyklusvorlagen --------------------------- */
 const VORLAGEN = [
@@ -1661,8 +1664,9 @@ function urlaubskonto(m, p, jahr) {
       }
       genommen += tage; zeilen.push({ ...a, tage });
     }
-    const anspruch = p.urlaubsanspruch + (p.urlaubsuebertrag || 0);
-    return { anspruch, genommen, rest: anspruch - genommen, zeilen };
+    /* WP-27: Ohne Kontoangaben (Betriebsrat) kein Anspruch — nicht NaN. */
+    const anspruch = typeof p.urlaubsanspruch === "number" ? p.urlaubsanspruch + (p.urlaubsuebertrag || 0) : null;
+    return { anspruch, genommen, rest: anspruch === null ? null : anspruch - genommen, zeilen };
   });
 }
 function stundenkonto(m, p, ym) {
@@ -10807,6 +10811,8 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
      ist gleitend und reicht weit zurück. Deshalb steht er über den
      Monatsbefunden, nicht zwischen ihnen. */
   const ausgleich = useMemo(() => ausgleichVerstoesse(m, bis), [m, ym]);
+  /* WP-27: Ohne Ist-Daten (Betriebsrat) ist der Ausgleichszeitraum nicht bewertbar — nie „eingehalten". */
+  const ohneIstAusgleich = !!(m.sichtIstDaten && m.sichtIstDaten.umfang === "keine");
   const ausgleichWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
 
   return (
@@ -10850,14 +10856,14 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
       })()}
 
       {/* --- § 3 Arbeitszeitgesetz --- */}
-      <Card style={{ marginBottom: 20, borderLeft: `3px solid ${ausgleich.length ? C.danger : C.ok}` }}>
+      <Card style={{ marginBottom: 20, borderLeft: `3px solid ${ohneIstAusgleich ? C.line : ausgleich.length ? C.danger : C.ok}` }}>
         <div style={{ padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline",
             gap: 14, flexWrap: "wrap", marginBottom: 10 }}>
             <div style={{ fontSize: 15.5, fontWeight: 650 }}>
               Ausgleichszeitraum nach § 3 Arbeitszeitgesetz</div>
-            <Pill tone={ausgleich.length ? "danger" : "ok"} size="sm">
-              {ausgleich.length ? `${ausgleich.length} überschritten` : "eingehalten"}</Pill>
+            <Pill tone={ohneIstAusgleich ? undefined : ausgleich.length ? "danger" : "ok"} size="sm">
+              {ohneIstAusgleich ? "nicht bewertbar" : ausgleich.length ? `${ausgleich.length} überschritten` : "eingehalten"}</Pill>
           </div>
           <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px", maxWidth: "68ch" }}>
             Acht Stunden werktäglich, verlängerbar auf zehn — sofern im Durchschnitt
@@ -10866,7 +10872,9 @@ function Pruefung({ sitz, ym, setYm, oeffneTag }) {
             zulässig aussehen und den Zeitraum trotzdem reißen. Gerechnet wird gleitend
             bis zum {fKurz(bis)}, Sonntage zählen nicht als Werktage.
           </p>
-          {ausgleich.length === 0
+          {ohneIstAusgleich
+            ? <div style={{ fontSize: 13.5, color: C.dim }}>{ISTDATEN_TEXT} Der Durchschnitt braucht die tatsächlichen Arbeitszeiten.</div>
+            : ausgleich.length === 0
             ? <div style={{ fontSize: 13.5, color: C.dim }}>
                 Alle Beschäftigten liegen im Durchschnitt bei höchstens {DURCHSCHNITT_TAG} Stunden
                 je Werktag.</div>
@@ -12495,7 +12503,7 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
                   {p.springer && <Pill size="sm" tone="violet">Springer</Pill>}
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
-                    {ohneIst ? `Ist nicht verfügbar · Soll ${n1(jahresSoll)} h` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`} · Urlaub {url.genommen}/{url.anspruch}</span>
+                    {ohneIst ? `Ist nicht verfügbar · Soll ${n1(jahresSoll)} h` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`}{url.anspruch === null ? "" : ` · Urlaub ${url.genommen}/${url.anspruch}`}</span>
                 </div>
                 {/* Zwölf Blöcke statt 365 Härchen.
 
@@ -17686,7 +17694,7 @@ function Einstellungen({ sitz, akt, gehZu }) {
           <Sel value={p.startansicht || "start"} aria-label="Startansicht"
             onChange={(e) => { akt.setzeMeineEinstellung("startansicht", e.target.value);
               melde("Startansicht geändert."); }}>
-            {(sitz.mandant ? NAV_KUNDE.filter((v) => !v[2] || darf(sitz, v[2])) : [])
+            {(sitz.mandant ? NAV_KUNDE.filter((v) => ansichtErlaubt(sitz, v[2])) : [])
               .slice(0, 12).map(([id, label]) => (
                 <option key={id} value={id}>{label}</option>))}
           </Sel>
@@ -22273,6 +22281,62 @@ async function selbsttestLaden() {
 
 
 
+/**
+ * Auswertung für den Betriebsrat (WP-27): Summen je Monat und Einheit aus dem
+ * vollständigen Bestand, vom Server gerechnet (server/lib/br-auswertung.mjs).
+ * Unter drei Personen stehen keine Zahlen. Mit export.data als CSV — nur diese
+ * Aggregate, nie Personen.
+ */
+function BetriebsratAuswertung({ sitz, melde }) {
+  const m = sitz.mandant;
+  /* Der Server rechnet im Hintergrund (GET /api/br-auswertung): bis das Ergebnis da ist, kommt „wird berechnet“ — dann wiederholen. */
+  const [stand, setStand] = useState({ status: "laedt" });
+  useEffect(() => {
+    let vorbei = false, uhr = null;
+    const hole = async () => {
+      try {
+        const r = await SP.brAuswertung();
+        if (vorbei) return;
+        setStand(r);
+        if (r.status === "berechnet") uhr = setTimeout(hole, r.retryNachMs || 1500);
+      } catch (e) { if (!vorbei) setStand({ status: "fehler", text: e.message }); }
+    };
+    hole();
+    return () => { vorbei = true; if (uhr) clearTimeout(uhr); };
+  }, [m.id]);
+  const a = stand.status === "fertig" ? stand.auswertung : null;
+  const berechnetUm = stand.status === "fertig" && stand.berechnetUm ? new Date(stand.berechnetUm).toLocaleString("de-DE") : null;
+  const einheit = (id) => (id === null ? "Betrieb gesamt" : ((m.einheiten || []).find((e) => e.id === id) || {}).name || id);
+  const SPALTEN = [["personen", "Personen"], ["dienste", "Dienste"], ["nachtdienste", "Nachtdienste"], ["sonntagsdienste", "Sonntagsdienste"],
+    ["langeDienste", "Dienste über 10 h"], ["ruhezeitUnter11", "Ruhezeit unter 11 h"], ["istStunden", "Ist-Stunden"], ["istErfasst", "Ist erfasst"]];
+  if (stand.status === "laedt" || stand.status === "berechnet")
+    return <Card><Leer titel="Die Auswertung wird berechnet" text="Das dauert bei großen Betrieben einen Moment. Die Seite aktualisiert sich von selbst." /></Card>;
+  if (!a || !Array.isArray(a.zeilen))
+    return <Card><Leer titel="Keine Auswertung" text={stand.text || "Die Auswertung liefert der Server nur an den Betriebsrat."} /></Card>;
+  const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–") + (z.istKorrigiert && (k === "istStunden" || k === "istErfasst") ? " †" : ""));   // † = seit der ersten Ausgabe wurden Zeiten korrigiert; die Zahl bleibt, wie sie ausgegeben wurde
+  const csv = () => {
+    const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].join(";");
+    const reihen = a.zeilen.map((z) => [z.monat, einheit(z.einheitId), ...SPALTEN.map(([k]) => zelle(z, k))].join(";"));
+    if (lade(`auswertung-betriebsrat-${a.stand}.csv`, [kopf, ...reihen].join("\n"), "text/csv;charset=utf-8")) melde("Auswertung als CSV gespeichert.");
+  };
+  return (
+    <div>
+      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}`}
+        right={darf(sitz, "export.data") && <Btn onClick={csv}>Als CSV exportieren</Btn>}>Auswertung</H1>
+      <Card style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>{["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].map((l) => (
+            <th key={l} style={{ textAlign: "left", padding: "8px 10px", borderBottom: `1px solid ${C.line}` }}>{l}</th>))}</tr></thead>
+          <tbody>{a.zeilen.map((z) => (
+            <tr key={`${z.monat}|${z.einheitId}`} style={{ color: z.gesperrt ? C.dim : undefined }}>
+              <td style={{ padding: "6px 10px" }}>{z.monat}</td><td style={{ padding: "6px 10px" }}>{einheit(z.einheitId)}</td>
+              {SPALTEN.map(([k]) => <td key={k} style={{ padding: "6px 10px", ...NUM }}>{zelle(z, k)}</td>)}
+            </tr>))}</tbody>
+        </table>
+      </Card>
+    </div>);
+}
+
 /* ================================ ANWENDUNG ============================== */
 const SPEICHER = "schichtwerk:v5";
 function lade(name, inhalt, typ) {
@@ -22315,7 +22379,7 @@ const BEREICHE = [
     ["jahr", "Jahresansicht", "plan.view.unit"],
     ["bereitschaft", "Bereitschaft", "plan.view.unit"],
     ["selbstplan", "Selbstplanung", "plan.edit.unit"],
-    ["sonder", "Sondereinsätze", "plan.view.unit"],
+    ["sonder", "Sondereinsätze", "OHNE_BR:plan.view.unit"],   // WP-27: Daten bekommt der Betriebsrat nicht — leer statt irreführend,
     ["folge", "Schichtfolge", "pattern.edit"],
   ]},
   { id: "anliegen", label: "Zu entscheiden", views: [
@@ -22334,16 +22398,19 @@ const BEREICHE = [
     ["kompetenzen", "Kompetenzen", "staff.view"],
     ["einarbeitung", "Einarbeitung", "staff.view"],
     ["verteilung", "Verteilung", "staff.view"],
-    ["mittel", "Betriebsmittel", "plan.view.unit"],
+    ["mittel", "Betriebsmittel", "OHNE_BR:plan.view.unit"],
   ]},
   { id: "auswertung", label: "Nachsehen", views: [
     ["pruef", "Prüfung", "plan.view.all"],
+    /* WP-27: Auswertung für den Betriebsrat — nur Aggregate (audit.view). */
+    ["brauswertung", "Auswertung (Betriebsrat)", "BR:audit.view"],
     ["untergrenzen", "Untergrenzen", "plan.view.unit"],
-    ["lenkzeiten", "Lenkzeiten", "plan.view.unit"],
+    ["lenkzeiten", "Lenkzeiten", "OHNE_BR:plan.view.unit"],
     ["belastung", "Belastung", "plan.view.unit"],
     ["belastbarkeit", "Belastbarkeit", "plan.edit.unit"],
     ["planstand", "Planstand", "plan.view.unit"],
-    ["nachweis", "Leistungsnachweis", "plan.view.unit"],
+    /* WP-27: Ohne Übergaben (die der Betriebsrat nicht bekommt) wäre der Nachweis falsch — gesperrt. */
+    ["nachweis", "Leistungsnachweis", "OHNE_BR:plan.view.unit"],
     ["abrechnung", "Abrechnungsdaten", "account.view.all"],
   ]},
   { id: "verwaltung", label: "Verwaltung", views: [
@@ -22362,6 +22429,20 @@ const BEREICHE = [
   ]},
 ];
 const NAV_KUNDE = BEREICHE.flatMap((b) => b.views);
+
+/** Darf diese Sitzung die Ansicht öffnen? Die dritte Spalte in BEREICHE. */
+function ansichtErlaubt(sitz, recht) {
+  /* WP-27: „BR:recht" nur für den Betriebsrat mit dem Recht; „OHNE_BR:recht"
+     nicht für ihn — dort fehlen ihm die Daten, die Ansicht wäre falsch oder leer. */
+  if (recht && recht.startsWith("BR:")) return sitz.person.rolle === "betriebsrat" && darf(sitz, recht.slice(3));
+  if (recht && recht.startsWith("OHNE_BR:")) return sitz.person.rolle !== "betriebsrat" && darf(sitz, recht.slice(8));
+  if (recht === "SCHICHT") return sitz.person.imSchichtdienst !== false;   // Geschäftszimmer fährt keine Schicht
+  if (recht && recht.startsWith("PAKET:")) {
+    const [paket, zusatz] = recht.slice(6).split("|");
+    return kann(sitz.mandant, paket) && (!zusatz || darf(sitz, zusatz));
+  }
+  return !recht || darf(sitz, recht);
+}
 
 
 /**
@@ -24722,14 +24803,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
   if (!sitz) return (<><style>{bauStyles()}</style><Anmeldung db={db} onLogin={akt.anmelden} /></>);
 
   const istBetreiber = sitz.rolle === "betreiber";
-  const erlaubt = ([, , recht]) => {
-    if (recht === "SCHICHT") return sitz.person.imSchichtdienst !== false;   // Geschäftszimmer fährt keine Schicht
-    if (recht && recht.startsWith("PAKET:")) {
-      const [paket, zusatz] = recht.slice(6).split("|");
-      return kann(sitz.mandant, paket) && (!zusatz || darf(sitz, zusatz));
-    }
-    return !recht || darf(sitz, recht);
-  };
+  const erlaubt = ([, , recht]) => ansichtErlaubt(sitz, recht);
   const nav = istBetreiber ? NAV_BETREIBER : NAV_KUNDE.filter(erlaubt);
   const bereiche = istBetreiber ? [] : BEREICHE
     .map((b) => ({ ...b, views: b.views.filter(erlaubt) })).filter((b) => b.views.length);
@@ -24974,6 +25048,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             {aktiveView === "buch" && <Dienstbuch sitz={sitz} akt={akt} />}
             {aktiveView === "abrechnung" && <Abrechnungsdaten sitz={sitz} ym={ym} akt={akt} />}
             {aktiveView === "pruef" && <Pruefung sitz={sitz} ym={ym} setYm={setYm} oeffneTag={setTag} />}
+            {aktiveView === "brauswertung" && <BetriebsratAuswertung sitz={sitz} melde={melde} />}
             {aktiveView === "betrieb" && <Betrieb sitz={sitz} akt={akt} />}
           </>)}
           </main>

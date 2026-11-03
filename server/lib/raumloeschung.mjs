@@ -205,6 +205,9 @@ export async function raumLoeschen(store, sitzungen, raum) {
     }
   } catch (e) { fehler.push({ schluessel: "feed:*", grund: grundVon(e) }); }
 
+  /* WP-27: Das eingefrorene Ist der Betriebsrat-Auswertung (brist:<raum>:…) gehört zum Raum. */
+  await praefixWeg(`brist:${encodeURIComponent(raum)}:`);
+
   /* 5. Der Vermerk in der Nachfassliste */
   try {
     const liste = await store.get("selbststarts", { type: "json" });
