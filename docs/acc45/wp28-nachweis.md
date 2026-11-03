@@ -221,3 +221,13 @@ Nach WP-17 (Serverdatum) unverändert erneut ausführen; die Werkzeug-Aufrufe sc
 `ci-lauf2-91499a9.json`, `ci-s6-5e2921c.json` (Linux) sowie `laptop-kurz.json`, `laptop-s1-s5.json`, `laptop-s6.json`
 (Windows). Bereinigt: lokale Pfade durch `<pfad>` ersetzt; keine Adressen, Geheimnisse oder Zugangscodes (die Codes
 der Messdaten sind erfunden und stehen nicht in den Ergebnissen).
+
+## Nachtrag nach unabhängigem Review und WP-47 (2026-11-03)
+
+Review (Agent F): integrierbar mit Auflagen, keine Befunde im Werkzeug- oder Workflow-Code (Ziel nur lokal, `workflow_dispatch`, Actions per SHA gepinnt, Rohdaten ohne Personendaten, Codes oder Hosts).
+
+1. **Stand vor WP-47.** Die Befunde 1, 3 und 4 sowie die Vorschläge in Abschnitt 5 sind durch WP-47 (Stempel-Lastgrenzen je Person und Raum, Entlastung gelungener Anmeldungen, Lastgrenze je Betrieb und je Code) umgesetzt, siehe `docs/acc45/wp47-nachweis.md`. Die Tabellen in den Abschnitten 2.1, 2.4 und 5 zeigen den Stand **vor** WP-47. Nachmessung nach WP-47 (Linux, `lauf.mjs --nur S1,S4`, Rohdaten `docs/acc45/wp47-rohdaten/`): 200 Stempel eines Betriebs 200 × 200 statt 120 × 200 und 80 × 429; Anmeldewelle ohne 429; Ratversuche unverändert ab dem 9. gebremst.
+2. **Schwelle „≈ 800 Stempel/min“ und Raumdeckel.** Die Schwelle im Skalierungsentscheid gilt für den ganzen Dienst (alle Räume zusammen). Die Raumdeckel aus WP-47 (900/240/200 je Raum nach Betriebsgröße) begrenzen einen einzelnen Raum und widersprechen ihr nicht; viele Räume gleichzeitig können die Schwelle zusammen erreichen.
+3. **Nicht nachgemessen nach WP-47:** S2 (PUT-Kontingent getrennt) und S5 (Mischlast mit Sicherung). Nachlauf als Backlog-Punkt; kein Blocker, da WP-47 die Dateizugriffe je Stempel nur verringert.
+4. **Folgepunkte aus den Laptop-Befunden 6 und 7** (nicht Teil dieses Pakets): `ENOENT` in der Sicherung; bei einem 500 mit gespeichertem Stempel darf der Client nicht blind wiederholen (Doppelstempel-Schutz über `clientEventId` aus WP-07 vorhanden, Verhalten prüfen).
+5. Kosmetik: Der Kommentar in `werkzeug/last/lauf.mjs` (Schreibbremse 120/min je Raum) beschreibt den Stand vor WP-47; die Eingabebeschreibung „voll ≈ 35 min“ weicht vom gemessenen ≈ 24 min ab.
