@@ -153,11 +153,11 @@ describe("WP-47 · Stempeln: eigene Bremsarten", () => {
     imFrischenFenster(6);
     const p1 = S.kennungPerson({ bestand: "raum-s", mandantId: "m1", person: "p1", rolle: "mitarbeiter" });
     const p2 = S.kennungPerson({ bestand: "raum-s", mandantId: "m1", person: "p2", rolle: "mitarbeiter" });
-    for (let i = 1; i <= 10; i++) expect((await S.bremse("stempeln", p1)).frei, `Stempel ${i}`).toBe(true);
-    const elf = await S.bremse("stempeln", p1);
+    for (let i = 1; i <= 10; i++) expect(S.lastbremse("stempeln", p1).frei, `Stempel ${i}`).toBe(true);
+    const elf = S.lastbremse("stempeln", p1);
     expect(elf.frei).toBe(false);
     expect(elf.wartet).toBeGreaterThan(0);
-    expect((await S.bremse("stempeln", p2)).frei).toBe(true);
+    expect(S.lastbremse("stempeln", p2).frei).toBe(true);
   });
 
   it("die Kennung je Person trägt keinen Klartext und unterscheidet Person und Raum", () => {
@@ -169,12 +169,23 @@ describe("WP-47 · Stempeln: eigene Bremsarten", () => {
     expect(S.kennungPerson({ bestand: "raum-geheim", mandantId: "m1", person: "p7", rolle: "mitarbeiter" })).toBe(a);
   });
 
-  it("der Raumdeckel nimmt die vorgegebene Zahl: n frei, danach gebremst", async () => {
+  it("der Raumdeckel nimmt die vorgegebene Zahl: n frei, danach gebremst; nach Ablauf der Sperre wieder frei", async () => {
     imFrischenFenster(7);
-    for (let i = 1; i <= 5; i++) expect((await S.bremse("stempeln-raum", "b:deckel", undefined, { versuche: 5 })).frei, `Stempel ${i}`).toBe(true);
-    const sechs = await S.bremse("stempeln-raum", "b:deckel", undefined, { versuche: 5 });
+    for (let i = 1; i <= 5; i++) expect(S.lastbremse("stempeln-raum", "b:deckel", 5).frei, `Stempel ${i}`).toBe(true);
+    const sechs = S.lastbremse("stempeln-raum", "b:deckel", 5);
     expect(sechs.frei).toBe(false);
     expect(sechs.wartet).toBeGreaterThan(0);
+    expect(S.lastbremse("stempeln-raum", "b:deckel", 5).frei, "noch gesperrt").toBe(false);
+    vi.setSystemTime(Date.now() + (S.GRENZEN["stempeln-raum"].sperre + 1) * 1000);
+    expect(S.lastbremse("stempeln-raum", "b:deckel", 5).frei, "nach der Sperre frei").toBe(true);
+  });
+
+  it("die Lastbremse schreibt nichts in die Ablage (kein Vermerk je Stempel)", async () => {
+    const { readdir } = await import("node:fs/promises");
+    const vorher = await readdir(path.join(wurzel, "centric-takt")).catch(() => []);
+    for (let i = 0; i < 20; i++) S.lastbremse("stempeln", `p:ohne-platte-${i}`);
+    const nachher = await readdir(path.join(wurzel, "centric-takt")).catch(() => []);
+    expect(nachher.length).toBe(vorher.length);
   });
 
   it("der Raumdeckel richtet sich nach der Betriebsgröße — Hälfte der kleinsten gemessenen Obergrenze", () => {
@@ -275,7 +286,7 @@ describe("WP-47 · Stempeln über HTTP", () => {
        vorab über die Deckelgrenze füllen (mit großzügigerer Grenze, damit das Füllen selbst frei bleibt). */
     {
       const k = S.kennung(new Request(`http://${WIRT}/x`, { headers: { "x-forwarded-for": "10.0.0.1" } }), { bestand: raum });
-      for (let i = 0; i < 250; i++) await S.bremse("stempeln-raum", k, undefined, { versuche: 900 });
+      for (let i = 0; i < 250; i++) S.lastbremse("stempeln-raum", k, 900);
       const r = await anfrage("/api/stempeln", { token: tokens[0], rumpf: { datum: HEUTE, art: "start" } });
       expect(r.status, JSON.stringify(r).slice(0, 200)).toBe(429);
       expect(Number(r.retryAfter)).toBeGreaterThan(0);

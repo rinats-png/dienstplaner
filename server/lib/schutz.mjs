@@ -717,12 +717,9 @@ export function herkunftStreng(req) {
  * und ein unlesbarer Sperreintrag gilt als Sperre. `fehler` im Ergebnis
  * meldet den Ausfall an den Aufrufer.
  */
-export async function bremse(art, kennung, ziel, opt) {
-  const g0 = GRENZEN[art];
-  if (!g0) return { frei: true };
-  /* `opt.versuche` setzt die Grenze dieses Aufrufs (Raumdeckel nach Betriebsgröße).
-     Fenster, Sperre und Steigerung bleiben die der Art. */
-  const g = opt && Number.isFinite(opt.versuche) && opt.versuche > 0 ? { ...g0, versuche: Math.floor(opt.versuche) } : g0;
+export async function bremse(art, kennung, ziel) {
+  const g = GRENZEN[art];
+  if (!g) return { frei: true };
   /** Die Vermerke, die dieser Aufruf für Ziel und Gesamt angelegt hat — nach
       einer gelungenen Anmeldung werden genau sie zurückgenommen (anmeldungGelungen). */
   const zurueck = [];
@@ -1158,4 +1155,57 @@ export function notentlasten(art, kennung) {
     if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
     else notZaehlen(`${k}:${f - 1}`, bis, -1);
   }
+}
+
+/* --------------------------------------------------------------------------
+   LASTBREMSE (WP-47) — Grenzen für ehrliche Spitzen, ohne Platte
+
+   Stempeln (je Person, je Raum) und gelungene Anmeldungen (je Betrieb)
+   schützen die Rechenleistung des einen Prozesses vor einer Spitze, nicht vor
+   einem Angreifer, der etwas erraten will. Deshalb zählen sie nur im
+   Prozessspeicher:
+
+     - Kein Vermerk in der Ablage. Die Hauptbremse schrieb je Anfrage eine
+       Datei (mit fsync) und las das Verzeichnis; beim Stempeln, das ohnehin
+       unter der Raumsperre auf die Platte wartet, ist das genau die Last,
+       die ein Schichtwechsel nicht braucht (WP-28: rund 15 fsync je Anfrage).
+     - Sie kann nicht ausfallen und nie die Ablage belasten.
+     - Ein Neustart leert sie — für eine Lastgrenze ohne Folgen.
+
+   Alles, was etwas Geheimes schützt (Anmelden, Einrichten, zweiter Faktor,
+   Zugänge), bleibt bei bremse() mit Ablage, fail-closed (WP-46) und
+   Notbremse. Gleitendes Fenster wie dort; nach einer Überschreitung gilt eine
+   kurze Sperre (GRENZEN[art].sperre), die der Aufrufer als Retry-After
+   weitergibt.
+   -------------------------------------------------------------------------- */
+/** Sperren der Lastbremse: Schlüssel → Ende (ms). */
+const lastSperre = new Map();
+
+/**
+ * @param {string} art        Schlüssel in GRENZEN (stempeln, stempeln-raum, anmelden-erfolg)
+ * @param {string} kennung
+ * @param {number} [versuche] Grenze dieses Aufrufs (Raumdeckel nach Betriebsgröße); sonst GRENZEN[art]
+ * @returns {{frei: boolean, wartet?: number, uebrig?: number}}
+ */
+export function lastbremse(art, kennung, versuche) {
+  const g = GRENZEN[art];
+  if (!g) return { frei: true };
+  const grenze = Number.isFinite(versuche) && versuche > 0 ? Math.floor(versuche) : g.versuche;
+  const ms = Date.now();
+  const lage = fensterLage(ms, g.fenster);
+  const f = lage.index;
+  const bis = lage.ende + g.fenster * 1000;
+  const basis = `last:${art}:${kennung}`;
+  const bis0 = lastSperre.get(basis);
+  if (bis0 && bis0 > ms) return { frei: false, wartet: Math.max(1, Math.ceil((bis0 - ms) / 1000)) };
+  const n = gewichtet(notZaehlen(`${basis}:${f}`, bis), notLesen(`${basis}:${f - 1}`), lage.anteil);
+  if (n > grenze) {
+    /* Wie bremse(): Sperre setzen, Zähler leeren — wer Retry-After befolgt, kommt wieder durch. */
+    lastSperre.set(basis, ms + g.sperre * 1000);
+    not.delete(`${basis}:${f}`);
+    not.delete(`${basis}:${f - 1}`);
+    if (lastSperre.size > 500) for (const [k, v] of lastSperre) if (v < ms) lastSperre.delete(k);
+    return { frei: false, wartet: g.sperre };
+  }
+  return { frei: true, uebrig: Math.max(0, Math.floor(grenze - n)) };
 }

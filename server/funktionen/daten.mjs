@@ -1,6 +1,6 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { bremse, entlasten, kennung, kennungPerson, kennungRaum, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, lastbremse, entlasten, kennung, kennungPerson, kennungRaum, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
@@ -723,7 +723,7 @@ export default async (req, context) => {
          Anmeldungen), dann gilt die großzügige Grenze. Betreiberzugänge zählen
          nicht mit. */
       if (eintrag.rolle !== "betreiber") {
-        const bLast = await bremse("anmelden-erfolg", kennungRaum(`${eintrag.bestand}|${bindungC.mandantId ?? ""}`));
+        const bLast = lastbremse("anmelden-erfolg", kennungRaum(`${eintrag.bestand}|${bindungC.mandantId ?? ""}`));
         if (!bLast.frei) {
           await entlasten("anmelden", k, b);
           notentlasten("anmelden", k);
@@ -1101,13 +1101,13 @@ export default async (req, context) => {
          LASTabweisung: gezählt für /gesund, mit Retry-After; gestempelt ist dann
          NICHTS — die Oberfläche wiederholt (speicher.js). */
       const kSt = kennung(req, s);
-      const bSt = await bremse("stempeln", kennungPerson(s));
+      const bSt = lastbremse("stempeln", kennungPerson(s));
       if (!bSt.frei) {
         ereignis("429-last");
         await protokoll("schreiben", kSt, "gebremst", "stempeln (Person)", wer);
         return zuVielAntwort(bSt.wartet);
       }
-      const bRaum = await bremse("stempeln-raum", kSt, undefined, { versuche: stempelDeckel(raumGroesse.get(String(s.bestand))) });
+      const bRaum = lastbremse("stempeln-raum", kSt, stempelDeckel(raumGroesse.get(String(s.bestand))));
       if (!bRaum.frei) {
         ereignis("429-last");
         await protokoll("schreiben", kSt, "gebremst", "stempeln (Raum)", wer);
