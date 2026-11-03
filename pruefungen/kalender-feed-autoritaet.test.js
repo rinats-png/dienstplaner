@@ -92,7 +92,7 @@ beforeAll(async () => {
   for (const [i, id] of IDS.entries()) G[id] = await feedFuer(RAUM, `FEED-${String(i).padStart(4, "0")}-AAAA`, id, 0, "m-a");
   G.b1 = await feedFuer(RAUM, "FEED-BBBB-0001", "b1", 1, "m-b");
   G.x1 = await feedFuer(RAUM2, "FEED-XXXX-0001", "x1", 0, "m-x");
-});
+}, 60000);
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 
 describe("vor jeder Änderung: alle Feeds gültig", () => {
@@ -170,17 +170,16 @@ describe("Reaktivierung (D1g): ein widerrufener Verweis wird nie wieder gültig"
 });
 
 describe("Technischer Lesefehler (D1g): kein Widerruf", () => {
-  it("beschädigter Bestandskern: 500, der Feed bleibt erhalten und gilt nach der Reparatur wieder", async () => {
+  it("beschädigter Bestandskern: 503 („gerade nicht verfügbar“, WP-24), der Feed bleibt erhalten und gilt nach der Reparatur wieder", async () => {
     const { ablageWurzel } = await import("../server/lib/ablage.mjs");
     const datei = path.join(ablageWurzel(), "centric", "kern%3Afeedraum.json");
     const vorher = await readFile(datei, "utf8");
     try {
       await writeFile(datei, "{ kaputt");
       const f = await feed(G.lesefehler.geheim);
-      expect(f.status).toBe(500);
+      expect(f.status).toBe(503);                                      // der Bestand ist jetzt auch die Quelle der Termine: unlesbar = vorübergehend, nie „gibt es nicht“
       expect(f.text).not.toContain("BEGIN:VCALENDAR");
       expect(await laden().get(`feed:${hash(G.lesefehler.geheim)}`, { type: "json" })).toBeTruthy();
-      expect(await laden().get(`feeddaten:${hash(G.lesefehler.geheim)}`, { type: "json" })).toBeTruthy();
     } finally {
       await writeFile(datei, vorher);
     }

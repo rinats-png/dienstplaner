@@ -204,6 +204,9 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     }
   } catch (e) { fehler.push({ schluessel: "feed:*", grund: grundVon(e) }); }
+  /* WP-24: Die Indizes feedperson:<raum>:<mandantId>:<personId> (je Person der Hash ihres aktiven Feeds)
+     gehören zum Raum und blieben bisher liegen — auch wenn der Feed selbst schon weg war. */
+  await praefixWeg(`feedperson:${raum}:`);
 
   /* WP-27: Das eingefrorene Ist der Betriebsrat-Auswertung (brist:<raum>:…) gehört zum Raum. */
   await praefixWeg(`brist:${encodeURIComponent(raum)}:`);

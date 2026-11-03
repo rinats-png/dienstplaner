@@ -17,6 +17,7 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aufbauen, hash, WIRT } from "./hilfen/szenario.mjs";
 import { terminFehler } from "../server/funktionen/kalender.mjs";
+import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 let Z, ich;
 const LIMIT = 60000;
@@ -97,21 +98,40 @@ describe("Termine: die Form, die die Anwendung baut", () => {
 });
 
 describe("POST /kalender/daten", () => {
-  it("gültige Termine: 200, Feed als ICS mit Umlauten, 24:00 als Mitternacht des Folgetags", async () => {
+  it("gültige Termine werden angenommen und geprüft (alte Oberflächen), aber nicht mehr gespeichert: der Feed ist live (WP-24)", async () => {
     const geheim = await einrichten();
     const s = await senden(geheim, [dienst(), nacht(), urlaub(), dienst({ id: "d-p_1-2026-11-07",
       datum: "2026-11-07", endDatum: "2026-11-07", von: "16:00", bisZeit: "24:00", titel: "Spätdienst" })]);
     expect(s.status, JSON.stringify(s.daten)).toBe(200);
     expect(s.daten.termine).toBe(4);
+    expect(s.daten.live).toBe(true);
+    expect(await Z.laden().get(`feeddaten:${hash(geheim)}`, { type: "json" })).toBeNull();
     const f = await feed(geheim);
     expect(f.status).toBe(200);
     expect(f.text).toContain("BEGIN:VCALENDAR");
-    expect(f.text).toContain("SUMMARY:Frühdienst");
-    expect(f.text).toContain("DTSTART;TZID=Europe/Berlin:20261103T213000");
-    expect(f.text).toContain("DTEND;TZID=Europe/Berlin:20261104T063000");
-    expect(f.text).toContain("DTEND;TZID=Europe/Berlin:20261108T000000");
+    expect(f.text).not.toContain("Spätdienst");                  // was das Gerät schickt, kommt nie hinein
+  });
+
+  it("Umlaute und 24:00 im live gerechneten Feed: Nachtdienst über Mitternacht, Dienstende 24:00 als Mitternacht des Folgetags", async () => {
+    const geheim = await einrichten();
+    const heute = heuteBerlin();
+    const tag = (n) => tagePlus(heute, n);
+    const b = (await Z.B.bestandLesen(Z.laden(), ich.raum)).bestand;
+    const neu = JSON.parse(JSON.stringify(b));
+    Object.assign(neu.mandanten[0], { name: "Haus Ä",
+      dienstarten: [{ id: "N", name: "Nachtdienst", start: "21:30", ende: "06:30" }, { id: "S", name: "Spätdienst", start: "16:00", ende: "24:00" }],
+      abweichungen: { [`p_1|${tag(2)}`]: "N", [`p_1|${tag(3)}`]: "S" } });
+    neu.mandanten[0].personen.find((p) => p.id === "p_1").zugehoerigkeit = [{ ab: "2026-01-01", einheitId: "e1" }];
+    const e = await Z.B.bestandSchreiben(Z.laden(), ich.raum, neu, { durch: "Pruefung" });
+    expect(e.ok, JSON.stringify(e)).toBe(true);
+    const f = await feed(geheim);
+    expect(f.status).toBe(200);
+    expect(f.text).toContain("SUMMARY:Nachtdienst");
+    expect(f.text).toContain(`DTSTART;TZID=Europe/Berlin:${tag(2).replace(/-/g, "")}T213000`);
+    expect(f.text).toContain(`DTEND;TZID=Europe/Berlin:${tag(3).replace(/-/g, "")}T063000`);
+    expect(f.text).toContain(`DTEND;TZID=Europe/Berlin:${tag(4).replace(/-/g, "")}T000000`);   // 24:00
     expect(f.text).not.toContain("T240000");
-    expect(f.text).toContain("DTSTART;VALUE=DATE:20261105");
+    expect(f.text).toContain("X-WR-CALNAME:Dienstplan Haus Ä");
   });
 
   it("ungültiger Termin: 400 mit Feld und Stelle, gespeichert wird nichts", async () => {
@@ -156,14 +176,14 @@ describe("POST /kalender/daten", () => {
 });
 
 describe("Feed-Abruf mit Altdaten", () => {
-  it("ungültige Termine aus der Zeit vor der Prüfung fehlen im Feed, statt ihn scheitern zu lassen", async () => {
+  it("alte feeddaten: (Termine vom Gerät) werden nie ausgeliefert — der Feed kommt aus dem Bestand", async () => {
     const geheim = await einrichten();
     await Z.laden().setJSON(`feeddaten:${hash(geheim)}`, { name: "Alt", betrieb: "Haus",
-      termine: [dienst(), { id: "kaputt", datum: "2026-11-09", titel: "ohne Zeiten" }, null] });
+      termine: [dienst({ titel: "AUS-DEM-GERAET" }), { id: "kaputt", datum: "2026-11-09", titel: "ohne Zeiten" }, null] });
     const f = await feed(geheim);
     expect(f.status).toBe(200);
-    expect(f.text.match(/BEGIN:VEVENT/g)).toHaveLength(1);
-    expect(f.text).toContain("SUMMARY:Frühdienst");
+    expect(f.text).not.toContain("AUS-DEM-GERAET");
+    expect(f.text).not.toContain("ohne Zeiten");
   });
 });
 
