@@ -74,8 +74,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
-| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -287,6 +287,16 @@ Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heut
 brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
 den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
 vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
+Dasselbe gilt für `postenPlan` und `bereichsPlan` (Einteilungen „Person|Tag“) und die daraus abgeleiteten `objekte`: Für
+Beschäftigte gehen nur die eigenen Einteilungen freigegebener Monate und vergangener Tage hinaus (`eigenOhneEntwurf`,
+`objekteEigene` in `sicht.mjs`); sonst verriete ein Objekt oder ein Bereich die Entwurfsplanung. Die Zeile „Plan“
+(`abweichungen`) ist für Beschäftigte VOLL und wird nur über diese Fußnote gefiltert; ihre Zellen in den Zeilen Posten und
+Bereiche tragen deshalb den Verweis ²⁷.
+**Übergangsregel und ihre Kehrseite:** Der Filter wirkt nur, solange der Betrieb die Pflicht eingeschaltet hat oder mindestens
+einen Monat freigegeben hat. Nimmt die Planung in einem Betrieb **ohne** Pflicht die letzte Freigabe zurück, ist der Filter
+danach aus und Beschäftigte sehen wieder Entwürfe. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
+bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. Ein Zurücknehmen von Freigaben gibt es heute nicht
+(künftiges Feature, siehe Nachweis).
 Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
 **Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
 oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen

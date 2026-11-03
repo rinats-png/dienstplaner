@@ -160,6 +160,48 @@ describe("Sonde je Rolle (bestandFuerRolle)", () => {
   });
 });
 
+/* Posten- und Bereichsplan (WP-19) tragen ebenfalls „Person|Tag“-Einteilungen; objekte leiten sich aus postenPlan ab.
+   Review M1: Auch sie dürfen für Beschäftigte keine Entwurfsmonate verraten. */
+describe("Posten, Bereichsplan, Objekte im Entwurf", () => {
+  const posten = { [`a1|${tag(ENTWURF)}`]: "p1", [`a1|${tag(FREI)}`]: "p2", [`a1|${tag(VORBEI)}`]: "p3", [`b1|${tag(FREI)}`]: "p2" };
+  const bereiche = { [`a1|${tag(ENTWURF)}`]: "b1", [`a1|${tag(FREI)}`]: "b2", [`a1|${tag(VORBEI)}`]: "b3" };
+  const objekte = [{ id: "o1", name: "Nur Entwurf", posten: [{ id: "p1" }] }, { id: "o2", name: "Freigegeben", posten: [{ id: "p2" }] },
+    { id: "o3", name: "Vergangen", posten: [{ id: "p3" }] }];
+  const sicht = (rolle, pid, extra = {}) => rechte.bestandFuerRolle({ version: 9, mandanten: [betrieb({ postenPlan: posten, bereichsPlan: bereiche, objekte, ...extra })] },
+    { rolle, person: pid, betrieb: 0 }).mandanten[0];
+
+  it("Beschäftigte: nur eigene freigegebene und vergangene Einteilungen", () => {
+    const m = sicht("mitarbeiter", "a1");
+    expect(Object.keys(m.postenPlan).sort()).toEqual([`a1|${tag(FREI)}`, `a1|${tag(VORBEI)}`].sort());
+    expect(Object.keys(m.bereichsPlan).sort()).toEqual([`a1|${tag(FREI)}`, `a1|${tag(VORBEI)}`].sort());
+    expect(JSON.stringify(m.postenPlan) + JSON.stringify(m.bereichsPlan)).not.toContain(ENTWURF);
+  });
+  it("objekte folgen dem gefilterten Posten-Plan: das Objekt, das nur über einen Entwurf auffindbar wäre, fehlt", () => {
+    expect(sicht("mitarbeiter", "a1").objekte.map((o) => o.id).sort()).toEqual(["o2", "o3"]);
+    expect(JSON.stringify(sicht("mitarbeiter", "a1"))).not.toContain("Nur Entwurf");
+  });
+  it("Planung und Leitung sehen alles; der Betriebsrat bekommt Posten und Bereiche nicht (wie bisher)", () => {
+    for (const [rolle, pid] of [["planer", "p1"], ["leitung", "l1"]]) {
+      const m = sicht(rolle, pid);
+      expect(Object.keys(m.postenPlan), rolle).toContain(`a1|${tag(ENTWURF)}`);
+      expect(Object.keys(m.bereichsPlan), rolle).toContain(`a1|${tag(ENTWURF)}`);
+    }
+    const br = sicht("betriebsrat", "r1");
+    expect([Object.keys(br.postenPlan || {}).length, Object.keys(br.bereichsPlan || {}).length]).toEqual([0, 0]);
+    expect((br.objekte || []).length).toBe(0);
+  });
+  it("Filter aus (kein Pflicht, keine Freigabe): Beschäftigte sehen wie bisher ihre eigenen Einteilungen", () => {
+    const m = sicht("mitarbeiter", "a1", { freigaben: {}, einstellungen: {} });
+    expect(Object.keys(m.postenPlan)).toContain(`a1|${tag(ENTWURF)}`);
+    expect(m.objekte.map((o) => o.id)).toContain("o1");
+  });
+  it("Pflicht an, keine Freigabe: auch der Folgemonat ist Entwurf", () => {
+    const m = sicht("mitarbeiter", "a1", { freigaben: {}, einstellungen: { planFreigabePflicht: true } });
+    expect(Object.keys(m.postenPlan)).toEqual([`a1|${tag(VORBEI)}`]);
+    expect(m.objekte.map((o) => o.id)).toEqual(["o3"]);
+  });
+});
+
 describe("über den Handler", () => {
   it("GET /api/bestand: Beschäftigte ohne Entwurf, Planung mit", async () => {
     const ma = await anfrage("/api/bestand", { token: await sitzung("a1", "mitarbeiter") });
@@ -247,6 +289,12 @@ describe("einstellungen.planFreigabePflicht schreiben", () => {
     const { e } = await setze("p1", "planer", false);
     expect(e.planFreigabePflicht).toBe(true);
   });
+  it("ein ausdrückliches null ändert nichts: Wert, Wann und Wer bleiben", async () => {
+    const vorher = (await B.bestandLesen(laden(), R2)).bestand.mandanten[0].einstellungen;
+    const { e } = await setze("l1", "leitung", null);
+    expect([e.planFreigabePflicht, e.planFreigabePflichtGeaendertAm, e.planFreigabePflichtGeaendertVon])
+      .toEqual([vorher.planFreigabePflicht, vorher.planFreigabePflichtGeaendertAm, vorher.planFreigabePflichtGeaendertVon]);
+  });
   it("ein unveränderter Wert lässt Wann und Wer unberührt; die Leitung schaltet aus", async () => {
     const vorher = (await B.bestandLesen(laden(), R2)).bestand.mandanten[0].einstellungen;
     const gleich = await setze("l1", "leitung", true);
@@ -307,6 +355,14 @@ describe("Wiederherstellen und Planfreigabe", () => {
     const jetzt = betrieb({ einstellungen: { planFreigabePflicht: true } });
     const damals = betrieb({ freigaben: { [ENTWURF]: { stand: 1 } }, einstellungen: {} });
     expect(Object.keys((await zurueckspielen(jetzt, damals)).freigaben)).toEqual([ENTWURF]);
+  });
+  it("Pflicht samt Wann/Wer der Sicherung ist nicht maßgeblich: die jetzigen Werte bleiben, auch bei abweichender Sicherung", async () => {
+    const jetzt = betrieb({ freigaben: {}, einstellungen: { planFreigabePflicht: true,
+      planFreigabePflichtGeaendertAm: "2026-10-20T08:00:00.000Z", planFreigabePflichtGeaendertVon: "l1" } });
+    const damals = betrieb({ freigaben: {}, einstellungen: { planFreigabePflicht: false,
+      planFreigabePflichtGeaendertAm: "2026-01-01T00:00:00.000Z", planFreigabePflichtGeaendertVon: "p1" } });
+    expect((await zurueckspielen(jetzt, damals)).einstellungen).toMatchObject({ planFreigabePflicht: true,
+      planFreigabePflichtGeaendertAm: "2026-10-20T08:00:00.000Z", planFreigabePflichtGeaendertVon: "l1" });
   });
   it("Betrieb ohne Filter bleibt ohne Filter (altes Verhalten wird nicht erzwungen)", async () => {
     const jetzt = betrieb({ freigaben: {}, einstellungen: {} });

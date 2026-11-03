@@ -457,8 +457,16 @@ function planOhneEntwurf(w, ctx) {
    konservativ): nur Objekte, auf deren Posten die Person selbst eingeteilt ist. */
 const objekteMitPosten = (objekte, postenIds) => liste(objekte)
   .filter((o) => o && typeof o === "object" && liste(o.posten).some((p) => p && postenIds.has(p.id)));
+/* Posten- und Bereichsplan („Person|Tag“) für Beschäftigte: nur die eigenen Einteilungen, und Entwurfsmonate
+   gehen wie bei den Abweichungen nicht hinaus (WP-23, Review M1). */
+function eigenOhneEntwurf(w, ctx) {
+  const eigen = istObj(w) ? Object.fromEntries(Object.entries(w).filter(([k]) => eigenerSchluessel(k, ctx.ich))) : {};
+  return planOhneEntwurf(eigen, ctx);
+}
 function objekteEigene(w, ctx) {
-  const plan = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+  const roh = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+  /* Die Objekte leiten sich aus dem Posten-Plan ab: Ohne denselben Filter verriete ein Objekt die Entwurfsplanung. */
+  const plan = planOhneEntwurf(roh, ctx);
   const ids = new Set(Object.entries(plan).filter(([k]) => eigenerSchluessel(k, ctx.ich)).map(([, v]) => v));
   return objekteMitPosten(w, ids);
 }
@@ -522,9 +530,9 @@ export const BETRIEB = {
      Schichtverantwortung sehen nur Objekte mit Einteilung (W3 offen), der Betriebsrat keine. Die Einteilung auf Posten (`postenPlan`, „Person|Tag“) sieht die Person nur für sich selbst, die
      Schichtverantwortung im eigenen Bereich am Tag, der Betriebsrat nicht. */
   objekte: [R(objekteEigene), WEG],
-  postenPlan: [NUR_EIGENE, WEG],
+  postenPlan: [R(eigenOhneEntwurf), WEG],
   /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
-  bereichsPlan: [NUR_EIGENE, WEG],
+  bereichsPlan: [R(eigenOhneEntwurf), WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -575,7 +583,6 @@ export function betriebSicht(m, sitzung) {
     rolle, ich: sitzung.person,
     entwurfVerbergen: rolle === "mitarbeiter" && planFreigabeAktiv(m), betrieb: m, laufenderTag: laufenderTag(),
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
-    betrieb: m,
   };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {

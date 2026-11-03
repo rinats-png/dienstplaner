@@ -99,6 +99,27 @@ gilt (ohne Freigabe und ohne Pflicht ist jetzt alles sichtbar; mit Pflicht bleib
 früher sind in Kraft“ trägt `planFreigabePflicht: true`, weil er den Filter ohne Freigabe prüft. Kein Test fremder Dateien
 wurde geändert.
 
+## Nachbesserung nach dem Sonnet-Review
+
+- **M1 Posten- und Bereichsplan.** `postenPlan`, `bereichsPlan` und die daraus abgeleiteten `objekte` liefen für
+  Beschäftigte am Entwurfsfilter vorbei. Jetzt `eigenOhneEntwurf` (nur eigene Schlüssel, dann `planOhneEntwurf`) und `objekteEigene`
+  rechnet über den gefilterten Posten-Plan. 5 neue Tests in `entwuerfe.test.js` (4 rot vorher: Entwurfsschlüssel in beiden Plänen,
+  Objekt, Pflicht ohne Freigabe), Mutant (Filter in beiden Funktionen entfernt) ⇒ dieselben 4 rot. Planung/Leitung sehen alles, der
+  Betriebsrat bekommt Posten und Bereiche weiter nicht; Filter aus ⇒ unverändert.
+- **N3 Matrix.** Fußnote ²⁷ hat Anker in den Zeilen Posten und Bereiche (die Zeile „Plan“ gibt es als eigene Zeile nicht, `abweichungen`
+  ist VOLL). `rechtematrix.test.js` hat eine zweite Sonde bei eingeschalteter Pflicht (fremder und eigener Entwurf, Posten, Bereiche;
+  weit in der Zukunft, uhrunabhängig); die bestehende Sonde läuft ohne Pflicht (Filter aus) unverändert weiter.
+- **N4 Tests.** Ein ausdrückliches `null` in `planFreigabePflicht` ändert nichts (Wert, Wann, Wer bleiben). Beim Wiederherstellen
+  bleiben Wann/Wer des jetzigen Stands, auch wenn die Sicherung andere Werte trägt.
+- **N2 Übergangsregel.** Nimmt die Planung in einem Betrieb ohne Pflicht die letzte Freigabe zurück, schaltet das den Schutz ab
+  (`planFreigabeAktiv` ist dann falsch). Heute gibt es keine Rücknahme; kommt sie, muss die Rücknahme die Pflicht setzen oder der
+  Filter darf nicht an „mindestens eine Freigabe“ hängen. Dokumentiert in RECHTEMATRIX ²⁷.
+- **Testanpassung in `wiederherstellen-ui.test.js` (WP-25), begründet:** „GEHT ZURÜCK“ erwartete `freigaben` nach dem Zurückspielen
+  als `{}`. Mit der Vereinigung der Freigaben (Auflage der Nachprüfung) bleiben die jetzigen Freigaben, wenn der Betrieb sie benutzt
+  und die Sicherung keine hat; die Erwartung nennt jetzt `{ "2026-11": { stand: 2 } }`. Nichts abgeschwächt: Die Aussage ist genauer,
+  und der Bestätigungsdialog nennt es unter „Das bleibt“ (neuer Satz, im Dialogtest geprüft).
+- **M2 (Betriebsrat/Schichtverantwortung sehen den Entwurf)** bleibt Nutzerentscheidung, unverändert.
+
 ## Offen und bewusst entschieden
 
 - **Selbstauskunft Art. 15 (bewusst unverändert).** `auskunft.mjs` (Zeilen ca. 105–114) liefert der Person ihre eigenen
