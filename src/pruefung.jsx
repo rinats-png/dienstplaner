@@ -8,7 +8,8 @@ import React from "react";
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
 import { ANWENDUNG_URL } from "./kontakt.js";
-import { PAKETE, paketBuchbar } from "./stufen.js";
+import { PAKETE, branchenpaketeZeile } from "./stufen.js";
+import { kannMerkmal, mandantPaketkosten, paketPositionen } from "./paketlogik.js";
 /* Diese Datei trägt an vielen Stellen eigene Kopien aus App.jsx. Die
    Verbindlichkeit einer Anforderung gehört ausdrücklich nicht dazu: Eine
    zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
@@ -454,7 +455,7 @@ const TARIFE_STD = [
   { id: "enterprise", name: "Enterprise", jeStandort: 239, bisPersonen: null,
     grenzen: { einheiten: 200, personen: 100000 },
     paketeFrei: 2,
-    leistungen: ["Alles aus Professional", "Zwei Branchenpakete enthalten",
+    leistungen: ["Alles aus Professional", branchenpaketeZeile(),
       "Beliebig viele Personen je Standort", "Leistungsnachweis für Auftraggeber",
       "Auftragsverarbeitung nach Artikel 28", "Bevorzugter Rückruf"] },
 ];
@@ -1387,16 +1388,19 @@ function preis(db, m) {
   const st = staffel(zeilen.length);
   for (const z of zeilen) z.netto = Math.round(z.einzel * (1 - st.rabatt) * 100) / 100;
   const summeStandorte = Math.round(zeilen.reduce((a, z) => a + z.netto, 0) * 100) / 100;
-  // Branchenpakete werden je Betrieb berechnet, nicht je Standort
-  const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
-  // G9: ein Paket ohne nutzbare Funktion wird nicht berechnet
-  const summePakete = pakete.filter((p) => paketBuchbar(p.id)).reduce((a, p) => a + (p.aufpreis || 0), 0);
+  const t = zeilen.length ? zeilen.reduce((a, z) =>
+    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
+  // Branchenpakete werden je Betrieb berechnet, nicht je Standort. Dieselbe Logik wie die
+  // Betreiberkonsole (paketlogik.js): Zustand < 5 und Pilot berechnen nichts, die in der
+  // Stufe enthaltenen Pakete sind frei.
+  const pk = mandantPaketkosten(m, (t && t.paketeFrei) || 0);
+  const pakete = pk.gewaehlt;
+  const summePakete = pk.summe;
   const gesamt = Math.round((summeStandorte + summePakete) * 100) / 100;
   const zahlt = stat(m.status).zahlt;
   const personen = aktiv.length;
-  const t = zeilen.length ? zeilen.reduce((a, z) =>
-    (a.tarif.jeStandort > z.tarif.jeStandort ? a : z)).tarif : db.tarife[0];
   return { t, zeilen, standorte: zeilen.length, st, pakete, summeStandorte, summePakete,
+    paketeFrei: pk.frei, paketeNichtBerechnet: pk.nichtBerechnet,
     gesamt, zahlt, wirksam: zahlt ? gesamt : 0, personen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0,
     ueberEinheiten: m.einheiten.length > t.grenzen.einheiten,
@@ -1573,9 +1577,7 @@ function baueRechnung(db, m, monatISO) {
   if (p.st.rabatt > 0)
     positionen.push({ text: `Mengenstaffel ${p.st.label}`, menge: "", einzel: "",
       betrag: `−${Math.round(p.st.rabatt * 100)} %` });
-  for (const pk of p.pakete)
-    positionen.push({ text: `Branchenpaket ${pk.name}`, menge: "", einzel: eur(pk.aufpreis),
-      betrag: eur(Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+  positionen.push(...paketPositionen(p, eur));
   if (p.anteil < 1)
     positionen.push({ text: `Anteilig ${p.tage} von ${p.gesamtTage} Tagen`, menge: "",
       einzel: "", betrag: "" });
@@ -3005,10 +3007,7 @@ function antragUmsetzen(m, a) {
    Kopie an dieser Stelle war veraltet: andere Namen und Texte, und sie
    bewarb Geplantes als verfügbar. */
 /** Ist ein Merkmal für diesen Betrieb freigeschaltet? */
-const kann = (m, merkmal) => {
-  const aktiv = ["kern", ...(m.pakete || [])];
-  return PAKETE.filter((p) => aktiv.includes(p.id)).some((p) => p.merkmale.includes(merkmal));
-};
+const kann = kannMerkmal;   // paketlogik.js: gebuchtes Paket UND nutzbares Merkmal (G9/G10)
 /** Welche Pakete schlägt eine Branche vor? */
 const paketeFuerBranche = (b) => ({
   sicherheit: ["sicherheit"], pflege: ["pflege"], klinik: ["klinik"],

@@ -99,3 +99,83 @@ auf dem unveränderten Basisstand (Zeitgrenze); entscheidend ist die CI.
   (Entscheidung des Betreibers bei der Freigabe: ggf. Selbststart-Buchung ausdrücklich ausnehmen).
 - Frühere Fassung dieses Nachweises (Merkmals-Nutzbarkeit statt Zustände) ist durch dieses Modell ersetzt;
   `paketNutzbar`/`merkmalNutzbar` bleiben nur für die Anzeige „In Vorbereitung“ je Merkmal.
+
+
+## 7. Nachtrag Review (Auflagen F1–F7 und Betreiberentscheidungen vom 2026-11-03)
+
+Stand: Review-Urteil „integrierbar mit Auflagen“. Statusstufen unverändert: (1) implementiert ja · (2) lokal getestet ja ·
+CI siehe Bericht · (3) erneuter unabhängiger Review **folgt** · (4)–(7) nein. Zahlung/Checkout/Paywall weiter ausgenommen;
+Zielpreise und Rechenwege (`preisFuer`, `paketkosten`, Enterprise-Freiplätze) unverändert; die Staffelung nach Betriebsgröße
+ist nicht angefasst. Neue Datei `src/paketlogik.js` (reine Entscheidungslogik), neue Prüfung `pruefungen/g9-nachtrag.test.js`.
+
+### 7.1 Betreiberentscheidungen (maßgeblich) und ihre Umsetzung
+
+| Entscheidung | Umsetzung |
+|---|---|
+| Paket erst ab Zustand 5 buchbar/abrechenbar | unverändert (`paketBuchbar`); zusätzlich Abrechnungsgrund, siehe unten |
+| (1)/(2) Kein stilles Zubuchen, auch nicht ab Zustand 5 und nicht für „enthaltene“ Pakete | `SELBSTSTART_BUCHT_PAKET = false` (`paketstand.mjs`); `paketFuerNeubuchung` liefert immer null; Selbststart bucht nichts (`leerbetrieb.mjs`). Ein Kundenweg, der ein Paket bucht, existiert nicht (Website-Rechner ist Angebot, keine Buchung) |
+| (3) Bestand behält Nutzungsrechte, wird transparent informiert, keine rückwirkende Berechnung | gebuchte Pakete bleiben in `m.pakete`; `kann()` liefert für jedes heute verwendete Merkmal (`fachkraftquote`, `uebergabe`) unverändert true (die einzigen zwei `kann`-Aufrufer in `App.jsx`); Vertragsübersicht zeigt „In Vorbereitung (Zustand n: …). Berechnung ausgesetzt, bis das Paket freigegeben ist. Nicht berechnet. Keine Zahlungsaufforderung.“ bzw. „Zustimmung erforderlich – nicht berechnet.“; der Abrechnungsgrund zählt nur für Zeiträume NACH seinem Datum |
+| (4) Pilot nie automatisch, nur gesonderte protokollierte Betreiberentscheidung mit Pflichtgrund | `pilotAktiv` verlangt `{ seit, von, grund }`; `setzePilot` fragt den Grund (Pflicht), `pilotSetzen` ohne Grund liefert null; `bLog` nennt den Grund; kein Selbststart-/Migrationspfad setzt Pilot (Test über `leerbetrieb.mjs`, `migration.js`, `erstbefuellung.mjs`) |
+| (5) Berechnung nur bei Zustand 5 UND Abrechnungsgrund | `abrechnungsGrund` (a: `m.paketZustimmungen[]` mit Paket, Preis, Intervall `monatlich`, Datum, Bestätiger; b: `m.paketGrundlage` mit Datum, Betreiberkennung, Notiz); einziger Rechenweg `mandantPaketkosten` (`paketlogik.js`) übergibt den Grund an `paketkosten`; ohne Grund: nicht berechnet, `ohneGrund` für den Hinweis; Betreiberkonsole: „Zustimmung festhalten“ (Bestätigungsdialog mit Paket, Preis, wiederkehrenden Kosten) und „Vertragsgrundlage festhalten“ |
+| (6) Eine verbindliche Freigabequelle | `PAKET_FREIGABEN` steht nur in `server/lib/paketstand.mjs`; `rechte.mjs`, `leerbetrieb.mjs`, `stufen.js`, `paketlogik.js` (und darüber `App.jsx`, `main.jsx`, `pruefung.jsx`) lesen sie von dort; Test prüft jeden Pfad auf Eigenkopien und das Verhalten mit injizierter Freigabe; Laufzeitschalter bleibt Folgepaket mit eigenem Rechte-/Auditkonzept |
+
+### 7.2 Auflagen
+
+- **F1** (Neukunde, Zubuchen): im Pilot darf der Betreiber Pakete unter Zustand 5 zubuchen („freigeschaltet, nicht berechnet“:
+  steht in `m.pakete`, wird nie berechnet, keine Rechnungsposition); ohne Pilot bleibt Zubuchen unter Zustand 5 gesperrt (UI
+  `paketSchalten` und serverseitig im Betreiber-PUT: `paketeNachServerregel` in `rechte.mjs`, Block `paketeGeprueft`, kleine
+  additive Änderung — Konfliktzone WP-19.0-Nachtrag beachten); Abschalten geht immer, ein versehentlich abgeschaltetes Paket
+  lässt sich im Pilot wieder zubuchen. `kann()` = `kannMerkmal`: nutzbare Merkmale bei gebuchtem Paket true, geplante nie.
+  Pilotanzeige: „Pilot – freigeschaltet, nicht berechnet (eingeschränkter Umfang): nutzbar: …; in Vorbereitung: …“.
+- **Heute nutzbare Merkmale (genaue Liste)**: Kern: `plan, antraege, zeiten, konten, qualifikationen, export, sperreGesetz`
+  (immer). Pakete: `sperreEigen`, `geofence` (Sicherheit); `fachkraftquote`, `uebergabe` (Pflege, Klinik). **Geplant, nie
+  freigeschaltet** (zwölf Registry-Module): `posten, wachbuch, objektbericht, bereichsplan, pflegequal, bereitschaftsdienst,
+  geteilterdienst, funktionsdienst, rotation, anlagen, maschinenqual, kontimodelle`. Industrie hat heute keine nutzbare Funktion.
+- **Befund zum Selbststart (zu prüfen, Betreiber)**: `leerbetrieb.mjs` legt `pakete` unter `einstellungen` ab, nicht am Betrieb;
+  gelesen wird `m.pakete`. Ein Selbststart-Betrieb hatte daher auch vor G9 keine Paketfunktionen aus der Buchung (die
+  Review-Annahme „verliert Fachkraftquote“ trifft für den Ist-Stand so nicht zu). Nicht verändert (Bestand/Konfliktzone).
+- **Offene Betreiberentscheidung (nicht entschieden)**: Neukunde Pflege/Klinik ohne Pilot hat **keine** Fachkraftquote/Übergabe
+  aus einer Paketbuchung; der Betreiber entscheidet je Betrieb bewusst über Pilot (Pflichtgrund) und Zubuchen. Empfehlung:
+  Pilot für Selbststart-Neukunden Pflege/Klinik bewusst setzen (Kernfunktionen kostenlos bis Zustand 5). Selbststart-Neukunden
+  werden ausdrücklich NICHT automatisch zum Pilot.
+- **F2** (Bewerbung): `branchenpaketeZeile`/`branchenpaketeHinweis`/`leistungenAnzeige` in `stufen.js`: solange kein Paket
+  Zustand 5 hat „Zwei Branchenpakete – sobald verfügbar“, kein Text „enthalten“ (STUFEN, main.jsx, App.jsx, auch ein früher
+  gespeicherter Tariftext wird bei der Anzeige angeglichen, Selbsttest-Kopie ebenfalls); Selbststart Pflege „Fachkraftquote,
+  Übergabe nach Freischaltung (Wohnbereichsplanung in Vorbereitung)“, Klinik entsprechend.
+- **F3** (Logik testbar): `preis()`/`baueRechnung`/`setzePaket`/`setzePilot`/`kann` rufen `paketlogik.js` auf
+  (`mandantPaketkosten`, `paketPositionen`, `paketSchalten`, `pilotSetzen`, `kannMerkmal`, `paketAufpreisSumme`,
+  `zustimmungErfassen`); Verhaltenstests statt Quelltext-Regex (Regex-Tests bleiben ergänzend).
+- **F4** (`pruefung.jsx`): `preis()` über `mandantPaketkosten` (kennt Pilot, `paketeFrei`, Abrechnungsgrund), Rechnung über
+  `paketPositionen`, `kann` = `kannMerkmal`, Leistungszeile über `branchenpaketeZeile`.
+- **F5** (nur Prüfpunkt, nicht geändert): `rechtliches/agb.md` § 4 Abs. 4 „Branchenpakete werden zusätzlich berechnet, soweit
+  sie nicht im Tarif enthalten sind.“ ist unbedingt formuliert und deckt weder Zustand < 5, noch Pilot, noch die Zustimmung als
+  Voraussetzung; die Datei ist ein Entwurf mit Platzhaltern (`[BEISPIEL-ZAHLUNGSZIEL]`). Ob eine wirksame vertragliche
+  Grundlage für die Berechnung neuer Pakete besteht (Abrechnungsgrund b), prüfen Betreiber und Jurist. Ohne Zustimmung oder
+  dokumentierte Grundlage berechnet die Anwendung nie.
+- **F6** (Pilot-Wortlaut): Konsole: „Branchenpakete werden im Pilot nicht berechnet; alle übrigen Positionen laufen laut Vertrag
+  weiter (Grundgebühr, Planer, Standorte — außer Status, Sonderpreis oder Aussetzung greifen).“ Offene Betreiberentscheidung:
+  soll der Pilot insgesamt kostenlos sein? Ende und verantwortliche Person des Pilots, Frist — heute weder Ende noch Frist
+  modelliert (Pilot gilt bis zur Beendigung durch den Betreiber).
+- **F7**: Test „echte PAKET_FREIGABEN sind gültig“ (`pruefePaketFreigaben` mit den echten Konstanten und der echten Registry),
+  plus Gegenprobe, dass die Prüfung bei ungültigen Freigaben anschlägt.
+
+### 7.3 Folgepakete und offene Punkte
+
+- **Kundenbestätigungsschritt (1)**: Bevor ein Paket Zustand 5 erreicht und ein Kunde es selbst wählen kann, braucht der
+  Selbststart-/Kundenweg einen Bestätigungsschritt (Paket, Preis, wiederkehrende Kosten, ausdrückliche Bestätigung) mit
+  serverseitigem Eintrag. Heute existiert kein Kundenweg, der bucht; Datenmodell, Formprüfung im Server (`paketZustimmungen`,
+  Vertragsfeld, nur Betreiber schreibt) und Abrechnungssperre stehen. Folgepaket (ohne Zahlungsintegration).
+- **Hinweis in der Betriebsansicht (3)**: umgesetzt in der Vertragsübersicht; eine zusätzliche Zeile in der Betriebsansicht der
+  Leitung ist nicht gebaut (Folgepaket, Konfliktzone WP-19.0).
+- **Zustimmung im Namen des Kunden**: die Konsole hält sie „im Auftrag“ fest (Bestätiger „Betreiber (Zustimmung des Kunden
+  liegt vor)“); der Nachweis der Zustimmung selbst liegt außerhalb der Anwendung.
+- Laufzeitschalter für Freigaben (eigenes Rechte-/Auditkonzept) bleibt Folgepaket.
+- Konflikterwartung beim Merge von WP-19.0 (`abd7f42`): `server/lib/rechte.mjs` (Importzeile, `paketeGeprueft`, zwei Feldlisten),
+  `server/lib/sicht.mjs` (eine Feldliste).
+
+### 7.4 Prüfung und Mutanten
+
+`pruefungen/g9-nachtrag.test.js` (neu) und `pruefungen/g9-verkauf.test.js` (angepasst, nicht abgeschwächt: Erwartungen zu
+`paketFuerNeubuchung`, Pilotanzeige und Pilotfeld verschärft; Quelltext-Muster der verlagerten Logik nachgezogen). Rot-Beleg: die neue
+Prüfung gegen den Stand ohne die Umsetzung (nur Tests und `paketlogik.js`): 32 Fälle rot. Mutanten (alle rot, nach Rücknahme grün):
+siehe Bericht.

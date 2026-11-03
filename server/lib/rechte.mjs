@@ -27,6 +27,7 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
+import { paketeNachServerregel, pilotAktiv, zustimmungenBereinigen, grundlageBereinigen } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
@@ -411,7 +412,7 @@ const BETREIBER_FELDER = ["betreiber", "tarife", "rechnungen", "protokoll",
    rechte Seite kommt der Betreiber über diesen Weg nicht, auch wenn seine
    Oberfläche sie mitschickt. */
 const KAUFMAENNISCHE_FELDER = ["name", "branche", "status", "tarif", "seit",
-  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "bis", "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "kontakt", "kontaktName", "anschrift", "ustId", "notiz", "einheitLabel",
   /* Die Rollenbezeichnungen darf auch der Betreiber setzen — beim
      Einrichten eines Hauses ist er derjenige, der weiß, ob dort
@@ -448,8 +449,25 @@ export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "
 /** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
 const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
 
+/* G9 (Review F1): Pakete lassen sich unter Zustand 5 nur in einem Betrieb mit Pilot zubuchen;
+   sonst bleibt der gespeicherte Stand (Absicherung gegen alten Client, Betreiber vertrauenswürdig). */
+const paketeGeprueft = (m0, altM) => {
+  let m = m0;
+  if (m && Object.prototype.hasOwnProperty.call(m, "pakete"))
+    m = { ...m, pakete: paketeNachServerregel(altM ? altM.pakete : [], m.pakete, pilotAktiv(m)) };
+  /* Abrechnungsgrund (Zustimmung des Kunden / vertragliche Grundlage): nur formgültig. */
+  if (m && Object.prototype.hasOwnProperty.call(m, "paketZustimmungen"))
+    m = { ...m, paketZustimmungen: zustimmungenBereinigen(m.paketZustimmungen) };
+  if (m && Object.prototype.hasOwnProperty.call(m, "paketGrundlage")) {
+    const { paketGrundlage, ...rest } = m;
+    const g = grundlageBereinigen(paketGrundlage);
+    m = g ? { ...rest, paketGrundlage: g } : rest;
+  }
+  return m;
+};
+
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
-  "testTage", "rabattGrund", "preisgestaltung", "pakete",
+  "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",
   "laeuftAb", "selbstAngelegt"];
 
 /* --------------------------------------------------------------------------
@@ -1443,13 +1461,13 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       .filter(Boolean)
       .map((geschickt) => {
         const alt = alteNachId.get(geschickt.id);
-        if (!alt) return geschickt;               // neu angelegt
+        if (!alt) return paketeGeprueft(geschickt, null);   // neu angelegt
         const zusammen = { ...alt };
         for (const feld of KAUFMAENNISCHE_FELDER) {
           if (Object.prototype.hasOwnProperty.call(geschickt, feld))
             zusammen[feld] = geschickt[feld];
         }
-        return zusammen;                          // alles Übrige bleibt, wie es war
+        return paketeGeprueft(zusammen, alt);     // alles Übrige bleibt, wie es war
       });
     return aus;
   }

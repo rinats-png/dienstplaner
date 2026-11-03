@@ -10,7 +10,7 @@ import Startbild from "./startbild.jsx";
 import { ANWENDUNG_URL } from "./kontakt.js";
 import Ringregler from "./ringregler.jsx";
 import { Icon } from "./gestalt/icons.jsx";
-import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe } from "./stufen.js";
+import { STUFEN, paketeAngebot, buchbareAuswahl, preisFuer, passendeStufe, branchenpaketeHinweis, leistungenAnzeige } from "./stufen.js";
 import { STANDORT_BAENDER } from "./standorte.js";
 import { ZweifaktorFeld } from "./betreiber-2fa.jsx";
 
@@ -266,8 +266,7 @@ function Preise({ onZurueck, onStarten }) {
             })}
           </div>
           <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55, marginTop: 10 }}>
-            Je Betrieb, nicht je Standort und nicht je Kopf. In Enterprise sind zwei
-            Pakete enthalten — angerechnet werden die beiden teuersten.
+            Je Betrieb, nicht je Standort und nicht je Kopf. {branchenpaketeHinweis()}
           </div>
         </fieldset>
 
@@ -339,7 +338,7 @@ function Preise({ onZurueck, onStarten }) {
                 {" "}{a.stufe.standorteInklusive} Standort{a.stufe.standorteInklusive === 1 ? "" : "e"} inklusive
               </div>
               <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 9 }}>
-                {a.stufe.leistungen.map((w, i) => (
+                {leistungenAnzeige(a.stufe.leistungen).map((w, i) => (
                   <li key={i} style={{ display: "flex", gap: 9, fontSize: 13.5,
                     lineHeight: 1.5 }}>
                     <span style={{ color: C.accent, flexShrink: 0, display: "flex", marginTop: 2 }}><Icon n="haken" size={16} /></span>
@@ -421,8 +420,8 @@ function SelbstStarten({ onZurueck, onFertig }) {
   const BRANCHEN = [
     /* G9: nur Nutzbares wird beschrieben, Geplantes steht als „in Vorbereitung". */
     ["sicherheit", "Sicherheitsdienst", "Objektschutz, Sachkunde nach § 34a (Wachbuch in Vorbereitung)"],
-    ["pflege", "Pflege", "Fachkraftquote, Übergabe, Wohnbereiche"],
-    ["klinik", "Klinik", "Fachkraftquote, Übergabe (Bereitschaft, Rufbereitschaft, geteilte Dienste in Vorbereitung)"],
+    ["pflege", "Pflege", "Fachkraftquote, Übergabe nach Freischaltung (Wohnbereichsplanung in Vorbereitung)"],
+    ["klinik", "Klinik", "Fachkraftquote, Übergabe nach Freischaltung (Bereitschaft, Rufbereitschaft, geteilte Dienste in Vorbereitung)"],
     ["industrie", "Produktion", "Die Grundfunktionen (Kontischicht, Anlagen, Maschinenqualifikationen in Vorbereitung)"],
     ["sonstige", "Etwas anderes", "Die Grundfunktionen ohne Branchenzusatz"],
   ];

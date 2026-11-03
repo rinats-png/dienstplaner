@@ -959,7 +959,7 @@ const BETREIBER_OBEN = ["version", "stand", "betreiber", "tarife", "rechnungen",
    die Leitung sie per API setzen). Schreiben bleibt dem Betreiber möglich
    (KAUFMAENNISCHE_FELDER), ausgeliefert wird sie nicht. */
 const BETREIBER_BETRIEB = ["id", "raum", "selbstAngelegt", "name", "branche", "status", "tarif", "seit", "bis",
-  "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "kontakt", "kontaktName", "anschrift",
+  "stichtag", "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage", "kontakt", "kontaktName", "anschrift",
   "ustId", "einheitLabel", "rollennamen"];
 /* Adressänderungen (D1a): genau die Felder, die die Konsole für die
    Erkennung von Kontoübernahmen zeigt — wer (über die Rolle der Person),

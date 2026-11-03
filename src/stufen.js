@@ -39,6 +39,30 @@ import { PAKET_MERKMALE, PAKET_FREIGABEN, PAKET_ZUSTAENDE, merkmalNutzbar, merkm
 export { paketNutzbar, merkmalNutzbar, merkmaleInVorbereitung, paketZustand, paketBuchbar,
   paketAnzeige, pilotAktiv, PAKET_ZUSTAENDE };
 
+/* Werbung folgt dem Zustand (G9, Review F2): „enthalten" nur, solange mindestens ein
+   Branchenpaket Zustand 5 hat. Sonst steht dort, was stimmt: noch nicht verfügbar. */
+const BRANCHENPAKETE_ENTHALTEN = "Zwei Branchenpakete enthalten";
+const BRANCHENPAKETE_BALD = "Zwei Branchenpakete – sobald verfügbar";
+const einPaketBuchbar = (liste, freigaben) => Object.keys(PAKET_MERKMALE)
+  .some((id) => id !== "kern" && paketBuchbar(id, liste, freigaben));
+
+/** Leistungszeile zu den in Enterprise enthaltenen Branchenpaketen, passend zum Paketstand. */
+export const branchenpaketeZeile = (liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  einPaketBuchbar(liste, freigaben) ? BRANCHENPAKETE_ENTHALTEN : BRANCHENPAKETE_BALD;
+
+/** Hinweis unter der Paketauswahl des Rechners, passend zum Paketstand. */
+export const branchenpaketeHinweis = (liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  einPaketBuchbar(liste, freigaben)
+    ? "In Enterprise sind zwei Pakete enthalten — angerechnet werden die beiden teuersten."
+    : "Branchenpakete sind in Vorbereitung und noch nicht buchbar. Sobald ein Paket verfügbar ist, "
+      + "gehören in Enterprise zwei Pakete dazu — angerechnet werden dann die beiden teuersten. "
+      + "Kein Paket wird ohne Ihre ausdrückliche Auswahl gebucht.";
+
+/** Leistungsliste für die Anzeige: auch ein gespeicherter älterer Tariftext folgt dem Paketstand. */
+export const leistungenAnzeige = (leistungen, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  (leistungen || []).map((z) => (z === BRANCHENPAKETE_ENTHALTEN || z === BRANCHENPAKETE_BALD
+    ? branchenpaketeZeile(liste, freigaben) : z));
+
 export const STUFEN = [
   { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
     paketeFrei: 0,
@@ -50,7 +74,7 @@ export const STUFEN = [
       "Belastbarkeitsanalyse", "Lohnausgabe — ein Klick zur Lohnbuchhaltung"] },
   { id: "enterprise", name: "Enterprise", grund: 279, planerInklusive: 8, standorteInklusive: 4,
     paketeFrei: 2,
-    leistungen: ["Alles aus Business", "Zwei Branchenpakete enthalten",
+    leistungen: ["Alles aus Business", branchenpaketeZeile(),
       "Leistungsnachweis für Auftraggeber", "Auftragsverarbeitung nach Artikel 28",
       "Bevorzugter Rückruf"] },
 ];
@@ -172,11 +196,15 @@ export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
  * @param paketeFrei wie viele davon in der Stufe enthalten sind
  * @param liste      Registry-Stand (Vorgabe: BRANCHENMODULE)
  * @param freigaben  Betreiberfreigaben (Vorgabe: PAKET_FREIGABEN)
- * @param pilot      kostenloser Pilotbetrieb: nichts wird berechnet
+ * @param pilot      Pilotbetrieb: nichts wird berechnet
+ * @param abrechenbar  Abrechnungsgrund je Paket (Zustimmung oder Vertrag, paketstand.mjs). Vorgabe:
+ *                     alles — nur für ein Angebot (Rechner) ohne Betrieb; jede Abrechnung eines
+ *                     Betriebs geht über mandantPaketkosten (paketlogik.js) und übergibt den Grund.
  */
-export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, pilot = false) {
+export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, pilot = false,
+  abrechenbar = () => true) {
   const alle = PAKETE_ROH.filter((p) => !p.pflicht && (ids || []).includes(p.id)).map((p) => mitModulstand(p));
-  const zaehlt = (p) => !pilot && paketBuchbar(p.id, liste, freigaben);
+  const zaehlt = (p) => !pilot && paketBuchbar(p.id, liste, freigaben) && abrechenbar(p.id);
   const nichtBerechnet = alle.filter((p) => !zaehlt(p));
   const gewaehlt = alle.filter(zaehlt)
     .sort((a, b) => (b.aufpreis || 0) - (a.aufpreis || 0));

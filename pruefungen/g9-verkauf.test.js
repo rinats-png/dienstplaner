@@ -154,22 +154,24 @@ describe("Selbststart und automatische Buchung: nur Zustand 5", () => {
       expect(betrieb(b).pakete, b).toEqual([]);
   });
 
-  it("paketFuerNeubuchung: je Zustand 1–5 nur bei 5 das Paket, sonst null", () => {
+  it("paketFuerNeubuchung: Selbststart bucht nie still zu (auch bei Zustand 5 nicht); nur eine bewusst umgelegte Konstante bucht, und dann nur bei Zustand 5", () => {
     for (const id of PAKET_IDS) for (const z of [1, 2, 3, 4, 5]) {
       const [liste, freigaben] = ZUSTAND(id)[z];
-      expect(paketFuerNeubuchung(id, liste, freigaben), `${id} ${z}`).toBe(z === 5 ? id : null);
+      expect(paketFuerNeubuchung(id, liste, freigaben), `${id} ${z}`).toBeNull();
+      expect(paketFuerNeubuchung(id, liste, freigaben, true), `${id} ${z} bewusst`).toBe(z === 5 ? id : null);
     }
     expect(paketFuerNeubuchung(null)).toBeNull();
   });
 });
 
 describe("Pilot: kostenlos, eingeschränkter Umfang, keine Rechnungspositionen", () => {
-  const pilotBetrieb = { preisgestaltung: { pilot: { seit: "2026-11-03", von: "Betreiber" } } };
+  const pilotBetrieb = { preisgestaltung: { pilot: { seit: "2026-11-03", von: "Betreiber", grund: "Pilotkunde" } } };
 
   it("pilotAktiv verlangt Datum und Betreiber; Freitext oder Wahrheitswert genügt nicht", () => {
     expect(pilotAktiv(pilotBetrieb)).toBe(true);
     for (const x of [{}, { preisgestaltung: {} }, { preisgestaltung: { pilot: true } },
-      { preisgestaltung: { pilot: { seit: "gestern", von: "x" } } }, { preisgestaltung: { pilot: { seit: "2026-11-03" } } }, null])
+      { preisgestaltung: { pilot: { seit: "gestern", von: "x", grund: "g" } } }, { preisgestaltung: { pilot: { seit: "2026-11-03" } } },
+      { preisgestaltung: { pilot: { seit: "2026-11-03", von: "Betreiber" } } }, { preisgestaltung: { pilot: { seit: "2026-11-03", von: "Betreiber", grund: " " } } }, null])
       expect(pilotAktiv(x)).toBe(false);
   });
 
@@ -187,9 +189,9 @@ describe("Pilot: kostenlos, eingeschränkter Umfang, keine Rechnungspositionen",
 
   it("die Pilotanzeige nennt nutzbare und nicht nutzbare Funktionen und suggeriert keinen vollen Umfang", () => {
     const t = paketAnzeige("klinik", { pilot: true });
-    expect(t).toMatch(/^Pilot – eingeschränkter Umfang: nutzbar: .*fachkraftquote.*; in Vorbereitung: .*Bereitschaftsdienst/);
+    expect(t).toMatch(/^Pilot – freigeschaltet, nicht berechnet \(eingeschränkter Umfang\): nutzbar: .*fachkraftquote.*; in Vorbereitung: .*Bereitschaftsdienst/);
     expect(paketAnzeige("industrie", { pilot: true })).toMatch(/nutzbar: nichts; in Vorbereitung: .*Anlagenbindung/);
-    expect(paketAnzeige("industrie")).toBe("In Vorbereitung (Zustand 1: geplant).");
+    expect(paketAnzeige("industrie")).toBe("In Vorbereitung (Zustand 1: geplant). Berechnung ausgesetzt, bis das Paket freigegeben ist.");
     expect(paketAnzeige("kern")).toBe("");
   });
 
@@ -204,7 +206,7 @@ describe("Pilot: kostenlos, eingeschränkter Umfang, keine Rechnungspositionen",
           person("a1", "mitarbeiter", "e1")],
         abweichungen: {}, anfragen: [], nachrichten: [], notrufe: [], status: "aktiv", tarif: "pro",
         preisgestaltung: {}, pakete: ["industrie"], selbstAngelegt: false }] });
-    const PILOT = { seit: "2026-11-03", von: "Betreiber" };
+    const PILOT = { seit: "2026-11-03", von: "Betreiber", grund: "Pilotkunde" };
     for (const [name, sitz] of [["Leitung", { rolle: "leitung", person: "l1", betrieb: 0 }],
       ["Planung", { rolle: "planer", person: "p1", betrieb: 0 }], ["Kundenrolle", { rolle: "kunde", person: "l1", betrieb: 0 }],
       ["Schichtverantwortung", { rolle: "subplaner", person: "s1", betrieb: 0 }],
@@ -257,9 +259,9 @@ describe("G10: Bestand bleibt erhalten", () => {
     expect(k.summe).toBe(0);
   });
 
-  it("Merkmalsprüfung `kann` bleibt unverändert: kein bestehendes Merkmal wird gesperrt", () => {
-    const app = quelle("../src/App.jsx");
-    expect(app).toMatch(/const kann = \(m, merkmal\) => \{\s*const aktiv = \["kern", \.\.\.\(m\.pakete \|\| \[\]\)\];\s*return PAKETE\.filter\(\(p\) => aktiv\.includes\(p\.id\)\)\.some\(\(p\) => p\.merkmale\.includes\(merkmal\)\);/);
+  it("Merkmalsprüfung `kann` ist die der Paketlogik (Verhalten: pruefungen/g9-nachtrag.test.js)", () => {
+    expect(quelle("../src/App.jsx")).toMatch(/const kann = kannMerkmal;/);
+    expect(quelle("../src/pruefung.jsx")).toMatch(/const kann = kannMerkmal;/);
   });
 
   it("Preisliste preisgestaltung.js kennt weder Paketstand noch Pilot", () => {
@@ -297,23 +299,24 @@ describe("Pfadliste: jede Stelle prüft den Zustand (Quelltext)", () => {
   it("Betreiberkonsole: Zustand statt Nutzbarkeit, kein Schalter zum Zubuchen, keine Summe, Pilot nur dort", () => {
     expect(app).toMatch(/const zustand = p\.pflicht \? 5 : paketZustand\(p\.id\);/);
     expect(app).toMatch(/const empfohlen = nutzbar && paketeFuerBranche/);
-    expect(app).toMatch(/\{!p\.pflicht && \(nutzbar \|\| an\) && \(/);
-    expect(app).toMatch(/!pilotAktiv\(m\) && \(m\.pakete \|\| \[\]\)\.includes\(p\.id\) && paketBuchbar\(p\.id\)\)/);
-    expect(app).toMatch(/\(an && !paketBuchbar\(paket\)\)/);
+    expect(app).toMatch(/\{!p\.pflicht && \(nutzbar \|\| an \|\| pilot\) && \(/);
+    expect(app).toMatch(/eur0\(paketAufpreisSumme\(m\)\)/);
+    expect(app).toMatch(/paketSchalten\(m, paket, an\)/);
     expect(app).toMatch(/setzePilot: \(mid, an\)/);
     expect(app).toMatch(/merkmalNutzbar\(x\) \? x : `\$\{x\} \(in Vorbereitung\)`/);
   });
 
   it("Rechnung: keine Position für nicht berechnete Pakete; Vertragsübersicht: 0 € mit Zustandsanzeige", () => {
-    expect(app).toMatch(/const pilot = pilotAktiv\(m\);\s*const paketkosten_ = paketkosten\(m\.pakete \|\| \[\], gewaehlt\.paketeFrei \|\| 0, undefined, undefined, pilot\);/);
-    expect(app).toMatch(/if \(\(p\.paketeNichtBerechnet \|\| \[\]\)\.some\(\(x\) => x\.id === pk\.id\)\) continue;/);
-    expect(app).toMatch(/paketAnzeige\(pk\.id, \{ pilot: p\.pilot \}\)/);
+    expect(app).toMatch(/const pilot = pilotAktiv\(m\);[\s\S]*?const paketkosten_ = mandantPaketkosten\(m, gewaehlt\.paketeFrei \|\| 0, undefined, undefined, ym \? /);
+    expect(app).toMatch(/positionen\.push\(\.\.\.paketPositionen\(p, eur\)\);/);
+    expect(app).toMatch(/paketAnzeige\(pk\.id, \{ pilot: p\.pilot,/);
     expect(app).toMatch(/\.some\(\(x\) => x\.id === pk\.id\) \? eur\(0\) : eur\(pk\.aufpreis\)/);
   });
 
   it("Prüfanzeige (pruefung.jsx): eine Paketliste, Summe nur Zustand 5", () => {
     expect(pruef).not.toMatch(/^const PAKETE = \[/m);
-    expect(pruef).toMatch(/import \{ PAKETE, paketBuchbar \} from "\.\/stufen\.js"/);
-    expect(pruef).toMatch(/filter\(\(p\) => paketBuchbar\(p\.id\)\)\.reduce/);
+    expect(pruef).toMatch(/import \{ kannMerkmal, mandantPaketkosten, paketPositionen \} from "\.\/paketlogik\.js"/);
+    expect(pruef).toMatch(/mandantPaketkosten\(m, \(t && t\.paketeFrei\) \|\| 0\)/);
+    expect(pruef).toMatch(/paketPositionen\(p, eur\)/);
   });
 });
