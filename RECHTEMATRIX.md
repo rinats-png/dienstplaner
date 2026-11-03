@@ -149,6 +149,11 @@ personenbezogene Ist-Zeiten anderer, personenbezogene Ist-Auswertungen (auch die
 `sichtIstDaten` bleibt `{umfang: "keine"}`) und zusätzliche Verwaltungsrechte (Schreibumfang weiter „nein"; gestempelt
 wird nur über `/api/stempeln`). Geprüft in `pruefungen/rechtematrix.test.js` (Zeilen „Stempel: eigener (Betriebsrat)",
 „Zeiterfassung: eigene (Betriebsrat)"), `stempel-datenschutz.test.js`, `geo.test.js` und `oberflaeche-render.test.js`.
+**Klarstellung WP-14b (N4):** Am eigenen Stempel hängen seit WP-06/WP-14 die Korrekturereignisse (`korrekturen[].vorher/
+nachher`) und Korrekturanträge (`antraege[].ist`, `vorschlag`) — sie nennen Zeiten der **eigenen** Person. Der Betriebsrat
+sieht sie für den eigenen Stempel wie Beschäftigte (er stellt und verfolgt seinen eigenen Antrag). Das ist keine Ist-Sicht
+auf andere und keine Auswertung: `erfassung` bleibt weg, `sichtIstDaten` bleibt `{umfang: "keine"}`. Bewusst so belassen
+(nur eigene Daten); Entfernen würde den eigenen Korrekturantrag für den Betriebsrat unbenutzbar machen.
 ¹³ Commit D1c: `mandanten[].session` hatte keinen Schreiber; die Oberfläche las daraus nur irrtümlich die eigene
 Person (`bewirbDich`, `ziehBewerbungZurueck`, jetzt nur `sitz.person.id`). Planung und Leitung konnten dort
 beliebige Daten ablegen, die alle Rollen des Betriebs — Beschäftigte und Betriebsrat eingeschlossen — und die

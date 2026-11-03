@@ -523,7 +523,11 @@ export const BETRIEB = {
      Person an) — und muss den eigenen offenen Beginn sehen, sonst bietet
      die Oberfläche erneut „Einstempeln" an. Fremde Stempel und jede
      Ist-Erfassung, auch die eigene, bleiben weg (sichtIstDaten „keine").
-     Fachlich bestätigt am 2026-11-02; dokumentiert in RECHTEMATRIX.md ¹⁴. */
+     Fachlich bestätigt am 2026-11-02; dokumentiert in RECHTEMATRIX.md ¹⁴.
+     Klarstellung WP-14b (N4): Der eigene Stempel trägt seine Korrekturen
+     (vorher/nachher) und Anträge (ist, vorschlag) — Zeiten der eigenen
+     Person, damit der Betriebsrat den eigenen Antrag stellen und verfolgen
+     kann. Keine Ist-Erfassung (erfassung), keine fremden Zeiten. */
   erfassung: [NUR_EIGENE, WEG],
   einstempeln: [NUR_EIGENE, NUR_EIGENE],
   fahrzeiten: [NUR_EIGENE, WEG],
