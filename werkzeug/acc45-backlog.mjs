@@ -15,7 +15,7 @@
    Aufwand in Entwicklertagen (menschliches Äquivalent aus CENTRIC-RESTARBEITEN);
    der kritische Pfad ist die längste Kette über die Abhängigkeiten.
    ========================================================================== */
-import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -185,9 +185,18 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export function lokalerPfad(wert = process.env.ACC45_LOKAL) {
   if (!wert) return null;
   const p = path.resolve(wert);
-  const rel = path.relative(REPO, p);
+  /* Über den echten Pfad vergleichen: Ein Symlink oder eine Junction außerhalb
+     des Repos, die ins Repo zeigt, darf nicht durchgehen. Die Datei selbst
+     muss noch nicht existieren — dann zählt der nächste vorhandene Ordner. */
+  const echt = (x) => {
+    let rest = "";
+    let d = x;
+    while (!existsSync(d)) { rest = path.join(path.basename(d), rest); const o = path.dirname(d); if (o === d) break; d = o; }
+    return path.join(realpathSync.native(d), rest);
+  };
+  const rel = path.relative(realpathSync.native(REPO), echt(p));
   if (!rel.startsWith("..") && !path.isAbsolute(rel))
-    throw new Error(`ACC45_LOKAL zeigt ins Repo (${rel}) — lokale Felder gehören nicht ins öffentliche Repo.`);
+    throw new Error(`ACC45_LOKAL zeigt ins Repo (${rel || "."}) — lokale Felder gehören nicht ins öffentliche Repo.`);
   return p;
 }
 export function lokalLesen(pfad = lokalerPfad()) {

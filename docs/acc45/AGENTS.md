@@ -68,9 +68,19 @@ Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder glo
   - Code geändert (`server/`, `src/`, `werkzeug/`, `deploy/`, `public/`, `server.mjs`), aber kein Test neu oder
     geändert;
   - eslint-Fehler in geänderten Dateien;
-  - eine hinzugefügte Zeile mit typischem Geheimnis (privater Schlüssel, GitHub-, AWS- oder API-Token,
-    Passwort-Zuweisung);
-  - eine `.env` im Änderungssatz.
+  - ein typisches Geheimnis in einer hinzugefügten Zeile — im Arbeitsstand **und** in jedem Commit seit der Basis,
+    auch wenn ein späterer Commit es wieder entfernt hat. Erkannt werden:
+    - privater Schlüssel;
+    - Token von GitHub, AWS, Slack, Google, Stripe, Anthropic/OpenAI, Resend;
+    - JWT;
+    - Zugangsdaten in URLs;
+    - Zuweisungen an password/secret/token/apikey/pfeffer, auch mit Präfix (`DB_PASSWORD`) und in JSON-Form.
+
+    Offensichtliche Platzhalter und Prüfwerte zählen nicht (z. B. `…nur-zum-pruefen…`, `<…>`);
+  - eine Umgebungsdatei im Änderungssatz (`.env`, `.env.*`, `*.env`, `.envrc`; nicht `.env.example`).
+- Rückgabe 2 bei Aufruf- oder Git-Fehlern.
+- eslint läuft in Teilmengen.
+- Sind Tests geändert, erinnert die Ausgabe daran, dass ein geänderter Test noch kein passender Test ist.
 - **Warnung** bei Dateien außerhalb des Paketfeldes `dateien`. Das Feld ist unscharf gepflegt, deshalb nur ein Hinweis.
 - Danach folgt die **Checkliste** der häufigsten Review-Befunde aus den Nachweisen, zum Abhaken:
   - fail-closed;
@@ -89,11 +99,18 @@ Drei Repo-Werkzeuge beschleunigen die Arbeit, ohne neue Software, Hooks oder glo
 
 - Gibt nur Zusammenfassung und Fehlschläge aus. Endet der Befehl mit einem Fehler und passt keine Zeile, kommen die
   letzten 30 Zeilen.
-- Behält den Rückgabewert genau (Signal: 128 + Nummer).
-- Plattformneutral: `node` wird direkt gestartet. Unter Windows läuft alles andere über `cmd.exe` mit selbst
-  gesetzten Anführungszeichen.
+- Behält den Rückgabewert genau (Signal: 128 + Nummer). Aufruffehler (fehlender Befehl, `--zeilen`/`--warten` keine
+  Zahl, unbekannte Option) geben 2 zurück.
+- Die Ausgabe wird zeilenweise verarbeitet, ohne unbegrenzten Puffer.
+- Strg-C/SIGTERM beendet das Kind und gibt die Sperre frei.
+- Plattformneutral: `node` wird direkt gestartet, unter Linux/macOS alles ohne Shell.
+- Unter Windows laufen andere Befehle über `cmd /d /s /c` mit wörtlicher Befehlszeile. Argumente mit
+  `"`, `&`, `|`, `<`, `>`, `^`, `%`, `!` werden dort **abgelehnt** (Rückgabe 2). cmd.exe wertet diese Zeichen selbst
+  aus; sie ließen sich nicht sicher maskieren.
 - `--sperre`: Über alle Worktrees läuft nur ein schwerer Lauf gleichzeitig.
   - Sperrdatei `<tmp>/centric-test-kurz.sperre` oder `TEST_KURZ_SPERRE`.
   - Gewartet wird höchstens `--warten` Sekunden.
   - Fail-safe: Läuft die Zeit ab oder klappt die Sperre nicht, läuft der Test trotzdem, mit Hinweis.
-  - Die Sperre eines toten Prozesses oder eine, die älter als 2 Stunden ist, wird übernommen.
+  - Übernommen wird eine verwaiste Sperre: eines toten Prozesses, älter als 2 Stunden, oder leer bzw. unlesbar und
+    älter als 2 Minuten. Die Übernahme ist atomar (umbenennen, vergleichen).
+- `ACC45_LOKAL` wird über den echten Pfad geprüft; ein Link oder eine Junction ins Repo wird abgelehnt.
