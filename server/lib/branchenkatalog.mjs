@@ -96,6 +96,13 @@ export const REGELN_BRANCHEN = Object.freeze([
     scope: { branche: ["produktion", "logistik"] },
     parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "betriebsmittel.mindestBesetzung" },
     pruefhinweis: "Mindestbesetzung je Anlage legt der Betrieb nach seiner Gefährdungsbeurteilung fest (§ 5 ArbSchG); keine Rechtsvorschrift mit festen Zahlen. Stufe nach Nutzerentscheidung G4." }),
+  /* Industrie — maschinenqual. Die Instanz je Anlage verlangt „anlage:<id>“ in der
+     Mindestbesetzung der Anlage (maschinenqualBefunde, server/lib/modul-maschinenqual.mjs). */
+  branchenregel({ id: "MASCHQUAL-BESETZUNG-01", modul: "maschinenqual", typ: "besetzungsregel",
+    bezeichnung: "Qualifizierte Besetzung der laufenden Anlagen", ebene: "betrieb",
+    scope: { branche: ["produktion", "logistik"] },
+    parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "anlage", min: 1 }], bedarfAus: "betriebsmittel.mindestBesetzung" },
+    pruefhinweis: "Unterweisung und Beauftragung nach § 12 BetrSichV und § 12 ArbSchG; ob fehlende Qualifikation nur Hinweis oder bestätigungspflichtig ist, entscheidet der Nutzer (G4). Quellen an der Primärquelle prüfen." }),
 ]);
 
 /**

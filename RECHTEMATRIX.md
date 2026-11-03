@@ -312,6 +312,12 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Schichtverantwortung sehen nicht ausgegebene Betriebsmittel, also auch Anlagen; Betriebsrat nicht). Der Server
   weist eine falsche Form ab (`anlagenZusammen`). Befunde nur als Hinweis und nur bei aktivem Modul.
   Geprüft in `pruefungen/modul-anlagen.test.js`.
+- *Maschinenqualifikationen* (`server/lib/modul-maschinenqual.mjs`): keine neuen Betriebsfelder. Liest
+  `kompetenzen` und `kompetenzNachweise` wie bisher (Positivkatalog unverändert: Beschäftigte nur eigene
+  Zuweisung, Schichtverantwortung ohne fremde Kompetenznachweise ¹⁸); neues Feld `befaehigtePerson` (Ja/Nein) an
+  der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
+  nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
+  (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

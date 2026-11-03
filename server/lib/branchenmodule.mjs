@@ -135,7 +135,9 @@ export const BRANCHENMODULE = Object.freeze([
     regelIds: ["ANLAGEN-BESETZUNG-01"] }),
   modul({ id: "maschinenqual", merkmal: "maschinenqual", name: "Maschinenqualifikationen", pakete: ["industrie"],
     abhaengigVon: ["anlagen"],
-    beschreibung: "Qualifikationsmatrix Person × Anlage mit Ablauf und Unterweisung." }),
+    beschreibung: "Qualifikationsmatrix Person × Anlage mit Ablauf und Unterweisung.",
+    /* server/lib/modul-maschinenqual.mjs: bestehende Kompetenzen (Matrix M1 a), Feld befaehigtePerson (M3 a). */
+    regelIds: ["MASCHQUAL-BESETZUNG-01"] }),
   modul({ id: "kontimodelle", merkmal: "kontimodelle", name: "Kontischichtmodelle mit Stufenversatz", pakete: ["industrie"],
     beschreibung: "Assistent für Schichtgruppen, Versatz und Jahresarbeitszeit im kontinuierlichen Betrieb.",
     /* Rechnung: server/lib/modul-kontimodelle.mjs. Keine Registerregel (Matrix K1 a), keine neuen Daten —

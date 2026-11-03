@@ -26,6 +26,7 @@ import { schutzpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from ".
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
+import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1067,6 +1068,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
       const anlagen = anlagenZusammen(geschickt);
       if (anlagen.grund) return { verweigert: anlagen.grund };
+      /* Maschinenqualifikationen (WP-19): befähigte Person und Wiederholung an Kompetenzen zu Anlagen. */
+      const maschinen = maschinenqualZusammen(geschickt);
+      if (maschinen.grund) return { verweigert: maschinen.grund };
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
