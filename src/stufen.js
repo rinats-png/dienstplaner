@@ -32,10 +32,12 @@
 
 import { standortzuschlaege } from "./standorte.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
-import { PAKET_MERKMALE, merkmalNutzbar, merkmaleInVorbereitung, paketNutzbar }
+import { PAKET_MERKMALE, PAKET_FREIGABEN, PAKET_ZUSTAENDE, merkmalNutzbar, merkmaleInVorbereitung,
+  paketNutzbar, paketZustand, paketBuchbar, paketAnzeige, pilotAktiv }
   from "../server/lib/paketstand.mjs";
 
-export { paketNutzbar, merkmalNutzbar, merkmaleInVorbereitung };
+export { paketNutzbar, merkmalNutzbar, merkmaleInVorbereitung, paketZustand, paketBuchbar,
+  paketAnzeige, pilotAktiv, PAKET_ZUSTAENDE };
 
 export const STUFEN = [
   { id: "basis", name: "Basis", grund: 89, planerInklusive: 1, standorteInklusive: 1,
@@ -116,9 +118,10 @@ const PAKETE_ROH = [
    Text für das heute Nutzbare. Preise und Merkmale bleiben unverändert; über
    Zahlung und Buchbarkeit entscheidet diese Datei nicht. */
 function mitModulstand(p) {
-  if (p.pflicht) return { ...p, inVorbereitung: [], nutzbar: true };
+  if (p.pflicht) return { ...p, inVorbereitung: [], nutzbar: true, buchbar: true, zustand: 5 };
   const geplant = inVorbereitungModule(p);
   return { ...p, inVorbereitung: geplant.map((x) => x.id), nutzbar: paketNutzbar(p.id),
+    zustand: paketZustand(p.id), buchbar: paketBuchbar(p.id),
     beschreibung: p.verfuegbar + (geplant.length ? ` In Vorbereitung: ${geplant.map((x) => x.name).join(", ")}.` : "") };
 }
 
@@ -129,24 +132,26 @@ export function inVorbereitungModule(p, liste = BRANCHENMODULE) {
 }
 
 /**
- * Das Angebot der Pakete für Auswahl und Anzeige (Website-Rechner, Konsole):
- * ein Paket ohne nutzbares Merkmal ist nicht buchbar und trägt keinen Preis
- * (G9: nicht verkaufen, was nicht nutzbar ist). Teilweise geplante Pakete
- * bleiben buchbar, mit „In Vorbereitung" je Merkmal; ihr Preis ist eine
- * Entscheidung des Betreibers und bleibt unverändert.
+ * Das Angebot der Pakete für Auswahl und Anzeige (Website-Rechner, Konsole).
+ * Betreiberentscheidung G9: Nur Zustand 5 (buchbar und abrechenbar) ist
+ * wählbar, beworben und mit Preis genannt; die Zielpreise bleiben, gelten
+ * aber erst dann. Zustände 1–4: „In Vorbereitung" mit Zustand, ohne Preis.
  */
-export function paketeAngebot(liste = BRANCHENMODULE) {
+export function paketeAngebot(liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) {
   return PAKETE_ROH.filter((p) => !p.pflicht).map((p) => {
-    const nutzbar = paketNutzbar(p.id, liste);
-    return { id: p.id, name: p.name, nutzbar, buchbar: nutzbar,
-      aufpreis: nutzbar ? p.aufpreis : null,
+    const zustand = paketZustand(p.id, liste, freigaben);
+    const buchbar = zustand === 5;
+    return { id: p.id, name: p.name, zustand, zustandName: PAKET_ZUSTAENDE[zustand],
+      nutzbar: paketNutzbar(p.id, liste), buchbar,
+      aufpreis: buchbar ? p.aufpreis : null,
       inVorbereitung: inVorbereitungModule(p, liste).map((x) => x.name) };
   });
 }
 
-/** Aus einer Auswahl nur das, was buchbar ist (Rechner, automatische Buchung). */
-export const buchbareAuswahl = (ids, liste = BRANCHENMODULE) =>
-  (ids || []).filter((id) => id !== "kern" && PAKETE_ROH.some((p) => p.id === id) && paketNutzbar(id, liste));
+/** Aus einer Auswahl nur das, was buchbar ist (Rechner, automatische Buchung): Zustand 5. */
+export const buchbareAuswahl = (ids, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
+  (ids || []).filter((id) => id !== "kern" && PAKETE_ROH.some((p) => p.id === id)
+    && paketBuchbar(id, liste, freigaben));
 export const PAKETE = PAKETE_ROH.map(mitModulstand);
 
 export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
@@ -159,18 +164,21 @@ export const paketVon = (id) => PAKETE.find((p) => p.id === id) || PAKETE[0];
  * Falle: Wer Pflege und Klinik bucht und Industrie dazunimmt, dürfte
  * sonst schlechter dastehen als vorher.
  *
- * Ein Paket ohne nutzbares Merkmal (G9) wird nicht berechnet und belegt keinen
- * der freien Plätze; es bleibt in `gewaehlt` (der Bestand verliert nichts)
- * und steht zusätzlich in `nichtBerechnet`.
+ * Ein Paket unter Zustand 5 (G9) oder in einem Pilotbetrieb wird nicht
+ * berechnet und belegt keinen der freien Plätze; es bleibt in `gewaehlt`
+ * (der Bestand verliert nichts) und steht zusätzlich in `nichtBerechnet`.
  *
  * @param ids        gewählte Paket-Kennungen (ohne „kern")
  * @param paketeFrei wie viele davon in der Stufe enthalten sind
  * @param liste      Registry-Stand (Vorgabe: BRANCHENMODULE)
+ * @param freigaben  Betreiberfreigaben (Vorgabe: PAKET_FREIGABEN)
+ * @param pilot      kostenloser Pilotbetrieb: nichts wird berechnet
  */
-export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE) {
+export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, pilot = false) {
   const alle = PAKETE_ROH.filter((p) => !p.pflicht && (ids || []).includes(p.id)).map((p) => mitModulstand(p));
-  const nichtBerechnet = alle.filter((p) => !paketNutzbar(p.id, liste));
-  const gewaehlt = alle.filter((p) => paketNutzbar(p.id, liste))
+  const zaehlt = (p) => !pilot && paketBuchbar(p.id, liste, freigaben);
+  const nichtBerechnet = alle.filter((p) => !zaehlt(p));
+  const gewaehlt = alle.filter(zaehlt)
     .sort((a, b) => (b.aufpreis || 0) - (a.aufpreis || 0));
   const frei = gewaehlt.slice(0, Math.max(0, paketeFrei));
   const zahlend = gewaehlt.slice(Math.max(0, paketeFrei));
@@ -188,12 +196,15 @@ export function paketkosten(ids, paketeFrei = 0, liste = BRANCHENMODULE) {
  * @param standortPersonen Personenzahl je Standort, beliebige Reihenfolge
  * @param paketIds         gewählte Branchenpakete
  * @param liste            Registry-Stand (Vorgabe: BRANCHENMODULE)
+ * @param freigaben        Betreiberfreigaben je Paket (Vorgabe: PAKET_FREIGABEN)
+ * @param pilot            kostenloser Pilotbetrieb: keine Paketpreise
  */
-export function preisFuer(stufe, planerGesamt, standortPersonen, paketIds = [], liste = BRANCHENMODULE) {
+export function preisFuer(stufe, planerGesamt, standortPersonen, paketIds = [], liste = BRANCHENMODULE,
+  freigaben = PAKET_FREIGABEN, pilot = false) {
   const zusatzPlaner = Math.max(0, planerGesamt - stufe.planerInklusive);
   const summePlaner = zusatzPlaner * ZUSATZ_PLANER;
   const zuschlaege = standortzuschlaege(standortPersonen, stufe.standorteInklusive);
-  const pakete = paketkosten(paketIds, stufe.paketeFrei || 0, liste);
+  const pakete = paketkosten(paketIds, stufe.paketeFrei || 0, liste, freigaben, pilot);
   const gesamt = Math.round(
     (stufe.grund + summePlaner + zuschlaege.summe + pakete.summe) * 100) / 100;
   const kontaktEmpfohlen = planerGesamt > KONTAKT_AB_PLANER

@@ -205,7 +205,7 @@ import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoec
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
-  PAKETE, paketVon, paketkosten, preisFuer, paketNutzbar, merkmalNutzbar } from "./stufen.js";
+  PAKETE, paketVon, paketkosten, preisFuer, paketBuchbar, paketZustand, PAKET_ZUSTAENDE, paketAnzeige, pilotAktiv, merkmalNutzbar } from "./stufen.js";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
@@ -2270,7 +2270,8 @@ function preis(db, m) {
      die in der Stufe enthaltenen sind frei. Enterprise trägt zwei; das
      stand bisher nur in `paketeFrei` und im Leistungstext der Karte, die
      Rechnung stellte sie trotzdem in Rechnung. */
-  const paketkosten_ = paketkosten(m.pakete || [], gewaehlt.paketeFrei || 0);
+  const pilot = pilotAktiv(m);
+  const paketkosten_ = paketkosten(m.pakete || [], gewaehlt.paketeFrei || 0, undefined, undefined, pilot);
   const pakete = paketkosten_.gewaehlt;
   const summePakete = paketkosten_.summe;
   const tarifwert = Math.round((gewaehlt.grund + summePlaner + summeStandorte + summePakete) * 100) / 100;
@@ -2291,7 +2292,7 @@ function preis(db, m) {
     standorte: standorte.length, standortzuschlaege: zuschlaege, summeStandorte,
     pakete, paketeFrei: paketkosten_.frei, paketeZahlend: paketkosten_.zahlend,
     /* G9: gebucht, aber ohne nutzbare Funktion — nicht berechnet. */
-    paketeNichtBerechnet: paketkosten_.nichtBerechnet,
+    paketeNichtBerechnet: paketkosten_.nichtBerechnet, pilot,
     summePakete, grund: gewaehlt.grund, gesamt, tarifwert, gestaltung: g,
     zahlt, wirksam: zahlt ? gesamt : 0, personen, kontaktEmpfohlen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0 };
@@ -2490,14 +2491,13 @@ function baueRechnung(db, m, monatISO) {
        aber mit null — sonst fragt jemand, wo sein Paket geblieben ist. */
     for (const pk of p.pakete) {
       const frei = (p.paketeFrei || []).some((x) => x.id === pk.id);
-      /* G9: ein Paket ohne nutzbare Funktion steht mit null und dem Hinweis
-         „in Vorbereitung" auf der Rechnung, bis ein Modul abgenommen ist. */
-      const vorb = (p.paketeNichtBerechnet || []).some((x) => x.id === pk.id);
-      const nullEuro = frei || vorb;
+      /* G9: ein Paket unter Zustand 5 (und jedes Paket eines Pilotbetriebs)
+         erzeugt keine Rechnungsposition — es wird nicht als Leistung geführt. */
+      if ((p.paketeNichtBerechnet || []).some((x) => x.id === pk.id)) continue;
       positionen.push({
-        text: `Branchenpaket ${pk.name}${vorb ? " (in Vorbereitung, nicht berechnet)" : frei ? " (in der Stufe enthalten)" : ""}`,
-        menge: "", einzel: eur(nullEuro ? 0 : pk.aufpreis),
-        betrag: eur(nullEuro ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+        text: `Branchenpaket ${pk.name}${frei ? " (in der Stufe enthalten)" : ""}`,
+        menge: "", einzel: eur(frei ? 0 : pk.aufpreis),
+        betrag: eur(frei ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
     }
     if (g.rabatt > 0)
       positionen.push({ text: "Vereinbarter Nachlass", menge: "", einzel: "",
@@ -8056,9 +8056,10 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
                   color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 700 }}>+</span>
                 <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Paket {pk.name}
-                  {!paketNutzbar(pk.id) && <span style={{ color: C.dimmer }}> · in Vorbereitung, nicht berechnet</span>}</span>
+                  {(p.paketeNichtBerechnet || []).some((x) => x.id === pk.id)
+                    && <span style={{ color: C.dimmer }}> · {paketAnzeige(pk.id, { pilot: p.pilot })} Nicht berechnet.</span>}</span>
                 <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>
-                  {paketNutzbar(pk.id) ? eur(pk.aufpreis) : eur(0)}</span>
+                  {(p.paketeNichtBerechnet || []).some((x) => x.id === pk.id) ? eur(0) : eur(pk.aufpreis)}</span>
               </div>))}
             <div style={{ marginTop: 16, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}` }}>
               {/* Weicht die Vereinbarung vom Tarif ab, steht beides da.
@@ -15627,8 +15628,11 @@ function Pakete({ db, akt }) {
           <div style={{ display: "grid", gap: 14 }}>
             {PAKETE.map((p) => {
               const an = p.pflicht || (m.pakete || []).includes(p.id);
-              /* G9: nichts empfehlen, buchen oder berechnen, was nicht nutzbar ist. */
-              const nutzbar = paketNutzbar(p.id);
+              /* G9: nur Zustand 5 (buchbar und abrechenbar) wird empfohlen, gebucht
+                 und berechnet. */
+              const zustand = p.pflicht ? 5 : paketZustand(p.id);
+              const nutzbar = zustand === 5;
+              const pilot = pilotAktiv(m);
               const empfohlen = nutzbar && paketeFuerBranche(m.branche).includes(p.id);
               return (
                 <Card key={p.id} style={{ padding: 20, borderColor: an ? C.accent : C.line }}>
@@ -15649,8 +15653,9 @@ function Pakete({ db, akt }) {
                     </div>
                     <div style={{ textAlign: "right", minWidth: 130 }}>
                       {!nutzbar
-                        ? <div style={{ fontSize: 13, color: C.dim }}>in Vorbereitung – nicht buchbar,
-                            wird nicht berechnet</div>
+                        ? <div style={{ fontSize: 13, color: C.dim }}>In Vorbereitung – Zustand {zustand}:
+                            {" "}{PAKET_ZUSTAENDE[zustand]}. Nicht buchbar, wird nicht berechnet.
+                            {an && pilot && <div>{paketAnzeige(p.id, { pilot: true })}</div>}</div>
                         : p.aufpreis
                         ? <div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>+{eur0(p.aufpreis)}
                             <span style={{ fontSize: 12, color: C.dim, fontWeight: 400 }}> /Monat</span></div>
@@ -15670,12 +15675,29 @@ function Pakete({ db, akt }) {
             <Card style={{ padding: 20 }}>
               <Rubrik style={{ marginBottom: 10 }}>Monatlicher Aufpreis</Rubrik>
               <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM }}>
-                {eur0(PAKETE.filter((p) => (m.pakete || []).includes(p.id) && paketNutzbar(p.id))
+                {eur0(PAKETE.filter((p) => !pilotAktiv(m) && (m.pakete || []).includes(p.id) && paketBuchbar(p.id))
                   .reduce((a, p) => a + (p.aufpreis || 0), 0))}
               </div>
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 8, lineHeight: 1.55 }}>
                 Zusätzlich zur Grundgebühr und den Zugängen. Pakete lassen sich jederzeit zu- und
-                abschalten — abgerechnet wird tagesgenau.
+                abschalten — abgerechnet wird tagesgenau. Pakete unter Zustand 5 werden nie berechnet.
+              </div>
+            </Card>
+
+            {/* Pilot: kostenlos, eingeschränkter Umfang; nur der Betreiber setzt ihn (Protokoll),
+                keine Rechnungspositionen, kein Anschein des vollen Funktionsumfangs. */}
+            <Card style={{ padding: 20 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "center" }}>
+                <div>
+                  <Rubrik style={{ marginBottom: 6 }}>Pilotbetrieb</Rubrik>
+                  <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.55 }}>
+                    Kostenlos, mit eingeschränktem Umfang: Pakete werden nicht berechnet und
+                    erscheinen als „Pilot – eingeschränkter Umfang“ mit nutzbaren und noch nicht
+                    nutzbaren Funktionen.
+                    {pilotAktiv(m) && ` Aktiv seit ${m.preisgestaltung.pilot.seit}.`}
+                  </div>
+                </div>
+                <Schalter an={pilotAktiv(m)} label="Pilotbetrieb" onChange={() => akt.setzePilot(m.id, !pilotAktiv(m))} />
               </div>
             </Card>
           </div>)}
@@ -23170,9 +23192,18 @@ function AppInnen() {
         return bLog({ ...s, mandanten: [...s.mandanten, m] },
           `Mandant „${m.name}" eingerichtet: ${m.einheiten.filter((e) => !e.pool).length} Einheiten`);
       }),
+      /* Pilotbetrieb: nur der Betreiber (diese Konsole), mit Protokoll. */
+      setzePilot: (mid, an) => upd((s) => {
+        const m = s.mandanten.find((x) => x.id === mid);
+        if (!m) return s;
+        const alt = { ...(m.preisgestaltung || {}) };
+        if (an) alt.pilot = { seit: heute(), von: "Betreiber" }; else delete alt.pilot;
+        return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, preisgestaltung: alt } : x)) },
+          `Pilotbetrieb ${an ? "gesetzt" : "beendet"} bei ${m.name}`);
+      }),
       /* G9: ein Paket ohne nutzbare Funktion lässt sich nicht neu zubuchen;
          Abschalten geht immer. */
-      setzePaket: (mid, paket, an) => (an && !paketNutzbar(paket)) ? melde("Dieses Paket ist in Vorbereitung und nicht buchbar.") : upd((s) => ({ ...s,
+      setzePaket: (mid, paket, an) => (an && !paketBuchbar(paket)) ? melde("Dieses Paket ist in Vorbereitung und nicht buchbar.") : upd((s) => ({ ...s,
         mandanten: s.mandanten.map((m) => m.id !== mid ? m : { ...m,
           pakete: an ? [...new Set([...(m.pakete || []), paket])]
             : (m.pakete || []).filter((p) => p !== paket) }) }),

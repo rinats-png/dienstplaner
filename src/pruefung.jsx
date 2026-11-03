@@ -8,7 +8,7 @@ import React from "react";
 
 import { C, C_DUNKEL, C_HELL } from "./farben.js";
 import { ANWENDUNG_URL } from "./kontakt.js";
-import { PAKETE, paketNutzbar } from "./stufen.js";
+import { PAKETE, paketBuchbar } from "./stufen.js";
 /* Diese Datei trägt an vielen Stellen eigene Kopien aus App.jsx. Die
    Verbindlichkeit einer Anforderung gehört ausdrücklich nicht dazu: Eine
    zweite, abweichende Auslegung davon, was gesetzlich zwingend ist, wäre
@@ -1390,7 +1390,7 @@ function preis(db, m) {
   // Branchenpakete werden je Betrieb berechnet, nicht je Standort
   const pakete = PAKETE.filter((p) => (m.pakete || []).includes(p.id));
   // G9: ein Paket ohne nutzbare Funktion wird nicht berechnet
-  const summePakete = pakete.filter((p) => paketNutzbar(p.id)).reduce((a, p) => a + (p.aufpreis || 0), 0);
+  const summePakete = pakete.filter((p) => paketBuchbar(p.id)).reduce((a, p) => a + (p.aufpreis || 0), 0);
   const gesamt = Math.round((summeStandorte + summePakete) * 100) / 100;
   const zahlt = stat(m.status).zahlt;
   const personen = aktiv.length;
