@@ -27,7 +27,7 @@ import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
-import { paketeNachServerregel, pilotAktiv, zustimmungenBereinigen, grundlageBereinigen } from "./paketstand.mjs";
+import { paketfelderGeprueft } from "./paketstand.mjs";
 import { modulSchreibwegeAnwenden } from "./modulschreibwege.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
@@ -449,22 +449,10 @@ export const BETREIBERSTAMM = ["kontakt", "kontaktName", "anschrift", "ustId", "
 /** Was Leitung und Kundenrolle zur Preisanzeige lesen (B2) — nur lesend. */
 const PREISGRUNDLAGE = ["tarif", "preisgestaltung", "rabattGrund"];
 
-/* G9 (Review F1): Pakete lassen sich unter Zustand 5 nur in einem Betrieb mit Pilot zubuchen;
-   sonst bleibt der gespeicherte Stand (Absicherung gegen alten Client, Betreiber vertrauenswürdig). */
-const paketeGeprueft = (m0, altM) => {
-  let m = m0;
-  if (m && Object.prototype.hasOwnProperty.call(m, "pakete"))
-    m = { ...m, pakete: paketeNachServerregel(altM ? altM.pakete : [], m.pakete, pilotAktiv(m)) };
-  /* Abrechnungsgrund (Zustimmung des Kunden / vertragliche Grundlage): nur formgültig. */
-  if (m && Object.prototype.hasOwnProperty.call(m, "paketZustimmungen"))
-    m = { ...m, paketZustimmungen: zustimmungenBereinigen(m.paketZustimmungen) };
-  if (m && Object.prototype.hasOwnProperty.call(m, "paketGrundlage")) {
-    const { paketGrundlage, ...rest } = m;
-    const g = grundlageBereinigen(paketGrundlage);
-    m = g ? { ...rest, paketGrundlage: g } : rest;
-  }
-  return m;
-};
+/* G9 (Review F1, Nachtrag 2): Pakete lassen sich unter Zustand 5 nur in einem Betrieb mit Pilot
+   zubuchen; Pilot, Zustimmungen und Grundlagen mit Servertag, nur für gebuchte Pakete. Die Regel
+   steht in paketstand.mjs (paketfelderGeprueft) — /api/bestand-anlegen nutzt dieselbe. */
+const paketeGeprueft = (m0, altM) => paketfelderGeprueft(m0, altM);
 
 export const VERTRAGSFELDER = ["status", "tarif", "seit", "bis", "stichtag",
   "testTage", "rabattGrund", "preisgestaltung", "pakete", "paketZustimmungen", "paketGrundlage",

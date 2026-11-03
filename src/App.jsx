@@ -208,7 +208,7 @@ import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAG
   PAKETE, paketVon, preisFuer, paketBuchbar, paketZustand, PAKET_ZUSTAENDE, paketAnzeige, pilotAktiv, merkmalNutzbar,
   leistungenAnzeige } from "./stufen.js";
 import { kannMerkmal, mandantPaketkosten, paketAufpreisSumme, paketPositionen, paketSchalten, pilotSetzen,
-  zustimmungErfassen } from "./paketlogik.js";
+  zustimmungErfassen, grundlageErfassen, grundEntziehen, monatsanfang, folgemonatsanfang, paketTag } from "./paketlogik.js";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
@@ -2273,9 +2273,11 @@ function preis(db, m, ym = null) {
      die in der Stufe enthaltenen sind frei. Enterprise trägt zwei; das
      stand bisher nur in `paketeFrei` und im Leistungstext der Karte, die
      Rechnung stellte sie trotzdem in Rechnung. */
-  const pilot = pilotAktiv(m);
-  /* Abrechnungsgrund zählt erst für Zeiträume NACH seinem Datum: Stichtag = Beginn des Monats. */
-  const paketkosten_ = mandantPaketkosten(m, gewaehlt.paketeFrei || 0, undefined, undefined, ym ? `${ym}-01` : heuteD);
+  /* Abrechnungsgrund zählt erst für Zeiträume NACH seinem Datum: Stichtag = Beginn des Monats
+     (auch ohne Monatsangabe: der laufende Monat, Review N4). Pilot = ein Pilotzeitraum berührt
+     diesen Monat (Review M5), nicht der heutige Stand. */
+  const paketkosten_ = mandantPaketkosten(m, gewaehlt.paketeFrei || 0, undefined, undefined, ym ? `${ym}-01` : monatsanfang(paketTag()));
+  const pilot = paketkosten_.pilot;
   const pakete = paketkosten_.gewaehlt;
   const summePakete = paketkosten_.summe;
   const tarifwert = Math.round((gewaehlt.grund + summePlaner + summeStandorte + summePakete) * 100) / 100;
@@ -15663,12 +15665,12 @@ function Pakete({ db, akt }) {
                         </div>)}
                       {/* Zustand 5, gebucht, aber ohne Abrechnungsgrund: nicht berechnet, bis der Kunde
                           ausdrücklich zugestimmt hat oder eine vertragliche Grundlage dokumentiert ist. */}
-                      {!p.pflicht && an && nutzbar && !pilot && mandantPaketkosten(m, 0).ohneGrund.some((x) => x.id === p.id) && (
+                      {!p.pflicht && an && nutzbar && !pilot && mandantPaketkosten(m, 0, undefined, undefined, folgemonatsanfang(paketTag())).ohneGrund.some((x) => x.id === p.id) && (
                         <div style={{ marginTop: 10, fontSize: 12.5, color: C.dim }}>
                           Zustimmung erforderlich – nicht berechnet.
                           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
                             <Btn size="sm" onClick={() => akt.erfasseZustimmung(m.id, p.id)}>Zustimmung festhalten</Btn>
-                            <Btn size="sm" onClick={() => akt.setzeGrundlage(m.id)}>Vertragsgrundlage festhalten</Btn>
+                            <Btn size="sm" onClick={() => akt.setzeGrundlage(m.id, p.id)}>Vertragsgrundlage festhalten</Btn>
                           </div>
                         </div>)}
                     </div>
@@ -23205,7 +23207,7 @@ function AppInnen() {
         return upd((s) => {
           const m = s.mandanten.find((x) => x.id === mid);
           if (!m) return s;
-          const alt = pilotSetzen(m, an, heute(), grund);
+          const alt = pilotSetzen(m, an, paketTag(), grund);
           if (!alt) { melde("Ohne Grund kein Pilotbetrieb."); return s; }
           return bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, preisgestaltung: alt } : x)) },
             `Pilotbetrieb ${an ? "gesetzt" : "beendet"} bei ${m.name}${an ? ` (Grund: ${grund.trim()})` : ""}`);
@@ -23214,29 +23216,36 @@ function AppInnen() {
       /* Abrechnungsgrund (a): ausdrückliche Zustimmung des Kunden, mit Paket, Preis und Intervall bestätigt. */
       erfasseZustimmung: (mid, paket) => {
         const m0 = db.mandanten.find((x) => x.id === mid);
-        const r0 = m0 ? zustimmungErfassen(m0, paket, heute(), "Betreiber (Zustimmung des Kunden liegt vor)") : null;
+        const r0 = m0 ? zustimmungErfassen(m0, paket, paketTag(), "Betreiber (Zustimmung des Kunden liegt vor)") : null;
         if (!r0 || !r0.ok) return melde(r0 ? r0.grund : "Betrieb nicht gefunden.");
         const e = r0.eintrag;
-        if (!window.confirm(`Zustimmung des Kunden festhalten?\n\nPaket: ${paketVon(paket).name}\nPreis: ${e.preis} € ${e.intervall} (wiederkehrend)\nBerechnet wird erst für Zeiträume nach heute.`)) return;
+        if (!window.confirm(`Zustimmung des Kunden festhalten?\n\nPaket: ${paketVon(paket).name}\nPreis: ${e.preis} € ${e.intervall} (wiederkehrend)\nBerechnet wird erst ab dem Folgemonat; das Datum setzt der Server.`)) return;
         upd((s) => bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id !== mid ? x
-          : { ...x, paketZustimmungen: [...(x.paketZustimmungen || []).filter((z) => z.paket !== paket), e] })) },
+          : { ...x, paketZustimmungen: [...(Array.isArray(x.paketZustimmungen) ? x.paketZustimmungen : []).filter((z) => z.paket !== paket), e] })) },
           `Zustimmung zu Paket ${paketVon(paket).name} bei ${m0.name} festgehalten (${e.preis} € ${e.intervall})`));
       },
-      /* Abrechnungsgrund (b): vom Betreiber dokumentierte vertragliche Grundlage (Wirksamkeit prüft der Betreiber/Jurist). */
-      setzeGrundlage: (mid) => {
-        const notiz = (window.prompt("Vertragliche Grundlage für die Berechnung von Branchenpaketen (Verweis/Notiz, Pflicht):") || "").trim();
-        if (!notiz) return melde("Ohne Verweis keine Grundlage.");
+      /* Abrechnungsgrund (b): vom Betreiber dokumentierte vertragliche Grundlage JE PAKET mit Preis
+         (Review M2; Wirksamkeit prüft der Betreiber/Jurist). */
+      setzeGrundlage: (mid, paket) => {
+        const m0 = db.mandanten.find((x) => x.id === mid);
+        const notiz = window.prompt(`Vertragliche Grundlage für die Berechnung des Pakets ${paketVon(paket).name} (Verweis/Notiz, Pflicht):`) || "";
+        const r0 = m0 ? grundlageErfassen(m0, paket, paketTag(), notiz, "Betreiber") : null;
+        if (!r0 || !r0.ok) return melde(r0 ? r0.grund : "Betrieb nicht gefunden.");
+        const e = r0.eintrag;
+        if (!window.confirm(`Vertragliche Grundlage festhalten?\n\nPaket: ${paketVon(paket).name}\nPreis: ${e.preis} € ${e.intervall} (wiederkehrend)\nVerweis: ${e.notiz}\nBerechnet wird erst ab dem Folgemonat; das Datum setzt der Server.`)) return;
         upd((s) => bLog({ ...s, mandanten: s.mandanten.map((x) => (x.id !== mid ? x
-          : { ...x, paketGrundlage: { datum: heute(), von: "Betreiber", notiz } })) }, `Vertragliche Grundlage für Pakete festgehalten bei ${(s.mandanten.find((x) => x.id === mid) || {}).name}`));
+          : { ...x, paketGrundlage: [...(Array.isArray(x.paketGrundlage) ? x.paketGrundlage : []).filter((g) => g.paket !== paket), e] })) },
+          `Vertragliche Grundlage für Paket ${paketVon(paket).name} bei ${m0.name} festgehalten (${e.preis} € ${e.intervall})`));
       },
       /* G9: unter Zustand 5 lässt sich ein Paket nur im Pilot zubuchen (nicht berechnet);
-         Abschalten geht immer. Die Entscheidung steht in paketlogik.js (paketSchalten). */
+         Abschalten geht immer und entzieht Zustimmung/Grundlage des Pakets (Review M1).
+         Die Entscheidung steht in paketlogik.js (paketSchalten, grundEntziehen). */
       setzePaket: (mid, paket, an) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === mid);
         if (!m) return s;
         const r = paketSchalten(m, paket, an);
         if (!r.ok) { melde(r.grund); return s; }
-        return { ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, pakete: r.pakete } : x)) };
+        return { ...s, mandanten: s.mandanten.map((x) => (x.id === mid ? { ...x, pakete: r.pakete, ...(an ? {} : grundEntziehen(x, paket)) } : x)) };
       }),
       loescheMandant: (id) => upd((s) => {
         const m = s.mandanten.find((x) => x.id === id);

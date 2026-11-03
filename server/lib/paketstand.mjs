@@ -28,6 +28,10 @@ export const PAKET_MERKMALE = Object.freeze({
   industrie: Object.freeze(["anlagen", "maschinenqual", "kontimodelle"]),
 });
 
+/** Ist das ein bekanntes Paket? Nur eigene Schlüssel (Review N1: kein „constructor“, „toString“, „__proto__“). */
+export const paketBekannt = (paketId) => typeof paketId === "string" && Object.hasOwn(PAKET_MERKMALE, paketId);
+const merkmaleVon = (paketId) => (paketBekannt(paketId) ? PAKET_MERKMALE[paketId] : []);
+
 /** Ist das Registry-Modul abgenommen (nicht „geplant", Abnahmenachweis stimmig)? */
 const modulNutzbar = (x) => x.status !== "geplant" && pruefeModulStatus([x]).length === 0;
 
@@ -39,13 +43,13 @@ export function merkmalNutzbar(merkmal, liste = BRANCHENMODULE) {
 
 /** Die Merkmale eines Pakets, die noch nicht nutzbar sind. */
 export function merkmaleInVorbereitung(paketId, liste = BRANCHENMODULE) {
-  return (PAKET_MERKMALE[paketId] || []).filter((m) => !merkmalNutzbar(m, liste));
+  return merkmaleVon(paketId).filter((m) => !merkmalNutzbar(m, liste));
 }
 
 /** Hat das Paket mindestens ein nutzbares Merkmal? Die Kernplattform immer. */
 export function paketNutzbar(paketId, liste = BRANCHENMODULE) {
   if (paketId === "kern") return true;
-  const mm = PAKET_MERKMALE[paketId] || [];
+  const mm = merkmaleVon(paketId);
   return mm.some((m) => merkmalNutzbar(m, liste));
 }
 
@@ -98,19 +102,45 @@ export const PAKET_ZUSTAENDE = Object.freeze({
  */
 export const PAKET_FREIGABEN = Object.freeze({});
 
+/* --------------------------------------------------------------------------
+   DATUM UND TEXT (Review M4, N2, N4)
+
+   Ein Tag ist ein echter Kalendertag JJJJ-MM-TT (Jahr 2000–2999): „2026-99-99“,
+   „0000-01-01“, „9999-99-99“ und „2026-02-30“ zählen nicht. paketTag() ist der
+   Kalendertag in Europe/Berlin — dasselbe Format für den Server (Servertag neuer
+   Einträge), paketlogik.js und die Paketstellen in App.jsx. Freitexte (von, grund,
+   notiz, nachweis) sind höchstens TEXT_GRENZE Zeichen lang.
+   ------------------------------------------------------------------------ */
 const TAGFORM = /^\d{4}-\d{2}-\d{2}$/;
-const freigabeGueltig = (f) => !!f && typeof f === "object" && (f.stufe === "kunden" || f.stufe === "buchbar")
-  && typeof f.datum === "string" && TAGFORM.test(f.datum)
-  && typeof f.von === "string" && f.von.trim() !== ""
-  && typeof f.nachweis === "string" && f.nachweis.trim() !== "";
+export const TEXT_GRENZE = 500;
+
+/** Ist das ein echter Kalendertag JJJJ-MM-TT (Jahr 2000–2999)? */
+export function tagGueltig(s) {
+  if (typeof s !== "string" || !TAGFORM.test(s)) return false;
+  const [j, m, t] = s.split("-").map(Number);
+  if (j < 2000 || j > 2999 || m < 1 || m > 12 || t < 1) return false;
+  return t <= new Date(Date.UTC(j, m, 0)).getUTCDate();
+}
+
+/** Der heutige Kalendertag in Europe/Berlin (Servertag). */
+export const paketTag = (jetzt = new Date()) =>
+  new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
+
+/** Pflichttext: nicht leer, höchstens TEXT_GRENZE Zeichen. */
+const text = (x) => typeof x === "string" && x.trim() !== "" && x.length <= TEXT_GRENZE;
+const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+
+const freigabeGueltig = (f) => istObjekt(f) && (f.stufe === "kunden" || f.stufe === "buchbar")
+  && tagGueltig(f.datum) && text(f.von) && text(f.nachweis);
 
 /** Der Zustand 1–5 eines Pakets. Die Kernplattform ist immer 5. */
 export function paketZustand(paketId, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) {
   if (paketId === "kern") return 5;
+  if (!paketBekannt(paketId)) return 1;
   const mods = liste.filter((x) => Array.isArray(x.pakete) && x.pakete.includes(paketId));
   if (!mods.length || mods.some((x) => x.status === "geplant")) return 1;
   if (mods.some((x) => pruefeModulStatus([x]).length > 0)) return 2;
-  const f = freigaben && freigaben[paketId];
+  const f = freigaben && typeof freigaben === "object" && Object.hasOwn(freigaben, paketId) ? freigaben[paketId] : undefined;
   if (!freigabeGueltig(f)) return 3;
   return f.stufe === "buchbar" ? 5 : 4;
 }
@@ -123,7 +153,7 @@ export const paketBuchbar = (paketId, liste = BRANCHENMODULE, freigaben = PAKET_
 export function pruefePaketFreigaben(freigaben = PAKET_FREIGABEN, liste = BRANCHENMODULE) {
   const m = [];
   for (const [id, f] of Object.entries(freigaben || {})) {
-    if (!PAKET_MERKMALE[id] || id === "kern") { m.push(`${id}: unbekanntes Paket`); continue; }
+    if (!paketBekannt(id) || id === "kern") { m.push(`${id}: unbekanntes Paket`); continue; }
     if (!freigabeGueltig(f)) { m.push(`${id}: Freigabe nur mit stufe, datum, von, nachweis`); continue; }
     if (paketZustand(id, liste, {}) < 3) m.push(`${id}: Freigabe über dem Registry-Zustand (Module nicht abgenommen)`);
   }
@@ -134,65 +164,133 @@ export function pruefePaketFreigaben(freigaben = PAKET_FREIGABEN, liste = BRANCH
  * Ist der Betrieb im Pilot? Der Betreiber setzt ihn bewusst und je Betrieb:
  * preisgestaltung.pilot = { seit, von, grund } — der Grund ist Pflicht. Kein Standard- und kein
  * Migrationspfad setzt ihn; ein Pilot ohne Grund zählt nicht.
+ *
+ * Review M5: Ein beendeter Pilot bleibt als Zeitraum in preisgestaltung.pilotHistorie
+ * [{ seit, bis, von, grund }]. Für die Abrechnung zählt, ob ein Pilotzeitraum den
+ * Rechnungsmonat berührt (pilotImZeitraum), nicht der heutige Stand.
  */
-export const pilotAktiv = (m) => {
-  const p = m && m.preisgestaltung && m.preisgestaltung.pilot;
-  return !!p && typeof p === "object" && typeof p.seit === "string" && TAGFORM.test(p.seit)
-    && typeof p.von === "string" && p.von.trim() !== ""
-    && typeof p.grund === "string" && p.grund.trim() !== "";
-};
+const pilotEintragGueltig = (p) => istObjekt(p) && tagGueltig(p.seit) && text(p.von) && text(p.grund);
+const historieGueltig = (h) => pilotEintragGueltig(h) && tagGueltig(h.bis) && h.seit <= h.bis;
+const pilotHistorie = (pg) => (istObjekt(pg) && Array.isArray(pg.pilotHistorie) ? pg.pilotHistorie.filter(historieGueltig) : []);
+
+export const pilotAktiv = (m) => pilotEintragGueltig(m && m.preisgestaltung && m.preisgestaltung.pilot);
+
+/** Erster Tag des Folgemonats zu einem Tag JJJJ-MM-TT. */
+export function folgemonatsanfang(tag) {
+  const [j, m] = String(tag).slice(0, 7).split("-").map(Number);
+  return m === 12 ? `${j + 1}-01-01` : `${j}-${String(m + 1).padStart(2, "0")}-01`;
+}
+
+/**
+ * Berührt ein Pilotzeitraum den Rechnungszeitraum [stichtag, Ende seines Monats]? Laufender Pilot:
+ * { seit, bis offen }; Historie: { seit, bis } (bis = Tag des Endes, eingeschlossen). Ohne gültigen
+ * Stichtag zählt nur der laufende Pilot.
+ */
+export function pilotImZeitraum(m, stichtag) {
+  const pg = m && m.preisgestaltung;
+  if (!tagGueltig(stichtag)) return pilotAktiv(m);
+  const ende = folgemonatsanfang(stichtag);
+  const zeitraeume = [...pilotHistorie(pg), ...(pilotAktiv(m) ? [{ seit: pg.pilot.seit, bis: null }] : [])];
+  return zeitraeume.some((z) => z.seit < ende && (z.bis === null || z.bis >= stichtag));
+}
+
+/**
+ * Serverregel für preisgestaltung.pilot / pilotHistorie im Betreiber-PUT (Review M4/M5):
+ *   - ein NEUER Pilot beginnt am Servertag (seit = heute), Grund und Betreiberkennung vom Client;
+ *   - ein laufender Pilot bleibt, wie er gespeichert ist (nicht zurückdatierbar);
+ *   - endet er, schreibt der Server { …, bis: heute } in die Historie;
+ *   - die Historie ist nur anhängbar: der gespeicherte Stand gilt, Mitgeschicktes nicht.
+ * Übrige Felder der Preisgestaltung bleiben, wie der Client sie schickt.
+ */
+export function pilotNachServerregel(neuPg, altPg, heute = paketTag()) {
+  if (!istObjekt(neuPg)) return neuPg;
+  const altP = pilotEintragGueltig(altPg && altPg.pilot) ? altPg.pilot : null;
+  const neuP = pilotEintragGueltig(neuPg.pilot) ? neuPg.pilot : null;
+  const hist = pilotHistorie(altPg).map((h) => ({ seit: h.seit, bis: h.bis, von: h.von, grund: h.grund }));
+  const aus = { ...neuPg };
+  delete aus.pilot;
+  delete aus.pilotHistorie;
+  if (altP && neuP) aus.pilot = { seit: altP.seit, von: altP.von, grund: altP.grund };
+  else if (neuP) aus.pilot = { seit: heute, von: neuP.von.trim(), grund: neuP.grund.trim() };
+  else if (altP) hist.push({ seit: altP.seit, bis: heute, von: altP.von, grund: altP.grund });
+  if (hist.length) aus.pilotHistorie = hist;
+  return aus;
+}
 
 /* --------------------------------------------------------------------------
-   ABRECHNUNGSGRUND (Betreiberentscheidung 2026-11-03, Punkt 5)
+   ABRECHNUNGSGRUND (Betreiberentscheidung 2026-11-03, Punkt 5; Review M1–M4)
 
    Ein Paket wird nur berechnet, wenn Zustand 5 UND ein Abrechnungsgrund vorliegt:
      (a) ausdrückliche Zustimmung des Kunden: m.paketZustimmungen[] mit
          { paket, datum, preis, intervall, von } — Paket, Preis, wiederkehrende Kosten
          (Intervall) und Bestätiger stehen im Eintrag; oder
-     (b) vom Betreiber dokumentierte vertragliche Grundlage: m.paketGrundlage =
-         { datum, von, notiz }. Ob sie rechtlich wirkt, prüft der Betreiber/Jurist
-         (rechtliches/agb.md, § 4 Abs. 4 — hier nicht geändert).
-   Ohne beides: nicht berechnet, Hinweis „Zustimmung erforderlich“. Keine rückwirkende
-   Berechnung: ein Grund gilt erst für Zeiträume, die nach seinem Datum beginnen.
-   Beide Felder sind Vertragsfelder (nur der Betreiber schreibt, der Server prüft die Form).
+     (b) vom Betreiber dokumentierte vertragliche Grundlage JE PAKET MIT PREIS:
+         m.paketGrundlage[] mit { paket, datum, preis, intervall, von, notiz }. Eine pauschale
+         Grundlage für alle Pakete zählt nicht (Review M2). Ob sie rechtlich wirkt, prüft der
+         Betreiber/Jurist (rechtliches/agb.md, § 4 Abs. 4 — hier nicht geändert).
+   Ein Grund zählt nur, wenn sein Preis dem AKTUELLEN Aufpreis entspricht (M3) und sein Datum VOR
+   dem Stichtag (Beginn des berechneten Zeitraums) liegt: keine rückwirkende Berechnung.
+   Abschalten entzieht den Grund des Pakets (M1): Wer wieder zubucht, braucht einen neuen.
+   Ohne Grund: nicht berechnet, Hinweis „Zustimmung erforderlich“. Beide Felder sind
+   Vertragsfelder (nur der Betreiber schreibt; der Server prüft Form, gebuchtes Paket und setzt
+   das Datum neuer Einträge selbst: Servertag, M4).
    ------------------------------------------------------------------------ */
 export const ZUSTIMMUNG_INTERVALL = "monatlich";
-const text = (x) => typeof x === "string" && x.trim() !== "";
+
+const grundBasis = (x, paketId) => istObjekt(x) && x.paket === paketId && paketBekannt(paketId) && paketId !== "kern"
+  && tagGueltig(x.datum) && typeof x.preis === "number" && Number.isFinite(x.preis) && x.preis > 0
+  && x.intervall === ZUSTIMMUNG_INTERVALL && text(x.von);
 
 /** Ist dieser Zustimmungseintrag vollständig und für das Paket? */
-export const zustimmungGueltig = (z, paketId) => !!z && typeof z === "object" && !Array.isArray(z)
-  && z.paket === paketId && !!PAKET_MERKMALE[z.paket] && z.paket !== "kern"
-  && typeof z.datum === "string" && TAGFORM.test(z.datum)
-  && typeof z.preis === "number" && Number.isFinite(z.preis) && z.preis > 0
-  && z.intervall === ZUSTIMMUNG_INTERVALL && text(z.von);
+export const zustimmungGueltig = (z, paketId) => grundBasis(z, paketId);
 
-/** Ist die vom Betreiber dokumentierte vertragliche Grundlage vollständig? */
-export const grundlageGueltig = (g) => !!g && typeof g === "object" && !Array.isArray(g)
-  && typeof g.datum === "string" && TAGFORM.test(g.datum) && text(g.von) && text(g.notiz);
+/** Ist dieser Grundlageneintrag (je Paket, mit Preis) vollständig und für das Paket? */
+export const grundlageGueltig = (g, paketId) => grundBasis(g, paketId) && text(g.notiz);
+
+const liste_ = (x) => (Array.isArray(x) ? x : []);
 
 /**
- * Warum darf dieses Paket berechnet werden — "zustimmung", "vertrag" oder null? Nur ein Grund,
- * dessen Datum VOR dem Stichtag (Beginn des berechneten Zeitraums) liegt, zählt: keine
- * rückwirkende Berechnung.
+ * Warum darf dieses Paket berechnet werden — "zustimmung", "vertrag" oder null? Nur ein Grund zum
+ * aktuellen Preis (`preis` = Aufpreis des Pakets heute), dessen Datum VOR dem Stichtag liegt, zählt.
  */
-export function abrechnungsGrund(m, paketId, stichtag) {
-  const vor = (d) => typeof stichtag === "string" && d < stichtag;
-  const z = ((m && m.paketZustimmungen) || []).find((x) => zustimmungGueltig(x, paketId) && vor(x.datum));
-  if (z) return "zustimmung";
-  const g = m && m.paketGrundlage;
-  return grundlageGueltig(g) && vor(g.datum) ? "vertrag" : null;
+export function abrechnungsGrund(m, paketId, stichtag, preis) {
+  if (typeof preis !== "number" || !Number.isFinite(preis) || preis <= 0) return null;
+  const zaehlt = (x) => x.preis === preis && typeof stichtag === "string" && x.datum < stichtag;
+  if (liste_(m && m.paketZustimmungen).some((x) => zustimmungGueltig(x, paketId) && zaehlt(x))) return "zustimmung";
+  if (liste_(m && m.paketGrundlage).some((x) => grundlageGueltig(x, paketId) && zaehlt(x))) return "vertrag";
+  return null;
 }
 
-/** Serverregel: nur formgültige Zustimmungen bleiben, höchstens eine je Paket (die erste). */
-export function zustimmungenBereinigen(liste) {
+const ZUSTIMMUNG_FELDER = ["paket", "datum", "preis", "intervall", "von"];
+const GRUNDLAGE_FELDER = [...ZUSTIMMUNG_FELDER, "notiz"];
+
+/**
+ * Serverregel für Grundeinträge: nur formgültige, höchstens einer je Paket (der erste), nur für
+ * gebuchte Pakete (`pakete`, wenn angegeben) und nur die bekannten Felder. Mit `heute`: ein Eintrag,
+ * der nicht unverändert gespeichert war (`alt`), bekommt den Servertag als Datum.
+ * @param {{ alt?: any, pakete?: any, heute?: string }} [optionen]
+ */
+function eintraegeBereinigen(liste, gueltig, felder, optionen = {}) {
+  const { alt, pakete, heute } = optionen;
   const gesehen = new Set();
-  return (Array.isArray(liste) ? liste : []).filter((z) => {
-    if (!z || !zustimmungGueltig(z, z.paket) || gesehen.has(z.paket)) return false;
-    gesehen.add(z.paket); return true;
-  }).map((z) => ({ paket: z.paket, datum: z.datum, preis: z.preis, intervall: z.intervall, von: z.von }));
+  const gespeichert = liste_(alt);
+  const gleich = (a, b) => istObjekt(a) && felder.every((k) => a[k] === b[k]);
+  return liste_(liste).filter((x) => {
+    if (!istObjekt(x) || !gueltig(x, x.paket) || gesehen.has(x.paket)) return false;
+    if (Array.isArray(pakete) && !pakete.includes(x.paket)) return false;
+    gesehen.add(x.paket); return true;
+  }).map((x) => {
+    const e = Object.fromEntries(felder.map((k) => [k, x[k]]));
+    return heute && !gespeichert.some((a) => gleich(a, e)) ? { ...e, datum: heute } : e;
+  });
 }
-/** Serverregel: die Grundlage bleibt nur, wenn sie vollständig ist. */
-export const grundlageBereinigen = (g) => (grundlageGueltig(g) ? { datum: g.datum, von: g.von, notiz: g.notiz } : undefined);
+
+/** Serverregel Zustimmungen (siehe eintraegeBereinigen). */
+export const zustimmungenBereinigen = (liste, optionen) =>
+  eintraegeBereinigen(liste, zustimmungGueltig, ZUSTIMMUNG_FELDER, optionen);
+/** Serverregel Grundlagen je Paket (siehe eintraegeBereinigen); eine pauschale Grundlage fällt weg. */
+export const grundlageBereinigen = (liste, optionen) =>
+  eintraegeBereinigen(liste, grundlageGueltig, GRUNDLAGE_FELDER, optionen);
 
 /** Anzeige: „In Vorbereitung (Zustand)“ bzw. Pilot mit nutzbaren und nicht nutzbaren Funktionen. */
 export function paketAnzeige(paketId, { pilot = false, zustimmungFehlt = false, liste = BRANCHENMODULE,
@@ -201,7 +299,7 @@ export function paketAnzeige(paketId, { pilot = false, zustimmungFehlt = false, 
   if (z === 5 && !pilot) return zustimmungFehlt ? "Zustimmung erforderlich – nicht berechnet." : "";
   const offen = merkmaleInVorbereitung(paketId, liste);
   if (pilot) {
-    const nutzbar = (PAKET_MERKMALE[paketId] || []).filter((x) => !offen.includes(x));
+    const nutzbar = merkmaleVon(paketId).filter((x) => !offen.includes(x));
     const namen = offen.map((x) => (liste.find((y) => y.merkmal === x) || { name: x }).name);
     return `Pilot – freigeschaltet, nicht berechnet (eingeschränkter Umfang): nutzbar: ${nutzbar.join(", ") || "nichts"}; in Vorbereitung: ${namen.join(", ") || "nichts"}.`;
   }
@@ -214,7 +312,7 @@ export function paketAnzeige(paketId, { pilot = false, zustimmungFehlt = false, 
  * Pakete nie. Abschalten ist keine Frage dieser Funktion: es geht immer.
  */
 export const paketZubuchenErlaubt = (paketId, pilot, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) =>
-  !!PAKET_MERKMALE[paketId] && paketId !== "kern"
+  paketBekannt(paketId) && paketId !== "kern"
   && (paketBuchbar(paketId, liste, freigaben) || !!pilot);
 
 /**
@@ -226,4 +324,30 @@ export function paketeNachServerregel(alt, neu, pilot, liste = BRANCHENMODULE, f
   const a = Array.isArray(alt) ? alt : [];
   if (!Array.isArray(neu)) return a;
   return neu.filter((id) => a.includes(id) || paketZubuchenErlaubt(id, pilot, liste, freigaben));
+}
+
+/**
+ * Die eine Serverregel für die Paketfelder eines Betriebs (Betreiber-PUT in rechte.mjs und
+ * /api/bestand-anlegen mit eigenem Inhalt). `altM` ist der gespeicherte Betrieb (null: neu).
+ * Reihenfolge: Pilot (Servertag, Historie nur anhängbar) → Pakete (unter Zustand 5 nur mit Pilot)
+ * → Zustimmungen und Grundlagen (formgültig, nur für gebuchte Pakete, neue mit Servertag).
+ * Abschalten eines Pakets entzieht damit auch seinen Abrechnungsgrund (Review M1).
+ */
+export function paketfelderGeprueft(m0, altM, heute = paketTag()) {
+  if (!istObjekt(m0)) return m0;
+  const alt = istObjekt(altM) ? altM : {};
+  let m = m0;
+  if (Object.hasOwn(m, "preisgestaltung"))
+    m = { ...m, preisgestaltung: pilotNachServerregel(m.preisgestaltung, alt.preisgestaltung, heute) };
+  if (Object.hasOwn(m, "pakete"))
+    m = { ...m, pakete: paketeNachServerregel(altM ? altM.pakete : [], m.pakete, pilotAktiv(m)) };
+  const pakete = liste_(m.pakete);
+  if (Object.hasOwn(m, "paketZustimmungen"))
+    m = { ...m, paketZustimmungen: zustimmungenBereinigen(m.paketZustimmungen, { alt: alt.paketZustimmungen, pakete, heute }) };
+  if (Object.hasOwn(m, "paketGrundlage")) {
+    const { paketGrundlage, ...rest } = m;
+    const g = grundlageBereinigen(paketGrundlage, { alt: alt.paketGrundlage, pakete, heute });
+    m = g.length ? { ...rest, paketGrundlage: g } : rest;
+  }
+  return m;
 }

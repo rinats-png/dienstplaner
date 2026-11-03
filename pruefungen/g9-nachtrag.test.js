@@ -191,7 +191,9 @@ describe("F1: Pilot — Zubuchen unter Zustand 5, nichts wird berechnet", () => 
     expect(an).toEqual({ sonderpreis: 99, pilot: { seit: "2026-11-04", von: "Betreiber", grund: "Pilotkunde" } });
     expect(pilotAktiv({ preisgestaltung: an })).toBe(true);
     const aus = pilotSetzen({ preisgestaltung: an }, false, "2026-11-05");
-    expect(aus).toEqual({ sonderpreis: 99 });
+    /* Nachtrag 2 (M5): Beenden entfernt den laufenden Pilot und hält den Zeitraum in der Historie fest. */
+    expect(aus).toEqual({ sonderpreis: 99,
+      pilotHistorie: [{ seit: "2026-11-04", bis: "2026-11-05", von: "Betreiber", grund: "Pilotkunde" }] });
     expect(pilotAktiv({ preisgestaltung: aus })).toBe(false);
     expect(m.preisgestaltung).toEqual({ sonderpreis: 99 });   // Eingabe unverändert
     expect(pilotSetzen({}, true, "2026-11-04", "x").pilot.seit).toBe("2026-11-04");
@@ -319,7 +321,9 @@ describe("F1: serverseitige Paketregel im Betreiber-PUT", () => {
 
   it("rechte.mjs ruft die Regel im Betreiberpfad auf (Quelltext)", () => {
     const r = quelle("../server/lib/rechte.mjs");
-    expect(r).toMatch(/paketeNachServerregel\(altM \? altM\.pakete : \[\], m\.pakete, pilotAktiv\(m\)\)/);
+    /* Nachtrag 2: die Regel steht in paketstand.mjs (paketfelderGeprueft), rechte.mjs ruft sie auf. */
+    expect(quelle("../server/lib/paketstand.mjs")).toMatch(/paketeNachServerregel\(altM \? altM\.pakete : \[\], m\.pakete, pilotAktiv\(m\)\)/);
+    expect(r).toMatch(/const paketeGeprueft = \(m0, altM\) => paketfelderGeprueft\(m0, altM\);/);
     expect(r).toMatch(/return paketeGeprueft\(zusammen, alt\);/);
   });
 });
@@ -429,7 +433,9 @@ import { abrechnungsGrund, zustimmungGueltig, grundlageGueltig, zustimmungenBere
 import { zustimmungErfassen } from "../src/paketlogik.js";
 
 describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Vertragsgrundlage)", () => {
-  const GRUNDLAGE = { datum: "2026-12-01", von: "Betreiber", notiz: "AGB § 4 Abs. 4, Prüfvermerk 2026-12-01" };
+  /* Nachtrag 2 (M2): die Vertragsgrundlage steht je Paket mit Preis und Intervall. */
+  const GRUNDLAGE = { paket: "klinik", datum: "2026-12-01", preis: 129, intervall: "monatlich", von: "Betreiber",
+    notiz: "AGB § 4 Abs. 4, Prüfvermerk 2026-12-01" };
 
   it("Zustand 5, gebucht, ohne Grund: nicht berechnet, Hinweis „Zustimmung erforderlich“, keine Position", () => {
     for (const id of PAKET_IDS) {
@@ -448,10 +454,10 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
   it("Zustimmung (a) ODER Vertragsgrundlage (b) öffnet die Berechnung; ein anderes Paket bleibt zu", () => {
     const { liste, freigaben } = z5("klinik");
     expect(mandantPaketkosten({ pakete: ["klinik"], ...zust(["klinik"]) }, 0, liste, freigaben, ST).summe).toBe(129);
-    expect(mandantPaketkosten({ pakete: ["klinik"], paketGrundlage: GRUNDLAGE }, 0, liste, freigaben, ST).summe).toBe(129);
-    expect(abrechnungsGrund({ paketGrundlage: GRUNDLAGE }, "klinik", ST)).toBe("vertrag");
-    expect(abrechnungsGrund({ ...zust(["klinik"]) }, "klinik", ST)).toBe("zustimmung");
-    expect(abrechnungsGrund({ ...zust(["pflege"]) }, "klinik", ST)).toBeNull();
+    expect(mandantPaketkosten({ pakete: ["klinik"], paketGrundlage: [GRUNDLAGE] }, 0, liste, freigaben, ST).summe).toBe(129);
+    expect(abrechnungsGrund({ paketGrundlage: [GRUNDLAGE] }, "klinik", ST, 129)).toBe("vertrag");
+    expect(abrechnungsGrund({ ...zust(["klinik"]) }, "klinik", ST, 129)).toBe("zustimmung");
+    expect(abrechnungsGrund({ ...zust(["pflege"]) }, "klinik", ST, 129)).toBeNull();
     expect(mandantPaketkosten({ pakete: ["klinik"], ...zust(["pflege"]) }, 0, liste, freigaben, ST).summe).toBe(0);
   });
 
@@ -471,8 +477,9 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
     expect(mandantPaketkosten(m, 0, liste, freigaben, "2026-12-01").summe).toBe(0);   // Monat vor der Zustimmung
     expect(mandantPaketkosten(m, 0, liste, freigaben, "2026-12-20").summe).toBe(0);   // am Tag selbst noch nicht
     expect(mandantPaketkosten(m, 0, liste, freigaben, "2027-01-01").summe).toBe(89);
-    expect(abrechnungsGrund({ paketGrundlage: { datum: "2027-02-01", von: "B", notiz: "n" } }, "pflege", "2027-01-01")).toBeNull();
-    expect(abrechnungsGrund(m, "pflege", undefined)).toBeNull();
+    expect(abrechnungsGrund({ paketGrundlage: [{ ...GRUNDLAGE, paket: "pflege", preis: 89, datum: "2027-02-01" }] }, "pflege", "2027-01-01", 89)).toBeNull();
+    expect(abrechnungsGrund({ paketGrundlage: [{ ...GRUNDLAGE, paket: "pflege", preis: 89, datum: "2026-12-31" }] }, "pflege", "2027-01-01", 89)).toBe("vertrag");
+    expect(abrechnungsGrund(m, "pflege", undefined, 89)).toBeNull();
   });
 
   it("Formprüfung: unvollständige Zustimmungen und Grundlagen zählen nicht", () => {
@@ -482,9 +489,11 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
       { ...gut, intervall: "einmalig" }, { ...gut, von: " " }, { ...gut, paket: "kern" }, null, "ja"])
       expect(zustimmungGueltig(k, k && k.paket === "kern" ? "kern" : "pflege"), JSON.stringify(k)).toBe(false);
     expect(zustimmungGueltig(gut, "klinik")).toBe(false);
-    expect(grundlageGueltig(GRUNDLAGE)).toBe(true);
-    for (const g of [{ ...GRUNDLAGE, notiz: "" }, { ...GRUNDLAGE, von: "" }, { ...GRUNDLAGE, datum: "x" }, true, null])
-      expect(grundlageGueltig(g), JSON.stringify(g)).toBe(false);
+    expect(grundlageGueltig(GRUNDLAGE, "klinik")).toBe(true);
+    expect(grundlageGueltig(GRUNDLAGE, "pflege")).toBe(false);
+    for (const g of [{ ...GRUNDLAGE, notiz: "" }, { ...GRUNDLAGE, von: "" }, { ...GRUNDLAGE, datum: "x" }, { ...GRUNDLAGE, preis: 0 },
+      { ...GRUNDLAGE, intervall: "einmalig" }, true, null])
+      expect(grundlageGueltig(g, "klinik"), JSON.stringify(g)).toBe(false);
   });
 
   it("zustimmungErfassen: Paket, Preis, Intervall, Datum, Bestätiger; nur für gebuchtes Zustand-5-Paket", () => {
@@ -504,14 +513,15 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
       .toEqual([{ paket: "pflege", datum: "2026-12-20", preis: 89, intervall: "monatlich", von: "Kunde" },
         { paket: "klinik", datum: "2026-12-20", preis: 129, intervall: "monatlich", von: "Kunde" }]);
     expect(zustimmungenBereinigen("x")).toEqual([]);
-    expect(grundlageBereinigen({ ...GRUNDLAGE, x: 1 })).toEqual(GRUNDLAGE);
-    expect(grundlageBereinigen({ datum: "x" })).toBeUndefined();
+    expect(grundlageBereinigen([{ ...GRUNDLAGE, x: 1 }])).toEqual([GRUNDLAGE]);
+    expect(grundlageBereinigen([{ datum: "x" }])).toEqual([]);
+    expect(grundlageBereinigen({ ...GRUNDLAGE })).toEqual([]);   // keine Liste
     const alt = { version: 9, stand: 1, session: null, betreiber: {}, tarife: [], rechnungen: [], protokoll: [], pakete: [],
       adressaenderungen: [], selbststarts: [],
       mandanten: [{ id: "m1", name: "Haus", einheiten: [{ id: "e1" }], dienstarten: [], personen: [{ id: "l1", vorname: "V", nachname: "N",
         rolle: "leitung", bereich: "ALLE", zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "ALLE" }], email: "l@x.de" }],
-        abweichungen: {}, anfragen: [], nachrichten: [], notrufe: [], status: "aktiv", tarif: "pro", preisgestaltung: {}, pakete: [],
-        selbstAngelegt: false }] };
+        abweichungen: {}, anfragen: [], nachrichten: [], notrufe: [], status: "aktiv", tarif: "pro", preisgestaltung: {}, pakete: ["pflege"],
+        selbstAngelegt: false }] };   // Nachtrag 2 (M1): Zustimmungen zählen nur für gebuchte Pakete
     const u = JSON.parse(JSON.stringify(alt));
     u.mandanten[0].paketZustimmungen = [gut, { paket: "pflege" }];
     u.mandanten[0].paketGrundlage = { datum: "2026-12-01", von: "B" };
@@ -529,7 +539,7 @@ describe("Abrechnung nur mit Zustand 5 UND Abrechnungsgrund (Zustimmung oder Ver
     expect(app).not.toMatch(/\bpaketkosten\(/);
     expect(app).not.toMatch(/paketBuchbar\(p\.id\)\)\s*\.reduce/);
     expect(quelle("../src/pruefung.jsx")).not.toMatch(/\bpaketkosten\(/);
-    expect(quelle("../src/paketlogik.js")).toMatch(/\(id\) => abrechnungsGrund\(m, id, stichtag\) !== null/);
+    expect(quelle("../src/paketlogik.js")).toMatch(/\(id\) => abrechnungsGrund\(m, id, stichtag, aufpreisVon\(id\)\) !== null/);
   });
 });
 

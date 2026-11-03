@@ -114,9 +114,9 @@ ist nicht angefasst. Neue Datei `src/paketlogik.js` (reine Entscheidungslogik), 
 |---|---|
 | Paket erst ab Zustand 5 buchbar/abrechenbar | unverändert (`paketBuchbar`); zusätzlich Abrechnungsgrund, siehe unten |
 | (1)/(2) Kein stilles Zubuchen, auch nicht ab Zustand 5 und nicht für „enthaltene“ Pakete | `SELBSTSTART_BUCHT_PAKET = false` (`paketstand.mjs`); `paketFuerNeubuchung` liefert immer null; Selbststart bucht nichts (`leerbetrieb.mjs`). Ein Kundenweg, der ein Paket bucht, existiert nicht (Website-Rechner ist Angebot, keine Buchung) |
-| (3) Bestand behält Nutzungsrechte, wird transparent informiert, keine rückwirkende Berechnung | gebuchte Pakete bleiben in `m.pakete`; `kann()` liefert für jedes heute verwendete Merkmal (`fachkraftquote`, `uebergabe`) unverändert true (die einzigen zwei `kann`-Aufrufer in `App.jsx`); Vertragsübersicht zeigt „In Vorbereitung (Zustand n: …). Berechnung ausgesetzt, bis das Paket freigegeben ist. Nicht berechnet. Keine Zahlungsaufforderung.“ bzw. „Zustimmung erforderlich – nicht berechnet.“; der Abrechnungsgrund zählt nur für Zeiträume NACH seinem Datum |
+| (3) Bestand behält Nutzungsrechte, wird transparent informiert, keine rückwirkende Berechnung | gebuchte Pakete bleiben in `m.pakete`; `kann()` liefert für jedes heute verwendete Merkmal (`fachkraftquote`, `uebergabe`) unverändert true (berichtigt im Nachtrag 2: `App.jsx` hat fünf `kann`-Aufrufer — Fachkraftquote-Berechnung (`kann(m, "fachkraftquote")`), Übergabeliste (`kann(m, "uebergabe")`), Fachkraftquote-Karte (`{kann(m, "fachkraftquote") && …}`), Merkmalsfilter `k.merkmale.some((x) => kann(m, x))` und die Rechteprüfung für `PAKET:`-Einträge `kann(sitz.mandant, paket)`; alle laufen über `kannMerkmal`, Merkmale heute nutzbarer Pakete bleiben bei gebuchtem Paket true); Vertragsübersicht zeigt „In Vorbereitung (Zustand n: …). Berechnung ausgesetzt, bis das Paket freigegeben ist. Nicht berechnet. Keine Zahlungsaufforderung.“ bzw. „Zustimmung erforderlich – nicht berechnet.“; der Abrechnungsgrund zählt nur für Zeiträume NACH seinem Datum |
 | (4) Pilot nie automatisch, nur gesonderte protokollierte Betreiberentscheidung mit Pflichtgrund | `pilotAktiv` verlangt `{ seit, von, grund }`; `setzePilot` fragt den Grund (Pflicht), `pilotSetzen` ohne Grund liefert null; `bLog` nennt den Grund; kein Selbststart-/Migrationspfad setzt Pilot (Test über `leerbetrieb.mjs`, `migration.js`, `erstbefuellung.mjs`) |
-| (5) Berechnung nur bei Zustand 5 UND Abrechnungsgrund | `abrechnungsGrund` (a: `m.paketZustimmungen[]` mit Paket, Preis, Intervall `monatlich`, Datum, Bestätiger; b: `m.paketGrundlage` mit Datum, Betreiberkennung, Notiz); einziger Rechenweg `mandantPaketkosten` (`paketlogik.js`) übergibt den Grund an `paketkosten`; ohne Grund: nicht berechnet, `ohneGrund` für den Hinweis; Betreiberkonsole: „Zustimmung festhalten“ (Bestätigungsdialog mit Paket, Preis, wiederkehrenden Kosten) und „Vertragsgrundlage festhalten“ |
+| (5) Berechnung nur bei Zustand 5 UND Abrechnungsgrund | `abrechnungsGrund` (a: `m.paketZustimmungen[]` mit Paket, Preis, Intervall `monatlich`, Datum, Bestätiger; b: `m.paketGrundlage[]` je Paket mit Preis, Intervall, Datum, Betreiberkennung, Notiz — seit Nachtrag 2, siehe 7.5); einziger Rechenweg `mandantPaketkosten` (`paketlogik.js`) übergibt den Grund an `paketkosten`; ohne Grund: nicht berechnet, `ohneGrund` für den Hinweis; Betreiberkonsole: „Zustimmung festhalten“ (Bestätigungsdialog mit Paket, Preis, wiederkehrenden Kosten) und „Vertragsgrundlage festhalten“ |
 | (6) Eine verbindliche Freigabequelle | `PAKET_FREIGABEN` steht nur in `server/lib/paketstand.mjs`; `rechte.mjs`, `leerbetrieb.mjs`, `stufen.js`, `paketlogik.js` (und darüber `App.jsx`, `main.jsx`, `pruefung.jsx`) lesen sie von dort; Test prüft jeden Pfad auf Eigenkopien und das Verhalten mit injizierter Freigabe; Laufzeitschalter bleibt Folgepaket mit eigenem Rechte-/Auditkonzept |
 
 ### 7.2 Auflagen
@@ -179,3 +179,39 @@ ist nicht angefasst. Neue Datei `src/paketlogik.js` (reine Entscheidungslogik), 
 `paketFuerNeubuchung`, Pilotanzeige und Pilotfeld verschärft; Quelltext-Muster der verlagerten Logik nachgezogen). Rot-Beleg: die neue
 Prüfung gegen den Stand ohne die Umsetzung (nur Tests und `paketlogik.js`): 32 Fälle rot. Mutanten (alle rot, nach Rücknahme grün):
 siehe Bericht.
+
+### 7.5 Nachtrag 2: Befunde des unabhängigen Reviews (M1–M5, N1–N6)
+
+Statusstufen unverändert: (1) implementiert ja · (2) lokal getestet ja · CI siehe Bericht · (3) erneuter unabhängiger Review
+**folgt** · (4)–(7) nein. Betreiberregeln unverändert maßgeblich (Zustand 5, kein Auto-Zubuchen, aktive Wahl mit Paket, Preis
+und wiederkehrenden Kosten, keine Rückwirkung, Pilot nur protokolliert mit Pflichtgrund, erste Berechnung nur mit Zustimmung
+oder dokumentierter Grundlage, eine Freigabequelle). Zielpreise, Rechenwege und Staffelung nicht angefasst. Die Serverregel für
+alle Paketfelder steht jetzt an einer Stelle: `paketfelderGeprueft` (`server/lib/paketstand.mjs`); `rechte.mjs` ruft sie in
+`paketeGeprueft` auf (Diff dort: Importzeile und der Rumpf von `paketeGeprueft`; Neuanlage und Änderung unverändert).
+
+| Befund | Umsetzung |
+|---|---|
+| M1 Wieder-Zubuchen nutzt alte Zustimmung | Abschalten entzieht den Grund: Konsole `grundEntziehen` (Zustimmung und Grundlage des Pakets fallen weg); Server: Zustimmungen/Grundlagen bleiben nur für Pakete, die nach der Paketregel gebucht sind, und ein nicht unverändert gespeicherter Eintrag bekommt den Servertag — ein veralteter Client kann eine alte Zustimmung nicht rückdatiert zurückbringen |
+| M2 Grundlage pauschal | `m.paketGrundlage[]` je Paket mit `{ paket, datum, preis, intervall, von, notiz }`; die pauschale Form `{ datum, von, notiz }` zählt für kein Paket mehr (Server verwirft sie); Konsole „Vertragsgrundlage festhalten“ je Paket mit Bestätigungsdialog (Paket, Preis, wiederkehrend, Verweis). Pilot-Ende → Zustand 5: der Folgemonat wird nur mit einem gültigen Grund für genau dieses Paket zum aktuellen Preis berechnet |
+| M3 Preis nicht geprüft | `abrechnungsGrund(m, paket, stichtag, preis)`: ein Grund zählt nur bei `preis === aktueller Aufpreis` (`mandantPaketkosten` übergibt den Zielpreis aus `stufen.js`); sonst „Zustimmung erforderlich“ |
+| M4 Rückdatierung | Server setzt das Datum neuer Zustimmungen/Grundlagen (Servertag `paketTag()`, Europe/Berlin) und `seit` eines neuen Pilots; ein laufender Pilot ist nicht zurückdatierbar. `tagGueltig`: echter Kalendertag, Jahr 2000–2999 („2026-99-99“, „0000-01-01“, „9999-99-99“, „2026-02-30“ abgelehnt) für Zustimmung, Grundlage, Pilot, Historie und Freigaben |
+| M5 Pilot als Zeitpunkt | `preisgestaltung.pilotHistorie[]` mit `{ seit, bis, von, grund }`; `pilotSetzen` schreibt beim Beenden den Zeitraum; Server: Historie nur anhängbar, Ende mit Servertag. Abrechnung prüft `pilotImZeitraum(m, stichtag)`: ein Pilotzeitraum, der den Rechnungsmonat berührt, setzt die Paketpreise dieses Monats aus; Monate davor und danach werden (mit Grund) berechnet |
+| N1 Prototyp-Schlüssel | `paketBekannt` = `Object.hasOwn(PAKET_MERKMALE, id)`; Freigaben nur als eigene Schlüssel |
+| N2 Längen | `TEXT_GRENZE = 500` für von, notiz, grund, nachweis |
+| N3 Arrays | `Array.isArray` für `pakete`, `paketZustimmungen`, `paketGrundlage`, Historie; `/api/bestand-anlegen` mit eigenem Inhalt (ohne Vorlage) führt jeden Betrieb durch `paketfelderGeprueft(m, null)`. Die Vorlage „demo“ ist ausgenommen (ihre Beispielpakete gehören zur Demo, `demoGestaltPruefen`) |
+| N4 Stichtag/Zeitzone | Vorgabe-Stichtag = Monatsanfang (`monatsanfang(paketTag())`) in `mandantPaketkosten`/`paketAufpreisSumme`; `preis()` ohne Monat ebenso; die Paketstellen in `App.jsx` (Pilot, Zustimmung, Grundlage) nutzen `paketTag()`; der Hinweis „Zustimmung erforderlich“ in der Konsole schaut auf den Folgemonat (eine heute festgehaltene Zustimmung wirkt ab dort) |
+| N5 Selbststart Sicherheit | „Objektschutz, Sachkunde nach § 34a, Geofence nach Freischaltung (Wachbuch in Vorbereitung)“ |
+| N6 Nachweis | 7.1 berichtigt: fünf `kann`-Aufrufer |
+
+Nicht gebaut (bleibt **vor Zustand 5 Pflicht**, Folgepaket): Kundenbestätigungsweg (7.3, Punkt 1) und der Hinweis in der
+Betriebsansicht der Leitung (7.3, Punkt 3).
+
+Prüfung: `pruefungen/g9-nachtrag2.test.js` (neu, je Fehlerklasse ein Regressionstest; rot gegen den Stand `8d4e556`: 34 von 35
+Fällen). Angepasst (Semantikänderung, nicht abgeschwächt): `g9-nachtrag.test.js` (Grundlage je Paket mit Preis, `abrechnungsGrund`
+mit Preis, Pilot-Ende mit Historie, Zustimmungen nur für gebuchte Pakete, Quelltext-Muster der verlagerten Serverregel) und
+`g9-verkauf.test.js` (Pilot der Anzeige = Pilot des berechneten Monats). Mutanten: 30 auf die neue Logik (Kalendertag, Jahresgrenze, Längengrenze, Prototyp-Schlüssel, geerbte Freigabe, Preisprüfung,
+Stichtag eingeschlossen, Grundlage nicht je Paket/ohne Notiz, ungebuchte Pakete, Servertag, Pilot-`seit`, laufender Pilot,
+Historie vom Client, Ende ohne Historie, Zeitraumgrenzen `seit`/`bis`, Historie `seit > bis`, Dezember-Folgemonat, Reihenfolge
+der Serverregel, Zeitzone UTC, heutiger Pilot statt Monat, Stichtag heute, `grundEntziehen`, `pilotSetzen` ohne Historie bzw.
+überschreibend, Zeichenkette als Paketliste, fehlender Preis, `/api/bestand-anlegen` ohne Regel, Konsole ohne Entzug) — alle 30
+rot, nach Rücknahme grün.

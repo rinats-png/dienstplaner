@@ -307,7 +307,8 @@ describe("Pfadliste: jede Stelle prüft den Zustand (Quelltext)", () => {
   });
 
   it("Rechnung: keine Position für nicht berechnete Pakete; Vertragsübersicht: 0 € mit Zustandsanzeige", () => {
-    expect(app).toMatch(/const pilot = pilotAktiv\(m\);[\s\S]*?const paketkosten_ = mandantPaketkosten\(m, gewaehlt\.paketeFrei \|\| 0, undefined, undefined, ym \? /);
+    /* Nachtrag 2 (M5): der Pilot für die Anzeige ist der des berechneten Monats, nicht der heutige Stand. */
+    expect(app).toMatch(/const paketkosten_ = mandantPaketkosten\(m, gewaehlt\.paketeFrei \|\| 0, undefined, undefined, ym \? [\s\S]*?const pilot = paketkosten_\.pilot;/);
     expect(app).toMatch(/positionen\.push\(\.\.\.paketPositionen\(p, eur\)\);/);
     expect(app).toMatch(/paketAnzeige\(pk\.id, \{ pilot: p\.pilot,/);
     expect(app).toMatch(/\.some\(\(x\) => x\.id === pk\.id\) \? eur\(0\) : eur\(pk\.aufpreis\)/);

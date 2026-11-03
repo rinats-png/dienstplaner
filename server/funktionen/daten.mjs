@@ -23,6 +23,7 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { paketfelderGeprueft } from "../lib/paketstand.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
@@ -540,6 +541,11 @@ export default async (req, context) => {
       const personA = personenFehler(roh);
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
       const neuerBestand = personenAngleichen(roh);
+      /* G9 (Review N3): eigener Inhalt durchläuft dieselbe Paketregel wie der Betreiber-PUT —
+         Pakete unter Zustand 5 nur mit Pilot, Pilot/Zustimmungen/Grundlagen mit Servertag.
+         Die Demo bringt ihre Beispielpakete mit (demoGestaltPruefen). */
+      if (vorlage === undefined && Array.isArray(neuerBestand.mandanten))
+        neuerBestand.mandanten = neuerBestand.mandanten.map((m) => paketfelderGeprueft(m, null));
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */

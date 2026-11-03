@@ -17,10 +17,19 @@
    ========================================================================== */
 import { PAKETE, paketkosten } from "./stufen.js";
 import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
-import { PAKET_FREIGABEN, ZUSTIMMUNG_INTERVALL, merkmalNutzbar, paketBuchbar, pilotAktiv, paketZubuchenErlaubt,
-  abrechnungsGrund } from "../server/lib/paketstand.mjs";
+import { PAKET_FREIGABEN, ZUSTIMMUNG_INTERVALL, TEXT_GRENZE, merkmalNutzbar, paketBuchbar, pilotAktiv, pilotImZeitraum,
+  paketZubuchenErlaubt, abrechnungsGrund, paketTag, folgemonatsanfang } from "../server/lib/paketstand.mjs";
 
-const heuteTag = () => new Date().toISOString().slice(0, 10);
+export { paketTag, folgemonatsanfang };
+
+/** Erster Tag des Monats zu einem Tag JJJJ-MM-TT — der Anzeige- und Abrechnungsstichtag (Review N4). */
+export const monatsanfang = (tag) => `${String(tag).slice(0, 7)}-01`;
+
+/** Die gebuchten Pakete — nur eine echte Liste zählt (Review N3: keine Zeichenkette, kein Objekt). */
+const gebucht = (m) => (m && Array.isArray(m.pakete) ? m.pakete : []);
+/** Der aktuelle Aufpreis eines Pakets (Zielpreis aus stufen.js). */
+const aufpreisVon = (id) => (PAKETE.find((p) => p.id === id) || {}).aufpreis;
+const text = (x) => typeof x === "string" && x.trim() !== "" && x.trim().length <= TEXT_GRENZE;
 
 /**
  * Ist ein Merkmal für diesen Betrieb freigeschaltet? Das Paket muss gebucht sein UND das
@@ -28,32 +37,32 @@ const heuteTag = () => new Date().toISOString().slice(0, 10);
  * freigeschaltet, auch nicht bei gebuchtem Paket.
  */
 export function kannMerkmal(m, merkmal, liste = BRANCHENMODULE) {
-  const aktiv = ["kern", ...((m && m.pakete) || [])];
+  const aktiv = ["kern", ...gebucht(m)];
   return merkmalNutzbar(merkmal, liste)
     && PAKETE.filter((p) => aktiv.includes(p.id)).some((p) => p.merkmale.includes(merkmal));
 }
 
 /**
  * Paketkosten eines Betriebs — der EINE Weg jeder Abrechnung. Berechnet wird nur bei Zustand 5,
- * ohne Pilot UND mit Abrechnungsgrund (Zustimmung des Kunden oder dokumentierte vertragliche
- * Grundlage), dessen Datum VOR dem Stichtag (Beginn des berechneten Zeitraums) liegt.
- * Ohne Grund: nicht berechnet (`ohneGrund` nennt diese Pakete: Hinweis „Zustimmung erforderlich").
+ * ohne Pilot im berechneten Monat UND mit Abrechnungsgrund (Zustimmung des Kunden oder je Paket
+ * dokumentierte vertragliche Grundlage) zum AKTUELLEN Preis, dessen Datum VOR dem Stichtag (Beginn
+ * des berechneten Zeitraums) liegt. Ohne Grund: nicht berechnet (`ohneGrund` nennt diese Pakete:
+ * Hinweis „Zustimmung erforderlich"). `pilot`: ein Pilotzeitraum berührt den berechneten Monat.
  *
- * @param stichtag Beginn des berechneten Zeitraums (JJJJ-MM-TT), Vorgabe: heute
+ * @param stichtag Beginn des berechneten Zeitraums (JJJJ-MM-TT), Vorgabe: Anfang des laufenden Monats
  */
-export function mandantPaketkosten(m, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, stichtag = heuteTag()) {
-  const pilot = pilotAktiv(m);
-  const k = paketkosten((m && m.pakete) || [], paketeFrei || 0, liste, freigaben, pilot,
-    (id) => abrechnungsGrund(m, id, stichtag) !== null);
+export function mandantPaketkosten(m, paketeFrei = 0, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN,
+  stichtag = monatsanfang(paketTag())) {
+  const pilot = pilotImZeitraum(m, stichtag);
+  const k = paketkosten(gebucht(m), paketeFrei || 0, liste, freigaben, pilot,
+    (id) => abrechnungsGrund(m, id, stichtag, aufpreisVon(id)) !== null);
   const ohneGrund = pilot ? [] : k.nichtBerechnet.filter((p) => paketBuchbar(p.id, liste, freigaben));
-  return { ...k, ohneGrund };
+  return { ...k, ohneGrund, pilot };
 }
 
-/** Summe der berechneten Paketaufpreise eines Betriebs (Betreiberkonsole, „Monatlicher Aufpreis"). */
-export const paketAufpreisSumme = (m, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, stichtag = heuteTag()) =>
-  PAKETE.filter((p) => !pilotAktiv(m) && ((m && m.pakete) || []).includes(p.id) && paketBuchbar(p.id, liste, freigaben)
-    && abrechnungsGrund(m, p.id, stichtag) !== null)
-    .reduce((a, p) => a + (p.aufpreis || 0), 0);
+/** Summe der berechneten Paketaufpreise eines Betriebs (Betreiberkonsole, „Monatlicher Aufpreis"), ohne Freiplätze. */
+export const paketAufpreisSumme = (m, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN, stichtag = monatsanfang(paketTag())) =>
+  mandantPaketkosten(m, 0, liste, freigaben, stichtag).summe;
 
 /**
  * Zustimmungseintrag des Kunden zu einem Paket: Paket, Preis, wiederkehrende Kosten (Intervall),
@@ -64,9 +73,30 @@ export function zustimmungErfassen(m, paketId, tag, von, liste = BRANCHENMODULE,
   const p = PAKETE.find((x) => x.id === paketId && !x.pflicht);
   if (!p) return { ok: false, grund: "Unbekanntes Paket." };
   if (!paketBuchbar(paketId, liste, freigaben)) return { ok: false, grund: "Dieses Paket ist noch nicht buchbar." };
-  if (!((m && m.pakete) || []).includes(paketId)) return { ok: false, grund: "Das Paket ist nicht gebucht." };
-  if (typeof von !== "string" || !von.trim()) return { ok: false, grund: "Es fehlt, wer zugestimmt hat." };
+  if (!gebucht(m).includes(paketId)) return { ok: false, grund: "Das Paket ist nicht gebucht." };
+  if (!text(von)) return { ok: false, grund: `Es fehlt, wer zugestimmt hat (höchstens ${TEXT_GRENZE} Zeichen).` };
   return { ok: true, eintrag: { paket: paketId, datum: tag, preis: p.aufpreis, intervall: ZUSTIMMUNG_INTERVALL, von: von.trim() } };
+}
+
+/**
+ * Vertragliche Grundlage JE PAKET (Review M2): Paket, aktueller Preis, Intervall, Datum, Betreiber,
+ * Verweis/Notiz (Pflicht). Nur für ein buchbares (Zustand 5), gebuchtes Paket.
+ * @returns { ok: true, eintrag } oder { ok: false, grund }
+ */
+export function grundlageErfassen(m, paketId, tag, notiz, von, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) {
+  const r = zustimmungErfassen(m, paketId, tag, von, liste, freigaben);
+  if (!r.ok) return r;
+  if (!text(notiz)) return { ok: false, grund: `Ohne Verweis keine Grundlage (höchstens ${TEXT_GRENZE} Zeichen).` };
+  return { ok: true, eintrag: { ...r.eintrag, notiz: notiz.trim() } };
+}
+
+/**
+ * Abschalten entzieht den Abrechnungsgrund des Pakets (Review M1): Zustimmung und Grundlage dieses
+ * Pakets fallen weg; wer es wieder zubucht, braucht einen neuen Grund. Andere Pakete bleiben.
+ */
+export function grundEntziehen(m, paketId) {
+  const ohne = (x) => (Array.isArray(x) ? x : []).filter((e) => !(e && e.paket === paketId));
+  return { paketZustimmungen: ohne(m && m.paketZustimmungen), paketGrundlage: ohne(m && m.paketGrundlage) };
 }
 
 /**
@@ -95,7 +125,7 @@ export function paketPositionen(p, eur = (x) => x) {
  * @returns { ok: true, pakete } oder { ok: false, grund }
  */
 export function paketSchalten(m, paketId, an, liste = BRANCHENMODULE, freigaben = PAKET_FREIGABEN) {
-  const alt = (m && m.pakete) || [];
+  const alt = gebucht(m);
   if (!an) return { ok: true, pakete: alt.filter((p) => p !== paketId) };
   if (!paketZubuchenErlaubt(paketId, pilotAktiv(m), liste, freigaben))
     return { ok: false, grund: "Dieses Paket ist in Vorbereitung und nicht buchbar. "
@@ -105,13 +135,23 @@ export function paketSchalten(m, paketId, an, liste = BRANCHENMODULE, freigaben 
 
 /**
  * Pilot setzen oder beenden: die neue `preisgestaltung` des Betriebs (nur Betreiber, Protokoll im
- * Aufrufer). Setzen verlangt einen Grund; ohne Grund bleibt alles, wie es war (null).
+ * Aufrufer). Setzen verlangt einen Grund; ohne Grund bleibt alles, wie es war (null). Ein laufender
+ * Pilot bleibt unverändert. Beenden schreibt den Zeitraum { seit, bis, von, grund } in
+ * `pilotHistorie` (Review M5) — die Abrechnung prüft den Rechnungsmonat gegen alle Zeiträume.
  */
 export function pilotSetzen(m, an, tag, grund) {
   const alt = { ...((m && m.preisgestaltung) || {}) };
   if (an) {
-    if (typeof grund !== "string" || !grund.trim()) return null;
+    if (!text(grund)) return null;
+    if (pilotAktiv(m)) return alt;
     alt.pilot = { seit: tag, von: "Betreiber", grund: grund.trim() };
-  } else delete alt.pilot;
+  } else {
+    if (pilotAktiv(m)) {
+      const p = alt.pilot;
+      alt.pilotHistorie = [...(Array.isArray(alt.pilotHistorie) ? alt.pilotHistorie : []),
+        { seit: p.seit, bis: tag, von: p.von, grund: p.grund }];
+    }
+    delete alt.pilot;
+  }
   return alt;
 }
