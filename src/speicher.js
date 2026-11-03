@@ -160,12 +160,13 @@ export async function lies() {
  * einzigen Aufruf zusammengefasst — sonst ginge bei jedem Tastendruck ein
  * Netzaufruf hinaus.
  *
- * onKonflikt wird gerufen, wenn jemand anderes inzwischen gespeichert hat.
+ * onKonflikt wird gerufen, wenn jemand anderes inzwischen gespeichert hat;
+ * onFachbefunde, wenn der Server warnende Befunde bestätigt haben will (WP-22).
  * Die Anwendung entscheidet dann, was geschieht — stillschweigend überschreiben
  * wäre die schlechteste aller Möglichkeiten.
  */
-export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, sofort } = {}) {
-  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert };
+export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, onFachbefunde, sofort } = {}) {
+  offen = { bestand, durch, onKonflikt, onFehler, onGespeichert, onFachbefunde };
   if (uhr) clearTimeout(uhr);
   if (sofort) return jetztSchreiben();
   uhr = setTimeout(jetztSchreiben, WARTE);
@@ -259,6 +260,17 @@ async function schreibenAusfuehren(beimSchliessen) {
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
     status = antwort.status;
     const daten = antwort.daten;
+    if (status === 409 && daten && Array.isArray(daten.fachbefunde)) {
+      /* WP-22: kein Konflikt mit einem fremden Stand, sondern warnende
+         Befunde, die der Server bestätigt haben will. Der Auftrag bleibt
+         liegen; die Anwendung fragt nach und speichert mit Bestätigung neu. */
+      if (daten.etag) etag = daten.etag;
+      gescheitert = { auftrag, lage: { art: "bestaetigung", text: String(daten.fehler || "Bestätigung nötig."), status,
+        zeit: new Date().toISOString() } };
+      if (auftrag.onFachbefunde) auftrag.onFachbefunde(daten);
+      else if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+      return;
+    }
     if (status === 409) {
       etag = daten.etag;
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
@@ -514,6 +526,21 @@ export async function zeitBestaetigen(datum, start, ende, grund) {
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
+  return d;
+}
+
+/**
+ * Die Ist-Zeit eines gestempelten Tages korrigieren (WP-06) — nur Leitung und
+ * Planung. Der Stempel bleibt unverändert; die Korrektur wird mit Grund als
+ * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
+ * abgeleitete Ist-Zeit (erfassung).
+ */
+export async function stempelKorrektur(personId, datum, start, ende, grund) {
+  const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Korrektur ließ sich nicht speichern.");
   return d;
 }
 

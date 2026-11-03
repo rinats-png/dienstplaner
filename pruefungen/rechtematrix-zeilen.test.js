@@ -598,9 +598,9 @@ describe("RECHTEMATRIX.md, Fußnoten", () => {
   it("¹⁸ Bereich und Pool: Zuständigkeitsbereich, Verfügbarkeit, Kompetenznachweise", () => {
     for (const x of ["VERFUEGBARKEIT-A1", "VERFUEGBARKEIT-SP1", "KOMPETENZ-A1", "KOMPETENZ-SP1"]) expect(mk(x)(sv), x).toBe(true);
     expect(personIn(sv.betrieb, "a1").bereich).toBe("e1");
-    /* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ nur noch als Einsatzregel. */
+    /* Nachprüfung 9717ddf (M1-Rest) und 948a4ba (A1): „keine Nacht“ nur noch als Einsatzregel keinNachtdienst. */
     expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({});
-    expect(personIn(sv.betrieb, "a1").planungsregeln.map((r) => r.regel)).toContain("nachtNichtZulaessig");
+    expect(personIn(sv.betrieb, "a1").planungsregeln.map((r) => r.regel)).toContain("keinNachtdienst");
   });
   it("¹⁹ Konten im eigenen Bereich, nicht im Pool", () => {
     expect(mk("STUNDEN-A1")(sv)).toBe(true);
@@ -685,6 +685,29 @@ describe("Rundreise: gefilterte Sicht zurück — nichts verloren, nichts Verbor
         expect(JSON.stringify(e), `${k}: ${name}`).not.toMatch(/ANGRIFF|angriff@x\.de/);
       });
     }
+  }
+});
+
+/* Abschnitt 2, WP-22: Dienstarten legt an und ändert nur, wer org.edit hat
+   (Leitung, Kundenrolle). Für alle anderen schreibenden Rollen: abgewiesen
+   oder wirkungslos — gespeichert bleibt der alte Name. */
+describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten mit org.edit oder pattern.edit (WP-22)", () => {
+  it("die Zeile steht in der Matrix", () => {
+    const text = fs.readFileSync(MATRIX_DATEI, "utf8");
+    expect(text.split(/^## 2\./m)[1]).toMatch(/Dienstarten \(`dienstarten`\)[^\n]*pattern\.edit/);
+  });
+  const umbenennen = (m) => { const d = (m.dienstarten || []).find((x) => x && x.id); if (d) d.name = "SONDE-ORG-EDIT"; return !!d; };
+  const DUERFEN = ["PL", "LT", "KU"];
+  for (const k of ["MA", "BR", "SV", "PL", "LT", "KU"]) {
+    it(`${k}: Dienstart umbenennen — ${DUERFEN.includes(k) ? "gespeichert" : "abgewiesen oder wirkungslos"}`, () => {
+      const g = bestand();
+      const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ[k])));
+      const m = sicht.mandanten.find((x) => x && x.id === "m1");
+      expect(umbenennen(m), "eine Dienstart steht in jeder Sicht").toBe(true);
+      const e = zusammenfuehren(g, sicht, SITZ[k]);
+      const gespeichert = !!e && !e.verweigert && JSON.stringify(e).includes("SONDE-ORG-EDIT");
+      expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(DUERFEN.includes(k));
+    });
   }
 });
 

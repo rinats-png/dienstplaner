@@ -65,3 +65,21 @@ Lokal gezielt: `wiederherstellen-ui` 12/12, `sicherungen`, `oberflaeche-selbstse
   einen Lese-Endpunkt für den Inhalt einer Sicherung; den gibt es nicht.
 - Eine Sicherung aus der Zeit vor einer Wiederherstellung (§4a, Standfolge) gilt nur für das Werkzeug
   `ablage-pruefen`, nicht für die In-App-Sicherungen; sie sind betriebsbezogen und tragen keine Standnummern.
+
+## Review (bece9cc: nicht integrierbar) und Nachbesserung
+
+Basis jetzt: `origin/merge/wp17-06` (Integration plus WP-17 und WP-06, PR #47 noch offen), damit der Dialogtext dem Stand
+nach WP-06 folgt. Konflikte in `package.json` (Sammelzeile `pruefung`: nichts herausgefallen, `pruefung:fachpruefung`,
+`pruefung:branchenmodule`, `pruefung:doku` und `pruefung:wiederherstellen-ui` stehen darin) und `src/App.jsx` (Text der
+Zeile „Sicherung anlegen“) von Hand gelöst. Wird #47 zuerst gemerged, läuft der Merge dieses Branchs ohne Konflikt weiter.
+
+| Befund | Umsetzung | Test |
+|---|---|---|
+| **BLOCKER** `laden={akt.sicherungenLaden}` und `zurueckspielen={akt.zurueckspielen}` fehlten im Aktionsobjekt der App: Liste blieb bei „Lädt …“, ein Klick endete im TypeError | `sicherungenAktionen(SP)` in `src/sicherungen-ui.js` liefert `sicherungenLaden` (→ `SP.sicherungen`) und `zurueckspielen` (→ `SP.wiederherstellen`); das Aktionsobjekt der App setzt sie ein (`...sicherungenAktionen(SP)`). Fehlt eine Aktion, steht in der Oberfläche „nicht angeschlossen (Programmfehler)“ statt eines ewigen „Lädt …“. | Die echte Komponente `Einstellungen` wird eingeloggt als Leitung gerendert (`SP.anmelden` gegen eine Fetch-Attrappe): ein aufzeichnendes `akt` zeigt, dass genau diese beiden Aktionen gelesen werden; mit den Aktionen der Fabrik erscheint „Lädt“, ohne sie (Stand der ersten Fassung) der Fehler; die Fabrik ruft `SP.sicherungen` und `SP.wiederherstellen(marke)`. Kundenrolle: Liste ohne „Zurückspielen“, Beschäftigte: kein Abschnitt. |
+| **MITTEL** Dialogtext nannte nicht, was verloren geht | `BESTAETIGUNG` (Umfang, „Das bleibt“, „Das geht auf den Stand der Sicherung zurück“, „Gut zu wissen“) in drei Abschnitten, gerendert von `BestaetigungsText`. Es **bleibt**: Stempel samt Korrekturen und abgeleiteter Ist-Zeit (dazu Stempel nur der Sicherung), Protokoll mit Eintrag zur Wiederherstellung, Planänderungen, Vertrags- und Rechnungsangaben, Zugänge, Zustellwege, Bank-/Steuer-/Lohnangaben, anonymisierte Personen, andere Betriebe. Es **geht zurück**: Plan, Freigaben und Planstände, Personen (neu angelegte fehlen, ihre Stempel bleiben), Stammdaten, Einstellungen, Dienstarten, Einheiten, Regelwerk, Abwesenheiten, Anträge, Wünsche, Mitteilungen, Ist-Zeiten ohne Stempel. Dazu die Vorab-Sicherung und der Fristenmodus. | Der Dialog wird gerendert (`vorgabe.auswahl`) und auf alle Aussagen geprüft. **Jede Aussage wird am Server belegt**: `betriebWiederherstellen` mit einem Betrieb, der Stempel mit Korrektur, eine neu angelegte Person, geänderten Plan/Einstellungen, ein Protokoll, Planänderungen, abweichenden Vertrag und eine anonymisierte Person hat; Fristen bei `vorschau` (gemeldet) und `an` (entfernt). |
+| 404/422/403/503 | gezielte Texte, jeweils mit „Es wurde nichts geändert“ und dem nächsten Schritt: 403 (nicht erlaubt, mit Text des Servers), 404 (Sicherung nicht (mehr) da, ausgedünnt, Liste neu laden), 422 (Sicherung unbrauchbar, andere wählen oder Betreiber), 503 ohne Code (belegt/neu gestartet), 400. | `ergebnisMeldung` für jeden Status. |
+| Handbuch | `docs/handbuch/leitung.md` und `docs/RESTORE-ANLEITUNG.md`: Der Satz „Oberfläche in Vorbereitung (WP-25)“ ist ersetzt durch den Weg in der Oberfläche und die Aussage, was bleibt und was zurückgeht. | `pruefung:doku` |
+
+Grenze der Verdrahtungsprüfung: Das Aktionsobjekt entsteht in `App()` und lässt sich nicht aufrufen. Deshalb gibt es eine
+einzige Quelltext-Prüfung, dass `...sicherungenAktionen(SP)` genau einmal dort steht; alles andere läuft über echtes Rendern.
+Eine Browserprüfung (Playwright) bleibt offen.

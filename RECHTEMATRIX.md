@@ -163,7 +163,7 @@ Erfassung; an allen anderen Tagen und in Auswertungen, deren Zeitraum (Monat, Ko
 nicht ganz darin liegt, zeigt die Oberfläche „nicht verfügbar", nie die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
 Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
 ¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keinAlleindienst`,
-`maxDiensteWoche`; „keine Nacht“ seit der Nachprüfung 9717ddf nur als Einsatzregel `nachtNichtZulaessig`, die Wiedereingliederung nur als Einsatzregel, ¹⁰).
+`maxDiensteWoche`; „keine Nacht“ seit der Nachprüfung 9717ddf nur als Einsatzregel `keinNachtdienst` mit Nachtfenster und Schwelle des Betriebs (948a4ba, A1 — dieselbe Bewertung wie Planung und Server), die Wiedereingliederung nur als Einsatzregel, ¹⁰).
 ¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
 ²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
 und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
@@ -208,10 +208,10 @@ jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichu
 wenn dadurch ein sperrender Befund **neu** entsteht (Review F2); ein schon bestehender blockiert nicht. Grenzen dieser
 Nachrechnung: Teilzeit und Posten bleiben außer Acht (im Zweifel streng), Abwesenheiten zählen nicht als frei, Tage
 jenseits von 120 prüft nur die Planprüfung der Oberfläche. Eine Bestätigung zu einer
-solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
-durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
+solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Seit WP-22 überholt (Abschnitt 2):** Bis dahin nur in der Oberfläche
+durchgesetzt waren: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
 `einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
-Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
+Besetzung, Nachtfenster des Betriebs) auf dem Server — jetzt `server/lib/fachpruefung.mjs`. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
 **Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
 20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
 `{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben Rollen mit
@@ -220,7 +220,7 @@ Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefu
 (`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
 `nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
 oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
-Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Einwilligungen nach dem Mutterschutzgesetz an der Person (`mutterschutzEinwilligungen`, Nutzerentscheidung) lesen und schreiben wie die Schutzmerkmale nur Planung, Leitung und Kundenrolle, die eigene Person liest ihre eigenen; Form, `geaendertAm` und `geaendertVon` prüft bzw. setzt der Server (`einwilligungenZusammen`). Das Ende ist Pflicht; dass sich Einwilligungen geändert haben, steht ohne Inhalt im Betriebsprotokoll. Die Schichtverantwortung bekommt daraus nur Abschnitte ab heute, ohne vergangene Grenzen und unter Namen, die kein Merkmal nennen (`einsatzfensterBis22`, `sonntagFreigegeben`; Review M1). **Restrisiko (ehrlich):** Die Namen sind faktisch merkmalsspezifisch — nur der Mutterschutz erzeugt heute `einsatzfensterBis22` und `sonntagNurMitFreigabe`/`sonntagFreigegeben`; bei einer erwachsenen Person kann die Schichtverantwortung aus der Sonntagsregel oder dem Muster der Regeln auf einen Mutterschutz schließen. Das ist ein Punkt für die DSFA und die Betriebsvereinbarung (offen). Eine Änderung an Mutterschutz, Einwilligung oder Geburtsdatum wird **immer gespeichert** — die Erfassung des Schutzes blockiert nichts (Nachprüfung 9717ddf, M2). Der Server rechnet bestehende Einteilungen im Horizont nach (auch aus der Schichtfolge); widersprechen welche, bekommen Planung und Leitung eine dringende Mitteilung (Person, Tag, „Einteilung widerspricht Schutz- oder Einsatzregel der Person“), und die Planprüfung zeigt den sperrenden Befund, bis umgeplant ist. Neue widersprechende Einteilungen bleiben gesperrt (403). Eine neue Einwilligung beginnt frühestens heute; bestehende Einteilungen vor ihrem Beginn werden nicht nachträglich zulässig. Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Einwilligungen nach dem Mutterschutzgesetz an der Person (`mutterschutzEinwilligungen`, Nutzerentscheidung) lesen und schreiben wie die Schutzmerkmale nur Planung, Leitung und Kundenrolle, die eigene Person liest ihre eigenen; Form, `geaendertAm` und `geaendertVon` prüft bzw. setzt der Server (`einwilligungenZusammen`). Das Ende ist Pflicht; dass sich Einwilligungen geändert haben, steht ohne Inhalt im Betriebsprotokoll. Die Schichtverantwortung bekommt daraus nur Abschnitte ab heute, ohne vergangene Grenzen und unter Namen, die kein Merkmal nennen (`einsatzfensterBis22`, `sonntagFreigegeben`; Review M1). **Restrisiko (ehrlich):** Die Namen sind faktisch merkmalsspezifisch — nur der Mutterschutz erzeugt heute `einsatzfensterBis22` und `sonntagNurMitFreigabe`/`sonntagFreigegeben`; bei einer erwachsenen Person kann die Schichtverantwortung aus der Sonntagsregel oder dem Muster der Regeln auf einen Mutterschutz schließen. Das ist ein Punkt für die DSFA und die Betriebsvereinbarung (offen). Eine Änderung an Mutterschutz, Einwilligung oder Geburtsdatum wird **immer gespeichert** — die Erfassung des Schutzes blockiert nichts (Nachprüfung 9717ddf, M2). Der Server rechnet bestehende Einteilungen im Horizont nach (auch aus der Schichtfolge); widersprechen welche, bekommen Planung und Leitung eine dringende Mitteilung (Person, Tag, „Einteilung widerspricht Schutz- oder Einsatzregel der Person“), und die Planprüfung zeigt den sperrenden Befund, bis umgeplant ist. Neue widersprechende Einteilungen bleiben gesperrt (403). Offene Konflikte bleiben sichtbar, bis umgeplant ist: Pflichtaufgabe auf der Startseite von Planung und Leitung, Markierung der Zelle im Monatsplan; gerechnet wird die Schichtfolge ein Jahr voraus und jede künftige ausdrückliche Einteilung (948a4ba, A2). Werden Schutzangaben entfernt, steht das ohne Inhalt im Betriebsprotokoll und die Leitung bekommt eine Mitteilung ohne Person. Eine neue Einwilligung beginnt frühestens heute; bestehende Einteilungen vor ihrem Beginn werden nicht nachträglich zulässig. Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
@@ -265,6 +265,12 @@ Steuer). Dazu kommen:
   Betrieb) samt der Auskünfte, die die Leitung über sie erteilt hat;
 - ob Push-Anmeldung und Kalenderverweis bestehen.
 
+Zwei Einschränkungen der Selbstauskunft (WP-26): Zeilen „Auskunft durch die Leitung über mich“ gehen nur als
+`{ zeit, art, rolle }` hinaus — ohne Herkunft und ohne Person der Leitung (N-2). Bestätigungen aus dem
+Bestätigungsprotokoll (`bestaetigungen`, WP-10) **über** die Person kommen mit den Feldern des Eintrags, aber ohne die
+bestätigende Person (`durch`, `durchId`) — nur deren Rolle (N-4). Bestätigungen, die die Person selbst für andere
+abgab, und die Zählwerte des Betriebsrats sind nicht Teil der Auskunft.
+
 Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre eigene Sicht
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
@@ -294,6 +300,31 @@ im Betrieb eine bekannte Rolle hat.
 (Rückfüllung: `schichtRueckfuellen`, `vollRueckfuellen`); mitgeschickte verborgene Werte sind wirkungslos
 oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Betreiber (1e.2a).
 
+**Branchenmodule (WP-19, A):** Welche Pakete gebucht sind (`pakete`), bleibt Vertragsfeld des Betreibers.
+Innerhalb gebuchter Pakete schaltet der Betrieb die Module in `einstellungen.branchenmodule` — schreiben
+dürfen nur Rollen mit `org.edit` (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Stand.
+Form `{ an: boolean, parameter?: {…} }` je bekanntem Modul, Parameter nach Typ und Grenzen der Registry;
+Einschalten nur, wenn das Paket gebucht und das Modul nicht mehr „geplant" ist, Ausschalten immer; Wann und
+Wer setzt der Server (`branchenmoduleZusammen`, `server/lib/branchenmodule.mjs`). Lesen wie die übrigen
+Einstellungen. Daten, die ein Modul später anlegt, bekommen vorher je eine eigene Zeile in dieser Matrix.
+Geprüft in `pruefungen/branchenmodule.test.js`.
+- *Kontimodelle* (`server/lib/modul-kontimodelle.mjs`): keine neuen Daten. Der Assistent rechnet nur; was er
+  übernimmt, schreibt die Oberfläche in die bestehenden Felder `zyklus`, `anker`, `einheiten` (wie bisher
+  `pattern.edit`). Parameter `sollWochenstunden`, `stundenJeFreischicht` in `einstellungen.branchenmodule`.
+  Geprüft in `pruefungen/modul-kontimodelle.test.js`.
+- *Anlagen* (`server/lib/modul-anlagen.mjs`): keine neuen Betriebsfelder. Eine Anlage ist ein Eintrag in
+  `betriebsmittel` mit `art: "anlage"` und den Feldern `mindestBesetzung`, `laufzeit`; Lesen und Schreiben wie
+  Betriebsmittel (Positivkatalog `betriebsmittel` in `server/lib/sicht.mjs`: Beschäftigte und
+  Schichtverantwortung sehen nicht ausgegebene Betriebsmittel, also auch Anlagen; Betriebsrat nicht). Der Server
+  weist eine falsche Form ab (`anlagenZusammen`). Befunde nur als Hinweis und nur bei aktivem Modul.
+  Geprüft in `pruefungen/modul-anlagen.test.js`.
+- *Maschinenqualifikationen* (`server/lib/modul-maschinenqual.mjs`): keine neuen Betriebsfelder. Liest
+  `kompetenzen` und `kompetenzNachweise` wie bisher (Positivkatalog unverändert: Beschäftigte nur eigene
+  Zuweisung, Schichtverantwortung ohne fremde Kompetenznachweise ¹⁸); neues Feld `befaehigtePerson` (Ja/Nein) an
+  der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
+  nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
+  (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
+
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
 eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`server/lib/mitteilungen.mjs`).
@@ -305,11 +336,14 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 
 | Weg | Wer | Was | |
 |---|---|---|---|
+| `PUT /api/bestand`: Dienstarten (`dienstarten`) anlegen, ändern, löschen | Leitung, Kundenrolle, Planung (`org.edit` oder `pattern.edit`) | WP-22 (Nutzerentscheidung, keine Funktionskürzung): Die Planung behält die Einrichtung — Dienstarten, Zeiten, Mindestbesetzung, Vorlagenzeiten, Checkliste. Alle anderen Rollen weist der Server ab (403), eine unveränderte Kopie stört nicht. Eine noch verwendete Dienstart (Schichtfolge, Einteilung ab heute) lässt sich nicht löschen | A |
+| `PUT /api/bestand`: Einteilungen (`abweichungen`, mittelbar über Dienstzeiten, Schichtfolge, Einheiten, Personen) | jede schreibende Rolle im eigenen Umfang | WP-22: Der Server prüft neue Befunde mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`, `server/lib/fachpruefung.mjs`): sperrende (Katalogspalte `sperrt`) weist er ab (403); warnende nur mit einem neuen Eintrag im Bestätigungsprotokoll zu Person, Tag und Regel — oder, für Planung, Leitung und Kundenrolle, einer Sammelbestätigung je Regel, Einheit (Pflicht) und Zeitraum — nicht für Schutzregeln, die nur einzeln —, deren gedeckte Anzahl und tatsächlich betroffene Tage der Server einträgt; eine, die nichts deckt, wird nicht gespeichert (Review B1, S1) — im selben Speichervorgang, sonst 409 mit `fachbefunde` und `sammelVorschlag` (neutrale Texte aus dem Katalog, für Schutzbefunde immer „Schutz- oder Einsatzregel der Person“). Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung). Die Schichtverantwortung bekommt nie Befunde aus fremden Bereichen: Wirkt ihre Änderung dorthin, sperrt sie ohne Kennung (Review B4). Die Nachrechnung läuft in Häppchen (503 nach Zeitbudget, 429 bei mehr als 10 Strukturänderungen je Raum und Minute; Review B2). Schutzangaben einer Person werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server (Nachprüfung 9717ddf). Siehe ²¹ | A |
 | `/api/vollausgabe` | Leitung; Sicherungsschlüssel | eigener Betrieb nach Exportkatalog (`server/lib/sicherungen.mjs`), Spalten VA-LT/VA-SK oben; kein Wiederherstellungsformat | A |
 | `/api/sicherungsschluessel` (GET/POST/DELETE) | Leitung | nur Schlüssel des eigenen Betriebs; Widerruf nur über die vollständige Kennung; fremd wie unbekannt | A |
 | `/api/sicherung`, `/api/sicherungen`, `/api/wiederherstellen` | Leitung | Sicherungen und Wiederherstellen je Betrieb, Kontingente je Betrieb, Geheimnisse und Vertrag aus dem heutigen Stand; ebenso Betreiberstamm und alles außerhalb der Sicht der Leitung (an bestehenden Personen etwa Bank-, Steuer- und Lohnangaben) — dieselbe Grenze wie beim Speichern | A |
 | `/api/zugang-sperren` | Leitung (eigener Betrieb), Betreiber (raumweit) | ohne Existenz-Orakel | A |
 | `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag. Geo V1: Urteil nur bei eingeschaltetem Betriebsschalter `einstellungen.geoPruefung` (Vorgabe aus; schalten nur Rollen mit `org.edit`, Zeitpunkt und Person setzt der Server); Rohkoordinate und exakte Entfernung werden nicht gespeichert | A |
+| `/api/stempel-korrektur` | Leitung, Planung, Probierraum (`staff.edit`) | Ist-Zeit eines gestempelten Tages korrigieren — nur als Ereignis `{vorher, nachher, wer, wann, grund}` am Stempel (`server/lib/stempelintegritaet.mjs`, WP-06); das Original bleibt. Ein Originalstempel ist über `PUT /api/bestand` für **jede** Rolle unveränderlich (ändern, löschen, erfinden, Korrektur am Ereignisweg vorbei, Ist-Zeit eines gestempelten Tages ändern: 403 `STEMPEL_UNVERAENDERLICH`). Ausnahmen: Löschlauf der Leitung nach Ablauf der Aufbewahrungsfrist (mind. 24 Monate); Wiederherstellen behält alle heutigen Stempel samt Korrekturen. Die Ereignisse sieht nur, wer den Stempel sieht (`einstempeln` `NUR_EIGENE` für Beschäftigte, Schichtverantwortung, Betriebsrat) | A |
 | `/api/anmelden`, `/api/demo`, `/api/demos` | öffentlich | Sitzung bzw. Name/Kennung der Demozugänge, keine Codes | A |
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |

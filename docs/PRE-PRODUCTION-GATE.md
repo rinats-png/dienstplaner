@@ -319,6 +319,12 @@ Aufruf nur so, im laufenden Staging-Container:
     docker exec centric-staging-web node /app/werkzeug/staging-geo.mjs
     docker exec centric-staging-web node /app/werkzeug/staging-aufraeumen.mjs
 
+**`CENTRIC_ADMIN` nur auf Staging und nur für die Dauer der Proben.** Die Proben legen
+ihre Wegwerfzugänge über `/einrichten` mit dem Ursprungsschlüssel an und brechen ohne ihn ab
+(Exit 2). Deshalb steht er in der `.env` des Staging-Containers, solange geprobt wird, und
+wird danach wieder entfernt. In **Produktion** gehört er nach dem ersten benannten
+Verwalterkonto entfernt (BEREITSTELLUNG 5.1, `.env.example`); dort laufen diese Proben nicht.
+
 Exit 0 nur, wenn alle Prüfungen der Probe bestanden sind; letzte Zeile
 `STAGING-SMOKE: n/n bestanden`, `STAGING-GEO: n/n bestanden` bzw.
 `STAGING-AUFRAEUMEN: n/n bestanden`. Exit 1: Prüfung fehlgeschlagen, 2: falscher Aufruf,

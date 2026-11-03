@@ -599,6 +599,28 @@ async function schreibeAlles(store, raum, zerlegt, abd, neuerStand, durch, opt =
   return { ok: true, stand: String(neuerStand), geschrieben };
 }
 
+/**
+ * Welche Monatsscherben („betriebId::JJJJ-MM") sind seit dem Stand, den die
+ * Oberfläche zuletzt bekam, unverändert? Für sie kennt die Oberfläche den
+ * gespeicherten Inhalt vollständig — fehlt dort ein Eintrag, hat sie ihn
+ * weggelassen, nicht verpasst (Stempel-Integrität, WP-06). Ohne Stand
+ * (Schreiben ohne Abgleich) oder mit aktuellem Stand: alle. Ist der Vermerk
+ * des alten Stands nicht mehr da: keine (unbestimmt).
+ * @param {{bestand: object, stand: string|number}|null} aktuell  frisch gelesen
+ * @returns {Promise<Set<string>>}
+ */
+export async function unveraenderteScherben(store, raum, erwarteterStand, aktuell) {
+  if (!aktuell || !aktuell.bestand) return new Set();
+  const abd = abdruecke(zerlegen(ohneSitzung(aktuell.bestand)));
+  const ids = Object.keys(abd).filter((id) => id !== "kern");
+  if (erwarteterStand === null || erwarteterStand === undefined
+      || String(erwarteterStand) === String(aktuell.stand)) return new Set(ids);
+  if (!Number.isFinite(Number(erwarteterStand))) return new Set();
+  const basis = (await store.get(STAND(raum, Number(erwarteterStand)), { type: "json" }).catch(() => null))?.abdruecke;
+  if (!basis) return new Set();
+  return new Set(ids.filter((id) => basis[id] === abd[id]));
+}
+
 /** Gibt es diesen Betrieb schon? Für die Raumanlage. */
 export async function raumBelegt(store, raum) {
   /* Nicht lesbar heißt belegt: Ein beschädigter Kern ist ein Raum, den es

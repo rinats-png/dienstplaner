@@ -16,11 +16,31 @@
 export const pad = (n) => String(n).padStart(2, "0");
 export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-export const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
 /** Ein Kalendertag als Millisekunden in UTC — ohne Zeitzone, deshalb schnell
     (Nachprüfung WP-11, N1: `new Date(j, m, t)` kostet unter Windows je Aufruf
     eine Zeitzonenauflösung, die Nachrechnung rief es zehntausendfach). */
-export const tagUTC = (s) => { const [y, m, d] = s.split("-").map(Number); return Date.UTC(y, m - 1, d); };
+const UTC_SPEICHER = new Map();
+export const tagUTC = (s) => {
+  let v = UTC_SPEICHER.get(s);
+  if (v === undefined) {
+    const [y, m, d] = s.split("-").map(Number);
+    v = Date.UTC(y, m - 1, d);
+    if (UTC_SPEICHER.size > 20000) UTC_SPEICHER.clear();
+    UTC_SPEICHER.set(s, v);
+  }
+  return v;
+};
+/** n Kalendertage weiter — in UTC gerechnet, dasselbe Ergebnis wie über die
+    Ortszeit; zwischengespeichert, weil die Prüfungen dieselben Tage immer
+    wieder verschieben (WP-22). */
+const TAGE_SPEICHER = new Map();
+export const addDays = (s, n) => {
+  let je = TAGE_SPEICHER.get(s);
+  if (!je) { if (TAGE_SPEICHER.size > 20000) TAGE_SPEICHER.clear(); je = new Map(); TAGE_SPEICHER.set(s, je); }
+  let v = je.get(n);
+  if (v === undefined) { v = new Date(tagUTC(s) + n * 86400000).toISOString().slice(0, 10); je.set(n, v); }
+  return v;
+};
 /** Montag ist 0 — im deutschen Arbeitsrecht beginnt die Woche dort. */
 const DOW = new Map();
 export const dow = (s) => {
@@ -29,7 +49,13 @@ export const dow = (s) => {
   return w;
 };
 
-export const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+/* „HH:MM" ohne Zwischenzeichenketten (WP-22, Laufzeit); alles andere wie bisher. */
+const ziffer = (c) => c >= 48 && c <= 57;
+export const toMin = (t) => {
+  const a = t.charCodeAt(0), b = t.charCodeAt(1), c = t.charCodeAt(3), d = t.charCodeAt(4);
+  if (t.charCodeAt(2) === 58 && ziffer(a) && ziffer(b) && ziffer(c) && ziffer(d)) return (a - 48) * 600 + (b - 48) * 60 + (c - 48) * 10 + (d - 48);
+  return Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+};
 
 /** Bezahlte Stunden eines Dienstes, Pause abgezogen. */
 export function dauer(d) {
@@ -54,6 +80,30 @@ export function nachtMinuten(d) {
     summe += Math.max(0, Math.min(e, b) - Math.max(s, a));
   }
   return Math.min(summe, e - s);
+}
+
+/* Nachtfenster des Betriebs (Einstellungen nachtVon/nachtBis, Schwelle
+   nachtschichtAbStunden) — für die Einschränkung „keine Nacht“ in Oberfläche,
+   Server und Einsatzregeln (Nachprüfung 948a4ba, A1). Ohne Einstellungen gilt
+   das Gesetz (23–6 Uhr, zwei Stunden). */
+const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
+export const nachtFenster = (einst) => ({
+  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
+  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
+});
+/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
+export const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
+/** Nachtstunden eines Dienstes im Fenster des Betriebs; ohne Einstellungen gilt das Gesetz. */
+export function nachtAnteil(d, einst) {
+  const f = nachtFenster(einst);
+  const von = toMin(f.von), bis = toMin(f.bis);
+  const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
+  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
+     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
+  const fenster2 = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
+  let sum = 0;
+  for (const [a, b] of fenster2) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
+  return Math.round(sum / 60 * 100) / 100;
 }
 
 /** Ist das ein Nachtdienst im Sinne des § 2 Abs. 4? */
@@ -160,17 +210,27 @@ function tagGueltig(s) {
   }
   return ok;
 }
+/* Alter je Geburtsdatum und Tag, zwischengespeichert (WP-22, Laufzeit). */
+const ALTER = new Map();
 export function alterAm(geburtstag, datum) {
-  if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
+  if (!geburtstag) return null;
+  const g = String(geburtstag);
+  let je = ALTER.get(g);
+  if (!je) { if (ALTER.size > 5000) ALTER.clear(); je = new Map(); ALTER.set(g, je); }
+  let v = je.get(datum);
+  if (v !== undefined) return v;
+  v = null;
   /* Einen Tag, den es nicht gibt (30.02.), rechnet Date auf den 02.03. weiter —
      das wäre ein falsches Alter statt keines. */
-  const g = String(geburtstag);
-  if (!tagGueltig(g)) return null;
-  const gj = Number(g.slice(0, 4)), gm = Number(g.slice(5, 7)), gt = Number(g.slice(8, 10));
-  const j = Number(datum.slice(0, 4)), m = Number(datum.slice(5, 7)), t = Number(datum.slice(8, 10));
-  let jahre = j - gj;
-  if (m < gm || (m === gm && t < gt)) jahre--;                       // vor dem Geburtstag
-  return jahre;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(g) && tagGueltig(g)) {
+    const gj = Number(g.slice(0, 4)), gm = Number(g.slice(5, 7)), gt = Number(g.slice(8, 10));
+    const j = Number(datum.slice(0, 4)), m = Number(datum.slice(5, 7)), t = Number(datum.slice(8, 10));
+    v = j - gj;
+    if (m < gm || (m === gm && t < gt)) v--;                         // vor dem Geburtstag
+  }
+  if (je.size > 2000) je.clear();
+  je.set(datum, v);
+  return v;
 }
 
 /**
@@ -267,7 +327,7 @@ export function schutzBefunde(person, dienstart, datum, einst) {
  *
  * Zusammengeführt aus schutzEinsatz (Kette A: Bewertung, „nicht bewertbar")
  * und schutzBefundeFuer/einsatzSchutz (Kette B: Datenweg, Sperre).
- * @returns {{regel: string, text: string, offen: boolean, neutral: boolean, hart: boolean, sperrt: boolean, stufe: string, schwere: string}[]}
+ * @returns {{regel: string, text: string, offen: boolean, neutral: boolean, hart: boolean, hinweis: boolean, sperrt: boolean, stufe: string, schwere: string}[]}
  */
 export function schutzEinsatz(person, dienstart, datum, einst) {
   return /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum, einst)).map((b) => ({
@@ -301,6 +361,7 @@ export const EINSATZREGEL_TEXTE = {
   nachtSpaetAusnahme: "Einsatz bis 23 Uhr: Ausnahme des Betriebs hinterlegt.",
   einsatzfensterBis22: "Nachteinsatz 22–6 Uhr nicht zulässig.",
   nachtMitFreigabe: "Einsatz 20–22 Uhr: Freigabe hinterlegt.",
+  keinNachtdienst: "Kein Nachtdienst laut Einsatzeinschränkung (Nachtfenster des Betriebs).",
   sonntagMitFreigabe: "Sonntagseinsatz: Freigabe hinterlegt.",
   hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
   wochenendePruefen: "Wochenendeinsatz prüfen.",
@@ -348,6 +409,10 @@ export function regelBefunde(planungsregeln, dienstart, datum, einst) {
         if (imNachtfenster22bis6(dienstart)) aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.einsatzfensterBis22 });
         else if (imNachtfenster20bis6(dienstart)) aus.push({ regel: "nachtMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.nachtMitFreigabe });
         break;
+      /* Einschränkung „keine Nacht“ (Nachprüfung 948a4ba, A1): dasselbe Fenster
+         und dieselbe Schwelle des Betriebs wie die Prüfung mit Rohdaten
+         (keineNacht in einteilungsBefunde) — kein Rechtsverbot 20–6 Uhr. */
+      case "keinNachtdienst": treffer(nachtAnteil(dienstart, einst) >= nachtschwelle(einst)); break;
       case "sonntagFreigegeben":
         if (dow(datum) === 6) aus.push({ regel: "sonntagMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.sonntagMitFreigabe });
         break;

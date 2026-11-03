@@ -9,7 +9,9 @@ Code:
 | Datei | Aufgabe |
 |---|---|
 | `src/regelregister.js` | Metadaten aller Regeln (Registry Light), Prüfstatus, Gültigkeit, Stufenbegrenzung |
-| `src/regelbaukasten.js` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel |
+| `server/lib/regelbaukasten.mjs` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel — für Oberfläche und Server (seit WP-19; `src/regelbaukasten.js` reicht weiter und löst Kennungen über das ganze Register auf) |
+| `server/lib/regelgeltung.mjs` | Prüfstatus, Folgen, Geltung, Wirkung, Stufendeckel — eine Fassung, das Register reicht sie weiter (WP-19) |
+| `server/lib/branchenkatalog.mjs`, `server/lib/branchenbefunde.mjs` | Branchenregeln (vorläufig, höchstens Hinweis) und ihre Befunde in `einteilungsBefunde` — nur aktive Module, Befundart `branche` sperrt nie (WP-19) |
 | `src/beschaeftigung.js` | Beschäftigungsmodelle, an die sich Regeln binden |
 | `src/regelwerk.js` | Bestand: Konstanten, `REGELSTAND`, Besetzungsprüfungen; reicht die Schutzprüfung weiter |
 | `server/lib/schutzpruefung.mjs` | die eine Schutzprüfung (`schutzEinsatz`) samt Zeit-Helfern — für Oberfläche und Server (WP-11) |
@@ -137,7 +139,7 @@ Eine neue Regel hebt nie stillschweigend eine bestehende auf (Priorität der Que
 
 ## 11. Spätere Branchenpakete
 
-Das Register trägt `scope.branche`. Ein Branchenpaket ist eine Gruppe von Regeln mit diesem Bereich, kein neuer Code. Zuerst vorgesehen: ambulante Pflege, sobald der Pilot bestätigt. Vorbereitet, nicht gebaut: Mitbestimmungs-Workflow (Folge `freigabe`).
+Das Register trägt `scope.branche`. Ein Branchenpaket ist eine Gruppe von Regeln mit diesem Bereich, kein neuer Code. Seit WP-19 stehen Branchenregeln in `server/lib/branchenkatalog.mjs` (`REGELN_BRANCHEN`, im Register Teil von `REGELN`); jede gehört zu einem Modul aus `server/lib/branchenmodule.mjs`, ist bis zur Nutzerentscheidung vorläufig (höchstens Hinweis, `branchenregel()` erzwingt es) und wirkt nur, wenn das Modul im Betrieb eingeschaltet ist. Module und vorläufige Akzeptanzkriterien: `docs/acc45/wp19-module.md`. Zuerst vorgesehen: ambulante Pflege, sobald der Pilot bestätigt. Vorbereitet, nicht gebaut: Mitbestimmungs-Workflow (Folge `freigabe`).
 
 ## 12. Warum eine vorläufige Regel nie einen Rechtsverstoß erzeugt
 
@@ -255,6 +257,21 @@ Dienstzeiten, Schichtfolge, Versatz oder Zugehörigkeit, rechnet er die nächste
 und weist ab, wenn ein sperrender Befund neu entsteht (Review F2; Teilzeit und Posten vereinfacht, im Zweifel streng;
 Altbestand blockiert nicht). Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die
 Oberfläche durch (offen).
+
+**Fachprüfungen auf dem Server (WP-22, überholt den letzten Satz).** Die Prüfung einer Einteilung steht jetzt in
+`server/lib/fachpruefung.mjs` (`einteilungsBefunde`) — eine Fassung für Oberfläche (`hindernisBefunde` liest sie mit
+dem Plan der Oberfläche) und Server (`server/lib/schutzdurchsetzung.mjs` mit einer Planrechnung aus Abweichungen,
+Schichtfolge, Teilzeit und Abwesenheiten). Das Regelwerk liegt dafür in `server/lib/regelwerk.mjs`; `src/regelwerk.js`
+reicht es weiter. Der Server setzt durch: Bestand, Schutz, Einschränkungen, gesetzliche und betriebliche
+Qualifikationen (`QUAL-SPERRE-01` über `verbindlichkeit`), Einweisungen (`KOMP-EINWEISUNG-01`), Ruhezeit (`AZ-RUHE-01`, Gesetz und Vorgabe
+des Betriebs), Tagesgrenze (`AZ-TAG-01`, § 3 ArbZG, je Dienst über zehn Stunden, Katalog `tagesgrenze` — nach Nutzerentscheidung nur
+ein Hinweis: keine Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7 ArbZG den langen Dienst trägt,
+verantwortet der Betrieb; Rufbereitschaft zählt nicht und unterbricht keine Ruhezeit) und Mindestbesetzung (`BES-MINDEST-01`, Katalog `untergrenze`, Achtung).
+Nur **neue** Befunde zählen; sperrende werden abgewiesen, warnende brauchen einen neuen Protokolleintrag zu Person, Tag
+und Regel im selben Speichervorgang, sonst antwortet der Server 409 mit neutraler Befundliste. **Grenzen:** Posten und
+die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche; der Durchschnitt nach § 3 Satz 2 ArbZG (acht
+Stunden über sechs Monate) und Dienste in Folge (`folge`) prüft der Server nicht je Einteilung; die Verfügbarkeit der
+Person und Teilzeit-Wochentage bleiben Hinweise der Oberfläche. Nachweis: `docs/acc45/wp22-nachweis.md`.
 
 **Nachtruhe 20–6 Uhr (Review F3).** `JARBSCHG-14` und `MUSCHG-05` prüfen jede Überschneidung eines Dienstes mit 20
 bis 6 Uhr — vorher nur „Nachtdienst" (über zwei Stunden zwischen 23 und 6) oder Beginn vor 6 Uhr, obwohl der Text „20

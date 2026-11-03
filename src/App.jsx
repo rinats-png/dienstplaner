@@ -1,10 +1,14 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
-  zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
-import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung, vormonateMitPruefung, exportWarnung } from "./istdaten.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
+/* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
+import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
+  landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
+  einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -15,10 +19,10 @@ import {
   alterAm, urlaubshinweisFaellig, istNachtdienst,
   pausePflicht, pauseGenuegt,
   vorsorgeFaellig, ersatzruhetage, freieSonntage,
-  verbindlichkeit, regelMaengel, EBENEN, BEZUEGE,
+  regelMaengel, EBENEN, BEZUEGE,
   HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, FREIE_SONNTAGE_MIN,
   kompetenzStand, kompetenzGilt, kompetenzMaengel, KOMPETENZ_VORLAUF,
-  fehlendeKompetenzen, REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
+  REGELSTAND, aufgabeGedeckt, AUFGABEN_PFLBG,
 } from "./regelwerk.js";
 import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
 import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
@@ -223,7 +227,7 @@ import {
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
-import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung, BESTAETIGUNG_TEXT }
+import { darfSicherungenSehen, darfZurueckspielen, eintragText, ergebnisMeldung, BESTAETIGUNG, sicherungenAktionen }
   from "./sicherungen-ui.js";
 let _dunkel = false;
 const istDunkel = () => _dunkel;
@@ -686,33 +690,8 @@ const feiertag = (d, land) => feiertage(Number(d.slice(0, 4)), land)[d] || null;
 
    Die Vorgabe bleibt das Gesetz. Wer ein Tarifwerk anwendet, bekommt dessen
    Fenster — siehe src/tarifwerke.js. */
-const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
-
-const nachtFenster = (einst) => ({
-  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
-  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
-});
-
-/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
-const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
-
-/**
- * Nachtstunden eines Dienstes.
- *
- * @param d      Dienstart mit start und ende
- * @param einst  Einstellungen des Betriebs; ohne sie gilt das Gesetz
- */
-function nachtAnteil(d, einst) {
-  const f = nachtFenster(einst);
-  const von = toMin(f.von), bis = toMin(f.bis);
-  const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
-  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
-     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
-  const fenster = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
-  let sum = 0;
-  for (const [a, b] of fenster) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
-  return Math.round(sum / 60 * 100) / 100;
-}
+/* nachtFenster, nachtschwelle und nachtAnteil stehen seit WP-22 in
+   server/lib/fachpruefung.mjs — dieselbe Fassung prüft der Server. */
 
 /**
  * Nachtstunden an einem bestimmten Tag — mit der Sommerzeit.
@@ -1468,8 +1447,7 @@ function absIdx(m) {
   c.abs = x; return x;
 }
 
-function einheitAm(p, d) { let t = null; for (const z of p.zugehoerigkeit) if (z.ab <= d) t = z; return t ? t.einheitId : null; }
-function imDienst(p, d) { if (p.eintritt && d < p.eintritt) return false; if (p.austritt && d > p.austritt) return false; return p.status !== "gesperrt"; }
+/* einheitAm und imDienst: server/lib/fachpruefung.mjs (WP-22). */
 const aktive = (m, d) => memo(m, `akt|${d}`, () => m.personen.filter((p) => imDienst(p, d)));
 
 function abwesenheitAm(m, pid, d) {
@@ -1478,29 +1456,9 @@ function abwesenheitAm(m, pid, d) {
   for (const a of l) if (a.von <= d && a.bis >= d && (!best || abwArt(a.art).rang > abwArt(best.art).rang)) best = a;
   return best;
 }
-/** Versatz einer Einheit in Tagen. Wochenversatz bleibt als Sonderfall gültig. */
-function versatzTageVon(e) {
-  return e.versatzTage !== undefined && e.versatzTage !== null ? e.versatzTage : (e.versatz || 0) * 7;
-}
-/** Zykluslänge in Tagen — bei Tagesversatz nicht zwingend ein Vielfaches von 7. */
-function zyklusLaenge(m) {
-  return m.zyklus.tage ? m.zyklus.tage.length : m.zyklus.wochen * 7;
-}
-function einheitDienst(m, eid, d) {
-  const e = m.einheiten.find((x) => x.id === eid); if (!e || e.pool) return null;
-  /* zyklusLaenge() fängt einen fehlenden Tagesplan ab und rechnet dann mit
-     wochen × 7 — hier stand der Zugriff ungeschützt daneben. Ein Betrieb
-     ohne zyklus.tage ließ damit die gesamte Personalakte abstürzen
-     („Cannot read properties of undefined"), und mit ihr jede Ansicht, die
-     Stunden über ein Jahr rechnet. Ein frisch angelegter Betrieb ist genau
-     dieser Fall, solange die Schichtfolge noch nicht steht. */
-  const tage = (m.zyklus && m.zyklus.tage) || null;
-  if (!tage || !tage.length) return null;
-  const len = zyklusLaenge(m);
-  const i = (((between(m.anker, d) + versatzTageVon(e)) % len) + len) % len;
-  const id = tage[i];
-  return id && id !== "-" ? id : null;
-}
+/* versatzTageVon, zyklusLaenge und einheitDienst (Schichtfolge einer Einheit)
+   stehen seit WP-22 in server/lib/fachpruefung.mjs — der Server rechnet
+   damit dieselbe Folge. Ein Betrieb ohne zyklus.tage liefert dort null. */
 /** C5: Ein Feiertag hebt die Vorgabe an, senkt sie nie. */
 function mindestFuer(m, da, d) {
   const w = dow(d);
@@ -1586,7 +1544,7 @@ function istStunden(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); const proTag = p.wochenstunden / 5;
-    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0;
+    let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0;
     for (let i = 1; i <= n; i++) {
       const d = `${ym}-${pad(i)}`; const t = personTag(m, p, d);
       if (t.abwesenheit) {
@@ -1601,11 +1559,14 @@ function istStunden(m, p, ym) {
       const da = m.dienstarten.find((x) => x.id === t.dienstId); if (!da) continue;
       const idn = istDauer(m, p, d, da);
       g += gewertet(da, idn.std); if (idn.erfasst) erfasst++;
+      /* Ist-Zeit zur Prüfung (WP-17, W1): vorläufig die Planzeit — gezählt,
+         damit Konto und Lohnausgabe es sagen können, statt still zu rechnen. */
+      if (idn.zurPruefung) pruefFaelle++;
       const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
-      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert };
+      gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle };
   });
 }
 /* --------------------------------------------------------------------------
@@ -1880,10 +1841,13 @@ function pruefen(m, von, bis) {
         }
 
         const std = istDauer(m, p, d, da).std;
+        /* Lange Dienste (Nutzerentscheidung, WP-22): automatisch erlaubt — nur
+           ein Hinweis. Ob eine Regelung nach § 7 ArbZG (Tarifvertrag,
+           Betriebsvereinbarung) die Verlängerung trägt, verantwortet der Betrieb. */
         if (tagesgrenzeVerletzt(std)) {
-          push({ art: "tagesgrenze", schwere: "danger", datum: d, ref: `${p.id}|tag`, personId: p.id,
+          push({ art: "tagesgrenze", schwere: "info", datum: d, ref: `${p.id}|tag`, personId: p.id,
             titel: `Über zehn Stunden — ${p.nachname}`,
-            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich lässt § 3 auch mit Ausgleich nicht zu.` });
+            text: `${da.name} ergibt ${n1(std)} h. Mehr als ${HOECHST_TAG} h werktäglich erlaubt § 3 nur mit einer Regelung nach § 7 ArbZG (Tarif oder Betriebsvereinbarung) — das verantwortet der Betrieb.` });
         }
       }
 
@@ -2615,102 +2579,51 @@ function hindernisBefunde(m, p, d, da) {
   const push = (stufe, text, quelle, art, regel, regelId) => g.push({ stufe, text, quelle, art: art || "regel",
     regel: regel || art || "regel", sperrt: sperrtArt(regel || art || "regel"),
     regelId: regelId === undefined ? regelIdFuerBefund({ art: art || "regel", quelle }) : regelId });
-  const e = einschr(p);
-  if (!imDienst(p, d)) push("recht", "nicht im Bestand", "Beschäftigungsverhältnis", "bestand", "bestand");
-  const abw = abwesenheitAm(m, p.id, d);
+  /* Die Fachprüfung der Einteilung (WP-22): einteilungsBefunde in
+     server/lib/fachpruefung.mjs — dieselbe, mit der der Server prüft (keine
+     zweite Prüflogik). Darin die eine Schutzprüfung schutzEinsatz (mit den
+     Einstellungen des Betriebs), Einschränkungen an der Person, verbindliche
+     Qualifikationen, Einweisungen, Ruhezeit, Höchstzahl je Woche,
+     Alleindienst und die Tagesgrenze. Den Plan liefert hier personTag
+     (Posten, Springer, Teilzeit), die Besetzung besetzung(). Den Grund einer
+     neutralen Einsatzregel oder Einschränkung nennt kein Befund. */
+  const fach = einteilungsBefunde(m, p, da, d, {
+    dienstAm: (x, t) => personTag(m, x, t).dienstId || null,
+    alleinOhnePartner: (x, t, daId) => {
+      const b = besetzung(m, t)[daId];
+      return !(b ? b.personen : []).some((y) => y.id !== x.id && !einschr(y).keinAlleindienst);
+    },
+    heute: heute(),
+    /* Branchenmodule (WP-19): die Besetzung des Dienstes so, wie sie mit dieser
+       Einteilung wäre. Befunde nur aus aktiven Modulen, höchstens Hinweis. */
+    branchen: { personenImDienst: (t, daId) => {
+      const l = ((besetzung(m, t) || {})[daId] || { personen: [] }).personen;
+      return l.some((y) => y.id === p.id) ? l : [...l, p];
+    } },
+  });
+  const fachPush = (b) => {
+    const regelId = b.art === "schutz" ? (b.neutral || b.quelle === SCHUTZ_QUELLE_EINSCHRAENKUNG ? null
+      : regelIdFuerBefund({ art: "schutz", quelle: b.quelle })) : undefined;
+    push(b.stufe, b.text, b.quelle, b.art, b.regel, regelId);
+  };
+  const vorQualifikation = ["bestand", "schutz", "schutzWeich", "schutzOffen", "schutzHinweis", "keineNacht"];
+  const bis = (liste) => fach.filter((b) => liste.includes(b.regel));
+  for (const b of bis(["bestand"])) fachPush(b);
   /* Eine Abwesenheit ist ein Datenkonflikt, keine Planungsregel: Der Dialog
      bietet an, sie für diesen Tag aufzuheben. */
+  const abw = abwesenheitAm(m, p.id, d);
   if (abw) push("achtung", `abwesend (${abwArt(abw.art).label})`, "Abwesenheit", "abwesend", "abwesend");
-  /* Die eine Schutzprüfung (WP-11): schutzEinsatz in src/regelwerk.js —
-     dieselbe wie in der Planprüfung, auf dem Weg, den die Daten zulassen
-     (Rohdaten mit Fundstelle, Einsatzregeln neutral, ohne Einsatzregeln
-     sperrend). Harte Befunde sperren (sperrt: true): Schutz besonderer
-     Personengruppen lässt sich nicht wegbestätigen (Kette B). Weiche sind
-     „Achtung", nicht bewertbare ein Hinweis. Den Grund einer neutralen
-     Einsatzregel nennt der Befund nie. */
-  for (const b of schutzEinsatz(p, da, d, m.einstellungen)) {
-    const quelle = b.neutral ? SCHUTZ_QUELLE_NEUTRAL : b.regel;
-    /* Katalogschlüssel aus der Bewertung von schutzEinsatz: hart → „schutz"
-       (sperrt), weich → „schutzWeich" (Achtung), nicht bewertbar →
-       „schutzOffen" (Hinweis). Sperrt folgt so derselben Tabelle wie alles
-       andere und sagt nie etwas anderes als schutzEinsatz. */
-    push(b.stufe, b.text, quelle, "schutz", b.sperrt ? "schutz" : b.offen ? "schutzOffen" : b.hinweis ? "schutzHinweis" : "schutzWeich",
-      b.neutral ? null : regelIdFuerBefund({ art: "schutz", quelle }));
-  }
-  /* Einschränkungen an der Person: Stufe und Sperre aus dem Befundkatalog
-     (EINSCHRAENKUNG_BEWERTUNG), wie in der Planprüfung. Den Grund nennt
-     CENTRIC nie — es kann Mutterschutz, ein ärztliches Attest oder eine
-     Absprache sein. */
-  const einschraenkung = (art, text) =>
-    push(EINSCHRAENKUNG_BEWERTUNG[art].stufe, text, SCHUTZ_QUELLE_EINSCHRAENKUNG, "schutz", art, null);
-  if (e.keineNacht && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen))
-    einschraenkung("keineNacht", "keine Nachtdienste zugelassen");
+  for (const b of bis(vorQualifikation.slice(1))) fachPush(b);
   if (!verfuegbarFuer(p, d, da))
     push("achtung", `nicht verfügbar (${FENSTER[fensterVon(da)].name} ${DOW[dow(d)]})`, "Verfügbarkeit der Person", "regel", "verfuegbarkeit");
-  // Verbindliche Qualifikationen: gesetzlich → Rechtsverstoß, betrieblich → Achtung
-  if (da.form !== "ruf") {
-    for (const q of m.qualifikationen) {
-      /* Der Grund nennt die Ebene. Vorher stand unter jeder Sperre
-         „gesetzlich zwingend" — auch unter einer Betriebsvereinbarung. */
-      const v = sperreWirkt(m, q, landFuerEinheit(m, einheitAm(p, d)));
-      if (!v || qualGueltig(m, p, q.id)) continue;
-      push(v.gesetzlich ? "recht" : "achtung",
-        `${q.name} fehlt oder ist abgelaufen — ${v.gesetzlich ? v.label : v.label + ", keine Rechtsvorschrift"}`,
-        q.grundlage || v.label, "qualifikation", v.gesetzlich ? "qualifikationGesetzlich" : "qualifikationBetrieblich");
-    }
-  }
-  /* Kompetenzen, die diese Dienstart voraussetzt.
-
-     Anders als eine Qualifikation hängt eine Kompetenz an einer Sache:
-     diesem Gerät, dieser Anlage. § 4 MPBetreibV und § 12 BetrSichV
-     verlangen die Einweisung je Gerät — wer den Beatmungsplatz besetzt,
-     ohne an diesem Gerät eingewiesen zu sein, gehört nicht dorthin.
-     Deshalb sperrt sie den Dienst, an dem sie hinterlegt ist, und nur
-     diesen. */
-  for (const f of fehlendeKompetenzen(m.kompetenzen, p.kompetenzNachweise, da.id, d,
-    (bmId) => { const bm = (m.betriebsmittel || []).find((x) => x.id === bmId); return bm ? bm.name : null; }))
-    push("recht", f.text, "§ 4 MPBetreibV / § 12 BetrSichV", "kompetenz", "kompetenz");
-
+  for (const b of bis(["qualifikationGesetzlich", "qualifikationBetrieblich", "kompetenz"])) fachPush(b);
   const tz = p.teilzeit;
   if (tz && tz.aktiv && tz.modus === "wochentage" && !(tz.wochentage || []).includes(dow(d)))
     push("achtung", "arbeitet an diesem Wochentag nicht", "Teilzeitvereinbarung", "regel", "teilzeit");
-  // Ruhezeit vor und nach dem Dienst
-  const [nStart, nEnde] = fenster(d, da);
-  for (const off of [-2, -1, 1, 2]) {
-    const dd = addDays(d, off);
-    const t = personTag(m, p, dd);
-    if (!t.dienstId) continue;
-    const other = m.dienstarten.find((x) => x.id === t.dienstId);
-    if (!other) continue;
-    const [oStart, oEnde] = fenster(dd, other);
-    const ruhe = oStart > nStart ? (oStart - nEnde) / 60 : (nStart - oEnde) / 60;
-    const rs = ruhezeitStufe(ruhe, m.einstellungen.ruhezeit);
-    if (rs) {
-      push(rs, `Ruhezeit ${n1(Math.max(0, ruhe))} h zum Dienst am ${fKurz(dd)}`,
-        rs === "recht" ? "§ 5 ArbZG" : `Ruhezeit ${n1(m.einstellungen.ruhezeit)} h laut Tarif oder Betrieb`, "ruhezeit",
-        rs === "recht" ? "ruhezeitGesetz" : "ruhezeitBetrieb");
-      break;
-    }
-  }
-  // Dienste je Woche
-  if (e.maxDiensteWoche) {
-    const mo = montag(d);
-    let n = 0;
-    for (let i = 0; i < 7; i++) if (personTag(m, p, addDays(mo, i)).dienstId) n++;
-    if (n >= e.maxDiensteWoche)
-      einschraenkung("maxDiensteWoche", `bereits ${n} von ${e.maxDiensteWoche} Diensten in der Woche`);
-  }
-  /* Alleindienst: dieselbe Regel wie in der Planprüfung — wer nicht allein
-     eingeteilt werden darf, braucht im Dienst jemanden ohne diese
-     Einschränkung (Commit S2). Die Wochenstundengrenze (S2a) ist kein Befund
-     hier, sondern ein Hinweis in befundeFuerEinteilung, Ersatzsuche und
-     folgenPruefen (stundengrenzeHinweis). */
-  if (e.keinAlleindienst) {
-    const b = besetzung(m, d)[da.id];
-    const mit = (b ? b.personen : []).filter((x) => x.id !== p.id && !einschr(x).keinAlleindienst);
-    if (mit.length === 0) einschraenkung("keinAlleindienst", "darf nicht allein eingeteilt werden");
-  }
-  // Dienste in Folge
+  for (const b of bis(["ruhezeitGesetz", "ruhezeitBetrieb", "maxDiensteWoche", "keinAlleindienst", "tagesgrenze"])) fachPush(b);
+  /* Branchenmodule (WP-19): Hinweise mit eigener Regelkennung aus dem Register. */
+  for (const b of bis(["branche"])) push(b.stufe, b.text, b.quelle, b.art, b.regel, b.regelId || null);
+  // Dienste in Folge (Einstellung des Betriebs; nur die Oberfläche)
   let lauf = 0;
   for (let i = 1; i <= m.einstellungen.maxFolge + 1; i++) {
     if (personTag(m, p, addDays(d, -i)).dienstId) lauf++; else break;
@@ -2774,6 +2687,43 @@ function bestaetigungVermerken(m, best, wer, aktion) {
      Schichtverantwortung, deren Mitteilungen sonst nur in den eigenen
      Bereich gehen dürfen. Wer und Zeit des Eintrags setzt ebenfalls der Server. */
   return { ...m, bestaetigungen: [...neu, ...(m.bestaetigungen || [])].slice(0, 2000) };
+}
+
+/**
+ * Offene Schutzkonflikte (Nachprüfung 948a4ba, A2): künftige Einteilungen,
+ * denen eine harte Schutz- oder Einsatzregel der Person widerspricht — etwa
+ * nachdem ein Mutterschutz eingetragen wurde, der immer gespeichert wird. Sie
+ * bleiben sichtbar (Startseite, Monatsplan), bis umgeplant ist. Gerechnet für
+ * Personen mit Schutzangaben oder Einsatzregeln: die Schichtfolge ein Jahr
+ * voraus, ausdrückliche Einteilungen für den ganzen künftigen Zeitraum.
+ * Schlüssel „personId|Datum".
+ */
+function offeneSchutzkonflikte(m) {
+  const d0 = heute();
+  return memo(m, `schutzkonflikte|${d0}`, () => {
+    const aus = new Map();
+    const bis = addDays(d0, 365);
+    const relevant = m.personen.filter((p) => p.mutterschutz || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
+      || (() => { const a = alterAm(p.geburtstag || p.geburtsdatum, d0); return a !== null && a < 18; })());
+    if (!relevant.length) return aus;
+    const daNach = new Map(m.dienstarten.map((x) => [x.id, x]));
+    const pruefe = (p, d) => {
+      const t = personTag(m, p, d);
+      if (!t.dienstId || t.abwesenheit || !imDienst(p, d)) return;
+      const da = daNach.get(t.dienstId);
+      if (!da || !da.start || !da.ende) return;
+      if (schutzEinsatz(p, da, d, m.einstellungen).some((b) => b.sperrt)) aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
+    };
+    for (const p of relevant) {
+      for (let d = d0; d <= bis; d = addDays(d, 1)) pruefe(p, d);
+      for (const k of Object.keys(m.abweichungen || {})) {
+        if (!k.startsWith(`${p.id}|`)) continue;
+        const d = k.slice(k.lastIndexOf("|") + 1);
+        if (d > bis) pruefe(p, d);
+      }
+    }
+    return aus;
+  });
 }
 
 /**
@@ -3274,15 +3224,7 @@ async function fremdstandPruefen(schluessel, eigenerStand) {
    ========================================================================== */
 
 /* --------------------- Standortbezogene Feiertage ------------------------ */
-/** Bundesland einer Einheit — Betriebe mit mehreren Standorten rechnen sonst falsch. */
-function landFuerEinheit(m, einheitId) {
-  const e = m.einheiten.find((x) => x.id === einheitId);
-  if (e && e.standortId && m.standorte) {
-    const st = m.standorte.find((s) => s.id === e.standortId);
-    if (st && st.bundesland) return st.bundesland;
-  }
-  return m.bundesland;
-}
+/* landFuerEinheit: server/lib/fachpruefung.mjs (WP-22). */
 /** Feiertag aus Sicht einer bestimmten Person an einem Tag. */
 function feiertagFuer(m, datum, p) {
   return feiertag(datum, p ? landFuerEinheit(m, einheitAm(p, datum)) : m.bundesland);
@@ -3291,49 +3233,9 @@ function feiertagFuer(m, datum, p) {
 const laenderImBetrieb = (m) => [...new Set([m.bundesland, ...((m.standorte || []).map((s) => s.bundesland))])].filter(Boolean);
 
 /* --------------------------- Teilzeit in der Rotation -------------------- */
-/** Stabiler Streuwert je Person, damit Teilzeitkräfte nicht alle dieselben Tage haben. */
-function idStreu(id) {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h;
-}
-/**
- * Wandelt den Gruppendienst in den tatsächlichen Teilzeitdienst um.
- * Zwei Betriebsarten:
- *   quote      — die Person leistet nur den ihrem Stundenanteil entsprechenden
- *                Teil der Zyklusdienste, gleichmäßig über den Zyklus verteilt.
- *   wochentage — die Person arbeitet nur an festgelegten Wochentagen.
- * Ohne Teilzeit bleibt der Dienst unverändert.
- */
-function teilzeitDienst(m, p, datum, plan) {
-  const tz = p.teilzeit;
-  if (!tz || !tz.aktiv || !plan) return plan;
-  if (tz.modus === "wochentage") return (tz.wochentage || []).includes(dow(datum)) ? plan : null;
-
-  const soll = m.einstellungen.sollWochenstunden || 40;
-  const quote = Math.max(0.05, Math.min(1, (p.wochenstunden || soll) / soll));
-  if (quote >= 0.999) return plan;
-
-  const len = zyklusLaenge(m);
-  const e = m.einheiten.find((x) => x.id === einheitAm(p, datum));
-  if (!e) return plan;
-
-  // Fortlaufende Nummer dieses Dienstes seit dem Ankerdatum — nicht nur innerhalb
-  // eines Zyklus. Nur so lässt sich ein Anteil wie 50 % exakt einhalten:
-  // 21 Dienste je Zyklus sind nicht halbierbar, über mehrere Zyklen aber schon.
-  const tage = between(m.anker, datum) + versatzTageVon(e);
-  const zyklen = Math.floor(tage / len);
-  const rest = ((tage % len) + len) % len;
-  let gesamt = 0;
-  for (const t of m.zyklus.tage) if (t && t !== "-") gesamt++;
-  if (!gesamt) return plan;
-  let vor = 0;
-  for (let i = 0; i < rest; i++) { const t = m.zyklus.tage[i]; if (t && t !== "-") vor++; }
-  const nr = zyklen * gesamt + vor;
-
-  const versatz = (idStreu(p.id) % 997) / 997;
-  return Math.floor((nr + 1 + versatz) * quote) > Math.floor((nr + versatz) * quote) ? plan : null;
-}
+/* teilzeitDienst — der Gruppendienst als Teilzeitdienst (Quote oder feste
+   Wochentage) — steht seit WP-22 in server/lib/fachpruefung.mjs, damit der
+   Server dieselben Tage rechnet. */
 
 /** Wie viele Dienste je Zyklus leistet die Person tatsächlich? */
 function teilzeitProfil(m, p) {
@@ -3597,29 +3499,9 @@ function verfuegbarkeitQuote(p) {
 }
 
 /* --------------------------- Nachweise und Ablauf ------------------------ */
-const NACHWEIS_VORLAUF = 60;   // Tage, ab denen gewarnt wird
-
-/** Gültigkeitsstand eines einzelnen Nachweises. */
-function nachweisStand(m, p, qualId) {
-  const n = (p.qualNachweise || []).find((x) => x.qualId === qualId);
-  const q = m.qualifikationen.find((x) => x.id === qualId);
-  if (!q) return { stand: "unbekannt" };
-  /* Nur-Status-Nachweise (etwa der Masernschutz nach § 20 IfSG): Erfasst
-     wird allein, ob er vorliegt — kein Datum, keine Datei, kein Grund. Das
-     ist keine Bequemlichkeit, sondern Datenschutz: Mehr darf der Betrieb
-     dazu gar nicht festhalten. Bisher galt so eine Qualifikation als
-     „unbefristet gültig", sobald sie an der Person stand — ohne dass je
-     jemand bestätigt hatte, dass der Nachweis vorliegt. */
-  if (q.nurStatus) {
-    if (n && n.vorhanden) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true, nurStatus: true };
-    return { stand: "fehlt", ablauf: null, qual: q, nurStatus: true };
-  }
-  if (!q.gueltigMonate) return { stand: "gueltig", ablauf: null, qual: q, unbefristet: true };
-  if (!n || !n.ablauf) return { stand: "fehlt", ablauf: null, qual: q };
-  const tage = between(heute(), n.ablauf);
-  return { stand: tage < 0 ? "abgelaufen" : tage <= NACHWEIS_VORLAUF ? "laeuft_ab" : "gueltig",
-    ablauf: n.ablauf, tage, qual: q, datei: n.datei };
-}
+/* Gültigkeitsstand eines Nachweises: server/lib/fachpruefung.mjs (WP-22),
+   dort mit dem Tag als Argument — hier immer heute. */
+const nachweisStand = (m, p, qualId) => fpNachweisStand(m, p, qualId, heute());
 /* --------------------------------------------------------------------------
    KOMPETENZEN AN DER PERSON
 
@@ -3672,32 +3554,9 @@ function kompetenzLage(m) {
   });
 }
 
-/** Zählt eine Qualifikation für die Besetzung nur, wenn der Nachweis gültig ist. */
-/**
- * Wirkt die harte Sperre dieser Qualifikation hier — und aus welchem Grund?
- *
- * Gesetzliche Sperren (Bundes- und Landesrecht) gehören in den Kern: Wer
- * ohne die vorbehaltene Qualifikation eingeteilt ist, muss das erfahren,
- * unabhängig von der gebuchten Stufe. Eigene Vorgaben — Tarif, Betriebs-
- * oder Dienstvereinbarung — durchzusetzen ist dagegen das Merkmal, für das
- * bezahlt wird.
- *
- * Zurück kommt die Verbindlichkeit, wenn die Sperre greift, sonst null.
- */
-function sperreWirkt(m, q, land) {
-  if (!q || !q.harteSperre) return null;
-  const v = verbindlichkeit(q, { land });
-  if (!v.sperrt) return null;
-  /* Seit E-21 warnen eigene Vorgaben in jeder Stufe. Gesperrt wird ohnehin
-     nichts mehr; die Verbindlichkeit bestimmt nur die Warnstufe. */
-  return v;
-}
-
-function qualGueltig(m, p, qualId) {
-  if (!p.qualifikationen.includes(qualId)) return false;
-  const s = nachweisStand(m, p, qualId);
-  return s.stand === "gueltig" || s.stand === "laeuft_ab";
-}
+/* sperreWirkt: server/lib/fachpruefung.mjs (WP-22). Seit E-21 warnen eigene
+   Vorgaben in jeder Stufe; die Verbindlichkeit bestimmt nur die Warnstufe. */
+const qualGueltig = (m, p, qualId) => fpQualGueltig(m, p, qualId, heute());
 /** Alle Nachweise eines Betriebs, die Aufmerksamkeit brauchen. */
 function nachweisLage(m) {
   return memo(m, "nachweise", () => {
@@ -4772,6 +4631,22 @@ function datevCSV(m, ym) {
  * Dieselben Zahlen als lesbares Blatt \u2014 zum Gegenlesen, bevor die Datei das
  * Haus verl\u00E4sst. Eine Trennzeichendatei pr\u00FCft niemand gern am Bildschirm.
  */
+/**
+ * Ist-Zeiten zur Prüfung (WP-17, W1) im Blatt zum Gegenlesen: je betroffenem
+ * Tag eine Zeile „zur Prüfung, Planzeit vorläufig". Ohne offene Fälle leer.
+ */
+function lohnPruefZeilen(m, ym) {
+  const h = pruefHinweis(m, ym);
+  if (!h) return [];
+  const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
+  return [
+    `ACHTUNG: ${h.text}`,
+    ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${ZUR_PRUEFUNG_TEXT}`),
+    "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
+    "",
+  ];
+}
+
 function lohnausgabeText(m, ym) {
   const z = datevSaetze(m, ym);
   const [jahr, monat] = ym.split("-");
@@ -4789,6 +4664,7 @@ function lohnausgabeText(m, ym) {
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
     `Erstellt: ${new Date().toLocaleString("de-DE")}`,
     "",
+    ...lohnPruefZeilen(m, ym),
     "Summen je Lohnart",
     "\u2014".repeat(58),
     `${breite("Lohnart", 10)}${breite("Bezeichnung", 32)}${"Personen".padStart(9)}${"Stunden".padStart(11)}`,
@@ -5079,7 +4955,7 @@ function vollExport(m) {
     const p = m.personen.find((x) => x.id === pid);
     return { personId: pid, nachname: p ? p.nachname : "", datum,
       start: v.start || "", ende: v.ende || "", stunden: v.stunden != null ? n2(v.stunden) : "",
-      notiz: v.notiz || "" };
+      notiz: v.notiz || "", status: zurPruefung(v) ? ZUR_PRUEFUNG_TEXT : v.bestaetigt ? "bestätigt" : "offen" };
   });
 
   tabellen.anfragen = m.anfragen.map((a) => {
@@ -8439,6 +8315,14 @@ function MeineSchichten({ sitz, akt, ym }) {
       <Card style={{ marginBottom: 16 }}>
         <CardHead right={<Lab>zwölf Monate</Lab>}>Mein Stundenkonto</CardHead>
         <div style={{ padding: "22px 24px 18px" }}>
+          {kto !== null && (() => { const h = pruefHinweis(m, ym, ich.id); return h && (
+            <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
+              {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT} — die Leitung prüft die gestempelte Zeit.
+            </div>); })()}
+          {kto !== null && (() => { const v = vormonateMitPruefung(m, ym, ich.id); return v.length > 0 && (
+            <div style={{ fontSize: 13, color: C.warn, marginBottom: 12, lineHeight: 1.5 }}>
+              Vormonate mit offenen Prüffällen: {v.map((x) => `${x.monat} (${x.anzahl})`).join(", ")} — dort zählt vorläufig die Planzeit.
+            </div>); })()}
           {kto === null
             ? <div style={{ fontSize: 13.5, color: C.dim }}>{ISTDATEN_TEXT}</div>
             : <LinienDiagramm daten={kontoVerlauf(m, ich, ym, 12)} wert="kto" label="label" einheit=" h"
@@ -9121,6 +9005,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
+  const schutzkonflikte = useMemo(() => offeneSchutzkonflikte(m), [m]);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -9189,6 +9074,11 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                   background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>
                   <div style={{ display: "flex", justifyContent: "center", position: "relative" }}>
                     <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} />
+                    {schutzkonflikte.has(`${p.id}|${d}`) && (
+                      /* Offener Schutzkonflikt (A2): bleibt markiert, bis umgeplant ist. */
+                      <span title="Einteilung widerspricht einer Schutz- oder Einsatzregel der Person — bitte umplanen"
+                        aria-label="Schutzkonflikt" style={{ position: "absolute", inset: -1, border: `2px solid ${C.danger}`,
+                          borderRadius: 6, pointerEvents: "none" }} />)}
                     {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
                       if (!b) return null;
                       /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
@@ -9486,7 +9376,9 @@ function Einwilligungen({ p, akt }) {
 function Dienstarten({ sitz, akt }) {
   const m = sitz.mandant;
   const [bearbeitet, setBearbeitet] = useState(null);
-  const editierbar = darf(sitz, "shift.edit");
+  /* WP-22: Dienstarten ändern Leitung und Planung (org.edit oder pattern.edit,
+     Nutzerentscheidung); der Server weist alle anderen Rollen ab. */
+  const editierbar = darf(sitz, "shift.edit") && (darf(sitz, "org.edit") || darf(sitz, "pattern.edit"));
   const leer = { name: "", kurz: "", start: "08:00", ende: "16:00", pause: 0, farbe: PALETTE[0], ort: "",
     posten: false, quelle: null, form: "regel", fachkraftQuote: null, zweiterAbschnitt: null,
     aufenthalt: null, abrufMinuten: null, einsatzAnteil: null,
@@ -10116,6 +10008,14 @@ function Personalakte({ sitz, personId, ym, onClose, akt }) {
         </div>
 
         <Lab style={{ marginBottom: 11 }}>Stundenkonto über zwölf Monate</Lab>
+        {zeigt && (() => { const h = pruefHinweis(m, ym, p.id); return h && (
+          <Hinweisband ton="warn" titel={`${h.anzahl} Ist-Zeit${h.anzahl === 1 ? "" : "en"} zur Prüfung · ${h.monat}`} style={{ marginBottom: 14 }}>
+            {h.faelle.map((f) => fKurz(f.datum)).join(", ")}: {ZUR_PRUEFUNG_TEXT}. Bestätigen unter Abrechnungsdaten · Stempelbefunde.
+          </Hinweisband>); })()}
+        {zeigt && (() => { const v = vormonateMitPruefung(m, ym, p.id); return v.length > 0 && (
+          <Hinweisband ton="warn" titel="Vormonate mit offenen Prüffällen" style={{ marginBottom: 14 }}>
+            {v.map((x) => `${x.monat} (${x.anzahl})`).join(", ")} — dort zählt im Stundenkonto vorläufig die Planzeit.
+          </Hinweisband>); })()}
       <Card style={{ padding: 22, marginBottom: 22 }}>
         {(() => {
           /* Hier stand kv.punkte[11].konto und kv.richtung — kontoVerlauf()
@@ -10762,6 +10662,63 @@ function Konfliktfenster({ lage, onSchliessen, onUebernehmen, melde }) {
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
           <Btn kind="quiet" onClick={onSchliessen}>Später entscheiden</Btn>
+        </div>
+      </div>
+    </div>);
+}
+
+/**
+ * Der Server will warnende Befunde bestätigt haben (WP-22, 409 mit
+ * `fachbefunde`) — etwa nach einer geänderten Schichtfolge, die neue
+ * Einteilungen erzeugt. Die Texte kommen neutral aus dem Befundkatalog.
+ * Bestätigen legt die Einträge im Bestätigungsprotokoll an; der nächste
+ * Speichervorgang nimmt sie mit. Abbrechen speichert nichts.
+ */
+function Bestaetigungsfrage({ lage, m, onSchliessen, onBestaetigen }) {
+  const rahmen = useRef(null);
+  const [gelesen, setGelesen] = useState(false);
+  useEffect(() => {
+    const f = (e) => { if (e.key === "Escape") onSchliessen(); };
+    window.addEventListener("keydown", f);
+    if (rahmen.current) rahmen.current.focus();
+    return () => window.removeEventListener("keydown", f);
+  }, [onSchliessen]);
+  const eintraege = Array.isArray(lage && lage.fachbefunde) ? lage.fachbefunde : [];
+  const recht = eintraege.some((f) => (f.befunde || []).some((b) => b.stufe === "recht"));
+  const name = (pid) => { const p = (m.personen || []).find((x) => String(x.id) === String(pid)); return p ? `${p.vorname} ${p.nachname}` : "Person"; };
+  const dienst = (id) => { const d = (m.dienstarten || []).find((x) => String(x.id) === String(id)); return d ? d.name : String(id); };
+  return (
+    <div role="dialog" aria-modal="true" aria-label="Bestätigung nötig"
+      style={{ position: "fixed", inset: 0, background: "var(--c-ueberlagerung)",
+        backdropFilter: "blur(6px)", zIndex: 90, display: "flex", alignItems: "center",
+        justifyContent: "center", padding: 20 }}>
+      <div ref={rahmen} tabIndex={-1} className="blatt"
+        style={{ maxWidth: 600, maxHeight: "85vh", overflow: "auto", padding: 28, outline: "none" }}>
+        <div style={{ fontSize: 18, fontWeight: 650, marginBottom: 10 }}>Diese Änderung braucht eine Bestätigung</div>
+        <p style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.6, margin: "0 0 14px" }}>
+          Der Server hat die Einteilungen geprüft, die durch die Änderung neu entstehen. Gespeichert wird erst,
+          wenn du die Befunde bestätigst — die Bestätigung kommt ins Protokoll.</p>
+        <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+          {eintraege.slice(0, 50).map((f) => (
+            <div key={`${f.personId}|${f.datum}`} className="karte" style={{ padding: "10px 13px", fontSize: 13 }}>
+              <div style={{ fontWeight: 600 }}>{name(f.personId)} · {fKurz(f.datum)} · {dienst(f.dienstId)}</div>
+              {(f.befunde || []).map((b) => (
+                <div key={b.regel} style={{ color: b.stufe === "recht" ? C.danger : C.dim }}>{b.text}</div>))}
+            </div>))}
+          {eintraege.length > 50 && <div style={{ fontSize: 12.5, color: C.dim }}>… und {eintraege.length - 50} weitere</div>}
+        </div>
+        {recht && (
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13.5, marginBottom: 12 }}>
+            <input type="checkbox" checked={gelesen} onChange={(x) => setGelesen(x.target.checked)} />
+            <span>Ich habe die gesetzlichen Vorgaben gelesen und weiche bewusst ab.</span>
+          </label>)}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <Btn kind="quiet" onClick={onSchliessen}>Abbrechen — nicht speichern</Btn>
+          {/* Review B1: viele Einteilungen auf einmal — eine Bestätigung je Regel, Einheit und Zeitraum. */}
+          {Array.isArray(lage.sammelVorschlag) && lage.sammelVorschlag.length > 0 && eintraege.length > 10 && (
+            <Btn disabled={recht && !gelesen} onClick={() => onBestaetigen(gelesen, true)}>
+              Gesammelt bestätigen ({lage.sammelVorschlag.length})</Btn>)}
+          <Btn kind="primary" disabled={recht && !gelesen} onClick={() => onBestaetigen(gelesen, false)}>Bestätigen und speichern</Btn>
         </div>
       </div>
     </div>);
@@ -11629,9 +11586,18 @@ function Urlaubsrunde({ sitz, akt }) {
    Häkchen zeigt die Oberfläche als Icon aus dem Satz, nicht als Textzeichen. */
 const GEO_SYMBOL_ICON = { "\u2713": "haken" };
 
-function StempelBefunde({ sitz, ym }) {
+function StempelBefunde({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
+  /* Lange Dienste zur Prüfung (WP-17, W1): Die Stempeluhr bestätigt eine
+     Dauer über geplanter Dauer + 2 h nicht selbst. Bis die Leitung oder
+     Planung hier bestätigt, zählt im Konto die Planzeit — sichtbar, nicht
+     still. Bestätigen steht im Betriebsprotokoll. */
+  const pruef = erfassungenZurPruefung(m, ym);
+  /* Bestätigen nur Leitung und Planung (staff.edit) — nicht die
+     Schichtverantwortung und nie die eigene Zeit (WP-17, Nachprüfung 3). */
+  const darfBestaetigen = darf(sitz, "staff.edit");
+  const eigene = sitz.person ? String(sitz.person.id) : null;
   const zeilen = Object.entries(m.einstempeln || {})
     .map(([k, e]) => { const [pid, datum] = k.split("|"); return { pid, datum, e }; })
     .filter((z) => z.datum && z.datum.startsWith(ym) && z.e)
@@ -11649,6 +11615,21 @@ function StempelBefunde({ sitz, ym }) {
   return (
     <Card>
       <CardHead right={<Lab><Icon n="haken" size={13} style={{ verticalAlign: "-2px" }} /> bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
+      {pruef.length > 0 && (
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
+            {pruef.length === 1 ? "1 Ist-Zeit zur Prüfung" : `${pruef.length} Ist-Zeiten zur Prüfung`}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.45 }}>
+            Gestempelt länger als geplant + 2 Stunden. Bis zur Bestätigung zählt im Stundenkonto die Planzeit — auch im
+            Export (Zuschläge) und in der Lohnausgabe; beide fragen vor dem Download noch einmal nach.</div>
+          {pruef.map(({ personId, datum, erfassung }) => (
+            <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
+              <Pill size="sm" tone="warn">{MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              {darfBestaetigen && akt && String(personId) !== eigene && (
+                <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
+            </div>))}
+        </div>)}
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr style={{ textAlign: "left" }}>{["Person", "Tag", "Start", "Befund Start", "Ende", "Befund Ende", "Standort", "Kennzeichen"]
@@ -11664,7 +11645,14 @@ function StempelBefunde({ sitz, ym }) {
               <td style={{ padding: "8px 14px" }}><Befund e={e} phase="Ende" /></td>
               <td style={{ padding: "8px 14px" }}>{ref && ref.name ? ref.name : "–"}</td>
               <td style={{ padding: "8px 14px" }}>{[...(e.markierungen || []), ...(endeFehlt(datum, e) ? ["ENDE_FEHLT"] : [])].map((x) => (
-                <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}</td>
+                <Pill key={x} size="sm" tone="warn">{MARKIERUNG_TEXT[x] || x}</Pill>))}
+                {/* Korrekturereignisse (WP-06): das Original steht links, die
+                    gültige Ist-Zeit nach der letzten Korrektur hier. */}
+                {Array.isArray(e.korrekturen) && e.korrekturen.length > 0 && (() => {
+                  const z = e.korrekturen[e.korrekturen.length - 1];
+                  return (<span title={e.korrekturen.map((x) => `${x.wann ? new Date(x.wann).toLocaleString("de-DE") : ""} · ${(x.wer && x.wer.name) || "–"}: ${x.vorher ? `${x.vorher.start || "–"}–${x.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${x.nachher.start}–${x.nachher.ende} (${x.grund})`).join("\n")}><Pill size="sm" tone="accent">
+                    {`korrigiert${e.korrekturen.length > 1 ? ` (${e.korrekturen.length}×)` : ""}: ${z.nachher.start}–${z.nachher.ende}`}</Pill></span>);
+                })()}</td>
             </tr>);
           })}</tbody>
         </table>)}
@@ -11680,6 +11668,8 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
     .map((p) => ({ p, z: zuschlagWert(m, p, ym), a: ausgleichBedarf(m, p, ym), ist: istStunden(m, p, ym) })), [m, ym, sitz]);
   const summe = (f) => zeilen.reduce((a, z) => a + z.z.std[f], 0);
   const faellig = zeilen.filter((z) => z.a.faellig);
+  const pruefOffen = useMemo(() => pruefHinweis(m, ym), [m, ym]);
+  const pruefVor = useMemo(() => vormonateMitPruefung(m, ym), [m, ym]);
 
   return (
     <div>
@@ -11690,6 +11680,19 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
             { id: "stempel", label: "Stempelbefunde" }]} />
           <Btn onClick={() => akt.exportZuschlaege(ym)}>Export</Btn></div>}>
         Abrechnungsdaten · {MON[Number(ym.slice(5)) - 1]} {ym.slice(0, 4)}</H1>
+
+      {!pruefOffen && pruefVor.length > 0 && reiter !== "stempel" && (
+        <Hinweisband ton="warn" titel="Vormonate mit offenen Prüffällen" style={{ marginBottom: 18 }}
+          aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
+          {pruefVor.map((v) => `${v.monat} (${v.anzahl})`).join(", ")}. Dort zählt im Stundenkonto vorläufig die Planzeit.
+        </Hinweisband>)}
+      {pruefOffen && reiter !== "stempel" && (
+        <Hinweisband ton="warn" titel={`${pruefOffen.anzahl} Ist-Zeit${pruefOffen.anzahl === 1 ? "" : "en"} zur Prüfung · ${pruefOffen.monat}`}
+          style={{ marginBottom: 18 }}
+          aktion={<Btn size="sm" onClick={() => setReiter("stempel")}>Zur Prüfliste</Btn>}>
+          {pruefOffen.text} Betroffene Tage sind in der Lohnausgabe als „{ZUR_PRUEFUNG_TEXT}" gekennzeichnet.
+          Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download nach.
+        </Hinweisband>)}
 
       {reiter === "zuschlaege" && (<>
         <Kennzahlen min={170} kacheln={[
@@ -11758,7 +11761,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
       </>)}
 
       {reiter === "lohn" && <Lohnausgabe sitz={sitz} ym={ym} akt={akt} />}
-      {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} />}
+      {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} akt={akt} />}
       {reiter === "ausgleich" && (<>
         <Kennzahlen min={190} kacheln={[
           { label: "Über der Ausgleichsgrenze", wert: faellig.length, ton: faellig.length ? "warn" : "ok",
@@ -13102,17 +13105,27 @@ const GEO_HINWEIS = "Beim Stempeln wird einmalig geprüft, ob du am Standort bis
 
 function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
 
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
-  const stempeln = (art) => {
+  const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, datum, art, koord); setLaeuft(false); });
+    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, tag, art, koord); setLaeuft(false); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
+  /* Nachtdienst von gestern ohne Einstempeln (F1): Dienstende anbieten. */
+  if (!st && nachtEnde) return (
+    <div style={{ textAlign: "right", maxWidth: 300 }}>
+      <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, lineHeight: 1.4 }}>
+        Nachtdienst von gestern ohne Einstempeln? Das Dienstende lässt sich noch erfassen; den Beginn ergänzt die Leitung.</div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>{laeuft ? wartet : "Dienstende stempeln"}</Btn>
+        <Btn kind="quiet" disabled={laeuft} onClick={() => stempeln("start", heute())}>Einstempeln</Btn>
+      </div>
+    </div>);
   if (!st) return (
     <div style={{ textAlign: "right" }}>
       <Btn kind="primary" disabled={laeuft} onClick={() => stempeln("start")}>
@@ -15820,6 +15833,16 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         text: es.offen[0].titel + " — " + es.offen[0].text,
         ton: "accent", weg: () => gehZu(es.offen[0].ziel), knopf: "Weiter einrichten" });
 
+    /* Offene Schutzkonflikte (A2): eine Pflichtaufgabe für Planung und Leitung,
+       bis umgeplant ist — vor allem anderen. */
+    if (darf(sitz, "pattern.edit") || darf(sitz, "org.edit")) {
+      const sk = [...offeneSchutzkonflikte(m).values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
+      if (sk.length)
+        l.unshift({ id: "schutzkonflikt", zahl: sk.length, einheit: sk.length === 1 ? "Einteilung" : "Einteilungen",
+          titel: "Widersprechen einer Schutz- oder Einsatzregel",
+          text: `${sk.slice(0, 3).map((x) => `${x.person.nachname} · ${fKurz(x.datum)}`).join(" · ")} — bitte umplanen.`,
+          ton: "danger", weg: () => oeffneTag(sk[0].datum), knopf: "Umplanen" });
+    }
     const rang = { danger: 0, warn: 1, accent: 2 };
     return l.sort((a, b) => rang[a.ton] - rang[b.ton]).slice(0, 3);
   }, [m, p.id, sitz]);
@@ -17658,18 +17681,39 @@ function Einstellungen({ sitz, akt, gehZu }) {
    Bestätigung. Sehen: Leitung und Kundenrolle; zurückspielen: nur die
    Leitung (wie der Server, server/lib/sicherungen.mjs). Was eine Antwort
    bedeutet, steht in src/sicherungen-ui.js.
-   `vorgabe` ({ liste, fehler }) nur für Prüfungen ohne Netz.
+   `vorgabe` ({ liste, fehler, auswahl }) nur für Prüfungen ohne Netz.
    ========================================================================== */
+/** Der Bestätigungstext vor dem Zurückspielen: was bleibt, was auf die Sicherung zurückgeht. */
+export function BestaetigungsText() {
+  const Abschnitt = ({ titel, punkte }) => (
+    <div>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{titel}</div>
+      <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4, fontSize: 13.5 }}>
+        {punkte.map((x) => <li key={x}>{x}</li>)}
+      </ul>
+    </div>);
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ fontSize: 13.5 }}>{BESTAETIGUNG.umfang}</div>
+      <Abschnitt titel="Das bleibt, wie es jetzt ist" punkte={BESTAETIGUNG.bleibt} />
+      <Abschnitt titel="Das geht auf den Stand der Sicherung zurück" punkte={BESTAETIGUNG.zurueck} />
+      <Abschnitt titel="Gut zu wissen" punkte={BESTAETIGUNG.hinweise} />
+    </div>);
+}
+
 export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = null }) {
   const [liste, setListe] = useState(vorgabe ? vorgabe.liste || [] : null);
   const [fehler, setFehler] = useState(vorgabe ? vorgabe.fehler || null : null);
-  const [auswahl, setAuswahl] = useState(null);
+  const [auswahl, setAuswahl] = useState(vorgabe ? vorgabe.auswahl || null : null);
   const [laeuft, setLaeuft] = useState(false);
   const [ergebnis, setErgebnis] = useState(null);
   const zurueck = darfZurueckspielen(rolle);
+  /* Fehlt eine Aktion, ist das ein Programmfehler — und soll sichtbar sein, nicht
+     als ewiges „Lädt …" oder als TypeError beim Klick enden (WP-25, Review). */
+  const nichtVerdrahtet = !vorgabe && (typeof laden !== "function" || (zurueck && typeof zurueckspielen !== "function"));
 
   useEffect(() => {
-    if (vorgabe || !laden) return undefined;
+    if (vorgabe || typeof laden !== "function") return undefined;
     let aktiv = true;
     laden().then((l) => { if (aktiv) { setListe(l); setFehler(null); } },
       (e) => { if (aktiv) { setListe([]); setFehler(String((e && e.message) || e)); } });
@@ -17695,8 +17739,10 @@ export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = n
             ? "Kopien des eigenen Betriebs. Eine davon lässt sich zurückspielen — vorher wird der jetzige Stand gesichert."
             : "Kopien des eigenen Betriebs. Zurückspielen kann nur die Leitung."}
         </div>
+        {nichtVerdrahtet && <div role="alert" style={{ fontSize: 13, color: C.danger }}>
+          Die Sicherungen sind in dieser Fassung nicht angeschlossen (Programmfehler). Bitte den Betreiber verständigen.</div>}
         {fehler && <div role="alert" style={{ fontSize: 13, color: C.danger }}>{fehler}</div>}
-        {liste === null && !fehler && <div style={{ fontSize: 13, color: C.dim }}>Lädt …</div>}
+        {liste === null && !fehler && !nichtVerdrahtet && <div style={{ fontSize: 13, color: C.dim }}>Lädt …</div>}
         {liste && !liste.length && !fehler && <div style={{ fontSize: 13, color: C.dim }}>Noch keine Sicherung vorhanden.</div>}
         {liste && liste.map((e) => {
           const t = eintragText(e);
@@ -17716,9 +17762,7 @@ export function SicherungenVerwalten({ rolle, laden, zurueckspielen, vorgabe = n
         {auswahl && !ergebnis && (
           <div style={{ display: "grid", gap: 10 }}>
             <div style={{ fontWeight: 600 }}>Stand vom {eintragText(auswahl).titel}</div>
-            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6, fontSize: 13.5 }}>
-              {BESTAETIGUNG_TEXT.map((x) => <li key={x}>{x}</li>)}
-            </ul>
+            <BestaetigungsText />
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <Btn onClick={() => setAuswahl(null)} disabled={laeuft}>Abbrechen</Btn>
               <Btn kind="danger" onClick={bestaetigt} disabled={laeuft}>
@@ -20099,18 +20143,25 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
 /** Große Stempelfläche — das häufigste Tippen überhaupt. */
 function MStempel({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
-  const stempeln = (art) => {
+  const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (k) => { akt.stempeln(p.id, datum, art, k); setLaeuft(false); });
+    positionHolen(geoAn, (k) => { akt.stempeln(p.id, tag, art, k); setLaeuft(false); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
       style={{ width: "100%", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}>
       {laeuft ? (geoAn ? "Standort wird geprüft …" : "Wird gespeichert …") : children}</button>);
 
+  /* Nachtdienst von gestern ohne Einstempeln (WP-17, F1/W3). */
+  if (!st && nachtEnde) return (<>
+    <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, lineHeight: 1.45 }}>
+      Nachtdienst von gestern ohne Einstempeln? Das Dienstende lässt sich noch erfassen; den Beginn ergänzt die Leitung.</div>
+    <Flaeche kind="ok" onClick={() => stempeln("ende")}>Dienstende stempeln</Flaeche>
+    <div style={{ height: 10 }} />
+    <Flaeche kind="quiet" onClick={() => stempeln("start", heute())}>Einstempeln</Flaeche></>);
   if (!st) return (<>
     <Flaeche kind="primary" onClick={() => stempeln("start")}>Einstempeln</Flaeche>
     {geoAn && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 9, lineHeight: 1.45 }}>{GEO_HINWEIS}</div>}</>);
@@ -21965,6 +22016,8 @@ function AppInnen() {
   const [warnung, setWarnung] = useState(null);
   const [ausgl, setAusgl] = useState(null);
   const [konflikt, setKonflikt] = useState(false);
+  /* WP-22: warnende Befunde, die der Server bestätigt haben will (409). */
+  const [fachFrage, setFachFrage] = useState(null);
   /* Was beim Speichern schiefging. Kein Hinweis, der nach drei Sekunden
      verschwindet — bei ungespeicherter Arbeit ist das die falsche Form. */
   const [nichtGespeichert, setNichtGespeichert] = useState(null);
@@ -22242,6 +22295,7 @@ function AppInnen() {
             return pp ? `${pp.vorname} ${pp.nachname}` : "Betreiber"; })()
         : "Betreiber",
       onKonflikt: (d) => setKonflikt({ ...d, meiner: ref.current }),
+      onFachbefunde: (d) => setFachFrage(d),
       onFehler: (lage) => setNichtGespeichert(lage),
       onGespeichert: (b) => { zustellungAnstossen(b); },
     });
@@ -22726,8 +22780,37 @@ function AppInnen() {
          der Tag aus „Zeiten bestätigen", auch wenn der Server die Angabe
          verworfen hatte. Für andere Personen (Leitung, Planung) bleibt es beim
          gewöhnlichen Speichern. */
+      /* Lange Dienste zur Prüfung (WP-17, W1): Die Leitung bestätigt die
+         gestempelte Zeit; danach zählt sie im Konto. Vermerk im Protokoll. */
+      /* Stempelkorrektur (WP-06): Die Ist-Zeit eines gestempelten Tages
+         ändert nur der Server, als Ereignis mit Grund am Stempel — das
+         Original bleibt. Übernommen wird, was er gespeichert hat. */
+      stempelKorrigieren: async (pid, d, start, ende, grund) => {
+        try {
+          const erg = await SP.stempelKorrektur(pid, d, start, ende, grund);
+          const k = `${pid}|${d}`;
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag },
+              erfassung: { ...(m.erfassung || {}), [k]: erg.erfassung } }) }));
+          melde(erg.hinweis || "Korrektur gespeichert — der Stempel bleibt unverändert.");
+          return true;
+        } catch (e) {
+          melde(e.message || "Die Korrektur ließ sich nicht speichern.");
+          return false;
+        }
+      },
+      /* Lange Dienste zur Prüfung (WP-17, W1): Die Leitung bestätigt die
+         gestempelte Zeit — seit WP-06 als Korrekturereignis mit Grund. */
+      langerDienstBestaetigen: (pid, d) => {
+        const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
+        if (!e) return;
+        return akt.stempelKorrigieren(pid, d, e.start, e.ende, "Langer Dienst geprüft und bestätigt");
+      },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
         if (!sitz.person || pid !== sitz.person.id) {
+          /* Gestempelter Tag: nur als Korrektur (WP-06). */
+          if ((sitz.mandant.einstempeln || {})[`${pid}|${d}`])
+            return akt.stempelKorrigieren(pid, d, start, ende, grund || "Zeit durch die Leitung bestätigt");
           mUpd((m) => ({ ...m,
             erfassung: { ...(m.erfassung || {}), [`${pid}|${d}`]: { start, ende, bestaetigt: true, grund: grund || "" } } }), null);
           return;
@@ -22985,6 +23068,10 @@ function AppInnen() {
 
       /* --- DATEV --- */
       exportDATEV: (ym) => {
+        /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
+           mit der Planzeit — vor dem Download ausdrücklich sagen. */
+        const warnung = exportWarnung(sitz.mandant, ym);
+        if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
         if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
@@ -23264,6 +23351,9 @@ function AppInnen() {
       }, "Anmeldeadresse geändert"),
 
       sicherungAnlegen: async () => { try { await SP.sicherung(); } catch (e) { melde(e.message); } },
+      /* WP-25: Liste und Zurückspielen (sicherungenLaden, zurueckspielen) — die Einstellungen
+         reichen sie an SicherungenVerwalten weiter. Fehlten sie hier, bliebe die Liste bei „Lädt …“. */
+      ...sicherungenAktionen(SP),
       auskunftErzeugen: (pid) => {
         const mm = ref.current.mandanten.find((x) => x.id === (ref.current.session || {}).mandantId);
         if (!mm) return;
@@ -23586,7 +23676,7 @@ function AppInnen() {
           const spiegeln = (s2) => {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
-            const k = `${pid}|${datum}`;
+            const k = stempelSchluessel(pid, erg, datum);
             /* Übernommen wird, was der Server gespeichert hat (eintrag,
                erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
                409 bei gleichzeitigem Speichern) landet unten im catch und
@@ -24064,6 +24154,10 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       },
       exportZuschlaege: (ym2) => {
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
+        /* Dieselbe Rückfrage wie bei der Lohnausgabe (Nachprüfung WP-17, A1):
+           Auch hier zählen Ist-Zeiten zur Prüfung vorläufig mit der Planzeit. */
+        const warnung = exportWarnung(m, ym2);
+        if (warnung && !window.confirm(warnung)) return;
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
           ...regeln.map((z) => `${z.name} (${z.prozent}%)`), "Zuschlagswert gesamt"];
@@ -24534,6 +24628,30 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
             melde("Dein Stand wurde übernommen.");
           }} />)}
 
+      {fachFrage && sitz && sitz.mandant && (
+        <Bestaetigungsfrage lage={fachFrage} m={sitz.mandant}
+          onSchliessen={() => { setFachFrage(null); melde("Nicht gespeichert — die Änderung braucht eine Bestätigung."); }}
+          onBestaetigen={(gelesen, gesammelt) => {
+            /* Die Einträge kommen ins Bestätigungsprotokoll; die Änderung des
+               Bestands löst den nächsten Speichervorgang aus — mit Bestätigung. */
+            if (gesammelt) {
+              /* Sammelbestätigung (Review B1): je Regel, Einheit und Zeitraum; Wer,
+                 Zeit und die Zahl der gedeckten Einteilungen setzt der Server. */
+              const sammel = (fachFrage.sammelVorschlag || []).map((g) => ({ id: uid("bs"), art: "sammel", regel: g.regel,
+                einheitId: g.einheitId, von: g.von, bis: g.bis, aktion: "speichern", gelesen }));
+              setDb((alt) => ({ ...alt, mandanten: alt.mandanten.map((mm) => (mm.id === sitz.mandant.id
+                ? { ...mm, bestaetigungen: [...sammel, ...(mm.bestaetigungen || [])] } : mm)) }));
+              setFachFrage(null);
+              return;
+            }
+            const wer = { personId: sitz.person.id, name: `${sitz.person.vorname} ${sitz.person.nachname}`, rolle: sitz.person.rolle };
+            const best = { eintraege: fachFrage.fachbefunde.map((f) => ({ personId: f.personId, datum: f.datum, dienstId: f.dienstId,
+              befunde: f.befunde })), gelesen, grundArt: null };
+            setDb((alt) => ({ ...alt, mandanten: alt.mandanten.map((mm) => (mm.id === sitz.mandant.id
+              ? bestaetigungVermerken(mm, best, wer, "speichern") : mm)) }));
+            setFachFrage(null);
+          }} />)}
+
       {hinweis && (
         <div className="toast" role="status" aria-live="polite">
           <span style={{ flex: 1 }}>{hinweis}</span>
@@ -24561,4 +24679,5 @@ export default function App() {
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
-export { MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen };
+export { Einstellungen, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
+  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde };

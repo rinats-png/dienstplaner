@@ -6,14 +6,24 @@
 > (`pruefungen/rechtematrix-zeilen.test.js` u. a.). Wo diese Datei etwas anderes sagt, gilt die
 > Rechtematrix; die Abschnitte hier sind bei Gelegenheit zu überarbeiten und neu zu datieren.
 >
-> **Bekannte Lücke (Stand 2. November 2026, WP-11):** Der Server weist neue oder geänderte Einteilungen ab, die die
-> Schutzprüfung hart sperrt (Jugendarbeitsschutz, Mutterschutz, neutrale Einsatzregeln) oder die außerhalb des
-> Beschäftigungsverhältnisses liegen — auch mittelbar über neue Dienstarten, geänderte Dienstzeiten, Schichtfolge,
-> Versatz oder Zugehörigkeit (Nachrechnung 120 Tage voraus für geschützte Personen; Teilzeit und Posten vereinfacht,
-> im Zweifel streng; unbekannte Dienstart sperrt). **Nur in der Oberfläche** durchgesetzt sind weiterhin: Einschränkungen an der
-> Person (keine Nacht, kein Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät
-> und Ruhezeit unter 11 Stunden — eine Einteilung, die über die API direkt in `abweichungen` geschrieben wird, kommt
-> daran vorbei. Die Server-Durchsetzung dieser Regeln braucht die Planlogik auf dem Server und ist offen.
+> **Fachprüfungen auf dem Server (Stand 2. November 2026, WP-22; vorher Lücke aus WP-11):** Der Server prüft jede neue
+> oder geänderte Einteilung mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`,
+> `server/lib/fachpruefung.mjs`) — ausdrücklich in `abweichungen` und mittelbar über Dienstarten, Dienstzeiten,
+> Schichtfolge, Versatz, Zugehörigkeit, Teilzeit, Ein- und Austritt (120 Tage voraus, nur geänderte Einteilungen).
+> Sperrend und damit abgewiesen (403): Schutzregeln, Bestand, Einschränkungen an der Person (keine Nacht, kein
+> Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät, Ruhezeit unter 11
+> Stunden. Warnend und nur mit Bestätigung im selben Speichervorgang (sonst 409 mit neutraler Befundliste):
+> betriebliche Qualifikation, Ruhezeit unter der Vorgabe des Betriebs, unterschrittene Mindestbesetzung, weiche
+> Schutzbefunde — bei strukturellen Änderungen auch als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1).
+> Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung; § 7 ArbZG verantwortet der Betrieb);
+> Rufbereitschaft zählt nicht als Arbeitszeit. Dienstarten schreiben Leitung und Planung (`org.edit` oder
+> `pattern.edit`), alle anderen werden abgewiesen. Die Nachrechnung gibt der Event-Loop nach (höchstens 20 ms am Stück),
+> bricht nach 8 s mit 503 ab und ist je Raum auf 10 Strukturänderungen je Minute gebremst (429; Review B2). Die
+> Schichtverantwortung sieht in einer 409 nie Fremdes: Wirkt ihre Änderung außerhalb ihres Bereichs, sperrt sie ohne
+> Kennung (Review B4). Schutzangaben werden immer gespeichert (Nachprüfung 9717ddf). **Grenzen:**
+> Posten (aus einem Gruppendienst besetzt) und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche;
+> der Durchschnitt von acht Stunden über sechs Monate (§ 3 Satz 2 ArbZG) wird nicht je Einteilung geprüft; Tage
+> jenseits von 120 prüft die Planprüfung. Nachweis: `docs/acc45/wp22-nachweis.md`.
 > Nachprüfung WP-11: Jugendliche ab 16 sperrt der Server nur für 23–6 Uhr (20–23 Uhr „Achtung" oder, mit der per
 > `org.edit` oder `pattern.edit` schaltbaren Einstellung `jugendschutz.mehrschichtig`, ein Hinweis); eine noch verwendete Dienstart lässt
 > sich nicht löschen. Die Laufzeit jeder Nachrechnung gibt der Server ohne Personenbezug aus.
