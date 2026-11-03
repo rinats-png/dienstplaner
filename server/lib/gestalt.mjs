@@ -15,6 +15,8 @@
    Gründe, viel zu löschen — aber rückholbar gemacht.
    ========================================================================== */
 
+import { aufbewahrungFehler } from "./aufbewahrung.mjs";
+
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
 
@@ -139,6 +141,11 @@ export function pruefeGestalt(bestand) {
 
     const zuViel = mengeGeprueft(m);
     if (zuViel) return zuViel;
+    /* Aufbewahrungsfristen (WP-26, H1): ganze Zahlen in festen Grenzen.
+       Bis November 2026 ungeprüft — „Infinity" ließ den Datenschutzlauf
+       ewig rechnen und hielt damit den ganzen Server an. */
+    const frist = aufbewahrungFehler(m.aufbewahrung);
+    if (frist) return { ok: false, grund: frist, feld: "aufbewahrung" };
   }
 
   const uferlos = laengeGeprueft(bestand);

@@ -268,6 +268,9 @@ export const GRENZEN = {
   sicherung:  { versuche: 6,   fenster: 3600, sperre: 3600 },
   /* Wiederherstellen ist der schwerste Eingriff: wenige je Stunde. */
   wiederherstellen: { versuche: 5, fenster: 3600, sperre: 3600 },
+  /* Auskunft nach Art. 15 (WP-26): Jede liest das Protokoll der letzten
+     30 Tage. Dreißig je Stunde und Betrieb reichen für jede Anfrage. */
+  auskunft:   { versuche: 30,  fenster: 3600, sperre: 3600 },
   /* Selbstbedienung: drei Betriebe je Stunde. Ohne diese Bremse legt jemand
      über Nacht zehntausend Räume an, und die Kosten laufen mit. */
   starten:    { versuche: 3,   fenster: 3600, sperre: 3600, steigend: true, max: 86400, failClosed: true },
@@ -752,7 +755,7 @@ const SPUR_TAGE = 30;
  * @param {string} ausgang
  * @param {string} [zusatz]
  * @param {{rolle?: string, person?: (string|number|null), weg?: string,
- *          verfahren?: string, herkunft?: string}} [wer]
+ *          verfahren?: string, herkunft?: string, mandantId?: string}} [wer]
  */
 export async function protokoll(art, kennung, ausgang, zusatz, wer) {
   try {
@@ -764,6 +767,10 @@ export async function protokoll(art, kennung, ausgang, zusatz, wer) {
       ...(wer && wer.person !== undefined && wer.person !== null
         ? { person: String(wer.person).slice(0, 40) } : {}),
       ...(wer && wer.weg ? { weg: String(wer.weg).slice(0, 60) } : {}),
+      /* Der Betrieb (WP-26): Personenkennungen gelten je Betrieb. Ohne ihn
+         ließ sich eine Zeile in einem Raum mit mehreren Betrieben nicht
+         der richtigen Person zuordnen (Auskunft nach Art. 15). */
+      ...(wer && wer.mandantId ? { mandantId: String(wer.mandantId).slice(0, 80) } : {}),
       ...(wer && wer.verfahren ? { verfahren: wer.verfahren } : {}),
       ...(wer && wer.herkunft ? { herkunft: kurz(wer.herkunft) } : {}) };
     /* Eine Datei je Tag und Art — das hält die Einträge klein und macht

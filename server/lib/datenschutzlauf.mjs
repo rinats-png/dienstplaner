@@ -2,11 +2,11 @@
    DATENSCHUTZLAUF — Aufbewahrungsfristen auf dem Server, nach festem Plan
 
    Die Fristen eines Betriebs (plandatenMonate, stammdatenMonate,
-   gruendeMonate) setzt src/aufbewahrung.js um — bis November 2026 aber nur,
-   wenn jemand in der Oberfläche auf „Löschlauf ausführen" drückte. Öffnete
-   die Leitung die Seite nie, blieb alles liegen: Artikel 17 Abs. 1 lit. a
-   DSGVO verlangt die Löschung, nicht die Möglichkeit dazu (Art. 5 Abs. 1
-   lit. e, Speicherbegrenzung).
+   gruendeMonate) setzt server/lib/aufbewahrung.mjs um — bis November 2026
+   aber nur, wenn jemand in der Oberfläche auf „Löschlauf ausführen" drückte.
+   Öffnete die Leitung die Seite nie, blieb alles liegen: Artikel 17 Abs. 1
+   lit. a DSGVO verlangt die Löschung, nicht die Möglichkeit dazu (Art. 5
+   Abs. 1 lit. e, Speicherbegrenzung).
 
    Dieser Lauf macht es auf dem Server, einmal am Tag, für jeden Betrieb
    jedes Raums — mit derselben reinen Rechnung (raeumen), die auch die
@@ -15,14 +15,33 @@
 
    In-App-Sicherungen (sicherung:<raum>:…) sind Kopien des Bestands —
    samt allem, was die Fristen längst gelöscht haben. Sie werden nach
-   festem Plan ausgedünnt (sicherungsPlan): je Kontingent die zwanzig
-   neuesten, danach eine je Tag für 14 Tage, eine je Woche bis 90 Tage,
-   nichts älter als 90 Tage. Die Langzeitsicherung außer Haus regelt
-   BETRIEB-SICHERUNG (restic), nicht diese Ablage.
+   festem Plan ausgedünnt (sicherungsPlan): je Kontingent bleiben die
+   zwanzig neuesten immer, danach eine je Tag für 14 Tage, eine je Woche
+   bis 90 Tage, nichts älter als 90 Tage. Die Langzeitsicherung außer Haus
+   regelt BETRIEB-SICHERUNG (restic), nicht diese Ablage.
 
    Die Spur (centric-spur, Protokoll) wird nach 30 Tagen gelöscht
    (schutz.mjs, spurAufraeumen) — bisher nur nebenbei, wenn der Betreiber
    zufällig die Lage ansah.
+
+   Sicherheitsgurte (Review WP-26):
+
+   - Schalter CENTRIC_DATENSCHUTZLAUF: „aus", „vorschau" (Vorgabe) oder „an".
+     In der Vorschau wird gerechnet, protokolliert und im Vermerk berichtet,
+     aber nichts gelöscht — beim ersten Ausrollen löscht der Lauf nichts,
+     bevor ihn jemand bewusst einschaltet.
+   - Fristen werden vor jeder Rechnung geprüft (aufbewahrungFehler). Ein
+     Betrieb mit ungültigen Werten wird übersprungen und gemeldet — nie mit
+     einem Ersatzwert gelöscht. Plan-, Zeit- und Stempeldaten haben eine
+     harte Untergrenze von 24 Monaten (aufbewahrung.mjs, stichtage).
+   - Vor jedem löschenden Schreiben eine automatische Sicherung des alten
+     Stands — wie beim PUT, wenn ein Bestand auffällig schrumpft. Ein
+     Zurückspielen schickt den Betrieb erneut durch den Löschlauf
+     (sicherungen.mjs, betriebWiederherstellen); Gelöschtes kommt so nicht
+     zurück.
+   - Nie zweimal gleichzeitig: Ein zweiter Aufruf, während einer läuft, wird
+     übersprungen (in diesem Prozess; mehr als einen Prozess je Ablage gibt
+     es nicht, prozesssperre.mjs).
 
    Geschrieben wird jeder Raum unter seiner Sperre und mit dem
    Schreibjournal (bestand.mjs) — ein Abbruch mittendrin hinterlässt einen
@@ -32,14 +51,21 @@
    datenschutzlauf:letzter.
    ========================================================================== */
 
-import { raeumen, berichtstext } from "./aufbewahrung.mjs";
+import { raeumen, vorschau, berichtstext, aufbewahrungFehler } from "./aufbewahrung.mjs";
 import { bestandLesenStreng, bestandSchreiben, unterRaumsperre } from "./bestand.mjs";
-import { kontingent } from "./sicherungen.mjs";
+import { kontingent, markeNeu } from "./sicherungen.mjs";
 import { protokoll, spurAufraeumen } from "./schutz.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 
 export const VERMERK = "datenschutzlauf:letzter";
 const TAG_MS = 86400000;
+export const MODI = Object.freeze(["aus", "vorschau", "an"]);
+
+/** Der Modus aus der Umgebung: Vorgabe „vorschau", unbekannte Werte ebenfalls. */
+export function modusAusUmgebung(wert = process.env.CENTRIC_DATENSCHUTZLAUF) {
+  const w = String(wert || "").trim().toLowerCase();
+  return MODI.includes(w) ? w : "vorschau";
+}
 
 /** Der feste Plan für In-App-Sicherungen. */
 export const SICHERUNGS_PLAN = Object.freeze({ neuesteBehalten: 20, taeglichTage: 14, woechentlichTage: 90, hoechstalterTage: 90 });
@@ -54,8 +80,11 @@ function zeitVon(e) {
 
 /**
  * Welche In-App-Sicherungen fallen nach dem festen Plan weg?
- * Eingabe: [{ key, marke, meta }]. Ohne erkennbares Alter bleibt eine
- * Sicherung liegen (und wird gemeldet) — lieber behalten als raten.
+ * Eingabe: [{ key, marke, meta }]. Die zwanzig neuesten je Kontingent
+ * bleiben immer — auch wenn sie älter als 90 Tage sind: Ein Betrieb, der
+ * lange keine Sicherung angelegt hat, soll nicht ohne jede dastehen.
+ * Ohne erkennbares Alter bleibt eine Sicherung ebenfalls liegen (und wird
+ * gemeldet) — lieber behalten als raten.
  * @returns {{ weg: string[], ohneAlter: string[] }}
  */
 export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_PLAN) {
@@ -75,9 +104,9 @@ export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_
     const tage = new Set();
     const wochen = new Set();
     liste.forEach((e, i) => {
+      if (i < plan.neuesteBehalten) return;
       const alterTage = (t - e.zeit) / TAG_MS;
       if (alterTage > plan.hoechstalterTage) { weg.push(e.key); return; }
-      if (i < plan.neuesteBehalten) return;
       if (alterTage <= plan.taeglichTage) {
         const tag = new Date(e.zeit).toISOString().slice(0, 10);
         if (tage.has(tag)) weg.push(e.key); else tage.add(tag);
@@ -94,15 +123,27 @@ export function sicherungsPlan(eintraege, jetzt = new Date(), plan = SICHERUNGS_
   return { weg, ohneAlter };
 }
 
+let laeuft = false;
+
 /**
  * Der tägliche Lauf.
  * @param {object} store  Ablage „centric"
- * @param {{ jetzt?: Date, spur?: boolean }} [o]
+ * @param {{ jetzt?: Date, spur?: boolean, modus?: string }} [o]  modus: aus | vorschau | an
  */
-export async function datenschutzLauf(store, { jetzt = new Date(), spur = true } = {}) {
+export async function datenschutzLauf(store, { jetzt = new Date(), spur = true, modus = modusAusUmgebung() } = {}) {
+  const vermerk = { zeit: jetzt.toISOString(), modus, uebersprungen: false, raeume: 0, geaendert: [],
+    faellig: [], sicherungenGeloescht: 0, sicherungenFaellig: 0, sicherungenOhneAlter: 0, fehler: [] };
+  if (modus === "aus") return { ...vermerk, uebersprungen: true };
+  if (laeuft) return { ...vermerk, uebersprungen: true };
+  laeuft = true;
+  try {
+    return await lauf(store, { jetzt, spur, modus, vermerk });
+  } finally { laeuft = false; }
+}
+
+async function lauf(store, { jetzt, spur, modus, vermerk }) {
   const heute = heuteBerlin(jetzt);
-  const vermerk = { zeit: jetzt.toISOString(), raeume: 0, geaendert: [], sicherungenGeloescht: 0,
-    sicherungenOhneAlter: 0, fehler: [] };
+  const loeschen = modus === "an";
   let kerne = [];
   try { kerne = (await store.list({ prefix: "kern:" })).blobs.map((b) => b.key.slice("kern:".length)); }
   catch (e) { vermerk.fehler.push({ raum: null, grund: `Kerne: ${String((e && e.message) || e).slice(0, 160)}` }); }
@@ -115,13 +156,37 @@ export async function datenschutzLauf(store, { jetzt = new Date(), spur = true }
         const g = await bestandLesenStreng(store, raum);
         if (g && g.bestand && Array.isArray(g.bestand.mandanten)) {
           const berichte = [];
-          const mandanten = g.bestand.mandanten.map((m) => {
-            if (!m || typeof m !== "object" || !Array.isArray(m.personen)) return m;
+          const mandanten = [];
+          for (const m of g.bestand.mandanten) {
+            if (!m || typeof m !== "object" || !Array.isArray(m.personen)) { mandanten.push(m); continue; }
+            /* Ungültige Fristen: überspringen und melden — nie mit einem
+               Ersatzwert löschen (fail-closed, Review WP-26 H1). */
+            const ungueltig = aufbewahrungFehler(m.aufbewahrung);
+            if (ungueltig) {
+              vermerk.fehler.push({ raum, betrieb: m.id, grund: ungueltig });
+              await protokoll("loeschlauf", "system", "fehler", `${raum}/${m.id}: ${ungueltig} — übersprungen`);
+              mandanten.push(m);
+              continue;
+            }
+            const plan = vorschau(m, heute);
+            if (plan.gesamt === 0) { mandanten.push(m); continue; }
+            if (!loeschen) {
+              const text = berichtstext(plan);
+              vermerk.faellig.push({ raum, betrieb: m.id, bericht: text });
+              await protokoll("loeschlauf", "system", "vorschau", `${raum}/${m.id}: fällig — ${text}`);
+              mandanten.push(m);
+              continue;
+            }
             const { mandant, bericht } = raeumen(m, heute);
-            if (bericht.gesamt > 0) { berichte.push({ m, bericht }); return mandant; }
-            return m;
-          });
+            berichte.push({ m, bericht });
+            mandanten.push(mandant);
+          }
           if (berichte.length) {
+            /* Schutzsicherung vor dem löschenden Schreiben — wie im PUT-Pfad
+               bei auffälligem Verlust (daten.mjs). */
+            await store.setJSON(`sicherung:${raum}:${markeNeu(jetzt)}`, g.bestand,
+              { metadata: { zeit: jetzt.toISOString(), durch: "automatisch vor dem Datenschutzlauf",
+                automatisch: "ja" } });
             const erg = await bestandSchreiben(store, raum, { ...g.bestand, mandanten },
               { erwarteterStand: g.stand, durch: "Löschlauf (Aufbewahrungsfristen)" });
             if (!erg.ok) throw new Error("Konflikt beim Schreiben");
@@ -140,8 +205,9 @@ export async function datenschutzLauf(store, { jetzt = new Date(), spur = true }
           eintraege.push({ key: b.key, marke: b.key.split(":").pop(), meta: (meta && meta.metadata) || {} });
         }
         const plan = sicherungsPlan(eintraege, jetzt);
-        for (const key of plan.weg) { await store.delete(key); vermerk.sicherungenGeloescht += 1; }
         vermerk.sicherungenOhneAlter += plan.ohneAlter.length;
+        if (!loeschen) { vermerk.sicherungenFaellig += plan.weg.length; return; }
+        for (const key of plan.weg) { await store.delete(key); vermerk.sicherungenGeloescht += 1; }
         if (plan.weg.length)
           await protokoll("loeschlauf", "system", "erfolg", `${raum}: ${plan.weg.length} Sicherung(en) nach Plan entfernt`);
       });
@@ -152,8 +218,8 @@ export async function datenschutzLauf(store, { jetzt = new Date(), spur = true }
     }
   }
 
-  /* 3. Spur nach 30 Tagen */
-  if (spur) await spurAufraeumen();
+  /* 3. Spur nach 30 Tagen — nur, wenn der Lauf eingeschaltet ist. */
+  if (spur && loeschen) await spurAufraeumen();
 
   try { await store.setJSON(VERMERK, vermerk); } catch { /* der Lauf darf daran nicht scheitern */ }
   return vermerk;

@@ -161,13 +161,23 @@ Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` un
 ²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
 und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
 ²¹ WP-26, Präzisierung, keine neue Leserecht-Spalte: **Auskunft nach Art. 15 DSGVO** (`GET /api/auskunft`,
-`server/lib/auskunft.mjs`). Eine Person mit Personenbezug in der Sitzung bekommt dort *über sich selbst* alle zu ihr
-gespeicherten Daten. Dazu gehören auch die Felder, die sie in `GET /api/bestand` nicht sieht (z. B. Notfallkontakt,
-Bank, Steuer), außerdem die eigenen Stempel mit Ortsbefund, Ist-Zeiten, Abwesenheiten mit Anmerkung, Anträge,
-Planänderungen, Mitteilungen, die Protokolleinträge zur eigenen Personenkennung und ob Push-Anmeldung und
-Kalenderverweis bestehen. Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre
-eigene Sicht (`bestandFuerRolle`), nicht mehr. Für andere Rollen gilt das nur für die eigene Person; der Betreiber
-bekommt keine Auskunft. Jede Auskunft steht im Protokoll.
+`server/lib/auskunft.mjs`, eigene Bremse). Eine Person mit Personenbezug in der Sitzung bekommt *über sich selbst*
+ihre gespeicherten Daten, auch Felder, die sie in `GET /api/bestand` nicht sieht (z. B. Notfallkontakt, Bank,
+Steuer). Dazu kommen:
+- eigene Stempel mit Ortsbefund, Ist-Zeiten, Plan, Abwesenheiten mit Anmerkung, eigene Anträge ganz;
+- fremde Anträge, an denen sie als Tauschpartner beteiligt ist, nur im Gerüst (`id`, `typ`, `von`, `bis`, `status`,
+  `personId`, `partnerId`; wie `sicht.mjs`);
+- Planänderungen, Mitteilungen, die eigenen Einträge der Sammlungen, die `/api/bestand` ihr allein zeigt, Einträge im
+  Betriebsprotokoll mit ihrer Kennung, das eigene Konto ohne Geheimnisse;
+- ihre Protokollzeilen (nur desselben Betriebs: `mandantId`; ältere Zeilen ohne Betrieb nur in Räumen mit einem
+  Betrieb) samt der Auskünfte, die die Leitung über sie erteilt hat;
+- ob Push-Anmeldung und Kalenderverweis bestehen.
+
+Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre eigene Sicht
+(`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
+Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
+im Protokoll.
+
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

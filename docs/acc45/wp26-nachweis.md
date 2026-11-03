@@ -89,3 +89,23 @@ sauber.
   Betrieb nicht kennt.
 - **Raumweite automatische Sicherungen:** Sie enthalten alle Betriebe eines Raums. Der Plan dünnt sie aus, schneidet aber
   keine einzelnen Felder heraus. Spätestens nach 90 Tagen sind sie weg.
+
+## Review-Auflagen (Agent F, 2c1aa8e: Ablehnung) — umgesetzt
+
+| Nr | Umsetzung |
+|---|---|
+| H1 | `minusMonate` rechnet arithmetisch statt mit einer Schleife; Infinity/NaN werfen sofort. `aufbewahrungFehler`: Fristen nur als ganze Zahl 1–600 (fehlt/null/0 = Vorgabe), `zuletztGeraeumt` nur als Datum. `pruefeGestalt` weist ungültige Werte ab (PUT → 422, wie jeder Gestaltfehler dieses Pfads). Der Lauf prüft zusätzlich und **überspringt und meldet** einen Betrieb mit ungültigen Werten (fail-closed). |
+| H2 | Harte Untergrenze: Plan-, Zeit- und Stempeldaten nie unter 24 Monaten (`stichtage`: `max(Frist, PLANDATEN_MINDEST)`) — für Lauf, Oberfläche (gleiche Rechnung) und Wiederherstellen. Vor jedem löschenden Schreiben eine automatische Sicherung des alten Stands. Eine Frist unter 24 wird weiter gespeichert (bestehende Betriebe sollen nicht blockiert werden) und in der Vorschau gewarnt, löscht aber nicht früher. |
+| H3 | Wiederherstellen lehnt Sicherungen von vor dem letzten Löschlauf nicht mehr ab, sondern schickt den zurückgespielten Betrieb mit den heutigen Fristen erneut durch `raeumen`; anonymisierte Personen bleiben anonymisiert. Schalter **`CENTRIC_DATENSCHUTZLAUF`**: `aus` / `vorschau` (**Vorgabe**: berichtet in Protokoll und Vermerk, löscht nichts — auch keine Sicherungen, keine Spur) / `an`. In `.env.example` und `ENTWICKLUNG.md`. Kein zweiter gleichzeitiger Lauf (übersprungen). |
+| M1 | Auskunft durch die Leitung: kein Protokoll, kein Push-, Kalender- oder Kontostatus. Fußnote ²¹ korrigiert. |
+| M2 | Spur-Zeilen tragen `mandantId` (`schutz.mjs`, `wer.mandantId` aus der Sitzung). Die Auskunft nimmt nur Zeilen desselben Betriebs; ältere Zeilen ohne Betrieb nur in Räumen mit genau einem Betrieb. |
+| M3 | Fremde Anträge, an denen die Person als Tauschpartner beteiligt ist, nur im Gerüst (`id`, `typ`, `von`, `bis`, `status`, `personId`, `partnerId`); tote Filter entfernt. |
+| M4 | Ergänzt: Plan aus Schichtfolge (±2 Monate), eigene Einträge der Sammlungen aus der Sicht einer Beschäftigten (`wuensche`, `einspruenge`, `fahrzeiten`, `checks`, `ansichten`, `notrufe`, `kompetenzen`, `einarbeitung`, `betriebsmittel`, `sondereinsaetze`, `urlaubsrunde`, `selbstplanung`, eigene Bewerbungen), Betriebsprotokoll mit eigener Kennung, Konto ohne Geheimnisse, von der Leitung erteilte Auskünfte. „Vollständig" gestrichen; der Hinweis nennt die Lücken (Sitzungen/Geräte, Handlungen anderer außer Auskünften, Betriebsprotokoll ohne Kennung, Sicherungsinhalte, Protokoll > 30 Tage). |
+| M5 | Eigene Bremse `auskunft` (30 je Stunde und Betrieb); Spur nur der letzten 30 Tage gelesen. Die Spur ist nach Tag/Art abgelegt, nicht nach Raum — eine Präfixsuche je Raum wäre eine Umstellung des Protokollformats (Folgepunkt). |
+| N1 | `sicherungsPlan`: die 20 neuesten je Kontingent bleiben immer, auch wenn sie älter als 90 Tage sind. |
+| N2 | durch die Ganzzahlprüfung (H1). |
+| N4 | Die Aufbewahrungsrechnung liegt seit ab108fb unter `server/lib/aufbewahrung.mjs` (das Serverbild enthält `src/` nicht); `src/aufbewahrung.js` verweist darauf; `pruefungen/sicht.test.js` liest von dort. |
+
+**Tests, rot vorher:** `dsgvo-server.test.js` (jetzt 22) und der angepasste Test in `sicherungen.test.js` gegen einen Export von 2c1aa8e (eigener Ordner, nicht der Arbeitsbaum): 17 rot (u. a. PUT „Infinity" → 200; Leitung bekommt Protokoll; fremder Antrag mit „Arzttermin"; Wiederherstellen → 409; Vorschau löschte; keine Schutzsicherung; Bremse fehlte). Die beiden Fälle „Infinity in minusMonate" und „ungültige Frist in der Ablage" lassen sich gegen den alten Stand nicht als Test laufen lassen — sie **hängen** den Prozess: `minusMonate("2026-11-02", Infinity)` brach nach 5 s Zeitgrenze ab (Exit 124), jetzt wirft sie sofort. Nachher alle grün.
+
+Geänderter bestehender Test: `sicherungen.test.js` „keine Sicherung von vor oder vom Tag des letzten Löschlaufs" → „zurückgespielt, Fristabgelaufenes bleibt gelöscht" (H3, ausdrücklich verlangt).

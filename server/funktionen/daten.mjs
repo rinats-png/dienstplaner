@@ -18,6 +18,7 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
+import { accountLesenPerId } from "../lib/accounts.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -771,7 +772,7 @@ export default async (req, context) => {
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
     const wer = { rolle: s.rolle, person: s.person, weg: pfad,
-      verfahren: req.method, herkunft: herkunft(req) };
+      verfahren: req.method, herkunft: herkunft(req), mandantId: s.mandantId || null };
 
     /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
 
@@ -1197,16 +1198,18 @@ export default async (req, context) => {
       await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
     }
-
     /* ------------------- Auskunft nach Artikel 15 -------------------
-       Serverseitig, vollständig, maschinenlesbar (lib/auskunft.mjs).
-       Ohne Angabe die eigene Person der Sitzung. Mit ?person=<id> nur für
-       Leitung und „kunde" (dieselben Rollen wie bei Sicherungen) und nur
-       für eine Person des eigenen Betriebs — mit genau dem, was diese Rolle
-       ohnehin sieht. Jede Auskunft steht im Protokoll.                  */
+       Serverseitig, maschinenlesbar (lib/auskunft.mjs). Ohne Angabe die
+       eigene Person der Sitzung. Mit ?person=<id> nur für Leitung und
+       „kunde" (dieselben Rollen wie bei Sicherungen) und nur für eine Person
+       des eigenen Betriebs — mit genau dem, was diese Rolle ohnehin sieht,
+       ohne Protokoll, Push-, Kalender- und Kontoangaben. Eigene Bremse
+       („auskunft"): Jede Auskunft liest das Protokoll der letzten 30 Tage.
+       Jede Auskunft steht im Protokoll — die durch die Leitung so, dass die
+       Person sie in ihrer eigenen Auskunft wiederfindet (Empfänger). */
     if (pfad === "auskunft" && req.method === "GET") {
       const kA = kennung(req, s);
-      const bA = await bremse("lesen", kA);
+      const bA = await bremse("auskunft", kA);
       if (!bA.frei) return zuVielAntwort(bA.wartet);
       if (s.rolle === "betreiber")
         return antwort({ fehler: "Der Betreiber erstellt keine Auskunft aus einem Betrieb." }, 403);
@@ -1229,18 +1232,36 @@ export default async (req, context) => {
       const pid = selbst ? s.person : angefragt;
       const personA = (mA.personen || []).find((x) => x && String(x.id) === String(pid));
       if (!personA) return antwort({ fehler: "Diese Person gibt es im eigenen Betrieb nicht." }, 404);
-      const spurA = getStore({ name: "centric-spur" });
-      const protokollA = await protokollZurPerson(spurA, kennung(null, s), personA.id);
-      const push = !!(await store.getMetadata(pushSchluessel(s.bestand, mA.id, personA.id)).catch(() => null));
-      const kalender = !!(await store.getMetadata(`feedperson:${s.bestand}:${mA.id}:${personA.id}`).catch(() => null));
       const erstellt = new Date().toISOString();
+      let zusatz = {};
+      if (selbst) {
+        const einBetrieb = Array.isArray(mitA.bestand.mandanten) && mitA.bestand.mandanten.length === 1;
+        const protokollA = await protokollZurPerson(getStore({ name: "centric-spur" }),
+          { raumKennung: kennung(null, s), mandantId: mA.id, personId: personA.id, einBetrieb });
+        const push = !!(await store.getMetadata(pushSchluessel(s.bestand, mA.id, personA.id)).catch(() => null));
+        const kalender = !!(await store.getMetadata(`feedperson:${s.bestand}:${mA.id}:${personA.id}`).catch(() => null));
+        /* Die Sammlungen mit eigenen Einträgen aus der Sicht einer
+           Beschäftigten — dieselbe Positivliste wie /api/bestand, also ohne
+           Daten Dritter (sicht.mjs). */
+        const eigeneSicht = eigenerMandant(bestandFuerRolle(mitA.bestand, { ...s, rolle: "mitarbeiter" }), s);
+        /* Das Konto, wenn die Sitzung aus einem stammt — ohne Passwort,
+           Token-Zähler und Epoche. */
+        let konto = null;
+        const accountId = s.herkunft && s.herkunft.accountId;
+        if (accountId) {
+          const k = await accountLesenPerId(store, accountId).catch(() => null);
+          if (k) konto = { email: k.email, emailVerifiziertAm: k.emailVerifiziertAm || null, status: k.status,
+            erstellt: k.erstellt, aktualisiert: k.aktualisiert, passwortGeaendert: k.passwortGeaendert || null,
+            letzteAnmeldung: k.letzteAnmeldung || null, profil: k.profil || null };
+        }
+        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht };
+      }
       const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
-        protokoll: protokollA, push, kalender });
+        ...zusatz });
       await protokoll("auskunft", kA, "erfolg", `${selbst ? "selbst" : "durch Leitung"} · Person ${personA.id}`, wer);
       return antwort(inhalt, 200, { "content-disposition":
         `attachment; filename="auskunft-${String(personA.id).replace(/[^A-Za-z0-9_-]/g, "_")}-${erstellt.slice(0, 10)}.json"` });
     }
-
     /* ------------------------- Vollausgabe --------------------------
        Die Datenmitnahme in der Oberfläche gibt CSV-Dateien aus — gut zum
        Weiterverarbeiten, ungeeignet als Sicherung: Sie läuft im Browser, sie

@@ -37,7 +37,7 @@ import { getStore, ablageWurzel } from "./server/lib/ablage.mjs";
 import { ablageBelegen, VERLUST_WARTEN_MS } from "./server/lib/prozesssperre.mjs";
 import { schreibstopp, alleFrei, sperrZustand } from "./server/lib/raumsperre.mjs";
 import { testbetriebeAufraeumen } from "./server/lib/aufraeumen.mjs";
-import { datenschutzLauf } from "./server/lib/datenschutzlauf.mjs";
+import { datenschutzLauf, modusAusUmgebung } from "./server/lib/datenschutzlauf.mjs";
 import { voruebergehend } from "./server/lib/bestand.mjs";
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -475,9 +475,14 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
        30 Tagen — auf dem Server, nicht erst, wenn jemand in der Oberfläche
        den Löschlauf anstößt. */
     try {
-      const d = await datenschutzLauf(getStore({ name: "centric", consistency: "strong" }));
-      console.log(`Datenschutzlauf: ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
-        + `${d.sicherungenGeloescht} Sicherungen entfernt, ${d.fehler.length} Fehler`);
+      /* Schalter CENTRIC_DATENSCHUTZLAUF: aus | vorschau (Vorgabe) | an. In
+         der Vorschau wird nur berichtet — gelöscht wird erst nach bewusster
+         Aktivierung (.env.example). */
+      const modus = modusAusUmgebung();
+      const d = await datenschutzLauf(getStore({ name: "centric", consistency: "strong" }), { modus });
+      if (d.uebersprungen) console.log(`Datenschutzlauf: ${modus === "aus" ? "abgeschaltet" : "übersprungen, ein anderer läuft noch"}`);
+      else console.log(`Datenschutzlauf (${modus}): ${d.raeume} Räume, ${d.geaendert.length} Betriebe bereinigt, `
+        + `${d.faellig.length} fällig (Vorschau), ${d.sicherungenGeloescht} Sicherungen entfernt, ${d.fehler.length} Fehler`);
     } catch (e) {
       console.error("Datenschutzlauf fehlgeschlagen:", e && e.message ? e.message : e);
     }

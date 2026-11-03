@@ -71,9 +71,14 @@ const ZWEI = (n) => String(n).padStart(2, "0");
 /** Datum minus Monate, als ISO-Tag. Ohne Zeitzonenfallen — reine Rechnung. */
 export function minusMonate(isoTag, monate) {
   const [j, m, t] = String(isoTag).slice(0, 10).split("-").map(Number);
-  let jahr = j;
-  let monat = m - monate;
-  while (monat <= 0) { monat += 12; jahr -= 1; }
+  /* Arithmetisch, nicht mit einer Schleife: Bis November 2026 stand hier
+     `while (monat <= 0) monat += 12`. Mit einer Frist von Infinity endete
+     das nie, mit einer sehr großen erst nach Minuten — und der tägliche
+     Datenschutzlauf hätte den ganzen Server angehalten (WP-26, H1). */
+  const gesamt = j * 12 + (m - 1) - Number(monate);
+  if (!Number.isSafeInteger(gesamt)) throw new RangeError(`Ungültige Frist: ${monate}`);
+  const jahr = Math.floor(gesamt / 12);
+  const monat = gesamt - jahr * 12 + 1;
   /* Der 31. März minus einen Monat ist der 28. Februar, nicht der 3. März.
      Ohne diese Deckelung sprängen Stichtage über den Monat hinaus. */
   const letzterTag = new Date(Date.UTC(jahr, monat, 0)).getUTCDate();
@@ -85,6 +90,34 @@ const tagVon = (schluessel) => {
   const teil = String(schluessel).split("|")[1] || "";
   return /^\d{4}-\d{2}-\d{2}$/.test(teil) ? teil : null;
 };
+
+/* Grenzen für die drei Fristen (Monate). Eine Angabe außerhalb ist kein
+   Wert, sondern ein Fehler: Sie wird beim Speichern abgewiesen (gestalt.mjs,
+   aufbewahrungFehler) und vom Datenschutzlauf übersprungen. */
+export const FRIST_GRENZEN = Object.freeze({ min: 1, max: 600 });
+const FRIST_FELDER = ["plandatenMonate", "stammdatenMonate", "gruendeMonate"];
+
+/**
+ * Ist m.aufbewahrung wohlgeformt? Ohne Angabe, null oder 0 heißt „Vorgabe".
+ * Sonst eine ganze Zahl in FRIST_GRENZEN — keine Brüche, nichts Negatives,
+ * kein Infinity. zuletztGeraeumt: fehlt oder JJJJ-MM-TT.
+ * @returns {string|null} der Grund, oder null
+ */
+export function aufbewahrungFehler(a) {
+  if (a === undefined || a === null) return null;
+  if (typeof a !== "object" || Array.isArray(a)) return "Aufbewahrung: kein Objekt.";
+  for (const f of FRIST_FELDER) {
+    const w = a[f];
+    if (w === undefined || w === null || w === 0 || w === "") continue;
+    const n = typeof w === "number" || typeof w === "string" ? Number(w) : NaN;
+    if (!Number.isInteger(n) || n < FRIST_GRENZEN.min || n > FRIST_GRENZEN.max)
+      return `Aufbewahrung: ${f} muss eine ganze Zahl von ${FRIST_GRENZEN.min} bis ${FRIST_GRENZEN.max} Monaten sein.`;
+  }
+  if (a.zuletztGeraeumt !== undefined && a.zuletztGeraeumt !== null
+      && !/^\d{4}-\d{2}-\d{2}$/.test(String(a.zuletztGeraeumt)))
+    return "Aufbewahrung: zuletztGeraeumt ist kein Datum.";
+  return null;
+}
 
 /** Die drei Fristen eines Betriebs, mit Voreinstellungen aufgefüllt. */
 export function fristen(m) {
@@ -101,7 +134,12 @@ export function fristen(m) {
 export function stichtage(m, heuteIso) {
   const f = fristen(m);
   return {
-    plan: minusMonate(heuteIso, f.plandatenMonate),
+    /* Harte Untergrenze (WP-26, H2): Plan-, Zeit- und Stempeldaten werden nie
+       vor PLANDATEN_MINDEST Monaten gelöscht — § 16 Abs. 2 ArbZG, § 17 Abs. 1
+       MiLoG. Eine kürzere Einstellung warnt in der Vorschau (s. unten), aber
+       sie löscht nicht mehr: Vorher genügte eine Planerin mit Frist 1, und der
+       Löschlauf nahm Ist-Zeiten und Stempel des Vormonats mit. */
+    plan: minusMonate(heuteIso, Math.max(f.plandatenMonate, PLANDATEN_MINDEST)),
     stamm: minusMonate(heuteIso, f.stammdatenMonate),
     grund: minusMonate(heuteIso, f.gruendeMonate),
     fristen: f,

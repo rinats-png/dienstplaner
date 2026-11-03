@@ -17,6 +17,7 @@
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
+import { raeumen } from "./aufbewahrung.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -122,9 +123,6 @@ export function listenEintrag(marke, meta, eigeneId) {
     durch: m.mandantId || automatisch ? (m.durch || null) : null };
 }
 
-/** Tag einer Zeitmarke oder ISO-Zeit (JJJJ-MM-TT). */
-const tagVon = (x) => String(x || "").slice(0, 10);
-
 /**
  * Den eigenen Betrieb aus einer Sicherung zurückspielen.
  *
@@ -160,13 +158,15 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
   if (!aus) return { verweigert: "Diese Sicherung enthält den eigenen Betrieb nicht.", status: 404 };
 
   /* Was ein Löschlauf entfernt oder anonymisiert hat, kommt nicht zurück.
-     Der Löschlauf selbst lebt in der Oberfläche (src/aufbewahrung.js) und
-     steht dem Server nicht zur Verfügung; deshalb keine Sicherung, die vor
-     oder am Tag des letzten Löschlaufs entstand. */
-  const geraeumt = alt.aufbewahrung && alt.aufbewahrung.zuletztGeraeumt;
-  if (geraeumt && tagVon(sicherungsZeit || marke) <= tagVon(geraeumt))
-    return { verweigert: `Diese Sicherung stammt von vor dem letzten Löschlauf (${tagVon(geraeumt)}). `
-      + "Was dort gelöscht wurde, darf nicht zurückkommen.", status: 409 };
+     Bis November 2026 wurde dafür jede Sicherung abgelehnt, die vor oder am
+     Tag des letzten Löschlaufs entstand. Seit der Löschlauf täglich auf dem
+     Server läuft (datenschutzlauf.mjs), wäre das fast jede Sicherung — ein
+     älterer Betrieb hätte praktisch nie mehr zurückspielen können (WP-26, H3).
+     Jetzt wird der zurückgespielte Betrieb vor dem Schreiben noch einmal durch
+     den Löschlauf geschickt (raeumen, mit den heutigen Fristen): Was nach den
+     Fristen fort sein muss, ist es auch danach; anonymisierte Personen bleiben
+     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr. */
+  void sicherungsZeit;
 
   const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
   const personen = (Array.isArray(aus.personen) ? aus.personen : []).map((p) => {
@@ -206,7 +206,10 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
     else delete zurueck[feld];
   }
 
-  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? zurueck : m)) };
+  /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung). */
+  const heuteIso = heute.toISOString().slice(0, 10);
+  const geraeumt = raeumen({ ...zurueck, aufbewahrung: alt.aufbewahrung ?? zurueck.aufbewahrung }, heuteIso).mandant;
+  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? geraeumt : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
   return { bestand: neu };
