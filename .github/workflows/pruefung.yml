@@ -199,6 +199,10 @@ jobs:
       - name: Oberfläche gerendert
         run: npm run pruefung:render
 
+      # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
+      - name: Sicherungen in der Oberfläche
+        run: npm run pruefung:wiederherstellen-ui
+
       # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
       # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
       # Lesen nur in der Antwort angeglichen (gestalt.mjs).
