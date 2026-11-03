@@ -37,6 +37,7 @@
 import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
+import { BESTAETIGUNG_FELDER } from "./sicht.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
@@ -76,7 +77,17 @@ const LUECKEN_SELBST = [
   "Einträge im Betriebsprotokoll ohne deine Personenkennung (Freitexte mit Namen werden nicht durchsucht)",
   "Inhalte von Sicherungskopien (sie enthalten dieselben Daten wie der Bestand zum Zeitpunkt der Sicherung)",
   `Protokollzeilen, die älter als ${PROTOKOLL_TAGE} Tage sind (sie werden gelöscht)`,
+  "bei Auskünften, die die Leitung über dich erteilt hat: wer genau und von wo (nur Rolle, Zeit und Art)",
+  "Bestätigungen, die du selbst für andere Personen abgegeben hast (sie betreffen deren Daten); die Zählwerte "
+    + "für den Betriebsrat enthalten keine Einzeldaten",
 ];
+
+/* Bestätigungsprotokoll (WP-10, Sammlung bestaetigungen): Einträge ÜBER die
+   Person. In der eigenen Auskunft ohne Namen und Kennung der bestätigenden
+   Person — nur deren Rolle (wie N-2 bei den Protokollzeilen). Die Leitung
+   bekommt die Felder ihrer eigenen Sicht. */
+const BESTAETIGUNG_SELBST = BESTAETIGUNG_FELDER.filter((f) => f !== "durch" && f !== "durchId");
+const felder = (o, liste) => Object.fromEntries(liste.filter((f) => f in o).map((f) => [f, o[f]]));
 
 /**
  * Baut die Auskunft.
@@ -153,6 +164,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     antraege,
     planaenderungen: eigene(m.aenderungen, pid),
     mitteilungen: eigene(m.nachrichten, pid),
+    bestaetigungen: eigene(m.bestaetigungen, pid)
+      .map((e) => felder(e, selbst ? BESTAETIGUNG_SELBST : BESTAETIGUNG_FELDER)),
     ...(selbst ? {
       ...sammlungen,
       betriebsprotokoll: eigene(m.protokoll, pid),
@@ -175,11 +188,18 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
  * Gelesen werden nur die Tage der letzten PROTOKOLL_TAGE.
  */
 export async function protokollZurPerson(spurStore, { raumKennung, mandantId, personId, einBetrieb, jetzt = new Date() }) {
-  const grenze = new Date(jetzt.getTime() - PROTOKOLL_TAGE * 86400000).toISOString().slice(0, 10);
   const aus = [];
-  const { blobs } = await spurStore.list();
+  /* Je Tag ein Präfix (Schlüssel „JJJJ-MM-TT/art/…", schutz.mjs): Gelesen
+     wird nur das Fenster der letzten PROTOKOLL_TAGE, nicht die ganze Spur.
+     Raum und Person stehen nicht im Schlüssel — innerhalb eines Tages
+     bleibt es beim Durchsehen aller Betriebe (Backlog, wp26-nachweis.md).
+     Altbestand („JJJJ-MM-TT/art", ein Array) fällt unter dasselbe Präfix. */
+  const blobs = [];
+  for (let i = 0; i <= PROTOKOLL_TAGE; i++) {
+    const tag = new Date(jetzt.getTime() - i * 86400000).toISOString().slice(0, 10);
+    blobs.push(...(await spurStore.list({ prefix: `${tag}/` })).blobs);
+  }
   for (const b of blobs) {
-    if (String(b.key).slice(0, 10) < grenze) continue;
     const z = await spurStore.get(b.key, { type: "json" }).catch(() => null);
     const zeilen = Array.isArray(z) ? z : z ? [z] : [];         // Altbestand: ein Array je Tag und Art
     for (const r of zeilen) {
@@ -188,7 +208,10 @@ export async function protokollZurPerson(spurStore, { raumKennung, mandantId, pe
       const eigen = gleich(r.person, personId);
       const ueberMich = r.art === "auskunft" && typeof r.zusatz === "string"
         && r.zusatz.endsWith(`Person ${personId}`) && !eigen;
-      if (eigen || ueberMich) aus.push(r);
+      if (eigen) aus.push(r);
+      /* Über sie durch die Leitung (N-2): nur Rolle, Zeit, Art — keine
+         Kennung, keine Herkunft der handelnden Person. */
+      else if (ueberMich) aus.push({ zeit: r.zeit, art: r.art, ...(r.rolle ? { rolle: r.rolle } : {}) });
     }
   }
   return aus;

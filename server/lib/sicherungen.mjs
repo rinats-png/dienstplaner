@@ -17,7 +17,8 @@
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
-import { raeumen } from "./aufbewahrung.mjs";
+import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -148,9 +149,11 @@ export function listenEintrag(marke, meta, eigeneId) {
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
- * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date }} [o]
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date, datenschutz?: string }} [o]
+ *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
  */
-export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sicherungsZeit, heute = new Date() } = {}) {
+export function betriebWiederherstellen(jetzt, sicherung, sitzung,
+  { marke, sicherungsZeit, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
   const ort = eigenerBetrieb(jetzt, sitzung);
   if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
   const alt = ort.betrieb;
@@ -206,13 +209,32 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
     else delete zurueck[feld];
   }
 
-  /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung). */
-  const heuteIso = heute.toISOString().slice(0, 10);
-  const geraeumt = raeumen({ ...zurueck, aufbewahrung: alt.aufbewahrung ?? zurueck.aufbewahrung }, heuteIso).mandant;
-  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? geraeumt : m)) };
+  /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung), am
+     heutigen Tag in Berlin (wie der Datenschutzlauf). Gelöscht wird nur im
+     Modus „an" (N-3) — bei „aus" und „vorschau" löscht auch der Lauf nicht;
+     dann wird nur gemeldet, was nach den Fristen fällig wäre. Eine ungültige
+     Fristangabe löscht nie (fail-closed, wie im Lauf). */
+  const heuteIso = heuteBerlin(heute);
+  const mitFristen = { ...zurueck, aufbewahrung: alt.aufbewahrung ?? zurueck.aufbewahrung };
+  const ungueltig = aufbewahrungFehler(mitFristen.aufbewahrung);
+  let ergebnis = mitFristen;
+  let fristen;
+  if (ungueltig) {
+    fristen = { modus: datenschutz, geloescht: false, faellig: null, text: `Nicht nach Fristen bereinigt: ${ungueltig}` };
+  } else if (datenschutz === "an") {
+    const r = raeumen(mitFristen, heuteIso);
+    ergebnis = r.mandant;
+    fristen = { modus: datenschutz, geloescht: r.bericht.gesamt > 0, faellig: r.bericht.gesamt, text: berichtstext(r.bericht) };
+  } else {
+    const plan = vorschau(mitFristen, heuteIso);
+    fristen = { modus: datenschutz, geloescht: false, faellig: plan.gesamt,
+      text: plan.gesamt ? `Nach den Fristen fällig, aber nicht gelöscht (Datenschutzlauf „${datenschutz}"): ${berichtstext(plan)}`
+        : berichtstext(plan) };
+  }
+  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? ergebnis : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
-  return { bestand: neu };
+  return { bestand: neu, fristen };
 }
 
 /* --------------------------------------------------------------------------

@@ -146,7 +146,10 @@ describe("Art. 15: GET /api/auskunft", () => {
     expect((await anfrage("/api/auskunft?person=x1", { token: t })).status).toBe(404);
     /* Die Person sieht in ihrer eigenen Auskunft, dass die Leitung Auskunft erteilt hat (Empfänger). */
     const selbst = await anfrage("/api/auskunft", { token: await sitzung(RAUM, "a1", "mitarbeiter", "m1") });
-    expect(selbst.protokoll.some((r) => r.art === "auskunft" && /durch Leitung · Person a1$/.test(r.zusatz || ""))).toBe(true);
+    /* N-2: nur Rolle, Zeit und Art — keine Kennung, keine Herkunft der Leitung. */
+    const ueberMich = selbst.protokoll.filter((r) => r.art === "auskunft" && r.rolle === "leitung");
+    expect(ueberMich.length).toBeGreaterThan(0);
+    for (const r of ueberMich) expect(Object.keys(r).sort()).toEqual(["art", "rolle", "zeit"]);
   });
 
   it("der Betreiber erstellt keine Auskunft", async () => {
@@ -155,13 +158,16 @@ describe("Art. 15: GET /api/auskunft", () => {
     expect((await anfrage("/api/auskunft?person=a1", { token })).status).toBe(403);
   });
 
-  it("M5: eigene Bremse — nach 30 Auskünften je Stunde und Betrieb ist Schluss", async () => {
+  it("M5: eigene Bremse — nach 30 Auskünften je Stunde und Person ist Schluss, andere Personen bleiben frei", async () => {
     const R = "dsgvo-bremse";
-    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("a1")])] }, { durch: "Pruefung" });
+    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("a1"), person("b1")])] }, { durch: "Pruefung" });
     const t = await sitzung(R, "a1", "mitarbeiter", "m1");
     let letzter;
     for (let i = 0; i < 31; i++) letzter = await anfrage("/api/auskunft", { token: t });
     expect(letzter.status).toBe(429);
+    /* M5-Rest: Eine Person sperrt nicht den Betrieb. */
+    const b = await anfrage("/api/auskunft", { token: await sitzung(R, "b1", "mitarbeiter", "m1") });
+    expect(b.status, JSON.stringify(b).slice(0, 200)).toBe(200);
   }, 60000);
 });
 
@@ -273,7 +279,11 @@ describe("Löschlauf nach Aufbewahrungsfristen auf dem Server", () => {
     const t = await sitzung(R, "l1", "leitung", "m1");
     const g = await anfrage("/api/bestand", { token: t });
     expect(g.status).toBe(200);
-    const w = await anfrage("/api/wiederherstellen", { methode: "POST", token: t, rumpf: { marke, etag: g.etag } });
+    /* Seit N-3 löscht das Zurückspielen nur, wenn der Lauf auf „an" steht. */
+    process.env.CENTRIC_DATENSCHUTZLAUF = "an";
+    let w;
+    try { w = await anfrage("/api/wiederherstellen", { methode: "POST", token: t, rumpf: { marke, etag: g.etag } }); }
+    finally { delete process.env.CENTRIC_DATENSCHUTZLAUF; }
     /* Die Leitung muss frisch angemeldet sein; die Prüfsitzung ist es. */
     expect(w.status, JSON.stringify(w).slice(0, 300)).toBe(200);
     const m = (await B.bestandLesen(laden(), R)).bestand.mandanten[0];
@@ -364,4 +374,90 @@ describe("Spur und Zeitsteuerung", () => {
     expect(quelle).toMatch(/await datenschutzLauf\(/);
     expect(await readFile(path.join(wurzelRepo, ".env.example"), "utf8")).toMatch(/# CENTRIC_DATENSCHUTZLAUF=vorschau/);
   });
+});
+
+describe("Review-Auflagen der Nachprüfung (N-1 bis N-4, M5-Rest)", () => {
+  it("N-1: ein ungültiger Altwert in Betrieb m2 sperrt das Speichern für m1 nicht; eigene ungültige Werte schon", async () => {
+    const R = "dsgvo-n1";
+    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("l1", "leitung")]),
+      betrieb("m2", [person("x1")], { aufbewahrung: { plandatenMonate: 1.5 } })] }, { durch: "Pruefung" });
+    const t = await sitzung(R, "l1", "leitung", "m1");
+    const g = await anfrage("/api/bestand", { token: t });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    b.mandanten[0].name = "Betrieb m1 neu";
+    const p = await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: g.etag } });
+    expect(p.status, JSON.stringify(p).slice(0, 300)).toBe(200);
+    /* Der Altwert bleibt, wie er ist — nie still gelöscht. */
+    expect((await B.bestandLesen(laden(), R)).bestand.mandanten[1].aufbewahrung).toEqual({ plandatenMonate: 1.5 });
+    const g2 = await anfrage("/api/bestand", { token: t });
+    const b2 = JSON.parse(JSON.stringify(g2.bestand));
+    b2.mandanten[0].aufbewahrung = { plandatenMonate: 2.5 };
+    expect((await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b2, etag: g2.etag } })).status).toBe(422);
+    /* Der Lauf überspringt und meldet ihn. */
+    const v = await D.datenschutzLauf(laden(), { jetzt: new Date("2026-11-02T03:00:00Z"), spur: false, modus: "vorschau" });
+    expect(v.fehler.some((f) => f.raum === R && f.betrieb === "m2")).toBe(true);
+  }, 30000);
+
+  it("N-1: Lesen zeigt einen Altwert als Vorgabe; die Oberfläche speichert nur ganze Monate von 1 bis 600", async () => {
+    expect(A.fristen({ aufbewahrung: { plandatenMonate: 1.5, gruendeMonate: 4 } }))
+      .toMatchObject({ plandatenMonate: A.VORGABE.plandatenMonate, gruendeMonate: 4 });
+    expect([A.fristWert(1.5), A.fristWert(0), A.fristWert(-3), A.fristWert(1e9), A.fristWert("x"), A.fristWert("36")])
+      .toEqual([2, 1, 1, 600, 1, 36]);
+    const app = await readFile(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"), "utf8");
+    expect(app).toMatch(/\[k\]: fristWert\(v\)/);
+    expect(app).toMatch(/min=\{FRIST_GRENZEN\.min\} max=\{FRIST_GRENZEN\.max\} step="1"/);
+    expect(app).not.toMatch(/Math\.max\(1, Number\(v\) \|\| 1\)/);
+  });
+
+  it("N-4: Bestätigungen über die Person — selbst ohne Namen der bestätigenden Person, die Leitung in ihrer Sicht", async () => {
+    const R = "dsgvo-n4";
+    const eintrag = (id, pid) => ({ id, personId: pid, datum: "2026-10-05", dienstId: "F", stufe: "achtung",
+      befunde: [{ id: "ruhezeit", stufe: "achtung" }], grundArt: "personal", durch: "Lea Leitung", durchId: "l1",
+      rolle: "leitung", zeit: "2026-10-04T10:00:00.000Z", regelstand: "2026-10" });
+    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1",
+      [person("a1"), person("b1"), person("l1", "leitung")], { bestaetigungen: [eintrag("bs1", "a1"), eintrag("bs2", "b1")] })] },
+    { durch: "Pruefung" });
+    const s = await anfrage("/api/auskunft", { token: await sitzung(R, "a1", "mitarbeiter", "m1") });
+    expect(s.status, JSON.stringify(s).slice(0, 300)).toBe(200);
+    expect(s.bestaetigungen.map((x) => x.id)).toEqual(["bs1"]);
+    expect(s.bestaetigungen[0]).toMatchObject({ stufe: "achtung", rolle: "leitung", datum: "2026-10-05" });
+    expect(s.bestaetigungen[0].durch).toBeUndefined();
+    expect(s.bestaetigungen[0].durchId).toBeUndefined();
+    expect(JSON.stringify(s)).not.toContain("Lea Leitung");
+    expect(s.hinweis).toMatch(/Betriebsrat enthalten keine Einzeldaten/);
+    const l = await anfrage("/api/auskunft?person=a1", { token: await sitzung(R, "l1", "leitung", "m1") });
+    expect(l.bestaetigungen.map((x) => x.id)).toEqual(["bs1"]);
+  });
+
+  it("M5-Rest: die Spur wird je Tag über ein Präfix gelesen, nie als ganze Liste", async () => {
+    const { protokollZurPerson } = await import("../server/lib/auskunft.mjs");
+    const aufrufe = [];
+    const spur = { list: async (o) => { aufrufe.push(o && o.prefix); return { blobs: [] }; }, get: async () => null };
+    await protokollZurPerson(spur, { raumKennung: "s:x", mandantId: "m1", personId: "a1", einBetrieb: true,
+      jetzt: new Date("2026-11-02T12:00:00Z") });
+    expect(aufrufe.length).toBe(31);
+    expect(aufrufe.every((p) => typeof p === "string" && /^\d{4}-\d{2}-\d{2}\/$/.test(p))).toBe(true);
+    expect(aufrufe[0]).toBe("2026-11-02/");
+  });
+
+  it("N-3: Zurückspielen bei Datenschutzlauf „vorschau“ — nichts gelöscht, Fälliges gemeldet", async () => {
+    const R = "dsgvo-n3";
+    await B.bestandSchreiben(laden(), R, { version: 9, mandanten: [betrieb("m1", [person("l1", "leitung"), person("p1")], {
+      einstempeln: { "p1|2023-01-05": { start: "06:00", ende: "14:00" }, "p1|2026-10-01": { start: "06:00" } } })] },
+    { durch: "Pruefung" });
+    const { markeNeu } = await import("../server/lib/sicherungen.mjs");
+    const marke = markeNeu(new Date("2026-10-01T08:00:00Z"));
+    await laden().setJSON(`sicherung:${R}:${marke}`, (await B.bestandLesen(laden(), R)).bestand,
+      { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Leitung" } });
+    const t = await sitzung(R, "l1", "leitung", "m1");
+    const g = await anfrage("/api/bestand", { token: t });
+    process.env.CENTRIC_DATENSCHUTZLAUF = "vorschau";
+    let w;
+    try { w = await anfrage("/api/wiederherstellen", { methode: "POST", token: t, rumpf: { marke, etag: g.etag } }); }
+    finally { delete process.env.CENTRIC_DATENSCHUTZLAUF; }
+    expect(w.status, JSON.stringify(w).slice(0, 300)).toBe(200);
+    expect(w.fristen).toMatchObject({ modus: "vorschau", geloescht: false });
+    expect(w.fristen.faellig).toBeGreaterThan(0);
+    expect((await B.bestandLesen(laden(), R)).bestand.mandanten[0].einstempeln["p1|2023-01-05"]).toBeTruthy();
+  }, 30000);
 });

@@ -912,7 +912,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
         }
 
-        const form = pruefeGestalt(zuSchreiben);
+        const form = pruefeGestalt(zuSchreiben, { vorher: jetzt ? jetzt.bestand : null });
         if (!form.ok) {
           await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
           return antwort({ fehler: "Der Stand sieht unvollständig aus.",
@@ -1222,7 +1222,12 @@ export default async (req, context) => {
        Person sie in ihrer eigenen Auskunft wiederfindet (Empfänger). */
     if (pfad === "auskunft" && req.method === "GET") {
       const kA = kennung(req, s);
-      const bA = await bremse("auskunft", kA);
+      /* Je anfragender Person, nicht je Raum (M5-Rest): Eine Person, die
+         ihre Grenze ausschöpft, sperrt sonst den ganzen Betrieb. Ohne
+         Personenbezug zählt die Rolle der Sitzung. */
+      const wer5 = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
+      const bA = await bremse("auskunft", `${kA}:${createHash("sha256")
+        .update(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer5}`).digest("hex").slice(0, 16)}`);
       if (!bA.frei) return zuVielAntwort(bA.wartet);
       if (s.rolle === "betreiber")
         return antwort({ fehler: "Der Betreiber erstellt keine Auskunft aus einem Betrieb." }, 403);
@@ -1491,7 +1496,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
         }
         w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
-        const form = pruefeGestalt(w.bestand);
+        const form = pruefeGestalt(w.bestand, { vorher: jetztGelesen.bestand });
         if (!form.ok)
           return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
@@ -1512,8 +1517,11 @@ export default async (req, context) => {
             text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
             etag: ergW.stand }, 409);
         }
-        await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}`, wer);
-        return antwort({ ok: true, etag: ergW.stand, marke });
+        /* Was die Fristen dabei bewirkt hätten oder bewirkt haben (N-3) —
+           bei „aus"/„vorschau" nur gemeldet, nichts gelöscht. */
+        await protokoll("schreiben", kW, "erfolg",
+          `wiederhergestellt aus ${marke}${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
+        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
       });
     }
 

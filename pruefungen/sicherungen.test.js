@@ -180,13 +180,41 @@ describe("Wiederherstellen: nur der eigene Betrieb, an seiner Stelle", () => {
     s.mandant.einstempeln = { "b-x|2023-01-05": { start: "06:00", ende: "14:00" }, "b-x|2026-10-01": { start: "06:01" } };
     s.mandant.abwesenheiten = [{ id: "w-alt", personId: "b-x", art: "krank", von: "2026-05-02", bis: "2026-05-03", notiz: "Grippe" },
       { id: "w-neu", personId: "b-x", art: "krank", von: "2026-10-02", bis: "2026-10-03", notiz: "Erkältung" }];
-    const erg = zurueck(jetzt, s);
+    /* Gelöscht wird nur, wenn der Datenschutzlauf auf „an" steht (WP-26, N-3). */
+    const erg = zurueck(jetzt, s, LEITUNG_B, { datenschutz: "an" });
     expect(erg.bestand, JSON.stringify(erg)).toBeTruthy();
     const m = erg.bestand.mandanten[1];
     expect(m.name).toBe("Lindenhof (alt)");
     expect(Object.keys(m.einstempeln)).toEqual(["b-x|2026-10-01"]);
     expect(m.abwesenheiten.find((a) => a.id === "w-alt").notiz).toBe("");
     expect(m.abwesenheiten.find((a) => a.id === "w-neu").notiz).toBe("Erkältung");
+    expect(erg.fristen).toMatchObject({ modus: "an", geloescht: true });
+  });
+  it("N-3: bei Datenschutzlauf „vorschau“ oder „aus“ löscht das Zurückspielen nichts, es meldet nur", () => {
+    for (const modus of ["vorschau", "aus"]) {
+      const jetzt = raum();
+      const s = alteSicherung();
+      s.mandant.einstempeln = { "b-x|2023-01-05": { start: "06:00", ende: "14:00" }, "b-x|2026-10-01": { start: "06:01" } };
+      const erg = zurueck(jetzt, s, LEITUNG_B, { datenschutz: modus });
+      expect(Object.keys(erg.bestand.mandanten[1].einstempeln).sort(), modus).toEqual(["b-x|2023-01-05", "b-x|2026-10-01"]);
+      expect(erg.fristen, modus).toMatchObject({ modus, geloescht: false });
+      expect(erg.fristen.faellig, modus).toBeGreaterThan(0);
+      expect(erg.fristen.text, modus).toMatch(/nicht gelöscht/);
+    }
+  });
+  it("N-3: der Stichtag ist der Tag in Berlin, nicht in UTC", () => {
+    const erg = zurueck(raum(), alteSicherung(), LEITUNG_B,
+      { datenschutz: "an", heute: new Date("2026-12-31T23:30:00Z") });             // Berlin: 1. Januar 2027
+    expect(erg.bestand.mandanten[1].aufbewahrung.zuletztGeraeumt).toBe("2027-01-01");
+  });
+  it("N-1: eine ungültige Altfrist löscht beim Zurückspielen nie — gemeldet statt geräumt", () => {
+    const jetzt = raum();
+    jetzt.mandanten[1].aufbewahrung = { plandatenMonate: 1.5 };
+    const s = alteSicherung();
+    s.mandant.einstempeln = { "b-x|2023-01-05": { start: "06:00", ende: "14:00" } };
+    const erg = zurueck(jetzt, s, LEITUNG_B, { datenschutz: "an" });
+    expect(Object.keys(erg.bestand.mandanten[1].einstempeln)).toEqual(["b-x|2023-01-05"]);
+    expect(erg.fristen.text).toMatch(/Nicht nach Fristen bereinigt/);
   });
   it("eine Sicherung holt keine Rolle zurück, die die Leitung nicht vergeben dürfte", () => {
     const s = alteSicherung();

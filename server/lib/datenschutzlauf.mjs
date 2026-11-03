@@ -59,13 +59,12 @@ import { heuteBerlin } from "./zeiterfassung.mjs";
 
 export const VERMERK = "datenschutzlauf:letzter";
 const TAG_MS = 86400000;
-export const MODI = Object.freeze(["aus", "vorschau", "an"]);
-
-/** Der Modus aus der Umgebung: Vorgabe „vorschau", unbekannte Werte ebenfalls. */
-export function modusAusUmgebung(wert = process.env.CENTRIC_DATENSCHUTZLAUF) {
-  const w = String(wert || "").trim().toLowerCase();
-  return MODI.includes(w) ? w : "vorschau";
-}
+/* Modus und Leser liegen in aufbewahrung.mjs: Auch das Zurückspielen einer
+   Sicherung (sicherungen.mjs) richtet sich danach (N-3), und sicherungen.mjs
+   wird von hier eingebunden — kein Kreis. */
+import { DATENSCHUTZ_MODI, datenschutzModus } from "./aufbewahrung.mjs";
+export const MODI = DATENSCHUTZ_MODI;
+export const modusAusUmgebung = datenschutzModus;
 
 /** Der feste Plan für In-App-Sicherungen. */
 export const SICHERUNGS_PLAN = Object.freeze({ neuesteBehalten: 20, taeglichTage: 14, woechentlichTage: 90, hoechstalterTage: 90 });

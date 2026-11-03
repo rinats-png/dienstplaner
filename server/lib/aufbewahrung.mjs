@@ -122,12 +122,50 @@ export function aufbewahrungFehler(a) {
 /** Die drei Fristen eines Betriebs, mit Voreinstellungen aufgefüllt. */
 export function fristen(m) {
   const a = (m && m.aufbewahrung) || {};
+  /* Nur gültige Werte zählen (ganze Zahl in FRIST_GRENZEN); ein Altwert wie
+     1.5 aus der früheren Oberfläche gilt als „Vorgabe" — angezeigt und
+     gerechnet. Gelöscht wird mit ihm nie: Der Lauf überspringt einen
+     Betrieb mit ungültiger Angabe und meldet ihn (aufbewahrungFehler). */
+  const gueltig = (w) => {
+    const n = Number(w);
+    return Number.isInteger(n) && n >= FRIST_GRENZEN.min && n <= FRIST_GRENZEN.max ? n : null;
+  };
   return {
-    plandatenMonate: Number(a.plandatenMonate) > 0 ? Number(a.plandatenMonate) : VORGABE.plandatenMonate,
-    stammdatenMonate: Number(a.stammdatenMonate) > 0 ? Number(a.stammdatenMonate) : VORGABE.stammdatenMonate,
-    gruendeMonate: Number(a.gruendeMonate) > 0 ? Number(a.gruendeMonate) : VORGABE.gruendeMonate,
+    plandatenMonate: gueltig(a.plandatenMonate) ?? VORGABE.plandatenMonate,
+    stammdatenMonate: gueltig(a.stammdatenMonate) ?? VORGABE.stammdatenMonate,
+    gruendeMonate: gueltig(a.gruendeMonate) ?? VORGABE.gruendeMonate,
     zuletztGeraeumt: a.zuletztGeraeumt || null,
   };
+}
+
+/** Schalter CENTRIC_DATENSCHUTZLAUF: „aus", „vorschau" (Vorgabe) oder „an". */
+export const DATENSCHUTZ_MODI = Object.freeze(["aus", "vorschau", "an"]);
+
+/** Der Modus aus der Umgebung: Vorgabe „vorschau", unbekannte Werte ebenfalls. */
+export function datenschutzModus(wert = typeof process !== "undefined" ? process.env.CENTRIC_DATENSCHUTZLAUF : undefined) {
+  const w = String(wert || "").trim().toLowerCase();
+  return DATENSCHUTZ_MODI.includes(w) ? w : "vorschau";
+}
+
+/** Eine Eingabe der Oberfläche als gültige Frist: ganze Monate, 1 bis 600. */
+export function fristWert(v) {
+  const n = Math.round(Number(v));
+  if (!Number.isFinite(n)) return FRIST_GRENZEN.min;
+  return Math.min(FRIST_GRENZEN.max, Math.max(FRIST_GRENZEN.min, n));
+}
+
+/**
+ * Welche Betriebe haben ihre Aufbewahrungsangabe gegenüber dem
+ * gespeicherten Stand geändert (oder sind neu)? Nur diese prüft das
+ * Speichern streng (gestalt.mjs) — ein ungültiger Altwert in einem anderen
+ * Betrieb desselben Raums sperrt sonst das Speichern für alle (N-1).
+ * @returns {(m: any) => boolean}
+ */
+export function aufbewahrungGeaendert(vorher) {
+  if (!vorher || !Array.isArray(vorher.mandanten)) return () => true;
+  const alt = new Map(vorher.mandanten.filter((m) => m && typeof m === "object")
+    .map((m) => [String(m.id), JSON.stringify(m.aufbewahrung ?? null)]));
+  return (m) => !alt.has(String(m && m.id)) || alt.get(String(m.id)) !== JSON.stringify(m.aufbewahrung ?? null);
 }
 
 /** Die drei Stichtage, ab denen rückwärts gelöscht wird. */
