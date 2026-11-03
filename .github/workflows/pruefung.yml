@@ -213,6 +213,10 @@ jobs:
       - name: Wiederherstellung schützt Verborgenes
         run: npm run pruefung:wiederherstellung-schutz
 
+      # WP-12: Kette A + B zusammen über die Schnittstelle und die Dateiablage (Rundreise je Rolle × Feld).
+      - name: Integrationsabnahme Kette A + B
+        run: npm run pruefung:abnahme-ab
+
       # Preisanzeige: Leitung mit korrekter Preisgrundlage, Planung ohne Preise (B2).
       - name: Preisanzeige nach Rolle
         run: npm run pruefung:preisanzeige
