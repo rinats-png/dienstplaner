@@ -499,6 +499,21 @@ export async function zeitBestaetigen(datum, start, ende, grund) {
 }
 
 /**
+ * Die Ist-Zeit eines gestempelten Tages korrigieren (WP-06) — nur Leitung und
+ * Planung. Der Stempel bleibt unverändert; die Korrektur wird mit Grund als
+ * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
+ * abgeleitete Ist-Zeit (erfassung).
+ */
+export async function stempelKorrektur(personId, datum, start, ende, grund) {
+  const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Korrektur ließ sich nicht speichern.");
+  return d;
+}
+
+/**
  * Einen Zugang zurückziehen. Bis zu dieser Fassung gab es dafür keinen Weg:
  * Codes ließen sich anlegen, aber nie wieder abschalten.
  *

@@ -17,6 +17,7 @@
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
+import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -206,10 +207,20 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
     else delete zurueck[feld];
   }
 
-  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? zurueck : m)) };
+  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine
+     Wiederherstellung nimmt keinen Stempel zurück und setzt keinen auf einen
+     älteren Stand. Was heute gespeichert ist, bleibt — mit Korrekturen und
+     abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat. */
+  const st = stempelBeiWiederherstellung(alt, zurueck);
+  const mitStempeln = st.behalten
+    ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
+      ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }
+    : st.mandant;
+
+  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? mitStempeln : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
-  return { bestand: neu };
+  return { bestand: neu, stempelBehalten: st.behalten };
 }
 
 /* --------------------------------------------------------------------------
