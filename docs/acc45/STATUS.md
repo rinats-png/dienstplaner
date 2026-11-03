@@ -79,8 +79,39 @@ Jeder Merge ist mit vollständiger CI grün (Prüfung, Sicherheit, Betriebstests
 - Lange Dienste (> 10 h) automatisch erlaubt, nur Hinweis.
 - Jugendschutz-Schalter „mehrschichtig“ auch für die Planung.
 
+## WP-19 – Statusstufen je Modul
+
+Stand 2026-11-03. Pläne: [`WP19-MODULPLAN.md`](WP19-MODULPLAN.md) (Stand, Lücken, Pakete WP-19.0–19.13, Aufwand 63–98 PT,
+kritischer Pfad) und [`WP19-OFFENE-FACHNACHWEISE.md`](WP19-OFFENE-FACHNACHWEISE.md) (Prüfvorbehalte, Blocker).
+Entscheidungen: [`WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md`](WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md).
+
+Stufen: (1) implementiert · (2) lokal getestet · (3) unabhängig reviewed · (4) integriert · (5) Staging fachlich
+geprüft · (6) rechtlich/fachlich freigegeben · (7) produktiv. „T“ = nur Server-Teilumfang (Kernlogik, Schreibweg, Sicht,
+Unit-Tests), nicht der entschiedene Gesamtumfang. Alle zwölf Module stehen in der Registry auf `geplant`
+(nicht einschaltbar) – keines gilt als geliefert.
+
+| Modul | (1) | (2) | (3) | (4) | (5) | (6) | (7) | Integration |
+|---|---|---|---|---|---|---|---|---|
+| 1 Posten | T | T | T | T | | | | #49 |
+| 2 Wachbuch | | | | | | | | – |
+| 3 Objektbericht | | | | | | | | – |
+| 4 Bereichsplan | T | T | T | T | | | | #49 |
+| 5 Pflegequalifikation | | | | | | | | – |
+| 6 Bereitschaftsdienst | | | | | | | | – |
+| 7 Geteilter Dienst | T | T | T | T | | | | #49 |
+| 8 Funktionsdienst | | | | | | | | – |
+| 9 Rotation | | | | | | | | – |
+| 10 Anlagen | T | T | T | T | | | | #44 |
+| 11 Maschinenqualifikation | T | T | T | T | | | | #44 |
+| 12 Kontinuierliche Schichtmodelle | T | T | T | T | | | | #44 |
+
+Gemeinsamer Kern (Registry, Aktivierung, Branchenkatalog, Andockpunkte): Stufen 1–4 (#44). Es fehlen u. a.
+Aktivierungsoberfläche, Mitbestimmungsbestätigung (G6), betriebliche Regelwerte mit Metadaten und das Einhängen der
+Modul-Oberflächen in `src/App.jsx` (Paket WP-19.0).
+
 ## Release-Risiken
 
 - Personaldaten-Filter in Produktion erst mit dem Integrationsstand (bis dahin keine echten Beschäftigtendaten).
-- WP-19 (25 PT) ohne fachliche Kriterien nicht abnahmefähig.
+- WP-19 (25 PT) ohne fachliche Kriterien nicht abnahmefähig. Seit 2026-11-03 entschieden; Neuschätzung laut
+  Modulplan 63–98 PT, Blocker der Produktivfreigabe in `WP19-OFFENE-FACHNACHWEISE.md`.
 - Echte Geräte und externer Pentest sind nicht von Agenten erbringbar.
