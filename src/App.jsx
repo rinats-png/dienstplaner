@@ -8,7 +8,7 @@ import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGAB
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
-  einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
+  einteilungsBefunde, schutzkonflikteSchritte } from "../server/lib/fachpruefung.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -2682,34 +2682,36 @@ function bestaetigungVermerken(m, best, wer, aktion) {
  * bleiben sichtbar (Startseite, Monatsplan), bis umgeplant ist. Gerechnet für
  * Personen mit Schutzangaben oder Einsatzregeln: die Schichtfolge ein Jahr
  * voraus, ausdrückliche Einteilungen für den ganzen künftigen Zeitraum.
- * Schlüssel „personId|Datum".
+ * Schlüssel „personId|Datum". Die Rechnung steht in schutzkonflikteSchritte
+ * (server/lib/fachpruefung.mjs) — dieselbe Quelle wie Server und Einsatzregeln.
  */
-function offeneSchutzkonflikte(m) {
-  const d0 = heute();
-  return memo(m, `schutzkonflikte|${d0}`, () => {
-    const aus = new Map();
-    const bis = addDays(d0, 365);
-    const relevant = m.personen.filter((p) => p.mutterschutz || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
-      || (() => { const a = alterAm(p.geburtstag || p.geburtsdatum, d0); return a !== null && a < 18; })());
-    if (!relevant.length) return aus;
-    const daNach = new Map(m.dienstarten.map((x) => [x.id, x]));
-    const pruefe = (p, d) => {
-      const t = personTag(m, p, d);
-      if (!t.dienstId || t.abwesenheit || !imDienst(p, d)) return;
-      const da = daNach.get(t.dienstId);
-      if (!da || !da.start || !da.ende) return;
-      if (schutzEinsatz(p, da, d, m.einstellungen).some((b) => b.sperrt)) aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
-    };
-    for (const p of relevant) {
-      for (let d = d0; d <= bis; d = addDays(d, 1)) pruefe(p, d);
-      for (const k of Object.keys(m.abweichungen || {})) {
-        if (!k.startsWith(`${p.id}|`)) continue;
-        const d = k.slice(k.lastIndexOf("|") + 1);
-        if (d > bis) pruefe(p, d);
-      }
-    }
-    return aus;
-  });
+/** Der Plan der Oberfläche für die Konfliktrechnung (personTag, Abwesenheit frei). */
+const schutzkonfliktPlan = (m) => ({ heute: heute(),
+  dienstAm: (p, d) => { const t = personTag(m, p, d); return t.abwesenheit ? null : t.dienstId; } });
+
+/**
+ * Offene Schutzkonflikte für eine Ansicht (Nachtrag WP-22b): entprellt
+ * (250 ms nach der letzten Änderung) und in Häppchen gerechnet
+ * (schutzkonflikteSchritte, höchstens SCHUTZKONFLIKT_HAEPPCHEN_MS am Stück),
+ * damit der Plan beim Bearbeiten nicht ruckelt. Bis das Ergebnis da ist,
+ * gilt das vorige.
+ */
+function useSchutzkonflikte(m) {
+  const [ergebnis, setErgebnis] = useState(() => new Map());
+  useEffect(() => {
+    let vorbei = false;
+    const uhr = setTimeout(() => {
+      const it = schutzkonflikteSchritte(m, schutzkonfliktPlan(m));
+      const weiter = () => {
+        if (vorbei) return;
+        const r = it.next();
+        if (r.done) setErgebnis(r.value); else setTimeout(weiter, 0);
+      };
+      weiter();
+    }, 250);
+    return () => { vorbei = true; clearTimeout(uhr); };
+  }, [m]);
+  return ergebnis;
 }
 
 /**
@@ -8966,7 +8968,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
-  const schutzkonflikte = useMemo(() => offeneSchutzkonflikte(m), [m]);
+  const schutzkonflikte = useSchutzkonflikte(m);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -15665,6 +15667,7 @@ function Datenmitnahme({ sitz, akt }) {
 function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
+  const schutzkonflikte = useSchutzkonflikte(m);                  // entprellt, in Häppchen (Nachtrag WP-22b)
   const [alles, setAlles] = useState(false);
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -15733,7 +15736,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
     /* Offene Schutzkonflikte (A2): eine Pflichtaufgabe für Planung und Leitung,
        bis umgeplant ist — vor allem anderen. */
     if (darf(sitz, "pattern.edit") || darf(sitz, "org.edit")) {
-      const sk = [...offeneSchutzkonflikte(m).values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
+      const sk = [...schutzkonflikte.values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
       if (sk.length)
         l.unshift({ id: "schutzkonflikt", zahl: sk.length, einheit: sk.length === 1 ? "Einteilung" : "Einteilungen",
           titel: "Widersprechen einer Schutz- oder Einsatzregel",
@@ -15742,7 +15745,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
     }
     const rang = { danger: 0, warn: 1, accent: 2 };
     return l.sort((a, b) => rang[a.ton] - rang[b.ton]).slice(0, 3);
-  }, [m, p.id, sitz]);
+  }, [m, p.id, sitz, schutzkonflikte]);
 
   const rest = aufgaben.filter((a) => !oben.some((o) => o.id === a.art || o.id === a.ziel));
   const ton = (t) => t === "danger" ? C.danger : t === "warn" ? C.warn : C.accent;

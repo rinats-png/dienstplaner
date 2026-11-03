@@ -26,7 +26,7 @@
    Rein: keine Ablage, kein Datum von außen außer `heute`.
    ========================================================================== */
 import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schutzpruefung.mjs";
-import { pad, pISO, addDays, dow, toMin, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
+import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 
@@ -287,4 +287,77 @@ export function mindestOhneFeiertag(da, d) {
   const w = dow(d);
   const wert = w === 6 ? md.so : w === 5 ? md.sa : w === 4 ? md.fr : md.mo_do;
   return Number(wert) || 0;
+}
+
+/* ------------------------------------------------------------------------
+   OFFENE SCHUTZKONFLIKTE (Nachprüfung 948a4ba A2; Nachtrag WP-22b)
+
+   Künftige Einteilungen, denen eine harte Schutz- oder Einsatzregel der
+   Person widerspricht — dazu die Einschränkung „keine Nacht“ mit dem
+   Nachtfenster des Betriebs (dieselbe Quelle wie die Einsatzregel
+   keinNachtdienst der Schichtverantwortung und keineNacht des Servers).
+   Die Oberfläche rechnet sie im Hauptthread: deshalb ein Generator, der
+   nach höchstens SCHUTZKONFLIKT_HAEPPCHEN_MS nachgibt, und Abweichungen je
+   Person einmal vorindiziert. Schichtfolge ein Jahr voraus, ausdrückliche
+   Einteilungen ohne Grenze.
+   ------------------------------------------------------------------------ */
+export const SCHUTZKONFLIKT_HAEPPCHEN_MS = 12;
+
+/**
+ * @param {any} m Betrieb
+ * @param {{ heute: string, dienstAm: (p: any, d: string) => any, abwesend?: (p: any, d: string) => boolean, tageVoraus?: number }} k
+ *   dienstAm: Kennung des Dienstes am Tag (Oberfläche: personTag)
+ * @returns {Generator<void, Map<string, { person: any, datum: string, da: any }>, void>}
+ */
+export function* schutzkonflikteSchritte(m, k) {
+  const aus = new Map();
+  const d0 = k.heute;
+  const bis = addDays(d0, k.tageVoraus || 365);
+  const einst = (m && m.einstellungen) || {};
+  const keineNacht = (p) => !!(p.einschraenkungen && typeof p.einschraenkungen === "object" && p.einschraenkungen.keineNacht === true);
+  const relevant = liste(m && m.personen).filter((p) => p.mutterschutz || keineNacht(p)
+    || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
+    || (() => { const g = p.geburtstag || p.geburtsdatum; if (!g) return false; const a = between(g, d0) / 365.25; return a < 19; })());
+  if (!relevant.length) return aus;
+  const ids = new Set(relevant.map((p) => String(p.id)));
+  /* Abweichungen je Person: ein Durchlauf statt eines Schlüssels je Person und Tag. */
+  const abw = new Map();
+  const quelle = m.abweichungen && typeof m.abweichungen === "object" ? m.abweichungen : {};
+  let t = performance.now();
+  let n = 0;
+  for (const key in quelle) {
+    if ((++n & 63) === 0 && performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS) { yield; t = performance.now(); }
+    const i = key.lastIndexOf("|");
+    const pid = key.slice(0, i);
+    if (!ids.has(pid)) continue;
+    if (!abw.has(pid)) abw.set(pid, []);
+    abw.get(pid).push(key.slice(i + 1));
+  }
+  const daNach = new Map(liste(m.dienstarten).map((x) => [String(x.id), x]));
+  const pruefe = (p, d) => {
+    if (!imDienst(p, d) || (k.abwesend && k.abwesend(p, d))) return;
+    const id = k.dienstAm(p, d);
+    if (!id) return;
+    const da = daNach.get(String(id));
+    if (!da || !da.start || !da.ende) return;
+    if (schutzEinsatz(p, da, d, einst).some((b) => b.sperrt)
+      || (keineNacht(p) && nachtAnteil(da, einst) >= nachtschwelle(einst)))
+      aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
+  };
+  for (const p of relevant) {
+    for (let d = d0; d <= bis; d = addDays(d, 1)) {
+      pruefe(p, d);
+      if ((++n & 3) === 0 && performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS) { yield; t = performance.now(); }
+    }
+    for (const d of abw.get(String(p.id)) || []) if (d > bis) pruefe(p, d);
+  }
+  return aus;
+}
+
+/** Synchron zu Ende rechnen (Prüfungen). */
+export function schutzkonflikteSofort(m, k) {
+  const it = schutzkonflikteSchritte(m, k);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
 }
