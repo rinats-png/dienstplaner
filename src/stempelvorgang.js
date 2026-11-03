@@ -123,6 +123,7 @@ export const MARKIERUNG_TEXT = Object.freeze({
   GERAETEZEIT_ABWEICHEND: "Uhr des Geräts wich ab — Zeit zur Prüfung",
   OFFLINE_ALT: "offline erfasst, über 48 Stunden alt — zur Prüfung",
   OFFLINE_PRUEFEN: "offline gestempelt — Ist-Zeit zur Prüfung",
+  DAUER_NULL: "Beginn gleich Ende — Zeiten über die Korrektur eintragen",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });
 

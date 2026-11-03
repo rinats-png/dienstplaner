@@ -492,6 +492,17 @@ describe("Nachprüfung B1: Beginn gleich Ende ist nie automatisch bestätigt", (
     expect([r.std, r.zurPruefung]).toEqual([8, true]);
   });
 
+  it("Dauer 0 ohne geplanten Dienst: DAUER_NULL geht vor ungeplant (bestätigt zählte sonst 24 h)", async () => {
+    await raumAnlegen("b1-ungeplant", ["a1"]);
+    zeitAuf("2026-11-10T05:00:10Z");
+    await stempeln("b1-ungeplant", "a1", { art: "start", clientEventId: ID(208) });
+    zeitAuf("2026-11-10T05:00:40Z");
+    const e = await stempeln("b1-ungeplant", "a1", { art: "ende", clientEventId: ID(209) });
+    expect(e.erfassung.bestaetigt).toBe(false);
+    expect(e.erfassung.grund).toMatch(/^DAUER_NULL/);
+    expect(e.markierungen).toEqual(expect.arrayContaining(["UNGEPLANTER_DIENST", "DAUER_NULL"]));
+  });
+
   it("echter 24-h-Dienst 07:00–07:00 mit Pause: kein Dauer-0-Alarm; über den Korrekturweg zählt er 23,5 h", async () => {
     await raumAnlegen("b1-24h", [], { abweichungen: { "a1|2026-11-10": "D24" },
       personen: [person("a1"), { ...person("l1"), rolle: "leitung" }],

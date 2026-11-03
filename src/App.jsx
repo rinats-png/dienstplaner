@@ -11829,12 +11829,16 @@ function StempelBefunde({ sitz, ym, akt }) {
           {pruef.map(({ personId, datum, erfassung }) => (
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
-              <Pill size="sm" tone="warn">{String(erfassung.grund || "").startsWith("OFFLINE_PRUEFEN") ? MARKIERUNG_TEXT.OFFLINE_PRUEFEN
+              <Pill size="sm" tone="warn">{String(erfassung.grund || "").startsWith("DAUER_NULL") ? MARKIERUNG_TEXT.DAUER_NULL
+                : String(erfassung.grund || "").startsWith("OFFLINE_PRUEFEN") ? MARKIERUNG_TEXT.OFFLINE_PRUEFEN
                 : istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
               {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
                 <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
-              {darfBestaetigen && akt && String(personId) !== eigene && (
-                <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
+              {/* Dauer 0 (Nachprüfung B1): nicht „wie gestempelt" bestätigen — 06:00–06:00 zählte als 24 Stunden;
+                  die Zeiten trägt die Leitung über die Korrektur ein. */}
+              {darfBestaetigen && akt && String(personId) !== eigene && (String(erfassung.grund || "").startsWith("DAUER_NULL")
+                ? <span style={{ fontSize: 12.5, color: C.dim }}>Zeiten über „Korrigieren“ eintragen</span>
+                : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
         </div>)}
       <KorrekturAntraege sitz={sitz} akt={akt} />
@@ -23221,7 +23225,8 @@ function AppInnen() {
          gestempelte Zeit — seit WP-06 als Korrekturereignis mit Grund. */
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
-        if (!e) return;
+        /* Dauer 0 nie unverändert bestätigen (Nachprüfung B1). */
+        if (!e || String(e.grund || "").startsWith("DAUER_NULL")) return;
         return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {

@@ -103,7 +103,8 @@ export function zeitraumJahr(jahr) {
  * Offline-Stempel, der spät einging oder dessen Geräteuhr abwich (OFFLINE_PRUEFEN, WP-07).
  */
 export const zurPruefung = (e) => !!e && e.bestaetigt === false
-  && ((typeof e.grund === "string" && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN")))
+  && ((typeof e.grund === "string" && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN")
+    || e.grund.startsWith("DAUER_NULL")))
     || e.ungeplant === true);
 
 /** Ein Dienst, der gestempelt wurde, ohne dass an diesem Tag einer geplant war (WP-13). */

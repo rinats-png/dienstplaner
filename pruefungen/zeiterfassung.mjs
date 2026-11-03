@@ -138,8 +138,12 @@ pruef("/api/stempeln heute Ende: 200", sEnde.status === 200, `Status ${sEnde.sta
 const sNochmal = await rufe(tA, "stempeln", "POST", { datum: HEUTE, art: "start" });
 pruef("/api/stempeln zweites Einstempeln am selben Tag: 409, nichts überschrieben",
   sNochmal.status === 409 && sNochmal.code === "STEMPEL_SCHON_EINGESTEMPELT", `Status ${sNochmal.status}`);
+/* Beginn und Ende liegen hier meist in derselben Minute: Dauer 0 ist seit der WP-07-Nachprüfung (B1) nie
+   automatisch bestätigt (06:00–06:00 zählte sonst als 24 Stunden), sondern DAUER_NULL zur Prüfung. */
+const erfassungStimmt = (e) => !!e && (e.start === e.ende
+  ? e.bestaetigt === false && String(e.grund).startsWith("DAUER_NULL") : e.bestaetigt === true);
 pruef("/api/stempeln liefert den gespeicherten Eintrag", sEnde.eintrag && sEnde.eintrag.geprueftEnde !== undefined
-  && sEnde.erfassung && sEnde.erfassung.bestaetigt === true);
+  && erfassungStimmt(sEnde.erfassung));
 /* Seit WP-17 (B7) bestimmt der Server den Tag. Ein Gerätedatum wird
    angenommen und ignoriert (abweichend: Markierung GERAETEDATUM_ABWEICHEND),
    nie abgelehnt. Morgen, vor fünf Tagen oder gestern ergibt deshalb keinen
@@ -207,7 +211,7 @@ const stempelNachher = (await lies(tL)).bestand.mandanten[0].einstempeln;
 pruef("Nach allen Angriffen: Zeiterfassung unverändert", JSON.stringify(nachher) === JSON.stringify(vorher),
   `${Object.keys(vorher).length} → ${Object.keys(nachher).length} Einträge`);
 pruef("… Stempeluhr unverändert", JSON.stringify(stempelNachher) === JSON.stringify(stempelVorher));
-pruef("… gestempelte Zeit vom Server bestätigt", nachher[`a1|${HEUTE}`] && nachher[`a1|${HEUTE}`].bestaetigt === true
+pruef("… gestempelte Zeit vom Server bestätigt (bzw. Dauer 0 zur Prüfung)", erfassungStimmt(nachher[`a1|${HEUTE}`])
   && stempelNachher[`a1|${HEUTE}`].geprueftStart !== undefined);
 
 /* --- Protokoll: die Selbstauskünfte stehen eigens darin --- */

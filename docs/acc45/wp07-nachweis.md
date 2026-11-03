@@ -197,8 +197,10 @@ Siehe Abschnitt „CI-Läufe“ am Ende.
   - Schalten darf nur `org.edit`; Wann und Wer setzt der Server. Karte „Stempeln ohne Netz“ in den Einstellungen.
   - Er lockert nur die 15-min-Regel. Eine abweichende Uhr und Stempel über 48 h bleiben zur Prüfung.
 
-  Restrisiko: Fälschungen unter 15 min (Ankunft 06:10, gemeldet 06:00) bleiben unerkannt und tragen nur
-  `OFFLINE_ERFASST`.
+  **Restrisiko:** Fälschungen unter 15 min bleiben unerkannt und tragen nur `OFFLINE_ERFASST`.
+  - Beispiel: Ankunft 06:10, gemeldet 06:00.
+  - Bei Beginn und Ende je knapp unter der Grenze sind das bis zu rund 20 min am Tag.
+  - Sichtbar ist es nur über das Kennzeichen in den Stempelbefunden.
 - **Absagen ohne Journal:** Idempotent ist der Erfolg, denn die Kennung steht im Stempel. Eine Absage, z. B. 409
   „schon eingestempelt“, wird nicht gespeichert. Eine Wiederholung nach verlorener Absage wird neu bewertet.
   - Ein zweiter Stempel ist damit ausgeschlossen: Die Kennungsprüfung kommt zuerst, und abgelehnte Ereignisse sendet
@@ -217,8 +219,9 @@ Siehe Abschnitt „CI-Läufe“ am Ende.
   - Beim Abmelden fragt die Anwendung nach, wenn Stempel warten (`abmeldenMitHinweis`).
   - Bestätigtes wird beim Abmelden entfernt (`offlineDatenLoeschen` → `abmeldenAufraeumen`).
   - Rohkoordinaten werden nach Quittung oder Absage aus dem Puffer gelöscht.
-  - Abgelehnte Ereignisse behalten Zeit und Grund (nie still verloren) und haben keinen Standort mehr. „Erneut senden“
-    schickt sie deshalb ohne Standort (Geo-Urteil „nicht bewertbar“).
+  - Abgelehnte Ereignisse behalten Zeit und Grund (nie still verloren) und haben keinen Standort mehr.
+  - „Erneut senden“ schickt sie **bewusst ohne Koordinaten**. Das Geo-Urteil ist dann „nicht bewertbar“; der
+    Datenschutz (H8+) geht hier vor der Ortsprüfung.
 - **Idempotenzfenster:** gesucht ab `min(heute − 14, Ereignistag) − 2`. Ein Ereignis, das nach mehr als 14 Tagen mit
   einer **anderen** Erfassungszeit wiederholt würde, fände seinen Stempel nicht. Der Puffer schickt aber immer dieselbe
   Erfassungszeit.
@@ -270,6 +273,53 @@ Nachher lokal:
 - `tsc` sauber.
 
 Mutanten Idempotenz und A1 nach dem Merge erneut: 6 bzw. 4 rot.
+
+## Nachprüfung (Opus), Blocker B1: Dauer 0
+
+**Befund:** Die L3-Klemme ergab Beginn = Ende (06:00–06:00), automatisch bestätigt.
+- `regelwerk.dauerAm` liest Ende ≤ Beginn als „über Mitternacht“ und zählt 1440 min dazu.
+- `istZeitFuer` ergab deshalb 23,5 h statt 0.
+- Dieselbe Ursache hatte ein bestehender Fehler (R16): Beginn und Ende online in derselben Minute.
+
+**Umsetzung:**
+- `daten.mjs`: Eine Ist-Zeit mit gemessener Dauer ≤ 0 Minuten bekommt die Markierung `DAUER_NULL`. Gemessen wird am
+  eindeutigen Zeitpunkt `startAm` bis Ende (`offenSeitMinuten`), nicht an den Uhrzeiten.
+  - Die Erfassung ist `bestaetigt: false` mit Grund `DAUER_NULL: …`. Das gilt auch vor „ungeplant“, denn bestätigt
+    zählte sie sonst als 24 h.
+- `istdaten.zurPruefung` kennt `DAUER_NULL`: Das Konto zählt bis zur Klärung die Planzeit, mit Hinweis.
+- In den Stempelbefunden gibt es für `DAUER_NULL` kein „Bestätigen“, sondern den Verweis auf „Korrigieren“.
+  `langerDienstBestaetigen` lehnt den Fall ab, denn eine unveränderte Bestätigung zählte wieder 24 h.
+- **Echte 24-h-Dienste** haben am Zeitpunkt gemessen 1440 min, nie 0, also keinen Fehlalarm.
+  - Gestempelt liegen sie über der 20-h-Zuordnung (WP-17, B6.3).
+  - Über die Korrektur 07:00–07:00 mit Pause 30 zählen sie 23,5 h. Getestet.
+- **Empfehlung umgesetzt:** Eine Erfassungszeit nach dem Eingang wird ohne Toleranz auf den Eingang geklemmt.
+  Markiert wird ab 5 min.
+
+**Tests:** `offline-stempeln.test.js`, Rot-Commit db760b2 (auf 8c66420: 3 rot).
+- Neue Fälle mit `istZeitFuer` (Stunden): L3-Fall und R16 ergeben 8 h Planzeit und `zurPruefung`, nicht 23,5 h.
+- Dauer 0 ohne Plan: `DAUER_NULL` vor ungeplant.
+- 24-h-Dienst über Korrektur: 23,5 h.
+- Zukunft +3 min wird auf den Eingang geklemmt.
+
+**Mutanten:**
+
+| Mutante | rot |
+|---|---|
+| Dauer-0-Prüfung entfernt | 3 |
+| Dauer 0 nach ungeplant | 1 |
+| Zukunft mit Toleranz | 1 |
+| `zurPruefung` ohne `DAUER_NULL` | 2 |
+
+**Angepasste bestehende Prüfungen** (sie hielten R16 fest):
+- `stempeln.test.js` B;
+- `geo.test.js` „innerhalb … Erfassung“ und „Tagdienst“;
+- `pruefungen/zeiterfassung.mjs` (2 Prüfungen).
+
+Dort stempeln Beginn und Ende im Testlauf meist in derselben Minute. Sie erwarten jetzt bei gleicher Uhrzeit
+`bestaetigt: false` mit Grund `DAUER_NULL`, sonst wie bisher `bestaetigt: true`.
+
+Nicht abgeschwächt: Der alte Erwartungswert war der Fehler (06:00–06:00 bestätigt = 23,5 h). „Quelltext: keine eigene
+Ortsprüfung“ in `geo.test.js` ist unverändert.
 
 ## CI-Läufe
 

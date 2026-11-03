@@ -430,7 +430,7 @@ export function langerDienstGrenze(m, person, datum) {
        • Fehlt gesendetAm oder ist erfasstAm kein Zeitpunkt: markiert; ohne
          lesbare Erfassungszeit gilt der Eingang.
        • Nie in der Zukunft: Liegt die (berichtigte) Erfassungszeit nach dem
-         Eingang (+ UHR_TOLERANZ_MS), gilt der Eingang, markiert.
+         Eingang, gilt der Eingang; ab UHR_TOLERANZ_MS darüber markiert.
        • Älter als OFFLINE_MAX_ALTER_MS: gespeichert, als OFFLINE_ALT markiert
          — zur Prüfung durch die Leitung, nie abgelehnt. Datenverlust ist
          schlimmer als ein Prüffall.
@@ -505,7 +505,10 @@ export function stempelEreignis(rumpf, eingang = new Date()) {
   else if (versatz === null) { abweichend(); zeit = erfasst; }
   else if (Math.abs(versatz) > UHR_TOLERANZ_MS) { abweichend(); zeit = erfasst + versatz; }
   else zeit = erfasst;
-  if (zeit > ein + UHR_TOLERANZ_MS) { abweichend(); zeit = ein; }
+  /* Nie in der Zukunft (Nachprüfung): Was nach dem Eingang liegt, gilt als
+     Eingang — ohne Toleranz. Markiert wird erst ab UHR_TOLERANZ_MS; darunter
+     ist es ehrlicher Uhrversatz. */
+  if (zeit > ein) { if (zeit > ein + UHR_TOLERANZ_MS) abweichend(); zeit = ein; }
   if (ein - zeit > OFFLINE_MAX_ALTER_MS) markierungen.push("OFFLINE_ALT");
   /* Nur geprüfte Zeitpunkte werden gespeichert, nie die Rohangabe (Review L4). */
   const info = { offline: true,

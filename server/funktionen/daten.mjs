@@ -1296,6 +1296,15 @@ export default async (req, context) => {
           const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
           const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
           if (langerDienst) markieren("LANGER_DIENST");
+          /* Nachprüfung B1: Beginn und Ende in derselben Minute (oder ein auf den
+             Beginn geklemmtes Ende) ergeben Dauer 0. Als Uhrzeiten gespeichert
+             hieße das 06:00–06:00, und die Stundenrechnung (regelwerk dauerAm)
+             liest Ende ≤ Beginn als „über Mitternacht" — 24 Stunden. Gemessen
+             wird am eindeutigen Zeitpunkt (startAm), ein echter 24-h-Dienst hat
+             1440 Minuten, nie 0. Eine solche Ist-Zeit ist nie automatisch
+             bestätigt (DAUER_NULL), die Leitung trägt sie über die Korrektur ein. */
+          const dauerNull = dauerMin !== null && dauerMin <= 0;
+          if (dauerNull) markieren("DAUER_NULL");
           /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
              es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
              Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
@@ -1333,7 +1342,11 @@ export default async (req, context) => {
           const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
           if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: ungeplant
+              /* Dauer 0 vor ungeplant: Bestätigt würde 06:00–06:00 als 24 Stunden zählen. */
+              [k]: dauerNull
+                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                  grund: "DAUER_NULL: Beginn und Ende in derselben Minute — Zeiten bitte über die Korrektur eintragen" }
+                : ungeplant
                 ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
                   grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
                 : langerDienst

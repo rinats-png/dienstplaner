@@ -136,7 +136,12 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     const m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(a.eintrag);
     expect(m.erfassung[`a1|${HEUTE}`]).toEqual(a.erfassung);
-    expect(a.erfassung).toMatchObject({ bestaetigt: true, start: a.eintrag.start, ende: a.eintrag.ende });
+    /* Beginn (A) und Ende (B) liegen hier meist in derselben Minute: Dauer 0 ist seit der WP-07-Nachprüfung (B1)
+       nie automatisch bestätigt (06:00–06:00 zählte sonst als 24 Stunden). Über eine Minutengrenze: bestätigt. */
+    if (a.eintrag.start === a.eintrag.ende) {
+      expect(a.erfassung).toMatchObject({ bestaetigt: false, start: a.eintrag.start, ende: a.eintrag.ende });
+      expect(a.erfassung.grund).toMatch(/^DAUER_NULL/);
+    } else expect(a.erfassung).toMatchObject({ bestaetigt: true, start: a.eintrag.start, ende: a.eintrag.ende });
   });
   it("E. Wiederholung: zweites Ein- oder Ausstempeln 409, nichts überschrieben", async () => {
     const vorher = await stand();
