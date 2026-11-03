@@ -20,9 +20,10 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
-  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
-import { abweichungenSchutzPruefen, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { schutzpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -780,8 +781,9 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
    JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
    Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
-   Sie lockert eine Schutzprüfung — setzen darf sie deshalb nur, wer org.edit
-   hat (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Wert.
+   Sie lockert eine Schutzprüfung — setzen darf sie, wer org.edit oder
+   pattern.edit hat (Leitung, Kundenrolle, Planung; Nutzerentscheidung); für
+   alle anderen bleibt der gespeicherte Wert.
    Gespeichert wird nur { mehrschichtig: boolean } und, vom Server, wann und
    von wem zuletzt geändert; alles andere weist der Server ab. */
 const JUGENDSCHUTZ_FELDER = ["mehrschichtig"];
@@ -797,7 +799,7 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   };
   const wert = (j) => !!(j && typeof j === "object" && j.mehrschichtig === true);
   if (neu === alt || gleich(neu, alt)) return behalten();
-  if (!darf(rolle, "org.edit")) return behalten();
+  if (!darf(rolle, "org.edit") && !darf(rolle, "pattern.edit")) return behalten();
   if (neu === null || neu === undefined) { delete e.jugendschutz; return { mandant: { ...neuM, einstellungen: e } }; }
   if (typeof neu !== "object" || Array.isArray(neu)
     || Object.keys(neu).some((k) => !JUGENDSCHUTZ_FELDER.includes(k) && k !== "geaendertAm" && k !== "geaendertVon")
@@ -807,6 +809,60 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   e.jugendschutz = { mehrschichtig: neu.mehrschichtig, geaendertAm: new Date().toISOString(),
     geaendertVon: sitzung.person === undefined ? null : sitzung.person };
   return { mandant: { ...neuM, einstellungen: e } };
+}
+
+/* Einwilligungen nach dem Mutterschutzgesetz an der Person (Nutzerentscheidung,
+   WP-11): § 5 Abs. 2 (Art „nacht", 20–22 Uhr) und § 6 Abs. 1 (Art „sonntag"),
+   Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor" (§ 28).
+   Schreiben nur die Rollen, die Schutzmerkmale schreiben (Planung, Leitung,
+   Kundenrolle — der volle Schreibumfang; alle anderen bekommen das Feld nicht
+   und füllen es aus dem gespeicherten Stand). Der Server prüft die Form und
+   setzt an jedem neuen oder geänderten Eintrag, wann und von wem. */
+const EINWILLIGUNG_FELDER = ["art", "ab", "bis", "genehmigung", "geaendertAm", "geaendertVon"];
+/** @returns {{ grund?: string, mandant?: any }} */
+function einwilligungenZusammen(altM, neuM, sitzung) {
+  if (!neuM || !Array.isArray(neuM.personen)) return { mandant: neuM };
+  const alt = new Map((altM && Array.isArray(altM.personen) ? altM.personen : []).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p]));
+  const grund = "Einwilligungen (Mutterschutz): erwartet wird eine Liste aus { art: \"nacht\" oder \"sonntag\", ab, bis (Pflicht, nicht vor ab), genehmigung }.";
+  const istTag = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+  let fehler = null;
+  const personen = neuM.personen.map((p) => {
+    if (fehler || !p || typeof p !== "object" || !Object.prototype.hasOwnProperty.call(p, "mutterschutzEinwilligungen")) return p;
+    const a = alt.get(String(p.id));
+    const vorher = a && Array.isArray(a.mutterschutzEinwilligungen) ? a.mutterschutzEinwilligungen : [];
+    const l = p.mutterschutzEinwilligungen;
+    if (l === null || (Array.isArray(l) && !l.length)) { const q = { ...p }; if (vorher.length) q.mutterschutzEinwilligungen = []; else delete q.mutterschutzEinwilligungen; return q; }
+    if (gleich(l, vorher)) return p;
+    if (!Array.isArray(l) || l.length > 20) { fehler = grund; return p; }
+    const sauber = [];
+    for (const e of l) {
+      if (!e || typeof e !== "object" || Array.isArray(e) || Object.keys(e).some((k) => !EINWILLIGUNG_FELDER.includes(k))
+        || !EINWILLIGUNG_ARTEN.includes(e.art) || !istTag(e.ab)
+        || !(istTag(e.bis) && e.bis >= e.ab)                                   // Ende Pflicht (Review N1)
+        || !(e.genehmigung === undefined || typeof e.genehmigung === "boolean")) { fehler = grund; return p; }
+      const kern = { art: e.art, ab: e.ab, bis: e.bis || null, ...(e.genehmigung ? { genehmigung: true } : {}) };
+      const gleicherAlter = vorher.find((v) => v && v.art === kern.art && v.ab === kern.ab && (v.bis || null) === kern.bis && !!v.genehmigung === !!kern.genehmigung);
+      /* Nicht rückwirkend (Nachprüfung 9717ddf): Eine neue Einwilligung beginnt frühestens heute;
+         ein bestehender Beginn darf bleiben (etwa beim Verlängern), aber nicht vorverlegt werden. */
+      if (!gleicherAlter && kern.ab < heuteBerlin() && !vorher.some((v) => v && v.art === kern.art && v.ab === kern.ab)) {
+        fehler = "Einwilligungen (Mutterschutz): Eine neue Einwilligung beginnt frühestens heute — rückwirkend lässt sie sich nicht erfassen."; return p; }
+      sauber.push(gleicherAlter ? gleicherAlter
+        : { ...kern, geaendertAm: new Date().toISOString(), geaendertVon: sitzung.person === undefined ? null : sitzung.person });
+    }
+    return { ...p, mutterschutzEinwilligungen: sauber };
+  });
+  return fehler ? { grund: fehler } : { mandant: { ...neuM, personen } };
+}
+
+/** Wie viele Personen haben geänderte Einwilligungen (für das Betriebsprotokoll, ohne Inhalt)? */
+export function einwilligungsAenderungen(altB, neuB) {
+  const liste = (b) => (b && Array.isArray(b.mandanten) ? b.mandanten : []).filter((m) => m && typeof m === "object");
+  const altP = new Map();
+  for (const m of liste(altB)) for (const p of (Array.isArray(m.personen) ? m.personen : [])) if (p) altP.set(`${m.id}|${p.id}`, p.mutterschutzEinwilligungen || []);
+  let n = 0;
+  for (const m of liste(neuB)) for (const p of (Array.isArray(m.personen) ? m.personen : []))
+    if (p && !gleich(altP.get(`${m.id}|${p.id}`) || [], p.mutterschutzEinwilligungen || [])) n++;
+  return n;
 }
 
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
@@ -1002,6 +1058,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
+      const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
+      if (einw.grund) return { verweigert: einw.grund };
+      geschickt = einw.mandant;
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
@@ -1041,12 +1101,16 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
-    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    const schutz = schutzpruefungUebermittlung(ort.betrieb, geschickt);
+    const schutzGrund = schutz.sperre;
     /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
        nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
     if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
       console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} geschützte Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
     if (schutzGrund) return { verweigert: schutzGrund };
+    /* Nachprüfung 9717ddf (M2): Schutzangaben werden immer gespeichert; bestehende
+       Einteilungen, die jetzt widersprechen, melden wir Planung und Leitung. */
+    if (schutz.konflikte.length) geschickt = schutzKonfliktMitteilungen(ort.betrieb, geschickt, schutz.konflikte, sitzung.person);
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */

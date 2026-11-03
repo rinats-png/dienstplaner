@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
@@ -899,6 +899,11 @@ export default async (req, context) => {
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+
+        /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
+           geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
+        const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
+        if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
 
         /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
            fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und

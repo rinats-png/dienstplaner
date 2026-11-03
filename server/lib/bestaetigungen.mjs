@@ -105,6 +105,40 @@ export function leitungFuerBestaetigung(personen, ich, heute = new Date().toISOS
     && !gleichId(p.id, ich) && !p.anonym && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute));
 }
 
+/**
+ * Nachprüfung 9717ddf (M2): Nach einer Änderung an den Schutzangaben einer
+ * Person widersprechen bestehende Einteilungen. Gespeichert wurde trotzdem —
+ * Planung und Leitung bekommen eine dringende Mitteilung, neutral: Person,
+ * Tag, „Einteilung widerspricht Schutz- oder Einsatzregel der Person". Eine
+ * Kennung je Person, Tag und Empfänger, damit nichts doppelt kommt.
+ */
+export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
+  if (!istObjekt(neuM) || !Array.isArray(konflikte) || !konflikte.length) return neuM;
+  const personen = (Array.isArray(neuM.personen) ? neuM.personen : Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
+  const heute = new Date().toISOString().slice(0, 10);
+  const empfaenger = personen.filter((p) => (p.rolle === "leitung" || p.rolle === "planer") && !p.anonym
+    && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute));
+  const vorhanden = new Set([...(Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : []),
+    ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten : [])].filter(istObjekt).map((n) => String(n.id)));
+  const jetzt = new Date();
+  const neue = [];
+  for (const k of konflikte.slice(0, 50)) {
+    const wer = personen.find((p) => gleichId(p.id, k.personId));
+    for (const e of empfaenger) {
+      const id = `n-schutzkonflikt-${k.personId}-${k.datum}-${e.id}`;
+      if (vorhanden.has(id)) continue;
+      vorhanden.add(id);
+      neue.push({ id, personId: e.id, art: "planGeaendert", titel: kuerzen("Einteilung widerspricht Schutz- oder Einsatzregel", TITEL_MAX),
+        text: kuerzen(`${name(wer)} · ${tagKurz(k.datum)} — Die Einteilung widerspricht einer Schutz- oder Einsatzregel der Person. Bitte umplanen.`, TEXT_MAX),
+        ziel: "pruef", zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false, dringend: true,
+        quelle: { art: "schutzkonflikt", von: ich } });
+    }
+  }
+  if (!neue.length) return neuM;
+  return { ...neuM, nachrichten: [...neue, ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten
+    : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
+}
+
 /** Überschreitet das Protokoll mit dieser Übermittlung 80 %, bekommt die
     Leitung einmalig eine Mitteilung (feste Kennung je Betrieb). */
 function fuellstandMitteilung(altM, neuM, ich) {

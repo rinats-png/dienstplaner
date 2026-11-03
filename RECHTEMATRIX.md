@@ -162,8 +162,8 @@ Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume`
 Erfassung; an allen anderen Tagen und in Auswertungen, deren Zeitraum (Monat, Kontojahr, Jahr, Ausgleichszeitraum)
 nicht ganz darin liegt, zeigt die Oberfläche „nicht verfügbar", nie die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
 Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
-¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
-`maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
+¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keinAlleindienst`,
+`maxDiensteWoche`; „keine Nacht“ seit der Nachprüfung 9717ddf nur als Einsatzregel `nachtNichtZulaessig`, die Wiedereingliederung nur als Einsatzregel, ¹⁰).
 ¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
 ²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
 und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
@@ -214,13 +214,13 @@ durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / 
 Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
 **Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
 20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
-`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben nur Rollen mit
-`org.edit` (Leitung, Kundenrolle); für Planung und alle anderen bleibt der gespeicherte Wert, eine andere Form als
+`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben Rollen mit
+`org.edit` oder `pattern.edit` (Leitung, Kundenrolle, Planung — Nutzerentscheidung); für alle anderen bleibt der gespeicherte Wert, eine andere Form als
 `{ mehrschichtig: boolean }` weist der Server ab, Zeitpunkt und Person (`geaendertAm`, `geaendertVon`) setzt er selbst
 (`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
 `nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
 oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
-Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Einwilligungen nach dem Mutterschutzgesetz an der Person (`mutterschutzEinwilligungen`, Nutzerentscheidung) lesen und schreiben wie die Schutzmerkmale nur Planung, Leitung und Kundenrolle, die eigene Person liest ihre eigenen; Form, `geaendertAm` und `geaendertVon` prüft bzw. setzt der Server (`einwilligungenZusammen`). Das Ende ist Pflicht; dass sich Einwilligungen geändert haben, steht ohne Inhalt im Betriebsprotokoll. Die Schichtverantwortung bekommt daraus nur Abschnitte ab heute, ohne vergangene Grenzen und unter Namen, die kein Merkmal nennen (`einsatzfensterBis22`, `sonntagFreigegeben`; Review M1). **Restrisiko (ehrlich):** Die Namen sind faktisch merkmalsspezifisch — nur der Mutterschutz erzeugt heute `einsatzfensterBis22` und `sonntagNurMitFreigabe`/`sonntagFreigegeben`; bei einer erwachsenen Person kann die Schichtverantwortung aus der Sonntagsregel oder dem Muster der Regeln auf einen Mutterschutz schließen. Das ist ein Punkt für die DSFA und die Betriebsvereinbarung (offen). Eine Änderung an Mutterschutz, Einwilligung oder Geburtsdatum wird **immer gespeichert** — die Erfassung des Schutzes blockiert nichts (Nachprüfung 9717ddf, M2). Der Server rechnet bestehende Einteilungen im Horizont nach (auch aus der Schichtfolge); widersprechen welche, bekommen Planung und Leitung eine dringende Mitteilung (Person, Tag, „Einteilung widerspricht Schutz- oder Einsatzregel der Person“), und die Planprüfung zeigt den sperrenden Befund, bis umgeplant ist. Neue widersprechende Einteilungen bleiben gesperrt (403). Eine neue Einwilligung beginnt frühestens heute; bestehende Einteilungen vor ihrem Beginn werden nicht nachträglich zulässig. Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen

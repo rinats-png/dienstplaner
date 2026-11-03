@@ -83,8 +83,9 @@ describe("eigener Bereich", () => {
   it("Plan, Qualifikation, Einschränkungen, Konten, Einsatzregeln statt Schutzmerkmalen, Telefon und Mobil", () => {
     const a = p(sichtPersonen(), "a1");
     expect(a.sichtbereich).toBe("bereich");
+    /* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ nur noch als Einsatzregel nachtNichtZulaessig. */
     expect(a).toMatchObject({ telefon: "0151-a1", mobil: "0171-a1", stundenuebertrag: 12.5, urlaubsanspruch: 30,
-      einschraenkungen: { keineNacht: true }, wunschfrei: ["a1-wunsch"], qualifikationen: ["pfk", "masern"] });
+      einschraenkungen: {}, wunschfrei: ["a1-wunsch"], qualifikationen: ["pfk", "masern"] });
     for (const f of ["mutterschutz", "schwerbehindert", "geburtstag", "nachtvorsorge"]) expect(a[f], f).toBeUndefined();
     expect(a.planungsregeln.map((r) => r.regel)).toEqual(expect.arrayContaining(["nachtNichtZulaessig", "sonntagNurMitFreigabe", "ueber8hNurAbsprache"]));
     expect(a.qualNachweise).toEqual([{ qualId: "pfk", ablauf: "2030-01-01" }, { qualId: "masern", vorhanden: true }]);
@@ -118,7 +119,7 @@ describe("Springer-Pool", () => {
     const sp = p(sichtPersonen(), "sp1");
     expect(sp.sichtbereich).toBe("pool");
     expect(sp).toMatchObject({ telefon: "0151-sp1", mobil: "0171-sp1",
-      einschraenkungen: { keineNacht: true }, verfuegbarkeit: { aktiv: true } });
+      einschraenkungen: {}, verfuegbarkeit: { aktiv: true } });
     expect(sp.mutterschutz).toBeUndefined();
     expect(sp.planungsregeln.map((r) => r.regel)).toContain("sonntagNurMitFreigabe");
     for (const f of ["stundenuebertrag", "urlaubsanspruch", "urlaubsuebertrag", "wunschfrei", "email", "anschrift",

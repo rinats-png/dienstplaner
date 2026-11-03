@@ -110,23 +110,195 @@ describe("F3 auf dem Server", () => {
     expect(schreiben(g(), "PL", (m) => { m.abweichungen[`j15|${MITTWOCH}`] = "S"; }).verweigert).toMatch(/nicht möglich/);
     expect(schreiben(g(MEHR), "PL", (m) => { m.abweichungen[`j17|${MITTWOCH}`] = "N"; }).verweigert).toMatch(/nicht möglich/);
   });
-  it("die Einstellung setzt nur, wer org.edit hat; der Server setzt Wann und Wer", () => {
+  it("die Einstellung setzen Leitung und Planung (org.edit oder pattern.edit); der Server setzt Wann und Wer", () => {
+    /* Nutzerentscheidung: auch die Planung darf den Schalter setzen. */
     const pl = schreiben(g(), "PL", (m) => { m.einstellungen.jugendschutz = { mehrschichtig: true }; });
     expect(pl.verweigert).toBeFalsy();
-    expect(pl.mandanten[0].einstellungen.jugendschutz).toBeUndefined();
+    expect(pl.mandanten[0].einstellungen.jugendschutz).toMatchObject({ mehrschichtig: true, geaendertVon: "p1" });
     const lt = schreiben(g(), "LT", (m) => { m.einstellungen.jugendschutz = { mehrschichtig: true, geaendertVon: "x" }; });
     expect(lt.verweigert).toBeFalsy();
     expect(lt.mandanten[0].einstellungen.jugendschutz).toMatchObject({ mehrschichtig: true, geaendertVon: "l1" });
     expect(typeof lt.mandanten[0].einstellungen.jugendschutz.geaendertAm).toBe("string");
-    /* Planung kann den gespeicherten Wert nicht zurücknehmen. */
+    /* Die Planung kann ihn auch zurücknehmen. */
     const zurueck = schreiben(lt, "PL", (m) => { m.einstellungen.jugendschutz = { mehrschichtig: false }; });
-    expect(zurueck.mandanten[0].einstellungen.jugendschutz.mehrschichtig).toBe(true);
+    expect(zurueck.mandanten[0].einstellungen.jugendschutz).toMatchObject({ mehrschichtig: false, geaendertVon: "p1" });
+    /* Die Schichtverantwortung nicht: der gespeicherte Wert bleibt. */
+    const sv = schreiben(lt, "SV", (m) => { if (m.einstellungen) m.einstellungen.jugendschutz = { mehrschichtig: false }; });
+    if (!sv.verweigert) expect(sv.mandanten[0].einstellungen.jugendschutz.mehrschichtig).toBe(true);
     /* Ungültige Form: abgewiesen. */
     for (const w of [{ mehrschichtig: "ja" }, { mehrschichtig: true, bis: "23:00" }, ["x"], 5])
       expect(schreiben(g(), "LT", (m) => { m.einstellungen.jugendschutz = w; }).verweigert, JSON.stringify(w)).toMatch(/Jugendarbeitsschutz/);
     /* Ein unveränderter Rundweg ändert nichts. */
     const rund = schreiben(lt, "LT", () => {});
     expect(rund.mandanten[0].einstellungen.jugendschutz).toEqual(lt.mandanten[0].einstellungen.jugendschutz);
+  });
+});
+
+describe("Nutzerentscheidung: Einwilligung nach dem Mutterschutzgesetz", () => {
+  const MU = (einw) => ({ mutterschutz: true, geburtstag: "1990-01-01", mutterschutzEinwilligungen: einw });
+  const BIS22 = { id: "B", start: "14:00", ende: "22:00", pause: 30 };
+  const SONNTAG = wochentag(3, 0);
+  const nacht = [{ art: "nacht", ab: tag(-10), bis: tag(60) }];
+  it("20–22 Uhr mit gültiger Einwilligung: Hinweis, keine Sperre", () => {
+    const b = schutzEinsatz(MU(nacht), BIS22, MITTWOCH);
+    expect(b).toEqual([expect.objectContaining({ regel: "MuSchG § 5 Abs. 2", stufe: "hinweis", sperrt: false })]);
+  });
+  it("nach 22 Uhr bleibt es hart, auch mit Einwilligung", () => {
+    expect(schutzEinsatz(MU(nacht), NACHT, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+    expect(schutzEinsatz(MU(nacht), { start: "15:00", ende: "22:30", pause: 30 }, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+  });
+  it("abgelaufen oder noch nicht gültig: wieder hart", () => {
+    expect(schutzEinsatz(MU([{ art: "nacht", ab: tag(-30), bis: tag(-1) }]), BIS22, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+    expect(schutzEinsatz(MU([{ art: "nacht", ab: tagePlus(MITTWOCH, 1), bis: null }]), BIS22, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+    expect(schutzEinsatz(MU([{ art: "sonntag", ab: tag(-10), bis: null }]), BIS22, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+  });
+  it("Sonntag mit Einwilligung: Hinweis; ohne: hart", () => {
+    const frueh = { start: "06:00", ende: "14:00", pause: 30 };
+    expect(schutzEinsatz(MU([{ art: "sonntag", ab: tag(-10), bis: null }]), frueh, SONNTAG).every((x) => !x.sperrt)).toBe(true);
+    expect(schutzEinsatz(MU(nacht), frueh, SONNTAG).some((x) => x.sperrt)).toBe(true);
+  });
+  it("Sicht der Schichtverantwortung: dieselbe Bewertung mit Zeitraum, neutral", () => {
+    const einw = [{ art: "nacht", ab: tag(5), bis: tag(20) }, { art: "sonntag", ab: tag(-3), bis: null }];
+    const roh = MU(einw);
+    const sv = { planungsregeln: planungsregelnAbleiten(roh, {}) };
+    const kurz = (l) => l.map((x) => `${x.hart}|${!!x.hinweis}`).sort();
+    for (let i = -5; i < 40; i++) for (const da of [BIS22, NACHT, { start: "06:00", ende: "14:00", pause: 30 }]) {
+      const d = tag(i);
+      expect(kurz(schutzBefundeFuer(sv, da, d).filter((x) => x.regel !== "alterNichtBewertbar")), `${d} ${da.start}`)
+        .toEqual(kurz(schutzBefunde(roh, da, d)));
+    }
+    expect(JSON.stringify(sv)).not.toMatch(/MuSchG|Mutter|Einwilligung|genehmigung/i);
+  });
+  const gM = () => { const gg = g(); gg.mandanten[0].personen.push(person("m2", "mitarbeiter", "e1", { mutterschutz: true })); return gg; };
+  it("Planung erfasst eine Einwilligung; der Server setzt Wann und Wer", () => {
+    const e = schreiben(gM(), "PL", (m) => { m.personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: tag(200), genehmigung: true, geaendertVon: "x" }]; });
+    expect(e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen)
+      .toEqual([expect.objectContaining({ art: "nacht", ab: tag(0), bis: tag(200), genehmigung: true, geaendertVon: "p1" })]);
+    /* Ein unveränderter Rundweg behält Wann und Wer. */
+    const rund = schreiben(e, "LT", () => {});
+    expect(rund.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen)
+      .toEqual(e.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen);
+  });
+  it("ungültige Form: abgewiesen", () => {
+    for (const w of [[{ art: "immer", ab: tag(0) }], [{ art: "nacht" }], [{ art: "nacht", ab: tag(5), bis: tag(1) }],
+      [{ art: "nacht", ab: tag(0), grund: "x" }], [{ art: "nacht", ab: "2026-02-30" }], "ja"])
+      expect(schreiben(gM(), "PL", (m) => { m.personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = w; }).verweigert, JSON.stringify(w))
+        .toMatch(/Einwilligungen/);
+  });
+  it("die Schichtverantwortung sieht sie nicht und kann sie nicht setzen", () => {
+    const gg = gM();
+    gg.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: null }];
+    const sicht = bestandFuerRolle(gg, SITZ.SV);
+    expect(JSON.stringify(sicht)).not.toMatch(/mutterschutzEinwilligungen/);
+    const e = schreiben(gg, "SV", (m) => { m.personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = []; });
+    if (!e.verweigert) expect(e.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen).toHaveLength(1);
+  });
+  it("die eigene Person sieht ihre eigene Einwilligung", () => {
+    const gg = gM();
+    gg.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: null }];
+    const eigene = bestandFuerRolle(gg, { rolle: "mitarbeiter", person: "m2", betrieb: 0 });
+    expect(eigene.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen).toHaveLength(1);
+    const fremd = bestandFuerRolle(gg, { rolle: "mitarbeiter", person: "a1", betrieb: 0 });
+    expect(JSON.stringify(fremd)).not.toMatch(/mutterschutzEinwilligungen/);
+  });
+  it("Server: 20–22 Uhr mit Einwilligung angenommen, ohne abgewiesen", () => {
+    const mit = gM();
+    mit.mandanten[0].dienstarten.push({ id: "B", name: "bis 22", start: "14:00", ende: "22:00", pause: 30 });
+    mit.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: null }];
+    const ok = schreiben(mit, "PL", (m) => { m.abweichungen[`m2|${MITTWOCH}`] = "B"; });
+    expect(ok && !ok.verweigert, ok && ok.verweigert).toBe(true);
+    const ohne = gM();
+    ohne.mandanten[0].dienstarten.push({ id: "B", name: "bis 22", start: "14:00", ende: "22:00", pause: 30 });
+    expect(schreiben(ohne, "PL", (m) => { m.abweichungen[`m2|${MITTWOCH}`] = "B"; }).verweigert).toMatch(/nicht möglich/);
+  });
+});
+
+describe("Review 77ebfba: M1 (Art. 9), M2, N1", () => {
+  const gM = () => { const gg = g(); gg.mandanten[0].personen.push(person("m2", "mitarbeiter", "e1", { mutterschutz: true })); return gg; };
+  const SONNTAG = wochentag(3, 0);
+  it("M1: Einsatzregeln an die Schichtverantwortung ohne vergangene Grenzen und ohne merkmalsbezogenen Namen", () => {
+    const p = { mutterschutz: true, mutterschutzEinwilligungen: [{ art: "nacht", ab: tag(-20), bis: tag(40) }, { art: "sonntag", ab: tag(-20), bis: tag(60) }] };
+    const regeln = planungsregelnAbleiten(p, { von: tag(-30), heute: tag(0) });
+    for (const r of regeln) {
+      if (r.von) expect(r.von > tag(0), JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= tag(0), JSON.stringify(r)).toBe(true);
+    }
+    expect(JSON.stringify(regeln)).not.toMatch(/mutter|muschg|schwanger|einwilligung|ab22/i);
+    expect(regeln.map((r) => r.regel)).toEqual(expect.arrayContaining(["einsatzfensterBis22", "sonntagFreigegeben"]));
+    /* über die Sicht: dieselbe Aussage */
+    const gg = gM();
+    gg.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = p.mutterschutzEinwilligungen;
+    const sv = bestandFuerRolle(gg, SITZ.SV).mandanten[0].personen.find((x) => x.id === "m2");
+    const heute = heuteBerlin();
+    for (const r of sv.planungsregeln) {
+      if (r.von) expect(r.von > heute, JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= heute, JSON.stringify(r)).toBe(true);
+    }
+  });
+  /* Nachprüfung 9717ddf (M2, Schutzpflicht): Die Erfassung des Schutzes wird
+     nie blockiert. Gespeichert wird; widersprechende bestehende Einteilungen
+     melden wir Planung und Leitung (dringend, neutral). Neue widersprechende
+     Einteilungen bleiben gesperrt. */
+  const meldungen = (e) => (e.mandanten[0].nachrichten || []).filter((n) => n.quelle && n.quelle.art === "schutzkonflikt");
+  it("M2: Einwilligung widerrufen, während ein Sonntag geplant ist — gespeichert, Mitteilung an Planung und Leitung", () => {
+    const gg = gM();
+    const m2 = gg.mandanten[0].personen.find((x) => x.id === "m2");
+    m2.mutterschutzEinwilligungen = [{ art: "sonntag", ab: tag(0), bis: tag(60), geaendertAm: "x", geaendertVon: "l1" }];
+    gg.mandanten[0].abweichungen[`m2|${SONNTAG}`] = "F";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = []; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen).toEqual([]);
+    const n = meldungen(e);
+    expect(n.map((x) => x.personId).sort()).toEqual(["l1", "p1"]);
+    expect(n[0]).toMatchObject({ dringend: true, ziel: "pruef" });
+    expect(n[0].text).toMatch(/widerspricht einer Schutz- oder Einsatzregel/);
+    expect(JSON.stringify(n)).not.toMatch(/Mutter|MuSchG|Einwilligung|Sonntag/i);
+    /* der Befund bleibt sichtbar, bis umgeplant: die Schutzprüfung sperrt die Einteilung weiter */
+    expect(schutzEinsatz(e.mandanten[0].personen.find((x) => x.id === "m2"), { start: "06:00", ende: "14:00" }, SONNTAG).some((x) => x.sperrt)).toBe(true);
+  });
+  it("M2: Mutterschutz eintragen, während Nachtdienste geplant sind — gespeichert und gemeldet; ohne Konflikt ohne Mitteilung", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    gg.mandanten[0].abweichungen[`x9|${MITTWOCH}`] = "N";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].personen.find((x) => x.id === "x9").mutterschutz).toBe(true);
+    expect(meldungen(e).length).toBe(2);
+    const ohne = g();
+    ohne.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    const o = schreiben(ohne, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
+    expect(o && !o.verweigert, o && o.verweigert).toBe(true);
+    expect(meldungen(o)).toEqual([]);
+  });
+  it("M2: Geburtsdatum berichtigt (jetzt jugendlich) bei geplantem Nachtdienst — gespeichert und gemeldet", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x8", "mitarbeiter", "e1"));
+    gg.mandanten[0].abweichungen[`x8|${MITTWOCH}`] = "N";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x8").geburtstag = J15.geburtstag; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(meldungen(e).length).toBe(2);
+  });
+  it("M2: eine NEUE widersprechende Einteilung bleibt gesperrt — auch im selben Speichervorgang", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.abweichungen[`m2|${SONNTAG}`] = "F"; }).verweigert).toMatch(/nicht möglich/);
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    expect(schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; m.abweichungen[`x9|${MITTWOCH}`] = "N"; }).verweigert)
+      .toMatch(/nicht möglich/);
+  });
+  it("Einwilligung nicht rückwirkend: neu frühestens ab heute; Verlängern eines bestehenden Beginns erlaubt", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(30) }]; }).verweigert)
+      .toMatch(/frühestens heute/);
+    const gg = gM();
+    gg.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(10), geaendertAm: "x", geaendertVon: "l1" }];
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(-3), bis: tag(40) }]; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+  });
+  it("N1: Ende ist Pflicht; ein anders geformtes Datum gilt nicht", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0) }]; }).verweigert)
+      .toMatch(/Einwilligungen/);
+    const p = { mutterschutz: true, mutterschutzEinwilligungen: [{ art: "nacht", ab: "1.1.2026", bis: "2099-12-31" }] };
+    expect(schutzEinsatz(p, { start: "14:00", ende: "22:00", pause: 30 }, MITTWOCH).some((x) => x.sperrt)).toBe(true);
   });
 });
 
@@ -165,7 +337,7 @@ describe("Review U1: neu angelegte Personen werden nachgerechnet", () => {
     const gg = nachts(g());
     gg.mandanten[0].personen.push(person("alt", "mitarbeiter", "e1", { mutterschutz: true, status: "gesperrt" }));
     const e = schreiben(gg, "PL", (m) => { m.personen.find((p) => p.id === "alt").status = "aktiv"; });
-    expect(e.verweigert).toMatch(/nicht möglich/);
+    expect(e.verweigert).toMatch(/nicht möglich|widerspricht/);                // Review M2: Meldung „bestehende Einteilung widerspricht“
   });
 });
 
