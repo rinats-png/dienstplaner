@@ -137,7 +137,7 @@ Eine neue Regel hebt nie stillschweigend eine bestehende auf (Priorität der Que
 
 ## 11. Spätere Branchenpakete
 
-Das Register trägt `scope.branche`. Ein Branchenpaket ist eine Gruppe von Regeln mit diesem Bereich, kein neuer Code. Zuerst vorgesehen: ambulante Pflege, sobald der Pilot bestätigt. Vorbereitet, nicht gebaut: Mitbestimmungs-Workflow (Folge `freigabe`).
+Das Register trägt `scope.branche`. Ein Branchenpaket ist eine Gruppe von Regeln mit diesem Bereich, kein neuer Code. Seit WP-19 stehen Branchenregeln in `server/lib/branchenkatalog.mjs` (`REGELN_BRANCHEN`, im Register Teil von `REGELN`); jede gehört zu einem Modul aus `server/lib/branchenmodule.mjs`, ist bis zur Nutzerentscheidung vorläufig (höchstens Hinweis, `branchenregel()` erzwingt es) und wirkt nur, wenn das Modul im Betrieb eingeschaltet ist. Module und vorläufige Akzeptanzkriterien: `docs/acc45/wp19-module.md`. Zuerst vorgesehen: ambulante Pflege, sobald der Pilot bestätigt. Vorbereitet, nicht gebaut: Mitbestimmungs-Workflow (Folge `freigabe`).
 
 ## 12. Warum eine vorläufige Regel nie einen Rechtsverstoß erzeugt
 

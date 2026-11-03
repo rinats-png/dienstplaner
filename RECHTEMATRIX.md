@@ -277,6 +277,15 @@ im Betrieb eine bekannte Rolle hat.
 (Rückfüllung: `schichtRueckfuellen`, `vollRueckfuellen`); mitgeschickte verborgene Werte sind wirkungslos
 oder werden abgewiesen. Betreiberfelder oben und im Betrieb schreibt nur der Betreiber (1e.2a).
 
+**Branchenmodule (WP-19, A):** Welche Pakete gebucht sind (`pakete`), bleibt Vertragsfeld des Betreibers.
+Innerhalb gebuchter Pakete schaltet der Betrieb die Module in `einstellungen.branchenmodule` — schreiben
+dürfen nur Rollen mit `org.edit` (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Stand.
+Form `{ an: boolean, parameter?: {…} }` je bekanntem Modul, Parameter nach Typ und Grenzen der Registry;
+Einschalten nur, wenn das Paket gebucht und das Modul nicht mehr „geplant" ist, Ausschalten immer; Wann und
+Wer setzt der Server (`branchenmoduleZusammen`, `server/lib/branchenmodule.mjs`). Lesen wie die übrigen
+Einstellungen. Daten, die ein Modul später anlegt, bekommen vorher je eine eigene Zeile in dieser Matrix.
+Geprüft in `pruefungen/branchenmodule.test.js`.
+
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
 eigene Meldung auf ein offenes Tauschgesuch), mitgeschickte werden verworfen (`server/lib/mitteilungen.mjs`).

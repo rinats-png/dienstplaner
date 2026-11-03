@@ -52,6 +52,7 @@ import { stufeRang, RUHEZEIT_GESETZ } from "./warnstufen.js";
 import { GRENZEN as FAHR_GRENZEN } from "./fahrzeit.js";
 import { MINDESTERFUELLUNG as PPP_MINDEST } from "./ppprl.js";
 import { TARIFWERKE } from "./tarifwerke.js";
+import { REGELN_BRANCHEN } from "../server/lib/branchenkatalog.mjs";
 
 /** Prüfstatus und was er der Regel erlaubt. wirkung: "voll" | "hinweis" | "keine". */
 export const PRUEFSTATUS = {
@@ -354,7 +355,9 @@ const REGELN_MODULE = [
 ];
 
 /** Alle Regeln. Die Reihenfolge ist die der Anzeige und der Prüfung. */
-export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE];
+/* Branchenregeln (WP-19): Erweiterungspunkt in server/lib/branchenkatalog.mjs —
+   dieselbe Liste, nur aus einem Modul, das auch der Server lesen kann. */
+export const REGELN = [...REGELN_BESTAND, ...REGELN_VORLAEUFIG, ...REGELN_MODULE, ...REGELN_BRANCHEN];
 
 /* --------------------------------------------------------------------------
    Nachschlagen

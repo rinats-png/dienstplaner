@@ -24,6 +24,7 @@ import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBef
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { schutzpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
+import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1058,6 +1059,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
+      const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
+      if (module.grund) return { verweigert: module.grund };
+      geschickt = module.mandant;
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
