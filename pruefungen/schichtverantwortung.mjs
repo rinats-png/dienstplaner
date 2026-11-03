@@ -106,11 +106,14 @@ const wUm = await versuch((m) => { m.anfragen.push({ ...anB, personId: "a1" }); 
 pruef("Fremden Antrag auf andere Person umhängen: 403", wUm.status === 403, `Status ${wUm.status}`);
 const stB = (await gespeichert()).einstempeln["b1|2026-10-01"];
 const wSt = await versuch((m) => { m.einstempeln = { ...(m.einstempeln || {}), "b1|2026-10-01": { ...stB, innerhalbStart: true } }; });
-/* Seit 1d.1 übergeht der Server einstempeln im PUT (die Oberfläche zieht
-   nach dem Stempeln eine leicht abweichende Kopie nach) — wirkungslos. */
-pruef("Fremde Stempelzeit manipulieren: wirkungslos", wSt.status === 200, `Status ${wSt.status}`);
+/* Seit WP-06 ist ein Widerspruch zum gespeicherten Stempel eine Absage
+   (403 STEMPEL_UNVERAENDERLICH), nicht mehr wirkungslos übergangen — der
+   gespeicherte Stempel bleibt in beiden Fällen unverändert. */
+pruef("Fremde Stempelzeit manipulieren: 403, Stempel unverändert", wSt.status === 403
+  && JSON.stringify((await gespeichert()).einstempeln["b1|2026-10-01"]) === JSON.stringify(stB), `Status ${wSt.status}`);
 const wStE = await versuch((m) => { m.einstempeln["s1|2026-10-02"] = { start: "06:00", ortStart: "Am Einsatzort", innerhalbStart: true }; });
-pruef("Eigene Stempelzeit über PUT setzen: wirkungslos", wStE.status === 200, `Status ${wStE.status}`);
+pruef("Eigene Stempelzeit über PUT setzen: 403, nichts angelegt", wStE.status === 403
+  && (await gespeichert()).einstempeln["s1|2026-10-02"] === undefined, `Status ${wStE.status}`);
 const erB = (await gespeichert()).erfassung["b1|2026-10-01"];
 const wEr = await versuch((m) => { m.erfassung["b1|2026-10-01"] = { ...erB, bestaetigt: true }; });
 pruef("Erfassung bestätigen über PUT: 403", wEr.status === 403, `Status ${wEr.status}`);

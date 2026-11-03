@@ -98,10 +98,18 @@ export function sperrendeBefunde(person, dienstart, datum, einst) {
 
 /** Hat die Übermittlung etwas geändert, das Einteilungen mittelbar verschiebt? */
 function planStrukturGeaendert(altM, neuM) {
+  const it = planStrukturSchritte(altM, neuM);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+/** Dasselbe in Häppchen (Nachtrag WP-22b, Review HOCH 2): je Person eine Gelegenheit zum Nachgeben. */
+function* planStrukturSchritte(altM, neuM, zeitUm = () => false, weiter = () => {}) {
   for (const f of ["dienstarten", "zyklus", "anker", "einheiten"])
     if (hat(neuM, f) && !gleich(altM[f], neuM[f])) return true;
   const alt = new Map(liste(altM.personen).map((p) => [String(p.id), p]));
   for (const p of liste(neuM.personen)) {
+    if (zeitUm()) { yield; weiter(); }
     const a = alt.get(String(p.id));
     /* Review U1: Eine neu angelegte Person bekommt ihre Dienste aus der
        Schichtfolge ihrer Einheit — das ist eine Einteilung wie jede andere. */
@@ -272,13 +280,21 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Dat
   const budget = opt.budgetMs || ZEITBUDGET_MS;
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0, blockMs: 0 };
   try {
-    const ausgabe = { konflikte: [] };
+    const ausgabe = { konflikte: [], haeppchen: true };
     const it = pruefen(altM, neuM, heute, zaehler, opt, ausgabe);
-    let r = it.next();
+    /* Nachtrag WP-22b (Review HOCH 2): jeden Abschnitt auch von außen messen —
+       auch den letzten, der ohne Nachgeben endet. */
+    const schritt = () => {
+      const a = performance.now();
+      const x = it.next();
+      zaehler.blockMs = Math.max(zaehler.blockMs, Math.round(performance.now() - a));
+      return x;
+    };
+    let r = schritt();
     while (!r.done) {
       await new Promise((weiter) => setImmediate(weiter));
       if (performance.now() - t0 > budget) return { zeitbudget: true };
-      r = it.next();
+      r = schritt();
     }
     return mitKonflikten(r.value, ausgabe);
   } finally {
@@ -321,11 +337,14 @@ function sammelDeckt(b, p, d, regel) {
  * @returns {Generator<void, null | Fachergebnis, void>}
  */
 function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) {
-  /* Häppchen: nach HAEPPCHEN_MS nachgeben (im synchronen Lauf ohne Wirkung). */
+  /* Häppchen: nach HAEPPCHEN_MS nachgeben (im synchronen Lauf ohne Wirkung).
+     Nachtrag WP-22b (Review HOCH 2): bei jedem Aufruf prüfen, nicht nur bei
+     jedem vierten — ein Schritt (eine Person im Umfeld, eine Einteilung mit
+     zwei Befundrechnungen) kostet bis zu einigen Millisekunden; vier davon
+     ergaben Blöcke von 30–80 ms. performance.now() kostet dagegen Nanosekunden. */
   let abschnitt = performance.now();
-  let schritt = 0;
   const zeitUm = () => {
-    if ((++schritt & 3) !== 0) return false;
+    if (!ausgabe.haeppchen) return false;                                   // synchroner Lauf: keine Uhr
     const jetzt = performance.now();
     if (jetzt - abschnitt < HAEPPCHEN_MS) return false;
     zaehler.blockMs = Math.max(zaehler.blockMs, Math.round(jetzt - abschnitt));
@@ -387,7 +406,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     zellen.set(`${pid}|${tag}`, wert);
   }
   const struktur = [];                                                       // [Person, Tag] — mittelbar zu prüfen
-  const strukturell = !!altM && planStrukturGeaendert(mAlt, neuM);
+  const strukturell = !!altM && (yield* planStrukturSchritte(mAlt, neuM, zeitUm, weiter));
   zaehler.mittelbar = strukturell;
   const horizont = Array.from({ length: SCHUTZ_HORIZONT_TAGE + 1 }, (_, i) => addDays(heute, i));
   if (strukturell) {
@@ -414,10 +433,18 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
       const personGleich = !!pA && (pA === p || gleich(pA, p));
       const allein = !!(p.einschraenkungen && p.einschraenkungen.keinAlleindienst);
       /* je Tag des Umfelds: derselbe Dienst mit derselben Dienstart? */
-      const gleichAm = personGleich && vorgabenGleich && !allein
-        ? umfeld.map((d) => { const n = rN.am(p, d), a = rA.am(pA, d); return String(n) === String(a) && dienstartGleich(n); })
-        : null;
+      /* je Tag nachgeben können (Review HOCH 2): eine Person kostet sonst bis zu 20 ms */
+      let gleichAm = null;
+      if (personGleich && vorgabenGleich && !allein) {
+        gleichAm = [];
+        for (const d of umfeld) {
+          if (zeitUm()) { yield; weiter(); }
+          const n = rN.am(p, d), a = rA.am(pA, d);
+          gleichAm.push(String(n) === String(a) && dienstartGleich(n));
+        }
+      }
       for (let i = 0; i < horizont.length; i++) {
+        if (zeitUm()) { yield; weiter(); }
         const d = horizont[i];
         if (zellen.size && zellen.has(`${p.id}|${d}`)) continue;
         if (gleichAm) {

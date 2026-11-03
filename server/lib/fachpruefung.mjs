@@ -26,7 +26,7 @@
    Rein: keine Ablage, kein Datum von außen außer `heute`.
    ========================================================================== */
 import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schutzpruefung.mjs";
-import { pad, pISO, addDays, dow, toMin, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
+import { pad, pISO, addDays, dow, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { branchenBefunde } from "./branchenbefunde.mjs";
@@ -294,4 +294,112 @@ export function mindestOhneFeiertag(da, d) {
   const w = dow(d);
   const wert = w === 6 ? md.so : w === 5 ? md.sa : w === 4 ? md.fr : md.mo_do;
   return Number(wert) || 0;
+}
+
+/* ------------------------------------------------------------------------
+   OFFENE SCHUTZKONFLIKTE (Nachprüfung 948a4ba A2; Nachtrag WP-22b)
+
+   Künftige Einteilungen, denen eine harte Schutz- oder Einsatzregel der
+   Person widerspricht — dazu die Einschränkung „keine Nacht“ mit dem
+   Nachtfenster des Betriebs (dieselbe Quelle wie die Einsatzregel
+   keinNachtdienst der Schichtverantwortung und keineNacht des Servers).
+   Die Oberfläche rechnet sie im Hauptthread: deshalb ein Generator, der
+   nach höchstens SCHUTZKONFLIKT_HAEPPCHEN_MS nachgibt, und Abweichungen je
+   Person einmal vorindiziert. Schichtfolge ein Jahr voraus, ausdrückliche
+   Einteilungen ohne Grenze.
+   ------------------------------------------------------------------------ */
+export const SCHUTZKONFLIKT_HAEPPCHEN_MS = 12;
+
+/**
+ * @param {any} m Betrieb
+ * @param {{ heute: string, dienstAm: (p: any, d: string) => any, abwesend?: (p: any, d: string) => boolean, tageVoraus?: number }} k
+ *   dienstAm: Kennung des Dienstes am Tag (Oberfläche: personTag)
+ * @returns {Generator<void, Map<string, { person: any, datum: string, da: any }>, void>}
+ */
+export function* schutzkonflikteSchritte(m, k) {
+  const aus = new Map();
+  const d0 = k.heute;
+  const bis = addDays(d0, k.tageVoraus || 365);
+  const einst = (m && m.einstellungen) || {};
+  const keineNacht = (p) => !!(p.einschraenkungen && typeof p.einschraenkungen === "object" && p.einschraenkungen.keineNacht === true);
+  const relevant = liste(m && m.personen).filter((p) => p.mutterschutz || keineNacht(p)
+    || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
+    || (() => { const g = p.geburtstag || p.geburtsdatum; if (!g) return false; const a = between(g, d0) / 365.25; return a < 19; })());
+  /* Relevanzfilter: Alter unter 19 (Tage / 365,25) ist bewusst eine Obermenge von „unter 18“ (Jugendschutz) —
+     er spart nur Personen, die sicher nicht betroffen sind; die Regel selbst prüft schutzEinsatz mit dem genauen Alter. */
+  if (!relevant.length) return aus;
+  const ids = new Set(relevant.map((p) => String(p.id)));
+  /* Abweichungen je Person: ein Durchlauf statt eines Schlüssels je Person und Tag. */
+  const abw = new Map();
+  const quelle = m.abweichungen && typeof m.abweichungen === "object" ? m.abweichungen : {};
+  /* Nachtrag WP-22b (Review HOCH 1): dichter prüfen — im Vorindex je 16
+     Schlüssel, danach je Tag; vorher je 64 bzw. je 4 Tage. */
+  let t = performance.now();
+  let n = 0;
+  const zeitUm = () => performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS;
+  for (const key in quelle) {
+    if ((++n & 15) === 0 && zeitUm()) { yield; t = performance.now(); }
+    const i = key.lastIndexOf("|");
+    const pid = key.slice(0, i);
+    if (!ids.has(pid)) continue;
+    if (!abw.has(pid)) abw.set(pid, []);
+    abw.get(pid).push(key.slice(i + 1));
+  }
+  const daNach = new Map(liste(m.dienstarten).map((x) => [String(x.id), x]));
+  const pruefe = (p, d) => {
+    if (!imDienst(p, d) || (k.abwesend && k.abwesend(p, d))) return;
+    const id = k.dienstAm(p, d);
+    if (!id) return;
+    const da = daNach.get(String(id));
+    if (!da || !da.start || !da.ende) return;
+    if (schutzEinsatz(p, da, d, einst).some((b) => b.sperrt)
+      || (keineNacht(p) && nachtAnteil(da, einst) >= nachtschwelle(einst)))
+      aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
+  };
+  for (const p of relevant) {
+    for (let d = d0; d <= bis; d = addDays(d, 1)) {
+      pruefe(p, d);
+      if (zeitUm()) { yield; t = performance.now(); }
+    }
+    for (const d of abw.get(String(p.id)) || []) {
+      if (d <= bis) continue;
+      pruefe(p, d);
+      if (zeitUm()) { yield; t = performance.now(); }
+    }
+  }
+  return aus;
+}
+
+export const SCHUTZKONFLIKT_ENTPRELLUNG_MS = 250;
+
+/**
+ * Rechnung entprellt starten und in Häppchen ausführen (Oberfläche; als
+ * Funktion, damit Verzögerung und Häppchen ohne Browser prüfbar sind).
+ * Zurück kommt die Abbruchfunktion; nach ihr wird nichts mehr gemeldet.
+ * @param {any} m
+ * @param {Parameters<typeof schutzkonflikteSchritte>[1]} k
+ * @param {(ergebnis: Map<string, any>) => void} fertig
+ * @param {{ verzoegerungMs?: number, timer?: typeof setTimeout, aufraeumen?: typeof clearTimeout }} [opt]
+ */
+export function planeSchutzkonflikte(m, k, fertig, opt = {}) {
+  const timer = opt.timer || setTimeout, aufraeumen = opt.aufraeumen || clearTimeout;
+  let vorbei = false;
+  const uhr = timer(() => {
+    const it = schutzkonflikteSchritte(m, k);
+    const weiter = () => {
+      if (vorbei) return;
+      const r = it.next();
+      if (r.done) fertig(r.value); else timer(weiter, 0);
+    };
+    weiter();
+  }, opt.verzoegerungMs === undefined ? SCHUTZKONFLIKT_ENTPRELLUNG_MS : opt.verzoegerungMs);
+  return () => { vorbei = true; aufraeumen(uhr); };
+}
+
+/** Synchron zu Ende rechnen (Prüfungen). */
+export function schutzkonflikteSofort(m, k) {
+  const it = schutzkonflikteSchritte(m, k);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
 }
