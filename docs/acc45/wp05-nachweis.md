@@ -58,6 +58,18 @@ echtes SIGTERM; in der CI maßgeblich), `datenintegritaet`, `prozesssperre`,
 
 Integration: `origin/integration/centric-complete` (737c453) hineingemergt.
 
+## Nachtrag WP-05b (R1–R3)
+
+Branch `acc45/infra/wp05b-ueberwachung-nachtrag` von `merge/wp05` (17500d7).
+
+| Punkt | Umsetzung | Test (rot gegen 17500d7) |
+|---|---|---|
+| R1 Pendeln ok ↔ kritisch ohne Alarm | Hysterese: Störung endet erst nach Entprellzeit ununterbrochenem „ok“; Alarm, wenn die Störung entprellt ist und die aktuelle Messung schlecht | Pendeln jede Minute 60 min: Alarm „kritisch“ binnen 5 min, keine Entwarnung |
+| R2 hängende Prüfung | `Promise.race` mit `CENTRIC_GESUND_ZEITGRENZE_MS` (15 s) → „Ablage kritisch: Zeitgrenze“; geteiltes Promise danach frei; keine zweite Prüfung, solange die hängende läuft | hängende Prüfung (Prüfhaken): Antwort nach der Grenze, zweiter Aufruf ebenso, danach wieder ok |
+| R3 Proben-Reste | `.gesund/probe-*.json` älter als 1 h werden entfernt | alte Probe weg, junge und fremde Datei bleiben |
+| R3 deploy.sh Schwellen | dezimal wie gesund.mjs; ungültig → Abbruch vor jedem Wechsel | `0.5`/`0.25` laufen, `drei` → Exit 4 ohne Stop |
+| R3 deploy.sh Reihenfolge | erst Aufbewahrung (die neue bleibt), dann Platzprüfung | mit 6 alten Sicherungen und kritischem Platz: 5 bleiben (neue dabei), dann kein Wechsel (Linux) |
+
 ## Offen (Betreiber)
 
 Alarmkanal wählen und `CENTRIC_ALARM_WEBHOOK` setzen; externen Check einrichten; nach
