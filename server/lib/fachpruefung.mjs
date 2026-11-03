@@ -283,7 +283,7 @@ export function einteilungsBefunde(m, p, da, d, k) {
      Aufrufer die Besetzung des Dienstes kennt (die Oberfläche). Befundart
      „branche": Hinweis, sperrt nie. Die Nachrechnung des Servers reicht
      k.branchen nicht herein und bleibt dadurch so schnell wie vorher. */
-  if (k.branchen && typeof k.branchen.personenImDienst === "function") for (const b of branchenBefunde(m, da, d, { ...k.branchen, person: p, dienstAm: k.dienstAm, qualGueltig, heute: k.heute })) g.push(b);
+  if (k.branchen && typeof k.branchen.personenImDienst === "function") for (const b of branchenBefunde(m, da, d, { ...k.branchen, person: p, dienstAm: k.dienstAm, qualGueltig, einheitAm, heute: k.heute })) g.push(b);
   return g;
 }
 

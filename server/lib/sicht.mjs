@@ -46,7 +46,7 @@ const nimm = (o, felder) => {
    Oberfläche greift an vielen Stellen ungeprüft zu. */
 const OBJEKT_SAMMLUNGEN = new Set(["erfassung", "einstempeln", "fahrzeiten", "checks",
   "notizen", "tagesnotizen", "belegung", "therapie", "planstaende", "freigaben",
-  "abweichungen", "postenPlan"]);
+  "abweichungen", "postenPlan", "bereichsPlan"]);
 
 /* ------------------------------------------------------------------------
    PERSONEN
@@ -477,6 +477,8 @@ export const BETRIEB = {
      Schichtverantwortung im eigenen Bereich am Tag, der Betriebsrat nicht. */
   objekte: [VOLL, VOLL],
   postenPlan: [NUR_EIGENE, WEG],
+  /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
+  bereichsPlan: [NUR_EIGENE, WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -766,6 +768,7 @@ Object.assign(SCHICHT, {
   einarbeitung: R(schichtEinarbeitung),
   betriebsmittel: R(schichtBetriebsmittel),
   postenPlan: R(schichtSchluessel(["eigen", "bereich"])),
+  bereichsPlan: R(schichtSchluessel(["eigen", "bereich"])),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
   /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */

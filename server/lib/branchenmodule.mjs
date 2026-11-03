@@ -117,7 +117,9 @@ export const BRANCHENMODULE = Object.freeze([
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),
   /* Pflege */
   modul({ id: "bereichsplan", merkmal: "bereichsplan", name: "Bereichs- und Wachabteilungsplanung", pakete: ["pflege"],
-    beschreibung: "Zuordnung der Personen eines Dienstes zu Bereichen (Tageseinsatzplan) mit Besetzung je Bereich." }),
+    beschreibung: "Zuordnung der Personen eines Dienstes zu Bereichen (Tageseinsatzplan) mit Besetzung je Bereich.",
+    /* server/lib/modul-bereichsplan.mjs: Bereiche je Einheit (einheiten[].bereiche) und das Betriebsfeld bereichsPlan. */
+    datenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"] }),
   modul({ id: "pflegequal", merkmal: "pflegequal", name: "Pflegequalifikationen", pakete: ["pflege"],
     beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst." }),
   /* Klinik */

@@ -124,6 +124,11 @@ export const REGELN_BRANCHEN = Object.freeze([
     bezeichnung: "Qualifikation für einen Posten", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },
     parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "qual", min: 1 }], bedarfAus: "objekte.posten.qualifikationen" },
     pruefhinweis: "Welche Qualifikation ein Posten verlangt, trägt der Betrieb ein; ob die Sachkunde nach § 34a GewO für die Tätigkeit vorgeschrieben ist (Absatz 1a), an der Primärquelle und im Einzelfall prüfen. Stufe nach Nutzerentscheidung G4." }),
+  /* Pflege — bereichsplan (Matrix B1 b, B3 a: auch die Wachabteilung im Rettungsdienst). */
+  branchenregel({ id: "BEREICH-BESETZUNG-01", modul: "bereichsplan", typ: "besetzungsregel",
+    bezeichnung: "Sollbesetzung eines Bereichs", ebene: "betrieb", scope: { branche: ["pflege", "klinik", "rettung", "feuerwehr"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "einheiten.bereiche.soll" },
+    pruefhinweis: "Die Sollbesetzung je Bereich legt der Betrieb fest (Pflegeschlüssel, Rettungsmittel nach Landesrecht — zu prüfen); keine feste Zahl im Code. Stufe nach Nutzerentscheidung G4." }),
 ]);
 
 /**

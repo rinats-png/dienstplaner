@@ -340,6 +340,16 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einteilungen auf Posten (`postenzuordnungen`). Befunde nur
   als Hinweis und nur bei aktivem Modul. Die Posten-Dienstarten des Bestands (`posten: true`) bleiben unverändert.
   Geprüft in `pruefungen/modul-posten.test.js`.
+- *Bereichsplan* (`server/lib/modul-bereichsplan.mjs`): ein neues Betriebsfeld und ein Feld an der Einheit. Die Bereiche
+  (`einheiten[].bereiche`: Kennung, Name, Soll je Dienstart; keine Personendaten) liefert der Server mit den Einheiten
+  an alle Rollen. `bereichsPlan` (Zuordnung, Schlüssel „Person|Tag“ → Bereich) sehen Beschäftigte nur für sich selbst,
+  die Schichtverantwortung im eigenen Bereich am Tag (`schichtSchluessel`), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Schreiben: Planung und Leitung über den Voll-Schreibweg (`bereichsplanZusammen`, nur Neues oder
+  Geändertes streng); die Schichtverantwortung ordnet Personen ihres Bereichs am Tag Bereichen der eigenen Einheit zu
+  oder hebt die Zuordnung auf (`einheitZusammen`, Fall `bereichsPlan`; Unsichtbares fremder Bereiche bleibt durch die
+  Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
+  Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
+  und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

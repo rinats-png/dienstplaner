@@ -25,15 +25,16 @@ import { anlagenBefunde } from "./modul-anlagen.mjs";
 import { maschinenqualBefunde } from "./modul-maschinenqual.mjs";
 import { geteilterdienstBefunde } from "./modul-geteilterdienst.mjs";
 import { postenBefunde } from "./modul-posten.mjs";
+import { bereichsplanBefunde } from "./modul-bereichsplan.mjs";
 
 /**
  * Die Befunde aktiver Branchenmodule zu Dienstart `da` am Tag `d`.
  * @param {any} m Betrieb
  * @param {any} da Dienstart
  * @param {string} d Tag JJJJ-MM-TT
- * @param {{ personenImDienst: (d: string, daId: any) => any[], person?: any, dienstAm?: (p: any, d: string) => any, qualGueltig?: (m: any, p: any, qid: string, heute: string) => boolean, heute?: string, module?: readonly any[] }} o
+ * @param {{ personenImDienst: (d: string, daId: any) => any[], person?: any, dienstAm?: (p: any, d: string) => any, qualGueltig?: (m: any, p: any, qid: string, heute: string) => boolean, einheitAm?: (p: any, d: string) => any, heute?: string, module?: readonly any[] }} o
  */
-export function branchenBefunde(m, da, d, { personenImDienst, person, dienstAm, qualGueltig, heute, module = BRANCHENMODULE }) {
+export function branchenBefunde(m, da, d, { personenImDienst, person, dienstAm, qualGueltig, einheitAm, heute, module = BRANCHENMODULE }) {
   if (!m || !da || typeof personenImDienst !== "function") return [];
   const personen = (personenImDienst(d, da.id) || []).filter((p) => p && typeof p === "object");
   const auswerten = (r, kontext) => pruefeRegel(r, kontext);
@@ -41,6 +42,7 @@ export function branchenBefunde(m, da, d, { personenImDienst, person, dienstAm, 
     ...anlagenBefunde(m, d, da.id, personen.map((p) => ({ id: p.id, merkmale: [] })), { auswerten, module }),
     ...maschinenqualBefunde(m, d, da.id, personen, { auswerten, stand: kompetenzStand, module }),
     ...geteilterdienstBefunde(m, da, d, { person, dienstAm, auswerten, module }),
+    ...(typeof einheitAm === "function" ? bereichsplanBefunde(m, da, d, person, personen, { auswerten, einheitAm, module }) : []),
     ...(typeof qualGueltig === "function" ? postenBefunde(m, da, d, person, personen, { auswerten, qualGueltig, heute: heute || d, module }) : []),
   ];
 }
