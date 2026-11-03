@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 138,
+  "anzahl": 141,
   "statusZaehlung": {
-    "BLOCKED": 80,
+    "BLOCKED": 83,
     "READY": 23,
     "IN_PROGRESS": 2,
     "REVIEW": 2,
@@ -12,11 +12,11 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 48,
-      "offen": 17,
+      "pakete": 50,
+      "offen": 19,
       "restPT": {
-        "min": 41,
-        "max": 61.5
+        "min": 48,
+        "max": 73.5
       }
     },
     "wp19": {
@@ -44,17 +44,17 @@
       }
     },
     "extern": {
-      "pakete": 31,
-      "offen": 31,
+      "pakete": 32,
+      "offen": 32,
       "restPT": {
-        "min": 18.35,
-        "max": 41.6
+        "min": 19.35,
+        "max": 43.6
       }
     }
   },
   "offenerAufwandPT": {
-    "min": 405,
-    "max": 690
+    "min": 412,
+    "max": 702
   },
   "kritischerPfad": {
     "summe": 105,
@@ -585,7 +585,7 @@
       "akzeptanz": "Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wiederöffnen protokolliert",
       "tests": "Unit, E2E",
       "dateien": "server, src",
-      "notiz": "Kopf 1e1aac1; Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag)."
+      "notiz": "Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag)."
     },
     {
       "id": "WP-17",
@@ -977,7 +977,7 @@
       "akzeptanz": "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest",
       "tests": "Zustelltest",
       "dateien": "deploy, Doku (Freigaben DNS/Secrets)",
-      "notiz": "Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“."
+      "notiz": "Pflichtbestandteil der Produktionsfreigabe (Betreiberentscheidung 2026-11-03). Wartet auf Einrichtung durch den Betreiber (E-9: Mailanbieter, DNS SPF/DKIM, VAPID); bisher als READY geführt. Laut Übergabeliste „noch nicht gebaut“."
     },
     {
       "id": "WP-31",
@@ -1294,7 +1294,7 @@
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":3,"max":4.5},
-      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-11","E-12","E-13","E-14","E-15","E-17","E-18","E-21","E-22"],
+      "abhaengigkeiten": ["WP-42a","E-1","E-2","E-3","E-4","E-5","E-6","E-7","E-8","E-11","E-12","E-13","E-14","E-15","E-17","E-18","E-21","E-22","E-9","E-10","E-29"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1457,12 +1457,68 @@
       "notiz": "Nur Nutzerhandlungen (E-15, Ablauf Z1–Z7)."
     },
     {
+      "id": "WP-16c",
+      "titel": "Monatsabschluss: Korrekturrevisionen nach bestätigtem Lohnexport (Revision, Differenz, Korrekturexport, Freigabe, Audit)",
+      "strang": "acc45",
+      "prio": "P0",
+      "aufwandPT": {"min":6,"max":10},
+      "abhaengigkeiten": ["WP-16"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/time/wp16c-korrekturrevisionen",
+      "agent": "Agent D – Time/Offline/Geo",
+      "modell": "opus",
+      "konfliktzonen": ["App.jsx","daten.mjs","stempelintegritaet.mjs"],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "Originalabschluss bleibt als Revision 1 historisch; neue Revision mit Zeitpunkt, Berechtigtem, Grund und Differenz; Differenzberechnung; gekennzeichneter Korrekturexport (Lohn/DATEV); Berechtigungen und Auditierung; zweite berechtigte Freigabe für lohnrelevante nachträgliche Korrekturen (möglichst); keine starre Wiederöffnungsfrist (maßgeblich Abrechnungs-/Exportstatus); gesetzlich erforderliche Berichtigungen bleiben möglich",
+      "tests": "je Prüfpunkt Test rot → grün: nachträgliche Offline-Stempel (WP-07) für Monate mit Revision, parallele Änderungen, alte Monatsabschlüsse ohne Revisionsschema (Migration), Änderung historischer Vertrags-/Tarifparameter (Freeze), Rechtematrix",
+      "dateien": "server/lib/monatsabschluss*.mjs, server/funktionen/daten.mjs, server/lib/istdaten.mjs, Export Lohn/DATEV, src/App.jsx",
+      "notiz": "P0-Produktionsblocker (Betreiberentscheidung 2026-11-03), Sicherheitsklasse kritisch (Opus). Der Schutz in WP-16 (Wiederöffnen nach bestätigtem Lohnexport abgelehnt, Aktion „Lohnexport bestätigen“) ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Rechtliche/buchhalterische Detailanforderungen: E-29. SCHÄTZUNG."
+    },
+    {
+      "id": "WP-32d",
+      "titel": "Betreiber-2FA verpflichtend vor produktivem Betrieb mit echtem Betreiberzugriff",
+      "strang": "acc45",
+      "prio": "P0",
+      "aufwandPT": {"min":1,"max":2},
+      "abhaengigkeiten": ["WP-32"],
+      "status": "READY",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/security/wp32d-betreiber-2fa-pflicht",
+      "agent": "Agent A – Security & Data Integrity",
+      "modell": "opus",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": null,
+      "akzeptanz": "Echter Betreiberzugriff in Produktion ohne eingerichteten zweiten Faktor nicht möglich (fail-closed); Einrichtungsweg und Wiederherstellung getestet; Werkzeuge (zugaenge-anlegen.sh) mit 2FA nutzbar",
+      "tests": "betreiber-zweifaktor.test.js, HTTP",
+      "dateien": "server/lib/zweifaktor*.mjs, server/funktionen/betreiber*.mjs, werkzeug/zugaenge-anlegen.sh",
+      "notiz": "Neu (Betreiberentscheidung 2026-11-03): Pflichtbestandteil der Produktionsfreigabe; Einrichtung durch den Betreiber: E-10. SCHÄTZUNG."
+    },
+    {
       "id": "WP-42a",
       "titel": "Release-Kandidat ACC45 + WP-19 (technischer Teil von WP-42)",
       "strang": "acc45",
       "prio": "P1",
       "aufwandPT": {"min":1,"max":2},
-      "abhaengigkeiten": ["WP-07","WP-09","WP-12","WP-15","WP-16","WP-19","WP-21","WP-33","WP-35","WP-38","WP-39","WP-40","WP-41","WP-43","WP-44","WP-45","WP-46","WP-14c","WP-27c","WP-47b","WP-16b","WP-24b","WP-28b","WP-07b","WP-S1"],
+      "abhaengigkeiten": ["WP-07","WP-09","WP-12","WP-15","WP-16","WP-19","WP-21","WP-33","WP-35","WP-38","WP-39","WP-40","WP-41","WP-43","WP-44","WP-45","WP-46","WP-14c","WP-27c","WP-47b","WP-16b","WP-24b","WP-28b","WP-07b","WP-S1","WP-16c","WP-32d","WP-30"],
       "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
@@ -1482,7 +1538,7 @@
       "akzeptanz": "Vollregression CI grün, Testplan Abschnitt 5 intern vollständig, Rollout-/Rücksprungplan, Freigabeliste der externen Abnahmen",
       "tests": "alle CI-Gates",
       "dateien": "–",
-      "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Nicht enthalten: WP-18/WP-30 (E-9 ist kein Blocker), WP-34 (nach main), WP-36 (läuft über E-18)."
+      "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Enthält die P0-Blocker WP-16c und WP-32d sowie WP-30 (Mail/Push Pflicht). Nicht enthalten: WP-18, WP-34 (nach main), WP-36 (läuft über E-18)."
     },
     {
       "id": "WP-14c",
@@ -3251,7 +3307,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: ja. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Offene Frage: Geo im ersten Release aus, falls nicht rechtzeitig?"
+      "notiz": "Produktionsblocker laut Übergabeliste: ja. Geo bleibt Pflichtumfang, wird aber erst nach bestandenem E-4 produktiv aktiviert (Bedingung für die Aktivierung, nicht für die Code-Fertigstellung). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     },
     {
       "id": "E-5",
@@ -3373,7 +3429,7 @@
       "id": "E-9",
       "titel": "E-Mail und Push (WP-30)",
       "strang": "extern",
-      "prio": "P2",
+      "prio": "P1",
       "aufwandPT": {"min":0.5,"max":1},
       "wartezeitAT": {"min":2,"max":15},
       "abhaengigkeiten": [],
@@ -3396,17 +3452,17 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nein (blockiert WP-18). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Offene Frage: für das erste Release gebraucht?"
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (Betreiberentscheidung 2026-11-03: Mail und Push verpflichtend). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     },
     {
       "id": "E-10",
       "titel": "Betreiber-2FA einrichten (WP-32c)",
       "strang": "extern",
-      "prio": "P2",
+      "prio": "P1",
       "aufwandPT": {"min":0.25,"max":0.25},
       "wartezeitAT": {"min":1,"max":3},
-      "abhaengigkeiten": ["WP-32"],
-      "status": "READY",
+      "abhaengigkeiten": ["WP-32","WP-32d"],
+      "status": "BLOCKED",
       "stufen": {
         "implementiert": {"wert":false,"beleg":null},
         "lokalGetestet": {"wert":false,"beleg":null},
@@ -3425,7 +3481,7 @@
       "akzeptanz": "laut Übergabeliste",
       "tests": "",
       "dateien": "–",
-      "notiz": "Produktionsblocker laut Übergabeliste: nein. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+      "notiz": "Produktionsblocker laut Übergabeliste: ja bei echtem Betreiberzugriff (Betreiberentscheidung 2026-11-03). Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans. Pflicht technisch: WP-32d."
     },
     {
       "id": "E-11",
@@ -4035,6 +4091,35 @@
       "tests": "",
       "dateien": "–",
       "notiz": "Produktionsblocker laut Übergabeliste: nur Intelligence. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
+    },
+    {
+      "id": "E-29",
+      "titel": "Monatsabschluss-Korrekturrevisionen (WP-16c): externe Prüfung der lohn-/buchhalterischen Detailanforderungen (Kanzlei, Steuerberatung, Lohnbüro)",
+      "strang": "extern",
+      "prio": "P0",
+      "aufwandPT": {"min":1,"max":2},
+      "wartezeitAT": {"min":10,"max":30},
+      "abhaengigkeiten": ["WP-16c"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": null,
+      "agent": "Betreiber / extern",
+      "modell": "–",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md (E-29)",
+      "akzeptanz": "laut Übergabeliste",
+      "tests": "",
+      "dateien": "–",
+      "notiz": "Produktionsblocker laut Übergabeliste: ja (P0). Aufbewahrungs- und Berichtigungspflichten, Revisionssicherheit des Korrekturexports; Anfrage sofort möglich, Prüfung des Beispielexports nach WP-16c. Begleitaufwand und Wartezeit sind ANNAHMEN dieses Plans."
     }
   ]
 }

@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **28–43,5 PT**
-**Offener Entwicklungsaufwand:** 405–690 PT in 75 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 412–702 PT in 77 Paketen (zuzüglich 32 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -27,6 +27,8 @@ flowchart LR
     WP_40["WP-40<br/>BLOCKED"]
     WP_42["WP-42<br/>BLOCKED"]
     WP_44["WP-44<br/>BLOCKED"]
+    WP_16c["WP-16c<br/>BLOCKED"]
+    WP_32d["WP-32d<br/>READY"]
     WP_42a["WP-42a<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
@@ -103,7 +105,7 @@ flowchart LR
     E_7["E-7<br/>READY"]
     E_8["E-8<br/>READY"]
     E_9["E-9<br/>READY"]
-    E_10["E-10<br/>READY"]
+    E_10["E-10<br/>BLOCKED"]
     E_11["E-11<br/>READY"]
     E_12["E-12<br/>READY"]
     E_13["E-13<br/>READY"]
@@ -125,6 +127,7 @@ flowchart LR
     E_26["E-26<br/>BLOCKED"]
     E_27["E-27<br/>BLOCKED"]
     E_28["E-28<br/>BLOCKED"]
+    E_29["E-29<br/>BLOCKED"]
   end
   WP_30 --> WP_18
   WP_19_13 --> WP_19
@@ -150,7 +153,11 @@ flowchart LR
   E_18 --> WP_42
   E_21 --> WP_42
   E_22 --> WP_42
+  E_9 --> WP_42
+  E_10 --> WP_42
+  E_29 --> WP_42
   E_15 --> WP_44
+  WP_16 --> WP_16c
   WP_15 --> WP_42a
   WP_16 --> WP_42a
   WP_19 --> WP_42a
@@ -169,6 +176,9 @@ flowchart LR
   WP_28b --> WP_42a
   WP_07b --> WP_42a
   WP_S1 --> WP_42a
+  WP_16c --> WP_42a
+  WP_32d --> WP_42a
+  WP_30 --> WP_42a
   WP_16 --> WP_14c
   WP_16 --> WP_16b
   E_21 --> WP_24b
@@ -324,6 +334,7 @@ flowchart LR
   E_1 --> E_4
   E_1 --> E_5
   E_1 --> E_6
+  WP_32d --> E_10
   E_13 --> E_14
   E_1 --> E_17
   E_17a --> E_17
@@ -336,6 +347,7 @@ flowchart LR
   E_21i --> E_26
   E_21i --> E_27
   E_21i --> E_28
+  WP_16c --> E_29
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -381,13 +393,15 @@ flowchart LR
 | WP-39 | acc45 | P3 | 4–5,5 | 4–5,5 | WP-12 | App.jsx | sonnet | READY |
 | WP-40 | acc45 | P3 | 3–4,5 | 3–4,5 | WP-39 | App.jsx | sonnet | BLOCKED |
 | WP-41 | acc45 | P3 | 2–3 | 0 | WP-04, WP-05, WP-31 | – | sonnet | INTEGRATED |
-| WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-11, E-12, E-13, E-14, E-15, E-17, E-18, E-21, E-22 | – | opus | BLOCKED |
+| WP-42 | acc45 | P1 | 3–4,5 | 3–4,5 | WP-42a, E-1, E-2, E-3, E-4, E-5, E-6, E-7, E-8, E-11, E-12, E-13, E-14, E-15, E-17, E-18, E-21, E-22, E-9, E-10, E-29 | – | opus | BLOCKED |
 | WP-43 | acc45 | P0 | 2–3 | 0 | WP-09 | – | opus | INTEGRATED |
 | WP-45 | acc45 | P0 | 2–3 | 0 | WP-02 | – | opus | INTEGRATED |
 | WP-46 | acc45 | P0 | 1–1,5 | 0 | WP-02 | – | opus | INTEGRATED |
 | WP-47 | acc45 | P0 | 1–1,5 | 0 | WP-46 | – | opus | INTEGRATED |
 | WP-44 | acc45 | P0 | 0,5–1 | 0,5–1 | E-15 | – | opus | BLOCKED |
-| WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1 | – | opus | BLOCKED |
+| WP-16c | acc45 | P0 | 6–10 | 6–10 | WP-16 | App.jsx, daten.mjs, stempelintegritaet.mjs | opus | BLOCKED |
+| WP-32d | acc45 | P0 | 1–2 | 1–2 | WP-32 | – | opus | READY |
+| WP-42a | acc45 | P1 | 1–2 | 1–2 | WP-07, WP-09, WP-12, WP-15, WP-16, WP-19, WP-21, WP-33, WP-35, WP-38, WP-39, WP-40, WP-41, WP-43, WP-44, WP-45, WP-46, WP-14c, WP-27c, WP-47b, WP-16b, WP-24b, WP-28b, WP-07b, WP-S1, WP-16c, WP-32d, WP-30 | – | opus | BLOCKED |
 | WP-14c | folge | P1 | 3–5 | 3–5 | WP-14, WP-16 | App.jsx, daten.mjs | opus | BLOCKED |
 | WP-27c | folge | P2 | 1,5–3 | 1,5–3 | WP-27 | – | opus | READY |
 | WP-47b | folge | P2 | 2–4 | 2–4 | WP-47, WP-24 | daten.mjs | opus | READY |
@@ -455,8 +469,8 @@ flowchart LR
 | E-6 | extern | P1 | 0,25–0,5 | 0,25–0,5 | E-1 | – | – | BLOCKED |
 | E-7 | extern | P1 | 0,5–1 | 0,5–1 | WP-04 | – | – | READY |
 | E-8 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-05 | – | – | READY |
-| E-9 | extern | P2 | 0,5–1 | 0,5–1 | – | – | – | READY |
-| E-10 | extern | P2 | 0,25 | 0,25 | WP-32 | – | – | READY |
+| E-9 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
+| E-10 | extern | P1 | 0,25 | 0,25 | WP-32, WP-32d | – | – | BLOCKED |
 | E-11 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-31 | – | – | READY |
 | E-12 | extern | P1 | 0,25–0,5 | 0,25–0,5 | WP-32 | – | – | READY |
 | E-13 | extern | P1 | 0,25 | 0,25 | WP-03 | – | – | READY |
@@ -478,3 +492,4 @@ flowchart LR
 | E-26 | extern | P2 | 1–2 | 1–2 | E-21i | – | – | BLOCKED |
 | E-27 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |
 | E-28 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |
+| E-29 | extern | P0 | 1–2 | 1–2 | WP-16c | – | – | BLOCKED |

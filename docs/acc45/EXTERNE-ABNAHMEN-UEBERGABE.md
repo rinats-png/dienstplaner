@@ -1,6 +1,6 @@
 # Externe Abnahmen und Nachweise: Übergabeliste an den Betreiber
 
-Stand: 2026-11-03 · Grundlage: `docs/acc45/STATUS.md`, `docs/acc45/wp*-nachweis.md`, `docs/BETRIEB-*.md`, `docs/INCIDENT-RUNBOOK.md`,
+Stand: 2026-11-03 (Nachtrag: Betreiberentscheidungen zu E-4, E-9, E-10, neuer Eintrag E-29; abgeglichen mit `work-packages.json`, Strang `extern`) · Grundlage: `docs/acc45/STATUS.md`, `docs/acc45/wp*-nachweis.md`, `docs/BETRIEB-*.md`, `docs/INCIDENT-RUNBOOK.md`,
 `docs/DEPLOY-AUTOMATISIERUNG.md`, `BEREITSTELLUNG.md`, `PENTEST.md`, `rechtliches/PLATZHALTER.md`, `docs/IST-STAND.md`,
 `docs/CENTRIC-TEST-UND-ABNAHMEPLAN.md` (Testplan, nur im lokalen Hauptrepo), `docs/STAGING-KETTE-B.md` (nur im lokalen Hauptrepo),
 `docs/A9-ZUGANGSCODES-ROTATION.md` (nur im lokalen Hauptrepo), `docs/acc45/WP19-OFFENE-FACHNACHWEISE.md` (Branch `acc45/docs/wp19-modulplan`),
@@ -37,13 +37,13 @@ Spalte „Blocker“: ja = ohne diese Abnahme kein Produktiv-Release (nach `QUAL
 | E-1 | Staging-Abnahme Integrationsstand inkl. WP-12 Prüfpunkte 3.1–3.4 | Betreiber (Zugang), QA | ja | Integrationsstand (WP-12 ff.) als Staging-Bild | 1–2 Tage |
 | E-2 | Android: PWA (WP-37), Offline-Stempeln (WP-07) | Betreiber (Pixel) | ja | WP-07, WP-37 | 2–3 h |
 | E-3 | iOS: PWA, Offline-Stempeln | Betreiber, Dritter (iPhone leihen) | ja | WP-07, WP-37 | 2–3 h + Beschaffung |
-| E-4 | Geo/GPS am Einsatzort (WP-20/29) | Betreiber, Vor-Ort-Person | ja (G4) | WP-20, WP-29 | 2 h + Anfahrt |
+| E-4 | Geo/GPS am Einsatzort (WP-20/29) | Betreiber, Vor-Ort-Person | ja (G4; Bedingung für die **Aktivierung** von Geo) | WP-20, WP-29 | 2 h + Anfahrt |
 | E-5 | Tablet, Desktop, Viewports 360/390/430 px | Betreiber | ja | wie E-1 | 3–4 h |
 | E-6 | Offline- und Wiederanlauf-Tests | Betreiber | ja | WP-07, WP-45, WP-47 | 2 h |
 | E-7 | Backup außer Haus und tatsächlicher Restore (WP-04) | Betreiber, Dritter (Speicherziel) | ja | WP-04 | 0,5–1 Tag |
 | E-8 | Monitoring, externe Alarmierung (WP-05) | Betreiber, Dritter (Uptime-Dienst) | ja (Betriebsabnahme 3.5) | WP-05/05b | 2–3 h |
-| E-9 | E-Mail und Push (WP-30) | Betreiber, Dritter (Mailanbieter, DNS) | nein (blockiert WP-18) | WP-30 noch nicht gebaut | nicht belegt |
-| E-10 | Betreiber-2FA einrichten (WP-32c) | Betreiber | nein | WP-32/32b/32c | 0,5 h |
+| E-9 | E-Mail und Push (WP-30) | Betreiber, Dritter (Mailanbieter, DNS) | **ja** (Betreiberentscheidung 2026-11-03) | WP-30 noch nicht gebaut | nicht belegt |
+| E-10 | Betreiber-2FA einrichten und als Pflicht schalten (WP-32c, WP-32d) | Betreiber | **ja** bei echtem Betreiberzugriff | WP-32/32b/32c, WP-32d | 0,5 h |
 | E-11 | GitHub-Umgebung `produktion`, Forced-Command-Schlüssel (WP-31) | Betreiber | ja | WP-31 | 2–3 h |
 | E-12 | `CENTRIC_VERTRAUTE_PROXYS`, Caddy, Branch-Schutz (WP-32b) | Betreiber | ja | WP-32/32b | 1–2 h |
 | E-13 | Produktions-`.env` migrieren, gesperrte Bilder/Tags entfernen (WP-03) | Betreiber | ja | WP-03 | 1 h |
@@ -62,6 +62,7 @@ Spalte „Blocker“: ja = ohne diese Abnahme kein Produktiv-Release (nach `QUAL
 | E-26 | Intelligence: DSFA | Betreiber, Kanzlei/DSB | nur Intelligence (F7B) | vor I27 | nicht belegt |
 | E-27 | Intelligence: externe KI-VO-Einordnung, Art. 22 DSGVO | Kanzlei | nur Intelligence | vor I34 | nicht belegt |
 | E-28 | Intelligence: Anwaltsprüfung Muster-BV | Kanzlei, Kunde | nur Intelligence | Muster-BV | nicht belegt |
+| E-29 | Monatsabschluss-Korrekturrevisionen (WP-16c): lohn-/buchhalterische Detailanforderungen | Betreiber, Dritte (Kanzlei, Steuerberatung, Lohnbüro) | **ja** (P0) | WP-16, WP-16c | Wochen |
 
 ## 2. Empfohlene Reihenfolge und Parallelisierung
 
@@ -69,9 +70,9 @@ Leitgedanke: Wartezeiten bei Dritten (Pentest, Kanzlei, Anbieter) **sofort ansto
 Betreiber und VPS braucht, parallel dazu.
 
 **Sofort anstoßen (laufen im Hintergrund):** E-17 Pentest-Anbieter anfragen · E-18 Kanzlei beauftragen (E-19, E-22, E-25 bis E-28
-als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klären (nur falls Mail gewünscht).
+als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klären (Pflicht) · E-29 Steuerberatung/Lohnbüro zu WP-16c anfragen.
 
-**Welle 1 (VPS und GitHub, untereinander parallel):** E-15 (P0, zuerst) · E-10 · E-11 · E-12 · E-7 · E-8.
+**Welle 1 (VPS und GitHub, untereinander parallel):** E-15 (P0, zuerst) · E-10 (nach WP-32d als Pflicht) · E-11 · E-12 · E-7 · E-8 · E-9 (nach WP-30).
 
 **Welle 2 (feste Reihenfolge):** E-13 → E-14 → E-16 (falls nötig).
 
@@ -195,7 +196,7 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
 - **Nachweis.** Screenshots der Urteile (Ortsangabe verdeckt), Tabelle Schritt/Ergebnis, Nachweiszeile zur Löschung.
 - **Abhängigkeit.** WP-20, WP-29 im Staging-Bild.
 - **Dauer.** 2 h (Sch.) plus Anfahrt.
-- **Relevanz.** Produktionsblocker: **ja** nach Gate G4 („echte Geräte“); Geo ist standardmäßig aus. Ein Verzicht auf Geo im ersten Release wäre eine Betreiberentscheidung (nicht belegt).
+- **Relevanz.** Produktionsblocker: **ja** nach Gate G4 („echte Geräte“). Betreiberentscheidung 2026-11-03: Geo bleibt Pflichtumfang, darf aber **ohne bestandenes E-4 nicht produktiv aktiviert** werden (Blocker für die Aktivierung, nicht für die Fertigstellung des Codes). Bis dahin bleibt der Geo-Schalter aus.
 
 ### E-5 Tablet, Desktop und Viewports 360/390/430 px
 
@@ -296,11 +297,11 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
 - **Nachweis.** Screenshot der Testmail mit SPF/DKIM-Ergebnis, Push-Screenshot, Notiz zum AVV.
 - **Abhängigkeit.** WP-30 (offen); WP-18 und WP-05 (Mailweg) hängen davon ab.
 - **Dauer.** Nicht belegt.
-- **Relevanz.** Produktionsblocker: **nein** (zurückgestellte Einrichtung).
+- **Relevanz.** Produktionsblocker: **ja** (Betreiberentscheidung 2026-11-03: Mail und Push sind verpflichtender Teil der vollständigen Produktionsfreigabe).
 
 ### E-10 Betreiber-2FA einrichten (WP-32c)
 
-- **Zweck/Risiko.** Ein Betreibercode ohne zweiten Faktor ist ein einzelner Schutz vor der Betreiberkonsole. Die **Pflicht**-2FA für Betreibercodes ist zurückgestellt; die Einrichtung selbst ist möglich.
+- **Zweck/Risiko.** Ein Betreibercode ohne zweiten Faktor ist ein einzelner Schutz vor der Betreiberkonsole. Betreiberentscheidung 2026-11-03: 2FA für den Betreiberzugang ist vor produktivem Betrieb mit echtem Betreiberzugriff **Pflicht** (Paket WP-32d setzt die Pflicht technisch durch).
 - **Zuständig.** Betreiber.
 - **Vorbereitung.** Authenticator-App auf dem Telefon; sicherer Offline-Ort für die Wiederherstellungscodes.
 - **Schritte (Smartphone nachvollziehbar).**
@@ -310,13 +311,13 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
   4. Sechsstelligen Code eingeben, bestätigen.
   5. Wiederherstellungscodes (einmal angezeigt) offline ablegen.
   6. Abmelden, neu anmelden: zweiter Faktor wird verlangt.
-  7. Optional nach Betreiberentscheidung: `CENTRIC_ZWEIFAKTOR_PFLICHT=1` bzw. `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` in die `.env` (Vorgabe aus).
+  7. Pflicht schalten: `CENTRIC_BETREIBER_ZWEIFAKTOR_PFLICHT=1` (und nach Entscheidung `CENTRIC_ZWEIFAKTOR_PFLICHT=1`) in die Produktions-`.env`; nach WP-32d gilt die Pflicht für echten Betreiberzugriff ohnehin.
   8. Hinweis: `werkzeug/zugaenge-anlegen.sh` schickt keinen zweiten Faktor mit; mit eingerichteter 2FA braucht es einen Nachweis im Kopf.
 - **Abnahmekriterium.** Anmeldung nur mit Code plus zweitem Faktor; Wiederherstellungscode funktioniert einmal.
 - **Nachweis.** Protokollzeile „2FA aktiv seit …, Anmeldung getestet“ (ohne Codes und QR-Bild).
-- **Abhängigkeit.** WP-32, WP-32b, WP-32c integriert.
+- **Abhängigkeit.** WP-32, WP-32b, WP-32c integriert; WP-32d (Pflicht technisch durchgesetzt).
 - **Dauer.** 0,5 h (Sch.).
-- **Relevanz.** Produktionsblocker: **nein**; Empfehlung vor Produktiv.
+- **Relevanz.** Produktionsblocker: **ja** bei echtem Betreiberzugriff.
 
 ### E-11 GitHub-Umgebung `produktion`, Forced-Command-Schlüssel, Skripte (WP-31)
 
@@ -529,7 +530,7 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
   6. `rolleSeit`/`rolleVerlauf` für Mitarbeitende, Betriebsrat, Schichtverantwortung?
   7. Sondereinsätze tagesgenau (umgesetzt) bestätigen.
   8. Mindestbesetzung/PpUGV: warnen mit Bestätigung oder sperren (vorläufig: warnen).
-  9. Alter Netlify-Auftritt; Pflicht-2FA für Betreibercodes (E-10); WP-30 (E-9).
+  9. Alter Netlify-Auftritt. Entschieden 2026-11-03: Pflicht-2FA für den Betreiberzugang (E-10, WP-32d) und Mail/Push (E-9, WP-30) sind Produktionsblocker.
   10. Kriterien je Branchenpaket (E-22).
 - **Schritte.** Betreiber geht die Liste mit der Entwicklung durch, entscheidet je Punkt und hält die Entscheidung in `STATUS.md` fest (Datum, Wortlaut).
 - **Abnahmekriterium.** Jeder Punkt hat eine dokumentierte Entscheidung oder eine bewusste Zurückstellung mit Datum.
@@ -563,7 +564,9 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
   Beschäftigtendaten (`STATUS.md`).
 - **Zuständig.** Betreiber.
 - **Freigabe-Checkliste (alle „ja“, sonst kein Deploy).**
-  - [ ] E-1 bis E-6 bestanden, Befunde bewertet
+  - [ ] E-1 bis E-6 bestanden, Befunde bewertet (Geo erst nach E-4 aktivieren)
+  - [ ] E-9 Mail und Push zugestellt, E-10 Betreiber-2FA Pflicht aktiv
+  - [ ] E-29 externe Prüfung der Korrekturrevisionen (WP-16c) abgeschlossen
   - [ ] E-7 Restore bewiesen, E-8 Alarmweg läuft
   - [ ] E-11 bis E-14 erledigt (Umgebung `produktion`, Proxy-Liste, `.env` migriert, Rücksprung-Probe)
   - [ ] E-15 Codes rotiert
@@ -657,14 +660,37 @@ als Paket anfragen) · E-3 iPhone und Tablet beschaffen · E-9 Mailanbieter klä
 - **Dauer.** Nicht belegt.
 - **Relevanz.** Blocker nur für Intelligence.
 
+### E-29 Monatsabschluss-Korrekturrevisionen (WP-16c): lohn- und buchhalterische Detailanforderungen
+
+- **Zweck/Risiko.** WP-16 sperrt das Wiederöffnen nach bestätigtem Lohnexport nur vorläufig. WP-16c führt Korrekturrevisionen
+  ein (Revision 1 bleibt historisch; neue Revision mit Zeitpunkt, Berechtigtem, Grund, Differenz; gekennzeichneter
+  Korrekturexport Lohn/DATEV; möglichst zweite berechtigte Freigabe; keine starre Wiederöffnungsfrist, maßgeblich ist der
+  Abrechnungs-/Exportstatus). Ob das den Aufbewahrungs- und Berichtigungspflichten und der Revisionssicherheit genügt, ist
+  **rechtlich und buchhalterisch zu prüfen**; Agenten können das nicht abnehmen.
+- **Zuständig.** Betreiber; Dritte: Kanzlei, Steuerberatung, Lohnbüro (Empfänger des Korrekturexports).
+- **Vorbereitung.** Beschreibung des Revisionsschemas und Beispielexporte (Revision 1 und Korrekturrevision) aus WP-16c mit
+  Testdaten; Liste der Prüffragen.
+- **Schritte.**
+  1. Steuerberatung/Lohnbüro und Kanzlei anfragen (zusammen mit E-18 sinnvoll).
+  2. Prüffragen übergeben: Aufbewahrungs- und Berichtigungspflichten für Arbeitszeit- und Lohnunterlagen; Anforderungen an
+     einen Korrekturexport (Kennzeichnung, Bezug auf den Ursprungsexport, Differenz statt Neuexport?); Revisionssicherheit
+     (Unveränderbarkeit von Revision 1, Protokoll); Vier-Augen-Pflicht; Umgang mit Korrekturen nach Abrechnungsschluss.
+  3. Beispielexport im Lohnprogramm des Lohnbüros probeweise einlesen lassen (Testdaten).
+  4. Antworten als Fachnachweis-Eintrag festhalten; Abweichungen als neue Pakete an WP-16c zurückgeben.
+- **Abnahmekriterium.** Schriftliche Rückmeldung ohne offene Muss-Punkte; Korrekturexport vom Lohnbüro einlesbar.
+- **Nachweis.** Nachweiszeile (Datum, Stelle, Ergebnis), Rückmeldung beim Betreiber (nicht im Repository).
+- **Abhängigkeit.** WP-16 (Teilumfang), WP-16c für Schritt 3.
+- **Dauer.** Wochen (Sch.).
+- **Relevanz.** Produktionsblocker: **ja** (P0, Betreiberentscheidung 2026-11-03).
+
 ---
 
 ## 4. Offene Fragen an den Betreiber
 
 1. Speicherziel, Passwortverwahrung und Alarmdienst für E-7/E-8: welche Anbieter? (zurückgestellt am 2026-11-03)
-2. Bleibt Geo im ersten Release aus, falls E-4 nicht rechtzeitig am Gerät möglich ist?
+2. ~~Bleibt Geo im ersten Release aus?~~ Entschieden 2026-11-03: Geo bleibt Pflichtumfang, Aktivierung erst nach E-4.
 3. Welche Geräte stehen bereit (Pixel vorhanden; iPhone und Tablet beschaffen oder leihen)?
-4. Wird E-Mail/Push (E-9) für das erste Release gebraucht?
+4. ~~Wird E-Mail/Push (E-9) gebraucht?~~ Entschieden 2026-11-03: ja, Produktionsblocker.
 5. Wer ist rechtlich Verantwortlicher und Vertragspartner (E-18), und gibt es eine bestellte datenschutzbeauftragte Person?
 6. Lief WP-27 (Vorgängerfassung) auf Staging (E-16)? In den Quellen nicht belegt.
 7. Soll `lasttest.yml` mit dem nächsten Merge auf den Standardzweig, oder weiter über einen temporären Branch (E-20)?
@@ -676,7 +702,7 @@ Je Zeile Datum und Ablageort des Nachweises ergänzen (ohne Personendaten).
 
 **Betrieb und Konfiguration**
 - [ ] E-15 Code-Rotation Z1–Z7 abgeschlossen, Klartextdateien beseitigt
-- [ ] E-10 Betreiber-2FA eingerichtet, Wiederherstellungscodes offline abgelegt
+- [ ] E-10 Betreiber-2FA eingerichtet und als Pflicht aktiv (WP-32d), Wiederherstellungscodes offline abgelegt
 - [ ] E-11 Umgebung `produktion` mit Genehmigung, Forced-Command-Schlüssel, Skripte auf dem VPS, Trockenlauf
 - [ ] E-12 `CENTRIC_VERTRAUTE_PROXYS` gesetzt, Caddy-Vorlage, Branch-Schutz
 - [ ] E-13 `.env` migriert (`IMAGE_DIGEST`), gesperrte Bilder und Tags entfernt
@@ -690,7 +716,7 @@ Je Zeile Datum und Ablageort des Nachweises ergänzen (ohne Personendaten).
 - [ ] E-1 Staging-Abnahme (3.1–3.4), Altbestände, Konto-Anmeldung
 - [ ] E-2 Android: PWA, Offline-Stempeln
 - [ ] E-3 iOS: PWA, Offline-Stempeln
-- [ ] E-4 Geo/GPS vor Ort, Löschung der Standort-Testdaten belegt
+- [ ] E-4 Geo/GPS vor Ort, Löschung der Standort-Testdaten belegt (erst danach Geo aktivieren)
 - [ ] E-5 Tablet, Desktop, Viewports 360/390/430/768/1024/1280/1920
 - [ ] E-6 Offline-/Wiederanlauf-Tests (Bremse, Neustart)
 
@@ -700,7 +726,8 @@ Je Zeile Datum und Ablageort des Nachweises ergänzen (ohne Personendaten).
 - [ ] E-19 Muster-BV geprüft, Beteiligung je Kunde
 - [ ] E-21 Entscheidungen aus `STATUS.md` dokumentiert (JArbSchG, MuSchG zwingend)
 - [ ] E-22 WP-19 Fachnachweise der Blocker-Einträge freigegeben
-- [ ] E-9 Mail/Push eingerichtet (nur falls gewünscht)
+- [ ] E-9 Mail/Push eingerichtet, Zustelltest bestanden (Pflicht)
+- [ ] E-29 Korrekturrevisionen (WP-16c) von Kanzlei/Steuerberatung/Lohnbüro geprüft
 
 **Intelligence (nur vor dessen Produktivbetrieb)**
 - [ ] E-25 Anbieter, AV-Vertrag, Zero-Data-Retention je Modell

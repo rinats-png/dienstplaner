@@ -18,17 +18,17 @@ oder `"teilweise"`, jeweils mit Beleg (PR, Commit, Nachweis). „Geplant“, „
 <!-- AUTO:BEGIN -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 138 · BLOCKED 80 · READY 23 · IN_PROGRESS 2 · REVIEW 2 · INTEGRATED 29 · DONE 2
+**Pakete gesamt:** 141 · BLOCKED 83 · READY 23 · IN_PROGRESS 2 · REVIEW 2 · INTEGRATED 29 · DONE 2
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
-| ACC45 | 48 | 10 | 3 | 2 | 2 | 29 | 2 | 41–61,5 |
+| ACC45 | 50 | 11 | 4 | 2 | 2 | 29 | 2 | 48–73,5 |
 | WP-19-Module | 14 | 13 | 1 | 0 | 0 | 0 | 0 | 63–98 |
 | Intelligence | 37 | 37 | 0 | 0 | 0 | 0 | 0 | 288–505 |
 | Folgepakete | 8 | 4 | 4 | 0 | 0 | 0 | 0 | 13–25,5 |
-| Extern/Entscheidungen | 31 | 16 | 15 | 0 | 0 | 0 | 0 | 18,35–41,6 |
+| Extern/Entscheidungen | 32 | 18 | 14 | 0 | 0 | 0 | 0 | 19,35–43,6 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **405–690 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **412–702 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
@@ -44,13 +44,13 @@ Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **405–690 PT
 | Paket | Status | Branch | Notiz |
 |---|---|---|---|
 | WP-09 Kette B nach main | IN_PROGRESS | `integration/centric-complete` | Integrationsbranch steht (65c1188 ff.). Offen: Staging-Abnahme (E-1), Merge nach main, Produktiv-Deploy nach Freigabe. Abhängigkeiten auf WP-09 gelten als reine Livegang-Reihenfolge. |
-| WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1; Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
+| WP-16 Pausen und Monatsabschluss | REVIEW | `acc45/time/wp16-pausen-und-monatsabschluss` | Kopf 1e1aac1. Teilumfang: Pausen, Monatsabschluss, vorläufiger Schutz (Wiederöffnen nach bestätigtem Lohnexport abgelehnt) — nur Zwischenlösung. Abnahmefähig erst mit WP-16c (P0). Folgepaket WP-16b (ältere Spur-Zeilen nennen den Tag). |
 | WP-19 Branchenpakete (12 Module) | IN_PROGRESS | `acc45/frontend/wp19-branchenpakete` | Sammelpaket: aufgeteilt in WP-19.0 … WP-19.13 (WP19-MODULPLAN.md). Server-Teilumfang von sechs Modulen integriert (#44, #49), alle Module in der Registry „geplant“ (nicht einschaltbar). |
 | WP-33 Testinfrastruktur (vollständige Sammelprüfung, Playwright, axe) | REVIEW | `acc45/qa/wp33-testinfrastruktur` | Branch seit 2026-11-02 19:03 unverändert, kein Review dokumentiert, nicht integriert; muss auf den heutigen Integrationsstand (≈ 40 Merges später) nachgezogen werden. |
 
-### Bereit zum Start (10)
+### Bereit zum Start (11)
 
-WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-36 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-28b (folge, 1,5–3 PT) · WP-S1 (folge, 1–2 PT) · WP-19.0 (wp19, 4–6 PT)
+WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-36 (acc45, 1–1,5 PT) · WP-38 (acc45, 2–3 PT) · WP-39 (acc45, 4–5,5 PT) · WP-32d (acc45, 1–2 PT) · WP-27c (folge, 1,5–3 PT) · WP-47b (folge, 2–4 PT) · WP-28b (folge, 1,5–3 PT) · WP-S1 (folge, 1–2 PT) · WP-19.0 (wp19, 4–6 PT)
 
 ### Integriert in `integration/centric-complete` (29)
 
@@ -90,7 +90,7 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-36 (acc45, 1–1,5 
 
 ✓ belegt · T teilweise (z. B. nur Server-Teilumfang) · – nicht erreicht oder nicht belegt. „Staging“, „Freigabe“ und
 „prod.“ stehen nur mit Beleg auf ✓. Gezeigt sind alle Pakete mit mindestens einer erreichten Stufe; alle übrigen
-67 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
+69 offenen Entwicklungspakete stehen auf allen Stufen auf „–“.
 
 | Paket | Status | impl. | lokal | Review | integr. | Staging | Freigabe | prod. |
 |---|---|---|---|---|---|---|---|---|
@@ -173,6 +173,8 @@ WP-15 (acc45, 3–4,5 PT) · WP-34 (acc45, 1–1,5 PT) · WP-36 (acc45, 1–1,5 
 
 ## Offene Risiken (je mit Paket)
 
+- Nachträgliche Korrektur abgeschlossener, bereits exportierter Monate nur über die Zwischenlösung (Wiederöffnen gesperrt)
+  → WP-16c (P0), E-29.
 - Stempel „500 nach Speicherung“ unter langsamer Platte: Wiederholung könnte doppelt stempeln → WP-07b.
 - Stempel-/Korrekturkette: Folgebefunde F2, F4–F8 → WP-14c. Monatsabschluss und Pausen erst im Review → WP-16.
 - Lesebremse schützt große Bestände nicht; Feed liest den vollen Bestand → WP-47b.
@@ -209,6 +211,11 @@ E-21i (Freigabe Intelligence-Block), E-15 (Code-Rotation Z1–Z7), dazu die übr
 - Planung darf die Einrichtung bearbeiten (Dienstarten, Zeiten, Mindestbesetzung, Vorlagen).
 - Lange Dienste (> 10 h) automatisch erlaubt, nur Hinweis.
 - Jugendschutz-Schalter „mehrschichtig“ auch für die Planung.
+- **P0-Blocker WP-16c:** Korrekturrevisionen eines Monatsabschlusses nach bestätigtem Lohnexport (Revision 1 bleibt,
+  neue Revision mit Zeitpunkt/Berechtigtem/Grund/Differenz, Korrekturexport, möglichst zweite Freigabe, keine starre Frist).
+  Der Schutz in WP-16 ist nur Zwischenlösung; WP-16 ist erst mit WP-16c abnahmefähig. Externe Prüfung: E-29.
+- **Mail/Push (WP-30, E-9) und Betreiber-2FA-Pflicht (WP-32d, E-10)** sind Produktionsblocker.
+- **Geo** bleibt Pflichtumfang, wird aber erst nach Echtgerätetest E-4 produktiv aktiviert.
 - WP-19: 50 Produktentscheidungen ([`WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md`](WP19-PRODUKTENTSCHEIDUNGEN-2026-11-03.md)).
 
 ## WP-19 – Module
