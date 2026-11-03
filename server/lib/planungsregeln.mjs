@@ -51,7 +51,7 @@ const folgetag = (tag) => new Date(Date.parse(`${tag}T00:00:00Z`) + 86400000).to
 /**
  * Die Einsatzregeln einer Person.
  * @param {any} p  die gespeicherte Person (vollständig)
- * @param {{von?: string}} [fenster]  Beginn des Sichtfensters
+ * @param {{von?: string, heute?: string}} [fenster]  Beginn des Sichtfensters; heute: ab da gelten Abschnitte (Review M1)
  * @returns {Array<{regel: string, hart: boolean, von?: any, bis?: any, wert?: any}>}
  */
 export function planungsregelnAbleiten(p, fenster = {}) {
@@ -79,8 +79,11 @@ export function planungsregelnAbleiten(p, fenster = {}) {
     /* Mit Einwilligung (Nutzerentscheidung, WP-11): in ihrem Zeitraum die
        Regel mit Freigabe, außerhalb die harte — beide mit Zeitraum, ohne
        den Grund zu nennen. */
-    aus.push(...nachZeitraeumen(einwilligungsZeitraeume(p, "nacht"), "nachtNichtZulaessig", "nachtAb22NichtZulaessig", true),
-      ...nachZeitraeumen(einwilligungsZeitraeume(p, "sonntag"), "sonntagNurMitFreigabe", "sonntagFreigegeben", false));
+    /* Review M1 (Art. 9 DSGVO): nur Abschnitte ab heute, ohne vergangene
+       Grenzen; der Regelname nennt kein Merkmal (einsatzfensterBis22). */
+    const ab = fenster.heute || fenster.von || null;
+    aus.push(...abHeute(nachZeitraeumen(einwilligungsZeitraeume(p, "nacht"), "nachtNichtZulaessig", "einsatzfensterBis22", true), ab),
+      ...abHeute(nachZeitraeumen(einwilligungsZeitraeume(p, "sonntag"), "sonntagNurMitFreigabe", "sonntagFreigegeben", false), ab));
   }
   if (p.schwerbehindert) aus.push({ regel: "ueber8hNurAbsprache", hart: false });
   const w = p.einschraenkungen && typeof p.einschraenkungen === "object" ? p.einschraenkungen.wiedereingliederung : null;
@@ -105,6 +108,14 @@ function einwilligungsZeitraeume(p, art) {
     } else aus.push({ ...z });
   }
   return aus;
+}
+
+/** Nur Abschnitte, die heute oder später gelten; der erste beginnt ohne Grenze. */
+function abHeute(regeln, ab) {
+  if (!ab) return regeln;
+  const l = regeln.filter((r) => !r.bis || r.bis >= ab);
+  if (l.length && l[0].von && l[0].von <= ab) { l[0] = { ...l[0] }; delete l[0].von; }
+  return l;
 }
 
 /** Harte Regel außerhalb, Regel mit Freigabe innerhalb der Zeiträume. */

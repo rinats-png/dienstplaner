@@ -193,7 +193,7 @@ export function schichtKontext(m, sitzung, eigene, heute, fenster = SICHTFENSTER
   return {
     rolle: "subplaner", ich: sitzung.person, eigene: eigene ? String(eigene) : null,
     pool: new Set(liste(m && m.einheiten).filter((e) => e && e.pool).map((e) => String(e.id))),
-    von: tagPlus(heute, -fenster.vorTage), bis: tagPlus(heute, fenster.nachTage),
+    von: tagPlus(heute, -fenster.vorTage), bis: tagPlus(heute, fenster.nachTage), heute,
     nurStatus: new Set(liste(m && m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
   };
 }
@@ -219,7 +219,7 @@ export function schichtPersonSicht(p, ctx) {
   if (Object.prototype.hasOwnProperty.call(p, "qualNachweise")) aus.qualNachweise = nachweiseBereich(p);
   if (aus.einschraenkungen && typeof aus.einschraenkungen === "object" && !Array.isArray(aus.einschraenkungen))
     aus.einschraenkungen = nimm(aus.einschraenkungen, EINSCHRAENKUNGEN_SCHICHT);
-  aus.planungsregeln = planungsregelnAbleiten(p, { von: ctx.von });
+  aus.planungsregeln = planungsregelnAbleiten(p, { von: ctx.von, heute: ctx.heute });
   aus.sichtbereich = umfang;
   return aus;
 }

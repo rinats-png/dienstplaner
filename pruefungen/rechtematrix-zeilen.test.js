@@ -103,6 +103,7 @@ const A1 = () => person("a1", "mitarbeiter", "e1", {
   kompetenzNachweise: [{ id: M("KOMPETENZ-A1") }],
   qualNachweise: [{ qualId: "masern", vorhanden: true, datei: M("DATEI-A1") }],
   mutterschutz: true, schwerbehindert: true, geburtstag: "2010-07-17", nachtvorsorge: "2024-11-13",
+  mutterschutzEinwilligungen: [{ art: "sonntag", ab: tag(-20), bis: tag(40) }],
   einschraenkungen: { keineNacht: true, wiedereingliederung: { von: tag(-5), bis: tag(30), stundenWoche: 20 } },
 });
 
@@ -705,6 +706,21 @@ describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten nur mit org.edit (WP-22)", (
       expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(["LT", "KU"].includes(k));
     });
   }
+/* Review M1 (Art. 9 DSGVO): Die Einsatzregeln der Schichtverantwortung
+   verraten weder vergangene Grenzen noch über ihren Namen ein Merkmal. a1
+   hat Mutterschutz und eine Einwilligung seit 20 Tagen. */
+describe("Einsatzregeln der Schichtverantwortung: keine vergangenen Grenzen, kein merkmalsbezogener Name (Review M1)", () => {
+  it("a1: Abschnitte nur ab heute, Namen ohne Mutterschutz-Bezug", () => {
+    const a1 = personIn(sichten.SV.betrieb, "a1");
+    expect(Array.isArray(a1.planungsregeln)).toBe(true);
+    for (const r of a1.planungsregeln) {
+      if (r.regel === "stundengrenzeWoche" || r.regel === "hoechstens8hTag" || r.regel === "wochenendePruefen" || r.regel === "nachtAb23NichtZulaessig") continue;
+      if (r.von) expect(r.von > HEUTE, JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= HEUTE, JSON.stringify(r)).toBe(true);
+    }
+    expect(JSON.stringify(a1.planungsregeln)).not.toMatch(/mutter|muschg|schwanger|einwilligung|ab22/i);
+    expect(JSON.stringify(sichten.SV.betrieb)).not.toMatch(/mutterschutzEinwilligungen/);
+  });
 });
 
 /* Zuletzt (alle Sonden sind jetzt angelegt, auch die in den Wortlaut-Prüfungen):

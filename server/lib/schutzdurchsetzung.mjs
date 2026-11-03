@@ -106,7 +106,10 @@ function planStrukturGeaendert(altM, neuM) {
     /* Review U1: Eine neu angelegte Person bekommt ihre Dienste aus der
        Schichtfolge ihrer Einheit — das ist eine Einteilung wie jede andere. */
     if (!a) return true;
-    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "teilzeit", "wochenstunden", "eintritt", "austritt", "status"])
+    /* Review M2: auch Schutzmerkmale und Einwilligungen — wer sie ändert,
+       ändert, ob bestehende Einteilungen zulässig sind. */
+    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "teilzeit", "wochenstunden", "eintritt", "austritt", "status",
+      "mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum"])
       if (!gleich(a[f], p[f])) return true;
   }
   return false;
@@ -451,6 +454,8 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
     const daA = idA ? daAlt.get(String(idA)) : null;
     const vorher = new Set(pA && daA && hatZeiten(daA) ? einteilungsBefunde(mAlt, pA, daA, d, kA).map((b) => b.regel) : []);
     for (const b of neu) if (!vorher.has(b.regel)) dazu(pid, d, id, { regel: b.regel, stufe: BEFUND_KATALOG[b.regel].stufe, text: neutralerText(b.regel) });
+    /* Review M2: dieselbe Einteilung wie vorher, nur die Person hat sich geändert. */
+    if (pA && String(idA) === String(id) && !gleich(pA, p) && funde.has(`${pid}|${d}`)) funde.get(`${pid}|${d}`).bestehend = true;
     return null;
   };
   for (const [k, ausdruecklich] of zellen) {
@@ -492,7 +497,9 @@ function* pruefen(altM, neuM, heute, zaehler, opt) {
   /* Sperrend: abweisen. */
   for (const f of funde.values()) {
     const s = f.befunde.find((b) => sperrtBefund(b.regel));
-    if (s) return { sperre: `Einteilung am ${f.datum} nicht möglich: ${s.text}. Sperrende Regeln lassen sich nicht bestätigen.` };
+    if (s) return { sperre: f.bestehend
+      ? `Bestehende Einteilung am ${f.datum} widerspricht der Änderung an der Person: ${s.text}. Bitte erst umplanen, dann ändern.`
+      : `Einteilung am ${f.datum} nicht möglich: ${s.text}. Sperrende Regeln lassen sich nicht bestätigen.` };
   }
   /* Review B4: Die Schichtverantwortung kann nur für ihren Bereich bestätigen.
      Entsteht ein warnender Befund außerhalb davon, sperrt die Änderung — ohne

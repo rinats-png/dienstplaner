@@ -34,6 +34,7 @@
 
 import { zerlegen, zusammensetzen, abdruck, kernSchluessel, scherbenSchluessel }
   from "./scherben.mjs";
+import { ereignis } from "./gesund-zaehler.mjs";
 import { unterRaumsperre, sperreGehalten, SPERRE_ZEITGRENZE, SPERRE_GESTOPPT } from "./raumsperre.mjs";
 import { createHash, randomBytes } from "node:crypto";
 
@@ -86,6 +87,7 @@ export function bestandLesenStreng(store, raum) {
 }
 
 function unlesbar(raum, was, e) {
+  ereignis("unlesbar");   // Fehlerzählung für /gesund (WP-05), ohne Raumnamen
   const f = /** @type {Error & {code?: string}} */ (new Error(
     `Bestand ${raum}: ${was} nicht lesbar${e ? ` (${String(e && e.message || e).slice(0, 120)})` : ""}`));
   f.code = BESTAND_UNLESBAR;
@@ -390,8 +392,10 @@ async function bestandSchreibenGesperrt(store, raum, neuerBestandRoh, {
   };
   /* Liegt noch ein Journal von einem abgebrochenen Schreibvorgang, gilt
      dessen Stand — er wird zuerst zu Ende geschrieben. */
-  if (await journalAbschliessen(store, raum))
+  if (await journalAbschliessen(store, raum)) {
+    ereignis("journal");   // WP-05
     console.warn(`Bestand ${raum}: abgebrochenen Schreibvorgang aus dem Journal zu Ende geschrieben`);
+  }
   const zeigerRoh = await streng("Standzeiger", () => store.get(STAND_ZEIGER(raum), { type: "json" }));
   const zeiger = zeigerRoh && Number.isFinite(Number(zeigerRoh.nr)) ? Number(zeigerRoh.nr) : null;
   const kernMeta = await streng("Kern", () => store.getMetadata(kernSchluessel(raum)));

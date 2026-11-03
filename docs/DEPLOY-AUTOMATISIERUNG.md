@@ -55,6 +55,12 @@ Warnung im Protokoll, kein R0. Hat das neue Bild schon geschrieben
 
 **Log (M3):** erst vollständig in eine Datei, dann durchsucht.
 
+**Platz nach der Sicherung (WP-05 N1):** Nach der geprüften Sicherung wird der
+freie Platz unter den Daten gegen dieselben Kritisch-Schwellen wie /gesund
+geprüft (`CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT`/`_MB` aus der `.env`,
+Vorgabe 3 % / 200 MB). Darunter wird nicht gewechselt: Der bisherige Stand
+läuft weiter (nur wenn er `digest-pruefen.sh` besteht, sonst R0).
+
 **Aufbewahrung und Platz (N4):** Vor dem Anhalten wird geprüft, dass im
 Sicherungsverzeichnis mindestens das Doppelte der Daten frei ist. Nach einer
 geprüften neuen Sicherung bleiben die jüngsten `CENTRIC_DEPLOY_BEHALTEN`

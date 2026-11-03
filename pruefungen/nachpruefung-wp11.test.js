@@ -183,10 +183,10 @@ describe("Nutzerentscheidung: Einwilligung nach dem Mutterschutzgesetz", () => {
   });
   const gM = () => { const gg = g(); gg.mandanten[0].personen.push(person("m2", "mitarbeiter", "e1", { mutterschutz: true })); return gg; };
   it("Planung erfasst eine Einwilligung; der Server setzt Wann und Wer", () => {
-    const e = schreiben(gM(), "PL", (m) => { m.personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: null, genehmigung: true, geaendertVon: "x" }]; });
+    const e = schreiben(gM(), "PL", (m) => { m.personen.find((p) => p.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0), bis: tag(200), genehmigung: true, geaendertVon: "x" }]; });
     expect(e.verweigert).toBeFalsy();
     expect(e.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen)
-      .toEqual([expect.objectContaining({ art: "nacht", ab: tag(0), bis: null, genehmigung: true, geaendertVon: "p1" })]);
+      .toEqual([expect.objectContaining({ art: "nacht", ab: tag(0), bis: tag(200), genehmigung: true, geaendertVon: "p1" })]);
     /* Ein unveränderter Rundweg behält Wann und Wer. */
     const rund = schreiben(e, "LT", () => {});
     expect(rund.mandanten[0].personen.find((p) => p.id === "m2").mutterschutzEinwilligungen)
@@ -227,6 +227,57 @@ describe("Nutzerentscheidung: Einwilligung nach dem Mutterschutzgesetz", () => {
   });
 });
 
+describe("Review 77ebfba: M1 (Art. 9), M2, N1", () => {
+  const gM = () => { const gg = g(); gg.mandanten[0].personen.push(person("m2", "mitarbeiter", "e1", { mutterschutz: true })); return gg; };
+  const SONNTAG = wochentag(3, 0);
+  it("M1: Einsatzregeln an die Schichtverantwortung ohne vergangene Grenzen und ohne merkmalsbezogenen Namen", () => {
+    const p = { mutterschutz: true, mutterschutzEinwilligungen: [{ art: "nacht", ab: tag(-20), bis: tag(40) }, { art: "sonntag", ab: tag(-20), bis: tag(60) }] };
+    const regeln = planungsregelnAbleiten(p, { von: tag(-30), heute: tag(0) });
+    for (const r of regeln) {
+      if (r.von) expect(r.von > tag(0), JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= tag(0), JSON.stringify(r)).toBe(true);
+    }
+    expect(JSON.stringify(regeln)).not.toMatch(/mutter|muschg|schwanger|einwilligung|ab22/i);
+    expect(regeln.map((r) => r.regel)).toEqual(expect.arrayContaining(["einsatzfensterBis22", "sonntagFreigegeben"]));
+    /* über die Sicht: dieselbe Aussage */
+    const gg = gM();
+    gg.mandanten[0].personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = p.mutterschutzEinwilligungen;
+    const sv = bestandFuerRolle(gg, SITZ.SV).mandanten[0].personen.find((x) => x.id === "m2");
+    const heute = heuteBerlin();
+    for (const r of sv.planungsregeln) {
+      if (r.von) expect(r.von > heute, JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= heute, JSON.stringify(r)).toBe(true);
+    }
+  });
+  it("M2: Einwilligung entfernen, während ein Sonntag geplant ist — abgewiesen mit klarer Meldung", () => {
+    const gg = gM();
+    const m2 = gg.mandanten[0].personen.find((x) => x.id === "m2");
+    m2.mutterschutzEinwilligungen = [{ art: "sonntag", ab: tag(0), bis: tag(60), geaendertAm: "x", geaendertVon: "l1" }];
+    gg.mandanten[0].abweichungen[`m2|${SONNTAG}`] = "F";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = []; });
+    expect(e.verweigert).toMatch(/Bestehende Einteilung am .* widerspricht/);
+    /* kürzen ebenso */
+    const k = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "sonntag", ab: tag(0), bis: tag(1) }]; });
+    expect(k.verweigert).toMatch(/widerspricht/);
+  });
+  it("M2: Mutterschutz eintragen, während Nachtdienste geplant sind — abgewiesen; ohne Konflikt angenommen", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    gg.mandanten[0].abweichungen[`x9|${MITTWOCH}`] = "N";
+    expect(schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; }).verweigert).toMatch(/widerspricht/);
+    const ohne = g();
+    ohne.mandanten[0].personen.push(person("x9", "mitarbeiter", "e1"));
+    const e = schreiben(ohne, "PL", (m) => { m.personen.find((x) => x.id === "x9").mutterschutz = true; });
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+  });
+  it("N1: Ende ist Pflicht; ein anders geformtes Datum gilt nicht", () => {
+    expect(schreiben(gM(), "PL", (m) => { m.personen.find((x) => x.id === "m2").mutterschutzEinwilligungen = [{ art: "nacht", ab: tag(0) }]; }).verweigert)
+      .toMatch(/Einwilligungen/);
+    const p = { mutterschutz: true, mutterschutzEinwilligungen: [{ art: "nacht", ab: "1.1.2026", bis: "2099-12-31" }] };
+    expect(schutzEinsatz(p, { start: "14:00", ende: "22:00", pause: 30 }, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+  });
+});
+
 describe("Review U1: neu angelegte Personen werden nachgerechnet", () => {
   /* Einheit eN mit Nachtschichtfolge (jeden Tag 22–06 Uhr). */
   const gN = () => {
@@ -262,7 +313,7 @@ describe("Review U1: neu angelegte Personen werden nachgerechnet", () => {
     const gg = nachts(g());
     gg.mandanten[0].personen.push(person("alt", "mitarbeiter", "e1", { mutterschutz: true, status: "gesperrt" }));
     const e = schreiben(gg, "PL", (m) => { m.personen.find((p) => p.id === "alt").status = "aktiv"; });
-    expect(e.verweigert).toMatch(/nicht möglich/);
+    expect(e.verweigert).toMatch(/nicht möglich|widerspricht/);                // Review M2: Meldung „bestehende Einteilung widerspricht“
   });
 });
 
