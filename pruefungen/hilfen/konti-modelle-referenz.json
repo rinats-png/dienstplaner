@@ -826,5 +826,259 @@
     "V24": 1
    }
   ]
+ },
+ "_synthetisch": {
+  "synth-rueckwaerts": {
+   "modell": {
+    "tage": [
+     "S",
+     "F",
+     "N",
+     "-"
+    ],
+    "gruppen": 1,
+    "versatzTage": 0,
+    "vollkonti": true,
+    "dienste": [
+     "F",
+     "S",
+     "N"
+    ]
+   },
+   "erwartet": {
+    "len": 4,
+    "wochenstunden": 42,
+    "dienste": 3,
+    "luecken": 9,
+    "maxSerie": 3,
+    "maxNacht": 1,
+    "ruhe": 1,
+    "einzel": 0,
+    "mind": {
+     "F": 0,
+     "S": 0,
+     "N": 0
+    },
+    "proTag": [
+     {
+      "S": 1
+     },
+     {
+      "F": 1
+     },
+     {
+      "N": 1
+     },
+     {}
+    ]
+   }
+  },
+  "synth-luecken": {
+   "modell": {
+    "tage": [
+     "F",
+     "F",
+     "S",
+     "-",
+     "-"
+    ],
+    "gruppen": 3,
+    "versatzTage": 3,
+    "vollkonti": true,
+    "dienste": [
+     "F",
+     "S"
+    ]
+   },
+   "erwartet": {
+    "len": 5,
+    "wochenstunden": 33.6,
+    "dienste": 3,
+    "luecken": 2,
+    "maxSerie": 3,
+    "maxNacht": 0,
+    "ruhe": 0,
+    "einzel": 0,
+    "mind": {
+     "F": 1,
+     "S": 0
+    },
+    "proTag": [
+     {
+      "F": 1,
+      "S": 1
+     },
+     {
+      "F": 2
+     },
+     {
+      "S": 1,
+      "F": 1
+     },
+     {
+      "F": 1,
+      "S": 1
+     },
+     {
+      "F": 1
+     }
+    ]
+   }
+  },
+  "synth-einzel-teilkonti": {
+   "modell": {
+    "tage": [
+     "F",
+     "-",
+     "S",
+     "-",
+     "N",
+     "-",
+     "-"
+    ],
+    "gruppen": 2,
+    "versatzTage": 3,
+    "vollkonti": false,
+    "dienste": [
+     "F",
+     "S",
+     "N"
+    ]
+   },
+   "erwartet": {
+    "len": 7,
+    "wochenstunden": 24,
+    "dienste": 3,
+    "luecken": 10,
+    "maxSerie": 1,
+    "maxNacht": 1,
+    "ruhe": 0,
+    "einzel": 3,
+    "mind": {
+     "F": 0,
+     "S": 0,
+     "N": 0
+    },
+    "proTag": [
+     {
+      "F": 1,
+      "N": 1
+     },
+     {},
+     {
+      "S": 1
+     },
+     {
+      "F": 1
+     },
+     {
+      "N": 1
+     },
+     {
+      "S": 1
+     },
+     {}
+    ]
+   }
+  },
+  "synth-kurze-ruhe-nacht": {
+   "modell": {
+    "tage": [
+     "N",
+     "F",
+     "S",
+     "-",
+     "-",
+     "-"
+    ],
+    "gruppen": 2,
+    "versatzTage": 2,
+    "vollkonti": true,
+    "dienste": [
+     "F",
+     "S",
+     "N"
+    ]
+   },
+   "erwartet": {
+    "len": 6,
+    "wochenstunden": 28,
+    "dienste": 3,
+    "luecken": 12,
+    "maxSerie": 3,
+    "maxNacht": 1,
+    "ruhe": 1,
+    "einzel": 0,
+    "mind": {
+     "F": 0,
+     "S": 0,
+     "N": 0
+    },
+    "proTag": [
+     {
+      "N": 1
+     },
+     {
+      "F": 1
+     },
+     {
+      "S": 1,
+      "N": 1
+     },
+     {
+      "F": 1
+     },
+     {
+      "S": 1
+     },
+     {}
+    ]
+   }
+  },
+  "synth-24h": {
+   "modell": {
+    "tage": [
+     "V24",
+     "-",
+     "-",
+     "V24",
+     "-"
+    ],
+    "gruppen": 2,
+    "versatzTage": 1,
+    "vollkonti": true,
+    "dienste": [
+     "V24"
+    ]
+   },
+   "erwartet": {
+    "len": 5,
+    "wochenstunden": 67.2,
+    "dienste": 2,
+    "luecken": 1,
+    "maxSerie": 1,
+    "maxNacht": 1,
+    "ruhe": 0,
+    "einzel": 2,
+    "mind": {
+     "V24": 0
+    },
+    "proTag": [
+     {
+      "V24": 1
+     },
+     {
+      "V24": 1
+     },
+     {},
+     {
+      "V24": 1
+     },
+     {
+      "V24": 1
+     }
+    ]
+   }
+  }
  }
 }

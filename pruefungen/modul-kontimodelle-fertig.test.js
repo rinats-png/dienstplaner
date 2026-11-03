@@ -98,12 +98,23 @@ describe("AK-1 K2: keine stille Vorgabe", () => {
     const a = kontiAbgleich(betrieb({ [SOLL]: BETRIEB_WERT(40), [FS]: BETRIEB_WERT(8) }), k, HEUTE);
     expect(a).toMatchObject({ differenzJahr: 104, freischichtenVorschlag: 13, stundenJeFreischicht: 8, sollWochenstunden: 40,
       eingetragen: false, verbindlich: false, wochenJeJahr: 52, geprueft: false });
-    expect(a.hinweis).toMatch(/nicht geprüft/);
+    expect(a.hinweis).toMatch(/Angaben des Betriebs, nicht geprüft\.$/);
     expect(a.hinweis).toContain("Tarifvertrag Metall NRW");
     const g = kontiAbgleich(betrieb({ [SOLL]: GEPRUEFT(40), [FS]: GEPRUEFT(8) }), k, HEUTE);
     expect(g).toMatchObject({ geprueft: true, freischichtenVorschlag: 13 });
     expect(g.hinweis).not.toMatch(/nicht geprüft/);
+    expect(g.hinweis).not.toMatch(/Angaben des Betriebs/);
     expect(g.hinweis).toContain("Betriebsvereinbarung Konti 2026");
+  });
+  it("Freischichten werden abgerundet: 104 Stunden bei 7,5 Stunden je Freischicht sind 13, nicht 14", () => {
+    const a = kontiAbgleich(betrieb({ [SOLL]: BETRIEB_WERT(40), [FS]: BETRIEB_WERT(7.5) }), kontiKennzahlen(VIER_X_VIER, DA), HEUTE);
+    expect(a.freischichtenVorschlag).toBe(13);
+  });
+  it("ein unsinniger Altwert im Modulparameter (außerhalb der Grenzen) zählt nicht", () => {
+    for (const v of [0, -3, 500, "40", NaN, null]) {
+      const p = kontiParameter(betrieb(null, { kontimodelle: { an: true, parameter: { sollWochenstunden: v } } }), HEUTE);
+      expect(p.sollWochenstunden, String(v)).toMatchObject({ wert: null, herkunft: "nicht-gesetzt" });
+    }
   });
   it("unter Soll: Minusstunden, kein Vorschlag; genau getroffen: null", () => {
     const k = kontiKennzahlen(ZWEI_WOCHE, DA);
@@ -198,11 +209,19 @@ describe("AK-3 K3: Sonn- und Feiertagsarbeit — neutraler Hinweis", () => {
 describe("AK-4 Eine Rechnung statt zwei", () => {
   const referenz = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "hilfen", "konti-modelle-referenz.json"), "utf8"));
   it("die Referenz deckt alle Modellvorlagen ab", () => {
-    expect(Object.keys(referenz).sort()).toEqual(MODELLE.map((m) => m.id).sort());
+    expect(Object.keys(referenz).filter((k) => k !== "_synthetisch").sort()).toEqual(MODELLE.map((m) => m.id).sort());
     expect(MODELLE.length).toBeGreaterThanOrEqual(8);
   });
   it("modellPruefen liefert für jede Vorlage genau die Zahlen des früheren Stands", () => {
     for (const mo of MODELLE) expect(modellPruefen(mo), mo.id).toEqual(referenz[mo.id]);
+  });
+  it("auch für Modelle mit kurzer Ruhe, Lücken, Einzeldiensten und 24-Stunden-Diensten (die Vorlagen haben dort nur Nullen)", () => {
+    const syn = Object.entries(referenz._synthetisch);
+    expect(syn.length).toBe(5);
+    expect(syn.some(([, s]) => s.erwartet.ruhe > 0)).toBe(true);
+    expect(syn.some(([, s]) => s.erwartet.luecken > 0)).toBe(true);
+    expect(syn.some(([, s]) => s.erwartet.einzel > 0)).toBe(true);
+    for (const [k, s] of syn) expect(modellPruefen(s.modell), k).toEqual(s.erwartet);
   });
   it("modellPruefen rechnet nicht mehr selbst: der Funktionskörper ruft die Modulrechnung", () => {
     const quelle = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "App.jsx"), "utf8").replace(/\r\n/g, "\n");
