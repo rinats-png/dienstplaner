@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 407,2–694 PT in 77 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 432,2–735 PT in 80 Paketen (zuzüglich 34 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -30,6 +30,7 @@ flowchart LR
     WP_16c["WP-16c<br/>BLOCKED"]
     WP_32d["WP-32d<br/>READY"]
     WP_42a["WP-42a<br/>BLOCKED"]
+    WP_48["WP-48<br/>BLOCKED"]
   end
   subgraph wp19[WP-19-Module]
     WP_19_0["WP-19.0<br/>REVIEW"]
@@ -46,6 +47,7 @@ flowchart LR
     WP_19_11["WP-19.11<br/>BLOCKED"]
     WP_19_12["WP-19.12<br/>BLOCKED"]
     WP_19_13["WP-19.13<br/>BLOCKED"]
+    WP_19_R["WP-19.R<br/>BLOCKED"]
   end
   subgraph intelligence[Intelligence]
     WP_I1["WP-I1<br/>BLOCKED"]
@@ -94,6 +96,7 @@ flowchart LR
     WP_28b["WP-28b<br/>READY"]
     WP_07b["WP-07b<br/>BLOCKED"]
     WP_S1["WP-S1<br/>READY"]
+    WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -344,6 +347,12 @@ flowchart LR
   E_31 --> E_24
   E_24 --> E_24i
   WP_16c --> E_29
+  WP_16 --> WP_48
+  WP_19_0 --> WP_19_R
+  WP_19_4 --> WP_19_R
+  WP_S1 --> WP_PILOT
+  WP_19_0 --> WP_PILOT
+  E_19 --> WP_PILOT
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -492,3 +501,6 @@ flowchart LR
 | E-30 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
 | E-31 | extern | P1 | 0,5–1 | 0,5–1 | – | – | – | READY |
 | E-32 | extern | P1 | 0,5–1,5 | 0,5–1,5 | – | – | – | READY |
+| WP-48 | acc45 | P0 | 16–26 | 16–26 | WP-16 | daten.mjs, rechte.mjs, App.jsx, stempelintegritaet.mjs | opus | BLOCKED |
+| WP-19.R | wp19 | P1 | 7–11 | 7–11 | WP-19.0, WP-19.4 | – | sonnet + opus-review | BLOCKED |
+| WP-PILOT | folge | P2 | 4–8 | 2–4 | WP-S1, WP-19.0, E-19 | – | sonnet | IN_PROGRESS |
