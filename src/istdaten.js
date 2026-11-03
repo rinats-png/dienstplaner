@@ -99,10 +99,13 @@ export function zeitraumJahr(jahr) {
 
 /**
  * Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat:
- * ein langer Dienst (LANGER_DIENST, WP-17) oder ein ungeplanter Dienst (WP-13).
+ * ein langer Dienst (LANGER_DIENST, WP-17), ein ungeplanter Dienst (WP-13) oder ein
+ * Offline-Stempel, der spät einging oder dessen Geräteuhr abwich (OFFLINE_PRUEFEN, WP-07).
  */
 export const zurPruefung = (e) => !!e && e.bestaetigt === false
-  && ((typeof e.grund === "string" && e.grund.startsWith("LANGER_DIENST")) || e.ungeplant === true);
+  && ((typeof e.grund === "string" && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN")
+    || e.grund.startsWith("DAUER_NULL")))
+    || e.ungeplant === true);
 
 /** Ein Dienst, der gestempelt wurde, ohne dass an diesem Tag einer geplant war (WP-13). */
 export const istUngeplant = (e) => !!e && e.ungeplant === true;
@@ -153,7 +156,9 @@ export const UNGEPLANT_PRUEFUNG_TEXT = "ungeplant, zur Prüfung, noch nicht gez�
 export const UNGEPLANT_TEXT = "ungeplant";
 /** Der Grund im Korrekturereignis, wenn die Leitung einen Prüffall bestätigt (WP-13, C2). */
 export const bestaetigungsGrund = (e) => (istUngeplant(e)
-  ? "Ungeplanter Dienst geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
+  ? "Ungeplanter Dienst geprüft und bestätigt"
+  : e && typeof e.grund === "string" && e.grund.startsWith("OFFLINE_PRUEFEN")
+    ? "Offline-Stempel geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
 
 /** Text zu einem bestätigten ungeplanten Dienst an einem Tag mit Abwesenheit (C1): er zählt dort nicht. */
 export const UNGEPLANT_ABWESEND_TEXT = "zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto";

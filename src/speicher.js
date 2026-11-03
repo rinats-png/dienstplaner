@@ -18,6 +18,8 @@
    localStorage überdauert das Schließen. Das gilt nur, wenn jemand
    ausdrücklich „Zugang merken" gewählt hat — auf dem eigenen Telefon
    sinnvoll, am Stationsrechner nicht. */
+import * as PUF from "./stempelpuffer.js";
+
 const SCHLUESSEL = "centric:token";
 const GEMERKT = "centric:gemerkt";
 const WARTE = 1200;          // Millisekunden, bis nach der letzten Änderung geschrieben wird
@@ -132,8 +134,14 @@ export function abmelden(still = false) {
   if (!still && token) ruf("abmelden", { method: "POST" }).catch(() => {});
   /* Der zuletzt geladene Bestand liegt im Speicher des Dienstarbeiters. Er
      gehört nicht dem nächsten Menschen an diesem Gerät. */
-  offlineDatenLoeschen();
+  offlineDatenLoeschen(stempelInhaber());
   token = null; etag = null; name = null; zugang = null;
+  /* Der Stempelpuffer bleibt auf dem Gerät (WP-07) — wartende Stempel gehen
+     nicht verloren. Ohne Inhaber wird aber nichts mehr gesendet und nichts
+     mehr angezeigt; eine andere Person, die sich hier anmeldet, sieht ihn
+     nicht und sendet ihn nicht. */
+  if (pufferUhr) { clearTimeout(pufferUhr); pufferUhr = null; }
+  stempelPufferMelden().catch(() => {});
   try {
     sessionStorage.removeItem(SCHLUESSEL);
     localStorage.removeItem(SCHLUESSEL);
@@ -149,9 +157,184 @@ export async function lies() {
   /* schreiben: "voll" | "eigenes" | "nein" — der Server sagt, was diese
      Rolle darf. Die Oberfläche darf weniger anbieten, niemals mehr. */
   zugang = { rolle: daten.rolle, person: daten.person, betrieb: daten.betrieb,
-    name: daten.name, schreiben: daten.schreiben || "voll" };
+    name: daten.name, schreiben: daten.schreiben || "voll",
+    /* WP-07: wem die Offline-Warteschlange gehört (Raum, Betrieb, Person der
+       Sitzung als Prüfsumme). Auch aus dem Speicher des Dienstarbeiters — der
+       gehört immer der aktuellen Anmeldung, denn Abmelden löscht ihn. */
+    inhaber: typeof daten.inhaber === "string" ? daten.inhaber : null };
+  stempelPufferMelden().catch(() => {});
+  /* Jetzt ist der Inhaber bekannt: Wartendes senden — beim Start der
+     Anwendung der Weg, auf dem ein offline erfasster Stempel nach einem
+     Neustart hinausgeht. */
+  if (!ausSpeicher && quittungsAbnehmer) stempelSenden().catch(() => {});
   return { bestand: daten.bestand, zugang, geaendert: daten.geaendert, durch: daten.durch,
     ausSpeicher: !!ausSpeicher, geholt };
+}
+
+/* ----------------------- Offline-Stempeln (WP-07) ------------------------
+   Jedes Stempeln wird zuerst im Stempelpuffer des Geräts abgelegt
+   (stempelpuffer.js: IndexedDB, sonst localStorage) und dann gesendet. Was
+   nicht durchkommt, bleibt liegen, bis der Server quittiert — über Neustart
+   und Abmelden hinweg. Gesendet wird nur, was der angemeldeten Person
+   gehört (Inhaber), und nur mit ihrer Sitzung; Ereignisse einer anderen
+   Person bleiben unberührt und unsichtbar.
+
+   Wann gesendet wird: sofort beim Stempeln, beim Start der Anwendung, wenn
+   das Netz zurückkommt (online), wenn die Anwendung wieder in den
+   Vordergrund kommt (focus, visibilitychange) und solange etwas wartet nach
+   der Wartezeit (2 s, 4 s … 5 min; bei 429/503 nach Retry-After). Die
+   Hintergrundsynchronisation des Dienstarbeiters (Background Sync) wird
+   bewusst nicht genutzt: Safari/iOS kennt sie nicht, und der Dienstarbeiter
+   müsste dafür den Zugang selbst halten. Der Pflichtweg ist deshalb die
+   geöffnete Anwendung. */
+let pufferSpeicherP = null;
+const pufferSpeicher = () => { if (!pufferSpeicherP) pufferSpeicherP = PUF.speicherWaehlen(); return pufferSpeicherP; };
+const pufferBeobachter = new Set();
+let pufferKette = Promise.resolve();
+let pufferUhr = null;
+let quittungsAbnehmer = null;
+
+/** Der Inhaber der angemeldeten Sitzung — oder null (abgemeldet, ohne Person, alter Server). */
+export const stempelInhaber = () => (zugang && zugang.inhaber) || null;
+
+/** Die eigenen Ereignisse (wartend, bestätigt, abgelehnt), in Erfassungsreihenfolge. */
+export async function stempelEreignisse() {
+  try { return await PUF.ereignisseVon(await pufferSpeicher(), stempelInhaber()); } catch { return []; }
+}
+
+/** Wie viele eigene Stempel warten noch auf das Netz? (Hinweis beim Abmelden) */
+export const stempelWartendAnzahl = () => PUF.vorlaeufige().filter((e) => e && e.zustand === "wartet").length;
+
+/** Wird der Puffer dauerhaft gespeichert (IndexedDB/localStorage)? Sonst ginge er beim Neustart verloren. */
+export async function stempelPufferDauerhaft() {
+  try { return (await pufferSpeicher()).dauerhaft; } catch { return false; }
+}
+
+/** Bei jeder Änderung des Puffers benachrichtigt werden. Gibt die Abmeldung zurück. */
+export function stempelBeobachten(fn) {
+  pufferBeobachter.add(fn);
+  return () => pufferBeobachter.delete(fn);
+}
+
+async function stempelPufferMelden() {
+  const liste = await stempelEreignisse();
+  PUF.vorlaeufigeSetzen(liste);
+  for (const f of pufferBeobachter) { try { f(liste); } catch { /* Anzeige */ } }
+  return liste;
+}
+
+async function ereignisSenden(ev) {
+  if (!token) return { status: 401, daten: null };
+  /* Höchstens 20 Sekunden je Versuch: In einem schwachen Netz hängt eine
+     Anfrage sonst minutenlang, und die Reihe dahinter wartet mit. Ein
+     abgebrochener Versuch ist ein vorübergehender Fehler — dieselbe Kennung
+     kommt wieder, der Server macht trotzdem nur einen Stempel daraus. */
+  const ab = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const uhr = ab ? setTimeout(() => ab.abort(), 20000) : null;
+  let a;
+  try {
+    a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
+      body: JSON.stringify(PUF.rumpfFuer(ev)), ...(ab ? { signal: ab.signal } : {}) });
+  } finally { if (uhr) clearTimeout(uhr); }
+  let d = null;
+  try { d = await a.json(); } catch { /* leere Antwort */ }
+  return { status: a.status, daten: d, warteMs: PUF.retryAfterMs(a.headers.get("retry-after")) };
+}
+
+/** Nächsten Versuch planen, solange etwas wartet. */
+function pufferPlanen(liste) {
+  if (pufferUhr) { clearTimeout(pufferUhr); pufferUhr = null; }
+  const wartend = liste.filter((e) => e.zustand === "wartet");
+  if (!wartend.length || !stempelInhaber()) return;
+  const naechst = Math.min(...wartend.map((e) => e.naechsterVersuchAm || 0));
+  const in_ = Math.max(1000, Math.min(PUF.WARTEN_MAX_MS, naechst - Date.now()));
+  pufferUhr = setTimeout(() => { stempelSenden().catch(() => {}); }, in_);
+}
+
+/**
+ * Die eigenen wartenden Stempel senden. Läufe in diesem Reiter stehen
+ * hintereinander; zwischen Reitern trennt die Web-Locks-Schnittstelle, wo
+ * es sie gibt — und wo nicht, sorgt der Server dafür, dass dasselbe
+ * Ereignis nur einen Stempel ergibt. `sofort`: Wartezeiten aufheben (die
+ * Person hat gerade gestempelt, oder das Netz ist zurück).
+ */
+export function stempelSenden({ sofort = false } = {}) {
+  const lauf = pufferKette.then(async () => {
+    const inhaber = stempelInhaber();
+    if (!inhaber) return { ergebnisse: {}, angehalten: "ohne-inhaber" };
+    const sp = await pufferSpeicher();
+    if (sofort)
+      for (const e of await PUF.ereignisseVon(sp, inhaber))
+        if (e.zustand === "wartet" && e.naechsterVersuchAm) await sp.setzen({ ...e, naechsterVersuchAm: 0 });
+    /* Quittungen eines Laufs gesammelt an die Oberfläche — ein Nachladen
+       statt eines je Stempel (Review L6). */
+    const quittungen = [];
+    const arbeit = () => PUF.abarbeiten(sp, inhaber, ereignisSenden,
+      { beiQuittung: (ev, daten) => { quittungen.push({ ev, daten }); } });
+    const locks = typeof navigator !== "undefined" && navigator.locks;
+    const erg = locks && typeof locks.request === "function"
+      ? await locks.request("centric-stempelpuffer", arbeit) : await arbeit();
+    pufferPlanen(await stempelPufferMelden());
+    if (quittungen.length && quittungsAbnehmer) { try { quittungsAbnehmer(quittungen); } catch { /* Anzeige */ } }
+    return erg;
+  });
+  pufferKette = lauf.catch(() => {});
+  return lauf;
+}
+
+/**
+ * Ein Stempeln ablegen. Gibt das Ereignis zurück — oder null, wenn der
+ * Inhaber unbekannt ist (dann stempelt die Oberfläche wie bisher direkt).
+ */
+export async function stempelErfassen(datum, art, koord) {
+  const inhaber = stempelInhaber();
+  if (!inhaber) return null;
+  /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
+     Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
+     eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
+     localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
+  const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber,
+    offline: typeof navigator !== "undefined" && navigator.onLine === false });
+  await stempelPufferMelden();
+  return ev;
+}
+
+/** Ein abgelehntes Ereignis erneut senden — auf ausdrücklichen Wunsch. */
+export async function stempelErneut(id) {
+  const ok = await PUF.erneutSenden(await pufferSpeicher(), id, stempelInhaber());
+  if (ok) await stempelSenden({ sofort: true });
+  return ok;
+}
+
+/** Ein abgelehntes oder bestätigtes Ereignis zur Kenntnis nehmen. Wartende bleiben. */
+export async function stempelVerwerfen(id) {
+  const ok = await PUF.verwerfen(await pufferSpeicher(), id, stempelInhaber());
+  await stempelPufferMelden();
+  return ok;
+}
+
+/**
+ * Senden bei Start, Netz und Vordergrund einrichten. `beiQuittung(liste)`
+ * bekommt je Sendelauf die bestätigten Stempel ([{ ev, daten }]) — auch die
+ * im Hintergrund gesendeten.
+ * Gibt eine Funktion zum Abbauen zurück.
+ */
+export function stempelSyncEinrichten(beiQuittung) {
+  quittungsAbnehmer = beiQuittung || null;
+  if (typeof window === "undefined") return () => {};
+  const los = () => { stempelSenden({ sofort: true }).catch(() => {}); };
+  const sichtbar = () => { if (document.visibilityState === "visible") los(); };
+  window.addEventListener("online", los);
+  window.addEventListener("focus", los);
+  document.addEventListener("visibilitychange", sichtbar);
+  los();
+  return () => {
+    window.removeEventListener("online", los);
+    window.removeEventListener("focus", los);
+    document.removeEventListener("visibilitychange", sichtbar);
+    if (quittungsAbnehmer === beiQuittung) quittungsAbnehmer = null;
+    if (pufferUhr) { clearTimeout(pufferUhr); pufferUhr = null; }
+  };
 }
 
 /* ------------------------------ Schreiben -------------------------------- */
@@ -471,7 +654,14 @@ export async function offlineEinrichten() {
 }
 
 /** Beim Abmelden: den gespeicherten Bestand wegräumen. */
-export async function offlineDatenLoeschen() {
+export async function offlineDatenLoeschen(inhaber = stempelInhaber()) {
+  /* Der Stempelpuffer gehört dazu (Review A2): Bestätigtes der Person wird
+     entfernt, Wartendes und Abgelehntes bleiben (kein stiller Verlust), ohne
+     Standort, sobald quittiert oder abgelehnt. */
+  if (inhaber) {
+    try { await PUF.abmeldenAufraeumen(await pufferSpeicher(), inhaber); } catch { /* weiter */ }
+    stempelPufferMelden().catch(() => {});
+  }
   try {
     const reg = await navigator.serviceWorker.getRegistration();
     const ziel = (reg && (reg.active || reg.waiting)) || navigator.serviceWorker.controller;

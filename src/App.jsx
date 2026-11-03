@@ -4,7 +4,7 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung,
   vormonateMitPruefung, exportWarnung,
   ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
-import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland, GEO_MODUS_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
@@ -5553,7 +5553,7 @@ function Anmeldung({ db, onLogin }) {
             <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>
               Der Datenraum ist angelegt, aber noch leer. Die Organisationsleitung
               richtet den Betrieb ein — danach funktioniert dieser Zugang.</p>
-            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+            <Btn onClick={abmeldenMitHinweis}>Abmelden</Btn>
           </Card>
         </div>
         <RechtLeiste onOeffnen={setRecht} style={{ paddingBottom: 26 }} />
@@ -11855,15 +11855,21 @@ function StempelBefunde({ sitz, ym, akt }) {
           <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.45 }}>
             Länger als geplant + 2 Stunden gestempelt: bis zur Bestätigung zählt im Stundenkonto die Planzeit. Ohne geplanten
             Dienst gestempelt (ungeplant): bis zur Bestätigung zählt der Dienst nicht — danach mit der gestempelten Dauer.
+            Offline gestempelt und spät eingegangen oder mit abweichender Geräteuhr: bis zur Bestätigung zählt die Planzeit.
             Der Export (Zuschläge) und die Lohnausgabe fragen vor dem Download noch einmal nach.</div>
           {pruef.map(({ personId, datum, erfassung }) => (
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
-              <Pill size="sm" tone="warn">{istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              <Pill size="sm" tone="warn">{String(erfassung.grund || "").startsWith("DAUER_NULL") ? MARKIERUNG_TEXT.DAUER_NULL
+                : String(erfassung.grund || "").startsWith("OFFLINE_PRUEFEN") ? MARKIERUNG_TEXT.OFFLINE_PRUEFEN
+                : istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
               {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
                 <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
-              {darfBestaetigen && akt && String(personId) !== eigene && (
-                <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
+              {/* Dauer 0 (Nachprüfung B1): nicht „wie gestempelt" bestätigen — 06:00–06:00 zählte als 24 Stunden;
+                  die Zeiten trägt die Leitung über die Korrektur ein. */}
+              {darfBestaetigen && akt && String(personId) !== eigene && (String(erfassung.grund || "").startsWith("DAUER_NULL")
+                ? <span style={{ fontSize: 12.5, color: C.dim }}>Zeiten über „Korrigieren“ eintragen</span>
+                : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
         </div>)}
       <KorrekturAntraege sitz={sitz} akt={akt} />
@@ -13232,7 +13238,7 @@ function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
           <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
             {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
         </div></>)}
-      {vorgang && <Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} />}
+      {vorgang && <><Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></>}
       {children}
     </Card>);
 }
@@ -13370,6 +13376,38 @@ function Tagesstart({ sitz, akt, gehZu, oeffneTag }) {
 const GEO_HINWEIS = "Beim Stempeln wird einmalig geprüft, ob du am Standort bist. Gespeichert werden das Ergebnis, "
   + "die Entfernung grob gerundet und die Messgenauigkeit — keine Koordinate, kein Verlauf.";
 
+/* WP-07: Stempel im Puffer des Geräts — vorläufig (offline gespeichert),
+   bestätigt oder abgelehnt mit Grund. Nur die eigenen (Inhaber der Sitzung);
+   ein abgelehnter verschwindet nicht still, sondern bleibt, bis die Person
+   ihn erneut senden lässt oder zur Kenntnis nimmt. */
+function StempelPuffer({ akt }) {
+  const [liste, setListe] = useState([]);
+  const [dauerhaft, setDauerhaft] = useState(true);
+  useEffect(() => {
+    let lebt = true;
+    SP.stempelEreignisse().then((l) => { if (lebt) setListe(l); });
+    SP.stempelPufferDauerhaft().then((d) => { if (lebt) setDauerhaft(d); });
+    const ab = SP.stempelBeobachten((l) => { if (lebt) setListe(l); });
+    return () => { lebt = false; ab(); };
+  }, []);
+  if (!liste.length) return null;
+  return (
+    <div role="status" aria-live="polite" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.45, textAlign: "left" }}>
+      {liste.map((ev) => {
+        const zeit = new Date(ev.erfasstAm).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const ton = ev.zustand === "abgelehnt" ? C.danger : ev.zustand === "wartet" ? C.warn : C.ok;
+        return (<div key={ev.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "3px 0", ...NUM }}>
+          <span>{ev.art === "start" ? "Beginn" : "Ende"} {zeit}</span>
+          <span style={{ color: ton, fontWeight: 600 }}>{pufferZustandText(ev)}</span>
+          {ev.zustand === "abgelehnt" && <Btn size="sm" kind="quiet" onClick={() => akt.stempelErneut(ev.id)}>Erneut senden</Btn>}
+          {ev.zustand !== "wartet" && <Btn size="sm" kind="quiet" onClick={() => akt.stempelVerwerfen(ev.id)}>Zur Kenntnis</Btn>}
+        </div>);
+      })}
+      {!dauerhaft && liste.some((e) => e.zustand === "wartet") && <div style={{ color: C.warn }}>
+        Dieses Gerät kann den Stempel nicht dauerhaft ablegen — bitte die Anwendung offen lassen, bis das Netz zurück ist.</div>}
+    </div>);
+}
+
 function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
@@ -13413,13 +13451,13 @@ function Stempeluhr({ sitz, akt, vorgang }) {
   if (!st.ende) return (
     <div style={{ textAlign: "right" }}>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, ...NUM }}>
-        Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
+        Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
       <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>
         {laeuft ? wartet : "Ausstempeln"}</Btn>
     </div>);
   return (
     <div style={{ textAlign: "right" }}>
-      <Pill tone="ok">Dienst erfasst</Pill>
+      {st.vorlaeufig ? <Pill tone="warn">vorläufig (offline gespeichert)</Pill> : <Pill tone="ok">Dienst erfasst</Pill>}
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 7, ...NUM }}>
         {st.start || "–"} – {st.ende}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
     </div>);
@@ -20335,7 +20373,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <Rubrik>Offener Dienst von gestern</Rubrik>
           <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
             Eingestempelt gestern {vorgang.st.start}</div>
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : da ? (
         <MKarte style={{ padding: 22, background: `${da.farbe}0E`, border: `1px solid ${da.farbe}33` }}>
@@ -20345,7 +20383,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
             {da.start} – {da.ende} · {n1(dauer(da))} h</div>
           {da.ort && <div style={{ fontSize: 14, color: C.dimmer, marginTop: 5 }}>{da.ort}</div>}
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : vorgang.offen ? (
         /* Eingestempelt, aber heute kein Dienst (mehr) im Plan — etwa nach
@@ -20354,7 +20392,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <Rubrik>Offener Dienst ohne Plan</Rubrik>
           <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px", ...NUM }}>
             Eingestempelt {vorgang.st.start}</div>
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : istUngeplant((m.erfassung || {})[`${p.id}|${d0}`]) ? (
         <MKarte style={{ padding: 22 }}><UngeplantHinweis m={m} p={p} d={d0} /></MKarte>
@@ -20454,11 +20492,11 @@ function MStempel({ sitz, akt, vorgang }) {
     <Flaeche kind="quiet" onClick={() => stempeln("ende")}>Ende trotzdem erfassen</Flaeche></>);
   if (!st.ende) return (<>
     <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, ...NUM }}>
-      Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}</div>
+      Eingestempelt {vortag ? "gestern " : ""}{st.start}{st.ortStart ? ` · ${st.ortStart}` : ""}{st.vorlaeufig ? " · vorläufig (offline gespeichert)" : ""}</div>
     <Flaeche kind="ok" onClick={() => stempeln("ende")}>Ausstempeln</Flaeche></>);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-      <Pill tone="ok">Dienst erfasst</Pill>
+      {st.vorlaeufig ? <Pill tone="warn">vorläufig (offline gespeichert)</Pill> : <Pill tone="ok">Dienst erfasst</Pill>}
       <span style={{ fontSize: 14, color: C.dim, ...NUM }}>{st.start || "–"} – {st.ende}</span>
     </div>);
 }
@@ -21546,6 +21584,38 @@ function Tarifwerk({ sitz, akt }) {
  * Vorgabe: aus. Einschalten nur mit der ausdrücklichen Bestätigung; die
  * Arbeitszeit wird in jedem Fall erfasst.
  */
+/**
+ * Offline-Stempeln vertrauen (WP-07, Review-Auflage A1). Vorgabe: aus — eine
+ * offline erfasste Zeit, die 15 Minuten oder später ankommt, steht zur
+ * Prüfung. Schalten nur mit org.edit; wann und von wem, setzt der Server.
+ */
+function OfflineSchalter({ sitz, akt }) {
+  const e = sitz.mandant.einstellungen || {};
+  const an = e.offlineStempelVertrauen === true;
+  const darfSchalten = darf(sitz, "org.edit");
+  const durch = e.offlineStempelVertrauenVon
+    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.offlineStempelVertrauenVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={an ? "warn" : "ok"}>{an ? "gelockert" : "streng"}</Pill>}>
+        Stempeln ohne Netz</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        Ohne Netz gestempelt zählt die Uhrzeit des Geräts. Sie lässt sich mit Flugmodus und verstellter Uhr fälschen.
+        Deshalb steht eine Ist-Zeit zur Prüfung, wenn ein offline erfasster Beginn oder ein offline erfasstes Ende
+        15 Minuten oder später beim Server ankommt — bis die Leitung sie in den Stempelbefunden bestätigt.
+        {" "}Gelockert gilt sie dann als bestätigt; eine abweichende Geräteuhr und Stempel über 48 Stunden bleiben zur Prüfung.
+        {e.offlineStempelVertrauenAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.offlineStempelVertrauenAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        {darfSchalten && (
+          <div style={{ marginTop: 14 }}>
+            {an ? <Btn onClick={() => akt.setzeOfflineVertrauen(false)}>Wieder streng prüfen</Btn>
+              : <Btn onClick={() => akt.setzeOfflineVertrauen(true)}>Lockern</Btn>}
+          </div>)}
+      </div>
+    </Card>);
+}
+
 function GeoSchalter({ sitz, akt }) {
   const e = sitz.mandant.einstellungen || {};
   const an = e.geoPruefung === true;
@@ -21986,6 +22056,8 @@ function Betrieb({ sitz, akt }) {
       <Standorte sitz={sitz} akt={akt} />
 
       <GeoSchalter sitz={sitz} akt={akt} />
+
+      <OfflineSchalter sitz={sitz} akt={akt} />
 
       <Einsatzorte sitz={sitz} akt={akt} />
 
@@ -22909,6 +22981,83 @@ function AppInnen() {
       name: sitz && sitz.person ? `${sitz.person.vorname} ${sitz.person.nachname}` : "unbekannt",
       rolle: sitz ? sitz.rolle : null });
 
+    /* Die Antworten des Servers auf Stempel übernehmen (WP-07: auch für
+       Stempel aus dem Puffer, die später durchkamen). Mehrere Quittungen
+       eines Sendelaufs kommen gesammelt — ein Nachladen, nicht eines je
+       Stempel (Review L6). eintraege: [{ datum, art, erg }]. */
+    const stempelUebernehmen = async (pid, eintraege) => {
+      if (!eintraege.length) return;
+      /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
+         zuletzt gesendete — nur dann darf er durch den Serverstand
+         ersetzt werden, ohne dass Arbeit verloren geht. (Ein
+         gescheiterter Versuch bleibt in SP.ausstehend und im Hinweis
+         „nicht gespeichert" erhalten.) */
+      const ohneOffenes = !!ref.current && !SP.schreibenAusstehend()
+        && abbildVon(ref.current) === zuletztGeschrieben.current;
+      const meldungVon = ({ art, erg }) => {
+        const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
+        return `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit}${erg.ort ? ` · ${erg.ort}` : ""}${kz.length ? ` · ${kz.join(", ")}` : ""}${erg.offline ? " · bestätigt" : ""}`;
+      };
+      const meldung = eintraege.length === 1 ? meldungVon(eintraege[0])
+        : `${eintraege.length} Stempel bestätigt · zuletzt: ${meldungVon(eintraege[eintraege.length - 1])}`;
+      /* Geschrieben hat der Server. Bisher wurde seine Antwort lokal
+         eingetragen — das änderte den Bestand, der Speicher-Effekt
+         schickte daraufhin den ganzen Bestand per PUT mit dem alten
+         ETag hinterher, und der Server wies ihn mit 409 ab. Jetzt wird
+         der gespeicherte Stand samt ETag nachgeladen und als
+         geschrieben vermerkt: kein zweiter Schreibvorgang, und die
+         Versionskontrolle bleibt unangetastet (Bestand und ETag
+         gehören zusammen). */
+      if (ohneOffenes) {
+        try {
+          const neu = await SP.lies();
+          const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
+          const jetzt = ref.current;
+          /* Nur wenn sich zwischendurch lokal nichts getan hat und kein Schreiben ansteht. */
+          if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
+            && abbildVon(jetzt) === zuletztGeschrieben.current) {
+            const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
+            zuletztGeschrieben.current = abbildVon(naechster);
+            setDb(naechster);
+            melde(meldung);
+            return;
+          }
+        } catch { /* nachladen gescheitert: unten wie bisher lokal nachziehen */ }
+      }
+      /* Sonst: die Serverantwort lokal nachziehen, damit die Ansicht
+         sofort stimmt. Lag Ungespeichertes vor, geht es wie jede andere
+         Änderung auf den regulären Schreibweg — ein 409 führt dann in
+         den Konfliktdialog, nichts wird verworfen. */
+      const spiegeln = (s2) => {
+        const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
+        if (!m) return s2;
+        let mm = m;
+        for (const { datum, art, erg } of eintraege) {
+          const k = stempelSchluessel(pid, erg, datum);
+          /* Übernommen wird, was der Server gespeichert hat (eintrag,
+             erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
+             409 bei gleichzeitigem Speichern) landet unten im catch und
+             ändert lokal nichts. */
+          mm = { ...mm, einstempeln: { ...(mm.einstempeln || {}), [k]: erg.eintrag } };
+          if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+            [k]: erg.erfassung } };
+        }
+        return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
+      };
+      const jetzt = ref.current;
+      if (ohneOffenes && jetzt && !SP.schreibenAusstehend() && abbildVon(jetzt) === zuletztGeschrieben.current) {
+        /* Nachladen ging nicht (etwa offline): Der Eintrag ist trotzdem
+           nur das Spiegelbild dessen, was der Server schon hat — als
+           geschrieben vermerkt, kein PUT. Der ETag bleibt der alte; die
+           nächste echte Änderung läuft damit regulär in die
+           Konfliktprüfung, statt fremde Änderungen zu überschreiben. */
+        const naechster = { ...spiegeln(jetzt), stand: (jetzt.stand || 0) + 1 };
+        zuletztGeschrieben.current = abbildVon(naechster);
+        setDb(naechster);
+      } else upd(spiegeln);
+      melde(meldung);
+    };
+
     return {
       /* Kurze Rückmeldung am unteren Rand. Bausteine, die selbst mit dem
          Server reden, brauchen sie — bisher hatte nur AppInnen sie. */
@@ -22931,8 +23080,8 @@ function AppInnen() {
          während der Bestand hier schon null ist — sichtbar als
          Ladeskelett, das nie fertig wird. */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
-      abmelden: () => { vergissSchutzkonflikte(); SP.abmelden(); window.location.reload(); },
-      verbindungTrennen: () => { vergissSchutzkonflikte(); SP.abmelden(); window.location.reload(); },
+      abmelden: abmeldenMitHinweis,
+      verbindungTrennen: abmeldenMitHinweis,
       zurueck: () => { if (!verlauf.current.length) return melde("Nichts rückgängig zu machen.");
         const [l, ...r] = verlauf.current; verlauf.current = r; setDb(l); melde("Rückgängig gemacht."); },
 
@@ -23295,7 +23444,8 @@ function AppInnen() {
          gestempelte Zeit — seit WP-06 als Korrekturereignis mit Grund. */
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
-        if (!e) return;
+        /* Dauer 0 nie unverändert bestätigen (Nachprüfung B1). */
+        if (!e || String(e.grund || "").startsWith("DAUER_NULL")) return;
         return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
@@ -23469,6 +23619,10 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Offline-Stempel vertrauen (WP-07): nur org.edit; wann und von wem, setzt der Server. */
+      setzeOfflineVertrauen: (an) => mUpd((m) => ({ ...m,
+        einstellungen: { ...(m.einstellungen || {}), offlineStempelVertrauen: !!an } }),
+        an ? "Stempeln ohne Netz: Prüfung gelockert" : "Stempeln ohne Netz: wieder streng geprüft"),
       /* Prüfmodus der Standortprüfung (WP-20): nur die Leitung; „pflicht" mit Bestätigung in derselben
          Anfrage (Mitbestimmung), Wann/Wer setzt der Server. */
       setzeGeoModus: (modus) => mUpd((m) => {
@@ -24143,78 +24297,52 @@ function AppInnen() {
          sein eigenes Urteil in den Bestand. Jetzt gehen nur die
          Rohkoordinaten hinaus; Standort, Radius, Uhrzeit und Bewertung
          liegen auf dem Server, und von dort kommt das Ergebnis zurück. */
+      /* WP-07: Jedes Stempeln geht zuerst in den Stempelpuffer des Geräts
+         (SP.stempelErfassen) und dann hinaus. Kommt es durch, übernimmt
+         stempelQuittung die Antwort — dieselbe Stelle für sofort und später
+         (Netz zurück, Neustart) gesendete Stempel. Kommt es nicht durch,
+         bleibt es vorläufig (offline gespeichert) und wird wiederholt; eine
+         Absage des Servers wird mit Grund gemeldet und bleibt sichtbar
+         (OfflineStempel). */
       stempeln: async (pid, datum, art, koord) => {
         try {
-          /* Was noch zum Schreiben ansteht, geht zuerst regulär hinaus —
-             sonst liefe es nach dem Stempeln mit dem alten ETag in einen 409. */
-          await SP.schreibenAbschliessen();
-          /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
-             zuletzt gesendete — nur dann darf er durch den Serverstand
-             ersetzt werden, ohne dass Arbeit verloren geht. (Ein
-             gescheiterter Versuch bleibt in SP.ausstehend und im Hinweis
-             „nicht gespeichert" erhalten.) */
-          const ohneOffenes = !!ref.current && !SP.schreibenAusstehend()
-            && abbildVon(ref.current) === zuletztGeschrieben.current;
-          const erg = await SP.stempeln(datum, art, koord);
-          const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
-          const meldung = `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit} · ${erg.ort}${kz.length ? ` · ${kz.join(", ")}` : ""}`;
-          /* Geschrieben hat der Server. Bisher wurde seine Antwort lokal
-             eingetragen — das änderte den Bestand, der Speicher-Effekt
-             schickte daraufhin den ganzen Bestand per PUT mit dem alten
-             ETag hinterher, und der Server wies ihn mit 409 ab. Jetzt wird
-             der gespeicherte Stand samt ETag nachgeladen und als
-             geschrieben vermerkt: kein zweiter Schreibvorgang, und die
-             Versionskontrolle bleibt unangetastet (Bestand und ETag
-             gehören zusammen). */
-          if (ohneOffenes) {
-            try {
-              const neu = await SP.lies();
-              const mig = neu.bestand && !neu.ausSpeicher ? migriere(neu.bestand) : null;
-              const jetzt = ref.current;
-              /* Nur wenn sich zwischendurch lokal nichts getan hat und kein Schreiben ansteht. */
-              if (mig && mig.ok && mig.schritte === 0 && jetzt && !SP.schreibenAusstehend()
-                && abbildVon(jetzt) === zuletztGeschrieben.current) {
-                const naechster = { ...mig.bestand, session: jetzt.session, stand: (jetzt.stand || 0) + 1 };
-                zuletztGeschrieben.current = abbildVon(naechster);
-                setDb(naechster);
-                melde(meldung);
-                return;
-              }
-            } catch { /* nachladen gescheitert: unten wie bisher lokal nachziehen */ }
+          /* Zuerst ablegen (Review L1): Der Stempel ist gesichert, bevor
+             irgendetwas anderes ins Netz geht. */
+          const ev = await SP.stempelErfassen(datum, art, koord);
+          if (!ev) {
+            /* Inhaber unbekannt (Antwort eines älteren Servers): direkt wie bisher. */
+            await SP.schreibenAbschliessen();
+            const erg = await SP.stempeln(datum, art, koord);
+            await stempelUebernehmen(pid, [{ datum, art, erg }]);
+            return;
           }
-          /* Sonst: die Serverantwort lokal nachziehen, damit die Ansicht
-             sofort stimmt. Lag Ungespeichertes vor, geht es wie jede andere
-             Änderung auf den regulären Schreibweg — ein 409 führt dann in
-             den Konfliktdialog, nichts wird verworfen. */
-          const spiegeln = (s2) => {
-            const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
-            if (!m) return s2;
-            const k = stempelSchluessel(pid, erg, datum);
-            /* Übernommen wird, was der Server gespeichert hat (eintrag,
-               erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
-               409 bei gleichzeitigem Speichern) landet unten im catch und
-               ändert lokal nichts. */
-            let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag } };
-            if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
-              [k]: erg.erfassung } };
-            return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
-          };
-          const jetzt = ref.current;
-          if (ohneOffenes && jetzt && !SP.schreibenAusstehend() && abbildVon(jetzt) === zuletztGeschrieben.current) {
-            /* Nachladen ging nicht (etwa offline): Der Eintrag ist trotzdem
-               nur das Spiegelbild dessen, was der Server schon hat — als
-               geschrieben vermerkt, kein PUT. Der ETag bleibt der alte; die
-               nächste echte Änderung läuft damit regulär in die
-               Konfliktprüfung, statt fremde Änderungen zu überschreiben. */
-            const naechster = { ...spiegeln(jetzt), stand: (jetzt.stand || 0) + 1 };
-            zuletztGeschrieben.current = abbildVon(naechster);
-            setDb(naechster);
-          } else upd(spiegeln);
-          melde(meldung);
+          /* Was noch zum Schreiben ansteht, geht vorher regulär hinaus — sonst
+             liefe es nach dem Stempeln mit dem alten ETag in einen 409.
+             Höchstens fünf Sekunden gewartet; der Stempel hängt nicht davon ab. */
+          await Promise.race([SP.schreibenAbschliessen(), new Promise((ok) => setTimeout(ok, 5000))]);
+          const lauf = await SP.stempelSenden({ sofort: true });
+          const r = lauf.ergebnisse[ev.id];
+          if (r && r.art === "ok") return;
+          if (r && r.art === "abgelehnt") { melde(`Stempel abgelehnt: ${r.grund}`); return; }
+          if (lauf.angehalten === "abgemeldet" || lauf.angehalten === "fremde-sitzung") {
+            melde("Die Anmeldung ist abgelaufen — der Stempel ist auf dem Gerät gespeichert und wird nach der Anmeldung gesendet.");
+            return;
+          }
+          melde(`${art === "start" ? "Einstempeln" : "Ausstempeln"} vorläufig (offline gespeichert) — wird gesendet, sobald Netz da ist.`);
         } catch (e) {
           melde(e.message || "Das Stempeln hat nicht geklappt.");
         }
       },
+      /* Ein vom Server quittierter Stempel aus dem Puffer — auch einer, der im
+         Hintergrund (Netz zurück, Neustart) gesendet wurde. */
+      stempelQuittung: (liste) => {
+        const pid = ref.current && ref.current.session ? ref.current.session.personId : null;
+        if (!pid || !Array.isArray(liste)) return;
+        stempelUebernehmen(pid, liste.filter((q) => q && q.daten)
+          .map((q) => ({ datum: q.ev.datum, art: q.ev.art, erg: q.daten }))).catch(() => {});
+      },
+      stempelErneut: (id) => SP.stempelErneut(id),
+      stempelVerwerfen: (id) => SP.stempelVerwerfen(id),
       setzeVerfuegbarkeit: (pid, v) => mUpd((m) => ({ ...m, personen: m.personen.map((p) =>
         p.id === pid ? { ...p, verfuegbarkeit: v } : p) }), "Verfügbarkeit gespeichert"),
       oeffneVerfuegbarkeit: (pid) => setVerfDlg(pid || sitz.person.id),
@@ -24722,6 +24850,14 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
     };
   }, [melde, ym, sitz]);
 
+  /* WP-07: Stempelpuffer — senden beim Start, bei Netz und im Vordergrund;
+     neu zeichnen, wenn er sich ändert (vorläufige Stempel in der Stempeluhr). */
+  const aktRef = useRef(null);
+  aktRef.current = akt;
+  const [, setPufferStand] = useState(0);
+  useEffect(() => SP.stempelBeobachten(() => setPufferStand((n) => n + 1)), []);
+  useEffect(() => SP.stempelSyncEinrichten((ev, d) => { if (aktRef.current) aktRef.current.stempelQuittung(ev, d); }), []);
+
   /* Zähler an den Navigationspunkten — was Aufmerksamkeit braucht, ist sofort sichtbar.
      Muss vor jedem bedingten Return stehen: Hooks laufen in fester Reihenfolge. */
   const { zaehler, zaehlerWarn } = useMemo(() => {
@@ -24768,7 +24904,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
               catch (e) { setLadefehler(String(e.message || e)); }
             }}>Demo-Bestand anlegen</Btn>}
-            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+            <Btn onClick={abmeldenMitHinweis}>Abmelden</Btn>
           </div>
         </Card></div></div></>);
   }
@@ -25182,10 +25318,24 @@ export default function App() {
     </Fehlerauffang>);
 }
 
+/* WP-07 (Review A2): Abmelden mit Hinweis, wenn Stempel noch auf das Netz
+   warten. Sie bleiben auf dem Gerät und werden nach der nächsten Anmeldung
+   derselben Person gesendet; eine andere Person sieht und sendet sie nicht. */
+function abmeldenMitHinweis() {
+  const n = SP.stempelWartendAnzahl();
+  if (n && typeof window !== "undefined" && typeof window.confirm === "function"
+    && !window.confirm(`${n === 1 ? "Ein Stempel wartet" : `${n} Stempel warten`} noch auf das Netz. `
+      + "Er bleibt auf diesem Gerät gespeichert und wird gesendet, sobald du dich wieder anmeldest. Trotzdem abmelden?")) return;
+  /* Gemerkte Schutzkonflikte gehören zur Sitzung (WP-22b): vor dem Abmelden leeren. */
+  vergissSchutzkonflikte();
+  SP.abmelden();
+  window.location.reload();
+}
+
 /* Für die Render-Prüfung (pruefungen/oberflaeche-render.test.js): die
    Ansichten aus F1/F2 und die Konstruktoren, mit denen die Oberfläche selbst
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };

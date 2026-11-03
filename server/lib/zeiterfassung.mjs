@@ -397,3 +397,142 @@ export function langerDienstGrenze(m, person, datum) {
   if (dauer <= 0) dauer += 1440;
   return dauer + LANGER_DIENST_PUFFER;
 }
+
+/* --- Offline-Stempel (WP-07): Ereigniskennung, Erfassungszeit, Prüfung ---
+
+   Ein Gerät ohne Netz legt jedes Stempeln als Ereignis in eine Warteschlange
+   (src/stempelpuffer.js): eine zufällige Kennung (clientEventId, UUID v4),
+   die Uhrzeit des Geräts beim Drücken (erfasstAm) und beim Absenden
+   (gesendetAm). Es bleibt dort, bis der Server es quittiert hat — auch über
+   einen Neustart hinweg. Der Server macht daraus genau einen Stempel:
+
+   - Kennung: Ein Ereignis mit einer Kennung, die schon an einem Stempel
+     derselben Person steht, ergibt keinen zweiten Stempel, sondern die
+     Antwort des ersten (daten.mjs, unter der Raumsperre, also auch bei
+     gleichzeitigen Wiederholungen aus zwei Reitern oder Geräten). Die
+     Kennung steht im Stempel selbst (ereignisStart/ereignisEnde) und wird
+     mit ihm in einem Schreibvorgang gespeichert — es gibt keinen Zustand,
+     in dem der Stempel geschrieben, die Kennung aber verloren ist. Gesucht
+     wird unter den Stempeln der Person aus den letzten
+     IDEMPOTENZ_TAGE Tagen (und um den Tag des Ereignisses).
+
+   - Zeit: Kommt ein Ereignis gleich an (nicht offline, höchstens
+     ONLINE_FENSTER_MS nach dem Drücken), gilt wie bisher die Uhr des Servers.
+     Sonst gilt die Erfassungszeit des Ereignisses — gestempelt hat der
+     Mensch, als er gedrückt hat, nicht als das Netz zurückkam. Sie wird nie
+     still übernommen:
+       • Der Abstand der Geräteuhr zur Serveruhr ergibt sich aus gesendetAm
+         und dem Eingang. Weicht er um mehr als UHR_TOLERANZ_MS ab, wird die
+         Erfassungszeit um ihn berichtigt und der Stempel als
+         GERAETEZEIT_ABWEICHEND markiert (die Berichtigung setzt voraus, dass
+         die Uhr zwischen Drücken und Senden nicht verstellt wurde — darum
+         zur Prüfung).
+       • Fehlt gesendetAm oder ist erfasstAm kein Zeitpunkt: markiert; ohne
+         lesbare Erfassungszeit gilt der Eingang.
+       • Nie in der Zukunft: Liegt die (berichtigte) Erfassungszeit nach dem
+         Eingang, gilt der Eingang; ab UHR_TOLERANZ_MS darüber markiert.
+       • Älter als OFFLINE_MAX_ALTER_MS: gespeichert, als OFFLINE_ALT markiert
+         — zur Prüfung durch die Leitung, nie abgelehnt. Datenverlust ist
+         schlimmer als ein Prüffall.
+     Ergibt ein solches Ende eine Ist-Zeit, ist sie unbestätigt
+     (OFFLINE_PRUEFEN, src/istdaten.js zurPruefung) — die Leitung bestätigt
+     oder korrigiert sie über den Korrekturweg (WP-06).
+   - Tag und Zuordnung bestimmt weiter stempelZiel — mit der Erfassungszeit
+     als „jetzt", also so, als wäre das Ereignis rechtzeitig angekommen. */
+export const IDEMPOTENZ_TAGE = 14;
+export const ONLINE_FENSTER_MS = 60 * 1000;
+export const UHR_TOLERANZ_MS = 5 * 60 * 1000;
+export const OFFLINE_MAX_ALTER_MS = 48 * 60 * 60 * 1000;
+export const EREIGNIS_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** Markierungen, die eine Ist-Zeit aus einem Offline-Stempel zur Prüfung stellen. */
+export const OFFLINE_PRUEF_MARKIERUNGEN = Object.freeze(["GERAETEZEIT_ABWEICHEND", "OFFLINE_ALT"]);
+
+/* Review-Auflage A1: Die Erfassungszeit eines Offline-Ereignisses ist eine
+   Angabe des Geräts. Flugmodus und eine zurückgestellte Geräteuhr genügen,
+   um sie zu fälschen — ohne manipuliertes Programm, und unsichtbar für die
+   Versatzprüfung, wenn die Uhr vor dem Senden wieder richtig steht. Liegt
+   die maßgebliche Zeit eines Beginns oder Endes deshalb OFFLINE_SOFORT_MS
+   oder mehr vor (oder nach) dem Eingang, ist die Ist-Zeit nicht automatisch
+   bestätigt (OFFLINE_PRUEFEN) — die Leitung bestätigt sie über den
+   Korrekturweg (WP-06). Lockern lässt sich das nur über den
+   Betriebsschalter einstellungen.offlineStempelVertrauen (org.edit, Wann und
+   Wer setzt der Server; Vorgabe streng). */
+export const OFFLINE_SOFORT_MS = 15 * 60 * 1000;
+/** Kam ein Offline-Ereignis erst OFFLINE_SOFORT_MS oder später nach seiner maßgeblichen Zeit an? */
+export function offlineVerspaetet(info) {
+  if (!info || typeof info !== "object" || info.offline !== true) return false;
+  const ein = Date.parse(info.eingangAm), zeit = Date.parse(info.zeitAm);
+  if (!Number.isFinite(ein) || !Number.isFinite(zeit)) return true;
+  return Math.abs(ein - zeit) >= OFFLINE_SOFORT_MS;
+}
+/** Ist der Betriebsschalter „Offline-Stempeln vertrauen" an? Vorgabe: aus. */
+export const offlineVertrauen = (m) => !!(m && m.einstellungen && m.einstellungen.offlineStempelVertrauen === true);
+
+const ISO_ZEIT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
+const zeitLesen = (x) => {
+  if (typeof x !== "string" || !ISO_ZEIT.test(x)) return null;
+  const ms = Date.parse(x);
+  return Number.isFinite(ms) ? ms : null;
+};
+
+/**
+ * Prüft die Ereignisangaben eines Stempelns und bestimmt den maßgeblichen Zeitpunkt.
+ * @param {any} rumpf  { clientEventId?, erfasstAm?, gesendetAm?, offline? }
+ * @param {Date} eingang  Serverzeit beim Eintreffen
+ * @returns {{ fehler: string } | { id: string|null, zeitpunkt: Date, offline: boolean,
+ *   markierungen: string[], info: object|null }}
+ */
+export function stempelEreignis(rumpf, eingang = new Date()) {
+  const r = rumpf && typeof rumpf === "object" ? rumpf : {};
+  let id = null;
+  if (r.clientEventId !== undefined && r.clientEventId !== null) {
+    if (typeof r.clientEventId !== "string" || !EREIGNIS_ID.test(r.clientEventId.toLowerCase()))
+      return { fehler: "Die Kennung des Stempelereignisses ist ungültig." };
+    id = r.clientEventId.toLowerCase();
+  }
+  const ein = eingang.getTime();
+  const erfasst = zeitLesen(r.erfasstAm);
+  const gesendet = zeitLesen(r.gesendetAm);
+  const verzug = erfasst !== null && gesendet !== null ? gesendet - erfasst : null;
+  const offline = r.offline === true || (verzug !== null && verzug > ONLINE_FENSTER_MS);
+  if (!offline) return { id, zeitpunkt: eingang, offline: false, markierungen: [], info: null };
+
+  const markierungen = ["OFFLINE_ERFASST"];
+  const abweichend = () => { if (!markierungen.includes("GERAETEZEIT_ABWEICHEND")) markierungen.push("GERAETEZEIT_ABWEICHEND"); };
+  const versatz = gesendet !== null ? ein - gesendet : null;
+  let zeit;
+  if (erfasst === null) { abweichend(); zeit = ein; }
+  else if (versatz === null) { abweichend(); zeit = erfasst; }
+  else if (Math.abs(versatz) > UHR_TOLERANZ_MS) { abweichend(); zeit = erfasst + versatz; }
+  else zeit = erfasst;
+  /* Nie in der Zukunft (Nachprüfung): Was nach dem Eingang liegt, gilt als
+     Eingang — ohne Toleranz. Markiert wird erst ab UHR_TOLERANZ_MS; darunter
+     ist es ehrlicher Uhrversatz. */
+  if (zeit > ein) { if (zeit > ein + UHR_TOLERANZ_MS) abweichend(); zeit = ein; }
+  if (ein - zeit > OFFLINE_MAX_ALTER_MS) markierungen.push("OFFLINE_ALT");
+  /* Nur geprüfte Zeitpunkte werden gespeichert, nie die Rohangabe (Review L4). */
+  const info = { offline: true,
+    geraetAm: erfasst !== null ? r.erfasstAm : null,
+    gesendetAm: gesendet !== null ? r.gesendetAm : null,
+    eingangAm: eingang.toISOString(), versatzMs: versatz,
+    zeitAm: new Date(zeit).toISOString() };
+  return { id, zeitpunkt: new Date(zeit), offline: true, markierungen, info };
+}
+
+/**
+ * Steht ein Ereignis mit dieser Kennung schon an einem Stempel der Person?
+ * @returns {{ schluessel: string, datum: string, art: "start"|"ende", eintrag: object } | null}
+ */
+export function ereignisFinden(m, personId, id, heute, ereignisTag = heute) {
+  if (!id || !m || !m.einstempeln) return null;
+  const ab = tagePlus([tagePlus(heute, -IDEMPOTENZ_TAGE), ereignisTag].sort()[0], -2);
+  const praefix = `${personId}|`;
+  for (const [k, e] of Object.entries(m.einstempeln)) {
+    if (!k.startsWith(praefix) || !e || typeof e !== "object") continue;
+    const datum = k.slice(praefix.length);
+    if (datum < ab) continue;
+    if (e.ereignisStart === id) return { schluessel: k, datum, art: "start", eintrag: e };
+    if (e.ereignisEnde === id) return { schluessel: k, datum, art: "ende", eintrag: e };
+  }
+  return null;
+}

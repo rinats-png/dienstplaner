@@ -516,7 +516,11 @@ describe("Handler: Schalter an", () => {
     const e = await stempeln(T.a1, { datum: HEUTE, art: "ende", lat: nord(40), lon: 8, accuracy: 10 });
     expect(e.status, e.roh).toBe(200);
     expect(e.eintrag.geoEnde).toMatchObject({ status: INNERHALB, entfernungGerundet: "50", genauigkeitM: 10, referenz: { id: "st1", name: "Zentrale" } });
-    expect(e.erfassung).toMatchObject({ bestaetigt: true });
+    /* Beginn und Ende liegen in diesem Lauf meist in derselben Minute: Dauer 0 ist seit der WP-07-Nachprüfung (B1)
+       nie automatisch bestätigt (06:00–06:00 zählte sonst als 24 Stunden). Über eine Minutengrenze: bestätigt. */
+    const dauerNull = e.eintrag.start === e.eintrag.ende;
+    expect(e.erfassung).toMatchObject({ bestaetigt: !dauerNull });
+    if (dauerNull) expect(e.erfassung.grund).toMatch(/^DAUER_NULL/);
     expect((await gespeichert()).erfassung[`a1|${HEUTE}`].ende).toBe(e.zeit);
   });
   it("außerhalb, ohne Position, zu ungenau: Arbeitszeit trotzdem gespeichert", async () => {
@@ -755,7 +759,10 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     expect(s.status, s.roh).toBe(200);
     const e = await stempeln(T.z8, { datum: HEUTE, art: "ende" });
     expect(e.status, e.roh).toBe(200);
-    expect(e.erfassung).toMatchObject({ start: s.zeit, ende: e.zeit, bestaetigt: true });
+    /* Beginn und Ende liegen in diesem Lauf meist in derselben Minute: Dauer 0 ist seit der WP-07-Nachprüfung (B1)
+       nie automatisch bestätigt (06:00–06:00 zählte sonst als 24 Stunden). Über eine Minutengrenze: bestätigt. */
+    const dauerNull = s.zeit === e.zeit;
+    expect(e.erfassung).toMatchObject({ start: s.zeit, ende: e.zeit, bestaetigt: !dauerNull });
     expect(e.eintrag.endeDatum).toBeUndefined();
     /* Neue Ereignisse tragen den eindeutigen Zeitpunkt (UTC) neben der Uhrzeit; die Erfassung bleibt unverändert. */
     const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;

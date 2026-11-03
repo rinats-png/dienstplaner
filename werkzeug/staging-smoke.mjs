@@ -292,7 +292,11 @@ await abschnitt("Zeiterfassung Start/Ende und E1-Datenschutz", async () => {
   const s = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "start" } });
   const e = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "ende" } });
   pruef("Beschäftigte stempelt Start und Ende: 200, Erfassung entsteht", s.status === 200 && e.status === 200
-    && !!e.d.erfassung && e.d.erfassung.bestaetigt === true, `${s.status}/${e.status}`);
+    /* Beginn und Ende in derselben Minute: Dauer 0 ist seit WP-07 (Nachprüfung B1) nie automatisch bestätigt
+       (06:00–06:00 zählte sonst als 24 Stunden), sondern DAUER_NULL zur Prüfung. */
+    && !!e.d.erfassung && (e.d.erfassung.start === e.d.erfassung.ende
+      ? e.d.erfassung.bestaetigt === false && String(e.d.erfassung.grund).startsWith("DAUER_NULL")
+      : e.d.erfassung.bestaetigt === true), `${s.status}/${e.status}`);
   const nochmal = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "start" } });
   pruef("zweiter Start am selben Tag: 409, Gestempeltes bleibt", nochmal.status === 409, `Status ${nochmal.status}`);
   const leitung = (await lies(T.l)).d.bestand.mandanten[0];

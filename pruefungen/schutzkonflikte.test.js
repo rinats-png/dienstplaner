@@ -189,9 +189,37 @@ describe("Review MITTEL 4 / Reste: der Haken useSchutzkonflikte als Verhalten (r
     expect(gemerkteSchutzkonflikte(schutzkonfliktSchluessel(sitz()))).toBeNull();
     expect(zeige(sitz())).toBe("<span></span>");
   });
+  it("Abmelden (abmeldenMitHinweis, WP-07): leert das Gemerkte; bei Abbruch der Rückfrage bleibt alles", async () => {
+    const PUF = await import("../src/stempelpuffer.js");
+    const { abmeldenMitHinweis } = await import("../src/App.jsx");
+    const schl = schutzkonfliktSchluessel(sitz());
+    const altWindow = globalThis.window;
+    let neu = 0, frage = 0, antwort = false;
+    globalThis.window = { confirm: () => { frage++; return antwort; }, location: { reload: () => { neu++; } },
+      addEventListener: () => {}, removeEventListener: () => {} };
+    try {
+      PUF.vorlaeufigeSetzen([{ id: "x", zustand: "wartet" }]);
+      merkeSchutzkonflikte(schl, ergebnis("a|2030-01-01"));
+      abmeldenMitHinweis();                                          // Rückfrage abgelehnt
+      expect([frage, neu]).toEqual([1, 0]);
+      expect(gemerkteSchutzkonflikte(schl)).not.toBeNull();
+      antwort = true;
+      abmeldenMitHinweis();
+      expect([frage, neu]).toEqual([2, 1]);
+      expect(gemerkteSchutzkonflikte(schl)).toBeNull();
+    } finally {
+      PUF.vorlaeufigeSetzen([]);
+      globalThis.window = altWindow;
+    }
+  }, 60000);                                                       // App.jsx kalt zu laden dauert
   it("Verdrahtung: Abmelden leert, die Startseite rechnet nur für Planung und Leitung, der Monatsplan immer", () => {
     const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toContain("abmelden: () => { vergissSchutzkonflikte(); SP.abmelden();");
+    /* Seit WP-07 laufen alle Abmeldewege über abmeldenMitHinweis (Rückfrage bei wartenden Stempeln);
+       dort wird vor SP.abmelden() geleert — Verhalten geprüft im nächsten Fall. */
+    expect(app).toContain("abmelden: abmeldenMitHinweis,");
+    expect(app).toContain("verbindungTrennen: abmeldenMitHinweis,");
+    expect(app).toMatch(/function abmeldenMitHinweis\(\) \{[\s\S]*?vergissSchutzkonflikte\(\);\s*SP\.abmelden\(\);/);
+    expect(app).not.toMatch(/onClick=\{\(\) => \{ SP\.abmelden\(\);/);
     expect(app).toContain('useSchutzkonflikte(sitz, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"))');
     expect(app).toMatch(/const schutzkonflikte = useSchutzkonflikte\(sitz\);\s*\n\s*const leute = useMemo/);
   });

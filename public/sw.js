@@ -15,7 +15,17 @@
      der zuletzt geladene Plan ist lesbar
      die Anwendung sagt, dass sie offline ist und wie alt der Stand ist
 
-   Was nicht geht, und zwar mit Absicht: schreiben. Ein Schichttausch, der
+   Stempeln geht ohne Netz (WP-07) — aber nicht über diese Datei. Die
+   Anwendung legt jedes Stempeln als Ereignis mit eigener Kennung im
+   Stempelpuffer ab (src/stempelpuffer.js, IndexedDB) und sendet es selbst,
+   sobald Netz da ist: beim Start, bei „online", im Vordergrund. Hier wird
+   /api/stempeln nie abgefangen und nie aus einem Speicher beantwortet — eine
+   gespeicherte Antwort wäre eine Quittung für einen Stempel, den der Server
+   nie gesehen hat. Hintergrundsynchronisation (Background Sync) wird nicht
+   genutzt: Safari/iOS kennt sie nicht, und der Dienstarbeiter müsste dafür
+   den Zugang selbst halten.
+
+   Was sonst nicht geht, und zwar mit Absicht: schreiben. Ein Schichttausch, der
    offline „gespeichert" aussieht und beim nächsten Netz mit dem Stand von
    drei anderen kollidiert, richtet mehr Schaden an als eine ehrliche
    Absage. Wer offline etwas ändert, sichert es als Datei — dafür gibt es
@@ -108,6 +118,9 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;                 // Schreiben nie abfangen
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;  // Fremdes nie anfassen
+  /* Von der Schnittstelle nur der Bestand — /api/stempeln und alles andere
+     geht immer unmittelbar ans Netz (WP-07). */
+  if (url.pathname.startsWith("/api/") && url.pathname !== "/api/bestand") return;
 
   /* --- Gerüst: Netz zuerst, sonst die gespeicherte Seite ---------------
      Netz zuerst, damit eine neue Fassung sofort ankommt. Der Rückfall

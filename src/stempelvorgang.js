@@ -8,7 +8,37 @@
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
 import { entfernungText, geoAktiv, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
-import { startZuordenbar, nachtdienstOffen } from "../server/lib/zeiterfassung.mjs";
+import { startZuordenbar, nachtdienstOffen, heuteBerlin, uhrzeitBerlin } from "../server/lib/zeiterfassung.mjs";
+import { vorlaeufige } from "./stempelpuffer.js";
+
+/**
+ * Die gespeicherten Stempel, ergänzt um die noch nicht quittierten aus dem
+ * Stempelpuffer (WP-07) — nur für die Anzeige, nie für den Bestand: Ein
+ * vorläufiger Eintrag trägt `vorlaeufig: true` und landet nie im Speichern
+ * (das wiese ihn als erfundenen Stempel ab, WP-06). So zeigt die Stempeluhr
+ * nach einem Einstempeln ohne Netz „Ausstempeln" und nicht noch einmal
+ * „Einstempeln".
+ */
+export function mitVorlaeufigen(tab, pid, ereignisse) {
+  const wartend = (Array.isArray(ereignisse) ? ereignisse : []).filter((e) => e && e.zustand === "wartet");
+  if (!pid || !wartend.length) return tab || {};
+  const t = { ...(tab || {}) };
+  for (const ev of wartend) {
+    const am = new Date(ev.erfasstAm);
+    if (!Number.isFinite(am.getTime())) continue;
+    const zeit = uhrzeitBerlin(am);
+    if (ev.art === "start") {
+      const k = `${pid}|${heuteBerlin(am)}`;
+      if (!t[k]) t[k] = { start: zeit, startAm: ev.erfasstAm, vorlaeufig: true };
+    } else {
+      const k = `${pid}|${typeof ev.datum === "string" && ev.datum ? ev.datum : heuteBerlin(am)}`;
+      const e = t[k];
+      if (e && e.start && !e.ende) t[k] = { ...e, ende: zeit, endeAm: ev.erfasstAm, vorlaeufig: true };
+      else if (!e) t[k] = { ende: zeit, endeAm: ev.erfasstAm, vorlaeufig: true };
+    }
+  }
+  return t;
+}
 
 /** Eine frische, möglichst genaue Messung je Stempelereignis (Geo-Spezifikation B4). */
 export const POSITION_OPTIONEN = Object.freeze({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
@@ -48,8 +78,8 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * heute (START_FEHLT), und der alte Vorgang wird KONFLIKT (zeiterfassung.mjs,
  * stempelZiel). Beides ist kein normaler Abschluss.
  */
-export function stempelVorgang(m, p, heute, jetzt = new Date()) {
-  const tab = (m && m.einstempeln) || {};
+export function stempelVorgang(m, p, heute, jetzt = new Date(), ereignisse = vorlaeufige()) {
+  const tab = mitVorlaeufigen((m && m.einstempeln) || {}, p && p.id, ereignisse);
   const gestern = addDays(heute, -1);
   const vom = p ? tab[`${p.id}|${gestern}`] : null;
   if (vom && vom.start && !vom.ende && startZuordenbar(gestern, vom.start, jetzt, vom.startAm))
@@ -61,7 +91,7 @@ export function stempelVorgang(m, p, heute, jetzt = new Date()) {
      neben „Einstempeln" auch „Dienstende stempeln" an — der Server ordnet
      dieses Ende nach derselben Regel dem Nachtdienst von gestern zu
      (zeiterfassung.mjs, nachtdienstOffen), als Ende ohne Beginn. */
-  if (p && !st && nachtdienstOffen(m, p, heute, jetzt))
+  if (p && !st && nachtdienstOffen({ ...m, einstempeln: tab }, p, heute, jetzt))
     return { datum: gestern, st: null, vortag: true, offen: false, veraltet: false, nachtEnde: true };
   const offen = !!st && !!st.start && !st.ende;
   return { datum: heute, st, vortag: false, offen, veraltet: offen && !startZuordenbar(heute, st.start, jetzt, st.startAm) };
@@ -89,9 +119,23 @@ export const MARKIERUNG_TEXT = Object.freeze({
   KONFLIKT: "Konflikt — bitte durch die Leitung klären",
   GERAETEDATUM_ABWEICHEND: "Datum des Geräts wich ab",
   LANGER_DIENST: "länger als geplant + 2 Stunden — Ist-Zeit zur Prüfung",
+  OFFLINE_ERFASST: "offline erfasst",
+  GERAETEZEIT_ABWEICHEND: "Uhr des Geräts wich ab — Zeit zur Prüfung",
+  OFFLINE_ALT: "offline erfasst, über 48 Stunden alt — zur Prüfung",
+  OFFLINE_PRUEFEN: "offline gestempelt — Ist-Zeit zur Prüfung",
+  DAUER_NULL: "Beginn gleich Ende — Zeiten über die Korrektur eintragen",
   ORT_PRUEFEN: "Ort nicht bestätigt — bitte klären",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });
+
+/** Anzeigetext eines Stempelereignisses im Puffer (WP-07). */
+export function pufferZustandText(ev) {
+  if (!ev) return "";
+  if (ev.zustand === "wartet") return "vorläufig (offline gespeichert)";
+  if (ev.zustand === "bestaetigt") return "bestätigt";
+  if (ev.zustand === "abgelehnt") return `abgelehnt: ${(ev.fehler && ev.fehler.grund) || "ohne Angabe"}`;
+  return "";
+}
 
 /* Kennung für „bestätigt“. Als Escape geschrieben: Die Oberfläche zeigt sie
    als Icon (App.jsx, GEO_SYMBOL_ICON), nicht als Textzeichen (Gestaltprüfung). */
