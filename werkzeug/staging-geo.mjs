@@ -115,7 +115,8 @@ const BETRIEB = { id: `${RAUM}-m`, name: `${MARKE} Geobetrieb (Wegwerf)`, status
   /* a8 ohne Dienst (UNGEPLANTER_DIENST), a10 Nachtdienst seit gestern mit offenem Beginn,
      a11 ein alter Stempel von gestern ohne geoStart/geoEnde, a12/a13 ohne Dienst. */
   abweichungen: { ...Object.fromEntries(MA.filter((i) => !["a8", "a10", "a11", "a12", "a13"].includes(i)).map((i) => [`${i}|${HEUTE}`, "F"])),
-    [`a10|${GESTERN}`]: "N", [`a11|${GESTERN}`]: "F" },
+    [`a10|${GESTERN}`]: "N", [`a11|${GESTERN}`]: "F",
+    /* a13: am Tag des Beginns Frühdienst geplant — kein ungeplanter Dienst (WP-13). */ [`a13|${VOR9.tag}`]: "F" },
   einstempeln: { [`a10|${GESTERN}`]: { start: "22:01" },
     [`a12|${VOR21.tag}`]: { start: VOR21.start, startAm: VOR21.startAm },
     [`a13|${VOR9.tag}`]: { start: VOR9.start, startAm: VOR9.startAm },
@@ -245,13 +246,23 @@ await abschnitt("Nachtdienst und Altbestand", async () => {
     pruef("offener Beginn von gestern (Nachtdienst): Ausstempeln für gestern 200, Erfassung entsteht", n.status === 200
       && !!n.d.erfassung && n.d.erfassung.start === "22:01" && geoVon(n).status === "INNERHALB", `Status ${n.status} ${n.text}`);
   else
-    pruef("offener Beginn von gestern 22:01, jetzt über 20 Stunden: Ende gespeichert, START_VERALTET, keine Erfassung", n.status === 200
-      && n.d.erfassung === null && (n.d.markierungen || []).includes("START_VERALTET"), `Status ${n.status} ${n.text}`);
+    /* Seit WP-17 (B6.3): ein über 20 Stunden alter Beginn von gestern wird
+       nie angehängt — eigenes Ende auf heute (START_FEHLT), der alte Vorgang
+       trägt KONFLIKT. */
+    pruef("offener Beginn von gestern 22:01, jetzt über 20 Stunden: eigenes Ende auf heute (START_FEHLT), keine Erfassung", n.status === 200
+      && n.d.erfassung === null && n.d.datum === HEUTE && (n.d.markierungen || []).includes("START_FEHLT"), `Status ${n.status} ${n.text}`);
   const v = merke(await stempeln(T.a12, { datum: VOR21.tag, art: "ende" }));
   const nachV = (await lies(T.l1)).d.bestand.mandanten[0];
-  pruef("vergessenes Ausstempeln (Beginn vor 21 h): Ende gespeichert, Beginn unverändert, START_VERALTET, keine Erfassung",
-    v.status === 200 && v.d.erfassung === null && (v.d.markierungen || []).includes("START_VERALTET")
-    && (nachV.einstempeln || {})[`a12|${VOR21.tag}`].start === VOR21.start
+  /* Beginn vor 21 h am selben Tag: Ende am Vorgang mit START_VERALTET (es gibt
+     keinen zweiten Schlüssel). Beginn gestern: seit WP-17 (B6.3) eigenes Ende
+     auf heute (START_FEHLT), der alte Vorgang KONFLIKT. Beides ohne Erfassung. */
+  const altV = (nachV.einstempeln || {})[`a12|${VOR21.tag}`];
+  const regelV = VOR21.tag === HEUTE
+    ? (v.d.markierungen || []).includes("START_VERALTET")
+    : (v.d.markierungen || []).includes("START_FEHLT") && v.d.datum === HEUTE && !altV.ende
+      && (altV.markierungen || []).includes("KONFLIKT");
+  pruef("vergessenes Ausstempeln (Beginn vor 21 h): Ende gespeichert, Beginn unverändert, nicht still angehängt, keine Erfassung",
+    v.status === 200 && v.d.erfassung === null && regelV && altV.start === VOR21.start
     && (nachV.erfassung || {})[`a12|${VOR21.tag}`] === undefined, `Status ${v.status} ${v.text}`);
   const f = merke(await stempeln(T.a13, { datum: VOR9.tag, art: "ende" }));
   pruef("offener Beginn vor 9 h: zugeordnet, bestätigte Erfassung", f.status === 200 && !!f.d.erfassung

@@ -20,7 +20,8 @@ import { REGELN_BRANCHEN, pruefeBranchenkatalog } from "../server/lib/branchenka
 import { pruefeRegister } from "../src/regelregister.js";
 import { pruefeRegel } from "../src/regelbaukasten.js";
 import { kompetenzStand } from "../src/regelwerk.js";
-import { branchenbestand, schreibeAls } from "./hilfen/branchenbetrieb.mjs";
+import { branchenbestand, schreibeAls, SITZUNGEN } from "./hilfen/branchenbetrieb.mjs";
+import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 import { QualifikationsMatrix } from "../src/module/maschinenqual.jsx";
 
 const MO = "2026-11-02";
@@ -107,6 +108,40 @@ describe("Befunde (Hinweis, sperrt nie; inaktiv: keine)", () => {
     expect(maschinenqualBefunde(betrieb(), MO, "F", [P_OHNE], opts({ module: BRANCHENMODULE }))).toEqual([]);
     expect(maschinenqualBefunde(betrieb({ module: { anlagen: { an: true } } }), MO, "F", [P_OHNE], opts())).toEqual([]);
     expect(maschinenqualBefunde(betrieb({ module: { maschinenqual: { an: true } } }), MO, "F", [P_OHNE], opts())).toEqual([]);
+  });
+});
+
+describe("Review-Auflage 1: nur ableiten, was die Rolle vom Server bekommt", () => {
+  const opts = (extra = {}) => ({ auswerten, stand: kompetenzStand, module: AKTIV, ...extra });
+  it("Personen ohne ausgelieferte Kompetenznachweise sind unbekannt — keine Merkmale, nicht „fehlt“", () => {
+    const ohne = { id: "x", vorname: "V", nachname: "x", status: "aktiv" };       // kompetenzNachweise nicht ausgeliefert
+    expect(anlagenMerkmale(betrieb(), ohne, MO, kompetenzStand)).toBeNull();
+    expect(anlagenMerkmale(betrieb(), { ...ohne, kompetenzNachweise: [] }, MO, kompetenzStand)).toEqual([]);
+    const mx2 = qualifikationsMatrix({ ...betrieb(), personen: [ohne] }, MO, kompetenzStand);
+    expect(mx2.zeilen[0].zellen.bm1).toEqual({ stand: "unbekannt", bis: null, kompetenzId: null });
+  });
+  it("Sicht einer Beschäftigten: die Kolleginnen sind unbekannt, es gibt keinen Fehlalarm und keinen Aufschluss über Dritte", () => {
+    const g = branchenbestand({ pakete: ["industrie"], branchenmodule: { anlagen: { an: true }, maschinenqual: { an: true } } });
+    Object.assign(g.mandanten[0], { betriebsmittel: [PRESSE], kompetenzen: [K_PRESSE], dienstarten: betrieb().dienstarten });
+    for (const p of g.mandanten[0].personen) p.kompetenzNachweise = p.id === "a1" ? [{ kompetenzId: "k1", ab: "2026-06-01" }] : [];
+    const sicht = bestandFuerRolle(g, SITZUNGEN.MA).mandanten[0];
+    const fremd = sicht.personen.filter((p) => p.id !== "a1");
+    expect(fremd.some((p) => Array.isArray(p.kompetenzNachweise))).toBe(false);          // Positivkatalog
+    const b = maschinenqualBefunde(sicht, MO, "F", sicht.personen.filter((p) => ["a1", "p1", "l1"].includes(p.id)), opts());
+    for (const x of b) { expect(x.stufe).toBe("hinweis"); expect(x.offen, x.text).toBe(true); }
+  });
+  it("Matrix zeigt Unbekanntes als „nicht bewertbar“", () => {
+    const html = renderToStaticMarkup(h(QualifikationsMatrix, { m: { ...betrieb(), personen: [{ id: "x", vorname: "V", nachname: "x" }] }, datum: MO, stand: kompetenzStand }));
+    expect(html).toContain("nicht bewertbar");
+  });
+});
+
+describe("Review-Auflage 2: Altbestand blockiert nicht", () => {
+  it("ein unveränderter fehlerhafter Eintrag wird toleriert, ein geänderter oder neuer streng geprüft", () => {
+    const alt = { kompetenzen: [{ ...K_PRESSE, befaehigtePerson: "ja" }] };
+    expect(maschinenqualZusammen(alt, alt).grund).toBeUndefined();
+    expect(maschinenqualZusammen({ kompetenzen: [{ ...K_PRESSE, befaehigtePerson: "nein" }] }, alt).grund).toMatch(/befähigte/i);
+    expect(maschinenqualZusammen({ kompetenzen: [...alt.kompetenzen, { ...K_PRESSE, id: "k9", befaehigtePerson: 3 }] }, alt).grund).toMatch(/befähigte/i);
   });
 });
 

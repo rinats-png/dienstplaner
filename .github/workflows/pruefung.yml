@@ -213,6 +213,10 @@ jobs:
       - name: Entwürfe nicht an Beschäftigte
         run: npm run pruefung:entwuerfe
 
+      # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
+      - name: Sicherungen in der Oberfläche
+        run: npm run pruefung:wiederherstellen-ui
+
       # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
       # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
       # Lesen nur in der Antwort angeglichen (gestalt.mjs).
@@ -267,6 +271,10 @@ jobs:
         run: npm run pruefung:datenintegritaet
       - name: Prozesssperre der Ablage
         run: npm run pruefung:prozesssperre
+      # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
+      # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
+      - name: ACC45-Werkzeuge
+        run: npm run pruefung:acc45-werkzeuge
 
       # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
       # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.

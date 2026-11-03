@@ -70,7 +70,8 @@ const anl = await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: { versio
   einheiten: [{ id: "e1", name: "WB", standortId: "st1" }], standorte: [{ id: "st1", name: "Zentrale", bundesland: "HE", lat: REF.lat, lon: REF.lon, radius: 200 }],
   dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
   personen: [person("l1", "leitung"), person("p1", "planer"), ...[...IDS, "v1", "v2"].map((i) => person(i, "mitarbeiter"))],
-  abweichungen: Object.fromEntries(IDS.map((i) => [`${i}|${HEUTE}`, "F"])),
+  /* v2: an den Tagen des Stempels Frühdienst geplant — kein ungeplanter Dienst (WP-13). */
+  abweichungen: Object.fromEntries([...IDS.map((i) => [`${i}|${HEUTE}`, "F"]), [`v2|${HEUTE}`, "F"], [`v2|${VOR1.tag}`, "F"]]),
   anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [], einstempeln: { [`v1|${VOR24.tag}`]: { start: VOR24.zeit }, [`v2|${VOR1.tag}`]: { start: VOR1.zeit } }, erfassung: {},
 }] } });
 pruef("Raum mit Standort angelegt", anl.status === 200, `Status ${anl.status} ${anl.text}`);
@@ -137,9 +138,15 @@ pruef("Ungültige Standortwerte: 422, nichts gespeichert", abgewiesen.every(([s]
 /* Vergessenes Ausstempeln: 20-Stunden-Grenze */
 const vergessen = merke(await stempeln(T.v1, { datum: VOR24.tag, art: "ende" }));
 const nachV = (await rufe(T.l1, "/api/bestand", "GET")).bestand.mandanten[0];
-pruef("Beginn vor 24 h: Ende gespeichert, START_VERALTET, keine bestätigte Erfassung", vergessen.status === 200
-  && (vergessen.markierungen || []).includes("START_VERALTET") && vergessen.erfassung === null
-  && nachV.einstempeln[`v1|${VOR24.tag}`].start === VOR24.zeit && !!nachV.einstempeln[`v1|${VOR24.tag}`].ende
+/* Seit WP-17 (B6.3): nie still angehängt. Das Ende wird ein eigenes Ereignis
+   auf dem Server-Tag (START_FEHLT), der alte Vorgang bleibt offen und trägt
+   KONFLIKT für die Korrektur durch die Leitung. */
+const heuteV = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+pruef("Beginn vor 24 h: Ende als eigenes Ereignis (START_FEHLT), alter Vorgang KONFLIKT und offen, keine bestätigte Erfassung",
+  vergessen.status === 200 && vergessen.datum === heuteV
+  && (vergessen.markierungen || []).includes("START_FEHLT") && vergessen.erfassung === null
+  && nachV.einstempeln[`v1|${VOR24.tag}`].start === VOR24.zeit && !nachV.einstempeln[`v1|${VOR24.tag}`].ende
+  && (nachV.einstempeln[`v1|${VOR24.tag}`].markierungen || []).includes("KONFLIKT")
   && nachV.erfassung[`v1|${VOR24.tag}`] === undefined, `${vergessen.status} ${vergessen.text}`);
 const frisch = merke(await stempeln(T.v2, { datum: VOR1.tag, art: "ende" }));
 pruef("Beginn vor 1 h: zugeordnet, bestätigte Erfassung", frisch.status === 200
