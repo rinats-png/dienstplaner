@@ -130,6 +130,45 @@ describe("F3 auf dem Server", () => {
   });
 });
 
+describe("Review U1: neu angelegte Personen werden nachgerechnet", () => {
+  /* Einheit eN mit Nachtschichtfolge (jeden Tag 22–06 Uhr). */
+  const gN = () => {
+    const gg = g();
+    gg.mandanten[0].einheiten.push({ id: "eN", versatzTage: 0 });
+    gg.mandanten[0].zyklus = { tage: ["F", "F", "F", "F", "F", "-", "-"] };
+    return gg;
+  };
+  const nachts = (gg) => { gg.mandanten[0].einheiten = [{ id: "e1", versatzTage: 0 }]; gg.mandanten[0].zyklus = { tage: ["N", "N", "N", "N", "N", "N", "N"] }; return gg; };
+  it("Mutterschutz in eine Einheit mit Nachtschichtfolge anlegen: abgewiesen", () => {
+    const e = schreiben(nachts(g()), "PL", (m) => { m.personen.push(person("neu", "mitarbeiter", "e1", { mutterschutz: true })); });
+    expect(e.verweigert).toMatch(/nicht möglich/);
+  });
+  it("15-Jährige in eine Einheit mit Nachtschichtfolge anlegen: abgewiesen", () => {
+    const e = schreiben(nachts(g()), "PL", (m) => { m.personen.push(person("neu", "mitarbeiter", "e1", J15)); });
+    expect(e.verweigert).toMatch(/nicht möglich/);
+  });
+  it("eine Erwachsene ohne Schutzmerkmal anlegen: angenommen", () => {
+    const e = schreiben(nachts(g()), "PL", (m) => { m.personen.push(person("neu", "mitarbeiter", "e1")); });
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+  });
+  it("neue Person in einer Einheit ohne Nachtdienst: angenommen", () => {
+    const e = schreiben(gN(), "PL", (m) => { m.personen.push(person("neu", "mitarbeiter", "e1", { mutterschutz: true })); });
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+  });
+  it("eine gesperrte Person blockiert eine Änderung der Schichtfolge nicht", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("alt", "mitarbeiter", "e1", { status: "gesperrt" }));
+    const e = schreiben(gg, "LT", (m) => { m.zyklus = { tage: ["F", "F", "F", "F", "-", "-", "-"] }; });
+    expect(e && !e.verweigert, e && e.verweigert).toBe(true);
+  });
+  it("Wiedereintritt (Status gesperrt → aktiv) in die Nachtschichtfolge: abgewiesen", () => {
+    const gg = nachts(g());
+    gg.mandanten[0].personen.push(person("alt", "mitarbeiter", "e1", { mutterschutz: true, status: "gesperrt" }));
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((p) => p.id === "alt").status = "aktiv"; });
+    expect(e.verweigert).toMatch(/nicht möglich/);
+  });
+});
+
 describe("N1: eine verwendete Dienstart löschen", () => {
   it("für alle Personen gleich: „wird noch verwendet (Person, Tag)\" — geschützt oder nicht", () => {
     for (const pid of ["a1", "mu"]) {

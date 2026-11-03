@@ -19,7 +19,8 @@
       nicht gibt, sperrt (fail-closed); „-" heißt frei.
    2. Mittelbar (Review F2): Ändert die Übermittlung Dienstzeiten, die
       Schichtfolge (zyklus, anker), Einheiten (Versatz) oder Personen
-      (Zugehörigkeit, Springer, Schichtdienst), wird für jede geschützte
+      (neu angelegt — Review U1 —, Zugehörigkeit, Springer, Schichtdienst, Ein- und
+      Austritt, Status), wird für jede geschützte
       Person der Dienst der nächsten SCHUTZ_HORIZONT_TAGE Tage vorher und
       nachher berechnet (Abweichung, sonst Schichtfolge der Einheit am Tag).
       Entsteht dabei ein sperrender Befund, den es vorher nicht gab, wird
@@ -173,8 +174,10 @@ function planStrukturGeaendert(altM, neuM) {
   const alt = new Map(liste(altM.personen).map((p) => [String(p.id), p]));
   for (const p of liste(neuM.personen)) {
     const a = alt.get(String(p.id));
-    if (!a) continue;
-    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst"]) if (!gleich(a[f], p[f])) return true;
+    /* Review U1: Eine neu angelegte Person bekommt ihre Dienste aus der
+       Schichtfolge ihrer Einheit — das ist eine Einteilung wie jede andere. */
+    if (!a) return true;
+    for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "eintritt", "austritt", "status"]) if (!gleich(a[f], p[f])) return true;
   }
   return false;
 }
@@ -287,13 +290,13 @@ function pruefen(altM, neuM, heute, zaehler) {
   const mitAbwNeu = abweichungenJePerson(neuAbw, ids), mitAbwAlt = neuAbw === altAbw ? mitAbwNeu : abweichungenJePerson(altAbw, ids);
   for (const p of geschuetzte) {
     zaehler.personen++;
-    const pAlt = personenAlt.get(String(p.id)) || p;
-    const personGleich = pAlt === p || gleich(pAlt, p);
+    const pAlt = personenAlt.get(String(p.id));                          // neu angelegt: kein Altbestand (U1)
+    const personGleich = !!pAlt && (pAlt === p || gleich(pAlt, p));
     const abwNeu = mitAbwNeu.get(String(p.id)) || null, abwAlt = mitAbwAlt.get(String(p.id)) || null;
     for (const d of horizont) {
       const idNeu = dienstAm(mNeu, p, d, folgeNeu, abwNeu);
-      if (!idNeu) continue;
-      const idAlt = dienstAm(mAlt, pAlt, d, folgeAlt, abwAlt);
+      if (!idNeu || nichtImBestand(p, d)) continue;                         // außerhalb des Beschäftigungsverhältnisses: kein Dienst aus der Schichtfolge
+      const idAlt = pAlt ? dienstAm(mAlt, pAlt, d, folgeAlt, abwAlt) : null;
       if (personGleich && einstGleich && String(idAlt) === String(idNeu) && dienstartGleich(String(idNeu))) continue;
       const da = daNeu.get(String(idNeu));
       if (!da) return absage(d, "Die Dienstart ist nicht bekannt");
@@ -302,9 +305,12 @@ function pruefen(altM, neuM, heute, zaehler) {
       const neu = sperrendeBefunde(p, da, d, einstNeu);
       if (!neu.length) continue;
       const daA = idAlt ? daAlt.get(String(idAlt)) : null;
-      const vorher = daA && hatZeiten(daA) ? sperrendeBefunde(pAlt, daA, d, einstAlt) : [];
-      if (vorher.length) continue;                                          // Altbestand
-      return absage(d, `${neu[0].text} (durch geänderte Dienstzeiten, Schichtfolge oder Zugehörigkeit)`);
+      /* Außerhalb des Beschäftigungsverhältnisses gab es die Einteilung vorher nicht wirklich (U1, Wiedereintritt). */
+      const vorher = daA && hatZeiten(daA) && !nichtImBestand(pAlt, d) ? sperrendeBefunde(pAlt, daA, d, einstAlt) : [];
+      /* Altbestand je Regel: „nicht im Bestand" vorher deckt keinen Schutzbefund nachher (U1, Wiedereintritt). */
+      const neuerBefund = neu.find((b) => !vorher.some((v) => v.regel === b.regel));
+      if (!neuerBefund) continue;                                           // Altbestand
+      return absage(d, `${neuerBefund.text} (durch geänderte Dienstzeiten, Schichtfolge, Zugehörigkeit oder Person)`);
     }
   }
   return null;
