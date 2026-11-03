@@ -51,7 +51,7 @@ const folgetag = (tag) => new Date(Date.parse(`${tag}T00:00:00Z`) + 86400000).to
 /**
  * Die Einsatzregeln einer Person.
  * @param {any} p  die gespeicherte Person (vollständig)
- * @param {{von?: string}} [fenster]  Beginn des Sichtfensters
+ * @param {{von?: string, heute?: string}} [fenster]  Beginn des Sichtfensters; heute: ab da gelten Abschnitte (Review M1)
  * @returns {Array<{regel: string, hart: boolean, von?: any, bis?: any, wert?: any}>}
  */
 export function planungsregelnAbleiten(p, fenster = {}) {
@@ -76,13 +76,66 @@ export function planungsregelnAbleiten(p, fenster = {}) {
       { regel: "wochenendePruefen", hart: false, bis });
   }
   if (p.mutterschutz) {
-    aus.push({ regel: "nachtNichtZulaessig", hart: true },
-      { regel: "sonntagNurMitFreigabe", hart: true });
+    /* Mit Einwilligung (Nutzerentscheidung, WP-11): in ihrem Zeitraum die
+       Regel mit Freigabe, außerhalb die harte — beide mit Zeitraum, ohne
+       den Grund zu nennen. */
+    /* Review M1 (Art. 9 DSGVO): nur Abschnitte ab heute, ohne vergangene
+       Grenzen; der Regelname nennt kein Merkmal (einsatzfensterBis22). */
+    const ab = fenster.heute || fenster.von || null;
+    aus.push(...abHeute(nachZeitraeumen(einwilligungsZeitraeume(p, "nacht"), "nachtNichtZulaessig", "einsatzfensterBis22", true), ab),
+      ...abHeute(nachZeitraeumen(einwilligungsZeitraeume(p, "sonntag"), "sonntagNurMitFreigabe", "sonntagFreigegeben", false), ab));
   }
   if (p.schwerbehindert) aus.push({ regel: "ueber8hNurAbsprache", hart: false });
+  /* Einschränkung „keine Nacht“ (Nachprüfung 9717ddf, M1-Rest; 948a4ba, A1): als
+     Einsatzregel mit dem Nachtfenster und der Schwelle des Betriebs — dieselbe
+     Bewertung wie mit Rohdaten, kein Rechtsverbot 20–6 Uhr. Das Rohfeld geht an
+     die Schichtverantwortung nicht hinaus. */
+  if (p.einschraenkungen && typeof p.einschraenkungen === "object" && p.einschraenkungen.keineNacht === true)
+    aus.push({ regel: "keinNachtdienst", hart: true });
   const w = p.einschraenkungen && typeof p.einschraenkungen === "object" ? p.einschraenkungen.wiedereingliederung : null;
   if (w && typeof w === "object")
     aus.push({ regel: "stundengrenzeWoche", hart: false, von: w.von, bis: w.bis, wert: w.maxStundenWoche });
+  return aus;
+}
+
+/** Der Tag vor `tag` (JJJJ-MM-TT). */
+const vortag = (tag) => new Date(Date.parse(`${tag}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+
+/** Die Zeiträume der Einwilligungen einer Art, sortiert und zusammengelegt; bis null = offen. */
+function einwilligungsZeitraeume(p, art) {
+  const l = (Array.isArray(p.mutterschutzEinwilligungen) ? p.mutterschutzEinwilligungen : [])
+    .filter((e) => e && e.art === art && gueltigesDatum(e.ab) && (e.bis === null || e.bis === undefined || (gueltigesDatum(e.bis) && e.bis >= e.ab)))
+    .map((e) => ({ ab: e.ab, bis: e.bis || null })).sort((a, b) => (a.ab < b.ab ? -1 : 1));
+  const aus = [];
+  for (const z of l) {
+    const letzt = aus[aus.length - 1];
+    if (letzt && (letzt.bis === null || z.ab <= folgetag(letzt.bis))) {
+      if (letzt.bis !== null) letzt.bis = z.bis === null ? null : (z.bis > letzt.bis ? z.bis : letzt.bis);
+    } else aus.push({ ...z });
+  }
+  return aus;
+}
+
+/** Nur Abschnitte, die heute oder später gelten; der erste beginnt ohne Grenze. */
+function abHeute(regeln, ab) {
+  if (!ab) return regeln;
+  const l = regeln.filter((r) => !r.bis || r.bis >= ab);
+  if (l.length && l[0].von && l[0].von <= ab) { l[0] = { ...l[0] }; delete l[0].von; }
+  return l;
+}
+
+/** Harte Regel außerhalb, Regel mit Freigabe innerhalb der Zeiträume. */
+function nachZeitraeumen(zeitraeume, hartRegel, freiRegel, freiHart) {
+  if (!zeitraeume.length) return [{ regel: hartRegel, hart: true }];
+  const aus = [];
+  let von = null;                                                           // null: unbegrenzt zurück
+  for (const z of zeitraeume) {
+    if (von === null || von < z.ab) aus.push({ regel: hartRegel, hart: true, ...(von ? { von } : {}), bis: vortag(z.ab) });
+    aus.push({ regel: freiRegel, hart: freiHart, von: z.ab, ...(z.bis ? { bis: z.bis } : {}) });
+    if (!z.bis) return aus;
+    von = folgetag(z.bis);
+  }
+  aus.push({ regel: hartRegel, hart: true, von });
   return aus;
 }
 

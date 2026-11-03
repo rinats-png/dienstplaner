@@ -2,9 +2,9 @@
   "stand": "2026-11-03",
   "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 25,
-    "READY": 2,
-    "IN_PROGRESS": 5,
+    "BLOCKED": 18,
+    "READY": 7,
+    "IN_PROGRESS": 7,
     "REVIEW": 1,
     "CI_FAILED": 0,
     "INTEGRATED": 11,
@@ -225,11 +225,11 @@
         "WP-11"
       ],
       "agent": "Agent F – QA & Review",
-      "branch": "acc45/qa/wp12-integrationsabnahme-a-b",
+      "branch": "acc45/qa/wp12-integrationsabnahme",
       "dateien": "–",
       "akzeptanz": "Testplan 3.1–3.4 auf Staging ohne Funktionsfehler",
       "tests": "Abnahmelauf alle Rollen/Viewports",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -354,11 +354,11 @@
         "WP-22"
       ],
       "agent": "Agent E – Business Modules & Frontend",
-      "branch": "acc45/frontend/wp19-branchenpakete-12-module",
+      "branch": "acc45/frontend/wp19-branchenpakete",
       "dateien": "src/module/*, server",
       "akzeptanz": "Je Modul eigene Kriterien (vor Beginn festzulegen)",
       "tests": "je Modul Unit/HTTP/E2E",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -424,14 +424,14 @@
       "prioritaet": "P2",
       "aufwandPT": 1,
       "abhaengigkeiten": [
-        "WP-09"
+        "WP-43"
       ],
       "agent": "Agent A – Security & Data Integrity",
       "branch": "acc45/security/wp23-entwurfe-nicht-an-beschaftig",
       "dateien": "server/lib/sicht.mjs",
       "akzeptanz": "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte",
       "tests": "Unit, HTTP",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -442,14 +442,14 @@
       "prioritaet": "P2",
       "aufwandPT": 2,
       "abhaengigkeiten": [
-        "WP-09"
+        "WP-43"
       ],
       "agent": "Agent E – Business Modules & Frontend",
       "branch": "acc45/frontend/wp24-kalender-feed-live-und-gebun",
       "dateien": "server/funktionen/kalender.mjs",
       "akzeptanz": "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes",
       "tests": "HTTP",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -460,14 +460,14 @@
       "prioritaet": "P2",
       "aufwandPT": 2,
       "abhaengigkeiten": [
-        "WP-09"
+        "WP-43"
       ],
       "agent": "Agent E – Business Modules & Frontend",
       "branch": "acc45/frontend/wp25-wiederherstellen-in-der-ober",
       "dateien": "src",
       "akzeptanz": "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)",
       "tests": "E2E",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -496,14 +496,14 @@
       "prioritaet": "P2",
       "aufwandPT": 4,
       "abhaengigkeiten": [
-        "WP-09"
+        "WP-43"
       ],
       "agent": "Agent A – Security & Data Integrity",
       "branch": "acc45/security/wp27-betriebsrat-auswertung-aggre",
       "dateien": "server, src",
       "akzeptanz": "Aggregation ohne Personenbezug unter Mindestgruppe; Leistungsnachweis/Belastung korrekt oder gesperrt",
       "tests": "Unit, E2E",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -669,14 +669,14 @@
       "prioritaet": "P3",
       "aufwandPT": 1.5,
       "abhaengigkeiten": [
-        "WP-09"
+        "WP-43"
       ],
       "agent": "Agent E – Business Modules & Frontend",
       "branch": "acc45/frontend/wp37-pwa-feinschliff",
       "dateien": "public/, src",
       "akzeptanz": "Verknüpfungen wirksam; SW-Fassung aus Build; Cache bei Rollenwechsel leer",
       "tests": "E2E",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null

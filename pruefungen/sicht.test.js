@@ -174,8 +174,8 @@ describe("Katalogzwang", () => {
       const s = stueck.indexOf(`{ ...${v},`);
       if (s >= 0) for (const k of schluessel(APP, t.index + s)) gefunden.add(k);
     }
-    /* Was die Löschfristen beim Anonymisieren an einer Person setzen. */
-    for (const k of rueckgabe(lies("src/aufbewahrung.js"), "anonymisiere")) gefunden.add(k);
+    /* Was die Löschfristen beim Anonymisieren an einer Person setzen (seit WP-26 unter server/lib). */
+    for (const k of rueckgabe(lies("server/lib/aufbewahrung.mjs"), "anonymisiere")) gefunden.add(k);
     /* Was eine beschäftigte Person an sich selbst schreiben darf. */
     const rechte = lies("server/lib/rechte.mjs");
     const selbst = /const SELBST_FELDER = \[([\s\S]*?)\];/.exec(rechte)[1];

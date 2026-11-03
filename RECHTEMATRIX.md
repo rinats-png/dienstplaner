@@ -162,8 +162,8 @@ Bereich. Für versetzte Personen nennt die Antwort in `sichtIstDaten.zeitraeume`
 Erfassung; an allen anderen Tagen und in Auswertungen, deren Zeitraum (Monat, Kontojahr, Jahr, Ausgleichszeitraum)
 nicht ganz darin liegt, zeigt die Oberfläche „nicht verfügbar", nie die Planzeit (`src/istdaten.js`). Der Schreibweg der SV prüft dieselbe Zugehörigkeit am Tag und lehnt ohne gültigen
 Tag ab (`einheitZusammen`). Geprüft in `pruefungen/sicht-tagesgenau.test.js` und `pruefungen/istdaten.test.js`.
-¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keineNacht`, `keinAlleindienst`,
-`maxDiensteWoche`; die Wiedereingliederung geht nur als Einsatzregel hinaus, ¹⁰).
+¹⁸ WP-43: im eigenen Bereich und im Springer-Pool ✓ (`einschraenkungen` nur `keinAlleindienst`,
+`maxDiensteWoche`; „keine Nacht“ seit der Nachprüfung 9717ddf nur als Einsatzregel `keinNachtdienst` mit Nachtfenster und Schwelle des Betriebs (948a4ba, A1 — dieselbe Bewertung wie Planung und Server), die Wiedereingliederung nur als Einsatzregel, ¹⁰).
 ¹⁹ WP-43: im eigenen Bereich ✓, im Springer-Pool nicht.
 ²⁰ WP-43: fremde Personen ohne Datei und ohne Status-Nachweise (²); im eigenen Bereich und Pool Qualifikation, Ablauf
 und `vorhanden` (auch für Status-Nachweise, am Einsatz-Gate), nie die Datei.
@@ -208,19 +208,19 @@ jede geschützte Person die nächsten 120 Tage vorher und nachher nach (Abweichu
 wenn dadurch ein sperrender Befund **neu** entsteht (Review F2); ein schon bestehender blockiert nicht. Grenzen dieser
 Nachrechnung: Teilzeit und Posten bleiben außer Acht (im Zweifel streng), Abwesenheiten zählen nicht als frei, Tage
 jenseits von 120 prüft nur die Planprüfung der Oberfläche. Eine Bestätigung zu einer
-solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Noch nur in der Oberfläche**
-durchgesetzt sind: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
+solchen Einteilung weist er ab, auch wenn der Client nur warnende Befunde nennt. **Seit WP-22 überholt (Abschnitt 2):** Bis dahin nur in der Oberfläche
+durchgesetzt waren: Ruhezeit unter 11 Stunden, keine Nacht / kein Alleindienst / Höchstzahl Dienste aus
 `einschraenkungen`, gesetzliche Qualifikationen und Einweisungen je Gerät — sie brauchen die Planlogik (Rotation,
-Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
+Besetzung, Nachtfenster des Betriebs) auf dem Server — jetzt `server/lib/fachpruefung.mjs`. Geprüft in `pruefungen/schutzpruefung-eine.test.js`.
 **Nachprüfung WP-11:** Jugendliche ab 16 Jahren sperrt die Prüfung nur noch für 23–6 Uhr (auch Beginn vor 6 Uhr);
 20–23 Uhr ist „Achtung" (bestätigungspflichtig) oder — mit der Betriebseinstellung `einstellungen.jugendschutz`
-`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben nur Rollen mit
-`org.edit` (Leitung, Kundenrolle); für Planung und alle anderen bleibt der gespeicherte Wert, eine andere Form als
+`{ mehrschichtig: true }` (§ 14 Abs. 2 Nr. 2 JArbSchG) — ein Hinweis. Die Einstellung schreiben Rollen mit
+`org.edit` oder `pattern.edit` (Leitung, Kundenrolle, Planung — Nutzerentscheidung); für alle anderen bleibt der gespeicherte Wert, eine andere Form als
 `{ mehrschichtig: boolean }` weist der Server ab, Zeitpunkt und Person (`geaendertAm`, `geaendertVon`) setzt er selbst
 (`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
 `nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
 oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
-Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Einwilligungen nach dem Mutterschutzgesetz an der Person (`mutterschutzEinwilligungen`, Nutzerentscheidung) lesen und schreiben wie die Schutzmerkmale nur Planung, Leitung und Kundenrolle, die eigene Person liest ihre eigenen; Form, `geaendertAm` und `geaendertVon` prüft bzw. setzt der Server (`einwilligungenZusammen`). Das Ende ist Pflicht; dass sich Einwilligungen geändert haben, steht ohne Inhalt im Betriebsprotokoll. Die Schichtverantwortung bekommt daraus nur Abschnitte ab heute, ohne vergangene Grenzen und unter Namen, die kein Merkmal nennen (`einsatzfensterBis22`, `sonntagFreigegeben`; Review M1). **Restrisiko (ehrlich):** Die Namen sind faktisch merkmalsspezifisch — nur der Mutterschutz erzeugt heute `einsatzfensterBis22` und `sonntagNurMitFreigabe`/`sonntagFreigegeben`; bei einer erwachsenen Person kann die Schichtverantwortung aus der Sonntagsregel oder dem Muster der Regeln auf einen Mutterschutz schließen. Das ist ein Punkt für die DSFA und die Betriebsvereinbarung (offen). Eine Änderung an Mutterschutz, Einwilligung oder Geburtsdatum wird **immer gespeichert** — die Erfassung des Schutzes blockiert nichts (Nachprüfung 9717ddf, M2). Der Server rechnet bestehende Einteilungen im Horizont nach (auch aus der Schichtfolge); widersprechen welche, bekommen Planung und Leitung eine dringende Mitteilung (Person, Tag, „Einteilung widerspricht Schutz- oder Einsatzregel der Person“), und die Planprüfung zeigt den sperrenden Befund, bis umgeplant ist. Neue widersprechende Einteilungen bleiben gesperrt (403). Offene Konflikte bleiben sichtbar, bis umgeplant ist: Pflichtaufgabe auf der Startseite von Planung und Leitung, Markierung der Zelle im Monatsplan; gerechnet wird die Schichtfolge ein Jahr voraus und jede künftige ausdrückliche Einteilung (948a4ba, A2). Werden Schutzangaben entfernt, steht das ohne Inhalt im Betriebsprotokoll und die Leitung bekommt eine Mitteilung ohne Person. Eine neue Einwilligung beginnt frühestens heute; bestehende Einteilungen vor ihrem Beginn werden nicht nachträglich zulässig. Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
@@ -252,6 +252,23 @@ heißen alle „Schutz- oder Einsatzregel", eine Abwesenheit nur „abwesend". D
 Beschäftigte und Schichtverantwortung per Positivliste (`RUNDENKOPF`); `nichtUebernommen` Beschäftigte nur die eigenen,
 die Schichtverantwortung nur eigene und Bereich am Tag (tagesgenau, ¹⁵), jeweils nur als Kennung — auch ältere,
 noch als Text gespeicherte Gründe gehen nur als „befund" hinaus. Der Betriebsrat bekommt die Selbstplanung nicht.
+²⁶ WP-26, Präzisierung, keine neue Leserecht-Spalte: **Auskunft nach Art. 15 DSGVO** (`GET /api/auskunft`,
+`server/lib/auskunft.mjs`, eigene Bremse). Eine Person mit Personenbezug in der Sitzung bekommt *über sich selbst*
+ihre gespeicherten Daten, auch Felder, die sie in `GET /api/bestand` nicht sieht (z. B. Notfallkontakt, Bank,
+Steuer). Dazu kommen:
+- eigene Stempel mit Ortsbefund, Ist-Zeiten, Plan, Abwesenheiten mit Anmerkung, eigene Anträge ganz;
+- fremde Anträge, an denen sie als Tauschpartner beteiligt ist, nur im Gerüst (`id`, `typ`, `von`, `bis`, `status`,
+  `personId`, `partnerId`; wie `sicht.mjs`);
+- Planänderungen, Mitteilungen, die eigenen Einträge der Sammlungen, die `/api/bestand` ihr allein zeigt, Einträge im
+  Betriebsprotokoll mit ihrer Kennung, das eigene Konto ohne Geheimnisse;
+- ihre Protokollzeilen (nur desselben Betriebs: `mandantId`; ältere Zeilen ohne Betrieb nur in Räumen mit einem
+  Betrieb) samt der Auskünfte, die die Leitung über sie erteilt hat;
+- ob Push-Anmeldung und Kalenderverweis bestehen.
+
+Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`) genau ihre eigene Sicht
+(`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
+Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
+im Protokoll.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
@@ -288,6 +305,8 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 
 | Weg | Wer | Was | |
 |---|---|---|---|
+| `PUT /api/bestand`: Dienstarten (`dienstarten`) anlegen, ändern, löschen | Leitung, Kundenrolle, Planung (`org.edit` oder `pattern.edit`) | WP-22 (Nutzerentscheidung, keine Funktionskürzung): Die Planung behält die Einrichtung — Dienstarten, Zeiten, Mindestbesetzung, Vorlagenzeiten, Checkliste. Alle anderen Rollen weist der Server ab (403), eine unveränderte Kopie stört nicht. Eine noch verwendete Dienstart (Schichtfolge, Einteilung ab heute) lässt sich nicht löschen | A |
+| `PUT /api/bestand`: Einteilungen (`abweichungen`, mittelbar über Dienstzeiten, Schichtfolge, Einheiten, Personen) | jede schreibende Rolle im eigenen Umfang | WP-22: Der Server prüft neue Befunde mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`, `server/lib/fachpruefung.mjs`): sperrende (Katalogspalte `sperrt`) weist er ab (403); warnende nur mit einem neuen Eintrag im Bestätigungsprotokoll zu Person, Tag und Regel — oder, für Planung, Leitung und Kundenrolle, einer Sammelbestätigung je Regel, Einheit (Pflicht) und Zeitraum — nicht für Schutzregeln, die nur einzeln —, deren gedeckte Anzahl und tatsächlich betroffene Tage der Server einträgt; eine, die nichts deckt, wird nicht gespeichert (Review B1, S1) — im selben Speichervorgang, sonst 409 mit `fachbefunde` und `sammelVorschlag` (neutrale Texte aus dem Katalog, für Schutzbefunde immer „Schutz- oder Einsatzregel der Person“). Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung). Die Schichtverantwortung bekommt nie Befunde aus fremden Bereichen: Wirkt ihre Änderung dorthin, sperrt sie ohne Kennung (Review B4). Die Nachrechnung läuft in Häppchen (503 nach Zeitbudget, 429 bei mehr als 10 Strukturänderungen je Raum und Minute; Review B2). Schutzangaben einer Person werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server (Nachprüfung 9717ddf). Siehe ²¹ | A |
 | `/api/vollausgabe` | Leitung; Sicherungsschlüssel | eigener Betrieb nach Exportkatalog (`server/lib/sicherungen.mjs`), Spalten VA-LT/VA-SK oben; kein Wiederherstellungsformat | A |
 | `/api/sicherungsschluessel` (GET/POST/DELETE) | Leitung | nur Schlüssel des eigenen Betriebs; Widerruf nur über die vollständige Kennung; fremd wie unbekannt | A |
 | `/api/sicherung`, `/api/sicherungen`, `/api/wiederherstellen` | Leitung | Sicherungen und Wiederherstellen je Betrieb, Kontingente je Betrieb, Geheimnisse und Vertrag aus dem heutigen Stand; ebenso Betreiberstamm und alles außerhalb der Sicht der Leitung (an bestehenden Personen etwa Bank-, Steuer- und Lohnangaben) — dieselbe Grenze wie beim Speichern | A |

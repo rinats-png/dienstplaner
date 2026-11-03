@@ -405,7 +405,7 @@ describe("B7 — mehrere Räume, Dateirechte", () => {
     for (const raum of ["rw-mehr-a", "rw-mehr-b"])
       expect((await B.bestandLesen(store, raum)).bestand.mandanten[0].abweichungen).toEqual({ "p1|2025-10-10": "F" });
     expect((await S.pruefen(await sichern())).ok).toBe(true);
-  }, 30000);
+  }, 60000);                                                         // unter Last lokal über 30 s
 
   const linuxOhneRoot = process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() !== 0;
   it.skipIf(!linuxOhneRoot)("eine Datei ohne Leserecht wird gemeldet; Zurückgeholtes hat 0600", async () => {
@@ -468,7 +468,8 @@ describe("4. Nachprüfung — K2 und Standfolge nach einer Wiederherstellung", (
     try {
       await S.wiederherstellen({ sicherung: x, ziel: neu, serverPruefen: false });
       const vermerk = JSON.parse(await readFile(path.join(neu, ".wiederhergestellt.json"), "utf8"));
-      expect(vermerk.sicherungErstellt).toBeTruthy();
+      expect(vermerk.wiederherstellungen).toHaveLength(1);                             // seit WP-45d eine Liste
+      expect(vermerk.wiederherstellungen[0].sicherungErstellt).toBeTruthy();
       const lauf2 = async (...argv) => {
         const zeilen = [];
         const code = await W.main(["--daten", neu, ...argv], (s) => zeilen.push(s));
@@ -486,5 +487,58 @@ describe("4. Nachprüfung — K2 und Standfolge nach einer Wiederherstellung", (
       process.env.CENTRIC_DATEN = wurzel;
       await rm(neu, { recursive: true, force: true });
     }
-  });
+  }, 60000);
+
+  it("W1: mehrere Wiederherstellungen — jede verworfene Folge bleibt abgelehnt", async () => {
+    const RAUM = "rw-w1";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const vor = (min) => new Date(Date.now() - min * 60_000);
+    const b0 = (await S.sichern({ quelle: wurzel, ziel: sicherungen, jetzt: vor(600) })).pfad;
+    const b1 = (await S.sichern({ quelle: wurzel, ziel: sicherungen, jetzt: vor(590) })).pfad;
+    const neu = await mkdtemp(path.join(tmpdir(), "centric-ablage-rueckweg-w1-"));
+    try {
+      await S.wiederherstellen({ sicherung: b0, ziel: neu, serverPruefen: false, jetzt: vor(580) });   // R1
+      const b2 = (await S.sichern({ quelle: neu, ziel: sicherungen, jetzt: vor(570) })).pfad;
+      const b3 = (await S.sichern({ quelle: neu, ziel: sicherungen, jetzt: vor(565) })).pfad;
+      await S.wiederherstellen({ sicherung: b3, ziel: neu, ersetzen: true, serverPruefen: false, jetzt: vor(560) }); // R2
+      const v = JSON.parse(await readFile(path.join(neu, ".wiederhergestellt.json"), "utf8"));
+      expect(v.wiederherstellungen).toHaveLength(2);
+      const lauf2 = async (...argv) => {
+        const zeilen = [];
+        const code = await W.main(["--daten", neu, ...argv], (s) => zeilen.push(s));
+        return { code, aus: zeilen.join("\n") };
+      };
+      const b1Lauf = await lauf2("--aus-sicherung", b1, RAUM);                          // aus der bei R1 verworfenen Folge
+      expect(b1Lauf.code, b1Lauf.aus).toBe(2);
+      expect(b1Lauf.aus).toMatch(/verworfenen Folge/);
+      for (const ok of [b0, b2, b3]) {
+        const r = await lauf2("--aus-sicherung", ok, RAUM);
+        expect(r.code, r.aus).toBe(0);
+      }
+    } finally {
+      process.env.CENTRIC_DATEN = wurzel;
+      await rm(neu, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  it("W2: ein vorhandener, aber unlesbarer Vermerk der Wiederherstellung — Abbruch statt still ignoriert", async () => {
+    const RAUM = "rw-w2";
+    await B.bestandSchreiben(store, RAUM, bestandMit(), { durch: "Pruefung" });
+    const pfad = await sichern();
+    const vermerk = path.join(wurzel, ".wiederhergestellt.json");
+    await writeFile(vermerk, "{kaputt");
+    try {
+      const r = await lauf(["--aus-sicherung", pfad, RAUM]);
+      expect(r.code, r.aus).toBe(2);
+      expect(r.aus).toMatch(/wiederhergestellt\.json/);
+      await writeFile(vermerk, JSON.stringify({ wiederherstellungen: [{ zeit: "gestern" }] }));
+      expect((await lauf(["--aus-sicherung", pfad, RAUM])).code).toBe(2);              // unvollständig = unlesbar
+      /* Auch eine neue Wiederherstellung in dieses Ziel bricht ab, bevor etwas angefasst ist. */
+      await expect(S.wiederherstellen({ sicherung: pfad, ziel: wurzel, ersetzen: true, serverPruefen: false }))
+        .rejects.toThrow(/wiederhergestellt\.json/);
+      expect((await stat(datei(`kern:${RAUM}`))).isFile()).toBe(true);
+    } finally {
+      await rm(vermerk, { force: true });
+    }
+  }, 60000);
 });

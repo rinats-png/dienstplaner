@@ -181,16 +181,25 @@ describe("hindernisse() in der Oberfläche fragt einsatzSchutz", () => {
     expect(start).toBeGreaterThan(0);
     /* Nur ab „Achtung“ hindert ein Befund; ein Hinweis (nicht bewertbar) nicht. */
     expect(app).toContain("const hindernisse = (m, p, d, da) => hindernisBefunde(m, p, d, da).filter((b) => stufeRang(b.stufe) >= 2).map((b) => b.text);");
-    expect(block).toContain("schutzEinsatz(p, da, d, m.einstellungen)");
-    expect(block).not.toContain("einsatzSchutz(");
+    /* WP-22: Die Prüfung selbst steht in einteilungsBefunde (server/lib/
+       fachpruefung.mjs) — dieselbe für den Server; hindernisBefunde fragt sie
+       mit dem Plan der Oberfläche (personTag, besetzung). */
+    expect(block).toContain("einteilungsBefunde(m, p, da, d, {");
+    expect(block).toContain("!einschr(y).keinAlleindienst");
+    const fp = readFileSync(path.join(process.cwd(), "server/lib/fachpruefung.mjs"), "utf8").replace(/\r\n/g, "\n");
+    const fach = fp.slice(fp.indexOf("export function einteilungsBefunde("), fp.indexOf("\n}\n", fp.indexOf("export function einteilungsBefunde(")));
+    expect(fach).toContain("schutzEinsatz(p, da, d, einst)");
+    for (const b of [block, fach]) {
+      expect(b).not.toContain("einsatzSchutz(");
+      expect(b).not.toContain("e.wiedereingliederung");                  // nicht mehr nur aus den Rohdaten
+      expect(b).not.toContain("schutz.grenze");                          // S2a: die Grenze sperrt nicht
+    }
     /* Ob sperrt, entscheidet die Tabelle SPERR_REGELN (Befundkatalog) über
        den Schlüssel am Befund; harte Schutzbefunde heißen „schutz“. */
     expect(block).toMatch(/sperrt: sperrtArt\(/);
-    expect(block).toContain('b.sperrt ? "schutz" : b.offen ? "schutzOffen" : b.hinweis ? "schutzHinweis" : "schutzWeich"');   // Nachprüfung WP-11
-    expect(block).toContain("e.keinAlleindienst");
-    expect(block).toContain("einschraenkung(\"keinAlleindienst\", \"darf nicht allein eingeteilt werden\")");
-    expect(block).not.toContain("e.wiedereingliederung");                // nicht mehr nur aus den Rohdaten
-    expect(block).not.toContain("schutz.grenze");                        // S2a: die Grenze sperrt nicht
+    expect(fach).toContain('b.sperrt ? "schutz" : b.offen ? "schutzOffen" : b.hinweis ? "schutzHinweis" : "schutzWeich"');   // Nachprüfung WP-11
+    expect(fach).toContain("e.keinAlleindienst");
+    expect(fach).toContain("push(\"keinAlleindienst\", \"darf nicht allein eingeteilt werden\"");
   });
   it("weiche Schutzregeln erscheinen in der Ersatzsuche — einmal, als Befund, die Grenze als Hinweis", () => {
     const a = app.indexOf("function ersatzVorschlaege(");

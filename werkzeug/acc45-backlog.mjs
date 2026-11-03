@@ -27,22 +27,22 @@ const P = [
   ["WP-09", "Kette B nach main", "P1", 2, ["WP-02"], "0", "IN_PROGRESS", "Integrationsmerge B, Staging-Abnahme ohne Funktionsfehler, Produktiv-Deploy nach Freigabe", "CI, Abnahmelauf 89+, H8+-Invarianten", "gesamte Kette B", { integration: "65c1188 (integration/centric-complete)" }],
   ["WP-10", "Kette A Basis (#7) auf B portieren, Datenmodell d.1–d.5", "P1", 6, ["WP-09"], "C", "INTEGRATED", "Alle A- und B-Tests grün; A-Felder überstehen PUT/GET je Rolle", "Rundreise je Feld/Rolle, A-Tests angepasst, Rechtematrix", "src/App.jsx, server/lib/rechte.mjs, sicht.mjs"],
   ["WP-11", "Regelregister (#6) portieren, eine Schutzprüfung", "P1", 4, ["WP-10"], "C", "INTEGRATED", "Eine einzige Schutzprüfung im Code; Tests grün", "git grep, schutzmerkmale-sicht", "src/regelwerk*, server/lib"],
-  ["WP-12", "Integrationsabnahme A+B", "P1", 2, ["WP-11"], "F", "BLOCKED", "Testplan 3.1–3.4 auf Staging ohne Funktionsfehler", "Abnahmelauf alle Rollen/Viewports", "–"],
+  ["WP-12", "Integrationsabnahme A+B", "P1", 2, ["WP-11"], "F", "IN_PROGRESS", "Testplan 3.1–3.4 auf Staging ohne Funktionsfehler", "Abnahmelauf alle Rollen/Viewports", "–"],
   ["WP-13", "Stempeln ohne Plan, ungeplante Dienste im Ist", "P1", 3, ["WP-06"], "D", "BLOCKED", "Ungeplanter Dienst 8 h in Konto und CSV", "Unit istdaten, UI-E2E", "src/App.jsx (MHeute/DienstKarte), src/istdaten.js"],
   ["WP-14", "Korrekturworkflow Leitung/SV, Korrekturantrag", "P1", 6, ["WP-06"], "D", "BLOCKED", "Antrag→Freigabe→Ist, Original sichtbar, Protokoll vollständig; START_FEHLT/VERALTET auflösbar", "Rechtematrix, E2E", "server, src"],
   ["WP-15", "Selbstauskunft mit Freigabe und Stempelabgleich", "P1", 3, ["WP-14"], "D", "BLOCKED", "Selbstauskunft wird Antrag; Abweichung markiert; erst nach Freigabe Ist", "Unit, E2E", "server, src"],
   ["WP-16", "Pausen und Monatsabschluss", "P1", 5, ["WP-06", "WP-14"], "D", "BLOCKED", "Pausenerfassung, ArbZG-Mindestpause-Warnung; Abschluss sperrt Ist; Wiederöffnen protokolliert", "Unit, E2E", "server, src"],
   ["WP-17", "Stempelkonflikt-Retry, Serverdatum", "P1", 2, ["WP-02"], "D", "IN_PROGRESS", "20 parallele Stempel ohne 409 für Nutzende; datum vom Server", "Renntest, Datumsgrenzen/Nacht/DST", "server/funktionen/daten.mjs, zeiterfassung.mjs"],
   ["WP-18", "Zugänge: personengebundene Codes, Konto-UI, Einladungen", "P1", 6, ["WP-30", "WP-09"], "E", "BLOCKED", "Leitung lädt Testperson ein → Anmeldung → richtige Rolle; ein Code = eine Person", "HTTP, E2E", "server/funktionen, src"],
-  ["WP-19", "Branchenpakete (12 Module)", "P1", 25, ["WP-11", "WP-22"], "E", "BLOCKED", "Je Modul eigene Kriterien (vor Beginn festzulegen)", "je Modul Unit/HTTP/E2E", "src/module/*, server"],
+  ["WP-19", "Branchenpakete (12 Module)", "P1", 25, ["WP-11", "WP-22"], "E", "IN_PROGRESS", "Je Modul eigene Kriterien (vor Beginn festzulegen)", "je Modul Unit/HTTP/E2E", "src/module/*, server"],
   ["WP-20", "Einsatzorte je Dienst, Geo-Modi, Außendienst", "P1", 6, ["WP-06"], "D", "BLOCKED", "Referenzort je Dienst im Server-Urteil; Modi Standort/Einsatzort/Außendienst", "geo.test, E2E, Gerätetest GPS", "server/lib/geo.mjs, src"],
   ["WP-21", "Smartphone/Tablet für alle Rollen", "P1", 10, ["WP-12", "WP-39"], "E", "BLOCKED", "Kernaufgaben je Rolle ohne Querscrollen 360/390/430 px; Gerätematrix", "Playwright-Viewports, Geräte", "src/ansichten/*"],
   ["WP-22", "Fachprüfungen auf dem Server, org.edit", "P2", 6, ["WP-11"], "C", "IN_PROGRESS", "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit", "Unit, HTTP", "server/lib"],
-  ["WP-23", "Entwürfe nicht an Beschäftigte ausliefern", "P2", 1, ["WP-09"], "A", "BLOCKED", "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte", "Unit, HTTP", "server/lib/sicht.mjs"],
-  ["WP-24", "Kalender-Feed live und gebunden", "P2", 2, ["WP-09"], "E", "BLOCKED", "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes", "HTTP", "server/funktionen/kalender.mjs"],
-  ["WP-25", "Wiederherstellen in der Oberfläche", "P2", 2, ["WP-09"], "E", "BLOCKED", "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)", "E2E", "src"],
+  ["WP-23", "Entwürfe nicht an Beschäftigte ausliefern", "P2", 1, ["WP-43"], "A", "READY", "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte", "Unit, HTTP", "server/lib/sicht.mjs"],
+  ["WP-24", "Kalender-Feed live und gebunden", "P2", 2, ["WP-43"], "E", "READY", "Feed aus aktuellem Bestand; Sperre widerruft; raumLoeschen räumt Indizes", "HTTP", "server/funktionen/kalender.mjs"],
+  ["WP-25", "Wiederherstellen in der Oberfläche", "P2", 2, ["WP-43"], "E", "READY", "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)", "E2E", "src"],
   ["WP-26", "DSGVO serverseitig (Art. 15, Löschlauf, Ausdünnung)", "P2", 4, ["WP-09"], "A", "IN_PROGRESS", "Auskunft inkl. Stempel; serverseitiger Löschlauf nach Fristen; Ausdünnung Sicherungen/Spur", "Unit, HTTP", "server"],
-  ["WP-27", "Betriebsrat-Auswertung aggregiert, reduzierte Sichten", "P2", 4, ["WP-09"], "A", "BLOCKED", "Aggregation ohne Personenbezug unter Mindestgruppe; Leistungsnachweis/Belastung korrekt oder gesperrt", "Unit, E2E", "server, src"],
+  ["WP-27", "Betriebsrat-Auswertung aggregiert, reduzierte Sichten", "P2", 4, ["WP-43"], "A", "READY", "Aggregation ohne Personenbezug unter Mindestgruppe; Leistungsnachweis/Belastung korrekt oder gesperrt", "Unit, E2E", "server, src"],
   ["WP-28", "Lasttest und Skalierungsentscheid", "P2", 3, ["WP-02", "WP-17"], "B", "BLOCKED", "Grenzwerte Testplan 3.6 gemessen; Entscheid Ablage/DB mit Zahlen", "k6/autocannon", "werkzeug/last"],
   ["WP-29", "Geo-Spezifikationsreste", "P2", 3, ["WP-20"], "D", "BLOCKED", "Felder, Begründungscodes, Warnung >100 m, Texte B13, Spoofing-Hinweis", "geo.test", "server/lib/geo.mjs, src"],
   ["WP-30", "Mail und Push in Produktion", "P2", 2, [], "B", "READY", "Resend (SPF/DKIM) und VAPID eingerichtet; Zustelltest", "Zustelltest", "deploy, Doku (Freigaben DNS/Secrets)"],
@@ -52,7 +52,7 @@ const P = [
   ["WP-34", "Branches aufräumen, Spezifikationen integrieren", "P2", 1, ["WP-09"], "0", "BLOCKED", "Geo-Spec und Migrationsbericht in docs; Altbranches archiviert", "–", "docs/"],
   ["WP-35", "Darstellungsbefunde", "P3", 2, ["WP-39"], "E", "BLOCKED", "Kein Querscrollen bei ≤430 px für Abrechnungsdaten/Handbuch; Geo-Schalter sofort", "Playwright-Viewport", "src"],
   ["WP-36", "Rechtstexte ohne Platzhalter", "P3", 1, [], "E", "BLOCKED", "37 Platzhalter ersetzt (Inhalte vom Nutzer); externe juristische Prüfung als eigene Abnahme", "Prüfskript Platzhalter=0", "src/rechtstexte.jsx"],
-  ["WP-37", "PWA-Feinschliff", "P3", 1.5, ["WP-09"], "E", "BLOCKED", "Verknüpfungen wirksam; SW-Fassung aus Build; Cache bei Rollenwechsel leer", "E2E", "public/, src"],
+  ["WP-37", "PWA-Feinschliff", "P3", 1.5, ["WP-43"], "E", "READY", "Verknüpfungen wirksam; SW-Fassung aus Build; Cache bei Rollenwechsel leer", "E2E", "public/, src"],
   ["WP-38", "Toter Code, eine Planrechnung", "P3", 2, ["WP-12"], "E", "BLOCKED", "Tagesstart u. a. entfernt/eingebunden; eine Planrechnung", "Unit", "src, server"],
   ["WP-39", "App.jsx modularisieren", "P3", 4, ["WP-12"], "E", "BLOCKED", "Aufteilung ohne Verhaltensänderung; alle Tests grün", "voll + E2E", "src/"],
   ["WP-40", "Barrierefreiheit WCAG 2.2 AA", "P3", 3, ["WP-39"], "E", "BLOCKED", "axe ohne Verstöße; Tastatur; Fokus; Kontrast", "axe in CI", "src"],
@@ -78,7 +78,7 @@ const pakete = P.map(([id, name, prio, aufwand, abh, agent, status, akzeptanz, t
 });
 /* Die drei laufenden Branches tragen die tatsächlichen Namen. */
 const ist = { "WP-02": "acc45/security/wp02-datenintegritaet", "WP-03": "acc45/infra/wp03-digest-rollback", "WP-04": "acc45/infra/wp04-backup",
-  "WP-09": "integration/centric-complete", "WP-43": "acc45/security/wp43-personaldaten-filter", "WP-45": "acc45/security/wp45-atomares-schreiben", "WP-46": "acc45/security/wp46-bremse-failclosed", "WP-33": "acc45/qa/wp33-testinfrastruktur", "WP-10": "acc45/rules/wp10-kette-a-basis", "WP-11": "acc45/rules/wp11-regelregister", "WP-17": "acc45/time/wp17-serverdatum", "WP-32": "acc45/infra/wp32-lieferkette-2fa", "WP-22": "acc45/rules/wp22-fachpruefungen-server", "WP-26": "acc45/security/wp26-dsgvo-server", "WP-31": "acc45/infra/wp31-deploy", "WP-05": "acc45/infra/wp05-ueberwachung", "WP-41": "acc45/infra/wp41-dokumentation", "WP-01": "hotfix/stempel-datenschutz-sv" };
+  "WP-09": "integration/centric-complete", "WP-43": "acc45/security/wp43-personaldaten-filter", "WP-45": "acc45/security/wp45-atomares-schreiben", "WP-46": "acc45/security/wp46-bremse-failclosed", "WP-33": "acc45/qa/wp33-testinfrastruktur", "WP-10": "acc45/rules/wp10-kette-a-basis", "WP-11": "acc45/rules/wp11-regelregister", "WP-17": "acc45/time/wp17-serverdatum", "WP-32": "acc45/infra/wp32-lieferkette-2fa", "WP-22": "acc45/rules/wp22-fachpruefungen-server", "WP-26": "acc45/security/wp26-dsgvo-server", "WP-31": "acc45/infra/wp31-deploy", "WP-05": "acc45/infra/wp05-ueberwachung", "WP-41": "acc45/infra/wp41-dokumentation", "WP-12": "acc45/qa/wp12-integrationsabnahme", "WP-19": "acc45/frontend/wp19-branchenpakete", "WP-01": "hotfix/stempel-datenschutz-sv" };
 for (const p of pakete) if (ist[p.id]) p.branch = ist[p.id];
 
 /* Kritischer Pfad: längste Kette nach Aufwand. */
