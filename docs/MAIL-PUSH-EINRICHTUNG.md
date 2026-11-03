@@ -77,7 +77,12 @@ lit. c, Art. 32 DSGVO). Wer Inhalte sehen will, öffnet die Anwendung — dort g
 |---|---|---|
 | `CENTRIC_ZUSTELL_BACKOFF` | Sekunden vor Wiederholung 2, 3, …; Anzahl + 1 ist die höchste Versuchszahl | `60,300,1800,7200` (5 Versuche) |
 | `CENTRIC_ZUSTELL_PERSON_MAIL` / `_PUSH` | Tageskontingent je Person und Kanal (dringende Arten ausgenommen); `0` sperrt | 10 / 30 |
-| `CENTRIC_ZUSTELL_BETRIEB_MAIL` / `_PUSH` | Tageskontingent je Betrieb und Kanal | 200 / 1000 |
+| `CENTRIC_ZUSTELL_BETRIEB_MAIL` / `_PUSH` | Tageskontingent je Betrieb und Kanal (Tag nach Berliner Zeit); erreicht → zurückgestellt bis Mitternacht, nicht verworfen | 200 / 1000 |
+| `CENTRIC_ZUSTELL_RESERVE_MAIL` / `_PUSH` | Teil der Betriebsgrenze nur für dringende Arten (Notruf, Dienständerung); normale Arten belegen höchstens den Rest | ¼ der Betriebsgrenze, höchstens 50 / 250 |
+| `CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL` / `_PUSH` | dringende Mitteilungen je Empfänger und Quelle und Tag (Flut-Schutz) | 5 / 10 |
+| `CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL` / `_PUSH` | dringende Mitteilungen aus Vorgängen einer Person (Notruf) je Tag, über alle Empfänger | 20 / 40 |
+| `CENTRIC_NOTRUF_JE_STUNDE` | Notrufe je Person und Stunde, die Mitteilungen auslösen (weitere werden gespeichert und angezeigt, aber nicht zugestellt) | 3 |
+| `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN` | `ja`: das nächste Zustellaufräumen hebt **alle** Adresssperren auf (nach einem Konfigurationsfix); danach wieder entfernen | leer |
 | `CENTRIC_ZUSTELLPROTOKOLL_TAGE` | Aufbewahrung des Zustellprotokolls; wirkt im Datenschutzlauf (`CENTRIC_DATENSCHUTZLAUF`) | 30 |
 | `CENTRIC_GESUND_ZUSTELLUNG_WARNUNG` | Warnschwelle (endgültige Fehlschläge je Stunde) | 3 |
 | `CENTRIC_PUSH_HOSTS` | weitere erlaubte Push-Hosts | leer |
@@ -111,8 +116,15 @@ Erst im **Staging** oder mit einem Testbetrieb, nie zuerst in Produktion mit ech
 
 - **Wiederholung.** Ein vorübergehender Fehler (Netz, 408/409/429, 5xx) stellt zurück; der Server holt Fälliges selbst ab
   (Takt 60 s), auch wenn niemand die Anwendung geöffnet hat. Nach der höchsten Versuchszahl: `fehlgeschlagen`.
-- **Dauerhafte Fehler** (Mail 400/422, Push 400/413) werden nie wiederholt. Eine vom Anbieter als ungültig abgewiesene Adresse
-  (422) wird bis zur Änderung der Adresse nicht mehr angeschrieben.
+- **Dauerhafte Fehler** (Mail 400/422, Push 400/413) werden nie wiederholt. Bei Resend ist 422 ein Validierungsfehler der
+  **Anfrage**, kein Bounce: Nur wenn der Anbieter ausdrücklich den Empfänger (`to`) als ungültig abweist, wird die Adresse bis zu
+  ihrer Änderung nicht mehr angeschrieben (Sperre mit HMAC des Adresswerts, Schlüssel `CENTRIC_PFEFFER`). Absender-, Domain- oder
+  Schlüsselfehler (`invalid_from_address`, „domain is not verified“, 401/403) gelten als **Konfiguration**: zurückgestellt,
+  Warnung in `/gesund`, **keine** Empfängersperre. Sperren aus der früheren Einordnung (ohne Ursache) gelten nicht mehr und
+  verschwinden beim nächsten Aufräumen; nach einem Konfigurationsfix hebt `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN=ja` alle auf.
+- **Kontingente**: Ist die Betriebsgrenze erreicht, wird bis zum nächsten Tag (Mitternacht Berlin) zurückgestellt. Dringende
+  Arten haben eine Reserve, die normale Arten nicht verbrauchen (ein Monatsplan an alle blockiert keinen Notruf). Wiederholungen
+  derselben Mitteilung belegen keinen weiteren Platz.
 - **Push 404/410**: Die Anmeldung ist erloschen und wird gelöscht.
 - **Doppelte Zustellung**: Je Versuch ein atomarer Claim; nach einem Absturz zwischen Senden und Quittieren wird mit
   demselben Idempotenzschlüssel (Mail, beim Anbieter 24 Stunden) bzw. demselben Topic (Push) wiederholt. Restrisiko: Nach
@@ -129,10 +141,12 @@ Erst im **Staging** oder mit einem Testbetrieb, nie zuerst in Produktion mit ech
 | Es kommt nichts an, Status `zugestellt` mit `trocken` | `RESEND_API_KEY` bzw. VAPID fehlt (Trockenlauf) | `.env` prüfen, Container neu erstellen |
 | Status `uebersprungen` / `aus` | Person hat die Art oder den Kanal abgeschaltet | gewollt; Einstellungen der Person |
 | `uebersprungen` / `keinWeg` | keine gültige Adresse bzw. keine Push-Anmeldung (oder Person anonymisiert) | Adresse eintragen / Mitteilungen auf dem Gerät einschalten |
-| `uebersprungen` / `unzustellbar` | Anbieter wies die Adresse ab (422) | Adresse korrigieren (hebt die Sperre auf) |
+| `uebersprungen` / `unzustellbar` | Anbieter wies den Empfänger als ungültig ab (422 mit `to`) | Adresse korrigieren (hebt die Sperre auf); bei Verdacht auf Fehleinordnung `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN=ja` |
 | `uebersprungen` / `entwurf` | Mitteilung betrifft einen nicht freigegebenen Planmonat (Beschäftigte) | Plan freigeben; gewollt |
-| `uebersprungen` / `kontingent` | Tages- oder Betriebsgrenze erreicht | Grenzen prüfen (Abschnitt 3) |
-| `fehlgeschlagen` / `dauerhaft` mit `http-422` | Anbieter: ungültige Adresse | Adresse prüfen |
+| `uebersprungen` / `kontingent` | Personengrenze (normale Arten) oder Flut-Schutz (dringende Arten je Empfänger/Quelle) erreicht | Grenzen prüfen (Abschnitt 3) |
+| `zurueckgestellt` / `kontingent` | Betriebsgrenze des Tages erreicht; geht ab Mitternacht (Berlin) hinaus | Grenze/Tarif prüfen (Abschnitt 3) |
+| `fehlgeschlagen` / `dauerhaft` mit `http-422` | Anbieter: Anfrage ungültig (Empfänger oder Inhalt) | Adresse prüfen; ohne Sperre lag es an der Nachricht |
+| `zurueckgestellt` mit `http-422`, Klasse `konfiguration` | Absender (`CENTRIC_ABSENDER`) oder Domain abgelehnt | Absender korrigieren, Container neu erstellen; niemand ist gesperrt |
 | `zurueckgestellt` mit `http-403` (Mail) | Schlüssel ungültig oder Domain nicht verifiziert | Dashboard prüfen, `CENTRIC_ABSENDER` an verifizierte Domain |
 | `zurueckgestellt` mit `http-429` | Tarifgrenze des Anbieters | `CENTRIC_ZUSTELL_BETRIEB_MAIL` senken, Tarif prüfen |
 | Push `http-401`/`http-403` | VAPID-Paar wurde getauscht oder passt nicht | Paar zurücksetzen; sonst müssen alle Geräte neu anmelden |
@@ -144,9 +158,13 @@ Das Betreiberprotokoll enthält nur Zähler und Statuscodes — nie Empfänger, 
 ## 7. Grenzen (ehrlich)
 
 - Asynchrone Bounces (Anbieter meldet Minuten später per Webhook „zugestellt/abgelehnt“) werden **nicht** ausgewertet; nur die
-  unmittelbare Antwort der API. Ein späterer Webhook-Empfänger (Signaturprüfung) wäre ein eigenes Paket.
-- Eine Push-Anmeldung je Person (ein Gerät). Mehrere Geräte je Person sind nicht vorgesehen.
-- Die Entwurfsregel greift, wenn die Mitteilung einen Tag (`tag`, JJJJ-MM-TT) trägt. Vom Server erzeugte Tauschmitteilungen
-  tragen ihn; die Oberfläche setzt ihn für Planungsmitteilungen noch nicht (Folgearbeit). Der Hinweistext enthält ohnehin
-  keine Plandaten.
+  unmittelbare Antwort der API. Geplant als Teilpaket **WP-30b** (Abnahmekriterien in `docs/acc45/wp30-nachweis.md`).
+- Eine Push-Anmeldung je Person (ein Gerät). Mehrere Geräte je Person sind nicht vorgesehen. Abmelden (Logout) löscht diese
+  eine Anmeldung — auch wenn die Person auf einem anderen Gerät weiter angemeldet ist (gewollt, geteilte Geräte).
+- Die Entwurfsregel greift, wenn die Mitteilung einen Tag (`tag`, JJJJ-MM-TT) trägt: Tauschmitteilungen (Server), Dienständerung
+  und Ersatzeinteilung (Oberfläche). Selbstplanungsrunden (sie gelten gerade einem Entwurfsmonat), Krankmeldungen an die Planung
+  und Notrufe tragen bewusst keinen Tag. Der Hinweistext enthält ohnehin keine Plandaten.
+- **Betriebsname geht an den Anbieter**: Betreff und Fußzeile der Mail enthalten den Namen des Betriebs (eine Zeile, ohne
+  Steuerzeichen) — er wird an Resend (US-Unternehmen) übermittelt. Betreiberentscheidung: hinnehmen (im AVV/Verzeichnis
+  vermerken) oder den Namen weglassen (Codeänderung in `server/lib/versand.mjs`, `mailInhalt`).
 - Resend-/DNS-/VAPID-Einrichtung und der Test mit echten Geräten sind nicht ausgeführt (nur der Betreiber kann es).

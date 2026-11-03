@@ -66,11 +66,6 @@ export default async (req) => {
     return antwort({ fehler: "Diese Anfrage kommt nicht von der Anwendung." }, 403);
 
   try {
-    /* Öffentlicher Schlüssel für die Push-Anmeldung im Browser */
-    if (pfad === "schluessel" && req.method === "GET")
-      return antwort({ vapid: process.env.VAPID_PUBLIC || null,
-        mail: !!process.env.RESEND_API_KEY });
-
     /* Die Sitzung kommt aus dem einen Prüfpunkt (lib/arbeitssitzung.mjs). */
     const s = (await arbeitssitzungLesen(req, { store: store() })).sitzung;
     if (!s) return antwort({ fehler: "Nicht angemeldet." }, 401);
@@ -79,6 +74,15 @@ export default async (req) => {
        galt über wirksameRolle die Rolle der gebundenen Person. */
     if (!rolleBekannt(s.rolle) && !(pfad === "abmelden" && req.method === "POST"))
       return antwort({ fehler: "Keine Berechtigung." }, 403);
+
+    /* Öffentlicher Schlüssel für die Push-Anmeldung im Browser. Nachtrag
+       Opus-Review (B7): nur mit Sitzung und bekannter Rolle — wie jeder
+       Pfad unter /zustellung/ (RECHTEMATRIX). Die Oberfläche fragt ihn nur
+       beim Einschalten der Gerätemitteilungen ab (src/speicher.js), also
+       angemeldet. Ob Mail eingerichtet ist, bleibt ein Ja/Nein. */
+    if (pfad === "schluessel" && req.method === "GET")
+      return antwort({ vapid: process.env.VAPID_PUBLIC || null,
+        mail: !!process.env.RESEND_API_KEY });
 
     /* --------------------------- Zustellen ---------------------------- */
     if (pfad === "senden" && req.method === "POST") {

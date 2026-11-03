@@ -228,7 +228,8 @@ self.addEventListener("fetch", (e) => {
    Klick wird nur ein Pfad der eigenen Herkunft geöffnet, nie eine fremde
    Adresse, die jemand in die Nutzlast geschrieben hätte. */
 const kurz = (t, n) => String(t == null ? "" : t).slice(0, n);
-const eigenerPfad = (z) => (typeof z === "string" && /^\/[A-Za-z0-9/_-]{0,80}$/.test(z) ? z : "/");
+/* Kein „//…“ am Anfang: das wäre eine protokollrelative fremde Adresse (Nachtrag Opus-Review B5). */
+const eigenerPfad = (z) => (typeof z === "string" && /^\/(?!\/)[A-Za-z0-9/_-]{0,80}$/.test(z) ? z : "/");
 
 self.addEventListener("push", (e) => {
   if (!e.data) return;

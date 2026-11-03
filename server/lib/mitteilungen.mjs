@@ -57,6 +57,13 @@ export const NOTRUF_ARTEN = {
 };
 const NOTRUF_EMPFAENGER = ["subplaner", "planer", "leitung"];
 
+/** Notrufe je Person und Stunde, die Mitteilungen auslösen (Vorgabe 3;
+    CENTRIC_NOTRUF_JE_STUNDE, 1 bis 100). */
+export const notrufJeStunde = () => {
+  const w = Number(process.env.CENTRIC_NOTRUF_JE_STUNDE);
+  return Number.isInteger(w) && w >= 1 && w <= 100 ? w : 3;
+};
+
 /* Felder, die nur der Server setzt. */
 const NUR_SERVER = ["wege", "zugestellt", "quelle"];
 
@@ -175,13 +182,28 @@ export function mitteilungenErzeugen(altM, neuM, ich) {
   const neue = [];
   const dazu = (n) => { if (!vorhanden.has(n.id)) { vorhanden.add(n.id); neue.push(n); } };
 
-  /* Notrufe */
+  /* Notrufe. Nachtrag Opus-Review (B1): Mitteilungen (und damit Mail/Push)
+     entstehen für höchstens notrufJeStunde() Notrufe je Person in der
+     letzten Stunde — gezählt an den gespeicherten Notrufmitteilungen
+     (Serverzeit `erstellt`). Ein Notruf darüber wird gespeichert und ist in
+     der Anwendung sichtbar, löst aber keine weitere Benachrichtigung aus:
+     Schutz gegen eine Flut, die das Betriebskontingent leert. */
   const alteNotrufe = new Set((Array.isArray(altM.notrufe) ? altM.notrufe : []).filter(istObjekt).map((n) => String(n.id)));
+  const seit = Date.now() - 3600 * 1000;
+  const frische = new Set((Array.isArray(altM.nachrichten) ? altM.nachrichten : [])
+    .filter((x) => istObjekt(x) && istObjekt(x.quelle) && x.quelle.art === "notruf" && gleichId(x.quelle.von, ich)
+      && Date.parse(x.erstellt || "") >= seit)
+    .map((x) => String(x.quelle.id)));
+  const jeStunde = notrufJeStunde();
   for (const n of Array.isArray(aus.notrufe) ? aus.notrufe : []) {
     if (!istObjekt(n) || alteNotrufe.has(String(n.id)) || !gleichId(n.personId, ich)) continue;
     if (!Object.prototype.hasOwnProperty.call(NOTRUF_ARTEN, n.art)) continue;
+    const empfaenger = notrufEmpfaenger(personen, n);
+    if (!empfaenger.length) continue;
+    if (!frische.has(String(n.id)) && frische.size >= jeStunde) continue;
+    frische.add(String(n.id));
     const zusatz = [n.dienst, n.ort, n.notiz].filter((x) => typeof x === "string" && x.trim()).join(" · ");
-    for (const e of notrufEmpfaenger(personen, n))
+    for (const e of empfaenger)
       dazu(mitteilung({ id: `n-notruf-${n.id}-${e.id}`, personId: e.id, art: "einspringen",
         titel: `NOTRUF: ${NOTRUF_ARTEN[n.art]}`, text: `${name(ichP)}${zusatz ? ` · ${zusatz}` : ""}`,
         ziel: "notruf", quelle: { art: "notruf", id: n.id, von: ichP.id } }));

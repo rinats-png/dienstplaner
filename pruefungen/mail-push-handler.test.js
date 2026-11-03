@@ -85,7 +85,7 @@ beforeAll(async () => {
   await B.bestandSchreiben(laden(), "mph", { version: 9, mandanten: [
     { id: "m-a", name: "A", einheiten: [{ id: "e1" }], personen: [
       person("a1", "mitarbeiter"), person("a2", "mitarbeiter"), person("ausz", "mitarbeiter"), person("p1", "planer", { bereich: "ALLE" }),
-      person("l1", "leitung", { bereich: "ALLE" })],
+      person("l1", "leitung", { bereich: "ALLE" }), person("r1", "betriebsrat", { bereich: "ALLE" }), person("s1", "subplaner")],
     abweichungen: {}, notrufe: [], anfragen: [],
     nachrichten: [{ id: "n-ausz", personId: "ausz", art: "planFreigegeben", titel: "T", text: "X", ziel: "meine", zeit: "x",
       erstellt: new Date().toISOString(), gelesen: false, dringend: false }] },
@@ -98,6 +98,8 @@ beforeAll(async () => {
   T.l1 = await sitzung("MPH5-LLLL-0005", "leitung", "l1", 0, "m-a");
   T.b1 = await sitzung("MPH6-BBBB-0006", "mitarbeiter", "b1", 1, "m-b");
   T.betr = await sitzung("MPH7-BTRB-0007", "betreiber", null, 0, null);
+  T.r1 = await sitzung("MPH8-RRRR-0008", "betriebsrat", "r1", 0, "m-a");
+  T.s1 = await sitzung("MPH9-SSSS-0009", "subplaner", "s1", 0, "m-a");
 });
 afterAll(async () => { await rm(wurzel, { recursive: true, force: true }); });
 beforeEach(() => { post.mails.length = 0; post.pushes.length = 0; });
@@ -249,5 +251,56 @@ describe("Mitteilung mit Tag (Entwurfsregel): der Client kann den Tag setzen, de
       zeit: "x", erstellt: new Date().toISOString(), gelesen: false, dringend: true, tag: "2099-03-04" }); });
     expect(w.status, w.text).toBe(200);
     expect((await betrieb("m-a")).nachrichten.find((n) => n.id === "n-tag").tag).toBe("2099-03-04");
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG OPUS-REVIEW WP-30 (B6, B7)
+   ========================================================================== */
+
+describe("Nachtrag B7: Rollen-Sonde für /zustellung/status und /zustellung/schluessel", () => {
+  it("Beschäftigte, Betriebsrat, Schichtverantwortung, Planung, Leitung: je 200 und nur die Stati der eigenen Mitteilungen", async () => {
+    const ids = ["a1", "r1", "s1", "p1", "l1"];
+    const w = await schreibe(T.p1, (m) => { m.nachrichten.unshift(...ids.map((id) => ({ id: `n-sonde-${id}`, personId: id, art: "planFreigegeben",
+      titel: "GEHEIM-T", text: "GEHEIM-X", ziel: "meine", zeit: "x", erstellt: new Date().toISOString(), gelesen: false, dringend: false }))); });
+    expect(w.status, w.text).toBe(200);
+    const z = await anfrage(zustellung, "/zustellung/senden", { token: T.p1, rumpf: { nachrichten: ids.map((id) => `n-sonde-${id}`) } });
+    expect(z.status, z.text).toBe(200);
+    for (const id of ids) {
+      const r = await anfrage(zustellung, "/zustellung/status", { methode: "GET", token: T[id] });
+      expect(r.status, `${id}: ${r.text}`).toBe(200);
+      expect(r.stand.some((x) => x.nachricht === `n-sonde-${id}`), id).toBe(true);
+      expect(r.stand.filter((x) => String(x.nachricht).startsWith("n-sonde-")).every((x) => x.nachricht === `n-sonde-${id}`), id).toBe(true);
+      for (const v of ["GEHEIM", "kunde.example", "http-"]) expect(r.text, id).not.toContain(v);
+    }
+    expect((await anfrage(zustellung, "/zustellung/status", { methode: "GET" })).status).toBe(401);
+    expect((await anfrage(zustellung, "/zustellung/status", { methode: "GET", token: T.betr })).status).toBe(400);
+  });
+
+  it("/zustellung/schluessel: ohne Sitzung 401; mit Sitzung nur der öffentliche Schlüssel und ja/nein", async () => {
+    process.env.VAPID_PUBLIC = "oeffentlich-nur-zum-pruefen"; process.env.RESEND_API_KEY = "schluessel-nur-zum-pruefen-GEHEIM";
+    try {
+      expect((await anfrage(zustellung, "/zustellung/schluessel", { methode: "GET" })).status).toBe(401);
+      const r = await anfrage(zustellung, "/zustellung/schluessel", { methode: "GET", token: T.a1 });
+      expect(r.status, r.text).toBe(200);
+      expect(Object.keys(JSON.parse(r.text)).sort()).toEqual(["mail", "vapid"]);
+      expect(r.vapid).toBe("oeffentlich-nur-zum-pruefen");
+      expect(r.mail).toBe(true);
+      expect(r.text).not.toContain("GEHEIM");
+    } finally { delete process.env.VAPID_PUBLIC; delete process.env.RESEND_API_KEY; }
+  });
+});
+
+describe("Nachtrag B6: die Oberfläche setzt den Tag an Dienständerungen (Entwurfsregel greift an der Quelle)", () => {
+  it("baueMitteilung nimmt den Tag an; Dienständerung und Ersatzeinteilung übergeben ihn", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const quelle = await readFile(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const i = quelle.indexOf("function baueMitteilung(");
+    expect(i).toBeGreaterThan(0);
+    const fn = quelle.slice(i, quelle.indexOf("\n}\n", i));
+    expect(fn).toMatch(/^function baueMitteilung\(m, personId, art, titel, text, ziel, tag\)/);
+    expect(fn).toMatch(/\{ tag \}/);
+    expect(quelle).toMatch(/baueMitteilung\(next, pid, "planGeaendert", `Dienst am \$\{fKurz\(d\)\} geändert`,[^\n]*\n[^\n]*"meine", d\)/);
+    expect(quelle).toMatch(/baueMitteilung\(m, pid, "planGeaendert", `Zusätzlicher Dienst am \$\{fKurz\(d\)\}`,[^\n]*\n[^\n]*"meine", d\)/);
   });
 });

@@ -283,3 +283,58 @@ describe("Dienstarbeiter: Push-Handler getrennt, ohne Zwischenspeicher, nur eige
     expect(s.zugriffe).toEqual([]);
   });
 });
+
+/* ==========================================================================
+   NACHTRAG OPUS-REVIEW WP-30 (B2, B5)
+   ========================================================================== */
+
+describe("Nachtrag B2: 422 ist ein Validierungsfehler der Anfrage — Klasse nach Fehlercode", () => {
+  it.each([
+    [422, { name: "invalid_from_address", message: "Invalid `from` field." }, "konfiguration", "absender"],
+    [422, { name: "validation_error", message: "Invalid `from` field. The email address needs to follow the `email@example.com` format." }, "konfiguration", "absender"],
+    [403, { name: "validation_error", message: "The example.com domain is not verified." }, "konfiguration", "absender"],
+    [422, { name: "invalid_parameter", message: "Invalid `subject` field." }, "dauerhaft", undefined],
+    [422, { name: "missing_required_field", message: "Missing `subject` field." }, "dauerhaft", undefined],
+    [422, { name: "x" }, "dauerhaft", undefined],
+    [422, { name: "validation_error", message: "Invalid `to` field. The email address needs to follow the `email@example.com` format." }, "dauerhaft", "empfaenger"],
+    [400, { name: "validation_error", message: "Invalid `to` field." }, "dauerhaft", "empfaenger"],
+  ])("HTTP %i mit %o: Klasse %s, Ursache %s", async (status, rumpf, klasse, ursache) => {
+    mailEinrichten(); fetchMit(status, rumpf);
+    const r = await P.sendeMail("a@kunde.example", "B", "T");
+    expect(r).toMatchObject({ ok: false, klasse, status });
+    expect(r.ursache).toBe(ursache);
+  });
+
+  it("Absender falsch eingerichtet (echter Pfad): keine Empfängersperre, zurückgestellt; die nächste Mitteilung wird versucht", async () => {
+    mailEinrichten();
+    process.env.CENTRIC_ZUSTELL_BACKOFF = "60,120";
+    const person = (id) => ({ id, vorname: "V", nachname: "N", rolle: "leitung", email: `${id}@kunde.example` });
+    const n = (id) => ({ id, personId: "l1", art: "planFreigegeben", titel: "T", text: "X", ziel: "meine", zeit: "x",
+      erstellt: new Date(JETZT).toISOString(), gelesen: false, dringend: false });
+    const mm = { id: "m-k", name: "Betrieb", personen: [person("l1")], nachrichten: [n("k1"), n("k2")] };
+    const g = fetchMit(422, { name: "invalid_from_address", message: "Invalid `from` field." });
+    await V.zustellen(store, { raum: "e2e", bestand: { mandanten: [mm] }, m: mm, ids: ["k1", "k2"], jetzt: JETZT });
+    expect(g).toHaveLength(2);
+    expect(await store.getMetadata(V.sperrSchluessel("e2e", mm.id, "l1"))).toBeNull();
+    expect(await store.get(V.statusSchluessel("e2e", mm.id, "k1", "mail"), { type: "json" })).toMatchObject({ status: "fehler", klasse: "konfiguration" });
+  });
+});
+
+describe("Nachtrag B5: Dienstarbeiter — keine protokollrelativen Ziele", () => {
+  it("„//evil“, „//2130706433“, „///“ führen zu „/“; ein Pfad mit doppeltem Schrägstrich in der Mitte bleibt ein eigener Pfad", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const quelle = await readFile(path.join(process.cwd(), "public/sw.js"), "utf8");
+    const geoeffnet = [];
+    const handler = {};
+    const self = { location: { origin: "https://app.example" }, addEventListener: (t, f) => { (handler[t] ||= []).push(f); },
+      registration: { showNotification: async () => {} },
+      clients: { matchAll: async () => [], openWindow: async (u) => { geoeffnet.push(u); }, claim: async () => {} }, skipWaiting: () => {} };
+    new Function("self", "caches", "fetch", quelle)(self, {}, async () => { throw new Error("nie"); });
+    for (const ziel of ["//evil", "//2130706433", "///", "/a//b", "//", "/ok"]) {
+      const warten = [];
+      handler.notificationclick[0]({ notification: { close: () => {}, data: { ziel } }, waitUntil: (p) => warten.push(p) });
+      await Promise.all(warten);
+    }
+    expect(geoeffnet).toEqual(["/", "/", "/", "/a//b", "/", "/ok"]);
+  });
+});

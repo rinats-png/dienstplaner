@@ -69,7 +69,8 @@ const tBetr = await anmelden(await zugang("betreiber", null, 0));
 pruef("Raum mit zwei Betrieben eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { inhalt: {
   version: 9, stand: 1, session: null, mandanten: [
     { id: "m-a", name: "A", einheiten: [{ id: "e1" }], personen: [person("a1", "mitarbeiter"), person("a2", "mitarbeiter", { zustellung: { planGeaendert: { mail: false } } }),
-      person("p1", "planer"), person("l1", "leitung", { pushSchluessel: { endpoint: "https://push.example/l1-geheim" } }), person("r1", "betriebsrat")],
+      person("p1", "planer"), person("l1", "leitung", { pushSchluessel: { endpoint: "https://push.example/l1-geheim" } }), person("r1", "betriebsrat"),
+      person("s1", "subplaner")],
     abweichungen: {}, notrufe: [], nachrichten: [mitteilung("n-a1", "a1")],
     anfragen: [{ id: "t-a2", personId: "a2", typ: "tausch", art: "tausch", status: "offen", von: "2026-12-01", bis: "2026-12-01", interessenten: [] }] },
     { id: "m-b", name: "B", einheiten: [{ id: "e1" }], personen: [person("b1", "mitarbeiter")], abweichungen: {}, anfragen: [], notrufe: [],
@@ -78,6 +79,7 @@ const tA1 = await anmelden(await zugang("mitarbeiter", "a1", 0));
 const tP1 = await anmelden(await zugang("planer", "p1", 0));
 const tL1 = await anmelden(await zugang("leitung", "l1", 0));
 const tR1 = await anmelden(await zugang("betriebsrat", "r1", 0));
+const tS1 = await anmelden(await zugang("subplaner", "s1", 0));
 
 /* Z1 */
 const alt = await senden(tP1, { auftraege: [{ id: "x", personId: "a2", betreff: "frei", text: "frei", titel: "frei" }] });
@@ -157,6 +159,24 @@ pruef("Push-Anmeldung: eigene Person 200", (await rufe(tA1, "/zustellung/anmelde
 pruef("Push-Anmeldung: interne Ziele und fremde Hosts 400 (kein SSRF)",
   (await Promise.all(["https://127.0.0.1/x", "https://169.254.169.254/latest", "https://fremd.invalid/x"]
     .map((e) => rufe(tA1, "/zustellung/anmelden", "POST", { anmeldung: { endpoint: e, keys: {} } })))).every((r) => r.status === 400));
+
+/* Nachtrag Opus-Review WP-30 (B7): Rollen-Sonde für /zustellung/status und /zustellung/schluessel.
+   Zugestellt wurden oben Mitteilungen an l1 (n-zu, n-par, Notruf). Jede Rolle sieht nur die eigenen. */
+const fremdFuer = { MA: tA1, BR: tR1, SV: tS1, PL: tP1 };
+for (const [rolle, t] of Object.entries(fremdFuer)) {
+  const s = await rufe(t, "/zustellung/status", "GET");
+  pruef(`B7 /zustellung/status ${rolle}: 200, keine Stati fremder Mitteilungen`, s.status === 200 && Array.isArray(s.stand)
+    && !s.stand.some((x) => ["n-zu", "n-par", "n-notruf-nr-a1-l1"].includes(x.nachricht)), `Status ${s.status} ${s.text.slice(0, 200)}`);
+}
+const sL = await rufe(tL1, "/zustellung/status", "GET");
+pruef("B7 /zustellung/status LT: 200, die eigenen Stati, ohne Inhalt und Adresse", sL.status === 200
+  && sL.stand.some((x) => x.nachricht === "n-zu") && !sL.text.includes("@x.de") && !sL.text.includes("T n-zu"), `Status ${sL.status}`);
+pruef("B7 /zustellung/status ohne Sitzung: 401", (await rufe(null, "/zustellung/status", "GET")).status === 401);
+pruef("B7 /zustellung/status Betreiber (keine Person): 400", (await rufe(tBetr, "/zustellung/status", "GET")).status === 400);
+pruef("B7 /zustellung/schluessel ohne Sitzung: 401", (await rufe(null, "/zustellung/schluessel", "GET")).status === 401);
+const sch = await rufe(tA1, "/zustellung/schluessel", "GET");
+pruef("B7 /zustellung/schluessel mit Sitzung: 200, nur vapid und mail", sch.status === 200
+  && JSON.stringify(Object.keys(JSON.parse(sch.text)).sort()) === JSON.stringify(["mail", "vapid"]), sch.text);
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;
 console.log(`\n${bestanden} von ${ergebnisse.length} Prüfungen bestanden.`);

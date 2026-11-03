@@ -523,9 +523,12 @@ if ((process.env.CENTRIC_AUFRAEUMEN || "an").trim().toLowerCase() !== "aus") {
         const t = Number(process.env.CENTRIC_ZUSTELLPROTOKOLL_TAGE);
         const tage = Number.isInteger(t) && t >= 1 && t <= 365 ? t : 30;
         const z = await zustellungAufraeumen(getStore({ name: "centric", consistency: "strong" }),
-          { tage, trocken: modus !== "an" });
+          { tage, trocken: modus !== "an",
+            /* Betreiberschalter nach einem Konfigurationsfix (Absender, Domain):
+               alle Adresssperren aufheben (docs/MAIL-PUSH-EINRICHTUNG.md). */
+            sperrenAufheben: (process.env.CENTRIC_ZUSTELL_SPERREN_AUFHEBEN || "").trim().toLowerCase() === "ja" });
         console.log(`Zustellaufräumen (${modus}): ${z.protokoll} Protokolleinträge, ${z.kontingent} Kontingentplätze, `
-          + `${z.waisen} verwaiste Anmeldungen, ${z.fehler} Fehler`);
+          + `${z.waisen} verwaiste Anmeldungen, ${z.sperren} Adresssperren aufgehoben, ${z.fehler} Fehler`);
       }
     } catch (e) {
       console.error("Zustellaufräumen fehlgeschlagen:", e && e.message ? e.message : e);

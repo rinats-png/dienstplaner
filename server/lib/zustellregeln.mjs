@@ -28,9 +28,13 @@
       Abstände hat, plus der erste Versuch. Ein dauerhafter Fehler wird nie
       wiederholt.
 
-   4. Kontingente. Je Person, Kanal und Tag und je Betrieb, Kanal und Tag.
-      Dringende Arten sind von der Personenbremse ausgenommen (ein Notruf
-      darf nicht an einer Tagesgrenze hängen), nicht von der Betriebsbremse.
+   4. Kontingente. Je Person, Kanal und Tag und je Betrieb, Kanal und Tag
+      (Tag nach Berliner Zeit). Dringende Arten sind von der Personenbremse
+      ausgenommen (ein Notruf darf nicht an einer Tagesgrenze hängen), nicht
+      von der Betriebsbremse; für sie ist ein Teil der Betriebsgrenze
+      reserviert, und sie sind je Empfänger und Quelle sowie je Quelle
+      begrenzt (Flut-Schutz). Ist die Betriebsgrenze erreicht, wird
+      zurückgestellt (nächster Tag), nicht verworfen (Nachtrag Opus-Review).
    ========================================================================== */
 
 import { istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
@@ -67,12 +71,22 @@ export function hinweis(n) {
   return { titel: art ? HINWEIS_TITEL[art] : ALLGEMEIN, text: HINWEIS_TEXT };
 }
 
+/** Ein Name (Betrieb) für Betreff und Fußzeile: eine Zeile ohne Steuerzeichen
+    (kein CR/LF — keine Kopfzeilen-Injektion), höchstens `max` Zeichen
+    (Nachtrag Opus-Review B2). */
+export const einzeilig = (s, max = 80) => String(s ?? "")
+  .replace(/[\u0000-\u001f\u007f-\u009f\u{2028}\u{2029}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+
 /** Das Ziel für den Klick auf die Benachrichtigung: nur ein kurzes Stichwort. */
 export const pushZiel = (n) => (n && typeof n.ziel === "string" && /^[a-z]{1,20}$/.test(n.ziel) ? n.ziel : null);
 
 /* ----------------------------------------------------------- Entwurfsregel */
 
-/** Rollen, die Entwürfe ohnehin sehen (sicht.mjs): Planung, Leitung, Kunde. */
+/** Rollen, für die die Entwurfsregel nicht gilt: Planung, Leitung, Kunde.
+    Schichtverantwortung und Betriebsrat sehen Entwürfe in der Anwendung zwar
+    auch (sicht.mjs), stehen hier aber bewusst nicht: Für sie ist die Regel
+    strenger als nötig — harmlos, sie öffnen den Entwurf in der Anwendung
+    (Nachtrag Opus-Review B6). */
 const SIEHT_ENTWUERFE = ["planer", "leitung", "kunde"];
 const TAG_FORM = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -117,18 +131,63 @@ const grenze = (name, vorgabe) => {
   return Number.isInteger(w) && w >= 0 && w <= 100000 ? w : vorgabe;
 };
 
-/** Obergrenzen je Tag. 0 sperrt den Kanal. Über die Umgebung einstellbar. */
+/* Nachtrag Opus-Review (B1): Ein Teil der Betriebsgrenze ist für dringende
+   Arten reserviert. Normale Arten (z. B. „Monatsplan freigegeben“ an alle)
+   dürfen höchstens `betrieb − reserve` belegen; dringende nehmen zuerst
+   diesen Teil und dann die Reserve. Vorgabe: ein Viertel der
+   Betriebsgrenze, höchstens 50 (Mail) bzw. 250 (Push); ausdrücklich gesetzt
+   höchstens die Betriebsgrenze. */
+const reserve = (name, betrieb, hoechstens) => {
+  const roh = process.env[name];
+  if (roh !== undefined && String(roh).trim() !== "") {
+    const w = Number(roh);
+    if (Number.isInteger(w) && w >= 0 && w <= 100000) return Math.min(w, betrieb);
+  }
+  return Math.min(hoechstens, Math.floor(betrieb / 4));
+};
+
+/**
+ * Obergrenzen je Tag. 0 sperrt den Kanal. Über die Umgebung einstellbar.
+ * - person*: je Empfänger, nur normale Arten (Empfängerschutz; was darüber
+ *   liegt, wird nicht gesendet — die Mitteilung steht im Postfach).
+ * - betrieb*: je Betrieb, alle Arten; davon reserve* nur für dringende.
+ * - paar*: dringende Arten je Empfänger und Quelle (Flut-Schutz: viele
+ *   Notrufe derselben Person an dieselbe Planerin).
+ * - quelle*: dringende Mitteilungen aus Vorgängen einer Person (Notruf),
+ *   über alle Empfänger.
+ */
 export function kontingente() {
+  const betriebMail = grenze("CENTRIC_ZUSTELL_BETRIEB_MAIL", 200);
+  const betriebPush = grenze("CENTRIC_ZUSTELL_BETRIEB_PUSH", 1000);
   return {
     personMail: grenze("CENTRIC_ZUSTELL_PERSON_MAIL", 10),
     personPush: grenze("CENTRIC_ZUSTELL_PERSON_PUSH", 30),
-    betriebMail: grenze("CENTRIC_ZUSTELL_BETRIEB_MAIL", 200),
-    betriebPush: grenze("CENTRIC_ZUSTELL_BETRIEB_PUSH", 1000),
+    betriebMail,
+    betriebPush,
+    reserveMail: reserve("CENTRIC_ZUSTELL_RESERVE_MAIL", betriebMail, 50),
+    reservePush: reserve("CENTRIC_ZUSTELL_RESERVE_PUSH", betriebPush, 250),
+    paarMail: grenze("CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL", 5),
+    paarPush: grenze("CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH", 10),
+    quelleMail: grenze("CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL", 20),
+    quellePush: grenze("CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH", 40),
   };
 }
 
-/** Der Tag der Kontingente (UTC, JJJJ-MM-TT). */
-export const kontingentTag = (jetzt) => new Date(jetzt).toISOString().slice(0, 10);
+/** Der Tag der Kontingente (JJJJ-MM-TT) nach Berliner Zeit — wie der
+    Arbeitstag der Betriebe, nicht UTC (Nachtrag Opus-Review). */
+export const kontingentTag = (jetzt) => laufenderTag(new Date(jetzt));
+
+const VIERTELSTUNDE = 15 * 60 * 1000;
+
+/** Beginn (ms) des nächsten Kontingenttags: Mitternacht in Berlin. Die
+    Zonenwechsel liegen auf vollen Stunden UTC, deshalb genügt die
+    Viertelstunde als Schritt. */
+export function naechsterKontingentTag(jetzt) {
+  const heute = kontingentTag(jetzt);
+  let t = Math.floor(jetzt / VIERTELSTUNDE) * VIERTELSTUNDE + VIERTELSTUNDE;
+  for (let i = 0; i < 200 && kontingentTag(t) === heute; i++) t += VIERTELSTUNDE;
+  return t;
+}
 
 /* -------------------------------------------------------- Einstellungen */
 

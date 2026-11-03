@@ -23,10 +23,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const post = vi.hoisted(() => ({ mails: [], pushes: [], mailAntworten: [], pushAntworten: [], gesendetNurEinmalBeiKey: false, keys: new Set() }));
+const post = vi.hoisted(() => ({ mails: [], pushes: [], mailAntworten: [], pushAntworten: [], gesendetNurEinmalBeiKey: false, keys: new Set(), beimSenden: null }));
 vi.mock("../server/lib/post.mjs", async (original) => ({
   ...(await original()),
   sendeMail: async (an, betreff, text, opt = {}) => {
+    if (post.beimSenden) await post.beimSenden(an);
     const a = post.mailAntworten.length ? post.mailAntworten.shift() : { ok: true };
     /* Wie der Anbieter: derselbe Idempotenzschlüssel wird nicht zweimal zugestellt. */
     const doppelt = opt.idempotenz && post.keys.has(opt.idempotenz);
@@ -59,7 +60,7 @@ const betrieb = (extra = {}) => ({ id: "m-a", name: "Betrieb A", einheiten: [{ i
   nachrichten: [], notrufe: [], anfragen: [], abweichungen: {}, ...extra });
 const status = (m, nid, kanal) => store.get(V.statusSchluessel(RAUM, m.id, nid, kanal), { type: "json" });
 const stelleZu = (m, ids, o = {}) => V.zustellen(store, { raum: RAUM, bestand: { mandanten: [m] }, m, ids, jetzt: JETZT, ...o });
-const leere = () => { post.mails.length = 0; post.pushes.length = 0; post.mailAntworten.length = 0; post.pushAntworten.length = 0; post.keys.clear(); };
+const leere = () => { post.beimSenden = null; post.mails.length = 0; post.pushes.length = 0; post.mailAntworten.length = 0; post.pushAntworten.length = 0; post.keys.clear(); };
 const abo = async (m, personId, host = "push.example/") =>
   store.setJSON(V.pushSchluessel(RAUM, m.id, personId), { endpoint: `https://${host}${personId}`, keys: { p256dh: "k", auth: "a" } });
 
@@ -228,7 +229,7 @@ describe("Keine Doppelzustellung", () => {
 describe("Bounce und Fehler der Anbieterantwort", () => {
   it("Mail dauerhaft (422): endgültig, nie wiederholt, Adresse gesperrt bis zur Änderung", async () => {
     const m = betrieb({ nachrichten: [mitteilung("b1", "l1"), mitteilung("b2", "l1", { art: "planFreigegeben" })] });
-    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422 });
+    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422, ursache: "empfaenger" });
     expect((await stelleZu(m, ["b1"])).get("b1")).toBe("erledigt");
     expect(await status(m, "b1", "mail")).toMatchObject({ status: "gescheitert", grund: "dauerhaft", code: "http-422" });
     await stelleZu(m, ["b1"]);
@@ -479,7 +480,7 @@ describe("Löschung, Aufbewahrung, Waisen", () => {
   it("personBereinigen: Anmeldung, Adresssperre, Kontingentplätze und Zustellstatus der Person sind weg", async () => {
     const m = betrieb({ nachrichten: [mitteilung("d1", "l1", { art: "planFreigegeben" }), mitteilung("d2", "p1", { art: "planFreigegeben" })] });
     await abo(m, "l1"); await abo(m, "p1");
-    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422 });
+    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422, ursache: "empfaenger" });
     await stelleZu(m, ["d1", "d2"]);
     await V.personBereinigen(store, RAUM, m.id, "l1", ["d1"]);
     expect(await store.getMetadata(V.pushSchluessel(RAUM, m.id, "l1"))).toBeNull();
@@ -594,5 +595,271 @@ describe("Warteschlange und Takt sind verdrahtet (kein toter Code)", () => {
     expect(server).toMatch(/zustellungAufraeumen\(getStore/);
     const raum = await readFile(path.join(process.cwd(), "server/lib/raumloeschung.mjs"), "utf8");
     for (const p of ["zustellwarte:", "unzustellbar:", "zustellquote:", "zustellung:", "zustellclaim:", "push:"]) expect(raum).toContain("`" + p + "${raum}:`");
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG OPUS-REVIEW WP-30 (B1–B4 und Hinweise)
+
+   Jede Prüfung unten war vor der Behebung rot (Nachweis: docs/acc45/
+   wp30-nachweis.md, Abschnitt „Nachtrag Opus-Review“).
+   ========================================================================== */
+
+const notrufMitteilung = (nrId, von, an, extra = {}) => mitteilung(`n-notruf-${nrId}-${an}`, an, { art: "einspringen", ziel: "notruf",
+  titel: "NOTRUF: Hilfe angefordert", quelle: { art: "notruf", id: nrId, von }, ...extra });
+
+describe("Nachtrag B1: ein Notruf geht nach Flut oder großem Versand nicht verloren", () => {
+  beforeEach(() => {
+    for (const k of ["CENTRIC_ZUSTELL_RESERVE_MAIL", "CENTRIC_ZUSTELL_RESERVE_PUSH", "CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL",
+      "CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH", "CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL", "CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH", "CENTRIC_NOTRUF_JE_STUNDE"])
+      delete process.env[k];
+  });
+
+  it("Monatsplan an 300 Personen: die Reserve für dringende Arten bleibt frei, der Notruf danach geht hinaus; der Rest ist zurückgestellt, nicht verworfen", async () => {
+    const viele = Array.from({ length: 300 }, (_, i) => person(`v${i}`, "mitarbeiter"));
+    const m = betrieb({ personen: [...betrieb().personen, ...viele],
+      nachrichten: [...viele.map((p) => mitteilung(`mp-${p.id}`, p.id, { art: "planFreigegeben", dringend: false })),
+        notrufMitteilung("nr-echt", "a2", "l1")] });
+    await stelleZu(m, viele.map((p) => `mp-${p.id}`));
+    const normal = post.mails.length;
+    expect(normal).toBeGreaterThan(0);
+    expect(normal).toBeLessThan(200);                                         // normale Arten verbrauchen die Reserve nicht
+    await stelleZu(m, ["n-notruf-nr-echt-l1"]);
+    expect(post.mails).toHaveLength(normal + 1);
+    expect(await status(m, "n-notruf-nr-echt-l1", "mail")).toMatchObject({ status: "gesendet" });
+    const zurueck = await status(m, "mp-v299", "mail");
+    expect(zurueck).toMatchObject({ status: "fehler", grund: "kontingent" });  // zurückgestellt, nicht endgültig
+    expect(V.anzeigeStatus(zurueck).stand).toBe("zurueckgestellt");
+    expect(Date.parse(zurueck.naechster)).toBe(Date.parse("2026-12-10T23:00:00.000Z"));   // Mitternacht in Berlin
+    expect(await store.getMetadata(V.warteSchluessel(RAUM, m.id, "mp-v299", "mail"))).not.toBeNull();
+    const morgen = Date.parse("2026-12-11T07:00:00.000Z");
+    await stelleZu(m, ["mp-v299"], { jetzt: morgen });                         // am nächsten Tag geht sie hinaus
+    expect(await status(m, "mp-v299", "mail")).toMatchObject({ status: "gesendet" });
+  }, 300_000);
+
+  it("Notruf-Flut einer Person: je Empfänger und Quelle begrenzt; der Notruf einer anderen Person geht trotzdem hinaus", async () => {
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "40";
+    process.env.CENTRIC_ZUSTELL_PERSON_MAIL = "3";
+    const flut = Array.from({ length: 40 }, (_, i) => notrufMitteilung(`nr-f${i}`, "a1", i % 2 ? "l1" : "p1"));
+    const m = betrieb({ nachrichten: [...flut, notrufMitteilung("nr-echt2", "a2", "l1")] });
+    await stelleZu(m, flut.map((n) => n.id));
+    expect(post.mails.filter((x) => x.an === "l1@kunde.example").length).toBeLessThanOrEqual(5);   // Flut-Schutz je Empfänger
+    expect(post.mails.filter((x) => x.an === "p1@kunde.example").length).toBeLessThanOrEqual(5);
+    await stelleZu(m, ["n-notruf-nr-echt2-l1"]);
+    expect(await status(m, "n-notruf-nr-echt2-l1", "mail")).toMatchObject({ status: "gesendet" });
+  });
+
+  it("dringende Mitteilungen einer Quelle sind je Tag und Kanal begrenzt (über alle Empfänger)", async () => {
+    process.env.CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL = "6";
+    const flut = Array.from({ length: 30 }, (_, i) => notrufMitteilung(`nr-q${i}`, "a1", ["l1", "p1", "a2"][i % 3]));
+    const m = betrieb({ nachrichten: flut });
+    await stelleZu(m, flut.map((n) => n.id));
+    expect(post.mails.length).toBeLessThanOrEqual(6);
+    expect(post.mails.length).toBeGreaterThan(0);
+  });
+
+  it("Kontingenttag nach Berliner Zeit (nicht UTC), Sommer und Winter; nächster Tag beginnt um Mitternacht in Berlin", () => {
+    expect(R.kontingentTag(Date.parse("2026-12-10T23:30:00.000Z"))).toBe("2026-12-11");
+    expect(R.kontingentTag(Date.parse("2026-07-10T22:30:00.000Z"))).toBe("2026-07-11");
+    expect(R.kontingentTag(Date.parse("2026-07-10T21:59:00.000Z"))).toBe("2026-07-10");
+    expect(R.naechsterKontingentTag(JETZT)).toBe(Date.parse("2026-12-10T23:00:00.000Z"));
+    expect(R.naechsterKontingentTag(Date.parse("2026-07-10T10:00:00.000Z"))).toBe(Date.parse("2026-07-10T22:00:00.000Z"));
+  });
+
+  it("neue Notrufmitteilungen je Person und Stunde begrenzt (Server); der Notruf selbst bleibt gespeichert; eine andere Person ist nicht betroffen", async () => {
+    const { mitteilungenErzeugen } = await import("../server/lib/mitteilungen.mjs");
+    const jetzt = new Date().toISOString();
+    const notrufe = [1, 2, 3].map((i) => ({ id: `nr-alt${i}`, personId: "a1", art: "hilfe", notiz: "", empfaenger: ["l1"] }));
+    const alt = betrieb({ notrufe, nachrichten: [1, 2, 3].map((i) => notrufMitteilung(`nr-alt${i}`, "a1", "l1", { erstellt: jetzt })) });
+    const neu = { ...alt, notrufe: [{ id: "nr-neu", personId: "a1", art: "hilfe", notiz: "", empfaenger: ["l1"] }, ...notrufe] };
+    const aus = mitteilungenErzeugen(alt, neu, "a1");
+    expect(aus.notrufe.some((n) => n.id === "nr-neu")).toBe(true);
+    expect(aus.nachrichten.some((n) => n.id === "n-notruf-nr-neu-l1")).toBe(false);
+    const neuB = { ...alt, notrufe: [{ id: "nr-b", personId: "a2", art: "hilfe", notiz: "", empfaenger: ["l1"] }, ...notrufe] };
+    expect(mitteilungenErzeugen(alt, neuB, "a2").nachrichten.some((n) => n.id === "n-notruf-nr-b-l1")).toBe(true);
+    const frueher = { ...alt, nachrichten: alt.nachrichten.map((n) => ({ ...n, erstellt: new Date(Date.now() - 2 * 3600_000).toISOString() })) };
+    expect(mitteilungenErzeugen(frueher, { ...neu, nachrichten: frueher.nachrichten }, "a1").nachrichten
+      .some((n) => n.id === "n-notruf-nr-neu-l1")).toBe(true);
+    const leer = betrieb({ notrufe: [], nachrichten: [] });
+    const fuenf = Array.from({ length: 5 }, (_, i) => ({ id: `nr-x${i}`, personId: "a1", art: "hilfe", notiz: "", empfaenger: ["l1"] }));
+    const viele = mitteilungenErzeugen(leer, { ...leer, notrufe: fuenf }, "a1");
+    expect(viele.notrufe).toHaveLength(5);
+    expect(viele.nachrichten.filter((n) => String(n.id).startsWith("n-notruf-"))).toHaveLength(3);
+  });
+});
+
+describe("Nachtrag B2: Konfigurationsfehler sperren keine Empfänger; Sperre nur bei ungültigem Empfänger; Betreff ohne Steuerzeichen", () => {
+  beforeEach(() => { delete process.env.CENTRIC_PFEFFER; });
+
+  it("422 ohne Empfängerursache (z. B. Absender oder Parameter): keine Adresssperre, die nächste Mitteilung geht hinaus", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("sa1", "l1"), mitteilung("sa2", "l1", { art: "planFreigegeben" })] });
+    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422 });
+    await stelleZu(m, ["sa1"]);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).toBeNull();
+    await stelleZu(m, ["sa2"]);
+    expect(post.mails).toHaveLength(2);
+    expect(await status(m, "sa2", "mail")).toMatchObject({ status: "gesendet" });
+  });
+
+  it("Absenderfehler (Konfiguration): zurückgestellt, Betreiberalarm, keine Sperre", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("sa3", "l1")] });
+    post.mailAntworten.push({ ok: false, klasse: "konfiguration", status: 422, ursache: "absender" });
+    await stelleZu(m, ["sa3"]);
+    expect(await status(m, "sa3", "mail")).toMatchObject({ status: "fehler", klasse: "konfiguration" });
+    expect(Z.zustellZaehlung().mail.konfiguration).toBe(1);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).toBeNull();
+  });
+
+  it("eine Sperre ohne Ursache „empfaenger“ (alt, aus der falschen Einordnung) gilt nicht und wird beim Aufräumen entfernt", async () => {
+    const { createHash } = await import("node:crypto");
+    const m = betrieb({ nachrichten: [mitteilung("sa4", "l1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    const roh = createHash("sha256").update("l1@kunde.example").digest("hex").slice(0, 24);
+    await store.setJSON(V.sperrSchluessel(RAUM, m.id, "l1"), { adresse: roh, zeit: "x" });
+    await stelleZu(m, ["sa4"]);
+    expect(post.mails).toHaveLength(1);
+    const r = await V.zustellungAufraeumen(store, { jetzt: JETZT, tage: 30 });
+    expect(r.sperren).toBe(1);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).toBeNull();
+  });
+
+  it("ungültiger Empfänger: Sperre mit Ursache und HMAC des Server-Schlüssels (kein reiner Hash); gilt bis zur Adressänderung", async () => {
+    const { createHash, createHmac } = await import("node:crypto");
+    process.env.CENTRIC_PFEFFER = "pfeffer-nur-zum-pruefen-wp30-nachtrag";
+    const m = betrieb({ nachrichten: [mitteilung("sa5", "l1"), mitteilung("sa6", "l1", { art: "planFreigegeben" })] });
+    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422, ursache: "empfaenger" });
+    await stelleZu(m, ["sa5"]);
+    const sp = await store.get(V.sperrSchluessel(RAUM, m.id, "l1"), { type: "json" });
+    expect(sp).toMatchObject({ ursache: "empfaenger" });
+    expect(sp.adresse).toBe(createHmac("sha256", "pfeffer-nur-zum-pruefen-wp30-nachtrag").update("unzustellbar:l1@kunde.example").digest("hex").slice(0, 32));
+    expect(sp.adresse).not.toContain(createHash("sha256").update("l1@kunde.example").digest("hex").slice(0, 24));
+    expect(JSON.stringify(sp)).not.toContain("kunde.example");
+    await stelleZu(m, ["sa6"]);
+    expect(post.mails).toHaveLength(1);
+    expect(await status(m, "sa6", "mail")).toMatchObject({ grund: "unzustellbar" });
+  });
+
+  it("Betreiberschalter: alle Adresssperren aufheben (nach einem Konfigurationsfix); in der Vorschau nur gezählt", async () => {
+    const m = betrieb();
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422, ursache: "empfaenger" });
+    await stelleZu(betrieb({ nachrichten: [mitteilung("sa7", "l1")] }), ["sa7"]);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).not.toBeNull();
+    let r = await V.zustellungAufraeumen(store, { jetzt: JETZT, tage: 30, sperrenAufheben: true, trocken: true });
+    expect(r.sperren).toBe(1);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).not.toBeNull();
+    r = await V.zustellungAufraeumen(store, { jetzt: JETZT, tage: 30 });
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).not.toBeNull();     // gültige Sperre bleibt ohne Schalter
+    r = await V.zustellungAufraeumen(store, { jetzt: JETZT, tage: 30, sperrenAufheben: true });
+    expect(r.sperren).toBe(1);
+    expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).toBeNull();
+  });
+
+  it("Betriebsname mit Zeilenumbruch und Steuerzeichen: Betreff und Fußzeile bereinigt (keine Header-Injection)", async () => {
+    const m = betrieb({ name: "Betrieb\r\nBcc: boese@angreifer.example\u0000\u0007" + String.fromCharCode(0x2028) + "X", nachrichten: [mitteilung("sa8", "l1")] });
+    await stelleZu(m, ["sa8"]);
+    expect(post.mails).toHaveLength(1);
+    const { betreff, text } = post.mails[0];
+    expect(betreff).not.toMatch(/[\u0000-\u001f\u007f-\u009f]|\u{2028}|\u{2029}/u);
+    expect(text).not.toMatch(/[\r\u0000\u0007]|\u{2028}|\u{2029}/u);
+    expect(text.split("\n").some((z) => /^Bcc:/i.test(z))).toBe(false);
+    expect(betreff).toContain("Betrieb");
+  });
+});
+
+describe("Nachtrag B3: Absturz zwischen Claim und Status; faire Warteschlange", () => {
+  it("Absturz nach dem Claim, vor dem Status „offen“ (erster Versuch): nachfassen stellt nach der Frist genau einmal zu", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("cc1", "l1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    let abbrechen = true;
+    const absturz = { ...store, setJSON: async (k, d, o) => {
+      if (abbrechen && k.startsWith("zustellung:") && d.status === "offen") { abbrechen = false; throw new Error("Prozess abgebrochen"); }
+      return store.setJSON(k, d, o);
+    } };
+    await V.zustellen(absturz, { raum: RAUM, bestand: { mandanten: [m] }, m, ids: ["cc1"], jetzt: JETZT });
+    expect(post.mails).toHaveLength(0);
+    await V.nachfassen(store, { jetzt: JETZT + 5 * 60_000 });
+    expect(post.mails).toHaveLength(0);                                    // vor der Frist: nichts
+    await V.nachfassen(store, { jetzt: JETZT + 16 * 60_000 });
+    expect(post.mails).toHaveLength(1);
+    expect(await status(m, "cc1", "mail")).toMatchObject({ status: "gesendet" });
+    await V.nachfassen(store, { jetzt: JETZT + 5 * 3600_000 });
+    expect(post.mails).toHaveLength(1);
+    expect((await laden_warte()).length).toBe(0);
+  });
+
+  it("Absturz nach dem Claim eines Wiederholungsversuchs (Status „fehler“): kein ewig fälliger Wartesatz, der Versuch wird nach der Frist übernommen", async () => {
+    process.env.CENTRIC_ZUSTELL_BACKOFF = "60,60";
+    const m = betrieb({ nachrichten: [mitteilung("cc2", "l1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    post.mailAntworten.push({ ok: false, klasse: "temporaer", status: 503 });
+    await stelleZu(m, ["cc2"]);
+    let abbrechen = true;
+    const absturz = { ...store, setJSON: async (k, d, o) => {
+      if (abbrechen && k.startsWith("zustellung:") && d.status === "offen") { abbrechen = false; throw new Error("Prozess abgebrochen"); }
+      return store.setJSON(k, d, o);
+    } };
+    await V.nachfassen(absturz, { jetzt: JETZT + 61_000 });
+    expect(post.mails).toHaveLength(1);
+    await V.nachfassen(store, { jetzt: JETZT + 61_000 + 16 * 60_000 });
+    expect(post.mails).toHaveLength(2);
+    expect(await status(m, "cc2", "mail")).toMatchObject({ status: "gesendet" });
+    expect((await laden_warte()).length).toBe(0);
+  });
+
+  it("nachfassen ist fair: älteste Fälligkeit zuerst; ein hängender Satz belegt nicht jeden Takt den Platz", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("fa1", "l1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    await store.setJSON(V.warteSchluessel("a-unlesbar", "m-a", "x", "mail"),
+      { raum: "a-unlesbar", mandantId: "m-a", nid: "x", kanal: "mail", naechster: heuteIso(JETZT - 60_000) });
+    await store.setJSON(V.warteSchluessel(RAUM, m.id, "fa1", "mail"),
+      { raum: RAUM, mandantId: m.id, nid: "fa1", kanal: "mail", naechster: heuteIso(JETZT - 1000) });
+    await V.nachfassen(store, { jetzt: JETZT, max: 1 });
+    await V.nachfassen(store, { jetzt: JETZT + 1000, max: 1 });
+    expect(post.mails).toHaveLength(1);
+    expect(await status(m, "fa1", "mail")).toMatchObject({ status: "gesendet" });
+    expect(await store.getMetadata(V.warteSchluessel("a-unlesbar", "m-a", "x", "mail"))).not.toBeNull();   // bleibt, nie „entfallen“
+  });
+
+  it("ein Wartesatz zu einer endgültigen Mitteilung wird geräumt, ihr Status nie überschrieben", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("fa2", "l1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    await stelleZu(m, ["fa2"]);
+    await store.setJSON(V.warteSchluessel(RAUM, m.id, "fa2", "mail"),
+      { raum: RAUM, mandantId: m.id, nid: "fa2", kanal: "mail", naechster: heuteIso(JETZT - 1000) });
+    await V.nachfassen(store, { jetzt: JETZT });
+    expect((await laden_warte()).length).toBe(0);
+    expect(await status(m, "fa2", "mail")).toMatchObject({ status: "gesendet" });
+    expect(post.mails).toHaveLength(1);
+  });
+});
+
+describe("Nachtrag B4: ein Kontingentplatz je Mitteilung und Kanal, nicht je Versuch", () => {
+  it("Ausfall des Anbieters frisst kein Kontingent: drei Versuche derselben Mitteilung belegen einen Platz", async () => {
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "2";
+    const m = betrieb({ nachrichten: [mitteilung("q1", "l1", { art: "planFreigegeben" }), mitteilung("q2", "p1", { art: "planFreigegeben" })] });
+    post.mailAntworten.push({ ok: false, klasse: "temporaer", status: 503 }, { ok: false, klasse: "temporaer", status: 503 });
+    await stelleZu(m, ["q1"]);
+    await stelleZu(m, ["q1"]);
+    await stelleZu(m, ["q1"]);
+    expect(await status(m, "q1", "mail")).toMatchObject({ status: "gesendet", versuche: 3 });
+    await stelleZu(m, ["q2"]);
+    expect(await status(m, "q2", "mail")).toMatchObject({ status: "gesendet" });
+    expect(post.mails).toHaveLength(4);
+  });
+});
+
+describe("Nachtrag Hinweis: nachfassen und parallele Raumlöschung", () => {
+  it("nach einer Raumlöschung schreibt nachfassen keinen Status „entfallen“ neu an", async () => {
+    process.env.CENTRIC_ZUSTELL_BACKOFF = "60";
+    const m = betrieb({ nachrichten: [mitteilung("rl-b", "l1")] });
+    await B.bestandSchreiben(store, "rl", { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    await store.setJSON(V.warteSchluessel("rl", m.id, "rl-b", "mail"), { raum: "rl", mandantId: m.id, nid: "rl-b", kanal: "mail", naechster: heuteIso(JETZT - 2000) });
+    await store.setJSON(V.warteSchluessel("rl", m.id, "rl-a", "mail"), { raum: "rl", mandantId: m.id, nid: "rl-a", kanal: "mail", naechster: heuteIso(JETZT - 1000) });
+    const { raumLoeschen } = await import("../server/lib/raumloeschung.mjs");
+    post.beimSenden = async () => { post.beimSenden = null; await raumLoeschen(store, store, "rl"); };
+    await V.nachfassen(store, { jetzt: JETZT });
+    expect(post.mails).toHaveLength(1);
+    expect(await store.getMetadata(V.statusSchluessel("rl", m.id, "rl-a", "mail"))).toBeNull();
   });
 });

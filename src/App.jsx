@@ -16775,8 +16775,10 @@ const zustellungAusstehend = new Set();
  * hinausgeht, entscheidet seit Commit 4 der Server aus dem gespeicherten
  * Stand — Adresse, Push-Anmeldung und Zustellstatus stehen nicht mehr hier.
  * Titel höchstens 120, Text höchstens 500 Zeichen (prüft auch der Server).
+ * `tag` (JJJJ-MM-TT): der Plantag, den die Mitteilung betrifft — der Server
+ * stellt sie Beschäftigten nicht zu, solange der Monat Entwurf ist (WP-30).
  */
-function baueMitteilung(m, personId, art, titel, text, ziel) {
+function baueMitteilung(m, personId, art, titel, text, ziel, tag) {
   const p = m.personen.find((x) => x.id === personId);
   if (!p) return null;
   const id = uid("n");
@@ -16786,6 +16788,7 @@ function baueMitteilung(m, personId, art, titel, text, ziel) {
     ziel: ziel || null,
     zeit: new Date().toLocaleString("de-DE"), erstellt: new Date().toISOString(),
     gelesen: false, dringend: !!(ZUSTELLARTEN[art] || {}).dringend,
+    ...(typeof tag === "string" && /^\d{4}-\d{2}-\d{2}$/.test(tag) ? { tag } : {}),
   };
 }
 
@@ -23318,7 +23321,7 @@ function AppInnen() {
           if (istFreigegeben(m, d.slice(0, 7))) {
             const nam = (x) => x === "-" || !x ? "frei" : (m.dienstarten.find((y) => y.id === x) || {}).name || x;
             next = { ...next, nachrichten: [baueMitteilung(next, pid, "planGeaendert", `Dienst am ${fKurz(d)} geändert`,
-              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine"), ...(next.nachrichten || [])].slice(0, 400) };
+              `${nam(vorher)} → ${nam(nachher)}${vl < 14 ? ` · ${vl} Tage Vorlauf` : ""}`, "meine", d), ...(next.nachrichten || [])].slice(0, 400) };
           }
         }
         return next;
@@ -23385,7 +23388,7 @@ function AppInnen() {
           aenderungen: [{ id: uid("c"), personId: pid, datum: d, von: "-", nach: dienstId,
             zeit: new Date().toLocaleString("de-DE"), regelstand: REGELSTAND.version, vorlauf: vorlauf(d) }, ...(m.aenderungen || [])].slice(0, 800),
           nachrichten: [baueMitteilung(m, pid, "planGeaendert", `Zusätzlicher Dienst am ${fKurz(d)}`,
-            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine"), ...(m.nachrichten || [])].slice(0, 400) };
+            `${da ? da.name : dienstId} · ${da ? `${da.start}–${da.ende}` : ""} · als Ersatz eingeteilt`, "meine", d), ...(m.nachrichten || [])].slice(0, 400) };
       }, "Ersatz eingeteilt"),
       freigeben: (ym2) => mUpd((m) => {
         const alt = freigabeStand(m, ym2);
