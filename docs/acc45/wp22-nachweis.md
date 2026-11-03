@@ -36,10 +36,10 @@ widersprechende Einteilungen bleiben gesperrt.
 Sammelbestätigung je Regel, Einheit und Zeitraum (`art: "sammel"`). Der Server zählt, wie viele Einteilungen sie deckt
 (`anzahl`); sie zählt gegen die Grenzen 50/200/5000 wie ein Eintrag; der Betriebsrat sieht die gedeckte Anzahl in den
 Zählwerten. Die 409 liefert `sammelVorschlag`; die Oberfläche bietet ab elf Einteilungen „Gesammelt bestätigen“ an.
-Sperrende Regeln lassen sich auch gesammelt nicht bestätigen; die Schichtverantwortung sammelt nicht.
+Sperrende Regeln lassen sich auch gesammelt nicht bestätigen; Schutzregeln (`schutz: true` im Katalog) nur einzeln; die Einheit ist Pflicht; der gespeicherte Zeitraum schrumpft auf die tatsächlich betroffenen Tage, eine Sammelbestätigung ohne Treffer wird nicht gespeichert (Review S1); die Schichtverantwortung sammelt nicht.
 
-**Kein Block (Review B2).** Der Server prüft in Häppchen (`fachpruefungUebermittlungAsync`): höchstens 20 ms am Stück,
-dann `setImmediate`; nach 8 s Abbruch mit 503 „bitte erneut“. Strukturänderungen sind je Raum und Betrieb auf 10 je
+**Kein Block (Review B2).** Der Server prüft in Häppchen (`fachpruefungUebermittlungAsync`) — auch den Aufbau der Planrechnung (Verzeichnisse über Abweichungen) und die Durchläufe über Abweichungen —: höchstens 15 ms am Stück,
+dann `setImmediate`; nach 8 s Abbruch mit 503 und dem Hinweis, die Strukturänderung in kleineren Schritten zu speichern. Strukturänderungen sind je Raum und Betrieb auf 10 je
 Minute gebremst (429). Laufzeit und längster Block werden ohne Personenbezug protokolliert. Prüfungen und kleine
 Bestände nutzen die synchrone Fassung derselben Rechnung (`fachpruefungUebermittlung`).
 

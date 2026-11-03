@@ -1033,10 +1033,16 @@ function schichtBereich(altM, sitzung) {
 }
 
 /** Trägt die vom Server gezählte Anzahl in neue Sammelbestätigungen ein (Review B1). */
-export function sammelAnzahlSetzen(mandant, sammel) {
-  if (!sammel || !mandant || !Array.isArray(mandant.bestaetigungen)) return mandant;
-  return { ...mandant, bestaetigungen: mandant.bestaetigungen.map((b) => (b && b.art === "sammel" && Object.prototype.hasOwnProperty.call(sammel, String(b.id))
-    ? { ...b, anzahl: sammel[String(b.id)] } : b)) };
+export function sammelAnzahlSetzen(mandant, sammel, altM = null) {
+  if (!mandant || !Array.isArray(mandant.bestaetigungen)) return mandant;
+  /* Review S1: Anzahl und Zeitraum aus dem, was die Sammelbestätigung tatsächlich
+     deckt; eine neue, die nichts deckt, wird nicht gespeichert. */
+  const alt = new Set((altM && Array.isArray(altM.bestaetigungen) ? altM.bestaetigungen : []).filter(Boolean).map((b) => String(b.id)));
+  const s = sammel || {};
+  return { ...mandant, bestaetigungen: mandant.bestaetigungen
+    .filter((b) => !(b && b.art === "sammel" && !alt.has(String(b.id)) && !Object.prototype.hasOwnProperty.call(s, String(b.id))))
+    .map((b) => (b && b.art === "sammel" && Object.prototype.hasOwnProperty.call(s, String(b.id))
+      ? { ...b, anzahl: s[String(b.id)].anzahl, von: s[String(b.id)].von, bis: s[String(b.id)].bis, datum: s[String(b.id)].von } : b)) };
 }
 
 function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {}) {
@@ -1157,7 +1163,7 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
          sonst 409 mit der Befundliste (neutrale Texte aus dem Katalog). */
       if (fach && fach.warnungen) return { verweigert: "Diese Änderung braucht eine Bestätigung.", status: 409, fachbefunde: fach.warnungen,
         sammelVorschlag: fach.sammelVorschlag || [] };
-      if (fach && fach.sammel) geschickt = sammelAnzahlSetzen(geschickt, fach.sammel);
+      geschickt = sammelAnzahlSetzen(geschickt, fach && fach.sammel, ort.betrieb);
       /* Nachprüfung 9717ddf (M2): Schutzangaben immer gespeichert; widersprechende bestehende Einteilungen melden. */
       if (fach && fach.konflikte) geschickt = schutzKonfliktMitteilungen(ort.betrieb, geschickt, fach.konflikte, sitzung.person);
     }
@@ -1542,13 +1548,15 @@ function bestaetigungenZusammen(altM, n, sitzung, imBereich) {
     if (imBereich) return null;
     if (typeof e.regel !== "string" || !Object.prototype.hasOwnProperty.call(BEFUND_KATALOG, e.regel)) return null;
     if (sperrtBefund(e.regel)) return SPERRT;
+    if (BEFUND_KATALOG[e.regel].schutz) return null;                       // Review S1: Schutzregeln nur einzeln
     const stufe = BEFUND_KATALOG[e.regel].stufe;
     if (!PROTOKOLL_STUFEN.includes(stufe)) return null;
     if (stufe === "recht" && e.gelesen !== true) return null;
     if (typeof e.von !== "string" || !TAG.test(e.von) || typeof e.bis !== "string" || !TAG.test(e.bis) || e.bis < e.von) return null;
     if ((Date.parse(e.bis) - Date.parse(e.von)) / 86400000 > 366) return null;
-    const einheitId = e.einheitId === undefined || e.einheitId === null ? null : String(e.einheitId);
-    if (einheitId !== null && !einheiten.has(einheitId)) return null;
+    if (e.einheitId === undefined || e.einheitId === null) return null;   // Review S1: Einheit Pflicht
+    const einheitId = String(e.einheitId);
+    if (!einheiten.has(einheitId)) return null;
     if (!(typeof e.aktion === "string" && /^[a-z]{1,40}$/i.test(e.aktion))) return null;
     const grundArt = e.grundArt === undefined || e.grundArt === null || e.grundArt === "" ? null : e.grundArt;
     if (grundArt !== null && !ABWEICHUNG_GRUENDE.includes(grundArt)) return null;

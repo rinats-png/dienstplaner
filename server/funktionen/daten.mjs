@@ -924,7 +924,8 @@ export default async (req, context) => {
             console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms (längster Block ${letzteLaufzeit.blockMs} ms), ${letzteLaufzeit.personen} Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
           if (fach && fach.zeitbudget) {
             await protokoll("schreiben", ks, "zeitbudget", "Fachprüfung abgebrochen", wer);
-            return antwort({ fehler: "Die Prüfung dauert gerade zu lange. Bitte gleich noch einmal speichern." }, 503);
+            return antwort({ fehler: "Die Prüfung dauert gerade zu lange.",
+              text: "Bitte die Strukturänderung in kleineren Schritten speichern — etwa die Schichtfolge nur für einen Teil der Einheiten — oder gleich noch einmal versuchen." }, 503);
           }
           if (fach && fach.sperre) {
             await protokoll("schreiben", ks, "abgewiesen", fach.sperre, wer);
@@ -935,8 +936,8 @@ export default async (req, context) => {
             return antwort({ fehler: "Diese Änderung braucht eine Bestätigung.", fachbefunde: fach.warnungen,
               sammelVorschlag: fach.sammelVorschlag || [], etag: jetzt ? jetzt.stand : null }, 409);
           }
-          if (fach && fach.sammel && Array.isArray(zuSchreiben.mandanten))
-            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? sammelAnzahlSetzen(m, fach.sammel) : m)) };
+          if (Array.isArray(zuSchreiben.mandanten))
+            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? sammelAnzahlSetzen(m, fach && fach.sammel, offen.alt) : m)) };
           if (fach && fach.konflikte && Array.isArray(zuSchreiben.mandanten))
             zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? schutzKonfliktMitteilungen(offen.alt, m, fach.konflikte, s.person) : m)) };
         }

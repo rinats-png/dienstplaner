@@ -126,10 +126,11 @@ const tagNr = (s) => { let n = TAGNR.get(s); if (n === undefined) { n = Math.rou
  * fachpruefung.mjs), Besetzung je Tag. Ein Durchlauf über Abweichungen und
  * Abwesenheiten statt eines Schlüssels je Person und Tag (N1).
  */
-function planrechner(m, personen) {
+function* planrechner(m, personen, zeitUm = () => false, weiter = () => {}) {
   const abw = new Map();                                                     // pid → Map(tag → wert)
   const quelle = istObjekt(m.abweichungen) ? m.abweichungen : {};
   for (const k in quelle) {
+    if (zeitUm()) { yield; weiter(); }                                       // Aufbau in Häppchen (B2-Rest)
     const n = k.length - 11;
     if (n <= 0 || k.charCodeAt(n) !== 124) continue;                       // „|"
     const pid = k.slice(0, n);
@@ -202,7 +203,7 @@ export let letzteLaufzeit = null;
 const nameVon = (p) => (p ? [p.vorname, p.nachname].filter(Boolean).join(" ") || String(p.id) : "unbekannt");
 
 /** Längster Rechenabschnitt ohne Nachgeben an die Event-Loop (Review B2). */
-export const HAEPPCHEN_MS = 20;
+export const HAEPPCHEN_MS = 15;
 /** Höchstens so lange rechnet der Server an einer Übermittlung; danach 503 „bitte erneut". */
 export const ZEITBUDGET_MS = 8000;
 
@@ -289,7 +290,7 @@ export async function fachpruefungUebermittlungAsync(altM, neuM, heute = new Dat
  * @typedef {{ sperre?: string, zeitbudget?: boolean,
  *   warnungen?: { personId: any, datum: string, dienstId: any, befunde: { regel: string, stufe: string, text: string }[] }[],
  *   sammelVorschlag?: { regel: string, stufe: string, text: string, einheitId: any, von: string, bis: string, anzahl: number }[],
- *   sammel?: Record<string, number>, konflikte?: { personId: any, datum: string, dienstId: any }[] }} Fachergebnis
+ *   sammel?: Record<string, { anzahl: number, von: string, bis: string }>, konflikte?: { personId: any, datum: string, dienstId: any }[] }} Fachergebnis
  */
 
 /** Schutzangaben einer Person: ändern sie sich, wird gespeichert und nachgemeldet, nie abgewiesen (M2). */
@@ -324,7 +325,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
   let abschnitt = performance.now();
   let schritt = 0;
   const zeitUm = () => {
-    if ((++schritt & 15) !== 0) return false;
+    if ((++schritt & 3) !== 0) return false;
     const jetzt = performance.now();
     if (jetzt - abschnitt < HAEPPCHEN_MS) return false;
     zaehler.blockMs = Math.max(zaehler.blockMs, Math.round(jetzt - abschnitt));
@@ -356,6 +357,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
         return { sperre: `Die Dienstart „${name(inFolge)}" wird noch verwendet (Schichtfolge). Erst die Schichtfolge ändern, dann löschen.` };
       let erster = null;
       for (const k in neuAbw) {
+        if (zeitUm()) { yield; weiter(); }
         if (!hat(neuAbw, k) || !weg.has(String(neuAbw[k]))) continue;
         const [pid, tag] = String(k).split("|");
         if (!TAG.test(tag || "") || tag < heute) continue;
@@ -366,13 +368,15 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     }
   }
 
-  const rA = planrechner(mAlt, personenAlt), rN = planrechner(mNeu, personenNeu);
+  const rA = yield* planrechner(mAlt, personenAlt, zeitUm, weiter);
+  const rN = yield* planrechner(mNeu, personenNeu, zeitUm, weiter);
   const kA = { dienstAm: rA.am, alleinOhnePartner: rA.alleinOhnePartner, heute };
   const kN = { dienstAm: rN.am, alleinOhnePartner: rN.alleinOhnePartner, heute };
 
   /* Welche Einteilungen sind zu prüfen? */
   const zellen = new Map();                                                  // "pid|tag" → ausdrücklicher Wert oder undefined
   if (neuAbw !== altAbw) for (const k in neuAbw) {                           // ohne Zwischenliste (N1)
+    if (zeitUm()) { yield; weiter(); }
     if (!hat(neuAbw, k)) continue;
     const wert = neuAbw[k];
     if (altAbw[k] === wert) continue;
@@ -543,7 +547,7 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
   const neueBest = liste(neuM.bestaetigungen).filter((b) => !altIds.has(String(b.id)));
   const sammelBest = neueBest.filter((b) => b.art === "sammel");
   const einzelBest = neueBest.filter((b) => b.art !== "sammel");
-  /** @type {Record<string, number>} */
+  /** @type {Record<string, { anzahl: number, von: string, bis: string }>} */
   const sammel = {};
   const bestaetigt = (f, regel) => {
     if (einzelBest.some((b) => String(b.personId) === String(f.personId) && b.datum === f.datum && liste(b.befunde).some((x) => x.regel === regel)))
@@ -551,7 +555,12 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     const p = neuNach.get(String(f.personId));
     const s = p ? sammelBest.find((b) => sammelDeckt(b, p, f.datum, regel)) : null;
     if (!s) return false;
-    sammel[String(s.id)] = (sammel[String(s.id)] || 0) + 1;
+    /* Review S1: gezählt wird, was die Sammelbestätigung tatsächlich deckt —
+       der gespeicherte Zeitraum schrumpft auf die betroffenen Tage. */
+    const z = sammel[String(s.id)] || (sammel[String(s.id)] = { anzahl: 0, von: f.datum, bis: f.datum });
+    z.anzahl++;
+    if (f.datum < z.von) z.von = f.datum;
+    if (f.datum > z.bis) z.bis = f.datum;
     return true;
   };
   const offen = [];
@@ -566,6 +575,9 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
     const p = neuNach.get(String(f.personId));
     const eid = p ? einheitAm(p, f.datum) : null;
     for (const b of f.befunde) {
+      /* Review S1: Schutzregeln nur einzeln bestätigen; ohne Einheit keine Sammelbestätigung. */
+      if (BEFUND_KATALOG[b.regel] && BEFUND_KATALOG[b.regel].schutz) continue;
+      if (eid === null || eid === undefined) continue;
       const k = `${b.regel}|${eid}`;
       const g = gruppen.get(k) || { regel: b.regel, stufe: b.stufe, text: b.text, einheitId: eid, von: f.datum, bis: f.datum, anzahl: 0 };
       if (f.datum < g.von) g.von = f.datum;

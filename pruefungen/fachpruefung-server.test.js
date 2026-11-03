@@ -20,6 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
+import { bestaetigungenBetriebsrat } from "../server/lib/sicht.mjs";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
@@ -254,5 +255,46 @@ describe("Review B4: die Schichtverantwortung und fremde Bereiche", () => {
     expect(e.verweigert).toBeTruthy();
     expect(e.status).not.toBe(409);
     expect(JSON.stringify(e)).not.toMatch(/f1|Nf1/);
+  });
+});
+describe("Review S1: Sammelbestätigung eng", () => {
+  const gS = () => {
+    const gg = g();
+    for (let i = 0; i < 5; i++) gg.mandanten[0].personen.push(person(`h${i}`, "mitarbeiter", "e1", { qualifikationen: ["qG"] }));
+    gg.mandanten[0].personen = gg.mandanten[0].personen.filter((p) => !["oq", "oB", "mu"].includes(p.id));
+    gg.mandanten[0].personen.find((p) => p.id === "s1").qualifikationen = ["qG", "qB"];
+    return gg;
+  };
+  const folge = (m) => { m.zyklus = { tage: ["F", "F", "F", "F", "F", "-", "-"] }; };
+  const sammelMit = (extra) => (m) => { folge(m); m.bestaetigungen.push({ id: "b-s1", art: "sammel", regel: "qualifikationBetrieblich", aktion: "speichern", ...extra }); };
+  it("ohne Einheit: abgewiesen", () => {
+    expect(schreiben(gS(), "PL", sammelMit({ einheitId: null, von: tag(0), bis: tag(130) })).verweigert).toMatch(/bestaetigungen/);
+  });
+  it("für eine Schutzregel: abgewiesen (nur einzeln)", () => {
+    const e = schreiben(gS(), "PL", (m) => { folge(m);
+      m.bestaetigungen.push({ id: "b-s2", art: "sammel", regel: "schutzWeich", einheitId: "e1", von: tag(0), bis: tag(30), aktion: "speichern" }); });
+    expect(e.verweigert).toMatch(/bestaetigungen/);
+  });
+  it("der gespeicherte Zeitraum schrumpft auf die tatsächlich betroffenen Tage; der Vorschlag nennt keine Schutzregel", () => {
+    const v = schreiben(gS(), "PL", folge);
+    expect(v.sammelVorschlag.every((x) => !/^schutz/.test(x.regel) && x.einheitId)).toBe(true);
+    const e = schreiben(gS(), "PL", sammelMit({ einheitId: "e1", von: tag(-30), bis: tag(300) }));
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    const s = e.mandanten[0].bestaetigungen.find((b) => b.id === "b-s1");
+    expect(s.von).toBe(v.sammelVorschlag[0].von);
+    expect(s.bis).toBe(v.sammelVorschlag[0].bis);
+    expect(s.anzahl).toBe(v.sammelVorschlag[0].anzahl);
+  });
+  it("eine Sammelbestätigung, die nichts deckt, wird nicht gespeichert", () => {
+    const e = schreiben(g(), "PL", (m) => { m.bestaetigungen.push({ id: "b-s3", art: "sammel", regel: "qualifikationBetrieblich", einheitId: "e1",
+      von: tag(0), bis: tag(10), aktion: "speichern" }); });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(e.mandanten[0].bestaetigungen.some((b) => b.id === "b-s3")).toBe(false);
+  });
+  it("der Betriebsrat zählt die gedeckten Einteilungen, nicht 1", () => {
+    const e = schreiben(gS(), "PL", sammelMit({ einheitId: "e1", von: tag(0), bis: tag(130) }));
+    const anzahl = e.mandanten[0].bestaetigungen.find((b) => b.id === "b-s1").anzahl;
+    const br = bestaetigungenBetriebsrat(e.mandanten[0].bestaetigungen);
+    expect(br.reduce((a, x) => a + (typeof x.anzahl === "number" ? x.anzahl : 0), 0)).toBe(anzahl);
   });
 });
