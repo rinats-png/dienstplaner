@@ -44,6 +44,7 @@ const ZWOELF = ["posten", "wachbuch", "objektbericht", "bereichsplan", "pflegequ
 /* Zwei einschaltbare Testmodule: ohne und mit Mitbestimmungsbestätigung, je mit einem Datenfeld. */
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
   abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], ausnahmeUi: true, regelIds: [],
+  berichtigungsWerte: { testDaten: (w) => typeof w === "string", testWache: (w) => typeof w === "string" },
   parameter: { intervall: { typ: "zahl", standard: 120, min: 15, max: 720, vorlaeufig: true } } });
 const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true, datenfelder: ["testWache"], personenfelder: ["testWache"], parameter: {} });
 const LISTE = [...BRANCHENMODULE, TM, TMB];

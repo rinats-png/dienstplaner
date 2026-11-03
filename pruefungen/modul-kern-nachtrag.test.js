@@ -43,6 +43,7 @@ const EIN = "2026-10-01T08:00:00.000Z";                       // erstes echtes E
 
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
   abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten"], personenfelder: ["testDaten"], regelIds: [], ausnahmeUi: true,
+  berichtigungsWerte: { testDaten: (w) => typeof w === "string", testWache: (w) => typeof w === "string" },
   parameter: {}, abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } });
 const TMB = Object.freeze({ ...TM, id: "testwache", merkmal: "testwache", name: "Testwache", mitbestimmung: true,
   datenfelder: ["testWache"], personenfelder: ["testWache"] });

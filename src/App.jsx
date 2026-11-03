@@ -10367,6 +10367,12 @@ const SPEICHERLAGE = {
       + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
     neuladen: true,
   },
+  ausnahmeZurueck: {
+    titel: "Die Datenschutz-Berichtigung oder -Löschung ist nicht gespeichert",
+    text: "Der Server hat sie abgewiesen, oder der Bestand hat sich inzwischen geändert. Die Änderung wird "
+      + "zurückgenommen: Lade die Seite neu und führe den Ausnahmeweg danach noch einmal aus.",
+    neuladen: true,
+  },
   stempelStand: {
     titel: "Der Bestand ist veraltet — bitte neu laden",
     text: "Seit du die Daten geladen hast, hat sich ein Stempel geändert, und gestempelte Werte bleiben unverändert. "

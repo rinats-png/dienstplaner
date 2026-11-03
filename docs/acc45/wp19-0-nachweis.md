@@ -363,7 +363,7 @@ bewusst fail-open belassene Altstand `{ an: true }` (N2, jetzt fail-closed).
 | **H1 HOCH** gespeichertes `moduldatenAusnahme` sperrt jedes Speichern (Sonde: „Leitung speichert: VERWEIGERT: Ausnahmeweg …", SV ebenso) | `rechte.mjs` übergibt `ausnahme` **immer** (auch `undefined`); `moduldatenZusammen` kennt keinen Rückgriff auf `neuM.moduldatenAusnahme` mehr und entfernt ein solches Feld (es wird bereinigt, nie geglaubt). Hineinkommen verschlossen: `moduleinstellungenVerwerfen` (Betreiber-Neuanlage, `bestandOhneModuleinstellungen` → `/api/bestand-anlegen`) und Wiederherstellen (`moduldatenBeiWiederherstellung`) entfernen das Feld. | H1 (4), Q3 |
 | **M1 MITTEL** Planung/Leitung stellen die Protokollfrist auf 1 Monat | **Übersteuerung je Betrieb entfernt** (kleinere, sichere Lösung bis FN-32): `modulprotokollMonate` liest nur die Regel, `aufbewahrungFehler` prüft das Feld nicht mehr, der Löschlauf entfernt einen gespeicherten Altwert. Begründung: kein neuer Rechteweg in `rechte.mjs` (Konfliktzone), das Protokoll ist Mitbestimmungs-/Rechenschaftsnachweis, die Frist ist ohnehin ein Entwurfswert. Zusätzlich löscht der Löschlauf aus dem Protokoll erst nach **geprüfter** Regel (A3, unten). | M1 (2), N2c |
 | **M2 MITTEL** Löschlauf räumt Modul-Personenfelder pauschal (anonymisierte/fällige Personen, unabhängig vom Datum) | Personenfelder nur nach **Datum** (Stichtag ≥ Plandatenfrist, nie unter `PLANDATEN_MINDEST`) wie `abweichungen` derselben (nach Anonymisierung pseudonymen) Kennung — und nur nach geprüfter Regel `MODULDATEN_AUFBEWAHRUNG` (A3). § 21 BewachV ist als Fachfrage in der Regelquelle vermerkt (FN-32), keine Norm behauptet. | M2 (4), N2b |
-| **M3 MITTEL** Wiederherstellen bringt Art.-17-Löschungen zurück und umgeht Nur-Lesen | `moduldatenBeiWiederherstellung` (modulschreibwege.mjs): Felder heute nur lesbarer Module aus dem jetzigen Stand; **Löschvermerk je Datensatz** (`einstellungen.moduldatenLoeschvermerke`, SHA-256 aus Betrieb, Feld, Schlüssel — bei Berichtigung zusätzlich alter Wert —, kein Klartext) wirkt auf die Sicherung, auch wenn das Modul wieder an ist; Berichtigtes kommt nicht in der alten Fassung zurück. Vermerke schreibt nur der Server (nie vom Client, nie bei Neuanlage), sie überstehen Wiederherstellen und Migration. | M3 (5), Q1 (4) |
+| **M3 MITTEL** Wiederherstellen bringt Art.-17-Löschungen zurück und umgeht Nur-Lesen | `moduldatenBeiWiederherstellung` (modulschreibwege.mjs): Felder heute nur lesbarer Module aus dem jetzigen Stand; **Löschvermerk je Datensatz** (`einstellungen.moduldatenLoeschvermerke`, SHA-256 aus Betrieb, Feld, Schlüssel — bei Berichtigung zusätzlich alter Wert —, kein Klartext; *überholt durch Abschnitt 13: ohne Wert, mit Zeitbedingung, geschlüsselt; pseudonym, nicht anonym*) wirkt auf die Sicherung, auch wenn das Modul wieder an ist; Berichtigtes kommt nicht in der alten Fassung zurück. Vermerke schreibt nur der Server (nie vom Client, nie bei Neuanlage), sie überstehen Wiederherstellen und Migration. | M3 (5), Q1 (4) |
 | **M4 MITTEL fachlich** Freitext-Grund (bis 24 Monate, an den Betriebsrat) | Grund nur als Kategorie `art16` / `art17` / `art18` (passend zur Art; Art. 18 löst Berichtigung oder Löschung aus), optionales Aktenzeichen `^(?=\D*\d)[A-Za-z0-9-]{1,20}$` (Hinweis „keine Namen"). Betriebsrat und Auskunft bekommen das Modulprotokoll nur nach **Positivkatalog** (`modulprotokollPositiv`: art, modul, regelId, feld, anzahl, stufe, pruefstatus, grundlage, am, von) — ohne Grund, Aktenzeichen und Altfreitext. | M4 (3) |
 | **N1** aktives Modul: Protokoll nach 24 Monaten ganz leer | je Modul und Regel bleibt der letzte zustandsbegründende Eintrag (Schalter, Bestätigung, Parameter, Regelwert); Kürzen an der Grenze erzeugt die Betriebsprotokollzeile „Modulprotokoll: N Einträge nach Ablauf der Aufbewahrungsfrist entfernt". | N1 (4), N2c |
 | **N2** Altstand `{ an: true }` ohne `eingeschaltetAm` fail-open | Migration beim Lesen (`eingeschaltetSeit`: aus `geaendertAm`, sonst „unbekannt") und beim Ausschalten (`eingeschaltetAm` aus `geaendertAm`) → danach nur lesbar. `{ an: false }` ohne Vorgänger bleibt G10-frei. | N2 (2), Q3 |
@@ -480,9 +480,67 @@ zuvor 1 rot (CRLF im Windows-Arbeitsbaum, Abschnitt 11), im CI maßgeblich.
   bestätigen; Grund und Aktenzeichen sieht der Betriebsrat nicht (Positivkatalog), `von` weiter Einordnung **B**.
 - **Grenze Löschvermerk:** Er hindert die Wiederherstellung, nicht eine spätere bewusste Neuplanung desselben Schlüssels
   (Person|Tag) bei wieder eingeschaltetem Modul. Ein Code-Rollback auf eine Fassung vor diesem Nachtrag kennt die Vermerke nicht.
-  Löschvermerke haben keine eigene Frist (gehasht, ohne Klartext; Frist mit FN-32).
+  Löschvermerke haben keine eigene Frist (ohne Klartext; Frist mit FN-32).
+- **F1 (dritter Review) — Löschung zu viel, jetzt behoben:** Bis Nachtrag 3 hing der Vermerk nur an Betrieb, Feld und
+  Schlüssel, ohne Zeitbezug. Nach Art.-17-Löschung, Wiedereinschalten und legitimer Neuplanung desselben Schlüssels löschte
+  das Wiederherstellen auch aus einer **späteren** Sicherung den neuen Eintrag. Jetzt wirkt ein Vermerk nur auf Sicherungen,
+  die vor (oder zugleich mit) dem Vermerk entstanden; Abschnitt 13.
+- **F4 (dritter Review) — pseudonym, nicht anonym:** „kein Klartext" stimmt, „ohne Personenbezug" nicht. Ohne Schlüssel
+  findet Durchprobieren Person × Tag (wenige tausend Versuche) den Schlüssel; der Vermerk ist ein Pseudonym. Seit Nachtrag 3
+  geschlüsselt (HMAC mit einem aus `CENTRIC_PFEFFER` abgeleiteten Schlüssel, Präfix `k1:`), wenn der Pfeffer gesetzt ist —
+  dann ist der Vermerk ohne das Servergeheimnis nicht zurückzurechnen. Ohne Pfeffer (nur Entwicklung; in Produktion Pflicht)
+  bleibt er ungeschlüsselt und damit pseudonym. Abschnitt 13.
+- **F7 (dritter Review) — Grundlage-Freitext an Betriebsrat und Auskunft, bewusst:** Die Mitbestimmungsgrundlage
+  (`grundlage`, etwa „BV 3/2026 …") steht im Positivkatalog und geht an den Betriebsrat und in die Auskunft. Das ist gewollt
+  (G6: der Betriebsrat prüft Einführung und Anwendung, § 87 Abs. 1 Nr. 6 BetrVG); der Freitext kann Namen enthalten. Ob die
+  Grundlage als Auswahl/Aktenzeichen statt Freitext geführt wird, entscheidet FN-33 (Kunde/Kanzlei). Kein Code in diesem
+  Nachtrag.
 - Die zustandsbegründenden Protokolleinträge (N1) behalten `von` auch nach Ablauf der Frist.
-- **Nebenbeobachtung (nicht Teil des Auftrags):** `aufbewahrung.stammdatenMonate`/`gruendeMonate` sind wie zuvor ohne
+- **Folgepaket (nicht Teil dieses Auftrags):** `aufbewahrung.stammdatenMonate`/`gruendeMonate` sind wie zuvor ohne
   Rechteprüfung durch Planung/Leitung schreibbar (rechte.mjs); die Plandatenfrist hat eine Untergrenze, diese beiden nicht.
+  Als eigenes Folgepaket vorgemerkt (Rechteprüfung und Untergrenze), hier bewusst nicht angefasst.
 - Konflikte (informativ, nicht gelöst): wp16 (aufbewahrung.mjs, daten.mjs, sicht.mjs, App.jsx), wp19-10-industrie
   (Regelstatus-Vokabular, jetzt über `regelstatus.mjs`), wp19-0b-g9 (rebase).
+
+## 13. Nachtrag dritter Opus-Delta-Review
+
+Stand 2026-11-04, Basis `acc45/frontend/wp19-0-modulkern` (f251e98), Branch `acc45/frontend/wp19-0-nachtrag3`. Prüfdatei
+`pruefungen/modul-kern-nachtrag3.test.js` (über das Präfix `modul-` in `pruefung:branchenmodule`; package.json unverändert).
+
+| Befund | Behebung | Test |
+|---|---|---|
+| **F1 MITTEL** Löschvermerk löscht beim Wiederherstellen legitime **spätere** Daten (Vermerk ohne Zeitbezug) | `loeschvermerkeAnwenden(…, { sicherungsZeit })`: ein Vermerk wirkt nur auf Sicherungen, deren Erzeugungszeit ≤ `vermerk.am` ist. Zeitquelle in `betriebWiederherstellen`: Metadaten-Zeit der Ablage (`sicherungsZeit`, bisher per `void` ignoriert), sonst `erzeugt` der Betriebssicherung. Zeit unbekannt/unlesbar oder Vermerk ohne lesbares `am` → der Vermerk wirkt (fail-closed). Mehrere Vermerke desselben Schlüssels: es genügt einer, der wirkt. | F1 (3) |
+| **F2 MITTEL** Ausnahmeangabe wird vor dem Request verbraucht (`src/speicher.js`) | Angabe hängt am Auftrag (`auftrag.ausnahme`); Wiederholungen (`nochmalSchreiben`, neuer Auftrag mit derselben Änderung) schicken sie mit; verworfen erst bei 200. Bei 403 oder 409 (Konflikt) mit Angabe: verworfen, Lage `ausnahmeZurueck` (App.jsx `SPEICHERLAGE`, „neu laden" — die lokale Änderung wird durch Neuladen zurückgenommen), kein Konfliktfenster (dessen „Übernehmen" ginge ohne Angabe in 403). | F2 (6) |
+| **F3 NIEDRIG** Berichtigungsvermerk hängt am alten Wert | Vermerk nur über Betrieb, Feld, Schlüssel (wie Löschung, Art im Vermerk) plus Zeitbedingung F1: in einer älteren Sicherung gilt immer der jetzige Wert; fehlt der Schlüssel heute, fällt er weg. | F3 (2) |
+| **F4 NIEDRIG** Löschvermerke pseudonym (Durchprobieren Person × Tag) | Bestehender Geheimnispfad `CENTRIC_PFEFFER` (codes.mjs/zweifaktor.mjs): Schlüssel per HKDF (eigener Zweck „loeschvermerk-v1"), HMAC-SHA256, Präfix `k1:`. Kein neues Geheimnis. Ohne Pfeffer ungeschlüsselt wie bisher (nur Entwicklung; Doku: pseudonym). Altvermerke ohne Präfix werden weiter erkannt. Geschlüsselte Vermerke ohne Pfeffer beim Wiederherstellen → 503 statt Gelöschtes zurückzubringen (fail-closed). Grenze: ein geänderter Pfeffer macht alte `k1:`-Vermerke unwirksam (Pfeffer ist ohnehin „nie ändern"). | F4 (3) |
+| **F5 NIEDRIG** Aktenzeichen ließ Namen zu („Mueller-1") | `AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)[A-Za-z]{0,4}-?\d[\d-]{0,15}$/` (höchstens vier Buchstaben vorweg); Texte in Server, Hilfe und Karte angepasst. | F5 (2) |
+| **F6 NIEDRIG** Berichtigung lässt beliebige Werte zu | Registry-Feld `berichtigungsWerte` je Personenfeld (`posten.postenPlan`: bekannter Posten aus `objekte[].posten`; `bereichsplan.bereichsPlan`: bekannter Bereich aus `einheiten[].bereiche`). Server prüft gegen den gespeicherten Betrieb; ohne Schema → nur Löschung. Statusvertrag `pruefeModulStatus`: Personenfeld ohne Schema → kein Verlassen von „geplant". Oberfläche (`ausnahmeAngabe`) prüft dasselbe Schema. | F6 (4) |
+| **F7** Grundlage-Freitext an Betriebsrat/Auskunft | bewusst (G6), FN-33; nur Doku (12.6) | – |
+| Testlücken R2, R3, R5, R7, R11 | je ein Fall | R2, R3, R5, R7, R11 |
+
+**Angepasste Prüfdaten bestehender Tests (keine Abschwächung):** Testmodule in `modul-kern`, `-nachtrag`, `-nachtrag2`
+tragen `berichtigungsWerte` (F6-Statusvertrag). `modul-kern-nachtrag2` „Bedienablauf": die Quelltextzusicherung
+„`if (mit.verbraucht) einmalig = null`" ist umgekehrt (genau dieser Fehler ist F2); das Verhalten prüft nun F2 in
+`-nachtrag3`.
+
+**Rot → grün:** `modul-kern-nachtrag3` gegen f251e98: 16 von 24 der zuerst geschriebenen Fälle rot (grün: R2, R3, R5, R7,
+R11 — Code richtig, nur Testlücke —, F1 „ältere Sicherung bleibt gelöscht", F4-Sonde und F5 „übliche Aktenzeichen gehen" als
+Gegenproben). Ein 25. Fall (Angabe am Auftrag) kam nach dem Mutantenlauf hinzu (N16). Nachher: `modul-kern*`,
+`modul-integritaet*`, `sicherungen`, `sicht`, `dsgvo-server`, `rechtematrix`, `rechtematrix-zeilen`, `doku`,
+`oberflaeche-render` grün; `tsc -p jsconfig.json` und eslint (geänderte Dateien) ohne Fehler. Reviewer-Sonden gegen den neuen
+Stand: P3 „Mueller-1"/„MaxMustermann2" abgewiesen, P6 unbekannter Posten abgewiesen; probe2 ruft
+`moduldatenBeiWiederherstellung` ohne Sicherungszeit (dann wirkt der Vermerk, fail-closed — der echte Weg übergibt die Zeit);
+Durchprobieren ohne Pfeffer findet den Schlüssel weiterhin (F4, dokumentiert).
+
+**Mutanten (eigenes Werkzeug im Scratchpad, nur dieser Worktree):** 25 von 25 getötet — R2 alle benannten Felder · R3 Sicht
+Löschvermerke · R5 regelGeprueft vor gueltigAb · R7 Angabe an fremden Betrieb · R11 unbekannte Herkunft = kanonisch · N1
+Zeitbedingung fehlt · N2 Sicherungszeit nicht übergeben · N3 `erzeugt` kein Rückfall · N4 unbekannte Zeit wirkt nicht · N5
+gleiche Zeit wirkt nicht · N6 Berichtigung ohne jetzigen Wert bleibt · N7 nie geschlüsselt · N8 unprüfbar nicht abgewiesen ·
+N9 Altvermerke ignoriert · N10 altes Aktenzeichen-Muster · N11 Server ohne Wertschema · N12 fehlendes Schema nicht gemeldet ·
+N13 Statusvertrag ohne Schema · N14 Oberfläche ohne Schema · N15 vor dem Senden verbraucht · N16 Angabe nicht am Auftrag (erst
+überlebt, getötet nach dem 25. Fall) · N17 nach 200 nicht verbraucht · N18 403 nicht zurückgenommen · N19 409 als Konflikt ·
+N20 Posten-Schema nimmt alles.
+
+**Offen:** Folgepaket `stammdatenMonate`/`gruendeMonate` (12.6); FN-33 (Grundlage, Art. 18); 401 (Sitzung abgelaufen) ist im
+Test nicht nachgestellt — derselbe Weg wie Netz/5xx (Auftrag bleibt mit Angabe liegen, Anmelden → `nochmalSchreiben`).
+Konflikte mit WP-16/G9 unverändert nicht aufgelöst.

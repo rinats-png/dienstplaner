@@ -7,10 +7,12 @@
    optionales Aktenzeichen, genau die ausgewählten Datensätze — und die
    Änderung am Betrieb dazu. Der Server prüft alles noch einmal.
 
-   Die Angabe ist kein Betriebsfeld. Sie geht genau EINMAL mit dem
-   Speichervorgang hinaus, der die Änderung enthält (mitEinmaligerAngabe,
-   src/speicher.js) — nie in den lokalen Stand. Sonst ginge sie mit jedem
-   späteren Speichern wieder mit, und der Server wiese ab (H1).
+   Die Angabe ist kein Betriebsfeld. Sie geht mit dem Speichervorgang hinaus,
+   der die Änderung enthält (mitEinmaligerAngabe, src/speicher.js) — nie in
+   den lokalen Stand. Sonst ginge sie mit jedem späteren Speichern wieder mit,
+   und der Server wiese ab (H1). Verworfen wird sie erst, wenn der Server
+   annimmt (200) oder abweist (403/409); Wiederholungen nach Netz-, Server-
+   oder Sitzungsfehler schicken sie erneut mit (dritter Review F2).
 
    Rein: keine Ablage, keine Uhr.
    ========================================================================== */
@@ -58,7 +60,8 @@ export function ausnahmeAngabe(m, mod, f) {
   if (!Object.prototype.hasOwnProperty.call(AUSNAHME_GRUND_ARTEN, f.grund) || !AUSNAHME_GRUND_ARTEN[f.grund].includes(f.art))
     return { fehler: "Grund wählen, der zur Art passt." };
   const az = String(f.aktenzeichen || "").trim();
-  if (az && !AKTENZEICHEN_MUSTER.test(az)) return { fehler: "Aktenzeichen: nur Buchstaben, Ziffern und Bindestrich, mit Ziffer, höchstens 20 Zeichen — keine Namen." };
+  if (az && !AKTENZEICHEN_MUSTER.test(az))
+    return { fehler: "Aktenzeichen: höchstens vier Buchstaben vorweg, dann Ziffern und Bindestriche, höchstens 20 Zeichen — keine Namen." };
   const alle = eintraegeListe(m, mod);
   /** @type {Record<string, string[]>} */
   const eintraege = {};
@@ -73,6 +76,12 @@ export function ausnahmeAngabe(m, mod, f) {
       const wert = typeof x.wert === "number" ? Number(t.replace(",", ".")) : t;
       if (!t || (typeof wert === "number" && !Number.isFinite(wert))) return { fehler: "Für jeden ausgewählten Datensatz den berichtigten Wert eintragen." };
       if (wert === x.wert) return { fehler: "Der berichtigte Wert ist gleich dem bisherigen." };
+      /* Dritter Review F6: dasselbe Wertschema wie der Server (Registry, berichtigungsWerte). */
+      const pruefer = istObjekt(mod.berichtigungsWerte) ? mod.berichtigungsWerte[x.feld] : undefined;
+      if (typeof pruefer !== "function") return { fehler: "Dieser Datensatz lässt sich hier nur löschen." };
+      let zulaessig = false;
+      try { zulaessig = pruefer(wert, m) === true; } catch { zulaessig = false; }
+      if (!zulaessig) return { fehler: "Der berichtigte Wert ist für dieses Modul nicht zulässig (etwa ein unbekannter Posten)." };
       (neuWerte[x.feld] = neuWerte[x.feld] || {})[x.schluessel] = wert;
     }
     (eintraege[x.feld] = eintraege[x.feld] || []).push(x.schluessel);

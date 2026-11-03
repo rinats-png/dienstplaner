@@ -84,6 +84,7 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  *   personenfelder?: string[],
  *   sachfelder?: string[],
  *   ausnahmeUi?: boolean,
+ *   berichtigungsWerte?: Record<string, (wert: any, mandant: any) => boolean>,
  *   beschreibung?: string,
  *   abnahme?: { datum: string, nachweis: string },
  * }} BranchenModul
@@ -105,7 +106,18 @@ export const PARAMETER_TYPEN = Object.freeze(["boolean", "zahl", "text", "auswah
  * ausnahmeUi    Die Oberfläche des Ausnahmewegs (Art. 16/17/18, src/module/kern.jsx, AusnahmewegKarte)
  *               deckt die Datenfelder des Moduls ab (vom Modulpaket geprüft). Ohne sie verlässt
  *               ein Modul mit Datenfeldern „geplant" nicht (pruefeModulStatus, zweiter Opus-Review).
+ * berichtigungsWerte Wertschema der Berichtigung (Art. 16) je Personenfeld: (wert, gespeicherter Betrieb)
+ *               → true, wenn der berichtigte Wert zulässig ist (etwa eine bekannte Posten-Kennung).
+ *               Der Ausnahmeweg berichtigt nur darüber (ohne Schema: nur Löschung); ohne Schema für
+ *               jedes Personenfeld verlässt ein Modul „geplant" nicht (dritter Opus-Review F6).
  */
+const kennungenVon = (liste, unter) => new Set((Array.isArray(liste) ? liste : []).flatMap((x) =>
+  (x && typeof x === "object" && Array.isArray(x[unter]) ? x[unter] : []).map((y) => (y && typeof y === "object" ? y.id : undefined)))
+  .filter((id) => typeof id === "string" && id !== ""));
+/** Berichtigung postenPlan: ein Posten, den es im Betrieb gibt (objekte[].posten[].id). */
+const bekannterPosten = (w, m) => typeof w === "string" && kennungenVon(m && m.objekte, "posten").has(w);
+/** Berichtigung bereichsPlan: ein Bereich, den es im Betrieb gibt (einheiten[].bereiche[].id). */
+const bekannterBereich = (w, m) => typeof w === "string" && kennungenVon(m && m.einheiten, "bereiche").has(w);
 
 /**
  * Die gespeicherte Einstellung eines Moduls am Betrieb
@@ -133,7 +145,8 @@ export const BRANCHENMODULE = Object.freeze([
     beschreibung: "Objekte mit Posten, Sollbesetzung und Anforderungen je Posten; Einteilung auf Posten.",
     /* server/lib/modul-posten.mjs: zwei Betriebsfelder (Positivkatalog in sicht.mjs, RECHTEMATRIX). Die Posten-Dienstarten
        des Bestands (posten:true/quelle) bleiben unverändert (Matrix G10 a). */
-    datenfelder: ["objekte", "postenPlan"], personenfelder: ["postenPlan"], sachfelder: ["objekte"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"] }),
+    datenfelder: ["objekte", "postenPlan"], personenfelder: ["postenPlan"], sachfelder: ["objekte"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"],
+    berichtigungsWerte: Object.freeze({ postenPlan: bekannterPosten }) }),
   modul({ id: "wachbuch", merkmal: "wachbuch", name: "Wachbuch", pakete: ["sicherheit"], mitbestimmung: true,
     beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung." }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
@@ -143,7 +156,8 @@ export const BRANCHENMODULE = Object.freeze([
   modul({ id: "bereichsplan", merkmal: "bereichsplan", name: "Bereichs- und Wachabteilungsplanung", pakete: ["pflege"],
     beschreibung: "Zuordnung der Personen eines Dienstes zu Bereichen (Tageseinsatzplan) mit Besetzung je Bereich.",
     /* server/lib/modul-bereichsplan.mjs: Bereiche je Einheit (einheiten[].bereiche) und das Betriebsfeld bereichsPlan. */
-    datenfelder: ["bereichsPlan"], personenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"] }),
+    datenfelder: ["bereichsPlan"], personenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"],
+    berichtigungsWerte: Object.freeze({ bereichsPlan: bekannterBereich }) }),
   modul({ id: "pflegequal", merkmal: "pflegequal", name: "Pflegequalifikationen", pakete: ["pflege"],
     beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst." }),
   /* Klinik */
@@ -795,8 +809,10 @@ export const AUSNAHME_GRUENDE = Object.freeze({
 /** Welche Art zu welchem Grund passt: Art. 16 berichtigt, Art. 17 löscht, Art. 18 kann beides auslösen. */
 export const AUSNAHME_GRUND_ARTEN = Object.freeze({ art16: Object.freeze(["berichtigung"]), art17: Object.freeze(["loeschung"]),
   art18: Object.freeze(["berichtigung", "loeschung"]) });
-/** Aktenzeichen: Buchstaben (ohne Umlaute), Ziffern, Bindestrich; mindestens eine Ziffer; höchstens 20 Zeichen — keine Namen. */
-export const AKTENZEICHEN_MUSTER = /^(?=[^\d]*\d)[A-Za-z0-9-]{1,20}$/;
+/** Aktenzeichen (dritter Opus-Review F5): höchstens vier Buchstaben vorweg (ohne Umlaute), optional ein
+    Bindestrich, dann eine Ziffer und weiter nur Ziffern und Bindestriche; höchstens 20 Zeichen — so passt
+    kein Name hinein („Mueller-1" nicht, „DS-2026-014" ja). */
+export const AKTENZEICHEN_MUSTER = /^(?=.{1,20}$)[A-Za-z]{0,4}-?\d[\d-]{0,15}$/;
 
 /* --------------------------------------------------------------------------
    ZUSTAND, NUR-LESEN, SICHT
@@ -965,6 +981,11 @@ export function pruefeModulStatus(liste = BRANCHENMODULE, { ausnahmeOberflaeche 
     /* Zweiter Opus-Review: Berichtigung/Löschung müssen bedienbar sein, bevor ein Modul mit Daten „geplant" verlässt. */
     if (daten.length && (x.ausnahmeUi !== true || ausnahmeOberflaeche !== true))
       m.push(`${x.id}: ohne Oberfläche des Ausnahmewegs (Art. 16/17/18, ausnahmeUi) kein Statuswechsel`);
+    /* Dritter Opus-Review F6: Berichtigung nur über das Wertschema des Moduls — für jedes Personenfeld eines. */
+    for (const f of personen) {
+      const s = istObjekt(x.berichtigungsWerte) ? x.berichtigungsWerte[f] : undefined;
+      if (typeof s !== "function") m.push(`${x.id}: Personenfeld „${f}" ohne Wertschema für die Berichtigung (berichtigungsWerte) — kein Statuswechsel`);
+    }
   }
   return m;
 }

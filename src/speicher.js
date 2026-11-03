@@ -359,10 +359,13 @@ export function schreib(bestand, { durch, onKonflikt, onFehler, onGespeichert, o
   return Promise.resolve();
 }
 
-/* Ausnahmeweg Art. 16/17/18 (WP-19.0, zweiter Opus-Review): Die Angabe geht genau einmal hinaus —
-   mit dem ersten Schreibvorgang, dessen Bestand die Änderung enthält (erkennt), danach ist sie
-   verbraucht, ob der Server annimmt oder abweist. Im lokalen Stand steht sie nie (sonst ginge sie mit
-   jedem späteren Speichern wieder mit und sperrte es, H1). */
+/* Ausnahmeweg Art. 16/17/18 (WP-19.0, zweiter Opus-Review): Die Angabe geht mit jedem Schreibvorgang
+   hinaus, dessen Bestand die Änderung enthält (erkennt), und hängt am Auftrag (auftrag.ausnahme) — eine
+   Wiederholung nach Netz-, Server- oder Sitzungsfehler (nochmalSchreiben) schickt sie erneut mit.
+   Verworfen wird sie erst, wenn der Server annimmt (200), oder wenn er abweist (403, 409): Dann wird die
+   lokale Änderung zurückgenommen — die Lage „ausnahmeZurueck" verlangt Neuladen (dritter Review F2;
+   vorher war sie schon vor dem Senden verbraucht, und jeder Fehlschlag endete in „nur lesbar").
+   Im lokalen Stand steht sie nie (sonst ginge sie mit jedem späteren Speichern wieder mit, H1). */
 let einmalig = null;
 /** @param {any} mandantId @param {any} angabe @param {(m: any) => boolean} erkennt */
 export function ausnahmeMitschicken(mandantId, angabe, erkennt) { einmalig = { mandantId, angabe, erkennt }; }
@@ -451,9 +454,17 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, einmalig);
-    if (mit.verbraucht) einmalig = null;
+    const angabe = auftrag.ausnahme || einmalig;
+    const mit = mitEinmaligerAngabe({ ...auftrag.bestand, session: null }, angabe);
+    if (mit.verbraucht) auftrag.ausnahme = angabe;
     const hinaus = mit.bestand;
+    /* Abgewiesen (403/409): Angabe verwerfen, lokale Änderung zurücknehmen — Neuladen (F2). */
+    const ausnahmeAbgewiesen = (text) => {
+      if (einmalig === auftrag.ausnahme) einmalig = null;
+      auftrag.ausnahme = null;
+      gescheitert = { auftrag, lage: { art: "ausnahmeZurueck", text, status, zeit: new Date().toISOString() } };
+      if (auftrag.onFehler) auftrag.onFehler(gescheitert.lage);
+    };
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });
@@ -472,9 +483,11 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     if (status === 409) {
       etag = daten.etag;
+      if (auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.text || daten?.fehler || "Der Bestand hat sich geändert.")); return; }
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
       return;
     }
+    if (status === 403 && auftrag.ausnahme) { ausnahmeAbgewiesen(String(daten?.fehler || "Abgewiesen.")); return; }
     if (status !== 200) {
       const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
       if (daten && typeof daten.code === "string") f.code = daten.code;
@@ -482,6 +495,8 @@ async function schreibenAusfuehren(beimSchliessen) {
     }
     etag = daten.etag;
     gescheitert = null;
+    /* Angenommen: erst jetzt ist die Angabe verbraucht. */
+    if (auftrag.ausnahme && einmalig === auftrag.ausnahme) einmalig = null;
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }
   } catch (e) {
     const art = fehlerart(e, status);

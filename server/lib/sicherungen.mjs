@@ -172,8 +172,13 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
      Jetzt wird der zurückgespielte Betrieb vor dem Schreiben noch einmal durch
      den Löschlauf geschickt (raeumen, mit den heutigen Fristen): Was nach den
      Fristen fort sein muss, ist es auch danach; anonymisierte Personen bleiben
-     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr. */
-  void sicherungsZeit;
+     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr —
+     wohl aber für die Löschvermerke des Ausnahmewegs (unten, dritter Review F1):
+     Sie wirken nur auf Sicherungen, die vor dem Vermerk entstanden. Quelle: die
+     Metadaten-Zeit der Ablage, sonst `erzeugt` der Betriebssicherung, sonst
+     unbekannt (dann wirkt jeder Vermerk). */
+  const zeitDerSicherung = typeof sicherungsZeit === "string" && sicherungsZeit ? sicherungsZeit
+    : (sicherung && typeof sicherung.erzeugt === "string" && sicherung.erzeugt ? sicherung.erzeugt : null);
 
   const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
   const personen = (Array.isArray(aus.personen) ? aus.personen : []).map((p) => {
@@ -242,7 +247,11 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
        Die Löschvermerke (einstellungen.moduldatenLoeschvermerke, gehasht) wirken auf die Sicherung,
        auch wenn das Modul inzwischen wieder eingeschaltet ist.
      - Eine Ausnahmeangabe (moduldatenAusnahme) ist nie Teil eines Betriebs (H1). */
-  moduldatenBeiWiederherstellung(alt, zurueck);
+  const md = moduldatenBeiWiederherstellung(alt, zurueck, undefined, { sicherungsZeit: zeitDerSicherung });
+  /* Dritter Review F4: Geschlüsselte Löschvermerke ohne Serverschlüssel (CENTRIC_PFEFFER fehlt) sind nicht
+     prüfbar — dann kein Wiederherstellen, statt Gelöschtes womöglich zurückzubringen (fail-closed). */
+  if (md.unpruefbar) return { verweigert: "Löschvermerke des Datenschutz-Ausnahmewegs sind ohne den Serverschlüssel "
+    + "(CENTRIC_PFEFFER) nicht prüfbar. Wiederherstellen erst, wenn der Server wieder mit demselben Schlüssel läuft.", status: 503 };
   if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
     zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
       ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };

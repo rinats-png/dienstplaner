@@ -53,7 +53,8 @@ const gesamt = (bm = { posten: AUS }) => {
 };
 const TM = Object.freeze({ id: "testmodul", merkmal: "testmodul", name: "Testmodul", pakete: ["sicherheit"], status: "vorlaeufig",
   abhaengigVon: [], mitbestimmung: false, datenfelder: ["testDaten", "testListe"], personenfelder: ["testDaten"], sachfelder: ["testListe"],
-  regelIds: [], parameter: {}, ausnahmeUi: true, abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } });
+  regelIds: [], parameter: {}, ausnahmeUi: true, berichtigungsWerte: { testDaten: (w) => typeof w === "string" },
+  abnahme: { datum: "2026-12-01", nachweis: "docs/acc45/wp19-13-nachweis.md" } });
 const LISTE = [...BRANCHENMODULE, TM];
 const GEPRUEFT = (regel) => ({ ...regel, pruefstatus: "geprueft", geprueftAm: "2026-11-01T00:00:00.000Z", geprueftVon: "fach",
   quelle: regel.quelle || "Quelle", fundstelle: regel.fundstelle || "Fundstelle", fassung: regel.fassung || "1", gueltigAb: "2026-01-01" });
@@ -419,10 +420,12 @@ describe("UI — Statusvertrag verlangt die Oberfläche des Ausnahmewegs", () =>
     expect(v.mandanten[0].postenPlan["a1|2026-11-02"]).toBeUndefined();
     const weiter = kopie(bestandFuerRolle(v, SITZUNGEN.LT)); weiter.mandanten[0].name = "Weiter";
     expect(zusammenfuehren(v, weiter, SITZUNGEN.LT).verweigert).toBeFalsy();
-    /* speicher.js hängt die Angabe über dieselbe Hilfe an und verbraucht sie. */
+    /* speicher.js hängt die Angabe über dieselbe Hilfe an; verbraucht ist sie erst nach der Antwort
+       des Servers (dritter Review F2 — Verhalten geprüft in modul-kern-nachtrag3, „F2"). */
     const sp = lies("src/speicher.js");
     expect(sp).toMatch(/mitEinmaligerAngabe\(/);
-    expect(sp).toMatch(/if \(mit\.verbraucht\) einmalig = null/);
+    expect(sp).not.toMatch(/if \(mit\.verbraucht\) einmalig = null/);
+    expect(sp).toMatch(/auftrag\.ausnahme/);
     expect(lies("src/App.jsx")).toMatch(/moduldatenAusnahme: \(angabe, aendern, erkennt\) => \{[^\n]*SP\.ausnahmeMitschicken/);
   });
 });

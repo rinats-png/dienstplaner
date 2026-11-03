@@ -33,7 +33,10 @@
         Schlüssel, kein Person|Tag) und im Betriebsprotokoll ohne Personenbezug
         (modulProtokollZeilen). Dazu ein Löschvermerk je Datensatz
         (einstellungen.moduldatenLoeschvermerke: gehashte Kennung, kein
-        Klartext), den das Wiederherstellen beachtet (sicherungen.mjs, M3).
+        Klartext; mit Serverschlüssel aus CENTRIC_PFEFFER geschlüsselt, sonst nur
+        pseudonym), den das Wiederherstellen beachtet — nur für Sicherungen, die vor
+        dem Vermerk entstanden (sicherungen.mjs, M3; dritter Review F1/F3/F4).
+        Berichtigung nur über das Wertschema des Moduls (`berichtigungsWerte`, F6).
         Die Angabe selbst wird nie gespeichert und wirkt NUR aus der
         Übermittlung, die rechte.mjs vor der Rückfüllung merkt — ein
         gespeichertes Feld gleichen Namens wird verworfen, nie geglaubt (H1).
@@ -46,9 +49,10 @@
    (anlagen, maschinenqual, geteilterdienst, posten, bereichsplan), bleiben
    dort; nichts wird umgehängt.
 
-   Rein: keine Ablage, keine Uhr.
+   Rein: keine Ablage, keine Uhr. Einzige Umgebung: CENTRIC_PFEFFER als Schlüssel der
+   Löschvermerke (wie codes.mjs/zweifaktor.mjs; ohne ihn ungeschlüsselt, F4).
    ========================================================================== */
-import { createHash } from "node:crypto";
+import { createHash, createHmac, hkdfSync } from "node:crypto";
 import { BRANCHENMODULE, modulVon, modulNurLesen, AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER } from "./branchenmodule.mjs";
 
 export { AUSNAHME_GRUENDE, AUSNAHME_GRUND_ARTEN, AKTENZEICHEN_MUSTER };
@@ -111,36 +115,66 @@ function eindeutigAdressierbar(w) {
   return true;
 }
 
-/* Vergleich und Hash unabhängig von der Reihenfolge der Schlüssel. */
-const stabil = (x) => (Array.isArray(x) ? x.map(stabil) : istObjekt(x)
-  ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, stabil(x[k])])) : x);
-
 /**
- * Löschvermerk eines Datensatzes (M3/A4): gehasht aus Betrieb, Feld, Schlüssel und — bei
- * Berichtigung — dem alten Wert. Kein Klartext (die Kennung „personId|Tag" steht nicht darin).
- * @param {any} mandantId @param {string} feld @param {string} schluessel @param {any} [wert]
+ * Der Schlüssel der Löschvermerke (dritter Review F4): aus dem bestehenden Servergeheimnis
+ * CENTRIC_PFEFFER abgeleitet (HKDF, eigener Zweck — wie zweifaktor.mjs), nie im Bestand.
+ * Ohne Pfeffer null: Der Vermerk ist dann nur pseudonym (Durchprobieren Person × Tag findet
+ * den Schlüssel) — dokumentiert; der Pfeffer ist in Produktion Pflicht (BEREITSTELLUNG).
+ * @returns {Buffer | null}
  */
-export function loeschvermerkHash(mandantId, feld, schluessel, wert) {
-  const teile = [String(mandantId), String(feld), String(schluessel)];
-  if (arguments.length > 3) teile.push(JSON.stringify(stabil(wert)) ?? "undefined");
-  return createHash("sha256").update(teile.join("\u0000")).digest("hex").slice(0, 32);
+export function loeschvermerkSchluessel() {
+  const p = process.env.CENTRIC_PFEFFER;
+  if (!p) return null;
+  return Buffer.from(hkdfSync("sha256", Buffer.from(p), Buffer.from("centric-loeschvermerk"), Buffer.from("loeschvermerk-v1"), 32));
 }
 
 /**
+ * Löschvermerk eines Datensatzes (M3/A4, dritter Review F3/F4): aus Betrieb, Feld und Schlüssel —
+ * für Löschung und Berichtigung gleich (die Art steht im Vermerk), ohne Wert. Mit Serverschlüssel
+ * HMAC-SHA256 mit Präfix „k1:", sonst SHA-256 (pseudonym). Kein Klartext.
+ * @param {any} mandantId @param {string} feld @param {string} schluessel
+ * @param {Buffer | null} [geheim] Schlüssel; Vorgabe aus CENTRIC_PFEFFER, null = ungeschlüsselt
+ */
+export function loeschvermerkHash(mandantId, feld, schluessel, geheim = loeschvermerkSchluessel()) {
+  const text = [String(mandantId), String(feld), String(schluessel)].join("\u0000");
+  if (geheim) return "k1:" + createHmac("sha256", geheim).update(text).digest("hex").slice(0, 32);
+  return createHash("sha256").update(text).digest("hex").slice(0, 32);
+}
+
+/** Zeitpunkt in Millisekunden oder null (unbekannt/unlesbar). */
+const zeitMs = (w) => { if (typeof w !== "string" || !w) return null; const t = Date.parse(w); return Number.isNaN(t) ? null : t; };
+
+/**
  * Wendet die Löschvermerke auf einen Betrieb an (Wiederherstellen, sicherungen.mjs):
- * gelöschte Datensätze fallen weg, berichtigte alte Werte werden durch den jetzigen
- * Wert ersetzt (fehlt er jetzt, fällt der Datensatz weg).
+ * gelöschte Datensätze fallen weg, berichtigte werden durch den jetzigen Wert ersetzt
+ * (fehlt er jetzt, fällt der Datensatz weg).
+ *
+ * Dritter Review F1/F3: Ein Vermerk wirkt nur auf eine Sicherung, die vor ihm (oder zugleich)
+ * entstand — eine spätere Sicherung enthält unter demselben Schlüssel womöglich eine legitime
+ * Neuplanung bei wieder eingeschaltetem Modul. Ist die Sicherungszeit unbekannt oder unlesbar,
+ * wirkt jeder Vermerk (Datenschutz vor Verfügbarkeit); ebenso ein Vermerk ohne lesbares `am`.
+ * Mehrere Vermerke desselben Schlüssels: Es genügt einer, der wirkt (also der späteste).
+ * F4: Ein geschlüsselter Vermerk („k1:") ohne Serverschlüssel ist nicht prüfbar → `unpruefbar`
+ * (der Aufrufer weist das Wiederherstellen ab).
  * @param {any} m Betrieb (aus der Sicherung)
  * @param {any} jetzt gespeicherter Betrieb (Vermerke und jetzige Werte)
  * @param {readonly any[]} [liste]
- * @returns {{ mandant: any, entfernt: number, berichtigt: number }}
+ * @param {{ sicherungsZeit?: (string | null) }} [o]
+ * @returns {{ mandant: any, entfernt: number, berichtigt: number, unpruefbar: number }}
  */
-export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE) {
+export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE, { sicherungsZeit = null } = {}) {
   const e = istObjekt(jetzt) && istObjekt(jetzt.einstellungen) ? jetzt.einstellungen : {};
   const vermerke = Array.isArray(e.moduldatenLoeschvermerke) ? e.moduldatenLoeschvermerke.filter(istObjekt) : [];
-  if (!istObjekt(m) || !vermerke.length) return { mandant: m, entfernt: 0, berichtigt: 0 };
-  const loesch = new Set(vermerke.filter((v) => v.art === "loeschung").map((v) => v.h));
-  const bericht = new Set(vermerke.filter((v) => v.art === "berichtigung").map((v) => v.h));
+  if (!istObjekt(m) || !vermerke.length) return { mandant: m, entfernt: 0, berichtigt: 0, unpruefbar: 0 };
+  const geheim = loeschvermerkSchluessel();
+  const ab = zeitMs(sicherungsZeit);
+  /* Wirkt ein Vermerk auf diese Sicherung? Unbekannte Zeiten: ja. */
+  const wirkt = (v) => { const am = zeitMs(v.am); return ab === null || am === null || ab <= am; };
+  const geschluesselt = (v) => typeof v.h === "string" && v.h.startsWith("k1:");
+  const unpruefbar = geheim ? 0 : vermerke.filter((v) => geschluesselt(v) && wirkt(v)).length;
+  const loesch = new Set(vermerke.filter((v) => v.art === "loeschung" && wirkt(v)).map((v) => v.h));
+  const bericht = new Set(vermerke.filter((v) => v.art === "berichtigung" && wirkt(v)).map((v) => v.h));
+  if (!loesch.size && !bericht.size) return { mandant: m, entfernt: 0, berichtigt: 0, unpruefbar };
   const id = jetzt.id;
   let aus = m, entfernt = 0, berichtigt = 0;
   for (const feld of new Set(liste.flatMap((x) => (x && Array.isArray(x.datenfelder) ? x.datenfelder : [])))) {
@@ -148,9 +182,11 @@ export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE) {
     if (!istObjekt(w) && !Array.isArray(w)) continue;
     const jetzige = eintraegeVon(jetzt[feld]);
     /** @returns {{ weg: boolean, ersatz?: any }} */
-    const urteil = (k, v) => {
-      if (loesch.has(loeschvermerkHash(id, feld, k))) return { weg: true };
-      if (bericht.has(loeschvermerkHash(id, feld, k, v))) return jetzige.has(k) ? { weg: false, ersatz: jetzige.get(k) } : { weg: true };
+    const urteil = (k) => {
+      /* Ungeschlüsselte Altvermerke (vor dem Pfeffer) und geschlüsselte gleichermaßen. */
+      const hs = [loeschvermerkHash(id, feld, k, null), ...(geheim ? [loeschvermerkHash(id, feld, k, geheim)] : [])];
+      if (hs.some((h) => loesch.has(h))) return { weg: true };
+      if (hs.some((h) => bericht.has(h))) return jetzige.has(k) ? { weg: false, ersatz: jetzige.get(k) } : { weg: true };
       return { weg: false };
     };
     let neu;
@@ -158,21 +194,21 @@ export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE) {
       neu = [];
       for (const x of w) {
         if (!istObjekt(x)) { neu.push(x); continue; }
-        const u = urteil(String(x.id), x);
+        const u = urteil(String(x.id));
         if (u.weg) { entfernt++; continue; }
         if (hat(u, "ersatz")) { berichtigt++; neu.push(u.ersatz); } else neu.push(x);
       }
     } else {
       neu = {};
       for (const [k, v] of Object.entries(w)) {
-        const u = urteil(k, v);
+        const u = urteil(k);
         if (u.weg) { entfernt++; continue; }
         if (hat(u, "ersatz")) { berichtigt++; neu[k] = u.ersatz; } else neu[k] = v;
       }
     }
     if (!gleich(neu, w)) aus = { ...aus, [feld]: neu };
   }
-  return { mandant: aus, entfernt, berichtigt };
+  return { mandant: aus, entfernt, berichtigt, unpruefbar };
 }
 
 /**
@@ -181,25 +217,27 @@ export function loeschvermerkeAnwenden(m, jetzt, liste = BRANCHENMODULE) {
  *   - Datenfelder eines Moduls, das heute nur lesbar ist, kommen aus dem jetzigen Stand `alt`
  *     (kein Umweg am Nur-Lesen vorbei, ohne Ausnahmeweg und Protokoll);
  *   - Löschvermerke des Ausnahmewegs wirken auf die Sicherung (Gelöschtes kommt nicht zurück,
- *     Berichtigtes nicht in der alten Fassung) — auch wenn das Modul inzwischen wieder an ist;
+ *     Berichtigtes nicht in der alten Fassung) — auch wenn das Modul inzwischen wieder an ist,
+ *     aber nur, wenn die Sicherung vor dem Vermerk entstand (dritter Review F1);
  *   - eine Ausnahmeangabe ist nie Teil des Betriebs (H1).
  * @param {any} alt gespeicherter Betrieb (heute)
  * @param {any} zurueck Betrieb aus der Sicherung (wird geändert)
  * @param {readonly any[]} [liste]
- * @returns {{ entfernt: number, berichtigt: number }}
+ * @param {{ sicherungsZeit?: (string | null) }} [o] Erzeugungszeit der Sicherung (ISO); unbekannt: null
+ * @returns {{ entfernt: number, berichtigt: number, unpruefbar: number }}
  */
-export function moduldatenBeiWiederherstellung(alt, zurueck, liste = BRANCHENMODULE) {
-  if (!istObjekt(alt) || !istObjekt(zurueck)) return { entfernt: 0, berichtigt: 0 };
+export function moduldatenBeiWiederherstellung(alt, zurueck, liste = BRANCHENMODULE, { sicherungsZeit = null } = {}) {
+  if (!istObjekt(alt) || !istObjekt(zurueck)) return { entfernt: 0, berichtigt: 0, unpruefbar: 0 };
   for (const mod of liste) {
     if (!mod || !Array.isArray(mod.datenfelder) || !mod.datenfelder.length || !modulNurLesen(alt, mod.id, liste)) continue;
     for (const feld of mod.datenfelder) {
       if (hat(alt, feld)) zurueck[feld] = alt[feld]; else delete zurueck[feld];
     }
   }
-  const lv = loeschvermerkeAnwenden(zurueck, alt, liste);
+  const lv = loeschvermerkeAnwenden(zurueck, alt, liste, { sicherungsZeit });
   Object.assign(zurueck, lv.mandant);                         // ändert nur Datenfelder
   delete zurueck.moduldatenAusnahme;
-  return { entfernt: lv.entfernt, berichtigt: lv.berichtigt };
+  return { entfernt: lv.entfernt, berichtigt: lv.berichtigt, unpruefbar: lv.unpruefbar };
 }
 
 /** Prüft die Form der Ausnahmeangabe; Grund oder null. */
@@ -216,7 +254,7 @@ function ausnahmeFormFehler(a, liste) {
   if (!AUSNAHME_GRUND_ARTEN[a.grund].includes(a.art)) return `Ausnahmeweg Art. 16/17 DSGVO: ${AUSNAHME_GRUENDE[a.grund]} passt nicht zur Art „${a.art}".`;
   if (hat(a, "aktenzeichen") && a.aktenzeichen !== null && a.aktenzeichen !== ""
     && (typeof a.aktenzeichen !== "string" || !AKTENZEICHEN_MUSTER.test(a.aktenzeichen)))
-    return "Ausnahmeweg Art. 16/17 DSGVO: Aktenzeichen nur Buchstaben, Ziffern und Bindestrich, mit Ziffer, höchstens 20 Zeichen — keine Namen.";
+    return "Ausnahmeweg Art. 16/17 DSGVO: Aktenzeichen höchstens vier Buchstaben vorweg, dann Ziffern und Bindestriche, höchstens 20 Zeichen — keine Namen.";
   if (!istObjekt(a.eintraege) || !Object.keys(a.eintraege).length) return form;
   for (const [feld, schl] of Object.entries(a.eintraege)) {
     if (!mod.datenfelder.includes(feld)) return `Ausnahmeweg Art. 16/17 DSGVO: „${String(feld).slice(0, 40)}" ist kein Datenfeld von ${mod.name}.`;
@@ -283,10 +321,21 @@ export function moduldatenZusammen(altM, neuM, liste = BRANCHENMODULE, { darfOrg
           return { grund: `Ausnahmeweg Art. 16/17 DSGVO: ${ausnahme.art === "loeschung" ? "Löschung entfernt" : "Berichtigung ändert"} genau die benannten Einträge in ${feld}.` };
       }
       for (const k of geaendert) if (!benannt.has(k)) return { grund: `${nurLesen} (Ausnahmeweg: nur die benannten Einträge)` };
+      /* Dritter Review F6: berichtigt wird nur auf einen Wert, den das Wertschema des Moduls zulässt
+         (geprüft gegen den gespeicherten Betrieb). Ohne Wertschema für das Feld: nur Löschung (fail-closed). */
+      if (ausnahme.art === "berichtigung") {
+        const pruefer = istObjekt(mod.berichtigungsWerte) ? mod.berichtigungsWerte[feld] : undefined;
+        if (typeof pruefer !== "function")
+          return { grund: `Ausnahmeweg Art. 16/17 DSGVO: ${feld} hat kein Wertschema für die Berichtigung — nur Löschung möglich.` };
+        for (const k of benannt) {
+          let ok = false;
+          try { ok = pruefer(nachher.get(k), altM) === true; } catch { ok = false; }
+          if (!ok) return { grund: `Ausnahmeweg Art. 16/17 DSGVO: Der berichtigte Wert in ${feld} ist für ${mod.name} nicht zulässig.` };
+        }
+      }
       benutzt = true;
       ereignisse.push({ art: `moduldaten-${ausnahme.art}`, modul: mod.id, feld, anzahl: benannt.size });
-      for (const k of benannt) vermerke.push({ modul: mod.id, feld, art: ausnahme.art,
-        h: ausnahme.art === "loeschung" ? loeschvermerkHash(altM.id, feld, k) : loeschvermerkHash(altM.id, feld, k, vorher.get(k)) });
+      for (const k of benannt) vermerke.push({ modul: mod.id, feld, art: ausnahme.art, h: loeschvermerkHash(altM.id, feld, k) });
     }
   }
   /* Benannt, aber keine passende Änderung: abgewiesen (die Angabe muss genau das Geänderte beschreiben). */
