@@ -12,7 +12,7 @@
    das Speichern (eine Beschäftigte schreibt den Plan nicht, der gespeicherte
    Entwurf bleibt), und die Freigabe macht den Monat sichtbar.
    ========================================================================== */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -368,5 +368,121 @@ describe("Wiederherstellen und Planfreigabe", () => {
     const jetzt = betrieb({ freigaben: {}, einstellungen: {} });
     const m = await zurueckspielen(jetzt, betrieb({ freigaben: {}, einstellungen: {} }));
     expect(maSicht(m).sichtEntwuerfe).toBeUndefined();
+  });
+});
+
+/* ---- Nachtrag WP-23b (M2): Die Planung kann den Schutz nicht über `freigaben` abschalten ---- */
+describe("Freigaben zurücknehmen: der Schutz rastet ein", () => {
+  const R3 = "wp23b-freigaben";
+  const sitz3 = async (pid, rolle) => (await sitzungAnlegen({ bestand: R3, name: pid, rolle, person: pid, betrieb: 0,
+    mandantId: "m1", einheit: null }, 60 * 60 * 1000)).token;
+  const zurueck = (extra = {}) => B.bestandSchreiben(laden(), R3, { version: 9,
+    mandanten: [betrieb({ einstellungen: {}, ...extra })] }, { durch: "Pruefung" });
+  /* aendere(m) verändert den Betrieb, den der Client zurückschickt. */
+  const schreibe = async (pid, rolle, aendere) => {
+    const t = await sitz3(pid, rolle);
+    const g = await anfrage("/api/bestand", { token: t });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aendere(b.mandanten[0]);
+    const p = await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: g.etag } });
+    const m = (await B.bestandLesen(laden(), R3)).bestand.mandanten[0];
+    return { p, m };
+  };
+  const maSichtGespeichert = async () => {
+    const t = await sitz3("a1", "mitarbeiter");
+    return (await anfrage("/api/bestand", { token: t })).bestand.mandanten[0];
+  };
+  const keys = (m) => Object.keys(m.freigaben || {});
+  beforeEach(() => zurueck());
+
+  const varianten = [
+    ["leeres Objekt", (m) => { m.freigaben = {}; }],
+    ["leere Liste", (m) => { m.freigaben = []; }],
+    ["Feld weggelassen", (m) => { delete m.freigaben; }],
+    ["null", (m) => { m.freigaben = null; }],
+    ["Freigabe auf false gesetzt", (m) => { m.freigaben = { [FREI]: false }; }],
+    ["nur ungültige Schlüssel", (m) => { m.freigaben = { kaputt: { stand: 1 } }; }],
+  ];
+  for (const [name, aendere] of varianten) {
+    it(`Planung: ${name} — die Freigabe bleibt, der Entwurf bleibt verborgen`, async () => {
+      const { m } = await schreibe("p1", "planer", aendere);
+      expect(keys(m), name).toEqual([FREI]);
+      expect(m.freigaben[FREI]).toMatchObject({ stand: 1 });
+      const sicht = await maSichtGespeichert();
+      expect(sicht.abweichungen[`a1|${tag(ENTWURF)}`], name).toBeUndefined();
+      expect(sicht.sichtEntwuerfe, name).toBeDefined();
+    });
+  }
+  it("Planung: ungültige Form (Liste, Schlüssel, Wert) wird abgewiesen, nichts gespeichert", async () => {
+    for (const falsch of [[], ["2099-05"], { "2099-5": { stand: 1 } }, { [ENTWURF]: "ja" }, { [ENTWURF]: [] }, { [ENTWURF]: null }, "x", 7]) {
+      const { p, m } = await schreibe("p1", "planer", (mm) => { mm.freigaben = falsch; });
+      expect(p.status, JSON.stringify(falsch)).toBe(403);
+      expect(keys(m), JSON.stringify(falsch)).toEqual([FREI]);
+    }
+  });
+  it("Planung: eine neue Freigabe und das Erneuern der alten gehen weiter", async () => {
+    const { m } = await schreibe("p1", "planer", (mm) => { mm.freigaben = { ...mm.freigaben, [ENTWURF]: { stand: 2, zeit: "x", durch: "Pia" }, [FREI]: { stand: 5 } }; });
+    expect(keys(m).sort()).toEqual([ENTWURF, FREI].sort());
+    expect(m.freigaben[FREI]).toMatchObject({ stand: 5 });
+  });
+  it("Planung: einen von zwei Monaten entfernen — der entfernte kommt zurück", async () => {
+    await zurueck({ freigaben: { [FREI]: { stand: 1 }, "2099-07": { stand: 1 } } });
+    const { m } = await schreibe("p1", "planer", (mm) => { mm.freigaben = { "2099-07": { stand: 1 } }; });
+    expect(keys(m).sort()).toEqual([FREI, "2099-07"].sort());
+  });
+  it("Planung mit Pflicht an: Entfernen ändert nichts am Wert; Pflicht bleibt", async () => {
+    await zurueck({ einstellungen: { planFreigabePflicht: true } });
+    const { m } = await schreibe("p1", "planer", (mm) => { mm.freigaben = {}; });
+    expect(keys(m)).toEqual([FREI]);
+    expect(m.einstellungen.planFreigabePflicht).toBe(true);
+  });
+  it("Schichtverantwortung und Beschäftigte: wirkungslos, die Freigabe bleibt", async () => {
+    for (const [pid, rolle] of [["s1", "subplaner"], ["a1", "mitarbeiter"]]) {
+      for (const [name, aendere] of varianten) {
+        const { m } = await schreibe(pid, rolle, aendere);
+        expect(keys(m), `${rolle} ${name}`).toEqual([FREI]);
+        expect(m.einstellungen.planFreigabePflicht, rolle).toBeUndefined();
+      }
+    }
+  });
+  it("Schichtverantwortung: eine Änderung an freigaben wird abgewiesen oder ignoriert, nie angewandt", async () => {
+    const { p, m } = await schreibe("s1", "subplaner", (mm) => { mm.freigaben = {}; });
+    expect([200, 403]).toContain(p.status);
+    expect(keys(m)).toEqual([FREI]);
+  });
+
+  it("Leitung nimmt die letzte Freigabe zurück: der Schutz rastet ein (Pflicht true, Wann/Wer vom Server), Entwürfe bleiben verborgen", async () => {
+    const vor = Date.now();
+    const { m } = await schreibe("l1", "leitung", (mm) => { mm.freigaben = {}; });
+    expect(keys(m)).toEqual([]);
+    expect(m.einstellungen.planFreigabePflicht).toBe(true);
+    expect(m.einstellungen.planFreigabePflichtGeaendertVon).toBe("l1");
+    expect(Date.parse(m.einstellungen.planFreigabePflichtGeaendertAm)).toBeGreaterThanOrEqual(vor - 1000);
+    expect((await maSichtGespeichert()).abweichungen[`a1|${tag(ENTWURF)}`]).toBeUndefined();
+  });
+  it("Leitung: Feld weggelassen heißt nicht entfernen; nimmt sie einen von zwei Monaten zurück, bleibt der andere (kein Einrasten nötig)", async () => {
+    const a = await schreibe("l1", "leitung", (mm) => { delete mm.freigaben; });
+    expect(keys(a.m)).toEqual([FREI]);
+    await zurueck({ freigaben: { [FREI]: { stand: 1 }, "2099-07": { stand: 1 } } });
+    const b = await schreibe("l1", "leitung", (mm) => { mm.freigaben = { "2099-07": { stand: 1 } }; });
+    expect(keys(b.m)).toEqual(["2099-07"]);
+    expect(b.m.einstellungen.planFreigabePflicht).toBeUndefined();
+  });
+  it("Leitung mit Pflicht an: Rücknahme lässt Wann/Wer der Pflicht unberührt", async () => {
+    await zurueck({ einstellungen: { planFreigabePflicht: true, planFreigabePflichtGeaendertAm: "2026-10-20T08:00:00.000Z", planFreigabePflichtGeaendertVon: "x1" } });
+    const { m } = await schreibe("l1", "leitung", (mm) => { mm.freigaben = {}; });
+    expect(keys(m)).toEqual([]);
+    expect(m.einstellungen).toMatchObject({ planFreigabePflicht: true, planFreigabePflichtGeaendertVon: "x1" });
+  });
+  it("Betrieb ohne Filter: freigaben {} ändert nichts am Schutz (es gibt keinen), keine Pflicht wird aufgezwungen", async () => {
+    await zurueck({ freigaben: {} });
+    const { m } = await schreibe("p1", "planer", (mm) => { mm.freigaben = {}; });
+    expect(m.einstellungen.planFreigabePflicht).toBeUndefined();
+  });
+  it("freigabeRuecknahmen zählt entfernte Monate (für das Betriebsprotokoll, ohne Inhalt)", () => {
+    const mk = (f) => ({ mandanten: [{ id: "m1", freigaben: f }] });
+    expect(rechte.freigabeRuecknahmen(mk({ a: 1, "2099-05": { stand: 1 }, "2099-06": { stand: 1 } }), mk({ "2099-06": { stand: 2 } }))).toBe(1);
+    expect(rechte.freigabeRuecknahmen(mk({}), mk({ "2099-05": { stand: 1 } }))).toBe(0);
+    expect(rechte.freigabeRuecknahmen(null, mk({}))).toBe(0);
   });
 });

@@ -23,6 +23,7 @@ import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NA
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
   BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen, schutzEntferntMitteilungen } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { freigegebeneMonate, planFreigabePflicht } from "./planfreigabe.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
@@ -932,6 +933,62 @@ function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
+/* Freigaben (WP-23b, M2): `freigaben[JJJJ-MM]` hält den Entwurfsfilter am Leben (planfreigabe.mjs: ein
+   freigegebener Monat genügt). Wer die Freigaben löschen kann, schaltet den Schutz ab — auch die Planung, die
+   ihn nicht ausschalten dürfte. Deshalb:
+   - Form: ein Objekt, neue oder geänderte Schlüssel `JJJJ-MM` mit einem Objekt als Wert; sonst abgewiesen.
+     Fehlt das Feld (oder ist es null), bleibt der gespeicherte Stand.
+   - Entfernen (Schlüssel fehlt oder Wert nicht wahr): nur mit org.edit. Für alle anderen kommt der gespeicherte
+     Eintrag stillschweigend zurück (wie bei den übrigen Rechten).
+   - Einrasten: Verliert ein Betrieb damit seine letzte Freigabe, setzt der Server `planFreigabePflicht` auf true,
+     Wann/Wer vom Server — der Schutz fällt nicht stillschweigend weg. */
+const FREIGABE_MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
+const FREIGABE_GRUND = "Freigaben: erwartet wird ein Objekt mit Einträgen je Monat (JJJJ-MM).";
+/** @returns {{ grund?: string, mandant?: any }} */
+function freigabenZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object") return { mandant: neuM };
+  const istObj = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+  const altF = altM && istObj(altM.freigaben) ? altM.freigaben : {};
+  const geschickt = neuM.freigaben;
+  if (geschickt === undefined || geschickt === null) {
+    if (!Object.keys(altF).length && !(altM && "freigaben" in altM)) return { mandant: neuM };
+    return { mandant: { ...neuM, freigaben: altF } };
+  }
+  if (!istObj(geschickt)) return { grund: FREIGABE_GRUND };
+  for (const [k, v] of Object.entries(geschickt)) {
+    if (Object.prototype.hasOwnProperty.call(altF, k) && gleichJson(altF[k], v)) continue;
+    if (!FREIGABE_MONAT.test(k) || !istObj(v)) return { grund: FREIGABE_GRUND };
+  }
+  const neuF = { ...geschickt };
+  if (!darf(rolle, "org.edit"))
+    for (const k of Object.keys(altF)) if (MONAT_FORM_WAHR(altF, k) && !neuF[k]) neuF[k] = altF[k];
+  let mandant = { ...neuM, freigaben: neuF };
+  if (freigegebeneMonate({ freigaben: altF }).size > 0 && freigegebeneMonate({ freigaben: neuF }).size === 0
+    && !planFreigabePflicht(mandant)) {
+    const e = mandant.einstellungen && typeof mandant.einstellungen === "object" ? { ...mandant.einstellungen }
+      : (altM && altM.einstellungen && typeof altM.einstellungen === "object" ? { ...altM.einstellungen } : {});
+    e.planFreigabePflicht = true;
+    e.planFreigabePflichtGeaendertAm = new Date().toISOString();
+    e.planFreigabePflichtGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
+    mandant = { ...mandant, einstellungen: e };
+  }
+  return { mandant };
+}
+const MONAT_FORM_WAHR = (f, k) => /^\d{4}-\d{2}$/.test(k) && !!f[k];
+
+/** Wie viele Freigaben wurden zurückgenommen (für das Betriebsprotokoll, ohne Inhalt)? */
+export function freigabeRuecknahmen(altB, neuB) {
+  const liste = (b) => (b && Array.isArray(b.mandanten) ? b.mandanten : []).filter((m) => m && typeof m === "object");
+  const neu = new Map(liste(neuB).map((m) => [m.id, freigegebeneMonate(m)]));
+  let n = 0;
+  for (const m of liste(altB)) {
+    const jetzt = neu.get(m.id);
+    if (!jetzt) continue;
+    for (const k of freigegebeneMonate(m)) if (!jetzt.has(k)) n++;
+  }
+  return n;
+}
+
 /* Einwilligungen nach dem Mutterschutzgesetz an der Person (Nutzerentscheidung,
    WP-11): § 5 Abs. 2 (Art „nacht", 20–22 Uhr) und § 6 Abs. 1 (Art „sonntag"),
    Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor" (§ 28).
@@ -1234,6 +1291,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const freigabe = planFreigabeZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (freigabe.grund) return { verweigert: freigabe.grund };
       geschickt = freigabe.mandant;
+      /* Freigaben (WP-23b): Form, Entfernen nur mit org.edit, Einrasten des Schutzes. */
+      const freigaben = freigabenZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      if (freigaben.grund) return { verweigert: freigaben.grund };
+      geschickt = freigaben.mandant;
       /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };
