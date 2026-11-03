@@ -12967,7 +12967,7 @@ function DienstKarte({ sitz, akt, vorgang, meineDa, style, children }) {
           <div style={{ fontSize: 14, color: C.dim, marginTop: 3, ...NUM }}>
             {meineDa.start}–{meineDa.ende} · {n1(dauer(meineDa))} h{meineDa.ort ? ` · ${meineDa.ort}` : ""}</div>
         </div></>)}
-      {vorgang && <Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} />}
+      {vorgang && <><Stempeluhr sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></>}
       {children}
     </Card>);
 }
@@ -13136,11 +13136,7 @@ function StempelPuffer({ akt }) {
     </div>);
 }
 
-function Stempeluhr(props) {
-  return (<><StempeluhrKern {...props} /><StempelPuffer akt={props.akt} /></>);
-}
-
-function StempeluhrKern({ sitz, akt, vorgang }) {
+function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
@@ -19983,7 +19979,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <Rubrik>Offener Dienst von gestern</Rubrik>
           <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px" }}>
             Eingestempelt gestern {vorgang.st.start}</div>
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : da ? (
         <MKarte style={{ padding: 22, background: `${da.farbe}0E`, border: `1px solid ${da.farbe}33` }}>
@@ -19993,7 +19989,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <div style={{ fontSize: 17, color: C.dim, ...NUM }}>
             {da.start} – {da.ende} · {n1(dauer(da))} h</div>
           {da.ort && <div style={{ fontSize: 14, color: C.dimmer, marginTop: 5 }}>{da.ort}</div>}
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : vorgang.offen ? (
         /* Eingestempelt, aber heute kein Dienst (mehr) im Plan — etwa nach
@@ -20002,7 +19998,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
           <Rubrik>Offener Dienst ohne Plan</Rubrik>
           <div style={{ fontSize: 23, fontWeight: 650, letterSpacing: "-.03em", margin: "9px 0 4px", ...NUM }}>
             Eingestempelt {vorgang.st.start}</div>
-          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /></div>
+          <div style={{ marginTop: 18 }}><MStempel sitz={sitz} akt={akt} vorgang={vorgang} /><StempelPuffer akt={akt} /></div>
         </MKarte>
       ) : (
         <MKarte style={{ padding: 22, textAlign: "center" }}>
@@ -20063,11 +20059,7 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
 }
 
 /** Große Stempelfläche — das häufigste Tippen überhaupt. */
-function MStempel(props) {
-  return (<><MStempelKern {...props} /><StempelPuffer akt={props.akt} /></>);
-}
-
-function MStempelKern({ sitz, akt, vorgang }) {
+function MStempel({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
   const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
