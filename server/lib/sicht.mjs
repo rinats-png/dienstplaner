@@ -417,6 +417,49 @@ export function bestaetigungenBetriebsrat(w) {
    ------------------------------------------------------------------------ */
 const R = (fn) => ({ art: REDUZIERT, fn });
 
+/* ENTWÜRFE (WP-23). Ein Monatsplan ist ein Entwurf, bis die Planung ihn
+   freigibt (m.freigaben[JJJJ-MM]). Bis hierher bekamen Beschäftigte die
+   Einteilungen (`abweichungen`) aller Monate — auch die, an denen die
+   Planung noch arbeitet: Ein Dienst, den es morgen vielleicht nicht mehr
+   gibt, stand auf dem Telefon. Jetzt fehlen die Einteilungen eines nicht
+   freigegebenen Monats in der Antwort an Beschäftigte.
+
+   - Was gilt als sichtbar: die Einteilungen eines freigegebenen Monats und
+     jeder Tag bis einschließlich heute (Berliner Zeit). Was heute oder
+     früher liegt, ist in Kraft und kein Entwurf mehr: Die Ansicht „Mein
+     Dienst heute“ und das Einstempeln brauchen den heutigen Dienst, die
+     Ist-Ansichten die vergangenen. Ein Entwurf ist, was nach heute liegt und
+     zu einem nicht freigegebenen Monat gehört. Nichts anderes.
+   - Ein Eintrag ohne gültigen Tag im Schlüssel („Person|JJJJ-MM-TT") ist
+     kein Plan und geht nicht hinaus (fail-closed).
+   - Nur Beschäftigte. Der Betriebsrat behält den ganzen Plan: Die
+     Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt
+     voraus, dass er den Entwurf vor der Freigabe prüfen kann. Planung,
+     Leitung und Schichtverantwortung planen selbst und sehen den Entwurf.
+   - Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen`
+     nicht (eigenesZusammen), der gespeicherte Plan bleibt beim Speichern
+     unberührt. */
+const MONAT_FORM = /^\d{4}-\d{2}$/;
+/** Heute (JJJJ-MM-TT) in Berlin. */
+export function laufenderTag(jetzt = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(jetzt);
+}
+/** Die freigegebenen Monate eines Betriebs (m.freigaben, Schlüssel JJJJ-MM). */
+export function freigegebeneMonate(m) {
+  const f = m && istObj(m.freigaben) ? m.freigaben : {};
+  return new Set(Object.keys(f).filter((k) => MONAT_FORM.test(k) && f[k]));
+}
+function planOhneEntwurf(w, ctx) {
+  if (!istObj(w)) return {};
+  if (!ctx.entwurfVerbergen) return w;
+  const heute = ctx.laufenderTag || laufenderTag();
+  return Object.fromEntries(Object.entries(w).filter(([k]) => {
+    const tag = schluesselTag(k);
+    if (!gueltigerTag(tag)) return false;
+    return tag <= heute || (ctx.freigegeben && ctx.freigegeben.has(tag.slice(0, 7)));
+  }));
+}
+
 export const BETRIEB = {
   /* Stammdaten und Regelwerk — ohne sie rechnet kein Plan. */
   id: [VOLL, VOLL], name: [VOLL, VOLL], branche: [VOLL, VOLL],
@@ -437,7 +480,7 @@ export const BETRIEB = {
   status: [VOLL, VOLL], stichtag: [VOLL, VOLL], laeuftAb: [VOLL, VOLL],
 
   /* Der Plan selbst. */
-  abweichungen: [VOLL, VOLL], planstaende: [VOLL, VOLL], freigaben: [VOLL, VOLL],
+  abweichungen: [R(planOhneEntwurf), VOLL], planstaende: [VOLL, VOLL], freigaben: [VOLL, VOLL],
   unterschreitungen: [VOLL, VOLL], belegung: [VOLL, VOLL], therapie: [VOLL, VOLL],
   aushang: [VOLL, VOLL],
   standorte: [R(standorte), R(standorte)],
@@ -518,6 +561,7 @@ export function betriebSicht(m, sitzung) {
   const spalte = rolle === "betriebsrat" ? 1 : 0;
   const ctx = {
     rolle, ich: sitzung.person,
+    entwurfVerbergen: rolle === "mitarbeiter", freigegeben: freigegebeneMonate(m), laufenderTag: laufenderTag(),
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
   };
   const aus = {};

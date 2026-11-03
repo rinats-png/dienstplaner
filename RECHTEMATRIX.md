@@ -269,6 +269,17 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
+²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
+ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen
+eines nicht freigegebenen Monats nach heute nicht (`planOhneEntwurf`, `server/lib/sicht.mjs`) — weder die eigenen noch die
+anderer. Sichtbar sind die Einteilungen freigegebener Monate und jeder Tag bis einschließlich heute (Berliner Zeit):
+Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heute“, das Einstempeln und die Ist-Ansichten
+brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
+den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
+vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
+Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`). Offen: Der
+Kalender-Feed (WP-24) muss dieselbe Regel einhalten, sobald er Einteilungen liefert. Geprüft in
+`pruefungen/entwuerfe.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
