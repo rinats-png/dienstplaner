@@ -269,6 +269,14 @@ per Digest genau dieser Digest):
      `ablage-pruefen.mjs` lehnt eine Sicherung ab, die in die verworfene Folge *irgendeiner* dieser
      Wiederherstellungen fällt (Rückgabe 2, nichts verändert). Ist die Datei vorhanden, aber unlesbar, brechen
      beide Werkzeuge ab (Rückgabe 2) — die Standfolge ist dann nicht prüfbar; Datei sichten, nicht still löschen.
+     **Ausweg bei beschädigter Datei** (gilt für `ablage-pruefen` und für beide Wege der Wiederherstellung — auch
+     `--ersetzen` lässt Punktdateien im Ziel stehen): bei gestopptem Dienst umbenennen,
+     `sudo mv data/.wiederhergestellt.json "data/.wiederhergestellt.kaputt-$(date -u +%Y%m%dT%H%M%SZ)"`; noch
+     lesbare Einträge möglichst von Hand in eine neue Datei übertragen
+     (`{"wiederherstellungen":[{"zeit":"…","sicherungErstellt":"…"}]}`, Besitz 1000:1000, Modus 600). Geht das
+     nicht, prüft das Werkzeug die Standfolge nicht mehr; dann gilt ohne Werkzeugprüfung die Regel „für
+     `--aus-sicherung` nur Sicherungen nach der letzten Wiederherstellung verwenden“. Danach wiederherstellen bzw.
+     `ablage-pruefen` erneut aufrufen.
      **Bei Weg 1 (neues, leeres `data/`)** die Datei vor dem Wiederherstellen aus dem beiseitegelegten Verzeichnis
      übernehmen, sonst gehen die früheren Einträge verloren:
      `cp -p data.vor-wiederherstellung-<Zeit>/.wiederhergestellt.json data/` (falls vorhanden; Punktdateien

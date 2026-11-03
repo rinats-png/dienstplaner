@@ -219,3 +219,6 @@ grün (1 übersprungen, Windows); eslint ohne Befund.
 Nachtrag: Der `cp -p`-Handgriff steht jetzt auch in der Befehlsfolge von Weg 1 in `BEREITSTELLUNG.md`.
 CI auf 58d32d9 grün: Prüfung 41579102084, Sicherheit 41579102062, Betrieb: Deploy-Skripte 41579102054, Lieferkette
 41579102048, Betrieb Sicherung 41579105936 (von Hand gestartet).
+
+Nachtrag (Doku): Ausweg bei beschädigtem `.wiederhergestellt.json` in §4a und `BEREITSTELLUNG.md` (umbenennen, lesbare
+Einträge von Hand übertragen, sonst Regel ohne Werkzeugprüfung; Weg 1 und Weg 2). Weg 1 prüft mit `sudo test -f`.
