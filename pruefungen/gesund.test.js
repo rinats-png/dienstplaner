@@ -147,6 +147,51 @@ describe("Stufen", () => {
     await s.delete("aufraeumen:letzter");
   });
 
+  it("R2: hängt die Prüfung, gilt nach der Zeitgrenze „Ablage kritisch“; danach ist das Promise frei", async () => {
+    process.env.CENTRIC_GESUND_ZEITGRENZE_MS = "200";
+    let loslassen;
+    G.pruefHaken.vorher = () => new Promise((f) => { loslassen = f; });
+    try {
+      const a = Date.now();
+      const e = await G.zustand({ frisch: true });
+      expect(Date.now() - a).toBeLessThan(5000);
+      expect(e.pruefungen.ablage).toMatchObject({ stufe: "kritisch", text: "Zeitgrenze" });
+      expect(G.oeffentlich(e).status).toBe(503);
+      /* Zweiter Aufruf, die hängende Prüfung läuft noch: wieder nach der Grenze, kein Aufstauen. */
+      const b = Date.now();
+      const e2 = await G.zustand({ frisch: true });
+      expect(Date.now() - b).toBeLessThan(5000);
+      expect(e2.pruefungen.ablage.text).toBe("Zeitgrenze");
+    } finally {
+      G.pruefHaken.vorher = null;
+      loslassen();
+      delete process.env.CENTRIC_GESUND_ZEITGRENZE_MS;
+    }
+    await new Promise((w) => setTimeout(w, 50));
+    G.zustandVergessen();
+    expect((await G.zustand({ frisch: true })).stufe).toBe("ok");
+  });
+
+  it("R3: liegengebliebene Proben älter als 1 h werden entfernt, junge bleiben", async () => {
+    const { utimes, readdir } = await import("node:fs/promises");
+    const ordner = path.join(wurzel, ".gesund");
+    await mkdir(ordner, { recursive: true });
+    const alt = path.join(ordner, "probe-aaaaaaaaaaaaaaaaaaaaaaaa.json");
+    const jung = path.join(ordner, "probe-bbbbbbbbbbbbbbbbbbbbbbbb.json");
+    const fremd = path.join(ordner, "notiz.txt");
+    for (const d of [alt, jung, fremd]) await writeFile(d, "{}");
+    const zweiStunden = (Date.now() - 2 * 3600000) / 1000;
+    await utimes(alt, zweiStunden, zweiStunden);
+    await utimes(fremd, zweiStunden, zweiStunden);
+    await G.zustand({ frisch: true });
+    const rest = await readdir(ordner);
+    expect(rest).not.toContain("probe-aaaaaaaaaaaaaaaaaaaaaaaa.json");
+    expect(rest).toContain("probe-bbbbbbbbbbbbbbbbbbbbbbbb.json");
+    expect(rest).toContain("notiz.txt");
+    await rm(jung, { force: true });
+    await rm(fremd, { force: true });
+  });
+
   it("zwischengespeichert: innerhalb der Cachezeit keine neue Probe", async () => {
     const a = await G.zustand({ frisch: true });
     const b = await G.zustand();
@@ -210,8 +255,10 @@ describe("Alarm", () => {
     const schritt = async (e, ms = 60000) => { vi.advanceTimersByTime(ms); return g.beobachten(e, Date.now()); };
 
     expect(await g.beobachten(ergebnis("ok"), Date.now())).toBeNull();
-    /* Flattern unter der Entprellung: kein Alarm. */
+    /* Ein einzelner Ausreißer, danach stabil ok: kein Alarm, die Störung endet. */
     expect(await schritt(ergebnis("warnung", ["platz"]))).toBeNull();
+    expect(await schritt(ergebnis("ok"))).toBeNull();
+    expect(await schritt(ergebnis("ok"))).toBeNull();
     expect(await schritt(ergebnis("ok"))).toBeNull();
     expect(gesendet).toEqual([]);
     /* Anhaltend: Alarm nach ≥ 120 s. */
@@ -253,6 +300,22 @@ describe("Alarm", () => {
     expect(gesendet.length).toBeGreaterThanOrEqual(1);
     expect(gesendet[0]).toMatchObject({ art: "alarm", stufe: "kritisch" });
     expect(gesendet[0].zeit <= new Date(1_000_000 + 5 * 60000).toISOString()).toBe(true);
+  });
+
+  it("R1: Pendeln ok ↔ kritisch jede Minute alarmiert (Hysterese), binnen 5 min", async () => {
+    const gesendet = [];
+    const g = G.alarmGeber({ entprellungMs: 120000, wiederholungMs: 6 * 3600000, senden: async (n) => { gesendet.push(n); } });
+    const t0 = 1_000_000;
+    let t = t0;
+    await g.beobachten(ergebnis("ok"), t);
+    for (let i = 0; i < 60; i++) {
+      t += 60000;
+      await g.beobachten(i % 2 === 0 ? ergebnis("kritisch", ["ablage"]) : ergebnis("ok"), t);
+    }
+    expect(gesendet.length).toBeGreaterThanOrEqual(1);
+    expect(gesendet[0]).toMatchObject({ art: "alarm", stufe: "kritisch" });
+    expect(Date.parse(gesendet[0].zeit) - (t0 + 60000)).toBeLessThanOrEqual(5 * 60000);
+    expect(gesendet.filter((n) => n.art === "entwarnung")).toEqual([]);   // pendelnd: keine Entwarnung
   });
 
   it("≤ 5 min: mit Vorgabe-Takt (60 s) und -Entprellung (120 s), Eintritt zu ungünstigster Zeit", async () => {

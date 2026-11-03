@@ -1,13 +1,13 @@
 {
-  "stand": "2026-11-02",
+  "stand": "2026-11-03",
   "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 27,
+    "BLOCKED": 25,
     "READY": 2,
     "IN_PROGRESS": 5,
     "REVIEW": 1,
     "CI_FAILED": 0,
-    "INTEGRATED": 9,
+    "INTEGRATED": 11,
     "VERIFIED": 0,
     "DONE": 2
   },
@@ -99,11 +99,11 @@
         "WP-30"
       ],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp05-uberwachung-und-alarme",
+      "branch": "acc45/infra/wp05-ueberwachung",
       "dateien": "server.mjs, server/lib/gesund.mjs, deploy/",
       "akzeptanz": "/gesund prüft Ablage/Platz; externer Check; Alarm ≤5 min; Fehlerzählung",
       "tests": "vitest /gesund, Alarmprobe",
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -574,7 +574,7 @@
       "dateien": "deploy/, .github/workflows",
       "akzeptanz": "deploy.sh mit Digest, Smoke, R0; Umgebungsfreigabe; Netlify-Rolle geklärt",
       "tests": "Probe isoliert",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -746,11 +746,11 @@
         "WP-31"
       ],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp41-betriebs-und-nutzerdokumenta",
+      "branch": "acc45/infra/wp41-dokumentation",
       "dateien": "docs/",
       "akzeptanz": "Betriebshandbuch, Incident-Runbook, Restore-Anleitung, Handbuch je Rolle",
       "tests": "Review",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
