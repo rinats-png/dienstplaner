@@ -59,6 +59,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Einsatzorte (`einsatzorte`: Name, Koordinate, Umkreis; WP-20) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Monatsabschluss: Status je Monat (`monatsabschluss`, nur „abgeschlossen“) ²⁹ | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Monatsabschluss: Wer, Wann, Grund, Verlauf, Prüfsumme, abgewiesene Stempel ²⁹ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Nachrichten anderer | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -300,6 +302,14 @@ und Einsatzorte pflegen Planung und Leitung (`pattern.edit`/`org.edit`); die Pla
 Dienstart (`ortModus`, `einsatzortId`) oder Koordinate und Umkreis eines Einsatzorts ändern und so die Prüfung des
 Pflichtmodus umgehen. Das Recht bleibt unverändert (Entscheidung der Leitung offen); die Änderung trägt Wann/Wer vom Server
 (`ortGeaendertAm/-Von` an der Dienstart, `einsatzorteGeaendertAm/-Von` am Betrieb). Details: `docs/acc45/wp20-nachweis.md`.
+
+²⁹ WP-16, neue Zeilen „Monatsabschluss“: **Status und Details.** Beschäftigte, Betriebsrat und Schichtverantwortung bekommen je
+abgeschlossenem Monat nur `{abgeschlossen: true}` (`sicht.mjs`, `abschlussStatus`) — damit die Oberfläche Korrektur und
+Antrag dort nicht anbietet. Wer, Wann, Grund, Verlauf, Prüfsumme der Ist-Daten und die nach dem Abschluss abgewiesenen
+Stempel (mit Person und Tag) sehen nur Planung und Leitung (samt Kundenrolle und Vollausgabe); der Betreiber nichts. Der
+Abschluss kommt beim Speichern immer aus dem gespeicherten Stand (`abschlussAusGespeichert`), für jede Rolle; geändert wird
+er nur über `POST /api/monatsabschluss` (Abschnitt 2). Geprüft in `pruefungen/rechtematrix-zeilen.test.js` und
+`pruefungen/monatsabschluss.test.js`.
 ²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
 ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen
 eines nicht freigegebenen Monats nach heute nicht (`planOhneEntwurf`, `server/lib/sicht.mjs`) — weder die eigenen noch die
@@ -433,6 +443,7 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 | `/api/stempel-korrektur` | Leitung, Planung, Probierraum (`staff.edit`) | Ist-Zeit eines gestempelten Tages korrigieren — nur als Ereignis `{vorher, nachher, wer, wann, grund}` am Stempel (`server/lib/stempelintegritaet.mjs`, WP-06); das Original bleibt. Ein Originalstempel ist über `PUT /api/bestand` für **jede** Rolle unveränderlich (ändern, löschen, erfinden, Korrektur am Ereignisweg vorbei, Ist-Zeit eines gestempelten Tages ändern: 403 `STEMPEL_UNVERAENDERLICH`). Ausnahmen: Löschlauf der Leitung nach Ablauf der Aufbewahrungsfrist (mind. 24 Monate); Wiederherstellen behält alle heutigen Stempel samt Korrekturen. Die Ereignisse sieht nur, wer den Stempel sieht (`einstempeln` `NUR_EIGENE` für Beschäftigte, Schichtverantwortung, Betriebsrat) | A |
 | `/api/korrektur-antrag` | Person mit Zugang (auch Schichtverantwortung, Betriebsrat) | Antrag auf Korrektur der Ist-Zeit am **eigenen** Stempel der letzten 62 Tage (Beginn, Ende, Pause, Grund ≥ 10 Zeichen); ein offener Antrag je Stempel; liegt am Stempel (`einstempeln[k].antraege`) und folgt dessen Sicht — die Schichtverantwortung sieht fremde nicht (H8+). Der Stempel bleibt unverändert (`server/lib/korrekturworkflow.mjs`, WP-14) | A |
 | `/api/korrektur-entscheiden` | Leitung, Planung, Probierraum (`staff.edit`); Zurückziehen nur die antragstellende Person | genehmigen (→ Korrekturereignis am Stempel mit Antrags-Kennung und Regelhinweisen, Ist ändert sich), ablehnen (Begründung ≥ 10 Zeichen) oder zurückziehen; nicht Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber (403) | A |
+| `POST /api/monatsabschluss` (`aktion`: `abschliessen`, `wiederoeffnen`) | Abschließen: Leitung, Planung, Probierraum (`staff.edit`, Vollschreibrecht). Wiederöffnen: nur Leitung und Probierraum (`org.edit`). Alle anderen 403 | WP-16 (`server/lib/monatsabschluss.mjs`): nur ein vergangener Monat; offene Korrekturanträge sperren den Abschluss, unvollständige Stempel und Ist-Zeiten zur Prüfung nur mit ausdrücklichem „trotzdem“; Verlauf mit Wann, Wer, Grund (Wiederöffnen: Grund ≥ 10 Zeichen), Prüfsumme der Ist-Daten; Betriebsprotokoll. Ein **abgeschlossener Monat sperrt Ist** für jede Rolle und jeden Schreibweg: `/api/stempeln` (auch offline aus dem Puffer; der abgewiesene Stempel steht für die Leitung am Abschluss), `/api/zeit-bestaetigen`, `/api/stempel-korrektur`, `/api/korrektur-antrag`, `/api/korrektur-entscheiden` → 409 `MONAT_ABGESCHLOSSEN`; `PUT /api/bestand` (Ist-Zeit oder Stempel des Monats ändern, anlegen, löschen) → 403 `MONAT_ABGESCHLOSSEN` (Ausnahme: Löschlauf nach Fristablauf); `/api/wiederherstellen` behält Abschluss und Ist-Daten abgeschlossener Monate. Korrekturen nach dem Wiederöffnen sind Ereignisse am Stempel mit `nachWiederoeffnung`. Sicht siehe ²⁹ | A |
 | `/api/anmelden`, `/api/demo`, `/api/demos` | öffentlich | Sitzung bzw. Name/Kennung der Demozugänge, keine Codes | A |
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |

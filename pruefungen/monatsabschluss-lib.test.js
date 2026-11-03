@@ -1,0 +1,189 @@
+/* ==========================================================================
+   MONATSABSCHLUSS (WP-16): Bibliothek, Wiederherstellen, Betriebsrat-Ist
+
+   - abschlussWiderspruch: der Wächter für PUT /api/bestand (Vollsicht,
+     unveränderte Monate, Löschlauf nach Fristablauf),
+   - abschlussBeiWiederherstellung, abschlussStatus, istAbdruck,
+   - WP-27: Wiederöffnen und Korrektur nach der Frist ändern das einmal
+     ausgegebene Ist des Betriebsrats nicht — sie stehen als istKorrigiert.
+   ========================================================================== */
+
+import { describe, it, expect, beforeEach } from "vitest";
+import { abschliessen, wiederoeffnen, abschlussWiderspruch, abschlussBeiWiederherstellung, abschlussStatus, istAbdruck,
+  offenePunkte, abschlussSperre, monatAbgeschlossen, abschlussAusGespeichert, abgewiesenVermerken, letzteWiederoeffnung } from "../server/lib/monatsabschluss.mjs";
+import { korrekturAnhaengen } from "../server/lib/stempelintegritaet.mjs";
+import { auswertungHolen, auswertungenVergessen, BR_NEUBERECHNUNG_MS } from "../server/lib/br-auswertung.mjs";
+import { betriebSicht } from "../server/lib/sicht.mjs";
+
+const WER_L = { personId: "l1", name: "V L1", rolle: "leitung" };
+const JETZT = new Date("2026-11-05T09:00:00.000Z");
+const st = (s, e) => ({ start: s, startAm: "x", ende: e, endeAm: "y" });
+const basis = () => ({ id: "m1", personen: [{ id: "a1" }, { id: "a2" }], dienstarten: [], abweichungen: {},
+  einstempeln: { "a1|2026-10-28": st("06:00", "14:00"), "a1|2026-09-10": st("06:00", "14:00") },
+  erfassung: { "a1|2026-10-28": { start: "06:00", ende: "14:00", bestaetigt: true }, "a1|2026-10-27": { start: "06:00", ende: "14:30", bestaetigt: true },
+    "a1|2026-09-10": { start: "06:00", ende: "14:00", bestaetigt: true } } });
+const geschlossen = () => {
+  const r = abschliessen(basis(), { monat: "2026-10" }, WER_L, JETZT, "ma-1", "2026-11-05");
+  if ("status" in r) throw new Error(r.grund);
+  return r.mandant;
+};
+const kopie = (x) => JSON.parse(JSON.stringify(x));
+
+describe("abschliessen / wiederoeffnen", () => {
+  it("Abschluss: Prüfsumme der Ist-Daten, Wann/Wer, Verlauf; Sperre greift nur im Monat", () => {
+    const m = geschlossen();
+    expect(m.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, am: JETZT.toISOString(), wer: WER_L, abdruck: istAbdruck(basis(), "2026-10") });
+    expect(monatAbgeschlossen(m, "2026-10-01")).toBe(true);
+    expect(monatAbgeschlossen(m, "2026-09-30")).toBe(false);
+    expect(abschlussSperre(m, "2026-10-31")).toMatchObject({ status: 409, code: "MONAT_ABGESCHLOSSEN", monat: "2026-10" });
+    expect(abschlussSperre(m, "2026-11-01")).toBeNull();
+  });
+  it("Prüfsumme unabhängig von der Reihenfolge der Schlüssel, abhängig vom Inhalt", () => {
+    const a = basis(), b = basis();
+    b.erfassung = Object.fromEntries(Object.entries(b.erfassung).reverse());
+    expect(istAbdruck(a, "2026-10")).toBe(istAbdruck(b, "2026-10"));
+    b.erfassung["a1|2026-10-27"].ende = "14:31";
+    expect(istAbdruck(a, "2026-10")).not.toBe(istAbdruck(b, "2026-10"));
+    expect(istAbdruck(a, "2026-09")).toBe(istAbdruck(b, "2026-09"));
+  });
+  it("offene Punkte: Antrag, unvollständiger Stempel, Ist zur Prüfung", () => {
+    const m = basis();
+    m.einstempeln["a2|2026-10-03"] = { start: "06:00", startAm: "x" };
+    m.erfassung["a2|2026-10-04"] = { start: "06:00", ende: "20:00", bestaetigt: false, grund: "LANGER_DIENST" };
+    m.einstempeln["a1|2026-10-28"].antraege = [{ id: "ka", status: "offen" }, { id: "kb", status: "abgelehnt" }];
+    expect(offenePunkte(m, "2026-10")).toEqual({ antraege: 1, offeneStempel: 1, zurPruefung: 1 });
+    expect(offenePunkte(m, "2026-09")).toEqual({ antraege: 0, offeneStempel: 0, zurPruefung: 0 });
+  });
+  it("Wiederöffnen: Grund Pflicht, Verlauf mit abdruckGleich; letzte Wiederöffnung für den Vermerk an Korrekturen", () => {
+    const m = geschlossen();
+    expect(wiederoeffnen(m, { monat: "2026-10", grund: "zu kurz" }, WER_L, JETZT, "w1")).toMatchObject({ status: 422 });
+    const r = wiederoeffnen(m, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w1");
+    if ("status" in r) throw new Error(r.grund);
+    expect(r.eintrag.abgeschlossen).toBe(false);
+    expect(r.eintrag.abdruck).toBeUndefined();
+    expect(r.ereignis).toMatchObject({ art: "wiederoeffnung", grund: "Nachtrag eines Dienstes", abdruckGleich: true, wer: WER_L });
+    expect(letzteWiederoeffnung(r.mandant, "2026-10-28")).toBe("w1");
+    expect(letzteWiederoeffnung(m, "2026-10-28")).toBeNull();                 // abgeschlossen: keine Korrektur möglich
+    expect(wiederoeffnen(r.mandant, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w2")).toMatchObject({ status: 409 });
+  });
+  it("abgewiesene Stempel: vermerkt, je Ereignis einmal, Ist unverändert", () => {
+    const m = geschlossen();
+    const v = { personId: "a1", datum: "2026-10-30", art: "start", zeitAm: "2026-10-30T05:00:00.000Z", offline: true, ereignis: "e1", am: JETZT.toISOString() };
+    const n = abgewiesenVermerken(abgewiesenVermerken(m, "2026-10", v), "2026-10", v);
+    expect(n.monatsabschluss["2026-10"].abgewiesen).toHaveLength(1);
+    expect(istAbdruck(n, "2026-10")).toBe(n.monatsabschluss["2026-10"].abdruck);
+  });
+});
+
+describe("abschlussWiderspruch (PUT)", () => {
+  const voll = { vollSicht: true, unveraendert: null, heute: "2026-11-05" };
+  it("Änderung, Neuanlage, Löschung im abgeschlossenen Monat: Widerspruch; im offenen Monat nicht; unverändert nicht", () => {
+    const alt = geschlossen();
+    const f = (aendern) => { const n = kopie(alt); aendern(n); return abschlussWiderspruch(alt, n, voll); };
+    expect(f(() => {})).toBeNull();
+    expect(f((n) => { n.erfassung["a1|2026-10-27"].ende = "15:00"; })).toMatchObject({ schluessel: "a1|2026-10-27", monat: "2026-10" });
+    expect(f((n) => { n.erfassung["a2|2026-10-02"] = { start: "06:00", ende: "14:00", bestaetigt: true }; })).toMatchObject({ schluessel: "a2|2026-10-02" });
+    expect(f((n) => { delete n.erfassung["a1|2026-10-27"]; })).toMatchObject({ schluessel: "a1|2026-10-27" });
+    expect(f((n) => { n.einstempeln["a1|2026-10-28"].pause = 15; })).toMatchObject({ schluessel: "a1|2026-10-28" });
+    expect(f((n) => { n.erfassung["a1|2026-09-10"].ende = "15:00"; })).toBeNull();
+    expect(f((n) => { delete n.erfassung; })).toBeNull();                       // nicht mitgeschickt: unverändert
+  });
+  it("ohne Vollsicht nichts (eingeschränkte Rollen schreiben Ist ohnehin nicht roh); veraltete Kopie: dem Drei-Wege-Abgleich überlassen", () => {
+    const alt = geschlossen();
+    const n = kopie(alt); n.erfassung["a1|2026-10-27"].ende = "15:00";
+    expect(abschlussWiderspruch(alt, n, { ...voll, vollSicht: false })).toBeNull();
+    expect(abschlussWiderspruch(alt, n, { ...voll, unveraendert: new Set(["m1::2026-09"]) })).toBeNull();
+    expect(abschlussWiderspruch(alt, n, { ...voll, unveraendert: new Set(["m1::2026-10"]) })).not.toBeNull();
+  });
+  it("Löschlauf nach Ablauf der Aufbewahrungsfrist: Löschen erlaubt, Ändern nicht", () => {
+    const alt = basis();
+    alt.erfassung["a1|2023-05-10"] = { start: "06:00", ende: "14:00", bestaetigt: true };
+    const r = abschliessen(alt, { monat: "2023-05" }, WER_L, JETZT, "ma", "2026-11-05");
+    if ("status" in r) throw new Error(r.grund);
+    const weg = kopie(r.mandant); delete weg.erfassung["a1|2023-05-10"];
+    expect(abschlussWiderspruch(r.mandant, weg, { ...voll, loeschlauf: true })).toBeNull();
+    expect(abschlussWiderspruch(r.mandant, weg, { ...voll, loeschlauf: false })).not.toBeNull();
+    const anders = kopie(r.mandant); anders.erfassung["a1|2023-05-10"].ende = "15:00";
+    expect(abschlussWiderspruch(r.mandant, anders, { ...voll, loeschlauf: true })).not.toBeNull();
+  });
+  it("der Abschluss selbst kommt beim Speichern aus dem gespeicherten Stand", () => {
+    const alt = geschlossen();
+    expect(abschlussAusGespeichert(alt, { ...alt, monatsabschluss: {} }).monatsabschluss).toBe(alt.monatsabschluss);
+    expect("monatsabschluss" in abschlussAusGespeichert(basis(), { ...basis(), monatsabschluss: { "2026-10": { abgeschlossen: true } } })).toBe(false);
+  });
+});
+
+describe("Wiederherstellen und Sicht", () => {
+  it("abschlussBeiWiederherstellung: heutiger Abschluss und heutige Ist-Daten abgeschlossener Monate; offene Monate aus der Sicherung", () => {
+    const jetzt = geschlossen();
+    const sicherung = kopie(basis());
+    sicherung.erfassung["a1|2026-10-27"].ende = "13:00";                     // alter Stand
+    sicherung.erfassung["a1|2026-10-29"] = { start: "06:00", ende: "14:00", bestaetigt: true };   // nur in der Sicherung
+    sicherung.erfassung["a1|2026-09-10"].ende = "13:00";
+    const r = abschlussBeiWiederherstellung(jetzt, sicherung);
+    expect(r.mandant.monatsabschluss).toBe(jetzt.monatsabschluss);
+    expect(r.mandant.erfassung["a1|2026-10-27"].ende).toBe("14:30");
+    expect(r.mandant.erfassung["a1|2026-10-29"]).toBeUndefined();
+    expect(r.mandant.erfassung["a1|2026-09-10"].ende).toBe("13:00");
+    expect(istAbdruck(r.mandant, "2026-10")).toBe(jetzt.monatsabschluss["2026-10"].abdruck);
+  });
+  it("abschlussStatus: nur abgeschlossene Monate, nur das Kennzeichen; betriebSicht für Beschäftigte und Betriebsrat", () => {
+    const m = geschlossen();
+    const w = wiederoeffnen(m, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w1");
+    if ("status" in w) throw new Error(w.grund);
+    const z = abschliessen(w.mandant, { monat: "2026-09" }, WER_L, JETZT, "ma-2", "2026-11-05");
+    if ("status" in z) throw new Error(z.grund);
+    expect(abschlussStatus(z.mandant.monatsabschluss)).toEqual({ "2026-09": { abgeschlossen: true } });
+    for (const rolle of ["mitarbeiter", "betriebsrat"])
+      expect(betriebSicht(z.mandant, { rolle, person: "a1" }).monatsabschluss).toEqual({ "2026-09": { abgeschlossen: true } });
+  });
+});
+
+/* WP-27: Das einmal ausgegebene Ist (brist:) bleibt; ein Wiederöffnen mit Korrektur nach der Frist steht nur als istKorrigiert. */
+describe("Betriebsrat-Auswertung: Wiederöffnen und Korrektur nach der Frist bleiben istKorrigiert", () => {
+  const SPAET = "2026-06-20";
+  const ablageNeu = () => {
+    const d = new Map();
+    return { get: async (k) => (d.has(k) ? JSON.parse(JSON.stringify(d.get(k))) : null), setJSON: async (k, v) => { d.set(k, JSON.parse(JSON.stringify(v))); },
+      list: async ({ prefix }) => ({ blobs: [...d.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }), delete: async (k) => { d.delete(k); } };
+  };
+  const betrieb = () => {
+    const personen = [], erfassung = {}, einstempeln = {};
+    for (let i = 0; i < 4; i++) {
+      personen.push({ id: `a${i}`, vorname: "V", nachname: `N${i}`, rolle: "mitarbeiter", bereich: "A", status: "aktiv",
+        zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "A" }] });
+      if (i < 3) {
+        einstempeln[`a${i}|2026-05-12`] = st("06:00", "15:00");
+        erfassung[`a${i}|2026-05-12`] = { start: "06:00", ende: "15:00", bestaetigt: true };
+      }
+    }
+    return { id: "m1", name: "Haus", einheiten: [{ id: "A", versatzTage: 0 }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+      zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung, einstempeln,
+      abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  const warte = async (a) => { for (let i = 0; i < 600; i++) { const r = auswertungHolen(a); if (r.fertig) return r; await new Promise((w) => setTimeout(w, 5)); } throw new Error("nicht fertig"); };
+  const zeile = (w) => w.zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+  beforeEach(() => auswertungenVergessen());
+
+  it("Mai abgeschlossen, ausgegeben; wiedergeöffnet und eine Zeit korrigiert: dieselbe Zahl, istKorrigiert", async () => {
+    const ablage = ablageNeu();
+    const t0 = Date.now();
+    const z0 = abschliessen(betrieb(), { monat: "2026-05" }, WER_L, new Date("2026-06-02T08:00:00Z"), "ma", SPAET);
+    if ("status" in z0) throw new Error(z0.grund);
+    const vorher = zeile((await warte({ raum: "br16", heute: SPAET, mandant: z0.mandant, ablage, jetzt: t0 })).wert);
+    expect(vorher.istStunden).toBe(25.5);
+    const w = wiederoeffnen(z0.mandant, { monat: "2026-05", grund: "Nachtrag nach Beschwerde" }, WER_L, new Date("2026-06-20T08:00:00Z"), "w1");
+    if ("status" in w) throw new Error(w.grund);
+    const k = korrekturAnhaengen(w.mandant, { personId: "a0", datum: "2026-05-12", start: "06:00", ende: "17:00", grund: "Übergabe dauerte zwei Stunden länger" },
+      WER_L, new Date("2026-06-20T08:05:00Z"), "k1", { nachWiederoeffnung: "w1" });
+    if ("status" in k) throw new Error(k.grund);
+    expect(k.ereignis.nachWiederoeffnung).toBe("w1");
+    const z1 = abschliessen(k.mandant, { monat: "2026-05" }, WER_L, new Date("2026-06-20T08:10:00Z"), "ma2", SPAET);
+    if ("status" in z1) throw new Error(z1.grund);
+    auswertungenVergessen();
+    const nachher = zeile((await warte({ raum: "br16", heute: SPAET, mandant: z1.mandant, ablage, jetzt: t0 + BR_NEUBERECHNUNG_MS + 1000 })).wert);
+    expect(nachher.istStunden).toBe(25.5);
+    expect(nachher.istKorrigiert).toBe(true);
+    expect(vorher.istKorrigiert).toBeUndefined();
+  });
+});

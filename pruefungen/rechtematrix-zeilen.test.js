@@ -26,7 +26,10 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
+import * as RECHTE from "../server/lib/rechte.mjs";
+const { bestandFuerRolle, zusammenfuehren } = RECHTE;
+/* Rechte am Monatsabschluss (WP-16); fehlt die Funktion, ist das Ergebnis null (rot, nicht Ladefehler). */
+const abschlussRecht = (rolle, aktion) => (typeof RECHTE.abschlussRecht === "function" ? RECHTE.abschlussRecht(rolle, aktion) : null);
 import { vollausgabeBetrieb } from "../server/lib/sicherungen.mjs";
 import { PERSONENFELDER } from "../server/lib/sicht.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "../server/lib/planungsregeln.mjs";
@@ -199,6 +202,10 @@ const bestand = () => ({
       { id: "as1", datum: tag(6), dienstId: "F", status: "offen", einheitId: "e1",
         bewerbungen: [{ personId: "b1", text: M("BEWERBUNG-E1") }] }],
     protokoll: [{ id: "bl", zeit: "2026-01-01", text: M("BETRIEBSPROTOKOLL") }],
+    /* Monatsabschluss (WP-16): Status für alle Rollen des Betriebs, Details nur Planung und Leitung. */
+    monatsabschluss: { "2026-09": { abgeschlossen: true, am: M("ABSCHLUSS-AM"), wer: { personId: "l1", name: M("ABSCHLUSS-WER") },
+      abdruck: M("ABSCHLUSS-ABDRUCK"), verlauf: [{ id: "ma", art: "abschluss", grund: M("ABSCHLUSS-GRUND") }],
+      abgewiesen: [{ personId: "b1", datum: "2026-09-30", art: "start", ereignis: M("ABSCHLUSS-ABGEWIESEN") }] } },
     adressAenderungen: [{ personId: "b1", zeit: "1", von: M("ADRESSE-ALT"), nach: M("ADRESSE-NEU") }],
     lohnarten: [{ id: M("LOHNART") }],
     tarif: "tarif-eigen", preisgestaltung: { grund: M("KONDITION") }, rabattGrund: M("RABATTGRUND"),
@@ -323,6 +330,11 @@ const ZEILEN = {
   "Stempeldaten der eigenen Person (für die eigene Zeiterfassung)": {
     sondenFuer: (spalte) => (EIGENE_STEMPEL[spalte] ? [mk(`STEMPEL-EIGEN-${EIGENE_STEMPEL[spalte]}`)]
       : Object.values(EIGENE_STEMPEL).map((id) => mk(`STEMPEL-EIGEN-${id}`))) },
+  "Monatsabschluss: Status je Monat (`monatsabschluss`, nur „abgeschlossen“)": {
+    sonden: [Object.assign((s) => !!(s.betrieb && s.betrieb.monatsabschluss && s.betrieb.monatsabschluss["2026-09"]
+      && s.betrieb.monatsabschluss["2026-09"].abgeschlossen === true), { titel: "monatsabschluss 2026-09 abgeschlossen" })] },
+  "Monatsabschluss: Wer, Wann, Grund, Verlauf, Prüfsumme, abgewiesene Stempel": {
+    sonden: [mk("ABSCHLUSS-AM"), mk("ABSCHLUSS-WER"), mk("ABSCHLUSS-ABDRUCK"), mk("ABSCHLUSS-GRUND"), mk("ABSCHLUSS-ABGEWIESEN")] },
   "Abwesenheiten mit Anmerkung": {
     sonden: [mk("ABW-ID-B1"), mk("ABW-NOTIZ-B1"), mk("ABW-URLAUB-ID-B1"), mk("ABW-URLAUB-NOTIZ-B1")],
     /* Auflage B2: Krankheit und jede andere Kategorie werden zu „abwesend";
@@ -749,6 +761,39 @@ describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten mit org.edit oder pattern.ed
       const e = zusammenfuehren(g, sicht, SITZ[k]);
       const gespeichert = !!e && !e.verweigert && JSON.stringify(e).includes("SONDE-ORG-EDIT");
       expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(DUERFEN.includes(k));
+    });
+  }
+});
+
+/* Abschnitt 2, WP-16: Monatsabschluss. Abschließen Leitung, Planung, Kundenrolle; Wiederöffnen nur Leitung und
+   Kundenrolle; alle anderen nicht. Dazu: der Abschluss lässt sich über das Speichern für keine Rolle ändern. */
+describe("RECHTEMATRIX.md, Abschnitt 2: Monatsabschluss (WP-16)", () => {
+  it("die Zeile steht in der Matrix", () => {
+    const text = fs.readFileSync(MATRIX_DATEI, "utf8");
+    expect(text.split(/^## 2\./m)[1]).toMatch(/`POST \/api\/monatsabschluss`[^\n]*Wiederöffnen: nur Leitung und Probierraum \(`org\.edit`\)/);
+  });
+  const SOLL = { abschliessen: ["PL", "LT", "KU"], wiederoeffnen: ["LT", "KU"] };
+  for (const aktion of Object.keys(SOLL)) {
+    for (const k of Object.keys(SITZ)) {
+      it(`${k}: ${aktion} — ${SOLL[aktion].includes(k) ? "erlaubt" : "nicht erlaubt"}`, () => {
+        expect(abschlussRecht(SITZ[k].rolle, aktion), k).toBe(SOLL[aktion].includes(k));
+      });
+    }
+  }
+  it("unbekannte Rolle und unbekannte Aktion: nie", () => {
+    for (const r of ["gast", "", null, undefined]) for (const a of ["abschliessen", "wiederoeffnen"]) expect(abschlussRecht(r, a)).toBe(false);
+    expect(abschlussRecht("leitung", "loeschen")).toBe(false);
+  });
+  for (const k of ["MA", "SV", "PL", "LT", "KU", "BT"]) {
+    it(`${k}: Monatsabschluss über das Speichern öffnen oder setzen — abgewiesen oder wirkungslos`, () => {
+      const g = bestand();
+      const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ[k])));
+      const m = sicht.mandanten.find((x) => x && x.id === "m1");
+      m.monatsabschluss = { "2026-09": { abgeschlossen: false }, "2026-08": { abgeschlossen: true, grund: "SONDE-ABSCHLUSS" } };
+      const e = zusammenfuehren(g, sicht, SITZ[k]);
+      if (e && e.verweigert) return;
+      const m1 = e.mandanten.find((x) => x && x.id === "m1");
+      expect(m1.monatsabschluss, k).toEqual(g.mandanten[0].monatsabschluss);
     });
   }
 });
