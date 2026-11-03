@@ -269,3 +269,48 @@ describe("neue Betriebe", () => {
     expect(sicht.abweichungen["x|2099-05-10"]).toBeUndefined();
   });
 });
+
+/* ---- Zurückspielen einer Sicherung darf den Entwurfsschutz nicht abschalten (Nachprüfung WP-23) ---- */
+describe("Wiederherstellen und Planfreigabe", () => {
+  const LT = { rolle: "leitung", person: "l1", betrieb: 0, mandantId: "m1" };
+  const zurueckspielen = async (jetzt, damals) => {
+    const { betriebWiederherstellen } = await import("../server/lib/sicherungen.mjs");
+    const w = betriebWiederherstellen({ version: 9, stand: 1, session: null, mandanten: [jetzt] },
+      { centric: "sicherung", fassung: 2, umfang: "betrieb", mandantId: "m1", mandant: damals }, LT, { marke: "2026-10-01-08-00-00" });
+    expect(w.verweigert, w.verweigert).toBeFalsy();
+    return w.bestand.mandanten[0];
+  };
+  const maSicht = (m) => rechte.bestandFuerRolle({ version: 9, mandanten: [m] }, { rolle: "mitarbeiter", person: "a1", betrieb: 0 }).mandanten[0];
+
+  it("Sicherung ohne Pflicht und ohne Freigabe: die Pflicht samt Wann/Wer bleibt, Entwürfe bleiben verborgen", async () => {
+    const jetzt = betrieb({ freigaben: {}, einstellungen: { planFreigabePflicht: true,
+      planFreigabePflichtGeaendertAm: "2026-10-20T08:00:00.000Z", planFreigabePflichtGeaendertVon: "l1" } });
+    const damals = betrieb({ freigaben: {}, einstellungen: {} });
+    const m = await zurueckspielen(jetzt, damals);
+    expect(m.einstellungen).toMatchObject({ planFreigabePflicht: true, planFreigabePflichtGeaendertVon: "l1",
+      planFreigabePflichtGeaendertAm: "2026-10-20T08:00:00.000Z" });
+    expect(maSicht(m).abweichungen[`a1|${tag(ENTWURF)}`]).toBeUndefined();
+  });
+  it("Sicherung mit Pflicht aus, jetzt an: jetzt gilt", async () => {
+    const jetzt = betrieb({ freigaben: {}, einstellungen: { planFreigabePflicht: true } });
+    const damals = betrieb({ freigaben: {}, einstellungen: { planFreigabePflicht: false } });
+    expect((await zurueckspielen(jetzt, damals)).einstellungen.planFreigabePflicht).toBe(true);
+  });
+  it("Filter wirkte nur über Freigaben, die Sicherung hat keine: die jetzigen Freigaben bleiben (Vereinigung), Entwürfe verborgen", async () => {
+    const jetzt = betrieb({ einstellungen: {} });                         // Freigabe FREI, keine Pflicht
+    const damals = betrieb({ freigaben: {}, einstellungen: {} });
+    const m = await zurueckspielen(jetzt, damals);
+    expect(Object.keys(m.freigaben)).toEqual([FREI]);
+    expect(maSicht(m).abweichungen[`a1|${tag(ENTWURF)}`]).toBeUndefined();
+  });
+  it("Sicherung mit eigenen Freigaben: sie kommen zurück (Plan und Freigabe gehören zusammen), wenn der Filter ohnehin wirkt", async () => {
+    const jetzt = betrieb({ einstellungen: { planFreigabePflicht: true } });
+    const damals = betrieb({ freigaben: { [ENTWURF]: { stand: 1 } }, einstellungen: {} });
+    expect(Object.keys((await zurueckspielen(jetzt, damals)).freigaben)).toEqual([ENTWURF]);
+  });
+  it("Betrieb ohne Filter bleibt ohne Filter (altes Verhalten wird nicht erzwungen)", async () => {
+    const jetzt = betrieb({ freigaben: {}, einstellungen: {} });
+    const m = await zurueckspielen(jetzt, betrieb({ freigaben: {}, einstellungen: {} }));
+    expect(maSicht(m).sichtEntwuerfe).toBeUndefined();
+  });
+});

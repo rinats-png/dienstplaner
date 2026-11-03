@@ -83,6 +83,16 @@ Frühere Regression: `rechtematrix`, `rechtematrix-zeilen`, `sicht`, `sicht-tage
 Die erste, monatsgenaue Fassung machte 5 Fälle in `oberflaeche-render` rot (heutiger Dienst fehlt); die tagesgenaue
 Regel hält sie grün. eslint ohne Befund.
 
+**Wiederherstellen (Nachprüfung):** `betriebWiederherstellen` (`server/lib/sicherungen.mjs`) nahm `einstellungen` und
+`freigaben` aus der Sicherung. Eine alte Sicherung (vor WP-23 oder vor der Aktivierung) hätte die Pflicht samt Wann/Wer
+still ausgeschaltet und, ohne Freigabe in der Sicherung, den Entwurfsfilter mit. Jetzt bleibt
+`planFreigabePflicht` mit `…GeaendertAm/Von` aus dem jetzigen Stand (wie die Vertragsfelder). Wirkte der Filter bisher nur
+über Freigaben und hat die Sicherung keine, werden die jetzigen Freigaben vereinigt, damit der Filter wirkt; hat die
+Sicherung eigene Freigaben und der Filter wirkt ohnehin, kommen sie mit dem Plan zurück. Ein Betrieb ohne Filter bekommt
+keinen aufgezwungen. 5 Tests in `entwuerfe.test.js`, vorher 3 rot (Pflicht fehlt, Pflicht „aus“ aus der Sicherung,
+Freigaben fehlen); ohne die Übernahme wieder rot. Hinweis für den Dialogtext der Wiederherstellung (WP-25): „bleibt“
+gehört um die Planfreigabe-Pflicht ergänzt.
+
 **Testanpassungen (begründet, nichts abgeschwächt):** In `entwuerfe.test.js` (eigener WP-23-Test) ersetzt die Tabelle der
 Aktivierungsregel den Einzelfall „ohne freigaben im Betrieb: Zukunft verborgen“, der mit der Regel aus Punkt 3 nicht mehr
 gilt (ohne Freigabe und ohne Pflicht ist jetzt alles sichtbar; mit Pflicht bleibt der Fall abgedeckt). Der Test „heute und
