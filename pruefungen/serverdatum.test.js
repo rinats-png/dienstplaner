@@ -45,7 +45,7 @@ async function raumAnlegen(raum, ids, extra = {}) {
   await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [{ id: "m1", name: "Haus",
     einheiten: [{ id: "e1", name: "WB 1" }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" },
-      { id: "T12", name: "Tag 12", start: "06:00", ende: "18:00" }],
+      { id: "T12", name: "Tag 12", start: "06:00", ende: "18:00" }, { id: "Z10", name: "Zehn", start: "06:00", ende: "16:00" }],
     personen: ids.map(person), abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, ...extra }] },
   { durch: "Pruefung" });
 }
@@ -122,7 +122,8 @@ describe("Beginn: der Tag kommt vom Server", () => {
 
 describe("Nachtdienst: Ende nach Mitternacht beim offenen Beginn", () => {
   it("Beginn 22:00, Ende 06:00 mit dem Datum des neuen Tags → beim Beginn, Erfassung, endeDatum", async () => {
-    await raumAnlegen("sd-nacht", ["a1"]);
+    /* Mit geplantem Nachtdienst: Ohne Plan wäre es ein ungeplanter Dienst (WP-13) — Erfassung zur Prüfung. */
+    await raumAnlegen("sd-nacht", ["a1"], { abweichungen: { "a1|2026-11-01": "N" } });
     zeitAuf("2026-11-01T21:00:00Z");                                   // 01.11. 22:00 MEZ
     const s = await stempeln("sd-nacht", "a1", { art: "start", datum: "2026-11-01" });
     expect(s.status, JSON.stringify(s)).toBe(200);
@@ -150,7 +151,7 @@ describe("Nachtdienst: Ende nach Mitternacht beim offenen Beginn", () => {
   });
 
   it("Zeitumstellung (25.10.2026): Beginn 22:00 MESZ, Ende 05:30 MEZ — zugeordnet, 8,5 Stunden", async () => {
-    await raumAnlegen("sd-dst", ["a1"]);
+    await raumAnlegen("sd-dst", ["a1"], { abweichungen: { "a1|2026-10-24": "N" } });
     zeitAuf("2026-10-24T20:00:00Z");                                   // 24.10. 22:00 MESZ
     expect((await stempeln("sd-dst", "a1", { art: "start", datum: "2026-10-24" })).status).toBe(200);
     zeitAuf("2026-10-25T04:30:00Z");                                   // 25.10. 05:30 MEZ
@@ -207,7 +208,8 @@ describe("Nachtdienst: Ende nach Mitternacht beim offenen Beginn", () => {
   });
 
   it("F4: Ende nach mehr als 12 Stunden → Erfassung zur Prüfung (bestaetigt: false), LANGER_DIENST", async () => {
-    await raumAnlegen("sd-f4", ["a1", "a2"]);
+    /* Geplant ist ein Zehnstundendienst (Z10): Die Grenze für einen langen Dienst liegt bei geplanter Dauer + 2 h = 12 h. */
+    await raumAnlegen("sd-f4", ["a1", "a2"], { abweichungen: { "a1|2026-11-02": "Z10", "a2|2026-11-02": "Z10" } });
     zeitAuf("2026-11-02T05:00:00Z");                                   // 06:00
     expect((await stempeln("sd-f4", "a1", { art: "start" })).status).toBe(200);
     expect((await stempeln("sd-f4", "a2", { art: "start" })).status).toBe(200);
