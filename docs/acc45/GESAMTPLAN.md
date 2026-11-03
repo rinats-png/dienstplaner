@@ -25,26 +25,26 @@ die sich mit dem Backlog ändern.
 <!-- AUTO:BEGIN kennzahlen -->
 Erzeugt aus `docs/acc45/work-packages.json` (Schema 2) mit `node werkzeug/acc45-backlog.mjs status-schreiben` — nicht von Hand ändern.
 
-**Pakete gesamt:** 141 · BLOCKED 79 · READY 25 · IN_PROGRESS 2 · REVIEW 3 · INTEGRATED 29 · DONE 3
+**Pakete gesamt:** 141 · BLOCKED 79 · READY 24 · IN_PROGRESS 2 · REVIEW 4 · INTEGRATED 29 · DONE 3
 
 | Strang | Pakete | BLOCKED | READY | IN_PROGRESS | REVIEW | INTEGRATED | DONE | offener Aufwand PT |
 |---|---|---|---|---|---|---|---|---|
 | ACC45 | 50 | 11 | 4 | 2 | 2 | 29 | 2 | 48–73,5 |
 | WP-19-Module | 14 | 13 | 0 | 0 | 1 | 0 | 0 | 59,8–93,2 |
-| Intelligence | 37 | 33 | 4 | 0 | 0 | 0 | 0 | 288–505 |
+| Intelligence | 37 | 33 | 3 | 0 | 1 | 0 | 0 | 286,4–501,8 |
 | Folgepakete | 8 | 4 | 4 | 0 | 0 | 0 | 0 | 13–25,5 |
 | Extern/Entscheidungen | 32 | 18 | 13 | 0 | 0 | 0 | 1 | 18,85–42,6 |
 
-Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **408,8–697,2 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
+Offener Entwicklungsaufwand (ohne extern, ohne bedingtes WP-I35): **407,2–694 PT**. Integrierte Pakete zählen nicht mehr mit (bis 2026-11-03 zählten sie bis DONE weiter); was ihnen fehlt, steht als Statusstufe und in den externen Paketen.
 
 **Kritische Pfade** (offener Aufwand, Mitte der Spanne maßgeblich):
 
-- gemeinsam: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
+- gemeinsam: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 - ohne Intelligence: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
 - ACC45: WP-39 → WP-21 → WP-42a → WP-42 = **18–25,5 PT**
 - Folgepakete: WP-14c = **3–5 PT**
 - WP-19: WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 = **20,8–32,2 PT**
-- Intelligence: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **77–133 PT**
+- Intelligence: WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 <!-- AUTO:END kennzahlen -->
 
 ## 3. Abhängigkeitsgraph (Überblick)
@@ -201,9 +201,9 @@ Treiberkette A (realistisch): WP-38 (wartet auf Zone App.jsx)
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 405,8 | 10,1 AT | **12 AT** | **2026-11-19** |
-| realistisch | 549,3 | 30,5 AT | **50 AT** | **2027-01-18** |
-| bei Problemen | 865,9 | 82,5 AT | **132 AT** | **2027-05-18** |
+| optimistisch | 404,2 | 10,1 AT | **12 AT** | **2026-11-19** |
+| realistisch | 546,9 | 30,4 AT | **50 AT** | **2027-01-18** |
+| bei Problemen | 861,9 | 82,1 AT | **132 AT** | **2027-05-18** |
 
 Treiberkette B (realistisch): WP-I2 (wartet auf Zone App.jsx) → WP-I37
 
@@ -211,9 +211,9 @@ Treiberkette B (realistisch): WP-I2 (wartet auf Zone App.jsx) → WP-I37
 
 | Szenario | Rest-PT (Entwicklung) | Untergrenze Arbeit ÷ Kapazität | Simulierte Dauer | fertig am |
 |---|---|---|---|---|
-| optimistisch | 408,8 | 10,2 AT | **48 AT** | **2027-01-14** |
-| realistisch | 553 | 30,7 AT | **89 AT** | **2027-03-12** |
-| bei Problemen | 871,5 | 83 AT | **136 AT** | **2027-05-24** |
+| optimistisch | 407,2 | 10,2 AT | **48 AT** | **2027-01-14** |
+| realistisch | 550,6 | 30,6 AT | **89 AT** | **2027-03-12** |
+| bei Problemen | 867,5 | 82,6 AT | **136 AT** | **2027-05-24** |
 
 | Szenario | Produktiv-Deploy (E-23) | C1: ACC45 + WP-19 produktionsreif (Pilot E-24 bestanden) | C2: Intelligence produktionsreif (WP-I37) |
 |---|---|---|---|
