@@ -3847,7 +3847,7 @@
         "integriert": {"wert":false,"beleg":null},
         "stagingGeprueft": {"wert":false,"beleg":null},
         "fachlichFreigegeben": {"wert":true,"beleg":"Betreiberentscheidung 2026-11-03 (Master-Execution-Modus, Chat); Entscheidung erteilt, kein Produktivbetrieb"},
-        "produktiv": {"wert":true,"beleg":"Betreiberentscheidung 2026-11-03 (Master-Execution-Modus, Chat); Entscheidung erteilt, kein Produktivbetrieb"}
+        "produktiv": {"wert":false,"beleg":null}
       },
       "branch": null,
       "agent": "Betreiber / extern",

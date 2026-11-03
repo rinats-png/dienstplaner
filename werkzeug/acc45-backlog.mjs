@@ -129,7 +129,7 @@ export function pruefeQuelle(pakete) {
     if (p.status === "INTEGRATED" && p.stufen.integriert.wert !== true) w("INTEGRATED ohne Stufe integriert=true");
     if (p.stufen.integriert.wert === true && !ERLEDIGT.includes(p.status)) w("Stufe integriert=true, Status nicht INTEGRATED/DONE");
     if (p.stufen.produktiv.wert === true && p.status !== "DONE") w("produktiv=true ohne DONE");
-    if (p.status === "DONE" && p.stufen.produktiv.wert !== true) w("DONE ohne produktiv=true");
+    if (p.status === "DONE" && p.strang !== "extern" && p.stufen.produktiv.wert !== true) w("DONE ohne produktiv=true");
     if (p.status === "READY" && p.strang !== "extern") {
       const offen = p.abhaengigkeiten.filter((a) => !NUR_REIHENFOLGE.includes(a) && !ERLEDIGT.includes(ids.get(a)?.status));
       if (offen.length) w(`READY, aber Abhängigkeiten offen: ${offen.join(", ")}`);
