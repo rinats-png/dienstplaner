@@ -513,6 +513,27 @@ exec /usr/bin/find "$@"
       `alt: ${ups} up-Aufrufe\n${r.stdout}${r.stderr}`).toBe(true);
   });
 
+  it.skipIf(FAKES_FEHLEN)("WP-05 N1: nach der Sicherung kritisch wenig Platz → nicht wechseln, alter Stand läuft", () => {
+    /* Vor der Sicherung (Sicherungsverzeichnis) genug, danach unter den Daten kritisch wenig. */
+    writeFileSync(path.join(bin, "df"), `#!/usr/bin/env bash
+for a in "$@"; do letzt="$a"; done
+if [[ "$letzt" == */data ]]; then
+  echo 'Filesystem 1-blocks Used Available Capacity Mounted'
+  echo 'x 100000000000 99000000000 1000000000 99% /'
+  exit 0
+fi
+exec /usr/bin/df "$@"
+`);
+    chmodSync(path.join(bin, "df"), 0o755);
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(1);
+    expect(r.alles).toMatch(/kritisch wenig Platz/);
+    expect(env()).toBe(ENV_START);
+    expect(containerStatus()).toBe("running");
+    expect(containerBild()).toBe(ID_B);
+    expect(aufrufe()).not.toContain("exec -i");
+  });
+
   it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {
     const halter = spawn(BASH, ["-c", `exec 9>"${p(path.join(verz, ".deploy.lock"))}"; flock 9; echo bereit; sleep 30`]);
     await new Promise((fertig) => halter.stdout.once("data", fertig));
