@@ -19,12 +19,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const wp = vi.hoisted(() => ({ gesendet: [], antwort: null }));
+const wp = vi.hoisted(() => ({ gesendet: [], antwort: null, haengen: false }));
 vi.mock("web-push", () => ({
   default: {
     setVapidDetails: () => {},
     sendNotification: async (anmeldung, nutzlast, opt) => {
       wp.gesendet.push({ anmeldung, nutzlast, opt });
+      if (wp.haengen) return new Promise(() => {});                 // der Dienst antwortet nie
       if (wp.antwort) throw wp.antwort;
       return { statusCode: 201 };
     },
@@ -54,7 +55,7 @@ afterAll(async () => {
 });
 beforeEach(() => {
   globalThis.fetch = echtesFetch;
-  wp.gesendet.length = 0; wp.antwort = null;
+  wp.gesendet.length = 0; wp.antwort = null; wp.haengen = false;
   for (const k of ["RESEND_API_KEY", "CENTRIC_ABSENDER", "VAPID_PUBLIC", "VAPID_PRIVATE", "CENTRIC_PUSH_HOSTS", "NODE_ENV"]) delete process.env[k];
 });
 
@@ -298,6 +299,14 @@ describe("Nachtrag B2: 422 ist ein Validierungsfehler der Anfrage — Klasse nac
     [422, { name: "x" }, "dauerhaft", undefined],
     [422, { name: "validation_error", message: "Invalid `to` field. The email address needs to follow the `email@example.com` format." }, "dauerhaft", "empfaenger"],
     [400, { name: "validation_error", message: "Invalid `to` field." }, "dauerhaft", "empfaenger"],
+    /* Nachtrag 2 (F8): „recipient“ allein ist kein Fehler des To-Felds … */
+    [422, { name: "validation_error", message: "The recipients list exceeds the maximum of 50." }, "dauerhaft", undefined],
+    [422, { name: "validation_error", message: "Invalid recipient count." }, "dauerhaft", undefined],
+    /* … und die Ursache „Absender“ hat Vorrang, auch wenn der Text das To-Feld erwähnt. */
+    [422, { name: "invalid_from_address", message: "Invalid `from` field; the `to` field was not checked." }, "konfiguration", "absender"],
+    [422, { name: "validation_error", message: "You can only send testing emails to your own address. To send emails to other recipients, verify a domain and change the `from` address." }, "konfiguration", "absender"],
+    [403, { name: "validation_error", message: "You can only send testing emails to your own address. To send emails to other recipients, verify a domain and change the `from` address." }, "konfiguration", "absender"],
+    [422, { name: "invalid_to_address", message: "" }, "dauerhaft", "empfaenger"],
   ])("HTTP %i mit %o: Klasse %s, Ursache %s", async (status, rumpf, klasse, ursache) => {
     mailEinrichten(); fetchMit(status, rumpf);
     const r = await P.sendeMail("a@kunde.example", "B", "T");
@@ -336,5 +345,71 @@ describe("Nachtrag B5: Dienstarbeiter — keine protokollrelativen Ziele", () =>
       await Promise.all(warten);
     }
     expect(geoeffnet).toEqual(["/", "/", "/", "/a//b", "/", "/ok"]);
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG 2 — DELTA-REVIEW WP-30 (F2, F4)
+   Ein hängender Anbieter darf weder den Versand noch den Takt dauerhaft
+   aufhalten; Notrufe gehen als Push mit hoher Dringlichkeit.
+   ========================================================================== */
+
+describe("Nachtrag 2 F2: Fristen für Mail und Push", () => {
+  const anm = () => ({ endpoint: "https://fcm.googleapis.com/send/x", keys: { p256dh: "k", auth: "a" } });
+  /** Ein Anbieter, der nie antwortet — bis die Anfrage abgebrochen wird (wie fetch). */
+  const fetchHaengt = () => {
+    const gesehen = [];
+    globalThis.fetch = (url, o) => new Promise((_, nein) => {
+      gesehen.push({ url, o });
+      if (o && o.signal) o.signal.addEventListener("abort", () => nein(o.signal.reason || new Error("abgebrochen")));
+    });
+    return gesehen;
+  };
+
+  it("Mail: die Anfrage trägt eine Frist; ein hängender Anbieter endet als vorübergehend", async () => {
+    mailEinrichten();
+    const g = fetchHaengt();
+    const t0 = Date.now();
+    const r = await P.sendeMail("a@kunde.example", "B", "T");
+    expect(r).toMatchObject({ ok: false, klasse: "temporaer" });
+    expect(g[0].o.signal).toBeInstanceOf(AbortSignal);
+    expect(Date.now() - t0).toBeLessThan(30_000);
+  }, 60_000);
+
+  it("Push: Frist an web-push übergeben; ein hängender Dienst endet als vorübergehend", async () => {
+    pushEinrichten();
+    wp.haengen = true;
+    const t0 = Date.now();
+    const r = await W.sendePush(anm(), "T", "X", null);
+    expect(r).toMatchObject({ ok: false, klasse: "temporaer", erloschen: false });
+    expect(wp.gesendet[0].opt.timeout).toBeGreaterThan(0);
+    expect(wp.gesendet[0].opt.timeout).toBeLessThanOrEqual(15_000);
+    expect(Date.now() - t0).toBeLessThan(30_000);
+  }, 60_000);
+
+  it("nachfassen kommt bei hängendem Mailanbieter zurück; der Versuch ist zurückgestellt, nicht „offen“ für immer", async () => {
+    mailEinrichten();
+    process.env.CENTRIC_ZUSTELL_BACKOFF = "60,120";
+    const B = await import("../server/lib/bestand.mjs");
+    const mm = { id: "m-h", name: "Betrieb", personen: [{ id: "l1", vorname: "V", nachname: "N", rolle: "leitung", email: "l1@kunde.example" }],
+      nachrichten: [{ id: "h1", personId: "l1", art: "planFreigegeben", titel: "T", text: "X", ziel: "meine", zeit: "x",
+        erstellt: new Date(JETZT).toISOString(), gelesen: false, dringend: false }] };
+    await B.bestandSchreiben(store, "haengt", { version: 9, mandanten: [mm] }, { durch: "Pruefung" });
+    await store.setJSON(V.warteSchluessel("haengt", mm.id, "h1", "mail"),
+      { raum: "haengt", mandantId: mm.id, nid: "h1", kanal: "mail", naechster: new Date(JETZT - 1000).toISOString() });
+    fetchHaengt();
+    const aus = await V.nachfassen(store, { jetzt: JETZT });
+    expect(aus.angestossen).toBe(1);
+    expect(await store.get(V.statusSchluessel("haengt", mm.id, "h1", "mail"), { type: "json" })).toMatchObject({ status: "fehler", klasse: "temporaer" });
+  }, 60_000);
+});
+
+describe("Nachtrag 2 F4: Dringlichkeit des Push", () => {
+  const anm = () => ({ endpoint: "https://fcm.googleapis.com/send/x", keys: { p256dh: "k", auth: "a" } });
+  it("dringend → urgency „high“; sonst „normal“", async () => {
+    pushEinrichten();
+    await W.sendePush(anm(), "T", "X", null, { dringend: true });
+    await W.sendePush(anm(), "T", "X", null, {});
+    expect(wp.gesendet.map((x) => x.opt.urgency)).toEqual(["high", "normal"]);
   });
 });

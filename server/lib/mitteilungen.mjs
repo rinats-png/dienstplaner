@@ -72,6 +72,13 @@ const istObjekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const ohne = (o, felder) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !felder.includes(k)));
 const kuerzen = (t, n) => String(t ?? "").slice(0, n);
 
+/** Ein echter Notruf: eine Mitteilung, die der Server aus einem Notruf
+    erzeugt hat (`quelle.art === "notruf"` — `quelle` setzt nie ein Client,
+    siehe NUR_SERVER). Nur Notrufe dürfen die Reserve des Betriebskontingents
+    nehmen (Nachtrag 2, F1); „dringend“ allein (planGeaendert, einspringen,
+    uebergabeFehlt aus der Planung) genügt dafür nicht. */
+export const istNotruf = (n) => istObjekt(n) && istObjekt(n.quelle) && n.quelle.art === "notruf";
+
 /** Entsteht diese Mitteilung nur auf dem Server? */
 export function nurVomServer(n) {
   return istObjekt(n) && (n.ziel === "notruf" || n.art === "tauschAngebot" || n.quelle !== undefined

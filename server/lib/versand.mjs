@@ -34,9 +34,14 @@
      Adresswert als HMAC). Absender-/Konfigurationsfehler sperren niemanden.
    - Kontingente je Person/Betrieb/Tag (zustellquote:…, atomare Plätze),
      fail-closed: nicht lesbar → zurückgestellt, nie „frei“. Ein Platz je
-     Mitteilung, Kanal und Tag (Marke …:n-<h>), nicht je Versuch. Dringende
-     Arten haben eine Reserve; ist die Betriebsgrenze erreicht, wird bis zum
-     nächsten Tag (Berlin) zurückgestellt, nicht verworfen.
+     Mitteilung, Kanal und Tag (Marke …:n-<h>), nicht je Versuch. Echte
+     Notrufe (istNotruf, Nachtrag 2) haben eine Reserve — andere dringende
+     Arten nicht; ist die Betriebsgrenze erreicht, wird bis zum nächsten Tag
+     (Berlin) zurückgestellt, nicht verworfen. Ein zurückgestellter Versuch
+     gibt seine Plätze wieder frei.
+   - Fristen: Mail 15 s, Push 10 s (post.mjs, webpush.mjs); nachfassen()
+     beginnt nach `bis` keinen Satz mehr. Claim und Status tragen die Zeit
+     ihres Schreibens, nicht die des Anstoßes (Nachtrag 2, F2/F3).
 
    Nachtrag Opus-Review (B3): Der Wartesatz steht VOR dem Claim. Bricht der
    Prozess zwischen Claim und Status „offen“ ab, holt nachfassen() den
@@ -72,7 +77,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { sendeMail, anwendungsAdresse } from "./post.mjs";
 import { sendePush } from "./webpush.mjs";
-import { ZUSTELLARTEN } from "./mitteilungen.mjs";
+import { ZUSTELLARTEN, istNotruf } from "./mitteilungen.mjs";
 import { bestandLesenStreng as bestandLesen } from "./bestand.mjs";
 import { hinweis, pushZiel, betrifftEntwurf, backoffPlan, versucheMax, naechsterVersuch,
   kontingente, kontingentTag, naechsterKontingentTag, kanalAus, einzeilig } from "./zustellregeln.mjs";
@@ -168,14 +173,24 @@ const mailAdresse = (p) => {
     nur aus der Umgebung), kein reiner Hash — ein ungesalzener SHA-256 einer
     Mailadresse ließe sich mit einer Adressliste zurückrechnen. Ohne Pfeffer
     (Entwicklung) der einfache Hash. Ändert sich der Pfeffer, passt keine
-    Sperre mehr: Sie verfällt, statt falsch zu treffen. */
+    Sperre mehr: Sie verfällt, statt falsch zu treffen.
+    Nachtrag 2 (F7): In der Auslieferung (NODE_ENV=production) gibt es ohne
+    Pfeffer KEINEN Wert — dann wird keine Sperre geschrieben und keine
+    gilt (fail-closed für die Adresse: kein zurückrechenbarer Hash in der
+    Ablage). Folge: Ein ungültiger Empfänger wird je Mitteilung einmal
+    versucht (dauerhaft, nie wiederholt), aber nicht gesperrt.
+    @returns {string|null} */
 const sperrWert = (adresse) => {
   const a = String(adresse).toLowerCase();
   const pfeffer = process.env.CENTRIC_PFEFFER;
-  return pfeffer ? createHmac("sha256", pfeffer).update(`unzustellbar:${a}`).digest("hex").slice(0, 32) : h(a);
+  if (pfeffer) return createHmac("sha256", pfeffer).update(`unzustellbar:${a}`).digest("hex").slice(0, 32);
+  return process.env.NODE_ENV === "production" ? null : h(a);
 };
 /** Gilt diese Sperre für diese Adresse? Nur mit Ursache „empfaenger“ (B2). */
-const sperreGilt = (sperre, an) => istObjekt(sperre) && sperre.ursache === "empfaenger" && sperre.adresse === sperrWert(an);
+const sperreGilt = (sperre, an) => {
+  const wert = sperrWert(an);
+  return wert !== null && istObjekt(sperre) && sperre.ursache === "empfaenger" && sperre.adresse === wert;
+};
 
 /** Der Hinweis — nie der gespeicherte Titel oder Text (zustellregeln.mjs).
     Der Betriebsname ist eine Zeile ohne Steuerzeichen (B2: keine Kopfzeilen-Injektion). */
@@ -191,24 +206,38 @@ function mailInhalt(m, n) {
 
 /* ------------------------------------------------------------ Kontingente */
 
-/** @type {Map<string, number>} niedrigster Platz, der noch frei sein kann (Plätze werden nie freigegeben) */
+/** @type {Map<string, number>} niedrigster Platz, der noch frei sein kann
+    (ein freigegebener Platz senkt den Merker wieder, plaetzeFreigeben) */
 const platzGrenze = new Map();
 
 /**
  * Beansprucht einen Platz des Tageskontingents — atomar, je Platz ein Anlegen.
- * Liefert false, wenn die Obergrenze erreicht ist. Wirft, wenn die Ablage
- * nicht antwortet (der Aufrufer stellt dann zurück: fail-closed).
+ * Liefert den belegten Platz oder null, wenn die Obergrenze erreicht ist.
+ * Wirft, wenn die Ablage nicht antwortet (der Aufrufer stellt dann zurück:
+ * fail-closed).
+ * @returns {Promise<{schluessel: string, praefix?: string, k?: number}|null>}
  */
 async function platzBeanspruchen(store, praefix, limit) {
-  if (limit <= 0) return false;
+  if (limit <= 0) return null;
   let k = Math.max(1, platzGrenze.get(praefix) || 1);
   while (k <= limit) {
-    if (await store.setJSONWennNeu(`${praefix}${k}`, { k })) { platzGrenze.set(praefix, k + 1); return true; }
+    if (await store.setJSONWennNeu(`${praefix}${k}`, { k })) { platzGrenze.set(praefix, k + 1); return { schluessel: `${praefix}${k}`, praefix, k }; }
     k += 1;
   }
   platzGrenze.set(praefix, limit + 1);
   if (platzGrenze.size > 5000) platzGrenze.clear();
-  return false;
+  return null;
+}
+
+/** Nachtrag 2 (F6): Plätze eines Versuchs, der nicht hinausgeht, wieder
+    freigeben — sonst belegte ein zurückgestellter Versuch das Kontingent der
+    Person oder Quelle, ohne dass etwas gesendet wurde. Ein Fehler beim
+    Freigeben lässt den Platz belegt (strenger, nie großzügiger). */
+async function plaetzeFreigeben(store, plaetze) {
+  for (const pl of [...plaetze].reverse()) {
+    await store.delete(pl.schluessel).catch(() => {});
+    if (pl.praefix && Number.isInteger(pl.k)) platzGrenze.set(pl.praefix, Math.min(platzGrenze.get(pl.praefix) || 1, pl.k));
+  }
 }
 
 /** Nur für Prüfungen und nach dem Löschen von Plätzen: den Merker vergessen. */
@@ -219,18 +248,27 @@ export function kontingentCacheLeeren() { platzGrenze.clear(); }
 const quelleVon = (n) => (istObjekt(n.quelle) && n.quelle.von !== undefined && n.quelle.von !== null ? String(n.quelle.von) : null);
 
 /**
- * Versandbremse für einen Kanal einer Mitteilung (Nachtrag Opus-Review B1, B4):
+ * Versandbremse für einen Kanal einer Mitteilung (Nachtrag Opus-Review B1, B4;
+ * Nachtrag 2 F1, F5, F6):
  * - Ein Platz je Mitteilung, Kanal und Tag: Die Marke …:n-<h> hält fest,
  *   dass diese Mitteilung heute schon gezählt ist — eine Wiederholung nach
  *   einem Fehler des Anbieters belegt keinen zweiten Platz.
  * - Normale Arten: Personengrenze (Empfängerschutz; darüber „person“ —
  *   endgültig nicht gesendet), dann der nicht reservierte Teil der
- *   Betriebsgrenze (darüber „betrieb“ — zurückgestellt).
- * - Dringende Arten: keine Personengrenze, aber je Empfänger und Quelle und
- *   je Quelle begrenzt (Flut-Schutz; darüber „person“); dann der nicht
- *   reservierte Teil, danach die Reserve (darüber „betrieb“).
+ *   Betriebsgrenze (darüber „zurueck“ — zurückgestellt).
+ * - Dringende Arten ohne Notruf (Planung: planGeaendert, einspringen,
+ *   uebergabeFehlt): keine Personengrenze, aber je Empfänger begrenzt
+ *   (Grenze „paar“ unter der Quelle „ohne“; darüber „person“); dann NUR der
+ *   nicht reservierte Teil (F1: die Reserve gehört Notrufen).
+ * - Notrufe (istNotruf): je Empfänger und Quelle (paar) und je Quelle — die
+ *   Quellengrenze zählt Notrufe (quelle.id), nicht Mails (F5): ein Notruf an
+ *   drei Empfänger zählt einmal. Dann der nicht reservierte Teil, danach die
+ *   Reserve. Jede Grenze darüber: „zurueck“ (F5: ein Notruf wird bis zum
+ *   nächsten Tag zurückgestellt, nicht verworfen).
+ * - Geht der Versuch nicht hinaus, werden die schon belegten Plätze wieder
+ *   freigegeben (F6).
  * Wirft, wenn die Ablage nicht antwortet (der Aufrufer stellt zurück).
- * @returns {Promise<"frei"|"person"|"betrieb">}
+ * @returns {Promise<"frei"|"person"|"zurueck">}
  */
 async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
   const tag = kontingentTag(jetzt);
@@ -240,16 +278,35 @@ async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
   const mail = kanal === "mail";
   const betrieb = mail ? k.betriebMail : k.betriebPush;
   const reserve = mail ? k.reserveMail : k.reservePush;
+  const paar = mail ? k.paarMail : k.paarPush;
   const praefix = (wer) => quotenPraefix(raum, m.id, tag, kanal, wer);
-  if ((ZUSTELLARTEN[n.art] || {}).dringend) {
-    const q = quelleVon(n);
-    if (!(await platzBeanspruchen(store, praefix(`p-${h(p.id)}:d-${h(q || "ohne")}`), mail ? k.paarMail : k.paarPush))) return "person";
-    if (q !== null && !(await platzBeanspruchen(store, praefix(`q-${h(q)}`), mail ? k.quelleMail : k.quellePush))) return "person";
-    if (!(await platzBeanspruchen(store, praefix("b"), betrieb - reserve))
-      && !(await platzBeanspruchen(store, praefix("r"), reserve))) return "betrieb";
+  /** @type {{schluessel: string, praefix?: string, k?: number}[]} */
+  const belegt = [];
+  const nimm = async (wer, limit) => {
+    const pl = await platzBeanspruchen(store, praefix(wer), limit);
+    if (pl) belegt.push(pl);
+    return !!pl;
+  };
+  const nein = async (/** @type {"person"|"zurueck"} */ ergebnis) => { await plaetzeFreigeben(store, belegt); return ergebnis; };
+  if (istNotruf(n)) {
+    const q = quelleVon(n) ?? "ohne";
+    if (!(await nimm(`p-${h(p.id)}:d-${h(q)}`, paar))) return nein("zurueck");
+    /* F5: ein Platz je Notruf (quelle.id), nicht je Mitteilung. Zwei
+       Mitteilungen desselben Notrufs, die gleichzeitig zum ersten Mal
+       zählen, können zwei Plätze belegen — strenger, nie großzügiger. */
+    const qMarke = `${praefix(`q-${h(q)}`)}i-${h(n.quelle.id)}`;
+    if (!(await store.getMetadata(qMarke))) {
+      if (!(await nimm(`q-${h(q)}`, mail ? k.quelleMail : k.quellePush))) return nein("zurueck");
+      await store.setJSON(qMarke, { tag });
+      belegt.push({ schluessel: qMarke });
+    }
+    if (!(await nimm("b", betrieb - reserve)) && !(await nimm("r", reserve))) return nein("zurueck");
+  } else if ((ZUSTELLARTEN[n.art] || {}).dringend) {
+    if (!(await nimm(`p-${h(p.id)}:d-${h("ohne")}`, paar))) return nein("person");
+    if (!(await nimm("b", betrieb - reserve))) return nein("zurueck");
   } else {
-    if (!(await platzBeanspruchen(store, praefix(`p-${h(p.id)}`), mail ? k.personMail : k.personPush))) return "person";
-    if (!(await platzBeanspruchen(store, praefix("b"), betrieb - reserve))) return "betrieb";
+    if (!(await nimm(`p-${h(p.id)}`, mail ? k.personMail : k.personPush))) return nein("person");
+    if (!(await nimm("b", betrieb - reserve))) return nein("zurueck");
   }
   await store.setJSON(marke, { tag });
   return "frei";
@@ -261,7 +318,13 @@ async function kontingentPruefen(store, { raum, m, n, p, kanal, jetzt }) {
  * Ein Kanal einer Mitteilung. Gibt "erledigt" (endgültig) oder "offen"
  * (später erneut anstoßen) zurück. Wirft nicht für Versandfehler.
  */
-async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
+async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr }) {
+  /* Nachtrag 2 (F3): `jetzt` gilt für die Entscheidungen (Frist, Backoff,
+     Kontingenttag); Claim und Status tragen die Zeit, zu der sie geschrieben
+     werden (uhr()), und die Übernahme eines Claims misst gegen uhr(). Sonst
+     sähe ein Versuch, der in einem langen Durchgang spät beginnt, für andere
+     Anstöße schon älter als OFFEN_FRIST aus — und würde übernommen. */
+  const isoJetzt = () => new Date(uhr()).toISOString();
   const plan = backoffPlan();
   const max = versucheMax(plan);
   const sk = statusSchluessel(raum, m.id, n.id, kanal);
@@ -288,7 +351,9 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
   await store.setJSON(wk, { raum, mandantId: m.id, nid: String(n.id), kanal, naechster: new Date(jetzt + OFFEN_FRIST_MS).toISOString() })
     .catch(() => {});
   let versuch = bisher + 1;
-  const claim = (v) => store.setJSONWennNeu(claimSchluessel(raum, m.id, n.id, kanal, v), { zeit });
+  /** @type {number|null} der übernommene Versuch, dessen Ausgang unbekannt ist */
+  let uebernommen = null;
+  const claim = (v) => store.setJSONWennNeu(claimSchluessel(raum, m.id, n.id, kanal, v), { zeit: isoJetzt() });
   if (!(await claim(versuch))) {
     /* Den Versuch hat ein anderer Anstoß — oder ein Prozess, der nach dem
        Claim und vor dem Status „offen“ abgebrochen ist. Gesendet wird erst
@@ -296,16 +361,20 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
        hinausgeschickt. Dann gilt er als verbraucht, der nächste Versuch folgt. */
     const c = await store.get(claimSchluessel(raum, m.id, n.id, kanal, versuch), { type: "json" }).catch(() => null);
     const seit = c && Date.parse(c.zeit || "");
-    if (!Number.isFinite(seit) || jetzt - seit < OFFEN_FRIST_MS) return "offen";
+    if (!Number.isFinite(seit) || uhr() - seit < OFFEN_FRIST_MS) return "offen";
+    uebernommen = versuch;
     versuch += 1;
     if (versuch > max) return gescheitertNachVersuchen(versuch - 1);
     if (!(await claim(versuch))) return "offen";
   }
   /* Blieb der Ausgang des vorigen Versuchs unbekannt (Absturz nach „offen“),
-     geht derselbe Idempotenzschlüssel hinaus; nach einem bekannten Fehler ein neuer. */
-  const idemVersuch = st && st.status === "offen" ? bisher : versuch;
+     geht derselbe Idempotenzschlüssel hinaus; nach einem bekannten Fehler ein neuer.
+     Nachtrag 2 (F3): Wird ein Claim übernommen, ist der Ausgang SEINES Versuchs
+     unbekannt — dann dessen Schlüssel, nie ein neuer (sonst stellte der
+     Anbieter zu, falls der übernommene Versuch doch noch sendet). */
+  const idemVersuch = st && st.status === "offen" ? bisher : (uebernommen ?? versuch);
   const schreiben = async (s, extra = {}) => {
-    await store.setJSON(sk, { status: s, versuche: versuch, zeit: new Date(jetzt).toISOString(), nid: String(n.id), ...extra });
+    await store.setJSON(sk, { status: s, versuche: versuch, zeit: isoJetzt(), nid: String(n.id), ...extra });
   };
   const endgueltig = async (s, extra = {}) => {
     await schreiben(s, extra);
@@ -361,8 +430,9 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
     return fehlschlag({ klasse: "temporaer" }, "kontingent-unlesbar");
   }
   if (bremse === "person") return status("uebersprungen", { grund: "kontingent" });
-  if (bremse === "betrieb") {
-    /* B1: Die Betriebsgrenze ist erreicht — zurückstellen bis zum nächsten
+  if (bremse === "zurueck") {
+    /* B1: Die Betriebsgrenze ist erreicht (oder, Nachtrag 2 F5, eine
+       Flut-Grenze eines Notrufs) — zurückstellen bis zum nächsten
        Kontingenttag (Mitternacht Berlin), nicht verwerfen. Kein Versuch ist
        verbraucht: Status mit den bisherigen Versuchen, der Claim wird
        freigegeben (erst den Status schreiben, dann den Claim löschen). */
@@ -384,13 +454,18 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
       return status("gesendet", r.trocken ? { trocken: true } : {});
     }
     /* B2: Gesperrt wird nur bei einem ausdrücklich ungültigen Empfänger —
-       nie bei einem Fehler des Absenders, Schlüssels oder der Nachricht. */
-    if (r.klasse === "dauerhaft" && r.ursache === "empfaenger")
-      await store.setJSON(sperrSchluessel(raum, m.id, p.id), { adresse: sperrWert(an), ursache: "empfaenger", zeit }).catch(() => {});
+       nie bei einem Fehler des Absenders, Schlüssels oder der Nachricht.
+       Nachtrag 2 (F7): ohne Sperrwert (Auslieferung ohne Pfeffer) keine Sperre. */
+    const wert = r.klasse === "dauerhaft" && r.ursache === "empfaenger" ? sperrWert(an) : null;
+    if (wert !== null)
+      await store.setJSON(sperrSchluessel(raum, m.id, p.id), { adresse: wert, ursache: "empfaenger", zeit }).catch(() => {});
     return fehlschlag(r, codeVon(r));
   }
   const t = hinweis(n);
-  const r = /** @type {any} */ (await sendePush(anmeldung, t.titel, t.text, pushZiel(n), { topic: h(n.id) })
+  /* Nachtrag 2 (F4): Notrufe und dringende Arten mit hoher Dringlichkeit
+     (Web Push „Urgency: high“ — das Gerät stellt sie auch im Ruhezustand zu). */
+  const dringend = istNotruf(n) || !!(ZUSTELLARTEN[n.art] || {}).dringend;
+  const r = /** @type {any} */ (await sendePush(anmeldung, t.titel, t.text, pushZiel(n), { topic: h(n.id), dringend })
     .catch((e) => ({ ok: false, fehler: String(e), klasse: "temporaer" })));
   if (r.ok) {
     if (!r.trocken) zustellEreignis("push", "zugestellt");
@@ -417,6 +492,11 @@ async function kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }) {
  * @returns {Promise<Map<string, "erledigt"|"offen">>}
  */
 export async function zustellen(store, { raum, bestand, m, ids, erlaubt = () => true, jetzt = Date.now() }) {
+  /* Nachtrag 2 (F3): `jetzt` ist der Bezug der Entscheidungen; was danach
+     vergeht (langsame Anbieter), läuft in uhr() mit — Claim und Status
+     tragen die fortgeschriebene Zeit. Ohne Vorgabe ist das Date.now(). */
+  const anfang = Date.now();
+  const uhr = () => jetzt + (Date.now() - anfang);
   const ergebnis = new Map();
   if (!istObjekt(m)) return ergebnis;
   const nachId = new Map((Array.isArray(m.nachrichten) ? m.nachrichten : [])
@@ -431,7 +511,7 @@ export async function zustellen(store, { raum, bestand, m, ids, erlaubt = () => 
     if (!n || !p || !erlaubt(n, p)) { ergebnis.set(sid, "erledigt"); continue; }
     let offen = false;
     for (const kanal of KANAELE) {
-      const r = await kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt }).catch(() => "offen");
+      const r = await kanalZustellen(store, { raum, bestand, m, n, p, kanal, jetzt, uhr }).catch(() => "offen");
       if (r === "offen") offen = true;
     }
     ergebnis.set(sid, offen ? "offen" : "erledigt");
@@ -447,9 +527,19 @@ export async function zustellen(store, { raum, bestand, m, ids, erlaubt = () => 
  * Regeln, Claims und Kontingenten wie ein Anstoß aus der Oberfläche. Eine
  * Mitteilung oder Person, die es nicht mehr gibt, wird aus der Warteschlange
  * genommen (Status „entfallen“).
+ *
+ * Nachtrag 2: Die Zeit läuft je Satz mit (F3, wie in zustellen()); mit
+ * `bis` (Zeitpunkt auf der Skala von Date.now()) beginnt danach kein
+ * weiterer Satz (F2) — der Rest bleibt fällig für den nächsten Takt.
+ * Zusammen mit den Fristen bei Mail und Push (post.mjs, webpush.mjs) endet
+ * jeder Durchgang.
+ * @param {any} store
+ * @param {{jetzt?: number, max?: number, durchsicht?: number, bis?: number}} [opt]
  * @returns {Promise<{geprueft: number, angestossen: number, entfallen: number, fehler: number}>}
  */
-export async function nachfassen(store, { jetzt = Date.now(), max = 100, durchsicht = 5000 } = {}) {
+export async function nachfassen(store, { jetzt = Date.now(), max = 100, durchsicht = 5000, bis = undefined } = {}) {
+  const anfang = Date.now();
+  const uhr = () => jetzt + (Date.now() - anfang);
   const aus = { geprueft: 0, angestossen: 0, entfallen: 0, fehler: 0 };
   const { blobs } = await store.list({ prefix: "zustellwarte:" });
   const faellig = [];
@@ -466,12 +556,14 @@ export async function nachfassen(store, { jetzt = Date.now(), max = 100, durchsi
      eines anderen Anstoßes noch unterwegs), rückt um OFFEN_FRIST nach hinten
      — sonst belegte ein hängender Satz jeden Takt einen der Plätze. */
   const zurueckstellen = async (w) => {
+    const t = uhr();
     const jetztSatz = await store.get(w.key, { type: "json" }).catch(() => null);
-    if (istObjekt(jetztSatz) && Date.parse(jetztSatz.naechster || "") <= jetzt)
-      await store.setJSON(w.key, { ...jetztSatz, naechster: new Date(jetzt + OFFEN_FRIST_MS).toISOString() }).catch(() => {});
+    if (istObjekt(jetztSatz) && Date.parse(jetztSatz.naechster || "") <= t)
+      await store.setJSON(w.key, { ...jetztSatz, naechster: new Date(t + OFFEN_FRIST_MS).toISOString() }).catch(() => {});
   };
   const staende = new Map();
   for (const w of faellig.slice(0, max)) {
+    if (Number.isFinite(bis) && Date.now() >= bis) break;
     try {
       if (!staende.has(w.raum)) {
         const g = await bestandLesen(store, w.raum).catch(() => null);
@@ -492,12 +584,12 @@ export async function nachfassen(store, { jetzt = Date.now(), max = 100, durchsi
         const nochDa = await bestandLesen(store, w.raum).catch(() => undefined);
         if (nochDa === undefined) { aus.fehler += 1; await zurueckstellen(w); continue; }
         if (nochDa && !(istObjekt(st) && ENDGUELTIG.includes(st.status)))
-          await store.setJSON(sk, { status: "uebersprungen", versuche: 0, zeit: new Date(jetzt).toISOString(), nid: String(w.nid), grund: "entfallen" });
+          await store.setJSON(sk, { status: "uebersprungen", versuche: 0, zeit: new Date(uhr()).toISOString(), nid: String(w.nid), grund: "entfallen" });
         await store.delete(w.key).catch(() => {});
         aus.entfallen += 1;
         continue;
       }
-      await zustellen(store, { raum: w.raum, bestand, m, ids: [String(w.nid)], jetzt });
+      await zustellen(store, { raum: w.raum, bestand, m, ids: [String(w.nid)], jetzt: uhr() });
       await zurueckstellen(w);
       aus.angestossen += 1;
     } catch { aus.fehler += 1; }

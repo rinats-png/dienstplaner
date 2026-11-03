@@ -10,7 +10,7 @@ Betreiberentscheidung 2026-11-03: Mail und Push bleiben **verpflichtender** Best
 | implementiert | ja (Code, Doku, Prüfungen auf diesem Branch) |
 | lokal getestet | ja (Zahlen unten) |
 | CI `Prüfung` | siehe Bericht des Agenten (Lauf-IDs dort) |
-| reviewt (unabhängig, Sicherheit/Datenschutz: Opus-Review nach `MODELL-ROUTING.md`) | Review erfolgt: „integrierbar mit Auflagen“; Befunde B1–B7 und Hinweise behoben (Abschnitt 9); **Nachprüfung offen** |
+| reviewt (unabhängig, Sicherheit/Datenschutz: Opus-Review nach `MODELL-ROUTING.md`) | Review erfolgt: „integrierbar mit Auflagen“; Befunde B1–B7 und Hinweise behoben (Abschnitt 9); unabhängiges Delta-Review dazu erfolgt, Befunde F1–F8 behoben (Abschnitt 11); **Nachprüfung von F1–F8 offen** |
 | in `integration/centric-complete` integriert | **nein** |
 | auf Staging erprobt | **nein** |
 | in Produktion | **nein**; echte Zustellung nie versucht |
@@ -179,7 +179,10 @@ der Quelltextstelle in dieser Tabelle nachvollziehbar.
 - **Eine Push-Anmeldung je Person** (ein Gerät); mehrere Geräte nicht vorgesehen.
 - **Nach dem Abmelden** muss die Person Gerätemitteilungen neu einschalten (gewollt, Datenschutz); die Oberfläche zeigt den
   Schalter anhand des Merkers an der Person — eine Rückmeldung „serverseitig nicht angemeldet“ gibt es noch nicht (Folgearbeit).
-- Unabhängiger Review (Rechte/Datenschutz) steht aus; Staging-Probe steht aus.
+  **Betreiberentscheidung** (offen): Abmelden löscht die **einzige** Push-Anmeldung der Person, auch wenn sie auf einem anderen
+  Gerät angemeldet bleibt — so belassen (geteilte Geräte) oder mehrere Anmeldungen je Person (eigenes Paket).
+- Unabhängiges Review (Opus) und Delta-Review sind erfolgt (Abschnitte 9 und 11); offen sind die Nachprüfung der Behebungen
+  F1–F8 und die Staging-Probe.
 
 ## 7. Für `docs/acc45/EXTERNE-ABNAHMEN-UEBERGABE.md` (Eintrag E-9, Datei **nicht** auf diesem Branch geändert)
 
@@ -204,7 +207,7 @@ Kein echter Sendeversuch, kein Schlüssel, keine Personendaten (Attrappen wie in
 
 | Befund | Behebung | Datei(en) | Prüfung (rot → grün) |
 |---|---|---|---|
-| **B1** MITTEL — Notruf nach Flut/großem Versand endgültig verloren | (a) Reserve der Betriebsgrenze für dringende Arten (`CENTRIC_ZUSTELL_RESERVE_*`, Vorgabe ¼, höchstens 50/250): normale Arten belegen höchstens `betrieb − reserve`, dringende erst diesen Teil, dann die Reserve. (b) Betriebsgrenze erreicht → **zurückgestellt** bis Mitternacht Berlin (Status `fehler`/`kontingent`, Wartesatz, kein Versuch verbraucht, Claim freigegeben), nicht mehr `uebersprungen`. (c) Flut-Schutz: dringende Arten je Empfänger **und Quelle** (`…_DRINGEND_PAAR_*`, 5/10) und je Quelle (`…_DRINGEND_QUELLE_*`, 20/40) und Tag — die Flut einer Person sperrt nicht den Notruf einer anderen. (d) Server: höchstens `CENTRIC_NOTRUF_JE_STUNDE` (3) Notrufe je Person und Stunde lösen Mitteilungen aus (gezählt an den gespeicherten Notrufmitteilungen, Serverzeit); weitere werden gespeichert und angezeigt, aber nicht zugestellt. (e) Kontingenttag nach **Berliner Zeit** (`laufenderTag`). Die Personengrenze normaler Arten bleibt endgültig (Empfängerschutz; die Mitteilung steht im Postfach). | `zustellregeln.mjs`, `versand.mjs` (`kontingentPruefen`), `mitteilungen.mjs` | `mail-push-produktion`: „Monatsplan an 300 Personen …“, „Notruf-Flut einer Person …“, „… je Quelle …“, „Kontingenttag nach Berliner Zeit …“, „neue Notrufmitteilungen je Person und Stunde …“ — 5 rot → grün |
+| **B1** MITTEL — Notruf nach Flut/großem Versand endgültig verloren | (a) Reserve der Betriebsgrenze für dringende Arten (`CENTRIC_ZUSTELL_RESERVE_*`, Vorgabe ¼, höchstens 50/250): normale Arten belegen höchstens `betrieb − reserve`, dringende erst diesen Teil, dann die Reserve. (b) Betriebsgrenze erreicht → **zurückgestellt** bis Mitternacht Berlin (Status `fehler`/`kontingent`, Wartesatz, kein Versuch verbraucht, Claim freigegeben), nicht mehr `uebersprungen`. (c) Flut-Schutz: dringende Arten je Empfänger **und Quelle** (`…_DRINGEND_PAAR_*`, 5/10) und je Quelle (`…_DRINGEND_QUELLE_*`, 20/40) und Tag — die Flut einer Person sperrt nicht den Notruf einer anderen. (d) Server: höchstens `CENTRIC_NOTRUF_JE_STUNDE` (3) Notrufe je Person und Stunde lösen Mitteilungen aus (gezählt an den gespeicherten Notrufmitteilungen, Serverzeit); weitere werden gespeichert und angezeigt, aber nicht zugestellt. (e) Kontingenttag nach **Berliner Zeit** (`laufenderTag`). Die Personengrenze normaler Arten bleibt endgültig (Empfängerschutz; die Mitteilung steht im Postfach). | `zustellregeln.mjs`, `versand.mjs` (`kontingentPruefen`), `mitteilungen.mjs` — **Stand nach Delta-Review (Abschnitt 11, F1):** (a) war unvollständig: Die Reserve stand **allen** dringenden Arten offen, also auch Planungsmitteilungen („Dienstplan geändert“, „Einspringen“); 200 solcher Mails leerten sie, ein Notruf danach wurde zurückgestellt. Behoben in Nachtrag 2: Reserve nur für echte Notrufe (`istNotruf`). | `mail-push-produktion`: „Monatsplan an 300 Personen …“, „Notruf-Flut einer Person …“, „… je Quelle …“, „Kontingenttag nach Berliner Zeit …“, „neue Notrufmitteilungen je Person und Stunde …“ — 5 rot → grün |
 | **B2** MITTEL — synchrones 422 sperrt Adressen dauerhaft | `post.mjs`: `mailFehler(status, rumpf)` liest den Fehlercode: Absender/Domain/Schlüssel (`invalid_from_address`, „`from`“, „domain is not verified“, 401/403) → `konfiguration` (Betreiberalarm, Wiederholung, **keine** Sperre); nur ein ausdrücklich ungültiger Empfänger (`to`) → `ursache: "empfaenger"`; sonst `dauerhaft` ohne Ursache. `versand.mjs` sperrt **nur** mit `ursache "empfaenger"`; Sperren ohne diese Ursache (alte Einordnung) gelten nicht und verschwinden beim Aufräumen; Betreiberschalter `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN=ja` hebt alle auf (Vorschau zählt nur). Betriebsname in Betreff und Fußzeile eine Zeile ohne CR/LF und Steuerzeichen (`einzeilig`). | `post.mjs`, `versand.mjs`, `zustellregeln.mjs`, `server.mjs` | `mail-push-produktion` „Nachtrag B2“ 5 rot → grün (1 weitere war schon grün: Konfiguration ohne Sperre); `mail-push-anbieter` „Nachtrag B2“ 6 rot → grün |
 | **B3** NIEDRIG–MITTEL — Absturz zwischen Claim und „offen“ | Wartesatz **vor** dem Claim; ein Claim älter als `OFFEN_FRIST` ohne Status „offen“ gilt als abgestürzt (gesendet wird erst nach „offen“, es ging nichts hinaus) → nächster Versuch; endgültiger Status räumt den Wartesatz; `nachfassen` nimmt das am längsten Fällige zuerst (statt Schlüsselordnung) und schiebt Unerledigtes (Raum nicht lesbar, Versuch eines anderen unterwegs) um `OFFEN_FRIST` nach hinten; Durchsicht höchstens 5000 Sätze je Takt. | `versand.mjs` | „Absturz nach dem Claim, vor dem Status „offen“ (erster Versuch)“ (Fehlerinjektion), „… Wiederholungsversuchs (Status „fehler“)“, „nachfassen ist fair …“, „Wartesatz zu einer endgültigen Mitteilung …“ — 4 rot → grün |
 | **B4** NIEDRIG — jeder Versuch verbraucht einen Kontingentplatz | Marke `zustellquote:<raum>:<m>:<tag>:<kanal>:n-<h>` je Mitteilung, Kanal und Tag: eine Wiederholung belegt keinen zweiten Platz (am Folgetag zählt sie neu). | `versand.mjs` | „Ausfall des Anbieters frisst kein Kontingent …“ rot → grün |
@@ -222,7 +225,8 @@ Hinweise des Reviews:
   (Entwicklung) der einfache Hash. Prüfung mit festem Testschlüssel. Ein Wechsel des Pfeffers lässt Sperren verfallen.
 - **Betriebsname geht an Resend (US)**: in `docs/MAIL-PUSH-EINRICHTUNG.md` Abschnitt 7 als **Betreiberentscheidung**
   vermerkt (hinnehmen und im AVV/Verzeichnis führen oder Namen weglassen).
-- **Abmelden löscht die einzige Push-Anmeldung der Person**: dokumentiert gelassen (Abschnitt 7 der Anleitung).
+- **Abmelden löscht die einzige Push-Anmeldung der Person**: dokumentiert gelassen (Abschnitt 7 der Anleitung); als
+  **Betreiberentscheidung** vermerkt (Abschnitt 6).
 
 Werkzeug (gleicher Branch): `pruefungen/acc45-status.test.js` teilt `DEPENDENCIES.md` jetzt CRLF-tolerant
 (`split(/\r?\n/)`, Entfernen der Zeile mit `\r?\n`) und prüft, dass wirklich eine Zeile entfernt wurde — unter Windows
@@ -240,9 +244,9 @@ Werkzeug (gleicher Branch): `pruefungen/acc45-status.test.js` teilt `DEPENDENCIE
    Prüfbestand für die Rollen-Sonde; keine Erwartung einer bestehenden Prüfung geändert.
 4. `zustellung-rechte.mjs` (HTTP): Person `s1` (Schichtverantwortung) im Prüfraum für die Sonde; bestehende Prüfungen unverändert.
 5. `acc45-status.test.js`: siehe oben (CRLF-Toleranz).
-7. `zustellung-rechte.test.js`: setzt (wie schon `CENTRIC_ZUSTELL_PERSON_MAIL=1000`) die neuen Flut-Grenzen hoch (`…_DRINGEND_PAAR_MAIL`, `…_DRINGEND_QUELLE_MAIL`, `CENTRIC_NOTRUF_JE_STUNDE`): Die Datei legt bewusst viele Notrufe derselben Person an und prüft Rechte, nicht Grenzen; zwei Prüfungen waren sonst rot, weil die neue Bremse griff. Die Grenzen selbst prüft `mail-push-produktion`. Keine Erwartung geändert.
-8. `server.test.js` („erreicht jede der sechs Funktionen unter ihrem Pfad“): erwartet für `GET /zustellung/schluessel` ohne Sitzung jetzt 401 statt 200 — die gewollte Folge von B7. Geprüft wird weiterhin, dass die Funktion selbst (JSON) antwortet und nicht der Rückfall auf `index.html`; der erste CI-Lauf (41717064303, Kopf `eb8395b`) war nur in diesem Schritt rot.
-6. Die bestehenden Prüfungen zu Kontingenten blieben **unverändert** grün: „Betriebsgrenze gilt auch für dringende Arten“
+6. `zustellung-rechte.test.js`: setzt (wie schon `CENTRIC_ZUSTELL_PERSON_MAIL=1000`) die neuen Flut-Grenzen hoch (`…_DRINGEND_PAAR_MAIL`, `…_DRINGEND_QUELLE_MAIL`, `CENTRIC_NOTRUF_JE_STUNDE`): Die Datei legt bewusst viele Notrufe derselben Person an und prüft Rechte, nicht Grenzen; zwei Prüfungen waren sonst rot, weil die neue Bremse griff. Die Grenzen selbst prüft `mail-push-produktion`. Keine Erwartung geändert.
+7. `server.test.js` („erreicht jede der sechs Funktionen unter ihrem Pfad“): erwartet für `GET /zustellung/schluessel` ohne Sitzung jetzt 401 statt 200 — die gewollte Folge von B7. Geprüft wird weiterhin, dass die Funktion selbst (JSON) antwortet und nicht der Rückfall auf `index.html`; der erste CI-Lauf (41717064303, Kopf `eb8395b`) war nur in diesem Schritt rot.
+8. Die bestehenden Prüfungen zu Kontingenten blieben **unverändert** grün: „Betriebsgrenze gilt auch für dringende Arten“
    (die Reserve ist Teil der Betriebsgrenze, nicht zusätzlich), „Personengrenze …“ (endgültig wie bisher), „Grenze 0 sperrt
    den Kanal“ (jetzt zurückgestellt statt übersprungen; geprüft wird `grund: "kontingent"` und dass nichts hinausgeht).
 
@@ -299,5 +303,85 @@ Schritte voraus (E-9, nur der Betreiber). Sicherheit und Datenschutz (B1–B7) g
 | A3 | **Doppelzustellung**: atomarer Claim je Versuch (parallel genau einmal); nach Absturz derselbe Idempotency-Key (Mail) bzw. dasselbe Topic (Push); kein Versand vor dem Status „offen“ (Absturz davor ⇒ kein Versand); **Restrisikogrenze**: höchstens `versucheMax()` (Vorgabe 5) Zustellversuche je Mitteilung und Kanal; ein Duplikat ist nur möglich, wenn ein Prozess **nach** dem Senden und **vor** dem Quittieren abbricht **und** (Mail) die Wiederholung später als 24 h nach dem ersten Versuch beim Anbieter ankommt — die Wiederholung erfolgt nach `OFFEN_FRIST` = 15 min, also nur bei mehr als 24 h Takt-Ausfall — oder (Push) das Gerät die erste Nachricht schon abgeholt hatte | implementiert | erfüllt; gemessen in Prüfungen („zehn gleichzeitige Anstöße: genau eine Mail“, „Absturz zwischen Senden und Quittieren … gleicher Idempotenzschlüssel“, „Absturz nach dem Claim, vor dem Status“); Messung im Betrieb: Zähler `zugestellt` je Stunde in `/gesund` gegen Anbieter-Dashboard (Staging) |
 | A4 | **SSRF-Abwehr** Push: Allowlist der Herstellerdienste (`pushEndpunktErlaubt`; weitere nur über `CENTRIC_PUSH_HOSTS`), nur `https`, kein Port, keine Zugangsdaten in der Adresse, keine IP-Literale/`localhost`/Metadatenadressen, `.example` nur außerhalb der Auslieferung; geprüft beim Anmelden **und** vor jedem Senden; Redirect: `web-push` sendet über Node-`https.request`, das keinem Redirect folgt; DNS: nur Hostnamen der Allowlist (fremde Namen werden nicht aufgelöst) | implementiert | erfüllt für Allowlist/Schema/IP-Literal/Port (Tests `mail-push-anbieter`, `mail-push-handler`, HTTP `zustellung-rechte.mjs`); **offen für WP-30b**: Prüfung der aufgelösten IP (privates Netz) bei Allowlist-Hosts und ein Test, der „kein Redirect“ am Transport belegt |
 | A5 | Inhalt ohne Personen-/Gesundheitsdaten, Entwurfsregel, Opt-out, Rollen-/Mandantentrennung, Kontingente mit Notruf-Reserve, Statusabfrage nur eigene Person, Löschung/Aufbewahrung | implementiert | erfüllt (Abschnitte 2–4, 9) |
-| A6 | Unabhängiges Review (Opus) und Nachprüfung der Befunde B1–B7 | reviewt | Review erfolgt; Nachprüfung dieses Nachtrags offen |
+| A6 | Unabhängiges Review (Opus) und Nachprüfung der Befunde B1–B7 | reviewt | Review erfolgt; Delta-Review erfolgt (Befunde F1–F8, Abschnitt 11, behoben); Nachprüfung von F1–F8 offen |
 | A7 | **Echte Zustelltests** mit realen Konten/Geräten: Resend-Konto, Domain mit SPF/DKIM/DMARC verifiziert, API-Schlüssel, VAPID-Paar, `.env`; Zustelltest Mail (Posteingang, nicht Spam), Push auf Android (Chrome) **und** iOS-PWA (Startbildschirm, iOS ≥ 16.4); Fehlerpfade (falscher Absender ⇒ `konfiguration`, keine Sperre) | **produktiv freigegeben** (extern, E-9, Betreiber) | offen — nicht Voraussetzung für „implementiert“; Schritte in `docs/MAIL-PUSH-EINRICHTUNG.md` Abschnitt 4 |
+
+## 11. Nachtrag 2 — Delta-Review (F1–F8)
+
+Unabhängiges Delta-Review zum Stand `3931427`. Je Befund zuerst eine Prüfung, die auf `3931427` **rot** war (Läufe mit den
+neuen Prüfungen gegen den unveränderten Code), danach die Behebung; dazu Mutanten der neuen Logik. Kein echter Sendeversuch,
+kein Schlüssel, keine Personendaten (Attrappen wie in Abschnitt 3). Nicht in diesem Nachtrag: Webhook-Bounces und
+IP-Prüfung (WP-30b), IONOS-SMTP-Adapter (eigenes Paket; `post.mjs` ist dafür nur minimal geändert — Frist als Konstante
+`MAIL_FRIST_MS`, der Anbieterweg bleibt an einer Stelle).
+
+| Befund | Behebung | Datei(en) | Prüfung (rot → grün) |
+|---|---|---|---|
+| **F1** MITTEL — Notruf-Reserve von allen dringenden Arten geteilt | Die Reserve gehört nur **echten Notrufen** (`istNotruf`: `quelle.art === "notruf"`; `quelle` setzt nie ein Client). Dringende Arten der Planung (`planGeaendert`, `einspringen`, `uebergabeFehlt`) belegen wie normale Arten nur `betrieb − reserve`; ihre Grenze je Empfänger (`…_DRINGEND_PAAR_*`, Quelle „ohne“) bleibt. Damit ist B1 (a) erst jetzt vollständig (siehe Abschnitt 9). | `mitteilungen.mjs` (`istNotruf`), `versand.mjs` (`kontingentPruefen`), `zustellregeln.mjs` (Kommentar), Doku | `mail-push-produktion` „200 × Dienstplan geändert … der Notruf danach geht hinaus“, „… dringende Art ohne Quelle nimmt die Reserve auch bei kleiner Grenze nicht“ — 2 rot → grün |
+| **F2** MITTEL — kein Timeout bei Mail/Push | Mail: `fetch` mit `AbortSignal.timeout(15000)` (Anfrage und Antwort). Push: `timeout: 10000` an `web-push` und zusätzlich ein eigenes Ende des Wartens nach 11 s (`Promise.race`, Timer in `finally` geräumt). Beides `temporaer`. `nachfassen({ bis })` beginnt nach `bis` keinen weiteren Satz; der Takt in `server.mjs` übergibt `bis: Date.now() + 50_000`; der Merker `nachfassenLaeuft` fällt weiterhin in `finally`. | `post.mjs`, `webpush.mjs`, `versand.mjs`, `server.mjs` | `mail-push-anbieter` „Mail: … hängender Anbieter“, „Push: … hängender Dienst“, „nachfassen kommt bei hängendem Mailanbieter zurück“ (je mit Attrappe, die nie antwortet; vorher Testzeitüberschreitung); `mail-push-produktion` „nachfassen hält eine Frist ein“, Quelltextprüfung des Takts — 5 rot → grün |
+| **F3** NIEDRIG–MITTEL — veraltetes `jetzt` → Übernahme eines laufenden Versuchs mit neuem Schlüssel | `zustellen()`/`nachfassen()` führen eine fortlaufende Uhr (`jetzt + vergangene Zeit`); Claim und Status tragen die Zeit ihres Schreibens, die Übernahme eines Claims misst dagegen; `nachfassen` gibt jedem Satz die aktuelle Zeit. Wird ein Claim übernommen, geht der **Idempotenzschlüssel des übernommenen Versuchs** hinaus (dessen Ausgang unbekannt ist), nicht ein neuer. Entscheidungen (Frist, Backoff, Kontingenttag) bleiben auf dem übergebenen `jetzt`. | `versand.mjs` | „Übernahme: … mit SEINEM Idempotenzschlüssel“, „nachfassen: ein langer Durchgang schreibt Claim und Status mit der Zeit des Satzes“ (Uhr per `vi.spyOn(Date, "now")` um 20 min vorgestellt) — 3 rot → grün („zustellen mit mehreren Mitteilungen …“ kam nach dem ersten Mutantenlauf hinzu, ebenfalls rot auf `3931427`) |
+| **F4** MITTEL — Notruf-Push mit Urgency „normal“ | `sendePush(…, { dringend })` → `urgency: "high"`; `versand.mjs` setzt `dringend` für Notrufe und dringende Arten. | `webpush.mjs`, `versand.mjs` | `mail-push-anbieter` „dringend → urgency high“, `mail-push-produktion` „Notruf und Dienstplan geändert: dringend …“ — 2 rot → grün |
+| **F5** NIEDRIG — Flutschutz zählt Mails; Notruf über der Grenze verworfen | Die Quellengrenze (`…_DRINGEND_QUELLE_*`) zählt **Notrufe** (`quelle.id`, Marke `…:q-<h>:i-<h>`), nicht Mails: ein Notruf an drei Empfänger zählt einmal. Ein Notruf über der Paar- oder Quellengrenze wird **zurückgestellt** bis zum nächsten Kontingenttag (Status `fehler`/`kontingent`, Wartesatz), nicht verworfen. Rest: Zählen zwei Mitteilungen desselben Notrufs gleichzeitig zum ersten Mal, können sie zwei Plätze belegen (strenger, nie großzügiger). | `versand.mjs`, Doku | „F5: die Grenze je Quelle zählt Notrufe …“, „F5: Notruf über der Grenze je Empfänger und Quelle: zurückgestellt …“ — 2 rot → grün |
+| **F6** NIEDRIG — zurückgestellter Versuch verbraucht Plätze | Plätze werden je Versuch gesammelt und bei jedem „nicht hinaus“ (zurückgestellt oder Personengrenze) wieder freigegeben (Löschen, Merker `platzGrenze` gesenkt). Ein Fehler beim Freigeben lässt den Platz belegt. | `versand.mjs` (`plaetzeFreigeben`) | „F6: … belegt keinen Platz der Person“, „F6: ein zurückgestellter Notruf belegt keinen Platz der Quelle“ — 2 rot → grün |
+| **F7** NIEDRIG — Sperr-HMAC ohne Pfeffer | In `NODE_ENV=production` ohne `CENTRIC_PFEFFER` gibt es keinen Sperrwert: keine Sperre wird geschrieben, keine gilt (kein Rückfall auf SHA-256). Folge: Ein ungültiger Empfänger wird je Mitteilung einmal versucht (dauerhaft, nicht wiederholt), aber nicht gesperrt. Außerhalb der Auslieferung unverändert. | `versand.mjs` | „NODE_ENV=production ohne CENTRIC_PFEFFER: keine Sperre …“ — rot → grün |
+| **F8** NIEDRIG — `recipient` zu breit; Mutanten MC/MD überlebten | Empfängerursache nur bei Fehler des To-Felds (`` `to` ``, „to field“, `invalid_to_address`). Neue Prüfungen gegen die Überlebenden: MC (C1/DEL in `einzeilig`, direkt und im Betreff), MD (Absender vor Empfänger: Texte, die beides nennen; der Testdomain-Hinweis „other recipients“). | `post.mjs` | `mail-push-anbieter` „Nachtrag B2“: 2 Fälle rot → grün („recipients list“, „recipient count“), 4 weitere Fälle (Vorrang Absender, `invalid_to_address`) waren schon grün und töten MD; `mail-push-produktion` „Nachtrag 2 F8“ 2 (schon grün, töten MC) |
+
+Dazu Dokumentation: `docs/MAIL-PUSH-EINRICHTUNG.md` (Kontingente, Fristen, Sperre ohne Pfeffer, Fehlersuche, Abmelden als
+Betreiberentscheidung), `docs/BETRIEBSHANDBUCH.md` und `.env.example` (Bedeutung von Reserve und Quellengrenze).
+Abschnitt 6 und die Nummerierung der Änderungsliste in Abschnitt 9 sind korrigiert; B1 ist in Abschnitt 9 auf dem Stand von F1
+ausgewiesen.
+
+### Änderungen an bestehenden Prüfungen (begründet, keine Abschwächung)
+
+1. `mail-push-produktion.test.js`: Die Push-Attrappe zeichnet zusätzlich `opt.dringend` auf (für F4); sonst unverändert.
+2. `mail-push-anbieter.test.js`: Die `web-push`-Attrappe kann auf Wunsch nie antworten (`wp.haengen`, Vorgabe aus); sonst unverändert.
+
+Keine Erwartung einer bestehenden Prüfung wurde geändert; alle bestehenden Prüfungen sind grün.
+
+### Mutanten (Nachtrag 2)
+
+24 gezielte Fehler der neuen Logik, je mit den zuständigen Prüfungen (`-t` Filter) gelaufen. Im ersten Lauf überlebten
+M09/M10 (die Prüfung prüfte die frische Zeit nur über `nachfassen`, das jedem Satz ohnehin die aktuelle Zeit gibt); dafür
+kam die Prüfung „zustellen mit mehreren Mitteilungen …“ hinzu (auf `3931427` rot), danach **alle 24 gefangen**.
+
+| Nr | Mutant | Datei | rote Tests |
+|---|---|---|---|
+| M01 | Planung nimmt die Reserve (F1) | `versand.mjs` | 2 |
+| M02 | istNotruf erkennt keinen Notruf (F1) | `mitteilungen.mjs` | 1 |
+| M03 | Quellengrenze zählt je Mail (F5) | `versand.mjs` | 1 |
+| M04 | Notruf über Paargrenze verworfen (F5) | `versand.mjs` | 1 |
+| M05 | Notruf über Quellengrenze verworfen (F5) | `versand.mjs` | 1 |
+| M06 | keine Freigabe der Plätze (F6) | `versand.mjs` | 2 |
+| M07 | Freigabe ohne Senken des Merkers (F6) | `versand.mjs` | 2 |
+| M08 | Übernahme mit neuem Idempotenzschlüssel (F3) | `versand.mjs` | 1 |
+| M09 | Claim mit Zeit des Anstoßes (F3) | `versand.mjs` | 1 |
+| M10 | Status mit Zeit des Anstoßes (F3) | `versand.mjs` | 1 |
+| M11 | nachfassen ohne fortlaufende Zeit (F3) | `versand.mjs` | 1 |
+| M12 | nachfassen ignoriert `bis` (F2) | `versand.mjs` | 1 |
+| M13 | Mail ohne Frist (F2) | `post.mjs` | 2 |
+| M14 | Push ohne eigenes Ende des Wartens (F2) | `webpush.mjs` | 1 |
+| M15 | web-push ohne `timeout` (F2) | `webpush.mjs` | 1 |
+| M16 | Urgency immer „normal“ (F4) | `webpush.mjs` | 1 |
+| M17 | nur Notrufe dringend (F4) | `versand.mjs` | 1 |
+| M18 | Rückfall auf reinen Hash in Produktion (F7) | `versand.mjs` | 1 |
+| M19 | Sperre ohne Wert geschrieben (F7) | `versand.mjs` | 1 |
+| M20 | „recipient“ wieder Empfängerursache (F8) | `post.mjs` | 2 |
+| M21 | MC: `einzeilig` ohne C1/DEL (F8) | `zustellregeln.mjs` | 2 |
+| M22 | MD: Empfänger- vor Absenderprüfung (F8) | `post.mjs` | 1 |
+| M23 | Takt ohne `bis` (F2) | `server.mjs` | 1 |
+| M24 | Merker ohne `finally` (F2) | `server.mjs` | 1 |
+
+Hinweis MC: `s` in `einzeilig` erfasst U+2028/U+2029 ohnehin; der Teil „ohne U+2028“ des Mutanten ist gleichwertig zum
+Original. Gefangen wird er über C1/DEL (U+0080–U+009F, U+007F), die `s` nicht erfasst.
+
+Lauf in einem Spiegel im Scratchpad des Agenten (Kopie von `server/`, `server.mjs`, `public/`, `werkzeug/` und der zwei
+Prüfdateien; nicht im Repository, kein fremder Worktree verändert); jede Zeile nennt Datei und Regel.
+
+### Lokale Läufe (einzeln, `--testTimeout=120000 --hookTimeout=120000`)
+
+| Datei | Tests | Ergebnis |
+|---|---|---|
+| `mail-push-produktion` | 75 (60 + 15 neu) | vorher 13 der neuen rot (2 F8 grün, siehe oben), nachher alle grün (Gesamtlauf mit 74 in 455 s bei paralleler Last anderer Agenten; die nachträglich ergänzte F3-Prüfung danach mit ihrem Block grün) |
+| `mail-push-anbieter` | 58 (48 + 10 neu) | vorher 6 der neuen rot, nachher alle grün |
+| `mail-push-handler` | 20 | grün |
+| `zustellung-rechte`; `post` + `doku` | 42; 16 | grün |
+| `eslint` (geänderte Dateien), `tsc -p jsconfig.json` | – | 0 Fehler |

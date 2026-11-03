@@ -551,7 +551,9 @@ if ((process.env.CENTRIC_ZUSTELL_TAKT || "an").trim().toLowerCase() !== "aus") {
   const takt = async () => {
     if (nachfassenLaeuft) return;
     nachfassenLaeuft = true;
-    try { await nachfassen(getStore({ name: "centric", consistency: "strong" })); }
+    /* Nachtrag 2 (F2): Ein Durchgang beginnt nach 50 s keinen Satz mehr; Mail
+       und Push haben eigene Fristen. Der Merker fällt in jedem Fall (finally). */
+    try { await nachfassen(getStore({ name: "centric", consistency: "strong" }), { bis: Date.now() + 50_000 }); }
     catch (e) { console.error("Zustell-Warteschlange fehlgeschlagen:", e && e.message ? e.message : e); }
     finally { nachfassenLaeuft = false; }
   };

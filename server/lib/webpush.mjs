@@ -52,12 +52,18 @@ export function pushKlasse(status) {
   return "temporaer";
 }
 
+/* Nachtrag 2 (F2): Frist für eine Anfrage an den Push-Dienst. web-push bricht
+   die Anfrage nach `timeout` ab; zusätzlich endet das Warten hier spätestens
+   eine Sekunde danach — ein hängender Dienst hält weder den Versand noch den
+   Takt (nachfassen) auf. Eine Zeitüberschreitung ist vorübergehend. */
+export const PUSH_FRIST_MS = 10_000;
+
 /**
  * @param {any} anmeldung  die gespeicherte Push-Anmeldung (Push-Register)
  * @param {string} titel
  * @param {string} text
  * @param {string|null} ziel
- * @param {{topic?: string}} [opt]
+ * @param {{topic?: string, dringend?: boolean}} [opt]  dringend: Urgency „high“ (Notruf, dringende Arten — Nachtrag 2, F4)
  * @returns {Promise<{ok: boolean, trocken?: boolean, erloschen?: boolean, klasse?: string, status?: number, fehler?: string}>}
  */
 export async function sendePush(anmeldung, titel, text, ziel, opt = {}) {
@@ -65,19 +71,27 @@ export async function sendePush(anmeldung, titel, text, ziel, opt = {}) {
   if (!oeff || !priv) return { ok: true, trocken: true };
   if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint))
     return { ok: false, erloschen: true, klasse: "erloschen", fehler: "endpunkt-nicht-erlaubt" };
+  /** @type {any} */
+  let wecker;
   try {
     const webpush = await import("web-push");
     webpush.default.setVapidDetails(
       process.env.VAPID_KONTAKT || "mailto:kein-kontakt@example.invalid", oeff, priv);
-    await webpush.default.sendNotification(anmeldung,
+    const zeitUm = new Promise((_, nein) => {
+      wecker = setTimeout(() => nein(Object.assign(new Error("zeitueberschreitung"), { zeitUm: true })), PUSH_FRIST_MS + 1000);
+    });
+    await Promise.race([webpush.default.sendNotification(anmeldung,
       JSON.stringify({ titel, text, ziel }),
-      { TTL: 24 * 60 * 60, urgency: "normal", ...(opt.topic ? { topic: opt.topic } : {}) });
+      { TTL: 24 * 60 * 60, urgency: opt.dringend ? "high" : "normal", timeout: PUSH_FRIST_MS,
+        ...(opt.topic ? { topic: opt.topic } : {}) }), zeitUm]);
     return { ok: true };
   } catch (e) {
     const status = e && Number.isInteger(e.statusCode) ? e.statusCode : undefined;
     const klasse = status === undefined ? "temporaer" : pushKlasse(status);
     /* Nur der Statuscode — der Text des Dienstes enthält den Endpunkt. */
     return { ok: false, erloschen: klasse === "erloschen", klasse, status,
-      fehler: status !== undefined ? `http-${status}` : "netz" };
+      fehler: status !== undefined ? `http-${status}` : e && e.zeitUm ? "zeit" : "netz" };
+  } finally {
+    clearTimeout(wecker);
   }
 }

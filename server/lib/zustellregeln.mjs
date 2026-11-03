@@ -137,7 +137,10 @@ const grenze = (name, vorgabe) => {
    dürfen höchstens `betrieb − reserve` belegen; dringende nehmen zuerst
    diesen Teil und dann die Reserve. Vorgabe: ein Viertel der
    Betriebsgrenze, höchstens 50 (Mail) bzw. 250 (Push); ausdrücklich gesetzt
-   höchstens die Betriebsgrenze. */
+   höchstens die Betriebsgrenze.
+   Nachtrag 2 (F1): Die Reserve gehört nur echten Notrufen (istNotruf in
+   mitteilungen.mjs); dringende Arten der Planung (Dienständerung,
+   Einspringen, Übergabe) belegen wie normale Arten nur `betrieb − reserve`. */
 const reserve = (name, betrieb, hoechstens) => {
   const roh = process.env[name];
   if (roh !== undefined && String(roh).trim() !== "") {
@@ -151,11 +154,11 @@ const reserve = (name, betrieb, hoechstens) => {
  * Obergrenzen je Tag. 0 sperrt den Kanal. Über die Umgebung einstellbar.
  * - person*: je Empfänger, nur normale Arten (Empfängerschutz; was darüber
  *   liegt, wird nicht gesendet — die Mitteilung steht im Postfach).
- * - betrieb*: je Betrieb, alle Arten; davon reserve* nur für dringende.
+ * - betrieb*: je Betrieb, alle Arten; davon reserve* nur für Notrufe.
  * - paar*: dringende Arten je Empfänger und Quelle (Flut-Schutz: viele
- *   Notrufe derselben Person an dieselbe Planerin).
- * - quelle*: dringende Mitteilungen aus Vorgängen einer Person (Notruf),
- *   über alle Empfänger.
+ *   Notrufe derselben Person an dieselbe Planerin; Planung: Quelle „ohne“).
+ * - quelle*: Notrufe einer Person je Tag — je Notruf gezählt, nicht je
+ *   Mitteilung (Nachtrag 2, F5).
  */
 export function kontingente() {
   const betriebMail = grenze("CENTRIC_ZUSTELL_BETRIEB_MAIL", 200);

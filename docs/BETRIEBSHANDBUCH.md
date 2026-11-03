@@ -72,9 +72,9 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_ZUSTELL_BACKOFF` | Mail/Push (WP-30): Wartezeiten in Sekunden vor Wiederholung 2, 3, …, Komma-getrennt; Anzahl + 1 = höchste Versuchszahl | `60,300,1800,7200` | ja (auskommentiert) |
 | `CENTRIC_ZUSTELL_PERSON_MAIL`, `CENTRIC_ZUSTELL_PERSON_PUSH` | Tageskontingent je Person und Kanal (dringende Arten ausgenommen); `0` sperrt den Kanal | 10 / 30 | ja (auskommentiert) |
 | `CENTRIC_ZUSTELL_BETRIEB_MAIL`, `CENTRIC_ZUSTELL_BETRIEB_PUSH` | Tageskontingent je Betrieb und Kanal (Tag nach Berliner Zeit); erreicht → zurückgestellt bis Mitternacht, nicht verworfen | 200 / 1000 | ja (auskommentiert) |
-| `CENTRIC_ZUSTELL_RESERVE_MAIL`, `CENTRIC_ZUSTELL_RESERVE_PUSH` | Teil der Betriebsgrenze nur für dringende Arten (Notruf); normale Arten belegen höchstens den Rest | ¼ der Betriebsgrenze, höchstens 50 / 250 | ja (auskommentiert) |
-| `CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL`, `CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH` | dringende Mitteilungen je Empfänger und Quelle und Tag (Flut-Schutz) | 5 / 10 | ja (auskommentiert) |
-| `CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL`, `CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH` | dringende Mitteilungen aus Vorgängen einer Person je Tag, über alle Empfänger | 20 / 40 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_RESERVE_MAIL`, `CENTRIC_ZUSTELL_RESERVE_PUSH` | Teil der Betriebsgrenze nur für echte Notrufe; alle anderen Arten (auch dringende der Planung) belegen höchstens den Rest | ¼ der Betriebsgrenze, höchstens 50 / 250 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL`, `CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH` | dringende Mitteilungen je Empfänger und Quelle und Tag (Flut-Schutz; Notruf darüber zurückgestellt) | 5 / 10 | ja (auskommentiert) |
+| `CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL`, `CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH` | Notrufe einer Person je Tag (gezählt je Notruf, nicht je Mail; darüber zurückgestellt) | 20 / 40 | ja (auskommentiert) |
 | `CENTRIC_NOTRUF_JE_STUNDE` | Notrufe je Person und Stunde, die Mitteilungen auslösen (weitere werden gespeichert, nicht zugestellt) | 3 | ja (auskommentiert) |
 | `CENTRIC_ZUSTELL_SPERREN_AUFHEBEN` | `ja`: das nächste Zustellaufräumen hebt alle Adresssperren auf (nach einem Konfigurationsfix); danach entfernen | leer | ja (auskommentiert) |
 | `CENTRIC_ZUSTELLPROTOKOLL_TAGE` | Aufbewahrung des Zustellprotokolls (1–365); wirkt im Datenschutzlauf (`CENTRIC_DATENSCHUTZLAUF`: `vorschau` zählt, `an` löscht) | 30 | ja (auskommentiert) |

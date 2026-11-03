@@ -17,6 +17,10 @@
    so läuft die Anwendung heute.
    ========================================================================== */
 
+/** Frist für eine Anfrage an den Mailanbieter (Nachtrag 2, F2). Gilt für
+    jeden Anbieter-Weg dieser Datei; ein späterer Adapter übernimmt sie. */
+export const MAIL_FRIST_MS = 15_000;
+
 /**
  * Schickt eine Nachricht. Wirft nicht: Ein Fehler des Anbieters ist eine
  * Antwort, keine Ausnahme — sonst reißt ein Ausfall beim Versand einen
@@ -48,6 +52,9 @@ export async function sendeMail(an, betreff, text, opt = {}) {
   try {
     const a = await fetch("https://api.resend.com/emails", {
       method: "POST",
+      /* Nachtrag 2 (F2): Ein hängender Anbieter bricht nach MAIL_FRIST_MS ab
+         (Anfrage und Lesen der Antwort) — vorübergehend, später erneut. */
+      signal: AbortSignal.timeout(MAIL_FRIST_MS),
       headers: { authorization: `Bearer ${schluessel}`, "content-type": "application/json",
         ...(opt.idempotenz ? { "idempotency-key": String(opt.idempotenz).slice(0, 256) } : {}) },
       body: JSON.stringify({ from: absender, to: [an], subject: betreff, text }),
@@ -88,7 +95,10 @@ export function mailKlasse(status) {
      falsch, nicht die Adresse). */
 const KONFIG_NAMEN = ["invalid_from_address", "invalid_api_key", "restricted_api_key", "missing_api_key", "invalid_access"];
 const ABSENDER_TEXT = /`from`|\bfrom\b field|domain is not verified|not verified|sender/i;
-const EMPFAENGER_TEXT = /`to`|\bto\b field|recipient/i;
+/* Nachtrag 2 (F8): nur ein Fehler des To-Felds — nicht jedes „recipient“
+   (z. B. „too many recipients“ oder der Hinweis der Testdomain, „other
+   recipients“: das ist kein Fehler der Adresse). */
+const EMPFAENGER_TEXT = /`to`|\bto\b field/i;
 
 /**
  * Klasse und Ursache einer Fehlerantwort des Mailanbieters.

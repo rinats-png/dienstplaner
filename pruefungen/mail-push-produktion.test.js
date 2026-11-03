@@ -39,7 +39,7 @@ vi.mock("../server/lib/post.mjs", async (original) => ({
 vi.mock("../server/lib/webpush.mjs", async (original) => ({
   ...(await original()),
   sendePush: async (anmeldung, titel, text, ziel, opt = {}) => {
-    post.pushes.push({ endpoint: anmeldung && anmeldung.endpoint, titel, text, ziel, topic: opt.topic });
+    post.pushes.push({ endpoint: anmeldung && anmeldung.endpoint, titel, text, ziel, topic: opt.topic, dringend: opt.dringend });
     return post.pushAntworten.length ? post.pushAntworten.shift() : { ok: true };
   },
 }));
@@ -861,5 +861,202 @@ describe("Nachtrag Hinweis: nachfassen und parallele Raumlöschung", () => {
     await V.nachfassen(store, { jetzt: JETZT });
     expect(post.mails).toHaveLength(1);
     expect(await store.getMetadata(V.statusSchluessel("rl", m.id, "rl-a", "mail"))).toBeNull();
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG 2 — DELTA-REVIEW WP-30 (F1–F8)
+
+   Welche Prüfung auf dem Stand 3931427 rot war, steht im Nachweis
+   (docs/acc45/wp30-nachweis.md, Abschnitt 11).
+   ========================================================================== */
+
+const hKurz = async (s) => (await import("node:crypto")).createHash("sha256").update(String(s)).digest("hex").slice(0, 24);
+const FLUT_GRENZEN = ["CENTRIC_ZUSTELL_RESERVE_MAIL", "CENTRIC_ZUSTELL_RESERVE_PUSH", "CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL",
+  "CENTRIC_ZUSTELL_DRINGEND_PAAR_PUSH", "CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL", "CENTRIC_ZUSTELL_DRINGEND_QUELLE_PUSH"];
+
+describe("Nachtrag 2 F1: die Reserve gehört echten Notrufen, nicht allen dringenden Arten", () => {
+  beforeEach(() => { for (const k of FLUT_GRENZEN) delete process.env[k]; });
+
+  it("200 × „Dienstplan geändert“ (dringend, ohne Quelle) leeren die Reserve nicht: der Notruf danach geht hinaus", async () => {
+    const viele = Array.from({ length: 200 }, (_, i) => person(`g${i}`, "mitarbeiter"));
+    const m = betrieb({ personen: [...betrieb().personen, ...viele],
+      nachrichten: [...viele.map((p) => mitteilung(`pg-${p.id}`, p.id)), notrufMitteilung("nr-f1", "a2", "l1")] });
+    await stelleZu(m, viele.map((p) => `pg-${p.id}`));
+    const vorher = post.mails.length;
+    expect(vorher).toBeGreaterThan(0);
+    expect(vorher).toBeLessThan(200);                                          // nur der nicht reservierte Teil
+    expect(await status(m, "pg-g199", "mail")).toMatchObject({ status: "fehler", grund: "kontingent" });
+    await stelleZu(m, ["n-notruf-nr-f1-l1"]);
+    expect(await status(m, "n-notruf-nr-f1-l1", "mail")).toMatchObject({ status: "gesendet" });
+    expect(post.mails).toHaveLength(vorher + 1);
+  }, 300_000);
+
+  it("eine dringende Art ohne Quelle nimmt die Reserve auch bei kleiner Grenze nicht; ein Notruf schon", async () => {
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "8";                              // Reserve 2
+    const m = betrieb({ nachrichten: [...Array.from({ length: 8 }, (_, i) => mitteilung(`pk${i}`, i % 2 ? "l1" : "p1", { art: "einspringen" })),
+      notrufMitteilung("nr-k1", "a1", "l1"), notrufMitteilung("nr-k2", "a2", "p1")] });
+    await stelleZu(m, m.nachrichten.slice(0, 8).map((n) => n.id));
+    expect(post.mails).toHaveLength(6);
+    await stelleZu(m, ["n-notruf-nr-k1-l1", "n-notruf-nr-k2-p1"]);
+    expect(post.mails).toHaveLength(8);
+  });
+});
+
+describe("Nachtrag 2 F5/F6: Flut-Schutz zählt Notrufe; Notrufe über der Grenze zurückgestellt; Zurückgestelltes belegt keine Plätze", () => {
+  beforeEach(() => { for (const k of FLUT_GRENZEN) delete process.env[k]; });
+
+  it("F5: die Grenze je Quelle zählt Notrufe, nicht Mails — ein Notruf an drei Empfänger zählt einmal", async () => {
+    process.env.CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL = "1";
+    const m = betrieb({ personen: [...betrieb().personen, person("s1", "subplaner")],
+      nachrichten: ["l1", "p1", "s1"].map((an) => notrufMitteilung("nr-d1", "a1", an)).concat([notrufMitteilung("nr-d2", "a1", "l1")]) });
+    await stelleZu(m, ["n-notruf-nr-d1-l1", "n-notruf-nr-d1-p1", "n-notruf-nr-d1-s1"]);
+    expect(post.mails.map((x) => x.an).sort()).toEqual(["l1@kunde.example", "p1@kunde.example", "s1@kunde.example"]);
+    await stelleZu(m, ["n-notruf-nr-d2-l1"]);                                   // zweiter Notruf derselben Quelle
+    expect(post.mails).toHaveLength(3);
+    const st = await status(m, "n-notruf-nr-d2-l1", "mail");
+    expect(st).toMatchObject({ status: "fehler", grund: "kontingent" });          // zurückgestellt, nicht verworfen
+    expect(Date.parse(st.naechster)).toBe(Date.parse("2026-12-10T23:00:00.000Z"));
+    expect(await store.getMetadata(V.warteSchluessel(RAUM, m.id, "n-notruf-nr-d2-l1", "mail"))).not.toBeNull();
+  });
+
+  it("F5: Notruf über der Grenze je Empfänger und Quelle: zurückgestellt bis zum nächsten Tag, nicht verworfen", async () => {
+    process.env.CENTRIC_ZUSTELL_DRINGEND_PAAR_MAIL = "1";
+    const m = betrieb({ nachrichten: [notrufMitteilung("nr-p1", "a1", "l1"), notrufMitteilung("nr-p2", "a1", "l1")] });
+    await stelleZu(m, ["n-notruf-nr-p1-l1", "n-notruf-nr-p2-l1"]);
+    expect(post.mails).toHaveLength(1);
+    expect(await status(m, "n-notruf-nr-p2-l1", "mail")).toMatchObject({ status: "fehler", grund: "kontingent" });
+    const morgen = Date.parse("2026-12-11T07:00:00.000Z");
+    await stelleZu(m, ["n-notruf-nr-p2-l1"], { jetzt: morgen });
+    expect(await status(m, "n-notruf-nr-p2-l1", "mail")).toMatchObject({ status: "gesendet" });
+  });
+
+  it("F6: ein wegen der Betriebsgrenze zurückgestellter Versuch belegt keinen Platz der Person", async () => {
+    process.env.CENTRIC_ZUSTELL_PERSON_MAIL = "1";
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "1";
+    const normal = { art: "planFreigegeben", dringend: false };
+    const m = betrieb({ nachrichten: [mitteilung("f6a", "l1", normal), mitteilung("f6b", "p1", normal), mitteilung("f6c", "p1", normal)] });
+    await stelleZu(m, ["f6a", "f6b"]);
+    expect(await status(m, "f6b", "mail")).toMatchObject({ status: "fehler", grund: "kontingent" });
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "5";
+    await stelleZu(m, ["f6c"]);
+    expect(await status(m, "f6c", "mail")).toMatchObject({ status: "gesendet" });
+  });
+
+  it("F6: ein zurückgestellter Notruf belegt keinen Platz der Quelle", async () => {
+    process.env.CENTRIC_ZUSTELL_DRINGEND_QUELLE_MAIL = "1";
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "0";
+    const m = betrieb({ nachrichten: [notrufMitteilung("nr-e1", "a1", "l1"), notrufMitteilung("nr-e2", "a1", "p1")] });
+    await stelleZu(m, ["n-notruf-nr-e1-l1"]);
+    expect(await status(m, "n-notruf-nr-e1-l1", "mail")).toMatchObject({ status: "fehler", grund: "kontingent" });
+    process.env.CENTRIC_ZUSTELL_BETRIEB_MAIL = "10";
+    await stelleZu(m, ["n-notruf-nr-e2-p1"]);
+    expect(await status(m, "n-notruf-nr-e2-p1", "mail")).toMatchObject({ status: "gesendet" });
+  });
+});
+
+describe("Nachtrag 2 F3: frische Zeit je Satz; Übernahme eines abgestürzten Claims mit demselben Idempotenzschlüssel", () => {
+  it("Übernahme: der Versuch, dessen Ausgang unbekannt ist, geht mit SEINEM Idempotenzschlüssel hinaus", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("f3a", "l1")] });
+    const hh = await hKurz("f3a");
+    await store.setJSON(`zustellclaim:${RAUM}:${m.id}:${hh}:mail:1`, { zeit: heuteIso(JETZT - 20 * 60_000) });
+    await stelleZu(m, ["f3a"]);
+    expect(post.mails).toHaveLength(1);
+    expect(post.mails[0].idempotenz).toBe(`${hh}-mail-1`);
+    expect(await status(m, "f3a", "mail")).toMatchObject({ status: "gesendet", versuche: 2 });
+  });
+
+  it("nachfassen: ein langer Durchgang schreibt Claim und Status mit der Zeit des Satzes, nicht der des Anfangs", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("f3b", "l1"), mitteilung("f3c", "p1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    for (const [nid, d] of [["f3b", 2000], ["f3c", 1000]])
+      await store.setJSON(V.warteSchluessel(RAUM, m.id, nid, "mail"), { raum: RAUM, mandantId: m.id, nid, kanal: "mail", naechster: heuteIso(JETZT - d) });
+    const echt = Date.now;
+    let versatz = 0;
+    const uhr = vi.spyOn(Date, "now").mockImplementation(() => echt.call(Date) + versatz);
+    post.beimSenden = async () => { post.beimSenden = null; versatz = 20 * 60_000; };   // der erste Versand dauert 20 Minuten
+    try { await V.nachfassen(store, { jetzt: JETZT }); } finally { uhr.mockRestore(); }
+    expect(post.mails).toHaveLength(2);
+    const st = await status(m, "f3c", "mail");
+    expect(Date.parse(st.zeit)).toBeGreaterThanOrEqual(JETZT + 20 * 60_000);
+    const claim = await store.get(`zustellclaim:${RAUM}:${m.id}:${await hKurz("f3c")}:mail:1`, { type: "json" });
+    expect(Date.parse(claim.zeit)).toBeGreaterThanOrEqual(JETZT + 20 * 60_000);
+  });
+
+  it("zustellen mit mehreren Mitteilungen: Claim und Status der späteren tragen die Zeit ihres Schreibens", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("f3d", "l1"), mitteilung("f3e", "p1")] });
+    const echt = Date.now;
+    let versatz = 0;
+    const uhr = vi.spyOn(Date, "now").mockImplementation(() => echt.call(Date) + versatz);
+    post.beimSenden = async () => { post.beimSenden = null; versatz = 20 * 60_000; };
+    try { await stelleZu(m, ["f3d", "f3e"]); } finally { uhr.mockRestore(); }
+    expect(post.mails).toHaveLength(2);
+    expect(Date.parse((await status(m, "f3e", "mail")).zeit)).toBeGreaterThanOrEqual(JETZT + 20 * 60_000);
+    const claim = await store.get(`zustellclaim:${RAUM}:${m.id}:${await hKurz("f3e")}:mail:1`, { type: "json" });
+    expect(Date.parse(claim.zeit)).toBeGreaterThanOrEqual(JETZT + 20 * 60_000);
+  });
+});
+
+describe("Nachtrag 2 F4: Notrufe und dringende Arten als Push mit hoher Dringlichkeit", () => {
+  it("Notruf und „Dienstplan geändert“: dringend; „Plan freigegeben“: nicht", async () => {
+    const m = betrieb({ nachrichten: [notrufMitteilung("nr-u", "a1", "l1"), mitteilung("u2", "l1"), mitteilung("u3", "l1", { art: "planFreigegeben", dringend: false })] });
+    await abo(m, "l1");
+    await stelleZu(m, ["n-notruf-nr-u-l1", "u2", "u3"]);
+    expect(post.pushes.map((x) => x.dringend)).toEqual([true, true, false]);
+  });
+});
+
+describe("Nachtrag 2 F7: Adresssperre in der Auslieferung nur mit Server-Schlüssel", () => {
+  it("NODE_ENV=production ohne CENTRIC_PFEFFER: keine Sperre geschrieben, kein Rückfall auf den reinen Hash", async () => {
+    const vorher = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    delete process.env.CENTRIC_PFEFFER;
+    try {
+      const m = betrieb({ nachrichten: [mitteilung("f7a", "l1"), mitteilung("f7b", "l1", { art: "planFreigegeben" })] });
+      post.mailAntworten.push({ ok: false, klasse: "dauerhaft", status: 422, ursache: "empfaenger" });
+      await stelleZu(m, ["f7a"]);
+      expect(await status(m, "f7a", "mail")).toMatchObject({ status: "gescheitert", grund: "dauerhaft" });
+      expect(await store.getMetadata(V.sperrSchluessel(RAUM, m.id, "l1"))).toBeNull();
+      /* Eine Sperre mit dem reinen Hash (aus einem Lauf ohne Schlüssel) gilt in der Auslieferung nicht. */
+      await store.setJSON(V.sperrSchluessel(RAUM, m.id, "l1"), { adresse: await hKurz("l1@kunde.example"), ursache: "empfaenger", zeit: "x" });
+      await stelleZu(m, ["f7b"]);
+      expect(await status(m, "f7b", "mail")).toMatchObject({ status: "gesendet" });
+    } finally {
+      if (vorher === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = vorher;
+    }
+  });
+});
+
+describe("Nachtrag 2 F8: Betreff und Fußzeile ohne C1-Steuerzeichen", () => {
+  it("einzeilig entfernt C1-Steuerzeichen und DEL (nicht nur C0)", () => {
+    expect(R.einzeilig("A\u0085B\u009bC\u007fD\u0080E")).toBe("A B C D E");
+  });
+
+  it("Betriebsname mit C1-Steuerzeichen: Betreff und Text ohne C1", async () => {
+    const m = betrieb({ name: "Betrieb\u009b31mX\u0085Y", nachrichten: [mitteilung("f8a", "l1")] });
+    await stelleZu(m, ["f8a"]);
+    expect(post.mails[0].betreff).not.toMatch(/[\u007f-\u009f]/);
+    expect(post.mails[0].text).not.toMatch(/[\u007f-\u009f]/);
+  });
+});
+
+describe("Nachtrag 2 F2: der Takt kann nicht dauerhaft hängen", () => {
+  it("server.mjs gibt den Merker des laufenden Durchgangs in finally frei und begrenzt die Laufzeit", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const server = await readFile(path.join(process.cwd(), "server.mjs"), "utf8");
+    expect(server).toMatch(/finally \{ nachfassenLaeuft = false; \}/);
+    expect(server).toMatch(/nachfassen\(getStore\([^)]*\), \{ bis: /);
+  });
+
+  it("nachfassen hält eine Frist ein: nach `bis` wird kein weiterer Satz begonnen, die Sätze bleiben fällig", async () => {
+    const m = betrieb({ nachrichten: [mitteilung("f2a", "l1"), mitteilung("f2b", "p1")] });
+    await B.bestandSchreiben(store, RAUM, { version: 9, mandanten: [m] }, { durch: "Pruefung" });
+    for (const nid of ["f2a", "f2b"])
+      await store.setJSON(V.warteSchluessel(RAUM, m.id, nid, "mail"), { raum: RAUM, mandantId: m.id, nid, kanal: "mail", naechster: heuteIso(JETZT - 1000) });
+    await V.nachfassen(store, { jetzt: JETZT, bis: Date.now() - 1 });
+    expect(post.mails).toHaveLength(0);
+    expect((await laden_warte()).length).toBe(2);
+    await V.nachfassen(store, { jetzt: JETZT, bis: Date.now() + 60_000 });
+    expect(post.mails).toHaveLength(2);
   });
 });
