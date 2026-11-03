@@ -20,6 +20,7 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
   offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
+import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -1334,7 +1335,86 @@ export default async (req, context) => {
         }
         await protokoll("schreiben", kK, "erfolg",
           `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
-        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, etag: ergK.stand || null });
+        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
+      });
+    }
+
+    /* ------------------------ Korrekturantrag (WP-14) -----------------------
+       Antrag → Freigabe → Ist (lib/korrekturworkflow.mjs). Gestellt wird er von
+       der Person selbst für einen eigenen Stempel der letzten Tage — also auch
+       von Schichtverantwortung und Betriebsrat, die stempeln. Der Antrag liegt
+       am Stempel; das Original bleibt unverändert. */
+    if (pfad === "korrektur-antrag" && req.method === "POST") {
+      const kA = kennung(req, s);
+      const bA = await bremse("schreiben", kA);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitA = await bestandLesenStreng(store, s.bestand);
+        if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mA = eigenerMandant(mitA.bestand, s);
+        if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const pA = (mA.personen || []).find((x) => x && String(x.id) === String(s.person));
+        if (!pA) return antwort({ fehler: "Person nicht gefunden." }, 404);
+        const r = antragStellen(mA, { personId: pA.id, name: s.name || null, rolle: s.rolle }, rumpf || {}, new Date(),
+          `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
+        if ("status" in r) {
+          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergA = await bestandSchreiben(store, s.bestand,
+          { ...mitA.bestand, mandanten: mitA.bestand.mandanten.map((x) => (x === mA ? r.mandant : x)) },
+          { erwarteterStand: mitA.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergA.ok) {
+          await protokoll("schreiben", kA, "konflikt", "Korrekturantrag", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kA, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${pA.id}|${rumpf.datum}: ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.antrag.vorschlag.start}–${r.antrag.vorschlag.ende}`, wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, etag: ergA.stand || null });
+      });
+    }
+
+    /* Entscheiden: Leitung und Planung (staff.edit) genehmigen oder lehnen ab; die
+       antragstellende Person zieht zurück. Die Schichtverantwortung sieht fremde
+       Stempel nicht (H8+) und entscheidet deshalb nicht. Genehmigt wird als
+       Korrekturereignis am Stempel — mit Kennung des Antrags und Regelhinweisen. */
+    if (pfad === "korrektur-entscheiden" && req.method === "POST") {
+      const kE = kennung(req, s);
+      const entscheidungE = rumpf && rumpf.entscheidung;
+      if (entscheidungE !== "zurueckgezogen" && (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit"))) {
+        await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: "Korrekturanträge entscheiden Leitung und Planung." }, 403);
+      }
+      const bE = await bremse("schreiben", kE);
+      if (!bE.frei) return zuVielAntwort(bE.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitE = await bestandLesenStreng(store, s.bestand);
+        if (!mitE) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mE = eigenerMandant(mitE.bestand, s);
+        if (!mE) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const r = antragEntscheiden(mE, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date(),
+          `k-${randomBytes(6).toString("hex")}`);
+        if ("status" in r) {
+          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergE = await bestandSchreiben(store, s.bestand,
+          { ...mitE.bestand, mandanten: mitE.bestand.mandanten.map((x) => (x === mE ? r.mandant : x)) },
+          { erwarteterStand: mitE.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergE.ok) {
+          await protokoll("schreiben", kE, "konflikt", "Korrekturantrag entscheiden", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kE, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${rumpf.personId}|${rumpf.datum}: ${r.antrag.status}`
+          + (r.ereignis ? ` · ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}` : "")
+          + (r.hinweise && r.hinweise.length ? ` · Hinweise: ${r.hinweise.map((x) => x.code).join(",")}` : ""), wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
+          hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
       });
     }
 
