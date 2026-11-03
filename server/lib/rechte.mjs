@@ -20,9 +20,9 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
-  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
-import { abweichungenSchutzPruefen, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { schutzpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
@@ -842,6 +842,10 @@ function einwilligungenZusammen(altM, neuM, sitzung) {
         || !(e.genehmigung === undefined || typeof e.genehmigung === "boolean")) { fehler = grund; return p; }
       const kern = { art: e.art, ab: e.ab, bis: e.bis || null, ...(e.genehmigung ? { genehmigung: true } : {}) };
       const gleicherAlter = vorher.find((v) => v && v.art === kern.art && v.ab === kern.ab && (v.bis || null) === kern.bis && !!v.genehmigung === !!kern.genehmigung);
+      /* Nicht rückwirkend (Nachprüfung 9717ddf): Eine neue Einwilligung beginnt frühestens heute;
+         ein bestehender Beginn darf bleiben (etwa beim Verlängern), aber nicht vorverlegt werden. */
+      if (!gleicherAlter && kern.ab < heuteBerlin() && !vorher.some((v) => v && v.art === kern.art && v.ab === kern.ab)) {
+        fehler = "Einwilligungen (Mutterschutz): Eine neue Einwilligung beginnt frühestens heute — rückwirkend lässt sie sich nicht erfassen."; return p; }
       sauber.push(gleicherAlter ? gleicherAlter
         : { ...kern, geaendertAm: new Date().toISOString(), geaendertVon: sitzung.person === undefined ? null : sitzung.person });
     }
@@ -1097,12 +1101,16 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
     /* Harte Schutzregeln setzt der Server selbst durch (WP-11, B2): Eine neue
        oder geänderte Einteilung, die schutzEinsatz sperrt, wird abgewiesen —
        nicht nur im Warndialog der Oberfläche. */
-    const schutzGrund = abweichungenSchutzPruefen(ort.betrieb, geschickt);
+    const schutz = schutzpruefungUebermittlung(ort.betrieb, geschickt);
+    const schutzGrund = schutz.sperre;
     /* Laufzeit (Nachprüfung WP-11, N1): protokolliert, wenn mittelbar
        nachgerechnet wurde oder die Prüfung langsam war — ohne Personenbezug. */
     if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
       console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms, ${letzteLaufzeit.personen} geschützte Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
     if (schutzGrund) return { verweigert: schutzGrund };
+    /* Nachprüfung 9717ddf (M2): Schutzangaben werden immer gespeichert; bestehende
+       Einteilungen, die jetzt widersprechen, melden wir Planung und Leitung. */
+    if (schutz.konflikte.length) geschickt = schutzKonfliktMitteilungen(ort.betrieb, geschickt, schutz.konflikte, sitzung.person);
     /* Mitteilungen aus den Vorgängen dieser Übermittlung erzeugt der Server. */
     geschickt = mitteilungenErzeugen(ort.betrieb, geschickt, sitzung.person);
     /* … und die an die Leitung zu bewusst bestätigten Rechtsverstößen (WP-10 d.4). */

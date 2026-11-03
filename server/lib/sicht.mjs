@@ -161,7 +161,9 @@ const POOL_PERSON = [...PLAN, "bereich", "kompetenzNachweise", "einschraenkungen
 /* Einschränkungen: die operativen Regeln (keine Nacht, kein Alleindienst,
    Dienste je Woche) bleiben; die Wiedereingliederung verrät eine Erkrankung
    und geht nur als neutrale Wochenstundengrenze in planungsregeln hinaus. */
-const EINSCHRAENKUNGEN_SCHICHT = ["keineNacht", "keinAlleindienst", "maxDiensteWoche"];
+/* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ geht nur noch als Einsatzregel
+   nachtNichtZulaessig hinaus (planungsregeln) — wie jede andere Ursache. */
+const EINSCHRAENKUNGEN_SCHICHT = ["keinAlleindienst", "maxDiensteWoche"];
 /* Nachweise im eigenen Bereich: Qualifikation, Ablauf und — für die
    Status-Nachweise, an denen das Einsatz-Gate hängt — ob er vorliegt.
    Keine Datei. */

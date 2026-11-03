@@ -204,7 +204,28 @@ const nameVon = (p) => (p ? [p.vorname, p.nachname].filter(Boolean).join(" ") ||
  * @param {string} [heute] JJJJ-MM-TT, für Prüfungen
  * @returns {null | string} der Grund der Absage oder null
  */
+/** Schutzangaben einer Person: ändern sie sich, wird gespeichert und nachgemeldet, nie abgewiesen (M2). */
+const SCHUTZ_FELDER = ["mutterschutz", "mutterschutzEinwilligungen", "geburtstag", "geburtsdatum", "schwerbehindert", "nachtvorsorge"];
+function nurSchutzGeaendert(a, b) {
+  const ohne = (p) => { const x = { ...p }; for (const f of SCHUTZ_FELDER) delete x[f]; return x; };
+  return gleich(ohne(a), ohne(b));
+}
+
+/** Bestehende Einteilungen, die nach der letzten Prüfung einer Schutzänderung widersprechen (M2). */
+let konflikte = [];
+
+/**
+ * Die Prüfung mit Ergebnis für die Schutzänderung: sperre (Grund) oder null,
+ * dazu die Liste bestehender, jetzt widersprechender Einteilungen.
+ * @returns {{ sperre: null | string, konflikte: { personId: any, datum: string, dienstId: any }[] }}
+ */
+export function schutzpruefungUebermittlung(altM, neuM, heute = new Date().toISOString().slice(0, 10)) {
+  const sperre = abweichungenSchutzPruefen(altM, neuM, heute);
+  return { sperre, konflikte: sperre ? [] : konflikte.slice(0, 200) };
+}
+
 export function abweichungenSchutzPruefen(altM, neuM, heute = new Date().toISOString().slice(0, 10)) {
+  konflikte = [];
   const t0 = performance.now();
   const zaehler = { mittelbar: false, personen: 0, geprueft: 0 };
   try {
@@ -313,9 +334,16 @@ function pruefen(altM, neuM, heute, zaehler) {
       /* Altbestand je Regel: „nicht im Bestand" vorher deckt keinen Schutzbefund nachher (U1, Wiedereintritt). */
       const neuerBefund = neu.find((b) => !vorher.some((v) => v.regel === b.regel));
       if (!neuerBefund) continue;                                           // Altbestand
-      /* Dieselbe Einteilung wie vorher, nur die Person hat sich geändert (Review M2): klar sagen, dass erst umzuplanen ist. */
-      if (pAlt && !personGleich && String(idAlt) === String(idNeu))
-        return `Bestehende Einteilung am ${d} widerspricht der Änderung an der Person: ${neuerBefund.text}. Bitte erst umplanen, dann ändern.`;
+      /* Nachprüfung 9717ddf (M2, Schutzpflicht): Die Erfassung des Schutzes
+         (Mutterschutz, Einwilligung, Geburtsdatum) wird nie blockiert. Dieselbe
+         Einteilung wie vorher, nur die Schutzangaben der Person haben sich
+         geändert: gespeichert wird, die Einteilung kommt in die Konfliktliste
+         (Mitteilung an Planung und Leitung, Befund in der Planprüfung bis
+         umgeplant). Neue widersprechende Einteilungen bleiben gesperrt. */
+      if (pAlt && String(idAlt) === String(idNeu) && dienstartGleich(String(idNeu)) && nurSchutzGeaendert(pAlt, p)) {
+        konflikte.push({ personId: p.id, datum: d, dienstId: idNeu });
+        continue;
+      }
       return absage(d, `${neuerBefund.text} (durch geänderte Dienstzeiten, Schichtfolge, Zugehörigkeit oder Person)`);
     }
   }
