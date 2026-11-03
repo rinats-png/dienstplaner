@@ -17927,44 +17927,7 @@ function Adressaenderungen({ db }) {
    abtippen, und die Angaben stimmen auch zwölf Monate voraus.
    ========================================================================== */
 
-/** Termine einer Person für den Kalender-Feed. Vorwärts, nicht rückwärts. */
-function kalenderTermine(m, personId, tage) {
-  const p = m.personen.find((x) => x.id === personId);
-  if (!p) return [];
-  const out = [];
-  const von = heute(), bis = addDays(heute(), tage || 180);
-  for (let d = von; d <= bis; d = addDays(d, 1)) {
-    if (!imDienst(p, d)) continue;
-
-    /* Abwesenheit hat Vorrang — sie überschreibt den Dienst. */
-    const abw = abwesenheitAm(m, p.id, d);
-    if (abw) {
-      const art = abwArt(abw.art);
-      out.push({ id: `abw-${abw.id}-${d}`, datum: d, bis: addDays(d, 1),
-        ganztags: true, titel: art.label,
-        /* Kein Grund, keine Notiz — ein abonnierter Kalender liegt am Ende
-           auf einem Gerät, das wir nicht kennen. */
-        text: "" });
-      continue;
-    }
-
-    const t = personTag(m, p, d);
-    if (!t || !t.dienstId || t.dienstId === "F0") continue;
-    const da = m.dienstarten.find((x) => x.id === t.dienstId);
-    if (!da) continue;
-
-    /* Über Mitternacht laufende Dienste enden am Folgetag. */
-    const ueberNacht = da.ende <= da.start;
-    out.push({
-      id: `d-${p.id}-${d}`, datum: d, von: da.start,
-      endDatum: ueberNacht ? addDays(d, 1) : d, bisZeit: da.ende,
-      ganztags: false, titel: da.name,
-      text: `${n1(dauer(da))} Stunden${da.pause ? ` · ${da.pause} Min Pause` : ""}`,
-      ort: da.ort || (m.standorte && m.standorte[0] ? m.standorte[0].name : ""),
-    });
-  }
-  return out;
-}
+/* Die Termine des Kalender-Feeds rechnet seit WP-24 der Server bei jedem Abruf (server/lib/kalenderfeed.mjs). */
 
 /* --------------------------------------------------------------------------
    WECKZEITEN
@@ -23003,10 +22966,8 @@ function AppInnen() {
         const pp = mm.personen.find((x) => x.id === pid);
         try {
           const d = await SP.kalenderEinrichten(pid, pp && pp.kalenderGeheim);
-          /* Die Termine rechnet die Anwendung — der Server speichert nur.
-             So bleibt der Rechenkern an einer Stelle. */
-          const termine = kalenderTermine(mm, pid, 180);
-          await SP.kalenderDaten(d.geheim, `${pp.vorname} ${pp.nachname}`.trim(), mm.name, termine);
+          /* WP-24: Der Feed rechnet der Server bei jedem Abruf live aus dem Bestand
+             (server/lib/kalenderfeed.mjs) — das Gerät schickt keine Termine mehr. */
           mUpd((m) => ({ ...m, personen: m.personen.map((x) => x.id === pid
             ? { ...x, kalenderVerweis: d.verweis, kalenderGeheim: d.geheim,
                 kalenderStand: new Date().toISOString() } : x) }), null);

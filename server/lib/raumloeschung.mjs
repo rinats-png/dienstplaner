@@ -204,6 +204,9 @@ export async function raumLoeschen(store, sitzungen, raum) {
       }
     }
   } catch (e) { fehler.push({ schluessel: "feed:*", grund: grundVon(e) }); }
+  /* WP-24: Die Indizes feedperson:<raum>:<mandantId>:<personId> (je Person der Hash ihres aktiven Feeds)
+     gehören zum Raum und blieben bisher liegen — auch wenn der Feed selbst schon weg war. */
+  await praefixWeg(`feedperson:${raum}:`);
 
   /* 5. Der Vermerk in der Nachfassliste */
   try {
