@@ -115,3 +115,30 @@ describe("Anzeige eines gespeicherten Befunds", () => {
     expect(MARKIERUNG_TEXT.ORT_PRUEFEN).toBe("Ort nicht bestätigt — bitte klären");
   });
 });
+
+describe("A1 (Client): STEMPEL_UNVERAENDERLICH wird nicht als Rollenproblem oder still behandelt", () => {
+  it("speicher.js: 403 mit Code ⇒ Lage „stempelStand“, gewöhnliches 403 bleibt „keinRecht“", async () => {
+    const SP = await import("../src/speicher.js");
+    const antwort = (status, d) => ({ status, headers: { get: () => null }, json: async () => d });
+    const vorher = globalThis.fetch;
+    try {
+      for (const [d, art] of [[{ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH", text: "Ein Stempel ist ein Beleg." }, "stempelStand"],
+        [{ fehler: "Keine Schreibberechtigung." }, "keinRecht"]]) {
+        globalThis.fetch = async () => antwort(403, d);
+        let lage = null;
+        await SP.schreib({ version: 9, mandanten: [] }, { durch: "Test", sofort: true, onFehler: (l) => { lage = l; } });
+        expect(lage && lage.art, JSON.stringify(d)).toBe(art);
+        SP.ausstehendVerwerfen();
+      }
+    } finally { globalThis.fetch = vorher; }
+  });
+  it("Oberfläche: die Lage hat eine eigene, verständliche Meldung mit „neu laden“", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const quelle = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    const block = quelle.match(/stempelStand: \{[\s\S]*?\n  \},/);
+    expect(block, "SPEICHERLAGE.stempelStand fehlt").toBeTruthy();
+    expect(block[0]).toMatch(/veraltet/);
+    expect(block[0]).toMatch(/neu laden/i);
+    expect(block[0]).toMatch(/neuladen: true/);
+  });
+});

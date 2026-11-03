@@ -208,6 +208,9 @@ export const ausstehendVerwerfen = () => { gescheitert = null; };
 /** Woran lag es? Danach richtet sich, was zu tun ist. */
 function fehlerart(e, status) {
   if (e && e.message === "nicht-angemeldet") return "abgemeldet";
+  /* Ein Stempel ist ein Beleg (WP-06): Die Kopie widerspricht dem gespeicherten Stand — kein Rollenproblem,
+     sondern ein veralteter Bestand. Der Rat ist „neu laden", nicht „Rolle prüfen". */
+  if (status === 403 && e && e.code === "STEMPEL_UNVERAENDERLICH") return "stempelStand";
   if (status === 403) return "keinRecht";
   if (status === 413) return "zuGross";
   if (status && status >= 500) return "server";
@@ -276,7 +279,11 @@ async function schreibenAusfuehren(beimSchliessen) {
       if (auftrag.onKonflikt) auftrag.onKonflikt(daten);
       return;
     }
-    if (status !== 200) throw new Error(daten?.fehler || "Speichern fehlgeschlagen.");
+    if (status !== 200) {
+      const f = new Error(daten?.fehler || "Speichern fehlgeschlagen.");
+      if (daten && typeof daten.code === "string") f.code = daten.code;
+      throw f;
+    }
     etag = daten.etag;
     gescheitert = null;
     if (auftrag.onGespeichert) { try { auftrag.onGespeichert(auftrag.bestand); } catch { /* egal */ } }

@@ -10358,6 +10358,12 @@ const SPEICHERLAGE = {
       + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
     neuladen: true,
   },
+  stempelStand: {
+    titel: "Der Bestand ist veraltet — bitte neu laden",
+    text: "Seit du die Daten geladen hast, hat sich ein Stempel geändert, und gestempelte Werte bleiben unverändert. "
+      + "Die Änderung ist nicht gespeichert. Lade den Bestand neu und trage sie dann noch einmal ein.",
+    neuladen: true,
+  },
   zuGross: {
     titel: "Der Bestand ist zu groß geworden",
     text: "Der Server hat die Übertragung abgewiesen. Sichere die Arbeit als Datei "

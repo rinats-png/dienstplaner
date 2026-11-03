@@ -3,7 +3,11 @@
 
    Ein Stempel ist ein Beleg. Er entsteht nur über /api/stempeln, und was
    dort einmal gespeichert ist — Beginn, Ende, Zeitpunkte, Ort, Geo-Urteil —
-   ändert danach niemand mehr: keine Rolle, kein Schreibweg. Eine Korrektur
+   ändert danach niemand mehr: keine Rolle, kein Schreibweg. Einzige Ausnahme
+   ist die Löschpflicht: Die Standort-Ergebnisse (Ort, Geo-Urteil; STANDORT_FELDER)
+   nimmt der Datenschutzlauf nach gruendeMonate heraus (WP-20) — die Zeiten bleiben.
+   Eine davor geladene Kopie, die sie noch trägt, wird nicht abgewiesen, und die
+   Felder werden nie zurückgeschrieben (A1). Eine Korrektur
    ist ein eigenes Ereignis { vorher, nachher, wer, wann, grund }, das an den
    Stempel angehängt wird (einstempeln[k].korrekturen); das Original bleibt.
 
@@ -49,7 +53,7 @@
 const KENNZEICHEN = new Set(["markierungen", "konfliktGrund"]);
 const KORREKTUREN = "korrekturen";
 
-import { stichtage, aufbewahrungFehler } from "./aufbewahrung.mjs";
+import { stichtage, aufbewahrungFehler, STANDORT_FELDER } from "./aufbewahrung.mjs";
 
 /** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
 export const KORREKTUR_GRUND_MIN = 10;
@@ -76,6 +80,13 @@ const tagVon = (k) => { const t = String(k).split("|")[1] || ""; return TAG.test
 export function loeschStichtag(m, heute) {
   if (aufbewahrungFehler(m && m.aufbewahrung)) return null;
   return stichtage(m || {}, heute).plan;
+}
+
+/** Tage vor diesem Stichtag haben ihre Standort-Ergebnisse an den Datenschutzlauf verloren (WP-20,
+    Review A1): gruendeMonate, nicht die Plandatenfrist. Ungültige Fristangabe: keiner (fail-closed). */
+export function standortStichtag(m, heute) {
+  if (!heute || aufbewahrungFehler(m && m.aufbewahrung)) return null;
+  return stichtage(m || {}, heute).standort;
 }
 
 /** Ist-Zeit-Stände, die der Server für diesen Tag je hatte (ehrliche Kopien). */
@@ -111,6 +122,10 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
      dabei keine Rolle; die Frist entscheidet. */
   const frist = o.heute && altM ? loeschStichtag(altM, o.heute) : null;
   const verfallen = (k) => !!frist && !!tagVon(k) && tagVon(k) < frist;
+  /* Standort-Ergebnisse alter Tage hat der Datenschutzlauf gelöscht (WP-20, A1): Eine davor geladene Kopie
+     trägt sie noch. Das ist kein Widerspruch zum Beleg — ignoriert, nicht abgewiesen, und nicht zurückgeschrieben. */
+  const sStich = o.heute && altM ? standortStichtag(altM, o.heute) : null;
+  const standortVerfallen = (k, f) => !!sStich && !!tagVon(k) && tagVon(k) < sStich && STANDORT_FELDER.includes(f);
   const nein = (grund, schluessel = null) => ({ grund, schluessel });
   /* Ist der Monat dieses Schlüssels seit dem Stand der Übermittlung
      unverändert (lib/bestand.mjs, unveraenderteScherben)? */
@@ -151,6 +166,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
             if (!gleich(v, a[f])) return nein("Kennzeichen eines Stempels setzt nur der Server.", k);
             continue;
           }
+          if (!(f in a) && standortVerfallen(k, f)) continue;     // vom Datenschutzlauf gelöscht (A1)
           if (!(f in a) || !gleich(v, a[f]))
             return nein("Ein gestempelter Wert lässt sich nicht ändern. Korrekturen werden als eigenes Ereignis angehängt — das Original bleibt.", k);
         }
@@ -238,6 +254,19 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
     if (weg(gs, k)) { geloescht++; continue; }
     if (sicher(k)) einstempeln[k] = v;
     else if (k in zielS) einstempeln[k] = zielS[k];
+  }
+  /* Gelöschte Standort-Ergebnisse alter Tage bleiben gelöscht (A1, Datenschutz): Auch eine Kopie aus einem
+     veränderten Monat bringt sie nicht zurück. Was gespeichert noch da ist, bleibt bis zum nächsten Lauf. */
+  const sStich = o.heute ? standortStichtag(altM, o.heute) : null;
+  if (sStich) {
+    for (const [k, v] of Object.entries(einstempeln)) {
+      if (!objekt(v) || !tagVon(k) || tagVon(k) >= sStich) continue;
+      const a = altS[k];
+      if (!STANDORT_FELDER.some((f) => f in v && !(objekt(a) && f in a))) continue;
+      const rest = { ...v };
+      for (const f of STANDORT_FELDER) if (!(objekt(a) && f in a)) delete rest[f];
+      einstempeln[k] = rest;
+    }
   }
   const erfassung = objekt(zielM.erfassung) ? { ...zielM.erfassung } : {};
   /* Was der Datenschutzlauf gelöscht hat (jenseits der Frist, gespeichert nicht
