@@ -264,10 +264,16 @@ per Digest genau dieser Digest):
      benutzten Sicherung. Sicherungen, die *nach* dieser, aber *vor* der Wiederherstellung entstanden, gehören zu
      einer verworfenen Folge: gleiche Nummer, anderer Inhalt. Für `--aus-sicherung` deshalb nur die damals benutzte,
      ältere oder nach der Wiederherstellung entstandene Sicherungen verwenden. `ablage-sicherung.mjs wiederherstellen`
-     legt dafür `data/.wiederhergestellt.json` an (Zeitpunkt und Stand der benutzten Sicherung; nicht in der
-     Sicherung, für die Anwendung unsichtbar); `ablage-pruefen.mjs` lehnt eine Sicherung aus der verworfenen Folge
-     damit ab (Rückgabe 2, nichts verändert). Wiederherstellungen vor dieser Fassung haben keinen solchen Vermerk —
-     dann gilt die Regel ohne Prüfung durch das Werkzeug.
+     schreibt dafür `data/.wiederhergestellt.json` fort — eine Liste aller Wiederherstellungen (Zeitpunkt und
+     Erstellzeit der benutzten Sicherung; nicht in der Sicherung, für die Anwendung unsichtbar).
+     `ablage-pruefen.mjs` lehnt eine Sicherung ab, die in die verworfene Folge *irgendeiner* dieser
+     Wiederherstellungen fällt (Rückgabe 2, nichts verändert). Ist die Datei vorhanden, aber unlesbar, brechen
+     beide Werkzeuge ab (Rückgabe 2) — die Standfolge ist dann nicht prüfbar; Datei sichten, nicht still löschen.
+     **Bei Weg 1 (neues, leeres `data/`)** die Datei vor dem Wiederherstellen aus dem beiseitegelegten Verzeichnis
+     übernehmen, sonst gehen die früheren Einträge verloren:
+     `cp -p data.vor-wiederherstellung-<Zeit>/.wiederhergestellt.json data/` (falls vorhanden; Punktdateien
+     stören die Prüfung „Ziel leer“ nicht). Wiederherstellungen vor dieser Fassung haben keinen Vermerk — dann gilt
+     die Regel ohne Prüfung durch das Werkzeug.
    - **Bezug unvollständig:** Liegt auf der Platte eine Scherbe, die der jüngste lesbare Vermerk nicht kennt (z. B.
      nach Kern- und Vermerkschaden mit gelöschtem Zeiger), ist er älter als das, was geschrieben wurde. Dann wird
      nicht angeglichen (Rückgabe 1), bis eine passende Sicherung oder `--ohne-vermerk <raum>` vorliegt.

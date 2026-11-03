@@ -431,15 +431,23 @@ export async function main(argv, say = (s) => console.log(s), opt = {}) {
     /* Nach einer vollständigen Wiederherstellung (§4) zählen die
        Standnummern ab dem Stand der damals benutzten Sicherung neu. Eine
        Sicherung, die danach, aber vor der Wiederherstellung entstand,
-       gehört zur verworfenen Folge: gleiche Nummer, anderer Inhalt. */
-    let wh = null;
-    try { wh = JSON.parse(await readFile(path.join(ablageWurzel(), ".wiederhergestellt.json"), "utf8")); }
-    catch { /* keine Wiederherstellung vermerkt */ }
+       gehört zur verworfenen Folge: gleiche Nummer, anderer Inhalt.
+       Gegen JEDE vermerkte Wiederherstellung (WP-45d, W1); ein vorhandener,
+       aber unlesbarer Vermerk heißt „nicht prüfbar" — Abbruch (W2). */
+    const { wiederherstellVermerkeLesen } = await import("./ablage-sicherung.mjs");
+    let liste;
+    try { liste = await wiederherstellVermerkeLesen(ablageWurzel()); }
+    catch (e) {
+      say(`FEHLER: ${fehlerText(e)} Ohne ihn lässt sich nicht prüfen, ob die Sicherung zu einer verworfenen Standfolge `
+        + "gehört. Nichts verändert.");
+      return 2;
+    }
     const t = (x) => Date.parse(String(x || ""));
-    if (wh && t(manifest.erstellt) > t(wh.sicherungErstellt) && t(manifest.erstellt) < t(wh.zeit)) {
+    const verworfen = liste.find((wh) => t(manifest.erstellt) > t(wh.sicherungErstellt) && t(manifest.erstellt) < t(wh.zeit));
+    if (verworfen) {
       say(`FEHLER: Diese Sicherung (erstellt ${manifest.erstellt}) stammt aus der Zeit vor der Wiederherstellung vom `
-        + `${wh.zeit}, ist aber jünger als die damals benutzte Sicherung (${wh.sicherungErstellt}). Ihre Standnummern `
-        + "gehören zu einer verworfenen Folge. Nichts verändert. Eine Sicherung nach der Wiederherstellung verwenden.");
+        + `${verworfen.zeit}, ist aber jünger als die damals benutzte Sicherung (${verworfen.sicherungErstellt}). Ihre `
+        + "Standnummern gehören zu einer verworfenen Folge. Nichts verändert. Eine andere Sicherung verwenden.");
       return 2;
     }
   }
