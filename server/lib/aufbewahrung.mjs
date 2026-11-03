@@ -207,7 +207,7 @@ export function stichtage(m, heuteIso) {
  * gesamt     Summe aller Eingriffe
  *
  * @returns {{stichtage: object, personen: Array<object>, plandaten: object,
- *   planSumme: number, aenderungen: number, gruende: number, gesamt: number,
+ *   planSumme: number, aenderungen: number, gruende: number, standort: number, gesamt: number,
  *   warnung: (string|null)}}
  */
 export function vorschau(m, heuteIso) {
