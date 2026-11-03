@@ -23636,6 +23636,10 @@ function AppInnen() {
           const r = lauf.ergebnisse[ev.id];
           if (r && r.art === "ok") return;
           if (r && r.art === "abgelehnt") { melde(`Stempel abgelehnt: ${r.grund}`); return; }
+          if (lauf.angehalten === "abgemeldet" || lauf.angehalten === "fremde-sitzung") {
+            melde("Die Anmeldung ist abgelaufen — der Stempel ist auf dem Gerät gespeichert und wird nach der Anmeldung gesendet.");
+            return;
+          }
           melde(`${art === "start" ? "Einstempeln" : "Ausstempeln"} vorläufig (offline gespeichert) — wird gesendet, sobald Netz da ist.`);
         } catch (e) {
           melde(e.message || "Das Stempeln hat nicht geklappt.");
