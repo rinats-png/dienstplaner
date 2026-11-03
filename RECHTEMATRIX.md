@@ -220,7 +220,7 @@ Besetzung, Nachtfenster des Betriebs) auf dem Server; offen. Geprüft in `pruefu
 (`jugendschutzZusammen`, `server/lib/rechte.mjs`). Die Schichtverantwortung bekommt dafür die neutrale Einsatzregel
 `nachtAb23NichtZulaessig` (vor dem 16. Geburtstag `nachtNichtZulaessig`). Eine Dienstart, die in der Schichtfolge
 oder in einer Einteilung ab heute noch verwendet wird, lässt sich nicht löschen — für alle Personen gleich, die
-Meldung nennt Person und Tag, kein Merkmal (N1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
+Meldung nennt Person und Tag, kein Merkmal (N1). Eine neu angelegte Person, ein Ein- oder Austritt und ein Statuswechsel gelten als Strukturänderung: Der Server rechnet ihre Dienste aus der Schichtfolge nach (Review U1). Geprüft in `pruefungen/nachpruefung-wp11.test.js`.
 ²² WP-10 d.3 (Kette A): Ein Eintrag in der Selbstplanung trägt seit „Warnen statt sperren" die Hinweise, die bei der
 Eintragung gegen den Dienst sprachen (`hinweise`, z. B. „dieser Dienst ist bereits gedeckt") — die Person darf sich
 trotzdem eintragen, die Planung entscheidet bei der Übernahme mit dem Warndialog und prüft dort neu. Beschäftigte sehen
