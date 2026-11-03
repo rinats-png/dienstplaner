@@ -381,7 +381,9 @@ describe("Betreiberentscheidung (C): Lohnexport bestätigen — danach kein einf
     expect(s.status, s.roh).toBe(200);
     expect((await anfrage("monatsabschluss", { token: await token("p1", raum), rumpf: { aktion: "lohnexport", monat: OKT } })).status).toBe(403);
     expect((await anfrage("monatsabschluss", { token: await token("a1", raum), rumpf: { aktion: "lohnexport", monat: OKT } })).status).toBe(403);
-    const r = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT } });
+    /* Seit dem dritten Review (H-2) schickt die Oberfläche den Stand der ausgegebenen Datei mit. */
+    const sicht = (await anfrage("bestand", { methode: "GET", token: tL })).bestand.mandanten[0];
+    const r = await anfrage("monatsabschluss", { token: tL, rumpf: { aktion: "lohnexport", monat: OKT, ...A.lohnexportStand(sicht, OKT) } });
     expect(r.status, r.roh).toBe(200);
     expect(r.eintrag.lohnexport).toMatchObject({ am: JETZT.replace("Z", ".000Z"), wer: { personId: "l1", rolle: "leitung" }, revision: 1 });
     expect(r.eintrag.lohnexport.abdruck).toBe(r.eintrag.abdruck);
@@ -412,9 +414,11 @@ describe("Betreiberentscheidung (C): Lohnexport bestätigen — danach kein einf
     const m = zu(betrieb());
     const k = Object.keys(m.istEingefroren).find((x) => /^a1\|2026-10-\d\d$/.test(x));
     const x = { ...m, istEingefroren: { ...m.istEingefroren, [k]: { ...m.istEingefroren[k], std: 12 } } };
-    const r = lohnexportBestaetigen(x, { monat: OKT }, WER_L, new Date(JETZT), "le-1");
+    /* Mit dem Stand der Datei (seit dem dritten Review, H-2) — die Prüfsumme weicht trotzdem ab: 409. */
+    const r = lohnexportBestaetigen(x, { monat: OKT, ...A.lohnexportStand(m, OKT) }, WER_L, new Date(JETZT), "le-1");
     expect(r.status).toBe(409);
-    expect("status" in lohnexportBestaetigen(m, { monat: OKT }, WER_L, new Date(JETZT), "le-2")).toBe(false);
+    expect(r.code).toBe("ABDRUCK_ABWEICHEND");
+    expect("status" in lohnexportBestaetigen(m, { monat: OKT, ...A.lohnexportStand(m, OKT) }, WER_L, new Date(JETZT), "le-2")).toBe(false);
   });
 });
 

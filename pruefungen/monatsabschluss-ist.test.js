@@ -199,9 +199,9 @@ describe("Abgeschlossener Monat: Plan-, Dienstart- und Abwesenheitsänderungen �
     const m = (await holen("a1", RAUM)).bestand.mandanten[0];
     expect(Object.keys(m.istEingefroren).length).toBeGreaterThan(0);
     expect(Object.keys(m.istEingefroren).every((k) => k.startsWith("a1|") || k.startsWith("*|"))).toBe(true);
-    /* Das Verzeichnis des Betriebs ("*|JJJJ-MM") trägt keinen Personenbezug: nur Schema, Dienstarten, Lohnarten, Zuschlagsregeln. */
+    /* Das Verzeichnis des Betriebs ("*|JJJJ-MM") trägt keinen Personenbezug: nur Schema, Dienstarten, Zuschlagsregeln, Rechenstand — keine Lohnarten. */
     for (const [k, v] of Object.entries(m.istEingefroren).filter(([x]) => x.startsWith("*|"))) {
-      expect(Object.keys(v).sort(), k).toEqual(["da", "la", "v", "zs"]);
+      expect(Object.keys(v).sort(), k).toEqual(["da", "rv", "v", "zs"]);                 // ohne Lohnarten (Nachtrag dritter Review M-2)
       expect(JSON.stringify(v)).not.toMatch(/"(a1|a2|a3|l1|p1|r1)"/);
     }
     expect(A.istStunden(m, person(m, "a1"), OKT).geleistet).toBe(vorher.ist.geleistet);

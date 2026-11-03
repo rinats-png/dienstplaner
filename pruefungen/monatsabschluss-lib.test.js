@@ -39,7 +39,7 @@ describe("abschliessen / wiederoeffnen", () => {
     const m = geschlossen();
     /* Seit Schema 2 (WP-16 Nachtrag) friert der Abschluss immer das Verzeichnis des Betriebs ("*|JJJJ-MM") mit ein —
        die Prüfsumme ist die der Ist-Daten samt Freeze zum Abschluss; Schema und Revision 1 stehen am Eintrag. */
-    expect(m.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, am: JETZT.toISOString(), wer: WER_L, abdruck: istAbdruck(m, "2026-10"), schema: 2, revision: 1 });
+    expect(m.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, am: JETZT.toISOString(), wer: WER_L, abdruck: istAbdruck(m, "2026-10"), schema: 3, revision: 1 });
     expect(istAbdruck(m, "2026-10")).not.toBe(istAbdruck(basis(), "2026-10"));
     expect(monatAbgeschlossen(m, "2026-10-01")).toBe(true);
     expect(monatAbgeschlossen(m, "2026-09-30")).toBe(false);

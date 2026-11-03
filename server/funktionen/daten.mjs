@@ -1406,8 +1406,10 @@ export default async (req, context) => {
             await protokoll("schreiben", kSt, "abgewiesen",
               `stempeln ${art}: Monat abgeschlossen ${sperreM.monat}${stEreignis.offline ? " · offline" : ""}`, wer);
             return antwort({ fehler: sperreM.grund, code: MONAT_ABGESCHLOSSEN, datum: String(datum), monat: sperreM.monat,
+              /* Nach bestätigtem Lohnexport gibt es kein Wiederöffnen mehr (WP-16, Nachtrag dritter Review N-a). */
               text: `${sperreM.grund} Dieser Stempel wurde nicht gespeichert — die Leitung sieht ihn am Monatsabschluss; `
-                + "nach dem Wiederöffnen lässt er sich erneut senden." }, 409);
+                + (sperreM.lohnexportiert ? "ein Nachtrag ist nur noch über den Korrekturprozess der Leitung möglich, nicht durch erneutes Senden."
+                  : "nach dem Wiederöffnen lässt er sich erneut senden."), ...(sperreM.lohnexportiert ? { lohnexportiert: true } : {}) }, 409);
           }
 
           /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.

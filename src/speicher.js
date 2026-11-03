@@ -834,9 +834,12 @@ export async function korrekturAntrag(datum, start, ende, pause, grund) {
  * oder "wiederoeffnen" (nur Leitung, mit Grund). Antwort: der Eintrag des Monats und das Ereignis im Verlauf.
  * Ein Fehler trägt code und offen (Zahlen der offenen Punkte), damit die Oberfläche nachfragen kann.
  */
-export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false } = {}) {
+export async function monatsabschluss(aktion, monat, { grund = "", trotzPrueffaellen = false, exportStand = null } = {}) {
+  /* Lohnexport bestätigen (WP-16, Nachtrag dritter Review H-2): der Stand der ausgegebenen Datei. */
+  const stand = exportStand && typeof exportStand === "object"
+    ? { abdruck: exportStand.abdruck, stand: exportStand.stand, revision: exportStand.revision, zeilen: exportStand.zeilen } : {};
   const a = await fetch("/api/monatsabschluss", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}) }) });
+    body: JSON.stringify({ aktion, monat, grund: grund || "", ...(trotzPrueffaellen ? { trotzPrueffaellen: true } : {}), ...stand }) });
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) { const f = new Error(d.text || d.fehler || "Der Monatsabschluss ließ sich nicht speichern."); f.code = d.code || null; f.offen = d.offen || null; throw f; }

@@ -684,3 +684,166 @@ ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
   Die Prüfung verlangte den Tag der Selbstauskunft in der Betreiber-Lage — genau das, was N7 entfernt. Angepasst auf das
   neue Soll (siehe unten); Vitest-Prüfungen in diesem Lauf grün.
 - Folgekopf: siehe Bericht.
+
+## Nachtrag dritter Opus-Delta-Review
+
+Review am Kopf 6b75c83, Urteil: mit Auflagen integrierbar, **Lohnexport-Funktion nicht produktionsreif** (Blocker H-1, H-2,
+M-1). Vorher `origin/integration/centric-complete` gemergt (Doku, Backlog-Werkzeug, Statusprüfung; Sammelzeile `pruefung`
+97 → 98 Schritte, neuer Schritt `pruefung:acc45-status`, keiner verloren). Betreiberentscheidung unverändert: Wiederöffnen
+vor bestätigtem Lohnexport mit Grund, danach nur Revisions-/Korrekturprozess (WP-16c); Freeze nie still 0 h; historische
+Rechnung reproduzierbar.
+
+### H-1 — Konto, Mehrarbeit und Personalangaben eingefroren; Lohnausgabe nur aus dem Freeze
+
+- **Schema 3** (`FREEZE_SCHEMA = 3`). Je Person und Monat zusätzlich: `g`/`gg`/`ig` (geleistet, gutgeschrieben, Ist gesamt
+  wie `istStunden`), `k` (Stundenkonto zum Monatsende: Übertrag + alle Monate des Jahres bis hierher, wie sie **zum
+  Abschluss** galten; `null` = nicht rechenbar), `ue` (verwendeter Übertrag), `br` ([Bereitschaft, Ruf] für die
+  Lohnausgabe), `nm` ([Personalnummer, Nachname, Vorname]). Verzeichnis: `rv` (Rechenstand), `vo` (beim Abschluss offene
+  Vormonate des Jahres).
+- Die Rechnung dafür steht jetzt auf dem Server: `server/lib/lohnrechnung.mjs` (Dienstformen, Anrechnungsfaktor,
+  `gewertet`, Standard-Lohnarten — die Oberfläche importiert sie; Entgeltstatus/Rang der Abwesenheitsarten als Tabelle,
+  gegen `ABW` der Oberfläche Eintrag für Eintrag geprüft). Abschluss = Oberfläche: Die bestehende Prüfung über alle
+  Demobetriebe (`monatsabschluss-nachtrag`, Schema 1 = Schema 3 = offen für Ist, Konto, Zuschläge, DATEV, Ausgleich) ist
+  unverändert grün, jetzt mit dem eingefrorenen Konto.
+- **Verbraucher im abgeschlossenen Monat lesen nur den Freeze:** `stundenkonto` (→ `k`), `istStunden` (→ `g/gg/ig`),
+  `datevSaetze` (→ `datevAusFreeze`: Lohnarten, Zugehörigkeit, Zuschläge, Bereitschaft/Ruf, Mehrarbeit aus `k`,
+  Personalangaben aus `nm` — auch für Personen, die nicht mehr im Personalstamm stehen). Offene Folgemonate rechnen weiter
+  live (Übertrag und Änderungen offener Vormonate wirken dort).
+- **Vormonate — gewählte Lösung: kennzeichnen, nicht verlangen.** Das Konto eines Monats wird beim Abschluss mit den
+  Vormonaten des Jahres so eingefroren, wie sie in dem Moment sind (abgeschlossene aus ihrem Freeze, offene wie heute
+  gerechnet). Ein später geänderter offener Vormonat ändert den abgeschlossenen Monat nicht (Q2), wirkt aber im nächsten
+  offenen Monat (geprüft). Die Lohnausgabe und der Monatsabschluss sagen „Konto vorläufig — Vormonat offen (…)“, solange
+  ein Vormonat des Jahres beim Abschluss offen war oder es heute ist. Begründung: Ein Pflicht-Abschluss aller Vormonate
+  hätte den ersten Abschluss nach Inbetriebnahme (Januar bis Vormonat ohne Daten) erzwungen und den Freeze ohnehin nicht
+  sicherer gemacht — das Konto ist eingefroren; die Kennzeichnung macht die Abhängigkeit sichtbar.
+- **Person entfernt (P6):** Zeilen bleiben (aus dem Freeze), Hinweis „nicht mehr im Personalstamm — Zeilen aus dem
+  Abschluss“ mit Name und Personalnummer im Blatt und am Monatsabschluss. Konto zum Abschluss nicht rechenbar: Hinweis
+  statt stiller fehlender Mehrarbeitszeile.
+- **Datenschutz:** `nm` geht mit der Anonymisierung (Löschlauf `raeumen`, `aufbewahrung.mjs`) — wie im Personalstamm.
+  Sicht siehe M-2.
+
+### H-2 — Lohnexport-Bestätigung an die ausgegebene Datei gebunden
+
+- Bewertung: Die Datei serverseitig zu erzeugen hieße, die ganze Lohnrechnung (Zuschläge, Konto, Bereitschaft) in den
+  Server zu ziehen — mit H-1 liegt sie für abgeschlossene Monate aber ohnehin vollständig im Freeze. Umgesetzt ist die
+  kleinere, sichere Lösung: **Der Server rechnet die Zeilen selbst aus dem Freeze nach** (`datevAusFreeze`, dieselbe
+  Funktion wie die Oberfläche) und vergleicht ihre Prüfsumme (`datevZeilenAbdruck`) mit der der ausgegebenen Datei.
+- Abschluss trägt `stand` (Kennung des Abschlusses; neu bei jedem Abschließen, auch ohne Änderung). Die Oberfläche merkt
+  sich beim Ausgeben der Datei `{ abdruck, stand, revision, zeilen }` (`lohnexportStand`, `EXPORT_STAND`) und schickt genau
+  das beim Bestätigen mit (`SP.monatsabschluss("lohnexport", monat, { exportStand })`; ohne vorherige Ausgabe: Hinweis
+  „zuerst die Lohnausgabe erzeugen“). Server: ohne Stand **409 `EXPORTSTAND_FEHLT`**; Prüfsumme, Abschluss, Revision oder
+  Zeilen weichen ab **409 `EXPORTSTAND_ABWEICHEND`**; Abschluss nicht Schema 3 **409 `FREEZE_NICHT_REPRODUZIERBAR`**.
+  Gespeichert: `lohnexport: { am, wer, abdruck, revision, stand, zeilen, n }`.
+- **Rennen** (Datei erzeugt → wiederöffnet → geändert → neu abgeschlossen → bestätigt): 409, in der Bibliothek und über
+  `POST /api/monatsabschluss`; auch ohne Änderung (neuer `stand`).
+- **Prüfsumme in der Ausgabe, Format unverändert:** Dateiname `lohnausgabe_<Betrieb>_<JJJJ-MM>_r<Revision>_<Prüfsumme 12>.csv`
+  (und `.txt`); das Blatt zum Gegenlesen (Begleitprotokoll) nennt „Abschluss: Revision n · Prüfsumme … · Zeilen-Prüfsumme …“.
+  Die Trennzeichendatei selbst bleibt Spalte für Spalte wie bisher (geprüft: Kopfzeile unverändert).
+
+### M-1 — fail-closed
+
+`freezeStatus(m, monat)`: Schema aus Verzeichnis (`v`) und Abschluss (`schema`). Unbekannte oder zu neue Version (P4),
+Widerspruch zwischen beiden, Verzeichnis fehlt bei Schema ≥ 2 (P3) → **unbekannt**: Ist, Konto, Zuschläge „nicht
+verfügbar“, keine DATEV-Zeilen, Hinweis. Je Person (`abschlussLuecke`, geprüft vor jedem Tag): Schema ≥ 2 ohne
+Monatseintrag (P5) oder ein Tag verweist auf eine Dienstart, die das Verzeichnis nicht hat → Prüffall. Soll im
+abgeschlossenen Monat (Schema ≥ 2) ohne brauchbaren Monatseintrag: `null`, nie neu gerechnet. Einfrieren ohne
+Zuschlagsregeln: `zs: []`; ohne eigene Lohnarten: die wirksamen Standardlohnarten (nie `null`); gelesen `null` →
+Zuschlagswert bzw. Lohnausgabe „nicht verfügbar“ mit Hinweis (P7). **Schema 1 und 2:** lesbar, aber ausdrücklich „nicht
+reproduzierbar“ gekennzeichnet (Lohnausgabe, Rückfrage, Monatsabschluss); Lohnexport erst nach erneutem Abschließen
+bestätigbar.
+
+### M-2 — Sicht
+
+Positivkatalog `VERZEICHNIS_FELDER_EINGESCHRAENKT = v, da, zs, rv` für das Verzeichnis bei Beschäftigten und
+Schichtverantwortung — keine Lohnarten (`la`; `lohnarten` ist für beide WEG). Zuschlagsregeln bleiben (`zuschlaege` ist für
+diese Rollen ohnehin sichtbar und wird für den eigenen Zuschlagswert gebraucht). Monatseinträge anderer Personen bei der
+Schichtverantwortung nur `s, z, nn, i, u` (`MONAT_FELDER_BEREICH`) — kein Konto, Übertrag, keine Summen, keine
+Personalnummer. Die angepasste Prüfung in `monatsabschluss-ist` erlaubt die Lohnarten nicht mehr (strenger).
+
+### Testlücke MB, N-a, N-b, N-d, N-e
+
+- **MB:** Prüfung ändert nur das Verzeichnis (Lohnarten, Zuschlagsregeln, Dienstart) → Prüfsumme anders. Mutante
+  „Prüfsumme ohne Verzeichnis“ jetzt rot.
+- **N-a:** Stempel in einen Monat mit bestätigtem Lohnexport: 409 mit „Nachtrag nur über den Korrekturprozess, nicht durch
+  erneutes Senden“ (`abschlussSperre` → `lohnexportiert`); am Monatsabschluss ebenso.
+- **N-b:** Auskunft nach Art. 15 liefert `istEingefrorenLegende` (`IST_EINGEFROREN_LEGENDE`): jedes Kurzfeld der Tage und
+  Monatswerte erklärt (geprüft gegen die tatsächlich ausgegebenen Felder).
+- **N-d:** Rechenstand `rv` im Verzeichnis; weicht er vom heutigen ab, sagt die Lohnausgabe es. Ist-Summen, Konto,
+  Zuschläge, Bereitschaft/Ruf und Lohnarten sind eingefroren — Code-Konstanten ändern abgeschlossene Monate nicht mehr.
+  **Restrisiko:** Die Zuordnung der eingefrorenen Werte zu Lohnarten (welche Größe welche Lohnart speist, Rundung der
+  Zeilen) ist Code; ändert sie ein Softwarestand, ändert sich die neu erzeugte Ausgabe eines abgeschlossenen Monats.
+  Für bestätigte Exporte sichtbar: Die gespeicherte Zeilen-Prüfsumme (`lohnexport.zeilen`) weicht dann ab. Abschlüsse vor
+  Schema 3 rechnen Soll/Zuschläge/Konto teils live (gekennzeichnet).
+- **N-e:** Betriebsrat und Schichtverantwortung ohne sichtbaren Monatseintrag bekommen im abgeschlossenen Monat kein live
+  gerechnetes Soll mehr (`null`, Jahressumme „Soll nicht verfügbar“).
+
+### Nicht in diesem Nachtrag (eigene Pakete)
+
+6-MB-PUT-Grenze/Teilspeichern (Skalierung), Abschluss in Häppchen/Dauer der Raumsperre, WP-16c Revisions- und
+Korrekturprozess (setzt das reproduzierbare Original voraus — mit Schema 3 und gebundenem Export gegeben).
+
+### Rot → grün
+
+`pruefungen/monatsabschluss-nachtrag3.test.js` (27 Prüfungen) gegen die Quellen vor dem Nachtrag (`server/`, `src/` aus
+9ae4ab3 = Kopf 6b75c83 + Merge, Prüfungen neu): **25 rot, 2 grün** (grün: MB — die Prüfsumme deckte das Verzeichnis schon,
+nur ungeprüft; Betriebsrat ohne Freeze — unverändert). Rot je Sonde u. a.: Q1 Mehrarbeit 504 → 554 h, Q2 504 → 519 h,
+P6 Zeilen fallen weg, P5 Soll 4,4 statt nicht verfügbar, P4/P3 Ist gerechnet statt nicht verfügbar, Sicht mit `la`,
+Stempeltext ohne Korrekturprozess. Nach dem Nachtrag: 27/27 grün.
+
+### Mutanten
+
+Je Mutante eine Ersetzung an der Quelle, Prüfdatei `monatsabschluss-nachtrag3`, danach Original zurückgeschrieben
+(Werkzeug im Scratchpad, ohne git). Alle 26 rot. M7/M8 waren im ersten Lauf nur über Umwege rot bzw. M8 überlebte
+(Version 99 fiel nur über den Widerspruch zum Abschluss-Schema auf) — Prüfungen P3/P4 daraufhin geschärft
+(Statusgrund „verzeichnis“; Version 99 ohne Schema am Abschluss, wie Beschäftigte ihn sehen), danach beide rot.
+
+| # | Mutante | rot in |
+|---|---|---|
+| M1 | DATEV wieder live statt aus dem Freeze | P6, Name geändert |
+| M2 | Konto ohne eingefrorenen Stand | Q1, Q2 |
+| M3 | Personalangaben nicht aus dem Freeze | 4 Prüfungen (Q1, Q2, P6, …) |
+| M4 | Bestätigen vergleicht Abschluss/Revision nicht | Rennen Bibliothek, Rennen Server, falsche Revision |
+| M5 | Bestätigen ohne Zeilen-Prüfsumme | falsche Zeilen-Prüfsumme |
+| M6 | Abschlusskennung immer gleich | Rennen ohne Änderung |
+| M7 | fehlendes Verzeichnis nicht erkannt | P3, N-e |
+| M8 | unbekannte Version gelesen | P4 |
+| M9 | Monatseintrag nicht verpflichtend | P5 |
+| M10 | Zuschlagsregeln `null` eingefroren | P7 Zuschläge |
+| M11 | Lohnarten `null` eingefroren | 5 Prüfungen (Q1, Q2, P6, …) |
+| M12 | Verweis ins Leere nicht erkannt | Verweis ins Leere |
+| M13 | Beschäftigte mit Lohnarten im Verzeichnis | M-2 Beschäftigte |
+| M14 | Schichtverantwortung: Monatseintrag anderer ganz | M-2 Schichtverantwortung |
+| M15 | Stempeltext nach Lohnexport wie vorher | N-a |
+| M16 | Auskunft ohne Legende | N-b |
+| M17 | Anonymisierung lässt Personalangaben im Freeze | Anonymisierung |
+| M18 | Soll ohne Monatseintrag live | P5, N-e |
+| M19 | Rechenstand nicht eingefroren | M-2 Beschäftigte, M-2 Schichtverantwortung, N-d |
+| M20 | Lohnausgabe ohne Freeze-Hinweise | 5 Prüfungen (Q2, P6, P7 Lohnarten, …) |
+| M21 | Ist-Summen nicht aus dem Freeze | N-d Summen |
+| M22 | Prüfsumme ohne Verzeichnis (MB, im Review überlebend) | MB |
+| M23 | Ausgabe merkt den Stand nicht | Oberfläche |
+| M24 | Altschema als Lohnexport bestätigbar | Schema 1 |
+| M25 | Konto ohne Übertrag eingefroren | Q1, Konto im Freeze |
+| M26 | Konto ohne Vormonate eingefroren | Konto im Freeze |
+
+### Angepasste bestehende Prüfungen (nicht abgeschwächt)
+
+- `monatsabschluss-lib.test.js`: `schema: 2` → `schema: 3` (aktuelles Schema, gleiche Strenge).
+- `monatsabschluss-ist.test.js`: Verzeichnis der Beschäftigten genau `da, rv, v, zs` statt `da, la, v, zs` — **strenger**
+  (M-2: keine Lohnarten).
+- `monatsabschluss-nachtrag.test.js` (Lohnexport): Die Bestätigung schickt jetzt den Stand der Datei mit (H-2); ohne ihn
+  wäre sie 409. Die Prüfung „Prüfsumme weicht ab → 409“ prüft zusätzlich den Code `ABDRUCK_ABWEICHEND`.
+
+### Tests lokal (Windows, einzeln, `--testTimeout=120000 --hookTimeout=120000`)
+
+Alle grün: monatsabschluss-nachtrag3 27, monatsabschluss-nachtrag 25, monatsabschluss 25, monatsabschluss-ist 10,
+monatsabschluss-lib 24, monatsabschluss-oberflaeche 6, br-auswertung 72, istdaten 35, pausenerfassung 16, rechtematrix 63,
+rechtematrix-zeilen 621, offline-stempeln 33, korrektur-nachtrag 23, serverdatum 16, doku 5, oberflaeche-render 22,
+beschaeftigung 27, sicht-schichtverantwortung 60, dsgvo-server 27, ungeplante-dienste 23. `serverdatum` (20 gleichzeitige
+Stempel: 503 statt 200) und `dsgvo-server` (M5, 60-s-Grenze der Prüfung) rissen einmal im Sammellauf unter Last (Mutantenlauf
+und Typprüfung parallel); einzeln wiederholt grün — Last, kein Befund. `tsc -p jsconfig.json` sauber; eslint der geänderten
+Dateien ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
+
+### CI
+
+Siehe Bericht (Kopf und Lauf-Kennungen nach dem Push).

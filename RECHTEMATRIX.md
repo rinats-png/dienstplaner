@@ -322,7 +322,11 @@ Betriebsrat nichts, Schichtverantwortung eigene und Bereich am Tag (Abwesenheits
 und Leitung alles; über das Speichern nicht änderbar. Seit dem WP-16-Nachtrag (Schema 2) dazu je Person und Monat Soll,
 Zuschläge und Zugehörigkeit (Sicht wie die Tage; Schichtverantwortung nur, wenn die Person den ganzen Monat im Bereich war)
 und je Betrieb und Monat das Verzeichnis der Dienstarten, Lohnarten und Zuschlagsregeln (`*|JJJJ-MM`, ohne Personenbezug;
-für alle, die eingefrorene Tage bekommen). Abgewiesene Stempel: Frist der Gründe, in der Auskunft, bei
+für alle, die eingefrorene Tage bekommen). Seit dem dritten Nachtrag (Schema 3) je Person und Monat außerdem Ist-Summe,
+Konto zum Monatsende, Übertrag, Bereitschaft/Ruf und Personalangaben für die Lohnausgabe — Beschäftigte nur im eigenen
+Eintrag; die Schichtverantwortung bekommt Monatseinträge anderer nur im Positivkatalog Soll, Zuschläge, Nachtdienste,
+Zugehörigkeit, Einheit. Das Verzeichnis bekommen Beschäftigte und Schichtverantwortung nur mit Schema, Dienstarten,
+Zuschlagsregeln und Rechenstand — ohne Lohnarten (`lohnarten` ist für sie WEG). Abgewiesene Stempel: Frist der Gründe, in der Auskunft, bei
 Anonymisierung der Person entfernt (Review M2).
 ²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
 ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen

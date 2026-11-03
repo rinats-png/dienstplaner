@@ -57,7 +57,7 @@
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
-import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA } from "./isteinfrieren.mjs";
+import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA, freezeStatus, datevAusFreeze } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
 
 export { abschlussPersonenRaeumen };
@@ -110,6 +110,12 @@ export const ABSCHLUSS_FELD = "monatsabschluss";
 export const MONAT_ABGESCHLOSSEN = "MONAT_ABGESCHLOSSEN";
 /** Wiederöffnen nach bestätigtem Lohnexport: abgelehnt, Korrektur nur über den Revisionsprozess (WP-16c). */
 export const KORREKTUR_ERFORDERLICH = "KORREKTUR_ERFORDERLICH";
+/** Lohnexport bestätigen ohne den Stand der ausgegebenen Datei (Prüfsumme, Abschluss, Revision, Zeilen). */
+export const EXPORTSTAND_FEHLT = "EXPORTSTAND_FEHLT";
+/** Die ausgegebene Datei gehört zu einem anderen Abschlussstand (Rennen: wiederöffnet, geändert, neu abgeschlossen). */
+export const EXPORTSTAND_ABWEICHEND = "EXPORTSTAND_ABWEICHEND";
+/** Der Abschluss ist nicht reproduzierbar (Schema < 3 oder unbekannt): erst erneut abschließen. */
+export const FREEZE_NICHT_REPRODUZIERBAR = "FREEZE_NICHT_REPRODUZIERBAR";
 export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
@@ -201,11 +207,17 @@ export function abgeschlosseneMonate(m) {
 /**
  * Die Absage eines Schreibwegs für einen Tag eines abgeschlossenen Monats —
  * oder null, wenn der Monat offen ist.
- * @returns {null | {status: number, code: string, monat: string, grund: string}}
+ * @returns {null | {status: number, code: string, monat: string, grund: string, lohnexportiert?: boolean}}
  */
 export function abschlussSperre(m, datum) {
   if (!monatAbgeschlossen(m, datum)) return null;
   const monat = /** @type {string} */ (monatVon(datum));
+  /* Nach bestätigtem Lohnexport (WP-16, Nachtrag dritter Review N-a): kein Wiederöffnen mehr — Nachträge nur über den
+     Korrekturprozess. Beschäftigte sehen den Status als `lohnexportiert` (abschlussStatus). */
+  const e = abschlussEintrag(m, monat);
+  if (e && (objekt(e.lohnexport) || e.lohnexportiert === true))
+    return { status: 409, code: MONAT_ABGESCHLOSSEN, monat, lohnexportiert: true,
+      grund: `Der Monat ${monatText(monat)} ist abgeschlossen und der Lohnexport bestätigt. Ist-Zeiten dieses Monats ändern sich nur noch über den Korrekturprozess der Leitung.` };
   return { status: 409, code: MONAT_ABGESCHLOSSEN, monat,
     grund: `Der Monat ${monatText(monat)} ist abgeschlossen. Ist-Zeiten dieses Monats ändern sich erst, wenn die Leitung ihn wiederöffnet.` };
 }
@@ -230,6 +242,16 @@ export function istDesMonats(m, monat) {
 /** Prüfsumme der Ist-Daten eines Monats (32 Hex-Zeichen, SHA-256). */
 export function istAbdruck(m, monat) {
   return sha256Hex(JSON.stringify(istDesMonats(m, monat))).slice(0, 32);
+}
+/**
+ * Prüfsumme der Lohnausgabe-Zeilen (WP-16, Nachtrag dritter Review H-2): Personalnummer, Name, Lohnart, Bezeichnung,
+ * Stunden, Monat in der Reihenfolge der Zeilen. Oberfläche (aus den Zeilen der Datei) und Server (aus dem Freeze,
+ * datevAusFreeze) rechnen sie gleich; beim Bestätigen des Lohnexports müssen beide übereinstimmen.
+ */
+export function datevZeilenAbdruck(zeilen) {
+  const z = (Array.isArray(zeilen) ? zeilen : []).map((x) => [x.personalnummer ?? null, x.nachname ?? null, x.vorname ?? null,
+    x.lohnart ?? null, x.bezeichnung ?? null, x.stunden ?? null, x.monat ?? null]);
+  return sha256Hex(JSON.stringify(z)).slice(0, 32);
 }
 
 /* --------------------------------------------------------------------------
@@ -319,7 +341,9 @@ export function abschliessen(m, r, wer, jetzt, id, heute) {
   const ereignis = { id, art: "abschluss", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
     ...(offen.offeneStempel || offen.zurPruefung ? { offen: { offeneStempel: offen.offeneStempel, zurPruefung: offen.zurPruefung } } : {}) };
   /* Schema und Revision (WP-16 Nachtrag): Der Abschluss ist Revision 1 — revisionsfähig für WP-16c. */
-  const eintrag = { ...(alt || {}), abgeschlossen: true, am: ereignis.am, wer: ereignis.wer, abdruck,
+  /* `stand`: Kennung dieses Abschlusses (WP-16, Nachtrag dritter Review H-2) — der Lohnexport bestätigt genau ihn;
+     ein erneutes Abschließen nach dem Wiederöffnen ist ein anderer Stand, auch bei gleicher Prüfsumme. */
+  const eintrag = { ...(alt || {}), abgeschlossen: true, am: ereignis.am, wer: ereignis.wer, abdruck, stand: id,
     schema: FREEZE_SCHEMA, revision: Number.isInteger(alt && alt.revision) ? alt.revision : 1, verlauf: [...verlauf, ereignis] };
   return { ereignis, eintrag, mandant: { ...mitIst, [ABSCHLUSS_FELD]: { ...(objekt(m[ABSCHLUSS_FELD]) ? m[ABSCHLUSS_FELD] : {}), [monat]: eintrag } } };
 }
@@ -356,8 +380,8 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
      (Plan, Dienstart oder Abwesenheit seit dem Abschluss geändert) — ohne Personen. */
   const ereignis = { id, art: "wiederoeffnung", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
     abdruckGleich: abdruck === alt.abdruck, istNeu: istAbweichungen(m, monat) };
-  const { abdruck: _weg, ...rest } = alt;
-  void _weg;
+  const { abdruck: _weg, stand: _stand, ...rest } = alt;
+  void _weg; void _stand;
   const eintrag = { ...rest, abgeschlossen: false, am: ereignis.am, wer: ereignis.wer, verlauf: [...verlauf, ereignis] };
   /* Das eingefrorene Ist wird verworfen: Ab jetzt gilt wieder das gerechnete (Review H1). */
   return { ereignis, eintrag, mandant: { ...m, [IST_EINGEFROREN]: ohneMonat(m[IST_EINGEFROREN], monat),
@@ -380,13 +404,34 @@ export function lohnexportBestaetigen(m, r, wer, jetzt, id) {
   const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
   if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
     return { status: 409, grund: "Dieser Monat wurde so oft abgeschlossen und wiedergeöffnet, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
+  /* Nur ein reproduzierbarer Abschluss (Schema 3: Konto, Summen, Personalangaben eingefroren) lässt sich als
+     exportiert bestätigen (WP-16, Nachtrag dritter Review H-1/M-1). */
+  const st = freezeStatus(m, monat);
+  if (!st || st.unbekannt || !st.reproduzierbar || alt.schema !== FREEZE_SCHEMA)
+    return { status: 409, code: FREEZE_NICHT_REPRODUZIERBAR,
+      grund: `Der Abschluss für ${monatText(monat)} ist in einem älteren oder unbekannten Format und nicht reproduzierbar. Bitte wiederöffnen und erneut abschließen, dann die Lohnausgabe neu erzeugen.` };
   const abdruck = istAbdruck(m, monat);
   if (abdruck !== alt.abdruck)
     return { status: 409, code: "ABDRUCK_ABWEICHEND",
       grund: `Die Ist-Daten für ${monatText(monat)} weichen von der Prüfsumme des Abschlusses ab. Bitte wiederöffnen und erneut abschließen, bevor der Lohnexport bestätigt wird.` };
   const revision = Number.isInteger(alt.revision) ? alt.revision : 1;
-  const ereignis = { id, art: "lohnexport", am: jetzt.toISOString(), wer: werForm(wer), abdruck, revision };
-  const eintrag = { ...alt, revision, lohnexport: { am: ereignis.am, wer: ereignis.wer, abdruck, revision }, verlauf: [...verlauf, ereignis] };
+  /* Gebunden an die ausgegebene Datei (WP-16, Nachtrag dritter Review H-2): Die Oberfläche schickt Prüfsumme,
+     Abschlusskennung und Revision, aus denen die Datei entstand, und die Prüfsumme ihrer Zeilen. Weicht etwas vom
+     heutigen Abschluss ab (dazwischen wiederöffnet, geändert, neu abgeschlossen), wird nichts bestätigt. Die Zeilen
+     rechnet der Server selbst aus dem Freeze nach (datevAusFreeze) — bestätigt wird nur, was er selbst ausgeben würde. */
+  const x = r || {};
+  if (typeof x.abdruck !== "string" || typeof x.zeilen !== "string" || x.stand === undefined || x.stand === null)
+    return { status: 409, code: EXPORTSTAND_FEHLT,
+      grund: `Bestätigt wird genau die ausgegebene Datei: Bitte zuerst die Lohnausgabe für ${monatText(monat)} erzeugen und dann bestätigen.` };
+  const zeilen = datevAusFreeze(m, monat) || [];
+  const zeilenAbdruck = datevZeilenAbdruck(zeilen);
+  if (x.abdruck !== alt.abdruck || String(x.stand) !== String(alt.stand) || Number(x.revision ?? 1) !== revision || x.zeilen !== zeilenAbdruck)
+    return { status: 409, code: EXPORTSTAND_ABWEICHEND,
+      grund: `Die ausgegebene Datei gehört nicht zum heutigen Abschluss von ${monatText(monat)} (Prüfsumme, Abschluss, Revision oder Zeilen weichen ab). Nichts bestätigt — bitte die Lohnausgabe neu erzeugen und prüfen.` };
+  const ereignis = { id, art: "lohnexport", am: jetzt.toISOString(), wer: werForm(wer), abdruck, revision, stand: alt.stand,
+    zeilen: zeilenAbdruck, n: zeilen.length };
+  const eintrag = { ...alt, revision, lohnexport: { am: ereignis.am, wer: ereignis.wer, abdruck, revision, stand: alt.stand,
+    zeilen: zeilenAbdruck, n: zeilen.length }, verlauf: [...verlauf, ereignis] };
   return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
 }
 

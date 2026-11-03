@@ -38,10 +38,24 @@ const gleich = (a, b) => a !== null && a !== undefined && b !== null && b !== un
 const eigen = (e, ich) => !!e && gleich(e.personId, ich);
 const eigenerSchluessel = (k, ich) => gleich(String(k).split("|")[0], ich);
 const liste = (w) => (Array.isArray(w) ? w : []);
-/* Eingefrorenes Ist für Beschäftigte: eigene Einträge und das Verzeichnis des Betriebs („*|JJJJ-MM"). */
+/* Das Verzeichnis des Betriebs („*|JJJJ-MM") für Beschäftigte und Schichtverantwortung — Positivkatalog (WP-16,
+   Nachtrag dritter Review M-2): Schema, Dienstarten, Zuschlagsregeln (wie `zuschlaege`, für diese Rollen ohnehin
+   sichtbar) und Rechenstand. Die Lohnarten (`la`) nicht — `lohnarten` ist für Beschäftigte und Betriebsrat WEG —,
+   ebenso wenig, was künftig dazukommt. */
+export const VERZEICHNIS_FELDER_EINGESCHRAENKT = Object.freeze(["v", "da", "zs", "rv"]);
+const verzeichnisEingeschraenkt = (v) => nimm(v, VERZEICHNIS_FELDER_EINGESCHRAENKT);
+/* Monatseintrag einer anderen Person im Bereich der Schichtverantwortung: Soll, Zuschläge, Nachtdienste,
+   Zugehörigkeit, Einheit — wie vor Schema 3. */
+export const MONAT_FELDER_BEREICH = Object.freeze(["s", "z", "nn", "i", "u"]);
+/* Eingefrorenes Ist für Beschäftigte: eigene Einträge und das Verzeichnis des Betriebs („*|JJJJ-MM", gekürzt). */
 function eigenesIstEingefroren(w, ctx) {
   if (!w || typeof w !== "object" || Array.isArray(w)) return {};
-  return Object.fromEntries(Object.entries(w).filter(([k]) => eigenerSchluessel(k, ctx.ich) || istBetriebsSchluessel(k)));
+  const aus = {};
+  for (const [k, v] of Object.entries(w)) {
+    if (istBetriebsSchluessel(k)) aus[k] = verzeichnisEingeschraenkt(v);
+    else if (eigenerSchluessel(k, ctx.ich)) aus[k] = v;
+  }
+  return aus;
 }
 const nimm = (o, felder) => {
   const aus = {};
@@ -766,9 +780,10 @@ const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
    die Abwesenheitsart im Bereich nur wie bei den Abwesenheiten (artFuerSV: sensible Arten als „abwesend"). */
 const schichtIstEingefroren = (w, ctx) => objektFilter(w, (k, v) => {
   /* Verzeichnis des Betriebs (ohne Personenbezug, WP-16 Nachtrag H-neu-1): die Tage verweisen darauf. */
-  if (istBetriebsSchluessel(k)) return v;
+  if (istBetriebsSchluessel(k)) return verzeichnisEingeschraenkt(v);       // ohne Lohnarten (Nachtrag dritter Review M-2)
   /* Monatseintrag einer Person (Soll, Zuschläge, Zugehörigkeit): nur eigen oder an jedem Tag des Monats im Bereich
-     — sonst enthielte er Stunden aus Tagen außerhalb des Bereichs. */
+     — sonst enthielte er Stunden aus Tagen außerhalb des Bereichs. Für andere nur der Positivkatalog
+     (MONAT_FELDER_BEREICH): kein Konto, Übertrag, keine Ist-Summen über das Jahr, keine Personalnummer. */
   if (istMonatsSchluessel(k)) {
     const pid = schluesselPerson(k), mon = schluesselTag(k);
     if (umfangDer(ctx, pid) === "eigen") return v;
@@ -778,7 +793,7 @@ const schichtIstEingefroren = (w, ctx) => objektFilter(w, (k, v) => {
       const u = umfangImZeitraum(ctx, pid, `${mon}-${String(i).padStart(2, "0")}`);
       if (u !== "eigen" && u !== "bereich") return undefined;
     }
-    return v;
+    return nimm(v, MONAT_FELDER_BEREICH);
   }
   const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
   if (u === "eigen") return v;

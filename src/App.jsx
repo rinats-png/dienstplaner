@@ -234,10 +234,13 @@ import {
 /* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
-import { monatAbgeschlossen, monatText } from "../server/lib/monatsabschluss.mjs";
+import { monatAbgeschlossen, monatText, datevZeilenAbdruck } from "../server/lib/monatsabschluss.mjs";
 import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst, eingefrorenerMonat, eingefrorenerBetrieb,
   abschlussLuecke, abschlussLuecken, ABSCHLUSS_LUECKE_TEXT, feiertagFuer, sollMonat, nachtAnteilAm, tagesanteile, zuschlagTagAddieren,
-  eingefrorenFuerPerson } from "../server/lib/isteinfrieren.mjs";
+  eingefrorenFuerPerson, freezeStatus, datevAusFreeze, datevHinweise } from "../server/lib/isteinfrieren.mjs";
+/* Dienstformen, Anrechnungsfaktor und Standard-Lohnarten stehen seit WP-16 (Nachtrag dritter Review H-1/N-d) in
+   server/lib/lohnrechnung.mjs: Der Monatsabschluss rechnet damit Ist-Summe und Konto zum Abschluss ein. */
+import { DIENSTFORMEN, dienstform, anrechnungsfaktor, gewertet, LOHNARTEN_STD } from "../server/lib/lohnrechnung.mjs";
 import { feiertage, feiertag } from "../server/lib/feiertage.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
@@ -1497,7 +1500,17 @@ function sollStunden(m, p, ym) {
     /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): das Soll zum Abschluss — spätere Änderungen an
        Wochenstunden, Eintritt/Austritt, Standort oder Bundesland ändern es nicht. */
     const fm = eingefrorenerMonat(m, p, ym);
-    if (fm && Number.isFinite(fm.s)) return fm.s;
+    if (fm && Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym)) return fm.s;
+    /* Schema ≥ 2 (WP-16, Nachtrag dritter Review M-1/N-e): ohne brauchbaren Monatseintrag kein live gerechnetes
+       Soll — „nicht verfügbar" (null), auch für Rollen, die den Eintrag nicht sehen (Betriebsrat, Schicht-
+       verantwortung ohne den ganzen Monat im Bereich). Nur wer im Monat gar nicht im Dienst war, hat Soll 0. */
+    const st = freezeStatus(m, ym);
+    if (st && (st.unbekannt || st.schema >= 2) && !(fm && !Number.isFinite(fm.s) && !abschlussLuecke(m, p, ym))) {
+      const [y, mo] = ym.split("-").map(Number);
+      let im = false;
+      for (let i = 1; i <= dim_(y, mo - 1) && !im; i++) im = imDienst(p, `${ym}-${pad(i)}`);
+      return im ? null : 0;
+    }
     return sollMonat(m, p, ym);
   });
 }
@@ -1537,6 +1550,11 @@ function istStunden(m, p, ym) {
     /* Abgeschlossener Monat: Nachtstunden und Nachtdienste wie zum Abschluss (Nachtfenster von damals, M-neu-2). */
     const fm = eingefrorenerMonat(m, p, ym);
     if (fm && Array.isArray(fm.z)) { nacht = Number(fm.z[0]) || 0; naechte = Number(fm.nn) || 0; }
+    /* Schema 3 (WP-16, Nachtrag dritter Review N-d): die Summen wie zum Abschluss gerechnet — eine spätere Änderung an
+       Anrechnungsfaktor oder Entgeltstatus (Code-Konstanten) ändert den abgeschlossenen Monat nicht. */
+    if (fm && Number.isFinite(fm.g) && Number.isFinite(fm.gg) && Number.isFinite(fm.ig))
+      return { geleistet: fm.g, gutgeschrieben: fm.gg, gesamt: fm.ig, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert,
+        zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
   });
@@ -1626,12 +1644,23 @@ function urlaubskonto(m, p, jahr) {
 function stundenkonto(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumBisMonat(ym))) return null;
   return memo(m, `kto|${p.id}|${ym}`, () => {
+    /* Abgeschlossener Monat (WP-16, Nachtrag dritter Review H-1): das Konto zum Monatsende, wie der Abschluss es
+       rechnete — mit dem Übertrag und den Vormonaten von damals. Ein später geänderter Übertrag oder ein geänderter
+       offener Vormonat ändert es nicht (Lohnart Mehrarbeit). Unbrauchbarer Freeze: nicht verfügbar. */
+    const st = freezeStatus(m, ym);
+    if (st) {
+      if (st.unbekannt || abschlussLuecke(m, p, ym)) return null;
+      const fm = eingefrorenerMonat(m, p, ym);
+      if (st.reproduzierbar && fm) return Number.isFinite(fm.k) ? fm.k : null;
+    }
     const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
     for (let x = 1; x <= bis; x++) {
       const k = `${j}-${pad(x)}`; const ist = istStunden(m, p, k).gesamt;
       /* Ein abgeschlossener Monat ohne Freeze (N3): Konto unbekannt, nicht geschätzt. */
       if (ist === null || ist === undefined) return null;
-      d += ist - sollStunden(m, p, k);
+      const soll = sollStunden(m, p, k);
+      if (soll === null || soll === undefined) return null;
+      d += ist - soll;
     }
     return Math.round(d * 10) / 10;
   });
@@ -2991,6 +3020,11 @@ function zuschlagWert(m, p, ym) {
   const std = zuschlagStunden(m, p, ym);
   /* Abgeschlossener Monat: die Zuschlagsregeln zum Abschluss (M-neu-2). */
   const fb = eingefrorenerBetrieb(m, ym);
+  /* Schema ≥ 2 ohne eingefrorene Regeln (WP-16, Nachtrag dritter Review M-1, P7): nicht die heutigen Regeln
+     rückwirkend anwenden, sondern „nicht verfügbar". */
+  const st = freezeStatus(m, ym);
+  if (st && (st.unbekannt || (st.schema >= 2 && !(fb && Array.isArray(fb.zs)))))
+    return { std, zeilen: [], summe: null, nichtVerfuegbar: true };
   const regeln = fb && Array.isArray(fb.zs) ? fb.zs : m.zuschlaege;
   const zeilen = (regeln || []).filter((z) => z.aktiv).map((z) => {
     const h = std[z.art] || 0;
@@ -3285,9 +3319,8 @@ function teilzeitProfil(m, p) {
  *
  * Woher der Faktor kommt, entscheidet anrechnungsfaktor(): ein gesetzter
  * Wert der Dienstart, sonst der erfasste Einsatzanteil, sonst der Vorschlag
- * der Dienstform.
+ * der Dienstform. gewertet() steht in server/lib/lohnrechnung.mjs (WP-16, Nachtrag dritter Review).
  */
-const gewertet = (da, std) => Math.round(std * anrechnungsfaktor(da) * 100) / 100;
 
 /* ------------------------------- Personalimport -------------------------- */
 const IMPORT_SPALTEN = ["nachname", "vorname", "einheit", "funktion", "wochenstunden",
@@ -4390,24 +4423,9 @@ function fachkraftLage(m, datum, dienstId) {
  * Bereitschaftsdienst (Anwesenheit am Arbeitsplatz) und Rufbereitschaft
  * (Erreichbarkeit von zu Hause) zählen unterschiedlich. Beide sind
  * Arbeitszeit im Sinne des Arbeitsschutzes, aber nicht in voller Höhe
- * vergütungs- oder kontenwirksam.
+ * vergütungs- oder kontenwirksam. DIENSTFORMEN, dienstform() und anrechnungsfaktor() stehen in
+ * server/lib/lohnrechnung.mjs (WP-16, Nachtrag dritter Review: der Abschluss rechnet damit).
  */
-const DIENSTFORMEN = [
-  { id: "regel", name: "Regeldienst", faktor: 1, ruhezeitNeutral: false,
-    aufenthalt: "arbeitsplatz",
-    hinweis: "Volle Arbeitszeit, unterbricht die Ruhezeit." },
-  { id: "bereitschaft", name: "Bereitschaftsdienst", faktor: 0.6, ruhezeitNeutral: false,
-    aufenthalt: "arbeitsplatz", abrufMinuten: 0,
-    hinweis: "Anwesenheit am Arbeitsplatz oder an einer vom Betrieb bestimmten Stelle. "
-      + "Arbeitszeit im Sinne des ArbZG, auf dem Konto anteilig." },
-  { id: "ruf", name: "Rufbereitschaft", faktor: 0.125, ruhezeitNeutral: true,
-    aufenthalt: "frei", abrufMinuten: 30,
-    hinweis: "Aufenthalt frei wählbar, nur Erreichbarkeit geschuldet. Unterbricht die "
-      + "Ruhezeit nicht, solange kein Einsatz erfolgt." },
-  { id: "geteilt", name: "Geteilter Dienst", faktor: 1, ruhezeitNeutral: false, geteilt: true,
-    aufenthalt: "arbeitsplatz",
-    hinweis: "Zwei Abschnitte mit Unterbrechung. Die Pause dazwischen ist keine Arbeitszeit." },
-];
 
 /* --------------------------------------------------------------------------
    AUFENTHALTSBINDUNG
@@ -4477,24 +4495,6 @@ function bereitschaftHinweise(da) {
         + "arbeitszeitrechtliche Bewertung hängt — ohne sie lässt sich die Form nicht belegen." });
 
   return aus;
-}
-const dienstform = (id) => DIENSTFORMEN.find((x) => x.id === id) || DIENSTFORMEN[0];
-
-/**
- * Womit wird diese Dienstart auf das Konto gerechnet?
- *
- * Der Betrieb kann einen Faktor setzen. Ist stattdessen ein Einsatzanteil
- * erfasst — wie viel der Bereitschaft erfahrungsgemäß Einsatz ist —, ist
- * das die ehrlichere Zahl: Sie stammt aus der Beobachtung und nicht aus
- * einer Verhandlung. Sie greift nur, wenn kein eigener Faktor gesetzt ist.
- */
-function anrechnungsfaktor(da) {
-  if (!da) return 1;
-  if (da.faktor !== undefined && da.faktor !== null) return da.faktor;
-  const anteil = Number(da.einsatzAnteil);
-  if ((da.form === "ruf" || da.form === "bereitschaft") && Number.isFinite(anteil) && anteil > 0)
-    return Math.min(1, anteil);
-  return dienstform(da.form).faktor;
 }
 
 /** Dauer eines geteilten Dienstes: beide Abschnitte ohne die Lücke dazwischen. */
@@ -4566,29 +4566,28 @@ function offeneUebergaben(m, tage = 3, einheitId = null) {
 }
 
 /* --------------------------- Lohnausgabe --------------------------------- */
-/**
- * Übliche Lohnartennummern als Startwerte. Sie sind keine Vorgabe von DATEV,
- * sondern in deutschen Lohnbüros verbreitete Hausnummern — jeder Betrieb
- * führt seinen eigenen Lohnartenschlüssel, deshalb sind sie einstellbar.
- */
-const LOHNARTEN_STD = {
-  grund: { nr: "1000", text: "Gehalt" },
-  nacht: { nr: "1400", text: "Nachtzuschlag steuerfrei" },
-  sonntag: { nr: "1410", text: "Sonntagszuschlag steuerfrei" },
-  feiertag: { nr: "1420", text: "Feiertagszuschlag steuerfrei" },
-  samstag: { nr: "1430", text: "Samstagszuschlag" },
-  bereitschaft: { nr: "1500", text: "Bereitschaftsdienst" },
-  ruf: { nr: "1510", text: "Rufbereitschaft" },
-  mehrarbeit: { nr: "1200", text: "Mehrarbeit" },
-};
+/* LOHNARTEN_STD (übliche Lohnartennummern als Startwerte, einstellbar) steht seit WP-16 (Nachtrag dritter Review
+   N-d) in server/lib/lohnrechnung.mjs: Der Abschluss friert die wirksamen Lohnarten ein — eigene oder diese. */
 /**
  * Erzeugt den Lohnartensatz je Person für einen Monat.
  * Bewusst als Stunden je Lohnart — Entgelte gehören in die Lohnabrechnung.
+ *
+ * Abgeschlossener Monat (WP-16, Nachtrag dritter Review H-1): NUR aus dem Freeze (datevAusFreeze) — Lohnarten,
+ * Zugehörigkeit, Zuschläge, Bereitschaft/Ruf, Konto (Mehrarbeit) und Personalangaben wie zum Abschluss. Ein später
+ * geänderter Übertrag, ein geänderter offener Vormonat, ein umbenannter oder aus dem Personalstamm entfernter
+ * Mensch ändern die Zeilen nicht; der Server rechnet beim Bestätigen des Lohnexports dieselben Zeilen nach.
+ * Unbrauchbarer Freeze (Version, Verzeichnis, Lohnarten): keine Zeilen — die Lohnausgabe nennt den Prüffall.
+ * Altabschlüsse (Schema 1/2) rechnen wie bisher, gekennzeichnet als nicht reproduzierbar.
  */
 function datevSaetze(m, ym) {
+  const st = freezeStatus(m, ym);
+  if (st && st.unbekannt) return [];
+  if (st && st.reproduzierbar) return datevAusFreeze(m, ym) || [];
   /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Lohnarten und Zugehörigkeit (im Dienst am 28.) wie zum
      Abschluss — ein rückwirkend verlegter Austritt lässt niemanden aus dem abgeschlossenen Monat fallen. */
   const fb = eingefrorenerBetrieb(m, ym);
+  /* Schema 2 ohne Lohnarten (la: null): nicht die heutigen nehmen (Nachtrag dritter Review M-1) — keine Zeilen. */
+  if (st && st.schema >= 2 && !(fb && fb.la && typeof fb.la === "object")) return [];
   const la = (fb && "la" in fb ? fb.la : m.lohnarten) || LOHNARTEN_STD;
   const zeilen = [];
   for (const p of m.personen) {
@@ -4625,25 +4624,48 @@ function datevSaetze(m, ym) {
   }
   return zeilen;
 }
-/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zus\u00E4tzlich
+/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zusätzlich
    gegen Formel-Injection) stehen in src/csvfeld.js. */
+
+/**
+ * Der Stand, aus dem die Lohnausgabe eines abgeschlossenen Monats entsteht (WP-16, Nachtrag dritter Review H-2):
+ * Prüfsumme und Kennung des Abschlusses, Revision und die Prüfsumme der Zeilen. Die Oberfläche merkt ihn sich beim
+ * Ausgeben der Datei und schickt genau ihn beim Bestätigen des Lohnexports mit; der Server vergleicht (409 bei
+ * Abweichung). null für einen offenen Monat.
+ */
+/** Der zuletzt ausgegebene Stand je Betrieb und Monat (nur in dieser Sitzung der Oberfläche). */
+const EXPORT_STAND = new Map();
+function lohnexportStand(m, ym) {
+  const e = m && m.monatsabschluss && m.monatsabschluss[ym];
+  if (!e || e.abgeschlossen !== true) return null;
+  return { monat: ym, abdruck: e.abdruck ?? null, stand: e.stand ?? null, revision: Number.isInteger(e.revision) ? e.revision : 1,
+    zeilen: datevZeilenAbdruck(datevSaetze(m, ym)) };
+}
+/** Dateiname der Lohnausgabe: im abgeschlossenen Monat mit Revision und Prüfsumme (die Datei selbst bleibt im Format). */
+function lohnausgabeDateiname(m, ym, endung) {
+  const s = lohnexportStand(m, ym);
+  return `lohnausgabe_${String(m.name || "").replace(/\W+/g, "_")}_${ym}${s && s.abdruck ? `_r${s.revision}_${String(s.abdruck).slice(0, 12)}` : ""}.${endung}`;
+}
 
 /**
  * Die Lohnausgabe als Trennzeichendatei.
  *
- * Kein amtliches DATEV-Importformat \u2014 die gibt es (LODAS und Lohn und Gehalt),
+ * Kein amtliches DATEV-Importformat — die gibt es (LODAS und Lohn und Gehalt),
  * beide mit vorgeschriebenem Kopfsatz und fester Feldfolge. Diese Datei ist
- * eine schlichte, klar benannte Spaltenliste, wie sie ein Lohnb\u00FCro in seinen
- * Import einliest oder in die eigene Maske \u00FCbernimmt. Sie ist bewusst so
- * gehalten, dass ein Mensch sie lesen und pr\u00FCfen kann, bevor er sie weitergibt.
+ * eine schlichte, klar benannte Spaltenliste, wie sie ein Lohnbüro in seinen
+ * Import einliest oder in die eigene Maske übernimmt. Sie ist bewusst so
+ * gehalten, dass ein Mensch sie lesen und prüfen kann, bevor er sie weitergibt.
  *
  * Byte-Reihenfolge-Marke und CRLF stehen davor, damit Excel Umlaute nicht
- * zerlegt \u2014 ohne beides wird aus M\u00FCller ein M\u00C3\u00BCller.
+ * zerlegt — ohne beides wird aus Müller ein MÃ¼ller.
+ *
+ * Prüfsumme und Revision eines abgeschlossenen Monats stehen nicht in der Datei (das Spaltenformat bleibt, wie
+ * Importe es erwarten), sondern im Dateinamen und im Blatt zum Gegenlesen (lohnausgabeText).
  */
 function datevCSV(m, ym) {
   /* Feste Reihenfolge: Personalnummer, dann Lohnart. Vorher kam die Reihenfolge
-     aus der Personalliste \u2014 zwei Ausgaben desselben Monats konnten sich
-     unterscheiden, ohne dass sich eine Zahl ge\u00E4ndert hatte. */
+     aus der Personalliste — zwei Ausgaben desselben Monats konnten sich
+     unterscheiden, ohne dass sich eine Zahl geändert hatte. */
   const z = datevSaetze(m, ym).slice().sort((a, b) =>
     String(a.personalnummer).localeCompare(String(b.personalnummer), "de", { numeric: true })
     || String(a.lohnart).localeCompare(String(b.lohnart), "de", { numeric: true }));
@@ -4653,12 +4675,12 @@ function datevCSV(m, ym) {
   const zeilen = [kopf.join(";")];
   for (const x of z) zeilen.push([x.personalnummer, x.nachname, x.vorname, x.lohnart,
     x.bezeichnung, n2(x.stunden), monat, jahr].map(csvFeld).join(";"));
-  return "\uFEFF" + zeilen.join("\r\n");
+  return "﻿" + zeilen.join("\r\n");
 }
 
 /**
- * Dieselben Zahlen als lesbares Blatt \u2014 zum Gegenlesen, bevor die Datei das
- * Haus verl\u00E4sst. Eine Trennzeichendatei pr\u00FCft niemand gern am Bildschirm.
+ * Dieselben Zahlen als lesbares Blatt — zum Gegenlesen, bevor die Datei das
+ * Haus verlässt. Eine Trennzeichendatei prüft niemand gern am Bildschirm.
  */
 /**
  * Ist-Zeiten zur Prüfung (WP-17, W1) im Blatt zum Gegenlesen: je betroffenem
@@ -4670,7 +4692,8 @@ function lohnPruefZeilen(m, ym) {
   const lu = abschlussLuecken(m, ym);
   const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${ABSCHLUSS_LUECKE_TEXT}`,
     ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
-  if (!h) return luZeilen;
+  const fz = freezeZeilen(m, ym);
+  if (!h) return [...luZeilen, ...fz];
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
     `ACHTUNG: ${h.text}`,
@@ -4678,14 +4701,41 @@ function lohnPruefZeilen(m, ym) {
     "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
     "",
     ...luZeilen,
+    ...fz,
   ];
+}
+/**
+ * Hinweise aus dem Freeze eines abgeschlossenen Monats (WP-16, Nachtrag dritter Review H-1, M-1, N-d) — Prüffälle
+ * statt stiller Zahlen: unbrauchbarer oder nicht reproduzierbarer Abschluss, Personen nicht mehr im Personalstamm
+ * (Zeilen aus dem Abschluss), Konto nicht rechenbar, offene Vormonate, anderer Rechenstand.
+ */
+function freezeZeilen(m, ym) {
+  const h = datevHinweise(m, ym);
+  if (!h) return [];
+  const name = (x) => `  ${x.nachname || "?"}, ${x.vorname || "?"} (${x.personalnummer})`;
+  const aus = [];
+  if (h.unbekannt) aus.push("ACHTUNG: Der Abschluss dieses Monats ist in einem unbekannten oder unvollständigen Format — "
+    + "keine Lohnartensätze (Prüffall: Monat wiederöffnen und erneut abschließen).", "");
+  if (h.nichtReproduzierbar) aus.push(`ACHTUNG: Abschluss im älteren Format (Schema ${h.schema}) — nicht reproduzierbar: `
+    + "Soll, Zuschläge oder Konto teils mit heutigen Stammdaten gerechnet. Vor dem Lohnexport wiederöffnen und erneut abschließen.", "");
+  if (h.lohnartenFehlen) aus.push("ACHTUNG: Im Abschluss fehlen die Lohnarten — keine Lohnartensätze (Prüffall).", "");
+  if (h.entfernt.length) aus.push(`HINWEIS: ${h.entfernt.length === 1 ? "1 Person steht" : `${h.entfernt.length} Personen stehen`} `
+    + "nicht mehr im Personalstamm — ihre Zeilen kommen aus dem Abschluss:", ...h.entfernt.map(name), "");
+  if (h.kontoFehlt.length) aus.push(`ACHTUNG: Konto zum Abschluss nicht rechenbar (keine Mehrarbeitszeile) für `
+    + `${h.kontoFehlt.length === 1 ? "1 Person" : `${h.kontoFehlt.length} Personen`}:`, ...h.kontoFehlt.map(name), "");
+  if (h.vormonateOffen.length) aus.push(`HINWEIS: Konto vorläufig — Vormonat offen (${h.vormonateOffen.map(monatText).join(", ")}). `
+    + "Das Konto dieses Monats ist der Stand zum Abschluss; Änderungen in offenen Vormonaten wirken erst in späteren Monaten.", "");
+  if (h.rechenstand !== undefined) aus.push(`HINWEIS: Abschluss mit Rechenstand ${h.rechenstand ?? "unbekannt"} — die Software rechnet heute anders. `
+    + "Die eingefrorenen Werte gelten unverändert.", "");
+  return aus;
 }
 
 /** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
 function lohnWarnung(m, ym, w) {
   const l = abschlussLuecken(m, ym).length;
-  if (!l) return w;
-  const t = `${l === 1 ? "1 Person" : `${l} Personen`}: ${ABSCHLUSS_LUECKE_TEXT} In der Ausgabe fehlt sie.`;
+  const fz = freezeZeilen(m, ym).filter((z) => z.startsWith("ACHTUNG")).join("\n");
+  if (!l && !fz) return w;
+  const t = [l ? `${l === 1 ? "1 Person" : `${l} Personen`}: ${ABSCHLUSS_LUECKE_TEXT} In der Ausgabe fehlt sie.` : "", fz].filter(Boolean).join("\n");
   return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;
 }
 
@@ -4701,28 +4751,31 @@ function lohnausgabeText(m, ym) {
   const summen = Object.values(jeLohnart).sort((a, b) =>
     String(a.nr).localeCompare(String(b.nr), "de", { numeric: true }));
   const breite = (s, n) => String(s).padEnd(n).slice(0, n);
+  /* Begleitprotokoll (WP-16, Nachtrag dritter Review H-2): Abschluss, Revision und Prüfsummen des ausgegebenen Standes. */
+  const st = lohnexportStand(m, ym);
   return [
     `Lohnausgabe ${m.name}`,
     `Abrechnungsmonat: ${MON[Number(monat) - 1]} ${jahr}`,
     `Erstellt: ${new Date().toLocaleString("de-DE")}`,
+    ...(st ? [`Abschluss: Revision ${st.revision} · Prüfsumme ${st.abdruck} · Zeilen-Prüfsumme ${st.zeilen}`]
+      : ["Monat nicht abgeschlossen — vorläufige Ausgabe, nicht als Lohnexport bestätigbar."]),
     "",
     ...lohnPruefZeilen(m, ym),
     "Summen je Lohnart",
-    "\u2014".repeat(58),
+    "—".repeat(58),
     `${breite("Lohnart", 10)}${breite("Bezeichnung", 32)}${"Personen".padStart(9)}${"Stunden".padStart(11)}`,
     ...summen.map((l) => `${breite(l.nr, 10)}${breite(l.text, 32)}`
       + `${String(l.personen.size).padStart(9)}${n2(l.stunden).padStart(11)}`),
-    "\u2014".repeat(58),
+    "—".repeat(58),
     `${breite("", 42)}${String(new Set(z.map((x) => x.personalnummer)).size).padStart(9)}`
       + `${n2(z.reduce((a, x) => a + x.stunden, 0)).padStart(11)}`,
     "",
-    `${zahl(z.length)} Lohnartens\u00E4tze f\u00FCr ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
+    `${zahl(z.length)} Lohnartensätze für ${zahl(new Set(z.map((x) => x.personalnummer)).size)} Personen.`,
     "",
-    "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundens\u00E4tze,",
-    "Tarifgruppen und Steuerfreibetr\u00E4ge geh\u00F6ren in die Lohnabrechnung.",
+    "Ausgewiesen werden Stunden je Lohnart, keine Entgelte. Stundensätze,",
+    "Tarifgruppen und Steuerfreibeträge gehören in die Lohnabrechnung.",
   ].join("\n");
 }
-
 /* ==========================================================================
    BELASTBARKEIT UND ENTSCHEIDUNGSUNTERSTÜTZUNG
    Ein Plan, der heute aufgeht, sagt nichts darüber, ob er morgen noch trägt.
@@ -11714,6 +11767,8 @@ function Monatsabschluss({ sitz, ym, akt }) {
         Der Lohnexport ist bestätigt — der Abschluss lässt sich nicht mehr einfach wiederöffnen; eine Änderung braucht den Korrekturprozess.</div>}
       {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
         {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {ABSCHLUSS_LUECKE_TEXT}</div>}
+      {/* Freeze-Hinweise (WP-16, Nachtrag dritter Review H-1/M-1/N-d): Format, offene Vormonate, Rechenstand, entfernte Personen. */}
+      {zu && freezeZeilen(m, ym).filter(Boolean).map((t, i) => <div key={i} style={{ fontSize: 12.5, color: /^ACHTUNG/.test(t) ? C.warn : C.dim, marginTop: 4 }}>{t}</div>)}
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
         {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt; Stundenkonto und Lohnausgabe rechnen mit dem Ist zum Abschluss — spätere Änderungen an Plan, Dienstarten oder Abwesenheiten wirken erst, wenn der Monat wieder offen ist. Wieder öffnen kann ihn nur die Leitung, mit Grund."
           : laufend ? "Abschließen lässt sich ein Monat erst nach dem Monatsende."
@@ -11730,7 +11785,9 @@ function Monatsabschluss({ sitz, ym, akt }) {
           <div style={{ fontSize: 13, fontWeight: 600, color: C.warn }}>
             {anzahlAbgewiesen === 1 ? "1 Stempel nach dem Abschluss abgewiesen" : `${anzahlAbgewiesen} Stempel nach dem Abschluss abgewiesen`}</div>
           <div style={{ fontSize: 12.5, color: C.dim, lineHeight: 1.45 }}>
-            Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Ist der Monat wieder offen, lässt er sich dort erneut senden.</div>
+            {exportiert
+              ? "Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Der Lohnexport ist bestätigt — ein Nachtrag geht nur noch über den Korrekturprozess, nicht durch erneutes Senden."
+              : "Nicht gespeichert, nicht verloren: auf dem Gerät der Person sichtbar. Ist der Monat wieder offen, lässt er sich dort erneut senden."}</div>
           {abgewiesen.map((x, i) => (
             <div key={`${x.ereignis || i}`} style={{ fontSize: 12.5, ...NUM }}>
               {name(x.personId)} · {fKurz(x.datum)} · {x.art === "start" ? "Beginn" : "Ende"} {x.zeit || ""}{x.offline ? " · offline erfasst" : ""}{x.alt ? ", erst nach über 48 Stunden gesendet" : ""}{Number(x.anzahl) > 1 ? ` · ${x.anzahl}-mal` : ""}</div>))}
@@ -12074,8 +12131,8 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
                     {p.nachname}, {p.vorname}</span></td>
                 {["gesamt", "nacht", "sonntag", "feiertag", "samstag"].map((f) => (
                   <td key={f} style={{ textAlign: "right", fontSize: 13,
-                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1(z.std[f])}</td>))}
-                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1(z.summe)} h</td>
+                    color: z.std[f] ? C.text : C.dim, ...NUM }}>{n1Ist(z.std[f])}</td>))}
+                <td style={{ textAlign: "right", fontSize: 14, fontWeight: 600, ...NUM }}>{n1Ist(z.summe)} h</td>
               </tr>))}</tbody>
           </table>
         </Card>
@@ -12612,7 +12669,10 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
           {leute.map((p) => {
             const ohneIst = !istVerfuegbar(m, p, zeitraumJahr(jahr));
             const jahresIst = ohneIst ? null : monate.reduce((a, i) => a + istStunden(m, p, `${jahr}-${pad(i + 1)}`).gesamt, 0);
-            const jahresSoll = monate.reduce((a, i) => a + sollStunden(m, p, `${jahr}-${pad(i + 1)}`), 0);
+            /* Ein Monat ohne verfügbares Soll (abgeschlossen, Eintrag nicht sichtbar — Nachtrag dritter Review N-e):
+               keine Jahressumme statt einer zu kleinen. */
+            const sollJe = monate.map((i) => sollStunden(m, p, `${jahr}-${pad(i + 1)}`));
+            const jahresSoll = sollJe.some((x) => x === null || x === undefined) ? null : sollJe.reduce((a, x) => a + x, 0);
             const url = urlaubskonto(m, p, jahr);
             return (
               <div key={p.id} style={{ minWidth: 0 }}>
@@ -12623,7 +12683,8 @@ function Jahresansicht({ sitz, ym, oeffnePerson }) {
                   {p.teilzeit && p.teilzeit.aktiv && <Pill size="sm">Teilzeit {Math.round(teilzeitProfil(m, p).quote * 100)} %</Pill>}
                   {p.springer && <Pill size="sm" tone="violet">Springer</Pill>}
                   <span style={{ fontSize: 12, color: C.dimmer, ...NUM }}>
-                    {ohneIst ? `Ist nicht verfügbar · Soll ${n1(jahresSoll)} h` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`}{url.anspruch === null ? "" : ` · Urlaub ${url.genommen}/${url.anspruch}`}</span>
+                    {ohneIst ? `Ist nicht verfügbar · Soll ${jahresSoll === null ? "nicht verfügbar" : `${n1(jahresSoll)} h`}`
+                      : jahresSoll === null ? `${n1(jahresIst)} h · Soll nicht verfügbar` : `${n1(jahresIst)} von ${n1(jahresSoll)} h · ${sgn(jahresIst - jahresSoll)} h`}{url.anspruch === null ? "" : ` · Urlaub ${url.genommen}/${url.anspruch}`}</span>
                 </div>
                 {/* Zwölf Blöcke statt 365 Härchen.
 
@@ -23608,14 +23669,21 @@ function AppInnen() {
       },
       /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): Wann, Wer, Prüfsumme — sperrt einfaches Wiederöffnen. */
       lohnexportBestaetigen: async (monat) => {
-        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen? Danach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.`)) return false;
+        /* Bestätigt wird genau die ausgegebene Datei (WP-16, Nachtrag dritter Review H-2): Prüfsumme, Abschluss, Revision
+           und Zeilen-Prüfsumme des Standes, aus dem sie entstand. Der Server vergleicht mit dem heutigen Abschluss. */
+        const schluessel = `${sitz.mandant.id}|${monat}`;
+        const exportStand = EXPORT_STAND.get(schluessel);
+        if (!exportStand) { melde(`Bitte zuerst die Lohnausgabe für ${monatText(monat)} erzeugen — bestätigt wird genau die ausgegebene Datei.`); return false; }
+        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen (Revision ${exportStand.revision}, Prüfsumme ${String(exportStand.abdruck).slice(0, 12)})? Danach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.`)) return false;
         try {
-          const erg = await SP.monatsabschluss("lohnexport", monat, {});
+          const erg = await SP.monatsabschluss("lohnexport", monat, { exportStand });
+          EXPORT_STAND.delete(schluessel);
           upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
             : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
           melde("Lohnexport bestätigt.");
           return true;
         } catch (e) {
+          if (e && (e.code === "EXPORTSTAND_ABWEICHEND" || e.code === "FREEZE_NICHT_REPRODUZIERBAR")) EXPORT_STAND.delete(schluessel);
           melde((e && e.message) || "Der Lohnexport ließ sich nicht bestätigen.");
           return false;
         }
@@ -23949,13 +24017,16 @@ function AppInnen() {
         if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
-        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.csv`, inhalt, "text/csv"))
+        /* Den Stand der ausgegebenen Datei merken (WP-16, Nachtrag dritter Review H-2): Bestätigt wird genau er. */
+        const stand = lohnexportStand(sitz.mandant, ym);
+        if (stand) EXPORT_STAND.set(`${sitz.mandant.id}|${ym}`, stand); else EXPORT_STAND.delete(`${sitz.mandant.id}|${ym}`);
+        if (lade(lohnausgabeDateiname(sitz.mandant, ym, "csv"), inhalt, "text/csv"))
           melde(`${z} Lohnartensätze ausgegeben.`);
         else setAusgabe({ titel: "Lohnausgabe", inhalt });
       },
       exportLohnBlatt: (ym) => {
         const inhalt = lohnausgabeText(sitz.mandant, ym);
-        if (lade(`lohnausgabe_${sitz.mandant.name.replace(/\W+/g, "_")}_${ym}.txt`,
+        if (lade(lohnausgabeDateiname(sitz.mandant, ym, "txt"),
           inhalt, "text/plain;charset=utf-8")) melde("Blatt zum Gegenlesen heruntergeladen.");
         else setAusgabe({ titel: "Lohnausgabe zum Gegenlesen", inhalt });
       },
@@ -25018,7 +25089,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         for (const p of m.personen.filter((x) => imDienst(x, `${ym2}-28`))) {
           const w = zuschlagWert(m, p, ym2);
           z.push([p.nachname, p.vorname, p.id, n1(w.std.gesamt), n1(w.std.nacht), n1(w.std.sonntag),
-            n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1(w.summe)].join(";"));
+            n1(w.std.feiertag), n1(w.std.samstag), ...w.zeilen.map((l) => n1(l.wert)), n1Ist(w.summe)].join(";"));
         }
         const inhalt = "\uFEFF" + z.join("\n");
         if (lade(`zuschlaege_${ym2}.csv`, inhalt, "text/csv;charset=utf-8")) melde("Export für die Lohnstelle erstellt.");
@@ -25570,4 +25641,6 @@ function abmeldenMitHinweis() {
 export { verknuepfungFuer, Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
   PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis,
-  demobestand, sollStunden, ausgleichPruefen, offeneErfassung, datenauskunft, nachtJahr };
+  demobestand, sollStunden, ausgleichPruefen, offeneErfassung, datenauskunft, nachtJahr,
+  /* WP-16, Nachtrag dritter Review: Abgleich der Rechenkonstanten mit dem Server, Exportstand, Dateiname, Hinweise. */
+  ABW, lohnexportStand, lohnausgabeDateiname, freezeZeilen };

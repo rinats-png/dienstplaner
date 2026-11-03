@@ -44,6 +44,39 @@ import { eingefrorenFuerPerson } from "./isteinfrieren.mjs";
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
 
+/**
+ * Erklärung der Kurzfelder im eingefrorenen Ist (`istEingefroren`, WP-16; Nachtrag dritter Review N-b). Schlüssel
+ * „Person|JJJJ-MM-TT" sind Tage, „Person|JJJJ-MM" Monatswerte zum Monatsabschluss.
+ */
+export const IST_EINGEFROREN_LEGENDE = Object.freeze({
+  datum: "JJJJ-MM-TT: ein Tag (Felder unter „tag“); JJJJ-MM: Werte des Monats, wie sie beim Monatsabschluss galten (Felder unter „monat“).",
+  tag: Object.freeze({
+    da: "Dienstart, wie sie an dem Tag galt (Name, Beginn, Ende, Pause, Form)",
+    d: "Verweis auf die Dienstart im Verzeichnis des Monats (aufgelöst als da)",
+    std: "Ist-Stunden des Dienstes",
+    e: "1 = Zeit erfasst (Stempel oder bestätigte Zeit), sonst Planzeit",
+    p: "1 = Ist-Zeit war beim Abschluss zur Prüfung offen",
+    a: "Abwesenheitsarten des Tages",
+    pl: "1 = an dem Tag war nach Schichtfolge ein Dienst geplant",
+    w: "Wochenstunden für die Gutschrift der Abwesenheit",
+    u: "Einheit (Wohnbereich/Abteilung) an dem Tag",
+  }),
+  monat: Object.freeze({
+    s: "Soll-Stunden des Monats",
+    z: "Zuschlagsstunden [Nacht, Sonntag, Feiertag, Samstag]",
+    nn: "Zahl der Nachtdienste",
+    i: "1 = am 28. des Monats im Beschäftigungsverhältnis (Lohnausgabe)",
+    u: "Einheit zu Monatsbeginn",
+    g: "geleistete Stunden (gewertet)",
+    gg: "gutgeschriebene Stunden (bezahlte Abwesenheit)",
+    ig: "Ist-Stunden gesamt",
+    k: "Stundenkonto zum Monatsende (mit Übertrag und Vormonaten des Jahres)",
+    ue: "Übertrag aus dem Vorjahr, mit dem das Konto gerechnet wurde",
+    br: "Stunden [Bereitschaftsdienst, Rufbereitschaft]",
+    nm: "[Personalnummer, Nachname, Vorname] für die Lohnausgabe",
+  }),
+});
+
 /** Rollen, die für eine andere Person des eigenen Betriebs Auskunft erstellen dürfen. */
 export const AUSKUNFT_FUER_ANDERE = Object.freeze(["leitung", "kunde"]);
 
@@ -185,6 +218,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     /* Monatsabschluss (WP-16): das eingefrorene Ist abgeschlossener Monate (Review H1) und die nach dem
        Abschluss abgewiesenen eigenen Stempel samt Zähler (Review M2). */
     istEingefroren: nachTag(eingefrorenFuerPerson(m, pid), pid),
+    /* Schlüsselerklärung der Kurzfelder (WP-16, Nachtrag dritter Review N-b): Die Auskunft muss verständlich sein. */
+    istEingefrorenLegende: IST_EINGEFROREN_LEGENDE,
     abgewieseneStempel: abgewieseneStempel(m.monatsabschluss, pid),
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),

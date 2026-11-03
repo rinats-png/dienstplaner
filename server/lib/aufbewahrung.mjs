@@ -399,6 +399,17 @@ export function raeumen(m, heuteIso) {
   }
   const personenNeu = (m.personen || []).map((p) => (faellig.has(p.id)
     ? { ...anonymisiere(p), anonymSeit: heuteIso } : p));
+  /* Personalangaben im Freeze (WP-16, Nachtrag dritter Review H-1: `nm` je Person und Monat für die Lohnausgabe)
+     gehen mit der Anonymisierung — wie im Personalstamm. */
+  if (istObjekt(gekuerzt.istEingefroren) && faellig.size) {
+    const anonym = new Map(personenNeu.filter((p) => faellig.has(p.id)).map((p) => [String(p.id), p]));
+    const neu = {};
+    for (const [k, v] of Object.entries(gekuerzt.istEingefroren)) {
+      const a = anonym.get(String(k).split("|")[0]);
+      neu[k] = a && istObjekt(v) && Array.isArray(v.nm) ? { ...v, nm: [a.personalnummer || a.id, a.nachname ?? null, a.vorname ?? null] } : v;
+    }
+    gekuerzt.istEingefroren = neu;
+  }
   /* Abgewiesene Stempel (WP-16, Review M2): nach der Frist der Gründe und mit der Anonymisierung der Person. */
   if (istObjekt(m.monatsabschluss))
     gekuerzt.monatsabschluss = abschlussPersonenRaeumen(m.monatsabschluss, { personen: personenNeu, grundStichtag: st.grund }).wert;
