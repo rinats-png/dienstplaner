@@ -87,7 +87,8 @@ describe("speicher.stempeln bei 429", () => {
     /* Früher: akt.stempeln(...) ohne Warten, sofort setLaeuft(false) — während der
        Wiederholungen nach 429 (bis ≈ 36 s) war der Knopf wieder frei. */
     expect(app).not.toMatch(/akt\.stempeln\([^)]*\);\s*setLaeuft\(false\)/);
-    const warten = app.match(/Promise\.resolve\(akt\.stempeln\(p\.id, tag, art, \w+\)\)\.finally\(\(\) => setLaeuft\(false\)\)/g) || [];
+    /* WP-16: der fünfte Wert ist die Pause beim Ausstempeln — die Sperre bis zum Ende bleibt dieselbe. */
+    const warten = app.match(/Promise\.resolve\(akt\.stempeln\(p\.id, tag, art, \w+(?:, [^)]*)?\)\)\.finally\(\(\) => setLaeuft\(false\)\)/g) || [];
     expect(warten, "Stempeluhr und MStempel").toHaveLength(2);
   });
 

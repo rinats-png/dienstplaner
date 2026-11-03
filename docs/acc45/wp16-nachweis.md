@@ -124,6 +124,7 @@ fehlt. Grün auf dem alten Stand blieben nur Fälle, die bestehendes Verhalten f
   (08:00–16:00) hatte 30 min Pause. Nach § 11 JArbSchG sind über 6 h 60 min nötig; mit der neuen, richtigen Regel käme ein
   Pausenhinweis. Die Prüfung meint „keine Nacht-Hinweise am Tag“; die Pause ist jetzt 60 min. Die Aussage bleibt, sie ist
   nur rechtlich korrekt.
+- `stempel-429-client.test.js` (Auflage N1, Quelltextprüfung): Das Muster für den gesperrten Stempelknopf erlaubt jetzt den fünften Wert (die Pause beim Ausstempeln). Die Aussage — gesperrt, bis das Stempeln samt Wiederholungen fertig ist, in Stempeluhr und mobiler Fläche (genau 2 Treffer) — bleibt unverändert. Rot im ersten CI-Lauf 41659840303.
 - `rollen-failclosed.test.js`: zusätzlich `/api/monatsabschluss` (beide Aktionen).
 - `rechtematrix-zeilen.test.js`: Import über den Namensraum (damit eine fehlende Funktion auf dem alten Stand rot statt
   Ladefehler ist), neue Zeilen und Sonden.
