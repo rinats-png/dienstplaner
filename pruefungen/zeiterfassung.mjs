@@ -60,7 +60,10 @@ const tag = (n) => new Date(new Date(`${HEUTE}T00:00:00Z`).getTime() + n * 86400
 const abw = {};
 for (let i = 1; i <= 10; i++) abw[`a1|${tag(-i)}`] = "F";
 abw[`a1|${tag(-3)}`] = "-";
-abw[`n1|${tag(-1)}`] = "N";
+/* n1: gestern ein Dienst über Mitternacht, der erst heute 23:58 endet —
+   damit gilt F1 (Ende ohne Beginn gehört zu gestern) zu jeder Uhrzeit dieses
+   Prüflaufs (W4). h1 hatte gestern nichts geplant: Ende immer heute. */
+abw[`n1|${tag(-1)}`] = "NL";
 abw[`a1|${tag(1)}`] = "F";
 abw[`s1|${tag(-1)}`] = "F";
 abw[`a1|${tag(-20)}`] = "F";
@@ -68,8 +71,10 @@ const person = (id, rolle) => ({ id, vorname: "V", nachname: id, rolle, bereich:
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "zeit-probe", name: "Haus Zeit", einheiten: [{ id: "e1", name: "WB 1" }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" }],
-  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner")],
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" },
+    { id: "NL", name: "Nacht lang", start: "23:59", ende: "23:58" }],
+  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner"),
+    person("h1", "mitarbeiter")],
   abweichungen: abw, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [],
 }] };
 
@@ -77,6 +82,7 @@ const tBetr = await anmelden(await zugang("betreiber", null));
 pruef("Raum eingerichtet", (await rufe(tBetr, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
 const tA = await anmelden(await zugang("mitarbeiter", "a1"));
 const tN = await anmelden(await zugang("mitarbeiter", "n1"));
+const tH = await anmelden(await zugang("mitarbeiter", "h1"));
 const tL = await anmelden(await zugang("leitung", "l1"));
 const tS = await anmelden(await zugang("subplaner", "s1"));
 const bestaetigen = (t, rumpf) => rufe(t, "zeit-bestaetigen", "POST", rumpf);
@@ -133,14 +139,36 @@ pruef("/api/stempeln zweites Einstempeln am selben Tag: 409, nichts überschrieb
   sNochmal.status === 409 && sNochmal.code === "STEMPEL_SCHON_EINGESTEMPELT", `Status ${sNochmal.status}`);
 pruef("/api/stempeln liefert den gespeicherten Eintrag", sEnde.eintrag && sEnde.eintrag.geprueftEnde !== undefined
   && sEnde.erfassung && sEnde.erfassung.bestaetigt === true);
+/* Seit WP-17 (B7) bestimmt der Server den Tag. Ein Gerätedatum wird
+   angenommen und ignoriert (abweichend: Markierung GERAETEDATUM_ABWEICHEND),
+   nie abgelehnt. Morgen, vor fünf Tagen oder gestern ergibt deshalb keinen
+   Stempel an jenem Tag: Gestempelt würde heute — und heute ist schon
+   gestempelt, also 409, nichts überschrieben. */
 const sZukunft = await rufe(tA, "stempeln", "POST", { datum: tag(1), art: "start" });
-pruef("/api/stempeln morgen: abgewiesen", sZukunft.status === 422, `Status ${sZukunft.status}`);
 const sAlt = await rufe(tA, "stempeln", "POST", { datum: tag(-5), art: "start" });
-pruef("/api/stempeln vor fünf Tagen: abgewiesen", sAlt.status === 422, `Status ${sAlt.status}`);
 const sGesternFrueh = await rufe(tA, "stempeln", "POST", { datum: tag(-1), art: "ende" });
-pruef("/api/stempeln gestern ohne Nachtdienst: abgewiesen", sGesternFrueh.status === 422, `Status ${sGesternFrueh.status}`);
+{
+  const st = (await lies(tA)).bestand.mandanten[0].einstempeln || {};
+  pruef("/api/stempeln morgen: nichts auf morgen, heute schon eingestempelt (409)",
+    sZukunft.status === 409 && !st[`a1|${tag(1)}`], `Status ${sZukunft.status}`);
+  pruef("/api/stempeln vor fünf Tagen: nichts auf jenem Tag (409)", sAlt.status === 409 && !st[`a1|${tag(-5)}`], `Status ${sAlt.status}`);
+  pruef("/api/stempeln Ende mit Gerätedatum gestern: nichts auf gestern, heute schon ausgestempelt (409)",
+    sGesternFrueh.status === 409 && sGesternFrueh.code === "STEMPEL_SCHON_AUSGESTEMPELT" && !st[`a1|${tag(-1)}`],
+    `Status ${sGesternFrueh.status}`);
+}
+/* Ein Ende ohne offenen Beginn — beide Zweige, uhrzeitunabhängig (W4):
+   mit gestern geplantem Dienst über Mitternacht, dessen Ende noch nicht vier
+   Stunden vorbei ist, beim Dienst von gestern (F1); ohne Plan heute. Beide
+   als START_FEHLT, keins eine Absage. */
 const sNacht = await rufe(tN, "stempeln", "POST", { datum: tag(-1), art: "ende" });
-pruef("/api/stempeln gestern mit Nachtdienst: 200", sNacht.status === 200, `Status ${sNacht.status}`);
+pruef("/api/stempeln Ende ohne Beginn, Nachtdienst gestern geplant: 200, gestern, START_FEHLT (F1)",
+  sNacht.status === 200 && sNacht.datum === tag(-1) && (sNacht.markierungen || []).includes("START_FEHLT")
+  && !(sNacht.markierungen || []).includes("GERAETEDATUM_ABWEICHEND"),
+  `Status ${sNacht.status} ${sNacht.datum} ${JSON.stringify(sNacht.markierungen)}`);
+const sOhne = await rufe(tH, "stempeln", "POST", { art: "ende" });
+pruef("/api/stempeln Ende ohne Beginn und ohne Plan gestern: 200, heute, START_FEHLT",
+  sOhne.status === 200 && sOhne.datum === HEUTE && (sOhne.markierungen || []).includes("START_FEHLT"),
+  `Status ${sOhne.status} ${sOhne.datum}`);
 
 /* --- Autosave nach dem Stempeln: die lokale Kopie ohne geprueftStart --- */
 {
@@ -187,7 +215,7 @@ pruef("… gestempelte Zeit vom Server bestätigt", nachher[`a1|${HEUTE}`] && na
     .then((x) => x.json()).catch(() => ({}));
   const zeilen = JSON.stringify(lage.letzte || []);
   pruef("Protokoll vermerkt die Selbstauskünfte", zeilen.includes("Selbstauskunft Zeiten") && zeilen.includes(tag(-2)));
-  pruef("… und abgewiesene Stempelversuche", /stempeln start .*künftig/.test(zeilen) || zeilen.includes("künftigen Tag"));
+  pruef("… und abgewiesene Stempelversuche", /stempeln (start|ende) .*schon gestempelt/.test(zeilen));
 }
 
 const bestanden = ergebnisse.filter((r) => r.ok).length;

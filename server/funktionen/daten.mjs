@@ -16,7 +16,8 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
+import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
+  offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
@@ -1063,9 +1064,9 @@ export default async (req, context) => {
       const bSt = await bremse("schreiben", kSt);
       if (!bSt.frei) return zuVielAntwort(bSt.wartet);
 
-      const { datum, art, lat, lon, accuracy } = rumpf;
-      if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
-        return antwort({ fehler: "Kein gültiges Datum." }, 400);
+      /* `datum` des Geräts nur noch zur Plausibilität — den Tag bestimmt der
+         Server (zeiterfassung.mjs, stempelZiel; Geo-Spezifikation B7). */
+      const { datum: geraeteDatum, art, lat, lon, accuracy } = rumpf;
       if (art !== "start" && art !== "ende")
         return antwort({ fehler: "Nur start oder ende." }, 400);
       if (s.person === null || s.person === undefined)
@@ -1095,6 +1096,7 @@ export default async (req, context) => {
          klarer Meldung, nie „ok: true" (bis Oktober 2026 kam auch nach
          einem gescheiterten Schreiben ein Erfolg zurück, und die Oberfläche
          zeigte eine Stempelzeit, die es auf dem Server nicht gab). */
+      let zielDatum = null;
       const ergebnis = await unterRaumsperre(s.bestand, async () => {
         for (let versuch = 0; versuch <= STEMPEL_WIEDERHOLUNGEN; versuch++) {
           const mit = await bestandLesenStreng(store, s.bestand);
@@ -1108,14 +1110,20 @@ export default async (req, context) => {
           const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
           if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-          /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
-             Beginn), nie künftig und nie älter — Nachträge laufen über
-             „Zeiten bestätigen" (zeiterfassung.mjs). */
-          const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
-          if (datumGrund) {
-            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
-            return antwort({ fehler: datumGrund }, 422);
+          /* Der Tag des Stempels kommt vom Server: Beginn heute, Ende beim
+             offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze,
+             vergessenes Einstempeln vor einem Nachtdienst). Das Gerätedatum wird
+             ignoriert; weicht es ab, trägt der Eintrag GERAETEDATUM_ABWEICHEND —
+             nie eine Absage (zeiterfassung.mjs, stempelZiel). Bestimmt am
+             frischen Stand, unter der Sperre. */
+          const ziel = stempelZiel(m, person, art, jetzt, geraeteDatum);
+          if (ziel.status) {
+            await protokoll("schreiben", kSt, "abgewiesen",
+              `stempeln ${art} ${geraeteDatum ?? "-"}: ${ziel.code}`, wer);
+            return antwort({ fehler: ziel.grund, code: ziel.code, datum: ziel.datum || null }, ziel.status);
           }
+          const datum = ziel.datum;
+          zielDatum = datum;
 
           /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
              Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
@@ -1147,6 +1155,7 @@ export default async (req, context) => {
           const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
           const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
           if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+          for (const x of ziel.markierungen) markieren(x);
           const startFehlt = art === "ende" && !alt.start;
           if (startFehlt) markieren("START_FEHLT");
           /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
@@ -1168,13 +1177,37 @@ export default async (req, context) => {
           /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
              fehlt das Feld, ist es der Tag des Vorgangs. */
           if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
+
+          /* Ein langer Dienst (über geplanter Dauer + 2 h, ohne Plan 12 h;
+             zeiterfassung.mjs, langerDienstGrenze) ergibt keine automatisch
+             bestätigte Ist-Zeit, sondern eine zur Prüfung durch die Leitung. */
+          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
+          const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
+          if (langerDienst) markieren("LANGER_DIENST");
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          /* B6.3: Ein Ende zu einem über 20 Stunden alten Beginn von gestern
+             wird nicht angehängt (stempelZiel: eigenes START_FEHLT auf heute).
+             Der alte Vorgang bekommt KONFLIKT und bleibt für die Korrektur
+             durch die Leitung offen. */
+          if (ziel.konfliktAm) {
+            const kAlt = `${person.id}|${ziel.konfliktAm}`;
+            const vorgang = neuerMandant.einstempeln[kAlt];
+            if (vorgang) {
+              const mk = Array.isArray(vorgang.markierungen) ? vorgang.markierungen : [];
+              neuerMandant = { ...neuerMandant, einstempeln: { ...neuerMandant.einstempeln,
+                [kAlt]: { ...vorgang, markierungen: mk.includes("KONFLIKT") ? mk : [...mk, "KONFLIKT"],
+                  konfliktGrund: "vorgang_veraltet" } } };
+            }
+          }
           if (mitErfassung) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+              [k]: langerDienst
+                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                  grund: `LANGER_DIENST: ${Math.round(dauerMin / 6) / 10} Stunden — bitte prüfen` }
+                : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
           }
           const neuerBestand = { ...bestand,
             mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
@@ -1192,7 +1225,7 @@ export default async (req, context) => {
             await protokoll("schreiben", kSt, "wiederholt",
               `stempeln ${art} ${datum} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, wer);
         }
-        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${zielDatum}`, wer);
         return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
           + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
       });
@@ -1204,7 +1237,7 @@ export default async (req, context) => {
          erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
+        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum: zielDatum, eintrag: neu,
         erfassung });
     }
 
