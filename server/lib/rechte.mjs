@@ -14,6 +14,7 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
+import { GEO_MODUS_TEXT } from "./geo.mjs";
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
@@ -756,7 +757,8 @@ function einzigerEigenerBetrieb(uebermittelt, id) {
    Anfrage und wird nie gespeichert. Ausschalten und „bleibt an" brauchen
    keine Bestätigung. Eine juristische Einwilligung ist das nicht — nur der
    technische Nachweis, dass die Leitung die Freigabe bestätigt hat. */
-const GEO_SCHALTER = ["geoPruefung", "geoPruefungAktiviertAm", "geoPruefungAktiviertVon"];
+const GEO_SCHALTER = ["geoPruefung", "geoPruefungAktiviertAm", "geoPruefungAktiviertVon",
+  "geoModus", "geoModusGeaendertAm", "geoModusGeaendertVon"];
 export const GEO_BESTAETIGUNG_TEXT = "Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.";
 function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
   if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
@@ -776,6 +778,20 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
     if (gewuenscht) {
       e.geoPruefungAktiviertAm = new Date().toISOString();
       e.geoPruefungAktiviertVon = sitzung.person === undefined ? null : sitzung.person;
+    }
+  }
+  /* Prüfmodus (WP-20): hinweis (Vorgabe) oder pflicht. Nur org.edit; „pflicht" verlangt dieselbe
+     Bestätigung wie das Einschalten, mit dem Hinweis auf die Mitbestimmung. Wann und von wem setzt
+     der Server. Abwesend oder null: bleibt, wie es ist. */
+  const wunsch = neuM.einstellungen.geoModus;
+  if (darf(rolle, "org.edit") && wunsch !== undefined && wunsch !== null) {
+    if (wunsch !== "hinweis" && wunsch !== "pflicht")
+      return { grund: "Der Prüfmodus der Standortprüfung muss „hinweis“ oder „pflicht“ sein." };
+    if (wunsch !== (altE.geoModus === "pflicht" ? "pflicht" : "hinweis")) {
+      if (wunsch === "pflicht" && !bestaetigt) return { grund: `Die verpflichtende Standortprüfung lässt sich nur mit der Bestätigung einstellen: „${GEO_MODUS_TEXT}"` };
+      e.geoModus = wunsch;
+      e.geoModusGeaendertAm = new Date().toISOString();
+      e.geoModusGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
     }
   }
   return { mandant: { ...neuM, einstellungen: e } };

@@ -16,8 +16,9 @@
    grob gerundete Entfernung — nie eine Rohkoordinate.
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { vorschau, raeumen, stichtage } from "../server/lib/aufbewahrung.mjs";
 import {
-  geoUrteil, geoModus, dienstOrtModus, abstandsklasse, dienstartOrtFehler, bestandDienstartOrtFehler, standorteFehler,
+  geoUrteil, geoModus, dienstOrtModus, abstandsklasse, dienstartOrtFehler, bestandDienstartOrtFehler, bestandStandorteFehler,
   INNERHALB, AUSSERHALB, NICHT_BEWERTBAR,
 } from "../server/lib/geo.mjs";
 
@@ -30,10 +31,8 @@ const DATUM = "2026-10-30";
 const betrieb = ({ geo = true, modus, dienstarten, einsatzorte } = {}) => ({
   id: "m-a", einstellungen: { geoPruefung: geo, ...(modus ? { geoModus: modus } : {}) },
   einheiten: [{ id: "e1", standortId: "st1" }],
-  standorte: [
-    { id: "st1", name: "Zentrale", bundesland: "HE", ...ZENTRALE, radius: 200 },
-    ...(einsatzorte || [{ id: "es1", art: "einsatzort", name: "Kunde Nord", ...KUNDE, radius: 100 }]),
-  ],
+  standorte: [{ id: "st1", name: "Zentrale", bundesland: "HE", ...ZENTRALE, radius: 200 }],
+  einsatzorte: einsatzorte || [{ id: "es1", name: "Kunde Nord", ...KUNDE, radius: 100 }],
   dienstarten: dienstarten || [
     { id: "F", name: "Früh", start: "06:00", ende: "14:00" },
     { id: "E", name: "Kundentermin", start: "08:00", ende: "16:00", ortModus: "einsatzort", einsatzortId: "es1" },
@@ -69,14 +68,14 @@ describe("Referenzort je Dienst", () => {
     expect(urteil("E", nord(KUNDE, 80)).geo.status).toBe(INNERHALB);
     expect(urteil("E", nord(KUNDE, 150)).geo.status).toBe(AUSSERHALB);    // innerhalb 200, außerhalb 100
     /* Ohne Radius am Einsatzort gilt die Vorgabe 200 m. */
-    const o = [{ id: "es1", art: "einsatzort", name: "Kunde Nord", ...KUNDE }];
+    const o = [{ id: "es1", name: "Kunde Nord", ...KUNDE }];
     expect(urteil("E", nord(KUNDE, 150), { einsatzorte: o }).geo.status).toBe(INNERHALB);
   });
   it("Einsatzort unbekannt oder ohne Koordinate: nicht bewertbar — nie ein Rückfall auf den Betriebsstandort", () => {
     const an = nord(ZENTRALE, 5);                                        // läge am Betriebsstandort innerhalb
     const u = urteil("X", an);
     expect([u.geo.status, u.geo.grund, u.innerhalb]).toEqual([NICHT_BEWERTBAR, "kein_referenzort", null]);
-    const ohneKoordinate = urteil("K", an, { einsatzorte: [{ id: "es2", art: "einsatzort", name: "Ohne" }] });
+    const ohneKoordinate = urteil("K", an, { einsatzorte: [{ id: "es2", name: "Ohne" }] });
     expect(ohneKoordinate.geo.grund).toBe("keine_koordinate_am_referenzort");
   });
   it("kein Dienst an dem Tag (ungeplant): Standort der Einheit", () => {
@@ -172,29 +171,67 @@ describe("Einsatzorte und Dienstarten beim Schreiben prüfen", () => {
   const alt = betrieb();
   const mit = (aenderung) => ({ ...alt, dienstarten: alt.dienstarten.map((d) => d.id === "F" ? { ...d, ...aenderung } : d) });
   it("gültig: standort, aussendienst, einsatzort mit vorhandenem Ziel", () => {
-    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "standort" }).dienstarten, alt.standorte)).toBeNull();
-    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "aussendienst" }).dienstarten, alt.standorte)).toBeNull();
-    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "einsatzort", einsatzortId: "es1" }).dienstarten, alt.standorte)).toBeNull();
+    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "standort" }).dienstarten, alt.einsatzorte)).toBeNull();
+    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "aussendienst" }).dienstarten, alt.einsatzorte)).toBeNull();
+    expect(dienstartOrtFehler(alt.dienstarten, mit({ ortModus: "einsatzort", einsatzortId: "es1" }).dienstarten, alt.einsatzorte)).toBeNull();
   });
   it("ungültig: unbekannter Modus, Einsatzort ohne Ziel, Ziel nicht vorhanden, Ziel kein String", () => {
     for (const f of [{ ortModus: "ueberall" }, { ortModus: 1 }, { ortModus: "einsatzort" }, { ortModus: "einsatzort", einsatzortId: "nix" },
       { ortModus: "einsatzort", einsatzortId: 5 }, { ortModus: "einsatzort", einsatzortId: "" }])
-      expect(dienstartOrtFehler(alt.dienstarten, mit(f).dienstarten, alt.standorte), JSON.stringify(f)).toMatch(/Früh/);
+      expect(dienstartOrtFehler(alt.dienstarten, mit(f).dienstarten, alt.einsatzorte), JSON.stringify(f)).toMatch(/Früh/);
   });
   it("Altbestand blockiert nicht: ein früher gespeicherter Fehler bleibt unbeanstandet, solange er unverändert ist", () => {
     const kaputt = { id: "Z", name: "Alt", ortModus: "einsatzort", einsatzortId: "weg" };
-    expect(dienstartOrtFehler([kaputt], [kaputt, { id: "N", name: "Neu" }], alt.standorte)).toBeNull();
-    expect(dienstartOrtFehler([kaputt], [{ ...kaputt, einsatzortId: "noch-weg" }], alt.standorte)).toMatch(/Alt/);
+    expect(dienstartOrtFehler([kaputt], [kaputt, { id: "N", name: "Neu" }], alt.einsatzorte)).toBeNull();
+    expect(dienstartOrtFehler([kaputt], [{ ...kaputt, einsatzortId: "noch-weg" }], alt.einsatzorte)).toMatch(/Alt/);
   });
   it("über den ganzen Bestand (Betrieb zugeordnet über die Kennung)", () => {
     const neu = { mandanten: [mit({ ortModus: "einsatzort", einsatzortId: "nix" })] };
     expect(bestandDienstartOrtFehler({ mandanten: [alt] }, neu)).toMatch(/Früh/);
     expect(bestandDienstartOrtFehler({ mandanten: [alt] }, { mandanten: [alt] })).toBeNull();
   });
-  it("standorte: art nur standort oder einsatzort", () => {
-    expect(standorteFehler([], [{ id: "x", name: "A", art: "einsatzort" }])).toBeNull();
-    expect(standorteFehler([], [{ id: "x", name: "A", art: "standort" }])).toBeNull();
-    expect(standorteFehler([], [{ id: "x", name: "A" }])).toBeNull();
-    expect(standorteFehler([], [{ id: "x", name: "A", art: "geheim" }])).toMatch(/A/);
+  it("Einsatzorte haben dieselben Wertebereiche wie Standorte (Breite, Länge, Umkreis)", () => {
+    const b = (e) => ({ mandanten: [{ id: "m-a", einsatzorte: [e] }] });
+    expect(bestandStandorteFehler({ mandanten: [] }, b({ id: "x", name: "Kunde", lat: 51, lon: 9, radius: 100 }))).toBeNull();
+    for (const f of [{ lat: 450 }, { lon: -220 }, { radius: 0 }, { radius: 10000 }])
+      expect(bestandStandorteFehler({ mandanten: [] }, b({ id: "x", name: "Kunde", lat: 51, lon: 9, radius: 100, ...f })), JSON.stringify(f)).toMatch(/Kunde/);
+  });
+  it("ein von einer Dienstart verwendeter Einsatzort lässt sich nicht entfernen", () => {
+    const neu = { ...alt, einsatzorte: [] };
+    expect(dienstartOrtFehler(alt.dienstarten, neu.dienstarten, neu.einsatzorte, alt.einsatzorte)).toMatch(/Kundentermin/);
+  });
+});
+
+/* ---- Aufbewahrung (WP-26-Fristen): Standort-Ergebnisse gehen mit der kurzen Frist, Zeiten bleiben ---- */
+describe("Aufbewahrung der Standort-Ergebnisse", () => {
+  const HEUTE = "2026-11-03";
+  const geoFelder = { ortStart: "Am Standort", innerhalbStart: true, geprueftStart: true, geoStart: { status: "INNERHALB" },
+    ortEnde: "Am Standort", innerhalbEnde: true, geprueftEnde: true, geoEnde: { status: "INNERHALB" } };
+  const stempel = { start: "06:00", ende: "14:00", startAm: "x", endeAm: "y", markierungen: ["ORT_PRUEFEN"], ...geoFelder };
+  const m = () => ({ id: "m-a", personen: [], aufbewahrung: {},
+    einstempeln: { "a1|2026-05-10": { ...stempel }, "a1|2026-10-10": { ...stempel }, "a1|2024-01-10": { ...stempel } },
+    erfassung: {}, abweichungen: {} });
+  it("Stichtag der Standort-Ergebnisse ist der der Gründe (Vorgabe 3 Monate), nicht der der Plandaten", () => {
+    expect(stichtage(m(), HEUTE).standort).toBe(stichtage(m(), HEUTE).grund);
+    expect(stichtage(m(), HEUTE).standort > stichtage(m(), HEUTE).plan).toBe(true);
+  });
+  it("Vorschau zählt nur Einträge zwischen den Stichtagen; ältere zählen bei den Plandaten", () => {
+    const v = vorschau(m(), HEUTE);
+    expect(v.standort).toBe(1);
+    expect(v.plandaten.einstempeln).toBe(1);
+    expect(v.gesamt).toBe(v.planSumme + v.standort + v.aenderungen + v.gruende + v.personen.length);
+  });
+  it("Löschlauf: Standort-Felder fort, Zeiten und Markierung bleiben, Neues unberührt, Uraltes ganz weg", () => {
+    const { mandant, bericht } = raeumen(m(), HEUTE);
+    const alt = mandant.einstempeln["a1|2026-05-10"];
+    expect(alt).toEqual({ start: "06:00", ende: "14:00", startAm: "x", endeAm: "y", markierungen: ["ORT_PRUEFEN"] });
+    for (const f of Object.keys(geoFelder)) expect(alt, f).not.toHaveProperty(f);
+    expect(mandant.einstempeln["a1|2026-10-10"]).toMatchObject({ geoStart: { status: "INNERHALB" }, ortEnde: "Am Standort" });
+    expect(mandant.einstempeln["a1|2024-01-10"]).toBeUndefined();
+    expect(bericht.standort).toBe(1);
+  });
+  it("ein zweiter Lauf findet nichts mehr", () => {
+    const einmal = raeumen(m(), HEUTE).mandant;
+    expect(vorschau(einmal, HEUTE).standort).toBe(0);
   });
 });

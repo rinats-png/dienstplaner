@@ -88,9 +88,6 @@ export function standorteFehler(alteStandorte, neueStandorte) {
       if (vorher && Object.is(vorher[feld], wert)) continue;          // unverändert: Altbestand blockiert nicht
       if (!regel.gueltig(wert)) return `Standort „${st.name || st.id}": ${regel.text}`;
     }
-    /* Art (WP-20): ein Standort der Einheit oder ein Einsatzort für Dienstarten. */
-    if (gesetzt(st.art) && !(vorher && Object.is(vorher.art, st.art)) && st.art !== "standort" && st.art !== "einsatzort")
-      return `Standort „${st.name || st.id}": Die Art muss „standort" oder „einsatzort" sein.`;
   }
   return null;
 }
@@ -101,7 +98,8 @@ export function bestandStandorteFehler(altBestand, neuBestand) {
     .filter((m) => m && typeof m === "object").map((m) => [String(m.id), m]));
   for (const m of neuBestand && Array.isArray(neuBestand.mandanten) ? neuBestand.mandanten : []) {
     if (!m || typeof m !== "object") continue;
-    const grund = standorteFehler((alt.get(String(m.id)) || {}).standorte, m.standorte);
+    const vorher = alt.get(String(m.id)) || {};
+    const grund = standorteFehler(vorher.standorte, m.standorte) || standorteFehler(vorher.einsatzorte, m.einsatzorte);   // Einsatzorte: dieselben Wertebereiche (WP-20)
     if (grund) return grund;
   }
   return null;
@@ -148,7 +146,8 @@ export function einheitAm(person, datum) {
 
    Eine Dienstart kann ihren eigenen Referenzort haben (dienstart.ortModus):
      standort      (Vorgabe) der Standort der Einheit am Tag
-     einsatzort    ein Ort des Betriebs aus m.standorte (dienstart.einsatzortId)
+     einsatzort    ein Einsatzort des Betriebs aus m.einsatzorte (dienstart.einsatzortId);
+                   getrennt von den Standorten, die Preis und Feiertage bestimmen
      aussendienst  kein fester Ort — nichts wird gemessen oder verglichen
    Der Betrieb wählt außerdem, wie streng geprüft wird (geoModus):
      aus       Schalter geoPruefung aus: nichts wird gemessen
@@ -160,6 +159,8 @@ export function einheitAm(person, datum) {
 export const ORT_MODI = Object.freeze(["standort", "einsatzort", "aussendienst"]);
 export const GEO_MODI = Object.freeze(["aus", "hinweis", "pflicht"]);
 export const MARKIERUNG_ORT = "ORT_PRUEFEN";
+/** Die Bestätigung, die die Leitung für den Pflichtmodus gibt (Server verlangt sie in derselben Anfrage). */
+export const GEO_MODUS_TEXT = "Datenschutz und Mitbestimmung für die verpflichtende Standortprüfung (Markierung bei abweichendem Ort) wurden betrieblich geprüft.";
 
 /** Der Ortsmodus einer Dienstart; fehlend oder unbekannt: der Standort der Einheit. */
 export const dienstOrtModus = (da) => (da && typeof da === "object" && ORT_MODI.includes(da.ortModus) ? da.ortModus : "standort");
@@ -201,7 +202,7 @@ export function referenzOrt(m, person, datum, dienstart) {
   const orte = m && Array.isArray(m.standorte) ? m.standorte : [];
   const modus = dienstOrtModus(dienstart);
   if (modus === "aussendienst") return null;
-  if (modus === "einsatzort") return orte.find((x) => x && typeof dienstart.einsatzortId === "string" && x.id === dienstart.einsatzortId) || null;
+  if (modus === "einsatzort") return (Array.isArray(m && m.einsatzorte) ? m.einsatzorte : []).find((x) => x && typeof dienstart.einsatzortId === "string" && x.id === dienstart.einsatzortId) || null;
   const eid = einheitAm(person, datum);
   const einheit = (m && Array.isArray(m.einheiten) ? m.einheiten : []).find((x) => x && x.id === eid);
   const st = einheit && orte.find((x) => x && x.id === einheit.standortId);
@@ -286,17 +287,17 @@ export function geoUrteil({ m, person, datum, messung, dienstId }) {
    DIENSTARTEN BEIM SCHREIBEN (WP-20)
 
    ortModus nur aus ORT_MODI; „einsatzort" braucht einen vorhandenen Ort in
-   m.standorte. Geprüft wird nur, was neu ist oder sich ändert (Altbestand
+   m.einsatzorte. Geprüft wird nur, was neu ist oder sich ändert (Altbestand
    blockiert nichts) — außer einem Ort, der verschwindet, auf den eine
    Dienstart noch zeigt: Das wäre ein neuer Fehler, den die Prüfung beim
    Stempeln nur als „nicht bewertbar" sähe.
    -------------------------------------------------------------------------- */
 /** Grund, warum die Ortsangaben der Dienstarten ungültig sind — oder null. */
-export function dienstartOrtFehler(alteDienstarten, neueDienstarten, standorte, alteStandorte) {
+export function dienstartOrtFehler(alteDienstarten, neueDienstarten, einsatzorte, alteEinsatzorte) {
   const alt = new Map((Array.isArray(alteDienstarten) ? alteDienstarten : []).filter((d) => d && typeof d === "object")
     .map((d) => [String(d.id), d]));
-  const ids = new Set((Array.isArray(standorte) ? standorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
-  const idsAlt = new Set((Array.isArray(alteStandorte) ? alteStandorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
+  const ids = new Set((Array.isArray(einsatzorte) ? einsatzorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
+  const idsAlt = new Set((Array.isArray(alteEinsatzorte) ? alteEinsatzorte : []).filter((s) => s && typeof s === "object").map((s) => String(s.id)));
   for (const d of Array.isArray(neueDienstarten) ? neueDienstarten : []) {
     if (!d || typeof d !== "object") continue;
     const vorher = alt.get(String(d.id));
@@ -321,7 +322,7 @@ export function bestandDienstartOrtFehler(altBestand, neuBestand) {
   for (const m of neuBestand && Array.isArray(neuBestand.mandanten) ? neuBestand.mandanten : []) {
     if (!m || typeof m !== "object") continue;
     const vorher = alt.get(String(m.id)) || {};
-    const grund = dienstartOrtFehler(vorher.dienstarten, m.dienstarten, m.standorte, vorher.standorte);
+    const grund = dienstartOrtFehler(vorher.dienstarten, m.dienstarten, m.einsatzorte, vorher.einsatzorte);
     if (grund) return grund;
   }
   return null;

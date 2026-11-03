@@ -85,6 +85,14 @@ export function minusMonate(isoTag, monate) {
   return `${jahr}-${ZWEI(monat)}-${ZWEI(Math.min(t, letzterTag))}`;
 }
 
+/* Standort-Ergebnisse (WP-20) am Stempel: Urteil, Anzeigetext und die abgeleiteten Altfelder. Sie sind
+   nicht aufbewahrungspflichtig — § 16 ArbZG verlangt die Zeiten, nicht den Ort — und gehen deshalb mit der
+   kurzen Frist der Gründe (gruendeMonate, Vorgabe 3 Monate). Start, Ende und Kennzeichen bleiben bis zur
+   Plandatenfrist. */
+export const STANDORT_FELDER = Object.freeze(["geoStart", "geoEnde", "ortStart", "ortEnde",
+  "innerhalbStart", "innerhalbEnde", "geprueftStart", "geprueftEnde"]);
+const hatStandort = (e) => !!e && typeof e === "object" && STANDORT_FELDER.some((f) => f in e);
+
 /** Der Tagesanteil aus einem Schlüssel "personId|JJJJ-MM-TT". */
 const tagVon = (schluessel) => {
   const teil = String(schluessel).split("|")[1] || "";
@@ -180,6 +188,8 @@ export function stichtage(m, heuteIso) {
     plan: minusMonate(heuteIso, Math.max(f.plandatenMonate, PLANDATEN_MINDEST)),
     stamm: minusMonate(heuteIso, f.stammdatenMonate),
     grund: minusMonate(heuteIso, f.gruendeMonate),
+    /* Standort-Ergebnisse: wie die Gründe (WP-20). */
+    standort: minusMonate(heuteIso, f.gruendeMonate),
     fristen: f,
   };
 }
@@ -222,6 +232,15 @@ export function vorschau(m, heuteIso) {
     planSumme += n;
   }
 
+  /* Standort-Ergebnisse an Stempeln, die älter als die kurze Frist, aber noch nicht als Ganzes fällig sind. */
+  let standort = 0;
+  if (m.einstempeln && typeof m.einstempeln === "object") {
+    for (const [k, e] of Object.entries(m.einstempeln)) {
+      const tag = tagVon(k);
+      if (tag && tag >= st.plan && tag < st.standort && hatStandort(e)) standort++;
+    }
+  }
+
   const aenderungen = (m.aenderungen || [])
     .filter((c) => c && c.datum && String(c.datum).slice(0, 10) < st.plan).length;
 
@@ -251,7 +270,8 @@ export function vorschau(m, heuteIso) {
     planSumme,
     aenderungen,
     gruende,
-    gesamt: personen.length + planSumme + aenderungen + gruende,
+    standort,
+    gesamt: personen.length + planSumme + aenderungen + gruende + standort,
     warnung,
   };
 }
@@ -312,6 +332,13 @@ export function raeumen(m, heuteIso) {
       /* Ein Schlüssel ohne erkennbares Datum bleibt liegen. Lieber eine
          unerwartete Form mitschleppen als sie stillschweigend löschen. */
       if (tag && tag < st.plan) continue;
+      /* Standort-Ergebnisse gehen früher als der Stempel selbst (WP-20); die Zeiten bleiben. */
+      if (feld === "einstempeln" && tag && tag < st.standort && hatStandort(v)) {
+        const rest = { ...v };
+        for (const f of STANDORT_FELDER) delete rest[f];
+        neu[k] = rest;
+        continue;
+      }
       neu[k] = v;
     }
     gekuerzt[feld] = neu;
@@ -353,6 +380,8 @@ export function berichtstext(b) {
     teile.push(`${zahlwort(b.planSumme, "Plan- oder Zeiteintrag", "Plan- und Zeiteinträge")} gelöscht`);
   if (b.aenderungen)
     teile.push(`${zahlwort(b.aenderungen, "Änderungsvermerk", "Änderungsvermerke")} gelöscht`);
+  if (b.standort)
+    teile.push(`${zahlwort(b.standort, "Standort-Ergebnis", "Standort-Ergebnisse")} entfernt`);
   if (b.gruende)
     teile.push(`${zahlwort(b.gruende, "Abwesenheitsgrund", "Abwesenheitsgründe")} entfernt`);
   return `${teile.join(", ")}.`;

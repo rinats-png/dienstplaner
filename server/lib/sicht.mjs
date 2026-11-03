@@ -441,6 +441,9 @@ export const BETRIEB = {
   unterschreitungen: [VOLL, VOLL], belegung: [VOLL, VOLL], therapie: [VOLL, VOLL],
   aushang: [VOLL, VOLL],
   standorte: [R(standorte), R(standorte)],
+  /* Einsatzorte (WP-20): Koordinaten und Umkreis gehen nur an Planung und Leitung; ob ein Stempel am
+     Einsatzort liegt, entscheidet der Server. */
+  einsatzorte: [WEG, WEG],
 
   /* Personen und personenbezogene Sammlungen. */
   personen: [R((w, ctx) => liste(w).map((p) => personSicht(p, ctx))),
