@@ -463,3 +463,8 @@ Nach der letzten Quelländerung (`daten.mjs`, Hinweise in der Herbstnacht) die b
   maskiert, ein bloßer Tag nicht. Nach der M1-Regel gehörten sie ebenfalls bereinigt — eigenes kleines Paket (WP-14c?), nicht
   in diesem Merge geändert.
 - WP-14c F2/F4–F7 bleiben offen (F8 ist hier erledigt).
+
+### CI nach der Zusammenführung
+
+Kopf 99c5c2f (Merge von `integration/centric-complete` 92a3b97): Prüfung 41687263129, Sicherheit 41687263162,
+Lieferkette 41687263164, Betrieb: Deploy-Skripte 41687263166 — alle grün im ersten Versuch, keine Wiederholung nötig.
