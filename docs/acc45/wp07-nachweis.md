@@ -380,6 +380,7 @@ Zeitumstellungsprüfung.
 | a77aad3 (Review-Auflagen + Merge WP-13/14/25) | 41633599939 grün | 41633599832 grün | 41633599701 grün | 41633599690 grün |
 | 9f6a9d3 (Nachprüfung B1) | 41638824801 **rot**: Gate-Probe `staging-smoke` hielt R16 fest → 0c26f4a | 41638825127 grün | 41638824999 grün | 41638824920 grün |
 | 0c26f4a | 41639645615 grün | 41639646351 grün | 41639645666 grün | 41639645672 grün |
+| e2dcd51 (Merge WP-20/47/22b/23) | 41643886293 grün | 41643885891 grün | 41643886012 grün | 41643885947 grün |
 
 Kein Flackern beobachtet; keine Wiederholung nötig. Lokal lief `geo.test.js` einmal in eine Hook-Zeitgrenze (10 s, Last
 des Laptops), allein wiederholt 61/61.
