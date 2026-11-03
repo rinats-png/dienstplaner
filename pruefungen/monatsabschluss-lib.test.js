@@ -71,6 +71,20 @@ describe("abschliessen / wiederoeffnen", () => {
     expect(letzteWiederoeffnung(m, "2026-10-28")).toBeNull();                 // abgeschlossen: keine Korrektur möglich
     expect(wiederoeffnen(r.mandant, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w2")).toMatchObject({ status: 409 });
   });
+  it("Wiederöffnen nach einer Änderung am Ist (etwa Löschlauf oder direkter Ablagezugriff): abdruckGleich false (Review WP-16, M4)", () => {
+    const m = geschlossen();
+    const geaendert = kopie(m);
+    delete geaendert.erfassung["a1|2026-10-27"];
+    const r = wiederoeffnen(geaendert, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w1");
+    if ("status" in r) throw new Error(r.grund);
+    expect(r.ereignis.abdruckGleich).toBe(false);
+    expect(r.ereignis.abdruck).not.toBe(m.monatsabschluss["2026-10"].abdruck);
+    const anders = kopie(m);
+    anders.einstempeln["a1|2026-10-28"].ende = "15:00";
+    const r2 = wiederoeffnen(anders, { monat: "2026-10", grund: "Nachtrag eines Dienstes" }, WER_L, JETZT, "w2");
+    if ("status" in r2) throw new Error(r2.grund);
+    expect(r2.ereignis.abdruckGleich).toBe(false);
+  });
   it("abgewiesene Stempel: vermerkt, je Ereignis einmal, Ist unverändert", () => {
     const m = geschlossen();
     const v = { personId: "a1", datum: "2026-10-30", art: "start", zeitAm: "2026-10-30T05:00:00.000Z", offline: true, ereignis: "e1", am: JETZT.toISOString() };

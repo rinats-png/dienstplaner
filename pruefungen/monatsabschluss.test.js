@@ -423,6 +423,29 @@ describe("Offline-Puffer (WP-07): ein Stempel für einen inzwischen abgeschlosse
   });
 });
 
+describe("KONFLIKT am alten Vorgang (B6.3) nur im offenen Monat (Review WP-16, M4)", { timeout: 120000 }, () => {
+  it("Ende am 01.11. zu einem über 20 h alten Beginn vom 31.10.: der Oktober-Vorgang bleibt im abgeschlossenen Monat unberührt — im offenen bekommt er KONFLIKT", async () => {
+    try {
+      for (const [raum, zu] of [["wp16-konflikt-zu", true], ["wp16-konflikt-offen", false]]) {
+        zeitAuf(JETZT);
+        await raumAnlegen(raum, zu ? {} : { monatsabschluss: {} });
+        zeitAuf("2026-11-01T18:30:00Z");                                        // 19:30 Berlin, 22,5 h nach dem Beginn
+        const vorher = (await mandant(raum)).einstempeln["a2|2026-10-31"];
+        const r = await anfrage("stempeln", { token: await token("a2", raum), rumpf: { art: "ende" } });
+        expect(r.status, `${raum}: ${r.roh}`).toBe(200);
+        const m = await mandant(raum);
+        expect(m.einstempeln["a2|2026-11-01"], raum).toMatchObject({ ende: "19:30" });
+        if (zu) {
+          expect(m.einstempeln["a2|2026-10-31"]).toEqual(vorher);
+          expect(m.einstempeln["a2|2026-10-31"].markierungen || []).not.toContain("KONFLIKT");
+        } else {
+          expect(m.einstempeln["a2|2026-10-31"].markierungen).toEqual(expect.arrayContaining(["KONFLIKT"]));
+        }
+      }
+    } finally { zeitAuf(JETZT); }
+  });
+});
+
 describe("Nebenläufigkeit: Abschluss und Stempel gleichzeitig (Raumsperre)", { timeout: 120000 }, () => {
   it("in 6 Rennen: entweder der Stempel liegt vor dem Abschluss (in der Prüfsumme) oder er ist abgewiesen und vermerkt — nie danach im Monat", async () => {
     const { istAbdruck } = await import("../server/lib/monatsabschluss.mjs");

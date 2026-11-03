@@ -220,4 +220,20 @@ describe("Selbstauskunft mit Pause", { timeout: 120000 }, () => {
     expect(f.status, f.roh).toBe(422);
     expect((await mandant("p-selbst")).erfassung["a1|2026-11-08"]).toBeUndefined();
   });
+  it("Pause gleich oder länger als die Anwesenheit (innerhalb 0–180 min): 422, nichts gespeichert; eine Minute kürzer: 200 (Review WP-16, M4)", async () => {
+    zeitAuf("2026-11-10T09:00:00Z");
+    await raum("p-selbst-grenze", [person("a1")], { abweichungen: { "a1|2026-11-07": "F", "a1|2026-11-08": "F", "a1|2026-11-09": "F" } });
+    const t = await token("p-selbst-grenze", "a1");
+    const gleich = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-08", start: "06:00", ende: "08:00", pause: 120, grund: "früher gegangen" } });
+    expect(gleich.status, gleich.roh).toBe(422);
+    expect(gleich.fehler).toMatch(/Pause muss kürzer sein als die Anwesenheit/);
+    const laenger = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-09", start: "06:00", ende: "08:00", pause: 150, grund: "früher gegangen" } });
+    expect(laenger.status, laenger.roh).toBe(422);
+    const m = await mandant("p-selbst-grenze");
+    expect(m.erfassung["a1|2026-11-08"]).toBeUndefined();
+    expect(m.erfassung["a1|2026-11-09"]).toBeUndefined();
+    const knapp = await anfrage("zeit-bestaetigen", { token: t, rumpf: { datum: "2026-11-07", start: "06:00", ende: "08:00", pause: 119, grund: "früher gegangen" } });
+    expect(knapp.status, knapp.roh).toBe(200);
+    expect(knapp.eintrag).toMatchObject({ start: "06:00", ende: "08:00", pause: 119 });
+  });
 });
