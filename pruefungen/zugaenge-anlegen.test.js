@@ -59,7 +59,9 @@ beforeAll(async () => {
     cwd: WURZEL,
     env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
       CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "probe-pfeffer",
-      NODE_ENV: "production" },
+      /* Das Skript legt den leeren Testbetrieb über /starten an; der
+         Selbststart ist ab Werk aus. */
+      CENTRIC_SELBSTSTART: "true", NODE_ENV: "production" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   kind.stdout.on("data", (d) => { ausgabe += d; });

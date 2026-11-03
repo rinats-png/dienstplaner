@@ -24,6 +24,9 @@ services:
       PORT: "3000"
       CENTRIC_DATEN: /data
       CENTRIC_ABLAGE: dateien
+      # CENTRIC_SELBSTSTART (öffentlicher Selbststart /starten) steht bewusst
+      # NICHT hier: Vorgabe ist AUS. Einschalten nur über .env mit genau "true"
+      # (docs/SELBSTSTART-SCHALTER.md).
 
     networks:
       - proxy

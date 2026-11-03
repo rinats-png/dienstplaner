@@ -28,6 +28,9 @@ beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-starten-"));
   process.env.CENTRIC_DATEN = wurzel;
   process.env.CENTRIC_ABLAGE = "dateien";
+  /* Der Selbststart ist ab Werk aus (selbststart-schalter.test.js); dieser
+     Bestand prüft den eingeschalteten Weg. */
+  process.env.CENTRIC_SELBSTSTART = "true";
   ({ getStore } = await import("../server/lib/ablage.mjs"));
   ({ bestandLesen, raumBelegt } = await import("../server/lib/bestand.mjs"));
   ({ TESTTAGE } = await import("../server/lib/aufraeumen.mjs"));
@@ -36,6 +39,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  delete process.env.CENTRIC_SELBSTSTART;
   await rm(wurzel, { recursive: true, force: true });
 });
 

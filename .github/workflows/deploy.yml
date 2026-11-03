@@ -85,6 +85,7 @@ jobs:
         run: |
           docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
             -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
+            -e CENTRIC_SELBSTSTART=true \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges:true --memory 512m \
