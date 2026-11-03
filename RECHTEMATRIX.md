@@ -279,6 +279,21 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
+²⁸ WP-20, Präzisierung der Zeile „Stempeldaten, Ortsurteil“, keine neue Spalte: **Einsatzorte und Prüfmodus.** Eine Dienstart
+kann einen eigenen Referenzort haben (`ortModus`: `standort` = Standort der Einheit, `einsatzort`, `aussendienst`). Der
+Server entscheidet; die Koordinate des Geräts ist nur Eingabe und wird weder gespeichert noch zurückgegeben. Gespeichert
+werden Status, Grund, Genauigkeit, Referenz (Art, Kennung, Name) und die **Abstandsklasse** (innerhalb, bis 1 km, bis 5 km,
+darüber); die auf 50/100 m gerundete Entfernung nur am Standort der Einheit, bei Einsatzorten nie. **Einsatzorte** liegen in
+`m.einsatzorte` (getrennt von Standorten, die Preis und Feiertage bestimmen); Koordinaten und Umkreis sehen nur Planung und
+Leitung (`sicht.mjs`: für Beschäftigte, Betriebsrat und Schichtverantwortung `WEG`). Der **Prüfmodus**
+(`einstellungen.geoModus`: `hinweis` = Vorgabe, `pflicht`) wirkt nur bei eingeschalteter Standortprüfung; schalten darf nur
+`org.edit`, „pflicht“ nur mit der Bestätigung zu Datenschutz und **Mitbestimmung** (technischer Nachweis, keine
+Einwilligung; Wann/Wer setzt der Server). „pflicht“ lehnt nie ab (E3): Ein Stempel mit nicht bestätigtem Ort bekommt die
+Markierung `ORT_PRUEFEN` für die Klärung durch die Leitung; beim Außendienst gibt es keinen Ort, also keine Markierung.
+Stempelergebnisse fremder Personen sehen weiter nur Leitung und Planung (`einstempeln` `NUR_EIGENE`, Schichtverantwortung
+und Betriebsrat ohne Zugriff). **Aufbewahrung:** Standort-Ergebnisse (`geoStart/-Ende`, `ortStart/-Ende`, `innerhalb…`,
+`geprueft…`) gehen mit der Frist der Gründe (`gruendeMonate`, Vorgabe 3 Monate) aus den Stempeln; Zeiten und Kennzeichen
+bleiben bis zur Plandatenfrist (`aufbewahrung.mjs`). Geprüft in `pruefungen/geo-einsatzorte*.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
