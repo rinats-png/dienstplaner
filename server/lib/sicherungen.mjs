@@ -18,6 +18,8 @@
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
+import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
+import { heuteBerlin } from "./zeiterfassung.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -123,9 +125,6 @@ export function listenEintrag(marke, meta, eigeneId) {
     durch: m.mandantId || automatisch ? (m.durch || null) : null };
 }
 
-/** Tag einer Zeitmarke oder ISO-Zeit (JJJJ-MM-TT). */
-const tagVon = (x) => String(x || "").slice(0, 10);
-
 /**
  * Den eigenen Betrieb aus einer Sicherung zurückspielen.
  *
@@ -151,9 +150,11 @@ const tagVon = (x) => String(x || "").slice(0, 10);
  * @param {any} jetzt
  * @param {any} sicherung
  * @param {any} sitzung
- * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date }} [o]
+ * @param {{ marke?: string, sicherungsZeit?: (string|null), heute?: Date, datenschutz?: string }} [o]
+ *   datenschutz: Modus des Datenschutzlaufs („an" löscht nach Fristen, sonst nur melden)
  */
-export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sicherungsZeit, heute = new Date() } = {}) {
+export function betriebWiederherstellen(jetzt, sicherung, sitzung,
+  { marke, sicherungsZeit, heute = new Date(), datenschutz = datenschutzModus() } = {}) {
   const ort = eigenerBetrieb(jetzt, sitzung);
   if (!ort) return { verweigert: "Zu dieser Sitzung gehört kein gespeicherter Betrieb.", status: 409 };
   const alt = ort.betrieb;
@@ -161,13 +162,15 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
   if (!aus) return { verweigert: "Diese Sicherung enthält den eigenen Betrieb nicht.", status: 404 };
 
   /* Was ein Löschlauf entfernt oder anonymisiert hat, kommt nicht zurück.
-     Der Löschlauf selbst lebt in der Oberfläche (src/aufbewahrung.js) und
-     steht dem Server nicht zur Verfügung; deshalb keine Sicherung, die vor
-     oder am Tag des letzten Löschlaufs entstand. */
-  const geraeumt = alt.aufbewahrung && alt.aufbewahrung.zuletztGeraeumt;
-  if (geraeumt && tagVon(sicherungsZeit || marke) <= tagVon(geraeumt))
-    return { verweigert: `Diese Sicherung stammt von vor dem letzten Löschlauf (${tagVon(geraeumt)}). `
-      + "Was dort gelöscht wurde, darf nicht zurückkommen.", status: 409 };
+     Bis November 2026 wurde dafür jede Sicherung abgelehnt, die vor oder am
+     Tag des letzten Löschlaufs entstand. Seit der Löschlauf täglich auf dem
+     Server läuft (datenschutzlauf.mjs), wäre das fast jede Sicherung — ein
+     älterer Betrieb hätte praktisch nie mehr zurückspielen können (WP-26, H3).
+     Jetzt wird der zurückgespielte Betrieb vor dem Schreiben noch einmal durch
+     den Löschlauf geschickt (raeumen, mit den heutigen Fristen): Was nach den
+     Fristen fort sein muss, ist es auch danach; anonymisierte Personen bleiben
+     anonymisiert (unten). Die Sicherungszeit spielt dafür keine Rolle mehr. */
+  void sicherungsZeit;
 
   const jetztPersonen = new Map((alt.personen || []).filter(Boolean).map((p) => [String(p.id), p]));
   const personen = (Array.isArray(aus.personen) ? aus.personen : []).map((p) => {
@@ -207,20 +210,44 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung, { marke, sich
     else delete zurueck[feld];
   }
 
-  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine
-     Wiederherstellung nimmt keinen Stempel zurück und setzt keinen auf einen
-     älteren Stand. Was heute gespeichert ist, bleibt — mit Korrekturen und
-     abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat. */
+  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
+     Stempel zurück und setzt keinen auf einen älteren Stand. Was heute gespeichert ist, bleibt —
+     mit Korrekturen und abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat.
+     Das kommt VOR den Fristen: Was die Aufbewahrungsfrist überschritten hat, löscht der
+     Datenschutzlauf (Modus „an") — auch aus dem, was die Sicherung zurückbringt
+     (Art. 5 Abs. 1 lit. e DSGVO). Umgekehrt käme Gelöschtes zurück. */
   const st = stempelBeiWiederherstellung(alt, zurueck);
-  const mitStempeln = st.behalten
+  const stempelProtokoll = st.behalten
     ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
       ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }
     : st.mandant;
 
-  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? mitStempeln : m)) };
+  /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung), am
+     heutigen Tag in Berlin (wie der Datenschutzlauf). Gelöscht wird nur im
+     Modus „an" (N-3) — bei „aus" und „vorschau" löscht auch der Lauf nicht;
+     dann wird nur gemeldet, was nach den Fristen fällig wäre. Eine ungültige
+     Fristangabe löscht nie (fail-closed, wie im Lauf). */
+  const heuteIso = heuteBerlin(heute);
+  const mitFristen = { ...stempelProtokoll, aufbewahrung: alt.aufbewahrung ?? stempelProtokoll.aufbewahrung };
+  const ungueltig = aufbewahrungFehler(mitFristen.aufbewahrung);
+  let ergebnis = mitFristen;
+  let fristen;
+  if (ungueltig) {
+    fristen = { modus: datenschutz, geloescht: false, faellig: null, text: `Nicht nach Fristen bereinigt: ${ungueltig}` };
+  } else if (datenschutz === "an") {
+    const r = raeumen(mitFristen, heuteIso);
+    ergebnis = r.mandant;
+    fristen = { modus: datenschutz, geloescht: r.bericht.gesamt > 0, faellig: r.bericht.gesamt, text: berichtstext(r.bericht) };
+  } else {
+    const plan = vorschau(mitFristen, heuteIso);
+    fristen = { modus: datenschutz, geloescht: false, faellig: plan.gesamt,
+      text: plan.gesamt ? `Nach den Fristen fällig, aber nicht gelöscht (Datenschutzlauf „${datenschutz}"): ${berichtstext(plan)}`
+        : berichtstext(plan) };
+  }
+  const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? ergebnis : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
-  return { bestand: neu, stempelBehalten: st.behalten };
+  return { bestand: neu, fristen, stempelBehalten: st.behalten };
 }
 
 /* --------------------------------------------------------------------------

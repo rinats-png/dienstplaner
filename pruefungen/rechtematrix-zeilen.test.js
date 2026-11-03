@@ -75,6 +75,7 @@ const B1 = () => person("b1", "mitarbeiter", "e2", {
   emailVorher: M("EMAILVORHER-B1"), emailGeaendert: M("EMAILGEAENDERT-B1"),
   mutterschutz: M("MUTTERSCHUTZ-B1"), schwerbehindert: M("SCHWERBEHINDERT-B1"), geburtstag: M("GEBURTSTAG-B1"),
   geburtsdatum: M("GEBURTSDATUM-B1"), nachtvorsorge: M("NACHTVORSORGE-B1"), schutz: M("SCHUTZ-B1"),
+  mutterschutzEinwilligungen: [{ art: "nacht", ab: "2026-01-01", bis: null, geaendertVon: M("EINWILLIGUNG-B1") }],
   einschraenkungen: { wiedereingliederung: M("WIEDEREINGLIEDERUNG-B1") },
   qualifikationen: ["pfk", "masern"],
   kalenderGeheim: M("KALGEHEIM-B1"), kalenderVerweis: M("KALVERWEIS-B1"), kalenderStand: M("KALSTAND-B1"),
@@ -102,6 +103,7 @@ const A1 = () => person("a1", "mitarbeiter", "e1", {
   kompetenzNachweise: [{ id: M("KOMPETENZ-A1") }],
   qualNachweise: [{ qualId: "masern", vorhanden: true, datei: M("DATEI-A1") }],
   mutterschutz: true, schwerbehindert: true, geburtstag: "2010-07-17", nachtvorsorge: "2024-11-13",
+  mutterschutzEinwilligungen: [{ art: "sonntag", ab: tag(-20), bis: tag(40) }],
   einschraenkungen: { keineNacht: true, wiedereingliederung: { von: tag(-5), bis: tag(30), stundenWoche: 20 } },
 });
 
@@ -269,7 +271,7 @@ const ZEILEN = {
   "frühere Anmeldeadresse": { sonden: [mk("EMAILVORHER-B1"), mk("EMAILGEAENDERT-B1")] },
   "Gesundheits-/Schutzmerkmale (fremder Bereich)": {
     sonden: [mk("MUTTERSCHUTZ-B1"), mk("SCHWERBEHINDERT-B1"), mk("GEBURTSTAG-B1"), mk("GEBURTSDATUM-B1"),
-      mk("NACHTVORSORGE-B1"), mk("SCHUTZ-B1"), mk("WIEDEREINGLIEDERUNG-B1")] },
+      mk("NACHTVORSORGE-B1"), mk("SCHUTZ-B1"), mk("WIEDEREINGLIEDERUNG-B1"), mk("EINWILLIGUNG-B1")] },
   "Gesundheits-/Schutzmerkmale (eigener Bereich der SV)": {
     sonden: [feld("a1", "mutterschutz"), feld("a1", "schwerbehindert"), feld("a1", "geburtstag"),
       feld("a1", "nachtvorsorge"), wiedereingliederung("a1")],
@@ -470,7 +472,7 @@ const FELD_ZEILE = {
   "Bank, Steuer, Sozialversicherung, Lohn/Gehalt": ["iban", "steuerId", "sozialversicherung", "lohn", "gehalt"],
   "frühere Anmeldeadresse": ["emailVorher", "emailGeaendert"],
   "Gesundheits-/Schutzmerkmale (fremder Bereich)":
-    ["mutterschutz", "schwerbehindert", "geburtstag", "geburtsdatum", "nachtvorsorge", "schutz"],
+    ["mutterschutz", "schwerbehindert", "geburtstag", "geburtsdatum", "nachtvorsorge", "schutz", "mutterschutzEinwilligungen"],
   "Qualifikationen": ["qualifikationen"],
   "Qualifikationsnachweise (`qualNachweise`: Datei, Status-Nachweise)": ["qualNachweise"],
   "Kompetenznachweise (`kompetenzNachweise`)": ["kompetenzNachweise"],
@@ -596,7 +598,9 @@ describe("RECHTEMATRIX.md, Fußnoten", () => {
   it("¹⁸ Bereich und Pool: Zuständigkeitsbereich, Verfügbarkeit, Kompetenznachweise", () => {
     for (const x of ["VERFUEGBARKEIT-A1", "VERFUEGBARKEIT-SP1", "KOMPETENZ-A1", "KOMPETENZ-SP1"]) expect(mk(x)(sv), x).toBe(true);
     expect(personIn(sv.betrieb, "a1").bereich).toBe("e1");
-    expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({ keineNacht: true });
+    /* Nachprüfung 9717ddf (M1-Rest) und 948a4ba (A1): „keine Nacht“ nur noch als Einsatzregel keinNachtdienst. */
+    expect(personIn(sv.betrieb, "a1").einschraenkungen).toEqual({});
+    expect(personIn(sv.betrieb, "a1").planungsregeln.map((r) => r.regel)).toContain("keinNachtdienst");
   });
   it("¹⁹ Konten im eigenen Bereich, nicht im Pool", () => {
     expect(mk("STUNDEN-A1")(sv)).toBe(true);
@@ -682,6 +686,46 @@ describe("Rundreise: gefilterte Sicht zurück — nichts verloren, nichts Verbor
       });
     }
   }
+});
+
+/* Abschnitt 2, WP-22: Dienstarten legt an und ändert nur, wer org.edit hat
+   (Leitung, Kundenrolle). Für alle anderen schreibenden Rollen: abgewiesen
+   oder wirkungslos — gespeichert bleibt der alte Name. */
+describe("RECHTEMATRIX.md, Abschnitt 2: Dienstarten mit org.edit oder pattern.edit (WP-22)", () => {
+  it("die Zeile steht in der Matrix", () => {
+    const text = fs.readFileSync(MATRIX_DATEI, "utf8");
+    expect(text.split(/^## 2\./m)[1]).toMatch(/Dienstarten \(`dienstarten`\)[^\n]*pattern\.edit/);
+  });
+  const umbenennen = (m) => { const d = (m.dienstarten || []).find((x) => x && x.id); if (d) d.name = "SONDE-ORG-EDIT"; return !!d; };
+  const DUERFEN = ["PL", "LT", "KU"];
+  for (const k of ["MA", "BR", "SV", "PL", "LT", "KU"]) {
+    it(`${k}: Dienstart umbenennen — ${DUERFEN.includes(k) ? "gespeichert" : "abgewiesen oder wirkungslos"}`, () => {
+      const g = bestand();
+      const sicht = JSON.parse(JSON.stringify(bestandFuerRolle(g, SITZ[k])));
+      const m = sicht.mandanten.find((x) => x && x.id === "m1");
+      expect(umbenennen(m), "eine Dienstart steht in jeder Sicht").toBe(true);
+      const e = zusammenfuehren(g, sicht, SITZ[k]);
+      const gespeichert = !!e && !e.verweigert && JSON.stringify(e).includes("SONDE-ORG-EDIT");
+      expect(gespeichert, `${k}: ${e && e.verweigert}`).toBe(DUERFEN.includes(k));
+    });
+  }
+});
+
+/* Review M1 (Art. 9 DSGVO): Die Einsatzregeln der Schichtverantwortung
+   verraten weder vergangene Grenzen noch über ihren Namen ein Merkmal. a1
+   hat Mutterschutz und eine Einwilligung seit 20 Tagen. */
+describe("Einsatzregeln der Schichtverantwortung: keine vergangenen Grenzen, kein merkmalsbezogener Name (Review M1)", () => {
+  it("a1: Abschnitte nur ab heute, Namen ohne Mutterschutz-Bezug", () => {
+    const a1 = personIn(sichten.SV.betrieb, "a1");
+    expect(Array.isArray(a1.planungsregeln)).toBe(true);
+    for (const r of a1.planungsregeln) {
+      if (r.regel === "stundengrenzeWoche" || r.regel === "hoechstens8hTag" || r.regel === "wochenendePruefen" || r.regel === "nachtAb23NichtZulaessig") continue;
+      if (r.von) expect(r.von > HEUTE, JSON.stringify(r)).toBe(true);
+      if (r.bis) expect(r.bis >= HEUTE, JSON.stringify(r)).toBe(true);
+    }
+    expect(JSON.stringify(a1.planungsregeln)).not.toMatch(/mutter|muschg|schwanger|einwilligung|ab22/i);
+    expect(JSON.stringify(sichten.SV.betrieb)).not.toMatch(/mutterschutzEinwilligungen/);
+  });
 });
 
 /* Zuletzt (alle Sonden sind jetzt angelegt, auch die in den Wortlaut-Prüfungen):

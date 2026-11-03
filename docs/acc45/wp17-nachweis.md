@@ -175,3 +175,22 @@ Wiederholung 14/14.
    eigene Person.
 
 Rot vorher (Export von fda8deb, neue Tests hineinkopiert): 3 von 11 in `stempel-oberflaeche.test.js` rot; nachher 11/11.
+
+## Nachprüfung 2 (7375d36): A1–A4
+
+- **A1 Zuschläge-Export:** `exportZuschlaege` (Knopf „Export“ in Abrechnungsdaten) fragt wie die Lohnausgabe-CSV vor dem
+  Download nach, solange im Monat Prüffälle offen sind. Beide rufen `exportWarnung(m, ym)` aus `src/istdaten.js` auf.
+  Der Hinweis im Band der Abrechnungsdaten und die Beschreibung im Reiter „Stempelbefunde“ nennen den Export.
+- **A2 Vormonate:** `vormonateMitPruefung(m, ym[, personId])` (bis zu 12 Monate zurück). Der Hinweis „Vormonate mit
+  offenen Prüffällen“ steht in den Abrechnungsdaten (wenn der Monat selbst keinen Fall hat), im Zwölf-Monats-Verlauf
+  der Personalakte und unter „Mein Stundenkonto“.
+- **A3 Dokumentiert, nicht geändert (Frage an den Nutzer):** Der Server lässt die Leitung die eigene Zeit über
+  `/api/stempel-korrektur` bestätigen. Seit WP-06 steht dann als Ereignis ihr Name am Stempel (Wer, Wann, Grund). Die
+  Oberfläche blendet den Knopf für die eigene Person aus, der Server erzwingt es nicht. Zur Entscheidung: Vier-Augen-Prinzip
+  (die Leitung darf die eigene Zeit nicht bestätigen, eine zweite Person mit `staff.edit` muss) — erzwingen oder
+  dokumentieren? Eine Besonderheit: Hat der Betrieb nur eine Person mit `staff.edit`, bliebe die Zeit der Leitung ewig offen.
+- **A4 Verhaltenstests:** `pruefungen/pruefungsfaelle-verhalten.test.js` (7 Tests, in `pruefung:zeiterfassung`). Echte Funktionen
+  und Komponenten aus `src/App.jsx`: `istStunden`, `lohnausgabeText`, `exportWarnung`, `vormonateMitPruefung`, gerenderte
+  `Abrechnungsdaten` und `StempelBefunde` je Rolle (Knopf). Die Quelltext-Muster in `stempel-oberflaeche.test.js` bleiben
+  als Ergänzung, tragen aber nichts allein.
+- Integration: `origin/integration/centric-complete` (5ddda3f) hineingemergt (7d9420e), ohne Konflikte.

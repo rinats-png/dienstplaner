@@ -3,7 +3,9 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
+import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
@@ -19,7 +21,8 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
-import { zustellen } from "../lib/versand.mjs";
+import { zustellen, pushSchluessel } from "../lib/versand.mjs";
+import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -786,7 +789,7 @@ export default async (req, context) => {
     /* Wer, auf welchem Weg, von wo — die Angaben, die ein Protokoll
        beantworten können muss. Ohne Namen, ohne Merkmale, ohne Inhalte. */
     const wer = { rolle: s.rolle, person: s.person, weg: pfad,
-      verfahren: req.method, herkunft: herkunft(req) };
+      verfahren: req.method, herkunft: herkunft(req), mandantId: s.mandantId || null };
 
     /* Ein Sicherungsschlüssel darf genau einen Pfad, und zwar lesend.
 
@@ -912,11 +915,19 @@ export default async (req, context) => {
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
            Lesen gar nicht bekommen hat. */
-        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s);
+        let zuSchreiben = zusammenfuehren(jetzt ? jetzt.bestand : null, bestand, s, { fachpruefung: "aussen" });
         if (!zuSchreiben) {
           await protokoll("schreiben", ks, "abgewiesen", `Rolle ${s.rolle}`, wer);
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: absageText(s.rolle) }, 403);
+        }
+        if (zuSchreiben.verweigert && zuSchreiben.status === 409 && Array.isArray(zuSchreiben.fachbefunde)) {
+          /* WP-22: Warnende Befunde ohne Bestätigung — 409 mit der Befundliste
+             (Texte neutral aus dem Befundkatalog). Der Stand bleibt; die
+             Oberfläche fragt nach und schickt die Bestätigung mit. */
+          await protokoll("schreiben", ks, "bestaetigung-noetig", `${zuSchreiben.fachbefunde.length} Einteilungen`, wer);
+          return antwort({ fehler: zuSchreiben.verweigert, fachbefunde: zuSchreiben.fachbefunde,
+            etag: jetzt ? jetzt.stand : null }, 409);
         }
         if (zuSchreiben.verweigert) {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
@@ -939,7 +950,52 @@ export default async (req, context) => {
             `${geloescht} Stempel nach Ablauf der Aufbewahrungsfrist gelöscht`, wer);
         }
 
+        /* Fachprüfung (WP-22) in Häppchen, damit eine große Nachrechnung keinen
+           anderen Betrieb aufhält (Review B2): höchstens HAEPPCHEN_MS am Stück,
+           insgesamt höchstens ZEITBUDGET_MS — sonst 503 „bitte erneut". Eine
+           Strukturänderung (Schichtfolge, Dienstzeiten, Personen …) ist je
+           Raum gebremst. */
+        const offen = fachpruefungOffen(zuSchreiben);
+        if (offen) {
+          if (strukturAenderung(offen.alt, offen.neu)) {
+            const sb = strukturBremse(`${s.bestand}|${offen.mandantId}`);
+            if (!sb.frei) return zuVielAntwort(sb.wartet);
+          }
+          const fach = await fachpruefungUebermittlungAsync(offen.alt, offen.neu, undefined, { imBereich: offen.imBereich });
+          if (letzteLaufzeit && (letzteLaufzeit.mittelbar || letzteLaufzeit.ms >= 300))
+            console.log(`[schutzdurchsetzung] ${letzteLaufzeit.ms} ms (längster Block ${letzteLaufzeit.blockMs} ms), ${letzteLaufzeit.personen} Personen, ${letzteLaufzeit.geprueft} Einteilungen geprüft`);
+          if (fach && fach.zeitbudget) {
+            await protokoll("schreiben", ks, "zeitbudget", "Fachprüfung abgebrochen", wer);
+            return antwort({ fehler: "Die Prüfung dauert gerade zu lange.",
+              text: "Bitte die Strukturänderung in kleineren Schritten speichern — etwa die Schichtfolge nur für einen Teil der Einheiten — oder gleich noch einmal versuchen." }, 503);
+          }
+          if (fach && fach.sperre) {
+            await protokoll("schreiben", ks, "abgewiesen", fach.sperre, wer);
+            return antwort({ fehler: "Keine Schreibberechtigung.", text: fach.sperre }, 403);
+          }
+          if (fach && fach.warnungen) {
+            await protokoll("schreiben", ks, "bestaetigung-noetig", `${fach.warnungen.length} Einteilungen`, wer);
+            return antwort({ fehler: "Diese Änderung braucht eine Bestätigung.", fachbefunde: fach.warnungen,
+              sammelVorschlag: fach.sammelVorschlag || [], etag: jetzt ? jetzt.stand : null }, 409);
+          }
+          if (Array.isArray(zuSchreiben.mandanten))
+            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? sammelAnzahlSetzen(m, fach && fach.sammel, offen.alt) : m)) };
+          if (fach && fach.konflikte && Array.isArray(zuSchreiben.mandanten))
+            zuSchreiben = { ...zuSchreiben, mandanten: zuSchreiben.mandanten.map((m) => (m && m.id === offen.mandantId ? schutzKonfliktMitteilungen(offen.alt, m, fach.konflikte, s.person) : m)) };
+        }
+
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+
+        /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
+           geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
+        const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
+        if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        {
+          const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
+          let weg = 0;
+          for (const m of (Array.isArray(zuSchreiben.mandanten) ? zuSchreiben.mandanten : [])) weg += schutzEntferntAnzahl(altMd.find((a) => a && m && a.id === m.id), m);
+          if (weg) await protokoll("schreiben", ks, "schutzangaben-entfernt", `${weg} Person(en)`, wer);
+        }
 
         /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
            fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und
@@ -952,7 +1008,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
         }
 
-        const form = pruefeGestalt(zuSchreiben);
+        const form = pruefeGestalt(zuSchreiben, { vorher: jetzt ? jetzt.bestand : null });
         if (!form.ok) {
           await protokoll("schreiben", ks, "abgewiesen", `Gestalt: ${form.grund}`, wer);
           return antwort({ fehler: "Der Stand sieht unvollständig aus.",
@@ -1259,7 +1315,7 @@ export default async (req, context) => {
         }
         await protokoll("schreiben", kK, "erfolg",
           `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
-        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, etag: ergK.stand || null });
+        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, etag: ergK.stand || null });
       });
     }
 
@@ -1325,7 +1381,67 @@ export default async (req, context) => {
       await sitzungBeenden(merkmalAus(req));
       return antwort({ ok: true });
     }
-
+    /* ------------------- Auskunft nach Artikel 15 -------------------
+       Serverseitig, maschinenlesbar (lib/auskunft.mjs). Ohne Angabe die
+       eigene Person der Sitzung. Mit ?person=<id> nur für Leitung und
+       „kunde" (dieselben Rollen wie bei Sicherungen) und nur für eine Person
+       des eigenen Betriebs — mit genau dem, was diese Rolle ohnehin sieht,
+       ohne Protokoll, Push-, Kalender- und Kontoangaben. Eigene Bremse
+       („auskunft"): Jede Auskunft liest das Protokoll der letzten 30 Tage.
+       Jede Auskunft steht im Protokoll — die durch die Leitung so, dass die
+       Person sie in ihrer eigenen Auskunft wiederfindet (Empfänger). */
+    if (pfad === "auskunft" && req.method === "GET") {
+      const kA = kennung(req, s);
+      /* Je anfragender Person, nicht je Raum (M5-Rest): Eine Person, die
+         ihre Grenze ausschöpft, sperrt sonst den ganzen Betrieb. Ohne
+         Personenbezug zählt die Rolle der Sitzung. */
+      const wer5 = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
+      const bA = await bremse("auskunft", `${kA}:${createHash("sha256")
+        .update(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer5}`).digest("hex").slice(0, 16)}`);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.rolle === "betreiber")
+        return antwort({ fehler: "Der Betreiber erstellt keine Auskunft aus einem Betrieb." }, 403);
+      const angefragt = new URL(req.url).searchParams.get("person");
+      const selbst = angefragt === null || angefragt === "" || String(angefragt) === String(s.person);
+      if (selbst && (s.person === null || s.person === undefined))
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      if (!selbst && !AUSKUNFT_FUER_ANDERE.includes(s.rolle)) {
+        await protokoll("auskunft", kA, "abgewiesen", `fremde Person · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Auskunft über andere Personen erstellt nur die Leitung.",
+          text: absageText(s.rolle) }, 403);
+      }
+      const mitA = await bestandJetzt();
+      if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+      /* Die Person selbst bekommt ihren vollständigen Datensatz; die Leitung
+         den Betrieb in ihrer eigenen Sicht — keine Erweiterung der Rechte. */
+      const quelle = selbst ? mitA.bestand : bestandFuerRolle(mitA.bestand, s);
+      const mA = eigenerMandant(quelle, s);
+      if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+      const pid = selbst ? s.person : angefragt;
+      const personA = (mA.personen || []).find((x) => x && String(x.id) === String(pid));
+      if (!personA) return antwort({ fehler: "Diese Person gibt es im eigenen Betrieb nicht." }, 404);
+      const erstellt = new Date().toISOString();
+      let zusatz = {};
+      if (selbst) {
+        const einBetrieb = Array.isArray(mitA.bestand.mandanten) && mitA.bestand.mandanten.length === 1;
+        const protokollA = await protokollZurPerson(getStore({ name: "centric-spur" }),
+          { raumKennung: kennung(null, s), mandantId: mA.id, personId: personA.id, einBetrieb });
+        const push = !!(await store.getMetadata(pushSchluessel(s.bestand, mA.id, personA.id)).catch(() => null));
+        const kalender = !!(await store.getMetadata(`feedperson:${s.bestand}:${mA.id}:${personA.id}`).catch(() => null));
+        /* Die Sammlungen mit eigenen Einträgen aus der Sicht einer
+           Beschäftigten — dieselbe Positivliste wie /api/bestand, also ohne
+           Daten Dritter (sicht.mjs). */
+        const eigeneSicht = eigenerMandant(bestandFuerRolle(mitA.bestand, { ...s, rolle: "mitarbeiter" }), s);
+        /* Das Konto, wenn die Sitzung aus einem stammt (lib/auskunft.mjs). */
+        const konto = await kontoFuerAuskunft(store, s);
+        zusatz = { protokoll: protokollA, push, kalender, konto, eigeneSicht };
+      }
+      const inhalt = auskunftBauen(mA, personA, { raum: s.bestand, erstellt, umfang: selbst ? "selbst" : "leitung",
+        ...zusatz });
+      await protokoll("auskunft", kA, "erfolg", `${selbst ? "selbst" : "durch Leitung"} · Person ${personA.id}`, wer);
+      return antwort(inhalt, 200, { "content-disposition":
+        `attachment; filename="auskunft-${String(personA.id).replace(/[^A-Za-z0-9_-]/g, "_")}-${erstellt.slice(0, 10)}.json"` });
+    }
     /* ------------------------- Vollausgabe --------------------------
        Die Datenmitnahme in der Oberfläche gibt CSV-Dateien aus — gut zum
        Weiterverarbeiten, ungeeignet als Sicherung: Sie läuft im Browser, sie
@@ -1550,7 +1666,7 @@ export default async (req, context) => {
           return antwort({ fehler: "Wiederherstellung nicht möglich.", text: w.verweigert }, w.status);
         }
         w.bestand = personenAngleichen(uebergabenAngleichen(w.bestand));
-        const form = pruefeGestalt(w.bestand);
+        const form = pruefeGestalt(w.bestand, { vorher: jetztGelesen.bestand });
         if (!form.ok)
           return antwort({ fehler: "Diese Sicherung ist unbrauchbar.", text: form.grund }, 422);
 
@@ -1571,8 +1687,10 @@ export default async (req, context) => {
             text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
             etag: ergW.stand }, 409);
         }
-        await protokoll("schreiben", kW, "erfolg", `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`, wer);
-        return antwort({ ok: true, etag: ergW.stand, marke });
+        await protokoll("schreiben", kW, "erfolg",
+          `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`
+          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
+        return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
       });
     }
 
