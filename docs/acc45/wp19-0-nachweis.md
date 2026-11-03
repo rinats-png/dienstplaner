@@ -35,7 +35,8 @@ Alle zwölf bleiben verbindlicher Lieferumfang; keines ist gestrichen.
 
 G5 (keine eigenen Planungssperren): Branchenbefunde bleiben Befundart `branche` (`sperrt: false`); Regelwerte kennen
 höchstens „achtung“. G10: Keine bestehende Ansicht oder Prüfung fragt eines der zwölf Merkmale ab (statischer Test über
-`App.jsx`).
+`App.jsx`; seit dem Nachtrag zusätzlich über alle Dateien in `src/` und `server/` außerhalb von Kern und Modulen, auch
+über die Kernfunktionen `modulAktiv`/`modulGebucht`/… und `branchenmodule.<id>` — Abschnitt 11, N7).
 
 ## 2. Datenmodell (alles in `mandanten[].einstellungen`, keine neuen Betriebsfelder)
 
@@ -66,8 +67,11 @@ Schreibregeln (`branchenmoduleZusammen`, serverseitig, kein Client-Vertrauen):
   Fundstelle, Fassung, gültig ab; nur Regeln aus `REGELN_BRANCHEN` (keine Kernregel des Gesetzes).
 - **Wiederherstellen** übernimmt Schalter, Bestätigungen, Regelwerte und Protokoll **nicht** aus der Sicherung (wie die
   Planfreigabe, `sicherungen.mjs`); die Moduldaten selbst kommen wie alle Betriebsdaten aus der Sicherung.
-- **Erstbefüllung/Leerbetrieb**: legen nichts davon an – jedes Modul beginnt aus (G1). Eingespielte Schalter ohne
-  Bestätigung wirken nicht (`modulAktiv`); eingespielte Regelwerte ohne gültige Form oder Prüfvermerk heben nichts an.
+- **Erstbefüllung/Leerbetrieb/Neuanlage**: Jedes Modul beginnt aus (G1). *Korrigiert im Nachtrag Opus-Review:* Die
+  frühere Aussage „legen nichts davon an“ stimmte nur für die Vorlagen `leer`/`test`. Seit dem Nachtrag **verwerfen**
+  Betreiber-Neuanlage über PUT (`rechte.mjs`, `moduleinstellungenVerwerfen`) und `/api/bestand-anlegen` für jede
+  Vorlage, auch `demo` und eigenen Inhalt (`daten.mjs`, `bestandOhneModuleinstellungen`), Schalter samt Bestätigung,
+  Regelwerte und Modulprotokoll — ein Inhalt bringt sie nicht mit (Abschnitt 11, N1).
 
 Auditierung: Modulprotokoll im Betrieb (Wann/Wer); Betriebsprotokoll des Servers (`daten.mjs`, Art `branchenmodul`) nur
 „Branchenmodul wachbuch eingeschaltet (Mitbestimmung bestätigt)“ bzw. „Regelwert POSTEN-QUAL-01: achtung, verified“ –
@@ -142,7 +146,10 @@ einmalig einen Aufruf `oberflaechenFuer(m, "<ort>", …)` an dieser Stelle in Ap
    `regelwertAnwenden` (automatisch in `branchenBefunde`).
 3. Parameter mit `vorlaeufig: true`, wenn die Vorgabe keine Entscheidung ist; Regelwerte des Betriebs liest
    `regelwertFuer(m, regelId, tag)` (formgültig und im Gültigkeitszeitraum, sonst `null`).
-4. Statuswechsel `geplant → vorlaeufig` nur mit `abnahme: { datum, nachweis }` in der Registry (`pruefeModulStatus`, WP-19.13).
+4. Statuswechsel `geplant → vorlaeufig` nur mit `abnahme: { datum, nachweis }` in der Registry (`pruefeModulStatus`, WP-19.13)
+   und — seit dem Nachtrag — nur, wenn jedes Datenfeld genau einmal als `personenfelder` (Schlüssel „personId|Tag“, Löschlauf)
+   oder `sachfelder` (Liste mit `id`, ohne Personenbezug) eingeordnet ist; Ausnahmeweg Art. 16/17 und Protokollfrist greifen
+   dann ohne weiteren Code (technischer Nachweis je Feld: `modul-kern-nachtrag.test.js`, N2d).
 5. Prüfdatei `pruefungen/modul-<id>*.test.js` – wird von `npm run pruefung:branchenmodule` über das Präfix mitgenommen.
 
 ## 5. Akzeptanzkriterien ↔ Tests
@@ -177,7 +184,8 @@ einmalig einen Aufruf `oberflaechenFuer(m, "<ort>", …)` an dieser Stelle in Ap
   SV-Abweisung, Mandantentrennung, Bestätigung bleibt bei fehlendem Feld (trivial ohne Bestätigung), Registry
   Wachbuch/Objektbericht, G3 Befunde aus/abbestellt, G4 „Hinweis ohne Wert“ und drei Nicht-Aufwertungs-Fälle, G5 Befundart,
   zwei Rechte-Invarianten, BR/PL-Sicht und Rundweg (vorher alles VOLL), Preise, G10.
-- Commit `9eb81cd` (Umsetzung): **58/58 grün**; Rechtematrix-Zeilen 690/690.
+- Commit `9eb81cd` (Umsetzung): **58/58 grün**; `rechtematrix-zeilen.test.js` **599/599** (korrigiert im Nachtrag: die
+  frühere Angabe „690/690“ war falsch; nachgezählt mit `npx vitest run pruefungen/rechtematrix-zeilen.test.js`).
 - Gezielte bestehende Prüfungen nach der Umsetzung grün: `branchenmodule`, `branchen-andock`, `branchen-app`, alle
   `modul-*`, `branchen`, `stufen`, `preisanzeige`, `doku`, `sicht`, `sicht-schichtverantwortung`, `sicht-planung-leitung`,
   `sicht-tagesgenau`, `rechtematrix`, `betreiber-sicht`, `leserechte`, `personendaten`, `schutzmerkmale-sicht`,
@@ -252,10 +260,10 @@ Kein bestehender Test wurde abgeschwächt oder geändert; `rechtematrix-zeilen.t
    Musterformulierung der Kanzlei.
 3. **FN-33 (G7):** Ob der Betriebsrat die Personenkennung der handelnden Leitung im Modulprotokoll braucht – Matrixzeile mit
    Einordnung **B**.
-4. **FN-32 (G3):** Fristen für Moduldaten nach dem Abschalten und für das Modulprotokoll sind nicht an den Datenschutzlauf
-   (WP-26) angebunden. Heute: keine Löschung beim Abschalten, Daten nur lesbar, Protokoll mit fester Grenze 2000 (danach nur
-   noch Ausschalten). Keine unbegrenzte Aufbewahrung als Ersatz: die Anbindung ist offen und muss vor dem Produktivbetrieb
-   eines Moduls kommen.
+4. **FN-32 (G3):** *Stand nach dem Nachtrag (Abschnitt 11, N2):* Moduldaten mit Personenbezug hängen am Löschlauf (WP-26),
+   das Modulprotokoll hat eine Frist (Entwurfswert 24 Monate, **zu bestätigen**), Berichtigung/Löschung nach Art. 16/17
+   laufen über den Ausnahmeweg. Offen bleibt die fachliche Frist je Modul und Dokumentationsart (etwa Wachbuch W3) — bis
+   dahin gilt die Plandatenfrist für Personenfelder.
 5. **FN-34 (G4):** Verfahren der Quellenprüfung (wer prüft, welche Belege) – technisch erzwungen sind nur Quelle, Fundstelle,
    Fassung, gültig ab und die Rolle `org.edit`.
 6. **Q-4:** „Achtung“ aus Branchenregeln wirkt nur im Bestätigungsdialog der Oberfläche; die Nachrechnung des Servers rechnet
@@ -270,3 +278,66 @@ Kein bestehender Test wurde abgeschwächt oder geändert; `rechtematrix-zeilen.t
    = vom Betreiber/Fach freigegeben. Beide nur mit `abnahme`-Nachweis.
 10. **HTTP:** Die Fälle laufen über `zusammenfuehren`/`bestandFuerRolle` (dieselben Funktionen wie `PUT`/`GET /api/bestand`);
     ein zusätzlicher Container-HTTP-Lauf (`serverlauf`) wurde nicht ergänzt.
+
+## 11. Nachtrag Opus-Review (Urteil „integrierbar mit Auflagen“)
+
+Stand 2026-11-03, Basis: Merge `integration/centric-complete` (nach #69). Prüfdateien: `pruefungen/modul-kern-nachtrag.test.js`
+(39 Fälle, N1–N7) und `pruefungen/modul-kern-nachtrag-handler.test.js` (3 Fälle, echter Handler `/api/bestand-anlegen`); beide
+laufen über das Präfix `modul-` in `pruefung:branchenmodule` (package.json und Workflow unverändert). Die Preis-/Paketdarstellung
+(G9) ist nicht Teil dieses Nachtrags.
+
+| Befund | Behebung | Test |
+|---|---|---|
+| (1) MITTEL Betreiber umgeht G2/G6: neu angelegter Betrieb übernimmt Schalter samt Bestätigung, Regelwerte (achtung mit gefälschtem Prüfvermerk), Modulprotokoll; ebenso `/api/bestand-anlegen` mit Inhalt | `moduleinstellungenVerwerfen` / `bestandOhneModuleinstellungen` (`branchenmodule.mjs`): Betreiber-Neuanlage in `zusammenfuehren` (`rechte.mjs`) und `/api/bestand-anlegen` für jede Vorlage (`daten.mjs`, vor der Gestaltprüfung) verwerfen die drei Felder; übrige Einstellungen bleiben. Wiederherstellen schreibt nur in den bestehenden eigenen Betrieb und behielt die Felder schon (`sicherungen.mjs`) — einen Weg „Wiederherstellen aus fremdem Inhalt“ in einen neuen Betrieb gibt es nicht | N1 (3), Handler: eigener Inhalt, Demo, leer/test |
+| (2a) MITTEL G3: Nur-Lesen blockiert auch Art. 16/17 | Ausnahmeweg in `moduldatenZusammen`: `moduldatenAusnahme: { modul, art: "berichtigung"\|"loeschung", grund, eintraege: { feld: [Schlüssel/Kennung] } }` — nur org.edit, Grund Pflicht (≤ 300 Zeichen), genau die benannten Einträge (Löschung: fehlen; Berichtigung: geändert; nichts Neues, nichts Weiteres), auch an der Protokollgrenze. Die Angabe merkt `zusammenfuehren` vor der Rückfüllung und speichert sie nie. Protokoll: Modulprotokoll `{ art: "moduldaten-loeschung"\|"moduldaten-berichtigung", modul, feld, anzahl, grund, am, von }` ohne Schlüssel; Betriebsprotokoll „Branchenmodul posten: Datenschutz-Löschung (Art. 17 DSGVO), 1 Eintrag in postenPlan“ | N2a (7) |
+| (2b) kein Löschlauf, Personenlöschung räumt `pid\|tag` nicht ab | Registry: `personenfelder` (postenPlan, bereichsPlan) / `sachfelder` (objekte, ohne Personenbezug). `aufbewahrung.mjs` `vorschau` zählt `moduldaten` (Zuordnungen anonymisierter oder heute fälliger Personen, Einträge hinter der Plandatenfrist), `raeumen` entfernt sie, `berichtstext` nennt sie. Eine Personenlöschung gibt es in der Anwendung nicht; der Personenpfad ist die Anonymisierung im Löschlauf (WP-26) — daran hängt es. Wiederherstellen läuft durch `raeumen` und bringt Zuordnungen anonymisierter Personen nicht zurück | N2b (4) |
+| (2c) Modulprotokoll ohne Frist, Grenze 2000 sperrt dauerhaft | `MODULPROTOKOLL_FRIST` = 24 Monate, **Entwurfswert, zu bestätigen (FN-32)**; je Betrieb `aufbewahrung.modulprotokollMonate` (1–600, `aufbewahrungFehler`). Löschlauf entfernt fällige Einträge (Vorschau `modulprotokoll`); an der Grenze werden erst fällige Einträge entfernt — nur wenn alle in der Frist sind, bleibt eine befristete Sperre (Ausschalten und Art. 16/17 gehen immer). `modulProtokollZeilen` erkennt neue Einträge jetzt am Inhalt statt an der alten Länge | N2c (4) |
+| (2d) Statusvertrag | `pruefeModulStatus`: Modul mit Datenfeldern verlässt „geplant“ nur, wenn jedes Datenfeld genau einmal als Personen- oder Sachfeld eingeordnet ist; technischer Nachweis je Feld (Ausnahmeweg und Löschlauf laufen für jedes Feld eines nicht mehr geplanten Moduls) im Test. UI-Text (`kern.jsx`) und Grund (`modulschreibwege.mjs`) behaupten keine Fristen mehr | N2d (3) |
+| (3) MITTEL G10: `{ an: false }` für ein nie geschaltetes Modul macht dessen Daten nur lesbar | `branchenmoduleZusammen` legt für `{ an: false }` ohne Vorgänger nichts an (kein Eintrag, kein Protokoll); der Server setzt `eingeschaltetAm` beim ersten echten Einschalten und behält es; `modulNurLesen` greift nur mit `eingeschaltetAm` (mitgeschickte Werte zählen nicht). `eingeschaltetAm` ist ein Zeitpunkt ohne Person, Sicht wie `geaendertAm` (Fußnote ²⁹ ergänzt) | N3 (3), u. a. Leitung schickt `{ bereichsplan: { an: false } }` → Planung und SV schreiben `bereichsPlan` ohne „nur lesbar“ |
+| (4) NIEDRIG Schutz hing an der Reihenfolge | `branchenmoduleZusammen` stellt bei fehlendem/unförmigem `einstellungen` Schalter, Regelwerte und Protokoll selbst wieder her | N4 (9) |
+| (5) Testlücken | Teilübermittlung, Grundlage aus Leerzeichen, wiederverwendetes `bestaetigtAm` | N5 (3) |
+| (6) Regelwert-Formular verliert `wert` | Feld „Wert“; `regelwertSauber` (exportiert, `kern.jsx`): Zahl bleibt Zahl, Wahrheitswert bleibt, sonst Text, leer = ohne Wert | N6 |
+| (7) Doku/G10-Test | `sicht.mjs` ²⁸ → ²⁹; `src/module/index.js` nennt `sitz` nicht mehr; Testzahl 599 (Abschnitt 6); Aussage Erstbefüllung (Abschnitt 2); G10 statisch über alle `src/`- und `server/`-Dateien außerhalb von Kern/Modulen inkl. Kernfunktionen und `branchenmodule.<id>`. **Fund dabei:** `src/pruefung.jsx` (Selbsttest-Schulungskapitel Sicherheitsdienst) fragte `kann(m, "posten")` ab — entfernt; das Kapitel hängt nur noch an `sperreEigen` (gleiches Paket, Verhalten unverändert) | N7 (2) |
+
+**Angepasste Prüfdaten bestehender Tests (keine Abschwächung):** In `modul-kern.test.js` (6 Stellen) und
+`modul-kern-oberflaeche.test.js` (1 Stelle) tragen die Fixtures für „nach dem Ausschalten“ jetzt `eingeschaltetAm` — der
+Zustand, den der Server nach echtem Einschalten hinterlässt; die Testmodule `TM`/`TMB` tragen `personenfelder`. Alle
+Erwartungen sind unverändert. Fachlich geändert hat sich genau ein Punkt, den Befund (3) verlangt: Ein gespeichertes
+`{ an: false }` **ohne** echtes Einschalten macht nicht mehr nur lesbar (vorher erwartete der Fall „posten: { an: false }“
+ohne Einschalten Nur-Lesen).
+
+**Rot → grün.** Neue Prüfungen gegen den Stand vor dem Nachtrag (Merge-Commit, Code unverändert): 31 von 38 rot; die 7
+grünen sind die Testlücken aus (5) (3), zwei Abweisungsfälle des Ausnahmewegs (dort wies schon das Nur-Lesen ab), „ohne
+gespeicherte Moduleinstellungen bleibt `einstellungen` fehlend“ und die Gegenprobe zu N7 — sie sind durch Mutanten
+abgesichert. Nach der Umsetzung 39/39 und 3/3 grün; gezielt grün: `modul-kern`, `modul-kern-oberflaeche`,
+`branchenmodule`, alle `modul-*`, `branchen-andock`, `rechtematrix`, `rechtematrix-zeilen` (599), `sicht`, `sicherungen`,
+`dsgvo-server`, `aufbewahrung`, `aufraeumen`, `erstbefuellung`, `oberflaeche-render`, `doku`; `tsc -p jsconfig.json` und eslint
+(geänderte Dateien) ohne Fehler. `acc45-status` lokal 1 rot („Kante im DEPENDENCIES-Graph“): Zeilenenden CRLF im
+Windows-Arbeitsbaum (`split("\n")`), unabhängig von diesem Nachtrag; im CI (Linux) maßgeblich.
+
+**Mutanten (Werkzeug lokal, je eingesetzt → Prüfung → zurückgeschrieben):** 22 von 22 getötet — NM1 Betreiber-Neuanlage
+übernimmt Moduleinstellungen · NM2 bestand-anlegen ohne Verwerfen · NM3 Ausnahmeweg ohne org.edit · NM4 nicht Benanntes durch ·
+NM5 Neues durch (zuerst **überlebt**, Test „Berichtigung + unbenannter neuer Eintrag“ ergänzt, dann getötet) · NM6 Schlüssel im
+Protokoll · NM7 ohne Pflichtgrund · NM8 Löschlauf ignoriert anonymisierte Personen · NM9 Löschlauf ohne Moduldaten · NM10
+Protokoll an der Grenze nicht gekürzt · NM11 Löschlauf verliert Protokollfrist · NM12 Protokollzeilen über alte Länge · NM13
+Statusvertrag ohne Einordnung · NM14 `{ an: false }` ohne Vorgänger angelegt · NM15 Nur-Lesen ohne `eingeschaltetAm` · NM16
+`eingeschaltetAm` vom Client · NM17 fehlende `einstellungen` nicht wiederhergestellt · NM18 Teilübermittlung `ergebnis = {}` ·
+NM19 Grundlage aus Leerzeichen · NM20 alte Bestätigung wiederverwendet · NM21 Formular ohne Wert · NM22 `kann(posten)` in
+`pruefung.jsx`.
+
+**Nur dokumentiert (8):**
+- **Q-4:** „Achtung“ aus Branchenregeln wirkt nur im Bestätigungsdialog der Oberfläche; über die API (PUT `/api/bestand`)
+  gibt es keine Bestätigung und keine Nachrechnung der Branchenbefunde (bestehende Architektur, `branchenbefunde.mjs`). Da
+  Branchenregeln nie sperren (G5), entsteht daraus keine umgehbare Sperre, aber auch kein serverseitiger Nachweis der
+  Kenntnisnahme.
+- **FN-33:** Der Betriebsrat sieht `geaendertVon`, `bestaetigtVon` (und `geprueftVon`) der handelnden Leitung sowie im
+  Modulprotokoll `von` — Matrixzeile mit Einordnung **B**, fachlich offen. Neu kommt `von` bei Einträgen des Ausnahmewegs
+  hinzu (gleiche Einordnung); Schlüssel/Person|Tag der betroffenen Person stehen dort nicht.
+
+**Offen nach dem Nachtrag:**
+- Oberfläche für den Ausnahmeweg fehlt (nur Schreibweg/API); die Moduloberflächen (WP-19.x) müssen die Auswahl der Einträge
+  liefern.
+- Fristwert Modulprotokoll (24 Monate) und die Fristen je Modul/Dokumentationsart (W3 Wachbuch) sind Entwurfswerte bzw.
+  offen (FN-32); Personenfelder folgen bis dahin der Plandatenfrist.
+- Ein Altstand mit `{ an: true }` ohne `eingeschaltetAm` (nur aus Testbeständen denkbar, kein Modul ist einschaltbar) wird
+  nach dem Ausschalten nicht nur lesbar — bewusst fail-open zugunsten von G10.

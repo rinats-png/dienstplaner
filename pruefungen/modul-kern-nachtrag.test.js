@@ -149,6 +149,13 @@ describe("N2a — Ausnahmeweg Art. 16/17 DSGVO trotz Nur-Lesen", () => {
       m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "Art. 16", eintraege: { postenPlan: ["a1|2026-11-04"] } };
     });
     expect(neu.verweigert).toMatch(/nur lesbar|Ausnahmeweg/);
+    /* Benannter Eintrag berichtigt, nebenbei ein unbenannter neu: abgewiesen. */
+    const nebenbei = schreibeAls(gesamt(), "LT", (m) => {
+      m.postenPlan["a1|2026-11-03"] = "po2";
+      m.postenPlan["a1|2026-11-05"] = "po2";
+      m.moduldatenAusnahme = { modul: "posten", art: "berichtigung", grund: "Art. 16", eintraege: { postenPlan: ["a1|2026-11-03"] } };
+    });
+    expect(nebenbei.verweigert).toMatch(/nichts Neues/);
   });
   it("Löschung in einer Liste (Objekte) über die Kennung", () => {
     const v = schreibeAls(gesamt(), "LT", (m) => {
