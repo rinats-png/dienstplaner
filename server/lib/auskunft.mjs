@@ -105,6 +105,14 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
   const abweichungen = Object.entries(m.abweichungen || {}).filter(([k]) => eigenerSchluessel(pid)(k))
     .map(([k, v]) => ({ datum: String(k).split("|")[1], dienst: v }))
     .sort((a, b) => a.datum.localeCompare(b.datum));
+  /* Einteilungen auf Posten (WP-19, modul-posten.mjs): nur die eigenen Einträge. */
+  const postenzuordnungen = Object.entries(m.postenPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
+    .map(([k, v]) => ({ datum: String(k).split("|")[1], posten: v }))
+    .sort((a, b) => a.datum.localeCompare(b.datum));
+  /* Zuordnung zu Bereichen (WP-19, modul-bereichsplan.mjs): nur die eigenen Einträge. */
+  const bereichszuordnungen = Object.entries(m.bereichsPlan || {}).filter(([k]) => eigenerSchluessel(pid)(k))
+    .map(([k, v]) => ({ datum: String(k).split("|")[1], bereich: v }))
+    .sort((a, b) => a.datum.localeCompare(b.datum));
   /* Der Plan, wie er sich aus Schichtfolge, Teilzeit, Abweichungen und
      Abwesenheiten ergibt — vom vorletzten bis zum übernächsten Monat. */
   const heute = String(erstellt).slice(0, 10);
@@ -159,6 +167,8 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     stempel: nachTag(m.einstempeln, pid),
     istZeiten: nachTag(m.erfassung, pid),
     planabweichungen: abweichungen,
+    ...(postenzuordnungen.length ? { postenzuordnungen } : {}),
+    ...(bereichszuordnungen.length ? { bereichszuordnungen } : {}),
     plan,
     abwesenheiten: eigene(m.abwesenheiten, pid),
     antraege,

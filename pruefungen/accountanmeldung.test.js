@@ -100,6 +100,11 @@ const adresse = (was) => `${was}-${++zaehler}@example.org`;
  * @param {() => number} jetzt
  * @param {number} ziel
  */
+/* So viele Anläufe (je 40 ms Pause, ein Lesevorgang) gibt es, bis die
+   Aktivität auf der Platte steht. Zwölf (0,5 s) reichten auf einem
+   ausgelasteten CI-Läufer nicht immer; hundert (4 s) sind eine Obergrenze,
+   keine Wartezeit — im Normalfall ist der erste Anlauf der letzte. */
+const ANLAEUFE = 100;
 async function warteAufZuletzt(store, token, jetzt, ziel) {
   /* Die Aktivität steht seit Phase A.1 in einem eigenen Schlüssel (az:), nicht
      mehr im Datensatz der Sitzung (as:) — der bleibt nach dem Anlegen
@@ -107,7 +112,7 @@ async function warteAufZuletzt(store, token, jetzt, ziel) {
      wieder anlegen kann. */
   const stand = () => sitzungsAblage().get(`az:${hash(token)}`, { type: "json" });
   let letzter = null;
-  for (let anlauf = 0; anlauf < 12; anlauf++) {
+  for (let anlauf = 0; anlauf < ANLAEUFE; anlauf++) {
     /* Erst warten, OHNE zu lesen. Das ist der entscheidende Punkt: Unter
        Windows scheitert das atomare Umbenennen, solange irgendjemand
        dieselbe Datei offen hält — eine Leseschleife im
@@ -125,7 +130,7 @@ async function warteAufZuletzt(store, token, jetzt, ziel) {
       .toBe(true);
   }
   throw new Error(`zuletzt erreichte ${ziel} nicht — zuletzt = ${letzter} `
-    + "nach zwölf echten Zugriffen.");
+    + `nach ${ANLAEUFE} echten Zugriffen.`);
 }
 
 /**

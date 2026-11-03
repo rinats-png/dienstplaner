@@ -16,6 +16,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { serverStarten } from "./hilfen/port.mjs";
 
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEPLOY = path.join(WURZEL, "deploy");
@@ -690,15 +691,12 @@ describe("deploy-smoke.mjs gegen server.mjs", () => {
     mkdirSync(path.join(statik, "assets"));
     writeFileSync(path.join(statik, "index.html"), '<!doctype html><script type="module" crossorigin src="/assets/index-probe.js"></script>');
     writeFileSync(path.join(statik, "assets", "index-probe.js"), "console.log(1);\n".repeat(200));
-    const port = 30000 + Math.floor(Math.random() * 20000);
-    const kind = spawn(process.execPath, ["server.mjs"], { cwd: WURZEL, stdio: "ignore",
-      env: { ...process.env, PORT: String(port), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
+    /* Freier Port vom Betriebssystem, Bereitschaft am eigenen Prozess (hilfen/port.mjs). */
+    const st = await serverStarten({ cwd: WURZEL,
+      env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten, CENTRIC_ABLAGE: "dateien",
         CENTRIC_PFEFFER: "smoke", NODE_ENV: "production", CENTRIC_AUFRAEUMEN: "aus" } });
+    const { kind, port } = st;
     try {
-      for (let i = 0; i < 100; i++) {
-        if (await fetch(`http://127.0.0.1:${port}/gesund`).then((r) => r.ok).catch(() => false)) break;
-        await new Promise((w) => setTimeout(w, 100));
-      }
       const smoke = (basis) => spawnSync(process.execPath, ["--input-type=module", "-"], {
         input: readFileSync(path.join(DEPLOY, "deploy-smoke.mjs")), encoding: "utf8",
         env: { ...process.env, CENTRIC_SMOKE_BASIS: basis } });

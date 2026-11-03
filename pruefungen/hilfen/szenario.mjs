@@ -127,6 +127,40 @@ export async function aufbauen(name) {
   };
   Z.abmelden = (keks) => Z.anfrageKonto({ pfad: "/api/account/abmelden", keks });
   Z.sitzungsstand = (keks) => Z.anfrageKonto({ pfad: "/api/account/sitzung", methode: "GET", keks });
+  /**
+   * Wartet, bis das Fortschreiben der Aktivität (`az:` der Account-Sitzung,
+   * `ta:` der Arbeitssitzung) bei der jetzigen Uhrzeit angekommen ist.
+   *
+   * Warum: Der Server schreibt `zuletzt` bewusst OHNE await — die Anfrage soll
+   * nicht auf die Platte warten (accountsitzungen.mjs, sitzungen.mjs). Die
+   * Prüfung springt mit der falschen Uhr in Schritten von 28 Minuten; kommt
+   * der Schreibvorgang des einen Schritts nach dem Lesen des nächsten an,
+   * ist `zuletzt` zwei Schritte alt, also über 30 Minuten, und die Sitzung
+   * stirbt an der Untätigkeit statt an der Frist — nur unter Last, nur
+   * manchmal („Schritt 20: 401 statt 200"). Im Betrieb liegen zwischen
+   * zwei Zugriffen Sekunden bis Minuten, nie ein Uhrsprung.
+   *
+   * Gewartet wird auf die Bedingung, nicht auf die Uhr; ein Lesevorgang je
+   * Anlauf (unter Windows scheitert das atomare Umbenennen, solange die
+   * Datei gelesen wird). Kommt sie nie an, ist das ein Fehler der Prüfung.
+   * @param {{ keks?: string, token?: string }} wer
+   */
+  Z.aktivitaetAbwarten = async ({ keks, token }) => {
+    const ziel = Date.now();
+    const schluessel = [];
+    if (keks) schluessel.push([Z.ablageKonto(), `az:${hash(keks)}`]);
+    if (token) schluessel.push([Z.ablageArbeit(), `ta:${hash(token)}`]);
+    for (const [speicher, k] of schluessel) {
+      let letzter = null;
+      for (let anlauf = 0; anlauf < 150; anlauf++) {
+        const roh = await speicher.get(k, { type: "json" }).catch(() => null);
+        letzter = roh && roh.zuletzt;
+        if (roh && Number(roh.zuletzt) >= ziel) break;
+        if (anlauf === 149) throw new Error(`${k}: zuletzt erreichte ${ziel} nicht (zuletzt = ${letzter})`);
+        await new Promise((r) => setTimeout(r, 40));
+      }
+    }
+  };
   Z.betriebOeffnen = async (keks, raum) => {
     const e = await Z.anfrageKonto({ pfad: "/api/account/betrieb", rumpf: { raum }, keks });
     return { ...e, token: e.daten && e.daten.token };

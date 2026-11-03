@@ -14,7 +14,8 @@
    ========================================================================== */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { spawn, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
+import { serverStarten } from "./hilfen/port.mjs";
 import { mkdtemp, mkdir, rm, readFile, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -24,11 +25,11 @@ import { promisify } from "node:util";
 const ausfuehren = promisify(execFile);
 const WURZEL = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SKRIPT = path.join(WURZEL, "werkzeug", "zugaenge-anlegen.sh");
-const PORT = 30000 + Math.floor(Math.random() * 20000);
-const B = `http://127.0.0.1:${PORT}`;
+/* Port und Basis stehen erst nach dem Start fest (hilfen/port.mjs). */
+let PORT, B;
 const ADMIN = "probe-geheim";
 const RAUM = "demo-schau";
-let kind, statik, daten, arbeit, ausgabe = "";
+let kind, statik, daten, arbeit, ausgabe = () => "";
 
 /** Das Skript einmal laufen lassen; gibt Ausgabe, Fehlerausgabe und Status zurück. */
 async function lauf(nr) {
@@ -55,21 +56,13 @@ beforeAll(async () => {
   await mkdir(path.join(statik, "assets"));
   await writeFile(path.join(statik, "index.html"), "<!doctype html><title>CENTRIC Probe</title>");
 
-  kind = spawn(process.execPath, ["server.mjs"], {
-    cwd: WURZEL,
-    env: { ...process.env, PORT: String(PORT), CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
+  const st = await serverStarten({ cwd: WURZEL,
+    env: { CENTRIC_STATIK: statik, CENTRIC_DATEN: daten,
       CENTRIC_ABLAGE: "dateien", CENTRIC_ADMIN: ADMIN, CENTRIC_PFEFFER: "probe-pfeffer",
-      NODE_ENV: "production" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  kind.stdout.on("data", (d) => { ausgabe += d; });
-  kind.stderr.on("data", (d) => { ausgabe += d; });
-  for (let i = 0; i < 100; i++) {
-    if (await fetch(`${B}/gesund`).then((r) => r.ok).catch(() => false)) return;
-    await new Promise((w) => setTimeout(w, 100));
-  }
-  throw new Error(`Server kam nicht hoch:\n${ausgabe}`);
-}, 20000);
+      NODE_ENV: "production" } });
+  ({ kind, port: PORT, basis: B } = st);
+  ausgabe = st.log;
+}, 60000);
 
 afterAll(async () => {
   if (kind && kind.exitCode === null) kind.kill("SIGKILL");
