@@ -354,6 +354,35 @@ async function serverLaeuft(/** @type {string} */ url) {
   } catch { return false; }
 }
 
+/** Name des Vermerks der Wiederherstellungen im Datenverzeichnis (Punktdatei: nicht gesichert). */
+export const WIEDERHERSTELL_VERMERK = ".wiederhergestellt.json";
+
+/**
+ * Alle vermerkten Wiederherstellungen eines Datenverzeichnisses, älteste
+ * zuerst: [{ zeit, sicherungErstellt }]. Keine Datei: []. Die frühere Form
+ * (ein einzelnes Objekt) wird als Liste mit einem Eintrag gelesen.
+ * Vorhanden, aber unlesbar oder unvollständig: Fehler — nie still „keine".
+ * @param {string} wurzel
+ * @returns {Promise<Array<{zeit: string, sicherungErstellt: string}>>}
+ */
+export async function wiederherstellVermerkeLesen(wurzel) {
+  const datei = path.join(wurzel, WIEDERHERSTELL_VERMERK);
+  let roh;
+  try { roh = await readFile(datei, "utf8"); }
+  catch (e) {
+    if (/** @type {any} */ (e).code === "ENOENT") return [];
+    throw new SicherungsFehler(`${datei} ist nicht lesbar (${/** @type {any} */ (e).code || e}). Erst klären — siehe BETRIEB-SICHERUNG §4a.`, 2);
+  }
+  let o;
+  try { o = JSON.parse(roh); } catch { o = null; }
+  const liste = Array.isArray(o?.wiederherstellungen) ? o.wiederherstellungen
+    : (o && typeof o === "object" && o.zeit && o.sicherungErstellt ? [o] : null);
+  if (!liste || !liste.every((w) => w && Number.isFinite(Date.parse(w.zeit)) && Number.isFinite(Date.parse(w.sicherungErstellt))))
+    throw new SicherungsFehler(`${datei} ist beschädigt — die Standfolge der Wiederherstellungen ist nicht bekannt. `
+      + "Erst klären — siehe BETRIEB-SICHERUNG §4a.", 2);
+  return liste.map((w) => ({ zeit: w.zeit, sicherungErstellt: w.sicherungErstellt }));
+}
+
 /**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
  *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void}} o
@@ -387,6 +416,9 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
   const vorhanden = (await readdir(ziel)).filter((n) => !n.startsWith("."));
   if (vorhanden.length && !ersetzen)
     throw new SicherungsFehler(`Das Ziel ${ziel} ist nicht leer (${vorhanden.join(", ")}). Mit --ersetzen wird der Inhalt beiseitegelegt, nicht gelöscht.`);
+  /* Frühere Wiederherstellungen dieses Ziels — ein unlesbarer Vermerk
+     bricht ab, bevor etwas angefasst ist (fail-closed). */
+  const fruehere = await wiederherstellVermerkeLesen(ziel);
 
   // 1. neben dem Ziel aufbauen und nachprüfen — noch ist nichts angefasst
   const stufe = path.join(ziel, `.wiederherstellung-${stempel(jetzt)}`);
@@ -423,10 +455,13 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
      der Wiederherstellung entstanden, gehören zu der verworfenen Folge —
      gleiche Nummer, anderer Inhalt. werkzeug/ablage-pruefen.mjs lehnt sie
      deshalb ab. Punktdatei: nicht in der Sicherung, für die Ablage unsichtbar. */
-  const vermerk = path.join(ziel, ".wiederhergestellt.json");
+  /* Fortgeschrieben, nicht überschrieben: Jede frühere Wiederherstellung
+     hat ihre eigene verworfene Folge (WP-45d, W1). */
+  const vermerk = path.join(ziel, WIEDERHERSTELL_VERMERK);
   const vermerkTmp = `${vermerk}.${process.pid}.tmp`;
   await rm(vermerkTmp, { force: true });
-  await schreibenFest(vermerkTmp, JSON.stringify({ zeit: jetzt.toISOString(), sicherungErstellt: manifest.erstellt }));
+  await schreibenFest(vermerkTmp, JSON.stringify({ wiederherstellungen: [...fruehere,
+    { zeit: jetzt.toISOString(), sicherungErstellt: manifest.erstellt }] }));
   await rename(vermerkTmp, vermerk);
   await ordnerFest(ziel);
 
