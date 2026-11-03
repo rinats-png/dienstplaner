@@ -196,3 +196,7 @@ Lokal: Grundmatrix 140, Erweiterung 54, `ablage-pruefen-rueckweg`, `ablage-pruef
 
 Grenze: Die Erkennung der verworfenen Folge braucht den Vermerk der Wiederherstellung. Wer `data/` von Hand aus einer
 Sicherung kopiert statt `wiederherstellen` zu benutzen, hat keinen — dann gilt nur die Regel in §4a.
+
+CI auf 85e9449 grün: Prüfung 41541594098, Sicherheit 41541594063, Betrieb: Deploy-Skripte 41541594091, Lieferkette
+41541594105; dazu „Betrieb Sicherung“ (Ende-zu-Ende mit `wiederherstellen` im Bild, von Hand auf dem Branch gestartet)
+41541613771.
