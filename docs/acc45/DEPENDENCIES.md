@@ -4,7 +4,7 @@ Erzeugt von `werkzeug/acc45-backlog.mjs` aus `docs/acc45/work-packages.json` (ni
 
 **Kritischer Pfad gemeinsam** (offener Entwicklungsaufwand, ohne extern): WP-I10 → WP-I12 → WP-I13 → WP-I17 → WP-I19 → WP-I27 → WP-I37 = **75,4–129,8 PT**
 **Ohne Intelligence:** WP-19.0 → WP-19.1 → WP-19.2 → WP-19.3 → WP-19.13 → WP-42a → WP-42 = **24,8–38,7 PT**
-**Offener Entwicklungsaufwand:** 407,2–694 PT in 77 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
+**Offener Entwicklungsaufwand:** 409,2–698 PT in 78 Paketen (zuzüglich 31 externe Abnahmen/Entscheidungen)
 
 WP-09 ist nur Livegang-Reihenfolge und zählt im Pfad nicht als Abhängigkeit. Der Graph zeigt nur offene Pakete.
 
@@ -94,6 +94,7 @@ flowchart LR
     WP_28b["WP-28b<br/>READY"]
     WP_07b["WP-07b<br/>BLOCKED"]
     WP_S1["WP-S1<br/>READY"]
+    WP_PILOT["WP-PILOT<br/>IN_PROGRESS"]
   end
   subgraph extern[Extern/Entscheidungen]
     E_1["E-1<br/>BLOCKED"]
@@ -337,6 +338,9 @@ flowchart LR
   E_23 --> E_24
   E_24 --> E_24i
   WP_16c --> E_29
+  WP_S1 --> WP_PILOT
+  WP_19_0 --> WP_PILOT
+  E_19 --> WP_PILOT
 ```
 
 | Paket | Strang | Prio | PT | Rest-PT | hängt ab von | Konfliktzonen | Modell | Status |
@@ -482,3 +486,4 @@ flowchart LR
 | E-27 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |
 | E-28 | extern | P2 | 0,5–1 | 0,5–1 | E-21i | – | – | BLOCKED |
 | E-29 | extern | P0 | 1–2 | 1–2 | WP-16c | – | – | BLOCKED |
+| WP-PILOT | folge | P2 | 4–8 | 2–4 | WP-S1, WP-19.0, E-19 | – | sonnet | IN_PROGRESS |
