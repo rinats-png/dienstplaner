@@ -10,7 +10,10 @@
 
    Aufruf: npx vitest run pruefungen/schutzkonflikte.test.js
    ========================================================================== */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { useSchutzkonflikte, schutzkonfliktSchluessel, merkeSchutzkonflikte, gemerkteSchutzkonflikte, vergissSchutzkonflikte } from "../src/schutzkonflikte-hook.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { MATRIX, darf } from "../server/lib/rechte.mjs";
@@ -151,23 +154,46 @@ describe("Review MITTEL 3/4: Entprellung (250 ms) und Abbruch als Verhalten", ()
   }));
 });
 
-describe("Review MITTEL 4: nichts verschwindet, Rollen ohne Bedarf rechnen nicht, Tageswechsel", () => {
-  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-  const i = app.indexOf("function useSchutzkonflikte(");
-  const hook = app.slice(i, app.indexOf("\n}\n", i));
-  it("beginnt mit der letzten bekannten Rechnung des Betriebs, nicht leer", () => {
-    expect(hook).toContain("useState(() => (SK_LETZTE.get(m.id)");
-    expect(hook).toContain("SK_LETZTE.set(m.id,");
+describe("Review MITTEL 4 / Reste: der Haken useSchutzkonflikte als Verhalten (react-dom/server)", () => {
+  const sitz = (rolle = "planer", id = "p1") => ({ mandant: { id: "m1", personen: [] }, person: { id, rolle } });
+  const zeige = (s, aktiv = true) => {
+    const Probe = () => {
+      const r = useSchutzkonflikte(s, aktiv, () => ({}), () => HEUTE);
+      return React.createElement("span", null, [...r.keys()].join(","));
+    };
+    return renderToString(React.createElement(Probe));
+  };
+  const ergebnis = (...keys) => new Map(keys.map((k) => [k, { person: { nachname: "N" }, datum: "2030-01-01" }]));
+  beforeEach(() => vergissSchutzkonflikte());
+
+  it("beginnt leer, wenn nichts bekannt ist", () => {
+    expect(zeige(sitz())).toBe("<span></span>");
   });
-  it("Tageswechsel (heute) im Schlüssel; Abbruch beim Aufräumen", () => {
-    expect(hook).toContain("const h = heute();");
-    expect(hook).toContain("[m, h, aktiv]");
-    expect(hook).toContain("return planeSchutzkonflikte(");
+  it("beginnt mit der letzten Rechnung dieser Sitzung — nichts verschwindet beim erneuten Zeigen", () => {
+    merkeSchutzkonflikte(schutzkonfliktSchluessel(sitz()), ergebnis("a|2030-01-01", "b|2030-01-02"));
+    expect(zeige(sitz())).toBe("<span>a|2030-01-01,b|2030-01-02</span>");
   });
-  it("die Startseite rechnet nur für Planung und Leitung; der Monatsplan (auch Schichtverantwortung) immer", () => {
-    expect(app).toContain('useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"))');
-    expect(app).toMatch(/const schutzkonflikte = useSchutzkonflikte\(m\);\s*\n\s*const leute = useMemo/);
-    expect(hook).toContain("aktiv = true");
+  it("aktiv=false (Rollen ohne Bedarf): leer, auch wenn etwas gemerkt ist, und es wird nicht gerechnet", () => {
+    merkeSchutzkonflikte(schutzkonfliktSchluessel(sitz()), ergebnis("a|2030-01-01"));
+    expect(zeige(sitz(), false)).toBe("<span></span>");
+  });
+  it("das Gemerkte gehört zur Sitzung: andere Person oder Rolle bekommt es nie", () => {
+    merkeSchutzkonflikte(schutzkonfliktSchluessel(sitz("planer", "p1")), ergebnis("a|2030-01-01"));
+    expect(zeige(sitz("planer", "p2"))).toBe("<span></span>");
+    expect(zeige(sitz("subplaner", "p1"))).toBe("<span></span>");
+    expect(zeige(sitz("planer", "p1"))).toBe("<span>a|2030-01-01</span>");
+  });
+  it("Abmelden/Rollenwechsel leert das Gemerkte", () => {
+    merkeSchutzkonflikte(schutzkonfliktSchluessel(sitz()), ergebnis("a|2030-01-01"));
+    vergissSchutzkonflikte();
+    expect(gemerkteSchutzkonflikte(schutzkonfliktSchluessel(sitz()))).toBeNull();
+    expect(zeige(sitz())).toBe("<span></span>");
+  });
+  it("Verdrahtung: Abmelden leert, die Startseite rechnet nur für Planung und Leitung, der Monatsplan immer", () => {
+    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    expect(app).toContain("abmelden: () => { vergissSchutzkonflikte(); SP.abmelden();");
+    expect(app).toContain('useSchutzkonflikte(sitz, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"))');
+    expect(app).toMatch(/const schutzkonflikte = useSchutzkonflikte\(sitz\);\s*\n\s*const leute = useMemo/);
   });
 });
 
@@ -189,16 +215,5 @@ describe("Mitteilung mit Jahr", () => {
     const altM = { personen: [person("a", "e1"), { id: "l", rolle: "leitung", vorname: "L", nachname: "L" }] };
     const neu = schutzKonfliktMitteilungen(altM, { ...altM, nachrichten: [] }, [{ personId: "a", datum: "2027-01-05", dienstId: "N" }], "x");
     expect(neu.nachrichten[0].text).toContain("05.01.2027");
-  });
-});
-
-describe("Oberfläche: entprellt und in Häppchen (Quelltext)", () => {
-  it("useSchutzkonflikte statt einer Rechnung im Render", () => {
-    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toContain("function useSchutzkonflikte(m, aktiv = true)");
-    expect(app).toMatch(/planeSchutzkonflikte\(m, schutzkonfliktPlan\(m\)/);
-    /* die Häppchen und die Entprellung selbst sind als Verhalten geprüft (planeSchutzkonflikte, oben) */
-    expect(readFileSync(path.join(process.cwd(), "server/lib/fachpruefung.mjs"), "utf8")).toMatch(/timer\(weiter, 0\)/);
-    expect(app).not.toMatch(/useMemo\(\(\) => offeneSchutzkonflikte/);
   });
 });
