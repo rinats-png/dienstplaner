@@ -14,6 +14,10 @@
    Betriebsvereinbarungen können strenger sein; deren Werte kommen aus den
    Einstellungen des Betriebs und überschreiben die Vorgaben.
    ========================================================================== */
+import { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer, jugendMehrschichtig } from "../server/lib/schutzpruefung.mjs";
+/* Die Schutzprüfung und ihre Zeit-Helfer stehen seit WP-11 in
+   server/lib/schutzpruefung.mjs — eine Fassung für Oberfläche und Server. */
+export { pad, iso, pISO, addDays, dow, toMin, dauer, NACHT_VON, NACHT_BIS, nachtMinuten, istNachtdienst, alterAm, schutzBefunde, schutzEinsatz, EINSATZREGEL_TEXTE, regelBefunde, schutzBefundeFuer, jugendMehrschichtig };
 
 /* --------------------------------------------------------------------------
    DATUM UND ZEIT
@@ -39,6 +43,15 @@
 export const REGELSTAND = {
   version: "2026.09",
   stand: "2026-09-09",
+  /* `version` und `stand` bezeichnen den Rechtsstand, nach dem die Prüflogik
+     gerechnet wird — er steht in jedem Protokolleintrag. Die Liste `quellen`
+     beschreibt den Umfang. Am 22.10.2026 wurden vier Quellen nachgetragen, die
+     schon in dieser Fassung wirkten (EFZG, SGB V/IX, Landesheimpersonal-
+     verordnung): Die Rechenlogik ist dieselbe geblieben, nur die Liste war
+     unvollständig. Deshalb wird die Version nicht hochgezählt; `quellenstand`
+     hält fest, wann die Liste zuletzt vervollständigt wurde. Ändert sich
+     dagegen eine Prüfregel, gilt wie bisher: neue Version. */
+  quellenstand: "2026-10-22",
   /* Was in dieser Fassung geprüft wird — die Liste ist der Umfang, zu dem
      sich die Anwendung bekennt, nicht eine Liste gelesener Gesetze. */
   quellen: [
@@ -52,33 +65,26 @@ export const REGELSTAND = {
     "PpUGV (Fassung vom 09.11.2020)",
     "GewO § 34a, BewachV",
     "MPBetreibV §§ 4, 10 · BetrSichV § 12",
+    /* Nachgetragen (Oktober 2026): Diese Quellen wirkten schon in dieser
+       Fassung, standen aber nicht in der Liste. Die Regeln dazu sind im
+       Regelregister (src/regelregister.js) mit Fundstelle geführt; ein Test
+       hält beide Seiten zusammen. */
+    "EFZG § 3",
+    "SGB V § 74 · SGB IX §§ 164, 207",
+    "Landesheimpersonalverordnung (je Bundesland, vom Betrieb hinterlegt)",
   ],
 };
 
 /** Kurzform für Einträge, die den Stand mitführen. */
 export const regelstandKennung = () => REGELSTAND.version;
 
-export const pad = (n) => String(n).padStart(2, "0");
-export const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-export const pISO = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
-export const addDays = (s, n) => { const d = pISO(s); d.setDate(d.getDate() + n); return iso(d); };
-/** Montag ist 0 — im deutschen Arbeitsrecht beginnt die Woche dort. */
-export const dow = (s) => (pISO(s).getDay() + 6) % 7;
 export const between = (a, b) => Math.round((pISO(b).getTime() - pISO(a).getTime()) / 86400000);
 export const dim_ = (y, m) => new Date(y, m + 1, 0).getDate();
 export const montag = (s) => addDays(s, -dow(s));
-export const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 /* --------------------------------------------------------------------------
    DIENSTE
    -------------------------------------------------------------------------- */
-
-/** Bezahlte Stunden eines Dienstes, Pause abgezogen. */
-export function dauer(d) {
-  let x = toMin(d.ende) - toMin(d.start);
-  if (x <= 0) x += 1440;                     // Ende vor Start heißt Folgetag
-  return Math.round((x / 60 - (d.pause || 0) / 60) * 100) / 100;
-}
 
 /** Anwesenheit von Beginn bis Ende, ohne Pausenabzug. */
 export function brutto(d) {
@@ -359,29 +365,7 @@ export function folgenUeberGrenze(hatDienst, von, bis, grenze) {
    deutlich kürzerer Zeitraum als der allgemeine.
    -------------------------------------------------------------------------- */
 
-export const NACHT_VON = 23 * 60;
-export const NACHT_BIS = 6 * 60;
 export const NACHT_AUSGLEICH_WOCHEN = 4;
-
-/** Minuten eines Dienstes, die in die Nachtzeit fallen. */
-export function nachtMinuten(d) {
-  const s = toMin(d.start);
-  let e = toMin(d.ende);
-  if (e <= s) e += 1440;
-  let summe = 0;
-  /* Zwei Abschnitte, weil die Nachtzeit über Mitternacht läuft: 23–24 Uhr
-     des Vortags reicht als 1380–1440 herein, 0–6 Uhr als 0–360, und für
-     Dienste, die über Mitternacht gehen, noch einmal 1440+ */
-  for (const [a, b] of [[0, NACHT_BIS], [NACHT_VON, 1440 + NACHT_BIS], [1440 + NACHT_VON, 2880]]) {
-    summe += Math.max(0, Math.min(e, b) - Math.max(s, a));
-  }
-  return Math.min(summe, e - s);
-}
-
-/** Ist das ein Nachtdienst im Sinne des § 2 Abs. 4? */
-export function istNachtdienst(d) {
-  return nachtMinuten(d) > 120;
-}
 
 /* --------------------------------------------------------------------------
    WOHER EINE ANFORDERUNG KOMMT — UND WOFÜR SIE GILT
@@ -475,19 +459,19 @@ export function regelMaengel(q) {
 
   if (q && q.harteSperre && !String(q.grundlage || "").trim())
     aus.push({ art: "ohneGrundlage", schwere: "warn", qualId: q.id,
-      text: `${name} sperrt den Einsatz, nennt aber keine Grundlage. `
-        + "Wer einen Dienst verhindert, sollte sagen können, worauf er sich stützt." });
+      text: `${name} ist verbindlich und warnt bei jedem Einsatz, nennt aber keine Grundlage. `
+        + "Wer vor einem Dienst warnt, sollte sagen können, worauf er sich stützt." });
 
   if (q && q.harteSperre && !v.gesetzlich)
     aus.push({ art: "sperreOhneGesetz", schwere: "info", qualId: q.id,
       /* Nicht kleinschreiben: „betriebliche festlegung" las sich wie ein
          Tippfehler. Der Klartext der Ebene ist ein Substantiv. */
-      text: `${name} ist hinterlegt als: ${v.label}. Die Anforderung sperrt trotzdem den Einsatz. `
-        + "Das ist zulässig, wird aber als betriebliche Vorgabe ausgewiesen, nicht als gesetzliches Verbot." });
+      text: `${name} ist hinterlegt als: ${v.label}. Die Anforderung warnt trotzdem bei jedem Einsatz. `
+        + "Das ist zulässig, wird aber als betriebliche Vorgabe (Achtung) ausgewiesen, nicht als Rechtsverstoß." });
 
   if (q && q.harteSperre && v.bezug === "taetigkeit")
     aus.push({ art: "pauschaleSperre", schwere: "warn", qualId: q.id,
-      text: `${name} hängt an der Tätigkeit, sperrt aber jeden Dienst. `
+      text: `${name} hängt an der Tätigkeit, warnt aber bei jedem Dienst. `
         + "Wo das Recht nach Tätigkeiten unterscheidet — etwa § 34a GewO —, gehört die Anforderung "
         + "an die betreffenden Dienstarten statt an alle." });
 
@@ -671,126 +655,15 @@ export function freieSonntage(hatDienst, jahr, bisDatum = null) {
    zulässig wäre. Alle drei sind in Pflege und Sicherheit alltäglich.
    -------------------------------------------------------------------------- */
 
-/** Alter in Jahren am Stichtag. Ohne Geburtsdatum: null. */
-export function alterAm(geburtstag, datum) {
-  if (!geburtstag || !/^\d{4}-\d{2}-\d{2}$/.test(String(geburtstag))) return null;
-  const g = pISO(geburtstag), d = pISO(datum);
-  let jahre = d.getFullYear() - g.getFullYear();
-  const vorGeburtstag = d.getMonth() < g.getMonth()
-    || (d.getMonth() === g.getMonth() && d.getDate() < g.getDate());
-  if (vorGeburtstag) jahre--;
-  return jahre;
-}
-
 /**
- * Prüft einen geplanten Dienst gegen die Schutzvorschriften.
- *
- * @returns Liste von Befunden: { regel, text, hart }
- *   hart = die Zuweisung ist unzulässig, nicht nur bedenklich.
+ * Wie schwer wiegt das Ergebnis von aufgabeGedeckt() in der Planprüfung?
+ * null: gedeckt und bewertbar — kein Befund. Eine Aufgabe ohne Qualifikation
+ * meldet gedeckt:true mit offen:true; das ist „nicht bewertbar" und darf nie
+ * als erfüllt durchgehen, sondern bleibt als Hinweis sichtbar.
  */
-export function schutzBefunde(person, dienstart, datum) {
-  const aus = [];
-  const alter = alterAm(person.geburtstag || person.geburtsdatum, datum);
-
-  /* --- Jugendarbeitsschutzgesetz --- */
-  if (alter !== null && alter < 18) {
-    if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
-      aus.push({ regel: "JArbSchG § 14", hart: true,
-        text: "Jugendliche dürfen nicht zwischen 20 und 6 Uhr beschäftigt werden." });
-    if (dauer(dienstart) > 8.5)
-      aus.push({ regel: "JArbSchG § 8", hart: true,
-        text: "Für Jugendliche gelten höchstens acht Stunden täglich." });
-    if (dow(datum) >= 5)
-      aus.push({ regel: "JArbSchG §§ 16–17", hart: false,
-        text: "Samstags- und Sonntagsarbeit Jugendlicher ist nur in Ausnahmen zulässig — in der Pflege erlaubt, mit Ersatzruhetag." });
-  }
-
-  /* --- Mutterschutzgesetz --- */
-  if (person.mutterschutz) {
-    if (istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60)
-      aus.push({ regel: "MuSchG § 5", hart: true,
-        text: "Nachtarbeit zwischen 20 und 6 Uhr nur mit Einwilligung und behördlicher Genehmigung." });
-    if (dow(datum) === 6)
-      aus.push({ regel: "MuSchG § 6", hart: true,
-        text: "Sonntagsarbeit nur mit ausdrücklicher Einwilligung." });
-  }
-
-  /* --- Schwerbehinderung --- */
-  if (person.schwerbehindert && dauer(dienstart) > 8)
-    aus.push({ regel: "SGB IX § 207", hart: false,
-      text: "Schwerbehinderte Menschen sind auf Verlangen von Mehrarbeit über acht Stunden freizustellen." });
-
-  return aus;
-}
-
-/* --------------------------------------------------------------------------
-   EINSATZREGELN STATT SCHUTZMERKMALE (Commit S1)
-
-   Die Schichtverantwortung bekommt Mutterschutz, Schwerbehinderung,
-   Geburtsdatum und Wiedereingliederung ihrer Leute nicht mehr. Der Server
-   leitet daraus bei jedem Lesen Einsatzregeln ab (server/lib/planungsregeln.mjs)
-   — ohne Grund, mit Zeitraum. Hier werden sie auf einen Dienst angewendet:
-   dieselben Bedingungen und dieselbe Härte wie in schutzBefunde, aber mit
-   neutralen Texten, die weder Diagnose noch Gesetz nennen.
-   pruefungen/schutzmerkmale-sicht.test.js prüft die Gleichwertigkeit.
-
-   Eine unbekannte Regel sperrt (fail-closed): Was der Server meint, aber
-   diese Fassung nicht versteht, darf nicht als „frei" durchgehen.
-   -------------------------------------------------------------------------- */
-export const EINSATZREGEL_TEXTE = {
-  nachtNichtZulaessig: "Nachteinsatz 20–6 Uhr nicht zulässig.",
-  hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
-  wochenendePruefen: "Wochenendeinsatz prüfen.",
-  sonntagNurMitFreigabe: "Sonntagseinsatz nur mit Freigabe der Planung.",
-  ueber8hNurAbsprache: "Dienst über 8 Stunden nur nach Absprache.",
-  stundengrenzeWoche: "Wochenstundengrenze überschritten.",
-  unbekannt: "Einsatzregel nicht auswertbar — Planungsprüfung erforderlich.",
-};
-
-/**
- * Die abgeleiteten Einsatzregeln einer Person auf einen geplanten Dienst
- * anwenden. Gegenstück zu schutzBefunde für die Sicht ohne Rohdaten.
- * Die Wochenstundengrenze gilt für eine Woche, nicht für einen Dienst; sie
- * liest stundengrenzeAusRegeln.
- * @returns Liste von Befunden: { regel, text, hart }
- */
-export function regelBefunde(planungsregeln, dienstart, datum) {
-  const aus = [];
-  for (const r of Array.isArray(planungsregeln) ? planungsregeln : []) {
-    if (!r || typeof r !== "object") continue;
-    if (r.von && datum < r.von) continue;
-    if (r.bis && datum > r.bis) continue;
-    const treffer = (bed) => { if (bed) aus.push({ regel: r.regel, hart: r.hart === true, text: EINSATZREGEL_TEXTE[r.regel] }); };
-    switch (r.regel) {
-      case "nachtNichtZulaessig": treffer(istNachtdienst(dienstart) || toMin(dienstart.start) < 6 * 60); break;
-      case "hoechstens8hTag": treffer(dauer(dienstart) > 8.5); break;
-      case "wochenendePruefen": treffer(dow(datum) >= 5); break;
-      case "sonntagNurMitFreigabe": treffer(dow(datum) === 6); break;
-      case "ueber8hNurAbsprache": treffer(dauer(dienstart) > 8); break;
-      case "stundengrenzeWoche": break;
-      default: aus.push({ regel: "unbekannt", hart: true, text: EINSATZREGEL_TEXTE.unbekannt });
-    }
-  }
-  return aus;
-}
-
-/**
- * Die Schutzprüfung einer Person für einen geplanten Dienst — auf dem Weg,
- * den ihre Daten zulassen, nie auf zweien:
- * - planungsregeln vorhanden (Sicht der Schichtverantwortung): regelBefunde,
- *   neutral;
- * - die Sicht erwartet planungsregeln (sichtbereich Bereich oder Pool), sie
- *   fehlen: ein sperrender Befund — ohne Daten ist niemand frei planbar;
- * - sonst die Rohdaten: schutzBefunde, mit Fundstelle.
- * @returns Liste von Befunden: { regel, text, hart, neutral? }
- */
-export function schutzBefundeFuer(person, dienstart, datum) {
-  if (Array.isArray(person.planungsregeln))
-    return regelBefunde(person.planungsregeln, dienstart, datum).map((b) => ({ ...b, neutral: true }));
-  if (person.sichtbereich === "bereich" || person.sichtbereich === "pool")
-    return [{ regel: "pruefungNichtMoeglich", hart: true, neutral: true,
-      text: "Für diese Person fehlen die Einsatzregeln; sie gilt nicht als frei planbar." }];
-  return schutzBefunde(person, dienstart, datum);
+export function aufgabeSchwere(ergebnis) {
+  if (ergebnis.gedeckt && !ergebnis.offen) return null;
+  return ergebnis.offen ? "warn" : "danger";
 }
 
 /** Die Wochenstundengrenze einer Person: aus den Rohdaten
@@ -819,25 +692,38 @@ export function stundengrenzeFuer(person) {
  * @param {any} dienstart
  * @param {string} datum
  * @param {number | (() => number)} [wochenStunden]
+ * @param {any} [einst] Einstellungen des Betriebs (jugendschutz.mehrschichtig)
  * @returns {{ hindernisse: string[], hinweise: string[], grenze: null | { maxStundenWoche: number, neutral: boolean } }}
  */
-export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0) {
+export function einsatzSchutz(person, dienstart, datum, wochenStunden = 0, einst = undefined) {
   const hindernisse = [], hinweise = [];
-  for (const b of /** @type {any[]} */ (schutzBefundeFuer(person, dienstart, datum))) {
+  for (const b of schutzEinsatz(person, dienstart, datum, einst)) {
     const satz = String(b.text || "").replace(/\.$/, "");
-    (b.hart ? hindernisse : hinweise).push(b.neutral ? satz : `${b.regel}: ${satz}`);
+    (b.sperrt ? hindernisse : hinweise).push(b.neutral ? satz : `${b.regel}: ${satz}`);
   }
-  let grenze = null;
+  const g = stundengrenzeHinweis(person, dienstart, datum, wochenStunden);
+  if (g) hinweise.push(g.text);
+  return { hindernisse, hinweise, grenze: g ? g.grenze : null };
+}
+
+/**
+ * Die Wochenstundengrenze bei einer Einteilung (S2a): weich, ein Hinweis.
+ * Allein für Stellen, die die Schutzbefunde schon aus schutzEinsatz haben
+ * (Warndialog) und nur die Grenze dazunehmen — so steht kein Befund doppelt.
+ * @param {any} person
+ * @param {any} dienstart
+ * @param {string} datum
+ * @param {number | (() => number)} [wochenStunden]
+ * @returns {null | { text: string, grenze: { maxStundenWoche: number, neutral: boolean } }}
+ */
+export function stundengrenzeHinweis(person, dienstart, datum, wochenStunden = 0) {
   const w = stundengrenzeFuer(person);
-  if (w && w.von <= datum && w.bis >= datum) {
-    const std = typeof wochenStunden === "function" ? wochenStunden() : wochenStunden;
-    if (std + dauer(dienstart) > w.maxStundenWoche) {
-      grenze = { maxStundenWoche: w.maxStundenWoche, neutral: w.neutral };
-      const h = Number(w.maxStundenWoche).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-      hinweise.push(`${w.neutral ? "Wochenstundengrenze" : "Wiedereingliederung"}: höchstens ${h} h je Woche`);
-    }
-  }
-  return { hindernisse, hinweise, grenze };
+  if (!w || w.von > datum || w.bis < datum) return null;
+  const std = typeof wochenStunden === "function" ? wochenStunden() : wochenStunden;
+  if (std + dauer(dienstart) <= w.maxStundenWoche) return null;
+  const h = Number(w.maxStundenWoche).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return { text: `${w.neutral ? "Wochenstundengrenze" : "Wiedereingliederung"}: höchstens ${h} h je Woche`,
+    grenze: { maxStundenWoche: w.maxStundenWoche, neutral: w.neutral } };
 }
 
 /** Die Wochenstundengrenze aus den Einsatzregeln — in der Form, die die

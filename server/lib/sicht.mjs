@@ -21,6 +21,8 @@
    ========================================================================== */
 
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
+import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
+import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -83,7 +85,11 @@ const EIGENE_PERSON = [...PLAN, "bereich", "qualNachweise", "kompetenzNachweise"
   "notfallkontakt", "zustellung", "pushSchluessel", "kalenderVerweis",
   "kalenderGeheim", "kalenderStand", "weckzeit", "benachrichtigung",
   "kontrastmodus", "feldmodus", "thema", "dichte", "tour", "einfuehrung",
-  "handbuch", "startansicht", "wenigerBewegung"];
+  "handbuch", "startansicht", "wenigerBewegung",
+  /* Beschäftigungsmodell und Monatsstundengrenze (Kette A; WP-10 d.2,
+     RECHTEMATRIX.md ²³): die eigene Person sieht sie, ändern kann sie sie
+     nicht (rechte.mjs, SELBST_FELDER). Fremd nur Planung und Leitung. */
+  "beschaeftigungsmodell", "stundenGrenzeMonat"];
 
 /* Der Katalog der Personenfelder. Jedes Feld, das irgendwo an einer Person
    geschrieben wird, braucht hier eine Entscheidung — für die eigene Person
@@ -288,10 +294,21 @@ function urlaubsrunde(w, ctx) {
 
 /* Selbstplanung: Die Runde für alle. Fremde Einträge ohne Person und Zeit —
    die Deckelung zählt sie je Tag und Dienst, wer es war, braucht sie nicht. */
+/* Selbstplanung (Review K1): Der Rundenkopf geht nur per Positivliste
+   hinaus (RUNDENKOPF) — bis dahin per {...r}, samt „nicht übernommen" mit
+   dem Befundtext Dritter. Einträge: eigene ganz, fremde nur Tag und Dienst.
+   nichtUebernommen: nur die eigenen, als Kennung (selbstplanung.mjs). */
+const SELBST_EINTRAG = ["personId", "datum", "dienstId", "zeit", "hinweise"];
+function rundeSicht(r, eintragSichtbar, nichtSichtbar) {
+  if (!r || typeof r !== "object") return r;
+  return { ...nimm(r, RUNDENKOPF),
+    eintraege: liste(r.eintraege).filter((e) => e && typeof e === "object")
+      .map((e) => (eintragSichtbar(e) ? nimm(e, SELBST_EINTRAG) : nimm(e, ["datum", "dienstId"]))),
+    ...(Array.isArray(r.nichtUebernommen)
+      ? { nichtUebernommen: nichtUebernommenNormal(r.nichtUebernommen.filter((e) => e && nichtSichtbar(e))) } : {}) };
+}
 function selbstplanung(w, ctx) {
-  return liste(w).map((r) => (r && typeof r === "object" ? { ...r,
-    eintraege: liste(r.eintraege).map((e) => (eigen(e, ctx.ich) ? e
-      : nimm(e, ["datum", "dienstId"]))) } : r));
+  return liste(w).map((r) => rundeSicht(r, (e) => eigen(e, ctx.ich), (e) => eigen(e, ctx.ich)));
 }
 
 /* Kompetenzen: der Katalog für alle, die Zuordnung `zugedacht` nur, soweit
@@ -325,6 +342,63 @@ function sondereinsaetzeEigen(w, ctx) {
    Ob ein Stempel am Einsatzort liegt, entscheidet der Server. */
 function standorte(w) {
   return liste(w).map((s) => nimm(s, ["id", "name", "land", "bundesland"]));
+}
+
+/* BESTÄTIGUNGSPROTOKOLL (Warnen statt sperren, Kette A; WP-10 d.1).
+   Wer eine Einteilung trotz Befund bestätigt, hinterlässt hier einen
+   Eintrag: Person, Tag, Dienst, Stufe, Befunde, freiwilliger Grund, wer
+   bestätigt hat, Regelstand. Beschäftigte sehen das Protokoll nicht — es
+   nennt fremde Personen und Gründe. Der Betriebsrat sieht es je Regel und
+   Tag ohne Namen (Muster-BV, Anlage 5): keine Person, kein Name der
+   bestätigenden Person (nur ihre Rolle), kein Freitext zum Grund (nur die
+   Art) — ein Freitext kann Namen tragen. Befunde aus individuellen Schutz-
+   oder Einsatzregeln werden neutral („individuelle Schutz- oder Einsatzregel
+   betroffen"): Zusammen mit Tag und Dienst ließe sich in einem kleinen Team
+   sonst auf das Merkmal schließen. Positivliste — was nicht hier steht, geht
+   nicht hinaus. */
+export const BESTAETIGUNG_FELDER = ["id", "personId", "datum", "dienstId", "aktion", "stufe", "befunde", "regelIds",
+  "grundArt", "grund", "ohneGrund", "gelesen", "durch", "durchId", "rolle", "zeit", "regelstand", "behoben"];
+/* Review WP-10, M1: Der Betriebsrat sieht abweichungen (den Plan)
+   vollständig. Mit Tag und Dienst einer Bestätigung ließe sich die Person
+   wiederfinden. Deshalb nur Regel, Stufe und Monat — kein Tag, kein Dienst,
+   keine Bestätigungszeit (aenderungen tragen eine Zeit), kein Freitext,
+   kein Name. Befunde nur als Kennung aus dem Befundkatalog; alle Schutz-
+   und Einschränkungsbefunde heißen „schutz" (ohne Gesetz, ohne Merkmal);
+   Altbestand mit Text wird nie im Wortlaut gezeigt. Fachlich offen: Reicht
+   dem Betriebsrat der Monat? */
+export const SCHUTZ_NEUTRAL = "schutz";
+const schutzText = (b) => /Schutz|Einsatzregel|Einsatzeinschränkung|MuSchG|JArbSchG|SGB IX|Wiedereingliederung/i
+  .test(`${b && b.quelle || ""} ${b && b.text || ""}`);
+function regelFuerBetriebsrat(x) {
+  const k = BEFUND_KATALOG[x.regel];
+  if (k) return k.schutz ? SCHUTZ_NEUTRAL : x.regel;
+  /* Altbestand ohne Kennung: nie der Wortlaut. */
+  if (schutzText(x)) return SCHUTZ_NEUTRAL;
+  if (/^abwesend\b/i.test(String(x.text || "")) || x.quelle === "Abwesenheit") return "abwesend";
+  return "sonstiges";
+}
+/* Nachprüfung WP-10 (M1-Rest): Auch einzelne Einträge ohne Tag ließen sich
+   über Monat, Aktion, Rolle und Reihenfolge noch einer Person zuordnen. Der
+   Betriebsrat bekommt deshalb nur Zählwerte je Monat, Regel und Stufe —
+   keine Einträge, keine Kennungen, keine Aktion, keine Rolle, keine
+   Reihenfolge der Bestätigungen (sortiert nach Monat, Regel, Stufe). Unter
+   der Mindestgruppengröße steht „<3" statt der Zahl. Fachlich offen: Ist
+   das für die Mitbestimmung ausreichend, und welche Mindestgröße? */
+export const BR_MINDESTGRUPPE = 3;
+export function bestaetigungenBetriebsrat(w) {
+  const zaehler = new Map();
+  for (const b of liste(w)) {
+    if (!b || typeof b !== "object" || typeof b.datum !== "string") continue;
+    const monat = b.datum.slice(0, 7);
+    for (const regel of new Set(liste(b.befunde).filter((x) => x && typeof x === "object").map(regelFuerBetriebsrat))) {
+      const stufe = typeof b.stufe === "string" ? b.stufe : null;
+      const k = `${monat}|${regel}|${stufe}`;
+      zaehler.set(k, { monat, regel, stufe, n: ((zaehler.get(k) || {}).n || 0) + 1 });
+    }
+  }
+  return [...zaehler.values()]
+    .sort((a, b) => a.monat.localeCompare(b.monat) || a.regel.localeCompare(b.regel) || String(a.stufe).localeCompare(String(b.stufe)))
+    .map(({ monat, regel, stufe, n }) => ({ monat, regel, stufe, anzahl: n < BR_MINDESTGRUPPE ? `<${BR_MINDESTGRUPPE}` : n }));
 }
 
 
@@ -393,6 +467,8 @@ export const BETRIEB = {
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
   /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
   aenderungen: [WEG, VOLL],
+  /* Bestätigungsprotokoll (WP-10 d.1): Beschäftigte nicht, Betriebsrat ohne Namen. */
+  bestaetigungen: [WEG, R(bestaetigungenBetriebsrat)],
 
   /* Inhalte ohne belegten Bedarf dieser Rollen. Übergaben und Dienstbuch
      tragen Bewohner- und Vorfallsangaben ohne Bereichsbezug; das
@@ -528,11 +604,24 @@ const objektFilter = (w, fn) => Object.fromEntries(Object.entries(w && typeof w 
 
 /* Abwesenheiten: eigene ganz; im Bereich Zeitraum und Kategorie, keine
    Anmerkung; sonst wie für Beschäftigte („abwesend"). */
+/* Welche Abwesenheitsarten die Schichtverantwortung im eigenen Bereich im
+   Klartext sieht (RECHTEMATRIX ⁴): genau die Arten, die es vor Kette A
+   (Regelregister, #6) gab. Die neuen Arten aus src/abwesenheitsarten.js —
+   Mutterschutz/Beschäftigungsverbot, Elternzeit, Pflegezeit,
+   Familienpflegezeit, Arbeitsverhinderung, Berufsschule u. a. — verraten
+   Gesundheit, Schwangerschaft, Familie oder Alter; sie gehen nur als
+   „abwesend" hinaus (Review WP-11, F1). Neue Arten sind damit verborgen,
+   bis jemand sie hier ausdrücklich freigibt. */
+export const ABWESENHEITSARTEN_SV = Object.freeze(["urlaub", "krank", "schulung", "frei", "sonst", "ausgleich"]);
+const artFuerSV = (art) => (ABWESENHEITSARTEN_SV.includes(art) ? art : "abwesend");
+/* Hinweistexte aus der Oberfläche nennen eine Abwesenheit mit ihrer Art
+   („abwesend (Pflegezeit)"); für die Schichtverantwortung ohne Art. */
+export const hinweisOhneArt = (h) => (typeof h === "string" ? h.replace(/abwesend \([^)]*\)/g, "abwesend") : h);
 const schichtAbwesenheiten = (w, ctx) => liste(w).map((a) => {
   if (!a) return a;
   const u = umfangImZeitraum(ctx, a.personId, a.von, a.bis);
   if (u === "eigen") return a;
-  if (u === "bereich") return nimm(a, ["id", "personId", "art", "von", "bis"]);
+  if (u === "bereich") { const r = nimm(a, ["id", "personId", "art", "von", "bis"]); r.art = artFuerSV(a.art); return r; }
   return abwesenheiten([a], { ...ctx, ich: undefined })[0];
 });
 /* Anträge: eigene und aus dem Bereich ganz (sie entscheidet sie), sonst
@@ -569,9 +658,12 @@ const schichtAenderungen = (w, ctx) => liste(w)
 const schichtNotrufe = (w, ctx) => liste(w).filter((n) => n && (imScopeAm(ctx, n.personId, n.datum, n.datum, ["eigen", "bereich"])
   || liste(n.empfaenger).some((x) => gleich(x, ctx.ich))));
 /* Selbstplanung: Einträge aus dem Bereich mit Person, sonst wie für Beschäftigte. */
-const schichtSelbstplanung = (w, ctx) => liste(w).map((r) => (r && typeof r === "object" ? { ...r,
-  eintraege: liste(r.eintraege).map((e) => (e && imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]) ? e
-    : nimm(e, ["datum", "dienstId"]))) } : r));
+const schichtSelbstplanung = (w, ctx) => {
+  const sichtbar = (e) => imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]);
+  return liste(w).map((r) => rundeSicht(r, sichtbar, sichtbar)).map((r) => (r && Array.isArray(r.eintraege) ? { ...r,
+    eintraege: r.eintraege.map((e) => (e && !gleich(e.personId, ctx.ich) && Array.isArray(e.hinweise)
+      ? { ...e, hinweise: e.hinweise.map(hinweisOhneArt) } : e)) } : r));
+};
 /* Urlaubsrunde: Kopf, Wünsche aus dem Bereich und die eigenen
    (Überschneidungen im Bereich), ohne andere Bereiche. */
 const schichtUrlaubsrunde = (w, ctx) => {
@@ -644,6 +736,13 @@ Object.assign(SCHICHT, {
   nachrichten: NUR_EIGENE,
   notrufe: R(schichtNotrufe),
   aenderungen: R(schichtAenderungen),
+  /* Bestätigungsprotokoll (WP-10 d.1): Einträge zu Personen, die am Tag des
+     Eintrags zum eigenen Bereich gehören (oder sie selbst sind) — dieselben,
+     für die sie Abweichungen bestätigen darf (einheitZusammen). Fremde,
+     Pool und Einträge ohne gültigen Tag nicht. Nur die bekannten Felder. */
+  bestaetigungen: R((w, ctx) => liste(w)
+    .filter((e) => e && typeof e === "object" && imScopeAm(ctx, e.personId, e.datum, e.datum, ["eigen", "bereich"]))
+    .map((e) => nimm(e, BESTAETIGUNG_FELDER))),
   selbstplanung: R(schichtSelbstplanung),
   ausschreibungen: R(schichtAusschreibungen),
   urlaubsrunde: R(schichtUrlaubsrunde),

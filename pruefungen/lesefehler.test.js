@@ -257,8 +257,12 @@ describe("9 — Sicherung anlegen: konsistente Momentaufnahme", () => {
     const t = await sitzungFuer(RAUM, "l1", "leitung");
     const g = await anfrage("/api/bestand", { methode: "GET", token: t });
     const b = JSON.parse(JSON.stringify(g.bestand));
-    b.mandanten[0].abweichungen[`a2|${HEUTE}`] = "NEU-A";
-    b.mandanten[0].abweichungen[`a2|${FREMD}-20`] = "NEU-B";
+    /* Seit WP-11 (Review F2) weist der Server eine unbekannte Dienstart ab
+       (fail-closed) — die Marker sind deshalb die Schlüssel der beiden
+       Einteilungen, der Wert eine bekannte Dienstart. */
+    const KEY_A = `a2|${HEUTE}`, KEY_B = `a2|${FREMD}-20`;
+    b.mandanten[0].abweichungen[KEY_A] = "F";
+    b.mandanten[0].abweichungen[KEY_B] = "F";
 
     /* Der PUT hält an, bevor er die zweite der beiden Scherben schreibt. */
     let imSchreiben;
@@ -283,7 +287,7 @@ describe("9 — Sicherung anlegen: konsistente Momentaufnahme", () => {
     const datei = namen.find((n) => decodeURIComponent(n) === `sicherung:${RAUM}:${sich.marke}.json`);
     expect(datei).toBeTruthy();
     const inhalt = await readFile(path.join(wurzel, "centric", datei), "utf8");
-    const a = inhalt.includes("NEU-A"), bb = inhalt.includes("NEU-B");
+    const a = inhalt.includes(JSON.stringify(KEY_A)), bb = inhalt.includes(JSON.stringify(KEY_B));
     expect({ a, b: bb }, "Momentaufnahme mitten im Schreibvorgang").toEqual({ a, b: a });
   });
 });

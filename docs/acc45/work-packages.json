@@ -1,13 +1,13 @@
 {
-  "stand": "2026-11-02",
+  "stand": "2026-11-03",
   "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 31,
-    "READY": 1,
+    "BLOCKED": 25,
+    "READY": 2,
     "IN_PROGRESS": 5,
     "REVIEW": 1,
     "CI_FAILED": 0,
-    "INTEGRATED": 6,
+    "INTEGRATED": 11,
     "VERIFIED": 0,
     "DONE": 2
   },
@@ -99,11 +99,11 @@
         "WP-30"
       ],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp05-uberwachung-und-alarme",
+      "branch": "acc45/infra/wp05-ueberwachung",
       "dateien": "server.mjs, server/lib/gesund.mjs, deploy/",
       "akzeptanz": "/gesund prüft Ablage/Platz; externer Check; Alarm ≤5 min; Fehlerzählung",
       "tests": "vitest /gesund, Alarmprobe",
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -121,7 +121,7 @@
       "dateien": "server/lib/rechte.mjs, daten.mjs, zeiterfassung.mjs",
       "akzeptanz": "Änderung an Originalstempel → 403 für jede Rolle; Korrektur als Ereignis mit vorher/nachher",
       "tests": "Rechtematrix-Erweiterung, Negativtest",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -193,7 +193,7 @@
       "dateien": "src/App.jsx, server/lib/rechte.mjs, sicht.mjs",
       "akzeptanz": "Alle A- und B-Tests grün; A-Felder überstehen PUT/GET je Rolle",
       "tests": "Rundreise je Feld/Rolle, A-Tests angepasst, Rechtematrix",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -211,7 +211,7 @@
       "dateien": "src/regelwerk*, server/lib",
       "akzeptanz": "Eine einzige Schutzprüfung im Code; Tests grün",
       "tests": "git grep, schutzmerkmale-sicht",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -409,11 +409,11 @@
         "WP-11"
       ],
       "agent": "Agent C – Rule Engine",
-      "branch": "acc45/rules/wp22-fachprufungen-auf-dem-server",
+      "branch": "acc45/rules/wp22-fachpruefungen-server",
       "dateien": "server/lib",
       "akzeptanz": "Qualifikation/Ruhezeit/Höchstarbeitszeit/Untergrenzen serverseitig, Warnung mit Bestätigungsprotokoll; Dienstarten nur mit org.edit",
       "tests": "Unit, HTTP",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -481,11 +481,11 @@
         "WP-09"
       ],
       "agent": "Agent A – Security & Data Integrity",
-      "branch": "acc45/security/wp26-dsgvo-serverseitig-art-15-lo",
+      "branch": "acc45/security/wp26-dsgvo-server",
       "dateien": "server",
       "akzeptanz": "Auskunft inkl. Stempel; serverseitiger Löschlauf nach Fristen; Ausdünnung Sicherungen/Spur",
       "tests": "Unit, HTTP",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -570,11 +570,11 @@
         "WP-03"
       ],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp31-deploy-automatisierung-mit-f",
+      "branch": "acc45/infra/wp31-deploy",
       "dateien": "deploy/, .github/workflows",
       "akzeptanz": "deploy.sh mit Digest, Smoke, R0; Umgebungsfreigabe; Netlify-Rolle geklärt",
       "tests": "Probe isoliert",
-      "status": "BLOCKED",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -590,7 +590,7 @@
       "dateien": "Dockerfile, .github, server",
       "akzeptanz": "Basisbild per Digest; Trivy; Dependabot; Branch-Schutz; Caddy versioniert; 2FA Betreiber",
       "tests": "CI, Unit 2FA",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -746,11 +746,11 @@
         "WP-31"
       ],
       "agent": "Agent B – Infrastructure & Reliability",
-      "branch": "acc45/infra/wp41-betriebs-und-nutzerdokumenta",
+      "branch": "acc45/infra/wp41-dokumentation",
       "dateien": "docs/",
       "akzeptanz": "Betriebshandbuch, Incident-Runbook, Restore-Anleitung, Handbuch je Rolle",
       "tests": "Review",
-      "status": "BLOCKED",
+      "status": "IN_PROGRESS",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null

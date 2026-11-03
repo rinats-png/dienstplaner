@@ -51,6 +51,59 @@ jobs:
       # Geo V1: Standortprüfung beim Stempeln — drei Zustände, Genauigkeit, gerundete Entfernung, Schalter (Vorgabe aus).
       - name: Standortprüfung beim Stempeln
         run: npm run pruefung:geo
+      # Warnen statt sperren: Stufen (Hinweis, Achtung, Rechtsverstoß),
+      # Bestätigungsprotokoll, Sicht des Betriebsrats.
+      - name: Warnstufen
+        run: npm run pruefung:warnen
+
+      # Regelregister: Kennung, Quelle, Fundstelle, Prüfstatus, Gültigkeit.
+      # Die Rechtsquellen-Tabelle muss mit der früheren übereinstimmen, und
+      # eine vorläufige Regel darf höchstens einen Hinweis erzeugen.
+      - name: Regelregister
+        run: npm run pruefung:register
+
+      # Regelbaukasten: Zähl-, Grenz-, Besetzungs- und Paarregel. Fehlende
+      # Daten sind „offen", nie „erfüllt".
+      - name: Regelbaukasten
+        run: npm run pruefung:baukasten
+
+      # Beschäftigungsmodelle und Abwesenheitsarten: Bestandsdaten ohne das
+      # neue Feld bleiben gültig, ungeklärtes Entgelt wird nie gutgeschrieben.
+      - name: Beschäftigungsmodelle
+        run: npm run pruefung:beschaeftigung
+
+      # Planprüfung und Warndialog sagen über dieselbe Person dasselbe;
+      # „nicht bewertbar" geht nie als „erfüllt" durch.
+      - name: Konsistenz
+        run: npm run pruefung:konsistenz
+
+      # Prüfstatus der Quelle ist nicht die Laufzeit eines Bestandsrechners:
+      # Fahrzeit, PPP-RL und Tarife werden nicht herabgestuft.
+      - name: Laufzeit
+        run: npm run pruefung:laufzeit
+
+      # Schutzmerkmale (Mutterschutz, Schwerbehinderung) bei fremden Personen
+      # und im Betriebsratsprotokoll.
+      - name: Schutzdaten
+        run: npm run pruefung:schutzdaten
+      # Auslieferung: Entwürfe, Marketing und Dokumente bleiben aus dem Produkt.
+      - name: Auslieferung ohne Entwürfe
+        run: npm run pruefung:auslieferung
+
+      # Genau eine Schutzprüfung im Code, und der Server setzt sie durch (WP-11).
+      - name: Eine Schutzprüfung
+        run: npm run pruefung:schutz-eine
+
+      # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
+      # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
+      # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
+      - name: Kontrast
+        run: npm run pruefung:kontrast
+
+      # Gestalt: keine externen Ressourcen, Icons aus dem Satz, und keine
+      # neuen harten Hexwerte in der Oberfläche.
+      - name: Gestalt
+        run: npm run pruefung:gestalt
 
       # Branchenprofile: Kataloge, Rechtsgrundlagen, Paketzuordnung.
       - name: Branchenprofile
@@ -298,6 +351,26 @@ jobs:
       - name: Einmal-Token
         run: npm run pruefung:token
 
+      # WP-32: Zweiter Faktor (TOTP, RFC 6238) für Verwalterschlüssel —
+      # Referenzvektoren, Fenster ±1, keine Wiederverwendung, Bremse,
+      # Pflicht, Abschalten nur mit Code, kein Geheimnis in Antworten.
+      - name: Zwei-Faktor für Verwalterschlüssel
+        run: npm run pruefung:zweifaktor
+
+      # WP-05: /gesund-Stufen, Fehlerzählung, Alarm-Entprellung,
+      # Healthcheck-Kompatibilität.
+      - name: Überwachung (/gesund, Alarm)
+        run: npm run pruefung:gesund
+
+      # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
+      # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.
+      - name: Herkunft und X-Forwarded-For
+        run: npm run pruefung:herkunft
+
+      # WP-32b: Zweiter Faktor für die Anmeldung mit Betreibercode.
+      - name: Zwei-Faktor für Betreibercodes
+        run: npm run pruefung:betreiber-zweifaktor
+
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
       - name: Sitzungen
@@ -489,6 +562,7 @@ jobs:
           docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
             -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges:true --memory 512m \
             "$BILD"
@@ -529,6 +603,12 @@ jobs:
           if docker exec centric-pruefung test -e /app/pruefungen; then
             echo "pruefungen/ im Bild"; exit 1; fi
           docker exec centric-pruefung ls /app/werkzeug
+
+      # Rückweg bei unlesbarer Datei (WP-45b, B3): ablage-pruefen und
+      # journal-pruefen im Bild, aufgerufen wie in BETRIEB-SICHERUNG §4a
+      # (docker run, uid 1000, ohne Netz) — eigenes Wegwerf-Volume.
+      - name: Rückweg-Werkzeuge im Bild
+        run: bash pruefungen/werkzeuge-im-bild.sh "$BILD"
 
       # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
       # den echten Anfrageweg, im eigenen frischen Container.

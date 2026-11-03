@@ -89,7 +89,7 @@ const FORMAT = 1;
  * Ohne Angabe wird der Store ganz gesichert; `klasse: "C"` heißt: gar nicht.
  */
 export const STORES = {
-  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:"] },
+  "centric":                  { klasse: "A", ohne: ["token:", "tokencode:", "zweifaktor-nachweis:"] },
   "centric-sitzungen":        { klasse: "B", nur: ["sk:"] },
   "centric-spur":             { klasse: "B" },
   "centric-accountsitzungen": { klasse: "C" },
@@ -124,7 +124,7 @@ async function ordnerFest(/** @type {string} */ ordner) {
 }
 
 /** @param {string} datei @param {Buffer} inhalt */
-function umschlagPruefen(datei, inhalt) {
+export function umschlagPruefen(datei, inhalt) {
   let u;
   try { u = JSON.parse(inhalt.toString("utf8")); }
   catch { throw new SicherungsFehler(`${datei} ist kein gültiger JSON-Umschlag (beschädigt?)`); }
@@ -137,10 +137,12 @@ function umschlagPruefen(datei, inhalt) {
    --------------------------------------------------------------------------- */
 
 /**
- * Listet, was in die Sicherung gehört, und was bewusst fehlt.
+ * Listet, was in die Sicherung gehört, und was bewusst fehlt. Auch für
+ * werkzeug/ablage-pruefen.mjs: Was hier oder in umschlagPruefen scheitert,
+ * bricht die Sicherung ab.
  * @param {string} quelle
  */
-async function quelleAnsehen(quelle) {
+export async function quelleAnsehen(quelle) {
   let eintraege;
   try { eintraege = await readdir(quelle, { withFileTypes: true }); }
   catch (e) { throw new SicherungsFehler(`Quelle ${quelle} nicht lesbar: ${/** @type {any} */ (e).message}`); }
@@ -352,6 +354,35 @@ async function serverLaeuft(/** @type {string} */ url) {
   } catch { return false; }
 }
 
+/** Name des Vermerks der Wiederherstellungen im Datenverzeichnis (Punktdatei: nicht gesichert). */
+export const WIEDERHERSTELL_VERMERK = ".wiederhergestellt.json";
+
+/**
+ * Alle vermerkten Wiederherstellungen eines Datenverzeichnisses, älteste
+ * zuerst: [{ zeit, sicherungErstellt }]. Keine Datei: []. Die frühere Form
+ * (ein einzelnes Objekt) wird als Liste mit einem Eintrag gelesen.
+ * Vorhanden, aber unlesbar oder unvollständig: Fehler — nie still „keine".
+ * @param {string} wurzel
+ * @returns {Promise<Array<{zeit: string, sicherungErstellt: string}>>}
+ */
+export async function wiederherstellVermerkeLesen(wurzel) {
+  const datei = path.join(wurzel, WIEDERHERSTELL_VERMERK);
+  let roh;
+  try { roh = await readFile(datei, "utf8"); }
+  catch (e) {
+    if (/** @type {any} */ (e).code === "ENOENT") return [];
+    throw new SicherungsFehler(`${datei} ist nicht lesbar (${/** @type {any} */ (e).code || e}). Erst klären — siehe BETRIEB-SICHERUNG §4a.`, 2);
+  }
+  let o;
+  try { o = JSON.parse(roh); } catch { o = null; }
+  const liste = Array.isArray(o?.wiederherstellungen) ? o.wiederherstellungen
+    : (o && typeof o === "object" && o.zeit && o.sicherungErstellt ? [o] : null);
+  if (!liste || !liste.every((w) => w && Number.isFinite(Date.parse(w.zeit)) && Number.isFinite(Date.parse(w.sicherungErstellt))))
+    throw new SicherungsFehler(`${datei} ist beschädigt — die Standfolge der Wiederherstellungen ist nicht bekannt. `
+      + "Erst klären — siehe BETRIEB-SICHERUNG §4a.", 2);
+  return liste.map((w) => ({ zeit: w.zeit, sicherungErstellt: w.sicherungErstellt }));
+}
+
 /**
  * @param {{sicherung: string, ziel: string, ersetzen?: boolean, serverUrl?: string,
  *          serverPruefen?: boolean, jetzt?: Date, meldung?: (s: string) => void}} o
@@ -385,6 +416,9 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
   const vorhanden = (await readdir(ziel)).filter((n) => !n.startsWith("."));
   if (vorhanden.length && !ersetzen)
     throw new SicherungsFehler(`Das Ziel ${ziel} ist nicht leer (${vorhanden.join(", ")}). Mit --ersetzen wird der Inhalt beiseitegelegt, nicht gelöscht.`);
+  /* Frühere Wiederherstellungen dieses Ziels — ein unlesbarer Vermerk
+     bricht ab, bevor etwas angefasst ist (fail-closed). */
+  const fruehere = await wiederherstellVermerkeLesen(ziel);
 
   // 1. neben dem Ziel aufbauen und nachprüfen — noch ist nichts angefasst
   const stufe = path.join(ziel, `.wiederherstellung-${stempel(jetzt)}`);
@@ -416,6 +450,19 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
   }
   for (const s of Object.keys(manifest.stores)) await rename(path.join(stufe, s), path.join(ziel, s));
   await rm(stufe, { recursive: true, force: true });
+  /* Vermerk der Wiederherstellung (WP-45b): Ab hier zählen die Standnummern
+     ab dem Stand dieser Sicherung neu. Sicherungen, die NACH dieser, aber VOR
+     der Wiederherstellung entstanden, gehören zu der verworfenen Folge —
+     gleiche Nummer, anderer Inhalt. werkzeug/ablage-pruefen.mjs lehnt sie
+     deshalb ab. Punktdatei: nicht in der Sicherung, für die Ablage unsichtbar. */
+  /* Fortgeschrieben, nicht überschrieben: Jede frühere Wiederherstellung
+     hat ihre eigene verworfene Folge (WP-45d, W1). */
+  const vermerk = path.join(ziel, WIEDERHERSTELL_VERMERK);
+  const vermerkTmp = `${vermerk}.${process.pid}.tmp`;
+  await rm(vermerkTmp, { force: true });
+  await schreibenFest(vermerkTmp, JSON.stringify({ wiederherstellungen: [...fruehere,
+    { zeit: jetzt.toISOString(), sicherungErstellt: manifest.erstellt }] }));
+  await rename(vermerkTmp, vermerk);
   await ordnerFest(ziel);
 
   if (typeof process.getuid === "function" && process.getuid() === 0)

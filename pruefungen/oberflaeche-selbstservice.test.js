@@ -120,8 +120,15 @@ describe("Ansichten mit gekürzten Daten", () => {
   });
   it("Lagebild: Konten und offene Anträge nur mit dem passenden Recht", () => {
     const q = funktion("Lagebild");
-    expect(q).toContain('{darf(sitz, "account.view.all") && <Kpi label="Konten über Grenze"');
-    expect(q).toContain('{darf(sitz, "req.approve.unit") && <Kpi label="Offene Anträge"');
+    /* Seit WP-10 (Leitstand aus Kette A) als Kacheln von Kennzahlen; die
+       Bedingung steht unverändert vor jeder der beiden Kacheln, und es gibt
+       keine zweite, ungeschützte. */
+    expect(q).toContain('darf(sitz, "account.view.all") && { label: "Konten über Grenze"');
+    expect(q).toContain('darf(sitz, "req.approve.unit") && { label: "Offene Anträge"');
+    expect(q.split('label: "Konten über Grenze"').length - 1).toBe(1);
+    expect(q.split('label: "Offene Anträge"').length - 1).toBe(1);
+    expect(q).not.toContain('<Kpi label="Konten über Grenze"');
+    expect(q).not.toContain('<Kpi label="Offene Anträge"');
   });
   it("Schutzbefunde nur für Rollen mit vollständigem Betrieb", () => {
     expect(APP).toContain('const BEFUNDE_AUS_PERSONENDATEN = ["schutz", "vorsorge", "einschraenkung"];');

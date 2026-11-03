@@ -139,13 +139,15 @@ describe("fremde Geheimnisse: keine Wirkung, kein Orakel (F2, F3)", () => {
     expect((await feed(gB1)).status).toBe(200);
   });
   it("fremdes Geheimnis bei daten: nichts verändert, Antwort wie unbekannt", async () => {
-    const vorher = (await feed(gB1)).text;
+    // DTSTAMP ist der Abrufzeitpunkt (RFC 5545) und darf zwischen zwei Abrufen wechseln.
+    const ohneStempel = (t) => t.replace(/^DTSTAMP:[^\n]*\n/gm, "");
+    const vorher = ohneStempel((await feed(gB1)).text);
     const fremdA = await datenSenden(T.a1, gA2, "ÜBERSCHRIEBEN");
     const fremdB = await datenSenden(T.a1, gB1, "ÜBERSCHRIEBEN");
     const unbekannt = await datenSenden(T.a1, "x".repeat(32), "ÜBERSCHRIEBEN");
     for (const a of [fremdA, fremdB]) expect({ status: a.status, fehler: a.fehler }).toEqual({ status: unbekannt.status, fehler: unbekannt.fehler });
     expect(unbekannt.status).toBe(404);
-    expect((await feed(gB1)).text).toBe(vorher);
+    expect(ohneStempel((await feed(gB1)).text)).toBe(vorher);
     expect((await feed(gA2)).text).not.toContain("ÜBERSCHRIEBEN");
   });
   it("fremdes Geheimnis bei loeschen: nichts verändert, Antwort wie unbekannt", async () => {

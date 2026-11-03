@@ -7,6 +7,8 @@ dist
 marketing
 werkzeug/*
 !werkzeug/ablage-sicherung.mjs
+!werkzeug/ablage-pruefen.mjs
+!werkzeug/journal-pruefen.mjs
 !werkzeug/staging-smoke.mjs
 !werkzeug/staging-geo.mjs
 !werkzeug/staging-aufraeumen.mjs

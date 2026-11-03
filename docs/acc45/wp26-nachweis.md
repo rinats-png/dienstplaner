@@ -30,7 +30,7 @@ Umgesetzt in `server/funktionen/daten.mjs` und `server/lib/auskunft.mjs`. Die Au
   - Inhalt ist die eigene Sicht der Leitung (`bestandFuerRolle`), keine Rechteerweiterung; die Antwort sagt das;
   - jede andere Rolle bekommt 403, der Betreiber ebenfalls 403, eine Person eines fremden Betriebs 404.
 - **Lesen:** streng (H1), gebremst (`lesen`), jede Auskunft wird protokolliert.
-- **RECHTEMATRIX:** Fußnote ²¹ als Präzisierung, keine neue Spalte.
+- **RECHTEMATRIX:** Fußnote ²⁶ als Präzisierung, keine neue Spalte (bis zum Merge mit WP-10 ²¹; ²¹–²⁵ gehören WP-10).
 
 ### Datenschutzlauf (`server/lib/datenschutzlauf.mjs`)
 
@@ -97,7 +97,7 @@ sauber.
 | H1 | `minusMonate` rechnet arithmetisch statt mit einer Schleife; Infinity/NaN werfen sofort. `aufbewahrungFehler`: Fristen nur als ganze Zahl 1–600 (fehlt/null/0 = Vorgabe), `zuletztGeraeumt` nur als Datum. `pruefeGestalt` weist ungültige Werte ab (PUT → 422, wie jeder Gestaltfehler dieses Pfads). Der Lauf prüft zusätzlich und **überspringt und meldet** einen Betrieb mit ungültigen Werten (fail-closed). |
 | H2 | Harte Untergrenze: Plan-, Zeit- und Stempeldaten nie unter 24 Monaten (`stichtage`: `max(Frist, PLANDATEN_MINDEST)`) — für Lauf, Oberfläche (gleiche Rechnung) und Wiederherstellen. Vor jedem löschenden Schreiben eine automatische Sicherung des alten Stands. Eine Frist unter 24 wird weiter gespeichert (bestehende Betriebe sollen nicht blockiert werden) und in der Vorschau gewarnt, löscht aber nicht früher. |
 | H3 | Wiederherstellen lehnt Sicherungen von vor dem letzten Löschlauf nicht mehr ab, sondern schickt den zurückgespielten Betrieb mit den heutigen Fristen erneut durch `raeumen`; anonymisierte Personen bleiben anonymisiert. Schalter **`CENTRIC_DATENSCHUTZLAUF`**: `aus` / `vorschau` (**Vorgabe**: berichtet in Protokoll und Vermerk, löscht nichts — auch keine Sicherungen, keine Spur) / `an`. In `.env.example` und `ENTWICKLUNG.md`. Kein zweiter gleichzeitiger Lauf (übersprungen). |
-| M1 | Auskunft durch die Leitung: kein Protokoll, kein Push-, Kalender- oder Kontostatus. Fußnote ²¹ korrigiert. |
+| M1 | Auskunft durch die Leitung: kein Protokoll, kein Push-, Kalender- oder Kontostatus. Fußnote ²⁶ (vorher ²¹) korrigiert. |
 | M2 | Spur-Zeilen tragen `mandantId` (`schutz.mjs`, `wer.mandantId` aus der Sitzung). Die Auskunft nimmt nur Zeilen desselben Betriebs; ältere Zeilen ohne Betrieb nur in Räumen mit genau einem Betrieb. |
 | M3 | Fremde Anträge, an denen die Person als Tauschpartner beteiligt ist, nur im Gerüst (`id`, `typ`, `von`, `bis`, `status`, `personId`, `partnerId`); tote Filter entfernt. |
 | M4 | Ergänzt: Plan aus Schichtfolge (±2 Monate), eigene Einträge der Sammlungen aus der Sicht einer Beschäftigten (`wuensche`, `einspruenge`, `fahrzeiten`, `checks`, `ansichten`, `notrufe`, `kompetenzen`, `einarbeitung`, `betriebsmittel`, `sondereinsaetze`, `urlaubsrunde`, `selbstplanung`, eigene Bewerbungen), Betriebsprotokoll mit eigener Kennung, Konto ohne Geheimnisse, von der Leitung erteilte Auskünfte. „Vollständig" gestrichen; der Hinweis nennt die Lücken (Sitzungen/Geräte, Handlungen anderer außer Auskünften, Betriebsprotokoll ohne Kennung, Sicherungsinhalte, Protokoll > 30 Tage). |
