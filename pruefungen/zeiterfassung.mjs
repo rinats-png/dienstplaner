@@ -60,7 +60,10 @@ const tag = (n) => new Date(new Date(`${HEUTE}T00:00:00Z`).getTime() + n * 86400
 const abw = {};
 for (let i = 1; i <= 10; i++) abw[`a1|${tag(-i)}`] = "F";
 abw[`a1|${tag(-3)}`] = "-";
-abw[`n1|${tag(-1)}`] = "N";
+/* n1: gestern ein Dienst über Mitternacht, der erst heute 23:58 endet —
+   damit gilt F1 (Ende ohne Beginn gehört zu gestern) zu jeder Uhrzeit dieses
+   Prüflaufs (W4). h1 hatte gestern nichts geplant: Ende immer heute. */
+abw[`n1|${tag(-1)}`] = "NL";
 abw[`a1|${tag(1)}`] = "F";
 abw[`s1|${tag(-1)}`] = "F";
 abw[`a1|${tag(-20)}`] = "F";
@@ -68,8 +71,10 @@ const person = (id, rolle) => ({ id, vorname: "V", nachname: id, rolle, bereich:
   zugehoerigkeit: [{ ab: "2020-01-01", einheitId: "e1" }] });
 const start = { version: 9, stand: 1, session: null, mandanten: [{
   id: "zeit-probe", name: "Haus Zeit", einheiten: [{ id: "e1", name: "WB 1" }],
-  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" }],
-  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner")],
+  dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "21:00", ende: "06:00" },
+    { id: "NL", name: "Nacht lang", start: "23:59", ende: "23:58" }],
+  personen: [person("a1", "mitarbeiter"), person("n1", "mitarbeiter"), person("l1", "leitung"), person("s1", "subplaner"),
+    person("h1", "mitarbeiter")],
   abweichungen: abw, abwesenheiten: [], erfassung: {}, einstempeln: {}, anfragen: [], nachrichten: [],
 }] };
 
@@ -77,6 +82,7 @@ const tBetr = await anmelden(await zugang("betreiber", null));
 pruef("Raum eingerichtet", (await rufe(tBetr, "bestand-anlegen", "POST", { inhalt: start })).status === 200);
 const tA = await anmelden(await zugang("mitarbeiter", "a1"));
 const tN = await anmelden(await zugang("mitarbeiter", "n1"));
+const tH = await anmelden(await zugang("mitarbeiter", "h1"));
 const tL = await anmelden(await zugang("leitung", "l1"));
 const tS = await anmelden(await zugang("subplaner", "s1"));
 const bestaetigen = (t, rumpf) => rufe(t, "zeit-bestaetigen", "POST", rumpf);
@@ -150,15 +156,19 @@ const sGesternFrueh = await rufe(tA, "stempeln", "POST", { datum: tag(-1), art: 
     sGesternFrueh.status === 409 && sGesternFrueh.code === "STEMPEL_SCHON_AUSGESTEMPELT" && !st[`a1|${tag(-1)}`],
     `Status ${sGesternFrueh.status}`);
 }
-/* Ein Ende ohne offenen Beginn: heute als START_FEHLT — oder, solange der
-   gestern geplante Nachtdienst noch nicht länger als vier Stunden vorbei
-   ist, beim Nachtdienst von gestern (F1). Welches von beiden, hängt von der
-   Uhrzeit dieses Prüflaufs ab; beide sind richtig, keins ist eine Absage. */
+/* Ein Ende ohne offenen Beginn — beide Zweige, uhrzeitunabhängig (W4):
+   mit gestern geplantem Dienst über Mitternacht, dessen Ende noch nicht vier
+   Stunden vorbei ist, beim Dienst von gestern (F1); ohne Plan heute. Beide
+   als START_FEHLT, keins eine Absage. */
 const sNacht = await rufe(tN, "stempeln", "POST", { datum: tag(-1), art: "ende" });
-pruef("/api/stempeln Ende ohne offenen Beginn (Nachtdienst gestern geplant): 200, START_FEHLT, heute oder gestern",
-  sNacht.status === 200 && [HEUTE, tag(-1)].includes(sNacht.datum) && (sNacht.markierungen || []).includes("START_FEHLT")
-  && (sNacht.datum === HEUTE) === (sNacht.markierungen || []).includes("GERAETEDATUM_ABWEICHEND"),
+pruef("/api/stempeln Ende ohne Beginn, Nachtdienst gestern geplant: 200, gestern, START_FEHLT (F1)",
+  sNacht.status === 200 && sNacht.datum === tag(-1) && (sNacht.markierungen || []).includes("START_FEHLT")
+  && !(sNacht.markierungen || []).includes("GERAETEDATUM_ABWEICHEND"),
   `Status ${sNacht.status} ${sNacht.datum} ${JSON.stringify(sNacht.markierungen)}`);
+const sOhne = await rufe(tH, "stempeln", "POST", { art: "ende" });
+pruef("/api/stempeln Ende ohne Beginn und ohne Plan gestern: 200, heute, START_FEHLT",
+  sOhne.status === 200 && sOhne.datum === HEUTE && (sOhne.markierungen || []).includes("START_FEHLT"),
+  `Status ${sOhne.status} ${sOhne.datum}`);
 
 /* --- Autosave nach dem Stempeln: die lokale Kopie ohne geprueftStart --- */
 {

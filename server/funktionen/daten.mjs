@@ -15,7 +15,7 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
-  offenSeitMinuten, LANGER_DIENST_MINUTEN } from "../lib/zeiterfassung.mjs";
+  offenSeitMinuten, langerDienstGrenze } from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen } from "../lib/versand.mjs";
@@ -1118,12 +1118,12 @@ export default async (req, context) => {
              fehlt das Feld, ist es der Tag des Vorgangs. */
           if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
 
-          /* Ein langer Dienst (über LANGER_DIENST_MINUTEN, zeiterfassung.mjs)
-             ergibt keine automatisch bestätigte Ist-Zeit, sondern eine zur
-             Prüfung durch die Leitung. */
+          /* Ein langer Dienst (über geplanter Dauer + 2 h, ohne Plan 12 h;
+             zeiterfassung.mjs, langerDienstGrenze) ergibt keine automatisch
+             bestätigte Ist-Zeit, sondern eine zur Prüfung durch die Leitung. */
           const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
           const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
-          const langerDienst = dauerMin !== null && dauerMin > LANGER_DIENST_MINUTEN;
+          const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
           if (langerDienst) markieren("LANGER_DIENST");
           if (markierungen.length) neu.markierungen = markierungen;
 

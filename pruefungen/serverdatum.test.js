@@ -44,7 +44,8 @@ const person = (id) => ({ id, vorname: "V", nachname: id, rolle: "mitarbeiter", 
 async function raumAnlegen(raum, ids, extra = {}) {
   await B.bestandSchreiben(laden(), raum, { version: 9, mandanten: [{ id: "m1", name: "Haus",
     einheiten: [{ id: "e1", name: "WB 1" }],
-    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" }],
+    dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00" },
+      { id: "T12", name: "Tag 12", start: "06:00", ende: "18:00" }],
     personen: ids.map(person), abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {}, ...extra }] },
   { durch: "Pruefung" });
 }
@@ -188,6 +189,21 @@ describe("Nachtdienst: Ende nach Mitternacht beim offenen Beginn", () => {
     zeitAuf("2026-11-02T10:30:00Z");                                   // 11:30 — über Dienstende + 4 h
     const spaet = await stempeln("sd-f1", "a2", { art: "ende" });
     expect(spaet.datum).toBe("2026-11-02");
+  });
+
+  it("W1: geplanter Zwölfstundendienst T12, gestempelt 05:55–18:10 → bestätigt, 12,25 h, kein LANGER_DIENST", async () => {
+    await raumAnlegen("sd-t12", ["a1", "a2"], { abweichungen: { "a1|2026-11-02": "T12", "a2|2026-11-02": "T12" } });
+    zeitAuf("2026-11-02T04:55:00Z");                                   // 05:55
+    expect((await stempeln("sd-t12", "a1", { art: "start" })).status).toBe(200);
+    expect((await stempeln("sd-t12", "a2", { art: "start" })).status).toBe(200);
+    zeitAuf("2026-11-02T17:10:00Z");                                   // 18:10
+    const e = await stempeln("sd-t12", "a1", { art: "ende" });
+    expect(e.markierungen).not.toContain("LANGER_DIENST");
+    expect(e.erfassung).toMatchObject({ start: "05:55", ende: "18:10", bestaetigt: true });
+    zeitAuf("2026-11-02T19:30:00Z");                                   // 20:30 — 14,6 h > 12 h + 2 h
+    const lang = await stempeln("sd-t12", "a2", { art: "ende" });
+    expect(lang.markierungen).toContain("LANGER_DIENST");
+    expect(lang.erfassung.bestaetigt).toBe(false);
   });
 
   it("F4: Ende nach mehr als 12 Stunden → Erfassung zur Prüfung (bestaetigt: false), LANGER_DIENST", async () => {

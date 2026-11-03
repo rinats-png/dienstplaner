@@ -584,25 +584,27 @@ describe("Handler: Ausschalten", () => {
 });
 
 describe("Handler: Nachtdienst und Altbestand", () => {
-  /* Seit WP-17 (B6.3) hängt der Server ein Ende nur an, solange der Beginn
-     höchstens 20 Stunden zurückliegt; sonst eigenes Ende auf heute
-     (START_FEHLT), der alte Vorgang bekommt KONFLIKT. Der Beginn hier steht
-     fest auf gestern 21:57 — welcher Fall eintritt, hängt von der Uhrzeit des
-     Prüflaufs ab, beide werden geprüft. */
-  it("offener Beginn von gestern: Ausstempeln gelingt — zugeordnet oder (nach 20 h) als eigenes Ende mit KONFLIKT", async () => {
+  /* Uhrzeitunabhängig (WP-17, W4): Der Altbestand-Beginn „gestern 21:57"
+     bekommt einen eindeutigen Zeitpunkt vor zehn Stunden (startAm) — damit ist
+     er zu jeder Uhrzeit des Prüflaufs zuordenbar. Der andere Fall (über 20 h:
+     eigenes Ende, KONFLIKT) steht fest geprüft unten (z4, z8). */
+  it("offener Beginn von gestern: Ausstempeln für gestern gelingt, Altbestand-Felder bleiben", async () => {
     const r = await lies(T.l1);
     const b = JSON.parse(JSON.stringify(r.bestand));
     b.mandanten[0].einstellungen = { ...b.mandanten[0].einstellungen, geoPruefung: true, geoPruefungBestaetigt: true };
     expect((await anfrage("/api/bestand", { methode: "PUT", token: T.l1, rumpf: { bestand: b, etag: r.etag, durch: "Test" } })).status).toBe(200);
-    const zuordenbar = startZuordenbar(GESTERN, "21:57", new Date());
+    {
+      const { bestand } = await B.bestandLesen(laden(), RAUM);
+      const k = `a6|${GESTERN}`;
+      bestand.mandanten[0].einstempeln[k] = { ...bestand.mandanten[0].einstempeln[k],
+        startAm: new Date(Date.now() - 10 * 3600000).toISOString() };
+      await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+    }
     const e = await stempeln(T.a6, { datum: GESTERN, art: "ende", lat: nord(10), lon: 8, accuracy: 9 });
     expect(e.status, e.roh).toBe(200);
+    expect(e.datum).toBe(GESTERN);
+    expect(e.eintrag.start).toBe("21:57");
     expect(e.eintrag.geoEnde.status).toBe(INNERHALB);
-    if (zuordenbar) expect(e.eintrag.start).toBe("21:57");
-    else {
-      expect([e.datum, e.markierungen.includes("START_FEHLT")]).toEqual([HEUTE, true]);
-      expect((await lies(T.l1)).bestand.mandanten[0].einstempeln[`a6|${GESTERN}`].markierungen).toContain("KONFLIKT");
-    }
   });
   it("alter Stempel ohne geoStart bleibt lesbar und unverändert", async () => {
     const r = await lies(T.l1);
@@ -655,9 +657,19 @@ describe("Handler: 20-Stunden-Grenze beim Ausstempeln", { timeout: 20000 }, () =
     expect(e.markierungen).not.toContain("START_VERALTET");
     expect(e.erfassung).toMatchObject({ start: o.start, bestaetigt: false });
   });
-  it("20:01 Stunden: Ende gespeichert, Beginn unverändert, keine Erfassung, START_VERALTET", async () => {
+  /* Uhrzeitunabhängig (W4): Der Beginn steht unter dem heutigen Schlüssel mit
+     eindeutigem Zeitpunkt vor 20:01 Stunden (startAm) — sonst fiele er je nach
+     Uhrzeit auf gestern und würde nach B6.3 gar nicht angehängt. */
+  it("20:01 Stunden (selber Tag): Ende gespeichert, Beginn unverändert, keine Erfassung, START_VERALTET", async () => {
     await minutenSicher();
-    const o = await offenSeit("z3", 1201);
+    const beginn = new Date(Math.floor(Date.now() / 60000) * 60000 - 1201 * 60000);
+    const o = { datum: HEUTE, start: uhrzeitBerlin(beginn), k: `z3|${HEUTE}` };
+    {
+      const { bestand } = await B.bestandLesen(laden(), RAUM);
+      const m = bestand.mandanten[0];
+      m.einstempeln = { ...(m.einstempeln || {}), [o.k]: { start: o.start, startAm: beginn.toISOString() } };
+      await B.bestandSchreiben(laden(), RAUM, bestand, { durch: "Pruefung" });
+    }
     const e = await ausstempeln("z3", o.datum);
     expect(e.status, e.roh).toBe(200);
     expect(e.markierungen).toContain("START_VERALTET");

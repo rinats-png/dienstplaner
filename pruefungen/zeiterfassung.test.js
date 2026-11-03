@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
-import { heuteBerlin, tagePlus, geplanterDienst, stempelZiel, selbstauskunftPruefen }
+import { heuteBerlin, tagePlus, geplanterDienst, stempelZiel, selbstauskunftPruefen, langerDienstGrenze, LANGER_DIENST_MINUTEN }
   from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -236,7 +236,10 @@ describe("16. Leitung und Planung behalten das Korrekturrecht", () => {
    Serverzeit ist fest vorgegeben, damit die Grenzen nicht von der Uhrzeit
    des Prüflaufs abhängen. */
 describe("/api/stempeln: Datum vom Server (stempelZiel)", () => {
-  const m = () => bestand().mandanten[0];
+  /* Uhrzeit- und datumsunabhängig (W4): Die Serverzeit ist hier fest
+     vorgegeben; Plan und Stempel des Gerüsts (relativ zu heute) würden je
+     nach Prüftag in diese festen Tage fallen. Deshalb ohne sie. */
+  const m = () => { const mm = bestand().mandanten[0]; mm.abweichungen = {}; mm.einstempeln = {}; mm.erfassung = {}; return mm; };
   const p = (mm) => mm.personen[0];
   const nacht = (mm) => { mm.dienstarten = [...(mm.dienstarten || []), { id: "NX", name: "Nacht", start: "22:00", ende: "06:00" }]; return mm; };
   /* 2026-11-02 10:00 Berlin (MEZ, UTC+1). */
@@ -313,6 +316,31 @@ describe("/api/stempeln: Datum vom Server (stempelZiel)", () => {
     const t = new Date("2026-10-25T00:30:00Z");                        // 02:30 MESZ (erste 02:30)
     expect(stempelZiel(mm, p(mm), "start", t)).toEqual(ok("2026-10-25"));
     expect(stempelZiel(mm, p(mm), "start", t, "2026-10-24")).toEqual(ok("2026-10-25", ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("F1 in der Nacht der Sommerzeit (28.3.2027): Nachtdienst 22–06, Ende 06:00 MESZ (04:00Z) + 4 h", () => {
+    const mm = nacht(m()); mm.abweichungen["a1|2027-03-27"] = "NX";
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T07:55:00Z"))).toEqual(ok("2027-03-27"));   // 09:55 MESZ
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T08:05:00Z"))).toEqual(ok("2027-03-28"));   // 10:05 MESZ
+  });
+});
+
+describe("W1: Grenze für einen langen Dienst — geplante Dauer + 2 h, ohne Plan 12 h", () => {
+  const mm = () => {
+    const x = bestand().mandanten[0];
+    x.abweichungen = {};
+    x.dienstarten = [...x.dienstarten, { id: "T12", start: "06:00", ende: "18:00" }, { id: "N12", start: "18:00", ende: "06:00" },
+      { id: "RB", start: "17:00", ende: "07:00", form: "ruf", rufbereitschaft: true }, { id: "D24", start: "07:00", ende: "07:00" }];
+    return x;
+  };
+  const D = "2026-11-10";
+  const grenze = (dienst) => { const x = mm(); if (dienst) x.abweichungen[`a1|${D}`] = dienst; return langerDienstGrenze(x, x.personen[0], D); };
+  it("Früh 06–14: 10 h; T12 und N12: 14 h; Rufbereitschaft 17–07: 16 h; 24-h-Dienst: 26 h; ohne Plan 12 h", () => {
+    expect(grenze("F")).toBe(10 * 60);
+    expect(grenze("T12")).toBe(14 * 60);
+    expect(grenze("N12")).toBe(14 * 60);
+    expect(grenze("RB")).toBe(16 * 60);
+    expect(grenze("D24")).toBe(26 * 60);
+    expect(grenze(null)).toBe(LANGER_DIENST_MINUTEN);
   });
 });
 

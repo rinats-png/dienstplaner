@@ -334,7 +334,7 @@ export function stempelZiel(m, person, art, jetzt = new Date(), geraeteDatum = n
   } else if (vonGestern) {
     datum = heute;                                   // B6.3: nicht anhängen
     konfliktAm = gestern;
-  } else if (!eintrag(gestern) && nachtdienstNochNichtVorbei(m, person, gestern, heute, jetzt)) {
+  } else if (!eintrag(gestern) && nachtdienstOffen(m, person, heute, jetzt)) {
     datum = gestern;                                 // F1: vergessenes Einstempeln am Abend
   } else {
     datum = heute;
@@ -349,8 +349,15 @@ export function stempelZiel(m, person, art, jetzt = new Date(), geraeteDatum = n
   return { datum, markierungen, konfliktAm };
 }
 
-/** War gestern ein Dienst über Mitternacht geplant, dessen Ende (+ Toleranz) noch nicht vorbei ist? */
-function nachtdienstNochNichtVorbei(m, person, gestern, heute, jetzt) {
+/**
+ * War gestern ein Dienst über Mitternacht geplant, für gestern noch kein
+ * Stempeleintrag da, und ist sein Ende (+ NACHT_TOLERANZ_MS) noch nicht
+ * vorbei? Dieselbe Regel nutzt die Oberfläche (src/stempelvorgang.js), um
+ * „Dienstende stempeln" anzubieten (WP-17, F1/W3).
+ */
+export function nachtdienstOffen(m, person, heute, jetzt = new Date()) {
+  const gestern = tagePlus(heute, -1);
+  if (m && m.einstempeln && m.einstempeln[`${person.id}|${gestern}`]) return false;
   const dienstId = geplanterDienst(m, person, gestern);
   const da = dienstId ? (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId)) : null;
   if (!uebernacht(da)) return false;
@@ -360,10 +367,33 @@ function nachtdienstNochNichtVorbei(m, person, gestern, heute, jetzt) {
 
 /* --- Ein langer Dienst wird nicht automatisch bestätigt ---
 
-   Ergibt ein Ende eine Dauer über LANGER_DIENST_MINUTEN, entsteht keine
-   bestätigte Ist-Zeit, sondern eine zur Prüfung (bestaetigt: false,
-   Markierung LANGER_DIENST). Zwölf Stunden: die Höchstarbeitszeit nach
-   § 3 ArbZG (zehn Stunden) plus zwei Stunden für Pausen und Übergaben.
-   Länger ist fast immer ein vergessenes Ausstempeln innerhalb der
-   20-Stunden-Grenze — oder ein Fall, den die Leitung ohnehin sehen muss. */
+   Ergibt ein Ende eine Dauer über der Grenze, entsteht keine bestätigte
+   Ist-Zeit, sondern eine zur Prüfung (bestaetigt: false, Markierung
+   LANGER_DIENST); die Leitung bestätigt sie in den Stempelbefunden.
+
+   Die Grenze ist die geplante Dauer des Dienstes plus LANGER_DIENST_PUFFER
+   (zwei Stunden für Übergaben und Verspätungen) — gemessen über die ganze
+   Spanne von Beginn bis Ende, also auch für Bereitschaftsdienst und
+   Rufbereitschaft (RB 17–07: 14 Stunden). Ohne geplanten Dienst gilt
+   LANGER_DIENST_MINUTEN: die Höchstarbeitszeit nach § 3 ArbZG (zehn Stunden)
+   plus zwei Stunden.
+
+   Bis zur Review-Auflage W1 galt pauschal zwölf Stunden — reguläre
+   Zwölfstundendienste (T12 06–18, N12 18–06) und Rufbereitschaften wurden
+   dann zur Prüfung gestellt, und 05:55–18:10 ging mit der Planzeit 12,0
+   statt 12,25 Stunden ins Konto, ohne Hinweis. */
 export const LANGER_DIENST_MINUTEN = 12 * 60;
+export const LANGER_DIENST_PUFFER = 2 * 60;
+
+/** Ab wie vielen Minuten ist ein gestempelter Dienst an diesem Tag „lang"? */
+export function langerDienstGrenze(m, person, datum) {
+  const dienstId = geplanterDienst(m, person, datum);
+  const da = dienstId ? (m.dienstarten || []).find((x) => x && String(x.id) === String(dienstId)) : null;
+  if (!da || typeof da.start !== "string" || typeof da.ende !== "string"
+      || !UHRZEIT.test(da.start) || !UHRZEIT.test(da.ende)) return LANGER_DIENST_MINUTEN;
+  const beginn = minuten(da.start);
+  const ende = da.ende === "24:00" ? 1440 : minuten(da.ende);
+  let dauer = ende - beginn;
+  if (dauer <= 0) dauer += 1440;
+  return dauer + LANGER_DIENST_PUFFER;
+}

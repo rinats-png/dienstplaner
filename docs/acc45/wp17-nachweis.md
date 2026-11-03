@@ -128,3 +128,32 @@ Angepasste bestehende Prüfungen:
   - Gerätedatum morgen, vor fünf Tagen oder gestern ergibt nie einen Stempel an jenem Tag. Weil heute schon gestempelt
     ist, antwortet der Server mit 409.
   - Ende ohne offenen Beginn: 200 mit START_FEHLT, auf heute oder (F1, abhängig von der Uhrzeit) auf gestern.
+
+## Review-Auflagen W1–W4 und Integrationsstand (H8+)
+
+Der Branch enthält jetzt `origin/integration/centric-complete` (Merge 895e00d, u. a. H8+ f9ab17c, ec76973, cdaf74f,
+f9b2ee7). Konflikte in `package.json` gelöst; `istdaten.js`, `rechte.mjs`, `App.jsx` ohne Verlust der H8+-Invarianten
+(SV/BR keine fremden Stempel/Ist-Zeiten; Ist unter Rollenschutz „nicht verfügbar“ statt Planzeit).
+
+- **W1 Langer Dienst:** Grenze `langerDienstGrenze` = geplante Dauer der Dienstart + 2 h (über Mitternacht, 24-h-Dienst),
+  ohne Plan 12 h. Ein geplanter 12-h-Dienst mit kurzem Überhang wird bestätigt. Ein Fall über der Grenze bleibt
+  `bestaetigt: false` — nicht still: `istZeitFuer` liefert Planzeit mit `zurPruefung: true`, die Stempelbefunde listen
+  „Ist-Zeiten zur Prüfung“ mit „Bestätigen“ (nur `plan.edit.unit` oder `staff.edit`; Vermerk im Protokoll).
+- **W2 Lokale Kopie:** Schlüssel nach dem Stempeln ist der Tag vom Server (`stempelSchluessel(pid, erg, datum)`).
+- **W3 Oberfläche Nachtdienst:** `stempelVorgang` nutzt dieselbe Regel wie der Server (`nachtdienstOffen`, F1) und
+  meldet `nachtEnde`; Stempeluhr und mobile Stempelfläche bieten „Dienstende stempeln“ (gestern) und „Einstempeln“ (heute).
+- **W4 Determinismus:** `geo.test.js` „offener Beginn von gestern“ und „20:01 Stunden“ mit festem `startAm`;
+  `pruefungen/zeiterfassung.mjs` prüft beide Zweige getrennt (n1 mit Dienst „NL“ 23:59–23:58 gestern → immer gestern;
+  h1 ohne Plan → immer heute); F4 mit Plan-12-h-Dienst (`serverdatum.test.js`); F1 in der Sommerzeitnacht 2027
+  (`zeiterfassung.test.js`). Neue Datei `stempel-oberflaeche.test.js` läuft in `pruefung:zeiterfassung`.
+
+Rot vorher (Export von a3ade22 per `git archive`, neue Tests hineinkopiert): **9 rot** (7 in
+`stempel-oberflaeche.test.js`, W1-Grenze in `zeiterfassung.test.js`, W1-T12 in `serverdatum.test.js`). Die Tests zu
+F1-Sommerzeit und die deterministisch gemachten Geo-Fälle sind dort grün (Regel bestand bereits; es ging um Determinismus).
+
+Nachher (lokal, Windows): zeiterfassung, serverdatum, stempel-oberflaeche, geo, istdaten **154/154**;
+stempel-datenschutz, stempeln, sicht-schichtverantwortung, sicht, oberflaeche-render **143/143**; Serverlauf
+zeiterfassung 39/39, rechte 147/147, schichtverantwortung 25/25, geo 14/14; staging-proben 16/16; `tsc` sauber.
+Ein Geo-Serverlauf war einmal 13/14: „keine Rohkoordinate“ fand `410` (= 50 + 360, Probe für ungültige Breite) in
+einem zufälligen Millisekundenwert eines Zeitstempels — vorbestehende Zufallsabhängigkeit der Prüfung, nicht WP-17;
+Wiederholung 14/14.

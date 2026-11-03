@@ -97,6 +97,21 @@ export function zeitraumJahr(jahr) {
   return { von: `${jahr}-01-01`, bis: `${jahr}-12-31` };
 }
 
+/** Eine Erfassung, die die Stempeluhr zur Prüfung durch die Leitung gestellt hat (LANGER_DIENST). */
+export const zurPruefung = (e) => !!e && e.bestaetigt === false && typeof e.grund === "string"
+  && e.grund.startsWith("LANGER_DIENST");
+
+/**
+ * Stempel-Erfassungen eines Monats, die die Leitung noch prüfen muss.
+ * @returns {Array<{personId: string, datum: string, erfassung: object}>}
+ */
+export function erfassungenZurPruefung(m, ym) {
+  return Object.entries((m && m.erfassung) || {})
+    .filter(([k, e]) => String(k).split("|")[1] && String(k).split("|")[1].startsWith(ym) && zurPruefung(e))
+    .map(([k, e]) => ({ personId: String(k).split("|")[0], datum: String(k).split("|")[1], erfassung: e }))
+    .sort((a, b) => a.datum.localeCompare(b.datum));
+}
+
 /**
  * Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante.
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
@@ -106,6 +121,10 @@ export function istZeitFuer(m, p, d, da) {
   /* dauerAm statt dauer: In den beiden Nächten der Zeitumstellung dauert
      ein Nachtdienst sieben oder neun Stunden, nicht acht. */
   const e = m.erfassung ? m.erfassung[`${p.id}|${d}`] : null;
+  /* Ein gestempelter langer Dienst, den die Leitung noch nicht bestätigt hat
+     (WP-17, LANGER_DIENST): Bis zur Bestätigung zählt die Planzeit — aber
+     nicht still: `zurPruefung` lässt Konto und Auswertung darauf hinweisen. */
+  if (e && !e.bestaetigt && zurPruefung(e)) return { std: dauerAm(d, da), erfasst: false, abweichung: 0, zurPruefung: true };
   if (!e || !e.bestaetigt) return { std: dauerAm(d, da), erfasst: false, abweichung: 0 };
   const roh = { start: e.start || da.start, ende: e.ende || da.ende, pause: da.pause || 0 };
   const std = dauerAm(d, roh);

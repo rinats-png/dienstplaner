@@ -1,8 +1,8 @@
 import React, { Component, Fragment, createContext, useContext, useState, useEffect, useMemo, useRef, useCallback, useId} from "react";
 import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
-  zeitraumMonat, zeitraumBisMonat, zeitraumJahr } from "./istdaten.js";
-import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN } from "./stempelvorgang.js";
+  zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung } from "./istdaten.js";
+import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
@@ -11578,9 +11578,15 @@ function Urlaubsrunde({ sitz, akt }) {
    Häkchen zeigt die Oberfläche als Icon aus dem Satz, nicht als Textzeichen. */
 const GEO_SYMBOL_ICON = { "\u2713": "haken" };
 
-function StempelBefunde({ sitz, ym }) {
+function StempelBefunde({ sitz, ym, akt }) {
   const m = sitz.mandant;
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
+  /* Lange Dienste zur Prüfung (WP-17, W1): Die Stempeluhr bestätigt eine
+     Dauer über geplanter Dauer + 2 h nicht selbst. Bis die Leitung oder
+     Planung hier bestätigt, zählt im Konto die Planzeit — sichtbar, nicht
+     still. Bestätigen steht im Betriebsprotokoll. */
+  const pruef = erfassungenZurPruefung(m, ym);
+  const darfBestaetigen = darf(sitz, "plan.edit.unit") || darf(sitz, "staff.edit");
   const zeilen = Object.entries(m.einstempeln || {})
     .map(([k, e]) => { const [pid, datum] = k.split("|"); return { pid, datum, e }; })
     .filter((z) => z.datum && z.datum.startsWith(ym) && z.e)
@@ -11598,6 +11604,20 @@ function StempelBefunde({ sitz, ym }) {
   return (
     <Card>
       <CardHead right={<Lab><Icon n="haken" size={13} style={{ verticalAlign: "-2px" }} /> bestätigt · ! abweichend · ? nicht bewertbar · ○ Prüfung aus</Lab>}>Stempelbefunde</CardHead>
+      {pruef.length > 0 && (
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.lineSoft}` }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 6 }}>
+            {pruef.length === 1 ? "1 Ist-Zeit zur Prüfung" : `${pruef.length} Ist-Zeiten zur Prüfung`}</div>
+          <div style={{ fontSize: 12.5, color: C.dim, marginBottom: 10, lineHeight: 1.45 }}>
+            Gestempelt länger als geplant + 2 Stunden. Bis zur Bestätigung zählt im Stundenkonto die Planzeit.</div>
+          {pruef.map(({ personId, datum, erfassung }) => (
+            <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
+              <Pill size="sm" tone="warn">{MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              {darfBestaetigen && akt && (
+                <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
+            </div>))}
+        </div>)}
       {zeilen.length === 0 ? <div style={{ padding: 22, color: C.dim }}>In diesem Monat wurde nicht gestempelt.</div> : (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr style={{ textAlign: "left" }}>{["Person", "Tag", "Start", "Befund Start", "Ende", "Befund Ende", "Standort", "Kennzeichen"]
@@ -11707,7 +11727,7 @@ function Abrechnungsdaten({ sitz, ym, akt }) {
       </>)}
 
       {reiter === "lohn" && <Lohnausgabe sitz={sitz} ym={ym} akt={akt} />}
-      {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} />}
+      {reiter === "stempel" && <StempelBefunde sitz={sitz} ym={ym} akt={akt} />}
       {reiter === "ausgleich" && (<>
         <Kennzahlen min={190} kacheln={[
           { label: "Über der Ausgleichsgrenze", wert: faellig.length, ton: faellig.length ? "warn" : "ok",
@@ -13051,17 +13071,27 @@ const GEO_HINWEIS = "Beim Stempeln wird einmalig geprüft, ob du am Standort bis
 
 function Stempeluhr({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
 
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
-  const stempeln = (art) => {
+  const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, datum, art, koord); setLaeuft(false); });
+    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, tag, art, koord); setLaeuft(false); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
+  /* Nachtdienst von gestern ohne Einstempeln (F1): Dienstende anbieten. */
+  if (!st && nachtEnde) return (
+    <div style={{ textAlign: "right", maxWidth: 300 }}>
+      <div style={{ fontSize: 13, color: C.dim, marginBottom: 8, lineHeight: 1.4 }}>
+        Nachtdienst von gestern ohne Einstempeln? Das Dienstende lässt sich noch erfassen; den Beginn ergänzt die Leitung.</div>
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <Btn kind="ok" disabled={laeuft} onClick={() => stempeln("ende")}>{laeuft ? wartet : "Dienstende stempeln"}</Btn>
+        <Btn kind="quiet" disabled={laeuft} onClick={() => stempeln("start", heute())}>Einstempeln</Btn>
+      </div>
+    </div>);
   if (!st) return (
     <div style={{ textAlign: "right" }}>
       <Btn kind="primary" disabled={laeuft} onClick={() => stempeln("start")}>
@@ -19952,18 +19982,25 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
 /** Große Stempelfläche — das häufigste Tippen überhaupt. */
 function MStempel({ sitz, akt, vorgang }) {
   const m = sitz.mandant, p = sitz.person;
-  const { datum, st, vortag, veraltet } = vorgang || stempelVorgang(m, p, heute());
+  const { datum, st, vortag, veraltet, nachtEnde } = vorgang || stempelVorgang(m, p, heute());
   const geoAn = geoPruefungAn(m);
   const [laeuft, setLaeuft] = useState(false);
-  const stempeln = (art) => {
+  const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (k) => { akt.stempeln(p.id, datum, art, k); setLaeuft(false); });
+    positionHolen(geoAn, (k) => { akt.stempeln(p.id, tag, art, k); setLaeuft(false); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
       style={{ width: "100%", height: 56, fontSize: 16.5, fontWeight: 650, borderRadius: 18 }}>
       {laeuft ? (geoAn ? "Standort wird geprüft …" : "Wird gespeichert …") : children}</button>);
 
+  /* Nachtdienst von gestern ohne Einstempeln (WP-17, F1/W3). */
+  if (!st && nachtEnde) return (<>
+    <div style={{ fontSize: 14, color: C.dim, marginBottom: 11, lineHeight: 1.45 }}>
+      Nachtdienst von gestern ohne Einstempeln? Das Dienstende lässt sich noch erfassen; den Beginn ergänzt die Leitung.</div>
+    <Flaeche kind="ok" onClick={() => stempeln("ende")}>Dienstende stempeln</Flaeche>
+    <div style={{ height: 10 }} />
+    <Flaeche kind="quiet" onClick={() => stempeln("start", heute())}>Einstempeln</Flaeche></>);
   if (!st) return (<>
     <Flaeche kind="primary" onClick={() => stempeln("start")}>Einstempeln</Flaeche>
     {geoAn && <div style={{ fontSize: 12, color: C.dimmer, marginTop: 9, lineHeight: 1.45 }}>{GEO_HINWEIS}</div>}</>);
@@ -22577,6 +22614,15 @@ function AppInnen() {
          der Tag aus „Zeiten bestätigen", auch wenn der Server die Angabe
          verworfen hatte. Für andere Personen (Leitung, Planung) bleibt es beim
          gewöhnlichen Speichern. */
+      /* Lange Dienste zur Prüfung (WP-17, W1): Die Leitung bestätigt die
+         gestempelte Zeit; danach zählt sie im Konto. Vermerk im Protokoll. */
+      langerDienstBestaetigen: (pid, d) => mUpd((m) => {
+        const k = `${pid}|${d}`;
+        const e = (m.erfassung || {})[k];
+        if (!e) return m;
+        return { ...m, erfassung: { ...(m.erfassung || {}), [k]: { ...e, bestaetigt: true,
+          grund: `geprüft: ${e.grund || ""}`.slice(0, 500) } } };
+      }, `Langer Dienst bestätigt: ${pid} am ${d}`),
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
         if (!sitz.person || pid !== sitz.person.id) {
           mUpd((m) => ({ ...m,
@@ -23437,7 +23483,7 @@ function AppInnen() {
           const spiegeln = (s2) => {
             const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
             if (!m) return s2;
-            const k = `${pid}|${datum}`;
+            const k = stempelSchluessel(pid, erg, datum);
             /* Übernommen wird, was der Server gespeichert hat (eintrag,
                erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
                409 bei gleichzeitigem Speichern) landet unten im catch und
