@@ -5538,7 +5538,7 @@ function Anmeldung({ db, onLogin }) {
             <p style={{ fontSize: 14.5, color: C.dim, lineHeight: 1.6, margin: "0 0 20px" }}>
               Der Datenraum ist angelegt, aber noch leer. Die Organisationsleitung
               richtet den Betrieb ein — danach funktioniert dieser Zugang.</p>
-            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+            <Btn onClick={abmeldenMitHinweis}>Abmelden</Btn>
           </Card>
         </div>
         <RechtLeiste onOeffnen={setRecht} style={{ paddingBottom: 26 }} />
@@ -21184,6 +21184,38 @@ function Tarifwerk({ sitz, akt }) {
  * Vorgabe: aus. Einschalten nur mit der ausdrücklichen Bestätigung; die
  * Arbeitszeit wird in jedem Fall erfasst.
  */
+/**
+ * Offline-Stempeln vertrauen (WP-07, Review-Auflage A1). Vorgabe: aus — eine
+ * offline erfasste Zeit, die 15 Minuten oder später ankommt, steht zur
+ * Prüfung. Schalten nur mit org.edit; wann und von wem, setzt der Server.
+ */
+function OfflineSchalter({ sitz, akt }) {
+  const e = sitz.mandant.einstellungen || {};
+  const an = e.offlineStempelVertrauen === true;
+  const darfSchalten = darf(sitz, "org.edit");
+  const durch = e.offlineStempelVertrauenVon
+    ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.offlineStempelVertrauenVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={an ? "warn" : "ok"}>{an ? "gelockert" : "streng"}</Pill>}>
+        Stempeln ohne Netz</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        Ohne Netz gestempelt zählt die Uhrzeit des Geräts. Sie lässt sich mit Flugmodus und verstellter Uhr fälschen.
+        Deshalb steht eine Ist-Zeit zur Prüfung, wenn ein offline erfasster Beginn oder ein offline erfasstes Ende
+        15 Minuten oder später beim Server ankommt — bis die Leitung sie in den Stempelbefunden bestätigt.
+        {" "}Gelockert gilt sie dann als bestätigt; eine abweichende Geräteuhr und Stempel über 48 Stunden bleiben zur Prüfung.
+        {e.offlineStempelVertrauenAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.offlineStempelVertrauenAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        {darfSchalten && (
+          <div style={{ marginTop: 14 }}>
+            {an ? <Btn onClick={() => akt.setzeOfflineVertrauen(false)}>Wieder streng prüfen</Btn>
+              : <Btn onClick={() => akt.setzeOfflineVertrauen(true)}>Lockern</Btn>}
+          </div>)}
+      </div>
+    </Card>);
+}
+
 function GeoSchalter({ sitz, akt }) {
   const e = sitz.mandant.einstellungen || {};
   const an = e.geoPruefung === true;
@@ -21520,6 +21552,8 @@ function Betrieb({ sitz, akt }) {
       <Standorte sitz={sitz} akt={akt} />
 
       <GeoSchalter sitz={sitz} akt={akt} />
+
+      <OfflineSchalter sitz={sitz} akt={akt} />
 
       <JugendschutzSchalter sitz={sitz} akt={akt} />
 
@@ -22365,9 +22399,12 @@ function AppInnen() {
       name: sitz && sitz.person ? `${sitz.person.vorname} ${sitz.person.nachname}` : "unbekannt",
       rolle: sitz ? sitz.rolle : null });
 
-    /* Die Antwort des Servers auf einen Stempel übernehmen (WP-07: auch für
-       Stempel aus dem Puffer, die später durchkamen). */
-    const stempelUebernehmen = async (pid, datum, art, erg) => {
+    /* Die Antworten des Servers auf Stempel übernehmen (WP-07: auch für
+       Stempel aus dem Puffer, die später durchkamen). Mehrere Quittungen
+       eines Sendelaufs kommen gesammelt — ein Nachladen, nicht eines je
+       Stempel (Review L6). eintraege: [{ datum, art, erg }]. */
+    const stempelUebernehmen = async (pid, eintraege) => {
+      if (!eintraege.length) return;
       /* Gab es danach nichts Ungespeichertes, ist der lokale Stand der
          zuletzt gesendete — nur dann darf er durch den Serverstand
          ersetzt werden, ohne dass Arbeit verloren geht. (Ein
@@ -22375,8 +22412,12 @@ function AppInnen() {
          „nicht gespeichert" erhalten.) */
       const ohneOffenes = !!ref.current && !SP.schreibenAusstehend()
         && abbildVon(ref.current) === zuletztGeschrieben.current;
-      const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
-      const meldung = `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit}${erg.ort ? ` · ${erg.ort}` : ""}${kz.length ? ` · ${kz.join(", ")}` : ""}${erg.offline ? " · bestätigt" : ""}`;
+      const meldungVon = ({ art, erg }) => {
+        const kz = (erg.markierungen || []).map((x) => MARKIERUNG_TEXT[x] || x);
+        return `${art === "start" ? "Eingestempelt" : "Ausgestempelt"} ${erg.zeit}${erg.ort ? ` · ${erg.ort}` : ""}${kz.length ? ` · ${kz.join(", ")}` : ""}${erg.offline ? " · bestätigt" : ""}`;
+      };
+      const meldung = eintraege.length === 1 ? meldungVon(eintraege[0])
+        : `${eintraege.length} Stempel bestätigt · zuletzt: ${meldungVon(eintraege[eintraege.length - 1])}`;
       /* Geschrieben hat der Server. Bisher wurde seine Antwort lokal
          eingetragen — das änderte den Bestand, der Speicher-Effekt
          schickte daraufhin den ganzen Bestand per PUT mit dem alten
@@ -22408,14 +22449,17 @@ function AppInnen() {
       const spiegeln = (s2) => {
         const m = s2.mandanten.find((x) => x.id === (s2.session || {}).mandantId);
         if (!m) return s2;
-        const k = stempelSchluessel(pid, erg, datum);
-        /* Übernommen wird, was der Server gespeichert hat (eintrag,
-           erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
-           409 bei gleichzeitigem Speichern) landet unten im catch und
-           ändert lokal nichts. */
-        let mm = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: erg.eintrag } };
-        if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
-          [k]: erg.erfassung } };
+        let mm = m;
+        for (const { datum, art, erg } of eintraege) {
+          const k = stempelSchluessel(pid, erg, datum);
+          /* Übernommen wird, was der Server gespeichert hat (eintrag,
+             erfassung) — nicht eine hier gebaute Kopie. Ein Fehler (etwa
+             409 bei gleichzeitigem Speichern) landet unten im catch und
+             ändert lokal nichts. */
+          mm = { ...mm, einstempeln: { ...(mm.einstempeln || {}), [k]: erg.eintrag } };
+          if (art === "ende" && erg.erfassung) mm = { ...mm, erfassung: { ...(mm.erfassung || {}),
+            [k]: erg.erfassung } };
+        }
         return { ...s2, mandanten: s2.mandanten.map((x) => x.id === m.id ? mm : x) };
       };
       const jetzt = ref.current;
@@ -22454,8 +22498,8 @@ function AppInnen() {
          während der Bestand hier schon null ist — sichtbar als
          Ladeskelett, das nie fertig wird. */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
-      abmelden: () => { SP.abmelden(); window.location.reload(); },
-      verbindungTrennen: () => { SP.abmelden(); window.location.reload(); },
+      abmelden: abmeldenMitHinweis,
+      verbindungTrennen: abmeldenMitHinweis,
       zurueck: () => { if (!verlauf.current.length) return melde("Nichts rückgängig zu machen.");
         const [l, ...r] = verlauf.current; verlauf.current = r; setDb(l); melde("Rückgängig gemacht."); },
 
@@ -22964,6 +23008,10 @@ function AppInnen() {
         if (an) e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
         return { ...m, einstellungen: e };
       }, an ? "Standortprüfung beim Stempeln eingeschaltet" : "Standortprüfung beim Stempeln ausgeschaltet"),
+      /* Offline-Stempel vertrauen (WP-07): nur org.edit; wann und von wem, setzt der Server. */
+      setzeOfflineVertrauen: (an) => mUpd((m) => ({ ...m,
+        einstellungen: { ...(m.einstellungen || {}), offlineStempelVertrauen: !!an } }),
+        an ? "Stempeln ohne Netz: Prüfung gelockert" : "Stempeln ohne Netz: wieder streng geprüft"),
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): org.edit oder pattern.edit;
          wann und von wem, setzt der Server. */
       setzeJugendMehrschichtig: (an) => mUpd((m) => ({ ...m,
@@ -23623,15 +23671,20 @@ function AppInnen() {
          (OfflineStempel). */
       stempeln: async (pid, datum, art, koord) => {
         try {
-          /* Was noch zum Schreiben ansteht, geht zuerst regulär hinaus —
-             sonst liefe es nach dem Stempeln mit dem alten ETag in einen 409. */
-          await SP.schreibenAbschliessen();
+          /* Zuerst ablegen (Review L1): Der Stempel ist gesichert, bevor
+             irgendetwas anderes ins Netz geht. */
           const ev = await SP.stempelErfassen(datum, art, koord);
           if (!ev) {
             /* Inhaber unbekannt (Antwort eines älteren Servers): direkt wie bisher. */
-            await stempelUebernehmen(pid, datum, art, await SP.stempeln(datum, art, koord));
+            await SP.schreibenAbschliessen();
+            const erg = await SP.stempeln(datum, art, koord);
+            await stempelUebernehmen(pid, [{ datum, art, erg }]);
             return;
           }
+          /* Was noch zum Schreiben ansteht, geht vorher regulär hinaus — sonst
+             liefe es nach dem Stempeln mit dem alten ETag in einen 409.
+             Höchstens fünf Sekunden gewartet; der Stempel hängt nicht davon ab. */
+          await Promise.race([SP.schreibenAbschliessen(), new Promise((ok) => setTimeout(ok, 5000))]);
           const lauf = await SP.stempelSenden({ sofort: true });
           const r = lauf.ergebnisse[ev.id];
           if (r && r.art === "ok") return;
@@ -23647,10 +23700,11 @@ function AppInnen() {
       },
       /* Ein vom Server quittierter Stempel aus dem Puffer — auch einer, der im
          Hintergrund (Netz zurück, Neustart) gesendet wurde. */
-      stempelQuittung: (ev, erg) => {
+      stempelQuittung: (liste) => {
         const pid = ref.current && ref.current.session ? ref.current.session.personId : null;
-        if (!pid || !erg) return;
-        stempelUebernehmen(pid, ev.datum, ev.art, erg).catch(() => {});
+        if (!pid || !Array.isArray(liste)) return;
+        stempelUebernehmen(pid, liste.filter((q) => q && q.daten)
+          .map((q) => ({ datum: q.ev.datum, art: q.ev.art, erg: q.daten }))).catch(() => {});
       },
       stempelErneut: (id) => SP.stempelErneut(id),
       stempelVerwerfen: (id) => SP.stempelVerwerfen(id),
@@ -24215,7 +24269,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
               try { await SP.bestandAnlegen(null, demobestand(), "demo"); window.location.reload(); }
               catch (e) { setLadefehler(String(e.message || e)); }
             }}>Demo-Bestand anlegen</Btn>}
-            <Btn onClick={() => { SP.abmelden(); window.location.reload(); }}>Abmelden</Btn>
+            <Btn onClick={abmeldenMitHinweis}>Abmelden</Btn>
           </div>
         </Card></div></div></>);
   }
@@ -24633,6 +24687,18 @@ export default function App() {
         <ZiehHinweis />
       </ZiehAnbieter>
     </Fehlerauffang>);
+}
+
+/* WP-07 (Review A2): Abmelden mit Hinweis, wenn Stempel noch auf das Netz
+   warten. Sie bleiben auf dem Gerät und werden nach der nächsten Anmeldung
+   derselben Person gesendet; eine andere Person sieht und sendet sie nicht. */
+function abmeldenMitHinweis() {
+  const n = SP.stempelWartendAnzahl();
+  if (n && typeof window !== "undefined" && typeof window.confirm === "function"
+    && !window.confirm(`${n === 1 ? "Ein Stempel wartet" : `${n} Stempel warten`} noch auf das Netz. `
+      + "Er bleibt auf diesem Gerät gespeichert und wird gesendet, sobald du dich wieder anmeldest. Trotzdem abmelden?")) return;
+  SP.abmelden();
+  window.location.reload();
 }
 
 /* Für die Render-Prüfung (pruefungen/oberflaeche-render.test.js): die

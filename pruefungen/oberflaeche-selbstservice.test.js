@@ -195,7 +195,7 @@ describe("Stempeln", () => {
   const q = APP.slice(i, APP.indexOf("\n      setzeVerfuegbarkeit:", i));
   /* Seit WP-07 steht das Übernehmen der Serverantwort in stempelUebernehmen —
      dieselbe Stelle für sofort und später (Stempelpuffer) gesendete Stempel. */
-  const u0 = APP.indexOf("    const stempelUebernehmen = async (pid, datum, art, erg) => {");
+  const u0 = APP.indexOf("    const stempelUebernehmen = async (pid, eintraege) => {");
   const u = APP.slice(u0, APP.indexOf("\n    };", u0));
   it("übernimmt eintrag und erfassung des Servers, baut keine eigene Kopie", () => {
     expect(i).toBeGreaterThan(0);
@@ -207,8 +207,9 @@ describe("Stempeln", () => {
   });
   it("nachgezogen wird erst nach der Antwort; ein Fehler meldet nur", () => {
     /* Nur mit der Antwort des Servers: direkt (älterer Server) oder als Quittung aus dem Stempelpuffer. */
-    expect(q).toContain("await stempelUebernehmen(pid, datum, art, await SP.stempeln(datum, art, koord));");
-    expect(q).toMatch(/stempelQuittung: \(ev, erg\) => \{[\s\S]*stempelUebernehmen\(pid, ev\.datum, ev\.art, erg\)/);
+    expect(q).toMatch(/const erg = await SP\.stempeln\(datum, art, koord\);\s*await stempelUebernehmen\(pid, \[\{ datum, art, erg \}\]\);/);
+    /* Quittungen aus dem Puffer gesammelt (Review L6), je eine mit der Serverantwort (q.daten). */
+    expect(q).toMatch(/stempelQuittung: \(liste\) => \{[\s\S]*stempelUebernehmen\(pid, liste\.filter\(\(q\) => q && q\.daten\)/);
     expect(q.split("stempelUebernehmen(").length - 1).toBe(2);
     expect(q).toMatch(/catch \(e\) \{\s*melde\(e\.message/);
   });

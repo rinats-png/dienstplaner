@@ -178,7 +178,9 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
     const art = antwortArt(r.status, r.daten);
     if (art === "ok") {
       const d = r.daten;
-      const neu = { ...versuch, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
+      /* Quittiert: Der Standort (nur im Geo-Modus abgelegt) wird nicht mehr
+         gebraucht und bleibt nicht auf dem Gerät (Review A2, H8+). */
+      const neu = { ...versuch, koord: null, zustand: "bestaetigt", bestaetigtAm: new Date(jetzt()).toISOString(), fehler: null,
         quittung: { datum: d.datum || null, zeit: d.zeit || null, offline: !!d.offline, wiederholt: !!d.wiederholt,
           markierungen: Array.isArray(d.markierungen) ? d.markierungen : [] } };
       await speicher.setzen(neu);
@@ -186,7 +188,7 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       if (beiQuittung) { try { beiQuittung(neu, d); } catch { /* Anzeige darf das Senden nicht stören */ } }
     } else if (art === "endgueltig") {
       const grund = (r.daten && (r.daten.text || r.daten.fehler)) || `Abgelehnt (Status ${r.status}).`;
-      await speicher.setzen({ ...versuch, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
+      await speicher.setzen({ ...versuch, koord: null, zustand: "abgelehnt", fehler: { grund: String(grund), code: (r.daten && r.daten.code) || null, status: r.status } });
       ergebnisse[ev.id] = { art: "abgelehnt", grund: String(grund) };
     } else if (art === "halt") {
       /* Der Versuch zählt nicht: Es lag an der Sitzung, nicht am Ereignis. */
@@ -194,13 +196,33 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       ergebnisse[ev.id] = { art: "wartet" };
     } else {
       const warte = typeof r.warteMs === "number" && r.warteMs > 0 ? Math.min(r.warteMs, 60 * 60 * 1000) : wartezeit(versuch.versuche);
-      await speicher.setzen({ ...versuch, offline: true, naechsterVersuchAm: jetzt() + warte,
+      /* Offline wird ein Ereignis nur durch einen echten Netzausfall (keine
+         Antwort). Eine Antwort wie 429/503 (Bremse, WP-47) heißt: Der Server
+         ist erreichbar — die Wiederholung bleibt ein gewöhnliches Stempeln
+         mit der Serverzeit beim Eintreffen (Review A4). */
+      await speicher.setzen({ ...versuch, offline: !!versuch.offline || !r.status, naechsterVersuchAm: jetzt() + warte,
         fehler: { grund: r.status ? `Server vorübergehend nicht bereit (Status ${r.status}).` : "Kein Netz.", status: r.status || 0 } });
       angehalten = "voruebergehend";
       ergebnisse[ev.id] = { art: "wartet" };
     }
   }
   return { ergebnisse, angehalten };
+}
+
+/**
+ * Beim Abmelden (Review A2): Bestätigtes der Person entfernen — es liegt
+ * beim Server. Wartendes bleibt (sonst ginge ein Stempel verloren),
+ * Abgelehntes ebenfalls (verschwindet nie still); beide tragen nach Quittung
+ * oder Absage keinen Standort mehr. Gibt die Zahl der wartenden zurück.
+ */
+export async function abmeldenAufraeumen(speicher, inhaber) {
+  let wartend = 0;
+  for (const e of await ereignisseVon(speicher, inhaber)) {
+    if (e.zustand === "bestaetigt") await speicher.entfernen(e.id);
+    else if (e.zustand === "wartet") wartend++;
+    else if (e.koord) await speicher.setzen({ ...e, koord: null });
+  }
+  return wartend;
 }
 
 /** Ein abgelehntes Ereignis noch einmal senden lassen (ausdrücklich). */
@@ -222,7 +244,7 @@ export async function verwerfen(speicher, id, inhaber) {
 /** Der Rumpf für /api/stempeln. `gesendetAm` ist die Uhr des Geräts beim Absenden. */
 export function rumpfFuer(ev, gesendet = new Date()) {
   return { art: ev.art, datum: ev.datum || null, clientEventId: ev.id, erfasstAm: ev.erfasstAm,
-    gesendetAm: gesendet.toISOString(), offline: !!ev.offline || (ev.versuche || 0) > 1, inhaber: ev.inhaber,
+    gesendetAm: gesendet.toISOString(), offline: !!ev.offline, inhaber: ev.inhaber,
     lat: ev.koord ? ev.koord.lat : null, lon: ev.koord ? ev.koord.lon : null,
     accuracy: ev.koord && typeof ev.koord.accuracy === "number" ? ev.koord.accuracy : null };
 }
