@@ -234,12 +234,22 @@ self.addEventListener("push", (e) => {
   }));
 });
 
+/* Nur Ziele derselben Herkunft öffnen (SI-04). „beginnt mit /“ reichte
+   nicht: „//fremd.example“ und „/\fremd.example“ sind fremde Adressen. */
+function eigenesZiel(ziel) {
+  if (typeof ziel !== "string" || !ziel) return "/";
+  try {
+    const u = new URL(ziel, self.location.origin);
+    return u.origin === self.location.origin ? u.pathname + u.search + u.hash : "/";
+  } catch { return "/"; }
+}
+
 self.addEventListener("notificationclick", (e) => {
   e.notification.close();
-  const ziel = (e.notification.data && e.notification.data.ziel) || "/";
+  const ziel = eigenesZiel(e.notification.data && e.notification.data.ziel);
   e.waitUntil((async () => {
     const fenster = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const f of fenster) if (f.url.includes(self.location.origin)) return f.focus();
-    return self.clients.openWindow(ziel.startsWith("/") ? ziel : "/");
+    return self.clients.openWindow(ziel);
   })());
 });

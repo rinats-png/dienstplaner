@@ -6,6 +6,8 @@
    den Browser, der private bleibt hier. Fehlt er, läuft der Versand trocken.
    ========================================================================== */
 
+import { pushEndpunktErlaubt } from "./pushziel.mjs";
+
 /**
  * @param {any} anmeldung  die gespeicherte Push-Anmeldung (Push-Register)
  * @param {string} titel
@@ -16,6 +18,11 @@
 export async function sendePush(anmeldung, titel, text, ziel) {
   const oeff = process.env.VAPID_PUBLIC, priv = process.env.VAPID_PRIVATE;
   if (!oeff || !priv) return { ok: true, trocken: true };
+  /* Nie einen Host ansprechen, der kein Push-Dienst ist (SI-01) — auch nicht
+     für Anmeldungen, die vor dieser Prüfung gespeichert wurden. „erloschen“:
+     der Versand behandelt die Anmeldung dann wie eine abgelaufene. */
+  if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint))
+    return { ok: false, erloschen: true, fehler: "push-ziel-nicht-erlaubt" };
   try {
     const webpush = await import("web-push");
     webpush.default.setVapidDetails(

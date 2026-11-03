@@ -4,6 +4,7 @@ import { bestandLesen, voruebergehend } from "../lib/bestand.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { eigenerMandant, wirksameRolle, imEigenenBereich, rolleBekannt } from "../lib/rechte.mjs";
 import { zustellen, pushAnmelden, pushAbmelden } from "../lib/versand.mjs";
+import { pushEndpunktErlaubt } from "../lib/pushziel.mjs";
 
 /* ==========================================================================
    ZUSTELLUNG
@@ -127,7 +128,8 @@ export default async (req) => {
         return antwort({ ok: true });
       }
       const { anmeldung } = await req.json().catch(() => ({}));
-      if (!anmeldung || typeof anmeldung.endpoint !== "string" || !/^https:\/\//.test(anmeldung.endpoint)
+      /* Nur Endpunkte bekannter Push-Dienste — sonst SSRF (SI-01, lib/pushziel.mjs). */
+      if (!anmeldung || !pushEndpunktErlaubt(anmeldung.endpoint)
         || JSON.stringify(anmeldung).length > 4000)
         return antwort({ fehler: "Ungültig." }, 400);
       if (!da) return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
