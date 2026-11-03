@@ -122,7 +122,13 @@ export const BRANCHENMODULE = Object.freeze([
     pakete: ["klinik"],
     beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit." }),
   modul({ id: "geteilterdienst", merkmal: "geteilterdienst", name: "Geteilte Dienste", pakete: ["klinik"],
-    beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt." }),
+    beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt.",
+    /* server/lib/modul-geteilterdienst.mjs: Feld zweiterAbschnitt der Dienstart (Bestand) — keine neuen Betriebsfelder. */
+    regelIds: ["GETEILT-RUHE-01", "GETEILT-SPANNE-01"],
+    parameter: {
+      hoechstSpanneStunden: { typ: "zahl", standard: 0, min: 0, max: 24, ganzzahl: false, vorlaeufig: true,
+        text: "Höchstspanne vom Beginn des ersten bis zum Ende des zweiten Abschnitts; 0 = keine Grenze (Matrix T2 b)." },
+    } }),
   modul({ id: "funktionsdienst", merkmal: "funktionsdienst", name: "Funktionsdienste", pakete: ["klinik"],
     beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation." }),
   modul({ id: "rotation", merkmal: "rotation", name: "Rotationen", pakete: ["klinik"],

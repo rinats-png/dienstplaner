@@ -324,6 +324,13 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
   nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
   (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
+- *Geteilte Dienste* (`server/lib/modul-geteilterdienst.mjs`): keine neuen Betriebsfelder. Das Feld `zweiterAbschnitt` einer
+  Dienstart gibt es im Bestand; Dienstarten ändern nur Rollen mit `org.edit` oder `pattern.edit` (WP-22). Der Server
+  weist eine falsche Form des zweiten Abschnitts ab (`geteilterdienstZusammen`: Uhrzeiten, Lücke, höchstens 24 Stunden
+  Spanne). Parameter `hoechstSpanneStunden` in `einstellungen.branchenmodule` (nur `org.edit`). Befunde nur als
+  Hinweis, nur bei aktivem Modul; die Rechnung braucht nur die Dienstart und die Dienste der Nachbartage. Das Stempeln je Abschnitt ist
+  rechnerisch vorbereitet (`istJeAbschnitt`), die Ablage zweier Stempelpaare je Tag noch nicht angebunden.
+  Geprüft in `pruefungen/modul-geteilterdienst.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue

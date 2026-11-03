@@ -27,6 +27,7 @@ import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { branchenmoduleZusammen } from "./branchenmodule.mjs";
 import { anlagenZusammen } from "./modul-anlagen.mjs";
 import { maschinenqualZusammen } from "./modul-maschinenqual.mjs";
+import { geteilterdienstZusammen } from "./modul-geteilterdienst.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -1117,6 +1118,9 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       /* Maschinenqualifikationen (WP-19): befähigte Person und Wiederholung an Kompetenzen zu Anlagen. */
       const maschinen = maschinenqualZusammen(geschickt);
       if (maschinen.grund) return { verweigert: maschinen.grund };
+      /* Geteilte Dienste (WP-19): Form des zweiten Abschnitts einer Dienstart. */
+      const geteilt = geteilterdienstZusammen(geschickt);
+      if (geteilt.grund) return { verweigert: geteilt.grund };
       /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
