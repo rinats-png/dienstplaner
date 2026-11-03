@@ -169,6 +169,18 @@ pfeffer="$(env_wert "$envdatei" CENTRIC_PFEFFER)"
   abbruch 4 "CENTRIC_VERTRAUTE_PROXYS ist in $envdatei leer. Nur Caddys feste Adresse im Netz proxy eintragen (docs/CADDY-UND-XFF.md, Abschnitt 7) — sonst teilten sich alle Nutzer eine Herkunft und einen Bremszähler."
 [[ -n "$pfeffer" ]] || abbruch 4 "CENTRIC_PFEFFER fehlt in $envdatei — Sicherung nicht gegenprüfbar"
 
+# Kritisch-Schwellen für den Platz nach der Sicherung — dieselben wie /gesund
+# (server/lib/gesund.mjs), dort dezimal erlaubt, hier ebenso (WP-05b R3).
+# Ungültig gesetzt: Abbruch vor jedem Wechsel statt stillem Rückfall.
+krit_pz="$(env_wert "$envdatei" CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT)"
+krit_mb="$(env_wert "$envdatei" CENTRIC_GESUND_PLATZ_KRITISCH_MB)"
+[[ -z "$krit_pz" || "$krit_pz" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+  abbruch 4 "CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT=$krit_pz in $envdatei ist keine Zahl"
+[[ -z "$krit_mb" || "$krit_mb" =~ ^[0-9]+([.][0-9]+)?$ ]] ||
+  abbruch 4 "CENTRIC_GESUND_PLATZ_KRITISCH_MB=$krit_mb in $envdatei ist keine Zahl"
+krit_pz="${krit_pz:-3}"
+krit_mb="${krit_mb:-200}"
+
 # --- 2. Docker, Pull nur dieses Digests, digest-pruefen ------------------
 docker_erreichbar || abbruch 7 "Docker antwortet nicht (docker info)"
 bild_da=1
@@ -345,24 +357,6 @@ CENTRIC_PFEFFER="$pfeffer" docker run --rm --network none --read-only --tmpfs /t
   alt_wieder_starten "ablage-sicherung pruefen"
 protokoll "gesichert digest=$digest sicherung=$name"
 
-# Platz nach der Sicherung (Review WP-05, N1): dieselben Kritisch-Schwellen
-# wie /gesund (CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT/_MB aus der .env,
-# Vorgabe 3 % / 200 MB). Darunter wird nicht gewechselt — der bisherige Stand
-# läuft weiter (oder R0, wenn er nicht startbar ist), wie bei einem
-# Sicherungsfehler.
-krit_pz="$(env_wert "$envdatei" CENTRIC_GESUND_PLATZ_KRITISCH_PROZENT)"
-[[ "$krit_pz" =~ ^[0-9]+$ ]] || krit_pz=3
-krit_mb="$(env_wert "$envdatei" CENTRIC_GESUND_PLATZ_KRITISCH_MB)"
-[[ "$krit_mb" =~ ^[0-9]+$ ]] || krit_mb=200
-platz="$(df -P -B1 "$DATEN_PFAD" 2>/dev/null | awk 'NR == 2 { print $2, $4 }')" || platz=""
-read -r platz_gesamt platz_frei <<<"$platz"
-if [[ ! "${platz_gesamt:-}" =~ ^[0-9]+$ || ! "${platz_frei:-}" =~ ^[0-9]+$ ]] || ((platz_gesamt == 0)); then
-  alt_wieder_starten "freier Platz nach der Sicherung nicht ermittelbar"
-fi
-if ((platz_frei * 100 < krit_pz * platz_gesamt || platz_frei < krit_mb * 1048576)); then
-  alt_wieder_starten "nach der Sicherung kritisch wenig Platz unter $DATEN_PFAD ($platz_frei Bytes frei, Schwelle $krit_pz % / $krit_mb MB)"
-fi
-
 # Aufbewahrung (N4): die jüngsten BEHALTEN vollständigen Sicherungen bleiben,
 # die eben geprüfte immer; ältere vollständige werden entfernt.
 # Robust (A2): Scheitert die Auflistung, wird übersprungen — nie gelöscht.
@@ -387,6 +381,20 @@ if liste="$(find "$SICHERUNGEN" -mindepth 1 -maxdepth 1 -type d -name 'centric-s
 else
   warnung "Aufbewahrung übersprungen: Liste der Sicherungen nicht lesbar."
   protokoll "aufbewahrung uebersprungen: find scheiterte"
+fi
+
+# Platz nach der Sicherung (Review WP-05 N1, WP-05b R3): erst nach der
+# Aufbewahrung — alte Sicherungen sind dann schon entfernt, die neue bleibt.
+# Darunter wird nicht gewechselt; der bisherige Stand läuft weiter (oder R0,
+# wenn er nicht startbar ist), wie bei einem Sicherungsfehler.
+platz="$(df -P -B1 "$DATEN_PFAD" 2>/dev/null | awk 'NR == 2 { print $2, $4 }')" || platz=""
+read -r platz_gesamt platz_frei <<<"$platz"
+if [[ ! "${platz_gesamt:-}" =~ ^[0-9]+$ || ! "${platz_frei:-}" =~ ^[0-9]+$ ]] || ((platz_gesamt == 0)); then
+  alt_wieder_starten "freier Platz nach der Sicherung nicht ermittelbar"
+fi
+if awk -v f="$platz_frei" -v g="$platz_gesamt" -v p="$krit_pz" -v m="$krit_mb" \
+     'BEGIN { exit !(f * 100 < p * g || f < m * 1048576) }'; then
+  alt_wieder_starten "nach der Sicherung kritisch wenig Platz unter $DATEN_PFAD ($platz_frei Bytes frei, Schwelle $krit_pz % / $krit_mb MB)"
 fi
 
 # --- 5. .env: nur IMAGE_DIGEST ------------------------------------------
