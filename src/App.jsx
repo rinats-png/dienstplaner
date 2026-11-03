@@ -860,7 +860,7 @@ const ABW = [
 ];
 /* WP-27: Wer Abwesenheiten nur gekürzt bekommt (Betriebsrat, Beschäftigte für
    fremde Personen), sieht „abwesend" — nicht „Sonstiges". */
-const ABW_NEUTRAL = { id: "abwesend", label: "abwesend", kurz: "–", farbe: "#878C93", urlaub: false, bezahlt: true, rang: 1 };
+const ABW_NEUTRAL = { id: "abwesend", label: "abwesend", kurz: "–", farbe: ABW[3].farbe, urlaub: false, bezahlt: true, rang: 1 };   // Farbe wie „Freistellung“
 const abwArt = (id) => ABW.find((a) => a.id === id) || (id === "abwesend" ? ABW_NEUTRAL : ABW[4]);
 
 /* ------------------------------- Zyklusvorlagen --------------------------- */
