@@ -38,6 +38,7 @@
     "pruefung:mandanten-http": "node pruefungen/mandanten.mjs",
     "pruefung:sicherungen": "vitest run pruefungen/sicherungen.test.js",
     "pruefung:wiederherstellung-schutz": "vitest run pruefungen/wiederherstellung-schutz.test.js",
+    "pruefung:abnahme-ab": "vitest run pruefungen/abnahme-a-b.test.js",
     "pruefung:preisanzeige": "vitest run pruefungen/preisanzeige.test.js",
     "pruefung:sicherungen-http": "node pruefungen/sicherungen.mjs",
     "pruefung:erstbefuellung": "vitest run pruefungen/erstbefuellung.test.js pruefungen/altcodes.test.js",
