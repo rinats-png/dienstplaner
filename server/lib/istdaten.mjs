@@ -104,7 +104,7 @@ export function zeitraumJahr(jahr) {
  */
 export const zurPruefung = (e) => !!e && e.bestaetigt === false
   && ((typeof e.grund === "string" && (e.grund.startsWith("LANGER_DIENST") || e.grund.startsWith("OFFLINE_PRUEFEN")
-    || e.grund.startsWith("DAUER_NULL")))
+    || e.grund.startsWith("DAUER_NULL") || e.grund.startsWith("ZEITUMSTELLUNG")))
     || e.ungeplant === true);
 
 /** Ein Dienst, der gestempelt wurde, ohne dass an diesem Tag einer geplant war (WP-13). */
@@ -158,13 +158,21 @@ export const UNGEPLANT_TEXT = "ungeplant";
 export const bestaetigungsGrund = (e) => (istUngeplant(e)
   ? "Ungeplanter Dienst geprüft und bestätigt"
   : e && typeof e.grund === "string" && e.grund.startsWith("OFFLINE_PRUEFEN")
-    ? "Offline-Stempel geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
+    ? "Offline-Stempel geprüft und bestätigt"
+    : e && typeof e.grund === "string" && e.grund.startsWith("ZEITUMSTELLUNG")
+      ? "Dienst in der Nacht der Zeitumstellung geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
 
 /** Text zu einem bestätigten ungeplanten Dienst an einem Tag mit Abwesenheit (C1): er zählt dort nicht. */
 export const UNGEPLANT_ABWESEND_TEXT = "zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto";
 
 /** Der Kennzeichnungstext eines Prüffalls (art aus pruefHinweis: "lang" | "ungeplant"). */
 export const pruefFallText = (art) => (art === "ungeplant" ? UNGEPLANT_PRUEFUNG_TEXT : ZUR_PRUEFUNG_TEXT);
+
+/* Ein DAUER_NULL-Prüffall aus der Zeit vor der Marke (WP-14b, M3): Der Stempel trägt UNGEPLANTER_DIENST — dann
+   gibt es keine Planzeit, die vorläufig zählen könnte; er ist „ungeplant“, nicht „Planzeit vorläufig“. */
+const ohnePlanDauerNull = (m, pid, datum, e) => !!e && typeof e.grund === "string" && e.grund.startsWith("DAUER_NULL")
+  && (() => { const s = m && m.einstempeln ? m.einstempeln[`${pid}|${datum}`] : null;
+    return !!s && Array.isArray(s.markierungen) && s.markierungen.includes("UNGEPLANTER_DIENST"); })();
 
 const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September",
   "Oktober", "November", "Dezember"];
@@ -178,7 +186,7 @@ const MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "A
 export function pruefHinweis(m, ym, personId) {
   const faelle = erfassungenZurPruefung(m, ym)
     .filter((f) => personId === undefined || personId === null || String(f.personId) === String(personId))
-    .map(({ personId: pid, datum, erfassung }) => ({ personId: pid, datum, art: istUngeplant(erfassung) ? "ungeplant" : "lang" }));
+    .map(({ personId: pid, datum, erfassung }) => ({ personId: pid, datum, art: istUngeplant(erfassung) || ohnePlanDauerNull(m, pid, datum, erfassung) ? "ungeplant" : "lang" }));
   if (!faelle.length) return null;
   const [j, mo] = String(ym).split("-");
   const monat = `${MONATE[Number(mo) - 1] || mo} ${j}`;
@@ -237,7 +245,9 @@ export function istZeitFuer(m, p, d, da) {
   /* Eine bei der Korrektur genannte Pause (WP-14) gilt vor der der Dienstart. */
   const roh = { start: e.start || da.start, ende: e.ende || da.ende,
     pause: e.pause !== undefined && e.pause !== null && Number.isFinite(Number(e.pause)) ? Number(e.pause) : (da.pause || 0) };
-  const std = dauerAm(d, roh);
+  /* Nie negativ (WP-14b, M2): Altdaten mit einer Pause über der wirklichen Anwesenheit (Frühjahrsnacht)
+     zählen 0 — eine negative Ist-Zeit zöge Konto, Zuschläge und Lohn ins Minus. */
+  const std = Math.max(0, dauerAm(d, roh));
   return { std, erfasst: true, abweichung: Math.round((std - dauerAm(d, da)) * 100) / 100 };
 }
 

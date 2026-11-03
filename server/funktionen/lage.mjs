@@ -1,5 +1,5 @@
 import { getStore } from "../lib/ablage.mjs";
-import { spurLesen, spurAufraeumen, GRENZEN } from "../lib/schutz.mjs";
+import { spurLesen, spurAufraeumen, spurFuerBetreiber, GRENZEN } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 
 /* ==========================================================================
@@ -46,7 +46,8 @@ export default async (req) => {
       a[z.kennung] = (a[z.kennung] || 0) + 1; return a; }, {}))
       .filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 20)
       .map(([kennung, n]) => ({ kennung, versuche: n })),
-    letzte: spur.slice(0, 100),
+    /* Ohne Personenbezug (WP-14b, M1): keine Personenkennung, keine Ist-Zeiten, keine Schutzkennungen. */
+    letzte: spur.slice(0, 100).map(spurFuerBetreiber),
     selbststarts: selbst.slice(0, 60),
   });
 };

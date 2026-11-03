@@ -1052,6 +1052,29 @@ export async function spurLesen(tage) {
   return out.sort((a, b) => b.zeit.localeCompare(a.zeit));
 }
 
+/**
+ * Eine Protokollzeile, wie sie der Betreiber in der Lage sieht (WP-14b, M1). Der Betreiber ist
+ * Auftragsverarbeiter: keine Personenkennung (`person`), im Zusatz keine Person|Tag-Schlüssel, keine
+ * Uhrzeiten (Ist-Zeiten) und keine Schutzkennungen (Mutterschutz/Jugendschutz, Art. 9 DSGVO). Gilt auch
+ * für Zeilen, die vor diesem Nachtrag geschrieben wurden (bis zu SPUR_TAGE alt). Die gespeicherte Zeile
+ * bleibt unverändert — die Auskunft nach Art. 15 (auskunft.mjs) liest sie direkt.
+ * @param {any} z
+ * @returns {any}
+ */
+export function spurFuerBetreiber(z) {
+  if (!z || typeof z !== "object") return z;
+  const rest = { ...z };
+  delete rest.person;
+  if (typeof rest.zusatz === "string") {
+    rest.zusatz = rest.zusatz
+      .replace(/\s*·\s*Hinweise:\s*[A-Z_,]+/g, " · Hinweise")
+      .replace(/\b(MUTTERSCHUTZ|JUGENDSCHUTZ)\b/g, "Schutzhinweis")
+      .replace(/[^\s|:]+\|\d{4}-\d{2}-\d{2}/g, "…")
+      .replace(/\b([01]?\d|2[0-3]):[0-5]\d\b/g, "…");
+  }
+  return rest;
+}
+
 /** Alte Einträge entfernen. Wird beim Lesen gelegentlich mitgemacht. */
 export async function spurAufraeumen() {
   try {

@@ -163,6 +163,7 @@ export const MARKIERUNG_TEXT = Object.freeze({
   OFFLINE_ALT: "offline erfasst, über 48 Stunden alt — zur Prüfung",
   OFFLINE_PRUEFEN: "offline gestempelt — Ist-Zeit zur Prüfung",
   DAUER_NULL: "Beginn gleich Ende — Zeiten über die Korrektur eintragen",
+  ZEITUMSTELLUNG: "Nacht der Zeitumstellung — Uhrzeiten passen nicht zur Dauer, Zeiten über die Korrektur eintragen",
   ORT_PRUEFEN: "Ort nicht bestätigt — bitte klären",
   UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });

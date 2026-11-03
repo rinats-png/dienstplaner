@@ -282,6 +282,25 @@ describe("Veraltete Kopie, Löschlauf, Wiederherstellung, Altbestand", () => {
     expect(g.einstempeln[`a2|${VORGESTERN}`]).toBeTruthy();
     expect(loeschStichtag({ aufbewahrung: { plandatenMonate: 3 } }, "2026-11-03")).toBe("2024-11-03");   // nie unter 24 Monate
   });
+  it("B-N2: Kopie von vor dem Löschen (Stempel und Ist-Zeit von 2023) ⇒ 200 mit Hinweis in der Antwort, nichts wird zurückgeschrieben", async () => {
+    const r = await anfrage("bestand", { methode: "GET", token: T.leitung });
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    b.mandanten[0].einstempeln[`a2|${ALT}`] = { start: "06:00", ende: "14:00" };
+    b.mandanten[0].erfassung[`a2|${ALT}`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
+    b.mandanten[0].personen.find((p) => p.id === "a2").telefon = "0171";
+    const w = await anfrage("bestand", { methode: "PUT", token: T.leitung, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+    expect(w.status, w.roh).toBe(200);
+    expect(w.hinweis).toMatch(/2 Einträge jenseits der Aufbewahrungsfrist/);
+    const g = await gespeichert();
+    expect(g.einstempeln[`a2|${ALT}`]).toBeUndefined();
+    expect(g.erfassung[`a2|${ALT}`]).toBeUndefined();
+    expect(g.personen.find((p) => p.id === "a2").telefon).toBe("0171");
+    /* Ohne verworfene Einträge keine Meldung. */
+    const r2 = await anfrage("bestand", { methode: "GET", token: T.leitung });
+    const w2 = await anfrage("bestand", { methode: "PUT", token: T.leitung, rumpf: { bestand: r2.bestand, etag: r2.etag } });
+    expect(w2.status).toBe(200);
+    expect(w2.hinweis).toBeUndefined();
+  });
   it("Altbestand (ohne startAm, mit ort/innerhalb/abstand) gilt als Original: ändern 403, Rundreise 200, Korrektur möglich", async () => {
     const r = await anfrage("bestand", { methode: "GET", token: T.leitung });
     const b = JSON.parse(JSON.stringify(r.bestand));
@@ -302,6 +321,28 @@ describe("Veraltete Kopie, Löschlauf, Wiederherstellung, Altbestand", () => {
     expect(einmal).toEqual(alt);
     expect(zweimal).toEqual(alt);
     expect(stempelWiderspruch(alt, alt, {})).toBeNull();
+  });
+  it("WP-14b (M3b): stempelSichern — im unveränderten Monat gilt der gespeicherte Stempel, im veränderten bleibt die (geprüfte) Kopie für den Drei-Wege-Abgleich", () => {
+    const k = { id: "k1", vorher: null, nachher: { start: "06:00", ende: "15:00" }, wer: {}, wann: "2026-11-01T00:00:00Z", grund: "Ende laut Dienstbuch" };
+    const gesp = { id: "m1", einstempeln: { "a|2026-11-01": { start: "06:00", ende: "14:00", korrekturen: [k] }, "a|2026-10-01": { start: "07:00", ende: "15:00", korrekturen: [k] } },
+      erfassung: { "a|2026-11-01": { start: "06:00", ende: "15:00", bestaetigt: true, korrigiert: true }, "a|2026-10-01": { start: "06:00", ende: "15:00", bestaetigt: true, korrigiert: true } } };
+    /* Eine ältere Kopie: ohne die Korrektur, mit der alten Ist-Zeit. */
+    const kopie = { id: "m1", einstempeln: { "a|2026-11-01": { start: "06:00", ende: "14:00" }, "a|2026-10-01": { start: "07:00", ende: "15:00" } },
+      erfassung: { "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true }, "a|2026-10-01": { start: "07:00", ende: "15:00", bestaetigt: true } } };
+    const r = stempelSichern(gesp, kopie, { ...kopie }, { unveraendert: new Set(["m1::2026-10"]) }).mandant;
+    /* 2026-10 unverändert: der gespeicherte Stand (mit Korrektur und abgeleiteter Ist-Zeit). */
+    expect(r.einstempeln["a|2026-10-01"]).toEqual(gesp.einstempeln["a|2026-10-01"]);
+    expect(r.erfassung["a|2026-10-01"]).toEqual(gesp.erfassung["a|2026-10-01"]);
+    /* 2026-11 verändert: die Kopie bleibt stehen — der Drei-Wege-Abgleich (bestand.mjs) entscheidet, nicht stempelSichern. */
+    expect(r.einstempeln["a|2026-11-01"]).toEqual(kopie.einstempeln["a|2026-11-01"]);
+    expect(r.erfassung["a|2026-11-01"]).toEqual(kopie.erfassung["a|2026-11-01"]);
+    /* Ohne Abgleich (unveraendert fehlt) gilt überall der gespeicherte Stand. */
+    const ohne = stempelSichern(gesp, kopie, { ...kopie }, {}).mandant;
+    expect(ohne.einstempeln).toEqual(gesp.einstempeln);
+    expect(ohne.erfassung).toEqual(gesp.erfassung);
+    /* Ein Stempel, den die Kopie eines veränderten Monats nicht trägt, wird nicht erfunden. */
+    const ohneEintrag = stempelSichern(gesp, { id: "m1", einstempeln: {} }, { id: "m1", einstempeln: {}, erfassung: {} }, { unveraendert: new Set() }).mandant;
+    expect(ohneEintrag.einstempeln).toEqual({});
   });
   it("Wiederherstellen aus Sicherung: heutige Stempel und Korrekturen bleiben, ältere Stände kommen nicht zurück", () => {
     const k = { id: "k1", vorher: null, nachher: { start: "06:00", ende: "15:00" }, wer: {}, wann: "2026-11-01T00:00:00Z", grund: "x" };

@@ -129,6 +129,13 @@ describe("Leitung und Planung: Anträge, offene Fälle, Altbestand", () => {
     m.erfassung[`betriebsrat|${T4}`] = { start: "06:00", ende: "14:00", bestaetigt: true, korrigiert: true, ungeplant: true, grund: "Korrektur der Stempelzeit" };
     expect(text(h(A.KorrekturOffene, { sitz: sitzFuer(m, "leitung"), ym: MONAT, akt }))).toBe("");
   });
+  it("WP-14b (M3): ein früher korrigierter Tag ohne Plan ohne Marke (zählte nie) steht wieder im Altbestand", () => {
+    const m = betrieb();
+    m.erfassung[`betriebsrat|${T4}`] = { start: "06:00", ende: "14:00", bestaetigt: true, korrigiert: true, pause: 30, grund: "Korrektur der Stempelzeit" };
+    const t = text(h(A.KorrekturOffene, { sitz: sitzFuer(m, "leitung"), ym: MONAT, akt }));
+    expect(t).toContain("1 ungeplanter Dienst ohne Prüfung (Altbestand)");
+    expect(t).toContain("Prüfen und bestätigen");
+  });
   it("ZeitFormular: Beginn, Ende, Pause, Grund; der Knopf erst mit Uhrzeiten und Grund (≥ 10 Zeichen)", () => {
     const markup = renderToStaticMarkup(h(A.ZeitFormular, { start: "06:00", ende: "14:00", pause: 30, knopf: "Antrag stellen", onSenden() {} }));
     expect(markup).toContain('aria-label="Beginn"');
