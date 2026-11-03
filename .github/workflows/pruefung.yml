@@ -168,6 +168,13 @@ jobs:
       - name: Bremse im Prozess
         run: npm run pruefung:bremse-lokal
 
+      # WP-47: Bremsenkonzept für den Echtbetrieb — Schichtwechsel (130 Stempel in
+      # einem Betrieb), Anmeldewelle (gelungene Anmeldungen zählen nicht gegen
+      # Ziel/Gesamt), Fehlversuche weiter streng, Lastgrenzen mit Retry-After,
+      # Wiederholung der Oberfläche bei 429.
+      - name: Bremsen im Echtbetrieb (WP-47)
+        run: npm run pruefung:bremse-wp47
+
       # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server

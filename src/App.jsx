@@ -10,7 +10,8 @@ import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGAB
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
-  einteilungsBefunde, planeSchutzkonflikte } from "../server/lib/fachpruefung.mjs";
+  einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
+import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte } from "./schutzkonflikte-hook.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -2729,25 +2730,9 @@ const schutzkonfliktPlan = (m) => ({ heute: heute(),
  * damit der Plan beim Bearbeiten nicht ruckelt. Bis das Ergebnis da ist,
  * gilt das vorige.
  */
-const SK_LEER = new Map();
-/** Letzte fertige Rechnung je Betrieb: Ein neu gezeigter Teil der Oberfläche beginnt damit statt leer (Review MITTEL 4). */
-const SK_LETZTE = new Map();
-const SK_ENTPRELLUNG_MS = 250;
-/**
- * @param {any} m Betrieb
- * @param {boolean} [aktiv] false: nicht rechnen (die Ansicht braucht das Ergebnis nicht)
- */
-function useSchutzkonflikte(m, aktiv = true) {
-  const h = heute();                                                   // Tageswechsel ohne Datenänderung rechnet neu
-  const [ergebnis, setErgebnis] = useState(() => (SK_LETZTE.get(m.id) || { ergebnis: SK_LEER }).ergebnis);
-  useEffect(() => {
-    if (!aktiv) return undefined;
-    /* Nichts Bekanntes: gleich anfangen (kein Warten vor der ersten Anzeige); sonst entprellen. */
-    return planeSchutzkonflikte(m, schutzkonfliktPlan(m), (r) => { SK_LETZTE.set(m.id, { ergebnis: r }); setErgebnis(r); },
-      { verzoegerungMs: SK_LETZTE.has(m.id) ? SK_ENTPRELLUNG_MS : 0 });
-  }, [m, h, aktiv]);
-  return aktiv ? ergebnis : SK_LEER;
-}
+/* Der Haken selbst liegt in src/schutzkonflikte-hook.js (Verhalten dort geprüft): letzte Rechnung der Sitzung als
+   Startwert, aktiv=false rechnet nicht, Abmelden und Rollenwechsel leeren das Gemerkte. */
+const useSchutzkonflikte = (sitz, aktiv = true) => useSchutzkonflikteBasis(sitz, aktiv, schutzkonfliktPlan, heute);
 
 /**
  * Bestätigte Abweichungen, die im Plan noch wirken: Die Person hat an dem
@@ -9033,7 +9018,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
-  const schutzkonflikte = useSchutzkonflikte(m);
+  const schutzkonflikte = useSchutzkonflikte(sitz);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -13386,7 +13371,9 @@ function Stempeluhr({ sitz, akt, vorgang }) {
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, tag, art, koord); setLaeuft(false); });
+    /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
+       Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
+    positionHolen(geoAn, (koord) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -16043,7 +16030,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
   /* Nur für Planung und Leitung (dieselbe Bedingung wie die Pflichtaufgabe unten); entprellt, in Häppchen (Nachtrag WP-22b). */
-  const schutzkonflikte = useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
+  const schutzkonflikte = useSchutzkonflikte(sitz, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
   const [alles, setAlles] = useState(false);
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -20432,7 +20419,8 @@ function MStempel({ sitz, akt, vorgang }) {
   const [laeuft, setLaeuft] = useState(false);
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (k) => { akt.stempeln(p.id, tag, art, k); setLaeuft(false); });
+    /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
+    positionHolen(geoAn, (k) => { Promise.resolve(akt.stempeln(p.id, tag, art, k)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -22862,8 +22850,8 @@ function AppInnen() {
          während der Bestand hier schon null ist — sichtbar als
          Ladeskelett, das nie fertig wird. */
       anmelden: (sess) => setDb((s) => ({ ...s, session: sess })),
-      abmelden: () => { SP.abmelden(); window.location.reload(); },
-      verbindungTrennen: () => { SP.abmelden(); window.location.reload(); },
+      abmelden: () => { vergissSchutzkonflikte(); SP.abmelden(); window.location.reload(); },
+      verbindungTrennen: () => { vergissSchutzkonflikte(); SP.abmelden(); window.location.reload(); },
       zurueck: () => { if (!verlauf.current.length) return melde("Nichts rückgängig zu machen.");
         const [l, ...r] = verlauf.current; verlauf.current = r; setDb(l); melde("Rückgängig gemacht."); },
 
