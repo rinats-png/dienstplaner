@@ -352,3 +352,114 @@ Mit den Review-Auflagen dazu: `src/istdaten.js` → `server/lib/istdaten.mjs` (W
 `src/App.jsx` (`istTag` und seine Verbraucher, Monatsabschluss-Anzeige, Export-Zeile: `demobestand`, `sollStunden`,
 `ausgleichPruefen`, `offeneErfassung` für die Prüfungen), `src/speicher.js` (Pause), `package.json` (`pruefung:zeiterfassung`
 + `monatsabschluss-ist.test.js`).
+
+## Zusammenführung mit WP-14b/27b/23b
+
+Merge (kein Rebase, kein Force-Push) von `origin/integration/centric-complete` 92a3b97 (WP-23b #64, WP-27b #65, WP-14b #66) in
+den WP-16-Kopf 0f14e9a. Konflikte in sechs Dateien; alles Übrige (u. a. `rechte.mjs`, `sicht.mjs`, `korrekturworkflow.mjs`,
+`zeitregeln.mjs`, `RECHTEMATRIX.md`, `src/App.jsx`) zusammengeführt ohne Konflikt und nachgesehen.
+
+### Ist-Rechnung: eine Datei
+
+Beide Seiten hatten `src/istdaten.js` nach `server/lib/istdaten.mjs` verschoben (WP-16 Review H1 für das eingefrorene Ist,
+WP-27b für die Betriebsrat-Auswertung). Gegenüber der gemeinsamen Basis (`src/istdaten.js` 764b1ab) war der Unterschied klein
+und überschneidungsfrei: WP-16 änderte nur `pruefZeitFuer` (erfasste Pause vor der der Dienstart), WP-27b nur den Importpfad
+(`regelwerk.mjs`), WP-14b `zurPruefung` (ZEITUMSTELLUNG), `bestaetigungsGrund`, `ohnePlanDauerNull` in `pruefHinweis` und
+`Math.max(0, …)` in `istZeitFuer`. Ergebnis: **`server/lib/istdaten.mjs` = Stand der Integration + die WP-16-Änderung an
+`pruefZeitFuer`**; `src/istdaten.js` bleibt die reine Weiterleitung (`export * from "../server/lib/istdaten.mjs"`, Kopfkommentar
+nennt beide Gründe). `istTag`/Freeze (`src/App.jsx`), `feiertage.mjs`, `mindestFuer`/`postenBesatzung` (`isteinfrieren.mjs`)
+waren nicht betroffen. Neue Prüfung (`istdaten.test.js`, Auflage aus dem WP-27b-Review): `src/istdaten.js` enthält außer dem
+Kommentar genau die Weiterleitung; die Serverfassung trägt die Änderungen beider Pakete.
+
+Das eingefrorene Ist rechnet damit ebenfalls nie negativ (`istZeitFuer` mit `Math.max(0, …)`) und erkennt ZEITUMSTELLUNG als
+Prüffall (`p: 1` im Freeze, Abschluss ohne „trotzdem“ gesperrt — `zurPruefung` zählt ihn).
+
+### Betriebsrat-Auswertung
+
+WP-27b hat das Ist der Auswertung auf `istZaehlen` (eine Stelle, `istZeitFuer`) umgestellt und ungeplante Dienste (WP-13)
+aufgenommen; WP-16 liest für abgeschlossene Monate das eingefrorene Ist. Zusammengeführt: Im abgeschlossenen Monat zählt nur
+der Freeze (bestätigt erfasste Tage, `e: 1`, Stunden wie zum Abschluss mit `istZeitFuer` gerechnet — **auch ungeplante
+Dienste**, denn `istEinfrieren` friert sie mit `ungeplanterDienst` ein); die Erfassung des Tages wird dann nicht noch einmal
+gezählt (`ist = null`, beide Zweige — mit und ohne Plan). Im offenen Monat unverändert WP-27b. Der dauerhafte Freeze der
+**Ausgabe** (`brist:<raum>:<betrieb>:<monat>`, WP-27b) bleibt nötig und widerspricht dem nicht: Er hält fest, was der
+Betriebsrat einmal gesehen hat (auch über Wiederöffnen und Korrektur hinweg, Hinweis `istKorrigiert`); der Monatsfreeze hält
+fest, was im Lohn steht. Die Zahlen beider stammen aus derselben Rechnung wie `istTag`/Stundenkonto; die dokumentierte
+Abweichung bleibt der Anrechnungsfaktor (die Auswertung zählt Stunden ungewertet).
+
+### Protokoll (Spur) nach WP-14b M1
+
+Die WP-16-Zeilen schrieben Person|Tag bzw. den Tag in die Spur. Jetzt nur Monat, Ausgang, Kennung, Zahlen:
+`Monat abgeschlossen <JJJJ-MM>` (PUT), `stempeln <art>: Monat abgeschlossen <JJJJ-MM>[ · offline]`,
+`Stempelkorrektur: Monat abgeschlossen <JJJJ-MM>`, `Korrekturantrag[ entscheiden]: Monat abgeschlossen <JJJJ-MM>`,
+`Zeit bestätigen: Monat abgeschlossen <JJJJ-MM>`; abgewiesener Abschluss mit `spurGrund` (ohne Uhrzeiten); Wiederöffnen
+`Monatsabschluss <JJJJ-MM> wiedergeöffnet <Kennung> · Grund im Verlauf` — der Grund ist Freitext und steht nur im Verlauf am
+Monat (sichtbar für Planung und Leitung). Person, Tag und Zeit eines abgewiesenen Stempels stehen weiter am Abschluss
+(`abgewiesen`). Die `/lage` filtert zusätzlich mit `spurFuerBetreiber` (WP-14b, unverändert).
+Prüfungen (`monatsabschluss.test.js`): neue Prüfung „Spur ohne Personenbezug“ (alle Monatsabschluss- und Monat-abgeschlossen-
+Zeilen ohne Person|Tag, ohne Tag, ohne Uhrzeit; Betreiber-Sicht ohne `person`) — rot mit einer Zeile `… <person>|<tag> …`
+(Mutante), grün danach. Angepasst (schärfer): Die bestehende Prüfung erwartete den Grund des Wiederöffnens in der Spur; jetzt
+erwartet sie die Kennung und prüft, dass der Grund in **keiner** Zeile steht.
+
+Vorbestehende Zeilen außerhalb von WP-16 (`stempeln <art> <tag>: schon gestempelt`, `Zeit bestätigen <tag>: …`,
+`Stempel-Integrität <person|tag>`) sind nicht Teil dieses Pakets; die Betreiber-Lage maskiert Person|Tag und Uhrzeiten dort
+über `spurFuerBetreiber`, ein bloßer Tag bleibt sichtbar (offen, siehe unten).
+
+### Selbstauskunft wie Korrektur (WP-14b M2/M4, Review-Befund F8)
+
+`selbstauskunftPruefen` (`server/lib/zeiterfassung.mjs`): Die Pause wird mit `pauseZuLang(start, ende, pause, datum)` an der
+wirklichen Dauer des Tages gemessen (Frühjahrsnacht: 01:00–04:00 sind 2 h), auch bei „wie geplant“. **Beginn = Ende** wird
+abgewiesen (422, dieselbe Meldung `BEGINN_GLEICH_ENDE` wie Korrektur und Antrag; die Konstante steht jetzt in
+`zeiterfassung.mjs` und wird von `stempelintegritaet.mjs` weitergereicht), Ausnahme: geplanter 24-Stunden-Dienst (Dienstart
+Beginn = Ende). Vorher zählte 22:00–22:00 an einem Nachtdienst-Tag 24 h. Ein ZEITUMSTELLUNG-Prüffall kann über die
+Selbstauskunft nicht entstehen oder bestätigt werden: Sie nimmt nur Tage ohne Erfassung an (409 „schon erfasst“).
+Prüfungen (`pausenerfassung.test.js`, 2 neu): rot mit der alten Bedingung (Mutante: `pause >= dauer`, ohne Beginn=Ende-Sperre),
+grün danach.
+
+### Stempeln, Korrektur, Antrag (zusammengeführt)
+
+- `daten.mjs` Stempeln: WP-16-Pause (`pauseMin`, `PAUSE_UNGUELTIG`/`PAUSE_ZU_KURZ`, Hinweise) **und** WP-14b `ZEITUMSTELLUNG`
+  (`uhrAbweichend`); alle Zweige der Erfassung in `mitPause(…)`, Marken `ungeplant` (auch bei DAUER_NULL/ZEITUMSTELLUNG),
+  `DAUER_NULL`, `ZEITUMSTELLUNG`, `OFFLINE_PRUEFEN` erhalten. ZEITUMSTELLUNG wird vor der Pause bestimmt: Aus Uhrzeiten, die die Dauer
+  nicht wiedergeben (Dauer 0 oder Herbstnacht), entstehen keine Pausenhinweise und kein `PAUSE_ZU_KURZ` (sonst „23:50 h ohne
+  45 min Pause“ bei 50 gemessenen Minuten); die angegebene Pause steht trotzdem am Prüffall. Prüfung `serverdatum.test.js`
+  (neu, gegen die Serverfunktion; rot ohne die Bedingung, grün danach). Reihenfolge unverändert: Idempotenz (WP-07) → Tag (`stempelZiel`)
+  → Monatsabschluss-Sperre → Geo (`positionGrund`) → Schreiben; im PUT Fachprüfung vor `stempelSichern`.
+- `stempelintegritaet.mjs` `korrekturAnhaengen`: Ereignis trägt `nachWiederoeffnung` (WP-16) **und** `selbstfreigabe` (WP-14b);
+  Zeitumstellungssperre und `pauseZuLang(…, datum)` aus WP-14b. Monatsabschluss-Sperre (409 `MONAT_ABGESCHLOSSEN`) für Korrektur,
+  Antrag und Entscheidung im Weg (`daten.mjs`) vor der Bibliothek; Antrag mit wirksamer Pause und Zeitumstellung, Genehmigung
+  „überholt“ 409 (WP-14b) unverändert.
+- Importe `daten.mjs`: `freigabeRuecknahmen` (WP-23b) und `abschlussRecht` (WP-16); `regelHinweise` (WP-16) und
+  `uhrDauerAbweichend`, `spurGrund`, `spurHinweise` (WP-14b).
+- `package.json`: `pruefung:zeiterfassung` vereinigt — Basis 11 Dateien, WP-16 16, Integration 13, jetzt **18** (+5 WP-16:
+  monatsabschluss, -lib, -oberflaeche, -ist, pausenerfassung; +2 WP-14b: stempel-fachpruefung, korrektur-nachtrag). Sammelzeile
+  `pruefung` auf allen Seiten 97 Schritte, unverändert 97. Skripte insgesamt 146 = 146.
+- `RECHTEMATRIX.md`: Fußnoten ²⁷ (WP-23), ²⁸ (WP-20), ²⁹ (WP-16) je einmal; WP-14b-Klarstellung N4 und WP-23b-Absätze erhalten.
+
+### Angepasste bestehende Prüfungen (Zusammenführung, nicht abgeschwächt)
+
+- `monatsabschluss-lib.test.js` „Mai abgeschlossen, ausgegeben; wiedergeöffnet …“: Die Speicher-Ablage der Prüfung hatte nur
+  `setJSON`. Seit WP-27b (B2/B3) friert die Auswertung atomar ein (`setJSONWennNeu`) und nur, solange der Kern des Raums besteht
+  (`kern:<raum>`) — sonst fail-closed ohne Ist (`istStunden: null`, rot nach dem Merge). Die Prüf-Ablage bekommt beides wie
+  `br-auswertung.test.js` (`testAblage`); Erwartungen (25,5 vorher und nachher, `istKorrigiert`) unverändert.
+- `monatsabschluss.test.js` Spur: siehe oben (schärfer).
+- Neu in `monatsabschluss-lib.test.js`: ungeplanter bestätigter Dienst im abgeschlossenen Monat zählt in der
+  Betriebsrat-Auswertung genau einmal (29,5 h / 4, nicht 33,5 / 5) und bleibt nach einer Planänderung gleich — rot mit der
+  Mutante „Erfassung auch im abgeschlossenen Monat zählen“ (`ist` ohne `fz === undefined`), grün danach.
+
+### Tests lokal nach dem Merge (Windows, einzeln, `--testTimeout=120000 --hookTimeout=120000`)
+
+Alle grün: istdaten 35, serverdatum 16, korrektur-nachtrag 23, korrekturworkflow 25, monatsabschluss 25, monatsabschluss-ist 10,
+monatsabschluss-lib 24, monatsabschluss-oberflaeche 6, offline-stempeln 33, stempelpuffer 22, br-auswertung 72,
+stempel-integritaet 89, stempel-fachpruefung 7, rechtematrix 63, rechtematrix-zeilen 621, entwuerfe 68, sicht 30, doku 5,
+stempel-429-client 8, oberflaeche-selbstservice 25, pausenerfassung 16, zeiterfassung 40, ungeplante-dienste 23, stempeln 10.
+Nach der letzten Quelländerung (`daten.mjs`, Hinweise in der Herbstnacht) die betroffenen Dateien noch einmal: grün.
+`tsc -p jsconfig.json` sauber; eslint der geänderten Dateien ohne Fehler (nur die drei vorbestehenden Warnungen in `daten.mjs`);
+`werkzeug/vorpruefung.mjs --paket WP-16`: keine harten Verstöße.
+
+### Offen nach der Zusammenführung
+
+- Vorbestehende Spur-Zeilen außerhalb von WP-16 nennen den Tag (`stempeln <art> <tag>: …`, `Zeit bestätigen <tag>: …`,
+  `Selbstauskunft Zeiten: <tag>`) bzw. Person|Tag (`Stempel-Integrität`). In der Betreiber-Lage sind Person und Person|Tag
+  maskiert, ein bloßer Tag nicht. Nach der M1-Regel gehörten sie ebenfalls bereinigt — eigenes kleines Paket (WP-14c?), nicht
+  in diesem Merge geändert.
+- WP-14c F2/F4–F7 bleiben offen (F8 ist hier erledigt).

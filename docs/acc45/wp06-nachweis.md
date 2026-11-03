@@ -174,3 +174,26 @@ Angepasste HTTP-Prüfungen:
     Stempel nicht mehr durch 50 Mini-Korrekturen blockierbar. Die Bremse `schreiben` je Zugang gilt unverändert.
   - Test: 60 abwechselnde Korrekturen gehen durch, der Hinweis erscheint ab der 20., die Gründe zusammen sind begrenzt.
 - Integration: WP-17 (3471ee8) und `origin/integration/centric-complete` (9d0ff51) sind hineingemergt.
+
+## Nachtrag B-N1 bis B-N3 (Review der Kette)
+
+- **B-N1 Regressionstest:** `pruefungen/stempel-fachpruefung.test.js` (7 Tests, in `pruefung:zeiterfassung`). Über die HTTP-Schicht
+  gilt bei einem Bestand mit Stempeln und Ist-Zeiten von fünf Personen:
+  - Mutterschutz (Dienst bis 22 Uhr ohne Einwilligung) ergibt 403 für Planung und Leitung, nichts gespeichert, Stempel unverändert.
+  - Jugendschutz (15-Jährige im Spätdienst) ergibt 403, nichts gespeichert, Stempel unverändert.
+  - Die Gegenprobe (unbedenkliche Änderung mit denselben Stempeln) ergibt 200.
+  - Ein Verstoß plus ein veränderter Stempel in einer Übermittlung ergibt 403.
+  - Die Quelltext-Reihenfolge ist festgehalten.
+  Rot, wenn die Reihenfolge umgekehrt wird (Export mit `fachpruefungOffen` nach `stempelSichern`): **5 von 7 rot**.
+  In `daten.mjs` steht an der Stelle ein Kommentar: Die offene Fachprüfung hängt per WeakMap (`OFFENE_PRUEFUNG`) am Objekt
+  von `zusammenfuehren`; `stempelSichern` baut ein neues Objekt.
+- **B-N2 Verworfene Einträge:** `stempelSichern` zählt, was es aus einer älteren Kopie nicht übernimmt (Stempel und Ist-Zeiten
+  jenseits der Frist, gespeichert nicht mehr vorhanden). Die Antwort von `PUT /api/bestand` trägt dann `hinweis` („N Einträge … waren
+  schon gelöscht … Bitte neu laden“), das Betriebsprotokoll hat den Eintrag `stempel-verworfen`. Das gilt unabhängig vom Modus des
+  Datenschutzlaufs, weil auch die Leitung per Löschlauf in der Oberfläche löscht — eine Kopplung an „an“ würde diesen Weg
+  falsch behandeln. Test: Kopie mit den gelöschten 2023-Einträgen ⇒ 200 mit Hinweis, nichts zurückgeschrieben; ohne verworfene
+  Einträge keine Meldung.
+- **B-N3 Löschen per Speichern:** Dass die Leitung abgelaufene Stempel per `PUT` entfernen darf (`weg()`), ist bewusst **nicht**
+  an den Modus des Datenschutzlaufs gekoppelt, sondern dokumentiert: Der Modus steuert den täglichen Lauf des Servers; die
+  Leitung löscht von Hand, wenn die Frist abgelaufen ist (Art. 5 Abs. 1 lit. e DSGVO). Die Grenze (nicht unter 24 Monate, ungültige
+  Frist ⇒ nichts) kommt aus `aufbewahrung.mjs`; das Löschen steht als `loeschlauf` im Betriebsprotokoll.

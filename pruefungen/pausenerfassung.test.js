@@ -23,6 +23,8 @@ import { pausePflicht, pauseGenuegt } from "../server/lib/regelwerk.mjs";
 import { regelHinweise } from "../server/lib/zeitregeln.mjs";
 import { istZeitFuer, pruefZeitFuer } from "../src/istdaten.js";
 import * as PUF from "../src/stempelpuffer.js";
+import { selbstauskunftPruefen } from "../server/lib/zeiterfassung.mjs";
+import { BEGINN_GLEICH_ENDE } from "../server/lib/stempelintegritaet.mjs";
 
 describe("Mindestpause: eine Rechnung für Erwachsene und Jugendliche", () => {
   it("§ 4 ArbZG unverändert: bis 6 h keine, über 6 h 30 min, über 9 h 45 min", () => {
@@ -54,6 +56,31 @@ describe("Mindestpause: eine Rechnung für Erwachsene und Jugendliche", () => {
     const m = { personen: [p], dienstarten: [da], erfassung: { "a1|2026-11-09": { start: "06:00", ende: "15:30", bestaetigt: true, pause: 15 } } };
     expect(pruefZeitFuer(m, p, "2026-11-09", da)).toEqual({ start: "06:00", ende: "15:30", pause: 15 });
     expect(istZeitFuer(m, p, "2026-11-09", da).std).toBe(9.25);
+  });
+});
+
+describe("Selbstauskunft wie Korrektur: Zeitumstellung und Beginn = Ende (Zusammenführung WP-14b, F8)", () => {
+  /* Frühjahrsnacht 2026-03-29: 01:00–04:00 sind wirklich zwei Stunden (02:00–03:00 fehlt). Die Pause wird —
+     wie bei Korrektur und Antrag (pauseZuLang mit Tag, WP-14b M2) — an der wirklichen Anwesenheit gemessen. */
+  const K = { id: "K", name: "Kurz", start: "01:00", ende: "04:00", pause: 0 };
+  const N = { id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 };
+  const X = { id: "X", name: "24 Stunden", start: "08:00", ende: "08:00", pause: 60 };
+  const p = { id: "a1" };
+  const m = { personen: [p], dienstarten: [K, N, X], abwesenheiten: [],
+    abweichungen: { "a1|2026-03-29": "K", "a1|2026-03-22": "K", "a1|2026-03-30": "N", "a1|2026-03-31": "X" } };
+  const t = (d, w) => selbstauskunftPruefen(m, p, d, { bestaetigt: true, grund: "", ...w }, "2026-04-02");
+  it("Pause gegen die wirkliche Dauer der Frühjahrsnacht: 150 min bei 2 h abgewiesen, 119 min angenommen; gewöhnlicher Tag 150 min bei 3 h angenommen", () => {
+    expect(t("2026-03-29", { start: "01:00", ende: "04:00", pause: 150 }).grund).toMatch(/Pause muss kürzer/);
+    expect(t("2026-03-29", { start: "01:00", ende: "04:00", pause: 119 }).eintrag).toMatchObject({ pause: 119 });
+    expect(t("2026-03-22", { start: "01:00", ende: "04:00", pause: 150 }).eintrag).toMatchObject({ pause: 150 });
+    expect(t("2026-03-29", { start: null, ende: null, pause: 150 }).grund).toMatch(/Pause muss kürzer/);       // „wie geplant“ ebenso
+    expect(t("2026-03-22", { start: null, ende: null, pause: 150 }).eintrag).toMatchObject({ pause: 150 });
+  });
+  it("Beginn = Ende über Mitternacht (Nachtdienst geplant) wäre 24 h: abgewiesen wie bei der Korrektur; nur am geplanten 24-h-Dienst erlaubt", () => {
+    expect(t("2026-03-30", { start: "22:00", ende: "22:00" }).grund).toBe(BEGINN_GLEICH_ENDE);
+    expect(t("2026-03-30", { start: "06:00", ende: "06:00" }).grund).toBe(BEGINN_GLEICH_ENDE);
+    expect(t("2026-03-31", { start: "08:00", ende: "08:00" }).eintrag).toEqual({ start: "08:00", ende: "08:00", bestaetigt: true, grund: "" });
+    expect(t("2026-03-30", { start: "22:00", ende: "06:00" }).eintrag).toMatchObject({ start: "22:00", ende: "06:00" });
   });
 });
 

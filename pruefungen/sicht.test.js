@@ -398,7 +398,8 @@ describe("Mitarbeiter: Listen und Inhalte", () => {
       { datum: "2026-11-03", dienstId: "F" }]);
     expect(m.einarbeitung).toEqual([{ personId: 0, mentorId: 3, ziel: "eigene" }]);
     expect(ids(m.betriebsmittel)).toEqual(["b2", "b3"]);
-    expect(m.sondereinsaetze).toEqual([{ id: "se2", zugeteilt: [0, 1] }]);
+    /* WP-23b (N1): unter zugeteilt nur die eigene Person (vorher auch die Kollegin 1: fremde Einteilung). */
+    expect(m.sondereinsaetze).toEqual([{ id: "se2", zugeteilt: [0] }]);
     expect(m.kompetenzen[0].zugedacht).toEqual([0]);
   });
   it("keine kaufmännischen Felder, kein Protokoll, keine Planänderungen, keine Geodaten", () => {

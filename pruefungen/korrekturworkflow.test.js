@@ -66,7 +66,7 @@ beforeAll(async () => {
   tag = (n) => Z.tagePlus(HEUTE, n);
   const einstempeln = {}, erfassung = {}, abweichungen = {};
   /* Reguläre Tage mit Plan (Frühdienst): a1 tag(-1), tag(-2), tag(-3); a2 tag(-1); a3 tag(-1); s1, r1 tag(-1). */
-  for (const [id, n] of [["a1", -1], ["a1", -2], ["a1", -3], ["a2", -1], ["a3", -1], ["s1", -1], ["r1", -1], ["l1", -1]]) {
+  for (const [id, n] of [["a1", -1], ["a1", -2], ["a1", -3], ["a2", -1], ["a3", -1], ["a3", -2], ["s1", -1], ["r1", -1], ["l1", -1]]) {
     einstempeln[`${id}|${tag(n)}`] = stempel("06:02", "14:01");
     erfassung[`${id}|${tag(n)}`] = { start: "06:02", ende: "14:01", bestaetigt: true, grund: "" };
     abweichungen[`${id}|${tag(n)}`] = "F";
@@ -252,7 +252,10 @@ describe("Datenschutz (H8+) und Schreibschutz", { timeout: 120000 }, () => {
 });
 
 describe("Protokoll vollständig", () => {
-  it("Antrag, Genehmigung, Ablehnung, Zurückziehen und Abweisungen stehen im Betriebsprotokoll (Spur) — mit Person, Tag, Zeiten und Ausgang", async () => {
+  /* WP-14b (M1): Die Spur liest der Betreiber (Auftragsverarbeiter). Sie nennt jede Stufe mit Antrags- und
+     Ereigniskennung, Ausgang, Rolle und Person des Handelnden — aber nicht mehr die betroffene Person, den Tag,
+     die Ist-Zeiten oder Hinweiskennungen (Art. 9). Diese stehen am Stempel (Antrag, Korrekturereignis). */
+  it("Antrag, Genehmigung, Ablehnung, Zurückziehen und Abweisungen stehen im Betriebsprotokoll (Spur) — mit Antrag, Ereignis, Ausgang, Handelndem; ohne Person|Tag und Zeiten", async () => {
     const { getStore } = await import("../server/lib/ablage.mjs");
     const spur = getStore({ name: "centric-spur" });
     const heute = new Date().toISOString().slice(0, 10);
@@ -260,15 +263,24 @@ describe("Protokoll vollständig", () => {
     const zeilen = [];
     for (const b of blobs) zeilen.push(await spur.get(b.key, { type: "json" }));
     const z = (muster, ausgang) => zeilen.filter((x) => muster.test(x.zusatz || "") && (!ausgang || x.ausgang === ausgang));
+    const m = await mandant();
+    const aA1 = m.einstempeln[`a1|${tag(-1)}`].antraege[0];
+    const aS1 = m.einstempeln[`s1|${tag(-1)}`].antraege[0];
+    const aR1 = m.einstempeln[`r1|${tag(-1)}`].antraege[0];
     /* a1: drei Anträge gestellt (tag -1, -2, -4) und der genehmigte entschieden; s1 abgelehnt; r1 zurückgezogen. */
-    expect(z(/^Korrekturantrag ka-\w+ a1\|[\d-]+: (?!genehmigt|abgelehnt|zurueckgezogen).+ → /, "erfolg").length).toBeGreaterThanOrEqual(3);
-    expect(z(/^Korrekturantrag ka-\w+ a1\|[\d-]+: genehmigt · 06:02–14:01 → 05:55–14:30/, "erfolg")).toHaveLength(1);
-    expect(z(/ s1\|[\d-]+: abgelehnt/, "erfolg")).toHaveLength(1);
-    expect(z(/ r1\|[\d-]+: zurueckgezogen/, "erfolg")).toHaveLength(1);
+    expect(zeilen.filter((x) => /^Korrekturantrag ka-\w+: gestellt$/.test(x.zusatz || "") && x.ausgang === "erfolg" && x.person === "a1").length).toBeGreaterThanOrEqual(3);
+    expect(z(new RegExp(`^Korrekturantrag ${aA1.id}: genehmigt · Korrektur ${aA1.entschieden.korrekturId}( · \\d+ Hinweise?)?$`), "erfolg")).toHaveLength(1);
+    expect(z(new RegExp(`^Korrekturantrag ${aS1.id}: abgelehnt$`), "erfolg")).toHaveLength(1);
+    expect(z(new RegExp(`^Korrekturantrag ${aR1.id}: zurueckgezogen$`), "erfolg")).toHaveLength(1);
+    for (const x of z(/^(Korrekturantrag|Stempelkorrektur)/)) {
+      expect(x.zusatz, "keine Person|Tag").not.toMatch(/\|\d{4}-\d{2}-\d{2}/);
+      expect(x.zusatz, "keine Uhrzeiten").not.toMatch(/\b([01]\d|2[0-3]):[0-5]\d\b/);
+      expect(x.zusatz, "keine Schutzkennungen").not.toMatch(/MUTTERSCHUTZ|JUGENDSCHUTZ/);
+    }
     expect(z(/^Korrekturantrag entscheiden: /, "abgewiesen").length).toBeGreaterThanOrEqual(3);
     expect(z(/^Korrekturantrag entscheiden · Rolle /, "abgewiesen").length).toBeGreaterThanOrEqual(4);
     expect(z(/^Korrekturantrag: /, "abgewiesen").length).toBeGreaterThanOrEqual(6);
-    expect(z(/^Stempelkorrektur /, "erfolg").length).toBeGreaterThanOrEqual(1);       // direkte Korrektur (START_VERALTET)
+    expect(z(/^Stempelkorrektur k-\w+/, "erfolg").length).toBeGreaterThanOrEqual(1);       // direkte Korrektur (START_VERALTET)
     /* Jede Zeile trägt Rolle und Person des Handelnden. */
     for (const x of z(/^Korrekturantrag ka-/, "erfolg")) expect(x.rolle && x.person, x.zusatz).toBeTruthy();
   });
@@ -352,7 +364,7 @@ describe("Pause kleiner als die Anwesenheit (Auflage C1)", { timeout: 120000 }, 
     expect(await mandant()).toEqual(vorher);
     /* eine kürzere Pause ist keine 422 mehr (200, oder 409 wenn schon ein Antrag offen ist) */
     expect((await p(antrag(tag(-1), "08:00", "09:00", "Pause kürzer als der Dienst", { pause: 59 }))).status).not.toBe(422);
-    expect((await p(antrag(tag(-1), "22:00", "02:00", "Nachtdienst, Pause kürzer", { pause: 180 }))).status).not.toBe(422);
+    expect((await p(antrag(tag(-2), "22:00", "02:00", "Nachtdienst, Pause kürzer", { pause: 180 }))).status).not.toBe(422);
   });
   it("direkte Korrektur (/api/stempel-korrektur): Pause nicht kleiner als die Brutto-Dauer → 422, Ist bleibt; 59 min bei 1 h gehen", async () => {
     const t = await token("l1");

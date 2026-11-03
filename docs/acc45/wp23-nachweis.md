@@ -143,3 +143,61 @@ wurde geändert.
 - **Mitteilungen:** Wer die Planung vor der Freigabe an einem Entwurf ändert, erzeugt dabei unter Umständen schon
   Mitteilungen an Betroffene (`planGeaendert`, z. B. beim Einspringen). Das gehört zur Freigabelogik und ist nicht Teil
   von WP-23.
+
+## Nachtrag WP-23b (Befunde der unabhängigen Nachprüfung)
+
+Branch `acc45/security/wp23b-nachtrag`. Je Befund zuerst rot (Sonde gegen `bestandFuerRolle`/Handler), dann Fix, dann Mutant.
+
+- **M1 (Leck, Ausschreibungen).** `ausschreibungen` filterte nur `bewerbungen`; `vergebenAn` und `vergebenZeit` verrieten
+  die Einteilung eines Entwurfstags, die `abweichungen` verbergen. Jetzt für Beschäftigte nur die eigene Vergabe, sonst
+  `null` (immer, nicht nur an Entwurfstagen; die Oberfläche kennt `null`). Pflicht-Sonde in `rechtematrix.test.js`
+  (Ausschreibung 2099-01-03, an eine Fremde vergeben): rot vorher.
+- **M2 (Schutz abschaltbar, API).** Korrektur der früheren Aussage N2: Die Oberfläche hat keine Rücknahme, die **API erlaubte
+  sie** — Planung (ohne `org.edit`) konnte mit `freigaben: {}`, `[]` oder ohne das Feld den Filter eines Betriebs ohne
+  Pflicht ausschalten. Neu (`freigabenZusammen`, `server/lib/rechte.mjs`, nach `planFreigabeZusammen`): Form geprüft
+  (Objekt; neue oder geänderte Schlüssel `JJJJ-MM` mit Objekt als Wert, sonst 403 „abgewiesen“); fehlendes Feld oder `null`
+  = gespeicherter Stand; entfernte Freigaben kommen für alle ohne `org.edit` stillschweigend zurück; verliert ein Betrieb
+  mit der Rücknahme durch die Leitung seine letzte Freigabe, setzt der Server `planFreigabePflicht` auf true (Wann/Wer vom
+  Server). Die Rücknahme steht im Betriebsprotokoll (`freigabe-zurueckgenommen`, nur die Zahl). Tests (12 vorher rot):
+  `{}`, `[]`, Feld weggelassen, `null`, Wert `false`, ungültige Schlüssel, einer von zwei Monaten, Pflicht an; Schichtverantwortung
+  und Beschäftigte wirkungslos; Leitung rastet ein; Betrieb ohne Filter bekommt keine Pflicht aufgezwungen. RECHTEMATRIX ²⁷
+  entsprechend richtiggestellt. Folge: Solange ein Monat freigegeben ist, wirkt der Filter, auch wenn die Leitung die Pflicht
+  auf `false` setzt, und eine Rücknahme der letzten Freigabe schaltet ihn nicht ab, sondern setzt die Pflicht (gewollt:
+  der Filter hängt an „der Betrieb benutzt die Freigabe“).
+- **N1 (Sondereinsatz).** `zugeteilt` enthielt alle Zugeteilten samt fremden Personen-IDs; jetzt nur die eigene Person
+  (immer). **Nutzerentscheidung offen:** Unterliegen Sondereinsätze der Planfreigabe (Entwurfstage verbergen)? Nicht
+  entschieden und nicht umgesetzt. Testanpassung in `sicht.test.js` (Zeile 401), begründet: Die Erwartung `zugeteilt: [0, 1]`
+  hielt die fremde Zuteilung fest; jetzt `[0]` (die Aussage ist genauer, nichts abgeschwächt).
+- **N3 (Unterdeckung).** `unterschreitungen` (Datum, Dienst, freier Grund mit möglichen Namen) gingen für Entwurfstage an alle
+  Beschäftigten. Jetzt fehlen für Beschäftigte die Einträge der Entwurfstage (ungültiges Datum fail-closed). Betriebsrat
+  unverändert (VOLL; gehört zur offenen BR/SV-Entscheidung).
+- **Pflicht-Sonde über alle Sammlungen mit Datum** (`rechtematrix.test.js`, Pflicht an, Entwurfstage 2099): `ausschreibungen`,
+  `sondereinsaetze`, `unterschreitungen` gefiltert wie oben; `einspruenge` und `selbstplanung` (nur eigene, bei
+  Selbstplanung fremde Einträge ohne Person und Zeit, nur Datum und Dienst für die Deckelung) **bewusst** auch an
+  Entwurfstagen — keine Planung, sondern Äußerung der Person.
+
+- **Delta-Review (mittel): Schutz über `einstellungen` abschaltbar.** `planFreigabeZusammen` gab `neuM` unverändert zurück,
+  wenn `einstellungen` fehlte oder kein Objekt war (null, Text, Zahl): Planung und Leitung konnten damit die Pflicht
+  (bei Leitung ohne Wann/Wer) entfernen; ein Betrieb ohne Freigabe zeigte danach fremde Entwürfe. Jetzt gilt in diesem Fall
+  der gespeicherte Stand der Einstellungen (Kopie von `altE`, nichts wird abgelehnt oder gelöscht). Tests in
+  `entwuerfe.test.js` je Variante (weggelassen, null, String, Zahl, Array) für Planung und Leitung über den echten Handler;
+  Schichtverantwortung und Beschäftigte wirkungslos. Vorher rot (8 Fälle: alle Varianten außer Array, je Planung und
+  Leitung), Mutant (Rückschreiben entfernt) wieder 8 rot.
+- **N1 (Delta-Review), bewusste Ausnahme, Entscheidung offen:** Die eigene Vergabe (`vergebenAn`/`vergebenZeit`) einer
+  Ausschreibung bleibt für die betroffene Person an Entwurfstagen sichtbar (Sonde MK-VERGEBEN-EIGEN, MA:1). Das passt nicht zu
+  ²⁷ („weder eigenen noch fremden Entwurf“). Nicht geändert; RECHTEMATRIX ²⁷ vermerkt es.
+- **N2 (Delta-Review):** Das Protokoll „freigabe-zurueckgenommen“ steht jetzt nach dem erfolgreichen Schreiben (vorher vor
+  `pruefeGestalt`/`bestandSchreiben`, die noch abweisen konnten).
+
+**Offene Entscheidungen (nicht entschieden, nur dokumentiert):**
+
+- **Selbstauskunft Art. 15** liefert zusätzlich zu den Abweichungen auch `postenzuordnungen`, `bereichszuordnungen` und
+  `planaenderungen` (von/nach/Zeit) aus Entwurfsmonaten — nur die eigenen, vertretbar (eigene Daten); Entscheidung wie bei den
+  Abweichungen offen.
+- **N2 Mitteilungen/Einsprüche:** Eigene Einsprüche und Mitteilungen an Entwurfstagen bleiben bewusst sichtbar.
+- **I2 Betriebsrat/Schichtverantwortung sehen den Entwurf (M2 des ersten Reviews).** Fällt die Entscheidung restriktiv aus,
+  müssen mitgezogen werden: `server/lib/br-auswertung.mjs` (`BR_MONATE_VORAUS = 2` rechnet Entwurfsmonate), `kalenderfeed.mjs`
+  (Zeilen 78–79 nehmen `p.rolle` statt der Sitzungsrolle) und der Katalog `SCHICHT` in `sicht.mjs`. Nichts davon geändert.
+- **Sondereinsätze und Planfreigabe** (N1, siehe oben).
+- **Wirkung einer Rücknahme auf schon gesehene Monate** (Mitteilung an Betroffene, Regel für „in Kraft“) bleibt offen; die
+  Leitung kann eine Freigabe über die API zurücknehmen, die Oberfläche bietet es nicht an.

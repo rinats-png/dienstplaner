@@ -11,6 +11,15 @@
      ruhezeitUnter11 (zwischen zwei Diensten nach Plan), istStunden und
      istErfasst (bestätigte Ist-Zeiten, nur vergangene Tage)
 
+   Dieselben Rechnungen wie anderswo, keine zweite Logik (Nachtrag WP-27b, B5):
+     - Ist-Dauer eines Tages: istZeitFuer (server/lib/istdaten.mjs) wie
+       Stundenkonto und Lohnausgabe — mit der bei der Korrektur genannten
+       Pause (WP-14) und der Zeitumstellung.
+     - Bestätigte ungeplante Dienste (WP-13, ungeplanterDienst) zählen im Ist
+       und bei den Beitragenden, an einem Abwesenheitstag nicht (wie das Konto).
+     - Rufbereitschaft (form „ruf“, rufbereitschaft, ruhezeitNeutral) erkennt
+       rufbereitschaft() der Fachprüfung: kein langer Dienst, keine Ruhezeit.
+
    Mindestgruppe: Haben in einer Zeile weniger als BR_MINDESTGRUPPE Personen
    Dienst, stehen dort keine Zahlen, nur „<3" — eine kleine Einheit ließe
    sonst auf einzelne Personen schließen. Personen werden nie genannt.
@@ -31,14 +40,19 @@
    RECHNEN OHNE BLOCKIEREN (F3). Je Person und Tag über neun Monate ist bei
    2000 Personen Sekundensache. Die Rechnung ist ein Generator, der nach
    höchstens BR_HAEPPCHEN_MS nachgibt; auswertungHolen rechnet sie im
-   Hintergrund (setImmediate) und merkt das Ergebnis je Raum, Stand der
-   Ablage und Tag. Bis es fertig ist, bekommt der Abruf „wird berechnet"
-   (Wiederholen), nie einen blockierten Prozess.
+   Hintergrund (setImmediate) und merkt das Ergebnis im Prozessspeicher je
+   Raum, Betrieb und Tag (nicht je Stand der Ablage, siehe unten). Bis es
+   fertig ist, bekommt der Abruf „wird berechnet" (Wiederholen), nie einen
+   blockierten Prozess. Dauerhaft gespeichert wird nur das einmal ausgegebene
+   Ist je Monat (brist:<raum>:<betrieb>:<monat>, siehe EINGEFROREN).
    ========================================================================== */
 import { addDays, dow, dauer, fenster } from "./regelwerk.mjs";
-import { dienstAm, einheitAm, imDienst, nachtAnteil, nachtschwelle } from "./fachpruefung.mjs";
+import { dienstAm, einheitAm, imDienst, nachtAnteil, nachtschwelle, rufbereitschaft } from "./fachpruefung.mjs";
 import { RUECKBLICK_TAGE } from "./zeiterfassung.mjs";
+import { istZeitFuer, ungeplanterDienst } from "./istdaten.mjs";
 import { eingefrorenerTag } from "./isteinfrieren.mjs";
+import { unterRaumsperre } from "./raumsperre.mjs";
+import { kernSchluessel } from "./scherben.mjs";
 
 /** Mindestgruppe für Zählwerte an den Betriebsrat (WP-10 M1-Rest, WP-27). */
 export const BR_MINDESTGRUPPE = 3;
@@ -88,6 +102,23 @@ export function* auswertungSchritte(m, heute) {
       langeDienste: 0, ruhezeitUnter11: 0, istStunden: 0, istErfasst: 0 }; zeilen.set(k, z); }
     return z;
   };
+  const abw = new Map();                                                     // Person → Abwesenheiten
+  for (const a of liste(m && m.abwesenheiten)) {
+    const k = String(a.personId);
+    if (!abw.has(k)) abw.set(k, []);
+    abw.get(k).push(a);
+  }
+  const abwesendAm = (p, d) => (abw.get(String(p.id)) || []).some((a) => a.von <= d && a.bis >= d);
+  /** Ein bestätigter Ist-Tag: trägt zum Ist bei (für die Mindestgruppe auch, bevor der Monat frei ist) und zählt
+      danach mit der Dauer aus istZeitFuer — derselben Rechnung wie Stundenkonto und Lohnausgabe. */
+  const istZaehlen = (p, d, dienstart, eid) => {
+    const r = istZeitFuer(m, p, d, dienstart);
+    if (r.std === null || r.std === undefined || !r.erfasst) return;
+    for (const z of [zeile(monatVon(d), eid), zeile(monatVon(d), "*")]) {
+      z.istSet.add(String(p.id));
+      if (istFrei(monatVon(d))) { z.istStunden += Math.max(0, r.std); z.istErfasst++; }
+    }
+  };
   let t = performance.now();
   let n = 0;
   for (const p of liste(m && m.personen)) {
@@ -97,7 +128,8 @@ export function* auswertungSchritte(m, heute) {
       if ((++n & 15) === 0 && performance.now() - t > BR_HAEPPCHEN_MS) { yield; t = performance.now(); }
       /* Abgeschlossener Monat (WP-16, Review H1): Das Ist kommt nur aus dem eingefrorenen Stand —
          eine spätere Plan-, Dienstart- oder Abwesenheitsänderung ändert es nicht. Bestätigt erfasste
-         Tage, wie im offenen Monat; die Stunden aus derselben Rechnung wie Konto und Lohn (istZeitFuer). */
+         Tage (auch ungeplante Dienste, WP-13), wie im offenen Monat; die Stunden hat der Abschluss mit
+         derselben Rechnung wie Konto und Lohn (istZeitFuer) eingefroren. */
       const fz = eingefrorenerTag(m, p, d);
       if (fz && fz.da && fz.e && d < heute) {
         const eidF = String(einheitAm(p, d) || "ohne");
@@ -108,28 +140,34 @@ export function* auswertungSchritte(m, heute) {
       }
       if (!imDienst(p, d)) { vorher = null; continue; }
       const id = dienstAm(m, p, d);
-      const x = id ? da.get(String(id)) : null;
-      if (!x || !x.start || !x.ende) { if (!id) vorher = null; continue; }
+      const ist = fz === undefined ? erfassung[`${p.id}|${d}`] : null;     // abgeschlossen: oben aus dem eingefrorenen Ist
+      if (!id) {
+        vorher = null;
+        /* Kein Dienst nach Plan: Ein bestätigter ungeplanter Dienst (WP-13) zählt im
+           Ist und bei den Beitragenden — wie im Stundenkonto (ungeplantAm, src/App.jsx):
+           nur im Beschäftigungsverhältnis und nicht an einem Abwesenheitstag. Die
+           Plan-Zahlen (Dienste, Nacht, Ruhezeit) bleiben Plan. */
+        if (d < heute && ist && ist.ungeplant === true && ist.bestaetigt === true && !abwesendAm(p, d)) {
+          const u = ungeplanterDienst(m, p, d);
+          if (u) istZaehlen(p, d, u, String(einheitAm(p, d) || "ohne"));
+        }
+        continue;
+      }
+      const x = da.get(String(id));
+      if (!x || !x.start || !x.ende) continue;
       const eid = einheitAm(p, d) || "ohne";
       const [start, ende] = fenster(d, x);
-      const ist = fz === undefined ? erfassung[`${p.id}|${d}`] : null;     // abgeschlossen: oben aus dem eingefrorenen Ist
-      const istZaehlt = d < heute && ist && ist.bestaetigt && istFrei(monatVon(d));
-      const istTeilnahme = d < heute && ist && ist.bestaetigt;              // trägt zum Ist bei, auch wenn der Monat noch nicht frei ist
+      const ruf = rufbereitschaft(x);                                      // dieselben Merker wie die Fachprüfung
       for (const z of [zeile(monatVon(d), String(eid)), zeile(monatVon(d), "*")]) {
         z.personenSet.add(String(p.id));
         z.dienste++;
         if (nachtAnteil(x, einst) >= nachtschwelle(einst)) z.nachtdienste++;
         if (dow(d) === 6) z.sonntagsdienste++;
-        if (x.form !== "ruf" && dauer(x) > 10) z.langeDienste++;
-        if (vorher && x.form !== "ruf" && (start - vorher.ende) / 60 < 11) z.ruhezeitUnter11++;
-        if (istTeilnahme) z.istSet.add(String(p.id));
-        if (istZaehlt) {
-          const [s2, e2] = fenster(d, { start: ist.start || x.start, ende: ist.ende || x.ende });
-          z.istStunden += Math.max(0, (e2 - s2) / 60 - (x.pause || 0) / 60);
-          z.istErfasst++;
-        }
+        if (!ruf && dauer(x) > 10) z.langeDienste++;
+        if (vorher && !ruf && (start - vorher.ende) / 60 < 11) z.ruhezeitUnter11++;
       }
-      vorher = x.form === "ruf" ? vorher : { d, ende };
+      if (d < heute && ist && ist.bestaetigt) istZaehlen(p, d, x, String(eid));
+      vorher = ruf ? vorher : { d, ende };
     }
   }
   const aus = [];
@@ -184,78 +222,146 @@ export function betriebsratAuswertung(m, heute) {
    - Datenschutz bleibt: Mindestgruppe, Wartefrist, Zweitsperre stecken in der
      Rechnung selbst; Zeitstempel und Zwischenspeicher geben nichts frei.
 
-   EINGEFROREN (F1-Rest). Nach Ablauf der Nachbestätigungsfrist kann die Planung
-   bestätigte Zeiten noch korrigieren. Zwei Ausgaben, die sich um eine
-   Korrektur unterscheiden, ergäben deren Wirkung als Differenz — auch über
-   einen Neustart hinweg. Darum steht das einmal ausgegebene Ist einer Zeile
-   (Raum, Betrieb, Monat, Einheit) DAUERHAFT in der Ablage
-   (brist:<raum>:<betrieb>:<monat>:<einheit>); jede spätere Ausgabe nimmt es
-   von dort. Hat sich der Bestand inzwischen geändert, steht an der Zeile
-   „istKorrigiert“ — ohne Zahl. Ist die Ablage nicht les- oder schreibbar, wird
-   das Ist der Zeile nicht ausgegeben (fail-closed). Aufgeräumt wird beim
-   Rechnen (Monate vor dem Auswertungszeitraum) und mit der Raumlöschung.
+   EINGEFROREN — JE MONAT, IN EINEM STÜCK (F1-Rest, Nachtrag WP-27b B1–B4).
+   Nach Ablauf der Nachbestätigungsfrist kann die Planung bestätigte Zeiten
+   noch korrigieren (bis ANTRAG_RUECKBLICK_TAGE zurück), offene Prüffälle
+   bestätigen, verspätete Offline-Stempel annehmen. Zwei Ausgaben, die sich um
+   so eine Änderung unterscheiden, ergäben deren Wirkung als Differenz — auch
+   über einen Neustart hinweg. Darum steht das Ist eines Monats DAUERHAFT in
+   EINEM Schlüssel der Ablage (brist:<raum>:<betrieb>:<monat>):
+     { am, zeilen: { <einheit> | "*": { istStunden, istErfasst } } }
+   - Eingefroren wird der Monat als Ganzes, sobald irgendeine seiner Zeilen
+     ein Ist hat: alle Zeilen, die in diesem Augenblick ein Ist haben, in
+     einem atomaren Schreibvorgang (setJSONWennNeu). Danach wird der
+     gespeicherte Rahmen erneut gelesen und NUR er ausgegeben — hat ein
+     zweiter Lauf zwischen Lesen und Schreiben eingefroren, gilt seiner (B3).
+   - Eine Zeile, die im Rahmen fehlt (damals unter der Mindestgruppe, in
+     Prüfung, gesperrt), bekommt NIE mehr ein Ist: istNichtVerfuegbar. Sonst
+     ergäbe eine später frisch gerechnete Zeile neben eingefrorenen die
+     Änderung einer einzelnen Person als Differenz (Sonde P1: Gesamt − B − A
+     = Korrektur von a0). Weicht der frische Wert einer eingefrorenen Zeile
+     ab, steht „istKorrigiert“ daran — ohne Zahl.
+   - Ist die Ablage nicht les- oder schreibbar oder der Rahmen unlesbar, hat
+     der ganze Monat kein Ist (fail-closed) — nie einzelne Zeilen (Sonde P2).
+   - Geschrieben wird nur unter der Raumsperre (wie raumLoeschen) und nur,
+     solange der Kern des Raums besteht: Eine Rechnung, die während der
+     Raumlöschung läuft, legt keine Waisen mehr an (B2).
+   - Aufgeräumt wird gezielt je Schlüssel, ohne die Ablage zu listen, einmal
+     je Monatswechsel und Prozess: die BR_AUFRAEUMEN_MONATE Monate vor dem
+     Auswertungszeitraum (B4). Den Rest nimmt die Raumlöschung (Präfix brist:).
+     Schlüssel der Vorgängerfassung je Einheit (brist:…:<monat>:<einheit>,
+     nur im Integrationsstand) werden nicht mehr gelesen; die Raumlöschung
+     nimmt sie mit.
    -------------------------------------------------------------------------- */
 /** Frühestens nach dieser Zeit wird ein Raum neu gerechnet. */
 export const BR_NEUBERECHNUNG_MS = 5 * 60 * 1000;
 export const BR_MAX_GLEICHZEITIG = 3;
 export const BR_MAX_TAGE_GEMERKT = 40;
+/** So viele Monate vor dem Auswertungszeitraum räumt der Monatswechsel gezielt ab. */
+export const BR_AUFRAEUMEN_MONATE = 12;
 const FERTIG = new Map();                    // `${raum}\0${betrieb}\0${tag}` → { wert, zeit }
 const LAEUFT = new Map();                    // `${raum}\0${betrieb}` → true
-const EINGEFROREN = new Map();               // ohne Ablage (kleine Prüfungen): `${raum}\0${betrieb}\0${monat}\0${einheit}` → { istStunden, istErfasst }
+const EINGEFROREN = new Map();               // ohne Ablage (kleine Prüfungen): `${raum}\0${betrieb}\0${monat}` → { zeilen }
+const AUFGERAEUMT = new Map();               // `${raum}\0${betrieb}` → erster Monat des Zeitraums, für den schon aufgeräumt ist
 const STATISTIK = { gestartet: 0, fertig: 0 };
 const betriebVon = (mandant) => (mandant && (typeof mandant.id === "string" || typeof mandant.id === "number") && String(mandant.id) ? String(mandant.id) : null);
 const laufVon = (raum, betrieb) => `${raum}\u0000${betrieb}`;
 const schluesselVon = (raum, betrieb, tag) => `${raum}\u0000${betrieb}\u0000${tag}`;
-/** Schlüssel der dauerhaften Ablage. */
-export const istSchluessel = (raum, betrieb, monat, einheit) =>
-  `brist:${encodeURIComponent(raum)}:${encodeURIComponent(betrieb)}:${monat}:${encodeURIComponent(einheit === null || einheit === undefined ? "*" : einheit)}`;
+/** Schlüssel der dauerhaften Ablage: das eingefrorene Ist eines Monats. */
+export const istSchluessel = (raum, betrieb, monat) =>
+  `brist:${encodeURIComponent(raum)}:${encodeURIComponent(betrieb)}:${monat}`;
 export const istPraefix = (raum) => `brist:${encodeURIComponent(raum)}:`;
+const zeilenSchluessel = (einheitId) => (einheitId === null || einheitId === undefined ? "*" : String(einheitId));
+const zahl = (v) => typeof v === "number" && Number.isFinite(v);
+/** Ein gespeicherter Rahmen: Objekt mit `zeilen` (Objekt). Alles andere ist unlesbar. */
+const rahmenGueltig = (v) => !!v && typeof v === "object" && !!v.zeilen && typeof v.zeilen === "object" && !Array.isArray(v.zeilen);
+class RaumWeg extends Error {}
 
 /**
- * Das einmal ausgegebene Ist einer Zeile einfrieren; spätere Abweichungen nur als Hinweis ausweisen.
- * @param {{ get: Function, setJSON: Function, list?: Function, delete?: Function } | null} ablage
+ * Den Rahmen eines Monats holen: gespeichert, sonst (wenn es ein Ist gibt) jetzt atomar anlegen und
+ * erneut lesen. null: kein Rahmen und nichts einzufrieren. Wirft, wenn nichts Gesichertes vorliegt.
+ * @param {{ get: Function, setJSONWennNeu?: Function } | null} ablage
+ * @param {Record<string, { istStunden: number, istErfasst: number }>} frisch
+ */
+async function rahmenHolen(ablage, raum, betrieb, monat, frisch) {
+  const leer = Object.keys(frisch).length === 0;
+  if (!ablage) {
+    const k = `${raum}\u0000${betrieb}\u0000${monat}`;
+    if (!EINGEFROREN.has(k) && !leer) EINGEFROREN.set(k, { zeilen: { ...frisch } });
+    return EINGEFROREN.get(k) || null;
+  }
+  const k = istSchluessel(raum, betrieb, monat);
+  let alt = await ablage.get(k, { type: "json" });
+  if (alt === null || alt === undefined) {
+    if (leer) return null;
+    if (typeof ablage.setJSONWennNeu !== "function") throw new Error("Ablage ohne atomares Anlegen");
+    /* Unter der Raumsperre, die auch raumLoeschen hält, und nur, solange der Raum besteht (B2). */
+    await unterRaumsperre(raum, async () => {
+      if (!(await ablage.get(kernSchluessel(raum), { type: "json" }))) throw new RaumWeg("Raum gelöscht");
+      await ablage.setJSONWennNeu(k, { am: new Date().toISOString(), zeilen: frisch });
+    });
+    alt = await ablage.get(k, { type: "json" });                            // ausgegeben wird, was gespeichert ist (B3)
+  }
+  if (!rahmenGueltig(alt)) throw new Error("Rahmen unlesbar");
+  return alt;
+}
+
+/**
+ * Das Ist der Auswertung je Monat einfrieren und nur das Eingefrorene ausgeben.
+ * @param {{ get: Function, setJSONWennNeu?: Function, delete?: Function } | null} ablage
  */
 async function einfrieren(ablage, raum, betrieb, wert) {
+  const monate = new Map();
   for (const z of wert.zeilen) {
-    if (z.gesperrt || z.istStunden === null || z.istStunden === undefined) continue;
-    const merken = { istStunden: z.istStunden, istErfasst: z.istErfasst };
-    const ohneIst = () => { z.istStunden = null; z.istErfasst = null; };
-    let alt;
-    if (ablage) {
-      const k = istSchluessel(raum, betrieb, z.monat, z.einheitId);
-      try {
-        alt = await ablage.get(k, { type: "json" });
-        if (!alt) await ablage.setJSON(k, { ...merken, am: new Date().toISOString() });
-      } catch { ohneIst(); continue; }                                      // nicht lesbar/schreibbar: lieber kein Ist als ein ungesichertes
-    } else {
-      const k = `${raum}\u0000${betrieb}\u0000${z.monat}\u0000${z.einheitId}`;
-      alt = EINGEFROREN.get(k);
-      if (!alt) EINGEFROREN.set(k, merken);
-    }
-    if (alt && (alt.istStunden !== merken.istStunden || alt.istErfasst !== merken.istErfasst)) {
-      z.istStunden = alt.istStunden; z.istErfasst = alt.istErfasst; z.istKorrigiert = true;
+    if (z.gesperrt) continue;
+    if (!monate.has(z.monat)) monate.set(z.monat, []);
+    monate.get(z.monat).push(z);
+  }
+  for (const [monat, zs] of monate) {
+    /** @type {Record<string, { istStunden: number, istErfasst: number }>} */
+    const frisch = {};
+    for (const z of zs) if (zahl(z.istStunden) && zahl(z.istErfasst)) frisch[zeilenSchluessel(z.einheitId)] = { istStunden: z.istStunden, istErfasst: z.istErfasst };
+    let rahmen;
+    try { rahmen = await rahmenHolen(ablage, raum, betrieb, monat, frisch); }
+    catch { rahmen = undefined; }                                          // nicht gesichert: der ganze Monat ohne Ist
+    if (rahmen === null) continue;                                         // kein Ist in diesem Monat, nichts eingefroren
+    for (const z of zs) {
+      const g = rahmen ? rahmen.zeilen[zeilenSchluessel(z.einheitId)] : undefined;
+      const f = frisch[zeilenSchluessel(z.einheitId)];
+      if (rahmen && g && zahl(g.istStunden) && zahl(g.istErfasst)) {
+        z.istStunden = g.istStunden; z.istErfasst = g.istErfasst;
+        if (!f || f.istStunden !== g.istStunden || f.istErfasst !== g.istErfasst) z.istKorrigiert = true;
+      } else {
+        z.istStunden = null; z.istErfasst = null;
+        if (rahmen) z.istNichtVerfuegbar = true;                             // dauerhaft: der Monat ist ohne diese Zeile eingefroren
+      }
     }
   }
-  /* Aufräumen: Monate vor dem Auswertungszeitraum brauchen keinen Rahmen mehr. */
-  if (ablage && typeof ablage.list === "function" && typeof ablage.delete === "function") {
-    try {
-      const { blobs } = await ablage.list({ prefix: `${istPraefix(raum)}${encodeURIComponent(betrieb)}:` });
-      for (const b of blobs || []) {
-        const monat = b.key.split(":")[3];
-        if (/^\d{4}-\d{2}$/.test(monat || "") && monat < wert.von.slice(0, 7)) await ablage.delete(b.key).catch(() => {});
-      }
-    } catch { /* Aufräumen darf nie die Ausgabe verhindern */ }
+}
+
+/** Aufräumen beim Monatswechsel: gezielt die Monate vor dem Zeitraum, ohne die Ablage zu listen (B4). */
+async function aufraeumen(ablage, raum, betrieb, vonMonat) {
+  if (!ablage || typeof ablage.delete !== "function") return;
+  const k = laufVon(raum, betrieb);
+  if (AUFGERAEUMT.get(k) === vonMonat) return;
+  if (AUFGERAEUMT.size >= 10000) AUFGERAEUMT.clear();
+  AUFGERAEUMT.set(k, vonMonat);
+  for (let i = 1; i <= BR_AUFRAEUMEN_MONATE; i++) {
+    try { await ablage.delete(istSchluessel(raum, betrieb, monatPlus(vonMonat, -i))); }
+    catch { /* Aufräumen darf nie die Ausgabe verhindern */ }
   }
 }
 
 /**
  * @param {{ raum: string, heute: string, mandant: any, jetzt?: number, ablage?: any }} a
  *   `ablage`: der Store für das dauerhafte Einfrieren (im Betrieb immer); `jetzt` nur für Prüfungen.
- * @returns {{ fertig: true, wert: Auswertung, berechnetUm: string } | { fertig: false, ausgelastet?: boolean }}
+ * @returns {{ fertig: true, wert: Auswertung, berechnetUm: string } | { fertig: false, ausgelastet?: boolean, ungueltig?: true }}
+ *   `ungueltig`: der Betrieb hat keine Kennung — die Auswertung lässt sich keinem Betrieb zuordnen (kein endloses „wird berechnet“).
  */
 export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now(), ablage = null }) {
+  if (typeof raum !== "string" || !raum) return { fertig: false };
   const betrieb = betriebVon(mandant);
-  if (typeof raum !== "string" || !raum || !betrieb) return { fertig: false };
+  if (!betrieb) return { fertig: false, ungueltig: true };
   const k = schluesselVon(raum, betrieb, heute);
   const lauf = laufVon(raum, betrieb);
   const eintrag = FERTIG.get(k);
@@ -269,6 +375,7 @@ export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now(), abla
         let r = it.next();
         while (!r.done) { await new Promise((weiter) => setImmediate(weiter)); r = it.next(); }
         await einfrieren(ablage, raum, betrieb, r.value);
+        await aufraeumen(ablage, raum, betrieb, r.value.von.slice(0, 7));
         /* Vortage dieses Raums und Betriebs verwerfen; Obergrenze insgesamt. */
         for (const alt of [...FERTIG.keys()]) if (alt.startsWith(`${raum}\u0000${betrieb}\u0000`) && alt !== k) FERTIG.delete(alt);
         if (FERTIG.size >= BR_MAX_TAGE_GEMERKT) FERTIG.delete(FERTIG.keys().next().value);
@@ -283,5 +390,5 @@ export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now(), abla
 }
 
 /** Nur für Prüfungen. */
-export function auswertungenVergessen() { FERTIG.clear(); LAEUFT.clear(); EINGEFROREN.clear(); STATISTIK.gestartet = 0; STATISTIK.fertig = 0; }
+export function auswertungenVergessen() { FERTIG.clear(); LAEUFT.clear(); EINGEFROREN.clear(); AUFGERAEUMT.clear(); STATISTIK.gestartet = 0; STATISTIK.fertig = 0; }
 export const auswertungStatistik = () => ({ ...STATISTIK, laeuft: LAEUFT.size });

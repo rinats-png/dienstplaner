@@ -26,7 +26,8 @@
    ========================================================================== */
 
 import { pauseZuLang } from "./zeitregeln.mjs";
-import { korrekturAnhaengen, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
+import { korrekturAnhaengen, pauseFuerKorrektur, geplant24Stunden, zeitumstellungSperre, BEGINN_GLEICH_ENDE, KORREKTUR_GRUND_MIN, KORREKTUR_GRUND_MAX } from "./stempelintegritaet.mjs";
+import { berlinZeitpunkt } from "./zeiterfassung.mjs";
 
 export const ANTRAG_RUECKBLICK_TAGE = 62;
 export const ANTRAEGE_JE_STEMPEL_MAX = 20;
@@ -36,6 +37,10 @@ const TAG = /^\d{4}-\d{2}-\d{2}$/;
 const UHR = /^([01]\d|2[0-3]):[0-5]\d$/;
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const tagPlus = (t, n) => new Date(Date.parse(`${t}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+/** Der vergleichbare Teil einer Ist-Zeit (M5): Beginn, Ende, bestätigt, Pause — null ohne Ist-Zeit. */
+const istStand = (e) => (objekt(e)
+  ? JSON.stringify([e.start || null, e.ende || null, !!e.bestaetigt, e.pause !== undefined && e.pause !== null ? Number(e.pause) : null])
+  : "null");
 const wer = (w) => ({ personId: w && w.personId !== undefined ? w.personId : null, name: (w && w.name) || null, rolle: (w && w.rolle) || null });
 
 /**
@@ -60,10 +65,20 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   const pauseRoh = rumpf.pause;
   const pauseGegeben = pauseRoh !== undefined && pauseRoh !== null && String(pauseRoh) !== "";
   const pause = pauseGegeben ? Number(pauseRoh) : undefined;
+  if (start === ende && !geplant24Stunden(m, von.personId, datum)) return { status: 422, grund: BEGINN_GLEICH_ENDE };   // M4 (WP-14b)
   if (pauseGegeben && !(Number.isInteger(pause) && pause >= 0 && pause <= 180))
     return { status: 422, grund: "Die Pause in Minuten angeben (0 bis 180)." };
-  if (pauseGegeben && pauseZuLang(start, ende, pause))
-    return { status: 422, grund: "Die Pause muss kürzer sein als die Anwesenheit von Beginn bis Ende." };
+  /* N3 (WP-14b): Gearbeitet ist, was vorbei ist — ein Ende nach der aktuellen Berliner Uhrzeit ist keine Korrektur. */
+  const endeAm = berlinZeitpunkt(ende <= start ? tagPlus(datum, 1) : datum, ende);
+  if (endeAm !== null && endeAm > jetzt.getTime())
+    return { status: 422, grund: "Das Ende liegt in der Zukunft. Eine Korrektur gilt für Zeiten, die schon vorbei sind." };
+  /* Die Pause, mit der die Genehmigung rechnen wird (genannt, sonst zuletzt erfasst, sonst Dienstart; N1),
+     gegen die wirkliche Anwesenheit des Tages (Zeitumstellung, M2) — sonst nähme der Antrag an, was die
+     Genehmigung später abweist, und er bliebe hängen. */
+  const wirksamePause = pauseFuerKorrektur(m, von.personId, datum, pauseGegeben ? pause : undefined);
+  if (pauseZuLang(start, ende, wirksamePause, datum))
+    return { status: 422, grund: pauseGegeben ? "Die Pause muss kürzer sein als die Anwesenheit von Beginn bis Ende."
+      : `Ohne Angabe gilt die bisherige Pause (${wirksamePause} min) — sie muss kürzer sein als die Anwesenheit von Beginn bis Ende. Bitte die Pause angeben.` };
   if (grund.length < KORREKTUR_GRUND_MIN || grund.length > KORREKTUR_GRUND_MAX)
     return { status: 422, grund: `Ein Antrag braucht einen Grund (${KORREKTUR_GRUND_MIN}–${KORREKTUR_GRUND_MAX} Zeichen).` };
   const schluessel = `${von.personId}|${datum}`;
@@ -76,6 +91,8 @@ export function antragStellen(m, von, rumpf, jetzt, id, heute) {
   if (bisher.length >= ANTRAEGE_JE_STEMPEL_MAX)
     return { status: 409, grund: "Für diesen Stempel gibt es schon sehr viele Anträge — bitte die Leitung ansprechen." };
   const ist = (m.erfassung || {})[schluessel];
+  const umstellung = zeitumstellungSperre(ist, start, ende);   // F3 (WP-14b): dieselbe Sperre wie die Genehmigung
+  if (umstellung) return umstellung;
   if (objekt(ist) && ist.bestaetigt === true && ist.start === start && ist.ende === ende && (!pauseGegeben || ist.pause === pause))
     return { status: 409, grund: "Diese Zeit gilt schon so — nichts zu korrigieren." };
   const antrag = {
@@ -128,6 +145,12 @@ export function antragEntscheiden(m, r, durch, jetzt, korrekturId, zusatz = {}) 
   let basis = m;
   let erg = {};
   if (entscheidung === "genehmigt") {
+    /* M5 (WP-14b): Der Antrag nennt die Ist-Zeit, von der er ausging. Hat sich die Ist-Zeit seitdem geändert
+       (direkte Korrektur, nachgereichtes Ende), überschriebe die Genehmigung diese Änderung ohne Rückfrage.
+       Dann 409 — der Antrag bleibt offen; die Leitung lehnt ihn ab, oder die Person stellt einen neuen. */
+    if (istStand(antrag.ist) !== istStand((m.erfassung || {})[schluessel]))
+      return { status: 409, grund: "Der Antrag ist überholt: Die Ist-Zeit wurde nach dem Antrag geändert. "
+        + "Bitte ablehnen (mit Hinweis auf die Änderung) oder einen neuen Antrag stellen lassen." };
     const k = korrekturAnhaengen(m, { personId: String(personId), datum, start: antrag.vorschlag.start, ende: antrag.vorschlag.ende,
       pause: antrag.vorschlag.pause, grund: `Antrag ${antrag.id}: ${antrag.grund}`.slice(0, KORREKTUR_GRUND_MAX) },
     wer(durch), jetzt, korrekturId, { ...zusatz, antrag: { id: antrag.id, vonPersonId: antrag.von ? antrag.von.personId : null } });

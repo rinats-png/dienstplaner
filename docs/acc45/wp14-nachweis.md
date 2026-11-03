@@ -17,9 +17,11 @@ Nach der Integration von WP-17/WP-06/WP-13 auf den Integrationsstand umbasieren 
 Zeitpunkt des Antrags. Die Stempelbefunde zeigen Original, „gilt bisher“ und „beantragt“ nebeneinander, die Korrekturen mit Tooltip
 (Zeit, wer, vorher → nachher, Grund, Hinweise).
 
-**Protokoll vollständig:** Jede Stufe steht im Betriebsprotokoll (Spur, Art `schreiben`) mit Rolle und Person des Handelnden: Antrag (Tag,
-Original → Vorschlag), Entscheidung (genehmigt mit Zeiten und Hinweiskennungen, abgelehnt, zurückgezogen), jede Abweisung mit Grund
-(403, 404, 409, 422) und die direkte Korrektur. Am Stempel selbst bleibt die Folge im Antrag (`status`, `entschieden`: wer, wann,
+**Protokoll vollständig:** Jede Stufe steht im Betriebsprotokoll (Spur, Art `schreiben`) mit Rolle und Person des Handelnden: Antrag
+(Kennung, „gestellt“), Entscheidung (genehmigt mit Kennung des Korrekturereignisses und Anzahl der Hinweise, abgelehnt, zurückgezogen),
+jede Abweisung mit Grund (403, 404, 409, 422; Uhrzeiten ausgelassen) und die direkte Korrektur (Kennung des Ereignisses).
+**Seit WP-14b (M1)** stehen betroffene Person, Tag, Ist-Zeiten und Hinweiskennungen (MUTTERSCHUTZ/JUGENDSCHUTZ, Art. 9) nicht mehr in
+der Spur — sie liest der Betreiber (`/lage`). Sie stehen am Stempel (Antrag, Ereignis); siehe `wp14b-nachweis.md`. Am Stempel selbst bleibt die Folge im Antrag (`status`, `entschieden`: wer, wann,
 Begründung, Kennung des Korrekturereignisses) und im Ereignis. Ein Antrag wird nie gelöscht, nur fortgeschrieben.
 
 ## Ablage und Datenschutz (H8+)

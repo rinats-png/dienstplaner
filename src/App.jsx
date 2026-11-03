@@ -34,6 +34,7 @@ import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
 import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
 import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
+import { csvFeld, csvText } from "./csvfeld.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -4588,18 +4589,8 @@ function datevSaetze(m, ym) {
   }
   return zeilen;
 }
-/**
- * Ein Feld f\u00FCr die Trennzeichendatei.
- *
- * Die Lohnartenbezeichnungen sind je Betrieb frei benennbar. Ein Semikolon
- * darin \u2014 \u201EZuschlag Nacht; steuerfrei" \u2014 schob bisher alle folgenden Spalten
- * um eins nach rechts, und zwar lautlos: Die Datei lie\u00DF sich \u00F6ffnen, nur die
- * Stunden standen in der Spalte des Abrechnungsmonats.
- */
-const csvFeld = (v) => {
-  const s = String(v == null ? "" : v);
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zus\u00E4tzlich
+   gegen Formel-Injection) stehen in src/csvfeld.js. */
 
 /**
  * Die Lohnausgabe als Trennzeichendatei.
@@ -11833,7 +11824,8 @@ function KorrekturOffene({ sitz, ym, akt }) {
     const offenerFall = !e.start || !e.ende || marken.includes("KONFLIKT") || marken.includes("START_VERALTET") || marken.includes("START_FEHLT");
     if (offenerFall && !(ist && ist.bestaetigt === true && ist.korrigiert === true)) fehlend.push({ pid, datum, e, ist });
     const person = m.personen.find((q) => String(q.id) === String(pid));
-    if (marken.includes("UNGEPLANTER_DIENST") && ist && ist.bestaetigt === true && !istUngeplant(ist) && ist.korrigiert !== true
+    /* WP-14b (M3): auch eine früher korrigierte Ist-Zeit ohne Marke — sie zählte nie (DAUER_NULL-Tag ohne Plan). */
+    if (marken.includes("UNGEPLANTER_DIENST") && ist && ist.bestaetigt === true && !istUngeplant(ist)
         && person && !personTag(m, person, datum).dienstId) altbestand.push({ pid, datum, e, ist });
   }
   fehlend.sort((a, b) => b.datum.localeCompare(a.datum));
@@ -11922,13 +11914,14 @@ function StempelBefunde({ sitz, ym, akt }) {
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
               <Pill size="sm" tone="warn">{String(erfassung.grund || "").startsWith("DAUER_NULL") ? MARKIERUNG_TEXT.DAUER_NULL
+                : String(erfassung.grund || "").startsWith("ZEITUMSTELLUNG") ? MARKIERUNG_TEXT.ZEITUMSTELLUNG
                 : String(erfassung.grund || "").startsWith("OFFLINE_PRUEFEN") ? MARKIERUNG_TEXT.OFFLINE_PRUEFEN
                 : istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
               {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
                 <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
               {/* Dauer 0 (Nachprüfung B1): nicht „wie gestempelt" bestätigen — 06:00–06:00 zählte als 24 Stunden;
                   die Zeiten trägt die Leitung über die Korrektur ein. */}
-              {darfBestaetigen && akt && String(personId) !== eigene && (String(erfassung.grund || "").startsWith("DAUER_NULL")
+              {darfBestaetigen && akt && String(personId) !== eigene && (/^(DAUER_NULL|ZEITUMSTELLUNG)/.test(String(erfassung.grund || ""))
                 ? <span style={{ fontSize: 12.5, color: C.dim }}>Zeiten über „Korrigieren“ eintragen</span>
                 : <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
@@ -22469,15 +22462,19 @@ function BetriebsratAuswertung({ sitz, melde }) {
     return <Card><Leer titel="Die Auswertung wird berechnet" text="Das dauert bei großen Betrieben einen Moment. Die Seite aktualisiert sich von selbst." /></Card>;
   if (!a || !Array.isArray(a.zeilen))
     return <Card><Leer titel="Keine Auswertung" text={stand.text || "Die Auswertung liefert der Server nur an den Betriebsrat."} /></Card>;
-  const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–") + (z.istKorrigiert && (k === "istStunden" || k === "istErfasst") ? " †" : ""));   // † = seit der ersten Ausgabe wurden Zeiten korrigiert; die Zahl bleibt, wie sie ausgegeben wurde
+  const istSpalte = (k) => k === "istStunden" || k === "istErfasst";
+  /* † = seit der ersten Ausgabe wurden Zeiten korrigiert; die Zahl bleibt, wie sie ausgegeben wurde.
+     ‡ = der Monat wurde ohne diese Zeile eingefroren; ihr Ist bleibt dauerhaft nicht verfügbar (WP-27b, B1). */
+  const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–") + (z.istKorrigiert && istSpalte(k) ? " †" : "") + (z.istNichtVerfuegbar && istSpalte(k) ? " ‡" : ""));
   const csv = () => {
-    const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].join(";");
-    const reihen = a.zeilen.map((z) => [z.monat, einheit(z.einheitId), ...SPALTEN.map(([k]) => zelle(z, k))].join(";"));
+    const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].map(csvFeld).join(";");
+    /* Einheitsnamen sind frei benennbar: maskiert und gegen Formel-Injection geschützt (WP-27b, B6). */
+    const reihen = a.zeilen.map((z) => [csvFeld(z.monat), csvText(einheit(z.einheitId)), ...SPALTEN.map(([k]) => csvFeld(zelle(z, k)))].join(";"));
     if (lade(`auswertung-betriebsrat-${a.stand}.csv`, [kopf, ...reihen].join("\n"), "text/csv;charset=utf-8")) melde("Auswertung als CSV gespeichert.");
   };
   return (
     <div>
-      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}`}
+      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}${a.zeilen.some((z) => z.istNichtVerfuegbar) ? " ‡ Ist nicht verfügbar: Der Monat wurde ohne diese Zeile festgeschrieben, ein späteres Ist bleibt aus Datenschutzgründen weg." : ""}`}
         right={darf(sitz, "export.data") && <Btn onClick={csv}>Als CSV exportieren</Btn>}>Auswertung</H1>
       <Card style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -23583,7 +23580,7 @@ function AppInnen() {
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
         /* Dauer 0 nie unverändert bestätigen (Nachprüfung B1). */
-        if (!e || String(e.grund || "").startsWith("DAUER_NULL")) return;
+        if (!e || /^(DAUER_NULL|ZEITUMSTELLUNG)/.test(String(e.grund || ""))) return;      // WP-14b: Herbstnacht ebenso
         return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {

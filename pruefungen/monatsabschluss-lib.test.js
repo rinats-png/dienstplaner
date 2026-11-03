@@ -17,7 +17,7 @@ import * as MAB from "../server/lib/monatsabschluss.mjs";
 import { vorschau, raeumen, berichtstext } from "../server/lib/aufbewahrung.mjs";
 import { auskunftBauen } from "../server/lib/auskunft.mjs";
 import { korrekturAnhaengen } from "../server/lib/stempelintegritaet.mjs";
-import { auswertungHolen, auswertungenVergessen, BR_NEUBERECHNUNG_MS } from "../server/lib/br-auswertung.mjs";
+import { auswertungHolen, auswertungenVergessen, betriebsratAuswertung, BR_NEUBERECHNUNG_MS } from "../server/lib/br-auswertung.mjs";
 import { betriebSicht } from "../server/lib/sicht.mjs";
 
 const WER_L = { personId: "l1", name: "V L1", rolle: "leitung" };
@@ -165,9 +165,12 @@ describe("Wiederherstellen und Sicht", () => {
 /* WP-27: Das einmal ausgegebene Ist (brist:) bleibt; ein Wiederöffnen mit Korrektur nach der Frist steht nur als istKorrigiert. */
 describe("Betriebsrat-Auswertung: Wiederöffnen und Korrektur nach der Frist bleiben istKorrigiert", () => {
   const SPAET = "2026-06-20";
+  /* Ablage wie server/lib/ablage.mjs. Seit WP-27b (B2/B3) friert die Auswertung atomar (setJSONWennNeu) und nur ein,
+     solange der Kern des Raums besteht (kern:<raum>) — sonst fail-closed ohne Ist. Die Prüfung selbst ist unverändert. */
   const ablageNeu = () => {
-    const d = new Map();
+    const d = new Map([["kern:br16", { raum: "br16" }]]);
     return { get: async (k) => (d.has(k) ? JSON.parse(JSON.stringify(d.get(k))) : null), setJSON: async (k, v) => { d.set(k, JSON.parse(JSON.stringify(v))); },
+      setJSONWennNeu: async (k, v) => { if (d.has(k)) return false; d.set(k, JSON.parse(JSON.stringify(v))); return true; },
       list: async ({ prefix }) => ({ blobs: [...d.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }), delete: async (k) => { d.delete(k); } };
   };
   const betrieb = () => {
@@ -208,6 +211,24 @@ describe("Betriebsrat-Auswertung: Wiederöffnen und Korrektur nach der Frist ble
     expect(nachher.istStunden).toBe(25.5);
     expect(nachher.istKorrigiert).toBe(true);
     expect(vorher.istKorrigiert).toBeUndefined();
+  });
+  it("Zusammenführung WP-27b: ein bestätigter ungeplanter Dienst (WP-13) zählt im abgeschlossenen Monat genau einmal — aus dem Freeze, nicht zusätzlich aus der Erfassung; eine spätere Planänderung ändert nichts", () => {
+    const b = betrieb();
+    /* Samstag 16.05. ist frei (Schichtfolge F×5, -, -): a3 arbeitet ungeplant 08:00–12:00, von der Leitung bestätigt. */
+    b.einstempeln["a3|2026-05-16"] = { ...st("08:00", "12:00"), markierungen: ["UNGEPLANTER_DIENST"] };
+    b.erfassung["a3|2026-05-16"] = { start: "08:00", ende: "12:00", bestaetigt: true, ungeplant: true };
+    const offen = betriebsratAuswertung(b, SPAET).zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+    expect(offen.istStunden).toBe(29.5);                                        // 3 × 8,5 + 4
+    expect(offen.istErfasst).toBe(4);
+    const z = abschliessen(b, { monat: "2026-05" }, WER_L, new Date("2026-06-02T08:00:00Z"), "ma", SPAET);
+    if ("status" in z) throw new Error(z.grund);
+    expect(z.mandant.istEingefroren["a3|2026-05-16"]).toMatchObject({ std: 4, e: 1 });
+    const zu = betriebsratAuswertung(z.mandant, SPAET).zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+    expect([zu.istStunden, zu.istErfasst]).toEqual([29.5, 4]);                  // nicht doppelt (33,5 / 5)
+    /* Plan nachträglich geändert: a0 am 12.05. frei, a3 am 16.05. Früh — das Ist des abgeschlossenen Monats bleibt. */
+    const umgeplant = { ...z.mandant, abweichungen: { "a0|2026-05-12": "-", "a3|2026-05-16": "F" } };
+    const danach = betriebsratAuswertung(umgeplant, SPAET).zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+    expect([danach.istStunden, danach.istErfasst]).toEqual([29.5, 4]);
   });
 });
 

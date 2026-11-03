@@ -334,10 +334,35 @@ describe("Abschließen und Wiederöffnen: Rechte, Grund, Verlauf, Protokoll", { 
     for (const b of blobs) zeilen.push(await spur.get(b.key, { type: "json" }));
     const z = (muster, ausgang) => zeilen.filter((x) => muster.test(x.zusatz || "") && (!ausgang || x.ausgang === ausgang));
     expect(z(/^Monatsabschluss 2026-09 abgeschlossen/, "erfolg").length).toBeGreaterThanOrEqual(2);
-    expect(z(/^Monatsabschluss 2026-09 wiedergeöffnet: Nachtrag eines vergessenen Dienstes/, "erfolg")).toHaveLength(1);
+    /* Zusammenführung WP-14b (M1): Der Grund (Freitext) steht im Verlauf am Monat, nicht in der Spur —
+       dort nur die Kennung des Schritts. Schärfer als vorher: Der Grund darf in keiner Zeile stehen. */
+    expect(z(/^Monatsabschluss 2026-09 wiedergeöffnet ma-[0-9a-f]+ · Grund im Verlauf$/, "erfolg")).toHaveLength(1);
+    expect(zeilen.filter((x) => /Nachtrag eines vergessenen Dienstes/.test(x.zusatz || ""))).toEqual([]);
     expect(z(/^Monatsabschluss .*Rolle/, "abgewiesen").length).toBeGreaterThanOrEqual(8);
     expect(z(/Monat abgeschlossen/, "abgewiesen").length).toBeGreaterThanOrEqual(6);
     for (const x of z(/^Monatsabschluss 2026-09 /, "erfolg")) expect(x.rolle && x.person, x.zusatz).toBeTruthy();
+  });
+  it("Spur ohne Personenbezug (WP-14b M1): Monatsabschluss und abgewiesene Stempel/Korrekturen nennen weder Person|Tag noch Tag noch Uhrzeit; die Betreiber-Lage zeigt keine Person", async () => {
+    const { getStore } = await import("../server/lib/ablage.mjs");
+    const { spurFuerBetreiber } = await import("../server/lib/schutz.mjs");
+    const spur = getStore({ name: "centric-spur" });
+    const zeilen = [];
+    for (const praefix of ["2026-11-05/schreiben/", "2026-11-06/schreiben/", "2026-11-04/schreiben/"]) {
+      const { blobs } = await spur.list({ prefix: praefix });
+      for (const b of blobs) zeilen.push(await spur.get(b.key, { type: "json" }));
+    }
+    const wp16 = zeilen.filter((x) => /Monat abgeschlossen|^Monatsabschluss/.test(x.zusatz || ""));
+    expect(wp16.length).toBeGreaterThanOrEqual(14);
+    for (const x of wp16) {
+      expect(x.zusatz, x.zusatz).not.toMatch(/\|\d{4}-\d{2}-\d{2}/);              // kein Person|Tag
+      expect(x.zusatz, x.zusatz).not.toMatch(/\d{4}-\d{2}-\d{2}/);                // kein Tag (nur Monat JJJJ-MM)
+      expect(x.zusatz, x.zusatz).not.toMatch(/\b([01]?\d|2[0-3]):[0-5]\d\b/);     // keine Uhrzeit
+    }
+    /* Betreiber-Lage (lage.mjs, spurFuerBetreiber): ohne Person, und auch dort kein Person|Tag-Muster. */
+    for (const x of wp16.map(spurFuerBetreiber)) {
+      expect(x.person).toBeUndefined();
+      expect(x.zusatz).not.toMatch(/[^\s|:]+\|\d{4}-\d{2}-\d{2}/);
+    }
   });
 });
 
