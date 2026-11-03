@@ -148,7 +148,7 @@ OFFLINE_PRUEFEN steht vor der bisherigen Zeile.
 
 ### CI
 
-Siehe Abschnitt „CI-Läufe“ am Ende (wird nach dem Lauf nachgetragen).
+Siehe Abschnitt „CI-Läufe“ am Ende.
 
 ## Offene externe Abnahmen (nicht von diesem Agenten erbringbar)
 
@@ -209,4 +209,11 @@ Siehe Abschnitt „CI-Läufe“ am Ende (wird nach dem Lauf nachgetragen).
 
 ## CI-Läufe
 
-(nachgetragen)
+| Kopf | Prüfung (G1) | Sicherheit | Lieferkette | Deploy-Skripte |
+|---|---|---|---|---|
+| 6494e31 | 41624400154 **rot**: `geo.test.js` prüft den Block `function Stempeluhr(`/`function MStempel(`; Hüllkomponenten hatten die Namen belegt → behoben in 7f7a085 (Pufferliste an den Aufrufstellen) | 41624399976 grün | 41624400076 grün | 41624400045 grün |
+| 7f7a085 | 41625270693 grün | – | – | – |
+| 530d7be | 41625596451 grün | 41625596466 grün | 41625596280 grün | 41625596676 grün |
+
+Kein Flackern beobachtet; keine Wiederholung nötig. Lokal lief `geo.test.js` einmal in eine Hook-Zeitgrenze (10 s, Last
+des Laptops), allein wiederholt 61/61.
