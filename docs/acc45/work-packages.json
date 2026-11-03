@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 142,
+  "anzahl": 144,
   "statusZaehlung": {
-    "BLOCKED": 79,
+    "BLOCKED": 81,
     "READY": 24,
     "IN_PROGRESS": 3,
     "REVIEW": 4,
@@ -12,19 +12,19 @@
   },
   "jeStrang": {
     "acc45": {
-      "pakete": 50,
-      "offen": 19,
+      "pakete": 51,
+      "offen": 20,
       "restPT": {
-        "min": 48,
-        "max": 73.5
+        "min": 64,
+        "max": 99.5
       }
     },
     "wp19": {
-      "pakete": 14,
-      "offen": 14,
+      "pakete": 15,
+      "offen": 15,
       "restPT": {
-        "min": 59.8,
-        "max": 93.2
+        "min": 66.8,
+        "max": 104.2
       }
     },
     "intelligence": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 409.20000000000005,
-    "max": 698
+    "min": 432.20000000000005,
+    "max": 735
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -1541,6 +1541,34 @@
       "notiz": "Neu (2026-11-03): technischer Release-Kandidat (eingefrorener Stand für E-1/E-17), getrennt von den externen Abnahmen. Enthält die P0-Blocker WP-16c und WP-32d sowie WP-30 (Mail/Push Pflicht). Nicht enthalten: WP-18, WP-34 (nach main), WP-36 (läuft über E-18)."
     },
     {
+      "id": "WP-48",
+      "titel": "Sichere Teilspeicherung (Delta je Segment mit Versionen) und kurze Raumsperre beim Monatsabschluss",
+      "strang": "acc45",
+      "prio": "P0",
+      "aufwandPT": {"min":16,"max":26},
+      "abhaengigkeiten": ["WP-16"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/docs/wp48-teilspeicherung-entwurf",
+      "agent": "Agent A – Security & Data Integrity",
+      "modell": "opus",
+      "konfliktzonen": ["daten.mjs","rechte.mjs","App.jsx","stempelintegritaet.mjs"],
+      "pr": [],
+      "nachweis": "docs/acc45/WP48-TEILSPEICHERUNG.md",
+      "akzeptanz": "Siehe WP48-TEILSPEICHERUNG.md Abschnitt 4.4: PUT-Rumpf je Änderung unabhängig von der Historie (Einteilung < 300 KB), nie 413 bis 400 Personen × 36 Monate bei unverändertem RUMPF_MAX 6 MB, Teil-PUT gleichwertig zum Voll-PUT für jede Rolle (Rechte unverändert, fehlende Segmente ändern nichts), Konflikt je Zelle bzw. Kernfeld, Raumsperre bei Speichern und Monatsabschluss < 2 s bei 400 × 36, /gesund nie kritisch durch Speichern oder Abschluss",
+      "tests": "Gleichwertigkeit Teil/Voll je Rolle × Segment, Rennen, Konflikte, Versatz alter Clients, Journal/Restore, Messmatrix 60/150/400 × 12/24/36 (werkzeug/wp48-messung.mjs), Rot vorher, Mutanten",
+      "dateien": "server/lib/bestand.mjs, server/lib/scherben.mjs, server/funktionen/daten.mjs, server/lib/rechte.mjs, server/lib/monatsabschluss.mjs, server/lib/stempelintegritaet.mjs, src/speicher.js, src/App.jsx",
+      "notiz": "Betreiberentscheidung 2026-11-03: P0-Blocker für den vollen Produktivbetrieb. Entwurf erledigt (Dokument und Messskript, Branch acc45/docs/wp48-teilspeicherung-entwurf); Umsetzung in WP-48.1–48.7 und 48.9 laut Dokument, 48.1 und 48.2 können vor der Integration von WP-16 beginnen. Status BLOCKED statt READY, weil die Prüfung READY nur mit integrierten Abhängigkeiten zulässt (WP-16 steht auf REVIEW). GET-Fenster (WP-48.8) nicht im Aufwand, eigene Entscheidung."
+    },
+    {
       "id": "WP-14c",
       "titel": "Stempel-/Korrekturkette: Folgebefunde F2, F4–F8 aus dem WP-14b-Delta-Review",
       "strang": "folge",
@@ -2155,6 +2183,34 @@
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
       "notiz": null
+    },
+    {
+      "id": "WP-19.R",
+      "titel": "Rettungsdienst-Branchenprofil (eigenes Paket, Rettungsmittel-Besetzung, Besetzungsnachweis)",
+      "strang": "wp19",
+      "prio": "P1",
+      "aufwandPT": {"min":7,"max":11},
+      "abhaengigkeiten": ["WP-19.0","WP-19.4"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/frontend/wp19-r-rettungsdienst",
+      "agent": "Agent E – Business Modules & Frontend",
+      "modell": "sonnet + opus-review",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/BRANCHENPAKETE-STRATEGIE.md",
+      "akzeptanz": "Eigenes Paket rettung (Zustand 1 bis Abnahme), Zuordnung Server = Client, Rettungsmittel-Besetzung mit Mindestfunktionen (provisional), Besetzungsnachweis je Rettungsmittel; PT ist Schätzung; Sicherheitsklasse normal",
+      "tests": "pruefungen/modul-rettung*.test.js, Vertragstest Pakete, E2E in 19.13",
+      "dateien": "stufen.js, paketstand, branchenmodule.mjs, branchen.mjs, src/module/, main.jsx",
+      "notiz": "Schätzung 7–11 PT zusätzlich zu 1–1,5 PT Profil in WP-19.4; Entscheidung BS-3 offen."
     },
     {
       "id": "WP-I1",
