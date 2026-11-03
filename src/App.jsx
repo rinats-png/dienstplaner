@@ -4682,8 +4682,7 @@ function lohnPruefZeilen(m, ym) {
 }
 
 /** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
-function lohnWarnung(m, ym) {
-  const w = exportWarnung(m, ym);
+function lohnWarnung(m, ym, w) {
   const l = abschlussLuecken(m, ym).length;
   if (!l) return w;
   const t = `${l === 1 ? "1 Person" : `${l} Personen`}: ${ABSCHLUSS_LUECKE_TEXT} In der Ausgabe fehlt sie.`;
@@ -23946,7 +23945,7 @@ function AppInnen() {
       exportDATEV: (ym) => {
         /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
            mit der Planzeit — vor dem Download ausdrücklich sagen. */
-        const warnung = lohnWarnung(sitz.mandant, ym);
+        const warnung = lohnWarnung(sitz.mandant, ym, exportWarnung(sitz.mandant, ym));
         if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
@@ -25010,7 +25009,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         /* Dieselbe Rückfrage wie bei der Lohnausgabe (Nachprüfung WP-17, A1):
            Auch hier zählen Ist-Zeiten zur Prüfung vorläufig mit der Planzeit. */
-        const warnung = lohnWarnung(m, ym2);
+        const warnung = lohnWarnung(m, ym2, exportWarnung(m, ym2));
         if (warnung && !window.confirm(warnung)) return;
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",

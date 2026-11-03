@@ -672,4 +672,9 @@ ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
 
 ### CI
 
-CI_PLATZHALTER
+- Kopf a984a3d: Sicherheit 41705081850, Lieferkette 41705081719, Betrieb: Deploy-Skripte 41705081902 grün; Prüfung
+  41705081838 **rot** (kein Flake): zwei Quelltext-Prüfungen (`pruefungsfaelle-verhalten`, `stempel-oberflaeche`) erwarten
+  den Aufruf `exportWarnung(…)` wörtlich in den Export-Aktionen; die Export-Rückfrage lief über `lohnWarnung(m, ym)`.
+  Behoben, ohne die Prüfungen zu ändern: `lohnWarnung(m, ym, exportWarnung(m, ym))`. Im selben Lauf
+  M-neu-1 auf dem CI-Rechner: **245 ms** (400 Personen × 24 Monate).
+- Folgekopf: siehe Bericht (Prüfung nach der Korrektur).
