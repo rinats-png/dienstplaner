@@ -23,7 +23,7 @@ import {
   GEO_QUELLEN, EINSATZORT_ARTEN, EINSATZORT_RADIUS_VORGABE, POSITION_GRUENDE, grundText, GEO_SPOOFING_TEXT, GEO_DATENSCHUTZ_TEXT,
 } from "../server/lib/geo.mjs";
 import { positionHolen, geoAnzeige, positionsUebernahme, koordinatenFelder, koordMitGrund } from "../src/stempelvorgang.js";
-import { erfassen, rumpfFuer } from "../src/stempelpuffer.js";
+import { erfassen, rumpfFuer, abarbeiten, abmeldenAufraeumen } from "../src/stempelpuffer.js";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 
 const lies = (p) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -147,6 +147,52 @@ describe("Gerät: Grund der fehlenden Position (B4, B16 „Geo Gerät“)", () =
     /* Auch ein von außen eingeschleuster Wert (älterer Puffer, Manipulation) geht nie hinaus. */
     expect(rumpfFuer({ ...frei, positionGrund: "Maxi Muster" }).positionGrund ?? null).toBeNull();
     expect(rumpfFuer({ ...mit, positionGrund: "timeout" }).positionGrund ?? null).toBeNull();
+  });
+});
+
+describe("Puffer: der Grund bleibt nicht länger als nötig (H8+)", () => {
+  it("nach Quittung, nach Absage und beim Abmelden ist positionGrund weg", async () => {
+    const dosen = new Map();
+    const sp = { alle: async () => [...dosen.values()].map((e) => ({ ...e })), setzen: async (e) => { dosen.set(e.id, { ...e }); }, entfernen: async (id) => { dosen.delete(id); } };
+    let n = 0;
+    const neu = (art) => erfassen(sp, { art, koord: null, positionGrund: "timeout", inhaber: "i1", kennung: () => `k${++n}` });
+    const a = await neu("start"), b = await neu("ende");
+    expect((await sp.alle()).every((e) => e.positionGrund === "timeout")).toBe(true);
+    await abarbeiten(sp, "i1", async (ev) => (ev.id === a.id ? { status: 200, daten: { ok: true, datum: "2026-10-30", zeit: "08:00" } }
+      : { status: 409, daten: { code: "STEMPEL_SCHON_AUSGESTEMPELT", fehler: "schon" } }));
+    const nach = await sp.alle();
+    expect(nach.find((e) => e.id === a.id)).toMatchObject({ zustand: "bestaetigt" });
+    expect(nach.find((e) => e.id === a.id).positionGrund ?? null).toBeNull();
+    expect(nach.find((e) => e.id === b.id)).toMatchObject({ zustand: "abgelehnt" });
+    expect(nach.find((e) => e.id === b.id).positionGrund ?? null).toBeNull();
+    /* Abmelden: ein abgelehntes Ereignis, das den Grund noch trägt (älterer Stand), verliert ihn. */
+    dosen.set(b.id, { ...dosen.get(b.id), positionGrund: "timeout" });
+    await abmeldenAufraeumen(sp, "i1");
+    expect((dosen.get(b.id).positionGrund ?? null)).toBeNull();
+  });
+});
+
+describe("Handbuch und Texte (Review WP-29)", () => {
+  it("die Bestätigung der Koordinate wird nicht als Bedingung der Prüfung beschrieben", () => {
+    const t = lies("src/handbuch-inhalt.js").replace(/\s+/g, " ");
+    expect(t).not.toMatch(/gilt erst nach „Koordinate bestätigen“/);
+    expect(t).toMatch(/bleibt als „noch nicht bestätigt“ markiert, bis/);
+  });
+  it("die Antwort auf „Sieht der Chef, wo ich bin?“ nennt auch den Prüfort", () => {
+    const t = lies("src/pruefung.jsx").replace(/\s+/g, " ");
+    const i = t.indexOf("Sieht der Chef, wo ich bin?");
+    expect(i).toBeGreaterThan(-1);
+    expect(t.slice(i, i + 220)).toContain("Prüfort");
+  });
+  it("Datenschutzerklärung und AV-Vertrag nennen Messgenauigkeit, Prüfort und den Grund einer fehlenden Position", () => {
+    for (const datei of ["rechtliches/datenschutz.md", "rechtliches/auftragsverarbeitung.md"]) {
+      const t = lies(datei).replace(/\s+/g, " ");
+      const i = t.search(/Standortprüfung beim Stempeln speichert|Gespeichert wird nur das Ergebnis/);
+      expect(i, datei).toBeGreaterThan(-1);
+      const ausschnitt = t.slice(i, i + 900);
+      for (const w of ["Messgenauigkeit", "Prüfort", "keine_freigabe"]) expect(ausschnitt, `${datei} ${w}`).toContain(w);
+      expect(ausschnitt, datei).toMatch(/keine Koordinate/);
+    }
   });
 });
 

@@ -67,10 +67,11 @@ beforeAll(async () => {
     einstempeln: {}, erfassung: {}, anfragen: [], notrufe: [], nachrichten: [], abwesenheiten: [],
   }] }, { durch: "Pruefung" });
   let c = 0;
-  for (const [id, rolle] of [["l1", "leitung"], ...MA.map((i) => [i, "mitarbeiter"])]) {
+  for (const [id, rolle] of [["l1", "leitung"], ["betr", "betreiber"], ...MA.map((i) => [i, "mitarbeiter"])]) {
     c += 1;
     const code = `WPY${c}-AAAA-${String(c).padStart(4, "0")}`;
-    await kontoSchreiben(laden(), ablageSchluessel(code), { name: id, bestand: RAUM, rolle, person: id, betrieb: 0, mandantId: "m-a",
+    await kontoSchreiben(laden(), ablageSchluessel(code), { name: id, bestand: rolle === "betreiber" ? "wp29-betreiber" : RAUM, rolle,
+      person: rolle === "betreiber" ? null : id, betrieb: 0, ...(rolle === "betreiber" ? {} : { mandantId: "m-a" }),
       angelegt: "2026-01-01T00:00:00.000Z" });
     T[id] = (await anfrage("/api/anmelden", { rumpf: { zugangscode: code } })).token;
     expect(T[id], id).toBeTruthy();
@@ -137,5 +138,32 @@ describe("Schreibweg: neue Felder werden geprüft", () => {
     }
     const ok = await setze("einsatzorte", "es1", { art: "baustelle", aktiv: true, koordinatenQuelle: "manuell" });
     expect(ok.status, ok.roh).toBe(200);
+  });
+});
+
+describe("Weitere Schreibwege: Erstbefüllung und Wiederherstellen prüfen die Standortangaben", () => {
+  it("bestand-anlegen (Betreiber): ungültige Koordinate oder Quelle 422, kein Raum; gültig 200", async () => {
+    const neu = (lat, quelle) => ({ version: 9, stand: 1, session: null, mandanten: [{ id: "m-n", name: "Neu", status: "aktiv", einstellungen: {},
+      einheiten: [{ id: "e1", name: "E" }], dienstarten: [], abweichungen: {}, einstempeln: {}, erfassung: {}, anfragen: [], abwesenheiten: [],
+      standorte: [{ id: "st1", name: "Haus", bundesland: "HE", lat, lon: 8, radius: 200, ...(quelle ? { koordinatenQuelle: quelle } : {}) }],
+      personen: [person("x1", "leitung", { bereich: "ALLE", qualifikationen: [] })] }] });
+    const f = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "wp29-neu-a", inhalt: neu(450) } });
+    expect(f.status, f.roh).toBe(422);
+    expect(await B.bestandLesen(laden(), "wp29-neu-a").catch(() => null)).toBeFalsy();
+    const q = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "wp29-neu-c", inhalt: neu(50, "gps") } });
+    expect(q.status, q.roh).toBe(422);
+    const ok = await anfrage("/api/bestand-anlegen", { token: T.betr, rumpf: { bestand: "wp29-neu-b", inhalt: neu(50, "manuell") } });
+    expect(ok.status, ok.roh).toBe(200);
+  });
+  it("wiederherstellen: eine Sicherung mit ungültiger Koordinate wird abgelehnt, der Bestand bleibt", async () => {
+    const roh = JSON.parse(JSON.stringify((await B.bestandLesen(laden(), RAUM)).bestand));
+    roh.mandanten[0].standorte[0].lat = 450;
+    const marke = "2026-10-01-08-00-00";
+    await laden().setJSON(`sicherung:${RAUM}:${marke}`, roh, { metadata: { zeit: "2026-10-01T08:00:00.000Z", durch: "Test", automatisch: "ja" } });
+    const vorher = (await gespeichert()).standorte[0].lat;
+    const r = await lies(T.l1);
+    const w = await anfrage("/api/wiederherstellen", { token: T.l1, rumpf: { marke, etag: r.etag } });
+    expect(w.status, w.roh).toBe(422);
+    expect((await gespeichert()).standorte[0].lat).toBe(vorher);
   });
 });
