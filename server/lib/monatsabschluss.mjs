@@ -57,7 +57,7 @@
    ========================================================================== */
 
 import { loeschStichtag } from "./stempelintegritaet.mjs";
-import { IST_EINGEFROREN, istEinfrieren, istAbweichungen } from "./isteinfrieren.mjs";
+import { IST_EINGEFROREN, istEinfrieren, istAbweichungen, FREEZE_SCHEMA } from "./isteinfrieren.mjs";
 import { abschlussPersonenRaeumen } from "./aufbewahrung.mjs";
 
 export { abschlussPersonenRaeumen };
@@ -108,6 +108,8 @@ export const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
 const TAG = /^\d{4}-\d{2}-\d{2}$/;
 export const ABSCHLUSS_FELD = "monatsabschluss";
 export const MONAT_ABGESCHLOSSEN = "MONAT_ABGESCHLOSSEN";
+/** Wiederöffnen nach bestätigtem Lohnexport: abgelehnt, Korrektur nur über den Revisionsprozess (WP-16c). */
+export const KORREKTUR_ERFORDERLICH = "KORREKTUR_ERFORDERLICH";
 export const WIEDEROEFFNEN_GRUND_MIN = 10;
 export const ABSCHLUSS_GRUND_MAX = 500;
 export const ABSCHLUSS_VERLAUF_MAX = 200;
@@ -126,6 +128,34 @@ export const IST_FELDER = Object.freeze(["einstempeln", "erfassung", IST_EINGEFR
 
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/* Wie `gleich` (JSON-Gleichheit, Reihenfolge der Schlüssel zählt), aber ohne Zeichenketten zu bauen —
+   abschlussWiderspruch vergleicht je PUT alle Ist-Einträge abgeschlossener Monate (WP-16, Nachtrag M-neu-1). */
+function gleichWert(a, b) {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return gleich(a, b);
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!gleichWert(a[i], b[i])) return false;
+    return true;
+  }
+  /* Schneller Weg: dieselben Schlüssel in derselben Reihenfolge mit gleichen Werten. Sonst entscheidet die
+     JSON-Gleichheit wie vorher (Reihenfolge, undefined, Sonderfälle). */
+  let na = 0;
+  for (const k in a) {
+    if (!Object.prototype.hasOwnProperty.call(a, k)) continue;
+    na++;
+    if (!gleichWert(a[k], b[k])) return gleich(a, b);
+  }
+  let nb = 0, reihenfolge = true;
+  const ka = na <= 64 ? Object.keys(a) : null;
+  for (const k in b) {
+    if (!Object.prototype.hasOwnProperty.call(b, k)) continue;
+    if (ka && ka[nb] !== k) reihenfolge = false;
+    nb++;
+  }
+  return na === nb && reihenfolge ? true : gleich(a, b);
+}
 const MONATSNAMEN = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 
 /** "JJJJ-MM" eines Tages oder Monats — sonst null. */
@@ -139,6 +169,13 @@ export function monatVon(x) {
 export const monatText = (monat) => (MONAT.test(String(monat))
   ? `${MONATSNAMEN[Number(monat.slice(5, 7)) - 1]} ${monat.slice(0, 4)}` : String(monat));
 const monatDesSchluessels = (k) => monatVon(String(k).split("|")[1] || "");
+/** Gehört der Schlüssel zum Monat? Vorfilter ohne Regex (der Teil nach dem ersten „|" beginnt mit dem Monat), dann
+    dieselbe Regel wie monatDesSchluessels — Abschluss und Wiederöffnen laufen über alle Ist-Schlüssel aller Monate
+    (WP-16 Nachtrag, Messmatrix: 400 Personen × 36 Monate). */
+const imMonat = (k, monat) => {
+  const s = String(k); const i = s.indexOf("|");
+  return i >= 0 && s.startsWith(monat, i + 1) && monatDesSchluessels(s) === monat;
+};
 
 /** Der gespeicherte Eintrag eines Monats — oder null. */
 export function abschlussEintrag(m, monat) {
@@ -186,7 +223,7 @@ export function istDesMonats(m, monat) {
   const aus = {};
   for (const feld of IST_FELDER) {
     const w = m && objekt(m[feld]) ? m[feld] : {};
-    aus[feld] = geordnet(Object.fromEntries(Object.entries(w).filter(([k]) => monatDesSchluessels(k) === monat)));
+    aus[feld] = geordnet(Object.fromEntries(Object.entries(w).filter(([k]) => imMonat(k, monat))));
   }
   return aus;
 }
@@ -209,7 +246,7 @@ export function offenePunkte(m, monat) {
   const erf = m && objekt(m.erfassung) ? m.erfassung : {};
   let antraege = 0, offeneStempel = 0, zurPruefung = 0;
   for (const [k, e] of Object.entries(st)) {
-    if (monatDesSchluessels(k) !== monat || !objekt(e)) continue;
+    if (!imMonat(k, monat) || !objekt(e)) continue;
     antraege += (Array.isArray(e.antraege) ? e.antraege : []).filter((a) => objekt(a) && a.status === "offen").length;
     const ist = erf[k];
     const marken = Array.isArray(e.markierungen) ? e.markierungen : [];
@@ -217,7 +254,7 @@ export function offenePunkte(m, monat) {
     if (fall && !(objekt(ist) && ist.bestaetigt === true && ist.korrigiert === true)) offeneStempel++;
   }
   for (const [k, e] of Object.entries(erf)) {
-    if (monatDesSchluessels(k) !== monat || !objekt(e)) continue;
+    if (!imMonat(k, monat) || !objekt(e)) continue;
     if (e.bestaetigt !== true) zurPruefung++;
   }
   return { antraege, offeneStempel, zurPruefung };
@@ -281,20 +318,22 @@ export function abschliessen(m, r, wer, jetzt, id, heute) {
   /** @type {any} */
   const ereignis = { id, art: "abschluss", am: jetzt.toISOString(), wer: werForm(wer), grund, abdruck,
     ...(offen.offeneStempel || offen.zurPruefung ? { offen: { offeneStempel: offen.offeneStempel, zurPruefung: offen.zurPruefung } } : {}) };
-  const eintrag = { ...(alt || {}), abgeschlossen: true, am: ereignis.am, wer: ereignis.wer, abdruck, verlauf: [...verlauf, ereignis] };
+  /* Schema und Revision (WP-16 Nachtrag): Der Abschluss ist Revision 1 — revisionsfähig für WP-16c. */
+  const eintrag = { ...(alt || {}), abgeschlossen: true, am: ereignis.am, wer: ereignis.wer, abdruck,
+    schema: FREEZE_SCHEMA, revision: Number.isInteger(alt && alt.revision) ? alt.revision : 1, verlauf: [...verlauf, ereignis] };
   return { ereignis, eintrag, mandant: { ...mitIst, [ABSCHLUSS_FELD]: { ...(objekt(m[ABSCHLUSS_FELD]) ? m[ABSCHLUSS_FELD] : {}), [monat]: eintrag } } };
 }
 
 /** Eine Sammlung „personId|JJJJ-MM-TT" ohne die Einträge eines Monats. */
 function ohneMonat(w, monat) {
-  return Object.fromEntries(Object.entries(objekt(w) ? w : {}).filter(([k]) => monatDesSchluessels(k) !== monat));
+  return Object.fromEntries(Object.entries(objekt(w) ? w : {}).filter(([k]) => !imMonat(k, monat)));
 }
 
 /**
  * Einen abgeschlossenen Monat wiederöffnen — mit Grund. Der Verlauf hält
  * fest, ob die Ist-Daten seit dem Abschluss unverändert sind
  * (`abdruckGleich`).
- * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, ereignis: object}}
+ * @returns {{status: number, grund: string, code?: string} | {mandant: object, eintrag: object, ereignis: object}}
  */
 export function wiederoeffnen(m, r, wer, jetzt, id) {
   const monat = r && r.monat;
@@ -304,6 +343,11 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
     return { status: 422, grund: `Wiederöffnen braucht einen Grund (${WIEDEROEFFNEN_GRUND_MIN}–${ABSCHLUSS_GRUND_MAX} Zeichen).` };
   const alt = abschlussEintrag(m, monat);
   if (!alt || alt.abgeschlossen !== true) return { status: 409, grund: `Der Monat ${monatText(monat)} ist nicht abgeschlossen.` };
+  /* Nach bestätigtem Lohnexport (Betreiberentscheidung 2026-11-03): Der Originalabschluss wird nicht mehr still
+     verändert — Korrekturen laufen als neue Revision (WP-16c), nicht über das Wiederöffnen. */
+  if (objekt(alt.lohnexport))
+    return { status: 409, code: KORREKTUR_ERFORDERLICH,
+      grund: `Der Lohnexport für ${monatText(monat)} ist bestätigt. Korrekturprozess erforderlich — einfaches Wiederöffnen ist nicht mehr möglich.` };
   const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
   if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
     return { status: 409, grund: "Dieser Monat wurde so oft abgeschlossen und wiedergeöffnet, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
@@ -318,6 +362,32 @@ export function wiederoeffnen(m, r, wer, jetzt, id) {
   /* Das eingefrorene Ist wird verworfen: Ab jetzt gilt wieder das gerechnete (Review H1). */
   return { ereignis, eintrag, mandant: { ...m, [IST_EINGEFROREN]: ohneMonat(m[IST_EINGEFROREN], monat),
     [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
+}
+
+/**
+ * Den Lohnexport eines abgeschlossenen Monats bestätigen (Betreiberentscheidung 2026-11-03): Wann, Wer und
+ * die Prüfsumme des exportierten Standes. Danach ist einfaches Wiederöffnen gesperrt (KORREKTUR_ERFORDERLICH).
+ * Nur der Status — der Revisions-/Korrekturprozess folgt mit WP-16c (Revision im Eintrag vorbereitet).
+ * @returns {{status: number, grund: string, code?: string} | {mandant: object, eintrag: object, ereignis: object}}
+ */
+export function lohnexportBestaetigen(m, r, wer, jetzt, id) {
+  const monat = r && r.monat;
+  if (!MONAT.test(String(monat ?? ""))) return { status: 422, grund: "Kein gültiger Monat (JJJJ-MM)." };
+  const alt = abschlussEintrag(m, monat);
+  if (!alt || alt.abgeschlossen !== true)
+    return { status: 409, grund: `Der Monat ${monatText(monat)} ist nicht abgeschlossen — den Lohnexport bestätigt man erst nach dem Abschluss.` };
+  if (objekt(alt.lohnexport)) return { status: 409, grund: `Der Lohnexport für ${monatText(monat)} ist schon bestätigt.` };
+  const verlauf = Array.isArray(alt.verlauf) ? alt.verlauf : [];
+  if (verlauf.length >= ABSCHLUSS_VERLAUF_MAX)
+    return { status: 409, grund: "Dieser Monat wurde so oft abgeschlossen und wiedergeöffnet, dass der Server keinen weiteren Schritt annimmt. Bitte mit der Betriebsleitung klären." };
+  const abdruck = istAbdruck(m, monat);
+  if (abdruck !== alt.abdruck)
+    return { status: 409, code: "ABDRUCK_ABWEICHEND",
+      grund: `Die Ist-Daten für ${monatText(monat)} weichen von der Prüfsumme des Abschlusses ab. Bitte wiederöffnen und erneut abschließen, bevor der Lohnexport bestätigt wird.` };
+  const revision = Number.isInteger(alt.revision) ? alt.revision : 1;
+  const ereignis = { id, art: "lohnexport", am: jetzt.toISOString(), wer: werForm(wer), abdruck, revision };
+  const eintrag = { ...alt, revision, lohnexport: { am: ereignis.am, wer: ereignis.wer, abdruck, revision }, verlauf: [...verlauf, ereignis] };
+  return { ereignis, eintrag, mandant: { ...m, [ABSCHLUSS_FELD]: { ...m[ABSCHLUSS_FELD], [monat]: eintrag } } };
 }
 
 /** Die letzte Wiederöffnung eines (jetzt offenen) Monats — für den Vermerk an Korrekturen. */
@@ -367,9 +437,12 @@ export function abgewiesenVermerken(m, monat, v) {
     return setze({ ...e, abgewiesen: liste.map((x, j) => (j === i ? { ...x, anzahl: n + 1, zuletzt: v.am } : x)) });
   }
   if (liste.filter((x) => objekt(x) && String(x.personId) === pid).length >= ABGEWIESEN_JE_PERSON) return zaehlen();
+  /* Obergrenze je Betrieb und Monat (WP-16, Nachtrag N1): Ist die Liste voll, wird gezählt („weitere" je
+     Person) — vorher schob slice(-ABGEWIESEN_MAX) still die ältesten Einträge anderer Personen hinaus. */
+  if (liste.length >= ABGEWIESEN_MAX) return zaehlen();
   const neu = { personId: v.personId, datum: v.datum, art: v.art, zeit: v.zeit || null, zeitAm: v.zeitAm || null,
     offline: !!v.offline, ...(alt ? { alt: true } : {}), ereignis: v.ereignis || null, am: v.am };
-  return setze({ ...e, abgewiesen: [...liste, neu].slice(-ABGEWIESEN_MAX) });
+  return setze({ ...e, abgewiesen: [...liste, neu] });
 }
 
 /* --------------------------------------------------------------------------
@@ -409,20 +482,42 @@ export function abschlussWiderspruch(altM, gesendetM, o = {}) {
   const monate = abgeschlosseneMonate(altM);
   if (!monate.length) return null;
   const stich = o.loeschlauf ? loeschStichtag(altM, o.heute) : null;
+  /* Linear (WP-16, Nachtrag M-neu-1): Jeder Schlüssel wird einmal seinem Monat zugeordnet — vorher lief
+     je abgeschlossenem Monat und Feld eine Schleife über alle Schlüssel aller Monate (400 Personen,
+     12 Monate: 7,1 s je PUT unter der Raumsperre). Ergebnis wie vorher: der früheste Monat, darin das
+     erste Feld in IST_FELDER-Reihenfolge, darin der erste abweichende Schlüssel. */
+  const pruefen = new Set(monate.filter((monat) => !(o.unveraendert && !o.unveraendert.has(`${altM.id}::${monat}`))));
+  if (!pruefen.size) return null;
+  /** @type {Map<string, {k: string, feld: string}>} */
+  const erster = new Map();
+  /* Der Monat je Schlüssel: Tage wiederholen sich über die Personen — einmal je Tagesteil bestimmt. */
+  const monatJeTeil = new Map();
+  const monatDes = (k) => {
+    const s = String(k); const i = s.indexOf("|");
+    const teil = i < 0 ? "" : s.slice(i + 1, s.indexOf("|", i + 1) < 0 ? undefined : s.indexOf("|", i + 1));
+    let mon = monatJeTeil.get(teil);
+    if (mon === undefined) { mon = monatVon(teil); monatJeTeil.set(teil, mon); }
+    return mon;
+  };
+  for (const feld of IST_FELDER) {
+    if (!Object.prototype.hasOwnProperty.call(gesendetM, feld)) continue;        // nicht mitgeschickt: unverändert
+    const a = objekt(altM[feld]) ? altM[feld] : {};
+    const n = objekt(gesendetM[feld]) ? gesendetM[feld] : {};
+    const sieh = (k) => {
+      const monat = monatDes(k);
+      if (!monat || !pruefen.has(monat) || erster.has(monat) || gleichWert(a[k], n[k])) return;
+      const tag = String(k).split("|")[1];
+      if (n[k] === undefined && stich && tag < stich) return;                    // Löschlauf nach Fristablauf
+      erster.set(monat, { k, feld });
+    };
+    for (const k of Object.keys(a)) sieh(k);
+    for (const k of Object.keys(n)) if (!Object.prototype.hasOwnProperty.call(a, k)) sieh(k);
+  }
   for (const monat of monate) {
-    if (o.unveraendert && !o.unveraendert.has(`${altM.id}::${monat}`)) continue;
-    for (const feld of IST_FELDER) {
-      if (!Object.prototype.hasOwnProperty.call(gesendetM, feld)) continue;      // nicht mitgeschickt: unverändert
-      const a = objekt(altM[feld]) ? altM[feld] : {};
-      const n = objekt(gesendetM[feld]) ? gesendetM[feld] : {};
-      for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
-        if (monatDesSchluessels(k) !== monat || gleich(a[k], n[k])) continue;
-        const tag = String(k).split("|")[1];
-        if (n[k] === undefined && stich && tag < stich) continue;               // Löschlauf nach Fristablauf
-        return { schluessel: k, monat,
-          grund: `Der Monat ${monatText(monat)} ist abgeschlossen — ${feld === "erfassung" ? "Ist-Zeiten" : feld === IST_EINGEFROREN ? "das eingefrorene Ist" : "Stempel"} dieses Monats ändern sich erst nach dem Wiederöffnen durch die Leitung. Es wurde nichts gespeichert.` };
-      }
-    }
+    const f = erster.get(monat);
+    if (!f) continue;
+    return { schluessel: f.k, monat,
+      grund: `Der Monat ${monatText(monat)} ist abgeschlossen — ${f.feld === "erfassung" ? "Ist-Zeiten" : f.feld === IST_EINGEFROREN ? "das eingefrorene Ist" : "Stempel"} dieses Monats ändern sich erst nach dem Wiederöffnen durch die Leitung. Es wurde nichts gespeichert.` };
   }
   return null;
 }
@@ -457,5 +552,5 @@ export function abschlussStatus(w) {
   if (!objekt(w)) return {};
   return Object.fromEntries(Object.entries(w)
     .filter(([mon, e]) => MONAT.test(mon) && objekt(e) && e.abgeschlossen === true)
-    .map(([mon]) => [mon, { abgeschlossen: true }]));
+    .map(([mon, e]) => [mon, { abgeschlossen: true, ...(objekt(e.lohnexport) ? { lohnexportiert: true } : {}) }]));
 }

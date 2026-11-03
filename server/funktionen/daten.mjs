@@ -26,8 +26,8 @@ import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
-import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, abgewiesenVermerken, letzteWiederoeffnung,
-  monatAbgeschlossen, monatVon, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
+import { abschlussSperre, abschlussWiderspruch, abschliessen, wiederoeffnen, lohnexportBestaetigen, abgewiesenVermerken, letzteWiederoeffnung,
+  monatAbgeschlossen, MONAT_ABGESCHLOSSEN } from "../lib/monatsabschluss.mjs";
 import { regelHinweise, uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
@@ -540,7 +540,17 @@ export default async (req, context) => {
       /* Personen: ein falscher Typ wird abgewiesen, eine fehlende Liste ergänzt (gestalt.mjs). */
       const personA = personenFehler(roh);
       if (personA) return antwort({ fehler: "Der Bestand ist ungültig.", text: personA.grund, feld: personA.feld }, 422);
-      const neuerBestand = personenAngleichen(roh);
+      const angeglichen = personenAngleichen(roh);
+      /* Monatsabschluss und eingefrorenes Ist entstehen nur auf dem Server (POST /api/monatsabschluss) — aus
+         einem übermittelten Inhalt werden sie verworfen (WP-16, Nachtrag N4), nie ungeprüft übernommen. */
+      const neuerBestand = angeglichen && Array.isArray(angeglichen.mandanten)
+        ? { ...angeglichen, mandanten: angeglichen.mandanten.map((x) => {
+          if (!x || typeof x !== "object") return x;
+          const { monatsabschluss: _ma, istEingefroren: _ie, ...rest } = x;
+          void _ma; void _ie;
+          return rest;
+        }) }
+        : angeglichen;
       const formA = pruefeGestalt(neuerBestand);
       if (!formA.ok) return antwort({ fehler: "Der Bestand ist ungültig.", text: formA.grund }, 422);
       /* Standort- und Einsatzortangaben (Wertebereiche, Quelle, Art): dieselbe Prüfung wie am Schreibweg. */
@@ -1367,7 +1377,7 @@ export default async (req, context) => {
           const ziel = stempelZiel(m, person, art, jetzt, geraeteDatum);
           if (ziel.status) {
             await protokoll("schreiben", kSt, "abgewiesen",
-              `stempeln ${art} ${geraeteDatum ?? "-"}: ${ziel.code}`, wer);
+              `stempeln ${art}: ${ziel.code}`, { ...wer, tag: geraeteDatum });
             return antwort({ fehler: ziel.grund, code: ziel.code, datum: ziel.datum || null }, ziel.status);
           }
           const datum = ziel.datum;
@@ -1416,7 +1426,7 @@ export default async (req, context) => {
              frischen Stand: Zwei gleichzeitige Einstempelversuche derselben
              Person ergeben genau einen Stempel und eine Absage. */
           if ((art === "start" && (alt.start || alt.ende)) || (art === "ende" && alt.ende)) {
-            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: schon gestempelt`, wer);
+            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art}: schon gestempelt`, { ...wer, tag: datum });
             return antwort({ fehler: art === "start" && alt.start ? "Für diesen Tag ist schon eingestempelt."
               : art === "start" ? "Für diesen Tag ist schon ausgestempelt — den Beginn trägt die Leitung nach."
               : "Für diesen Tag ist schon ausgestempelt.",
@@ -1574,9 +1584,9 @@ export default async (req, context) => {
              solange noch einer folgt; erst der letzte ist ein Konflikt. */
           if (versuch < STEMPEL_WIEDERHOLUNGEN)
             await protokoll("schreiben", kSt, "wiederholt",
-              `stempeln ${art} ${datum} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, wer);
+              `stempeln ${art} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, { ...wer, tag: datum });
         }
-        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${zielDatum}`, wer);
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art}`, { ...wer, tag: zielDatum });
         return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
           + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
       });
@@ -1757,13 +1767,15 @@ export default async (req, context) => {
     if (pfad === "monatsabschluss" && req.method === "POST") {
       const kM = kennung(req, s);
       const aktionM = rumpf && rumpf.aktion;
-      if (aktionM !== "abschliessen" && aktionM !== "wiederoeffnen")
-        return antwort({ fehler: "aktion: abschliessen oder wiederoeffnen." }, 400);
-      const monatM = monatVon(rumpf && rumpf.monat) || String((rumpf && rumpf.monat) ?? "").slice(0, 20);
+      if (aktionM !== "abschliessen" && aktionM !== "wiederoeffnen" && aktionM !== "lohnexport")
+        return antwort({ fehler: "aktion: abschliessen, wiederoeffnen oder lohnexport." }, 400);
+      /* Nur ein gültiger Monat JJJJ-MM kommt in die Spur (WP-16, Nachtrag N2) — nie Freitext aus dem Rumpf. */
+      const monatM = (rumpf && typeof rumpf.monat === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(rumpf.monat)) ? rumpf.monat : "ungültig";
       if (!abschlussRecht(s.rolle, aktionM)) {
         await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM} · Rolle ${s.rolle}`, wer);
-        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionM === "wiederoeffnen"
-          ? "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." : "Monate schließen Leitung und Planung ab." }, 403);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: aktionM === "abschliessen"
+          ? "Monate schließen Leitung und Planung ab."
+          : aktionM === "lohnexport" ? "Den Lohnexport bestätigt nur die Leitung." : "Einen abgeschlossenen Monat öffnet nur die Leitung wieder." }, 403);
       }
       const bM = await bremse("schreiben", kM);
       if (!bM.frei) return zuVielAntwort(bM.wartet);
@@ -1776,7 +1788,8 @@ export default async (req, context) => {
         const idM = `ma-${randomBytes(6).toString("hex")}`;
         const r = aktionM === "abschliessen"
           ? abschliessen(mM, rumpf || {}, werM, new Date(), idM, heuteBerlin())
-          : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
+          : aktionM === "lohnexport" ? lohnexportBestaetigen(mM, rumpf || {}, werM, new Date(), idM)
+            : wiederoeffnen(mM, rumpf || {}, werM, new Date(), idM);
         if ("status" in r) {
           await protokoll("schreiben", kM, "abgewiesen", `Monatsabschluss ${aktionM} ${monatM}: ${spurGrund(r.grund)}`, wer);
           return antwort({ fehler: r.grund, ...(r.code ? { code: r.code } : {}), ...(r.offen ? { offen: r.offen } : {}) }, r.status);
@@ -1792,7 +1805,8 @@ export default async (req, context) => {
            steht im Verlauf am Monat, nicht in der Spur. */
         await protokoll("schreiben", kM, "erfolg", aktionM === "abschliessen"
           ? `Monatsabschluss ${monatM} abgeschlossen${r.ereignis.offen ? ` · trotz ${r.ereignis.offen.offeneStempel} unvollständiger Stempel, ${r.ereignis.offen.zurPruefung} Ist-Zeiten zur Prüfung` : ""}`
-          : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
+          : aktionM === "lohnexport" ? `Monatsabschluss ${monatM} Lohnexport bestätigt ${r.ereignis.id} · Revision ${r.ereignis.revision}`
+            : `Monatsabschluss ${monatM} wiedergeöffnet ${r.ereignis.id} · Grund im Verlauf`, wer);
         return antwort({ ok: true, monat: monatM, eintrag: r.eintrag, ereignis: r.ereignis, etag: ergM.stand || null });
       });
     }
@@ -1839,13 +1853,13 @@ export default async (req, context) => {
           return antwort({ fehler: sperreZ.grund, code: MONAT_ABGESCHLOSSEN, monat: sperreZ.monat }, 409);
         }
         if ((mZ.erfassung || {})[kTag]) {
-          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: schon erfasst`, wer);
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: schon erfasst`, { ...wer, tag: datum });
           return antwort({ fehler: "Für diesen Tag ist schon eine Zeit erfasst. Korrekturen nimmt die Leitung vor." }, 409);
         }
         const urteilZ = selbstauskunftPruefen(mZ, personZ, String(datum), { start, ende, bestaetigt: true, grund,
           ...(pause === undefined || pause === null || pause === "" ? {} : { pause }) });
         if (urteilZ.grund) {
-          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen ${datum}: ${urteilZ.grund}`, wer);
+          await protokoll("schreiben", kZ, "abgewiesen", `Zeit bestätigen: ${urteilZ.grund}`, { ...wer, tag: datum });
           return antwort({ fehler: urteilZ.grund }, 422);
         }
         const neuerM = { ...mZ, erfassung: { ...(mZ.erfassung || {}), [kTag]: urteilZ.eintrag } };
@@ -1853,10 +1867,10 @@ export default async (req, context) => {
           { ...mitZ.bestand, mandanten: mitZ.bestand.mandanten.map((x) => (x === mZ ? neuerM : x)) },
           { erwarteterStand: mitZ.stand, durch: s.name || "Selbstauskunft" });
         if (!ergZ.ok) {
-          await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen ${datum}`, wer);
+          await protokoll("schreiben", kZ, "konflikt", `Zeit bestätigen`, { ...wer, tag: datum });
           return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
         }
-        await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten: ${datum}`, wer);
+        await protokoll("schreiben", kZ, "erfolg", `Selbstauskunft Zeiten`, { ...wer, tag: datum });
         /* Hinweise zur Ist-Zeit (Pause § 4 ArbZG / § 11 JArbSchG u. a., WP-16) — keine Absage. */
         const daZ = (mZ.dienstarten || []).find((d) => d && String(d.id) === String(geplanterDienst(mZ, personZ, String(datum))));
         const eZ = urteilZ.eintrag;

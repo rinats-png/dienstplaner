@@ -235,7 +235,9 @@ import {
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
 import { monatAbgeschlossen, monatText } from "../server/lib/monatsabschluss.mjs";
-import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst } from "../server/lib/isteinfrieren.mjs";
+import { mindestFuer, postenBesatzung as postenBesatzungRechnen, eingefrorenerTag, eingefrorenerDienst, eingefrorenerMonat, eingefrorenerBetrieb,
+  abschlussLuecke, abschlussLuecken, ABSCHLUSS_LUECKE_TEXT, feiertagFuer, sollMonat, nachtAnteilAm, tagesanteile, zuschlagTagAddieren,
+  eingefrorenFuerPerson } from "../server/lib/isteinfrieren.mjs";
 import { feiertage, feiertag } from "../server/lib/feiertage.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
@@ -690,12 +692,8 @@ const LAENDER = [["BW","Baden-Württemberg"],["BY","Bayern"],["BE","Berlin"],["B
  * Die Schwellenprüfungen („ist das ein Nachtdienst?") benutzen weiterhin
  * die datumsfreie Fassung — eine Dienstart ist an jedem Tag dieselbe.
  */
-function nachtAnteilAm(datum, d, einst) {
-  const [von, bis] = fenster(datum, d);
-  const versatz = uhrversatz(von, bis);
-  if (!versatz) return nachtAnteil(d, einst);
-  return Math.max(0, Math.round((nachtAnteil(d, einst) + versatz / 60) * 100) / 100);
-}
+/* nachtAnteilAm steht seit WP-16 (Nachtrag M-neu-2) in server/lib/isteinfrieren.mjs — der Monatsabschluss
+   friert mit derselben Fassung ein. */
 
 /* ------------------------------- Rollenwerk ------------------------------- */
 const ROLLEN = [
@@ -1496,16 +1494,19 @@ function besetzung(m, d) {
 }
 function sollStunden(m, p, ym) {
   return memo(m, `soll|${p.id}|${ym}`, () => {
-    const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1); let t = 0;
-    for (let i = 1; i <= n; i++) { const d = `${ym}-${pad(i)}`;
-      if (imDienst(p, d) && dow(d) < 5 && !feiertagFuer(m, d, p)) t++; }
-    return Math.round(p.wochenstunden / 5 * t * 100) / 100;
+    /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): das Soll zum Abschluss — spätere Änderungen an
+       Wochenstunden, Eintritt/Austritt, Standort oder Bundesland ändern es nicht. */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Number.isFinite(fm.s)) return fm.s;
+    return sollMonat(m, p, ym);
   });
 }
 function istStunden(m, p, ym) {
   /* Ohne Zugang zu den Ist-Daten (Rollenschutz, src/istdaten.js) gibt es keine
      Ist-Stunden — auch nicht aus dem Plan. */
   if (!istVerfuegbar(m, p, zeitraumMonat(ym))) return IST_NICHT_VERFUEGBAR;
+  /* Abgeschlossener Monat ohne Freeze dieser Person (WP-16, Nachtrag N3): nicht 0 h, sondern Prüffall. */
+  if (abschlussLuecke(m, p, ym)) return { ...IST_NICHT_VERFUEGBAR, abschlussLuecke: true };
   return memo(m, `ist|${p.id}|${ym}`, () => {
     const [y, mo] = ym.split("-").map(Number); const n = dim_(y, mo - 1);
     let g = 0, gg = 0, nacht = 0, dienste = 0, naechte = 0, erfasst = 0, ungeklaert = 0, pruefFaelle = 0, ungeplantTage = 0;
@@ -1533,6 +1534,9 @@ function istStunden(m, p, ym) {
       const na = nachtAnteilAm(d, da, m.einstellungen); nacht += na; dienste++;
       if (na >= nachtschwelle(m.einstellungen)) naechte++;
     }
+    /* Abgeschlossener Monat: Nachtstunden und Nachtdienste wie zum Abschluss (Nachtfenster von damals, M-neu-2). */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Array.isArray(fm.z)) { nacht = Number(fm.z[0]) || 0; naechte = Number(fm.nn) || 0; }
     return { geleistet: Math.round(g * 100) / 100, gutgeschrieben: Math.round(gg * 100) / 100,
       gesamt: Math.round((g + gg) * 100) / 100, nacht: Math.round(nacht * 100) / 100, dienste, naechte, erfasst, ungeklaert, zurPruefung: pruefFaelle, ungeplant: ungeplantTage };
   });
@@ -1553,6 +1557,9 @@ function istStunden(m, p, ym) {
 function ausgleichPruefen(m, p, bis) {
   const ausglWochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
   if (!istVerfuegbar(m, p, { von: addDays(bis, -(ausglWochen * 7 - 1)), bis })) return { nichtVerfuegbar: true, eingehalten: null };
+  /* Ein abgeschlossener Monat im Zeitraum ohne Freeze dieser Person (N3): nicht bewertbar statt 0 h. */
+  for (let ym = addDays(bis, -(ausglWochen * 7 - 1)).slice(0, 7); ym <= bis.slice(0, 7); ym = addDays(`${ym}-01`, 32).slice(0, 7))
+    if (abschlussLuecke(m, p, ym)) return { nichtVerfuegbar: true, eingehalten: null, abschlussLuecke: true };
   return memo(m, `ausgl|${p.id}|${bis}`, () => {
     const wochen = (m.einstellungen || {}).ausgleichWochen || AUSGLEICH_WOCHEN;
     const stundenAmTag = (d) => {
@@ -1620,7 +1627,12 @@ function stundenkonto(m, p, ym) {
   if (!istVerfuegbar(m, p, zeitraumBisMonat(ym))) return null;
   return memo(m, `kto|${p.id}|${ym}`, () => {
     const j = Number(ym.slice(0, 4)), bis = Number(ym.slice(5, 7)); let d = p.stundenuebertrag || 0;
-    for (let x = 1; x <= bis; x++) { const k = `${j}-${pad(x)}`; d += istStunden(m, p, k).gesamt - sollStunden(m, p, k); }
+    for (let x = 1; x <= bis; x++) {
+      const k = `${j}-${pad(x)}`; const ist = istStunden(m, p, k).gesamt;
+      /* Ein abgeschlossener Monat ohne Freeze (N3): Konto unbekannt, nicht geschätzt. */
+      if (ist === null || ist === undefined) return null;
+      d += ist - sollStunden(m, p, k);
+    }
     return Math.round(d * 10) / 10;
   });
 }
@@ -1628,7 +1640,11 @@ function nachtJahr(m, p, jahr) {
   if (!istVerfuegbar(m, p, zeitraumJahr(jahr))) return { stunden: null, anzahl: null, nichtVerfuegbar: true };
   return memo(m, `nacht|${p.id}|${jahr}`, () => {
     let h = 0, n = 0;
-    for (let x = 1; x <= 12; x++) { const r = istStunden(m, p, `${jahr}-${pad(x)}`); h += r.nacht; n += r.naechte; }
+    for (let x = 1; x <= 12; x++) {
+      const r = istStunden(m, p, `${jahr}-${pad(x)}`);
+      if (r.abschlussLuecke) return { stunden: null, anzahl: null, nichtVerfuegbar: true, abschlussLuecke: true };
+      h += r.nacht; n += r.naechte;
+    }
     return { stunden: Math.round(h * 10) / 10, anzahl: n };
   });
 }
@@ -2505,6 +2521,8 @@ function istTag(m, p, d) {
   const fz = eingefrorenerTag(m, p, d);
   if (fz !== undefined) {
     if (!fz) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true };
+    /* Freeze fehlt (N3): kein Dienst „0 h", sondern ein Prüffall — die Monatsrechnungen geben null zurück. */
+    if (fz.luecke) return { abwesenheit: null, plan: null, da: null, idn: null, wochenstunden: p.wochenstunden, eingefroren: true, luecke: true };
     if (Array.isArray(fz.a) && fz.a.length) {
       const art = fz.a.reduce((best, x) => (best === null || abwArt(x).rang > abwArt(best).rang ? x : best), null);
       return { abwesenheit: { art }, plan: fz.pl ? true : null, da: null, idn: null,
@@ -2933,16 +2951,7 @@ function preisAnteilig(db, m, ym) {
  * Ein Nachtdienst von Samstag 21:30 bis Sonntag 07:15 zählt anteilig
  * als Samstags- und als Sonntagsarbeit.
  */
-function tagesanteile(datum, da) {
-  const s = toMin(da.start);
-  let e = toMin(da.ende);
-  if (e <= s) e += 1440;
-  const out = [];
-  const ersterTeil = Math.min(e, 1440) - s;
-  if (ersterTeil > 0) out.push({ datum, minuten: ersterTeil });
-  if (e > 1440) out.push({ datum: addDays(datum, 1), minuten: e - 1440 });
-  return out;
-}
+/* tagesanteile und zuschlagTagAddieren: server/lib/isteinfrieren.mjs (WP-16, Nachtrag M-neu-2). */
 /** Zuschlagsrelevante Stunden einer Person in einem Monat. */
 function zuschlagStunden(m, p, ym) {
   const ohneIst = !istVerfuegbar(m, p, zeitraumMonat(ym));
@@ -2958,16 +2967,15 @@ function zuschlagStunden(m, p, ym) {
       if (!da) continue;
       const gearbeitet = t.idn.std;
       r.gesamt += gearbeitet;
-      r.nacht += nachtAnteilAm(d, da, m.einstellungen);
-      for (const teil of tagesanteile(d, da)) {
-        const std = teil.minuten / 60;
-        const w = dow(teil.datum);
-        if (feiertagFuer(m, teil.datum, p)) r.feiertag += std;
-        else if (w === 6) r.sonntag += std;
-        else if (w === 5) r.samstag += std;
-      }
+      zuschlagTagAddieren(m, p, d, da, r);
     }
     for (const k of Object.keys(r)) r[k] = Math.round(r[k] * 100) / 100;
+    /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Nacht-, Sonn-, Feiertags- und Samstagsstunden wie zum
+       Abschluss — Nachtfenster, Bundesland/Feiertage und Standort von damals. */
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && Array.isArray(fm.z)) [r.nacht, r.sonntag, r.feiertag, r.samstag] = fm.z.map((x) => Number(x) || 0);
+    /* Freeze fehlt (N3): keine Zahlen statt 0. */
+    if (abschlussLuecke(m, p, ym)) return { nacht: null, sonntag: null, feiertag: null, samstag: null, gesamt: null, nichtVerfuegbar: true, abschlussLuecke: true };
     /* Nacht-, Sonn- und Feiertagsanteile folgen dem Plan; die gearbeiteten
        Stunden gibt es ohne Ist-Daten nicht. */
     if (ohneIst) { r.gesamt = null; r.nichtVerfuegbar = true; }
@@ -2981,7 +2989,10 @@ function zuschlagStunden(m, p, ym) {
  */
 function zuschlagWert(m, p, ym) {
   const std = zuschlagStunden(m, p, ym);
-  const zeilen = (m.zuschlaege || []).filter((z) => z.aktiv).map((z) => {
+  /* Abgeschlossener Monat: die Zuschlagsregeln zum Abschluss (M-neu-2). */
+  const fb = eingefrorenerBetrieb(m, ym);
+  const regeln = fb && Array.isArray(fb.zs) ? fb.zs : m.zuschlaege;
+  const zeilen = (regeln || []).filter((z) => z.aktiv).map((z) => {
     const h = std[z.art] || 0;
     return { regel: z, stunden: Math.round(h * 100) / 100,
       wert: Math.round(h * z.prozent / 100 * 100) / 100 };
@@ -3183,6 +3194,27 @@ function datenauskunft(m, personId) {
   const erf = Object.entries(m.erfassung || {}).filter(([k]) => k.startsWith(personId + "|"));
   erf.length ? erf.forEach(([k, v]) => z.push(`  ${fDatum(k.split("|")[1])}: ${v.start || "wie geplant"}–${v.ende || ""}${v.grund ? ` (${v.grund})` : ""}`))
     : z.push("  —");
+  /* Monatsabschluss (WP-16, Nachtrag N6): wie die Auskunft des Servers (auskunft.mjs) — das eingefrorene Ist
+     abgeschlossener Monate und die nach dem Abschluss abgewiesenen eigenen Stempel. */
+  z.push("", "EINGEFRORENES IST (MONATSABSCHLUSS)");
+  const fz = Object.entries(eingefrorenFuerPerson(m, personId)).sort(([a], [b]) => a.localeCompare(b));
+  fz.length ? fz.forEach(([k, v]) => {
+    const t = k.split("|")[1];
+    if (t.length === 7) z.push(`  ${t}: Soll ${v.s ?? "—"} h${Array.isArray(v.z) ? ` · Nacht ${v.z[0]} h, Sonntag ${v.z[1]} h, Feiertag ${v.z[2]} h, Samstag ${v.z[3]} h` : ""}`);
+    else if (Array.isArray(v.a)) z.push(`  ${fDatum(t)}: ${v.a.map((x) => abwArt(x).label).join(", ")}`);
+    else z.push(`  ${fDatum(t)}: ${(v.da && (v.da.name || v.da.kurz)) || "Dienst"} ${n1(Number(v.std) || 0)} h${v.e ? " (erfasst)" : ""}${v.p ? " (zur Prüfung)" : ""}`);
+  }) : z.push("  —");
+  z.push("", "ABGEWIESENE STEMPEL (ABGESCHLOSSENER MONAT)");
+  const abgew = [];
+  for (const [mon, e] of Object.entries(m.monatsabschluss || {})) {
+    if (!e || typeof e !== "object") continue;
+    for (const x of Array.isArray(e.abgewiesen) ? e.abgewiesen : [])
+      if (x && String(x.personId) === String(personId))
+        abgew.push(`  ${fDatum(x.datum)}: ${x.art === "ende" ? "Ende" : "Beginn"}${x.zeit ? ` ${x.zeit}` : ""}${x.offline ? " (offline)" : ""}${x.anzahl > 1 ? ` · ${x.anzahl}×` : ""}`);
+    const n = e.abgewiesenGezaehlt && Number(e.abgewiesenGezaehlt[personId]);
+    if (n) abgew.push(`  ${mon}: ${n} weitere (nur gezählt)`);
+  }
+  abgew.length ? abgew.forEach((x) => z.push(x)) : z.push("  —");
   z.push("", "MITTEILUNGEN");
   const na = (m.nachrichten || []).filter((x) => x.personId === personId).slice(0, 40);
   na.length ? na.forEach((x) => z.push(`  ${x.zeit}: ${x.titel}`)) : z.push("  —");
@@ -3225,9 +3257,7 @@ async function fremdstandPruefen(schluessel, eigenerStand) {
 /* --------------------- Standortbezogene Feiertage ------------------------ */
 /* landFuerEinheit: server/lib/fachpruefung.mjs (WP-22). */
 /** Feiertag aus Sicht einer bestimmten Person an einem Tag. */
-function feiertagFuer(m, datum, p) {
-  return feiertag(datum, p ? landFuerEinheit(m, einheitAm(p, datum)) : m.bundesland);
-}
+/* feiertagFuer: server/lib/isteinfrieren.mjs (WP-16, Nachtrag M-neu-2 — der Abschluss friert Soll und Zuschläge damit ein). */
 /** Alle im Betrieb vorkommenden Bundesländer. */
 const laenderImBetrieb = (m) => [...new Set([m.bundesland, ...((m.standorte || []).map((s) => s.bundesland))])].filter(Boolean);
 
@@ -4556,10 +4586,16 @@ const LOHNARTEN_STD = {
  * Bewusst als Stunden je Lohnart — Entgelte gehören in die Lohnabrechnung.
  */
 function datevSaetze(m, ym) {
-  const la = m.lohnarten || LOHNARTEN_STD;
+  /* Abgeschlossener Monat (WP-16, Nachtrag M-neu-2): Lohnarten und Zugehörigkeit (im Dienst am 28.) wie zum
+     Abschluss — ein rückwirkend verlegter Austritt lässt niemanden aus dem abgeschlossenen Monat fallen. */
+  const fb = eingefrorenerBetrieb(m, ym);
+  const la = (fb && "la" in fb ? fb.la : m.lohnarten) || LOHNARTEN_STD;
   const zeilen = [];
   for (const p of m.personen) {
-    if (!imDienst(p, `${ym}-28`)) continue;
+    const fm = eingefrorenerMonat(m, p, ym);
+    if (fm && (fm.i === 0 || fm.i === 1) ? fm.i !== 1 : !imDienst(p, `${ym}-28`)) continue;
+    /* Freeze fehlt (N3): keine Zeilen statt 0 h — die Lohnausgabe nennt den Prüffall (lohnPruefZeilen, exportWarnung). */
+    if (abschlussLuecke(m, p, ym)) continue;
     const w = zuschlagWert(m, p, ym);
     const kto = stundenkonto(m, p, ym);
     const eintrag = (schluessel, stunden) => {
@@ -4630,14 +4666,28 @@ function datevCSV(m, ym) {
  */
 function lohnPruefZeilen(m, ym) {
   const h = pruefHinweis(m, ym);
-  if (!h) return [];
+  /* Abgeschlossener Monat ohne Freeze einer Person (WP-16, Nachtrag N3): Prüffall statt still 0 h. */
+  const lu = abschlussLuecken(m, ym);
+  const luZeilen = lu.length ? [`ACHTUNG: ${lu.length === 1 ? "1 Person fehlt" : `${lu.length} Personen fehlen`} in dieser Ausgabe. ${ABSCHLUSS_LUECKE_TEXT}`,
+    ...lu.map((p) => `  ${p.nachname}, ${p.vorname}`), ""] : [];
+  if (!h) return luZeilen;
   const nameVon = (pid) => { const p = m.personen.find((x) => x.id === pid); return p ? `${p.nachname}, ${p.vorname}` : pid; };
   return [
     `ACHTUNG: ${h.text}`,
     ...h.faelle.map((f) => `  ${f.datum}  ${nameVon(f.personId)}: ${pruefFallText(f.art)}`),
     "Vor der Weitergabe in Abrechnungsdaten · Stempelbefunde prüfen und bestätigen.",
     "",
+    ...luZeilen,
   ];
+}
+
+/** Rückfrage vor einem Lohn-Export: Prüffälle (WP-17) und Personen ohne Freeze im abgeschlossenen Monat (WP-16, N3). */
+function lohnWarnung(m, ym) {
+  const w = exportWarnung(m, ym);
+  const l = abschlussLuecken(m, ym).length;
+  if (!l) return w;
+  const t = `${l === 1 ? "1 Person" : `${l} Personen`}: ${ABSCHLUSS_LUECKE_TEXT} In der Ausgabe fehlt sie.`;
+  return w ? `${t}\n\n${w}` : `${t}\n\nTrotzdem jetzt ausgeben?`;
 }
 
 function lohnausgabeText(m, ym) {
@@ -11639,6 +11689,8 @@ function Monatsabschluss({ sitz, ym, akt }) {
   if (!darf(sitz, "staff.edit") || !ym) return null;
   const e = m.monatsabschluss && m.monatsabschluss[ym] && typeof m.monatsabschluss[ym] === "object" ? m.monatsabschluss[ym] : null;
   const zu = !!e && e.abgeschlossen === true;
+  const exportiert = zu && !!e.lohnexport && typeof e.lohnexport === "object";
+  const luecken = zu ? abschlussLuecken(m, ym) : [];
   const laufend = ym >= heute().slice(0, 7);
   const name = (pid) => { const x = m.personen.find((q) => String(q.id) === String(pid)); return x ? `${x.vorname} ${x.nachname}` : pid; };
   const verlauf = e && Array.isArray(e.verlauf) ? e.verlauf : [];
@@ -11653,8 +11705,16 @@ function Monatsabschluss({ sitz, ym, akt }) {
         <b style={{ fontSize: 13.5 }}>{zu ? `${monatText(ym)} abgeschlossen` : laufend ? `${monatText(ym)} läuft` : `${monatText(ym)} ist offen`}</b>
         {zu && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>am {zeitpunktText(e.am)}{e.wer && e.wer.name ? ` von ${e.wer.name}` : ""}</span>}
         {!zu && !laufend && akt && <Btn size="sm" kind="primary" onClick={() => akt.monatAbschliessen(ym)}>Monat abschließen</Btn>}
-        {zu && akt && darf(sitz, "org.edit") && !oeffnen && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
+        {zu && akt && darf(sitz, "org.edit") && !oeffnen && !exportiert && <Btn size="sm" onClick={() => { setOeffnen(true); setGrund(""); }}>Wiederöffnen</Btn>}
+        {/* Lohnexport bestätigen (Betreiberentscheidung 2026-11-03): danach kein einfaches Wiederöffnen mehr. */}
+        {zu && akt && akt.lohnexportBestaetigen && darf(sitz, "org.edit") && !exportiert && !oeffnen
+          && <Btn size="sm" onClick={() => akt.lohnexportBestaetigen(ym)}>Lohnexport bestätigen</Btn>}
+        {exportiert && <span style={{ fontSize: 12.5, color: C.dim, ...NUM }}>Lohnexport bestätigt am {zeitpunktText(e.lohnexport.am)}{e.lohnexport.wer && e.lohnexport.wer.name ? ` von ${e.lohnexport.wer.name}` : ""}</span>}
       </div>
+      {exportiert && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        Der Lohnexport ist bestätigt — der Abschluss lässt sich nicht mehr einfach wiederöffnen; eine Änderung braucht den Korrekturprozess.</div>}
+      {luecken.length > 0 && <div style={{ fontSize: 12.5, color: C.warn, marginTop: 4 }}>
+        {luecken.length === 1 ? "1 Person" : `${luecken.length} Personen`} ohne eingefrorenes Ist ({luecken.map((p) => `${p.vorname} ${p.nachname}`).join(", ")}): {ABSCHLUSS_LUECKE_TEXT}</div>}
       <div style={{ fontSize: 12.5, color: C.dim, marginTop: 4, lineHeight: 1.45 }}>
         {zu ? "Ist-Zeiten, Stempel, Korrekturen, Anträge und Selbstauskunft dieses Monats sind gesperrt; Stundenkonto und Lohnausgabe rechnen mit dem Ist zum Abschluss — spätere Änderungen an Plan, Dienstarten oder Abwesenheiten wirken erst, wenn der Monat wieder offen ist. Wieder öffnen kann ihn nur die Leitung, mit Grund."
           : laufend ? "Abschließen lässt sich ein Monat erst nach dem Monatsende."
@@ -11683,7 +11743,7 @@ function Monatsabschluss({ sitz, ym, akt }) {
         <div style={{ marginTop: 8 }}>
           {verlauf.map((x) => (
             <div key={x.id} style={{ fontSize: 12.5, color: C.dim, ...NUM }}>
-              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}{x.art === "wiederoeffnung" && Number(x.istNeu) > 0 ? ` · Ist an ${x.istNeu} Personentagen seit dem Abschluss geändert (Plan, Dienstart oder Abwesenheit)` : ""}</div>))}
+              {x.art === "wiederoeffnung" ? "wiedergeöffnet" : x.art === "lohnexport" ? "Lohnexport bestätigt" : "abgeschlossen"} {zeitpunktText(x.am)}{x.wer && x.wer.name ? ` · ${x.wer.name}` : ""}{x.grund ? ` — ${x.grund}` : ""}{x.art === "wiederoeffnung" && Number(x.istNeu) > 0 ? ` · Ist an ${x.istNeu} Personentagen seit dem Abschluss geändert (Plan, Dienstart oder Abwesenheit)` : ""}</div>))}
         </div>)}
     </div>);
 }
@@ -23547,6 +23607,20 @@ function AppInnen() {
           return false;
         }
       },
+      /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): Wann, Wer, Prüfsumme — sperrt einfaches Wiederöffnen. */
+      lohnexportBestaetigen: async (monat) => {
+        if (!window.confirm(`Lohnexport für ${monatText(monat)} bestätigen? Danach lässt sich der Monat nicht mehr einfach wiederöffnen — Änderungen brauchen den Korrekturprozess.`)) return false;
+        try {
+          const erg = await SP.monatsabschluss("lohnexport", monat, {});
+          upd((s2) => ({ ...s2, mandanten: s2.mandanten.map((m) => m.id !== (s2.session || {}).mandantId ? m
+            : { ...m, monatsabschluss: { ...(m.monatsabschluss || {}), [monat]: erg.eintrag } }) }));
+          melde("Lohnexport bestätigt.");
+          return true;
+        } catch (e) {
+          melde((e && e.message) || "Der Lohnexport ließ sich nicht bestätigen.");
+          return false;
+        }
+      },
       korrekturBeantragen: async (datum, start, ende, pause, grund) => {
         try {
           const erg = await SP.korrekturAntrag(datum, start, ende, pause, grund);
@@ -23872,7 +23946,7 @@ function AppInnen() {
       exportDATEV: (ym) => {
         /* Ist-Zeiten zur Prüfung (WP-17, W1): Die Datei rechnet dort vorläufig
            mit der Planzeit — vor dem Download ausdrücklich sagen. */
-        const warnung = exportWarnung(sitz.mandant, ym);
+        const warnung = lohnWarnung(sitz.mandant, ym);
         if (warnung && !window.confirm(warnung)) return;
         const inhalt = datevCSV(sitz.mandant, ym);
         const z = datevSaetze(sitz.mandant, ym).length;
@@ -24936,7 +25010,7 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
         const s2 = ref.current; const m = s2.mandanten.find((x) => x.id === s2.session.mandantId);
         /* Dieselbe Rückfrage wie bei der Lohnausgabe (Nachprüfung WP-17, A1):
            Auch hier zählen Ist-Zeiten zur Prüfung vorläufig mit der Planzeit. */
-        const warnung = exportWarnung(m, ym2);
+        const warnung = lohnWarnung(m, ym2);
         if (warnung && !window.confirm(warnung)) return;
         const regeln = (m.zuschlaege || []).filter((z) => z.aktiv);
         const kopf = ["Nachname", "Vorname", "Personalnummer", "Gearbeitet", "Nacht", "Sonntag", "Feiertag", "Samstag",
@@ -25497,4 +25571,4 @@ function abmeldenMitHinweis() {
 export { verknuepfungFuer, Monatsabschluss, Stempeluhr, MStempel, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
   PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis,
-  demobestand, sollStunden, ausgleichPruefen, offeneErfassung };
+  demobestand, sollStunden, ausgleichPruefen, offeneErfassung, datenauskunft, nachtJahr };

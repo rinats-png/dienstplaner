@@ -100,7 +100,14 @@ export const PLAN_FELDER = Object.freeze(["abweichungen", "erfassung", "einstemp
 /** Der Tagesanteil aus einem Schlüssel "personId|JJJJ-MM-TT". */
 const tagVon = (schluessel) => {
   const teil = String(schluessel).split("|")[1] || "";
-  return /^\d{4}-\d{2}-\d{2}$/.test(teil) ? teil : null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(teil)) return teil;
+  /* Monatsschlüssel des eingefrorenen Ists ("personId|JJJJ-MM", "*|JJJJ-MM"; WP-16 Nachtrag): es zählt der
+     letzte Tag des Monats — gelöscht, wenn der ganze Monat aus der Frist ist. */
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(teil)) {
+    const [j, mo] = teil.split("-").map(Number);
+    return new Date(Date.UTC(j, mo, 0)).toISOString().slice(0, 10);
+  }
+  return null;
 };
 
 /* Grenzen für die drei Fristen (Monate). Eine Angabe außerhalb ist kein

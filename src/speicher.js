@@ -428,6 +428,23 @@ export async function schreibenAbschliessen() {
   }
 }
 
+/**
+ * Felder, die nur der Server schreibt (WP-16, Nachtrag H-neu-1): der Monatsabschluss und das eingefrorene
+ * Ist abgeschlossener Monate. Der Server übernimmt sie beim Speichern nie (abschlussAusGespeichert) und
+ * behandelt „nicht mitgeschickt" als unverändert. Mitgeschickt blähten sie jeden Speichervorgang auf —
+ * das eingefrorene Ist wächst mit jedem abgeschlossenen Monat, der Server nimmt höchstens 6 MB an.
+ */
+export const SERVER_FELDER = Object.freeze(["istEingefroren", "monatsabschluss"]);
+export function ohneServerFelder(bestand) {
+  if (!bestand || typeof bestand !== "object" || !Array.isArray(bestand.mandanten)) return bestand;
+  return { ...bestand, mandanten: bestand.mandanten.map((m) => {
+    if (!m || typeof m !== "object") return m;
+    const aus = { ...m };
+    for (const f of SERVER_FELDER) delete aus[f];
+    return aus;
+  }) };
+}
+
 async function schreibenAusfuehren(beimSchliessen) {
   if (!offen) return;
   const auftrag = offen; offen = null; uhr = null;
@@ -442,7 +459,7 @@ async function schreibenAusfuehren(beimSchliessen) {
        landete sie im gemeinsamen Bestand und galt beim nächsten Öffnen für
        jeden — samt der Kennung einer echten Person. Beim nächsten Laden
        entsteht sie ohnehin neu aus dem Zugangscode. */
-    const hinaus = { ...auftrag.bestand, session: null };
+    const hinaus = ohneServerFelder({ ...auftrag.bestand, session: null });
     const antwort = await ruf("bestand", { method: "PUT",
       ...(beimSchliessen ? { keepalive: true } : {}),
       body: JSON.stringify({ bestand: hinaus, etag, durch: auftrag.durch }) });

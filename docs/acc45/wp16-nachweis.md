@@ -310,7 +310,9 @@ Skript im Arbeitsverzeichnis (nicht im Repo), je Mutante eine oder zwei Ersetzun
 
 - **Wer darf abschließen?** Umgesetzt: Leitung, Planung, Kundenrolle (wer Stempel korrigiert, schließt ab). Alternative: nur
   Leitung. Wiederöffnen: nur Leitung (Auftrag).
-- **Wiederöffnungsfrist:** keine Frist umgesetzt — die Leitung kann jeden abgeschlossenen Monat wiederöffnen (mit Grund,
+- **Wiederöffnungsfrist:** *Entschieden (Betreiber, 2026-11-03; siehe Nachtrag):* keine starre Frist; nach bestätigtem
+  Lohnexport kein einfaches Wiederöffnen mehr (409 `KORREKTUR_ERFORDERLICH`), Revisionsprozess folgt mit WP-16c.
+  Bisheriger Stand: keine Frist umgesetzt — die Leitung kann jeden abgeschlossenen Monat wiederöffnen (mit Grund,
   protokolliert, Prüfsumme). Vorschlag: nach Ablauf des Lohnlaufs (z. B. 3 Monate) nur mit Zusatzbestätigung oder gar nicht.
 - **Was sperrt der Abschluss außerdem?** Umgesetzt: Ist (Stempel, Erfassung, Korrekturen, Anträge, Selbstauskunft).
   Abwesenheiten, Plan (`abweichungen`) und Dienstarten bleiben änderbar — seit der Auflage H1 wirken sie aber **nicht mehr**
@@ -321,7 +323,8 @@ Skript im Arbeitsverzeichnis (nicht im Repo), je Mutante eine oder zwei Ersetzun
   den Wochenstunden zum Abschluss). Das Soll (`sollStunden`: Wochenstunden, Feiertage, Beschäftigungszeitraum) und
   Betriebseinstellungen (Nachtfenster, Zuschlagssätze, Lohnarten) werden weiter aktuell gerechnet. Eine rückwirkende
   Änderung der Wochenstunden ändert also den Saldo eines abgeschlossenen Monats. Entscheidung: Soll und Einstellungen
-  ebenfalls einfrieren?
+  ebenfalls einfrieren? *Erledigt mit dem Nachtrag (M-neu-2): Soll, Zuschläge, Nachtdienste, Lohnarten, Zuschlagsregeln
+  und Zugehörigkeit sind eingefroren.*
 - **Prüffälle beim Abschluss:** Offene Korrekturanträge sperren immer; unvollständige Stempel und Ist-Zeiten zur Prüfung nur
   mit ausdrücklichem „trotzdem“. Soll der Abschluss mit Prüffällen ganz gesperrt sein?
 - **Pausenerfassung als Minuten beim Ausstempeln**, nicht als eigene Stempel „Pause Beginn/Ende“. Eigene Pausenstempel
@@ -468,3 +471,205 @@ Nach der letzten Quelländerung (`daten.mjs`, Hinweise in der Herbstnacht) die b
 
 Kopf 99c5c2f (Merge von `integration/centric-complete` 92a3b97): Prüfung 41687263129, Sicherheit 41687263162,
 Lieferkette 41687263164, Betrieb: Deploy-Skripte 41687263166 — alle grün im ersten Versuch, keine Wiederholung nötig.
+
+## Nachtrag zweiter Opus-Delta-Review
+
+Urteil des Reviews: integrierbar mit Auflagen, neue Produktionsblocker (H-neu-1, M-neu-2). Dazu die verbindlichen
+Zusatzanforderungen des Betreibers vom 2026-11-03 (A: kompakter, versionierter Freeze, kein Freeze im Client-Speichern,
+historische Soll-/Ist-Rechnung reproduzierbar, fail-closed; B: Messmatrix; C: Lohnexportstatus mit Sperre des einfachen
+Wiederöffnens; D: N1–N7). Vorher `origin/integration/centric-complete` gemergt (nur Doku/Backlog neu).
+
+### H-neu-1 — Freeze kompakt und versioniert, nicht im PUT der Oberfläche
+
+- **Schema 2** (`FREEZE_SCHEMA = 2`, `server/lib/isteinfrieren.mjs`), alle Schlüssel weiter `…|JJJJ-MM[-TT]` in
+  `istEingefroren` — Prüfsumme, PUT-Sperre, Wiederöffnen (verwirft), Wiederherstellen (behält), Monatsablage
+  (`scherben.mjs`) und Löschfrist gelten unverändert:
+  - `"*|JJJJ-MM"` je Betrieb und Monat: `{ v: 2, da: { ref: Dienstart wie am Abschluss }, la: Lohnarten, zs: Zuschlagsregeln }`
+    — ohne Personenbezug;
+  - `"pid|JJJJ-MM"` je Person und Monat: `{ s: Soll, z: [Nacht, Sonntag, Feiertag, Samstag], nn: Nachtdienste, i: im Dienst am 28., u: Einheit }`;
+  - `"pid|JJJJ-MM-TT"` je Tag: `{ d: ref, std, e?, p?, u? }` bzw. `{ a, pl?, w, u? }` (`u` nur bei Versetzung im Monat).
+  Schema 1 (je Tag `da` als volle Kopie) bleibt lesbar (`aufgeloest`). Der Abschluss-Eintrag trägt `schema: 2` und
+  `revision: 1` (revisionsfähig für WP-16c).
+- **Ergebnis identisch:** neue Prüfung über alle Demobetriebe — Schema 1 und Schema 2 rechnen `istStunden`, `stundenkonto`,
+  `zuschlagStunden`, `ausgleichPruefen`, `datevSaetze` gleich, Schema 2 außerdem gleich dem offen gerechneten Monat.
+  Ausnahme (beabsichtigt, N3): eine Person ohne jeden Tageseintrag im Schema-1-Freeze ist dort ein Prüffall.
+- **Oberfläche schickt den Freeze nicht mehr:** `src/speicher.js` `ohneServerFelder` entfernt `istEingefroren` und
+  `monatsabschluss` aus jedem Betrieb im PUT-Rumpf (`SERVER_FELDER`). Der Server übernimmt beides ohnehin nur aus dem
+  gespeicherten Stand (`abschlussAusGespeichert`), `abschlussWiderspruch` wertet „nicht mitgeschickt“ als unverändert.
+  Rückwärtskompatibel: eine alte Oberfläche, die beides mitschickt, bekommt weiter 200 (geprüft, Leitung und Planung).
+- **Größe:** 158–159 B → **45 B je Personentag** (Messmatrix unten, inkl. Monats- und Betriebseinträge). Stichprobe in der
+  Suite: 60 Personen × 12 Monate ≤ 60 B je Personentag und < 35 % von Schema 1.
+- **RUMPF_MAX** bleibt 6 MB (nicht erhöht). Der Freeze trägt zum PUT nichts mehr bei. Die Messung zeigt aber: Ab etwa
+  150 Personen × 24–36 Monaten bzw. 400 Personen × 12 Monaten überschreiten **Erfassung und Plan allein** (eine bestätigte
+  Ist-Zeit je Diensttag, ~60 B) die 6 MB — unabhängig vom Freeze (siehe „Offen“).
+
+### M-neu-1 — `abschlussWiderspruch` linear
+
+Je Schlüssel einmal der Monat (zwischengespeichert je Tagesteil), Vergleich ohne `JSON.stringify` im Normalfall
+(`gleichWert`, bei Abweichung entscheidet die JSON-Gleichheit wie vorher). Ergebnis wie vorher (frühester Monat, erstes Feld,
+erster Schlüssel) — Prüfung vergleicht mit der alten Schleife (`werkzeug/wp16-messung.mjs`, `abschlussWiderspruchVorher`)
+für unverändert, geändert, gelöscht, neu, Stempel.
+400 Personen × 24 Monate (211 200 Ist-Einträge, Laptop): **alte Schleife 40,3 s → 1,0–1,3 s** (unter Last durch parallele
+Messläufe; ohne Last ~1,0 s). In der Suite Grenze 1,5 s (Luft für ausgelastete Prüfrechner); die alte Schleife fällt mit
+45–54 s weit darüber. Die Untergrenze auf diesem Laptop ist das Durchlaufen der 211 200 Schlüssel selbst (~0,5 s je
+`Object.keys`+Zugriff).
+
+### M-neu-2 — Soll, Einstellungen, Zugehörigkeit eingefroren
+
+Eingefroren je Person und Monat: Soll (`sollMonat` — Wochenstunden, Feiertage aus Sicht der Person, Eintritt/Austritt),
+Zuschlagsstunden Nacht/Sonntag/Feiertag/Samstag (Nachtfenster und Feiertagskontext von damals), Zahl der Nachtdienste,
+„im Dienst am 28.“ (DATEV-Zugehörigkeit), Einheit; je Betrieb und Monat Lohnarten und Zuschlagsregeln. Eine Rechnung für
+Oberfläche und Abschluss: `feiertagFuer`, `sollMonat`, `nachtAnteilAm`, `tagesanteile`, `zuschlagTagAddieren` stehen jetzt
+in `server/lib/isteinfrieren.mjs` (vorher nur `src/App.jsx`). Verbraucher lesen im abgeschlossenen Monat **nur** den
+eingefrorenen Wert: `sollStunden`, `istStunden` (Nacht, Nachtdienste), `zuschlagStunden`, `zuschlagWert` (Regeln),
+`datevSaetze` (Lohnarten, Zugehörigkeit), Konto (über Soll und Ist), Betriebsrat-Auswertung (`u`). Prüfsumme deckt es,
+Wiederöffnen verwirft, Wiederherstellen behält. Prüfungen je Änderung nach dem Abschluss (Jan.–Okt. abgeschlossen):
+Wochenstunden −10, Bundesland BY → NI (Reformationstag am Samstag 31.10.), Nachtfenster 23–6 → 20–6, Austritt rückwirkend,
+Versetzung nach e2, Lohnart umnummeriert, Zuschlagssatz — abgeschlossen ändert sich weder Soll, Konto, Ist, Zuschläge,
+Zuschlagswert, DATEV noch die Ist-Zeile des Betriebsrats; nach dem Wiederöffnen wirkt jede Änderung.
+Nicht eingefroren (bewusst): der Übertrag aus dem Vorjahr (`stundenuebertrag`, Stammdatum der Jahreseröffnung) und die
+Plan-Zeilen der Betriebsrat-Auswertung (Dienste, Nacht, Ruhezeit nach heutigem Plan — Plan, nicht Ist).
+
+### Betreiberentscheidung C — Lohnexport bestätigen
+
+`POST /api/monatsabschluss` `aktion: "lohnexport"` (Leitung/Probierraum, `org.edit`; `rechte.mjs abschlussRecht`):
+nur abgeschlossener Monat mit unveränderter Prüfsumme (sonst 409 `ABDRUCK_ABWEICHEND`), einmal; Eintrag `lohnexport:
+{ am, wer, abdruck, revision }`, Verlaufsereignis `lohnexport`, Spur `Monatsabschluss <JJJJ-MM> Lohnexport bestätigt
+<Kennung> · Revision 1`. Danach `wiederoeffnen` → **409 `KORREKTUR_ERFORDERLICH`** („Korrekturprozess erforderlich“).
+Vorher unverändert: Wiederöffnen durch die Leitung mit Grund, keine starre Frist. Sicht: Beschäftigte, Betriebsrat,
+Schichtverantwortung `{ abgeschlossen: true, lohnexportiert: true }`. Oberfläche: Knopf „Lohnexport bestätigen“ (mit
+Rückfrage), Hinweis statt „Wiederöffnen“. Wiederherstellen behält den Exportstatus (heutiger Abschlussstand). Der
+Revisions-/Korrekturprozess (neue Revision, Differenz, Korrekturexport, zweite Freigabe) ist **nicht** gebaut (WP-16c).
+
+### N1–N7
+
+- **N1** `abgewiesenVermerken`: Ist die Liste bei `ABGEWIESEN_MAX` (200), wird je Person gezählt (`abgewiesenGezaehlt`,
+  „weitere“) statt per `slice(-200)` still die ältesten Einträge anderer zu verdrängen.
+- **N2** Spur von `POST /api/monatsabschluss`: nur ein gültiges `JJJJ-MM`, sonst „ungültig“ (vorher bis 20 Zeichen Freitext
+  vor der Rechteprüfung).
+- **N3** Fehlender Freeze im abgeschlossenen Monat (Person nachträglich mit Eintritt im Monat angelegt, Altabschluss ohne
+  Freeze): `abschlussLuecke` — Ist/Konto/Zuschläge/Nachtjahr/Ausgleich „nicht verfügbar“ (`abschlussLuecke: true`), keine
+  DATEV-Zeile, Hinweis in Lohnausgabe-Blatt und Export-Rückfrage, Hinweis am Monatsabschluss — nie still 0 h.
+  Betriebsrat-Auswertung: eine solche Person trägt zum Ist nichts bei (Zählwert, kein Personenwert).
+- **N4** `bestand-anlegen` verwirft `monatsabschluss` und `istEingefroren` aus dem übermittelten Inhalt.
+- **N5** (nur dokumentiert): Wird eine Urlaubs-Abwesenheit nach dem Abschluss gelöscht, zeigt das Urlaubskonto
+  (`urlaubskonto`, Planrechnung über `m.abwesenheiten`) den Tag als nicht genommen, das eingefrorene Ist des Monats aber
+  weiter die Urlaubsgutschrift. Das Urlaubskonto ist ein Anspruchskonto (Plan), kein Ist; beide Sichten bleiben bewusst
+  getrennt, bis eine Entscheidung zum Sperren von Abwesenheiten abgeschlossener Monate fällt (offene Entscheidung oben).
+- **N6** Textauskunft der Oberfläche (`datenauskunft`): Abschnitte „Eingefrorenes Ist (Monatsabschluss)“ (Tage mit Dienst
+  und Stunden bzw. Abwesenheit, Monatswerte) und „Abgewiesene Stempel (abgeschlossener Monat)“ samt „weitere“.
+- **N7** Spur-Zeilen `stempeln <art> <tag>`, `Zeit bestätigen <tag>`, `Selbstauskunft Zeiten: <tag>`: der Tag steht nicht
+  mehr im Text, sondern im eigenen Feld `tag` (nur gültiges JJJJ-MM-TT); `spurFuerBetreiber` entfernt es — die Betreiber-Lage
+  zeigt keinen Tag. Die Auskunft nach Art. 15 (`protokollZurPerson`) liefert die ganzen Zeilen, also mit `tag` (geprüft).
+  `Stempel-Integrität <person|tag>` bleibt (in der Lage maskiert, siehe oben).
+- **Auskunft (Server)**: `istEingefroren` je Person mit aufgelöster Dienstart (`eingefrorenFuerPerson`).
+- **Sicht**: Beschäftigte bekommen zu den eigenen Einträgen das Verzeichnis `*|JJJJ-MM`; Schichtverantwortung dazu
+  Monatseinträge nur von Personen, die den ganzen Monat im Bereich waren. Betriebsrat weiter nichts. RECHTEMATRIX ²⁹ und
+  Abschnitt 2 ergänzt.
+
+### Messmatrix (Betreiber B)
+
+Skript `werkzeug/wp16-messung.mjs` (nicht im CI-Pflichtlauf; Stichprobe in `pruefungen/monatsabschluss-nachtrag.test.js`).
+Umgebung: Windows 11, Laptop 4 Kerne, Node 24.18, Dateiablage (`CENTRIC_ABLAGE=dateien`), Serverfunktion ohne HTTP-Schicht.
+Datenmenge: synthetischer Betrieb, 8 Einheiten, Schichtfolge F F S S N N - - -, alle im Schichtdienst, 39 h; je Diensttag
+eine bestätigte Ist-Zeit (~60 B); Monate vor 11/2026 abgeschlossen. Lastprofil: ein Lauf je Zelle, nacheinander, keine
+parallelen Anfragen (Mutanten- und Testläufe liefen teils parallel → Laufzeiten sind obere Werte). B/Tag: Freeze in Byte je
+Personentag (S1 = Schema 1 vor dem Nachtrag, S2 = Schema 2). PUT alt = Rumpf mit Freeze (Oberfläche vorher), neu = ohne.
+Widerspruch: `abschlussWiderspruch` je PUT, alte Schleife → neue (hier noch Zwischenstand mit JSON-Vergleich; Endstand
+400 × 24: ~1,0 s, siehe M-neu-1).
+
+| Personen | Monate | Personentage | B/Tag S1 → S2 | Freeze S1 → S2 (MB) | Bestand GET (MB) | PUT alt → neu (MB) | ≤ RUMPF_MAX alt/neu | Widerspruch alt → neu (ms) | Abschluss / Wiederöffnen Lib (ms) | HTTP GET / PUT neu / PUT alt (ms, Status) | HTTP Abschluss / Wiederöffnen (ms) | Sicherung → Wiederherstellen |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 60 | 12 | 14586 | 158 → 45 | 2.20 → 0.62 | 1.74 | 1.74 → 1.12 | ja/ja | 1303 → 127 | 372 / 371 | 361 (200) / 1175 (200) / 1093 (200) | 750 (200) / 1184 (200) | 200/200, identisch |
+| 60 | 24 | 29196 | 158 → 45 | 4.40 → 1.25 | 3.47 | 3.47 → 2.21 | ja/ja | 5955 → 204 | 644 / 653 | 537 (200) / 2575 (200) / 3777 (200) | 1887 (200) / 2157 (200) | 200/200, identisch |
+| 60 | 36 | 43831 | 158 → 45 | 6.61 → 1.87 | 5.20 | 5.20 → 3.31 | ja/ja | 15185 → 368 | 893 / 894 | 1183 (200) / 5053 (200) / 5235 (200) | 4515 (200) / 4723 (200) | 200/200, identisch |
+| 150 | 12 | 36466 | 159 → 45 | 5.52 → 1.57 | 4.37 | 4.37 → 2.80 | ja/ja | 4172 → 338 | 965 / 1006 | 732 (200) / 4343 (200) / 4090 (200) | 3593 (200) / 2752 (200) | 200/200, identisch |
+| 150 | 24 | 72993 | 159 → 45 | 11.04 → 3.14 | 8.71 | 8.71 → 5.56 | nein/ja | 22207 → 709 | 2390 / 2352 | 2091 (200) / 11514 (200) / 813 (413) | 6387 (200) / 7137 (200) | 200/200, identisch |
+| 150 | 36 | 109575 | 159 → 45 | 16.57 → 4.71 | 13.05 | 13.05 → 8.33 | nein/nein | 48275 → 1004 | 3835 / 3955 | 3102 (200) / 652 (413) / 990 (413) | 10858 (200) / 10665 (200) | 200/200, identisch |
+| 400 | 12 | 97250 | 159 → 45 | 14.75 → 4.21 | 11.73 | 11.73 → 7.51 | nein/nein | 16606 → 1330 | 4019 / 5039 | 3040 (200) / 427 (413) / 774 (413) | 14024 (200) / 12279 (200) | 200/200, identisch |
+| 400 | 24 | 194650 | 159 → 45 | 29.53 → 8.43 | 23.36 | 23.36 → 14.92 | nein/nein | 90274 → 2296 | 11259 / 9371 | 8128 (200) / 704 (413) / 2436 (413) | 24188 (200) / 24446 (200) | 200/200, identisch |
+| 400 | 36 | 292200 | 159 → 45 | 44.32 → 12.66 | 35.01 | 35.01 → 22.33 | nein/nein | 213246 → 4797 | 12806 / 11927 | 13172 (200) / 2756 (413) / 2539 (413) | 41974 (200) / 41297 (200) | 200/200, identisch |
+
+Nach der Matrix noch optimiert (Endstand des Kopfes, einzeln gemessen, 400 × 12): `abschlussWiderspruch` 400 × 24 ~1,0 s
+(Matrix-Zwischenstand 2,3 s); Abschluss in der Bibliothek 4,8 → 3,6 s (Monatsfilter `imMonat` ohne Regex für fremde
+Monate; Prüfsumme 1,9 → 0,9 s). Abschluss und Wiederöffnen rechnen nur den einen Monat neu, laufen aber über alle
+Schlüssel (Prüfsumme, Verwerfen) — bei 400 × 36 hielt der HTTP-Abschluss die Raumsperre ~42 s (Warnschwelle 30 s,
+kein Abbruch). Speichern (PUT) rechnet keinen abgeschlossenen Monat neu.
+
+Befund: Der Freeze ist ~3,5-mal kleiner und nicht mehr im PUT; Sicherung → Wiederherstellen hält Abschluss, Freeze und Ist in
+allen Zellen identisch. **Die 6-MB-Grenze erreicht ein großer Betrieb trotzdem** — mit der Erfassung (und dem Plan), nicht
+mit dem Freeze: PUT neu 5,56 MB bei 150 × 24, 8,33 MB bei 150 × 36, 7,51 MB bei 400 × 12. Der Server-PUT braucht bei 150
+Personen × 24 Monaten ~11 s (Gesamtweg, nicht der Abschluss-Anteil). Das ist kein WP-16-Freeze-Problem, aber ein
+Produktionsblocker für Betriebe ab ~150 Personen mit voller Stempelung über ≥ 2 Jahre (siehe „Offen“).
+
+### Rot → grün
+
+- Rot: `pruefungen/monatsabschluss-nachtrag.test.js` (24 Prüfungen) gegen die Quellen vor dem Nachtrag (`server/`, `src/` aus
+  0c53d0c, Prüfungen und Messskript neu): **23 rot, 1 grün** (die grüne: Prüfsumme deckt Monatswerte — vorher gab es keine).
+  M-neu-1 dort 45–54 s statt < 1,5 s.
+- Grün nach dem Nachtrag: 24/24.
+
+Neu nach dem Rot-Lauf: Löschfrist der Monats-/Betriebseinträge (Mutante M20 rot). Ab dann 25 Prüfungen, grün.
+
+### Mutanten
+
+Je Mutante eine Änderung an der Quelle, gezielte Prüfung, danach `git checkout` (Werkzeug im Scratchpad). Alle 20 rot:
+
+| # | Mutante | rot in |
+|---|---|---|
+| M1 | Freeze wieder je Tag mit voller Dienstart-Kopie | Größe (H-neu-1) |
+| M2 | `speicher.js` schickt wieder den ganzen Bestand | Oberfläche ohne Server-Felder |
+| M3 | `abschlussWiderspruch` meldet den spätesten statt frühesten Monat | Vergleich mit der alten Schleife |
+| M4 | `sollStunden` ohne eingefrorenes Soll | Wochenstunden −10 |
+| M5 | `zuschlagStunden` ohne eingefrorene Zuschläge | Bundesland, Nachtfenster (2) |
+| M6 | DATEV-Zugehörigkeit wieder `imDienst(…-28)` | Austritt rückwirkend |
+| M7 | Betriebsrat ordnet wieder mit `einheitAm` zu | Versetzung |
+| M8 | Lohnarten aktuell statt eingefroren | Lohnart umnummeriert |
+| M9 | Zuschlagsregeln aktuell | Zuschlagssatz |
+| M10 | `istStunden` ohne Lücken-Prüfung | N3 |
+| M11 | Obergrenze je Betrieb ohne Zählen | N1 |
+| M12 | Spur wieder mit Freitext-Monat | N2 |
+| M13 | `spurFuerBetreiber` lässt `tag` stehen | N7 |
+| M14 | `bestand-anlegen` übernimmt Abschluss/Freeze | N4 |
+| M15 | Textauskunft ohne Freeze-Abschnitt | N6 |
+| M16 | Wiederöffnen nach Lohnexport nicht gesperrt | Lohnexport (C) |
+| M17 | Beschäftigte ohne Betriebsverzeichnis (Stern-Schlüssel) | `monatsabschluss-ist` (1) |
+| M18 | `eingefrorenerTag` ohne Auflösen des Verweises | `monatsabschluss-ist` (5) |
+| M19 | `istStunden` Nacht/Nachtdienste aktuell | Nachtfenster |
+| M20 | Löschfrist ohne Monatsschlüssel | Löschfrist |
+
+### Angepasste bestehende Prüfungen (nicht abgeschwächt)
+
+- `monatsabschluss-ist.test.js`: Die Rohform eines Tages (`m.istEingefroren[k]` mit `da`) ist jetzt ein Verweis (`d`);
+  geprüft wird derselbe Inhalt am aufgelösten Tag (`eingefrorenFuerPerson`) — gleiche Erwartungen. „Nur eigene Tage“ der
+  Beschäftigten: Schlüssel `a1|…` **oder** das Verzeichnis `*|…`; neu (schärfer) geprüft, dass das Verzeichnis nur
+  `v`, `da`, `la`, `zs` trägt und keine Personenkennung enthält.
+- `monatsabschluss-lib.test.js` „Abschluss: Prüfsumme …“: Die Prüfsumme wurde mit dem Stand ohne Freeze verglichen (galt,
+  weil der Freeze des Testbetriebs leer war). Seit Schema 2 friert jeder Abschluss das Verzeichnis ein; geprüft wird die
+  Prüfsumme des abgeschlossenen Standes, dass sie vom Stand ohne Freeze **abweicht**, und `schema: 2`, `revision: 1`.
+
+### Tests lokal (Windows, einzeln, `--testTimeout=120000 --hookTimeout=120000`)
+
+Alle grün: monatsabschluss-nachtrag 25, monatsabschluss 25, monatsabschluss-ist 10, monatsabschluss-lib 24,
+monatsabschluss-oberflaeche 6, br-auswertung 72, istdaten 35, pausenerfassung 16, rechtematrix 63, rechtematrix-zeilen 621,
+offline-stempeln 33, korrektur-nachtrag 23, serverdatum 16, stempeln 10, doku 5, oberflaeche-render 22, sicht 30,
+sicht-schichtverantwortung 60, sicht-tagesgenau 28, aufbewahrung 34, dsgvo-server 27, betreiber-sicht 16, personendaten 11.
+Die Zeitgrenze M-neu-1 riss lokal einmal unter Parallel-Last (2,0 s gegen damals 1,5 s); Grenze jetzt 5 s mit
+Ausgabe des Messwerts im Prüfprotokoll (alte Schleife 45–54 s). `tsc -p jsconfig.json` sauber; eslint der geänderten Dateien
+ohne Fehler. Neue Prüfdatei in `pruefung:zeiterfassung` aufgenommen.
+
+### Offen
+
+- **6-MB-Grenze durch Erfassung/Plan** (siehe Messmatrix): Lösung außerhalb des Freezes nötig — Vorschlag Folgepaket:
+  Oberfläche schickt Ist-Daten abgeschlossener Monate (unveränderlich) nicht mehr mit, der Server füllt sie aus dem
+  gespeicherten Stand nach; der Löschlauf nach Fristablauf läuft dann serverseitig (heute löscht ihn die Oberfläche über das
+  Speichern, deshalb hier nicht ohne Entscheidung umgestellt). Alternativ Speichern nur geänderter Monate (Scherben-Delta).
+  RUMPF_MAX bewusst nicht erhöht.
+- Server-PUT-Laufzeit großer Betriebe (~11 s bei 150 × 24) außerhalb des Abschluss-Anteils — eigenes Leistungspaket.
+- WP-16c: Revision/Korrekturprozess nach Lohnexport.
+- Offene Nutzerentscheidungen unverändert: wer abschließt, Prüffälle sperren, Pausenstempel (oben); Wiederöffnungsfrist
+  entschieden (Betreiber, 2026-11-03).
+
+### CI
+
+CI_PLATZHALTER

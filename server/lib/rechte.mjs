@@ -153,6 +153,8 @@ export function abschlussRecht(rolle, aktion) {
   if (!rolle || !rolleBekannt(rolle) || schreibumfang(rolle) !== SCHREIBEN_VOLL) return false;
   if (aktion === "abschliessen") return darf(rolle, "staff.edit");
   if (aktion === "wiederoeffnen") return darf(rolle, "org.edit");
+  /* Lohnexport bestätigen (WP-16 Nachtrag, Betreiberentscheidung 2026-11-03): wie das Wiederöffnen — org.edit. */
+  if (aktion === "lohnexport") return darf(rolle, "org.edit");
   return false;
 }
 

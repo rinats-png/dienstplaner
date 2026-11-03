@@ -32,6 +32,8 @@ import path from "node:path";
 import { VERSION } from "../src/migration.js";
 import { abschliessen, wiederoeffnen, istAbdruck } from "../server/lib/monatsabschluss.mjs";
 import { betriebsratAuswertung } from "../server/lib/br-auswertung.mjs";
+/* Schema 2 (WP-16 Nachtrag H-neu-1): Tage verweisen auf das Verzeichnis des Monats — geprüft wird der aufgelöste Tag. */
+const tagF = async (m, k) => { const { eingefrorenFuerPerson } = await import("../server/lib/isteinfrieren.mjs"); return eingefrorenFuerPerson(m, k.split("|")[0])[k]; };
 
 const WIRT = "127.0.0.1:3000";
 const JETZT = "2026-11-05T09:00:00Z";
@@ -158,7 +160,7 @@ describe("Abgeschlossener Monat: Plan-, Dienstart- und Abwesenheitsänderungen �
     const r = await abschluss(RAUM, "abschliessen");
     expect(r.status, r.roh).toBe(200);
     const m = (await holen("l1", RAUM)).bestand.mandanten[0];
-    expect(m.istEingefroren["a1|2026-10-29"]).toMatchObject({ std: 7.5, da: { id: "F", start: "06:00", ende: "14:00", pause: 30 } });
+    expect(await tagF(m, "a1|2026-10-29")).toMatchObject({ std: 7.5, da: { id: "F", start: "06:00", ende: "14:00", pause: 30 } });
     expect(m.istEingefroren["a1|2026-10-28"]).toMatchObject({ std: 7.5, e: 1 });
     expect(m.istEingefroren["a1|2026-10-27"]).toMatchObject({ std: 8, e: 1 });
     expect(m.istEingefroren["a1|2026-10-29"].e).toBeUndefined();
@@ -196,7 +198,12 @@ describe("Abgeschlossener Monat: Plan-, Dienstart- und Abwesenheitsänderungen �
   it("die eigene Sicht der Beschäftigten (a1): dasselbe eingefrorene Ist, nur eigene Tage; Betriebsrat: kein Freeze", async () => {
     const m = (await holen("a1", RAUM)).bestand.mandanten[0];
     expect(Object.keys(m.istEingefroren).length).toBeGreaterThan(0);
-    expect(Object.keys(m.istEingefroren).every((k) => k.startsWith("a1|"))).toBe(true);
+    expect(Object.keys(m.istEingefroren).every((k) => k.startsWith("a1|") || k.startsWith("*|"))).toBe(true);
+    /* Das Verzeichnis des Betriebs ("*|JJJJ-MM") trägt keinen Personenbezug: nur Schema, Dienstarten, Lohnarten, Zuschlagsregeln. */
+    for (const [k, v] of Object.entries(m.istEingefroren).filter(([x]) => x.startsWith("*|"))) {
+      expect(Object.keys(v).sort(), k).toEqual(["da", "la", "v", "zs"]);
+      expect(JSON.stringify(v)).not.toMatch(/"(a1|a2|a3|l1|p1|r1)"/);
+    }
     expect(A.istStunden(m, person(m, "a1"), OKT).geleistet).toBe(vorher.ist.geleistet);
     const br = (await holen("r1", RAUM)).bestand.mandanten[0];
     expect(br.istEingefroren === undefined || Object.keys(br.istEingefroren).length === 0).toBe(true);
@@ -223,7 +230,7 @@ describe("Abgeschlossener Monat: Plan-, Dienstart- und Abwesenheitsänderungen �
     const zu = await abschluss(RAUM, "abschliessen");
     expect(zu.status, zu.roh).toBe(200);
     const n = await mandant(RAUM);
-    expect(n.istEingefroren["a1|2026-10-29"]).toMatchObject({ std: 8, da: { id: "N", pause: 0 } });
+    expect(await tagF(n, "a1|2026-10-29")).toMatchObject({ std: 8, da: { id: "N", pause: 0 } });
     expect(n.istEingefroren["a1|2026-10-20"]).toMatchObject({ a: ["urlaub"] });
     expect(n.monatsabschluss[OKT].verlauf[2].abdruck).not.toBe(n.monatsabschluss[OKT].verlauf[0].abdruck);
   });

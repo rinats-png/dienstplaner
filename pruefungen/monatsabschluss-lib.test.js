@@ -37,7 +37,10 @@ const kopie = (x) => JSON.parse(JSON.stringify(x));
 describe("abschliessen / wiederoeffnen", () => {
   it("Abschluss: Prüfsumme der Ist-Daten, Wann/Wer, Verlauf; Sperre greift nur im Monat", () => {
     const m = geschlossen();
-    expect(m.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, am: JETZT.toISOString(), wer: WER_L, abdruck: istAbdruck(basis(), "2026-10") });
+    /* Seit Schema 2 (WP-16 Nachtrag) friert der Abschluss immer das Verzeichnis des Betriebs ("*|JJJJ-MM") mit ein —
+       die Prüfsumme ist die der Ist-Daten samt Freeze zum Abschluss; Schema und Revision 1 stehen am Eintrag. */
+    expect(m.monatsabschluss["2026-10"]).toMatchObject({ abgeschlossen: true, am: JETZT.toISOString(), wer: WER_L, abdruck: istAbdruck(m, "2026-10"), schema: 2, revision: 1 });
+    expect(istAbdruck(m, "2026-10")).not.toBe(istAbdruck(basis(), "2026-10"));
     expect(monatAbgeschlossen(m, "2026-10-01")).toBe(true);
     expect(monatAbgeschlossen(m, "2026-09-30")).toBe(false);
     expect(abschlussSperre(m, "2026-10-31")).toMatchObject({ status: 409, code: "MONAT_ABGESCHLOSSEN", monat: "2026-10" });

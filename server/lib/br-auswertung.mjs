@@ -132,7 +132,8 @@ export function* auswertungSchritte(m, heute) {
          derselben Rechnung wie Konto und Lohn (istZeitFuer) eingefroren. */
       const fz = eingefrorenerTag(m, p, d);
       if (fz && fz.da && fz.e && d < heute) {
-        const eidF = String(einheitAm(p, d) || "ohne");
+        /* Zugehörigkeit wie zum Abschluss (WP-16, Nachtrag M-neu-2): eine spätere Versetzung ordnet nicht um. */
+        const eidF = String((fz.u !== undefined ? fz.u : einheitAm(p, d)) || "ohne");
         for (const z of [zeile(monatVon(d), eidF), zeile(monatVon(d), "*")]) {
           z.istSet.add(String(p.id));
           if (istFrei(monatVon(d))) { z.istStunden += Math.max(0, Number(fz.std) || 0); z.istErfasst++; }

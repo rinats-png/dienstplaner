@@ -38,6 +38,8 @@ import { fristen } from "./aufbewahrung.mjs";
 import { geplanterDienst, tagePlus } from "./zeiterfassung.mjs";
 import { accountLesenPerId } from "./accounts.mjs";
 import { BESTAETIGUNG_FELDER } from "./sicht.mjs";
+/* Eingefrorenes Ist mit aufgelöster Dienstart (Schema 2 verweist auf das Verzeichnis des Monats, WP-16 Nachtrag). */
+import { eingefrorenFuerPerson } from "./isteinfrieren.mjs";
 
 export const AUSKUNFT_FORMAT = "centric-auskunft";
 export const AUSKUNFT_FASSUNG = 2;
@@ -182,7 +184,7 @@ export function auskunftBauen(m, person, { raum, erstellt, umfang, protokoll = [
     istZeiten: nachTag(m.erfassung, pid),
     /* Monatsabschluss (WP-16): das eingefrorene Ist abgeschlossener Monate (Review H1) und die nach dem
        Abschluss abgewiesenen eigenen Stempel samt Zähler (Review M2). */
-    istEingefroren: nachTag(m.istEingefroren, pid),
+    istEingefroren: nachTag(eingefrorenFuerPerson(m, pid), pid),
     abgewieseneStempel: abgewieseneStempel(m.monatsabschluss, pid),
     planabweichungen: abweichungen,
     ...(postenzuordnungen.length ? { postenzuordnungen } : {}),

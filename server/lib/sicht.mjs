@@ -25,6 +25,7 @@ import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
 import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 import { abschlussStatus } from "./monatsabschluss.mjs";
+import { istBetriebsSchluessel, istMonatsSchluessel } from "./isteinfrieren.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -37,6 +38,11 @@ const gleich = (a, b) => a !== null && a !== undefined && b !== null && b !== un
 const eigen = (e, ich) => !!e && gleich(e.personId, ich);
 const eigenerSchluessel = (k, ich) => gleich(String(k).split("|")[0], ich);
 const liste = (w) => (Array.isArray(w) ? w : []);
+/* Eingefrorenes Ist für Beschäftigte: eigene Einträge und das Verzeichnis des Betriebs („*|JJJJ-MM"). */
+function eigenesIstEingefroren(w, ctx) {
+  if (!w || typeof w !== "object" || Array.isArray(w)) return {};
+  return Object.fromEntries(Object.entries(w).filter(([k]) => eigenerSchluessel(k, ctx.ich) || istBetriebsSchluessel(k)));
+}
 const nimm = (o, felder) => {
   const aus = {};
   for (const f of felder) if (o && Object.prototype.hasOwnProperty.call(o, f)) aus[f] = o[f];
@@ -552,8 +558,10 @@ export const BETRIEB = {
      Stempel (mit Person und Tag) nur Planung und Leitung (RECHTEMATRIX ²⁹). */
   monatsabschluss: [R(abschlussStatus), R(abschlussStatus)],
   /* Eingefrorenes Ist abgeschlossener Monate (WP-16, Review H1; isteinfrieren.mjs): wie die Erfassung —
-     Beschäftigte die eigenen Tage, Betriebsrat nichts (er rechnet kein Ist einzelner Personen). */
-  istEingefroren: [NUR_EIGENE, WEG],
+     Beschäftigte die eigenen Tage, Betriebsrat nichts (er rechnet kein Ist einzelner Personen).
+     Dazu das Verzeichnis des Betriebs je Monat („*|JJJJ-MM": Dienstarten, Lohnarten, Zuschlagsregeln — ohne
+     Personenbezug; WP-16 Nachtrag H-neu-1), auf das die eigenen Tage verweisen. */
+  istEingefroren: [R(eigenesIstEingefroren), WEG],
   fahrzeiten: [NUR_EIGENE, WEG],
   checks: [NUR_EIGENE, WEG],
   ansichten: [NUR_EIGENE, NUR_EIGENE],
@@ -757,6 +765,21 @@ const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
 /* Eingefrorenes Ist (WP-16, Review H1): wie die Erfassung — eigene Tage ganz, im Bereich an genau diesem Tag;
    die Abwesenheitsart im Bereich nur wie bei den Abwesenheiten (artFuerSV: sensible Arten als „abwesend"). */
 const schichtIstEingefroren = (w, ctx) => objektFilter(w, (k, v) => {
+  /* Verzeichnis des Betriebs (ohne Personenbezug, WP-16 Nachtrag H-neu-1): die Tage verweisen darauf. */
+  if (istBetriebsSchluessel(k)) return v;
+  /* Monatseintrag einer Person (Soll, Zuschläge, Zugehörigkeit): nur eigen oder an jedem Tag des Monats im Bereich
+     — sonst enthielte er Stunden aus Tagen außerhalb des Bereichs. */
+  if (istMonatsSchluessel(k)) {
+    const pid = schluesselPerson(k), mon = schluesselTag(k);
+    if (umfangDer(ctx, pid) === "eigen") return v;
+    const [j, mo] = mon.split("-").map(Number);
+    const n = new Date(Date.UTC(j, mo, 0)).getUTCDate();
+    for (let i = 1; i <= n; i++) {
+      const u = umfangImZeitraum(ctx, pid, `${mon}-${String(i).padStart(2, "0")}`);
+      if (u !== "eigen" && u !== "bereich") return undefined;
+    }
+    return v;
+  }
   const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
   if (u === "eigen") return v;
   if (u === "bereich") return v && Array.isArray(v.a) ? { ...v, a: v.a.map(artFuerSV) } : v;
