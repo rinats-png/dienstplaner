@@ -222,8 +222,17 @@ async function stempelPufferMelden() {
 
 async function ereignisSenden(ev) {
   if (!token) return { status: 401, daten: null };
-  const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
-    body: JSON.stringify(PUF.rumpfFuer(ev)) });
+  /* Höchstens 20 Sekunden je Versuch: In einem schwachen Netz hängt eine
+     Anfrage sonst minutenlang, und die Reihe dahinter wartet mit. Ein
+     abgebrochener Versuch ist ein vorübergehender Fehler — dieselbe Kennung
+     kommt wieder, der Server macht trotzdem nur einen Stempel daraus. */
+  const ab = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const uhr = ab ? setTimeout(() => ab.abort(), 20000) : null;
+  let a;
+  try {
+    a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
+      body: JSON.stringify(PUF.rumpfFuer(ev)), ...(ab ? { signal: ab.signal } : {}) });
+  } finally { if (uhr) clearTimeout(uhr); }
   let d = null;
   try { d = await a.json(); } catch { /* leere Antwort */ }
   return { status: a.status, daten: d, warteMs: PUF.retryAfterMs(a.headers.get("retry-after")) };
@@ -273,6 +282,10 @@ export function stempelSenden({ sofort = false } = {}) {
 export async function stempelErfassen(datum, art, koord) {
   const inhaber = stempelInhaber();
   if (!inhaber) return null;
+  /* Nicht unter der Sendesperre: Ein hängender Sendeversuch darf das
+     Ablegen eines neuen Stempels nicht aufhalten. Jedes Ereignis liegt unter
+     eigenem Schlüssel (IndexedDB; im Rückfall je Ereignis ein
+     localStorage-Feld), zwei Reiter überschreiben sich also nichts. */
   const ev = await PUF.erfassen(await pufferSpeicher(), { art, datum, koord, inhaber,
     offline: typeof navigator !== "undefined" && navigator.onLine === false });
   await stempelPufferMelden();

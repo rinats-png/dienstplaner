@@ -26,7 +26,8 @@ const UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{
 
 /** localStorage-Nachbildung: überlebt den „Neustart", wenn dasselbe Objekt weitergegeben wird. */
 const lokalerSpeicher = () => { const d = new Map(); return { getItem: (k) => (d.has(k) ? d.get(k) : null),
-  setItem: (k, v) => d.set(k, String(v)), removeItem: (k) => d.delete(k) }; };
+  setItem: (k, v) => d.set(k, String(v)), removeItem: (k) => d.delete(k),
+  key: (i) => [...d.keys()][i] ?? null, get length() { return d.size; } }; };
 
 /** Kleine IndexedDB-Nachbildung — genug für open/put/getAll/delete mit Transaktionen. */
 function idbNachbildung() {
@@ -87,6 +88,13 @@ describe("Ereignis: Kennung und Ablage", () => {
     const nachNeustart = await PUF.ereignisseVon(PUF.speicherLokal(ls), "i1");
     expect(nachNeustart).toHaveLength(1);
     expect(nachNeustart[0]).toMatchObject({ id: ev.id, zustand: "wartet", erfasstAm: "2026-11-06T05:00:00.000Z" });
+  });
+
+  it("zwei Reiter legen gleichzeitig ab (localStorage-Rückfall): kein Ereignis überschreibt das andere", async () => {
+    const ls = lokalerSpeicher();
+    const [a, b] = await Promise.all([PUF.erfassen(PUF.speicherLokal(ls), { art: "start", inhaber: "i1" }),
+      PUF.erfassen(PUF.speicherLokal(ls), { art: "ende", inhaber: "i1" })]);
+    expect((await PUF.ereignisseVon(PUF.speicherLokal(ls), "i1")).map((e) => e.id).sort()).toEqual([a.id, b.id].sort());
   });
 
   it("IndexedDB-Ablage (Nachbildung): ablegen, nach „Neustart“ lesen, entfernen", async () => {

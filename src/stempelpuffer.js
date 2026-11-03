@@ -61,14 +61,15 @@ export function speicherFluechtig() {
     entfernen: async (id) => { daten.delete(id); } };
 }
 
-/** localStorage (oder ein gleichartiger Speicher) — ein JSON-Feld. */
-export function speicherLokal(ls, schluessel = "centric:stempelpuffer") {
-  const lesen = () => { try { const x = JSON.parse(ls.getItem(schluessel) || "[]"); return Array.isArray(x) ? x : []; } catch { return []; } };
-  const schreiben = (liste) => ls.setItem(schluessel, JSON.stringify(liste));
+/** localStorage (oder ein gleichartiger Speicher) — je Ereignis ein Feld, damit
+    zwei Reiter, die gleichzeitig ablegen, sich nichts überschreiben. */
+export function speicherLokal(ls, praefix = "centric:stempelpuffer:") {
+  const schluessel = () => { const k = []; for (let i = 0; i < ls.length; i++) { const x = ls.key(i); if (x && x.startsWith(praefix)) k.push(x); } return k; };
   return { art: "lokal", dauerhaft: true,
-    alle: async () => lesen(),
-    setzen: async (e) => { schreiben([...lesen().filter((x) => x.id !== e.id), { ...e }]); },
-    entfernen: async (id) => { schreiben(lesen().filter((x) => x.id !== id)); } };
+    alle: async () => schluessel().map((k) => { try { return JSON.parse(ls.getItem(k)); } catch { return null; } })
+      .filter((e) => e && typeof e === "object" && e.id),
+    setzen: async (e) => { ls.setItem(praefix + e.id, JSON.stringify(e)); },
+    entfernen: async (id) => { ls.removeItem(praefix + id); } };
 }
 
 /** IndexedDB — der Normalfall. Wirft, wenn die Datenbank nicht zu öffnen ist. */
