@@ -1,9 +1,9 @@
 {
   "schema": 2,
   "hinweis": "Einzige maßgebliche Quelle für Pakete, Status, Statusstufen, Aufwand und Abhängigkeiten. Ändern nur hier, danach node werkzeug/acc45-backlog.mjs status-schreiben. Kopfzahlen (anzahl … kritischerPfad) werden erzeugt.",
-  "anzahl": 142,
+  "anzahl": 143,
   "statusZaehlung": {
-    "BLOCKED": 80,
+    "BLOCKED": 81,
     "READY": 24,
     "IN_PROGRESS": 2,
     "REVIEW": 4,
@@ -20,11 +20,11 @@
       }
     },
     "wp19": {
-      "pakete": 14,
-      "offen": 14,
+      "pakete": 15,
+      "offen": 15,
       "restPT": {
-        "min": 59.8,
-        "max": 93.2
+        "min": 66.8,
+        "max": 104.2
       }
     },
     "intelligence": {
@@ -53,8 +53,8 @@
     }
   },
   "offenerAufwandPT": {
-    "min": 423.20000000000005,
-    "max": 720
+    "min": 430.20000000000005,
+    "max": 731
   },
   "kritischerPfad": {
     "summe": 102.6,
@@ -2183,6 +2183,34 @@
       "tests": "pruefungen/modul-<id>*.test.js, E2E in 19.13",
       "dateien": "siehe WP19-MODULPLAN.md Abschnitt 14",
       "notiz": null
+    },
+    {
+      "id": "WP-19.R",
+      "titel": "Rettungsdienst-Branchenprofil (eigenes Paket, Rettungsmittel-Besetzung, Besetzungsnachweis)",
+      "strang": "wp19",
+      "prio": "P1",
+      "aufwandPT": {"min":7,"max":11},
+      "abhaengigkeiten": ["WP-19.0","WP-19.4"],
+      "status": "BLOCKED",
+      "stufen": {
+        "implementiert": {"wert":false,"beleg":null},
+        "lokalGetestet": {"wert":false,"beleg":null},
+        "reviewt": {"wert":false,"beleg":null},
+        "integriert": {"wert":false,"beleg":null},
+        "stagingGeprueft": {"wert":false,"beleg":null},
+        "fachlichFreigegeben": {"wert":false,"beleg":null},
+        "produktiv": {"wert":false,"beleg":null}
+      },
+      "branch": "acc45/frontend/wp19-r-rettungsdienst",
+      "agent": "Agent E – Business Modules & Frontend",
+      "modell": "sonnet + opus-review",
+      "konfliktzonen": [],
+      "pr": [],
+      "nachweis": "docs/acc45/BRANCHENPAKETE-STRATEGIE.md",
+      "akzeptanz": "Eigenes Paket rettung (Zustand 1 bis Abnahme), Zuordnung Server = Client, Rettungsmittel-Besetzung mit Mindestfunktionen (provisional), Besetzungsnachweis je Rettungsmittel; PT ist Schätzung; Sicherheitsklasse normal",
+      "tests": "pruefungen/modul-rettung*.test.js, Vertragstest Pakete, E2E in 19.13",
+      "dateien": "stufen.js, paketstand, branchenmodule.mjs, branchen.mjs, src/module/, main.jsx",
+      "notiz": "Schätzung 7–11 PT zusätzlich zu 1–1,5 PT Profil in WP-19.4; Entscheidung BS-3 offen."
     },
     {
       "id": "WP-I1",
