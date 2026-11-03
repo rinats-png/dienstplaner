@@ -4,7 +4,7 @@ import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungP
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen, freigabeRuecknahmen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
@@ -1099,6 +1099,8 @@ export default async (req, context) => {
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
         const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
+        const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         {
           const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
           let weg = 0;
@@ -1166,6 +1168,9 @@ export default async (req, context) => {
             durch: erg.durch, zeit: erg.zeit }, 409);
         }
 
+        /* Erst nach dem erfolgreichen Schreiben (Nachtrag N2): eine abgewiesene oder verlorene Übermittlung
+           nimmt nichts zurück und steht deshalb nicht als Rücknahme im Protokoll. */
+        if (frei) await protokoll("schreiben", ks, "freigabe-zurueckgenommen", `${frei} Monat(e)`, wer);
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);

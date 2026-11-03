@@ -199,6 +199,21 @@ describe("Rechtematrix: Entwurf bei eingeschalteter Planfreigabe (²⁷)", () =>
     m.abweichungen = { ...m.abweichungen, "b1|2099-01-01": "MK-ENTWURF", "m0|2099-01-02": "MK-ENTWURF-EIGEN" };
     m.postenPlan = { "m0|2099-01-02": "MK-ENTWURF-POSTEN" };
     m.bereichsPlan = { "m0|2099-01-02": "MK-ENTWURF-BEREICH" };
+    /* WP-23b: alle übrigen Sammlungen mit Datum — Entwurfstage 2099, ein vergangener Tag zur Gegenprobe. */
+    m.ausschreibungen = [
+      { id: "as-e", datum: "2099-01-03", dienstId: "F", status: "vergeben", bewerbungen: [], vergebenAn: "b1", vergebenZeit: "MK-VERGEBEN-FREMD" },
+      { id: "as-m", datum: "2099-01-03", dienstId: "F", status: "vergeben", bewerbungen: [], vergebenAn: "m0", vergebenZeit: "MK-VERGEBEN-EIGEN" }];
+    m.sondereinsaetze = [{ id: "se", datum: "2099-01-04", name: "Sonder",
+      zugeteilt: [{ personId: "m0" }, { personId: "b1", marker: "MK-ZUGETEILT-FREMD" }] }];
+    m.unterschreitungen = [
+      { id: "u1", datum: "2099-01-05", dienstId: "F", grund: "MK-UNTERDECKUNG-ENTWURF" },
+      { id: "u2", datum: "2020-01-05", dienstId: "F", grund: "MK-UNTERDECKUNG-VORBEI" }];
+    m.einspruenge = [
+      { id: "ei1", personId: "b1", datum: "2099-01-06", dienstId: "F", text: "MK-EINSPRUCH-FREMD" },
+      { id: "ei2", personId: "m0", datum: "2099-01-06", dienstId: "F", text: "MK-EINSPRUCH-EIGEN" }];
+    m.selbstplanung = [{ id: "sp", eintraege: [
+      { personId: "b1", datum: "2099-01-07", dienstId: "F", zeit: "MK-SELBST-FREMD" },
+      { personId: "m0", datum: "2099-01-07", dienstId: "F", zeit: "MK-SELBST-EIGEN" }] }];
     return b;
   };
   const ist = (marker) => Object.fromEntries(["MA", "BR", "SV", "PL", "LT"]
@@ -212,6 +227,30 @@ describe("Rechtematrix: Entwurf bei eingeschalteter Planfreigabe (²⁷)", () =>
   it("Posten- und Bereichsplan im Entwurf: Beschäftigte nicht, Betriebsrat nie (eigene Zeilen WEG)", () => {
     expect(ist("MK-ENTWURF-POSTEN")).toMatchObject({ MA: 0, BR: 0, PL: 1, LT: 1 });
     expect(ist("MK-ENTWURF-BEREICH")).toMatchObject({ MA: 0, BR: 0, PL: 1, LT: 1 });
+  });
+  /* WP-23b (M1): Wer die Schicht bekam, verriete die Einteilung eines Entwurfstags. */
+  it("Ausschreibung am Entwurfstag: fremde Vergabe (Person, Zeit) nicht an Beschäftigte, die eigene schon", () => {
+    expect(ist("MK-VERGEBEN-FREMD")).toMatchObject({ MA: 0, PL: 1, LT: 1 });
+    expect(ist("MK-VERGEBEN-EIGEN")).toMatchObject({ MA: 1, PL: 1, LT: 1 });
+    expect(JSON.stringify(bestandFuerRolle(mitPflicht(), SITZ.MA).mandanten[0].ausschreibungen)).not.toContain('"vergebenAn":"b1"');
+  });
+  /* N1: der eigene Sondereinsatz geht hinaus, die übrigen Zugeteilten nicht. */
+  it("Sondereinsatz: nur die eigene Person unter zugeteilt (Fremde nie)", () => {
+    expect(ist("MK-ZUGETEILT-FREMD")).toMatchObject({ MA: 0, PL: 1, LT: 1 });
+    expect(bestandFuerRolle(mitPflicht(), SITZ.MA).mandanten[0].sondereinsaetze[0].zugeteilt).toEqual([{ personId: "m0" }]);
+  });
+  /* N3: dokumentierte Unterdeckung am Entwurfstag (freier Grund, kann Namen tragen). */
+  it("Unterdeckung am Entwurfstag: nicht an Beschäftigte; vergangene schon; Betriebsrat unverändert (offene Entscheidung)", () => {
+    expect(ist("MK-UNTERDECKUNG-ENTWURF")).toMatchObject({ MA: 0, BR: 1, PL: 1, LT: 1 });
+    expect(ist("MK-UNTERDECKUNG-VORBEI")).toMatchObject({ MA: 1, BR: 1, PL: 1, LT: 1 });
+  });
+  /* Bewusst dokumentiert (wp23-nachweis.md): eigene Einsprüche und eigene Selbstplanung-Wünsche sind keine Planung
+     und bleiben; fremde gehen nie hinaus (NUR_EIGENE bzw. Einträge fremder Personen ohne Person und Zeit). */
+  it("Einsprüche und Selbstplanung: fremde nie, eigene bewusst auch an Entwurfstagen", () => {
+    expect(ist("MK-EINSPRUCH-FREMD")).toMatchObject({ MA: 0, BR: 0 });
+    expect(ist("MK-EINSPRUCH-EIGEN")).toMatchObject({ MA: 1, BR: 0 });
+    expect(ist("MK-SELBST-FREMD")).toMatchObject({ MA: 0, BR: 0 });
+    expect(ist("MK-SELBST-EIGEN")).toMatchObject({ MA: 1, BR: 0 });
   });
   it("ohne Pflicht und ohne Freigabe (Betrieb wie bisher) bleibt alles sichtbar", () => {
     const b = bestand();
