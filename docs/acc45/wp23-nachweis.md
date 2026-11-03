@@ -176,6 +176,19 @@ Branch `acc45/security/wp23b-nachtrag`. Je Befund zuerst rot (Sonde gegen `besta
   Selbstplanung fremde Einträge ohne Person und Zeit, nur Datum und Dienst für die Deckelung) **bewusst** auch an
   Entwurfstagen — keine Planung, sondern Äußerung der Person.
 
+- **Delta-Review (mittel): Schutz über `einstellungen` abschaltbar.** `planFreigabeZusammen` gab `neuM` unverändert zurück,
+  wenn `einstellungen` fehlte oder kein Objekt war (null, Text, Zahl): Planung und Leitung konnten damit die Pflicht
+  (bei Leitung ohne Wann/Wer) entfernen; ein Betrieb ohne Freigabe zeigte danach fremde Entwürfe. Jetzt gilt in diesem Fall
+  der gespeicherte Stand der Einstellungen (Kopie von `altE`, nichts wird abgelehnt oder gelöscht). Tests in
+  `entwuerfe.test.js` je Variante (weggelassen, null, String, Zahl, Array) für Planung und Leitung über den echten Handler;
+  Schichtverantwortung und Beschäftigte wirkungslos. Vorher rot (8 Fälle: alle Varianten außer Array, je Planung und
+  Leitung), Mutant (Rückschreiben entfernt) wieder 8 rot.
+- **N1 (Delta-Review), bewusste Ausnahme, Entscheidung offen:** Die eigene Vergabe (`vergebenAn`/`vergebenZeit`) einer
+  Ausschreibung bleibt für die betroffene Person an Entwurfstagen sichtbar (Sonde MK-VERGEBEN-EIGEN, MA:1). Das passt nicht zu
+  ²⁷ („weder eigenen noch fremden Entwurf“). Nicht geändert; RECHTEMATRIX ²⁷ vermerkt es.
+- **N2 (Delta-Review):** Das Protokoll „freigabe-zurueckgenommen“ steht jetzt nach dem erfolgreichen Schreiben (vorher vor
+  `pruefeGestalt`/`bestandSchreiben`, die noch abweisen konnten).
+
 **Offene Entscheidungen (nicht entschieden, nur dokumentiert):**
 
 - **Selbstauskunft Art. 15** liefert zusätzlich zu den Abweichungen auch `postenzuordnungen`, `bereichszuordnungen` und

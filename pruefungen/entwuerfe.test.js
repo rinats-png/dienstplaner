@@ -305,6 +305,57 @@ describe("einstellungen.planFreigabePflicht schreiben", () => {
   });
 });
 
+/* ---- Nachtrag WP-23b (Delta-Review): `einstellungen` weglassen oder ungültig schicken schaltet nichts ab ---- */
+describe("einstellungen fehlt oder ist ungültig: der gespeicherte Stand bleibt", () => {
+  const R4 = "wp23b-einstellungen";
+  const sitz4 = async (pid, rolle) => (await sitzungAnlegen({ bestand: R4, name: pid, rolle, person: pid, betrieb: 0,
+    mandantId: "m1", einheit: null }, 60 * 60 * 1000)).token;
+  const EINST = { planFreigabePflicht: true, planFreigabePflichtGeaendertAm: "2099-01-01T00:00:00.000Z",
+    planFreigabePflichtGeaendertVon: "l1", jugendschutz: { mehrschichtig: true } };
+  const zurueck = () => B.bestandSchreiben(laden(), R4, { version: 9,
+    mandanten: [betrieb({ freigaben: {}, einstellungen: JSON.parse(JSON.stringify(EINST)) })] }, { durch: "Pruefung" });
+  const schreibe = async (pid, rolle, aendere) => {
+    const t = await sitz4(pid, rolle);
+    const g = await anfrage("/api/bestand", { token: t });
+    const b = JSON.parse(JSON.stringify(g.bestand));
+    aendere(b.mandanten[0]);
+    const p = await anfrage("/api/bestand", { methode: "PUT", token: t, rumpf: { bestand: b, etag: g.etag } });
+    const m = (await B.bestandLesen(laden(), R4)).bestand.mandanten[0];
+    return { p, m };
+  };
+  beforeEach(() => zurueck());
+  const varianten = [
+    ["weggelassen", (m) => { delete m.einstellungen; }],
+    ["null", (m) => { m.einstellungen = null; }],
+    ["String", (m) => { m.einstellungen = "x"; }],
+    ["Zahl", (m) => { m.einstellungen = 5; }],
+    ["Array", (m) => { m.einstellungen = []; }],
+  ];
+  for (const rolle of [["p1", "planer"], ["l1", "leitung"]]) {
+    for (const [name, aendere] of varianten) {
+      it(`${rolle[1]}: einstellungen ${name} — Pflicht samt Wann/Wer bleibt, fremder Entwurf bleibt verborgen`, async () => {
+        const { p, m } = await schreibe(rolle[0], rolle[1], aendere);
+        expect(p.status, name).toBeLessThan(500);
+        expect(m.einstellungen, name).toMatchObject({ planFreigabePflicht: true,
+          planFreigabePflichtGeaendertAm: EINST.planFreigabePflichtGeaendertAm, planFreigabePflichtGeaendertVon: "l1",
+          jugendschutz: { mehrschichtig: true } });
+        const sicht = (await anfrage("/api/bestand", { token: await sitz4("a1", "mitarbeiter") })).bestand.mandanten[0];
+        expect(sicht.abweichungen[`b1|${tag(ENTWURF, "11")}`], name).toBeUndefined();
+        expect(sicht.sichtEntwuerfe, name).toBeDefined();
+      });
+    }
+  }
+  for (const rolle of [["s1", "subplaner"], ["a1", "mitarbeiter"]]) {
+    it(`${rolle[1]}: einstellungen weggelassen oder null — wirkungslos, Pflicht bleibt`, async () => {
+      for (const [, aendere] of varianten.slice(0, 2)) {
+        await zurueck();
+        const { m } = await schreibe(rolle[0], rolle[1], aendere);
+        expect(m.einstellungen && m.einstellungen.planFreigabePflicht).toBe(true);
+      }
+    });
+  }
+});
+
 /* ---- Neue Betriebe starten mit der Pflicht (Review WP-23, Punkt 3) ---- */
 describe("neue Betriebe", () => {
   it("der Leerbetrieb (Provisionierung, Erstbefüllung, Testräume) hat planFreigabePflicht true", async () => {

@@ -1101,7 +1101,6 @@ export default async (req, context) => {
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
-        if (frei) await protokoll("schreiben", ks, "freigabe-zurueckgenommen", `${frei} Monat(e)`, wer);
         {
           const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
           let weg = 0;
@@ -1169,6 +1168,9 @@ export default async (req, context) => {
             durch: erg.durch, zeit: erg.zeit }, 409);
         }
 
+        /* Erst nach dem erfolgreichen Schreiben (Nachtrag N2): eine abgewiesene oder verlorene Übermittlung
+           nimmt nichts zurück und steht deshalb nicht als Rücknahme im Protokoll. */
+        if (frei) await protokoll("schreiben", ks, "freigabe-zurueckgenommen", `${frei} Monat(e)`, wer);
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);

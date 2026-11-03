@@ -322,7 +322,12 @@ erhält entfernte Freigaben für alle ohne `org.edit` stillschweigend (Planung, 
 lässt den Filter einrasten: Nimmt die Leitung (`org.edit`) die letzte Freigabe zurück, setzt der Server
 `planFreigabePflicht` auf true, Wann/Wer vom Server; die Rücknahme steht im Betriebsprotokoll („freigabe-zurueckgenommen“,
 nur die Zahl). Ob ein Monat nach der Rücknahme für Beschäftigte, die ihn schon sahen, wieder Entwurf wird, ist fachlich
-offen (siehe Nachweis).
+offen (siehe Nachweis). **Einstellungen weglassen (Delta-Review):** Fehlt `einstellungen` in der Übermittlung oder ist es kein
+Objekt (null, Text, Zahl), gilt der gespeicherte Stand der Einstellungen (Pflicht samt Wann/Wer und alles Übrige); auch hier
+schaltet die Planung den Schutz nicht ab, und bei der Leitung entfällt die Pflicht nicht ohne Wann/Wer.
+**Bewusste Ausnahme (N1, offene Entscheidung):** Die eigene Vergabe einer Ausschreibung (`vergebenAn`/`vergebenZeit`) bleibt
+für die betroffene Person auch an Entwurfstagen sichtbar (Sonde MK-VERGEBEN-EIGEN, `rechtematrix.test.js`). Das passt nicht
+zum Wortlaut „weder eigenen noch fremden Entwurf“ oben; es ist nicht geändert, sondern wird fachlich entschieden.
 **Weitere Sammlungen mit Datum (WP-23b):** `ausschreibungen` — „vergeben an/Zeit“ nur, wenn es die eigene Person war
 (sonst null); `sondereinsaetze` — unter `zugeteilt` nur die eigene Person (ob Sondereinsätze der Planfreigabe unterliegen,
 ist fachlich offen und nicht entschieden); `unterschreitungen` — Einträge der Entwurfstage fehlen für Beschäftigte

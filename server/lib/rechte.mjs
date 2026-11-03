@@ -914,8 +914,14 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
    ohne das Feld zurückschickt, schaltet nichts aus). */
 const PLANFREIGABE_ZEIT = ["planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"];
 function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
-  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
+  if (!neuM || typeof neuM !== "object") return { mandant: neuM };
   const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  /* Fehlt `einstellungen` oder ist es kein Objekt (null, Text, Zahl), gilt wie bei einem fehlenden Feld der
+     gespeicherte Stand — sonst schaltete die Planung den Entwurfsschutz mit einem Federstrich ab (Delta-Review WP-23b). */
+  if (!neuM.einstellungen || typeof neuM.einstellungen !== "object") {
+    if (!altM || !altM.einstellungen || typeof altM.einstellungen !== "object") return { mandant: neuM };
+    return { mandant: { ...neuM, einstellungen: { ...altE } } };
+  }
   const e = { ...neuM.einstellungen };
   const zurueck = () => {
     if ("planFreigabePflicht" in altE) e.planFreigabePflicht = altE.planFreigabePflicht; else delete e.planFreigabePflicht;
