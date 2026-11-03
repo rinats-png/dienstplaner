@@ -125,6 +125,9 @@ export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
   if (!istObjekt(neuM) || !Array.isArray(konflikte) || !konflikte.length) return neuM;
   const personen = (Array.isArray(neuM.personen) ? neuM.personen : Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
   const heute = new Date().toISOString().slice(0, 10);
+  /* Empfänger nach Rolle, nicht nach Recht (Review NIEDRIG 5): Die Startseite zeigt die Pflichtaufgabe bei
+     pattern.edit oder org.edit; in der Rechtetabelle sind das Leitung, Planung und der eigene Datenraum
+     „kunde“ (dort gibt es keine zweite Person). pruefungen/schutzkonflikte.test.js hält beides zusammen. */
   const empfaenger = personen.filter((p) => (p.rolle === "leitung" || p.rolle === "planer") && !p.anonym
     && !(typeof p.austritt === "string" && p.austritt && p.austritt < heute));
   const vorhanden = new Set([...(Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : []),

@@ -318,15 +318,20 @@ export function* schutzkonflikteSchritte(m, k) {
   const relevant = liste(m && m.personen).filter((p) => p.mutterschutz || keineNacht(p)
     || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
     || (() => { const g = p.geburtstag || p.geburtsdatum; if (!g) return false; const a = between(g, d0) / 365.25; return a < 19; })());
+  /* Relevanzfilter: Alter unter 19 (Tage / 365,25) ist bewusst eine Obermenge von „unter 18“ (Jugendschutz) —
+     er spart nur Personen, die sicher nicht betroffen sind; die Regel selbst prüft schutzEinsatz mit dem genauen Alter. */
   if (!relevant.length) return aus;
   const ids = new Set(relevant.map((p) => String(p.id)));
   /* Abweichungen je Person: ein Durchlauf statt eines Schlüssels je Person und Tag. */
   const abw = new Map();
   const quelle = m.abweichungen && typeof m.abweichungen === "object" ? m.abweichungen : {};
+  /* Nachtrag WP-22b (Review HOCH 1): dichter prüfen — im Vorindex je 16
+     Schlüssel, danach je Tag; vorher je 64 bzw. je 4 Tage. */
   let t = performance.now();
   let n = 0;
+  const zeitUm = () => performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS;
   for (const key in quelle) {
-    if ((++n & 63) === 0 && performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS) { yield; t = performance.now(); }
+    if ((++n & 15) === 0 && zeitUm()) { yield; t = performance.now(); }
     const i = key.lastIndexOf("|");
     const pid = key.slice(0, i);
     if (!ids.has(pid)) continue;
@@ -347,11 +352,41 @@ export function* schutzkonflikteSchritte(m, k) {
   for (const p of relevant) {
     for (let d = d0; d <= bis; d = addDays(d, 1)) {
       pruefe(p, d);
-      if ((++n & 3) === 0 && performance.now() - t > SCHUTZKONFLIKT_HAEPPCHEN_MS) { yield; t = performance.now(); }
+      if (zeitUm()) { yield; t = performance.now(); }
     }
-    for (const d of abw.get(String(p.id)) || []) if (d > bis) pruefe(p, d);
+    for (const d of abw.get(String(p.id)) || []) {
+      if (d <= bis) continue;
+      pruefe(p, d);
+      if (zeitUm()) { yield; t = performance.now(); }
+    }
   }
   return aus;
+}
+
+export const SCHUTZKONFLIKT_ENTPRELLUNG_MS = 250;
+
+/**
+ * Rechnung entprellt starten und in Häppchen ausführen (Oberfläche; als
+ * Funktion, damit Verzögerung und Häppchen ohne Browser prüfbar sind).
+ * Zurück kommt die Abbruchfunktion; nach ihr wird nichts mehr gemeldet.
+ * @param {any} m
+ * @param {Parameters<typeof schutzkonflikteSchritte>[1]} k
+ * @param {(ergebnis: Map<string, any>) => void} fertig
+ * @param {{ verzoegerungMs?: number, timer?: typeof setTimeout, aufraeumen?: typeof clearTimeout }} [opt]
+ */
+export function planeSchutzkonflikte(m, k, fertig, opt = {}) {
+  const timer = opt.timer || setTimeout, aufraeumen = opt.aufraeumen || clearTimeout;
+  let vorbei = false;
+  const uhr = timer(() => {
+    const it = schutzkonflikteSchritte(m, k);
+    const weiter = () => {
+      if (vorbei) return;
+      const r = it.next();
+      if (r.done) fertig(r.value); else timer(weiter, 0);
+    };
+    weiter();
+  }, opt.verzoegerungMs === undefined ? SCHUTZKONFLIKT_ENTPRELLUNG_MS : opt.verzoegerungMs);
+  return () => { vorbei = true; aufraeumen(uhr); };
 }
 
 /** Synchron zu Ende rechnen (Prüfungen). */
