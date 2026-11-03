@@ -1307,10 +1307,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       geschickt = module.mandant;
       /* Anlagen (WP-19): Form von Mindestbesetzung und Laufzeit an Betriebsmitteln der Art „anlage“. */
       const anlagen = anlagenZusammen(geschickt, ort.betrieb);
-      if (anlagen.grund) return { verweigert: anlagen.grund };
+      if (anlagen.grund) return { verweigert: anlagen.grund, status: anlagen.status };
       /* Maschinenqualifikationen (WP-19): befähigte Person und Wiederholung an Kompetenzen zu Anlagen. */
       const maschinen = maschinenqualZusammen(geschickt, ort.betrieb);
-      if (maschinen.grund) return { verweigert: maschinen.grund };
+      if (maschinen.grund) return { verweigert: maschinen.grund, status: maschinen.status };
       /* Geteilte Dienste (WP-19): Form des zweiten Abschnitts einer Dienstart. */
       const geteilt = geteilterdienstZusammen(geschickt, ort.betrieb);
       if (geteilt.grund) return { verweigert: geteilt.grund };

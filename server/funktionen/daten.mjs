@@ -30,6 +30,7 @@ import { uhrDauerAbweichend, spurGrund, spurHinweise } from "../lib/zeitregeln.m
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
+import { industrieProtokoll } from "../lib/modul-industrie-protokoll.mjs";
 import { VORLAGEN, vorlageBestand, demoGestaltPruefen, codeBindung, betriebFuerNeuenCode }
   from "../lib/erstbefuellung.mjs";
 import { SICHERUNG_ROLLEN, WIEDERHERSTELLEN_ROLLEN, MARKE, markeNeu, eigenerBetrieb,
@@ -1039,6 +1040,8 @@ export default async (req, context) => {
         }
         if (zuSchreiben.verweigert) {
           await protokoll("schreiben", ks, "abgewiesen", zuSchreiben.verweigert, wer);
+          /* Formfehler eines Branchenmoduls (WP-19.10): 422 statt 403 — die Berechtigung stimmt, die Angabe nicht. */
+          if (zuSchreiben.status === 422) return antwort({ fehler: "Ungültige Angabe.", text: zuSchreiben.verweigert }, 422);
           return antwort({ fehler: "Keine Schreibberechtigung.",
             text: zuSchreiben.verweigert }, 403);
         }
@@ -1115,6 +1118,8 @@ export default async (req, context) => {
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
         const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        /* Industriemodule (WP-19.10): dass sich Anlagen geändert haben — nur Anzahlen, ohne Namen, ohne Person. */
+        for (const e of industrieProtokoll(jetzt ? jetzt.bestand : null, zuSchreiben)) await protokoll("schreiben", ks, e.ereignis, e.detail, wer);
         /* Rücknahme einer Planfreigabe (WP-23b): ohne Monat, nur die Zahl. */
         const frei = freigabeRuecknahmen(jetzt ? jetzt.bestand : null, zuSchreiben);
         {

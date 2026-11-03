@@ -124,6 +124,10 @@ const bestand = () => ({
       { id: "ob4", name: M("OBJEKT-OHNE-EINTEILUNG"), posten: [] }],
     postenPlan: { [`m0|${tag(1)}`]: "po1", [`b1|${tag(1)}`]: "po2", [`a1|${tag(1)}`]: "po3" },
     bereichsPlan: { [`m0|${tag(1)}`]: "be1", [`b1|${tag(1)}`]: "be9", [`a1|${tag(1)}`]: "be1" },
+    /* Anlagen (WP-19.10): Name sehen alle Ausgelieferten, Bedarf, Laufzeit und Grundlage nur Planung und Leitung. */
+    betriebsmittel: [{ id: "bmA", art: "anlage", name: "Anlage", personId: null, mindestBesetzung: { [M("ANLAGEN-DIENST")]: 2 },
+      laufzeit: { wochentage: [true, true, true, true, true, false, false], ausnahmen: [{ datum: M("ANLAGEN-AUSNAHME"), laeuft: false }] },
+      grundlage: { art: "sonstige", bezug: M("ANLAGEN-GRUNDLAGE") } }],
     qualifikationen: [{ id: "pfk", name: "PFK" }, { id: "masern", name: "Masern", nurStatus: true }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
@@ -356,6 +360,8 @@ const ZEILEN = {
       expect(mk("NOTRUF-BEREICH")(s), "aus dem Bereich").toBe(true);
     } } },
   "Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan)": { sonden: [mk("BEREICH-NAME-E1")] },
+  "Anlagen: Mindestbesetzung, Laufzeitkalender, Grundlage (`betriebsmittel` mit `art: \"anlage\"`; Branchenmodul Anlagen) — den Namen der Anlage sehen alle Ausgelieferten, den Bedarf nur Planung und Leitung": {
+    sonden: [mk("ANLAGEN-GRUNDLAGE"), mk("ANLAGEN-AUSNAHME"), mk("ANLAGEN-DIENST")] },
   "Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen": {
     sonden: [mk("OBJEKT-EIGEN-M0"), mk("OBJEKT-FREMD-B1"), mk("OBJEKT-BEREICH-A1"), mk("OBJEKT-OHNE-EINTEILUNG")],
     bedingt: {

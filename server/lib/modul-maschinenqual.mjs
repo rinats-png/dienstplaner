@@ -170,7 +170,7 @@ export function maschinenqualBefunde(m, datum, dienstId, personen, { auswerten, 
  * `altM` nur Neues oder Geändertes streng (Review-Auflage 2).
  * @param {any} neuM
  * @param {any} [altM]
- * @returns {{ grund?: string }}
+ * @returns {{ grund?: string, status?: number }}
  */
 export function maschinenqualZusammen(neuM, altM) {
   const anlagen = new Set(liste(neuM && neuM.betriebsmittel).filter(istAnlage).map((a) => a.id));
@@ -179,7 +179,7 @@ export function maschinenqualZusammen(neuM, altM) {
     if (vorher.get(String(k.id)) === JSON.stringify(k)) continue;
     if (k.befaehigtePerson === undefined && !anlagen.has(k.betriebsmittelId)) continue;
     const f = pruefeMaschinenKompetenz(k);
-    if (f) return { grund: f };
+    if (f) return { grund: f, status: 422 };
   }
   return {};
 }

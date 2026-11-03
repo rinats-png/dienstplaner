@@ -74,6 +74,7 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Anlagen: Mindestbesetzung, Laufzeitkalender, Grundlage (`betriebsmittel` mit `art: "anlage"`; Branchenmodul Anlagen) — den Namen der Anlage sehen alle Ausgelieferten, den Bedarf nur Planung und Leitung | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
 | Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -392,9 +393,11 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   `pattern.edit`). Parameter `sollWochenstunden`, `stundenJeFreischicht` in `einstellungen.branchenmodule`.
   Geprüft in `pruefungen/modul-kontimodelle.test.js`.
 - *Anlagen* (`server/lib/modul-anlagen.mjs`): keine neuen Betriebsfelder. Eine Anlage ist ein Eintrag in
-  `betriebsmittel` mit `art: "anlage"` und den Feldern `mindestBesetzung`, `laufzeit`; Lesen und Schreiben wie
-  Betriebsmittel (Positivkatalog `betriebsmittel` in `server/lib/sicht.mjs`: Beschäftigte und
-  Schichtverantwortung sehen nicht ausgegebene Betriebsmittel, also auch Anlagen; Betriebsrat nicht). Der Server
+  `betriebsmittel` mit `art: "anlage"` und den Feldern `mindestBesetzung`, `laufzeit`, `grundlage` (Art, Bezug, Datum; WP-19.10);
+  Lesen und Schreiben wie Betriebsmittel (Positivkatalog `betriebsmittel` in `server/lib/sicht.mjs`: Beschäftigte und
+  Schichtverantwortung sehen die freien Betriebsmittel, also auch den Namen der Anlage, aber nicht Mindestbesetzung,
+  Laufzeitkalender und Grundlage — das sind Vorgaben der Planung und Leitung, `anlageOhneBedarf`; Betriebsrat sieht
+  keine Betriebsmittel). Formfehler meldet der Server mit 422, fehlende Berechtigung mit 403. Der Server
   weist eine falsche Form ab (`anlagenZusammen`). Befunde nur als Hinweis und nur bei aktivem Modul.
   Geprüft in `pruefungen/modul-anlagen.test.js`.
 - *Maschinenqualifikationen* (`server/lib/modul-maschinenqual.mjs`): keine neuen Betriebsfelder. Liest

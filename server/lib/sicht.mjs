@@ -342,7 +342,17 @@ function einarbeitungEigen(w, ctx) {
    Schlüssel oder welches Fahrzeug trägt. */
 function betriebsmittelEigen(w, ctx) {
   return liste(w).filter((b) => b && (b.personId === null || b.personId === undefined
-    || b.personId === "" || gleich(b.personId, ctx.ich)));
+    || b.personId === "" || gleich(b.personId, ctx.ich))).map(anlageOhneBedarf);
+}
+
+/* Anlagen (WP-19.10): Name und Art sehen alle Ausgelieferten, den Bedarf nicht — Mindestbesetzung, Laufzeitkalender
+   und Grundlage sind Vorgaben der Planung und Leitung (RECHTEMATRIX, Zeile Betriebsmittel). */
+const ANLAGE_NUR_PLANUNG = ["mindestBesetzung", "laufzeit", "grundlage"];
+function anlageOhneBedarf(b) {
+  if (!b || b.art !== "anlage") return b;
+  const r = { ...b };
+  for (const f of ANLAGE_NUR_PLANUNG) delete r[f];
+  return r;
 }
 
 /* Sondereinsätze: nur die, denen man zugeteilt ist; ohne Auftraggeber und
@@ -782,7 +792,7 @@ const schichtKompetenzen = (w, ctx) => liste(w).map((k) => (k && Array.isArray(k
 const schichtEinarbeitung = (w, ctx) => liste(w).filter((e) => e
   && (imScope(ctx, e.personId, ["eigen", "bereich"]) || gleich(e.mentorId, ctx.ich)));
 const schichtBetriebsmittel = (w, ctx) => liste(w).filter((b) => b && (b.personId === null
-  || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"])));
+  || b.personId === undefined || b.personId === "" || imScope(ctx, b.personId, ["eigen", "bereich"]))).map(anlageOhneBedarf);
 /* Sondereinsätze: sichtbar, wenn sie selbst oder eine Person ihres Bereichs
    zugeteilt ist — tagesgenau am Tag des Einsatzes (WP-43); ohne gültigen Tag
    nur der eigene. */
