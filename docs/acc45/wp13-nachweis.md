@@ -71,3 +71,18 @@ Rot vorher: Export von e944547 (WP-06-Kopf) mit der neuen Testdatei: **15 von 19
 Nachher (lokal, Windows): ungeplante-dienste 19/19; serverdatum, stempeln, stempel-oberflaeche, geo, zeiterfassung,
 pruefungsfaelle-verhalten, stempel-integritaet grün; Serverläufe zeiterfassung 39/39, geo 14/14, rechte 147/147,
 schichtverantwortung 25/25; `tsc` sauber.
+
+## Review-Nachträge C1 und C2; Folgepunkte C3–C5
+
+- **C1 Abwesenheit:** Ein bestätigter ungeplanter Dienst an einem Tag mit Abwesenheit zählt nicht (wie bisher: Abwesenheit geht vor).
+  Der Hinweis auf der Karte (MHeute, Tagesstart) sagt es jetzt ausdrücklich, vorher und nachher: „zählt wegen der Abwesenheit an diesem
+  Tag nicht im Stundenkonto“. In den Stempelbefunden trägt der Prüffall neben „Bestätigen“ die Warnung „Abwesenheit an diesem Tag …,
+  auch nach der Bestätigung“. **Vorläufig; die fachliche Entscheidung geht gebündelt an den Nutzer:** Soll ein gearbeiteter Dienst an einem
+  Abwesenheitstag als Zusatz zählen (etwa Einsatz trotz Urlaub)?
+- **C2 Begründung:** `bestaetigungsGrund(e)` (`src/istdaten.js`) wählt „Ungeplanter Dienst geprüft und bestätigt“ bzw. „Langer Dienst
+  geprüft und bestätigt“; `langerDienstBestaetigen` nutzt ihn.
+- **Folgepunkte für WP-14 (Korrekturworkflow):**
+  - C3: Regelprüfung ungeplanter Dienste (Ruhezeit, Höchstarbeitszeit, Jugend-/Mutterschutz).
+  - C4: Pausenabzug für ungeplante Dienste.
+  - C5: Altbestand (alte „bestätigte“ Erfassungen ungeplanter Tage) einmalig als Prüffälle vorlegen.
+- Tests: `ungeplante-dienste.test.js` jetzt 23 (vier neue für C1/C2).

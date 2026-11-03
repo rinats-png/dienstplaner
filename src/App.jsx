@@ -3,7 +3,7 @@ import * as SP from "./speicher.js";
 import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDATEN_TEXT, stundenText,
   zeitraumMonat, zeitraumBisMonat, zeitraumJahr, erfassungenZurPruefung, pruefHinweis, ZUR_PRUEFUNG_TEXT, zurPruefung,
   vormonateMitPruefung, exportWarnung,
-  ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT } from "./istdaten.js";
+  ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
@@ -11624,6 +11624,8 @@ function StempelBefunde({ sitz, ym, akt }) {
             <div key={`${personId}|${datum}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "5px 0", flexWrap: "wrap" }}>
               <span style={{ flex: 1, minWidth: 180, ...NUM }}>{name(personId)} · {fKurz(datum)} · {erfassung.start || "–"}–{erfassung.ende || "–"}</span>
               <Pill size="sm" tone="warn">{istUngeplant(erfassung) ? MARKIERUNG_TEXT.UNGEPLANT_PRUEFUNG : MARKIERUNG_TEXT.LANGER_DIENST}</Pill>
+              {istUngeplant(erfassung) && abwesenheitAm(m, personId, datum) && (
+                <Pill size="sm" tone="danger">Abwesenheit an diesem Tag — {UNGEPLANT_ABWESEND_TEXT}, auch nach der Bestätigung</Pill>)}
               {darfBestaetigen && akt && String(personId) !== eigene && (
                 <Btn size="sm" kind="ok" onClick={() => akt.langerDienstBestaetigen(personId, datum)}>Bestätigen</Btn>)}
             </div>))}
@@ -12949,14 +12951,18 @@ function UngeplantHinweis({ m, p, d, ...rest }) {
   if (!istUngeplant(e)) return null;
   const da = e.bestaetigt ? ungeplantAm(m, p, d) : null;
   const std = da ? istDauer(m, p, d, da).std : null;
+  /* C1: An einem Tag mit Abwesenheit zählt auch ein bestätigter ungeplanter Dienst nicht (Konto, Lohn). */
+  const abwesend = !!abwesenheitAm(m, p.id, d);
   return (
     <div {...rest}>
       <Rubrik>Ungeplanter Dienst</Rubrik>
       <div style={{ fontSize: 21, fontWeight: 600, marginTop: 5, ...NUM }}>{e.start}–{e.ende}{std !== null ? ` · ${n1(std)} h` : ""}</div>
       <div style={{ fontSize: 14, color: C.dim, marginTop: 3, lineHeight: 1.45 }}>
         {e.bestaetigt
-          ? "Von der Leitung bestätigt — zählt im Stundenkonto."
-          : "Ohne geplanten Dienst gestempelt. Die Leitung prüft die Zeit; erst nach ihrer Bestätigung zählt sie im Stundenkonto."}</div>
+          ? (abwesend ? `Von der Leitung bestätigt — ${UNGEPLANT_ABWESEND_TEXT}.` : "Von der Leitung bestätigt — zählt im Stundenkonto.")
+          : (abwesend
+            ? "Ohne geplanten Dienst gestempelt, an einem Tag mit Abwesenheit. Die Leitung prüft die Zeit; sie zählt auch nach der Bestätigung nicht im Stundenkonto."
+            : "Ohne geplanten Dienst gestempelt. Die Leitung prüft die Zeit; erst nach ihrer Bestätigung zählt sie im Stundenkonto.")}</div>
     </div>);
 }
 
@@ -22711,7 +22717,7 @@ function AppInnen() {
       langerDienstBestaetigen: (pid, d) => {
         const e = (sitz.mandant.erfassung || {})[`${pid}|${d}`];
         if (!e) return;
-        return akt.stempelKorrigieren(pid, d, e.start, e.ende, "Langer Dienst geprüft und bestätigt");
+        return akt.stempelKorrigieren(pid, d, e.start, e.ende, bestaetigungsGrund(e));
       },
       bestaetigeZeit: async (pid, d, start, ende, grund) => {
         if (!sitz.person || pid !== sitz.person.id) {

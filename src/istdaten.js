@@ -149,6 +149,13 @@ export const ZUR_PRUEFUNG_TEXT = "zur Prüfung, Planzeit vorläufig";
 export const UNGEPLANT_PRUEFUNG_TEXT = "ungeplant, zur Prüfung, noch nicht gezählt";
 /** Kennzeichnung eines bestätigten ungeplanten Dienstes. */
 export const UNGEPLANT_TEXT = "ungeplant";
+/** Der Grund im Korrekturereignis, wenn die Leitung einen Prüffall bestätigt (WP-13, C2). */
+export const bestaetigungsGrund = (e) => (istUngeplant(e)
+  ? "Ungeplanter Dienst geprüft und bestätigt" : "Langer Dienst geprüft und bestätigt");
+
+/** Text zu einem bestätigten ungeplanten Dienst an einem Tag mit Abwesenheit (C1): er zählt dort nicht. */
+export const UNGEPLANT_ABWESEND_TEXT = "zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto";
+
 /** Der Kennzeichnungstext eines Prüffalls (art aus pruefHinweis: "lang" | "ungeplant"). */
 export const pruefFallText = (art) => (art === "ungeplant" ? UNGEPLANT_PRUEFUNG_TEXT : ZUR_PRUEFUNG_TEXT);
 

@@ -27,7 +27,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { ungeplanterDienst, zurPruefung, istUngeplant, pruefHinweis, erfassungenZurPruefung, istZeitFuer,
+import { ungeplanterDienst, zurPruefung, istUngeplant, pruefHinweis, erfassungenZurPruefung, istZeitFuer, bestaetigungsGrund,
   UNGEPLANT_PRUEFUNG_TEXT, ZUR_PRUEFUNG_TEXT, pruefFallText } from "../src/istdaten.js";
 import { berlinZeitpunkt } from "../server/lib/zeiterfassung.mjs";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
@@ -299,6 +299,42 @@ describe("Oberfläche: der gestempelte Dienst ohne Plan (UI)", () => {
     const t = text(h(A.Tagesstart, { sitz: sitzFuer(betrieb({ [`a1|${HEUTE}`]: erfassungUngeplant() })), akt, gehZu() {}, oeffneTag() {} }));
     expect(t).toContain("Ungeplanter Dienst");
     expect(t).toContain("06:00–14:00");
+  });
+  it("C1: an einem Tag mit Abwesenheit sagt der Hinweis ausdrücklich, dass der Dienst nicht zählt (vorher und nachher)", () => {
+    const mitAbw = (erfassung) => {
+      const m = betrieb(erfassung);
+      m.abwesenheiten = [{ id: "x", personId: "a1", art: "urlaub", von: HEUTE, bis: HEUTE }];
+      return m;
+    };
+    const offen = text(h(A.MHeute, { sitz: sitzFuer(mitAbw({ [`a1|${HEUTE}`]: erfassungUngeplant() })), akt, setTab() {}, oeffnen() {} }));
+    expect(offen).toContain("an einem Tag mit Abwesenheit");
+    expect(offen).toContain("zählt auch nach der Bestätigung nicht im Stundenkonto");
+    expect(offen).not.toContain("zählt im Stundenkonto.");
+    const bestaetigt = text(h(A.MHeute, { sitz: sitzFuer(mitAbw({ [`a1|${HEUTE}`]: erfassungUngeplant({ bestaetigt: true }) })), akt, setTab() {}, oeffnen() {} }));
+    expect(bestaetigt).toContain("zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto");
+    expect(bestaetigt).not.toContain("Von der Leitung bestätigt — zählt im Stundenkonto.");
+    expect(bestaetigt).not.toContain("8,0 h");
+  });
+  it("C1: Stempelbefunde der Leitung — Prüffall an einem Abwesenheitstag trägt die Warnung neben „Bestätigen“", () => {
+    const m = betrieb({ [`a1|${HEUTE}`]: erfassungUngeplant() });
+    m.abwesenheiten = [{ id: "x", personId: "a1", art: "urlaub", von: HEUTE, bis: HEUTE }];
+    m.personen.push({ ...A.zugangsPerson("leitung", m.einheiten[0].id, 2), id: "leitung", vorname: "Lei", nachname: "Tung" });
+    const mig = migriere({ version: 5, stand: 1, mandanten: [m] });
+    const ms = bestandFuerRolle(personenAngleichen(mig.bestand), { rolle: "leitung", person: "leitung", betrieb: 0 }).mandanten[0];
+    const sitz = { rolle: "kunde", db: { mandanten: [ms], session: { mandantId: ms.id, personId: "leitung", rolle: "leitung" } },
+      mandant: ms, person: ms.personen.find((x) => x.id === "leitung") };
+    const t = text(h(A.StempelBefunde, { sitz, ym: HEUTE.slice(0, 7), akt }));
+    expect(t).toContain("Bestätigen");
+    expect(t).toContain("Abwesenheit an diesem Tag — zählt wegen der Abwesenheit an diesem Tag nicht im Stundenkonto, auch nach der Bestätigung");
+  });
+  it("C2: der Grund im Korrekturereignis nennt den ungeplanten Dienst, bei einem langen Dienst den langen", () => {
+    expect(bestaetigungsGrund(erfassungUngeplant())).toBe("Ungeplanter Dienst geprüft und bestätigt");
+    expect(bestaetigungsGrund({ start: "06:00", ende: "20:30", bestaetigt: false, grund: "LANGER_DIENST: 14,5 Stunden" }))
+      .toBe("Langer Dienst geprüft und bestätigt");
+  });
+  it("C2: langerDienstBestaetigen übergibt diesen Grund an den Server-Weg", async () => {
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, bestaetigungsGrund\(e\)\);/);
   });
   it("kein Hinweis an einem Tag ohne ungeplanten Dienst", () => {
     const t = text(h(A.MHeute, { sitz: sitzFuer(betrieb({})), akt, setTab() {}, oeffnen() {} }));
