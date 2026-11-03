@@ -940,6 +940,8 @@ export default async (req, context) => {
       const eigener = mit ? eigenerMandant(mit.bestand, s) : null;
       if (!mit || !eigener) return antwort({ fehler: "Keine Daten." }, 404);
       const r = auswertungHolen({ raum: s.bestand, heute: heuteBerlin(), mandant: eigener, ablage: store });
+      /* Ein Betrieb ohne Kennung lässt sich keinem Ergebnis zuordnen: klarer Fehler statt endlos 202 (WP-27b, B6). */
+      if (!r.fertig && r.ungueltig) return antwort({ fehler: "Betrieb ohne Kennung.", text: "Die Auswertung braucht die Kennung des Betriebs. Bitte die Einrichtung prüfen lassen." }, 409);
       if (!r.fertig) return antwort({ status: "berechnet", retryNachMs: r.ausgelastet ? 5000 : 1500 }, 202);
       return antwort({ status: "fertig", auswertung: r.wert, berechnetUm: r.berechnetUm });
     }

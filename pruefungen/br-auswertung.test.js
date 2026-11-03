@@ -18,6 +18,8 @@ import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, auswertu
 import { median, urteil } from "./laufzeitmessung.mjs";
 import { aufbauen } from "./hilfen/szenario.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
+import { istZeitFuer } from "../src/istdaten.js";
+import { csvFeld, csvText } from "../src/csvfeld.js";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
@@ -37,6 +39,20 @@ const bestand = () => ({ version: 1, stand: 7, mandanten: [{ id: "m1", name: "Ha
 const SITZ = { BR: { rolle: "betriebsrat", person: "r1", betrieb: 0 }, PL: { rolle: "planer", person: "p1", betrieb: 0 },
   LT: { rolle: "leitung", person: "l1", betrieb: 0 }, MA: { rolle: "mitarbeiter", person: "g1", betrieb: 0 },
   SV: { rolle: "subplaner", person: "g1", betrieb: 0 } };
+
+/** Eine Ablage im Speicher wie server/lib/ablage.mjs (get/setJSON/setJSONWennNeu atomar/list/delete), mit Zählern;
+    `raeume`: Räume, deren Kern (kern:<raum>) besteht. */
+const testAblage = (raeume = []) => {
+  const daten = new Map(raeume.map((r) => [`kern:${r}`, { raum: r }]));
+  const zaehler = { list: 0, delete: 0, schreiben: 0 };
+  const kopie = (v) => JSON.parse(JSON.stringify(v));
+  return { daten, zaehler,
+    get: async (k) => (daten.has(k) ? kopie(daten.get(k)) : null),
+    setJSON: async (k, v) => { zaehler.schreiben++; daten.set(k, kopie(v)); },
+    setJSONWennNeu: async (k, v) => { zaehler.schreiben++; if (daten.has(k)) return false; daten.set(k, kopie(v)); return true; },
+    list: async ({ prefix }) => { zaehler.list++; return { blobs: [...daten.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }; },
+    delete: async (k) => { zaehler.delete++; daten.delete(k); } };
+};
 
 describe("die Auswertung selbst", () => {
   const a = betriebsratAuswertung(bestand().mandanten[0], HEUTE);
@@ -324,14 +340,8 @@ describe("Mandantentrennung im Zwischenspeicher: zwei Betriebe in einem Raum (K1
 /* Review F1-Rest: Das Eingefrorene überlebt einen Neustart (dauerhaft in der Ablage). */
 describe("Ist eingefroren: dauerhaft, ein Neustart ändert die Ausgabe nicht", () => {
   const SPAET = "2026-06-20";
-  const ablageNeu = () => {
-    const daten = new Map();
-    return { daten,
-      get: async (k) => (daten.has(k) ? JSON.parse(JSON.stringify(daten.get(k))) : null),
-      setJSON: async (k, v) => { daten.set(k, JSON.parse(JSON.stringify(v))); },
-      list: async ({ prefix }) => ({ blobs: [...daten.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }),
-      delete: async (k) => { daten.delete(k); } };
-  };
+  /* Der Raum besteht (kern:<raum>) — ohne Kern schreibt die Auswertung nichts mehr (Nachtrag B2). */
+  const ablageNeu = () => testAblage(["neustart", "laufend", "defekt", "voll", "aufraeumen"]);
   const mitErfassung = (stunden, id = "m1") => {
     const personen = [], erfassung = {};
     for (let i = 0; i < 4; i++) {
@@ -374,17 +384,256 @@ describe("Ist eingefroren: dauerhaft, ein Neustart ändert die Ausgabe nicht", (
     expect(zeile(w).personen).toBe(4);                                     // Plan-Zahlen bleiben
   });
   it("Ablage nicht beschreibbar: ebenfalls kein Ist (nichts ausgeben, was nicht gesichert ist)", async () => {
-    const schreibsperre = { ...ablageNeu(), setJSON: async () => { throw new Error("voll"); } };
+    const schreibsperre = { ...ablageNeu(), setJSON: async () => { throw new Error("voll"); }, setJSONWennNeu: async () => { throw new Error("voll"); } };
     expect(zeile((await warte({ raum: "voll", heute: SPAET, mandant: mitErfassung("15:00"), ablage: schreibsperre })).wert).istStunden).toBeNull();
   });
   it("Aufräumen: Monate vor dem Auswertungszeitraum verschwinden, aktuelle bleiben; fremde Betriebe bleiben unberührt", async () => {
     const ablage = ablageNeu();
-    await ablage.setJSON(istSchluessel("aufraeumen", "m1", "2025-01", "A"), { istStunden: 1, istErfasst: 1 });
-    await ablage.setJSON(istSchluessel("aufraeumen", "m2", "2025-01", "A"), { istStunden: 2, istErfasst: 1 });
+    await ablage.setJSON(istSchluessel("aufraeumen", "m1", "2025-01"), { zeilen: { A: { istStunden: 1, istErfasst: 1 } } });
+    await ablage.setJSON(istSchluessel("aufraeumen", "m2", "2025-01"), { zeilen: { A: { istStunden: 2, istErfasst: 1 } } });
     await warte({ raum: "aufraeumen", heute: SPAET, mandant: mitErfassung("15:00"), ablage });
-    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2025-01", "A"))).toBeNull();
-    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2026-05", "A"))).toBeTruthy();
-    expect(await ablage.get(istSchluessel("aufraeumen", "m2", "2025-01", "A"))).toBeTruthy();
+    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2025-01"))).toBeNull();
+    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2026-05"))).toBeTruthy();
+    expect(await ablage.get(istSchluessel("aufraeumen", "m2", "2025-01"))).toBeTruthy();
+  });
+});
+
+/* ==========================================================================
+   NACHTRAG WP-27b (Opus-Nachprüfung)
+   ========================================================================== */
+const B_TAG = "2026-05-12";                                                  // Dienstag
+const B_SPAET = "2026-06-20";                                                // Monat Mai frei (Frist vorbei)
+const B_F = { id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 };
+const bBetrieb = (personen, erfassung, extra = {}) => ({ id: "m1", name: "Haus", einheiten: [{ id: "A", versatzTage: 0 }, { id: "B", versatzTage: 0 }],
+  dienstarten: [B_F], zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung,
+  abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [], ...extra });
+/** Einheit A: 4 Personen, a0–a2 bestätigt (a0 nach der Korrektur bis 17 Uhr). Einheit B: 3 Personen, b0/b1 bestätigt, b2 langer Dienst in Prüfung (oder bestätigt). */
+const zweiEinheiten = ({ korrektur = false, b2 = false } = {}) => {
+  const personen = [], erfassung = {};
+  for (let i = 0; i < 4; i++) {
+    personen.push(person(`a${i}`, "mitarbeiter", "A"));
+    if (i < 3) erfassung[`a${i}|${B_TAG}`] = { start: "06:00", ende: i === 0 && korrektur ? "17:00" : "15:00", bestaetigt: true };
+  }
+  for (let i = 0; i < 3; i++) {
+    personen.push(person(`b${i}`, "mitarbeiter", "B"));
+    erfassung[`b${i}|${B_TAG}`] = i < 2 || b2 ? { start: "06:00", ende: "15:00", bestaetigt: true }
+      : { start: "06:00", ende: "17:30", bestaetigt: false, grund: "LANGER_DIENST" };
+  }
+  return bBetrieb(personen, erfassung);
+};
+/** Nur Einheit A mit 4 Personen, drei bestätigt. */
+const nurA = (korrektur = false) => {
+  const personen = [], erfassung = {};
+  for (let i = 0; i < 4; i++) {
+    personen.push(person(`a${i}`, "mitarbeiter", "A"));
+    if (i < 3) erfassung[`a${i}|${B_TAG}`] = { start: "06:00", ende: i === 0 && korrektur ? "17:00" : "15:00", bestaetigt: true };
+  }
+  return bBetrieb(personen, erfassung, { einheiten: [{ id: "A", versatzTage: 0 }] });
+};
+/** Einen neuen Lauf erzwingen (nach dem Mindestabstand) und sein Ergebnis holen. */
+const neuRechnen = async (a) => {
+  const vorher = auswertungStatistik().fertig;
+  auswertungHolen({ ...a, jetzt: Date.now() + 2 * BR_NEUBERECHNUNG_MS });
+  for (let i = 0; i < 1200 && auswertungStatistik().fertig === vorher; i++) await new Promise((w) => setTimeout(w, 5));
+  expect(auswertungStatistik().fertig, "Lauf nicht fertig").toBeGreaterThan(vorher);
+  return auswertungHolen({ ...a, jetzt: 0 }).wert;
+};
+const zeileVon = (w, eid, monat = "2026-05") => w.zeilen.find((r) => r.monat === monat && r.einheitId === eid);
+/** Gesamt minus alle Einheiten mit Ist — muss null sein, sonst ergibt die Differenz Zeiten, die keine Zeile zeigt. */
+const differenz = (w, monat = "2026-05") => {
+  const zs = w.zeilen.filter((z) => z.monat === monat && !z.gesperrt);
+  const g = zs.find((z) => z.einheitId === null);
+  if (!g || typeof g.istStunden !== "number") return 0;
+  return Math.round((g.istStunden - zs.filter((z) => z.einheitId !== null && typeof z.istStunden === "number").reduce((s, z) => s + z.istStunden, 0)) * 10) / 10;
+};
+
+describe("Nachtrag WP-27b B1/B3: das Ist eines Monats atomar eingefroren", () => {
+  beforeEach(() => auswertungenVergessen());
+
+  for (const mitAblage of [true, false]) {
+    it(`Sonde P1 (${mitAblage ? "Ablage" : "ohne Ablage"}): Korrektur + späte Bestätigung — Gesamt − B − A ergibt nie die Korrektur einer Einzelperson`, async () => {
+      const ablage = mitAblage ? testAblage(["p1"]) : null;
+      const erste = await neuRechnen({ raum: "p1", heute: B_SPAET, mandant: zweiEinheiten(), ablage });
+      expect(zeileVon(erste, "A").istStunden).toBe(25.5);
+      expect(zeileVon(erste, "B").istStunden).toBeNull();                 // 2 Beitragende
+      expect(zeileVon(erste, null).istStunden).toBeNull();                // Zweitsperre
+      /* Danach: die Leitung korrigiert a0 um +2 h und bestätigt den offenen Dienst von b2. */
+      const zweite = await neuRechnen({ raum: "p1", heute: B_SPAET, mandant: zweiEinheiten({ korrektur: true, b2: true }), ablage });
+      expect(zeileVon(zweite, "A")).toMatchObject({ istStunden: 25.5, istErfasst: 3, istKorrigiert: true });
+      expect(zeileVon(zweite, "B")).toMatchObject({ istStunden: null, istErfasst: null, istNichtVerfuegbar: true });
+      expect(zeileVon(zweite, null)).toMatchObject({ istStunden: null, istErfasst: null, istNichtVerfuegbar: true });
+      for (const w of [erste, zweite]) expect(differenz(w)).toBe(0);
+    });
+  }
+  it("Sonde P2: vorübergehender Ablagefehler beim ersten Einfrieren — der ganze Monat ohne Ist, danach ein Rahmen aus einem Guss", async () => {
+    const ablage = testAblage(["p2"]);
+    let kaputt = true;
+    const wennNeu = ablage.setJSONWennNeu, setz = ablage.setJSON;
+    ablage.setJSONWennNeu = async (k, v) => { if (k.startsWith("brist:") && kaputt) { kaputt = false; throw new Error("Ablage kurz weg"); } return wennNeu(k, v); };
+    ablage.setJSON = async (k, v) => { if (k.startsWith("brist:") && kaputt) { kaputt = false; throw new Error("Ablage kurz weg"); } return setz(k, v); };
+    const erste = await neuRechnen({ raum: "p2", heute: B_SPAET, mandant: zweiEinheiten({ b2: true }), ablage });
+    for (const eid of ["A", "B", null]) expect(zeileVon(erste, eid).istStunden, String(eid)).toBeNull();
+    const zweite = await neuRechnen({ raum: "p2", heute: B_SPAET, mandant: zweiEinheiten({ korrektur: true, b2: true }), ablage });
+    expect(zeileVon(zweite, "A").istStunden).toBe(27.5);
+    expect(zeileVon(zweite, "B").istStunden).toBe(25.5);
+    expect(zeileVon(zweite, null).istStunden).toBe(53);
+    for (const w of [erste, zweite]) expect(differenz(w)).toBe(0);
+  });
+  it("ein Schlüssel je Monat (brist:<raum>:<betrieb>:<monat>), keine Schlüssel je Einheit", async () => {
+    const ablage = testAblage(["schluessel"]);
+    await neuRechnen({ raum: "schluessel", heute: B_SPAET, mandant: zweiEinheiten({ b2: true }), ablage });
+    const brist = [...ablage.daten.keys()].filter((k) => k.startsWith("brist:"));
+    expect(brist).toEqual([istSchluessel("schluessel", "m1", "2026-05")]);
+    expect(ablage.daten.get(brist[0]).zeilen).toEqual({ A: { istStunden: 25.5, istErfasst: 3 }, B: { istStunden: 25.5, istErfasst: 3 }, "*": { istStunden: 51, istErfasst: 6 } });
+  });
+  it("B3: ein anderer Lauf hat den Monat zwischen Lesen und Schreiben eingefroren — ausgegeben wird der gespeicherte Rahmen, nicht der eigene", async () => {
+    const ablage = testAblage(["rennen"]);
+    const k = istSchluessel("rennen", "m1", "2026-05");
+    ablage.daten.set(k, { am: "x", zeilen: { A: { istStunden: 24, istErfasst: 3 }, "*": { istStunden: 24, istErfasst: 3 } } });
+    const lies = ablage.get;
+    let erstesLesen = true;
+    ablage.get = async (kk, o) => { if (kk === k && erstesLesen) { erstesLesen = false; return null; } return lies(kk, o); };
+    const w = await neuRechnen({ raum: "rennen", heute: B_SPAET, mandant: nurA(), ablage });
+    expect(zeileVon(w, "A")).toMatchObject({ istStunden: 24, istErfasst: 3, istKorrigiert: true });
+    expect(zeileVon(w, null)).toMatchObject({ istStunden: 24, istErfasst: 3 });
+    expect(ablage.daten.get(k).zeilen.A.istStunden).toBe(24);             // nicht überschrieben
+  });
+  it("ein unlesbarer Rahmen (kein Objekt mit zeilen) gibt kein Ist aus", async () => {
+    const ablage = testAblage(["schrott"]);
+    ablage.daten.set(istSchluessel("schrott", "m1", "2026-05"), { istStunden: 25.5, istErfasst: 3 });   // Form der Vorgängerfassung
+    const w = await neuRechnen({ raum: "schrott", heute: B_SPAET, mandant: nurA(), ablage });
+    expect(zeileVon(w, "A").istStunden).toBeNull();
+  });
+});
+
+describe("Nachtrag WP-27b B2/B4: keine Waisen nach der Raumlöschung, Aufräumen ohne Listen", () => {
+  beforeEach(() => auswertungenVergessen());
+  const brist = (a) => [...a.daten.keys()].filter((k) => k.startsWith("brist:"));
+
+  it("B2: Raum ohne Kern (gelöscht) — die Rechnung schreibt nichts und gibt kein Ist aus", async () => {
+    const ablage = testAblage([]);
+    const w = await neuRechnen({ raum: "weg", heute: B_SPAET, mandant: nurA(), ablage });
+    expect(brist(ablage)).toEqual([]);
+    expect(zeileVon(w, "A").istStunden).toBeNull();
+  });
+  it("B2: raumLoeschen während der laufenden Rechnung — danach keine brist-Schlüssel", async () => {
+    const ablage = testAblage(["mitten"]);
+    const vorher = auswertungStatistik().fertig;
+    auswertungHolen({ raum: "mitten", heute: B_SPAET, mandant: nurA(), ablage });
+    ablage.daten.delete("kern:mitten");                                    // die Löschung läuft, während gerechnet wird
+    for (let i = 0; i < 1200 && auswertungStatistik().fertig === vorher; i++) await new Promise((w) => setTimeout(w, 5));
+    expect(brist(ablage)).toEqual([]);
+  });
+  it("B2: geschrieben wird unter der Raumsperre (wie raumLoeschen) und nur mit Kern (Quelltext)", () => {
+    const q = readFileSync(path.join(process.cwd(), "server/lib/br-auswertung.mjs"), "utf8");
+    expect(q).toMatch(/unterRaumsperre\(raum,/);
+    expect(q).toMatch(/kernSchluessel\(raum\)/);
+  });
+  it("B4: Aufräumen liest die Ablage nie ganz (kein list) und löscht nur einmal je Monat", async () => {
+    const ablage = testAblage(["takt"]);
+    const alt = istSchluessel("takt", "m1", "2025-11");                    // vor dem Auswertungszeitraum (ab 2025-12)
+    const fremd = istSchluessel("takt", "m2", "2025-11");
+    ablage.daten.set(alt, { zeilen: {} });
+    ablage.daten.set(fremd, { zeilen: {} });
+    await neuRechnen({ raum: "takt", heute: B_SPAET, mandant: nurA(), ablage });
+    expect(ablage.daten.has(alt)).toBe(false);
+    expect(ablage.daten.has(fremd)).toBe(true);
+    const geloescht = ablage.zaehler.delete;
+    ablage.daten.set(alt, { zeilen: {} });
+    await neuRechnen({ raum: "takt", heute: B_SPAET, mandant: nurA(), ablage });   // derselbe Monat: nichts
+    expect(ablage.zaehler.delete).toBe(geloescht);
+    expect(ablage.daten.has(alt)).toBe(true);
+    await neuRechnen({ raum: "takt", heute: "2026-07-20", mandant: nurA(), ablage });   // Monatswechsel
+    expect(ablage.daten.has(alt)).toBe(false);
+    expect(ablage.daten.has(fremd)).toBe(true);
+    expect(ablage.zaehler.list).toBe(0);
+  });
+});
+
+describe("Nachtrag WP-27b B5: Ist wie im Stundenkonto, Rufbereitschaft wie in der Fachprüfung", () => {
+  const SA = "2026-05-16";                                                   // Samstag: kein Plan
+  const vier = (erf = () => null, extra = {}) => {
+    const personen = [], erfassung = {};
+    for (let i = 0; i < 4; i++) {
+      personen.push(person(`a${i}`, "mitarbeiter", "A"));
+      const e = erf(i);
+      if (e) Object.assign(erfassung, e);
+    }
+    return bBetrieb(personen, erfassung, { einheiten: [{ id: "A", versatzTage: 0 }], ...extra });
+  };
+  const bestaetigt = (i, e = {}) => ({ [`a${i}|${B_TAG}`]: { start: "06:00", ende: "15:00", bestaetigt: true, ...e } });
+  const zeileA = (m) => zeileVon(betriebsratAuswertung(m, B_SPAET), "A");
+
+  it("(a) WP-13: bestätigte ungeplante Dienste zählen im Ist und bei den Beitragenden (6 statt 3); an einem Abwesenheitstag nicht", () => {
+    const m = vier((i) => ({ ...(i < 3 ? bestaetigt(i) : {}),
+      [`a${i}|${SA}`]: { start: "08:00", ende: "12:00", bestaetigt: true, ungeplant: true } }),
+    { abwesenheiten: [{ personId: "a3", von: SA, bis: SA, art: "krank" }] });
+    const z = zeileA(m);
+    expect(z.istErfasst).toBe(6);
+    expect(z.istStunden).toBe(37.5);                                       // 3 × 8,5 + 3 × 4
+    expect(z.dienste).toBe(zeileA(vier((i) => (i < 3 ? bestaetigt(i) : null))).dienste);   // der Plan bleibt der Plan
+  });
+  it("(a) nur bestätigte ungeplante Dienste: drei Beitragende allein aus ungeplanten Diensten geben das Ist frei", () => {
+    const z = zeileA(vier((i) => (i < 3 ? { [`a${i}|${SA}`]: { start: "08:00", ende: "12:00", bestaetigt: true, ungeplant: true } } : null)));
+    expect(z.istErfasst).toBe(3);
+    expect(z.istStunden).toBe(12);
+    const offen = zeileA(vier((i) => (i < 3 ? { [`a${i}|${SA}`]: { start: "08:00", ende: "12:00", bestaetigt: false, ungeplant: true } } : null)));
+    expect(offen.istStunden).toBeNull();                                   // unbestätigt zählt nicht
+  });
+  it("(b) WP-14: die bei der Korrektur genannte Pause gilt (26 statt 25,5) — dieselbe Rechnung wie das Konto (istZeitFuer)", () => {
+    const m = vier((i) => (i < 3 ? bestaetigt(i, i === 0 ? { pause: 0 } : {}) : null));
+    const z = zeileA(m);
+    expect(z.istStunden).toBe(26);
+    const konto = m.personen.slice(0, 3).reduce((s, p) => s + istZeitFuer(m, p, B_TAG, B_F).std, 0);
+    expect(z.istStunden).toBe(Math.round(konto * 10) / 10);
+  });
+  for (const merker of [{ rufbereitschaft: true }, { ruhezeitNeutral: true }, { form: "ruf" }]) {
+    it(`(c) Rufbereitschaft mit ${JSON.stringify(merker)}: kein langer Dienst, kein Ruhezeitverstoß (0 statt 3)`, () => {
+      const R = { id: "R", name: "Ruf", start: "16:00", ende: "06:00", ...merker };
+      const m = vier(() => null, { dienstarten: [B_F, R], abweichungen: { [`a0|${B_TAG}`]: "R", [`a1|${B_TAG}`]: "R", [`a2|${B_TAG}`]: "R" } });
+      const z = zeileA(m);
+      expect(z.gesperrt).toBe(false);
+      expect(z.langeDienste).toBe(0);
+      expect(z.ruhezeitUnter11).toBe(0);
+    });
+  }
+  it("(c) Quelltext: dieselbe Merkerfunktion wie die Fachprüfung, keine eigene form-Abfrage", () => {
+    const q = readFileSync(path.join(process.cwd(), "server/lib/br-auswertung.mjs"), "utf8");
+    expect(q).toMatch(/import \{[^}]*\brufbereitschaft\b[^}]*\} from "\.\/fachpruefung\.mjs"/);
+    expect(q).not.toMatch(/form !== "ruf"|form === "ruf"/);
+    expect(q).toMatch(/import \{[^}]*\bistZeitFuer\b[^}]*\} from "\.\/istdaten\.mjs"/);
+  });
+});
+
+describe("Nachtrag WP-27b B6: Betrieb ohne Kennung, CSV, Doku", () => {
+  beforeEach(() => auswertungenVergessen());
+  it("ein Betrieb ohne Kennung: klarer Fehler (ungueltig), kein endloses „wird berechnet“", () => {
+    const r = auswertungHolen({ raum: "r", heute: HEUTE, mandant: { ...nurA(), id: undefined } });
+    expect(r).toEqual({ fertig: false, ungueltig: true });
+    expect(auswertungStatistik().gestartet).toBe(0);
+  });
+  it("CSV: Freitext gegen Formel-Injection geschützt, Trennzeichen und Anführungszeichen maskiert; Zahlen unverändert", () => {
+    for (const [ein, aus] of [["=SUMME(A1:A9)", "'=SUMME(A1:A9)"], ["+49 30", "'+49 30"], ["-1", "'-1"], ["@heute", "'@heute"], ["\tWohnbereich", "'\tWohnbereich"],
+      [" =1+1", "' =1+1"], ["Station; Nord", '"Station; Nord"'], ['Haus "A"', '"Haus ""A"""'], ["=a;b", "\"'=a;b\""], ["Wohnbereich 1", "Wohnbereich 1"]])
+      expect(csvText(ein), JSON.stringify(ein)).toBe(aus);
+    expect(csvFeld("-2,50")).toBe("-2,50");
+    expect(csvFeld("a;b")).toBe('"a;b"');
+  });
+  it("CSV der Auswertung: Einheitsnamen über csvText, Zellen über csvFeld", () => {
+    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    const f = app.slice(app.indexOf("function BetriebsratAuswertung"), app.indexOf("/* ================================ ANWENDUNG"));
+    expect(f).toContain("csvText(einheit(z.einheitId))");
+    expect(f).toMatch(/SPALTEN\.map\(\(\[k\]\) => csvFeld\(zelle\(z, k\)\)\)/);
+    expect(app).toMatch(/import \{[^}]*csvFeld[^}]*csvText[^}]*\} from "\.\/csvfeld\.js"/);
+  });
+  it("Doku: kein „nie gespeichert“, kein „Stand der Ablage“ mehr; brist mit Betrieb und Monat", () => {
+    const lies = (d) => readFileSync(path.join(process.cwd(), d), "utf8");
+    const zeile = lies("RECHTEMATRIX.md").split("\n").find((l) => l.includes("`GET /api/br-auswertung`"));
+    expect(zeile).not.toMatch(/nie gespeichert|je Raum und Tag/);
+    expect(zeile).toContain("brist:<raum>:<betrieb>:<monat>");
+    expect(lies("docs/acc45/wp27-nachweis.md")).not.toContain("Nichts davon wird gespeichert");
+    expect(lies("docs/acc45/wp27-nachweis.md")).toContain("Nachtrag Opus-Nachprüfung");
+    expect(lies("server/lib/br-auswertung.mjs")).not.toMatch(/Stand der\s+Ablage und Tag/);
   });
 });
 
@@ -485,15 +734,62 @@ describe("GET /api/br-auswertung je Rolle (F4)", () => {
   it("raumLoeschen räumt das eingefrorene Ist (brist:) des Raums, nicht das anderer Räume", async () => {
     const RL = await import("../server/lib/raumloeschung.mjs");
     const raum = Z.raum("brist"), fremd = Z.raum("brist-fremd");
-    await Z.laden().setJSON(istSchluessel(raum, "m1", "2026-05", "A"), { istStunden: 1, istErfasst: 1 });
-    await Z.laden().setJSON(istSchluessel(fremd, "m1", "2026-05", "A"), { istStunden: 1, istErfasst: 1 });
+    await Z.laden().setJSON(istSchluessel(raum, "m1", "2026-05"), { zeilen: { A: { istStunden: 1, istErfasst: 1 } } });
+    await Z.laden().setJSON(istSchluessel(fremd, "m1", "2026-05"), { zeilen: { A: { istStunden: 1, istErfasst: 1 } } });
     const r = await RL.raumLoeschen(Z.laden(), Z.ablageArbeit(), raum);
     expect(r.vollstaendig, JSON.stringify(r.fehler)).toBe(true);
-    expect(await Z.laden().get(istSchluessel(raum, "m1", "2026-05", "A"), { type: "json" })).toBeNull();
-    expect(await Z.laden().get(istSchluessel(fremd, "m1", "2026-05", "A"), { type: "json" })).toBeTruthy();
+    expect(await Z.laden().get(istSchluessel(raum, "m1", "2026-05"), { type: "json" })).toBeNull();
+    expect(await Z.laden().get(istSchluessel(fremd, "m1", "2026-05"), { type: "json" })).toBeTruthy();
   }, LIMIT);
   it("ohne Anmeldung: 401", async () => {
     expect((await hole(null)).status).toBe(401);
+  }, LIMIT);
+  /* Nachtrag WP-27b B6: Kundenrolle und Betreiber haben audit.view bzw. keine Betriebsrolle — trotzdem 403. */
+  it.each(["kunde", "betreiber"])("%s: 403 am Endpunkt", async (rolle) => {
+    const raum = Z.raum(`br6-${rolle}`);
+    await Z.betriebAnlegen(raum);
+    const { token } = await Z.legacySitzung(raum, { rolle, person: rolle === "betreiber" ? null : "p_1" });
+    const r = await hole(token);
+    expect(r.status).toBe(403);
+    expect(JSON.stringify(r.daten)).not.toContain("zeilen");
+  }, LIMIT);
+  /* Nachtrag WP-27b B6: zwei Betriebe in einem Raum — am Endpunkt bekommt der Betriebsrat von Betrieb 2 nur Betrieb 2. */
+  it("zwei Betriebe in einem Raum: der Betriebsrat des zweiten Betriebs bekommt nur dessen Zahlen", async () => {
+    const raum = Z.raum("br6-zwei");
+    const leute = (pre, n, einheit) => Array.from({ length: n }, (_, i) => ({ id: `${pre}${i}`, vorname: "V", nachname: `NAME-${pre}${i}`, rolle: "mitarbeiter",
+      status: "aktiv", bereich: einheit, zugehoerigkeit: [{ ab: "2020-01-01", einheitId: einheit }] }));
+    const betrieb = (id, einheit, personen) => ({ id, name: `Haus ${id}`, einheiten: [{ id: einheit, name: `Bereich ${einheit}` }],
+      dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }], zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] },
+      anker: "2026-01-05", personen });
+    const e = await Z.B.bestandSchreiben(Z.laden(), raum, { version: 5, mandanten: [
+      betrieb("m1", "e1", [...leute("x", 5, "e1"), { id: "p_1", vorname: "Rina", nachname: "Schmitt", rolle: "leitung", status: "aktiv", bereich: "ALLE", imSchichtdienst: false }]),
+      betrieb("m2", "e2", [...leute("y", 3, "e2"), { id: "r2", vorname: "Rat", nachname: "Zwei", rolle: "betriebsrat", status: "aktiv", bereich: "ALLE", imSchichtdienst: false }]),
+    ] }, { durch: "Pruefung" });
+    expect(e.ok, JSON.stringify(e)).toBe(true);
+    const k = await Z.kontoAnlegen(`br6-zwei-${Date.now()}@example.org`);
+    const mg = await Z.A.mitgliedschaftAnlegen(Z.laden(), { accountId: k.id, raum, betrieb: 1, mandantId: "m2", person: "r2", rolle: "betriebsrat", status: "aktiv" });
+    expect(mg.ok, JSON.stringify(mg)).toBe(true);
+    const a = await Z.anmelden(k.email);
+    const w = await Z.betriebOeffnen(a.keks, raum);
+    expect(w.status, JSON.stringify(w.daten)).toBe(200);
+    const r = await bis(w.token);
+    expect(r.status).toBe(200);
+    const zeilen = r.daten.auswertung.zeilen;
+    expect(zeilen.length).toBeGreaterThan(0);
+    expect(new Set(zeilen.map((z) => z.einheitId))).toEqual(new Set(["e2", null]));
+    expect(zeilen.filter((z) => z.einheitId === null).every((z) => z.personen === 3)).toBe(true);
+    expect(JSON.stringify(r.daten)).not.toMatch(/"e1"|NAME-|Rina/);
+  }, LIMIT);
+  /* Nachtrag WP-27b B6: ein Betrieb ohne Kennung — klarer Fehler statt endlos 202. */
+  it("Betrieb ohne Kennung: 409 mit Text, nicht endlos „wird berechnet“", async () => {
+    const raum = Z.raum("br6-ohneid");
+    const e = await Z.B.bestandSchreiben(Z.laden(), raum, { version: 5, mandanten: [{ name: "Ohne Kennung", einheiten: [{ id: "e1", name: "W" }],
+      personen: [{ id: "p_1", vorname: "Rat", nachname: "Eins", rolle: "betriebsrat", status: "aktiv", bereich: "ALLE" }] }] }, { durch: "Pruefung" });
+    expect(e.ok, JSON.stringify(e)).toBe(true);
+    const { token } = await Z.legacySitzung(raum, { rolle: "betriebsrat", person: "p_1" });
+    const r = await hole(token);
+    expect(r.status).toBe(409);
+    expect(r.daten.fehler).toBeTruthy();
   }, LIMIT);
   it("Betriebsrat OHNE audit.view: 403 (die Serverprüfung wirkt)", async () => {
     const t = await fuerRolle("betriebsrat");

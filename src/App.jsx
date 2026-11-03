@@ -34,6 +34,7 @@ import { rechtsquelleTabelle, regelIdFuerBefund } from "./regelregister.js";
 import { BESCHAEFTIGUNGSMODELLE, modellVon } from "./beschaeftigung.js";
 import { addMonate } from "./regelbaukasten.js";
 import { ABW_WEITERE, entgeltStatus, entgeltZusatz, entgeltHinweis } from "./abwesenheitsarten.js";
+import { csvFeld, csvText } from "./csvfeld.js";
 
 /* ==========================================================================
    MARKE — CENTRIC
@@ -4605,18 +4606,8 @@ function datevSaetze(m, ym) {
   }
   return zeilen;
 }
-/**
- * Ein Feld f\u00FCr die Trennzeichendatei.
- *
- * Die Lohnartenbezeichnungen sind je Betrieb frei benennbar. Ein Semikolon
- * darin \u2014 \u201EZuschlag Nacht; steuerfrei" \u2014 schob bisher alle folgenden Spalten
- * um eins nach rechts, und zwar lautlos: Die Datei lie\u00DF sich \u00F6ffnen, nur die
- * Stunden standen in der Spalte des Abrechnungsmonats.
- */
-const csvFeld = (v) => {
-  const s = String(v == null ? "" : v);
-  return /[";\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+/* csvFeld (ein Feld der Trennzeichendatei) und csvText (Freitext, zus\u00E4tzlich
+   gegen Formel-Injection) stehen in src/csvfeld.js. */
 
 /**
  * Die Lohnausgabe als Trennzeichendatei.
@@ -22391,15 +22382,19 @@ function BetriebsratAuswertung({ sitz, melde }) {
     return <Card><Leer titel="Die Auswertung wird berechnet" text="Das dauert bei großen Betrieben einen Moment. Die Seite aktualisiert sich von selbst." /></Card>;
   if (!a || !Array.isArray(a.zeilen))
     return <Card><Leer titel="Keine Auswertung" text={stand.text || "Die Auswertung liefert der Server nur an den Betriebsrat."} /></Card>;
-  const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–") + (z.istKorrigiert && (k === "istStunden" || k === "istErfasst") ? " †" : ""));   // † = seit der ersten Ausgabe wurden Zeiten korrigiert; die Zahl bleibt, wie sie ausgegeben wurde
+  const istSpalte = (k) => k === "istStunden" || k === "istErfasst";
+  /* † = seit der ersten Ausgabe wurden Zeiten korrigiert; die Zahl bleibt, wie sie ausgegeben wurde.
+     ‡ = der Monat wurde ohne diese Zeile eingefroren; ihr Ist bleibt dauerhaft nicht verfügbar (WP-27b, B1). */
+  const zelle = (z, k) => (z.gesperrt && k !== "personen" ? "–" : String(z[k] ?? "–") + (z.istKorrigiert && istSpalte(k) ? " †" : "") + (z.istNichtVerfuegbar && istSpalte(k) ? " ‡" : ""));
   const csv = () => {
-    const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].join(";");
-    const reihen = a.zeilen.map((z) => [z.monat, einheit(z.einheitId), ...SPALTEN.map(([k]) => zelle(z, k))].join(";"));
+    const kopf = ["Monat", "Einheit", ...SPALTEN.map(([, l]) => l)].map(csvFeld).join(";");
+    /* Einheitsnamen sind frei benennbar: maskiert und gegen Formel-Injection geschützt (WP-27b, B6). */
+    const reihen = a.zeilen.map((z) => [csvFeld(z.monat), csvText(einheit(z.einheitId)), ...SPALTEN.map(([k]) => csvFeld(zelle(z, k)))].join(";"));
     if (lade(`auswertung-betriebsrat-${a.stand}.csv`, [kopf, ...reihen].join("\n"), "text/csv;charset=utf-8")) melde("Auswertung als CSV gespeichert.");
   };
   return (
     <div>
-      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}`}
+      <H1 sub={`Summen je Monat und ${m.einheitLabel || "Einheit"}, ${a.von} bis ${a.bis}. Unter ${a.mindestgruppe} Personen stehen keine Zahlen; ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats. Die tatsächlichen Zeiten (Ist) erscheinen erst, wenn der Monat abgeschlossen ist, nachträgliches Bestätigen nicht mehr möglich ist und mindestens ${a.mindestgruppe} Personen bestätigt haben. Personen werden nie genannt.${berechnetUm ? ` Berechnet am ${berechnetUm} (höchstens alle paar Minuten neu).` : ""}${a.zeilen.some((z) => z.istKorrigiert) ? " † Seit der ersten Ausgabe wurden bestätigte Zeiten korrigiert; die Zahl bleibt unverändert." : ""}${a.zeilen.some((z) => z.istNichtVerfuegbar) ? " ‡ Ist nicht verfügbar: Der Monat wurde ohne diese Zeile festgeschrieben, ein späteres Ist bleibt aus Datenschutzgründen weg." : ""}`}
         right={darf(sitz, "export.data") && <Btn onClick={csv}>Als CSV exportieren</Btn>}>Auswertung</H1>
       <Card style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
