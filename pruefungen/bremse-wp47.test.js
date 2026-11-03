@@ -32,9 +32,19 @@ import path from "node:path";
 
 vi.setConfig({ testTimeout: 60000 });
 
+/* Lesezugriffe auf den Bestand mitzählen (Auflage M3): bestandLesen bleibt
+   unverändert und wird nur gezählt — so lässt sich zeigen, dass die
+   Lastgrenze der Anmeldung VOR dem teuren Lesen greift. */
+vi.mock("../server/lib/bestand.mjs", async (original) => {
+  const m = await original();
+  return { ...m, bestandLesen: vi.fn(m.bestandLesen) };
+});
+
 let wurzel, S, Z, daten, B, store, sitzungAnlegen, kontoSchreiben, ablageSchluessel;
 const WIRT = "127.0.0.1:3000";
 const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
+/** Der Tag zur (gegebenenfalls festgehaltenen) Uhr. */
+const heuteJetzt = () => new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
 
 beforeAll(async () => {
   wurzel = await mkdtemp(path.join(tmpdir(), "centric-wp47-"));
@@ -243,6 +253,14 @@ async function sitzungen(raum, ids, rolle = "mitarbeiter") {
 
 describe("WP-47 · Stempeln über HTTP", () => {
   it("Schichtwechsel: 130 Personen eines Betriebs stempeln hintereinander — alle 200 (vorher ab dem 121. 429), und die Planung wird nicht gebremst", async () => {
+    /* Auflage N4: Die Uhr steht still (nur Date, wie in den Einzeltests
+       oben). Vorher lief der Test in Echtzeit; fiel er über eine
+       Minutengrenze, sank der gleitende Zähler der alten Schreibbremse, und
+       der Test war gegen den Stand vor WP-47 nicht sicher rot. Jetzt liegen
+       alle 130 Stempel im selben Fenster. */
+    imFrischenFenster(8);
+    const start = Date.now();
+    const DATUM = heuteJetzt();
     const raum = "w47-schicht";
     const ids = Array.from({ length: 130 }, (_, i) => `p${i + 1}`);
     await B.bestandSchreiben(store, raum, betrieb([...ids.map((i) => person(i)), person("pl1", "planer")]), { durch: "Pruefung" });
@@ -251,9 +269,10 @@ describe("WP-47 · Stempeln über HTTP", () => {
     const stati = [];
     for (let i = 0; i < tokens.length; i += 10) {
       const gruppe = await Promise.all(tokens.slice(i, i + 10).map((t) =>
-        anfrage("/api/stempeln", { token: t, rumpf: { datum: HEUTE, art: "start" } })));
+        anfrage("/api/stempeln", { token: t, rumpf: { datum: DATUM, art: "start" } })));
       stati.push(...gruppe.map((g) => g.status));
     }
+    expect(Date.now(), "die Uhr stand während des ganzen Laufs still").toBe(start);
     expect(stati.filter((s) => s === 200), JSON.stringify(stati.filter((s) => s !== 200))).toHaveLength(130);
     /* Die Schreibbremse der Planung ist unberührt: ein PUT geht durch. */
     const g = await anfrage("/api/bestand", { methode: "GET", token: planer });
@@ -276,6 +295,29 @@ describe("WP-47 · Stempeln über HTTP", () => {
     expect(stati[11].status).toBe(429);
     expect((await anfrage("/api/stempeln", { token: t2, rumpf: { datum: HEUTE, art: "start" } })).status).toBe(200);
     expect(Z.zaehlung()["429-last"]).toBeGreaterThanOrEqual(2);
+  });
+
+  it("Auflage M2: viele 429 derselben Sperre schreiben höchstens EINE Protokollzeile; /gesund zählt jede", async () => {
+    imFrischenFenster(9);
+    const raum = "w47-protokoll";
+    await B.bestandSchreiben(store, raum, betrieb([person("p1")]), { durch: "Pruefung" });
+    const [t1] = await sitzungen(raum, ["p1"]);
+    Z.zaehlungLeeren();
+    const zeilen = async () => (await S.spurLesen(1)).filter((z) => z.zusatz === "stempeln (Person)"
+      && z.kennung === S.kennung(new Request(`http://${WIRT}/x`), { bestand: raum })).length;
+    const vorher = await zeilen();
+    const stati = [];
+    for (let i = 0; i < 40; i++) stati.push((await anfrage("/api/stempeln", { token: t1, rumpf: { datum: heuteJetzt(), art: "start" } })).status);
+    const gebremst = stati.filter((s) => s === 429).length;
+    expect(gebremst, JSON.stringify(stati)).toBe(30);
+    expect(await zeilen() - vorher, "eine Zeile je neu gesetzter Sperre").toBe(1);
+    expect(Z.zaehlung()["429-last"], "jede Abweisung bleibt für /gesund gezählt").toBe(30);
+  }, 120000);
+
+  it("Auflage M4: die Sperre je Person ist nicht länger als die Wartezeit des Clients (15 s) und nicht steigend", () => {
+    expect(S.GRENZEN.stempeln.sperre).toBeLessThanOrEqual(15);
+    expect(S.GRENZEN.stempeln.steigend).toBeFalsy();
+    expect(S.GRENZEN["stempeln-raum"].sperre).toBeLessThanOrEqual(15);
   });
 
   it("der Raumdeckel schützt: ist er erreicht, kommt 429 mit Retry-After, gestempelt wird nichts", async () => {
@@ -364,5 +406,70 @@ describe("WP-47 · Anmelden über HTTP", () => {
       expect(stati[3].token).toBeUndefined();
       expect(Z.zaehlung()["429-last"]).toBe(2);
     } finally { zurueck(); zielAlt(); }
+  }, 120000);
+
+  /* Auflage M1: Die Lastgrenze je Betrieb ließ sich von EINEM Code-Inhaber
+     ausschöpfen — eine Skriptschleife mit dem eigenen Code sperrte den ganzen
+     Betrieb. Jetzt zählt zuerst jeder Code für sich. */
+  it("Auflage M1: ein Code in der Schleife sperrt nur sich selbst — andere Codes und die Leitung desselben Betriebs bleiben frei", async () => {
+    imFrischenFenster(10);
+    const r1 = aendern(S.GRENZEN["anmelden-erfolg"], { versuche: 30 });
+    const r2 = aendern(S.WEITERE.anmelden.ziel, { versuche: 30 });
+    try {
+      const raumC = "w47-code";
+      await B.bestandSchreiben(store, raumC, betrieb([person("p1"), person("p2"), person("l1", "leitung")]), { durch: "Pruefung" });
+      const konto = (c, name, p, rolle = "mitarbeiter") => kontoSchreiben(store, ablageSchluessel(c), { name, bestand: raumC, rolle,
+        person: p, betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
+      await konto("W47C-SCHL-EIFE", "schleife", "p1");
+      await konto("W47C-ANDE-RERC", "andere", "p2");
+      await konto("W47C-LEIT-UNGC", "leitung", "l1", "leitung");
+      const stati = [];
+      for (let i = 0; i < 60; i++) stati.push(await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47C-SCHL-EIFE" } }));
+      const grenze = S.GRENZEN["anmelden-code"].versuche;
+      expect(grenze).toBeLessThanOrEqual(20);
+      expect(stati.slice(0, grenze).map((s) => s.status)).toEqual(Array(grenze).fill(200));
+      expect(stati.slice(grenze).every((s) => s.status === 429 && Number(s.retryAfter) > 0 && !s.token),
+        JSON.stringify(stati.map((s) => s.status))).toBe(true);
+      expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47C-ANDE-RERC" } })).status, "anderer Code desselben Betriebs").toBe(200);
+      expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47C-LEIT-UNGC" } })).status, "Leitung desselben Betriebs").toBe(200);
+    } finally { r1(); r2(); }
+  }, 120000);
+
+  it("Auflage M1: die Abweisung je Code entlastet die Herkunft NICHT — acht Versuche aus einer Adresse, dann bremst die Herkunftsgrenze", async () => {
+    imFrischenFenster(11);
+    const r1 = aendern(S.GRENZEN["anmelden-code"], { versuche: 1 });
+    try {
+      const raumH = "w47-code-herkunft";
+      await B.bestandSchreiben(store, raumH, betrieb([person("p1")]), { durch: "Pruefung" });
+      await kontoSchreiben(store, ablageSchluessel("W47H-HERK-UNFT"), { name: "h", bestand: raumH, rolle: "mitarbeiter",
+        person: "p1", betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
+      expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47H-HERK-UNFT" } })).status).toBe(200);
+      const xff = "10.47.251.7";
+      const stati = [];
+      for (let i = 0; i < S.GRENZEN.anmelden.versuche; i++)
+        stati.push((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47H-HERK-UNFT" }, xff })).status);
+      expect(stati).toEqual(Array(S.GRENZEN.anmelden.versuche).fill(429));
+      const k = S.kennung(new Request(`http://${WIRT}/api/anmelden`, { headers: { host: WIRT, "x-forwarded-for": xff } }), null);
+      const b = await S.bremse("anmelden", k);
+      expect(b.frei, "die Versuche dieser Herkunft stehen noch").toBe(false);
+    } finally { r1(); }
+  }, 120000);
+
+  it("Auflage M3: die Lastgrenze greift VOR dem Lesen des Bestands", async () => {
+    imFrischenFenster(12);
+    const r1 = aendern(S.GRENZEN["anmelden-erfolg"], { versuche: 2 });
+    try {
+      const raumL = "w47-vorlesen";
+      await B.bestandSchreiben(store, raumL, betrieb([person("p1")]), { durch: "Pruefung" });
+      for (let i = 0; i < 3; i++)
+        await kontoSchreiben(store, ablageSchluessel(`W47V-000${i}-CODE`), { name: `v${i}`, bestand: raumL, rolle: "mitarbeiter",
+          person: "p1", betrieb: 0, mandantId: "m1", angelegt: new Date().toISOString() });
+      expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47V-0000-CODE" } })).status).toBe(200);
+      expect((await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47V-0001-CODE" } })).status).toBe(200);
+      B.bestandLesen.mockClear();
+      const r = await anfrage("/api/anmelden", { rumpf: { zugangscode: "W47V-0002-CODE" } });
+      expect(r.status).toBe(429);
+      expect(B.bestandLesen.mock.calls.filter((c) => c[1] === raumL), "kein Lesen des Bestands bei Lastabweisung").toHaveLength(0);
+    } finally { r1(); }
   }, 120000);
 });

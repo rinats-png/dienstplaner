@@ -274,9 +274,12 @@ export const GRENZEN = {
                        verbraucht nur sein eigenes Kontingent.
        stempeln-raum   je Raum als Schutz der Rechenleistung, nicht des
                        Missbrauchs: Wert nach Betriebsgröße (stempelDeckel).
-     Die Sperre ist kurz (30/15 s) und nicht steigend — wer Retry-After
-     befolgt, kommt wieder durch. */
-  stempeln:   { versuche: 10,  fenster: 60,   sperre: 30 },
+     Die Sperre ist kurz (je 15 s) und nicht steigend — wer Retry-After
+     befolgt, kommt wieder durch. 15 s je Person (Review-Auflage M4, vorher
+     30 s): Die Oberfläche wartet je Wiederholung höchstens 15 s (plus
+     Streuung, speicher.js) — eine längere Sperre hätte ihre Wiederholung
+     sicher ins Leere laufen lassen. */
+  stempeln:   { versuche: 10,  fenster: 60,   sperre: 15 },
   "stempeln-raum": { versuche: 240, fenster: 60, sperre: 15 },
   /* Gelungene Anmeldungen je Betrieb als reine Lastbremse (WP-47). Anders als
      die Fehlversuchsgrenzen schützt sie nichts vor Raten — der Code war
@@ -284,6 +287,12 @@ export const GRENZEN = {
      Minuten tragen einen Betrieb von 2000 Personen, bei dem ein Drittel zum
      Schichtbeginn kommt (≈ 670). */
   "anmelden-erfolg": { versuche: 1000, fenster: 300, sperre: 60 },
+  /* Gelungene Anmeldungen je CODE (Review-Auflage M1), geprüft VOR der Grenze
+     je Betrieb: Ein Code-Inhaber mit einer Skriptschleife verbraucht nur sein
+     eigenes Kontingent und sperrt den Betrieb nicht. Niemand meldet sich
+     zwanzigmal in fünf Minuten neu an; die Sperre dauert ein ganzes Fenster,
+     damit die Schleife auch über die Zeit nicht mehr als 20 je 5 min schafft. */
+  "anmelden-code": { versuche: 20, fenster: 300, sperre: 300 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
   /* Sicherungen je Betrieb: sechs je Stunde reichen für jedes „vorher
      sichern“ — und niemand verdrängt damit die Wiederherstellungspunkte. */
@@ -390,6 +399,11 @@ export function kennungPerson(sitzung) {
 
 /** Die Kennung eines Raums/Betriebs für Lastgrenzen (Hashwert, kein Klartext). */
 export const kennungRaum = (raum) => `b:${kurz(raum)}`;
+
+/** Die Kennung eines Zugangscodes für Lastgrenzen (Review-Auflage M1): aus dem
+    Ablageschlüssel des Kontos (schon ein Prüfwert), noch einmal gehasht — nie
+    der Code selbst. */
+export const kennungCode = (kontoSchluessel) => `c:${kurz(kontoSchluessel)}`;
 
 /**
  * Stempel je Minute, die ein Raum insgesamt annimmt — nach Betriebsgröße.
@@ -884,6 +898,21 @@ export async function bremse(art, kennung, ziel) {
   }
 }
 
+/**
+ * Nur die Vermerke dieses einen Versuchs bei Ziel und Gesamt zurücknehmen
+ * (WP-47) — nicht den Zähler der Herkunft. Für einen GÜLTIGEN Code, der an
+ * einer Lastgrenze abgewiesen wurde (Review-Auflage M1): Er war kein
+ * Rateversuch und soll den Betrieb (Ziel) und den Dienst (Gesamt) nicht
+ * füllen; die Herkunft aber bleibt gezählt, denn entlastet wird sie nur bei
+ * einer gelungenen Anmeldung.
+ * @param {{zurueck?: string[]}|undefined} b  Ergebnis von bremse()
+ */
+export async function vermerkeZuruecknehmen(b) {
+  if (!b || !Array.isArray(b.zurueck)) return;
+  const s = takt();
+  for (const k of b.zurueck) await s.delete(k).catch(() => {});
+}
+
 /** Nach einer erfolgreichen Anmeldung den Zähler zurücksetzen. */
 export async function entlasten(art, kennung, b) {
   const g = GRENZEN[art];
@@ -893,10 +922,7 @@ export async function entlasten(art, kennung, b) {
      Fehlversuche reichlich und für einen Schichtbeginn viel zu wenig. Genau
      die eigenen Vermerke werden zurückgenommen, nie die anderer Versuche —
      Fehlversuche bleiben gezählt. */
-  if (b && Array.isArray(b.zurueck)) {
-    const s = takt();
-    for (const k of b.zurueck) await s.delete(k).catch(() => {});
-  }
+  await vermerkeZuruecknehmen(b);
   const fenster = fensterLage(Date.now(), g.fenster).index;
   /* Alle drei Zähler zurücksetzen, auch den prozesslokalen. In einem
      dauerhaften Prozess (eigener Server statt kurzlebiger Funktionsinstanz)
@@ -1143,15 +1169,17 @@ export function notbremse(art, kennung) {
  * @param {string} art
  * @param {string} kennung
  */
-export function notentlasten(art, kennung) {
+export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
   const g = NOTGRENZEN[art];
   if (!g) return;
   const lage = fensterLage(Date.now(), g.fenster);
   const f = lage.index;
   const bis = lage.ende + g.fenster * 1000;
   /* Zurückgenommen wird im laufenden Fenster; lag der Versuch noch im
-     vorigen (Anmeldung über die Grenze hinweg), dort. */
-  for (const k of [`${art}:${kennung}`, `${art}:gesamt`]) {
+     vorigen (Anmeldung über die Grenze hinweg), dort. `nurGesamt`
+     (Review-Auflage M1): ein gültiger Code an einer Lastgrenze — der Dienst
+     wird entlastet, die Herkunft nicht. */
+  for (const k of nurGesamt ? [`${art}:gesamt`] : [`${art}:${kennung}`, `${art}:gesamt`]) {
     if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
     else notZaehlen(`${k}:${f - 1}`, bis, -1);
   }
@@ -1185,7 +1213,7 @@ const lastSperre = new Map();
  * @param {string} art        Schlüssel in GRENZEN (stempeln, stempeln-raum, anmelden-erfolg)
  * @param {string} kennung
  * @param {number} [versuche] Grenze dieses Aufrufs (Raumdeckel nach Betriebsgröße); sonst GRENZEN[art]
- * @returns {{frei: boolean, wartet?: number, uebrig?: number}}
+ * @returns {{frei: boolean, wartet?: number, uebrig?: number, neu?: boolean}}
  */
 export function lastbremse(art, kennung, versuche) {
   const g = GRENZEN[art];
@@ -1205,7 +1233,11 @@ export function lastbremse(art, kennung, versuche) {
     not.delete(`${basis}:${f}`);
     not.delete(`${basis}:${f - 1}`);
     if (lastSperre.size > 500) for (const [k, v] of lastSperre) if (v < ms) lastSperre.delete(k);
-    return { frei: false, wartet: g.sperre };
+    /* `neu`: Diese Anfrage hat die Sperre gesetzt (Review-Auflage M2). Nur sie
+       wird protokolliert — jede weitere Abweisung derselben Sperre schriebe
+       sonst eine Protokolldatei und brächte die Plattenlast zurück, die die
+       Lastbremse vermeiden soll. Gezählt (/gesund) wird trotzdem jede. */
+    return { frei: false, wartet: g.sperre, neu: true };
   }
   return { frei: true, uebrig: Math.max(0, Math.floor(grenze - n)) };
 }

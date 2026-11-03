@@ -510,16 +510,18 @@ export async function stempeln(datum, art, koord) {
     accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
   /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
      Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
-     Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s);
-     die Stempelzeit ist die des Servers beim erfolgreichen Eintreffen, also
-     höchstens ≈ 30 s später als das Tippen. Bleibt es dabei, sagt die Meldung
-     ehrlich, dass der Stempel noch NICHT erfasst ist. */
+     Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s
+     plus 0–20 % Streuung); die Stempelzeit ist die des Servers beim
+     erfolgreichen Eintreffen, also höchstens ≈ 36 s später als das Tippen.
+     Die Sperre je Person auf dem Server dauert 15 s (schutz.mjs) — eine
+     Wiederholung kommt also nach ihrem Ende an. Bleibt es dabei, sagt die
+     Meldung ehrlich, dass der Stempel noch NICHT erfasst ist. */
   let wiederholt = 0;
   for (;;) {
     const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(), body });
     if (a.status === 429 && wiederholt < STEMPEL_429_WIEDERHOLUNGEN) {
       wiederholt += 1;
-      await new Promise((r) => setTimeout(r, wartezeit429(a) + Math.random() * 1000));
+      await new Promise((r) => setTimeout(r, wartezeitMitStreuung(a)));
       continue;
     }
     let d = {};
@@ -536,6 +538,15 @@ export const STEMPEL_429_WIEDERHOLUNGEN = 2;
 export function wartezeit429(antwort) {
   const s = Number(antwort && antwort.headers && antwort.headers.get && antwort.headers.get("retry-after"));
   return Math.min(15, Math.max(1, Number.isFinite(s) && s > 0 ? s : 5)) * 1000;
+}
+
+/** Streuung auf die Wartezeit (Review-Auflage M4): 0 bis 20 % länger, nie kürzer
+    als Retry-After. Ohne Streuung kämen alle Geräte, die dieselbe Sperre traf,
+    im selben Augenblick wieder — und liefen gemeinsam in die nächste. */
+export const STEMPEL_429_STREUUNG = 0.2;
+export function wartezeitMitStreuung(antwort, zufall = Math.random) {
+  const z = Math.min(1, Math.max(0, Number(zufall()) || 0));
+  return Math.round(wartezeit429(antwort) * (1 + STEMPEL_429_STREUUNG * z));
 }
 
 /**

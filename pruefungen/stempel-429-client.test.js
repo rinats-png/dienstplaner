@@ -51,6 +51,46 @@ describe("speicher.stempeln bei 429", () => {
     expect(SP.STEMPEL_429_WIEDERHOLUNGEN).toBe(2);
   });
 
+  it("Auflage M4: Streuung ~20 % auf Retry-After — nie kürzer als Retry-After, höchstens 20 % länger", () => {
+    const r = new Response("", { status: 429, headers: { "retry-after": "10" } });
+    expect(SP.wartezeitMitStreuung(r, () => 0)).toBe(10000);
+    expect(SP.wartezeitMitStreuung(r, () => 0.5)).toBe(11000);
+    expect(SP.wartezeitMitStreuung(r, () => 0.999999)).toBeLessThanOrEqual(12000);
+    expect(SP.wartezeitMitStreuung(r, () => 0.999999)).toBeGreaterThan(11900);
+    /* Auch an der Obergrenze von 15 s wird gestreut — sonst kämen alle Geräte nach einer Sperre gleichzeitig wieder. */
+    const gross = new Response("", { status: 429, headers: { "retry-after": "300" } });
+    expect(SP.wartezeitMitStreuung(gross, () => 0.5)).toBe(16500);
+  });
+
+  it("Auflage M4: stempeln wartet mit Streuung (Math.random), nicht mit festem Zuschlag", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(1 - 1e-9);
+    const aufrufe = [];
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      aufrufe.push(Date.now());
+      return aufrufe.length < 2 ? antwort(429, { fehler: "zu viele Anfragen" }, { "retry-after": "10" })
+        : antwort(200, { ok: true, zeit: "06:00", ort: "ok", eintrag: { start: "06:00" } });
+    }));
+    const p = SP.stempeln("2026-11-03", "start", null);
+    await vi.advanceTimersByTimeAsync(60000);
+    await p;
+    vi.restoreAllMocks();
+    expect(aufrufe).toHaveLength(2);
+    /* 10 s Retry-After + fast 20 % = knapp 12 s (vorher: 10 s + höchstens 1 s). */
+    expect(aufrufe[1] - aufrufe[0]).toBeGreaterThan(11500);
+    expect(aufrufe[1] - aufrufe[0]).toBeLessThanOrEqual(12000);
+  });
+
+  it("Auflage N1: der Stempelknopf bleibt gesperrt, bis das Stempeln samt Wiederholungen fertig ist (Stempeluhr und mobile Fläche)", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const app = await readFile(new URL("../src/App.jsx", import.meta.url), "utf8");
+    /* Früher: akt.stempeln(...) ohne Warten, sofort setLaeuft(false) — während der
+       Wiederholungen nach 429 (bis ≈ 36 s) war der Knopf wieder frei. */
+    expect(app).not.toMatch(/akt\.stempeln\([^)]*\);\s*setLaeuft\(false\)/);
+    const warten = app.match(/Promise\.resolve\(akt\.stempeln\(p\.id, tag, art, \w+\)\)\.finally\(\(\) => setLaeuft\(false\)\)/g) || [];
+    expect(warten, "Stempeluhr und MStempel").toHaveLength(2);
+  });
+
   it("bleibt es bei 429, sagt die Meldung ehrlich, dass der Stempel NICHT erfasst ist — nach genau drei Anfragen", async () => {
     vi.useFakeTimers();
     const f = vi.fn(async () => antwort(429, { fehler: "zu viele Anfragen" }, { "retry-after": "2" }));
