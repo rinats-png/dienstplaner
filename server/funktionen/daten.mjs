@@ -1,7 +1,8 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, entlasten, kennung, kennungPerson, kennungRaum, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
+import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
@@ -81,6 +82,23 @@ const RUMPF_MAX = 6 * 1024 * 1024;
    Konflikt nur von einem Schreiber kommen, der an ihr vorbeischreibt —
    drei Wiederholungen sind dafür reichlich; danach eine klare Absage. */
 const STEMPEL_WIEDERHOLUNGEN = 3;
+
+/* Personen je Raum, zuletzt gesehen (WP-47): Der Raumdeckel fürs Stempeln hängt
+   an der Betriebsgröße (schutz.mjs, stempelDeckel), und die Bremse läuft VOR
+   dem Lesen des Bestands. Gemerkt wird beim Lesen, Schreiben und Stempeln —
+   nur die Zahl, nie Namen. Nach einem Neustart gilt bis zum ersten Zugriff
+   die vorsichtige Vorgabe. */
+const raumGroesse = new Map();
+function groesseMerken(raum, bestand) {
+  try {
+    const n = (Array.isArray(bestand && bestand.mandanten) ? bestand.mandanten : [])
+      .reduce((a, m) => a + (m && Array.isArray(m.personen) ? m.personen.length : 0), 0);
+    if (n > 0) {
+      if (raumGroesse.size > 5000) raumGroesse.clear();
+      raumGroesse.set(String(raum), n);
+    }
+  } catch { /* nur eine Schätzung */ }
+}
 
 async function rumpfLesen(req) {
   const laenge = Number(req.headers.get("content-length") || 0);
@@ -698,6 +716,22 @@ export default async (req, context) => {
             gebunden: new Date().toISOString() });
         } catch { /* darf keine Anmeldung scheitern lassen; beim nächsten Mal erneut */ }
       }
+      /* Lastgrenze für GELUNGENE Anmeldungen je Betrieb (WP-47). Der Code war
+         richtig; es geht nicht ums Raten, sondern darum, die Sitzungsablage vor
+         einer Welle zu schützen. Zuerst werden die Versuchsvermerke
+         zurückgenommen (Herkunft, Ziel, Gesamt zählen Fehlversuche, nicht
+         Anmeldungen), dann gilt die großzügige Grenze. Betreiberzugänge zählen
+         nicht mit. */
+      if (eintrag.rolle !== "betreiber") {
+        const bLast = await bremse("anmelden-erfolg", kennungRaum(`${eintrag.bestand}|${bindungC.mandantId ?? ""}`));
+        if (!bLast.frei) {
+          await entlasten("anmelden", k, b);
+          notentlasten("anmelden", k);
+          ereignis("429-last");
+          await protokoll("anmelden", k, "gebremst", "Lastgrenze gelungener Anmeldungen");
+          return zuVielAntwort(bLast.wartet);
+        }
+      }
       const { token, gueltigBis } = await sitzungAnlegen({
         bestand: eintrag.bestand, name: eintrag.name, rolle: eintrag.rolle || "kunde",
         person: eintrag.person ?? null, betrieb: eintrag.betrieb ?? 0,
@@ -724,7 +758,7 @@ export default async (req, context) => {
         }
       } catch { /* darf keine Anmeldung scheitern lassen */ }
 
-      await entlasten("anmelden", k);
+      await entlasten("anmelden", k, b);
       notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
@@ -829,6 +863,7 @@ export default async (req, context) => {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       const mit = await bestandJetzt();
+      if (mit) groesseMerken(s.bestand, mit.bestand);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
@@ -948,6 +983,7 @@ export default async (req, context) => {
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+        groesseMerken(s.bestand, zuSchreiben);
 
         /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
@@ -1059,9 +1095,24 @@ export default async (req, context) => {
        und die Entscheidung liegen hier; die Zeit ebenfalls, denn eine
        gestellte Uhr im Gerät ist genauso leicht zu ändern. */
     if (pfad === "stempeln" && req.method === "POST") {
+      /* Eigene Bremsarten (WP-47, Nachweis WP-28): je Person, und je Raum als Deckel
+         nach Betriebsgröße. Die Planung (schreiben, 120/min) bleibt davon
+         unberührt, ein Schichtwechsel blockiert sie nicht. Eine Abweisung ist eine
+         LASTabweisung: gezählt für /gesund, mit Retry-After; gestempelt ist dann
+         NICHTS — die Oberfläche wiederholt (speicher.js). */
       const kSt = kennung(req, s);
-      const bSt = await bremse("schreiben", kSt);
-      if (!bSt.frei) return zuVielAntwort(bSt.wartet);
+      const bSt = await bremse("stempeln", kennungPerson(s));
+      if (!bSt.frei) {
+        ereignis("429-last");
+        await protokoll("schreiben", kSt, "gebremst", "stempeln (Person)", wer);
+        return zuVielAntwort(bSt.wartet);
+      }
+      const bRaum = await bremse("stempeln-raum", kSt, undefined, { versuche: stempelDeckel(raumGroesse.get(String(s.bestand))) });
+      if (!bRaum.frei) {
+        ereignis("429-last");
+        await protokoll("schreiben", kSt, "gebremst", "stempeln (Raum)", wer);
+        return zuVielAntwort(bRaum.wartet);
+      }
 
       const { datum, art, lat, lon, accuracy } = rumpf;
       if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
@@ -1100,6 +1151,7 @@ export default async (req, context) => {
           const mit = await bestandLesenStreng(store, s.bestand);
           if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
           const bestand = mit.bestand;
+          groesseMerken(s.bestand, bestand);
           const i = Number(s.betrieb);
           const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
             ? bestand.mandanten[i] : (bestand.mandanten || [])[0];

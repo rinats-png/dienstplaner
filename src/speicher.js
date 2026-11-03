@@ -486,13 +486,37 @@ export async function zugaengeErzeugen(bestand, eintraege) {
  * manipulieren lässt, belegt nichts.
  */
 export async function stempeln(datum, art, koord) {
-  const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(),
-    body: JSON.stringify({ datum, art,
-      lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
-      accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null }) });
-  const d = await a.json();
-  if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
-  return d;
+  const body = JSON.stringify({ datum, art,
+    lat: koord ? koord.lat : null, lon: koord ? koord.lon : null,
+    accuracy: koord && typeof koord.accuracy === "number" ? koord.accuracy : null });
+  /* 429 (WP-47): Der Server hat die Lastgrenze erreicht und NICHTS gespeichert.
+     Das ist kein Fehler des Stempels, sondern eine Spitze (Schichtwechsel). Die
+     Anfrage wird mit Retry-After höchstens zweimal wiederholt (je bis zu 15 s);
+     die Stempelzeit ist die des Servers beim erfolgreichen Eintreffen, also
+     höchstens ≈ 30 s später als das Tippen. Bleibt es dabei, sagt die Meldung
+     ehrlich, dass der Stempel noch NICHT erfasst ist. */
+  let wiederholt = 0;
+  for (;;) {
+    const a = await fetch("/api/stempeln", { method: "POST", headers: kopf(), body });
+    if (a.status === 429 && wiederholt < STEMPEL_429_WIEDERHOLUNGEN) {
+      wiederholt += 1;
+      await new Promise((r) => setTimeout(r, wartezeit429(a) + Math.random() * 1000));
+      continue;
+    }
+    let d = {};
+    try { d = await a.json(); } catch { /* keine Antwort */ }
+    if (a.status === 429)
+      throw new Error("Gerade stempeln sehr viele gleichzeitig. Dein Stempel ist noch NICHT erfasst — bitte in einigen Sekunden noch einmal tippen.");
+    if (!a.ok) throw new Error(d.text || d.fehler || "Das Stempeln hat nicht geklappt.");
+    return d;
+  }
+}
+
+/** Wiederholungen bei 429 (Lastgrenze) und die Wartezeit nach Retry-After, höchstens 15 s. */
+export const STEMPEL_429_WIEDERHOLUNGEN = 2;
+export function wartezeit429(antwort) {
+  const s = Number(antwort && antwort.headers && antwort.headers.get && antwort.headers.get("retry-after"));
+  return Math.min(15, Math.max(1, Number.isFinite(s) && s > 0 ? s : 5)) * 1000;
 }
 
 /**

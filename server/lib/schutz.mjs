@@ -277,7 +277,7 @@ export const GRENZEN = {
      Die Sperre ist kurz (30/15 s) und nicht steigend — wer Retry-After
      befolgt, kommt wieder durch. */
   stempeln:   { versuche: 10,  fenster: 60,   sperre: 30 },
-  "stempeln-raum": { versuche: 400, fenster: 60, sperre: 15 },
+  "stempeln-raum": { versuche: 240, fenster: 60, sperre: 15 },
   /* Gelungene Anmeldungen je Betrieb als reine Lastbremse (WP-47). Anders als
      die Fehlversuchsgrenzen schützt sie nichts vor Raten — der Code war
      richtig —, sondern die Sitzungsablage vor einer Welle. 1000 je fünf
@@ -394,22 +394,28 @@ export const kennungRaum = (raum) => `b:${kurz(raum)}`;
 /**
  * Stempel je Minute, die ein Raum insgesamt annimmt — nach Betriebsgröße.
  *
- * Gemessen (docs/acc45/wp28-nachweis.md, Linux-CI): Ein Stempel hält die
- * Raumsperre bei 1000 Personen 29–31 ms, bei 2000 Personen 48–124 ms, bei
- * 4000 Personen 82–149 ms. Daraus folgt eine Obergrenze je Raum von
- * ≈ 1900/min (≤ 1000), ≈ 480/min (≤ 2000) und ≈ 400/min (4000). Der Deckel
- * liegt je Stufe unter dem kleinsten gemessenen Wert, damit die Warteschlange
- * vor der Raumsperre (Zeitgrenze 15 s, dann 503) nie aufläuft.
+ * Gemessen (docs/acc45/wp28-nachweis.md, Linux-CI, zwei Läufe): Ein Stempel
+ * hält die Raumsperre bei 1000 Personen 29–31 ms, bei 2000 Personen 48–124 ms,
+ * bei 4000 Personen 82–149 ms. Daraus folgt eine Obergrenze je Raum von
+ * 1923–2062/min (≤ 1000), 483–1263/min (≤ 2000) und 403–736/min (4000).
+ * Der Deckel ist die HÄLFTE der kleinsten gemessenen Obergrenze der Stufe —
+ * die andere Hälfte bleibt für Lesen, Planung und Sicherung, und die
+ * Warteschlange vor der Raumsperre (Zeitgrenze 15 s, dann 503) läuft nie auf:
+ *   ≤ 1000 Personen   ≈ 960 → 900 je Minute
+ *   ≤ 2000 Personen   ≈ 240
+ *   darüber           ≈ 200
+ * Eine Spitze mit einem Drittel der Belegschaft in fünf Minuten (2000
+ * Personen ≈ 133/min) bleibt damit unter dem Deckel.
  *
  * Unbekannte Größe (Prozess frisch gestartet, Raum noch nicht gelesen): die
- * mittlere Stufe.
+ * vorsichtige mittlere Stufe, bis der erste Zugriff die Größe liefert.
  * @param {number|null|undefined} personen
  */
 export function stempelDeckel(personen) {
   const n = Number(personen);
-  if (!Number.isFinite(n) || n <= 0) return 400;
-  if (n <= 1000) return 600;
-  if (n <= 2000) return 400;
+  if (!Number.isFinite(n) || n <= 0) return 240;
+  if (n <= 1000) return 900;
+  if (n <= 2000) return 240;
   return 200;
 }
 
