@@ -229,6 +229,10 @@ else
   if ! printf '%s' "$START" | jq -e '.ok == true' >/dev/null 2>&1; then
     echo "FEHLGESCHLAGEN: Testbetrieb" >&2
     printf '%s\n' "$START" >&2
+    if printf '%s' "$START" | grep -q 'nicht freigeschaltet'; then
+      echo "Der Selbststart ist aus (CENTRIC_SELBSTSTART, docs/SELBSTSTART-SCHALTER.md)." >&2
+      echo "Für diesen Schritt kurz auf true setzen und danach wieder entfernen." >&2
+    fi
     exit 1
   fi
   angelegt "Testbetrieb $(printf '%s' "$START" | jq -r '.raum')"
