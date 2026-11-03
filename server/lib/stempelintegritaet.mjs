@@ -49,9 +49,17 @@
 const KENNZEICHEN = new Set(["markierungen", "konfliktGrund"]);
 const KORREKTUREN = "korrekturen";
 
-export const KORREKTUR_GRUND_MIN = 3;
+import { stichtage, aufbewahrungFehler } from "./aufbewahrung.mjs";
+
+/** Ein Grund sagt, warum — „ok" oder „Test" ist keiner (WP-06, B4). */
+export const KORREKTUR_GRUND_MIN = 10;
 export const KORREKTUR_GRUND_MAX = 500;
-export const KORREKTUREN_MAX = 50;
+/** Obergrenze je Stempel und für alle Gründe zusammen: Sie schützt den Speicher, sie soll
+    die nächste echte Korrektur nicht blockieren — deshalb hoch, und ab KORREKTUR_HINWEIS_AB
+    meldet die Antwort der Leitung, dass dieser Stempel auffällig oft korrigiert wurde. */
+export const KORREKTUREN_MAX = 200;
+export const KORREKTUREN_GRUENDE_MAX = 20000;
+export const KORREKTUR_HINWEIS_AB = 20;
 /** Text der abgeleiteten Ist-Zeit nach einer Korrektur — ohne Grund, ohne Namen (sichtbar auch für die SV). */
 export const KORRIGIERT_TEXT = "Korrektur der Stempelzeit";
 
@@ -61,21 +69,13 @@ const gleich = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const objekt = (x) => !!x && typeof x === "object" && !Array.isArray(x);
 const tagVon = (k) => { const t = String(k).split("|")[1] || ""; return TAG.test(t) ? t : null; };
 
-/* Aufbewahrung, konservativ (src/aufbewahrung.js rechnet dasselbe in der
-   Oberfläche): nie kürzer als 24 Monate. */
-const PLANDATEN_MINDEST = 24;
-function minusMonate(isoTag, monate) {
-  const [j, m, t] = String(isoTag).slice(0, 10).split("-").map(Number);
-  let jahr = j; let monat = m - monate;
-  while (monat <= 0) { monat += 12; jahr -= 1; }
-  const letzter = new Date(Date.UTC(jahr, monat, 0)).getUTCDate();
-  return `${jahr}-${String(monat).padStart(2, "0")}-${String(Math.min(t, letzter)).padStart(2, "0")}`;
-}
-/** Tage vor diesem Stichtag sind abgelaufen und dürfen der Löschpflicht weichen. */
+/** Tage vor diesem Stichtag sind abgelaufen und dürfen der Löschpflicht weichen.
+    Dieselbe Rechnung wie der Datenschutzlauf (lib/aufbewahrung.mjs, stichtage):
+    Frist des Betriebs, nie kürzer als 24 Monate (§ 16 Abs. 2 ArbZG). Eine
+    ungültige Fristangabe löscht nie (fail-closed): dann gibt es keinen Stichtag. */
 export function loeschStichtag(m, heute) {
-  const f = Number(m && m.aufbewahrung && m.aufbewahrung.plandatenMonate);
-  const monate = Math.max(PLANDATEN_MINDEST, Number.isFinite(f) && f > 0 ? Math.floor(Math.min(f, 600)) : PLANDATEN_MINDEST);
-  return minusMonate(heute, monate);
+  if (aufbewahrungFehler(m && m.aufbewahrung)) return null;
+  return stichtage(m || {}, heute).plan;
 }
 
 /** Ist-Zeit-Stände, die der Server für diesen Tag je hatte (ehrliche Kopien). */
@@ -104,6 +104,13 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
   const altE = altM && objekt(altM.erfassung) ? altM.erfassung : {};
   const stich = o.loeschlauf && o.heute && altM ? loeschStichtag(altM, o.heute) : null;
   const abgelaufen = (k) => !!stich && !!tagVon(k) && tagVon(k) < stich;
+  /* Ein Stempel jenseits der Aufbewahrungsfrist, den der Datenschutzlauf schon
+     gelöscht hat, steht in einer Kopie, die vor dem Lauf geladen wurde (WP-06, B1).
+     Das ist kein erfundener Stempel: Er wird ignoriert, nicht abgewiesen — und
+     nicht wieder gespeichert (stempelSichern). Rolle und Löschlauf spielen
+     dabei keine Rolle; die Frist entscheidet. */
+  const frist = o.heute && altM ? loeschStichtag(altM, o.heute) : null;
+  const verfallen = (k) => !!frist && !!tagVon(k) && tagVon(k) < frist;
   const nein = (grund, schluessel = null) => ({ grund, schluessel });
   /* Ist der Monat dieses Schlüssels seit dem Stand der Übermittlung
      unverändert (lib/bestand.mjs, unveraenderteScherben)? */
@@ -119,6 +126,7 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
         const a = altS[k];
         if (a === undefined) {
           if (e === null || e === undefined) continue;          // nichts da, nichts gelöscht
+          if (verfallen(k)) continue;                           // vom Datenschutzlauf gelöscht (B1)
           return nein("Stempel entstehen nur über die Stempeluhr — ein neuer Stempel über das Speichern wird abgewiesen.", k);
         }
         if (!objekt(e)) {
@@ -232,6 +240,15 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
     else if (k in zielS) einstempeln[k] = zielS[k];
   }
   const erfassung = objekt(zielM.erfassung) ? { ...zielM.erfassung } : {};
+  /* Was der Datenschutzlauf gelöscht hat (jenseits der Frist, gespeichert nicht
+     mehr vorhanden), schreibt eine ältere Kopie nicht zurück (B1) — weder den
+     Stempel (oben: es werden nur gespeicherte übernommen) noch seine Ist-Zeit. */
+  const frist = o.heute ? loeschStichtag(altM, o.heute) : null;
+  if (frist) {
+    for (const k of Object.keys(erfassung)) {
+      if (tagVon(k) && tagVon(k) < frist && !(k in altE) && !(k in altS)) delete erfassung[k];
+    }
+  }
   for (const k of Object.keys(altS)) {
     if (weg(ge, k)) { delete erfassung[k]; continue; }
     if (!sicher(k)) continue;
@@ -246,7 +263,7 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
  * @param {{personId: string, datum: string, start: string, ende: string, grund: string}} k
  * @param {{personId: string|null, name: string|null, rolle: string}} wer
  * @param {Date} jetzt
- * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object}}
+ * @returns {{status: number, grund: string} | {mandant: object, eintrag: object, erfassung: object, ereignis: object, hinweis: (string|null)}}
  */
 export function korrekturAnhaengen(m, k, wer, jetzt, id) {
   const { personId, datum, start, ende } = k || {};
@@ -264,8 +281,10 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id) {
   if (!objekt(stempel))
     return { status: 404, grund: "An diesem Tag gibt es keinen Stempel. Eine Zeit ohne Stempel trägt die Leitung in der Zeiterfassung ein." };
   const bisher = Array.isArray(stempel[KORREKTUREN]) ? stempel[KORREKTUREN] : [];
-  if (bisher.length >= KORREKTUREN_MAX)
-    return { status: 409, grund: `Mehr als ${KORREKTUREN_MAX} Korrekturen an einem Stempel nimmt der Server nicht an.` };
+  if (bisher.length >= KORREKTUREN_MAX
+      || bisher.reduce((a, x) => a + String((x && x.grund) || "").length, 0) + grund.length > KORREKTUREN_GRUENDE_MAX)
+    return { status: 409, grund: "Dieser Stempel ist so oft korrigiert worden, dass der Server keine weitere Korrektur mehr annimmt. "
+      + "Bitte den Fall mit der Betriebsleitung klären." };
   const alt = (m.erfassung || {})[schluessel];
   if (objekt(alt) && alt.bestaetigt && alt.start === start && alt.ende === ende)
     return { status: 409, grund: "Diese Zeit ist schon so bestätigt — nichts zu korrigieren." };
@@ -284,7 +303,10 @@ export function korrekturAnhaengen(m, k, wer, jetzt, id) {
      Tag nach der Bestätigung in Konto und Lohnausgabe. */
   const erfassung = { start, ende, bestaetigt: true, grund: KORRIGIERT_TEXT, korrigiert: true,
     ...(objekt(alt) && alt.ungeplant === true ? { ungeplant: true } : {}) };
-  return { ereignis, eintrag, erfassung, mandant: { ...m,
+  /* Auffällig oft korrigiert: Die Leitung bekommt es in der Antwort gesagt. */
+  const hinweis = bisher.length + 1 >= KORREKTUR_HINWEIS_AB
+    ? `Dieser Stempel wurde jetzt ${bisher.length + 1}-mal korrigiert — bitte prüfen, ob etwas nicht stimmt.` : null;
+  return { ereignis, eintrag, erfassung, hinweis, mandant: { ...m,
     einstempeln: { ...(m.einstempeln || {}), [schluessel]: eintrag },
     erfassung: { ...(m.erfassung || {}), [schluessel]: erfassung } } };
 }

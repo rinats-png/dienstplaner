@@ -17,6 +17,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen, stempelBeiWiederherstellung, loeschStichtag,
+  KORREKTUREN_MAX, KORREKTUR_HINWEIS_AB, KORREKTUR_GRUND_MAX, KORREKTUREN_GRUENDE_MAX,
   KORRIGIERT_TEXT } from "../server/lib/stempelintegritaet.mjs";
 import { istZeitFuer } from "../src/istdaten.js";
 
@@ -167,7 +168,7 @@ describe("Korrektur nur als Ereignis (/api/stempel-korrektur)", () => {
     it(`${rolle}: 403, nichts gespeichert`, async () => {
       const vorher = await gespeichert();
       const w = await anfrage("stempel-korrektur", { token: T[rolle],
-        rumpf: { personId: "a1", datum: GESTERN, start: "06:00", ende: "15:00", grund: "Test" } });
+        rumpf: { personId: "a1", datum: GESTERN, start: "06:00", ende: "15:00", grund: "Test mit ausreichend langem Grund" } });
       expect(w.status, w.roh).toBe(403);
       expect((await gespeichert()).einstempeln).toEqual(vorher.einstempeln);
     });
@@ -175,9 +176,9 @@ describe("Korrektur nur als Ereignis (/api/stempel-korrektur)", () => {
   it("ohne Grund 422, ohne Stempel 404, ungültige Uhrzeit 422", async () => {
     const r1 = await anfrage("stempel-korrektur", { token: T.leitung, rumpf: { personId: "a1", datum: GESTERN, start: "06:00", ende: "15:00", grund: " " } });
     expect(r1.status).toBe(422);
-    const r2 = await anfrage("stempel-korrektur", { token: T.leitung, rumpf: { personId: "a1", datum: tag(-30), start: "06:00", ende: "15:00", grund: "Test" } });
+    const r2 = await anfrage("stempel-korrektur", { token: T.leitung, rumpf: { personId: "a1", datum: tag(-30), start: "06:00", ende: "15:00", grund: "Test mit ausreichend langem Grund" } });
     expect(r2.status).toBe(404);
-    const r3 = await anfrage("stempel-korrektur", { token: T.leitung, rumpf: { personId: "a1", datum: GESTERN, start: "6 Uhr", ende: "15:00", grund: "Test" } });
+    const r3 = await anfrage("stempel-korrektur", { token: T.leitung, rumpf: { personId: "a1", datum: GESTERN, start: "6 Uhr", ende: "15:00", grund: "Test mit ausreichend langem Grund" } });
     expect(r3.status).toBe(422);
   });
   it("Leitung: 200 — Original Feld für Feld unverändert, Ereignis {vorher, nachher, wer, wann, grund}, Ist-Zeit folgt", async () => {
@@ -256,7 +257,7 @@ describe("Veraltete Kopie, Löschlauf, Wiederherstellung, Altbestand", () => {
     const s = await anfrage("stempeln", { token: T.mitarbeiter, rumpf: { art: "start" } });
     expect(s.status, s.roh).toBe(200);
     const kk = await anfrage("stempel-korrektur", { token: T.leitung,
-      rumpf: { personId: "a2", datum: GESTERN, start: "06:02", ende: "14:30", grund: "Nachtrag" } });
+      rumpf: { personId: "a2", datum: GESTERN, start: "06:02", ende: "14:30", grund: "Nachtrag zur Übergabe" } });
     expect(kk.status, kk.roh).toBe(200);
     const vorher = await gespeichert();
     const b = JSON.parse(JSON.stringify(r.bestand));
@@ -318,9 +319,75 @@ describe("Veraltete Kopie, Löschlauf, Wiederherstellung, Altbestand", () => {
   it("korrekturAnhaengen: begrenzt, verlangt Grund, unverändert bestätigte Zeit ist keine Korrektur", () => {
     const m = { personen: [{ id: "a" }], einstempeln: { "a|2026-11-01": { start: "06:00", ende: "14:00" } },
       erfassung: { "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true } } };
-    expect(korrekturAnhaengen(m, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "14:00", grund: "gleich" }, {}, new Date(), "k").status).toBe(409);
+    expect(korrekturAnhaengen(m, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "14:00", grund: "gleiche Zeit nochmal" }, {}, new Date(), "k").status).toBe(409);
     expect(korrekturAnhaengen(m, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "15:00", grund: "x".repeat(501) }, {}, new Date(), "k").status).toBe(422);
-    const voll = { ...m, einstempeln: { "a|2026-11-01": { start: "06:00", korrekturen: Array.from({ length: 50 }, (_, i) => ({ id: i })) } } };
-    expect(korrekturAnhaengen(voll, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "15:00", grund: "mehr" }, {}, new Date(), "k").status).toBe(409);
+    const voll = { ...m, einstempeln: { "a|2026-11-01": { start: "06:00", korrekturen: Array.from({ length: KORREKTUREN_MAX }, (_, i) => ({ id: i, grund: "g" })) } } };
+    expect(korrekturAnhaengen(voll, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "15:00", grund: "noch eine Korrektur" }, {}, new Date(), "k").status).toBe(409);
+  });
+
+  /* B4: Mindestgrund 10 Zeichen; die Obergrenze blockiert nicht mit Mini-Korrekturen,
+     sondern ist hoch, begrenzt die Gründe insgesamt, und meldet früh einen Hinweis. */
+  it("B4: Grund unter 10 Zeichen ⇒ 422; ab 20 Korrekturen ein Hinweis; 50 Mini-Korrekturen blockieren nicht", () => {
+    const m = { personen: [{ id: "a" }], einstempeln: { "a|2026-11-01": { start: "06:00", ende: "14:00" } },
+      erfassung: { "a|2026-11-01": { start: "06:00", ende: "14:00", bestaetigt: true } } };
+    const k = (grund, ende = "15:00") => ({ personId: "a", datum: "2026-11-01", start: "06:00", ende, grund });
+    expect(korrekturAnhaengen(m, k("zu kurz"), {}, new Date(), "k").status).toBe(422);
+    expect(korrekturAnhaengen(m, k("neun Zeic"), {}, new Date(), "k").status).toBe(422);
+    expect(korrekturAnhaengen(m, k("zehn Zeich"), {}, new Date(), "k").ereignis).toBeTruthy();
+    let stand = m;
+    let letzter;
+    for (let i = 0; i < 60; i++) {
+      letzter = korrekturAnhaengen(stand, k("Korrektur Nummer " + i, i % 2 ? "15:00" : "16:00"), {}, new Date(), "k" + i);
+      expect(letzter.status, `Korrektur ${i}`).toBeUndefined();
+      stand = letzter.mandant;
+      if (i + 1 < KORREKTUR_HINWEIS_AB) expect(letzter.hinweis).toBeNull();
+    }
+    expect(letzter.hinweis).toMatch(/60-mal korrigiert/);
+    expect(stand.einstempeln["a|2026-11-01"].korrekturen).toHaveLength(60);
+  });
+  it("B4: die Gründe zusammen sind begrenzt (Speicher), mit verständlicher Absage", () => {
+    const lang = "y".repeat(KORREKTUR_GRUND_MAX);
+    const vor = Array.from({ length: Math.floor(KORREKTUREN_GRUENDE_MAX / KORREKTUR_GRUND_MAX) }, (_, i) => ({ id: i, grund: lang }));
+    const m = { personen: [{ id: "a" }], einstempeln: { "a|2026-11-01": { start: "06:00", korrekturen: vor } }, erfassung: {} };
+    const r = korrekturAnhaengen(m, { personId: "a", datum: "2026-11-01", start: "06:00", ende: "15:00", grund: "ein weiterer Grund" }, {}, new Date(), "k");
+    expect(r.status).toBe(409);
+    expect(r.grund).toMatch(/Betriebsleitung klären/);
+  });
+});
+
+describe("B1 (Datenschutzlauf) und B2 (eine Frist-Rechnung)", () => {
+  const HEUTE_ISO = "2026-11-03";
+  const mandantMit = (einstempeln, erfassung = {}, extra = {}) => ({ id: "m1", einstempeln, erfassung, ...extra });
+  it("B1: Kopie von vor dem Datenschutzlauf mit gelöschtem Stempel (vor dem Stichtag) ⇒ ignoriert, nicht „erfunden“ (403); nicht wieder gespeichert", () => {
+    const gespeichert = mandantMit({ "a1|2026-10-01": { start: "06:00", ende: "14:00" } });
+    const kopie = mandantMit({ "a1|2026-10-01": { start: "06:00", ende: "14:00" }, "a1|2023-01-05": { start: "06:00", ende: "14:00" } },
+      { "a1|2023-01-05": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" } });
+    for (const loeschlauf of [true, false]) {
+      expect(stempelWiderspruch(gespeichert, kopie, { heute: HEUTE_ISO, loeschlauf })).toBeNull();
+    }
+    const gesichert = stempelSichern(gespeichert, kopie, { ...kopie }, { heute: HEUTE_ISO, loeschlauf: false }).mandant;
+    expect(Object.keys(gesichert.einstempeln)).toEqual(["a1|2026-10-01"]);
+    expect(Object.keys(gesichert.erfassung)).toEqual([]);
+  });
+  it("B1-Gegenprobe: ein junger, nie gespeicherter Stempel bleibt „erfunden“ (403)", () => {
+    const gespeichert = mandantMit({});
+    const kopie = mandantMit({ "a1|2026-10-30": { start: "06:00" } });
+    expect(stempelWiderspruch(gespeichert, kopie, { heute: HEUTE_ISO })).toMatchObject({ schluessel: "a1|2026-10-30" });
+  });
+  it("B1-Gegenprobe: ein bestehender Stempel jenseits der Frist lässt sich weiterhin nicht ändern", () => {
+    const gespeichert = mandantMit({ "a1|2023-01-05": { start: "06:00", ende: "14:00" } });
+    const kopie = mandantMit({ "a1|2023-01-05": { start: "05:00", ende: "14:00" } });
+    expect(stempelWiderspruch(gespeichert, kopie, { heute: HEUTE_ISO, loeschlauf: true })).toMatchObject({ schluessel: "a1|2023-01-05" });
+  });
+  it("B2: loeschStichtag rechnet wie der Datenschutzlauf (aufbewahrung.mjs): Frist des Betriebs, nie unter 24 Monaten, ungültig ⇒ keiner", async () => {
+    const { stichtage } = await import("../server/lib/aufbewahrung.mjs");
+    for (const monate of [1, 24, 36, 120]) {
+      const m = { aufbewahrung: { plandatenMonate: monate } };
+      expect(loeschStichtag(m, HEUTE_ISO), String(monate)).toBe(stichtage(m, HEUTE_ISO).plan);
+    }
+    expect(loeschStichtag({ aufbewahrung: { plandatenMonate: 3 } }, HEUTE_ISO)).toBe("2024-11-03");
+    expect(loeschStichtag({}, HEUTE_ISO)).toBe("2024-11-03");
+    expect(loeschStichtag({ aufbewahrung: { plandatenMonate: 1.5 } }, HEUTE_ISO)).toBeNull();
+    expect(loeschStichtag({ aufbewahrung: { plandatenMonate: "viel" } }, HEUTE_ISO)).toBeNull();
   });
 });

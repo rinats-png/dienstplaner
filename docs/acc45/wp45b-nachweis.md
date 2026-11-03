@@ -200,3 +200,25 @@ Sicherung kopiert statt `wiederherstellen` zu benutzen, hat keinen — dann gilt
 CI auf 85e9449 grün: Prüfung 41541594098, Sicherheit 41541594063, Betrieb: Deploy-Skripte 41541594091, Lieferkette
 41541594105; dazu „Betrieb Sicherung“ (Ende-zu-Ende mit `wiederherstellen` im Bild, von Hand auf dem Branch gestartet)
 41541613771.
+
+## WP-45d Wiederherstellvermerk (W1, W2)
+
+Branch `acc45/security/wp45d-wiederherstellvermerk` von `origin/merge/wp45c` (df4abe3; WP-45c war bei Beginn noch nicht in
+`integration/centric-complete`).
+
+| Befund | Umsetzung | Test (rot auf df4abe3 → grün) |
+|---|---|---|
+| **W1** Vermerk bei mehreren Wiederherstellungen überschrieben — nach R1(B0), R2(B3) wurde B1 aus der bei R1 verworfenen Folge wieder angenommen | `data/.wiederhergestellt.json` ist jetzt `{ wiederherstellungen: [{ zeit, sicherungErstellt }, …] }` und wird fortgeschrieben; die frühere Einzelform wird als Liste mit einem Eintrag gelesen. `ablage-pruefen` prüft gegen jedes Intervall. Gemeinsamer Leser `wiederherstellVermerkeLesen` in `ablage-sicherung.mjs`. §4a: bei Weg 1 (neues leeres `data/`) die Datei vorher aus dem beiseitegelegten Verzeichnis übernehmen. | „W1: mehrere Wiederherstellungen“ (B1 → 2; B0, B2, B3 → 0). |
+| **W2** unlesbarer Vermerk still ignoriert (fail-open) | Vorhanden, aber unlesbar oder unvollständig ⇒ `ablage-pruefen --aus-sicherung` Rückgabe 2 mit Hinweis; `wiederherstellen` bricht ebenso ab, bevor etwas angefasst ist. | „W2: … Abbruch statt still ignoriert“ (kaputt → 2, unvollständiger Eintrag → 2, Wiederherstellen wirft, Raum unberührt). |
+
+Zusätzlich: Die Tests „ohne Raumangabe …“ und „Standfolge nach Wiederherstellung“ haben 60 s Zeitgrenze (lokal unter
+Last über 30 s). Der Standfolge-Test liest den Vermerk jetzt in Listenform (rot auf df4abe3 nur wegen der neuen Form).
+Auf df4abe3: 3 rot (W1, W2, Listenform); jetzt `ablage-pruefen-rueckweg`, `ablage-pruefen`, `sicherung-ablage` 45/45
+grün (1 übersprungen, Windows); eslint ohne Befund.
+
+Nachtrag: Der `cp -p`-Handgriff steht jetzt auch in der Befehlsfolge von Weg 1 in `BEREITSTELLUNG.md`.
+CI auf 58d32d9 grün: Prüfung 41579102084, Sicherheit 41579102062, Betrieb: Deploy-Skripte 41579102054, Lieferkette
+41579102048, Betrieb Sicherung 41579105936 (von Hand gestartet).
+
+Nachtrag (Doku): Ausweg bei beschädigtem `.wiederhergestellt.json` in §4a und `BEREITSTELLUNG.md` (umbenennen, lesbare
+Einträge von Hand übertragen, sonst Regel ohne Werkzeugprüfung; Weg 1 und Weg 2). Weg 1 prüft mit `sudo test -f`.

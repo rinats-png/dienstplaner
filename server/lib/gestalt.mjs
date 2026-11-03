@@ -15,6 +15,8 @@
    Gründe, viel zu löschen — aber rückholbar gemacht.
    ========================================================================== */
 
+import { aufbewahrungFehler, aufbewahrungGeaendert } from "./aufbewahrung.mjs";
+
 /** Felder, die ein Bestand haben muss, um überhaupt einer zu sein. */
 const PFLICHT = ["mandanten"];
 
@@ -98,8 +100,11 @@ export function personenFehler(bestand) {
 /**
  * Prüft die Form eines Bestands.
  * Gibt { ok: true } oder { ok: false, grund, feld } zurück.
+ * @param {any} bestand
+ * @param {{ vorher?: any }} [o]  der gespeicherte Stand: Aufbewahrungsfristen
+ *   werden dann nur bei Betrieben geprüft, die sie ändern oder neu sind.
  */
-export function pruefeGestalt(bestand) {
+export function pruefeGestalt(bestand, { vorher = null } = {}) {
   if (!bestand || typeof bestand !== "object" || Array.isArray(bestand))
     return { ok: false, grund: "Kein Bestandsobjekt." };
 
@@ -118,6 +123,7 @@ export function pruefeGestalt(bestand) {
 
   const ids = mandantenKennungenGeprueft(bestand.mandanten);
   if (ids) return ids;
+  const geaendert = aufbewahrungGeaendert(vorher);
 
   for (const m of bestand.mandanten) {
     for (const liste of LISTEN) {
@@ -139,6 +145,15 @@ export function pruefeGestalt(bestand) {
 
     const zuViel = mengeGeprueft(m);
     if (zuViel) return zuViel;
+    /* Aufbewahrungsfristen (WP-26, H1): ganze Zahlen in festen Grenzen.
+       Bis November 2026 ungeprüft — „Infinity" ließ den Datenschutzlauf
+       ewig rechnen und hielt damit den ganzen Server an. */
+    /* Nur geänderte oder neue Betriebe streng (N-1): Ein ungültiger Altwert
+       in einem anderen Betrieb desselben Raums (z. B. 1.5 aus der früheren
+       Oberfläche) sperrte sonst das Speichern für alle. Der Datenschutzlauf
+       überspringt und meldet ihn. */
+    const frist = geaendert(m) ? aufbewahrungFehler(m.aufbewahrung) : null;
+    if (frist) return { ok: false, grund: `${m.id}: ${frist}`, feld: "aufbewahrung" };
   }
 
   const uferlos = laengeGeprueft(bestand);

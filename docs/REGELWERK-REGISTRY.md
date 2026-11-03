@@ -256,6 +256,21 @@ und weist ab, wenn ein sperrender Befund neu entsteht (Review F2; Teilzeit und P
 Altbestand blockiert nicht). Ruhezeit, Einschränkungen, Qualifikationen und Einweisungen setzt bisher nur die
 Oberfläche durch (offen).
 
+**Fachprüfungen auf dem Server (WP-22, überholt den letzten Satz).** Die Prüfung einer Einteilung steht jetzt in
+`server/lib/fachpruefung.mjs` (`einteilungsBefunde`) — eine Fassung für Oberfläche (`hindernisBefunde` liest sie mit
+dem Plan der Oberfläche) und Server (`server/lib/schutzdurchsetzung.mjs` mit einer Planrechnung aus Abweichungen,
+Schichtfolge, Teilzeit und Abwesenheiten). Das Regelwerk liegt dafür in `server/lib/regelwerk.mjs`; `src/regelwerk.js`
+reicht es weiter. Der Server setzt durch: Bestand, Schutz, Einschränkungen, gesetzliche und betriebliche
+Qualifikationen (`QUAL-SPERRE-01` über `verbindlichkeit`), Einweisungen (`KOMP-EINWEISUNG-01`), Ruhezeit (`AZ-RUHE-01`, Gesetz und Vorgabe
+des Betriebs), Tagesgrenze (`AZ-TAG-01`, § 3 ArbZG, je Dienst über zehn Stunden, Katalog `tagesgrenze` — nach Nutzerentscheidung nur
+ein Hinweis: keine Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7 ArbZG den langen Dienst trägt,
+verantwortet der Betrieb; Rufbereitschaft zählt nicht und unterbricht keine Ruhezeit) und Mindestbesetzung (`BES-MINDEST-01`, Katalog `untergrenze`, Achtung).
+Nur **neue** Befunde zählen; sperrende werden abgewiesen, warnende brauchen einen neuen Protokolleintrag zu Person, Tag
+und Regel im selben Speichervorgang, sonst antwortet der Server 409 mit neutraler Befundliste. **Grenzen:** Posten und
+die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche; der Durchschnitt nach § 3 Satz 2 ArbZG (acht
+Stunden über sechs Monate) und Dienste in Folge (`folge`) prüft der Server nicht je Einteilung; die Verfügbarkeit der
+Person und Teilzeit-Wochentage bleiben Hinweise der Oberfläche. Nachweis: `docs/acc45/wp22-nachweis.md`.
+
 **Nachtruhe 20–6 Uhr (Review F3).** `JARBSCHG-14` und `MUSCHG-05` prüfen jede Überschneidung eines Dienstes mit 20
 bis 6 Uhr — vorher nur „Nachtdienst" (über zwei Stunden zwischen 23 und 6) oder Beginn vor 6 Uhr, obwohl der Text „20
 bis 6 Uhr" sagte. **Bekannte Grenze:** Die Ausnahmen nach § 14 Abs. 2 bis 7 JArbSchG und § 5 Abs. 2 MuSchG (20–22 Uhr
@@ -268,11 +283,20 @@ Abs. 2 Nr. 2 JArbSchG Jugendlichen über 16 Jahren im mehrschichtigen Betrieb Ar
 Auszubildende). Jetzt (`jugendNachtBewertung`, `server/lib/schutzpruefung.mjs`): unter 16 Jahren sperrt jede
 Überschneidung mit 20–6 Uhr (`JARBSCHG-14`); ab 16 Jahren sperrt 23–6 Uhr einschließlich eines Beginns vor 6 Uhr
 (`JARBSCHG-14`), 20–23 Uhr meldet `JARBSCHG-14-02` — ohne Einstellung „Achtung" mit Bestätigungspflicht, mit der
-Betriebseinstellung `jugendschutz.mehrschichtig` (nur `org.edit`) einen Hinweis. Ob der Betrieb tatsächlich
+Betriebseinstellung `jugendschutz.mehrschichtig` (`org.edit` oder `pattern.edit`) einen Hinweis. Ob der Betrieb tatsächlich
 mehrschichtig arbeitet, prüft CENTRIC nicht. **Bekannte Grenze:** Die Branchenfenster des § 14 Abs. 2 bis 7
 (Gaststätten und Schaustellergewerbe bis 22 Uhr, Bäckereien und Konditoreien ab 5 Uhr bzw. über 17 Jahren ab 4 Uhr,
 Landwirtschaft ab 5 oder bis 21 Uhr, Bewilligungen nach Abs. 6 und 7) sind nicht modelliert; ein Bäckereibeginn um
-5 Uhr sperrt weiterhin. Mutterschutz (`MUSCHG-05`) bleibt unverändert hart (Fachfrage B2 beim Nutzer).
+5 Uhr sperrt weiterhin. Mutterschutz: siehe den folgenden Absatz.
+**Einwilligung nach dem Mutterschutzgesetz (Nutzerentscheidung, 3. November 2026).** An der Person lassen sich
+Einwilligungen erfassen (`mutterschutzEinwilligungen`): Art „nacht“ (§ 5 Abs. 2, 20–22 Uhr) oder „sonntag“ (§ 6 Abs. 1),
+Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor“ (§ 28). Im Zeitraum wird der jeweilige harte Befund zum
+Hinweis (`MUSCHG-05-02`, `MUSCHG-06-01`); Nachtarbeit nach 22 Uhr bleibt hart, außerhalb des Zeitraums ist alles wieder
+hart. Schreiben nur Planung, Leitung und Kundenrolle (wie die Schutzmerkmale); der Server prüft die Form und setzt
+`geaendertAm`/`geaendertVon`. Sichtbar wie die Schutzmerkmale; die Person selbst sieht ihre eigenen. Die
+Schichtverantwortung bekommt Einsatzregeln mit Zeitraum, nur ab heute (`einsatzfensterBis22`, `sonntagFreigegeben`). Restrisiko: Diese Regeln entstehen heute nur aus dem Mutterschutz — bei Erwachsenen lässt sich aus ihnen auf ihn schließen (DSFA, Betriebsvereinbarung). Änderungen an Schutzangaben werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server Planung und Leitung (Nachprüfung 9717ddf).
+Ob ärztliche Unbedenklichkeit und Genehmigung tatsächlich vorliegen und die Einwilligung nicht widerrufen ist, prüft
+CENTRIC nicht — das verantwortet der Betrieb. Feiertage prüft die Schutzprüfung nicht gesondert.
 
 **Betriebsratsprotokoll.** Abweichend von Anhang G: Der Betriebsrat bekommt nur Zählwerte je Monat, Regel und Stufe,
 unter 3 als „<3"; jede Schutzregel — auch der Jugendarbeitsschutz — heißt dort `schutz` (Kette B behandelt das Alter

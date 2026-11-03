@@ -179,6 +179,34 @@ export function pruefHinweis(m, ym, personId) {
 }
 
 /**
+ * Vormonate (bis zu `monate` vor ym, ym selbst nicht), in denen noch Ist-Zeiten
+ * zur Prüfung offen sind — für den Hinweis im Zwölf-Monats-Verlauf (Nachprüfung
+ * WP-17, A2). Mit `personId` nur die Fälle dieser Person.
+ * @returns {Array<{ym: string, anzahl: number, monat: string}>}  älteste zuerst
+ */
+export function vormonateMitPruefung(m, ym, personId, monate = 12) {
+  const [j, mo] = String(ym).split("-").map(Number);
+  const out = [];
+  for (let i = monate; i >= 1; i--) {
+    const d = new Date(Date.UTC(j, mo - 1 - i, 1));
+    const k = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const h = pruefHinweis(m, k, personId);
+    if (h) out.push({ ym: k, anzahl: h.anzahl, monat: h.monat });
+  }
+  return out;
+}
+
+/**
+ * Die Rückfrage vor einem Lohn-Export (Lohnausgabe-CSV, Zuschläge-CSV), solange
+ * im Monat Ist-Zeiten zur Prüfung offen sind; sonst null.
+ */
+export function exportWarnung(m, ym) {
+  const h = pruefHinweis(m, ym);
+  if (!h) return null;
+  return [h.text, `Betroffen: ${h.faelle.map((f) => `${f.datum} (${pruefFallText(f.art)})`).join(", ")}.`, "Trotzdem jetzt ausgeben?"].join("\n\n");
+}
+
+/**
  * Tatsächliche Dauer eines Dienstes: erfasste Zeit schlägt die geplante.
  * Ohne Zugang zu den Ist-Daten: std null und nichtVerfuegbar — nie die Planzeit.
  */
