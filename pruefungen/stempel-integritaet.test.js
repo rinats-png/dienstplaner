@@ -282,6 +282,25 @@ describe("Veraltete Kopie, Löschlauf, Wiederherstellung, Altbestand", () => {
     expect(g.einstempeln[`a2|${VORGESTERN}`]).toBeTruthy();
     expect(loeschStichtag({ aufbewahrung: { plandatenMonate: 3 } }, "2026-11-03")).toBe("2024-11-03");   // nie unter 24 Monate
   });
+  it("B-N2: Kopie von vor dem Löschen (Stempel und Ist-Zeit von 2023) ⇒ 200 mit Hinweis in der Antwort, nichts wird zurückgeschrieben", async () => {
+    const r = await anfrage("bestand", { methode: "GET", token: T.leitung });
+    const b = JSON.parse(JSON.stringify(r.bestand));
+    b.mandanten[0].einstempeln[`a2|${ALT}`] = { start: "06:00", ende: "14:00" };
+    b.mandanten[0].erfassung[`a2|${ALT}`] = { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" };
+    b.mandanten[0].personen.find((p) => p.id === "a2").telefon = "0171";
+    const w = await anfrage("bestand", { methode: "PUT", token: T.leitung, rumpf: { bestand: b, etag: r.etag, durch: "Test" } });
+    expect(w.status, w.roh).toBe(200);
+    expect(w.hinweis).toMatch(/2 Einträge jenseits der Aufbewahrungsfrist/);
+    const g = await gespeichert();
+    expect(g.einstempeln[`a2|${ALT}`]).toBeUndefined();
+    expect(g.erfassung[`a2|${ALT}`]).toBeUndefined();
+    expect(g.personen.find((p) => p.id === "a2").telefon).toBe("0171");
+    /* Ohne verworfene Einträge keine Meldung. */
+    const r2 = await anfrage("bestand", { methode: "GET", token: T.leitung });
+    const w2 = await anfrage("bestand", { methode: "PUT", token: T.leitung, rumpf: { bestand: r2.bestand, etag: r2.etag } });
+    expect(w2.status).toBe(200);
+    expect(w2.hinweis).toBeUndefined();
+  });
   it("Altbestand (ohne startAm, mit ort/innerhalb/abstand) gilt als Original: ändern 403, Rundreise 200, Korrektur möglich", async () => {
     const r = await anfrage("bestand", { methode: "GET", token: T.leitung });
     const b = JSON.parse(JSON.stringify(r.bestand));
