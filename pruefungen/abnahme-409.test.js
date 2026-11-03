@@ -13,6 +13,15 @@
    Zurückschicken als Änderung fremder Personen, und die Schichtverantwortung
    bekam 403).
 
+   Grenzen dieses Tests: Der 409-Zweig in daten.mjs (PUT /api/bestand, Antwort
+   "konflikt") ruft `bestandFuerRolle(erg.bestand, s)` OHNE
+   `personenAngleichen` auf, GET dagegen mit. Der Test deckt nur Konflikte ab,
+   die nach der Zusammenführung beim Schreiben entstehen (anderer Schreiber hat
+   dieselbe Monatsscherbe geändert). Dass die Antwort trotzdem gleich dem
+   GET-Stand ist, liegt daran, dass der Bestand beim Schreiben angeglichen
+   gespeichert wird; ein Altstand, der vor dem ersten angleichenden Schreiben
+   liegt, wird hier nicht geprüft (das tut `abnahme-a-b`, Rundreise ohne 409).
+
    Aufruf: npx vitest run pruefungen/abnahme-409.test.js
    ========================================================================== */
 
@@ -143,10 +152,18 @@ describe("409 und unverändert zurück", { timeout: 120000 }, () => {
     n2.mandanten[0].abweichungen[`a1|${TAG1}`] = "F";
     expect((await anfrage("/api/bestand", { methode: "PUT", token: TOKEN.SV, rumpf: { bestand: n2, etag: neu.etag } })).status).toBe(200);
   });
-  it("MA: Schreiben bleibt abgewiesen (403), kein Konfliktpfad", async () => {
+  it("MA: unverändert zurück wird angenommen (200); eine Änderung am Plan fremder Personen bleibt wirkungslos", async () => {
     await neuerRaum();
     const g = await anfrage("/api/bestand", { token: TOKEN.MA });
-    const r = await anfrage("/api/bestand", { methode: "PUT", token: TOKEN.MA, rumpf: { bestand: kopie(g.bestand), etag: g.etag } });
-    expect([200, 403]).toContain(r.status);
+    const unv = await anfrage("/api/bestand", { methode: "PUT", token: TOKEN.MA, rumpf: { bestand: kopie(g.bestand), etag: g.etag } });
+    expect(unv.status, JSON.stringify(unv).slice(0, 200)).toBe(200);
+    const g2 = await anfrage("/api/bestand", { token: TOKEN.MA });
+    const b = kopie(g2.bestand);
+    b.mandanten[0].abweichungen[`a1|${TAG1}`] = "F";
+    const r = await anfrage("/api/bestand", { methode: "PUT", token: TOKEN.MA, rumpf: { bestand: b, etag: g2.etag } });
+    /* Beschäftigte dürfen nur eigene Felder schreiben: Die Antwort ist 200, der Plan bleibt unverändert. */
+    expect(r.status, JSON.stringify(r).slice(0, 200)).toBe(200);
+    const jetzt = (await B.bestandLesen(laden(), RAUM)).bestand.mandanten[0];
+    expect(jetzt.abweichungen[`a1|${TAG1}`]).toBeUndefined();
   });
 });
