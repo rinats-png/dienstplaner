@@ -314,6 +314,7 @@ Mutanten Idempotenz und A1 nach dem Merge erneut: 6 bzw. 4 rot.
 - `stempeln.test.js` B;
 - `geo.test.js` „innerhalb … Erfassung“ und „Tagdienst“;
 - `pruefungen/zeiterfassung.mjs` (2 Prüfungen).
+- `werkzeug/staging-smoke.mjs` „Beschäftigte stempelt Start und Ende“. Erst die CI 41638824801 fand diesen Fall: Gate-Proben gegen einen frischen Server, lokal nicht lauffähig.
 
 Dort stempeln Beginn und Ende im Testlauf meist in derselben Minute. Sie erwarten jetzt bei gleicher Uhrzeit
 `bestaetigt: false` mit Grund `DAUER_NULL`, sonst wie bisher `bestaetigt: true`.
