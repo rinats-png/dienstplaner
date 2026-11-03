@@ -120,7 +120,8 @@ case "$1" in
         case "$alles" in
           *" sichern "*)
             [[ -f "$z/sichern_fehler" ]] && { echo "stub: sichern scheitert" >&2; exit 1; }
-            n="centric-sicherung-20261103T000000Z"; mkdir -p "$sich/$n"; touch "$sich/$n/FERTIG"
+            nr=$(cat "$z/sich_nr" 2>/dev/null || echo 0); echo $((nr + 1)) >"$z/sich_nr"
+            n="centric-sicherung-20261103T$(printf '%06d' "$nr")Z"; mkdir -p "$sich/$n"; touch "$sich/$n/FERTIG"
             echo "Sicherung vollständig: /sicherungen/$n"; echo "  3 Dateien, 300 Bytes" ;;
           *" pruefen "*) [[ -f "$z/pruefen_fehler" ]] && exit 1; echo "In Ordnung: 3 Dateien" ;;
           *deploy-abgleich*)
@@ -568,6 +569,42 @@ exec /usr/bin/df "$@"
     expect(rest).toHaveLength(5);
     expect(protokoll().indexOf("sicherung entfernt")).toBeLessThan(protokoll().indexOf("kritisch wenig Platz"));
     expect(containerBild()).toBe(ID_B);
+  });
+
+  it("WP-31b: gescheiterte Versuche verdrängen die Sicherung der letzten erfolgreichen Auslieferung nicht", () => {
+    const sich = path.join(verz, "deploy-sicherungen");
+    for (let i = 1; i <= 5; i++) {
+      mkdirSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`), { recursive: true });
+      writeFileSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`, "FERTIG"), "");
+    }
+    const erfolg = lauf([A]);
+    expect(erfolg.code, erfolg.alles).toBe(0);
+    const geschuetzt = "centric-sicherung-20261103T000000Z";
+    expect(readFileSync(path.join(sich, ".letzte-erfolgreiche"), "utf8").trim()).toBe(geschuetzt);
+    setze("smoke_fehler");
+    for (let v = 0; v < 6; v++) {
+      const r = lauf([A]);
+      expect(r.code, r.alles).toBe(1);
+    }
+    const rest = readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-")).sort();
+    expect(rest).toContain(geschuetzt);
+    /* Ältere als die geschützte sind entfernt, jüngere (gescheiterte Versuche) bleiben. */
+    expect(rest.filter((n) => n < geschuetzt)).toEqual([]);
+    expect(rest.filter((n) => n > geschuetzt)).toHaveLength(6);
+    expect(readFileSync(path.join(sich, ".letzte-erfolgreiche"), "utf8").trim()).toBe(geschuetzt);
+  }, 600000);
+
+  it("WP-31b: unlesbare Marke — Aufbewahrung übersprungen, nichts entfernt", () => {
+    const sich = path.join(verz, "deploy-sicherungen");
+    for (let i = 1; i <= 7; i++) {
+      mkdirSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`), { recursive: true });
+      writeFileSync(path.join(sich, `centric-sicherung-20261101T00000${i}Z`, "FERTIG"), "");
+    }
+    writeFileSync(path.join(sich, ".letzte-erfolgreiche"), "kaputt\n");
+    const r = lauf([A]);
+    expect(r.code, r.alles).toBe(0);
+    expect(r.alles).toMatch(/Marke .letzte-erfolgreiche unlesbar/);
+    expect(readdirSync(sich).filter((n) => n.startsWith("centric-sicherung-"))).toHaveLength(8);
   });
 
   it.skipIf(!FLOCK)("N1: eine zweite gleichzeitige Auslieferung bricht ab", async () => {

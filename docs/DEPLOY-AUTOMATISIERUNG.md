@@ -70,6 +70,16 @@ geprüften neuen Sicherung bleiben die jüngsten `CENTRIC_DEPLOY_BEHALTEN`
 (Vorgabe 5) vollständigen Sicherungen, die neue immer; unvollständige
 (ohne `FERTIG`) werden nicht angefasst.
 
+**Geschützte Sicherung (WP-31b):** Am Ende jeder erfolgreichen Auslieferung
+schreibt `deploy.sh` die Marke `deploy-sicherungen/.letzte-erfolgreiche` mit
+dem Namen der Sicherung dieses Laufs — des Stands vor der Auslieferung. Diese
+Sicherung und alle jüngeren werden nie entfernt, auch nicht, wenn danach
+mehrere Versuche scheitern; entfernt werden nur ältere (über
+`CENTRIC_DEPLOY_BEHALTEN` hinaus). Reicht der Platz dadurch nicht, wechselt
+`deploy.sh` nicht (Platzprüfung nach der Aufbewahrung) — dann von Hand
+aufräumen, nie die geschützte. Ist die Marke unlesbar, wird gar nichts
+entfernt (Warnung).
+
 **Datenkonsistenz:** Gesichert wird nach dem Anhalten, damit Sicherung und
 Abgleich denselben Stand sehen. Die Auszeit ist damit Sicherung + Start
 (Größenordnung Sekunden bis gut eine Minute). Die Sicherungen unter
