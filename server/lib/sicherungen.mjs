@@ -20,6 +20,7 @@ import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
+import { planFreigabeAktiv } from "./planfreigabe.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -208,6 +209,23 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
     if (feld in alt) zurueck[feld] = alt[feld];
     else delete zurueck[feld];
+  }
+
+  /* Planfreigabe (WP-23): Die Pflicht samt Wann/Wer gilt weiter, wie sie heute ist — eine alte
+     Sicherung (vor WP-23 oder vor der Aktivierung) schaltet den Entwurfsschutz nicht still ab.
+     Wirkte der Filter bisher nur über Freigaben und hat die Sicherung keine, bleiben die
+     jetzigen Freigaben (Vereinigung): sonst sähen Beschäftigte danach wieder Entwürfe. */
+  const altE = alt.einstellungen && typeof alt.einstellungen === "object" ? alt.einstellungen : {};
+  if ("planFreigabePflicht" in altE) {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of ["planFreigabePflicht", "planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"]) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    zurueck.einstellungen = z;
+  }
+  if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
+    zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
+      ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
   }
 
   /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
