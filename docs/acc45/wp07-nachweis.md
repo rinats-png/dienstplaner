@@ -322,6 +322,54 @@ Dort stempeln Beginn und Ende im Testlauf meist in derselben Minute. Sie erwarte
 Nicht abgeschwächt: Der alte Erwartungswert war der Fehler (06:00–06:00 bestätigt = 23,5 h). „Quelltext: keine eigene
 Ortsprüfung“ in `geo.test.js` ist unverändert.
 
+## Merge nach Nachprüfung 3 (WP-20, WP-47, WP-22b-Reste, WP-23)
+
+Der Integrationsstand dd72a10 ist hineingemergt. Konflikte gelöst:
+- **`daten.mjs`:**
+  - `stempelInhaber` (WP-07) und `raumGroesse`/`groesseMerken` (WP-47) bleiben beide.
+  - Im Stempelpfad laufen die Lastbremsen (WP-47) zuerst, dann `stempelEreignis`. `groesseMerken` steht in der
+    Sperrschleife vor `ereignisFinden`.
+  - Die Markierungsschleife nimmt `urteil.markierungen` (WP-20) und die Offline-Markierungen.
+  - **Namenskonflikt:** WP-47 führt die Funktion `ereignis()` ein (Zähler für /gesund). Das lokale WP-07-Objekt im
+    Stempelpfad hieß ebenfalls `ereignis`; als `const` im selben Block hätte das jede Bremsenabweisung mit einem
+    ReferenceError beendet. Es heißt jetzt `stEreignis`.
+- **`rechte.mjs`:** `offlineSchalterZusammen` (WP-07) und `ortAngabenZusammen` (WP-20) bleiben beide.
+- **`stempelvorgang.js`:** `MARKIERUNG_TEXT` enthält `ORT_PRUEFEN` sowie `OFFLINE_*` und `DAUER_NULL`.
+- **`App.jsx`:**
+  - `OfflineSchalter`, `Einsatzorte` und `PlanFreigabeSchalter` bleiben alle.
+  - Ebenso `setzeOfflineVertrauen`, `setzeGeoModus`, die Einsatzort-Aktionen und `setzePlanFreigabePflicht`.
+  - `abmelden`/`verbindungTrennen` laufen über `abmeldenMitHinweis`. Darin steht jetzt `vergissSchutzkonflikte()`
+    vor `SP.abmelden()` (WP-22b).
+  - Die Exportzeile enthält alle Namen sowie `OfflineSchalter` und `abmeldenMitHinweis`.
+- **`package.json`:** automatisch zusammengeführt. Die Sammelzeile `pruefung` hat 94 Schritte, wie im
+  Integrationsstand (vorher im Branch 92, ohne eigene Schritte). `pruefung:zeiterfassung` enthält
+  `offline-stempeln` und `stempelpuffer`.
+- **`stempelpuffer.js`:** Die Wartezeit nach `Retry-After` bekommt dieselbe Streuung wie `SP.stempeln` aus WP-47
+  (0–20 %, nie kürzer als verlangt). Nach 429/503 bleibt das Ereignis online (A4), die Stempelzeit ist also die des
+  Servers beim Eintreffen. `SP.stempeln` mit 429-Wiederholung bleibt der Rückfallweg, wenn der Inhaber fehlt.
+
+**Tests:**
+- `schutzkonflikte.test.js`:
+  - Die Verdrahtungsprüfung zielt jetzt auf `abmeldenMitHinweis`.
+  - Neuer Verhaltenstest gegen die echte, exportierte Funktion: Lehnt die Person die Rückfrage ab, bleibt das
+    Gemerkte; bestätigt sie, ist es geleert und die Seite lädt neu.
+  - Mutante „`vergissSchutzkonflikte` fehlt“: 2 rot.
+- `stempelpuffer.test.js`: Streuung 30 s → 36 s bei Zufall 1. Mutante „ohne Streuung“: 1 rot. Die Abnahme gegen
+  den echten Server hat jetzt eine Zeitgrenze von 30 s; sie lag lokal unter Last knapp über 5 s.
+
+**Lokal:**
+- `pruefung:zeiterfassung` mit `stempel-429-client` und `bremse-wp47`: 307/310. Drei Fälle in
+  `stempeln.test.js` liefen im Sammellauf in die 5-s-Zeitgrenze; allein 10/10.
+- `geo`, `geo-einsatzorte` (3), Rechtematrix (2), `schutzkonflikte`, `entwuerfe` (2): 832/832.
+- Oberfläche, gestalt, doku, istdaten, Stempel-Datenschutz: 125/125.
+- Serverlauf: zeiterfassung 39/39, geo 14/14, rechte 147/147.
+- `tsc` sauber, eslint 0 Fehler.
+
+**Folgepunkt H-alt, hier nicht umgesetzt:** In der Herbstumstellung ergibt 02:30 → 02:30 (eine Stunde später,
+Winterzeit) als Uhrzeiten 23,5 h. Gemessen am Zeitpunkt ist es 1 h, bestätigt wird es trotzdem. Empfehlung: nicht
+automatisch bestätigen, wenn |dauerAm(HH:MM) − dauerMin| > 60. Das gehört in ein eigenes Paket bzw. zur
+Zeitumstellungsprüfung.
+
 ## CI-Läufe
 
 | Kopf | Prüfung (G1) | Sicherheit | Lieferkette | Deploy-Skripte |

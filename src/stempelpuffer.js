@@ -34,6 +34,8 @@
 export const BESTAETIGT_HALTEN_MS = 24 * 60 * 60 * 1000;
 export const WARTEN_MIN_MS = 2000;
 export const WARTEN_MAX_MS = 5 * 60 * 1000;
+/** Streuung auf Retry-After (wie STEMPEL_429_STREUUNG in speicher.js). */
+export const RETRY_STREUUNG = 0.2;
 
 /** Eine kryptografisch zufällige UUID v4. Nie Math.random. */
 export function neueKennung(c = globalThis.crypto) {
@@ -160,7 +162,7 @@ export function antwortArt(status, daten) {
  * @param {(ev) => Promise<{status:number, daten:any, warteMs?:number|null}>} senden
  * @param {{ jetzt?: () => number, beiQuittung?: (ev, daten) => void }} [opt]
  */
-export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date.now(), beiQuittung } = {}) {
+export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date.now(), beiQuittung, zufall = Math.random } = {}) {
   const ergebnisse = {};
   if (!inhaber) return { ergebnisse, angehalten: "ohne-inhaber" };
   let angehalten = null;
@@ -195,7 +197,11 @@ export async function abarbeiten(speicher, inhaber, senden, { jetzt = () => Date
       angehalten = r.status === 401 ? "abgemeldet" : "fremde-sitzung";
       ergebnisse[ev.id] = { art: "wartet" };
     } else {
-      const warte = typeof r.warteMs === "number" && r.warteMs > 0 ? Math.min(r.warteMs, 60 * 60 * 1000) : wartezeit(versuch.versuche);
+      /* Retry-After (Bremse WP-47) mit 0–20 % Streuung wie SP.stempeln (wartezeitMitStreuung): nie kürzer als
+         verlangt, und nicht alle Geräte, die dieselbe Sperre traf, kommen im selben Augenblick wieder. */
+      const z = Math.min(1, Math.max(0, Number(zufall()) || 0));
+      const warte = typeof r.warteMs === "number" && r.warteMs > 0
+        ? Math.round(Math.min(r.warteMs, 60 * 60 * 1000) * (1 + RETRY_STREUUNG * z)) : wartezeit(versuch.versuche);
       /* Offline wird ein Ereignis nur durch einen echten Netzausfall (keine
          Antwort). Eine Antwort wie 429/503 (Bremse, WP-47) heißt: Der Server
          ist erreichbar — die Wiederholung bleibt ein gewöhnliches Stempeln

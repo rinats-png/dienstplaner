@@ -357,7 +357,7 @@ describe("Nachprüfung 948a4ba (A2, Empfehlung): Schutzkonflikte bleiben sichtba
   });
   it("die Oberfläche markiert offene Konflikte im Plan und zeigt sie auf der Startseite (Quelltext)", () => {
     const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toContain("function useSchutzkonflikte(m, aktiv = true)");              // Nachtrag WP-22b: entprellt, in Häppchen
+    expect(app).toContain("useSchutzkonflikteBasis(sitz, aktiv, schutzkonfliktPlan, heute)");   // Nachtrag WP-22b: entprellt, in Häppchen (Haken: src/schutzkonflikte-hook.js)
     expect(app).toContain("schutzkonflikte.has(`${p.id}|${d}`)");
     expect(app).toMatch(/id: "schutzkonflikt"[\s\S]*knopf: "Umplanen"/);
   });

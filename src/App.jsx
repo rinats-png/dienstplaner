@@ -6,11 +6,12 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
   ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
-import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland } from "../server/lib/geo.mjs";
+import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, standortBundesland, GEO_MODUS_TEXT } from "../server/lib/geo.mjs";
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
-  einteilungsBefunde, planeSchutzkonflikte } from "../server/lib/fachpruefung.mjs";
+  einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
+import { useSchutzkonflikte as useSchutzkonflikteBasis, vergissSchutzkonflikte } from "./schutzkonflikte-hook.js";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -226,6 +227,9 @@ import {
   raeumen as loeschlaufAusfuehren, anonymisiere as anonymPerson,
   berichtstext as loeschBericht, PLANDATEN_MINDEST, fristWert, FRIST_GRENZEN,
 } from "./aufbewahrung.js";
+/* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
+   Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
+import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
@@ -1109,7 +1113,8 @@ function baueMandant(cfg, seed) {
     anker: montag(`${jahr}-01-01`), zyklus: { wochen: v.wochen, tage: [...v.tage], vorlage: v.id },
     matrix: JSON.parse(JSON.stringify(MATRIX_STD)),
     einstellungen: { ruhezeit: 11, maxFolge: 6, maxNachtFolge: 4, maxUrlaubJeEinheit: 3,
-      sollWochenstunden: cfg.wochenstunden, ausgleichGrenze: 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24 },
+      sollWochenstunden: cfg.wochenstunden, ausgleichGrenze: 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24,
+      planFreigabePflicht: true },
     standorte, einheiten, qualifikationen: quals, dienstarten, personen, abwesenheiten,
     dienstbuch: [],
     // Springer werden regelmäßig eingesetzt — sonst liefe ihr Stundenkonto
@@ -1499,6 +1504,12 @@ function postenBesatzung(m, eid, d, pid) {
 }
 function personTag(m, p, d) {
   if (!imDienst(p, d)) return { dienstId: null, plan: null, abweichung: null, abwesenheit: null, quelle: "extern" };
+  /* Entwurf (WP-23): Der Server lässt die Einteilungen nicht freigegebener Monate nach heute für
+     Beschäftigte weg und sagt es in sichtEntwuerfe. Ohne diesen Zweig rechnete die Oberfläche für
+     solche Tage die Schichtfolge und zeigte einen Regeldienst, den die Planung vielleicht längst
+     geändert hat — falscher als gar nichts. */
+  if (m.sichtEntwuerfe && istEntwurfstag(m, d, m.sichtEntwuerfe.heute))
+    return { dienstId: null, plan: null, abweichung: null, abwesenheit: abwesenheitAm(m, p.id, d), quelle: "entwurf" };
   const eid = einheitAm(p, d);
   // Geschäftszimmer: Planung und Leitung fahren keine Rotation mit.
   // Sie erscheinen im Plan nur durch ausdrückliche Zuweisung.
@@ -2719,25 +2730,9 @@ const schutzkonfliktPlan = (m) => ({ heute: heute(),
  * damit der Plan beim Bearbeiten nicht ruckelt. Bis das Ergebnis da ist,
  * gilt das vorige.
  */
-const SK_LEER = new Map();
-/** Letzte fertige Rechnung je Betrieb: Ein neu gezeigter Teil der Oberfläche beginnt damit statt leer (Review MITTEL 4). */
-const SK_LETZTE = new Map();
-const SK_ENTPRELLUNG_MS = 250;
-/**
- * @param {any} m Betrieb
- * @param {boolean} [aktiv] false: nicht rechnen (die Ansicht braucht das Ergebnis nicht)
- */
-function useSchutzkonflikte(m, aktiv = true) {
-  const h = heute();                                                   // Tageswechsel ohne Datenänderung rechnet neu
-  const [ergebnis, setErgebnis] = useState(() => (SK_LETZTE.get(m.id) || { ergebnis: SK_LEER }).ergebnis);
-  useEffect(() => {
-    if (!aktiv) return undefined;
-    /* Nichts Bekanntes: gleich anfangen (kein Warten vor der ersten Anzeige); sonst entprellen. */
-    return planeSchutzkonflikte(m, schutzkonfliktPlan(m), (r) => { SK_LETZTE.set(m.id, { ergebnis: r }); setErgebnis(r); },
-      { verzoegerungMs: SK_LETZTE.has(m.id) ? SK_ENTPRELLUNG_MS : 0 });
-  }, [m, h, aktiv]);
-  return aktiv ? ergebnis : SK_LEER;
-}
+/* Der Haken selbst liegt in src/schutzkonflikte-hook.js (Verhalten dort geprüft): letzte Rechnung der Sitzung als
+   Startwert, aktiv=false rechnet nicht, Abmelden und Rollenwechsel leeren das Gemerkte. */
+const useSchutzkonflikte = (sitz, aktiv = true) => useSchutzkonflikteBasis(sitz, aktiv, schutzkonfliktPlan, heute);
 
 /**
  * Bestätigte Abweichungen, die im Plan noch wirken: Die Person hat an dem
@@ -3718,6 +3713,11 @@ function tagesaufgaben(sitz) {
       text: nl.bald.slice(0, 2).map((x) => `${x.person.nachname} · ${x.qual.name} in ${x.tage} Tagen`).join(" · "),
       anzahl: nl.bald.length });
   }
+
+  /* WP-23: Solange die Planfreigabe nicht gilt, sehen Beschäftigte auch Entwürfe. Nur die Leitung
+     (org.edit) schaltet das ein; sie bekommt den Hinweis als dringende Aufgabe. */
+  if (darf(sitz, "org.edit") && !planFreigabeAktiv(m)) push({ art: "freigabe", dringend: true, ziel: "betrieb",
+    titel: "Planfreigabe aktivieren", text: "Beschäftigte sehen sonst auch Entwürfe" });
 
   if (darf(sitz, "plan.publish")) {
     for (const off of [0, 1]) {
@@ -8402,8 +8402,9 @@ function MeineSchichten({ sitz, akt, ym }) {
               </div>
               <Zelle da={da} abw={t.abwesenheit} size={36} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 500 }}>
-                  {t.abwesenheit ? abwArt(t.abwesenheit.art).label : da ? da.name : "frei"}</div>
+                <div style={{ fontSize: 15, fontWeight: 500, color: t.quelle === "entwurf" && !t.abwesenheit ? C.dimmer : undefined }}>
+                  {t.abwesenheit ? abwArt(t.abwesenheit.art).label
+                    : t.quelle === "entwurf" ? "noch nicht veröffentlicht" : da ? da.name : "frei"}</div>
                 {da && <div style={{ fontSize: 12.5, color: C.dimmer, ...NUM }}>{da.start}–{da.ende} · {n1(dauer(da))} h · {da.ort}</div>}
               </div>
               {da && nachtAnteil(da, m.einstellungen) >= nachtschwelle(m.einstellungen)
@@ -9017,7 +9018,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
-  const schutzkonflikte = useSchutzkonflikte(m);
+  const schutzkonflikte = useSchutzkonflikte(sitz);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -9537,6 +9538,22 @@ function Dienstarten({ sitz, akt }) {
             <Field label="Ort oder Objekt"><Inp value={f.ort} onChange={(e) => setF({ ...f, ort: e.target.value })} /></Field>
             <Field label="Farbe">
               <Farbwahl wert={f.farbe} onChange={(c) => setF({ ...f, farbe: c })} /></Field>
+          </div>
+          {/* WP-20: Worauf sich die Standortprüfung beim Stempeln dieser Dienstart bezieht. */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+            <Field label="Standortprüfung bezieht sich auf"
+              hint="Wirkt nur, wenn die Standortprüfung im Betrieb eingeschaltet ist.">
+              <Sel value={f.ortModus || "standort"}
+                onChange={(e) => { const { einsatzortId, ...rest } = f; setF(e.target.value === "standort" ? { ...rest, ortModus: undefined }
+                  : e.target.value === "einsatzort" ? { ...rest, ortModus: "einsatzort", einsatzortId: einsatzortId || "" } : { ...rest, ortModus: e.target.value }); }}>
+                <option value="standort">Standort der Einheit</option>
+                <option value="einsatzort">Einsatzort</option>
+                <option value="aussendienst">Außendienst (kein fester Ort)</option></Sel></Field>
+            {f.ortModus === "einsatzort" && (
+              <Field label="Einsatzort" hint={(m.einsatzorte || []).length ? undefined : "Zuerst unter Betrieb einen Einsatzort anlegen."}>
+                <Sel value={f.einsatzortId || ""} onChange={(e) => setF({ ...f, einsatzortId: e.target.value })}>
+                  <option value="">— wählen —</option>
+                  {(m.einsatzorte || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Sel></Field>)}
           </div>
           <div className="karte-still" style={{ padding: 16, borderRadius: "var(--r)" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
@@ -10348,6 +10365,12 @@ const SPEICHERLAGE = {
     titel: "Diese Änderung ist mit deiner Rolle nicht zulässig",
     text: "Der Server hat sie abgewiesen. Was du siehst, ist noch dein Stand — "
       + "gespeichert ist er nicht. Lade die Seite neu, um den gültigen Stand zu sehen.",
+    neuladen: true,
+  },
+  stempelStand: {
+    titel: "Der Bestand ist veraltet — bitte neu laden",
+    text: "Seit du die Daten geladen hast, hat sich ein Stempel geändert, und gestempelte Werte bleiben unverändert. "
+      + "Die Änderung ist nicht gespeichert. Lade den Bestand neu und trage sie dann noch einmal ein.",
     neuladen: true,
   },
   zuGross: {
@@ -13386,7 +13409,9 @@ function Stempeluhr({ sitz, akt, vorgang }) {
   /* Position nur bei eingeschalteter Geo-Prüfung; die Stempelzeit hängt nie davon ab. */
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (koord) => { akt.stempeln(p.id, tag, art, koord); setLaeuft(false); });
+    /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
+       Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
+    positionHolen(geoAn, (koord) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -16043,7 +16068,7 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
   /* Nur für Planung und Leitung (dieselbe Bedingung wie die Pflichtaufgabe unten); entprellt, in Häppchen (Nachtrag WP-22b). */
-  const schutzkonflikte = useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
+  const schutzkonflikte = useSchutzkonflikte(sitz, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
   const [alles, setAlles] = useState(false);
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));
@@ -18096,6 +18121,8 @@ function leererMandant(name, branche, anschrift, kontakt) {
       wochenstunden: 40, ruhezeit: 11, maxFolge: 6, ausgleichsgrenze: 40,
       urlaubsanspruch: 30, pausenregel: "gesetzlich",
       planungsvorlauf: 28, aenderungsvorlauf: 4,
+      /* Planfreigabe (WP-23): Beschäftigte sehen Entwürfe nicht. */
+      planFreigabePflicht: true,
     },
 
     einheiten: [{ id: einheitId, name: "Schichtgruppe A", standortId,
@@ -20367,7 +20394,8 @@ function MHeute({ sitz, akt, setTab, oeffnen }) {
             {t.abwesenheit ? abwArt(t.abwesenheit.art).label : "Heute frei"}</div>
           <div style={{ fontSize: 14.5, color: C.dim }}>
             {t.abwesenheit ? `bis ${fDatum(t.abwesenheit.bis)}`
-              : morgenDa ? `Nächster Dienst morgen: ${morgenDa.name} ab ${morgenDa.start}` : "Auch morgen kein Dienst."}
+              : morgenDa ? `Nächster Dienst morgen: ${morgenDa.name} ab ${morgenDa.start}`
+                : morgen.quelle === "entwurf" ? "Der Plan für morgen ist noch nicht veröffentlicht." : "Auch morgen kein Dienst."}
           </div>
         </MKarte>)}
 
@@ -20429,7 +20457,8 @@ function MStempel({ sitz, akt, vorgang }) {
   const [laeuft, setLaeuft] = useState(false);
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
-    positionHolen(geoAn, (k) => { akt.stempeln(p.id, tag, art, k); setLaeuft(false); });
+    /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
+    positionHolen(geoAn, (k) => { Promise.resolve(akt.stempeln(p.id, tag, art, k)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -21582,7 +21611,9 @@ function OfflineSchalter({ sitz, akt }) {
 function GeoSchalter({ sitz, akt }) {
   const e = sitz.mandant.einstellungen || {};
   const an = e.geoPruefung === true;
+  const pflicht = an && e.geoModus === "pflicht";
   const [geprueft, setGeprueft] = useState(false);
+  const [modusGeprueft, setModusGeprueft] = useState(false);
   const durch = e.geoPruefungAktiviertVon
     ? (sitz.mandant.personen.find((x) => String(x.id) === String(e.geoPruefungAktiviertVon)) || {}) : null;
   return (
@@ -21594,6 +21625,24 @@ function GeoSchalter({ sitz, akt }) {
         ihrer Einheit ist. Gespeichert werden das Ergebnis, die Entfernung grob gerundet und die Messgenauigkeit —
         keine Koordinate, kein Verlauf. Die Arbeitszeit wird immer erfasst, auch ohne Position oder außerhalb des
         Umkreises.
+        {an && (
+          <div style={{ marginTop: 14, color: C.text }}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>Prüfmodus: {pflicht ? "verpflichtend" : "Hinweis"}</div>
+            <div style={{ color: C.dim }}>
+              {pflicht
+                ? "Ein Stempel, dessen Ort nicht bestätigt ist (außerhalb, ohne Position, nicht bewertbar), bekommt die Markierung „Ort nicht bestätigt“ und geht in die Klärung der Leitung. Die Arbeitszeit wird trotzdem erfasst."
+                : "Das Ergebnis wird gespeichert und angezeigt; es entsteht keine Markierung."}
+              {" "}Beim Außendienst gibt es keinen festen Ort — dort wird nichts gemessen.
+            </div>
+            <div style={{ marginTop: 10, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {pflicht ? <Btn onClick={() => akt.setzeGeoModus("hinweis")}>Auf Hinweis zurückstellen</Btn> : (<>
+                <label style={{ display: "flex", gap: 8, alignItems: "flex-start", maxWidth: 560 }}>
+                  <input type="checkbox" checked={modusGeprueft} onChange={(x) => setModusGeprueft(x.target.checked)} />
+                  <span>{GEO_MODUS_TEXT}</span>
+                </label>
+                <Btn disabled={!modusGeprueft} onClick={() => { akt.setzeGeoModus("pflicht"); setModusGeprueft(false); }}>Verpflichtend stellen</Btn></>)}
+            </div>
+          </div>)}
         {an && e.geoPruefungAktiviertAm && (
           <div style={{ marginTop: 10, ...NUM }}>Eingeschaltet am {fDatum(String(e.geoPruefungAktiviertAm).slice(0, 10))}
             {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
@@ -21605,6 +21654,57 @@ function GeoSchalter({ sitz, akt }) {
             </label>
             <Btn kind="primary" disabled={!geprueft} onClick={() => { akt.setzeGeoPruefung(true); setGeprueft(false); }}>
               Einschalten</Btn></>)}
+        </div>
+      </div>
+    </Card>);
+}
+
+/**
+ * Einsatzorte (WP-20): Orte außerhalb der Standorte — Kunde, Objekt, Baustelle —, auf die sich die
+ * Standortprüfung einer Dienstart beziehen kann. Sie haben keinen Einfluss auf Preis oder Feiertage;
+ * Koordinate und Umkreis sehen nur Planung und Leitung, der Server entscheidet über den Stempel.
+ */
+function Einsatzorte({ sitz, akt }) {
+  const m = sitz.mandant;
+  const liste = m.einsatzorte || [];
+  const [name, setName] = useState("");
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill>{liste.length}</Pill>}>Einsatzorte</CardHead>
+      <div style={{ padding: 22, display: "grid", gap: 12 }}>
+        <div style={{ fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+          Ein Einsatzort ist ein Ziel für Dienstarten ohne festen Standort der Einheit — etwa ein Kunde oder eine
+          Baustelle. Die Dienstart wählt ihn unter „Standortprüfung bezieht sich auf“. Gespeichert wird beim Stempeln
+          nur das Ergebnis und eine grobe Abstandsklasse, nie eine Koordinate. Bitte als Bezeichnung keinen
+          Personennamen verwenden.
+        </div>
+        {liste.map((o) => {
+          const verwendet = (m.dienstarten || []).filter((d) => d.ortModus === "einsatzort" && d.einsatzortId === o.id);
+          return (
+            <div key={o.id} className="karte-still" style={{ borderRadius: "var(--r)", padding: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12 }}>
+                <Field label="Bezeichnung"><Inp value={o.name} onChange={(e) => akt.setzeEinsatzort(o.id, { name: e.target.value })} /></Field>
+                <GeoZahl label="Breitengrad" wert={o.lat} hinweis="−90 bis 90"
+                  gueltig={(x) => koordinateGueltig(x, 0)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lat: x })} />
+                <GeoZahl label="Längengrad" wert={o.lon} hinweis="−180 bis 180"
+                  gueltig={(x) => koordinateGueltig(0, x)} onCommit={(x) => akt.setzeEinsatzort(o.id, { lon: x })} />
+                <GeoZahl label="Umkreis in Metern" wert={o.radius} hinweis={`${RADIUS_MIN} bis ${RADIUS_MAX}`}
+                  gueltig={radiusGueltig} onCommit={(x) => akt.setzeEinsatzort(o.id, { radius: x })} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                {koordinateGueltig(o.lat, o.lon) && radiusGueltig(o.radius ?? RADIUS_VORGABE)
+                  ? <Pill size="sm" tone="ok">Prüfung möglich</Pill>
+                  : <Pill size="sm">Ohne Koordinate „nicht bewertbar“</Pill>}
+                {verwendet.length > 0 && <Pill size="sm">verwendet von {verwendet.map((d) => d.name).join(", ")}</Pill>}
+                <span style={{ flex: 1 }} />
+                <Btn size="sm" kind="danger" disabled={verwendet.length > 0} onClick={() => akt.loescheEinsatzort(o.id)}>Entfernen</Btn>
+              </div>
+            </div>);
+        })}
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Field label="Neuer Einsatzort" style={{ flex: "1 1 220px" }}>
+            <Inp value={name} placeholder="Baustelle Hafenstraße" onChange={(e) => setName(e.target.value)} /></Field>
+          <Btn kind="primary" disabled={name.trim().length < 2} onClick={() => { akt.einsatzortAnlegen(name.trim()); setName(""); }}>Anlegen</Btn>
         </div>
       </div>
     </Card>);
@@ -21639,6 +21739,39 @@ function JugendschutzSchalter({ sitz, akt }) {
         <div style={{ marginTop: 14 }}>
           <Btn kind={an ? undefined : "primary"} onClick={() => akt.setzeJugendMehrschichtig(!an)}>
             {an ? "Nicht mehr als mehrschichtig führen" : "Als mehrschichtigen Betrieb hinterlegen"}</Btn>
+        </div>
+      </div>
+    </Card>);
+}
+
+/**
+ * Planfreigabe als Pflicht (WP-23). Eingeschaltet (oder sobald ein Monat freigegeben ist) sehen
+ * Beschäftigte die Einteilungen eines nicht freigegebenen Monats nicht — sie sehen dort „noch nicht
+ * veröffentlicht“. Schalten darf, wer org.edit hat; wann und von wem, setzt der Server.
+ */
+function PlanFreigabeSchalter({ sitz, akt }) {
+  const m = sitz.mandant;
+  const e = m.einstellungen || {};
+  const pflicht = planFreigabePflicht(m);
+  const wirkt = planFreigabeAktiv(m);
+  const durch = e.planFreigabePflichtGeaendertVon
+    ? (m.personen.find((x) => String(x.id) === String(e.planFreigabePflichtGeaendertVon)) || {}) : null;
+  return (
+    <Card style={{ marginBottom: 20 }}>
+      <CardHead right={<Pill tone={wirkt ? "ok" : "warn"}>{wirkt ? "Entwürfe verborgen" : "Beschäftigte sehen Entwürfe"}</Pill>}>
+        Planfreigabe</CardHead>
+      <div style={{ padding: 22, fontSize: 13.5, color: C.dim, lineHeight: 1.55, maxWidth: 760 }}>
+        Ein Monatsplan ist ein Entwurf, bis er freigegeben wird. Ist die Planfreigabe eingeschaltet, sehen
+        Beschäftigte die Einteilungen eines nicht freigegebenen Monats nicht — dort steht „noch nicht
+        veröffentlicht“. Heute und frühere Tage zählen nie als Entwurf. Betriebsrat, Schichtverantwortung und
+        Planung sehen weiter alles. {!pflicht && wirkt && "Die Pflicht ist aus, wirkt aber, weil schon ein Monat freigegeben wurde. "}
+        {!wirkt && "Solange sie aus ist und noch kein Monat freigegeben wurde, sehen Beschäftigte auch Entwürfe."}
+        {e.planFreigabePflichtGeaendertAm && (
+          <div style={{ marginTop: 10, ...NUM }}>Zuletzt geändert am {fDatum(String(e.planFreigabePflichtGeaendertAm).slice(0, 10))}
+            {durch && (durch.vorname || durch.nachname) ? ` von ${`${durch.vorname || ""} ${durch.nachname || ""}`.trim()}` : ""}.</div>)}
+        <div style={{ marginTop: 14 }}>
+          <Btn kind={pflicht ? undefined : "primary"} onClick={() => akt.setzePlanFreigabePflicht(!pflicht)}>
+            {pflicht ? "Planfreigabe ausschalten" : "Planfreigabe aktivieren"}</Btn>
         </div>
       </div>
     </Card>);
@@ -21918,6 +22051,10 @@ function Betrieb({ sitz, akt }) {
 
       <OfflineSchalter sitz={sitz} akt={akt} />
 
+      <Einsatzorte sitz={sitz} akt={akt} />
+
+      <PlanFreigabeSchalter sitz={sitz} akt={akt} />
+
       <JugendschutzSchalter sitz={sitz} akt={akt} />
 
       <Abschnitt sub="Name, Branche und Bundesland. Das Bundesland bestimmt die gesetzlichen Feiertage im ganzen Plan.">
@@ -22167,7 +22304,8 @@ const br = BRANCHEN.find((b) => b[0] === f.branche) || BRANCHEN[BRANCHEN.length 
     matrix: JSON.parse(JSON.stringify(MATRIX_STD)),
     einstellungen: { ruhezeit: f.ruhezeit || 11, maxFolge: f.maxFolge || 6, maxNachtFolge: 4,
       maxUrlaubJeEinheit: 3, sollWochenstunden: f.wochenstunden || 40,
-      ausgleichGrenze: f.ausgleichGrenze || 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24 },
+      ausgleichGrenze: f.ausgleichGrenze || 40, ausgleichFristMonate: 6, aufbewahrungMonate: 24,
+      planFreigabePflicht: true },
     standorte, einheiten, qualifikationen: quals, dienstarten,
     personen: [{ id: hauptId, vorname: (f.kontaktName || "Haupt Zugang").split(" ")[0],
       nachname: (f.kontaktName || "Haupt Zugang").split(" ").slice(1).join(" ") || "Zugang",
@@ -23404,6 +23542,27 @@ function AppInnen() {
       setzeOfflineVertrauen: (an) => mUpd((m) => ({ ...m,
         einstellungen: { ...(m.einstellungen || {}), offlineStempelVertrauen: !!an } }),
         an ? "Stempeln ohne Netz: Prüfung gelockert" : "Stempeln ohne Netz: wieder streng geprüft"),
+      /* Prüfmodus der Standortprüfung (WP-20): nur die Leitung; „pflicht" mit Bestätigung in derselben
+         Anfrage (Mitbestimmung), Wann/Wer setzt der Server. */
+      setzeGeoModus: (modus) => mUpd((m) => {
+        const e = { ...(m.einstellungen || {}), geoModus: modus };
+        if (modus === "pflicht") e.geoPruefungBestaetigt = true; else delete e.geoPruefungBestaetigt;
+        return { ...m, einstellungen: e };
+      }, modus === "pflicht" ? "Standortprüfung verpflichtend gestellt" : "Standortprüfung auf Hinweis gestellt"),
+      /* Einsatzorte (WP-20): getrennt von den Standorten. */
+      einsatzortAnlegen: (name) => mUpd((m) => ({ ...m,
+        einsatzorte: [...(m.einsatzorte || []), { id: uid("eo"), name, radius: RADIUS_VORGABE }] }), `Einsatzort „${name}“ angelegt`),
+      setzeEinsatzort: (id, felder) => mUpd((m) => ({ ...m,
+        einsatzorte: (m.einsatzorte || []).map((o) => o.id === id ? { ...o, ...felder } : o) }), null),
+      loescheEinsatzort: (id) => mUpd((m) => {
+        const n = (m.dienstarten || []).filter((d) => d.ortModus === "einsatzort" && d.einsatzortId === id).length;
+        if (n) { melde(`Der Einsatzort wird noch von ${n} Dienstart(en) verwendet.`); return m; }
+        return { ...m, einsatzorte: (m.einsatzorte || []).filter((o) => o.id !== id) };
+      }, "Einsatzort gelöscht"),
+      /* Planfreigabe als Pflicht (WP-23): nur org.edit; wann und von wem, setzt der Server. */
+      setzePlanFreigabePflicht: (an) => mUpd((m) => ({ ...m,
+        einstellungen: { ...(m.einstellungen || {}), planFreigabePflicht: !!an } }),
+        an ? "Planfreigabe aktiviert" : "Planfreigabe ausgeschaltet"),
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): org.edit oder pattern.edit;
          wann und von wem, setzt der Server. */
       setzeJugendMehrschichtig: (an) => mUpd((m) => ({ ...m,
@@ -25092,6 +25251,8 @@ function abmeldenMitHinweis() {
   if (n && typeof window !== "undefined" && typeof window.confirm === "function"
     && !window.confirm(`${n === 1 ? "Ein Stempel wartet" : `${n} Stempel warten`} noch auf das Netz. `
       + "Er bleibt auf diesem Gerät gespeichert und wird gesendet, sobald du dich wieder anmeldest. Trotzdem abmelden?")) return;
+  /* Gemerkte Schutzkonflikte gehören zur Sitzung (WP-22b): vor dem Abmelden leeren. */
+  vergissSchutzkonflikte();
   SP.abmelden();
   window.location.reload();
 }
@@ -25101,4 +25262,5 @@ function abmeldenMitHinweis() {
    Betriebe und Personen anlegt — damit die Prüfung echte Komponenten mit
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
-  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis };
+  istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };

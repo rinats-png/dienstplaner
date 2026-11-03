@@ -56,7 +56,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einsatzorte (`einsatzorte`: Name, Koordinate, Umkreis; WP-20) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -74,8 +75,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
-| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -279,6 +280,59 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
+²⁸ WP-20, Präzisierung der Zeilen „Stempeldaten, Ortsurteil“ und „Einsatzorte“, keine neue Spalte: **Einsatzorte und Prüfmodus.** Eine Dienstart
+kann einen eigenen Referenzort haben (`ortModus`: `standort` = Standort der Einheit, `einsatzort`, `aussendienst`). Der
+Server entscheidet; die Koordinate des Geräts ist nur Eingabe und wird weder gespeichert noch zurückgegeben. Gespeichert
+werden Status, Grund, Genauigkeit, Referenz (Art, Kennung, Name) und die **Abstandsklasse** (innerhalb, bis 1 km, bis 5 km,
+darüber); die auf 50/100 m gerundete Entfernung nur am Standort der Einheit, bei Einsatzorten nie. **Einsatzorte** liegen in
+`m.einsatzorte` (getrennt von Standorten, die Preis und Feiertage bestimmen); Koordinaten und Umkreis sehen nur Planung und
+Leitung (`sicht.mjs`: für Beschäftigte, Betriebsrat und Schichtverantwortung `WEG`). Der **Prüfmodus**
+(`einstellungen.geoModus`: `hinweis` = Vorgabe, `pflicht`) wirkt nur bei eingeschalteter Standortprüfung; schalten darf nur
+`org.edit`, „pflicht“ nur mit der Bestätigung zu Datenschutz und **Mitbestimmung** (technischer Nachweis, keine
+Einwilligung; Wann/Wer setzt der Server). „pflicht“ lehnt nie ab (E3): Ein Stempel mit nicht bestätigtem Ort bekommt die
+Markierung `ORT_PRUEFEN` für die Klärung durch die Leitung; beim Außendienst gibt es keinen Ort, also keine Markierung.
+Stempelergebnisse fremder Personen sehen weiter nur Leitung und Planung (`einstempeln` `NUR_EIGENE`, Schichtverantwortung
+und Betriebsrat ohne Zugriff). **Aufbewahrung:** Standort-Ergebnisse (`geoStart/-Ende`, `ortStart/-Ende`, `innerhalb…`,
+`geprueft…`) gehen mit der Frist der Gründe (`gruendeMonate`, Vorgabe 3 Monate) aus den Stempeln; Zeiten und Kennzeichen
+bleiben bis zur Plandatenfrist (`aufbewahrung.mjs`). Geprüft in `pruefungen/geo-einsatzorte*.test.js`.
+**Offenes Risiko (Review M1): Planung kann bestätigten Pflichtmodus über Dienstart-Zuordnung/Koordinaten aushebeln.** Dienstarten
+und Einsatzorte pflegen Planung und Leitung (`pattern.edit`/`org.edit`); die Planung kann dadurch den Referenzort einer
+Dienstart (`ortModus`, `einsatzortId`) oder Koordinate und Umkreis eines Einsatzorts ändern und so die Prüfung des
+Pflichtmodus umgehen. Das Recht bleibt unverändert (Entscheidung der Leitung offen); die Änderung trägt Wann/Wer vom Server
+(`ortGeaendertAm/-Von` an der Dienstart, `einsatzorteGeaendertAm/-Von` am Betrieb). Details: `docs/acc45/wp20-nachweis.md`.
+²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
+ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen
+eines nicht freigegebenen Monats nach heute nicht (`planOhneEntwurf`, `server/lib/sicht.mjs`) — weder die eigenen noch die
+anderer. Sichtbar sind die Einteilungen freigegebener Monate und jeder Tag bis einschließlich heute (Berliner Zeit):
+Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heute“, das Einstempeln und die Ist-Ansichten
+brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
+den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
+vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
+Dasselbe gilt für `postenPlan` und `bereichsPlan` (Einteilungen „Person|Tag“) und die daraus abgeleiteten `objekte`: Für
+Beschäftigte gehen nur die eigenen Einteilungen freigegebener Monate und vergangener Tage hinaus (`eigenOhneEntwurf`,
+`objekteEigene` in `sicht.mjs`); sonst verriete ein Objekt oder ein Bereich die Entwurfsplanung. Die Zeile „Plan“
+(`abweichungen`) ist für Beschäftigte VOLL und wird nur über diese Fußnote gefiltert; ihre Zellen in den Zeilen Posten und
+Bereiche tragen deshalb den Verweis ²⁷.
+**Übergangsregel und ihre Kehrseite:** Der Filter wirkt nur, solange der Betrieb die Pflicht eingeschaltet hat oder mindestens
+einen Monat freigegeben hat. Nimmt die Planung in einem Betrieb **ohne** Pflicht die letzte Freigabe zurück, ist der Filter
+danach aus und Beschäftigte sehen wieder Entwürfe. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
+bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. Ein Zurücknehmen von Freigaben gibt es heute nicht
+(künftiges Feature, siehe Nachweis).
+Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
+**Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
+oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen
+Beschäftigte eines bestehenden Betriebs ohne Freigaben nach dem Ausrollen keinen Einsatz mehr. Den Schalter setzt nur
+`org.edit` (Leitung, Kundenrolle); Form und Wann/Wer prüft und setzt der Server (`planFreigabeZusammen`,
+`planFreigabePflichtGeaendertAm/Von`). Neue Betriebe (Selbststart, Erstbefüllung, Provisionierung, Testräume) starten
+mit `true`. Solange der Filter bei einem bestehenden Betrieb aus ist, bekommt die Leitung die dringende Aufgabe
+„Planfreigabe aktivieren“. Die abgeleitete Antwortmarke `sichtEntwuerfe` (nie gespeichert) sagt der Oberfläche, dass
+der Filter wirkt; sie zeigt dann „noch nicht veröffentlicht“ statt eines aus der Schichtfolge gerechneten Dienstes.
+**Bewusst nicht gefiltert — Selbstauskunft (Art. 15):** `auskunft.mjs` liefert die eigenen Abweichungen und den Plan der
+nächsten 62 Tage auch aus Entwurfsmonaten. Es sind die eigenen Daten der Person, der Auskunftsanspruch ist nicht
+auf freigegebene Stände beschränkt (Alternative im Nachweis `docs/acc45/wp23-nachweis.md`). **Offen:** Der
+Kalender-Feed (`kalender.mjs`) hat keine Serversperre — der Client rechnet die Termine —, das ist ein Folgepunkt von
+WP-24. Der Betriebsrat behält den ganzen Plan (fachlich offen, siehe Nachweis). Geprüft in
+`pruefungen/entwuerfe.test.js` und `pruefungen/entwuerfe-oberflaeche.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

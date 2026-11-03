@@ -14,6 +14,7 @@
    erlaubt, niemals mehr.
    ========================================================================== */
 
+import { GEO_MODUS_TEXT } from "./geo.mjs";
 import { erfassungZusammen, heuteBerlin } from "./zeiterfassung.mjs";
 import { RANG, pruefeRollenwechsel } from "./rollenvergabe.mjs";
 import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
@@ -759,7 +760,8 @@ function einzigerEigenerBetrieb(uebermittelt, id) {
    Anfrage und wird nie gespeichert. Ausschalten und „bleibt an" brauchen
    keine Bestätigung. Eine juristische Einwilligung ist das nicht — nur der
    technische Nachweis, dass die Leitung die Freigabe bestätigt hat. */
-const GEO_SCHALTER = ["geoPruefung", "geoPruefungAktiviertAm", "geoPruefungAktiviertVon"];
+const GEO_SCHALTER = ["geoPruefung", "geoPruefungAktiviertAm", "geoPruefungAktiviertVon",
+  "geoModus", "geoModusGeaendertAm", "geoModusGeaendertVon"];
 export const GEO_BESTAETIGUNG_TEXT = "Datenschutz und gegebenenfalls Mitbestimmung für diese Funktion wurden betrieblich geprüft.";
 function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
   if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
@@ -779,6 +781,20 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
     if (gewuenscht) {
       e.geoPruefungAktiviertAm = new Date().toISOString();
       e.geoPruefungAktiviertVon = sitzung.person === undefined ? null : sitzung.person;
+    }
+  }
+  /* Prüfmodus (WP-20): hinweis (Vorgabe) oder pflicht. Nur org.edit; „pflicht" verlangt dieselbe
+     Bestätigung wie das Einschalten, mit dem Hinweis auf die Mitbestimmung. Wann und von wem setzt
+     der Server. Abwesend oder null: bleibt, wie es ist. */
+  const wunsch = neuM.einstellungen.geoModus;
+  if (darf(rolle, "org.edit") && wunsch !== undefined && wunsch !== null) {
+    if (wunsch !== "hinweis" && wunsch !== "pflicht")
+      return { grund: "Der Prüfmodus der Standortprüfung muss „hinweis“ oder „pflicht“ sein." };
+    if (wunsch !== (altE.geoModus === "pflicht" ? "pflicht" : "hinweis")) {
+      if (wunsch === "pflicht" && !bestaetigt) return { grund: `Die verpflichtende Standortprüfung lässt sich nur mit der Bestätigung einstellen: „${GEO_MODUS_TEXT}"` };
+      e.geoModus = wunsch;
+      e.geoModusGeaendertAm = new Date().toISOString();
+      e.geoModusGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
     }
   }
   return { mandant: { ...neuM, einstellungen: e } };
@@ -805,6 +821,46 @@ function offlineSchalterZusammen(altM, neuM, sitzung, rolle) {
     e.offlineStempelVertrauenVon = sitzung.person === undefined ? null : sitzung.person;
   }
   return { ...neuM, einstellungen: e };
+}
+
+/* Ortsangaben von Dienstarten und Einsatzorte (WP-20, Review M1). Wer Dienstarten pflegt (org.edit oder
+   pattern.edit, also auch die Planung), bestimmt mittelbar den Referenzort der Standortprüfung — auch bei
+   bestätigtem Pflichtmodus. Das Recht bleibt; nachvollziehbar wird es durch Wann/Wer, die der Server setzt:
+   ortGeaendertAm/-Von an der Dienstart (ortModus, einsatzortId), einsatzorteGeaendertAm/-Von am Betrieb
+   (Liste der Einsatzorte). Mitgeschickte Werte zählen nie; ohne Änderung bleibt der gespeicherte Vermerk. */
+function ortAngabenZusammen(altM, neuM, sitzung) {
+  if (!neuM || typeof neuM !== "object") return neuM;
+  const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+  const jetzt = new Date().toISOString();
+  const aus = { ...neuM };
+  const altD = new Map((Array.isArray(altM && altM.dienstarten) ? altM.dienstarten : [])
+    .filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+  if (Array.isArray(neuM.dienstarten)) {
+    aus.dienstarten = neuM.dienstarten.map((d) => {
+      if (!d || typeof d !== "object") return d;
+      const vorher = altD.get(String(d.id));
+      const neu = { ...d };
+      delete neu.ortGeaendertAm; delete neu.ortGeaendertVon;
+      const geaendert = vorher
+        ? !Object.is(vorher.ortModus, d.ortModus) || !Object.is(vorher.einsatzortId, d.einsatzortId)
+        : d.ortModus !== undefined || d.einsatzortId !== undefined;
+      if (geaendert) { neu.ortGeaendertAm = jetzt; neu.ortGeaendertVon = wer; }
+      else if (vorher) {
+        if (hat(vorher, "ortGeaendertAm")) neu.ortGeaendertAm = vorher.ortGeaendertAm;
+        if (hat(vorher, "ortGeaendertVon")) neu.ortGeaendertVon = vorher.ortGeaendertVon;
+      }
+      return neu;
+    });
+  }
+  delete aus.einsatzorteGeaendertAm; delete aus.einsatzorteGeaendertVon;
+  const altO = altM && altM.einsatzorte;
+  if (hat(neuM, "einsatzorte") && !gleichJson(neuM.einsatzorte, altO) && !(altO === undefined && Array.isArray(neuM.einsatzorte) && neuM.einsatzorte.length === 0)) {
+    aus.einsatzorteGeaendertAm = jetzt; aus.einsatzorteGeaendertVon = wer;
+  } else if (altM && hat(altM, "einsatzorteGeaendertAm")) {
+    aus.einsatzorteGeaendertAm = altM.einsatzorteGeaendertAm;
+    if (hat(altM, "einsatzorteGeaendertVon")) aus.einsatzorteGeaendertVon = altM.einsatzorteGeaendertVon;
+  }
+  return aus;
 }
 
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
@@ -837,6 +893,36 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   if (alt && wert(alt) === neu.mehrschichtig) return behalten();
   e.jugendschutz = { mehrschichtig: neu.mehrschichtig, geaendertAm: new Date().toISOString(),
     geaendertVon: sitzung.person === undefined ? null : sitzung.person };
+  return { mandant: { ...neuM, einstellungen: e } };
+}
+
+/* Planfreigabe als Pflicht (WP-23): `einstellungen.planFreigabePflicht`.
+   Eingeschaltet (oder mit mindestens einer Freigabe) sehen Beschäftigte die
+   Einteilungen eines nicht freigegebenen Monats nicht (planfreigabe.mjs,
+   sicht.mjs). Schalten darf, wer org.edit hat (Leitung, Kundenrolle); für alle
+   anderen — auch die Planung — bleibt der gespeicherte Wert. Erwartet wird
+   true oder false, alles andere weist der Server ab. Wann und von wem, setzt
+   der Server; mitgeschickte Werte dafür zählen nicht. Fehlt das Feld in der
+   Übermittlung, bleibt der gespeicherte Wert (ein Client, der `einstellungen`
+   ohne das Feld zurückschickt, schaltet nichts aus). */
+const PLANFREIGABE_ZEIT = ["planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"];
+function planFreigabeZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return { mandant: neuM };
+  const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  const e = { ...neuM.einstellungen };
+  const zurueck = () => {
+    if ("planFreigabePflicht" in altE) e.planFreigabePflicht = altE.planFreigabePflicht; else delete e.planFreigabePflicht;
+    for (const k of PLANFREIGABE_ZEIT) { if (k in altE) e[k] = altE[k]; else delete e[k]; }
+    return { mandant: { ...neuM, einstellungen: e } };
+  };
+  const geschickt = Object.prototype.hasOwnProperty.call(e, "planFreigabePflicht") ? e.planFreigabePflicht : altE.planFreigabePflicht;
+  if (!darf(rolle, "org.edit")) return zurueck();
+  if (geschickt === undefined || geschickt === null) return zurueck();
+  if (typeof geschickt !== "boolean") return { grund: "Planfreigabe: erwartet wird true oder false." };
+  if (geschickt === (altE.planFreigabePflicht === true)) return zurueck();
+  e.planFreigabePflicht = geschickt;
+  e.planFreigabePflichtGeaendertAm = new Date().toISOString();
+  e.planFreigabePflichtGeaendertVon = sitzung.person === undefined ? null : sitzung.person;
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
@@ -1131,10 +1217,16 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       geschickt = schalter.mandant;
       /* Offline-Stempel vertrauen (WP-07): nur org.edit, Wann/Wer vom Server. */
       geschickt = offlineSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      /* Ortsangaben der Dienstarten und Einsatzorte: Wann/Wer vom Server (WP-20, M1). */
+      geschickt = ortAngabenZusammen(ort.betrieb, geschickt, sitzung);
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit. */
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Planfreigabe als Pflicht (WP-23): nur org.edit; Form und Wann/Wer vom Server. */
+      const freigabe = planFreigabeZusammen(ort.betrieb, geschickt, sitzung, rolle);
+      if (freigabe.grund) return { verweigert: freigabe.grund };
+      geschickt = freigabe.mandant;
       /* Branchenmodule (WP-19): Schalter und Parameter nur mit org.edit, Form und Wann/Wer vom Server. */
       const module = branchenmoduleZusammen(ort.betrieb, geschickt, sitzung, darf(rolle, "org.edit"));
       if (module.grund) return { verweigert: module.grund };

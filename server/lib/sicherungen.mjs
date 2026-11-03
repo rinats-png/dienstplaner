@@ -20,6 +20,7 @@ import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
 import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
+import { planFreigabeAktiv } from "./planfreigabe.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -208,6 +209,53 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   for (const feld of [...VERTRAGSFELDER, ...BETREIBERSTAMM]) {
     if (feld in alt) zurueck[feld] = alt[feld];
     else delete zurueck[feld];
+  }
+
+  /* Planfreigabe (WP-23): Die Pflicht samt Wann/Wer gilt weiter, wie sie heute ist — eine alte
+     Sicherung (vor WP-23 oder vor der Aktivierung) schaltet den Entwurfsschutz nicht still ab.
+     Wirkte der Filter bisher nur über Freigaben und hat die Sicherung keine, bleiben die
+     jetzigen Freigaben (Vereinigung): sonst sähen Beschäftigte danach wieder Entwürfe. */
+  const altE = alt.einstellungen && typeof alt.einstellungen === "object" ? alt.einstellungen : {};
+  if ("planFreigabePflicht" in altE) {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of ["planFreigabePflicht", "planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"]) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    zurueck.einstellungen = z;
+  }
+  if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
+    zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
+      ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
+  }
+
+  /* Wann/Wer der Ortsangaben (WP-20, N8): Die Liste der Einsatzorte und die Ortsmodi der Dienstarten kommen aus
+     der Sicherung — mit deren Vermerk. Fehlt er (Sicherung vor dem Vermerk) und der Stand ändert sich dadurch,
+     ist die Wiederherstellung selbst die Änderung: jetzt, durch die zurückspielende Person. Bleibt der Stand
+     gleich, gilt der gespeicherte Vermerk weiter. */
+  {
+    const jetztIso = heute.toISOString();
+    const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+    const gleichJ = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    delete zurueck.einsatzorteGeaendertAm; delete zurueck.einsatzorteGeaendertVon;
+    if ("einsatzorteGeaendertAm" in aus) {
+      zurueck.einsatzorteGeaendertAm = aus.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in aus) zurueck.einsatzorteGeaendertVon = aus.einsatzorteGeaendertVon;
+    } else if (!gleichJ(aus.einsatzorte, alt.einsatzorte)) {
+      zurueck.einsatzorteGeaendertAm = jetztIso; zurueck.einsatzorteGeaendertVon = wer;
+    } else {
+      if ("einsatzorteGeaendertAm" in alt) zurueck.einsatzorteGeaendertAm = alt.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in alt) zurueck.einsatzorteGeaendertVon = alt.einsatzorteGeaendertVon;
+    }
+    const altD = new Map((Array.isArray(alt.dienstarten) ? alt.dienstarten : []).filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+    if (Array.isArray(zurueck.dienstarten)) {
+      zurueck.dienstarten = zurueck.dienstarten.map((d) => {
+        if (!d || typeof d !== "object" || "ortGeaendertAm" in d) return d;
+        const v = altD.get(String(d.id));
+        const geaendert = v ? !Object.is(v.ortModus, d.ortModus) || !Object.is(v.einsatzortId, d.einsatzortId)
+          : d.ortModus !== undefined || d.einsatzortId !== undefined;
+        return geaendert ? { ...d, ortGeaendertAm: jetztIso, ortGeaendertVon: wer } : d;
+      });
+    }
   }
 
   /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen

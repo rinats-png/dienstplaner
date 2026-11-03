@@ -187,3 +187,35 @@ describe("Rechtematrix: oberste Ebene und Mandantentrennung", () => {
     expect(PFADE["VA-SK"]().id).toBe("m1");
   });
 });
+
+/* WP-23, Fußnote ²⁷: Die Sonde oben läuft ohne Planfreigabe (der Filter ist aus, altes Verhalten). Hier
+   dieselbe Sonde mit eingeschalteter Pflicht und einem Entwurf weit in der Zukunft: Beschäftigte bekommen
+   die Einteilungen eines nicht freigegebenen Monats nicht, alle anderen Rollen schon. */
+describe("Rechtematrix: Entwurf bei eingeschalteter Planfreigabe (²⁷)", () => {
+  const mitPflicht = () => {
+    const b = bestand();
+    const m = b.mandanten[0];
+    m.einstellungen = { ...(m.einstellungen || {}), planFreigabePflicht: true };
+    m.abweichungen = { ...m.abweichungen, "b1|2099-01-01": "MK-ENTWURF", "m0|2099-01-02": "MK-ENTWURF-EIGEN" };
+    m.postenPlan = { "m0|2099-01-02": "MK-ENTWURF-POSTEN" };
+    m.bereichsPlan = { "m0|2099-01-02": "MK-ENTWURF-BEREICH" };
+    return b;
+  };
+  const ist = (marker) => Object.fromEntries(["MA", "BR", "SV", "PL", "LT"]
+    .map((s) => [s, JSON.stringify(bestandFuerRolle(mitPflicht(), SITZ[s])).includes(marker) ? 1 : 0]));
+  it("fremder Entwurf: nur BR, SV, Planung, Leitung", () => {
+    expect(ist("MK-ENTWURF\"")).toMatchObject({ MA: 0, BR: 1, PL: 1, LT: 1 });
+  });
+  it("eigener Entwurf: Beschäftigte nicht einmal die eigene Einteilung", () => {
+    expect(ist("MK-ENTWURF-EIGEN")).toMatchObject({ MA: 0, BR: 1, PL: 1, LT: 1 });
+  });
+  it("Posten- und Bereichsplan im Entwurf: Beschäftigte nicht, Betriebsrat nie (eigene Zeilen WEG)", () => {
+    expect(ist("MK-ENTWURF-POSTEN")).toMatchObject({ MA: 0, BR: 0, PL: 1, LT: 1 });
+    expect(ist("MK-ENTWURF-BEREICH")).toMatchObject({ MA: 0, BR: 0, PL: 1, LT: 1 });
+  });
+  it("ohne Pflicht und ohne Freigabe (Betrieb wie bisher) bleibt alles sichtbar", () => {
+    const b = bestand();
+    b.mandanten[0].abweichungen["m0|2099-01-02"] = "MK-ENTWURF-EIGEN";
+    expect(JSON.stringify(bestandFuerRolle(b, SITZ.MA))).toContain("MK-ENTWURF-EIGEN");
+  });
+});

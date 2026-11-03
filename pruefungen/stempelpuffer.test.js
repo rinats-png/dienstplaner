@@ -155,9 +155,13 @@ describe("Senden: Reihenfolge, Wiederholung, Quittung", () => {
     const sp = PUF.speicherFluechtig();
     await PUF.erfassen(sp, { art: "start", inhaber: "i1" });
     const t = 5_000_000;
-    await PUF.abarbeiten(sp, "i1", async () => ({ status: 429, daten: { fehler: "zu viele Anfragen" }, warteMs: PUF.retryAfterMs("30") }), { jetzt: () => t });
+    await PUF.abarbeiten(sp, "i1", async () => ({ status: 429, daten: { fehler: "zu viele Anfragen" }, warteMs: PUF.retryAfterMs("30") }), { jetzt: () => t, zufall: () => 0 });
     const [ev] = await sp.alle();
     expect([ev.zustand, ev.naechsterVersuchAm]).toEqual(["wartet", t + 30000]);
+    /* Streuung (WP-47, M4): höchstens 20 % länger, nie kürzer als Retry-After. */
+    await sp.setzen({ ...ev, naechsterVersuchAm: 0 });
+    await PUF.abarbeiten(sp, "i1", async () => ({ status: 429, daten: null, warteMs: 30000 }), { jetzt: () => t, zufall: () => 1 });
+    expect((await sp.alle())[0].naechsterVersuchAm).toBe(t + 36000);
     for (const status of [503, 500, 502, 0]) {
       await sp.setzen({ ...ev, naechsterVersuchAm: 0 });
       await PUF.abarbeiten(sp, "i1", async () => ({ status, daten: null }), { jetzt: () => t });
@@ -338,7 +342,7 @@ describe("Abnahme: Flugmodus → Stempel → Neustart → Netz: genau ein Stempe
     const nochmal = await senden({ ...ev, versuche: 3 });
     expect([nochmal.status, nochmal.daten.wiederholt]).toEqual([200, true]);
     expect(Object.keys((await B.bestandLesen(laden(), raum)).bestand.mandanten[0].einstempeln)).toHaveLength(1);
-  });
+  }, 30000);                                                       // echte Serverfunktion, Sperren und Ablage
 });
 
 /* ---------------------- Auflagen aus dem Opus-Review ---------------------- */
