@@ -116,9 +116,14 @@ describe("Gerät: Grund der fehlenden Position (B4, B16 „Geo Gerät“)", () =
     const rumpf = rumpfFuer(ev);
     expect([rumpf.positionGrund, rumpf.lat, rumpf.lon]).toEqual(["timeout", null, null]);
     const frei = await erfassen(speicher, { art: "start", koord: null, positionGrund: "Maxi Muster", inhaber: "i1", kennung: () => "k2" });
+    expect(frei.positionGrund).toBeUndefined();
     expect(rumpfFuer(frei).positionGrund ?? null).toBeNull();
     const mit = await erfassen(speicher, { art: "start", koord: { lat: 1, lon: 2, accuracy: 5 }, positionGrund: "timeout", inhaber: "i1", kennung: () => "k3" });
+    expect(mit.positionGrund).toBeUndefined();
     expect(rumpfFuer(mit).positionGrund ?? null).toBeNull();
+    /* Auch ein von außen eingeschleuster Wert (älterer Puffer, Manipulation) geht nie hinaus. */
+    expect(rumpfFuer({ ...frei, positionGrund: "Maxi Muster" }).positionGrund ?? null).toBeNull();
+    expect(rumpfFuer({ ...mit, positionGrund: "timeout" }).positionGrund ?? null).toBeNull();
   });
 });
 
