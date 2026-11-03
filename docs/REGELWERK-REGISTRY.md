@@ -9,7 +9,9 @@ Code:
 | Datei | Aufgabe |
 |---|---|
 | `src/regelregister.js` | Metadaten aller Regeln (Registry Light), Prüfstatus, Gültigkeit, Stufenbegrenzung |
-| `src/regelbaukasten.js` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel |
+| `server/lib/regelbaukasten.mjs` | Rechnet neue Regeln: Zählregel, Grenzregel, Besetzungsregel, Paarregel — für Oberfläche und Server (seit WP-19; `src/regelbaukasten.js` reicht weiter und löst Kennungen über das ganze Register auf) |
+| `server/lib/regelgeltung.mjs` | Prüfstatus, Folgen, Geltung, Wirkung, Stufendeckel — eine Fassung, das Register reicht sie weiter (WP-19) |
+| `server/lib/branchenkatalog.mjs`, `server/lib/branchenbefunde.mjs` | Branchenregeln (vorläufig, höchstens Hinweis) und ihre Befunde in `einteilungsBefunde` — nur aktive Module, Befundart `branche` sperrt nie (WP-19) |
 | `src/beschaeftigung.js` | Beschäftigungsmodelle, an die sich Regeln binden |
 | `src/regelwerk.js` | Bestand: Konstanten, `REGELSTAND`, Besetzungsprüfungen; reicht die Schutzprüfung weiter |
 | `server/lib/schutzpruefung.mjs` | die eine Schutzprüfung (`schutzEinsatz`) samt Zeit-Helfern — für Oberfläche und Server (WP-11) |

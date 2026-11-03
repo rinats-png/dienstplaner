@@ -48,20 +48,17 @@
 import { REGELSTAND, HOECHST_TAG, DURCHSCHNITT_TAG, AUSGLEICH_WOCHEN, NACHT_TAGE_SCHWELLE,
   VORSORGE_MONATE, VORSORGE_MONATE_AB_50, FREIE_SONNTAGE_MIN, ERSATZ_TAGE_SONNTAG,
   ERSATZ_TAGE_FEIERTAG } from "./regelwerk.js";
-import { stufeRang, RUHEZEIT_GESETZ } from "./warnstufen.js";
+import { RUHEZEIT_GESETZ } from "./warnstufen.js";
+import { PRUEFSTATUS, FOLGEN, gilt, wirkung, begrenzeStufeRegel } from "../server/lib/regelgeltung.mjs";
 import { GRENZEN as FAHR_GRENZEN } from "./fahrzeit.js";
 import { MINDESTERFUELLUNG as PPP_MINDEST } from "./ppprl.js";
 import { TARIFWERKE } from "./tarifwerke.js";
 import { REGELN_BRANCHEN } from "../server/lib/branchenkatalog.mjs";
 
-/** Prüfstatus und was er der Regel erlaubt. wirkung: "voll" | "hinweis" | "keine". */
-export const PRUEFSTATUS = {
-  verified: { label: "geprüft", wirkung: "voll" },
-  legacy_verified: { label: "Bestand, geprüft", wirkung: "voll" },
-  provisional: { label: "vorläufig", wirkung: "hinweis" },
-  watchlist: { label: "beobachtet", wirkung: "keine" },
-  deprecated: { label: "abgelöst", wirkung: "keine" },
-};
+/* PRUEFSTATUS, FOLGEN, gilt, wirkung und der Stufendeckel stehen seit WP-19 in
+   server/lib/regelgeltung.mjs (der Regelbaukasten rechnet auch auf dem Server);
+   hier unverändert weitergereicht. */
+export { PRUEFSTATUS, FOLGEN, gilt, wirkung };
 
 /** Regelarten. Die ersten vier rechnet der Regelbaukasten heute; die übrigen sind geplant (PLAN, 5.2). */
 export const REGELARTEN = {
@@ -78,8 +75,6 @@ export const REGELARTEN = {
   bestandsregel: "Bestandsprüfung",
 };
 
-/** Folgen. „keine" heißt: nur anzeigen. */
-export const FOLGEN = ["keine", "bestaetigung", "nachweis", "berechnung", "bericht", "freigabe"];
 
 const OHNE_SCOPE = { branche: null, bundesland: null, beschaeftigungsmodell: null };
 
@@ -407,25 +402,6 @@ export function rechtsquelleTabelle() {
    -------------------------------------------------------------------------- */
 
 /**
- * Gilt die Regel an diesem Tag? Ohne Datum gilt nur, was keine Grenzen hat —
- * Unklares gilt im Zweifel nicht.
- */
-export function gilt(r, datum) {
-  if (!r) return false;
-  const hatGrenze = !!(r.gueltigAb || r.gueltigBis);
-  if (!datum) return !hatGrenze;
-  if (r.gueltigAb && datum < r.gueltigAb) return false;
-  if (r.gueltigBis && datum > r.gueltigBis) return false;
-  return true;
-}
-
-/** „voll", „hinweis" oder „keine" — was der Prüfstatus der Regel erlaubt. Unbekanntes wirkt nicht. */
-export function wirkung(r) {
-  const s = r && PRUEFSTATUS[r.pruefstatus];
-  return s ? s.wirkung : "keine";
-}
-
-/**
  * Begrenzt die Stufe eines Befunds auf das, was die Regel darf.
  *
  *   keine Wirkung (watchlist, deprecated, unbekannt)  → null, kein Befund
@@ -441,20 +417,7 @@ export function wirkung(r) {
  * @param {string|null} stufe "hinweis" | "achtung" | "recht"
  */
 export function begrenzeStufe(regelOderId, stufe) {
-  const r = typeof regelOderId === "string" ? regel(regelOderId) : regelOderId;
-  if (!r) return stufe;
-  const w = wirkung(r);
-  if (w === "keine") return null;
-  if (stufe == null) return stufe;
-  /* Prüfstatus und Laufzeit sind zwei Fragen. „provisional" beschreibt, wie
-     gut die QUELLE geprüft ist, und bremst neu eingeführte Regeln. Eine
-     Regel, die ein getestetes Bestandsmodul schon rechnet (laufzeit
-     "bestand": Fahrzeit, PPP-RL, Tarifvorlagen), wird dadurch nicht
-     herabgestuft — ihre Stufe bestimmt weiter das Modul. */
-  if (r.laufzeit === "bestand") return stufe;
-  const grenze = w === "hinweis" ? "hinweis" : r.hoechsteStufe;
-  if (!grenze) return stufe;
-  return stufeRang(stufe) > stufeRang(grenze) ? grenze : stufe;
+  return begrenzeStufeRegel(typeof regelOderId === "string" ? regel(regelOderId) : regelOderId, stufe);
 }
 
 /**
