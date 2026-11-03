@@ -154,88 +154,120 @@ export function betriebsratAuswertung(m, heute) {
 }
 
 /* --------------------------------------------------------------------------
-   Im Hintergrund rechnen und merken — je Raum und Tag, im Mindestabstand (F2, N1)
+   Im Hintergrund rechnen und merken — je Raum, Betrieb und Tag, im Mindestabstand (F2, N1, K1)
 
-   Der Schlüssel enthält den Raum (Demobetriebe teilen nie ein Ergebnis) und
-   den Tag. NICHT den Stand der Ablage: Jeder Schreibvorgang — auch ein
-   Stempel — macht einen neuen Stand. Mit dem Stand im Schlüssel wäre unter
-   Schreiblast nie etwas fertig geworden (die Rechnung dauert länger als der
-   Abstand zwischen zwei Schreibvorgängen), und jeder Abruf hätte eine neue
-   Vollrechnung gestartet — CPU-Bindung zulasten aller Betriebe (Review N1).
+   Der Schlüssel enthält den Raum UND den Betrieb (Mandant) der Sitzung: Ein
+   Raum kann mehrere Betriebe tragen, das Ergebnis gehört genau einem von
+   ihnen (Review K1: sonst bekäme der Betriebsrat von Betrieb B die Zahlen von
+   Betrieb A). Und den Tag. NICHT den Stand der Ablage: Jeder Schreibvorgang —
+   auch ein Stempel — macht einen neuen Stand. Mit dem Stand im Schlüssel wäre
+   unter Schreiblast nie etwas fertig geworden, und jeder Abruf hätte eine
+   neue Vollrechnung gestartet (Review N1).
 
-   Stattdessen:
    - Das letzte Ergebnis wird immer ausgeliefert, mit dem Zeitpunkt seiner
      Berechnung (berechnetUm). Bis zum ersten Ergebnis: „wird berechnet“.
-   - Neu gerechnet wird frühestens nach BR_NEUBERECHNUNG_MS und nie mehr als
-     eine Rechnung je Raum gleichzeitig (höchstens BR_MAX_GLEICHZEITIG
-     insgesamt). Eine laufende Rechnung wird nicht durch einen neuen Stand
-     ersetzt — sie wird fertig, das nächste Ergebnis kommt im Abstand.
-   - Datenschutz bleibt: Die Schutzregeln (Mindestgruppe, Wartefrist, Zweitsperre)
-     stecken in der Rechnung selbst; Zeitstempel und Zwischenspeicher geben
-     nichts frei. Zusätzlich wird ein einmal ausgegebenes Ist einer Zeile
-     eingefroren (siehe EINGEFROREN).
+   - Neu gerechnet wird frühestens nach BR_NEUBERECHNUNG_MS, nie mehr als eine
+     Rechnung je Raum und Betrieb gleichzeitig (höchstens BR_MAX_GLEICHZEITIG
+     insgesamt). Eine laufende Rechnung wird nicht durch einen neuen Stand ersetzt.
+   - Datenschutz bleibt: Mindestgruppe, Wartefrist, Zweitsperre stecken in der
+     Rechnung selbst; Zeitstempel und Zwischenspeicher geben nichts frei.
 
-   EINGEFROREN. Nach Ablauf der Nachbestätigungsfrist kann die Planung bestätigte
-   Zeiten noch korrigieren (Korrektur, Dienstbuch). Zwei Ausgaben, die sich um
-   eine Korrektur unterscheiden, ergäben deren Wirkung als Differenz. Darum
-   bleibt das einmal ausgegebene Ist einer Zeile (Raum, Monat, Einheit) für die
-   Lebensdauer des Prozesses gleich; hat sich der Bestand inzwischen geändert,
-   steht an der Zeile „istKorrigiert“ — ohne Zahl. Grenze: Nach einem Neustart
-   gilt wieder der dann aktuelle Wert.
+   EINGEFROREN (F1-Rest). Nach Ablauf der Nachbestätigungsfrist kann die Planung
+   bestätigte Zeiten noch korrigieren. Zwei Ausgaben, die sich um eine
+   Korrektur unterscheiden, ergäben deren Wirkung als Differenz — auch über
+   einen Neustart hinweg. Darum steht das einmal ausgegebene Ist einer Zeile
+   (Raum, Betrieb, Monat, Einheit) DAUERHAFT in der Ablage
+   (brist:<raum>:<betrieb>:<monat>:<einheit>); jede spätere Ausgabe nimmt es
+   von dort. Hat sich der Bestand inzwischen geändert, steht an der Zeile
+   „istKorrigiert“ — ohne Zahl. Ist die Ablage nicht les- oder schreibbar, wird
+   das Ist der Zeile nicht ausgegeben (fail-closed). Aufgeräumt wird beim
+   Rechnen (Monate vor dem Auswertungszeitraum) und mit der Raumlöschung.
    -------------------------------------------------------------------------- */
 /** Frühestens nach dieser Zeit wird ein Raum neu gerechnet. */
 export const BR_NEUBERECHNUNG_MS = 5 * 60 * 1000;
 export const BR_MAX_GLEICHZEITIG = 3;
 export const BR_MAX_TAGE_GEMERKT = 40;
-const FERTIG = new Map();                    // `${raum}\0${tag}` → { wert, zeit }
-const LAEUFT = new Map();                    // raum → true
-const EINGEFROREN = new Map();               // `${raum}\0${monat}\0${einheit}` → { istStunden, istErfasst }
+const FERTIG = new Map();                    // `${raum}\0${betrieb}\0${tag}` → { wert, zeit }
+const LAEUFT = new Map();                    // `${raum}\0${betrieb}` → true
+const EINGEFROREN = new Map();               // ohne Ablage (kleine Prüfungen): `${raum}\0${betrieb}\0${monat}\0${einheit}` → { istStunden, istErfasst }
 const STATISTIK = { gestartet: 0, fertig: 0 };
-const schluesselVon = (raum, tag) => `${raum}\u0000${tag}`;
+const betriebVon = (mandant) => (mandant && (typeof mandant.id === "string" || typeof mandant.id === "number") && String(mandant.id) ? String(mandant.id) : null);
+const laufVon = (raum, betrieb) => `${raum}\u0000${betrieb}`;
+const schluesselVon = (raum, betrieb, tag) => `${raum}\u0000${betrieb}\u0000${tag}`;
+/** Schlüssel der dauerhaften Ablage. */
+export const istSchluessel = (raum, betrieb, monat, einheit) =>
+  `brist:${encodeURIComponent(raum)}:${encodeURIComponent(betrieb)}:${monat}:${encodeURIComponent(einheit === null || einheit === undefined ? "*" : einheit)}`;
+export const istPraefix = (raum) => `brist:${encodeURIComponent(raum)}:`;
 
-/** Ausgegebenes Ist einfrieren; Abweichungen später nur als Hinweis ausweisen. */
-function einfrieren(raum, wert) {
+/**
+ * Das einmal ausgegebene Ist einer Zeile einfrieren; spätere Abweichungen nur als Hinweis ausweisen.
+ * @param {{ get: Function, setJSON: Function, list?: Function, delete?: Function } | null} ablage
+ */
+async function einfrieren(ablage, raum, betrieb, wert) {
   for (const z of wert.zeilen) {
     if (z.gesperrt || z.istStunden === null || z.istStunden === undefined) continue;
-    const k = `${raum}\u0000${z.monat}\u0000${z.einheitId}`;
-    const alt = EINGEFROREN.get(k);
-    if (!alt) { EINGEFROREN.set(k, { istStunden: z.istStunden, istErfasst: z.istErfasst }); continue; }
-    if (alt.istStunden !== z.istStunden || alt.istErfasst !== z.istErfasst) {
+    const merken = { istStunden: z.istStunden, istErfasst: z.istErfasst };
+    const ohneIst = () => { z.istStunden = null; z.istErfasst = null; };
+    let alt;
+    if (ablage) {
+      const k = istSchluessel(raum, betrieb, z.monat, z.einheitId);
+      try {
+        alt = await ablage.get(k, { type: "json" });
+        if (!alt) await ablage.setJSON(k, { ...merken, am: new Date().toISOString() });
+      } catch { ohneIst(); continue; }                                      // nicht lesbar/schreibbar: lieber kein Ist als ein ungesichertes
+    } else {
+      const k = `${raum}\u0000${betrieb}\u0000${z.monat}\u0000${z.einheitId}`;
+      alt = EINGEFROREN.get(k);
+      if (!alt) EINGEFROREN.set(k, merken);
+    }
+    if (alt && (alt.istStunden !== merken.istStunden || alt.istErfasst !== merken.istErfasst)) {
       z.istStunden = alt.istStunden; z.istErfasst = alt.istErfasst; z.istKorrigiert = true;
     }
+  }
+  /* Aufräumen: Monate vor dem Auswertungszeitraum brauchen keinen Rahmen mehr. */
+  if (ablage && typeof ablage.list === "function" && typeof ablage.delete === "function") {
+    try {
+      const { blobs } = await ablage.list({ prefix: `${istPraefix(raum)}${encodeURIComponent(betrieb)}:` });
+      for (const b of blobs || []) {
+        const monat = b.key.split(":")[3];
+        if (/^\d{4}-\d{2}$/.test(monat || "") && monat < wert.von.slice(0, 7)) await ablage.delete(b.key).catch(() => {});
+      }
+    } catch { /* Aufräumen darf nie die Ausgabe verhindern */ }
   }
 }
 
 /**
- * @param {{ raum: string, stand?: string | number, heute: string, mandant: any, jetzt?: number }} a
- *   `stand` wird nicht mehr zum Schlüssel (N1); `jetzt` nur für Prüfungen.
+ * @param {{ raum: string, heute: string, mandant: any, jetzt?: number, ablage?: any }} a
+ *   `ablage`: der Store für das dauerhafte Einfrieren (im Betrieb immer); `jetzt` nur für Prüfungen.
  * @returns {{ fertig: true, wert: Auswertung, berechnetUm: string } | { fertig: false, ausgelastet?: boolean }}
  */
-export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now() }) {
-  if (typeof raum !== "string" || !raum) return { fertig: false };
-  const k = schluesselVon(raum, heute);
+export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now(), ablage = null }) {
+  const betrieb = betriebVon(mandant);
+  if (typeof raum !== "string" || !raum || !betrieb) return { fertig: false };
+  const k = schluesselVon(raum, betrieb, heute);
+  const lauf = laufVon(raum, betrieb);
   const eintrag = FERTIG.get(k);
   const veraltet = !eintrag || jetzt - eintrag.zeit >= BR_NEUBERECHNUNG_MS;
-  if (veraltet && !LAEUFT.has(raum) && LAEUFT.size < BR_MAX_GLEICHZEITIG) {
-    LAEUFT.set(raum, true);
+  if (veraltet && !LAEUFT.has(lauf) && LAEUFT.size < BR_MAX_GLEICHZEITIG) {
+    LAEUFT.set(lauf, true);
     STATISTIK.gestartet++;
     (async () => {
       try {
         const it = auswertungSchritte(mandant, heute);
         let r = it.next();
         while (!r.done) { await new Promise((weiter) => setImmediate(weiter)); r = it.next(); }
-        einfrieren(raum, r.value);
-        /* Vortage dieses Raums verwerfen; Obergrenze insgesamt. */
-        for (const alt of [...FERTIG.keys()]) if (alt.startsWith(`${raum}\u0000`) && alt !== k) FERTIG.delete(alt);
+        await einfrieren(ablage, raum, betrieb, r.value);
+        /* Vortage dieses Raums und Betriebs verwerfen; Obergrenze insgesamt. */
+        for (const alt of [...FERTIG.keys()]) if (alt.startsWith(`${raum}\u0000${betrieb}\u0000`) && alt !== k) FERTIG.delete(alt);
         if (FERTIG.size >= BR_MAX_TAGE_GEMERKT) FERTIG.delete(FERTIG.keys().next().value);
         FERTIG.set(k, { wert: r.value, zeit: Date.now() });
         STATISTIK.fertig++;
       } catch { /* nicht gemerkt: der nächste Abruf versucht es neu */ }
-      finally { LAEUFT.delete(raum); }
+      finally { LAEUFT.delete(lauf); }
     })();
   }
   if (eintrag) return { fertig: true, wert: eintrag.wert, berechnetUm: new Date(eintrag.zeit).toISOString() };
-  return { fertig: false, ausgelastet: !LAEUFT.has(raum) };
+  return { fertig: false, ausgelastet: !LAEUFT.has(lauf) };
 }
 
 /** Nur für Prüfungen. */

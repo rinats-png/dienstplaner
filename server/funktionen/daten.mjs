@@ -860,7 +860,7 @@ export default async (req, context) => {
       const mit = await bestandJetzt();
       const eigener = mit ? eigenerMandant(mit.bestand, s) : null;
       if (!mit || !eigener) return antwort({ fehler: "Keine Daten." }, 404);
-      const r = auswertungHolen({ raum: s.bestand, heute: heuteBerlin(), mandant: eigener });
+      const r = auswertungHolen({ raum: s.bestand, heute: heuteBerlin(), mandant: eigener, ablage: store });
       if (!r.fertig) return antwort({ status: "berechnet", retryNachMs: r.ausgelastet ? 5000 : 1500 }, 202);
       return antwort({ status: "fertig", auswertung: r.wert, berechnetUm: r.berechnetUm });
     }

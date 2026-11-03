@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren, MATRIX } from "../server/lib/rechte.mjs";
-import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, auswertungStatistik, BR_MINDESTGRUPPE, BR_HAEPPCHEN_MS, BR_NEUBERECHNUNG_MS, BR_MAX_GLEICHZEITIG } from "../server/lib/br-auswertung.mjs";
+import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, auswertungStatistik, istSchluessel, BR_MINDESTGRUPPE, BR_HAEPPCHEN_MS, BR_NEUBERECHNUNG_MS, BR_MAX_GLEICHZEITIG } from "../server/lib/br-auswertung.mjs";
 import { median, urteil } from "./laufzeitmessung.mjs";
 import { aufbauen } from "./hilfen/szenario.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
@@ -195,7 +195,7 @@ describe("Hintergrundrechnung: Raum + Tag, Mindestabstand, Schreiblast (F2, N1)"
   it("Quelltext: kein Schlüssel aus Betriebskennung und m.stand, der Stand der Ablage ist kein Schlüssel", () => {
     const q = readFileSync(path.join(process.cwd(), "server/lib/br-auswertung.mjs"), "utf8");
     expect(q).not.toMatch(/m\.stand|m && m\.stand/);
-    expect(q).toMatch(/const schluesselVon = \(raum, tag\)/);
+    expect(q).toMatch(/const schluesselVon = \(raum, betrieb, tag\)/);        // K1: der Betrieb steht im Schlüssel
   });
 
   /* Review N1: Schreiblast. Der Stand wechselt bei jedem Abruf (jeder Schreibvorgang macht einen neuen). */
@@ -264,6 +264,127 @@ describe("Ist nach der Frist: eingefroren, Korrekturen nur ausgewiesen", () => {
     const erst = auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00"), jetzt: jetzt + BR_NEUBERECHNUNG_MS + 1000 });
     for (let i = 0; i < 400 && auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00"), jetzt }).berechnetUm === erst.berechnetUm; i++) await new Promise((w) => setTimeout(w, 5));
     expect(zeile(auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00") }).wert).istKorrigiert).toBeUndefined();
+  });
+});
+
+/* Review K1: ein Raum, zwei Betriebe — jedes Ergebnis gehört genau einem Betrieb. */
+describe("Mandantentrennung im Zwischenspeicher: zwei Betriebe in einem Raum (K1)", () => {
+  const betriebMit = (id, n, einheit) => {
+    const personen = [];
+    for (let i = 0; i < n; i++) personen.push(person(`${id}-${i}`, "mitarbeiter", einheit));
+    return { id, name: `Betrieb ${id}`, einheiten: [{ id: einheit, versatzTage: 0 }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+      zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung: {},
+      abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  const warte = async (a) => { for (let i = 0; i < 600; i++) { const r = auswertungHolen(a); if (r.fertig) return r; await new Promise((w) => setTimeout(w, 5)); } throw new Error("nicht fertig"); };
+  beforeEach(() => auswertungenVergessen());
+
+  it("Betrieb A (60 Personen) und B (30) im selben Raum und am selben Tag: je eigene Zahlen, nie dasselbe Objekt", async () => {
+    const mA = betriebMit("mA", 60, "eA"), mB = betriebMit("mB", 30, "eB");
+    const a = await warte({ raum: "gemeinsam", heute: HEUTE, mandant: mA });
+    const b = await warte({ raum: "gemeinsam", heute: HEUTE, mandant: mB });
+    expect(a.wert).not.toBe(b.wert);
+    const gesamt = (w) => w.zeilen.filter((z) => z.einheitId === null && !z.gesperrt).map((z) => z.personen);
+    expect(new Set(gesamt(a.wert))).toEqual(new Set([60]));
+    expect(new Set(gesamt(b.wert))).toEqual(new Set([30]));
+    expect(JSON.stringify(b.wert)).not.toContain("eA");
+    expect(JSON.stringify(a.wert)).not.toContain("eB");
+    /* und beim zweiten Abruf von A kommt weiter A */
+    expect(new Set(gesamt(auswertungHolen({ raum: "gemeinsam", heute: HEUTE, mandant: mA }).wert))).toEqual(new Set([60]));
+  });
+  it("ein Abruf des anderen Betriebs während der Rechnung startet einen eigenen Lauf (nicht „läuft schon“)", async () => {
+    const mA = betriebMit("mA", 400, "eA"), mB = betriebMit("mB", 30, "eB");
+    expect(auswertungHolen({ raum: "parallel", heute: HEUTE, mandant: mA }).fertig).toBe(false);
+    expect(auswertungHolen({ raum: "parallel", heute: HEUTE, mandant: mB }).fertig).toBe(false);
+    expect(auswertungStatistik().gestartet).toBe(2);
+    const b = await warte({ raum: "parallel", heute: HEUTE, mandant: mB });
+    expect(b.wert.zeilen.find((z) => z.einheitId === null && !z.gesperrt).personen).toBe(30);
+    await warte({ raum: "parallel", heute: HEUTE, mandant: mA });
+  });
+  it("ein Betrieb ohne Kennung bekommt nichts", () => {
+    expect(auswertungHolen({ raum: "r", heute: HEUTE, mandant: { ...betriebMit("x", 3, "e"), id: undefined } }).fertig).toBe(false);
+    expect(auswertungStatistik().gestartet).toBe(0);
+  });
+  it("das Eingefrorene gehört ebenfalls zum Betrieb", async () => {
+    const SPAET = "2026-06-20";
+    const mit = (id, stunden) => {
+      const m = betriebMit(id, 4, "A");
+      for (let i = 0; i < 3; i++) m.erfassung[`${id}-${i}|2026-05-12`] = { start: "06:00", ende: i === 0 ? stunden : "15:00", bestaetigt: true };
+      return m;
+    };
+    const a = await warte({ raum: "frost2", heute: SPAET, mandant: mit("mA", "15:00") });
+    const b = await warte({ raum: "frost2", heute: SPAET, mandant: mit("mB", "17:00") });
+    const z = (w) => w.zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+    expect(z(a.wert).istStunden).toBe(25.5);
+    expect(z(b.wert).istStunden).toBe(27.5);                              // nicht das eingefrorene Ist des anderen Betriebs
+    expect(z(b.wert).istKorrigiert).toBeUndefined();
+  });
+});
+
+/* Review F1-Rest: Das Eingefrorene überlebt einen Neustart (dauerhaft in der Ablage). */
+describe("Ist eingefroren: dauerhaft, ein Neustart ändert die Ausgabe nicht", () => {
+  const SPAET = "2026-06-20";
+  const ablageNeu = () => {
+    const daten = new Map();
+    return { daten,
+      get: async (k) => (daten.has(k) ? JSON.parse(JSON.stringify(daten.get(k))) : null),
+      setJSON: async (k, v) => { daten.set(k, JSON.parse(JSON.stringify(v))); },
+      list: async ({ prefix }) => ({ blobs: [...daten.keys()].filter((k) => k.startsWith(prefix)).map((key) => ({ key })) }),
+      delete: async (k) => { daten.delete(k); } };
+  };
+  const mitErfassung = (stunden, id = "m1") => {
+    const personen = [], erfassung = {};
+    for (let i = 0; i < 4; i++) {
+      personen.push(person(`a${i}`, "mitarbeiter", "A"));
+      if (i < 3) erfassung[`a${i}|2026-05-12`] = { start: "06:00", ende: i === 0 ? stunden : "15:00", bestaetigt: true };
+    }
+    return { id, name: "Haus", einheiten: [{ id: "A", versatzTage: 0 }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+      zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung,
+      abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  const warte = async (a) => { for (let i = 0; i < 600; i++) { const r = auswertungHolen(a); if (r.fertig) return r; await new Promise((w) => setTimeout(w, 5)); } throw new Error("nicht fertig"); };
+  const zeile = (w) => w.zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+  beforeEach(() => auswertungenVergessen());
+
+  it("Neustart zwischen den Ausgaben: 24 Stunden vorher, 26 Stunden nachher (Korrektur der Einzelperson) — dieselbe Zahl, Hinweis", async () => {
+    const ablage = ablageNeu();
+    const vorher = zeile((await warte({ raum: "neustart", heute: SPAET, mandant: mitErfassung("15:00"), ablage })).wert);
+    expect(vorher.istStunden).toBe(25.5);
+    auswertungenVergessen();                                              // der Prozess startet neu: der Speicher ist leer, die Ablage bleibt
+    const nachher = zeile((await warte({ raum: "neustart", heute: SPAET, mandant: mitErfassung("17:00"), ablage })).wert);
+    expect(nachher.istStunden).toBe(25.5);                                // nicht 27,5
+    expect(nachher.istErfasst).toBe(3);
+    expect(nachher.istKorrigiert).toBe(true);
+    expect(vorher.istKorrigiert).toBeUndefined();
+  });
+  it("ohne Neustart ebenso (Speicher und Ablage stimmen überein)", async () => {
+    const ablage = ablageNeu();
+    const t = Date.now();
+    await warte({ raum: "laufend", heute: SPAET, mandant: mitErfassung("15:00"), ablage, jetzt: t });
+    const spaeter = { raum: "laufend", heute: SPAET, mandant: mitErfassung("17:00"), ablage, jetzt: t + BR_NEUBERECHNUNG_MS + 1000 };
+    const erst = auswertungHolen(spaeter);
+    for (let i = 0; i < 600 && auswertungHolen({ ...spaeter, jetzt: t }).berechnetUm === erst.berechnetUm; i++) await new Promise((w) => setTimeout(w, 5));
+    expect(zeile(auswertungHolen({ ...spaeter, jetzt: t }).wert).istStunden).toBe(25.5);
+  });
+  it("Ablage nicht lesbar: das Ist der Zeile wird nicht ausgegeben (fail-closed), nichts wird geraten", async () => {
+    const kaputt = { ...ablageNeu(), get: async () => { throw new Error("Ablage nicht erreichbar"); } };
+    const w = (await warte({ raum: "defekt", heute: SPAET, mandant: mitErfassung("15:00"), ablage: kaputt })).wert;
+    expect(zeile(w).istStunden).toBeNull();
+    expect(zeile(w).istErfasst).toBeNull();
+    expect(zeile(w).personen).toBe(4);                                     // Plan-Zahlen bleiben
+  });
+  it("Ablage nicht beschreibbar: ebenfalls kein Ist (nichts ausgeben, was nicht gesichert ist)", async () => {
+    const schreibsperre = { ...ablageNeu(), setJSON: async () => { throw new Error("voll"); } };
+    expect(zeile((await warte({ raum: "voll", heute: SPAET, mandant: mitErfassung("15:00"), ablage: schreibsperre })).wert).istStunden).toBeNull();
+  });
+  it("Aufräumen: Monate vor dem Auswertungszeitraum verschwinden, aktuelle bleiben; fremde Betriebe bleiben unberührt", async () => {
+    const ablage = ablageNeu();
+    await ablage.setJSON(istSchluessel("aufraeumen", "m1", "2025-01", "A"), { istStunden: 1, istErfasst: 1 });
+    await ablage.setJSON(istSchluessel("aufraeumen", "m2", "2025-01", "A"), { istStunden: 2, istErfasst: 1 });
+    await warte({ raum: "aufraeumen", heute: SPAET, mandant: mitErfassung("15:00"), ablage });
+    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2025-01", "A"))).toBeNull();
+    expect(await ablage.get(istSchluessel("aufraeumen", "m1", "2026-05", "A"))).toBeTruthy();
+    expect(await ablage.get(istSchluessel("aufraeumen", "m2", "2025-01", "A"))).toBeTruthy();
   });
 });
 
@@ -360,6 +481,16 @@ describe("GET /api/br-auswertung je Rolle (F4)", () => {
     const r = await hole(t);
     expect(r.status).toBe(403);
     expect(JSON.stringify(r.daten)).not.toContain("zeilen");
+  }, LIMIT);
+  it("raumLoeschen räumt das eingefrorene Ist (brist:) des Raums, nicht das anderer Räume", async () => {
+    const RL = await import("../server/lib/raumloeschung.mjs");
+    const raum = Z.raum("brist"), fremd = Z.raum("brist-fremd");
+    await Z.laden().setJSON(istSchluessel(raum, "m1", "2026-05", "A"), { istStunden: 1, istErfasst: 1 });
+    await Z.laden().setJSON(istSchluessel(fremd, "m1", "2026-05", "A"), { istStunden: 1, istErfasst: 1 });
+    const r = await RL.raumLoeschen(Z.laden(), Z.ablageArbeit(), raum);
+    expect(r.vollstaendig, JSON.stringify(r.fehler)).toBe(true);
+    expect(await Z.laden().get(istSchluessel(raum, "m1", "2026-05", "A"), { type: "json" })).toBeNull();
+    expect(await Z.laden().get(istSchluessel(fremd, "m1", "2026-05", "A"), { type: "json" })).toBeTruthy();
   }, LIMIT);
   it("ohne Anmeldung: 401", async () => {
     expect((await hole(null)).status).toBe(401);
