@@ -207,15 +207,16 @@ export function stempelWiderspruch(altM, neuM, o = {}) {
  * (loeschlauf) darf Einträge abgelaufener Tage entfernen, die er weggelassen
  * oder auf null gesetzt hat.
  * @param {{loeschlauf?: boolean, heute?: string, vollSicht?: boolean, unveraendert?: Set<string>}} [o]
- * @returns {{mandant: object, geloescht: number}}
+ * @returns {{mandant: object, geloescht: number, verworfen: number}}  verworfen: Einträge jenseits der Frist,
+ *   die nicht mehr gespeichert sind und aus einer älteren Kopie nicht zurückkommen (B1) — Stempel und Ist-Zeiten
  */
 export function stempelSichern(altM, gesendetM, zielM, o = {}) {
-  if (!objekt(zielM)) return { mandant: zielM, geloescht: 0 };
+  if (!objekt(zielM)) return { mandant: zielM, geloescht: 0, verworfen: 0 };
   const altS = altM && objekt(altM.einstempeln) ? altM.einstempeln : {};
   const altE = altM && objekt(altM.erfassung) ? altM.erfassung : {};
   if (!altM) {
     /* Neu angelegter Betrieb: Er hat noch keine Stempel. */
-    return { mandant: { ...zielM, einstempeln: {} }, geloescht: 0 };
+    return { mandant: { ...zielM, einstempeln: {} }, geloescht: 0, verworfen: 0 };
   }
   const stich = o.loeschlauf && o.heute ? loeschStichtag(altM, o.heute) : null;
   const gs = gesendetM && objekt(gesendetM.einstempeln) ? gesendetM.einstempeln : null;
@@ -244,9 +245,17 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
      mehr vorhanden), schreibt eine ältere Kopie nicht zurück (B1) — weder den
      Stempel (oben: es werden nur gespeicherte übernommen) noch seine Ist-Zeit. */
   const frist = o.heute ? loeschStichtag(altM, o.heute) : null;
+  let verworfen = 0;
   if (frist) {
+    /* Verworfen wird unabhängig vom Modus des Datenschutzlaufs: Der Eintrag ist
+       gespeichert nicht (mehr) da — gelöscht vom Lauf (Modus „an“) oder von der
+       Leitung (Löschlauf in der Oberfläche) —, und die Kopie ist älter. Die
+       Antwort sagt es der Leitung (hinweis in PUT /api/bestand). */
     for (const k of Object.keys(erfassung)) {
-      if (tagVon(k) && tagVon(k) < frist && !(k in altE) && !(k in altS)) delete erfassung[k];
+      if (tagVon(k) && tagVon(k) < frist && !(k in altE) && !(k in altS)) { delete erfassung[k]; verworfen++; }
+    }
+    for (const k of Object.keys(gs || {})) {
+      if (tagVon(k) && tagVon(k) < frist && !(k in altS)) verworfen++;
     }
   }
   for (const k of Object.keys(altS)) {
@@ -254,7 +263,7 @@ export function stempelSichern(altM, gesendetM, zielM, o = {}) {
     if (!sicher(k)) continue;
     if (k in altE) erfassung[k] = altE[k]; else delete erfassung[k];
   }
-  return { mandant: { ...zielM, einstempeln, erfassung }, geloescht };
+  return { mandant: { ...zielM, einstempeln, erfassung }, geloescht, verworfen };
 }
 
 /**

@@ -941,7 +941,12 @@ export default async (req, context) => {
 
         /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
            vor jedem Umbau von zuSchreiben holen, sonst ginge sie verloren (die Sperren wären wirkungslos). */
+        /* ACHTUNG Reihenfolge: Die offene Fachprüfung (Mutterschutz, Jugendschutz …) hängt als
+           WeakMap-Eintrag (OFFENE_PRUEFUNG in rechte.mjs) am OBJEKT, das zusammenfuehren
+           zurückgab. stempelSichern (unten) baut ein neues Objekt; wer hier erst danach fragt,
+           bekommt null — und jede Sperre ist wirkungslos. Test: stempel-fachpruefung.test.js. */
         const offen = fachpruefungOffen(zuSchreiben);
+        let stempelVerworfen = 0;
 
         /* Gespeichert werden die gespeicherten Stempel (Stempel-Integrität,
            siehe oben) — in den Monaten, die die Übermittlung unverändert
@@ -952,10 +957,18 @@ export default async (req, context) => {
             if (!x || typeof x !== "object") return x;
             const r = stempelSichern(altNachId.get(x.id) || null, gesendetNachId.get(x.id), x, stempelO);
             geloescht += r.geloescht;
+            stempelVerworfen += r.verworfen;
             return r.mandant;
           }) };
+          /* B-N3: Das Löschen abgelaufener Stempel per Speichern (Löschlauf der Leitung, geloescht)
+             ist bewusst nicht an den Modus des Datenschutzlaufs gekoppelt: Der Modus steuert den
+             täglichen Lauf des Servers; die Leitung löscht in der Oberfläche von Hand, wenn die Frist
+             abgelaufen ist (Art. 5 Abs. 1 lit. e DSGVO, mindestens 24 Monate). Es steht im
+             Betriebsprotokoll des Servers. */
           if (geloescht) await protokoll("schreiben", ks, "loeschlauf",
             `${geloescht} Stempel nach Ablauf der Aufbewahrungsfrist gelöscht`, wer);
+          if (stempelVerworfen) await protokoll("schreiben", ks, "stempel-verworfen",
+            `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist aus einer älteren Kopie nicht übernommen`, wer);
         }
 
         /* Fachprüfung (WP-22) in Häppchen, damit eine große Nachrechnung keinen
@@ -1066,10 +1079,10 @@ export default async (req, context) => {
         await protokoll("schreiben", ks, "erfolg",
           `${erg.geschrieben} Stücke · ${s.rolle}`
           + (erg.zusammengefuehrt ? ` · zusammengeführt: ${erg.zusammengefuehrt.join(", ")}` : ""), wer);
-        return { erg, jetzt, zuSchreiben };
+        return { erg, jetzt, zuSchreiben, stempelVerworfen };
       });
       if (gesperrt instanceof Response) return gesperrt;
-      const { erg, jetzt, zuSchreiben } = gesperrt;
+      const { erg, jetzt, zuSchreiben, stempelVerworfen } = gesperrt;
 
       /* Notruf- und Tauschmitteilungen, die der Server eben erzeugt hat,
          stellt er selbst zu (Commit 4) — nach dem Speichern, aus dem
@@ -1088,7 +1101,8 @@ export default async (req, context) => {
         await protokoll("fehler", ks, "zustellung", String(e && e.message || e).slice(0, 200)).catch(() => {});
       }
       return antwort({ ok: true, etag: erg.stand,
-        zusammengefuehrt: erg.zusammengefuehrt || null });
+        zusammengefuehrt: erg.zusammengefuehrt || null,
+        ...(stempelVerworfen ? { hinweis: `${stempelVerworfen} Einträge jenseits der Aufbewahrungsfrist waren schon gelöscht und wurden aus der älteren Kopie nicht übernommen. Bitte neu laden.` } : {}) });
     }
 
     /* ------------------------------ Stempeln ------------------------- */
