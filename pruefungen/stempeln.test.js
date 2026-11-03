@@ -90,7 +90,8 @@ beforeAll(async () => {
     einheiten: [{ id: "e1", name: "WB 1" }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("a1", "mitarbeiter"), person("a2", "mitarbeiter"), person("s1", "subplaner"),
       person("b1", "mitarbeiter"), person("x1", "mitarbeiter")],
-    abweichungen: {}, abwesenheiten: [], erfassung: {}, einstempeln: {} }] }, { durch: "Pruefung" });
+    /* a1 hat heute Frühdienst: Ohne Plan wäre der Stempel ein ungeplanter Dienst (WP-13). */
+    abweichungen: { [`a1|${HEUTE}`]: "F" }, abwesenheiten: [], erfassung: {}, einstempeln: {} }] }, { durch: "Pruefung" });
   tA = await sitzung("STMP-AAAA-0001", "mitarbeiter", "a1");
   tS = await sitzung("STMP-SSSS-0002", "subplaner", "s1");
   tB = await sitzung("STMP-BBBB-0003", "mitarbeiter", "b1");
@@ -135,7 +136,12 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     const m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(a.eintrag);
     expect(m.erfassung[`a1|${HEUTE}`]).toEqual(a.erfassung);
-    expect(a.erfassung).toMatchObject({ bestaetigt: true, start: a.eintrag.start, ende: a.eintrag.ende });
+    /* Beginn (A) und Ende (B) liegen hier meist in derselben Minute: Dauer 0 ist seit der WP-07-Nachprüfung (B1)
+       nie automatisch bestätigt (06:00–06:00 zählte sonst als 24 Stunden). Über eine Minutengrenze: bestätigt. */
+    if (a.eintrag.start === a.eintrag.ende) {
+      expect(a.erfassung).toMatchObject({ bestaetigt: false, start: a.eintrag.start, ende: a.eintrag.ende });
+      expect(a.erfassung.grund).toMatch(/^DAUER_NULL/);
+    } else expect(a.erfassung).toMatchObject({ bestaetigt: true, start: a.eintrag.start, ende: a.eintrag.ende });
   });
   it("E. Wiederholung: zweites Ein- oder Ausstempeln 409, nichts überschrieben", async () => {
     const vorher = await stand();
@@ -147,15 +153,25 @@ describe("Konflikt beim Stempeln: kein falscher Erfolg", () => {
     expect(nachher.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
     expect(nachher.erfassung[`a1|${HEUTE}`]).toEqual(vorher.erfassung[`a1|${HEUTE}`]);
   });
-  it("F. anschließendes Speichern mit der lokalen Kopie: 200, Serverstand bleibt", async () => {
+  /* Bis WP-06 wurde eine abweichende Stempelkopie still übergangen (200).
+     Jetzt ist sie ein Widerspruch zum Beleg: 403, nichts gespeichert. Die
+     unveränderte Kopie speichert weiter (200), der Serverstand bleibt. */
+  it("F. anschließendes Speichern: veränderte Stempelkopie 403 (nichts gespeichert), unveränderte 200, Serverstand bleibt", async () => {
     const r = await anfrage("/api/bestand", { methode: "GET", token: tA });
     const b = JSON.parse(JSON.stringify(r.bestand));
     const vorher = await stand();
-    b.mandanten[0].einstempeln = { ...(b.mandanten[0].einstempeln || {}), [`a1|${HEUTE}`]: { start: "00:00", ende: "23:59" } };
+    const falsch = JSON.parse(JSON.stringify(b));
+    falsch.mandanten[0].einstempeln = { ...(falsch.mandanten[0].einstempeln || {}), [`a1|${HEUTE}`]: { start: "00:00", ende: "23:59" } };
+    falsch.mandanten[0].personen.find((p) => p.id === "a1").telefon = "0150";
+    const w = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: falsch, etag: r.etag } });
+    expect([w.status, w.code]).toEqual([403, "STEMPEL_UNVERAENDERLICH"]);
+    let m = await stand();
+    expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
+    expect(m.personen.find((p) => p.id === "a1").telefon).not.toBe("0150");
     b.mandanten[0].personen.find((p) => p.id === "a1").telefon = "0151";
-    const w = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: b, etag: r.etag } });
-    expect(w.status).toBe(200);
-    const m = await stand();
+    const ok = await anfrage("/api/bestand", { methode: "PUT", token: tA, rumpf: { bestand: b, etag: r.etag } });
+    expect(ok.status).toBe(200);
+    m = await stand();
     expect(m.einstempeln[`a1|${HEUTE}`]).toEqual(vorher.einstempeln[`a1|${HEUTE}`]);
     expect(m.personen.find((p) => p.id === "a1").telefon).toBe("0151");
   });

@@ -23,6 +23,7 @@
 import { planungsregelnAbleiten } from "./planungsregeln.mjs";
 import { RUNDENKOPF, nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
+import { planFreigabeAktiv, istEntwurfstag, laufenderTag } from "./planfreigabe.mjs";
 
 /* Die vier Entscheidungen. Reduziert heißt: Die Regel ist eine Funktion. */
 export const VOLL = "voll";
@@ -46,7 +47,7 @@ const nimm = (o, felder) => {
    Oberfläche greift an vielen Stellen ungeprüft zu. */
 const OBJEKT_SAMMLUNGEN = new Set(["erfassung", "einstempeln", "fahrzeiten", "checks",
   "notizen", "tagesnotizen", "belegung", "therapie", "planstaende", "freigaben",
-  "abweichungen"]);
+  "abweichungen", "postenPlan", "bereichsPlan"]);
 
 /* ------------------------------------------------------------------------
    PERSONEN
@@ -417,6 +418,59 @@ export function bestaetigungenBetriebsrat(w) {
    ------------------------------------------------------------------------ */
 const R = (fn) => ({ art: REDUZIERT, fn });
 
+/* ENTWÜRFE (WP-23). Ein Monatsplan ist ein Entwurf, bis die Planung ihn
+   freigibt (m.freigaben[JJJJ-MM]). Bis hierher bekamen Beschäftigte die
+   Einteilungen (`abweichungen`) aller Monate — auch die, an denen die
+   Planung noch arbeitet: Ein Dienst, den es morgen vielleicht nicht mehr
+   gibt, stand auf dem Telefon. Jetzt fehlen die Einteilungen eines nicht
+   freigegebenen Monats in der Antwort an Beschäftigte.
+
+   - Was gilt als sichtbar: die Einteilungen eines freigegebenen Monats und
+     jeder Tag bis einschließlich heute (Berliner Zeit). Was heute oder
+     früher liegt, ist in Kraft und kein Entwurf mehr: Die Ansicht „Mein
+     Dienst heute“ und das Einstempeln brauchen den heutigen Dienst, die
+     Ist-Ansichten die vergangenen. Ein Entwurf ist, was nach heute liegt und
+     zu einem nicht freigegebenen Monat gehört. Nichts anderes.
+   - Ein Eintrag ohne gültigen Tag im Schlüssel („Person|JJJJ-MM-TT") ist
+     kein Plan und geht nicht hinaus (fail-closed).
+   - Nur Beschäftigte. Der Betriebsrat behält den ganzen Plan: Die
+     Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt
+     voraus, dass er den Entwurf vor der Freigabe prüfen kann. Planung,
+     Leitung und Schichtverantwortung planen selbst und sehen den Entwurf.
+   - Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen`
+     nicht (eigenesZusammen), der gespeicherte Plan bleibt beim Speichern
+     unberührt.
+   - Übergang: Der Filter wirkt nur, wenn der Betrieb die Freigabe benutzt
+     (mindestens ein freigegebener Monat) oder `einstellungen.planFreigabePflicht`
+     eingeschaltet ist (planfreigabe.mjs). Sonst bliebe nach dem Ausrollen kein
+     Einsatz mehr sichtbar. */
+export { laufenderTag, freigegebeneMonate } from "./planfreigabe.mjs";
+function planOhneEntwurf(w, ctx) {
+  if (!istObj(w)) return {};
+  if (!ctx.entwurfVerbergen) return w;
+  /* Eine Entscheidung für Server und Oberfläche: planfreigabe.mjs (istEntwurfstag).
+     Ein Eintrag ohne gültigen Tag gilt dort als Entwurf und fällt weg. */
+  return Object.fromEntries(Object.entries(w).filter(([k]) => !istEntwurfstag(ctx.betrieb, schluesselTag(k), ctx.laufenderTag)));
+}
+
+/* Objekte (WP-19, modul-posten.mjs), Sicht der Beschäftigten (Nutzerentscheidung W3 offen, bis dahin
+   konservativ): nur Objekte, auf deren Posten die Person selbst eingeteilt ist. */
+const objekteMitPosten = (objekte, postenIds) => liste(objekte)
+  .filter((o) => o && typeof o === "object" && liste(o.posten).some((p) => p && postenIds.has(p.id)));
+/* Posten- und Bereichsplan („Person|Tag“) für Beschäftigte: nur die eigenen Einteilungen, und Entwurfsmonate
+   gehen wie bei den Abweichungen nicht hinaus (WP-23, Review M1). */
+function eigenOhneEntwurf(w, ctx) {
+  const eigen = istObj(w) ? Object.fromEntries(Object.entries(w).filter(([k]) => eigenerSchluessel(k, ctx.ich))) : {};
+  return planOhneEntwurf(eigen, ctx);
+}
+function objekteEigene(w, ctx) {
+  const roh = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+  /* Die Objekte leiten sich aus dem Posten-Plan ab: Ohne denselben Filter verriete ein Objekt die Entwurfsplanung. */
+  const plan = planOhneEntwurf(roh, ctx);
+  const ids = new Set(Object.entries(plan).filter(([k]) => eigenerSchluessel(k, ctx.ich)).map(([, v]) => v));
+  return objekteMitPosten(w, ids);
+}
+
 export const BETRIEB = {
   /* Stammdaten und Regelwerk — ohne sie rechnet kein Plan. */
   id: [VOLL, VOLL], name: [VOLL, VOLL], branche: [VOLL, VOLL],
@@ -437,10 +491,15 @@ export const BETRIEB = {
   status: [VOLL, VOLL], stichtag: [VOLL, VOLL], laeuftAb: [VOLL, VOLL],
 
   /* Der Plan selbst. */
-  abweichungen: [VOLL, VOLL], planstaende: [VOLL, VOLL], freigaben: [VOLL, VOLL],
+  abweichungen: [R(planOhneEntwurf), VOLL], planstaende: [VOLL, VOLL], freigaben: [VOLL, VOLL],
   unterschreitungen: [VOLL, VOLL], belegung: [VOLL, VOLL], therapie: [VOLL, VOLL],
   aushang: [VOLL, VOLL],
   standorte: [R(standorte), R(standorte)],
+  /* Einsatzorte (WP-20): Koordinaten und Umkreis gehen nur an Planung und Leitung; ob ein Stempel am
+     Einsatzort liegt, entscheidet der Server. */
+  einsatzorte: [WEG, WEG],
+  /* Wann/Wer der letzten Änderung (WP-20, M1/N7): wie die Orte selbst nur für Planung und Leitung. */
+  einsatzorteGeaendertAm: [WEG, WEG], einsatzorteGeaendertVon: [WEG, WEG],
 
   /* Personen und personenbezogene Sammlungen. */
   personen: [R((w, ctx) => liste(w).map((p) => personSicht(p, ctx))),
@@ -472,6 +531,13 @@ export const BETRIEB = {
   ansichten: [NUR_EIGENE, NUR_EIGENE],
   kompetenzen: [R(kompetenzenMitarbeiter), VOLL],
   einarbeitung: [R(einarbeitungEigen), VOLL],
+  /* Posten (WP-19, modul-posten.mjs): Objekte mit Posten enthalten keine Personendaten; Beschäftigte und die
+     Schichtverantwortung sehen nur Objekte mit Einteilung (W3 offen), der Betriebsrat keine. Die Einteilung auf Posten (`postenPlan`, „Person|Tag“) sieht die Person nur für sich selbst, die
+     Schichtverantwortung im eigenen Bereich am Tag, der Betriebsrat nicht. */
+  objekte: [R(objekteEigene), WEG],
+  postenPlan: [R(eigenOhneEntwurf), WEG],
+  /* Bereichsplan (WP-19, modul-bereichsplan.mjs): wie postenPlan. Die Bereiche selbst stehen an der Einheit (einheiten). */
+  bereichsPlan: [R(eigenOhneEntwurf), WEG],
   /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
      laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
@@ -520,6 +586,7 @@ export function betriebSicht(m, sitzung) {
   const spalte = rolle === "betriebsrat" ? 1 : 0;
   const ctx = {
     rolle, ich: sitzung.person,
+    entwurfVerbergen: rolle === "mitarbeiter" && planFreigabeAktiv(m), betrieb: m, laufenderTag: laufenderTag(),
     nurStatus: new Set(liste(m.qualifikationen).filter((q) => q && q.nurStatus).map((q) => q.id)),
   };
   const aus = {};
@@ -555,6 +622,12 @@ export function bestandSicht(bestand, sitzung, eigener) {
     const ich = sitzung && sitzung.person;
     aus.mandanten[0].sichtIstDaten = sitzung && sitzung.rolle === "mitarbeiter" && ich !== null && ich !== undefined
       ? { umfang: "eigene", person: ich } : { umfang: "keine" };
+    /* Entwürfe (WP-23): Der Oberfläche sagen, dass die Einteilungen nicht freigegebener
+       Monate nach `heute` fehlen. Sonst rechnete personTag für diese Tage die Schichtfolge und
+       zeigte einen Regeldienst, den die Planung vielleicht längst geändert hat. Das Feld entsteht
+       nur in der Antwort (wie sichtIstDaten), ein gespeichertes zählt nie. */
+    if (sitzung && sitzung.rolle === "mitarbeiter" && planFreigabeAktiv(eigener))
+      aus.mandanten[0].sichtEntwuerfe = { heute: laufenderTag() };
   }
   return aus;
 }
@@ -650,7 +723,7 @@ const schichtAnfragen = (w, ctx) => {
 const schichtErfassung = (w, ctx) => objektFilter(w, (k, v) => {
   const u = umfangImZeitraum(ctx, schluesselPerson(k), schluesselTag(k));
   if (u === "eigen") return v;
-  if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause"]);
+  if (u === "bereich") return nimm(v, ["start", "ende", "bestaetigt", "pause", "ungeplant"]);
   return undefined;
 });
 const schichtSchluessel = (erlaubt) => (w, ctx) => objektFilter(w, (k, v) =>
@@ -760,6 +833,15 @@ Object.assign(SCHICHT, {
   kompetenzen: R(schichtKompetenzen),
   einarbeitung: R(schichtEinarbeitung),
   betriebsmittel: R(schichtBetriebsmittel),
+  postenPlan: R(schichtSchluessel(["eigen", "bereich"])),
+  /* Objekte: nur die mit Einteilung der eigenen Person oder einer Person des eigenen Bereichs am Tag der Einteilung. */
+  objekte: R((w, ctx) => {
+    const plan = ctx.betrieb && typeof ctx.betrieb.postenPlan === "object" && ctx.betrieb.postenPlan ? ctx.betrieb.postenPlan : {};
+    const ids = new Set(Object.entries(plan)
+      .filter(([k]) => imScopeAm(ctx, schluesselPerson(k), schluesselTag(k), schluesselTag(k), ["eigen", "bereich"])).map(([, v]) => v));
+    return objekteMitPosten(w, ids);
+  }),
+  bereichsPlan: R(schichtSchluessel(["eigen", "bereich"])),
   sondereinsaetze: R(schichtSondereinsaetze),
   dienstbuch: R(nurEigeneEinheit), uebergaben: R(nurEigeneEinheit),
   /* Totes Feld (keine Ansicht liest oder schreibt es) — nicht ausliefern (C3). */
@@ -770,7 +852,7 @@ Object.assign(SCHICHT, {
 /** Der Betrieb in der Sicht der Schichtverantwortung. ctx aus schichtKontext. */
 export function betriebSichtSchicht(m, ctx) {
   if (!m || typeof m !== "object") return m;
-  const c = { ...ctx, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])),
+  const c = { ...ctx, betrieb: m, umfang: new Map(liste(m.personen).filter(Boolean).map((p) => [String(p.id), umfangVon(p, ctx)])),
     personen: new Map(liste(m.personen).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p])) };
   const aus = {};
   for (const [feld, wert] of Object.entries(m)) {

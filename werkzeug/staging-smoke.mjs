@@ -283,7 +283,8 @@ await abschnitt("Mandantentrennung (zwei Wegwerfbetriebe)", async () => {
     termine: [{ id: "x-1", datum: MORGEN, von: "06:00", endDatum: MORGEN, bisZeit: "14:00", ganztags: false, titel: "ÜBERSCHRIEBEN", text: "", ort: "" }] } });
   const feedB = await http(`/kalender/feed/${gB}.ics`);
   pruef("Kalenderdaten mit fremdem Verweis: 404, Feed von B unverändert", dFremd.status === 404
-    && feedB.status === 200 && feedB.text.includes("B-Original") && !feedB.text.includes("ÜBERSCHRIEBEN"), `Status ${dFremd.status}`);
+    && feedB.status === 200 && feedB.text.includes("BEGIN:VCALENDAR") && !feedB.text.includes("ÜBERSCHRIEBEN") && !feedB.text.includes("B-Original"),
+    `Status ${dFremd.status}`);   // WP-24: der Feed ist live aus dem Bestand; Geräte-Termine kommen nie hinein
   const bNachher = (await lies(T.lb)).text;
   pruef("Betrieb B nach allen Versuchen bit-gleich", bVorher === bNachher);
 });
@@ -292,7 +293,11 @@ await abschnitt("Zeiterfassung Start/Ende und E1-Datenschutz", async () => {
   const s = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "start" } });
   const e = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "ende" } });
   pruef("Beschäftigte stempelt Start und Ende: 200, Erfassung entsteht", s.status === 200 && e.status === 200
-    && !!e.d.erfassung && e.d.erfassung.bestaetigt === true, `${s.status}/${e.status}`);
+    /* Beginn und Ende in derselben Minute: Dauer 0 ist seit WP-07 (Nachprüfung B1) nie automatisch bestätigt
+       (06:00–06:00 zählte sonst als 24 Stunden), sondern DAUER_NULL zur Prüfung. */
+    && !!e.d.erfassung && (e.d.erfassung.start === e.d.erfassung.ende
+      ? e.d.erfassung.bestaetigt === false && String(e.d.erfassung.grund).startsWith("DAUER_NULL")
+      : e.d.erfassung.bestaetigt === true), `${s.status}/${e.status}`);
   const nochmal = await http("/api/stempeln", { methode: "POST", token: T.m2, rumpf: { datum: HEUTE, art: "start" } });
   pruef("zweiter Start am selben Tag: 409, Gestempeltes bleibt", nochmal.status === 409, `Status ${nochmal.status}`);
   const leitung = (await lies(T.l)).d.bestand.mandanten[0];
@@ -324,11 +329,17 @@ await abschnitt("Kalender gültig", async () => {
   T.feedM1 = f.text;
   const folgetag = new Date(`${UEBERMORGEN}T00:00:00Z`); folgetag.setUTCDate(folgetag.getUTCDate() + 1);
   const mitternacht = `DTEND;TZID=Europe/Berlin:${folgetag.toISOString().slice(0, 10).replace(/-/g, "")}T000000`;
-  pruef("Dienst, Nachtdienst, ganztägig, 24:00: 200 und im Feed", d.status === 200 && f.status === 200
-    && f.text.includes("BEGIN:VCALENDAR") && (f.text.match(/BEGIN:VEVENT/g) || []).length === 4, `daten ${d.status} · feed ${f.status}`);
-  pruef("24:00 wird 00:00 des Folgetags", f.text.includes(mitternacht));
-  pruef("Nachtdienst endet am Folgetag", f.text.includes(`DTEND;TZID=Europe/Berlin:${UEBERMORGEN.replace(/-/g, "")}T060000`));
-  pruef("ICS mit Umlauten (UTF-8)", f.text.includes("Frühdienst Übergabe") && f.text.includes("Wohnbereich Süd"));
+  /* WP-24: Der Feed rechnet der Server live aus dem Bestand — hier der eine Dienst „Früh“ der Person heute.
+     Die Termine vom Gerät werden geprüft (200), aber weder gespeichert noch ausgeliefert. */
+  pruef("Geräte-Termine angenommen (alte Oberfläche), aber nicht gespeichert: 200, live", d.status === 200 && d.d.live === true, `daten ${d.status}`);
+  pruef("Feed live aus dem Bestand: der Dienst heute, genau ein Termin", f.status === 200 && f.text.includes("BEGIN:VCALENDAR")
+    && (f.text.match(/BEGIN:VEVENT/g) || []).length === 1
+    && f.text.includes(`DTSTART;TZID=Europe/Berlin:${HEUTE.replace(/-/g, "")}T060000`) && f.text.includes(`DTEND;TZID=Europe/Berlin:${HEUTE.replace(/-/g, "")}T140000`),
+  `feed ${f.status}`);
+  pruef("nichts vom Gerät im Feed (kein Geräte-Titel, kein Ort, keine zweite Person)", !f.text.includes("Frühdienst Übergabe") && !f.text.includes("Wohnbereich Süd")
+    && !f.text.includes("Nachtdienst") && !f.text.includes("Spätdienst") && !f.text.includes("Gate-m2") && !f.text.includes(mitternacht));
+  pruef("ICS mit Umlauten (UTF-8)", f.text.includes("SUMMARY:Früh"));
+  pruef("DTSTAMP stabil: zwei Abrufe, dieselbe Datei", (await http(`/kalender/feed/${T.gM1}.ics`)).text === f.text);
 });
 
 await abschnitt("Kalender ungültig", async () => {
@@ -365,9 +376,10 @@ await abschnitt("Kalender-Manipulation", async () => {
   const d = await http("/kalender/daten", { methode: "POST", token: T.m1, rumpf: { geheim: T.gM1, name: "PPG Gate", betrieb: "Gate A", termine: [t] } });
   const f = await http(`/kalender/feed/${T.gM1}.ics`);
   const zeilen = f.text.split("\r\n");
-  pruef("Zeilenumbrüche in Titel, Text und Ort maskiert, keine eingeschleusten ICS-Zeilen", d.status === 200 && f.status === 200
+  /* WP-24: Geräte-Termine kommen gar nicht mehr in den Feed; eingeschleuste Zeilen erst recht nicht. */
+  pruef("Zeilenumbrüche in Geräte-Terminen: akzeptiert, nie im Feed, keine eingeschleusten ICS-Zeilen", d.status === 200 && f.status === 200
     && !zeilen.some((z) => z.startsWith("SUMMARY:Eingeschleust") || z.startsWith("ATTENDEE"))
-    && zeilen.filter((z) => z === "BEGIN:VEVENT").length === 1 && f.text.includes("Dienst\\nBEGIN:VEVENT\\nSUMMARY:Eingeschleust"),
+    && !f.text.includes("Eingeschleust") && zeilen.filter((z) => z === "BEGIN:VEVENT").length === 1,
   `daten ${d.status}`);
 });
 

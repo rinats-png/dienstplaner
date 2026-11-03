@@ -138,7 +138,8 @@ describe("Sitzung mit unbekannter Rolle", () => {
       const l = await anfrage(daten, "/api/bestand", { methode: "GET", token: T.leitung });
       for (const [pfad, methode, rumpf] of [["/api/bestand", "PUT", { bestand: l.bestand, etag: l.etag }],
         ["/api/vollausgabe", "GET"], ["/api/sicherung", "POST", {}], ["/api/sicherungen", "GET"],
-        ["/api/stempeln", "POST", { art: "start" }], ["/api/zeit-bestaetigen", "POST", {}]]) {
+        ["/api/stempeln", "POST", { art: "start" }], ["/api/zeit-bestaetigen", "POST", {}],
+        ["/api/stempel-korrektur", "POST", {}], ["/api/korrektur-antrag", "POST", {}], ["/api/korrektur-entscheiden", "POST", {}]]) {
         const x = await anfrage(daten, pfad, { methode, token: T[name], rumpf });
         expect(x.status, `${methode} ${pfad} ${x.roh}`).toBe(403);
         expect(funde(x.roh)).toEqual([]);

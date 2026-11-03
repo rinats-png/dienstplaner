@@ -194,7 +194,9 @@ async function versucheZaehlen(s, basis, fenster) {
     Wirft bei einem Fehler der Ablage (siehe bremse()). */
 async function versuchVermerken(s, praefix) {
   const marke = `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
-  await s.setJSON(`v:${praefix}:${marke}`, 1);
+  const schluessel = `v:${praefix}:${marke}`;
+  await s.setJSON(schluessel, 1);
+  return schluessel;
 }
 
 /* Alte Fenster wegräumen. Die Schlüssel tragen ihr Fenster im Namen, also
@@ -265,6 +267,32 @@ export const GRENZEN = {
   zugaenge:   { versuche: 10,  fenster: 600,  sperre: 1800, steigend: true, max: 86400, failClosed: true },
   lesen:      { versuche: 300, fenster: 60,   sperre: 60 },
   schreiben:  { versuche: 120, fenster: 60,   sperre: 60 },
+  /* Stempeln (WP-47). Eigene Arten, damit eine Stempelspitze weder die
+     Planung (schreiben) blockiert noch von ihr gebremst wird.
+       stempeln        je PERSON: niemand stempelt zehnmal in der Minute; ein
+                       Gerät, das es trotzdem tut (Schleife, Wiederholung),
+                       verbraucht nur sein eigenes Kontingent.
+       stempeln-raum   je Raum als Schutz der Rechenleistung, nicht des
+                       Missbrauchs: Wert nach Betriebsgröße (stempelDeckel).
+     Die Sperre ist kurz (je 15 s) und nicht steigend — wer Retry-After
+     befolgt, kommt wieder durch. 15 s je Person (Review-Auflage M4, vorher
+     30 s): Die Oberfläche wartet je Wiederholung höchstens 15 s (plus
+     Streuung, speicher.js) — eine längere Sperre hätte ihre Wiederholung
+     sicher ins Leere laufen lassen. */
+  stempeln:   { versuche: 10,  fenster: 60,   sperre: 15 },
+  "stempeln-raum": { versuche: 240, fenster: 60, sperre: 15 },
+  /* Gelungene Anmeldungen je Betrieb als reine Lastbremse (WP-47). Anders als
+     die Fehlversuchsgrenzen schützt sie nichts vor Raten — der Code war
+     richtig —, sondern die Sitzungsablage vor einer Welle. 1000 je fünf
+     Minuten tragen einen Betrieb von 2000 Personen, bei dem ein Drittel zum
+     Schichtbeginn kommt (≈ 670). */
+  "anmelden-erfolg": { versuche: 1000, fenster: 300, sperre: 60 },
+  /* Gelungene Anmeldungen je CODE (Review-Auflage M1), geprüft VOR der Grenze
+     je Betrieb: Ein Code-Inhaber mit einer Skriptschleife verbraucht nur sein
+     eigenes Kontingent und sperrt den Betrieb nicht. Niemand meldet sich
+     zwanzigmal in fünf Minuten neu an; die Sperre dauert ein ganzes Fenster,
+     damit die Schleife auch über die Zeit nicht mehr als 20 je 5 min schafft. */
+  "anmelden-code": { versuche: 20, fenster: 300, sperre: 300 },
   zustellen:  { versuche: 60,  fenster: 60,   sperre: 120 },
   /* Sicherungen je Betrieb: sechs je Stunde reichen für jedes „vorher
      sichern“ — und niemand verdrängt damit die Wiederherstellungspunkte. */
@@ -354,6 +382,55 @@ export const WEITERE = {
 export function kennung(req, sitzung) {
   if (sitzung && sitzung.bestand) return `s:${kurz(sitzung.bestand)}`;
   return `a:${kurz(herkunft(req))}`;
+}
+
+/**
+ * Die Kennung einer PERSON innerhalb eines Raums (WP-47). Wer stempelt, wird
+ * je Person gezählt, nicht je Raum: Ein fehlerhaftes Gerät verbraucht nur sein
+ * eigenes Kontingent, und die Kolleginnen im selben Betrieb bleiben frei.
+ * Ohne Personenbezug (kein Stempeln möglich) zählt die Rolle der Sitzung.
+ * Nur Hashwerte, nie Namen.
+ */
+export function kennungPerson(sitzung) {
+  const s = sitzung || {};
+  const wer = s.person !== null && s.person !== undefined ? `p:${s.person}` : `r:${s.rolle || "?"}`;
+  return `s:${kurz(s.bestand ?? "")}:${kurz(`${String(s.mandantId ?? s.betrieb ?? "")}|${wer}`)}`;
+}
+
+/** Die Kennung eines Raums/Betriebs für Lastgrenzen (Hashwert, kein Klartext). */
+export const kennungRaum = (raum) => `b:${kurz(raum)}`;
+
+/** Die Kennung eines Zugangscodes für Lastgrenzen (Review-Auflage M1): aus dem
+    Ablageschlüssel des Kontos (schon ein Prüfwert), noch einmal gehasht — nie
+    der Code selbst. */
+export const kennungCode = (kontoSchluessel) => `c:${kurz(kontoSchluessel)}`;
+
+/**
+ * Stempel je Minute, die ein Raum insgesamt annimmt — nach Betriebsgröße.
+ *
+ * Gemessen (docs/acc45/wp28-nachweis.md, Linux-CI, zwei Läufe): Ein Stempel
+ * hält die Raumsperre bei 1000 Personen 29–31 ms, bei 2000 Personen 48–124 ms,
+ * bei 4000 Personen 82–149 ms. Daraus folgt eine Obergrenze je Raum von
+ * 1923–2062/min (≤ 1000), 483–1263/min (≤ 2000) und 403–736/min (4000).
+ * Der Deckel ist die HÄLFTE der kleinsten gemessenen Obergrenze der Stufe —
+ * die andere Hälfte bleibt für Lesen, Planung und Sicherung, und die
+ * Warteschlange vor der Raumsperre (Zeitgrenze 15 s, dann 503) läuft nie auf:
+ *   ≤ 1000 Personen   ≈ 960 → 900 je Minute
+ *   ≤ 2000 Personen   ≈ 240
+ *   darüber           ≈ 200
+ * Eine Spitze mit einem Drittel der Belegschaft in fünf Minuten (2000
+ * Personen ≈ 133/min) bleibt damit unter dem Deckel.
+ *
+ * Unbekannte Größe (Prozess frisch gestartet, Raum noch nicht gelesen): die
+ * vorsichtige mittlere Stufe, bis der erste Zugriff die Größe liefert.
+ * @param {number|null|undefined} personen
+ */
+export function stempelDeckel(personen) {
+  const n = Number(personen);
+  if (!Number.isFinite(n) || n <= 0) return 240;
+  if (n <= 1000) return 900;
+  if (n <= 2000) return 240;
+  return 200;
 }
 
 /** Die Adresse, von der die Anfrage kommt — roh, nur für Hashwerte.
@@ -657,6 +734,9 @@ export function herkunftStreng(req) {
 export async function bremse(art, kennung, ziel) {
   const g = GRENZEN[art];
   if (!g) return { frei: true };
+  /** Die Vermerke, die dieser Aufruf für Ziel und Gesamt angelegt hat — nach
+      einer gelungenen Anmeldung werden genau sie zurückgenommen (anmeldungGelungen). */
+  const zurueck = [];
   const s = takt();
   const jetztMs = Date.now();
   const jetzt = Math.floor(jetztMs / 1000);
@@ -723,7 +803,7 @@ export async function bremse(art, kennung, ziel) {
         if (gewichtet(z.laufend, z.vorig, zl.anteil) >= w.ziel.versuche)
           return { frei: false, wartet: w.ziel.fenster - (jetzt % w.ziel.fenster),
             grund: "ungewöhnlich viele Versuche für diesen Betrieb", dimension: "ziel" };
-        await versuchVermerken(s, `${zb}:${zl.index}`);
+        zurueck.push(await versuchVermerken(s, `${zb}:${zl.index}`));
       }
       if (w.gesamt) {
         const gl = fensterLage(jetztMs, w.gesamt.fenster);
@@ -732,7 +812,7 @@ export async function bremse(art, kennung, ziel) {
         if (gewichtet(z.laufend, z.vorig, gl.anteil) >= w.gesamt.versuche)
           return { frei: false, wartet: w.gesamt.fenster - (jetzt % w.gesamt.fenster),
             grund: "ungewöhnlich hohes Aufkommen", dimension: "gesamt" };
-        await versuchVermerken(s, `${gb}:${gl.index}`);
+        zurueck.push(await versuchVermerken(s, `${gb}:${gl.index}`));
       }
     }
 
@@ -799,7 +879,7 @@ export async function bremse(art, kennung, ziel) {
     }
     /* Gelegentlich aufräumen, damit die Vermerke nicht mitwachsen. */
     if (Math.random() < 0.02) alteFensterRaeumen(s, art, fenster).catch(() => {});
-    return { frei: true, uebrig: Math.max(0, Math.floor(g.versuche - stand.n)) };
+    return { frei: true, uebrig: Math.max(0, Math.floor(g.versuche - stand.n)), zurueck };
   } catch (e) {
     /* Fällt die Ablage aus, wird NICHT durchgelassen, sondern im
        Prozessspeicher weitergezählt. Vorher hieß es hier „Verfügbarkeit vor
@@ -818,10 +898,31 @@ export async function bremse(art, kennung, ziel) {
   }
 }
 
+/**
+ * Nur die Vermerke dieses einen Versuchs bei Ziel und Gesamt zurücknehmen
+ * (WP-47) — nicht den Zähler der Herkunft. Für einen GÜLTIGEN Code, der an
+ * einer Lastgrenze abgewiesen wurde (Review-Auflage M1): Er war kein
+ * Rateversuch und soll den Betrieb (Ziel) und den Dienst (Gesamt) nicht
+ * füllen; die Herkunft aber bleibt gezählt, denn entlastet wird sie nur bei
+ * einer gelungenen Anmeldung.
+ * @param {{zurueck?: string[]}|undefined} b  Ergebnis von bremse()
+ */
+export async function vermerkeZuruecknehmen(b) {
+  if (!b || !Array.isArray(b.zurueck)) return;
+  const s = takt();
+  for (const k of b.zurueck) await s.delete(k).catch(() => {});
+}
+
 /** Nach einer erfolgreichen Anmeldung den Zähler zurücksetzen. */
-export async function entlasten(art, kennung) {
+export async function entlasten(art, kennung, b) {
   const g = GRENZEN[art];
   if (!g) return;
+  /* Die Vermerke dieses Versuchs für Ziel und Gesamt (WP-47). Bis dahin zählten
+     gelungene Anmeldungen dort mit: 40 je Betrieb und fünf Minuten sind für
+     Fehlversuche reichlich und für einen Schichtbeginn viel zu wenig. Genau
+     die eigenen Vermerke werden zurückgenommen, nie die anderer Versuche —
+     Fehlversuche bleiben gezählt. */
+  await vermerkeZuruecknehmen(b);
   const fenster = fensterLage(Date.now(), g.fenster).index;
   /* Alle drei Zähler zurücksetzen, auch den prozesslokalen. In einem
      dauerhaften Prozess (eigener Server statt kurzlebiger Funktionsinstanz)
@@ -857,6 +958,20 @@ export const zuVielAntwort = (wartet) => new Response(JSON.stringify({
    -------------------------------------------------------------------------- */
 
 const SPUR_TAGE = 30;
+
+/**
+ * Die Adresse einer Anfrage, wie sie in ein Protokoll oder die Konsole darf:
+ * Der Pfad eines Kalender-Feeds trägt das Geheimnis (/kalender/feed/<geheim>.ics,
+ * ein Bearer-Zugang) — er wird geschwärzt, die Abfrage (?…) fällt immer weg.
+ * WP-24, Review-Befund 9: server.mjs schrieb bei einer Ausnahme req.url ungekürzt.
+ * @param {unknown} url  req.url (Pfad mit Abfrage) oder eine volle Adresse
+ * @returns {string}
+ */
+export function adresseFuersProtokoll(url) {
+  const roh = String(url ?? "");
+  const ohneAbfrage = roh.split(/[?#]/)[0];
+  return ohneAbfrage.replace(/(\/kalender\/+feed\/+).*$/i,"$1[geschwärzt]").slice(0, 300);
+}
 
 /**
  * Ein Eintrag ins Protokoll.
@@ -1068,16 +1183,75 @@ export function notbremse(art, kennung) {
  * @param {string} art
  * @param {string} kennung
  */
-export function notentlasten(art, kennung) {
+export function notentlasten(art, kennung, { nurGesamt = false } = {}) {
   const g = NOTGRENZEN[art];
   if (!g) return;
   const lage = fensterLage(Date.now(), g.fenster);
   const f = lage.index;
   const bis = lage.ende + g.fenster * 1000;
   /* Zurückgenommen wird im laufenden Fenster; lag der Versuch noch im
-     vorigen (Anmeldung über die Grenze hinweg), dort. */
-  for (const k of [`${art}:${kennung}`, `${art}:gesamt`]) {
+     vorigen (Anmeldung über die Grenze hinweg), dort. `nurGesamt`
+     (Review-Auflage M1): ein gültiger Code an einer Lastgrenze — der Dienst
+     wird entlastet, die Herkunft nicht. */
+  for (const k of nurGesamt ? [`${art}:gesamt`] : [`${art}:${kennung}`, `${art}:gesamt`]) {
     if (notLesen(`${k}:${f}`) > 0) notZaehlen(`${k}:${f}`, bis, -1);
     else notZaehlen(`${k}:${f - 1}`, bis, -1);
   }
+}
+
+/* --------------------------------------------------------------------------
+   LASTBREMSE (WP-47) — Grenzen für ehrliche Spitzen, ohne Platte
+
+   Stempeln (je Person, je Raum) und gelungene Anmeldungen (je Betrieb)
+   schützen die Rechenleistung des einen Prozesses vor einer Spitze, nicht vor
+   einem Angreifer, der etwas erraten will. Deshalb zählen sie nur im
+   Prozessspeicher:
+
+     - Kein Vermerk in der Ablage. Die Hauptbremse schrieb je Anfrage eine
+       Datei (mit fsync) und las das Verzeichnis; beim Stempeln, das ohnehin
+       unter der Raumsperre auf die Platte wartet, ist das genau die Last,
+       die ein Schichtwechsel nicht braucht (WP-28: rund 15 fsync je Anfrage).
+     - Sie kann nicht ausfallen und nie die Ablage belasten.
+     - Ein Neustart leert sie — für eine Lastgrenze ohne Folgen.
+
+   Alles, was etwas Geheimes schützt (Anmelden, Einrichten, zweiter Faktor,
+   Zugänge), bleibt bei bremse() mit Ablage, fail-closed (WP-46) und
+   Notbremse. Gleitendes Fenster wie dort; nach einer Überschreitung gilt eine
+   kurze Sperre (GRENZEN[art].sperre), die der Aufrufer als Retry-After
+   weitergibt.
+   -------------------------------------------------------------------------- */
+/** Sperren der Lastbremse: Schlüssel → Ende (ms). */
+const lastSperre = new Map();
+
+/**
+ * @param {string} art        Schlüssel in GRENZEN (stempeln, stempeln-raum, anmelden-erfolg)
+ * @param {string} kennung
+ * @param {number} [versuche] Grenze dieses Aufrufs (Raumdeckel nach Betriebsgröße); sonst GRENZEN[art]
+ * @returns {{frei: boolean, wartet?: number, uebrig?: number, neu?: boolean}}
+ */
+export function lastbremse(art, kennung, versuche) {
+  const g = GRENZEN[art];
+  if (!g) return { frei: true };
+  const grenze = Number.isFinite(versuche) && versuche > 0 ? Math.floor(versuche) : g.versuche;
+  const ms = Date.now();
+  const lage = fensterLage(ms, g.fenster);
+  const f = lage.index;
+  const bis = lage.ende + g.fenster * 1000;
+  const basis = `last:${art}:${kennung}`;
+  const bis0 = lastSperre.get(basis);
+  if (bis0 && bis0 > ms) return { frei: false, wartet: Math.max(1, Math.ceil((bis0 - ms) / 1000)) };
+  const n = gewichtet(notZaehlen(`${basis}:${f}`, bis), notLesen(`${basis}:${f - 1}`), lage.anteil);
+  if (n > grenze) {
+    /* Wie bremse(): Sperre setzen, Zähler leeren — wer Retry-After befolgt, kommt wieder durch. */
+    lastSperre.set(basis, ms + g.sperre * 1000);
+    not.delete(`${basis}:${f}`);
+    not.delete(`${basis}:${f - 1}`);
+    if (lastSperre.size > 500) for (const [k, v] of lastSperre) if (v < ms) lastSperre.delete(k);
+    /* `neu`: Diese Anfrage hat die Sperre gesetzt (Review-Auflage M2). Nur sie
+       wird protokolliert — jede weitere Abweisung derselben Sperre schriebe
+       sonst eine Protokolldatei und brächte die Plattenlast zurück, die die
+       Lastbremse vermeiden soll. Gezählt (/gesund) wird trotzdem jede. */
+    return { frei: false, wartet: g.sperre, neu: true };
+  }
+  return { frei: true, uebrig: Math.max(0, Math.floor(grenze - n)) };
 }

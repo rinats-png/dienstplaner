@@ -103,6 +103,32 @@ export const REGELN_BRANCHEN = Object.freeze([
     scope: { branche: ["produktion", "logistik"] },
     parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "anlage", min: 1 }], bedarfAus: "betriebsmittel.mindestBesetzung" },
     pruefhinweis: "Unterweisung und Beauftragung nach § 12 BetrSichV und § 12 ArbSchG; ob fehlende Qualifikation nur Hinweis oder bestätigungspflichtig ist, entscheidet der Nutzer (G4). Quellen an der Primärquelle prüfen." }),
+  /* Klinik — geteilterdienst (Matrix T1 a, T2 b). Branchen, in denen geteilte Dienste üblich sind. */
+  branchenregel({ id: "GETEILT-RUHE-01", modul: "geteilterdienst", typ: "grenzregel",
+    bezeichnung: "Ruhezeit ab Ende des zweiten Abschnitts eines geteilten Dienstes", ebene: "bund",
+    quelle: "ArbZG", fundstelle: "§ 5 Abs. 1",
+    scope: { branche: ["klinik", "pflege", "rettung", "gastronomie", "handel", "reinigung", "sonstiges"] },
+    parameter: { groesse: "Ruhezeit in Stunden", mindestens: 11 },
+    pruefhinweis: "Elf Stunden Ruhe nach Ende der täglichen Arbeitszeit (§ 5 Abs. 1 ArbZG); dass die Lücke zwischen den Abschnitten keine Ruhezeit ist, an der Primärquelle und Rechtsprechung prüfen. Abweichungen nach Tarif (§ 7 ArbZG) kennt die Regel nicht." }),
+  branchenregel({ id: "GETEILT-SPANNE-01", modul: "geteilterdienst", typ: "grenzregel",
+    bezeichnung: "Höchstspanne eines geteilten Dienstes", ebene: "betrieb",
+    scope: { branche: ["klinik", "pflege", "rettung", "gastronomie", "handel", "reinigung", "sonstiges"] },
+    parameter: { groesse: "Spanne in Stunden", hoechstens: 24, grenzeAus: "modulParameter.hoechstSpanneStunden" },
+    pruefhinweis: "Die Grenze trägt der Betrieb nach Tarif oder Betriebsvereinbarung ein; ohne Eintrag gilt keine. Keine Rechtsvorschrift mit fester Zahl bekannt (zu prüfen)." }),
+  /* Sicherheit — posten (Matrix P3 a). Die Instanzen tragen Soll und Qualifikation des Postens (modul-posten.mjs). */
+  branchenregel({ id: "POSTEN-BESETZUNG-01", modul: "posten", typ: "besetzungsregel",
+    bezeichnung: "Sollbesetzung eines Postens", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "objekte.posten.soll" },
+    pruefhinweis: "Die Sollbesetzung je Posten legt der Betrieb fest (Auftrag, Gefährdungsbeurteilung); keine Rechtsvorschrift mit festen Zahlen. Stufe nach Nutzerentscheidung G4." }),
+  branchenregel({ id: "POSTEN-QUAL-01", modul: "posten", typ: "besetzungsregel",
+    bezeichnung: "Qualifikation für einen Posten", ebene: "betrieb", scope: { branche: ["sicherheit", "reinigung"] },
+    parameter: { anforderungen: [{ art: "anzahlMit", merkmal: "qual", min: 1 }], bedarfAus: "objekte.posten.qualifikationen" },
+    pruefhinweis: "Welche Qualifikation ein Posten verlangt, trägt der Betrieb ein; ob die Sachkunde nach § 34a GewO für die Tätigkeit vorgeschrieben ist (Absatz 1a), an der Primärquelle und im Einzelfall prüfen. Stufe nach Nutzerentscheidung G4." }),
+  /* Pflege — bereichsplan (Matrix B1 b, B3 a: auch die Wachabteilung im Rettungsdienst). */
+  branchenregel({ id: "BEREICH-BESETZUNG-01", modul: "bereichsplan", typ: "besetzungsregel",
+    bezeichnung: "Sollbesetzung eines Bereichs", ebene: "betrieb", scope: { branche: ["pflege", "klinik", "rettung", "feuerwehr"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "einheiten.bereiche.soll" },
+    pruefhinweis: "Die Sollbesetzung je Bereich legt der Betrieb fest (Pflegeschlüssel, Rettungsmittel nach Landesrecht — zu prüfen); keine feste Zahl im Code. Stufe nach Nutzerentscheidung G4." }),
 ]);
 
 /**

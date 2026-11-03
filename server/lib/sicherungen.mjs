@@ -17,8 +17,10 @@
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
+import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
+import { planFreigabeAktiv } from "./planfreigabe.mjs";
 
 /* Wer Sicherungen seines Betriebs anlegen und sehen darf. Die Leitung
    verwaltet den Betrieb; `kunde` ist der eigene Probierraum mit allen
@@ -209,13 +211,72 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     else delete zurueck[feld];
   }
 
+  /* Planfreigabe (WP-23): Die Pflicht samt Wann/Wer gilt weiter, wie sie heute ist — eine alte
+     Sicherung (vor WP-23 oder vor der Aktivierung) schaltet den Entwurfsschutz nicht still ab.
+     Wirkte der Filter bisher nur über Freigaben und hat die Sicherung keine, bleiben die
+     jetzigen Freigaben (Vereinigung): sonst sähen Beschäftigte danach wieder Entwürfe. */
+  const altE = alt.einstellungen && typeof alt.einstellungen === "object" ? alt.einstellungen : {};
+  if ("planFreigabePflicht" in altE) {
+    const z = { ...(zurueck.einstellungen && typeof zurueck.einstellungen === "object" ? zurueck.einstellungen : {}) };
+    for (const f of ["planFreigabePflicht", "planFreigabePflichtGeaendertAm", "planFreigabePflichtGeaendertVon"]) {
+      if (f in altE) z[f] = altE[f]; else delete z[f];
+    }
+    zurueck.einstellungen = z;
+  }
+  if (planFreigabeAktiv(alt) && !planFreigabeAktiv(zurueck)) {
+    zurueck.freigaben = { ...(zurueck.freigaben && typeof zurueck.freigaben === "object" ? zurueck.freigaben : {}),
+      ...(alt.freigaben && typeof alt.freigaben === "object" ? alt.freigaben : {}) };
+  }
+
+  /* Wann/Wer der Ortsangaben (WP-20, N8): Die Liste der Einsatzorte und die Ortsmodi der Dienstarten kommen aus
+     der Sicherung — mit deren Vermerk. Fehlt er (Sicherung vor dem Vermerk) und der Stand ändert sich dadurch,
+     ist die Wiederherstellung selbst die Änderung: jetzt, durch die zurückspielende Person. Bleibt der Stand
+     gleich, gilt der gespeicherte Vermerk weiter. */
+  {
+    const jetztIso = heute.toISOString();
+    const wer = sitzung && sitzung.person !== undefined ? sitzung.person : null;
+    const gleichJ = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    delete zurueck.einsatzorteGeaendertAm; delete zurueck.einsatzorteGeaendertVon;
+    if ("einsatzorteGeaendertAm" in aus) {
+      zurueck.einsatzorteGeaendertAm = aus.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in aus) zurueck.einsatzorteGeaendertVon = aus.einsatzorteGeaendertVon;
+    } else if (!gleichJ(aus.einsatzorte, alt.einsatzorte)) {
+      zurueck.einsatzorteGeaendertAm = jetztIso; zurueck.einsatzorteGeaendertVon = wer;
+    } else {
+      if ("einsatzorteGeaendertAm" in alt) zurueck.einsatzorteGeaendertAm = alt.einsatzorteGeaendertAm;
+      if ("einsatzorteGeaendertVon" in alt) zurueck.einsatzorteGeaendertVon = alt.einsatzorteGeaendertVon;
+    }
+    const altD = new Map((Array.isArray(alt.dienstarten) ? alt.dienstarten : []).filter((d) => d && typeof d === "object").map((d) => [String(d.id), d]));
+    if (Array.isArray(zurueck.dienstarten)) {
+      zurueck.dienstarten = zurueck.dienstarten.map((d) => {
+        if (!d || typeof d !== "object" || "ortGeaendertAm" in d) return d;
+        const v = altD.get(String(d.id));
+        const geaendert = v ? !Object.is(v.ortModus, d.ortModus) || !Object.is(v.einsatzortId, d.einsatzortId)
+          : d.ortModus !== undefined || d.einsatzortId !== undefined;
+        return geaendert ? { ...d, ortGeaendertAm: jetztIso, ortGeaendertVon: wer } : d;
+      });
+    }
+  }
+
+  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
+     Stempel zurück und setzt keinen auf einen älteren Stand. Was heute gespeichert ist, bleibt —
+     mit Korrekturen und abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat.
+     Das kommt VOR den Fristen: Was die Aufbewahrungsfrist überschritten hat, löscht der
+     Datenschutzlauf (Modus „an") — auch aus dem, was die Sicherung zurückbringt
+     (Art. 5 Abs. 1 lit. e DSGVO). Umgekehrt käme Gelöschtes zurück. */
+  const st = stempelBeiWiederherstellung(alt, zurueck);
+  const stempelProtokoll = st.behalten
+    ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
+      ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }
+    : st.mandant;
+
   /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung), am
      heutigen Tag in Berlin (wie der Datenschutzlauf). Gelöscht wird nur im
      Modus „an" (N-3) — bei „aus" und „vorschau" löscht auch der Lauf nicht;
      dann wird nur gemeldet, was nach den Fristen fällig wäre. Eine ungültige
      Fristangabe löscht nie (fail-closed, wie im Lauf). */
   const heuteIso = heuteBerlin(heute);
-  const mitFristen = { ...zurueck, aufbewahrung: alt.aufbewahrung ?? zurueck.aufbewahrung };
+  const mitFristen = { ...stempelProtokoll, aufbewahrung: alt.aufbewahrung ?? stempelProtokoll.aufbewahrung };
   const ungueltig = aufbewahrungFehler(mitFristen.aufbewahrung);
   let ergebnis = mitFristen;
   let fristen;
@@ -234,7 +295,7 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? ergebnis : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
-  return { bestand: neu, fristen };
+  return { bestand: neu, fristen, stempelBehalten: st.behalten };
 }
 
 /* --------------------------------------------------------------------------

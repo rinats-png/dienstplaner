@@ -78,8 +78,8 @@ const e1 = await einrichten(tA1, { personId: "b1" });
 pruef("A1 richtet ein (personId=b1 im Rumpf): 200", e1.status === 200 && !!e1.geheim, `Status ${e1.status}`);
 await datenSenden(tA1, e1.geheim, "A1");
 const f1 = await feed(e1.geheim);
-pruef("… der Feed gehört A1 und funktioniert", f1.status === 200 && f1.text.includes("A1"), `Status ${f1.status}`);
-pruef("… der Feed von B1 ist unverändert", (await feed(gB1)).text.includes("B1-Original"));
+pruef("… der Feed gehört A1 und funktioniert", f1.status === 200 && f1.text.includes("X-WR-CALNAME:Dienstplan A"), `Status ${f1.status}`);
+pruef("… der Feed von B1 ist unverändert", (await feed(gB1)).text.includes("X-WR-CALNAME:Dienstplan B"));
 
 /* Angriffe mit fremden Geheimnissen */
 await einrichten(tA1, { alt: gA2 });

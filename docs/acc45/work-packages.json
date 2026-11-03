@@ -2,12 +2,12 @@
   "stand": "2026-11-03",
   "anzahl": 46,
   "statusZaehlung": {
-    "BLOCKED": 16,
-    "READY": 4,
-    "IN_PROGRESS": 7,
-    "REVIEW": 2,
+    "BLOCKED": 14,
+    "READY": 5,
+    "IN_PROGRESS": 3,
+    "REVIEW": 5,
     "CI_FAILED": 0,
-    "INTEGRATED": 15,
+    "INTEGRATED": 17,
     "VERIFIED": 0,
     "DONE": 2
   },
@@ -121,7 +121,7 @@
       "dateien": "server/lib/rechte.mjs, daten.mjs, zeiterfassung.mjs",
       "akzeptanz": "Änderung an Originalstempel → 403 für jede Rolle; Korrektur als Ereignis mit vorher/nachher",
       "tests": "Rechtematrix-Erweiterung, Negativtest",
-      "status": "IN_PROGRESS",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -247,7 +247,7 @@
       "dateien": "src/App.jsx (MHeute/DienstKarte), src/istdaten.js",
       "akzeptanz": "Ungeplanter Dienst 8 h in Konto und CSV",
       "tests": "Unit istdaten, UI-E2E",
-      "status": "IN_PROGRESS",
+      "status": "REVIEW",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -265,7 +265,7 @@
       "dateien": "server, src",
       "akzeptanz": "Antrag→Freigabe→Ist, Original sichtbar, Protokoll vollständig; START_FEHLT/VERALTET auflösbar",
       "tests": "Rechtematrix, E2E",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -320,7 +320,7 @@
       "dateien": "server/funktionen/daten.mjs, zeiterfassung.mjs",
       "akzeptanz": "20 parallele Stempel ohne 409 für Nutzende; datum vom Server",
       "tests": "Renntest, Datumsgrenzen/Nacht/DST",
-      "status": "REVIEW",
+      "status": "INTEGRATED",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -376,7 +376,7 @@
       "dateien": "server/lib/geo.mjs, src",
       "akzeptanz": "Referenzort je Dienst im Server-Urteil; Modi Standort/Einsatzort/Außendienst",
       "tests": "geo.test, E2E, Gerätetest GPS",
-      "status": "BLOCKED",
+      "status": "READY",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -431,7 +431,7 @@
       "dateien": "server/lib/sicht.mjs",
       "akzeptanz": "Nicht freigegebene Monate fehlen in der API-Antwort für Beschäftigte",
       "tests": "Unit, HTTP",
-      "status": "READY",
+      "status": "REVIEW",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -467,7 +467,7 @@
       "dateien": "src",
       "akzeptanz": "Liste, Vorschau, Wiederherstellen mit Bestätigung (nur Leitung)",
       "tests": "E2E",
-      "status": "IN_PROGRESS",
+      "status": "REVIEW",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null
@@ -522,7 +522,7 @@
       "dateien": "werkzeug/last",
       "akzeptanz": "Grenzwerte Testplan 3.6 gemessen; Entscheid Ablage/DB mit Zahlen",
       "tests": "k6/autocannon",
-      "status": "IN_PROGRESS",
+      "status": "REVIEW",
       "pr": null,
       "integrationscommit": null,
       "abnahmenachweis": null

@@ -73,7 +73,7 @@ Die Detailansicht von /gesund ist nur per `docker exec` erreichbar; nach außen 
 
 - **Erkennen:** Detail `fehler` mit Zählern der letzten 15 min.
 - **Diagnose:** `docker compose logs --since 30m centric-dp-web | grep -E "Interner Fehler|nicht lesbar|Journal|bremse-ausfall"`.
-- **Behebung je Zähler:** `unlesbar` → 8; `bremse-ausfall` → 9; `journal` (abgebrochene Schreibvorgänge zu Ende
+- **Behebung je Zähler:** `unlesbar` → 8; `bremse-ausfall` → 9; `429-last` → 12; `journal` (abgebrochene Schreibvorgänge zu Ende
   geschrieben) ist allein harmlos, gehäuft ein Hinweis auf Abbrüche (Platte, Speichergrenze 512 MB?); `5xx` → Logzeilen
   lesen, ggf. jüngste Auslieferung im Verdacht → R0 oder Rücksprung.
 - **Nachbereitung:** Zähler fallen nach 15 min von selbst.
@@ -142,3 +142,20 @@ ungewöhnliche Lesezugriffe, fremde Änderungen an Rollen.
 - `deploy.sh` meldet und führt R0 bzw. Rücksprung selbst aus; Exit 8 heißt: R0 nicht sicher erreicht — **sofort** von
   Hand nachsehen (`docker compose ps`, `./abschalten.sh`).
 - Danach: [DEPLOY-AUTOMATISIERUNG.md](DEPLOY-AUTOMATISIERUNG.md) §1, Freigabeliste nachziehen.
+
+## 12. Lastgrenze lehnt ehrliche Anfragen ab (`429-last`)
+
+- **Erkennen:** Detail `fehler.429-last` ≥ Schwelle; Nutzende melden „Gerade stempeln sehr viele gleichzeitig“ oder
+  „Bitte in … erneut versuchen“ beim Anmelden. Das Betriebsprotokoll (Konsole) zeigt `gebremst` mit `stempeln (Person)`,
+  `stempeln (Raum)` oder `Lastgrenze gelungener Anmeldungen`.
+- **Bedeutung:** Eine Spitze (Schichtwechsel, Anmeldewelle) liegt über einer der Lastgrenzen. Es wurde **nichts
+  gestempelt und keine Sitzung angelegt**; die App wiederholt bis zu zweimal selbst (Retry-After, höchstens 15 s) und
+  sagt dann „noch NICHT erfasst — bitte erneut tippen“. Grenzen: Stempeln je Person 10/min; je Raum nach Größe
+  (900/min bis 1000 Personen, 240/min bis 2000, 200/min darüber); gelungene Anmeldungen je Betrieb 1000 je 5 min.
+  Fehlversuche beim Anmelden zählen nicht hier, sondern bleiben streng (8 je 5 min und Herkunft).
+- **Diagnose:** Betrieb und Uhrzeit im Protokoll; Stempelt eine einzelne Person ständig (Gerät in der Schleife)? Dann
+  nur deren Gerät. Viele Personen? Dann Spitze: Betriebsgröße und Zeit festhalten.
+- **Behebung:** Einzelnes Gerät: App schließen/neu laden. Wiederkehrende Spitze: Werte und Ablauf der Grenzen in
+  `server/lib/schutz.mjs` (`GRENZEN`, `stempelDeckel`) mit dem Nachweis `docs/acc45/wp28-nachweis.md` prüfen — nicht
+  vor Ort ändern; die Grenzen schützen die Rechenleistung des einen Prozesses.
+- **Nachbereitung:** Zähler fällt nach 15 min.

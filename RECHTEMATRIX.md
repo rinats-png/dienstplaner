@@ -56,7 +56,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Verwaltungsangaben zur Person (`nachweise`, `urlaubshinweis`, `neuerZugang`, `anonymSeit`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Einstellungen der Anwendung an der Person (`weckzeit`, `benachrichtigung`, `thema`, `dichte`, `kontrastmodus`, `feldmodus`, `tour`, `einfuehrung`, `handbuch`, `startansicht`, `wenigerBewegung`) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Zeiterfassung (fremd; Grund) | – | – ¹⁴ | – ³ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
-| Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einsatzorte (`einsatzorte`: Name, Koordinate, Umkreis; WP-20) ²⁸ | – | – | – | ✓ | ✓ | – | ✓ | ✓ | A |
 | Stempeldaten der eigenen Person (für die eigene Zeiterfassung) | ✓ | ✓ ¹⁴ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Abwesenheiten mit Anmerkung | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) | „abwesend" (Urlaub/frei offen) ⁴ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Anträge (fremd) | nur offene Tauschgesuche | – | nur offene Tauschgesuche ⁵ ¹⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
@@ -72,6 +73,10 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Selbstplanung: Einträge anderer samt `hinweise` | nur Tag und Dienst ²² | – | nur eigener Bereich am Tag ¹⁵ ²² | ✓ | ✓ | – | ✓ | ✓ | A |
 | Selbstplanung: nicht übernommene Einträge (`nichtUebernommen`) und unbekannte Felder am Rundenkopf | nur eigene ²⁵ | – | nur eigener Bereich am Tag ²⁵ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
+| Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
+| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -275,6 +280,59 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
+²⁸ WP-20, Präzisierung der Zeilen „Stempeldaten, Ortsurteil“ und „Einsatzorte“, keine neue Spalte: **Einsatzorte und Prüfmodus.** Eine Dienstart
+kann einen eigenen Referenzort haben (`ortModus`: `standort` = Standort der Einheit, `einsatzort`, `aussendienst`). Der
+Server entscheidet; die Koordinate des Geräts ist nur Eingabe und wird weder gespeichert noch zurückgegeben. Gespeichert
+werden Status, Grund, Genauigkeit, Referenz (Art, Kennung, Name) und die **Abstandsklasse** (innerhalb, bis 1 km, bis 5 km,
+darüber); die auf 50/100 m gerundete Entfernung nur am Standort der Einheit, bei Einsatzorten nie. **Einsatzorte** liegen in
+`m.einsatzorte` (getrennt von Standorten, die Preis und Feiertage bestimmen); Koordinaten und Umkreis sehen nur Planung und
+Leitung (`sicht.mjs`: für Beschäftigte, Betriebsrat und Schichtverantwortung `WEG`). Der **Prüfmodus**
+(`einstellungen.geoModus`: `hinweis` = Vorgabe, `pflicht`) wirkt nur bei eingeschalteter Standortprüfung; schalten darf nur
+`org.edit`, „pflicht“ nur mit der Bestätigung zu Datenschutz und **Mitbestimmung** (technischer Nachweis, keine
+Einwilligung; Wann/Wer setzt der Server). „pflicht“ lehnt nie ab (E3): Ein Stempel mit nicht bestätigtem Ort bekommt die
+Markierung `ORT_PRUEFEN` für die Klärung durch die Leitung; beim Außendienst gibt es keinen Ort, also keine Markierung.
+Stempelergebnisse fremder Personen sehen weiter nur Leitung und Planung (`einstempeln` `NUR_EIGENE`, Schichtverantwortung
+und Betriebsrat ohne Zugriff). **Aufbewahrung:** Standort-Ergebnisse (`geoStart/-Ende`, `ortStart/-Ende`, `innerhalb…`,
+`geprueft…`) gehen mit der Frist der Gründe (`gruendeMonate`, Vorgabe 3 Monate) aus den Stempeln; Zeiten und Kennzeichen
+bleiben bis zur Plandatenfrist (`aufbewahrung.mjs`). Geprüft in `pruefungen/geo-einsatzorte*.test.js`.
+**Offenes Risiko (Review M1): Planung kann bestätigten Pflichtmodus über Dienstart-Zuordnung/Koordinaten aushebeln.** Dienstarten
+und Einsatzorte pflegen Planung und Leitung (`pattern.edit`/`org.edit`); die Planung kann dadurch den Referenzort einer
+Dienstart (`ortModus`, `einsatzortId`) oder Koordinate und Umkreis eines Einsatzorts ändern und so die Prüfung des
+Pflichtmodus umgehen. Das Recht bleibt unverändert (Entscheidung der Leitung offen); die Änderung trägt Wann/Wer vom Server
+(`ortGeaendertAm/-Von` an der Dienstart, `einsatzorteGeaendertAm/-Von` am Betrieb). Details: `docs/acc45/wp20-nachweis.md`.
+²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
+ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen
+eines nicht freigegebenen Monats nach heute nicht (`planOhneEntwurf`, `server/lib/sicht.mjs`) — weder die eigenen noch die
+anderer. Sichtbar sind die Einteilungen freigegebener Monate und jeder Tag bis einschließlich heute (Berliner Zeit):
+Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heute“, das Einstempeln und die Ist-Ansichten
+brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
+den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
+vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
+Dasselbe gilt für `postenPlan` und `bereichsPlan` (Einteilungen „Person|Tag“) und die daraus abgeleiteten `objekte`: Für
+Beschäftigte gehen nur die eigenen Einteilungen freigegebener Monate und vergangener Tage hinaus (`eigenOhneEntwurf`,
+`objekteEigene` in `sicht.mjs`); sonst verriete ein Objekt oder ein Bereich die Entwurfsplanung. Die Zeile „Plan“
+(`abweichungen`) ist für Beschäftigte VOLL und wird nur über diese Fußnote gefiltert; ihre Zellen in den Zeilen Posten und
+Bereiche tragen deshalb den Verweis ²⁷.
+**Übergangsregel und ihre Kehrseite:** Der Filter wirkt nur, solange der Betrieb die Pflicht eingeschaltet hat oder mindestens
+einen Monat freigegeben hat. Nimmt die Planung in einem Betrieb **ohne** Pflicht die letzte Freigabe zurück, ist der Filter
+danach aus und Beschäftigte sehen wieder Entwürfe. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
+bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. Ein Zurücknehmen von Freigaben gibt es heute nicht
+(künftiges Feature, siehe Nachweis).
+Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
+**Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
+oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen
+Beschäftigte eines bestehenden Betriebs ohne Freigaben nach dem Ausrollen keinen Einsatz mehr. Den Schalter setzt nur
+`org.edit` (Leitung, Kundenrolle); Form und Wann/Wer prüft und setzt der Server (`planFreigabeZusammen`,
+`planFreigabePflichtGeaendertAm/Von`). Neue Betriebe (Selbststart, Erstbefüllung, Provisionierung, Testräume) starten
+mit `true`. Solange der Filter bei einem bestehenden Betrieb aus ist, bekommt die Leitung die dringende Aufgabe
+„Planfreigabe aktivieren“. Die abgeleitete Antwortmarke `sichtEntwuerfe` (nie gespeichert) sagt der Oberfläche, dass
+der Filter wirkt; sie zeigt dann „noch nicht veröffentlicht“ statt eines aus der Schichtfolge gerechneten Dienstes.
+**Bewusst nicht gefiltert — Selbstauskunft (Art. 15):** `auskunft.mjs` liefert die eigenen Abweichungen und den Plan der
+nächsten 62 Tage auch aus Entwurfsmonaten. Es sind die eigenen Daten der Person, der Auskunftsanspruch ist nicht
+auf freigegebene Stände beschränkt (Alternative im Nachweis `docs/acc45/wp23-nachweis.md`). **Offen:** Der
+Kalender-Feed (`kalender.mjs`) hat keine Serversperre — der Client rechnet die Termine —, das ist ein Folgepunkt von
+WP-24. Der Betriebsrat behält den ganzen Plan (fachlich offen, siehe Nachweis). Geprüft in
+`pruefungen/entwuerfe.test.js` und `pruefungen/entwuerfe-oberflaeche.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.
@@ -324,6 +382,34 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   der Kompetenz, Form vom Server geprüft (`maschinenqualZusammen`). Die Matrix Person × Anlage wird in der Oberfläche
   nur aus dem gerechnet, was die Rolle ohnehin ausgeliefert bekommt (vorgesehen für Planung und Leitung). Befunde nur als Hinweis und nur bei aktivem Modul
   (setzt aktives Modul „anlagen" voraus). Geprüft in `pruefungen/modul-maschinenqual.test.js`.
+- *Geteilte Dienste* (`server/lib/modul-geteilterdienst.mjs`): keine neuen Betriebsfelder. Das Feld `zweiterAbschnitt` einer
+  Dienstart gibt es im Bestand; Dienstarten ändern nur Rollen mit `org.edit` oder `pattern.edit` (WP-22). Der Server
+  weist eine falsche Form des zweiten Abschnitts ab (`geteilterdienstZusammen`: Uhrzeiten, Lücke, höchstens 24 Stunden
+  Spanne). Parameter `hoechstSpanneStunden` in `einstellungen.branchenmodule` (nur `org.edit`). Befunde nur als
+  Hinweis, nur bei aktivem Modul; die Rechnung braucht nur die Dienstart und die Dienste der Nachbartage. Das Stempeln je Abschnitt ist
+  rechnerisch vorbereitet (`istJeAbschnitt`), die Ablage zweier Stempelpaare je Tag noch nicht angebunden.
+  Geprüft in `pruefungen/modul-geteilterdienst.test.js`.
+- *Posten* (`server/lib/modul-posten.mjs`): zwei neue Betriebsfelder. `objekte` (Objekte mit Posten, Sollbesetzung
+  und verlangten Qualifikationen; keine Personendaten) liefert der Server Planung und Leitung voll, Beschäftigten und der
+  Schichtverantwortung nur mit Einteilung (eigene Einteilung bzw. Einteilung im eigenen Bereich am Tag), dem Betriebsrat
+  nicht — **Nutzerentscheidung W3 offen**, bis dahin konservativ. `postenPlan`
+  (Einteilung auf Posten, Schlüssel „Person|Tag“) sehen Beschäftigte nur für sich selbst, die Schichtverantwortung
+  im eigenen Bereich am Tag (`schichtSchluessel`, tagesgenau), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Beide schreiben nur Planung und Leitung (Voll-Schreibweg); der Server prüft die Form
+  (`postenZusammen`: Kennungen, Soll 0 bis 99, Schlüssel mit echtem Tag, nur Neues oder Geändertes streng). Die
+  Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Einteilungen auf Posten (`postenzuordnungen`). Befunde nur
+  als Hinweis und nur bei aktivem Modul. Die Posten-Dienstarten des Bestands (`posten: true`) bleiben unverändert.
+  Geprüft in `pruefungen/modul-posten.test.js`.
+- *Bereichsplan* (`server/lib/modul-bereichsplan.mjs`): ein neues Betriebsfeld und ein Feld an der Einheit. Die Bereiche
+  (`einheiten[].bereiche`: Kennung, Name, Soll je Dienstart; keine Personendaten) liefert der Server mit den Einheiten
+  an alle Rollen. `bereichsPlan` (Zuordnung, Schlüssel „Person|Tag“ → Bereich) sehen Beschäftigte nur für sich selbst,
+  die Schichtverantwortung im eigenen Bereich am Tag (`schichtSchluessel`), Betriebsrat und Betreiber nicht; Planung und
+  Leitung voll. Schreiben: Planung und Leitung über den Voll-Schreibweg (`bereichsplanZusammen`, nur Neues oder
+  Geändertes streng, Tage höchstens zwei Jahre von heute entfernt); die Schichtverantwortung ordnet Personen ihres Bereichs am Tag Bereichen der eigenen Einheit zu
+  oder hebt die Zuordnung auf (`einheitZusammen`, Fall `bereichsPlan`; höchstens 500 Änderungen je Speichern, Tage wie oben; Unsichtbares fremder Bereiche bleibt durch die
+  Rückfüllung erhalten, Fremdes wird abgewiesen — Nutzerentscheidung B2 b, vorläufig). Beschäftigte schreiben nicht.
+  Die Selbstauskunft nach Art. 15 DSGVO nennt die eigenen Zuordnungen (`bereichszuordnungen`). Befunde nur als Hinweis
+  und nur bei aktivem Modul. Geprüft in `pruefungen/modul-bereichsplan.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
@@ -336,19 +422,23 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 
 | Weg | Wer | Was | |
 |---|---|---|---|
+| `GET /api/br-auswertung` (abgeleitet, nie gespeichert, nicht im Bestand) | Nur Betriebsrat mit `audit.view` (serverseitig; alle anderen Rollen 403) | WP-27: Summen je Monat und Einheit aus dem vollständigen Bestand (Dienste, Nacht-, Sonntagsdienste, Dienste über 10 h, Ruhezeit unter 11 h nach Plan), sechs Monate zurück, zwei voraus. Unter 3 Personen keine Zahlen („<3“); ist eine Einheit gesperrt, fehlt auch die Gesamtzeile des Monats (Zweitsperre). **Ist-Zeiten** (bestätigte Stunden und ihre Zahl) nur, wenn der Monat abgeschlossen und die Frist zum nachträglichen Bestätigen (14 Tage) vorbei ist **und** mindestens 3 Personen bestätigt haben; trägt in einem Monat eine Einheit mit 1–2 Personen bei, fehlt das Ist auch in der Gesamtzeile (Review F1). Keine Person, kein Name, keine Kennung (`server/lib/br-auswertung.mjs`). Gerechnet wird im Hintergrund in Häppchen, je Raum und Tag gemerkt und höchstens alle 5 Minuten neu; das letzte Ergebnis wird mit Zeitstempel ausgeliefert, bis zum ersten „wird berechnet“ (202) (F2, F3, N1). Ein einmal ausgegebenes Ist (je Raum, Betrieb, Monat, Einheit) bleibt dauerhaft gleich (Ablage `brist:`); spätere Korrekturen der Planung stehen nur als Hinweis (`istKorrigiert`) an der Zeile. `export.data` schaltet nur die Schaltfläche für den CSV-Export frei; der Export enthält genau diese Zahlen, nichts darüber hinaus (F4, dokumentiert). Die Oberfläche sperrt für den Betriebsrat Ansichten, die ohne seine Daten falsch oder leer wären (Leistungsnachweis, Sondereinsätze, Betriebsmittel, Lenkzeiten) und zeigt den Ausgleichszeitraum ohne Ist-Daten als „nicht bewertbar“ | A |
 | `PUT /api/bestand`: Dienstarten (`dienstarten`) anlegen, ändern, löschen | Leitung, Kundenrolle, Planung (`org.edit` oder `pattern.edit`) | WP-22 (Nutzerentscheidung, keine Funktionskürzung): Die Planung behält die Einrichtung — Dienstarten, Zeiten, Mindestbesetzung, Vorlagenzeiten, Checkliste. Alle anderen Rollen weist der Server ab (403), eine unveränderte Kopie stört nicht. Eine noch verwendete Dienstart (Schichtfolge, Einteilung ab heute) lässt sich nicht löschen | A |
 | `PUT /api/bestand`: Einteilungen (`abweichungen`, mittelbar über Dienstzeiten, Schichtfolge, Einheiten, Personen) | jede schreibende Rolle im eigenen Umfang | WP-22: Der Server prüft neue Befunde mit derselben Fachprüfung wie die Oberfläche (`einteilungsBefunde`, `server/lib/fachpruefung.mjs`): sperrende (Katalogspalte `sperrt`) weist er ab (403); warnende nur mit einem neuen Eintrag im Bestätigungsprotokoll zu Person, Tag und Regel — oder, für Planung, Leitung und Kundenrolle, einer Sammelbestätigung je Regel, Einheit (Pflicht) und Zeitraum — nicht für Schutzregeln, die nur einzeln —, deren gedeckte Anzahl und tatsächlich betroffene Tage der Server einträgt; eine, die nichts deckt, wird nicht gespeichert (Review B1, S1) — im selben Speichervorgang, sonst 409 mit `fachbefunde` und `sammelVorschlag` (neutrale Texte aus dem Katalog, für Schutzbefunde immer „Schutz- oder Einsatzregel der Person“). Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung). Die Schichtverantwortung bekommt nie Befunde aus fremden Bereichen: Wirkt ihre Änderung dorthin, sperrt sie ohne Kennung (Review B4). Die Nachrechnung läuft in Häppchen (503 nach Zeitbudget, 429 bei mehr als 10 Strukturänderungen je Raum und Minute; Review B2). Schutzangaben einer Person werden immer gespeichert; widersprechende bestehende Einteilungen meldet der Server (Nachprüfung 9717ddf). Siehe ²¹ | A |
 | `/api/vollausgabe` | Leitung; Sicherungsschlüssel | eigener Betrieb nach Exportkatalog (`server/lib/sicherungen.mjs`), Spalten VA-LT/VA-SK oben; kein Wiederherstellungsformat | A |
 | `/api/sicherungsschluessel` (GET/POST/DELETE) | Leitung | nur Schlüssel des eigenen Betriebs; Widerruf nur über die vollständige Kennung; fremd wie unbekannt | A |
 | `/api/sicherung`, `/api/sicherungen`, `/api/wiederherstellen` | Leitung | Sicherungen und Wiederherstellen je Betrieb, Kontingente je Betrieb, Geheimnisse und Vertrag aus dem heutigen Stand; ebenso Betreiberstamm und alles außerhalb der Sicht der Leitung (an bestehenden Personen etwa Bank-, Steuer- und Lohnangaben) — dieselbe Grenze wie beim Speichern | A |
 | `/api/zugang-sperren` | Leitung (eigener Betrieb), Betreiber (raumweit) | ohne Existenz-Orakel | A |
-| `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag. Geo V1: Urteil nur bei eingeschaltetem Betriebsschalter `einstellungen.geoPruefung` (Vorgabe aus; schalten nur Rollen mit `org.edit`, Zeitpunkt und Person setzt der Server); Rohkoordinate und exakte Entfernung werden nicht gespeichert | A |
+| `/api/stempeln`, `/api/zeit-bestaetigen` | Person mit Zugang | nur die eigene Person, Antwort nur der eigene Eintrag. Geo V1: Urteil nur bei eingeschaltetem Betriebsschalter `einstellungen.geoPruefung` (Vorgabe aus; schalten nur Rollen mit `org.edit`, Zeitpunkt und Person setzt der Server); Rohkoordinate und exakte Entfernung werden nicht gespeichert. Offline (WP-07): `clientEventId` je Person idempotent (Kennung am Stempel, unter der Raumsperre), Ereignis mit fremdem `inhaber` → 409 `STEMPEL_FREMDE_SITZUNG`, Erfassungszeit plausibilisiert (`GERAETEZEIT_ABWEICHEND`, `OFFLINE_ALT`, und — ohne Betriebsschalter `einstellungen.offlineStempelVertrauen` (nur `org.edit`, Wann/Wer vom Server, Vorgabe aus) — jede offline erfasste Zeit, die 15 min oder später eingeht → Ist-Zeit zur Prüfung `OFFLINE_PRUEFEN`); gleiche Kennung mit anderer Art → 422 `STEMPEL_EREIGNIS_WIDERSPRUCH`, `offlineStart`/`offlineEnde` Teil des unveränderlichen Originals | A |
+| `/api/stempel-korrektur` | Leitung, Planung, Probierraum (`staff.edit`) | Ist-Zeit eines gestempelten Tages korrigieren — nur als Ereignis `{vorher, nachher, wer, wann, grund}` am Stempel (`server/lib/stempelintegritaet.mjs`, WP-06); das Original bleibt. Ein Originalstempel ist über `PUT /api/bestand` für **jede** Rolle unveränderlich (ändern, löschen, erfinden, Korrektur am Ereignisweg vorbei, Ist-Zeit eines gestempelten Tages ändern: 403 `STEMPEL_UNVERAENDERLICH`). Ausnahmen: Löschlauf der Leitung nach Ablauf der Aufbewahrungsfrist (mind. 24 Monate); Wiederherstellen behält alle heutigen Stempel samt Korrekturen. Die Ereignisse sieht nur, wer den Stempel sieht (`einstempeln` `NUR_EIGENE` für Beschäftigte, Schichtverantwortung, Betriebsrat) | A |
+| `/api/korrektur-antrag` | Person mit Zugang (auch Schichtverantwortung, Betriebsrat) | Antrag auf Korrektur der Ist-Zeit am **eigenen** Stempel der letzten 62 Tage (Beginn, Ende, Pause, Grund ≥ 10 Zeichen); ein offener Antrag je Stempel; liegt am Stempel (`einstempeln[k].antraege`) und folgt dessen Sicht — die Schichtverantwortung sieht fremde nicht (H8+). Der Stempel bleibt unverändert (`server/lib/korrekturworkflow.mjs`, WP-14) | A |
+| `/api/korrektur-entscheiden` | Leitung, Planung, Probierraum (`staff.edit`); Zurückziehen nur die antragstellende Person | genehmigen (→ Korrekturereignis am Stempel mit Antrags-Kennung und Regelhinweisen, Ist ändert sich), ablehnen (Begründung ≥ 10 Zeichen) oder zurückziehen; nicht Schichtverantwortung, Beschäftigte, Betriebsrat, Betreiber (403) | A |
 | `/api/anmelden`, `/api/demo`, `/api/demos` | öffentlich | Sitzung bzw. Name/Kennung der Demozugänge, keine Codes | A |
 | `/api/account/*` | eigenes Konto | Mitgliedschaften des eigenen Kontos | A |
 | `/api/zugaenge`, `/api/zugaenge-uebersicht`, `/api/raum-loeschen`, `/api/bestand-anlegen`, `/lage` | Betreiber | raumweit, ohne Codes und Prüfsummen | A |
 | `/einrichten/*` | Verwalterschlüssel | Codes anlegen, Übersicht und Bindung ohne Codes | A |
 | `/kalender/einrichten`, `/kalender/daten`, `/kalender/loeschen` | jede bekannte Rolle mit eigener Person (Betreiber nicht; unbekannte Rolle 403, D1e) | nur die eigene Person aus der Sitzung (Raum, Betrieb, Person); `personId` im Rumpf zählt nicht; ein aktiver Feed je Person (Index nur als Hash); fremde und unbekannte Geheimnisse ohne Wirkung und mit gleicher Antwort (Commit 3) | A |
-| `/kalender/feed/<geheim>.ics` | wer das Geheimnis hat | liest den Feed (Bearer); ungültig nach erneutem Einrichten oder Löschen. Bei jedem Abruf zusätzlich: Raum, Betrieb (`mandantId`), Person in genau diesem Betrieb, nicht anonymisiert, nicht gesperrt, nicht ausgetreten, bekannte Rolle — sonst 404 wie unbekannt; Altfeed ohne `mandantId`: 404 und widerrufen (Commit D1f). Fehlt die Berechtigung, wird der Feed endgültig widerrufen (`feed:`, `feeddaten:`, genau zugehöriger `feedperson:`-Index) — kehrt die Person zurück, gilt der alte Verweis nicht wieder; ein Lesefehler der Ablage widerruft nicht (500) (Commit D1g). Konto, Mitgliedschaft und Codesperre noch nicht (Folgeschritt: Herkunft am Feed) | A |
+| `/kalender/feed/<geheim>.ics` | wer das Geheimnis hat | liest den Feed (Bearer); ungültig nach erneutem Einrichten oder Löschen. Bei jedem Abruf zusätzlich: Raum, Betrieb (`mandantId`), Person in genau diesem Betrieb, nicht anonymisiert, nicht gesperrt, nicht ausgetreten, bekannte Rolle — sonst 404 wie unbekannt; Altfeed ohne `mandantId`: 404 und widerrufen (Commit D1f). Fehlt die Berechtigung, wird der Feed endgültig widerrufen (`feed:`, `feeddaten:`, genau zugehöriger `feedperson:`-Index) — kehrt die Person zurück, gilt der alte Verweis nicht wieder; ein Lesefehler der Ablage widerruft nicht (500) (Commit D1g). **WP-24:** Der Feed ist live — die Termine rechnet der Server bei jedem Abruf aus dem aktuellen Bestand (`server/lib/kalenderfeed.mjs`), nicht das Gerät; nur die eigenen Dienste der Person; Abwesenheit nur als ganztägiger Termin, die Art nur bei Urlaub, Schulung, Freizeitausgleich, Freistellung (alles andere, auch Krankheit und Mutterschutz, heißt „abwesend“); keine Schutzmerkmale, keine Kollegen; `DTSTAMP` ist der Stand des Bestands. Der Feed trägt seine Herkunft (Konto + Mitgliedschaft + Generation, oder Zugangscode): Sperre des Kontos, Entzug der Mitgliedschaft, gesperrter Zugangscode widerrufen ihn beim nächsten Abruf (`server/lib/feedherkunft.mjs`); Feeds aus der Zeit davor werden über die Person geprüft und von der Sperre des Kontos (`accountSperren`) oder Zugangscodes (`/api/zugang-sperren`) über den `feedperson:`-Index der gebundenen Person widerrufen (`server/lib/feedwiderruf.mjs`). Ein neuer Feed ohne ableitbare Herkunft wird nicht eingerichtet (403); ein abgelaufener Testraum-Code (`laeuftAb`) und ein ersetzter Code-Eintrag (`ersetztDurch` nach der Umschlüsselung, die ganze Kette) gelten nicht. Entwürfe (WP-23): dieselbe Regel wie die Sicht (`planfreigabe.mjs`: `planFreigabeAktiv`, `istEntwurfstag`; Rolle der Person im Bestand, ohne Angabe `mitarbeiter`) — Beschäftigte sehen keine Einteilung eines nicht freigegebenen künftigen Monats, stattdessen den Hinweis „Plan noch nicht veröffentlicht“; Betriebsrat, Schichtverantwortung, Planung und Leitung sehen den Entwurf. **Rollen-Sonde:** `pruefungen/kalender-feed-live.test.js`, „Rollen-Sonde Kalender-Feed (MA, BR, SV, PL, LT)“ (nur eigene Dienste, keine fremden Marker, Entwürfe je Rolle wie `bestandFuerRolle`) und „Entwurfsregel des Feeds = Sicht“ (11 Betriebsformen × 6 Rollenangaben × 205 Tage). `cache-control: private`. `raumLoeschen` räumt auch die `feedperson:`-Indizes; alte Geräte-Termine `feeddaten:*` räumt der Datenschutzlauf (Vorschau zählt, `an` löscht) | A |
 | `/zustellung/senden` | Planung, Leitung (Betrieb); Schichtverantwortung (Bereich, eigene Vorgänge); Beschäftigte (nur eigene Vorgänge); nicht Betriebsrat, Betreiber | nimmt nur `{nachrichten:[id,…]}`; Empfänger, Adresse, Push-Anmeldung, Titel und Text aus dem gespeicherten Betrieb der Sitzung; Antwort je Kennung nur „erledigt"/„offen" — unbekannt, fremd, ohne Weg sehen gleich aus; atomarer Claim je Mitteilung, Kanal und Versuch verhindert parallelen Mehrfachversand, gesendet/übersprungen endgültig, Wiederholung bis 3 Versuche; Restschuld: nach einem Prozessabbruch zwischen Versand und Statusabschluss ist nach 15 Minuten ein erneuter Versand möglich (Commit 4) | A |
 | `/zustellung/anmelden`, `/zustellung/abmelden` | eigene Person | Push-Register `push:<raum>:<mandantId>:<person>`; alter Schlüssel ohne Betrieb nur bei eindeutiger Zuordnung im Raum übernommen (Commit 4) | A |
 | `PUT /api/bestand` (Notruf, Tauschmeldung) | wer den Vorgang auslöst | der Server erzeugt die Mitteilungen und stellt sie nach dem Speichern selbst zu; Notruf nur an die gültigen, geprüften Empfänger des Notrufs, ohne Ersatzempfänger (Commit 4a); ein Versandfehler ändert den Vorgang nicht (Commit 4) | A |
@@ -357,8 +447,11 @@ Text ≤ 500 Zeichen. Beschäftigte und die Schichtverantwortung als Empfänger 
 
 | Punkt | bis |
 |---|---|
-| Kalenderfeed nach Plan-/Dienständerungen automatisch aktualisieren (heute nur beim Einrichten hochgeladen) | eigener Funktionspunkt |
 | Trockenlauf für den Verwalter: Kalenderfeeds je Raum und Person (ohne Geheimnisse), mehrdeutige Altfeeds | eigener Schritt |
+| Kalender-Feeds ohne Herkunft (vor WP-24): außer bei einer Sperre (Konto, Code) nur über die Person geprüft. Vorschlag (b): Stichtag — 60 Tage nach dem Ausrollen von WP-24 gilt ein Feed ohne Herkunft nicht mehr (404, Hinweis zum Neu-Einrichten in den Versionshinweisen); (c): bis dahin zählt der Trockenlauf (Datenschutzlauf, Vorschau) die Feeds ohne Herkunft je Raum, damit die Leitung weiß, wen sie ansprechen muss | Entscheidung bis 2026-12-01, Stichtag frühestens 60 Tage nach Produktions-Rollout WP-24 |
+| Kalender-Feed: Passwortwechsel und Abmelden widerrufen den Feed nicht (ein Kalender meldet sich nicht neu an; Rückzug einzeln über `/kalender/loeschen`) | Produktentscheidung (offen) |
+| Kalender-Feed: Posten (Dienste aus Gruppendiensten) stehen nicht im Feed (rechnet nur die Oberfläche) | Grenze, eigener Schritt |
+| Kalender-Feed: jeder gültige Abruf liest den vollen Bestand (Bremse „lesen“ 300/min je Geheimnis) — eigene Art „feed“ (12–30/min) und Ergebnis-Zwischenspeicher je Raum/Stand | WP-47b |
 | Ältere vollständige Push-Anmeldungen an Personen im Bestand (vor Commit 4 geschrieben): werden nicht mehr gelesen noch fremd ausgeliefert, bleiben aber bis zur nächsten Änderung der Person gespeichert | eigener Bereinigungsschritt |
 | Alte Push-Schlüssel `push:<raum>:<person>` bei mehrdeutiger Kennung im Raum: nie benutzt, nicht gelöscht | Trockenlauf/Bereinigung für den Verwalter |
 | Versandwarteschlange und mehrere Geräte je Person | bei Bedarf |

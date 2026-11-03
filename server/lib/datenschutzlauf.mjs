@@ -131,7 +131,8 @@ let laeuft = false;
  */
 export async function datenschutzLauf(store, { jetzt = new Date(), spur = true, modus = modusAusUmgebung() } = {}) {
   const vermerk = { zeit: jetzt.toISOString(), modus, uebersprungen: false, raeume: 0, geaendert: [],
-    faellig: [], sicherungenGeloescht: 0, sicherungenFaellig: 0, sicherungenOhneAlter: 0, fehler: [] };
+    faellig: [], sicherungenGeloescht: 0, sicherungenFaellig: 0, sicherungenOhneAlter: 0,
+    feeddatenGeloescht: 0, feeddatenFaellig: 0, fehler: [] };
   if (modus === "aus") return { ...vermerk, uebersprungen: true };
   if (laeuft) return { ...vermerk, uebersprungen: true };
   laeuft = true;
@@ -217,9 +218,36 @@ async function lauf(store, { jetzt, spur, modus, vermerk }) {
     }
   }
 
-  /* 3. Spur nach 30 Tagen — nur, wenn der Lauf eingeschaltet ist. */
+  /* 3. Alte Kalender-Termine vom Gerät (feeddaten:*, WP-24). Bis WP-24 rechnete die Oberfläche die
+        Termine und legte sie hier ab — mit der Art der Abwesenheit im Klartext (auch „Krank“). Seit
+        WP-24 rechnet der Feed live aus dem Bestand; diese Einträge liest und schreibt nichts mehr. Sie
+        haben keinen Zweck mehr (Art. 5 Abs. 1 lit. c, e DSGVO). Vorschau: nur zählen; an: löschen. */
+  await feeddatenRaeumen(store, { loeschen, vermerk });
+
+  /* 4. Spur nach 30 Tagen — nur, wenn der Lauf eingeschaltet ist. */
   if (spur && loeschen) await spurAufraeumen();
 
   try { await store.setJSON(VERMERK, vermerk); } catch { /* der Lauf darf daran nicht scheitern */ }
   return vermerk;
+}
+
+/** feeddaten:* zählen (Vorschau) oder löschen (an). Ein Fehler beim Auflisten oder Löschen wird gemeldet, nie verschluckt. */
+export async function feeddatenRaeumen(store, { loeschen, vermerk }) {
+  let schluessel = [];
+  try { schluessel = (await store.list({ prefix: "feeddaten:" })).blobs.map((b) => b.key); }
+  catch (e) {
+    vermerk.fehler.push({ raum: null, grund: `feeddaten: ${String((e && e.message) || e).slice(0, 160)}` });
+    return;
+  }
+  if (!schluessel.length) return;
+  if (!loeschen) {
+    vermerk.feeddatenFaellig += schluessel.length;
+    await protokoll("loeschlauf", "system", "vorschau", `${schluessel.length} alte Kalender-Termine (feeddaten) fällig`);
+    return;
+  }
+  for (const k of schluessel) {
+    try { await store.delete(k); vermerk.feeddatenGeloescht += 1; }
+    catch (e) { vermerk.fehler.push({ raum: null, grund: `feeddaten: ${String((e && e.message) || e).slice(0, 160)}` }); }
+  }
+  await protokoll("loeschlauf", "system", "erfolg", `${vermerk.feeddatenGeloescht} alte Kalender-Termine (feeddaten) entfernt`);
 }

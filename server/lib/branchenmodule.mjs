@@ -106,7 +106,10 @@ const modul = (e) => Object.freeze({ status: "geplant", abhaengigVon: [], mitbes
 export const BRANCHENMODULE = Object.freeze([
   /* Sicherheit */
   modul({ id: "posten", merkmal: "posten", name: "Objektbezogene Posten", pakete: ["sicherheit"],
-    beschreibung: "Objekte mit Posten, Sollbesetzung und Anforderungen je Posten; Einteilung auf Posten." }),
+    beschreibung: "Objekte mit Posten, Sollbesetzung und Anforderungen je Posten; Einteilung auf Posten.",
+    /* server/lib/modul-posten.mjs: zwei Betriebsfelder (Positivkatalog in sicht.mjs, RECHTEMATRIX). Die Posten-Dienstarten
+       des Bestands (posten:true/quelle) bleiben unverändert (Matrix G10 a). */
+    datenfelder: ["objekte", "postenPlan"], regelIds: ["POSTEN-BESETZUNG-01", "POSTEN-QUAL-01"] }),
   modul({ id: "wachbuch", merkmal: "wachbuch", name: "Wachbuch", pakete: ["sicherheit"], mitbestimmung: true,
     beschreibung: "Fortlaufende Einträge je Objekt und Dienst (Vorkommnisse, Kontrollgänge, Übergaben), Nachträge statt Änderung." }),
   modul({ id: "objektbericht", merkmal: "objektbericht", name: "Objektbericht", pakete: ["sicherheit"], mitbestimmung: true,
@@ -114,7 +117,9 @@ export const BRANCHENMODULE = Object.freeze([
     beschreibung: "Bericht je Objekt und Zeitraum für den Auftraggeber: Soll- und Ist-Besetzung der Posten, optional Wachbuchauszug." }),
   /* Pflege */
   modul({ id: "bereichsplan", merkmal: "bereichsplan", name: "Bereichs- und Wachabteilungsplanung", pakete: ["pflege"],
-    beschreibung: "Zuordnung der Personen eines Dienstes zu Bereichen (Tageseinsatzplan) mit Besetzung je Bereich." }),
+    beschreibung: "Zuordnung der Personen eines Dienstes zu Bereichen (Tageseinsatzplan) mit Besetzung je Bereich.",
+    /* server/lib/modul-bereichsplan.mjs: Bereiche je Einheit (einheiten[].bereiche) und das Betriebsfeld bereichsPlan. */
+    datenfelder: ["bereichsPlan"], regelIds: ["BEREICH-BESETZUNG-01"] }),
   modul({ id: "pflegequal", merkmal: "pflegequal", name: "Pflegequalifikationen", pakete: ["pflege"],
     beschreibung: "Qualifikationsniveaus und Betreuungskräfte nach § 43b SGB XI in der Besetzung je Dienst." }),
   /* Klinik */
@@ -122,7 +127,13 @@ export const BRANCHENMODULE = Object.freeze([
     pakete: ["klinik"],
     beschreibung: "Bereitschaftsstufen mit Anrechnungsfaktor, Inanspruchnahme, Anrechnung auf Höchstarbeitszeit." }),
   modul({ id: "geteilterdienst", merkmal: "geteilterdienst", name: "Geteilte Dienste", pakete: ["klinik"],
-    beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt." }),
+    beschreibung: "Dienste mit zwei Abschnitten: Bearbeitung, Dauer, Ruhezeit und Besetzung je Abschnitt.",
+    /* server/lib/modul-geteilterdienst.mjs: Feld zweiterAbschnitt der Dienstart (Bestand) — keine neuen Betriebsfelder. */
+    regelIds: ["GETEILT-RUHE-01", "GETEILT-SPANNE-01"],
+    parameter: {
+      hoechstSpanneStunden: { typ: "zahl", standard: 0, min: 0, max: 24, ganzzahl: false, vorlaeufig: true,
+        text: "Höchstspanne vom Beginn des ersten bis zum Ende des zweiten Abschnitts; 0 = keine Grenze (Matrix T2 b)." },
+    } }),
   modul({ id: "funktionsdienst", merkmal: "funktionsdienst", name: "Funktionsdienste", pakete: ["klinik"],
     beschreibung: "Funktionsbereiche (etwa OP, Anästhesie, Endoskopie) mit eigener Besetzung und Qualifikation." }),
   modul({ id: "rotation", merkmal: "rotation", name: "Rotationen", pakete: ["klinik"],

@@ -1,23 +1,31 @@
 import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
+import { bremse, lastbremse, entlasten, vermerkeZuruecknehmen, kennung, kennungPerson, kennungRaum, kennungCode, stempelDeckel, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
+import { ereignis } from "../lib/gesund-zaehler.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
-  wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
+  wirksameRolle, SCHREIBEN_NEIN, SCHREIBEN_VOLL, eigenerMandant, darf, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
 import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
 import { ablageSchluessel, findeKonto, umschluesseln, altHash } from "../lib/codes.mjs";
 import { betreiberZweifaktor } from "../lib/betreiber-zweifaktor.mjs";
+import { herkunftsloseFeedsWiderrufen } from "../lib/feedwiderruf.mjs";
 import { kontoLesen, kontoSchreiben, alleKonten, kontoVereinzeln, raumUebersicht }
   from "../lib/konten.mjs";
-import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre,
+import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRaumsperre, unveraenderteScherben,
   SPERRE_ZEITGRENZE, SPERRE_GESTOPPT, BESTAND_UNLESBAR } from "../lib/bestand.mjs";
-import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
+import { geoUrteil, bestandStandorteFehler, bestandDienstartOrtFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
-import { stempelDatumPruefen, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar } from "../lib/zeiterfassung.mjs";
+import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
+  offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
+  offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
+  from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { auswertungHolen } from "../lib/br-auswertung.mjs";
+import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
+import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
 import { zustellen, pushSchluessel } from "../lib/versand.mjs";
 import { auskunftBauen, protokollZurPerson, kontoFuerAuskunft, AUSKUNFT_FUER_ANDERE } from "../lib/auskunft.mjs";
@@ -81,6 +89,33 @@ const RUMPF_MAX = 6 * 1024 * 1024;
    Konflikt nur von einem Schreiber kommen, der an ihr vorbeischreibt —
    drei Wiederholungen sind dafür reichlich; danach eine klare Absage. */
 const STEMPEL_WIEDERHOLUNGEN = 3;
+
+/* Wem gehört eine Offline-Warteschlange (WP-07)? Raum, Betrieb und Person
+   der Sitzung, als Prüfsumme. Die Oberfläche legt jedes Ereignis mit
+   diesem Kennzeichen ab und sendet es nur mit einer Sitzung, die dasselbe
+   Kennzeichen hat; der Server prüft es noch einmal. So geht nach einem
+   Abmelden oder Benutzerwechsel am selben Gerät kein Stempel der einen
+   Person unter der Sitzung einer anderen hinaus. Der Betrieb zählt mit
+   seiner Kennung (mandantId), nicht mit seiner Position (Review L5). */
+const stempelInhaber = (s) => (s.person === null || s.person === undefined) ? null : createHash("sha256")
+  .update(`centric-stempel|${s.bestand}|${s.mandantId ?? s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
+
+/* Personen je Raum, zuletzt gesehen (WP-47): Der Raumdeckel fürs Stempeln hängt
+   an der Betriebsgröße (schutz.mjs, stempelDeckel), und die Bremse läuft VOR
+   dem Lesen des Bestands. Gemerkt wird beim Lesen, Schreiben und Stempeln —
+   nur die Zahl, nie Namen. Nach einem Neustart gilt bis zum ersten Zugriff
+   die vorsichtige Vorgabe. */
+const raumGroesse = new Map();
+function groesseMerken(raum, bestand) {
+  try {
+    const n = (Array.isArray(bestand && bestand.mandanten) ? bestand.mandanten : [])
+      .reduce((a, m) => a + (m && Array.isArray(m.personen) ? m.personen.length : 0), 0);
+    if (n > 0) {
+      if (raumGroesse.size > 5000) raumGroesse.clear();
+      raumGroesse.set(String(raum), n);
+    }
+  } catch { /* nur eine Schätzung */ }
+}
 
 async function rumpfLesen(req) {
   const laenge = Number(req.headers.get("content-length") || 0);
@@ -439,6 +474,17 @@ export default async (req, context) => {
           if (konten[h] && konten[h].gesperrt) await kontoSchreiben(store, h, konten[h]);
         }
       }
+      /* WP-24 (Review-Auflage A4a): Ein Kalender-Feed aus der Zeit vor WP-24 trägt keine Herkunft
+         und hinge sonst nur an der Person. Die Sperre widerruft zusätzlich den herkunftslosen Feed der
+         Person, an die der Code gebunden ist (Index feedperson:, lib/feedwiderruf.mjs). Ein Code ohne
+         Betriebskennung (mandantId, vor dem ersten Anmelden nach D1) hat keinen eindeutigen Index —
+         sein Altfeed hängt weiter an der Person (Grenze, docs/acc45/wp24-nachweis.md). */
+      try {
+        await herkunftsloseFeedsWiderrufen(store, erlaubt.map((h) => konten[h])
+          .filter((k) => k && k.gesperrt && typeof k.bestand === "string" && typeof k.mandantId === "string"
+            && k.person !== null && k.person !== undefined)
+          .map((k) => ({ raum: k.bestand, mandantId: k.mandantId, personId: String(k.person) })));
+      } catch { /* die Sperre gilt; der Altfeed bleibt bis zur Prüfung der Person */ }
 
       /* Laufende Sitzungen enden mit. Ein gesperrter Code, dessen Sitzung
          noch zwölf Stunden weiterläuft, ist nicht gesperrt. */
@@ -673,6 +719,34 @@ export default async (req, context) => {
          nicht mehr darauf, gilt er nicht. Ein alter Code ohne Kennung in
          einem Raum mit genau einem Betrieb bekommt sie hier einmalig;
          in Räumen mit mehreren Betrieben wird nicht geraten. */
+      /* Lastgrenzen für GÜLTIGE Codes (WP-47). Der Code war richtig; es geht
+         nicht ums Raten, sondern darum, die Sitzungsablage und das Lesen des
+         Bestands vor einer Welle zu schützen. Betreiberzugänge zählen nicht mit.
+           1. je Code (Review-Auflage M1): Eine Skriptschleife mit dem eigenen
+              Code verbraucht nur ihr eigenes Kontingent — sie erreicht die
+              Grenze des Betriebs nicht und sperrt keine Kolleginnen.
+           2. je Betrieb: die großzügige Grenze gegen eine echte Welle.
+         Beide VOR dem Lesen des Bestands (Review-Auflage M3): Eine Abweisung
+         kostet kein teures Lesen mehr. Die Kennung des Betriebs kommt deshalb
+         aus dem Konto (bestand|mandantId), nicht aus der Bindungsprüfung.
+         Bei einer Abweisung werden nur die Vermerke dieses Versuchs bei Ziel
+         und Gesamt zurückgenommen (ein gültiger Code ist kein Rateversuch und
+         soll den Betrieb nicht füllen); die Herkunft bleibt gezählt — entlastet
+         wird sie nur bei einer gelungenen Anmeldung. Protokolliert wird die
+         Abweisung, die eine Sperre setzt (`neu`); /gesund zählt jede. */
+      if (eintrag.rolle !== "betreiber") {
+        const lastAbweisung = async (bl, text) => {
+          await vermerkeZuruecknehmen(b);
+          notentlasten("anmelden", k, { nurGesamt: true });
+          ereignis("429-last");
+          if (bl.neu) await protokoll("anmelden", k, "gebremst", text);
+          return zuVielAntwort(bl.wartet);
+        };
+        const bCode = lastbremse("anmelden-code", kennungCode(fund.schluessel));
+        if (!bCode.frei) return lastAbweisung(bCode, "Lastgrenze je Code");
+        const bLast = lastbremse("anmelden-erfolg", kennungRaum(`${eintrag.bestand}|${eintrag.mandantId ?? ""}`));
+        if (!bLast.frei) return lastAbweisung(bLast, "Lastgrenze gelungener Anmeldungen");
+      }
       const gelesenC = eintrag.rolle === "betreiber" ? null : await bestandLesen(store, eintrag.bestand);
       const bindungC = codeBindung(gelesenC && gelesenC.bestand, eintrag);
       if (!bindungC.ok) {
@@ -718,13 +792,17 @@ export default async (req, context) => {
              wird beim nächsten Sperren mit erfasst. */
           await kontoSchreiben(store, ablageSchluessel(zugangscode),
             { ...eintrag, umgeschluesselt: new Date().toISOString() });
+          /* Die Sitzung trägt noch den alten Schlüssel (konto: fund.schluessel), und ein Kalender-Feed
+             aus ihr trägt ihn als Herkunft. Damit eine Sperre des neuen Eintrags auch ihn trifft, vermerkt
+             der alte, wer ihn ersetzt (WP-24, Review-Befund 3); feedherkunft.mjs folgt dem Vermerk. */
+          await kontoSchreiben(store, fund.schluessel, { ...eintrag, ersetztDurch: ablageSchluessel(zugangscode) });
         } else {
           /* Aus dem Sammelblob auf einen Einzelschlüssel heben. */
           await kontoVereinzeln(store, fund.schluessel);
         }
       } catch { /* darf keine Anmeldung scheitern lassen */ }
 
-      await entlasten("anmelden", k);
+      await entlasten("anmelden", k, b);
       notentlasten("anmelden", k);
       await protokoll("anmelden", k, "erfolg", eintrag.rolle);
       return antwort({ token, name: eintrag.name, rolle: eintrag.rolle || "kunde",
@@ -829,15 +907,37 @@ export default async (req, context) => {
       const bl = await bremse("lesen", kennung(req, s));
       if (!bl.frei) return zuVielAntwort(bl.wartet);
       const mit = await bestandJetzt();
+      if (mit) groesseMerken(s.bestand, mit.bestand);
       if (!mit) return antwort({ bestand: null, etag: null,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle) });
+        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s) });
       /* Ein gespeicherter Altbestand ohne gültige qualifikationen-Liste wird
          nur in der Antwort angeglichen — kein Schreibvorgang beim Lesen. */
       return antwort({ bestand: bestandFuerRolle(personenAngleichen(mit.bestand), s), etag: mit.stand,
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
-        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle),
+        einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         geaendert: mit.zeit, durch: mit.durch });
+    }
+
+    /* ----------------- Auswertung für den Betriebsrat (WP-27) ---------- */
+    /* Nur Aggregate, nur für den Betriebsrat mit audit.view. Gerechnet wird im
+       Hintergrund in Häppchen (br-auswertung.mjs); bis sie fertig ist, kommt 202
+       „wird berechnet" mit der Bitte, es gleich noch einmal zu versuchen — der
+       Prozess blockiert nie. export.data steuert nur die Schaltfläche der
+       Oberfläche: Der CSV-Export enthält genau diese Zahlen, nichts darüber hinaus. */
+    if (pfad === "br-auswertung" && req.method === "GET") {
+      const bl = await bremse("lesen", kennung(req, s));
+      if (!bl.frei) return zuVielAntwort(bl.wartet);
+      if (s.rolle !== "betriebsrat" || !darf(s.rolle, "audit.view")) {
+        await protokoll("lesen", kennung(req, s), "abgewiesen", `Auswertung Betriebsrat, Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Berechtigung.", text: "Die Auswertung gibt es nur für den Betriebsrat." }, 403);
+      }
+      const mit = await bestandJetzt();
+      const eigener = mit ? eigenerMandant(mit.bestand, s) : null;
+      if (!mit || !eigener) return antwort({ fehler: "Keine Daten." }, 404);
+      const r = auswertungHolen({ raum: s.bestand, heute: heuteBerlin(), mandant: eigener, ablage: store });
+      if (!r.fertig) return antwort({ status: "berechnet", retryNachMs: r.ausgelastet ? 5000 : 1500 }, 202);
+      return antwort({ status: "fertig", auswertung: r.wert, berechnetUm: r.berechnetUm });
     }
 
     /* ----------------------------- Schreiben ------------------------- */
@@ -886,6 +986,30 @@ export default async (req, context) => {
       const gesperrt = await unterRaumsperre(s.bestand, async () => {
         const jetzt = await bestandLesenStreng(store, s.bestand);
 
+        /* Stempel-Integrität (WP-06, lib/stempelintegritaet.mjs): Ein
+           gestempelter Wert ändert sich über diesen Weg nie — für keine
+           Rolle. Geprüft wird die Übermittlung selbst, vor jeder
+           Zusammenführung: Ein Widerspruch zum gespeicherten Stempel ist eine
+           Absage (403, STEMPEL_UNVERAENDERLICH), keine stille Korrektur.
+           Ausnahme: der Löschlauf der Leitung für Tage jenseits der
+           Aufbewahrungsfrist. */
+        const altNachId = new Map(((jetzt && jetzt.bestand && jetzt.bestand.mandanten) || [])
+          .filter(Boolean).map((x) => [x.id, x]));
+        const gesendetNachId = new Map((Array.isArray(bestand.mandanten) ? bestand.mandanten : [])
+          .filter((x) => x && typeof x === "object").map((x) => [x.id, x]));
+        const voll = schreibumfang(s.rolle) === SCHREIBEN_VOLL;
+        const stempelO = { loeschlauf: voll, vollSicht: voll, heute: heuteBerlin(),
+          unveraendert: await unveraenderteScherben(store, s.bestand, etag ?? null, jetzt) };
+        for (const [id, gesendet] of gesendetNachId) {
+          const w = stempelWiderspruch(altNachId.get(id) || null, gesendet, stempelO);
+          if (w) {
+            await protokoll("schreiben", ks, "abgewiesen",
+              `Stempel-Integrität${w.schluessel ? ` ${w.schluessel}` : ""}: ${w.grund}`, wer);
+            return antwort({ fehler: "Keine Schreibberechtigung.", code: "STEMPEL_UNVERAENDERLICH",
+              text: w.grund }, 403);
+          }
+        }
+
         /* Grundlage ist der gespeicherte Stand, nicht der übermittelte. Eine
            eingeschränkte Rolle kann damit nichts überschreiben, was sie beim
            Lesen gar nicht bekommen hat. */
@@ -913,12 +1037,30 @@ export default async (req, context) => {
             text: zuSchreiben.verweigert }, 403);
         }
 
+        /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
+           vor jedem Umbau von zuSchreiben holen, sonst ginge sie verloren (die Sperren wären wirkungslos). */
+        const offen = fachpruefungOffen(zuSchreiben);
+
+        /* Gespeichert werden die gespeicherten Stempel (Stempel-Integrität,
+           siehe oben) — in den Monaten, die die Übermittlung unverändert
+           kennt; in den übrigen entscheidet der Drei-Wege-Abgleich. */
+        {
+          let geloescht = 0;
+          zuSchreiben = { ...zuSchreiben, mandanten: (zuSchreiben.mandanten || []).map((x) => {
+            if (!x || typeof x !== "object") return x;
+            const r = stempelSichern(altNachId.get(x.id) || null, gesendetNachId.get(x.id), x, stempelO);
+            geloescht += r.geloescht;
+            return r.mandant;
+          }) };
+          if (geloescht) await protokoll("schreiben", ks, "loeschlauf",
+            `${geloescht} Stempel nach Ablauf der Aufbewahrungsfrist gelöscht`, wer);
+        }
+
         /* Fachprüfung (WP-22) in Häppchen, damit eine große Nachrechnung keinen
            anderen Betrieb aufhält (Review B2): höchstens HAEPPCHEN_MS am Stück,
            insgesamt höchstens ZEITBUDGET_MS — sonst 503 „bitte erneut". Eine
            Strukturänderung (Schichtfolge, Dienstzeiten, Personen …) ist je
            Raum gebremst. */
-        const offen = fachpruefungOffen(zuSchreiben);
         if (offen) {
           if (strukturAenderung(offen.alt, offen.neu)) {
             const sb = strukturBremse(`${s.bestand}|${offen.mandantId}`);
@@ -948,6 +1090,7 @@ export default async (req, context) => {
         }
 
         zuSchreiben = personenAngleichen(uebergabenAngleichen(zuSchreiben));
+        groesseMerken(s.bestand, zuSchreiben);
 
         /* Einwilligungen nach dem Mutterschutzgesetz (Review N1): dass sie sich
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
@@ -965,7 +1108,8 @@ export default async (req, context) => {
            ein halb übertragenes Objekt ersetzte bisher den ganzen Betrieb. */
         /* Standortangaben (Geo V1): neue oder geänderte Koordinaten und Umkreise
            nur in gültigen Bereichen — auch bei einem direkten Aufruf. */
-        const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
+        const standortGrund = bestandStandorteFehler(jetzt ? jetzt.bestand : null, zuSchreiben)
+          || bestandDienstartOrtFehler(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (standortGrund) {
           await protokoll("schreiben", ks, "abgewiesen", `Standort: ${standortGrund}`, wer);
           return antwort({ fehler: "Ungültige Standortangabe.", text: `${standortGrund} Es wurde nichts geändert.` }, 422);
@@ -1059,13 +1203,31 @@ export default async (req, context) => {
        und die Entscheidung liegen hier; die Zeit ebenfalls, denn eine
        gestellte Uhr im Gerät ist genauso leicht zu ändern. */
     if (pfad === "stempeln" && req.method === "POST") {
+      /* Eigene Bremsarten (WP-47, Nachweis WP-28): je Person, und je Raum als Deckel
+         nach Betriebsgröße. Die Planung (schreiben, 120/min) bleibt davon
+         unberührt, ein Schichtwechsel blockiert sie nicht. Eine Abweisung ist eine
+         LASTabweisung: gezählt für /gesund, mit Retry-After; gestempelt ist dann
+         NICHTS — die Oberfläche wiederholt (speicher.js). */
       const kSt = kennung(req, s);
-      const bSt = await bremse("schreiben", kSt);
-      if (!bSt.frei) return zuVielAntwort(bSt.wartet);
+      const bSt = lastbremse("stempeln", kennungPerson(s));
+      /* Protokolliert wird nur die Abweisung, die die Sperre SETZT (`neu`,
+         Review-Auflage M2) — eine Datei je Abweisung wäre unter Last genau die
+         Plattenarbeit, die die Lastbremse vermeiden soll. /gesund zählt jede. */
+      if (!bSt.frei) {
+        ereignis("429-last");
+        if (bSt.neu) await protokoll("schreiben", kSt, "gebremst", "stempeln (Person)", wer);
+        return zuVielAntwort(bSt.wartet);
+      }
+      const bRaum = lastbremse("stempeln-raum", kSt, stempelDeckel(raumGroesse.get(String(s.bestand))));
+      if (!bRaum.frei) {
+        ereignis("429-last");
+        if (bRaum.neu) await protokoll("schreiben", kSt, "gebremst", "stempeln (Raum)", wer);
+        return zuVielAntwort(bRaum.wartet);
+      }
 
-      const { datum, art, lat, lon, accuracy } = rumpf;
-      if (!datum || !/^\d{4}-\d{2}-\d{2}$/.test(String(datum)))
-        return antwort({ fehler: "Kein gültiges Datum." }, 400);
+      /* `datum` des Geräts nur noch zur Plausibilität — den Tag bestimmt der
+         Server (zeiterfassung.mjs, stempelZiel; Geo-Spezifikation B7). */
+      const { datum: geraeteDatum, art, lat, lon, accuracy } = rumpf;
       if (art !== "start" && art !== "ende")
         return antwort({ fehler: "Nur start oder ende." }, 400);
       if (s.person === null || s.person === undefined)
@@ -1076,9 +1238,25 @@ export default async (req, context) => {
          Anfrage, nicht erst, wenn die Sperre frei ist: Gestempelt hat der
          Mensch, als er gedrückt hat, nicht als der Server dazu kam. Eine
          Wiederholung nach einem Konflikt behält dieselbe Zeit. */
-      const jetzt = new Date();
-      const heute = heuteBerlin(jetzt);
-      const zeit = uhrzeitBerlin(jetzt);
+      const eingang = new Date();
+      /* Offline-Ereignis (WP-07, zeiterfassung.mjs stempelEreignis): Kennung,
+         Erfassungszeit des Geräts, plausibilisiert gegen den Eingang. Ein
+         Ereignis, das gleich ankommt, behält die Serverzeit. */
+      const stEreignis = stempelEreignis(rumpf, eingang);
+      if ("fehler" in stEreignis)
+        return antwort({ fehler: stEreignis.fehler, code: "STEMPEL_EREIGNIS_UNGUELTIG" }, 400);
+      const inhaber = stempelInhaber(s);
+      /* Ein Ereignis aus der Warteschlange einer anderen Person (Gerät
+         geteilt, abgemeldet, neu angemeldet): nie unter dieser Sitzung
+         stempeln. Die Oberfläche lässt es liegen, bis die richtige Person
+         angemeldet ist. */
+      if (rumpf.inhaber !== undefined && rumpf.inhaber !== null && rumpf.inhaber !== inhaber) {
+        await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art}: Warteschlange einer anderen Sitzung`, wer);
+        return antwort({ fehler: "Dieser Stempel wurde unter einer anderen Anmeldung erfasst.",
+          text: "Der Stempel bleibt auf dem Gerät, bis sich die Person anmeldet, die ihn erfasst hat.",
+          code: "STEMPEL_FREMDE_SITZUNG" }, 409);
+      }
+      const jetzt0 = stEreignis.zeitpunkt;
 
       /* Gebaut wird der Stempel unter der Sperre des Raums, aus dem frisch
          gelesenen Stand (WP-02). Vorher entstand er aus dem Stand vom Anfang
@@ -1095,11 +1273,13 @@ export default async (req, context) => {
          klarer Meldung, nie „ok: true" (bis Oktober 2026 kam auch nach
          einem gescheiterten Schreiben ein Erfolg zurück, und die Oberfläche
          zeigte eine Stempelzeit, die es auf dem Server nicht gab). */
+      let zielDatum = null;
       const ergebnis = await unterRaumsperre(s.bestand, async () => {
         for (let versuch = 0; versuch <= STEMPEL_WIEDERHOLUNGEN; versuch++) {
           const mit = await bestandLesenStreng(store, s.bestand);
           if (!mit) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
           const bestand = mit.bestand;
+          groesseMerken(s.bestand, bestand);
           const i = Number(s.betrieb);
           const m = (Array.isArray(bestand.mandanten) && bestand.mandanten[i])
             ? bestand.mandanten[i] : (bestand.mandanten || [])[0];
@@ -1108,14 +1288,53 @@ export default async (req, context) => {
           const person = (m.personen || []).find((x) => String(x.id) === String(s.person));
           if (!person) return antwort({ fehler: "Person nicht gefunden." }, 404);
 
-          /* Heute, gestern nur mit Bezug (Dienst über Mitternacht oder offener
-             Beginn), nie künftig und nie älter — Nachträge laufen über
-             „Zeiten bestätigen" (zeiterfassung.mjs). */
-          const datumGrund = stempelDatumPruefen(m, person, String(datum), art, heute);
-          if (datumGrund) {
-            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art} ${datum}: ${datumGrund}`, wer);
-            return antwort({ fehler: datumGrund }, 422);
+          /* Idempotenz (WP-07): Steht die Kennung schon an einem Stempel dieser
+             Person, war das Ereignis schon da — eine Wiederholung nach
+             verlorener Antwort, ein zweiter Reiter, ein zweites Gerät. Kein
+             zweiter Stempel, sondern die Antwort des ersten. Geprüft unter der
+             Sperre am frischen Stand: Von zwei gleichzeitigen Wiederholungen
+             schreibt genau eine. */
+          const schon = ereignisFinden(m, person.id, stEreignis.id, heuteBerlin(eingang), heuteBerlin(jetzt0));
+          /* Dieselbe Kennung für eine andere Art ist kein Wiederholen, sondern ein
+             Widerspruch (Review L2) — nichts speichern, klar absagen. */
+          if (schon && schon.art !== art) {
+            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art}: Kennung schon für ${schon.art} vergeben`, wer);
+            return antwort({ fehler: "Diese Stempelkennung gehört zu einem anderen Stempelereignis.",
+              code: "STEMPEL_EREIGNIS_WIDERSPRUCH" }, 422);
           }
+          if (schon) return { wiederholt: schon, stand: mit.stand,
+            erfassung: (m.erfassung || {})[schon.schluessel] || null };
+
+          /* Review L3: Ein offline erfasstes Ende, das nur um eine ehrliche
+             kleine Uhrabweichung (höchstens UHR_TOLERANZ_MS) vor dem offenen
+             Beginn von heute oder gestern liegt, wird auf den Beginn
+             geklemmt — sonst ergäbe sich eine negative Dauer und
+             START_VERALTET, obwohl nichts veraltet ist. */
+          let jetzt = jetzt0;
+          if (art === "ende" && stEreignis.offline) {
+            for (const tag of [heuteBerlin(jetzt0), heuteBerlin(new Date(jetzt0.getTime() - 86400000))]) {
+              const e0 = (m.einstempeln || {})[`${person.id}|${tag}`];
+              const ab = e0 && e0.start && !e0.ende ? Date.parse(e0.startAm) : NaN;
+              if (Number.isFinite(ab) && ab > jetzt0.getTime() && ab - jetzt0.getTime() <= UHR_TOLERANZ_MS) { jetzt = new Date(ab); break; }
+            }
+          }
+          const heute = heuteBerlin(jetzt);
+          const zeit = uhrzeitBerlin(jetzt);
+
+          /* Der Tag des Stempels kommt vom Server: Beginn heute, Ende beim
+             offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze,
+             vergessenes Einstempeln vor einem Nachtdienst). Das Gerätedatum wird
+             ignoriert; weicht es ab, trägt der Eintrag GERAETEDATUM_ABWEICHEND —
+             nie eine Absage (zeiterfassung.mjs, stempelZiel). Bestimmt am
+             frischen Stand, unter der Sperre. */
+          const ziel = stempelZiel(m, person, art, jetzt, geraeteDatum);
+          if (ziel.status) {
+            await protokoll("schreiben", kSt, "abgewiesen",
+              `stempeln ${art} ${geraeteDatum ?? "-"}: ${ziel.code}`, wer);
+            return antwort({ fehler: ziel.grund, code: ziel.code, datum: ziel.datum || null }, ziel.status);
+          }
+          const datum = ziel.datum;
+          zielDatum = datum;
 
           /* Geo V1 (lib/geo.mjs): drei Zustände, Genauigkeit, gerundete Entfernung.
              Ist die Prüfung im Betrieb aus, wird nichts geprüft (pruefung_aus) —
@@ -1147,6 +1366,9 @@ export default async (req, context) => {
           const markierungen = [...(Array.isArray(alt.markierungen) ? alt.markierungen : [])];
           const markieren = (x) => { if (!markierungen.includes(x)) markierungen.push(x); };
           if (art === "start" && !geplanterDienst(m, person, String(datum))) markieren("UNGEPLANTER_DIENST");
+          for (const x of ziel.markierungen) markieren(x);
+          for (const x of stEreignis.markierungen) markieren(x);
+          for (const x of urteil.markierungen || []) markieren(x);          // Geo-Modus „pflicht" (WP-20)
           const startFehlt = art === "ende" && !alt.start;
           if (startFehlt) markieren("START_FEHLT");
           /* Vergessenes Ausstempeln (Geo-Spezifikation B6): Liegt der offene
@@ -1168,13 +1390,79 @@ export default async (req, context) => {
           /* Das Ende eines Vorgangs vom Vortag trägt sein Kalenderdatum (B6);
              fehlt das Feld, ist es der Tag des Vorgangs. */
           if (art === "ende" && heute !== String(datum)) neu.endeDatum = heute;
+          /* WP-07: Kennung und Offline-Angaben gehören zum Original — mit ihm in
+             einem Schreibvorgang gespeichert, danach unveränderlich (WP-06). */
+          const phase = art === "start" ? "Start" : "Ende";
+          if (stEreignis.id) neu[`ereignis${phase}`] = stEreignis.id;
+          if (stEreignis.info) neu[`offline${phase}`] = stEreignis.info;
+
+          /* Ein langer Dienst (über geplanter Dauer + 2 h, ohne Plan 12 h;
+             zeiterfassung.mjs, langerDienstGrenze) ergibt keine automatisch
+             bestätigte Ist-Zeit, sondern eine zur Prüfung durch die Leitung. */
+          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
+          const dauerMin = mitErfassung ? offenSeitMinuten(String(datum), alt.start, jetzt, alt.startAm) : null;
+          const langerDienst = dauerMin !== null && dauerMin > langerDienstGrenze(m, person, String(datum));
+          if (langerDienst) markieren("LANGER_DIENST");
+          /* Nachprüfung B1: Beginn und Ende in derselben Minute (oder ein auf den
+             Beginn geklemmtes Ende) ergeben Dauer 0. Als Uhrzeiten gespeichert
+             hieße das 06:00–06:00, und die Stundenrechnung (regelwerk dauerAm)
+             liest Ende ≤ Beginn als „über Mitternacht" — 24 Stunden. Gemessen
+             wird am eindeutigen Zeitpunkt (startAm), ein echter 24-h-Dienst hat
+             1440 Minuten, nie 0. Eine solche Ist-Zeit ist nie automatisch
+             bestätigt (DAUER_NULL), die Leitung trägt sie über die Korrektur ein. */
+          const dauerNull = dauerMin !== null && dauerMin <= 0;
+          if (dauerNull) markieren("DAUER_NULL");
+          /* Ungeplanter Dienst (WP-13): Ohne geplanten Dienst an diesem Tag gibt
+             es keine Planzeit, auf die die Ist-Zeit zurückfallen könnte. Aus
+             Beginn und Ende entsteht deshalb eine Erfassung zur Prüfung
+             (`ungeplant`, bestaetigt: false): Sie zählt in Konto und Lohnausgabe
+             erst, wenn die Leitung sie über die Stempelkorrektur bestätigt hat
+             — dann mit der gestempelten Dauer. Der Stempel selbst bleibt das
+             unveränderte Original (WP-06). */
+          const ungeplant = mitErfassung && !geplanterDienst(m, person, String(datum));
+          if (ungeplant) markieren("UNGEPLANTER_DIENST");
+          /* Offline mit abweichender Geräteuhr oder über 48 Stunden alt (Beginn
+             oder Ende): Die Ist-Zeit ist nicht automatisch bestätigt. */
+          const offlinePruefen = OFFLINE_PRUEF_MARKIERUNGEN.some((x) => markierungen.includes(x))
+            /* Auflage A1: Beginn oder Ende 15 min oder mehr nach der Erfassung
+               eingegangen — ohne Betriebsschalter zur Prüfung. */
+            || (!offlineVertrauen(m) && (offlineVerspaetet(alt.offlineStart) || offlineVerspaetet(stEreignis.info)));
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
-          const mitErfassung = art === "ende" && !startFehlt && !startVeraltet;
-          if (mitErfassung) {
+          /* B6.3: Ein Ende zu einem über 20 Stunden alten Beginn von gestern
+             wird nicht angehängt (stempelZiel: eigenes START_FEHLT auf heute).
+             Der alte Vorgang bekommt KONFLIKT und bleibt für die Korrektur
+             durch die Leitung offen. */
+          if (ziel.konfliktAm) {
+            const kAlt = `${person.id}|${ziel.konfliktAm}`;
+            const vorgang = neuerMandant.einstempeln[kAlt];
+            if (vorgang) {
+              const mk = Array.isArray(vorgang.markierungen) ? vorgang.markierungen : [];
+              neuerMandant = { ...neuerMandant, einstempeln: { ...neuerMandant.einstempeln,
+                [kAlt]: { ...vorgang, markierungen: mk.includes("KONFLIKT") ? mk : [...mk, "KONFLIKT"],
+                  konfliktGrund: "vorgang_veraltet" } } };
+            }
+          }
+          /* Gibt es zu diesem Stempel schon eine Korrektur (WP-06), gilt deren
+             Ist-Zeit — das nachgereichte Ende ändert sie nicht still. */
+          const korrigiert = Array.isArray(alt.korrekturen) && alt.korrekturen.length > 0;
+          if (mitErfassung && !korrigiert) {
             neuerMandant = { ...neuerMandant, erfassung: { ...(neuerMandant.erfassung || {}),
-              [k]: { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
+              /* Dauer 0 vor ungeplant: Bestätigt würde 06:00–06:00 als 24 Stunden zählen. */
+              [k]: dauerNull
+                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                  grund: "DAUER_NULL: Beginn und Ende in derselben Minute — Zeiten bitte über die Korrektur eintragen" }
+                : ungeplant
+                ? { start: neu.start, ende: zeit, bestaetigt: false, ungeplant: true,
+                  grund: `UNGEPLANT: ${Math.round(dauerMin / 6) / 10} Stunden ohne geplanten Dienst${langerDienst ? " (länger als 12 Stunden)" : ""} — Leitung bestätigt` }
+                : langerDienst
+                ? { start: neu.start, ende: zeit, bestaetigt: false,
+                  grund: `LANGER_DIENST: ${Math.round(dauerMin / 6) / 10} Stunden — bitte prüfen` }
+                : offlinePruefen
+                  ? { start: neu.start, ende: zeit, bestaetigt: false,
+                    grund: "OFFLINE_PRUEFEN: offline gestempelt (spät eingegangen, Uhr des Geräts abweichend oder älter als 48 Stunden) — bitte prüfen" }
+                  : { start: neu.start, ende: zeit, bestaetigt: true, grund: "" } } };
           }
           const neuerBestand = { ...bestand,
             mandanten: bestand.mandanten.map((x) => x === m ? neuerMandant : x) };
@@ -1184,7 +1472,7 @@ export default async (req, context) => {
           const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
             erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
           if (ergSt.ok) {
-            return { ergSt, urteil, neu, erfassung: mitErfassung ? neuerMandant.erfassung[k] : null };
+            return { ergSt, urteil, neu, zeit, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null };
           }
           /* Jeder gescheiterte Versuch steht im Protokoll — „wiederholt",
              solange noch einer folgt; erst der letzte ist ein Konflikt. */
@@ -1192,20 +1480,152 @@ export default async (req, context) => {
             await protokoll("schreiben", kSt, "wiederholt",
               `stempeln ${art} ${datum} · Versuch ${versuch + 1} von ${STEMPEL_WIEDERHOLUNGEN + 1}`, wer);
         }
-        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${datum}`, wer);
+        await protokoll("schreiben", kSt, "konflikt", `stempeln ${art} ${zielDatum}`, wer);
         return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert — die Stempelzeit ist nicht erfasst. "
           + "Bitte noch einmal stempeln.", code: "STEMPEL_KONFLIKT" }, 409);
       });
       if (ergebnis instanceof Response) return ergebnis;
 
-      const { ergSt, urteil, neu, erfassung } = ergebnis;
-      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}`, wer);
+      if (ergebnis.wiederholt) {
+        /* Dieselbe Antwort wie beim ersten Mal, aus dem gespeicherten Stempel
+           gebaut — mit `wiederholt`, damit die Oberfläche weiß, dass nichts
+           Neues entstanden ist. Die Art kommt aus dem Stempel, nicht aus der
+           Wiederholung. */
+        const { wiederholt: w, stand, erfassung: erfW } = ergebnis;
+        const e = w.eintrag, ph = w.art === "start" ? "Start" : "Ende";
+        await protokoll("schreiben", kSt, "wiederholt", `stempeln ${w.art}: Ereignis schon gespeichert`, wer);
+        return antwort({ ok: true, wiederholt: true, art: w.art, zeit: e[w.art] || null, ort: e[`ort${ph}`] ?? null,
+          innerhalb: e[`innerhalb${ph}`] ?? null, geprueft: e[`geprueft${ph}`] ?? null, geo: e[`geo${ph}`] ?? null,
+          markierungen: e.markierungen || [], etag: stand || null, datum: w.datum, eintrag: e,
+          erfassung: w.art === "ende" ? erfW : null, inhaber, offline: !!e[`offline${ph}`] });
+      }
+
+      const { ergSt, urteil, neu, zeit, erfassung } = ergebnis;
+      await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}${stEreignis.offline ? " · offline" : ""}`, wer);
       /* Zurück geht der gespeicherte Stempel — genau der Eintrag, den der
          erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn
          übernimmt, statt eine eigene, gekürzte Kopie zu bauen. */
       return antwort({ ok: true, zeit, ort: urteil.text, innerhalb: urteil.innerhalb,
-        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum, eintrag: neu,
-        erfassung });
+        geprueft: urteil.geprueft, geo: urteil.geo, markierungen: neu.markierungen || [], etag: ergSt.stand || null, datum: zielDatum, eintrag: neu,
+        erfassung, art, inhaber, offline: stEreignis.offline });
+    }
+
+    /* ------------------------ Stempelkorrektur (WP-06) ---------------------
+       Der einzige Weg, die Ist-Zeit eines gestempelten Tages zu ändern: als
+       Ereignis { vorher, nachher, wer, wann, grund } am Stempel. Das Original
+       bleibt unverändert. Leitung und Planung (staff.edit) — nicht die
+       Schichtverantwortung, die fremde Stempel nicht sieht (H8+), nicht
+       Beschäftigte, Betriebsrat oder Betreiber. */
+    if (pfad === "stempel-korrektur" && req.method === "POST") {
+      const kK = kennung(req, s);
+      if (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit")) {
+        await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.",
+          text: "Stempelzeiten korrigieren Leitung und Planung." }, 403);
+      }
+      const bK = await bremse("schreiben", kK);
+      if (!bK.frei) return zuVielAntwort(bK.wartet);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitK = await bestandLesenStreng(store, s.bestand);
+        if (!mitK) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mK = eigenerMandant(mitK.bestand, s);
+        if (!mK) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const r = korrekturAnhaengen(mK, rumpf || {}, { personId: s.person ?? null, name: s.name || null, rolle: s.rolle },
+          new Date(), `k-${randomBytes(6).toString("hex")}`);
+        if ("status" in r) {
+          await protokoll("schreiben", kK, "abgewiesen", `Stempelkorrektur: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergK = await bestandSchreiben(store, s.bestand,
+          { ...mitK.bestand, mandanten: mitK.bestand.mandanten.map((x) => (x === mK ? r.mandant : x)) },
+          { erwarteterStand: mitK.stand, durch: s.name || "Stempelkorrektur" });
+        if (!ergK.ok) {
+          await protokoll("schreiben", kK, "konflikt", "Stempelkorrektur", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kK, "erfolg",
+          `Stempelkorrektur ${rumpf.personId}|${rumpf.datum} ${r.ereignis.vorher ? `${r.ereignis.vorher.start || "–"}–${r.ereignis.vorher.ende || "–"}` : "ohne Ist-Zeit"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}`, wer);
+        return antwort({ ok: true, eintrag: r.eintrag, erfassung: r.erfassung, ereignis: r.ereignis, hinweis: r.hinweis, hinweise: r.hinweise, etag: ergK.stand || null });
+      });
+    }
+
+    /* ------------------------ Korrekturantrag (WP-14) -----------------------
+       Antrag → Freigabe → Ist (lib/korrekturworkflow.mjs). Gestellt wird er von
+       der Person selbst für einen eigenen Stempel der letzten Tage — also auch
+       von Schichtverantwortung und Betriebsrat, die stempeln. Der Antrag liegt
+       am Stempel; das Original bleibt unverändert. */
+    if (pfad === "korrektur-antrag" && req.method === "POST") {
+      const kA = kennung(req, s);
+      const bA = await bremse("schreiben", kA);
+      if (!bA.frei) return zuVielAntwort(bA.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitA = await bestandLesenStreng(store, s.bestand);
+        if (!mitA) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mA = eigenerMandant(mitA.bestand, s);
+        if (!mA) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const pA = (mA.personen || []).find((x) => x && String(x.id) === String(s.person));
+        if (!pA) return antwort({ fehler: "Person nicht gefunden." }, 404);
+        const r = antragStellen(mA, { personId: pA.id, name: s.name || null, rolle: s.rolle }, rumpf || {}, new Date(),
+          `ka-${randomBytes(6).toString("hex")}`, heuteBerlin());
+        if ("status" in r) {
+          await protokoll("schreiben", kA, "abgewiesen", `Korrekturantrag: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergA = await bestandSchreiben(store, s.bestand,
+          { ...mitA.bestand, mandanten: mitA.bestand.mandanten.map((x) => (x === mA ? r.mandant : x)) },
+          { erwarteterStand: mitA.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergA.ok) {
+          await protokoll("schreiben", kA, "konflikt", "Korrekturantrag", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kA, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${pA.id}|${rumpf.datum}: ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.antrag.vorschlag.start}–${r.antrag.vorschlag.ende}`, wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, etag: ergA.stand || null });
+      });
+    }
+
+    /* Entscheiden: Leitung und Planung (staff.edit) genehmigen oder lehnen ab; die
+       antragstellende Person zieht zurück. Die Schichtverantwortung sieht fremde
+       Stempel nicht (H8+) und entscheidet deshalb nicht. Genehmigt wird als
+       Korrekturereignis am Stempel — mit Kennung des Antrags und Regelhinweisen. */
+    if (pfad === "korrektur-entscheiden" && req.method === "POST") {
+      const kE = kennung(req, s);
+      const entscheidungE = rumpf && rumpf.entscheidung;
+      if (entscheidungE !== "zurueckgezogen" && (schreibumfang(s.rolle) === SCHREIBEN_NEIN || !darf(s.rolle, "staff.edit"))) {
+        await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden · Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Schreibberechtigung.", text: "Korrekturanträge entscheiden Leitung und Planung." }, 403);
+      }
+      const bE = await bremse("schreiben", kE);
+      if (!bE.frei) return zuVielAntwort(bE.wartet);
+      if (s.person === null || s.person === undefined)
+        return antwort({ fehler: "Dieser Zugang ist keiner Person zugeordnet." }, 400);
+      return await unterRaumsperre(s.bestand, async () => {
+        const mitE = await bestandLesenStreng(store, s.bestand);
+        if (!mitE) return antwort({ fehler: "Kein Bestand vorhanden." }, 404);
+        const mE = eigenerMandant(mitE.bestand, s);
+        if (!mE) return antwort({ fehler: "Kein Betrieb vorhanden." }, 404);
+        const r = antragEntscheiden(mE, rumpf || {}, { personId: s.person, name: s.name || null, rolle: s.rolle }, new Date(),
+          `k-${randomBytes(6).toString("hex")}`);
+        if ("status" in r) {
+          await protokoll("schreiben", kE, "abgewiesen", `Korrekturantrag entscheiden: ${r.grund}`, wer);
+          return antwort({ fehler: r.grund }, r.status);
+        }
+        const ergE = await bestandSchreiben(store, s.bestand,
+          { ...mitE.bestand, mandanten: mitE.bestand.mandanten.map((x) => (x === mE ? r.mandant : x)) },
+          { erwarteterStand: mitE.stand, durch: s.name || "Korrekturantrag" });
+        if (!ergE.ok) {
+          await protokoll("schreiben", kE, "konflikt", "Korrekturantrag entscheiden", wer);
+          return antwort({ fehler: "Gerade wurde gleichzeitig gespeichert. Bitte noch einmal versuchen." }, 409);
+        }
+        await protokoll("schreiben", kE, "erfolg",
+          `Korrekturantrag ${r.antrag.id} ${rumpf.personId}|${rumpf.datum}: ${r.antrag.status}`
+          + (r.ereignis ? ` · ${r.antrag.original.start || "–"}–${r.antrag.original.ende || "–"} → ${r.ereignis.nachher.start}–${r.ereignis.nachher.ende}` : "")
+          + (r.hinweise && r.hinweise.length ? ` · Hinweise: ${r.hinweise.map((x) => x.code).join(",")}` : ""), wer);
+        return antwort({ ok: true, antrag: r.antrag, eintrag: r.eintrag, erfassung: r.erfassung || null, ereignis: r.ereignis || null,
+          hinweise: r.hinweise || [], hinweis: r.hinweis || null, etag: ergE.stand || null });
+      });
     }
 
     /* ------------------------- Zeiten bestätigen ----------------------
@@ -1576,10 +1996,9 @@ export default async (req, context) => {
             text: "Während der Wiederherstellung hat jemand gespeichert. Bitte neu laden.",
             etag: ergW.stand }, 409);
         }
-        /* Was die Fristen dabei bewirkt hätten oder bewirkt haben (N-3) —
-           bei „aus"/„vorschau" nur gemeldet, nichts gelöscht. */
         await protokoll("schreiben", kW, "erfolg",
-          `wiederhergestellt aus ${marke}${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
+          `wiederhergestellt aus ${marke}${w.stempelBehalten ? ` · ${w.stempelBehalten} Stempel behalten` : ""}`
+          + `${w.fristen ? ` · Fristen (${w.fristen.modus}): ${w.fristen.text}` : ""}`.slice(0, 400), wer);
         return antwort({ ok: true, etag: ergW.stand, marke, fristen: w.fristen || null });
       });
     }

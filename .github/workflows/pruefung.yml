@@ -98,6 +98,10 @@ jobs:
       - name: Fachprüfungen Server
         run: npm run pruefung:fachpruefung
 
+      # Auswertung für den Betriebsrat: nur Aggregate, Mindestgruppe 3 (WP-27).
+      - name: Betriebsrat-Auswertung
+        run: npm run pruefung:br-auswertung
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
@@ -168,6 +172,13 @@ jobs:
       - name: Bremse im Prozess
         run: npm run pruefung:bremse-lokal
 
+      # WP-47: Bremsenkonzept für den Echtbetrieb — Schichtwechsel (130 Stempel in
+      # einem Betrieb), Anmeldewelle (gelungene Anmeldungen zählen nicht gegen
+      # Ziel/Gesamt), Fehlversuche weiter streng, Lastgrenzen mit Retry-After,
+      # Wiederholung der Oberfläche bei 429.
+      - name: Bremsen im Echtbetrieb (WP-47)
+        run: npm run pruefung:bremse-wp47
+
       # Der eigene Server: Ausliefern, Rückfall, Routing,
       # 6-MB-Grenze, kaputte Anfragen, sauberes Beenden.
       - name: Server
@@ -208,6 +219,14 @@ jobs:
       # unabhängig vom Plan sichtbar und beendbar (F2).
       - name: Oberfläche gerendert
         run: npm run pruefung:render
+
+      # WP-23: Entwürfe (nicht freigegebene Monate) gehen nicht an Beschäftigte.
+      - name: Entwürfe nicht an Beschäftigte
+        run: npm run pruefung:entwuerfe
+
+      # WP-25: Sicherungen in der Oberfläche (Regeln, Rendern, Server-Handler, ETag).
+      - name: Sicherungen in der Oberfläche
+        run: npm run pruefung:wiederherstellen-ui
 
       # Personen ohne gültige qualifikationen-Liste: fehlend/null wird [],
       # ein falscher Typ in einer Eingabe 422; ein Altbestand wird beim
@@ -263,6 +282,10 @@ jobs:
         run: npm run pruefung:datenintegritaet
       - name: Prozesssperre der Ablage
         run: npm run pruefung:prozesssperre
+      # ACC45-Werkzeuge: Backlog-Unterbefehle, Vorprüfung, test-kurz (Exit-Code).
+      # Die Vorprüfung legt dafür ein Wegwerf-Git-Repo an.
+      - name: ACC45-Werkzeuge
+        run: npm run pruefung:acc45-werkzeuge
 
       # Personen in der Sicht der Schichtverantwortung: eigene Person, eigener
       # Bereich, Springer-Pool, fremd — Positivliste, Rückfüllung beim Schreiben.
@@ -344,6 +367,10 @@ jobs:
       # Kalenderfeed: bei jedem Abruf Raum, Betrieb, Person, Status und Rolle prüfen; Altfeeds widerrufen (D1f, #14).
       - name: Kalenderfeed-Autorität
         run: npm run pruefung:kalender-feed-autoritaet
+
+      # Kalenderfeed live aus dem Bestand, nur eigene Dienste, Herkunft (Konto/Mitgliedschaft/Code), DTSTAMP, raumLoeschen, Entwürfe (WP-24).
+      - name: Kalenderfeed live und gebunden
+        run: npm run pruefung:kalender-feed-live
 
       # Das Fundament der persönlichen Konten. Fünf Module, die noch kein
       # Endpunkt aufruft — geprüft werden sie trotzdem hier und nicht erst,

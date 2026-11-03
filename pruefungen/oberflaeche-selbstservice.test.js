@@ -159,8 +159,8 @@ describe("11. Navigation: nur die drei Ansichten mit vollständigem Datenbedarf 
   it("die übrigen Ansichten behalten ihr Recht", () => {
     const erwartet = { start: null, lage: "plan.view.unit", plan: "plan.view.all", einsatz: "plan.view.unit",
       notrufe: "plan.view.unit", offene: null, antraege: "req.approve.unit", boerse: "req.create",
-      personal: "staff.view", pruef: "plan.view.all", lenkzeiten: "plan.view.unit",
-      belastung: "plan.view.unit", nachweis: "plan.view.unit", selbstplan: "plan.edit.unit" };
+      personal: "staff.view", pruef: "plan.view.all", /* WP-27: für den Betriebsrat gesperrt, Recht sonst gleich */ lenkzeiten: "OHNE_BR:plan.view.unit",
+      belastung: "plan.view.unit", nachweis: "OHNE_BR:plan.view.unit", selbstplan: "plan.edit.unit" };
     for (const [view, r] of Object.entries(erwartet)) expect(recht(view), view).toBe(r);
   });
 });
@@ -193,14 +193,24 @@ describe("Zeiten bestätigen", () => {
 describe("Stempeln", () => {
   const i = APP.indexOf("      stempeln: async (pid, datum, art, koord) => {");
   const q = APP.slice(i, APP.indexOf("\n      setzeVerfuegbarkeit:", i));
+  /* Seit WP-07 steht das Übernehmen der Serverantwort in stempelUebernehmen —
+     dieselbe Stelle für sofort und später (Stempelpuffer) gesendete Stempel. */
+  const u0 = APP.indexOf("    const stempelUebernehmen = async (pid, eintraege) => {");
+  const u = APP.slice(u0, APP.indexOf("\n    };", u0));
   it("übernimmt eintrag und erfassung des Servers, baut keine eigene Kopie", () => {
     expect(i).toBeGreaterThan(0);
-    expect(q).toContain("[k]: erg.eintrag");
-    expect(q).toContain("[k]: erg.erfassung");
+    expect(u0).toBeGreaterThan(0);
+    expect(u).toContain("[k]: erg.eintrag");
+    expect(u).toContain("[k]: erg.erfassung");
+    expect(u).not.toContain("innerhalbStart: erg.innerhalb");
     expect(q).not.toContain("innerhalbStart: erg.innerhalb");
   });
   it("nachgezogen wird erst nach der Antwort; ein Fehler meldet nur", () => {
-    expect(q.indexOf("await SP.stempeln")).toBeLessThan(q.indexOf("erg.eintrag"));
+    /* Nur mit der Antwort des Servers: direkt (älterer Server) oder als Quittung aus dem Stempelpuffer. */
+    expect(q).toMatch(/const erg = await SP\.stempeln\(datum, art, koord\);\s*await stempelUebernehmen\(pid, \[\{ datum, art, erg \}\]\);/);
+    /* Quittungen aus dem Puffer gesammelt (Review L6), je eine mit der Serverantwort (q.daten). */
+    expect(q).toMatch(/stempelQuittung: \(liste\) => \{[\s\S]*stempelUebernehmen\(pid, liste\.filter\(\(q\) => q && q\.daten\)/);
+    expect(q.split("stempelUebernehmen(").length - 1).toBe(2);
     expect(q).toMatch(/catch \(e\) \{\s*melde\(e\.message/);
   });
 });

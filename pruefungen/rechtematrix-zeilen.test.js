@@ -115,7 +115,15 @@ const bestand = () => ({
   protokoll: [{ id: "bp", zeit: "1", text: M("BETREIBERPROTOKOLL") }], selbststarts: [{ raum: M("SELBSTSTART") }],
   unbekanntOben: M("UNBEKANNT-OBEN"),
   mandanten: [{
-    id: "m1", name: "Haus", einheiten: [{ id: "e1" }, { id: "e2" }, { id: "pool", pool: true }],
+    id: "m1", name: "Haus", einheiten: [{ id: "e1", bereiche: [{ id: "be1", name: M("BEREICH-NAME-E1"), soll: { F: 1 } }] }, { id: "e2" }, { id: "pool", pool: true }],
+    /* Branchenmodule (WP-19): Objekte mit Posten, Einteilung auf Posten, Zuordnung zu Bereichen. m0 (e1), a1 (e1), b1 (e2). */
+    objekte: [
+      { id: "ob1", name: M("OBJEKT-EIGEN-M0"), posten: [{ id: "po1", name: "Pforte", soll: { F: 2 }, qualifikationen: ["pfk"] }] },
+      { id: "ob2", name: M("OBJEKT-FREMD-B1"), posten: [{ id: "po2", name: "Tor", soll: { F: 1 } }] },
+      { id: "ob3", name: M("OBJEKT-BEREICH-A1"), posten: [{ id: "po3", name: "Rundgang", soll: { F: 1 } }] },
+      { id: "ob4", name: M("OBJEKT-OHNE-EINTEILUNG"), posten: [] }],
+    postenPlan: { [`m0|${tag(1)}`]: "po1", [`b1|${tag(1)}`]: "po2", [`a1|${tag(1)}`]: "po3" },
+    bereichsPlan: { [`m0|${tag(1)}`]: "be1", [`b1|${tag(1)}`]: "be9", [`a1|${tag(1)}`]: "be1" },
     qualifikationen: [{ id: "pfk", name: "PFK" }, { id: "masern", name: "Masern", nurStatus: true }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00" }],
     personen: [person("m0", "mitarbeiter", "e1"), person("r1", "betriebsrat", "ALLE"), person("s1", "subplaner", "e1"),
@@ -123,6 +131,9 @@ const bestand = () => ({
       person("sp1", "mitarbeiter", "pool", { springer: true, telefon: M("TELEFON-SP1"),
         stundenuebertrag: M("STUNDEN-SP1"), verfuegbarkeit: { aktiv: M("VERFUEGBARKEIT-SP1") }, kompetenzNachweise: [{ id: M("KOMPETENZ-SP1") }] }), A1(), B1()],
     abweichungen: { [`b1|${tag(1)}`]: "F" },
+    /* Einsatzorte (WP-20): Koordinate und Umkreis gehen nur an Planung und Leitung. */
+    einsatzorte: [{ id: "es1", name: M("EINSATZORT-NAME"), lat: M("EINSATZORT-LAT"), lon: M("EINSATZORT-LON"), radius: M("EINSATZORT-UMKREIS") }],
+    einsatzorteGeaendertAm: M("EINSATZORTE-AM"), einsatzorteGeaendertVon: M("EINSATZORTE-VON"),
     erfassung: {
       [`b1|${tag(-2)}`]: { start: M("ERF-ZEIT-B1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-B1") },
       [`a1|${tag(-2)}`]: { start: M("ERF-ZEIT-A1"), ende: "14:00", bestaetigt: true, grund: M("ERF-GRUND-A1") },
@@ -306,6 +317,9 @@ const ZEILEN = {
   "Zeiterfassung (fremd; Grund)": { sonden: [mk("ERF-ZEIT-B1"), mk("ERF-GRUND-B1")] },
   "Stempeldaten, Ortsurteil (seit Geo V1 `geoStart`/`geoEnde`: Status, gerundete Entfernung, Genauigkeit, Referenzstandort; nie Koordinaten)": {
     sonden: [mk("ORTSURTEIL-B1"), mk("GEO-B1")] },
+  "Einsatzorte (`einsatzorte`: Name, Koordinate, Umkreis; WP-20)": {
+    sonden: [mk("EINSATZORT-NAME"), mk("EINSATZORT-LAT"), mk("EINSATZORT-LON"), mk("EINSATZORT-UMKREIS"),
+      mk("EINSATZORTE-AM"), mk("EINSATZORTE-VON")] },
   "Stempeldaten der eigenen Person (für die eigene Zeiterfassung)": {
     sondenFuer: (spalte) => (EIGENE_STEMPEL[spalte] ? [mk(`STEMPEL-EIGEN-${EIGENE_STEMPEL[spalte]}`)]
       : Object.values(EIGENE_STEMPEL).map((id) => mk(`STEMPEL-EIGEN-${id}`))) },
@@ -341,6 +355,22 @@ const ZEILEN = {
       expect(mk("NOTRUF-AN-SV")(s), "an sie gerichtet").toBe(true);
       expect(mk("NOTRUF-BEREICH")(s), "aus dem Bereich").toBe(true);
     } } },
+  "Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan)": { sonden: [mk("BEREICH-NAME-E1")] },
+  "Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen": {
+    sonden: [mk("OBJEKT-EIGEN-M0"), mk("OBJEKT-FREMD-B1"), mk("OBJEKT-BEREICH-A1"), mk("OBJEKT-OHNE-EINTEILUNG")],
+    bedingt: {
+      "nur eingeteilte Objekte": (s) => {
+        expect(mk("OBJEKT-EIGEN-M0")(s), "Objekt der eigenen Einteilung").toBe(true);
+        for (const x of ["OBJEKT-FREMD-B1", "OBJEKT-BEREICH-A1", "OBJEKT-OHNE-EINTEILUNG"]) expect(mk(x)(s), x).toBe(false);
+      },
+      "nur Objekte mit Einteilung im eigenen Bereich": (s) => {
+        expect(mk("OBJEKT-EIGEN-M0")(s), "Kollege im Bereich").toBe(true);
+        expect(mk("OBJEKT-BEREICH-A1")(s), "Kollegin im Bereich").toBe(true);
+        for (const x of ["OBJEKT-FREMD-B1", "OBJEKT-OHNE-EINTEILUNG"]) expect(mk(x)(s), x).toBe(false);
+      },
+    } },
+  "Einteilung auf Posten (`postenPlan`; Branchenmodul Posten)": planZeile("postenPlan"),
+  "Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan)": planZeile("bereichsPlan"),
   "Dienstbuch": einheitZeile("DIENSTBUCH"),
   "Übergaben": einheitZeile("UEBERGABE"),
   "Tagesnotizen (`notizen` „tag|…\")": einheitZeile("TAGESNOTIZ"),
@@ -442,6 +472,18 @@ const ZEILEN = {
   "unbekannte neue Felder (Person, Betrieb, oben)": {
     sonden: [mk("UNBEKANNT-PERSON"), mk("UNBEKANNT-BETRIEB"), mk("UNBEKANNT-OBEN")] },
 };
+/* Einteilungen „Person|Tag": m0 (eigene Person der Beschäftigten), a1 (Bereich der SV), b1 (fremd). */
+function planZeile(feldName) {
+  const schl = (k) => Object.assign((s) => hat(s.betrieb[feldName], `${k}|${tag(1)}`), { titel: `${feldName}.${k}` });
+  const [m0, a1, b1] = [schl("m0"), schl("a1"), schl("b1")];
+  return {
+    sonden: [m0, a1, b1],
+    bedingt: {
+      "nur eigene": (s) => { expect(m0(s), "eigene").toBe(true); expect(a1(s), "Kollegin").toBe(false); expect(b1(s), "fremd").toBe(false); },
+      "nur eigener Bereich am Tag": (s) => { expect(m0(s), "Bereich").toBe(true); expect(a1(s), "Bereich").toBe(true); expect(b1(s), "fremd").toBe(false); },
+    },
+  };
+}
 /* Dienstbuch, Übergaben, Tagesnotizen: fremde Einheit, ohne Einheit, eigene Einheit (e1). */
 function einheitZeile(name) {
   return {
