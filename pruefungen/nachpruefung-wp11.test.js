@@ -32,6 +32,7 @@ import * as SD from "../server/lib/schutzdurchsetzung.mjs";
 import { einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
 import { sperrtBefund } from "../server/lib/bestaetigungen.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
+import { median, urteil } from "./laufzeitmessung.mjs";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
@@ -356,7 +357,7 @@ describe("Nachprüfung 948a4ba (A2, Empfehlung): Schutzkonflikte bleiben sichtba
   });
   it("die Oberfläche markiert offene Konflikte im Plan und zeigt sie auf der Startseite (Quelltext)", () => {
     const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toContain("function useSchutzkonflikte(m)");                 // Nachtrag WP-22b: entprellt, in Häppchen
+    expect(app).toContain("function useSchutzkonflikte(m, aktiv = true)");              // Nachtrag WP-22b: entprellt, in Häppchen
     expect(app).toContain("schutzkonflikte.has(`${p.id}|${d}`)");
     expect(app).toMatch(/id: "schutzkonflikt"[\s\S]*knopf: "Umplanen"/);
   });
@@ -494,20 +495,22 @@ describe("Review B2: die Nachrechnung blockiert den gemeinsamen Prozess nicht", 
       h.disable();
       return { r, maxMs: h.max / 1e6, blockMs: SD.letzteLaufzeit.blockMs };
     };
-    let m1 = await messen();
-    console.log(`Event-Loop: längste Verzögerung ${m1.maxMs.toFixed(1)} ms, längster Rechenblock ${m1.blockMs} ms, gesamt ${SD.letzteLaufzeit.ms} ms`);
+    /* Review HOCH 2: aufwärmen, dann drei Läufe; gewertet der Median (Grenze 50 ms). */
+    await messen();
+    const laeufe = [await messen(), await messen(), await messen()];
+    const m1 = laeufe[0];
+    const blockMed = median(laeufe.map((l) => l.blockMs)), loopMed = median(laeufe.map((l) => l.maxMs));
+    console.log(`Event-Loop: Median Verzögerung ${loopMed.toFixed(1)} ms, Median Rechenblock ${blockMed} ms (${laeufe.map((l) => l.blockMs).join("/")}), gesamt ${SD.letzteLaufzeit.ms} ms`);
     expect(m1.r).toEqual(sync);
     /* Nachtrag WP-22b: Der Rechenblock (zwischen zwei Nachgaben) bleibt überall
        hart. Die Event-Loop-Verzögerung misst auch Fremdes (Speicherbereinigung,
        eine belastete Maschine): In CI hart, lokal eine Wiederholung und sonst
        eine Warnung — die Grenze in CI bleibt dieselbe. */
-    if (!process.env.CI && (m1.maxMs >= 100 || m1.blockMs > 50)) {
-      m1 = await messen();
-      console.log(`Event-Loop (Wiederholung): ${m1.maxMs.toFixed(1)} ms, Block ${m1.blockMs} ms`);
-    }
-    expect(m1.blockMs).toBeLessThanOrEqual(50);
-    if (process.env.CI) expect(m1.maxMs).toBeLessThan(100);
-    else if (m1.maxMs >= 100) console.warn(`WARNUNG: Event-Loop-Verzögerung ${m1.maxMs.toFixed(1)} ms (in CI wäre das rot)`);
+    const u = urteil(blockMed, 51, SD.HAEPPCHEN_MS);
+    if (u.warnung) console.warn(u.warnung);
+    expect(u.ok, `Median Rechenblock ${blockMed} ms`).toBe(true);
+    if (process.env.CI) expect(loopMed).toBeLessThan(100);
+    else if (loopMed >= 100) console.warn(`WARNUNG: Event-Loop-Verzögerung ${loopMed.toFixed(1)} ms (in CI wäre das rot)`);
   }, 120000);
   it("Zeitbudget überschritten: { zeitbudget: true } (der Server antwortet 503)", async () => {
     const { altM, neuM } = gross();

@@ -8,7 +8,7 @@ import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGAB
 /* Planrechnung und Fachprüfung einer Einteilung — dieselbe Fassung prüft der Server (WP-22). */
 import { nachtFenster, nachtschwelle, nachtAnteil, einheitAm, imDienst, versatzTageVon, zyklusLaenge, einheitDienst,
   landFuerEinheit, teilzeitDienst, NACHWEIS_VORLAUF, sperreWirkt, nachweisStand as fpNachweisStand, qualGueltig as fpQualGueltig,
-  einteilungsBefunde, schutzkonflikteSchritte } from "../server/lib/fachpruefung.mjs";
+  einteilungsBefunde, planeSchutzkonflikte } from "../server/lib/fachpruefung.mjs";
 import { migriere, migrationstext, VERSION as BESTAND_VERSION } from "./migration.js";
 import {
   pad, iso, pISO, addDays, dow, between, dim_, montag, toMin,
@@ -2700,22 +2700,24 @@ const schutzkonfliktPlan = (m) => ({ heute: heute(),
  * damit der Plan beim Bearbeiten nicht ruckelt. Bis das Ergebnis da ist,
  * gilt das vorige.
  */
-function useSchutzkonflikte(m) {
-  const [ergebnis, setErgebnis] = useState(() => new Map());
+const SK_LEER = new Map();
+/** Letzte fertige Rechnung je Betrieb: Ein neu gezeigter Teil der Oberfläche beginnt damit statt leer (Review MITTEL 4). */
+const SK_LETZTE = new Map();
+const SK_ENTPRELLUNG_MS = 250;
+/**
+ * @param {any} m Betrieb
+ * @param {boolean} [aktiv] false: nicht rechnen (die Ansicht braucht das Ergebnis nicht)
+ */
+function useSchutzkonflikte(m, aktiv = true) {
+  const h = heute();                                                   // Tageswechsel ohne Datenänderung rechnet neu
+  const [ergebnis, setErgebnis] = useState(() => (SK_LETZTE.get(m.id) || { ergebnis: SK_LEER }).ergebnis);
   useEffect(() => {
-    let vorbei = false;
-    const uhr = setTimeout(() => {
-      const it = schutzkonflikteSchritte(m, schutzkonfliktPlan(m));
-      const weiter = () => {
-        if (vorbei) return;
-        const r = it.next();
-        if (r.done) setErgebnis(r.value); else setTimeout(weiter, 0);
-      };
-      weiter();
-    }, 250);
-    return () => { vorbei = true; clearTimeout(uhr); };
-  }, [m]);
-  return ergebnis;
+    if (!aktiv) return undefined;
+    /* Nichts Bekanntes: gleich anfangen (kein Warten vor der ersten Anzeige); sonst entprellen. */
+    return planeSchutzkonflikte(m, schutzkonfliktPlan(m), (r) => { SK_LETZTE.set(m.id, { ergebnis: r }); setErgebnis(r); },
+      { verzoegerungMs: SK_LETZTE.has(m.id) ? SK_ENTPRELLUNG_MS : 0 });
+  }, [m, h, aktiv]);
+  return aktiv ? ergebnis : SK_LEER;
 }
 
 /**
@@ -15675,7 +15677,8 @@ function Datenmitnahme({ sitz, akt }) {
 function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
   const m = sitz.mandant, p = sitz.person;
   const d0 = heute();
-  const schutzkonflikte = useSchutzkonflikte(m);                  // entprellt, in Häppchen (Nachtrag WP-22b)
+  /* Nur für Planung und Leitung (dieselbe Bedingung wie die Pflichtaufgabe unten); entprellt, in Häppchen (Nachtrag WP-22b). */
+  const schutzkonflikte = useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"));
   const [alles, setAlles] = useState(false);
   const aufgaben = useMemo(() => tagesaufgaben(sitz), [m, p.id]);
   const map = Object.fromEntries(m.dienstarten.map((d) => [d.id, d]));

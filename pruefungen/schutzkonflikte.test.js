@@ -10,13 +10,15 @@
 
    Aufruf: npx vitest run pruefungen/schutzkonflikte.test.js
    ========================================================================== */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { schutzkonflikteSchritte, schutzkonflikteSofort, SCHUTZKONFLIKT_HAEPPCHEN_MS, dienstAm } from "../server/lib/fachpruefung.mjs";
+import { MATRIX, darf } from "../server/lib/rechte.mjs";
+import { schutzkonflikteSchritte, schutzkonflikteSofort, planeSchutzkonflikte, SCHUTZKONFLIKT_ENTPRELLUNG_MS, SCHUTZKONFLIKT_HAEPPCHEN_MS, dienstAm } from "../server/lib/fachpruefung.mjs";
 import { schutzKonfliktMitteilungen } from "../server/lib/bestaetigungen.mjs";
 import { planungsregelnAbleiten } from "../server/lib/planungsregeln.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
+import { median, quantil, urteil } from "./laufzeitmessung.mjs";
 
 const HEUTE = heuteBerlin();
 const tag = (n) => tagePlus(HEUTE, n);
@@ -40,22 +42,29 @@ describe("Laufzeit: 300 relevante Personen, 20 000 Abweichungen", () => {
     expect(Object.keys(m.abweichungen).length).toBe(20000);
     const lauf = () => {
       const it = schutzkonflikteSchritte(m, plan(m));
-      let laengster = 0, schritte = 0, r;
+      const dauern = [];
+      let r;
       const t0 = performance.now();
       for (;;) {
         const a = performance.now();
         r = it.next();
-        laengster = Math.max(laengster, performance.now() - a);
-        schritte++;
+        dauern.push(performance.now() - a);
         if (r.done) break;
       }
-      console.log(`Schutzkonflikte: ${r.value.size} Konflikte, ${schritte} Häppchen, längster ${laengster.toFixed(1)} ms, gesamt ${(performance.now() - t0).toFixed(0)} ms`);
-      return { r, laengster };
+      const laengster = Math.max(...dauern);
+      console.log(`Schutzkonflikte: ${r.value.size} Konflikte, ${dauern.length} Häppchen, p50 ${quantil(dauern, 0.5).toFixed(1)} p75 ${quantil(dauern, 0.75).toFixed(1)} p90 ${quantil(dauern, 0.9).toFixed(1)} ms, längster ${laengster.toFixed(1)} ms, gesamt ${(performance.now() - t0).toFixed(0)} ms`);
+      return { r, laengster, dauern };
     };
-    /* In CI hart beim ersten Lauf; lokal (parallele Prüfdateien) eine Wiederholung. */
-    let { r, laengster } = lauf();
-    if (!process.env.CI && laengster >= 50) ({ r, laengster } = lauf());
-    expect(laengster).toBeLessThan(50);
+    /* Review HOCH 1: aufwärmen, dann drei Läufe; gewertet der Median der
+       längsten Blöcke (Grenze 50 ms) und die Verteilung der Häppchen. */
+    lauf();
+    const laeufe = [lauf(), lauf(), lauf()];
+    const r = laeufe[0].r;
+    const alle = laeufe.flatMap((l) => l.dauern);
+    expect(quantil(alle, 0.5)).toBeLessThan(2 * SCHUTZKONFLIKT_HAEPPCHEN_MS);   // das Nachgeben selbst: das typische Häppchen
+    const u = urteil(median(laeufe.map((l) => l.laengster)), 50, SCHUTZKONFLIKT_HAEPPCHEN_MS);
+    if (u.warnung) console.warn(u.warnung);
+    expect(u.ok, `Median der längsten Blöcke: ${median(laeufe.map((l) => l.laengster)).toFixed(1)} ms`).toBe(true);
     expect([...r.value.keys()].sort()).toEqual([...schutzkonflikteSofort(m, plan(m)).keys()].sort());
     expect(r.value.size).toBeGreaterThan(0);
   }, 120000);
@@ -84,6 +93,97 @@ describe("„keine Nacht“ zählt wie bei Schichtverantwortung und Server", () 
   });
 });
 
+describe("Review MITTEL 3: Reichweite — Vorindex, ein Jahr Schichtfolge, ausdrückliche Einteilungen ohne Grenze", () => {
+  /* Jeden Tag Nachtdienst laut Schichtfolge; „keine Nacht“ → jeder Tag ein Konflikt, soweit gerechnet wird. */
+  const mm = (abw) => ({ einheiten: [{ id: "e1", versatzTage: 0 }], dienstarten: [{ id: "N", start: "22:00", ende: "06:00" }, { id: "F", start: "06:00", ende: "14:00" }],
+    zyklus: { tage: ["N"] }, anker: "2026-01-05", personen: [person("k", "e1", { einschraenkungen: { keineNacht: true } })], abweichungen: abw, einstellungen: {} });
+  it("Schichtfolge: ein Jahr voraus (Tag 365 ja, Tag 366 nein), nicht nur 30 Tage", () => {
+    const m = mm({});
+    const k = schutzkonflikteSofort(m, plan(m));
+    for (const n of [0, 29, 31, 200, 365]) expect(k.has(`k|${tag(n)}`), `Tag ${n}`).toBe(true);
+    expect(k.has(`k|${tag(366)}`)).toBe(false);
+  });
+  it("ausdrückliche Einteilungen jenseits eines Jahres zählen (Vorindex), freie Tage nicht", () => {
+    const m = mm({ [`k|${tag(400)}`]: "N", [`k|${tag(500)}`]: "N", [`k|${tag(450)}`]: "-", [`k|${tag(480)}`]: "F" });
+    const k = schutzkonflikteSofort(m, plan(m));
+    expect(k.has(`k|${tag(400)}`)).toBe(true);
+    expect(k.has(`k|${tag(500)}`)).toBe(true);
+    expect(k.has(`k|${tag(450)}`)).toBe(false);
+    expect(k.has(`k|${tag(480)}`)).toBe(false);          // Frühdienst: kein Nachtdienst
+  });
+  it("ohne Vorindex ginge das verloren: der Test hängt an Einteilungen, die nur dort stehen", () => {
+    const m = mm({ [`k|${tag(700)}`]: "N" });
+    expect(schutzkonflikteSofort(m, plan(m)).has(`k|${tag(700)}`)).toBe(true);
+    expect(schutzkonflikteSofort(m, { ...plan(m), tageVoraus: 30 }).has(`k|${tag(700)}`)).toBe(true);
+    expect(schutzkonflikteSofort(m, { ...plan(m), tageVoraus: 30 }).has(`k|${tag(100)}`)).toBe(false);
+  });
+});
+
+describe("Review MITTEL 3/4: Entprellung (250 ms) und Abbruch als Verhalten", () => {
+  const m = { einheiten: [{ id: "e1" }], dienstarten: [{ id: "N", start: "22:00", ende: "06:00" }], zyklus: { tage: ["N"] }, anker: "2026-01-05",
+    personen: [person("k", "e1", { einschraenkungen: { keineNacht: true } })], abweichungen: {}, einstellungen: {} };
+  const mitUhr = (f) => { vi.useFakeTimers(); try { return f(); } finally { vi.useRealTimers(); } };
+  it("rechnet erst nach 250 ms, nicht früher", () => mitUhr(() => {
+    expect(SCHUTZKONFLIKT_ENTPRELLUNG_MS).toBe(250);
+    const fertig = vi.fn();
+    planeSchutzkonflikte(m, plan(m), fertig);
+    vi.advanceTimersByTime(249);
+    expect(fertig).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(fertig).toHaveBeenCalledTimes(1);
+    expect(fertig.mock.calls[0][0].has(`k|${tag(0)}`)).toBe(true);
+  }));
+  it("ein neuer Anlauf (Abbruch) innerhalb der Frist: der alte meldet nichts", () => mitUhr(() => {
+    const alt = vi.fn(), neu = vi.fn();
+    const stopp = planeSchutzkonflikte(m, plan(m), alt);
+    vi.advanceTimersByTime(200);
+    stopp();
+    planeSchutzkonflikte(m, plan(m), neu);
+    vi.advanceTimersByTime(1000);
+    expect(alt).not.toHaveBeenCalled();
+    expect(neu).toHaveBeenCalledTimes(1);
+  }));
+  it("ohne Verzögerung (erste Anzeige): gleich im nächsten Takt", () => mitUhr(() => {
+    const fertig = vi.fn();
+    planeSchutzkonflikte(m, plan(m), fertig, { verzoegerungMs: 0 });
+    vi.advanceTimersByTime(0);
+    expect(fertig).toHaveBeenCalledTimes(1);
+  }));
+});
+
+describe("Review MITTEL 4: nichts verschwindet, Rollen ohne Bedarf rechnen nicht, Tageswechsel", () => {
+  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  const i = app.indexOf("function useSchutzkonflikte(");
+  const hook = app.slice(i, app.indexOf("\n}\n", i));
+  it("beginnt mit der letzten bekannten Rechnung des Betriebs, nicht leer", () => {
+    expect(hook).toContain("useState(() => (SK_LETZTE.get(m.id)");
+    expect(hook).toContain("SK_LETZTE.set(m.id,");
+  });
+  it("Tageswechsel (heute) im Schlüssel; Abbruch beim Aufräumen", () => {
+    expect(hook).toContain("const h = heute();");
+    expect(hook).toContain("[m, h, aktiv]");
+    expect(hook).toContain("return planeSchutzkonflikte(");
+  });
+  it("die Startseite rechnet nur für Planung und Leitung; der Monatsplan (auch Schichtverantwortung) immer", () => {
+    expect(app).toContain('useSchutzkonflikte(m, darf(sitz, "pattern.edit") || darf(sitz, "org.edit"))');
+    expect(app).toMatch(/const schutzkonflikte = useSchutzkonflikte\(m\);\s*\n\s*const leute = useMemo/);
+    expect(hook).toContain("aktiv = true");
+  });
+});
+
+describe("Review NIEDRIG 5: Empfänger der Mitteilung = Rollen mit pattern.edit/org.edit (ohne Betriebsrat, Beschäftigte)", () => {
+  it("Rollen der Rechtetabelle mit pattern.edit oder org.edit sind Leitung, Planung und der eigene Datenraum", () => {
+    const mit = Object.keys(MATRIX).filter((r) => darf(r, "pattern.edit") || darf(r, "org.edit")).sort();
+    expect(mit).toEqual(["kunde", "leitung", "planer"]);
+  });
+  it("die Mitteilung geht an Leitung und Planung, an niemanden sonst", () => {
+    const rollen = ["leitung", "planer", "subplaner", "mitarbeiter", "betriebsrat", "kunde"];
+    const altM = { personen: [person("a", "e1"), ...rollen.map((r) => ({ id: `r-${r}`, rolle: r, vorname: "V", nachname: r }))] };
+    const neu = schutzKonfliktMitteilungen(altM, { ...altM, nachrichten: [] }, [{ personId: "a", datum: "2027-01-05", dienstId: "N" }], "x");
+    expect(neu.nachrichten.map((n) => n.personId).sort()).toEqual(["r-leitung", "r-planer"]);
+  });
+});
+
 describe("Mitteilung mit Jahr", () => {
   it("TT.MM.JJJJ", () => {
     const altM = { personen: [person("a", "e1"), { id: "l", rolle: "leitung", vorname: "L", nachname: "L" }] };
@@ -95,9 +195,10 @@ describe("Mitteilung mit Jahr", () => {
 describe("Oberfläche: entprellt und in Häppchen (Quelltext)", () => {
   it("useSchutzkonflikte statt einer Rechnung im Render", () => {
     const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
-    expect(app).toContain("function useSchutzkonflikte(m)");
-    expect(app).toMatch(/schutzkonflikteSchritte\(m, schutzkonfliktPlan\(m\)\)/);
-    expect(app).toMatch(/setTimeout\(weiter, 0\)/);
+    expect(app).toContain("function useSchutzkonflikte(m, aktiv = true)");
+    expect(app).toMatch(/planeSchutzkonflikte\(m, schutzkonfliktPlan\(m\)/);
+    /* die Häppchen und die Entprellung selbst sind als Verhalten geprüft (planeSchutzkonflikte, oben) */
+    expect(readFileSync(path.join(process.cwd(), "server/lib/fachpruefung.mjs"), "utf8")).toMatch(/timer\(weiter, 0\)/);
     expect(app).not.toMatch(/useMemo\(\(\) => offeneSchutzkonflikte/);
   });
 });
