@@ -46,7 +46,10 @@ import { modulVon } from "./branchenmodule.mjs";
 
 /**
  * Ergebnis einer Regelauswertung (Regelbaukasten, pruefeRegel).
- * @typedef {{ zustand: "erfuellt"|"verletzt"|"offen"|"nicht_anwendbar", stufe?: string|null, text?: string }} RegelErgebnis
+ * Beide Formen werden gelesen: die kurze ({ zustand, stufe, text }) und die des
+ * Baukastens ({ status, befund: { stufe }, text }, src/regelbaukasten.js).
+ * @typedef {{ zustand?: "erfuellt"|"verletzt"|"offen"|"nicht_anwendbar", status?: string, stufe?: string|null,
+ *   befund?: { stufe?: string } | null, text?: string }} RegelErgebnis
  */
 
 /**
@@ -66,7 +69,7 @@ const OHNE_SCOPE = { branche: null, bundesland: null, beschaeftigungsmodell: nul
  * und Stufendeckel lassen sich hier nicht überschreiben: Eine Branchenregel
  * wird erst mit Nutzerentscheidung und Primärquellenprüfung aufgewertet —
  * dann ausdrücklich, nicht über diesen Helfer.
- * @param {Partial<Branchenregel> & { id: string, modul: string, typ: string, bezeichnung: string, ebene: any, pruefhinweis: string }} e
+ * @param {Omit<Partial<Branchenregel>, "scope"> & { scope?: Partial<Branchenregel["scope"]>, id: string, modul: string, typ: string, bezeichnung: string, ebene: any, pruefhinweis: string }} e
  * @returns {Branchenregel}
  */
 export function branchenregel(e) {
@@ -84,7 +87,16 @@ export function branchenregel(e) {
  * Daten fehlen) in pruefungen/modul-<id>.test.js.
  * @type {readonly Branchenregel[]}
  */
-export const REGELN_BRANCHEN = Object.freeze([]);
+export const REGELN_BRANCHEN = Object.freeze([
+  /* Industrie — anlagen (Matrix A3 a). Der Wert 1 ist nur die Vorlage: Die
+     Regelinstanz je Dienst trägt den Bedarf aus der Mindestbesetzung der
+     laufenden Anlagen (anlagenRegel, server/lib/modul-anlagen.mjs). */
+  branchenregel({ id: "ANLAGEN-BESETZUNG-01", modul: "anlagen", typ: "besetzungsregel",
+    bezeichnung: "Mindestbesetzung der laufenden Anlagen", ebene: "betrieb",
+    scope: { branche: ["produktion", "logistik"] },
+    parameter: { anforderungen: [{ art: "anzahl", min: 1 }], bedarfAus: "betriebsmittel.mindestBesetzung" },
+    pruefhinweis: "Mindestbesetzung je Anlage legt der Betrieb nach seiner Gefährdungsbeurteilung fest (§ 5 ArbSchG); keine Rechtsvorschrift mit festen Zahlen. Stufe nach Nutzerentscheidung G4." }),
+]);
 
 /**
  * Selbstprüfung des Katalogs (Vertrag) — ergänzt pruefeRegister im
@@ -137,9 +149,11 @@ export function stufeFuerBranchenregel(r, stufe) {
  */
 export function alsEinteilungsBefund(r, ergebnis) {
   if (!r || !ergebnis) return null;
-  if (ergebnis.zustand !== "verletzt" && ergebnis.zustand !== "offen") return null;
-  const offen = ergebnis.zustand === "offen";
-  const stufe = stufeFuerBranchenregel(r, offen ? "hinweis" : ergebnis.stufe || "hinweis");
+  const zustand = ergebnis.zustand || ergebnis.status;
+  if (zustand !== "verletzt" && zustand !== "offen") return null;
+  const offen = zustand === "offen";
+  const roh = ergebnis.stufe || (ergebnis.befund && ergebnis.befund.stufe) || "hinweis";
+  const stufe = stufeFuerBranchenregel(r, offen ? "hinweis" : roh);
   if (!stufe) return null;
   /** @type {BranchenBefund} */
   const b = { regel: "branche", regelId: r.id, modul: r.modul, stufe,

@@ -129,7 +129,10 @@ export const BRANCHENMODULE = Object.freeze([
     beschreibung: "Geplante Wechsel von Personen zwischen Einheiten über Zeiträume (Einsatzrotation)." }),
   /* Industrie */
   modul({ id: "anlagen", merkmal: "anlagen", name: "Anlagenbindung", pakete: ["industrie"],
-    beschreibung: "Anlagen als Einsatzort mit Mindestbesetzung und Laufzeitkalender." }),
+    beschreibung: "Anlagen als Einsatzort mit Mindestbesetzung und Laufzeitkalender.",
+    /* server/lib/modul-anlagen.mjs: Betriebsmittel der Art „anlage" (Matrix A1 a), Felder
+       mindestBesetzung und laufzeit — keine neuen Betriebsfelder. */
+    regelIds: ["ANLAGEN-BESETZUNG-01"] }),
   modul({ id: "maschinenqual", merkmal: "maschinenqual", name: "Maschinenqualifikationen", pakete: ["industrie"],
     abhaengigVon: ["anlagen"],
     beschreibung: "Qualifikationsmatrix Person × Anlage mit Ablauf und Unterweisung." }),

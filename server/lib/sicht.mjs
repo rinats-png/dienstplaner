@@ -470,6 +470,8 @@ export const BETRIEB = {
   ansichten: [NUR_EIGENE, NUR_EIGENE],
   kompetenzen: [R(kompetenzenMitarbeiter), VOLL],
   einarbeitung: [R(einarbeitungEigen), VOLL],
+  /* Anlagen (WP-19) sind Betriebsmittel der Art „anlage“ mit mindestBesetzung und
+     laufzeit — keine Personendaten; sie folgen dieser Zeile (nicht ausgegeben → sichtbar). */
   betriebsmittel: [R(betriebsmittelEigen), WEG],
   sondereinsaetze: [R(sondereinsaetzeEigen), WEG],
   /* Freigabeleiste und Verteilung zeigen Planänderungen mit Vorlauf. */
