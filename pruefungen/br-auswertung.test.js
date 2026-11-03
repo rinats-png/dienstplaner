@@ -216,12 +216,15 @@ describe("Hintergrundrechnung: Raum + Tag, Mindestabstand, Schreiblast (F2, N1)"
     expect(abrufe).toBeGreaterThan(5);
   }, 90000);
   it("viele Räume gleichzeitig: höchstens BR_MAX_GLEICHZEITIG Rechnungen laufen", async () => {
-    const m = bestand().mandanten[0];
+    /* ein Betrieb, dessen Rechnung länger dauert als die Schleife (sonst wären kleine Läufe schon fertig) */
+    const personen = [];
+    for (let i = 0; i < 600; i++) personen.push(person(`v${i}`, "mitarbeiter", `e${i % 6}`));
+    const m = { ...bestand().mandanten[0], einheiten: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, versatzTage: 0 })), personen };
     for (let i = 0; i < 12; i++) auswertungHolen({ raum: `viele-${i}`, heute: HEUTE, mandant: m });
     expect(auswertungStatistik().laeuft).toBeLessThanOrEqual(BR_MAX_GLEICHZEITIG);
     expect(auswertungStatistik().gestartet).toBeLessThanOrEqual(BR_MAX_GLEICHZEITIG);
     for (let i = 0; i < 2000 && auswertungStatistik().laeuft > 0; i++) await new Promise((w) => setTimeout(w, 5));   // nichts in den nächsten Test mitnehmen
-  });
+  }, 90000);
 });
 
 /* Restpunkt N1(3): Ist nach Fristende einfrieren — keine Differenz aus zwei Ausgaben. */
