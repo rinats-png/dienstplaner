@@ -22,7 +22,7 @@ import {
   geoUrteil, standorteFehler, bestandStandorteFehler, NICHT_BEWERTBAR, AUSSERHALB, INNERHALB,
   GEO_QUELLEN, EINSATZORT_ARTEN, EINSATZORT_RADIUS_VORGABE, POSITION_GRUENDE, grundText, GEO_SPOOFING_TEXT, GEO_DATENSCHUTZ_TEXT,
 } from "../server/lib/geo.mjs";
-import { positionHolen, geoAnzeige, positionsUebernahme, koordinatenFelder } from "../src/stempelvorgang.js";
+import { positionHolen, geoAnzeige, positionsUebernahme, koordinatenFelder, koordMitGrund } from "../src/stempelvorgang.js";
 import { erfassen, rumpfFuer } from "../src/stempelpuffer.js";
 import { bestandFuerRolle } from "../server/lib/rechte.mjs";
 
@@ -107,6 +107,29 @@ describe("Gerät: Grund der fehlenden Position (B4, B16 „Geo Gerät“)", () =
     expect(e[0]).toEqual([null]);
     expect(holen({ getCurrentPosition: (ok) => ok({ coords: { latitude: 1, longitude: 2, accuracy: 3 } }) }))
       .toEqual([{ lat: 1, lon: 2, accuracy: 3 }]);
+  });
+  it("an die Stempelaktion geht die Messung — ohne Position nur der Grund als Code", () => {
+    expect(koordMitGrund({ lat: 1, lon: 2, accuracy: 3 }, "timeout")).toEqual({ lat: 1, lon: 2, accuracy: 3 });
+    expect(koordMitGrund(null, "timeout")).toEqual({ grund: "timeout" });
+    expect([koordMitGrund(null), koordMitGrund(null, ""), koordMitGrund(null, 5)]).toEqual([null, null, null]);
+    /* Beide Aufrufstellen (Stempeluhr, mobile Fläche) reichen den Grund weiter. */
+    const app = lies("src/App.jsx");
+    expect(app.match(/positionHolen\(geoAn, \((?:k|koord), grund\) => \{ const ort = koordMitGrund\(/g) || []).toHaveLength(2);
+  });
+  it("speicher.stempeln sendet den Grund, aber nie zusammen mit einer Koordinate", async () => {
+    const SP = await import("../src/speicher.js");
+    const bodies = [];
+    const alt = globalThis.fetch;
+    globalThis.fetch = async (_u, o) => { bodies.push(JSON.parse(o.body)); return new Response(JSON.stringify({ ok: true }), { status: 200 }); };
+    try {
+      await SP.stempeln("2026-10-30", "start", { grund: "keine_freigabe" });
+      await SP.stempeln("2026-10-30", "start", { lat: 50, lon: 8, accuracy: 9, grund: "timeout" });
+      await SP.stempeln("2026-10-30", "start", null);
+    } finally { globalThis.fetch = alt; }
+    expect(bodies[0]).toMatchObject({ lat: null, lon: null, accuracy: null, positionGrund: "keine_freigabe" });
+    expect(bodies[1]).toMatchObject({ lat: 50, lon: 8, accuracy: 9 });
+    expect(bodies[1].positionGrund).toBeUndefined();
+    expect(bodies[2].positionGrund).toBeUndefined();
   });
   it("der Grund liegt im Puffer und im Rumpf — ohne Koordinate; nur Werte aus der Liste", async () => {
     const dosen = new Map();

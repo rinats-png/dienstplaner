@@ -38,7 +38,7 @@ Grün: Commit 89a4aee.
 
 | Nr | Lücke | Fix |
 | --- | --- | --- |
-| G1 | Grund der fehlenden Position (B1/B4) | `positionHolen` liefert `fertig(null, grund)` mit `keine_freigabe` (Code 1), `timeout` (3), `nicht_verfuegbar` (2, sonst, keine Schnittstelle); Grund liegt als Code im Puffer (`stempelpuffer.js`) und im Rumpf (`positionGrund`, nur ohne Koordinate); der Server nimmt ihn nur aus der Liste `POSITION_GRUENDE`, sonst `keine_position`; ein Freitext wird nie gespeichert |
+| G1 | Grund der fehlenden Position (B1/B4) | `positionHolen` liefert `fertig(null, grund)` mit `keine_freigabe` (Code 1), `timeout` (3), `nicht_verfuegbar` (2, sonst, keine Schnittstelle); Grund geht als `{ grund }` statt der Messung an `akt.stempeln` (`koordMitGrund`; die Signaturen von `akt.stempeln` und `SP.stempeln` und der Aufrufstellen bleiben, weil `stempel-429-client.test.js` und `oberflaeche-selbstservice.test.js` sie im Quelltext festhalten — erster CI-Lauf rot, Fix im Code, nicht in den Tests), liegt als Code im Puffer (`stempelpuffer.js`) und im Rumpf (`positionGrund`, nur ohne Koordinate); der Server nimmt ihn nur aus der Liste `POSITION_GRUENDE`, sonst `keine_position`; ein Freitext wird nie gespeichert |
 | G2 | `einsatzort_ungueltig` | `geoUrteil`: ein Einsatzort mit `aktiv: false` gibt NICHT_BEWERTBAR / `einsatzort_ungueltig`, in `pflicht` mit Markierung `ORT_PRUEFEN`, nie ein Rückfall auf den Standort |
 | G3 | Felder | `koordinatenQuelle` (`adresse`, `geraet`, `karte`, `manuell`), `koordinatenGeprueftAm` (JJJJ-MM-TT), Einsatzort `art`, `aktiv` werden beim Schreiben geprüft (`standorteFehler`, 422 mit Klartext; Altbestand blockiert nicht); Standortkarte und Einsatzorte zeigen Quelle und Bestätigung, „Koordinate bestätigen“ setzt das Datum; von Hand geänderte Koordinate setzt `manuell` und nimmt die Bestätigung zurück |
 | G4 | Vorgabe-Umkreis Einsatzort 100 m | `EINSATZORT_RADIUS_VORGABE`; neue Einsatzorte legt die Oberfläche mit 100 m an |
@@ -47,7 +47,7 @@ Grün: Commit 89a4aee.
 | G7 | Texte B13 | `GEO_DATENSCHUTZ_TEXT` (Ergebnis, grob gerundete Entfernung, Messgenauigkeit, Prüfort — keine Koordinate, kein Verlauf) an allen Stellen; die alten Sätze in `App.jsx`, `pruefung.jsx` (Selbsttest-Daten), Handbuch, Tour sind ersetzt |
 | G8 | Spoofing-Hinweis B14 | `GEO_SPOOFING_TEXT` im Schalter (Leitung), in den Stempelbefunden und im Handbuch der Leitung |
 
-Neue Dateien: `pruefungen/geo-spezifikation.test.js` (Unit und Oberfläche, 24), `pruefungen/geo-spezifikation-handler.test.js`
+Neue Dateien: `pruefungen/geo-spezifikation.test.js` (Unit und Oberfläche, 26), `pruefungen/geo-spezifikation-handler.test.js`
 (Handler, 6). Beide in `npm run pruefung:geo` (eine Zeile in `package.json`, Konfliktzone „scripts“: bei der Integration prüfen).
 
 ## Mutanten

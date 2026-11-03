@@ -5,7 +5,7 @@ import { istVerfuegbar, istZeitFuer, pruefZeitFuer, IST_NICHT_VERFUEGBAR, ISTDAT
   vormonateMitPruefung, exportWarnung,
   ungeplanterDienst, istUngeplant, pruefFallText, UNGEPLANT_TEXT, UNGEPLANT_PRUEFUNG_TEXT, bestaetigungsGrund, UNGEPLANT_ABWESEND_TEXT } from "./istdaten.js";
 import { positionHolen, stempelVorgang, geoPruefungAn, geoAnzeige, endeFehlt, MARKIERUNG_TEXT, POSITION_OPTIONEN, stempelSchluessel, pufferZustandText,
-  positionsUebernahme, koordinatenFelder } from "./stempelvorgang.js";
+  positionsUebernahme, koordinatenFelder, koordMitGrund } from "./stempelvorgang.js";
 import { NICHT_UEBERNOMMEN_GRUENDE, grundKennung } from "../server/lib/selbstplanung.mjs";
 import { koordinateGueltig, radiusGueltig, RADIUS_MIN, RADIUS_MAX, RADIUS_VORGABE, EINSATZORT_RADIUS_VORGABE, EINSATZORT_ARTEN, standortBundesland, GEO_MODUS_TEXT,
   GEO_DATENSCHUTZ_TEXT, GEO_SPOOFING_TEXT } from "../server/lib/geo.mjs";
@@ -13423,7 +13423,7 @@ function Stempeluhr({ sitz, akt, vorgang }) {
     setLaeuft(true);
     /* Gesperrt bis zum Ende — auch der Wiederholungen nach 429 (WP-47,
        Review-Auflage N1); sonst tippt man währenddessen ein zweites Mal. */
-    positionHolen(geoAn, (koord, grund) => { Promise.resolve(akt.stempeln(p.id, tag, art, koord, grund)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (koord, grund) => { const ort = koordMitGrund(koord, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
   };
   const wartet = geoAn ? "Standort wird geprüft …" : "Wird gespeichert …";
 
@@ -20433,7 +20433,7 @@ function MStempel({ sitz, akt, vorgang }) {
   const stempeln = (art, tag = datum) => {
     setLaeuft(true);
     /* Gesperrt bis zum Ende, auch der Wiederholungen nach 429 (Review-Auflage N1). */
-    positionHolen(geoAn, (k, grund) => { Promise.resolve(akt.stempeln(p.id, tag, art, k, grund)).finally(() => setLaeuft(false)); });
+    positionHolen(geoAn, (k, grund) => { const ort = koordMitGrund(k, grund); Promise.resolve(akt.stempeln(p.id, tag, art, ort)).finally(() => setLaeuft(false)); });
   };
   const Flaeche = ({ kind, onClick, children }) => (
     <button onClick={onClick} disabled={laeuft} className={`btn btn-${kind}`}
@@ -24294,15 +24294,15 @@ function AppInnen() {
          bleibt es vorläufig (offline gespeichert) und wird wiederholt; eine
          Absage des Servers wird mit Grund gemeldet und bleibt sichtbar
          (OfflineStempel). */
-      stempeln: async (pid, datum, art, koord, positionGrund) => {
+      stempeln: async (pid, datum, art, koord) => {
         try {
           /* Zuerst ablegen (Review L1): Der Stempel ist gesichert, bevor
              irgendetwas anderes ins Netz geht. */
-          const ev = await SP.stempelErfassen(datum, art, koord, positionGrund);
+          const ev = await SP.stempelErfassen(datum, art, koord);
           if (!ev) {
             /* Inhaber unbekannt (Antwort eines älteren Servers): direkt wie bisher. */
             await SP.schreibenAbschliessen();
-            const erg = await SP.stempeln(datum, art, koord, positionGrund);
+            const erg = await SP.stempeln(datum, art, koord);
             await stempelUebernehmen(pid, [{ datum, art, erg }]);
             return;
           }

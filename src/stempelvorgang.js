@@ -68,6 +68,12 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
 }
 
 /**
+ * Was an `akt.stempeln` geht: die Messung — oder, ohne Position, nur der Grund
+ * als Code (`{ grund }`, ohne Koordinate). Ohne Prüfung und ohne Grund: null.
+ */
+export const koordMitGrund = (koord, grund) => koord || (typeof grund === "string" && grund ? { grund } : null);
+
+/**
  * „Aktuelle Position übernehmen" (Standortkarte, B3): aus der Antwort der
  * Schnittstelle die Felder für den Standort. Die Koordinate wird auf sechs
  * Stellen gerundet, die Quelle ist „geraet", bestätigt ist sie noch nicht
