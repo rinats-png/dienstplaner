@@ -134,7 +134,15 @@ export const BRANCHENMODULE = Object.freeze([
     abhaengigVon: ["anlagen"],
     beschreibung: "Qualifikationsmatrix Person × Anlage mit Ablauf und Unterweisung." }),
   modul({ id: "kontimodelle", merkmal: "kontimodelle", name: "Kontischichtmodelle mit Stufenversatz", pakete: ["industrie"],
-    beschreibung: "Assistent für Schichtgruppen, Versatz und Jahresarbeitszeit im kontinuierlichen Betrieb." }),
+    beschreibung: "Assistent für Schichtgruppen, Versatz und Jahresarbeitszeit im kontinuierlichen Betrieb.",
+    /* Rechnung: server/lib/modul-kontimodelle.mjs. Keine Registerregel (Matrix K1 a), keine neuen Daten —
+       der Assistent setzt Schichtfolge und Einheiten über die bestehenden Felder (pattern.edit). */
+    parameter: {
+      sollWochenstunden: { typ: "zahl", standard: 40, min: 1, max: 60, ganzzahl: false, vorlaeufig: true,
+        text: "Vertragliche Wochenarbeitszeit, gegen die der Assistent die Jahresarbeitszeit abgleicht." },
+      stundenJeFreischicht: { typ: "zahl", standard: 8, min: 1, max: 24, ganzzahl: false, vorlaeufig: true,
+        text: "Dauer einer Freischicht für den Ausgleichsvorschlag (Matrix K2 c)." },
+    } }),
 ]);
 
 const hat = (o, k) => !!o && typeof o === "object" && Object.prototype.hasOwnProperty.call(o, k);

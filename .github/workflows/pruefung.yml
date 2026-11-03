@@ -110,7 +110,8 @@ jobs:
         run: npm run pruefung:branchen
 
       # Branchenmodule (WP-19): Registry, Aktivierung je Betrieb, Rechte,
-      # Katalog-Erweiterungspunkt — Vertrag zwischen Kern und Modul.
+      # Katalog-Erweiterungspunkt — Vertrag zwischen Kern und Modul; dazu
+      # jede Modulprüfung pruefungen/modul-<id>.test.js (Filter „modul-“).
       - name: Branchenmodule
         run: npm run pruefung:branchenmodule
 

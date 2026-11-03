@@ -131,7 +131,7 @@
     "pruefung:post": "vitest run pruefungen/post.test.js",
     "pruefung:selbst": "vitest run pruefungen/selbsttest.test.js",
     "pruefung:branchen": "vitest run pruefungen/branchen.test.js",
-    "pruefung:branchenmodule": "vitest run pruefungen/branchenmodule.test.js",
+    "pruefung:branchenmodule": "vitest run pruefungen/branchenmodule.test.js pruefungen/modul-",
     "pruefung:ppugv": "vitest run pruefungen/ppugv.test.js",
     "pruefung:fahrzeit": "vitest run pruefungen/fahrzeit.test.js",
     "pruefung:ppprl": "vitest run pruefungen/ppprl.test.js",

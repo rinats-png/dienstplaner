@@ -302,6 +302,10 @@ Einschalten nur, wenn das Paket gebucht und das Modul nicht mehr „geplant" ist
 Wer setzt der Server (`branchenmoduleZusammen`, `server/lib/branchenmodule.mjs`). Lesen wie die übrigen
 Einstellungen. Daten, die ein Modul später anlegt, bekommen vorher je eine eigene Zeile in dieser Matrix.
 Geprüft in `pruefungen/branchenmodule.test.js`.
+- *Kontimodelle* (`server/lib/modul-kontimodelle.mjs`): keine neuen Daten. Der Assistent rechnet nur; was er
+  übernimmt, schreibt die Oberfläche in die bestehenden Felder `zyklus`, `anker`, `einheiten` (wie bisher
+  `pattern.edit`). Parameter `sollWochenstunden`, `stundenJeFreischicht` in `einstellungen.branchenmodule`.
+  Geprüft in `pruefungen/modul-kontimodelle.test.js`.
 
 **Mitteilungen (Commit 4, A):** Zustellwege (`wege`) und Zustellstatus (`zugestellt`) schreibt kein Client.
 Notruf- und Tauschmitteilungen erzeugt nur der Server aus dem fachlichen Vorgang (neuer eigener Notruf; neue
