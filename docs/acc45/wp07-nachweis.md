@@ -70,8 +70,10 @@ Bestätigung durch den Server wird er als vorläufig angezeigt.
   - Älter als 48 h: gespeichert, `OFFLINE_ALT`.
   - Immer bei offline: `OFFLINE_ERFASST`, dazu `offlineStart`/`offlineEnde` = `{offline: true, geraetAm, gesendetAm,
     eingangAm, versatzMs, zeitAm}`.
-  - Ergibt ein Ende mit `GERAETEZEIT_ABWEICHEND` oder `OFFLINE_ALT` (am Beginn oder am Ende) eine Ist-Zeit, ist sie
-    `bestaetigt: false` mit Grund `OFFLINE_PRUEFEN: …`. Sie erscheint in der Prüfliste der Stempelbefunde
+  - Ergibt ein Ende eine Ist-Zeit und trägt Beginn oder Ende `GERAETEZEIT_ABWEICHEND` oder `OFFLINE_ALT`, **oder**
+    (seit Review-Auflage A1) ging ein offline erfasster Beginn oder ein offline erfasstes Ende 15 min oder später nach
+    seiner maßgeblichen Zeit ein, ist sie `bestaetigt: false` mit Grund `OFFLINE_PRUEFEN: …`. Die 15-min-Regel
+    lockert nur der Betriebsschalter `offlineStempelVertrauen` (siehe Review-Auflagen). Sie erscheint in der Prüfliste der Stempelbefunde
     (`istdaten.zurPruefung`), und die Leitung bestätigt über den Korrekturweg (WP-06). **Nie Ablehnung, nie stilles
     Übernehmen.**
 - **Tag und Zuordnung:** weiter `stempelZiel` (WP-17), mit der maßgeblichen Zeit als „jetzt“, also so, als wäre das
@@ -180,12 +182,23 @@ Siehe Abschnitt „CI-Läufe“ am Ende.
 
 ## Grenzen und Entscheidungen zur Prüfung
 
-- **Fälschbare Erfassungszeit:** Ein Gerät, das `erfasstAm` und `gesendetAm` übereinstimmend fälscht, also eine
-  manipulierte Anwendung, ist nicht erkennbar, solange der Versatz unter 5 min liegt und der Stempel jünger als 48 h
-  ist. Solche Stempel tragen immer `OFFLINE_ERFASST`, sichtbar in den Stempelbefunden, werden aber automatisch bestätigt.
-  - Das ist der Preis des Offline-Stempelns: Vorher galt ausnahmslos die Serveruhr.
-  - **Zur Entscheidung:** ein Betriebsschalter „Offline-Stempel immer zur Prüfung“ oder eine niedrigere Grenze als
-    48 h, z. B. 12 h. Beides ist nicht umgesetzt.
+- **Fälschbare Erfassungszeit (korrigiert nach Review H1):** Die erste Fassung behauptete, nur eine manipulierte
+  Anwendung könne die Erfassungszeit fälschen. Das war falsch. **Flugmodus und eine zurückgestellte Geräteuhr genügen:**
+  - Die Uhr wird vor dem Senden wieder richtig gestellt.
+  - Der gemessene Versatz ist dann unauffällig.
+  - Ein ganzer Vortag 06:00–14:00 wurde am Folgetag als bestätigt übernommen (R1). Ebenso ein offline gemeldeter
+    Beginn 06:00 bei Ankunft 09:00 mit Ende online (R1b).
+
+  **Entscheidung (Auflage A1):** Jede offline erfasste Zeit, die 15 min oder später eingeht, macht die Ist-Zeit zur
+  Prüfung (`OFFLINE_PRUEFEN`). Die Leitung bestätigt über den Korrekturweg.
+
+  **Betriebsschalter** `einstellungen.offlineStempelVertrauen`:
+  - Vorgabe aus, also streng.
+  - Schalten darf nur `org.edit`; Wann und Wer setzt der Server. Karte „Stempeln ohne Netz“ in den Einstellungen.
+  - Er lockert nur die 15-min-Regel. Eine abweichende Uhr und Stempel über 48 h bleiben zur Prüfung.
+
+  Restrisiko: Fälschungen unter 15 min (Ankunft 06:10, gemeldet 06:00) bleiben unerkannt und tragen nur
+  `OFFLINE_ERFASST`.
 - **Absagen ohne Journal:** Idempotent ist der Erfolg, denn die Kennung steht im Stempel. Eine Absage, z. B. 409
   „schon eingestempelt“, wird nicht gespeichert. Eine Wiederholung nach verlorener Absage wird neu bewertet.
   - Ein zweiter Stempel ist damit ausgeschlossen: Die Kennungsprüfung kommt zuerst, und abgelehnte Ereignisse sendet
@@ -200,12 +213,63 @@ Siehe Abschnitt „CI-Läufe“ am Ende.
     auf dem Gerät zu zeigen. Dafür braucht es eine eigene Sammlung mit Sicht je Rolle (H8+) und Unveränderlichkeit.
 - **Puffer nach dem Abmelden:** Wartende Stempel (Zeit, ggf. Standort im Geo-Modus) bleiben auf dem Gerät, bis
   dieselbe Person sich anmeldet, wie im Auftrag verlangt. An einem geteilten Gerät liegen sie lesbar im Browser-Speicher,
-  aber nicht in der Oberfläche. Eine Warnung beim Abmelden mit wartenden Stempeln wäre eine sinnvolle Ergänzung.
+  aber nicht in der Oberfläche. Seit Auflage A2:
+  - Beim Abmelden fragt die Anwendung nach, wenn Stempel warten (`abmeldenMitHinweis`).
+  - Bestätigtes wird beim Abmelden entfernt (`offlineDatenLoeschen` → `abmeldenAufraeumen`).
+  - Rohkoordinaten werden nach Quittung oder Absage aus dem Puffer gelöscht.
+  - Abgelehnte Ereignisse behalten Zeit und Grund (nie still verloren) und haben keinen Standort mehr. „Erneut senden“
+    schickt sie deshalb ohne Standort (Geo-Urteil „nicht bewertbar“).
 - **Idempotenzfenster:** gesucht ab `min(heute − 14, Ereignistag) − 2`. Ein Ereignis, das nach mehr als 14 Tagen mit
   einer **anderen** Erfassungszeit wiederholt würde, fände seinen Stempel nicht. Der Puffer schickt aber immer dieselbe
   Erfassungszeit.
 - **Zeitzone:** wie WP-17 Europe/Berlin; das Gerät wird für die Anzeige vorläufiger Stempel ebenfalls in Berlin
   gerechnet.
+
+## Review-Auflagen (Opus-Review, Runde 1)
+
+Alle Tests zuerst rot per Commit:
+- Server: 5d49aae vor d06c4cf, 9 rot auf 530d7be.
+- Client: 4a728fb vor 400ef1d, 4 rot auf d06c4cf.
+
+| Nr | Befund | Umsetzung | Test | Mutante (rot) |
+|---|---|---|---|---|
+| A1/H1 | Offline-Zeit mit Flugmodus + Uhr fälschbar, bestätigt | `OFFLINE_PRUEFEN`, wenn Beginn oder Ende offline erfasst und |Eingang − maßgebliche Zeit| ≥ 15 min (`offlineVerspaetet`); Betriebsschalter `offlineStempelVertrauen` (`rechte.mjs` `offlineSchalterZusammen`, nur org.edit, Am/Von vom Server, Vorgabe aus); Karte in den Einstellungen | R1, R1b, „kurz offline“ (bestätigt), Schalter wirkt, Schalterrechte (Planung nicht, Leitung mit Am/Von) | A1 entfernt: 4; Schalter wirkungslos: 1; ohne Rechteprüfung: 1 |
+| A2/M1 | Rohkoordinaten und Bestätigtes bleiben im Puffer | koord nach Quittung und Absage gelöscht; `abmeldenAufraeumen` in `offlineDatenLoeschen`; Rückfrage beim Abmelden | Puffer ohne koord; Abmelden: Bestätigtes weg, Wartendes und Abgelehntes bleiben, fremde unberührt; Speicherschicht mit nachgebildetem fetch/localStorage | koord bei Quittung: 1; Abmelden ohne Puffer: 1 |
+| A3 | überlebende Mutanten S1, S7 | – | S1: Wiederholung nach 20 Tagen findet den Stempel; S7: Geräteuhr 1 h vor | S1 (Ereignistag aus dem Fenster): 1; S7 (ohne `Math.abs`): 1 |
+| A4/M2 | 429/503 machten das Ereignis dauerhaft offline (Erfassungszeit statt Serverzeit) | `offline` nur bei echtem Netzausfall (keine Antwort); `rumpfFuer` ohne Versuchszahl | 429/503/500 bleiben online; Netzausfall wird offline | offline bei Bremse: 1; offline aus Versuchszahl: 1 |
+| L1 | Ablegen erst nach `schreibenAbschliessen` | zuerst ablegen, Ausstehendes höchstens 5 s abwarten | Quelltextprüfung (oberflaeche-selbstservice) | – |
+| L2 | gleiche Kennung, andere Art | 422 `STEMPEL_EREIGNIS_WIDERSPRUCH`, Client: endgültig | L2 | 1 |
+| L3 | ehrlicher Versatz ergab START_VERALTET | Offline-Ende bis 5 min vor dem offenen Beginn auf den Beginn geklemmt | L3 | 1 |
+| L4 | unlesbare Zeit roh gespeichert | `geraetAm`/`gesendetAm` nur als geprüfter Zeitpunkt, sonst null | L4 | 1 |
+| L5 | Inhaber am Betriebsindex | `mandantId ?? betrieb` | L5 | 1 |
+| L6 | N Nachladevorgänge für N Quittungen | Quittungen je Sendelauf gesammelt, ein `stempelUebernehmen(pid, eintraege)` | Speicherschicht: eine Quittung mit 2 Einträgen | Quittungen einzeln: 1 |
+
+Angepasste Tests, nicht abgeschwächt:
+- **`offline-stempeln.test.js`:**
+  - Flugmodus- und Nachtdienstfall erwarten jetzt die strengere Regel: zur Prüfung, mit Grund. Der bestätigte Weg ist
+    mit Schalter und mit „kurz offline“ geprüft.
+  - Seit dem Merge von WP-13 tragen die Fälle mit erwarteter Ist-Zeit einen geplanten Dienst. Sonst überdeckt
+    „ungeplant“ den geprüften Grund.
+- **`oberflaeche-selbstservice.test.js`:** Quelltextprüfung auf `stempelUebernehmen(pid, eintraege)` und die
+  gesammelte Quittung.
+
+**Merge des Integrationsstands** (a77aad3: WP-13, WP-14, WP-25). Konflikte gelöst in:
+- `package.json`: Testdateien vereinigt, Sammelzeile unverändert;
+- `daten.mjs`: ungeplant und offline nebeneinander;
+- `istdaten.js`: `zurPruefung` und `bestaetigungsGrund`;
+- `stempelvorgang.js`;
+- `App.jsx`: Pille offline / ungeplant / lang. `ungeplante-dienste.test.js` ist unverändert grün.
+
+`geo.test.js` („keine eigene Ortsprüfung“) bleibt unverändert grün.
+
+Nachher lokal:
+- `offline-stempeln` und `stempelpuffer`: 50/50.
+- Zeiterfassungs-Suiten inkl. WP-13/14: 253/253.
+- geo, Oberfläche, gestalt, Rechtematrix, doku, Datenschutz, Datenintegrität, wiederherstellen-ui, sicht: 834/834.
+- Serverlauf: zeiterfassung 39/39, rechte 147/147, geo 14/14.
+- `tsc` sauber.
+
+Mutanten Idempotenz und A1 nach dem Merge erneut: 6 bzw. 4 rot.
 
 ## CI-Läufe
 
@@ -214,6 +278,7 @@ Siehe Abschnitt „CI-Läufe“ am Ende.
 | 6494e31 | 41624400154 **rot**: `geo.test.js` prüft den Block `function Stempeluhr(`/`function MStempel(`; Hüllkomponenten hatten die Namen belegt → behoben in 7f7a085 (Pufferliste an den Aufrufstellen) | 41624399976 grün | 41624400076 grün | 41624400045 grün |
 | 7f7a085 | 41625270693 grün | – | – | – |
 | 530d7be | 41625596451 grün | 41625596466 grün | 41625596280 grün | 41625596676 grün |
+| a77aad3 (Review-Auflagen + Merge WP-13/14/25) | 41633599939 grün | 41633599832 grün | 41633599701 grün | 41633599690 grün |
 
 Kein Flackern beobachtet; keine Wiederholung nötig. Lokal lief `geo.test.js` einmal in eine Hook-Zeitgrenze (10 s, Last
 des Laptops), allein wiederholt 61/61.
