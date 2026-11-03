@@ -76,7 +76,7 @@ describe("W1: langer Dienst zur Prüfung — nicht still", () => {
     /* Seit WP-06 als Korrekturereignis über den Server (Vermerk: Ereignis am
        Stempel und Betriebsprotokoll „Stempelkorrektur"), nicht mehr mUpd. */
     expect(app).toMatch(/langerDienstBestaetigen: \(pid, d\) => \{/);
-    expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, "Langer Dienst geprüft und bestätigt"\);/);
+    expect(app).toMatch(/return akt\.stempelKorrigieren\(pid, d, e\.start, e\.ende, bestaetigungsGrund\(e\)\);/);
     expect(app).toMatch(/const erg = await SP\.stempelKorrektur\(pid, d, start, ende, grund\);/);
     expect(MARKIERUNG_TEXT.LANGER_DIENST).toBeTruthy();
   });
