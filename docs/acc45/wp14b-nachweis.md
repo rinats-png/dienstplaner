@@ -187,7 +187,9 @@ oberflaeche-render (22), rechtematrix + stempel-datenschutz (80), rechtematrix-z
 
 ## CI
 
-CI_LAEUFE
+Kopf `fbaa0ce` (enthält Merge von `origin/integration/centric-complete` mit WP-23b #64 und WP-27b #65): Prüfung 41681781239, Sicherheit 41681781153, Lieferkette 41681781163, Betrieb: Deploy-Skripte 41681781078 — alle grün (Vorgänger-Kopf 72f100e: 41679905860, 41679905755, 41679906059, 41679905764, grün).
+
+Merge mit WP-27b (#65) erledigt: `src/istdaten.js` bleibt die Weiterleitung, die WP-14b-Änderungen (`zurPruefung` mit ZEITUMSTELLUNG, `bestaetigungsGrund`, `ohnePlanDauerNull`/`pruefHinweis`, `Math.max(0,…)` in `istZeitFuer`) stehen in `server/lib/istdaten.mjs`. Die WP-16-Änderung an `pruefZeitFuer` (Pause) ist dort beim WP-16-Merge nachzutragen.
 
 ## Folgearbeit WP-14c (offen aus dem Delta-Review)
 
