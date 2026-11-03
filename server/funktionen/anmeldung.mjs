@@ -331,7 +331,7 @@ async function anmeldung(req, k) {
      gilt für beide Grenzen: Die Gesamtgrenze der Notbremse soll Fehlversuche
      zählen, nicht Anmeldungen — sonst bremst ein Schichtwechsel sich
      selbst aus. */
-  await entlasten("anmelden-konto", k);
+  await entlasten("anmelden-konto", k, b);
   notentlasten("anmelden-konto", k);
   /* Kein Merkmal, keine Kennung, keine Adresse im Protokoll — nur, dass es
      geklappt hat. */

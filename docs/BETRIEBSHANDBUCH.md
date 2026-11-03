@@ -84,6 +84,7 @@ steht in [.env.example](../.env.example). Werte mit Geheimnischarakter stehen ni
 | `CENTRIC_GESUND_SICHERUNG_WARNUNG_STUNDEN` | Alter der letzten Sicherung | 26 | ja (auskommentiert) |
 | `CENTRIC_GESUND_LOESCHLAUF_WARNUNG_STUNDEN` | Alter des letzten Löschlaufs | 26 | ja (auskommentiert) |
 | `CENTRIC_GESUND_5XX_WARNUNG` | 5xx je 15 min bis zur Warnung | 10 | ja (auskommentiert) |
+| `CENTRIC_GESUND_429_WARNUNG` | Abweisungen durch eine **Lastgrenze** (Stempeln je Person/Raum, gelungene Anmeldungen je Betrieb) je 15 min bis zur Warnung — ehrliche Anfragen, die der Server abgewiesen hat; Fehlversuche beim Anmelden zählen nicht | 20 | ja (auskommentiert) |
 | `CENTRIC_SICHERUNG_STATUS` | Pfad zur Statusdatei der Sicherung im Container (mit dem Mount in `deploy/compose.yml`) | leer (Prüfung „nicht eingerichtet“) | ja (auskommentiert) |
 | `CENTRIC_ALARM_WEBHOOK` | Alarmkanal (nur https); Geheimnis | aus | ja (auskommentiert) |
 | `CENTRIC_GESUND_ZEITGRENZE_MS` | Zeitgrenze einer Zustandsprüfung (danach „Ablage kritisch: Zeitgrenze“) | 15000 | ja (auskommentiert) |

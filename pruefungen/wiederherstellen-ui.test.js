@@ -145,6 +145,7 @@ describe("Oberfläche gerendert", () => {
       "Alle Stempel mit ihren Korrekturen", "Protokoll", "Vertrags- und Rechnungsangaben", "anonymisierte Personen",
       "Der Plan: Einteilungen", "Wer erst nach der Sicherung angelegt wurde, fehlt danach", "Einstellungen, Dienstarten",
       "Abwesenheiten, Anträge", "fehlt danach", "automatisch gesichert", "Aufbewahrungsfristen",
+      "Die Pflicht zur Planfreigabe samt Datum und Person",
       "Ja, zurückspielen", "Abbrechen"]) expect(t, teil).toContain(teil);
   });
 });
@@ -289,7 +290,9 @@ describe("Der Bestätigungstext stimmt mit dem Server überein (betriebWiederher
   it("GEHT ZURÜCK: Plan und Freigaben, Personen (neu angelegte fehlen, ihre Stempel bleiben), Stammdaten, Einstellungen, Abwesenheiten", () => {
     const m = ergebnis.bestand.mandanten[0];
     expect(m.abweichungen).toEqual({ "p1|2026-11-10": "F" });
-    expect(m.freigaben).toEqual({});
+    /* Freigaben gehen mit dem Plan zurück — außer der Betrieb benutzt die Freigabe und die Sicherung nicht:
+       Dann bleiben die jetzigen Freigaben (WP-23, Entwurfsschutz; BESTAETIGUNG.bleibt nennt es). */
+    expect(m.freigaben).toEqual({ "2026-11": { stand: 2 } });
     expect(m.personen.map((p) => p.id).sort()).toEqual(["anon", "l1", "p1"]);   // "neu" fehlt
     expect(m.personen.find((p) => p.id === "p1").nachname).toBe("Alt");
     expect(m.einstellungen).toEqual({ stand: "alt" });

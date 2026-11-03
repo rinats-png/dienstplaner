@@ -67,6 +67,7 @@ export const BESTAETIGUNG = Object.freeze({
     "Alle Stempel mit ihren Korrekturen und die daraus abgeleiteten Ist-Zeiten dieser Tage. Stempel, die nur die Sicherung kennt, kommen zusätzlich zurück.",
     "Das Protokoll des Betriebs (es bekommt einen Eintrag zur Wiederherstellung) und die Planänderungen.",
     "Vertrags- und Rechnungsangaben, Zugänge und Zustellwege, Bank-, Steuer- und Lohnangaben bestehender Personen sowie anonymisierte Personen.",
+    "Die Pflicht zur Planfreigabe samt Datum und Person. Benutzt der Betrieb die Freigabe, die Sicherung aber nicht, bleiben die jetzt freigegebenen Monate zusätzlich erhalten — sonst sähen Beschäftigte danach wieder Entwürfe.",
   ]),
   zurueck: Object.freeze([
     "Der Plan: Einteilungen, Schichtfolge, Freigaben und Planstände.",

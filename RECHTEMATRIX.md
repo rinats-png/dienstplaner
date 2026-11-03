@@ -74,8 +74,8 @@ Spalten: **MA** Beschäftigte · **BR** Betriebsrat · **SV** Schichtverantwortu
 | Bestätigungsprotokoll (`bestaetigungen`: bewusst bestätigte Abweichungen) | – | nur Zählwerte je Monat, Regel und Stufe ²¹ | nur eigener Bereich am Tag ²¹ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Bereiche an der Einheit (`einheiten[].bereiche`: Name, Soll je Dienstart; Branchenmodul Bereichsplan) | ✓ | ✓ | ✓ | ✓ | ✓ | – | ✓ | ✓ | A |
 | Objekte und Posten (`objekte`: Name, Sollbesetzung, verlangte Qualifikationen; Branchenmodul Posten) — Sicht der Beschäftigten fachlich offen | nur eingeteilte Objekte | – | nur Objekte mit Einteilung im eigenen Bereich | ✓ | ✓ | – | ✓ | ✓ | B |
-| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
-| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Einteilung auf Posten (`postenPlan`; Branchenmodul Posten) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
+| Zuordnung zu Bereichen (`bereichsPlan`; Branchenmodul Bereichsplan) | nur eigene ²⁷ | – | nur eigener Bereich am Tag | ✓ | ✓ | – | ✓ | ✓ | A |
 | Kalendergeheimnis, -verweis, -stand | – | – | – | – | – | – | – | – | A |
 | Push-Schlüssel, Zustelleinstellungen | – | – | – | – | – | – | – | – | A |
 | Adressänderungen im Betrieb | – | – | – | ✓ | ✓ | ✓ ¹¹ | ✓ | ✓ | B ⁶ |
@@ -279,6 +279,39 @@ Leitung und `kunde` bekommen *für eine Person des eigenen Betriebs* (`?person=`
 (`bestandFuerRolle`): **kein** Protokoll (das sieht sonst nur der Betreiber), **kein** Push-, Kalender- oder
 Kontostatus. Andere Rollen bekommen eine Auskunft nur über die eigene Person, der Betreiber keine. Jede Auskunft steht
 im Protokoll.
+²⁷ WP-23, Präzisierung der Zeile „Plan“ (Einteilungen, `abweichungen`), keine neue Spalte: **Entwürfe.** Ein Monatsplan
+ist ein Entwurf, bis die Planung ihn freigibt (`freigaben[JJJJ-MM]`). **Beschäftigte** bekommen die Einteilungen
+eines nicht freigegebenen Monats nach heute nicht (`planOhneEntwurf`, `server/lib/sicht.mjs`) — weder die eigenen noch die
+anderer. Sichtbar sind die Einteilungen freigegebener Monate und jeder Tag bis einschließlich heute (Berliner Zeit):
+Was heute oder früher liegt, ist in Kraft und kein Entwurf; „Mein Dienst heute“, das Einstempeln und die Ist-Ansichten
+brauchen es. Ein Eintrag ohne gültigen Tag im Schlüssel geht nicht hinaus. Der **Betriebsrat** behält
+den ganzen Plan: Die Mitbestimmung bei Beginn, Ende und Verteilung der Arbeitszeit setzt voraus, dass er den Entwurf
+vor der Freigabe prüfen kann. Schichtverantwortung, Planung, Leitung und Kundenrolle planen selbst und sehen ihn.
+Dasselbe gilt für `postenPlan` und `bereichsPlan` (Einteilungen „Person|Tag“) und die daraus abgeleiteten `objekte`: Für
+Beschäftigte gehen nur die eigenen Einteilungen freigegebener Monate und vergangener Tage hinaus (`eigenOhneEntwurf`,
+`objekteEigene` in `sicht.mjs`); sonst verriete ein Objekt oder ein Bereich die Entwurfsplanung. Die Zeile „Plan“
+(`abweichungen`) ist für Beschäftigte VOLL und wird nur über diese Fußnote gefiltert; ihre Zellen in den Zeilen Posten und
+Bereiche tragen deshalb den Verweis ²⁷.
+**Übergangsregel und ihre Kehrseite:** Der Filter wirkt nur, solange der Betrieb die Pflicht eingeschaltet hat oder mindestens
+einen Monat freigegeben hat. Nimmt die Planung in einem Betrieb **ohne** Pflicht die letzte Freigabe zurück, ist der Filter
+danach aus und Beschäftigte sehen wieder Entwürfe. Deshalb bekommen neue Betriebe die Pflicht von Anfang an, und die Leitung
+bekommt die Aufgabe „Planfreigabe aktivieren“, solange sie fehlt. Ein Zurücknehmen von Freigaben gibt es heute nicht
+(künftiges Feature, siehe Nachweis).
+Gespeichert wird nichts anders: Beschäftigte schreiben `abweichungen` nicht (`eigenesZusammen`).
+**Wann der Filter wirkt (Übergang):** nur wenn der Betrieb die Freigabe benutzt (mindestens ein freigegebener Monat)
+oder `einstellungen.planFreigabePflicht === true` (`server/lib/planfreigabe.mjs`, `planFreigabeAktiv`). Sonst sähen
+Beschäftigte eines bestehenden Betriebs ohne Freigaben nach dem Ausrollen keinen Einsatz mehr. Den Schalter setzt nur
+`org.edit` (Leitung, Kundenrolle); Form und Wann/Wer prüft und setzt der Server (`planFreigabeZusammen`,
+`planFreigabePflichtGeaendertAm/Von`). Neue Betriebe (Selbststart, Erstbefüllung, Provisionierung, Testräume) starten
+mit `true`. Solange der Filter bei einem bestehenden Betrieb aus ist, bekommt die Leitung die dringende Aufgabe
+„Planfreigabe aktivieren“. Die abgeleitete Antwortmarke `sichtEntwuerfe` (nie gespeichert) sagt der Oberfläche, dass
+der Filter wirkt; sie zeigt dann „noch nicht veröffentlicht“ statt eines aus der Schichtfolge gerechneten Dienstes.
+**Bewusst nicht gefiltert — Selbstauskunft (Art. 15):** `auskunft.mjs` liefert die eigenen Abweichungen und den Plan der
+nächsten 62 Tage auch aus Entwurfsmonaten. Es sind die eigenen Daten der Person, der Auskunftsanspruch ist nicht
+auf freigegebene Stände beschränkt (Alternative im Nachweis `docs/acc45/wp23-nachweis.md`). **Offen:** Der
+Kalender-Feed (`kalender.mjs`) hat keine Serversperre — der Client rechnet die Termine —, das ist ein Folgepunkt von
+WP-24. Der Betriebsrat behält den ganzen Plan (fachlich offen, siehe Nachweis). Geprüft in
+`pruefungen/entwuerfe.test.js` und `pruefungen/entwuerfe-oberflaeche.test.js`.
 Jedes Feld aus `PERSONENFELDER` (`server/lib/sicht.mjs`) ist in `pruefungen/rechtematrix-zeilen.test.js` genau einer
 Zeile zugeordnet; ein neues Feld ohne Zuordnung macht den Test rot. Ausgenommen sind nur die abgeleiteten Felder
 `sichtbereich` und `planungsregeln` — sie entstehen in der Antwort und werden nie gespeichert.

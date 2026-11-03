@@ -130,6 +130,9 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
     einstellungen: {
       /* Geo-Prüfung beim Stempeln: Vorgabe aus (E7); einschalten nur die Leitung. */
       geoPruefung: false,
+      /* Planfreigabe (WP-23): Beschäftigte sehen Entwürfe nicht. Neue Betriebe starten mit
+         der Pflicht; bestehende ohne Freigabe behalten das alte Verhalten (planfreigabe.mjs). */
+      planFreigabePflicht: true,
       wochenstunden: 40,
       /* Dieselbe Größe unter zwei Namen: Die Oberfläche liest fast überall
          sollWochenstunden, angelegt wurde nur wochenstunden. Folge: Das Feld
