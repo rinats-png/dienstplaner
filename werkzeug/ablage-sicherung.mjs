@@ -418,6 +418,16 @@ export async function wiederherstellen({ sicherung, ziel, ersetzen = false, serv
   }
   for (const s of Object.keys(manifest.stores)) await rename(path.join(stufe, s), path.join(ziel, s));
   await rm(stufe, { recursive: true, force: true });
+  /* Vermerk der Wiederherstellung (WP-45b): Ab hier zählen die Standnummern
+     ab dem Stand dieser Sicherung neu. Sicherungen, die NACH dieser, aber VOR
+     der Wiederherstellung entstanden, gehören zu der verworfenen Folge —
+     gleiche Nummer, anderer Inhalt. werkzeug/ablage-pruefen.mjs lehnt sie
+     deshalb ab. Punktdatei: nicht in der Sicherung, für die Ablage unsichtbar. */
+  const vermerk = path.join(ziel, ".wiederhergestellt.json");
+  const vermerkTmp = `${vermerk}.${process.pid}.tmp`;
+  await rm(vermerkTmp, { force: true });
+  await schreibenFest(vermerkTmp, JSON.stringify({ zeit: jetzt.toISOString(), sicherungErstellt: manifest.erstellt }));
+  await rename(vermerkTmp, vermerk);
   await ordnerFest(ziel);
 
   if (typeof process.getuid === "function" && process.getuid() === 0)
