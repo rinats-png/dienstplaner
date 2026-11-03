@@ -75,8 +75,14 @@ function kompetenzenJeAnlage(m) {
   return { anlagen, je };
 }
 
+/** Hat die Rolle die Kompetenznachweise dieser Person bekommen? Beschäftigte und Schichtverantwortung bekommen
+    die der anderen nicht (Positivkatalog, RECHTEMATRIX): Dann ist der Stand unbekannt, nie „fehlt". */
+const nachweiseBekannt = (p) => !!p && Array.isArray(p.kompetenzNachweise);
+const UNBEKANNT = Object.freeze({ stand: "unbekannt", bis: null, kompetenzId: null });
+
 /** Bester Stand einer Person über die Kompetenzen einer Anlage. */
 function besterStand(p, kompetenzen, datum, stand) {
+  if (!nachweiseBekannt(p)) return { ...UNBEKANNT };
   let best = null;
   for (const k of kompetenzen) {
     const n = liste(p && p.kompetenzNachweise).find((x) => x.kompetenzId === k.id) || null;
@@ -104,13 +110,15 @@ export function qualifikationsMatrix(m, datum, stand) {
 
 /**
  * Merkmale „anlage:<id>" einer Person: gültige (auch bald ablaufende) Bedienungskompetenz.
+ * Sind die Kompetenznachweise der Person nicht ausgeliefert, ist die Antwort null (unbekannt).
  * @param {any} m
  * @param {any} p
  * @param {string} datum
  * @param {StandFn} stand
- * @returns {string[]}
+ * @returns {string[] | null}
  */
 export function anlagenMerkmale(m, p, datum, stand) {
+  if (!nachweiseBekannt(p)) return null;
   const { anlagen, je } = kompetenzenJeAnlage(m);
   const aus = [];
   for (const a of anlagen) {
@@ -136,7 +144,7 @@ export function maschinenqualBefunde(m, datum, dienstId, personen, { auswerten, 
   const basis = REGELN_BRANCHEN.find((r) => r.id === REGEL_ID);
   if (!basis) throw new Error(`${REGEL_ID} fehlt im Branchenkatalog.`);
   const { je } = kompetenzenJeAnlage(m);
-  const imDienst = liste(personen).map((p) => ({ id: p.id, merkmale: anlagenMerkmale(m, p, datum, stand) }));
+  const imDienst = liste(personen).map((p) => ({ id: p.id, merkmale: anlagenMerkmale(m, p, datum, stand) }));   // null: unbekannt → „nicht bewertbar"
   const aus = [];
   for (const a of anlagenBedarf(m, datum, dienstId).anlagen) {
     const r = { ...basis, bezeichnung: `Qualifizierte Besetzung ${a.name}`,
@@ -158,13 +166,17 @@ export function maschinenqualBefunde(m, datum, dienstId, personen, { auswerten, 
 
 /**
  * Schreibweg: prüft die Felder dieses Moduls an Kompetenzen, die eine Anlage
- * betreffen oder `befaehigtePerson` tragen. Andere bleiben unberührt.
+ * betreffen oder `befaehigtePerson` tragen. Andere bleiben unberührt. Mit
+ * `altM` nur Neues oder Geändertes streng (Review-Auflage 2).
  * @param {any} neuM
+ * @param {any} [altM]
  * @returns {{ grund?: string }}
  */
-export function maschinenqualZusammen(neuM) {
+export function maschinenqualZusammen(neuM, altM) {
   const anlagen = new Set(liste(neuM && neuM.betriebsmittel).filter(istAnlage).map((a) => a.id));
+  const vorher = new Map(liste(altM && altM.kompetenzen).map((x) => [String(x.id), JSON.stringify(x)]));
   for (const k of liste(neuM && neuM.kompetenzen)) {
+    if (vorher.get(String(k.id)) === JSON.stringify(k)) continue;
     if (k.befaehigtePerson === undefined && !anlagen.has(k.betriebsmittelId)) continue;
     const f = pruefeMaschinenKompetenz(k);
     if (f) return { grund: f };

@@ -8,7 +8,7 @@
    ========================================================================== */
 import { addDays } from "./regelwerk.js";
 import { entfernungText, geoAktiv, INNERHALB, AUSSERHALB } from "../server/lib/geo.mjs";
-import { startZuordenbar } from "../server/lib/zeiterfassung.mjs";
+import { startZuordenbar, nachtdienstOffen } from "../server/lib/zeiterfassung.mjs";
 
 /** Eine frische, möglichst genaue Messung je Stempelereignis (Geo-Spezifikation B4). */
 export const POSITION_OPTIONEN = Object.freeze({ enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
@@ -32,7 +32,7 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * Welcher Vorgang wird gestempelt? Ein offener Beginn von gestern (Dienst
  * über Mitternacht) geht vor: Dann heißt es „Ausstempeln" für gestern, nicht
  * „Einstempeln" für heute. Der Server lässt genau das zu
- * (stempelDatumPruefen: gestern, Ende, offener Beginn).
+ * (zeiterfassung.mjs, stempelZiel: Ende beim offenen Beginn von gestern).
  *
  * Aber nur, solange der Beginn höchstens 20 Stunden zurückliegt — dieselbe
  * Grenze wie auf dem Server (startZuordenbar). Ein älterer offener Beginn
@@ -43,8 +43,10 @@ export function positionHolen(aktiv, fertig, geolocation = (typeof navigator !==
  * Dienst geplant ist; ein offener Beginn muss beendbar bleiben, auch wenn
  * der Dienst nach dem Einstempeln aus dem Plan genommen wurde.
  * `veraltet`: offen, aber nach derselben 20-Stunden-Grenze wie auf dem Server
- * nicht mehr zuordenbar — ein Ende dazu speichert der Server mit
- * START_VERALTET, ohne Erfassung. Das ist kein normaler Abschluss.
+ * nicht mehr zuordenbar. Ein Ende dazu speichert der Server am selben Tag
+ * mit START_VERALTET; liegt der Beginn auf gestern, als eigenes Ende auf
+ * heute (START_FEHLT), und der alte Vorgang wird KONFLIKT (zeiterfassung.mjs,
+ * stempelZiel). Beides ist kein normaler Abschluss.
  */
 export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   const tab = (m && m.einstempeln) || {};
@@ -53,9 +55,27 @@ export function stempelVorgang(m, p, heute, jetzt = new Date()) {
   if (vom && vom.start && !vom.ende && startZuordenbar(gestern, vom.start, jetzt, vom.startAm))
     return { datum: gestern, st: vom, vortag: true, offen: true, veraltet: false };
   const st = p ? tab[`${p.id}|${heute}`] || null : null;
+  /* Einstempeln am Abend vergessen (WP-17, F1/W3): Gestern war ein Dienst
+     über Mitternacht geplant, für gestern gibt es keinen Stempel, und sein
+     Ende ist höchstens vier Stunden vorbei. Dann bietet die Oberfläche
+     neben „Einstempeln" auch „Dienstende stempeln" an — der Server ordnet
+     dieses Ende nach derselben Regel dem Nachtdienst von gestern zu
+     (zeiterfassung.mjs, nachtdienstOffen), als Ende ohne Beginn. */
+  if (p && !st && nachtdienstOffen(m, p, heute, jetzt))
+    return { datum: gestern, st: null, vortag: true, offen: false, veraltet: false, nachtEnde: true };
   const offen = !!st && !!st.start && !st.ende;
   return { datum: heute, st, vortag: false, offen, veraltet: offen && !startZuordenbar(heute, st.start, jetzt, st.startAm) };
 }
+
+/**
+ * Unter welchem Schlüssel steht ein gerade gestempelter Eintrag? Der Tag, den
+ * der Server gewählt hat (erg.datum), nicht der des Geräts — seit WP-17
+ * bestimmt der Server den Tag; mit dem Gerätedatum landete die lokale Kopie
+ * bei falsch gestellter Uhr auf dem falschen Tag und ging beim nächsten
+ * Speichern als Duplikat hinaus (W2).
+ */
+export const stempelSchluessel = (pid, erg, geraeteDatum) =>
+  `${pid}|${(erg && typeof erg.datum === "string" && erg.datum) || geraeteDatum}`;
 
 /** Ein offener Beginn, zu dem kein Ende mehr automatisch passt (für die Anzeige der Leitung). */
 export const endeFehlt = (datum, e, jetzt = new Date()) =>
@@ -66,6 +86,10 @@ export const MARKIERUNG_TEXT = Object.freeze({
   START_VERALTET: "Beginn über 20 Stunden alt — nicht zugeordnet",
   ENDE_FEHLT: "Ende fehlt",
   UNGEPLANTER_DIENST: "ohne geplanten Dienst",
+  KONFLIKT: "Konflikt — bitte durch die Leitung klären",
+  GERAETEDATUM_ABWEICHEND: "Datum des Geräts wich ab",
+  LANGER_DIENST: "länger als geplant + 2 Stunden — Ist-Zeit zur Prüfung",
+  UNGEPLANT_PRUEFUNG: "ohne geplanten Dienst — Dauer zur Bestätigung",
 });
 
 /* Kennung für „bestätigt“. Als Escape geschrieben: Die Oberfläche zeigt sie

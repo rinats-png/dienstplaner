@@ -17,6 +17,7 @@
 
 import { gespeicherterBetrieb, rollenwechselErlaubt, VERTRAGSFELDER, BETREIBERSTAMM } from "./rechte.mjs";
 import { PERSONENFELDER, VOLL_PERSON, VOLL_BETRIEB } from "./sicht.mjs";
+import { stempelBeiWiederherstellung } from "./stempelintegritaet.mjs";
 import { raeumen, vorschau, berichtstext, aufbewahrungFehler, datenschutzModus } from "./aufbewahrung.mjs";
 import { heuteBerlin } from "./zeiterfassung.mjs";
 
@@ -209,13 +210,25 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
     else delete zurueck[feld];
   }
 
+  /* Stempel sind Belege (WP-06, lib/stempelintegritaet.mjs): Eine Wiederherstellung nimmt keinen
+     Stempel zurück und setzt keinen auf einen älteren Stand. Was heute gespeichert ist, bleibt —
+     mit Korrekturen und abgeleiteter Ist-Zeit; dazu kommen Stempel, die nur die Sicherung hat.
+     Das kommt VOR den Fristen: Was die Aufbewahrungsfrist überschritten hat, löscht der
+     Datenschutzlauf (Modus „an") — auch aus dem, was die Sicherung zurückbringt
+     (Art. 5 Abs. 1 lit. e DSGVO). Umgekehrt käme Gelöschtes zurück. */
+  const st = stempelBeiWiederherstellung(alt, zurueck);
+  const stempelProtokoll = st.behalten
+    ? { ...st.mandant, protokoll: [{ ...eintrag, text: `${eintrag.text} · ${st.behalten} Stempel aus dem aktuellen Stand behalten` },
+      ...(Array.isArray(alt.protokoll) ? alt.protokoll : [])] }
+    : st.mandant;
+
   /* Mit den heutigen Fristen des Betriebs (nicht denen der Sicherung), am
      heutigen Tag in Berlin (wie der Datenschutzlauf). Gelöscht wird nur im
      Modus „an" (N-3) — bei „aus" und „vorschau" löscht auch der Lauf nicht;
      dann wird nur gemeldet, was nach den Fristen fällig wäre. Eine ungültige
      Fristangabe löscht nie (fail-closed, wie im Lauf). */
   const heuteIso = heuteBerlin(heute);
-  const mitFristen = { ...zurueck, aufbewahrung: alt.aufbewahrung ?? zurueck.aufbewahrung };
+  const mitFristen = { ...stempelProtokoll, aufbewahrung: alt.aufbewahrung ?? stempelProtokoll.aufbewahrung };
   const ungueltig = aufbewahrungFehler(mitFristen.aufbewahrung);
   let ergebnis = mitFristen;
   let fristen;
@@ -234,7 +247,7 @@ export function betriebWiederherstellen(jetzt, sicherung, sitzung,
   const neu = { ...jetzt, mandanten: jetzt.mandanten.map((m, i) => (i === ort.index ? ergebnis : m)) };
   const rw = rollenwechselErlaubt(jetzt, neu, sitzung);
   if (!rw.ok) return { verweigert: rw.grund, status: 403 };
-  return { bestand: neu, fristen };
+  return { bestand: neu, fristen, stempelBehalten: st.behalten };
 }
 
 /* --------------------------------------------------------------------------

@@ -11,7 +11,7 @@ dazu:
 | Jugendschutz-Einstellung „mehrschichtig“ (§ 14 Abs. 2 Nr. 2 JArbSchG) | Betriebseinstellungen |
 | Kosten des Betriebs sehen (Preisgrundlage, nur lesend) | Kostenanzeige |
 | Sicherung des Betriebs anlegen | Einstellungen → „Sicherung anlegen“, „Vorher sichern“ |
-| Zu einer Sicherung zurückgehen | nur über die Schnittstelle `/api/sicherungen`, `/api/wiederherstellen` — eine Oberfläche ist in Vorbereitung (WP-25) ([RESTORE-ANLEITUNG.md](../RESTORE-ANLEITUNG.md)) |
+| Zu einer Sicherung zurückgehen (nur Leitung; die Kundenrolle sieht die Liste) | Einstellungen → „Sicherungen“ → „Zurückspielen“, mit Bestätigung. Es wird nur der eigene Betrieb zurückgesetzt; Stempel mit Korrekturen, Protokoll und Vertragsangaben bleiben, Plan, Personen und Einstellungen gehen auf den Stand der Sicherung zurück. Der jetzige Stand wird vorher gesichert. Was genau bleibt und was nicht, steht im Dialog und in der [RESTORE-ANLEITUNG.md](../RESTORE-ANLEITUNG.md). Bei „nicht vollständig lesbar“ (503) ist Zurückspielen nicht möglich — den Betreiber verständigen (Abschnitt 4a „Unlesbare Datei“) |
 | Vollausgabe (ganzer Betrieb als Datei), Sicherungsschlüssel für die Vollausgabe außer Haus anlegen und widerrufen | „Datenmitnahme“ |
 | Datenschutz-Anfragen betroffener Personen beantworten | „Datenschutz“ (eine Auskunft aus der Anwendung ist in Vorbereitung, WP-26) |
 

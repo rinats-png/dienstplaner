@@ -202,6 +202,30 @@ describe("Wiederherstellen: nur der eigene Betrieb, an seiner Stelle", () => {
       expect(erg.fristen.text, modus).toMatch(/nicht gelöscht/);
     }
   });
+  /* WP-06, M1: Die Fristen laufen NACH den Stempeln. Sonst brächte die
+     Wiederherstellung Stempel zurück, die der Datenschutzlauf gelöscht hat
+     (Art. 5 Abs. 1 lit. e DSGVO) — oder behielte den heutigen, schon abgelaufenen. */
+  it("WP-06 M1: Wiederherstellen im Modus „an“ — Stempel jenseits der Frist bleiben gelöscht, heutige junge bleiben (Reihenfolge)", () => {
+    const jetzt = raum();
+    jetzt.mandanten[1].einstempeln = { "b-x|2023-01-05": { start: "05:00", ende: "13:00" }, "b-x|2026-10-15": { start: "06:00", ende: "14:00" } };
+    jetzt.mandanten[1].erfassung = { "b-x|2023-01-05": { start: "05:00", ende: "13:00", bestaetigt: true, grund: "" } };
+    const s = alteSicherung();
+    s.mandant.einstempeln = { "b-x|2023-02-01": { start: "06:00", ende: "14:00" }, "b-x|2026-10-01": { start: "06:01", ende: "14:00" } };
+    s.mandant.erfassung = { "b-x|2023-02-01": { start: "06:00", ende: "14:00", bestaetigt: true, grund: "" } };
+    const erg = zurueck(jetzt, s, LEITUNG_B, { datenschutz: "an" });
+    const m = erg.bestand.mandanten[1];
+    expect(Object.keys(m.einstempeln).sort()).toEqual(["b-x|2026-10-01", "b-x|2026-10-15"]);
+    expect(Object.keys(m.erfassung || {})).toEqual([]);
+    expect(erg.stempelBehalten).toBe(2);
+  });
+  it("WP-06: im Modus „vorschau“ bleiben die heutigen Stempel (auch abgelaufene) erhalten, nichts geht verloren", () => {
+    const jetzt = raum();
+    jetzt.mandanten[1].einstempeln = { "b-x|2023-01-05": { start: "05:00", ende: "13:00" }, "b-x|2026-10-15": { start: "06:00", ende: "14:00" } };
+    const s = alteSicherung();
+    s.mandant.einstempeln = { "b-x|2026-10-01": { start: "06:01", ende: "14:00" } };
+    const erg = zurueck(jetzt, s, LEITUNG_B, { datenschutz: "vorschau" });
+    expect(Object.keys(erg.bestand.mandanten[1].einstempeln).sort()).toEqual(["b-x|2023-01-05", "b-x|2026-10-01", "b-x|2026-10-15"]);
+  });
   it("N-3: der Stichtag ist der Tag in Berlin, nicht in UTC", () => {
     const erg = zurueck(raum(), alteSicherung(), LEITUNG_B,
       { datenschutz: "an", heute: new Date("2026-12-31T23:30:00Z") });             // Berlin: 1. Januar 2027
