@@ -21,7 +21,15 @@ Stand 2026-11-03 (WP-41). Entscheidungshilfe; die Schritte selbst stehen in
     └─ nein
        Antwortet genau ein Raum mit 503 „nicht vollständig lesbar“?
        ├─ ja → Weg B: BETRIEB-SICHERUNG §4a (ablage-pruefen im Bild, nie als root).
-       │       Lässt sich die Datei nicht retten → für diesen Raum Weg A, sonst C/D.
+       │       Solange eine Datei unlesbar ist, antwortet auch „Wiederherstellen“ in der App
+       │       mit 503 — Weg A geht erst, wenn der Raum wieder lesbar ist.
+       │       Welche Datei? (steht im Serverprotokoll)
+       │       ├─ Scherbe (ein Monat), in keiner Sicherung → beiseitelegen
+       │       │  (--beiseitelegen; fehlende nur mit --fehlende-hinnehmen <raum>:<monat>).
+       │       │  Der Monat gilt dann als leer, der Raum ist wieder lesbar → danach ist
+       │       │  Weg A möglich, um den Monat aus einer In-App-Sicherung zurückzuholen.
+       │       └─ Kern → aus einer Sicherung (--aus-sicherung … --kern-zurueck);
+       │          liegt er in keiner brauchbaren Sicherung → Weg C/D, nicht Weg A.
        └─ nein (mehrere Räume, ganze Ablage, Platte, VPS)
           R0 (./abschalten.sh). Liegt eine geprüfte lokale Sicherung vor, die neu genug ist?
           ├─ ja → Weg C: BEREITSTELLUNG 5.4, Weg 1 (wiederherstellen mit Pfeffer-Datei).

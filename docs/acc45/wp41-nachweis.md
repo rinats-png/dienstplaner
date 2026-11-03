@@ -34,6 +34,7 @@ Markdown-Lint ist im Repository nicht eingerichtet.
 | 5 | Staging-Proben verlangen `CENTRIC_ADMIN`, die Doku rät zum Entfernen | **behoben (Doku):** `.env.example`, Betriebshandbuch und PRE-PRODUCTION-GATE §8: nur auf Staging und nur für die Dauer der Proben; in Produktion nach dem ersten Verwalterkonto entfernen |
 | 6 | Zeitgrenze der Zustandsprüfung (WP-05b) | **erledigt:** mit #37 integriert, im Betriebshandbuch und in `.env.example` |
 | 7 | Auskunft nach Art. 15 DSGVO aus der Anwendung | in Vorbereitung (WP-26) |
+| 8 | Review 18272f0: Entscheidungsbaum schickte bei unrettbarer Datei zu Weg A (die App antwortet dann 503); Runbook ohne geschützte Auslieferungs-Sicherung; `dmesg` braucht root; Art.-33-Satz ungenau | **behoben:** Baum unterscheidet Scherbe (beiseitelegen/`--fehlende-hinnehmen`, dann Weg A möglich) und Kern (`--kern-zurueck` aus Sicherung, sonst C/D); Runbook §2 nennt `.letzte-erfolgreiche` (ab WP-31b) und verbietet deren Löschen; Kernelmeldungen über `journalctl -k` oder Anbieter-Konsole; Art. 33 nah am Wortlaut („es sei denn … voraussichtlich nicht zu einem Risiko …“) |
 
 Keine der Abweichungen ist ein offener Sicherheitsbefund; die Dokumente enthalten keine Adressen, Codes oder
 Schlüssel.

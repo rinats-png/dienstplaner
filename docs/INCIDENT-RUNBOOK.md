@@ -33,8 +33,9 @@ Die Detailansicht von /gesund ist nur per `docker exec` erreichbar; nach außen 
   („Probe gescheitert (EACCES/ENOSPC/EROFS …)“).
 - **Sofort:** Schreibt der Dienst nicht verlässlich, keine weiteren Eingriffe in `data/`. Nutzer:innen ggf. kurz
   informieren. Bei Verdacht auf Datenträgerschaden: R0.
-- **Diagnose (lesend):** `ls -ld data data/.gesund`, Eigentümer (uid 1000) und Modus; `df -h .`; `dmesg | tail`
-  (Dateisystem schreibgeschützt?), `mount | grep " $(df --output=target . | tail -1) "`.
+- **Diagnose (lesend):** `ls -ld data data/.gesund`, Eigentümer (uid 1000) und Modus; `df -h .`; Kernelmeldungen
+  (Dateisystem schreibgeschützt?) — `dmesg` braucht meist root; ohne root `journalctl -k -n 50`, falls `admin` das
+  Journal lesen darf, sonst die Konsole/Meldungen des Anbieters; `mount | grep " $(df --output=target . | tail -1) "`.
 - **Behebung:** Ursache beheben (Rechte zurück auf uid 1000 — ohne root nur, wenn `admin` Eigentümer ist; Platz
   schaffen, siehe 2; Dateisystem prüfen lassen). Danach `docker compose restart` nur, wenn die Raumsperre hängt.
 - **Nachbereitung:** Detailansicht wieder „ok“; Sicherung von Hand anstoßen; Ursache dokumentieren.
@@ -45,8 +46,10 @@ Die Detailansicht von /gesund ist nur per `docker exec` erreichbar; nach außen 
 - **Sofort:** Keine Auslieferung — `deploy.sh` wechselt bei kritischem Platz ohnehin nicht.
 - **Diagnose:** `df -h .`, `du -sh data/* deploy-sicherungen/* ~/sicherung/* 2>/dev/null | sort -h | tail`,
   `docker system df`.
-- **Behebung:** alte Sicherungen unter `deploy-sicherungen/` (deploy.sh behält die jüngsten 5) und
-  `~/sicherung/lokal` prüfen; ungenutzte Bilder entfernen — **nie** das laufende Bild, nie `vorherig`, und den Digest der
+- **Behebung:** alte Sicherungen unter `deploy-sicherungen/` und `~/sicherung/lokal` prüfen. `deploy.sh` behält die
+  jüngsten 5 vollständigen und — ab WP-31b — zusätzlich die Sicherung der letzten erfolgreichen Auslieferung (Name in
+  `deploy-sicherungen/.letzte-erfolgreiche`); **diese nie von Hand löschen**, sie ist der Rückweg auf den Stand vor
+  der letzten Auslieferung. Unvollständige (ohne `FERTIG`) sind Reste abgebrochener Läufe; ungenutzte Bilder entfernen — **nie** das laufende Bild, nie `vorherig`, und den Digest der
   Sicherung außer Haus (`CENTRIC_PROD_IMAGE`) nachziehen, wenn er sich ändert. Plattenvergrößerung beim Anbieter.
 - **Nachbereitung:** Wachstum beobachten; Schwellen nur bewusst ändern.
 
@@ -81,7 +84,8 @@ Die Detailansicht von /gesund ist nur per `docker exec` erreichbar; nach außen 
   Dateisystem oder extrem langsame Platte. *(Die Zeitgrenze ist mit WP-05b eingeführt; ist sie im laufenden Stand
   noch nicht enthalten, zeigt sich dasselbe als hängende Detailansicht.)*
 - **Sofort:** wie 1. Nicht wiederholt neu starten.
-- **Diagnose:** `dmesg | tail`, `iostat`/`vmstat 1 5` falls vorhanden, `docker stats --no-stream`.
+- **Diagnose:** Kernelmeldungen (`journalctl -k -n 50`, falls erlaubt; `dmesg` nur mit root; sonst Anbieter-Konsole),
+  `iostat`/`vmstat 1 5` falls vorhanden, `docker stats --no-stream`.
 - **Behebung:** Ursache am Datenträger/Anbieter; bei Hängern eines Netz-Dateisystems dieses zuerst.
 
 ## 7. Container unhealthy oder Dienst nicht erreichbar
@@ -124,8 +128,9 @@ ungewöhnliche Lesezugriffe, fremde Änderungen an Rollen.
   (`GET /einrichten/verwalter`), Zugangsübersicht der Konsole.
 - **Behebung:** Ursache schließen, neue Codes ausgeben, Betroffene informieren.
 - **Meldepflicht (Hinweis, keine Rechtsberatung):** Bei einer Verletzung des Schutzes personenbezogener Daten sieht
-  Art. 33 DSGVO eine Meldung an die zuständige Aufsichtsbehörde **binnen 72 Stunden nach Bekanntwerden** vor, sofern
-  kein geringes Risiko besteht; Art. 34 regelt die Benachrichtigung Betroffener bei hohem Risiko. CENTRIC verarbeitet
+  Art. 33 DSGVO eine Meldung an die zuständige Aufsichtsbehörde **unverzüglich und möglichst binnen 72 Stunden,
+  nachdem die Verletzung bekannt wurde**, vor — **es sei denn, die Verletzung führt voraussichtlich nicht zu einem
+  Risiko für die Rechte und Freiheiten natürlicher Personen**; eine spätere Meldung ist zu begründen; Art. 34 regelt die Benachrichtigung Betroffener bei hohem Risiko. CENTRIC verarbeitet
   Personaldaten im Auftrag der Betriebe — die Betriebe sind Verantwortliche und unverzüglich zu informieren
   (Auftragsverarbeitung, Art. 33 Abs. 2). Die Bewertung trifft der Verantwortliche, ggf. mit Datenschutzbeauftragten
   und rechtlicher Beratung. Ein Zeitprotokoll ab dem ersten Hinweis erleichtert die Frist.
