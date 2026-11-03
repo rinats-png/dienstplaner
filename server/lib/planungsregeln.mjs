@@ -76,13 +76,49 @@ export function planungsregelnAbleiten(p, fenster = {}) {
       { regel: "wochenendePruefen", hart: false, bis });
   }
   if (p.mutterschutz) {
-    aus.push({ regel: "nachtNichtZulaessig", hart: true },
-      { regel: "sonntagNurMitFreigabe", hart: true });
+    /* Mit Einwilligung (Nutzerentscheidung, WP-11): in ihrem Zeitraum die
+       Regel mit Freigabe, außerhalb die harte — beide mit Zeitraum, ohne
+       den Grund zu nennen. */
+    aus.push(...nachZeitraeumen(einwilligungsZeitraeume(p, "nacht"), "nachtNichtZulaessig", "nachtAb22NichtZulaessig", true),
+      ...nachZeitraeumen(einwilligungsZeitraeume(p, "sonntag"), "sonntagNurMitFreigabe", "sonntagFreigegeben", false));
   }
   if (p.schwerbehindert) aus.push({ regel: "ueber8hNurAbsprache", hart: false });
   const w = p.einschraenkungen && typeof p.einschraenkungen === "object" ? p.einschraenkungen.wiedereingliederung : null;
   if (w && typeof w === "object")
     aus.push({ regel: "stundengrenzeWoche", hart: false, von: w.von, bis: w.bis, wert: w.maxStundenWoche });
+  return aus;
+}
+
+/** Der Tag vor `tag` (JJJJ-MM-TT). */
+const vortag = (tag) => new Date(Date.parse(`${tag}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+
+/** Die Zeiträume der Einwilligungen einer Art, sortiert und zusammengelegt; bis null = offen. */
+function einwilligungsZeitraeume(p, art) {
+  const l = (Array.isArray(p.mutterschutzEinwilligungen) ? p.mutterschutzEinwilligungen : [])
+    .filter((e) => e && e.art === art && gueltigesDatum(e.ab) && (e.bis === null || e.bis === undefined || (gueltigesDatum(e.bis) && e.bis >= e.ab)))
+    .map((e) => ({ ab: e.ab, bis: e.bis || null })).sort((a, b) => (a.ab < b.ab ? -1 : 1));
+  const aus = [];
+  for (const z of l) {
+    const letzt = aus[aus.length - 1];
+    if (letzt && (letzt.bis === null || z.ab <= folgetag(letzt.bis))) {
+      if (letzt.bis !== null) letzt.bis = z.bis === null ? null : (z.bis > letzt.bis ? z.bis : letzt.bis);
+    } else aus.push({ ...z });
+  }
+  return aus;
+}
+
+/** Harte Regel außerhalb, Regel mit Freigabe innerhalb der Zeiträume. */
+function nachZeitraeumen(zeitraeume, hartRegel, freiRegel, freiHart) {
+  if (!zeitraeume.length) return [{ regel: hartRegel, hart: true }];
+  const aus = [];
+  let von = null;                                                           // null: unbegrenzt zurück
+  for (const z of zeitraeume) {
+    if (von === null || von < z.ab) aus.push({ regel: hartRegel, hart: true, ...(von ? { von } : {}), bis: vortag(z.ab) });
+    aus.push({ regel: freiRegel, hart: freiHart, von: z.ab, ...(z.bis ? { bis: z.bis } : {}) });
+    if (!z.bis) return aus;
+    von = folgetag(z.bis);
+  }
+  aus.push({ regel: hartRegel, hart: true, von });
   return aus;
 }
 

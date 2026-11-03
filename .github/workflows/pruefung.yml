@@ -349,6 +349,21 @@ jobs:
       - name: Einmal-Token
         run: npm run pruefung:token
 
+      # WP-32: Zweiter Faktor (TOTP, RFC 6238) für Verwalterschlüssel —
+      # Referenzvektoren, Fenster ±1, keine Wiederverwendung, Bremse,
+      # Pflicht, Abschalten nur mit Code, kein Geheimnis in Antworten.
+      - name: Zwei-Faktor für Verwalterschlüssel
+        run: npm run pruefung:zweifaktor
+
+      # WP-32b (B-XFF-1): X-Forwarded-For nur von vertrauten Proxys, von
+      # rechts gelesen; gefälschter Kopf ändert die Herkunft nicht.
+      - name: Herkunft und X-Forwarded-For
+        run: npm run pruefung:herkunft
+
+      # WP-32b: Zweiter Faktor für die Anmeldung mit Betreibercode.
+      - name: Zwei-Faktor für Betreibercodes
+        run: npm run pruefung:betreiber-zweifaktor
+
       # Die aus daten.mjs herausgezogene Sitzungslogik, unverändert im
       # Verhalten: Fristen, Untätigkeit, Drosselung, Sicherungsschlüssel.
       - name: Sitzungen
@@ -540,6 +555,7 @@ jobs:
           docker run -d --name centric-pruefung -p 127.0.0.1:3000:3000 \
             -e CENTRIC_ADMIN=ci-geheim -e CENTRIC_PFEFFER=ci-pfeffer-nur-zum-pruefen \
             -e CENTRIC_BASIS=http://127.0.0.1:3000 \
+            -e CENTRIC_VERTRAUTE_PROXYS=127.0.0.1,::1,172.16.0.0/12 \
             --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges:true --memory 512m \
             "$BILD"
@@ -580,6 +596,12 @@ jobs:
           if docker exec centric-pruefung test -e /app/pruefungen; then
             echo "pruefungen/ im Bild"; exit 1; fi
           docker exec centric-pruefung ls /app/werkzeug
+
+      # Rückweg bei unlesbarer Datei (WP-45b, B3): ablage-pruefen und
+      # journal-pruefen im Bild, aufgerufen wie in BETRIEB-SICHERUNG §4a
+      # (docker run, uid 1000, ohne Netz) — eigenes Wegwerf-Volume.
+      - name: Rückweg-Werkzeuge im Bild
+        run: bash pruefungen/werkzeuge-im-bild.sh "$BILD"
 
       # Doppelter Betrieb und Reihenfolge im Raum mit drei Betrieben — gegen
       # den echten Anfrageweg, im eigenen frischen Container.

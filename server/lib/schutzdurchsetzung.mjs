@@ -103,7 +103,9 @@ function planStrukturGeaendert(altM, neuM) {
   const alt = new Map(liste(altM.personen).map((p) => [String(p.id), p]));
   for (const p of liste(neuM.personen)) {
     const a = alt.get(String(p.id));
-    if (!a) continue;
+    /* Review U1: Eine neu angelegte Person bekommt ihre Dienste aus der
+       Schichtfolge ihrer Einheit — das ist eine Einteilung wie jede andere. */
+    if (!a) return true;
     for (const f of ["zugehoerigkeit", "springer", "imSchichtdienst", "teilzeit", "wochenstunden", "eintritt", "austritt", "status"])
       if (!gleich(a[f], p[f])) return true;
   }

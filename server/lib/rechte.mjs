@@ -23,6 +23,7 @@ import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBef
   BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
+import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
 import { ausschreibungDerEinheit, eintragDerEinheit, bestandSichtBetreiber, bestandSicht, SICHT_ROLLEN, schichtKontext, schichtPersonSicht, betriebSichtSchicht, OBEN_FELDER,
   betriebSichtVoll, VOLL_BETRIEB, PERSONENFELDER, VOLL_PERSON, zugehoerigkeitsAbschnitte } from "./sicht.mjs";
 
@@ -780,8 +781,9 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
    JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
    Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
-   Sie lockert eine Schutzprüfung — setzen darf sie deshalb nur, wer org.edit
-   hat (Leitung, Kundenrolle); für alle anderen bleibt der gespeicherte Wert.
+   Sie lockert eine Schutzprüfung — setzen darf sie, wer org.edit oder
+   pattern.edit hat (Leitung, Kundenrolle, Planung; Nutzerentscheidung); für
+   alle anderen bleibt der gespeicherte Wert.
    Gespeichert wird nur { mehrschichtig: boolean } und, vom Server, wann und
    von wem zuletzt geändert; alles andere weist der Server ab. */
 const JUGENDSCHUTZ_FELDER = ["mehrschichtig"];
@@ -797,7 +799,7 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   };
   const wert = (j) => !!(j && typeof j === "object" && j.mehrschichtig === true);
   if (neu === alt || gleich(neu, alt)) return behalten();
-  if (!darf(rolle, "org.edit")) return behalten();
+  if (!darf(rolle, "org.edit") && !darf(rolle, "pattern.edit")) return behalten();
   if (neu === null || neu === undefined) { delete e.jugendschutz; return { mandant: { ...neuM, einstellungen: e } }; }
   if (typeof neu !== "object" || Array.isArray(neu)
     || Object.keys(neu).some((k) => !JUGENDSCHUTZ_FELDER.includes(k) && k !== "geaendertAm" && k !== "geaendertVon")
@@ -807,6 +809,45 @@ function jugendschutzZusammen(altM, neuM, sitzung, rolle) {
   e.jugendschutz = { mehrschichtig: neu.mehrschichtig, geaendertAm: new Date().toISOString(),
     geaendertVon: sitzung.person === undefined ? null : sitzung.person };
   return { mandant: { ...neuM, einstellungen: e } };
+}
+
+/* Einwilligungen nach dem Mutterschutzgesetz an der Person (Nutzerentscheidung,
+   WP-11): § 5 Abs. 2 (Art „nacht", 20–22 Uhr) und § 6 Abs. 1 (Art „sonntag"),
+   Zeitraum ab/bis, optional „behördliche Genehmigung liegt vor" (§ 28).
+   Schreiben nur die Rollen, die Schutzmerkmale schreiben (Planung, Leitung,
+   Kundenrolle — der volle Schreibumfang; alle anderen bekommen das Feld nicht
+   und füllen es aus dem gespeicherten Stand). Der Server prüft die Form und
+   setzt an jedem neuen oder geänderten Eintrag, wann und von wem. */
+const EINWILLIGUNG_FELDER = ["art", "ab", "bis", "genehmigung", "geaendertAm", "geaendertVon"];
+/** @returns {{ grund?: string, mandant?: any }} */
+function einwilligungenZusammen(altM, neuM, sitzung) {
+  if (!neuM || !Array.isArray(neuM.personen)) return { mandant: neuM };
+  const alt = new Map((altM && Array.isArray(altM.personen) ? altM.personen : []).filter((p) => p && typeof p === "object").map((p) => [String(p.id), p]));
+  const grund = "Einwilligungen (Mutterschutz): erwartet wird eine Liste aus { art: \"nacht\" oder \"sonntag\", ab, bis (oder leer), genehmigung }.";
+  const istTag = (s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+  let fehler = null;
+  const personen = neuM.personen.map((p) => {
+    if (fehler || !p || typeof p !== "object" || !Object.prototype.hasOwnProperty.call(p, "mutterschutzEinwilligungen")) return p;
+    const a = alt.get(String(p.id));
+    const vorher = a && Array.isArray(a.mutterschutzEinwilligungen) ? a.mutterschutzEinwilligungen : [];
+    const l = p.mutterschutzEinwilligungen;
+    if (l === null || (Array.isArray(l) && !l.length)) { const q = { ...p }; if (vorher.length) q.mutterschutzEinwilligungen = []; else delete q.mutterschutzEinwilligungen; return q; }
+    if (gleich(l, vorher)) return p;
+    if (!Array.isArray(l) || l.length > 20) { fehler = grund; return p; }
+    const sauber = [];
+    for (const e of l) {
+      if (!e || typeof e !== "object" || Array.isArray(e) || Object.keys(e).some((k) => !EINWILLIGUNG_FELDER.includes(k))
+        || !EINWILLIGUNG_ARTEN.includes(e.art) || !istTag(e.ab)
+        || !(e.bis === undefined || e.bis === null || (istTag(e.bis) && e.bis >= e.ab))
+        || !(e.genehmigung === undefined || typeof e.genehmigung === "boolean")) { fehler = grund; return p; }
+      const kern = { art: e.art, ab: e.ab, bis: e.bis || null, ...(e.genehmigung ? { genehmigung: true } : {}) };
+      const gleicherAlter = vorher.find((v) => v && v.art === kern.art && v.ab === kern.ab && (v.bis || null) === kern.bis && !!v.genehmigung === !!kern.genehmigung);
+      sauber.push(gleicherAlter ? gleicherAlter
+        : { ...kern, geaendertAm: new Date().toISOString(), geaendertVon: sitzung.person === undefined ? null : sitzung.person });
+    }
+    return { ...p, mutterschutzEinwilligungen: sauber };
+  });
+  return fehler ? { grund: fehler } : { mandant: { ...neuM, personen } };
 }
 
 /** Den Betrieb finden, auf den die Sitzung zeigt. */
@@ -1002,6 +1043,10 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung) {
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };
       geschickt = jugend.mandant;
+      /* Einwilligungen nach dem Mutterschutzgesetz: Form und Wann/Wer vom Server. */
+      const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
+      if (einw.grund) return { verweigert: einw.grund };
+      geschickt = einw.mandant;
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };

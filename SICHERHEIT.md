@@ -18,8 +18,8 @@
 > Posten (aus einem Gruppendienst besetzt) und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche;
 > der Durchschnitt von acht Stunden über sechs Monate (§ 3 Satz 2 ArbZG) wird nicht je Einteilung geprüft; Tage
 > jenseits von 120 prüft die Planprüfung. Nachweis: `docs/acc45/wp22-nachweis.md`.
-> Nachprüfung WP-11: Jugendliche ab 16 sperrt der Server nur für 23–6 Uhr (20–23 Uhr „Achtung" oder, mit der nur per
-> `org.edit` schaltbaren Einstellung `jugendschutz.mehrschichtig`, ein Hinweis); eine noch verwendete Dienstart lässt
+> Nachprüfung WP-11: Jugendliche ab 16 sperrt der Server nur für 23–6 Uhr (20–23 Uhr „Achtung" oder, mit der per
+> `org.edit` oder `pattern.edit` schaltbaren Einstellung `jugendschutz.mehrschichtig`, ein Hinweis); eine noch verwendete Dienstart lässt
 > sich nicht löschen. Die Laufzeit jeder Nachrechnung gibt der Server ohne Personenbezug aus.
 
 Diese Datei ist das Gegenstück zu zwei Prüfvorlagen: der „Security

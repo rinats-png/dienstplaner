@@ -75,12 +75,17 @@ export const wirdGemerkt = () => {
   try { return localStorage.getItem(GEMERKT) === "ja"; } catch { return false; }
 };
 
-export async function anmelden(zugangscode, merken) {
+export async function anmelden(zugangscode, merken, zweifaktor) {
   const a = await fetch("/api/anmelden", { method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ zugangscode }) });
+    body: JSON.stringify(zweifaktor ? { zugangscode, zweifaktor } : { zugangscode }) });
   const d = await a.json();
-  if (!a.ok) throw new Error(d.fehler || "Anmeldung fehlgeschlagen.");
+  if (!a.ok) {
+    /* WP-32b: Betreibercode mit zweitem Faktor — die Maske fragt dann nach dem Code. */
+    const f = new Error(d.fehler || "Anmeldung fehlgeschlagen.");
+    if (d.zweifaktor) /** @type {any} */ (f).zweifaktor = d.zweifaktor;
+    throw f;
+  }
   token = d.token; name = d.name;
   zugang = { rolle: d.rolle, person: d.person, betrieb: d.betrieb, name: d.name, hinweis: d.hinweis };
   tokenAblegen(token, merken);

@@ -154,6 +154,14 @@ Vor dem Echtbetrieb eine eigene Domain bei Resend verifizieren.
 Laufzeit — sie stehen als Repository-Variablen in GitHub, nicht in der
 `.env`. Nach einer Änderung muss ein neues Bild gebaut werden (Schritt 1).
 
+### Pflicht hinter Caddy: `CENTRIC_VERTRAUTE_PROXYS`
+
+Ab WP-32b wertet der Server `X-Forwarded-For` nur von vertrauten Proxys aus.
+Ohne diese Variable zählen alle Nutzer unter der Adresse des Caddy-Containers
+— die Bremse träfe alle gemeinsam. Vor dem Ausliefern dieses Stands das Netz
+`proxy` eintragen; Ermittlung, Wert und Probe: `docs/CADDY-UND-XFF.md`,
+Abschnitt 7.
+
 ### Optional, härtet die Fehlversuchsbremse
 
 | Variable | Wirkung |
