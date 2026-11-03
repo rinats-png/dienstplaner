@@ -17,7 +17,8 @@ import { bestandLesen, bestandLesenStreng, bestandSchreiben, raumBelegt, unterRa
 import { geoUrteil, bestandStandorteFehler } from "../lib/geo.mjs";
 import { raumLoeschen } from "../lib/raumloeschung.mjs";
 import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrzeitBerlin, startZuordenbar,
-  offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN }
+  offenSeitMinuten, langerDienstGrenze, stempelEreignis, ereignisFinden, OFFLINE_PRUEF_MARKIERUNGEN,
+  offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
@@ -90,9 +91,10 @@ const STEMPEL_WIEDERHOLUNGEN = 3;
    diesem Kennzeichen ab und sendet es nur mit einer Sitzung, die dasselbe
    Kennzeichen hat; der Server prüft es noch einmal. So geht nach einem
    Abmelden oder Benutzerwechsel am selben Gerät kein Stempel der einen
-   Person unter der Sitzung einer anderen hinaus. */
+   Person unter der Sitzung einer anderen hinaus. Der Betrieb zählt mit
+   seiner Kennung (mandantId), nicht mit seiner Position (Review L5). */
 const stempelInhaber = (s) => (s.person === null || s.person === undefined) ? null : createHash("sha256")
-  .update(`centric-stempel|${s.bestand}|${s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
+  .update(`centric-stempel|${s.bestand}|${s.mandantId ?? s.betrieb}|${s.person}`).digest("hex").slice(0, 32);
 
 async function rumpfLesen(req) {
   const laenge = Number(req.headers.get("content-length") || 0);
@@ -1148,9 +1150,7 @@ export default async (req, context) => {
           text: "Der Stempel bleibt auf dem Gerät, bis sich die Person anmeldet, die ihn erfasst hat.",
           code: "STEMPEL_FREMDE_SITZUNG" }, 409);
       }
-      const jetzt = ereignis.zeitpunkt;
-      const heute = heuteBerlin(jetzt);
-      const zeit = uhrzeitBerlin(jetzt);
+      const jetzt0 = ereignis.zeitpunkt;
 
       /* Gebaut wird der Stempel unter der Sperre des Raums, aus dem frisch
          gelesenen Stand (WP-02). Vorher entstand er aus dem Stand vom Anfang
@@ -1187,9 +1187,32 @@ export default async (req, context) => {
              zweiter Stempel, sondern die Antwort des ersten. Geprüft unter der
              Sperre am frischen Stand: Von zwei gleichzeitigen Wiederholungen
              schreibt genau eine. */
-          const schon = ereignisFinden(m, person.id, ereignis.id, heuteBerlin(eingang), heute);
+          const schon = ereignisFinden(m, person.id, ereignis.id, heuteBerlin(eingang), heuteBerlin(jetzt0));
+          /* Dieselbe Kennung für eine andere Art ist kein Wiederholen, sondern ein
+             Widerspruch (Review L2) — nichts speichern, klar absagen. */
+          if (schon && schon.art !== art) {
+            await protokoll("schreiben", kSt, "abgewiesen", `stempeln ${art}: Kennung schon für ${schon.art} vergeben`, wer);
+            return antwort({ fehler: "Diese Stempelkennung gehört zu einem anderen Stempelereignis.",
+              code: "STEMPEL_EREIGNIS_WIDERSPRUCH" }, 422);
+          }
           if (schon) return { wiederholt: schon, stand: mit.stand,
             erfassung: (m.erfassung || {})[schon.schluessel] || null };
+
+          /* Review L3: Ein offline erfasstes Ende, das nur um eine ehrliche
+             kleine Uhrabweichung (höchstens UHR_TOLERANZ_MS) vor dem offenen
+             Beginn von heute oder gestern liegt, wird auf den Beginn
+             geklemmt — sonst ergäbe sich eine negative Dauer und
+             START_VERALTET, obwohl nichts veraltet ist. */
+          let jetzt = jetzt0;
+          if (art === "ende" && ereignis.offline) {
+            for (const tag of [heuteBerlin(jetzt0), heuteBerlin(new Date(jetzt0.getTime() - 86400000))]) {
+              const e0 = (m.einstempeln || {})[`${person.id}|${tag}`];
+              const ab = e0 && e0.start && !e0.ende ? Date.parse(e0.startAm) : NaN;
+              if (Number.isFinite(ab) && ab > jetzt0.getTime() && ab - jetzt0.getTime() <= UHR_TOLERANZ_MS) { jetzt = new Date(ab); break; }
+            }
+          }
+          const heute = heuteBerlin(jetzt);
+          const zeit = uhrzeitBerlin(jetzt);
 
           /* Der Tag des Stempels kommt vom Server: Beginn heute, Ende beim
              offenen Vorgang (Nachtdienst über Mitternacht, 20-Stunden-Grenze,
@@ -1274,7 +1297,10 @@ export default async (req, context) => {
           if (langerDienst) markieren("LANGER_DIENST");
           /* Offline mit abweichender Geräteuhr oder über 48 Stunden alt (Beginn
              oder Ende): Die Ist-Zeit ist nicht automatisch bestätigt. */
-          const offlinePruefen = OFFLINE_PRUEF_MARKIERUNGEN.some((x) => markierungen.includes(x));
+          const offlinePruefen = OFFLINE_PRUEF_MARKIERUNGEN.some((x) => markierungen.includes(x))
+            /* Auflage A1: Beginn oder Ende 15 min oder mehr nach der Erfassung
+               eingegangen — ohne Betriebsschalter zur Prüfung. */
+            || (!offlineVertrauen(m) && (offlineVerspaetet(alt.offlineStart) || offlineVerspaetet(ereignis.info)));
           if (markierungen.length) neu.markierungen = markierungen;
 
           let neuerMandant = { ...m, einstempeln: { ...(m.einstempeln || {}), [k]: neu } };
@@ -1313,7 +1339,7 @@ export default async (req, context) => {
           const ergSt = await bestandSchreiben(store, s.bestand, neuerBestand, {
             erwarteterStand: mit.stand, durch: s.name || "Stempeluhr" });
           if (ergSt.ok) {
-            return { ergSt, urteil, neu, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null };
+            return { ergSt, urteil, neu, zeit, erfassung: mitErfassung && !korrigiert ? neuerMandant.erfassung[k] : null };
           }
           /* Jeder gescheiterte Versuch steht im Protokoll — „wiederholt",
              solange noch einer folgt; erst der letzte ist ein Konflikt. */
@@ -1341,7 +1367,7 @@ export default async (req, context) => {
           erfassung: w.art === "ende" ? erfW : null, inhaber, offline: !!e[`offline${ph}`] });
       }
 
-      const { ergSt, urteil, neu, erfassung } = ergebnis;
+      const { ergSt, urteil, neu, zeit, erfassung } = ergebnis;
       await protokoll("schreiben", kSt, "erfolg", `stempeln ${art}${ereignis.offline ? " · offline" : ""}`, wer);
       /* Zurück geht der gespeicherte Stempel — genau der Eintrag, den der
          erfolgreiche Versuch geschrieben hat —, damit die Oberfläche ihn

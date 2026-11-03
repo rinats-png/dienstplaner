@@ -370,7 +370,7 @@ describe("Review A1: offline erfasste Zeit ist ohne Schalter nie automatisch bes
 
   it("Schalter: nur org.edit (Leitung) schaltet, Wann/Wer setzt der Server; die Planung nicht", async () => {
     zeitAuf("2026-11-08T07:00:00Z");
-    await raumAnlegen("rv-recht", ["a1", "l1", "p1"]);
+    await raumAnlegen("rv-recht", [], { personen: [person("a1"), { ...person("l1"), rolle: "leitung" }, { ...person("p1"), rolle: "planer" }] });
     const tok = async (rolle, person) => (await sitzungAnlegen({ bestand: "rv-recht", name: rolle, rolle, person, betrieb: 0,
       mandantId: "m1", einheit: null }, 24 * 60 * 60 * 1000)).token;
     const setzen = async (token, wert) => {

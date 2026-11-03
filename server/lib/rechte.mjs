@@ -781,6 +781,29 @@ function geoSchalterZusammen(altM, neuM, sitzung, rolle) {
   return { mandant: { ...neuM, einstellungen: e } };
 }
 
+/* Offline-Stempel vertrauen (WP-07, Review-Auflage A1): Mit dem Schalter
+   gilt eine offline erfasste Zeit, die 15 Minuten oder später eingeht, als
+   bestätigt (sonst zur Prüfung durch die Leitung). Er lockert eine
+   Schutzprüfung — schalten darf nur org.edit (Leitung, Kundenrolle), Wann
+   und Wer setzt der Server, mitgeschickte Werte zählen nicht. Vorgabe: aus. */
+const OFFLINE_SCHALTER = ["offlineStempelVertrauen", "offlineStempelVertrauenAm", "offlineStempelVertrauenVon"];
+function offlineSchalterZusammen(altM, neuM, sitzung, rolle) {
+  if (!neuM || typeof neuM !== "object" || !neuM.einstellungen || typeof neuM.einstellungen !== "object") return neuM;
+  const altE = altM && altM.einstellungen && typeof altM.einstellungen === "object" ? altM.einstellungen : {};
+  const e = { ...neuM.einstellungen };
+  for (const feld of OFFLINE_SCHALTER) {
+    if (Object.prototype.hasOwnProperty.call(altE, feld)) e[feld] = altE[feld];
+    else delete e[feld];
+  }
+  const gewuenscht = neuM.einstellungen.offlineStempelVertrauen === true;
+  if (gewuenscht !== (altE.offlineStempelVertrauen === true) && darf(rolle, "org.edit")) {
+    e.offlineStempelVertrauen = gewuenscht;
+    e.offlineStempelVertrauenAm = new Date().toISOString();
+    e.offlineStempelVertrauenVon = sitzung.person === undefined ? null : sitzung.person;
+  }
+  return { ...neuM, einstellungen: e };
+}
+
 /* Jugendarbeitsschutz: „mehrschichtiger Betrieb" (§ 14 Abs. 2 Nr. 2
    JArbSchG, Nachprüfung WP-11). Mit der Einstellung dürfen Jugendliche ab 16
    Jahren bis 23 Uhr eingeteilt werden (sonst „Achtung" mit Bestätigung).
@@ -1103,6 +1126,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const schalter = geoSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (schalter.grund) return { verweigert: schalter.grund };
       geschickt = schalter.mandant;
+      /* Offline-Stempel vertrauen (WP-07): nur org.edit, Wann/Wer vom Server. */
+      geschickt = offlineSchalterZusammen(ort.betrieb, geschickt, sitzung, rolle);
       /* Jugendarbeitsschutz „mehrschichtig" (Nachprüfung WP-11): nur org.edit. */
       const jugend = jugendschutzZusammen(ort.betrieb, geschickt, sitzung, rolle);
       if (jugend.grund) return { verweigert: jugend.grund };

@@ -447,6 +447,27 @@ export const EREIGNIS_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]
 /** Markierungen, die eine Ist-Zeit aus einem Offline-Stempel zur Prüfung stellen. */
 export const OFFLINE_PRUEF_MARKIERUNGEN = Object.freeze(["GERAETEZEIT_ABWEICHEND", "OFFLINE_ALT"]);
 
+/* Review-Auflage A1: Die Erfassungszeit eines Offline-Ereignisses ist eine
+   Angabe des Geräts. Flugmodus und eine zurückgestellte Geräteuhr genügen,
+   um sie zu fälschen — ohne manipuliertes Programm, und unsichtbar für die
+   Versatzprüfung, wenn die Uhr vor dem Senden wieder richtig steht. Liegt
+   die maßgebliche Zeit eines Beginns oder Endes deshalb OFFLINE_SOFORT_MS
+   oder mehr vor (oder nach) dem Eingang, ist die Ist-Zeit nicht automatisch
+   bestätigt (OFFLINE_PRUEFEN) — die Leitung bestätigt sie über den
+   Korrekturweg (WP-06). Lockern lässt sich das nur über den
+   Betriebsschalter einstellungen.offlineStempelVertrauen (org.edit, Wann und
+   Wer setzt der Server; Vorgabe streng). */
+export const OFFLINE_SOFORT_MS = 15 * 60 * 1000;
+/** Kam ein Offline-Ereignis erst OFFLINE_SOFORT_MS oder später nach seiner maßgeblichen Zeit an? */
+export function offlineVerspaetet(info) {
+  if (!info || typeof info !== "object" || info.offline !== true) return false;
+  const ein = Date.parse(info.eingangAm), zeit = Date.parse(info.zeitAm);
+  if (!Number.isFinite(ein) || !Number.isFinite(zeit)) return true;
+  return Math.abs(ein - zeit) >= OFFLINE_SOFORT_MS;
+}
+/** Ist der Betriebsschalter „Offline-Stempeln vertrauen" an? Vorgabe: aus. */
+export const offlineVertrauen = (m) => !!(m && m.einstellungen && m.einstellungen.offlineStempelVertrauen === true);
+
 const ISO_ZEIT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 const zeitLesen = (x) => {
   if (typeof x !== "string" || !ISO_ZEIT.test(x)) return null;
@@ -486,9 +507,10 @@ export function stempelEreignis(rumpf, eingang = new Date()) {
   else zeit = erfasst;
   if (zeit > ein + UHR_TOLERANZ_MS) { abweichend(); zeit = ein; }
   if (ein - zeit > OFFLINE_MAX_ALTER_MS) markierungen.push("OFFLINE_ALT");
+  /* Nur geprüfte Zeitpunkte werden gespeichert, nie die Rohangabe (Review L4). */
   const info = { offline: true,
-    geraetAm: typeof r.erfasstAm === "string" ? r.erfasstAm.slice(0, 40) : null,
-    gesendetAm: typeof r.gesendetAm === "string" ? r.gesendetAm.slice(0, 40) : null,
+    geraetAm: erfasst !== null ? r.erfasstAm : null,
+    gesendetAm: gesendet !== null ? r.gesendetAm : null,
     eingangAm: eingang.toISOString(), versatzMs: versatz,
     zeitAm: new Date(zeit).toISOString() };
   return { id, zeitpunkt: new Date(zeit), offline: true, markierungen, info };
