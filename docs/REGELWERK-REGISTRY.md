@@ -262,8 +262,9 @@ dem Plan der Oberfläche) und Server (`server/lib/schutzdurchsetzung.mjs` mit ei
 Schichtfolge, Teilzeit und Abwesenheiten). Das Regelwerk liegt dafür in `server/lib/regelwerk.mjs`; `src/regelwerk.js`
 reicht es weiter. Der Server setzt durch: Bestand, Schutz, Einschränkungen, gesetzliche und betriebliche
 Qualifikationen (`QUAL-SPERRE-01` über `verbindlichkeit`), Einweisungen (`KOMP-EINWEISUNG-01`), Ruhezeit (`AZ-RUHE-01`, Gesetz und Vorgabe
-des Betriebs), Tagesgrenze (`AZ-TAG-01`, § 3 ArbZG, je Dienst über zehn Stunden, Katalog `tagesgrenze`, Stufe Rechtsverstoß,
-vorläufig nicht sperrend, weil die Oberfläche es bisher nicht sperrte) und Mindestbesetzung (`BES-MINDEST-01`, Katalog `untergrenze`, Achtung).
+des Betriebs), Tagesgrenze (`AZ-TAG-01`, § 3 ArbZG, je Dienst über zehn Stunden, Katalog `tagesgrenze` — nach Nutzerentscheidung nur
+ein Hinweis: keine Bestätigung, kein Protokoll, keine Mitteilung; ob eine Regelung nach § 7 ArbZG den langen Dienst trägt,
+verantwortet der Betrieb; Rufbereitschaft zählt nicht und unterbricht keine Ruhezeit) und Mindestbesetzung (`BES-MINDEST-01`, Katalog `untergrenze`, Achtung).
 Nur **neue** Befunde zählen; sperrende werden abgewiesen, warnende brauchen einen neuen Protokolleintrag zu Person, Tag
 und Regel im selben Speichervorgang, sonst antwortet der Server 409 mit neutraler Befundliste. **Grenzen:** Posten und
 die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche; der Durchschnitt nach § 3 Satz 2 ArbZG (acht

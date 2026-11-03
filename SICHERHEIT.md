@@ -13,8 +13,14 @@
 > Sperrend und damit abgewiesen (403): Schutzregeln, Bestand, Einschränkungen an der Person (keine Nacht, kein
 > Alleindienst, Höchstzahl Dienste je Woche), gesetzliche Qualifikationen, Einweisung je Gerät, Ruhezeit unter 11
 > Stunden. Warnend und nur mit Bestätigung im selben Speichervorgang (sonst 409 mit neutraler Befundliste):
-> betriebliche Qualifikation, Ruhezeit unter der Vorgabe des Betriebs, Dienst über zehn Stunden (§ 3 ArbZG, je Dienst),
-> unterschrittene Mindestbesetzung, weiche Schutzbefunde. Dienstarten schreibt nur, wer `org.edit` hat. **Grenzen:**
+> betriebliche Qualifikation, Ruhezeit unter der Vorgabe des Betriebs, unterschrittene Mindestbesetzung, weiche
+> Schutzbefunde — bei strukturellen Änderungen auch als Sammelbestätigung je Regel, Einheit und Zeitraum (Review B1).
+> Ein Dienst über zehn Stunden ist nur ein Hinweis (Nutzerentscheidung; § 7 ArbZG verantwortet der Betrieb);
+> Rufbereitschaft zählt nicht als Arbeitszeit. Dienstarten schreiben Leitung und Planung (`org.edit` oder
+> `pattern.edit`), alle anderen werden abgewiesen. Die Nachrechnung gibt der Event-Loop nach (höchstens 20 ms am Stück),
+> bricht nach 8 s mit 503 ab und ist je Raum auf 10 Strukturänderungen je Minute gebremst (429; Review B2). Die
+> Schichtverantwortung sieht in einer 409 nie Fremdes: Wirkt ihre Änderung außerhalb ihres Bereichs, sperrt sie ohne
+> Kennung (Review B4). Schutzangaben werden immer gespeichert (Nachprüfung 9717ddf). **Grenzen:**
 > Posten (aus einem Gruppendienst besetzt) und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche;
 > der Durchschnitt von acht Stunden über sechs Monate (§ 3 Satz 2 ArbZG) wird nicht je Einteilung geprüft; Tage
 > jenseits von 120 prüft die Planprüfung. Nachweis: `docs/acc45/wp22-nachweis.md`.

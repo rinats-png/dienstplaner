@@ -65,7 +65,7 @@ pruef("Raum eingerichtet", (await rufe(tBetr, "/api/bestand-anlegen", "POST", { 
     id: "m-f", name: "F", einheiten: [{ id: "e1" }],
     dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 },
       { id: "S", name: "Spät", start: "14:00", ende: "22:00", pause: 30 },
-      { id: "L", name: "Lang", start: "07:00", ende: "19:30", pause: 45 }],
+      { id: "L", name: "Lang", start: "07:00", ende: "19:30", pause: 45 }, { id: "N", name: "Nacht", start: "22:00", ende: "06:00", pause: 30 }],
     zyklus: { tage: ["-", "-", "-", "-", "-", "-", "-"] }, anker: "2026-01-05",
     qualifikationen: [{ id: "qG", name: "Pflegefachkraft", harteSperre: true, ebene: "bund", grundlage: "PflBG § 4" },
       { id: "qB", name: "Hausschulung", harteSperre: true, ebene: "betrieb", grundlage: "Dienstanweisung" }],
@@ -79,11 +79,13 @@ const tP = await anmelden(await zugang("planer", "pl", 0));
 const tL = await anmelden(await zugang("leitung", "l1", 0));
 const tS = await anmelden(await zugang("subplaner", "s1", 0));
 
-/* Dienstarten nur mit org.edit */
+/* Dienstarten: Leitung und Planung (org.edit oder pattern.edit), Schichtverantwortung nicht */
 const plDa = await schreibe(tP, (m) => { m.dienstarten[0].name = "Früh neu"; });
-pruef("Planung: Dienstart umbenennen — 403", plDa.status === 403 && /org\.edit/.test(plDa.text || ""), `Status ${plDa.status}`);
-const ltDa = await schreibe(tL, (m) => { m.dienstarten[0].name = "Früh neu"; });
-pruef("Leitung: Dienstart umbenennen — 200", ltDa.status === 200 && (await betriebVon(tL)).dienstarten[0].name === "Früh neu", `Status ${ltDa.status}`);
+pruef("Planung: Dienstart umbenennen — 200 (Nutzerentscheidung)", plDa.status === 200 && (await betriebVon(tL)).dienstarten[0].name === "Früh neu", `Status ${plDa.status}`);
+const ltDa = await schreibe(tL, (m) => { m.dienstarten[0].name = "Früh"; });
+pruef("Leitung: Dienstart umbenennen — 200", ltDa.status === 200 && (await betriebVon(tL)).dienstarten[0].name === "Früh", `Status ${ltDa.status}`);
+const svDa = await schreibe(tS, (m) => { m.dienstarten[0].name = "SV"; });
+pruef("Schichtverantwortung: Dienstart umbenennen — 403", svDa.status === 403, `Status ${svDa.status}`);
 
 /* Sperrend: 403 */
 const q = await schreibe(tP, (m) => { m.abweichungen[`oq|${T1}`] = "F"; });
@@ -91,18 +93,32 @@ pruef("gesetzliche Qualifikation fehlt — 403", q.status === 403 && /Qualifikat
 const mu = await schreibe(tP, (m) => { m.abweichungen[`mu|${T1}`] = "S"; });
 pruef("Schutzregel — 403, neutral", mu.status === 403 && !/MuSchG|Mutter|Schwanger/.test(mu.text || ""), `Status ${mu.status}`);
 
-/* Warnend: 409 mit Befundliste, dann mit Bestätigung */
+/* Lange Dienste: nur ein Hinweis (Nutzerentscheidung) */
 const l1 = await schreibe(tP, (m) => { m.abweichungen[`a1|${T2}`] = "L"; });
-pruef("Dienst über zehn Stunden — 409 mit Befundliste", l1.status === 409 && Array.isArray(l1.fachbefunde)
-  && l1.fachbefunde[0].befunde[0].regel === "tagesgrenze" && typeof l1.etag === "string", `Status ${l1.status}`);
-pruef("… nichts gespeichert", (await betriebVon(tP)).abweichungen[`a1|${T2}`] === undefined);
-const l2 = await schreibe(tP, (m) => { m.abweichungen[`a1|${T2}`] = "L";
-  m.bestaetigungen.push({ id: "b-probe-1", personId: "a1", datum: T2, dienstId: "L", aktion: "einteilen", stufe: "recht", gelesen: true,
-    befunde: [{ regel: "tagesgrenze", stufe: "recht" }], durch: "Angreifer", zeit: "2000-01-01T00:00:00Z" }); });
+pruef("Dienst über zehn Stunden — 200 ohne Bestätigung", l1.status === 200 && (await betriebVon(tP)).abweichungen[`a1|${T2}`] === "L", `Status ${l1.status}`);
+
+/* Warnend: 409 mit Befundliste, dann mit Bestätigung */
+const w1 = await schreibe(tP, (m) => { m.abweichungen[`oB|${T2}`] = "F"; });
+pruef("betriebliche Qualifikation — 409 mit Befundliste", w1.status === 409 && Array.isArray(w1.fachbefunde)
+  && w1.fachbefunde[0].befunde[0].regel === "qualifikationBetrieblich" && typeof w1.etag === "string", `Status ${w1.status}`);
+pruef("… nichts gespeichert", (await betriebVon(tP)).abweichungen[`oB|${T2}`] === undefined);
+const w2 = await schreibe(tP, (m) => { m.abweichungen[`oB|${T2}`] = "F";
+  m.bestaetigungen.push({ id: "b-probe-1", personId: "oB", datum: T2, dienstId: "F", aktion: "einteilen", stufe: "achtung",
+    befunde: [{ regel: "qualifikationBetrieblich", stufe: "achtung" }], durch: "Angreifer", zeit: "2000-01-01T00:00:00Z" }); });
 const nach = await betriebVon(tP);
 const eintrag = (nach.bestaetigungen || []).find((b) => b.id === "b-probe-1");
-pruef("… mit Bestätigung — 200, gespeichert", l2.status === 200 && nach.abweichungen[`a1|${T2}`] === "L", `Status ${l2.status}`);
+pruef("… mit Bestätigung — 200, gespeichert", w2.status === 200 && nach.abweichungen[`oB|${T2}`] === "F", `Status ${w2.status}`);
 pruef("… Wer und Zeit setzt der Server", !!eintrag && eintrag.durch !== "Angreifer" && eintrag.zeit !== "2000-01-01T00:00:00Z");
+
+/* Schutzangaben: immer gespeichert, Konflikt gemeldet (Nachprüfung 9717ddf, M2) */
+const nacht = await schreibe(tP, (m) => { m.abweichungen[`a1|${tagPlus(20)}`] = "N"; });
+pruef("Nachtdienst für a1 — 200", nacht.status === 200, `Status ${nacht.status}`);
+const ms = await schreibe(tP, (m) => { m.personen.find((p) => p.id === "a1").mutterschutz = true; });
+const nachMs = await betriebVon(tL);
+pruef("Mutterschutz bei geplantem Nachtdienst — 200, gespeichert", ms.status === 200 && nachMs.personen.find((p) => p.id === "a1").mutterschutz === true, `Status ${ms.status}`);
+pruef("… dringende Mitteilung an Planung und Leitung, neutral",
+  (nachMs.nachrichten || []).filter((n) => n.quelle && n.quelle.art === "schutzkonflikt").length === 2
+  && !/Mutter|MuSchG/.test(JSON.stringify((nachMs.nachrichten || []).filter((n) => n.quelle && n.quelle.art === "schutzkonflikt"))));
 
 /* Schichtverantwortung: 409 neutral */
 const sv = await schreibe(tS, (m) => { m.abweichungen[`oB|${T1}`] = "F"; });

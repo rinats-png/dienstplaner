@@ -10624,7 +10624,11 @@ function Bestaetigungsfrage({ lage, m, onSchliessen, onBestaetigen }) {
           </label>)}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <Btn kind="quiet" onClick={onSchliessen}>Abbrechen — nicht speichern</Btn>
-          <Btn kind="primary" disabled={recht && !gelesen} onClick={() => onBestaetigen(gelesen)}>Bestätigen und speichern</Btn>
+          {/* Review B1: viele Einteilungen auf einmal — eine Bestätigung je Regel, Einheit und Zeitraum. */}
+          {Array.isArray(lage.sammelVorschlag) && lage.sammelVorschlag.length > 0 && eintraege.length > 10 && (
+            <Btn disabled={recht && !gelesen} onClick={() => onBestaetigen(gelesen, true)}>
+              Gesammelt bestätigen ({lage.sammelVorschlag.length})</Btn>)}
+          <Btn kind="primary" disabled={recht && !gelesen} onClick={() => onBestaetigen(gelesen, false)}>Bestätigen und speichern</Btn>
         </div>
       </div>
     </div>);
@@ -24307,9 +24311,19 @@ ${da ? `<div class="d" style="color:${da.farbe}">${da.kurz}</div><div class="z">
       {fachFrage && sitz && sitz.mandant && (
         <Bestaetigungsfrage lage={fachFrage} m={sitz.mandant}
           onSchliessen={() => { setFachFrage(null); melde("Nicht gespeichert — die Änderung braucht eine Bestätigung."); }}
-          onBestaetigen={(gelesen) => {
+          onBestaetigen={(gelesen, gesammelt) => {
             /* Die Einträge kommen ins Bestätigungsprotokoll; die Änderung des
                Bestands löst den nächsten Speichervorgang aus — mit Bestätigung. */
+            if (gesammelt) {
+              /* Sammelbestätigung (Review B1): je Regel, Einheit und Zeitraum; Wer,
+                 Zeit und die Zahl der gedeckten Einteilungen setzt der Server. */
+              const sammel = (fachFrage.sammelVorschlag || []).map((g) => ({ id: uid("bs"), art: "sammel", regel: g.regel,
+                einheitId: g.einheitId, von: g.von, bis: g.bis, aktion: "speichern", gelesen }));
+              setDb((alt) => ({ ...alt, mandanten: alt.mandanten.map((mm) => (mm.id === sitz.mandant.id
+                ? { ...mm, bestaetigungen: [...sammel, ...(mm.bestaetigungen || [])] } : mm)) }));
+              setFachFrage(null);
+              return;
+            }
             const wer = { personId: sitz.person.id, name: `${sitz.person.vorname} ${sitz.person.nachname}`, rolle: sitz.person.rolle };
             const best = { eintraege: fachFrage.fachbefunde.map((f) => ({ personId: f.personId, datum: f.datum, dienstId: f.dienstId,
               befunde: f.befunde })), gelesen, grundArt: null };

@@ -1,110 +1,86 @@
-# WP-22 — Fachprüfungen auf dem Server, Dienstarten nur mit org.edit: Nachweis
+# WP-22 — Fachprüfungen auf dem Server: Nachweis
 
-Branch `acc45/rules/wp22-fachpruefungen-server`, aufgesetzt auf `acc45/rules/wp11-regelregister` (Nachprüfung WP-11
-eingearbeitet, Kopf 87f815f).
+Branch `acc45/rules/wp22-fachpruefungen-server`, nachgezogen auf `acc45/rules/wp11-regelregister` (948a4ba: U1,
+Einwilligung MuSchG, M1/M2/N1, Nachprüfung 9717ddf). Stand nach Review WP-22 (B1–B4) und den Nutzerentscheidungen
+vom 3. November 2026 (Planung behält die Einrichtung; lange Dienste automatisch erlaubt).
 
 ## Was umgesetzt ist
 
-**Eine Prüflogik.** Die Prüfung einer Einteilung (Person, Tag, Dienstart) steht in `server/lib/fachpruefung.mjs`
-(`einteilungsBefunde`). Die Oberfläche (`hindernisBefunde` in `src/App.jsx`) und der Server
-(`server/lib/schutzdurchsetzung.mjs`) rufen dieselbe Funktion — die Oberfläche mit ihrem Plan (`personTag`,
-`besetzung`), der Server mit einer eigenen Planrechnung (Abweichung, sonst Schichtfolge der Einheit mit Teilzeit;
-Abwesenheit und außerhalb des Beschäftigungsverhältnisses frei). Darin die eine Schutzprüfung `schutzEinsatz`. Das
-Regelwerk liegt dafür in `server/lib/regelwerk.mjs`; `src/regelwerk.js` reicht es weiter (das Serverbild enthält kein
-`src/`). Planrechnung, Nachtfenster, Nachweise, Ruhezeitstufe kommen in der Oberfläche aus `fachpruefung.mjs`; die
-Duplikate in `App.jsx` und `src/warnstufen.js` sind entfernt. Quelltext-Prüfungen: `schutzpruefung-eine`,
-`konsistenz`, `schutzregeln-ersatzsuche`, `review-wp10`.
+**Eine Prüflogik.** Die Prüfung einer Einteilung steht in `server/lib/fachpruefung.mjs` (`einteilungsBefunde`).
+Oberfläche (`hindernisBefunde` in `src/App.jsx`, mit `personTag` und `besetzung`) und Server
+(`server/lib/schutzdurchsetzung.mjs`, eigene Planrechnung aus Abweichungen, Schichtfolge, Teilzeit und Abwesenheiten)
+rufen dieselbe Funktion; darin die eine Schutzprüfung `schutzEinsatz`. Das Regelwerk liegt in `server/lib/regelwerk.mjs`,
+`src/regelwerk.js` reicht es weiter. Planrechnung, Nachtfenster, Nachweise und Ruhezeitstufe nimmt die Oberfläche von dort.
 
 **Geprüfte Regeln** (Stufe und `sperrt` aus `BEFUND_KATALOG`, `server/lib/bestaetigungen.mjs`):
 
-| Regel | Katalog | Stufe | Server |
-|---|---|---|---|
-| nicht im Bestand | `bestand` | Rechtsverstoß | sperrt |
-| Schutz (hart / weich) | `schutz` / `schutzWeich` | Rechtsverstoß / Achtung | sperrt / Bestätigung |
-| keine Nacht, kein Alleindienst, Höchstzahl je Woche | `keineNacht`, `keinAlleindienst`, `maxDiensteWoche` | Rechtsverstoß | sperrt |
-| Qualifikation gesetzlich / betrieblich | `qualifikationGesetzlich` / `qualifikationBetrieblich` | Rechtsverstoß / Achtung | sperrt / Bestätigung |
-| Einweisung je Gerät | `kompetenz` | Rechtsverstoß | sperrt |
-| Ruhezeit unter 11 h / unter der Vorgabe des Betriebs | `ruhezeitGesetz` / `ruhezeitBetrieb` | Rechtsverstoß / Achtung | sperrt / Bestätigung |
-| Dienst über zehn Stunden (§ 3 ArbZG) | `tagesgrenze` (neu) | Rechtsverstoß | Bestätigung mit „gelesen" |
-| Mindestbesetzung unterschritten | `untergrenze` (neu) | Achtung | Bestätigung |
+| Regel | Katalog | Server |
+|---|---|---|
+| nicht im Bestand, harte Schutzregel, keine Nacht, kein Alleindienst, Höchstzahl je Woche, gesetzliche Qualifikation, Einweisung, Ruhezeit unter 11 h | `bestand`, `schutz`, `keineNacht`, `keinAlleindienst`, `maxDiensteWoche`, `qualifikationGesetzlich`, `kompetenz`, `ruhezeitGesetz` | sperrt (403) |
+| weiche Schutzregel, betriebliche Qualifikation, Ruhezeit unter der Vorgabe des Betriebs, Mindestbesetzung | `schutzWeich`, `qualifikationBetrieblich`, `ruhezeitBetrieb`, `untergrenze` | Bestätigung im selben Speichervorgang, sonst 409 |
+| Dienst über zehn Stunden | `tagesgrenze` (Hinweis) | nichts — Nutzerentscheidung, § 7 ArbZG verantwortet der Betrieb |
 
-„Vorläufig streng": sperrend ist, was die Oberfläche schon sperrte. Die Tagesgrenze sperrte die Oberfläche bisher
-nicht (nur die Planprüfung meldete sie auf Ist-Daten) — sie ist deshalb bestätigungspflichtig, nicht sperrend.
+Rufbereitschaft (`form: "ruf"`, `ruhezeitNeutral`) ist keine Arbeitszeit: kein Befund über zehn Stunden, keine
+Ruhezeitprüfung zu oder von ihr. Tatsächliche Einsätze aus der Rufbereitschaft kennt die Planung nicht (Grenze).
 
-**Nur neue Befunde.** Ausdrücklich geänderte Einteilungen und — bei einer strukturellen Änderung (Dienstarten,
-Schichtfolge, Anker, Einheiten, Zugehörigkeit, Springer, Schichtdienst, Teilzeit, Wochenstunden, Ein- und Austritt,
-Status) — alle Einteilungen der nächsten 120 Tage, an denen sich etwas geändert haben kann (eigener Dienst und
-Dienstart, ±2 Tage, Kalenderwoche, Person, Bundesland; „kein Alleindienst" immer; Vorgaben des Betriebs geändert:
-alles). Ein Befund, den dieselbe Einteilung vorher schon hatte, blockiert nicht. Mindestbesetzung: Fällt ein Dienst
-an einem Tag unter die Vorgabe und unter den bisherigen Stand, ist das ein Befund an der Einteilung, die wegfiel.
+**Nur neue Befunde, ausdrücklich und mittelbar.** Mittelbar bei Änderungen an Dienstarten, Schichtfolge, Anker,
+Einheiten und Personen (neu angelegt, Zugehörigkeit, Springer, Schichtdienst, Teilzeit, Wochenstunden, Ein-/Austritt,
+Status, Schutzangaben) — 120 Tage, nur Einteilungen, an denen sich etwas geändert haben kann.
 
-**Bestätigung.** Ein warnender Befund geht nur durch, wenn derselbe Speichervorgang einen neuen Eintrag im
-Bestätigungsprotokoll zu Person, Tag und Regel enthält (bei Rechtsverstoß mit `gelesen`; Wer und Zeit setzt der
-Server). Sonst antwortet `PUT /api/bestand` mit **409** und `fachbefunde` (Person, Tag, Dienst, Regel, Stufe, Text aus
-dem Katalog; Schutzbefunde immer „Schutz- oder Einsatzregel der Person"), Protokollzeile `bestaetigung-noetig`.
-`src/speicher.js` unterscheidet diese 409 vom Konflikt (`onFachbefunde`); die Oberfläche zeigt die Liste
-(`Bestaetigungsfrage`) und legt bei Bestätigung die Protokolleinträge an — der nächste Speichervorgang nimmt sie mit.
+**Schutzangaben immer speichern (Nachprüfung 9717ddf, M2).** Ändern sich nur Mutterschutz, Einwilligung,
+Geburtsdatum (oder Schwerbehinderung, Vorsorge) einer Person, wird gespeichert; bestehende widersprechende
+Einteilungen kommen als Konflikt zurück und Planung und Leitung bekommen eine dringende, neutrale Mitteilung. Neue
+widersprechende Einteilungen bleiben gesperrt.
 
-**Dienstarten nur mit `org.edit`.** Planung und alle Rollen ohne `org.edit` werden beim Anlegen, Ändern oder Löschen
-abgewiesen (403); eine unveränderte Kopie stört nicht; die Checkliste einer Dienstart pflegt die Planung weiter. Die
-Oberfläche zeigt Bearbeiten, Vorlagenzeiten und die Einrichtung nur mit `org.edit`. Eine noch verwendete Dienstart
-lässt sich nicht löschen (Nachprüfung WP-11, N1). RECHTEMATRIX Abschnitt 2, Sonde in `rechtematrix-zeilen.test.js`.
+**Bestätigung (Review B1).** Je Einteilung (Person, Tag, Regel) oder — für Planung, Leitung und Kundenrolle — als
+Sammelbestätigung je Regel, Einheit und Zeitraum (`art: "sammel"`). Der Server zählt, wie viele Einteilungen sie deckt
+(`anzahl`); sie zählt gegen die Grenzen 50/200/5000 wie ein Eintrag; der Betriebsrat sieht die gedeckte Anzahl in den
+Zählwerten. Die 409 liefert `sammelVorschlag`; die Oberfläche bietet ab elf Einteilungen „Gesammelt bestätigen“ an.
+Sperrende Regeln lassen sich auch gesammelt nicht bestätigen; die Schichtverantwortung sammelt nicht.
+
+**Kein Block (Review B2).** Der Server prüft in Häppchen (`fachpruefungUebermittlungAsync`): höchstens 20 ms am Stück,
+dann `setImmediate`; nach 8 s Abbruch mit 503 „bitte erneut“. Strukturänderungen sind je Raum und Betrieb auf 10 je
+Minute gebremst (429). Laufzeit und längster Block werden ohne Personenbezug protokolliert. Prüfungen und kleine
+Bestände nutzen die synchrone Fassung derselben Rechnung (`fachpruefungUebermittlung`).
+
+**Dienstarten (Review B3, Nutzerentscheidung).** Anlegen, ändern, löschen: Leitung, Kundenrolle und Planung
+(`org.edit` oder `pattern.edit`) — die Planung behält die Einrichtung (Assistent, Zeiten, Mindestbesetzung,
+Vorlagenzeiten, Checkliste). Alle anderen Rollen weist der Server ab (403). Ein Schalter „nur org.edit“ ist nach der
+Entscheidung nicht nötig.
+
+**Schichtverantwortung und fremde Bereiche (Review B4).** Der Server kennt ihren Schreibumfang (eigene Person,
+eigener Bereich am Tag). Entsteht durch ihre Änderung ein Befund außerhalb davon, sperrt sie — ohne Person, Tag,
+Regel oder Kennung aus dem fremden Bereich.
 
 ## Prüfungen
 
 | Datei | Inhalt |
 |---|---|
-| `pruefungen/fachpruefung-server.test.js` (18) | Qualifikation gesetzlich/betrieblich, Bestätigung für andere Person oder Regel deckt nichts, Ruhezeit Gesetz/Betrieb, Tagesgrenze mit und ohne „gelesen", Mindestbesetzung und Altbestand, Altbestand blockiert nicht, mittelbar über Dienstzeit und Schichtfolge, unbekannte Dienstart, neutrale Texte (auch für die Schichtverantwortung), Dienstarten nur mit `org.edit` |
-| `pruefungen/fachpruefung-server.mjs` (HTTP, 11) | gegen einen laufenden Server: 403 Dienstarten (Planung), 200 (Leitung), 403 Qualifikation und Schutz (neutral), 409 mit Befundliste und ETag, nichts gespeichert, mit Bestätigung 200, Wer/Zeit vom Server, Schichtverantwortung 409 neutral |
-| `pruefungen/rechtematrix-zeilen.test.js` | Abschnitt 2: Zeile vorhanden; MA, BR, SV, PL abgewiesen oder wirkungslos, LT und Kunde gespeichert |
-| `pruefungen/nachpruefung-wp11.test.js` | WP-22-Semantik für 20–23 Uhr ab 16 (409, mit Bestätigung oder Einstellung angenommen); Laufzeit |
+| `pruefungen/fachpruefung-server.test.js` | Qualifikation, Ruhezeit, lange Dienste und Rufbereitschaft, Mindestbesetzung, nur neue Befunde, mittelbar, fail-closed, neutrale Texte, Dienstarten je Rolle, Sammelbestätigung (B1), fremder Bereich (B4) |
+| `pruefungen/fachpruefung-server.mjs` (HTTP) | Dienstarten (Planung 200, Leitung 200, Schichtverantwortung 403), sperrend 403, langer Dienst 200, warnend 409 → mit Bestätigung 200 (Wer/Zeit vom Server), Mutterschutz bei geplantem Nachtdienst gespeichert + Mitteilung, Schichtverantwortung 409 neutral |
+| `pruefungen/nachpruefung-wp11.test.js` | WP-11-Nachprüfungen in WP-22-Semantik; Laufzeit (300 Personen < 300 ms; 2000/300 gemessen); B2: Event-Loop (`perf_hooks.monitorEventLoopDelay`), längster Block ≤ 50 ms, Zeitbudget, Bremse |
+| `pruefungen/rechtematrix-zeilen.test.js` | Abschnitt 2: Dienstarten — MA, BR, SV abgewiesen oder wirkungslos; PL, LT, Kunde gespeichert |
 
-CI: Schritte „Fachprüfungen Server" (`npm run pruefung:fachpruefung`) und „Fachprüfungen Server (HTTP)"
-(`npm run pruefung:fachpruefung-http`, frischer Container).
-
-**Rot → grün.** Gegen `server/` und `src/` aus 87f815f (WP-11 mit Nachprüfung, ohne WP-22): in
-`fachpruefung-server.test.js` 12 von 18 rot (alle Regel-, Bestätigungs-, Datenschutz- und `org.edit`-Fälle; grün
-bleiben die Wächter: unbekannte Dienstart, Altbestand, Leitung darf, Checkliste, Schichtverantwortung wirkungslos,
-schon unterbesetzt), in `rechtematrix-zeilen.test.js` „PL: Dienstart umbenennen" rot. Mit WP-22 alle grün.
-
-**Angepasste bestehende Prüfungen** (nur, wo WP-22 das Verhalten bewusst ändert): Fälle, die als Planung Dienstarten
-änderten, laufen als Leitung (`review-wp11`, `mandanten-session`, `session-kanal` Unit und HTTP); Quelltext-Prüfungen
-folgen `hindernisBefunde → einteilungsBefunde` (`schutzpruefung-eine`, `konsistenz`, `schutzregeln-ersatzsuche`,
-`review-wp10`); `betreiber-sicht` nimmt `einheitAm`/`imDienst` aus `fachpruefung.mjs`.
+Rot → grün: gegen den WP-11-Stand ohne WP-22 sind die Regel-, Bestätigungs-, Datenschutz- und Rollenfälle rot
+(erste Fassung: 12 von 18); die neuen Fälle zu B1–B4 sind ohne die jeweilige Änderung rot (Sammelbestätigung wird
+abgewiesen, keine Async-Fassung/Bremse, fremde Kennungen in der 409). Die Testanpassungen „Planung → Leitung“ aus der
+ersten Fassung sind zurückgenommen.
 
 ## Laufzeit
 
-Gemessen in `pruefungen/nachpruefung-wp11.test.js` (warm, Minimum aus drei Läufen; strukturelle Änderung der
-Schichtfolge, damit fast jede Einteilung neu zu prüfen ist — der ungünstige Fall):
+Strukturelle Änderung der Schichtfolge (ungünstigster Fall), warm, Minimum aus drei Läufen:
 
 | Fall | lokal (Windows, belastet) | CI |
 |---|---|---|
-| 300 Personen, 60 geschützt, 121 Tage, 3 000 Abweichungen (WP-22-Ziel < 300 ms) | 326–461 ms | **59,6 ms** warm, 165,5 ms kalt (20 520 Einteilungen) |
-| 2 000 Personen, 300 geschützt, 121 Tage, 20 000 Abweichungen (Ziel Nachprüfung WP-11 < 300 ms) | 1,5–2,2 s | **343,8 ms** warm, 362,0 ms kalt (136 800 Einteilungen) — über dem Ziel |
-| zum Vergleich WP-11 allein (nur Schutzprüfung, nur geschützte Personen), 2 000 / 300 | — | 19,2 ms warm, 50,5 ms kalt (9 510 Einteilungen) |
-
-Eine ausdrücklich geänderte Einteilung (der Alltag: ein Dienst gesetzt oder getauscht) prüft nur diese Zelle und
-gegebenenfalls Kolleginnen mit „kein Alleindienst" — Millisekunden. Teuer ist nur die strukturelle Änderung
-(Schichtfolge, Versatz), die selten und nur durch die Leitung bzw. Planung geschieht. Maßnahmen: Planrechnung mit
-Verzeichnissen (Abweichungen und Abwesenheiten je Person, Schichtfolge je Einheit und Tag), nur geänderte
-Einteilungen, Datumsrechnung ohne Zeitzone und zwischengespeichert (`addDays`, `tagUTC`, `dow`, `alterAm`, `toMin`).
-Die Laufzeit jeder Nachrechnung gibt der Server ohne Personenbezug aus (`[schutzdurchsetzung] … ms`).
+| 300 Personen, 121 Tage | 330–520 ms | siehe Bericht |
+| 2 000 Personen, 300 geschützt, 20 000 Abweichungen | 1,5–2,5 s | siehe Bericht |
+| Event-Loop bei 2 000 Personen (asynchron) | längster Block ≤ 50 ms | siehe Bericht |
 
 ## Grenzen
 
-- Posten (aus einem Gruppendienst besetzt) und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche.
-- Höchstarbeitszeit nur je Dienst (über zehn Stunden); der Durchschnitt nach § 3 Satz 2 ArbZG wird nicht je
-  Einteilung geprüft (braucht Ist-Daten über sechs Monate).
-- Dienste in Folge (`folge`), Verfügbarkeit der Person und Teilzeit-Wochentage bleiben Hinweise der Oberfläche.
-- Mittelbar nur 120 Tage voraus; spätere Tage prüft die Planprüfung.
-- Ändern sich nur Vorgaben des Betriebs (Qualifikationen, Einstellungen) ohne strukturelle Änderung, prüft der
-  Server bestehende Einteilungen nicht nach (nur neue Befunde aus neuen Einteilungen).
-- `maxDiensteWoche` zählt jetzt in Oberfläche und Server die anderen Tage der Woche (vorher zählte die Oberfläche den
-  geprüften Tag mit, wenn dort schon ein Dienst stand).
-
-## Offene Fachfragen
-
-1. Tagesgrenze: sperren (strenger als die Oberfläche bisher) oder bei Bestätigung bleiben? Tarifliche Verlängerung
-   nach § 7 ArbZG (12-Stunden-Dienste) bildet die Prüfung nicht ab — jeder neue 12-Stunden-Dienst ist bestätigungspflichtig.
-2. Mindestbesetzung: Reicht „Achtung", oder soll das Unterschreiten gesetzlicher Untergrenzen (PpUGV) sperren?
-3. Strukturelle Änderungen bei großen Betrieben: Laufzeit akzeptieren, im Hintergrund prüfen oder den Horizont kürzen?
+- Posten und die Feiertagsanhebung der Mindestbesetzung rechnet nur die Oberfläche.
+- Der Durchschnitt nach § 3 Satz 2 ArbZG wird nicht je Einteilung geprüft; lange Dienste sind nur ein Hinweis.
+- Rufbereitschaft zählt nicht; tatsächliche Einsätze daraus kennt die Planung nicht.
+- Dienste in Folge, Verfügbarkeit und Teilzeit-Wochentage bleiben Hinweise der Oberfläche.
+- Mittelbar nur 120 Tage voraus. Ändern sich nur Vorgaben des Betriebs, prüft der Server bestehende Einteilungen nicht nach.
+- Die Bremse für Strukturänderungen lebt im Speicher des einen Serverprozesses.
