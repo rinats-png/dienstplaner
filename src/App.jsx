@@ -205,7 +205,7 @@ import { sperrtArt, befundText, protokollFuellstand, WARNSTUFEN, stufeRang, hoec
   abwesenheitTagAufheben as abwTagAufheben, bestaetigungsEintraege } from "./warnstufen.js";
 import Ringregler from "./ringregler.jsx";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER, KONTAKT_AB_ZUSCHLAGSSTANDORTE,
-  PAKETE, paketVon, paketkosten, preisFuer } from "./stufen.js";
+  PAKETE, paketVon, paketkosten, preisFuer, paketNutzbar, merkmalNutzbar } from "./stufen.js";
 import { HILFE_MAIL, HILFE_TELEFON, HILFE_ZEITEN, KONTAKT_UNGESETZT, hilfeVerweis,
   ANWENDUNG_URL } from "./kontakt.js";
 import { vergebbareRollen, rollennamen as eigeneRollennamen, nameGueltig }
@@ -2290,6 +2290,8 @@ function preis(db, m) {
   return { t: gewaehlt, stufe: st, planerGesamt, zusatzPlaner, summePlaner,
     standorte: standorte.length, standortzuschlaege: zuschlaege, summeStandorte,
     pakete, paketeFrei: paketkosten_.frei, paketeZahlend: paketkosten_.zahlend,
+    /* G9: gebucht, aber ohne nutzbare Funktion — nicht berechnet. */
+    paketeNichtBerechnet: paketkosten_.nichtBerechnet,
     summePakete, grund: gewaehlt.grund, gesamt, tarifwert, gestaltung: g,
     zahlt, wirksam: zahlt ? gesamt : 0, personen, kontaktEmpfohlen,
     jeKopf: personen ? Math.round((gesamt / personen) * 100) / 100 : 0 };
@@ -2488,10 +2490,14 @@ function baueRechnung(db, m, monatISO) {
        aber mit null — sonst fragt jemand, wo sein Paket geblieben ist. */
     for (const pk of p.pakete) {
       const frei = (p.paketeFrei || []).some((x) => x.id === pk.id);
+      /* G9: ein Paket ohne nutzbare Funktion steht mit null und dem Hinweis
+         „in Vorbereitung" auf der Rechnung, bis ein Modul abgenommen ist. */
+      const vorb = (p.paketeNichtBerechnet || []).some((x) => x.id === pk.id);
+      const nullEuro = frei || vorb;
       positionen.push({
-        text: `Branchenpaket ${pk.name}${frei ? " (in der Stufe enthalten)" : ""}`,
-        menge: "", einzel: eur(frei ? 0 : pk.aufpreis),
-        betrag: eur(frei ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
+        text: `Branchenpaket ${pk.name}${vorb ? " (in Vorbereitung, nicht berechnet)" : frei ? " (in der Stufe enthalten)" : ""}`,
+        menge: "", einzel: eur(nullEuro ? 0 : pk.aufpreis),
+        betrag: eur(nullEuro ? 0 : Math.round(pk.aufpreis * p.anteil * 100) / 100) });
     }
     if (g.rabatt > 0)
       positionen.push({ text: "Vereinbarter Nachlass", menge: "", einzel: "",
@@ -8049,8 +8055,10 @@ function BetreiberDetail({ db, akt, mandantId, zurueck }) {
                 <span style={{ width: 24, height: 24, borderRadius: 8, background: C.bg,
                   color: C.dim, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 11, fontWeight: 700 }}>+</span>
-                <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Paket {pk.name}</span>
-                <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>{eur(pk.aufpreis)}</span>
+                <span style={{ fontSize: 13.5, color: C.dim, flex: 1 }}>Paket {pk.name}
+                  {!paketNutzbar(pk.id) && <span style={{ color: C.dimmer }}> · in Vorbereitung, nicht berechnet</span>}</span>
+                <span style={{ fontSize: 13.5, width: 88, textAlign: "right", ...NUM }}>
+                  {paketNutzbar(pk.id) ? eur(pk.aufpreis) : eur(0)}</span>
               </div>))}
             <div style={{ marginTop: 16, paddingTop: 15, borderTop: `1px solid ${C.lineSoft}` }}>
               {/* Weicht die Vereinbarung vom Tarif ab, steht beides da.
@@ -15619,7 +15627,9 @@ function Pakete({ db, akt }) {
           <div style={{ display: "grid", gap: 14 }}>
             {PAKETE.map((p) => {
               const an = p.pflicht || (m.pakete || []).includes(p.id);
-              const empfohlen = paketeFuerBranche(m.branche).includes(p.id);
+              /* G9: nichts empfehlen, buchen oder berechnen, was nicht nutzbar ist. */
+              const nutzbar = paketNutzbar(p.id);
+              const empfohlen = nutzbar && paketeFuerBranche(m.branche).includes(p.id);
               return (
                 <Card key={p.id} style={{ padding: 20, borderColor: an ? C.accent : C.line }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap",
@@ -15633,17 +15643,24 @@ function Pakete({ db, akt }) {
                       <div style={{ fontSize: 13.5, color: C.dim, marginTop: 7, lineHeight: 1.55 }}>
                         {p.beschreibung}</div>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 11 }}>
-                        {p.merkmale.map((x) => <Pill key={x} size="sm">{x}</Pill>)}
+                        {p.merkmale.map((x) => <Pill key={x} size="sm">
+                          {merkmalNutzbar(x) ? x : `${x} (in Vorbereitung)`}</Pill>)}
                       </div>
                     </div>
                     <div style={{ textAlign: "right", minWidth: 130 }}>
-                      {p.aufpreis
+                      {!nutzbar
+                        ? <div style={{ fontSize: 13, color: C.dim }}>in Vorbereitung – nicht buchbar,
+                            wird nicht berechnet</div>
+                        : p.aufpreis
                         ? <div style={{ fontSize: 19, fontWeight: 650, ...NUM }}>+{eur0(p.aufpreis)}
                             <span style={{ fontSize: 12, color: C.dim, fontWeight: 400 }}> /Monat</span></div>
                         : <div style={{ fontSize: 13, color: C.dim }}>im Grundpreis</div>}
-                      {!p.pflicht && (
+                      {/* Neu zubuchen lässt sich ein Paket ohne nutzbare Funktion nicht;
+                          ein schon gebuchtes lässt sich abschalten (der Bestand bleibt). */}
+                      {!p.pflicht && (nutzbar || an) && (
                         <div style={{ marginTop: 12 }}>
-                          <Schalter an={an} onChange={() => akt.setzePaket(m.id, p.id, !an)} />
+                          <Schalter an={an} label={`Paket ${p.name}`}
+                            onChange={() => akt.setzePaket(m.id, p.id, !an)} />
                         </div>)}
                     </div>
                   </div>
@@ -15653,7 +15670,7 @@ function Pakete({ db, akt }) {
             <Card style={{ padding: 20 }}>
               <Rubrik style={{ marginBottom: 10 }}>Monatlicher Aufpreis</Rubrik>
               <div style={{ fontSize: 26, fontWeight: 300, letterSpacing: "-.03em", ...NUM }}>
-                {eur0(PAKETE.filter((p) => (m.pakete || []).includes(p.id))
+                {eur0(PAKETE.filter((p) => (m.pakete || []).includes(p.id) && paketNutzbar(p.id))
                   .reduce((a, p) => a + (p.aufpreis || 0), 0))}
               </div>
               <div style={{ fontSize: 12.5, color: C.dim, marginTop: 8, lineHeight: 1.55 }}>
@@ -23153,7 +23170,9 @@ function AppInnen() {
         return bLog({ ...s, mandanten: [...s.mandanten, m] },
           `Mandant „${m.name}" eingerichtet: ${m.einheiten.filter((e) => !e.pool).length} Einheiten`);
       }),
-      setzePaket: (mid, paket, an) => upd((s) => ({ ...s,
+      /* G9: ein Paket ohne nutzbare Funktion lässt sich nicht neu zubuchen;
+         Abschalten geht immer. */
+      setzePaket: (mid, paket, an) => (an && !paketNutzbar(paket)) ? melde("Dieses Paket ist in Vorbereitung und nicht buchbar.") : upd((s) => ({ ...s,
         mandanten: s.mandanten.map((m) => m.id !== mid ? m : { ...m,
           pakete: an ? [...new Set([...(m.pakete || []), paket])]
             : (m.pakete || []).filter((p) => p !== paket) }) }),

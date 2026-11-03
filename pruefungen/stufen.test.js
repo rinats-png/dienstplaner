@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { STUFEN, stufeVon, ZUSATZ_PLANER, KONTAKT_AB_PLANER,
   KONTAKT_AB_ZUSCHLAGSSTANDORTE, PAKETE, paketkosten, preisFuer, passendeStufe }
   from "../src/stufen.js";
+import { BRANCHENMODULE } from "../server/lib/branchenmodule.mjs";
 
 describe("Die Zahlen selbst", () => {
   it("nennt drei Stufen mit den vereinbarten Grundgebühren", () => {
@@ -95,7 +96,12 @@ describe("Branchenpakete", () => {
   });
 
   it("sind in Enterprise zweimal frei — und zwar die teuersten", () => {
-    const k = paketkosten(["industrie", "pflege", "klinik"], 2);
+    /* Rechenweg bei abgenommenem Industrie-Modul. Solange alle Module
+       „geplant" sind, wird Industrie gar nicht berechnet (G9,
+       pruefungen/g9-verkauf.test.js). */
+    const abgenommen = BRANCHENMODULE.map((m) => (m.id === "anlagen"
+      ? { ...m, status: "vorlaeufig", abnahme: { datum: "2026-12-01", nachweis: "docs/x.md" } } : m));
+    const k = paketkosten(["industrie", "pflege", "klinik"], 2, abgenommen);
     expect(k.frei.map((p) => p.id)).toEqual(["klinik", "pflege"]);
     expect(k.summe).toBe(59);
   });

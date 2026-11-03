@@ -19,6 +19,7 @@
 import { MATRIX } from "./rechte.mjs";
 import { brancheVon, einheitLabel, qualifikationenFuer, dienstartenFuer, quoteFuer, paketFuer }
   from "./branchen.mjs";
+import { paketFuerNeubuchung } from "./paketstand.mjs";
 
 /* Muss zu VERSION in src/migration.js passen. Weicht es ab, zieht die
    Migration den Bestand beim ersten Öffnen hoch — unschön, aber harmlos. */
@@ -155,7 +156,9 @@ export function baueLeerenBetrieb({ name, branche, email, land, raum, laeuftAb }
       maxTagesstunden: 10,
       pausen: { ab6h: 30, ab9h: 45 },
       quote: quoteFuer(br),
-      pakete: paketFuer(br) ? [paketFuer(br)] : [],
+      /* G9: ein Paket ohne nutzbare Funktion wird nicht automatisch zugebucht
+         (kein Preis für Unfertiges). Bestehende Betriebe behalten ihre Buchung. */
+      pakete: paketFuerNeubuchung(paketFuer(br)) ? [paketFuerNeubuchung(paketFuer(br))] : [],
     },
 
     /* Aufbewahrung — siehe src/migration.js, Stufe 5 → 6. */
