@@ -28,9 +28,15 @@ aber ohnehin die Einzelwerte; die Ansicht ist dem Betriebsrat vorbehalten (`BR:`
 ## Nachbesserung nach dem Review (88cefbe)
 
 - **F1 Ist-Zeiten (Datenschutz):** Das Ist erscheint nur, wenn der Monat abgeschlossen und die Frist zum nachträglichen Bestätigen (`RUECKBLICK_TAGE`, 14 Tage) vorbei ist und mindestens 3 Personen zum Ist beitragen; trägt eine Einheit mit 1–2 Personen bei, fehlt das Ist auch in der Gesamtzeile. Vorher: Zeile `personen: 4, istErfasst: 1, istStunden: 8.5` machte die Zeit einer Person sichtbar, und zwei Abrufe an aufeinanderfolgenden Tagen ergaben sie als Differenz. Grenze: Korrekturen der Planung an bestätigten Zeiten nach Ablauf der Frist ändern die Summe weiterhin (befugte Änderung, keine Selbstauskunft).
-- **F2 Zwischenspeicher:** Schlüssel Raum + Stand der Ablage + Tag statt Betriebskennung + `m.stand` (das Feld gibt es nicht); ältere Stände eines Raums werden verworfen, Obergrenze 40 Einträge.
+- **F2 Zwischenspeicher:** Schlüssel Raum + Tag statt Betriebskennung + `m.stand` (das Feld gibt es nicht); Vortage eines Raums werden verworfen, Obergrenze 40 Einträge.
 - **F3 Blockieren:** Die Rechnung ist ein Generator und läuft im Hintergrund; 2000 Personen blockieren den Prozess nicht mehr (Test mit Ereignisschleifen-Messung, CI hart bei 50 ms Median).
 - **F4:** Test für Betriebsrat ohne `audit.view` und für jede andere Rolle (403); `export.data` schaltet nur die Schaltfläche (der Export enthält dieselben Zahlen) — dokumentiert in `RECHTEMATRIX.md`.
+
+## Nachprüfung N1 (Schreiblast) und Restpunkt Ist-Korrektur
+
+- **N1:** Der Stand der Ablage ist kein Schlüssel mehr: Jeder Schreibvorgang (auch Stempeln) machte einen neuen Stand, unter Schreiblast wurde nie etwas fertig, und jeder Abruf startete eine neue Vollrechnung. Jetzt: je Raum und Tag das letzte Ergebnis, immer ausgeliefert, mit `berechnetUm`; neu gerechnet frühestens nach 5 Minuten (`BR_NEUBERECHNUNG_MS`), höchstens ein Lauf je Raum, höchstens 3 insgesamt; eine laufende Rechnung wird nicht durch einen neuen Stand ersetzt. Test: Standwechsel bei jedem Abruf, 600 Personen — fertig, genau ein Lauf.
+- **Ist nach der Frist einfrieren:** Die Planung kann bestätigte Zeiten auch nach Fristende noch korrigieren; zwei Ausgaben ergäben die Korrektur als Differenz. Darum bleibt das einmal ausgegebene Ist einer Zeile (Raum, Monat, Einheit) bis zum Neustart des Prozesses gleich; hat sich der Bestand geändert, steht an der Zeile `istKorrigiert` (Oberfläche: †) — ohne Zahl. Grenze: Nach einem Neustart gilt der dann aktuelle Wert.
+- Datenschutz: Wartefrist, mindestens 3 Beitragende und Zweitsperre (F1) stecken in der Rechnung selbst; Zeitstempel und Zwischenspeicher geben nichts frei.
 
 ## Prüfungen/
 

@@ -154,44 +154,90 @@ export function betriebsratAuswertung(m, heute) {
 }
 
 /* --------------------------------------------------------------------------
-   Im Hintergrund rechnen und merken — je Raum, Stand der Ablage und Tag (F2)
+   Im Hintergrund rechnen und merken — je Raum und Tag, im Mindestabstand (F2, N1)
 
-   Der Schlüssel enthält den Raum: Zwei Räume mit gleicher Betriebskennung
-   (Demobetriebe!) teilen nie ein Ergebnis. Der Stand ist der Stand der Ablage
-   (etag), nicht ein Feld des Betriebs. Ältere Stände desselben Raums werden
-   verworfen, die Zahl der Einträge ist begrenzt.
+   Der Schlüssel enthält den Raum (Demobetriebe teilen nie ein Ergebnis) und
+   den Tag. NICHT den Stand der Ablage: Jeder Schreibvorgang — auch ein
+   Stempel — macht einen neuen Stand. Mit dem Stand im Schlüssel wäre unter
+   Schreiblast nie etwas fertig geworden (die Rechnung dauert länger als der
+   Abstand zwischen zwei Schreibvorgängen), und jeder Abruf hätte eine neue
+   Vollrechnung gestartet — CPU-Bindung zulasten aller Betriebe (Review N1).
+
+   Stattdessen:
+   - Das letzte Ergebnis wird immer ausgeliefert, mit dem Zeitpunkt seiner
+     Berechnung (berechnetUm). Bis zum ersten Ergebnis: „wird berechnet“.
+   - Neu gerechnet wird frühestens nach BR_NEUBERECHNUNG_MS und nie mehr als
+     eine Rechnung je Raum gleichzeitig (höchstens BR_MAX_GLEICHZEITIG
+     insgesamt). Eine laufende Rechnung wird nicht durch einen neuen Stand
+     ersetzt — sie wird fertig, das nächste Ergebnis kommt im Abstand.
+   - Datenschutz bleibt: Die Schutzregeln (Mindestgruppe, Wartefrist, Zweitsperre)
+     stecken in der Rechnung selbst; Zeitstempel und Zwischenspeicher geben
+     nichts frei. Zusätzlich wird ein einmal ausgegebenes Ist einer Zeile
+     eingefroren (siehe EINGEFROREN).
+
+   EINGEFROREN. Nach Ablauf der Nachbestätigungsfrist kann die Planung bestätigte
+   Zeiten noch korrigieren (Korrektur, Dienstbuch). Zwei Ausgaben, die sich um
+   eine Korrektur unterscheiden, ergäben deren Wirkung als Differenz. Darum
+   bleibt das einmal ausgegebene Ist einer Zeile (Raum, Monat, Einheit) für die
+   Lebensdauer des Prozesses gleich; hat sich der Bestand inzwischen geändert,
+   steht an der Zeile „istKorrigiert“ — ohne Zahl. Grenze: Nach einem Neustart
+   gilt wieder der dann aktuelle Wert.
    -------------------------------------------------------------------------- */
-const FERTIG = new Map();                    // schluessel → Auswertung
-const LAEUFT = new Map();                    // schluessel → true
+/** Frühestens nach dieser Zeit wird ein Raum neu gerechnet. */
+export const BR_NEUBERECHNUNG_MS = 5 * 60 * 1000;
 export const BR_MAX_GLEICHZEITIG = 3;
-export const BR_MAX_GEMERKT = 40;
-const schluesselVon = (raum, stand, heute) => `${raum}\u0000${stand}\u0000${heute}`;
+export const BR_MAX_TAGE_GEMERKT = 40;
+const FERTIG = new Map();                    // `${raum}\0${tag}` → { wert, zeit }
+const LAEUFT = new Map();                    // raum → true
+const EINGEFROREN = new Map();               // `${raum}\0${monat}\0${einheit}` → { istStunden, istErfasst }
+const STATISTIK = { gestartet: 0, fertig: 0 };
+const schluesselVon = (raum, tag) => `${raum}\u0000${tag}`;
+
+/** Ausgegebenes Ist einfrieren; Abweichungen später nur als Hinweis ausweisen. */
+function einfrieren(raum, wert) {
+  for (const z of wert.zeilen) {
+    if (z.gesperrt || z.istStunden === null || z.istStunden === undefined) continue;
+    const k = `${raum}\u0000${z.monat}\u0000${z.einheitId}`;
+    const alt = EINGEFROREN.get(k);
+    if (!alt) { EINGEFROREN.set(k, { istStunden: z.istStunden, istErfasst: z.istErfasst }); continue; }
+    if (alt.istStunden !== z.istStunden || alt.istErfasst !== z.istErfasst) {
+      z.istStunden = alt.istStunden; z.istErfasst = alt.istErfasst; z.istKorrigiert = true;
+    }
+  }
+}
 
 /**
- * @param {{ raum: string, stand: string | number, heute: string, mandant: any }} a
- * @returns {{ fertig: true, wert: Auswertung } | { fertig: false, ausgelastet?: boolean }}
+ * @param {{ raum: string, stand?: string | number, heute: string, mandant: any, jetzt?: number }} a
+ *   `stand` wird nicht mehr zum Schlüssel (N1); `jetzt` nur für Prüfungen.
+ * @returns {{ fertig: true, wert: Auswertung, berechnetUm: string } | { fertig: false, ausgelastet?: boolean }}
  */
-export function auswertungHolen({ raum, stand, heute, mandant }) {
-  if (typeof raum !== "string" || !raum || stand === undefined || stand === null || stand === "") return { fertig: false };
-  const k = schluesselVon(raum, stand, heute);
-  if (FERTIG.has(k)) return { fertig: true, wert: /** @type {Auswertung} */ (FERTIG.get(k)) };
-  if (LAEUFT.has(k)) return { fertig: false };
-  if (LAEUFT.size >= BR_MAX_GLEICHZEITIG) return { fertig: false, ausgelastet: true };
-  LAEUFT.set(k, true);
-  (async () => {
-    try {
-      const it = auswertungSchritte(mandant, heute);
-      let r = it.next();
-      while (!r.done) { await new Promise((weiter) => setImmediate(weiter)); r = it.next(); }
-      /* Ältere Stände desselben Raums verwerfen; Obergrenze insgesamt. */
-      for (const alt of [...FERTIG.keys()]) if (alt.startsWith(`${raum}\u0000`)) FERTIG.delete(alt);
-      if (FERTIG.size >= BR_MAX_GEMERKT) FERTIG.delete(FERTIG.keys().next().value);
-      FERTIG.set(k, r.value);
-    } catch { /* nicht gemerkt: der nächste Abruf versucht es neu */ }
-    finally { LAEUFT.delete(k); }
-  })();
-  return { fertig: false };
+export function auswertungHolen({ raum, heute, mandant, jetzt = Date.now() }) {
+  if (typeof raum !== "string" || !raum) return { fertig: false };
+  const k = schluesselVon(raum, heute);
+  const eintrag = FERTIG.get(k);
+  const veraltet = !eintrag || jetzt - eintrag.zeit >= BR_NEUBERECHNUNG_MS;
+  if (veraltet && !LAEUFT.has(raum) && LAEUFT.size < BR_MAX_GLEICHZEITIG) {
+    LAEUFT.set(raum, true);
+    STATISTIK.gestartet++;
+    (async () => {
+      try {
+        const it = auswertungSchritte(mandant, heute);
+        let r = it.next();
+        while (!r.done) { await new Promise((weiter) => setImmediate(weiter)); r = it.next(); }
+        einfrieren(raum, r.value);
+        /* Vortage dieses Raums verwerfen; Obergrenze insgesamt. */
+        for (const alt of [...FERTIG.keys()]) if (alt.startsWith(`${raum}\u0000`) && alt !== k) FERTIG.delete(alt);
+        if (FERTIG.size >= BR_MAX_TAGE_GEMERKT) FERTIG.delete(FERTIG.keys().next().value);
+        FERTIG.set(k, { wert: r.value, zeit: Date.now() });
+        STATISTIK.fertig++;
+      } catch { /* nicht gemerkt: der nächste Abruf versucht es neu */ }
+      finally { LAEUFT.delete(raum); }
+    })();
+  }
+  if (eintrag) return { fertig: true, wert: eintrag.wert, berechnetUm: new Date(eintrag.zeit).toISOString() };
+  return { fertig: false, ausgelastet: !LAEUFT.has(raum) };
 }
 
 /** Nur für Prüfungen. */
-export function auswertungenVergessen() { FERTIG.clear(); LAEUFT.clear(); }
+export function auswertungenVergessen() { FERTIG.clear(); LAEUFT.clear(); EINGEFROREN.clear(); STATISTIK.gestartet = 0; STATISTIK.fertig = 0; }
+export const auswertungStatistik = () => ({ ...STATISTIK, laeuft: LAEUFT.size });

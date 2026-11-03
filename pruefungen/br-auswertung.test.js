@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren, MATRIX } from "../server/lib/rechte.mjs";
-import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, BR_MINDESTGRUPPE, BR_HAEPPCHEN_MS } from "../server/lib/br-auswertung.mjs";
+import { betriebsratAuswertung, auswertungHolen, auswertungenVergessen, auswertungStatistik, BR_MINDESTGRUPPE, BR_HAEPPCHEN_MS, BR_NEUBERECHNUNG_MS, BR_MAX_GLEICHZEITIG } from "../server/lib/br-auswertung.mjs";
 import { median, urteil } from "./laufzeitmessung.mjs";
 import { aufbauen } from "./hilfen/szenario.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
@@ -129,12 +129,12 @@ describe("Ist-Zeiten: Mindestgruppe der Beitragenden, Wartezeit, Zweitsperre (F1
   });
 });
 
-/* Review F2: Der Schlüssel enthält den Raum und den Stand der Ablage. */
-describe("Hintergrundrechnung: Schlüssel Raum + Stand + Tag (F2)", () => {
+/* Review F2 + N1: Schlüssel Raum + Tag; im Mindestabstand neu; unter Schreiblast fertig. */
+describe("Hintergrundrechnung: Raum + Tag, Mindestabstand, Schreiblast (F2, N1)", () => {
   const warte = async (a) => {
     for (let i = 0; i < 400; i++) {
       const r = auswertungHolen(a);
-      if (r.fertig) return r.wert;
+      if (r.fertig) return r;
       await new Promise((w) => setTimeout(w, 5));
     }
     throw new Error("nicht fertig");
@@ -142,40 +142,125 @@ describe("Hintergrundrechnung: Schlüssel Raum + Stand + Tag (F2)", () => {
   const mandant = (namen) => { const b = bestand().mandanten[0]; b.personen = b.personen.filter((p) => !namen.includes(p.id)); return b; };
   beforeEach(() => auswertungenVergessen());
 
-  it("der erste Abruf blockiert nicht: noch nicht fertig, dann fertig", async () => {
-    const a = { raum: "raum-a", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] };
+  it("der erste Abruf blockiert nicht: noch nicht fertig, dann fertig, mit Zeitstempel", async () => {
+    const a = { raum: "raum-a", heute: HEUTE, mandant: bestand().mandanten[0] };
     expect(auswertungHolen(a).fertig).toBe(false);
-    const w = await warte(a);
-    expect(w.zeilen.length).toBeGreaterThan(0);
+    const r = await warte(a);
+    expect(r.wert.zeilen.length).toBeGreaterThan(0);
+    expect(new Date(r.berechnetUm).getTime()).toBeGreaterThan(Date.now() - 60000);
   });
   it("zwei Räume mit gleicher Betriebskennung und gleichem Tag teilen nie ein Ergebnis", async () => {
-    const voll = { raum: "raum-1", stand: 7, heute: HEUTE, mandant: bestand().mandanten[0] };
-    const anders = { raum: "raum-2", stand: 7, heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]) };   // gleiche id „m1“, andere Leute
-    const a = await warte(voll);
-    const b = await warte(anders);
+    const voll = { raum: "raum-1", heute: HEUTE, mandant: bestand().mandanten[0] };
+    const anders = { raum: "raum-2", heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]) };   // gleiche id „m1“, andere Leute
+    const a = (await warte(voll)).wert;
+    const b = (await warte(anders)).wert;
     expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
     expect(a.zeilen.some((z) => z.einheitId === "gross" && !z.gesperrt)).toBe(true);
     expect(b.zeilen.some((z) => z.einheitId === "gross" && !z.gesperrt)).toBe(false);
     expect(auswertungHolen(voll)).toMatchObject({ fertig: true });          // jeder Raum behält seins
   });
-  it("ein neuer Stand der Ablage rechnet neu; der alte Stand desselben Raums wird verworfen", async () => {
-    const alt = { raum: "raum-3", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] };
-    const neu = { raum: "raum-3", stand: 2, heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]) };
-    const a = await warte(alt);
-    expect(auswertungHolen(neu).fertig).toBe(false);
-    const b = await warte(neu);
-    expect(JSON.stringify(b)).not.toBe(JSON.stringify(a));
-    expect(auswertungHolen(alt).fertig).toBe(false);                        // verworfen
+  it("innerhalb des Mindestabstands liefert ein anderer Stand das letzte Ergebnis — kein neuer Lauf", async () => {
+    const t0 = Date.now();
+    const alt = { raum: "raum-3", heute: HEUTE, mandant: bestand().mandanten[0], jetzt: t0 };
+    const a = (await warte(alt)).wert;
+    const gestartet = auswertungStatistik().gestartet;
+    const neu = { raum: "raum-3", heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]), jetzt: t0 + BR_NEUBERECHNUNG_MS - 1000 };
+    const r = auswertungHolen(neu);
+    expect(r.fertig).toBe(true);
+    expect(JSON.stringify(r.wert)).toBe(JSON.stringify(a));
+    expect(auswertungStatistik().gestartet).toBe(gestartet);
   });
-  it("ohne Raum oder Stand wird nichts gemerkt", () => {
-    expect(auswertungHolen({ raum: "", stand: 1, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
-    expect(auswertungHolen({ raum: "r", stand: undefined, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
-    expect(auswertungHolen({ raum: "r", stand: undefined, heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
+  it("nach dem Mindestabstand wird neu gerechnet; bis dahin gilt das letzte Ergebnis (nie „wird berechnet“)", async () => {
+    const alt = { raum: "raum-4", heute: HEUTE, mandant: bestand().mandanten[0] };
+    const a = (await warte(alt)).wert;
+    const spaeter = { raum: "raum-4", heute: HEUTE, mandant: mandant(["g1", "g2", "g3"]), jetzt: Date.now() + BR_NEUBERECHNUNG_MS + 1000 };
+    const r1 = auswertungHolen(spaeter);
+    expect(r1.fertig).toBe(true);                                           // das alte Ergebnis, sofort
+    expect(JSON.stringify(r1.wert)).toBe(JSON.stringify(a));
+    for (let i = 0; i < 400 && auswertungHolen(spaeter).berechnetUm === r1.berechnetUm; i++) await new Promise((w) => setTimeout(w, 5));
+    expect(auswertungHolen(spaeter).berechnetUm).not.toBe(r1.berechnetUm);
+    expect(JSON.stringify(auswertungHolen(spaeter).wert)).not.toBe(JSON.stringify(a));
   });
-  it("Quelltext: kein Schlüssel aus Betriebskennung und m.stand", () => {
+  it("ein anderer Tag ist ein neuer Eintrag, der Vortag desselben Raums wird verworfen", async () => {
+    const m = bestand().mandanten[0];
+    await warte({ raum: "raum-5", heute: HEUTE, mandant: m });
+    const morgen = { raum: "raum-5", heute: tag(1), mandant: m };
+    expect(auswertungHolen(morgen).fertig).toBe(false);
+    await warte(morgen);
+    expect(auswertungHolen({ raum: "raum-5", heute: HEUTE, mandant: m, jetzt: 0 }).fertig).toBe(false);
+  });
+  it("ohne Raum wird nichts gemerkt", () => {
+    expect(auswertungHolen({ raum: "", heute: HEUTE, mandant: bestand().mandanten[0] }).fertig).toBe(false);
+  });
+  it("Quelltext: kein Schlüssel aus Betriebskennung und m.stand, der Stand der Ablage ist kein Schlüssel", () => {
     const q = readFileSync(path.join(process.cwd(), "server/lib/br-auswertung.mjs"), "utf8");
     expect(q).not.toMatch(/m\.stand|m && m\.stand/);
-    expect(q).toMatch(/schluesselVon\(raum, stand, heute\)/);
+    expect(q).toMatch(/const schluesselVon = \(raum, tag\)/);
+  });
+
+  /* Review N1: Schreiblast. Der Stand wechselt bei jedem Abruf (jeder Schreibvorgang macht einen neuen). */
+  it("unter Schreiblast: trotz Standwechsel bei jedem Abruf wird das Ergebnis fertig — mit genau einem Lauf", async () => {
+    const personen = [];
+    for (let i = 0; i < 600; i++) personen.push(person(`w${i}`, "mitarbeiter", `e${i % 6}`));
+    const m = { ...bestand().mandanten[0], einheiten: Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, versatzTage: 0 })), personen };
+    let stand = 0, fertig = null, abrufe = 0;
+    const t0 = performance.now();
+    while (!fertig && performance.now() - t0 < 60000) {
+      stand++; abrufe++;
+      const r = auswertungHolen({ raum: "last", stand, heute: HEUTE, mandant: { ...m } });   // jeder Abruf: neuer Stand, neues Objekt
+      if (r.fertig) fertig = r;
+      else await new Promise((w) => setTimeout(w, 10));
+    }
+    expect(fertig, `nach ${abrufe} Abrufen nicht fertig`).toBeTruthy();
+    expect(auswertungStatistik().gestartet).toBe(1);                       // nicht je Stand ein Lauf (CPU-Bindung)
+    expect(abrufe).toBeGreaterThan(5);
+  }, 90000);
+  it("viele Räume gleichzeitig: höchstens BR_MAX_GLEICHZEITIG Rechnungen laufen", async () => {
+    const m = bestand().mandanten[0];
+    for (let i = 0; i < 12; i++) auswertungHolen({ raum: `viele-${i}`, heute: HEUTE, mandant: m });
+    expect(auswertungStatistik().laeuft).toBeLessThanOrEqual(BR_MAX_GLEICHZEITIG);
+    expect(auswertungStatistik().gestartet).toBeLessThanOrEqual(BR_MAX_GLEICHZEITIG);
+    for (let i = 0; i < 2000 && auswertungStatistik().laeuft > 0; i++) await new Promise((w) => setTimeout(w, 5));   // nichts in den nächsten Test mitnehmen
+  });
+});
+
+/* Restpunkt N1(3): Ist nach Fristende einfrieren — keine Differenz aus zwei Ausgaben. */
+describe("Ist nach der Frist: eingefroren, Korrekturen nur ausgewiesen", () => {
+  const SPAET = "2026-06-20";
+  const mitErfassung = (stunden) => {
+    const personen = [], erfassung = {};
+    for (let i = 0; i < 4; i++) {
+      personen.push(person(`a${i}`, "mitarbeiter", "A"));
+      if (i < 3) erfassung[`a${i}|2026-05-12`] = { start: "06:00", ende: i === 0 ? stunden : "15:00", bestaetigt: true };
+    }
+    return { id: "m1", name: "Haus", einheiten: [{ id: "A", versatzTage: 0 }], dienstarten: [{ id: "F", name: "Früh", start: "06:00", ende: "14:00", pause: 30 }],
+      zyklus: { tage: ["F", "F", "F", "F", "F", "-", "-"] }, anker: "2026-01-05", einstellungen: {}, personen, abweichungen: {}, erfassung,
+      abwesenheiten: [], nachrichten: [], anfragen: [], bestaetigungen: [] };
+  };
+  const warte = async (a) => { for (let i = 0; i < 400; i++) { const r = auswertungHolen(a); if (r.fertig) return r; await new Promise((w) => setTimeout(w, 5)); } throw new Error("nicht fertig"); };
+  const zeile = (w) => w.zeilen.find((r) => r.monat === "2026-05" && r.einheitId === "A");
+  beforeEach(() => auswertungenVergessen());
+
+  it("die Planung korrigiert eine bestätigte Zeit nach der Frist: die Ausgabe bleibt, mit Hinweis ohne Zahl", async () => {
+    const jetzt = Date.now();
+    const erste = zeile((await warte({ raum: "frost", heute: SPAET, mandant: mitErfassung("15:00"), jetzt })).wert);
+    expect(erste.istStunden).toBe(25.5);
+    const spaeter = { raum: "frost", heute: SPAET, mandant: mitErfassung("17:00"), jetzt: jetzt + BR_NEUBERECHNUNG_MS + 1000 };
+    const zweite = auswertungHolen(spaeter);
+    for (let i = 0; i < 400 && auswertungHolen({ ...spaeter, jetzt }).berechnetUm === zweite.berechnetUm; i++) await new Promise((w) => setTimeout(w, 5));
+    const z2 = zeile(auswertungHolen({ ...spaeter, jetzt }).wert);
+    expect(zweite.fertig).toBe(true);
+    expect(z2.istStunden).toBe(25.5);                                      // nicht 27,5: keine Differenz von 2 Stunden
+    expect(z2.istErfasst).toBe(3);
+    expect(z2.istKorrigiert).toBe(true);
+    expect(erste.istKorrigiert).toBeUndefined();
+  });
+  it("ohne Korrektur kein Hinweis", async () => {
+    const jetzt = Date.now();
+    await warte({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00"), jetzt });
+    const erst = auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00"), jetzt: jetzt + BR_NEUBERECHNUNG_MS + 1000 });
+    for (let i = 0; i < 400 && auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00"), jetzt }).berechnetUm === erst.berechnetUm; i++) await new Promise((w) => setTimeout(w, 5));
+    expect(zeile(auswertungHolen({ raum: "ruhig", heute: SPAET, mandant: mitErfassung("15:00") }).wert).istKorrigiert).toBeUndefined();
   });
 });
 
@@ -198,7 +283,7 @@ describe("Event-Loop: 2000 Personen, kein Block über 50 ms (F3)", () => {
       const h = monitorEventLoopDelay({ resolution: 5 });
       h.enable();
       await new Promise((w) => setTimeout(w, 30));                       // erst ein Messtakt als Bezug — sonst fällt ein Block davor aus der Messung
-      const a = { raum: "gross", stand: ++nr, heute: HEUTE, mandant: m };
+      const a = { raum: `gross-${++nr}`, heute: HEUTE, mandant: m };
       let r = auswertungHolen(a);
       const t0 = performance.now();
       while (!r.fertig) { await new Promise((w) => setTimeout(w, 2)); r = auswertungHolen(a); if (performance.now() - t0 > 120000) throw new Error("zu langsam"); }

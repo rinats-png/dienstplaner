@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
-import { heuteBerlin, tagePlus, geplanterDienst, stempelDatumPruefen, selbstauskunftPruefen }
+import { heuteBerlin, tagePlus, geplanterDienst, stempelZiel, selbstauskunftPruefen, langerDienstGrenze, LANGER_DIENST_MINUTEN }
   from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -229,25 +229,118 @@ describe("16. Leitung und Planung behalten das Korrekturrecht", () => {
   });
 });
 
-describe("/api/stempeln: Datum", () => {
-  const m = () => bestand().mandanten[0];
+/* Seit WP-17 (Geo-Spezifikation B5–B7) bestimmt der Server den Tag
+   (stempelZiel). Das Gerätedatum wird angenommen und ignoriert; weicht es
+   ab, gibt es die Markierung GERAETEDATUM_ABWEICHEND, nie eine Absage. Die
+   Fälle 20–24 von früher gelten weiter — mit dem neuen Vertrag. Die
+   Serverzeit ist fest vorgegeben, damit die Grenzen nicht von der Uhrzeit
+   des Prüflaufs abhängen. */
+describe("/api/stempeln: Datum vom Server (stempelZiel)", () => {
+  /* Uhrzeit- und datumsunabhängig (W4): Die Serverzeit ist hier fest
+     vorgegeben; Plan und Stempel des Gerüsts (relativ zu heute) würden je
+     nach Prüftag in diese festen Tage fallen. Deshalb ohne sie. */
+  const m = () => { const mm = bestand().mandanten[0]; mm.abweichungen = {}; mm.einstempeln = {}; mm.erfassung = {}; return mm; };
   const p = (mm) => mm.personen[0];
-  it("20. heute: erlaubt", () => { const mm = m(); expect(stempelDatumPruefen(mm, p(mm), HEUTE, "start")).toBeNull(); });
-  it("21. künftig: abgewiesen", () => { const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(1), "start")).toMatch(/künftig/); });
-  it("22. gestern mit Nachtdienst: erlaubt", () => {
-    const mm = m(); mm.abweichungen[`a1|${tag(-1)}`] = "N";
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toBeNull();
+  const nacht = (mm) => { mm.dienstarten = [...(mm.dienstarten || []), { id: "NX", name: "Nacht", start: "22:00", ende: "06:00" }]; return mm; };
+  /* 2026-11-02 10:00 Berlin (MEZ, UTC+1). */
+  const JETZT = new Date("2026-11-02T09:00:00Z");
+  const H = "2026-11-02", G = "2026-11-01";
+  const ok = (datum, markierungen = [], konfliktAm = null) => ({ datum, markierungen, konfliktAm });
+  it("20. heute: Beginn ohne oder mit heutigem Gerätedatum → heute, ohne Markierung", () => {
+    const mm = m();
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toEqual(ok(H));
+    expect(stempelZiel(mm, p(mm), "start", JETZT, H)).toEqual(ok(H));
   });
-  it("… gestern mit offenem gestempeltem Beginn: Ausstempeln erlaubt, Einstempeln nicht", () => {
-    const mm = m(); mm.einstempeln[`a1|${tag(-1)}`] = { start: "13:00", innerhalbStart: true };
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toBeNull();
-    expect(stempelDatumPruefen(mm, p(mm), tag(-1), "start")).toBeTruthy();
+  it("21. Gerätedatum morgen: angenommen, heute gestempelt, GERAETEDATUM_ABWEICHEND", () => {
+    const mm = m();
+    expect(stempelZiel(mm, p(mm), "start", JETZT, "2026-11-03")).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
   });
-  it("23. gestern ohne Bezug (Frühdienst): abgewiesen", () => {
-    const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(-1), "ende")).toMatch(/Mitternacht/);
+  it("22. Beginn mit Gerätedatum gestern, gestern Nachtdienst geplant: trotzdem heute (Manipulation geschlossen), markiert", () => {
+    const mm = nacht(m()); mm.abweichungen[`a1|${G}`] = "NX";
+    expect(stempelZiel(mm, p(mm), "start", JETZT, G)).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
   });
-  it("24. älter: abgewiesen, auch mit Nachtdienst", () => {
-    const mm = m(); expect(stempelDatumPruefen(mm, p(mm), tag(-4), "ende")).toMatch(/Ältere/);
+  it("… offener Beginn gestern 22:00 (12 h): Ende → gestern, gleich welches Gerätedatum; Einstempeln 409", () => {
+    const mm = m(); mm.einstempeln[`a1|${G}`] = { start: "22:00", startAm: "2026-11-01T21:00:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT)).toEqual(ok(G));
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, H)).toEqual(ok(G));
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toEqual(ok(G));
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toMatchObject({ status: 409, code: "STEMPEL_SCHON_EINGESTEMPELT", datum: G });
+  });
+  it("F3: offener Beginn gestern 06:00 (28 h): Ende nie angehängt — heute, alter Vorgang KONFLIKT, auch mit Gerätedatum gestern", () => {
+    const mm = m(); mm.einstempeln[`a1|${G}`] = { start: "06:00", startAm: "2026-11-01T05:00:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT)).toEqual(ok(H, [], G));
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"], G));
+    expect(stempelZiel(mm, p(mm), "start", JETZT)).toEqual(ok(H));
+  });
+  it("F1: Ende ohne Beginn, gestern Nachtdienst geplant, noch vor Dienstende + 4 h → gestern", () => {
+    const mm = nacht(m()); mm.abweichungen[`a1|${G}`] = "NX";
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2026-11-02T05:10:00Z"))).toEqual(ok(G));      // 06:10
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2026-11-02T08:59:00Z"))).toEqual(ok(G));      // 09:59
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2026-11-02T09:01:00Z"))).toEqual(ok(H));      // 10:01: zu spät
+  });
+  it("F1: … nicht, wenn es gestern schon einen Stempeleintrag gibt oder kein Nachtdienst geplant war", () => {
+    const mm = nacht(m()); mm.abweichungen[`a1|${G}`] = "NX";
+    mm.einstempeln[`a1|${G}`] = { start: "22:01", ende: "06:02", startAm: "2026-11-01T21:01:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2026-11-02T05:30:00Z"))).toEqual(ok(H));
+    const ohne = m();
+    expect(stempelZiel(ohne, p(ohne), "ende", new Date("2026-11-02T05:30:00Z"))).toEqual(ok(H));
+  });
+  it("23. Gerätedatum gestern ohne jeden Bezug: heute, markiert", () => {
+    const mm = m(); expect(stempelZiel(mm, p(mm), "ende", JETZT, G)).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("24. älter: heute, markiert — der alte offene Beginn wird nicht angefasst", () => {
+    const mm = m(); mm.einstempeln["a1|2026-10-29"] = { start: "22:00" };
+    expect(stempelZiel(mm, p(mm), "ende", JETZT, "2026-10-29")).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("ungültiges Gerätedatum: angenommen, markiert, keine Absage", () => {
+    const mm = m(); expect(stempelZiel(mm, p(mm), "start", JETZT, "02.11.2026")).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("Mitternacht: zwei Minuten Spiel für das Gerätedatum, der Tag bleibt der des Servers", () => {
+    const mm = m();
+    expect(stempelZiel(mm, p(mm), "start", new Date("2026-11-01T23:01:00Z"), G)).toEqual(ok(H));
+    expect(stempelZiel(mm, p(mm), "start", new Date("2026-11-01T23:05:00Z"), G)).toEqual(ok(H, ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("Zeitumstellung Herbst (25.10.2026): Beginn 24.10. 22:00 MESZ, Ende 25.10. 05:30 MEZ → zugeordnet (8,5 h)", () => {
+    const mm = m(); mm.einstempeln["a1|2026-10-24"] = { start: "22:00", startAm: "2026-10-24T20:00:00.000Z" };
+    const ende = new Date("2026-10-25T04:30:00Z");
+    expect(heuteBerlin(ende)).toBe("2026-10-25");
+    expect(stempelZiel(mm, p(mm), "ende", ende)).toEqual(ok("2026-10-24"));
+  });
+  it("Zeitumstellung Frühjahr (28.3.2027): 20,5 h echt → nicht zugeordnet (KONFLIKT), 19,5 h → zugeordnet", () => {
+    const mm = m(); mm.einstempeln["a1|2027-03-27"] = { start: "12:00", startAm: "2027-03-27T11:00:00.000Z" };
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T07:30:00Z"))).toEqual(ok("2027-03-28", [], "2027-03-27"));
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T06:30:00Z"))).toEqual(ok("2027-03-27"));
+  });
+  it("Beginn kurz nach Mitternacht in der Rückstellnacht gehört zum neuen Tag", () => {
+    const mm = m();
+    const t = new Date("2026-10-25T00:30:00Z");                        // 02:30 MESZ (erste 02:30)
+    expect(stempelZiel(mm, p(mm), "start", t)).toEqual(ok("2026-10-25"));
+    expect(stempelZiel(mm, p(mm), "start", t, "2026-10-24")).toEqual(ok("2026-10-25", ["GERAETEDATUM_ABWEICHEND"]));
+  });
+  it("F1 in der Nacht der Sommerzeit (28.3.2027): Nachtdienst 22–06, Ende 06:00 MESZ (04:00Z) + 4 h", () => {
+    const mm = nacht(m()); mm.abweichungen["a1|2027-03-27"] = "NX";
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T07:55:00Z"))).toEqual(ok("2027-03-27"));   // 09:55 MESZ
+    expect(stempelZiel(mm, p(mm), "ende", new Date("2027-03-28T08:05:00Z"))).toEqual(ok("2027-03-28"));   // 10:05 MESZ
+  });
+});
+
+describe("W1: Grenze für einen langen Dienst — geplante Dauer + 2 h, ohne Plan 12 h", () => {
+  const mm = () => {
+    const x = bestand().mandanten[0];
+    x.abweichungen = {};
+    x.dienstarten = [...x.dienstarten, { id: "T12", start: "06:00", ende: "18:00" }, { id: "N12", start: "18:00", ende: "06:00" },
+      { id: "RB", start: "17:00", ende: "07:00", form: "ruf", rufbereitschaft: true }, { id: "D24", start: "07:00", ende: "07:00" }];
+    return x;
+  };
+  const D = "2026-11-10";
+  const grenze = (dienst) => { const x = mm(); if (dienst) x.abweichungen[`a1|${D}`] = dienst; return langerDienstGrenze(x, x.personen[0], D); };
+  it("Früh 06–14: 10 h; T12 und N12: 14 h; Rufbereitschaft 17–07: 16 h; 24-h-Dienst: 26 h; ohne Plan 12 h", () => {
+    expect(grenze("F")).toBe(10 * 60);
+    expect(grenze("T12")).toBe(14 * 60);
+    expect(grenze("N12")).toBe(14 * 60);
+    expect(grenze("RB")).toBe(16 * 60);
+    expect(grenze("D24")).toBe(26 * 60);
+    expect(grenze(null)).toBe(LANGER_DIENST_MINUTEN);
   });
 });
 

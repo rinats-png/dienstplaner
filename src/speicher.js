@@ -348,8 +348,27 @@ export async function sicherung() {
   return daten;
 }
 export async function sicherungen() {
-  const { daten } = await ruf("sicherungen");
+  const { status, daten } = await ruf("sicherungen");
+  /* Eine Absage ist keine leere Liste (WP-25). */
+  if (status !== 200) throw new Error(daten?.text || daten?.fehler || "Die Sicherungen ließen sich nicht laden.");
   return daten?.sicherungen || [];
+}
+
+/**
+ * Den eigenen Betrieb aus einer Sicherung zurückspielen (WP-25). Vorher wird
+ * Ausstehendes geschrieben — der Server spielt nur auf den Stand zurück, den
+ * diese Sitzung zuletzt gesehen hat (ETag). Gibt { status, daten } zurück,
+ * auch bei einer Absage; die Deutung steht in sicherungen-ui.js.
+ */
+export async function wiederherstellen(marke) {
+  try { await schreibenAbschliessen(); } catch { /* der Server prüft den Stand ohnehin */ }
+  if (schreibenAusstehend())
+    return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
+  if (gescheitert)
+    return { status: 0, daten: { fehler: "Eine Änderung ist noch nicht gespeichert. Erst speichern oder verwerfen, dann zurückspielen." } };
+  const { status, daten } = await ruf("wiederherstellen", { method: "POST", body: JSON.stringify({ marke, etag }) });
+  if (status === 200 && daten && daten.etag !== undefined) etag = daten.etag;
+  return { status, daten };
 }
 
 /* ==========================================================================
@@ -507,6 +526,49 @@ export async function zeitBestaetigen(datum, start, ende, grund) {
   let d = {};
   try { d = await a.json(); } catch { /* keine Antwort */ }
   if (!a.ok) throw new Error(d.text || d.fehler || "Die Zeit ließ sich nicht bestätigen.");
+  return d;
+}
+
+/**
+ * Die Ist-Zeit eines gestempelten Tages korrigieren (WP-06) — nur Leitung und
+ * Planung. Der Stempel bleibt unverändert; die Korrektur wird mit Grund als
+ * Ereignis angehängt. Antwort: der gespeicherte Stempel (eintrag) und die
+ * abgeleitete Ist-Zeit (erfassung).
+ */
+export async function stempelKorrektur(personId, datum, start, ende, grund, pause) {
+  const a = await fetch("/api/stempel-korrektur", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Korrektur ließ sich nicht speichern.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag stellen (WP-14): für den eigenen Stempel eines der letzten Tage
+ * gewünschter Beginn, gewünschtes Ende, Pause (optional) und Grund.
+ */
+export async function korrekturAntrag(datum, start, ende, pause, grund) {
+  const a = await fetch("/api/korrektur-antrag", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ datum, start, ende, grund: grund || "",
+      ...(pause === undefined || pause === null || pause === "" ? {} : { pause: Number(pause) }) }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Der Antrag ließ sich nicht stellen.");
+  return d;
+}
+
+/**
+ * Einen Korrekturantrag entscheiden (WP-14): "genehmigt" und "abgelehnt" (Leitung, Planung;
+ * Ablehnung mit Begründung) oder "zurueckgezogen" (die antragstellende Person).
+ */
+export async function korrekturEntscheiden(personId, datum, antragId, entscheidung, begruendung) {
+  const a = await fetch("/api/korrektur-entscheiden", { method: "POST", headers: kopf(),
+    body: JSON.stringify({ personId, datum, antragId, entscheidung, begruendung: begruendung || "" }) });
+  let d = {};
+  try { d = await a.json(); } catch { /* keine Antwort */ }
+  if (!a.ok) throw new Error(d.text || d.fehler || "Die Entscheidung ließ sich nicht speichern.");
   return d;
 }
 

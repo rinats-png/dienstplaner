@@ -88,7 +88,17 @@ const start = {
       { id: "a1", personId: 1, art: "krank", von: "2026-08-10", bis: "2026-08-14",
         grund: "Bandscheibenvorfall", nachweis: "AU vom 10.08." },
     ],
-    anfragen: [], erfassung: {}, nachrichten: [],
+    anfragen: [], nachrichten: [],
+    /* S2: Stempel und Ist-Zeiten aus der Erstbefüllung (Import). Über das
+       allgemeine Speichern legt seit WP-06 niemand mehr Stempel an. */
+    erfassung: {
+      "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
+      "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
+    },
+    einstempeln: {
+      "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
+      "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
+    },
     dienstarten: [{ id: "F", name: "Früh", kurz: "F" }],
     einheiten: [{ id: "e1", name: "Wohnbereich 1" }],
   }],
@@ -271,18 +281,16 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
     typeof amOrt.zeit === "string" && /^\d{2}:\d{2}$/.test(amOrt.zeit),
     `zeit=${amOrt.zeit}`);
 
+  /* Die Stempel stammen aus der Erstbefüllung (oben). Anlegen oder ändern
+     über das allgemeine Speichern kann auch die Leitung nicht (WP-06). */
   const rL3 = await lies(tL);
   const bb2 = JSON.parse(JSON.stringify(rL3.bestand));
-  bb2.mandanten[0].erfassung = {
-    "0|2026-09-01": { start: "06:01", ende: "14:05", bestaetigt: true, grund: "" },
-    "1|2026-09-01": { start: "05:58", ende: "14:00", bestaetigt: true, grund: "Übergabe länger" },
-  };
-  bb2.mandanten[0].einstempeln = {
-    "0|2026-09-01": { start: "06:01", ende: "14:05", ortStart: "Am Einsatzort (12 m)", innerhalbStart: true },
-    "1|2026-09-01": { start: "05:58", ortStart: "Abweichend, 3,2 km entfernt", innerhalbStart: false },
-  };
+  bb2.mandanten[0].einstempeln = { ...bb2.mandanten[0].einstempeln,
+    "1|2026-09-01": { ...bb2.mandanten[0].einstempeln["1|2026-09-01"], ortStart: "Am Einsatzort (5 m)", innerhalbStart: true },
+    "0|2026-09-02": { start: "06:00", ende: "14:00" } };
   const wS2 = await schreib(tL, bb2, rL3.etag);
-  pruef("S2: Leitung legt Stempelereignisse an", wS2.status === 200, `Status ${wS2.status}`);
+  pruef("S2: Leitung ändert oder erfindet keine Stempel über das Speichern (403)", wS2.status === 403,
+    `Status ${wS2.status}`);
 
   /* Die Sitzung der Stempeluhr (tS) und der vorhandene Betriebsratscode:
      weitere Zugänge anzulegen, träfe die Bremse. */
@@ -344,6 +352,14 @@ pruef("Betriebsrat stößt keinen Versand an", sendB.status === 403, `Status ${s
       anfragen: [], nachrichten: [] }] };
 
   const tS1 = await anmelden(await zugang("leitung", null));
+  /* Stempel sind Belege (WP-06): Auch ein vollständig neu geschriebener
+     Bestand übernimmt sie unverändert — ohne sie wäre das ein Löschen (403). */
+  {
+    const vorher = (await lies(tS1)).bestand.mandanten[0];
+    raumBasis.mandanten[0].einstempeln = vorher.einstempeln || {};
+    raumBasis.mandanten[0].erfassung = Object.fromEntries(Object.entries(vorher.erfassung || {})
+      .filter(([k]) => k in (vorher.einstempeln || {})));
+  }
   const w = await schreib(tS1, raumBasis, null);
   pruef("Ein Bestand lässt sich zerlegt schreiben", w.status === 200, `Status ${w.status}`);
 
