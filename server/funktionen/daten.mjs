@@ -4,7 +4,7 @@ import { bremse, entlasten, kennung, herkunft, herkunftErlaubt, zuVielAntwort,
   protokoll, notbremse, notentlasten } from "../lib/schutz.mjs";
 import { bestandFuerRolle, zusammenfuehren, schreibumfang, absageText, rolleBekannt,
   wirksameRolle, SCHREIBEN_NEIN, eigenerMandant, fachpruefungOffen, sammelAnzahlSetzen, einwilligungsAenderungen } from "../lib/rechte.mjs";
-import { schutzKonfliktMitteilungen } from "../lib/bestaetigungen.mjs";
+import { schutzKonfliktMitteilungen, schutzEntferntAnzahl } from "../lib/bestaetigungen.mjs";
 import { fachpruefungUebermittlungAsync, strukturAenderung, strukturBremse, letzteLaufzeit } from "../lib/schutzdurchsetzung.mjs";
 import { pruefeGestalt, schrumpfung, SICHERUNGSSCHWELLE, mandantenKennungenGeprueft, uebergabenAngleichen,
   personenAngleichen, personenFehler } from "../lib/gestalt.mjs";
@@ -947,6 +947,12 @@ export default async (req, context) => {
            geändert haben, steht im Betriebsprotokoll — ohne Inhalt, ohne Person. */
         const einw = einwilligungsAenderungen(jetzt ? jetzt.bestand : null, zuSchreiben);
         if (einw) await protokoll("schreiben", ks, "einwilligung-geaendert", `${einw} Person(en)`, wer);
+        {
+          const altMd = jetzt && jetzt.bestand && Array.isArray(jetzt.bestand.mandanten) ? jetzt.bestand.mandanten : [];
+          let weg = 0;
+          for (const m of (Array.isArray(zuSchreiben.mandanten) ? zuSchreiben.mandanten : [])) weg += schutzEntferntAnzahl(altMd.find((a) => a && m && a.id === m.id), m);
+          if (weg) await protokoll("schreiben", ks, "schutzangaben-entfernt", `${weg} Person(en)`, wer);
+        }
 
         /* Form prüfen, bevor geschrieben wird. Die Rechteprüfung schützt vor
            fremdem Zugriff, nicht vor der eigenen fehlerhaften Anwendung — und

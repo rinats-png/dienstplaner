@@ -83,7 +83,7 @@ describe("eigener Bereich", () => {
   it("Plan, Qualifikation, Einschränkungen, Konten, Einsatzregeln statt Schutzmerkmalen, Telefon und Mobil", () => {
     const a = p(sichtPersonen(), "a1");
     expect(a.sichtbereich).toBe("bereich");
-    /* Nachprüfung 9717ddf (M1-Rest): „keine Nacht“ nur noch als Einsatzregel nachtNichtZulaessig. */
+    /* Nachprüfung 9717ddf (M1-Rest) und 948a4ba (A1): „keine Nacht“ nur noch als Einsatzregel keinNachtdienst (Nachtfenster des Betriebs). */
     expect(a).toMatchObject({ telefon: "0151-a1", mobil: "0171-a1", stundenuebertrag: 12.5, urlaubsanspruch: 30,
       einschraenkungen: {}, wunschfrei: ["a1-wunsch"], qualifikationen: ["pfk", "masern"] });
     for (const f of ["mutterschutz", "schwerbehindert", "geburtstag", "nachtvorsorge"]) expect(a[f], f).toBeUndefined();

@@ -25,7 +25,7 @@
 
    Rein: keine Ablage, kein Datum von außen außer `heute`.
    ========================================================================== */
-import { schutzEinsatz } from "./schutzpruefung.mjs";
+import { schutzEinsatz, nachtFenster, nachtschwelle, nachtAnteil } from "./schutzpruefung.mjs";
 import { pad, pISO, addDays, dow, toMin, dauer, between, montag, fenster, verbindlichkeit, fehlendeKompetenzen,
   HOECHST_TAG } from "./regelwerk.mjs";
 import { BEFUND_KATALOG } from "./bestaetigungen.mjs";
@@ -51,25 +51,10 @@ export function ruhezeitStufe(ruheStunden, einstellung) {
 /* ------------------------------------------------------------------------
    NACHTFENSTER DES BETRIEBS
    ------------------------------------------------------------------------ */
-const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
-export const nachtFenster = (einst) => ({
-  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
-  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
-});
-/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
-export const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
-/** Nachtstunden eines Dienstes im Fenster des Betriebs; ohne Einstellungen gilt das Gesetz. */
-export function nachtAnteil(d, einst) {
-  const f = nachtFenster(einst);
-  const von = toMin(f.von), bis = toMin(f.bis);
-  const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
-  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
-     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
-  const fenster2 = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
-  let sum = 0;
-  for (const [a, b] of fenster2) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
-  return Math.round(sum / 60 * 100) / 100;
-}
+/* nachtFenster, nachtschwelle und nachtAnteil stehen in server/lib/schutzpruefung.mjs
+   (Nachprüfung 948a4ba, A1: die Einsatzregel „kein Nachtdienst“ rechnet dort
+   mit demselben Fenster); hier nur weitergereicht. */
+export { nachtFenster, nachtschwelle, nachtAnteil };
 
 /* ------------------------------------------------------------------------
    QUALIFIKATIONEN UND NACHWEISE

@@ -82,6 +82,30 @@ export function nachtMinuten(d) {
   return Math.min(summe, e - s);
 }
 
+/* Nachtfenster des Betriebs (Einstellungen nachtVon/nachtBis, Schwelle
+   nachtschichtAbStunden) — für die Einschränkung „keine Nacht“ in Oberfläche,
+   Server und Einsatzregeln (Nachprüfung 948a4ba, A1). Ohne Einstellungen gilt
+   das Gesetz (23–6 Uhr, zwei Stunden). */
+const NACHT_VORGABE = { von: "23:00", bis: "06:00" };
+export const nachtFenster = (einst) => ({
+  von: (einst && einst.nachtVon) || NACHT_VORGABE.von,
+  bis: (einst && einst.nachtBis) || NACHT_VORGABE.bis,
+});
+/** Ab wie vielen Stunden Nachtarbeit gilt eine Schicht als Nachtschicht? */
+export const nachtschwelle = (einst) => (einst && einst.nachtschichtAbStunden) || 2;
+/** Nachtstunden eines Dienstes im Fenster des Betriebs; ohne Einstellungen gilt das Gesetz. */
+export function nachtAnteil(d, einst) {
+  const f = nachtFenster(einst);
+  const von = toMin(f.von), bis = toMin(f.bis);
+  const s = toMin(d.start); let e = toMin(d.ende); if (e <= s) e += 1440;
+  /* Das Fenster läuft über Mitternacht. Auf der Achse ab Dienstbeginn wird
+     es deshalb zweimal ausgelegt — für den laufenden und den nächsten Tag. */
+  const fenster2 = [[0, bis], [von, 1440], [1440, 1440 + bis], [1440 + von, 2880]];
+  let sum = 0;
+  for (const [a, b] of fenster2) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
+  return Math.round(sum / 60 * 100) / 100;
+}
+
 /** Ist das ein Nachtdienst im Sinne des § 2 Abs. 4? */
 export function istNachtdienst(d) {
   return nachtMinuten(d) > 120;
@@ -337,6 +361,7 @@ export const EINSATZREGEL_TEXTE = {
   nachtSpaetAusnahme: "Einsatz bis 23 Uhr: Ausnahme des Betriebs hinterlegt.",
   einsatzfensterBis22: "Nachteinsatz 22–6 Uhr nicht zulässig.",
   nachtMitFreigabe: "Einsatz 20–22 Uhr: Freigabe hinterlegt.",
+  keinNachtdienst: "Kein Nachtdienst laut Einsatzeinschränkung (Nachtfenster des Betriebs).",
   sonntagMitFreigabe: "Sonntagseinsatz: Freigabe hinterlegt.",
   hoechstens8hTag: "Dienst überschreitet die zulässige Tagesdauer.",
   wochenendePruefen: "Wochenendeinsatz prüfen.",
@@ -384,6 +409,10 @@ export function regelBefunde(planungsregeln, dienstart, datum, einst) {
         if (imNachtfenster22bis6(dienstart)) aus.push({ regel: "nachtNichtZulaessig", hart: true, text: EINSATZREGEL_TEXTE.einsatzfensterBis22 });
         else if (imNachtfenster20bis6(dienstart)) aus.push({ regel: "nachtMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.nachtMitFreigabe });
         break;
+      /* Einschränkung „keine Nacht“ (Nachprüfung 948a4ba, A1): dasselbe Fenster
+         und dieselbe Schwelle des Betriebs wie die Prüfung mit Rohdaten
+         (keineNacht in einteilungsBefunde) — kein Rechtsverbot 20–6 Uhr. */
+      case "keinNachtdienst": treffer(nachtAnteil(dienstart, einst) >= nachtschwelle(einst)); break;
       case "sonntagFreigegeben":
         if (dow(datum) === 6) aus.push({ regel: "sonntagMitFreigabe", hart: false, hinweis: true, text: EINSATZREGEL_TEXTE.sonntagMitFreigabe });
         break;

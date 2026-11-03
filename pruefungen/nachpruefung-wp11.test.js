@@ -23,10 +23,14 @@
    Aufruf: npx vitest run pruefungen/nachpruefung-wp11.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { schutzBefunde, schutzEinsatz, schutzBefundeFuer, EINSATZREGEL_TEXTE } from "../src/regelwerk.js";
 import { planungsregelnAbleiten } from "../server/lib/planungsregeln.mjs";
 import * as SD from "../server/lib/schutzdurchsetzung.mjs";
+import { einteilungsBefunde } from "../server/lib/fachpruefung.mjs";
+import { sperrtBefund } from "../server/lib/bestaetigungen.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
 
 const HEUTE = heuteBerlin();
@@ -312,6 +316,59 @@ describe("Review 77ebfba: M1 (Art. 9), M2, N1", () => {
       .toMatch(/Einwilligungen/);
     const p = { mutterschutz: true, mutterschutzEinwilligungen: [{ art: "nacht", ab: "1.1.2026", bis: "2099-12-31" }] };
     expect(schutzEinsatz(p, { start: "14:00", ende: "22:00", pause: 30 }, MITTWOCH).some((x) => x.sperrt)).toBe(true);
+  });
+});
+
+describe("Nachprüfung 948a4ba (A1): „keine Nacht“ — Planung und Schichtverantwortung sagen dasselbe", () => {
+  const roh = person("kn", "mitarbeiter", "e1", { einschraenkungen: { keineNacht: true } });
+  const sv = { ...roh, einschraenkungen: {}, planungsregeln: planungsregelnAbleiten(roh, { von: tag(-30), heute: tag(0) }), sichtbereich: "bereich" };
+  const DIENSTE = { spaet1321: { id: "a", start: "13:00", ende: "21:00" }, spaet1422: { id: "b", start: "14:00", ende: "22:00" },
+    spaet1523: { id: "c", start: "15:00", ende: "23:00" }, nacht: { id: "d", start: "22:00", ende: "06:00" },
+    frueh0513: { id: "e", start: "05:00", ende: "13:00" }, frueh0614: { id: "f", start: "06:00", ende: "14:00" } };
+  const EINST = { gesetz: {}, tvoed: { nachtVon: "21:00", nachtBis: "06:00", nachtschichtAbStunden: 2 }, streng: { nachtschichtAbStunden: 1 } };
+  const k = { dienstAm: () => null, alleinOhnePartner: () => false, heute: tag(0) };
+  const sperrt = (p, da, einst) => einteilungsBefunde({ einstellungen: einst, qualifikationen: [], dienstarten: [] }, p, da, MITTWOCH, k)
+    .some((b) => sperrtBefund(b.regel));
+  for (const [en, einst] of Object.entries(EINST)) for (const [dn, da] of Object.entries(DIENSTE))
+    it(`${en} · ${dn}`, () => expect(sperrt(sv, da, einst), "Schichtverantwortung").toBe(sperrt(roh, da, einst)));
+  it("Spätdienst 13–21 Uhr nach Gesetzesfenster: weder Planung noch Schichtverantwortung sperren", () => {
+    expect(sperrt(roh, DIENSTE.spaet1321, {})).toBe(false);
+    expect(sperrt(sv, DIENSTE.spaet1321, {})).toBe(false);
+  });
+  it("der Text nennt eine Einsatzeinschränkung, kein Rechtsverbot", () => {
+    const b = schutzBefundeFuer(sv, DIENSTE.nacht, MITTWOCH, {});
+    expect(b).toEqual([expect.objectContaining({ regel: "keinNachtdienst", hart: true })]);
+    expect(b[0].text).toMatch(/Einsatzeinschränkung/);
+    expect(b[0].text).not.toMatch(/nicht zulässig|Gesetz|20–6/);
+  });
+});
+
+describe("Nachprüfung 948a4ba (A2, Empfehlung): Schutzkonflikte bleiben sichtbar", () => {
+  const meldungen = (e) => (e.mandanten[0].nachrichten || []).filter((n) => n.quelle && n.quelle.art === "schutzkonflikt");
+  it("Mutterschutz eingetragen: auch eine Nacht in 200 Tagen (jenseits des Horizonts) wird gemeldet", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x7", "mitarbeiter", "e1"));
+    const fern = tag(200);
+    gg.mandanten[0].abweichungen[`x7|${fern}`] = "N";
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x7").mutterschutz = true; });
+    expect(e.verweigert, e.verweigert).toBeFalsy();
+    expect(meldungen(e).some((n) => n.id.includes(fern))).toBe(true);
+  });
+  it("die Oberfläche markiert offene Konflikte im Plan und zeigt sie auf der Startseite (Quelltext)", () => {
+    const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+    expect(app).toContain("function offeneSchutzkonflikte(m)");
+    expect(app).toContain("schutzkonflikte.has(`${p.id}|${d}`)");
+    expect(app).toMatch(/id: "schutzkonflikt"[\s\S]*knopf: "Umplanen"/);
+  });
+  it("Schutzangaben entfernt: Leitung erfährt es ohne Inhalt und ohne Person", () => {
+    const gg = g();
+    gg.mandanten[0].personen.push(person("x6", "mitarbeiter", "e1", { mutterschutz: true }));
+    const e = schreiben(gg, "PL", (m) => { m.personen.find((x) => x.id === "x6").mutterschutz = false; });
+    expect(e.verweigert).toBeFalsy();
+    const n = (e.mandanten[0].nachrichten || []).filter((x) => x.quelle && x.quelle.art === "schutzentfernt");
+    expect(n.map((x) => x.personId)).toEqual(["l1"]);
+    expect(n[0].text).toMatch(/Bei 1 Person wurden Schutzangaben entfernt/);
+    expect(JSON.stringify(n)).not.toMatch(/x6|Nx6|Mutter/);
   });
 });
 

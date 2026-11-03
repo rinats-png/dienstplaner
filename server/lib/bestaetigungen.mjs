@@ -146,6 +146,41 @@ export function schutzKonfliktMitteilungen(altM, neuM, konflikte, ich) {
     : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
 }
 
+/** Wie viele Personen haben Schutzangaben verloren (Mutterschutz, Schwerbehinderung, Geburtsdatum, Einwilligung)? */
+export function schutzEntferntAnzahl(altM, neuM) {
+  const alt = new Map((Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt).map((p) => [String(p.id), p]));
+  let n = 0;
+  for (const p of (Array.isArray(neuM && neuM.personen) ? neuM.personen : []).filter(istObjekt)) {
+    const a = alt.get(String(p.id));
+    if (!a) continue;
+    const weg = (f) => !!a[f] && !p[f];
+    const einw = (x) => (Array.isArray(x.mutterschutzEinwilligungen) ? x.mutterschutzEinwilligungen.length : 0);
+    if (weg("mutterschutz") || weg("schwerbehindert") || weg("geburtstag") || weg("geburtsdatum") || einw(p) < einw(a)) n++;
+  }
+  return n;
+}
+
+/**
+ * Empfehlung aus Nachprüfung 948a4ba: Werden Schutzangaben entfernt, erfährt
+ * es die Leitung — ohne Inhalt und ohne Person (wie viele, von wem).
+ */
+export function schutzEntferntMitteilungen(altM, neuM, ich) {
+  if (!istObjekt(neuM)) return neuM;
+  const n = schutzEntferntAnzahl(altM, neuM);
+  if (!n) return neuM;
+  const personen = (Array.isArray(altM && altM.personen) ? altM.personen : []).filter(istObjekt);
+  const von = personen.find((p) => gleichId(p.id, ich));
+  const jetzt = new Date();
+  const neue = leitungFuerBestaetigung(personen, ich).map((l) => ({ id: `n-schutzentfernt-${jetzt.getTime()}-${l.id}`, personId: l.id,
+    art: "planGeaendert", titel: kuerzen("Schutzangaben entfernt", TITEL_MAX),
+    text: kuerzen(`Bei ${n} Person${n === 1 ? "" : "en"} wurden Schutzangaben entfernt — von ${name(von)}.`, TEXT_MAX),
+    ziel: "personal", zeit: jetzt.toLocaleString("de-DE"), erstellt: jetzt.toISOString(), gelesen: false, dringend: false,
+    quelle: { art: "schutzentfernt", von: ich } }));
+  if (!neue.length) return neuM;
+  return { ...neuM, nachrichten: [...neue, ...(Array.isArray(neuM.nachrichten) ? neuM.nachrichten
+    : Array.isArray(altM && altM.nachrichten) ? altM.nachrichten : [])] };
+}
+
 /** Überschreitet das Protokoll mit dieser Übermittlung 80 %, bekommt die
     Leitung einmalig eine Mitteilung (feste Kennung je Betrieb). */
 function fuellstandMitteilung(altM, neuM, ich) {

@@ -185,7 +185,9 @@ function planrechner(m, personen) {
   };
   const alleinOhnePartner = (p, d, daId) => !(tag(d).get(String(daId)) || [])
     .some((x) => String(x.id) !== String(p.id) && !(x.einschraenkungen && x.einschraenkungen.keinAlleindienst));
-  return { am, tag, alleinOhnePartner };
+  /** Die Tage mit ausdrücklicher Einteilung einer Person (aufsteigend). */
+  const abwTage = (p) => [...((abw.get(String(p.id)) || new Map()).keys())].sort();
+  return { am, tag, alleinOhnePartner, abwTage };
 }
 
 /**
@@ -424,6 +426,10 @@ function* pruefen(altM, neuM, heute, zaehler, opt, ausgabe = { konflikte: [] }) 
         if (!rN.am(p, d)) continue;                                          // kein Dienst: nichts zu prüfen
         struktur.push([p, d]);
       }
+      /* Nachprüfung 948a4ba (A2): Ändern sich die Schutzangaben, zählt der ganze
+         künftige Zeitraum — auch ausdrückliche Einteilungen jenseits des Horizonts. */
+      if (pA && !personGleich && nurSchutzGeaendert(pA, p))
+        for (const d of rN.abwTage(p)) if (d > horizont[horizont.length - 1] && rN.am(p, d)) struktur.push([p, d]);
     }
   }
   if (!zellen.size && !struktur.length) return null;

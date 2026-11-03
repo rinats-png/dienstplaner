@@ -2676,6 +2676,43 @@ function bestaetigungVermerken(m, best, wer, aktion) {
 }
 
 /**
+ * Offene Schutzkonflikte (Nachprüfung 948a4ba, A2): künftige Einteilungen,
+ * denen eine harte Schutz- oder Einsatzregel der Person widerspricht — etwa
+ * nachdem ein Mutterschutz eingetragen wurde, der immer gespeichert wird. Sie
+ * bleiben sichtbar (Startseite, Monatsplan), bis umgeplant ist. Gerechnet für
+ * Personen mit Schutzangaben oder Einsatzregeln: die Schichtfolge ein Jahr
+ * voraus, ausdrückliche Einteilungen für den ganzen künftigen Zeitraum.
+ * Schlüssel „personId|Datum".
+ */
+function offeneSchutzkonflikte(m) {
+  const d0 = heute();
+  return memo(m, `schutzkonflikte|${d0}`, () => {
+    const aus = new Map();
+    const bis = addDays(d0, 365);
+    const relevant = m.personen.filter((p) => p.mutterschutz || (Array.isArray(p.planungsregeln) && p.planungsregeln.some((r) => r && r.hart))
+      || (() => { const a = alterAm(p.geburtstag || p.geburtsdatum, d0); return a !== null && a < 18; })());
+    if (!relevant.length) return aus;
+    const daNach = new Map(m.dienstarten.map((x) => [x.id, x]));
+    const pruefe = (p, d) => {
+      const t = personTag(m, p, d);
+      if (!t.dienstId || t.abwesenheit || !imDienst(p, d)) return;
+      const da = daNach.get(t.dienstId);
+      if (!da || !da.start || !da.ende) return;
+      if (schutzEinsatz(p, da, d, m.einstellungen).some((b) => b.sperrt)) aus.set(`${p.id}|${d}`, { person: p, datum: d, da });
+    };
+    for (const p of relevant) {
+      for (let d = d0; d <= bis; d = addDays(d, 1)) pruefe(p, d);
+      for (const k of Object.keys(m.abweichungen || {})) {
+        if (!k.startsWith(`${p.id}|`)) continue;
+        const d = k.slice(k.lastIndexOf("|") + 1);
+        if (d > bis) pruefe(p, d);
+      }
+    }
+    return aus;
+  });
+}
+
+/**
  * Bestätigte Abweichungen, die im Plan noch wirken: Die Person hat an dem
  * Tag weiter genau diesen Dienst. Ist die Einteilung inzwischen geändert,
  * ist die Abweichung behoben und verschwindet von der Markierung.
@@ -8929,6 +8966,7 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
   const [nurAbw, setNurAbw] = useState(false);
   const planVon = tage[0], planBis = tage[tage.length - 1];
   const bestaetigt = useMemo(() => offeneAbweichungen(m, planVon, planBis), [m, planVon, planBis]);
+  const schutzkonflikte = useMemo(() => offeneSchutzkonflikte(m), [m]);
   const leute = useMemo(() => {
     let l = aktive(m, tage[0]).filter((p) => einheitAm(p, tage[0]) === eid);
     const s2 = suche.trim().toLowerCase();
@@ -8997,6 +9035,11 @@ function Einsatzplan({ sitz, ym, setYm, akt, oeffnePerson }) {
                   background: t.quelle === "abweichung" ? C.warnLight : d === d0 ? C.accentLight : "transparent" }}>
                   <div style={{ display: "flex", justifyContent: "center", position: "relative" }}>
                     <Zelle da={map[t.dienstId]} abw={t.abwesenheit} size={23} />
+                    {schutzkonflikte.has(`${p.id}|${d}`) && (
+                      /* Offener Schutzkonflikt (A2): bleibt markiert, bis umgeplant ist. */
+                      <span title="Einteilung widerspricht einer Schutz- oder Einsatzregel der Person — bitte umplanen"
+                        aria-label="Schutzkonflikt" style={{ position: "absolute", inset: -1, border: `2px solid ${C.danger}`,
+                          borderRadius: 6, pointerEvents: "none" }} />)}
                     {(() => { const b = bestaetigt.get(`${p.id}|${d}`);
                       if (!b) return null;
                       /* Bewusst bestätigte Abweichung: bleibt sichtbar, bis sie behoben ist. */
@@ -15687,6 +15730,16 @@ function Prioritaeten({ sitz, akt, gehZu, oeffneTag }) {
         text: es.offen[0].titel + " — " + es.offen[0].text,
         ton: "accent", weg: () => gehZu(es.offen[0].ziel), knopf: "Weiter einrichten" });
 
+    /* Offene Schutzkonflikte (A2): eine Pflichtaufgabe für Planung und Leitung,
+       bis umgeplant ist — vor allem anderen. */
+    if (darf(sitz, "pattern.edit") || darf(sitz, "org.edit")) {
+      const sk = [...offeneSchutzkonflikte(m).values()].sort((a, b) => (a.datum < b.datum ? -1 : 1));
+      if (sk.length)
+        l.unshift({ id: "schutzkonflikt", zahl: sk.length, einheit: sk.length === 1 ? "Einteilung" : "Einteilungen",
+          titel: "Widersprechen einer Schutz- oder Einsatzregel",
+          text: `${sk.slice(0, 3).map((x) => `${x.person.nachname} · ${fKurz(x.datum)}`).join(" · ")} — bitte umplanen.`,
+          ton: "danger", weg: () => oeffneTag(sk[0].datum), knopf: "Umplanen" });
+    }
     const rang = { danger: 0, warn: 1, accent: 2 };
     return l.sort((a, b) => rang[a.ton] - rang[b.ton]).slice(0, 3);
   }, [m, p.id, sitz]);

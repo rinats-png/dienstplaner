@@ -20,7 +20,7 @@ import { ABGELEITETE_PERSONENFELDER } from "./planungsregeln.mjs";
 import { mitteilungenVorfiltern, mitteilungenErzeugen, NOTRUF_ARTEN as NOTRUF_NAMEN, TITEL_MAX,
   TEXT_MAX as MITTEILUNG_TEXT_MAX } from "./mitteilungen.mjs";
 import { ABWEICHUNG_GRUENDE, bestaetigungMitteilungen, BEFUND_KATALOG, sperrtBefund,
-  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen } from "./bestaetigungen.mjs";
+  BESTAETIGUNGEN_JE_SPEICHERN, BESTAETIGUNGEN_GESAMT, BESTAETIGUNGEN_JE_TAG, schutzKonfliktMitteilungen, schutzEntferntMitteilungen } from "./bestaetigungen.mjs";
 import { nichtUebernommenNormal } from "./selbstplanung.mjs";
 import { fachpruefungUebermittlung, sperrendeBefunde, letzteLaufzeit } from "./schutzdurchsetzung.mjs";
 import { EINWILLIGUNG_ARTEN } from "./schutzpruefung.mjs";
@@ -1102,6 +1102,8 @@ function zusammenfuehrenKern(gespeichert, uebermitteltRoh, sitzung, optionen = {
       const einw = einwilligungenZusammen(ort.betrieb, geschickt, sitzung);
       if (einw.grund) return { verweigert: einw.grund };
       geschickt = einw.mandant;
+      /* Empfehlung 948a4ba: Schutzangaben entfernt — die Leitung erfährt es ohne Inhalt. */
+      geschickt = schutzEntferntMitteilungen(ort.betrieb, geschickt, sitzung.person);
       /* Dienstbuch und Übergaben (Commit C2): einheitId nur bekannt oder null. */
       const bezug = einheitsbezugVoll(ort.betrieb, geschickt, sitzung);
       if (bezug.grund) return { verweigert: bezug.grund };
