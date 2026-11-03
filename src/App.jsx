@@ -234,6 +234,7 @@ import {
 /* WP-23: ob der Betrieb die Planfreigabe benutzt und welcher Tag ein Entwurf ist — dieselbe
    Entscheidung wie auf dem Server (server/lib/sicht.mjs). */
 import { istEntwurfstag, planFreigabeAktiv, planFreigabePflicht } from "../server/lib/planfreigabe.mjs";
+import { kontiKennzahlen } from "../server/lib/modul-kontimodelle.mjs";
 /* WP-32: Zwei-Faktor für Verwalterschlüssel — eigenes Modul, hier nur eingehängt. */
 import BetreiberZweifaktor from "./betreiber-2fa.jsx";
 /* WP-25: Sicherungen in der Oberfläche — Regeln und Texte ohne React. */
@@ -1398,54 +1399,12 @@ const MODELLE = [
 
 const modellFuerBranche = (b) => MODELLE.filter((m) => m.branchen.includes(b));
 
-/** Rechnet ein Modell durch — dieselbe Prüfung wie im laufenden Betrieb. */
+/** Rechnet ein Modell durch. Eine Rechnung: die Kennzahlen kommen aus kontiKennzahlen
+    (server/lib/modul-kontimodelle.mjs, WP-19.12); hier nur die Namen, die die Oberfläche kennt. */
 function modellPruefen(modell) {
-  const len = modell.tage.length;
-  const dv = modell.dienste.map((d) => DIENST_VORLAGEN[d]);
-  const nach = (k) => {
-    const v = DIENST_VORLAGEN[k]; if (!v) return 0;
-    const s = toMin(v.start); let e = toMin(v.ende); if (e <= s) e += 1440;
-    let sum = 0; for (const [a, b] of [[0, 360], [1380, 1800]]) sum += Math.max(0, Math.min(e, b) - Math.max(s, a));
-    return sum / 60;
-  };
-  const dau = (k) => { const v = DIENST_VORLAGEN[k]; if (!v) return 0;
-    let d = toMin(v.ende) - toMin(v.start); if (d <= 0) d += 1440; return d / 60; };
-
-  const luecken = {}; for (const d of modell.dienste) luecken[d] = 0;
-  const proTag = [];
-  for (let i = 0; i < len; i++) {
-    const z = {};
-    for (let g = 0; g < modell.gruppen; g++) {
-      const idx = (((i - g * modell.versatzTage) % len) + len) % len;
-      const t = modell.tage[idx]; if (t && t !== "-") z[t] = (z[t] || 0) + 1;
-    }
-    proTag.push(z);
-    if (!modell.vollkonti && i % 7 >= 5) continue;   // Wochenende ist hier Absicht
-    for (const d of modell.dienste) if (!z[d]) luecken[d]++;
-  }
-  let std = 0, dienste = 0;
-  for (const t of modell.tage) if (t && t !== "-") { std += dau(t); dienste++; }
-  let maxSerie = 0, serie = 0, maxNacht = 0, nserie = 0, ruhe = 0, einzel = 0;
-  for (let i = 0; i < len; i++) {
-    const c = modell.tage[i], nx = modell.tage[(i + 1) % len], pv = modell.tage[(i - 1 + len) % len];
-    if (c && c !== "-") {
-      serie++; maxSerie = Math.max(maxSerie, serie);
-      if (nach(c) >= 2) { nserie++; maxNacht = Math.max(maxNacht, nserie); } else nserie = 0;
-      if ((!pv || pv === "-") && (!nx || nx === "-")) einzel++;
-      if (nx && nx !== "-" && DIENST_VORLAGEN[c] && DIENST_VORLAGEN[nx]) {
-        let e = toMin(DIENST_VORLAGEN[c].ende); if (e <= toMin(DIENST_VORLAGEN[c].start)) e += 1440;
-        if ((1440 + toMin(DIENST_VORLAGEN[nx].start) - e) / 60 < 11) ruhe++;
-      }
-    } else { serie = 0; nserie = 0; }
-  }
-  const mind = {};
-  for (const d of modell.dienste) {
-    const werte = proTag.map((z, i) => (!modell.vollkonti && i % 7 >= 5) ? null : (z[d] || 0)).filter((x) => x !== null);
-    mind[d] = werte.length ? Math.min(...werte) : 0;
-  }
-  return { len, wochenstunden: Math.round(std / (len / 7) * 100) / 100, dienste,
-    luecken: Object.values(luecken).reduce((a, b) => a + b, 0),
-    maxSerie, maxNacht, ruhe, einzel, mind, proTag };
+  const k = kontiKennzahlen(modell, DIENST_VORLAGEN);
+  return { len: k.zyklus, wochenstunden: k.wochenstunden, dienste: k.dienste, luecken: k.luecken, maxSerie: k.maxSerie,
+    maxNacht: k.maxNacht, ruhe: k.ruheUnter11, einzel: k.einzel, mind: k.mindestJeDienst, proTag: k.proTag };
 }
 
 /* ==========================================================================
@@ -25356,4 +25315,5 @@ function abmeldenMitHinweis() {
    echten Daten rendert statt den Quelltext zu durchsuchen. */
 export { verknuepfungFuer, KorrekturKarte, KorrekturAntraege, KorrekturOffene, ZeitFormular, korrekturMeldung, Einstellungen, hindernisBefunde, hindernisse, schutzSperre, MeineSchichten, Personalakte, MHeute, Tagesstart, Prioritaeten, leererMandant, zugangsPerson, urlaubshinweiseAnlegen,
   istStunden, stundenkonto, zuschlagStunden, zuschlagWert, datevSaetze, datevCSV, lohnausgabeText, Abrechnungsdaten, StempelBefunde, UngeplantHinweis,
-  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis };
+  PlanFreigabeSchalter, tagesaufgaben, personTag, Einsatzorte, Standorte, GeoSchalter, OfflineSchalter, abmeldenMitHinweis,
+  modellPruefen, MODELLE };

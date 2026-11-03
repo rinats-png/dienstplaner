@@ -393,6 +393,13 @@ Geprüft in `pruefungen/branchenmodule.test.js`.
   übernimmt, schreibt die Oberfläche in die bestehenden Felder `zyklus`, `anker`, `einheiten` (wie bisher
   `pattern.edit`). Parameter `sollWochenstunden`, `stundenJeFreischicht` in `einstellungen.branchenmodule`.
   Geprüft in `pruefungen/modul-kontimodelle.test.js`.
+  *WP-19.12:* Sollzeit, Freischichtdauer und die beiden Serien-Richtwerte sind Regelwerte des Betriebs unter
+  `einstellungen.regelwerte` (`KONTI-ARBEITSZEIT-01`, `KONTI-FREISCHICHT-01`, `KONTI-RICHTWERT-SERIE-01`,
+  `KONTI-RICHTWERT-NACHT-01`; `server/lib/modul-regelwerte.mjs`): Wert, Quelle, Fundstelle, Version, Gültigkeit,
+  Prüfstatus; schreiben nur mit `org.edit` (für andere bleibt der Stand), Formfehler 422, Wer und Wann setzt der Server;
+  Lesen wie die übrigen Einstellungen (keine Personendaten). Die Vorgaben 40 und 8 der Modul-Registry wirken nicht:
+  ohne eingetragene Werte gibt es weder Abgleich noch Freischicht-Vorschlag. Keine neuen Personendaten, keine neuen
+  Betriebsfelder. Geprüft in `pruefungen/modul-kontimodelle-fertig.test.js`, `modul-kontimodelle-http.test.js`.
 - *Anlagen* (`server/lib/modul-anlagen.mjs`): keine neuen Betriebsfelder. Eine Anlage ist ein Eintrag in
   `betriebsmittel` mit `art: "anlage"` und den Feldern `mindestBesetzung`, `laufzeit`, `grundlage` (Art, Bezug, Datum; WP-19.10);
   Lesen und Schreiben wie Betriebsmittel (Positivkatalog `betriebsmittel` in `server/lib/sicht.mjs`: Beschäftigte und

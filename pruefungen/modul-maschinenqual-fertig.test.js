@@ -281,6 +281,12 @@ describe("AK-5 Betriebsprotokoll und Anonymisierung", () => {
     const alt = bestand({ kompetenzen: [{ id: "k5", name: "Tor", art: "taetigkeit", betriebsmittelId: null }] });
     const neu = bestand({ kompetenzen: [{ id: "k5", name: "Tor 2", art: "taetigkeit", betriebsmittelId: null }] });
     expect(industrieProtokoll(alt, neu)).toEqual([]);
+    /* Eine Geräteeinweisung zu einem Betriebsmittel, das keine Anlage ist (Schlüssel, Fahrzeug), gehört nicht zum Modul. */
+    const g1 = bestand({ betriebsmittel: [PRESSE, { id: "s1", art: "schluessel", name: "Tor", personId: null }],
+      kompetenzen: [{ id: "k6", name: "Schlüssel", art: "geraet", betriebsmittelId: "s1", wiederholungMonate: 12 }] });
+    const g2 = bestand({ betriebsmittel: g1.mandanten[0].betriebsmittel,
+      kompetenzen: [{ id: "k6", name: "Schlüssel", art: "geraet", betriebsmittelId: "s1", wiederholungMonate: 24 }] });
+    expect(industrieProtokoll(g1, g2)).toEqual([]);
   });
   it("Anonymisierung entfernt die Qualifikationsgrundlage, lässt aber Kompetenz und Zeitraum stehen", () => {
     const a = anonymisiere(person("p77", [{ kompetenzId: "k9", ab: "2026-01-01", bis: "2029-01-01", qualifikationsgrundlage: GRUND }]));
