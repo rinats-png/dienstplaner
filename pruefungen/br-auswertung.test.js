@@ -11,6 +11,8 @@
    Aufruf: npx vitest run pruefungen/br-auswertung.test.js
    ========================================================================== */
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { bestandFuerRolle, zusammenfuehren } from "../server/lib/rechte.mjs";
 import { betriebsratAuswertung, BR_MINDESTGRUPPE } from "../server/lib/br-auswertung.mjs";
 import { heuteBerlin, tagePlus } from "../server/lib/zeiterfassung.mjs";
@@ -71,5 +73,22 @@ describe("nur der Betriebsrat, nie gespeichert", () => {
     const e = zusammenfuehren(g, s, SITZ.PL);
     expect(e.verweigert).toBeFalsy();
     expect(e.mandanten[0].auswertungBetriebsrat).toBeUndefined();
+  });
+});
+
+describe("Oberfläche: Auswertung für den Betriebsrat, falsche Ansichten gesperrt (Quelltext)", () => {
+  const app = readFileSync(path.join(process.cwd(), "src/App.jsx"), "utf8");
+  it("audit.view öffnet die Auswertung, export.data den CSV-Export — nur Aggregate", () => {
+    expect(app).toContain('["brauswertung", "Auswertung (Betriebsrat)", "BR:audit.view"]');
+    expect(app).toMatch(/darf\(sitz, "export\.data"\) && <Btn onClick=\{csv\}>/);
+  });
+  it("Leistungsnachweis (ohne Übergaben falsch) und leere Ansichten sind für den Betriebsrat gesperrt", () => {
+    for (const v of ['["nachweis", "Leistungsnachweis", "OHNE_BR:', '["sonder", "Sondereinsätze", "OHNE_BR:', '["mittel", "Betriebsmittel", "OHNE_BR:', '["lenkzeiten", "Lenkzeiten", "OHNE_BR:'])
+      expect(app, v).toContain(v);
+  });
+  it("Ausgleichszeitraum ohne Ist-Daten: „nicht bewertbar“ statt „eingehalten“; Urlaub ohne Konto kein NaN; Abwesenheit „abwesend“", () => {
+    expect(app).toContain('ohneIstAusgleich ? "nicht bewertbar"');
+    expect(app).toContain('typeof p.urlaubsanspruch === "number"');
+    expect(app).toContain('id === "abwesend" ? ABW_NEUTRAL');
   });
 });

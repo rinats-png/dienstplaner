@@ -98,6 +98,10 @@ jobs:
       - name: Fachprüfungen Server
         run: npm run pruefung:fachpruefung
 
+      # Auswertung für den Betriebsrat: nur Aggregate, Mindestgruppe 3 (WP-27).
+      - name: Betriebsrat-Auswertung
+        run: npm run pruefung:br-auswertung
+
       # Kontrast nach WCAG 2.1: Ein Farbwert, der in beiden Paletten gut
       # aussieht, kann trotzdem unter 4,5:1 liegen. Die Messung fand fünf
       # Paarungen, darunter weiße Schrift auf Türkis mit 2,23:1.
