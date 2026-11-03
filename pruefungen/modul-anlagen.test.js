@@ -129,6 +129,16 @@ describe("Schreibweg (Server)", () => {
   });
 });
 
+describe("Review-Auflage 2: Altbestand blockiert nicht", () => {
+  it("ein unveränderter fehlerhafter Eintrag wird toleriert, ein geänderter oder neuer streng geprüft", () => {
+    const alt = { betriebsmittel: [{ ...PRESSE, mindestBesetzung: { F: -1 } }] };
+    expect(anlagenZusammen(alt, alt).grund).toBeUndefined();
+    expect(anlagenZusammen({ betriebsmittel: [{ ...PRESSE, mindestBesetzung: { F: -2 } }] }, alt).grund).toMatch(/Presse 1/);
+    expect(anlagenZusammen({ betriebsmittel: [...alt.betriebsmittel, { ...PRESSE, id: "bm7", laufzeit: { wochentage: "x" } }] }, alt).grund).toMatch(/Anlage/);
+    expect(anlagenZusammen({ betriebsmittel: [PRESSE] }, alt).grund).toBeUndefined();
+  });
+});
+
 describe("Oberfläche", () => {
   it("zeigt je Anlage Laufzeit und Bedarf, Unbekanntes als nicht bewertbar", () => {
     const html = renderToStaticMarkup(h(AnlagenUebersicht, { m: betrieb(), datum: MO }));

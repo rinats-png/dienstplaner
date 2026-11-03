@@ -348,8 +348,27 @@ export async function sicherung() {
   return daten;
 }
 export async function sicherungen() {
-  const { daten } = await ruf("sicherungen");
+  const { status, daten } = await ruf("sicherungen");
+  /* Eine Absage ist keine leere Liste (WP-25). */
+  if (status !== 200) throw new Error(daten?.text || daten?.fehler || "Die Sicherungen ließen sich nicht laden.");
   return daten?.sicherungen || [];
+}
+
+/**
+ * Den eigenen Betrieb aus einer Sicherung zurückspielen (WP-25). Vorher wird
+ * Ausstehendes geschrieben — der Server spielt nur auf den Stand zurück, den
+ * diese Sitzung zuletzt gesehen hat (ETag). Gibt { status, daten } zurück,
+ * auch bei einer Absage; die Deutung steht in sicherungen-ui.js.
+ */
+export async function wiederherstellen(marke) {
+  try { await schreibenAbschliessen(); } catch { /* der Server prüft den Stand ohnehin */ }
+  if (schreibenAusstehend())
+    return { status: 0, daten: { fehler: "Es wird noch gespeichert. Bitte kurz warten und erneut versuchen." } };
+  if (gescheitert)
+    return { status: 0, daten: { fehler: "Eine Änderung ist noch nicht gespeichert. Erst speichern oder verwerfen, dann zurückspielen." } };
+  const { status, daten } = await ruf("wiederherstellen", { method: "POST", body: JSON.stringify({ marke, etag }) });
+  if (status === 200 && daten && daten.etag !== undefined) etag = daten.etag;
+  return { status, daten };
 }
 
 /* ==========================================================================
