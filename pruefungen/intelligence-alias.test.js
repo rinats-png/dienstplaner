@@ -20,6 +20,9 @@ const karte = (o = {}) => new AliasKarte({ schluessel: TESTSCHLUESSEL, raum: "ra
   kontext: "auftrag-1", ...o });
 const IDS = Array.from({ length: 300 }, (_, i) => `p${i}`);
 const LEITUNG = { rolle: "leitung", person: "l1", bestand: "raum-a", betrieb: 0 };
+/* Der aktuelle Bestand der Sitzung: Index 0 ist Betrieb „m1“ (Rückübersetzung prüft die Betriebskennung). */
+const BESTAND = { mandanten: [{ id: "m1" }] };
+const MAC = Buffer.from("9a4c1e7b2d0f58a3c6e9b1d4f7a0c3e5b8d1f4a7c0e3b6d9f2a5c8e1b4d7f0a3", "hex");
 
 describe("Alias-Vergabe", () => {
   it("Form: Präfix je Typ und acht Konsonanten; keine Ziffer, kein Vokal", () => {
@@ -98,15 +101,16 @@ describe("Die Alias-Karte bleibt im Server", () => {
     expect(Object.keys(k)).toEqual([]);
     expect(inspect(k, { showHidden: true, depth: 5 })).not.toContain("geheime-kennung-123");
   });
-  it("ausdrückliche Ablage für den Lauf-Store: Rundweg ohne Schlüssel, danach keine neue Vergabe", () => {
+  it("ausdrückliche Ablage für den Lauf-Store: Rundweg ohne Alias-Schlüssel (mit MAC), danach keine neue Vergabe", () => {
     const k = karte(); const a = k.alias("person", "p7"); const e = k.alias("einheit", "e2");
-    const d = k.fuerServerSpeicher();
+    const d = k.fuerServerSpeicher(MAC);
     expect(JSON.stringify(d)).not.toContain(TESTSCHLUESSEL.toString("hex"));
-    const z = AliasKarte.ausServerSpeicher(JSON.parse(JSON.stringify(d)));
-    expect(rueckuebersetzen({ ergebnis: `{{person:${a}}} in {{einheit:${e}}}`, karte: z, sitzung: LEITUNG, funktion: "F3" }))
+    expect(JSON.stringify(d)).not.toContain(MAC.toString("hex"));
+    const z = AliasKarte.ausServerSpeicher(JSON.parse(JSON.stringify(d)), MAC);
+    expect(rueckuebersetzen({ ergebnis: `{{person:${a}}} in {{einheit:${e}}}`, karte: z, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND }))
       .toBe("{{person:p7}} in {{einheit:e2}}");
     expect(() => z.alias("person", "p8")).toThrow();
-    expect(() => AliasKarte.ausServerSpeicher({ ...d, eintraege: [["P_BCDFGHJK", "einheit", "x"]] })).toThrow();
+    expect(() => AliasKarte.ausServerSpeicher({ ...d, eintraege: [["P_BCDFGHJK", "einheit", "x"]] }, MAC)).toThrow();
   });
 });
 
@@ -120,52 +124,52 @@ describe("Rückübersetzung", () => {
     const ergebnis = { bausteine: [{ id: "ersatz.weg", parameter: [{ name: "von", wert: `{{person:${a1}}}` },
       { name: "an", wert: a2 }, { name: "stunden", wert: 4.5 }, { name: "beginn", wert: "08:00" }, { name: "tag", wert: "2026-11-05" }] }],
     text: `Tausch ${a1} ↔ {{person:${a2}}} in {{einheit:${e1}}} am 2026-11-05, 11 h Ruhezeit.` };
-    const r = rueckuebersetzen({ ergebnis, karte: k, sitzung: LEITUNG, funktion: "F3" });
+    const r = rueckuebersetzen({ ergebnis, karte: k, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND });
     expect(r.bausteine[0].parameter).toEqual([{ name: "von", wert: "{{person:p1}}" }, { name: "an", wert: "{{person:p2}}" },
       { name: "stunden", wert: 4.5 }, { name: "beginn", wert: "08:00" }, { name: "tag", wert: "2026-11-05" }]);
     expect(r.text).toBe("Tausch {{person:p1}} ↔ {{person:p2}} in {{einheit:e1}} am 2026-11-05, 11 h Ruhezeit.");
-    expect(rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: { ...LEITUNG, rolle: "planer" }, funktion: "F3" }))
+    expect(rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: { ...LEITUNG, rolle: "planer" }, funktion: "F3", bestand: BESTAND }))
       .toBe("{{person:p1}}");
   });
   it("unberechtigte Rolle → KI_ROLLE (Beschäftigte, Betriebsrat, Schichtverantwortung, Betreiber, unbekannt)", () => {
     const { k, a1 } = vorbereitet();
     for (const rolle of ["mitarbeiter", "betriebsrat", "subplaner", "betreiber", "kunde", "admin", undefined]) {
       let code = null;
-      try { rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: { ...LEITUNG, rolle }, funktion: "F3" }); }
+      try { rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: { ...LEITUNG, rolle }, funktion: "F3", bestand: BESTAND }); }
       catch (e) { code = e.code; }
       expect(code, String(rolle)).toBe("KI_ROLLE");
     }
   });
   it("Rolle darf die Funktion nicht → KI_ROLLE (Planung bei F4 Leitungsbriefing)", () => {
     const { k } = vorbereitet();
-    expect(() => rueckuebersetzen({ ergebnis: "x", karte: k, sitzung: { ...LEITUNG, rolle: "planer" }, funktion: "F4" }))
+    expect(() => rueckuebersetzen({ ergebnis: "x", karte: k, sitzung: { ...LEITUNG, rolle: "planer" }, funktion: "F4", bestand: BESTAND }))
       .toThrow(expect.objectContaining({ code: "KI_ROLLE" }));
   });
   it("anderer Raum oder Betrieb der Sitzung → KI_NICHT_GEFUNDEN", () => {
     const { k, a1 } = vorbereitet();
     for (const s of [{ ...LEITUNG, bestand: "raum-b" }, { ...LEITUNG, betrieb: 1 }]) {
-      expect(() => rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: s, funktion: "F3" }))
+      expect(() => rueckuebersetzen({ ergebnis: `{{person:${a1}}}`, karte: k, sitzung: s, funktion: "F3", bestand: BESTAND }))
         .toThrow(expect.objectContaining({ code: "KI_NICHT_GEFUNDEN" }));
     }
   });
   it("erfundener oder falsch getypter Alias → KI_ALIAS_UNBEKANNT (nichts halb übersetzt)", () => {
     const { k, a1, e1 } = vorbereitet();
-    expect(() => rueckuebersetzen({ ergebnis: "{{person:P_ZZZZZZZZ}}", karte: k, sitzung: LEITUNG, funktion: "F3" }))
+    expect(() => rueckuebersetzen({ ergebnis: "{{person:P_ZZZZZZZZ}}", karte: k, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND }))
       .toThrow(expect.objectContaining({ code: "KI_ALIAS_UNBEKANNT" }));
-    expect(() => rueckuebersetzen({ ergebnis: `{{einheit:${a1}}}`, karte: k, sitzung: LEITUNG, funktion: "F3" }))
+    expect(() => rueckuebersetzen({ ergebnis: `{{einheit:${a1}}}`, karte: k, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND }))
       .toThrow(expect.objectContaining({ code: "KI_ALIAS_UNBEKANNT" }));
-    expect(() => rueckuebersetzen({ ergebnis: [`${e1}`, "P_QQQQQQQQ"], karte: k, sitzung: LEITUNG, funktion: "F3" }))
+    expect(() => rueckuebersetzen({ ergebnis: [`${e1}`, "P_QQQQQQQQ"], karte: k, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND }))
       .toThrow(expect.objectContaining({ code: "KI_ALIAS_UNBEKANNT" }));
   });
   it("Funktion ohne Personenbezug: Personen-Alias in der Antwort → KI_PRUEFER", () => {
     const { k, a1 } = vorbereitet();
-    expect(() => rueckuebersetzen({ ergebnis: `${a1}`, karte: k, sitzung: LEITUNG, funktion: "F4" }))
+    expect(() => rueckuebersetzen({ ergebnis: `${a1}`, karte: k, sitzung: LEITUNG, funktion: "F4", bestand: BESTAND }))
       .toThrow(expect.objectContaining({ code: "KI_PRUEFER" }));
   });
   it("ohne Karte keine Rückübersetzung; das Ergebnis enthält nie einen Namen (die Karte kennt keine)", () => {
-    expect(() => rueckuebersetzen({ ergebnis: "x", karte: /** @type {any} */ ({}), sitzung: LEITUNG, funktion: "F3" })).toThrow();
+    expect(() => rueckuebersetzen({ ergebnis: "x", karte: /** @type {any} */ ({}), sitzung: LEITUNG, funktion: "F3", bestand: BESTAND })).toThrow();
     const { k, a1 } = vorbereitet();
-    const r = rueckuebersetzen({ ergebnis: { text: a1 }, karte: k, sitzung: LEITUNG, funktion: "F3" });
+    const r = rueckuebersetzen({ ergebnis: { text: a1 }, karte: k, sitzung: LEITUNG, funktion: "F3", bestand: BESTAND });
     expect(r).toEqual({ text: "{{person:p1}}" });
   });
 });

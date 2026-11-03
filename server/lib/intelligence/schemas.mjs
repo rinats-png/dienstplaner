@@ -53,12 +53,19 @@ export const FUNKTIONEN_IDS = Object.freeze(["F1", "F2", "F3", "F4", "F5", "F6",
 export const ALIAS_ALPHABET = "BCDFGHJKLMNPQRSTVWXZ";
 export const ALIAS_MUSTER_TEXT = "^[PEO]_[BCDFGHJKLMNPQRSTVWXZ]{8}$";
 export const ALIAS_MUSTER = new RegExp(ALIAS_MUSTER_TEXT);
+/** Dienst-Alias (Review F5): Dienstart-Kennungen gehen nie roh ins Paket —
+    „K", „KK" oder „BV" verrieten sonst Krankheit oder Beschäftigungsverbot.
+    Sie stehen als `D_` + acht Konsonanten in `ref` und in Kennungswerten. */
+export const DIENST_ALIAS_MUSTER_TEXT = "^D_[BCDFGHJKLMNPQRSTVWXZ]{8}$";
+export const DIENST_ALIAS_MUSTER = new RegExp(DIENST_ALIAS_MUSTER_TEXT);
 
 export const DATUM_MUSTER_TEXT = "^\\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])$";
 export const ZEIT_MUSTER_TEXT = "^(([01]\\d|2[0-3]):[0-5]\\d|24:00)$";
-/** Kennungen (Dienstart, Qualifikation, Regel, Kennzahl): Buchstaben (auch
-    Umlaute), Ziffern und . _ : + - — keine Leerzeichen, kein Satz. */
-export const KENNUNG_MUSTER_TEXT = "^[\\p{L}\\p{N}_.:+-]{1,64}$";
+/** Kennungen (Dienstart, Qualifikation, Regel, Kennzahl): Buchstaben aus
+    Latin und Latin-1 (auch Umlaute, ß, Akzente), Ziffern und . _ : + - —
+    keine Leerzeichen, kein Satz, keine fremde Schrift (Review F2: kyrillische
+    oder griechische Doppelgänger wären für die Sperrliste unsichtbar). */
+export const KENNUNG_MUSTER_TEXT = "^[A-Za-z0-9\\u00C0-\\u00D6\\u00D8-\\u00F6\\u00F8-\\u00FF_.:+-]{1,64}$";
 const KENNUNG_MUSTER = new RegExp(KENNUNG_MUSTER_TEXT, "u");
 const FAKT_ID_MUSTER_TEXT = "^[a-z0-9_.:-]{1,64}$";
 const VERSION_MUSTER_TEXT = "^[A-Za-z0-9_.:+-]{1,40}$";
@@ -329,6 +336,8 @@ export function strukturPruefen(wert, grenzen = STRUKTUR_GRENZEN) {
 const BEKANNTE_WOERTER = new Set(["$schema", "$id", "title", "description", "type", "const", "enum", "required",
   "properties", "additionalProperties", "items", "minItems", "maxItems", "minLength", "maxLength", "pattern",
   "minimum", "maximum", "format"]);
+/** Die Schlüsselwörter, die der Prüfer kennt (für den statischen Test). */
+export const SCHEMA_SCHLUESSELWOERTER = Object.freeze([...BEKANNTE_WOERTER]);
 const musterCache = new Map();
 const muster = (p) => {
   if (!musterCache.has(p)) musterCache.set(p, new RegExp(p, "u"));
@@ -383,6 +392,20 @@ function pruefe(schema, w, pfad, fehler) {
 }
 
 /**
+ * Prüft ein Schema als Ganzes — jeden Zweig, auch solche, die ein Wert nie
+ * erreicht (Review F10): ein unbekanntes Schlüsselwort oder ein Objekt ohne
+ * additionalProperties: false wirft. Läuft beim Laden für alle Verträge.
+ */
+export function schemaPruefen(schema, pfad = "$") {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) throw new Error(`Schema: ${pfad} ist kein Schema`);
+  for (const k of Object.keys(schema)) if (!BEKANNTE_WOERTER.has(k)) throw new Error(`Schema: unbekanntes Schlüsselwort ${k}`);
+  if (schema.properties && schema.additionalProperties !== false) throw new Error(`Schema: ${pfad} ohne additionalProperties: false`);
+  for (const [k, v] of Object.entries(schema.properties || {})) schemaPruefen(v, `${pfad}.${k}`);
+  if (schema.items !== undefined) schemaPruefen(schema.items, `${pfad}[]`);
+  if (schema.pattern !== undefined) muster(schema.pattern);
+}
+
+/**
  * Struktur- und Schemaprüfung. Liefert nie den geprüften Wert in den Fehlern.
  * @returns {{ ok: boolean, fehler: string[] }}
  */
@@ -429,6 +452,7 @@ export function pruefeFaktenpaket(paket) {
 /** Die Schemata sind unveränderlich — niemand lockert sie zur Laufzeit. */
 export const SCHEMATA = deepFreeze({ faktenpaket: FAKTENPAKET_SCHEMA, eingabe: EINGABE_SCHEMA, anfrage: ANFRAGE_SCHEMA,
   antwort: ANTWORT_SCHEMA, pruefergebnis: PRUEFERGEBNIS_SCHEMA });
+for (const s of Object.values(SCHEMATA)) schemaPruefen(s);
 
 export const pruefeAnfrage = (a) => validieren(ANFRAGE_SCHEMA, a);
 export const pruefeEingabe = (e) => validieren(EINGABE_SCHEMA, e);

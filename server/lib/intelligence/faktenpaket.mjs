@@ -19,7 +19,11 @@
       Art des Werts, Person/Einheit in der Sicht, Schutzbefunde neutral).
       Freitextfelder (Notizen, Gründe, Anmerkungen, Texte) liest der
       Bildner nirgends.
-   6. Alias statt Kennung (alias.mjs). Die Alias-Karte bleibt im Server.
+   6. Alias statt Kennung (alias.mjs) — für Personen, Einheiten und
+      Dienstarten (opak, Review F5). Bei externem Modell (Vorgabe) hängt
+      kein Schutzbefund an einer Person. Ein Bezug ist nur Verweis auf
+      etwas in der Sicht (Dienstart, Person, Einheit), nie Freitext (F1).
+      Die Alias-Karte bleibt im Server.
    7. Schema (schemas.mjs) und Leck-Prüfung (leckpruefung.mjs) mit der
       Sperrliste aus dem ROHEN Betrieb. Verdacht → Paket verworfen,
       Audit-Ereignis ohne Inhalt, Fehler KI_LECK. Fail closed.
@@ -31,10 +35,10 @@ import { bestandFuerRolle } from "../rechte.mjs";
 import { zugehoerigkeitsAbschnitte } from "../sicht.mjs";
 import { BEFUND_KATALOG } from "../bestaetigungen.mjs";
 import { FELDER, deepFreeze } from "./felder.mjs";
-import { funktionEintrag, rolleDarf, feldErlaubt, POSITIVLISTE_VERSION } from "./positivliste.mjs";
+import { funktionEintrag, rolleDarf, feldErlaubt, POSITIVLISTE_VERSION, FREISCHALTUNG_GESPERRT } from "./positivliste.mjs";
 import { SCHEMA_VERSION, pruefeEingabe, pruefeFaktenpaket, wertPasstZurArt, istDatum, KENNUNG_MUSTER_TEXT,
   ZEIT_MUSTER_TEXT } from "./schemas.mjs";
-import { AliasKarte } from "./alias.mjs";
+import { AliasKarte, betriebIndexAusSitzung } from "./alias.mjs";
 import { sperrlisteBilden, leckPruefen } from "./leckpruefung.mjs";
 import { fremdtextBloecke } from "./kapsel.mjs";
 import { KiFehler } from "./fehler.mjs";
@@ -80,14 +84,9 @@ function sitzungPruefen(s) {
     throw new KiFehler("KI_NICHT_ANGEMELDET", "Keine gültige Sitzung.");
 }
 
-/** Index des Betriebs aus der Sitzung — ohne Rückfall auf einen anderen. */
-function betriebIndex(sitzung, bestand) {
-  const n = istObj(bestand) ? liste(bestand.mandanten).length : 0;
-  if (!n) return null;
-  if (sitzung.betrieb === undefined || sitzung.betrieb === null) return n === 1 ? 0 : null;
-  const i = Number(sitzung.betrieb);
-  return Number.isInteger(i) && i >= 0 && i < n ? i : null;
-}
+/* Der Index des Betriebs kommt aus der Sitzung — ohne Rückfall auf einen
+   anderen (betriebIndexAusSitzung in alias.mjs; dieselbe Regel gilt für die
+   Rückübersetzung). */
 
 /* ------------------------------------------------------------------------
    FAKTEN AUS DER SICHT
@@ -217,6 +216,11 @@ export function faktenAusSicht(eintrag, sicht, zr) {
    BERECHNETE FAKTEN (Faktenquelle, WP-I12) — einzeln geprüft
    ------------------------------------------------------------------------ */
 const BERECHNET_SCHLUESSEL = new Set(["feld", "person", "einheit", "ref", "wert", "datum", "bis", "regel"]);
+/* Felder, deren `ref` eine Dienstart ist, und Felder, deren Wert eine
+   Dienstart ist (Review F5: Dienst-Kennungen gehen nur als Alias hinein). */
+const REF_IST_DIENST = new Set(["dienstart.beginn", "dienstart.ende", "dienstart.dauer", "besetzung.ist", "besetzung.soll",
+  "aenderung.art"]);
+const WERT_IST_DIENST = new Set(["schicht.dienst", "zyklus.tag"]);
 const STUFEN = ["hinweis", "achtung", "recht"];
 const AENDERUNGEN = ["neu", "geaendert", "entfernt"];
 
@@ -253,7 +257,12 @@ function berechnetPruefen(x, eintrag, umfang, zr) {
   f.wert = wert;
   if (x.ref !== undefined) {
     if (!((typeof x.ref === "string" || typeof x.ref === "number") && KENNUNG.test(String(x.ref)))) return null;
-    f.ref = befundNeutral(x.ref);
+    /* Ein Dienst-Bezug muss eine Dienstart der Sicht sein — sonst wäre er
+       eine Kennung ohne Alias (Review F5). */
+    if (REF_IST_DIENST.has(feld)) {
+      if (!umfang.dienste.has(String(x.ref))) return null;
+      f.ref = String(x.ref);
+    } else f.ref = befundNeutral(x.ref);
   }
   if (x.datum !== undefined) {
     if (!istDatum(x.datum) || (zr && (x.datum < zr.von || x.datum > zr.bis))) return null;
@@ -310,12 +319,15 @@ const BEZUG_SCHLUESSEL = ["datum", "personId", "schichtId", "einheitId"];
  *   versionen: { engine: string, regelstand: string, tarifstand: string },
  *   faktenquelle?: (a: { funktion: string, sicht: any, zeitraum: any, eingabe: any }) => any[] | Promise<any[]>,
  *   audit?: (ereignis: Readonly<Record<string, any>>) => void,
+ *   modellOrt?: "extern" | "lokal",
  * }} o
+ *   modellOrt: wohin das Paket geht. Vorgabe „extern“ (fail closed): ein
+ *   Schutzbefund wird dann nicht an eine Person gekoppelt (Review F5).
  * @returns {Promise<{ paket: any, aliasKarte: AliasKarte }>}
  */
 export async function faktenpaketBilden(o) {
-  const { sitzung, ladeBestand, funktion, eingabe = {}, bezug, kontext, aliasSchluessel, versionen, faktenquelle, audit }
-    = o || /** @type {any} */ ({});
+  const { sitzung, ladeBestand, funktion, eingabe = {}, bezug, kontext, aliasSchluessel, versionen, faktenquelle, audit,
+    modellOrt } = o || /** @type {any} */ ({});
   const melden = (e) => { try { if (typeof audit === "function") audit(Object.freeze({ ...e })); } catch { /* Audit stört nie */ } };
 
   sitzungPruefen(sitzung);
@@ -327,17 +339,27 @@ export async function faktenpaketBilden(o) {
   if (!ev.ok) throw new KiFehler("KI_EINGABE", "Eingabe ungültig.");
   if (liste(eingabe.fremdtext).length && !eintrag.fremdtext)
     throw new KiFehler("KI_EINGABE", "Freitext ist für diese Funktion nicht zugelassen.");
+  /* F7A: Spaltenköpfe und Beispiele gehen erst mit serverseitiger
+     Maskierung vor der Leck-Prüfung (Review F7) — bis dahin gesperrt. */
+  if (liste(eingabe.fremdtext).length && hat(FREISCHALTUNG_GESPERRT, funktion))
+    throw new KiFehler("KI_FUNKTION", "Diese Funktion ist mit Fremdtext noch nicht freischaltbar.");
+  if (modellOrt !== undefined && modellOrt !== "extern" && modellOrt !== "lokal")
+    throw new KiFehler("KI_EINGABE", "Modellort ungültig.");
+  const extern = modellOrt !== "lokal";
   const zr = zeitraumPruefen(eintrag, eingabe);
   const vers = versionenPruefen(versionen);
   if (typeof kontext !== "string" || !KONTEXT.test(kontext)) throw new KiFehler("KI_EINGABE", "Kontext fehlt oder ist ungültig.");
   if (bezug !== undefined && (!istObj(bezug) || Object.keys(bezug).some((k) => !BEZUG_SCHLUESSEL.includes(k))))
     throw new KiFehler("KI_EINGABE", "Bezug ungültig.");
+  /* Eine Funktion ohne Betriebsdaten (F5, F9) hat keinen Bezug — sonst
+     wäre er ein Kanal am Fremdtext vorbei (Review F1). */
+  if (bezug !== undefined && !eintrag.felder.length) throw new KiFehler("KI_EINGABE", "Bezug ist für diese Funktion nicht zugelassen.");
   if (typeof ladeBestand !== "function") throw new KiFehler("KI_INTERN", "Kein Bestandszugriff.");
 
   /* Raum und Betrieb aus der Sitzung. */
   const raum = sitzung.bestand;
   const bestand = await ladeBestand(raum);
-  const idx = betriebIndex(sitzung, bestand);
+  const idx = betriebIndexAusSitzung(sitzung, bestand);
   if (idx === null) throw new KiFehler("KI_NICHT_GEFUNDEN", "Nicht gefunden.");
   const roh = bestand.mandanten[idx];
   if (!istObj(roh) || roh.id === undefined || roh.id === null) throw new KiFehler("KI_NICHT_GEFUNDEN", "Nicht gefunden.");
@@ -355,6 +377,7 @@ export async function faktenpaketBilden(o) {
       .concat(liste(sicht.personen).filter((p) => istObj(p) && p.id !== undefined && p.id !== null && imZeitraum(p, zr))
         .map((p) => String(p.id)))),
     einheiten: new Set(liste(sicht.einheiten).filter((e) => istObj(e) && e.id !== undefined).map((e) => String(e.id))),
+    dienste: new Set(liste(sicht.dienstarten).filter((d) => istObj(d) && d.id !== undefined && d.id !== null).map((d) => String(d.id))),
   };
   let verworfen = 0;
   const rohFakten = [...ausSicht];
@@ -369,25 +392,48 @@ export async function faktenpaketBilden(o) {
     }
   }
   /* Schnitt mit der Positivliste — noch einmal für jeden Fakt, gleich woher. */
-  const erlaubt = rohFakten.filter((f) => {
+  const geschnitten = rohFakten.filter((f) => {
     const ok = feldErlaubt(eintrag, f.feld) && (f.person === undefined || eintrag.personenbezug);
     if (!ok) verworfen++;
     return ok;
   });
+  /* Schutzbefund bei externem Modell nicht an eine Person koppeln (Review F5):
+     „schutz“ an Person und Tag verriete das Merkmal. Wo die Person optional
+     ist (befund.regel), fällt sie weg; wo sie Pflicht ist (kandidat.hinderung),
+     fällt der Fakt weg. Gezählt als „entkoppelt“. */
+  let entkoppelt = 0;
+  const istSchutz = (f) => f.wert === BEFUND_NEUTRAL || (istObj(f.regel) && f.regel.regelId === BEFUND_NEUTRAL);
+  const erlaubt = [];
+  for (const f of geschnitten) {
+    if (!extern || f.person === undefined || !istSchutz(f)) { erlaubt.push(f); continue; }
+    entkoppelt++;
+    if (FELDER[f.feld].subjekt === "person") continue;
+    const ohnePerson = { ...f };
+    delete ohnePerson.person;
+    erlaubt.push(ohnePerson);
+  }
   if (erlaubt.length > FAKTEN_MAX) throw new KiFehler("KI_EINGABE", "Zu viele Fakten — Zeitraum oder Umfang verkleinern.");
 
-  /* Alias. */
+  /* Alias — auch für Dienstarten (Review F5: paketweit opak; ein Kürzel wie
+     „K“ oder „BV“ verriete sonst Krankheit oder Beschäftigungsverbot). Jede
+     Kennung, die eine Dienstart der Sicht ist, wird Alias — außer dem
+     Tagesindex der Schichtfolge. */
   const karte = new AliasKarte({ schluessel: aliasSchluessel, raum, betriebId: String(roh.id), betriebIndex: idx, kontext });
+  const dienstAlias = (w) => karte.alias("dienst", String(w));
   const fakten = erlaubt.map((f) => {
     const def = FELDER[f.feld];
-    const a = { feld: f.feld, art: def.art, wert: f.wert };
+    let wert = f.wert;
+    if (WERT_IST_DIENST.has(f.feld) || (def.art === "kennung" && typeof wert === "string" && umfang.dienste.has(wert))) wert = dienstAlias(wert);
+    const a = { feld: f.feld, art: def.art, wert };
     if (def.einheit && def.art === "zahl") a.einheit = def.einheit;
     if (f.person !== undefined) a.alias = karte.alias("person", f.person);
     if (f.einheit !== undefined) {
       if (def.subjekt === "einheit") a.alias = karte.alias("einheit", f.einheit);
       else a.bezugAlias = karte.alias("einheit", f.einheit);
     }
-    if (f.ref !== undefined) a.ref = f.ref;
+    if (f.ref !== undefined) {
+      a.ref = REF_IST_DIENST.has(f.feld) || (f.feld !== "zyklus.tag" && umfang.dienste.has(String(f.ref))) ? dienstAlias(f.ref) : f.ref;
+    }
     if (f.datum !== undefined) a.datum = f.datum;
     if (f.bis !== undefined) a.bis = f.bis;
     if (f.regel !== undefined) a.regel = f.regel;
@@ -415,7 +461,10 @@ export async function faktenpaketBilden(o) {
     }
     if (bezug.schichtId !== undefined) {
       if (typeof bezug.schichtId !== "string" || !KENNUNG.test(bezug.schichtId)) throw new KiFehler("KI_EINGABE", "Bezug ungültig.");
-      paketBezug.ref = bezug.schichtId;
+      /* Nur eine Dienstart der Sicht, und nur als Alias (Review F1) — sonst
+         wäre die Kennung ein Freitext-Kanal an der Positivliste vorbei. */
+      if (!umfang.dienste.has(bezug.schichtId)) throw new KiFehler("KI_NICHT_GEFUNDEN", "Nicht gefunden.");
+      paketBezug.ref = dienstAlias(bezug.schichtId);
     }
   }
 
@@ -441,7 +490,7 @@ export async function faktenpaketBilden(o) {
   }
 
   melden({ art: "ki.faktenpaket.gebildet", funktion, rolle: sitzung.rolle, fakten: mitId.length, verworfen,
-    nichtDarstellbar, fremdtext: bloecke.length });
+    nichtDarstellbar, entkoppelt, fremdtext: bloecke.length });
   return { paket: deepFreeze(paket), aliasKarte: karte };
 }
 

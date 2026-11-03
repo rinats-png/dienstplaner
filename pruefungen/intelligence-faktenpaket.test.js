@@ -223,14 +223,14 @@ describe("Gesundheits- und Schutzmerkmale nie im Paket", () => {
     /* auf den Zeitraum geschnitten */
     expect(abw.map((a) => [a.datum, a.bis]).sort()).toEqual([["2026-11-01", "2026-11-02"], ["2026-11-10", "2026-11-12"], ["2026-11-20", "2026-11-30"]]);
   });
-  it("Schutzbefunde aus der Faktenquelle werden neutral „schutz“, ohne Fundstelle", async () => {
+  it("Schutzbefunde aus der Faktenquelle werden neutral „schutz“, ohne Fundstelle (lokales Modell: an der Person; extern: Nachtrag-Test)", async () => {
     const quelle = () => [
       { feld: "befund.regel", person: "a1", wert: "keineNacht", regel: { regelId: "keineNacht", pruefstatus: "geprueft", fundstelle: "Einsatzeinschränkung" } },
       { feld: "befund.regel", person: "a2", wert: "schutzWeich", regel: { regelId: "R_MUSCHG_5", pruefstatus: "geprueft", fundstelle: "§ 5 MuSchG" } },
       { feld: "kandidat.hinderung", person: "a1", wert: "maxDiensteWoche" },
       { feld: "befund.regel", person: "a3", wert: "JArbSchG_14", regel: { regelId: "ruhezeitGesetz", pruefstatus: "geprueft", fundstelle: "§ 14 JArbSchG" } },
     ];
-    const { paket } = await bilden({ faktenquelle: quelle });
+    const { paket } = await bilden({ faktenquelle: quelle, modellOrt: "lokal" });
     const b = paket.fakten.filter((f) => f.feld === "befund.regel" || f.feld === "kandidat.hinderung");
     expect(b.length).toBe(4);
     for (const x of b) expect(x.wert).toBe("schutz");
@@ -330,9 +330,13 @@ describe("Leck-Prüfung fail closed, Audit ohne Inhalt", () => {
     expect(await code(bilden({ funktion: "F17", audit: boese, faktenquelle: () => [{ feld: "regel.art", wert: "Weberknecht" }] }))).toBe("KI_LECK");
     expect(await code(bilden({ audit: boese }))).toBe("ok");
   });
-  it("eine Kennung, die zufällig wie ein Name aussieht (Dienstart „Anna“), verwirft das Paket statt es durchzulassen", async () => {
-    const b = betrieb(); b.dienstarten.push({ id: "Anna", start: "08:00", ende: "12:00" });
-    expect(await code(bilden({ ladeBestand: () => bestand(b) }))).toBe("KI_LECK");
+  it("eine Kennung, die zufällig wie ein Name aussieht (Qualifikation „Anna“), verwirft das Paket statt es durchzulassen", async () => {
+    const b = betrieb(); b.qualifikationen.push({ id: "Anna" });
+    expect(await code(bilden({ funktion: "F7A", ladeBestand: () => bestand(b) }))).toBe("KI_LECK");
+    /* Eine Dienstart „Anna“ geht seit dem Review-Nachtrag (F5) nur als Dienst-Alias hinein — der Name erreicht das Paket nicht. */
+    const d = betrieb(); d.dienstarten.push({ id: "Anna", start: "08:00", ende: "12:00" });
+    const { paket } = await bilden({ ladeBestand: () => bestand(d) });
+    expect(JSON.stringify(paket)).not.toMatch(/anna/i);
   });
 });
 
@@ -365,7 +369,7 @@ describe("Mandantentrennung", () => {
     expect(await code(bilden({ sitzung: sitzung("leitung", "z1", { betrieb: 1 }), ladeBestand: lade, bezug: { personId: "a1" } })))
       .toBe("KI_NICHT_GEFUNDEN");
     const ok = await bilden({ bezug: { personId: "a1", datum: "2026-11-03", schichtId: "F" } });
-    expect(ok.paket.bezug).toEqual({ alias: ok.aliasKarte.alias("person", "a1"), datum: "2026-11-03", ref: "F" });
+    expect(ok.paket.bezug).toEqual({ alias: ok.aliasKarte.alias("person", "a1"), datum: "2026-11-03", ref: ok.aliasKarte.alias("dienst", "F") });
   });
   it("gleiche Daten, gleicher Kontext und Schlüssel in zwei Räumen → keine gemeinsamen Alias", async () => {
     const a = await bilden();
@@ -411,14 +415,17 @@ describe("Eingabe, Grenzen, Determinismus", () => {
     expect(b.paket).toEqual(a.paket);
     const c = await bilden({ faktenquelle: vollQuelle, kontext: "auftrag-2" });
     expect(c.paket).not.toEqual(a.paket);
-    const ohneAlias = (p) => p.fakten.map(({ alias: _a, bezugAlias: _b, id: _i, ...r }) => JSON.stringify(r)).sort();
+    /* Dienst-Alias (D_…) in ref und wert hängen wie alle Alias am Kontext. */
+    const ohneAlias = (p) => p.fakten.map(({ alias: _a, bezugAlias: _b, id: _i, ...r }) => JSON.stringify(r)
+      .replace(/D_[BCDFGHJKLMNPQRSTVWXZ]{8}/g, "D_*")).sort();
     expect(ohneAlias(c.paket)).toEqual(ohneAlias(a.paket));
   });
   it("Paket tief eingefroren; Datum, Zeiten und Zahlen unverändert (deterministische Gegenrechnung)", async () => {
-    const { paket } = await bilden();
+    const { paket, aliasKarte } = await bilden();
     expect(Object.isFrozen(paket)).toBe(true);
     expect(Object.isFrozen(paket.fakten[0])).toBe(true);
-    const nacht = paket.fakten.filter((f) => f.ref === "N" && f.feld.startsWith("dienstart.")).map((f) => [f.feld, f.wert]).sort();
+    const n = aliasKarte.alias("dienst", "N");
+    const nacht = paket.fakten.filter((f) => f.ref === n && f.feld.startsWith("dienstart.")).map((f) => [f.feld, f.wert]).sort();
     expect(nacht).toEqual([["dienstart.beginn", "21:15"], ["dienstart.dauer", 540], ["dienstart.ende", "06:15"]]);
     expect(paket.fakten.filter((f) => f.feld === "person.wochenstunden").map((f) => f.wert)).toContain(38.5);
   });

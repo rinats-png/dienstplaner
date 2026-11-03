@@ -106,6 +106,16 @@ export const FUNKTIONEN = deepFreeze({
     felder: ["kennzahl.wert", ...BEFUND, ...BESETZUNG, ...DIENSTART] },
 });
 
+/** Funktionen, die (mit Fremdtext) NICHT freigeschaltet werden dürfen, bis
+    die genannte Voraussetzung gebaut ist. Der Bildner verweigert ihren
+    Fremdtext mit KI_FUNKTION; die Freischaltung (I13/I16) darf sie nicht
+    anbieten. F7A: Spaltenköpfe und Beispiele einer fremden Tabelle tragen
+    Klarnamen in beliebiger Form — die Leck-Prüfung allein genügt nicht
+    (Review F7). */
+export const FREISCHALTUNG_GESPERRT = deepFreeze({
+  F7A: "serverseitige Maskierung der Tabelle vor der Leck-Prüfung fehlt",
+});
+
 /**
  * Der Eintrag einer Funktion — oder null (Default verweigern). Nur eigene
  * Felder des Katalogs; „__proto__", „toString" und Ähnliches gibt es nicht.

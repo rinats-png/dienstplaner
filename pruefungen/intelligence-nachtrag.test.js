@@ -51,7 +51,7 @@ const betrieb = () => ({
     { id: "pl1", vorname: "Piotr", nachname: "Kowalski", rolle: "planer", bereich: "e1", wochenstunden: 38.5 },
     { id: "a1", vorname: "Tim", nachname: "Weberknecht", rolle: "mitarbeiter", bereich: "e1", wochenstunden: 30, geburtsdatum: "1990-05-12",
       kalenderGeheim: "a3f1c9e07b2d4a6e8f0c1b3d5e7f9a1c", pushSchluessel: { endpoint: "https://push.example/abc" } },
-    { id: "a2", vorname: "Ute", nachname: "Müller", rolle: "mitarbeiter", bereich: "e1", wochenstunden: 20,
+    { id: "a2", vorname: "Ute", nachname: `Mu${String.fromCodePoint(0x308)}ller`, rolle: "mitarbeiter", bereich: "e1", wochenstunden: 20,
       schwerbehindert: { grad: 60 }, geburtsdatum: "1971-03-14" },
     { id: "a3", vorname: "Светлана", nachname: "Иванова", rolle: "mitarbeiter", bereich: "e1", wochenstunden: 20 },
     { id: "a4", vorname: "Jörg", nachname: "Schäfer", rolle: "mitarbeiter", bereich: "e1", wochenstunden: 20 },
@@ -157,14 +157,18 @@ describe("F5: Dienst-Kennungen sind paketweit opak, Schutzbefunde extern ohne Pe
 
 describe("F2: Homoglyphen, fremde Schrift, leere Sperrlisteneinträge", () => {
   it("kyrillische und griechische Doppelgänger werden auf das lateinische Skelett gebracht", () => {
-    expect(normalisieren("Wеberknecht")).toBe("weberknecht");   // kyrillisch е
-    expect(normalisieren("Brаndt")).toBe("brandt");             // kyrillisch а
-    expect(normalisieren("Βrandt")).toBe("brandt");             // griechisch Β
-    expect(normalisieren("Ｍüｌｌer")).toBe("mueller");   // Vollbreite
-    for (const t of ["Wеberknecht hat frei", "Brаndt", "Βrandt"]) expect(kat(t), t).toContain("KLARNAME");
+    /* Ausdrücklich als Codepunkt geschrieben — im Quelltext sähe man den Unterschied nicht. */
+    const kyrE = String.fromCodePoint(0x435); const kyrA = String.fromCodePoint(0x430); const grB = String.fromCodePoint(0x392);
+    const vollM = String.fromCodePoint(0xff2d); const vollL = String.fromCodePoint(0xff4c);
+    expect(normalisieren(`W${kyrE}berknecht`)).toBe("weberknecht");
+    expect(normalisieren(`Br${kyrA}ndt`)).toBe("brandt");
+    expect(normalisieren(`${grB}randt`)).toBe("brandt");
+    expect(normalisieren(`${vollM}ü${vollL}${vollL}er`)).toBe("mueller");
+    for (const t of [`W${kyrE}berknecht hat frei`, `Br${kyrA}ndt`, `${grB}randt`]) expect(kat(t), t).toContain("KLARNAME");
   });
   it("Text und Kennungen mit Zeichen außerhalb Latin/Latin-1 → SCHRIFT (fail closed)", () => {
-    for (const t of ["Светлана Иванова hat morgen frei", "早班", "Dienst Ｆ", "\u{1D40C}eyer", "ΑΒΓ", "Dienst \u{1F600}"]) {
+    for (const t of ["Светлана Иванова hat morgen frei", "早班", `Dienst ${String.fromCodePoint(0xff26)}`, `${String.fromCodePoint(0x1d40c)}eyer`,
+      "ΑΒΓ", `Dienst ${String.fromCodePoint(0x1f600)}`]) {
       const r = textPruefen(t, SP);
       expect(r.ok, t).toBe(false);
       expect(r.befunde.map((b) => b.kategorie), t).toContain("SCHRIFT");
@@ -174,11 +178,11 @@ describe("F2: Homoglyphen, fremde Schrift, leere Sperrlisteneinträge", () => {
     expect(textPruefen("Teamtreffen „Montag“ – 14:00 … 5 € · Spät/Früh, § 5", SP)).toEqual({ ok: true, befunde: [] });
   });
   it("die Sperrliste behält nicht-lateinische Namen (\\p{L}) statt sie zu leeren", () => {
-    expect([...SP.namen].some((n) => n.includes("и"))).toBe(true);   // и aus Иванова
+    expect([...SP.namen].some((n) => n.includes(String.fromCodePoint(0x438)))).toBe(true);   // и aus Иванова
     expect(kat("Иванова")).toContain("KLARNAME");
   });
   it("ein Name, der nach der Normalisierung leer ist, macht die Sperrliste lückenhaft → Verdacht", () => {
-    const b = betrieb(); b.personen.push({ id: "a9", vorname: "☺", nachname: "—" });
+    const b = betrieb(); b.personen.push({ id: "a9", vorname: String.fromCodePoint(0x263a), nachname: String.fromCodePoint(0x2014) });
     const sp = sperrlisteBilden(b, { raum: "raum-a" });
     const r = leckPruefen({ fakten: [{ id: "f.0", feld: "person.vorhanden", art: "wahr", wert: true }] }, sp);
     expect(r.ok).toBe(false);
@@ -188,8 +192,10 @@ describe("F2: Homoglyphen, fremde Schrift, leere Sperrlisteneinträge", () => {
 
 describe("F3: Umlaute symmetrisch (NFC zuerst, beide Schreibweisen gesperrt)", () => {
   it("NFD gespeicherter Name wird wie NFC behandelt", () => {
-    expect(normalisieren("Müller")).toBe("mueller");
-    expect(normalisieren("Müller")).toBe(normalisieren("Müller"));
+    const nfd = `Mu${String.fromCodePoint(0x308)}ller`;
+    expect(nfd.normalize("NFC")).not.toBe(nfd);
+    expect(normalisieren(nfd)).toBe("mueller");
+    expect(normalisieren(nfd)).toBe(normalisieren(nfd.normalize("NFC")));
     for (const t of ["Müller", "Mueller", "Muller", "MÜLLER"]) expect(kat(`${t} hat frei`), t).toContain("KLARNAME");
   });
   it("„Schafer“ (ohne Umlaut) trifft „Schäfer“", () => {
@@ -275,8 +281,17 @@ describe("F9: Leck-Prüfung ohne quadratische Laufzeit", () => {
     leckPruefen({ fremdtext }, SP);
     expect(performance.now() - t0).toBeLessThan(500);
   });
-  it("E-Mail wird weiter erkannt", () => {
-    expect(kat("Mail an lena.brandt@sonnenhof.example")).toContain("KONTAKT");
+  it("auch lange Ziffern-, Punkt-, Komma- und @-Läufe (Nachmessung: Muster GRAD war quadratisch): je unter 500 ms", () => {
+    for (const lauf of ["1".repeat(3998) + "x", "@" + "a".repeat(3997) + "@", "1.".repeat(1999), "1,234 ".repeat(660), "-1".repeat(1999)]) {
+      const fremdtext = Array.from({ length: 20 }, (_, i) => ({ kapselId: `k${i}`, text: lauf.slice(0, 3999) + String.fromCharCode(97 + i) }));
+      const t0 = performance.now();
+      leckPruefen({ fremdtext }, SP);
+      expect(performance.now() - t0, lauf.slice(0, 6)).toBeLessThan(500);
+    }
+  });
+  it("E-Mail wird weiter erkannt (zerlegt statt Rückverfolgung)", () => {
+    for (const t of ["Mail an lena.brandt@sonnenhof.example", "x@y.de", "(a@b.co)"]) expect(kat(t), t).toContain("KONTAKT");
+    for (const t of ["@sonnenhof", "a@b", "Treffen @ 14 Uhr"]) expect(kat(t), t).not.toContain("KONTAKT");
   });
 });
 
