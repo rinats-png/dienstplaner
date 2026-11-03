@@ -2,10 +2,11 @@ import { getStore } from "../lib/ablage.mjs";
 import { createHash, randomBytes } from "node:crypto";
 import { bremse, kennung, herkunftErlaubt, zuVielAntwort, protokoll } from "../lib/schutz.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
-import { bestandLesen, altBestandSchluessel, voruebergehend } from "../lib/bestand.mjs";
+import { bestandLesen, bestandLesenStreng, voruebergehend } from "../lib/bestand.mjs";
 import { eigenerMandant, rolleBekannt } from "../lib/rechte.mjs";
-import { kernSchluessel } from "../lib/scherben.mjs";
 import { heuteBerlin } from "../lib/zeiterfassung.mjs";
+import { feedTermine } from "../lib/kalenderfeed.mjs";
+import { feedHerkunftAus, feedHerkunftGilt } from "../lib/feedherkunft.mjs";
 
 /* ==========================================================================
    KALENDER-FEED
@@ -23,6 +24,13 @@ import { heuteBerlin } from "../lib/zeiterfassung.mjs";
    Der Feed zeigt nur die eigenen Dienste. Kein Kollege, keine Besetzung,
    keine Abwesenheitsgründe — ein abonnierter Kalender ist am Ende eine
    Datei auf einem fremden Gerät.
+
+   WP-24: Der Feed ist live. Die Termine rechnet der Server bei jedem Abruf
+   aus dem aktuellen Bestand (lib/kalenderfeed.mjs), nicht mehr das Gerät beim
+   Einrichten. Ein geänderter Plan erreicht den Kalender mit dem nächsten
+   Abruf; ein Gerät kann dem Feed keinen Inhalt mehr unterschieben. Der Feed
+   trägt seine Herkunft (Konto und Mitgliedschaft oder Zugangscode, lib/
+   feedherkunft.mjs): Sperre oder Entzug widerrufen ihn beim nächsten Abruf.
    ========================================================================== */
 
 const store = () => getStore({ name: "centric", consistency: "strong" });
@@ -98,21 +106,20 @@ function gehoertMir(eintrag, b) {
    endet im allgemeinen Fehlerzweig (500, protokolliert) und lässt den Feed
    unangetastet.
 
-   Noch nicht geprüft: Konto, Mitgliedschaft, Sperre des Zugangscodes. Dafür
-   müsste ein Feed seine Herkunft tragen (Zugangscode bzw. accountId und
-   Generation) — ein späterer Schritt; Feeds ohne diese Angabe würden dann
-   weiterhin nur über Person und Betrieb geprüft.
+   Seit WP-24 zusätzlich: Konto, Mitgliedschaft und Generation bzw. der
+   Zugangscode, aus dem der Feed eingerichtet wurde (lib/feedherkunft.mjs).
+   Feeds aus der Zeit davor tragen keine Herkunft; sie widerruft die Sperre
+   des Kontos oder Codes über den Index der Person (lib/feedwiderruf.mjs).
    -------------------------------------------------------------------------- */
 async function feedBetrieb(raum) {
-  /* Kein .catch: Ein Lesefehler soll werfen (kein Widerruf), nur ein
-     fehlender Schlüssel ergibt null (Raum gibt es nicht mehr). */
-  const kern = await store().get(kernSchluessel(raum), { type: "json" });
-  if (kern) return kern;
-  /* Ein noch nicht zerlegter Altbestand liegt als ein Blob vor. */
-  return (await store().get(altBestandSchluessel(raum), { type: "json" })) || null;
+  /* Der vollständige Bestand in einem Durchgang (WP-24: auch für die Termine).
+     Kein .catch: Ein Lesefehler wirft (500, bei einem unlesbaren Teil 503) und
+     widerruft nichts; nur „den Raum gibt es nicht mehr“ ergibt null. */
+  return (await bestandLesenStreng(store(), raum)) || null;
 }
 
 export function feedPersonGilt(bestand, eintrag, heute = heuteBerlin()) {
+  /* `bestand` ist der Bestand selbst (nicht die Hülle von bestandLesen). */
   if (!bestand || !Array.isArray(bestand.mandanten) || !eintrag || !eintrag.mandantId) return false;
   const m = bestand.mandanten.filter((x) => x && x.id === eintrag.mandantId);
   if (m.length !== 1 || !Array.isArray(m[0].personen)) return false;
@@ -274,7 +281,13 @@ const stempel = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 /** Ortszeit als schwebender Wert — der Kalender rechnet mit der Zonenangabe. */
 const lokal = (datum, zeit) => `${datum.replace(/-/g, "")}T${zeit.replace(":", "")}00`;
 
-function baueICS(name, betrieb, termine) {
+/**
+ * @param {string} betrieb Name des Betriebs
+ * @param {object[]} termine
+ * @param {Date} stempelZeit DTSTAMP: der Stand des Bestands, nie die Uhrzeit des Abrufs —
+ *   derselbe Bestand ergibt byte-gleiche Dateien (kein Scheinänderungen im Kalender, prüfbar).
+ */
+export function baueICS(betrieb, termine, stempelZeit) {
   const z = ["BEGIN:VCALENDAR", "VERSION:2.0",
     "PRODID:-//CENTRIC//Dienstplanung//DE", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
     zeile(`X-WR-CALNAME:Dienstplan ${esc(betrieb)}`),
@@ -290,7 +303,7 @@ function baueICS(name, betrieb, termine) {
     "DTSTART:19701025T030000", "RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU", "END:STANDARD",
     "END:VTIMEZONE"];
 
-  const jetzt = stempel(new Date());
+  const jetzt = stempel(stempelZeit);
   for (const t of termine) {
     z.push("BEGIN:VEVENT");
     z.push(zeile(`UID:${t.id}@centric-dienstplanung`));
@@ -346,20 +359,25 @@ export default async (req) => {
       /* Commit D1g: Fehlt die Berechtigung, ist der Verweis endgültig
          verbraucht — auch wenn die Person später zurückkehrt. Ein Lesefehler
          wirft vorher (feedBetrieb) und widerruft nichts. */
-      if (!feedPersonGilt(await feedBetrieb(eintrag.bestand), eintrag)) {
+      const gelesen = await feedBetrieb(eintrag.bestand);
+      const bestand = gelesen && gelesen.bestand;
+      if (!feedPersonGilt(bestand, eintrag)) {
+        await feedEndgueltigWiderrufen(hash(geheim), eintrag);
+        return new Response("Nicht gefunden", { status: 404 });
+      }
+      /* WP-24: Gilt die Berechtigung hinter der Person noch — Konto, Mitgliedschaft,
+         Zugangscode? Ein Lesefehler wirft vorher und widerruft nichts. */
+      if (!(await feedHerkunftGilt(store(), eintrag)).gilt) {
         await feedEndgueltigWiderrufen(hash(geheim), eintrag);
         return new Response("Nicht gefunden", { status: 404 });
       }
 
-      const daten = await store().get(`feeddaten:${hash(geheim)}`, { type: "json" });
-      if (!daten) return new Response("Noch keine Daten", { status: 404 });
-
-      /* Was vor der Prüfung in /kalender/daten gespeichert wurde, kann
-         ungültige Termine enthalten. Sie fehlen im Feed, statt ihn ganz
-         scheitern zu lassen; beim nächsten Abgleich ersetzt die Anwendung
-         die Liste ohnehin. */
-      const termine = Array.isArray(daten.termine) ? daten.termine.filter((t) => !terminFehler(t)) : [];
-      const ics = baueICS(daten.name, daten.betrieb, termine);
+      /* WP-24: live aus dem aktuellen Bestand — nur die eigenen Dienste dieser Person. */
+      const m = bestand.mandanten.find((x) => x && x.id === eintrag.mandantId);
+      const termine = feedTermine(m, eintrag.personId, heuteBerlin()).filter((t) => !terminFehler(t));
+      /* DTSTAMP: Stand des Bestands, sonst Einrichtung des Feeds — nie die Uhr des Abrufs. */
+      const stand = [gelesen.zeit, eintrag.seit].map((z) => new Date(z)).find((d) => !Number.isNaN(d.getTime())) || new Date(0);
+      const ics = baueICS(String(m.name || ""), termine, stand);
       return new Response(ics, { status: 200, headers: {
         "content-type": "text/calendar; charset=utf-8",
         "content-disposition": `inline; filename="dienstplan.ics"`,
@@ -396,10 +414,16 @@ export default async (req) => {
       const r = await rumpfLesen(req);
       if (r.antwort) return r.antwort;
       const { alt } = r.daten;
+      /* Die Herkunft aus der einrichtenden Sitzung (WP-24): Sperre oder Entzug widerrufen den Feed.
+         Lässt sie sich nicht ableiten (weder Konto noch Zugangscode), entsteht kein Feed — er hinge
+         sonst nur an der Person und überlebte jede Sperre (fail-closed, Review-Befund 7). */
+      const herkunft = feedHerkunftAus(s);
+      if (!herkunft) return antwort({ fehler: "Für diese Anmeldung lässt sich kein Kalender einrichten.",
+        text: "Bitte neu anmelden und den Kalender dann einrichten." }, 403);
       const geheim = randomBytes(24).toString("base64url");
       const neu = hash(geheim);
       const seit = new Date().toISOString();
-      await store().setJSON(`feed:${neu}`, { bestand: b.raum, mandantId: b.mandantId, personId: b.personId, seit });
+      await store().setJSON(`feed:${neu}`, { bestand: b.raum, mandantId: b.mandantId, personId: b.personId, seit, herkunft });
       await store().setJSON(indexSchluessel(b), { hash: neu, seit });
       /* „alt" nur, wenn es nachweislich der eigenen Person gehört (gehoertMir). */
       await eigeneFeedsWiderrufen(b, neu, typeof alt === "string" && alt ? hash(alt) : null);
@@ -425,9 +449,9 @@ export default async (req) => {
         const feld = terminFehler(termine[i]);
         if (feld) return antwort({ fehler: "Ungültiger Termin.", termin: i, feld }, 400);
       }
-      await store().setJSON(`feeddaten:${hash(geheim)}`,
-        { name, betrieb, termine, stand: new Date().toISOString() });
-      return antwort({ ok: true, termine: termine.length });
+      /* WP-24: Der Feed rechnet live aus dem Bestand; was das Gerät schickt, wird geprüft
+         (alte Oberflächen rufen das noch auf), aber nicht mehr gespeichert und nie ausgeliefert. */
+      return antwort({ ok: true, termine: termine.length, live: true });
     }
 
     /* Feed abschalten */
