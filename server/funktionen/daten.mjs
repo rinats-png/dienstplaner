@@ -939,6 +939,10 @@ export default async (req, context) => {
             text: zuSchreiben.verweigert }, 403);
         }
 
+        /* Die offene Fachprüfung (WP-22) hängt am Ergebnis von zusammenfuehren (WeakMap) —
+           vor jedem Umbau von zuSchreiben holen, sonst ginge sie verloren (die Sperren wären wirkungslos). */
+        const offen = fachpruefungOffen(zuSchreiben);
+
         /* Gespeichert werden die gespeicherten Stempel (Stempel-Integrität,
            siehe oben) — in den Monaten, die die Übermittlung unverändert
            kennt; in den übrigen entscheidet der Drei-Wege-Abgleich. */
@@ -959,7 +963,6 @@ export default async (req, context) => {
            insgesamt höchstens ZEITBUDGET_MS — sonst 503 „bitte erneut". Eine
            Strukturänderung (Schichtfolge, Dienstzeiten, Personen …) ist je
            Raum gebremst. */
-        const offen = fachpruefungOffen(zuSchreiben);
         if (offen) {
           if (strukturAenderung(offen.alt, offen.neu)) {
             const sb = strukturBremse(`${s.bestand}|${offen.mandantId}`);
