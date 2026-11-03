@@ -287,6 +287,11 @@ jobs:
       - name: ACC45-Werkzeuge
         run: npm run pruefung:acc45-werkzeuge
 
+      # ACC45-Status (eine Quelle): work-packages.json gültig, STATUS/DEPENDENCIES/
+      # GESAMTPLAN/ROADMAP-Zahlen aus der Quelle erzeugt, keine Statusschönung.
+      - name: ACC45-Status aus einer Quelle
+        run: npm run pruefung:acc45-status
+
       # PWA (WP-37): Verknüpfungen, Fassung des Dienstarbeiters aus dem Bau,
       # Zwischenspeicher je Sitzung und nach Anmeldung leer.
       - name: PWA (Verknüpfungen, Dienstarbeiter, Zwischenspeicher)
