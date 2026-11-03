@@ -40,6 +40,17 @@ vi.mock("../server/lib/bestand.mjs", async (original) => {
   return { ...m, bestandLesen: vi.fn(m.bestandLesen) };
 });
 
+/* Zugriffe auf die Ablage mitzählen (Flake-Bremse): Der Test „schreibt nichts in
+   die Ablage“ zählte früher Dateien in centric-takt; dort schreiben aber auch
+   andere, noch laufende Vorgänge dieser Datei (bremse() ist asynchron). Der
+   Zugriff selbst ist stattdessen die Messgröße: getStore bleibt unverändert und
+   wird nur gezählt. Ein synchroner Block ohne await kann nicht von fremden
+   Schreibern unterbrochen werden. */
+vi.mock("../server/lib/ablage.mjs", async (original) => {
+  const m = await original();
+  return { ...m, getStore: vi.fn(m.getStore) };
+});
+
 let wurzel, S, Z, daten, B, store, sitzungAnlegen, kontoSchreiben, ablageSchluessel;
 const WIRT = "127.0.0.1:3000";
 const HEUTE = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date());
@@ -191,11 +202,12 @@ describe("WP-47 · Stempeln: eigene Bremsarten", () => {
   });
 
   it("die Lastbremse schreibt nichts in die Ablage (kein Vermerk je Stempel)", async () => {
-    const { readdir } = await import("node:fs/promises");
-    const vorher = await readdir(path.join(wurzel, "centric-takt")).catch(() => []);
+    const A = await import("../server/lib/ablage.mjs");
+    /* Kein await zwischen Nullstellen und Auswerten: kein fremder Schreiber kann dazwischenfunken. */
+    A.getStore.mockClear();
     for (let i = 0; i < 20; i++) S.lastbremse("stempeln", `p:ohne-platte-${i}`);
-    const nachher = await readdir(path.join(wurzel, "centric-takt")).catch(() => []);
-    expect(nachher.length).toBe(vorher.length);
+    for (let i = 0; i < 20; i++) S.lastbremse("stempeln-raum", `b:ohne-platte-${i}`, 5);
+    expect(A.getStore.mock.calls, "lastbremse darf die Ablage gar nicht ansprechen").toEqual([]);
   });
 
   it("der Raumdeckel richtet sich nach der Betriebsgröße — Hälfte der kleinsten gemessenen Obergrenze", () => {
