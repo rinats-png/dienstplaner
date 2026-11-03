@@ -22,6 +22,7 @@ import { stempelZiel, selbstauskunftPruefen, geplanterDienst, heuteBerlin, uhrze
   offlineVerspaetet, offlineVertrauen, UHR_TOLERANZ_MS }
   from "../lib/zeiterfassung.mjs";
 import { arbeitssitzungLesen } from "../lib/arbeitssitzung.mjs";
+import { auswertungHolen } from "../lib/br-auswertung.mjs";
 import { stempelWiderspruch, stempelSichern, korrekturAnhaengen } from "../lib/stempelintegritaet.mjs";
 import { antragStellen, antragEntscheiden } from "../lib/korrekturworkflow.mjs";
 import { neueServermitteilungen } from "../lib/mitteilungen.mjs";
@@ -900,6 +901,27 @@ export default async (req, context) => {
         rolle: s.rolle, person: s.person, betrieb: s.betrieb, name: s.name,
         einheit: s.einheit ?? null, schreiben: schreibumfang(s.rolle), inhaber: stempelInhaber(s),
         geaendert: mit.zeit, durch: mit.durch });
+    }
+
+    /* ----------------- Auswertung für den Betriebsrat (WP-27) ---------- */
+    /* Nur Aggregate, nur für den Betriebsrat mit audit.view. Gerechnet wird im
+       Hintergrund in Häppchen (br-auswertung.mjs); bis sie fertig ist, kommt 202
+       „wird berechnet" mit der Bitte, es gleich noch einmal zu versuchen — der
+       Prozess blockiert nie. export.data steuert nur die Schaltfläche der
+       Oberfläche: Der CSV-Export enthält genau diese Zahlen, nichts darüber hinaus. */
+    if (pfad === "br-auswertung" && req.method === "GET") {
+      const bl = await bremse("lesen", kennung(req, s));
+      if (!bl.frei) return zuVielAntwort(bl.wartet);
+      if (s.rolle !== "betriebsrat" || !darf(s.rolle, "audit.view")) {
+        await protokoll("lesen", kennung(req, s), "abgewiesen", `Auswertung Betriebsrat, Rolle ${s.rolle}`, wer);
+        return antwort({ fehler: "Keine Berechtigung.", text: "Die Auswertung gibt es nur für den Betriebsrat." }, 403);
+      }
+      const mit = await bestandJetzt();
+      const eigener = mit ? eigenerMandant(mit.bestand, s) : null;
+      if (!mit || !eigener) return antwort({ fehler: "Keine Daten." }, 404);
+      const r = auswertungHolen({ raum: s.bestand, heute: heuteBerlin(), mandant: eigener, ablage: store });
+      if (!r.fertig) return antwort({ status: "berechnet", retryNachMs: r.ausgelastet ? 5000 : 1500 }, 202);
+      return antwort({ status: "fertig", auswertung: r.wert, berechnetUm: r.berechnetUm });
     }
 
     /* ----------------------------- Schreiben ------------------------- */
