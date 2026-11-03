@@ -195,7 +195,7 @@ export function dienstAm(m, p, d) {
 const SCHUTZ_QUELLE_NEUTRAL = "Schutzvorschrift oder Einsatzregel für diese Person";
 const SCHUTZ_QUELLE_EINSCHRAENKUNG = "Schutzvorschrift oder Einsatzeinschränkung für diese Person";
 /** Rufbereitschaft: keine Arbeitszeit, solange kein Einsatz erfasst ist. */
-const rufbereitschaft = (da) => !!da && (da.form === "ruf" || da.rufbereitschaft === true || da.ruhezeitNeutral === true);
+export const rufbereitschaft = (da) => !!da && (da.form === "ruf" || da.rufbereitschaft === true || da.ruhezeitNeutral === true);
 const stufeVon = (regel, sonst) => (BEFUND_KATALOG[regel] && BEFUND_KATALOG[regel].stufe) || sonst;
 
 /**
